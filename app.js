@@ -82,7 +82,7 @@ async function processPreviewOnly() {
       return;
     }
 
-    setStatus("Procesando OCR y estructurando ticket completo...");
+    setStatus("Leyendo ticket renglón por renglón...");
     const form = buildFormData(false);
 
     const res = await fetch(`${backendUrl}/process-json`, {
@@ -98,9 +98,11 @@ async function processPreviewOnly() {
 
     lastRows = data.rows || [];
     lastTickets = data.tickets || [];
+
     renderTicketSummary(lastTickets);
     renderPreview(lastRows);
-    setStatus(`Ticket estructurado. Partidas detectadas: ${data.total_rows || lastRows.length}.`);
+
+    setStatus(`Transcripción generada. Renglones detectados: ${data.total_rows || lastRows.length}.`);
   } catch (err) {
     setStatus(err.message);
   }
@@ -111,7 +113,7 @@ async function processExcel() {
     const backendUrl = getBackendUrl();
     if (!backendUrl) throw new Error("Pega la URL de Cloud Run.");
 
-    setStatus("Procesando OCR y generando Excel completo...");
+    setStatus("Generando Excel de transcripción lineal...");
     const form = buildFormData(false);
 
     const res = await fetch(`${backendUrl}/process`, {
@@ -132,10 +134,10 @@ async function processExcel() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "tickets_estructurados.xlsx";
+    a.download = "tickets_transcripcion_lineal.xlsx";
     a.click();
 
-    setStatus("Excel completo descargado.");
+    setStatus("Excel descargado.");
   } catch (err) {
     setStatus(err.message);
   }
@@ -146,7 +148,7 @@ async function processAndSave() {
     const backendUrl = getBackendUrl();
     if (!backendUrl) throw new Error("Pega la URL de Cloud Run.");
 
-    setStatus("Procesando OCR y guardando partidas completas en Google Sheets...");
+    setStatus("Guardando transcripción en Google Sheets...");
     const form = buildFormData(true);
 
     const res = await fetch(`${backendUrl}/process-json`, {
@@ -163,7 +165,8 @@ async function processAndSave() {
     lastTickets = data.tickets || [];
     renderTicketSummary(lastTickets);
     renderPreview(lastRows);
-    setStatus(`Guardado en Sheets. Partidas procesadas: ${data.total_rows || lastRows.length}.`);
+
+    setStatus(`Guardado en Sheets. Renglones procesados: ${data.total_rows || lastRows.length}.`);
   } catch (err) {
     setStatus(err.message);
   }
@@ -186,14 +189,9 @@ function renderTicketSummary(tickets) {
     <div class="summaryBox">
       <div><strong>Tienda:</strong> ${escapeHtml(t.tienda || "")}</div>
       <div><strong>Fecha:</strong> ${escapeHtml(t.fecha_ticket || "")}</div>
-      <div><strong>Folio:</strong> ${escapeHtml(t.folio_ticket || "")}</div>
-      <div><strong>Subtotal:</strong> ${money(t.subtotal)}</div>
-      <div><strong>IVA:</strong> ${money(t.iva)}</div>
-      <div><strong>IEPS:</strong> ${money(t.ieps)}</div>
-      <div><strong>Impuestos:</strong> ${money(t.impuestos)}</div>
-      <div><strong>Descuentos:</strong> ${money(t.descuentos)}</div>
-      <div><strong>Total:</strong> ${money(t.total_ticket)}</div>
-      <div><strong>Partidas:</strong> ${escapeHtml(t.total_partidas_detectadas || 0)}</div>
+      <div><strong>RFC:</strong> ${escapeHtml(t.rfc_emisor || "")}</div>
+      <div><strong>Total detectado:</strong> ${money(t.total_detectado)}</div>
+      <div><strong>Renglones:</strong> ${escapeHtml(t.renglones_detectados || 0)}</div>
     </div>
   `).join("");
 }
@@ -207,14 +205,10 @@ function renderPreview(rows) {
   }
 
   const head = [
-    ["numero_partida", "#"],
-    ["descripcion", "Descripción / concepto"],
-    ["cantidad", "Cant."],
-    ["precio_unitario", "Precio unit."],
-    ["importe", "Importe"],
-    ["impuesto_estimado", "Impuesto estimado"],
-    ["total_linea_estimado", "Total línea"],
-    ["linea_original_ocr", "Línea OCR"]
+    ["linea_numero", "#"],
+    ["texto_original", "Texto original del renglón"],
+    ["monto_detectado", "Monto detectado"],
+    ["tipo_linea", "Tipo"]
   ];
 
   el.innerHTML = `
@@ -223,7 +217,7 @@ function renderPreview(rows) {
         <tr>${head.map(([_, label]) => `<th>${label}</th>`).join("")}</tr>
       </thead>
       <tbody>
-        ${rows.slice(0, 150).map(r => `
+        ${rows.slice(0, 250).map(r => `
           <tr>${head.map(([key]) => `<td>${formatCell(key, r[key])}</td>`).join("")}</tr>
         `).join("")}
       </tbody>
@@ -233,9 +227,7 @@ function renderPreview(rows) {
 
 function formatCell(key, value) {
   if (value === null || value === undefined || value === "") return "";
-  if (["precio_unitario", "importe", "impuesto_estimado", "total_linea_estimado"].includes(key)) {
-    return money(value);
-  }
+  if (key === "monto_detectado") return money(value);
   return escapeHtml(value);
 }
 
