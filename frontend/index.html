@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Ticket Scanner PRO</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <section class="card hero">
+      <div>
+        <h1>Ticket Scanner PRO</h1>
+        <p>Sube tickets, clasifica gastos y envía la información a Google Sheets.</p>
+      </div>
+      <span class="badge">OCR + Sheets</span>
+    </section>
+
+    <section class="card">
+      <label>URL backend Cloud Run</label>
+      <input id="backendUrl" placeholder="https://ticket-parser-xxxxx.run.app">
+
+      <div class="grid">
+        <div>
+          <label>Propiedad</label>
+          <input id="propiedad" placeholder="Ej. Calle Cumbres">
+        </div>
+        <div>
+          <label># Departamento</label>
+          <input id="departamento" placeholder="Ej. 2">
+        </div>
+      </div>
+
+      <label>Huésped / referencia</label>
+      <input id="huesped" placeholder="Opcional">
+
+      <label>Notas</label>
+      <textarea id="notas" placeholder="Ej. reparación fregadero, baño, cocina..."></textarea>
+
+      <label class="fileBox">
+        <input type="file" id="files" multiple accept="image/*" capture="environment">
+        <span>📸 Seleccionar o tomar fotos de tickets</span>
+      </label>
+
+      <div class="actions">
+        <button onclick="processExcel()">Descargar Excel</button>
+        <button class="secondary" onclick="processAndSave()">Guardar en Sheets</button>
+      </div>
+
+      <p id="status"></p>
+    </section>
+
+    <section class="card">
+      <h2>Resultado</h2>
+      <div id="preview" class="preview">Aún no hay datos procesados.</div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
