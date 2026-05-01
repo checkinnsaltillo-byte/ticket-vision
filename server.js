@@ -10,7 +10,11 @@ const classifyExpense = require("./classifier");
 const { sendRowsToAppsScript } = require("./sheetsClient");
 
 const app = express();
-const upload = multer({ dest: "/tmp/uploads" });
+
+const UPLOAD_DIR = "/tmp/uploads";
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const upload = multer({ dest: UPLOAD_DIR });
 const client = new vision.ImageAnnotatorClient();
 
 app.use(cors({ origin: true }));
@@ -28,10 +32,6 @@ app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
-/**
- * Devuelve Excel descargable.
- * También puede guardar en Google Sheets si SAVE_TO_SHEETS=true.
- */
 app.post("/process", upload.array("files"), async (req, res) => {
   try {
     const context = buildContext(req.body);
@@ -51,17 +51,23 @@ app.post("/process", upload.array("files"), async (req, res) => {
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.send(buffer);
   } catch (err) {
-    console.error("process_error", err);
-    res.status(500).json({ ok: false, error: "Error procesando tickets" });
+    console.error("process_error", {
+      message: err.message,
+      code: err.code,
+      stack: err.stack
+    });
+
+    res.status(500).json({
+      ok: false,
+      error: "Error procesando tickets",
+      detail: err.message,
+      code: err.code || ""
+    });
   } finally {
     cleanupFiles(req.files || []);
   }
 });
 
-/**
- * Devuelve JSON y guarda opcionalmente en Google Sheets.
- * Útil para integrarlo con tu frontend actual de Control de Huéspedes.
- */
 app.post("/process-json", upload.array("files"), async (req, res) => {
   try {
     const context = buildContext(req.body);
@@ -80,8 +86,18 @@ app.post("/process-json", upload.array("files"), async (req, res) => {
       rows
     });
   } catch (err) {
-    console.error("process_json_error", err);
-    res.status(500).json({ ok: false, error: "Error procesando tickets" });
+    console.error("process_json_error", {
+      message: err.message,
+      code: err.code,
+      stack: err.stack
+    });
+
+    res.status(500).json({
+      ok: false,
+      error: "Error procesando tickets",
+      detail: err.message,
+      code: err.code || ""
+    });
   } finally {
     cleanupFiles(req.files || []);
   }
@@ -99,14 +115,47 @@ function buildContext(body = {}) {
 }
 
 async function processFiles(files, context) {
+  if (!files.length) {
+    throw new Error("No se recibió ningún archivo. Verifica que el campo form-data se llame files.");
+  }
+
   const allRows = [];
 
   for (const file of files) {
+    if (!file.path || !fs.existsSync(file.path)) {
+      throw new Error("El archivo subido no se encontró temporalmente en Cloud Run.");
+    }
+
     const [result] = await client.textDetection(file.path);
     const rawText = result.textAnnotations?.[0]?.description || "";
 
+    if (!rawText.trim()) {
+      allRows.push(buildManualReviewRow({
+        context,
+        rawText: "",
+        reason: "Google Vision no detectó texto suficiente",
+        store: "NO_DETECTADO"
+      }));
+      continue;
+    }
+
     const parsed = parseTicket(rawText);
     const now = new Date().toISOString();
+
+    if (!parsed.items.length) {
+      allRows.push(buildManualReviewRow({
+        context,
+        rawText,
+        reason: "Texto detectado, pero no se identificaron partidas automáticamente",
+        store: parsed.store || "OTRO",
+        total: parsed.total || 0,
+        fecha: parsed.date || "",
+        rfc: parsed.rfc || "",
+        folio: parsed.folio || "",
+        fecha_captura: now
+      }));
+      continue;
+    }
 
     parsed.items.forEach((item, index) => {
       const classification = classifyExpense(item.producto, parsed.store);
@@ -122,21 +171,18 @@ async function processFiles(files, context) {
         precio_unitario: item.precio_unitario || item.importe || 0,
         importe: item.importe || 0,
         total_ticket: parsed.total || 0,
-
         categoria_operativa: classification.categoria_operativa,
         categoria_contable: classification.categoria_contable,
         tratamiento_fiscal: classification.tratamiento_fiscal,
         deducible_sugerido: classification.deducible_sugerido,
         requiere_revision: classification.requiere_revision,
         razon_clasificacion: classification.razon,
-
         propiedad: context.propiedad,
         departamento: context.departamento,
         huesped: context.huesped,
         reservacion_id: context.reservacion_id,
         fuente: context.fuente,
         notas: context.notas,
-
         ticket_linea: index + 1,
         texto_ocr: rawText
       });
@@ -144,6 +190,35 @@ async function processFiles(files, context) {
   }
 
   return allRows;
+}
+
+function buildManualReviewRow({ context, rawText, reason, store, total = 0, fecha = "", rfc = "", folio = "", fecha_captura = new Date().toISOString() }) {
+  return {
+    fecha_captura,
+    tienda: store,
+    rfc_emisor: rfc,
+    fecha_ticket: fecha,
+    folio_ticket: folio,
+    producto: reason,
+    cantidad: 1,
+    precio_unitario: 0,
+    importe: 0,
+    total_ticket: total,
+    categoria_operativa: "Revisión manual",
+    categoria_contable: "Pendiente de clasificar",
+    tratamiento_fiscal: "Revisión contable requerida",
+    deducible_sugerido: "Revisar",
+    requiere_revision: "Sí",
+    razon_clasificacion: reason,
+    propiedad: context.propiedad,
+    departamento: context.departamento,
+    huesped: context.huesped,
+    reservacion_id: context.reservacion_id,
+    fuente: context.fuente,
+    notas: context.notas,
+    ticket_linea: 1,
+    texto_ocr: rawText
+  };
 }
 
 function cleanupFiles(files) {
