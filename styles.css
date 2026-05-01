@@ -98,3 +98,45 @@ th, td {
   .grid, .actions { grid-template-columns: 1fr; }
   .hero { align-items: flex-start; flex-direction: column; }
 }
+
+
+/* Agregar al final de styles.css */
+
+.imagePreview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.imagePreview.empty {
+  display: block;
+  color: #5f6f89;
+}
+
+.ticketImageCard {
+  border: 1px solid #edf2f7;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.ticketImageCard img {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  display: block;
+  background: #fff;
+}
+
+.ticketImageCaption {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #5f6f89;
+  word-break: break-word;
+}
+
+.actions-card {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+}
