@@ -1,4 +1,5 @@
 let lastRows = [];
+let lastTickets = [];
 
 function getBackendUrl() {
   const val = document.getElementById("backendUrl").value.trim().replace(/\/$/, "");
@@ -33,6 +34,7 @@ function buildFormData(saveToSheets) {
 
 async function handleFilesSelected() {
   lastRows = [];
+  lastTickets = [];
   renderImagePreview();
   renderPreview([]);
   await processPreviewOnly();
@@ -41,6 +43,8 @@ async function handleFilesSelected() {
 function renderImagePreview() {
   const files = document.getElementById("files").files;
   const container = document.getElementById("imagePreview");
+
+  if (!container) return;
 
   if (!files.length) {
     container.className = "imagePreview empty";
@@ -78,7 +82,7 @@ async function processPreviewOnly() {
       return;
     }
 
-    setStatus("Procesando OCR para generar tabla...");
+    setStatus("Procesando OCR y estructurando ticket completo...");
     const form = buildFormData(false);
 
     const res = await fetch(`${backendUrl}/process-json`, {
@@ -93,8 +97,10 @@ async function processPreviewOnly() {
     }
 
     lastRows = data.rows || [];
+    lastTickets = data.tickets || [];
+    renderTicketSummary(lastTickets);
     renderPreview(lastRows);
-    setStatus(`Tabla generada. Registros detectados: ${data.total_rows || lastRows.length}.`);
+    setStatus(`Ticket estructurado. Partidas detectadas: ${data.total_rows || lastRows.length}.`);
   } catch (err) {
     setStatus(err.message);
   }
@@ -105,7 +111,7 @@ async function processExcel() {
     const backendUrl = getBackendUrl();
     if (!backendUrl) throw new Error("Pega la URL de Cloud Run.");
 
-    setStatus("Procesando OCR y generando Excel...");
+    setStatus("Procesando OCR y generando Excel completo...");
     const form = buildFormData(false);
 
     const res = await fetch(`${backendUrl}/process`, {
@@ -126,10 +132,10 @@ async function processExcel() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "gastos_tickets.xlsx";
+    a.download = "tickets_estructurados.xlsx";
     a.click();
 
-    setStatus("Excel descargado.");
+    setStatus("Excel completo descargado.");
   } catch (err) {
     setStatus(err.message);
   }
@@ -140,7 +146,7 @@ async function processAndSave() {
     const backendUrl = getBackendUrl();
     if (!backendUrl) throw new Error("Pega la URL de Cloud Run.");
 
-    setStatus("Procesando OCR y guardando en Google Sheets...");
+    setStatus("Procesando OCR y guardando partidas completas en Google Sheets...");
     const form = buildFormData(true);
 
     const res = await fetch(`${backendUrl}/process-json`, {
@@ -154,8 +160,10 @@ async function processAndSave() {
     }
 
     lastRows = data.rows || [];
+    lastTickets = data.tickets || [];
+    renderTicketSummary(lastTickets);
     renderPreview(lastRows);
-    setStatus(`Guardado en Sheets. Registros procesados: ${data.total_rows || lastRows.length}.`);
+    setStatus(`Guardado en Sheets. Partidas procesadas: ${data.total_rows || lastRows.length}.`);
   } catch (err) {
     setStatus(err.message);
   }
@@ -163,6 +171,31 @@ async function processAndSave() {
 
 function setStatus(msg) {
   document.getElementById("status").textContent = msg;
+}
+
+function renderTicketSummary(tickets) {
+  const existing = document.getElementById("ticketSummary");
+  if (!existing) return;
+
+  if (!tickets || !tickets.length) {
+    existing.innerHTML = "";
+    return;
+  }
+
+  existing.innerHTML = tickets.map(t => `
+    <div class="summaryBox">
+      <div><strong>Tienda:</strong> ${escapeHtml(t.tienda || "")}</div>
+      <div><strong>Fecha:</strong> ${escapeHtml(t.fecha_ticket || "")}</div>
+      <div><strong>Folio:</strong> ${escapeHtml(t.folio_ticket || "")}</div>
+      <div><strong>Subtotal:</strong> ${money(t.subtotal)}</div>
+      <div><strong>IVA:</strong> ${money(t.iva)}</div>
+      <div><strong>IEPS:</strong> ${money(t.ieps)}</div>
+      <div><strong>Impuestos:</strong> ${money(t.impuestos)}</div>
+      <div><strong>Descuentos:</strong> ${money(t.descuentos)}</div>
+      <div><strong>Total:</strong> ${money(t.total_ticket)}</div>
+      <div><strong>Partidas:</strong> ${escapeHtml(t.total_partidas_detectadas || 0)}</div>
+    </div>
+  `).join("");
 }
 
 function renderPreview(rows) {
@@ -174,13 +207,14 @@ function renderPreview(rows) {
   }
 
   const head = [
-    ["tienda", "Tienda"],
-    ["fecha_ticket", "Fecha"],
-    ["producto", "Producto"],
-    ["categoria_operativa", "Categoría"],
+    ["numero_partida", "#"],
+    ["descripcion", "Descripción / concepto"],
+    ["cantidad", "Cant."],
+    ["precio_unitario", "Precio unit."],
     ["importe", "Importe"],
-    ["total_ticket", "Total ticket"],
-    ["propiedad", "Propiedad"]
+    ["impuesto_estimado", "Impuesto estimado"],
+    ["total_linea_estimado", "Total línea"],
+    ["linea_original_ocr", "Línea OCR"]
   ];
 
   el.innerHTML = `
@@ -189,7 +223,7 @@ function renderPreview(rows) {
         <tr>${head.map(([_, label]) => `<th>${label}</th>`).join("")}</tr>
       </thead>
       <tbody>
-        ${rows.slice(0, 100).map(r => `
+        ${rows.slice(0, 150).map(r => `
           <tr>${head.map(([key]) => `<td>${formatCell(key, r[key])}</td>`).join("")}</tr>
         `).join("")}
       </tbody>
@@ -199,16 +233,19 @@ function renderPreview(rows) {
 
 function formatCell(key, value) {
   if (value === null || value === undefined || value === "") return "";
-  if (["importe", "total_ticket"].includes(key)) {
-    const num = Number(value);
-    if (!Number.isNaN(num)) {
-      return escapeHtml(num.toLocaleString("es-MX", {
-        style: "currency",
-        currency: "MXN"
-      }));
-    }
+  if (["precio_unitario", "importe", "impuesto_estimado", "total_linea_estimado"].includes(key)) {
+    return money(value);
   }
   return escapeHtml(value);
+}
+
+function money(value) {
+  const num = Number(value || 0);
+  if (Number.isNaN(num)) return "";
+  return escapeHtml(num.toLocaleString("es-MX", {
+    style: "currency",
+    currency: "MXN"
+  }));
 }
 
 function escapeHtml(v) {
