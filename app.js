@@ -37,7 +37,14 @@ async function processExcel() {
       body: form
     });
 
-    if (!res.ok) throw new Error("No se pudo procesar el ticket.");
+    if (!res.ok) {
+      let msg = "No se pudo procesar el ticket.";
+      try {
+        const data = await res.json();
+        msg = `${data.error || msg}${data.detail ? " — " + data.detail : ""}`;
+      } catch (_) {}
+      throw new Error(msg);
+    }
 
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
@@ -66,7 +73,9 @@ async function processAndSave() {
     });
 
     const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar en Sheets.");
+    if (!res.ok || !data.ok) {
+      throw new Error(`${data.error || "No se pudo guardar en Sheets."}${data.detail ? " — " + data.detail : ""}`);
+    }
 
     renderPreview(data.rows || []);
     setStatus(`Listo. Registros procesados: ${data.total_rows}.`);
