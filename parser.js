@@ -10,15 +10,29 @@ function normalizeLine(line) {
   return String(line || "").replace(/[ \t]+/g, " ").trim();
 }
 
+function stripAccents(str) {
+  return String(str || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normKey(str) {
+  return stripAccents(str)
+    .toUpperCase()
+    .replace(/[^\w$%. ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function detectStore(text) {
-  const t = text.toUpperCase();
+  const t = normKey(text);
 
   if (t.includes("VEMEX")) return "VEMEX";
   if (t.includes("HOME DEPOT") || t.includes("THE HOME DEPOT")) return "HOME DEPOT";
   if (t.includes("WALMART")) return "WALMART";
-  if (t.includes("HEB") || t.includes("H-E-B")) return "HEB";
+  if (t.includes("HEB") || t.includes("H E B")) return "HEB";
   if (t.includes("COSTCO")) return "COSTCO";
-  if (t.includes("SAMS") || t.includes("SAM'S") || t.includes("SAM S")) return "SAMS";
+  if (t.includes("SAMS") || t.includes("SAM S")) return "SAMS";
   if (t.includes("LOWE")) return "LOWES";
   if (t.includes("STEREN")) return "STEREN";
   if (t.includes("OFFICE DEPOT")) return "OFFICE DEPOT";
@@ -28,9 +42,21 @@ function detectStore(text) {
 
 function parseAmount(value) {
   if (!value) return 0;
-  const clean = String(value)
-    .replace(/[$,\s]/g, "")
-    .replace(/[^\d.-]/g, "");
+  const raw = String(value).trim();
+
+  // Soporta 1,234.56 y 1.234,56, aunque tickets MX suelen venir como 1,234.56
+  let clean = raw.replace(/[$\s]/g, "");
+
+  const hasComma = clean.includes(",");
+  const hasDot = clean.includes(".");
+
+  if (hasComma && hasDot) {
+    clean = clean.replace(/,/g, "");
+  } else if (hasComma && !hasDot) {
+    clean = clean.replace(",", ".");
+  }
+
+  clean = clean.replace(/[^\d.-]/g, "");
   return Number(clean) || 0;
 }
 
@@ -81,12 +107,83 @@ function extractFolio(text) {
 }
 
 function extractPaymentMethod(text) {
-  const t = text.toUpperCase();
+  const t = normKey(text);
 
   if (t.includes("EFECTIVO")) return "Efectivo";
-  if (t.includes("TARJETA") || t.includes("VISA") || t.includes("MASTERCARD") || t.includes("CREDITO") || t.includes("CRÉDITO") || t.includes("DEBITO") || t.includes("DÉBITO")) return "Tarjeta";
+  if (t.includes("TARJETA") || t.includes("VISA") || t.includes("MASTERCARD") || t.includes("CREDITO") || t.includes("DEBITO")) return "Tarjeta";
   if (t.includes("TRANSFERENCIA") || t.includes("SPEI")) return "Transferencia";
   if (t.includes("PAYPAL")) return "PayPal";
+
+  return "";
+}
+
+function extractAmounts(line) {
+  // Detecta $1,234.56, 1234.56, 1,234, 123,00
+  const matches = [];
+  const rx = /\$?\s*(-?\d{1,3}(?:,\d{3})*(?:\.\d{2})|-?\d+(?:\.\d{2})|-?\d+,\d{2})/g;
+  let m;
+
+  while ((m = rx.exec(line)) !== null) {
+    const value = parseAmount(m[1]);
+    if (!Number.isNaN(value)) {
+      matches.push({
+        value,
+        raw: m[0],
+        index: m.index
+      });
+    }
+  }
+
+  return matches;
+}
+
+function getLastAmount(line) {
+  const amounts = extractAmounts(line);
+  if (!amounts.length) return null;
+  return amounts[amounts.length - 1];
+}
+
+function looksLikeSummaryLabel(line) {
+  const l = normKey(line);
+
+  return (
+    /\bSUB\s*TOTAL\b/.test(l) ||
+    /\bSUBTOTAL\b/.test(l) ||
+    /\bTOTAL\b/.test(l) ||
+    /\bTOTAL\s+A\s+PAGAR\b/.test(l) ||
+    /\bGRAN\s+TOTAL\b/.test(l) ||
+    /\bIMPORTE\s+TOTAL\b/.test(l) ||
+    /\bIMPORTE\b/.test(l) ||
+    /\bIVA\b/.test(l) ||
+    /\bI\s*V\s*A\b/.test(l) ||
+    /\bIEPS\b/.test(l) ||
+    /\bIMPUESTO\b/.test(l) ||
+    /\bIMPUESTOS\b/.test(l) ||
+    /\bDESCUENTO\b/.test(l) ||
+    /\bDESC\b/.test(l) ||
+    /\bRETENCION\b/.test(l) ||
+    /\bRET IVA\b/.test(l) ||
+    /\bRET ISR\b/.test(l)
+  );
+}
+
+function classifySummaryLine(line, previousLine = "", nextLine = "") {
+  const combined = normKey(`${previousLine} ${line} ${nextLine}`);
+  const current = normKey(line);
+
+  if (/\bSUB\s*TOTAL\b/.test(combined) || /\bSUBTOTAL\b/.test(combined)) return "subtotal";
+  if (/\bRET\s*IVA\b/.test(combined) || /IVA\s+RETENIDO|RETENCION\s+IVA/.test(combined)) return "iva_retenido";
+  if (/\bRET\s*ISR\b/.test(combined) || /ISR\s+RETENIDO|RETENCION\s+ISR/.test(combined)) return "isr_retenido";
+  if (/\bIVA\b/.test(combined) || /\bI\s*V\s*A\b/.test(combined)) return "iva";
+  if (/\bIEPS\b/.test(combined)) return "ieps";
+  if (/\bIMPUESTO\b/.test(combined) || /\bIMPUESTOS\b/.test(combined)) return "impuestos";
+  if (/\bDESCUENTO\b/.test(combined) || /\bDESC\b/.test(combined)) return "descuentos";
+
+  // IMPORTANTE: "Importe" a veces es etiqueta de total, pero no siempre.
+  if (/\bIMPORTE\s+TOTAL\b/.test(combined)) return "total";
+  if (/\bTOTAL\s+A\s+PAGAR\b/.test(combined) || /\bGRAN\s+TOTAL\b/.test(combined)) return "total";
+  if (/\bTOTAL\b/.test(current)) return "total";
+  if (/\bIMPORTE\b/.test(current) && !/\bUNITARIO\b|\bPRECIO\b/.test(current)) return "importe";
 
   return "";
 }
@@ -97,52 +194,85 @@ function extractSummaryAmounts(text) {
     iva: 0,
     ieps: 0,
     impuestos: 0,
+    iva_retenido: 0,
+    isr_retenido: 0,
     descuentos: 0,
-    total: 0
+    importe: 0,
+    total: 0,
+    resumen_lineas: []
   };
 
   const lines = text.split("\n").map(normalizeLine).filter(Boolean);
 
-  for (const line of lines) {
-    const l = line.toUpperCase();
-    const amounts = [...line.matchAll(/\$?\s*([\d,]+\.\d{2})/g)].map(m => parseAmount(m[1]));
-    if (!amounts.length) continue;
-    const value = amounts[amounts.length - 1];
+  // 1) Detecta líneas con etiqueta y monto en la misma línea.
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const prev = i > 0 ? lines[i - 1] : "";
+    const next = i < lines.length - 1 ? lines[i + 1] : "";
+    const label = classifySummaryLine(line, prev, next);
 
-    if (/\bSUB\s*TOTAL\b|\bSUBTOTAL\b/.test(l)) {
-      summary.subtotal = value;
-    } else if (/\bIVA\b/.test(l)) {
-      summary.iva = value;
-    } else if (/\bIEPS\b/.test(l)) {
-      summary.ieps = value;
-    } else if (/IMPUEST/.test(l)) {
-      summary.impuestos = value;
-    } else if (/DESCUENTO|DESC\./.test(l)) {
-      summary.descuentos = value;
-    } else if (/\bTOTAL\b|TOTAL A PAGAR|GRAN TOTAL|IMPORTE TOTAL/.test(l)) {
-      summary.total = Math.max(summary.total || 0, value);
+    if (!label) continue;
+
+    let amountObj = getLastAmount(line);
+
+    // 2) Si la etiqueta está separada del monto, busca en la línea siguiente.
+    if (!amountObj && next) {
+      const nextAmount = getLastAmount(next);
+      const nextHasLabel = looksLikeSummaryLabel(next);
+      if (nextAmount && !nextHasLabel) amountObj = nextAmount;
     }
+
+    // 3) Si el OCR puso monto arriba y etiqueta abajo.
+    if (!amountObj && prev) {
+      const prevAmount = getLastAmount(prev);
+      const prevHasLabel = looksLikeSummaryLabel(prev);
+      if (prevAmount && !prevHasLabel) amountObj = prevAmount;
+    }
+
+    if (!amountObj) continue;
+
+    const value = formatAmount(amountObj.value);
+
+    if (label === "subtotal") summary.subtotal = value;
+    if (label === "iva") summary.iva = value;
+    if (label === "ieps") summary.ieps = value;
+    if (label === "impuestos") summary.impuestos = value;
+    if (label === "iva_retenido") summary.iva_retenido = value;
+    if (label === "isr_retenido") summary.isr_retenido = value;
+    if (label === "descuentos") summary.descuentos = value;
+    if (label === "importe") summary.importe = Math.max(summary.importe || 0, value);
+    if (label === "total") summary.total = Math.max(summary.total || 0, value);
+
+    summary.resumen_lineas.push({
+      tipo: label,
+      descripcion: line,
+      monto: value,
+      linea_original: line
+    });
   }
 
   if (!summary.impuestos) {
     summary.impuestos = formatAmount((summary.iva || 0) + (summary.ieps || 0));
   }
 
+  // Si no encontró total pero sí importe, usa importe como total candidato.
+  if (!summary.total && summary.importe) {
+    summary.total = summary.importe;
+  }
+
+  // Último recurso: tomar el mayor monto cercano a una línea de total.
   if (!summary.total) {
     const candidates = [];
-    const regexes = [
-      /(?:TOTAL|TOTAL\s+A\s+PAGAR|IMPORTE\s+TOTAL|GRAN\s+TOTAL)[^\d$]*\$?\s*([\d,]+\.\d{2})/gi,
-      /\bTOTAL\b[^\n]*?([\d,]+\.\d{2})/gi
-    ];
+    for (let i = 0; i < lines.length; i++) {
+      const l = normKey(lines[i]);
+      if (!/\bTOTAL\b|TOTAL A PAGAR|GRAN TOTAL|IMPORTE TOTAL/.test(l)) continue;
 
-    for (const rx of regexes) {
-      let m;
-      while ((m = rx.exec(text)) !== null) {
-        candidates.push(parseAmount(m[1]));
+      for (let j = Math.max(0, i - 1); j <= Math.min(lines.length - 1, i + 1); j++) {
+        const amount = getLastAmount(lines[j]);
+        if (amount) candidates.push(amount.value);
       }
     }
-
-    if (candidates.length) summary.total = Math.max(...candidates);
+    if (candidates.length) summary.total = formatAmount(Math.max(...candidates));
   }
 
   return {
@@ -150,21 +280,28 @@ function extractSummaryAmounts(text) {
     iva: formatAmount(summary.iva),
     ieps: formatAmount(summary.ieps),
     impuestos: formatAmount(summary.impuestos),
+    iva_retenido: formatAmount(summary.iva_retenido),
+    isr_retenido: formatAmount(summary.isr_retenido),
     descuentos: formatAmount(summary.descuentos),
-    total: formatAmount(summary.total)
+    importe: formatAmount(summary.importe),
+    total: formatAmount(summary.total),
+    resumen_lineas: summary.resumen_lineas
   };
 }
 
 function isSummaryOrPaymentLine(line) {
-  const l = line.toUpperCase();
-  return /SUBTOTAL|SUB TOTAL|TOTAL|IVA|IEPS|IMPUEST|CAMBIO|PAGO|PAGADO|EFECTIVO|TARJETA|AUTORIZ|APROBADA|BANCO|CUENTA|DEBITO|DÉBITO|CREDITO|CRÉDITO|AHORRO|MONEDERO/.test(l);
+  const l = normKey(line);
+  return (
+    looksLikeSummaryLabel(line) ||
+    /CAMBIO|PAGO|PAGADO|EFECTIVO|TARJETA|AUTORIZ|APROBADA|BANCO|CUENTA|DEBITO|CREDITO|AHORRO|MONEDERO|SALDO|VISA|MASTERCARD/.test(l)
+  );
 }
 
 function isHeaderOrNoiseLine(line) {
-  const l = line.toUpperCase();
+  const l = normKey(line);
   return (
     l.length < 2 ||
-    /RFC|REGIMEN|RÉGIMEN|FACTURA|UUID|SAT|CERTIFICADO|LUGAR DE EXPEDICI|GRACIAS|WWW\.|HTTP|TEL\.|TELEFONO|TELÉFONO|CLIENTE|CAJERO|SUCURSAL|DOMICILIO|AV\.|COL\.|C\.P\.|CP\s|FECHA|HORA|FOLIO|TICKET|RECIBO/.test(l)
+    /RFC|REGIMEN|FACTURA|UUID|SAT|CERTIFICADO|LUGAR DE EXPEDICI|GRACIAS|WWW|HTTP|TEL|TELEFONO|CLIENTE|CAJERO|SUCURSAL|DOMICILIO|AV |COL |C P |CP |FECHA|HORA|FOLIO|TICKET|RECIBO/.test(l)
   );
 }
 
@@ -173,15 +310,7 @@ function isNoiseLine(line) {
 }
 
 function hasAmount(line) {
-  return /\$?\s*[\d,]+\.\d{2}/.test(line);
-}
-
-function extractAmounts(line) {
-  return [...line.matchAll(/\$?\s*([\d,]+\.\d{2})/g)].map(m => ({
-    value: parseAmount(m[1]),
-    raw: m[0],
-    index: m.index
-  }));
+  return extractAmounts(line).length > 0;
 }
 
 function cleanDescription(desc) {
@@ -189,12 +318,12 @@ function cleanDescription(desc) {
     .replace(/^\*+/, "")
     .replace(/^[-–—]+/, "")
     .replace(/^\d+\s+X\s+/i, "")
-    .replace(/\b\d+\.\d{2}\b/g, "")
+    .replace(/\$?\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})/g, "")
+    .replace(/\$?\s*\d+(?:\.\d{2})/g, "")
     .replace(/\$\s*/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 
-  // Quita códigos largos al inicio, pero conserva descripción posterior.
   d = d.replace(/^(?:SKU|COD|CÓD|ART|ITEM)?\s*[:#-]?\s*[A-Z0-9-]{6,}\s+/i, "").trim();
 
   return d;
@@ -206,14 +335,11 @@ function isLikelyDescriptionLine(line) {
 
   const l = line.trim();
 
-  // Evita líneas que son solo importes, fechas, horas, cantidades o códigos.
   if (/^\$?\s*[\d,]+\.\d{2}$/.test(l)) return false;
   if (/^\d{1,4}$/.test(l)) return false;
   if (/^\d{2}[\/-]\d{2}[\/-]\d{2,4}$/.test(l)) return false;
   if (/^\d{1,2}:\d{2}/.test(l)) return false;
   if (/^[A-Z0-9-]{5,}$/.test(l) && !/[AEIOUÁÉÍÓÚÜÑ]/i.test(l)) return false;
-
-  // Debe tener letras.
   if (!/[A-ZÁÉÍÓÚÜÑ]/i.test(l)) return false;
 
   return true;
@@ -227,12 +353,12 @@ function collectDescriptionFromPreviousLines(lines, amountLineIndex, currentBefo
     parts.push(currentClean);
   }
 
-  // Busca hasta 4 líneas anteriores; esto corrige OCR donde descripción queda arriba y monto abajo.
-  for (let j = amountLineIndex - 1; j >= 0 && j >= amountLineIndex - 4; j--) {
+  for (let j = amountLineIndex - 1; j >= 0 && j >= amountLineIndex - 5; j--) {
     const candidate = normalizeLine(lines[j]);
     if (!candidate) continue;
 
-    // Si aparece otra línea con monto antes, normalmente ya es otra partida.
+    if (looksLikeSummaryLabel(candidate)) break;
+
     if (hasAmount(candidate) && j !== amountLineIndex - 1) break;
 
     if (!isLikelyDescriptionLine(candidate)) continue;
@@ -240,7 +366,6 @@ function collectDescriptionFromPreviousLines(lines, amountLineIndex, currentBefo
     const cleaned = cleanDescription(candidate);
     if (!cleaned) continue;
 
-    // Evita repetir la misma línea.
     if (!parts.includes(cleaned)) {
       parts.unshift(cleaned);
     }
@@ -261,13 +386,11 @@ function inferQuantityAndDescription(beforeAmount, importe) {
   let raw = normalizeLine(beforeAmount);
   let cantidad = 1;
 
-  // Ej: "2 CINTA AISLAR" o "2.000 CINTA AISLAR"
   const qtyStart = raw.match(/^(\d+(?:\.\d{1,3})?)\s+(.*)$/);
   if (qtyStart) {
     const possibleQty = Number(qtyStart[1]);
     const rest = qtyStart[2].trim();
 
-    // Evita tomar códigos de producto como cantidad.
     if (possibleQty > 0 && possibleQty < 1000 && rest.length > 2 && /[A-ZÁÉÍÓÚÜÑ]/i.test(rest)) {
       cantidad = possibleQty;
       raw = rest;
@@ -286,12 +409,15 @@ function parseItemsGeneric(lines) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeLine(lines[i]);
-    if (!line || isNoiseLine(line)) continue;
+    if (!line) continue;
+
+    // Muy importante: líneas de Total / Importe / IVA se excluyen de partidas
+    // porque se procesan como resumen del ticket.
+    if (isNoiseLine(line)) continue;
 
     const amounts = extractAmounts(line);
     if (!amounts.length) continue;
 
-    // En una línea con varios montos, normalmente el último es importe de línea.
     const amountObj = amounts[amounts.length - 1];
     const importe = formatAmount(amountObj.value);
 
@@ -302,12 +428,10 @@ function parseItemsGeneric(lines) {
 
     let descripcion = inferred.descripcionParcial;
 
-    // Si la descripción está vacía o es demasiado débil, usa líneas anteriores.
     if (!isLikelyDescriptionLine(descripcion) || descripcion.length < 4) {
       descripcion = collectDescriptionFromPreviousLines(lines, i, beforeAmount);
     }
 
-    // Si aún no hay descripción, intenta combinar línea anterior inmediata + actual.
     if (!descripcion || descripcion.length < 4) {
       const prev = i > 0 ? cleanDescription(lines[i - 1]) : "";
       const currentNoAmount = cleanDescription(beforeAmount);
@@ -315,7 +439,6 @@ function parseItemsGeneric(lines) {
       if (isLikelyDescriptionLine(combined)) descripcion = combined;
     }
 
-    // Si de plano no hubo descripción, usa línea original limpia antes del monto o la línea completa sin el monto.
     if (!descripcion || descripcion.length < 4) {
       descripcion = cleanDescription(line.replace(amountObj.raw, ""));
     }
@@ -399,12 +522,18 @@ function parseTicket(textRaw) {
     time: extractTime(text),
     folio: extractFolio(text),
     payment_method: extractPaymentMethod(text),
+
     subtotal: summary.subtotal,
     iva: summary.iva,
     ieps: summary.ieps,
     impuestos: summary.impuestos,
+    iva_retenido: summary.iva_retenido,
+    isr_retenido: summary.isr_retenido,
     descuentos: summary.descuentos,
+    importe: summary.importe,
     total: summary.total,
+    resumen_lineas: summary.resumen_lineas,
+
     items,
     raw_text: text
   };
