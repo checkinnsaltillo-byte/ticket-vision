@@ -11,9 +11,9 @@
     <section class="card hero">
       <div>
         <h1>Ticket Scanner PRO</h1>
-        <p>Sube tickets, visualiza la imagen, revisa la tabla extraída y después descarga Excel o guarda en Google Sheets.</p>
+        <p>Sube tickets y transcribe el texto tal cual aparece, renglón por renglón, con monto detectado cuando exista.</p>
       </div>
-      <span class="badge">OCR + Sheets</span>
+      <span class="badge">OCR literal</span>
     </section>
 
     <section class="card">
@@ -51,7 +51,12 @@
     </section>
 
     <section class="card">
-      <h2>Tabla generada</h2>
+      <h2>Resumen detectado</h2>
+      <div id="ticketSummary" class="ticketSummary"></div>
+    </section>
+
+    <section class="card">
+      <h2>Transcripción renglón por renglón</h2>
       <div id="preview" class="preview">Selecciona una imagen para generar la tabla.</div>
     </section>
 
