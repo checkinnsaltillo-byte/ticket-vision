@@ -11,7 +11,7 @@
     <section class="card hero">
       <div>
         <h1>Ticket Scanner PRO</h1>
-        <p>Sube tickets, clasifica gastos y envía la información a Google Sheets.</p>
+        <p>Sube tickets, visualiza la imagen, revisa la tabla extraída y después descarga Excel o guarda en Google Sheets.</p>
       </div>
       <span class="badge">OCR + Sheets</span>
     </section>
@@ -42,17 +42,24 @@
         <span>📸 Seleccionar o tomar fotos de tickets</span>
       </label>
 
-      <div class="actions">
-        <button onclick="processExcel()">Descargar Excel</button>
-        <button class="secondary" onclick="processAndSave()">Guardar en Sheets</button>
-      </div>
-
       <p id="status"></p>
     </section>
 
     <section class="card">
-      <h2>Resultado</h2>
-      <div id="preview" class="preview">Aún no hay datos procesados.</div>
+      <h2>Imágenes cargadas</h2>
+      <div id="imagePreview" class="imagePreview empty">Aún no has seleccionado imágenes.</div>
+    </section>
+
+    <section class="card">
+      <h2>Tabla generada</h2>
+      <div id="preview" class="preview">Selecciona una imagen para generar la tabla.</div>
+    </section>
+
+    <section class="card actions-card">
+      <div class="actions">
+        <button onclick="processExcel()">Descargar Excel</button>
+        <button class="secondary" onclick="processAndSave()">Guardar en Sheets</button>
+      </div>
     </section>
   </main>
 
