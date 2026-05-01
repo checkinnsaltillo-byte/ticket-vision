@@ -155,19 +155,130 @@ function extractSummaryAmounts(text) {
   };
 }
 
-function isNoiseLine(line) {
+function isSummaryOrPaymentLine(line) {
   const l = line.toUpperCase();
+  return /SUBTOTAL|SUB TOTAL|TOTAL|IVA|IEPS|IMPUEST|CAMBIO|PAGO|PAGADO|EFECTIVO|TARJETA|AUTORIZ|APROBADA|BANCO|CUENTA|DEBITO|DÉBITO|CREDITO|CRÉDITO|AHORRO|MONEDERO/.test(l);
+}
 
+function isHeaderOrNoiseLine(line) {
+  const l = line.toUpperCase();
   return (
-    l.length < 3 ||
-    /RFC|REGIMEN|RÉGIMEN|FACTURA|UUID|SAT|CERTIFICADO|LUGAR DE EXPEDICI|GRACIAS|WWW\.|HTTP|TEL\.|TELEFONO|TELÉFONO|CLIENTE|CAJERO|SUCURSAL|DOMICILIO/.test(l) ||
-    /SUBTOTAL|SUB TOTAL|TOTAL|IVA|IEPS|IMPUEST|CAMBIO|PAGO|PAGADO|EFECTIVO|TARJETA|AUTORIZ|APROBADA|BANCO|CUENTA|DEBITO|DÉBITO|CREDITO|CRÉDITO/.test(l)
+    l.length < 2 ||
+    /RFC|REGIMEN|RÉGIMEN|FACTURA|UUID|SAT|CERTIFICADO|LUGAR DE EXPEDICI|GRACIAS|WWW\.|HTTP|TEL\.|TELEFONO|TELÉFONO|CLIENTE|CAJERO|SUCURSAL|DOMICILIO|AV\.|COL\.|C\.P\.|CP\s|FECHA|HORA|FOLIO|TICKET|RECIBO/.test(l)
   );
 }
 
-function looksLikeItemLine(line) {
+function isNoiseLine(line) {
+  return isHeaderOrNoiseLine(line) || isSummaryOrPaymentLine(line);
+}
+
+function hasAmount(line) {
+  return /\$?\s*[\d,]+\.\d{2}/.test(line);
+}
+
+function extractAmounts(line) {
+  return [...line.matchAll(/\$?\s*([\d,]+\.\d{2})/g)].map(m => ({
+    value: parseAmount(m[1]),
+    raw: m[0],
+    index: m.index
+  }));
+}
+
+function cleanDescription(desc) {
+  let d = normalizeLine(desc)
+    .replace(/^\*+/, "")
+    .replace(/^[-–—]+/, "")
+    .replace(/^\d+\s+X\s+/i, "")
+    .replace(/\b\d+\.\d{2}\b/g, "")
+    .replace(/\$\s*/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  // Quita códigos largos al inicio, pero conserva descripción posterior.
+  d = d.replace(/^(?:SKU|COD|CÓD|ART|ITEM)?\s*[:#-]?\s*[A-Z0-9-]{6,}\s+/i, "").trim();
+
+  return d;
+}
+
+function isLikelyDescriptionLine(line) {
+  if (!line) return false;
   if (isNoiseLine(line)) return false;
-  return /\d[\d,]*\.\d{2}/.test(line);
+
+  const l = line.trim();
+
+  // Evita líneas que son solo importes, fechas, horas, cantidades o códigos.
+  if (/^\$?\s*[\d,]+\.\d{2}$/.test(l)) return false;
+  if (/^\d{1,4}$/.test(l)) return false;
+  if (/^\d{2}[\/-]\d{2}[\/-]\d{2,4}$/.test(l)) return false;
+  if (/^\d{1,2}:\d{2}/.test(l)) return false;
+  if (/^[A-Z0-9-]{5,}$/.test(l) && !/[AEIOUÁÉÍÓÚÜÑ]/i.test(l)) return false;
+
+  // Debe tener letras.
+  if (!/[A-ZÁÉÍÓÚÜÑ]/i.test(l)) return false;
+
+  return true;
+}
+
+function collectDescriptionFromPreviousLines(lines, amountLineIndex, currentBeforeAmount) {
+  const parts = [];
+
+  const currentClean = cleanDescription(currentBeforeAmount || "");
+  if (isLikelyDescriptionLine(currentClean)) {
+    parts.push(currentClean);
+  }
+
+  // Busca hasta 4 líneas anteriores; esto corrige OCR donde descripción queda arriba y monto abajo.
+  for (let j = amountLineIndex - 1; j >= 0 && j >= amountLineIndex - 4; j--) {
+    const candidate = normalizeLine(lines[j]);
+    if (!candidate) continue;
+
+    // Si aparece otra línea con monto antes, normalmente ya es otra partida.
+    if (hasAmount(candidate) && j !== amountLineIndex - 1) break;
+
+    if (!isLikelyDescriptionLine(candidate)) continue;
+
+    const cleaned = cleanDescription(candidate);
+    if (!cleaned) continue;
+
+    // Evita repetir la misma línea.
+    if (!parts.includes(cleaned)) {
+      parts.unshift(cleaned);
+    }
+  }
+
+  return cleanDescription(parts.join(" "));
+}
+
+function extractPossibleCode(line, descripcion) {
+  const firstToken = String(descripcion || "").split(" ")[0] || "";
+  if (/^[A-Z0-9-]{4,}$/.test(firstToken) && /\d/.test(firstToken)) return firstToken;
+
+  const m = String(line || "").match(/\b(\d{5,14})\b/);
+  return m ? m[1] : "";
+}
+
+function inferQuantityAndDescription(beforeAmount, importe) {
+  let raw = normalizeLine(beforeAmount);
+  let cantidad = 1;
+
+  // Ej: "2 CINTA AISLAR" o "2.000 CINTA AISLAR"
+  const qtyStart = raw.match(/^(\d+(?:\.\d{1,3})?)\s+(.*)$/);
+  if (qtyStart) {
+    const possibleQty = Number(qtyStart[1]);
+    const rest = qtyStart[2].trim();
+
+    // Evita tomar códigos de producto como cantidad.
+    if (possibleQty > 0 && possibleQty < 1000 && rest.length > 2 && /[A-ZÁÉÍÓÚÜÑ]/i.test(rest)) {
+      cantidad = possibleQty;
+      raw = rest;
+    }
+  }
+
+  return {
+    cantidad: formatAmount(cantidad),
+    descripcionParcial: cleanDescription(raw),
+    precio_unitario: cantidad ? formatAmount(importe / cantidad) : importe
+  };
 }
 
 function parseItemsGeneric(lines) {
@@ -175,74 +286,71 @@ function parseItemsGeneric(lines) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeLine(lines[i]);
-    if (!looksLikeItemLine(line)) continue;
+    if (!line || isNoiseLine(line)) continue;
 
-    const amountMatches = [...line.matchAll(/\$?\s*([\d,]+\.\d{2})/g)];
-    if (!amountMatches.length) continue;
+    const amounts = extractAmounts(line);
+    if (!amounts.length) continue;
 
-    const importe = parseAmount(amountMatches[amountMatches.length - 1][1]);
+    // En una línea con varios montos, normalmente el último es importe de línea.
+    const amountObj = amounts[amounts.length - 1];
+    const importe = formatAmount(amountObj.value);
+
     if (!importe || importe < 0.01) continue;
 
-    let rawBeforeAmount = line.slice(0, amountMatches[amountMatches.length - 1].index).trim();
+    const beforeAmount = line.slice(0, amountObj.index).trim();
+    const inferred = inferQuantityAndDescription(beforeAmount, importe);
 
-    let cantidad = 1;
-    let precio_unitario = importe;
+    let descripcion = inferred.descripcionParcial;
 
-    const qtyStart = rawBeforeAmount.match(/^(\d+(?:\.\d{1,3})?)\s+(.*)$/);
-    if (qtyStart) {
-      const possibleQty = Number(qtyStart[1]);
-      if (possibleQty > 0 && possibleQty < 999) {
-        cantidad = possibleQty;
-        rawBeforeAmount = qtyStart[2].trim();
-      }
+    // Si la descripción está vacía o es demasiado débil, usa líneas anteriores.
+    if (!isLikelyDescriptionLine(descripcion) || descripcion.length < 4) {
+      descripcion = collectDescriptionFromPreviousLines(lines, i, beforeAmount);
     }
 
-    // Detecta líneas tipo: "PRODUCTO 2 99.00 198.00"
-    const embeddedNumbers = [...rawBeforeAmount.matchAll(/\b(\d+(?:\.\d{1,3})?)\b/g)];
-    if (embeddedNumbers.length) {
-      const lastNum = Number(embeddedNumbers[embeddedNumbers.length - 1][1]);
-      if (lastNum > 0 && lastNum < 999 && importe / lastNum > 1) {
-        // No sobreescribir si parece código de producto.
-      }
+    // Si aún no hay descripción, intenta combinar línea anterior inmediata + actual.
+    if (!descripcion || descripcion.length < 4) {
+      const prev = i > 0 ? cleanDescription(lines[i - 1]) : "";
+      const currentNoAmount = cleanDescription(beforeAmount);
+      const combined = cleanDescription(`${prev} ${currentNoAmount}`);
+      if (isLikelyDescriptionLine(combined)) descripcion = combined;
     }
 
-    precio_unitario = cantidad ? formatAmount(importe / cantidad) : importe;
+    // Si de plano no hubo descripción, usa línea original limpia antes del monto o la línea completa sin el monto.
+    if (!descripcion || descripcion.length < 4) {
+      descripcion = cleanDescription(line.replace(amountObj.raw, ""));
+    }
 
-    let descripcion = rawBeforeAmount
-      .replace(/^\*+/, "")
-      .replace(/\s{2,}/g, " ")
-      .trim();
-
-    if (!descripcion || descripcion.length < 2) {
-      descripcion = "Partida detectada sin descripción clara";
+    if (!descripcion || descripcion.length < 4) {
+      descripcion = "Descripción no detectada - revisar OCR";
     }
 
     items.push({
       linea_original: line,
       codigo: extractPossibleCode(line, descripcion),
       descripcion,
-      cantidad: formatAmount(cantidad),
-      precio_unitario: formatAmount(precio_unitario),
-      importe: formatAmount(importe),
+      cantidad: inferred.cantidad,
+      precio_unitario: inferred.precio_unitario,
+      importe,
       impuesto_estimado: 0,
-      total_linea: formatAmount(importe)
+      total_linea: importe
     });
   }
 
-  return mergeContinuationLines(items);
+  return deduplicateItems(items);
 }
 
-function extractPossibleCode(line, descripcion) {
-  const firstToken = descripcion.split(" ")[0] || "";
-  if (/^[A-Z0-9-]{4,}$/.test(firstToken) && /\d/.test(firstToken)) return firstToken;
-  const m = line.match(/\b(\d{5,14})\b/);
-  return m ? m[1] : "";
-}
+function deduplicateItems(items) {
+  const result = [];
+  const seen = new Set();
 
-function mergeContinuationLines(items) {
-  // En OCR complejo, algunas tiendas parten descripción e importe.
-  // Por ahora se conserva cada partida encontrada sin fusionar agresivamente para evitar perder datos.
-  return items;
+  for (const item of items) {
+    const key = `${item.descripcion}|${item.importe}|${item.linea_original}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
 }
 
 function distributeTaxes(items, summary) {
