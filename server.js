@@ -6,7 +6,6 @@ const fs = require("fs");
 const cors = require("cors");
 
 const parseTicket = require("./parser");
-const classifyExpense = require("./classifier");
 const { sendRowsToAppsScript } = require("./sheetsClient");
 
 const app = express();
@@ -36,26 +35,20 @@ app.post("/process", upload.array("files"), async (req, res) => {
   try {
     const context = buildContext(req.body);
     const result = await processFiles(req.files || [], context);
-    const rows = result.rows;
 
     if (process.env.SAVE_TO_SHEETS === "true") {
-      await sendRowsToAppsScript(rows);
+      await sendRowsToAppsScript(result.rows);
     }
 
     const wb = XLSX.utils.book_new();
 
-    const wsItems = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, wsItems, "Partidas");
-
-    const wsTickets = XLSX.utils.json_to_sheet(result.tickets);
-    XLSX.utils.book_append_sheet(wb, wsTickets, "Resumen tickets");
-
-    const wsOCR = XLSX.utils.json_to_sheet(result.ocr);
-    XLSX.utils.book_append_sheet(wb, wsOCR, "OCR completo");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.rows), "Transcripcion");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.tickets), "Resumen tickets");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.ocr), "OCR completo");
 
     const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
-    res.setHeader("Content-Disposition", "attachment; filename=tickets_estructurados.xlsx");
+    res.setHeader("Content-Disposition", "attachment; filename=tickets_transcripcion_lineal.xlsx");
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.send(buffer);
   } catch (err) {
@@ -80,18 +73,17 @@ app.post("/process-json", upload.array("files"), async (req, res) => {
   try {
     const context = buildContext(req.body);
     const result = await processFiles(req.files || [], context);
-    const rows = result.rows;
 
     let sheetsResult = null;
     if (req.body.saveToSheets === "true" || process.env.SAVE_TO_SHEETS === "true") {
-      sheetsResult = await sendRowsToAppsScript(rows);
+      sheetsResult = await sendRowsToAppsScript(result.rows);
     }
 
     res.json({
       ok: true,
-      total_rows: rows.length,
+      total_rows: result.rows.length,
       tickets: result.tickets,
-      rows,
+      rows: result.rows,
       ocr: result.ocr,
       saved_to_sheets: !!sheetsResult,
       sheets_result: sheetsResult
@@ -151,19 +143,11 @@ async function processFiles(files, context) {
       ticket_id: ticketId,
       fecha_captura: now,
       archivo: file.originalname || "",
-      tienda: parsed.store || "NO_DETECTADO",
+      tienda: parsed.store || "",
       rfc_emisor: parsed.rfc || "",
       fecha_ticket: parsed.date || "",
-      hora_ticket: parsed.time || "",
-      folio_ticket: parsed.folio || "",
-      metodo_pago: parsed.payment_method || "",
-      subtotal: parsed.subtotal || 0,
-      iva: parsed.iva || 0,
-      ieps: parsed.ieps || 0,
-      impuestos: parsed.impuestos || 0,
-      descuentos: parsed.descuentos || 0,
-      total_ticket: parsed.total || 0,
-      total_partidas_detectadas: parsed.items?.length || 0,
+      total_detectado: parsed.total || 0,
+      renglones_detectados: parsed.items?.length || 0,
       propiedad: context.propiedad,
       departamento: context.departamento,
       huesped: context.huesped,
@@ -180,127 +164,48 @@ async function processFiles(files, context) {
     });
 
     if (!rawText.trim()) {
-      rows.push(buildManualReviewRow({
-        ticketId,
-        context,
-        rawText: "",
-        reason: "Google Vision no detectó texto suficiente",
-        parsed: ticketSummary
-      }));
-      continue;
-    }
-
-    if (!parsed.items.length) {
-      rows.push(buildManualReviewRow({
-        ticketId,
-        context,
-        rawText,
-        reason: "Texto detectado, pero no se identificaron partidas automáticamente",
-        parsed: ticketSummary
-      }));
-      continue;
-    }
-
-    parsed.items.forEach((item, index) => {
-      const classification = classifyExpense(item.descripcion || item.producto || "", parsed.store);
-
       rows.push({
         ticket_id: ticketId,
         fecha_captura: now,
         archivo: file.originalname || "",
-        tienda: parsed.store || "OTRO",
+        linea_numero: 1,
+        texto_original: "Google Vision no detectó texto suficiente",
+        monto_detectado: 0,
+        tipo_linea: "REVISION",
+        tienda: parsed.store || "",
+        propiedad: context.propiedad,
+        departamento: context.departamento,
+        huesped: context.huesped,
+        notas: context.notas
+      });
+      continue;
+    }
+
+    parsed.items.forEach((item) => {
+      rows.push({
+        ticket_id: ticketId,
+        fecha_captura: now,
+        archivo: file.originalname || "",
+        tienda: parsed.store || "",
         rfc_emisor: parsed.rfc || "",
         fecha_ticket: parsed.date || "",
-        hora_ticket: parsed.time || "",
-        folio_ticket: parsed.folio || "",
-        metodo_pago: parsed.payment_method || "",
 
-        numero_partida: index + 1,
-        codigo_producto: item.codigo || "",
-        descripcion: item.descripcion || item.producto || "",
-        concepto: item.descripcion || item.producto || "",
-        cantidad: item.cantidad || 1,
-        precio_unitario: item.precio_unitario || 0,
-        importe: item.importe || 0,
-        impuesto_estimado: item.impuesto_estimado || 0,
-        total_linea_estimado: item.total_linea || item.importe || 0,
-        linea_original_ocr: item.linea_original || "",
-
-        subtotal_ticket: parsed.subtotal || 0,
-        iva_ticket: parsed.iva || 0,
-        ieps_ticket: parsed.ieps || 0,
-        impuestos_ticket: parsed.impuestos || 0,
-        descuentos_ticket: parsed.descuentos || 0,
-        total_ticket: parsed.total || 0,
-
-        categoria_operativa: classification.categoria_operativa,
-        categoria_contable: classification.categoria_contable,
-        tratamiento_fiscal: classification.tratamiento_fiscal,
-        deducible_sugerido: classification.deducible_sugerido,
-        requiere_revision: classification.requiere_revision,
-        razon_clasificacion: classification.razon,
+        linea_numero: item.linea_numero,
+        texto_original: item.texto_original,
+        monto_detectado: item.monto_detectado,
+        tipo_linea: item.tipo_linea,
 
         propiedad: context.propiedad,
         departamento: context.departamento,
         huesped: context.huesped,
         reservacion_id: context.reservacion_id,
         fuente: context.fuente,
-        notas: context.notas,
-
-        texto_ocr: rawText
+        notas: context.notas
       });
     });
   }
 
   return { rows, tickets, ocr };
-}
-
-function buildManualReviewRow({ ticketId, context, rawText, reason, parsed }) {
-  return {
-    ticket_id: ticketId,
-    fecha_captura: parsed.fecha_captura || new Date().toISOString(),
-    archivo: parsed.archivo || "",
-    tienda: parsed.tienda || "NO_DETECTADO",
-    rfc_emisor: parsed.rfc_emisor || "",
-    fecha_ticket: parsed.fecha_ticket || "",
-    hora_ticket: parsed.hora_ticket || "",
-    folio_ticket: parsed.folio_ticket || "",
-    metodo_pago: parsed.metodo_pago || "",
-
-    numero_partida: 1,
-    codigo_producto: "",
-    descripcion: reason,
-    concepto: reason,
-    cantidad: 1,
-    precio_unitario: 0,
-    importe: 0,
-    impuesto_estimado: 0,
-    total_linea_estimado: 0,
-    linea_original_ocr: "",
-
-    subtotal_ticket: parsed.subtotal || 0,
-    iva_ticket: parsed.iva || 0,
-    ieps_ticket: parsed.ieps || 0,
-    impuestos_ticket: parsed.impuestos || 0,
-    descuentos_ticket: parsed.descuentos || 0,
-    total_ticket: parsed.total_ticket || 0,
-
-    categoria_operativa: "Revisión manual",
-    categoria_contable: "Pendiente de clasificar",
-    tratamiento_fiscal: "Revisión contable requerida",
-    deducible_sugerido: "Revisar",
-    requiere_revision: "Sí",
-    razon_clasificacion: reason,
-
-    propiedad: context.propiedad,
-    departamento: context.departamento,
-    huesped: context.huesped,
-    reservacion_id: context.reservacion_id,
-    fuente: context.fuente,
-    notas: context.notas,
-
-    texto_ocr: rawText
-  };
 }
 
 function cleanupFiles(files) {
