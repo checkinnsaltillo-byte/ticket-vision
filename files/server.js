@@ -226,13 +226,13 @@ function buildExcel(result) {
   XLSX.utils.book_append_sheet(
     wb,
     XLSX.utils.json_to_sheet(result.productRows),
-    "Productos"
+    "Transcripcion"
   );
 
   XLSX.utils.book_append_sheet(
     wb,
     XLSX.utils.json_to_sheet(result.resumenRows),
-    "Resumen financiero"
+    "Resumen tickets"
   );
 
   XLSX.utils.book_append_sheet(

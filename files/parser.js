@@ -1,6 +1,5 @@
 /**
- * parser.js — Ticket Parser PRO v4
- * Estructura: productos homogéneos + resumen financiero
+ * parser.js — Ticket Parser PRO v5
  */
 
 // ─── Normalización ─────────────────────────────────────────────────────────
@@ -20,7 +19,6 @@ function normalizeUpper(str) {
 
 function parseAmount(line) {
   const s = String(line || "").replace(/\s+/g, " ");
-
   const patterns = [
     /\$\s*(-?\d{1,3}(?:,\d{3})*\.\d{2})/,
     /\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/,
@@ -31,38 +29,27 @@ function parseAmount(line) {
     /(-?\d+\.\d{2})(?:\s*$|(?=\s))/,
     /(-?\d{1,3}(?:,\d{3})+)(?:\s*$|(?=\s))/,
   ];
-
   let raw = null;
   for (const pat of patterns) {
     const m = s.match(pat);
     if (m) { raw = m[1]; break; }
   }
-
   if (!raw) {
-    const all = [...s.matchAll(/(-?\d[\d,\.]*\d|-?\d)/g)];
+    const all = [...s.matchAll(/(-?\d[\d,.]*\d|-?\d)/g)];
     if (all.length) raw = all[all.length - 1][1];
   }
-
   if (!raw) return 0;
-
   let clean = raw.replace(/[$\s]/g, "");
   const hasComma = clean.includes(",");
   const hasDot   = clean.includes(".");
-
   if (hasComma && hasDot) {
-    const dotIdx   = clean.lastIndexOf(".");
-    const commaIdx = clean.lastIndexOf(",");
-    if (commaIdx > dotIdx) {
-      clean = clean.replace(/\./g, "").replace(",", ".");
-    } else {
-      clean = clean.replace(/,/g, "");
-    }
+    clean = clean.lastIndexOf(",") > clean.lastIndexOf(".")
+      ? clean.replace(/\./g, "").replace(",", ".")
+      : clean.replace(/,/g, "");
   } else if (hasComma && !hasDot) {
-    const parts = clean.split(",");
-    const last  = parts[parts.length - 1];
+    const last = clean.split(",").pop();
     clean = last.length === 2 ? clean.replace(",", ".") : clean.replace(/,/g, "");
   }
-
   clean = clean.replace(/[^\d.-]/g, "");
   const n = Number(clean);
   return Number.isFinite(n) ? Math.abs(n) : 0;
@@ -74,38 +61,39 @@ function detectLineType(line) {
   const l   = normalizeUpper(line);
   const raw = line.trim();
 
-  // Separadores / líneas vacías / muy cortas
-  if (/^[*\-=_#~.]{3,}$/.test(raw))                                return "METADATA";
-  if (raw.length < 3)                                               return "METADATA";
+  // Separadores / muy cortas
+  if (/^[*\-=_#~.]{3,}$/.test(raw))                                 return "METADATA";
+  if (raw.length < 3)                                                return "METADATA";
 
-  // Tipos financieros (antes de METADATA para no solapar)
-  if (/SUB\s*TOTAL/.test(l))                                        return "SUBTOTAL";
-  if (/\bTOTAL\b/.test(l))                                          return "TOTAL";
-  if (/\bIVA\b/.test(l))                                            return "IVA";
-  if (/\bIEPS\b/.test(l))                                           return "IEPS";
-  if (/\bIMPORTE\b/.test(l))                                        return "IMPORTE";
-  if (/DESCUENTO|AHORRO/.test(l))                                   return "DESCUENTO";
-  if (/CAMBIO|VUELTO/.test(l))                                      return "CAMBIO";
-  if (/EFECTIVO/.test(l))                                           return "PAGO_EFECTIVO";
+  // Financieros (antes de metadata para no solapar)
+  if (/SUB\s*TOTAL/.test(l))                                         return "SUBTOTAL";
+  if (/\bTOTAL\b/.test(l))                                           return "TOTAL";
+  if (/\bIVA\b/.test(l))                                             return "IVA";
+  if (/\bIEPS\b/.test(l))                                            return "IEPS";
+  if (/\bIMPORTE\b/.test(l))                                         return "IMPORTE";
+  if (/DESCUENTO|AHORRO/.test(l))                                    return "DESCUENTO";
+  if (/CAMBIO|VUELTO/.test(l))                                       return "CAMBIO";
+  if (/EFECTIVO/.test(l))                                            return "PAGO_EFECTIVO";
   if (/TARJETA|VISA|MASTERCARD|AMEX|CARNET|DEBITO|CREDITO/.test(l)) return "PAGO_TARJETA";
 
-  // Metadata: encabezado de tienda / datos fiscales
-  if (/\bRFC\b/.test(l))                                            return "METADATA";
-  if (/\b(AV\.|BLVD\.|COL\.|COLONIA|C\.P\.|CP\s+\d{5})/.test(l)) return "METADATA";
-  if (/TEL[EF]?[:\s(]|TELS?\s|TELEFONO|\(\d{3}\)/.test(l))        return "METADATA";
-  if (/\b(SUC\.|SUCURSAL)\b/.test(l))                               return "METADATA";
-  if (/REGIMEN\s+(FISCAL|GENERAL|SIMPLIF)/.test(l))                 return "METADATA";
-  if (/\b(CAJERO|CAJA\s+\d|AUTOCOBRO|CONTADO)\b/.test(l))          return "METADATA";
-  if (/SON\s+[A-Z]{4,}/.test(l))                                    return "METADATA";
-  if (/M\.N\.\s*$/.test(l))                                         return "METADATA";
-  if (/FORMAS?\s+DE\s+PAGO/.test(l))                                return "METADATA";
-  if (/^[\$\s.]+$/.test(raw))                                       return "METADATA";
-  if (/TOTAL\s+ART/.test(l))                                        return "METADATA";
-  if (/[-\s]TOME\s*$/.test(l))                                      return "METADATA";
-  if (/^\d{8,}/.test(raw))                                          return "METADATA";
-  if (/S\.\s*DE\s*R\.L\.|S\.A\.\s*DE\s*C\.V\./.test(l))           return "METADATA";
-  if (/^(FOLIO|FACTURA|TICKET\s+(NO|NUM|#)|OPERACION)\b/.test(l))  return "METADATA";
-  if (/\b(RESIDENCIAL|RESIDENCI)\b/.test(l))                        return "METADATA";
+  // Metadata: datos fiscales y de tienda
+  if (/\bRFC\b/.test(l))                                             return "METADATA";
+  if (/\b(AV\.|BLVD\.|COL\.|COLONIA|C\.P\.|CP\s+\d{5})/.test(l))  return "METADATA";
+  if (/TEL[EF]?[:\s(]|TELS?\s|TELEFONO|\(\d{3}\)/.test(l))         return "METADATA";
+  if (/\b(SUC\.|SUCURSAL)\b/.test(l))                                return "METADATA";
+  if (/REGIMEN\s+(FISCAL|GENERAL|SIMPLIF)/.test(l))                  return "METADATA";
+  if (/\b(CAJERO|CAJA\s+\d|AUTOCOBRO|CONTADO)\b/.test(l))           return "METADATA";
+  if (/SON\s+[A-Z]{4,}/.test(l))                                     return "METADATA";
+  if (/M\.N\.\s*$/.test(l))                                          return "METADATA";
+  if (/FORMAS?\s+DE\s+PAGO/.test(l))                                 return "METADATA";
+  if (/^[\$\s.]+$/.test(raw))                                        return "METADATA";
+  if (/TOTAL\s+ART/.test(l))                                         return "METADATA";
+  if (/[-\s]TOME\s*$/.test(l))                                       return "METADATA";
+  if (/^\d{8,}/.test(raw))                                           return "METADATA";
+  if (/S\.\s*DE\s*R\.L\.|S\.A\.\s*DE\s*C\.V\./.test(l))            return "METADATA";
+  if (/^(FOLIO|FACTURA|TICKET\s+(NO|NUM|#)|OPERACION)\b/.test(l))   return "METADATA";
+  if (/\b(RESIDENCIAL|RESIDENCI)\b/.test(l))                         return "METADATA";
+  if (/^(THE|ESR|Mt)\s*$/.test(raw))                                 return "METADATA";
 
   return "RENGLON";
 }
@@ -126,7 +114,7 @@ function extractQuantityAndUnit(line) {
   return { cantidad: null, precio_unitario: null };
 }
 
-// ─── Detectar últimos 4 dígitos de tarjeta ─────────────────────────────────
+// ─── Helpers de detección ──────────────────────────────────────────────────
 
 function extractCardLast4(text) {
   const patterns = [
@@ -142,27 +130,23 @@ function extractCardLast4(text) {
   return "";
 }
 
-// ─── Detectar método de pago ───────────────────────────────────────────────
-
 function detectPaymentMethod(text) {
   const t = normalizeUpper(text);
-  if (/VISA/.test(t))                           return "VISA";
-  if (/MASTERCARD/.test(t))                     return "MASTERCARD";
-  if (/AMEX|AMERICAN EXPRESS/.test(t))          return "AMEX";
-  if (/DEBITO/.test(t))                         return "TARJETA_DEBITO";
-  if (/CREDITO/.test(t))                        return "TARJETA_CREDITO";
-  if (/TARJETA/.test(t))                        return "TARJETA";
-  if (/EFECTIVO/.test(t))                       return "EFECTIVO";
-  if (/TRANSFERENCIA|SPEI/.test(t))             return "TRANSFERENCIA";
-  if (/QR|CODI/.test(t))                        return "QR";
+  if (/VISA/.test(t))                  return "VISA";
+  if (/MASTERCARD/.test(t))            return "MASTERCARD";
+  if (/AMEX|AMERICAN EXPRESS/.test(t)) return "AMEX";
+  if (/DEBITO/.test(t))                return "TARJETA_DEBITO";
+  if (/CREDITO/.test(t))               return "TARJETA_CREDITO";
+  if (/TARJETA/.test(t))               return "TARJETA";
+  if (/EFECTIVO/.test(t))              return "EFECTIVO";
+  if (/TRANSFERENCIA|SPEI/.test(t))    return "TRANSFERENCIA";
+  if (/QR|CODI/.test(t))              return "QR";
   return "";
 }
 
-// ─── Detectar folio ────────────────────────────────────────────────────────
-
 function extractFolio(text) {
   const patterns = [
-    /(?:FOLIO|TICKET|FACTURA|OPERACION|TRANS\.?|TRANSACCION)[^\d]*([A-Z0-9-]{4,20})/i,
+    /(?:FOLIO|TICKET|FACTURA|OPERACION|TRANS\.?)[^\d]*([A-Z0-9-]{4,20})/i,
     /(?:NO\.?|NUM\.?|#)\s*([A-Z0-9-]{4,20})/i,
   ];
   for (const pat of patterns) {
@@ -171,8 +155,6 @@ function extractFolio(text) {
   }
   return "";
 }
-
-// ─── Detectar tienda ──────────────────────────────────────────────────────
 
 const STORE_PATTERNS = [
   { name: "HOME DEPOT",     pattern: /HOME\s*DEPOT/ },
@@ -212,13 +194,11 @@ function detectStore(text) {
   return "OTRO";
 }
 
-// ─── Extraer fecha ─────────────────────────────────────────────────────────
-
 function extractDate(text) {
   const t = String(text || "");
   const patterns = [
-    { r: /(\d{4})-(\d{2})-(\d{2})/,             iso: m => `${m[1]}-${m[2]}-${m[3]}` },
-    { r: /(\d{2})[/\-.](\ d{2})[/\-.](\d{4})/, iso: m => `${m[3]}-${m[2]}-${m[1]}` },
+    { r: /(\d{4})-(\d{2})-(\d{2})/,                iso: m => `${m[1]}-${m[2]}-${m[3]}` },
+    { r: /(\d{2})[/\-.](\d{2})[/\-.](\d{4})/,      iso: m => `${m[3]}-${m[2]}-${m[1]}` },
     { r: /(\d{2})[/\-.](\d{2})[/\-.](\d{2})(?!\d)/, iso: m => {
       const y = parseInt(m[3]) < 50 ? `20${m[3]}` : `19${m[3]}`;
       return `${y}-${m[2]}-${m[1]}`;
@@ -227,16 +207,11 @@ function extractDate(text) {
   for (const { r, iso } of patterns) {
     const m = t.match(r);
     if (m) {
-      try {
-        const candidate = iso(m);
-        if (!isNaN(new Date(candidate))) return candidate;
-      } catch (_) {}
+      try { if (!isNaN(new Date(iso(m)))) return iso(m); } catch (_) {}
     }
   }
   return "";
 }
-
-// ─── Extraer hora ──────────────────────────────────────────────────────────
 
 function extractTime(text) {
   const m = String(text || "").match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i);
@@ -244,84 +219,95 @@ function extractTime(text) {
   return `${m[1].padStart(2, "0")}:${m[2]}${m[3] ? ":" + m[3] : ""}${m[4] ? " " + m[4].toUpperCase() : ""}`;
 }
 
-// ─── Extraer RFC ───────────────────────────────────────────────────────────
-
 function extractRFC(text) {
   const m = String(text || "").toUpperCase().match(/\b([A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3})\b/);
   return m ? m[1] : "";
 }
 
-// ─── Hash para deduplicación ───────────────────────────────────────────────
-
 function simpleHash(str) {
   let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-  }
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
   return Math.abs(h).toString(16).padStart(8, "0");
 }
 
-// ─── Extraer total ─────────────────────────────────────────────────────────
-
-function extractTotalFromLines(items) {
-  const totals = items
-    .filter(x => x.tipo_linea === "TOTAL" && x.monto_detectado > 0)
-    .map(x => x.monto_detectado);
-  if (totals.length) return Math.max(...totals);
-  const amounts = items.map(x => x.monto_detectado).filter(x => x > 0);
-  return amounts.length ? Math.max(...amounts) : 0;
-}
-
-// ─── Extraer monto pagado ──────────────────────────────────────────────────
-
-function extractPaymentAmount(items) {
-  const payLine = items.find(x =>
-    ["PAGO_TARJETA", "PAGO_EFECTIVO"].includes(x.tipo_linea) && x.monto_detectado > 0
-  );
-  return payLine ? payLine.monto_detectado : 0;
-}
-
-// ─── Limpiar descripción: elimina montos y cantidades embebidos en el texto ──
+// ─── Limpiar descripción ───────────────────────────────────────────────────
+// Elimina montos y cantidades que el OCR puso en la misma línea que el nombre
 
 function cleanDescription(text) {
   let s = text.trim();
-  // Remover monto al final de la línea (ej. "DETERGENTE    45.00" o "ITEM $1,234.56")
-  s = s.replace(/\s*\$?\s*-?\d{1,3}(?:[,\.]\d{3})*(?:[.,]\d{2})?\s*-?\s*$/, "");
-  // Remover cantidad al inicio (ej. "2 x ", "3pz ", "1 PZA ")
+  // Remover monto al final (ej. "DETERGENTE ARIEL    45.00" o "$1,234.56")
+  s = s.replace(/\s*\$?\s*-?\d{1,3}(?:[,.]\d{3})*(?:[,.]\d{2})?\s*-?\s*$/, "");
+  // Remover cantidad al inicio (ej. "2 x ", "3 PZA ")
   s = s.replace(/^\d+(?:\.\d+)?\s*(?:[xX*]|pz|pza|pzas?|kg|lt|lts?|mts?|ml|gr)\s*/i, "");
   return s.trim();
 }
 
-// ─── Construir lista de productos limpios ──────────────────────────────────
-// Filtra metadata, une descripción con su monto cuando están en líneas separadas
+// ─── Extracción financiera con lookahead ───────────────────────────────────
+// Muchos tickets ponen el monto en la línea siguiente al texto (ej. "IVA\n57.66")
 
-function buildProductos(items) {
-  const renglones = items.filter(x => x.tipo_linea === "RENGLON");
-  const usados    = new Set();
+function resolveFinancials(items) {
+  const usados = new Set(); // índices ya consumidos como monto financiero
+
+  function buscarMonto(tipo) {
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].tipo_linea !== tipo) continue;
+      if (items[i].monto_detectado > 0) return items[i].monto_detectado;
+      // Lookahead: buscar monto en las siguientes 2 líneas
+      for (let j = i + 1; j < Math.min(i + 3, items.length); j++) {
+        if (items[j].monto_detectado > 0) {
+          usados.add(j);
+          return items[j].monto_detectado;
+        }
+      }
+    }
+    return 0;
+  }
+
+  const subtotal  = buscarMonto("SUBTOTAL");
+  const iva       = buscarMonto("IVA");
+  const ieps      = buscarMonto("IEPS");
+  const total     = buscarMonto("TOTAL") ||
+    Math.max(0, ...items.filter(x => x.tipo_linea === "TOTAL" || x.monto_detectado > 0).map(x => x.monto_detectado));
+  const descuentos = items
+    .filter(x => x.tipo_linea === "DESCUENTO" && x.monto_detectado > 0)
+    .reduce((s, x) => s + x.monto_detectado, 0);
+
+  return { subtotal, iva, ieps, total, descuentos, usados };
+}
+
+// ─── Construir lista de productos ──────────────────────────────────────────
+
+function buildProductos(items, financialUsados) {
+  const tieneDesc  = txt => /[A-Za-záéíóúÁÉÍÓÚñÑ]{3,}/.test(txt);
+  const tieneMonto = item => item.monto_detectado > 0;
+
+  // Solo RENGLON no consumidos por financieros
+  const renglones = items
+    .map((x, i) => ({ ...x, _idx: i }))
+    .filter(x => x.tipo_linea === "RENGLON" && !financialUsados.has(x._idx));
+
+  const usadosEnProducto = new Set();
   const productos = [];
 
-  const tieneDesc   = txt => /[A-Za-záéíóúÁÉÍÓÚñÑ]{3,}/.test(txt);
-  const tieneMonto  = item => item.monto_detectado > 0;
-
   for (let i = 0; i < renglones.length; i++) {
-    if (usados.has(i)) continue;
+    if (usadosEnProducto.has(i)) continue;
 
     const item = renglones[i];
 
-    // Saltar líneas que son solo números o importes sin descripción
+    // Saltar si no tiene descripción textual (solo números o ruido)
     if (!tieneDesc(item.texto_original)) continue;
 
     let monto = tieneMonto(item) ? item.monto_detectado : 0;
 
-    // Si la descripción no tiene monto, buscar monto en líneas siguientes
+    // Si no tiene monto propio, buscar en la siguiente línea sin descripción
     if (!monto) {
       for (let j = i + 1; j < Math.min(i + 4, renglones.length); j++) {
-        if (usados.has(j)) continue;
+        if (usadosEnProducto.has(j)) continue;
         const sig = renglones[j];
         if (tieneDesc(sig.texto_original)) break; // siguiente producto, parar
         if (tieneMonto(sig)) {
           monto = sig.monto_detectado;
-          usados.add(j);
+          usadosEnProducto.add(j);
           break;
         }
       }
@@ -354,7 +340,6 @@ function parseTicket(textRaw) {
     const amount = parseAmount(line);
     const type   = detectLineType(line);
     const { cantidad, precio_unitario } = extractQuantityAndUnit(line);
-
     return {
       linea_numero:    index + 1,
       texto_original:  line,
@@ -372,44 +357,25 @@ function parseTicket(textRaw) {
   const folio          = extractFolio(raw);
   const payment_method = detectPaymentMethod(raw);
   const card_last4     = extractCardLast4(raw);
-  const total          = extractTotalFromLines(items);
-  const monto_pagado   = extractPaymentAmount(items);
-  const monto_cruce    = monto_pagado > 0 ? monto_pagado : total;
 
-  // Campos financieros extraídos de líneas tipificadas
-  const subtotalItem  = items.find(x => x.tipo_linea === "SUBTOTAL" && x.monto_detectado > 0);
-  const ivaItem       = items.find(x => x.tipo_linea === "IVA"      && x.monto_detectado > 0);
-  const iepsItem      = items.find(x => x.tipo_linea === "IEPS"     && x.monto_detectado > 0);
-  const descItems     = items.filter(x => x.tipo_linea === "DESCUENTO" && x.monto_detectado > 0);
+  const { subtotal, iva, ieps, total, descuentos, usados: financialUsados } = resolveFinancials(items);
 
-  const subtotal   = subtotalItem ? subtotalItem.monto_detectado  : 0;
-  const iva        = ivaItem      ? ivaItem.monto_detectado       : 0;
-  const ieps       = iepsItem     ? iepsItem.monto_detectado      : 0;
-  const descuentos = descItems.reduce((s, x) => s + x.monto_detectado, 0);
+  const monto_pagado = (() => {
+    const p = items.find(x => ["PAGO_TARJETA", "PAGO_EFECTIVO"].includes(x.tipo_linea) && x.monto_detectado > 0);
+    return p ? p.monto_detectado : 0;
+  })();
 
+  const monto_cruce      = monto_pagado > 0 ? monto_pagado : total;
   const referencia_cruce = [store, date, card_last4 ? `*${card_last4}` : "", total ? `$${total}` : ""]
     .filter(Boolean).join(" | ");
 
+  const productos = buildProductos(items, financialUsados);
+
   return {
-    store,
-    rfc,
-    date,
-    time,
-    folio,
-    payment_method,
-    card_last4,
-    subtotal,
-    iva,
-    ieps,
-    descuentos,
-    total,
-    monto_pagado,
-    monto_cruce,
-    referencia_cruce,
-    hash_ticket: simpleHash(raw.slice(0, 500)),
-    productos:   buildProductos(items),
-    items,
-    raw_text:    raw
+    store, rfc, date, time, folio, payment_method, card_last4,
+    subtotal, iva, ieps, descuentos, total, monto_pagado, monto_cruce,
+    referencia_cruce, hash_ticket: simpleHash(raw.slice(0, 500)),
+    productos, items, raw_text: raw
   };
 }
 
