@@ -24,7 +24,7 @@ app.use(express.json({ limit: "20mb" }));
 
 app.get("/", (req, res) => res.json({
   ok: true,
-  service: "Ticket Parser PRO v3",
+  service: "Ticket Parser PRO v4",
   endpoints: ["/process", "/process-json", "/health"]
 }));
 
@@ -38,7 +38,7 @@ app.post("/process", upload.array("files"), async (req, res) => {
     const result  = await processFiles(req.files || [], context);
 
     if (process.env.SAVE_TO_SHEETS === "true") {
-      await sendRowsToAppsScript(result.rows);
+      await sendRowsToAppsScript(result.productRows);
     }
 
     const buffer = buildExcel(result);
@@ -63,18 +63,17 @@ app.post("/process-json", upload.array("files"), async (req, res) => {
 
     let sheetsResult = null;
     if (req.body.saveToSheets === "true" || process.env.SAVE_TO_SHEETS === "true") {
-      sheetsResult = await sendRowsToAppsScript(result.rows);
+      sheetsResult = await sendRowsToAppsScript(result.productRows);
     }
 
     res.json({
-      ok: true,
-      total_rows:     result.rows.length,
-      tickets:        result.tickets,
-      rows:           result.rows,
-      cruce_bancario: result.cruce,
-      ocr:            result.ocr,
+      ok:              true,
+      total_productos: result.productRows.length,
+      productos:       result.productRows,
+      resumen:         result.resumenRows,
+      cruce_bancario:  result.cruceRows,
       saved_to_sheets: !!sheetsResult,
-      sheets_result:  sheetsResult
+      sheets_result:   sheetsResult
     });
   } catch (err) {
     logError("process_json_error", err);
@@ -99,13 +98,12 @@ function buildContext(body = {}) {
 
 async function processFiles(files, context) {
   if (!files.length) {
-    throw new Error("No se recibió ningún archivo. El campo form-data debe llamarse 'files'.");
+    throw new Error("No se recibió ningún archivo.");
   }
 
-  const rows    = [];
-  const tickets = [];
-  const cruce   = [];   // ← hoja específica para conciliación bancaria
-  const ocr     = [];
+  const productRows = [];
+  const resumenRows = [];
+  const cruceRows   = [];
 
   for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
     const file = files[fileIndex];
@@ -120,145 +118,104 @@ async function processFiles(files, context) {
     const now     = new Date().toISOString();
     const ticketId = `${Date.now()}-${fileIndex + 1}`;
 
-    // ── Resumen por ticket ─────────────────────────────────────────────────
-    const ticketSummary = {
-      ticket_id:          ticketId,
-      hash_ticket:        parsed.hash_ticket,
-      fecha_captura:      now,
-      archivo:            file.originalname || "",
-      tienda:             parsed.store       || "",
-      rfc_emisor:         parsed.rfc         || "",
-      fecha_ticket:       parsed.date        || "",
-      hora_ticket:        parsed.time        || "",
-      folio:              parsed.folio       || "",
+    // ── Productos ──────────────────────────────────────────────────────────
+    if (!rawText.trim()) {
+      productRows.push({
+        ticket_id:   ticketId,
+        tienda:      parsed.store || "",
+        fecha:       parsed.date  || "",
+        linea_numero: 1,
+        descripcion: "Google Vision no detectó texto suficiente",
+        cantidad:    "",
+        precio_unitario: "",
+        monto:       "",
+        categoria_operativa:     "Revisar",
+        categoria_contable:      "",
+        clave_sat:               "",
+        tratamiento_fiscal:      "",
+        deducible_sugerido:      "",
+        requiere_revision:       "Sí",
+        confianza_clasificacion: "",
+        propiedad:    context.propiedad,
+        departamento: context.departamento,
+        huesped:      context.huesped,
+        notas:        context.notas
+      });
+    } else {
+      parsed.productos.forEach(producto => {
+        const clasif = classifyExpense(producto.descripcion, parsed.store);
+        productRows.push({
+          ticket_id:       ticketId,
+          tienda:          parsed.store || "",
+          fecha:           parsed.date  || "",
+          linea_numero:    producto.linea_numero,
+          descripcion:     producto.descripcion,
+          cantidad:        producto.cantidad,
+          precio_unitario: producto.precio_unitario,
+          monto:           producto.monto,
+          categoria_operativa:     clasif.categoria_operativa,
+          categoria_contable:      clasif.categoria_contable,
+          clave_sat:               clasif.clave_sat,
+          tratamiento_fiscal:      clasif.tratamiento_fiscal,
+          deducible_sugerido:      clasif.deducible_sugerido,
+          requiere_revision:       clasif.requiere_revision,
+          confianza_clasificacion: clasif.confianza_clasificacion,
+          propiedad:    context.propiedad,
+          departamento: context.departamento,
+          huesped:      context.huesped,
+          notas:        context.notas
+        });
+      });
+    }
+
+    // ── Resumen financiero (1 fila por ticket) ─────────────────────────────
+    resumenRows.push({
+      ticket_id:       ticketId,
+      hash_ticket:     parsed.hash_ticket,
+      archivo:         file.originalname || "",
+      tienda:          parsed.store       || "",
+      rfc:             parsed.rfc         || "",
+      fecha:           parsed.date        || "",
+      hora:            parsed.time        || "",
+      folio:           parsed.folio       || "",
+      metodo_pago:     parsed.payment_method || "",
+      tarjeta_ultimos4: parsed.card_last4 || "",
+      num_productos:   parsed.productos.length,
+      subtotal:        parsed.subtotal,
+      iva:             parsed.iva,
+      ieps:            parsed.ieps,
+      descuentos:      parsed.descuentos,
+      total:           parsed.total,
+      propiedad:       context.propiedad,
+      departamento:    context.departamento,
+      huesped:         context.huesped,
+      reservacion_id:  context.reservacion_id,
+      notas:           context.notas,
+      fecha_captura:   now
+    });
+
+    // ── Cruce bancario ─────────────────────────────────────────────────────
+    cruceRows.push({
+      fecha:              parsed.date          || "",
+      hora:               parsed.time          || "",
+      comercio:           parsed.store         || "",
+      rfc:                parsed.rfc           || "",
+      folio:              parsed.folio         || "",
       metodo_pago:        parsed.payment_method || "",
-      ultimos_4_tarjeta:  parsed.card_last4  || "",
-      total_detectado:    parsed.total       || 0,
-      monto_pagado:       parsed.monto_pagado || 0,
-      monto_cruce:        parsed.monto_cruce  || 0,
-      referencia_cruce:   parsed.referencia_cruce || "",
-      renglones_detectados: parsed.items?.length || 0,
+      tarjeta_ultimos4:   parsed.card_last4    || "",
+      monto_cruce:        parsed.monto_cruce   || 0,
+      total_ticket:       parsed.total         || 0,
       propiedad:          context.propiedad,
       departamento:       context.departamento,
       huesped:            context.huesped,
-      reservacion_id:     context.reservacion_id,
-      fuente:             context.fuente,
-      notas:              context.notas
-    };
-
-    tickets.push(ticketSummary);
-
-    // ── Fila para conciliación bancaria ────────────────────────────────────
-    cruce.push({
-      fecha_iso:          parsed.date        || "",
-      hora:               parsed.time        || "",
-      comercio:           parsed.store       || "",
-      rfc:                parsed.rfc         || "",
-      folio:              parsed.folio       || "",
-      metodo_pago:        parsed.payment_method || "",
-      tarjeta_ultimos4:   parsed.card_last4  || "",
-      monto_cruce:        parsed.monto_cruce  || 0,
-      total_ticket:       parsed.total        || 0,
-      propiedad:          context.propiedad,
-      departamento:       context.departamento,
-      huesped:            context.huesped,
-      notas:              context.notas,
       hash_ticket:        parsed.hash_ticket,
-      // columna de ayuda para Excel: fórmula de búsqueda sugerida
       busqueda_banco:     parsed.date
         ? `${parsed.store || "?"} ${parsed.date} ${parsed.monto_cruce ? "$" + parsed.monto_cruce : ""}`
         : ""
     });
-
-    ocr.push({
-      ticket_id: ticketId,
-      archivo:   file.originalname || "",
-      texto_ocr: rawText
-    });
-
-    if (!rawText.trim()) {
-      rows.push({
-        ticket_id:           ticketId,
-        fecha_captura:       now,
-        archivo:             file.originalname || "",
-        linea_numero:        1,
-        texto_original:      "Google Vision no detectó texto suficiente",
-        monto_detectado:     0,
-        tipo_linea:          "REVISION",
-        tienda:              parsed.store || "",
-        propiedad:           context.propiedad,
-        departamento:        context.departamento,
-        huesped:             context.huesped,
-        notas:               context.notas,
-        categoria_operativa: "",
-        categoria_contable:  "",
-        clave_sat:           "",
-        tratamiento_fiscal:  "",
-        deducible_sugerido:  "",
-        requiere_revision:   "Sí",
-        confianza_clasificacion: ""
-      });
-      continue;
-    }
-
-    // ── Renglones ──────────────────────────────────────────────────────────
-    parsed.items.forEach((item) => {
-      // Clasificar solo renglones de producto (no totales/encabezados)
-      const clasificable = ["RENGLON"].includes(item.tipo_linea);
-      const clasif = clasificable
-        ? classifyExpense(item.texto_original, parsed.store)
-        : {
-            categoria_operativa:     "",
-            categoria_contable:      "",
-            clave_sat:               "",
-            tratamiento_fiscal:      "",
-            deducible_sugerido:      "",
-            requiere_revision:       "",
-            confianza_clasificacion: "",
-            razon:                   ""
-          };
-
-      rows.push({
-        ticket_id:           ticketId,
-        hash_ticket:         parsed.hash_ticket,
-        fecha_captura:       now,
-        archivo:             file.originalname || "",
-        tienda:              parsed.store       || "",
-        rfc_emisor:          parsed.rfc         || "",
-        fecha_ticket:        parsed.date        || "",
-        hora_ticket:         parsed.time        || "",
-        folio:               parsed.folio       || "",
-        metodo_pago:         parsed.payment_method || "",
-        ultimos_4_tarjeta:   parsed.card_last4  || "",
-        total_ticket:        parsed.total        || 0,
-        monto_cruce:         parsed.monto_cruce  || 0,
-
-        linea_numero:        item.linea_numero,
-        texto_original:      item.texto_original,
-        cantidad:            item.cantidad,
-        precio_unitario:     item.precio_unitario,
-        monto_detectado:     item.monto_detectado,
-        tipo_linea:          item.tipo_linea,
-
-        categoria_operativa:     clasif.categoria_operativa,
-        categoria_contable:      clasif.categoria_contable,
-        clave_sat:               clasif.clave_sat,
-        tratamiento_fiscal:      clasif.tratamiento_fiscal,
-        deducible_sugerido:      clasif.deducible_sugerido,
-        requiere_revision:       clasif.requiere_revision,
-        confianza_clasificacion: clasif.confianza_clasificacion,
-
-        propiedad:           context.propiedad,
-        departamento:        context.departamento,
-        huesped:             context.huesped,
-        reservacion_id:      context.reservacion_id,
-        fuente:              context.fuente,
-        notas:               context.notas
-      });
-    });
   }
 
-  return { rows, tickets, cruce, ocr };
+  return { productRows, resumenRows, cruceRows };
 }
 
 // ─── Construir Excel ────────────────────────────────────────────────────────
@@ -266,32 +223,22 @@ async function processFiles(files, context) {
 function buildExcel(result) {
   const wb = XLSX.utils.book_new();
 
-  // Hoja 1: Transcripción completa
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(result.rows),
-    "Transcripcion"
+    XLSX.utils.json_to_sheet(result.productRows),
+    "Productos"
   );
 
-  // Hoja 2: Resumen por ticket
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(result.tickets),
-    "Resumen tickets"
+    XLSX.utils.json_to_sheet(result.resumenRows),
+    "Resumen financiero"
   );
 
-  // Hoja 3: Cruce bancario ← nueva, clave para conciliación
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(result.cruce),
+    XLSX.utils.json_to_sheet(result.cruceRows),
     "Cruce bancario"
-  );
-
-  // Hoja 4: OCR raw
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(result.ocr),
-    "OCR completo"
   );
 
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
@@ -308,14 +255,10 @@ function cleanupFiles(files) {
 }
 
 function logError(tag, err) {
-  console.error(tag, {
-    message: err.message,
-    code:    err.code,
-    stack:   err.stack
-  });
+  console.error(tag, { message: err.message, code: err.code, stack: err.stack });
 }
 
 // ─── Start ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Ticket Parser PRO v3 running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Ticket Parser PRO v4 running on port ${PORT}`));

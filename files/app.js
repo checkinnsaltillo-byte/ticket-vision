@@ -99,15 +99,15 @@ async function processPreviewOnly() {
       throw new Error(`${data.error || "No se pudo procesar el ticket."}${data.detail ? " — " + data.detail : ""}`);
     }
 
-    lastRows    = data.rows    || [];
-    lastTickets = data.tickets || [];
+    lastRows    = data.productos      || [];
+    lastTickets = data.resumen        || [];
     lastCruce   = data.cruce_bancario || [];
 
     renderTicketSummary(lastTickets);
     renderTranscripcion(lastRows);
     renderCruceBancario(lastCruce);
 
-    setStatus(`Transcripción lista. Renglones: ${data.total_rows || lastRows.length}.`);
+    setStatus(`Transcripción lista. Productos detectados: ${data.total_productos || lastRows.length}.`);
   } catch (err) {
     setStatus("⚠ " + err.message);
   }
@@ -162,15 +162,15 @@ async function processAndSave() {
       throw new Error(`${data.error || "No se pudo guardar."}${data.detail ? " — " + data.detail : ""}`);
     }
 
-    lastRows    = data.rows    || [];
-    lastTickets = data.tickets || [];
+    lastRows    = data.productos      || [];
+    lastTickets = data.resumen        || [];
     lastCruce   = data.cruce_bancario || [];
 
     renderTicketSummary(lastTickets);
     renderTranscripcion(lastRows);
     renderCruceBancario(lastCruce);
 
-    setStatus(`Guardado en Sheets. Renglones: ${data.total_rows || lastRows.length}.`);
+    setStatus(`Guardado en Sheets. Productos: ${data.total_productos || lastRows.length}.`);
   } catch (err) {
     setStatus("⚠ " + err.message);
   }
@@ -186,15 +186,18 @@ function renderTicketSummary(tickets) {
 
   el.innerHTML = tickets.map(t => `
     <div class="summaryBox">
-      <div><strong>Tienda:</strong>     ${esc(t.tienda)}</div>
-      <div><strong>Fecha:</strong>      ${esc(t.fecha_ticket)}</div>
-      <div><strong>Hora:</strong>       ${esc(t.hora_ticket)}</div>
-      <div><strong>Folio:</strong>      ${esc(t.folio)}</div>
-      <div><strong>RFC:</strong>        ${esc(t.rfc_emisor)}</div>
-      <div><strong>Pago:</strong>       ${esc(t.metodo_pago)}${t.ultimos_4_tarjeta ? " *" + esc(t.ultimos_4_tarjeta) : ""}</div>
-      <div><strong>Total:</strong>      ${money(t.total_detectado)}</div>
-      <div><strong>Monto cruce:</strong>${money(t.monto_cruce)}</div>
-      <div><strong>Renglones:</strong>  ${esc(t.renglones_detectados)}</div>
+      <div><strong>Tienda:</strong>    ${esc(t.tienda)}</div>
+      <div><strong>RFC:</strong>       ${esc(t.rfc)}</div>
+      <div><strong>Fecha:</strong>     ${esc(t.fecha)}</div>
+      <div><strong>Hora:</strong>      ${esc(t.hora)}</div>
+      <div><strong>Folio:</strong>     ${esc(t.folio)}</div>
+      <div><strong>Pago:</strong>      ${esc(t.metodo_pago)}${t.tarjeta_ultimos4 ? " *" + esc(t.tarjeta_ultimos4) : ""}</div>
+      <div><strong>Productos:</strong> ${esc(t.num_productos)}</div>
+      <div><strong>Subtotal:</strong>  ${money(t.subtotal)}</div>
+      <div><strong>IVA:</strong>       ${money(t.iva)}</div>
+      ${t.ieps ? `<div><strong>IEPS:</strong> ${money(t.ieps)}</div>` : ""}
+      ${t.descuentos ? `<div><strong>Descuentos:</strong> -${money(t.descuentos)}</div>` : ""}
+      <div><strong>Total:</strong>     ${money(t.total)}</div>
     </div>
   `).join("");
 }
@@ -222,11 +225,10 @@ function renderTranscripcion(rows) {
 
   const cols = [
     { key: "linea_numero",           label: "#" },
-    { key: "texto_original",         label: "Texto original" },
+    { key: "descripcion",            label: "Descripción" },
     { key: "cantidad",               label: "Cant." },
-    { key: "precio_unitario",        label: "P.Unit." },
-    { key: "monto_detectado",        label: "Monto", fmt: "money" },
-    { key: "tipo_linea",             label: "Tipo" },
+    { key: "precio_unitario",        label: "P.Unit.", fmt: "money" },
+    { key: "monto",                  label: "Monto",   fmt: "money" },
     { key: "categoria_operativa",    label: "Categoría" },
     { key: "deducible_sugerido",     label: "Deducible" },
     { key: "confianza_clasificacion",label: "Confianza" },
