@@ -145,12 +145,10 @@ async function processFiles(files, context) {
       parsed.productos.forEach(producto => {
         const clasif = classifyExpense(producto.descripcion, parsed.store);
         productRows.push({
-          ticket_id:        ticketId,
-          tienda:           parsed.store          || "",
-          fecha:            parsed.date           || "",
-          metodo_pago:      parsed.payment_method || "",
-          tarjeta_ultimos4: parsed.card_last4     || "",
-          linea_numero:     producto.linea_numero,
+          ticket_id:       ticketId,
+          tienda:          parsed.store || "",
+          fecha:           parsed.date  || "",
+          linea_numero:    producto.linea_numero,
           descripcion:      producto.descripcion,
           cantidad:         producto.cantidad,
           precio_unitario:  producto.precio_unitario,
