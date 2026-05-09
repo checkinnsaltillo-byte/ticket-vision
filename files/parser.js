@@ -281,6 +281,17 @@ function extractPaymentAmount(items) {
   return payLine ? payLine.monto_detectado : 0;
 }
 
+// ─── Limpiar descripción: elimina montos y cantidades embebidos en el texto ──
+
+function cleanDescription(text) {
+  let s = text.trim();
+  // Remover monto al final de la línea (ej. "DETERGENTE    45.00" o "ITEM $1,234.56")
+  s = s.replace(/\s*\$?\s*-?\d{1,3}(?:[,\.]\d{3})*(?:[.,]\d{2})?\s*-?\s*$/, "");
+  // Remover cantidad al inicio (ej. "2 x ", "3pz ", "1 PZA ")
+  s = s.replace(/^\d+(?:\.\d+)?\s*(?:[xX*]|pz|pza|pzas?|kg|lt|lts?|mts?|ml|gr)\s*/i, "");
+  return s.trim();
+}
+
 // ─── Construir lista de productos limpios ──────────────────────────────────
 // Filtra metadata, une descripción con su monto cuando están en líneas separadas
 
@@ -318,7 +329,7 @@ function buildProductos(items) {
 
     productos.push({
       linea_numero:    item.linea_numero,
-      descripcion:     item.texto_original,
+      descripcion:     cleanDescription(item.texto_original),
       cantidad:        item.cantidad        !== null ? item.cantidad        : "",
       precio_unitario: item.precio_unitario !== null ? item.precio_unitario : "",
       monto:           monto || ""
