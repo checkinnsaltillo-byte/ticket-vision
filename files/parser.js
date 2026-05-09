@@ -93,7 +93,17 @@ function detectLineType(line) {
   if (/S\.\s*DE\s*R\.L\.|S\.A\.\s*DE\s*C\.V\./.test(l))            return "METADATA";
   if (/^(FOLIO|FACTURA|TICKET\s+(NO|NUM|#)|OPERACION)\b/.test(l))   return "METADATA";
   if (/\b(RESIDENCIAL|RESIDENCI)\b/.test(l))                         return "METADATA";
-  if (/^(THE|ESR|Mt)\s*$/.test(raw))                                 return "METADATA";
+  if (/^(THE|ESR|Mt|OK|ST)\s*$/.test(raw))                           return "METADATA";
+  // Códigos de producto retail: letra + 2+ dígitos al inicio (D47, P123...)
+  if (/^[A-Z]\d{2,}\s+[A-Z]/.test(raw))                             return "METADATA";
+  // Pie de ticket: aprobación, códigos técnicos, URLs, agradecimientos
+  if (/APROBADA|AID:|ARQC:|REVOLENTE|BINCNTRL/.test(l))             return "METADATA";
+  if (/^https?:\/\/|^www\./i.test(raw))                              return "METADATA";
+  if (/GRACIAS POR SU COMPRA|CUÉNTANOS|CUENTANOS|INGRESANDO|KIOSCOS|FACTURAS EN/.test(l)) return "METADATA";
+  if (/SERVICIO AL CLIENTE|ATENCION A CLIENTES|VENTAS POR TELEFONO/.test(l)) return "METADATA";
+  if (/AHORRA\s+\$|DESCUENTO\s+ACUMULADO/.test(l))                  return "METADATA";
+  if (/[A-Z0-9]{16,}/.test(raw) && !/\s/.test(raw))                 return "METADATA";
+  if (/@/.test(raw) && raw.length < 30)                              return "METADATA";
 
   return "RENGLON";
 }
