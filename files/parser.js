@@ -74,7 +74,7 @@ function detectLineType(line) {
   if (/DESCUENTO|AHORRO/.test(l))                                    return "DESCUENTO";
   if (/CAMBIO|VUELTO/.test(l))                                       return "CAMBIO";
   if (/EFECTIVO/.test(l))                                            return "PAGO_EFECTIVO";
-  if (/TARJETA|VISA|MASTERCARD|AMEX|CARNET|DEBITO|CREDITO/.test(l)) return "PAGO_TARJETA";
+  if (/TARJETA|VISA|MASTERCARD|AMEX|CARNET|DEBITO|CREDITO|\bBANC\b/.test(l)) return "PAGO_TARJETA";
 
   // Metadata: datos fiscales y de tienda
   if (/\bRFC\b/.test(l))                                             return "METADATA";
@@ -118,7 +118,7 @@ function extractQuantityAndUnit(line) {
 
 function extractCardLast4(text) {
   const patterns = [
-    /(?:VISA|MASTERCARD|AMEX|DEBITO|CREDITO|TARJETA)[^\d]*(\d{4})/i,
+    /(?:VISA|MASTERCARD|AMEX|DEBITO|CREDITO|TARJETA|BANC)[^\d]*(\d{4})/i,
     /\*{3,}\s*(\d{4})/,
     /X{3,}\s*(\d{4})/i,
     /(?:NO\.?\s*TARJETA|CARD)[^\d]*(\d{4})/i,
@@ -137,6 +137,7 @@ function detectPaymentMethod(text) {
   if (/AMEX|AMERICAN EXPRESS/.test(t)) return "AMEX";
   if (/DEBITO/.test(t))                return "TARJETA_DEBITO";
   if (/CREDITO/.test(t))               return "TARJETA_CREDITO";
+  if (/\bBANC\b/.test(t))              return "TARJETA_BANCO";
   if (/TARJETA/.test(t))               return "TARJETA";
   if (/EFECTIVO/.test(t))              return "EFECTIVO";
   if (/TRANSFERENCIA|SPEI/.test(t))    return "TRANSFERENCIA";
