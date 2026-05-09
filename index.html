@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Ticket Scanner PRO</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+
+    <!-- Hero -->
+    <section class="card hero">
+      <div>
+        <h1>Ticket Scanner PRO</h1>
+        <p>OCR literal renglón por renglón · Clasificación contable · Cruce bancario</p>
+      </div>
+      <span class="badge">v3</span>
+    </section>
+
+    <!-- Config -->
+    <section class="card">
+      <div class="grid">
+        <div>
+          <label>Propiedad</label>
+          <input id="propiedad" placeholder="Ej. Calle Cumbres">
+        </div>
+        <div>
+          <label># Departamento</label>
+          <input id="departamento" placeholder="Ej. 2">
+        </div>
+      </div>
+
+      <label>Huésped / referencia</label>
+      <input id="huesped" placeholder="Opcional">
+
+      <label>Notas</label>
+      <textarea id="notas" placeholder="Ej. reparación fregadero, baño, cocina..."></textarea>
+
+      <label class="fileBox">
+        <input type="file" id="files" multiple accept="image/*" capture="environment">
+        <span>📸 Seleccionar o tomar fotos de tickets</span>
+      </label>
+
+      <p id="status"></p>
+    </section>
+
+    <!-- Imágenes -->
+    <section class="card">
+      <h2>Imágenes cargadas</h2>
+      <div id="imagePreview" class="imagePreview empty">Aún no has seleccionado imágenes.</div>
+    </section>
+
+    <!-- Resumen por ticket -->
+    <section class="card">
+      <h2>Resumen detectado</h2>
+      <div id="ticketSummary" class="ticketSummary"></div>
+    </section>
+
+    <!-- Tabs de resultados -->
+    <section class="card">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="transcripcion">Transcripción</button>
+        <button class="tab-btn"        data-tab="cruce">Cruce bancario</button>
+      </div>
+
+      <div class="tab-pane preview" data-pane="transcripcion" id="previewTranscripcion">
+        Selecciona una imagen para generar la tabla.
+      </div>
+      <div class="tab-pane preview hidden" data-pane="cruce" id="previewCruce">
+        Selecciona una imagen para generar el cruce.
+      </div>
+    </section>
+
+    <!-- Acciones -->
+    <section class="card actions-card">
+      <div class="actions">
+        <button onclick="analyzeTickets()">🔍 Analizar tickets</button>
+        <button onclick="processExcel()">⬇ Descargar Excel</button>
+        <button class="secondary" onclick="processAndSave()">📊 Guardar en Sheets</button>
+      </div>
+    </section>
+
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

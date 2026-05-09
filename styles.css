@@ -1,0 +1,199 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f4f6fb;
+  color: #152033;
+}
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 18px;
+}
+.card {
+  background: white;
+  border-radius: 22px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 10px 28px rgba(21,32,51,.08);
+}
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+h1, h2 { margin: 0 0 8px; }
+p { color: #5f6f89; margin: 0; }
+label {
+  display: block;
+  font-weight: 700;
+  margin-top: 14px;
+  margin-bottom: 6px;
+}
+input, textarea {
+  width: 100%;
+  border: 1px solid #dce3ef;
+  border-radius: 14px;
+  padding: 13px 14px;
+  font-size: 16px;
+  outline: none;
+  transition: border-color .2s;
+}
+input:focus, textarea:focus { border-color: #152033; }
+textarea { min-height: 80px; resize: vertical; }
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.fileBox {
+  display: block;
+  border: 2px dashed #9aa8bd;
+  border-radius: 18px;
+  padding: 22px;
+  text-align: center;
+  cursor: pointer;
+  margin-top: 14px;
+  transition: border-color .2s, background .2s;
+}
+.fileBox:hover { border-color: #152033; background: #f8fafc; }
+.fileBox input { display: none; }
+
+/* Status */
+#status { margin-top: 10px; font-size: 14px; color: #5f6f89; min-height: 20px; }
+
+/* Acciones */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+button {
+  border: 0;
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: #152033;
+  color: white;
+  font-weight: 800;
+  font-size: 15px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+button:hover { opacity: .85; }
+button.secondary {
+  background: #edf2f7;
+  color: #152033;
+}
+.badge {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #edf2f7;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Imágenes */
+.imagePreview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.imagePreview.empty { display: block; color: #5f6f89; }
+.ticketImageCard {
+  border: 1px solid #edf2f7;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+.ticketImageCard img {
+  width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+  display: block;
+  background: #fff;
+}
+.ticketImageCaption {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #5f6f89;
+  word-break: break-word;
+}
+
+/* Resumen tickets */
+.ticketSummary { display: grid; gap: 12px; }
+.summaryBox {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 6px 12px;
+  padding: 14px;
+  border: 1px solid #edf2f7;
+  background: #f8fafc;
+  border-radius: 16px;
+  font-size: 13px;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid #edf2f7;
+  padding-bottom: 4px;
+}
+.tab-btn {
+  background: transparent;
+  color: #5f6f89;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 12px 12px 0 0;
+  border: none;
+  cursor: pointer;
+}
+.tab-btn.active {
+  background: #152033;
+  color: white;
+}
+.tab-btn:hover:not(.active) { background: #edf2f7; opacity: 1; }
+
+/* Preview / tabla */
+.preview { overflow-x: auto; color: #152033; }
+.hidden  { display: none; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 900px;
+}
+th {
+  background: #f4f6fb;
+  font-weight: 700;
+  text-align: left;
+  padding: 9px 8px;
+  border-bottom: 2px solid #edf2f7;
+  white-space: nowrap;
+}
+td {
+  border-bottom: 1px solid #f4f6fb;
+  padding: 7px 8px;
+  vertical-align: top;
+}
+tr:hover td { background: #f8fafc; }
+
+/* Botón sticky */
+.actions-card {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  border-top: 1px solid #edf2f7;
+}
+
+/* Mobile */
+@media (max-width: 680px) {
+  .grid, .actions { grid-template-columns: 1fr; }
+  .hero { align-items: flex-start; flex-direction: column; }
+  .tabs { gap: 4px; }
+  .tab-btn { font-size: 13px; padding: 7px 12px; }
+}
