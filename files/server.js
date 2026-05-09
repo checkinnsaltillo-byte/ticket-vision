@@ -1,21 +1,21 @@
-const express = require("express");
-const multer  = require("multer");
-const vision  = require("@google-cloud/vision");
-const XLSX    = require("xlsx");
-const fs      = require("fs");
-const cors    = require("cors");
+const express  = require("express");
+const multer   = require("multer");
+const Anthropic = require("@anthropic-ai/sdk");
+const XLSX     = require("xlsx");
+const fs       = require("fs");
+const path     = require("path");
+const cors     = require("cors");
 
-const { parseTicket }         = require("./parser");
 const classifyExpense          = require("./classifier");
 const { sendRowsToAppsScript } = require("./sheetsClient");
 
-const app = express();
+const app       = express();
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const UPLOAD_DIR = "/tmp/uploads";
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const upload = multer({ dest: UPLOAD_DIR });
-const client = new vision.ImageAnnotatorClient();
 
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "20mb" }));
@@ -23,38 +23,90 @@ app.use(express.json({ limit: "20mb" }));
 // ─── Health ────────────────────────────────────────────────────────────────
 
 app.get("/", (req, res) => res.json({
-  ok: true,
-  service: "Ticket Parser PRO v4",
-  endpoints: ["/process", "/process-json", "/health"]
+  ok: true, service: "Ticket Vision v7 — Claude Vision", endpoints: ["/process", "/process-json", "/health"]
 }));
-
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// ─── /process → devuelve Excel ────────────────────────────────────────────
+// ─── Prompt de extracción ──────────────────────────────────────────────────
+
+const EXTRACTION_PROMPT = `Eres un extractor experto de tickets de compra mexicanos.
+Analiza la imagen y responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni markdown.
+
+Estructura exacta requerida:
+{
+  "store": "NOMBRE DE LA TIENDA",
+  "rfc": null,
+  "date": null,
+  "time": null,
+  "folio": null,
+  "payment_method": null,
+  "card_last4": null,
+  "subtotal": 0,
+  "iva": 0,
+  "ieps": 0,
+  "descuentos": 0,
+  "total": 0,
+  "productos": [
+    { "descripcion": "NOMBRE DEL PRODUCTO", "cantidad": 1, "precio_unitario": 0, "monto": 0 }
+  ]
+}
+
+Reglas:
+- "productos": ÚNICAMENTE artículos o servicios comprados. Excluye nombre de tienda, dirección, RFC, teléfono, fecha, cajero, folio, impuestos, totales, formas de pago y cualquier mensaje.
+- "date": formato YYYY-MM-DD o null.
+- "time": formato HH:MM o null.
+- "payment_method": VISA, MASTERCARD, AMEX, TARJETA_DEBITO, TARJETA_CREDITO, TARJETA_BANCO, EFECTIVO, TRANSFERENCIA, QR — o null.
+- "card_last4": solo los 4 últimos dígitos de la tarjeta, o null.
+- Todos los montos deben ser números (no strings). Si no se ve el valor, usa 0.
+- Si un campo no está en el ticket, usa null.`;
+
+// ─── Extracción con Claude Vision ──────────────────────────────────────────
+
+function getMediaType(filename) {
+  const ext = path.extname(filename || "").toLowerCase();
+  return { ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif" }[ext] || "image/jpeg";
+}
+
+async function extractWithClaude(imagePath, originalName) {
+  const base64    = fs.readFileSync(imagePath).toString("base64");
+  const mediaType = getMediaType(originalName);
+
+  const msg = await anthropic.messages.create({
+    model:      "claude-haiku-4-5-20251001",
+    max_tokens: 2048,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+        { type: "text",  text: EXTRACTION_PROMPT }
+      ]
+    }]
+  });
+
+  const raw  = msg.content[0].text.trim();
+  const json = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+  return JSON.parse(json);
+}
+
+// ─── Endpoints ─────────────────────────────────────────────────────────────
 
 app.post("/process", upload.array("files"), async (req, res) => {
   try {
     const context = buildContext(req.body);
     const result  = await processFiles(req.files || [], context);
 
-    if (process.env.SAVE_TO_SHEETS === "true") {
-      await sendRowsToAppsScript(result.productRows);
-    }
-
-    const buffer = buildExcel(result);
+    if (process.env.SAVE_TO_SHEETS === "true") await sendRowsToAppsScript(result.productRows);
 
     res.setHeader("Content-Disposition", "attachment; filename=tickets_transcripcion.xlsx");
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.send(buffer);
+    res.send(buildExcel(result));
   } catch (err) {
-    logError("process_error", err);
-    res.status(500).json({ ok: false, error: "Error procesando tickets", detail: err.message });
+    console.error("process_error", err.message);
+    res.status(500).json({ ok: false, error: "Error procesando ticket", detail: err.message });
   } finally {
     cleanupFiles(req.files || []);
   }
 });
-
-// ─── /process-json → devuelve JSON ────────────────────────────────────────
 
 app.post("/process-json", upload.array("files"), async (req, res) => {
   try {
@@ -76,8 +128,8 @@ app.post("/process-json", upload.array("files"), async (req, res) => {
       sheets_result:   sheetsResult
     });
   } catch (err) {
-    logError("process_json_error", err);
-    res.status(500).json({ ok: false, error: "Error procesando tickets", detail: err.message });
+    console.error("process_json_error", err.message);
+    res.status(500).json({ ok: false, error: "Error procesando ticket", detail: err.message });
   } finally {
     cleanupFiles(req.files || []);
   }
@@ -91,174 +143,111 @@ function buildContext(body = {}) {
     departamento:   body.departamento   || "",
     huesped:        body.huesped        || "",
     reservacion_id: body.reservacion_id || "",
-    fuente:         body.fuente         || "Ticket Scanner PRO",
     notas:          body.notas          || ""
   };
 }
 
 async function processFiles(files, context) {
-  if (!files.length) {
-    throw new Error("No se recibió ningún archivo.");
-  }
+  if (!files.length) throw new Error("No se recibió ningún archivo.");
 
   const productRows = [];
   const resumenRows = [];
   const cruceRows   = [];
 
-  for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
-    const file = files[fileIndex];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
 
-    if (!file.path || !fs.existsSync(file.path)) {
-      throw new Error("El archivo temporal no se encontró en Cloud Run.");
-    }
+    if (!file.path || !fs.existsSync(file.path)) throw new Error("Archivo temporal no encontrado.");
 
-    const [visionResult] = await client.textDetection(file.path);
-    const rawText = visionResult.textAnnotations?.[0]?.description || "";
-    const parsed  = parseTicket(rawText);
-    const now     = new Date().toISOString();
-    const ticketId = `${Date.now()}-${fileIndex + 1}`;
+    const parsed   = await extractWithClaude(file.path, file.originalname || "ticket.jpg");
+    const now      = new Date().toISOString();
+    const ticketId = `${Date.now()}-${i + 1}`;
 
     // ── Productos ──────────────────────────────────────────────────────────
-    if (!rawText.trim()) {
+    (parsed.productos || []).forEach((p, idx) => {
+      const clasif = classifyExpense(p.descripcion || "", parsed.store || "");
       productRows.push({
-        ticket_id:   ticketId,
-        tienda:      parsed.store || "",
-        fecha:       parsed.date  || "",
-        linea_numero: 1,
-        descripcion: "Google Vision no detectó texto suficiente",
-        cantidad:    "",
-        precio_unitario: "",
-        monto:       "",
-        categoria_operativa:     "Revisar",
-        categoria_contable:      "",
-        clave_sat:               "",
-        tratamiento_fiscal:      "",
-        deducible_sugerido:      "",
-        requiere_revision:       "Sí",
-        confianza_clasificacion: "",
-        propiedad:    context.propiedad,
-        departamento: context.departamento,
-        huesped:      context.huesped,
-        notas:        context.notas
+        ticket_id:               ticketId,
+        tienda:                  parsed.store  || "",
+        fecha:                   parsed.date   || "",
+        linea_numero:            idx + 1,
+        descripcion:             p.descripcion      || "",
+        cantidad:                p.cantidad         ?? "",
+        precio_unitario:         p.precio_unitario  ?? "",
+        monto:                   p.monto            ?? "",
+        categoria_operativa:     clasif.categoria_operativa,
+        categoria_contable:      clasif.categoria_contable,
+        clave_sat:               clasif.clave_sat,
+        deducible_sugerido:      clasif.deducible_sugerido,
+        requiere_revision:       clasif.requiere_revision,
+        confianza_clasificacion: clasif.confianza_clasificacion,
+        propiedad:               context.propiedad,
+        departamento:            context.departamento,
+        huesped:                 context.huesped,
+        notas:                   context.notas
       });
-    } else {
-      parsed.productos.forEach(producto => {
-        const clasif = classifyExpense(producto.descripcion, parsed.store);
-        productRows.push({
-          ticket_id:       ticketId,
-          tienda:          parsed.store || "",
-          fecha:           parsed.date  || "",
-          linea_numero:    producto.linea_numero,
-          descripcion:      producto.descripcion,
-          cantidad:         producto.cantidad,
-          precio_unitario:  producto.precio_unitario,
-          monto:            producto.monto,
-          categoria_operativa:     clasif.categoria_operativa,
-          categoria_contable:      clasif.categoria_contable,
-          clave_sat:               clasif.clave_sat,
-          tratamiento_fiscal:      clasif.tratamiento_fiscal,
-          deducible_sugerido:      clasif.deducible_sugerido,
-          requiere_revision:       clasif.requiere_revision,
-          confianza_clasificacion: clasif.confianza_clasificacion,
-          propiedad:    context.propiedad,
-          departamento: context.departamento,
-          huesped:      context.huesped,
-          notas:        context.notas
-        });
-      });
-    }
+    });
 
-    // ── Resumen financiero (1 fila por ticket) ─────────────────────────────
+    // ── Resumen tickets ────────────────────────────────────────────────────
     resumenRows.push({
-      ticket_id:       ticketId,
-      hash_ticket:     parsed.hash_ticket,
-      archivo:         file.originalname || "",
-      tienda:          parsed.store       || "",
-      rfc:             parsed.rfc         || "",
-      fecha:           parsed.date        || "",
-      hora:            parsed.time        || "",
-      folio:           parsed.folio       || "",
-      metodo_pago:     parsed.payment_method || "",
-      tarjeta_ultimos4: parsed.card_last4 || "",
-      num_productos:   parsed.productos.length,
-      subtotal:        parsed.subtotal,
-      iva:             parsed.iva,
-      ieps:            parsed.ieps,
-      descuentos:      parsed.descuentos,
-      total:           parsed.total,
-      propiedad:       context.propiedad,
-      departamento:    context.departamento,
-      huesped:         context.huesped,
-      reservacion_id:  context.reservacion_id,
-      notas:           context.notas,
-      fecha_captura:   now
+      ticket_id:        ticketId,
+      archivo:          file.originalname      || "",
+      tienda:           parsed.store           || "",
+      rfc:              parsed.rfc             || "",
+      fecha:            parsed.date            || "",
+      hora:             parsed.time            || "",
+      folio:            parsed.folio           || "",
+      metodo_pago:      parsed.payment_method  || "",
+      tarjeta_ultimos4: parsed.card_last4      || "",
+      num_productos:    (parsed.productos      || []).length,
+      subtotal:         parsed.subtotal        || 0,
+      iva:              parsed.iva             || 0,
+      ieps:             parsed.ieps            || 0,
+      descuentos:       parsed.descuentos      || 0,
+      total:            parsed.total           || 0,
+      propiedad:        context.propiedad,
+      departamento:     context.departamento,
+      huesped:          context.huesped,
+      reservacion_id:   context.reservacion_id,
+      notas:            context.notas,
+      fecha_captura:    now
     });
 
     // ── Cruce bancario ─────────────────────────────────────────────────────
     cruceRows.push({
-      fecha:              parsed.date          || "",
-      hora:               parsed.time          || "",
-      comercio:           parsed.store         || "",
-      rfc:                parsed.rfc           || "",
-      folio:              parsed.folio         || "",
-      metodo_pago:        parsed.payment_method || "",
-      tarjeta_ultimos4:   parsed.card_last4    || "",
-      monto_cruce:        parsed.monto_cruce   || 0,
-      total_ticket:       parsed.total         || 0,
-      propiedad:          context.propiedad,
-      departamento:       context.departamento,
-      huesped:            context.huesped,
-      hash_ticket:        parsed.hash_ticket,
-      busqueda_banco:     parsed.date
-        ? `${parsed.store || "?"} ${parsed.date} ${parsed.monto_cruce ? "$" + parsed.monto_cruce : ""}`
-        : ""
+      fecha:            parsed.date           || "",
+      hora:             parsed.time           || "",
+      comercio:         parsed.store          || "",
+      rfc:              parsed.rfc            || "",
+      folio:            parsed.folio          || "",
+      metodo_pago:      parsed.payment_method || "",
+      tarjeta_ultimos4: parsed.card_last4     || "",
+      monto_cruce:      parsed.total          || 0,
+      total_ticket:     parsed.total          || 0,
+      propiedad:        context.propiedad,
+      departamento:     context.departamento,
+      huesped:          context.huesped
     });
   }
 
   return { productRows, resumenRows, cruceRows };
 }
 
-// ─── Construir Excel ────────────────────────────────────────────────────────
-
 function buildExcel(result) {
   const wb = XLSX.utils.book_new();
-
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(result.productRows),
-    "Transcripcion"
-  );
-
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(result.resumenRows),
-    "Resumen tickets"
-  );
-
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(result.cruceRows),
-    "Cruce bancario"
-  );
-
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.productRows), "Transcripcion");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.resumenRows), "Resumen tickets");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.cruceRows),   "Cruce bancario");
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 }
 
-// ─── Cleanup y logger ──────────────────────────────────────────────────────
-
 function cleanupFiles(files) {
-  for (const file of files) {
-    try {
-      if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-    } catch (_) {}
+  for (const f of files) {
+    try { if (f.path && fs.existsSync(f.path)) fs.unlinkSync(f.path); } catch (_) {}
   }
-}
-
-function logError(tag, err) {
-  console.error(tag, { message: err.message, code: err.code, stack: err.stack });
 }
 
 // ─── Start ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Ticket Parser PRO v4 running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Ticket Vision v7 — Claude Vision — port ${PORT}`));
