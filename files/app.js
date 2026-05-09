@@ -4,19 +4,13 @@ let lastCruce   = [];
 let activeTab   = "transcripcion";
 
 function getBackendUrl() {
-  const val = document.getElementById("backendUrl").value.trim().replace(/\/$/, "");
-  localStorage.setItem("ticket_backend_url", val);
-  return val;
+  return "https://ticket-vision-957627511957.northamerica-south1.run.app";
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("backendUrl").value =
-    localStorage.getItem("ticket_backend_url") || "";
-
   const fileInput = document.getElementById("files");
   if (fileInput) fileInput.addEventListener("change", handleFilesSelected);
 
-  // tabs
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
@@ -42,10 +36,13 @@ function buildFormData(saveToSheets) {
 
 // ─── Selección de imágenes ─────────────────────────────────────────────────
 
-async function handleFilesSelected() {
+function handleFilesSelected() {
   lastRows = []; lastTickets = []; lastCruce = [];
   renderImagePreview();
   clearPreviews();
+}
+
+async function analyzeTickets() {
   await processPreviewOnly();
 }
 

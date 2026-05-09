@@ -20,9 +20,6 @@
 
     <!-- Config -->
     <section class="card">
-      <label>URL backend Cloud Run</label>
-      <input id="backendUrl" placeholder="https://ticket-vision-xxxxx.run.app">
-
       <div class="grid">
         <div>
           <label>Propiedad</label>
@@ -78,6 +75,7 @@
     <!-- Acciones -->
     <section class="card actions-card">
       <div class="actions">
+        <button onclick="analyzeTickets()">🔍 Analizar tickets</button>
         <button onclick="processExcel()">⬇ Descargar Excel</button>
         <button class="secondary" onclick="processAndSave()">📊 Guardar en Sheets</button>
       </div>
