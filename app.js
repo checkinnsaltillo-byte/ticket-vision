@@ -16,17 +16,13 @@ window.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab))
   );
 
-  const zone = document.getElementById("uploadZone");
-  zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag-over"); });
-  zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+  const zone = document.getElementById("stepCaptura");
+  zone.addEventListener("dragover",  e => { e.preventDefault(); });
   zone.addEventListener("drop", e => {
     e.preventDefault();
-    zone.classList.remove("drag-over");
     const imgs = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
     addFiles(imgs);
   });
-
-  setStep(1);
 });
 
 // ─── File management ───────────────────────────────────────────────────────
@@ -39,22 +35,16 @@ function handleFilesAdded(e) {
 function addFiles(newFiles) {
   if (!newFiles.length) return;
   selectedFiles = [...selectedFiles, ...newFiles];
-  lastRows = []; lastTickets = []; lastCruce = [];
   renderImageStrip();
-  clearPreviews();
-  setStep(2);
+  document.getElementById("analyzeWrap").classList.remove("hidden");
 }
 
-// ─── Step indicator ────────────────────────────────────────────────────────
+// ─── Proyecto selector ─────────────────────────────────────────────────────
 
-function setStep(n) {
-  for (let i = 1; i <= 3; i++) {
-    const el = document.getElementById(`step-ind-${i}`);
-    if (!el) continue;
-    el.classList.remove("active", "done");
-    if (i < n)  el.classList.add("done");
-    if (i === n) el.classList.add("active");
-  }
+function selectProyecto(el) {
+  document.querySelectorAll(".proyecto-card").forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById("proyecto").value = el.dataset.value;
 }
 
 // ─── Image strip ───────────────────────────────────────────────────────────
@@ -67,15 +57,12 @@ function renderImageStrip() {
   selectedFiles.forEach((file, i) => {
     const thumb = document.createElement("div");
     thumb.className = "image-thumb";
-
     const img = document.createElement("img");
-    img.src   = URL.createObjectURL(file);
+    img.src = URL.createObjectURL(file);
     img.onload = () => URL.revokeObjectURL(img.src);
-
     const lbl = document.createElement("div");
     lbl.className   = "thumb-label";
-    lbl.textContent = `${i + 1}`;
-
+    lbl.textContent = String(i + 1);
     thumb.append(img, lbl);
     strip.appendChild(thumb);
   });
@@ -91,28 +78,29 @@ function hideLoading() {
   document.getElementById("loadingOverlay").classList.add("hidden");
 }
 
-// ─── Form ──────────────────────────────────────────────────────────────────
+// ─── Build form ────────────────────────────────────────────────────────────
 
-function buildFormData(saveToSheets) {
+function buildFormData() {
   if (!selectedFiles.length) throw new Error("Selecciona al menos una imagen de ticket.");
   const form = new FormData();
   selectedFiles.forEach(f => form.append("files", f));
-  form.append("propiedad",    document.getElementById("propiedad").value    || "");
-  form.append("departamento", document.getElementById("departamento").value || "");
-  form.append("huesped",      document.getElementById("huesped").value      || "");
-  form.append("notas",        document.getElementById("notas").value        || "");
-  form.append("saveToSheets", saveToSheets ? "true" : "false");
+  form.append("subcuenta",    document.getElementById("subcuenta")?.value    || "");
+  form.append("categoria",    document.getElementById("categoria")?.value    || "");
+  form.append("concepto",     document.getElementById("concepto")?.value     || "");
+  form.append("proyecto",     document.getElementById("proyecto")?.value     || "Ninguno");
+  form.append("propiedad",    document.getElementById("propiedad")?.value    || "");
+  form.append("departamento", document.getElementById("departamento")?.value || "");
   return form;
 }
 
-// ─── Analyze ───────────────────────────────────────────────────────────────
+// ─── Analizar ──────────────────────────────────────────────────────────────
 
 async function analyzeTickets() {
   try {
     showLoading("Claude está analizando...");
     setStatus("Leyendo tickets...");
 
-    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: buildFormData(false) });
+    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: buildFormData() });
     const data = await res.json();
 
     if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo procesar.");
@@ -121,12 +109,23 @@ async function analyzeTickets() {
     lastTickets = data.resumen        || [];
     lastCruce   = data.cruce_bancario || [];
 
+    const count = data.total_productos || lastRows.length;
+    document.getElementById("resultsSubtitle").textContent =
+      `${count} producto${count !== 1 ? "s" : ""} detectado${count !== 1 ? "s" : ""} · ${lastTickets.length} ticket${lastTickets.length !== 1 ? "s" : ""}`;
+
     renderTicketSummary(lastTickets);
     renderTranscripcion(lastRows);
     renderCruceBancario(lastCruce);
-    setStep(3);
-    setStatus(`${data.total_productos || lastRows.length} productos detectados.`);
-    document.getElementById("step3").scrollIntoView({ behavior: "smooth" });
+
+    document.getElementById("resultsSection").classList.remove("hidden");
+    document.getElementById("stepClasificar").classList.remove("hidden");
+
+    setStep(2);
+    setStatus(`${count} productos detectados.`);
+
+    setTimeout(() => {
+      document.getElementById("stepClasificar").scrollIntoView({ behavior: "smooth" });
+    }, 200);
   } catch (err) {
     setStatus("Error: " + err.message);
   } finally {
@@ -141,9 +140,12 @@ async function processExcel() {
     showLoading("Generando Excel...");
     setStatus("Preparando archivo...");
 
-    const res = await fetch(`${BACKEND}/process`, { method: "POST", body: buildFormData(false) });
+    const form = buildFormData();
+    form.append("saveToSheets", "false");
+
+    const res = await fetch(`${BACKEND}/process`, { method: "POST", body: form });
     if (!res.ok) {
-      let msg = "No se pudo procesar.";
+      let msg = "No se pudo generar el archivo.";
       try { const d = await res.json(); msg = d.error || msg; } catch (_) {}
       throw new Error(msg);
     }
@@ -155,7 +157,7 @@ async function processExcel() {
     });
     a.click();
     URL.revokeObjectURL(a.href);
-    setStatus("Excel descargado.");
+    setStatus("Excel descargado correctamente.");
   } catch (err) {
     setStatus("Error: " + err.message);
   } finally {
@@ -170,7 +172,10 @@ async function processAndSave() {
     showLoading("Guardando en Sheets...");
     setStatus("Enviando datos...");
 
-    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: buildFormData(true) });
+    const form = buildFormData();
+    form.append("saveToSheets", "true");
+
+    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: form });
     const data = await res.json();
 
     if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar.");
@@ -182,7 +187,7 @@ async function processAndSave() {
     renderTicketSummary(lastTickets);
     renderTranscripcion(lastRows);
     renderCruceBancario(lastCruce);
-    setStep(3);
+
     setStatus(`Guardado en Sheets. ${data.total_productos || lastRows.length} productos.`);
   } catch (err) {
     setStatus("Error: " + err.message);
@@ -196,20 +201,19 @@ async function processAndSave() {
 function renderTicketSummary(tickets) {
   const el = document.getElementById("ticketSummary");
   if (!tickets?.length) { el.innerHTML = ""; return; }
-
   el.innerHTML = tickets.map(t => `
     <div class="summary-card">
       <div class="store-name">${esc(t.tienda || "Ticket")}</div>
-      ${field("Fecha",    t.fecha)}
-      ${field("Hora",     t.hora)}
-      ${field("RFC",      t.rfc)}
-      ${field("Folio",    t.folio)}
-      ${t.metodo_pago ? field("Pago", t.metodo_pago + (t.tarjeta_ultimos4 ? " *" + t.tarjeta_ultimos4 : "")) : ""}
-      ${field("Productos", t.num_productos)}
-      ${field("Subtotal",  money(t.subtotal))}
-      ${field("IVA",       money(t.iva))}
-      ${t.ieps       ? field("IEPS",       money(t.ieps))       : ""}
-      ${t.descuentos ? field("Descuentos", money(t.descuentos)) : ""}
+      ${srow("Fecha",    t.fecha)}
+      ${srow("Hora",     t.hora)}
+      ${srow("RFC",      t.rfc)}
+      ${srow("Folio",    t.folio)}
+      ${t.metodo_pago ? srow("Pago", t.metodo_pago + (t.tarjeta_ultimos4 ? " *" + t.tarjeta_ultimos4 : "")) : ""}
+      ${srow("Productos", t.num_productos)}
+      ${srow("Subtotal",  money(t.subtotal))}
+      ${srow("IVA",       money(t.iva))}
+      ${t.ieps       ? srow("IEPS",       money(t.ieps))       : ""}
+      ${t.descuentos ? srow("Descuentos", money(t.descuentos)) : ""}
       <div class="total-row">
         <span class="t-label">TOTAL</span>
         <span class="t-amount">${money(t.total)}</span>
@@ -218,8 +222,8 @@ function renderTicketSummary(tickets) {
   `).join("");
 }
 
-function field(label, value) {
-  if (!value && value !== 0) return "";
+function srow(label, value) {
+  if (value === undefined || value === null || value === "") return "";
   return `<div class="s-row">
     <span class="s-label">${esc(label)}</span>
     <span class="s-val">${esc(String(value))}</span>
@@ -274,8 +278,8 @@ function renderCruceBancario(rows) {
     { key: "folio",            label: "Folio" },
     { key: "metodo_pago",      label: "Forma pago" },
     { key: "tarjeta_ultimos4", label: "Tarjeta" },
-    { key: "monto_cruce",      label: "Monto",   fmt: "money" },
-    { key: "total_ticket",     label: "Total",   fmt: "money" },
+    { key: "monto_cruce",      label: "Monto",  fmt: "money" },
+    { key: "total_ticket",     label: "Total",  fmt: "money" },
     { key: "propiedad",        label: "Propiedad" },
     { key: "departamento",     label: "Depto." },
   ]);
@@ -292,12 +296,16 @@ function buildTable(rows, cols) {
   </table>`;
 }
 
-// ─── Clear ─────────────────────────────────────────────────────────────────
+// ─── Step indicator ────────────────────────────────────────────────────────
 
-function clearPreviews() {
-  document.getElementById("previewTranscripcion").innerHTML = emptyState("🔍", "Analiza un ticket para ver los productos aquí.");
-  document.getElementById("previewCruce").innerHTML         = emptyState("🏦", "Sin datos de cruce bancario.");
-  document.getElementById("ticketSummary").innerHTML        = "";
+function setStep(n) {
+  for (let i = 1; i <= 2; i++) {
+    const el = document.getElementById(`step-ind-${i}`);
+    if (!el) continue;
+    el.classList.remove("active", "done");
+    if (i < n)  el.classList.add("done");
+    if (i === n) el.classList.add("active");
+  }
 }
 
 // ─── Utilities ─────────────────────────────────────────────────────────────
@@ -307,7 +315,8 @@ function emptyState(icon, text) {
 }
 
 function setStatus(msg) {
-  document.getElementById("status").textContent = msg;
+  const el = document.getElementById("status");
+  if (el) el.textContent = msg;
 }
 
 function money(value) {

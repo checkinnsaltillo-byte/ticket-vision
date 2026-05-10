@@ -12,9 +12,7 @@
   <div id="loadingOverlay" class="loading-overlay hidden">
     <div class="loading-card">
       <div class="thinking-dots">
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
+        <div class="dot"></div><div class="dot"></div><div class="dot"></div>
       </div>
       <h3 id="loadingTitle">Claude está analizando...</h3>
       <p>Extrayendo productos y datos del ticket</p>
@@ -39,58 +37,23 @@
     <nav class="steps-bar">
       <div class="step active" id="step-ind-1">
         <div class="step-circle">1</div>
-        <span>Contexto</span>
+        <span>Captura</span>
       </div>
       <div class="step-line"></div>
       <div class="step" id="step-ind-2">
         <div class="step-circle">2</div>
-        <span>Tickets</span>
-      </div>
-      <div class="step-line"></div>
-      <div class="step" id="step-ind-3">
-        <div class="step-circle">3</div>
-        <span>Resultados</span>
+        <span>Clasificar</span>
       </div>
     </nav>
 
-    <!-- Step 1: Context -->
-    <div class="container" id="step1">
+    <!-- ── PASO 1: Captura ─────────────────────────────────────── -->
+    <div class="container" id="stepCaptura">
+
       <div class="section">
         <div class="section-header">
           <div class="section-num">1</div>
           <div>
-            <p class="section-title">Contexto del gasto</p>
-            <p class="section-subtitle">¿A qué propiedad o reservación pertenece este ticket?</p>
-          </div>
-        </div>
-        <div class="grid">
-          <div class="field">
-            <label>Propiedad</label>
-            <input id="propiedad" placeholder="Ej. Calle Cumbres">
-          </div>
-          <div class="field">
-            <label>Departamento</label>
-            <input id="departamento" placeholder="Ej. 2">
-          </div>
-        </div>
-        <div class="field">
-          <label>Huésped / referencia</label>
-          <input id="huesped" placeholder="Opcional">
-        </div>
-        <div class="field">
-          <label>Notas</label>
-          <textarea id="notas" placeholder="Ej. reparación fregadero, baño principal..."></textarea>
-        </div>
-      </div>
-    </div>
-
-    <!-- Step 2: Upload -->
-    <div class="container" id="step2">
-      <div class="section">
-        <div class="section-header">
-          <div class="section-num">2</div>
-          <div>
-            <p class="section-title">Captura tus tickets</p>
+            <p class="section-title">Captura de tickets</p>
             <p class="section-subtitle">Toma una foto directa o sube imágenes desde tu galería</p>
           </div>
         </div>
@@ -115,18 +78,22 @@
           </label>
         </div>
 
+        <!-- Thumbnails -->
         <div id="imagePreview" class="image-strip hidden"></div>
-      </div>
-    </div>
 
-    <!-- Step 3: Results -->
-    <div class="container" id="step3">
-      <div class="section">
+        <!-- Botón Analizar — aparece solo cuando hay archivos -->
+        <div id="analyzeWrap" class="hidden">
+          <button class="btn-analizar" onclick="analyzeTickets()">🔍 Analizar tickets</button>
+        </div>
+      </div>
+
+      <!-- Resultados — aparece tras el análisis -->
+      <div class="section hidden" id="resultsSection">
         <div class="section-header">
-          <div class="section-num">3</div>
+          <div class="section-num success-num">✓</div>
           <div>
             <p class="section-title">Resultados</p>
-            <p class="section-subtitle">Resumen financiero y lista de productos detectados</p>
+            <p class="section-subtitle" id="resultsSubtitle">Tickets procesados con Claude AI</p>
           </div>
         </div>
 
@@ -150,21 +117,94 @@
           </div>
         </div>
       </div>
-    </div>
+
+    </div><!-- /stepCaptura -->
+
+    <!-- ── PASO 2: Clasificar ──────────────────────────────────── -->
+    <div class="container hidden" id="stepClasificar">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-num">2</div>
+          <div>
+            <p class="section-title">Clasificar gasto</p>
+            <p class="section-subtitle">Asigna la categoría contable y el destino de este gasto</p>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="field">
+            <label>Subcuenta</label>
+            <input id="subcuenta" placeholder="Ej. 6040">
+          </div>
+          <div class="field">
+            <label>Categoría</label>
+            <input id="categoria" placeholder="Ej. Mantenimiento">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Concepto</label>
+          <input id="concepto" placeholder="Ej. Reparación fregadero baño principal">
+        </div>
+
+        <!-- Proyecto — campo destacado -->
+        <div class="field proyecto-field">
+          <label>Proyecto</label>
+          <div class="proyecto-grid">
+            <div class="proyecto-card active" data-value="Ninguno" onclick="selectProyecto(this)">
+              <div class="proyecto-icon">🏠</div>
+              <div class="proyecto-label">Ninguno</div>
+              <div class="proyecto-sub">Gasto operativo</div>
+            </div>
+            <div class="proyecto-card" data-value="Construcción" onclick="selectProyecto(this)">
+              <div class="proyecto-icon">🏗</div>
+              <div class="proyecto-label">Construcción</div>
+              <div class="proyecto-sub">Obra nueva</div>
+            </div>
+            <div class="proyecto-card" data-value="Remodelación" onclick="selectProyecto(this)">
+              <div class="proyecto-icon">🔨</div>
+              <div class="proyecto-label">Remodelación</div>
+              <div class="proyecto-sub">Mejoras a unidad</div>
+            </div>
+          </div>
+          <input type="hidden" id="proyecto" value="Ninguno">
+        </div>
+
+        <div class="grid">
+          <div class="field">
+            <label>Propiedad</label>
+            <select id="propiedad">
+              <option value="">— Seleccionar —</option>
+              <option>Calle Cumbres</option>
+              <option>Calle Baja California</option>
+              <option>Calle Oaxaca</option>
+              <option>Calle José Cárdenas</option>
+              <option>Calle Matamoros</option>
+            </select>
+          </div>
+          <div class="field">
+            <label># Departamento</label>
+            <select id="departamento">
+              <option value="">— Seleccionar —</option>
+              <option>1</option><option>2</option><option>3</option><option>4</option>
+              <option>5</option><option>6</option><option>7</option><option>8</option>
+              <option>9</option><option>10</option><option>11</option><option>12</option>
+              <option>13</option><option>14</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Acciones -->
+        <div class="classify-actions">
+          <button class="btn-primary" onclick="processExcel()">⬇ Descargar Excel</button>
+          <button class="btn-secondary" onclick="processAndSave()">📊 Guardar en Sheets</button>
+        </div>
+
+        <div id="status" class="status-inline"></div>
+      </div>
+    </div><!-- /stepClasificar -->
 
   </div><!-- /page-shell -->
-
-  <!-- Floating Action Bar -->
-  <div class="action-bar">
-    <div class="action-bar-inner">
-      <div id="status" class="status-text"></div>
-      <div class="action-btns">
-        <button class="btn-primary"    onclick="analyzeTickets()">🔍 Analizar</button>
-        <button class="btn-secondary"  onclick="processExcel()">⬇ Excel</button>
-        <button class="btn-ghost"      onclick="processAndSave()">📊 Sheets</button>
-      </div>
-    </div>
-  </div>
 
   <script src="app.js"></script>
 </body>

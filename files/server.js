@@ -139,11 +139,12 @@ app.post("/process-json", upload.array("files"), async (req, res) => {
 
 function buildContext(body = {}) {
   return {
-    propiedad:      body.propiedad      || "",
-    departamento:   body.departamento   || "",
-    huesped:        body.huesped        || "",
-    reservacion_id: body.reservacion_id || "",
-    notas:          body.notas          || ""
+    subcuenta:    body.subcuenta    || "",
+    categoria:    body.categoria    || "",
+    concepto:     body.concepto     || "",
+    proyecto:     body.proyecto     || "",
+    propiedad:    body.propiedad    || "",
+    departamento: body.departamento || "",
   };
 }
 
@@ -181,10 +182,12 @@ async function processFiles(files, context) {
         deducible_sugerido:      clasif.deducible_sugerido,
         requiere_revision:       clasif.requiere_revision,
         confianza_clasificacion: clasif.confianza_clasificacion,
+        subcuenta:               context.subcuenta,
+        categoria_gasto:         context.categoria,
+        concepto:                context.concepto,
+        proyecto:                context.proyecto,
         propiedad:               context.propiedad,
-        departamento:            context.departamento,
-        huesped:                 context.huesped,
-        notas:                   context.notas
+        departamento:            context.departamento
       });
     });
 
@@ -205,11 +208,12 @@ async function processFiles(files, context) {
       ieps:             parsed.ieps            || 0,
       descuentos:       parsed.descuentos      || 0,
       total:            parsed.total           || 0,
+      subcuenta:        context.subcuenta,
+      categoria_gasto:  context.categoria,
+      concepto:         context.concepto,
+      proyecto:         context.proyecto,
       propiedad:        context.propiedad,
       departamento:     context.departamento,
-      huesped:          context.huesped,
-      reservacion_id:   context.reservacion_id,
-      notas:            context.notas,
       fecha_captura:    now
     });
 
@@ -224,9 +228,10 @@ async function processFiles(files, context) {
       tarjeta_ultimos4: parsed.card_last4     || "",
       monto_cruce:      parsed.total          || 0,
       total_ticket:     parsed.total          || 0,
+      subcuenta:        context.subcuenta,
+      proyecto:         context.proyecto,
       propiedad:        context.propiedad,
-      departamento:     context.departamento,
-      huesped:          context.huesped
+      departamento:     context.departamento
     });
   }
 
