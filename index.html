@@ -1,9 +1,9 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Ticket Vision</title>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+  <title>Ticket Vision | Check Inn Saltillo</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -21,120 +21,125 @@
     </div>
   </div>
 
-  <!-- Header -->
-  <header class="app-header">
-    <div class="header-bg-orb orb1"></div>
-    <div class="header-bg-orb orb2"></div>
-    <div class="header-content">
-      <div class="logo">
+  <div class="page-shell">
+
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-logo">
         <div class="logo-icon">TV</div>
         <div class="logo-text">
           <h1>Ticket Vision</h1>
-          <span>Powered by Claude AI</span>
+          <span>Check Inn Saltillo · Powered by Claude AI</span>
         </div>
       </div>
       <div class="header-badge">v7</div>
-    </div>
-  </header>
+    </header>
 
-  <!-- Step Indicator -->
-  <nav class="steps-bar">
-    <div class="step active" id="step-ind-1">
-      <div class="step-circle">1</div>
-      <span>Contexto</span>
-    </div>
-    <div class="step-line"></div>
-    <div class="step" id="step-ind-2">
-      <div class="step-circle">2</div>
-      <span>Tickets</span>
-    </div>
-    <div class="step-line"></div>
-    <div class="step" id="step-ind-3">
-      <div class="step-circle">3</div>
-      <span>Resultados</span>
-    </div>
-  </nav>
-
-  <main class="app">
+    <!-- Steps Bar -->
+    <nav class="steps-bar">
+      <div class="step active" id="step-ind-1">
+        <div class="step-circle">1</div>
+        <span>Contexto</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" id="step-ind-2">
+        <div class="step-circle">2</div>
+        <span>Tickets</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" id="step-ind-3">
+        <div class="step-circle">3</div>
+        <span>Resultados</span>
+      </div>
+    </nav>
 
     <!-- Step 1: Context -->
-    <section class="card step-card" id="step1">
-      <div class="step-header">
-        <div class="step-num gradient-bg">1</div>
-        <div>
-          <h2>Contexto del gasto</h2>
-          <p>¿A qué propiedad o reservación pertenece este ticket?</p>
+    <div class="container" id="step1">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-num">1</div>
+          <div>
+            <p class="section-title">Contexto del gasto</p>
+            <p class="section-subtitle">¿A qué propiedad o reservación pertenece este ticket?</p>
+          </div>
         </div>
-      </div>
-      <div class="grid-2">
+        <div class="grid">
+          <div class="field">
+            <label>Propiedad</label>
+            <input id="propiedad" placeholder="Ej. Calle Cumbres">
+          </div>
+          <div class="field">
+            <label>Departamento</label>
+            <input id="departamento" placeholder="Ej. 2">
+          </div>
+        </div>
         <div class="field">
-          <label>Propiedad</label>
-          <input id="propiedad" placeholder="Ej. Calle Cumbres">
+          <label>Huésped / referencia</label>
+          <input id="huesped" placeholder="Opcional">
         </div>
         <div class="field">
-          <label>Departamento</label>
-          <input id="departamento" placeholder="Ej. 2">
+          <label>Notas</label>
+          <textarea id="notas" placeholder="Ej. reparación fregadero, baño principal..."></textarea>
         </div>
       </div>
-      <div class="field">
-        <label>Huésped / referencia</label>
-        <input id="huesped" placeholder="Opcional">
-      </div>
-      <div class="field">
-        <label>Notas</label>
-        <textarea id="notas" placeholder="Ej. reparación fregadero, baño principal..."></textarea>
-      </div>
-    </section>
+    </div>
 
     <!-- Step 2: Upload -->
-    <section class="card step-card" id="step2">
-      <div class="step-header">
-        <div class="step-num gradient-bg">2</div>
-        <div>
-          <h2>Captura tus tickets</h2>
-          <p>Toma una foto directa o sube imágenes desde tu galería</p>
+    <div class="container" id="step2">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-num">2</div>
+          <div>
+            <p class="section-title">Captura tus tickets</p>
+            <p class="section-subtitle">Toma una foto directa o sube imágenes desde tu galería</p>
+          </div>
         </div>
-      </div>
 
-      <div class="upload-zone" id="uploadZone">
-        <div class="upload-icon">🧾</div>
-        <p class="upload-text">Arrastra tus tickets aquí</p>
-        <p class="upload-sub">o elige una opción</p>
-        <div class="upload-btns">
-          <label class="upload-btn btn-camera">
+        <div class="upload-box">
+          <label class="upload-drop custom-upload">
             <input type="file" id="files-camera" accept="image/*" capture="environment" multiple>
-            📷 Tomar foto
+            <div class="upload-copy">
+              <span class="upload-title">📷 Tomar foto</span>
+              <span class="upload-subtitle">Abre la cámara de tu dispositivo</span>
+            </div>
+            <span class="upload-cta cta-camera">Abrir cámara</span>
           </label>
-          <label class="upload-btn btn-gallery">
+
+          <label class="upload-drop custom-upload">
             <input type="file" id="files-gallery" accept="image/*" multiple>
-            🖼 Galería
+            <div class="upload-copy">
+              <span class="upload-title">🖼 Subir desde galería</span>
+              <span class="upload-subtitle">Elige una o varias imágenes</span>
+            </div>
+            <span class="upload-cta cta-gallery">Seleccionar</span>
           </label>
         </div>
-      </div>
 
-      <div id="imagePreview" class="image-strip hidden"></div>
-    </section>
+        <div id="imagePreview" class="image-strip hidden"></div>
+      </div>
+    </div>
 
     <!-- Step 3: Results -->
-    <section class="card step-card" id="step3">
-      <div class="step-header">
-        <div class="step-num gradient-bg">3</div>
-        <div>
-          <h2>Resultados</h2>
-          <p>Resumen financiero y lista de productos detectados</p>
+    <div class="container" id="step3">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-num">3</div>
+          <div>
+            <p class="section-title">Resultados</p>
+            <p class="section-subtitle">Resumen financiero y lista de productos detectados</p>
+          </div>
         </div>
-      </div>
 
-      <div id="ticketSummary" class="ticket-summary-grid"></div>
+        <div id="ticketSummary" class="ticket-summary-grid"></div>
 
-      <div class="tabs-container">
         <div class="tabs">
           <button class="tab-btn active" data-tab="transcripcion">Transcripción</button>
           <button class="tab-btn" data-tab="cruce">Cruce bancario</button>
         </div>
+
         <div class="tab-pane" data-pane="transcripcion" id="previewTranscripcion">
           <div class="empty-state">
-            <div class="empty-icon">🔍</div>
+            <div class="empty-icon">🧾</div>
             <p>Analiza un ticket para ver los productos aquí</p>
           </div>
         </div>
@@ -145,18 +150,18 @@
           </div>
         </div>
       </div>
-    </section>
+    </div>
 
-  </main>
+  </div><!-- /page-shell -->
 
   <!-- Floating Action Bar -->
   <div class="action-bar">
     <div class="action-bar-inner">
       <div id="status" class="status-text"></div>
       <div class="action-btns">
-        <button class="btn-primary" onclick="analyzeTickets()">🔍 Analizar</button>
-        <button class="btn-secondary" onclick="processExcel()">⬇ Excel</button>
-        <button class="btn-ghost" onclick="processAndSave()">📊 Sheets</button>
+        <button class="btn-primary"    onclick="analyzeTickets()">🔍 Analizar</button>
+        <button class="btn-secondary"  onclick="processExcel()">⬇ Excel</button>
+        <button class="btn-ghost"      onclick="processAndSave()">📊 Sheets</button>
       </div>
     </div>
   </div>
