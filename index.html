@@ -3,85 +3,164 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Ticket Scanner PRO</title>
+  <title>Ticket Vision</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="loading-card">
+      <div class="thinking-dots">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+      <h3 id="loadingTitle">Claude está analizando...</h3>
+      <p>Extrayendo productos y datos del ticket</p>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-bg-orb orb1"></div>
+    <div class="header-bg-orb orb2"></div>
+    <div class="header-content">
+      <div class="logo">
+        <div class="logo-icon">TV</div>
+        <div class="logo-text">
+          <h1>Ticket Vision</h1>
+          <span>Powered by Claude AI</span>
+        </div>
+      </div>
+      <div class="header-badge">v7</div>
+    </div>
+  </header>
+
+  <!-- Step Indicator -->
+  <nav class="steps-bar">
+    <div class="step active" id="step-ind-1">
+      <div class="step-circle">1</div>
+      <span>Contexto</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step" id="step-ind-2">
+      <div class="step-circle">2</div>
+      <span>Tickets</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step" id="step-ind-3">
+      <div class="step-circle">3</div>
+      <span>Resultados</span>
+    </div>
+  </nav>
+
   <main class="app">
 
-    <!-- Hero -->
-    <section class="card hero">
-      <div>
-        <h1>Ticket Scanner PRO</h1>
-        <p>OCR literal renglón por renglón · Clasificación contable · Cruce bancario</p>
-      </div>
-      <span class="badge">v3</span>
-    </section>
-
-    <!-- Config -->
-    <section class="card">
-      <div class="grid">
+    <!-- Step 1: Context -->
+    <section class="card step-card" id="step1">
+      <div class="step-header">
+        <div class="step-num gradient-bg">1</div>
         <div>
+          <h2>Contexto del gasto</h2>
+          <p>¿A qué propiedad o reservación pertenece este ticket?</p>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
           <label>Propiedad</label>
           <input id="propiedad" placeholder="Ej. Calle Cumbres">
         </div>
-        <div>
-          <label># Departamento</label>
+        <div class="field">
+          <label>Departamento</label>
           <input id="departamento" placeholder="Ej. 2">
         </div>
       </div>
-
-      <label>Huésped / referencia</label>
-      <input id="huesped" placeholder="Opcional">
-
-      <label>Notas</label>
-      <textarea id="notas" placeholder="Ej. reparación fregadero, baño, cocina..."></textarea>
-
-      <label class="fileBox">
-        <input type="file" id="files" multiple accept="image/*" capture="environment">
-        <span>📸 Seleccionar o tomar fotos de tickets</span>
-      </label>
-
-      <p id="status"></p>
-    </section>
-
-    <!-- Imágenes -->
-    <section class="card">
-      <h2>Imágenes cargadas</h2>
-      <div id="imagePreview" class="imagePreview empty">Aún no has seleccionado imágenes.</div>
-    </section>
-
-    <!-- Resumen por ticket -->
-    <section class="card">
-      <h2>Resumen detectado</h2>
-      <div id="ticketSummary" class="ticketSummary"></div>
-    </section>
-
-    <!-- Tabs de resultados -->
-    <section class="card">
-      <div class="tabs">
-        <button class="tab-btn active" data-tab="transcripcion">Transcripción</button>
-        <button class="tab-btn"        data-tab="cruce">Cruce bancario</button>
+      <div class="field">
+        <label>Huésped / referencia</label>
+        <input id="huesped" placeholder="Opcional">
       </div>
-
-      <div class="tab-pane preview" data-pane="transcripcion" id="previewTranscripcion">
-        Selecciona una imagen para generar la tabla.
-      </div>
-      <div class="tab-pane preview hidden" data-pane="cruce" id="previewCruce">
-        Selecciona una imagen para generar el cruce.
+      <div class="field">
+        <label>Notas</label>
+        <textarea id="notas" placeholder="Ej. reparación fregadero, baño principal..."></textarea>
       </div>
     </section>
 
-    <!-- Acciones -->
-    <section class="card actions-card">
-      <div class="actions">
-        <button onclick="analyzeTickets()">🔍 Analizar tickets</button>
-        <button onclick="processExcel()">⬇ Descargar Excel</button>
-        <button class="secondary" onclick="processAndSave()">📊 Guardar en Sheets</button>
+    <!-- Step 2: Upload -->
+    <section class="card step-card" id="step2">
+      <div class="step-header">
+        <div class="step-num gradient-bg">2</div>
+        <div>
+          <h2>Captura tus tickets</h2>
+          <p>Toma una foto directa o sube imágenes desde tu galería</p>
+        </div>
+      </div>
+
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-icon">🧾</div>
+        <p class="upload-text">Arrastra tus tickets aquí</p>
+        <p class="upload-sub">o elige una opción</p>
+        <div class="upload-btns">
+          <label class="upload-btn btn-camera">
+            <input type="file" id="files-camera" accept="image/*" capture="environment" multiple>
+            📷 Tomar foto
+          </label>
+          <label class="upload-btn btn-gallery">
+            <input type="file" id="files-gallery" accept="image/*" multiple>
+            🖼 Galería
+          </label>
+        </div>
+      </div>
+
+      <div id="imagePreview" class="image-strip hidden"></div>
+    </section>
+
+    <!-- Step 3: Results -->
+    <section class="card step-card" id="step3">
+      <div class="step-header">
+        <div class="step-num gradient-bg">3</div>
+        <div>
+          <h2>Resultados</h2>
+          <p>Resumen financiero y lista de productos detectados</p>
+        </div>
+      </div>
+
+      <div id="ticketSummary" class="ticket-summary-grid"></div>
+
+      <div class="tabs-container">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="transcripcion">Transcripción</button>
+          <button class="tab-btn" data-tab="cruce">Cruce bancario</button>
+        </div>
+        <div class="tab-pane" data-pane="transcripcion" id="previewTranscripcion">
+          <div class="empty-state">
+            <div class="empty-icon">🔍</div>
+            <p>Analiza un ticket para ver los productos aquí</p>
+          </div>
+        </div>
+        <div class="tab-pane hidden" data-pane="cruce" id="previewCruce">
+          <div class="empty-state">
+            <div class="empty-icon">🏦</div>
+            <p>Sin datos de cruce bancario</p>
+          </div>
+        </div>
       </div>
     </section>
 
   </main>
+
+  <!-- Floating Action Bar -->
+  <div class="action-bar">
+    <div class="action-bar-inner">
+      <div id="status" class="status-text"></div>
+      <div class="action-btns">
+        <button class="btn-primary" onclick="analyzeTickets()">🔍 Analizar</button>
+        <button class="btn-secondary" onclick="processExcel()">⬇ Excel</button>
+        <button class="btn-ghost" onclick="processAndSave()">📊 Sheets</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

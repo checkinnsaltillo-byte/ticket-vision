@@ -1,103 +1,121 @@
-let lastRows    = [];
-let lastTickets = [];
-let lastCruce   = [];
-let activeTab   = "transcripcion";
+const BACKEND = "https://ticket-vision-957627511957.northamerica-south1.run.app";
 
-function getBackendUrl() {
-  return "https://ticket-vision-957627511957.northamerica-south1.run.app";
-}
+let lastRows      = [];
+let lastTickets   = [];
+let lastCruce     = [];
+let selectedFiles = [];
+let activeTab     = "transcripcion";
+
+// ─── Init ──────────────────────────────────────────────────────────────────
 
 window.addEventListener("DOMContentLoaded", () => {
-  const fileInput = document.getElementById("files");
-  if (fileInput) fileInput.addEventListener("change", handleFilesSelected);
+  document.getElementById("files-camera").addEventListener("change", handleFilesAdded);
+  document.getElementById("files-gallery").addEventListener("change", handleFilesAdded);
 
-  document.querySelectorAll(".tab-btn").forEach(btn => {
-    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+  document.querySelectorAll(".tab-btn").forEach(btn =>
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab))
+  );
+
+  const zone = document.getElementById("uploadZone");
+  zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag-over"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("drag-over");
+    const imgs = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+    addFiles(imgs);
   });
+
+  setStep(1);
 });
 
-// ─── Construcción de form ──────────────────────────────────────────────────
+// ─── File management ───────────────────────────────────────────────────────
+
+function handleFilesAdded(e) {
+  addFiles(Array.from(e.target.files));
+  e.target.value = "";
+}
+
+function addFiles(newFiles) {
+  if (!newFiles.length) return;
+  selectedFiles = [...selectedFiles, ...newFiles];
+  lastRows = []; lastTickets = []; lastCruce = [];
+  renderImageStrip();
+  clearPreviews();
+  setStep(2);
+}
+
+// ─── Step indicator ────────────────────────────────────────────────────────
+
+function setStep(n) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById(`step-ind-${i}`);
+    if (!el) continue;
+    el.classList.remove("active", "done");
+    if (i < n)  el.classList.add("done");
+    if (i === n) el.classList.add("active");
+  }
+}
+
+// ─── Image strip ───────────────────────────────────────────────────────────
+
+function renderImageStrip() {
+  const strip = document.getElementById("imagePreview");
+  if (!selectedFiles.length) { strip.classList.add("hidden"); return; }
+  strip.classList.remove("hidden");
+  strip.innerHTML = "";
+  selectedFiles.forEach((file, i) => {
+    const thumb = document.createElement("div");
+    thumb.className = "image-thumb";
+
+    const img = document.createElement("img");
+    img.src   = URL.createObjectURL(file);
+    img.onload = () => URL.revokeObjectURL(img.src);
+
+    const lbl = document.createElement("div");
+    lbl.className   = "thumb-label";
+    lbl.textContent = `${i + 1}`;
+
+    thumb.append(img, lbl);
+    strip.appendChild(thumb);
+  });
+}
+
+// ─── Loading ───────────────────────────────────────────────────────────────
+
+function showLoading(title = "Claude está analizando...") {
+  document.getElementById("loadingTitle").textContent = title;
+  document.getElementById("loadingOverlay").classList.remove("hidden");
+}
+function hideLoading() {
+  document.getElementById("loadingOverlay").classList.add("hidden");
+}
+
+// ─── Form ──────────────────────────────────────────────────────────────────
 
 function buildFormData(saveToSheets) {
-  const files = document.getElementById("files").files;
-  if (!files.length) throw new Error("Selecciona al menos una imagen de ticket.");
-
+  if (!selectedFiles.length) throw new Error("Selecciona al menos una imagen de ticket.");
   const form = new FormData();
-  for (const f of files) form.append("files", f);
-
+  selectedFiles.forEach(f => form.append("files", f));
   form.append("propiedad",    document.getElementById("propiedad").value    || "");
   form.append("departamento", document.getElementById("departamento").value || "");
   form.append("huesped",      document.getElementById("huesped").value      || "");
   form.append("notas",        document.getElementById("notas").value        || "");
   form.append("saveToSheets", saveToSheets ? "true" : "false");
-
   return form;
 }
 
-// ─── Selección de imágenes ─────────────────────────────────────────────────
-
-function handleFilesSelected() {
-  lastRows = []; lastTickets = []; lastCruce = [];
-  renderImagePreview();
-  clearPreviews();
-}
+// ─── Analyze ───────────────────────────────────────────────────────────────
 
 async function analyzeTickets() {
-  await processPreviewOnly();
-}
-
-function renderImagePreview() {
-  const files     = document.getElementById("files").files;
-  const container = document.getElementById("imagePreview");
-  if (!container) return;
-
-  if (!files.length) {
-    container.className   = "imagePreview empty";
-    container.textContent = "Aún no has seleccionado imágenes.";
-    return;
-  }
-
-  container.className = "imagePreview";
-  container.innerHTML = "";
-
-  Array.from(files).forEach((file, index) => {
-    const card = document.createElement("div");
-    card.className = "ticketImageCard";
-
-    const img   = document.createElement("img");
-    img.src     = URL.createObjectURL(file);
-    img.alt     = `Ticket ${index + 1}`;
-    img.onload  = () => URL.revokeObjectURL(img.src);
-
-    const caption       = document.createElement("div");
-    caption.className   = "ticketImageCaption";
-    caption.textContent = `${index + 1}. ${file.name}`;
-
-    card.appendChild(img);
-    card.appendChild(caption);
-    container.appendChild(card);
-  });
-}
-
-// ─── Preview automático al seleccionar imágenes ────────────────────────────
-
-async function processPreviewOnly() {
   try {
-    const backendUrl = getBackendUrl();
-    if (!backendUrl) {
-      setStatus("Pega la URL de Cloud Run para generar la tabla.");
-      return;
-    }
-
+    showLoading("Claude está analizando...");
     setStatus("Leyendo tickets...");
-    const form = buildFormData(false);
 
-    const res  = await fetch(`${backendUrl}/process-json`, { method: "POST", body: form });
+    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: buildFormData(false) });
     const data = await res.json();
 
-    if (!res.ok || !data.ok) {
-      throw new Error(`${data.error || "No se pudo procesar el ticket."}${data.detail ? " — " + data.detail : ""}`);
-    }
+    if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo procesar.");
 
     lastRows    = data.productos      || [];
     lastTickets = data.resumen        || [];
@@ -106,10 +124,13 @@ async function processPreviewOnly() {
     renderTicketSummary(lastTickets);
     renderTranscripcion(lastRows);
     renderCruceBancario(lastCruce);
-
-    setStatus(`Transcripción lista. Productos detectados: ${data.total_productos || lastRows.length}.`);
+    setStep(3);
+    setStatus(`${data.total_productos || lastRows.length} productos detectados.`);
+    document.getElementById("step3").scrollIntoView({ behavior: "smooth" });
   } catch (err) {
-    setStatus("⚠ " + err.message);
+    setStatus("Error: " + err.message);
+  } finally {
+    hideLoading();
   }
 }
 
@@ -117,50 +138,42 @@ async function processPreviewOnly() {
 
 async function processExcel() {
   try {
-    const backendUrl = getBackendUrl();
-    if (!backendUrl) throw new Error("Pega la URL de Cloud Run.");
+    showLoading("Generando Excel...");
+    setStatus("Preparando archivo...");
 
-    setStatus("Generando Excel...");
-    const form = buildFormData(false);
-
-    const res = await fetch(`${backendUrl}/process`, { method: "POST", body: form });
-
+    const res = await fetch(`${BACKEND}/process`, { method: "POST", body: buildFormData(false) });
     if (!res.ok) {
-      let msg = "No se pudo procesar el ticket.";
+      let msg = "No se pudo procesar.";
       try { const d = await res.json(); msg = d.error || msg; } catch (_) {}
       throw new Error(msg);
     }
 
     const blob = await res.blob();
-    const url  = window.URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = "tickets_transcripcion.xlsx";
+    const a    = Object.assign(document.createElement("a"), {
+      href:     URL.createObjectURL(blob),
+      download: "tickets_transcripcion.xlsx"
+    });
     a.click();
-    window.URL.revokeObjectURL(url);
-
-    setStatus("Excel descargado (4 hojas: Transcripcion, Resumen, Cruce bancario, OCR).");
+    URL.revokeObjectURL(a.href);
+    setStatus("Excel descargado.");
   } catch (err) {
-    setStatus("⚠ " + err.message);
+    setStatus("Error: " + err.message);
+  } finally {
+    hideLoading();
   }
 }
 
-// ─── Guardar en Sheets ─────────────────────────────────────────────────────
+// ─── Sheets ────────────────────────────────────────────────────────────────
 
 async function processAndSave() {
   try {
-    const backendUrl = getBackendUrl();
-    if (!backendUrl) throw new Error("Pega la URL de Cloud Run.");
+    showLoading("Guardando en Sheets...");
+    setStatus("Enviando datos...");
 
-    setStatus("Guardando en Google Sheets...");
-    const form = buildFormData(true);
-
-    const res  = await fetch(`${backendUrl}/process-json`, { method: "POST", body: form });
+    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: buildFormData(true) });
     const data = await res.json();
 
-    if (!res.ok || !data.ok) {
-      throw new Error(`${data.error || "No se pudo guardar."}${data.detail ? " — " + data.detail : ""}`);
-    }
+    if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar.");
 
     lastRows    = data.productos      || [];
     lastTickets = data.resumen        || [];
@@ -169,37 +182,48 @@ async function processAndSave() {
     renderTicketSummary(lastTickets);
     renderTranscripcion(lastRows);
     renderCruceBancario(lastCruce);
-
-    setStatus(`Guardado en Sheets. Productos: ${data.total_productos || lastRows.length}.`);
+    setStep(3);
+    setStatus(`Guardado en Sheets. ${data.total_productos || lastRows.length} productos.`);
   } catch (err) {
-    setStatus("⚠ " + err.message);
+    setStatus("Error: " + err.message);
+  } finally {
+    hideLoading();
   }
 }
 
-// ─── Render resumen ────────────────────────────────────────────────────────
+// ─── Render ticket summary ─────────────────────────────────────────────────
 
 function renderTicketSummary(tickets) {
   const el = document.getElementById("ticketSummary");
-  if (!el) return;
-
   if (!tickets?.length) { el.innerHTML = ""; return; }
 
   el.innerHTML = tickets.map(t => `
-    <div class="summaryBox">
-      <div><strong>Tienda:</strong>    ${esc(t.tienda)}</div>
-      <div><strong>RFC:</strong>       ${esc(t.rfc)}</div>
-      <div><strong>Fecha:</strong>     ${esc(t.fecha)}</div>
-      <div><strong>Hora:</strong>      ${esc(t.hora)}</div>
-      <div><strong>Folio:</strong>     ${esc(t.folio)}</div>
-      <div><strong>Pago:</strong>      ${esc(t.metodo_pago)}${t.tarjeta_ultimos4 ? " *" + esc(t.tarjeta_ultimos4) : ""}</div>
-      <div><strong>Productos:</strong> ${esc(t.num_productos)}</div>
-      <div><strong>Subtotal:</strong>  ${money(t.subtotal)}</div>
-      <div><strong>IVA:</strong>       ${money(t.iva)}</div>
-      ${t.ieps ? `<div><strong>IEPS:</strong> ${money(t.ieps)}</div>` : ""}
-      ${t.descuentos ? `<div><strong>Descuentos:</strong> -${money(t.descuentos)}</div>` : ""}
-      <div><strong>Total:</strong>     ${money(t.total)}</div>
+    <div class="summary-card">
+      <div class="store-name">${esc(t.tienda || "Ticket")}</div>
+      ${field("Fecha",    t.fecha)}
+      ${field("Hora",     t.hora)}
+      ${field("RFC",      t.rfc)}
+      ${field("Folio",    t.folio)}
+      ${t.metodo_pago ? field("Pago", t.metodo_pago + (t.tarjeta_ultimos4 ? " *" + t.tarjeta_ultimos4 : "")) : ""}
+      ${field("Productos", t.num_productos)}
+      ${field("Subtotal",  money(t.subtotal))}
+      ${field("IVA",       money(t.iva))}
+      ${t.ieps       ? field("IEPS",       money(t.ieps))       : ""}
+      ${t.descuentos ? field("Descuentos", money(t.descuentos)) : ""}
+      <div class="total-row">
+        <span class="t-label">TOTAL</span>
+        <span class="t-amount">${money(t.total)}</span>
+      </div>
     </div>
   `).join("");
+}
+
+function field(label, value) {
+  if (!value && value !== 0) return "";
+  return `<div class="s-row">
+    <span class="s-label">${esc(label)}</span>
+    <span class="s-val">${esc(String(value))}</span>
+  </div>`;
 }
 
 // ─── Tabs ──────────────────────────────────────────────────────────────────
@@ -219,22 +243,19 @@ function switchTab(tab) {
 function renderTranscripcion(rows) {
   const el = document.getElementById("previewTranscripcion");
   if (!rows?.length) {
-    el.innerHTML = "<p>Aún no hay datos procesados.</p>";
+    el.innerHTML = emptyState("🛒", "Sin productos detectados.");
     return;
   }
-
-  const cols = [
-    { key: "linea_numero",           label: "#" },
-    { key: "descripcion",            label: "Descripción" },
-    { key: "cantidad",               label: "Cant." },
-    { key: "precio_unitario",        label: "P.Unit.", fmt: "money" },
-    { key: "monto",                  label: "Monto",   fmt: "money" },
-    { key: "categoria_operativa",    label: "Categoría" },
-    { key: "deducible_sugerido",     label: "Deducible" },
-    { key: "confianza_clasificacion",label: "Confianza" },
-  ];
-
-  el.innerHTML = buildTable(rows.slice(0, 300), cols);
+  el.innerHTML = buildTable(rows.slice(0, 300), [
+    { key: "linea_numero",            label: "#" },
+    { key: "descripcion",             label: "Descripción" },
+    { key: "cantidad",                label: "Cant." },
+    { key: "precio_unitario",         label: "P.Unit.", fmt: "money" },
+    { key: "monto",                   label: "Monto",   fmt: "money" },
+    { key: "categoria_operativa",     label: "Categoría" },
+    { key: "deducible_sugerido",      label: "Deducible" },
+    { key: "confianza_clasificacion", label: "Confianza" },
+  ]);
 }
 
 // ─── Render Cruce Bancario ─────────────────────────────────────────────────
@@ -242,60 +263,48 @@ function renderTranscripcion(rows) {
 function renderCruceBancario(rows) {
   const el = document.getElementById("previewCruce");
   if (!rows?.length) {
-    el.innerHTML = "<p>Aún no hay datos de cruce.</p>";
+    el.innerHTML = emptyState("🏦", "Sin datos de cruce bancario.");
     return;
   }
-
-  const cols = [
-    { key: "fecha_iso",        label: "Fecha ISO" },
+  el.innerHTML = buildTable(rows, [
+    { key: "fecha",            label: "Fecha" },
     { key: "hora",             label: "Hora" },
     { key: "comercio",         label: "Comercio" },
     { key: "rfc",              label: "RFC" },
     { key: "folio",            label: "Folio" },
     { key: "metodo_pago",      label: "Forma pago" },
     { key: "tarjeta_ultimos4", label: "Tarjeta" },
-    { key: "monto_cruce",      label: "Monto cruce", fmt: "money" },
-    { key: "total_ticket",     label: "Total ticket", fmt: "money" },
+    { key: "monto_cruce",      label: "Monto",   fmt: "money" },
+    { key: "total_ticket",     label: "Total",   fmt: "money" },
     { key: "propiedad",        label: "Propiedad" },
     { key: "departamento",     label: "Depto." },
-    { key: "busqueda_banco",   label: "Búsqueda banco" },
-  ];
-
-  el.innerHTML = buildTable(rows, cols);
+  ]);
 }
 
-// ─── Tabla genérica ────────────────────────────────────────────────────────
+// ─── Generic table ─────────────────────────────────────────────────────────
 
 function buildTable(rows, cols) {
-  return `
-    <table>
-      <thead>
-        <tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr>
-      </thead>
-      <tbody>
-        ${rows.map(r => `
-          <tr>${cols.map(c => {
-            const v = r[c.key];
-            return `<td>${c.fmt === "money" ? money(v) : esc(v)}</td>`;
-          }).join("")}</tr>
-        `).join("")}
-      </tbody>
-    </table>
-  `;
+  return `<table>
+    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r =>
+      `<tr>${cols.map(c => `<td>${c.fmt === "money" ? money(r[c.key]) : esc(r[c.key])}</td>`).join("")}</tr>`
+    ).join("")}</tbody>
+  </table>`;
 }
 
-// ─── Limpiar vistas previas ────────────────────────────────────────────────
+// ─── Clear ─────────────────────────────────────────────────────────────────
 
 function clearPreviews() {
-  const t = document.getElementById("previewTranscripcion");
-  const c = document.getElementById("previewCruce");
-  const s = document.getElementById("ticketSummary");
-  if (t) t.innerHTML = "<p>Selecciona una imagen para generar la tabla.</p>";
-  if (c) c.innerHTML = "<p>Selecciona una imagen para generar el cruce.</p>";
-  if (s) s.innerHTML = "";
+  document.getElementById("previewTranscripcion").innerHTML = emptyState("🔍", "Analiza un ticket para ver los productos aquí.");
+  document.getElementById("previewCruce").innerHTML         = emptyState("🏦", "Sin datos de cruce bancario.");
+  document.getElementById("ticketSummary").innerHTML        = "";
 }
 
-// ─── Utilidades ───────────────────────────────────────────────────────────
+// ─── Utilities ─────────────────────────────────────────────────────────────
+
+function emptyState(icon, text) {
+  return `<div class="empty-state"><div class="empty-icon">${icon}</div><p>${esc(text)}</p></div>`;
+}
 
 function setStatus(msg) {
   document.getElementById("status").textContent = msg;
