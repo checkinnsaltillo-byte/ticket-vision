@@ -131,23 +131,7 @@
           </div>
         </div>
 
-        <div class="grid">
-          <div class="field">
-            <label>Subcuenta</label>
-            <input id="subcuenta" placeholder="Ej. 6040">
-          </div>
-          <div class="field">
-            <label>Categoría</label>
-            <input id="categoria" placeholder="Ej. Mantenimiento">
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Concepto</label>
-          <input id="concepto" placeholder="Ej. Reparación fregadero baño principal">
-        </div>
-
-        <!-- Proyecto — campo destacado -->
+        <!-- Proyecto — campo destacado PRIMERO -->
         <div class="field proyecto-field">
           <label>Proyecto</label>
           <div class="proyecto-grid">
@@ -168,6 +152,31 @@
             </div>
           </div>
           <input type="hidden" id="proyecto" value="Ninguno">
+        </div>
+
+        <!-- Subcuenta → Categoría → Concepto en cascada -->
+        <div class="field">
+          <label>Subcuenta</label>
+          <select id="subcuenta" onchange="onSubcuentaChange()">
+            <option value="">— Seleccionar subcuenta —</option>
+            <option>Gastos Operativos</option>
+            <option>Movimientos Bancarios</option>
+            <option>Gastos Familiares</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Categoría</label>
+          <select id="categoria" onchange="onCategoriaChange()" disabled>
+            <option value="">— Primero selecciona subcuenta —</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Concepto</label>
+          <select id="concepto" disabled>
+            <option value="">— Primero selecciona categoría —</option>
+          </select>
         </div>
 
         <div class="grid">

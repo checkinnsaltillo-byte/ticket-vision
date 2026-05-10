@@ -1,5 +1,29 @@
 const BACKEND = "https://ticket-vision-957627511957.northamerica-south1.run.app";
 
+// ─── Catálogo de clasificaciones ───────────────────────────────────────────
+
+const CATALOG = {
+  "Gastos Operativos": {
+    "Sueldos":        ["Limpieza", "Mantenimiento", "Administracion", "IMSS Personal"],
+    "Servicios":      ["Lavanderia", "Agua", "Luz", "Gas", "Internet", "Pipas de agua", "Fumigacion", "Plataformas"],
+    "Insumos":        ["Limpieza", "Blancos"],
+    "Equipamiento":   ["Depa nuevo", "Decoracion", "Reemplazo de Minisplit", "Hidro nuevo", "Lavadora / secadora nueva", "Colchon", "Mesa", "Silla", "Sillon", "Refrigerador nuevo", "Abanico", "Smart tv"],
+    "Mantenimiento":  ["Ferreteria", "Aparatos Electronicos y Focos", "Limpieza de colchones, sillones", "Gas de minisplit", "Hidro", "Boiler nuevo", "Lavadora / secadora"],
+    "Administrativo": ["Impresiones / Señalitica", "Papeleria", "Equipo de computo"],
+    "Autos":          ["Gasolina", "Seguros", "Mantenimiento", "Tenencia"],
+    "Predial":        [],
+    "Impuestos":      [],
+    "Otros Gastos":   [],
+    "Construccion":   []
+  },
+  "Movimientos Bancarios": {
+    "Movimientos Bancarios": ["Inversion", "Pago TC", "Devoluciones"]
+  },
+  "Gastos Familiares": {
+    "Gastos familiares": ["Viajes", "Gatos casa", "Sueldo Papa", "Gastos médicos"]
+  }
+};
+
 let lastRows      = [];
 let lastTickets   = [];
 let lastCruce     = [];
@@ -45,6 +69,66 @@ function selectProyecto(el) {
   document.querySelectorAll(".proyecto-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
   document.getElementById("proyecto").value = el.dataset.value;
+}
+
+// ─── Cascading dropdowns ────────────────────────────────────────────────────
+
+function populateSelect(selectEl, options, placeholder) {
+  selectEl.innerHTML = `<option value="">${placeholder}</option>`;
+  options.forEach(opt => {
+    const o = document.createElement("option");
+    o.value = o.textContent = opt;
+    selectEl.appendChild(o);
+  });
+}
+
+function onSubcuentaChange() {
+  const sub  = document.getElementById("subcuenta").value;
+  const cat  = document.getElementById("categoria");
+  const con  = document.getElementById("concepto");
+
+  if (!sub || !CATALOG[sub]) {
+    populateSelect(cat, [], "— Primero selecciona subcuenta —");
+    populateSelect(con, [], "— Primero selecciona categoría —");
+    cat.disabled = true;
+    con.disabled = true;
+    return;
+  }
+
+  const cats = Object.keys(CATALOG[sub]);
+  populateSelect(cat, cats, "— Selecciona categoría —");
+  cat.disabled = false;
+
+  populateSelect(con, [], "— Primero selecciona categoría —");
+  con.disabled = true;
+
+  // Si solo hay una categoría, seleccionarla automáticamente
+  if (cats.length === 1) {
+    cat.value = cats[0];
+    onCategoriaChange();
+  }
+}
+
+function onCategoriaChange() {
+  const sub     = document.getElementById("subcuenta").value;
+  const cat     = document.getElementById("categoria").value;
+  const conEl   = document.getElementById("concepto");
+
+  if (!sub || !cat || !CATALOG[sub]?.[cat]) {
+    populateSelect(conEl, [], "— Primero selecciona categoría —");
+    conEl.disabled = true;
+    return;
+  }
+
+  const conceptos = CATALOG[sub][cat];
+  if (!conceptos.length) {
+    populateSelect(conEl, [], "— Sin conceptos disponibles —");
+    conEl.disabled = true;
+    return;
+  }
+
+  populateSelect(conEl, conceptos, "— Selecciona concepto —");
+  conEl.disabled = false;
 }
 
 // ─── Image strip ───────────────────────────────────────────────────────────

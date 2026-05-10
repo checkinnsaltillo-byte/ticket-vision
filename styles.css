@@ -201,6 +201,7 @@ select {
   padding-right: 38px;
 }
 input::placeholder, textarea::placeholder { color: #9a8f85; }
+select:disabled { opacity: .5; cursor: not-allowed; background-color: #f9f5ee; }
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--accent);
