@@ -24,29 +24,16 @@ const CATALOG = {
   }
 };
 
-let lastRows      = [];
-let lastTickets   = [];
-let lastCruce     = [];
-let selectedFiles = [];
-let activeTab     = "transcripcion";
+// ─── State ─────────────────────────────────────────────────────────────────
+
+let selectedFiles  = [];
+let ticketResults  = []; // [{file, resumen, productos, cruce}, ...]
 
 // ─── Init ──────────────────────────────────────────────────────────────────
 
 window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("files-camera").addEventListener("change", handleFilesAdded);
   document.getElementById("files-gallery").addEventListener("change", handleFilesAdded);
-
-  document.querySelectorAll(".tab-btn").forEach(btn =>
-    btn.addEventListener("click", () => switchTab(btn.dataset.tab))
-  );
-
-  const zone = document.getElementById("stepCaptura");
-  zone.addEventListener("dragover",  e => { e.preventDefault(); });
-  zone.addEventListener("drop", e => {
-    e.preventDefault();
-    const imgs = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
-    addFiles(imgs);
-  });
 });
 
 // ─── File management ───────────────────────────────────────────────────────
@@ -61,77 +48,8 @@ function addFiles(newFiles) {
   selectedFiles = [...selectedFiles, ...newFiles];
   renderImageStrip();
   document.getElementById("analyzeWrap").classList.remove("hidden");
+  setStep(1);
 }
-
-// ─── Proyecto selector ─────────────────────────────────────────────────────
-
-function selectProyecto(el) {
-  document.querySelectorAll(".proyecto-card").forEach(c => c.classList.remove("active"));
-  el.classList.add("active");
-  document.getElementById("proyecto").value = el.dataset.value;
-}
-
-// ─── Cascading dropdowns ────────────────────────────────────────────────────
-
-function populateSelect(selectEl, options, placeholder) {
-  selectEl.innerHTML = `<option value="">${placeholder}</option>`;
-  options.forEach(opt => {
-    const o = document.createElement("option");
-    o.value = o.textContent = opt;
-    selectEl.appendChild(o);
-  });
-}
-
-function onSubcuentaChange() {
-  const sub  = document.getElementById("subcuenta").value;
-  const cat  = document.getElementById("categoria");
-  const con  = document.getElementById("concepto");
-
-  if (!sub || !CATALOG[sub]) {
-    populateSelect(cat, [], "— Primero selecciona subcuenta —");
-    populateSelect(con, [], "— Primero selecciona categoría —");
-    cat.disabled = true;
-    con.disabled = true;
-    return;
-  }
-
-  const cats = Object.keys(CATALOG[sub]);
-  populateSelect(cat, cats, "— Selecciona categoría —");
-  cat.disabled = false;
-
-  populateSelect(con, [], "— Primero selecciona categoría —");
-  con.disabled = true;
-
-  // Si solo hay una categoría, seleccionarla automáticamente
-  if (cats.length === 1) {
-    cat.value = cats[0];
-    onCategoriaChange();
-  }
-}
-
-function onCategoriaChange() {
-  const sub     = document.getElementById("subcuenta").value;
-  const cat     = document.getElementById("categoria").value;
-  const conEl   = document.getElementById("concepto");
-
-  if (!sub || !cat || !CATALOG[sub]?.[cat]) {
-    populateSelect(conEl, [], "— Primero selecciona categoría —");
-    conEl.disabled = true;
-    return;
-  }
-
-  const conceptos = CATALOG[sub][cat];
-  if (!conceptos.length) {
-    populateSelect(conEl, [], "— Sin conceptos disponibles —");
-    conEl.disabled = true;
-    return;
-  }
-
-  populateSelect(conEl, conceptos, "— Selecciona concepto —");
-  conEl.disabled = false;
-}
-
-// ─── Image strip ───────────────────────────────────────────────────────────
 
 function renderImageStrip() {
   const strip = document.getElementById("imagePreview");
@@ -154,230 +72,13 @@ function renderImageStrip() {
 
 // ─── Loading ───────────────────────────────────────────────────────────────
 
-function showLoading(title = "Claude está analizando...") {
-  document.getElementById("loadingTitle").textContent = title;
+function showLoading(title = "Claude está analizando...", sub = "Extrayendo productos y datos") {
+  document.getElementById("loadingTitle").textContent    = title;
+  document.getElementById("loadingSubtitle").textContent = sub;
   document.getElementById("loadingOverlay").classList.remove("hidden");
 }
 function hideLoading() {
   document.getElementById("loadingOverlay").classList.add("hidden");
-}
-
-// ─── Build form ────────────────────────────────────────────────────────────
-
-function buildFormData() {
-  if (!selectedFiles.length) throw new Error("Selecciona al menos una imagen de ticket.");
-  const form = new FormData();
-  selectedFiles.forEach(f => form.append("files", f));
-  form.append("subcuenta",    document.getElementById("subcuenta")?.value    || "");
-  form.append("categoria",    document.getElementById("categoria")?.value    || "");
-  form.append("concepto",     document.getElementById("concepto")?.value     || "");
-  form.append("proyecto",     document.getElementById("proyecto")?.value     || "Ninguno");
-  form.append("propiedad",    document.getElementById("propiedad")?.value    || "");
-  form.append("departamento", document.getElementById("departamento")?.value || "");
-  return form;
-}
-
-// ─── Analizar ──────────────────────────────────────────────────────────────
-
-async function analyzeTickets() {
-  try {
-    showLoading("Claude está analizando...");
-    setStatus("Leyendo tickets...");
-
-    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: buildFormData() });
-    const data = await res.json();
-
-    if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo procesar.");
-
-    lastRows    = data.productos      || [];
-    lastTickets = data.resumen        || [];
-    lastCruce   = data.cruce_bancario || [];
-
-    const count = data.total_productos || lastRows.length;
-    document.getElementById("resultsSubtitle").textContent =
-      `${count} producto${count !== 1 ? "s" : ""} detectado${count !== 1 ? "s" : ""} · ${lastTickets.length} ticket${lastTickets.length !== 1 ? "s" : ""}`;
-
-    renderTicketSummary(lastTickets);
-    renderTranscripcion(lastRows);
-    renderCruceBancario(lastCruce);
-
-    document.getElementById("resultsSection").classList.remove("hidden");
-    document.getElementById("stepClasificar").classList.remove("hidden");
-
-    setStep(2);
-    setStatus(`${count} productos detectados.`);
-
-    setTimeout(() => {
-      document.getElementById("stepClasificar").scrollIntoView({ behavior: "smooth" });
-    }, 200);
-  } catch (err) {
-    setStatus("Error: " + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ─── Excel ─────────────────────────────────────────────────────────────────
-
-async function processExcel() {
-  try {
-    showLoading("Generando Excel...");
-    setStatus("Preparando archivo...");
-
-    const form = buildFormData();
-    form.append("saveToSheets", "false");
-
-    const res = await fetch(`${BACKEND}/process`, { method: "POST", body: form });
-    if (!res.ok) {
-      let msg = "No se pudo generar el archivo.";
-      try { const d = await res.json(); msg = d.error || msg; } catch (_) {}
-      throw new Error(msg);
-    }
-
-    const blob = await res.blob();
-    const a    = Object.assign(document.createElement("a"), {
-      href:     URL.createObjectURL(blob),
-      download: "tickets_transcripcion.xlsx"
-    });
-    a.click();
-    URL.revokeObjectURL(a.href);
-    setStatus("Excel descargado correctamente.");
-  } catch (err) {
-    setStatus("Error: " + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ─── Sheets ────────────────────────────────────────────────────────────────
-
-async function processAndSave() {
-  try {
-    showLoading("Guardando en Sheets...");
-    setStatus("Enviando datos...");
-
-    const form = buildFormData();
-    form.append("saveToSheets", "true");
-
-    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: form });
-    const data = await res.json();
-
-    if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar.");
-
-    lastRows    = data.productos      || [];
-    lastTickets = data.resumen        || [];
-    lastCruce   = data.cruce_bancario || [];
-
-    renderTicketSummary(lastTickets);
-    renderTranscripcion(lastRows);
-    renderCruceBancario(lastCruce);
-
-    setStatus(`Guardado en Sheets. ${data.total_productos || lastRows.length} productos.`);
-  } catch (err) {
-    setStatus("Error: " + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ─── Render ticket summary ─────────────────────────────────────────────────
-
-function renderTicketSummary(tickets) {
-  const el = document.getElementById("ticketSummary");
-  if (!tickets?.length) { el.innerHTML = ""; return; }
-  el.innerHTML = tickets.map(t => `
-    <div class="summary-card">
-      <div class="store-name">${esc(t.tienda || "Ticket")}</div>
-      ${srow("Fecha",    t.fecha)}
-      ${srow("Hora",     t.hora)}
-      ${srow("RFC",      t.rfc)}
-      ${srow("Folio",    t.folio)}
-      ${t.metodo_pago ? srow("Pago", t.metodo_pago + (t.tarjeta_ultimos4 ? " *" + t.tarjeta_ultimos4 : "")) : ""}
-      ${srow("Productos", t.num_productos)}
-      ${srow("Subtotal",  money(t.subtotal))}
-      ${srow("IVA",       money(t.iva))}
-      ${t.ieps       ? srow("IEPS",       money(t.ieps))       : ""}
-      ${t.descuentos ? srow("Descuentos", money(t.descuentos)) : ""}
-      <div class="total-row">
-        <span class="t-label">TOTAL</span>
-        <span class="t-amount">${money(t.total)}</span>
-      </div>
-    </div>
-  `).join("");
-}
-
-function srow(label, value) {
-  if (value === undefined || value === null || value === "") return "";
-  return `<div class="s-row">
-    <span class="s-label">${esc(label)}</span>
-    <span class="s-val">${esc(String(value))}</span>
-  </div>`;
-}
-
-// ─── Tabs ──────────────────────────────────────────────────────────────────
-
-function switchTab(tab) {
-  activeTab = tab;
-  document.querySelectorAll(".tab-btn").forEach(b =>
-    b.classList.toggle("active", b.dataset.tab === tab)
-  );
-  document.querySelectorAll(".tab-pane").forEach(p =>
-    p.classList.toggle("hidden", p.dataset.pane !== tab)
-  );
-}
-
-// ─── Render Transcripción ──────────────────────────────────────────────────
-
-function renderTranscripcion(rows) {
-  const el = document.getElementById("previewTranscripcion");
-  if (!rows?.length) {
-    el.innerHTML = emptyState("🛒", "Sin productos detectados.");
-    return;
-  }
-  el.innerHTML = buildTable(rows.slice(0, 300), [
-    { key: "linea_numero",            label: "#" },
-    { key: "descripcion",             label: "Descripción" },
-    { key: "cantidad",                label: "Cant." },
-    { key: "precio_unitario",         label: "P.Unit.", fmt: "money" },
-    { key: "monto",                   label: "Monto",   fmt: "money" },
-    { key: "categoria_operativa",     label: "Categoría" },
-    { key: "deducible_sugerido",      label: "Deducible" },
-    { key: "confianza_clasificacion", label: "Confianza" },
-  ]);
-}
-
-// ─── Render Cruce Bancario ─────────────────────────────────────────────────
-
-function renderCruceBancario(rows) {
-  const el = document.getElementById("previewCruce");
-  if (!rows?.length) {
-    el.innerHTML = emptyState("🏦", "Sin datos de cruce bancario.");
-    return;
-  }
-  el.innerHTML = buildTable(rows, [
-    { key: "fecha",            label: "Fecha" },
-    { key: "hora",             label: "Hora" },
-    { key: "comercio",         label: "Comercio" },
-    { key: "rfc",              label: "RFC" },
-    { key: "folio",            label: "Folio" },
-    { key: "metodo_pago",      label: "Forma pago" },
-    { key: "tarjeta_ultimos4", label: "Tarjeta" },
-    { key: "monto_cruce",      label: "Monto",  fmt: "money" },
-    { key: "total_ticket",     label: "Total",  fmt: "money" },
-    { key: "propiedad",        label: "Propiedad" },
-    { key: "departamento",     label: "Depto." },
-  ]);
-}
-
-// ─── Generic table ─────────────────────────────────────────────────────────
-
-function buildTable(rows, cols) {
-  return `<table>
-    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map(r =>
-      `<tr>${cols.map(c => `<td>${c.fmt === "money" ? money(r[c.key]) : esc(r[c.key])}</td>`).join("")}</tr>`
-    ).join("")}</tbody>
-  </table>`;
 }
 
 // ─── Step indicator ────────────────────────────────────────────────────────
@@ -392,14 +93,345 @@ function setStep(n) {
   }
 }
 
-// ─── Utilities ─────────────────────────────────────────────────────────────
+// ─── Analyze (all files at once) ───────────────────────────────────────────
 
-function emptyState(icon, text) {
-  return `<div class="empty-state"><div class="empty-icon">${icon}</div><p>${esc(text)}</p></div>`;
+async function analyzeTickets() {
+  if (!selectedFiles.length) return;
+  try {
+    showLoading("Claude está analizando...", `Procesando ${selectedFiles.length} ticket${selectedFiles.length > 1 ? "s" : ""}...`);
+    setStatus("analyzeStatus", "");
+
+    const form = new FormData();
+    selectedFiles.forEach(f => form.append("files", f));
+
+    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo procesar.");
+
+    // Agrupar resultados por ticket
+    ticketResults = (data.resumen || []).map((res, i) => ({
+      file:      selectedFiles[i],
+      resumen:   res,
+      productos: (data.productos || []).filter(p => p.ticket_id === res.ticket_id),
+      cruce:     (data.cruce_bancario || [])[i] || {}
+    }));
+
+    renderTicketCards();
+    setStep(2);
+    setStatus("analyzeStatus", `${ticketResults.length} ticket${ticketResults.length > 1 ? "s" : ""} analizados.`);
+
+    setTimeout(() => {
+      document.getElementById("ticketsContainer").scrollIntoView({ behavior: "smooth" });
+    }, 200);
+  } catch (err) {
+    setStatus("analyzeStatus", "Error: " + err.message);
+  } finally {
+    hideLoading();
+  }
 }
 
-function setStatus(msg) {
-  const el = document.getElementById("status");
+// ─── Render all ticket cards ────────────────────────────────────────────────
+
+function renderTicketCards() {
+  const container = document.getElementById("ticketsContainer");
+  container.innerHTML = ticketResults.map((t, i) => createTicketCard(t, i)).join("");
+}
+
+function createTicketCard(ticket, i) {
+  const r = ticket.resumen;
+  const metaParts = [
+    r.fecha || "",
+    r.hora  || "",
+    r.metodo_pago ? (r.metodo_pago + (r.tarjeta_ultimos4 ? " *" + r.tarjeta_ultimos4 : "")) : "",
+    r.num_productos ? `${r.num_productos} producto${r.num_productos !== 1 ? "s" : ""}` : "",
+    r.iva ? `IVA $${Number(r.iva).toFixed(2)}` : ""
+  ].filter(Boolean);
+
+  return `
+    <div class="ticket-card" id="ticket-${i}">
+      <div class="ticket-card-header">
+        <div class="ticket-info">
+          <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
+          <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
+        </div>
+        <div class="ticket-total-badge">${money(r.total)}</div>
+      </div>
+
+      <div class="ticket-action-bar">
+        <button class="btn-toggle active" id="btn-table-${i}" onclick="toggleTable(${i})">
+          📋 Ocultar tabla
+        </button>
+        <button class="btn-toggle btn-toggle-classify" id="btn-classify-${i}" onclick="toggleClassify(${i})">
+          🏷 Clasificar ▾
+        </button>
+      </div>
+
+      <div class="ticket-table-wrap" id="table-${i}">
+        ${buildProductTable(ticket.productos)}
+      </div>
+
+      <div class="classify-panel hidden" id="classify-${i}">
+        <div class="proyecto-field">
+          <label>Proyecto</label>
+          <div class="proyecto-grid">
+            <div class="proyecto-card active" data-value="Ninguno" onclick="selectProyecto(this, ${i})">
+              <div class="proyecto-icon">🏠</div>
+              <div class="proyecto-label">Ninguno</div>
+              <div class="proyecto-sub">Gasto operativo</div>
+            </div>
+            <div class="proyecto-card" data-value="Construcción" onclick="selectProyecto(this, ${i})">
+              <div class="proyecto-icon">🏗</div>
+              <div class="proyecto-label">Construcción</div>
+              <div class="proyecto-sub">Obra nueva</div>
+            </div>
+            <div class="proyecto-card" data-value="Remodelación" onclick="selectProyecto(this, ${i})">
+              <div class="proyecto-icon">🔨</div>
+              <div class="proyecto-label">Remodelación</div>
+              <div class="proyecto-sub">Mejoras a unidad</div>
+            </div>
+          </div>
+          <input type="hidden" id="proyecto-${i}" value="Ninguno">
+        </div>
+
+        <div class="field">
+          <label>Subcuenta</label>
+          <select id="subcuenta-${i}" onchange="onSubcuentaChange(${i})">
+            <option value="">— Seleccionar subcuenta —</option>
+            <option>Gastos Operativos</option>
+            <option>Movimientos Bancarios</option>
+            <option>Gastos Familiares</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Categoría</label>
+          <select id="categoria-${i}" onchange="onCategoriaChange(${i})" disabled>
+            <option value="">— Primero selecciona subcuenta —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Concepto</label>
+          <select id="concepto-${i}" disabled>
+            <option value="">— Primero selecciona categoría —</option>
+          </select>
+        </div>
+        <div class="grid">
+          <div class="field">
+            <label>Propiedad</label>
+            <select id="propiedad-${i}">
+              <option value="">— Seleccionar —</option>
+              <option>Calle Cumbres</option>
+              <option>Calle Baja California</option>
+              <option>Calle Oaxaca</option>
+              <option>Calle José Cárdenas</option>
+              <option>Calle Matamoros</option>
+            </select>
+          </div>
+          <div class="field">
+            <label># Departamento</label>
+            <select id="departamento-${i}">
+              <option value="">— Seleccionar —</option>
+              ${Array.from({length: 14}, (_, j) => `<option>${j + 1}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+
+        <div class="classify-actions">
+          <button class="btn-primary"   onclick="downloadExcelForTicket(${i})">⬇ Descargar Excel</button>
+          <button class="btn-secondary" onclick="saveToSheetsForTicket(${i})">📊 Guardar en Sheets</button>
+        </div>
+        <div class="status-inline" id="status-${i}"></div>
+      </div>
+    </div>
+  `;
+}
+
+// ─── Product table ─────────────────────────────────────────────────────────
+
+function buildProductTable(productos) {
+  if (!productos?.length) {
+    return `<div class="empty-state"><div class="empty-icon">🧾</div><p>Sin productos detectados</p></div>`;
+  }
+  const cols = [
+    { key: "linea_numero",            label: "#" },
+    { key: "descripcion",             label: "Descripción" },
+    { key: "cantidad",                label: "Cant." },
+    { key: "precio_unitario",         label: "P.Unit.", fmt: "money" },
+    { key: "monto",                   label: "Monto",   fmt: "money" },
+    { key: "categoria_operativa",     label: "Categoría" },
+    { key: "deducible_sugerido",      label: "Deducible" },
+    { key: "confianza_clasificacion", label: "Confianza" },
+  ];
+  return `<table>
+    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
+    <tbody>${productos.map(r =>
+      `<tr>${cols.map(c => `<td>${c.fmt === "money" ? money(r[c.key]) : esc(r[c.key])}</td>`).join("")}</tr>`
+    ).join("")}</tbody>
+  </table>`;
+}
+
+// ─── Toggle table ──────────────────────────────────────────────────────────
+
+function toggleTable(i) {
+  const wrap = document.getElementById(`table-${i}`);
+  const btn  = document.getElementById(`btn-table-${i}`);
+  const hidden = wrap.classList.toggle("hidden");
+  btn.textContent = hidden ? "📋 Mostrar tabla" : "📋 Ocultar tabla";
+  btn.classList.toggle("active", !hidden);
+}
+
+// ─── Toggle classify ───────────────────────────────────────────────────────
+
+function toggleClassify(i) {
+  const panel = document.getElementById(`classify-${i}`);
+  const btn   = document.getElementById(`btn-classify-${i}`);
+  const open  = panel.classList.toggle("hidden");
+  btn.textContent = open ? "🏷 Clasificar ▾" : "🏷 Clasificar ▴";
+  btn.classList.toggle("open", !open);
+}
+
+// ─── Proyecto selector (per ticket) ────────────────────────────────────────
+
+function selectProyecto(el, i) {
+  el.closest(".proyecto-grid").querySelectorAll(".proyecto-card")
+    .forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById(`proyecto-${i}`).value = el.dataset.value;
+}
+
+// ─── Cascading dropdowns (per ticket) ──────────────────────────────────────
+
+function populateSelect(selectEl, options, placeholder) {
+  selectEl.innerHTML = `<option value="">${placeholder}</option>`;
+  options.forEach(opt => {
+    const o = document.createElement("option");
+    o.value = o.textContent = opt;
+    selectEl.appendChild(o);
+  });
+}
+
+function onSubcuentaChange(i) {
+  const sub  = document.getElementById(`subcuenta-${i}`).value;
+  const catEl = document.getElementById(`categoria-${i}`);
+  const conEl = document.getElementById(`concepto-${i}`);
+
+  if (!sub || !CATALOG[sub]) {
+    populateSelect(catEl, [], "— Primero selecciona subcuenta —");
+    populateSelect(conEl, [], "— Primero selecciona categoría —");
+    catEl.disabled = true; conEl.disabled = true;
+    return;
+  }
+
+  const cats = Object.keys(CATALOG[sub]);
+  populateSelect(catEl, cats, "— Selecciona categoría —");
+  catEl.disabled = false;
+  populateSelect(conEl, [], "— Primero selecciona categoría —");
+  conEl.disabled = true;
+
+  if (cats.length === 1) { catEl.value = cats[0]; onCategoriaChange(i); }
+}
+
+function onCategoriaChange(i) {
+  const sub   = document.getElementById(`subcuenta-${i}`).value;
+  const cat   = document.getElementById(`categoria-${i}`).value;
+  const conEl = document.getElementById(`concepto-${i}`);
+
+  const conceptos = CATALOG[sub]?.[cat] || [];
+  if (!conceptos.length) {
+    populateSelect(conEl, [], "— Sin conceptos disponibles —");
+    conEl.disabled = true;
+    return;
+  }
+  populateSelect(conEl, conceptos, "— Selecciona concepto —");
+  conEl.disabled = false;
+}
+
+// ─── Get classification fields for ticket i ────────────────────────────────
+
+function getClassify(i) {
+  return {
+    proyecto:     document.getElementById(`proyecto-${i}`)?.value     || "Ninguno",
+    subcuenta:    document.getElementById(`subcuenta-${i}`)?.value    || "",
+    categoria:    document.getElementById(`categoria-${i}`)?.value    || "",
+    concepto:     document.getElementById(`concepto-${i}`)?.value     || "",
+    propiedad:    document.getElementById(`propiedad-${i}`)?.value    || "",
+    departamento: document.getElementById(`departamento-${i}`)?.value || "",
+  };
+}
+
+// ─── Per-ticket Excel ──────────────────────────────────────────────────────
+
+async function downloadExcelForTicket(i) {
+  try {
+    showLoading("Generando Excel...", "Preparando archivo...");
+    setStatus(`status-${i}`, "");
+
+    const c    = getClassify(i);
+    const form = new FormData();
+    form.append("files",       ticketResults[i].file);
+    form.append("proyecto",    c.proyecto);
+    form.append("subcuenta",   c.subcuenta);
+    form.append("categoria",   c.categoria);
+    form.append("concepto",    c.concepto);
+    form.append("propiedad",   c.propiedad);
+    form.append("departamento", c.departamento);
+
+    const res = await fetch(`${BACKEND}/process`, { method: "POST", body: form });
+    if (!res.ok) {
+      let msg = "Error al generar archivo.";
+      try { const d = await res.json(); msg = d.error || msg; } catch (_) {}
+      throw new Error(msg);
+    }
+
+    const blob     = await res.blob();
+    const tienda   = ticketResults[i].resumen.tienda || `ticket_${i + 1}`;
+    const filename = `${tienda.replace(/[^a-z0-9]/gi, "_")}_transcripcion.xlsx`;
+    const a = Object.assign(document.createElement("a"), {
+      href: URL.createObjectURL(blob), download: filename
+    });
+    a.click();
+    URL.revokeObjectURL(a.href);
+    setStatus(`status-${i}`, "Excel descargado correctamente.");
+  } catch (err) {
+    setStatus(`status-${i}`, "Error: " + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── Per-ticket Sheets ─────────────────────────────────────────────────────
+
+async function saveToSheetsForTicket(i) {
+  try {
+    showLoading("Guardando en Sheets...", "Enviando datos...");
+    setStatus(`status-${i}`, "");
+
+    const c    = getClassify(i);
+    const form = new FormData();
+    form.append("files",        ticketResults[i].file);
+    form.append("saveToSheets", "true");
+    form.append("proyecto",     c.proyecto);
+    form.append("subcuenta",    c.subcuenta);
+    form.append("categoria",    c.categoria);
+    form.append("concepto",     c.concepto);
+    form.append("propiedad",    c.propiedad);
+    form.append("departamento", c.departamento);
+
+    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar.");
+
+    setStatus(`status-${i}`, "Guardado en Sheets correctamente.");
+  } catch (err) {
+    setStatus(`status-${i}`, "Error: " + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── Utilities ─────────────────────────────────────────────────────────────
+
+function setStatus(id, msg) {
+  const el = document.getElementById(id);
   if (el) el.textContent = msg;
 }
 

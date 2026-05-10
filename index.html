@@ -15,7 +15,7 @@
         <div class="dot"></div><div class="dot"></div><div class="dot"></div>
       </div>
       <h3 id="loadingTitle">Claude está analizando...</h3>
-      <p>Extrayendo productos y datos del ticket</p>
+      <p id="loadingSubtitle">Extrayendo productos y datos del ticket</p>
     </div>
   </div>
 
@@ -42,19 +42,18 @@
       <div class="step-line"></div>
       <div class="step" id="step-ind-2">
         <div class="step-circle">2</div>
-        <span>Clasificar</span>
+        <span>Resultados</span>
       </div>
     </nav>
 
     <!-- ── PASO 1: Captura ─────────────────────────────────────── -->
     <div class="container" id="stepCaptura">
-
       <div class="section">
         <div class="section-header">
           <div class="section-num">1</div>
           <div>
             <p class="section-title">Captura de tickets</p>
-            <p class="section-subtitle">Toma una foto directa o sube imágenes desde tu galería</p>
+            <p class="section-subtitle">Cada imagen corresponde a un ticket independiente</p>
           </div>
         </div>
 
@@ -67,7 +66,6 @@
             </div>
             <span class="upload-cta cta-camera">Abrir cámara</span>
           </label>
-
           <label class="upload-drop custom-upload">
             <input type="file" id="files-gallery" accept="image/*" multiple>
             <div class="upload-copy">
@@ -78,140 +76,17 @@
           </label>
         </div>
 
-        <!-- Thumbnails -->
         <div id="imagePreview" class="image-strip hidden"></div>
 
-        <!-- Botón Analizar — aparece solo cuando hay archivos -->
         <div id="analyzeWrap" class="hidden">
           <button class="btn-analizar" onclick="analyzeTickets()">🔍 Analizar tickets</button>
         </div>
+        <div id="analyzeStatus" class="status-inline"></div>
       </div>
+    </div>
 
-      <!-- Resultados — aparece tras el análisis -->
-      <div class="section hidden" id="resultsSection">
-        <div class="section-header">
-          <div class="section-num success-num">✓</div>
-          <div>
-            <p class="section-title">Resultados</p>
-            <p class="section-subtitle" id="resultsSubtitle">Tickets procesados con Claude AI</p>
-          </div>
-        </div>
-
-        <div id="ticketSummary" class="ticket-summary-grid"></div>
-
-        <div class="tabs">
-          <button class="tab-btn active" data-tab="transcripcion">Transcripción</button>
-          <button class="tab-btn" data-tab="cruce">Cruce bancario</button>
-        </div>
-
-        <div class="tab-pane" data-pane="transcripcion" id="previewTranscripcion">
-          <div class="empty-state">
-            <div class="empty-icon">🧾</div>
-            <p>Analiza un ticket para ver los productos aquí</p>
-          </div>
-        </div>
-        <div class="tab-pane hidden" data-pane="cruce" id="previewCruce">
-          <div class="empty-state">
-            <div class="empty-icon">🏦</div>
-            <p>Sin datos de cruce bancario</p>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- /stepCaptura -->
-
-    <!-- ── PASO 2: Clasificar ──────────────────────────────────── -->
-    <div class="container hidden" id="stepClasificar">
-      <div class="section">
-        <div class="section-header">
-          <div class="section-num">2</div>
-          <div>
-            <p class="section-title">Clasificar gasto</p>
-            <p class="section-subtitle">Asigna la categoría contable y el destino de este gasto</p>
-          </div>
-        </div>
-
-        <!-- Proyecto — campo destacado PRIMERO -->
-        <div class="field proyecto-field">
-          <label>Proyecto</label>
-          <div class="proyecto-grid">
-            <div class="proyecto-card active" data-value="Ninguno" onclick="selectProyecto(this)">
-              <div class="proyecto-icon">🏠</div>
-              <div class="proyecto-label">Ninguno</div>
-              <div class="proyecto-sub">Gasto operativo</div>
-            </div>
-            <div class="proyecto-card" data-value="Construcción" onclick="selectProyecto(this)">
-              <div class="proyecto-icon">🏗</div>
-              <div class="proyecto-label">Construcción</div>
-              <div class="proyecto-sub">Obra nueva</div>
-            </div>
-            <div class="proyecto-card" data-value="Remodelación" onclick="selectProyecto(this)">
-              <div class="proyecto-icon">🔨</div>
-              <div class="proyecto-label">Remodelación</div>
-              <div class="proyecto-sub">Mejoras a unidad</div>
-            </div>
-          </div>
-          <input type="hidden" id="proyecto" value="Ninguno">
-        </div>
-
-        <!-- Subcuenta → Categoría → Concepto en cascada -->
-        <div class="field">
-          <label>Subcuenta</label>
-          <select id="subcuenta" onchange="onSubcuentaChange()">
-            <option value="">— Seleccionar subcuenta —</option>
-            <option>Gastos Operativos</option>
-            <option>Movimientos Bancarios</option>
-            <option>Gastos Familiares</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Categoría</label>
-          <select id="categoria" onchange="onCategoriaChange()" disabled>
-            <option value="">— Primero selecciona subcuenta —</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Concepto</label>
-          <select id="concepto" disabled>
-            <option value="">— Primero selecciona categoría —</option>
-          </select>
-        </div>
-
-        <div class="grid">
-          <div class="field">
-            <label>Propiedad</label>
-            <select id="propiedad">
-              <option value="">— Seleccionar —</option>
-              <option>Calle Cumbres</option>
-              <option>Calle Baja California</option>
-              <option>Calle Oaxaca</option>
-              <option>Calle José Cárdenas</option>
-              <option>Calle Matamoros</option>
-            </select>
-          </div>
-          <div class="field">
-            <label># Departamento</label>
-            <select id="departamento">
-              <option value="">— Seleccionar —</option>
-              <option>1</option><option>2</option><option>3</option><option>4</option>
-              <option>5</option><option>6</option><option>7</option><option>8</option>
-              <option>9</option><option>10</option><option>11</option><option>12</option>
-              <option>13</option><option>14</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Acciones -->
-        <div class="classify-actions">
-          <button class="btn-primary" onclick="processExcel()">⬇ Descargar Excel</button>
-          <button class="btn-secondary" onclick="processAndSave()">📊 Guardar en Sheets</button>
-        </div>
-
-        <div id="status" class="status-inline"></div>
-      </div>
-    </div><!-- /stepClasificar -->
+    <!-- ── PASO 2: Resultados (un card por ticket) ─────────────── -->
+    <div id="ticketsContainer" class="tickets-container"></div>
 
   </div><!-- /page-shell -->
 
