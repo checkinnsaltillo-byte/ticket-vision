@@ -247,18 +247,46 @@ textarea { min-height: 80px; resize: vertical; }
   font-size: 17px; font-weight: 700;
   box-shadow: 0 4px 12px rgba(217,119,6,.24); white-space: nowrap;
 }
-.btn-classify-header {
-  padding: 8px 14px; border: none; border-radius: 12px;
-  background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%);
-  color: #fff; font-size: 13px; font-weight: 700; font-family: Arial, sans-serif;
-  cursor: pointer; white-space: nowrap;
-  box-shadow: 0 3px 8px rgba(234,88,12,.22);
-  transition: transform .15s, box-shadow .15s, background .15s;
+
+/* Botón Clasificar — margen izquierdo del header */
+.btn-classify-toggle {
+  flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  width: 48px; min-height: 52px;
+  border: 1px solid var(--border-strong); border-radius: 12px;
+  background: #fff; cursor: pointer; font-family: Arial, sans-serif;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+  padding: 6px 4px;
 }
-.btn-classify-header:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(234,88,12,.3); }
-.btn-classify-header.open {
+.btn-classify-toggle:hover { border-color: var(--accent); background: var(--primary-soft); }
+.btn-classify-toggle.open {
   background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
-  box-shadow: 0 3px 8px rgba(217,119,6,.25);
+  border-color: var(--primary-dark);
+  box-shadow: 0 3px 10px rgba(217,119,6,.25);
+}
+.classify-arrow {
+  font-size: 14px; color: var(--primary-dark); line-height: 1;
+  transition: color .15s;
+}
+.classify-label {
+  font-size: 9px; font-weight: 700; color: var(--text-soft); text-transform: uppercase;
+  letter-spacing: .04em; line-height: 1;
+  transition: color .15s;
+}
+.btn-classify-toggle.open .classify-arrow,
+.btn-classify-toggle.open .classify-label { color: #fff; }
+
+/* Header clasificado — verde suave */
+.ticket-card-header.classified {
+  background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
+  border-bottom-color: #86efac;
+}
+.ticket-card-header.classified:hover { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%); }
+.classified-badge {
+  background: #16a34a; color: #fff;
+  font-size: 11px; font-weight: 700; padding: 4px 10px;
+  border-radius: 999px; white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(22,163,74,.25);
 }
 
 /* ─── Ticket Table ──────────────────────────────────────────── */
@@ -427,9 +455,9 @@ tr:hover td { background: var(--bg-soft); }
   .classify-actions { grid-template-columns: 1fr; }
   .upload-drop { flex-direction: column; align-items: flex-start; }
   .upload-cta { width: 100%; }
-  .ticket-card-header { flex-wrap: wrap; gap: 10px; }
+  .ticket-card-header { gap: 10px; }
   .ticket-store { font-size: 15px; }
   .ticket-header-right { gap: 8px; }
-  .btn-classify-header { font-size: 12px; padding: 7px 11px; }
+  .btn-classify-toggle { width: 42px; min-height: 46px; }
   .loading-card { padding: 28px 22px; }
 }

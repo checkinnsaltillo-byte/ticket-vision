@@ -244,16 +244,18 @@ function createTicketCard(ticket, i) {
   return `
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
+        <button class="btn-classify-toggle" id="btn-classify-${i}"
+                onclick="event.stopPropagation(); toggleClassify(${i})" title="Clasificar ticket">
+          <span class="classify-arrow">▶</span>
+          <span class="classify-label">Clasificar</span>
+        </button>
         <div class="ticket-info">
           <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
           <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
         </div>
         <div class="ticket-header-right">
+          <span class="classified-badge hidden" id="classified-badge-${i}">✓ Clasificado</span>
           <div class="ticket-total-badge">${money(r.total)}</div>
-          <button class="btn-classify-header" id="btn-classify-${i}"
-                  onclick="event.stopPropagation(); toggleClassify(${i})">
-            🏷 Clasificar
-          </button>
         </div>
       </div>
 
@@ -349,7 +351,7 @@ function createTicketCard(ticket, i) {
 
         <div class="classify-actions">
           <button class="btn-primary"   onclick="downloadExcelForTicket(${i})">⬇ Descargar Excel</button>
-          <button class="btn-secondary" onclick="saveToSheetsForTicket(${i})">📊 Guardar en Sheets</button>
+          <button class="btn-secondary" onclick="saveToSheetsForTicket(${i})">💾 Guardar</button>
         </div>
         <div class="status-inline" id="status-${i}"></div>
       </div>
@@ -395,8 +397,13 @@ function toggleClassify(i) {
   const panel = document.getElementById(`classify-${i}`);
   const btn   = document.getElementById(`btn-classify-${i}`);
   const open  = panel.classList.toggle("hidden");
-  btn.textContent = open ? "🏷 Clasificar" : "✕ Cerrar";
+  btn.querySelector(".classify-arrow").textContent = open ? "▶" : "▼";
   btn.classList.toggle("open", !open);
+}
+
+function markAsClassified(i) {
+  document.getElementById(`header-${i}`).classList.add("classified");
+  document.getElementById(`classified-badge-${i}`).classList.remove("hidden");
 }
 
 // ─── Emojis por categoría ──────────────────────────────────────────────────
@@ -659,7 +666,8 @@ async function saveToSheetsForTicket(i) {
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar.");
 
-    setStatus(`status-${i}`, "Guardado en Sheets correctamente.");
+    markAsClassified(i);
+    setStatus(`status-${i}`, "Guardado correctamente.");
   } catch (err) {
     setStatus(`status-${i}`, "Error: " + err.message);
   } finally {
