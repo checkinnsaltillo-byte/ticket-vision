@@ -159,23 +159,49 @@ let ticketResults = [];
 // ─── Init ──────────────────────────────────────────────────────────────────
 
 window.addEventListener("DOMContentLoaded", () => {
-  // Hidden inputs fuera del sheet (usados por el thumb "+")
-  document.getElementById("files-camera").addEventListener("change",  handleFilesAdded);
-  document.getElementById("files-gallery").addEventListener("change", handleFilesAdded);
-  document.getElementById("files-files").addEventListener("change",   handleFilesAdded);
-  // Inputs dentro del bottom sheet
-  document.getElementById("sheet-camera").addEventListener("change",  handleFilesAdded);
-  document.getElementById("sheet-gallery").addEventListener("change", handleFilesAdded);
-  document.getElementById("sheet-files").addEventListener("change",   handleFilesAdded);
+  ["files-camera","files-gallery","files-files",
+   "sheet-camera","sheet-gallery","sheet-files"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", handleFilesAdded);
+  });
+  // Actualizar hint según dispositivo
+  if (!isMobile()) {
+    const hint = document.getElementById("uploadHint");
+    if (hint) hint.textContent = "Haz clic para seleccionar imágenes";
+  }
 });
 
+function isMobile() {
+  return "ontouchstart" in window || navigator.maxTouchPoints > 0;
+}
+
 function openUploadSheet() {
-  document.getElementById("uploadSheetOverlay").classList.remove("hidden");
-  requestAnimationFrame(() => document.getElementById("uploadSheet").classList.add("open"));
+  if (isMobile()) {
+    document.getElementById("uploadSheetOverlay").classList.remove("hidden");
+    requestAnimationFrame(() => document.getElementById("uploadSheet").classList.add("open"));
+  } else {
+    // Desktop: abrir selector de archivos directamente
+    document.getElementById("files-files").click();
+  }
 }
 function closeUploadSheet() {
   document.getElementById("uploadSheet").classList.remove("open");
   setTimeout(() => document.getElementById("uploadSheetOverlay").classList.add("hidden"), 280);
+}
+
+// ─── Accordion panels ──────────────────────────────────────────────────────
+
+function openPanel(n) {
+  document.getElementById(`panel-body-${n}`).classList.remove("collapsed");
+  document.getElementById(`panel-arrow-${n}`).classList.add("open");
+}
+function closePanel(n) {
+  document.getElementById(`panel-body-${n}`).classList.add("collapsed");
+  document.getElementById(`panel-arrow-${n}`).classList.remove("open");
+}
+function togglePanel(n) {
+  const body = document.getElementById(`panel-body-${n}`);
+  if (body.classList.contains("collapsed")) openPanel(n); else closePanel(n);
 }
 
 // ─── File management ───────────────────────────────────────────────────────
@@ -249,12 +275,14 @@ function hideLoading() {
 // ─── Step indicator ────────────────────────────────────────────────────────
 
 function setStep(n) {
-  for (let i = 1; i <= 2; i++) {
-    const el = document.getElementById(`step-ind-${i}`);
-    if (!el) continue;
-    el.classList.remove("active", "done");
-    if (i < n)  el.classList.add("done");
-    if (i === n) el.classList.add("active");
+  if (n === 2) {
+    closePanel(1);
+    openPanel(2);
+    const count = ticketResults.length;
+    const sub = document.getElementById("panel-2-subtitle");
+    if (sub) sub.textContent = `${count} ticket${count !== 1 ? "s" : ""} analizados`;
+  } else {
+    openPanel(1);
   }
 }
 
@@ -285,7 +313,7 @@ async function analyzeTickets() {
     setStatus("analyzeStatus", `${ticketResults.length} ticket${ticketResults.length > 1 ? "s" : ""} analizados.`);
 
     setTimeout(() => {
-      document.getElementById("ticketsContainer").scrollIntoView({ behavior: "smooth" });
+      document.getElementById("panel-2").scrollIntoView({ behavior: "smooth" });
     }, 200);
   } catch (err) {
     setStatus("analyzeStatus", "Error: " + err.message);
