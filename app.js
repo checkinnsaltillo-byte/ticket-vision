@@ -582,7 +582,7 @@ function createTicketCard(ticket, i) {
           <input type="hidden" id="comprador-${i}" value="">
         </div>
 
-        <div class="cuenta-field">
+        <div class="cuenta-field" id="facturable-field-${i}">
           <label>Facturable</label>
           <div class="toggle-row">
             <label class="toggle-switch">
@@ -841,14 +841,19 @@ function makeCard(name, emoji, onclick) {
 
 // ─── Cuenta / Subcuenta / Categoría / Concepto (cascading cards) ───────────
 
+const FACTURABLE_CUENTAS = new Set(["", "Egresos", "Activos", "Pasivos"]);
+
 function selectCuenta(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
-  document.getElementById(`cuenta-${i}`).value = el.dataset.value;
+  const cuenta = el.dataset.value;
+  document.getElementById(`cuenta-${i}`).value = cuenta;
   resetSubcuenta(i);
 
-  const cuenta = el.dataset.value;
-  const subs   = cuenta && CATALOG[cuenta] ? Object.keys(CATALOG[cuenta]) : [];
+  const facturableField = document.getElementById(`facturable-field-${i}`);
+  if (facturableField) facturableField.classList.toggle("hidden", !FACTURABLE_CUENTAS.has(cuenta));
+
+  const subs = cuenta && CATALOG[cuenta] ? Object.keys(CATALOG[cuenta]) : [];
   if (!subs.length) return;
 
   document.getElementById(`subcuenta-grid-${i}`).innerHTML =

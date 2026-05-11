@@ -450,10 +450,14 @@ textarea { min-height: 80px; resize: vertical; }
 
 .save-action-header {
   background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
-  border-radius: 26px; transition: filter .15s;
+  border-radius: 26px;
   box-shadow: 0 10px 22px rgba(217,119,6,.22);
 }
-.save-action-header:hover { filter: brightness(1.07); }
+.save-action-header:hover {
+  background: var(--primary-soft);
+}
+.save-action-header:hover .save-action-title { color: var(--primary-dark) !important; }
+.save-action-header:hover .save-action-sub   { color: var(--text-soft)    !important; }
 .save-action-icon { font-size: 22px; display: inline-block; }
 .save-action-title { color: #fff !important; }
 .save-action-sub { color: rgba(255,255,255,.78) !important; }
