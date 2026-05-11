@@ -42,6 +42,25 @@ app.get("/", (req, res) => res.json({
 }));
 app.get("/health", (req, res) => res.json({ ok: true }));
 
+// ─── Test: verifica conexión con Apps Script y sube imagen de prueba ────────
+
+app.get("/test-drive", async (req, res) => {
+  try {
+    // 1x1 pixel JPEG en base64
+    const pixel = "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AJQAB/9k=";
+    const result = await callAppsScript({
+      action: "upload_ticket_image",
+      ticket_id: "test-001",
+      fecha:  new Date().toISOString().slice(0, 10),
+      tienda: "TEST_DRIVE",
+      file: { fileName: "test_pixel.jpg", mimeType: "image/jpeg", base64: pixel },
+    });
+    res.json({ ok: true, apps_script_response: result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Guardar tickets: imágenes a Drive + filas a Sheets (todo server-side) ──
 
 app.post("/save-tickets", upload.array("files"), async (req, res) => {
