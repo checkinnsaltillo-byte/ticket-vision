@@ -261,6 +261,7 @@ async function analyzeTickets() {
 function renderTicketCards() {
   const container = document.getElementById("ticketsContainer");
   container.innerHTML = ticketResults.map((t, i) => createTicketCard(t, i)).join("");
+  document.getElementById("btnGuardarResultados").classList.toggle("hidden", !ticketResults.length);
 }
 
 const PAYMENT_CHIP = {
@@ -481,10 +482,8 @@ function createTicketCard(ticket, i) {
         </div>
 
         <div class="classify-actions">
-          <button class="btn-primary"   onclick="downloadExcelForTicket(${i})">⬇ Descargar Excel</button>
-          <button class="btn-secondary" onclick="saveToSheetsForTicket(${i})">💾 Guardar</button>
+          <button class="btn-clasificar-ticket" onclick="clasificarTicket(${i})">✓ Clasificar</button>
         </div>
-        <div class="status-inline" id="status-${i}"></div>
       </div>
     </div>
   `;
@@ -601,6 +600,17 @@ const CUENTA_COLOR_CLASS = {
 };
 
 const ALL_CI = ["ci-ingresos","ci-egresos","ci-capital","ci-activos","ci-pasivos","ci-sincuenta"];
+
+function guardarResultados() {
+  // Por vincular con Google Sheets
+}
+
+function clasificarTicket(i) {
+  markAsClassified(i);
+  // Cerrar el panel después de clasificar
+  document.getElementById(`classify-${i}`).classList.add("hidden");
+  document.getElementById(`btn-classify-${i}`).classList.remove("open");
+}
 
 function markAsClassified(i) {
   const c        = getClassify(i);
