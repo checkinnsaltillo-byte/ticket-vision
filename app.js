@@ -244,11 +244,6 @@ function createTicketCard(ticket, i) {
   return `
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
-        <button class="btn-classify-toggle" id="btn-classify-${i}"
-                onclick="event.stopPropagation(); toggleClassify(${i})" title="Clasificar ticket">
-          <span class="classify-arrow">▶</span>
-          <span class="classify-label">Clasificar</span>
-        </button>
         <div class="ticket-info">
           <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
           <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
@@ -261,6 +256,11 @@ function createTicketCard(ticket, i) {
 
       <div class="ticket-table-wrap" id="table-${i}">
         ${buildProductTable(ticket.productos)}
+      </div>
+
+      <div class="classify-tab" id="btn-classify-${i}" onclick="toggleClassify(${i})">
+        <span class="classify-tab-arrow">›</span>
+        <span class="classify-tab-label">Clasificar</span>
       </div>
 
       <div class="classify-panel hidden" id="classify-${i}">
@@ -395,10 +395,9 @@ function toggleTable(i) {
 
 function toggleClassify(i) {
   const panel = document.getElementById(`classify-${i}`);
-  const btn   = document.getElementById(`btn-classify-${i}`);
+  const tab   = document.getElementById(`btn-classify-${i}`);
   const open  = panel.classList.toggle("hidden");
-  btn.querySelector(".classify-arrow").textContent = open ? "▶" : "▼";
-  btn.classList.toggle("open", !open);
+  tab.classList.toggle("open", !open);
 }
 
 function markAsClassified(i) {

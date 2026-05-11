@@ -248,33 +248,28 @@ textarea { min-height: 80px; resize: vertical; }
   box-shadow: 0 4px 12px rgba(217,119,6,.24); white-space: nowrap;
 }
 
-/* Botón Clasificar — margen izquierdo del header */
-.btn-classify-toggle {
-  flex-shrink: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  width: 48px; min-height: 52px;
-  border: 1px solid var(--border-strong); border-radius: 12px;
-  background: #fff; cursor: pointer; font-family: Arial, sans-serif;
-  transition: background .15s, border-color .15s, box-shadow .15s;
-  padding: 6px 4px;
+/* Pestaña Clasificar — siempre al fondo */
+.classify-tab {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 16px;
+  background: var(--bg-soft); border-top: 1px solid var(--border);
+  cursor: pointer; user-select: none;
+  transition: background .15s, color .15s;
 }
-.btn-classify-toggle:hover { border-color: var(--accent); background: var(--primary-soft); }
-.btn-classify-toggle.open {
-  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
-  border-color: var(--primary-dark);
-  box-shadow: 0 3px 10px rgba(217,119,6,.25);
+.classify-tab:hover { background: var(--primary-soft); }
+.classify-tab.open  { background: var(--primary-soft); border-top-color: var(--border-strong); }
+.classify-tab-arrow {
+  font-size: 15px; font-weight: 700; color: var(--primary-dark);
+  display: inline-block; line-height: 1;
+  transition: transform .22s ease;
 }
-.classify-arrow {
-  font-size: 14px; color: var(--primary-dark); line-height: 1;
-  transition: color .15s;
+.classify-tab.open .classify-tab-arrow { transform: rotate(90deg); }
+.classify-tab-label {
+  font-size: 12px; font-weight: 700; color: var(--text-soft);
+  text-transform: uppercase; letter-spacing: .06em;
 }
-.classify-label {
-  font-size: 9px; font-weight: 700; color: var(--text-soft); text-transform: uppercase;
-  letter-spacing: .04em; line-height: 1;
-  transition: color .15s;
-}
-.btn-classify-toggle.open .classify-arrow,
-.btn-classify-toggle.open .classify-label { color: #fff; }
+.classify-tab:hover .classify-tab-label,
+.classify-tab.open  .classify-tab-label { color: var(--primary-dark); }
 
 /* Header clasificado — verde suave */
 .ticket-card-header.classified {
@@ -455,9 +450,6 @@ tr:hover td { background: var(--bg-soft); }
   .classify-actions { grid-template-columns: 1fr; }
   .upload-drop { flex-direction: column; align-items: flex-start; }
   .upload-cta { width: 100%; }
-  .ticket-card-header { gap: 10px; }
   .ticket-store { font-size: 15px; }
-  .ticket-header-right { gap: 8px; }
-  .btn-classify-toggle { width: 42px; min-height: 46px; }
   .loading-card { padding: 28px 22px; }
 }
