@@ -197,6 +197,29 @@ textarea { min-height: 80px; resize: vertical; }
   background: rgba(53,32,8,.65); color: #fff;
   font-size: 10px; font-weight: 700; padding: 3px; text-align: center;
 }
+.thumb-remove {
+  position: absolute; top: 4px; right: 4px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(0,0,0,.55); color: #fff;
+  border: none; font-size: 14px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; transition: background .15s;
+}
+.thumb-remove:hover { background: rgba(220,38,38,.85); }
+
+.thumb-add {
+  display: flex; align-items: center; justify-content: center;
+  width: 80px; height: 106px; flex-shrink: 0;
+  border-radius: 12px; scroll-snap-align: start;
+  border: 2px dashed var(--border-strong);
+  background: rgba(245,158,11,.07);
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.thumb-add:hover { background: rgba(245,158,11,.15); border-color: var(--primary); }
+.thumb-add-icon {
+  font-size: 28px; color: var(--primary); font-weight: 300; line-height: 1;
+  pointer-events: none;
+}
 
 /* ─── Analizar button ───────────────────────────────────────── */
 

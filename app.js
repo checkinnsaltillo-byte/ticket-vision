@@ -178,23 +178,46 @@ function addFiles(newFiles) {
   setStep(1);
 }
 
+function removeFile(idx) {
+  selectedFiles.splice(idx, 1);
+  if (!selectedFiles.length) document.getElementById("analyzeWrap").classList.add("hidden");
+  renderImageStrip();
+}
+
 function renderImageStrip() {
   const strip = document.getElementById("imagePreview");
   if (!selectedFiles.length) { strip.classList.add("hidden"); return; }
   strip.classList.remove("hidden");
   strip.innerHTML = "";
+
   selectedFiles.forEach((file, i) => {
     const thumb = document.createElement("div");
     thumb.className = "image-thumb";
+
     const img = document.createElement("img");
     img.src = URL.createObjectURL(file);
     img.onload = () => URL.revokeObjectURL(img.src);
+
     const lbl = document.createElement("div");
     lbl.className   = "thumb-label";
     lbl.textContent = String(i + 1);
-    thumb.append(img, lbl);
+
+    const btn = document.createElement("button");
+    btn.className   = "thumb-remove";
+    btn.textContent = "×";
+    btn.onclick     = (e) => { e.stopPropagation(); removeFile(i); };
+
+    thumb.append(img, lbl, btn);
     strip.appendChild(thumb);
   });
+
+  // Botón "+" para agregar más imágenes
+  const addBtn = document.createElement("label");
+  addBtn.className   = "image-thumb thumb-add";
+  addBtn.innerHTML   = `<input type="file" accept="image/*" multiple style="display:none">
+                        <span class="thumb-add-icon">＋</span>`;
+  addBtn.querySelector("input").addEventListener("change", handleFilesAdded);
+  strip.appendChild(addBtn);
 }
 
 // ─── Loading ───────────────────────────────────────────────────────────────
