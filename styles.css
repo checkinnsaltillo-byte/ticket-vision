@@ -298,7 +298,22 @@ textarea { min-height: 80px; resize: vertical; }
 
 /* ─── Ticket Table ──────────────────────────────────────────── */
 
-.ticket-table-wrap { overflow-x: auto; padding: 0 16px 16px; }
+.ticket-table-wrap { overflow-x: hidden; }
+
+.ticket-tabs {
+  display: flex; border-bottom: 2px solid var(--border);
+  background: var(--bg-soft); padding: 0 12px;
+}
+.ticket-tab {
+  flex: 1; padding: 10px 8px; font-size: 12px; font-weight: 700;
+  font-family: Arial, sans-serif; background: none; border: none; cursor: pointer;
+  color: var(--text-soft); border-bottom: 2px solid transparent;
+  margin-bottom: -2px; transition: color .15s, border-color .15s;
+}
+.ticket-tab:hover { color: var(--primary-dark); }
+.ticket-tab.active { color: var(--primary-dark); border-bottom-color: var(--primary); }
+
+.ticket-tab-content { overflow-x: auto; padding: 0 16px 16px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 480px; font-family: Arial, sans-serif; }
 th {
@@ -309,6 +324,7 @@ th {
 }
 td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 tr:hover td { background: var(--bg-soft); }
+td.resumen-key { font-weight: 600; color: var(--text-soft); white-space: nowrap; width: 40%; }
 
 /* ─── Classify Panel ────────────────────────────────────────── */
 

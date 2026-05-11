@@ -241,10 +241,42 @@ const PAYMENT_CHIP = {
   QR:              { emoji: "📱", color: "#7c3aed", bg: "#f3e8ff" },
 };
 
+const PAYMENT_LABEL = {
+  VISA:            "Visa",
+  MASTERCARD:      "Mastercard",
+  AMEX:            "Amex",
+  TARJETA_DEBITO:  "Tarjeta débito",
+  TARJETA_CREDITO: "Tarjeta crédito",
+  TARJETA_BANCO:   "Tarjeta banco",
+  EFECTIVO:        "Efectivo",
+  TRANSFERENCIA:   "Transferencia",
+  QR:              "Pago QR",
+};
+
+const PAYMENT_ALIASES = {
+  TARJETA_DE_DEBITO:  "TARJETA_DEBITO",
+  TARJETA_DE_CREDITO: "TARJETA_CREDITO",
+  DEBITO:             "TARJETA_DEBITO",
+  CREDITO:            "TARJETA_CREDITO",
+  DEBIT:              "TARJETA_DEBITO",
+  CREDIT:             "TARJETA_CREDITO",
+  CASH:               "EFECTIVO",
+};
+
+function normalizePaymentKey(method) {
+  if (!method) return "";
+  const clean = method.toUpperCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return PAYMENT_ALIASES[clean] || clean;
+}
+
 function paymentChip(method, last4) {
   if (!method) return "";
-  const p = PAYMENT_CHIP[method] || { emoji: "💳", color: "#374151", bg: "#f3f4f6" };
-  const label = method.replace(/_/g, " ") + (last4 ? " *" + last4 : "");
+  const key   = normalizePaymentKey(method);
+  const p     = PAYMENT_CHIP[key] || { emoji: "💳", color: "#374151", bg: "#f3f4f6" };
+  const label = (PAYMENT_LABEL[key] || key.replace(/_/g, " ")) + (last4 ? " *" + last4 : "");
   return `<span class="payment-chip" style="color:${p.color};background:${p.bg}">${p.emoji} ${label}</span>`;
 }
 
@@ -274,8 +306,15 @@ function createTicketCard(ticket, i) {
         </div>
       </div>
 
-      <div class="ticket-table-wrap" id="table-${i}">
-        ${buildProductTable(ticket.productos)}
+      <div class="ticket-table-wrap hidden" id="table-${i}">
+        <div class="ticket-tabs">
+          <button class="ticket-tab active" onclick="showTicketTab(${i},'transcripcion',this)">Transcripción</button>
+          <button class="ticket-tab" onclick="showTicketTab(${i},'resumen',this)">Resumen</button>
+          <button class="ticket-tab" onclick="showTicketTab(${i},'cruce',this)">Cruce bancario</button>
+        </div>
+        <div id="tab-transcripcion-${i}" class="ticket-tab-content">${buildProductTable(ticket.productos)}</div>
+        <div id="tab-resumen-${i}" class="ticket-tab-content hidden">${buildResumenTable(ticket.resumen)}</div>
+        <div id="tab-cruce-${i}" class="ticket-tab-content hidden">${buildCruceTable(ticket.cruce)}</div>
       </div>
 
       <div class="classify-tab" id="btn-classify-${i}" onclick="toggleClassify(${i})">
@@ -402,6 +441,67 @@ function buildProductTable(productos) {
       `<tr>${cols.map(c => `<td>${c.fmt === "money" ? money(r[c.key]) : esc(r[c.key])}</td>`).join("")}</tr>`
     ).join("")}</tbody>
   </table>`;
+}
+
+function buildResumenTable(r) {
+  if (!r) return `<div class="empty-state"><p>Sin datos de resumen</p></div>`;
+  const rows = [
+    ["Tienda",             r.tienda],
+    ["RFC",                r.rfc],
+    ["Fecha",              r.fecha],
+    ["Hora",               r.hora],
+    ["Folio",              r.folio],
+    ["Método de pago",     r.metodo_pago],
+    ["Últimos 4 dígitos",  r.tarjeta_ultimos4],
+    ["# Productos",        r.num_productos],
+    ["Subtotal",           r.subtotal ? money(r.subtotal) : null],
+    ["IVA",                r.iva       ? money(r.iva)      : null],
+    ["IEPS",               r.ieps      ? money(r.ieps)     : null],
+    ["Descuentos",         r.descuentos? money(r.descuentos): null],
+    ["Total",              r.total     ? money(r.total)    : null],
+    ["Cuenta",             r.cuenta],
+    ["Subcuenta",          r.subcuenta],
+    ["Categoría",          r.categoria_gasto],
+    ["Concepto",           r.concepto],
+    ["Propiedad",          r.propiedad],
+    ["Departamento",       r.departamento],
+    ["Fecha captura",      r.fecha_captura],
+  ].filter(([, v]) => v !== "" && v != null);
+  return `<table>
+    <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+    <tbody>${rows.map(([k, v]) => `<tr><td class="resumen-key">${k}</td><td>${esc(String(v))}</td></tr>`).join("")}</tbody>
+  </table>`;
+}
+
+function buildCruceTable(c) {
+  if (!c || !Object.keys(c).length) return `<div class="empty-state"><div class="empty-icon">🏦</div><p>Sin datos de cruce bancario</p></div>`;
+  const rows = [
+    ["Fecha",              c.fecha],
+    ["Hora",               c.hora],
+    ["Comercio",           c.comercio],
+    ["RFC",                c.rfc],
+    ["Folio",              c.folio],
+    ["Método de pago",     c.metodo_pago],
+    ["Últimos 4 dígitos",  c.tarjeta_ultimos4],
+    ["Monto cruce",        c.monto_cruce ? money(c.monto_cruce) : null],
+    ["Total ticket",       c.total_ticket? money(c.total_ticket): null],
+    ["Cuenta",             c.cuenta],
+    ["Subcuenta",          c.subcuenta],
+    ["Propiedad",          c.propiedad],
+    ["Departamento",       c.departamento],
+  ].filter(([, v]) => v !== "" && v != null);
+  return `<table>
+    <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+    <tbody>${rows.map(([k, v]) => `<tr><td class="resumen-key">${k}</td><td>${esc(String(v))}</td></tr>`).join("")}</tbody>
+  </table>`;
+}
+
+function showTicketTab(i, tab, btn) {
+  ["transcripcion", "resumen", "cruce"].forEach(t => {
+    document.getElementById(`tab-${t}-${i}`).classList.toggle("hidden", t !== tab);
+  });
+  btn.closest(".ticket-tabs").querySelectorAll(".ticket-tab").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
 }
 
 // ─── Toggle table / classify ────────────────────────────────────────────────
