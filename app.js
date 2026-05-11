@@ -315,11 +315,10 @@ function createTicketCard(ticket, i) {
           <input type="hidden" id="categoria-${i}" value="">
         </div>
 
-        <div class="field hidden" id="concepto-field-${i}">
+        <div class="cuenta-field hidden" id="concepto-field-${i}">
           <label>Concepto</label>
-          <select id="concepto-${i}">
-            <option value="">— Selecciona concepto —</option>
-          </select>
+          <div class="cuenta-grid" id="concepto-grid-${i}"></div>
+          <input type="hidden" id="concepto-${i}" value="">
         </div>
 
         <div class="grid">
@@ -463,10 +462,7 @@ function selectSubcuenta(el, i) {
 
   if (Array.isArray(sub)) {
     // Ingresos / Capital: sin nivel Categoría, concepto directo
-    if (sub.length) {
-      populateSelect(document.getElementById(`concepto-${i}`), sub, "— Selecciona concepto —");
-      document.getElementById(`concepto-field-${i}`).classList.remove("hidden");
-    }
+    if (sub.length) renderConceptos(sub, i);
   } else if (sub) {
     const cats = Object.keys(sub);
     if (!cats.length) return;
@@ -480,8 +476,25 @@ function resetCategoria(i) {
   document.getElementById(`categoria-${i}`).value = "";
   document.getElementById(`categoria-field-${i}`).classList.add("hidden");
   document.getElementById(`categoria-grid-${i}`).innerHTML = "";
+  resetConcepto(i);
+}
+
+function resetConcepto(i) {
+  document.getElementById(`concepto-${i}`).value = "";
   document.getElementById(`concepto-field-${i}`).classList.add("hidden");
-  populateSelect(document.getElementById(`concepto-${i}`), [], "— Selecciona concepto —");
+  document.getElementById(`concepto-grid-${i}`).innerHTML = "";
+}
+
+function renderConceptos(conceptos, i) {
+  document.getElementById(`concepto-grid-${i}`).innerHTML =
+    conceptos.map(n => makeCard(n, "🔹", `selectConcepto(this,${i})`)).join("");
+  document.getElementById(`concepto-field-${i}`).classList.remove("hidden");
+}
+
+function selectConcepto(el, i) {
+  el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById(`concepto-${i}`).value = el.dataset.value;
 }
 
 function selectCategoria(el, i) {
@@ -489,18 +502,12 @@ function selectCategoria(el, i) {
   el.classList.add("active");
   const categoria = el.dataset.value;
   document.getElementById(`categoria-${i}`).value = categoria;
+  resetConcepto(i);
 
   const cuenta    = document.getElementById(`cuenta-${i}`).value;
   const subcuenta = document.getElementById(`subcuenta-${i}`).value;
   const conceptos = CATALOG[cuenta]?.[subcuenta]?.[categoria] || [];
-
-  const conField = document.getElementById(`concepto-field-${i}`);
-  if (conceptos.length) {
-    populateSelect(document.getElementById(`concepto-${i}`), conceptos, "— Selecciona concepto —");
-    conField.classList.remove("hidden");
-  } else {
-    conField.classList.add("hidden");
-  }
+  if (conceptos.length) renderConceptos(conceptos, i);
 }
 
 // ─── Get classification values ──────────────────────────────────────────────
