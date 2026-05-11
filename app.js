@@ -243,21 +243,18 @@ function createTicketCard(ticket, i) {
 
   return `
     <div class="ticket-card" id="ticket-${i}">
-      <div class="ticket-card-header">
+      <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
         <div class="ticket-info">
           <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
           <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
         </div>
-        <div class="ticket-total-badge">${money(r.total)}</div>
-      </div>
-
-      <div class="ticket-action-bar">
-        <button class="btn-toggle active" id="btn-table-${i}" onclick="toggleTable(${i})">
-          📋 Ocultar tabla
-        </button>
-        <button class="btn-toggle btn-toggle-classify" id="btn-classify-${i}" onclick="toggleClassify(${i})">
-          🏷 Clasificar ▾
-        </button>
+        <div class="ticket-header-right">
+          <div class="ticket-total-badge">${money(r.total)}</div>
+          <button class="btn-classify-header" id="btn-classify-${i}"
+                  onclick="event.stopPropagation(); toggleClassify(${i})">
+            🏷 Clasificar
+          </button>
+        </div>
       </div>
 
       <div class="ticket-table-wrap" id="table-${i}">
@@ -389,17 +386,16 @@ function buildProductTable(productos) {
 
 function toggleTable(i) {
   const wrap   = document.getElementById(`table-${i}`);
-  const btn    = document.getElementById(`btn-table-${i}`);
+  const header = document.getElementById(`header-${i}`);
   const hidden = wrap.classList.toggle("hidden");
-  btn.textContent = hidden ? "📋 Mostrar tabla" : "📋 Ocultar tabla";
-  btn.classList.toggle("active", !hidden);
+  header.classList.toggle("collapsed", hidden);
 }
 
 function toggleClassify(i) {
   const panel = document.getElementById(`classify-${i}`);
   const btn   = document.getElementById(`btn-classify-${i}`);
   const open  = panel.classList.toggle("hidden");
-  btn.textContent = open ? "🏷 Clasificar ▾" : "🏷 Clasificar ▴";
+  btn.textContent = open ? "🏷 Clasificar" : "✕ Cerrar";
   btn.classList.toggle("open", !open);
 }
 
