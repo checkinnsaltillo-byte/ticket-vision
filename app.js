@@ -266,9 +266,17 @@ function createTicketCard(ticket, i) {
 
       <div class="classify-panel hidden" id="classify-${i}">
 
+        <div class="classify-search-wrap">
+          <input type="text" id="search-${i}" class="classify-search"
+                 placeholder="🔍 Buscar por cuenta, subcuenta, categoría o concepto..."
+                 oninput="onClassifySearch(${i}, this.value)"
+                 onblur="setTimeout(()=>hideSearchResults(${i}), 180)">
+          <div class="search-results hidden" id="search-results-${i}"></div>
+        </div>
+
         <div class="cuenta-field">
           <label>Cuenta</label>
-          <div class="cuenta-grid">
+          <div class="cuenta-grid" id="cuenta-grid-${i}">
             <div class="cuenta-card active" data-value="" onclick="selectCuenta(this,${i})">
               <div class="cuenta-icon">🏠</div>
               <div class="cuenta-label">Sin cuenta</div>
@@ -508,6 +516,76 @@ function selectCategoria(el, i) {
   const subcuenta = document.getElementById(`subcuenta-${i}`).value;
   const conceptos = CATALOG[cuenta]?.[subcuenta]?.[categoria] || [];
   if (conceptos.length) renderConceptos(conceptos, i);
+}
+
+// ─── Buscador ──────────────────────────────────────────────────────────────
+
+function onClassifySearch(i, q) {
+  const resEl = document.getElementById(`search-results-${i}`);
+  if (!q.trim()) { resEl.classList.add("hidden"); return; }
+
+  const lower   = q.toLowerCase();
+  const matches = SEARCH_INDEX.filter(e =>
+    [e.cuenta, e.subcuenta, e.categoria, e.concepto].some(f => f.toLowerCase().includes(lower))
+  ).slice(0, 12);
+
+  searchMatches[i] = matches;
+
+  if (!matches.length) {
+    resEl.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(q)}"</div>`;
+    resEl.classList.remove("hidden");
+    return;
+  }
+
+  resEl.innerHTML = matches.map((m, idx) => {
+    const parts = [m.cuenta, m.subcuenta, m.categoria, m.concepto].filter(Boolean);
+    const html  = parts.map(p => `<span>${esc(p)}</span>`).join(`<span class="search-sep"> › </span>`);
+    return `<div class="search-result-item" onmousedown="applySearchResult(${i},${idx})">${html}</div>`;
+  }).join("");
+  resEl.classList.remove("hidden");
+}
+
+function hideSearchResults(i) {
+  document.getElementById(`search-results-${i}`)?.classList.add("hidden");
+}
+
+function applySearchResult(i, idx) {
+  const m = (searchMatches[i] || [])[idx];
+  if (!m) return;
+
+  // Seleccionar tarjeta de Cuenta
+  const cuentaCard = Array.from(
+    document.getElementById(`cuenta-grid-${i}`).querySelectorAll(".cuenta-card")
+  ).find(c => c.dataset.value === m.cuenta);
+  if (cuentaCard) selectCuenta(cuentaCard, i);
+
+  // Seleccionar tarjeta de Subcuenta (ya renderizada por selectCuenta)
+  if (m.subcuenta) {
+    const subCard = Array.from(
+      document.getElementById(`subcuenta-grid-${i}`).querySelectorAll(".cuenta-card")
+    ).find(c => c.dataset.value === m.subcuenta);
+    if (subCard) selectSubcuenta(subCard, i);
+  }
+
+  // Seleccionar tarjeta de Categoría (ya renderizada por selectSubcuenta)
+  if (m.categoria) {
+    const catCard = Array.from(
+      document.getElementById(`categoria-grid-${i}`).querySelectorAll(".cuenta-card")
+    ).find(c => c.dataset.value === m.categoria);
+    if (catCard) selectCategoria(catCard, i);
+  }
+
+  // Seleccionar tarjeta de Concepto (ya renderizada por selectCategoria / selectSubcuenta)
+  if (m.concepto) {
+    const conCard = Array.from(
+      document.getElementById(`concepto-grid-${i}`).querySelectorAll(".cuenta-card")
+    ).find(c => c.dataset.value === m.concepto);
+    if (conCard) selectConcepto(conCard, i);
+  }
+
+  // Limpiar buscador
+  document.getElementById(`search-${i}`).value = "";
+  hideSearchResults(i);
 }
 
 // ─── Get classification values ──────────────────────────────────────────────
