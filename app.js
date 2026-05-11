@@ -229,12 +229,30 @@ function renderTicketCards() {
   container.innerHTML = ticketResults.map((t, i) => createTicketCard(t, i)).join("");
 }
 
+const PAYMENT_CHIP = {
+  VISA:            { emoji: "💳", color: "#1a56db", bg: "#e8f0fe" },
+  MASTERCARD:      { emoji: "💳", color: "#c0392b", bg: "#fde8e8" },
+  AMEX:            { emoji: "💳", color: "#1f7a4c", bg: "#d1fae5" },
+  TARJETA_DEBITO:  { emoji: "🏦", color: "#6d28d9", bg: "#ede9fe" },
+  TARJETA_CREDITO: { emoji: "💳", color: "#b45309", bg: "#fef3c7" },
+  TARJETA_BANCO:   { emoji: "🏦", color: "#1e40af", bg: "#dbeafe" },
+  EFECTIVO:        { emoji: "💵", color: "#065f46", bg: "#d1fae5" },
+  TRANSFERENCIA:   { emoji: "🔄", color: "#0e7490", bg: "#cffafe" },
+  QR:              { emoji: "📱", color: "#7c3aed", bg: "#f3e8ff" },
+};
+
+function paymentChip(method, last4) {
+  if (!method) return "";
+  const p = PAYMENT_CHIP[method] || { emoji: "💳", color: "#374151", bg: "#f3f4f6" };
+  const label = method.replace(/_/g, " ") + (last4 ? " *" + last4 : "");
+  return `<span class="payment-chip" style="color:${p.color};background:${p.bg}">${p.emoji} ${label}</span>`;
+}
+
 function createTicketCard(ticket, i) {
   const r = ticket.resumen;
   const metaParts = [
     r.fecha || "",
     r.hora  || "",
-    r.metodo_pago ? (r.metodo_pago + (r.tarjeta_ultimos4 ? " *" + r.tarjeta_ultimos4 : "")) : "",
     r.num_productos ? `${r.num_productos} producto${r.num_productos !== 1 ? "s" : ""}` : ""
   ].filter(Boolean);
 
@@ -244,14 +262,15 @@ function createTicketCard(ticket, i) {
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
         <div class="ticket-info">
+          ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
           <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
           <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
         </div>
         <div class="ticket-header-right">
           <span class="classified-badge hidden" id="classified-badge-${i}">✓ Clasificado</span>
-          <div class="ticket-totals">
-            <div class="ticket-total-badge">${money(r.total)}</div>
-            ${r.iva ? `<div class="ticket-iva-badge">IVA ${money(r.iva)}</div>` : ""}
+          <div class="ticket-total-badge">
+            <span class="total-main">${money(r.total)}</span>
+            ${r.iva ? `<span class="total-iva">IVA ${money(r.iva)}</span>` : ""}
           </div>
         </div>
       </div>
