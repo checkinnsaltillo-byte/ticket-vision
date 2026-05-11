@@ -277,12 +277,33 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .classify-tab:hover .classify-tab-label,
 .classify-tab.open  .classify-tab-label { color: var(--primary-dark); }
-.classify-tab.classified {
-  background: #16a34a; border-top-color: #15803d;
+.classify-tab.classified .classify-tab-arrow { color: #fff; }
+/* Tab por cuenta — tono más oscuro que el header */
+.classify-tab.classified.ci-ingresos { background:#16a34a; border-top-color:#14532d; }
+.classify-tab.classified.ci-ingresos:hover { background:#15803d; }
+.classify-tab.classified.ci-egresos  { background:#dc2626; border-top-color:#7f1d1d; }
+.classify-tab.classified.ci-egresos:hover  { background:#b91c1c; }
+.classify-tab.classified.ci-sincuenta{ background:#6b7280; border-top-color:#374151; }
+.classify-tab.classified.ci-sincuenta:hover { background:#4b5563; }
+.classify-tab.classified.ci-capital  { background:#111827; border-top-color:#030712; }
+.classify-tab.classified.ci-capital:hover  { background:#030712; }
+.classify-tab.classified.ci-activos  { background:#1d4ed8; border-top-color:#1e3a8a; }
+.classify-tab.classified.ci-activos:hover  { background:#1e40af; }
+.classify-tab.classified.ci-pasivos  { background:#7c3aed; border-top-color:#4c1d95; }
+.classify-tab.classified.ci-pasivos:hover  { background:#6d28d9; }
+
+/* Chip de cuenta sobre el nombre del establecimiento */
+.cuenta-type-chip {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; margin-bottom: 3px;
+  letter-spacing: .02em; white-space: nowrap; color: #fff;
 }
-.classify-tab.classified .classify-tab-arrow,
-.classify-tab.classified .classify-tab-label { color: #fff; }
-.classify-tab.classified:hover { background: #15803d; }
+.cuenta-type-chip.ci-ingresos { background:#16a34a; }
+.cuenta-type-chip.ci-egresos  { background:#dc2626; }
+.cuenta-type-chip.ci-sincuenta{ background:#6b7280; }
+.cuenta-type-chip.ci-capital  { background:#1f2937; }
+.cuenta-type-chip.ci-activos  { background:#1d4ed8; }
+.cuenta-type-chip.ci-pasivos  { background:#7c3aed; }
 
 /* ─── Header clasificado — color por Cuenta ──────────────────── */
 .ticket-card-header.classified { border-bottom-width: 2px; }
@@ -314,12 +335,6 @@ textarea { min-height: 80px; resize: vertical; }
 .ticket-card-header.ci-pasivos:hover { background: linear-gradient(180deg,#ede9fe,#ddd6fe); }
 .ticket-card-header.ci-pasivos .ticket-store { color:#4c1d95; }
 
-/* Ruta de clasificación */
-.classified-path {
-  font-size: 11px; font-weight: 600; margin-top: 5px;
-  color: var(--text-soft); letter-spacing: .01em; line-height: 1.4;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
 
 /* Badge verde siempre (indicador de guardado) */
 .ticket-total-badge.classified {

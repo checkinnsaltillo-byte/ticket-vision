@@ -329,9 +329,9 @@ function createTicketCard(ticket, i) {
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
         <div class="ticket-info">
           ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
+          <div class="cuenta-type-chip hidden" id="cuenta-chip-${i}"></div>
           <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
           <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
-          <div class="classified-path hidden" id="classified-path-${i}"></div>
         </div>
         <div class="ticket-header-right">
           <div class="ticket-total-badge" id="total-badge-${i}">
@@ -592,29 +592,40 @@ const CUENTA_COLOR_CLASS = {
   "Pasivos":  "ci-pasivos",
 };
 
-function markAsClassified(i) {
-  const c      = getClassify(i);
-  const header = document.getElementById(`header-${i}`);
+const ALL_CI = ["ci-ingresos","ci-egresos","ci-capital","ci-activos","ci-pasivos","ci-sincuenta"];
 
-  // Remove previous cuenta class if re-saving
-  Object.values(CUENTA_COLOR_CLASS).forEach(cls => header.classList.remove(cls));
+function markAsClassified(i) {
+  const c        = getClassify(i);
+  const header   = document.getElementById(`header-${i}`);
+  const tab      = document.getElementById(`btn-classify-${i}`);
   const colorCls = CUENTA_COLOR_CLASS[c.cuenta] || "ci-sincuenta";
+
+  // Header color
+  ALL_CI.forEach(cls => header.classList.remove(cls));
   header.classList.add("classified", colorCls);
+
+  // Tab color (same clase, CSS defines darker shade)
+  ALL_CI.forEach(cls => tab.classList.remove(cls));
+  tab.classList.add("classified", colorCls);
 
   // Badge color
   document.getElementById(`total-badge-${i}`).classList.add("classified");
 
-  // Classification breadcrumb
-  const parts   = [c.cuenta, c.subcuenta, c.categoria, c.concepto].filter(Boolean);
-  const emoji   = CUENTA_EMOJIS[c.cuenta] || "";
-  const pathEl  = document.getElementById(`classified-path-${i}`);
-  pathEl.textContent = (emoji ? emoji + " " : "") + (parts.length ? parts.join(" › ") : "Sin clasificar");
-  pathEl.classList.remove("hidden");
+  // Cuenta chip above store name
+  const chipEl = document.getElementById(`cuenta-chip-${i}`);
+  if (c.cuenta) {
+    chipEl.textContent  = (CUENTA_EMOJIS[c.cuenta] || "") + " " + c.cuenta;
+    chipEl.className    = `cuenta-type-chip ci-chip ${colorCls}`;
+  } else {
+    chipEl.classList.add("hidden");
+  }
 
-  // Tab
-  const tab = document.getElementById(`btn-classify-${i}`);
-  tab.classList.add("classified");
-  tab.querySelector(".classify-tab-label").textContent = "Clasificado";
+  // Path in tab label
+  const parts    = [c.cuenta, c.subcuenta, c.categoria, c.concepto].filter(Boolean);
+  const pathText = parts.join(" › ") || "Sin clasificar";
+  const labelEl  = tab.querySelector(".classify-tab-label");
+  labelEl.textContent = pathText;
+  labelEl.style.cssText = "font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px;";
 }
 
 // ─── Emojis por categoría ──────────────────────────────────────────────────
