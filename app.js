@@ -721,15 +721,6 @@ const ALL_CI = ["ci-ingresos","ci-egresos","ci-capital","ci-activos","ci-pasivos
 
 const SHEETS_URL = "https://script.google.com/macros/s/AKfycbwpOpw36AFOIDWrT_Cjwqof_Upds3sIds4pfDtgSXO0w1rNKak6PaJOsUSy1L2cwQr-vw/exec";
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result.split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 async function guardarResultados() {
   if (!ticketResults.length) return;
 
@@ -740,16 +731,36 @@ async function guardarResultados() {
   try {
     if (btn) btn.style.pointerEvents = "none";
     if (statusEl) { statusEl.textContent = ""; statusEl.classList.add("hidden"); }
-    showLoading("Preparando imágenes…", "Convirtiendo para subir a Drive…");
+
+    // ── Paso 1: subir imágenes al backend (Cloud Run → Drive) ──
+    showLoading("Subiendo imágenes a Drive…", "Esto puede tardar unos segundos…");
+
+    const imageUrls = {};
+    const filesWithMeta = ticketResults
+      .map((t, i) => ({ file: t.file, ticket_id: t.resumen.ticket_id, fecha: t.resumen.fecha, tienda: t.resumen.tienda }))
+      .filter(x => x.file);
+
+    if (filesWithMeta.length) {
+      const form = new FormData();
+      form.append("metadata", JSON.stringify(filesWithMeta.map(x => ({ ticket_id: x.ticket_id, fecha: x.fecha, tienda: x.tienda }))));
+      filesWithMeta.forEach(x => form.append("files", x.file));
+
+      const imgRes  = await fetch(`${BACKEND}/upload-images`, { method: "POST", body: form });
+      const imgData = await imgRes.json();
+      if (!imgRes.ok || !imgData.ok) throw new Error("Error subiendo imágenes: " + (imgData.error || ""));
+      (imgData.results || []).forEach(r => { imageUrls[r.ticket_id] = { url: r.url, nombre: r.nombre }; });
+    }
+
+    // ── Paso 2: enviar datos a Apps Script → Sheets ──
+    showLoading("Guardando en Sheets…", `Enviando ${ticketResults.length} ticket${ticketResults.length > 1 ? "s" : ""}…`);
 
     const productos = [];
     const resumen   = [];
     const cruce     = [];
-    const imagenes  = [];
 
-    for (let i = 0; i < ticketResults.length; i++) {
-      const t = ticketResults[i];
-      const c = getClassify(i);
+    ticketResults.forEach((t, i) => {
+      const c   = getClassify(i);
+      const img = imageUrls[t.resumen.ticket_id] || {};
       const clasif = {
         cuenta:          c.cuenta,
         subcuenta:       c.subcuenta,
@@ -761,22 +772,6 @@ async function guardarResultados() {
         facturable:      c.facturable ? "Sí" : "No",
         comentarios:     c.comentarios,
       };
-
-      if (t.file) {
-        const fecha  = t.resumen.fecha || new Date().toISOString().slice(0, 10);
-        const tienda = t.resumen.tienda || "ticket";
-        const rawExt = (t.file.name.split(".").pop() || "jpg").replace(/[^a-z0-9]/gi, "").toLowerCase();
-        const nombre = `${fecha}_${tienda.replace(/[^a-z0-9áéíóúñ]/gi, "_").slice(0, 30)}.${rawExt || "jpg"}`;
-        imagenes.push({
-          ticket_id:    t.resumen.ticket_id,
-          base64:       await fileToBase64(t.file),
-          mime:         t.file.type || "image/jpeg",
-          nombre_final: nombre,
-          año:          fecha.slice(0, 4),
-          mes:          fecha.slice(5, 7),
-          comercio:     tienda,
-        });
-      }
 
       (t.productos || []).forEach(p => productos.push({
         ticket_id:               p.ticket_id,
@@ -811,6 +806,8 @@ async function guardarResultados() {
         total:            t.resumen.total,
         ...clasif,
         fecha_captura:    t.resumen.fecha_captura || new Date().toISOString(),
+        imagen_nombre:    img.nombre || "",
+        imagen_url:       img.url    || "",
       });
 
       cruce.push({
@@ -830,22 +827,20 @@ async function guardarResultados() {
         propiedad:        c.propiedad,
         departamento:     c.departamento,
       });
-    }
-
-    showLoading("Guardando en Sheets…", `Enviando ${ticketResults.length} ticket${ticketResults.length > 1 ? "s" : ""} e imágenes…`);
+    });
 
     await fetch(SHEETS_URL, {
       method:  "POST",
       mode:    "no-cors",
       headers: { "Content-Type": "text/plain" },
-      body:    JSON.stringify({ productos, resumen, cruce, imagenes }),
+      body:    JSON.stringify({ productos, resumen, cruce }),
     });
 
     const msg = `✅ ${ticketResults.length} ticket${ticketResults.length > 1 ? "s" : ""} guardados. Imágenes subidas a Drive.`;
     if (statusEl)   { statusEl.textContent = msg; statusEl.classList.remove("hidden"); statusEl.className = "save-status save-ok"; }
     if (subtitleEl) subtitleEl.textContent = "Enviado correctamente";
   } catch (err) {
-    const msg = "❌ Error al guardar: " + err.message;
+    const msg = "❌ Error: " + err.message;
     if (statusEl) { statusEl.textContent = msg; statusEl.classList.remove("hidden"); statusEl.className = "save-status save-err"; }
   } finally {
     hideLoading();

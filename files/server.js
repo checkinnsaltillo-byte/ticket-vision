@@ -1,10 +1,11 @@
-const express  = require("express");
-const multer   = require("multer");
+const express   = require("express");
+const multer    = require("multer");
 const Anthropic = require("@anthropic-ai/sdk");
-const XLSX     = require("xlsx");
-const fs       = require("fs");
-const path     = require("path");
-const cors     = require("cors");
+const XLSX      = require("xlsx");
+const fs        = require("fs");
+const path      = require("path");
+const cors      = require("cors");
+const { google } = require("googleapis");
 
 const classifyExpense          = require("./classifier");
 const { sendRowsToAppsScript } = require("./sheetsClient");
@@ -20,12 +21,83 @@ const upload = multer({ dest: UPLOAD_DIR });
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "20mb" }));
 
+// ─── Drive helpers ─────────────────────────────────────────────────────────
+
+const DRIVE_ROOT_ID = "1tmk7kLNAE5xwKH8SxRZsFn3jpGxpUAr3";
+const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+async function getDrive() {
+  const auth = new google.auth.GoogleAuth({ scopes: ["https://www.googleapis.com/auth/drive"] });
+  return google.drive({ version: "v3", auth });
+}
+
+async function findOrCreateFolder(drive, parentId, name) {
+  const safe = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const { data } = await drive.files.list({
+    q: `name='${safe}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: "files(id)",
+    spaces: "drive",
+  });
+  if (data.files.length) return data.files[0].id;
+  const { data: f } = await drive.files.create({
+    requestBody: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] },
+    fields: "id",
+  });
+  return f.id;
+}
+
 // ─── Health ────────────────────────────────────────────────────────────────
 
 app.get("/", (req, res) => res.json({
-  ok: true, service: "Ticket Vision v7 — Claude Vision", endpoints: ["/process", "/process-json", "/health"]
+  ok: true, service: "Ticket Vision v8 — Claude Vision", endpoints: ["/process", "/process-json", "/upload-images", "/health"]
 }));
 app.get("/health", (req, res) => res.json({ ok: true }));
+
+// ─── Upload images to Drive ─────────────────────────────────────────────────
+
+app.post("/upload-images", upload.array("files"), async (req, res) => {
+  try {
+    const drive    = await getDrive();
+    const metadata = JSON.parse(req.body.metadata || "[]");
+    const results  = [];
+
+    for (let i = 0; i < (req.files || []).length; i++) {
+      const file  = req.files[i];
+      const meta  = metadata[i] || {};
+      const fecha = meta.fecha || new Date().toISOString().slice(0, 10);
+      const año   = fecha.slice(0, 4);
+      const mesN  = parseInt(fecha.slice(5, 7), 10);
+      const mesStr = fecha.slice(5, 7) + " - " + (MESES_ES[mesN - 1] || "sin_mes");
+      const tienda = (meta.tienda || "sin_tienda").replace(/[/\\:*?"<>|]/g, "_").trim().slice(0, 50);
+      const ext    = path.extname(file.originalname || ".jpg").toLowerCase() || ".jpg";
+      const nombre = `${fecha}_${tienda.replace(/\s+/g, "_").slice(0, 30)}${ext}`;
+
+      const yearId  = await findOrCreateFolder(drive, DRIVE_ROOT_ID, año);
+      const monthId = await findOrCreateFolder(drive, yearId,        mesStr);
+      const storeId = await findOrCreateFolder(drive, monthId,       tienda);
+
+      const { data: uploaded } = await drive.files.create({
+        requestBody: { name: nombre, parents: [storeId] },
+        media:       { mimeType: file.mimetype || "image/jpeg", body: fs.createReadStream(file.path) },
+        fields:      "id,name,webViewLink",
+      });
+      await drive.permissions.create({
+        fileId:      uploaded.id,
+        requestBody: { role: "reader", type: "anyone" },
+      });
+
+      results.push({ ticket_id: meta.ticket_id, url: uploaded.webViewLink, nombre: uploaded.name });
+    }
+
+    res.json({ ok: true, results });
+  } catch (err) {
+    console.error("upload_images_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  } finally {
+    cleanupFiles(req.files || []);
+  }
+});
 
 // ─── Prompt de extracción ──────────────────────────────────────────────────
 
