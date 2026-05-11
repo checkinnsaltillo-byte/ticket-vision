@@ -241,11 +241,18 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .ticket-meta { font-size: 12px; color: var(--text-soft); line-height: 1.4; }
 .ticket-header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.ticket-totals { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .ticket-total-badge {
   background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
   color: #fff; padding: 8px 16px; border-radius: 999px;
   font-size: 17px; font-weight: 700;
   box-shadow: 0 4px 12px rgba(217,119,6,.24); white-space: nowrap;
+}
+.ticket-iva-badge {
+  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: #fff; padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+  opacity: .75;
 }
 
 /* Pestaña Clasificar — siempre al fondo */
@@ -270,6 +277,12 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .classify-tab:hover .classify-tab-label,
 .classify-tab.open  .classify-tab-label { color: var(--primary-dark); }
+.classify-tab.classified {
+  background: #16a34a; border-top-color: #15803d;
+}
+.classify-tab.classified .classify-tab-arrow,
+.classify-tab.classified .classify-tab-label { color: #fff; }
+.classify-tab.classified:hover { background: #15803d; }
 
 /* Header clasificado — verde suave */
 .ticket-card-header.classified {

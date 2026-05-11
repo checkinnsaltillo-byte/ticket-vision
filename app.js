@@ -235,8 +235,7 @@ function createTicketCard(ticket, i) {
     r.fecha || "",
     r.hora  || "",
     r.metodo_pago ? (r.metodo_pago + (r.tarjeta_ultimos4 ? " *" + r.tarjeta_ultimos4 : "")) : "",
-    r.num_productos ? `${r.num_productos} producto${r.num_productos !== 1 ? "s" : ""}` : "",
-    r.iva ? `IVA $${Number(r.iva).toFixed(2)}` : ""
+    r.num_productos ? `${r.num_productos} producto${r.num_productos !== 1 ? "s" : ""}` : ""
   ].filter(Boolean);
 
   const deptOptions = Array.from({length: 14}, (_, j) => `<option>${j + 1}</option>`).join("");
@@ -250,7 +249,10 @@ function createTicketCard(ticket, i) {
         </div>
         <div class="ticket-header-right">
           <span class="classified-badge hidden" id="classified-badge-${i}">✓ Clasificado</span>
-          <div class="ticket-total-badge">${money(r.total)}</div>
+          <div class="ticket-totals">
+            <div class="ticket-total-badge">${money(r.total)}</div>
+            ${r.iva ? `<div class="ticket-iva-badge">IVA ${money(r.iva)}</div>` : ""}
+          </div>
         </div>
       </div>
 
@@ -403,6 +405,9 @@ function toggleClassify(i) {
 function markAsClassified(i) {
   document.getElementById(`header-${i}`).classList.add("classified");
   document.getElementById(`classified-badge-${i}`).classList.remove("hidden");
+  const tab = document.getElementById(`btn-classify-${i}`);
+  tab.classList.add("classified");
+  tab.querySelector(".classify-tab-label").textContent = "Clasificado";
 }
 
 // ─── Emojis por categoría ──────────────────────────────────────────────────
