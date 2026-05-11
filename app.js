@@ -221,14 +221,36 @@ function addFiles(newFiles) {
 
 function removeFile(idx) {
   selectedFiles.splice(idx, 1);
-  if (!selectedFiles.length) document.getElementById("analyzeWrap").classList.add("hidden");
+  if (!selectedFiles.length) {
+    document.getElementById("analyzeWrap").classList.add("hidden");
+    document.getElementById("limpiarWrap").classList.add("hidden");
+  }
   renderImageStrip();
+}
+
+function limpiarTickets() {
+  ticketResults.forEach(t => { if (t.imageUrl) URL.revokeObjectURL(t.imageUrl); });
+  selectedFiles = [];
+  ticketResults = [];
+  const strip = document.getElementById("imagePreview");
+  strip.innerHTML = "";
+  strip.classList.add("hidden");
+  document.getElementById("analyzeWrap").classList.add("hidden");
+  document.getElementById("limpiarWrap").classList.add("hidden");
+  document.getElementById("analyzeStatus").textContent = "";
+  document.getElementById("ticketsContainer").innerHTML = "";
+  document.getElementById("panel-3").classList.add("hidden");
+  const sub = document.getElementById("panel-2-subtitle");
+  if (sub) sub.textContent = "Sin tickets analizados";
+  openPanel(1);
+  closePanel(2);
 }
 
 function renderImageStrip() {
   const strip = document.getElementById("imagePreview");
   if (!selectedFiles.length) { strip.classList.add("hidden"); return; }
   strip.classList.remove("hidden");
+  document.getElementById("limpiarWrap").classList.remove("hidden");
   strip.innerHTML = "";
 
   selectedFiles.forEach((file, i) => {
@@ -303,6 +325,7 @@ async function analyzeTickets() {
 
     ticketResults = (data.resumen || []).map((res, i) => ({
       file:      selectedFiles[i],
+      imageUrl:  selectedFiles[i] ? URL.createObjectURL(selectedFiles[i]) : null,
       resumen:   res,
       productos: (data.productos || []).filter(p => p.ticket_id === res.ticket_id),
       cruce:     (data.cruce_bancario || [])[i] || {}
@@ -327,7 +350,7 @@ async function analyzeTickets() {
 function renderTicketCards() {
   const container = document.getElementById("ticketsContainer");
   container.innerHTML = ticketResults.map((t, i) => createTicketCard(t, i)).join("");
-  document.getElementById("btnGuardarResultados").classList.toggle("hidden", !ticketResults.length);
+  document.getElementById("panel-3").classList.toggle("hidden", !ticketResults.length);
 }
 
 const PAYMENT_CHIP = {
@@ -417,6 +440,13 @@ function createTicketCard(ticket, i) {
       </div>
 
       <div class="ticket-table-wrap hidden" id="table-${i}">
+        ${ticket.imageUrl ? `<div class="ticket-image-row">
+          <img class="ticket-image-thumb" src="${esc(ticket.imageUrl)}"
+               data-url="${esc(ticket.imageUrl)}"
+               alt="Ticket ${i + 1}"
+               onclick="openImageLightbox(this.dataset.url)">
+          <span class="ticket-image-hint">Toca para ver en detalle</span>
+        </div>` : ""}
         <div class="ticket-tabs">
           <button class="ticket-tab active" onclick="showTicketTab(${i},'transcripcion',this)">Transcripción</button>
           <button class="ticket-tab" onclick="showTicketTab(${i},'resumen',this)">Resumen</button>
@@ -669,6 +699,19 @@ const ALL_CI = ["ci-ingresos","ci-egresos","ci-capital","ci-activos","ci-pasivos
 
 function guardarResultados() {
   // Por vincular con Google Sheets
+}
+
+function openImageLightbox(url) {
+  if (!url) return;
+  document.getElementById("lightboxImg").src = url;
+  document.getElementById("imageLightbox").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function closeLightbox() {
+  document.getElementById("imageLightbox").classList.add("hidden");
+  document.getElementById("lightboxImg").src = "";
+  document.body.style.overflow = "";
 }
 
 function clasificarTicket(i) {
