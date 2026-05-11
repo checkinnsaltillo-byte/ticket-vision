@@ -311,16 +311,16 @@ function paymentChip(method, last4) {
   const key   = normalizePaymentKey(method);
   const p     = PAYMENT_CHIP[key] || { emoji: "💳", color: "#374151", bg: "#f3f4f6" };
   const label = (PAYMENT_LABEL[key] || key.replace(/_/g, " ")) + (last4 ? " *" + last4 : "");
-  return `<span class="payment-chip" style="color:${p.color};background:${p.bg}">${p.emoji} ${label}</span>`;
+  return `<span class="info-chip" style="color:${p.color};background:${p.bg}">${p.emoji} ${label}</span>`;
 }
 
 function createTicketCard(ticket, i) {
   const r = ticket.resumen;
-  const metaParts = [
-    r.fecha || "",
-    r.hora  || "",
-    r.num_productos ? `${r.num_productos} producto${r.num_productos !== 1 ? "s" : ""}` : ""
-  ].filter(Boolean);
+  const metaParts = [r.fecha || "", r.hora || ""].filter(Boolean);
+
+  const rawSummary = (ticket.productos || [])
+    .map(p => p.descripcion || "").filter(Boolean).join(", ");
+  const productSummary = rawSummary.length > 95 ? rawSummary.slice(0, 92) + "…" : rawSummary;
 
   const deptOptions = Array.from({length: 14}, (_, j) => `<option>${j + 1}</option>`).join("");
 
@@ -329,12 +329,17 @@ function createTicketCard(ticket, i) {
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
         <div class="ticket-info">
           <div class="header-chips">
+            <span class="info-chip hidden" id="cuenta-chip-${i}"></span>
             ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
-            <span class="encargado-chip hidden" id="encargado-chip-${i}"></span>
+            <span class="info-chip hidden" id="encargado-chip-${i}"></span>
+            <span class="info-chip hidden" id="propiedad-chip-${i}"></span>
+            <span class="info-chip hidden" id="dept-chip-${i}"></span>
           </div>
-          <div class="cuenta-type-chip hidden" id="cuenta-chip-${i}"></div>
           <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
-          <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
+          <div class="ticket-meta">
+            ${esc(metaParts.join(" · "))}${metaParts.length ? " · " : ""}🧾 ${r.num_productos || 0} producto${(r.num_productos || 0) !== 1 ? "s" : ""}
+          </div>
+          ${productSummary ? `<div class="product-summary">${esc(productSummary)}</div>` : ""}
         </div>
         <div class="ticket-header-right">
           <div class="ticket-total-badge" id="total-badge-${i}">
@@ -616,22 +621,42 @@ function markAsClassified(i) {
   ALL_CI.forEach(cls => badge.classList.remove(cls));
   badge.classList.add("classified", colorCls);
 
-  // Cuenta chip above store name
-  const chipEl = document.getElementById(`cuenta-chip-${i}`);
+  // 1. Cuenta chip
+  const cuentaChipEl = document.getElementById(`cuenta-chip-${i}`);
   if (c.cuenta) {
-    chipEl.textContent = (CUENTA_EMOJIS[c.cuenta] || "") + " " + c.cuenta;
-    chipEl.className   = `cuenta-type-chip ci-chip ${colorCls}`;
+    cuentaChipEl.textContent = (CUENTA_EMOJIS[c.cuenta] || "") + " " + c.cuenta;
+    ALL_CI.forEach(cls => cuentaChipEl.classList.remove(cls));
+    cuentaChipEl.classList.remove("hidden");
+    cuentaChipEl.classList.add(colorCls);
   } else {
-    chipEl.classList.add("hidden");
+    cuentaChipEl.classList.add("hidden");
   }
 
-  // Encargado de operación chip in header
+  // 3. Encargado de operación chip
   const encargadoEl = document.getElementById(`encargado-chip-${i}`);
   if (c.comprador) {
     encargadoEl.textContent = "👤 " + c.comprador;
     encargadoEl.classList.remove("hidden");
   } else {
     encargadoEl.classList.add("hidden");
+  }
+
+  // 4. Propiedad chip
+  const propiedadEl = document.getElementById(`propiedad-chip-${i}`);
+  if (c.propiedad) {
+    propiedadEl.textContent = "🏠 " + c.propiedad;
+    propiedadEl.classList.remove("hidden");
+  } else {
+    propiedadEl.classList.add("hidden");
+  }
+
+  // 5. Departamento chip
+  const deptEl = document.getElementById(`dept-chip-${i}`);
+  if (c.departamento) {
+    deptEl.textContent = "🚪 Depto. " + c.departamento;
+    deptEl.classList.remove("hidden");
+  } else {
+    deptEl.classList.add("hidden");
   }
 
   // Path in tab label
