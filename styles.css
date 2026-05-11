@@ -449,13 +449,42 @@ textarea { min-height: 80px; resize: vertical; }
 /* ─── Guardar resultados (panel 3) ──────────────────────────── */
 
 .save-action-header {
-  background: linear-gradient(180deg, #1d4ed8 0%, #1e3a8a 100%);
+  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
   border-radius: 26px; transition: filter .15s;
+  box-shadow: 0 10px 22px rgba(217,119,6,.22);
 }
-.save-action-header:hover { filter: brightness(1.1); }
+.save-action-header:hover { filter: brightness(1.07); }
 .save-action-icon { font-size: 22px; display: inline-block; }
 .save-action-title { color: #fff !important; }
-.save-action-sub { color: rgba(255,255,255,.75) !important; }
+.save-action-sub { color: rgba(255,255,255,.78) !important; }
+
+/* ─── Toggle switch ─────────────────────────────────────────── */
+
+.toggle-row { display: flex; align-items: center; gap: 12px; }
+.toggle-switch {
+  position: relative; display: inline-block;
+  width: 50px; height: 28px; flex-shrink: 0;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: #d1d5db; border-radius: 28px;
+  transition: background .25s;
+}
+.toggle-slider::before {
+  content: ""; position: absolute;
+  width: 22px; height: 22px; border-radius: 50%;
+  left: 3px; bottom: 3px; background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.18);
+  transition: transform .25s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--primary-dark); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); }
+.toggle-label-text {
+  font-size: 14px; font-weight: 700; color: var(--text-soft);
+  transition: color .2s;
+}
+.toggle-label-text.on { color: var(--primary-dark); }
 
 /* ─── Ticket Table ──────────────────────────────────────────── */
 

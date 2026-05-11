@@ -551,23 +551,45 @@ function createTicketCard(ticket, i) {
         <div class="cuenta-field">
           <label>Encargado de operación</label>
           <div class="cuenta-grid cuenta-grid--compact" id="comprador-grid-${i}">
-            <div class="cuenta-card" data-value="ACR" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👤</div><div class="cuenta-label">ACR</div>
+            <div class="cuenta-card" data-value="Andrés" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👨</div><div class="cuenta-label">Andrés</div>
             </div>
-            <div class="cuenta-card" data-value="ACL" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👤</div><div class="cuenta-label">ACL</div>
+            <div class="cuenta-card" data-value="Claudia" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👩</div><div class="cuenta-label">Claudia</div>
             </div>
-            <div class="cuenta-card" data-value="CCL" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👤</div><div class="cuenta-label">CCL</div>
+            <div class="cuenta-card" data-value="Papá" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👨‍👧</div><div class="cuenta-label">Papá</div>
             </div>
-            <div class="cuenta-card" data-value="Otro" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">✏️</div><div class="cuenta-label">Otro</div>
+            <div class="cuenta-card" data-value="Francisco" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👨</div><div class="cuenta-label">Francisco</div>
+            </div>
+            <div class="cuenta-card" data-value="Brenda" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👩</div><div class="cuenta-label">Brenda</div>
+            </div>
+            <div class="cuenta-card" data-value="Alma" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👩</div><div class="cuenta-label">Alma</div>
+            </div>
+            <div class="cuenta-card" data-value="Gaby" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👩</div><div class="cuenta-label">Gaby</div>
+            </div>
+            <div class="cuenta-card" data-value="Juanita" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👩</div><div class="cuenta-label">Juanita</div>
+            </div>
+            <div class="cuenta-card" data-value="Damariz" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👩</div><div class="cuenta-label">Damariz</div>
             </div>
           </div>
           <input type="hidden" id="comprador-${i}" value="">
-          <div class="hidden" id="comprador-otro-${i}" style="margin-top:8px">
-            <input type="text" id="comprador-otro-text-${i}" class="classify-search"
-                   placeholder="Especifica el comprador..." style="font-size:13px;padding:10px 14px">
+        </div>
+
+        <div class="cuenta-field">
+          <label>Facturable</label>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="facturable-${i}" onchange="updateFacturableLabel(${i}, this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label-text" id="facturable-label-${i}">No facturable</span>
           </div>
         </div>
 
@@ -904,9 +926,14 @@ function selectCategoria(el, i) {
 function selectComprador(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
-  const val = el.dataset.value;
-  document.getElementById(`comprador-${i}`).value = val;
-  document.getElementById(`comprador-otro-${i}`).classList.toggle("hidden", val !== "Otro");
+  document.getElementById(`comprador-${i}`).value = el.dataset.value;
+}
+
+function updateFacturableLabel(i, checked) {
+  const lbl = document.getElementById(`facturable-label-${i}`);
+  if (!lbl) return;
+  lbl.textContent = checked ? "Facturable" : "No facturable";
+  lbl.classList.toggle("on", checked);
 }
 
 // ─── Buscador ──────────────────────────────────────────────────────────────
@@ -982,8 +1009,6 @@ function applySearchResult(i, idx) {
 // ─── Get classification values ──────────────────────────────────────────────
 
 function getClassify(i) {
-  const compradorVal  = document.getElementById(`comprador-${i}`)?.value || "";
-  const compradorOtro = document.getElementById(`comprador-otro-text-${i}`)?.value?.trim() || "";
   return {
     cuenta:       document.getElementById(`cuenta-${i}`)?.value       || "",
     subcuenta:    document.getElementById(`subcuenta-${i}`)?.value    || "",
@@ -991,7 +1016,8 @@ function getClassify(i) {
     concepto:     document.getElementById(`concepto-${i}`)?.value     || "",
     propiedad:    document.getElementById(`propiedad-${i}`)?.value    || "",
     departamento: document.getElementById(`departamento-${i}`)?.value || "",
-    comprador:    compradorVal === "Otro" ? (compradorOtro || "Otro") : compradorVal,
+    comprador:    document.getElementById(`comprador-${i}`)?.value    || "",
+    facturable:   document.getElementById(`facturable-${i}`)?.checked || false,
     comentarios:  document.getElementById(`comentarios-${i}`)?.value?.trim() || "",
   };
 }
