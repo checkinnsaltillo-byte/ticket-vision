@@ -798,6 +798,8 @@ async function guardarResultados() {
         total_ticket:     t.cruce.total_ticket,
         cuenta:           c.cuenta,
         subcuenta:        c.subcuenta,
+        categoria_gasto:  c.categoria,
+        concepto:         c.concepto,
         propiedad:        c.propiedad,
         departamento:     c.departamento,
       });
