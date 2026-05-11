@@ -284,13 +284,44 @@ textarea { min-height: 80px; resize: vertical; }
 .classify-tab.classified .classify-tab-label { color: #fff; }
 .classify-tab.classified:hover { background: #15803d; }
 
-/* Header clasificado — verde suave */
-.ticket-card-header.classified {
-  background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
-  border-bottom-color: #86efac;
+/* ─── Header clasificado — color por Cuenta ──────────────────── */
+.ticket-card-header.classified { border-bottom-width: 2px; }
+
+/* Ingresos → verde */
+.ticket-card-header.ci-ingresos { background: linear-gradient(180deg,#f0fdf4,#dcfce7); border-bottom-color:#86efac; }
+.ticket-card-header.ci-ingresos:hover { background: linear-gradient(180deg,#dcfce7,#bbf7d0); }
+.ticket-card-header.ci-ingresos .ticket-store { color:#14532d; }
+/* Egresos → rojo */
+.ticket-card-header.ci-egresos { background: linear-gradient(180deg,#fef2f2,#fecaca); border-bottom-color:#fca5a5; }
+.ticket-card-header.ci-egresos:hover { background: linear-gradient(180deg,#fecaca,#fca5a5); }
+.ticket-card-header.ci-egresos .ticket-store { color:#7f1d1d; }
+/* Sin cuenta → blanco (default, sin clase extra) */
+.ticket-card-header.ci-sincuenta { background: #fff; border-bottom-color: var(--border); }
+.ticket-card-header.ci-sincuenta .ticket-store { color: var(--primary-dark); }
+/* Capital → oscuro */
+.ticket-card-header.ci-capital { background: linear-gradient(180deg,#1f2937,#111827); border-bottom-color:#374151; }
+.ticket-card-header.ci-capital:hover { background: linear-gradient(180deg,#374151,#1f2937); }
+.ticket-card-header.ci-capital .ticket-store,
+.ticket-card-header.ci-capital .ticket-meta,
+.ticket-card-header.ci-capital .classified-path { color:#f9fafb; }
+.ticket-card-header.ci-capital .payment-chip { opacity:.85; }
+/* Activos → azul */
+.ticket-card-header.ci-activos { background: linear-gradient(180deg,#eff6ff,#dbeafe); border-bottom-color:#93c5fd; }
+.ticket-card-header.ci-activos:hover { background: linear-gradient(180deg,#dbeafe,#bfdbfe); }
+.ticket-card-header.ci-activos .ticket-store { color:#1e3a8a; }
+/* Pasivos → morado */
+.ticket-card-header.ci-pasivos { background: linear-gradient(180deg,#faf5ff,#ede9fe); border-bottom-color:#c4b5fd; }
+.ticket-card-header.ci-pasivos:hover { background: linear-gradient(180deg,#ede9fe,#ddd6fe); }
+.ticket-card-header.ci-pasivos .ticket-store { color:#4c1d95; }
+
+/* Ruta de clasificación */
+.classified-path {
+  font-size: 11px; font-weight: 600; margin-top: 5px;
+  color: var(--text-soft); letter-spacing: .01em; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.ticket-card-header.classified:hover { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%); }
-.ticket-card-header.classified .ticket-store { color: #111827; }
+
+/* Badge verde siempre (indicador de guardado) */
 .ticket-total-badge.classified {
   background: linear-gradient(180deg, #16a34a 0%, #15803d 100%);
   box-shadow: 0 4px 12px rgba(21,128,61,.28);

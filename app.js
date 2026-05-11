@@ -331,6 +331,7 @@ function createTicketCard(ticket, i) {
           ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
           <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
           <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
+          <div class="classified-path hidden" id="classified-path-${i}"></div>
         </div>
         <div class="ticket-header-right">
           <div class="ticket-total-badge" id="total-badge-${i}">
@@ -443,7 +444,7 @@ function createTicketCard(ticket, i) {
         </div>
 
         <div class="cuenta-field">
-          <label>Comprador</label>
+          <label>Encargado de operación</label>
           <div class="cuenta-grid cuenta-grid--compact" id="comprador-grid-${i}">
             <div class="cuenta-card" data-value="ACR" onclick="selectComprador(this,${i})">
               <div class="cuenta-icon">👤</div><div class="cuenta-label">ACR</div>
@@ -583,9 +584,34 @@ function toggleClassify(i) {
   tab.classList.toggle("open", !open);
 }
 
+const CUENTA_COLOR_CLASS = {
+  "Ingresos": "ci-ingresos",
+  "Egresos":  "ci-egresos",
+  "Capital":  "ci-capital",
+  "Activos":  "ci-activos",
+  "Pasivos":  "ci-pasivos",
+};
+
 function markAsClassified(i) {
-  document.getElementById(`header-${i}`).classList.add("classified");
+  const c      = getClassify(i);
+  const header = document.getElementById(`header-${i}`);
+
+  // Remove previous cuenta class if re-saving
+  Object.values(CUENTA_COLOR_CLASS).forEach(cls => header.classList.remove(cls));
+  const colorCls = CUENTA_COLOR_CLASS[c.cuenta] || "ci-sincuenta";
+  header.classList.add("classified", colorCls);
+
+  // Badge color
   document.getElementById(`total-badge-${i}`).classList.add("classified");
+
+  // Classification breadcrumb
+  const parts   = [c.cuenta, c.subcuenta, c.categoria, c.concepto].filter(Boolean);
+  const emoji   = CUENTA_EMOJIS[c.cuenta] || "";
+  const pathEl  = document.getElementById(`classified-path-${i}`);
+  pathEl.textContent = (emoji ? emoji + " " : "") + (parts.length ? parts.join(" › ") : "Sin clasificar");
+  pathEl.classList.remove("hidden");
+
+  // Tab
   const tab = document.getElementById(`btn-classify-${i}`);
   tab.classList.add("classified");
   tab.querySelector(".classify-tab-label").textContent = "Clasificado";
