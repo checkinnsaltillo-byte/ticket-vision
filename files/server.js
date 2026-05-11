@@ -145,6 +145,8 @@ function buildContext(body = {}) {
     concepto:     body.concepto     || "",
     propiedad:    body.propiedad    || "",
     departamento: body.departamento || "",
+    comprador:    body.comprador    || "",
+    comentarios:  body.comentarios  || "",
   };
 }
 
@@ -187,7 +189,9 @@ async function processFiles(files, context) {
         categoria_gasto:         context.categoria,
         concepto:                context.concepto,
         propiedad:               context.propiedad,
-        departamento:            context.departamento
+        departamento:            context.departamento,
+        comprador:               context.comprador,
+        comentarios:             context.comentarios
       });
     });
 
@@ -214,6 +218,8 @@ async function processFiles(files, context) {
       concepto:         context.concepto,
       propiedad:        context.propiedad,
       departamento:     context.departamento,
+      comprador:        context.comprador,
+      comentarios:      context.comentarios,
       fecha_captura:    now
     });
 

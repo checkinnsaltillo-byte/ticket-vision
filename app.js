@@ -64,6 +64,40 @@ const CUENTA_EMOJIS = {
   "Capital":  "💼"
 };
 
+const CONCEPTO_EMOJIS = {
+  // Personas
+  "Brenda":"👩","Alma":"👩","Gaby":"👩","Juanita":"👩","Damariz":"👩",
+  "Francisco":"👨","Auxiliar administrativo":"👔","Andres":"👨","Claudia":"👩","Papa":"👨‍👧",
+  // Oficina
+  "Impresiones / Señalítica":"🖨️","Papelería":"📄","Equipo de cómputo":"💻",
+  // Servicios
+  "Lavandería":"👕","Agua":"💧","Luz":"💡","Gas":"🔥","Internet":"🌐",
+  "Pipas de agua":"🚛","Fumigación":"🪲",
+  // Insumos
+  "Limpieza":"🧹","Blancos":"🛏️",
+  // Mantenimiento
+  "Ferreteria":"🔧","Aparatos electrónicos y focos":"💡","Limpieza de colchones sillones":"🛋️",
+  "Gas de minisplit":"❄️","Hidro":"🛁","Lavadora / secadora":"🫧",
+  // Autos
+  "Gasolina":"⛽","Seguros":"🛡️","Mantenimiento":"🔧",
+  // Plataformas
+  "Lodgify":"🏨","Leadsales":"📱","Amazon prime":"📦","Netflix":"🎬",
+  "GoogleOne":"☁️","Breezeway":"🏠","Kommo":"💬","Microsoft":"🪟",
+  // Ingresos
+  "Trato directo":"🤝","Stripe":"💳","Airbnb":"🏡","Contratos":"📋",
+  // Capital
+  "Viajes":"✈️","Gatos casa":"🏠","Gastos médicos":"🏥","Otros gastos":"📦",
+  // Activos CAPEX
+  "General":"📦","Depa nuevo":"🏗️","Decoración":"🖼️","Reemplazo de minisplit":"❄️",
+  "Hidro nuevo":"🛁","Lavadora / secadora nueva":"🫧","Colchón":"🛏️",
+  "Mesa":"🪑","Silla":"🪑","Sillón":"🛋️","Refrigerador nuevo":"🧊",
+  "Abanico":"💨","Smart tv":"📺","Boiler nuevo":"🚿",
+  // Construcción
+  "Material":"🧱","Mano de obra":"👷","Eléctrico":"⚡","Plomería":"🔩",
+  "Pintura":"🎨","Herrería":"⚒️","Carpintería":"🪵","Yesería":"🏛️",
+  "Puertas y ventanas":"🚪","Otros Gastos":"📦","Otros gastos":"📦",
+};
+
 const SUBCUENTA_EMOJIS = {
   "Recursos Humanos":                     "👥",
   "Gastos Administrativos":               "📁",
@@ -408,6 +442,35 @@ function createTicketCard(ticket, i) {
           </div>
         </div>
 
+        <div class="cuenta-field">
+          <label>Comprador</label>
+          <div class="cuenta-grid cuenta-grid--compact" id="comprador-grid-${i}">
+            <div class="cuenta-card" data-value="ACR" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👤</div><div class="cuenta-label">ACR</div>
+            </div>
+            <div class="cuenta-card" data-value="ACL" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👤</div><div class="cuenta-label">ACL</div>
+            </div>
+            <div class="cuenta-card" data-value="CCL" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">👤</div><div class="cuenta-label">CCL</div>
+            </div>
+            <div class="cuenta-card" data-value="Otro" onclick="selectComprador(this,${i})">
+              <div class="cuenta-icon">✏️</div><div class="cuenta-label">Otro</div>
+            </div>
+          </div>
+          <input type="hidden" id="comprador-${i}" value="">
+          <div class="hidden" id="comprador-otro-${i}" style="margin-top:8px">
+            <input type="text" id="comprador-otro-text-${i}" class="classify-search"
+                   placeholder="Especifica el comprador..." style="font-size:13px;padding:10px 14px">
+          </div>
+        </div>
+
+        <div class="cuenta-field">
+          <label>Comentarios</label>
+          <textarea id="comentarios-${i}" class="classify-textarea"
+                    placeholder="Notas adicionales sobre este ticket..."></textarea>
+        </div>
+
         <div class="classify-actions">
           <button class="btn-primary"   onclick="downloadExcelForTicket(${i})">⬇ Descargar Excel</button>
           <button class="btn-secondary" onclick="saveToSheetsForTicket(${i})">💾 Guardar</button>
@@ -620,7 +683,7 @@ function resetConcepto(i) {
 
 function renderConceptos(conceptos, i) {
   document.getElementById(`concepto-grid-${i}`).innerHTML =
-    conceptos.map(n => makeCard(n, "🔹", `selectConcepto(this,${i})`)).join("");
+    conceptos.map(n => makeCard(n, CONCEPTO_EMOJIS[n] || "🔹", `selectConcepto(this,${i})`)).join("");
   document.getElementById(`concepto-field-${i}`).classList.remove("hidden");
 }
 
@@ -641,6 +704,14 @@ function selectCategoria(el, i) {
   const subcuenta = document.getElementById(`subcuenta-${i}`).value;
   const conceptos = CATALOG[cuenta]?.[subcuenta]?.[categoria] || [];
   if (conceptos.length) renderConceptos(conceptos, i);
+}
+
+function selectComprador(el, i) {
+  el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+  const val = el.dataset.value;
+  document.getElementById(`comprador-${i}`).value = val;
+  document.getElementById(`comprador-otro-${i}`).classList.toggle("hidden", val !== "Otro");
 }
 
 // ─── Buscador ──────────────────────────────────────────────────────────────
@@ -716,13 +787,17 @@ function applySearchResult(i, idx) {
 // ─── Get classification values ──────────────────────────────────────────────
 
 function getClassify(i) {
+  const compradorVal  = document.getElementById(`comprador-${i}`)?.value || "";
+  const compradorOtro = document.getElementById(`comprador-otro-text-${i}`)?.value?.trim() || "";
   return {
-    cuenta:       document.getElementById(`cuenta-${i}`)?.value            || "",
-    subcuenta:    document.getElementById(`subcuenta-${i}`)?.value         || "",
-    categoria:    document.getElementById(`categoria-${i}`)?.value         || "",
-    concepto:     document.getElementById(`concepto-${i}`)?.value          || "",
-    propiedad:    document.getElementById(`propiedad-${i}`)?.value         || "",
-    departamento: document.getElementById(`departamento-${i}`)?.value      || "",
+    cuenta:       document.getElementById(`cuenta-${i}`)?.value       || "",
+    subcuenta:    document.getElementById(`subcuenta-${i}`)?.value    || "",
+    categoria:    document.getElementById(`categoria-${i}`)?.value    || "",
+    concepto:     document.getElementById(`concepto-${i}`)?.value     || "",
+    propiedad:    document.getElementById(`propiedad-${i}`)?.value    || "",
+    departamento: document.getElementById(`departamento-${i}`)?.value || "",
+    comprador:    compradorVal === "Otro" ? (compradorOtro || "Otro") : compradorVal,
+    comentarios:  document.getElementById(`comentarios-${i}`)?.value?.trim() || "",
   };
 }
 
@@ -742,6 +817,8 @@ async function downloadExcelForTicket(i) {
     form.append("concepto",     c.concepto);
     form.append("propiedad",    c.propiedad);
     form.append("departamento", c.departamento);
+    form.append("comprador",    c.comprador);
+    form.append("comentarios",  c.comentarios);
 
     const res = await fetch(`${BACKEND}/process`, { method: "POST", body: form });
     if (!res.ok) {
@@ -783,6 +860,8 @@ async function saveToSheetsForTicket(i) {
     form.append("concepto",     c.concepto);
     form.append("propiedad",    c.propiedad);
     form.append("departamento", c.departamento);
+    form.append("comprador",    c.comprador);
+    form.append("comentarios",  c.comentarios);
 
     const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: form });
     const data = await res.json();
