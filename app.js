@@ -303,22 +303,22 @@ function createTicketCard(ticket, i) {
           <input type="hidden" id="cuenta-${i}" value="">
         </div>
 
-        <div class="field">
+        <div class="cuenta-field hidden" id="subcuenta-field-${i}">
           <label>Subcuenta</label>
-          <select id="subcuenta-${i}" onchange="onSubcuentaChange(${i})">
-            <option value="">— Primero selecciona una cuenta —</option>
-          </select>
+          <div class="cuenta-grid cuenta-grid--sub" id="subcuenta-grid-${i}"></div>
+          <input type="hidden" id="subcuenta-${i}" value="">
         </div>
-        <div class="field">
+
+        <div class="cuenta-field hidden" id="categoria-field-${i}">
           <label>Categoría</label>
-          <select id="categoria-${i}" onchange="onCategoriaChange(${i})" disabled>
-            <option value="">— Primero selecciona subcuenta —</option>
-          </select>
+          <div class="cuenta-grid cuenta-grid--cat" id="categoria-grid-${i}"></div>
+          <input type="hidden" id="categoria-${i}" value="">
         </div>
-        <div class="field">
+
+        <div class="field hidden" id="concepto-field-${i}">
           <label>Concepto</label>
-          <select id="concepto-${i}" disabled>
-            <option value="">— Primero selecciona categoría —</option>
+          <select id="concepto-${i}">
+            <option value="">— Selecciona concepto —</option>
           </select>
         </div>
 
@@ -396,81 +396,123 @@ function toggleClassify(i) {
   btn.classList.toggle("open", !open);
 }
 
-// ─── Cuenta / Subcuenta / Categoría / Concepto (cascading) ────────────────
+// ─── Emojis por categoría ──────────────────────────────────────────────────
+
+const CATEGORIA_EMOJIS = {
+  "Limpieza":        "🧹",
+  "Mantenimiento":   "🔧",
+  "Administración":  "📝",
+  "Oficina":         "🖊️",
+  "Otros gastos":    "📦",
+  "Otros Gastos":    "📦",
+  "Servicios":       "⚡",
+  "Insumos":         "🛍️",
+  "Autos":           "🚗",
+  "Plataformas":     "💻",
+  "SAT":             "🏛️",
+  "IMSS":            "🏥",
+  "Tenencia":        "📄",
+  "Predial":         "🏘️",
+  "Equipamiento":    "🛋️",
+  "Herramienta":     "🔨",
+  "Construcción":    "🏗️",
+};
+
+// ─── Card HTML helper ──────────────────────────────────────────────────────
+
+function makeCard(name, emoji, onclick) {
+  return `<div class="cuenta-card" data-value="${esc(name)}" onclick="${onclick}">` +
+    `<div class="cuenta-icon">${emoji}</div>` +
+    `<div class="cuenta-label">${esc(name)}</div>` +
+    `</div>`;
+}
+
+// ─── Cuenta / Subcuenta / Categoría / Concepto (cascading cards) ───────────
 
 function selectCuenta(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
+  document.getElementById(`cuenta-${i}`).value = el.dataset.value;
+  resetSubcuenta(i);
+
   const cuenta = el.dataset.value;
-  document.getElementById(`cuenta-${i}`).value = cuenta;
+  const subs   = cuenta && CATALOG[cuenta] ? Object.keys(CATALOG[cuenta]) : [];
+  if (!subs.length) return;
 
-  const subEl  = document.getElementById(`subcuenta-${i}`);
-  const catEl  = document.getElementById(`categoria-${i}`);
-  const conEl  = document.getElementById(`concepto-${i}`);
-
-  const subs = cuenta && CATALOG[cuenta] ? Object.keys(CATALOG[cuenta]) : [];
-  populateSelect(subEl, subs, subs.length ? "— Selecciona subcuenta —" : "— Sin subcuentas —");
-  subEl.disabled = !subs.length;
-
-  populateSelect(catEl, [], "— Primero selecciona subcuenta —");
-  catEl.disabled = true;
-  populateSelect(conEl, [], "— Primero selecciona categoría —");
-  conEl.disabled = true;
+  document.getElementById(`subcuenta-grid-${i}`).innerHTML =
+    subs.map(n => makeCard(n, SUBCUENTA_EMOJIS[n] || "📌", `selectSubcuenta(this,${i})`)).join("");
+  document.getElementById(`subcuenta-field-${i}`).classList.remove("hidden");
 }
 
-function onSubcuentaChange(i) {
-  const cuenta    = document.getElementById(`cuenta-${i}`).value;
-  const subcuenta = document.getElementById(`subcuenta-${i}`).value;
-  const catEl     = document.getElementById(`categoria-${i}`);
-  const conEl     = document.getElementById(`concepto-${i}`);
+function resetSubcuenta(i) {
+  document.getElementById(`subcuenta-${i}`).value = "";
+  document.getElementById(`subcuenta-field-${i}`).classList.add("hidden");
+  document.getElementById(`subcuenta-grid-${i}`).innerHTML = "";
+  resetCategoria(i);
+}
 
-  populateSelect(conEl, [], "— Primero selecciona categoría —");
-  conEl.disabled = true;
+function selectSubcuenta(el, i) {
+  el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+  const subcuenta = el.dataset.value;
+  document.getElementById(`subcuenta-${i}`).value = subcuenta;
+  resetCategoria(i);
 
-  if (!subcuenta || !CATALOG[cuenta]) {
-    populateSelect(catEl, [], "— Primero selecciona subcuenta —");
-    catEl.disabled = true;
-    return;
-  }
-
-  const sub = CATALOG[cuenta][subcuenta];
+  const cuenta = document.getElementById(`cuenta-${i}`).value;
+  const sub    = CATALOG[cuenta]?.[subcuenta];
 
   if (Array.isArray(sub)) {
-    // Ingresos / Capital: no hay nivel Categoría, los conceptos van directo
-    populateSelect(catEl, [], "— (sin categoría) —");
-    catEl.disabled = true;
+    // Ingresos / Capital: sin nivel Categoría, concepto directo
     if (sub.length) {
-      populateSelect(conEl, sub, "— Selecciona concepto —");
-      conEl.disabled = false;
+      populateSelect(document.getElementById(`concepto-${i}`), sub, "— Selecciona concepto —");
+      document.getElementById(`concepto-field-${i}`).classList.remove("hidden");
     }
-  } else {
-    const cats = Object.keys(sub || {});
-    populateSelect(catEl, cats, cats.length ? "— Selecciona categoría —" : "— Sin categorías —");
-    catEl.disabled = !cats.length;
+  } else if (sub) {
+    const cats = Object.keys(sub);
+    if (!cats.length) return;
+    document.getElementById(`categoria-grid-${i}`).innerHTML =
+      cats.map(n => makeCard(n, CATEGORIA_EMOJIS[n] || "📂", `selectCategoria(this,${i})`)).join("");
+    document.getElementById(`categoria-field-${i}`).classList.remove("hidden");
   }
 }
 
-function onCategoriaChange(i) {
+function resetCategoria(i) {
+  document.getElementById(`categoria-${i}`).value = "";
+  document.getElementById(`categoria-field-${i}`).classList.add("hidden");
+  document.getElementById(`categoria-grid-${i}`).innerHTML = "";
+  document.getElementById(`concepto-field-${i}`).classList.add("hidden");
+  populateSelect(document.getElementById(`concepto-${i}`), [], "— Selecciona concepto —");
+}
+
+function selectCategoria(el, i) {
+  el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+  const categoria = el.dataset.value;
+  document.getElementById(`categoria-${i}`).value = categoria;
+
   const cuenta    = document.getElementById(`cuenta-${i}`).value;
   const subcuenta = document.getElementById(`subcuenta-${i}`).value;
-  const categoria = document.getElementById(`categoria-${i}`).value;
-  const conEl     = document.getElementById(`concepto-${i}`);
-
   const conceptos = CATALOG[cuenta]?.[subcuenta]?.[categoria] || [];
-  populateSelect(conEl, conceptos, conceptos.length ? "— Selecciona concepto —" : "— Sin conceptos —");
-  conEl.disabled = !conceptos.length;
+
+  const conField = document.getElementById(`concepto-field-${i}`);
+  if (conceptos.length) {
+    populateSelect(document.getElementById(`concepto-${i}`), conceptos, "— Selecciona concepto —");
+    conField.classList.remove("hidden");
+  } else {
+    conField.classList.add("hidden");
+  }
 }
 
 // ─── Get classification values ──────────────────────────────────────────────
 
 function getClassify(i) {
   return {
-    cuenta:       document.getElementById(`cuenta-${i}`)?.value       || "",
-    subcuenta:    document.getElementById(`subcuenta-${i}`)?.value    || "",
-    categoria:    document.getElementById(`categoria-${i}`)?.value    || "",
-    concepto:     document.getElementById(`concepto-${i}`)?.value     || "",
-    propiedad:    document.getElementById(`propiedad-${i}`)?.value    || "",
-    departamento: document.getElementById(`departamento-${i}`)?.value || "",
+    cuenta:       document.getElementById(`cuenta-${i}`)?.value            || "",
+    subcuenta:    document.getElementById(`subcuenta-${i}`)?.value         || "",
+    categoria:    document.getElementById(`categoria-${i}`)?.value         || "",
+    concepto:     document.getElementById(`concepto-${i}`)?.value          || "",
+    propiedad:    document.getElementById(`propiedad-${i}`)?.value         || "",
+    departamento: document.getElementById(`departamento-${i}`)?.value      || "",
   };
 }
 
