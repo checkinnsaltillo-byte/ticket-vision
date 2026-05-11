@@ -42,13 +42,17 @@ app.get("/", (req, res) => res.json({
 }));
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// ─── Upload images → Apps Script → Drive ───────────────────────────────────
+// ─── Guardar tickets: imágenes a Drive + filas a Sheets (todo server-side) ──
 
-app.post("/upload-images", upload.array("files"), async (req, res) => {
+app.post("/save-tickets", upload.array("files"), async (req, res) => {
   try {
-    const metadata = JSON.parse(req.body.metadata || "[]");
-    const results  = [];
+    const metadata  = JSON.parse(req.body.metadata  || "[]");
+    const productos = JSON.parse(req.body.productos  || "[]");
+    const resumen   = JSON.parse(req.body.resumen    || "[]");
+    const cruce     = JSON.parse(req.body.cruce      || "[]");
 
+    // ── 1. Subir imágenes vía Apps Script → DriveApp ──
+    const imageUrls = {};
     for (let i = 0; i < (req.files || []).length; i++) {
       const file     = req.files[i];
       const meta     = metadata[i] || {};
@@ -63,20 +67,38 @@ app.post("/upload-images", upload.array("files"), async (req, res) => {
         ticket_id: meta.ticket_id || "",
         fecha,
         tienda,
-        file: {
-          fileName,
-          mimeType: file.mimetype || "image/jpeg",
-          base64,
-        },
+        file: { fileName, mimeType: file.mimetype || "image/jpeg", base64 },
       });
 
-      if (!result.ok) throw new Error(result.error || "Apps Script no pudo subir la imagen");
-      results.push({ ticket_id: meta.ticket_id, url: result.url, nombre: result.name });
+      console.log("upload_result", meta.ticket_id, JSON.stringify(result).slice(0, 200));
+      if (result.ok) imageUrls[meta.ticket_id] = { url: result.url, nombre: result.name };
     }
 
-    res.json({ ok: true, results });
+    // ── 2. Agregar URLs a las filas de resumen ──
+    const resumenFinal = resumen.map(row => ({
+      ...row,
+      imagen_url:    (imageUrls[row.ticket_id] || {}).url    || "",
+      imagen_nombre: (imageUrls[row.ticket_id] || {}).nombre || "",
+    }));
+
+    // ── 3. Guardar en Sheets ──
+    const sheetsResult = await callAppsScript({
+      action: "append_rows",
+      productos,
+      resumen: resumenFinal,
+      cruce,
+    });
+
+    console.log("sheets_result", JSON.stringify(sheetsResult).slice(0, 200));
+    if (!sheetsResult.ok) throw new Error("Apps Script Sheets error: " + (sheetsResult.error || JSON.stringify(sheetsResult)));
+
+    res.json({
+      ok:               true,
+      tickets_saved:    resumen.length,
+      images_uploaded:  Object.keys(imageUrls).length,
+    });
   } catch (err) {
-    console.error("upload_images_error", err.message);
+    console.error("save_tickets_error", err.message);
     res.status(500).json({ ok: false, error: err.message });
   } finally {
     cleanupFiles(req.files || []);
