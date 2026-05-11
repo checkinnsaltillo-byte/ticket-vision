@@ -328,7 +328,10 @@ function createTicketCard(ticket, i) {
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
         <div class="ticket-info">
-          ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
+          <div class="header-chips">
+            ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
+            <span class="encargado-chip hidden" id="encargado-chip-${i}"></span>
+          </div>
           <div class="cuenta-type-chip hidden" id="cuenta-chip-${i}"></div>
           <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
           <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
@@ -608,16 +611,27 @@ function markAsClassified(i) {
   ALL_CI.forEach(cls => tab.classList.remove(cls));
   tab.classList.add("classified", colorCls);
 
-  // Badge color
-  document.getElementById(`total-badge-${i}`).classList.add("classified");
+  // Badge color — same cuenta color as tab
+  const badge = document.getElementById(`total-badge-${i}`);
+  ALL_CI.forEach(cls => badge.classList.remove(cls));
+  badge.classList.add("classified", colorCls);
 
   // Cuenta chip above store name
   const chipEl = document.getElementById(`cuenta-chip-${i}`);
   if (c.cuenta) {
-    chipEl.textContent  = (CUENTA_EMOJIS[c.cuenta] || "") + " " + c.cuenta;
-    chipEl.className    = `cuenta-type-chip ci-chip ${colorCls}`;
+    chipEl.textContent = (CUENTA_EMOJIS[c.cuenta] || "") + " " + c.cuenta;
+    chipEl.className   = `cuenta-type-chip ci-chip ${colorCls}`;
   } else {
     chipEl.classList.add("hidden");
+  }
+
+  // Encargado de operación chip in header
+  const encargadoEl = document.getElementById(`encargado-chip-${i}`);
+  if (c.comprador) {
+    encargadoEl.textContent = "👤 " + c.comprador;
+    encargadoEl.classList.remove("hidden");
+  } else {
+    encargadoEl.classList.add("hidden");
   }
 
   // Path in tab label
