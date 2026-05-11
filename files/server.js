@@ -143,7 +143,6 @@ function buildContext(body = {}) {
     subcuenta:    body.subcuenta    || "",
     categoria:    body.categoria    || "",
     concepto:     body.concepto     || "",
-    descripcion:  body.descripcion  || "",
     propiedad:    body.propiedad    || "",
     departamento: body.departamento || "",
   };
@@ -187,7 +186,6 @@ async function processFiles(files, context) {
         subcuenta:               context.subcuenta,
         categoria_gasto:         context.categoria,
         concepto:                context.concepto,
-        descripcion:             context.descripcion,
         propiedad:               context.propiedad,
         departamento:            context.departamento
       });
@@ -214,7 +212,6 @@ async function processFiles(files, context) {
       subcuenta:        context.subcuenta,
       categoria_gasto:  context.categoria,
       concepto:         context.concepto,
-      descripcion:      context.descripcion,
       propiedad:        context.propiedad,
       departamento:     context.departamento,
       fecha_captura:    now
