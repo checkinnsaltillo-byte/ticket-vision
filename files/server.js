@@ -5,7 +5,6 @@ const XLSX      = require("xlsx");
 const fs        = require("fs");
 const path      = require("path");
 const cors      = require("cors");
-const { google } = require("googleapis");
 
 const classifyExpense          = require("./classifier");
 const { sendRowsToAppsScript } = require("./sheetsClient");
@@ -21,30 +20,19 @@ const upload = multer({ dest: UPLOAD_DIR });
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "20mb" }));
 
-// ─── Drive helpers ─────────────────────────────────────────────────────────
+// ─── Apps Script URL (maneja Drive y Sheets) ───────────────────────────────
 
-const DRIVE_ROOT_ID = "1tmk7kLNAE5xwKH8SxRZsFn3jpGxpUAr3";
-const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
-                  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL ||
+  "https://script.google.com/macros/s/AKfycbwpOpw36AFOIDWrT_Cjwqof_Upds3sIds4pfDtgSXO0w1rNKak6PaJOsUSy1L2cwQr-vw/exec";
 
-async function getDrive() {
-  const auth = new google.auth.GoogleAuth({ scopes: ["https://www.googleapis.com/auth/drive"] });
-  return google.drive({ version: "v3", auth });
-}
-
-async function findOrCreateFolder(drive, parentId, name) {
-  const safe = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  const { data } = await drive.files.list({
-    q: `name='${safe}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: "files(id)",
-    spaces: "drive",
+async function callAppsScript(payload) {
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method:  "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body:    JSON.stringify(payload),
   });
-  if (data.files.length) return data.files[0].id;
-  const { data: f } = await drive.files.create({
-    requestBody: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] },
-    fields: "id",
-  });
-  return f.id;
+  const text = await res.text();
+  try { return JSON.parse(text); } catch { return { ok: false, raw: text }; }
 }
 
 // ─── Health ────────────────────────────────────────────────────────────────
@@ -54,40 +42,36 @@ app.get("/", (req, res) => res.json({
 }));
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// ─── Upload images to Drive ─────────────────────────────────────────────────
+// ─── Upload images → Apps Script → Drive ───────────────────────────────────
 
 app.post("/upload-images", upload.array("files"), async (req, res) => {
   try {
-    const drive    = await getDrive();
     const metadata = JSON.parse(req.body.metadata || "[]");
     const results  = [];
 
     for (let i = 0; i < (req.files || []).length; i++) {
-      const file  = req.files[i];
-      const meta  = metadata[i] || {};
-      const fecha = meta.fecha || new Date().toISOString().slice(0, 10);
-      const año   = fecha.slice(0, 4);
-      const mesN  = parseInt(fecha.slice(5, 7), 10);
-      const mesStr = fecha.slice(5, 7) + " - " + (MESES_ES[mesN - 1] || "sin_mes");
-      const tienda = (meta.tienda || "sin_tienda").replace(/[/\\:*?"<>|]/g, "_").trim().slice(0, 50);
-      const ext    = path.extname(file.originalname || ".jpg").toLowerCase() || ".jpg";
-      const nombre = `${fecha}_${tienda.replace(/\s+/g, "_").slice(0, 30)}${ext}`;
+      const file     = req.files[i];
+      const meta     = metadata[i] || {};
+      const fecha    = meta.fecha  || new Date().toISOString().slice(0, 10);
+      const tienda   = (meta.tienda || "sin_tienda").slice(0, 50);
+      const ext      = path.extname(file.originalname || ".jpg").toLowerCase() || ".jpg";
+      const fileName = `${fecha}_${tienda.replace(/\s+/g, "_").slice(0, 30)}${ext}`;
+      const base64   = fs.readFileSync(file.path).toString("base64");
 
-      const yearId  = await findOrCreateFolder(drive, DRIVE_ROOT_ID, año);
-      const monthId = await findOrCreateFolder(drive, yearId,        mesStr);
-      const storeId = await findOrCreateFolder(drive, monthId,       tienda);
-
-      const { data: uploaded } = await drive.files.create({
-        requestBody: { name: nombre, parents: [storeId] },
-        media:       { mimeType: file.mimetype || "image/jpeg", body: fs.createReadStream(file.path) },
-        fields:      "id,name,webViewLink",
-      });
-      await drive.permissions.create({
-        fileId:      uploaded.id,
-        requestBody: { role: "reader", type: "anyone" },
+      const result = await callAppsScript({
+        action:    "upload_ticket_image",
+        ticket_id: meta.ticket_id || "",
+        fecha,
+        tienda,
+        file: {
+          fileName,
+          mimeType: file.mimetype || "image/jpeg",
+          base64,
+        },
       });
 
-      results.push({ ticket_id: meta.ticket_id, url: uploaded.webViewLink, nombre: uploaded.name });
+      if (!result.ok) throw new Error(result.error || "Apps Script no pudo subir la imagen");
+      results.push({ ticket_id: meta.ticket_id, url: result.url, nombre: result.name });
     }
 
     res.json({ ok: true, results });
