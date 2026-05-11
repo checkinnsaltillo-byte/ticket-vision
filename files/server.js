@@ -139,10 +139,11 @@ app.post("/process-json", upload.array("files"), async (req, res) => {
 
 function buildContext(body = {}) {
   return {
+    cuenta:       body.cuenta       || "",
     subcuenta:    body.subcuenta    || "",
     categoria:    body.categoria    || "",
     concepto:     body.concepto     || "",
-    proyecto:     body.proyecto     || "",
+    descripcion:  body.descripcion  || "",
     propiedad:    body.propiedad    || "",
     departamento: body.departamento || "",
   };
@@ -182,10 +183,11 @@ async function processFiles(files, context) {
         deducible_sugerido:      clasif.deducible_sugerido,
         requiere_revision:       clasif.requiere_revision,
         confianza_clasificacion: clasif.confianza_clasificacion,
+        cuenta:                  context.cuenta,
         subcuenta:               context.subcuenta,
         categoria_gasto:         context.categoria,
         concepto:                context.concepto,
-        proyecto:                context.proyecto,
+        descripcion:             context.descripcion,
         propiedad:               context.propiedad,
         departamento:            context.departamento
       });
@@ -208,10 +210,11 @@ async function processFiles(files, context) {
       ieps:             parsed.ieps            || 0,
       descuentos:       parsed.descuentos      || 0,
       total:            parsed.total           || 0,
+      cuenta:           context.cuenta,
       subcuenta:        context.subcuenta,
       categoria_gasto:  context.categoria,
       concepto:         context.concepto,
-      proyecto:         context.proyecto,
+      descripcion:      context.descripcion,
       propiedad:        context.propiedad,
       departamento:     context.departamento,
       fecha_captura:    now
@@ -228,8 +231,8 @@ async function processFiles(files, context) {
       tarjeta_ultimos4: parsed.card_last4     || "",
       monto_cruce:      parsed.total          || 0,
       total_ticket:     parsed.total          || 0,
+      cuenta:           context.cuenta,
       subcuenta:        context.subcuenta,
-      proyecto:         context.proyecto,
       propiedad:        context.propiedad,
       departamento:     context.departamento
     });

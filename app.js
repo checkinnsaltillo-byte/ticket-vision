@@ -1,33 +1,126 @@
 const BACKEND = "https://ticket-vision-957627511957.northamerica-south1.run.app";
 
 // ─── Catálogo de clasificaciones ───────────────────────────────────────────
+// CATALOG[cuenta][subcuenta] = Object{categoria:[conceptos]} | Array[conceptos]
 
 const CATALOG = {
-  "Gastos Operativos": {
-    "Sueldos":        ["Limpieza", "Mantenimiento", "Administracion", "IMSS Personal"],
-    "Servicios":      ["Lavanderia", "Agua", "Luz", "Gas", "Internet", "Pipas de agua", "Fumigacion", "Plataformas"],
-    "Insumos":        ["Limpieza", "Blancos"],
-    "Equipamiento":   ["Depa nuevo", "Decoracion", "Reemplazo de Minisplit", "Hidro nuevo", "Lavadora / secadora nueva", "Colchon", "Mesa", "Silla", "Sillon", "Refrigerador nuevo", "Abanico", "Smart tv"],
-    "Mantenimiento":  ["Ferreteria", "Aparatos Electronicos y Focos", "Limpieza de colchones, sillones", "Gas de minisplit", "Hidro", "Boiler nuevo", "Lavadora / secadora"],
-    "Administrativo": ["Impresiones / Señalitica", "Papeleria", "Equipo de computo"],
-    "Autos":          ["Gasolina", "Seguros", "Mantenimiento", "Tenencia"],
-    "Predial":        [],
-    "Impuestos":      [],
-    "Otros Gastos":   [],
-    "Construccion":   []
+  "Egresos": {
+    "Recursos Humanos": {
+      "Limpieza":        ["Brenda", "Alma", "Gaby", "Juanita", "Damariz"],
+      "Mantenimiento":   ["Francisco"],
+      "Administración":  ["Auxiliar administrativo", "Andres", "Claudia", "Papa"]
+    },
+    "Gastos Administrativos": {
+      "Oficina":       ["Impresiones / Señalítica", "Papelería", "Equipo de cómputo"],
+      "Otros gastos":  []
+    },
+    "Gastos Operativos": {
+      "Servicios":     ["Lavandería", "Agua", "Luz", "Gas", "Internet", "Pipas de agua", "Fumigación"],
+      "Insumos":       ["Limpieza", "Blancos"],
+      "Mantenimiento": ["Ferreteria", "Aparatos electrónicos y focos", "Limpieza de colchones sillones", "Gas de minisplit", "Hidro", "Lavadora / secadora"],
+      "Autos":         ["Gasolina", "Seguros", "Mantenimiento"],
+      "Otros Gastos":  []
+    },
+    "Tecnología y automatización": {
+      "Plataformas":   ["Lodgify", "Leadsales", "Amazon prime", "Netflix", "GoogleOne", "Breezeway", "Kommo", "Microsoft"],
+      "Otros gastos":  []
+    },
+    "Impuestos y obligaciones": {
+      "SAT":      [],
+      "IMSS":     [],
+      "Tenencia": [],
+      "Predial":  []
+    }
   },
-  "Movimientos Bancarios": {
-    "Movimientos Bancarios": ["Inversion", "Pago TC", "Devoluciones"]
+  "Ingresos": {
+    "BBVA ACR Empresarial": ["Trato directo", "Stripe", "Airbnb", "Contratos"],
+    "BBVA ACL Libreton":    ["Trato directo", "Stripe", "Airbnb", "Contratos"],
+    "Efectivo":             ["Contratos", "Trato directo"]
   },
-  "Gastos Familiares": {
-    "Gastos familiares": ["Viajes", "Gatos casa", "Sueldo Papa", "Gastos médicos"]
+  "Pasivos": {
+    "Devolución de depósitos en garantía": [],
+    "Depósitos en garantía":               [],
+    "Pago de tarjetas de crédito":         []
+  },
+  "Activos": {
+    "CAPEX / Inversión": {
+      "Equipamiento":  ["General", "Depa nuevo", "Decoración", "Reemplazo de minisplit", "Hidro nuevo", "Lavadora / secadora nueva", "Colchón", "Mesa", "Silla", "Sillón", "Refrigerador nuevo", "Abanico", "Smart tv", "Boiler nuevo"],
+      "Herramienta":   [],
+      "Construcción":  ["Material", "Mano de obra", "Eléctrico", "Plomería", "Otros gastos", "Pintura", "Herrería", "Carpintería", "Yesería", "Puertas y ventanas"]
+    },
+    "Inversiones financieras": []
+  },
+  "Capital": {
+    "Utilidad":          [],
+    "Gastos Familiares": ["Viajes", "Gatos casa", "Gastos médicos", "Otros gastos"]
   }
 };
 
+const CUENTA_EMOJIS = {
+  "Egresos":  "💸",
+  "Ingresos": "💰",
+  "Pasivos":  "📋",
+  "Activos":  "📈",
+  "Capital":  "💼"
+};
+
+const SUBCUENTA_EMOJIS = {
+  "Recursos Humanos":                     "👥",
+  "Gastos Administrativos":               "📁",
+  "Gastos Operativos":                    "🏢",
+  "Tecnología y automatización":          "💻",
+  "Impuestos y obligaciones":             "🧾",
+  "BBVA ACR Empresarial":                 "🏦",
+  "BBVA ACL Libreton":                    "🏦",
+  "Efectivo":                             "💵",
+  "Devolución de depósitos en garantía":  "↩️",
+  "Depósitos en garantía":                "🔒",
+  "Pago de tarjetas de crédito":          "💳",
+  "CAPEX / Inversión":                    "🏗",
+  "Inversiones financieras":              "📊",
+  "Utilidad":                             "✨",
+  "Gastos Familiares":                    "🏠"
+};
+
+// ─── Search index ─────────────────────────────────────────────────────────
+
+function buildSearchIndex() {
+  const index = [];
+  for (const cuenta of Object.keys(CATALOG)) {
+    for (const subcuenta of Object.keys(CATALOG[cuenta])) {
+      const sub = CATALOG[cuenta][subcuenta];
+      if (Array.isArray(sub)) {
+        if (sub.length === 0) {
+          index.push({ cuenta, subcuenta, categoria: "", concepto: "" });
+        } else {
+          for (const concepto of sub) {
+            index.push({ cuenta, subcuenta, categoria: "", concepto });
+          }
+        }
+      } else {
+        for (const categoria of Object.keys(sub)) {
+          const conceptos = sub[categoria];
+          if (conceptos.length === 0) {
+            index.push({ cuenta, subcuenta, categoria, concepto: "" });
+          } else {
+            for (const concepto of conceptos) {
+              index.push({ cuenta, subcuenta, categoria, concepto });
+            }
+          }
+        }
+      }
+    }
+  }
+  return index;
+}
+
+const SEARCH_INDEX = buildSearchIndex();
+let searchMatches = {};
+
 // ─── State ─────────────────────────────────────────────────────────────────
 
-let selectedFiles  = [];
-let ticketResults  = []; // [{file, resumen, productos, cruce}, ...]
+let selectedFiles = [];
+let ticketResults = [];
 
 // ─── Init ──────────────────────────────────────────────────────────────────
 
@@ -93,7 +186,7 @@ function setStep(n) {
   }
 }
 
-// ─── Analyze (all files at once) ───────────────────────────────────────────
+// ─── Analyze ───────────────────────────────────────────────────────────────
 
 async function analyzeTickets() {
   if (!selectedFiles.length) return;
@@ -108,7 +201,6 @@ async function analyzeTickets() {
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo procesar.");
 
-    // Agrupar resultados por ticket
     ticketResults = (data.resumen || []).map((res, i) => ({
       file:      selectedFiles[i],
       resumen:   res,
@@ -130,7 +222,7 @@ async function analyzeTickets() {
   }
 }
 
-// ─── Render all ticket cards ────────────────────────────────────────────────
+// ─── Render ticket cards ────────────────────────────────────────────────────
 
 function renderTicketCards() {
   const container = document.getElementById("ticketsContainer");
@@ -146,6 +238,8 @@ function createTicketCard(ticket, i) {
     r.num_productos ? `${r.num_productos} producto${r.num_productos !== 1 ? "s" : ""}` : "",
     r.iva ? `IVA $${Number(r.iva).toFixed(2)}` : ""
   ].filter(Boolean);
+
+  const deptOptions = Array.from({length: 14}, (_, j) => `<option>${j + 1}</option>`).join("");
 
   return `
     <div class="ticket-card" id="ticket-${i}">
@@ -171,49 +265,48 @@ function createTicketCard(ticket, i) {
       </div>
 
       <div class="classify-panel hidden" id="classify-${i}">
-        <div class="proyecto-field">
-          <label>Proyecto</label>
-          <div class="proyecto-grid">
-            <div class="proyecto-card active" data-value="Ninguno" onclick="selectProyecto(this, ${i})">
-              <div class="proyecto-icon">🏠</div>
-              <div class="proyecto-label">Ninguno</div>
-              <div class="proyecto-sub">Gasto operativo</div>
-            </div>
-            <div class="proyecto-card" data-value="Construcción" onclick="selectProyecto(this, ${i})">
-              <div class="proyecto-icon">🏗</div>
-              <div class="proyecto-label">Construcción</div>
-              <div class="proyecto-sub">Obra nueva</div>
-            </div>
-            <div class="proyecto-card" data-value="Remodelación" onclick="selectProyecto(this, ${i})">
-              <div class="proyecto-icon">🔨</div>
-              <div class="proyecto-label">Remodelación</div>
-              <div class="proyecto-sub">Mejoras a unidad</div>
-            </div>
+
+        <div class="classify-search-wrap">
+          <input type="text" id="search-${i}" class="classify-search"
+                 placeholder="🔍 Buscar cuenta, subcuenta, categoría, concepto..."
+                 oninput="onClassifySearch(${i}, this.value)"
+                 onblur="setTimeout(() => hideSearchResults(${i}), 180)">
+          <div class="search-results hidden" id="search-results-${i}"></div>
+        </div>
+
+        <div class="cuenta-field">
+          <label>Cuenta</label>
+          <div class="cuenta-grid" id="cuenta-grid-${i}">
+            ${buildCuentaCards(i)}
           </div>
-          <input type="hidden" id="proyecto-${i}" value="Ninguno">
+          <input type="hidden" id="cuenta-${i}" value="">
+        </div>
+
+        <div class="subcuenta-field hidden" id="subcuenta-field-${i}">
+          <label>Subcuenta</label>
+          <div class="cuenta-grid cuenta-grid--sub" id="subcuenta-grid-${i}"></div>
+          <input type="hidden" id="subcuenta-${i}" value="">
+        </div>
+
+        <div class="field hidden" id="categoria-field-${i}">
+          <label>Categoría</label>
+          <select id="categoria-${i}" onchange="onCategoriaChange(${i})">
+            <option value="">— Selecciona categoría —</option>
+          </select>
+        </div>
+
+        <div class="field hidden" id="concepto-field-${i}">
+          <label>Concepto</label>
+          <select id="concepto-${i}">
+            <option value="">— Selecciona concepto —</option>
+          </select>
         </div>
 
         <div class="field">
-          <label>Subcuenta</label>
-          <select id="subcuenta-${i}" onchange="onSubcuentaChange(${i})">
-            <option value="">— Seleccionar subcuenta —</option>
-            <option>Gastos Operativos</option>
-            <option>Movimientos Bancarios</option>
-            <option>Gastos Familiares</option>
-          </select>
+          <label>Descripción <span class="label-opt">(opcional)</span></label>
+          <input type="text" id="descripcion-${i}" placeholder="Notas o descripción adicional...">
         </div>
-        <div class="field">
-          <label>Categoría</label>
-          <select id="categoria-${i}" onchange="onCategoriaChange(${i})" disabled>
-            <option value="">— Primero selecciona subcuenta —</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Concepto</label>
-          <select id="concepto-${i}" disabled>
-            <option value="">— Primero selecciona categoría —</option>
-          </select>
-        </div>
+
         <div class="grid">
           <div class="field">
             <label>Propiedad</label>
@@ -230,7 +323,7 @@ function createTicketCard(ticket, i) {
             <label># Departamento</label>
             <select id="departamento-${i}">
               <option value="">— Seleccionar —</option>
-              ${Array.from({length: 14}, (_, j) => `<option>${j + 1}</option>`).join("")}
+              ${deptOptions}
             </select>
           </div>
         </div>
@@ -243,6 +336,13 @@ function createTicketCard(ticket, i) {
       </div>
     </div>
   `;
+}
+
+function buildCuentaCards(i) {
+  return Object.keys(CATALOG).map(name => {
+    const emoji = CUENTA_EMOJIS[name] || "📂";
+    return `<div class="cuenta-card" data-value="${esc(name)}" onclick="selectCuenta(this,${i})"><div class="cuenta-icon">${emoji}</div><div class="cuenta-label">${esc(name)}</div></div>`;
+  }).join("");
 }
 
 // ─── Product table ─────────────────────────────────────────────────────────
@@ -269,17 +369,15 @@ function buildProductTable(productos) {
   </table>`;
 }
 
-// ─── Toggle table ──────────────────────────────────────────────────────────
+// ─── Toggle table / classify ────────────────────────────────────────────────
 
 function toggleTable(i) {
-  const wrap = document.getElementById(`table-${i}`);
-  const btn  = document.getElementById(`btn-table-${i}`);
+  const wrap   = document.getElementById(`table-${i}`);
+  const btn    = document.getElementById(`btn-table-${i}`);
   const hidden = wrap.classList.toggle("hidden");
   btn.textContent = hidden ? "📋 Mostrar tabla" : "📋 Ocultar tabla";
   btn.classList.toggle("active", !hidden);
 }
-
-// ─── Toggle classify ───────────────────────────────────────────────────────
 
 function toggleClassify(i) {
   const panel = document.getElementById(`classify-${i}`);
@@ -289,70 +387,154 @@ function toggleClassify(i) {
   btn.classList.toggle("open", !open);
 }
 
-// ─── Proyecto selector (per ticket) ────────────────────────────────────────
+// ─── Cuenta / Subcuenta selection ──────────────────────────────────────────
 
-function selectProyecto(el, i) {
-  el.closest(".proyecto-grid").querySelectorAll(".proyecto-card")
-    .forEach(c => c.classList.remove("active"));
+function selectCuenta(el, i) {
+  el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
-  document.getElementById(`proyecto-${i}`).value = el.dataset.value;
+  const cuenta = el.dataset.value;
+  document.getElementById(`cuenta-${i}`).value = cuenta;
+  renderSubcuentas(cuenta, i);
+  resetFromCategoria(i);
+  document.getElementById(`subcuenta-${i}`).value = "";
 }
 
-// ─── Cascading dropdowns (per ticket) ──────────────────────────────────────
+function renderSubcuentas(cuenta, i) {
+  const field = document.getElementById(`subcuenta-field-${i}`);
+  const grid  = document.getElementById(`subcuenta-grid-${i}`);
+  const subs  = CATALOG[cuenta] ? Object.keys(CATALOG[cuenta]) : [];
 
-function populateSelect(selectEl, options, placeholder) {
-  selectEl.innerHTML = `<option value="">${placeholder}</option>`;
-  options.forEach(opt => {
-    const o = document.createElement("option");
-    o.value = o.textContent = opt;
-    selectEl.appendChild(o);
-  });
+  if (!subs.length) { field.classList.add("hidden"); return; }
+
+  grid.innerHTML = subs.map(name => {
+    const emoji = SUBCUENTA_EMOJIS[name] || "📌";
+    return `<div class="cuenta-card" data-value="${esc(name)}" onclick="selectSubcuenta(this,${i})"><div class="cuenta-icon">${emoji}</div><div class="cuenta-label">${esc(name)}</div></div>`;
+  }).join("");
+
+  field.classList.remove("hidden");
 }
 
-function onSubcuentaChange(i) {
-  const sub  = document.getElementById(`subcuenta-${i}`).value;
-  const catEl = document.getElementById(`categoria-${i}`);
-  const conEl = document.getElementById(`concepto-${i}`);
+function selectSubcuenta(el, i) {
+  el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+  const subcuenta = el.dataset.value;
+  document.getElementById(`subcuenta-${i}`).value = subcuenta;
 
-  if (!sub || !CATALOG[sub]) {
-    populateSelect(catEl, [], "— Primero selecciona subcuenta —");
-    populateSelect(conEl, [], "— Primero selecciona categoría —");
-    catEl.disabled = true; conEl.disabled = true;
-    return;
+  const cuenta = document.getElementById(`cuenta-${i}`).value;
+  const sub    = CATALOG[cuenta]?.[subcuenta];
+
+  resetFromCategoria(i);
+
+  if (Array.isArray(sub)) {
+    if (sub.length > 0) {
+      populateSelect(document.getElementById(`concepto-${i}`), sub, "— Selecciona concepto —");
+      document.getElementById(`concepto-field-${i}`).classList.remove("hidden");
+    }
+  } else if (sub && typeof sub === "object") {
+    const cats = Object.keys(sub);
+    if (cats.length > 0) {
+      populateSelect(document.getElementById(`categoria-${i}`), cats, "— Selecciona categoría —");
+      document.getElementById(`categoria-field-${i}`).classList.remove("hidden");
+    }
   }
-
-  const cats = Object.keys(CATALOG[sub]);
-  populateSelect(catEl, cats, "— Selecciona categoría —");
-  catEl.disabled = false;
-  populateSelect(conEl, [], "— Primero selecciona categoría —");
-  conEl.disabled = true;
-
-  if (cats.length === 1) { catEl.value = cats[0]; onCategoriaChange(i); }
 }
 
 function onCategoriaChange(i) {
-  const sub   = document.getElementById(`subcuenta-${i}`).value;
-  const cat   = document.getElementById(`categoria-${i}`).value;
-  const conEl = document.getElementById(`concepto-${i}`);
+  const cuenta    = document.getElementById(`cuenta-${i}`).value;
+  const subcuenta = document.getElementById(`subcuenta-${i}`).value;
+  const categoria = document.getElementById(`categoria-${i}`).value;
+  const conEl     = document.getElementById(`concepto-${i}`);
+  const conField  = document.getElementById(`concepto-field-${i}`);
 
-  const conceptos = CATALOG[sub]?.[cat] || [];
-  if (!conceptos.length) {
-    populateSelect(conEl, [], "— Sin conceptos disponibles —");
-    conEl.disabled = true;
-    return;
+  const conceptos = CATALOG[cuenta]?.[subcuenta]?.[categoria] || [];
+  if (conceptos.length > 0) {
+    populateSelect(conEl, conceptos, "— Selecciona concepto —");
+    conField.classList.remove("hidden");
+  } else {
+    conField.classList.add("hidden");
   }
-  populateSelect(conEl, conceptos, "— Selecciona concepto —");
-  conEl.disabled = false;
 }
 
-// ─── Get classification fields for ticket i ────────────────────────────────
+function resetFromCategoria(i) {
+  document.getElementById(`categoria-field-${i}`)?.classList.add("hidden");
+  document.getElementById(`concepto-field-${i}`)?.classList.add("hidden");
+  populateSelect(document.getElementById(`categoria-${i}`), [], "— Selecciona categoría —");
+  populateSelect(document.getElementById(`concepto-${i}`),  [], "— Selecciona concepto —");
+}
+
+// ─── Search ────────────────────────────────────────────────────────────────
+
+function onClassifySearch(i, q) {
+  const resEl = document.getElementById(`search-results-${i}`);
+  if (!q.trim()) { resEl.classList.add("hidden"); return; }
+
+  const lower   = q.toLowerCase();
+  const matches = SEARCH_INDEX.filter(e =>
+    [e.cuenta, e.subcuenta, e.categoria, e.concepto].some(f => f.toLowerCase().includes(lower))
+  ).slice(0, 10);
+
+  searchMatches[i] = matches;
+
+  if (!matches.length) {
+    resEl.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(q)}"</div>`;
+    resEl.classList.remove("hidden");
+    return;
+  }
+
+  resEl.innerHTML = matches.map((m, idx) => {
+    const parts = [m.cuenta, m.subcuenta, m.categoria, m.concepto].filter(Boolean);
+    const html  = parts.map(p => `<span>${esc(p)}</span>`).join(`<span class="search-sep">›</span>`);
+    return `<div class="search-result-item" onmousedown="applySearchResult(${i},${idx})">${html}</div>`;
+  }).join("");
+  resEl.classList.remove("hidden");
+}
+
+function hideSearchResults(i) {
+  document.getElementById(`search-results-${i}`)?.classList.add("hidden");
+}
+
+function applySearchResult(i, idx) {
+  const m = (searchMatches[i] || [])[idx];
+  if (!m) return;
+
+  // Apply cuenta
+  const cuentaGrid = document.getElementById(`cuenta-grid-${i}`);
+  const cuentaCard = Array.from(cuentaGrid.querySelectorAll(".cuenta-card")).find(c => c.dataset.value === m.cuenta);
+  if (cuentaCard) selectCuenta(cuentaCard, i);
+
+  // Apply subcuenta (subcuenta grid must be rendered first)
+  if (m.subcuenta) {
+    const subGrid = document.getElementById(`subcuenta-grid-${i}`);
+    const subCard = subGrid ? Array.from(subGrid.querySelectorAll(".cuenta-card")).find(c => c.dataset.value === m.subcuenta) : null;
+    if (subCard) selectSubcuenta(subCard, i);
+  }
+
+  // Apply categoria
+  if (m.categoria) {
+    const catEl = document.getElementById(`categoria-${i}`);
+    if (catEl) { catEl.value = m.categoria; onCategoriaChange(i); }
+  }
+
+  // Apply concepto
+  if (m.concepto) {
+    const conEl = document.getElementById(`concepto-${i}`);
+    if (conEl) conEl.value = m.concepto;
+  }
+
+  // Clear search input and close dropdown
+  document.getElementById(`search-${i}`).value = "";
+  hideSearchResults(i);
+}
+
+// ─── Get classification values ──────────────────────────────────────────────
 
 function getClassify(i) {
   return {
-    proyecto:     document.getElementById(`proyecto-${i}`)?.value     || "Ninguno",
+    cuenta:       document.getElementById(`cuenta-${i}`)?.value       || "",
     subcuenta:    document.getElementById(`subcuenta-${i}`)?.value    || "",
     categoria:    document.getElementById(`categoria-${i}`)?.value    || "",
     concepto:     document.getElementById(`concepto-${i}`)?.value     || "",
+    descripcion:  document.getElementById(`descripcion-${i}`)?.value  || "",
     propiedad:    document.getElementById(`propiedad-${i}`)?.value    || "",
     departamento: document.getElementById(`departamento-${i}`)?.value || "",
   };
@@ -367,12 +549,13 @@ async function downloadExcelForTicket(i) {
 
     const c    = getClassify(i);
     const form = new FormData();
-    form.append("files",       ticketResults[i].file);
-    form.append("proyecto",    c.proyecto);
-    form.append("subcuenta",   c.subcuenta);
-    form.append("categoria",   c.categoria);
-    form.append("concepto",    c.concepto);
-    form.append("propiedad",   c.propiedad);
+    form.append("files",        ticketResults[i].file);
+    form.append("cuenta",       c.cuenta);
+    form.append("subcuenta",    c.subcuenta);
+    form.append("categoria",    c.categoria);
+    form.append("concepto",     c.concepto);
+    form.append("descripcion",  c.descripcion);
+    form.append("propiedad",    c.propiedad);
     form.append("departamento", c.departamento);
 
     const res = await fetch(`${BACKEND}/process`, { method: "POST", body: form });
@@ -409,10 +592,11 @@ async function saveToSheetsForTicket(i) {
     const form = new FormData();
     form.append("files",        ticketResults[i].file);
     form.append("saveToSheets", "true");
-    form.append("proyecto",     c.proyecto);
+    form.append("cuenta",       c.cuenta);
     form.append("subcuenta",    c.subcuenta);
     form.append("categoria",    c.categoria);
     form.append("concepto",     c.concepto);
+    form.append("descripcion",  c.descripcion);
     form.append("propiedad",    c.propiedad);
     form.append("departamento", c.departamento);
 
@@ -429,6 +613,16 @@ async function saveToSheetsForTicket(i) {
 }
 
 // ─── Utilities ─────────────────────────────────────────────────────────────
+
+function populateSelect(selectEl, options, placeholder) {
+  if (!selectEl) return;
+  selectEl.innerHTML = `<option value="">${placeholder}</option>`;
+  options.forEach(opt => {
+    const o = document.createElement("option");
+    o.value = o.textContent = opt;
+    selectEl.appendChild(o);
+  });
+}
 
 function setStatus(id, msg) {
   const el = document.getElementById(id);
