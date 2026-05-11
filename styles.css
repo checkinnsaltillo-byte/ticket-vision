@@ -151,30 +151,66 @@ textarea { min-height: 80px; resize: vertical; }
 
 /* ─── Upload ────────────────────────────────────────────────── */
 
-.upload-box {
-  border: 1px dashed var(--border-strong); border-radius: 18px;
-  padding: 14px; background: #fffdf8;
+/* ─── Single upload button ──────────────────────────────────── */
+.upload-box-single {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 22px 14px;
+  border: 2px dashed var(--border-strong); border-radius: 18px;
+  background: #fffdf8;
 }
-.upload-drop {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 14px; border-radius: 16px; border: 1px solid #f3d7a4;
-  background: linear-gradient(180deg, #fffdf8 0%, #fff7ed 100%);
-  cursor: pointer; transition: border-color .18s, box-shadow .18s;
-  margin-bottom: 10px;
+.btn-agregar-ticket {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 32px; border: none; border-radius: 16px; cursor: pointer;
+  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: #fff; font-size: 16px; font-weight: 700; font-family: Arial, sans-serif;
+  box-shadow: 0 10px 22px rgba(217,119,6,.22);
+  transition: transform .15s, box-shadow .15s;
 }
-.upload-drop:last-child { margin-bottom: 0; }
-.upload-drop:hover { border-color: var(--primary-dark); box-shadow: 0 8px 18px rgba(245,158,11,.12); }
-.upload-drop input[type="file"] { display: none; }
-.upload-copy { display: flex; flex-direction: column; gap: 3px; }
-.upload-title    { font-size: 14px; font-weight: 700; color: #7c4a03; }
-.upload-subtitle { font-size: 12px; color: var(--text-soft); }
-.upload-cta {
-  flex-shrink: 0; min-width: 110px; padding: 10px 14px;
-  border-radius: 12px; font-size: 13px; font-weight: 700;
-  color: #fff; text-align: center; pointer-events: none;
+.btn-agregar-ticket:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(217,119,6,.32); }
+.btn-agregar-icon { font-size: 20px; }
+.upload-hint { font-size: 12px; color: var(--text-soft); margin: 0; text-align: center; }
+
+/* ─── Upload bottom sheet ────────────────────────────────────── */
+.sheet-overlay {
+  position: fixed; inset: 0; z-index: 800;
+  background: rgba(0,0,0,.40); backdrop-filter: blur(2px);
+  transition: opacity .25s;
 }
-.cta-camera  { background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%); }
-.cta-gallery { background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%); }
+.sheet-overlay.hidden { display: none; }
+
+.upload-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 801;
+  background: #fff; border-radius: 24px 24px 0 0;
+  padding: 12px 16px calc(20px + env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 40px rgba(0,0,0,.18);
+  transform: translateY(100%);
+  transition: transform .3s cubic-bezier(.32,1,.6,1);
+}
+.upload-sheet.open { transform: translateY(0); }
+
+.sheet-handle {
+  width: 40px; height: 4px; border-radius: 999px;
+  background: #e5e7eb; margin: 0 auto 14px;
+}
+.sheet-title {
+  font-size: 13px; font-weight: 700; color: var(--text-soft);
+  text-align: center; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .06em;
+}
+.sheet-option {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 14px; border-radius: 14px; cursor: pointer;
+  transition: background .15s; margin-bottom: 4px;
+}
+.sheet-option:hover, .sheet-option:active { background: var(--primary-soft); }
+.sheet-option-icon  { font-size: 26px; width: 36px; text-align: center; flex-shrink: 0; }
+.sheet-option-label { font-size: 17px; font-weight: 600; color: var(--text); }
+.sheet-cancel {
+  width: 100%; margin-top: 8px; padding: 16px;
+  background: #f3f4f6; border: none; border-radius: 14px;
+  font-size: 16px; font-weight: 700; font-family: Arial, sans-serif;
+  color: #374151; cursor: pointer; transition: background .15s;
+}
+.sheet-cancel:hover { background: #e5e7eb; }
 
 /* ─── Image Strip ───────────────────────────────────────────── */
 
@@ -599,8 +635,7 @@ td.resumen-key { font-weight: 600; color: var(--text-soft); white-space: nowrap;
   .logo-text h1 { font-size: 17px; }
   .grid { grid-template-columns: 1fr; }
   .classify-actions { grid-template-columns: 1fr; }
-  .upload-drop { flex-direction: column; align-items: flex-start; }
-  .upload-cta { width: 100%; }
+  .btn-agregar-ticket { width: 100%; justify-content: center; }
   .ticket-store { font-size: 15px; }
   .loading-card { padding: 28px 22px; }
 }

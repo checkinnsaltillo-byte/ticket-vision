@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=25">
+  <link rel="stylesheet" href="styles.css?v=26">
 </head>
 <body>
 
@@ -57,24 +57,18 @@
           </div>
         </div>
 
-        <div class="upload-box">
-          <label class="upload-drop custom-upload">
-            <input type="file" id="files-camera" accept="image/*" capture="environment" multiple>
-            <div class="upload-copy">
-              <span class="upload-title">📷 Tomar foto</span>
-              <span class="upload-subtitle">Abre la cámara de tu dispositivo</span>
-            </div>
-            <span class="upload-cta cta-camera">Abrir cámara</span>
-          </label>
-          <label class="upload-drop custom-upload">
-            <input type="file" id="files-gallery" accept="image/*" multiple>
-            <div class="upload-copy">
-              <span class="upload-title">🖼 Subir desde galería</span>
-              <span class="upload-subtitle">Elige una o varias imágenes</span>
-            </div>
-            <span class="upload-cta cta-gallery">Seleccionar</span>
-          </label>
+        <div class="upload-box-single">
+          <button class="btn-agregar-ticket" onclick="openUploadSheet()">
+            <span class="btn-agregar-icon">📎</span>
+            <span>Agregar tickets</span>
+          </button>
+          <p class="upload-hint">Toca para seleccionar desde cámara, fotos o archivos</p>
         </div>
+
+        <!-- Hidden file inputs -->
+        <input type="file" id="files-camera"  accept="image/*" capture="environment" multiple style="display:none">
+        <input type="file" id="files-gallery" accept="image/*,video/*" multiple style="display:none">
+        <input type="file" id="files-files"   accept="image/*,application/pdf" multiple style="display:none">
 
         <div id="imagePreview" class="image-strip hidden"></div>
 
@@ -90,11 +84,34 @@
 
   </div><!-- /page-shell -->
 
+  <!-- Upload action sheet -->
+  <div id="uploadSheetOverlay" class="sheet-overlay hidden" onclick="closeUploadSheet()"></div>
+  <div id="uploadSheet" class="upload-sheet" aria-hidden="true">
+    <div class="sheet-handle"></div>
+    <p class="sheet-title">Agregar tickets</p>
+    <label class="sheet-option" onclick="closeUploadSheet()">
+      <input type="file" id="sheet-camera" accept="image/*" capture="environment" multiple style="display:none">
+      <span class="sheet-option-icon">📷</span>
+      <span class="sheet-option-label">Cámara</span>
+    </label>
+    <label class="sheet-option" onclick="closeUploadSheet()">
+      <input type="file" id="sheet-files" accept="image/*,application/pdf" multiple style="display:none">
+      <span class="sheet-option-icon">📁</span>
+      <span class="sheet-option-label">Archivos</span>
+    </label>
+    <label class="sheet-option" onclick="closeUploadSheet()">
+      <input type="file" id="sheet-gallery" accept="image/*,video/*" multiple style="display:none">
+      <span class="sheet-option-icon">🖼</span>
+      <span class="sheet-option-label">Fotos y videos</span>
+    </label>
+    <button class="sheet-cancel" onclick="closeUploadSheet()">Cancelar</button>
+  </div>
+
   <!-- Botón global fijo en la parte inferior -->
   <div id="btnGuardarResultados" class="guardar-resultados-bar hidden">
     <button class="btn-guardar-resultados" onclick="guardarResultados()">💾 Guardar resultados</button>
   </div>
 
-  <script src="app.js?v=25"></script>
+  <script src="app.js?v=26"></script>
 </body>
 </html>

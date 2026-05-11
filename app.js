@@ -159,9 +159,24 @@ let ticketResults = [];
 // ─── Init ──────────────────────────────────────────────────────────────────
 
 window.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("files-camera").addEventListener("change", handleFilesAdded);
+  // Hidden inputs fuera del sheet (usados por el thumb "+")
+  document.getElementById("files-camera").addEventListener("change",  handleFilesAdded);
   document.getElementById("files-gallery").addEventListener("change", handleFilesAdded);
+  document.getElementById("files-files").addEventListener("change",   handleFilesAdded);
+  // Inputs dentro del bottom sheet
+  document.getElementById("sheet-camera").addEventListener("change",  handleFilesAdded);
+  document.getElementById("sheet-gallery").addEventListener("change", handleFilesAdded);
+  document.getElementById("sheet-files").addEventListener("change",   handleFilesAdded);
 });
+
+function openUploadSheet() {
+  document.getElementById("uploadSheetOverlay").classList.remove("hidden");
+  requestAnimationFrame(() => document.getElementById("uploadSheet").classList.add("open"));
+}
+function closeUploadSheet() {
+  document.getElementById("uploadSheet").classList.remove("open");
+  setTimeout(() => document.getElementById("uploadSheetOverlay").classList.add("hidden"), 280);
+}
 
 // ─── File management ───────────────────────────────────────────────────────
 
@@ -211,12 +226,12 @@ function renderImageStrip() {
     strip.appendChild(thumb);
   });
 
-  // Botón "+" para agregar más imágenes
-  const addBtn = document.createElement("label");
-  addBtn.className   = "image-thumb thumb-add";
-  addBtn.innerHTML   = `<input type="file" accept="image/*" multiple style="display:none">
-                        <span class="thumb-add-icon">＋</span>`;
-  addBtn.querySelector("input").addEventListener("change", handleFilesAdded);
+  // Botón "+" para agregar más imágenes (abre el sheet)
+  const addBtn = document.createElement("button");
+  addBtn.className = "image-thumb thumb-add";
+  addBtn.type      = "button";
+  addBtn.innerHTML = `<span class="thumb-add-icon">＋</span>`;
+  addBtn.onclick   = openUploadSheet;
   strip.appendChild(addBtn);
 }
 
