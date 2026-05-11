@@ -267,8 +267,7 @@ function createTicketCard(ticket, i) {
           <div class="ticket-meta">${esc(metaParts.join(" · "))}</div>
         </div>
         <div class="ticket-header-right">
-          <span class="classified-badge hidden" id="classified-badge-${i}">✓ Clasificado</span>
-          <div class="ticket-total-badge">
+          <div class="ticket-total-badge" id="total-badge-${i}">
             <span class="total-main">${money(r.total)}</span>
             ${r.iva ? `<span class="total-iva">IVA ${money(r.iva)}</span>` : ""}
           </div>
@@ -423,7 +422,7 @@ function toggleClassify(i) {
 
 function markAsClassified(i) {
   document.getElementById(`header-${i}`).classList.add("classified");
-  document.getElementById(`classified-badge-${i}`).classList.remove("hidden");
+  document.getElementById(`total-badge-${i}`).classList.add("classified");
   const tab = document.getElementById(`btn-classify-${i}`);
   tab.classList.add("classified");
   tab.querySelector(".classify-tab-label").textContent = "Clasificado";

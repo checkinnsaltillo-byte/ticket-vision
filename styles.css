@@ -290,11 +290,10 @@ textarea { min-height: 80px; resize: vertical; }
   border-bottom-color: #86efac;
 }
 .ticket-card-header.classified:hover { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%); }
-.classified-badge {
-  background: #16a34a; color: #fff;
-  font-size: 11px; font-weight: 700; padding: 4px 10px;
-  border-radius: 999px; white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(22,163,74,.25);
+.ticket-card-header.classified .ticket-store { color: #111827; }
+.ticket-total-badge.classified {
+  background: linear-gradient(180deg, #16a34a 0%, #15803d 100%);
+  box-shadow: 0 4px 12px rgba(21,128,61,.28);
 }
 
 /* ─── Ticket Table ──────────────────────────────────────────── */
