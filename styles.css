@@ -458,6 +458,12 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .save-action-header:hover .save-action-title { color: var(--primary-dark) !important; }
 .save-action-header:hover .save-action-sub   { color: var(--text-soft)    !important; }
+.save-status {
+  text-align: center; font-size: 14px; font-weight: 700;
+  padding: 12px 16px; border-radius: 14px; margin-top: 4px;
+}
+.save-ok  { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+.save-err { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; }
 .save-action-icon { font-size: 22px; display: inline-block; }
 .save-action-title { color: #fff !important; }
 .save-action-sub { color: rgba(255,255,255,.78) !important; }

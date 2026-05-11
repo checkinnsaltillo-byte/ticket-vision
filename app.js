@@ -719,8 +719,108 @@ const CUENTA_COLOR_CLASS = {
 
 const ALL_CI = ["ci-ingresos","ci-egresos","ci-capital","ci-activos","ci-pasivos","ci-sincuenta"];
 
-function guardarResultados() {
-  // Por vincular con Google Sheets
+const SHEETS_URL = "https://script.google.com/macros/s/AKfycbwpOpw36AFOIDWrT_Cjwqof_Upds3sIds4pfDtgSXO0w1rNKak6PaJOsUSy1L2cwQr-vw/exec";
+
+async function guardarResultados() {
+  if (!ticketResults.length) return;
+
+  const btn       = document.getElementById("btnGuardar");
+  const statusEl  = document.getElementById("saveStatus");
+  const subtitleEl = document.getElementById("saveSubtitle");
+
+  try {
+    if (btn) btn.style.pointerEvents = "none";
+    if (statusEl) { statusEl.textContent = ""; statusEl.classList.add("hidden"); }
+    showLoading("Guardando en Sheets…", `Enviando ${ticketResults.length} ticket${ticketResults.length > 1 ? "s" : ""}…`);
+
+    const productos = [];
+    const resumen   = [];
+    const cruce     = [];
+
+    ticketResults.forEach((t, i) => {
+      const c = getClassify(i);
+      const clasif = {
+        cuenta:          c.cuenta,
+        subcuenta:       c.subcuenta,
+        categoria_gasto: c.categoria,
+        concepto:        c.concepto,
+        propiedad:       c.propiedad,
+        departamento:    c.departamento,
+        comprador:       c.comprador,
+        facturable:      c.facturable ? "Sí" : "No",
+        comentarios:     c.comentarios,
+      };
+
+      (t.productos || []).forEach(p => productos.push({
+        ticket_id:               p.ticket_id,
+        tienda:                  p.tienda,
+        fecha:                   p.fecha,
+        linea_numero:            p.linea_numero,
+        descripcion:             p.descripcion,
+        cantidad:                p.cantidad,
+        precio_unitario:         p.precio_unitario,
+        monto:                   p.monto,
+        categoria_operativa:     p.categoria_operativa,
+        deducible_sugerido:      p.deducible_sugerido,
+        confianza_clasificacion: p.confianza_clasificacion,
+        ...clasif,
+      }));
+
+      resumen.push({
+        ticket_id:        t.resumen.ticket_id,
+        archivo:          t.resumen.archivo,
+        tienda:           t.resumen.tienda,
+        rfc:              t.resumen.rfc,
+        fecha:            t.resumen.fecha,
+        hora:             t.resumen.hora,
+        folio:            t.resumen.folio,
+        metodo_pago:      t.resumen.metodo_pago,
+        tarjeta_ultimos4: t.resumen.tarjeta_ultimos4,
+        num_productos:    t.resumen.num_productos,
+        subtotal:         t.resumen.subtotal,
+        iva:              t.resumen.iva,
+        ieps:             t.resumen.ieps,
+        descuentos:       t.resumen.descuentos,
+        total:            t.resumen.total,
+        ...clasif,
+        fecha_captura:    t.resumen.fecha_captura || new Date().toISOString(),
+      });
+
+      cruce.push({
+        fecha:            t.cruce.fecha,
+        hora:             t.cruce.hora,
+        comercio:         t.cruce.comercio,
+        rfc:              t.cruce.rfc,
+        folio:            t.cruce.folio,
+        metodo_pago:      t.cruce.metodo_pago,
+        tarjeta_ultimos4: t.cruce.tarjeta_ultimos4,
+        monto_cruce:      t.cruce.monto_cruce,
+        total_ticket:     t.cruce.total_ticket,
+        cuenta:           c.cuenta,
+        subcuenta:        c.subcuenta,
+        propiedad:        c.propiedad,
+        departamento:     c.departamento,
+      });
+    });
+
+    await fetch(SHEETS_URL, {
+      method:  "POST",
+      mode:    "no-cors",
+      headers: { "Content-Type": "text/plain" },
+      body:    JSON.stringify({ productos, resumen, cruce }),
+    });
+
+    // no-cors: no podemos leer la respuesta pero el envío fue exitoso si no hubo error de red
+    const msg = `✅ ${ticketResults.length} ticket${ticketResults.length > 1 ? "s" : ""} guardados en Sheets.`;
+    if (statusEl)   { statusEl.textContent = msg; statusEl.classList.remove("hidden"); statusEl.className = "save-status save-ok"; }
+    if (subtitleEl) subtitleEl.textContent = "Enviado correctamente";
+  } catch (err) {
+    const msg = "❌ Error al guardar: " + err.message;
+    if (statusEl) { statusEl.textContent = msg; statusEl.classList.remove("hidden"); statusEl.className = "save-status save-err"; }
+  } finally {
+    hideLoading();
+    if (btn) btn.style.pointerEvents = "";
+  }
 }
 
 function openImageLightbox(url) {
