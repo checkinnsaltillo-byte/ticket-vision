@@ -330,7 +330,6 @@ function createTicketCard(ticket, i) {
         <div class="ticket-info">
           <div class="header-chips">
             <span class="info-chip hidden" id="cuenta-chip-${i}"></span>
-            ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
             <span class="info-chip hidden" id="encargado-chip-${i}"></span>
             <span class="info-chip hidden" id="propiedad-chip-${i}"></span>
             <span class="info-chip hidden" id="dept-chip-${i}"></span>
@@ -342,6 +341,7 @@ function createTicketCard(ticket, i) {
           ${productSummary ? `<div class="product-summary">${esc(productSummary)}</div>` : ""}
         </div>
         <div class="ticket-header-right">
+          ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
           <div class="ticket-total-badge" id="total-badge-${i}">
             <span class="total-main">${money(r.total)}</span>
             ${r.iva ? `<span class="total-iva">IVA ${money(r.iva)}</span>` : ""}
