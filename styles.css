@@ -510,10 +510,17 @@ textarea { min-height: 80px; resize: vertical; }
 .btn-x {
   background: none; border: none; cursor: pointer;
   font-size: 13px; font-weight: 700; color: #9ca3af;
-  padding: 0 6px 0 0; flex-shrink: 0; line-height: 1;
-  transition: color .15s;
+  padding: 0 0 0 6px; flex-shrink: 0; line-height: 1;
+  transition: color .15s; margin-left: auto;
 }
 .btn-x:hover { color: #b91c1c; }
+
+.field-select {
+  width: 100%; padding: 9px 12px; border-radius: 12px;
+  border: 1.5px solid var(--border); background: var(--bg-soft);
+  font-size: 13px; font-family: Arial, sans-serif; color: var(--text);
+  appearance: auto;
+}
 
 /* Toggle pequeño en el encabezado de la tarjeta */
 .toggle-switch--sm { width: 34px; height: 19px; }

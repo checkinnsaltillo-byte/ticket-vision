@@ -619,7 +619,6 @@ function createTicketCard(ticket, i) {
   return `
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
-        <button class="btn-x" onclick="event.stopPropagation(); removeTicket(${i})">x</button>
         <div class="ticket-info">
           <div class="header-chips">
             <span class="info-chip hidden" id="cuenta-chip-${i}"></span>
@@ -647,6 +646,7 @@ function createTicketCard(ticket, i) {
             </label>
             <span class="fhl" id="fhl-${i}">No facturable</span>
           </div>
+          <button class="btn-x" onclick="event.stopPropagation(); removeTicket(${i})">x</button>
         </div>
       </div>
 
@@ -809,6 +809,52 @@ function createTicketCard(ticket, i) {
         </div>
 
         <div class="cuenta-field">
+          <label>Reembolso</label>
+          <div class="toggle-row">
+            <label class="toggle-switch toggle-switch--sm">
+              <input type="checkbox" id="reembolso-${i}" onchange="toggleReembolso(${i}, this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label-text" id="reembolso-label-${i}">No</span>
+          </div>
+          <div class="hidden" id="reembolso-a-field-${i}" style="margin-top:10px">
+            <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Reembolso a</label>
+            <select id="reembolso-a-${i}" class="field-select">
+              <option value="">— Seleccionar —</option>
+              <option>Andrés</option><option>Claudia</option><option>Papá</option>
+              <option>Francisco</option><option>Brenda</option><option>Alma</option>
+              <option>Gaby</option><option>Juanita</option><option>Damariz</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid" style="align-items:start">
+          <div class="cuenta-field" style="margin-bottom:0">
+            <label>Método de pago</label>
+            <div class="cuenta-grid cuenta-grid--compact" id="metodo-grid-${i}">
+              <div class="cuenta-card" data-value="Tarjeta crédito" onclick="selectMetodoPago(this,${i})">
+                <div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div>
+              </div>
+              <div class="cuenta-card" data-value="Tarjeta débito" onclick="selectMetodoPago(this,${i})">
+                <div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div>
+              </div>
+              <div class="cuenta-card" data-value="Efectivo" onclick="selectMetodoPago(this,${i})">
+                <div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div>
+              </div>
+              <div class="cuenta-card" data-value="Transferencia" onclick="selectMetodoPago(this,${i})">
+                <div class="cuenta-icon">🔄</div><div class="cuenta-label">Transferencia</div>
+              </div>
+            </div>
+            <input type="hidden" id="metodo-clasif-${i}" value="">
+          </div>
+          <div class="field">
+            <label>Detalles de la operación</label>
+            <textarea id="detalles-${i}" class="classify-textarea" rows="3"
+                      placeholder="Descripción libre de la operación..."></textarea>
+          </div>
+        </div>
+
+        <div class="cuenta-field">
           <label>Comentarios</label>
           <textarea id="comentarios-${i}" class="classify-textarea"
                     placeholder="Notas adicionales sobre este ticket..."></textarea>
@@ -959,15 +1005,19 @@ async function guardarResultados() {
 
       const c     = getClassify(i);
       const clasif = {
-        cuenta:          c.cuenta,
-        subcuenta:       c.subcuenta,
-        categoria_gasto: c.categoria,
-        concepto:        c.concepto,
-        propiedad:       c.propiedad,
-        departamento:    c.departamento,
-        comprador:       c.comprador,
-        facturable:      c.facturable ? "Sí" : "No",
-        comentarios:     c.comentarios,
+        cuenta:             c.cuenta,
+        subcuenta:          c.subcuenta,
+        categoria_gasto:    c.categoria,
+        concepto:           c.concepto,
+        propiedad:          c.propiedad,
+        departamento:       c.departamento,
+        comprador:          c.comprador,
+        facturable:         c.facturable  ? "Sí" : "No",
+        reembolso:          c.reembolso   ? "Sí" : "No",
+        reembolso_a:        c.reembolso_a,
+        metodo_pago_clasif: c.metodo_pago_clasif,
+        detalles_operacion: c.detalles_operacion,
+        comentarios:        c.comentarios,
       };
 
       metadata.push({ ticket_id: t.resumen.ticket_id, fecha: t.resumen.fecha, tienda: t.resumen.tienda });
@@ -1298,6 +1348,26 @@ function selectCategoria(el, i) {
   if (conceptos.length) renderConceptos(conceptos, i);
 }
 
+function selectMetodoPago(el, i) {
+  el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+  scrollCardIntoView(el);
+  document.getElementById(`metodo-clasif-${i}`).value = el.dataset.value;
+}
+
+function toggleReembolso(i, checked) {
+  const field = document.getElementById(`reembolso-a-field-${i}`);
+  const label = document.getElementById(`reembolso-label-${i}`);
+  field.classList.toggle("hidden", !checked);
+  label.textContent = checked ? "Sí" : "No";
+  label.classList.toggle("on", checked);
+  if (checked) {
+    const encargado = document.getElementById(`comprador-${i}`)?.value || "";
+    const sel = document.getElementById(`reembolso-a-${i}`);
+    if (sel && encargado) sel.value = encargado;
+  }
+}
+
 function selectComprador(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
@@ -1397,15 +1467,19 @@ function applySearchResult(i, idx) {
 
 function getClassify(i) {
   return {
-    cuenta:       document.getElementById(`cuenta-${i}`)?.value       || "",
-    subcuenta:    document.getElementById(`subcuenta-${i}`)?.value    || "",
-    categoria:    document.getElementById(`categoria-${i}`)?.value    || "",
-    concepto:     document.getElementById(`concepto-${i}`)?.value     || "",
-    propiedad:    document.getElementById(`propiedad-${i}`)?.value    || "",
-    departamento: document.getElementById(`departamento-${i}`)?.value || "",
-    comprador:    document.getElementById(`comprador-${i}`)?.value    || "",
-    facturable:   document.getElementById(`facturable-${i}`)?.checked || false,
-    comentarios:  document.getElementById(`comentarios-${i}`)?.value?.trim() || "",
+    cuenta:            document.getElementById(`cuenta-${i}`)?.value         || "",
+    subcuenta:         document.getElementById(`subcuenta-${i}`)?.value      || "",
+    categoria:         document.getElementById(`categoria-${i}`)?.value      || "",
+    concepto:          document.getElementById(`concepto-${i}`)?.value       || "",
+    propiedad:         document.getElementById(`propiedad-${i}`)?.value      || "",
+    departamento:      document.getElementById(`departamento-${i}`)?.value   || "",
+    comprador:         document.getElementById(`comprador-${i}`)?.value      || "",
+    facturable:        document.getElementById(`facturable-${i}`)?.checked   || false,
+    reembolso:         document.getElementById(`reembolso-${i}`)?.checked    || false,
+    reembolso_a:       document.getElementById(`reembolso-a-${i}`)?.value    || "",
+    metodo_pago_clasif:document.getElementById(`metodo-clasif-${i}`)?.value  || "",
+    detalles_operacion:document.getElementById(`detalles-${i}`)?.value?.trim()|| "",
+    comentarios:       document.getElementById(`comentarios-${i}`)?.value?.trim() || "",
   };
 }
 
