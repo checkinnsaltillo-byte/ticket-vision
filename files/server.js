@@ -176,18 +176,20 @@ function getMediaType(filename) {
 }
 
 async function extractWithClaude(imagePath, originalName) {
-  const base64    = fs.readFileSync(imagePath).toString("base64");
-  const mediaType = getMediaType(originalName);
+  const base64 = fs.readFileSync(imagePath).toString("base64");
+  const ext    = path.extname(originalName || "").toLowerCase();
+  const isPdf  = ext === ".pdf";
+
+  const fileBlock = isPdf
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+    : { type: "image",    source: { type: "base64", media_type: getMediaType(originalName), data: base64 } };
 
   const msg = await anthropic.messages.create({
     model:      "claude-haiku-4-5-20251001",
     max_tokens: 2048,
     messages: [{
       role: "user",
-      content: [
-        { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-        { type: "text",  text: EXTRACTION_PROMPT }
-      ]
+      content: [ fileBlock, { type: "text", text: EXTRACTION_PROMPT } ]
     }]
   });
 

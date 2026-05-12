@@ -162,6 +162,74 @@ let lbPanX = 0, lbPanY = 0;
 let lbDragging = false, lbHasDragged = false, lbLx = 0, lbLy = 0;
 let fileHashes    = [];   // SHA-256 por índice de selectedFiles
 let ticketsIndex  = null; // null = no cargado; [] = cargado (vacío o con datos)
+const pdfThumbCache = new Map(); // File → blob URL (página 1 rasterizada)
+
+// ─── PDF helpers ───────────────────────────────────────────────────────────
+
+function isPdf(file) {
+  return !!(file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")));
+}
+
+/** Renderiza una sola página de un PDF a Blob JPEG */
+async function renderPdfPageToBlob(file, pageNum = 1, scale = 1.5) {
+  const data  = await file.arrayBuffer();
+  const pdf   = await pdfjsLib.getDocument({ data }).promise;
+  const page  = await pdf.getPage(Math.min(pageNum, pdf.numPages));
+  const vp    = page.getViewport({ scale });
+  const cvs   = document.createElement("canvas");
+  cvs.width   = vp.width;
+  cvs.height  = vp.height;
+  await page.render({ canvasContext: cvs.getContext("2d"), viewport: vp }).promise;
+  return new Promise(res => cvs.toBlob(res, "image/jpeg", 0.92));
+}
+
+/** Renderiza todas las páginas de un PDF en un único canvas vertical → Blob JPEG */
+async function renderPdfAllPagesToBlob(file, scale = 2.0) {
+  const data  = await file.arrayBuffer();
+  const pdf   = await pdfjsLib.getDocument({ data }).promise;
+  const pages = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const vp   = page.getViewport({ scale });
+    const cvs  = document.createElement("canvas");
+    cvs.width  = vp.width; cvs.height = vp.height;
+    await page.render({ canvasContext: cvs.getContext("2d"), viewport: vp }).promise;
+    pages.push(cvs);
+  }
+  if (pages.length === 1) return new Promise(res => pages[0].toBlob(res, "image/jpeg", 0.92));
+  const gap    = 18;
+  const maxW   = Math.max(...pages.map(c => c.width));
+  const totalH = pages.reduce((h, c, i) => h + c.height + (i > 0 ? gap : 0), 0);
+  const out    = document.createElement("canvas");
+  out.width    = maxW; out.height = totalH;
+  const ctx    = out.getContext("2d");
+  ctx.fillStyle = "#d1d5db"; ctx.fillRect(0, 0, maxW, totalH);
+  let y = 0;
+  for (const c of pages) {
+    ctx.drawImage(c, Math.floor((maxW - c.width) / 2), y);
+    y += c.height + gap;
+  }
+  return new Promise(res => out.toBlob(res, "image/jpeg", 0.92));
+}
+
+/** Thumbnail de página 1 con caché por File object */
+async function getPdfThumbUrl(file) {
+  if (pdfThumbCache.has(file)) return pdfThumbCache.get(file);
+  const blob = await renderPdfPageToBlob(file, 1, 0.6);
+  const url  = URL.createObjectURL(blob);
+  pdfThumbCache.set(file, url);
+  return url;
+}
+
+/** Abre el lightbox con todas las páginas del PDF renderizadas */
+async function openPdfLightbox(file) {
+  showLoading("Cargando PDF…", "");
+  try {
+    const blob = await renderPdfAllPagesToBlob(file);
+    hideLoading();
+    openImageLightbox(URL.createObjectURL(blob), true);
+  } catch { hideLoading(); }
+}
 
 // ─── Detección de duplicados ────────────────────────────────────────────────
 
@@ -218,6 +286,12 @@ async function computeHashes(startIdx) {
 // ─── Init ──────────────────────────────────────────────────────────────────
 
 window.addEventListener("DOMContentLoaded", () => {
+  // Configurar PDF.js worker
+  if (typeof pdfjsLib !== "undefined") {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
   ensureTicketsIndex();
 
   // ── Drag/pan en el lightbox ────────────────────────────────────────────
@@ -335,6 +409,8 @@ function removeFile(idx) {
 
 function limpiarTickets() {
   ticketResults.forEach(t => { if (t.imageUrl) URL.revokeObjectURL(t.imageUrl); });
+  pdfThumbCache.forEach(url => URL.revokeObjectURL(url));
+  pdfThumbCache.clear();
   selectedFiles = [];
   ticketResults = [];
   fileHashes    = [];
@@ -365,14 +441,21 @@ function renderImageStrip() {
     thumb.className = "image-thumb" + (dup ? " thumb-has-dup" : "");
 
     const img = document.createElement("img");
-    const previewUrl = URL.createObjectURL(file);
-    img.src = previewUrl;
-    img.onload = () => URL.revokeObjectURL(img.src);
-    img.onclick = (e) => {
-      e.stopPropagation();
-      const url = URL.createObjectURL(selectedFiles[i]);
-      openImageLightbox(url, true);
-    };
+    if (isPdf(file)) {
+      img.src   = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='8' fill='%23fee2e2'/%3E%3Ctext x='40' y='42' text-anchor='middle' font-size='28' font-family='sans-serif'%3E%F0%9F%93%84%3C/text%3E%3C/svg%3E";
+      img.style.objectFit = "contain"; img.style.background = "#fee2e2";
+      getPdfThumbUrl(file).then(url => { img.src = url; img.style.objectFit = ""; img.style.background = ""; });
+      img.onclick = (e) => { e.stopPropagation(); openPdfLightbox(selectedFiles[i]); };
+    } else {
+      const previewUrl = URL.createObjectURL(file);
+      img.src = previewUrl;
+      img.onload = () => URL.revokeObjectURL(img.src);
+      img.onclick = (e) => {
+        e.stopPropagation();
+        const url = URL.createObjectURL(selectedFiles[i]);
+        openImageLightbox(url, true);
+      };
+    }
 
     const lbl = document.createElement("div");
     lbl.className   = "thumb-label";
@@ -487,6 +570,15 @@ async function analyzeTickets() {
       skipped:   true,
     }));
 
+    // ── Rasterizar thumbnails de PDFs (imageUrl debe ser imagen, no PDF blob) ─
+    for (const result of [...analyzedResults, ...skippedResults]) {
+      if (result.file && isPdf(result.file)) {
+        if (result.imageUrl) URL.revokeObjectURL(result.imageUrl);
+        const blob = await renderPdfPageToBlob(result.file, 1, 1.5);
+        result.imageUrl = URL.createObjectURL(blob);
+      }
+    }
+
     ticketResults = [...analyzedResults, ...skippedResults];
 
     renderTicketCards();
@@ -596,7 +688,7 @@ function createTicketCard(ticket, i) {
       <div class="ticket-card ticket-card--skipped" id="ticket-${i}">
         <div class="ticket-card-header" style="cursor:default">
           ${ticket.imageUrl ? `<img class="skipped-thumb" src="${esc(ticket.imageUrl)}"
-              onclick="openImageLightbox('${esc(ticket.imageUrl)}')" alt="Ticket ${i+1}">` : ""}
+              onclick="openTicketImageLightbox(${i})" alt="Ticket ${i+1}">` : ""}
           <div class="ticket-info" style="flex:1">
             <div class="dup-banner" style="margin:0">
               ⚠️ Omitido — ya existe en Sheets · <strong>${esc(dup.tienda || "")}</strong>${dup.fecha ? " · " + esc(dup.fecha) : ""}${dup.total ? " · $" + Number(dup.total).toLocaleString("es-MX") : ""}
@@ -657,9 +749,8 @@ function createTicketCard(ticket, i) {
       <div class="ticket-table-wrap hidden" id="table-${i}">
         ${ticket.imageUrl ? `<div class="ticket-image-row">
           <img class="ticket-image-thumb" src="${esc(ticket.imageUrl)}"
-               data-url="${esc(ticket.imageUrl)}"
                alt="Ticket ${i + 1}"
-               onclick="openImageLightbox(this.dataset.url)">
+               onclick="openTicketImageLightbox(${i})">
           <span class="ticket-image-hint">Toca para ver en detalle</span>
         </div>` : ""}
         <div class="ticket-tabs">
@@ -1111,6 +1202,17 @@ async function guardarResultados() {
   } finally {
     hideLoading();
     if (btn) btn.style.pointerEvents = "";
+  }
+}
+
+/** Abre el lightbox para un ticket: imágenes directo, PDFs con todas las páginas */
+async function openTicketImageLightbox(i) {
+  const ticket = ticketResults[i];
+  if (!ticket) return;
+  if (ticket.file && isPdf(ticket.file)) {
+    await openPdfLightbox(ticket.file);
+  } else {
+    openImageLightbox(ticket.imageUrl);
   }
 }
 
