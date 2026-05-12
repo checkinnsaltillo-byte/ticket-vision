@@ -463,7 +463,25 @@ async function analyzeTickets() {
 function renderTicketCards() {
   const container = document.getElementById("ticketsContainer");
   container.innerHTML = ticketResults.map((t, i) => createTicketCard(t, i)).join("");
-  document.getElementById("panel-3").classList.toggle("hidden", !ticketResults.length);
+  const hasReal = ticketResults.some(t => !t.skipped);
+  document.getElementById("panel-3").classList.toggle("hidden", !hasReal);
+}
+
+function removeTicket(i) {
+  if (ticketResults[i]?.imageUrl) URL.revokeObjectURL(ticketResults[i].imageUrl);
+  ticketResults.splice(i, 1);
+  renderTicketCards();
+  // Actualizar subtítulo
+  const nA = ticketResults.filter(t => !t.skipped).length;
+  const nS = ticketResults.filter(t =>  t.skipped).length;
+  const sub = document.getElementById("panel-2-subtitle");
+  if (sub) {
+    if (!ticketResults.length) { sub.textContent = "Sin tickets analizados"; return; }
+    sub.textContent =
+      (nA ? `${nA} analizado${nA !== 1 ? "s" : ""}` : "") +
+      (nA && nS ? " · " : "") +
+      (nS ? `${nS} omitido${nS !== 1 ? "s" : ""}` : "");
+  }
 }
 
 const PAYMENT_CHIP = {
@@ -563,6 +581,7 @@ function createTicketCard(ticket, i) {
           ${productSummary ? `<div class="product-summary">${esc(productSummary)}</div>` : ""}
         </div>
         <div class="ticket-header-right">
+          <button class="btn-remove-ticket" onclick="event.stopPropagation(); removeTicket(${i})" title="Eliminar ticket">🗑</button>
           ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
           <div class="ticket-total-badge" id="total-badge-${i}">
             <span class="total-main">${money(r.total)}</span>

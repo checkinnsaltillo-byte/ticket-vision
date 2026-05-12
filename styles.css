@@ -496,6 +496,15 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .toggle-label-text.on { color: var(--primary-dark); }
 
+/* Botón eliminar ticket */
+.btn-remove-ticket {
+  background: none; border: none; cursor: pointer;
+  font-size: 15px; opacity: .45; padding: 2px 4px;
+  border-radius: 6px; transition: opacity .15s, background .15s;
+  align-self: flex-start;
+}
+.btn-remove-ticket:hover { opacity: 1; background: #fee2e2; }
+
 /* Toggle pequeño en el encabezado de la tarjeta */
 .toggle-switch--sm { width: 34px; height: 19px; }
 .toggle-switch--sm .toggle-slider::before { width: 15px; height: 15px; left: 2px; bottom: 2px; }
