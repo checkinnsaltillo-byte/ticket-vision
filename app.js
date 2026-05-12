@@ -639,7 +639,7 @@ function createTicketCard(ticket, i) {
             ${r.iva ? `<span class="total-iva">IVA ${money(r.iva)}</span>` : ""}
           </div>
           <div class="header-facturable" onclick="event.stopPropagation()">
-            <label class="toggle-switch toggle-switch--sm">
+            <label class="toggle-switch toggle-switch--dark">
               <input type="checkbox" id="facturable-header-${i}"
                      onchange="syncFacturable(${i}, this.checked)">
               <span class="toggle-slider"></span>
@@ -852,6 +852,12 @@ function createTicketCard(ticket, i) {
             </div>
             <div class="cuenta-card" data-value="Transferencia" onclick="selectMetodoPago(this,${i})">
               <div class="cuenta-icon">🔄</div><div class="cuenta-label">Transferencia</div>
+            </div>
+            <div class="cuenta-card" data-value="Retiro sin tarjeta" onclick="selectMetodoPago(this,${i})">
+              <div class="cuenta-icon">🏧</div><div class="cuenta-label">Retiro</div>
+            </div>
+            <div class="cuenta-card" data-value="Cheque" onclick="selectMetodoPago(this,${i})">
+              <div class="cuenta-icon">📝</div><div class="cuenta-label">Cheque</div>
             </div>
           </div>
           <input type="hidden" id="metodo-clasif-${i}" value="">
