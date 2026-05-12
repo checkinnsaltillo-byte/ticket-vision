@@ -1099,6 +1099,12 @@ function makeCard(name, emoji, onclick) {
     `</div>`;
 }
 
+// Desplaza el card seleccionado al borde izquierdo del carrusel
+function scrollCardIntoView(el) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+}
+
 // ─── Cuenta / Subcuenta / Categoría / Concepto (cascading cards) ───────────
 
 const FACTURABLE_CUENTAS = new Set(["", "Egresos", "Activos", "Pasivos"]);
@@ -1106,6 +1112,7 @@ const FACTURABLE_CUENTAS = new Set(["", "Egresos", "Activos", "Pasivos"]);
 function selectCuenta(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
+  scrollCardIntoView(el);
   const cuenta = el.dataset.value;
   document.getElementById(`cuenta-${i}`).value = cuenta;
   resetSubcuenta(i);
@@ -1131,6 +1138,7 @@ function resetSubcuenta(i) {
 function selectSubcuenta(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
+  scrollCardIntoView(el);
   const subcuenta = el.dataset.value;
   document.getElementById(`subcuenta-${i}`).value = subcuenta;
   resetCategoria(i);
@@ -1172,12 +1180,14 @@ function renderConceptos(conceptos, i) {
 function selectConcepto(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
+  scrollCardIntoView(el);
   document.getElementById(`concepto-${i}`).value = el.dataset.value;
 }
 
 function selectCategoria(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
+  scrollCardIntoView(el);
   const categoria = el.dataset.value;
   document.getElementById(`categoria-${i}`).value = categoria;
   resetConcepto(i);
@@ -1191,6 +1201,7 @@ function selectCategoria(el, i) {
 function selectComprador(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
+  scrollCardIntoView(el);
   document.getElementById(`comprador-${i}`).value = el.dataset.value;
 }
 
