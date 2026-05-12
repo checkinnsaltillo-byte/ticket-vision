@@ -525,7 +525,7 @@ textarea { min-height: 80px; resize: vertical; }
 }
 
 
-.header-facturable {
+.header-deducible {
   display: flex; align-items: center; gap: 6px;
   margin-top: 6px; padding-top: 6px;
   border-top: 1px solid var(--border);
@@ -578,9 +578,21 @@ td.resumen-key { font-weight: 600; color: var(--text-soft); white-space: nowrap;
 
 /* ─── Classify search ────────────────────────────────────────── */
 
-.classify-search-wrap { position: relative; margin-bottom: 14px; }
+.classify-search-wrap { position: relative; margin-bottom: 14px; display: flex; gap: 8px; align-items: center; }
+.classify-search-wrap .search-results { position: absolute; top: 100%; left: 0; right: 0; }
+
+.btn-clasif-toggle {
+  background: var(--bg-soft); border: 1.5px solid var(--border);
+  border-radius: 10px; padding: 0 12px; height: 44px; flex-shrink: 0;
+  cursor: pointer; font-size: 18px; color: var(--text-soft);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn-clasif-toggle:hover,
+.btn-clasif-toggle.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-dark); }
+
+.clasif-cuenta-section.hidden { display: none; }
 .classify-search {
-  width: 100%; padding: 13px 16px 13px 42px;
+  flex: 1; min-width: 0; padding: 13px 16px 13px 42px;
   border-radius: 14px; border: 1px solid var(--border-strong);
   font-size: 15px; font-family: Arial, sans-serif;
   background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23d97706' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 14px center;

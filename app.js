@@ -637,10 +637,32 @@ function renderTicketCards() {
   container.innerHTML = ticketResults.map((t, i) => createTicketCard(t, i)).join("");
   const hasReal = ticketResults.some(t => !t.skipped);
   document.getElementById("panel-3").classList.toggle("hidden", !hasReal);
-  // Auto-seleccionar método de pago detectado en los recuadros de Clasificar
+  // Auto-seleccionar método de pago y deducible detectados
   ticketResults.forEach((t, i) => {
-    if (!t.skipped && t.resumen?.metodo_pago) autoSelectMetodoPago(i, t.resumen.metodo_pago);
+    if (!t.skipped) {
+      if (t.resumen?.metodo_pago) autoSelectMetodoPago(i, t.resumen.metodo_pago);
+      autoSelectDeducible(i, t.productos);
+    }
   });
+}
+
+/** Auto-selecciona el toggle Deducible según deducible_sugerido de los productos */
+function autoSelectDeducible(i, productos) {
+  if (!productos?.length) return;
+  const siCount = productos.filter(p => p.deducible_sugerido === "Sí").length;
+  // Marcar deducible si la mayoría de productos lo sugiere
+  if (siCount === 0 || siCount < Math.ceil(productos.length / 2)) return;
+  const inner  = document.getElementById(`deducible-${i}`);
+  if (inner && !inner.checked) { inner.checked = true; updateDeducibleLabel(i, true); }
+}
+
+/** Despliega / contrae la sección Cuenta→Concepto */
+function toggleClasiDetail(i) {
+  const section = document.getElementById(`cuenta-section-${i}`);
+  const btn     = document.getElementById(`clasif-toggle-${i}`);
+  if (!section) return;
+  const isHidden = section.classList.toggle("hidden");
+  if (btn) btn.classList.toggle("active", !isHidden);
 }
 
 function removeTicket(i) {
@@ -762,13 +784,13 @@ function createTicketCard(ticket, i) {
             <span class="total-main">${money(r.total)}</span>
             ${r.iva ? `<span class="total-iva">IVA ${money(r.iva)}</span>` : ""}
           </div>
-          <div class="header-facturable" onclick="event.stopPropagation()">
+          <div class="header-deducible" onclick="event.stopPropagation()">
             <label class="toggle-switch toggle-switch--dark">
-              <input type="checkbox" id="facturable-header-${i}"
-                     onchange="syncFacturable(${i}, this.checked)">
+              <input type="checkbox" id="deducible-header-${i}"
+                     onchange="syncDeducible(${i}, this.checked)">
               <span class="toggle-slider"></span>
             </label>
-            <span class="fhl" id="fhl-${i}">No facturable</span>
+            <span class="fhl" id="fhl-${i}">No deducible</span>
           </div>
           <button class="btn-x" onclick="event.stopPropagation(); removeTicket(${i})">x</button>
         </div>
@@ -807,8 +829,14 @@ function createTicketCard(ticket, i) {
                  placeholder="🔍 Buscar por cuenta, subcuenta, categoría o concepto..."
                  oninput="onClassifySearch(${i}, this.value)"
                  onblur="setTimeout(()=>hideSearchResults(${i}), 180)">
+          <button class="btn-clasif-toggle" type="button"
+                  onclick="toggleClasiDetail(${i})"
+                  id="clasif-toggle-${i}"
+                  title="Cuenta / Subcuenta / Categoría / Concepto">≡</button>
           <div class="search-results hidden" id="search-results-${i}"></div>
         </div>
+
+        <div class="clasif-cuenta-section hidden" id="cuenta-section-${i}">
 
         <div class="cuenta-field">
           <label>Cuenta</label>
@@ -865,6 +893,8 @@ function createTicketCard(ticket, i) {
           <input type="hidden" id="concepto-${i}" value="">
         </div>
 
+        </div><!-- /clasif-cuenta-section -->
+
         <div class="grid">
           <div class="field">
             <label>Propiedad</label>
@@ -920,14 +950,14 @@ function createTicketCard(ticket, i) {
           <input type="hidden" id="comprador-${i}" value="">
         </div>
 
-        <div class="cuenta-field" id="facturable-field-${i}">
-          <label>Facturable</label>
+        <div class="cuenta-field" id="deducible-field-${i}">
+          <label>Deducible</label>
           <div class="toggle-row">
             <label class="toggle-switch">
-              <input type="checkbox" id="facturable-${i}" onchange="updateFacturableLabel(${i}, this.checked)">
+              <input type="checkbox" id="deducible-${i}" onchange="updateDeducibleLabel(${i}, this.checked)">
               <span class="toggle-slider"></span>
             </label>
-            <span class="toggle-label-text" id="facturable-label-${i}">No facturable</span>
+            <span class="toggle-label-text" id="deducible-label-${i}">No deducible</span>
           </div>
         </div>
 
@@ -1144,7 +1174,7 @@ async function guardarResultados() {
         propiedad:          c.propiedad,
         departamento:       c.departamento,
         comprador:          c.comprador,
-        facturable:         c.facturable  ? "Sí" : "No",
+        deducible:          c.deducible   ? "Sí" : "No",
         reembolso:          c.reembolso   ? "Sí" : "No",
         reembolso_a:        c.reembolso_a,
         metodo_pago_clasif: c.metodo_pago_clasif,
@@ -1410,8 +1440,8 @@ function selectCuenta(el, i) {
   document.getElementById(`cuenta-${i}`).value = cuenta;
   resetSubcuenta(i);
 
-  const facturableField = document.getElementById(`facturable-field-${i}`);
-  if (facturableField) facturableField.classList.toggle("hidden", !FACTURABLE_CUENTAS.has(cuenta));
+  const deducibleField = document.getElementById(`deducible-field-${i}`);
+  if (deducibleField) deducibleField.classList.toggle("hidden", !FACTURABLE_CUENTAS.has(cuenta));
 
   const subs = cuenta && CATALOG[cuenta] ? Object.keys(CATALOG[cuenta]) : [];
   if (!subs.length) return;
@@ -1526,21 +1556,21 @@ function selectComprador(el, i) {
 }
 
 // Llamado desde el toggle dentro del panel "Clasificar"
-function updateFacturableLabel(i, checked) {
-  const lbl = document.getElementById(`facturable-label-${i}`);
-  if (lbl) { lbl.textContent = checked ? "Facturable" : "No facturable"; lbl.classList.toggle("on", checked); }
+function updateDeducibleLabel(i, checked) {
+  const lbl = document.getElementById(`deducible-label-${i}`);
+  if (lbl) { lbl.textContent = checked ? "Deducible" : "No deducible"; lbl.classList.toggle("on", checked); }
   // Sincronizar el toggle del encabezado
-  const hCheck = document.getElementById(`facturable-header-${i}`);
+  const hCheck = document.getElementById(`deducible-header-${i}`);
   if (hCheck) hCheck.checked = checked;
   const hLbl = document.getElementById(`fhl-${i}`);
-  if (hLbl) { hLbl.textContent = checked ? "Facturable" : "No facturable"; hLbl.classList.toggle("on", checked); }
+  if (hLbl) { hLbl.textContent = checked ? "Deducible" : "No deducible"; hLbl.classList.toggle("on", checked); }
 }
 
 // Llamado desde el toggle del encabezado
-function syncFacturable(i, checked) {
-  const inner = document.getElementById(`facturable-${i}`);
+function syncDeducible(i, checked) {
+  const inner = document.getElementById(`deducible-${i}`);
   if (inner) inner.checked = checked;
-  updateFacturableLabel(i, checked);
+  updateDeducibleLabel(i, checked);
 }
 
 // ─── Buscador ──────────────────────────────────────────────────────────────
@@ -1608,6 +1638,11 @@ function applySearchResult(i, idx) {
     if (conCard) selectConcepto(conCard, i);
   }
 
+  // Expandir sección de cuenta para mostrar la clasificación aplicada
+  const section = document.getElementById(`cuenta-section-${i}`);
+  const btn     = document.getElementById(`clasif-toggle-${i}`);
+  if (section) { section.classList.remove("hidden"); if (btn) btn.classList.add("active"); }
+
   // Limpiar buscador
   document.getElementById(`search-${i}`).value = "";
   hideSearchResults(i);
@@ -1624,7 +1659,7 @@ function getClassify(i) {
     propiedad:         document.getElementById(`propiedad-${i}`)?.value      || "",
     departamento:      document.getElementById(`departamento-${i}`)?.value   || "",
     comprador:         document.getElementById(`comprador-${i}`)?.value      || "",
-    facturable:        document.getElementById(`facturable-${i}`)?.checked   || false,
+    deducible:         document.getElementById(`deducible-${i}`)?.checked    || false,
     reembolso:         document.getElementById(`reembolso-${i}`)?.checked    || false,
     reembolso_a:       (() => {
       const sel = document.getElementById(`reembolso-a-${i}`);
