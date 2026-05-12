@@ -383,37 +383,74 @@ function setStep(n) {
 async function analyzeTickets() {
   if (!selectedFiles.length) return;
   try {
-    showLoading("Claude está analizando...", `Procesando ${selectedFiles.length} ticket${selectedFiles.length > 1 ? "s" : ""}...`);
     setStatus("analyzeStatus", "");
+    await ensureTicketsIndex();
 
-    const form = new FormData();
-    selectedFiles.forEach(f => form.append("files", f));
-
-    const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: form });
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo procesar.");
-
-    await ensureTicketsIndex(); // garantizar que el índice esté listo
-    ticketResults = (data.resumen || []).map((res, i) => {
+    // ── Separar: analizar vs omitir (duplicado por hash) ──────────────────
+    const toAnalyze = [];
+    const toSkip    = [];
+    selectedFiles.forEach((file, i) => {
       const hash = fileHashes[i] || "";
-      return {
-        file:      selectedFiles[i],
-        fileHash:  hash,
-        imageUrl:  selectedFiles[i] ? URL.createObjectURL(selectedFiles[i]) : null,
-        resumen:   res,
-        productos: (data.productos || []).filter(p => p.ticket_id === res.ticket_id),
-        cruce:     (data.cruce_bancario || [])[i] || {},
-        duplicate: dupByHash(hash) || dupByFields(res),
-      };
+      const dup  = dupByHash(hash);
+      if (dup) toSkip.push({ file, fileHash: hash, imageUrl: URL.createObjectURL(file), duplicate: dup });
+      else     toAnalyze.push({ file, fileHash: hash, originalIndex: i });
     });
+
+    let analyzedResults = [];
+
+    if (toAnalyze.length) {
+      showLoading("Claude está analizando…", `Procesando ${toAnalyze.length} ticket${toAnalyze.length > 1 ? "s" : ""}…`);
+      const form = new FormData();
+      toAnalyze.forEach(item => form.append("files", item.file));
+
+      const res  = await fetch(`${BACKEND}/process-json`, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo procesar.");
+
+      analyzedResults = (data.resumen || []).map((r, i) => {
+        const item = toAnalyze[i];
+        const hash = item?.fileHash || "";
+        return {
+          file:      item?.file,
+          fileHash:  hash,
+          imageUrl:  item?.file ? URL.createObjectURL(item.file) : null,
+          resumen:   r,
+          productos: (data.productos      || []).filter(p => p.ticket_id === r.ticket_id),
+          cruce:     (data.cruce_bancario || [])[i] || {},
+          duplicate: dupByHash(hash) || dupByFields(r),
+          skipped:   false,
+        };
+      });
+    }
+
+    // ── Resultados omitidos (sin tokens) ───────────────────────────────────
+    const skippedResults = toSkip.map(item => ({
+      file:      item.file,
+      fileHash:  item.fileHash,
+      imageUrl:  item.imageUrl,
+      resumen:   null,
+      productos: [],
+      cruce:     {},
+      duplicate: item.duplicate,
+      skipped:   true,
+    }));
+
+    ticketResults = [...analyzedResults, ...skippedResults];
 
     renderTicketCards();
     setStep(2);
-    setStatus("analyzeStatus", `${ticketResults.length} ticket${ticketResults.length > 1 ? "s" : ""} analizados.`);
 
-    setTimeout(() => {
-      document.getElementById("panel-2").scrollIntoView({ behavior: "smooth" });
-    }, 200);
+    // Subtítulo con desglose
+    const nA = analyzedResults.length;
+    const nS = skippedResults.length;
+    const sub = document.getElementById("panel-2-subtitle");
+    if (sub) sub.textContent =
+      (nA ? `${nA} analizado${nA !== 1 ? "s" : ""}` : "") +
+      (nA && nS ? " · " : "") +
+      (nS ? `${nS} omitido${nS !== 1 ? "s" : ""} (duplicado${nS !== 1 ? "s" : ""})` : "");
+
+    setStatus("analyzeStatus", "");
+    setTimeout(() => document.getElementById("panel-2").scrollIntoView({ behavior: "smooth" }), 200);
   } catch (err) {
     setStatus("analyzeStatus", "Error: " + err.message);
   } finally {
@@ -481,6 +518,25 @@ function paymentChip(method, last4) {
 }
 
 function createTicketCard(ticket, i) {
+  // ── Tarjeta simplificada para duplicados omitidos ──────────────────────
+  if (ticket.skipped) {
+    const dup = ticket.duplicate || {};
+    const info = [dup.tienda, dup.fecha, dup.total ? "$" + Number(dup.total).toLocaleString("es-MX") : ""].filter(Boolean).join(" · ");
+    return `
+      <div class="ticket-card ticket-card--skipped" id="ticket-${i}">
+        <div class="ticket-card-header" style="cursor:default">
+          ${ticket.imageUrl ? `<img class="skipped-thumb" src="${esc(ticket.imageUrl)}"
+              onclick="openImageLightbox('${esc(ticket.imageUrl)}')" alt="Ticket ${i+1}">` : ""}
+          <div class="ticket-info" style="flex:1">
+            <div class="dup-banner" style="margin:0">
+              ⚠️ Omitido — ya existe en Sheets<br>
+              <strong>${esc(dup.tienda || "")}</strong>${info.includes("·") ? " · " + esc([dup.fecha, dup.total ? "$" + Number(dup.total).toLocaleString("es-MX") : ""].filter(Boolean).join(" · ")) : ""}
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
   const r = ticket.resumen;
   const metaParts = [r.fecha || "", r.hora || ""].filter(Boolean);
 
@@ -819,6 +875,8 @@ async function guardarResultados() {
     const metadata  = [];
 
     ticketResults.forEach((t, i) => {
+      if (t.skipped) return; // omitir duplicados detectados por hash
+
       const c     = getClassify(i);
       const clasif = {
         cuenta:          c.cuenta,
