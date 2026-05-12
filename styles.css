@@ -497,17 +497,17 @@ textarea { min-height: 80px; resize: vertical; }
 .toggle-label-text.on { color: var(--primary-dark); }
 
 /* Botón eliminar ticket — círculo con × en la esquina */
-.ticket-card { position: relative; }
+.ticket-card-wrap { position: relative; }
 .btn-remove-ticket {
-  position: absolute; top: -8px; right: -8px;
+  position: absolute; top: -9px; right: -9px;
   width: 22px; height: 22px; border-radius: 50%;
   background: #e5e7eb; border: 2px solid #fff;
-  color: #6b7280; font-size: 14px; line-height: 1;
+  color: #6b7280; font-size: 15px; font-weight: 700; line-height: 1;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; padding: 0;
-  box-shadow: 0 1px 4px rgba(0,0,0,.15);
+  box-shadow: 0 1px 4px rgba(0,0,0,.18);
   transition: background .15s, color .15s;
-  z-index: 2;
+  z-index: 10;
 }
 .btn-remove-ticket:hover { background: #fca5a5; color: #991b1b; }
 

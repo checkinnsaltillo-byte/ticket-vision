@@ -541,14 +541,17 @@ function createTicketCard(ticket, i) {
     const dup = ticket.duplicate || {};
     const info = [dup.tienda, dup.fecha, dup.total ? "$" + Number(dup.total).toLocaleString("es-MX") : ""].filter(Boolean).join(" · ");
     return `
-      <div class="ticket-card ticket-card--skipped" id="ticket-${i}">
-        <div class="ticket-card-header" style="cursor:default">
-          ${ticket.imageUrl ? `<img class="skipped-thumb" src="${esc(ticket.imageUrl)}"
-              onclick="openImageLightbox('${esc(ticket.imageUrl)}')" alt="Ticket ${i+1}">` : ""}
-          <div class="ticket-info" style="flex:1">
-            <div class="dup-banner" style="margin:0">
-              ⚠️ Omitido — ya existe en Sheets<br>
-              <strong>${esc(dup.tienda || "")}</strong>${info.includes("·") ? " · " + esc([dup.fecha, dup.total ? "$" + Number(dup.total).toLocaleString("es-MX") : ""].filter(Boolean).join(" · ")) : ""}
+      <div class="ticket-card-wrap">
+        <button class="btn-remove-ticket" onclick="removeTicket(${i})" title="Eliminar ticket">×</button>
+        <div class="ticket-card ticket-card--skipped" id="ticket-${i}">
+          <div class="ticket-card-header" style="cursor:default">
+            ${ticket.imageUrl ? `<img class="skipped-thumb" src="${esc(ticket.imageUrl)}"
+                onclick="openImageLightbox('${esc(ticket.imageUrl)}')" alt="Ticket ${i+1}">` : ""}
+            <div class="ticket-info" style="flex:1">
+              <div class="dup-banner" style="margin:0">
+                ⚠️ Omitido — ya existe en Sheets<br>
+                <strong>${esc(dup.tienda || "")}</strong>${info.includes("·") ? " · " + esc([dup.fecha, dup.total ? "$" + Number(dup.total).toLocaleString("es-MX") : ""].filter(Boolean).join(" · ")) : ""}
+              </div>
             </div>
           </div>
         </div>
@@ -565,6 +568,8 @@ function createTicketCard(ticket, i) {
   const deptOptions = Array.from({length: 14}, (_, j) => `<option>${j + 1}</option>`).join("");
 
   return `
+    <div class="ticket-card-wrap">
+      <button class="btn-remove-ticket" onclick="removeTicket(${i})" title="Eliminar ticket">×</button>
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
         <div class="ticket-info">
@@ -581,7 +586,6 @@ function createTicketCard(ticket, i) {
           ${productSummary ? `<div class="product-summary">${esc(productSummary)}</div>` : ""}
         </div>
         <div class="ticket-header-right">
-          <button class="btn-remove-ticket" onclick="event.stopPropagation(); removeTicket(${i})" title="Eliminar ticket">×</button>
           ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
           <div class="ticket-total-badge" id="total-badge-${i}">
             <span class="total-main">${money(r.total)}</span>
@@ -766,6 +770,7 @@ function createTicketCard(ticket, i) {
           <button class="btn-clasificar-ticket" onclick="clasificarTicket(${i})">✓ Clasificar</button>
         </div>
       </div>
+    </div>
     </div>
   `;
 }
