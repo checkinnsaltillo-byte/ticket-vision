@@ -496,6 +496,22 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .toggle-label-text.on { color: var(--primary-dark); }
 
+/* Toggle pequeño en el encabezado de la tarjeta */
+.toggle-switch--sm { width: 34px; height: 19px; }
+.toggle-switch--sm .toggle-slider::before { width: 15px; height: 15px; left: 2px; bottom: 2px; }
+.toggle-switch--sm input:checked + .toggle-slider::before { transform: translateX(15px); }
+
+.header-facturable {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.fhl {
+  font-size: 11px; font-weight: 700; color: var(--text-soft);
+  transition: color .2s; white-space: nowrap;
+}
+.fhl.on { color: var(--primary-dark); }
+
 /* ─── Ticket Table ──────────────────────────────────────────── */
 
 .ticket-table-wrap { overflow-x: hidden; }

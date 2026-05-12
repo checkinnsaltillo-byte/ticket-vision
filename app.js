@@ -568,6 +568,14 @@ function createTicketCard(ticket, i) {
             <span class="total-main">${money(r.total)}</span>
             ${r.iva ? `<span class="total-iva">IVA ${money(r.iva)}</span>` : ""}
           </div>
+          <div class="header-facturable" onclick="event.stopPropagation()">
+            <label class="toggle-switch toggle-switch--sm">
+              <input type="checkbox" id="facturable-header-${i}"
+                     onchange="syncFacturable(${i}, this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="fhl" id="fhl-${i}">No facturable</span>
+          </div>
         </div>
       </div>
 
@@ -1186,11 +1194,22 @@ function selectComprador(el, i) {
   document.getElementById(`comprador-${i}`).value = el.dataset.value;
 }
 
+// Llamado desde el toggle dentro del panel "Clasificar"
 function updateFacturableLabel(i, checked) {
   const lbl = document.getElementById(`facturable-label-${i}`);
-  if (!lbl) return;
-  lbl.textContent = checked ? "Facturable" : "No facturable";
-  lbl.classList.toggle("on", checked);
+  if (lbl) { lbl.textContent = checked ? "Facturable" : "No facturable"; lbl.classList.toggle("on", checked); }
+  // Sincronizar el toggle del encabezado
+  const hCheck = document.getElementById(`facturable-header-${i}`);
+  if (hCheck) hCheck.checked = checked;
+  const hLbl = document.getElementById(`fhl-${i}`);
+  if (hLbl) { hLbl.textContent = checked ? "Facturable" : "No facturable"; hLbl.classList.toggle("on", checked); }
+}
+
+// Llamado desde el toggle del encabezado
+function syncFacturable(i, checked) {
+  const inner = document.getElementById(`facturable-${i}`);
+  if (inner) inner.checked = checked;
+  updateFacturableLabel(i, checked);
 }
 
 // ─── Buscador ──────────────────────────────────────────────────────────────
