@@ -355,7 +355,7 @@ function renderImageStrip() {
 
 // ─── Loading ───────────────────────────────────────────────────────────────
 
-function showLoading(title = "Claude está analizando...", sub = "Extrayendo productos y datos") {
+function showLoading(title = "Analizando...", sub = "Extrayendo productos y datos") {
   document.getElementById("loadingTitle").textContent    = title;
   document.getElementById("loadingSubtitle").textContent = sub;
   document.getElementById("loadingOverlay").classList.remove("hidden");
@@ -399,7 +399,7 @@ async function analyzeTickets() {
     let analyzedResults = [];
 
     if (toAnalyze.length) {
-      showLoading("Claude está analizando…", `Procesando ${toAnalyze.length} ticket${toAnalyze.length > 1 ? "s" : ""}…`);
+      showLoading("Analizando…", `Procesando ${toAnalyze.length} ticket${toAnalyze.length > 1 ? "s" : ""}…`);
       const form = new FormData();
       toAnalyze.forEach(item => form.append("files", item.file));
 
