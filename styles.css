@@ -447,9 +447,7 @@ textarea { min-height: 80px; resize: vertical; }
 .lightbox-close:hover { background: #f3f4f6; }
 
 /* Zoom dentro del lightbox */
-#lightboxImg { cursor: zoom-in; transition: transform .25s ease; transform-origin: center center; }
-#lightboxImg.lb-zoomed { transform: scale(2.4); cursor: zoom-out; }
-#imageLightbox.lb-panning { overflow: auto; align-items: flex-start; justify-content: flex-start; }
+#lightboxImg { cursor: zoom-in; transition: transform .22s ease; transform-origin: center center; user-select: none; }
 
 /* ─── Guardar resultados (panel 3) ──────────────────────────── */
 

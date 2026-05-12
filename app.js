@@ -155,8 +155,11 @@ let searchMatches = {};
 
 let selectedFiles   = [];
 let ticketResults   = [];
-let lightboxBlobUrl  = null;  // URL temporal del lightbox que hay que revocar al cerrar
-let lightboxZoomed   = false; // estado de zoom del lightbox
+let lightboxBlobUrl  = null;
+let lightboxZoomed   = false;
+const LB_ZOOM        = 2.4;
+let lbPanX = 0, lbPanY = 0;
+let lbDragging = false, lbHasDragged = false, lbLx = 0, lbLy = 0;
 let fileHashes    = [];   // SHA-256 por índice de selectedFiles
 let ticketsIndex  = null; // null = no cargado; [] = cargado (vacío o con datos)
 
@@ -215,8 +218,49 @@ async function computeHashes(startIdx) {
 // ─── Init ──────────────────────────────────────────────────────────────────
 
 window.addEventListener("DOMContentLoaded", () => {
-  // Cargar índice de tickets en segundo plano (para detección de duplicados sin costo)
   ensureTicketsIndex();
+
+  // ── Drag/pan en el lightbox ────────────────────────────────────────────
+  const lbImg = document.getElementById("lightboxImg");
+
+  // Desktop — mouse
+  lbImg.addEventListener("mousedown", e => {
+    if (!lightboxZoomed) return;
+    e.preventDefault();
+    lbDragging = true; lbHasDragged = false;
+    lbLx = e.clientX; lbLy = e.clientY;
+    lbImg.style.cursor = "grabbing"; lbImg.style.transition = "none";
+  });
+  document.addEventListener("mousemove", e => {
+    if (!lbDragging) return;
+    const dx = e.clientX - lbLx, dy = e.clientY - lbLy;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) lbHasDragged = true;
+    lbPanX += dx; lbPanY += dy;
+    lbLx = e.clientX; lbLy = e.clientY;
+    lbImg.style.transform = `translate(${lbPanX}px,${lbPanY}px) scale(${LB_ZOOM})`;
+  });
+  document.addEventListener("mouseup", () => {
+    if (!lbDragging) return;
+    lbDragging = false;
+    if (lightboxZoomed) { lbImg.style.cursor = "grab"; lbImg.style.transition = "transform .22s ease"; }
+  });
+
+  // Móvil — touch (un dedo para arrastrar, toque corto para zoom)
+  let ltx = 0, lty = 0;
+  lbImg.addEventListener("touchstart", e => {
+    if (!lightboxZoomed || e.touches.length !== 1) return;
+    ltx = e.touches[0].clientX; lty = e.touches[0].clientY;
+    lbHasDragged = false;
+  }, { passive: true });
+  lbImg.addEventListener("touchmove", e => {
+    if (!lightboxZoomed || e.touches.length !== 1) return;
+    e.preventDefault();
+    const dx = e.touches[0].clientX - ltx, dy = e.touches[0].clientY - lty;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) lbHasDragged = true;
+    lbPanX += dx; lbPanY += dy;
+    ltx = e.touches[0].clientX; lty = e.touches[0].clientY;
+    lbImg.style.transform = `translate(${lbPanX}px,${lbPanY}px) scale(${LB_ZOOM})`;
+  }, { passive: false });
 
   ["files-camera","files-gallery","files-files",
    "sheet-camera","sheet-gallery","sheet-files"].forEach(id => {
@@ -1020,19 +1064,34 @@ function openImageLightbox(url, isTemporaryBlob = false) {
   document.body.style.overflow = "hidden";
 }
 
+function lbApplyTransform() {
+  const img = document.getElementById("lightboxImg");
+  if (lightboxZoomed) {
+    img.style.transform = `translate(${lbPanX}px,${lbPanY}px) scale(${LB_ZOOM})`;
+    img.style.cursor    = "grab";
+    img.style.transition = lbDragging ? "none" : "transform .22s ease";
+  } else {
+    img.style.transform = "";
+    img.style.cursor    = "zoom-in";
+    img.style.transition = "transform .22s ease";
+  }
+}
+
 function toggleLightboxZoom(e) {
   e.stopPropagation();
+  if (lbHasDragged) return; // fue un arrastre, no un clic
   lightboxZoomed = !lightboxZoomed;
-  document.getElementById("lightboxImg").classList.toggle("lb-zoomed", lightboxZoomed);
-  document.getElementById("imageLightbox").classList.toggle("lb-panning", lightboxZoomed);
+  if (lightboxZoomed) { lbPanX = 0; lbPanY = 0; } // centrar al entrar
+  lbApplyTransform();
 }
 
 function closeLightbox() {
-  lightboxZoomed = false;
-  document.getElementById("lightboxImg").classList.remove("lb-zoomed");
-  document.getElementById("imageLightbox").classList.remove("lb-panning");
+  lightboxZoomed = false; lbDragging = false; lbHasDragged = false;
+  lbPanX = 0; lbPanY = 0;
+  const img = document.getElementById("lightboxImg");
+  img.style.transform = ""; img.style.cursor = ""; img.style.transition = "";
   document.getElementById("imageLightbox").classList.add("hidden");
-  document.getElementById("lightboxImg").src = "";
+  img.src = "";
   if (lightboxBlobUrl) { URL.revokeObjectURL(lightboxBlobUrl); lightboxBlobUrl = null; }
   document.body.style.overflow = "";
 }
