@@ -153,8 +153,9 @@ let searchMatches = {};
 
 // ─── State ─────────────────────────────────────────────────────────────────
 
-let selectedFiles = [];
-let ticketResults = [];
+let selectedFiles   = [];
+let ticketResults   = [];
+let lightboxBlobUrl = null; // URL temporal del lightbox que hay que revocar al cerrar
 let fileHashes    = [];   // SHA-256 por índice de selectedFiles
 let ticketsIndex  = null; // null = no cargado; [] = cargado (vacío o con datos)
 
@@ -319,8 +320,14 @@ function renderImageStrip() {
     thumb.className = "image-thumb" + (dup ? " thumb-has-dup" : "");
 
     const img = document.createElement("img");
-    img.src = URL.createObjectURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    img.src = previewUrl;
     img.onload = () => URL.revokeObjectURL(img.src);
+    img.onclick = (e) => {
+      e.stopPropagation();
+      const url = URL.createObjectURL(selectedFiles[i]);
+      openImageLightbox(url, true);
+    };
 
     const lbl = document.createElement("div");
     lbl.className   = "thumb-label";
@@ -1003,8 +1010,10 @@ async function guardarResultados() {
   }
 }
 
-function openImageLightbox(url) {
+function openImageLightbox(url, isTemporaryBlob = false) {
   if (!url) return;
+  if (lightboxBlobUrl) { URL.revokeObjectURL(lightboxBlobUrl); lightboxBlobUrl = null; }
+  if (isTemporaryBlob) lightboxBlobUrl = url;
   document.getElementById("lightboxImg").src = url;
   document.getElementById("imageLightbox").classList.remove("hidden");
   document.body.style.overflow = "hidden";
@@ -1013,6 +1022,7 @@ function openImageLightbox(url) {
 function closeLightbox() {
   document.getElementById("imageLightbox").classList.add("hidden");
   document.getElementById("lightboxImg").src = "";
+  if (lightboxBlobUrl) { URL.revokeObjectURL(lightboxBlobUrl); lightboxBlobUrl = null; }
   document.body.style.overflow = "";
 }
 

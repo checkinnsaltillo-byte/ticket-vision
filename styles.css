@@ -218,7 +218,7 @@ textarea { min-height: 80px; resize: vertical; }
   border: 1px solid #fde68a; position: relative;
   box-shadow: 0 2px 8px rgba(0,0,0,.08);
 }
-.image-thumb img { width: 80px; height: 106px; object-fit: cover; display: block; }
+.image-thumb img { width: 80px; height: 106px; object-fit: cover; display: block; cursor: zoom-in; }
 .thumb-label {
   position: absolute; bottom: 0; left: 0; right: 0;
   background: rgba(53,32,8,.65); color: #fff;
