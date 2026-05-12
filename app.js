@@ -550,7 +550,7 @@ function createTicketCard(ticket, i) {
               ⚠️ Omitido — ya existe en Sheets · <strong>${esc(dup.tienda || "")}</strong>${dup.fecha ? " · " + esc(dup.fecha) : ""}${dup.total ? " · $" + Number(dup.total).toLocaleString("es-MX") : ""}
             </div>
           </div>
-          <button class="btn-eliminar-ticket btn-eliminar-ticket--sm" onclick="removeTicket(${i})">✕</button>
+          <button class="btn-eliminar-ticket btn-eliminar-ticket--sm" onclick="removeTicket(${i})">x</button>
         </div>
       </div>`;
   }
@@ -763,7 +763,7 @@ function createTicketCard(ticket, i) {
 
         <div class="classify-actions">
           <button class="btn-clasificar-ticket" onclick="clasificarTicket(${i})">✓ Clasificar</button>
-          <button class="btn-eliminar-ticket" onclick="removeTicket(${i})">🗑 Eliminar ticket</button>
+          <button class="btn-eliminar-ticket" onclick="removeTicket(${i})">Eliminar</button>
         </div>
       </div>
     </div>
