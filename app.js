@@ -550,7 +550,7 @@ function createTicketCard(ticket, i) {
               ⚠️ Omitido — ya existe en Sheets · <strong>${esc(dup.tienda || "")}</strong>${dup.fecha ? " · " + esc(dup.fecha) : ""}${dup.total ? " · $" + Number(dup.total).toLocaleString("es-MX") : ""}
             </div>
           </div>
-          <button class="btn-eliminar-ticket btn-eliminar-ticket--sm" onclick="removeTicket(${i})">x</button>
+          <button class="btn-x" onclick="removeTicket(${i})">x</button>
         </div>
       </div>`;
   }
@@ -567,6 +567,7 @@ function createTicketCard(ticket, i) {
   return `
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
+        <button class="btn-x" onclick="event.stopPropagation(); removeTicket(${i})">x</button>
         <div class="ticket-info">
           <div class="header-chips">
             <span class="info-chip hidden" id="cuenta-chip-${i}"></span>
