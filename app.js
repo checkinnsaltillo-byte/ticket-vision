@@ -155,10 +155,67 @@ let searchMatches = {};
 
 let selectedFiles = [];
 let ticketResults = [];
+let fileHashes    = [];   // SHA-256 por índice de selectedFiles
+let ticketsIndex  = null; // null = no cargado; [] = cargado (vacío o con datos)
+
+// ─── Detección de duplicados ────────────────────────────────────────────────
+
+async function sha256(file) {
+  const buf  = await file.arrayBuffer();
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function ensureTicketsIndex() {
+  if (ticketsIndex !== null) return ticketsIndex;
+  try {
+    const res  = await fetch(`${BACKEND}/tickets-index`);
+    const data = await res.json();
+    ticketsIndex = data.ok ? (data.tickets || []) : [];
+  } catch (_) {
+    ticketsIndex = [];
+  }
+  return ticketsIndex;
+}
+
+function dupByHash(hash) {
+  if (!hash || !ticketsIndex?.length) return null;
+  return ticketsIndex.find(t => t.archivo_hash && t.archivo_hash === hash) || null;
+}
+
+function dupByFields(resumen) {
+  if (!ticketsIndex?.length) return null;
+  const tienda = (resumen.tienda || "").toLowerCase().trim();
+  const fecha  =  resumen.fecha  || "";
+  const total  = Math.round(Number(resumen.total  || 0) * 100);
+  const folio  = (resumen.folio  || "").trim();
+  return ticketsIndex.find(t => {
+    const tTotal  = Math.round(Number(t.total  || 0) * 100);
+    const tFolio  = (t.folio  || "").trim();
+    const tFecha  =  t.fecha  || "";
+    const tTienda = (t.tienda || "").toLowerCase().trim();
+    if (folio && tFolio && folio === tFolio && fecha === tFecha) return true;
+    if (fecha && fecha === tFecha && total > 0 && total === tTotal && tienda && tTienda)
+      return tienda === tTienda || tienda.includes(tTienda) || tTienda.includes(tienda);
+    return false;
+  }) || null;
+}
+
+// Computa hashes desde startIdx y re-renderiza el strip cuando termina
+async function computeHashes(startIdx) {
+  await ensureTicketsIndex();
+  for (let i = startIdx; i < selectedFiles.length; i++) {
+    if (!fileHashes[i]) fileHashes[i] = await sha256(selectedFiles[i]);
+  }
+  renderImageStrip();
+}
 
 // ─── Init ──────────────────────────────────────────────────────────────────
 
 window.addEventListener("DOMContentLoaded", () => {
+  // Cargar índice de tickets en segundo plano (para detección de duplicados sin costo)
+  ensureTicketsIndex();
+
   ["files-camera","files-gallery","files-files",
    "sheet-camera","sheet-gallery","sheet-files"].forEach(id => {
     const el = document.getElementById(id);
@@ -213,10 +270,12 @@ function handleFilesAdded(e) {
 
 function addFiles(newFiles) {
   if (!newFiles.length) return;
-  selectedFiles = [...selectedFiles, ...newFiles];
+  const startIdx = selectedFiles.length;
+  selectedFiles  = [...selectedFiles, ...newFiles];
   renderImageStrip();
   document.getElementById("analyzeWrap").classList.remove("hidden");
   setStep(1);
+  computeHashes(startIdx); // detectar duplicados por hash en segundo plano
 }
 
 function removeFile(idx) {
@@ -232,6 +291,7 @@ function limpiarTickets() {
   ticketResults.forEach(t => { if (t.imageUrl) URL.revokeObjectURL(t.imageUrl); });
   selectedFiles = [];
   ticketResults = [];
+  fileHashes    = [];
   const strip = document.getElementById("imagePreview");
   strip.innerHTML = "";
   strip.classList.add("hidden");
@@ -254,8 +314,9 @@ function renderImageStrip() {
   strip.innerHTML = "";
 
   selectedFiles.forEach((file, i) => {
+    const dup   = fileHashes[i] ? dupByHash(fileHashes[i]) : null;
     const thumb = document.createElement("div");
-    thumb.className = "image-thumb";
+    thumb.className = "image-thumb" + (dup ? " thumb-has-dup" : "");
 
     const img = document.createElement("img");
     img.src = URL.createObjectURL(file);
@@ -271,6 +332,15 @@ function renderImageStrip() {
     btn.onclick     = (e) => { e.stopPropagation(); removeFile(i); };
 
     thumb.append(img, lbl, btn);
+
+    if (dup) {
+      const badge = document.createElement("div");
+      badge.className = "thumb-dup-badge";
+      badge.title     = `Ya existe: ${dup.tienda || ""}${dup.fecha ? " · " + dup.fecha : ""}`;
+      badge.textContent = "⚠️";
+      thumb.appendChild(badge);
+    }
+
     strip.appendChild(thumb);
   });
 
@@ -323,13 +393,18 @@ async function analyzeTickets() {
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo procesar.");
 
-    ticketResults = (data.resumen || []).map((res, i) => ({
-      file:      selectedFiles[i],
-      imageUrl:  selectedFiles[i] ? URL.createObjectURL(selectedFiles[i]) : null,
-      resumen:   res,
-      productos: (data.productos || []).filter(p => p.ticket_id === res.ticket_id),
-      cruce:     (data.cruce_bancario || [])[i] || {}
-    }));
+    ticketResults = (data.resumen || []).map((res, i) => {
+      const hash = fileHashes[i] || "";
+      return {
+        file:      selectedFiles[i],
+        fileHash:  hash,
+        imageUrl:  selectedFiles[i] ? URL.createObjectURL(selectedFiles[i]) : null,
+        resumen:   res,
+        productos: (data.productos || []).filter(p => p.ticket_id === res.ticket_id),
+        cruce:     (data.cruce_bancario || [])[i] || {},
+        duplicate: dupByHash(hash) || dupByFields(res),
+      };
+    });
 
     renderTicketCards();
     setStep(2);
@@ -438,6 +513,10 @@ function createTicketCard(ticket, i) {
           </div>
         </div>
       </div>
+
+      ${ticket.duplicate ? `<div class="dup-banner">
+        ⚠️ Posible duplicado — <strong>${esc(ticket.duplicate.tienda || "")}</strong>${ticket.duplicate.fecha ? " · " + esc(ticket.duplicate.fecha) : ""}${ticket.duplicate.total ? " · $" + Number(ticket.duplicate.total).toLocaleString("es-MX") : ""}
+      </div>` : ""}
 
       <div class="ticket-table-wrap hidden" id="table-${i}">
         ${ticket.imageUrl ? `<div class="ticket-image-row">
@@ -789,6 +868,7 @@ async function guardarResultados() {
         fecha_captura:    t.resumen.fecha_captura || new Date().toISOString(),
         imagen_nombre:    "",
         imagen_url:       "",
+        archivo_hash:     t.fileHash || "",
       });
 
       cruce.push({
@@ -822,7 +902,9 @@ async function guardarResultados() {
     const saveData = await saveRes.json();
     if (!saveRes.ok || !saveData.ok) throw new Error(saveData.error || "Error al guardar");
 
-    const msg = `✅ ${saveData.tickets_saved} ticket${saveData.tickets_saved !== 1 ? "s" : ""} guardados · ${saveData.images_uploaded} imagen${saveData.images_uploaded !== 1 ? "es" : ""} subida${saveData.images_uploaded !== 1 ? "s" : ""} a Drive`;
+    const dupCount = ticketResults.filter(t => t.duplicate).length;
+    const dupNote  = dupCount ? ` · ⚠️ ${dupCount} posible${dupCount > 1 ? "s" : ""} duplicado${dupCount > 1 ? "s" : ""}` : "";
+    const msg = `✅ ${saveData.tickets_saved} ticket${saveData.tickets_saved !== 1 ? "s" : ""} guardados · ${saveData.images_uploaded} imagen${saveData.images_uploaded !== 1 ? "es" : ""} subida${saveData.images_uploaded !== 1 ? "s" : ""} a Drive${dupNote}`;
     if (statusEl)   { statusEl.textContent = msg; statusEl.classList.remove("hidden"); statusEl.className = "save-status save-ok"; }
     if (subtitleEl) subtitleEl.textContent = "Enviado correctamente";
   } catch (err) {

@@ -42,6 +42,17 @@ app.get("/", (req, res) => res.json({
 }));
 app.get("/health", (req, res) => res.json({ ok: true }));
 
+// ─── Índice de tickets existentes (para detección de duplicados) ───────────
+
+app.get("/tickets-index", async (req, res) => {
+  try {
+    const result = await callAppsScript({ action: "get_tickets_index" });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Test: verifica conexión con Apps Script y sube imagen de prueba ────────
 
 app.get("/test-drive", async (req, res) => {
