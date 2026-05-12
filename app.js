@@ -155,7 +155,8 @@ let searchMatches = {};
 
 let selectedFiles   = [];
 let ticketResults   = [];
-let lightboxBlobUrl = null; // URL temporal del lightbox que hay que revocar al cerrar
+let lightboxBlobUrl  = null;  // URL temporal del lightbox que hay que revocar al cerrar
+let lightboxZoomed   = false; // estado de zoom del lightbox
 let fileHashes    = [];   // SHA-256 por índice de selectedFiles
 let ticketsIndex  = null; // null = no cargado; [] = cargado (vacío o con datos)
 
@@ -1019,7 +1020,17 @@ function openImageLightbox(url, isTemporaryBlob = false) {
   document.body.style.overflow = "hidden";
 }
 
+function toggleLightboxZoom(e) {
+  e.stopPropagation();
+  lightboxZoomed = !lightboxZoomed;
+  document.getElementById("lightboxImg").classList.toggle("lb-zoomed", lightboxZoomed);
+  document.getElementById("imageLightbox").classList.toggle("lb-panning", lightboxZoomed);
+}
+
 function closeLightbox() {
+  lightboxZoomed = false;
+  document.getElementById("lightboxImg").classList.remove("lb-zoomed");
+  document.getElementById("imageLightbox").classList.remove("lb-panning");
   document.getElementById("imageLightbox").classList.add("hidden");
   document.getElementById("lightboxImg").src = "";
   if (lightboxBlobUrl) { URL.revokeObjectURL(lightboxBlobUrl); lightboxBlobUrl = null; }
