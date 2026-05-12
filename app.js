@@ -604,11 +604,43 @@ async function analyzeTickets() {
 
 // ─── Render ticket cards ────────────────────────────────────────────────────
 
+// Mapeo de método detectado por Claude → valor en los recuadros de Clasificar
+const METODO_A_CLASIF = {
+  VISA:            "Tarjeta crédito",
+  MASTERCARD:      "Tarjeta crédito",
+  AMEX:            "Tarjeta crédito",
+  TARJETA_CREDITO: "Tarjeta crédito",
+  TARJETA_BANCO:   "Tarjeta crédito",
+  TARJETA_DEBITO:  "Tarjeta débito",
+  EFECTIVO:        "Efectivo",
+  TRANSFERENCIA:   "Transferencia",
+  QR:              "Transferencia",
+};
+
+function autoSelectMetodoPago(i, rawMethod) {
+  if (!rawMethod) return;
+  const key      = normalizePaymentKey(rawMethod);
+  const clasifVal = METODO_A_CLASIF[key];
+  if (!clasifVal) return;
+  const grid = document.getElementById(`metodo-grid-${i}`);
+  if (!grid) return;
+  const card = Array.from(grid.querySelectorAll(".cuenta-card"))
+    .find(c => c.dataset.value === clasifVal);
+  if (!card) return;
+  grid.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  card.classList.add("active");
+  document.getElementById(`metodo-clasif-${i}`).value = clasifVal;
+}
+
 function renderTicketCards() {
   const container = document.getElementById("ticketsContainer");
   container.innerHTML = ticketResults.map((t, i) => createTicketCard(t, i)).join("");
   const hasReal = ticketResults.some(t => !t.skipped);
   document.getElementById("panel-3").classList.toggle("hidden", !hasReal);
+  // Auto-seleccionar método de pago detectado en los recuadros de Clasificar
+  ticketResults.forEach((t, i) => {
+    if (!t.skipped && t.resumen?.metodo_pago) autoSelectMetodoPago(i, t.resumen.metodo_pago);
+  });
 }
 
 function removeTicket(i) {
