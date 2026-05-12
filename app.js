@@ -393,6 +393,7 @@ async function analyzeTickets() {
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo procesar.");
 
+    await ensureTicketsIndex(); // garantizar que el índice esté listo
     ticketResults = (data.resumen || []).map((res, i) => {
       const hash = fileHashes[i] || "";
       return {
