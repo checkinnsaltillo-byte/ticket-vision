@@ -811,7 +811,7 @@ function createTicketCard(ticket, i) {
         <div class="cuenta-field">
           <label>Reembolso</label>
           <div class="toggle-row">
-            <label class="toggle-switch toggle-switch--sm">
+            <label class="toggle-switch">
               <input type="checkbox" id="reembolso-${i}" onchange="toggleReembolso(${i}, this.checked)">
               <span class="toggle-slider"></span>
             </label>
@@ -819,39 +819,42 @@ function createTicketCard(ticket, i) {
           </div>
           <div class="hidden" id="reembolso-a-field-${i}" style="margin-top:10px">
             <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Reembolso a</label>
-            <select id="reembolso-a-${i}" class="field-select">
+            <select id="reembolso-a-${i}" class="field-select" onchange="toggleReembolsoOtro(${i}, this.value)">
               <option value="">— Seleccionar —</option>
               <option>Andrés</option><option>Claudia</option><option>Papá</option>
               <option>Francisco</option><option>Brenda</option><option>Alma</option>
               <option>Gaby</option><option>Juanita</option><option>Damariz</option>
+              <option value="Otro">Otro</option>
             </select>
+            <div class="hidden" id="reembolso-otro-wrap-${i}" style="margin-top:8px">
+              <input type="text" id="reembolso-otro-${i}" class="field-select"
+                     placeholder="Especificar persona..." style="appearance:none">
+            </div>
+            <div style="margin-top:12px">
+              <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Detalles de la operación</label>
+              <textarea id="detalles-${i}" class="classify-textarea" rows="3"
+                        placeholder="Descripción libre de la operación..."></textarea>
+            </div>
           </div>
         </div>
 
-        <div class="grid" style="align-items:start">
-          <div class="cuenta-field" style="margin-bottom:0">
-            <label>Método de pago</label>
-            <div class="cuenta-grid cuenta-grid--compact" id="metodo-grid-${i}">
-              <div class="cuenta-card" data-value="Tarjeta crédito" onclick="selectMetodoPago(this,${i})">
-                <div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div>
-              </div>
-              <div class="cuenta-card" data-value="Tarjeta débito" onclick="selectMetodoPago(this,${i})">
-                <div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div>
-              </div>
-              <div class="cuenta-card" data-value="Efectivo" onclick="selectMetodoPago(this,${i})">
-                <div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div>
-              </div>
-              <div class="cuenta-card" data-value="Transferencia" onclick="selectMetodoPago(this,${i})">
-                <div class="cuenta-icon">🔄</div><div class="cuenta-label">Transferencia</div>
-              </div>
+        <div class="cuenta-field">
+          <label>Método de pago</label>
+          <div class="cuenta-grid cuenta-grid--compact" id="metodo-grid-${i}">
+            <div class="cuenta-card" data-value="Tarjeta crédito" onclick="selectMetodoPago(this,${i})">
+              <div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div>
             </div>
-            <input type="hidden" id="metodo-clasif-${i}" value="">
+            <div class="cuenta-card" data-value="Tarjeta débito" onclick="selectMetodoPago(this,${i})">
+              <div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div>
+            </div>
+            <div class="cuenta-card" data-value="Efectivo" onclick="selectMetodoPago(this,${i})">
+              <div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div>
+            </div>
+            <div class="cuenta-card" data-value="Transferencia" onclick="selectMetodoPago(this,${i})">
+              <div class="cuenta-icon">🔄</div><div class="cuenta-label">Transferencia</div>
+            </div>
           </div>
-          <div class="field">
-            <label>Detalles de la operación</label>
-            <textarea id="detalles-${i}" class="classify-textarea" rows="3"
-                      placeholder="Descripción libre de la operación..."></textarea>
-          </div>
+          <input type="hidden" id="metodo-clasif-${i}" value="">
         </div>
 
         <div class="cuenta-field">
@@ -1368,6 +1371,13 @@ function toggleReembolso(i, checked) {
   }
 }
 
+function toggleReembolsoOtro(i, value) {
+  const wrap = document.getElementById(`reembolso-otro-wrap-${i}`);
+  if (!wrap) return;
+  wrap.classList.toggle("hidden", value !== "Otro");
+  if (value !== "Otro") document.getElementById(`reembolso-otro-${i}`).value = "";
+}
+
 function selectComprador(el, i) {
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
@@ -1476,7 +1486,12 @@ function getClassify(i) {
     comprador:         document.getElementById(`comprador-${i}`)?.value      || "",
     facturable:        document.getElementById(`facturable-${i}`)?.checked   || false,
     reembolso:         document.getElementById(`reembolso-${i}`)?.checked    || false,
-    reembolso_a:       document.getElementById(`reembolso-a-${i}`)?.value    || "",
+    reembolso_a:       (() => {
+      const sel = document.getElementById(`reembolso-a-${i}`);
+      if (!sel) return "";
+      if (sel.value === "Otro") return document.getElementById(`reembolso-otro-${i}`)?.value?.trim() || "Otro";
+      return sel.value;
+    })(),
     metodo_pago_clasif:document.getElementById(`metodo-clasif-${i}`)?.value  || "",
     detalles_operacion:document.getElementById(`detalles-${i}`)?.value?.trim()|| "",
     comentarios:       document.getElementById(`comentarios-${i}`)?.value?.trim() || "",

@@ -522,10 +522,6 @@ textarea { min-height: 80px; resize: vertical; }
   appearance: auto;
 }
 
-/* Toggle pequeño en el encabezado de la tarjeta */
-.toggle-switch--sm { width: 34px; height: 19px; }
-.toggle-switch--sm .toggle-slider::before { width: 15px; height: 15px; left: 2px; bottom: 2px; }
-.toggle-switch--sm input:checked + .toggle-slider::before { transform: translateX(15px); }
 
 .header-facturable {
   display: flex; align-items: center; gap: 6px;
