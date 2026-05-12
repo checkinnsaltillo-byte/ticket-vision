@@ -581,7 +581,7 @@ function createTicketCard(ticket, i) {
           ${productSummary ? `<div class="product-summary">${esc(productSummary)}</div>` : ""}
         </div>
         <div class="ticket-header-right">
-          <button class="btn-remove-ticket" onclick="event.stopPropagation(); removeTicket(${i})" title="Eliminar ticket">🗑</button>
+          <button class="btn-remove-ticket" onclick="event.stopPropagation(); removeTicket(${i})" title="Eliminar ticket">×</button>
           ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
           <div class="ticket-total-badge" id="total-badge-${i}">
             <span class="total-main">${money(r.total)}</span>

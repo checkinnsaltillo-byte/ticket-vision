@@ -496,14 +496,20 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .toggle-label-text.on { color: var(--primary-dark); }
 
-/* Botón eliminar ticket */
+/* Botón eliminar ticket — círculo con × en la esquina */
+.ticket-card { position: relative; }
 .btn-remove-ticket {
-  background: none; border: none; cursor: pointer;
-  font-size: 15px; opacity: .45; padding: 2px 4px;
-  border-radius: 6px; transition: opacity .15s, background .15s;
-  align-self: flex-start;
+  position: absolute; top: -8px; right: -8px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #e5e7eb; border: 2px solid #fff;
+  color: #6b7280; font-size: 14px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,.15);
+  transition: background .15s, color .15s;
+  z-index: 2;
 }
-.btn-remove-ticket:hover { opacity: 1; background: #fee2e2; }
+.btn-remove-ticket:hover { background: #fca5a5; color: #991b1b; }
 
 /* Toggle pequeño en el encabezado de la tarjeta */
 .toggle-switch--sm { width: 34px; height: 19px; }
