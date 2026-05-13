@@ -802,7 +802,7 @@ function createTicketCard(ticket, i) {
             <span class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</span>
             ${ticket.imageUrl ? `<button class="btn-ver-ticket" onclick="event.stopPropagation(); openTicketImageLightbox(${i})">Ver ticket</button>` : ""}
           </div>
-          <div class="ticket-meta">
+          <div class="ticket-meta" id="ticket-meta-${i}">
             ${esc(metaParts.join(" · "))}${metaParts.length ? " · " : ""}🧾 ${r.num_productos || 0} producto${(r.num_productos || 0) !== 1 ? "s" : ""}
           </div>
           ${productSummary ? `<div class="product-summary">${esc(productSummary)}</div>` : ""}
@@ -845,6 +845,12 @@ function createTicketCard(ticket, i) {
       </div>
 
       <div class="classify-panel hidden" id="classify-${i}">
+
+        <div class="clasif-fecha-row">
+          <label class="clasif-fecha-label">📅 Fecha del ticket</label>
+          <input type="date" id="fecha-clasif-${i}" class="clasif-fecha-input"
+            value="${esc(r.fecha || '')}">
+        </div>
 
         <div class="classify-search-wrap">
           <button class="btn-clasif-toggle" type="button"
@@ -1210,12 +1216,13 @@ async function guardarResultados() {
         comentarios:        c.comentarios,
       };
 
-      metadata.push({ ticket_id: t.resumen.ticket_id, fecha: t.resumen.fecha, tienda: t.resumen.tienda });
+      const fechaFinal = c.fecha || t.resumen.fecha || "";
+      metadata.push({ ticket_id: t.resumen.ticket_id, fecha: fechaFinal, tienda: t.resumen.tienda });
 
       (t.productos || []).forEach(p => productos.push({
         ticket_id:               p.ticket_id,
         tienda:                  p.tienda,
-        fecha:                   p.fecha,
+        fecha:                   fechaFinal,
         linea_numero:            p.linea_numero,
         descripcion:             p.descripcion,
         cantidad:                p.cantidad,
@@ -1232,7 +1239,7 @@ async function guardarResultados() {
         archivo:          t.resumen.archivo,
         tienda:           t.resumen.tienda,
         rfc:              t.resumen.rfc,
-        fecha:            t.resumen.fecha,
+        fecha:            fechaFinal,
         hora:             t.resumen.hora,
         folio:            t.resumen.folio,
         metodo_pago:      t.resumen.metodo_pago,
@@ -1251,7 +1258,7 @@ async function guardarResultados() {
       });
 
       cruce.push({
-        fecha:            t.cruce.fecha,
+        fecha:            fechaFinal,
         hora:             t.cruce.hora,
         comercio:         t.cruce.comercio,
         rfc:              t.cruce.rfc,
@@ -1407,6 +1414,10 @@ function limpiarClasificacion(i) {
     const el = document.getElementById(`${id}-${i}`);
     if (el) el.value = "";
   });
+
+  // Fecha — restaurar a la detectada automáticamente
+  const fechaInput = document.getElementById(`fecha-clasif-${i}`);
+  if (fechaInput) fechaInput.value = ticketResults[i]?.resumen?.fecha || "";
 }
 
 function markAsClassified(i) {
@@ -1489,6 +1500,7 @@ function markAsClassified(i) {
   if (ticket) {
     // Resumen
     const r = ticket.resumen || {};
+    if (c.fecha)            r.fecha         = c.fecha;
     if (c.metodo_pago_clasif) r.metodo_pago = c.metodo_pago_clasif;
     r.cuenta          = c.cuenta;
     r.subcuenta       = c.subcuenta;
@@ -1496,6 +1508,13 @@ function markAsClassified(i) {
     r.concepto        = c.concepto;
     r.propiedad       = c.propiedad;
     r.departamento    = c.departamento;
+    // Actualizar fecha visible en el encabezado
+    const metaEl = document.getElementById(`ticket-meta-${i}`);
+    if (metaEl && c.fecha) {
+      const parts = [c.fecha, r.hora || ""].filter(Boolean);
+      metaEl.textContent = parts.join(" · ") + (parts.length ? " · " : "") +
+        "🧾 " + (r.num_productos || 0) + " producto" + ((r.num_productos || 0) !== 1 ? "s" : "");
+    }
 
     // Cruce bancario
     const cr = ticket.cruce || {};
@@ -1789,6 +1808,7 @@ function applySearchResult(i, idx) {
 
 function getClassify(i) {
   return {
+    fecha:             document.getElementById(`fecha-clasif-${i}`)?.value   || "",
     cuenta:            document.getElementById(`cuenta-${i}`)?.value         || "",
     subcuenta:         document.getElementById(`subcuenta-${i}`)?.value      || "",
     categoria:         document.getElementById(`categoria-${i}`)?.value      || "",
@@ -2002,6 +2022,16 @@ function getDashboardFilters() {
 }
 
 function applyDashboardFilters() {
+  // Switch "Todas las facturas" — ignora todos los filtros
+  if (document.getElementById("db-f-todas")?.checked) {
+    dashboardFiltered = [...dashboardTickets];
+    const n = dashboardFiltered.length;
+    const sub = document.getElementById("db-filter-subtitle");
+    if (sub) sub.textContent = `${n} ticket${n !== 1 ? "s" : ""} (todos)`;
+    renderDashboardCards();
+    return;
+  }
+
   const f = getDashboardFilters();
   dashboardFiltered = dashboardTickets.filter(t => {
     const r = t.resumen || {};

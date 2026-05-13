@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=37">
+  <link rel="stylesheet" href="styles.css?v=38">
 </head>
 <body>
 
@@ -30,7 +30,7 @@
           <span>Check Inn Saltillo</span>
         </div>
       </div>
-      <div class="header-badge">v12.0</div>
+      <div class="header-badge">v12.1</div>
     </header>
 
     <!-- ── Tabs de sección principal ──────────────────────────── -->
@@ -129,6 +129,13 @@
           <button class="btn-limpiar" style="margin:0" onclick="event.stopPropagation(); clearDashboardFilters()">✕ Limpiar</button>
         </div>
         <div class="accordion-body" id="db-filter-body">
+          <div class="db-todas-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="db-f-todas" onchange="applyDashboardFilters()">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="db-todas-label">Todas las facturas</span>
+          </div>
           <div class="db-filter-grid">
             <div class="db-filter-full">
               <input type="text" id="db-f-text" placeholder="🔍  Buscar por tienda, concepto, encargado…" class="db-search-input" oninput="applyDashboardFilters()">
@@ -234,6 +241,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=39"></script>
+  <script src="app.js?v=40"></script>
 </body>
 </html>
