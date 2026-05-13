@@ -153,8 +153,11 @@ let searchMatches = {};
 
 // ─── State ─────────────────────────────────────────────────────────────────
 
-let selectedFiles   = [];
-let ticketResults   = [];
+let selectedFiles     = [];
+let ticketResults     = [];
+let dashboardTickets  = [];   // todos los tickets cargados desde Sheets
+let dashboardFiltered = [];   // subset filtrado
+let dbFiltersOpen     = true;
 let lightboxBlobUrl  = null;
 let lightboxZoomed   = false;
 const LB_ZOOM        = 2.4;
@@ -1914,4 +1917,269 @@ function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, s =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[s])
   );
+}
+
+// ─── Sección switcher ──────────────────────────────────────────────────────
+
+function switchSection(name) {
+  document.getElementById("section-analisis").classList.toggle("hidden", name !== "analisis");
+  document.getElementById("section-dashboard").classList.toggle("hidden", name !== "dashboard");
+  document.getElementById("tab-analisis").classList.toggle("active", name === "analisis");
+  document.getElementById("tab-dashboard").classList.toggle("active", name === "dashboard");
+  if (name === "dashboard" && !dashboardTickets.length) loadDashboard();
+}
+
+// ─── Dashboard: carga desde Sheets ────────────────────────────────────────
+
+async function loadDashboard() {
+  const container = document.getElementById("dbContainer");
+  const countBar  = document.getElementById("db-count-bar");
+  container.innerHTML = `
+    <div class="empty-state" style="padding:40px 20px">
+      <div class="thinking-dots" style="margin:0 auto 16px">
+        <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+      </div>
+      <p>Cargando tickets desde Sheets…</p>
+    </div>`;
+  countBar.textContent = "";
+  try {
+    const res  = await fetch(`${BACKEND}/get-tickets`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Error al cargar tickets");
+    dashboardTickets = data.tickets || [];
+    populateDashboardFilters();
+    applyDashboardFilters();
+  } catch (err) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding:40px 20px">
+        <div class="empty-icon">⚠️</div>
+        <p>Error: ${esc(err.message)}</p>
+        <button class="btn-analizar" style="margin-top:14px;width:auto;padding:12px 28px"
+          onclick="dashboardTickets=[];loadDashboard()">Reintentar</button>
+      </div>`;
+  }
+}
+
+// ─── Dashboard: filtros ────────────────────────────────────────────────────
+
+function populateDashboardFilters() {
+  const unique = key =>
+    [...new Set(dashboardTickets.map(t => String(t.resumen[key] || "")).filter(Boolean))].sort();
+
+  const fillSelect = (id, values) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const current = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    values.forEach(v => {
+      const o = document.createElement("option");
+      o.value = o.textContent = v;
+      sel.appendChild(o);
+    });
+    if (values.includes(current)) sel.value = current;
+  };
+
+  fillSelect("db-f-metodo",       unique("metodo_pago"));
+  fillSelect("db-f-propiedad",    unique("propiedad"));
+  fillSelect("db-f-departamento", unique("departamento"));
+  fillSelect("db-f-comprador",    unique("comprador"));
+}
+
+function getDashboardFilters() {
+  const v = id => document.getElementById(id)?.value || "";
+  return {
+    text:         v("db-f-text").trim().toLowerCase(),
+    fechaDesde:   v("db-f-desde"),
+    fechaHasta:   v("db-f-hasta"),
+    cuenta:       v("db-f-cuenta"),
+    metodoPago:   v("db-f-metodo"),
+    propiedad:    v("db-f-propiedad"),
+    departamento: v("db-f-departamento"),
+    comprador:    v("db-f-comprador"),
+    deducible:    v("db-f-deducible"),
+    reembolso:    v("db-f-reembolso"),
+  };
+}
+
+function applyDashboardFilters() {
+  const f = getDashboardFilters();
+  dashboardFiltered = dashboardTickets.filter(t => {
+    const r = t.resumen || {};
+    const str = k => String(r[k] || "");
+    if (f.text) {
+      const hay = [r.tienda, r.concepto, r.comprador, r.cuenta,
+                   r.subcuenta, r.categoria_gasto].join(" ").toLowerCase();
+      if (!hay.includes(f.text)) return false;
+    }
+    if (f.fechaDesde && str("fecha") < f.fechaDesde) return false;
+    if (f.fechaHasta && str("fecha") > f.fechaHasta) return false;
+    if (f.cuenta      && str("cuenta")      !== f.cuenta)      return false;
+    if (f.metodoPago  && str("metodo_pago") !== f.metodoPago)  return false;
+    if (f.propiedad   && str("propiedad")   !== f.propiedad)   return false;
+    if (f.departamento&& str("departamento")!== f.departamento) return false;
+    if (f.comprador   && str("comprador")   !== f.comprador)   return false;
+    if (f.deducible === "si" && str("deducible") !== "Sí") return false;
+    if (f.deducible === "no" && str("deducible") === "Sí") return false;
+    if (f.reembolso === "si" && str("reembolso") !== "Sí") return false;
+    if (f.reembolso === "no" && str("reembolso") === "Sí") return false;
+    return true;
+  });
+
+  // Actualizar subtítulo del filtro
+  const n = dashboardFiltered.length;
+  const t = dashboardTickets.length;
+  const sub = document.getElementById("db-filter-subtitle");
+  if (sub) sub.textContent = t ? (n === t ? `${t} ticket${t!==1?"s":""}` : `${n} de ${t} tickets`) : "Filtra por cualquier campo";
+
+  renderDashboardCards();
+}
+
+function clearDashboardFilters() {
+  ["db-f-text","db-f-desde","db-f-hasta"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = "";
+  });
+  ["db-f-cuenta","db-f-metodo","db-f-propiedad",
+   "db-f-departamento","db-f-comprador","db-f-deducible","db-f-reembolso"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = "";
+  });
+  applyDashboardFilters();
+}
+
+function toggleDbFilters() {
+  dbFiltersOpen = !dbFiltersOpen;
+  document.getElementById("db-filter-body")?.classList.toggle("collapsed", !dbFiltersOpen);
+  document.getElementById("db-filter-arrow")?.classList.toggle("open", dbFiltersOpen);
+}
+
+// ─── Dashboard: render ─────────────────────────────────────────────────────
+
+function renderDashboardCards() {
+  const container = document.getElementById("dbContainer");
+  if (!dashboardFiltered.length) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding:40px 20px">
+        <div class="empty-icon">${dashboardTickets.length ? "🔍" : "📋"}</div>
+        <p>${dashboardTickets.length ? "Sin resultados para los filtros aplicados" : "No hay tickets guardados aún"}</p>
+      </div>`;
+    return;
+  }
+  container.innerHTML = dashboardFiltered.map((t, i) => createDashboardCard(t, i)).join("");
+}
+
+function createDashboardCard(ticket, i) {
+  const r        = ticket.resumen || {};
+  const str      = k => String(r[k] || "");
+  const colorCls = CUENTA_COLOR_CLASS[str("cuenta")] || "";
+  const clsCls   = colorCls ? `classified ${colorCls}` : "";
+
+  const metaParts    = [str("fecha"), str("hora")].filter(Boolean);
+  const numProd      = Number(r.num_productos) || (ticket.productos || []).length || 0;
+  const rawSummary   = (ticket.productos || []).map(p => p.descripcion || "").filter(Boolean).join(", ");
+  const prodSummary  = rawSummary.length > 95 ? rawSummary.slice(0, 92) + "…" : rawSummary;
+
+  // Chips desde datos guardados
+  const cuentaChip = str("cuenta")
+    ? `<span class="info-chip ${colorCls}">${CUENTA_EMOJIS[str("cuenta")] || ""} ${esc(str("cuenta"))}</span>` : "";
+  const compradorChip = str("comprador")
+    ? `<span class="info-chip">👤 ${esc(str("comprador"))}</span>` : "";
+  const propiedadChip = str("propiedad")
+    ? `<span class="info-chip">🏠 ${esc(str("propiedad"))}</span>` : "";
+  const deptChip = str("departamento")
+    ? `<span class="info-chip">🚪 Depto. ${esc(str("departamento"))}</span>` : "";
+  const reembolsoChip = (str("reembolso") === "Sí" && str("reembolso_a"))
+    ? `<span class="info-chip chip-reembolso">↩ Reembolso a ${esc(str("reembolso_a"))}</span>` : "";
+
+  // Ver ticket — abre Drive URL en nueva pestaña
+  const verTicket = str("imagen_url")
+    ? `<a class="btn-ver-ticket" href="${esc(str("imagen_url"))}" target="_blank" rel="noopener"
+         onclick="event.stopPropagation()">Ver ticket</a>` : "";
+
+  // Deducible en encabezado
+  const deducibleHtml = str("deducible") === "Sí"
+    ? `<div class="header-deducible"><span class="fhl on">Deducible</span></div>` : "";
+
+  // Ruta de clasificación (barra inferior)
+  const pathParts = [str("cuenta"), str("subcuenta"), str("categoria_gasto"), str("concepto")].filter(Boolean);
+  const pathText  = pathParts.join(" › ");
+
+  return `
+    <div class="ticket-card" id="db-ticket-${i}">
+      <div class="ticket-card-header ${clsCls}" id="db-header-${i}" onclick="toggleDbTable(${i})">
+        <div class="ticket-info">
+          <div class="header-chips">
+            ${cuentaChip}${compradorChip}${propiedadChip}${deptChip}${reembolsoChip}
+          </div>
+          <div class="ticket-store-row">
+            <span class="ticket-store">${esc(str("tienda") || "Ticket " + (i + 1))}</span>
+            ${verTicket}
+          </div>
+          <div class="ticket-meta">
+            ${esc(metaParts.join(" · "))}${metaParts.length ? " · " : ""}🧾 ${numProd} producto${numProd !== 1 ? "s" : ""}
+          </div>
+          ${prodSummary ? `<div class="product-summary">${esc(prodSummary)}</div>` : ""}
+        </div>
+        <div class="ticket-header-right">
+          <span>${paymentChip(str("metodo_pago"), str("tarjeta_ultimos4"))}</span>
+          <div class="ticket-total-badge ${clsCls}">
+            <span class="total-main">${money(r.total)}</span>
+            ${r.iva ? `<span class="total-iva">IVA ${money(r.iva)}</span>` : ""}
+          </div>
+          ${deducibleHtml}
+        </div>
+      </div>
+
+      <div class="ticket-table-wrap hidden" id="db-table-${i}">
+        <div class="ticket-tabs">
+          <button class="ticket-tab active" onclick="showDbTab(${i},'transcripcion',this)">Transcripción</button>
+          <button class="ticket-tab" onclick="showDbTab(${i},'resumen',this)">Resumen</button>
+        </div>
+        <div id="db-tab-transcripcion-${i}" class="ticket-tab-content">
+          ${buildDashboardProductTable(ticket.productos || [])}
+        </div>
+        <div id="db-tab-resumen-${i}" class="ticket-tab-content hidden">
+          ${buildResumenTable(r)}
+        </div>
+      </div>
+
+      ${pathText ? `
+      <div class="classify-tab classified ${colorCls}" style="cursor:default">
+        <span class="classify-tab-arrow" style="color:#fff">›</span>
+        <span class="classify-tab-label" style="font-size:10px;text-transform:none;letter-spacing:.01em;
+          font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap;max-width:240px">${esc(pathText)}</span>
+      </div>` : ""}
+    </div>`;
+}
+
+function buildDashboardProductTable(productos) {
+  if (!productos?.length)
+    return `<div class="empty-state"><div class="empty-icon">🧾</div><p>Sin productos registrados</p></div>`;
+  const cols = [
+    { key: "descripcion",     label: "Descripción" },
+    { key: "cantidad",        label: "Cant." },
+    { key: "precio_unitario", label: "P.Unit.", fmt: "money" },
+    { key: "monto",           label: "Monto",   fmt: "money" },
+  ];
+  return `<table>
+    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
+    <tbody>${productos.map(p =>
+      `<tr>${cols.map(c => `<td>${c.fmt === "money" ? money(p[c.key]) : esc(p[c.key])}</td>`).join("")}</tr>`
+    ).join("")}</tbody>
+  </table>`;
+}
+
+function toggleDbTable(i) {
+  const wrap   = document.getElementById(`db-table-${i}`);
+  const header = document.getElementById(`db-header-${i}`);
+  const hidden = wrap.classList.toggle("hidden");
+  header.classList.toggle("collapsed", hidden);
+}
+
+function showDbTab(i, tab, btn) {
+  ["transcripcion", "resumen"].forEach(t => {
+    document.getElementById(`db-tab-${t}-${i}`)?.classList.toggle("hidden", t !== tab);
+  });
+  btn.closest(".ticket-tabs").querySelectorAll(".ticket-tab")
+    .forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
 }

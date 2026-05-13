@@ -53,6 +53,17 @@ app.get("/tickets-index", async (req, res) => {
   }
 });
 
+// ─── Dashboard: todos los tickets de Sheets ────────────────────────────────
+
+app.get("/get-tickets", async (req, res) => {
+  try {
+    const result = await callAppsScript({ action: "get_all_tickets" });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Test: verifica conexión con Apps Script y sube imagen de prueba ────────
 
 app.get("/test-drive", async (req, res) => {
