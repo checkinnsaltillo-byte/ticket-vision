@@ -146,6 +146,27 @@ app.post("/save-tickets", upload.array("files"), async (req, res) => {
   }
 });
 
+// ─── Actualizar clasificación de un ticket existente ──────────────────────
+
+app.post("/update-ticket", async (req, res) => {
+  try {
+    const { ticket_id, clasificacion } = req.body;
+    if (!ticket_id) throw new Error("ticket_id requerido");
+
+    const result = await callAppsScript({
+      action: "update_ticket_classification",
+      ticket_id,
+      clasificacion,
+    });
+
+    if (!result.ok) throw new Error(result.error || "Apps Script error");
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("update_ticket_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Prompt de extracción ──────────────────────────────────────────────────
 
 const EXTRACTION_PROMPT = `Eres un extractor experto de tickets de compra mexicanos.

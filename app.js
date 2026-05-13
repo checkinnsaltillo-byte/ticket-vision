@@ -158,6 +158,7 @@ let ticketResults     = [];
 let dashboardTickets  = [];   // todos los tickets cargados desde Sheets
 let dashboardFiltered = [];   // subset filtrado
 let dbFiltersOpen     = true;
+const DB_IDX          = 20000; // offset de índice para paneles de clasificar del dashboard
 let lightboxBlobUrl  = null;
 let lightboxZoomed   = false;
 const LB_ZOOM        = 2.4;
@@ -844,227 +845,183 @@ function createTicketCard(ticket, i) {
         <span class="classify-tab-label">Clasificar</span>
       </div>
 
-      <div class="classify-panel hidden" id="classify-${i}">
-
-        <div class="clasif-fecha-row">
-          <label class="clasif-fecha-label">📅 Fecha del ticket</label>
-          <input type="date" id="fecha-clasif-${i}" class="clasif-fecha-input"
-            value="${esc(r.fecha || '')}">
-        </div>
-
-        <div class="classify-search-wrap">
-          <button class="btn-clasif-toggle" type="button"
-                  onclick="toggleClasiDetail(${i})"
-                  id="clasif-toggle-${i}"
-                  title="Cuenta / Subcuenta / Categoría / Concepto">≡</button>
-          <input type="text" id="search-${i}" class="classify-search"
-                 placeholder="🔍 Buscar por cuenta, subcuenta, categoría o concepto..."
-                 oninput="onClassifySearch(${i}, this.value)"
-                 onblur="setTimeout(()=>hideSearchResults(${i}), 180)">
-          <div class="search-results hidden" id="search-results-${i}"></div>
-        </div>
-        <div class="clasif-path-text" id="clasif-path-${i}"></div>
-
-        <div class="clasif-cuenta-section hidden" id="cuenta-section-${i}">
-
-        <div class="cuenta-field">
-          <label>Cuenta</label>
-          <div class="cuenta-grid" id="cuenta-grid-${i}">
-            <div class="cuenta-card active" data-value="" onclick="selectCuenta(this,${i})">
-              <div class="cuenta-icon">🏠</div>
-              <div class="cuenta-label">Sin cuenta</div>
-              <div class="cuenta-sub">General</div>
-            </div>
-            <div class="cuenta-card" data-value="Egresos" onclick="selectCuenta(this,${i})">
-              <div class="cuenta-icon">💸</div>
-              <div class="cuenta-label">Egresos</div>
-              <div class="cuenta-sub">Gastos y pagos</div>
-            </div>
-            <div class="cuenta-card" data-value="Ingresos" onclick="selectCuenta(this,${i})">
-              <div class="cuenta-icon">💰</div>
-              <div class="cuenta-label">Ingresos</div>
-              <div class="cuenta-sub">Cobros y entradas</div>
-            </div>
-            <div class="cuenta-card" data-value="Pasivos" onclick="selectCuenta(this,${i})">
-              <div class="cuenta-icon">📋</div>
-              <div class="cuenta-label">Pasivos</div>
-              <div class="cuenta-sub">Obligaciones</div>
-            </div>
-            <div class="cuenta-card" data-value="Activos" onclick="selectCuenta(this,${i})">
-              <div class="cuenta-icon">📈</div>
-              <div class="cuenta-label">Activos</div>
-              <div class="cuenta-sub">Inversión / CAPEX</div>
-            </div>
-            <div class="cuenta-card" data-value="Capital" onclick="selectCuenta(this,${i})">
-              <div class="cuenta-icon">💼</div>
-              <div class="cuenta-label">Capital</div>
-              <div class="cuenta-sub">Utilidad / Familiar</div>
-            </div>
-          </div>
-          <input type="hidden" id="cuenta-${i}" value="">
-        </div>
-
-        <div class="cuenta-field hidden" id="subcuenta-field-${i}">
-          <label>Subcuenta</label>
-          <div class="cuenta-grid cuenta-grid--sub" id="subcuenta-grid-${i}"></div>
-          <input type="hidden" id="subcuenta-${i}" value="">
-        </div>
-
-        <div class="cuenta-field hidden" id="categoria-field-${i}">
-          <label>Categoría</label>
-          <div class="cuenta-grid cuenta-grid--cat" id="categoria-grid-${i}"></div>
-          <input type="hidden" id="categoria-${i}" value="">
-        </div>
-
-        <div class="cuenta-field hidden" id="concepto-field-${i}">
-          <label>Concepto</label>
-          <div class="cuenta-grid" id="concepto-grid-${i}"></div>
-          <input type="hidden" id="concepto-${i}" value="">
-        </div>
-
-        </div><!-- /clasif-cuenta-section -->
-
-        <div class="grid">
-          <div class="field">
-            <label>Propiedad</label>
-            <select id="propiedad-${i}" onchange="togglePropiedadOtro(${i}, this.value)">
-              <option value="">— Seleccionar —</option>
-              <option>Calle Cumbres</option>
-              <option>Calle Baja California</option>
-              <option>Calle Oaxaca</option>
-              <option>Calle José Cárdenas</option>
-              <option>Calle Matamoros</option>
-              <option value="Otro">Otro</option>
-            </select>
-            <div class="hidden" id="propiedad-otro-wrap-${i}" style="margin-top:8px">
-              <input type="text" id="propiedad-otro-${i}" class="field-select"
-                     placeholder="Especificar propiedad..." style="appearance:none">
-            </div>
-          </div>
-          <div class="field">
-            <label># Departamento</label>
-            <select id="departamento-${i}">
-              <option value="">— Seleccionar —</option>
-              ${deptOptions}
-            </select>
-          </div>
-        </div>
-
-        <div class="cuenta-field">
-          <label>Encargado de operación</label>
-          <div class="cuenta-grid cuenta-grid--compact" id="comprador-grid-${i}">
-            <div class="cuenta-card" data-value="Andrés" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👨</div><div class="cuenta-label">Andrés</div>
-            </div>
-            <div class="cuenta-card" data-value="Claudia" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👩</div><div class="cuenta-label">Claudia</div>
-            </div>
-            <div class="cuenta-card" data-value="Papá" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👨‍👧</div><div class="cuenta-label">Papá</div>
-            </div>
-            <div class="cuenta-card" data-value="Francisco" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👨</div><div class="cuenta-label">Francisco</div>
-            </div>
-            <div class="cuenta-card" data-value="Brenda" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👩</div><div class="cuenta-label">Brenda</div>
-            </div>
-            <div class="cuenta-card" data-value="Alma" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👩</div><div class="cuenta-label">Alma</div>
-            </div>
-            <div class="cuenta-card" data-value="Gaby" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👩</div><div class="cuenta-label">Gaby</div>
-            </div>
-            <div class="cuenta-card" data-value="Juanita" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👩</div><div class="cuenta-label">Juanita</div>
-            </div>
-            <div class="cuenta-card" data-value="Damariz" onclick="selectComprador(this,${i})">
-              <div class="cuenta-icon">👩</div><div class="cuenta-label">Damariz</div>
-            </div>
-          </div>
-          <input type="hidden" id="comprador-${i}" value="">
-        </div>
-
-        <div class="cuenta-field" id="deducible-field-${i}">
-          <label>Deducible</label>
-          <div class="toggle-row">
-            <label class="toggle-switch">
-              <input type="checkbox" id="deducible-${i}" onchange="updateDeducibleLabel(${i}, this.checked)">
-              <span class="toggle-slider"></span>
-            </label>
-            <span class="toggle-label-text" id="deducible-label-${i}">No</span>
-          </div>
-        </div>
-
-        <div class="cuenta-field">
-          <label>Reembolso</label>
-          <div class="toggle-row">
-            <label class="toggle-switch">
-              <input type="checkbox" id="reembolso-${i}" onchange="toggleReembolso(${i}, this.checked)">
-              <span class="toggle-slider"></span>
-            </label>
-            <span class="toggle-label-text" id="reembolso-label-${i}">No</span>
-          </div>
-          <div class="hidden" id="reembolso-a-field-${i}" style="margin-top:10px">
-            <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Reembolsar a:</label>
-            <select id="reembolso-a-${i}" class="field-select" onchange="toggleReembolsoOtro(${i}, this.value)">
-              <option value="">— Seleccionar —</option>
-              <option>Andrés</option><option>Claudia</option><option>Papá</option>
-              <option>Francisco</option><option>Brenda</option><option>Alma</option>
-              <option>Gaby</option><option>Juanita</option><option>Damariz</option>
-              <option value="Otro">Otro</option>
-            </select>
-            <div class="hidden" id="reembolso-otro-wrap-${i}" style="margin-top:8px">
-              <input type="text" id="reembolso-otro-${i}" class="field-select"
-                     placeholder="Especificar persona..." style="appearance:none">
-            </div>
-            <div style="margin-top:12px">
-              <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Detalles de la operación</label>
-              <textarea id="detalles-${i}" class="classify-textarea" rows="3"
-                        placeholder="Descripción libre de la operación..."></textarea>
-            </div>
-          </div>
-        </div>
-
-        <div class="cuenta-field">
-          <label>Método de pago</label>
-          <div class="cuenta-grid cuenta-grid--compact" id="metodo-grid-${i}">
-            <div class="cuenta-card" data-value="Tarjeta crédito" onclick="selectMetodoPago(this,${i})">
-              <div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div>
-            </div>
-            <div class="cuenta-card" data-value="Tarjeta débito" onclick="selectMetodoPago(this,${i})">
-              <div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div>
-            </div>
-            <div class="cuenta-card" data-value="Efectivo" onclick="selectMetodoPago(this,${i})">
-              <div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div>
-            </div>
-            <div class="cuenta-card" data-value="Transferencia" onclick="selectMetodoPago(this,${i})">
-              <div class="cuenta-icon">🔄</div><div class="cuenta-label">Transferencia</div>
-            </div>
-            <div class="cuenta-card" data-value="Retiro sin tarjeta" onclick="selectMetodoPago(this,${i})">
-              <div class="cuenta-icon">🏧</div><div class="cuenta-label">Retiro</div>
-            </div>
-            <div class="cuenta-card" data-value="Cheque" onclick="selectMetodoPago(this,${i})">
-              <div class="cuenta-icon">📝</div><div class="cuenta-label">Cheque</div>
-            </div>
-          </div>
-          <input type="hidden" id="metodo-clasif-${i}" value="">
-        </div>
-
-        <div class="cuenta-field">
-          <label>Comentarios</label>
-          <textarea id="comentarios-${i}" class="classify-textarea"
-                    placeholder="Notas adicionales sobre este ticket..."></textarea>
-        </div>
-
-        <div class="classify-actions">
-          <button class="btn-clasificar-ticket" onclick="clasificarTicket(${i})">✓ Clasificar</button>
-          <button class="btn-limpiar-ticket" onclick="limpiarClasificacion(${i})">Limpiar</button>
-        </div>
-      </div>
+      ${buildClassifyPanel(i, r.fecha, deptOptions, "✓ Clasificar", `clasificarTicket(${i})`, `limpiarClasificacion(${i})`)}
     </div>
   `;
 }
 
+
+// ─── Panel de clasificación reutilizable ───────────────────────────────────
+
+function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpiarOnclick) {
+  return `
+    <div class="classify-panel hidden" id="classify-${idx}">
+
+      <div class="clasif-fecha-row">
+        <label class="clasif-fecha-label">📅 Fecha del ticket</label>
+        <input type="date" id="fecha-clasif-${idx}" class="clasif-fecha-input"
+          value="${esc(fecha || '')}">
+      </div>
+
+      <div class="classify-search-wrap">
+        <button class="btn-clasif-toggle" type="button"
+                onclick="toggleClasiDetail(${idx})"
+                id="clasif-toggle-${idx}"
+                title="Cuenta / Subcuenta / Categoría / Concepto">≡</button>
+        <input type="text" id="search-${idx}" class="classify-search"
+               placeholder="🔍 Buscar por cuenta, subcuenta, categoría o concepto..."
+               oninput="onClassifySearch(${idx}, this.value)"
+               onblur="setTimeout(()=>hideSearchResults(${idx}), 180)">
+        <div class="search-results hidden" id="search-results-${idx}"></div>
+      </div>
+      <div class="clasif-path-text" id="clasif-path-${idx}"></div>
+
+      <div class="clasif-cuenta-section hidden" id="cuenta-section-${idx}">
+        <div class="cuenta-field">
+          <label>Cuenta</label>
+          <div class="cuenta-grid" id="cuenta-grid-${idx}">
+            <div class="cuenta-card active" data-value="" onclick="selectCuenta(this,${idx})">
+              <div class="cuenta-icon">🏠</div><div class="cuenta-label">Sin cuenta</div><div class="cuenta-sub">General</div>
+            </div>
+            <div class="cuenta-card" data-value="Egresos" onclick="selectCuenta(this,${idx})">
+              <div class="cuenta-icon">💸</div><div class="cuenta-label">Egresos</div><div class="cuenta-sub">Gastos y pagos</div>
+            </div>
+            <div class="cuenta-card" data-value="Ingresos" onclick="selectCuenta(this,${idx})">
+              <div class="cuenta-icon">💰</div><div class="cuenta-label">Ingresos</div><div class="cuenta-sub">Cobros y entradas</div>
+            </div>
+            <div class="cuenta-card" data-value="Pasivos" onclick="selectCuenta(this,${idx})">
+              <div class="cuenta-icon">📋</div><div class="cuenta-label">Pasivos</div><div class="cuenta-sub">Obligaciones</div>
+            </div>
+            <div class="cuenta-card" data-value="Activos" onclick="selectCuenta(this,${idx})">
+              <div class="cuenta-icon">📈</div><div class="cuenta-label">Activos</div><div class="cuenta-sub">Inversión / CAPEX</div>
+            </div>
+            <div class="cuenta-card" data-value="Capital" onclick="selectCuenta(this,${idx})">
+              <div class="cuenta-icon">💼</div><div class="cuenta-label">Capital</div><div class="cuenta-sub">Utilidad / Familiar</div>
+            </div>
+          </div>
+          <input type="hidden" id="cuenta-${idx}" value="">
+        </div>
+        <div class="cuenta-field hidden" id="subcuenta-field-${idx}">
+          <label>Subcuenta</label>
+          <div class="cuenta-grid cuenta-grid--sub" id="subcuenta-grid-${idx}"></div>
+          <input type="hidden" id="subcuenta-${idx}" value="">
+        </div>
+        <div class="cuenta-field hidden" id="categoria-field-${idx}">
+          <label>Categoría</label>
+          <div class="cuenta-grid cuenta-grid--cat" id="categoria-grid-${idx}"></div>
+          <input type="hidden" id="categoria-${idx}" value="">
+        </div>
+        <div class="cuenta-field hidden" id="concepto-field-${idx}">
+          <label>Concepto</label>
+          <div class="cuenta-grid" id="concepto-grid-${idx}"></div>
+          <input type="hidden" id="concepto-${idx}" value="">
+        </div>
+      </div><!-- /clasif-cuenta-section -->
+
+      <div class="grid">
+        <div class="field">
+          <label>Propiedad</label>
+          <select id="propiedad-${idx}" onchange="togglePropiedadOtro(${idx}, this.value)">
+            <option value="">— Seleccionar —</option>
+            <option>Calle Cumbres</option><option>Calle Baja California</option>
+            <option>Calle Oaxaca</option><option>Calle José Cárdenas</option>
+            <option>Calle Matamoros</option><option value="Otro">Otro</option>
+          </select>
+          <div class="hidden" id="propiedad-otro-wrap-${idx}" style="margin-top:8px">
+            <input type="text" id="propiedad-otro-${idx}" class="field-select"
+                   placeholder="Especificar propiedad..." style="appearance:none">
+          </div>
+        </div>
+        <div class="field">
+          <label># Departamento</label>
+          <select id="departamento-${idx}">
+            <option value="">— Seleccionar —</option>${deptOpts}
+          </select>
+        </div>
+      </div>
+
+      <div class="cuenta-field">
+        <label>Encargado de operación</label>
+        <div class="cuenta-grid cuenta-grid--compact" id="comprador-grid-${idx}">
+          <div class="cuenta-card" data-value="Andrés"   onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👨</div><div class="cuenta-label">Andrés</div></div>
+          <div class="cuenta-card" data-value="Claudia"  onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Claudia</div></div>
+          <div class="cuenta-card" data-value="Papá"     onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👨‍👧</div><div class="cuenta-label">Papá</div></div>
+          <div class="cuenta-card" data-value="Francisco" onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👨</div><div class="cuenta-label">Francisco</div></div>
+          <div class="cuenta-card" data-value="Brenda"   onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Brenda</div></div>
+          <div class="cuenta-card" data-value="Alma"     onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Alma</div></div>
+          <div class="cuenta-card" data-value="Gaby"     onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Gaby</div></div>
+          <div class="cuenta-card" data-value="Juanita"  onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Juanita</div></div>
+          <div class="cuenta-card" data-value="Damariz"  onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Damariz</div></div>
+        </div>
+        <input type="hidden" id="comprador-${idx}" value="">
+      </div>
+
+      <div class="cuenta-field" id="deducible-field-${idx}">
+        <label>Deducible</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="deducible-${idx}" onchange="updateDeducibleLabel(${idx}, this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label-text" id="deducible-label-${idx}">No</span>
+        </div>
+      </div>
+
+      <div class="cuenta-field">
+        <label>Reembolso</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="reembolso-${idx}" onchange="toggleReembolso(${idx}, this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label-text" id="reembolso-label-${idx}">No</span>
+        </div>
+        <div class="hidden" id="reembolso-a-field-${idx}" style="margin-top:10px">
+          <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Reembolsar a:</label>
+          <select id="reembolso-a-${idx}" class="field-select" onchange="toggleReembolsoOtro(${idx}, this.value)">
+            <option value="">— Seleccionar —</option>
+            <option>Andrés</option><option>Claudia</option><option>Papá</option>
+            <option>Francisco</option><option>Brenda</option><option>Alma</option>
+            <option>Gaby</option><option>Juanita</option><option>Damariz</option>
+            <option value="Otro">Otro</option>
+          </select>
+          <div class="hidden" id="reembolso-otro-wrap-${idx}" style="margin-top:8px">
+            <input type="text" id="reembolso-otro-${idx}" class="field-select"
+                   placeholder="Especificar persona..." style="appearance:none">
+          </div>
+          <div style="margin-top:12px">
+            <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Detalles de la operación</label>
+            <textarea id="detalles-${idx}" class="classify-textarea" rows="3"
+                      placeholder="Descripción libre de la operación..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="cuenta-field">
+        <label>Método de pago</label>
+        <div class="cuenta-grid cuenta-grid--compact" id="metodo-grid-${idx}">
+          <div class="cuenta-card" data-value="Tarjeta crédito"    onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div></div>
+          <div class="cuenta-card" data-value="Tarjeta débito"     onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div></div>
+          <div class="cuenta-card" data-value="Efectivo"           onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div></div>
+          <div class="cuenta-card" data-value="Transferencia"      onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">🔄</div><div class="cuenta-label">Transferencia</div></div>
+          <div class="cuenta-card" data-value="Retiro sin tarjeta" onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">🏧</div><div class="cuenta-label">Retiro</div></div>
+          <div class="cuenta-card" data-value="Cheque"             onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">📝</div><div class="cuenta-label">Cheque</div></div>
+        </div>
+        <input type="hidden" id="metodo-clasif-${idx}" value="">
+      </div>
+
+      <div class="cuenta-field">
+        <label>Comentarios</label>
+        <textarea id="comentarios-${idx}" class="classify-textarea"
+                  placeholder="Notas adicionales sobre este ticket..."></textarea>
+      </div>
+
+      <div class="classify-actions">
+        <button class="btn-clasificar-ticket" onclick="${saveOnclick}">${saveLabel}</button>
+        <button class="btn-limpiar-ticket" onclick="${limpiarOnclick}">Limpiar</button>
+      </div>
+    </div>`;
+}
 
 // ─── Product table ─────────────────────────────────────────────────────────
 
@@ -2085,60 +2042,81 @@ function toggleDbFilters() {
 
 function renderDashboardCards() {
   const container = document.getElementById("dbContainer");
+  const countBar  = document.getElementById("db-count-bar");
+
   if (!dashboardFiltered.length) {
     container.innerHTML = `
       <div class="empty-state" style="padding:40px 20px">
         <div class="empty-icon">${dashboardTickets.length ? "🔍" : "📋"}</div>
         <p>${dashboardTickets.length ? "Sin resultados para los filtros aplicados" : "No hay tickets guardados aún"}</p>
       </div>`;
+    countBar.innerHTML = "";
     return;
   }
-  container.innerHTML = dashboardFiltered.map((t, i) => createDashboardCard(t, i)).join("");
+
+  // Ordenar: sin clasificar primero
+  const sinClasif = dashboardFiltered.filter(t => !String(t.resumen?.cuenta || "").trim());
+  const clasif    = dashboardFiltered.filter(t =>  String(t.resumen?.cuenta || "").trim());
+  const sorted    = [...sinClasif, ...clasif];
+
+  // Barra de conteo
+  const nSin   = sinClasif.length;
+  const nTotal = sorted.length;
+  countBar.innerHTML = nSin
+    ? `<span class="db-count-warn">⚠️ ${nSin} sin clasificar</span> · ${nTotal} encontrado${nTotal !== 1 ? "s" : ""}`
+    : `<span class="db-count-ok">✅ ${nTotal} clasificado${nTotal !== 1 ? "s" : ""}</span>`;
+
+  container.innerHTML = sorted.map((t, i) => createDashboardCard(t, i)).join("");
 }
 
 function createDashboardCard(ticket, i) {
   const r        = ticket.resumen || {};
   const str      = k => String(r[k] || "");
+  const isClasif = !!str("cuenta").trim();
   const colorCls = CUENTA_COLOR_CLASS[str("cuenta")] || "";
-  const clsCls   = colorCls ? `classified ${colorCls}` : "";
+  const clsCls   = isClasif ? `classified ${colorCls}` : "";
+  const ci       = DB_IDX + i; // índice para el panel de clasificar
 
-  const metaParts    = [str("fecha"), str("hora")].filter(Boolean);
-  const numProd      = Number(r.num_productos) || (ticket.productos || []).length || 0;
-  const rawSummary   = (ticket.productos || []).map(p => p.descripcion || "").filter(Boolean).join(", ");
-  const prodSummary  = rawSummary.length > 95 ? rawSummary.slice(0, 92) + "…" : rawSummary;
+  const metaParts   = [str("fecha"), str("hora")].filter(Boolean);
+  const numProd     = Number(r.num_productos) || (ticket.productos || []).length || 0;
+  const rawSummary  = (ticket.productos || []).map(p => p.descripcion || "").filter(Boolean).join(", ");
+  const prodSummary = rawSummary.length > 95 ? rawSummary.slice(0, 92) + "…" : rawSummary;
+  const deptOptions = Array.from({length: 14}, (_, j) => `<option>${j + 1}</option>`).join("");
 
-  // Chips desde datos guardados
-  const cuentaChip = str("cuenta")
+  // Chips
+  const sinClasifChip = !isClasif
+    ? `<span class="info-chip chip-sin-clasif">⚠️ Sin clasificar</span>` : "";
+  const cuentaChip    = isClasif
     ? `<span class="info-chip ${colorCls}">${CUENTA_EMOJIS[str("cuenta")] || ""} ${esc(str("cuenta"))}</span>` : "";
-  const compradorChip = str("comprador")
-    ? `<span class="info-chip">👤 ${esc(str("comprador"))}</span>` : "";
-  const propiedadChip = str("propiedad")
-    ? `<span class="info-chip">🏠 ${esc(str("propiedad"))}</span>` : "";
-  const deptChip = str("departamento")
-    ? `<span class="info-chip">🚪 Depto. ${esc(str("departamento"))}</span>` : "";
+  const compradorChip = str("comprador")  ? `<span class="info-chip">👤 ${esc(str("comprador"))}</span>` : "";
+  const propiedadChip = str("propiedad")  ? `<span class="info-chip">🏠 ${esc(str("propiedad"))}</span>` : "";
+  const deptChip      = str("departamento") ? `<span class="info-chip">🚪 Depto. ${esc(str("departamento"))}</span>` : "";
   const reembolsoChip = (str("reembolso") === "Sí" && str("reembolso_a"))
     ? `<span class="info-chip chip-reembolso">↩ Reembolso a ${esc(str("reembolso_a"))}</span>` : "";
 
-  // Ver ticket — abre Drive URL en nueva pestaña
-  const verTicket = str("imagen_url")
-    ? `<a class="btn-ver-ticket" href="${esc(str("imagen_url"))}" target="_blank" rel="noopener"
-         onclick="event.stopPropagation()">Ver ticket</a>` : "";
-
-  // Deducible en encabezado
+  const verTicket     = str("imagen_url")
+    ? `<a class="btn-ver-ticket" href="${esc(str("imagen_url"))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Ver ticket</a>` : "";
   const deducibleHtml = str("deducible") === "Sí"
     ? `<div class="header-deducible"><span class="fhl on">Deducible</span></div>` : "";
 
-  // Ruta de clasificación (barra inferior)
+  // Pestaña inferior
   const pathParts = [str("cuenta"), str("subcuenta"), str("categoria_gasto"), str("concepto")].filter(Boolean);
   const pathText  = pathParts.join(" › ");
+  const tabHtml   = isClasif
+    ? `<div class="classify-tab classified ${colorCls}" id="db-btn-classify-${i}" onclick="toggleDbClassify(${i})">
+         <span class="classify-tab-arrow" style="color:#fff">›</span>
+         <span class="classify-tab-label" style="font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${esc(pathText)}</span>
+       </div>`
+    : `<div class="classify-tab" id="db-btn-classify-${i}" onclick="toggleDbClassify(${i})">
+         <span class="classify-tab-arrow">›</span>
+         <span class="classify-tab-label">Clasificar</span>
+       </div>`;
 
   return `
     <div class="ticket-card" id="db-ticket-${i}">
       <div class="ticket-card-header ${clsCls}" id="db-header-${i}" onclick="toggleDbTable(${i})">
         <div class="ticket-info">
-          <div class="header-chips">
-            ${cuentaChip}${compradorChip}${propiedadChip}${deptChip}${reembolsoChip}
-          </div>
+          <div class="header-chips">${sinClasifChip}${cuentaChip}${compradorChip}${propiedadChip}${deptChip}${reembolsoChip}</div>
           <div class="ticket-store-row">
             <span class="ticket-store">${esc(str("tienda") || "Ticket " + (i + 1))}</span>
             ${verTicket}
@@ -2163,21 +2141,15 @@ function createDashboardCard(ticket, i) {
           <button class="ticket-tab active" onclick="showDbTab(${i},'transcripcion',this)">Transcripción</button>
           <button class="ticket-tab" onclick="showDbTab(${i},'resumen',this)">Resumen</button>
         </div>
-        <div id="db-tab-transcripcion-${i}" class="ticket-tab-content">
-          ${buildDashboardProductTable(ticket.productos || [])}
-        </div>
-        <div id="db-tab-resumen-${i}" class="ticket-tab-content hidden">
-          ${buildResumenTable(r)}
-        </div>
+        <div id="db-tab-transcripcion-${i}" class="ticket-tab-content">${buildDashboardProductTable(ticket.productos || [])}</div>
+        <div id="db-tab-resumen-${i}" class="ticket-tab-content hidden">${buildResumenTable(r)}</div>
       </div>
 
-      ${pathText ? `
-      <div class="classify-tab classified ${colorCls}" style="cursor:default">
-        <span class="classify-tab-arrow" style="color:#fff">›</span>
-        <span class="classify-tab-label" style="font-size:10px;text-transform:none;letter-spacing:.01em;
-          font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;
-          white-space:nowrap;max-width:240px">${esc(pathText)}</span>
-      </div>` : ""}
+      ${tabHtml}
+      ${buildClassifyPanel(ci, str("fecha"), deptOptions,
+          isClasif ? "💾 Guardar cambios" : "✓ Clasificar",
+          `saveDbClassification(${i})`,
+          `limpiarDbClassificacion(${i})`)}
     </div>`;
 }
 
@@ -2212,4 +2184,202 @@ function showDbTab(i, tab, btn) {
   btn.closest(".ticket-tabs").querySelectorAll(".ticket-tab")
     .forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
+}
+
+// ─── Dashboard: panel clasificar ──────────────────────────────────────────
+
+function toggleDbClassify(i) {
+  const panel = document.getElementById(`classify-${DB_IDX + i}`);
+  const tab   = document.getElementById(`db-btn-classify-${i}`);
+  if (!panel) return;
+  const isHidden = panel.classList.toggle("hidden");
+  tab?.classList.toggle("open", !isHidden);
+  if (!isHidden) autoPopulateDbClassify(DB_IDX + i, dashboardFiltered[i]);
+}
+
+/** Rellena el panel de clasificar del dashboard con los datos guardados */
+function autoPopulateDbClassify(ci, ticket) {
+  if (!ticket) return;
+  const r  = ticket.resumen || {};
+  const s  = k => String(r[k] || "");
+
+  // Fecha
+  const fEl = document.getElementById(`fecha-clasif-${ci}`);
+  if (fEl) fEl.value = s("fecha");
+
+  // Cuenta → subcuenta → categoría → concepto (cascade)
+  const cuentaVal = s("cuenta");
+  if (cuentaVal) {
+    const grid = document.getElementById(`cuenta-grid-${ci}`);
+    const card = Array.from(grid?.querySelectorAll(".cuenta-card") || [])
+      .find(c => c.dataset.value === cuentaVal);
+    if (card) {
+      selectCuenta(card, ci);
+      const subVal = s("subcuenta");
+      if (subVal) {
+        const subGrid = document.getElementById(`subcuenta-grid-${ci}`);
+        const subCard = Array.from(subGrid?.querySelectorAll(".cuenta-card") || [])
+          .find(c => c.dataset.value === subVal);
+        if (subCard) {
+          selectSubcuenta(subCard, ci);
+          const catVal = s("categoria_gasto");
+          if (catVal) {
+            const catGrid = document.getElementById(`categoria-grid-${ci}`);
+            const catCard = Array.from(catGrid?.querySelectorAll(".cuenta-card") || [])
+              .find(c => c.dataset.value === catVal);
+            if (catCard) {
+              selectCategoria(catCard, ci);
+              const concVal = s("concepto");
+              if (concVal) {
+                const concGrid = document.getElementById(`concepto-grid-${ci}`);
+                const concCard = Array.from(concGrid?.querySelectorAll(".cuenta-card") || [])
+                  .find(c => c.dataset.value === concVal);
+                if (concCard) selectConcepto(concCard, ci);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Propiedad
+  const propSel = document.getElementById(`propiedad-${ci}`);
+  if (propSel) {
+    const pv = s("propiedad");
+    const exists = Array.from(propSel.options).some(o => o.value === pv);
+    if (exists && pv) { propSel.value = pv; }
+    else if (pv) {
+      propSel.value = "Otro"; togglePropiedadOtro(ci, "Otro");
+      const oEl = document.getElementById(`propiedad-otro-${ci}`); if (oEl) oEl.value = pv;
+    }
+  }
+
+  // Departamento
+  const dEl = document.getElementById(`departamento-${ci}`);
+  if (dEl) dEl.value = s("departamento");
+
+  // Comprador
+  const compVal = s("comprador");
+  if (compVal) {
+    const compGrid = document.getElementById(`comprador-grid-${ci}`);
+    const compCard = Array.from(compGrid?.querySelectorAll(".cuenta-card") || [])
+      .find(c => c.dataset.value === compVal);
+    if (compCard) selectComprador(compCard, ci);
+  }
+
+  // Deducible
+  const dedEl = document.getElementById(`deducible-${ci}`);
+  if (dedEl) { dedEl.checked = s("deducible") === "Sí"; updateDeducibleLabel(ci, dedEl.checked); }
+
+  // Reembolso
+  if (s("reembolso") === "Sí") {
+    const reemEl = document.getElementById(`reembolso-${ci}`);
+    if (reemEl) { reemEl.checked = true; toggleReembolso(ci, true); }
+    const reemSel = document.getElementById(`reembolso-a-${ci}`);
+    if (reemSel) {
+      const rv = s("reembolso_a");
+      const exists = Array.from(reemSel.options).some(o => o.value === rv);
+      if (exists && rv) { reemSel.value = rv; }
+      else if (rv) {
+        reemSel.value = "Otro"; toggleReembolsoOtro(ci, "Otro");
+        const oEl = document.getElementById(`reembolso-otro-${ci}`); if (oEl) oEl.value = rv;
+      }
+    }
+  }
+
+  // Método de pago
+  autoSelectMetodoPago(ci, s("metodo_pago_clasif") || s("metodo_pago"));
+
+  // Comentarios
+  const comEl = document.getElementById(`comentarios-${ci}`);
+  if (comEl) comEl.value = s("comentarios");
+
+  updateClasiPath(ci);
+}
+
+function limpiarDbClassificacion(i) {
+  const ci = DB_IDX + i;
+  // Buscador y cuenta
+  const search = document.getElementById(`search-${ci}`); if (search) search.value = "";
+  hideSearchResults(ci);
+  const grid = document.getElementById(`cuenta-grid-${ci}`);
+  if (grid) {
+    grid.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+    const sin = grid.querySelector('[data-value=""]'); if (sin) sin.classList.add("active");
+  }
+  const cuentaH = document.getElementById(`cuenta-${ci}`); if (cuentaH) cuentaH.value = "";
+  resetSubcuenta(ci); updateClasiPath(ci);
+  // Propiedad / Depto
+  const p = document.getElementById(`propiedad-${ci}`); if (p) p.value = "";
+  const d = document.getElementById(`departamento-${ci}`); if (d) d.value = "";
+  // Comprador
+  document.getElementById(`comprador-grid-${ci}`)
+    ?.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  const comp = document.getElementById(`comprador-${ci}`); if (comp) comp.value = "";
+  // Deducible
+  const ded = document.getElementById(`deducible-${ci}`);
+  if (ded && ded.checked) { ded.checked = false; updateDeducibleLabel(ci, false); }
+  // Reembolso
+  const reem = document.getElementById(`reembolso-${ci}`);
+  if (reem && reem.checked) { reem.checked = false; toggleReembolso(ci, false); }
+  // Método de pago
+  document.getElementById(`metodo-grid-${ci}`)
+    ?.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  const metodo = document.getElementById(`metodo-clasif-${ci}`); if (metodo) metodo.value = "";
+  // Textos
+  ["detalles", "comentarios"].forEach(id => {
+    const el = document.getElementById(`${id}-${ci}`); if (el) el.value = "";
+  });
+  // Restaurar fecha detectada
+  const fechaEl = document.getElementById(`fecha-clasif-${ci}`);
+  if (fechaEl) fechaEl.value = dashboardFiltered[i]?.resumen?.fecha || "";
+}
+
+async function saveDbClassification(i) {
+  const ci     = DB_IDX + i;
+  const ticket = dashboardFiltered[i];
+  if (!ticket) return;
+  const c = getClassify(ci);
+
+  const clasificacion = {
+    fecha:              c.fecha,
+    cuenta:             c.cuenta,
+    subcuenta:          c.subcuenta,
+    categoria_gasto:    c.categoria,
+    concepto:           c.concepto,
+    propiedad:          c.propiedad,
+    departamento:       c.departamento,
+    comprador:          c.comprador,
+    deducible:          c.deducible  ? "Sí" : "No",
+    reembolso:          c.reembolso  ? "Sí" : "No",
+    reembolso_a:        c.reembolso_a,
+    metodo_pago_clasif: c.metodo_pago_clasif,
+    metodo_pago:        c.metodo_pago_clasif || ticket.resumen.metodo_pago || "",
+    detalles_operacion: c.detalles_operacion,
+    comentarios:        c.comentarios,
+  };
+
+  try {
+    showLoading("Guardando clasificación…", "Actualizando registro en Sheets…");
+    const res  = await fetch(`${BACKEND}/update-ticket`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ ticket_id: ticket.ticket_id, clasificacion }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Error al guardar");
+
+    // Actualizar en memoria
+    Object.assign(ticket.resumen, clasificacion);
+    const orig = dashboardTickets.find(t => t.ticket_id === ticket.ticket_id);
+    if (orig) Object.assign(orig.resumen, clasificacion);
+
+    // Re-renderizar para reflejar nuevo estado (sort + chips + pestaña)
+    renderDashboardCards();
+  } catch (err) {
+    alert("Error al guardar: " + err.message);
+  } finally {
+    hideLoading();
+  }
 }

@@ -880,6 +880,15 @@ td.resumen-key { font-weight: 600; color: var(--text-soft); white-space: nowrap;
   font-size: 12px; font-weight: 700; color: var(--text-soft);
   padding: 4px 4px 8px; letter-spacing: .02em;
 }
+.db-count-warn { color: #b45309; }
+.db-count-ok   { color: #059669; }
+
+/* ─── Chip: sin clasificar ───────────────────────────────────── */
+
+.chip-sin-clasif {
+  background: #fef3c7; color: #92400e;
+  border: 1px solid #fbbf24;
+}
 
 /* ─── Duplicados ────────────────────────────────────────────────────────── */
 
