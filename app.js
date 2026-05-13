@@ -1041,7 +1041,7 @@ function createTicketCard(ticket, i) {
 
         <div class="classify-actions">
           <button class="btn-clasificar-ticket" onclick="clasificarTicket(${i})">✓ Clasificar</button>
-          <button class="btn-eliminar-ticket" onclick="removeTicket(${i})">Eliminar</button>
+          <button class="btn-limpiar-ticket" onclick="limpiarClasificacion(${i})">Limpiar</button>
         </div>
       </div>
     </div>
@@ -1341,6 +1341,61 @@ function clasificarTicket(i) {
   // Cerrar el panel después de clasificar
   document.getElementById(`classify-${i}`).classList.add("hidden");
   document.getElementById(`btn-classify-${i}`).classList.remove("open");
+}
+
+function limpiarClasificacion(i) {
+  // Buscador
+  const search = document.getElementById(`search-${i}`);
+  if (search) search.value = "";
+  hideSearchResults(i);
+
+  // Cuenta → volver a "Sin cuenta"
+  const cuentaGrid = document.getElementById(`cuenta-grid-${i}`);
+  if (cuentaGrid) {
+    const cards = cuentaGrid.querySelectorAll(".cuenta-card");
+    cards.forEach(c => c.classList.remove("active"));
+    const sinCuenta = Array.from(cards).find(c => c.dataset.value === "");
+    if (sinCuenta) sinCuenta.classList.add("active");
+    document.getElementById(`cuenta-${i}`).value = "";
+  }
+  resetSubcuenta(i);
+
+  // Ruta de clasificación
+  updateClasiPath(i);
+
+  // Propiedad
+  const prop = document.getElementById(`propiedad-${i}`);
+  if (prop) { prop.value = ""; togglePropiedadOtro(i, ""); }
+
+  // Departamento
+  const dept = document.getElementById(`departamento-${i}`);
+  if (dept) dept.value = "";
+
+  // Encargado de operación
+  document.getElementById(`comprador-grid-${i}`)
+    ?.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  const comprador = document.getElementById(`comprador-${i}`);
+  if (comprador) comprador.value = "";
+
+  // Deducible
+  const ded = document.getElementById(`deducible-${i}`);
+  if (ded && ded.checked) { ded.checked = false; updateDeducibleLabel(i, false); }
+
+  // Reembolso
+  const reem = document.getElementById(`reembolso-${i}`);
+  if (reem && reem.checked) { reem.checked = false; toggleReembolso(i, false); }
+
+  // Método de pago
+  document.getElementById(`metodo-grid-${i}`)
+    ?.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  const metodo = document.getElementById(`metodo-clasif-${i}`);
+  if (metodo) metodo.value = "";
+
+  // Campos de texto libres
+  ["detalles", "comentarios"].forEach(id => {
+    const el = document.getElementById(`${id}-${i}`);
+    if (el) el.value = "";
+  });
 }
 
 function markAsClassified(i) {
