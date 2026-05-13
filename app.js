@@ -829,7 +829,7 @@ function createTicketCard(ticket, i) {
         ⚠️ Posible duplicado — <strong>${esc(ticket.duplicate.tienda || "")}</strong>${ticket.duplicate.fecha ? " · " + esc(ticket.duplicate.fecha) : ""}${ticket.duplicate.total ? " · $" + Number(ticket.duplicate.total).toLocaleString("es-MX") : ""}
       </div>` : ""}
 
-      <div class="ticket-table-wrap hidden" id="table-${i}">
+      <div class="ticket-table-wrap hidden" id="table-${i}" data-tidx="${i}" data-tmod="analysis">
         <div class="ticket-tabs">
           <button class="ticket-tab active" onclick="showTicketTab(${i},'transcripcion',this)">Transcripción</button>
           <button class="ticket-tab" onclick="showTicketTab(${i},'resumen',this)">Resumen</button>
@@ -841,6 +841,10 @@ function createTicketCard(ticket, i) {
         </div>
         <div id="tab-resumen-${i}" class="ticket-tab-content hidden">${buildResumenTable(ticket.resumen)}</div>
         <div id="tab-cruce-${i}" class="ticket-tab-content hidden">${buildCruceTable(ticket.cruce)}</div>
+        <div class="table-actions-bar hidden" id="tact-analysis-${i}">
+          <button class="btn-clasificar-ticket" style="padding:10px 28px;font-size:13px" onclick="saveTableChanges(${i})">💾 Guardar cambios</button>
+          <button class="btn-limpiar-ticket" onclick="resetTableChanges(${i})">Limpiar</button>
+        </div>
       </div>
 
       <div class="classify-tab" id="btn-classify-${i}" onclick="toggleClassify(${i})">
@@ -1048,7 +1052,7 @@ function buildProductTable(productos) {
       `<tr data-row="${rowIdx}">${cols.map(c =>
         c.ro
           ? `<td>${esc(String(r[c.key] ?? ""))}</td>`
-          : `<td contenteditable="true" spellcheck="false" data-field="${c.key}">${esc(String(r[c.key] ?? ""))}</td>`
+          : `<td contenteditable="true" spellcheck="false" data-field="${c.key}" oninput="onTableCellInput(this)">${esc(String(r[c.key] ?? ""))}</td>`
       ).join("")}<td class="btn-del-cell"><button class="btn-del-row" onclick="deleteProductRow(this)" title="Eliminar fila">✕</button></td></tr>`
     ).join("")}</tbody>
   </table>`;
@@ -1088,7 +1092,7 @@ function buildResumenTable(r) {
       const ro = CLASIF_FIELDS.has(field);
       const td = ro
         ? `<td>${esc(String(val))}</td>`
-        : `<td contenteditable="true" spellcheck="false" data-field="${field}">${esc(String(val))}</td>`;
+        : `<td contenteditable="true" spellcheck="false" data-field="${field}" oninput="onTableCellInput(this)">${esc(String(val))}</td>`;
       return `<tr data-field="${field}"><td class="resumen-key">${label}</td>${td}</tr>`;
     }).join("")}</tbody>
   </table>`;
@@ -1118,7 +1122,7 @@ function buildCruceTable(c) {
       const ro = CRUCE_RO.has(field);
       const td = ro
         ? `<td>${esc(String(val))}</td>`
-        : `<td contenteditable="true" spellcheck="false" data-field="${field}">${esc(String(val))}</td>`;
+        : `<td contenteditable="true" spellcheck="false" data-field="${field}" oninput="onTableCellInput(this)">${esc(String(val))}</td>`;
       return `<tr data-field="${field}"><td class="resumen-key">${label}</td>${td}</tr>`;
     }).join("")}</tbody>
   </table>`;
@@ -1150,7 +1154,7 @@ function buildDashboardCruceTable(ticket) {
       const ro = CRUCE_RO.has(field);
       const td = ro
         ? `<td>${esc(String(val))}</td>`
-        : `<td contenteditable="true" spellcheck="false" data-field="${field}">${esc(String(val))}</td>`;
+        : `<td contenteditable="true" spellcheck="false" data-field="${field}" oninput="onTableCellInput(this)">${esc(String(val))}</td>`;
       return `<tr data-field="${field}"><td class="resumen-key">${label}</td>${td}</tr>`;
     }).join("")}</tbody>
   </table>`;
@@ -2011,16 +2015,140 @@ function addProductRowToTable(selector, isAnalysis) {
   tr.dataset.row = "new";
   let html = isAnalysis ? `<td style="background:#f1f5f9;color:#94a3b8">${rowIdx + 1}</td>` : "";
   html += editCols.map(k =>
-    `<td contenteditable="true" spellcheck="false" data-field="${k}"></td>`
+    `<td contenteditable="true" spellcheck="false" data-field="${k}" oninput="onTableCellInput(this)"></td>`
   ).join("");
   html += `<td class="btn-del-cell"><button class="btn-del-row" onclick="deleteProductRow(this)" title="Eliminar fila">✕</button></td>`;
   tr.innerHTML = html;
   tbody.appendChild(tr);
   tr.querySelector("[contenteditable]")?.focus();
+  // Marcar dirty
+  const wrap = tbody.closest(".ticket-table-wrap");
+  if (wrap) showTableActions(wrap.dataset.tmod, parseInt(wrap.dataset.tidx));
 }
 
 function deleteProductRow(btn) {
+  const wrap = btn.closest(".ticket-table-wrap");
   btn.closest("tr")?.remove();
+  if (wrap) showTableActions(wrap.dataset.tmod, parseInt(wrap.dataset.tidx));
+}
+
+// ─── Dirty tracking de tablas ──────────────────────────────────────────────
+
+/** Llamado por oninput en cualquier celda editable de una tabla */
+function onTableCellInput(cell) {
+  const wrap = cell.closest(".ticket-table-wrap");
+  if (!wrap) return;
+  showTableActions(wrap.dataset.tmod, parseInt(wrap.dataset.tidx));
+}
+
+function showTableActions(mod, i) {
+  document.getElementById(`tact-${mod}-${i}`)?.classList.remove("hidden");
+}
+function hideTableActions(mod, i) {
+  document.getElementById(`tact-${mod}-${i}`)?.classList.add("hidden");
+}
+
+// ── Análisis: guardar cambios de tabla en memoria (sin llamada al backend) ──
+function saveTableChanges(i) {
+  const ticket = ticketResults[i];
+  if (!ticket) return;
+  const prodsFinal = readAllProductsFromDOM(`#tab-transcripcion-${i}`, ticket.productos, ticket.resumen.ticket_id);
+  ticket.productos = prodsFinal;
+  const resEdits = readResumenEditsFromDOM(`#tab-resumen-${i}`);
+  Object.assign(ticket.resumen, resEdits);
+  hideTableActions("analysis", i);
+}
+
+// ── Análisis: revertir tablas al estado en memoria ──────────────────────────
+function resetTableChanges(i) {
+  const ticket = ticketResults[i];
+  if (!ticket) return;
+  const tDiv = document.getElementById(`tab-transcripcion-${i}`);
+  if (tDiv) tDiv.innerHTML = buildProductTable(ticket.productos) +
+    `<button class="btn-add-row" onclick="addAnalysisProductRow(${i})">＋ Agregar producto</button>`;
+  const rDiv = document.getElementById(`tab-resumen-${i}`);
+  if (rDiv) rDiv.innerHTML = buildResumenTable(ticket.resumen);
+  const cDiv = document.getElementById(`tab-cruce-${i}`);
+  if (cDiv) cDiv.innerHTML = buildCruceTable(ticket.cruce);
+  hideTableActions("analysis", i);
+}
+
+// ── Dashboard: guardar cambios de tabla en Sheets ───────────────────────────
+async function saveDbTableChanges(i) {
+  const ticket = dashboardFiltered[i];
+  if (!ticket) return;
+  const r = ticket.resumen || {};
+
+  const resEdits = readResumenEditsFromDOM(`#db-tab-resumen-${i}`);
+  const productosEditados = readAllProductsFromDOM(
+    `#db-tab-transcripcion-${i}`, ticket.productos, ticket.ticket_id
+  ).map(p => ({
+    linea_numero:    p.linea_numero,
+    descripcion:     p.descripcion,
+    cantidad:        p.cantidad,
+    precio_unitario: p.precio_unitario,
+    monto:           p.monto,
+  }));
+
+  // Preservar clasificación existente en memoria, solo sobreescribir campos de tabla
+  const clasificacion = {
+    fecha:              r.fecha              || "",
+    cuenta:             r.cuenta             || "",
+    subcuenta:          r.subcuenta          || "",
+    categoria_gasto:    r.categoria_gasto    || "",
+    concepto:           r.concepto           || "",
+    propiedad:          r.propiedad          || "",
+    departamento:       r.departamento       || "",
+    comprador:          r.comprador          || "",
+    deducible:          r.deducible          || "No",
+    reembolso:          r.reembolso          || "No",
+    reembolso_a:        r.reembolso_a        || "",
+    metodo_pago:        r.metodo_pago        || "",
+    detalles_operacion: r.detalles_operacion || "",
+    comentarios:        r.comentarios        || "",
+    tienda:           resEdits.tienda           ?? r.tienda           ?? "",
+    rfc:              resEdits.rfc              ?? r.rfc              ?? "",
+    hora:             resEdits.hora             ?? r.hora             ?? "",
+    folio:            resEdits.folio            ?? r.folio            ?? "",
+    tarjeta_ultimos4: resEdits.tarjeta_ultimos4 ?? r.tarjeta_ultimos4 ?? "",
+    subtotal:  numEdit(resEdits.subtotal,   r.subtotal   ?? 0),
+    iva:       numEdit(resEdits.iva,        r.iva        ?? 0),
+    ieps:      numEdit(resEdits.ieps,       r.ieps       ?? 0),
+    descuentos:numEdit(resEdits.descuentos, r.descuentos ?? 0),
+    total:     numEdit(resEdits.total,      r.total      ?? 0),
+  };
+
+  try {
+    showLoading("Guardando cambios…", "Actualizando tablas en Sheets…");
+    const res  = await fetch(`${BACKEND}/update-ticket`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ ticket_id: ticket.ticket_id, clasificacion, productos_editados: productosEditados }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Error al guardar");
+    Object.assign(ticket.resumen, clasificacion);
+    ticket.productos = productosEditados;
+    hideTableActions("db", i);
+  } catch (err) {
+    alert("Error al guardar: " + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ── Dashboard: revertir tablas al estado en memoria ─────────────────────────
+function resetDbTableChanges(i) {
+  const ticket = dashboardFiltered[i];
+  if (!ticket) return;
+  const tDiv = document.getElementById(`db-tab-transcripcion-${i}`);
+  if (tDiv) tDiv.innerHTML = buildDashboardProductTable(ticket.productos || []) +
+    `<button class="btn-add-row" onclick="addDashboardProductRow(${i})">＋ Agregar producto</button>`;
+  const rDiv = document.getElementById(`db-tab-resumen-${i}`);
+  if (rDiv) rDiv.innerHTML = buildResumenTable(ticket.resumen);
+  const cDiv = document.getElementById(`db-tab-cruce-${i}`);
+  if (cDiv) cDiv.innerHTML = buildDashboardCruceTable(ticket);
+  hideTableActions("db", i);
 }
 
 /** Convierte un valor editado a número; si falla devuelve el fallback */
@@ -2345,7 +2473,7 @@ function createDashboardCard(ticket, i) {
         </div>
       </div>
 
-      <div class="ticket-table-wrap hidden" id="db-table-${i}">
+      <div class="ticket-table-wrap hidden" id="db-table-${i}" data-tidx="${i}" data-tmod="db">
         <div class="ticket-tabs">
           <button class="ticket-tab active" onclick="showDbTab(${i},'transcripcion',this)">Transcripción</button>
           <button class="ticket-tab" onclick="showDbTab(${i},'resumen',this)">Resumen</button>
@@ -2357,6 +2485,10 @@ function createDashboardCard(ticket, i) {
         </div>
         <div id="db-tab-resumen-${i}" class="ticket-tab-content hidden">${buildResumenTable(r)}</div>
         <div id="db-tab-cruce-${i}" class="ticket-tab-content hidden">${buildDashboardCruceTable(ticket)}</div>
+        <div class="table-actions-bar hidden" id="tact-db-${i}">
+          <button class="btn-clasificar-ticket" style="padding:10px 28px;font-size:13px" onclick="saveDbTableChanges(${i})">💾 Guardar cambios</button>
+          <button class="btn-limpiar-ticket" onclick="resetDbTableChanges(${i})">Limpiar</button>
+        </div>
       </div>
 
       ${tabHtml}
@@ -2380,7 +2512,7 @@ function buildDashboardProductTable(productos) {
     <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}<th></th></tr></thead>
     <tbody>${productos.map((p, rowIdx) =>
       `<tr data-row="${rowIdx}">${cols.map(c =>
-        `<td contenteditable="true" spellcheck="false" data-field="${c.key}">${esc(String(p[c.key] ?? ""))}</td>`
+        `<td contenteditable="true" spellcheck="false" data-field="${c.key}" oninput="onTableCellInput(this)">${esc(String(p[c.key] ?? ""))}</td>`
       ).join("")}<td class="btn-del-cell"><button class="btn-del-row" onclick="deleteProductRow(this)" title="Eliminar fila">✕</button></td></tr>`
     ).join("")}</tbody>
   </table>`;
