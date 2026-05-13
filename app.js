@@ -1512,7 +1512,7 @@ function markAsClassified(i) {
   const pathText = parts.join(" › ") || "Sin clasificar";
   const labelEl  = tab.querySelector(".classify-tab-label");
   labelEl.textContent = pathText;
-  labelEl.style.cssText = "font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px;";
+  labelEl.style.cssText = "font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:#fff;";
 
   // ── Sincronizar ticketResults en memoria ──────────────────────────────────
   const ticket = ticketResults[i];
@@ -2286,7 +2286,7 @@ function createDashboardCard(ticket, i) {
   const tabHtml   = isClasif
     ? `<div class="classify-tab classified ${colorCls}" id="db-btn-classify-${i}" onclick="toggleDbClassify(${i})">
          <span class="classify-tab-arrow" style="color:#fff">›</span>
-         <span class="classify-tab-label" style="font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${esc(pathText)}</span>
+         <span class="classify-tab-label" style="font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:#fff;">${esc(pathText)}</span>
        </div>`
     : `<div class="classify-tab" id="db-btn-classify-${i}" onclick="toggleDbClassify(${i})">
          <span class="classify-tab-arrow">›</span>
