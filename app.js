@@ -2642,16 +2642,72 @@ function showDbTab(i, tab, btn) {
 // ─── Dashboard: panel clasificar ──────────────────────────────────────────
 
 /** Sincroniza el toggle Deducible del encabezado con el panel de Clasificar */
-function syncDbDeducible(i, checked) {
-  const ci = DB_IDX + i;
-  // Panel de clasificar
+async function syncDbDeducible(i, checked) {
+  const ci     = DB_IDX + i;
+  const ticket = dashboardFiltered[i];
+  if (!ticket) return;
+
+  // 1. Actualizar UI inmediatamente (optimista)
   const inner = document.getElementById(`deducible-${ci}`);
   if (inner) { inner.checked = checked; updateDeducibleLabel(ci, checked); }
-  // Encabezado
   const lbl = document.getElementById(`db-fhl-${i}`);
   if (lbl) { lbl.textContent = checked ? "Deducible" : "No deducible"; lbl.classList.toggle("on", checked); }
-  // Memoria (para que el próximo "Guardar" recoja el valor correcto)
-  if (dashboardFiltered[i]) dashboardFiltered[i].resumen.deducible = checked ? "Sí" : "No";
+
+  // 2. Actualizar en memoria
+  const prevDeducible = ticket.resumen.deducible;
+  ticket.resumen.deducible = checked ? "Sí" : "No";
+  const orig = dashboardTickets.find(t => t.ticket_id === ticket.ticket_id);
+  if (orig) orig.resumen.deducible = ticket.resumen.deducible;
+
+  // 3. Guardar en Sheets inmediatamente usando clasificación existente en memoria
+  const r = ticket.resumen;
+  const clasificacion = {
+    fecha:              r.fecha              || "",
+    cuenta:             r.cuenta             || "",
+    subcuenta:          r.subcuenta          || "",
+    categoria_gasto:    r.categoria_gasto    || "",
+    concepto:           r.concepto           || "",
+    propiedad:          r.propiedad          || "",
+    departamento:       r.departamento       || "",
+    comprador:          r.comprador          || "",
+    deducible:          checked ? "Sí" : "No",
+    reembolso:          r.reembolso          || "No",
+    reembolso_a:        r.reembolso_a        || "",
+    metodo_pago:        r.metodo_pago        || "",
+    detalles_operacion: r.detalles_operacion || "",
+    comentarios:        r.comentarios        || "",
+    clasificado_por:    currentUser          || r.clasificado_por || "",
+    tienda:             r.tienda             || "",
+    rfc:                r.rfc                || "",
+    hora:               r.hora               || "",
+    folio:              r.folio              || "",
+    tarjeta_ultimos4:   r.tarjeta_ultimos4   || "",
+    subtotal:           r.subtotal  ?? 0,
+    iva:                r.iva       ?? 0,
+    ieps:               r.ieps      ?? 0,
+    descuentos:         r.descuentos ?? 0,
+    total:              r.total     ?? 0,
+  };
+
+  try {
+    const res  = await fetch(`${BACKEND}/update-ticket`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ ticket_id: ticket.ticket_id, clasificacion, productos_editados: [] }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Error");
+  } catch (err) {
+    // Revertir en caso de error
+    ticket.resumen.deducible = prevDeducible;
+    if (orig) orig.resumen.deducible = prevDeducible;
+    const prevChecked = prevDeducible === "Sí";
+    const headerToggle = document.getElementById(`db-deducible-header-${i}`);
+    if (headerToggle) headerToggle.checked = prevChecked;
+    if (inner) { inner.checked = prevChecked; updateDeducibleLabel(ci, prevChecked); }
+    if (lbl) { lbl.textContent = prevChecked ? "Deducible" : "No deducible"; lbl.classList.toggle("on", prevChecked); }
+    console.error("deducible_save_error", err.message);
+  }
 }
 
 /** Elimina un ticket del dashboard y de Google Sheets */
