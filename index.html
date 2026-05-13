@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=47">
+  <link rel="stylesheet" href="styles.css?v=48">
 </head>
 <body>
 
@@ -49,7 +49,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <span class="user-badge" id="current-user-badge"></span>
-        <div class="header-badge">v13.3</div>
+        <div class="header-badge">v13.4</div>
       </div>
     </header>
 
@@ -162,19 +162,19 @@
       <div class="db-filter-panel hidden" id="db-filter-body">
         <div class="db-filter-grid">
           <div class="db-filter-full">
-            <input type="text" id="db-f-text" placeholder="🔍  Buscar por tienda, concepto, encargado…" class="db-search-input" oninput="applyDashboardFilters()">
+            <input type="text" id="db-f-text" placeholder="🔍  Buscar por tienda, concepto, encargado…" class="db-search-input" oninput="onFilterChange()">
           </div>
           <div class="db-filter-half">
             <label>Fecha desde</label>
-            <input type="date" id="db-f-desde" class="field-select" onchange="applyDashboardFilters()">
+            <input type="date" id="db-f-desde" class="field-select" onchange="onFilterChange()">
           </div>
           <div class="db-filter-half">
             <label>Fecha hasta</label>
-            <input type="date" id="db-f-hasta" class="field-select" onchange="applyDashboardFilters()">
+            <input type="date" id="db-f-hasta" class="field-select" onchange="onFilterChange()">
           </div>
           <div class="db-filter-half">
             <label>Cuenta</label>
-            <select id="db-f-cuenta" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-cuenta" class="field-select" onchange="onFilterChange()">
               <option value="">Todas</option>
               <option>Egresos</option><option>Ingresos</option>
               <option>Activos</option><option>Pasivos</option><option>Capital</option>
@@ -182,43 +182,43 @@
           </div>
           <div class="db-filter-half">
             <label>Método de pago</label>
-            <select id="db-f-metodo" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-metodo" class="field-select" onchange="onFilterChange()">
               <option value="">Todos</option>
             </select>
           </div>
           <div class="db-filter-half">
             <label>Tienda</label>
-            <select id="db-f-tienda" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-tienda" class="field-select" onchange="onFilterChange()">
               <option value="">Todas</option>
             </select>
           </div>
           <div class="db-filter-half">
             <label>Clasificado por</label>
-            <select id="db-f-clasificado-por" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-clasificado-por" class="field-select" onchange="onFilterChange()">
               <option value="">Todos</option>
             </select>
           </div>
           <div class="db-filter-half">
             <label>Propiedad</label>
-            <select id="db-f-propiedad" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-propiedad" class="field-select" onchange="onFilterChange()">
               <option value="">Todas</option>
             </select>
           </div>
           <div class="db-filter-half">
             <label>Departamento</label>
-            <select id="db-f-departamento" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-departamento" class="field-select" onchange="onFilterChange()">
               <option value="">Todos</option>
             </select>
           </div>
           <div class="db-filter-half">
             <label>Encargado</label>
-            <select id="db-f-comprador" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-comprador" class="field-select" onchange="onFilterChange()">
               <option value="">Todos</option>
             </select>
           </div>
           <div class="db-filter-half">
             <label>Deducible</label>
-            <select id="db-f-deducible" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-deducible" class="field-select" onchange="onFilterChange()">
               <option value="">Todos</option>
               <option value="si">Sí</option>
               <option value="no">No</option>
@@ -226,7 +226,7 @@
           </div>
           <div class="db-filter-half">
             <label>Reembolso</label>
-            <select id="db-f-reembolso" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-reembolso" class="field-select" onchange="onFilterChange()">
               <option value="">Todos</option>
               <option value="si">Sí</option>
               <option value="no">No</option>
@@ -234,7 +234,7 @@
           </div>
           <div class="db-filter-full">
             <label>Descripción de producto</label>
-            <select id="db-f-descripcion" class="field-select" onchange="applyDashboardFilters()">
+            <select id="db-f-descripcion" class="field-select" onchange="onFilterChange()">
               <option value="">Todas</option>
             </select>
           </div>
@@ -315,6 +315,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=52"></script>
+  <script src="app.js?v=53"></script>
 </body>
 </html>

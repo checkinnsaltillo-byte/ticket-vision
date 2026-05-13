@@ -2294,6 +2294,10 @@ async function loadDashboard() {
     if (!data.ok) throw new Error(data.error || "Error al cargar tickets");
     dashboardTickets = data.tickets || [];
     populateDashboardFilters();
+    // Siempre resetear al cargar: limpiar inputs y encender el switch
+    clearDashboardFiltersInternal();
+    const todasEl = document.getElementById("db-f-todas");
+    if (todasEl) todasEl.checked = true;
     applyDashboardFilters();
   } catch (err) {
     container.innerHTML = `
@@ -2405,12 +2409,17 @@ function hasActiveFilters() {
             f.tienda || f.clasificadoPor || f.descripcion || f.totalMin !== null || f.totalMax !== null);
 }
 
-function applyDashboardFilters() {
+/** Llamado desde cada input/select de filtro: desactiva el switch y filtra */
+function onFilterChange() {
   const todasEl = document.getElementById("db-f-todas");
-  const active  = hasActiveFilters();
+  if (todasEl) todasEl.checked = false;
+  applyDashboardFilters();
+}
 
-  // Solo auto-desactivar el switch cuando hay filtros activos; nunca forzarlo a ON aquí
-  if (active && todasEl?.checked) todasEl.checked = false;
+function applyDashboardFilters() {
+  // applyDashboardFilters NO toca el switch — ese estado lo manejan
+  // onFilterChange / clearDashboardFilters / syncTodasSwitch / loadDashboard
+  const active = hasActiveFilters();
 
   // Sin filtros activos — mostrar todos
   if (!active) {
@@ -2541,7 +2550,7 @@ function onTotalRangeInput(which) {
   hiEl.style.zIndex = loFrac >= 0.9 ? 4 : 5;
 
   updateTotalRangeFill();
-  applyDashboardFilters();
+  onFilterChange();
 }
 
 // ─── Dashboard: render ─────────────────────────────────────────────────────
