@@ -1030,73 +1030,126 @@ function buildProductTable(productos) {
     return `<div class="empty-state"><div class="empty-icon">🧾</div><p>Sin productos detectados</p></div>`;
   }
   const cols = [
-    { key: "linea_numero",            label: "#" },
+    { key: "linea_numero",            label: "#",         ro: true },
     { key: "descripcion",             label: "Descripción" },
     { key: "cantidad",                label: "Cant." },
-    { key: "precio_unitario",         label: "P.Unit.", fmt: "money" },
-    { key: "monto",                   label: "Monto",   fmt: "money" },
+    { key: "precio_unitario",         label: "P.Unit." },
+    { key: "monto",                   label: "Monto" },
     { key: "categoria_operativa",     label: "Categoría" },
     { key: "deducible_sugerido",      label: "Deducible" },
     { key: "confianza_clasificacion", label: "Confianza" },
   ];
   return `<table>
     <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
-    <tbody>${productos.map(r =>
-      `<tr>${cols.map(c => `<td>${c.fmt === "money" ? money(r[c.key]) : esc(r[c.key])}</td>`).join("")}</tr>`
+    <tbody>${productos.map((r, rowIdx) =>
+      `<tr data-row="${rowIdx}">${cols.map(c =>
+        c.ro
+          ? `<td>${esc(String(r[c.key] ?? ""))}</td>`
+          : `<td contenteditable="true" spellcheck="false" data-field="${c.key}">${esc(String(r[c.key] ?? ""))}</td>`
+      ).join("")}</tr>`
     ).join("")}</tbody>
   </table>`;
 }
 
+// Campos manejados por el panel Clasificar — NO editables en tabla
+const CLASIF_FIELDS = new Set(["fecha","metodo_pago","cuenta","subcuenta",
+  "categoria_gasto","concepto","propiedad","departamento","fecha_captura"]);
+
 function buildResumenTable(r) {
   if (!r) return `<div class="empty-state"><p>Sin datos de resumen</p></div>`;
   const rows = [
-    ["Tienda",             r.tienda],
-    ["RFC",                r.rfc],
-    ["Fecha",              r.fecha],
-    ["Hora",               r.hora],
-    ["Folio",              r.folio],
-    ["Método de pago",     r.metodo_pago],
-    ["Últimos 4 dígitos",  r.tarjeta_ultimos4],
-    ["# Productos",        r.num_productos],
-    ["Subtotal",           r.subtotal ? money(r.subtotal) : null],
-    ["IVA",                r.iva       ? money(r.iva)      : null],
-    ["IEPS",               r.ieps      ? money(r.ieps)     : null],
-    ["Descuentos",         r.descuentos? money(r.descuentos): null],
-    ["Total",              r.total     ? money(r.total)    : null],
-    ["Cuenta",             r.cuenta],
-    ["Subcuenta",          r.subcuenta],
-    ["Categoría",          r.categoria_gasto],
-    ["Concepto",           r.concepto],
-    ["Propiedad",          r.propiedad],
-    ["Departamento",       r.departamento],
-    ["Fecha captura",      r.fecha_captura],
-  ].filter(([, v]) => v !== "" && v != null);
+    ["Tienda",            "tienda",            r.tienda],
+    ["RFC",               "rfc",               r.rfc],
+    ["Fecha",             "fecha",             r.fecha],
+    ["Hora",              "hora",              r.hora],
+    ["Folio",             "folio",             r.folio],
+    ["Método de pago",    "metodo_pago",       r.metodo_pago],
+    ["Últimos 4 dígitos", "tarjeta_ultimos4",  r.tarjeta_ultimos4],
+    ["# Productos",       "num_productos",     r.num_productos],
+    ["Subtotal",          "subtotal",          r.subtotal  || null],
+    ["IVA",               "iva",               r.iva       || null],
+    ["IEPS",              "ieps",              r.ieps      || null],
+    ["Descuentos",        "descuentos",        r.descuentos|| null],
+    ["Total",             "total",             r.total     || null],
+    ["Cuenta",            "cuenta",            r.cuenta],
+    ["Subcuenta",         "subcuenta",         r.subcuenta],
+    ["Categoría",         "categoria_gasto",   r.categoria_gasto],
+    ["Concepto",          "concepto",          r.concepto],
+    ["Propiedad",         "propiedad",         r.propiedad],
+    ["Departamento",      "departamento",      r.departamento],
+    ["Fecha captura",     "fecha_captura",     r.fecha_captura],
+  ].filter(([,, v]) => v !== "" && v != null);
   return `<table>
     <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
-    <tbody>${rows.map(([k, v]) => `<tr><td class="resumen-key">${k}</td><td>${esc(String(v))}</td></tr>`).join("")}</tbody>
+    <tbody>${rows.map(([label, field, val]) => {
+      const ro = CLASIF_FIELDS.has(field);
+      const td = ro
+        ? `<td>${esc(String(val))}</td>`
+        : `<td contenteditable="true" spellcheck="false" data-field="${field}">${esc(String(val))}</td>`;
+      return `<tr data-field="${field}"><td class="resumen-key">${label}</td>${td}</tr>`;
+    }).join("")}</tbody>
   </table>`;
 }
 
 function buildCruceTable(c) {
   if (!c || !Object.keys(c).length) return `<div class="empty-state"><div class="empty-icon">🏦</div><p>Sin datos de cruce bancario</p></div>`;
+  const CRUCE_RO = new Set(["fecha","metodo_pago","cuenta","subcuenta","propiedad","departamento"]);
   const rows = [
-    ["Fecha",              c.fecha],
-    ["Hora",               c.hora],
-    ["Comercio",           c.comercio],
-    ["RFC",                c.rfc],
-    ["Folio",              c.folio],
-    ["Método de pago",     c.metodo_pago],
-    ["Últimos 4 dígitos",  c.tarjeta_ultimos4],
-    ["Monto cruce",        c.monto_cruce ? money(c.monto_cruce) : null],
-    ["Total ticket",       c.total_ticket? money(c.total_ticket): null],
-    ["Cuenta",             c.cuenta],
-    ["Subcuenta",          c.subcuenta],
-    ["Propiedad",          c.propiedad],
-    ["Departamento",       c.departamento],
-  ].filter(([, v]) => v !== "" && v != null);
+    ["Fecha",             "fecha",            c.fecha],
+    ["Hora",              "hora",             c.hora],
+    ["Comercio",          "comercio",         c.comercio],
+    ["RFC",               "rfc",              c.rfc],
+    ["Folio",             "folio",            c.folio],
+    ["Método de pago",    "metodo_pago",      c.metodo_pago],
+    ["Últimos 4 dígitos", "tarjeta_ultimos4", c.tarjeta_ultimos4],
+    ["Monto cruce",       "monto_cruce",      c.monto_cruce  || null],
+    ["Total ticket",      "total_ticket",     c.total_ticket || null],
+    ["Cuenta",            "cuenta",           c.cuenta],
+    ["Subcuenta",         "subcuenta",        c.subcuenta],
+    ["Propiedad",         "propiedad",        c.propiedad],
+    ["Departamento",      "departamento",     c.departamento],
+  ].filter(([,, v]) => v !== "" && v != null);
   return `<table>
     <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
-    <tbody>${rows.map(([k, v]) => `<tr><td class="resumen-key">${k}</td><td>${esc(String(v))}</td></tr>`).join("")}</tbody>
+    <tbody>${rows.map(([label, field, val]) => {
+      const ro = CRUCE_RO.has(field);
+      const td = ro
+        ? `<td>${esc(String(val))}</td>`
+        : `<td contenteditable="true" spellcheck="false" data-field="${field}">${esc(String(val))}</td>`;
+      return `<tr data-field="${field}"><td class="resumen-key">${label}</td>${td}</tr>`;
+    }).join("")}</tbody>
+  </table>`;
+}
+
+function buildDashboardCruceTable(ticket) {
+  const r = ticket.resumen || {};
+  const s = k => String(r[k] || "");
+  const CRUCE_RO = new Set(["fecha","metodo_pago","cuenta","subcuenta","propiedad","departamento"]);
+  const rows = [
+    ["Fecha",             "fecha",            s("fecha")],
+    ["Hora",              "hora",             s("hora")],
+    ["Comercio",          "comercio",         s("tienda")],
+    ["RFC",               "rfc",              s("rfc")],
+    ["Folio",             "folio",            s("folio")],
+    ["Método de pago",    "metodo_pago",      s("metodo_pago")],
+    ["Últimos 4 dígitos", "tarjeta_ultimos4", s("tarjeta_ultimos4")],
+    ["Monto cruce",       "monto_cruce",      r.total  || null],
+    ["Total ticket",      "total_ticket",     r.total  || null],
+    ["Cuenta",            "cuenta",           s("cuenta")],
+    ["Subcuenta",         "subcuenta",        s("subcuenta")],
+    ["Propiedad",         "propiedad",        s("propiedad")],
+    ["Departamento",      "departamento",     s("departamento")],
+  ].filter(([,, v]) => v !== "" && v != null);
+  if (!rows.length) return `<div class="empty-state"><div class="empty-icon">🏦</div><p>Sin datos de cruce bancario</p></div>`;
+  return `<table>
+    <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+    <tbody>${rows.map(([label, field, val]) => {
+      const ro = CRUCE_RO.has(field);
+      const td = ro
+        ? `<td>${esc(String(val))}</td>`
+        : `<td contenteditable="true" spellcheck="false" data-field="${field}">${esc(String(val))}</td>`;
+      return `<tr data-field="${field}"><td class="resumen-key">${label}</td>${td}</tr>`;
+    }).join("")}</tbody>
   </table>`;
 }
 
@@ -1176,37 +1229,44 @@ async function guardarResultados() {
       const fechaFinal = c.fecha || t.resumen.fecha || "";
       metadata.push({ ticket_id: t.resumen.ticket_id, fecha: fechaFinal, tienda: t.resumen.tienda });
 
-      (t.productos || []).forEach(p => productos.push({
-        ticket_id:               p.ticket_id,
-        tienda:                  p.tienda,
-        fecha:                   fechaFinal,
-        linea_numero:            p.linea_numero,
-        descripcion:             p.descripcion,
-        cantidad:                p.cantidad,
-        precio_unitario:         p.precio_unitario,
-        monto:                   p.monto,
-        categoria_operativa:     p.categoria_operativa,
-        deducible_sugerido:      p.deducible_sugerido,
-        confianza_clasificacion: p.confianza_clasificacion,
-        ...clasif,
-      }));
+      // Leer ediciones del usuario en las tablas
+      const prodEdits = readProductEditsFromDOM(`#tab-transcripcion-${i}`);
+      const resEdits  = readResumenEditsFromDOM(`#tab-resumen-${i}`);
+
+      (t.productos || []).forEach((p, rowIdx) => {
+        const e = prodEdits[rowIdx] || {};
+        productos.push({
+          ticket_id:               p.ticket_id,
+          tienda:                  resEdits.tienda           ?? p.tienda,
+          fecha:                   fechaFinal,
+          linea_numero:            p.linea_numero,
+          descripcion:             e.descripcion             ?? p.descripcion,
+          cantidad:                numEdit(e.cantidad,        p.cantidad),
+          precio_unitario:         numEdit(e.precio_unitario, p.precio_unitario),
+          monto:                   numEdit(e.monto,           p.monto),
+          categoria_operativa:     e.categoria_operativa     ?? p.categoria_operativa,
+          deducible_sugerido:      e.deducible_sugerido      ?? p.deducible_sugerido,
+          confianza_clasificacion: e.confianza_clasificacion ?? p.confianza_clasificacion,
+          ...clasif,
+        });
+      });
 
       resumen.push({
         ticket_id:        t.resumen.ticket_id,
         archivo:          t.resumen.archivo,
-        tienda:           t.resumen.tienda,
-        rfc:              t.resumen.rfc,
+        tienda:           resEdits.tienda           ?? t.resumen.tienda,
+        rfc:              resEdits.rfc              ?? t.resumen.rfc,
         fecha:            fechaFinal,
-        hora:             t.resumen.hora,
-        folio:            t.resumen.folio,
+        hora:             resEdits.hora             ?? t.resumen.hora,
+        folio:            resEdits.folio            ?? t.resumen.folio,
         metodo_pago:      t.resumen.metodo_pago,
-        tarjeta_ultimos4: t.resumen.tarjeta_ultimos4,
+        tarjeta_ultimos4: resEdits.tarjeta_ultimos4 ?? t.resumen.tarjeta_ultimos4,
         num_productos:    t.resumen.num_productos,
-        subtotal:         t.resumen.subtotal,
-        iva:              t.resumen.iva,
-        ieps:             t.resumen.ieps,
-        descuentos:       t.resumen.descuentos,
-        total:            t.resumen.total,
+        subtotal:         numEdit(resEdits.subtotal,  t.resumen.subtotal),
+        iva:              numEdit(resEdits.iva,        t.resumen.iva),
+        ieps:             numEdit(resEdits.ieps,       t.resumen.ieps),
+        descuentos:       numEdit(resEdits.descuentos, t.resumen.descuentos),
+        total:            numEdit(resEdits.total,      t.resumen.total),
         ...clasif,
         fecha_captura:    t.resumen.fecha_captura || new Date().toISOString(),
         imagen_nombre:    "",
@@ -1867,6 +1927,40 @@ async function saveToSheetsForTicket(i) {
   }
 }
 
+// ─── Leer ediciones de tablas desde el DOM ─────────────────────────────────
+
+/** Devuelve array de objetos {field: value} por fila de la tabla de productos */
+function readProductEditsFromDOM(selector) {
+  const tbody = document.querySelector(`${selector} tbody`);
+  if (!tbody) return [];
+  return [...tbody.querySelectorAll("tr")].map(tr => {
+    const obj = {};
+    tr.querySelectorAll("td[data-field]").forEach(td => {
+      obj[td.dataset.field] = td.innerText.trim();
+    });
+    return obj;
+  });
+}
+
+/** Devuelve {field: value} de las filas editables de la tabla de resumen/cruce */
+function readResumenEditsFromDOM(selector) {
+  const tbody = document.querySelector(`${selector} tbody`);
+  if (!tbody) return {};
+  const obj = {};
+  tbody.querySelectorAll("tr[data-field]").forEach(tr => {
+    const td = tr.querySelector("td[contenteditable]");
+    if (td) obj[tr.dataset.field] = td.innerText.trim();
+  });
+  return obj;
+}
+
+/** Convierte un valor editado a número; si falla devuelve el fallback */
+function numEdit(val, fallback) {
+  if (val === undefined || val === "") return fallback;
+  const n = Number(val);
+  return isNaN(n) ? fallback : n;
+}
+
 // ─── Utilities ─────────────────────────────────────────────────────────────
 
 function populateSelect(selectEl, options, placeholder) {
@@ -1976,6 +2070,15 @@ function getDashboardFilters() {
     deducible:    v("db-f-deducible"),
     reembolso:    v("db-f-reembolso"),
   };
+}
+
+/** Sincroniza ambos switches "Todos los tickets" (filtro + barra) */
+function syncTodasSwitch(checked) {
+  ["db-f-todas", "db-f-todas-bar"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.checked = checked;
+  });
+  applyDashboardFilters();
 }
 
 function applyDashboardFilters() {
@@ -2140,9 +2243,11 @@ function createDashboardCard(ticket, i) {
         <div class="ticket-tabs">
           <button class="ticket-tab active" onclick="showDbTab(${i},'transcripcion',this)">Transcripción</button>
           <button class="ticket-tab" onclick="showDbTab(${i},'resumen',this)">Resumen</button>
+          <button class="ticket-tab" onclick="showDbTab(${i},'cruce',this)">Cruce bancario</button>
         </div>
         <div id="db-tab-transcripcion-${i}" class="ticket-tab-content">${buildDashboardProductTable(ticket.productos || [])}</div>
         <div id="db-tab-resumen-${i}" class="ticket-tab-content hidden">${buildResumenTable(r)}</div>
+        <div id="db-tab-cruce-${i}" class="ticket-tab-content hidden">${buildDashboardCruceTable(ticket)}</div>
       </div>
 
       ${tabHtml}
@@ -2159,13 +2264,15 @@ function buildDashboardProductTable(productos) {
   const cols = [
     { key: "descripcion",     label: "Descripción" },
     { key: "cantidad",        label: "Cant." },
-    { key: "precio_unitario", label: "P.Unit.", fmt: "money" },
-    { key: "monto",           label: "Monto",   fmt: "money" },
+    { key: "precio_unitario", label: "P.Unit." },
+    { key: "monto",           label: "Monto" },
   ];
   return `<table>
     <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
-    <tbody>${productos.map(p =>
-      `<tr>${cols.map(c => `<td>${c.fmt === "money" ? money(p[c.key]) : esc(p[c.key])}</td>`).join("")}</tr>`
+    <tbody>${productos.map((p, rowIdx) =>
+      `<tr data-row="${rowIdx}">${cols.map(c =>
+        `<td contenteditable="true" spellcheck="false" data-field="${c.key}">${esc(String(p[c.key] ?? ""))}</td>`
+      ).join("")}</tr>`
     ).join("")}</tbody>
   </table>`;
 }
@@ -2178,7 +2285,7 @@ function toggleDbTable(i) {
 }
 
 function showDbTab(i, tab, btn) {
-  ["transcripcion", "resumen"].forEach(t => {
+  ["transcripcion", "resumen", "cruce"].forEach(t => {
     document.getElementById(`db-tab-${t}-${i}`)?.classList.toggle("hidden", t !== tab);
   });
   btn.closest(".ticket-tabs").querySelectorAll(".ticket-tab")
@@ -2342,6 +2449,10 @@ async function saveDbClassification(i) {
   if (!ticket) return;
   const c = getClassify(ci);
 
+  // Leer ediciones del usuario en tablas del dashboard
+  const resEdits  = readResumenEditsFromDOM(`#db-tab-resumen-${i}`);
+  const prodEdits = readProductEditsFromDOM(`#db-tab-transcripcion-${i}`);
+
   const clasificacion = {
     fecha:              c.fecha,
     cuenta:             c.cuenta,
@@ -2358,14 +2469,37 @@ async function saveDbClassification(i) {
     metodo_pago:        c.metodo_pago_clasif || ticket.resumen.metodo_pago || "",
     detalles_operacion: c.detalles_operacion,
     comentarios:        c.comentarios,
+    // Campos de resumen editables por el usuario
+    tienda:           resEdits.tienda           ?? ticket.resumen.tienda           ?? "",
+    rfc:              resEdits.rfc              ?? ticket.resumen.rfc              ?? "",
+    hora:             resEdits.hora             ?? ticket.resumen.hora             ?? "",
+    folio:            resEdits.folio            ?? ticket.resumen.folio            ?? "",
+    tarjeta_ultimos4: resEdits.tarjeta_ultimos4 ?? ticket.resumen.tarjeta_ultimos4 ?? "",
+    subtotal:  numEdit(resEdits.subtotal,  ticket.resumen.subtotal  ?? 0),
+    iva:       numEdit(resEdits.iva,       ticket.resumen.iva       ?? 0),
+    ieps:      numEdit(resEdits.ieps,      ticket.resumen.ieps      ?? 0),
+    descuentos:numEdit(resEdits.descuentos,ticket.resumen.descuentos ?? 0),
+    total:     numEdit(resEdits.total,     ticket.resumen.total     ?? 0),
   };
+
+  // Productos editados
+  const productosEditados = (ticket.productos || []).map((p, rowIdx) => {
+    const e = prodEdits[rowIdx] || {};
+    return {
+      linea_numero:    p.linea_numero,
+      descripcion:     e.descripcion     ?? p.descripcion,
+      cantidad:        numEdit(e.cantidad,        p.cantidad),
+      precio_unitario: numEdit(e.precio_unitario, p.precio_unitario),
+      monto:           numEdit(e.monto,           p.monto),
+    };
+  });
 
   try {
     showLoading("Guardando clasificación…", "Actualizando registro en Sheets…");
     const res  = await fetch(`${BACKEND}/update-ticket`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ ticket_id: ticket.ticket_id, clasificacion }),
+      body:    JSON.stringify({ ticket_id: ticket.ticket_id, clasificacion, productos_editados: productosEditados }),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || "Error al guardar");

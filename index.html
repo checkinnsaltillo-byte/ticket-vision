@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=39">
+  <link rel="stylesheet" href="styles.css?v=40">
 </head>
 <body>
 
@@ -30,7 +30,7 @@
           <span>Check Inn Saltillo</span>
         </div>
       </div>
-      <div class="header-badge">v12.2</div>
+      <div class="header-badge">v12.3</div>
     </header>
 
     <!-- ── Tabs de sección principal ──────────────────────────── -->
@@ -131,7 +131,7 @@
         <div class="accordion-body" id="db-filter-body">
           <div class="db-todas-row">
             <label class="toggle-switch">
-              <input type="checkbox" id="db-f-todas" checked onchange="applyDashboardFilters()">
+              <input type="checkbox" id="db-f-todas" checked onchange="syncTodasSwitch(this.checked)">
               <span class="toggle-slider"></span>
             </label>
             <span class="db-todas-label">Todos los tickets</span>
@@ -200,7 +200,14 @@
         </div>
       </div>
 
-      <!-- Count bar + results -->
+      <!-- Quick toggle + count bar -->
+      <div class="db-todas-bar">
+        <label class="toggle-switch">
+          <input type="checkbox" id="db-f-todas-bar" checked onchange="syncTodasSwitch(this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="db-todas-label">Todos los tickets</span>
+      </div>
       <div class="db-count-bar" id="db-count-bar"></div>
       <div class="tickets-container" id="dbContainer"></div>
 
@@ -241,6 +248,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=41"></script>
+  <script src="app.js?v=42"></script>
 </body>
 </html>

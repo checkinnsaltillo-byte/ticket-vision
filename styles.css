@@ -874,6 +874,28 @@ td.resumen-key { font-weight: 600; color: var(--text-soft); white-space: nowrap;
   box-shadow: 0 0 0 4px rgba(245,158,11,.14);
 }
 
+/* ─── Editable table cells ───────────────────────────────────── */
+
+td[contenteditable] {
+  cursor: text;
+  border-radius: 4px;
+  transition: background .14s, outline .14s;
+  min-width: 36px;
+  white-space: pre-wrap;
+}
+td[contenteditable]:hover { background: #fef9f0; }
+td[contenteditable]:focus {
+  outline: 2px solid var(--primary);
+  background: #fffdf8;
+}
+
+/* ─── Dashboard "Todos los tickets" quick-bar ────────────────── */
+
+.db-todas-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 4px 4px;
+}
+
 /* ─── Dashboard count bar ────────────────────────────────────── */
 
 .db-count-bar {
