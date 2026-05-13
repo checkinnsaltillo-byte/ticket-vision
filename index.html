@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=48">
+  <link rel="stylesheet" href="styles.css?v=49">
 </head>
 <body>
 
@@ -49,101 +49,34 @@
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <span class="user-badge" id="current-user-badge"></span>
-        <div class="header-badge">v13.5</div>
+        <div class="header-badge">v14.0</div>
       </div>
     </header>
 
-    <!-- ── Tabs de sección principal ──────────────────────────── -->
+    <!-- ── Tabs de módulo principal ──────────────────────────── -->
     <div class="main-tabs">
-      <button class="main-tab active" id="tab-analisis" onclick="switchSection('analisis')">📊 Análisis de tickets</button>
-      <button class="main-tab" id="tab-dashboard" onclick="switchSection('dashboard')">📋 Dashboard</button>
+      <button class="main-tab active" id="tab-module-tickets"   onclick="switchModule('tickets')">🎫 Tickets</button>
+      <button class="main-tab"        id="tab-module-registros" onclick="switchModule('registros')">📚 Registros contables</button>
     </div>
 
-    <!-- ══ SECCIÓN 1: Análisis de tickets ══════════════════════ -->
-    <div id="section-analisis">
+    <!-- ══ MÓDULO: Tickets ══════════════════════════════════════ -->
+    <div id="module-tickets">
 
-    <!-- ── PASO 1: Captura (accordion) ─────────────────────────── -->
-    <div class="accordion-panel" id="panel-1">
-      <div class="accordion-header" onclick="togglePanel(1)">
-        <div class="accordion-header-left">
-          <span class="accordion-arrow open" id="panel-arrow-1">›</span>
-          <div>
-            <div class="accordion-title">Captura de tickets</div>
-            <div class="accordion-subtitle">Cada imagen corresponde a un ticket independiente</div>
-          </div>
-        </div>
+      <!-- Sub-tabs dentro del módulo Tickets -->
+      <div class="sub-tabs">
+        <button class="sub-tab active" id="subtab-capturados" onclick="switchSection('capturados')">📋 Tickets capturados</button>
+        <button class="sub-tab"        id="subtab-captura"    onclick="switchSection('captura')">📸 Captura de tickets</button>
       </div>
-      <div class="accordion-body" id="panel-body-1">
 
-        <div class="upload-box-single">
-          <button class="btn-agregar-ticket" onclick="openUploadSheet()">
-            <span class="btn-agregar-icon">📎</span>
-            <span>Agregar tickets</span>
-          </button>
-          <p class="upload-hint" id="uploadHint">Seleccionar desde cámara, fotos o archivos</p>
-        </div>
-        <div id="limpiarWrap" class="hidden" style="text-align:center;margin-top:10px;">
-          <button class="btn-limpiar" onclick="limpiarTickets()">🗑 Limpiar todo</button>
-        </div>
+    <!-- ══ SECCIÓN: Tickets capturados ══════════════════════════ -->
+    <div id="section-capturados">
 
-        <!-- Hidden file inputs (desktop directo) -->
-        <input type="file" id="files-camera"  accept="image/*" capture="environment" multiple style="display:none">
-        <input type="file" id="files-gallery" accept="image/*,video/*" multiple style="display:none">
-        <input type="file" id="files-files"   accept="image/*,application/pdf" multiple style="display:none">
-
-        <div id="imagePreview" class="image-strip hidden"></div>
-
-        <div id="analyzeWrap" class="hidden">
-          <button class="btn-analizar" onclick="analyzeTickets()">🔍 Analizar tickets</button>
-        </div>
-        <div id="analyzeStatus" class="status-inline"></div>
-
-      </div>
-    </div>
-
-    <!-- ── PASO 2: Resultados (accordion) ──────────────────────── -->
-    <div class="accordion-panel" id="panel-2">
-      <div class="accordion-header" onclick="togglePanel(2)">
-        <div class="accordion-header-left">
-          <span class="accordion-arrow" id="panel-arrow-2">›</span>
-          <div>
-            <div class="accordion-title">Resultados</div>
-            <div class="accordion-subtitle" id="panel-2-subtitle">Sin tickets analizados</div>
-          </div>
-        </div>
-      </div>
-      <div class="accordion-body collapsed" id="panel-body-2">
-        <div id="ticketsContainer" class="tickets-container"></div>
-      </div>
-    </div>
-
-    <!-- ── PASO 3: Guardar resultados ──────────────────────────── -->
-    <div class="accordion-panel hidden" id="panel-3">
-      <div class="accordion-header save-action-header" id="btnGuardar" onclick="guardarResultados()">
-        <div class="accordion-header-left">
-          <span class="save-action-icon">💾</span>
-          <div>
-            <div class="accordion-title save-action-title">Guardar resultados</div>
-            <div class="accordion-subtitle save-action-sub" id="saveSubtitle">Enviar tickets clasificados a Google Sheets</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <p class="save-status hidden" id="saveStatus"></p>
-
-    </div><!-- /section-analisis -->
-
-    <!-- ══ SECCIÓN 2: Dashboard de tickets ════════════════════════ -->
-    <div id="section-dashboard" class="hidden">
-
-      <!-- Dashboard top bar -->
+      <!-- Top bar -->
       <div class="db-top-bar">
         <div class="db-top-left">
           <button class="btn-filter-toggle" id="btn-filter-toggle"
                   onclick="toggleDbFilters()" title="Mostrar filtros">
-            <span class="hb-line"></span>
-            <span class="hb-line"></span>
-            <span class="hb-line"></span>
+            <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
           </button>
           <label class="toggle-switch">
             <input type="checkbox" id="db-f-todas" checked onchange="syncTodasSwitch(this.checked)">
@@ -158,7 +91,7 @@
         </div>
       </div>
 
-      <!-- Collapsible filter panel (hidden by default) -->
+      <!-- Panel de filtros (oculto por defecto) -->
       <div class="db-filter-panel hidden" id="db-filter-body">
         <div class="db-filter-grid">
           <div class="db-filter-full">
@@ -238,7 +171,6 @@
               <option value="">Todas</option>
             </select>
           </div>
-          <!-- Dual range slider para Total -->
           <div class="db-filter-full">
             <label>Rango de total</label>
             <div class="dual-range-wrap">
@@ -261,11 +193,97 @@
         </div>
       </div>
 
-      <!-- Count bar -->
+      <!-- Count bar y lista -->
       <div class="db-count-bar" id="db-count-bar"></div>
       <div class="tickets-container" id="dbContainer"></div>
+      <div class="db-pagination-bar" id="db-pagination"></div>
 
-    </div><!-- /section-dashboard -->
+    </div><!-- /section-capturados -->
+
+    <!-- ══ SECCIÓN: Captura de tickets ══════════════════════════ -->
+    <div id="section-captura" class="hidden">
+
+    <!-- ── PASO 1: Captura (accordion) ─────────────────────────── -->
+    <div class="accordion-panel" id="panel-1">
+      <div class="accordion-header" onclick="togglePanel(1)">
+        <div class="accordion-header-left">
+          <span class="accordion-arrow open" id="panel-arrow-1">›</span>
+          <div>
+            <div class="accordion-title">Captura de tickets</div>
+            <div class="accordion-subtitle">Cada imagen corresponde a un ticket independiente</div>
+          </div>
+        </div>
+      </div>
+      <div class="accordion-body" id="panel-body-1">
+
+        <div class="upload-box-single">
+          <button class="btn-agregar-ticket" onclick="openUploadSheet()">
+            <span class="btn-agregar-icon">📎</span>
+            <span>Agregar tickets</span>
+          </button>
+          <p class="upload-hint" id="uploadHint">Seleccionar desde cámara, fotos o archivos</p>
+        </div>
+        <div id="limpiarWrap" class="hidden" style="text-align:center;margin-top:10px;">
+          <button class="btn-limpiar" onclick="limpiarTickets()">🗑 Limpiar todo</button>
+        </div>
+
+        <!-- Hidden file inputs (desktop directo) -->
+        <input type="file" id="files-camera"  accept="image/*" capture="environment" multiple style="display:none">
+        <input type="file" id="files-gallery" accept="image/*,video/*" multiple style="display:none">
+        <input type="file" id="files-files"   accept="image/*,application/pdf" multiple style="display:none">
+
+        <div id="imagePreview" class="image-strip hidden"></div>
+
+        <div id="analyzeWrap" class="hidden">
+          <button class="btn-analizar" onclick="analyzeTickets()">🔍 Analizar tickets</button>
+        </div>
+        <div id="analyzeStatus" class="status-inline"></div>
+
+      </div>
+    </div>
+
+    <!-- ── PASO 2: Resultados (accordion) ──────────────────────── -->
+    <div class="accordion-panel" id="panel-2">
+      <div class="accordion-header" onclick="togglePanel(2)">
+        <div class="accordion-header-left">
+          <span class="accordion-arrow" id="panel-arrow-2">›</span>
+          <div>
+            <div class="accordion-title">Resultados</div>
+            <div class="accordion-subtitle" id="panel-2-subtitle">Sin tickets analizados</div>
+          </div>
+        </div>
+      </div>
+      <div class="accordion-body collapsed" id="panel-body-2">
+        <div id="ticketsContainer" class="tickets-container"></div>
+      </div>
+    </div>
+
+    <!-- ── PASO 3: Guardar resultados ──────────────────────────── -->
+    <div class="accordion-panel hidden" id="panel-3">
+      <div class="accordion-header save-action-header" id="btnGuardar" onclick="guardarResultados()">
+        <div class="accordion-header-left">
+          <span class="save-action-icon">💾</span>
+          <div>
+            <div class="accordion-title save-action-title">Guardar resultados</div>
+            <div class="accordion-subtitle save-action-sub" id="saveSubtitle">Enviar tickets clasificados a Google Sheets</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="save-status hidden" id="saveStatus"></p>
+
+    </div><!-- /section-captura -->
+
+    </div><!-- /module-tickets -->
+
+    <!-- ══ MÓDULO: Registros contables ══════════════════════════ -->
+    <div id="module-registros" class="hidden">
+      <div class="empty-state" style="padding:70px 20px">
+        <div class="empty-icon">📚</div>
+        <p style="font-size:16px;font-weight:700;margin:0 0 6px">Registros contables</p>
+        <p style="color:var(--text-soft);margin:0">Módulo en construcción</p>
+      </div>
+    </div>
 
   </div><!-- /app-root -->
 
@@ -315,6 +333,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=54"></script>
+  <script src="app.js?v=55"></script>
 </body>
 </html>

@@ -158,6 +158,8 @@ let ticketResults     = [];
 let dashboardTickets  = [];   // todos los tickets cargados desde Sheets
 let dashboardFiltered = [];   // subset filtrado
 let dbFiltersOpen     = true;
+let dbPageSize        = 50;   // registros por página (25 | 50 | 100)
+let dbCurrentPage     = 1;    // página actual
 const DB_IDX          = 20000; // offset de índice para paneles de clasificar del dashboard
 let classifyAutoPopulating = false; // suprime markClassifyDirty durante auto-relleno
 let currentUser       = "";   // usuario activo (acl | ccl | admin)
@@ -308,6 +310,9 @@ function tryLogin() {
   document.getElementById("loginOverlay")?.classList.add("hidden");
   document.getElementById("app-root")?.classList.remove("hidden");
   document.getElementById("current-user-badge").textContent = currentUser.toUpperCase();
+  // Módulo y sección predeterminados al entrar
+  switchModule("tickets");
+  switchSection("capturados");
 }
 
 function handleLoginKey(e) {
@@ -2291,12 +2296,21 @@ function esc(v) {
 
 // ─── Sección switcher ──────────────────────────────────────────────────────
 
-function switchSection(name) {
-  document.getElementById("section-analisis").classList.toggle("hidden", name !== "analisis");
-  document.getElementById("section-dashboard").classList.toggle("hidden", name !== "dashboard");
-  document.getElementById("tab-analisis").classList.toggle("active", name === "analisis");
-  document.getElementById("tab-dashboard").classList.toggle("active", name === "dashboard");
-  if (name === "dashboard") loadDashboard();
+/** Cambia entre módulos de nivel superior */
+function switchModule(mod) {
+  ["tickets", "registros"].forEach(m => {
+    document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== mod);
+    document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === mod);
+  });
+}
+
+/** Cambia entre sub-secciones dentro del módulo Tickets */
+function switchSection(sec) {
+  ["capturados", "captura"].forEach(s => {
+    document.getElementById(`section-${s}`)?.classList.toggle("hidden", s !== sec);
+    document.getElementById(`subtab-${s}`)?.classList.toggle("active", s === sec);
+  });
+  if (sec === "capturados") loadDashboard();
 }
 
 // ─── Dashboard: carga desde Sheets ────────────────────────────────────────
@@ -2322,6 +2336,7 @@ async function loadDashboard() {
     clearDashboardFiltersInternal();
     const todasEl = document.getElementById("db-f-todas");
     if (todasEl) todasEl.checked = true;
+    dbCurrentPage = 1;
     applyDashboardFilters();
   } catch (err) {
     container.innerHTML = `
@@ -2439,6 +2454,7 @@ function hasActiveFilters() {
 function onFilterChange() {
   const todasEl = document.getElementById("db-f-todas");
   if (todasEl) todasEl.checked = false;
+  dbCurrentPage = 1;
   applyDashboardFilters();
 }
 
@@ -2525,6 +2541,7 @@ function clearDashboardFilters() {
   clearDashboardFiltersInternal();
   const el = document.getElementById("db-f-todas");
   if (el) el.checked = true;
+  dbCurrentPage = 1;
   applyDashboardFilters();
 }
 
@@ -2592,6 +2609,7 @@ function renderDashboardCards() {
         <p>${dashboardTickets.length ? "Sin resultados para los filtros aplicados" : "No hay tickets guardados aún"}</p>
       </div>`;
     countBar.innerHTML = "";
+    renderPagination(0, 0);
     return;
   }
 
@@ -2600,14 +2618,70 @@ function renderDashboardCards() {
   const clasif    = dashboardFiltered.filter(t =>  String(t.resumen?.cuenta || "").trim());
   const sorted    = [...sinClasif, ...clasif];
 
-  // Barra de conteo
-  const nSin   = sinClasif.length;
-  const nTotal = sorted.length;
-  countBar.innerHTML = nSin
-    ? `<span class="db-count-warn">⚠️ ${nSin} sin clasificar</span> · ${nTotal} encontrado${nTotal !== 1 ? "s" : ""}`
-    : `<span class="db-count-ok">✅ ${nTotal} clasificado${nTotal !== 1 ? "s" : ""}</span>`;
+  // Paginación
+  const totalItems  = sorted.length;
+  const totalPages  = Math.max(1, Math.ceil(totalItems / dbPageSize));
+  dbCurrentPage     = Math.min(dbCurrentPage, totalPages);
+  const start       = (dbCurrentPage - 1) * dbPageSize;
+  const pageItems   = sorted.slice(start, start + dbPageSize);
 
-  container.innerHTML = sorted.map((t, i) => createDashboardCard(t, i)).join("");
+  // Barra de conteo
+  const nSin = sinClasif.length;
+  countBar.innerHTML = nSin
+    ? `<span class="db-count-warn">⚠️ ${nSin} sin clasificar</span> · ${totalItems} total`
+    : `<span class="db-count-ok">✅ ${totalItems} clasificado${totalItems !== 1 ? "s" : ""}</span>`;
+
+  container.innerHTML = pageItems.map((t, i) => createDashboardCard(t, start + i)).join("");
+  renderPagination(totalItems, totalPages);
+}
+
+function renderPagination(totalItems, totalPages) {
+  const bar = document.getElementById("db-pagination");
+  if (!bar) return;
+  if (totalPages <= 1 && totalItems <= 25) { bar.innerHTML = ""; return; }
+
+  const sizes = [25, 50, 100];
+  const sizeOpts = sizes.map(s =>
+    `<option value="${s}"${s === dbPageSize ? " selected" : ""}>${s}</option>`
+  ).join("");
+
+  // Páginas visibles: siempre primera, última, y ±2 alrededor de la actual
+  const pages = new Set([1, totalPages]);
+  for (let p = Math.max(1, dbCurrentPage - 2); p <= Math.min(totalPages, dbCurrentPage + 2); p++) pages.add(p);
+  const pageArr = [...pages].sort((a, b) => a - b);
+
+  let pageBtns = "";
+  let prev = 0;
+  for (const p of pageArr) {
+    if (p - prev > 1) pageBtns += `<span class="pag-ellipsis">…</span>`;
+    pageBtns += `<button class="pag-btn${p === dbCurrentPage ? " active" : ""}" onclick="goToPage(${p})">${p}</button>`;
+    prev = p;
+  }
+
+  bar.innerHTML = `
+    <div class="pag-left">
+      <select class="pag-size-sel" onchange="changePageSize(Number(this.value))">${sizeOpts}</select>
+      <span class="pag-info">por página</span>
+    </div>
+    <div class="pag-right">
+      <button class="pag-btn" onclick="goToPage(${dbCurrentPage - 1})" ${dbCurrentPage <= 1 ? "disabled" : ""}>‹</button>
+      ${pageBtns}
+      <button class="pag-btn" onclick="goToPage(${dbCurrentPage + 1})" ${dbCurrentPage >= totalPages ? "disabled" : ""}>›</button>
+    </div>`;
+}
+
+function goToPage(p) {
+  const totalPages = Math.max(1, Math.ceil(dashboardFiltered.length / dbPageSize));
+  dbCurrentPage = Math.max(1, Math.min(p, totalPages));
+  renderDashboardCards();
+  // Scroll suave al top de la lista
+  document.getElementById("db-count-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function changePageSize(size) {
+  dbPageSize    = size;
+  dbCurrentPage = 1;
+  renderDashboardCards();
 }
 
 function createDashboardCard(ticket, i) {
