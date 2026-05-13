@@ -780,9 +780,6 @@ function createTicketCard(ticket, i) {
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
         <button class="btn-x" title="Eliminar" onclick="event.stopPropagation(); removeTicket(${i})">×</button>
-        ${ticket.imageUrl ? `<img class="skipped-thumb" src="${esc(ticket.imageUrl)}"
-            onclick="event.stopPropagation(); openTicketImageLightbox(${i})"
-            alt="Ticket ${i + 1}" title="Ver imagen">` : ""}
         <div class="ticket-info">
           <div class="header-chips">
             <span class="info-chip hidden" id="cuenta-chip-${i}"></span>
@@ -791,7 +788,10 @@ function createTicketCard(ticket, i) {
             <span class="info-chip hidden" id="dept-chip-${i}"></span>
             <span class="info-chip chip-reembolso hidden" id="reembolso-chip-${i}"></span>
           </div>
-          <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
+          <div class="ticket-store-row">
+            <span class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</span>
+            ${ticket.imageUrl ? `<button class="btn-ver-ticket" onclick="event.stopPropagation(); openTicketImageLightbox(${i})">Ver ticket</button>` : ""}
+          </div>
           <div class="ticket-meta">
             ${esc(metaParts.join(" · "))}${metaParts.length ? " · " : ""}🧾 ${r.num_productos || 0} producto${(r.num_productos || 0) !== 1 ? "s" : ""}
           </div>
