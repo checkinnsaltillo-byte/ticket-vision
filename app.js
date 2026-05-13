@@ -780,6 +780,9 @@ function createTicketCard(ticket, i) {
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
         <button class="btn-x" title="Eliminar" onclick="event.stopPropagation(); removeTicket(${i})">×</button>
+        ${ticket.imageUrl ? `<img class="skipped-thumb" src="${esc(ticket.imageUrl)}"
+            onclick="event.stopPropagation(); openTicketImageLightbox(${i})"
+            alt="Ticket ${i + 1}" title="Ver imagen">` : ""}
         <div class="ticket-info">
           <div class="header-chips">
             <span class="info-chip hidden" id="cuenta-chip-${i}"></span>
@@ -815,12 +818,6 @@ function createTicketCard(ticket, i) {
       </div>` : ""}
 
       <div class="ticket-table-wrap hidden" id="table-${i}">
-        ${ticket.imageUrl ? `<div class="ticket-image-row">
-          <img class="ticket-image-thumb" src="${esc(ticket.imageUrl)}"
-               alt="Ticket ${i + 1}"
-               onclick="openTicketImageLightbox(${i})">
-          <span class="ticket-image-hint">Toca para ver en detalle</span>
-        </div>` : ""}
         <div class="ticket-tabs">
           <button class="ticket-tab active" onclick="showTicketTab(${i},'transcripcion',this)">Transcripción</button>
           <button class="ticket-tab" onclick="showTicketTab(${i},'resumen',this)">Resumen</button>
