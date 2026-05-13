@@ -2266,10 +2266,19 @@ function createDashboardCard(ticket, i) {
   const reembolsoChip = (str("reembolso") === "Sí" && str("reembolso_a"))
     ? `<span class="info-chip chip-reembolso">↩ Reembolso a ${esc(str("reembolso_a"))}</span>` : "";
 
-  const verTicket     = str("imagen_url")
+  const verTicket   = str("imagen_url")
     ? `<a class="btn-ver-ticket" href="${esc(str("imagen_url"))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Ver ticket</a>` : "";
-  const deducibleHtml = str("deducible") === "Sí"
-    ? `<div class="header-deducible"><span class="fhl on">Deducible</span></div>` : "";
+  const isDeducible = str("deducible") === "Sí";
+  const deducibleHtml = `
+    <div class="header-deducible" onclick="event.stopPropagation()">
+      <label class="toggle-switch toggle-switch--dark">
+        <input type="checkbox" id="db-deducible-header-${i}"
+               ${isDeducible ? "checked" : ""}
+               onchange="syncDbDeducible(${i}, this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="fhl${isDeducible ? " on" : ""}" id="db-fhl-${i}">${isDeducible ? "Deducible" : "No deducible"}</span>
+    </div>`;
 
   // Pestaña inferior
   const pathParts = [str("cuenta"), str("subcuenta"), str("categoria_gasto"), str("concepto")].filter(Boolean);
@@ -2287,6 +2296,7 @@ function createDashboardCard(ticket, i) {
   return `
     <div class="ticket-card" id="db-ticket-${i}">
       <div class="ticket-card-header ${clsCls}" id="db-header-${i}" onclick="toggleDbTable(${i})">
+        <button class="btn-x" title="Eliminar registro" onclick="event.stopPropagation(); deleteDbTicket(${i})">×</button>
         <div class="ticket-info">
           <div class="header-chips">${sinClasifChip}${cuentaChip}${compradorChip}${propiedadChip}${deptChip}${reembolsoChip}</div>
           <div class="ticket-store-row">
@@ -2366,6 +2376,46 @@ function showDbTab(i, tab, btn) {
 }
 
 // ─── Dashboard: panel clasificar ──────────────────────────────────────────
+
+/** Sincroniza el toggle Deducible del encabezado con el panel de Clasificar */
+function syncDbDeducible(i, checked) {
+  const ci = DB_IDX + i;
+  // Panel de clasificar
+  const inner = document.getElementById(`deducible-${ci}`);
+  if (inner) { inner.checked = checked; updateDeducibleLabel(ci, checked); }
+  // Encabezado
+  const lbl = document.getElementById(`db-fhl-${i}`);
+  if (lbl) { lbl.textContent = checked ? "Deducible" : "No deducible"; lbl.classList.toggle("on", checked); }
+  // Memoria (para que el próximo "Guardar" recoja el valor correcto)
+  if (dashboardFiltered[i]) dashboardFiltered[i].resumen.deducible = checked ? "Sí" : "No";
+}
+
+/** Elimina un ticket del dashboard y de Google Sheets */
+async function deleteDbTicket(i) {
+  const ticket = dashboardFiltered[i];
+  if (!ticket) return;
+  const tienda = ticket.resumen?.tienda || `Ticket ${i + 1}`;
+  if (!confirm(`¿Eliminar el registro de "${tienda}"?\nEsta acción borrará el ticket de Sheets y no se puede deshacer.`)) return;
+  try {
+    showLoading("Eliminando ticket…", "Borrando registros de Sheets…");
+    const res  = await fetch(`${BACKEND}/delete-ticket`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ ticket_id: ticket.ticket_id }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Error al eliminar");
+    // Quitar de ambos arrays en memoria
+    const tid = ticket.ticket_id;
+    dashboardTickets  = dashboardTickets.filter(t => t.ticket_id !== tid);
+    dashboardFiltered = dashboardFiltered.filter(t => t.ticket_id !== tid);
+    renderDashboardCards();
+  } catch (err) {
+    alert("Error al eliminar: " + err.message);
+  } finally {
+    hideLoading();
+  }
+}
 
 function toggleDbClassify(i) {
   const panel = document.getElementById(`classify-${DB_IDX + i}`);
@@ -2449,7 +2499,16 @@ function autoPopulateDbClassify(ci, ticket) {
 
   // Deducible
   const dedEl = document.getElementById(`deducible-${ci}`);
-  if (dedEl) { dedEl.checked = s("deducible") === "Sí"; updateDeducibleLabel(ci, dedEl.checked); }
+  const dedChecked = s("deducible") === "Sí";
+  if (dedEl) { dedEl.checked = dedChecked; updateDeducibleLabel(ci, dedChecked); }
+  // Sincronizar toggle del encabezado
+  const dbI = ci - DB_IDX;
+  const headerToggle = document.getElementById(`db-deducible-header-${dbI}`);
+  if (headerToggle) {
+    headerToggle.checked = dedChecked;
+    const hLbl = document.getElementById(`db-fhl-${dbI}`);
+    if (hLbl) { hLbl.textContent = dedChecked ? "Deducible" : "No deducible"; hLbl.classList.toggle("on", dedChecked); }
+  }
 
   // Reembolso
   if (s("reembolso") === "Sí") {

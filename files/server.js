@@ -146,6 +146,21 @@ app.post("/save-tickets", upload.array("files"), async (req, res) => {
   }
 });
 
+// ─── Eliminar un ticket de Sheets ─────────────────────────────────────────
+
+app.post("/delete-ticket", async (req, res) => {
+  try {
+    const { ticket_id } = req.body;
+    if (!ticket_id) throw new Error("ticket_id requerido");
+    const result = await callAppsScript({ action: "delete_ticket", ticket_id });
+    if (!result.ok) throw new Error(result.error || "Apps Script error");
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("delete_ticket_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Actualizar clasificación de un ticket existente ──────────────────────
 
 app.post("/update-ticket", async (req, res) => {
