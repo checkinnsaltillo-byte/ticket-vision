@@ -2253,8 +2253,32 @@ function setStatus(id, msg) {
   if (el) el.textContent = msg;
 }
 
+/** Convierte cualquier representación de número a float.
+ *  Maneja: números, strings con $ o comas ("2,796.89"), y formato español ("2.796,89"). */
+function parseTotal(v) {
+  if (v === null || v === undefined || v === "" || v === false) return 0;
+  if (typeof v === "number") return isNaN(v) ? 0 : v;
+  let s = String(v).replace(/[$\s%]/g, "");
+  // Formato español: punto como miles, coma como decimal  →  "2.796,89"
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else {
+    // Formato anglosajón: coma como miles, punto como decimal  →  "2,796.89"
+    s = s.replace(/,/g, "");
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+/** Total definitivo de un ticket: intenta resumen.total, luego cruce.total_ticket */
+function ticketTotal(t) {
+  const a = parseTotal(t.resumen?.total);
+  if (a > 0) return a;
+  return parseTotal(t.cruce?.total_ticket) || parseTotal(t.cruce?.monto_cruce) || 0;
+}
+
 function money(value) {
-  const n = Number(value || 0);
+  const n = parseTotal(value);
   if (!Number.isFinite(n) || n === 0) return "";
   return esc(n.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
 }
@@ -2343,13 +2367,15 @@ function populateDashboardFilters() {
   )].sort();
   fillSelect("db-f-descripcion", descs);
 
-  // Ajustar el máximo del slider según el total más alto en los datos
-  const maxTotal = dashboardTickets.reduce((mx, t) => Math.max(mx, Number(t.resumen?.total || 0)), 0);
-  const sliderMax = Math.max(1000, Math.ceil(maxTotal / 500) * 500); // redondear a múltiplo de 500
+  // Ajustar el máximo del slider según el "Total ticket" más alto (resumen.total con fallback a cruce)
+  const maxTotal   = dashboardTickets.reduce((mx, t) => Math.max(mx, ticketTotal(t)), 0);
+  const sliderMax  = Math.max(1000, Math.ceil(maxTotal / 500) * 500);  // múltiplo de 500
+  // Step: ~1% del máximo, redondeado a múltiplo de 100, mínimo 100  (da ~100 posiciones)
+  const sliderStep = Math.max(100, Math.round(sliderMax * 0.01 / 100) * 100);
   const loEl = document.getElementById("db-f-total-min");
   const hiEl = document.getElementById("db-f-total-max");
-  if (loEl) { loEl.max = sliderMax; loEl.step = Math.max(100, Math.round(sliderMax / 200) * 100); }
-  if (hiEl) { hiEl.max = sliderMax; hiEl.step = Math.max(100, Math.round(sliderMax / 200) * 100); hiEl.value = sliderMax; }
+  if (loEl) { loEl.max = sliderMax; loEl.step = sliderStep; loEl.value = 0; }
+  if (hiEl) { hiEl.max = sliderMax; hiEl.step = sliderStep; hiEl.value = sliderMax; }
   updateTotalRangeFill();
 }
 
@@ -2459,7 +2485,7 @@ function applyDashboardFilters() {
       );
       if (!hasDesc) return false;
     }
-    const total = Number(r.total || 0);
+    const total = ticketTotal(t);
     if (f.totalMin !== null && total < f.totalMin) return false;
     if (f.totalMax !== null && total > f.totalMax) return false;
     return true;
