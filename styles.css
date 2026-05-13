@@ -700,6 +700,41 @@ td.resumen-key { font-weight: 600; color: var(--text-soft); white-space: nowrap;
   box-shadow: 0 0 0 4px rgba(245,158,11,.14);
 }
 
+/* ─── Custom confirm modal ───────────────────────────────────── */
+.confirm-modal-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(15,23,42,.55); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: fadeIn .18s ease;
+}
+.confirm-modal-overlay.hidden { display: none; }
+.confirm-modal {
+  background: #fff; border-radius: 22px;
+  padding: 30px 24px 24px;
+  max-width: 340px; width: 100%;
+  box-shadow: 0 20px 60px rgba(15,23,42,.22);
+  text-align: center;
+}
+.confirm-modal-icon { font-size: 38px; margin-bottom: 14px; line-height: 1; }
+.confirm-modal-title {
+  font-size: 17px; font-weight: 800; color: #0f172a;
+  margin: 0 0 10px; font-family: Arial, sans-serif;
+}
+.confirm-modal-msg {
+  font-size: 13px; color: #64748b; margin: 0 0 24px; line-height: 1.55;
+}
+.confirm-modal-actions { display: flex; flex-direction: column; gap: 10px; }
+.btn-confirm-danger {
+  padding: 13px 20px;
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+  color: #fff; border: none; border-radius: 14px;
+  font-size: 15px; font-weight: 700; font-family: Arial, sans-serif;
+  box-shadow: 0 8px 18px rgba(220,38,38,.25);
+  cursor: pointer; transition: transform .15s, box-shadow .15s;
+}
+.btn-confirm-danger:hover { transform: translateY(-1px); box-shadow: 0 12px 26px rgba(220,38,38,.36); }
+
 /* ─── Table dirty actions bar ────────────────────────────────── */
 
 .table-actions-bar {

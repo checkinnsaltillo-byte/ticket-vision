@@ -159,6 +159,7 @@ let dashboardTickets  = [];   // todos los tickets cargados desde Sheets
 let dashboardFiltered = [];   // subset filtrado
 let dbFiltersOpen     = true;
 const DB_IDX          = 20000; // offset de índice para paneles de clasificar del dashboard
+let classifyAutoPopulating = false; // suprime markClassifyDirty durante auto-relleno
 let lightboxBlobUrl  = null;
 let lightboxZoomed   = false;
 const LB_ZOOM        = 2.4;
@@ -867,7 +868,7 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="clasif-fecha-row">
         <label class="clasif-fecha-label">📅 Fecha del ticket</label>
         <input type="date" id="fecha-clasif-${idx}" class="clasif-fecha-input"
-          value="${esc(fecha || '')}">
+          value="${esc(fecha || '')}" onchange="markClassifyDirty(${idx})">
       </div>
 
       <div class="classify-search-wrap">
@@ -928,7 +929,7 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="grid">
         <div class="field">
           <label>Propiedad</label>
-          <select id="propiedad-${idx}" onchange="togglePropiedadOtro(${idx}, this.value)">
+          <select id="propiedad-${idx}" onchange="togglePropiedadOtro(${idx}, this.value); markClassifyDirty(${idx})">
             <option value="">— Seleccionar —</option>
             <option>Calle Cumbres</option><option>Calle Baja California</option>
             <option>Calle Oaxaca</option><option>Calle José Cárdenas</option>
@@ -936,12 +937,12 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
           </select>
           <div class="hidden" id="propiedad-otro-wrap-${idx}" style="margin-top:8px">
             <input type="text" id="propiedad-otro-${idx}" class="field-select"
-                   placeholder="Especificar propiedad..." style="appearance:none">
+                   placeholder="Especificar propiedad..." style="appearance:none" oninput="markClassifyDirty(${idx})">
           </div>
         </div>
         <div class="field">
           <label># Departamento</label>
-          <select id="departamento-${idx}">
+          <select id="departamento-${idx}" onchange="markClassifyDirty(${idx})">
             <option value="">— Seleccionar —</option>${deptOpts}
           </select>
         </div>
@@ -967,7 +968,7 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
         <label>Deducible</label>
         <div class="toggle-row">
           <label class="toggle-switch">
-            <input type="checkbox" id="deducible-${idx}" onchange="updateDeducibleLabel(${idx}, this.checked)">
+            <input type="checkbox" id="deducible-${idx}" onchange="updateDeducibleLabel(${idx}, this.checked); markClassifyDirty(${idx})">
             <span class="toggle-slider"></span>
           </label>
           <span class="toggle-label-text" id="deducible-label-${idx}">No</span>
@@ -978,14 +979,14 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
         <label>Reembolso</label>
         <div class="toggle-row">
           <label class="toggle-switch">
-            <input type="checkbox" id="reembolso-${idx}" onchange="toggleReembolso(${idx}, this.checked)">
+            <input type="checkbox" id="reembolso-${idx}" onchange="toggleReembolso(${idx}, this.checked); markClassifyDirty(${idx})">
             <span class="toggle-slider"></span>
           </label>
           <span class="toggle-label-text" id="reembolso-label-${idx}">No</span>
         </div>
         <div class="hidden" id="reembolso-a-field-${idx}" style="margin-top:10px">
           <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Reembolsar a:</label>
-          <select id="reembolso-a-${idx}" class="field-select" onchange="toggleReembolsoOtro(${idx}, this.value)">
+          <select id="reembolso-a-${idx}" class="field-select" onchange="toggleReembolsoOtro(${idx}, this.value); markClassifyDirty(${idx})">
             <option value="">— Seleccionar —</option>
             <option>Andrés</option><option>Claudia</option><option>Papá</option>
             <option>Francisco</option><option>Brenda</option><option>Alma</option>
@@ -994,12 +995,12 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
           </select>
           <div class="hidden" id="reembolso-otro-wrap-${idx}" style="margin-top:8px">
             <input type="text" id="reembolso-otro-${idx}" class="field-select"
-                   placeholder="Especificar persona..." style="appearance:none">
+                   placeholder="Especificar persona..." style="appearance:none" oninput="markClassifyDirty(${idx})">
           </div>
           <div style="margin-top:12px">
             <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Detalles de la operación</label>
             <textarea id="detalles-${idx}" class="classify-textarea" rows="3"
-                      placeholder="Descripción libre de la operación..."></textarea>
+                      placeholder="Descripción libre de la operación..." oninput="markClassifyDirty(${idx})"></textarea>
           </div>
         </div>
       </div>
@@ -1020,10 +1021,10 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="cuenta-field">
         <label>Comentarios</label>
         <textarea id="comentarios-${idx}" class="classify-textarea"
-                  placeholder="Notas adicionales sobre este ticket..."></textarea>
+                  placeholder="Notas adicionales sobre este ticket..." oninput="markClassifyDirty(${idx})"></textarea>
       </div>
 
-      <div class="classify-actions">
+      <div class="classify-actions hidden" id="classify-actions-${idx}">
         <button class="btn-clasificar-ticket" onclick="${saveOnclick}">${saveLabel}</button>
         <button class="btn-limpiar-ticket" onclick="${limpiarOnclick}">Limpiar</button>
       </div>
@@ -1379,6 +1380,7 @@ function closeLightbox() {
 
 function clasificarTicket(i) {
   markAsClassified(i);
+  hideClassifyActions(i);
   // Cerrar el panel después de clasificar
   document.getElementById(`classify-${i}`).classList.add("hidden");
   document.getElementById(`btn-classify-${i}`).classList.remove("open");
@@ -1441,6 +1443,7 @@ function limpiarClasificacion(i) {
   // Fecha — restaurar a la detectada automáticamente
   const fechaInput = document.getElementById(`fecha-clasif-${i}`);
   if (fechaInput) fechaInput.value = ticketResults[i]?.resumen?.fecha || "";
+  hideClassifyActions(i);
 }
 
 function markAsClassified(i) {
@@ -1620,6 +1623,7 @@ function selectCuenta(el, i) {
     subs.map(n => makeCard(n, SUBCUENTA_EMOJIS[n] || "📌", `selectSubcuenta(this,${i})`)).join("");
   document.getElementById(`subcuenta-field-${i}`).classList.remove("hidden");
   updateClasiPath(i);
+  markClassifyDirty(i);
 }
 
 function resetSubcuenta(i) {
@@ -1678,6 +1682,7 @@ function selectConcepto(el, i) {
   scrollCardIntoView(el);
   document.getElementById(`concepto-${i}`).value = el.dataset.value;
   updateClasiPath(i);
+  markClassifyDirty(i);
 }
 
 function selectCategoria(el, i) {
@@ -1693,6 +1698,7 @@ function selectCategoria(el, i) {
   const conceptos = CATALOG[cuenta]?.[subcuenta]?.[categoria] || [];
   if (conceptos.length) renderConceptos(conceptos, i);
   updateClasiPath(i);
+  markClassifyDirty(i);
 }
 
 function selectMetodoPago(el, i) {
@@ -1700,6 +1706,7 @@ function selectMetodoPago(el, i) {
   el.classList.add("active");
   scrollCardIntoView(el);
   document.getElementById(`metodo-clasif-${i}`).value = el.dataset.value;
+  markClassifyDirty(i);
 }
 
 function toggleReembolso(i, checked) {
@@ -1734,6 +1741,7 @@ function selectComprador(el, i) {
   el.classList.add("active");
   scrollCardIntoView(el);
   document.getElementById(`comprador-${i}`).value = el.dataset.value;
+  markClassifyDirty(i);
 }
 
 // Llamado desde el toggle dentro del panel "Clasificar"
@@ -1825,6 +1833,7 @@ function applySearchResult(i, idx) {
   // Limpiar buscador
   document.getElementById(`search-${i}`).value = "";
   hideSearchResults(i);
+  markClassifyDirty(i);
 }
 
 // ─── Get classification values ──────────────────────────────────────────────
@@ -2030,6 +2039,43 @@ function deleteProductRow(btn) {
   const wrap = btn.closest(".ticket-table-wrap");
   btn.closest("tr")?.remove();
   if (wrap) showTableActions(wrap.dataset.tmod, parseInt(wrap.dataset.tidx));
+}
+
+// ─── Custom confirm dialog ─────────────────────────────────────────────────
+
+function showConfirm({ icon = "🗑", title, msg, okLabel = "Eliminar" }) {
+  return new Promise(resolve => {
+    document.getElementById("confirmModalIcon").textContent  = icon;
+    document.getElementById("confirmModalTitle").textContent = title;
+    document.getElementById("confirmModalMsg").textContent   = msg;
+    document.getElementById("confirmModalOk").textContent    = okLabel;
+    document.getElementById("confirmModal").classList.remove("hidden");
+
+    const ok = document.getElementById("confirmModalOk");
+    const cancel = document.getElementById("confirmModalCancel");
+    const close = result => {
+      document.getElementById("confirmModal").classList.add("hidden");
+      ok.onclick = cancel.onclick = null;
+      resolve(result);
+    };
+    ok.onclick     = () => close(true);
+    cancel.onclick = () => close(false);
+  });
+}
+function confirmModalOverlayClick(e) {
+  if (e.target === e.currentTarget) {
+    document.getElementById("confirmModal").classList.add("hidden");
+  }
+}
+
+// ─── Classify dirty tracking ───────────────────────────────────────────────
+
+function markClassifyDirty(idx) {
+  if (classifyAutoPopulating) return;
+  document.getElementById(`classify-actions-${idx}`)?.classList.remove("hidden");
+}
+function hideClassifyActions(idx) {
+  document.getElementById(`classify-actions-${idx}`)?.classList.add("hidden");
 }
 
 // ─── Dirty tracking de tablas ──────────────────────────────────────────────
@@ -2554,7 +2600,13 @@ async function deleteDbTicket(i) {
   const ticket = dashboardFiltered[i];
   if (!ticket) return;
   const tienda = ticket.resumen?.tienda || `Ticket ${i + 1}`;
-  if (!confirm(`¿Eliminar el registro de "${tienda}"?\nEsta acción borrará el ticket de Sheets y no se puede deshacer.`)) return;
+  const confirmed = await showConfirm({
+    icon:    "🗑",
+    title:   `¿Eliminar "${tienda}"?`,
+    msg:     "Esta acción borrará el ticket de Sheets (Transcripción, Resumen y Cruce bancario). No se puede deshacer.",
+    okLabel: "Sí, eliminar",
+  });
+  if (!confirmed) return;
   try {
     showLoading("Eliminando ticket…", "Borrando registros de Sheets…");
     const res  = await fetch(`${BACKEND}/delete-ticket`, {
@@ -2588,6 +2640,7 @@ function toggleDbClassify(i) {
 /** Rellena el panel de clasificar del dashboard con los datos guardados */
 function autoPopulateDbClassify(ci, ticket) {
   if (!ticket) return;
+  classifyAutoPopulating = true;
   const r  = ticket.resumen || {};
   const s  = k => String(r[k] || "");
 
@@ -2693,6 +2746,7 @@ function autoPopulateDbClassify(ci, ticket) {
   if (comEl) comEl.value = s("comentarios");
 
   updateClasiPath(ci);
+  classifyAutoPopulating = false;
 }
 
 function limpiarDbClassificacion(i) {
@@ -2731,6 +2785,7 @@ function limpiarDbClassificacion(i) {
   // Restaurar fecha detectada
   const fechaEl = document.getElementById(`fecha-clasif-${ci}`);
   if (fechaEl) fechaEl.value = dashboardFiltered[i]?.resumen?.fecha || "";
+  hideClassifyActions(ci);
 }
 
 async function saveDbClassification(i) {
@@ -2797,6 +2852,7 @@ async function saveDbClassification(i) {
     const orig = dashboardTickets.find(t => t.ticket_id === ticket.ticket_id);
     if (orig) Object.assign(orig.resumen, clasificacion);
 
+    hideClassifyActions(DB_IDX + i);
     // Re-renderizar para reflejar nuevo estado (sort + chips + pestaña)
     renderDashboardCards();
   } catch (err) {
