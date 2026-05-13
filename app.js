@@ -294,6 +294,13 @@ window.addEventListener("DOMContentLoaded", () => {
 
   ensureTicketsIndex();
 
+  // ── Cerrar lightbox con Escape ─────────────────────────────────────────
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !document.getElementById("imageLightbox").classList.contains("hidden")) {
+      closeLightbox();
+    }
+  });
+
   // ── Drag/pan en el lightbox ────────────────────────────────────────────
   const lbImg = document.getElementById("lightboxImg");
 
