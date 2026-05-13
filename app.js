@@ -2383,21 +2383,18 @@ function getDashboardFilters() {
   };
 }
 
-/** Activa/desactiva el switch "Todos los tickets" y aplica filtros */
+/** Activa/desactiva el switch "Todos los tickets" */
 function syncTodasSwitch(checked) {
-  const el = document.getElementById("db-f-todas");
-  if (el) el.checked = checked;
   if (checked) {
-    ["db-f-text","db-f-desde","db-f-hasta"].forEach(id => {
-      const e = document.getElementById(id); if (e) e.value = "";
-    });
-    ["db-f-cuenta","db-f-metodo","db-f-propiedad","db-f-departamento","db-f-comprador",
-     "db-f-deducible","db-f-reembolso","db-f-tienda","db-f-clasificado-por","db-f-descripcion"].forEach(id => {
-      const e = document.getElementById(id); if (e) e.value = "";
-    });
-    resetRangeSliders();
+    // Activar = limpiar todos los filtros y mostrar todos
+    clearDashboardFiltersInternal();
+    const el = document.getElementById("db-f-todas");
+    if (el) el.checked = true;
+    applyDashboardFilters();
+  } else {
+    // Desactivar = abrir panel de filtros como pista al usuario (nada más)
+    if (!dbFiltersOpen) toggleDbFilters();
   }
-  applyDashboardFilters();
 }
 
 /** Devuelve true si hay algún filtro activo */
@@ -2412,16 +2409,10 @@ function applyDashboardFilters() {
   const todasEl = document.getElementById("db-f-todas");
   const active  = hasActiveFilters();
 
-  // Si hay filtros activos, desactivar el switch automáticamente
-  if (active && todasEl?.checked) {
-    todasEl.checked = false;
-  }
-  // Si no hay filtros activos, activar el switch automáticamente
-  if (!active && todasEl && !todasEl.checked) {
-    todasEl.checked = true;
-  }
+  // Solo auto-desactivar el switch cuando hay filtros activos; nunca forzarlo a ON aquí
+  if (active && todasEl?.checked) todasEl.checked = false;
 
-  // Switch activo — mostrar todos
+  // Sin filtros activos — mostrar todos
   if (!active) {
     dashboardFiltered = [...dashboardTickets];
     const n = dashboardFiltered.length;
@@ -2477,12 +2468,13 @@ function applyDashboardFilters() {
 function resetRangeSliders() {
   const loEl = document.getElementById("db-f-total-min");
   const hiEl = document.getElementById("db-f-total-max");
-  if (loEl) loEl.value = loEl.min || 0;
-  if (hiEl) hiEl.value = hiEl.max || 50000;
+  if (loEl) { loEl.value = loEl.min || 0; loEl.style.zIndex = 4; }
+  if (hiEl) { hiEl.value = hiEl.max || 50000; hiEl.style.zIndex = 5; }
   updateTotalRangeFill();
 }
 
-function clearDashboardFilters() {
+/** Limpia solo los inputs (sin tocar el switch ni re-renderizar) */
+function clearDashboardFiltersInternal() {
   ["db-f-text","db-f-desde","db-f-hasta"].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = "";
   });
@@ -2491,6 +2483,13 @@ function clearDashboardFilters() {
     const el = document.getElementById(id); if (el) el.value = "";
   });
   resetRangeSliders();
+}
+
+/** Botón "✕ Limpiar": limpia filtros, activa switch y muestra todos */
+function clearDashboardFilters() {
+  clearDashboardFiltersInternal();
+  const el = document.getElementById("db-f-todas");
+  if (el) el.checked = true;
   applyDashboardFilters();
 }
 
@@ -2526,14 +2525,21 @@ function updateTotalRangeFill() {
   if (maxLbl) maxLbl.textContent = hi >= max ? "Máx." : fmt(hi);
 }
 
-function onTotalRangeInput() {
+function onTotalRangeInput(which) {
   const loEl = document.getElementById("db-f-total-min");
   const hiEl = document.getElementById("db-f-total-max");
   if (!loEl || !hiEl) return;
-  let lo = Number(loEl.value);
-  let hi = Number(hiEl.value);
-  // Prevent thumbs from crossing
-  if (lo > hi) { lo = hi; loEl.value = lo; }
+
+  // Evitar cruce
+  if (which === 'lo' && Number(loEl.value) > Number(hiEl.value)) loEl.value = hiEl.value;
+  if (which === 'hi' && Number(hiEl.value) < Number(loEl.value)) hiEl.value = loEl.value;
+
+  // Z-index dinámico: cuando el thumb lo está muy a la derecha, ponerlo encima
+  const range = (Number(loEl.max) || 50000) - (Number(loEl.min) || 0);
+  const loFrac = range > 0 ? (Number(loEl.value) - (Number(loEl.min) || 0)) / range : 0;
+  loEl.style.zIndex = loFrac >= 0.9 ? 5 : 4;
+  hiEl.style.zIndex = loFrac >= 0.9 ? 4 : 5;
+
   updateTotalRangeFill();
   applyDashboardFilters();
 }

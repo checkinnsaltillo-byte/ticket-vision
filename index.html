@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=46">
+  <link rel="stylesheet" href="styles.css?v=47">
 </head>
 <body>
 
@@ -49,7 +49,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <span class="user-badge" id="current-user-badge"></span>
-        <div class="header-badge">v13.2</div>
+        <div class="header-badge">v13.3</div>
       </div>
     </header>
 
@@ -247,13 +247,14 @@
                 <span id="range-total-max-lbl">Máx.</span>
               </div>
               <div class="dual-range-track">
+                <div class="dual-range-base"></div>
                 <div class="dual-range-fill" id="dual-range-fill"></div>
                 <input type="range" class="dual-range dual-range-lo" id="db-f-total-min"
-                       min="0" max="50000" step="100" value="0"
-                       oninput="onTotalRangeInput()">
+                       min="0" max="50000" step="100" value="0" style="z-index:4"
+                       oninput="onTotalRangeInput('lo')">
                 <input type="range" class="dual-range dual-range-hi" id="db-f-total-max"
-                       min="0" max="50000" step="100" value="50000"
-                       oninput="onTotalRangeInput()">
+                       min="0" max="50000" step="100" value="50000" style="z-index:5"
+                       oninput="onTotalRangeInput('hi')">
               </div>
             </div>
           </div>
@@ -314,6 +315,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=51"></script>
+  <script src="app.js?v=52"></script>
 </body>
 </html>
