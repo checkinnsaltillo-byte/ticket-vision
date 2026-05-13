@@ -789,6 +789,7 @@ function createTicketCard(ticket, i) {
             <span class="info-chip hidden" id="encargado-chip-${i}"></span>
             <span class="info-chip hidden" id="propiedad-chip-${i}"></span>
             <span class="info-chip hidden" id="dept-chip-${i}"></span>
+            <span class="info-chip chip-reembolso hidden" id="reembolso-chip-${i}"></span>
           </div>
           <div class="ticket-store">${esc(r.tienda || "Ticket " + (i + 1))}</div>
           <div class="ticket-meta">
@@ -1453,6 +1454,17 @@ function markAsClassified(i) {
     deptEl.classList.remove("hidden");
   } else {
     deptEl.classList.add("hidden");
+  }
+
+  // 6. Reembolso chip
+  const reembolsoChipEl = document.getElementById(`reembolso-chip-${i}`);
+  if (reembolsoChipEl) {
+    if (c.reembolso && c.reembolso_a) {
+      reembolsoChipEl.textContent = "↩ Reembolso a " + c.reembolso_a;
+      reembolsoChipEl.classList.remove("hidden");
+    } else {
+      reembolsoChipEl.classList.add("hidden");
+    }
   }
 
   // Path in tab label
