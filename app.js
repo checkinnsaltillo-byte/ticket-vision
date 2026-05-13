@@ -2141,18 +2141,45 @@ function getDashboardFilters() {
   };
 }
 
-/** Sincroniza ambos switches "Todos los tickets" (filtro + barra) */
+/** Activa/desactiva el switch "Todos los tickets" y aplica filtros */
 function syncTodasSwitch(checked) {
-  ["db-f-todas", "db-f-todas-bar"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.checked = checked;
-  });
+  const el = document.getElementById("db-f-todas");
+  if (el) el.checked = checked;
+  // Si se activa el switch, limpiar todos los filtros
+  if (checked) {
+    ["db-f-text","db-f-desde","db-f-hasta"].forEach(id => {
+      const e = document.getElementById(id); if (e) e.value = "";
+    });
+    ["db-f-cuenta","db-f-metodo","db-f-propiedad",
+     "db-f-departamento","db-f-comprador","db-f-deducible","db-f-reembolso"].forEach(id => {
+      const e = document.getElementById(id); if (e) e.value = "";
+    });
+  }
   applyDashboardFilters();
 }
 
+/** Devuelve true si hay algún filtro activo */
+function hasActiveFilters() {
+  const f = getDashboardFilters();
+  return !!(f.text || f.fechaDesde || f.fechaHasta || f.cuenta || f.metodoPago ||
+            f.propiedad || f.departamento || f.comprador || f.deducible || f.reembolso);
+}
+
 function applyDashboardFilters() {
-  // Switch "Todas las facturas" — ignora todos los filtros
-  if (document.getElementById("db-f-todas")?.checked) {
+  const todasEl = document.getElementById("db-f-todas");
+  const active  = hasActiveFilters();
+
+  // Si hay filtros activos, desactivar el switch automáticamente
+  if (active && todasEl?.checked) {
+    todasEl.checked = false;
+  }
+  // Si no hay filtros activos, activar el switch automáticamente
+  if (!active && todasEl && !todasEl.checked) {
+    todasEl.checked = true;
+  }
+
+  // Switch activo — mostrar todos
+  if (!active) {
     dashboardFiltered = [...dashboardTickets];
     const n = dashboardFiltered.length;
     const sub = document.getElementById("db-filter-subtitle");
