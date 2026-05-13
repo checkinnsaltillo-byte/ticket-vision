@@ -2272,7 +2272,7 @@ function switchSection(name) {
   document.getElementById("section-dashboard").classList.toggle("hidden", name !== "dashboard");
   document.getElementById("tab-analisis").classList.toggle("active", name === "analisis");
   document.getElementById("tab-dashboard").classList.toggle("active", name === "dashboard");
-  if (name === "dashboard" && !dashboardTickets.length) loadDashboard();
+  if (name === "dashboard") loadDashboard();
 }
 
 // ─── Dashboard: carga desde Sheets ────────────────────────────────────────
