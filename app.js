@@ -797,7 +797,7 @@ function createTicketCard(ticket, i) {
           ${productSummary ? `<div class="product-summary">${esc(productSummary)}</div>` : ""}
         </div>
         <div class="ticket-header-right">
-          ${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}
+          <span id="payment-chip-${i}">${paymentChip(r.metodo_pago, r.tarjeta_ultimos4)}</span>
           <div class="ticket-total-badge" id="total-badge-${i}">
             <span class="total-main">${money(r.total)}</span>
             ${r.iva ? `<span class="total-iva">IVA ${money(r.iva)}</span>` : ""}
@@ -1461,6 +1461,40 @@ function markAsClassified(i) {
   const labelEl  = tab.querySelector(".classify-tab-label");
   labelEl.textContent = pathText;
   labelEl.style.cssText = "font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px;";
+
+  // ── Sincronizar ticketResults en memoria ──────────────────────────────────
+  const ticket = ticketResults[i];
+  if (ticket) {
+    // Resumen
+    const r = ticket.resumen || {};
+    if (c.metodo_pago_clasif) r.metodo_pago = c.metodo_pago_clasif;
+    r.cuenta          = c.cuenta;
+    r.subcuenta       = c.subcuenta;
+    r.categoria_gasto = c.categoria;
+    r.concepto        = c.concepto;
+    r.propiedad       = c.propiedad;
+    r.departamento    = c.departamento;
+
+    // Cruce bancario
+    const cr = ticket.cruce || {};
+    if (c.metodo_pago_clasif) cr.metodo_pago = c.metodo_pago_clasif;
+    cr.cuenta       = c.cuenta;
+    cr.subcuenta    = c.subcuenta;
+    cr.propiedad    = c.propiedad;
+    cr.departamento = c.departamento;
+
+    // Rebuild tablas
+    const resumenTab = document.getElementById(`tab-resumen-${i}`);
+    if (resumenTab) resumenTab.innerHTML = buildResumenTable(r);
+    const cruceTab = document.getElementById(`tab-cruce-${i}`);
+    if (cruceTab) cruceTab.innerHTML = buildCruceTable(cr);
+
+    // Actualizar chip de método de pago en encabezado
+    const chipWrap = document.getElementById(`payment-chip-${i}`);
+    if (chipWrap) {
+      chipWrap.innerHTML = paymentChip(r.metodo_pago, r.tarjeta_ultimos4);
+    }
+  }
 }
 
 // ─── Emojis por categoría ──────────────────────────────────────────────────
