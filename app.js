@@ -835,7 +835,10 @@ function createTicketCard(ticket, i) {
           <button class="ticket-tab" onclick="showTicketTab(${i},'resumen',this)">Resumen</button>
           <button class="ticket-tab" onclick="showTicketTab(${i},'cruce',this)">Cruce bancario</button>
         </div>
-        <div id="tab-transcripcion-${i}" class="ticket-tab-content">${buildProductTable(ticket.productos)}</div>
+        <div id="tab-transcripcion-${i}" class="ticket-tab-content">
+          ${buildProductTable(ticket.productos)}
+          <button class="btn-add-row" onclick="addAnalysisProductRow(${i})">＋ Agregar producto</button>
+        </div>
         <div id="tab-resumen-${i}" class="ticket-tab-content hidden">${buildResumenTable(ticket.resumen)}</div>
         <div id="tab-cruce-${i}" class="ticket-tab-content hidden">${buildCruceTable(ticket.cruce)}</div>
       </div>
@@ -1040,13 +1043,13 @@ function buildProductTable(productos) {
     { key: "confianza_clasificacion", label: "Confianza" },
   ];
   return `<table>
-    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
+    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}<th></th></tr></thead>
     <tbody>${productos.map((r, rowIdx) =>
       `<tr data-row="${rowIdx}">${cols.map(c =>
         c.ro
           ? `<td>${esc(String(r[c.key] ?? ""))}</td>`
           : `<td contenteditable="true" spellcheck="false" data-field="${c.key}">${esc(String(r[c.key] ?? ""))}</td>`
-      ).join("")}</tr>`
+      ).join("")}<td class="btn-del-cell"><button class="btn-del-row" onclick="deleteProductRow(this)" title="Eliminar fila">✕</button></td></tr>`
     ).join("")}</tbody>
   </table>`;
 }
@@ -1061,7 +1064,7 @@ function buildResumenTable(r) {
     ["Tienda",            "tienda",            r.tienda],
     ["RFC",               "rfc",               r.rfc],
     ["Fecha",             "fecha",             r.fecha],
-    ["Hora",              "hora",              r.hora],
+    ["Hora",              "hora",              formatHora(r.hora)],
     ["Folio",             "folio",             r.folio],
     ["Método de pago",    "metodo_pago",       r.metodo_pago],
     ["Últimos 4 dígitos", "tarjeta_ultimos4",  r.tarjeta_ultimos4],
@@ -1096,7 +1099,7 @@ function buildCruceTable(c) {
   const CRUCE_RO = new Set(["fecha","metodo_pago","cuenta","subcuenta","propiedad","departamento"]);
   const rows = [
     ["Fecha",             "fecha",            c.fecha],
-    ["Hora",              "hora",             c.hora],
+    ["Hora",              "hora",             formatHora(c.hora)],
     ["Comercio",          "comercio",         c.comercio],
     ["RFC",               "rfc",              c.rfc],
     ["Folio",             "folio",            c.folio],
@@ -1127,7 +1130,7 @@ function buildDashboardCruceTable(ticket) {
   const CRUCE_RO = new Set(["fecha","metodo_pago","cuenta","subcuenta","propiedad","departamento"]);
   const rows = [
     ["Fecha",             "fecha",            s("fecha")],
-    ["Hora",              "hora",             s("hora")],
+    ["Hora",              "hora",             formatHora(s("hora"))],
     ["Comercio",          "comercio",         s("tienda")],
     ["RFC",               "rfc",              s("rfc")],
     ["Folio",             "folio",            s("folio")],
@@ -1229,24 +1232,23 @@ async function guardarResultados() {
       const fechaFinal = c.fecha || t.resumen.fecha || "";
       metadata.push({ ticket_id: t.resumen.ticket_id, fecha: fechaFinal, tienda: t.resumen.tienda });
 
-      // Leer ediciones del usuario en las tablas
-      const prodEdits = readProductEditsFromDOM(`#tab-transcripcion-${i}`);
-      const resEdits  = readResumenEditsFromDOM(`#tab-resumen-${i}`);
+      // Leer estado actual de las tablas (ediciones, nuevos y eliminados)
+      const resEdits   = readResumenEditsFromDOM(`#tab-resumen-${i}`);
+      const prodsFinal = readAllProductsFromDOM(`#tab-transcripcion-${i}`, t.productos, t.resumen.ticket_id);
 
-      (t.productos || []).forEach((p, rowIdx) => {
-        const e = prodEdits[rowIdx] || {};
+      prodsFinal.forEach(p => {
         productos.push({
           ticket_id:               p.ticket_id,
-          tienda:                  resEdits.tienda           ?? p.tienda,
+          tienda:                  resEdits.tienda ?? t.resumen.tienda,
           fecha:                   fechaFinal,
           linea_numero:            p.linea_numero,
-          descripcion:             e.descripcion             ?? p.descripcion,
-          cantidad:                numEdit(e.cantidad,        p.cantidad),
-          precio_unitario:         numEdit(e.precio_unitario, p.precio_unitario),
-          monto:                   numEdit(e.monto,           p.monto),
-          categoria_operativa:     e.categoria_operativa     ?? p.categoria_operativa,
-          deducible_sugerido:      e.deducible_sugerido      ?? p.deducible_sugerido,
-          confianza_clasificacion: e.confianza_clasificacion ?? p.confianza_clasificacion,
+          descripcion:             p.descripcion,
+          cantidad:                p.cantidad,
+          precio_unitario:         p.precio_unitario,
+          monto:                   p.monto,
+          categoria_operativa:     p.categoria_operativa,
+          deducible_sugerido:      p.deducible_sugerido,
+          confianza_clasificacion: p.confianza_clasificacion,
           ...clasif,
         });
       });
@@ -1927,19 +1929,54 @@ async function saveToSheetsForTicket(i) {
   }
 }
 
+// ─── Formato de hora ───────────────────────────────────────────────────────
+
+/** Convierte valores de Sheets (1899-12-30...) a HH:mm legible */
+function formatHora(val) {
+  if (!val) return "";
+  const s = String(val).trim();
+  // Fecha-tiempo 1899-12-30T16:30... → extraer sólo la hora
+  const dtMatch = s.match(/^1899-12-30[T ](\d{2}:\d{2})/);
+  if (dtMatch) return dtMatch[1];
+  // Fecha sin tiempo 1899-12-30 → dato perdido, mostrar vacío
+  if (/^1899-12-30/.test(s)) return "";
+  // Cualquier ISO con T → extraer hora
+  const isoMatch = s.match(/T(\d{2}:\d{2})/);
+  if (isoMatch) return isoMatch[1];
+  return s; // ya es HH:mm u otro formato legible
+}
+
 // ─── Leer ediciones de tablas desde el DOM ─────────────────────────────────
 
-/** Devuelve array de objetos {field: value} por fila de la tabla de productos */
-function readProductEditsFromDOM(selector) {
+/**
+ * Lee el estado actual de la tabla de productos desde el DOM.
+ * Maneja filas editadas, eliminadas y nuevas.
+ * Devuelve array de objetos producto listos para guardar.
+ */
+function readAllProductsFromDOM(selector, originalProds, ticketId) {
   const tbody = document.querySelector(`${selector} tbody`);
-  if (!tbody) return [];
-  return [...tbody.querySelectorAll("tr")].map(tr => {
-    const obj = {};
+  if (!tbody) return (originalProds || []);
+  return [...tbody.querySelectorAll("tr")].map((tr, domIdx) => {
+    const origIdx = parseInt(tr.dataset.row ?? "", 10);
+    const orig    = isNaN(origIdx) ? {} : ((originalProds || [])[origIdx] || {});
+    const fields  = {};
     tr.querySelectorAll("td[data-field]").forEach(td => {
-      obj[td.dataset.field] = td.innerText.trim();
+      fields[td.dataset.field] = td.innerText.trim();
     });
-    return obj;
-  });
+    // Ignorar filas completamente vacías (nuevas sin datos)
+    if (!orig.descripcion && !fields.descripcion && !fields.monto) return null;
+    return {
+      ticket_id:               orig.ticket_id    || ticketId || "",
+      linea_numero:            domIdx + 1,
+      descripcion:             fields.descripcion             ?? orig.descripcion             ?? "",
+      cantidad:                numEdit(fields.cantidad,        orig.cantidad),
+      precio_unitario:         numEdit(fields.precio_unitario, orig.precio_unitario),
+      monto:                   numEdit(fields.monto,           orig.monto),
+      categoria_operativa:     fields.categoria_operativa     ?? orig.categoria_operativa     ?? "",
+      deducible_sugerido:      fields.deducible_sugerido      ?? orig.deducible_sugerido      ?? "",
+      confianza_clasificacion: fields.confianza_clasificacion ?? orig.confianza_clasificacion ?? "",
+    };
+  }).filter(Boolean);
 }
 
 /** Devuelve {field: value} de las filas editables de la tabla de resumen/cruce */
@@ -1952,6 +1989,38 @@ function readResumenEditsFromDOM(selector) {
     if (td) obj[tr.dataset.field] = td.innerText.trim();
   });
   return obj;
+}
+
+// ─── Agregar / eliminar renglones en tabla Transcripción ──────────────────
+
+function addAnalysisProductRow(i) {
+  addProductRowToTable(`#tab-transcripcion-${i}`, true);
+}
+function addDashboardProductRow(i) {
+  addProductRowToTable(`#db-tab-transcripcion-${i}`, false);
+}
+
+function addProductRowToTable(selector, isAnalysis) {
+  const tbody = document.querySelector(`${selector} tbody`);
+  if (!tbody) return;
+  const rowIdx = tbody.querySelectorAll("tr").length;
+  const editCols = isAnalysis
+    ? ["descripcion","cantidad","precio_unitario","monto","categoria_operativa","deducible_sugerido","confianza_clasificacion"]
+    : ["descripcion","cantidad","precio_unitario","monto"];
+  const tr = document.createElement("tr");
+  tr.dataset.row = "new";
+  let html = isAnalysis ? `<td style="background:#f1f5f9;color:#94a3b8">${rowIdx + 1}</td>` : "";
+  html += editCols.map(k =>
+    `<td contenteditable="true" spellcheck="false" data-field="${k}"></td>`
+  ).join("");
+  html += `<td class="btn-del-cell"><button class="btn-del-row" onclick="deleteProductRow(this)" title="Eliminar fila">✕</button></td>`;
+  tr.innerHTML = html;
+  tbody.appendChild(tr);
+  tr.querySelector("[contenteditable]")?.focus();
+}
+
+function deleteProductRow(btn) {
+  btn.closest("tr")?.remove();
 }
 
 /** Convierte un valor editado a número; si falla devuelve el fallback */
@@ -2180,7 +2249,7 @@ function createDashboardCard(ticket, i) {
   const clsCls   = isClasif ? `classified ${colorCls}` : "";
   const ci       = DB_IDX + i; // índice para el panel de clasificar
 
-  const metaParts   = [str("fecha"), str("hora")].filter(Boolean);
+  const metaParts   = [str("fecha"), formatHora(str("hora"))].filter(Boolean);
   const numProd     = Number(r.num_productos) || (ticket.productos || []).length || 0;
   const rawSummary  = (ticket.productos || []).map(p => p.descripcion || "").filter(Boolean).join(", ");
   const prodSummary = rawSummary.length > 95 ? rawSummary.slice(0, 92) + "…" : rawSummary;
@@ -2245,7 +2314,10 @@ function createDashboardCard(ticket, i) {
           <button class="ticket-tab" onclick="showDbTab(${i},'resumen',this)">Resumen</button>
           <button class="ticket-tab" onclick="showDbTab(${i},'cruce',this)">Cruce bancario</button>
         </div>
-        <div id="db-tab-transcripcion-${i}" class="ticket-tab-content">${buildDashboardProductTable(ticket.productos || [])}</div>
+        <div id="db-tab-transcripcion-${i}" class="ticket-tab-content">
+          ${buildDashboardProductTable(ticket.productos || [])}
+          <button class="btn-add-row" onclick="addDashboardProductRow(${i})">＋ Agregar producto</button>
+        </div>
         <div id="db-tab-resumen-${i}" class="ticket-tab-content hidden">${buildResumenTable(r)}</div>
         <div id="db-tab-cruce-${i}" class="ticket-tab-content hidden">${buildDashboardCruceTable(ticket)}</div>
       </div>
@@ -2268,11 +2340,11 @@ function buildDashboardProductTable(productos) {
     { key: "monto",           label: "Monto" },
   ];
   return `<table>
-    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
+    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}<th></th></tr></thead>
     <tbody>${productos.map((p, rowIdx) =>
       `<tr data-row="${rowIdx}">${cols.map(c =>
         `<td contenteditable="true" spellcheck="false" data-field="${c.key}">${esc(String(p[c.key] ?? ""))}</td>`
-      ).join("")}</tr>`
+      ).join("")}<td class="btn-del-cell"><button class="btn-del-row" onclick="deleteProductRow(this)" title="Eliminar fila">✕</button></td></tr>`
     ).join("")}</tbody>
   </table>`;
 }
@@ -2450,8 +2522,7 @@ async function saveDbClassification(i) {
   const c = getClassify(ci);
 
   // Leer ediciones del usuario en tablas del dashboard
-  const resEdits  = readResumenEditsFromDOM(`#db-tab-resumen-${i}`);
-  const prodEdits = readProductEditsFromDOM(`#db-tab-transcripcion-${i}`);
+  const resEdits = readResumenEditsFromDOM(`#db-tab-resumen-${i}`);
 
   const clasificacion = {
     fecha:              c.fecha,
@@ -2482,17 +2553,16 @@ async function saveDbClassification(i) {
     total:     numEdit(resEdits.total,     ticket.resumen.total     ?? 0),
   };
 
-  // Productos editados
-  const productosEditados = (ticket.productos || []).map((p, rowIdx) => {
-    const e = prodEdits[rowIdx] || {};
-    return {
-      linea_numero:    p.linea_numero,
-      descripcion:     e.descripcion     ?? p.descripcion,
-      cantidad:        numEdit(e.cantidad,        p.cantidad),
-      precio_unitario: numEdit(e.precio_unitario, p.precio_unitario),
-      monto:           numEdit(e.monto,           p.monto),
-    };
-  });
+  // Productos: estado final desde DOM (incluye nuevos y elimina borrados)
+  const productosEditados = readAllProductsFromDOM(
+    `#db-tab-transcripcion-${i}`, ticket.productos, ticket.ticket_id
+  ).map(p => ({
+    linea_numero:    p.linea_numero,
+    descripcion:     p.descripcion,
+    cantidad:        p.cantidad,
+    precio_unitario: p.precio_unitario,
+    monto:           p.monto,
+  }));
 
   try {
     showLoading("Guardando clasificación…", "Actualizando registro en Sheets…");

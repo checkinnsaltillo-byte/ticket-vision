@@ -889,6 +889,36 @@ td[contenteditable]:focus {
   background: #fffdf8;
 }
 
+/* Celdas de solo lectura (sombreado tenue) */
+tbody td:not([contenteditable]):not(.resumen-key):not(.btn-del-cell) {
+  background: #f1f5f9;
+  color: var(--text-soft);
+}
+
+/* Botón eliminar fila */
+.btn-del-row {
+  background: none; border: none; cursor: pointer;
+  color: #dc2626; font-size: 13px; padding: 1px 5px;
+  border-radius: 6px; opacity: .55;
+  transition: opacity .14s, background .14s;
+}
+.btn-del-row:hover { opacity: 1; background: #fee2e2; }
+td.btn-del-cell { padding: 2px 4px; width: 28px; text-align: center; }
+
+/* Botón agregar fila */
+.btn-add-row {
+  display: block; width: 100%; margin-top: 8px;
+  padding: 7px 12px;
+  background: none; border: 1.5px dashed var(--border-strong);
+  border-radius: 10px; cursor: pointer;
+  font-size: 12px; font-weight: 700; color: var(--text-soft);
+  transition: background .14s, color .14s, border-color .14s;
+}
+.btn-add-row:hover {
+  background: var(--primary-soft); color: var(--primary-dark);
+  border-color: var(--primary);
+}
+
 /* ─── Dashboard "Todos los tickets" quick-bar ────────────────── */
 
 .db-todas-bar {
