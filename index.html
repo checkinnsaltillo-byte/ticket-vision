@@ -4,9 +4,26 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=44">
+  <link rel="stylesheet" href="styles.css?v=45">
 </head>
 <body>
+
+  <!-- Login Overlay -->
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="logo-icon" style="width:52px;height:52px;font-size:20px">TV</div>
+      </div>
+      <h2 class="login-title">Ticket Vision</h2>
+      <p class="login-subtitle">Check Inn Saltillo</p>
+      <div class="login-field">
+        <input type="password" id="loginPassword" class="login-input"
+               placeholder="Contraseña" onkeydown="handleLoginKey(event)" autocomplete="current-password">
+      </div>
+      <p class="login-error hidden" id="loginError"></p>
+      <button class="btn-login" onclick="tryLogin()">Entrar</button>
+    </div>
+  </div>
 
   <!-- Loading Overlay -->
   <div id="loadingOverlay" class="loading-overlay hidden">
@@ -19,7 +36,7 @@
     </div>
   </div>
 
-  <div class="page-shell">
+  <div id="app-root" class="page-shell hidden">
 
     <!-- Header -->
     <header class="app-header">
@@ -30,7 +47,10 @@
           <span>Check Inn Saltillo</span>
         </div>
       </div>
-      <div class="header-badge">v12.9</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="user-badge" id="current-user-badge"></span>
+        <div class="header-badge">v13.0</div>
+      </div>
     </header>
 
     <!-- ── Tabs de sección principal ──────────────────────────── -->
@@ -196,6 +216,32 @@
                 <option value="no">No</option>
               </select>
             </div>
+            <div class="db-filter-half">
+              <label>Tienda</label>
+              <select id="db-f-tienda" class="field-select" onchange="applyDashboardFilters()">
+                <option value="">Todas</option>
+              </select>
+            </div>
+            <div class="db-filter-half">
+              <label>Clasificado por</label>
+              <select id="db-f-clasificado-por" class="field-select" onchange="applyDashboardFilters()">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="db-filter-full">
+              <label>Descripción de producto</label>
+              <select id="db-f-descripcion" class="field-select" onchange="applyDashboardFilters()">
+                <option value="">Todas</option>
+              </select>
+            </div>
+            <div class="db-filter-half">
+              <label>Total mínimo ($)</label>
+              <input type="number" id="db-f-total-min" class="field-select" placeholder="0" min="0" step="1" oninput="applyDashboardFilters()">
+            </div>
+            <div class="db-filter-half">
+              <label>Total máximo ($)</label>
+              <input type="number" id="db-f-total-max" class="field-select" placeholder="Sin límite" min="0" step="1" oninput="applyDashboardFilters()">
+            </div>
           </div>
         </div>
       </div>
@@ -206,7 +252,7 @@
 
     </div><!-- /section-dashboard -->
 
-  </div><!-- /page-shell -->
+  </div><!-- /app-root -->
 
   <!-- Image lightbox -->
   <div id="imageLightbox" class="lightbox hidden" onclick="closeLightbox()">
@@ -254,6 +300,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=48"></script>
+  <script src="app.js?v=49"></script>
 </body>
 </html>

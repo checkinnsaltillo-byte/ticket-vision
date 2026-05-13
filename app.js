@@ -160,6 +160,10 @@ let dashboardFiltered = [];   // subset filtrado
 let dbFiltersOpen     = true;
 const DB_IDX          = 20000; // offset de índice para paneles de clasificar del dashboard
 let classifyAutoPopulating = false; // suprime markClassifyDirty durante auto-relleno
+let currentUser       = "";   // usuario activo (acl | ccl | admin)
+
+// ─── Contraseñas válidas ────────────────────────────────────────────────────
+const VALID_PASSWORDS = { acl: "acl", ccl: "ccl", admin: "admin" };
 let lightboxBlobUrl  = null;
 let lightboxZoomed   = false;
 const LB_ZOOM        = 2.4;
@@ -290,7 +294,32 @@ async function computeHashes(startIdx) {
 
 // ─── Init ──────────────────────────────────────────────────────────────────
 
+// ─── Login ─────────────────────────────────────────────────────────────────
+
+function tryLogin() {
+  const pw  = (document.getElementById("loginPassword")?.value || "").trim();
+  const err = document.getElementById("loginError");
+  const user = VALID_PASSWORDS[pw];
+  if (!user) {
+    if (err) { err.textContent = "Contraseña incorrecta."; err.classList.remove("hidden"); }
+    return;
+  }
+  currentUser = user;
+  document.getElementById("loginOverlay")?.classList.add("hidden");
+  document.getElementById("app-root")?.classList.remove("hidden");
+  document.getElementById("current-user-badge").textContent = currentUser.toUpperCase();
+}
+
+function handleLoginKey(e) {
+  if (e.key === "Enter") tryLogin();
+}
+
 window.addEventListener("DOMContentLoaded", () => {
+  // Mostrar login al inicio
+  document.getElementById("loginOverlay")?.classList.remove("hidden");
+  document.getElementById("app-root")?.classList.add("hidden");
+  document.getElementById("loginPassword")?.focus();
+
   // Configurar PDF.js worker
   if (typeof pdfjsLib !== "undefined") {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -1061,7 +1090,7 @@ function buildProductTable(productos) {
 
 // Campos manejados por el panel Clasificar — NO editables en tabla
 const CLASIF_FIELDS = new Set(["fecha","metodo_pago","cuenta","subcuenta",
-  "categoria_gasto","concepto","propiedad","departamento","fecha_captura"]);
+  "categoria_gasto","concepto","propiedad","departamento","fecha_captura","clasificado_por"]);
 
 function buildResumenTable(r) {
   if (!r) return `<div class="empty-state"><p>Sin datos de resumen</p></div>`;
@@ -1085,6 +1114,7 @@ function buildResumenTable(r) {
     ["Concepto",          "concepto",          r.concepto],
     ["Propiedad",         "propiedad",         r.propiedad],
     ["Departamento",      "departamento",      r.departamento],
+    ["Clasificado por",   "clasificado_por",   r.clasificado_por],
     ["Fecha captura",     "fecha_captura",     r.fecha_captura],
   ].filter(([,, v]) => v !== "" && v != null);
   return `<table>
@@ -1275,6 +1305,7 @@ async function guardarResultados() {
         descuentos:       numEdit(resEdits.descuentos, t.resumen.descuentos),
         total:            numEdit(resEdits.total,      t.resumen.total),
         ...clasif,
+        clasificado_por:  currentUser,
         fecha_captura:    t.resumen.fecha_captura || new Date().toISOString(),
         imagen_nombre:    "",
         imagen_url:       "",
@@ -2152,6 +2183,7 @@ async function saveDbTableChanges(i) {
     metodo_pago:        r.metodo_pago        || "",
     detalles_operacion: r.detalles_operacion || "",
     comentarios:        r.comentarios        || "",
+    clasificado_por:    currentUser,
     tienda:           resEdits.tienda           ?? r.tienda           ?? "",
     rfc:              resEdits.rfc              ?? r.rfc              ?? "",
     hora:             resEdits.hora             ?? r.hora             ?? "",
@@ -2293,25 +2325,40 @@ function populateDashboardFilters() {
     if (values.includes(current)) sel.value = current;
   };
 
-  fillSelect("db-f-metodo",       unique("metodo_pago"));
-  fillSelect("db-f-propiedad",    unique("propiedad"));
-  fillSelect("db-f-departamento", unique("departamento"));
-  fillSelect("db-f-comprador",    unique("comprador"));
+  fillSelect("db-f-metodo",          unique("metodo_pago"));
+  fillSelect("db-f-propiedad",       unique("propiedad"));
+  fillSelect("db-f-departamento",    unique("departamento"));
+  fillSelect("db-f-comprador",       unique("comprador"));
+  fillSelect("db-f-tienda",          unique("tienda"));
+  fillSelect("db-f-clasificado-por", unique("clasificado_por"));
+
+  // Descripciones únicas de productos (todos los tickets)
+  const descs = [...new Set(
+    dashboardTickets.flatMap(t => (t.productos || []).map(p => String(p.descripcion || "").trim()))
+    .filter(Boolean)
+  )].sort();
+  fillSelect("db-f-descripcion", descs);
 }
 
 function getDashboardFilters() {
-  const v = id => document.getElementById(id)?.value || "";
+  const v  = id => document.getElementById(id)?.value || "";
+  const vn = id => { const n = parseFloat(document.getElementById(id)?.value); return isNaN(n) ? null : n; };
   return {
-    text:         v("db-f-text").trim().toLowerCase(),
-    fechaDesde:   v("db-f-desde"),
-    fechaHasta:   v("db-f-hasta"),
-    cuenta:       v("db-f-cuenta"),
-    metodoPago:   v("db-f-metodo"),
-    propiedad:    v("db-f-propiedad"),
-    departamento: v("db-f-departamento"),
-    comprador:    v("db-f-comprador"),
-    deducible:    v("db-f-deducible"),
-    reembolso:    v("db-f-reembolso"),
+    text:           v("db-f-text").trim().toLowerCase(),
+    fechaDesde:     v("db-f-desde"),
+    fechaHasta:     v("db-f-hasta"),
+    cuenta:         v("db-f-cuenta"),
+    metodoPago:     v("db-f-metodo"),
+    propiedad:      v("db-f-propiedad"),
+    departamento:   v("db-f-departamento"),
+    comprador:      v("db-f-comprador"),
+    deducible:      v("db-f-deducible"),
+    reembolso:      v("db-f-reembolso"),
+    tienda:         v("db-f-tienda"),
+    clasificadoPor: v("db-f-clasificado-por"),
+    descripcion:    v("db-f-descripcion"),
+    totalMin:       vn("db-f-total-min"),
+    totalMax:       vn("db-f-total-max"),
   };
 }
 
@@ -2321,11 +2368,11 @@ function syncTodasSwitch(checked) {
   if (el) el.checked = checked;
   // Si se activa el switch, limpiar todos los filtros
   if (checked) {
-    ["db-f-text","db-f-desde","db-f-hasta"].forEach(id => {
+    ["db-f-text","db-f-desde","db-f-hasta","db-f-total-min","db-f-total-max"].forEach(id => {
       const e = document.getElementById(id); if (e) e.value = "";
     });
-    ["db-f-cuenta","db-f-metodo","db-f-propiedad",
-     "db-f-departamento","db-f-comprador","db-f-deducible","db-f-reembolso"].forEach(id => {
+    ["db-f-cuenta","db-f-metodo","db-f-propiedad","db-f-departamento","db-f-comprador",
+     "db-f-deducible","db-f-reembolso","db-f-tienda","db-f-clasificado-por","db-f-descripcion"].forEach(id => {
       const e = document.getElementById(id); if (e) e.value = "";
     });
   }
@@ -2336,7 +2383,8 @@ function syncTodasSwitch(checked) {
 function hasActiveFilters() {
   const f = getDashboardFilters();
   return !!(f.text || f.fechaDesde || f.fechaHasta || f.cuenta || f.metodoPago ||
-            f.propiedad || f.departamento || f.comprador || f.deducible || f.reembolso);
+            f.propiedad || f.departamento || f.comprador || f.deducible || f.reembolso ||
+            f.tienda || f.clasificadoPor || f.descripcion || f.totalMin !== null || f.totalMax !== null);
 }
 
 function applyDashboardFilters() {
@@ -2382,6 +2430,17 @@ function applyDashboardFilters() {
     if (f.deducible === "no" && str("deducible") === "Sí") return false;
     if (f.reembolso === "si" && str("reembolso") !== "Sí") return false;
     if (f.reembolso === "no" && str("reembolso") === "Sí") return false;
+    if (f.tienda         && str("tienda")          !== f.tienda)         return false;
+    if (f.clasificadoPor && str("clasificado_por") !== f.clasificadoPor) return false;
+    if (f.descripcion) {
+      const hasDesc = (t.productos || []).some(p =>
+        String(p.descripcion || "").trim() === f.descripcion
+      );
+      if (!hasDesc) return false;
+    }
+    const total = Number(r.total || 0);
+    if (f.totalMin !== null && total < f.totalMin) return false;
+    if (f.totalMax !== null && total > f.totalMax) return false;
     return true;
   });
 
@@ -2395,11 +2454,11 @@ function applyDashboardFilters() {
 }
 
 function clearDashboardFilters() {
-  ["db-f-text","db-f-desde","db-f-hasta"].forEach(id => {
+  ["db-f-text","db-f-desde","db-f-hasta","db-f-total-min","db-f-total-max"].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = "";
   });
-  ["db-f-cuenta","db-f-metodo","db-f-propiedad",
-   "db-f-departamento","db-f-comprador","db-f-deducible","db-f-reembolso"].forEach(id => {
+  ["db-f-cuenta","db-f-metodo","db-f-propiedad","db-f-departamento","db-f-comprador",
+   "db-f-deducible","db-f-reembolso","db-f-tienda","db-f-clasificado-por","db-f-descripcion"].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = "";
   });
   applyDashboardFilters();
@@ -2813,6 +2872,7 @@ async function saveDbClassification(i) {
     metodo_pago:        c.metodo_pago_clasif || ticket.resumen.metodo_pago || "",
     detalles_operacion: c.detalles_operacion,
     comentarios:        c.comentarios,
+    clasificado_por:    currentUser,
     // Campos de resumen editables por el usuario
     tienda:           resEdits.tienda           ?? ticket.resumen.tienda           ?? "",
     rfc:              resEdits.rfc              ?? ticket.resumen.rfc              ?? "",
