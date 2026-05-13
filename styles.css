@@ -1017,7 +1017,58 @@ td.btn-del-cell { padding: 2px 4px; width: 28px; text-align: center; }
   border-color: var(--primary);
 }
 
-/* ─── Dashboard "Todos los tickets" quick-bar ────────────────── */
+/* ─── Dashboard top bar (hamburger + toggle + actions) ──────── */
+
+.db-top-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 8px 4px 6px; flex-wrap: wrap;
+}
+.db-top-left  { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.db-top-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Hamburger button */
+.btn-filter-toggle {
+  display: flex; flex-direction: column; justify-content: center;
+  gap: 4px; padding: 7px 9px;
+  background: #fff; border: 1.5px solid var(--border-strong);
+  border-radius: 10px; cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.btn-filter-toggle:hover {
+  background: var(--primary-soft); border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(245,158,11,.18);
+}
+.btn-filter-toggle.active {
+  background: var(--primary); border-color: var(--primary-dark);
+}
+.btn-filter-toggle.active .hb-line { background: #fff; }
+.hb-line {
+  display: block; width: 18px; height: 2px;
+  background: var(--primary-dark); border-radius: 2px;
+  transition: background .15s;
+}
+
+.db-todas-label { font-size: 13px; font-weight: 600; color: var(--text); }
+
+.db-count-inline {
+  font-size: 12px; font-weight: 600; color: var(--text-soft);
+  white-space: nowrap;
+}
+
+/* Collapsible filter panel */
+.db-filter-panel {
+  overflow: hidden;
+  max-height: 800px;
+  transition: max-height .3s ease, opacity .25s ease, padding .25s ease;
+  opacity: 1;
+}
+.db-filter-panel.hidden {
+  max-height: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ─── Dashboard "Todos los tickets" quick-bar (legacy kept) ──── */
 
 .db-todas-bar {
   display: flex; align-items: center; gap: 10px;
@@ -1081,4 +1132,56 @@ td.btn-del-cell { padding: 2px 4px; width: 28px; text-align: center; }
   font-size:     12px;
   color:         #92400e;
   line-height:   1.4;
+}
+
+/* ─── Dual-range slider (rango de total) ─────────────────────── */
+
+.dual-range-wrap { padding: 6px 0 2px; }
+.dual-range-labels {
+  display: flex; justify-content: space-between;
+  font-size: 12px; font-weight: 700; color: var(--text-soft);
+  margin-bottom: 8px;
+}
+.dual-range-track {
+  position: relative; height: 28px;
+}
+/* Shared fill bar */
+.dual-range-fill {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  height: 4px; border-radius: 4px;
+  background: var(--primary);
+  pointer-events: none; z-index: 1;
+  left: 0%; width: 100%;
+}
+/* Base track behind both thumbs */
+.dual-range-track::before {
+  content: ""; position: absolute; top: 50%; transform: translateY(-50%);
+  left: 0; right: 0; height: 4px;
+  background: var(--border); border-radius: 4px;
+}
+/* Both range inputs overlay each other */
+.dual-range {
+  position: absolute; width: 100%; height: 100%;
+  top: 0; left: 0;
+  -webkit-appearance: none; appearance: none;
+  background: transparent; pointer-events: none;
+  outline: none; margin: 0;
+}
+.dual-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--primary); border: 2.5px solid #fff;
+  box-shadow: 0 1px 6px rgba(245,158,11,.35);
+  cursor: pointer; pointer-events: all;
+  transition: box-shadow .15s;
+}
+.dual-range::-webkit-slider-thumb:hover,
+.dual-range::-webkit-slider-thumb:active {
+  box-shadow: 0 2px 12px rgba(245,158,11,.5);
+}
+.dual-range::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--primary); border: 2.5px solid #fff;
+  box-shadow: 0 1px 6px rgba(245,158,11,.35);
+  cursor: pointer; pointer-events: all;
 }

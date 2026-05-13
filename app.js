@@ -2338,11 +2338,32 @@ function populateDashboardFilters() {
     .filter(Boolean)
   )].sort();
   fillSelect("db-f-descripcion", descs);
+
+  // Ajustar el máximo del slider según el total más alto en los datos
+  const maxTotal = dashboardTickets.reduce((mx, t) => Math.max(mx, Number(t.resumen?.total || 0)), 0);
+  const sliderMax = Math.max(1000, Math.ceil(maxTotal / 500) * 500); // redondear a múltiplo de 500
+  const loEl = document.getElementById("db-f-total-min");
+  const hiEl = document.getElementById("db-f-total-max");
+  if (loEl) { loEl.max = sliderMax; loEl.step = Math.max(100, Math.round(sliderMax / 200) * 100); }
+  if (hiEl) { hiEl.max = sliderMax; hiEl.step = Math.max(100, Math.round(sliderMax / 200) * 100); hiEl.value = sliderMax; }
+  updateTotalRangeFill();
 }
 
 function getDashboardFilters() {
   const v  = id => document.getElementById(id)?.value || "";
-  const vn = id => { const n = parseFloat(document.getElementById(id)?.value); return isNaN(n) ? null : n; };
+  // Range slider: null when at boundary (no filter effect)
+  const getRangeMin = () => {
+    const el = document.getElementById("db-f-total-min");
+    if (!el) return null;
+    const val = Number(el.value), min = Number(el.min) || 0;
+    return val <= min ? null : val;
+  };
+  const getRangeMax = () => {
+    const el = document.getElementById("db-f-total-max");
+    if (!el) return null;
+    const val = Number(el.value), max = Number(el.max) || 50000;
+    return val >= max ? null : val;
+  };
   return {
     text:           v("db-f-text").trim().toLowerCase(),
     fechaDesde:     v("db-f-desde"),
@@ -2357,8 +2378,8 @@ function getDashboardFilters() {
     tienda:         v("db-f-tienda"),
     clasificadoPor: v("db-f-clasificado-por"),
     descripcion:    v("db-f-descripcion"),
-    totalMin:       vn("db-f-total-min"),
-    totalMax:       vn("db-f-total-max"),
+    totalMin:       getRangeMin(),
+    totalMax:       getRangeMax(),
   };
 }
 
@@ -2366,15 +2387,15 @@ function getDashboardFilters() {
 function syncTodasSwitch(checked) {
   const el = document.getElementById("db-f-todas");
   if (el) el.checked = checked;
-  // Si se activa el switch, limpiar todos los filtros
   if (checked) {
-    ["db-f-text","db-f-desde","db-f-hasta","db-f-total-min","db-f-total-max"].forEach(id => {
+    ["db-f-text","db-f-desde","db-f-hasta"].forEach(id => {
       const e = document.getElementById(id); if (e) e.value = "";
     });
     ["db-f-cuenta","db-f-metodo","db-f-propiedad","db-f-departamento","db-f-comprador",
      "db-f-deducible","db-f-reembolso","db-f-tienda","db-f-clasificado-por","db-f-descripcion"].forEach(id => {
       const e = document.getElementById(id); if (e) e.value = "";
     });
+    resetRangeSliders();
   }
   applyDashboardFilters();
 }
@@ -2453,21 +2474,68 @@ function applyDashboardFilters() {
   renderDashboardCards();
 }
 
+function resetRangeSliders() {
+  const loEl = document.getElementById("db-f-total-min");
+  const hiEl = document.getElementById("db-f-total-max");
+  if (loEl) loEl.value = loEl.min || 0;
+  if (hiEl) hiEl.value = hiEl.max || 50000;
+  updateTotalRangeFill();
+}
+
 function clearDashboardFilters() {
-  ["db-f-text","db-f-desde","db-f-hasta","db-f-total-min","db-f-total-max"].forEach(id => {
+  ["db-f-text","db-f-desde","db-f-hasta"].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = "";
   });
   ["db-f-cuenta","db-f-metodo","db-f-propiedad","db-f-departamento","db-f-comprador",
    "db-f-deducible","db-f-reembolso","db-f-tienda","db-f-clasificado-por","db-f-descripcion"].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = "";
   });
+  resetRangeSliders();
   applyDashboardFilters();
 }
 
 function toggleDbFilters() {
   dbFiltersOpen = !dbFiltersOpen;
-  document.getElementById("db-filter-body")?.classList.toggle("collapsed", !dbFiltersOpen);
-  document.getElementById("db-filter-arrow")?.classList.toggle("open", dbFiltersOpen);
+  const panel = document.getElementById("db-filter-body");
+  const btn   = document.getElementById("btn-filter-toggle");
+  panel?.classList.toggle("hidden", !dbFiltersOpen);
+  btn?.classList.toggle("active", dbFiltersOpen);
+}
+
+/** Actualiza el fill visual y etiquetas del dual-range slider */
+function updateTotalRangeFill() {
+  const loEl   = document.getElementById("db-f-total-min");
+  const hiEl   = document.getElementById("db-f-total-max");
+  const fill   = document.getElementById("dual-range-fill");
+  const minLbl = document.getElementById("range-total-min-lbl");
+  const maxLbl = document.getElementById("range-total-max-lbl");
+  if (!loEl || !hiEl || !fill) return;
+
+  const min = Number(loEl.min) || 0;
+  const max = Number(loEl.max) || 50000;
+  const lo  = Number(loEl.value);
+  const hi  = Number(hiEl.value);
+
+  const pLo = ((lo - min) / (max - min)) * 100;
+  const pHi = ((hi - min) / (max - min)) * 100;
+  fill.style.left  = pLo + "%";
+  fill.style.width = (pHi - pLo) + "%";
+
+  const fmt = n => n >= 1000 ? "$" + (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + "k" : "$" + n.toLocaleString("es-MX");
+  if (minLbl) minLbl.textContent = lo === min ? "$0" : fmt(lo);
+  if (maxLbl) maxLbl.textContent = hi >= max ? "Máx." : fmt(hi);
+}
+
+function onTotalRangeInput() {
+  const loEl = document.getElementById("db-f-total-min");
+  const hiEl = document.getElementById("db-f-total-max");
+  if (!loEl || !hiEl) return;
+  let lo = Number(loEl.value);
+  let hi = Number(hiEl.value);
+  // Prevent thumbs from crossing
+  if (lo > hi) { lo = hi; loEl.value = lo; }
+  updateTotalRangeFill();
+  applyDashboardFilters();
 }
 
 // ─── Dashboard: render ─────────────────────────────────────────────────────
