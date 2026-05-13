@@ -910,14 +910,19 @@ function createTicketCard(ticket, i) {
         <div class="grid">
           <div class="field">
             <label>Propiedad</label>
-            <select id="propiedad-${i}">
+            <select id="propiedad-${i}" onchange="togglePropiedadOtro(${i}, this.value)">
               <option value="">— Seleccionar —</option>
               <option>Calle Cumbres</option>
               <option>Calle Baja California</option>
               <option>Calle Oaxaca</option>
               <option>Calle José Cárdenas</option>
               <option>Calle Matamoros</option>
+              <option value="Otro">Otro</option>
             </select>
+            <div class="hidden" id="propiedad-otro-wrap-${i}" style="margin-top:8px">
+              <input type="text" id="propiedad-otro-${i}" class="field-select"
+                     placeholder="Especificar propiedad..." style="appearance:none">
+            </div>
           </div>
           <div class="field">
             <label># Departamento</label>
@@ -969,7 +974,7 @@ function createTicketCard(ticket, i) {
               <input type="checkbox" id="deducible-${i}" onchange="updateDeducibleLabel(${i}, this.checked)">
               <span class="toggle-slider"></span>
             </label>
-            <span class="toggle-label-text" id="deducible-label-${i}">No deducible</span>
+            <span class="toggle-label-text" id="deducible-label-${i}">No</span>
           </div>
         </div>
 
@@ -983,7 +988,7 @@ function createTicketCard(ticket, i) {
             <span class="toggle-label-text" id="reembolso-label-${i}">No</span>
           </div>
           <div class="hidden" id="reembolso-a-field-${i}" style="margin-top:10px">
-            <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Reembolso a</label>
+            <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Reembolsar a:</label>
             <select id="reembolso-a-${i}" class="field-select" onchange="toggleReembolsoOtro(${i}, this.value)">
               <option value="">— Seleccionar —</option>
               <option>Andrés</option><option>Claudia</option><option>Papá</option>
@@ -1557,6 +1562,13 @@ function toggleReembolso(i, checked) {
   }
 }
 
+function togglePropiedadOtro(i, value) {
+  const wrap = document.getElementById(`propiedad-otro-wrap-${i}`);
+  if (!wrap) return;
+  wrap.classList.toggle("hidden", value !== "Otro");
+  if (value !== "Otro") document.getElementById(`propiedad-otro-${i}`).value = "";
+}
+
 function toggleReembolsoOtro(i, value) {
   const wrap = document.getElementById(`reembolso-otro-wrap-${i}`);
   if (!wrap) return;
@@ -1574,8 +1586,8 @@ function selectComprador(el, i) {
 // Llamado desde el toggle dentro del panel "Clasificar"
 function updateDeducibleLabel(i, checked) {
   const lbl = document.getElementById(`deducible-label-${i}`);
-  if (lbl) { lbl.textContent = checked ? "Deducible" : "No deducible"; lbl.classList.toggle("on", checked); }
-  // Sincronizar el toggle del encabezado
+  if (lbl) { lbl.textContent = checked ? "Sí" : "No"; lbl.classList.toggle("on", checked); }
+  // Sincronizar el toggle del encabezado (mantiene texto "Deducible"/"No deducible")
   const hCheck = document.getElementById(`deducible-header-${i}`);
   if (hCheck) hCheck.checked = checked;
   const hLbl = document.getElementById(`fhl-${i}`);
@@ -1670,7 +1682,12 @@ function getClassify(i) {
     subcuenta:         document.getElementById(`subcuenta-${i}`)?.value      || "",
     categoria:         document.getElementById(`categoria-${i}`)?.value      || "",
     concepto:          document.getElementById(`concepto-${i}`)?.value       || "",
-    propiedad:         document.getElementById(`propiedad-${i}`)?.value      || "",
+    propiedad:         (() => {
+      const sel = document.getElementById(`propiedad-${i}`);
+      if (!sel) return "";
+      if (sel.value === "Otro") return document.getElementById(`propiedad-otro-${i}`)?.value?.trim() || "Otro";
+      return sel.value;
+    })(),
     departamento:      document.getElementById(`departamento-${i}`)?.value   || "",
     comprador:         document.getElementById(`comprador-${i}`)?.value      || "",
     deducible:         document.getElementById(`deducible-${i}`)?.checked    || false,
