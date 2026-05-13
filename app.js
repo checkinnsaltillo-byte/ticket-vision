@@ -656,6 +656,20 @@ function autoSelectDeducible(i, productos) {
   if (inner && !inner.checked) { inner.checked = true; updateDeducibleLabel(i, true); }
 }
 
+/** Actualiza el texto de ruta de clasificación debajo del buscador */
+function updateClasiPath(i) {
+  const el = document.getElementById(`clasif-path-${i}`);
+  if (!el) return;
+  const cuenta    = document.getElementById(`cuenta-${i}`)?.value    || "";
+  const subcuenta = document.getElementById(`subcuenta-${i}`)?.value || "";
+  const categoria = document.getElementById(`categoria-${i}`)?.value || "";
+  const concepto  = document.getElementById(`concepto-${i}`)?.value  || "";
+  const parts = [cuenta, subcuenta, categoria, concepto].filter(Boolean);
+  if (!parts.length) { el.textContent = ""; return; }
+  const emoji = CUENTA_EMOJIS[cuenta] || "";
+  el.textContent = (emoji ? emoji + " " : "") + parts.join(" › ");
+}
+
 /** Despliega / contrae la sección Cuenta→Concepto */
 function toggleClasiDetail(i) {
   const section = document.getElementById(`cuenta-section-${i}`);
@@ -741,6 +755,7 @@ function createTicketCard(ticket, i) {
     return `
       <div class="ticket-card ticket-card--skipped" id="ticket-${i}">
         <div class="ticket-card-header" style="cursor:default">
+          <button class="btn-x" title="Eliminar" onclick="removeTicket(${i})">×</button>
           ${ticket.imageUrl ? `<img class="skipped-thumb" src="${esc(ticket.imageUrl)}"
               onclick="openTicketImageLightbox(${i})" alt="Ticket ${i+1}">` : ""}
           <div class="ticket-info" style="flex:1">
@@ -748,7 +763,6 @@ function createTicketCard(ticket, i) {
               ⚠️ Omitido — ya existe en Sheets · <strong>${esc(dup.tienda || "")}</strong>${dup.fecha ? " · " + esc(dup.fecha) : ""}${dup.total ? " · $" + Number(dup.total).toLocaleString("es-MX") : ""}
             </div>
           </div>
-          <button class="btn-x" onclick="removeTicket(${i})">x</button>
         </div>
       </div>`;
   }
@@ -765,6 +779,7 @@ function createTicketCard(ticket, i) {
   return `
     <div class="ticket-card" id="ticket-${i}">
       <div class="ticket-card-header" onclick="toggleTable(${i})" id="header-${i}">
+        <button class="btn-x" title="Eliminar" onclick="event.stopPropagation(); removeTicket(${i})">×</button>
         <div class="ticket-info">
           <div class="header-chips">
             <span class="info-chip hidden" id="cuenta-chip-${i}"></span>
@@ -792,7 +807,6 @@ function createTicketCard(ticket, i) {
             </label>
             <span class="fhl" id="fhl-${i}">No deducible</span>
           </div>
-          <button class="btn-x" onclick="event.stopPropagation(); removeTicket(${i})">x</button>
         </div>
       </div>
 
@@ -825,16 +839,17 @@ function createTicketCard(ticket, i) {
       <div class="classify-panel hidden" id="classify-${i}">
 
         <div class="classify-search-wrap">
-          <input type="text" id="search-${i}" class="classify-search"
-                 placeholder="🔍 Buscar por cuenta, subcuenta, categoría o concepto..."
-                 oninput="onClassifySearch(${i}, this.value)"
-                 onblur="setTimeout(()=>hideSearchResults(${i}), 180)">
           <button class="btn-clasif-toggle" type="button"
                   onclick="toggleClasiDetail(${i})"
                   id="clasif-toggle-${i}"
                   title="Cuenta / Subcuenta / Categoría / Concepto">≡</button>
+          <input type="text" id="search-${i}" class="classify-search"
+                 placeholder="🔍 Buscar por cuenta, subcuenta, categoría o concepto..."
+                 oninput="onClassifySearch(${i}, this.value)"
+                 onblur="setTimeout(()=>hideSearchResults(${i}), 180)">
           <div class="search-results hidden" id="search-results-${i}"></div>
         </div>
+        <div class="clasif-path-text" id="clasif-path-${i}"></div>
 
         <div class="clasif-cuenta-section hidden" id="cuenta-section-${i}">
 
@@ -1449,6 +1464,7 @@ function selectCuenta(el, i) {
   document.getElementById(`subcuenta-grid-${i}`).innerHTML =
     subs.map(n => makeCard(n, SUBCUENTA_EMOJIS[n] || "📌", `selectSubcuenta(this,${i})`)).join("");
   document.getElementById(`subcuenta-field-${i}`).classList.remove("hidden");
+  updateClasiPath(i);
 }
 
 function resetSubcuenta(i) {
@@ -1479,6 +1495,7 @@ function selectSubcuenta(el, i) {
       cats.map(n => makeCard(n, CATEGORIA_EMOJIS[n] || "📂", `selectCategoria(this,${i})`)).join("");
     document.getElementById(`categoria-field-${i}`).classList.remove("hidden");
   }
+  updateClasiPath(i);
 }
 
 function resetCategoria(i) {
@@ -1505,6 +1522,7 @@ function selectConcepto(el, i) {
   el.classList.add("active");
   scrollCardIntoView(el);
   document.getElementById(`concepto-${i}`).value = el.dataset.value;
+  updateClasiPath(i);
 }
 
 function selectCategoria(el, i) {
@@ -1519,6 +1537,7 @@ function selectCategoria(el, i) {
   const subcuenta = document.getElementById(`subcuenta-${i}`).value;
   const conceptos = CATALOG[cuenta]?.[subcuenta]?.[categoria] || [];
   if (conceptos.length) renderConceptos(conceptos, i);
+  updateClasiPath(i);
 }
 
 function selectMetodoPago(el, i) {
@@ -1638,10 +1657,8 @@ function applySearchResult(i, idx) {
     if (conCard) selectConcepto(conCard, i);
   }
 
-  // Expandir sección de cuenta para mostrar la clasificación aplicada
-  const section = document.getElementById(`cuenta-section-${i}`);
-  const btn     = document.getElementById(`clasif-toggle-${i}`);
-  if (section) { section.classList.remove("hidden"); if (btn) btn.classList.add("active"); }
+  // Actualizar texto de ruta de clasificación bajo la barra de búsqueda
+  updateClasiPath(i);
 
   // Limpiar buscador
   document.getElementById(`search-${i}`).value = "";

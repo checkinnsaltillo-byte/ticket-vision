@@ -275,8 +275,9 @@ textarea { min-height: 80px; resize: vertical; }
 }
 
 .ticket-card-header {
+  position: relative;
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 16px 20px;
+  padding: 16px 20px 16px 32px;
   background: linear-gradient(180deg, #fff8ee 0%, #fff3df 100%);
   border-bottom: 1px solid var(--border);
   cursor: pointer; user-select: none;
@@ -508,14 +509,19 @@ textarea { min-height: 80px; resize: vertical; }
 .btn-eliminar-ticket:hover { background: #fee2e2; }
 
 .btn-x {
-  background: #f3f4f6; border: 1.5px solid #d1d5db; border-radius: 50%;
-  cursor: pointer; font-size: 12px; font-weight: 800; color: #6b7280;
-  width: 24px; height: 24px; min-width: 24px;
+  position: absolute; top: 8px; left: 8px; z-index: 2;
+  width: 20px; height: 20px;
+  background: rgba(229,231,235,.9); border: 1.5px solid rgba(156,163,175,.55);
+  border-radius: 50%; cursor: pointer;
+  font-size: 13px; font-weight: 900; color: #9ca3af;
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; padding: 0; margin-left: auto;
-  transition: background .15s, color .15s, border-color .15s;
+  padding: 0; line-height: 1;
+  transition: background .15s, color .15s, border-color .15s, transform .15s;
 }
-.btn-x:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+.btn-x:hover {
+  background: #ef4444; border-color: #dc2626; color: #fff;
+  transform: scale(1.2);
+}
 
 .field-select {
   width: 100%; padding: 9px 12px; border-radius: 12px;
@@ -591,6 +597,13 @@ td.resumen-key { font-weight: 600; color: var(--text-soft); white-space: nowrap;
 .btn-clasif-toggle.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-dark); }
 
 .clasif-cuenta-section.hidden { display: none; }
+
+.clasif-path-text {
+  font-size: 11px; font-weight: 700; color: var(--primary-dark);
+  letter-spacing: .01em; padding: 0 2px 10px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.clasif-path-text:empty { display: none; }
 .classify-search {
   flex: 1; min-width: 0; padding: 13px 16px 13px 42px;
   border-radius: 14px; border: 1px solid var(--border-strong);
