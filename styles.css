@@ -1604,19 +1604,8 @@ td.btn-del-cell { padding: 2px 4px; width: 28px; text-align: center; }
 .bn-hdr-presup {
   font-size: 10px;
   font-weight: 600;
-  color: rgba(255,255,255,.75);
+  color: var(--text-soft);
   white-space: nowrap;
-}
-/* Texto de presupuesto sobre fondo claro (sin clasificar) */
-.ticket-card-header:not(.classified) .bn-hdr-presup {
-  color: var(--text-soft);
-}
-.ticket-card-header:not(.classified) .bn-avance-pct {
-  color: var(--text-soft);
-}
-/* Forzar color blanco del texto en headers clasificados */
-.ticket-card-header.classified .bn-avance-pct {
-  color: rgba(255,255,255,.85);
 }
 /* Estado pill compacto en header */
 .ticket-header-right .bn-pill {
@@ -1625,11 +1614,18 @@ td.btn-del-cell { padding: 2px 4px; width: 28px; text-align: center; }
   border-radius: 20px;
   font-weight: 700;
 }
-/* Tarjeta de banco: nombre con el color de la cuenta contable si está clasificado */
-.ticket-store.ci-egresos  { color: #92400e; }
-.ticket-store.ci-ingresos { color: #065f46; }
-.ticket-store.ci-capital  { color: #1e3a5f; }
-.ticket-store.ci-activos  { color: #4a1d96; }
-.ticket-store.ci-pasivos  { color: #7c2d12; }
-/* En header clasificado, el nombre va en blanco */
-.ticket-card-header.classified .ticket-store { color: #fff !important; }
+/* ─ Texto dentro del encabezado Egresos (fondo rojo claro) ─ */
+.ticket-card-header.ci-egresos .ticket-meta,
+.ticket-card-header.ci-egresos .product-summary { color: #7f1d1d; }
+.ticket-card-header.ci-egresos .bn-hdr-presup,
+.ticket-card-header.ci-egresos .bn-avance-pct  { color: #92400e; }
+/* ─ Texto dentro del encabezado Ingresos (fondo verde claro) ─ */
+.ticket-card-header.ci-ingresos .ticket-meta,
+.ticket-card-header.ci-ingresos .product-summary { color: #14532d; }
+.ticket-card-header.ci-ingresos .bn-hdr-presup,
+.ticket-card-header.ci-ingresos .bn-avance-pct  { color: #065f46; }
+/* ─ Chips en header de color → oscurecer el fondo del chip ─ */
+.ticket-card-header.ci-egresos  .info-chip:not([class*="ci-"]) { background:rgba(127,29,29,.12); color:#7f1d1d; }
+.ticket-card-header.ci-ingresos .info-chip:not([class*="ci-"]) { background:rgba(20,83,45,.12);  color:#14532d; }
+/* z-index para que el panel de filtros quede sobre las tarjetas */
+#bn-filter-body { position:relative; z-index:10; }

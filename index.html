@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=51">
+  <link rel="stylesheet" href="styles.css?v=52">
 </head>
 <body>
 
@@ -279,6 +279,30 @@
     <!-- ══ MÓDULO: Registros contables ══════════════════════════ -->
     <div id="module-registros" class="hidden">
 
+      <!-- KPI cards (arriba de todo) -->
+      <div class="bn-kpi-row" id="bn-kpi-row">
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Egresos (período)</div>
+          <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
+          <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
+        </div>
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Ingresos (período)</div>
+          <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
+          <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
+        </div>
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Avance presupuesto</div>
+          <div class="bn-kpi-value" id="bn-k-avance-egr">—</div>
+          <div class="bn-kpi-sub" id="bn-k-avance-egr-sub">—</div>
+        </div>
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Utilidad (período)</div>
+          <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
+          <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
+        </div>
+      </div>
+
       <!-- Top bar -->
       <div class="db-top-bar">
         <div class="db-top-left">
@@ -341,30 +365,6 @@
         <button class="bn-tipo-tab" id="bn-tab-I" onclick="bn_setTipo('I')">💰 Ingresos</button>
         <button class="bn-tipo-tab" id="bn-tab-A" onclick="bn_setTipo('A')">⚠️ Alertas</button>
         <button class="bn-tipo-tab" id="bn-tab-F" onclick="bn_setTipo('F')">📊 Indicadores</button>
-      </div>
-
-      <!-- KPI cards -->
-      <div class="bn-kpi-row" id="bn-kpi-row">
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Egresos (período)</div>
-          <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
-          <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
-        </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Ingresos (período)</div>
-          <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
-          <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
-        </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Avance presupuesto</div>
-          <div class="bn-kpi-value" id="bn-k-avance-egr">—</div>
-          <div class="bn-kpi-sub" id="bn-k-avance-egr-sub">—</div>
-        </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Utilidad (período)</div>
-          <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
-          <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
-        </div>
       </div>
 
       <!-- Cards view (Egresos / Ingresos) -->
@@ -486,6 +486,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=57"></script>
+  <script src="app.js?v=58"></script>
 </body>
 </html>

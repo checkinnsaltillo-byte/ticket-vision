@@ -895,12 +895,12 @@ function createTicketCard(ticket, i) {
 
 // ─── Panel de clasificación reutilizable ───────────────────────────────────
 
-function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpiarOnclick) {
+function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpiarOnclick, fechaLabel) {
   return `
     <div class="classify-panel hidden" id="classify-${idx}">
 
       <div class="clasif-fecha-row">
-        <label class="clasif-fecha-label">📅 Fecha del ticket</label>
+        <label class="clasif-fecha-label">📅 ${fechaLabel || 'Fecha del ticket'}</label>
         <input type="date" id="fecha-clasif-${idx}" class="clasif-fecha-input"
           value="${esc(fecha || '')}" onchange="markClassifyDirty(${idx})">
       </div>
@@ -1620,6 +1620,19 @@ const bn_canon = (s) => bn_norm(s).normalize('NFD').replace(/[̀-ͯ]/g,'').repla
 const bn_cc    = (s) => bn_canon(s).replace(/[^a-z0-9]+/g,'');
 const bn_uniq  = (arr) => [...new Set(arr.map(bn_norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
 
+/** Extrae solo el nombre del mes ("Enero 2025" → "Enero", "01/2025" → "Enero"). */
+function bn_mesLabel(m) {
+  const NAMES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                 'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const s = String(m || '').trim();
+  const numPfx = s.match(/^(\d{1,2})\s*[.\-\/]/);
+  if (numPfx) return NAMES[Number(numPfx[1])] || s;
+  const MAP = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,
+               julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
+  const key = bn_canon(s).split(' ')[0];
+  return MAP[key] ? NAMES[MAP[key]] : s;
+}
+
 function bn_monthOrd(m) {
   const mm = String(m||'').match(/^\s*(\d{1,2})\s*[.\-\/]/);
   if (mm) return Number(mm[1]);
@@ -1708,7 +1721,11 @@ function bn_populateFilters() {
   };
   const years=bn_uniq(BN_RAW.map(r=>String(r.Año||bn_yearOf(r.Mes)))).reverse();
   fill('bn-f-año',       years,                                                   'Todos');
-  fill('bn-f-mes',       bn_uniq(BN_RAW.map(r=>bn_norm(r.Mes))),                 'Todos');
+  const MONTH_ORD = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,
+    julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12};
+  const mesLabels = [...new Set(BN_RAW.map(r=>bn_mesLabel(r.Mes)).filter(Boolean))]
+    .sort((a,b)=>(MONTH_ORD[a.toLowerCase()]||99)-(MONTH_ORD[b.toLowerCase()]||99));
+  fill('bn-f-mes', mesLabels, 'Todos');
   fill('bn-f-cuenta',    bn_uniq(BN_RAW.map(r=>bn_norm(r['Cuenta bancaria']||''))), 'Todas');
   fill('bn-f-categoria', bn_uniq(BN_RAW.map(r=>bn_norm(r.CATEGORIA||''))),       'Todas');
   fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO||''))),        'Todos');
@@ -1757,7 +1774,7 @@ function bn_filteredRecs(tipo) {
     const con=bn_norm(r.CONCEPTO||'');
     const tip=bn_canon(r.TIPO||'');
     if(s.año       && y!==s.año)          return false;
-    if(s.mes       && mes!==s.mes)        return false;
+    if(s.mes       && bn_mesLabel(r.Mes)!==s.mes) return false;
     if(s.cuenta    && cta!==s.cuenta)     return false;
     if(s.categoria && cat!==s.categoria)  return false;
     if(s.concepto  && con!==s.concepto)   return false;
@@ -2167,39 +2184,46 @@ let BN_CUR_RECS  = [];
 let BN_CARD_PAGE = 1;
 const BN_CARD_SIZE = 25;
 
-/** Tabla Resumen para un registro bancario (Campo / Valor). */
-function bn_buildBnResumenTable(r) {
+/** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
+function bn_buildBnResumenTable(r, idx) {
   const rows = [
-    ['Mes',              r.Mes],
-    ['Año',              r.Año],
-    ['Cuenta bancaria',  r['Cuenta bancaria']],
-    ['Tipo',             r.TIPO],
-    ['Categoría',        r.CATEGORIA],
-    ['Concepto',         r.CONCEPTO],
-    ['Descripción',      r.DESCRIPCION || r.Descripcion],
-    ['Factura',          r.Factura],
-    ['Monto',            r.Monto != null ? bn_fmt$(Number(r.Monto || 0)) : null],
-    ['— Clasificación —', null],
-    ['Cuenta contable',  r._cuenta],
-    ['Subcuenta',        r._subcuenta],
-    ['Categoría gasto',  r._categoria_gasto],
-    ['Concepto clasif.', r._concepto],
-    ['Propiedad',        r._propiedad],
-    ['Departamento',     r._departamento],
-    ['Encargado',        r._encargado],
-    ['Deducible',        r._deducible],
-    ['Reembolso',        r._reembolso],
-    ['Reembolso a',      r._reembolso_a],
-    ['Método de pago',   r._metodo_pago],
-    ['Clasificado por',  r._clasificado_por],
-  ].filter(([,v]) => v != null && v !== '');
+    ['Mes',              'MES',       r.Mes,                               false],
+    ['Año',              'AÑO',       r.Año,                               false],
+    ['Día',              'DÍA',       r.Día || r.Dia,                      false],
+    ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
+    ['Tipo',             'TIPO',      r.TIPO,                              false],
+    ['Categoría',        'CATEGORIA', r.CATEGORIA,                         false],
+    ['Concepto',         'CONCEPTO',  r.CONCEPTO,                          true ],
+    ['Descripción',      'DESC',      r.DESCRIPCION || r.Descripcion,      false],
+    ['Factura',          'FACTURA',   r.Factura,                           false],
+    ['Monto',            'MONTO',     r.Monto != null ? bn_fmt$(Number(r.Monto||0)) : null, false],
+    ['— Clasificación —','SEP',       null,                                false],
+    ['Cuenta contable',  '_cuenta',   r._cuenta,                           false],
+    ['Subcuenta',        '_sub',      r._subcuenta,                        false],
+    ['Categoría gasto',  '_cat',      r._categoria_gasto,                  false],
+    ['Concepto clasif.', '_con',      r._concepto,                         false],
+    ['Propiedad',        '_prop',     r._propiedad,                        false],
+    ['Departamento',     '_depto',    r._departamento,                     false],
+    ['Encargado',        '_enc',      r._encargado,                        false],
+    ['Deducible',        '_ded',      r._deducible,                        false],
+    ['Reembolso',        '_reem',     r._reembolso,                        false],
+    ['Reembolso a',      '_reema',    r._reembolso_a,                      false],
+    ['Método de pago',   '_metodo',   r._metodo_pago,                      false],
+    ['Clasificado por',  '_clasif',   r._clasificado_por,                  false],
+  ].filter(([,,v, editable]) => v != null && v !== '' || v === null);
 
   if (!rows.length) return `<div class="empty-state"><p>Sin datos</p></div>`;
   return `<table>
     <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
-    <tbody>${rows.map(([label, val]) => {
-      if (val === null) return `<tr><td colspan="2" style="font-weight:700;color:var(--text-soft);font-size:11px;padding-top:10px">${label}</td></tr>`;
-      return `<tr><td class="resumen-key">${label}</td><td>${esc(String(val))}</td></tr>`;
+    <tbody>${rows.map(([label, field, val, editable]) => {
+      if (val === null && field === 'SEP')
+        return `<tr><td colspan="2" style="font-weight:700;color:var(--text-soft);font-size:11px;padding-top:10px">${label}</td></tr>`;
+      if (val == null || val === '') return '';
+      const td = editable
+        ? `<td contenteditable="true" spellcheck="false" data-field="${field}"
+              oninput="showTableActions('bnr',${idx})">${esc(String(val))}</td>`
+        : `<td>${esc(String(val))}</td>`;
+      return `<tr><td class="resumen-key">${label}</td>${td}</tr>`;
     }).join('')}</tbody>
   </table>`;
 }
@@ -2290,18 +2314,24 @@ function bn_createCard(rec, idx) {
         </div>
       </div>
 
-      <div class="ticket-table-wrap hidden" id="bn-tbl-${idx}">
+      <div class="ticket-table-wrap hidden" id="bn-tbl-${idx}" data-tidx="${idx}" data-tmod="bnr">
         <div class="ticket-tabs">
           <button class="ticket-tab active" onclick="bn_showBnTab(${idx},'resumen',this)">Resumen</button>
         </div>
-        <div id="bn-tab-resumen-${idx}" class="ticket-tab-content">${bn_buildBnResumenTable(rec)}</div>
+        <div id="bn-tab-resumen-${idx}" class="ticket-tab-content">${bn_buildBnResumenTable(rec, idx)}</div>
+        <div class="table-actions-bar hidden" id="tact-bnr-${idx}">
+          <button class="btn-clasificar-ticket" style="padding:10px 28px;font-size:13px"
+                  onclick="bn_saveBnResumenEdit(${idx})">💾 Guardar cambios</button>
+          <button class="btn-limpiar-ticket" onclick="bn_resetBnResumenEdit(${idx})">Limpiar</button>
+        </div>
       </div>
 
       ${tabHtml}
-      ${buildClassifyPanel(ci, mesStr, deptOptions,
+      ${buildClassifyPanel(ci, bn_norm(rec.Día || rec.Dia || ''), deptOptions,
           isClasif ? '💾 Guardar cambios' : '✓ Clasificar',
           `bn_saveBnClassification(${idx})`,
-          `bn_limpiarBnClassification(${idx})`)}
+          `bn_limpiarBnClassification(${idx})`,
+          'Fecha del registro')}
     </div>`;
 }
 
@@ -2328,7 +2358,48 @@ function bn_toggleBnClassify(idx) {
   if (!panel) return;
   const isHidden = panel.classList.toggle('hidden');
   tab?.classList.toggle('open', !isHidden);
-  if (!isHidden) bn_autoPopulateBnClassify(ci, BN_CUR_RECS[idx]);
+  if (!isHidden) {
+    const rec = BN_CUR_RECS[idx];
+    bn_autoPopulateBnClassify(ci, rec);
+    // Si aún no tiene clasificación, pre-seleccionar Cuenta por tipo/signo de monto
+    if (rec && !rec._cuenta) {
+      const tip = bn_canon(rec.TIPO || '');
+      const autoAcc = tip.includes('egr') ? 'Egresos'
+                    : tip.includes('ing') ? 'Ingresos'
+                    : Number(rec.Monto) < 0 ? 'Egresos' : 'Ingresos';
+      const grid = document.getElementById(`cuenta-grid-${ci}`);
+      const card = Array.from(grid?.querySelectorAll('.cuenta-card') || [])
+        .find(c => c.dataset.value === autoAcc);
+      if (card) selectCuenta(card, ci);
+    }
+  }
+}
+
+/** Guarda las ediciones del campo Concepto de la tabla Resumen en memoria. */
+function bn_saveBnResumenEdit(idx) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  const tabEl = document.getElementById(`bn-tab-resumen-${idx}`);
+  const concepEl = tabEl?.querySelector('[data-field="CONCEPTO"]');
+  if (concepEl) rec.CONCEPTO = concepEl.textContent.trim();
+  hideTableActions('bnr', idx);
+  // Re-render para reflejar el nuevo concepto en el encabezado
+  const card = document.getElementById(`bn-card-${idx}`);
+  if (card) {
+    card.outerHTML = bn_createCard(rec, idx);
+    // Re-abrir la sección de detalles
+    document.getElementById(`bn-tbl-${idx}`)?.classList.remove('hidden');
+  }
+}
+
+/** Revierte las ediciones sin guardar del Concepto. */
+function bn_resetBnResumenEdit(idx) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  const tabEl = document.getElementById(`bn-tab-resumen-${idx}`);
+  const concepEl = tabEl?.querySelector('[data-field="CONCEPTO"]');
+  if (concepEl) concepEl.textContent = rec.CONCEPTO || '';
+  hideTableActions('bnr', idx);
 }
 
 /** Rellena el panel Clasificar con los datos guardados del registro. */

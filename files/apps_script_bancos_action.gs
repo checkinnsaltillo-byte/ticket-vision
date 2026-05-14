@@ -76,6 +76,7 @@ function getBancosData(ss) {
   // ── BANCOS ──────────────────────────────────────────────────────────────────
   const iAno  = pickIdx(hB, ["AÑO", "ANO", "ANIO", "YEAR"]);
   const iMes  = pickIdx(hB, ["MES"]);
+  const iDia  = pickIdx(hB, ["DÍA", "DIA", "DIA DE OPERACION", "FECHA"]);
   const iCta  = pickIdx(hB, ["CUENTA BANCARIA", "CUENTA"]);
   const iTipo = pickIdx(hB, ["TIPO"]);
   const iCat  = pickIdx(hB, ["CATEGORIA", "CATEGORÍA"]);
@@ -88,9 +89,21 @@ function getBancosData(ss) {
     .filter(r => r.join("").toString().trim() !== "")
     .map(r => {
       const factura = (iFac >= 0 ? r[iFac] : "") || "";
+      const diaRaw  = iDia >= 0 ? r[iDia] : "";
+      // Formatear la fecha como YYYY-MM-DD si es un objeto Date de Sheets
+      let diaStr = "";
+      if (diaRaw instanceof Date) {
+        const yy = diaRaw.getFullYear();
+        const mm = String(diaRaw.getMonth()+1).padStart(2,"0");
+        const dd = String(diaRaw.getDate()).padStart(2,"0");
+        diaStr = `${yy}-${mm}-${dd}`;
+      } else {
+        diaStr = String(diaRaw || "").trim();
+      }
       return {
         Año:              iAno  >= 0 ? String(r[iAno]).trim()  : "",
         Mes:              iMes  >= 0 ? String(r[iMes]).trim()  : "",
+        Día:              diaStr,
         "Cuenta bancaria": iCta >= 0 ? String(r[iCta]).trim()  : "",
         TIPO:             iTipo >= 0 ? String(r[iTipo]).trim() : "",
         CATEGORIA:        iCat  >= 0 ? String(r[iCat]).trim()  : "",
