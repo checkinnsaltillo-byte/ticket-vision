@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=52">
+  <link rel="stylesheet" href="styles.css?v=53">
 </head>
 <body>
 
@@ -303,14 +303,25 @@
         </div>
       </div>
 
-      <!-- Top bar -->
-      <div class="db-top-bar">
+      <!-- Top bar con Año / Mes siempre visibles -->
+      <div class="db-top-bar" style="flex-wrap:wrap;gap:8px">
         <div class="db-top-left">
           <button class="btn-filter-toggle" id="bn-btn-filter-toggle"
-                  onclick="bn_toggleFilters()" title="Mostrar filtros">
+                  onclick="bn_toggleFilters()" title="Más filtros">
             <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
           </button>
           <span class="db-todas-label" id="bn-status-label">Registros contables</span>
+        </div>
+        <!-- Filtros Año / Mes siempre visibles -->
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:200px">
+          <select id="bn-f-año" class="field-select" style="flex:1;min-width:90px"
+                  onchange="bn_onFilterChange()">
+            <option value="">Todos los años</option>
+          </select>
+          <select id="bn-f-mes" class="field-select" style="flex:1;min-width:110px"
+                  onchange="bn_onFilterChange()">
+            <option value="">Todos los meses</option>
+          </select>
         </div>
         <div class="db-top-right">
           <span class="db-count-inline" id="bn-filter-subtitle"></span>
@@ -319,24 +330,12 @@
         </div>
       </div>
 
-      <!-- Filter panel -->
+      <!-- Panel de filtros extra (cuenta bancaria, categoría, concepto, texto) -->
       <div class="db-filter-panel hidden" id="bn-filter-body">
         <div class="db-filter-grid">
           <div class="db-filter-full">
             <input type="text" id="bn-f-text" placeholder="🔍  Buscar por categoría, concepto, descripción…"
                    class="db-search-input" oninput="bn_onFilterChange()">
-          </div>
-          <div class="db-filter-half">
-            <label>Año</label>
-            <select id="bn-f-año" class="field-select" onchange="bn_onFilterChange()">
-              <option value="">Todos</option>
-            </select>
-          </div>
-          <div class="db-filter-half">
-            <label>Mes</label>
-            <select id="bn-f-mes" class="field-select" onchange="bn_onFilterChange()">
-              <option value="">Todos</option>
-            </select>
           </div>
           <div class="db-filter-half">
             <label>Cuenta bancaria</label>
@@ -486,6 +485,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=58"></script>
+  <script src="app.js?v=59"></script>
 </body>
 </html>

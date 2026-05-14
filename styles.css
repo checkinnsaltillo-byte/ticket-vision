@@ -1627,5 +1627,10 @@ td.btn-del-cell { padding: 2px 4px; width: 28px; text-align: center; }
 /* ─ Chips en header de color → oscurecer el fondo del chip ─ */
 .ticket-card-header.ci-egresos  .info-chip:not([class*="ci-"]) { background:rgba(127,29,29,.12); color:#7f1d1d; }
 .ticket-card-header.ci-ingresos .info-chip:not([class*="ci-"]) { background:rgba(20,83,45,.12);  color:#14532d; }
-/* z-index para que el panel de filtros quede sobre las tarjetas */
-#bn-filter-body { position:relative; z-index:10; }
+/* Panel de filtros: siempre encima de las tarjetas */
+#bn-filter-body {
+  position: relative;
+  z-index: 20;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+}

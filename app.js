@@ -1611,6 +1611,8 @@ let BN_TIPO   = 'E';   // 'E' Egresos | 'I' Ingresos | 'A' Alertas | 'F' Indicad
 let BN_LOADED = false;
 const bn_st   = { año: '', mes: '', cuenta: '', categoria: '', concepto: '' };
 const BN_BCACHE = { E: null, I: null };
+let BN_CATALOG = {};           // catálogo construido desde Presupuesto_sys
+let _BN_ORIG_CATALOG = null;   // respaldo del CATALOG de tickets
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const bn_fmt$  = (x) => Number(x || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -1619,6 +1621,62 @@ const bn_norm  = (s) => String(s ?? '').trim();
 const bn_canon = (s) => bn_norm(s).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').toLowerCase();
 const bn_cc    = (s) => bn_canon(s).replace(/[^a-z0-9]+/g,'');
 const bn_uniq  = (arr) => [...new Set(arr.map(bn_norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+
+/**
+ * Formatea el campo Día a "10/mayo/2026".
+ * Acepta "YYYY-MM-DD", objeto Date serializado, o cualquier string de fecha.
+ */
+function bn_formatDia(d) {
+  const MESES = ['','enero','febrero','marzo','abril','mayo','junio',
+                 'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  if (!d) return '';
+  const s = String(d).trim();
+  // ISO: YYYY-MM-DD
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${Number(iso[3])}/${MESES[Number(iso[2])]}/${iso[1]}`;
+  // Date string (Apps Script serializado): "Thu Jan 01 2026 00:00:00..."
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) return `${dt.getDate()}/${MESES[dt.getMonth()+1]}/${dt.getFullYear()}`;
+  return s;
+}
+
+/** Construye BN_CATALOG desde BN_BUDGET (Presupuesto_sys). */
+function bn_buildBnCatalog() {
+  const cat = {};
+  for (const b of (BN_BUDGET || [])) {
+    const cuenta = (b.TIPO      || '').trim();   // Egresos / Ingresos / …
+    const sub    = (b.SUBCUENTA || '').trim();
+    const catg   = (b.CATEGORIA || '').trim();
+    const con    = (b.CONCEPTO  || '').trim();
+    if (!cuenta) continue;
+    if (!cat[cuenta]) cat[cuenta] = {};
+    if (sub) {
+      if (!cat[cuenta][sub]) cat[cuenta][sub] = {};
+      if (catg) {
+        if (!cat[cuenta][sub][catg]) cat[cuenta][sub][catg] = [];
+        if (con && !cat[cuenta][sub][catg].includes(con)) cat[cuenta][sub][catg].push(con);
+      }
+    } else if (catg) {
+      if (!cat[cuenta][catg]) cat[cuenta][catg] = [];
+      if (con && !cat[cuenta][catg].includes(con)) cat[cuenta][catg].push(con);
+    }
+  }
+  BN_CATALOG = cat;
+}
+
+/** Activa el catálogo de Presupuesto_sys para el panel Clasificar de Bancos. */
+function bn_activateCatalog() {
+  if (!_BN_ORIG_CATALOG) _BN_ORIG_CATALOG = CATALOG;
+  CATALOG = BN_CATALOG;
+  if (typeof buildSearchIndex === 'function') buildSearchIndex();
+}
+/** Restaura el catálogo original de tickets. */
+function bn_deactivateCatalog() {
+  if (_BN_ORIG_CATALOG) {
+    CATALOG = _BN_ORIG_CATALOG;
+    if (typeof buildSearchIndex === 'function') buildSearchIndex();
+  }
+}
 
 /** Extrae solo el nombre del mes ("Enero 2025" → "Enero", "01/2025" → "Enero"). */
 function bn_mesLabel(m) {
@@ -1700,6 +1758,8 @@ async function bn_loadData() {
     if (!data.ok) throw new Error(data.error||'Error al obtener datos');
     BN_RAW=data.records||[]; BN_BUDGET=data.budget||[];
     BN_LOADED=true; bn_resetBCache();
+    bn_buildBnCatalog();
+    bn_activateCatalog(); // Usa el catálogo de Presupuesto_sys mientras el módulo está activo
     if (lbl) lbl.textContent='Registros contables — '+BN_RAW.length.toLocaleString('es-MX')+' movimientos';
     if (empty) empty.style.display='none';
     bn_populateFilters();
@@ -1720,22 +1780,29 @@ function bn_populateFilters() {
       vals.map(v=>`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');
   };
   const years=bn_uniq(BN_RAW.map(r=>String(r.Año||bn_yearOf(r.Mes)))).reverse();
-  fill('bn-f-año',       years,                                                   'Todos');
   const MONTH_ORD = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,
     julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12};
   const mesLabels = [...new Set(BN_RAW.map(r=>bn_mesLabel(r.Mes)).filter(Boolean))]
     .sort((a,b)=>(MONTH_ORD[a.toLowerCase()]||99)-(MONTH_ORD[b.toLowerCase()]||99));
-  fill('bn-f-mes', mesLabels, 'Todos');
+  // Año y Mes van en el top bar (siempre visibles)
+  fill('bn-f-año', years, 'Todos los años');
+  fill('bn-f-mes', mesLabels, 'Todos los meses');
+  // Filtros del panel desplegable
   fill('bn-f-cuenta',    bn_uniq(BN_RAW.map(r=>bn_norm(r['Cuenta bancaria']||''))), 'Todas');
-  fill('bn-f-categoria', bn_uniq(BN_RAW.map(r=>bn_norm(r.CATEGORIA||''))),       'Todas');
-  fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO||''))),        'Todos');
+  fill('bn-f-categoria', bn_uniq(BN_RAW.map(r=>bn_norm(r.CATEGORIA||''))),          'Todas');
+  fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO||''))),           'Todos');
 }
 
 function bn_setDefaultFilters() {
-  const years=bn_uniq(BN_RAW.map(r=>String(r.Año||bn_yearOf(r.Mes)))).reverse();
-  const latest=years[0]||'';
-  bn_st.año=latest; bn_st.mes=bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
-  const sel=document.getElementById('bn-f-año'); if(sel) sel.value=latest;
+  const now = new Date();
+  const MESES_LABEL = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                       'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const mesActual = MESES_LABEL[now.getMonth()+1];
+  const añoActual = String(now.getFullYear());
+  bn_st.año=añoActual; bn_st.mes=mesActual;
+  bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
+  const selA=document.getElementById('bn-f-año'); if(selA) selA.value=añoActual;
+  const selM=document.getElementById('bn-f-mes'); if(selM) selM.value=mesActual;
 }
 
 function bn_onFilterChange() {
@@ -2187,9 +2254,9 @@ const BN_CARD_SIZE = 25;
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
   const rows = [
-    ['Mes',              'MES',       r.Mes,                               false],
+    ['Día',              'DÍA',       bn_formatDia(r.Día || r.Dia || r.Mes), false],
+    ['Mes',              'MES',       bn_mesLabel(r.Mes),                  false],
     ['Año',              'AÑO',       r.Año,                               false],
-    ['Día',              'DÍA',       r.Día || r.Dia,                      false],
     ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
     ['Tipo',             'TIPO',      r.TIPO,                              false],
     ['Categoría',        'CATEGORIA', r.CATEGORIA,                         false],
@@ -2238,7 +2305,7 @@ function bn_createCard(rec, idx) {
   const ci       = 'bn' + idx;
 
   const name   = bn_norm(rec.CONCEPTO || rec.CATEGORIA || rec['Cuenta bancaria'] || 'Movimiento');
-  const mesStr = bn_norm(rec.Mes || '');
+  const diaFmt = bn_formatDia(rec.Día || rec.Dia || rec.Mes || '');
   const desc   = bn_norm(rec.DESCRIPCION || rec.Descripcion || '');
   const monto  = Number(rec.Monto || 0);
   const cat    = bn_norm(rec.CATEGORIA || '');
@@ -2303,7 +2370,7 @@ function bn_createCard(rec, idx) {
           <div class="ticket-store-row">
             <span class="ticket-store ${colorCls}">${esc(name)}</span>
           </div>
-          <div class="ticket-meta">${esc(mesStr)}</div>
+          <div class="ticket-meta">${esc(diaFmt)}</div>
           ${desc ? `<div class="product-summary">${esc(desc.length > 120 ? desc.slice(0, 117) + '…' : desc)}</div>` : ''}
         </div>
         <div class="ticket-header-right">
@@ -2327,7 +2394,7 @@ function bn_createCard(rec, idx) {
       </div>
 
       ${tabHtml}
-      ${buildClassifyPanel(ci, bn_norm(rec.Día || rec.Dia || ''), deptOptions,
+      ${buildClassifyPanel(ci, bn_norm(rec.Día || rec.Dia || rec.Mes || ''), deptOptions,
           isClasif ? '💾 Guardar cambios' : '✓ Clasificar',
           `bn_saveBnClassification(${idx})`,
           `bn_limpiarBnClassification(${idx})`,
@@ -2359,6 +2426,7 @@ function bn_toggleBnClassify(idx) {
   const isHidden = panel.classList.toggle('hidden');
   tab?.classList.toggle('open', !isHidden);
   if (!isHidden) {
+    bn_activateCatalog(); // asegurar catálogo correcto antes de la cascada
     const rec = BN_CUR_RECS[idx];
     bn_autoPopulateBnClassify(ci, rec);
     // Si aún no tiene clasificación, pre-seleccionar Cuenta por tipo/signo de monto
@@ -2621,8 +2689,12 @@ function bn_goToCardPage(p) {
 (function(){
   const _orig=window.switchModule;
   window.switchModule=function(mod){
+    if (mod !== 'registros') bn_deactivateCatalog(); // restaurar catálogo de tickets
     _orig(mod);
-    if(mod==='registros'&&!BN_LOADED) bn_loadData();
+    if (mod === 'registros') {
+      if (!BN_LOADED) bn_loadData();
+      else bn_activateCatalog(); // ya cargado: reactivar catálogo Bancos
+    }
   };
 })();
 

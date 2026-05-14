@@ -88,22 +88,27 @@ function getBancosData(ss) {
   const records = bancos.slice(1)
     .filter(r => r.join("").toString().trim() !== "")
     .map(r => {
+      // Helper: formatea una celda fecha a string legible
+      const fmtDate = (v) => {
+        if (!v && v !== 0) return "";
+        if (v instanceof Date) {
+          const yy = v.getFullYear(), mm = String(v.getMonth()+1).padStart(2,"0"), dd = String(v.getDate()).padStart(2,"0");
+          return `${yy}-${mm}-${dd}`;
+        }
+        return String(v).trim();
+      };
+      const MESES_ES = ["","enero","febrero","marzo","abril","mayo","junio",
+                        "julio","agosto","septiembre","octubre","noviembre","diciembre"];
+      const fmtMes = (v) => {
+        if (!v) return "";
+        if (v instanceof Date) return `${MESES_ES[v.getMonth()+1]} ${v.getFullYear()}`;
+        return String(v).trim();
+      };
       const factura = (iFac >= 0 ? r[iFac] : "") || "";
-      const diaRaw  = iDia >= 0 ? r[iDia] : "";
-      // Formatear la fecha como YYYY-MM-DD si es un objeto Date de Sheets
-      let diaStr = "";
-      if (diaRaw instanceof Date) {
-        const yy = diaRaw.getFullYear();
-        const mm = String(diaRaw.getMonth()+1).padStart(2,"0");
-        const dd = String(diaRaw.getDate()).padStart(2,"0");
-        diaStr = `${yy}-${mm}-${dd}`;
-      } else {
-        diaStr = String(diaRaw || "").trim();
-      }
       return {
         Año:              iAno  >= 0 ? String(r[iAno]).trim()  : "",
-        Mes:              iMes  >= 0 ? String(r[iMes]).trim()  : "",
-        Día:              diaStr,
+        Mes:              iMes  >= 0 ? fmtMes(r[iMes])         : "",
+        Día:              iDia  >= 0 ? fmtDate(r[iDia])        : "",
         "Cuenta bancaria": iCta >= 0 ? String(r[iCta]).trim()  : "",
         TIPO:             iTipo >= 0 ? String(r[iTipo]).trim() : "",
         CATEGORIA:        iCat  >= 0 ? String(r[iCat]).trim()  : "",
