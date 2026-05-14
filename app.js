@@ -1683,12 +1683,18 @@ function bn_mesLabel(m) {
   const NAMES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
                  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const s = String(m || '').trim();
+  // Número al inicio: "01/2025", "3-2026"
   const numPfx = s.match(/^(\d{1,2})\s*[.\-\/]/);
   if (numPfx) return NAMES[Number(numPfx[1])] || s;
+  // Nombre de mes en español al inicio: "enero 2026", "Febrero"
   const MAP = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,
                julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
   const key = bn_canon(s).split(' ')[0];
-  return MAP[key] ? NAMES[MAP[key]] : s;
+  if (MAP[key]) return NAMES[MAP[key]];
+  // Date string de Sheets: "Wed Jan 01 2026 00:00:00 GMT-0600..."
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime()) && dt.getFullYear() > 1900) return NAMES[dt.getMonth() + 1];
+  return s;
 }
 
 function bn_monthOrd(m) {
@@ -1698,7 +1704,7 @@ function bn_monthOrd(m) {
     julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
   return map[bn_canon(String(m||'')).split(' ')[0]] || 99;
 }
-function bn_yearOf(mes) { const m=String(mes||'').match(/(\d{4})\s*$/); return m?m[1]:''; }
+function bn_yearOf(val) { const m=String(val||'').match(/\b(20\d{2})\b/); return m?m[1]:''; }
 
 function bn_sevOver(av)  {
   if(!isFinite(av))   return {label:'—',       cls:'bn-pill'};
@@ -1834,7 +1840,7 @@ function bn_filteredRecs(tipo) {
   const s=bn_st;
   const q=(document.getElementById('bn-f-text')?.value||'').toLowerCase().trim();
   return BN_RAW.filter(r=>{
-    const y  =bn_norm(String(r.Año||bn_yearOf(r.Mes)));
+    const y  =bn_yearOf(r.Año)||bn_yearOf(r.Mes);
     const mes=bn_norm(r.Mes);
     const cta=bn_norm(r['Cuenta bancaria']||'');
     const cat=bn_norm(r.CATEGORIA||'');
