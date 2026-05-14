@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=50">
+  <link rel="stylesheet" href="styles.css?v=51">
 </head>
 <body>
 
@@ -367,11 +367,15 @@
         </div>
       </div>
 
-      <!-- Main table (Egresos / Ingresos / Alertas) -->
-      <div id="bn-table-wrap" class="bn-table-wrap">
+      <!-- Cards view (Egresos / Ingresos) -->
+      <div id="bn-cards-container" class="hidden"></div>
+      <div id="bn-card-pagination" class="hidden"></div>
+
+      <!-- Alert table (Alertas tab only) -->
+      <div id="bn-table-wrap" class="bn-table-wrap hidden">
         <div class="bn-table-header">
-          <span class="bn-table-title" id="bn-table-title">Egresos</span>
-          <span class="bn-table-sub" id="bn-table-sub">Presupuesto vs Real por partida</span>
+          <span class="bn-table-title" id="bn-table-title">Alertas</span>
+          <span class="bn-table-sub" id="bn-table-sub">Partidas fuera de umbral</span>
         </div>
         <div class="bn-table-scroll">
           <table class="bn-table" id="bn-table">
@@ -482,6 +486,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=56"></script>
+  <script src="app.js?v=57"></script>
 </body>
 </html>

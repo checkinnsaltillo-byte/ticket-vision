@@ -1859,12 +1859,27 @@ function bn_render() {
   const eLen=bn_filteredRecs('E').length, iLen=bn_filteredRecs('I').length;
   bn_txt('bn-filter-subtitle',(eLen+iLen).toLocaleString('es-MX')+' de '+BN_RAW.length.toLocaleString('es-MX')+' movimientos');
 
-  const tw=document.getElementById('bn-table-wrap'), iw=document.getElementById('bn-indicadores');
+  const tw=document.getElementById('bn-table-wrap');
+  const cw=document.getElementById('bn-cards-container');
+  const pw=document.getElementById('bn-card-pagination');
+  const iw=document.getElementById('bn-indicadores');
+
   if(BN_TIPO==='F'){
-    tw?.classList.add('hidden'); iw?.classList.remove('hidden'); bn_renderInd(); return;
+    tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
+    iw?.classList.remove('hidden'); bn_renderInd(); return;
   }
-  tw?.classList.remove('hidden'); iw?.classList.add('hidden');
-  bn_renderTable(BN_TIPO,sE,sI);
+  iw?.classList.add('hidden');
+
+  if(BN_TIPO==='A'){
+    tw?.classList.remove('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
+    bn_renderTable('A',sE,sI); return;
+  }
+
+  // E o I → tarjetas individuales
+  tw?.classList.add('hidden'); cw?.classList.remove('hidden'); pw?.classList.remove('hidden');
+  BN_CUR_RECS = bn_filteredRecs(BN_TIPO);
+  BN_CARD_PAGE = 1;
+  bn_renderCards();
 }
 
 // ─── Table render ─────────────────────────────────────────────────────────────
@@ -2145,6 +2160,390 @@ function bn_rrect(ctx,x,y,w,h,r) {
   ctx.lineTo(x+w,y+h-rr); ctx.quadraticCurveTo(x+w,y+h,x+w-rr,y+h);
   ctx.lineTo(x+rr,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-rr);
   ctx.lineTo(x,y+rr); ctx.quadraticCurveTo(x,y,x+rr,y); ctx.closePath();
+}
+
+// ─── Bancos: Card-based view ──────────────────────────────────────────────────
+let BN_CUR_RECS  = [];
+let BN_CARD_PAGE = 1;
+const BN_CARD_SIZE = 25;
+
+/** Tabla Resumen para un registro bancario (Campo / Valor). */
+function bn_buildBnResumenTable(r) {
+  const rows = [
+    ['Mes',              r.Mes],
+    ['Año',              r.Año],
+    ['Cuenta bancaria',  r['Cuenta bancaria']],
+    ['Tipo',             r.TIPO],
+    ['Categoría',        r.CATEGORIA],
+    ['Concepto',         r.CONCEPTO],
+    ['Descripción',      r.DESCRIPCION || r.Descripcion],
+    ['Factura',          r.Factura],
+    ['Monto',            r.Monto != null ? bn_fmt$(Number(r.Monto || 0)) : null],
+    ['— Clasificación —', null],
+    ['Cuenta contable',  r._cuenta],
+    ['Subcuenta',        r._subcuenta],
+    ['Categoría gasto',  r._categoria_gasto],
+    ['Concepto clasif.', r._concepto],
+    ['Propiedad',        r._propiedad],
+    ['Departamento',     r._departamento],
+    ['Encargado',        r._encargado],
+    ['Deducible',        r._deducible],
+    ['Reembolso',        r._reembolso],
+    ['Reembolso a',      r._reembolso_a],
+    ['Método de pago',   r._metodo_pago],
+    ['Clasificado por',  r._clasificado_por],
+  ].filter(([,v]) => v != null && v !== '');
+
+  if (!rows.length) return `<div class="empty-state"><p>Sin datos</p></div>`;
+  return `<table>
+    <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+    <tbody>${rows.map(([label, val]) => {
+      if (val === null) return `<tr><td colspan="2" style="font-weight:700;color:var(--text-soft);font-size:11px;padding-top:10px">${label}</td></tr>`;
+      return `<tr><td class="resumen-key">${label}</td><td>${esc(String(val))}</td></tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+/** Crea el HTML de una tarjeta individual de registro bancario. */
+function bn_createCard(rec, idx) {
+  const tip    = bn_canon(rec.TIPO || '');
+  const isE    = tip.includes('egr');
+  const isI    = tip.includes('ing');
+  const colorCls = isE ? 'ci-egresos' : isI ? 'ci-ingresos' : '';
+  const clsCls   = colorCls ? `classified ${colorCls}` : '';
+  const ci       = 'bn' + idx;
+
+  const name   = bn_norm(rec.CONCEPTO || rec.CATEGORIA || rec['Cuenta bancaria'] || 'Movimiento');
+  const mesStr = bn_norm(rec.Mes || '');
+  const desc   = bn_norm(rec.DESCRIPCION || rec.Descripcion || '');
+  const monto  = Number(rec.Monto || 0);
+  const cat    = bn_norm(rec.CATEGORIA || '');
+  const con    = bn_norm(rec.CONCEPTO  || '');
+  const cuenta = bn_norm(rec['Cuenta bancaria'] || '');
+  const fac    = bn_norm(rec.Factura || '');
+  const tipoLbl= bn_norm(rec.TIPO || '');
+
+  // Presupuesto y avance
+  const tipo4bud = isE ? 'E' : 'I';
+  const bud      = bn_getBud(tipo4bud, cat, con);
+  const av       = bud > 0 ? monto / bud : NaN;
+  const sev      = isE ? bn_sevOver(av) : bn_sevUnder(av);
+
+  // Chips de encabezado
+  const tipoEmoji  = isE ? '💸' : isI ? '💰' : '🏦';
+  const tipoChip   = `<span class="info-chip ${colorCls}">${tipoEmoji} ${esc(tipoLbl)}</span>`;
+  const cuentaChip = cuenta ? `<span class="info-chip">🏦 ${esc(cuenta)}</span>` : '';
+  const facChip    = fac
+    ? `<span class="info-chip" style="color:var(--success,#16a34a)">🧾 ${esc(fac)}</span>`
+    : `<span class="info-chip" style="color:var(--text-soft);font-style:italic">Sin factura</span>`;
+
+  // Tab Clasificar
+  const isClasif  = !!rec._cuenta;
+  const pathParts = [rec._cuenta, rec._subcuenta, rec._categoria_gasto, rec._concepto].filter(Boolean);
+  const pathText  = pathParts.join(' › ');
+  const clasifColorCls = CUENTA_COLOR_CLASS[rec._cuenta] || '';
+  const tabHtml = isClasif
+    ? `<div class="classify-tab classified ${clasifColorCls}" id="bn-btn-classify-${idx}" onclick="bn_toggleBnClassify(${idx})">
+         <span class="classify-tab-arrow" style="color:#fff">›</span>
+         <span class="classify-tab-label" style="font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:#fff;">${esc(pathText)}</span>
+       </div>`
+    : `<div class="classify-tab" id="bn-btn-classify-${idx}" onclick="bn_toggleBnClassify(${idx})">
+         <span class="classify-tab-arrow">›</span>
+         <span class="classify-tab-label">Clasificar</span>
+       </div>`;
+
+  const deptOptions = Array.from({length:14},(_,j)=>`<option>${j+1}</option>`).join('');
+
+  // Mini barra de avance en encabezado
+  const avPct  = isFinite(av) ? Math.min(Math.max(av, 0), 2) : 0;
+  const barCls = av > 1.10 ? 'bn-bar-bad' : av > 1.0 ? 'bn-bar-warn' : 'bn-bar-good';
+  const avanceHtml = `
+    <div class="bn-hdr-avance">
+      ${bud > 0 ? `
+      <div class="bn-avance-wrap" style="min-width:90px">
+        <div class="bn-avance-bar ${barCls}" style="height:5px;border-radius:3px">
+          <div class="bn-avance-fill" style="width:${(avPct*100).toFixed(1)}%"></div>
+          <div class="bn-avance-marker"></div>
+        </div>
+        <span class="bn-avance-pct" style="font-size:10px">${isFinite(av) ? bn_fmtPct(av) : '—'} presup.</span>
+      </div>
+      <div class="bn-hdr-presup">${bn_fmt$(bud)}</div>` : ''}
+      <span class="${sev.cls}" style="font-size:10px;padding:2px 7px">${sev.label}</span>
+    </div>`;
+
+  return `
+    <div class="ticket-card" id="bn-card-${idx}">
+      <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})">
+        <div class="ticket-info">
+          <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
+          <div class="ticket-store-row">
+            <span class="ticket-store ${colorCls}">${esc(name)}</span>
+          </div>
+          <div class="ticket-meta">${esc(mesStr)}</div>
+          ${desc ? `<div class="product-summary">${esc(desc.length > 120 ? desc.slice(0, 117) + '…' : desc)}</div>` : ''}
+        </div>
+        <div class="ticket-header-right">
+          <div class="ticket-total-badge ${clsCls}">
+            <span class="total-main">${bn_fmt$(monto)}</span>
+          </div>
+          ${avanceHtml}
+        </div>
+      </div>
+
+      <div class="ticket-table-wrap hidden" id="bn-tbl-${idx}">
+        <div class="ticket-tabs">
+          <button class="ticket-tab active" onclick="bn_showBnTab(${idx},'resumen',this)">Resumen</button>
+        </div>
+        <div id="bn-tab-resumen-${idx}" class="ticket-tab-content">${bn_buildBnResumenTable(rec)}</div>
+      </div>
+
+      ${tabHtml}
+      ${buildClassifyPanel(ci, mesStr, deptOptions,
+          isClasif ? '💾 Guardar cambios' : '✓ Clasificar',
+          `bn_saveBnClassification(${idx})`,
+          `bn_limpiarBnClassification(${idx})`)}
+    </div>`;
+}
+
+function bn_toggleBnCard(idx) {
+  const wrap   = document.getElementById(`bn-tbl-${idx}`);
+  const header = document.getElementById(`bn-hdr-${idx}`);
+  if (!wrap) return;
+  const hidden = wrap.classList.toggle('hidden');
+  header.classList.toggle('collapsed', hidden);
+}
+
+function bn_showBnTab(idx, tab, btn) {
+  ['resumen'].forEach(t =>
+    document.getElementById(`bn-tab-${t}-${idx}`)?.classList.toggle('hidden', t !== tab)
+  );
+  btn.closest('.ticket-tabs').querySelectorAll('.ticket-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function bn_toggleBnClassify(idx) {
+  const ci    = 'bn' + idx;
+  const panel = document.getElementById(`classify-${ci}`);
+  const tab   = document.getElementById(`bn-btn-classify-${idx}`);
+  if (!panel) return;
+  const isHidden = panel.classList.toggle('hidden');
+  tab?.classList.toggle('open', !isHidden);
+  if (!isHidden) bn_autoPopulateBnClassify(ci, BN_CUR_RECS[idx]);
+}
+
+/** Rellena el panel Clasificar con los datos guardados del registro. */
+function bn_autoPopulateBnClassify(ci, rec) {
+  if (!rec) return;
+  classifyAutoPopulating = true;
+
+  const cuentaVal = rec._cuenta || '';
+  if (cuentaVal) {
+    const grid = document.getElementById(`cuenta-grid-${ci}`);
+    const card = Array.from(grid?.querySelectorAll('.cuenta-card') || [])
+      .find(c => c.dataset.value === cuentaVal);
+    if (card) {
+      selectCuenta(card, ci);
+      const subVal = rec._subcuenta || '';
+      if (subVal) {
+        const subCard = Array.from(document.getElementById(`subcuenta-grid-${ci}`)?.querySelectorAll('.cuenta-card') || [])
+          .find(c => c.dataset.value === subVal);
+        if (subCard) {
+          selectSubcuenta(subCard, ci);
+          const catVal = rec._categoria_gasto || '';
+          if (catVal) {
+            const catCard = Array.from(document.getElementById(`categoria-grid-${ci}`)?.querySelectorAll('.cuenta-card') || [])
+              .find(c => c.dataset.value === catVal);
+            if (catCard) {
+              selectCategoria(catCard, ci);
+              const conVal = rec._concepto || '';
+              if (conVal) {
+                const conCard = Array.from(document.getElementById(`concepto-grid-${ci}`)?.querySelectorAll('.cuenta-card') || [])
+                  .find(c => c.dataset.value === conVal);
+                if (conCard) selectConcepto(conCard, ci);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Propiedad
+  const propSel = document.getElementById(`propiedad-${ci}`);
+  if (propSel && rec._propiedad) {
+    const exists = Array.from(propSel.options).some(o => o.value === rec._propiedad);
+    if (exists) propSel.value = rec._propiedad;
+    else { propSel.value = 'Otro'; togglePropiedadOtro(ci, 'Otro');
+      const oEl = document.getElementById(`propiedad-otro-${ci}`); if (oEl) oEl.value = rec._propiedad; }
+  }
+
+  // Departamento
+  const dEl = document.getElementById(`departamento-${ci}`);
+  if (dEl && rec._departamento) dEl.value = rec._departamento;
+
+  // Encargado (comprador)
+  if (rec._encargado) {
+    const compGrid = document.getElementById(`comprador-grid-${ci}`);
+    const compCard = Array.from(compGrid?.querySelectorAll('.cuenta-card') || [])
+      .find(c => c.dataset.value === rec._encargado);
+    if (compCard) selectComprador(compCard, ci);
+  }
+
+  // Deducible
+  const dedEl = document.getElementById(`deducible-${ci}`);
+  const dedChecked = rec._deducible === 'Sí';
+  if (dedEl) { dedEl.checked = dedChecked; updateDeducibleLabel(ci, dedChecked); }
+
+  // Reembolso
+  if (rec._reembolso === 'Sí') {
+    const reemEl = document.getElementById(`reembolso-${ci}`);
+    if (reemEl) { reemEl.checked = true; toggleReembolso(ci, true); }
+    if (rec._reembolso_a) {
+      const reemSel = document.getElementById(`reembolso-a-${ci}`);
+      if (reemSel) {
+        const exists = Array.from(reemSel.options).some(o => o.value === rec._reembolso_a);
+        if (exists) reemSel.value = rec._reembolso_a;
+        else { reemSel.value = 'Otro'; toggleReembolsoOtro(ci, 'Otro');
+          const oEl = document.getElementById(`reembolso-otro-${ci}`); if (oEl) oEl.value = rec._reembolso_a; }
+      }
+    }
+  }
+
+  // Método de pago
+  if (rec._metodo_pago) {
+    const metGrid = document.getElementById(`metodo-grid-${ci}`);
+    const metCard = Array.from(metGrid?.querySelectorAll('.cuenta-card') || [])
+      .find(c => c.dataset.value === rec._metodo_pago);
+    if (metCard) selectMetodoPago(metCard, ci);
+  }
+
+  updateClasiPath(ci);
+  classifyAutoPopulating = false;
+}
+
+/** Guarda la clasificación del panel en el registro en memoria y en el backend. */
+async function bn_saveBnClassification(idx) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  const ci = 'bn' + idx;
+  const c  = getClassify(ci);
+
+  rec._cuenta          = c.cuenta;
+  rec._subcuenta       = c.subcuenta;
+  rec._categoria_gasto = c.categoria;
+  rec._concepto        = c.concepto;
+  rec._propiedad       = c.propiedad;
+  rec._departamento    = c.departamento;
+  rec._encargado       = c.comprador;
+  rec._deducible       = c.deducible  ? 'Sí' : 'No';
+  rec._reembolso       = c.reembolso  ? 'Sí' : 'No';
+  rec._reembolso_a     = c.reembolso_a;
+  rec._metodo_pago     = c.metodo_pago_clasif;
+  rec._clasificado_por = currentUser || '';
+
+  // Re-render tarjeta en el DOM
+  const card = document.getElementById(`bn-card-${idx}`);
+  if (card) {
+    card.outerHTML = bn_createCard(rec, idx);
+    // Abrir el panel recién renderizado
+    const panel = document.getElementById(`classify-bn${idx}`);
+    if (panel) { panel.classList.remove('hidden');
+      document.getElementById(`bn-btn-classify-${idx}`)?.classList.add('open'); }
+  }
+
+  // Intentar guardar en backend (requiere /save-banco-clasificacion en server.js)
+  try {
+    await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mes:             bn_norm(rec.Mes),
+        cuenta_bancaria: bn_norm(rec['Cuenta bancaria'] || ''),
+        tipo:            bn_norm(rec.TIPO || ''),
+        categoria:       bn_norm(rec.CATEGORIA || ''),
+        concepto:        bn_norm(rec.CONCEPTO  || ''),
+        descripcion:     bn_norm(rec.DESCRIPCION || rec.Descripcion || ''),
+        monto:           Number(rec.Monto || 0),
+        clasificacion: {
+          cuenta:          c.cuenta,
+          subcuenta:       c.subcuenta,
+          categoria_gasto: c.categoria,
+          concepto:        c.concepto,
+          propiedad:       c.propiedad,
+          departamento:    c.departamento,
+          encargado:       c.comprador,
+          deducible:       c.deducible ? 'Sí' : 'No',
+          reembolso:       c.reembolso ? 'Sí' : 'No',
+          reembolso_a:     c.reembolso_a,
+          metodo_pago:     c.metodo_pago_clasif,
+          clasificado_por: currentUser || '',
+        }
+      }),
+    });
+  } catch(e) {
+    console.warn('Clasificación guardada en memoria (sin backend):', e.message);
+  }
+}
+
+/** Limpia la clasificación del registro y re-renderiza la tarjeta. */
+function bn_limpiarBnClassification(idx) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  ['_cuenta','_subcuenta','_categoria_gasto','_concepto','_propiedad',
+   '_departamento','_encargado','_deducible','_reembolso','_reembolso_a',
+   '_metodo_pago','_clasificado_por'].forEach(k => delete rec[k]);
+  const card = document.getElementById(`bn-card-${idx}`);
+  if (card) card.outerHTML = bn_createCard(rec, idx);
+}
+
+/** Renderiza las tarjetas de la página actual. */
+function bn_renderCards() {
+  const container = document.getElementById('bn-cards-container');
+  const pagEl     = document.getElementById('bn-card-pagination');
+  if (!container) return;
+
+  const recs  = BN_CUR_RECS;
+  const total = recs.length;
+
+  if (!total) {
+    container.innerHTML = `<div class="empty-state" style="padding:50px 20px">
+      <div class="empty-icon">📭</div>
+      <p style="color:var(--text-soft);margin:0">Sin movimientos para los filtros seleccionados</p>
+    </div>`;
+    if (pagEl) pagEl.innerHTML = '';
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / BN_CARD_SIZE));
+  BN_CARD_PAGE     = Math.min(BN_CARD_PAGE, totalPages);
+  const start      = (BN_CARD_PAGE - 1) * BN_CARD_SIZE;
+  const pageRecs   = recs.slice(start, start + BN_CARD_SIZE);
+
+  container.innerHTML = pageRecs.map((rec, j) => bn_createCard(rec, start + j)).join('');
+
+  // Paginación
+  if (!pagEl) return;
+  if (totalPages <= 1) { pagEl.innerHTML = ''; return; }
+  let btns = '';
+  for (let p = Math.max(1, BN_CARD_PAGE - 2); p <= Math.min(totalPages, BN_CARD_PAGE + 2); p++) {
+    btns += `<button class="pag-btn${p === BN_CARD_PAGE ? ' active' : ''}" onclick="bn_goToCardPage(${p})">${p}</button>`;
+  }
+  pagEl.innerHTML = `
+    <div class="pagination-row" style="margin:12px 0 24px">
+      <button class="pag-btn" onclick="bn_goToCardPage(${BN_CARD_PAGE - 1})" ${BN_CARD_PAGE <= 1 ? 'disabled' : ''}>‹</button>
+      ${btns}
+      <button class="pag-btn" onclick="bn_goToCardPage(${BN_CARD_PAGE + 1})" ${BN_CARD_PAGE >= totalPages ? 'disabled' : ''}>›</button>
+      <span style="color:var(--text-soft);font-size:12px;margin-left:10px">
+        ${total.toLocaleString('es-MX')} movimientos · Pág. ${BN_CARD_PAGE}/${totalPages}
+      </span>
+    </div>`;
+}
+
+function bn_goToCardPage(p) {
+  const totalPages = Math.max(1, Math.ceil(BN_CUR_RECS.length / BN_CARD_SIZE));
+  BN_CARD_PAGE = Math.max(1, Math.min(p, totalPages));
+  bn_renderCards();
+  document.getElementById('bn-cards-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ─── Auto-load when switching to Registros contables ─────────────────────────
