@@ -1600,6 +1600,562 @@ function markAsClassified(i) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  MÓDULO: Registros contables  (Bancos + Presupuesto_sys)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── Estado global ───────────────────────────────────────────────────────────
+let BN_RAW    = [];
+let BN_BUDGET = [];
+let BN_TIPO   = 'E';   // 'E' Egresos | 'I' Ingresos | 'A' Alertas | 'F' Indicadores
+let BN_LOADED = false;
+const bn_st   = { año: '', mes: '', cuenta: '', categoria: '', concepto: '' };
+const BN_BCACHE = { E: null, I: null };
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const bn_fmt$  = (x) => Number(x || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+const bn_fmtPct= (x) => isFinite(x) ? (x * 100).toFixed(1) + '%' : '—';
+const bn_norm  = (s) => String(s ?? '').trim();
+const bn_canon = (s) => bn_norm(s).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').toLowerCase();
+const bn_cc    = (s) => bn_canon(s).replace(/[^a-z0-9]+/g,'');
+const bn_uniq  = (arr) => [...new Set(arr.map(bn_norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+
+function bn_monthOrd(m) {
+  const mm = String(m||'').match(/^\s*(\d{1,2})\s*[.\-\/]/);
+  if (mm) return Number(mm[1]);
+  const map = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,
+    julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
+  return map[bn_canon(String(m||'')).split(' ')[0]] || 99;
+}
+function bn_yearOf(mes) { const m=String(mes||'').match(/(\d{4})\s*$/); return m?m[1]:''; }
+
+function bn_sevOver(av)  {
+  if(!isFinite(av))   return {label:'—',       cls:'bn-pill'};
+  if(av<=1.0)         return {label:'OK',       cls:'bn-pill bn-good'};
+  if(av<=1.10)        return {label:'Alerta',   cls:'bn-pill bn-warn'};
+                      return {label:'Crítico',  cls:'bn-pill bn-bad'};
+}
+function bn_sevUnder(av) {
+  if(!isFinite(av))   return {label:'—',       cls:'bn-pill'};
+  if(av>=1.0)         return {label:'OK',       cls:'bn-pill bn-good'};
+  if(av>=0.90)        return {label:'Alerta',   cls:'bn-pill bn-warn'};
+                      return {label:'Crítico',  cls:'bn-pill bn-bad'};
+}
+
+// ─── Budget index ─────────────────────────────────────────────────────────────
+function bn_buildBIdx(tipo) {
+  const m1=new Map(), m2=new Map();
+  for (const b of (BN_BUDGET||[])) {
+    const t = bn_canon(String(b.TIPO??b.CUENTA??''));
+    const isE = t.includes('egr')||t.includes('gasto');
+    const isI = t.includes('ing')||t.includes('venta');
+    if (t && tipo==='E' && !isE) continue;
+    if (t && tipo==='I' && !isI) continue;
+    const cat=String(b.CATEGORIA??''), con=String(b.CONCEPTO??'');
+    const val=Number(b.MENSUAL??0)||0;
+    const k1=bn_canon(cat)+'||'+bn_canon(con);
+    const k2=bn_cc(cat)+'||'+bn_cc(con);
+    m1.set(k1,(m1.get(k1)||0)+val);
+    m2.set(k2,(m2.get(k2)||0)+val);
+  }
+  return {m1,m2};
+}
+
+function bn_getBud(tipo,cat,con) {
+  if (!BN_BCACHE[tipo]) BN_BCACHE[tipo]=bn_buildBIdx(tipo);
+  const {m1,m2}=BN_BCACHE[tipo];
+  const k1=bn_canon(cat)+'||'+bn_canon(con);
+  const k2=bn_cc(cat)+'||'+bn_cc(con);
+  return m1.get(k1)??m2.get(k2)??0;
+}
+function bn_resetBCache() { BN_BCACHE.E=null; BN_BCACHE.I=null; }
+function bn_txt(id,v) { const el=document.getElementById(id); if(el) el.textContent=v; }
+
+// ─── Load ─────────────────────────────────────────────────────────────────────
+async function bn_loadData() {
+  const lbl   = document.getElementById('bn-status-label');
+  const empty = document.getElementById('bn-empty');
+  const emMsg = document.getElementById('bn-empty-msg');
+  if (lbl) lbl.textContent='Cargando…';
+  if (empty) { empty.style.display='flex'; if(emMsg) emMsg.textContent='Cargando datos…'; }
+  document.getElementById('bn-table-wrap')?.classList.add('hidden');
+  document.getElementById('bn-indicadores')?.classList.add('hidden');
+  document.getElementById('bn-kpi-row')?.classList.add('hidden');
+  try {
+    const res  = await fetch(BACKEND+'/get-bancos',{cache:'no-store'});
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error||'Error al obtener datos');
+    BN_RAW=data.records||[]; BN_BUDGET=data.budget||[];
+    BN_LOADED=true; bn_resetBCache();
+    if (lbl) lbl.textContent='Registros contables — '+BN_RAW.length.toLocaleString('es-MX')+' movimientos';
+    if (empty) empty.style.display='none';
+    bn_populateFilters();
+    bn_setDefaultFilters();
+    bn_render();
+  } catch(e) {
+    if (lbl) lbl.textContent='Error al cargar';
+    if (empty) { empty.style.display='flex'; if(emMsg) emMsg.textContent='Error: '+e.message; }
+  }
+}
+
+// ─── Filters ─────────────────────────────────────────────────────────────────
+function bn_populateFilters() {
+  const fill=(id,vals,blank)=>{
+    const sel=document.getElementById(id); if(!sel) return;
+    const cur=sel.value;
+    sel.innerHTML=`<option value="">${blank}</option>`+
+      vals.map(v=>`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');
+  };
+  const years=bn_uniq(BN_RAW.map(r=>String(r.Año||bn_yearOf(r.Mes)))).reverse();
+  fill('bn-f-año',       years,                                                   'Todos');
+  fill('bn-f-mes',       bn_uniq(BN_RAW.map(r=>bn_norm(r.Mes))),                 'Todos');
+  fill('bn-f-cuenta',    bn_uniq(BN_RAW.map(r=>bn_norm(r['Cuenta bancaria']||''))), 'Todas');
+  fill('bn-f-categoria', bn_uniq(BN_RAW.map(r=>bn_norm(r.CATEGORIA||''))),       'Todas');
+  fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO||''))),        'Todos');
+}
+
+function bn_setDefaultFilters() {
+  const years=bn_uniq(BN_RAW.map(r=>String(r.Año||bn_yearOf(r.Mes)))).reverse();
+  const latest=years[0]||'';
+  bn_st.año=latest; bn_st.mes=bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
+  const sel=document.getElementById('bn-f-año'); if(sel) sel.value=latest;
+}
+
+function bn_onFilterChange() {
+  bn_st.año       = document.getElementById('bn-f-año')?.value       || '';
+  bn_st.mes       = document.getElementById('bn-f-mes')?.value       || '';
+  bn_st.cuenta    = document.getElementById('bn-f-cuenta')?.value    || '';
+  bn_st.categoria = document.getElementById('bn-f-categoria')?.value || '';
+  bn_st.concepto  = document.getElementById('bn-f-concepto')?.value  || '';
+  bn_render();
+}
+
+function bn_clearFilters() {
+  ['bn-f-año','bn-f-mes','bn-f-cuenta','bn-f-categoria','bn-f-concepto','bn-f-text']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  bn_st.año=bn_st.mes=bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
+  bn_render();
+}
+
+function bn_toggleFilters() {
+  const body=document.getElementById('bn-filter-body');
+  const btn=document.getElementById('bn-btn-filter-toggle');
+  if(!body) return;
+  const hidden=body.classList.toggle('hidden');
+  btn?.classList.toggle('active',!hidden);
+}
+
+// ─── Filtered records ─────────────────────────────────────────────────────────
+function bn_filteredRecs(tipo) {
+  const s=bn_st;
+  const q=(document.getElementById('bn-f-text')?.value||'').toLowerCase().trim();
+  return BN_RAW.filter(r=>{
+    const y  =bn_norm(String(r.Año||bn_yearOf(r.Mes)));
+    const mes=bn_norm(r.Mes);
+    const cta=bn_norm(r['Cuenta bancaria']||'');
+    const cat=bn_norm(r.CATEGORIA||'');
+    const con=bn_norm(r.CONCEPTO||'');
+    const tip=bn_canon(r.TIPO||'');
+    if(s.año       && y!==s.año)          return false;
+    if(s.mes       && mes!==s.mes)        return false;
+    if(s.cuenta    && cta!==s.cuenta)     return false;
+    if(s.categoria && cat!==s.categoria)  return false;
+    if(s.concepto  && con!==s.concepto)   return false;
+    if(tipo==='E'  && !tip.includes('egr')) return false;
+    if(tipo==='I'  && !tip.includes('ing')) return false;
+    if(q){ const h=(cat+' '+con+' '+bn_norm(r.DESCRIPCION||'')).toLowerCase(); if(!h.includes(q)) return false; }
+    return true;
+  });
+}
+
+// ─── Aggregation ─────────────────────────────────────────────────────────────
+function bn_aggregate(tipo) {
+  const recs=bn_filteredRecs(tipo);
+  const g=new Map();
+  for(const r of recs){
+    const mes=bn_norm(r.Mes), cat=bn_norm(r.CATEGORIA||''), con=bn_norm(r.CONCEPTO||'');
+    const key=cat+'||'+con+'||'+mes;
+    const bud=bn_getBud(tipo,cat,con);
+    if(!g.has(key)) g.set(key,{key,cat,con,mes,real:0,bud});
+    g.get(key).real+=Number(r.Monto||0);
+  }
+  const rows=[...g.values()].map(r=>{
+    const realAbs=Math.abs(r.real), budAbs=Math.abs(Number(r.bud||0));
+    const av=budAbs>0?(realAbs/budAbs):NaN;
+    const sev=(tipo==='E')?bn_sevOver(av):bn_sevUnder(av);
+    return{...r,realAbs,budAbs,av,sev};
+  });
+  rows.sort((a,b)=>{
+    const c=a.cat.localeCompare(b.cat,'es'); if(c) return c;
+    const d=a.con.localeCompare(b.con,'es'); if(d) return d;
+    return a.mes.localeCompare(b.mes,'es');
+  });
+  const realM=recs.reduce((s,r)=>s+Math.abs(Number(r.Monto||0)),0);
+  const seen=new Set(); let budM=0;
+  for(const r of recs){
+    const k=bn_canon(r.CATEGORIA||'')+'||'+bn_canon(r.CONCEPTO||'')+'||'+bn_norm(r.Mes);
+    if(seen.has(k)) continue; seen.add(k);
+    budM+=Math.abs(bn_getBud(tipo,bn_norm(r.CATEGORIA||''),bn_norm(r.CONCEPTO||'')));
+  }
+  const avM=budM>0?(realM/budM):NaN;
+  const alerts=tipo==='E'?rows.filter(r=>r.budAbs>0&&r.av>1.0).length:0;
+  return{rows,realM,budM,avM,alerts};
+}
+
+// ─── Monthly series ────────────────────────────────────────────────────────────
+function bn_monthly() {
+  const eR=bn_filteredRecs('E'), iR=bn_filteredRecs('I');
+  const sum=(recs)=>{ const m=new Map(); for(const r of recs){ const mes=bn_norm(r.Mes); m.set(mes,(m.get(mes)||0)+Math.abs(Number(r.Monto||0))); } return m; };
+  const mE=sum(eR), mI=sum(iR);
+  const months=[...new Set([...mE.keys(),...mI.keys()])];
+  months.sort((a,b)=>{
+    const ya=bn_yearOf(a),yb=bn_yearOf(b); if(ya!==yb) return ya.localeCompare(yb,'es');
+    return bn_monthOrd(a)-bn_monthOrd(b);
+  });
+  const rows=months.map(m=>{const I=mI.get(m)||0,E=mE.get(m)||0,U=I-E,M=I>0?(U/I):NaN;return{Mes:m,I,E,U,M};});
+  const ytdI=rows.reduce((s,r)=>s+r.I,0), ytdE=rows.reduce((s,r)=>s+r.E,0);
+  const ytdU=ytdI-ytdE, ytdM=ytdI>0?(ytdU/ytdI):NaN;
+  const n=rows.filter(r=>r.I>0||r.E>0).length||0;
+  return{rows,ytdI,ytdE,ytdU,ytdM,n,avgI:n?ytdI/n:0,avgE:n?ytdE/n:0,avgU:n?ytdU/n:0};
+}
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+function bn_setTipo(t) {
+  BN_TIPO=t;
+  ['E','I','A','F'].forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
+  bn_render();
+}
+
+// ─── Main render ──────────────────────────────────────────────────────────────
+function bn_render() {
+  if(!BN_LOADED) return;
+  const sE=bn_aggregate('E'), sI=bn_aggregate('I');
+
+  // KPIs
+  bn_txt('bn-k-egr-real',       bn_fmt$(sE.realM));
+  bn_txt('bn-k-egr-sub',        'Presup. '+bn_fmt$(sE.budM));
+  bn_txt('bn-k-ing-real',       bn_fmt$(sI.realM));
+  bn_txt('bn-k-ing-sub',        sI.rows.length+' movimientos');
+  bn_txt('bn-k-avance-egr',     isFinite(sE.avM)?bn_fmtPct(sE.avM):'—');
+  bn_txt('bn-k-avance-egr-sub', 'Real '+bn_fmt$(sE.realM)+' / '+bn_fmt$(sE.budM));
+  const util=sI.realM-sE.realM;
+  bn_txt('bn-k-utilidad',       bn_fmt$(util));
+  const marg=sI.realM>0?(util/sI.realM):NaN;
+  bn_txt('bn-k-utilidad-sub',   isFinite(marg)?'Margen '+bn_fmtPct(marg):'Sin ingresos');
+
+  // Color KPI
+  const kAv=document.getElementById('bn-k-avance-egr');
+  if(kAv){ kAv.className='bn-kpi-value'; if(isFinite(sE.avM)){
+    if(sE.avM>1.10) kAv.classList.add('bn-val-bad');
+    else if(sE.avM>1.0) kAv.classList.add('bn-val-warn');
+    else kAv.classList.add('bn-val-good');
+  }}
+  const kU=document.getElementById('bn-k-utilidad');
+  if(kU) kU.className='bn-kpi-value '+(util>=0?'bn-val-good':'bn-val-bad');
+
+  document.getElementById('bn-kpi-row')?.classList.remove('hidden');
+
+  // Subtitle
+  const eLen=bn_filteredRecs('E').length, iLen=bn_filteredRecs('I').length;
+  bn_txt('bn-filter-subtitle',(eLen+iLen).toLocaleString('es-MX')+' de '+BN_RAW.length.toLocaleString('es-MX')+' movimientos');
+
+  const tw=document.getElementById('bn-table-wrap'), iw=document.getElementById('bn-indicadores');
+  if(BN_TIPO==='F'){
+    tw?.classList.add('hidden'); iw?.classList.remove('hidden'); bn_renderInd(); return;
+  }
+  tw?.classList.remove('hidden'); iw?.classList.add('hidden');
+  bn_renderTable(BN_TIPO,sE,sI);
+}
+
+// ─── Table render ─────────────────────────────────────────────────────────────
+function bn_renderTable(tipo,sE,sI) {
+  const thead=document.getElementById('bn-thead-row');
+  const tbody=document.getElementById('bn-tbody');
+  const title=document.getElementById('bn-table-title');
+  const sub=document.getElementById('bn-table-sub');
+  if(!thead||!tbody) return;
+
+  if(tipo==='E'){
+    title.textContent='💸 Egresos — Presupuesto vs Real';
+    sub.textContent='Click en una fila para ver los movimientos detallados';
+    thead.innerHTML='<th>Categoría</th><th>Concepto</th><th>Mes</th><th class="num">Real</th><th class="num">Presupuesto</th><th>Avance</th><th>Estado</th>';
+  } else if(tipo==='I'){
+    title.textContent='💰 Ingresos';
+    sub.textContent='Click en una fila para ver movimientos detallados';
+    thead.innerHTML='<th>Categoría</th><th>Concepto</th><th>Mes</th><th class="num">Real</th>';
+  } else {
+    title.textContent='⚠️ Alertas — Partidas fuera de umbral';
+    sub.textContent='Egresos > 100% presupuesto · Ingresos < 90% esperado';
+    thead.innerHTML='<th>Tipo</th><th>Categoría</th><th>Concepto</th><th>Mes</th><th class="num">%</th><th>Severidad</th>';
+  }
+  tbody.innerHTML='';
+
+  let rows;
+  if(tipo==='A'){
+    rows=[];
+    sE.rows.forEach(r=>{ if(r.budAbs>0&&r.av>1.0) rows.push({...r,tipoSrc:'E',sev:bn_sevOver(r.av)}); });
+    sI.rows.forEach(r=>{ if(r.budAbs>0&&r.av<1.0) rows.push({...r,tipoSrc:'I',sev:bn_sevUnder(r.av)}); });
+    const ord={'bn-pill bn-bad':0,'bn-pill bn-warn':1,'bn-pill bn-good':2,'bn-pill':3};
+    rows.sort((a,b)=>(ord[a.sev.cls]||3)-(ord[b.sev.cls]||3));
+  } else {
+    rows=tipo==='E'?sE.rows:sI.rows;
+  }
+
+  if(!rows.length){
+    tbody.innerHTML=`<tr><td colspan="8" style="color:var(--text-soft);padding:20px;text-align:center">Sin movimientos para los filtros seleccionados</td></tr>`;
+    return;
+  }
+
+  for(const r of rows){
+    const tr=document.createElement('tr');
+    tr.style.cursor='pointer';
+    if(tipo==='E'){
+      const pct=isFinite(r.av)?Math.min(Math.max(r.av,0),2):0;
+      const barCls=r.av>1.10?'bn-bar-bad':r.av>1.0?'bn-bar-warn':'bn-bar-good';
+      tr.innerHTML=`
+        <td>${esc(r.cat)}</td>
+        <td>${esc(r.con)||'<span style="color:var(--text-soft)">(sin concepto)</span>'}</td>
+        <td>${esc(r.mes)}</td>
+        <td class="num">${bn_fmt$(r.realAbs)}</td>
+        <td class="num">${r.budAbs?bn_fmt$(r.budAbs):'<span style="color:var(--text-soft)">—</span>'}</td>
+        <td>
+          <div class="bn-avance-wrap">
+            <div class="bn-avance-bar ${barCls}">
+              <div class="bn-avance-fill" style="width:${(pct*100).toFixed(1)}%"></div>
+              <div class="bn-avance-marker"></div>
+            </div>
+            <span class="bn-avance-pct">${isFinite(r.av)?bn_fmtPct(r.av):'—'}</span>
+          </div>
+        </td>
+        <td><span class="${r.sev.cls}">${r.sev.label}</span></td>`;
+    } else if(tipo==='I'){
+      tr.innerHTML=`
+        <td>${esc(r.cat)}</td>
+        <td>${esc(r.con)||'<span style="color:var(--text-soft)">(sin concepto)</span>'}</td>
+        <td>${esc(r.mes)}</td>
+        <td class="num">${bn_fmt$(r.realAbs)}</td>`;
+    } else {
+      const badge=r.tipoSrc==='E'?'<span class="bn-pill bn-bad">Egreso</span>':'<span class="bn-pill bn-warn">Ingreso</span>';
+      tr.innerHTML=`
+        <td>${badge}</td>
+        <td>${esc(r.cat)}</td>
+        <td>${esc(r.con)||'(sin concepto)'}</td>
+        <td>${esc(r.mes)}</td>
+        <td class="num">${isFinite(r.av)?bn_fmtPct(r.av):'—'}</td>
+        <td><span class="${r.sev.cls}">${r.sev.label}</span></td>`;
+    }
+    tr.addEventListener('click',()=>bn_showDetail(r.cat,r.con,r.mes,(tipo==='A'?r.tipoSrc:tipo)));
+    tbody.appendChild(tr);
+  }
+}
+
+// ─── Detail modal ─────────────────────────────────────────────────────────────
+function bn_showDetail(cat,con,mes,tipo) {
+  const overlay=document.getElementById('bn-modal-overlay');
+  const tbody=document.getElementById('bn-modal-tbody');
+  if(!overlay||!tbody) return;
+  document.getElementById('bn-modal-title').textContent=(tipo==='E'?'Egreso':'Ingreso')+' — '+cat+(con?' › '+con:'');
+  document.getElementById('bn-modal-sub').textContent=mes;
+  const rows=BN_RAW.filter(r=>{
+    const tip=bn_canon(r.TIPO||'');
+    if(tipo==='E'&&!tip.includes('egr')) return false;
+    if(tipo==='I'&&!tip.includes('ing')) return false;
+    return bn_norm(r.CATEGORIA||'')===cat && bn_norm(r.CONCEPTO||'')===con && bn_norm(r.Mes)===mes;
+  });
+  tbody.innerHTML='';
+  if(!rows.length){
+    tbody.innerHTML='<tr><td colspan="8" style="color:var(--text-soft);padding:16px;text-align:center">Sin movimientos</td></tr>';
+  } else {
+    for(const r of rows){
+      const fac=bn_norm(r.Factura||'');
+      const tr=document.createElement('tr');
+      tr.innerHTML=`
+        <td>${esc(bn_norm(r.Mes))}</td>
+        <td>${esc(bn_norm(r['Cuenta bancaria']||''))}</td>
+        <td><span class="bn-pill">${esc(bn_norm(r.TIPO||''))}</span></td>
+        <td>${esc(bn_norm(r.CATEGORIA||''))}</td>
+        <td>${esc(bn_norm(r.CONCEPTO||''))}</td>
+        <td>${esc(bn_norm(r.DESCRIPCION||r.Descripcion||''))}</td>
+        <td><span class="bn-pill ${fac?'bn-good':'bn-warn'}">${fac||'Sin factura'}</span></td>
+        <td class="num">${bn_fmt$(Number(r.Monto||0))}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+  overlay.classList.remove('hidden');
+  document.body.style.overflow='hidden';
+}
+
+function bn_closeDetail() {
+  document.getElementById('bn-modal-overlay')?.classList.add('hidden');
+  document.body.style.overflow='';
+}
+
+// ─── Indicadores ──────────────────────────────────────────────────────────────
+function bn_renderInd() {
+  const s=bn_monthly();
+  bn_txt('bn-k-egr-real',     bn_fmt$(s.ytdE));
+  bn_txt('bn-k-egr-sub',      'Prom. mensual: '+bn_fmt$(s.avgE)+' ('+s.n+' meses)');
+  bn_txt('bn-k-ing-real',     bn_fmt$(s.ytdI));
+  bn_txt('bn-k-ing-sub',      'Prom. mensual: '+bn_fmt$(s.avgI));
+  bn_txt('bn-k-avance-egr',   bn_fmt$(s.ytdU));
+  bn_txt('bn-k-avance-egr-sub','Utilidad YTD');
+  bn_txt('bn-k-utilidad',     isFinite(s.ytdM)?bn_fmtPct(s.ytdM):'—');
+  bn_txt('bn-k-utilidad-sub', 'Margen neto YTD');
+  try{ bn_drawTrend('bn-trend-canvas','bn-trend-tip',s); }catch(e){}
+  try{ bn_drawMargin('bn-margin-canvas','bn-margin-tip',s); }catch(e){}
+
+  const list=document.getElementById('bn-alerts-list');
+  if(!list) return; list.innerHTML='';
+  const add=(lvl,title,det)=>{
+    const d=document.createElement('div');
+    d.className='bn-fin-alert '+lvl;
+    d.innerHTML=`<div class="bn-alert-title">${esc(title)}</div><div class="bn-alert-detail">${esc(det)}</div>`;
+    list.appendChild(d);
+  };
+  if(isFinite(s.ytdM)){
+    if(s.ytdM<0.20) add('bad','Margen neto bajo (< 20%)','Margen actual: '+bn_fmtPct(s.ytdM)+'. Revisa costos.');
+    else if(s.ytdM<0.30) add('warn','Margen moderado (< 30%)','Margen actual: '+bn_fmtPct(s.ytdM)+'.');
+    else add('good','Margen saludable (≥ 30%)','Margen actual: '+bn_fmtPct(s.ytdM)+'.');
+  } else { add('warn','Margen no calculable','Sin ingresos suficientes en el período.'); }
+  const rows=s.rows||[];
+  if(rows.length>=2){
+    const a=rows[rows.length-2],b=rows[rows.length-1];
+    const gE=a.E>0?(b.E-a.E)/a.E:(b.E>0?1:0);
+    const gI=a.I>0?(b.I-a.I)/a.I:(b.I>0?1:0);
+    if(gE>gI+0.05&&b.E>0)
+      add('bad','Egresos creciendo más rápido que ingresos',
+        b.Mes+': Egresos '+bn_fmt$(b.E)+' vs Ingresos '+bn_fmt$(b.I));
+    else add('good','Crecimiento de egresos controlado','Cambio último mes: E '+bn_fmtPct(gE)+' vs I '+bn_fmtPct(gI));
+  }
+  if(s.ytdI>0&&s.ytdE>s.ytdI)
+    add('bad','Egresos superan ingresos YTD','E '+bn_fmt$(s.ytdE)+' > I '+bn_fmt$(s.ytdI));
+}
+
+// ─── Chart: Trend line ────────────────────────────────────────────────────────
+function bn_drawTrend(canvasId,tipId,series) {
+  const host=document.getElementById(canvasId), tip=document.getElementById(tipId);
+  if(!host) return;
+  const rows=(series&&series.rows)?series.rows:[];
+  const DPR=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+  const W=Math.max(320,host.parentElement?.clientWidth||600);
+  const Hcss=240;
+  host.width=Math.round(W*DPR); host.height=Math.round(Hcss*DPR);
+  host.style.height=Hcss+'px';
+  const ctx=host.getContext('2d');
+  ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,Hcss);
+  const pL=56,pR=16,pT=14,pB=44,plotW=W-pL-pR,plotH=Hcss-pT-pB;
+  if(!rows.length){ ctx.font='12px system-ui'; ctx.fillStyle='rgba(0,0,0,.4)'; ctx.fillText('Sin datos.',pL,pT+20); return; }
+  const maxV=Math.max(1,...rows.map(r=>Math.max(r.I||0,r.E||0,Math.abs(r.U||0))));
+  const xAt=(i)=>pL+(rows.length===1?plotW/2:i*(plotW/(rows.length-1)));
+  const yAt=(v)=>pT+(1-(v/maxV))*plotH;
+
+  const drawAxes=()=>{
+    ctx.lineWidth=1; ctx.strokeStyle='rgba(0,0,0,.10)';
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+plotH); ctx.lineTo(pL+plotW,pT+plotH); ctx.stroke();
+    ctx.font='9px system-ui'; ctx.fillStyle='rgba(0,0,0,.40)'; ctx.textAlign='right';
+    [0,.25,.5,.75,1].forEach(f=>{
+      const y=pT+(1-f)*plotH;
+      const lbl=maxV*f>=1000?(bn_fmt$(maxV*f)).replace('MX$','$'):bn_fmt$(maxV*f).replace('MX$','$');
+      ctx.fillText(lbl,pL-3,y+3);
+      ctx.strokeStyle='rgba(0,0,0,.05)'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+plotW,y); ctx.stroke();
+    });
+    ctx.textAlign='center'; ctx.fillStyle='rgba(0,0,0,.50)';
+    rows.forEach((r,i)=>{
+      if(rows.length>12&&i%2===1) return;
+      const lab=String(r.Mes||'').replace(/^\s*\d{1,2}\s*[.\-\/]\s*/,'').slice(0,10);
+      ctx.fillText(lab,xAt(i),pT+plotH+18);
+    });
+  };
+  const drawSeries=(key,color)=>{
+    ctx.lineWidth=2.5; ctx.strokeStyle=color;
+    ctx.beginPath();
+    rows.forEach((r,i)=>{ const v=Math.max(0,Number(r[key]||0)); i===0?ctx.moveTo(xAt(i),yAt(v)):ctx.lineTo(xAt(i),yAt(v)); });
+    ctx.stroke();
+    ctx.fillStyle=color;
+    rows.forEach((r,i)=>{ ctx.beginPath(); ctx.arc(xAt(i),yAt(Math.max(0,r[key]||0)),3,0,Math.PI*2); ctx.fill(); });
+  };
+  const drawLegend=()=>{
+    const leg=[['Ingresos','#10b981'],['Egresos','#f59e0b'],['Utilidad','#6366f1']];
+    ctx.font='11px system-ui'; ctx.textAlign='left';
+    leg.forEach(([nm,col],k)=>{ const ox=pL+k*110; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(ox,pT+10,4,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(0,0,0,.65)'; ctx.fillText(nm,ox+10,pT+14); });
+  };
+  const redraw=()=>{ ctx.clearRect(0,0,W,Hcss); drawAxes(); drawSeries('I','#10b981'); drawSeries('E','#f59e0b'); drawSeries('U','#6366f1'); drawLegend(); };
+  redraw();
+
+  const near=(cx)=>{ const rect=host.getBoundingClientRect(),px=cx-rect.left; let b=0,bd=Infinity; for(let i=0;i<rows.length;i++){const d=Math.abs(px-xAt(i));if(d<bd){bd=d;b=i;}} return{idx:b,rect}; };
+  const showAt=(idx,rect,cx,cy)=>{
+    redraw();
+    ctx.strokeStyle='rgba(0,0,0,.18)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(xAt(idx),pT); ctx.lineTo(xAt(idx),pT+plotH); ctx.stroke();
+    [['I','#10b981'],['E','#f59e0b'],['U','#6366f1']].forEach(([key,col])=>{ ctx.fillStyle=col; ctx.beginPath(); ctx.arc(xAt(idx),yAt(Math.max(0,rows[idx][key]||0)),5,0,Math.PI*2); ctx.fill(); });
+    if(tip){ const r=rows[idx]; tip.innerHTML=`<div class="bn-tip-title">${esc(r.Mes)}</div><div>Ingresos: <b>${bn_fmt$(r.I)}</b></div><div>Egresos: <b>${bn_fmt$(r.E)}</b></div><div>Utilidad: <b>${bn_fmt$(r.U)}</b></div>`; tip.style.display='block'; const bx=Math.min(Math.max(8,cx-rect.left+12),rect.width-200),by=Math.min(Math.max(8,cy-rect.top-10),rect.height-100); tip.style.left=bx+'px'; tip.style.top=by+'px'; }
+  };
+  const hide=()=>{ if(tip) tip.style.display='none'; redraw(); };
+  host.onmousemove=(ev)=>{ const {idx,rect}=near(ev.clientX); showAt(idx,rect,ev.clientX,ev.clientY); };
+  host.onmouseleave=hide;
+  host.addEventListener('touchstart',(ev)=>{ const t=ev.touches[0]; if(!t) return; const {idx,rect}=near(t.clientX); showAt(idx,rect,t.clientX,t.clientY); },{passive:true});
+  host.addEventListener('touchmove',(ev)=>{ const t=ev.touches[0]; if(!t) return; const {idx,rect}=near(t.clientX); showAt(idx,rect,t.clientX,t.clientY); },{passive:true});
+  host.addEventListener('touchend',hide,{passive:true});
+}
+
+// ─── Chart: Margin bars ───────────────────────────────────────────────────────
+function bn_drawMargin(canvasId,tipId,series) {
+  const host=document.getElementById(canvasId), tip=document.getElementById(tipId);
+  if(!host) return;
+  const rows=(series&&series.rows)?series.rows:[];
+  const DPR=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+  const W=Math.max(320,host.parentElement?.clientWidth||600), Hcss=220;
+  host.width=Math.round(W*DPR); host.height=Math.round(Hcss*DPR); host.style.height=Hcss+'px';
+  const ctx=host.getContext('2d');
+  ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,Hcss);
+  const pL=56,pR=16,pT=14,pB=44,plotW=W-pL-pR,plotH=Hcss-pT-pB,baseY=pT+plotH/2;
+  ctx.lineWidth=1; ctx.strokeStyle='rgba(0,0,0,.10)';
+  ctx.beginPath(); ctx.moveTo(pL,baseY); ctx.lineTo(pL+plotW,baseY); ctx.stroke();
+  ctx.font='9px system-ui'; ctx.fillStyle='rgba(0,0,0,.40)'; ctx.textAlign='right';
+  ctx.fillText('+100%',pL-3,pT+12); ctx.fillText('0%',pL-3,baseY+4); ctx.fillText('-100%',pL-3,pT+plotH+4);
+  if(!rows.length) return;
+  const clamp=(v)=>Math.max(-1,Math.min(1,v));
+  const band=plotW/rows.length, barW=Math.max(8,band*0.55);
+  rows.forEach((r,i)=>{
+    const m=clamp(isFinite(r.M)?r.M:0);
+    const x0=pL+i*band+(band-barW)/2, h=Math.abs(m)*(plotH/2), y0=m>=0?(baseY-h):baseY;
+    ctx.fillStyle=m>=0?'rgba(16,185,129,.65)':'rgba(245,158,11,.75)';
+    ctx.beginPath(); bn_rrect(ctx,x0,y0,barW,h||1,4); ctx.fill();
+    if(rows.length<=12||i%2===0){
+      const lab=String(r.Mes||'').replace(/^\s*\d{1,2}\s*[.\-\/]\s*/,'').slice(0,10);
+      ctx.font='9px system-ui'; ctx.fillStyle='rgba(0,0,0,.50)'; ctx.textAlign='center';
+      ctx.fillText(lab,pL+i*band+band/2,pT+plotH+18);
+    }
+  });
+  const showAt=(cx,cy)=>{
+    const rect=host.getBoundingClientRect(), px=cx-rect.left-pL;
+    const idx=Math.max(0,Math.min(rows.length-1,Math.floor(px/band)));
+    const r=rows[idx];
+    if(tip&&r){ tip.innerHTML=`<div class="bn-tip-title">${esc(r.Mes)}</div><div>Margen: <b>${isFinite(r.M)?bn_fmtPct(r.M):'—'}</b></div><div>Ingresos: <b>${bn_fmt$(r.I)}</b></div><div>Egresos: <b>${bn_fmt$(r.E)}</b></div><div>Utilidad: <b>${bn_fmt$(r.U)}</b></div>`; tip.style.display='block'; const bx=Math.min(Math.max(8,cx-rect.left+12),rect.width-200),by=Math.min(Math.max(8,cy-rect.top-10),rect.height-120); tip.style.left=bx+'px'; tip.style.top=by+'px'; }
+  };
+  const hide=()=>{ if(tip) tip.style.display='none'; };
+  host.onmousemove=(ev)=>showAt(ev.clientX,ev.clientY);
+  host.onmouseleave=hide;
+  host.addEventListener('touchstart',(ev)=>{ const t=ev.touches[0]; if(t) showAt(t.clientX,t.clientY); },{passive:true});
+  host.addEventListener('touchend',hide,{passive:true});
+}
+
+function bn_rrect(ctx,x,y,w,h,r) {
+  const rr=Math.min(r,w/2,h/2);
+  ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.lineTo(x+w-rr,y); ctx.quadraticCurveTo(x+w,y,x+w,y+rr);
+  ctx.lineTo(x+w,y+h-rr); ctx.quadraticCurveTo(x+w,y+h,x+w-rr,y+h);
+  ctx.lineTo(x+rr,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-rr);
+  ctx.lineTo(x,y+rr); ctx.quadraticCurveTo(x,y,x+rr,y); ctx.closePath();
+}
+
+// ─── Auto-load when switching to Registros contables ─────────────────────────
+(function(){
+  const _orig=window.switchModule;
+  window.switchModule=function(mod){
+    _orig(mod);
+    if(mod==='registros'&&!BN_LOADED) bn_loadData();
+  };
+})();
+
 // ─── Emojis por categoría ──────────────────────────────────────────────────
 
 const CATEGORIA_EMOJIS = {

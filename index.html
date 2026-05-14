@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=49">
+  <link rel="stylesheet" href="styles.css?v=50">
 </head>
 <body>
 
@@ -49,7 +49,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <span class="user-badge" id="current-user-badge"></span>
-        <div class="header-badge">v14.0</div>
+        <div class="header-badge">v15.0</div>
       </div>
     </header>
 
@@ -278,10 +278,159 @@
 
     <!-- ══ MÓDULO: Registros contables ══════════════════════════ -->
     <div id="module-registros" class="hidden">
-      <div class="empty-state" style="padding:70px 20px">
+
+      <!-- Top bar -->
+      <div class="db-top-bar">
+        <div class="db-top-left">
+          <button class="btn-filter-toggle" id="bn-btn-filter-toggle"
+                  onclick="bn_toggleFilters()" title="Mostrar filtros">
+            <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
+          </button>
+          <span class="db-todas-label" id="bn-status-label">Registros contables</span>
+        </div>
+        <div class="db-top-right">
+          <span class="db-count-inline" id="bn-filter-subtitle"></span>
+          <button class="btn-limpiar" style="margin:0" onclick="bn_loadData()">↻ Actualizar</button>
+          <button class="btn-limpiar" style="margin:0" onclick="bn_clearFilters()">✕ Limpiar</button>
+        </div>
+      </div>
+
+      <!-- Filter panel -->
+      <div class="db-filter-panel hidden" id="bn-filter-body">
+        <div class="db-filter-grid">
+          <div class="db-filter-full">
+            <input type="text" id="bn-f-text" placeholder="🔍  Buscar por categoría, concepto, descripción…"
+                   class="db-search-input" oninput="bn_onFilterChange()">
+          </div>
+          <div class="db-filter-half">
+            <label>Año</label>
+            <select id="bn-f-año" class="field-select" onchange="bn_onFilterChange()">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="db-filter-half">
+            <label>Mes</label>
+            <select id="bn-f-mes" class="field-select" onchange="bn_onFilterChange()">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="db-filter-half">
+            <label>Cuenta bancaria</label>
+            <select id="bn-f-cuenta" class="field-select" onchange="bn_onFilterChange()">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <div class="db-filter-half">
+            <label>Categoría</label>
+            <select id="bn-f-categoria" class="field-select" onchange="bn_onFilterChange()">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <div class="db-filter-half">
+            <label>Concepto</label>
+            <select id="bn-f-concepto" class="field-select" onchange="bn_onFilterChange()">
+              <option value="">Todos</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tipo tabs -->
+      <div class="bn-tipo-tabs">
+        <button class="bn-tipo-tab active" id="bn-tab-E" onclick="bn_setTipo('E')">💸 Egresos</button>
+        <button class="bn-tipo-tab" id="bn-tab-I" onclick="bn_setTipo('I')">💰 Ingresos</button>
+        <button class="bn-tipo-tab" id="bn-tab-A" onclick="bn_setTipo('A')">⚠️ Alertas</button>
+        <button class="bn-tipo-tab" id="bn-tab-F" onclick="bn_setTipo('F')">📊 Indicadores</button>
+      </div>
+
+      <!-- KPI cards -->
+      <div class="bn-kpi-row" id="bn-kpi-row">
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Egresos (período)</div>
+          <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
+          <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
+        </div>
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Ingresos (período)</div>
+          <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
+          <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
+        </div>
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Avance presupuesto</div>
+          <div class="bn-kpi-value" id="bn-k-avance-egr">—</div>
+          <div class="bn-kpi-sub" id="bn-k-avance-egr-sub">—</div>
+        </div>
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Utilidad (período)</div>
+          <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
+          <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
+        </div>
+      </div>
+
+      <!-- Main table (Egresos / Ingresos / Alertas) -->
+      <div id="bn-table-wrap" class="bn-table-wrap">
+        <div class="bn-table-header">
+          <span class="bn-table-title" id="bn-table-title">Egresos</span>
+          <span class="bn-table-sub" id="bn-table-sub">Presupuesto vs Real por partida</span>
+        </div>
+        <div class="bn-table-scroll">
+          <table class="bn-table" id="bn-table">
+            <thead><tr id="bn-thead-row"></tr></thead>
+            <tbody id="bn-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Indicadores section (hidden unless tab F) -->
+      <div id="bn-indicadores" class="hidden">
+        <div class="bn-section-title">Tendencia mensual (Ingresos / Egresos / Utilidad)</div>
+        <div class="bn-chart-wrap">
+          <div style="position:relative;width:100%">
+            <canvas id="bn-trend-canvas" style="width:100%;display:block"></canvas>
+            <div id="bn-trend-tip" class="bn-chart-tip" style="display:none"></div>
+          </div>
+        </div>
+        <div class="bn-section-title">Margen neto mensual</div>
+        <div class="bn-chart-wrap">
+          <div style="position:relative;width:100%">
+            <canvas id="bn-margin-canvas" style="width:100%;display:block"></canvas>
+            <div id="bn-margin-tip" class="bn-chart-tip" style="display:none"></div>
+          </div>
+        </div>
+        <div class="bn-section-title">Alertas financieras automáticas</div>
+        <div class="bn-alerts-list" id="bn-alerts-list"></div>
+      </div>
+
+      <!-- Loading / empty state -->
+      <div id="bn-empty" class="empty-state" style="padding:50px 20px;display:none">
         <div class="empty-icon">📚</div>
-        <p style="font-size:16px;font-weight:700;margin:0 0 6px">Registros contables</p>
-        <p style="color:var(--text-soft);margin:0">Módulo en construcción</p>
+        <p id="bn-empty-msg" style="color:var(--text-soft);margin:0">Sin datos</p>
+      </div>
+
+    </div><!-- /module-registros -->
+
+    <!-- Detail modal for Bancos drilldown -->
+    <div id="bn-modal-overlay" class="bn-modal-overlay hidden" onclick="bn_closeDetail()">
+      <div class="bn-modal" onclick="event.stopPropagation()">
+        <div class="bn-modal-header">
+          <div>
+            <div class="bn-modal-title" id="bn-modal-title">Detalle</div>
+            <div class="bn-modal-sub" id="bn-modal-sub"></div>
+          </div>
+          <button class="bn-modal-close" onclick="bn_closeDetail()">×</button>
+        </div>
+        <div class="bn-table-scroll" style="max-height:60vh">
+          <table class="bn-table">
+            <thead>
+              <tr>
+                <th>Mes</th><th>Cuenta bancaria</th><th>Tipo</th>
+                <th>Categoría</th><th>Concepto</th><th>Descripción</th>
+                <th>Factura</th><th class="num">Monto</th>
+              </tr>
+            </thead>
+            <tbody id="bn-modal-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -333,6 +482,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=55"></script>
+  <script src="app.js?v=56"></script>
 </body>
 </html>

@@ -64,6 +64,17 @@ app.get("/get-tickets", async (req, res) => {
   }
 });
 
+// ─── Registros contables: datos de BANCOS y Presupuesto_sys ───────────────
+
+app.get("/get-bancos", async (req, res) => {
+  try {
+    const result = await callAppsScript({ action: "get_bancos_data" });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Test: verifica conexión con Apps Script y sube imagen de prueba ────────
 
 app.get("/test-drive", async (req, res) => {
