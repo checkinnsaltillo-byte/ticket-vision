@@ -1706,6 +1706,28 @@ function bn_monthOrd(m) {
 }
 function bn_yearOf(val) { const m=String(val||'').match(/\b(20\d{2})\b/); return m?m[1]:''; }
 
+/**
+ * Parsea el campo Día en cualquier formato y devuelve { año, mes }.
+ * Maneja: "17/12/2025" (DD/MM/YYYY), "2025-12-17" (ISO), Date strings de Sheets.
+ */
+function bn_parseDia(dia) {
+  const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                 'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const s = String(dia || '').trim();
+  if (!s) return { año: '', mes: '' };
+  // DD/MM/YYYY o DD-MM-YYYY
+  const ddmm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (ddmm) return { año: ddmm[3], mes: MESES[Number(ddmm[2])] || '' };
+  // YYYY-MM-DD (ISO)
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return { año: iso[1], mes: MESES[Number(iso[2])] || '' };
+  // Date string de Sheets: "Wed Jan 01 2025 00:00:00 GMT-0600..."
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime()) && dt.getFullYear() > 1900)
+    return { año: String(dt.getFullYear()), mes: MESES[dt.getMonth() + 1] || '' };
+  return { año: '', mes: '' };
+}
+
 function bn_sevOver(av)  {
   if(!isFinite(av))   return {label:'—',       cls:'bn-pill'};
   if(av<=1.0)         return {label:'OK',       cls:'bn-pill bn-good'};
@@ -1785,12 +1807,13 @@ function bn_populateFilters() {
     sel.innerHTML=`<option value="">${blank}</option>`+
       vals.map(v=>`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');
   };
-  const years=bn_uniq(BN_RAW.map(r=>String(r.Año||bn_yearOf(r.Mes)))).reverse();
-  const MONTH_ORD = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,
-    julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12};
-  const mesLabels = [...new Set(BN_RAW.map(r=>bn_mesLabel(r.Mes)).filter(Boolean))]
-    .sort((a,b)=>(MONTH_ORD[a.toLowerCase()]||99)-(MONTH_ORD[b.toLowerCase()]||99));
-  // Año y Mes van en el top bar (siempre visibles)
+  const MONTH_ORD = {Enero:1,Febrero:2,Marzo:3,Abril:4,Mayo:5,Junio:6,
+    Julio:7,Agosto:8,Septiembre:9,Octubre:10,Noviembre:11,Diciembre:12};
+  // Año y Mes derivados exclusivamente de la columna Día
+  const years = [...new Set(BN_RAW.map(r=>bn_parseDia(r.Día||r.Dia).año).filter(Boolean))]
+    .sort().reverse();
+  const mesLabels = [...new Set(BN_RAW.map(r=>bn_parseDia(r.Día||r.Dia).mes).filter(Boolean))]
+    .sort((a,b)=>(MONTH_ORD[a]||99)-(MONTH_ORD[b]||99));
   fill('bn-f-año', years, 'Todos los años');
   fill('bn-f-mes', mesLabels, 'Todos los meses');
   // Filtros del panel desplegable
@@ -1840,14 +1863,13 @@ function bn_filteredRecs(tipo) {
   const s=bn_st;
   const q=(document.getElementById('bn-f-text')?.value||'').toLowerCase().trim();
   return BN_RAW.filter(r=>{
-    const y  =bn_yearOf(r.Año)||bn_yearOf(r.Mes);
-    const mes=bn_norm(r.Mes);
+    const {año:y, mes} = bn_parseDia(r.Día||r.Dia);
     const cta=bn_norm(r['Cuenta bancaria']||'');
     const cat=bn_norm(r.CATEGORIA||'');
     const con=bn_norm(r.CONCEPTO||'');
     const tip=bn_canon(r.TIPO||'');
-    if(s.año       && y!==s.año)          return false;
-    if(s.mes       && bn_mesLabel(r.Mes)!==s.mes) return false;
+    if(s.año && y!==s.año)   return false;
+    if(s.mes && mes!==s.mes) return false;
     if(s.cuenta    && cta!==s.cuenta)     return false;
     if(s.categoria && cat!==s.categoria)  return false;
     if(s.concepto  && con!==s.concepto)   return false;
@@ -2260,9 +2282,7 @@ const BN_CARD_SIZE = 25;
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
   const rows = [
-    ['Día',              'DÍA',       bn_formatDia(r.Día || r.Dia || r.Mes), false],
-    ['Mes',              'MES',       bn_mesLabel(r.Mes),                  false],
-    ['Año',              'AÑO',       r.Año,                               false],
+    ['Día',              'DÍA',       r.Día || r.Dia,                      false],
     ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
     ['Tipo',             'TIPO',      r.TIPO,                              false],
     ['Categoría',        'CATEGORIA', r.CATEGORIA,                         false],
