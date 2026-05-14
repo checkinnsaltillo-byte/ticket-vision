@@ -38,29 +38,51 @@
 
   <div id="app-root" class="page-shell hidden">
 
+    <!-- Sidebar nav overlay -->
+    <div id="nav-overlay" class="nav-overlay hidden" onclick="closeNavMenu()"></div>
+    <nav id="nav-sidebar" class="nav-sidebar">
+      <div class="nav-sidebar-header">
+        <span class="nav-sidebar-title">Menú</span>
+        <button class="nav-close-btn" onclick="closeNavMenu()">✕</button>
+      </div>
+      <ul class="nav-menu">
+        <li class="nav-item active" id="nav-item-registros"
+            onclick="switchModule('registros');closeNavMenu()">
+          📚 Registros contables
+        </li>
+        <li class="nav-item" id="nav-item-tickets"
+            onclick="switchModule('tickets');switchSection('capturados');closeNavMenu()">
+          🎫 Tickets
+        </li>
+        <li class="nav-sub-item"
+            onclick="switchModule('tickets');switchSection('captura');closeNavMenu()">
+          📸 &nbsp;Captura de tickets
+        </li>
+      </ul>
+    </nav>
+
     <!-- Header -->
     <header class="app-header">
-      <div class="header-logo">
-        <div class="logo-icon">TV</div>
-        <div class="logo-text">
-          <h1>Ticket Vision</h1>
-          <span>Check Inn Saltillo</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="hamburger-btn" onclick="toggleNavMenu()" title="Menú">
+          <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
+        </button>
+        <div class="header-logo">
+          <div class="logo-icon">TV</div>
+          <div class="logo-text">
+            <h1>Ticket Vision</h1>
+            <span>Check Inn Saltillo</span>
+          </div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <span class="user-badge" id="current-user-badge"></span>
-        <div class="header-badge">v15.0</div>
+        <div class="header-badge">v16.0</div>
       </div>
     </header>
 
-    <!-- ── Tabs de módulo principal ──────────────────────────── -->
-    <div class="main-tabs">
-      <button class="main-tab active" id="tab-module-tickets"   onclick="switchModule('tickets')">🎫 Tickets</button>
-      <button class="main-tab"        id="tab-module-registros" onclick="switchModule('registros')">📚 Registros contables</button>
-    </div>
-
     <!-- ══ MÓDULO: Tickets ══════════════════════════════════════ -->
-    <div id="module-tickets">
+    <div id="module-tickets" class="hidden">
 
       <!-- Sub-tabs dentro del módulo Tickets -->
       <div class="sub-tabs">
@@ -277,33 +299,9 @@
     </div><!-- /module-tickets -->
 
     <!-- ══ MÓDULO: Registros contables ══════════════════════════ -->
-    <div id="module-registros" class="hidden">
+    <div id="module-registros">
 
-      <!-- KPI cards (arriba de todo) -->
-      <div class="bn-kpi-row" id="bn-kpi-row">
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Egresos (período)</div>
-          <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
-          <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
-        </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Ingresos (período)</div>
-          <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
-          <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
-        </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Avance presupuesto</div>
-          <div class="bn-kpi-value" id="bn-k-avance-egr">—</div>
-          <div class="bn-kpi-sub" id="bn-k-avance-egr-sub">—</div>
-        </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Utilidad (período)</div>
-          <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
-          <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
-        </div>
-      </div>
-
-      <!-- Top bar con Año / Mes siempre visibles -->
+      <!-- Top bar con Año / Mes siempre visibles (ARRIBA de los KPIs) -->
       <div class="db-top-bar" style="flex-wrap:wrap;gap:8px">
         <div class="db-top-left">
           <button class="btn-filter-toggle" id="bn-btn-filter-toggle"
@@ -312,7 +310,6 @@
           </button>
           <span class="db-todas-label" id="bn-status-label">Registros contables</span>
         </div>
-        <!-- Filtros Año / Mes siempre visibles -->
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:200px">
           <select id="bn-f-año" class="field-select" style="flex:1;min-width:90px"
                   onchange="bn_onFilterChange()">
@@ -330,7 +327,7 @@
         </div>
       </div>
 
-      <!-- Panel de filtros extra (cuenta bancaria, categoría, concepto, texto) -->
+      <!-- Panel de filtros extra desplegable (texto, cuenta, categoría, concepto) -->
       <div class="db-filter-panel hidden" id="bn-filter-body">
         <div class="db-filter-grid">
           <div class="db-filter-full">
@@ -355,6 +352,30 @@
               <option value="">Todos</option>
             </select>
           </div>
+        </div>
+      </div>
+
+      <!-- KPI cards (debajo de filtros, responden a selección de Año/Mes) -->
+      <div class="bn-kpi-row" id="bn-kpi-row">
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Egresos (período)</div>
+          <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
+          <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
+        </div>
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Ingresos (período)</div>
+          <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
+          <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
+        </div>
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Avance presupuesto</div>
+          <div class="bn-kpi-value" id="bn-k-avance-egr">—</div>
+          <div class="bn-kpi-sub" id="bn-k-avance-egr-sub">—</div>
+        </div>
+        <div class="bn-kpi-card">
+          <div class="bn-kpi-label">Utilidad (período)</div>
+          <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
+          <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
         </div>
       </div>
 

@@ -310,9 +310,8 @@ function tryLogin() {
   document.getElementById("loginOverlay")?.classList.add("hidden");
   document.getElementById("app-root")?.classList.remove("hidden");
   document.getElementById("current-user-badge").textContent = currentUser.toUpperCase();
-  // Módulo y sección predeterminados al entrar
-  switchModule("tickets");
-  switchSection("capturados");
+  // Módulo predeterminado: Registros contables
+  switchModule("registros");
 }
 
 function handleLoginKey(e) {
@@ -1810,9 +1809,10 @@ function bn_populateFilters() {
   const MONTH_ORD = {Enero:1,Febrero:2,Marzo:3,Abril:4,Mayo:5,Junio:6,
     Julio:7,Agosto:8,Septiembre:9,Octubre:10,Noviembre:11,Diciembre:12};
   // Año y Mes derivados exclusivamente de la columna Día
-  const years = [...new Set(BN_RAW.map(r=>bn_parseDia(r.Día||r.Dia).año).filter(Boolean))]
+  const _dia = r => r.Día || r.Dia || r.Mes || r.Año || '';
+  const years = [...new Set(BN_RAW.map(r=>bn_parseDia(_dia(r)).año).filter(Boolean))]
     .sort().reverse();
-  const mesLabels = [...new Set(BN_RAW.map(r=>bn_parseDia(r.Día||r.Dia).mes).filter(Boolean))]
+  const mesLabels = [...new Set(BN_RAW.map(r=>bn_parseDia(_dia(r)).mes).filter(Boolean))]
     .sort((a,b)=>(MONTH_ORD[a]||99)-(MONTH_ORD[b]||99));
   fill('bn-f-año', years, 'Todos los años');
   fill('bn-f-mes', mesLabels, 'Todos los meses');
@@ -1863,7 +1863,7 @@ function bn_filteredRecs(tipo) {
   const s=bn_st;
   const q=(document.getElementById('bn-f-text')?.value||'').toLowerCase().trim();
   return BN_RAW.filter(r=>{
-    const {año:y, mes} = bn_parseDia(r.Día||r.Dia);
+    const {año:y, mes} = bn_parseDia(r.Día||r.Dia||r.Mes||r.Año||'');
     const cta=bn_norm(r['Cuenta bancaria']||'');
     const cat=bn_norm(r.CATEGORIA||'');
     const con=bn_norm(r.CONCEPTO||'');
@@ -2282,7 +2282,7 @@ const BN_CARD_SIZE = 25;
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
   const rows = [
-    ['Día',              'DÍA',       r.Día || r.Dia,                      false],
+    ['Día',              'DÍA',       r.Día || r.Dia || bn_formatDia(r.Mes||r.Año||''), false],
     ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
     ['Tipo',             'TIPO',      r.TIPO,                              false],
     ['Categoría',        'CATEGORIA', r.CATEGORIA,                         false],
@@ -3432,7 +3432,20 @@ function switchModule(mod) {
   ["tickets", "registros"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== mod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === mod);
+    document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === mod);
   });
+}
+
+// ─── Hamburger nav menu ───────────────────────────────────────────────────────
+function toggleNavMenu() {
+  const sidebar = document.getElementById('nav-sidebar');
+  const overlay = document.getElementById('nav-overlay');
+  const open = sidebar.classList.toggle('open');
+  overlay.classList.toggle('hidden', !open);
+}
+function closeNavMenu() {
+  document.getElementById('nav-sidebar')?.classList.remove('open');
+  document.getElementById('nav-overlay')?.classList.add('hidden');
 }
 
 /** Cambia entre sub-secciones dentro del módulo Tickets */
