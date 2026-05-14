@@ -23,7 +23,7 @@ app.use(express.json({ limit: "20mb" }));
 // ─── Apps Script URL (maneja Drive y Sheets) ───────────────────────────────
 
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL ||
-  "https://script.google.com/macros/s/AKfycbzehKkCyg1ya7Qsf8h1vK-5EhXjywUbiDpyyGo3YH5BZ1dCfh8nrDzttF5d1skm4QUR5Q/exec";
+  "https://script.google.com/macros/s/AKfycbzusP7OJXKhhenR8kouGhjwC3aOSRmrxdZRCxwvbu2al0dzsVYynOAUcJGx2pDm0Ufjuw/exec";
 
 async function callAppsScript(payload) {
   const res = await fetch(APPS_SCRIPT_URL, {
@@ -71,6 +71,28 @@ app.get("/get-bancos", async (req, res) => {
     const result = await callAppsScript({ action: "get_bancos_data" });
     res.json(result);
   } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── Guardar clasificación de registro bancario en hoja BANCOS ───────────────
+
+app.post("/save-banco-clasificacion", async (req, res) => {
+  try {
+    const { rowNum, clasificacion, ...rest } = req.body;
+    if (!rowNum) throw new Error("rowNum requerido");
+
+    const result = await callAppsScript({
+      action: "save_banco_clasificacion",
+      rowNum,
+      clasificacion,
+      ...rest,
+    });
+
+    if (!result.ok) throw new Error(result.error || result.message || "Apps Script error");
+    res.json({ ok: true, rowNum, columnsWritten: result.columnsWritten });
+  } catch (err) {
+    console.error("save_banco_clasificacion_error", err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

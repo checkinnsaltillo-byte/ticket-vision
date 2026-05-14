@@ -2590,12 +2590,14 @@ async function bn_saveBnClassification(idx) {
       document.getElementById(`bn-btn-classify-${idx}`)?.classList.add('open'); }
   }
 
-  // Intentar guardar en backend (requiere /save-banco-clasificacion en server.js)
+  // Guardar clasificación en Google Sheets (hoja BANCOS)
   try {
-    await fetch(`${BACKEND}/save-banco-clasificacion`, {
+    showLoading('Guardando clasificación…', 'Actualizando registro en Sheets…');
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        rowNum:          rec.rowNum,
         mes:             bn_norm(rec.Mes),
         cuenta_bancaria: bn_norm(rec['Cuenta bancaria'] || ''),
         tipo:            bn_norm(rec.TIPO || ''),
@@ -2619,8 +2621,13 @@ async function bn_saveBnClassification(idx) {
         }
       }),
     });
+    const result = await resp.json();
+    if (!result.ok) throw new Error(result.error || 'Error desconocido');
   } catch(e) {
-    console.warn('Clasificación guardada en memoria (sin backend):', e.message);
+    console.warn('Error guardando clasificación en Sheets:', e.message);
+    alert('Error al guardar clasificación: ' + e.message);
+  } finally {
+    hideLoading();
   }
 }
 

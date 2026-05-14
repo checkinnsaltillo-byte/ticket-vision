@@ -10,6 +10,91 @@
 //
 // Y pega la función getBancosData aquí abajo, fuera del doPost.
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CASE para agregar al switch(action) del doPost:
+//   case "save_banco_clasificacion":
+//     return saveBancoClasificacion(ss, JSON.parse(e.postData.contents));
+// ─────────────────────────────────────────────────────────────────────────────
+
+function saveBancoClasificacion(ss, data) {
+  const norm = (s) => (s ?? "").toString()
+    .replace(/[​-‍﻿]/g, "")
+    .replace(/ /g, " ")
+    .trim()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+
+  const shB = ss.getSheets().find(sh => norm(sh.getName()) === "BANCOS") ||
+              ss.getSheets().find(sh => norm(sh.getName()).includes("BANCOS"));
+  if (!shB) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: "sheet_not_found", message: "No se encontró la hoja BANCOS" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const rowNum = Number(data.rowNum);
+  if (!rowNum || rowNum < 2) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: "invalid_row", message: "rowNum inválido: " + data.rowNum }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const lastCol    = shB.getLastColumn();
+  const headerRow  = shB.getRange(1, 1, 1, lastCol).getValues()[0];
+
+  // Columnas de clasificación a garantizar en el header
+  const CLASIF_COLS = [
+    "CUENTA_CONTABLE", "SUBCUENTA_CLASIF", "CATEGORIA_GASTO",
+    "CONCEPTO_CLASIF", "PROPIEDAD", "DEPARTAMENTO",
+    "ENCARGADO", "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A",
+    "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF"
+  ];
+
+  // Asegurar que existan los headers; si no, crearlos al final
+  const getOrCreateCol = (name) => {
+    const normName = norm(name);
+    let idx = headerRow.findIndex(h => norm(h) === normName);
+    if (idx >= 0) return idx + 1; // 1-based
+    // Agregar columna nueva al final
+    const newCol = shB.getLastColumn() + 1;
+    shB.getRange(1, newCol).setValue(name);
+    headerRow.push(name); // mantener sincronía local
+    return newCol;
+  };
+
+  const colMap = {};
+  for (const col of CLASIF_COLS) {
+    colMap[col] = getOrCreateCol(col);
+  }
+
+  const c  = data.clasificacion || {};
+  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+
+  const writeCell = (colName, value) => {
+    const col = colMap[colName];
+    if (col) shB.getRange(rowNum, col).setValue(value ?? "");
+  };
+
+  writeCell("CUENTA_CONTABLE",  c.cuenta          || "");
+  writeCell("SUBCUENTA_CLASIF", c.subcuenta        || "");
+  writeCell("CATEGORIA_GASTO",  c.categoria_gasto  || "");
+  writeCell("CONCEPTO_CLASIF",  c.concepto         || "");
+  writeCell("PROPIEDAD",        c.propiedad        || "");
+  writeCell("DEPARTAMENTO",     c.departamento     || "");
+  writeCell("ENCARGADO",        c.encargado        || "");
+  writeCell("DEDUCIBLE",        c.deducible        || "");
+  writeCell("REEMBOLSO",        c.reembolso        || "");
+  writeCell("REEMBOLSO_A",      c.reembolso_a      || "");
+  writeCell("METODO_PAGO",      c.metodo_pago      || "");
+  writeCell("CLASIFICADO_POR",  c.clasificado_por  || "");
+  writeCell("FECHA_CLASIF",     now);
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, rowNum, columnsWritten: Object.keys(colMap).length }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function getBancosData(ss) {
   const norm = (s) => (s ?? "").toString()
     .replace(/[​-‍﻿]/g, "")
@@ -87,7 +172,8 @@ function getBancosData(ss) {
 
   const records = bancos.slice(1)
     .filter(r => r.join("").toString().trim() !== "")
-    .map(r => {
+    .map((r, i) => {
+      const rowNum = i + 2; // fila real en el sheet (fila 1 = encabezados)
       // Helper: formatea una celda fecha a string legible
       const fmtDate = (v) => {
         if (!v && v !== 0) return "";
@@ -116,7 +202,8 @@ function getBancosData(ss) {
         DESCRIPCION:      iDes  >= 0 ? String(r[iDes]).trim()  : "",
         Factura:          String(factura).trim(),
         FacturaFlag:      String(factura).trim().length ? "Con factura" : "Sin factura",
-        Monto:            toNumber(iMon >= 0 ? r[iMon] : 0)
+        Monto:            toNumber(iMon >= 0 ? r[iMon] : 0),
+        rowNum:           rowNum   // número de fila en el sheet para actualizaciones
       };
     });
 
