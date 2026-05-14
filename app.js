@@ -3,7 +3,7 @@ const BACKEND = "https://ticket-vision-957627511957.northamerica-south1.run.app"
 // ─── Catálogo de clasificaciones ───────────────────────────────────────────
 // CATALOG[cuenta][subcuenta] = Object{categoria:[conceptos]} | Array[conceptos]
 
-const CATALOG = {
+let CATALOG = {
   "Egresos": {
     "Recursos Humanos": {
       "Limpieza":        ["Brenda", "Alma", "Gaby", "Juanita", "Damariz"],
