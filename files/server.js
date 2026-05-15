@@ -27,13 +27,23 @@ app.use(express.json({ limit: "20mb" }));
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby_sfOcLQXYC1oz_s3YUEkV3RdcZ78-tqpgJ8I9vbKKoRUFcye4vd0W_YzOEnW9sunWbQ/exec";
 
 async function callAppsScript(payload) {
-  const res = await fetch(APPS_SCRIPT_URL, {
-    method:  "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body:    JSON.stringify(payload),
-  });
-  const text = await res.text();
-  try { return JSON.parse(text); } catch { return { ok: false, raw: text }; }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000); // 25s timeout
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method:  "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body:    JSON.stringify(payload),
+      signal:  controller.signal,
+    });
+    const text = await res.text();
+    try { return JSON.parse(text); } catch { return { ok: false, raw: text }; }
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("Timeout: Apps Script tardó más de 25s");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ─── Health ────────────────────────────────────────────────────────────────
