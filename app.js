@@ -1622,23 +1622,31 @@ const bn_cc    = (s) => bn_canon(s).replace(/[^a-z0-9]+/g,'');
 const bn_uniq  = (arr) => [...new Set(arr.map(bn_norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
 
 /**
- * Formatea el campo Día a "10/mayo/2026".
- * Acepta "YYYY-MM-DD", objeto Date serializado, o cualquier string de fecha.
+ * Convierte CUALQUIER valor de fecha a ISO "YYYY-MM-DD".
+ * Acepta: ISO, DD/MM/YYYY, D/M/YYYY, Date strings de JS.
+ * Interpreta siempre el primer número como día (formato mexicano).
  */
-function bn_formatDia(d) {
-  if (!d) return '';
-  const s = String(d).trim();
-  // ISO YYYY-MM-DD → mostrar como DD/MM/YYYY
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
-  // D/M/YYYY o DD/MM/YYYY texto → normalizar con ceros
+function bn_toISO(v) {
+  const s = String(v || '').trim();
+  if (!s) return '';
+  // Ya es ISO YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+  // DD/MM/YYYY o D/M/YYYY — primer número = día
   const ddmm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (ddmm) return `${ddmm[1].padStart(2,'0')}/${ddmm[2].padStart(2,'0')}/${ddmm[3]}`;
-  // Fallback: objeto Date serializado como string JS
+  if (ddmm) return `${ddmm[3]}-${ddmm[2].padStart(2,'0')}-${ddmm[1].padStart(2,'0')}`;
+  // Date string serializado por JS/Sheets: "Wed Jan 01 2026 00:00:00..."
   const dt = new Date(s);
   if (!isNaN(dt.getTime()) && dt.getFullYear() > 1900)
-    return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
-  return s;
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  return '';
+}
+
+/** Formatea fecha a "DD/MM/YYYY". Entrada: cualquier formato → pasa por bn_toISO primero. */
+function bn_formatDia(d) {
+  const iso = bn_toISO(d);
+  if (!iso) return '';
+  const [y, m, dd] = iso.split('-');
+  return `${dd}/${m}/${y}`;
 }
 
 /** Construye BN_CATALOG desde BN_BUDGET (Presupuesto_sys). */
@@ -1708,25 +1716,16 @@ function bn_monthOrd(m) {
 function bn_yearOf(val) { const m=String(val||'').match(/\b(20\d{2})\b/); return m?m[1]:''; }
 
 /**
- * Parsea el campo Día en cualquier formato y devuelve { año, mes }.
- * Maneja: "17/12/2025" (DD/MM/YYYY), "2025-12-17" (ISO), Date strings de Sheets.
+ * Parsea el campo Día (ya normalizado a ISO) y devuelve { año, mes }.
+ * Usa bn_toISO internamente — acepta cualquier formato de entrada.
  */
 function bn_parseDia(dia) {
   const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
                  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const s = String(dia || '').trim();
-  if (!s) return { año: '', mes: '' };
-  // DD/MM/YYYY o DD-MM-YYYY
-  const ddmm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (ddmm) return { año: ddmm[3], mes: MESES[Number(ddmm[2])] || '' };
-  // YYYY-MM-DD (ISO)
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return { año: iso[1], mes: MESES[Number(iso[2])] || '' };
-  // Date string de Sheets: "Wed Jan 01 2025 00:00:00 GMT-0600..."
-  const dt = new Date(s);
-  if (!isNaN(dt.getTime()) && dt.getFullYear() > 1900)
-    return { año: String(dt.getFullYear()), mes: MESES[dt.getMonth() + 1] || '' };
-  return { año: '', mes: '' };
+  const iso = bn_toISO(dia);
+  if (!iso) return { año: '', mes: '' };
+  const parts = iso.split('-');
+  return { año: parts[0], mes: MESES[Number(parts[1])] || '' };
 }
 
 function bn_sevOver(av)  {
@@ -1785,7 +1784,9 @@ async function bn_loadData() {
     const res  = await fetch(BACKEND+'/get-bancos',{cache:'no-store'});
     const data = await res.json();
     if (!data.ok) throw new Error(data.error||'Error al obtener datos');
-    BN_RAW=data.records||[]; BN_BUDGET=data.budget||[];
+    // Normalizar r.Día a ISO una sola vez; todo lo demás queda consistente
+    BN_RAW=(data.records||[]).map(r=>({...r, Día: bn_toISO(r.Día||r.Dia||'')}));
+    BN_BUDGET=data.budget||[];
     BN_LOADED=true; bn_resetBCache();
     bn_buildBnCatalog();
     bn_activateCatalog(); // Usa el catálogo de Presupuesto_sys mientras el módulo está activo
@@ -2287,7 +2288,7 @@ const BN_CARD_SIZE = 25;
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
   const rows = [
-    ['Día',              'DÍA',       r.Día || r.Dia || bn_formatDia(r.Mes||r.Año||''), false],
+    ['Día',              'DÍA',       bn_formatDia(r.Día || r.Dia), false],
     ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
     ['Cuenta',           'CUENTA',    r.CUENTA,                            false],
     ['Subcuenta',        'SUBCUENTA', r.SUBCUENTA,                         false],
