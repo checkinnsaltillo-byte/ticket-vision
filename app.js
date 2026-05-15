@@ -1807,8 +1807,10 @@ async function bn_loadData() {
     bn_buildBnCatalog();
     bn_activateCatalog(); // Usa el catálogo de Presupuesto_sys mientras el módulo está activo
     if (lbl) {
-      const shUrl = data.spreadsheetUrl ? `  📄 <a href="${data.spreadsheetUrl}" target="_blank" style="font-size:11px;color:var(--text-soft)">Ver Spreadsheet</a>` : '';
-      lbl.innerHTML = `Registros contables — ${BN_RAW.length.toLocaleString('es-MX')} movimientos${shUrl}`;
+      const ssId  = data.spreadsheetId  || '1f_rdwQncSUXRNEvp5kM_kjyX1S-NnY7UE2z4HGvFL3Q';
+      const ssUrl = data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${ssId}/edit`;
+      lbl.innerHTML = `Registros contables — ${BN_RAW.length.toLocaleString('es-MX')} movimientos` +
+        `&nbsp;&nbsp;📄 <a href="${ssUrl}" target="_blank" style="font-size:11px;color:var(--text-soft);text-decoration:underline">Ver Spreadsheet fuente</a>`;
     }
     if (empty) empty.style.display='none';
     bn_populateFilters();
