@@ -330,13 +330,13 @@ function getBancosData_(ss) {
   };
 
   // Formatea cualquier valor de fecha a "YYYY-MM-DD" (ISO)
+  // Usa Utilities.formatDate para Date objects — evita errores de timezone
+  const TZ = Session.getScriptTimeZone();
   const fmtDate = (v) => {
     if (!v && v !== 0) return "";
     if (v instanceof Date) {
-      const yy = v.getFullYear();
-      const mm = String(v.getMonth() + 1).padStart(2, "0");
-      const dd = String(v.getDate()).padStart(2, "0");
-      return `${yy}-${mm}-${dd}`;
+      // Utilities.formatDate respeta el timezone del script (no hay bug de UTC vs local)
+      return Utilities.formatDate(v, TZ, "yyyy-MM-dd");
     }
     const s = String(v).trim();
     if (!s) return "";
@@ -345,7 +345,10 @@ function getBancosData_(ss) {
     // DD/MM/YYYY o D/M/YYYY (formato mexicano en texto)
     const ddmm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (ddmm) return `${ddmm[3]}-${ddmm[2].padStart(2,"0")}-${ddmm[1].padStart(2,"0")}`;
-    // Último recurso: dejar como está
+    // "Wed Jan 01 2025 00:00:00 GMT-0600..." — string de Date.toString()
+    if (s.includes("GMT") || /^\w{3}\s\w{3}\s\d/.test(s)) {
+      try { return Utilities.formatDate(new Date(s), TZ, "yyyy-MM-dd"); } catch(e) {}
+    }
     return s;
   };
 

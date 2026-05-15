@@ -1621,9 +1621,25 @@ const bn_canon = (s) => bn_norm(s).normalize('NFD').replace(/[̀-ͯ]/g,'').repla
 const bn_cc    = (s) => bn_canon(s).replace(/[^a-z0-9]+/g,'');
 const bn_uniq  = (arr) => [...new Set(arr.map(bn_norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
 
-/** Devuelve el valor de Día tal cual viene de la base de datos. */
+/** Devuelve el valor de Día formateado como YYYY-MM-DD.
+ *  Si Apps Script envía un Date.toString() ("Wed Jan 01 2025 00:00:00 GMT-0600..."),
+ *  lo parsea y lo convierte a formato ISO. */
 function bn_formatDia(d) {
-  return String(d || '').trim();
+  const s = String(d || '').trim();
+  if (!s) return '';
+  // Ya es YYYY-MM-DD — devolver directo
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+  // "Wed Jan 01 2025 00:00:00 GMT-0600..." — Date.toString() de Apps Script
+  if (s.includes('GMT') || /^\w{3}\s+\w{3}\s+\d/.test(s)) {
+    const dt = new Date(s);
+    if (!isNaN(dt.getTime())) {
+      const y  = dt.getFullYear();
+      const m  = String(dt.getMonth() + 1).padStart(2, '0');
+      const dy = String(dt.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dy}`;
+    }
+  }
+  return s;
 }
 
 /** Construye BN_CATALOG desde BN_BUDGET (Presupuesto_sys).
