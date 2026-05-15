@@ -1819,7 +1819,7 @@ function bn_populateFilters() {
   // Filtros del panel desplegable
   fill('bn-f-cuenta',    bn_uniq(BN_RAW.map(r=>bn_norm(r['Cuenta bancaria']||''))), 'Todas');
   fill('bn-f-categoria', bn_uniq(BN_RAW.map(r=>bn_norm(r.CATEGORIA||''))),          'Todas');
-  fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO||''))),           'Todos');
+  fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO ||''))),          'Todos');
 }
 
 function bn_setDefaultFilters() {
@@ -1865,9 +1865,10 @@ function bn_filteredRecs(tipo) {
   return BN_RAW.filter(r=>{
     const {año:y, mes} = bn_parseDia(r.Día||r.Dia||r.Mes||r.Año||'');
     const cta=bn_norm(r['Cuenta bancaria']||'');
-    const cat=bn_norm(r.CATEGORIA||'');
-    const con=bn_norm(r.CONCEPTO||'');
-    const tip=bn_canon(r.TIPO||'');
+    const sub=bn_norm(r.SUBCUENTA ||'');
+    const cat=bn_norm(r.CATEGORIA ||'');
+    const con=bn_norm(r.CONCEPTO  ||'');
+    const tip=bn_canon(r.CUENTA   ||'');
     if(s.año && y!==s.año)   return false;
     if(s.mes && mes!==s.mes) return false;
     if(s.cuenta    && cta!==s.cuenta)     return false;
@@ -1875,7 +1876,7 @@ function bn_filteredRecs(tipo) {
     if(s.concepto  && con!==s.concepto)   return false;
     if(tipo==='E'  && !tip.includes('egr')) return false;
     if(tipo==='I'  && !tip.includes('ing')) return false;
-    if(q){ const h=(cat+' '+con+' '+bn_norm(r.DESCRIPCION||'')).toLowerCase(); if(!h.includes(q)) return false; }
+    if(q){ const h=(sub+' '+cat+' '+con+' '+bn_norm(r.DESCRIPCION||'')).toLowerCase(); if(!h.includes(q)) return false; }
     return true;
   });
 }
@@ -1891,11 +1892,11 @@ function bn_aggregate(tipo) {
     if(!g.has(key)) g.set(key,{key,cat,con,mes,real:0,bud});
     g.get(key).real+=Number(r.Monto||0);
   }
-  const rows=[...g.values()].map(r=>{
-    const realAbs=Math.abs(r.real), budAbs=Math.abs(Number(r.bud||0));
+  const rows=[...g.values()].map(row=>{
+    const realAbs=Math.abs(row.real), budAbs=Math.abs(Number(row.bud||0));
     const av=budAbs>0?(realAbs/budAbs):NaN;
     const sev=(tipo==='E')?bn_sevOver(av):bn_sevUnder(av);
-    return{...r,realAbs,budAbs,av,sev};
+    return{...row,realAbs,budAbs,av,sev};
   });
   rows.sort((a,b)=>{
     const c=a.cat.localeCompare(b.cat,'es'); if(c) return c;
@@ -2084,7 +2085,7 @@ function bn_showDetail(cat,con,mes,tipo) {
   document.getElementById('bn-modal-title').textContent=(tipo==='E'?'Egreso':'Ingreso')+' — '+cat+(con?' › '+con:'');
   document.getElementById('bn-modal-sub').textContent=mes;
   const rows=BN_RAW.filter(r=>{
-    const tip=bn_canon(r.TIPO||'');
+    const tip=bn_canon(r.CUENTA||'');
     if(tipo==='E'&&!tip.includes('egr')) return false;
     if(tipo==='I'&&!tip.includes('ing')) return false;
     return bn_norm(r.CATEGORIA||'')===cat && bn_norm(r.CONCEPTO||'')===con && bn_norm(r.Mes)===mes;
@@ -2099,10 +2100,10 @@ function bn_showDetail(cat,con,mes,tipo) {
       tr.innerHTML=`
         <td>${esc(bn_norm(r.Mes))}</td>
         <td>${esc(bn_norm(r['Cuenta bancaria']||''))}</td>
-        <td><span class="bn-pill">${esc(bn_norm(r.TIPO||''))}</span></td>
+        <td><span class="bn-pill">${esc(bn_norm(r.CUENTA||''))}</span></td>
+        <td>${esc(bn_norm(r.SUBCUENTA||''))}</td>
         <td>${esc(bn_norm(r.CATEGORIA||''))}</td>
         <td>${esc(bn_norm(r.CONCEPTO||''))}</td>
-        <td>${esc(bn_norm(r.DESCRIPCION||r.Descripcion||''))}</td>
         <td><span class="bn-pill ${fac?'bn-good':'bn-warn'}">${fac||'Sin factura'}</span></td>
         <td class="num">${bn_fmt$(Number(r.Monto||0))}</td>`;
       tbody.appendChild(tr);
@@ -2284,10 +2285,11 @@ function bn_buildBnResumenTable(r, idx) {
   const rows = [
     ['Día',              'DÍA',       r.Día || r.Dia || bn_formatDia(r.Mes||r.Año||''), false],
     ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
-    ['Tipo',             'TIPO',      r.TIPO,                              false],
+    ['Cuenta',           'CUENTA',    r.CUENTA,                            false],
+    ['Subcuenta',        'SUBCUENTA', r.SUBCUENTA,                         false],
     ['Categoría',        'CATEGORIA', r.CATEGORIA,                         false],
     ['Concepto',         'CONCEPTO',  r.CONCEPTO,                          true ],
-    ['Descripción',      'DESC',      r.DESCRIPCION || r.Descripcion,      false],
+    ['Descripción',      'DESC',      r.DESCRIPCION,                       false],
     ['Factura',          'FACTURA',   r.Factura,                           false],
     ['Monto',            'MONTO',     r.Monto != null ? bn_fmt$(Number(r.Monto||0)) : null, false],
     ['— Clasificación —','SEP',       null,                                false],
@@ -2323,7 +2325,7 @@ function bn_buildBnResumenTable(r, idx) {
 
 /** Crea el HTML de una tarjeta individual de registro bancario. */
 function bn_createCard(rec, idx) {
-  const tip    = bn_canon(rec.TIPO || '');
+  const tip    = bn_canon(rec.CUENTA || '');
   const isE    = tip.includes('egr');
   const isI    = tip.includes('ing');
   const colorCls = isE ? 'ci-egresos' : isI ? 'ci-ingresos' : '';
@@ -2332,13 +2334,13 @@ function bn_createCard(rec, idx) {
 
   const name   = bn_norm(rec.CONCEPTO || rec.CATEGORIA || rec['Cuenta bancaria'] || 'Movimiento');
   const diaFmt = bn_formatDia(rec.Día || rec.Dia || rec.Mes || '');
-  const desc   = bn_norm(rec.DESCRIPCION || rec.Descripcion || '');
+  const desc   = bn_norm(rec.DESCRIPCION || '');
   const monto  = Number(rec.Monto || 0);
   const cat    = bn_norm(rec.CATEGORIA || '');
   const con    = bn_norm(rec.CONCEPTO  || '');
   const cuenta = bn_norm(rec['Cuenta bancaria'] || '');
   const fac    = bn_norm(rec.Factura || '');
-  const tipoLbl= bn_norm(rec.TIPO || '');
+  const tipoLbl= bn_norm(rec.CUENTA || '');
 
   // Presupuesto y avance
   const tipo4bud = isE ? 'E' : 'I';
@@ -2457,7 +2459,7 @@ function bn_toggleBnClassify(idx) {
     bn_autoPopulateBnClassify(ci, rec);
     // Si aún no tiene clasificación, pre-seleccionar Cuenta por tipo/signo de monto
     if (rec && !rec._cuenta) {
-      const tip = bn_canon(rec.TIPO || '');
+      const tip = bn_canon(rec.CUENTA || '');
       const autoAcc = tip.includes('egr') ? 'Egresos'
                     : tip.includes('ing') ? 'Ingresos'
                     : Number(rec.Monto) < 0 ? 'Egresos' : 'Ingresos';
@@ -2626,10 +2628,11 @@ async function bn_saveBnClassification(idx) {
         rowNum:          rec.rowNum,
         mes:             bn_norm(rec.Mes),
         cuenta_bancaria: bn_norm(rec['Cuenta bancaria'] || ''),
-        tipo:            bn_norm(rec.TIPO || ''),
-        categoria:       bn_norm(rec.CATEGORIA || ''),
-        concepto:        bn_norm(rec.CONCEPTO  || ''),
-        descripcion:     bn_norm(rec.DESCRIPCION || rec.Descripcion || ''),
+        cuenta:          bn_norm(rec.CUENTA     || ''),
+        subcuenta:       bn_norm(rec.SUBCUENTA  || ''),
+        categoria:       bn_norm(rec.CATEGORIA  || ''),
+        concepto:        bn_norm(rec.CONCEPTO   || ''),
+        descripcion:     bn_norm(rec.DESCRIPCION|| ''),
         monto:           Number(rec.Monto || 0),
         clasificacion: {
           cuenta:          c.cuenta,

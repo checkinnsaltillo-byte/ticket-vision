@@ -1,0 +1,535 @@
+const SHEET_ID  = "1f_rdwQncSUXRNEvp5kM_kjyX1S-NnY7UE2z4HGvFL3Q";
+const MESES_ES  = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+// ─── Punto de entrada ─────────────────────────────────────────────────────────
+function doPost(e) {
+  try {
+    var data   = JSON.parse(e.postData.contents);
+    var action = data.action;
+    if (action === "upload_ticket_image")          return respond(uploadTicketImage_(data));
+    if (action === "append_rows")                  return respond(appendRows_(data));
+    if (action === "get_tickets_index")            return respond(getTicketsIndex_());
+    if (action === "get_all_tickets")              return respond(getAllTickets_());
+    if (action === "update_ticket_classification") return respond(updateTicketClassification_(data));
+    if (action === "delete_ticket")                return respond(deleteTicket_(data));
+    if (action === "get_bancos_data")              return respond(getBancosData_(SpreadsheetApp.getActiveSpreadsheet()));
+    if (action === "save_banco_clasificacion")     return respond(saveBancoClasificacion_(SpreadsheetApp.getActiveSpreadsheet(), data));
+    return respond({ ok: false, error: "Acción desconocida: " + action });
+  } catch (err) {
+    return respond({ ok: false, error: err.message });
+  }
+}
+
+function respond(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ─── Subir imagen de ticket a Drive ──────────────────────────────────────────
+function uploadTicketImage_(data) {
+  var fileObj = data.file;
+  if (!fileObj || !fileObj.base64) return { ok: false, error: "Sin base64" };
+  var rawFecha = data.fecha || new Date().toISOString().slice(0, 10);
+  var parts    = rawFecha.split("-");
+  var anio     = parts[0] || String(new Date().getFullYear());
+  var mes      = parseInt(parts[1] || "1", 10);
+  var mesStr   = MESES_ES[mes - 1] || "Enero";
+  var tienda   = (data.tienda || "sin_tienda").slice(0, 50).replace(/[\/\\:*?"<>|]/g, "_");
+  var ts   = Utilities.formatDate(new Date(), "America/Monterrey", "yyyyMMdd_HHmmss");
+  var ext  = (fileObj.fileName || ".jpg").split(".").pop().toLowerCase();
+  var name = tienda.replace(/\s+/g, "_").slice(0, 30) + "_" + ts + "." + ext;
+  var folder = DriveApp.getRootFolder();
+  folder = getOrCreate_(folder, "Check Inn - Sistemas");
+  folder = getOrCreate_(folder, "Ticket vision");
+  folder = getOrCreate_(folder, "Codigo");
+  folder = getOrCreate_(folder, "tickets_images");
+  folder = getOrCreate_(folder, anio);
+  folder = getOrCreate_(folder, mesStr);
+  folder = getOrCreate_(folder, tienda);
+  var bytes = Utilities.base64Decode(fileObj.base64);
+  var blob  = Utilities.newBlob(bytes, fileObj.mimeType || "image/jpeg", name);
+  var file  = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return { ok: true, url: file.getUrl(), id: file.getId(), name: file.getName() };
+}
+
+function getOrCreate_(parent, name) {
+  var iter = parent.getFoldersByName(name);
+  if (iter.hasNext()) return iter.next();
+  return parent.createFolder(name);
+}
+
+// ─── Agregar filas a Sheets ───────────────────────────────────────────────────
+function appendRows_(data) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  if (data.productos && data.productos.length) appendToSheet_(ss, "Transcripcion",   data.productos);
+  if (data.resumen   && data.resumen.length)   appendToSheet_(ss, "Resumen tickets", data.resumen);
+  if (data.cruce     && data.cruce.length)     appendToSheet_(ss, "Cruce bancario",  data.cruce);
+  return { ok: true };
+}
+
+function appendToSheet_(ss, sheetName, rows) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) sheet = ss.insertSheet(sheetName);
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(Object.keys(rows[0]));
+  } else {
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    Object.keys(rows[0]).forEach(function(k) {
+      if (headers.indexOf(k) === -1) {
+        lastCol++;
+        sheet.getRange(1, lastCol).setValue(k);
+        headers.push(k);
+      }
+    });
+  }
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  rows.forEach(function(row) {
+    var values = headers.map(function(h) {
+      var v = row[h];
+      return (v === undefined || v === null) ? "" : v;
+    });
+    sheet.appendRow(values);
+  });
+}
+
+// ─── Índice para detección de duplicados ─────────────────────────────────────
+function getTicketsIndex_() {
+  var ss    = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName("Resumen tickets");
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, tickets: [] };
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var rows    = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var idx = {};
+  ["tienda","fecha","total","folio","archivo_hash"].forEach(function(k) {
+    idx[k] = headers.indexOf(k);
+  });
+  var tickets = rows.map(function(row) {
+    var rawFecha = idx.fecha >= 0 ? row[idx.fecha] : "";
+    var fecha = rawFecha instanceof Date
+      ? Utilities.formatDate(rawFecha, "America/Monterrey", "yyyy-MM-dd")
+      : String(rawFecha || "");
+    return {
+      tienda:       idx.tienda       >= 0 ? String(row[idx.tienda]       || "") : "",
+      fecha:        fecha,
+      total:        idx.total        >= 0 ? Number(row[idx.total]        || 0)  : 0,
+      folio:        idx.folio        >= 0 ? String(row[idx.folio]        || "") : "",
+      archivo_hash: idx.archivo_hash >= 0 ? String(row[idx.archivo_hash] || "") : "",
+    };
+  }).filter(function(t) { return t.tienda || t.fecha || t.archivo_hash; });
+  return { ok: true, tickets: tickets };
+}
+
+// ─── Dashboard: todos los tickets ────────────────────────────────────────────
+function getAllTickets_() {
+  var ss           = SpreadsheetApp.openById(SHEET_ID);
+  var resumenSheet = ss.getSheetByName("Resumen tickets");
+  if (!resumenSheet || resumenSheet.getLastRow() < 2) return { ok: true, tickets: [] };
+
+  var lastCol = resumenSheet.getLastColumn();
+  var headers = resumenSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var rows    = resumenSheet.getRange(2, 1, resumenSheet.getLastRow() - 1, lastCol).getValues();
+
+  var productsByTicket = {};
+  var transcSheet = ss.getSheetByName("Transcripcion");
+  if (transcSheet && transcSheet.getLastRow() > 1) {
+    var tLastCol = transcSheet.getLastColumn();
+    var tHeaders = transcSheet.getRange(1, 1, 1, tLastCol).getValues()[0];
+    var tRows    = transcSheet.getRange(2, 1, transcSheet.getLastRow() - 1, tLastCol).getValues();
+    var tidIdx   = tHeaders.indexOf("ticket_id");
+    var lineaIdx = tHeaders.indexOf("linea_numero");
+    var descIdx  = tHeaders.indexOf("descripcion");
+    var cantIdx  = tHeaders.indexOf("cantidad");
+    var puIdx    = tHeaders.indexOf("precio_unitario");
+    var montoIdx = tHeaders.indexOf("monto");
+    tRows.forEach(function(tr) {
+      var tid = String(tr[tidIdx] || "");
+      if (!tid) return;
+      if (!productsByTicket[tid]) productsByTicket[tid] = [];
+      productsByTicket[tid].push({
+        linea_numero:    lineaIdx >= 0 ? tr[lineaIdx]               : "",
+        descripcion:     descIdx  >= 0 ? String(tr[descIdx]  || "") : "",
+        cantidad:        cantIdx  >= 0 ? tr[cantIdx]               : "",
+        precio_unitario: puIdx    >= 0 ? tr[puIdx]                 : "",
+        monto:           montoIdx >= 0 ? tr[montoIdx]              : ""
+      });
+    });
+  }
+
+  var tickets = rows.map(function(row) {
+    var resumen = {};
+    headers.forEach(function(h, j) {
+      var v = row[j];
+      if (v instanceof Date) {
+        if (v.getFullYear() <= 1900) {
+          v = Utilities.formatDate(v, "America/Monterrey", "HH:mm");
+        } else {
+          v = Utilities.formatDate(v, "America/Monterrey", "yyyy-MM-dd");
+        }
+      }
+      resumen[h] = (v === null || v === undefined) ? "" : v;
+    });
+    var tid = String(resumen.ticket_id || "");
+    return { ticket_id: tid, resumen: resumen, productos: productsByTicket[tid] || [] };
+  }).filter(function(t) { return t.ticket_id; });
+
+  return { ok: true, tickets: tickets };
+}
+
+// ─── Dashboard: actualizar clasificación de ticket existente ─────────────────
+function updateTicketClassification_(data) {
+  var ticketId = String(data.ticket_id || "");
+  var clasif   = data.clasificacion      || {};
+  var prodsEd  = data.productos_editados || [];
+  if (!ticketId) return { ok: false, error: "ticket_id requerido" };
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+
+  // ── Resumen tickets ──────────────────────────────────────────────────────
+  var sheetR = ss.getSheetByName("Resumen tickets");
+  if (sheetR && sheetR.getLastRow() > 1) {
+    var lastColR = sheetR.getLastColumn();
+    var headR    = sheetR.getRange(1, 1, 1, lastColR).getValues()[0];
+    var rowsR    = sheetR.getRange(2, 1, sheetR.getLastRow() - 1, lastColR).getValues();
+    var idColR   = headR.indexOf("ticket_id");
+    var CAMPOS_R = [
+      "fecha","cuenta","subcuenta","categoria_gasto","concepto",
+      "propiedad","departamento","comprador","deducible","reembolso",
+      "reembolso_a","metodo_pago","detalles_operacion","comentarios",
+      "tienda","rfc","hora","folio","tarjeta_ultimos4",
+      "subtotal","iva","ieps","descuentos","total","clasificado_por"
+    ];
+    for (var r = 0; r < rowsR.length; r++) {
+      if (String(rowsR[r][idColR]) === ticketId) {
+        CAMPOS_R.forEach(function(campo) {
+          if (clasif.hasOwnProperty(campo)) {
+            var col = headR.indexOf(campo);
+            if (col >= 0) sheetR.getRange(r + 2, col + 1).setValue(clasif[campo]);
+          }
+        });
+        break;
+      }
+    }
+  }
+
+  // ── Transcripcion: clasificación + ediciones de productos ────────────────
+  var sheetP = ss.getSheetByName("Transcripcion");
+  if (sheetP && sheetP.getLastRow() > 1) {
+    var lastColP = sheetP.getLastColumn();
+    var headP    = sheetP.getRange(1, 1, 1, lastColP).getValues()[0];
+    var rowsP    = sheetP.getRange(2, 1, sheetP.getLastRow() - 1, lastColP).getValues();
+    var idColP   = headP.indexOf("ticket_id");
+    var lineaCol = headP.indexOf("linea_numero");
+    var CAMPOS_P = ["cuenta","subcuenta","categoria_gasto","concepto",
+                    "propiedad","departamento","comprador","comentarios"];
+    var editMap = {};
+    prodsEd.forEach(function(pe) {
+      editMap[String(pe.linea_numero)] = pe;
+    });
+    for (var p = 0; p < rowsP.length; p++) {
+      if (String(rowsP[p][idColP]) === ticketId) {
+        CAMPOS_P.forEach(function(campo) {
+          if (clasif.hasOwnProperty(campo)) {
+            var col = headP.indexOf(campo);
+            if (col >= 0) sheetP.getRange(p + 2, col + 1).setValue(clasif[campo]);
+          }
+        });
+        if (lineaCol >= 0) {
+          var lineaNum = String(rowsP[p][lineaCol] || "");
+          var pe = editMap[lineaNum];
+          if (pe) {
+            ["descripcion","cantidad","precio_unitario","monto"].forEach(function(campo) {
+              if (pe.hasOwnProperty(campo)) {
+                var col = headP.indexOf(campo);
+                if (col >= 0) sheetP.getRange(p + 2, col + 1).setValue(pe[campo]);
+              }
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
+// ─── Eliminar un ticket de Sheets ─────────────────────────────────────────────
+function deleteTicket_(data) {
+  var ticketId = String(data.ticket_id || "");
+  if (!ticketId) return { ok: false, error: "ticket_id requerido" };
+
+  var ss         = SpreadsheetApp.openById(SHEET_ID);
+  var sheetNames = ["Transcripcion", "Resumen tickets", "Cruce bancario"];
+
+  sheetNames.forEach(function(name) {
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) return;
+    var values = sheet.getDataRange().getValues();
+    if (values.length < 2) return;
+    var col = values[0].indexOf("ticket_id");
+    if (col === -1) return;
+    for (var r = values.length - 1; r >= 1; r--) {
+      if (String(values[r][col]) === ticketId) {
+        sheet.deleteRow(r + 1);
+      }
+    }
+  });
+
+  return { ok: true };
+}
+
+// ─── Registros contables: leer BANCOS + Presupuesto_sys ───────────────────────
+function getBancosData_(ss) {
+  const norm = (s) => (s ?? "").toString()
+    .replace(/[​-‍﻿]/g, "")
+    .replace(/ /g, " ")
+    .trim()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+
+  const pickSheet = (names) => {
+    const sheets = ss.getSheets();
+    const wanted = names.map(norm);
+    for (const sh of sheets) {
+      const n = norm(sh.getName());
+      if (wanted.includes(n)) return sh;
+    }
+    for (const sh of sheets) {
+      const n = norm(sh.getName());
+      if (wanted.some(w => n.includes(w) || w.includes(n))) return sh;
+    }
+    return null;
+  };
+
+  const pickIdx = (headers, names) => {
+    const H = headers.map(norm);
+    for (const n of names) {
+      const i = H.indexOf(norm(n));
+      if (i >= 0) return i;
+    }
+    for (const n of names) {
+      const key = norm(n);
+      const j = H.findIndex(h => h.includes(key));
+      if (j >= 0) return j;
+    }
+    return -1;
+  };
+
+  const toNumber = (v) => {
+    if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+    const s = (v ?? "").toString().trim();
+    if (!s) return 0;
+    const n = Number(s.replace(/[^0-9\-\.]/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // Formatea una celda de fecha a "YYYY-MM-DD"
+  const fmtDate = (v) => {
+    if (!v && v !== 0) return "";
+    if (v instanceof Date) {
+      const yy = v.getFullYear();
+      const mm = String(v.getMonth() + 1).padStart(2, "0");
+      const dd = String(v.getDate()).padStart(2, "0");
+      return `${yy}-${mm}-${dd}`;
+    }
+    return String(v).trim();
+  };
+
+  // Formatea celda de mes a "enero 2026"
+  const MESES_MIN = ["","enero","febrero","marzo","abril","mayo","junio",
+                     "julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const fmtMes = (v) => {
+    if (!v) return "";
+    if (v instanceof Date) return `${MESES_MIN[v.getMonth() + 1]} ${v.getFullYear()}`;
+    return String(v).trim();
+  };
+
+  const shB = pickSheet(["BANCOS"]);
+  const shP = pickSheet(["PRESUPUESTO_SYS", "PRESUPUESTO SYS", "PRESUPUESTO", "PRESUPUESTOS"]);
+
+  if (!shB || !shP) {
+    return {
+      ok: false,
+      error: "sheet_not_found",
+      message: "No se encontraron las hojas BANCOS o Presupuesto_sys"
+    };
+  }
+
+  const bancos = shB.getDataRange().getValues();
+  const pres   = shP.getDataRange().getValues();
+  const hB = bancos[0] || [];
+  const hP = pres[0]   || [];
+
+  // ── Índices columnas BANCOS ──────────────────────────────────────────────
+  // Estructura actual: CUENTA (Egresos/Ingresos) | SUBCUENTA | CATEGORIA | CONCEPTO | DESCRIPCION
+  const iAno   = pickIdx(hB, ["AÑO", "ANO", "ANIO", "YEAR"]);
+  const iMes   = pickIdx(hB, ["MES"]);
+  const iDia   = pickIdx(hB, ["DÍA", "DIA", "DIA DE OPERACION", "FECHA"]);
+  const iCta   = pickIdx(hB, ["CUENTA BANCARIA"]);          // cuenta del banco (no confundir con CUENTA contable)
+  const iCuenta= pickIdx(hB, ["CUENTA"]);                   // Egresos / Ingresos / Activos (era TIPO)
+  const iSub   = pickIdx(hB, ["SUBCUENTA", "SUB-CUENTA"]); // era CATEGORIA
+  const iCat   = pickIdx(hB, ["CATEGORIA", "CATEGORÍA"]);  // era CONCEPTO
+  const iCon   = pickIdx(hB, ["CONCEPTO"]);                 // era DESCRIPCION
+  const iDes   = pickIdx(hB, ["DESCRIPCION", "DESCRIPCIÓN"]); // columna nueva
+  const iFac   = pickIdx(hB, ["FACTURA"]);
+  const iMon   = pickIdx(hB, ["MONTO"]);
+
+  const records = bancos.slice(1)
+    .filter(r => r.join("").toString().trim() !== "")
+    .map((r, i) => {
+      const rowNum  = i + 2; // fila real en el sheet (fila 1 = encabezados)
+      const factura = (iFac >= 0 ? r[iFac] : "") || "";
+      return {
+        Año:               iAno    >= 0 ? String(r[iAno]).trim()    : "",
+        Mes:               iMes    >= 0 ? fmtMes(r[iMes])           : "",
+        Día:               iDia    >= 0 ? fmtDate(r[iDia])          : "",
+        "Cuenta bancaria": iCta    >= 0 ? String(r[iCta]).trim()    : "",
+        CUENTA:            iCuenta >= 0 ? String(r[iCuenta]).trim() : "",  // Egresos/Ingresos
+        SUBCUENTA:         iSub    >= 0 ? String(r[iSub]).trim()    : "",
+        CATEGORIA:         iCat    >= 0 ? String(r[iCat]).trim()    : "",
+        CONCEPTO:          iCon    >= 0 ? String(r[iCon]).trim()    : "",
+        DESCRIPCION:       iDes    >= 0 ? String(r[iDes]).trim()    : "",
+        Factura:           String(factura).trim(),
+        FacturaFlag:       String(factura).trim().length ? "Con factura" : "Sin factura",
+        Monto:             toNumber(iMon >= 0 ? r[iMon] : 0),
+        rowNum:            rowNum  // número de fila en el sheet para actualizaciones
+      };
+    });
+
+  // ── Índices columnas PRESUPUESTO_SYS ────────────────────────────────────
+  const iCuentaP = pickIdx(hP, ["CUENTA"]);
+  const iSubP    = pickIdx(hP, ["SUBCUENTA", "SUB-CUENTA"]);
+  const iCatP    = pickIdx(hP, ["CATEGORIA", "CATEGORÍA"]);
+  const iConP    = pickIdx(hP, ["CONCEPTO"]);
+  const iDesP    = pickIdx(hP, ["DESCRIPCION", "DESCRIPCIÓN"]);
+  const iConcP   = pickIdx(hP, ["CONCATENADO"]);
+  const iSemP    = pickIdx(hP, ["SEMANAL"]);
+  const iMenP    = pickIdx(hP, ["MENSUAL", "PRESUPUESTO MENSUAL"]);
+  const iBimP    = pickIdx(hP, ["BIMESTRAL"]);
+  const iAnuP    = pickIdx(hP, ["ANUAL", "PRESUPUESTO ANUAL"]);
+
+  const budget = pres.slice(1)
+    .filter(r => r.join("").toString().trim() !== "")
+    .filter(r => {
+      const cuenta = norm(iCuentaP >= 0 ? r[iCuentaP] : "");
+      const cat    = norm(iCatP    >= 0 ? r[iCatP]    : "");
+      const con    = norm(iConP    >= 0 ? r[iConP]    : "");
+      return !(cuenta.startsWith("SUBTOTAL") || cat.startsWith("SUBTOTAL") || con.startsWith("SUBTOTAL"));
+    })
+    .map(r => ({
+      TIPO:        iCuentaP >= 0 ? String(r[iCuentaP]).trim() : "",
+      SUBCUENTA:   iSubP    >= 0 ? String(r[iSubP]).trim()    : "",
+      CATEGORIA:   iCatP    >= 0 ? String(r[iCatP]).trim()    : "",
+      CONCEPTO:    iConP    >= 0 ? String(r[iConP]).trim()    : "",
+      DESCRIPCION: iDesP    >= 0 ? String(r[iDesP]).trim()    : "",
+      CONCATENADO: iConcP   >= 0 ? String(r[iConcP]).trim()   : "",
+      SEMANAL:     toNumber(iSemP >= 0 ? r[iSemP] : 0),
+      MENSUAL:     toNumber(iMenP >= 0 ? r[iMenP] : 0),
+      BIMESTRAL:   toNumber(iBimP >= 0 ? r[iBimP] : 0),
+      ANUAL:       toNumber(iAnuP >= 0 ? r[iAnuP] : 0)
+    }))
+    .filter(r => r.CATEGORIA || r.CONCEPTO || r.MENSUAL || r.ANUAL);
+
+  return {
+    ok: true,
+    sourceSheets: { bancos: shB.getName(), presupuesto: shP.getName() },
+    counts:       { records: records.length, budget: budget.length },
+    records,
+    budget
+  };
+}
+
+// ─── Guardar clasificación de un registro bancario en hoja BANCOS ────────────
+function saveBancoClasificacion_(ss, data) {
+  const norm = (s) => (s ?? "").toString()
+    .replace(/[​-‍﻿]/g, "")
+    .replace(/ /g, " ")
+    .trim()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+
+  // Buscar la hoja BANCOS
+  const shB = ss.getSheets().find(sh => norm(sh.getName()) === "BANCOS") ||
+              ss.getSheets().find(sh => norm(sh.getName()).includes("BANCOS"));
+  if (!shB) {
+    return { ok: false, error: "sheet_not_found", message: "No se encontró la hoja BANCOS" };
+  }
+
+  // Validar rowNum
+  const rowNum = Number(data.rowNum);
+  if (!rowNum || rowNum < 2) {
+    return { ok: false, error: "invalid_row", message: "rowNum inválido: " + data.rowNum };
+  }
+
+  // Columnas de clasificación a garantizar
+  const CLASIF_COLS = [
+    "CUENTA_CONTABLE", "SUBCUENTA_CLASIF", "CATEGORIA_GASTO",
+    "CONCEPTO_CLASIF", "PROPIEDAD", "DEPARTAMENTO",
+    "ENCARGADO", "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A",
+    "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF"
+  ];
+
+  // Leer el header actual
+  const lastCol   = shB.getLastColumn();
+  const headerRow = shB.getRange(1, 1, 1, lastCol).getValues()[0];
+
+  // Obtener o crear columna (devuelve índice 1-based)
+  const getOrCreateCol = (colName) => {
+    const normName = norm(colName);
+    let idx = headerRow.findIndex(h => norm(h) === normName);
+    if (idx >= 0) return idx + 1;
+    const newCol = shB.getLastColumn() + 1;
+    shB.getRange(1, newCol).setValue(colName);
+    headerRow.push(colName); // mantener sincronía local
+    return newCol;
+  };
+
+  // Construir mapa de columnas
+  const colMap = {};
+  for (const col of CLASIF_COLS) {
+    colMap[col] = getOrCreateCol(col);
+  }
+
+  const c   = data.clasificacion || {};
+  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+
+  const writeCell = (colName, value) => {
+    const col = colMap[colName];
+    if (col) shB.getRange(rowNum, col).setValue(value ?? "");
+  };
+
+  writeCell("CUENTA_CONTABLE",  c.cuenta          || "");
+  writeCell("SUBCUENTA_CLASIF", c.subcuenta        || "");
+  writeCell("CATEGORIA_GASTO",  c.categoria_gasto  || "");
+  writeCell("CONCEPTO_CLASIF",  c.concepto         || "");
+  writeCell("PROPIEDAD",        c.propiedad        || "");
+  writeCell("DEPARTAMENTO",     c.departamento     || "");
+  writeCell("ENCARGADO",        c.encargado        || "");
+  writeCell("DEDUCIBLE",        c.deducible        || "");
+  writeCell("REEMBOLSO",        c.reembolso        || "");
+  writeCell("REEMBOLSO_A",      c.reembolso_a      || "");
+  writeCell("METODO_PAGO",      c.metodo_pago      || "");
+  writeCell("CLASIFICADO_POR",  c.clasificado_por  || "");
+  writeCell("FECHA_CLASIF",     now);
+
+  return { ok: true, rowNum: rowNum, columnsWritten: CLASIF_COLS.length };
+}
+
+// ─── Prueba de conexión ───────────────────────────────────────────────────────
+function testFinal() {
+  var pixel = "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AJQAB/9k=";
+  var result = uploadTicketImage_({
+    ticket_id: "test-001",
+    fecha:     new Date().toISOString().slice(0, 10),
+    tienda:    "TEST_STORE",
+    file:      { fileName: "test.jpg", mimeType: "image/jpeg", base64: pixel }
+  });
+  Logger.log(JSON.stringify(result));
+}
