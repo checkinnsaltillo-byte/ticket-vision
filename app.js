@@ -1819,11 +1819,12 @@ function bn_filteredRecs(tipo) {
     const cat=bn_norm(r.CATEGORIA ||'');
     const con=bn_norm(r.CONCEPTO  ||'');
     const tip=bn_canon(r.CUENTA||r.TIPO||'');
+    const mN=Number(r.Monto||0), hasT=tip.includes('egr')||tip.includes('ing');
     if(s.cuenta    && cta!==s.cuenta)     return false;
     if(s.categoria && cat!==s.categoria)  return false;
     if(s.concepto  && con!==s.concepto)   return false;
-    if(tipo==='E' && !tip.includes('egr')) return false;
-    if(tipo==='I' && !tip.includes('ing')) return false;
+    if(tipo==='E' && !(tip.includes('egr')||(!hasT&&mN<0))) return false;
+    if(tipo==='I' && !(tip.includes('ing')||(!hasT&&mN>0))) return false;
     // 'T' = Todos: no filtra por tipo, incluye registros con CUENTA vacía
     if(q){ const h=(sub+' '+cat+' '+con+' '+bn_norm(r.DESCRIPCION||'')).toLowerCase(); if(!h.includes(q)) return false; }
     return true;
@@ -2275,8 +2276,10 @@ function bn_buildBnResumenTable(r, idx) {
 /** Crea el HTML de una tarjeta individual de registro bancario. */
 function bn_createCard(rec, idx) {
   const tip    = bn_canon(rec.CUENTA || rec.TIPO || '');
-  const isE    = tip.includes('egr');
-  const isI    = tip.includes('ing');
+  const montoN  = Number(rec.Monto || 0);
+  const hasTipo = tip.includes('egr') || tip.includes('ing');
+  const isE     = tip.includes('egr') || (!hasTipo && montoN < 0);
+  const isI     = tip.includes('ing') || (!hasTipo && montoN > 0);
   const colorCls = isE ? 'ci-egresos' : isI ? 'ci-ingresos' : '';
   const clsCls   = colorCls ? `classified ${colorCls}` : '';
   const ci       = 'bn' + idx;
@@ -2403,15 +2406,19 @@ function bn_toggleBnClassify(idx) {
   const isHidden = panel.classList.toggle('hidden');
   tab?.classList.toggle('open', !isHidden);
   if (!isHidden) {
-    bn_activateCatalog(); // asegurar catálogo correcto antes de la cascada
+    bn_activateCatalog();
     const rec = BN_CUR_RECS[idx];
     bn_autoPopulateBnClassify(ci, rec);
-    // Si aún no tiene clasificación, pre-seleccionar Cuenta por tipo/signo de monto
+    // Abrir siempre los grids de clasificación
+    const seccion = document.getElementById(`cuenta-section-${ci}`);
+    if (seccion?.classList.contains('hidden')) toggleClasiDetail(ci);
+    // Pre-seleccionar Cuenta por tipo o signo de monto si aún no está clasificado
     if (rec && !rec._cuenta) {
       const tip = bn_canon(rec.CUENTA || rec.TIPO || '');
+      const mN  = Number(rec.Monto || 0);
       const autoAcc = tip.includes('egr') ? 'Egresos'
                     : tip.includes('ing') ? 'Ingresos'
-                    : Number(rec.Monto) < 0 ? 'Egresos' : 'Ingresos';
+                    : mN < 0 ? 'Egresos' : 'Ingresos';
       const grid = document.getElementById(`cuenta-grid-${ci}`);
       const card = Array.from(grid?.querySelectorAll('.cuenta-card') || [])
         .find(c => c.dataset.value === autoAcc);
