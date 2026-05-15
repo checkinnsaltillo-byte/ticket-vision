@@ -13,8 +13,8 @@ function doPost(e) {
     if (action === "get_all_tickets")              return respond(getAllTickets_());
     if (action === "update_ticket_classification") return respond(updateTicketClassification_(data));
     if (action === "delete_ticket")                return respond(deleteTicket_(data));
-    if (action === "get_bancos_data")              return respond(getBancosData_(SpreadsheetApp.getActiveSpreadsheet()));
-    if (action === "save_banco_clasificacion")     return respond(saveBancoClasificacion_(SpreadsheetApp.getActiveSpreadsheet(), data));
+    if (action === "get_bancos_data")              return respond(getBancosData_(SpreadsheetApp.openById(SHEET_ID)));
+    if (action === "save_banco_clasificacion")     return respond(saveBancoClasificacion_(SpreadsheetApp.openById(SHEET_ID), data));
     return respond({ ok: false, error: "Acción desconocida: " + action });
   } catch (err) {
     return respond({ ok: false, error: err.message });
@@ -457,6 +457,8 @@ function getBancosData_(ss) {
 
   return {
     ok: true,
+    spreadsheetId:  ss.getId(),
+    spreadsheetUrl: ss.getUrl(),
     sourceSheets: { bancos: shB.getName(), presupuesto: shP.getName() },
     counts:       { records: records.length, budget: budget.length },
     records,
