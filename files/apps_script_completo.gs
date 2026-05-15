@@ -372,27 +372,34 @@ function getBancosData_(ss) {
     };
   }
 
-  const bancos = shB.getDataRange().getValues();
-  const pres   = shP.getDataRange().getValues();
+  const bancos        = shB.getDataRange().getValues();
+  const bancosDisplay = shB.getDataRange().getDisplayValues(); // texto tal como aparece en celda
+  const pres          = shP.getDataRange().getValues();
   const hB = bancos[0] || [];
   const hP = pres[0]   || [];
 
   // ── Índices columnas BANCOS ──────────────────────────────────────────────
-  // NOTA: Hay dos columnas con nombre "Concepto" en BANCOS:
-  //   1ra aparición → descripción bancaria (antes "Concepto / Referencia", renombrada a "Concepto")
-  //   2da aparición → clasificación contable (columna "CONCEPTO")
-  // Se identifican por orden de aparición para evitar colisión de nombres.
   const normHB  = hB.map(h => norm(String(h)));
-  const allCon  = normHB.reduce((a, h, i) => { if (h === "CONCEPTO") a.push(i); return a; }, []);
-  const iConRef = allCon.length > 0 ? allCon[0] : -1;  // descripción bancaria
-  const iCon    = allCon.length > 1 ? allCon[1] : -1;  // clasificación contable
+
+  // Columna "Concepto" (descripción bancaria, antes "Concepto / Referencia"):
+  //   aparece ANTES de SUBCUENTA en el orden de columnas.
+  // Columna "CONCEPTO" (clasificación contable):
+  //   aparece DESPUÉS de SUBCUENTA/CATEGORIA.
+  const iSub    = pickIdx(hB, ["SUBCUENTA", "SUB-CUENTA"]);
+  const allCon  = normHB.reduce((a, h, i) => {
+    if (h === "CONCEPTO" || h.startsWith("CONCEPTO")) a.push(i);
+    return a;
+  }, []);
+  // Bancaria = primer CONCEPTO antes de SUBCUENTA (o el primero si no hay SUBCUENTA)
+  const iConRef = allCon.find(i => iSub < 0 || i < iSub) ?? -1;
+  // Clasificación = primer CONCEPTO después de SUBCUENTA
+  const iCon    = allCon.find(i => iSub >= 0 && i > iSub) ?? -1;
 
   const iAno    = pickIdx(hB, ["AÑO", "ANO", "ANIO", "YEAR"]);
   const iMes    = pickIdx(hB, ["MES"]);
   const iDia    = pickIdx(hB, ["DÍA", "DIA", "DIA DE OPERACION", "FECHA"]);
   const iCta    = pickIdx(hB, ["CUENTA BANCARIA"]);
   const iCuenta = pickIdx(hB, ["CUENTA"]);
-  const iSub    = pickIdx(hB, ["SUBCUENTA", "SUB-CUENTA"]);
   const iCat    = pickIdx(hB, ["CATEGORIA", "CATEGORÍA"]);
   const iDes    = pickIdx(hB, ["DESCRIPCION", "DESCRIPCIÓN"]);
   const iFac    = pickIdx(hB, ["FACTURA"]);
@@ -401,12 +408,14 @@ function getBancosData_(ss) {
   const records = bancos.slice(1)
     .filter(r => r.join("").toString().trim() !== "")
     .map((r, i) => {
-      const rowNum  = i + 2; // fila real en el sheet (fila 1 = encabezados)
+      const rowNum  = i + 2;
       const factura = (iFac >= 0 ? r[iFac] : "") || "";
+      // Para Día: usar displayValue (texto exacto de la celda) → evita Date objects
+      const diaDisplay = iDia >= 0 ? String(bancosDisplay[i + 1][iDia]).trim() : "";
       return {
         Año:               iAno    >= 0 ? String(r[iAno]).trim()    : "",
         Mes:               iMes    >= 0 ? fmtMes(r[iMes])           : "",
-        Día:               iDia    >= 0 ? fmtDate(r[iDia])          : "",
+        Día:               diaDisplay,
         "Cuenta bancaria": iCta    >= 0 ? String(r[iCta]).trim()    : "",
         CUENTA:            iCuenta >= 0 ? String(r[iCuenta]).trim() : "",
         SUBCUENTA:         iSub    >= 0 ? String(r[iSub]).trim()    : "",
