@@ -2231,7 +2231,7 @@ const BN_CARD_SIZE = 25;
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
   const rows = [
-    ['Día',              'DÍA',       String(r.Día || r.Dia || '').trim(), false],
+    ['Día',              'DÍA',       String(r.Día || r.Dia || r.Mes || r.Año || '—').trim(), false],
     ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
     ['Cuenta',           'CUENTA',    r.CUENTA,                            false],
     ['Subcuenta',        'SUBCUENTA', r.SUBCUENTA,                         false],
@@ -2281,7 +2281,7 @@ function bn_createCard(rec, idx) {
   const ci       = 'bn' + idx;
 
   const name   = bn_norm(rec.CONCEPTO || rec.CATEGORIA || rec['Cuenta bancaria'] || 'Movimiento');
-  const diaFmt = String(rec.Día || rec.Dia || '').trim();
+  const diaFmt = String(rec.Día || rec.Dia || rec.Mes || rec.Año || '').trim();
   const desc   = bn_norm(rec.DESCRIPCION || '');
   const monto  = Number(rec.Monto || 0);
   const cat    = bn_norm(rec.CATEGORIA || '');
