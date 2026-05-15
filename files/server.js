@@ -23,7 +23,7 @@ app.use(express.json({ limit: "20mb" }));
 // ─── Apps Script URL (maneja Drive y Sheets) ───────────────────────────────
 
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL ||
-  "https://script.google.com/macros/s/AKfycbyHpUEdjxBG0sWkZ1DDI_-ToZaPK2nH8xUcX1rHxNa4vwAANk1nz9Z3KLkMo0sdum2-kw/exec";
+  "https://script.google.com/macros/s/AKfycbxGPcsaYIoc8igOEuZYnr8o-tM9d6nv6k2LReFtgH77dGC6JK34pTmXLvQbqFbtdP-YDQ/exec";
 
 async function callAppsScript(payload) {
   const res = await fetch(APPS_SCRIPT_URL, {
