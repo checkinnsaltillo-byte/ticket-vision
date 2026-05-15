@@ -378,18 +378,25 @@ function getBancosData_(ss) {
   const hP = pres[0]   || [];
 
   // ── Índices columnas BANCOS ──────────────────────────────────────────────
-  // Estructura actual: CUENTA (Egresos/Ingresos) | SUBCUENTA | CATEGORIA | CONCEPTO | DESCRIPCION
-  const iAno   = pickIdx(hB, ["AÑO", "ANO", "ANIO", "YEAR"]);
-  const iMes   = pickIdx(hB, ["MES"]);
-  const iDia   = pickIdx(hB, ["DÍA", "DIA", "DIA DE OPERACION", "FECHA"]);
-  const iCta   = pickIdx(hB, ["CUENTA BANCARIA"]);          // cuenta del banco (no confundir con CUENTA contable)
-  const iCuenta= pickIdx(hB, ["CUENTA"]);                   // Egresos / Ingresos / Activos (era TIPO)
-  const iSub   = pickIdx(hB, ["SUBCUENTA", "SUB-CUENTA"]); // era CATEGORIA
-  const iCat   = pickIdx(hB, ["CATEGORIA", "CATEGORÍA"]);  // era CONCEPTO
-  const iCon   = pickIdx(hB, ["CONCEPTO"]);                 // era DESCRIPCION
-  const iDes   = pickIdx(hB, ["DESCRIPCION", "DESCRIPCIÓN"]); // columna nueva
-  const iFac   = pickIdx(hB, ["FACTURA"]);
-  const iMon   = pickIdx(hB, ["MONTO"]);
+  // NOTA: Hay dos columnas con nombre "Concepto" en BANCOS:
+  //   1ra aparición → descripción bancaria (antes "Concepto / Referencia", renombrada a "Concepto")
+  //   2da aparición → clasificación contable (columna "CONCEPTO")
+  // Se identifican por orden de aparición para evitar colisión de nombres.
+  const normHB  = hB.map(h => norm(String(h)));
+  const allCon  = normHB.reduce((a, h, i) => { if (h === "CONCEPTO") a.push(i); return a; }, []);
+  const iConRef = allCon.length > 0 ? allCon[0] : -1;  // descripción bancaria
+  const iCon    = allCon.length > 1 ? allCon[1] : -1;  // clasificación contable
+
+  const iAno    = pickIdx(hB, ["AÑO", "ANO", "ANIO", "YEAR"]);
+  const iMes    = pickIdx(hB, ["MES"]);
+  const iDia    = pickIdx(hB, ["DÍA", "DIA", "DIA DE OPERACION", "FECHA"]);
+  const iCta    = pickIdx(hB, ["CUENTA BANCARIA"]);
+  const iCuenta = pickIdx(hB, ["CUENTA"]);
+  const iSub    = pickIdx(hB, ["SUBCUENTA", "SUB-CUENTA"]);
+  const iCat    = pickIdx(hB, ["CATEGORIA", "CATEGORÍA"]);
+  const iDes    = pickIdx(hB, ["DESCRIPCION", "DESCRIPCIÓN"]);
+  const iFac    = pickIdx(hB, ["FACTURA"]);
+  const iMon    = pickIdx(hB, ["MONTO"]);
 
   const records = bancos.slice(1)
     .filter(r => r.join("").toString().trim() !== "")
@@ -401,15 +408,16 @@ function getBancosData_(ss) {
         Mes:               iMes    >= 0 ? fmtMes(r[iMes])           : "",
         Día:               iDia    >= 0 ? fmtDate(r[iDia])          : "",
         "Cuenta bancaria": iCta    >= 0 ? String(r[iCta]).trim()    : "",
-        CUENTA:            iCuenta >= 0 ? String(r[iCuenta]).trim() : "",  // Egresos/Ingresos
+        CUENTA:            iCuenta >= 0 ? String(r[iCuenta]).trim() : "",
         SUBCUENTA:         iSub    >= 0 ? String(r[iSub]).trim()    : "",
         CATEGORIA:         iCat    >= 0 ? String(r[iCat]).trim()    : "",
-        CONCEPTO:          iCon    >= 0 ? String(r[iCon]).trim()    : "",
+        Concepto:          iConRef >= 0 ? String(r[iConRef]).trim() : "",  // descripción bancaria
+        CONCEPTO:          iCon    >= 0 ? String(r[iCon]).trim()    : "",  // clasificación contable
         DESCRIPCION:       iDes    >= 0 ? String(r[iDes]).trim()    : "",
         Factura:           String(factura).trim(),
         FacturaFlag:       String(factura).trim().length ? "Con factura" : "Sin factura",
         Monto:             toNumber(iMon >= 0 ? r[iMon] : 0),
-        rowNum:            rowNum  // número de fila en el sheet para actualizaciones
+        rowNum:            rowNum
       };
     });
 

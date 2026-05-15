@@ -2281,12 +2281,13 @@ const BN_CARD_SIZE = 25;
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
   const rows = [
-    ['Día',              'DÍA',       String(r.Día || r.Dia || r.Mes || r.Año || '—').trim(), false],
+    ['Día',              'DÍA',       bn_formatDia(r.Día || r.Dia || '') || r.Mes || r.Año || '—', false],
     ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
+    ['Concepto',         'CONCEPTO_REF', r.Concepto,                       false],
     ['Cuenta',           'CUENTA',    r.CUENTA,                            false],
     ['Subcuenta',        'SUBCUENTA', r.SUBCUENTA,                         false],
     ['Categoría',        'CATEGORIA', r.CATEGORIA,                         false],
-    ['Concepto',         'CONCEPTO',  r.CONCEPTO,                          true ],
+    ['Concepto clasif.', 'CONCEPTO',  r.CONCEPTO,                          true ],
     ['Descripción',      'DESC',      r.DESCRIPCION,                       false],
     ['Factura',          'FACTURA',   r.Factura,                           false],
     ['Monto',            'MONTO',     r.Monto != null ? bn_fmt$(Number(r.Monto||0)) : null, false],
@@ -2332,8 +2333,8 @@ function bn_createCard(rec, idx) {
   const clsCls   = colorCls ? `classified ${colorCls}` : '';
   const ci       = 'bn' + idx;
 
-  const name   = bn_norm(rec.CONCEPTO || rec.CATEGORIA || rec['Cuenta bancaria'] || 'Movimiento');
-  const diaFmt = String(rec.Día || rec.Dia || rec.Mes || rec.Año || '').trim();
+  const name   = bn_norm(rec.Concepto || rec.DESCRIPCION || rec['Cuenta bancaria'] || 'Movimiento');
+  const diaFmt = bn_formatDia(rec.Día || rec.Dia || '') || bn_norm(rec.Mes || rec.Año || '');
   const desc   = bn_norm(rec.DESCRIPCION || '');
   const monto  = Number(rec.Monto || 0);
   const cat    = bn_norm(rec.CATEGORIA || '');
