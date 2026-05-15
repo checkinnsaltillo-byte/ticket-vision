@@ -1868,7 +1868,7 @@ function bn_filteredRecs(tipo) {
     const sub=bn_norm(r.SUBCUENTA ||'');
     const cat=bn_norm(r.CATEGORIA ||'');
     const con=bn_norm(r.CONCEPTO  ||'');
-    const tip=bn_canon(r.CUENTA   ||'');
+    const tip=bn_canon(r.CUENTA||r.TIPO||'');
     if(s.año && y!==s.año)   return false;
     if(s.mes && mes!==s.mes) return false;
     if(s.cuenta    && cta!==s.cuenta)     return false;
@@ -2085,7 +2085,7 @@ function bn_showDetail(cat,con,mes,tipo) {
   document.getElementById('bn-modal-title').textContent=(tipo==='E'?'Egreso':'Ingreso')+' — '+cat+(con?' › '+con:'');
   document.getElementById('bn-modal-sub').textContent=mes;
   const rows=BN_RAW.filter(r=>{
-    const tip=bn_canon(r.CUENTA||'');
+    const tip=bn_canon(r.CUENTA||r.TIPO||'');
     if(tipo==='E'&&!tip.includes('egr')) return false;
     if(tipo==='I'&&!tip.includes('ing')) return false;
     return bn_norm(r.CATEGORIA||'')===cat && bn_norm(r.CONCEPTO||'')===con && bn_norm(r.Mes)===mes;
@@ -2325,7 +2325,7 @@ function bn_buildBnResumenTable(r, idx) {
 
 /** Crea el HTML de una tarjeta individual de registro bancario. */
 function bn_createCard(rec, idx) {
-  const tip    = bn_canon(rec.CUENTA || '');
+  const tip    = bn_canon(rec.CUENTA || rec.TIPO || '');
   const isE    = tip.includes('egr');
   const isI    = tip.includes('ing');
   const colorCls = isE ? 'ci-egresos' : isI ? 'ci-ingresos' : '';
@@ -2340,7 +2340,7 @@ function bn_createCard(rec, idx) {
   const con    = bn_norm(rec.CONCEPTO  || '');
   const cuenta = bn_norm(rec['Cuenta bancaria'] || '');
   const fac    = bn_norm(rec.Factura || '');
-  const tipoLbl= bn_norm(rec.CUENTA || '');
+  const tipoLbl= bn_norm(rec.CUENTA || rec.TIPO || '');
 
   // Presupuesto y avance
   const tipo4bud = isE ? 'E' : 'I';
@@ -2459,7 +2459,7 @@ function bn_toggleBnClassify(idx) {
     bn_autoPopulateBnClassify(ci, rec);
     // Si aún no tiene clasificación, pre-seleccionar Cuenta por tipo/signo de monto
     if (rec && !rec._cuenta) {
-      const tip = bn_canon(rec.CUENTA || '');
+      const tip = bn_canon(rec.CUENTA || rec.TIPO || '');
       const autoAcc = tip.includes('egr') ? 'Egresos'
                     : tip.includes('ing') ? 'Ingresos'
                     : Number(rec.Monto) < 0 ? 'Egresos' : 'Ingresos';
