@@ -442,7 +442,7 @@ function getBancosData_(ss) {
       BIMESTRAL:   toNumber(iBimP >= 0 ? r[iBimP] : 0),
       ANUAL:       toNumber(iAnuP >= 0 ? r[iAnuP] : 0)
     }))
-    .filter(r => r.CATEGORIA || r.CONCEPTO || r.MENSUAL || r.ANUAL);
+    .filter(r => r.TIPO);  // incluir todo renglón que tenga CUENTA
 
   return {
     ok: true,

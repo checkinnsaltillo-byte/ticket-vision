@@ -1626,25 +1626,47 @@ function bn_formatDia(d) {
   return String(d || '').trim();
 }
 
-/** Construye BN_CATALOG desde BN_BUDGET (Presupuesto_sys). */
+/** Construye BN_CATALOG desde BN_BUDGET (Presupuesto_sys).
+ *  Soporta las estructuras:
+ *    4 niveles: cuenta > subcuenta > categoria > concepto
+ *    3 niveles: cuenta > subcuenta > concepto   (sin categoria)
+ *    3 niveles: cuenta > categoria > concepto   (sin subcuenta)
+ */
 function bn_buildBnCatalog() {
   const cat = {};
   for (const b of (BN_BUDGET || [])) {
-    const cuenta = (b.TIPO      || '').trim();   // Egresos / Ingresos / …
+    const cuenta = (b.TIPO      || '').trim();
     const sub    = (b.SUBCUENTA || '').trim();
     const catg   = (b.CATEGORIA || '').trim();
     const con    = (b.CONCEPTO  || '').trim();
     if (!cuenta) continue;
     if (!cat[cuenta]) cat[cuenta] = {};
-    if (sub) {
+
+    if (sub && catg) {
+      // 4-nivel: cuenta > sub > catg > concepto
+      if (Array.isArray(cat[cuenta][sub])) {
+        // estaba como array 3-nivel; promover a objeto
+        const prev = cat[cuenta][sub];
+        cat[cuenta][sub] = {};
+        if (prev.length) cat[cuenta][sub][''] = prev;
+      }
       if (!cat[cuenta][sub]) cat[cuenta][sub] = {};
-      if (catg) {
-        if (!cat[cuenta][sub][catg]) cat[cuenta][sub][catg] = [];
-        if (con && !cat[cuenta][sub][catg].includes(con)) cat[cuenta][sub][catg].push(con);
+      if (!cat[cuenta][sub][catg]) cat[cuenta][sub][catg] = [];
+      if (con && !cat[cuenta][sub][catg].includes(con)) cat[cuenta][sub][catg].push(con);
+    } else if (sub) {
+      // 3-nivel: cuenta > sub > concepto (sin catg)
+      if (!cat[cuenta][sub] || (typeof cat[cuenta][sub] === 'object' && !Array.isArray(cat[cuenta][sub]) && Object.keys(cat[cuenta][sub]).length === 0)) {
+        cat[cuenta][sub] = [];
+      }
+      if (Array.isArray(cat[cuenta][sub]) && con && !cat[cuenta][sub].includes(con)) {
+        cat[cuenta][sub].push(con);
       }
     } else if (catg) {
+      // 3-nivel: cuenta > catg > concepto (sin sub)
       if (!cat[cuenta][catg]) cat[cuenta][catg] = [];
-      if (con && !cat[cuenta][catg].includes(con)) cat[cuenta][catg].push(con);
+      if (Array.isArray(cat[cuenta][catg]) && con && !cat[cuenta][catg].includes(con)) {
+        cat[cuenta][catg].push(con);
+      }
     }
   }
   BN_CATALOG = cat;
@@ -1654,7 +1676,17 @@ function bn_buildBnCatalog() {
 function bn_activateCatalog() {
   if (!_BN_ORIG_CATALOG) _BN_ORIG_CATALOG = CATALOG;
   CATALOG = BN_CATALOG;
-  SEARCH_INDEX = buildSearchIndex(); // reconstruir índice con catálogo de Bancos
+  // Construir índice de búsqueda DIRECTO desde BN_BUDGET (lista plana).
+  // Esto garantiza que TODOS los renglones de Presupuesto_sys sean buscables
+  // independientemente de la estructura jerárquica del catálogo.
+  SEARCH_INDEX = (BN_BUDGET || [])
+    .filter(b => b.TIPO)
+    .map(b => ({
+      cuenta:    (b.TIPO      || '').trim(),
+      subcuenta: (b.SUBCUENTA || '').trim(),
+      categoria: (b.CATEGORIA || '').trim(),
+      concepto:  (b.CONCEPTO  || '').trim()
+    }));
 }
 /** Restaura el catálogo original de tickets. */
 function bn_deactivateCatalog() {
@@ -2407,6 +2439,28 @@ function bn_toggleBnClassify(idx) {
   tab?.classList.toggle('open', !isHidden);
   if (!isHidden) {
     bn_activateCatalog();
+
+    // ── Renderizar tarjetas de Cuenta dinámicamente desde BN_CATALOG ──────
+    // (no hardcoded — toma los valores reales de Presupuesto_sys)
+    const cuentaGrid = document.getElementById(`cuenta-grid-${ci}`);
+    if (cuentaGrid) {
+      const CUENTA_ICONS = { Egresos:'💸', Ingresos:'💰', Pasivos:'📋', Activos:'📈', Capital:'💼' };
+      const CUENTA_SUBS  = { Egresos:'Gastos y pagos', Ingresos:'Cobros y entradas',
+                             Pasivos:'Obligaciones',   Activos:'Inversión / CAPEX',  Capital:'Utilidad / Familiar' };
+      const cuentas = Object.keys(BN_CATALOG);
+      cuentaGrid.innerHTML = [
+        `<div class="cuenta-card" data-value="" onclick="selectCuenta(this,'${ci}')">` +
+          `<div class="cuenta-icon">🏠</div><div class="cuenta-label">Sin cuenta</div>` +
+          `<div class="cuenta-sub">General</div></div>`,
+        ...cuentas.map(c =>
+          `<div class="cuenta-card" data-value="${esc(c)}" onclick="selectCuenta(this,'${ci}')">` +
+          `<div class="cuenta-icon">${CUENTA_ICONS[c] || '📁'}</div>` +
+          `<div class="cuenta-label">${esc(c)}</div>` +
+          (CUENTA_SUBS[c] ? `<div class="cuenta-sub">${CUENTA_SUBS[c]}</div>` : '') +
+          `</div>`)
+      ].join('');
+    }
+
     const rec = BN_CUR_RECS[idx];
     bn_autoPopulateBnClassify(ci, rec);
     // Abrir siempre los grids de clasificación
