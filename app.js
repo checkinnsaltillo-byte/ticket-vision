@@ -1626,16 +1626,18 @@ const bn_uniq  = (arr) => [...new Set(arr.map(bn_norm).filter(Boolean))].sort((a
  * Acepta "YYYY-MM-DD", objeto Date serializado, o cualquier string de fecha.
  */
 function bn_formatDia(d) {
-  const MESES = ['','enero','febrero','marzo','abril','mayo','junio',
-                 'julio','agosto','septiembre','octubre','noviembre','diciembre'];
   if (!d) return '';
   const s = String(d).trim();
-  // ISO: YYYY-MM-DD
+  // ISO YYYY-MM-DD → mostrar como DD/MM/YYYY
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${Number(iso[3])}/${MESES[Number(iso[2])]}/${iso[1]}`;
-  // Date string (Apps Script serializado): "Thu Jan 01 2026 00:00:00..."
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  // D/M/YYYY o DD/MM/YYYY texto → normalizar con ceros
+  const ddmm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (ddmm) return `${ddmm[1].padStart(2,'0')}/${ddmm[2].padStart(2,'0')}/${ddmm[3]}`;
+  // Fallback: objeto Date serializado como string JS
   const dt = new Date(s);
-  if (!isNaN(dt.getTime())) return `${dt.getDate()}/${MESES[dt.getMonth()+1]}/${dt.getFullYear()}`;
+  if (!isNaN(dt.getTime()) && dt.getFullYear() > 1900)
+    return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
   return s;
 }
 
