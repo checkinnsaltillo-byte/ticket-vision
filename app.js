@@ -148,7 +148,7 @@ function buildSearchIndex() {
   return index;
 }
 
-const SEARCH_INDEX = buildSearchIndex();
+let SEARCH_INDEX = buildSearchIndex();
 let searchMatches = {};
 
 // ─── State ─────────────────────────────────────────────────────────────────
@@ -1654,13 +1654,13 @@ function bn_buildBnCatalog() {
 function bn_activateCatalog() {
   if (!_BN_ORIG_CATALOG) _BN_ORIG_CATALOG = CATALOG;
   CATALOG = BN_CATALOG;
-  if (typeof buildSearchIndex === 'function') buildSearchIndex();
+  SEARCH_INDEX = buildSearchIndex(); // reconstruir índice con catálogo de Bancos
 }
 /** Restaura el catálogo original de tickets. */
 function bn_deactivateCatalog() {
   if (_BN_ORIG_CATALOG) {
     CATALOG = _BN_ORIG_CATALOG;
-    if (typeof buildSearchIndex === 'function') buildSearchIndex();
+    SEARCH_INDEX = buildSearchIndex(); // reconstruir índice con catálogo de Tickets
   }
 }
 
