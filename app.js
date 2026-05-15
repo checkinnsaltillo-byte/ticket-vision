@@ -1621,32 +1621,9 @@ const bn_canon = (s) => bn_norm(s).normalize('NFD').replace(/[̀-ͯ]/g,'').repla
 const bn_cc    = (s) => bn_canon(s).replace(/[^a-z0-9]+/g,'');
 const bn_uniq  = (arr) => [...new Set(arr.map(bn_norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
 
-/**
- * Convierte CUALQUIER valor de fecha a ISO "YYYY-MM-DD".
- * Acepta: ISO, DD/MM/YYYY, D/M/YYYY, Date strings de JS.
- * Interpreta siempre el primer número como día (formato mexicano).
- */
-function bn_toISO(v) {
-  const s = String(v || '').trim();
-  if (!s) return '';
-  // Ya es ISO YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
-  // DD/MM/YYYY o D/M/YYYY — primer número = día
-  const ddmm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (ddmm) return `${ddmm[3]}-${ddmm[2].padStart(2,'0')}-${ddmm[1].padStart(2,'0')}`;
-  // Date string serializado por JS/Sheets: "Wed Jan 01 2026 00:00:00..."
-  const dt = new Date(s);
-  if (!isNaN(dt.getTime()) && dt.getFullYear() > 1900)
-    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
-  return '';
-}
-
-/** Formatea fecha a "DD/MM/YYYY". Entrada: cualquier formato → pasa por bn_toISO primero. */
+/** Devuelve el valor de Día tal cual viene de la base de datos. */
 function bn_formatDia(d) {
-  const iso = bn_toISO(d);
-  if (!iso) return '';
-  const [y, m, dd] = iso.split('-');
-  return `${dd}/${m}/${y}`;
+  return String(d || '').trim();
 }
 
 /** Construye BN_CATALOG desde BN_BUDGET (Presupuesto_sys). */
@@ -1717,16 +1694,9 @@ function bn_yearOf(val) { const m=String(val||'').match(/\b(20\d{2})\b/); return
 
 /**
  * Parsea el campo Día (ya normalizado a ISO) y devuelve { año, mes }.
- * Usa bn_toISO internamente — acepta cualquier formato de entrada.
+ * Sin filtros de año/mes — función mantenida por compatibilidad.
  */
-function bn_parseDia(dia) {
-  const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                 'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const iso = bn_toISO(dia);
-  if (!iso) return { año: '', mes: '' };
-  const parts = iso.split('-');
-  return { año: parts[0], mes: MESES[Number(parts[1])] || '' };
-}
+function bn_parseDia(dia) { return { año: '', mes: '' }; }
 
 function bn_sevOver(av)  {
   if(!isFinite(av))   return {label:'—',       cls:'bn-pill'};
@@ -1784,9 +1754,7 @@ async function bn_loadData() {
     const res  = await fetch(BACKEND+'/get-bancos',{cache:'no-store'});
     const data = await res.json();
     if (!data.ok) throw new Error(data.error||'Error al obtener datos');
-    // Normalizar r.Día a ISO una sola vez; todo lo demás queda consistente
-    BN_RAW=(data.records||[]).map(r=>({...r, Día: bn_toISO(r.Día||r.Dia||'')}));
-    BN_BUDGET=data.budget||[];
+    BN_RAW=data.records||[]; BN_BUDGET=data.budget||[];
     BN_LOADED=true; bn_resetBCache();
     bn_buildBnCatalog();
     bn_activateCatalog(); // Usa el catálogo de Presupuesto_sys mientras el módulo está activo
@@ -1809,39 +1777,17 @@ function bn_populateFilters() {
     sel.innerHTML=`<option value="">${blank}</option>`+
       vals.map(v=>`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');
   };
-  const MONTH_ORD = {Enero:1,Febrero:2,Marzo:3,Abril:4,Mayo:5,Junio:6,
-    Julio:7,Agosto:8,Septiembre:9,Octubre:10,Noviembre:11,Diciembre:12};
-  // Año y Mes derivados exclusivamente de la columna Día
-  const _dia = r => r.Día || r.Dia || r.Mes || r.Año || '';
-  const years = [...new Set(BN_RAW.map(r=>bn_parseDia(_dia(r)).año).filter(Boolean))]
-    .sort().reverse();
-  const mesLabels = [...new Set(BN_RAW.map(r=>bn_parseDia(_dia(r)).mes).filter(Boolean))]
-    .sort((a,b)=>(MONTH_ORD[a]||99)-(MONTH_ORD[b]||99));
-  fill('bn-f-año', years, 'Todos los años');
-  fill('bn-f-mes', mesLabels, 'Todos los meses');
-  // Filtros del panel desplegable
   fill('bn-f-cuenta',    bn_uniq(BN_RAW.map(r=>bn_norm(r['Cuenta bancaria']||''))), 'Todas');
   fill('bn-f-categoria', bn_uniq(BN_RAW.map(r=>bn_norm(r.CATEGORIA||''))),          'Todas');
   fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO ||''))),          'Todos');
 }
 
 function bn_setDefaultFilters() {
-  const now = new Date();
-  const MESES_LABEL = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                       'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const mesActual = MESES_LABEL[now.getMonth()+1];
-  const añoActual = String(now.getFullYear());
-  const selA = document.getElementById('bn-f-año');
-  const selM = document.getElementById('bn-f-mes');
-  // Asignar y leer de vuelta: si la opción no existe el select queda en "" y el estado refleja eso
-  if(selA){ selA.value=añoActual; bn_st.año=selA.value; } else bn_st.año='';
-  if(selM){ selM.value=mesActual; bn_st.mes=selM.value; } else bn_st.mes='';
+  bn_st.año=bn_st.mes='';
   bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
 }
 
 function bn_onFilterChange() {
-  bn_st.año       = document.getElementById('bn-f-año')?.value       || '';
-  bn_st.mes       = document.getElementById('bn-f-mes')?.value       || '';
   bn_st.cuenta    = document.getElementById('bn-f-cuenta')?.value    || '';
   bn_st.categoria = document.getElementById('bn-f-categoria')?.value || '';
   bn_st.concepto  = document.getElementById('bn-f-concepto')?.value  || '';
@@ -1849,7 +1795,7 @@ function bn_onFilterChange() {
 }
 
 function bn_clearFilters() {
-  ['bn-f-año','bn-f-mes','bn-f-cuenta','bn-f-categoria','bn-f-concepto','bn-f-text']
+  ['bn-f-cuenta','bn-f-categoria','bn-f-concepto','bn-f-text']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   bn_st.año=bn_st.mes=bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
   bn_render();
@@ -1868,14 +1814,11 @@ function bn_filteredRecs(tipo) {
   const s=bn_st;
   const q=(document.getElementById('bn-f-text')?.value||'').toLowerCase().trim();
   return BN_RAW.filter(r=>{
-    const {año:y, mes} = bn_parseDia(r.Día||r.Dia||r.Mes||r.Año||'');
     const cta=bn_norm(r['Cuenta bancaria']||'');
     const sub=bn_norm(r.SUBCUENTA ||'');
     const cat=bn_norm(r.CATEGORIA ||'');
     const con=bn_norm(r.CONCEPTO  ||'');
     const tip=bn_canon(r.CUENTA||r.TIPO||'');
-    if(s.año && y && y!==s.año)     return false;
-    if(s.mes && mes && mes!==s.mes) return false;
     if(s.cuenta    && cta!==s.cuenta)     return false;
     if(s.categoria && cat!==s.categoria)  return false;
     if(s.concepto  && con!==s.concepto)   return false;
@@ -2288,7 +2231,7 @@ const BN_CARD_SIZE = 25;
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
   const rows = [
-    ['Día',              'DÍA',       bn_formatDia(r.Día || r.Dia), false],
+    ['Día',              'DÍA',       String(r.Día || r.Dia || '').trim(), false],
     ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
     ['Cuenta',           'CUENTA',    r.CUENTA,                            false],
     ['Subcuenta',        'SUBCUENTA', r.SUBCUENTA,                         false],
@@ -2338,7 +2281,7 @@ function bn_createCard(rec, idx) {
   const ci       = 'bn' + idx;
 
   const name   = bn_norm(rec.CONCEPTO || rec.CATEGORIA || rec['Cuenta bancaria'] || 'Movimiento');
-  const diaFmt = bn_formatDia(rec.Día || rec.Dia || rec.Mes || '');
+  const diaFmt = String(rec.Día || rec.Dia || '').trim();
   const desc   = bn_norm(rec.DESCRIPCION || '');
   const monto  = Number(rec.Monto || 0);
   const cat    = bn_norm(rec.CATEGORIA || '');
