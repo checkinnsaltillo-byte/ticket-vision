@@ -1869,8 +1869,8 @@ function bn_filteredRecs(tipo) {
     const cat=bn_norm(r.CATEGORIA ||'');
     const con=bn_norm(r.CONCEPTO  ||'');
     const tip=bn_canon(r.CUENTA||r.TIPO||'');
-    if(s.año && y!==s.año)   return false;
-    if(s.mes && mes!==s.mes) return false;
+    if(s.año && y && y!==s.año)     return false;
+    if(s.mes && mes && mes!==s.mes) return false;
     if(s.cuenta    && cta!==s.cuenta)     return false;
     if(s.categoria && cat!==s.categoria)  return false;
     if(s.concepto  && con!==s.concepto)   return false;
