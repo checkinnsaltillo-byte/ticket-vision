@@ -319,10 +319,18 @@ function handleLoginKey(e) {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  // Mostrar login al inicio
-  document.getElementById("loginOverlay")?.classList.remove("hidden");
-  document.getElementById("app-root")?.classList.add("hidden");
-  document.getElementById("loginPassword")?.focus();
+  // ── LOGIN — cambiar DEV_MODE a false para reactivar contraseña ──────────
+  const DEV_MODE = true;
+  if (DEV_MODE) {
+    currentUser = "admin";
+    document.getElementById("loginOverlay")?.classList.add("hidden");
+    document.getElementById("app-root")?.classList.remove("hidden");
+    document.getElementById("current-user-badge").textContent = "ADMIN (dev)";
+  } else {
+    document.getElementById("loginOverlay")?.classList.remove("hidden");
+    document.getElementById("app-root")?.classList.add("hidden");
+    document.getElementById("loginPassword")?.focus();
+  }
 
   // Configurar PDF.js worker
   if (typeof pdfjsLib !== "undefined") {
