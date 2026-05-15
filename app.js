@@ -901,18 +901,18 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="clasif-fecha-row">
         <label class="clasif-fecha-label">📅 ${fechaLabel || 'Fecha del ticket'}</label>
         <input type="date" id="fecha-clasif-${idx}" class="clasif-fecha-input"
-          value="${esc(fecha || '')}" onchange="markClassifyDirty(${idx})">
+          value="${esc(fecha || '')}" onchange="markClassifyDirty('${idx}')">
       </div>
 
       <div class="classify-search-wrap">
         <button class="btn-clasif-toggle" type="button"
-                onclick="toggleClasiDetail(${idx})"
+                onclick="toggleClasiDetail('${idx}')"
                 id="clasif-toggle-${idx}"
                 title="Cuenta / Subcuenta / Categoría / Concepto">≡</button>
         <input type="text" id="search-${idx}" class="classify-search"
                placeholder="🔍 Buscar por cuenta, subcuenta, categoría o concepto..."
-               oninput="onClassifySearch(${idx}, this.value)"
-               onblur="setTimeout(()=>hideSearchResults(${idx}), 180)">
+               oninput="onClassifySearch('${idx}', this.value)"
+               onblur="setTimeout(()=>hideSearchResults('${idx}'), 180)">
         <div class="search-results hidden" id="search-results-${idx}"></div>
       </div>
       <div class="clasif-path-text" id="clasif-path-${idx}"></div>
@@ -921,22 +921,22 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
         <div class="cuenta-field">
           <label>Cuenta</label>
           <div class="cuenta-grid" id="cuenta-grid-${idx}">
-            <div class="cuenta-card active" data-value="" onclick="selectCuenta(this,${idx})">
+            <div class="cuenta-card active" data-value="" onclick="selectCuenta(this,'${idx}')">
               <div class="cuenta-icon">🏠</div><div class="cuenta-label">Sin cuenta</div><div class="cuenta-sub">General</div>
             </div>
-            <div class="cuenta-card" data-value="Egresos" onclick="selectCuenta(this,${idx})">
+            <div class="cuenta-card" data-value="Egresos" onclick="selectCuenta(this,'${idx}')">
               <div class="cuenta-icon">💸</div><div class="cuenta-label">Egresos</div><div class="cuenta-sub">Gastos y pagos</div>
             </div>
-            <div class="cuenta-card" data-value="Ingresos" onclick="selectCuenta(this,${idx})">
+            <div class="cuenta-card" data-value="Ingresos" onclick="selectCuenta(this,'${idx}')">
               <div class="cuenta-icon">💰</div><div class="cuenta-label">Ingresos</div><div class="cuenta-sub">Cobros y entradas</div>
             </div>
-            <div class="cuenta-card" data-value="Pasivos" onclick="selectCuenta(this,${idx})">
+            <div class="cuenta-card" data-value="Pasivos" onclick="selectCuenta(this,'${idx}')">
               <div class="cuenta-icon">📋</div><div class="cuenta-label">Pasivos</div><div class="cuenta-sub">Obligaciones</div>
             </div>
-            <div class="cuenta-card" data-value="Activos" onclick="selectCuenta(this,${idx})">
+            <div class="cuenta-card" data-value="Activos" onclick="selectCuenta(this,'${idx}')">
               <div class="cuenta-icon">📈</div><div class="cuenta-label">Activos</div><div class="cuenta-sub">Inversión / CAPEX</div>
             </div>
-            <div class="cuenta-card" data-value="Capital" onclick="selectCuenta(this,${idx})">
+            <div class="cuenta-card" data-value="Capital" onclick="selectCuenta(this,'${idx}')">
               <div class="cuenta-icon">💼</div><div class="cuenta-label">Capital</div><div class="cuenta-sub">Utilidad / Familiar</div>
             </div>
           </div>
@@ -962,7 +962,7 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="grid">
         <div class="field">
           <label>Propiedad</label>
-          <select id="propiedad-${idx}" onchange="togglePropiedadOtro(${idx}, this.value); markClassifyDirty(${idx})">
+          <select id="propiedad-${idx}" onchange="togglePropiedadOtro('${idx}', this.value); markClassifyDirty('${idx}')">
             <option value="">— Seleccionar —</option>
             <option>Calle Cumbres</option><option>Calle Baja California</option>
             <option>Calle Oaxaca</option><option>Calle José Cárdenas</option>
@@ -970,12 +970,12 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
           </select>
           <div class="hidden" id="propiedad-otro-wrap-${idx}" style="margin-top:8px">
             <input type="text" id="propiedad-otro-${idx}" class="field-select"
-                   placeholder="Especificar propiedad..." style="appearance:none" oninput="markClassifyDirty(${idx})">
+                   placeholder="Especificar propiedad..." style="appearance:none" oninput="markClassifyDirty('${idx}')">
           </div>
         </div>
         <div class="field">
           <label># Departamento</label>
-          <select id="departamento-${idx}" onchange="markClassifyDirty(${idx})">
+          <select id="departamento-${idx}" onchange="markClassifyDirty('${idx}')">
             <option value="">— Seleccionar —</option>${deptOpts}
           </select>
         </div>
@@ -984,15 +984,15 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="cuenta-field">
         <label>Encargado de operación</label>
         <div class="cuenta-grid cuenta-grid--compact" id="comprador-grid-${idx}">
-          <div class="cuenta-card" data-value="Andrés"   onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👨</div><div class="cuenta-label">Andrés</div></div>
-          <div class="cuenta-card" data-value="Claudia"  onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Claudia</div></div>
-          <div class="cuenta-card" data-value="Papá"     onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👨‍👧</div><div class="cuenta-label">Papá</div></div>
-          <div class="cuenta-card" data-value="Francisco" onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👨</div><div class="cuenta-label">Francisco</div></div>
-          <div class="cuenta-card" data-value="Brenda"   onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Brenda</div></div>
-          <div class="cuenta-card" data-value="Alma"     onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Alma</div></div>
-          <div class="cuenta-card" data-value="Gaby"     onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Gaby</div></div>
-          <div class="cuenta-card" data-value="Juanita"  onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Juanita</div></div>
-          <div class="cuenta-card" data-value="Damariz"  onclick="selectComprador(this,${idx})"><div class="cuenta-icon">👩</div><div class="cuenta-label">Damariz</div></div>
+          <div class="cuenta-card" data-value="Andrés"   onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👨</div><div class="cuenta-label">Andrés</div></div>
+          <div class="cuenta-card" data-value="Claudia"  onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👩</div><div class="cuenta-label">Claudia</div></div>
+          <div class="cuenta-card" data-value="Papá"     onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👨‍👧</div><div class="cuenta-label">Papá</div></div>
+          <div class="cuenta-card" data-value="Francisco" onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👨</div><div class="cuenta-label">Francisco</div></div>
+          <div class="cuenta-card" data-value="Brenda"   onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👩</div><div class="cuenta-label">Brenda</div></div>
+          <div class="cuenta-card" data-value="Alma"     onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👩</div><div class="cuenta-label">Alma</div></div>
+          <div class="cuenta-card" data-value="Gaby"     onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👩</div><div class="cuenta-label">Gaby</div></div>
+          <div class="cuenta-card" data-value="Juanita"  onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👩</div><div class="cuenta-label">Juanita</div></div>
+          <div class="cuenta-card" data-value="Damariz"  onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👩</div><div class="cuenta-label">Damariz</div></div>
         </div>
         <input type="hidden" id="comprador-${idx}" value="">
       </div>
@@ -1001,7 +1001,7 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
         <label>Deducible</label>
         <div class="toggle-row">
           <label class="toggle-switch">
-            <input type="checkbox" id="deducible-${idx}" onchange="updateDeducibleLabel(${idx}, this.checked); markClassifyDirty(${idx})">
+            <input type="checkbox" id="deducible-${idx}" onchange="updateDeducibleLabel('${idx}', this.checked); markClassifyDirty('${idx}')">
             <span class="toggle-slider"></span>
           </label>
           <span class="toggle-label-text" id="deducible-label-${idx}">No</span>
@@ -1012,14 +1012,14 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
         <label>Reembolso</label>
         <div class="toggle-row">
           <label class="toggle-switch">
-            <input type="checkbox" id="reembolso-${idx}" onchange="toggleReembolso(${idx}, this.checked); markClassifyDirty(${idx})">
+            <input type="checkbox" id="reembolso-${idx}" onchange="toggleReembolso('${idx}', this.checked); markClassifyDirty('${idx}')">
             <span class="toggle-slider"></span>
           </label>
           <span class="toggle-label-text" id="reembolso-label-${idx}">No</span>
         </div>
         <div class="hidden" id="reembolso-a-field-${idx}" style="margin-top:10px">
           <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Reembolsar a:</label>
-          <select id="reembolso-a-${idx}" class="field-select" onchange="toggleReembolsoOtro(${idx}, this.value); markClassifyDirty(${idx})">
+          <select id="reembolso-a-${idx}" class="field-select" onchange="toggleReembolsoOtro('${idx}', this.value); markClassifyDirty('${idx}')">
             <option value="">— Seleccionar —</option>
             <option>Andrés</option><option>Claudia</option><option>Papá</option>
             <option>Francisco</option><option>Brenda</option><option>Alma</option>
@@ -1028,12 +1028,12 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
           </select>
           <div class="hidden" id="reembolso-otro-wrap-${idx}" style="margin-top:8px">
             <input type="text" id="reembolso-otro-${idx}" class="field-select"
-                   placeholder="Especificar persona..." style="appearance:none" oninput="markClassifyDirty(${idx})">
+                   placeholder="Especificar persona..." style="appearance:none" oninput="markClassifyDirty('${idx}')">
           </div>
           <div style="margin-top:12px">
             <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Detalles de la operación</label>
             <textarea id="detalles-${idx}" class="classify-textarea" rows="3"
-                      placeholder="Descripción libre de la operación..." oninput="markClassifyDirty(${idx})"></textarea>
+                      placeholder="Descripción libre de la operación..." oninput="markClassifyDirty('${idx}')"></textarea>
           </div>
         </div>
       </div>
@@ -1041,12 +1041,12 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="cuenta-field">
         <label>Método de pago</label>
         <div class="cuenta-grid cuenta-grid--compact" id="metodo-grid-${idx}">
-          <div class="cuenta-card" data-value="Tarjeta crédito"    onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div></div>
-          <div class="cuenta-card" data-value="Tarjeta débito"     onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div></div>
-          <div class="cuenta-card" data-value="Efectivo"           onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div></div>
-          <div class="cuenta-card" data-value="Transferencia"      onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">🔄</div><div class="cuenta-label">Transferencia</div></div>
-          <div class="cuenta-card" data-value="Retiro sin tarjeta" onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">🏧</div><div class="cuenta-label">Retiro</div></div>
-          <div class="cuenta-card" data-value="Cheque"             onclick="selectMetodoPago(this,${idx})"><div class="cuenta-icon">📝</div><div class="cuenta-label">Cheque</div></div>
+          <div class="cuenta-card" data-value="Tarjeta crédito"    onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div></div>
+          <div class="cuenta-card" data-value="Tarjeta débito"     onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div></div>
+          <div class="cuenta-card" data-value="Efectivo"           onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div></div>
+          <div class="cuenta-card" data-value="Transferencia"      onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🔄</div><div class="cuenta-label">Transferencia</div></div>
+          <div class="cuenta-card" data-value="Retiro sin tarjeta" onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏧</div><div class="cuenta-label">Retiro</div></div>
+          <div class="cuenta-card" data-value="Cheque"             onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📝</div><div class="cuenta-label">Cheque</div></div>
         </div>
         <input type="hidden" id="metodo-clasif-${idx}" value="">
       </div>
@@ -1054,7 +1054,7 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="cuenta-field">
         <label>Comentarios</label>
         <textarea id="comentarios-${idx}" class="classify-textarea"
-                  placeholder="Notas adicionales sobre este ticket..." oninput="markClassifyDirty(${idx})"></textarea>
+                  placeholder="Notas adicionales sobre este ticket..." oninput="markClassifyDirty('${idx}')"></textarea>
       </div>
 
       <div class="classify-actions hidden" id="classify-actions-${idx}">
@@ -2746,7 +2746,7 @@ function selectCuenta(el, i) {
   if (!subs.length) return;
 
   document.getElementById(`subcuenta-grid-${i}`).innerHTML =
-    subs.map(n => makeCard(n, SUBCUENTA_EMOJIS[n] || "📌", `selectSubcuenta(this,${i})`)).join("");
+    subs.map(n => makeCard(n, SUBCUENTA_EMOJIS[n] || "📌", `selectSubcuenta(this,'${i}')`)).join("");
   document.getElementById(`subcuenta-field-${i}`).classList.remove("hidden");
   updateClasiPath(i);
   markClassifyDirty(i);
@@ -2777,7 +2777,7 @@ function selectSubcuenta(el, i) {
     const cats = Object.keys(sub);
     if (!cats.length) return;
     document.getElementById(`categoria-grid-${i}`).innerHTML =
-      cats.map(n => makeCard(n, CATEGORIA_EMOJIS[n] || "📂", `selectCategoria(this,${i})`)).join("");
+      cats.map(n => makeCard(n, CATEGORIA_EMOJIS[n] || "📂", `selectCategoria(this,'${i}')`)).join("");
     document.getElementById(`categoria-field-${i}`).classList.remove("hidden");
   }
   updateClasiPath(i);
@@ -2798,7 +2798,7 @@ function resetConcepto(i) {
 
 function renderConceptos(conceptos, i) {
   document.getElementById(`concepto-grid-${i}`).innerHTML =
-    conceptos.map(n => makeCard(n, CONCEPTO_EMOJIS[n] || "🔹", `selectConcepto(this,${i})`)).join("");
+    conceptos.map(n => makeCard(n, CONCEPTO_EMOJIS[n] || "🔹", `selectConcepto(this,'${i}')`)).join("");
   document.getElementById(`concepto-field-${i}`).classList.remove("hidden");
 }
 
@@ -2910,7 +2910,7 @@ function onClassifySearch(i, q) {
   resEl.innerHTML = matches.map((m, idx) => {
     const parts = [m.cuenta, m.subcuenta, m.categoria, m.concepto].filter(Boolean);
     const html  = parts.map(p => `<span>${esc(p)}</span>`).join(`<span class="search-sep"> › </span>`);
-    return `<div class="search-result-item" onmousedown="applySearchResult(${i},${idx})">${html}</div>`;
+    return `<div class="search-result-item" onmousedown="applySearchResult('${i}',${idx})">${html}</div>`;
   }).join("");
   resEl.classList.remove("hidden");
 }
