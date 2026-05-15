@@ -1802,7 +1802,8 @@ async function bn_loadData() {
     const res  = await fetch(BACKEND+'/get-bancos',{cache:'no-store'});
     const data = await res.json();
     if (!data.ok) throw new Error(data.error||'Error al obtener datos');
-    BN_RAW=data.records||[]; BN_BUDGET=data.budget||[];
+    BN_RAW=(data.records||[]).map((r,i)=>r.rowNum ? r : {...r, rowNum: i+2});
+    BN_BUDGET=data.budget||[];
     BN_LOADED=true; bn_resetBCache();
     bn_buildBnCatalog();
     bn_activateCatalog(); // Usa el catálogo de Presupuesto_sys mientras el módulo está activo
