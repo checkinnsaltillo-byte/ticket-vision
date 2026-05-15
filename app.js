@@ -2333,7 +2333,7 @@ function bn_createCard(rec, idx) {
   const clsCls   = colorCls ? `classified ${colorCls}` : '';
   const ci       = 'bn' + idx;
 
-  const name   = bn_norm(rec.Concepto || rec.DESCRIPCION || rec['Cuenta bancaria'] || 'Movimiento');
+  const name   = bn_norm(rec.DESCRIPCION || rec.Concepto || rec['Cuenta bancaria'] || 'Movimiento');
   const diaFmt = bn_formatDia(rec.Día || rec.Dia || '') || bn_norm(rec.Mes || rec.Año || '');
   const desc   = bn_norm(rec.DESCRIPCION || '');
   const monto  = Number(rec.Monto || 0);

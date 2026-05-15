@@ -378,30 +378,21 @@ function getBancosData_(ss) {
   const hB = bancos[0] || [];
   const hP = pres[0]   || [];
 
-  // ── Índices columnas BANCOS ──────────────────────────────────────────────
-  const normHB  = hB.map(h => norm(String(h)));
-
-  // Columna "Concepto" (descripción bancaria, antes "Concepto / Referencia"):
-  //   aparece ANTES de SUBCUENTA en el orden de columnas.
-  // Columna "CONCEPTO" (clasificación contable):
-  //   aparece DESPUÉS de SUBCUENTA/CATEGORIA.
-  const iSub    = pickIdx(hB, ["SUBCUENTA", "SUB-CUENTA"]);
-  const allCon  = normHB.reduce((a, h, i) => {
-    if (h === "CONCEPTO" || h.startsWith("CONCEPTO")) a.push(i);
-    return a;
-  }, []);
-  // Bancaria = primer CONCEPTO antes de SUBCUENTA (o el primero si no hay SUBCUENTA)
-  const iConRef = allCon.find(i => iSub < 0 || i < iSub) ?? -1;
-  // Clasificación = primer CONCEPTO después de SUBCUENTA
-  const iCon    = allCon.find(i => iSub >= 0 && i > iSub) ?? -1;
-
+  // ── Índices columnas BANCOS — todos por nombre exacto (sin posición) ──────
   const iAno    = pickIdx(hB, ["AÑO", "ANO", "ANIO", "YEAR"]);
   const iMes    = pickIdx(hB, ["MES"]);
   const iDia    = pickIdx(hB, ["DÍA", "DIA", "DIA DE OPERACION", "FECHA"]);
   const iCta    = pickIdx(hB, ["CUENTA BANCARIA"]);
   const iCuenta = pickIdx(hB, ["CUENTA"]);
+  const iSub    = pickIdx(hB, ["SUBCUENTA", "SUB-CUENTA"]);
   const iCat    = pickIdx(hB, ["CATEGORIA", "CATEGORÍA"]);
+  // Descripción bancaria: "DESCRIPCION" es el título principal del registro
   const iDes    = pickIdx(hB, ["DESCRIPCION", "DESCRIPCIÓN"]);
+  // Concepto de referencia bancaria (columna renombrada de "Concepto / Referencia")
+  const iConRef = pickIdx(hB, ["CONCEPTO / REFERENCIA", "CONCEPTO/REFERENCIA",
+                                "CONCEPTO REFERENCIA", "REFERENCIA", "CONCEPTO"]);
+  // Clasificación contable (columna CONCEPTO después de SUBCUENTA/CATEGORIA)
+  const iCon    = pickIdx(hB, ["CONCEPTO"]);
   const iFac    = pickIdx(hB, ["FACTURA"]);
   const iMon    = pickIdx(hB, ["MONTO"]);
 
