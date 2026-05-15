@@ -397,12 +397,13 @@ function getBancosData_(ss) {
   const iMon    = pickIdx(hB, ["MONTO"]);
 
   const records = bancos.slice(1)
-    .filter(r => r.join("").toString().trim() !== "")
-    .map((r, i) => {
-      const rowNum  = i + 2;
+    .map((r, i) => ({ r, rowNum: i + 2 }))           // rowNum = índice real en Sheet (antes del filter)
+    .filter(({ r }) => r.join("").toString().trim() !== "")
+    .map(({ r, rowNum }) => {
       const factura = (iFac >= 0 ? r[iFac] : "") || "";
       // Para Día: usar displayValue (texto exacto de la celda) → evita Date objects
-      const diaDisplay = iDia >= 0 ? String(bancosDisplay[i + 1][iDia]).trim() : "";
+      // bancosDisplay[rowNum-1] porque bancosDisplay incluye header en índice 0
+      const diaDisplay = iDia >= 0 ? String(bancosDisplay[rowNum - 1][iDia]).trim() : "";
       return {
         Año:               iAno    >= 0 ? String(r[iAno]).trim()    : "",
         Mes:               iMes    >= 0 ? fmtMes(r[iMes])           : "",

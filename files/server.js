@@ -80,7 +80,7 @@ app.get("/get-bancos", async (req, res) => {
 app.post("/save-banco-clasificacion", async (req, res) => {
   try {
     const { rowNum, clasificacion, ...rest } = req.body;
-    if (!rowNum) throw new Error("rowNum requerido");
+    if (!rowNum) throw new Error(`rowNum requerido (recibido: ${JSON.stringify(rowNum)})`);
 
     const result = await callAppsScript({
       action: "save_banco_clasificacion",

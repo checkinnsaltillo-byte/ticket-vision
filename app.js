@@ -2624,6 +2624,10 @@ function bn_autoPopulateBnClassify(ci, rec) {
 async function bn_saveBnClassification(idx) {
   const rec = BN_CUR_RECS[idx];
   if (!rec) return;
+  if (!rec.rowNum) {
+    alert(`Error: el registro no tiene número de fila (rowNum=${rec.rowNum}).\nPor favor recarga los datos con el botón ↺ y vuelve a intentarlo.`);
+    return;
+  }
   const ci = 'bn' + idx;
   const c  = getClassify(ci);
 
