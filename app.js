@@ -1828,10 +1828,12 @@ function bn_setDefaultFilters() {
                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const mesActual = MESES_LABEL[now.getMonth()+1];
   const añoActual = String(now.getFullYear());
-  bn_st.año=añoActual; bn_st.mes=mesActual;
+  const selA = document.getElementById('bn-f-año');
+  const selM = document.getElementById('bn-f-mes');
+  // Asignar y leer de vuelta: si la opción no existe el select queda en "" y el estado refleja eso
+  if(selA){ selA.value=añoActual; bn_st.año=selA.value; } else bn_st.año='';
+  if(selM){ selM.value=mesActual; bn_st.mes=selM.value; } else bn_st.mes='';
   bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
-  const selA=document.getElementById('bn-f-año'); if(selA) selA.value=añoActual;
-  const selM=document.getElementById('bn-f-mes'); if(selM) selM.value=mesActual;
 }
 
 function bn_onFilterChange() {
