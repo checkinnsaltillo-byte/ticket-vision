@@ -1606,7 +1606,7 @@ function markAsClassified(i) {
 // ─── Estado global ───────────────────────────────────────────────────────────
 let BN_RAW    = [];
 let BN_BUDGET = [];
-let BN_TIPO   = 'E';   // 'E' Egresos | 'I' Ingresos | 'A' Alertas | 'F' Indicadores
+let BN_TIPO   = 'T';   // 'T' Todos | 'E' Egresos | 'I' Ingresos | 'A' Alertas | 'F' Indicadores
 let BN_LOADED = false;
 const bn_st   = { año: '', mes: '', cuenta: '', categoria: '', concepto: '' };
 const BN_BCACHE = { E: null, I: null };
@@ -1822,8 +1822,9 @@ function bn_filteredRecs(tipo) {
     if(s.cuenta    && cta!==s.cuenta)     return false;
     if(s.categoria && cat!==s.categoria)  return false;
     if(s.concepto  && con!==s.concepto)   return false;
-    if(tipo==='E'  && !tip.includes('egr')) return false;
-    if(tipo==='I'  && !tip.includes('ing')) return false;
+    if(tipo==='E' && !tip.includes('egr')) return false;
+    if(tipo==='I' && !tip.includes('ing')) return false;
+    // 'T' = Todos: no filtra por tipo, incluye registros con CUENTA vacía
     if(q){ const h=(sub+' '+cat+' '+con+' '+bn_norm(r.DESCRIPCION||'')).toLowerCase(); if(!h.includes(q)) return false; }
     return true;
   });
@@ -1883,7 +1884,7 @@ function bn_monthly() {
 // ─── Tab switching ────────────────────────────────────────────────────────────
 function bn_setTipo(t) {
   BN_TIPO=t;
-  ['E','I','A','F'].forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
+  ['T','E','I','A','F'].forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
   bn_render();
 }
 
@@ -1916,9 +1917,9 @@ function bn_render() {
 
   document.getElementById('bn-kpi-row')?.classList.remove('hidden');
 
-  // Subtitle
-  const eLen=bn_filteredRecs('E').length, iLen=bn_filteredRecs('I').length;
-  bn_txt('bn-filter-subtitle',(eLen+iLen).toLocaleString('es-MX')+' de '+BN_RAW.length.toLocaleString('es-MX')+' movimientos');
+  // Subtitle — en Todos usa el total filtrado; en E/I solo suma ambos
+  const visLen = BN_TIPO==='T' ? bn_filteredRecs('T').length : (bn_filteredRecs('E').length+bn_filteredRecs('I').length);
+  bn_txt('bn-filter-subtitle', visLen.toLocaleString('es-MX')+' de '+BN_RAW.length.toLocaleString('es-MX')+' movimientos');
 
   const tw=document.getElementById('bn-table-wrap');
   const cw=document.getElementById('bn-cards-container');
