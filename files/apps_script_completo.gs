@@ -329,7 +329,7 @@ function getBancosData_(ss) {
     return Number.isFinite(n) ? n : 0;
   };
 
-  // Formatea una celda de fecha a "YYYY-MM-DD"
+  // Formatea cualquier valor de fecha a "YYYY-MM-DD" (ISO)
   const fmtDate = (v) => {
     if (!v && v !== 0) return "";
     if (v instanceof Date) {
@@ -338,7 +338,15 @@ function getBancosData_(ss) {
       const dd = String(v.getDate()).padStart(2, "0");
       return `${yy}-${mm}-${dd}`;
     }
-    return String(v).trim();
+    const s = String(v).trim();
+    if (!s) return "";
+    // Ya es YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+    // DD/MM/YYYY o D/M/YYYY (formato mexicano en texto)
+    const ddmm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (ddmm) return `${ddmm[3]}-${ddmm[2].padStart(2,"0")}-${ddmm[1].padStart(2,"0")}`;
+    // Último recurso: dejar como está
+    return s;
   };
 
   // Formatea celda de mes a "enero 2026"
