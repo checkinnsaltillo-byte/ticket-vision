@@ -2358,9 +2358,10 @@ function bn_createCard(rec, idx) {
   const isI      = tip.includes('ing');
   const ci       = 'bn' + idx;
 
-  const name   = bn_norm(rec.DESCRIPCION || rec.Concepto || rec['Cuenta bancaria'] || 'Movimiento');
-  const diaFmt = bn_formatDia(rec.Día || rec.Dia || '') || bn_norm(rec.Mes || rec.Año || '');
-  const desc   = bn_norm(rec.DESCRIPCION || '');
+  const name     = bn_norm(rec.DESCRIPCION || rec.Concepto || rec['Cuenta bancaria'] || 'Movimiento');
+  const diaFmt   = bn_formatDia(rec.Día || rec.Dia || '') || bn_norm(rec.Mes || rec.Año || '');
+  const desc     = bn_norm(rec.DESCRIPCION || '');
+  const dedChecked = rec._deducible === 'Sí';
   const monto  = Number(rec.Monto || 0);
   const cat    = bn_norm(rec.CATEGORIA || '');
   const con    = bn_norm(rec.CONCEPTO  || '');
@@ -2433,6 +2434,15 @@ function bn_createCard(rec, idx) {
             <span class="total-main">${bn_fmt$(monto)}</span>
           </div>
           ${avanceHtml}
+          <div class="header-deducible" onclick="event.stopPropagation()">
+            <label class="toggle-switch toggle-switch--dark">
+              <input type="checkbox" id="deducible-header-${ci}"
+                     ${dedChecked ? 'checked' : ''}
+                     onchange="bn_syncDeducible(${idx}, this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="fhl${dedChecked ? ' on' : ''}" id="fhl-${ci}">${dedChecked ? 'Deducible' : 'No deducible'}</span>
+          </div>
         </div>
       </div>
 
@@ -2984,11 +2994,21 @@ function updateDeducibleLabel(i, checked) {
   if (hLbl) { hLbl.textContent = checked ? "Deducible" : "No deducible"; hLbl.classList.toggle("on", checked); }
 }
 
-// Llamado desde el toggle del encabezado
+// Llamado desde el toggle del encabezado (módulo tickets)
 function syncDeducible(i, checked) {
   const inner = document.getElementById(`deducible-${i}`);
   if (inner) inner.checked = checked;
   updateDeducibleLabel(i, checked);
+}
+
+// Llamado desde el toggle del encabezado (módulo bancos)
+function bn_syncDeducible(idx, checked) {
+  const ci = 'bn' + idx;
+  const inner = document.getElementById(`deducible-${ci}`);
+  if (inner) inner.checked = checked;
+  updateDeducibleLabel(ci, checked);
+  const rec = BN_CUR_RECS[idx];
+  if (rec) rec._deducible = checked ? 'Sí' : 'No';
 }
 
 // ─── Buscador ──────────────────────────────────────────────────────────────
