@@ -2294,28 +2294,35 @@ const BN_CARD_SIZE = 25;
 
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
-  // Solo estos campos — Descripción es el único editable de texto libre
+  // Orden y campos fijos — siempre se muestran todos, con o sin valor
+  // Descripción es el único campo editable de texto libre
   const rows = [
-    ['Día',              'DÍA',     bn_formatDia(r.Día || r.Dia || '') || r.Mes || r.Año || '—', false],
-    ['Cuenta bancaria',  'CUENTA_B', r['Cuenta bancaria'],                                       false],
-    ['Descripción',      'DESC',     r.DESCRIPCION,                                              true ],
-    ['Cuenta contable',  '_cuenta',  r._cuenta,                                                  false],
-    ['Subcuenta',        '_sub',     r._subcuenta,                                               false],
-    ['Categoría gasto',  '_cat',     r._categoria_gasto,                                         false],
-    ['Concepto clasif.', '_con',     r._concepto,                                                false],
-    ['Deducible',        '_ded',     r._deducible,                                               false],
-    ['Reembolso',        '_reem',    r._reembolso,                                               false],
-    ['Clasificado por',  '_clasif',  r._clasificado_por,                                         false],
-  ].filter(([, , v]) => v != null && v !== '');
+    ['Descripción',      'DESC',    r.DESCRIPCION,                                               true ],
+    ['Día',              'DÍA',     bn_formatDia(r.Día || r.Dia || '') || r.Mes || r.Año || '', false],
+    ['Cuenta bancaria',  'CUENTA_B', r['Cuenta bancaria'],                                      false],
+    ['Monto',            'MONTO',   r.Monto != null ? bn_fmt$(Number(r.Monto || 0)) : '',       false],
+    ['Factura',          'FACTURA', r.FacturaFlag || '',                                         false],
+    ['Deducible',        '_ded',    r._deducible    || '',                                       false],
+    ['Reembolso',        '_reem',   r._reembolso    || '',                                       false],
+    ['Reembolso a',      '_reema',  r._reembolso_a  || '',                                       false],
+    ['Cuenta',           '_cuenta', r._cuenta       || '',                                       false],
+    ['Subcuenta',        '_sub',    r._subcuenta     || '',                                       false],
+    ['Categoría gasto',  '_cat',    r._categoria_gasto || '',                                    false],
+    ['Concepto clasif.', '_con',    r._concepto     || '',                                       false],
+    ['Propiedad',        '_prop',   r._propiedad    || '',                                       false],
+    ['Departamento',     '_depto',  r._departamento !== undefined ? String(r._departamento) : '', false],
+    ['Encargado',        '_enc',    r._encargado    || '',                                       false],
+    ['Clasificado por',  '_clasif', r._clasificado_por || '',                                    false],
+  ];
 
-  if (!rows.length) return `<div class="empty-state"><p>Sin datos</p></div>`;
   return `<table>
     <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
     <tbody>${rows.map(([label, field, val, editable]) => {
+      const display = val != null ? String(val) : '';
       const td = editable
         ? `<td contenteditable="true" spellcheck="false" data-field="${field}"
-              oninput="showTableActions('bnr',${idx})">${esc(String(val))}</td>`
-        : `<td>${esc(String(val))}</td>`;
+              oninput="showTableActions('bnr',${idx})">${esc(display)}</td>`
+        : `<td>${esc(display)}</td>`;
       return `<tr><td class="resumen-key">${label}</td>${td}</tr>`;
     }).join('')}</tbody>
   </table>`;
