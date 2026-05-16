@@ -326,6 +326,8 @@ window.addEventListener("DOMContentLoaded", () => {
     document.getElementById("loginOverlay")?.classList.add("hidden");
     document.getElementById("app-root")?.classList.remove("hidden");
     document.getElementById("current-user-badge").textContent = "ADMIN (dev)";
+    // Cargar automáticamente el módulo Registros contables al entrar
+    setTimeout(() => { try { switchModule("registros"); } catch(_) {} }, 0);
   } else {
     document.getElementById("loginOverlay")?.classList.remove("hidden");
     document.getElementById("app-root")?.classList.add("hidden");
