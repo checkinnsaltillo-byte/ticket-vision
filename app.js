@@ -1228,11 +1228,11 @@ function toggleClassify(i) {
 }
 
 const CUENTA_COLOR_CLASS = {
-  "Ingresos": "ci-ingresos",
-  "Egresos":  "ci-egresos",
+  "Ingresos": "ci-ingresos", "Ingreso":  "ci-ingresos",
+  "Egresos":  "ci-egresos",  "Egreso":   "ci-egresos",
   "Capital":  "ci-capital",
-  "Activos":  "ci-activos",
-  "Pasivos":  "ci-pasivos",
+  "Activos":  "ci-activos",  "Activo":   "ci-activos",
+  "Pasivos":  "ci-pasivos",  "Pasivo":   "ci-pasivos",
 };
 
 const ALL_CI = ["ci-ingresos","ci-egresos","ci-capital","ci-activos","ci-pasivos","ci-sincuenta"];
@@ -1818,8 +1818,13 @@ async function bn_loadData() {
       rec._categoria_gasto = rec.CATEGORIA || '';
       rec._concepto        = rec.CONCEPTO  || '';
       // _tipo: clasificación manual > TIPO del sheet > signo del monto
+      // Normalizar a forma canónica para que CUENTA_COLOR_CLASS y filtros funcionen
       const monto = Number(rec.Monto) || 0;
-      rec._tipo = rec._cuenta || rec.TIPO || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
+      const _rawTipo = rec._cuenta || rec.TIPO || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
+      const _ct = bn_canon(_rawTipo);
+      rec._tipo = _ct.includes('egr') ? 'Egresos' : _ct.includes('ing') ? 'Ingresos' :
+                  _ct.includes('activ') ? 'Activos' : _ct.includes('pasiv') ? 'Pasivos' :
+                  _ct.includes('capital') ? 'Capital' : _rawTipo;
       return rec;
     });
     BN_BUDGET=data.budget||[];
@@ -2666,7 +2671,11 @@ async function bn_saveBnClassification(idx) {
   rec.CATEGORIA = c.categoria;
   rec.CONCEPTO  = c.concepto;
   const monto   = Number(rec.Monto) || 0;
-  rec._tipo     = rec._cuenta || rec.TIPO || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
+  const _rawT2  = rec._cuenta || rec.TIPO || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
+  const _ct2    = bn_canon(_rawT2);
+  rec._tipo     = _ct2.includes('egr') ? 'Egresos' : _ct2.includes('ing') ? 'Ingresos' :
+                  _ct2.includes('activ') ? 'Activos' : _ct2.includes('pasiv') ? 'Pasivos' :
+                  _ct2.includes('capital') ? 'Capital' : _rawT2;
 
   // Re-render tarjeta en el DOM
   const card = document.getElementById(`bn-card-${idx}`);
