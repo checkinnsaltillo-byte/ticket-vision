@@ -1889,14 +1889,17 @@ function bn_filteredRecs(tipo) {
     const sub=bn_norm(r.SUBCUENTA ||'');
     const cat=bn_norm(r.CATEGORIA ||'');
     const con=bn_norm(r.CONCEPTO  ||'');
-    const tip=bn_canon(r.CUENTA||r.TIPO||'');
-    const mN=Number(r.Monto||0), hasT=tip.includes('egr')||tip.includes('ing');
+    const cuentaClasif = bn_canon(r._cuenta || r.CUENTA || r.TIPO || '');
+    const mN=Number(r.Monto||0);
     if(s.cuenta    && cta!==s.cuenta)     return false;
     if(s.categoria && cat!==s.categoria)  return false;
     if(s.concepto  && con!==s.concepto)   return false;
-    if(tipo==='E' && !(tip.includes('egr')||(!hasT&&mN<0))) return false;
-    if(tipo==='I' && !(tip.includes('ing')||(!hasT&&mN>0))) return false;
-    // 'T' = Todos: no filtra por tipo, incluye registros con CUENTA vacía
+    if(tipo==='E'  && !cuentaClasif.includes('egr'))    return false;
+    if(tipo==='I'  && !cuentaClasif.includes('ing'))    return false;
+    if(tipo==='AC' && !cuentaClasif.includes('activ'))  return false;
+    if(tipo==='PA' && !cuentaClasif.includes('pasiv'))  return false;
+    if(tipo==='CA' && !cuentaClasif.includes('capital')) return false;
+    // 'T' = Todos: no filtra por tipo, incluye todos los registros
     if(q){ const h=(sub+' '+cat+' '+con+' '+bn_norm(r.DESCRIPCION||'')).toLowerCase(); if(!h.includes(q)) return false; }
     return true;
   });
@@ -1956,7 +1959,7 @@ function bn_monthly() {
 // ─── Tab switching ────────────────────────────────────────────────────────────
 function bn_setTipo(t) {
   BN_TIPO=t;
-  ['T','E','I','A','F'].forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
+  ['T','E','I','AC','PA','CA','A','F'].forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
   bn_render();
 }
 
@@ -2339,13 +2342,16 @@ function bn_buildBnResumenTable(r, idx) {
 
 /** Crea el HTML de una tarjeta individual de registro bancario. */
 function bn_createCard(rec, idx) {
-  const tip    = bn_canon(rec.CUENTA || rec.TIPO || '');
+  // Color basado en la clasificación (_cuenta tiene prioridad sobre CUENTA del sheet)
+  const cuentaClasif = rec._cuenta || rec.CUENTA || rec.TIPO || '';
+  const colorCls = CUENTA_COLOR_CLASS[cuentaClasif] || '';
+  const clsCls   = colorCls ? `classified ${colorCls}` : '';
+  // isE/isI para el presupuesto y avance
+  const tip     = bn_canon(cuentaClasif);
   const montoN  = Number(rec.Monto || 0);
   const hasTipo = tip.includes('egr') || tip.includes('ing');
   const isE     = tip.includes('egr') || (!hasTipo && montoN < 0);
   const isI     = tip.includes('ing') || (!hasTipo && montoN > 0);
-  const colorCls = isE ? 'ci-egresos' : isI ? 'ci-ingresos' : '';
-  const clsCls   = colorCls ? `classified ${colorCls}` : '';
   const ci       = 'bn' + idx;
 
   const name   = bn_norm(rec.DESCRIPCION || rec.Concepto || rec['Cuenta bancaria'] || 'Movimiento');
@@ -2356,7 +2362,7 @@ function bn_createCard(rec, idx) {
   const con    = bn_norm(rec.CONCEPTO  || '');
   const cuenta = bn_norm(rec['Cuenta bancaria'] || '');
   const fac    = bn_norm(rec.Factura || '');
-  const tipoLbl= bn_norm(rec.CUENTA || rec.TIPO || '');
+  const tipoLbl= cuentaClasif || '—';
 
   // Presupuesto y avance
   const tipo4bud = isE ? 'E' : 'I';
@@ -2364,8 +2370,9 @@ function bn_createCard(rec, idx) {
   const av       = bud > 0 ? monto / bud : NaN;
   const sev      = isE ? bn_sevOver(av) : bn_sevUnder(av);
 
-  // Chips de encabezado
-  const tipoEmoji  = isE ? '💸' : isI ? '💰' : '🏦';
+  // Chips de encabezado — emoji por cuenta clasificada
+  const CUENTA_EMOJI = {'Egresos':'💸','Ingresos':'💰','Activos':'📈','Pasivos':'📋','Capital':'💼'};
+  const tipoEmoji  = CUENTA_EMOJI[cuentaClasif] || '🏦';
   const tipoChip   = `<span class="info-chip ${colorCls}">${tipoEmoji} ${esc(tipoLbl)}</span>`;
   const cuentaChip = cuenta ? `<span class="info-chip">🏦 ${esc(cuenta)}</span>` : '';
   const facChip    = fac
