@@ -2534,29 +2534,67 @@ function bn_toggleBnClassify(idx) {
 }
 
 /** Guarda las ediciones del campo Concepto de la tabla Resumen en memoria. */
-function bn_saveBnResumenEdit(idx) {
+async function bn_saveBnResumenEdit(idx) {
   const rec = BN_CUR_RECS[idx];
   if (!rec) return;
   const tabEl = document.getElementById(`bn-tab-resumen-${idx}`);
-  const concepEl = tabEl?.querySelector('[data-field="CONCEPTO"]');
-  if (concepEl) rec.CONCEPTO = concepEl.textContent.trim();
+  const descEl = tabEl?.querySelector('[data-field="DESC"]');
+  if (descEl) rec.DESCRIPCION = descEl.textContent.trim();
   hideTableActions('bnr', idx);
-  // Re-render para reflejar el nuevo concepto en el encabezado
+  // Re-render para reflejar la nueva descripción en el encabezado
   const card = document.getElementById(`bn-card-${idx}`);
   if (card) {
     card.outerHTML = bn_createCard(rec, idx);
-    // Re-abrir la sección de detalles
     document.getElementById(`bn-tbl-${idx}`)?.classList.remove('hidden');
+  }
+  // Persistir a Google Sheets
+  if (!rec.rowNum) return;
+  try {
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rowNum:          rec.rowNum,
+        mes:             bn_norm(rec.Mes),
+        cuenta_bancaria: bn_norm(rec['Cuenta bancaria'] || ''),
+        cuenta:          bn_norm(rec.CUENTA    || ''),
+        subcuenta:       bn_norm(rec.SUBCUENTA || ''),
+        categoria:       bn_norm(rec.CATEGORIA || ''),
+        concepto:        bn_norm(rec.CONCEPTO  || ''),
+        descripcion:     bn_norm(rec.DESCRIPCION || ''),
+        descripcion_edit: true,
+        monto:           Number(rec.Monto || 0),
+        clasificacion: {
+          cuenta:          rec._cuenta          || '',
+          subcuenta:       rec._subcuenta       || '',
+          categoria_gasto: rec._categoria_gasto || '',
+          concepto:        rec._concepto        || '',
+          propiedad:       rec._propiedad       || '',
+          departamento:    rec._departamento    || '',
+          encargado:       rec._encargado       || '',
+          deducible:       rec._deducible       || 'No',
+          reembolso:       rec._reembolso       || 'No',
+          reembolso_a:     rec._reembolso_a     || '',
+          metodo_pago:     rec._metodo_pago     || '',
+          clasificado_por: currentUser || '',
+        }
+      }),
+    });
+    const result = await resp.json();
+    if (!result.ok) throw new Error(result.error || 'Error');
+  } catch (e) {
+    console.warn('Error guardando Descripción:', e.message);
+    alert('Error al guardar Descripción: ' + e.message);
   }
 }
 
-/** Revierte las ediciones sin guardar del Concepto. */
+/** Revierte las ediciones sin guardar de la Descripción. */
 function bn_resetBnResumenEdit(idx) {
   const rec = BN_CUR_RECS[idx];
   if (!rec) return;
   const tabEl = document.getElementById(`bn-tab-resumen-${idx}`);
-  const concepEl = tabEl?.querySelector('[data-field="CONCEPTO"]');
-  if (concepEl) concepEl.textContent = rec.CONCEPTO || '';
+  const descEl = tabEl?.querySelector('[data-field="DESC"]');
+  if (descEl) descEl.textContent = rec.DESCRIPCION || '';
   hideTableActions('bnr', idx);
 }
 

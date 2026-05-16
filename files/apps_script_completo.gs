@@ -528,6 +528,12 @@ function saveBancoClasificacion_(ss, data) {
     if (col) shB.getRange(rowNum, col).setValue(value ?? "");
   };
 
+  // Si el frontend pidió actualizar la Descripción, escribirla en columna DESCRIPCION
+  if (data.descripcion_edit) {
+    const descCol = getOrCreateCol("DESCRIPCION");
+    if (descCol) shB.getRange(rowNum, descCol).setValue(data.descripcion || "");
+  }
+
   writeCell("CUENTA",          c.cuenta          || "");
   writeCell("SUBCUENTA",       c.subcuenta        || "");
   writeCell("CATEGORIA",       c.categoria_gasto  || "");
