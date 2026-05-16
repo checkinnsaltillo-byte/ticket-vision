@@ -490,11 +490,12 @@ function saveBancoClasificacion_(ss, data) {
     return { ok: false, error: "invalid_row", message: "rowNum inválido: " + data.rowNum };
   }
 
-  // Columnas de clasificación a garantizar
+  // Columnas destino — usan los nombres EXACTOS que ya existen en la hoja BANCOS.
+  // Si alguna no existe aún, se crea al final de las columnas.
   const CLASIF_COLS = [
-    "CUENTA_CONTABLE", "SUBCUENTA_CLASIF", "CATEGORIA_GASTO",
-    "CONCEPTO_CLASIF", "PROPIEDAD", "DEPARTAMENTO",
-    "ENCARGADO", "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A",
+    "CUENTA", "SUBCUENTA", "CATEGORIA", "CONCEPTO",
+    "PROPIEDAD", "DEPARTAMENTO", "ENCARGADO",
+    "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A",
     "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF"
   ];
 
@@ -509,7 +510,7 @@ function saveBancoClasificacion_(ss, data) {
     if (idx >= 0) return idx + 1;
     const newCol = shB.getLastColumn() + 1;
     shB.getRange(1, newCol).setValue(colName);
-    headerRow.push(colName); // mantener sincronía local
+    headerRow.push(colName);
     return newCol;
   };
 
@@ -527,19 +528,19 @@ function saveBancoClasificacion_(ss, data) {
     if (col) shB.getRange(rowNum, col).setValue(value ?? "");
   };
 
-  writeCell("CUENTA_CONTABLE",  c.cuenta          || "");
-  writeCell("SUBCUENTA_CLASIF", c.subcuenta        || "");
-  writeCell("CATEGORIA_GASTO",  c.categoria_gasto  || "");
-  writeCell("CONCEPTO_CLASIF",  c.concepto         || "");
-  writeCell("PROPIEDAD",        c.propiedad        || "");
-  writeCell("DEPARTAMENTO",     c.departamento     || "");
-  writeCell("ENCARGADO",        c.encargado        || "");
-  writeCell("DEDUCIBLE",        c.deducible        || "");
-  writeCell("REEMBOLSO",        c.reembolso        || "");
-  writeCell("REEMBOLSO_A",      c.reembolso_a      || "");
-  writeCell("METODO_PAGO",      c.metodo_pago      || "");
-  writeCell("CLASIFICADO_POR",  c.clasificado_por  || "");
-  writeCell("FECHA_CLASIF",     now);
+  writeCell("CUENTA",          c.cuenta          || "");
+  writeCell("SUBCUENTA",       c.subcuenta        || "");
+  writeCell("CATEGORIA",       c.categoria_gasto  || "");
+  writeCell("CONCEPTO",        c.concepto         || "");
+  writeCell("PROPIEDAD",       c.propiedad        || "");
+  writeCell("DEPARTAMENTO",    c.departamento     || "");
+  writeCell("ENCARGADO",       c.encargado        || "");
+  writeCell("DEDUCIBLE",       c.deducible        || "");
+  writeCell("REEMBOLSO",       c.reembolso        || "");
+  writeCell("REEMBOLSO_A",     c.reembolso_a      || "");
+  writeCell("METODO_PAGO",     c.metodo_pago      || "");
+  writeCell("CLASIFICADO_POR", c.clasificado_por  || "");
+  writeCell("FECHA_CLASIF",    now);
 
   return { ok: true, rowNum: rowNum, columnsWritten: CLASIF_COLS.length };
 }
