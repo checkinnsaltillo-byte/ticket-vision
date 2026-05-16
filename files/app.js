@@ -1817,9 +1817,9 @@ async function bn_loadData() {
       rec._subcuenta       = rec.SUBCUENTA || '';
       rec._categoria_gasto = rec.CATEGORIA || '';
       rec._concepto        = rec.CONCEPTO  || '';
-      // _tipo: cuenta clasificada si existe; si no, signo del monto determina E/I
+      // _tipo: clasificación manual > TIPO del sheet > signo del monto
       const monto = Number(rec.Monto) || 0;
-      rec._tipo = rec._cuenta || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
+      rec._tipo = rec._cuenta || rec.TIPO || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
       return rec;
     });
     BN_BUDGET=data.budget||[];
@@ -2666,7 +2666,7 @@ async function bn_saveBnClassification(idx) {
   rec.CATEGORIA = c.categoria;
   rec.CONCEPTO  = c.concepto;
   const monto   = Number(rec.Monto) || 0;
-  rec._tipo     = rec._cuenta || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
+  rec._tipo     = rec._cuenta || rec.TIPO || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
 
   // Re-render tarjeta en el DOM
   const card = document.getElementById(`bn-card-${idx}`);
