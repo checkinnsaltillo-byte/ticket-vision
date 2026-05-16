@@ -1813,11 +1813,13 @@ async function bn_loadData() {
     BN_RAW=(data.records||[]).map((r,i)=>{
       const rec = r.rowNum ? {...r} : {...r, rowNum: i+2};
       // Inicializar campos _ desde valores ya clasificados en el sheet
-      // para que la tabla siempre use una sola fuente de verdad
-      rec._cuenta          = rec._cuenta          || rec.CUENTA    || '';
-      rec._subcuenta       = rec._subcuenta       || rec.SUBCUENTA || '';
-      rec._categoria_gasto = rec._categoria_gasto || rec.CATEGORIA || '';
-      rec._concepto        = rec._concepto        || rec.CONCEPTO  || '';
+      rec._cuenta          = rec.CUENTA    || '';
+      rec._subcuenta       = rec.SUBCUENTA || '';
+      rec._categoria_gasto = rec.CATEGORIA || '';
+      rec._concepto        = rec.CONCEPTO  || '';
+      // _tipo: cuenta clasificada si existe; si no, signo del monto determina E/I
+      const monto = Number(rec.Monto) || 0;
+      rec._tipo = rec._cuenta || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
       return rec;
     });
     BN_BUDGET=data.budget||[];
@@ -1889,23 +1891,16 @@ function bn_filteredRecs(tipo) {
     const sub=bn_norm(r.SUBCUENTA ||'');
     const cat=bn_norm(r.CATEGORIA ||'');
     const con=bn_norm(r.CONCEPTO  ||'');
-    const clasif  = bn_canon(r._cuenta || '');   // cuenta clasificada por usuario
-    const mN      = Number(r.Monto || 0);
-    // Si tiene clasificación → usar esa; si no → signo del monto determina E/I
-    const esEgr   = clasif ? clasif.includes('egr')    : mN < 0;
-    const esIng   = clasif ? clasif.includes('ing')    : mN > 0;
-    const esAct   = clasif.includes('activ');
-    const esPas   = clasif.includes('pasiv');
-    const esCap   = clasif.includes('capital');
+    const t = bn_canon(r._tipo || ''); // 'egresos','ingresos','activos','pasivos','capital'
     if(s.cuenta    && cta!==s.cuenta)    return false;
     if(s.categoria && cat!==s.categoria) return false;
     if(s.concepto  && con!==s.concepto)  return false;
-    if(tipo==='E'  && !esEgr)  return false;
-    if(tipo==='I'  && !esIng)  return false;
-    if(tipo==='AC' && !esAct)  return false;
-    if(tipo==='PA' && !esPas)  return false;
-    if(tipo==='CA' && !esCap)  return false;
-    // 'T' = Todos: no filtra por tipo, incluye todos los registros
+    if(tipo==='E'  && !t.includes('egr'))     return false;
+    if(tipo==='I'  && !t.includes('ing'))     return false;
+    if(tipo==='AC' && !t.includes('activ'))   return false;
+    if(tipo==='PA' && !t.includes('pasiv'))   return false;
+    if(tipo==='CA' && !t.includes('capital')) return false;
+    // 'T' = Todos: no filtra por tipo
     if(q){ const h=(sub+' '+cat+' '+con+' '+bn_norm(r.DESCRIPCION||'')).toLowerCase(); if(!h.includes(q)) return false; }
     return true;
   });
@@ -2349,18 +2344,14 @@ function bn_buildBnResumenTable(r, idx) {
 /** Crea el HTML de una tarjeta individual de registro bancario. */
 function bn_createCard(rec, idx) {
   const montoN      = Number(rec.Monto || 0);
-  const cuentaClasif = rec._cuenta || '';   // vacío si aún no clasificado
-  // Color: si hay clasificación → usa su color; si no → signo del monto
-  let colorCls;
-  if (cuentaClasif) {
-    colorCls = CUENTA_COLOR_CLASS[cuentaClasif] || '';
-  } else {
-    colorCls = montoN < 0 ? 'ci-egresos' : montoN > 0 ? 'ci-ingresos' : '';
-  }
-  const clsCls  = colorCls ? `classified ${colorCls}` : '';
-  const tip     = bn_canon(cuentaClasif);
-  const isE     = cuentaClasif ? tip.includes('egr')  : montoN < 0;
-  const isI     = cuentaClasif ? tip.includes('ing')  : montoN > 0;
+  const cuentaClasif = rec._cuenta || '';
+  // _tipo siempre tiene un valor (cuenta clasificada o E/I por signo del monto)
+  const tipoEfectivo = rec._tipo || (montoN < 0 ? 'Egresos' : montoN > 0 ? 'Ingresos' : '');
+  const colorCls = CUENTA_COLOR_CLASS[tipoEfectivo] || '';
+  const clsCls   = colorCls ? `classified ${colorCls}` : '';
+  const tip      = bn_canon(tipoEfectivo);
+  const isE      = tip.includes('egr');
+  const isI      = tip.includes('ing');
   const ci       = 'bn' + idx;
 
   const name   = bn_norm(rec.DESCRIPCION || rec.Concepto || rec['Cuenta bancaria'] || 'Movimiento');
@@ -2669,11 +2660,13 @@ async function bn_saveBnClassification(idx) {
   rec._reembolso_a     = c.reembolso_a;
   rec._metodo_pago     = c.metodo_pago_clasif;
   rec._clasificado_por = currentUser || '';
-  // Sincronizar también los campos raw del sheet para que no diverjan
+  // Sincronizar campos raw y _tipo para que filtros y colores sean correctos
   rec.CUENTA    = c.cuenta;
   rec.SUBCUENTA = c.subcuenta;
   rec.CATEGORIA = c.categoria;
   rec.CONCEPTO  = c.concepto;
+  const monto   = Number(rec.Monto) || 0;
+  rec._tipo     = rec._cuenta || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
 
   // Re-render tarjeta en el DOM
   const card = document.getElementById(`bn-card-${idx}`);
