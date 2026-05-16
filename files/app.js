@@ -1810,7 +1810,16 @@ async function bn_loadData() {
     const res  = await fetch(BACKEND+'/get-bancos',{cache:'no-store'});
     const data = await res.json();
     if (!data.ok) throw new Error(data.error||'Error al obtener datos');
-    BN_RAW=(data.records||[]).map((r,i)=>r.rowNum ? r : {...r, rowNum: i+2});
+    BN_RAW=(data.records||[]).map((r,i)=>{
+      const rec = r.rowNum ? {...r} : {...r, rowNum: i+2};
+      // Inicializar campos _ desde valores ya clasificados en el sheet
+      // para que la tabla siempre use una sola fuente de verdad
+      rec._cuenta          = rec._cuenta          || rec.CUENTA    || '';
+      rec._subcuenta       = rec._subcuenta       || rec.SUBCUENTA || '';
+      rec._categoria_gasto = rec._categoria_gasto || rec.CATEGORIA || '';
+      rec._concepto        = rec._concepto        || rec.CONCEPTO  || '';
+      return rec;
+    });
     BN_BUDGET=data.budget||[];
     BN_LOADED=true; bn_resetBCache();
     bn_buildBnCatalog();
