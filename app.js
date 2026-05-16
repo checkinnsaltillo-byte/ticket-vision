@@ -3001,14 +3001,61 @@ function syncDeducible(i, checked) {
   updateDeducibleLabel(i, checked);
 }
 
-// Llamado desde el toggle del encabezado (módulo bancos)
-function bn_syncDeducible(idx, checked) {
-  const ci = 'bn' + idx;
+// Llamado desde el toggle del encabezado (módulo bancos) — actualiza
+// memoria + panel Clasificar + Sheets en tiempo real (sin presionar Guardar).
+async function bn_syncDeducible(idx, checked) {
+  const ci    = 'bn' + idx;
   const inner = document.getElementById(`deducible-${ci}`);
   if (inner) inner.checked = checked;
   updateDeducibleLabel(ci, checked);
   const rec = BN_CUR_RECS[idx];
-  if (rec) rec._deducible = checked ? 'Sí' : 'No';
+  if (!rec) return;
+  rec._deducible = checked ? 'Sí' : 'No';
+
+  // Indicador visual sutil mientras guarda
+  const lbl = document.getElementById(`fhl-${ci}`);
+  const prevText = lbl?.textContent;
+  if (lbl) lbl.textContent = (checked ? 'Deducible' : 'No deducible') + ' …';
+
+  if (!rec.rowNum) { if (lbl) lbl.textContent = prevText; return; }
+
+  try {
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rowNum:          rec.rowNum,
+        mes:             bn_norm(rec.Mes),
+        cuenta_bancaria: bn_norm(rec['Cuenta bancaria'] || ''),
+        cuenta:          bn_norm(rec.CUENTA    || ''),
+        subcuenta:       bn_norm(rec.SUBCUENTA || ''),
+        categoria:       bn_norm(rec.CATEGORIA || ''),
+        concepto:        bn_norm(rec.CONCEPTO  || ''),
+        descripcion:     bn_norm(rec.DESCRIPCION || ''),
+        monto:           Number(rec.Monto || 0),
+        clasificacion: {
+          cuenta:          rec._cuenta          || '',
+          subcuenta:       rec._subcuenta       || '',
+          categoria_gasto: rec._categoria_gasto || '',
+          concepto:        rec._concepto        || '',
+          propiedad:       rec._propiedad       || '',
+          departamento:    rec._departamento    || '',
+          encargado:       rec._encargado       || '',
+          deducible:       rec._deducible       || 'No',
+          reembolso:       rec._reembolso       || 'No',
+          reembolso_a:     rec._reembolso_a     || '',
+          metodo_pago:     rec._metodo_pago     || '',
+          clasificado_por: currentUser || '',
+        }
+      }),
+    });
+    const result = await resp.json();
+    if (!result.ok) throw new Error(result.error || 'Error');
+    if (lbl) lbl.textContent = checked ? 'Deducible' : 'No deducible';
+  } catch (e) {
+    console.warn('Error guardando Deducible:', e.message);
+    if (lbl) lbl.textContent = (checked ? 'Deducible' : 'No deducible') + ' ⚠';
+  }
 }
 
 // ─── Buscador ──────────────────────────────────────────────────────────────
