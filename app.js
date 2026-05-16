@@ -1629,22 +1629,21 @@ const bn_canon = (s) => bn_norm(s).normalize('NFD').replace(/[̀-ͯ]/g,'').repla
 const bn_cc    = (s) => bn_canon(s).replace(/[^a-z0-9]+/g,'');
 const bn_uniq  = (arr) => [...new Set(arr.map(bn_norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
 
-/** Devuelve el valor de Día formateado como YYYY-MM-DD.
- *  Si Apps Script envía un Date.toString() ("Wed Jan 01 2025 00:00:00 GMT-0600..."),
- *  lo parsea y lo convierte a formato ISO. */
+/** Devuelve el valor de Día formateado como d/m/AAAA (ej. 2/1/2025).
+ *  Acepta YYYY-MM-DD o Date.toString() de Apps Script. */
 function bn_formatDia(d) {
   const s = String(d || '').trim();
   if (!s) return '';
-  // Ya es YYYY-MM-DD — devolver directo
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+  // Ya es YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const [y, m, dy] = s.substring(0, 10).split('-');
+    return `${Number(dy)}/${Number(m)}/${y}`;
+  }
   // "Wed Jan 01 2025 00:00:00 GMT-0600..." — Date.toString() de Apps Script
   if (s.includes('GMT') || /^\w{3}\s+\w{3}\s+\d/.test(s)) {
     const dt = new Date(s);
     if (!isNaN(dt.getTime())) {
-      const y  = dt.getFullYear();
-      const m  = String(dt.getMonth() + 1).padStart(2, '0');
-      const dy = String(dt.getDate()).padStart(2, '0');
-      return `${y}-${m}-${dy}`;
+      return `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
     }
   }
   return s;
@@ -2507,9 +2506,6 @@ function bn_toggleBnClassify(idx) {
 
     const rec = BN_CUR_RECS[idx];
     bn_autoPopulateBnClassify(ci, rec);
-    // Abrir siempre los grids de clasificación
-    const seccion = document.getElementById(`cuenta-section-${ci}`);
-    if (seccion?.classList.contains('hidden')) toggleClasiDetail(ci);
     // Pre-seleccionar Cuenta por tipo o signo de monto si aún no está clasificado
     if (rec && !rec._cuenta) {
       const tip = bn_canon(rec.CUENTA || rec.TIPO || '');
@@ -2677,15 +2673,9 @@ async function bn_saveBnClassification(idx) {
                   _ct2.includes('activ') ? 'Activos' : _ct2.includes('pasiv') ? 'Pasivos' :
                   _ct2.includes('capital') ? 'Capital' : _rawT2;
 
-  // Re-render tarjeta en el DOM
+  // Re-render tarjeta en el DOM (el panel queda contraído por defecto)
   const card = document.getElementById(`bn-card-${idx}`);
-  if (card) {
-    card.outerHTML = bn_createCard(rec, idx);
-    // Abrir el panel recién renderizado
-    const panel = document.getElementById(`classify-bn${idx}`);
-    if (panel) { panel.classList.remove('hidden');
-      document.getElementById(`bn-btn-classify-${idx}`)?.classList.add('open'); }
-  }
+  if (card) card.outerHTML = bn_createCard(rec, idx);
 
   // Guardar clasificación en Google Sheets (hoja BANCOS)
   try {
