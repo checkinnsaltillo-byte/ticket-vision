@@ -2637,6 +2637,11 @@ async function bn_saveBnClassification(idx) {
   rec._reembolso_a     = c.reembolso_a;
   rec._metodo_pago     = c.metodo_pago_clasif;
   rec._clasificado_por = currentUser || '';
+  // Sincronizar también los campos raw del sheet para que no diverjan
+  rec.CUENTA    = c.cuenta;
+  rec.SUBCUENTA = c.subcuenta;
+  rec.CATEGORIA = c.categoria;
+  rec.CONCEPTO  = c.concepto;
 
   // Re-render tarjeta en el DOM
   const card = document.getElementById(`bn-card-${idx}`);
