@@ -319,10 +319,18 @@ function handleLoginKey(e) {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  // Mostrar login al inicio
-  document.getElementById("loginOverlay")?.classList.remove("hidden");
-  document.getElementById("app-root")?.classList.add("hidden");
-  document.getElementById("loginPassword")?.focus();
+  // ── LOGIN — cambiar DEV_MODE a false para reactivar contraseña ──────────
+  const DEV_MODE = true;
+  if (DEV_MODE) {
+    currentUser = "admin";
+    document.getElementById("loginOverlay")?.classList.add("hidden");
+    document.getElementById("app-root")?.classList.remove("hidden");
+    document.getElementById("current-user-badge").textContent = "ADMIN (dev)";
+  } else {
+    document.getElementById("loginOverlay")?.classList.remove("hidden");
+    document.getElementById("app-root")?.classList.add("hidden");
+    document.getElementById("loginPassword")?.focus();
+  }
 
   // Configurar PDF.js worker
   if (typeof pdfjsLib !== "undefined") {
@@ -1802,7 +1810,16 @@ async function bn_loadData() {
     const res  = await fetch(BACKEND+'/get-bancos',{cache:'no-store'});
     const data = await res.json();
     if (!data.ok) throw new Error(data.error||'Error al obtener datos');
-    BN_RAW=(data.records||[]).map((r,i)=>r.rowNum ? r : {...r, rowNum: i+2});
+    BN_RAW=(data.records||[]).map((r,i)=>{
+      const rec = r.rowNum ? {...r} : {...r, rowNum: i+2};
+      // Inicializar campos _ desde valores ya clasificados en el sheet
+      // para que la tabla siempre use una sola fuente de verdad
+      rec._cuenta          = rec._cuenta          || rec.CUENTA    || '';
+      rec._subcuenta       = rec._subcuenta       || rec.SUBCUENTA || '';
+      rec._categoria_gasto = rec._categoria_gasto || rec.CATEGORIA || '';
+      rec._concepto        = rec._concepto        || rec.CONCEPTO  || '';
+      return rec;
+    });
     BN_BUDGET=data.budget||[];
     BN_LOADED=true; bn_resetBCache();
     bn_buildBnCatalog();
@@ -2286,43 +2303,35 @@ const BN_CARD_SIZE = 25;
 
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
+  // Orden y campos fijos — siempre se muestran todos, con o sin valor
+  // Descripción es el único campo editable de texto libre
   const rows = [
-    ['Día',              'DÍA',       bn_formatDia(r.Día || r.Dia || '') || r.Mes || r.Año || '—', false],
-    ['Cuenta bancaria',  'CUENTA_B',  r['Cuenta bancaria'],                false],
-    ['Concepto',         'CONCEPTO_REF', r.Concepto,                       false],
-    ['Cuenta',           'CUENTA',    r.CUENTA,                            false],
-    ['Subcuenta',        'SUBCUENTA', r.SUBCUENTA,                         false],
-    ['Categoría',        'CATEGORIA', r.CATEGORIA,                         false],
-    ['Concepto clasif.', 'CONCEPTO',  r.CONCEPTO,                          true ],
-    ['Descripción',      'DESC',      r.DESCRIPCION,                       false],
-    ['Factura',          'FACTURA',   r.Factura,                           false],
-    ['Monto',            'MONTO',     r.Monto != null ? bn_fmt$(Number(r.Monto||0)) : null, false],
-    ['— Clasificación —','SEP',       null,                                false],
-    ['Cuenta contable',  '_cuenta',   r._cuenta,                           false],
-    ['Subcuenta',        '_sub',      r._subcuenta,                        false],
-    ['Categoría gasto',  '_cat',      r._categoria_gasto,                  false],
-    ['Concepto clasif.', '_con',      r._concepto,                         false],
-    ['Propiedad',        '_prop',     r._propiedad,                        false],
-    ['Departamento',     '_depto',    r._departamento,                     false],
-    ['Encargado',        '_enc',      r._encargado,                        false],
-    ['Deducible',        '_ded',      r._deducible,                        false],
-    ['Reembolso',        '_reem',     r._reembolso,                        false],
-    ['Reembolso a',      '_reema',    r._reembolso_a,                      false],
-    ['Método de pago',   '_metodo',   r._metodo_pago,                      false],
-    ['Clasificado por',  '_clasif',   r._clasificado_por,                  false],
-  ].filter(([,,v, editable]) => v != null && v !== '' || v === null);
+    ['Descripción',      'DESC',    r.DESCRIPCION,                                               true ],
+    ['Día',              'DÍA',     bn_formatDia(r.Día || r.Dia || '') || r.Mes || r.Año || '', false],
+    ['Cuenta bancaria',  'CUENTA_B', r['Cuenta bancaria'],                                      false],
+    ['Monto',            'MONTO',   r.Monto != null ? bn_fmt$(Number(r.Monto || 0)) : '',       false],
+    ['Factura',          'FACTURA', r.FacturaFlag || '',                                         false],
+    ['Deducible',        '_ded',    r._deducible    || '',                                       false],
+    ['Reembolso',        '_reem',   r._reembolso    || '',                                       false],
+    ['Reembolso a',      '_reema',  r._reembolso_a  || '',                                       false],
+    ['Cuenta',           '_cuenta', r._cuenta       || '',                                       false],
+    ['Subcuenta',        '_sub',    r._subcuenta     || '',                                       false],
+    ['Categoría gasto',  '_cat',    r._categoria_gasto || '',                                    false],
+    ['Concepto clasif.', '_con',    r._concepto     || '',                                       false],
+    ['Propiedad',        '_prop',   r._propiedad    || '',                                       false],
+    ['Departamento',     '_depto',  r._departamento !== undefined ? String(r._departamento) : '', false],
+    ['Encargado',        '_enc',    r._encargado    || '',                                       false],
+    ['Clasificado por',  '_clasif', r._clasificado_por || '',                                    false],
+  ];
 
-  if (!rows.length) return `<div class="empty-state"><p>Sin datos</p></div>`;
   return `<table>
     <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
     <tbody>${rows.map(([label, field, val, editable]) => {
-      if (val === null && field === 'SEP')
-        return `<tr><td colspan="2" style="font-weight:700;color:var(--text-soft);font-size:11px;padding-top:10px">${label}</td></tr>`;
-      if (val == null || val === '') return '';
+      const display = val != null ? String(val) : '';
       const td = editable
         ? `<td contenteditable="true" spellcheck="false" data-field="${field}"
-              oninput="showTableActions('bnr',${idx})">${esc(String(val))}</td>`
-        : `<td>${esc(String(val))}</td>`;
+              oninput="showTableActions('bnr',${idx})">${esc(display)}</td>`
+        : `<td>${esc(display)}</td>`;
       return `<tr><td class="resumen-key">${label}</td>${td}</tr>`;
     }).join('')}</tbody>
   </table>`;
@@ -2644,6 +2653,11 @@ async function bn_saveBnClassification(idx) {
   rec._reembolso_a     = c.reembolso_a;
   rec._metodo_pago     = c.metodo_pago_clasif;
   rec._clasificado_por = currentUser || '';
+  // Sincronizar también los campos raw del sheet para que no diverjan
+  rec.CUENTA    = c.cuenta;
+  rec.SUBCUENTA = c.subcuenta;
+  rec.CATEGORIA = c.categoria;
+  rec.CONCEPTO  = c.concepto;
 
   // Re-render tarjeta en el DOM
   const card = document.getElementById(`bn-card-${idx}`);
