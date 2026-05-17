@@ -1977,13 +1977,17 @@ function bn_populateFilters() {
     bn_mselFillOptions(f.key, values);
   }
 
+  // Año y Mes son GLOBALES — derivan de BN_RAW (no del tipo activo) para que
+  // los defaults (año/mes en curso) siempre estén disponibles como opción.
   // Año (multi)
   {
     const years = new Set();
-    for (const r of recs) {
+    for (const r of BN_RAW) {
       const iso = bn_formatDiaISO(r.Día || r.Dia || '');
       if (/^\d{4}-/.test(iso)) years.add(iso.substring(0, 4));
     }
+    // Asegurar año en curso aunque no haya registros aún
+    years.add(String(new Date().getFullYear()));
     const sorted = [...years].sort((a,b) => b.localeCompare(a));
     bn_mselFillOptions('anio', sorted);
   }
@@ -1993,11 +1997,13 @@ function bn_populateFilters() {
     const NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     const months = new Set();
-    for (const r of recs) {
+    for (const r of BN_RAW) {
       const iso = bn_formatDiaISO(r.Día || r.Dia || '');
       const m = iso.match(/^\d{4}-(\d{2})/);
       if (m) months.add(m[1]);
     }
+    // Mostrar siempre los 12 meses para que el mes en curso esté disponible
+    for (let i = 1; i <= 12; i++) months.add(String(i).padStart(2,'0'));
     const sorted = [...months].sort();
     bn_mselFillOptions('mes', sorted, mm => NOMBRES[Number(mm)-1]);
   }
@@ -3564,45 +3570,147 @@ async function bn_bulkToggleDeducible() {
   await bn_bulkSaveAll(rec => { rec._deducible = target; });
 }
 
+// ─── Mini-modal genérico para elegir una opción en bulk actions ─────────────
+function bn_bulkShowChoice(opts) {
+  // opts = { title, items:[{value,label,icon?}], onPick }
+  let overlay = document.getElementById('bn-bulk-choice-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'bn-bulk-choice-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.onclick = (e) => { if (e.target === overlay) bn_bulkChoiceClose(); };
+    document.body.appendChild(overlay);
+  }
+  const itemsHtml = opts.items.map(it => `
+    <button onclick="bn_bulkChoicePick(${JSON.stringify(it.value).replace(/"/g,'&quot;')})"
+            style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border:1.5px solid #e5e7eb;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;color:#374151;transition:all .15s"
+            onmouseover="this.style.borderColor='#ea580c';this.style.background='#fff7ed'"
+            onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
+      ${it.icon ? `<span style="font-size:24px;line-height:1">${it.icon}</span>` : ''}
+      <span style="text-align:center">${esc(it.label)}</span>
+    </button>`).join('');
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;padding:20px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.4)" onclick="event.stopPropagation()">
+      <button onclick="bn_bulkChoiceClose()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border:none;background:#f3f4f6;border-radius:50%;font-size:18px;cursor:pointer;color:#374151">✕</button>
+      <h3 style="margin:0 0 6px;font-size:16px">${esc(opts.title)}</h3>
+      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#ea580c">${BN_SEL.size}</b> registros seleccionados</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">${itemsHtml}</div>
+    </div>`;
+  // Guardar callback en el overlay
+  overlay._onPick = opts.onPick;
+}
+
+function bn_bulkChoiceClose() {
+  const ov = document.getElementById('bn-bulk-choice-overlay');
+  if (ov) ov.remove();
+}
+
+function bn_bulkChoicePick(val) {
+  const ov = document.getElementById('bn-bulk-choice-overlay');
+  const cb = ov?._onPick;
+  bn_bulkChoiceClose();
+  if (typeof cb === 'function') cb(val);
+}
+
+// Mini-modal para elegir fecha con calendario nativo
+function bn_bulkShowDate(title, onPick) {
+  let overlay = document.getElementById('bn-bulk-date-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'bn-bulk-date-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+  }
+  const today = new Date();
+  const iso = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:380px;padding:20px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.4)" onclick="event.stopPropagation()">
+      <button onclick="document.getElementById('bn-bulk-date-overlay').remove()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border:none;background:#f3f4f6;border-radius:50%;font-size:18px;cursor:pointer;color:#374151">✕</button>
+      <h3 style="margin:0 0 6px;font-size:16px">${esc(title)}</h3>
+      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#ea580c">${BN_SEL.size}</b> registros</p>
+      <input type="date" id="bn-bulk-date-input" value="${iso}"
+             style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:14px">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="document.getElementById('bn-bulk-date-overlay').remove()" style="padding:8px 14px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">Cancelar</button>
+        <button onclick="bn_bulkDatePick()" style="padding:8px 14px;border:none;background:#ea580c;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">Aplicar</button>
+      </div>
+    </div>`;
+  overlay._onPick = onPick;
+}
+
+function bn_bulkDatePick() {
+  const ov = document.getElementById('bn-bulk-date-overlay');
+  const v  = document.getElementById('bn-bulk-date-input')?.value;
+  const cb = ov?._onPick;
+  if (!v) { alert('Selecciona una fecha'); return; }
+  ov?.remove();
+  if (typeof cb === 'function') cb(v);
+}
+
+// Opciones (mismas que en classify panel)
+const BN_METODOS_PAGO = [
+  { value: 'Tarjeta crédito',   label: 'Crédito',           icon: '💳' },
+  { value: 'Tarjeta débito',    label: 'Débito',            icon: '🏦' },
+  { value: 'Efectivo',          label: 'Efectivo',          icon: '💵' },
+  { value: 'Transferencia',     label: 'Transfer.',         icon: '🔄' },
+  { value: 'Retiro sin tarjeta', label: 'Retiro s/tarjeta', icon: '🏧' },
+  { value: 'Cheque',            label: 'Cheque',            icon: '📝' },
+  { value: 'QR',                label: 'QR',                icon: '📱' },
+];
+
+const BN_ENCARGADOS = [
+  { value: 'Andrés',                 label: 'Andrés',                 icon: '👨' },
+  { value: 'Claudia',                label: 'Claudia',                icon: '👩' },
+  { value: 'Papá',                   label: 'Papá',                   icon: '👨‍👧' },
+  { value: 'Francisco',              label: 'Francisco',              icon: '👨' },
+  { value: 'Brenda',                 label: 'Brenda',                 icon: '👩' },
+  { value: 'Alma',                   label: 'Alma',                   icon: '👩' },
+  { value: 'Gaby',                   label: 'Gaby',                   icon: '👩' },
+  { value: 'Juanita',                label: 'Juanita',                icon: '👩' },
+  { value: 'Damariz',                label: 'Damariz',                icon: '👩' },
+  { value: 'Auxiliar administrativo', label: 'Aux. admin.',           icon: '👔' },
+];
+
 function bn_bulkPromptMetodo() {
-  const opts = ['Tarjeta crédito','Tarjeta débito','Efectivo','Transferencia','Retiro sin tarjeta','Cheque','QR'];
-  const val = prompt('Método de pago para ' + BN_SEL.size + ' registros:\n' + opts.map((o,i)=>(i+1)+'. '+o).join('\n') + '\n\nEscribe el número o el nombre exacto:');
-  if (!val) return;
-  const idx = parseInt(val, 10);
-  const m = (!isNaN(idx) && idx >= 1 && idx <= opts.length) ? opts[idx-1] : opts.find(o => o.toLowerCase() === val.toLowerCase());
-  if (!m) { alert('Opción inválida'); return; }
-  bn_bulkSaveAll(rec => { rec._metodo_pago = m; });
+  if (!BN_SEL.size) { alert('No hay registros seleccionados'); return; }
+  bn_bulkShowChoice({
+    title: '💳 Método de pago',
+    items: BN_METODOS_PAGO,
+    onPick: (val) => bn_bulkSaveAll(rec => { rec._metodo_pago = val; })
+  });
 }
 
 function bn_bulkPromptEncargado() {
-  const val = prompt('Encargado de operación para ' + BN_SEL.size + ' registros:');
-  if (val == null) return;
-  bn_bulkSaveAll(rec => { rec._encargado = val.trim(); });
+  if (!BN_SEL.size) { alert('No hay registros seleccionados'); return; }
+  bn_bulkShowChoice({
+    title: '👤 Encargado de operación',
+    items: BN_ENCARGADOS,
+    onPick: (val) => bn_bulkSaveAll(rec => { rec._encargado = val; })
+  });
 }
 
-async function bn_bulkPromptFecha() {
-  const val = prompt('Fecha de registro (YYYY-MM-DD) para ' + BN_SEL.size + ' registros:');
-  if (!val) return;
-  const v = val.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { alert('Formato debe ser YYYY-MM-DD'); return; }
-  const recs = bn_selectedRecs();
-  if (!recs.length) return;
-  showLoading?.('Aplicando fecha a ' + recs.length + ' registros…', '');
-  let ok = 0, fail = 0;
-  for (const rec of recs) {
-    try {
-      rec.Día = v;
-      const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rowNum: rec.rowNum, fecha_edit: true, dia: v }),
-      });
-      const j = await resp.json();
-      if (j.ok) ok++; else fail++;
-    } catch (_) { fail++; }
-  }
-  hideLoading?.();
-  bn_render();
-  alert(`Guardados: ${ok}${fail ? ' · Fallidos: ' + fail : ''}`);
+function bn_bulkPromptFecha() {
+  if (!BN_SEL.size) { alert('No hay registros seleccionados'); return; }
+  bn_bulkShowDate('📅 Fecha del registro', async (v) => {
+    const recs = bn_selectedRecs();
+    showLoading?.('Aplicando fecha a ' + recs.length + ' registros…', '');
+    let ok = 0, fail = 0;
+    for (const rec of recs) {
+      try {
+        rec.Día = v;
+        const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rowNum: rec.rowNum, fecha_edit: true, dia: v }),
+        });
+        const j = await resp.json();
+        if (j.ok) ok++; else fail++;
+      } catch (_) { fail++; }
+    }
+    hideLoading?.();
+    bn_render();
+    if (fail) alert(`Guardados: ${ok} · Fallidos: ${fail}`);
+  });
 }
 
 /** Abre el popup Clasificar en modo masivo (sin Resumen ni Validar/Revisar). */
