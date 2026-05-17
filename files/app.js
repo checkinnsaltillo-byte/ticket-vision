@@ -1633,6 +1633,7 @@ const BN_MSEL_FIELDS = [
     } },
   { key: 'propiedad',    label: 'Propiedad',       from: r => r._propiedad          || '' },
   { key: 'departamento', label: '# Departamento',  from: r => (r._departamento !== undefined && r._departamento !== null && r._departamento !== '') ? String(r._departamento) : '' },
+  { key: 'deducible',    label: 'Deducible',       from: r => r._deducible          || '' },
   { key: 'reembolso',    label: 'Reembolso',       from: r => r._reembolso          || '' },
   { key: 'encargado',    label: 'Encargado de operación', from: r => r._encargado   || '' },
 ];
@@ -2000,9 +2001,6 @@ function bn_populateFilters() {
     const sorted = [...months].sort();
     bn_mselFillOptions('mes', sorted, mm => NOMBRES[Number(mm)-1]);
   }
-
-  // Deducible (siempre visible, multi)
-  bn_mselFillOptions('deducible', ['Sí','No']);
 }
 
 /** Rellena las opciones de un multi-select con diseño simple tipo lista de checks. */
@@ -2194,7 +2192,7 @@ function bn_onFilterChange() {
 }
 
 function bn_clearFilters() {
-  for (const f of [...BN_MSEL_FIELDS.map(x => x.key), 'anio', 'mes', 'deducible']) {
+  for (const f of [...BN_MSEL_FIELDS.map(x => x.key), 'anio', 'mes']) {
     bn_st[f] = [];
   }
   bn_st.q = '';
@@ -2257,8 +2255,6 @@ function bn_filteredRecs(tipo) {
       if (s.mes  && s.mes.length  && !s.mes .includes(m[2])) return false;
     }
 
-    // Deducible (multi, siempre visible)
-    if (s.deducible && s.deducible.length && !s.deducible.includes((r._deducible || '').trim())) return false;
 
     // Búsqueda libre
     if(q){
@@ -2802,10 +2798,12 @@ function bn_createCard(rec, idx) {
   const fac    = bn_norm(rec.Factura || '');
   const tipoLbl = cuentaClasif || (montoN < 0 ? 'Egreso' : montoN > 0 ? 'Ingreso' : '—');
 
-  // Presupuesto y avance
+  // Presupuesto y avance — usar valores absolutos para mostrar progreso positivo
   const tipo4bud = isE ? 'E' : 'I';
   const bud      = bn_getBud(tipo4bud, cat, con);
-  const av       = bud > 0 ? monto / bud : NaN;
+  const absMonto = Math.abs(monto);
+  const absBud   = Math.abs(bud);
+  const av       = absBud > 0 ? absMonto / absBud : NaN;
   const sev      = isE ? bn_sevOver(av) : bn_sevUnder(av);
 
   // Chips de encabezado — emoji por cuenta clasificada
@@ -2823,7 +2821,8 @@ function bn_createCard(rec, idx) {
   const isClasif  = !!rec._cuenta;
   const pathParts = [rec._cuenta, rec._subcuenta, rec._categoria_gasto, rec._concepto].filter(Boolean);
   const pathText  = pathParts.join(' › ');
-  const clasifColorCls = CUENTA_COLOR_CLASS[rec._cuenta] || '';
+  // En "Por clasificar" la pestaña inferior tampoco lleva color (sólo el chip de CUENTA lo conserva)
+  const clasifColorCls = (CUENTA_COLOR_CLASS[rec._cuenta] && !inPC) ? CUENTA_COLOR_CLASS[rec._cuenta] : '';
   const tabHtml = isClasif
     ? `<div class="classify-tab classified ${clasifColorCls}" id="bn-btn-classify-${idx}" onclick="bn_toggleBnClassify(${idx})">
          <span class="classify-tab-arrow" style="color:#fff">›</span>
@@ -2836,22 +2835,19 @@ function bn_createCard(rec, idx) {
 
   const deptOptions = Array.from({length:14},(_,j)=>`<option>${j+1}</option>`).join('');
 
-  // Mini barra de avance en encabezado
-  const avPct  = isFinite(av) ? Math.min(Math.max(av, 0), 2) : 0;
-  const barCls = av > 1.10 ? 'bn-bar-bad' : av > 1.0 ? 'bn-bar-warn' : 'bn-bar-good';
-  const avanceHtml = bud > 0 ? `
-    <div class="bn-hdr-avance">
-      <div class="bn-avance-wrap" style="min-width:90px">
-        <div class="bn-avance-bar ${barCls}" style="height:5px;border-radius:3px">
-          <div class="bn-avance-fill" style="width:${(avPct*100).toFixed(1)}%"></div>
-          <div class="bn-avance-marker"></div>
-        </div>
-        <span class="bn-avance-pct" style="font-size:10px">${isFinite(av) ? bn_fmtPct(av) : '—'} presup.</span>
+  // Mini barra semáforo de avance en encabezado (valores absolutos, % positivo).
+  // 100% del presupuesto marcado al 50% del ancho de la barra (rango visual 0–200%).
+  const avPct   = isFinite(av) ? Math.min(Math.max(av, 0), 2) : 0;
+  const fillW   = (avPct / 2 * 100).toFixed(1); // 100% bud = 50% barra
+  const fillCol = av > 1.10 ? '#dc2626' : av > 1.0 ? '#f59e0b' : '#16a34a';
+  const avanceHtml = absBud > 0 ? `
+    <div class="bn-hdr-avance" style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:110px;margin-top:4px">
+      <div style="position:relative;width:110px;height:7px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${fillW}%;background:${fillCol};transition:width .3s"></div>
+        <div title="100% del presupuesto" style="position:absolute;top:-2px;bottom:-2px;left:50%;width:2px;background:#1f2937;border-radius:1px;transform:translateX(-1px)"></div>
       </div>
-      <div class="bn-hdr-presup">${bn_fmt$(bud)}</div>
-      ${sev.label && sev.label !== '—'
-        ? `<span class="${sev.cls}" style="font-size:10px;padding:2px 7px">${sev.label}</span>`
-        : ''}
+      <span style="font-size:10px;font-weight:700;color:${fillCol};line-height:1">${isFinite(av) ? bn_fmtPct(av) : '—'} del presup.</span>
+      <span style="font-size:9px;color:var(--text-soft);line-height:1">Pres: ${bn_fmt$(absBud)}</span>
     </div>` : '';
 
   return `
@@ -2869,7 +2865,7 @@ function bn_createCard(rec, idx) {
               data-checked="${isRevisado}"
               title="${isRevisado ? 'Revisado — disponible en Registros contables' : 'Marcar como Revisado (sale de Por clasificar)'}"
               style="position:absolute;top:40px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isRevisado ? '#16a34a' : '#e5e7eb'};background:${isRevisado ? '#16a34a' : '#f9fafb'};color:${isRevisado ? '#fff' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">✓</button>
-      <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})">
+      <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})" style="padding-right:46px">
         <div class="ticket-info">
           <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
           <div class="ticket-store-row">
