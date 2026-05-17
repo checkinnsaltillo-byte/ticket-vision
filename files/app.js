@@ -1069,7 +1069,9 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
 
       <div class="classify-actions hidden" id="classify-actions-${idx}">
         <button class="btn-clasificar-ticket" onclick="${saveOnclick}">${saveLabel}</button>
-        <button class="btn-limpiar-ticket" onclick="${limpiarOnclick}">Limpiar</button>
+      </div>
+      <div class="classify-actions-always" id="classify-actions-always-${idx}" style="display:flex;justify-content:flex-end;margin-top:8px">
+        <button class="btn-limpiar-ticket" onclick="${limpiarOnclick}">✕ Limpiar</button>
       </div>
     </div>`;
 }
@@ -1631,6 +1633,29 @@ const bn_canon = (s) => bn_norm(s).normalize('NFD').replace(/[̀-ͯ]/g,'').repla
 const bn_cc    = (s) => bn_canon(s).replace(/[^a-z0-9]+/g,'');
 const bn_uniq  = (arr) => [...new Set(arr.map(bn_norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
 
+/** Devuelve el valor de Día formateado como YYYY-MM-DD (para <input type="date">). */
+function bn_formatDiaISO(d) {
+  const s = String(d || '').trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+  if (s.includes('GMT') || /^\w{3}\s+\w{3}\s+\d/.test(s)) {
+    const dt = new Date(s);
+    if (!isNaN(dt.getTime())) {
+      const y  = dt.getFullYear();
+      const m  = String(dt.getMonth() + 1).padStart(2, '0');
+      const dy = String(dt.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dy}`;
+    }
+  }
+  // d/m/AAAA o dd/mm/aaaa → YYYY-MM-DD
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const [, d2, mo, y] = m;
+    return `${y}-${mo.padStart(2,'0')}-${d2.padStart(2,'0')}`;
+  }
+  return '';
+}
+
 /** Devuelve el valor de Día formateado como d/m/AAAA (ej. 2/1/2025).
  *  Acepta YYYY-MM-DD o Date.toString() de Apps Script. */
 function bn_formatDia(d) {
@@ -1818,6 +1843,7 @@ async function bn_loadData() {
       rec._subcuenta       = rec.SUBCUENTA || '';
       rec._categoria_gasto = rec.CATEGORIA || '';
       rec._concepto        = rec.CONCEPTO  || '';
+      rec._validado        = rec.VALIDADO  || '';
       // _tipo: clasificación manual > TIPO del sheet > signo del monto
       // Normalizar a forma canónica para que CUENTA_COLOR_CLASS y filtros funcionen
       const monto = Number(rec.Monto) || 0;
@@ -2332,6 +2358,7 @@ function bn_buildBnResumenTable(r, idx) {
     ['Departamento',     '_depto',  r._departamento !== undefined ? String(r._departamento) : '', false],
     ['Encargado',        '_enc',    r._encargado    || '',                                       false],
     ['Clasificado por',  '_clasif', r._clasificado_por || '',                                    false],
+    ['Validado',         '_valid',  r._validado     || '',                                       false],
   ];
 
   return `<table>
@@ -2385,6 +2412,10 @@ function bn_createCard(rec, idx) {
   const facChip    = fac
     ? `<span class="info-chip" style="color:var(--success,#16a34a)">🧾 ${esc(fac)}</span>`
     : `<span class="info-chip" style="color:var(--text-soft);font-style:italic">Sin factura</span>`;
+  const isValidado = rec._validado === 'Sí';
+  const validadoChip = isValidado
+    ? `<span class="info-chip" style="background:#16a34a;color:#fff;font-weight:700">✓ Validado</span>`
+    : '';
 
   // Tab Clasificar
   const isClasif  = !!rec._cuenta;
@@ -2424,7 +2455,7 @@ function bn_createCard(rec, idx) {
     <div class="ticket-card" id="bn-card-${idx}">
       <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})">
         <div class="ticket-info">
-          <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
+          <div class="header-chips">${tipoChip}${cuentaChip}${facChip}${validadoChip}</div>
           <div class="ticket-store-row">
             <span class="ticket-store ${colorCls}">${esc(name)}</span>
           </div>
@@ -2445,6 +2476,15 @@ function bn_createCard(rec, idx) {
             </label>
             <span class="fhl${dedChecked ? ' on' : ''}" id="fhl-${ci}">${dedChecked ? 'Deducible' : 'No deducible'}</span>
           </div>
+          <div class="header-deducible" onclick="event.stopPropagation()" style="margin-top:6px">
+            <label class="toggle-switch toggle-switch--dark">
+              <input type="checkbox" id="validado-header-${ci}"
+                     ${isValidado ? 'checked' : ''}
+                     onchange="bn_syncValidado(${idx}, this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="fhl${isValidado ? ' on' : ''}" id="vhl-${ci}">${isValidado ? '✓ Validado' : 'Por validar'}</span>
+          </div>
         </div>
       </div>
 
@@ -2461,7 +2501,7 @@ function bn_createCard(rec, idx) {
       </div>
 
       ${tabHtml}
-      ${buildClassifyPanel(ci, bn_norm(rec.Día || rec.Dia || rec.Mes || ''), deptOptions,
+      ${buildClassifyPanel(ci, bn_formatDiaISO(rec.Día || rec.Dia || ''), deptOptions,
           isClasif ? '💾 Guardar cambios' : '✓ Clasificar',
           `bn_saveBnClassification(${idx})`,
           `bn_limpiarBnClassification(${idx})`,
@@ -2756,6 +2796,7 @@ async function bn_saveBnClassification(idx) {
           reembolso_a:     c.reembolso_a,
           metodo_pago:     c.metodo_pago_clasif,
           clasificado_por: currentUser || '',
+          validado:        rec._validado || '',
         }
       }),
     });
@@ -3039,6 +3080,72 @@ function syncDeducible(i, checked) {
   const inner = document.getElementById(`deducible-${i}`);
   if (inner) inner.checked = checked;
   updateDeducibleLabel(i, checked);
+}
+
+// Llamado desde el toggle Validado del encabezado bancario — guarda
+// en memoria, actualiza chip de estado y persiste a Sheets en tiempo real.
+async function bn_syncValidado(idx, checked) {
+  const ci  = 'bn' + idx;
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  rec._validado = checked ? 'Sí' : 'No';
+
+  // Actualizar label
+  const lbl = document.getElementById(`vhl-${ci}`);
+  if (lbl) {
+    lbl.textContent = checked ? '✓ Validado …' : 'Por validar …';
+    lbl.classList.toggle('on', checked);
+  }
+  // Actualizar chip en header-chips (toggle inline)
+  const card = document.getElementById(`bn-card-${idx}`);
+  const chipsWrap = card?.querySelector('.header-chips');
+  if (chipsWrap) {
+    const existing = chipsWrap.querySelector('.info-chip-validado');
+    if (checked && !existing) {
+      const span = document.createElement('span');
+      span.className = 'info-chip info-chip-validado';
+      span.style.cssText = 'background:#16a34a;color:#fff;font-weight:700';
+      span.textContent = '✓ Validado';
+      chipsWrap.appendChild(span);
+    } else if (!checked && existing) {
+      existing.remove();
+    }
+  }
+
+  if (!rec.rowNum) { if (lbl) lbl.textContent = checked ? '✓ Validado' : 'Por validar'; return; }
+
+  try {
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rowNum:        rec.rowNum,
+        validado_edit: true,
+        validado:      rec._validado,
+        clasificacion: {
+          cuenta:          rec._cuenta          || '',
+          subcuenta:       rec._subcuenta       || '',
+          categoria_gasto: rec._categoria_gasto || '',
+          concepto:        rec._concepto        || '',
+          propiedad:       rec._propiedad       || '',
+          departamento:    rec._departamento    || '',
+          encargado:       rec._encargado       || '',
+          deducible:       rec._deducible       || 'No',
+          reembolso:       rec._reembolso       || 'No',
+          reembolso_a:     rec._reembolso_a     || '',
+          metodo_pago:     rec._metodo_pago     || '',
+          clasificado_por: currentUser || '',
+          validado:        rec._validado,
+        }
+      }),
+    });
+    const result = await resp.json();
+    if (!result.ok) throw new Error(result.error || 'Error');
+    if (lbl) lbl.textContent = checked ? '✓ Validado' : 'Por validar';
+  } catch (e) {
+    console.warn('Error guardando Validado:', e.message);
+    if (lbl) lbl.textContent = (checked ? '✓ Validado' : 'Por validar') + ' ⚠';
+  }
 }
 
 // Llamado desde el toggle del encabezado (módulo bancos) — actualiza

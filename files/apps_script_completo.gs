@@ -395,6 +395,7 @@ function getBancosData_(ss) {
   const iCon    = pickIdx(hB, ["CONCEPTO"]);
   const iFac    = pickIdx(hB, ["FACTURA"]);
   const iMon    = pickIdx(hB, ["MONTO"]);
+  const iVal    = pickIdx(hB, ["VALIDADO"]);
 
   const records = bancos.slice(1)
     .map((r, i) => ({ r, rowNum: i + 2 }))           // rowNum = índice real en Sheet (antes del filter)
@@ -418,6 +419,7 @@ function getBancosData_(ss) {
         Factura:           String(factura).trim(),
         FacturaFlag:       String(factura).trim().length ? "Con factura" : "Sin factura",
         Monto:             toNumber(iMon >= 0 ? r[iMon] : 0),
+        VALIDADO:          iVal    >= 0 ? String(r[iVal]).trim()    : "",
         rowNum:            rowNum
       };
     });
@@ -496,7 +498,8 @@ function saveBancoClasificacion_(ss, data) {
     "CUENTA", "SUBCUENTA", "CATEGORIA", "CONCEPTO",
     "PROPIEDAD", "DEPARTAMENTO", "ENCARGADO",
     "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A",
-    "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF"
+    "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF",
+    "VALIDADO"
   ];
 
   // Leer el header actual
@@ -534,6 +537,14 @@ function saveBancoClasificacion_(ss, data) {
     if (descCol) shB.getRange(rowNum, descCol).setValue(data.descripcion || "");
   }
 
+  // Si el frontend pidió actualizar Validado, escribirlo en columna VALIDADO
+  // y NO sobrescribir el resto de la clasificación (return temprano)
+  if (data.validado_edit) {
+    const valCol = getOrCreateCol("VALIDADO");
+    if (valCol) shB.getRange(rowNum, valCol).setValue(data.validado || "");
+    return { ok: true, rowNum: rowNum, validado: data.validado };
+  }
+
   writeCell("CUENTA",          c.cuenta          || "");
   writeCell("SUBCUENTA",       c.subcuenta        || "");
   writeCell("CATEGORIA",       c.categoria_gasto  || "");
@@ -547,6 +558,7 @@ function saveBancoClasificacion_(ss, data) {
   writeCell("METODO_PAGO",     c.metodo_pago      || "");
   writeCell("CLASIFICADO_POR", c.clasificado_por  || "");
   writeCell("FECHA_CLASIF",    now);
+  if (c.validado !== undefined) writeCell("VALIDADO", c.validado || "");
 
   return { ok: true, rowNum: rowNum, columnsWritten: CLASIF_COLS.length };
 }
