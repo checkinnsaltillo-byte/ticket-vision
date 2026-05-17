@@ -1987,22 +1987,64 @@ function bn_apComputeBudget(node, records, ancestors, allLevels) {
   return total;
 }
 
-/** Renderiza recursivamente los renglones del árbol con indentación. */
-function bn_apRenderNode(node, depth, levels, records, ancestors, rows) {
-  const bud = bn_apComputeBudget(node, records, ancestors, levels);
+// Estado del Análisis por partida — siempre se construye con los 4 niveles;
+// la profundidad visible la controlan: (a) BN_AP_LEVEL (1-4) y (b) overrides
+// manuales por click en el triangulito.
+let BN_AP_LEVEL = 4; // default: completamente desglosado a Concepto
+const BN_AP_OVERRIDES = new Map(); // path → bool (true=expandido manual, false=colapsado manual)
+const BN_AP_LEVELS = ['_cuenta','_subcuenta','_categoria_gasto','_concepto'];
+
+/** Cambia el nivel de desglose; limpia overrides manuales. */
+function bn_setApLevel(level) {
+  BN_AP_LEVEL = Math.max(1, Math.min(4, Number(level) || 4));
+  BN_AP_OVERRIDES.clear();
+  bn_renderAP();
+}
+
+/** ¿Los hijos del nodo en 'path' (con depth dado) deben mostrarse? */
+function bn_apIsExpanded(path, depth) {
+  if (BN_AP_OVERRIDES.has(path)) return BN_AP_OVERRIDES.get(path);
+  // depth = profundidad del nodo (0-indexed); hijos en depth+1.
+  // Si BN_AP_LEVEL = 2 (Subcuenta), nivel 1 visible (depth 0).
+  // El nodo en depth 0 expande hijos sólo si BN_AP_LEVEL > 1.
+  return (depth + 1) < BN_AP_LEVEL;
+}
+
+/** Click en el triángulo — alterna expansión manual de un nodo. */
+function bn_apToggleNode(pathEnc) {
+  const path = decodeURIComponent(pathEnc);
+  // Extraer depth del path: número de pipes
+  const depth = path.split('|').length - 1;
+  const wasExpanded = bn_apIsExpanded(path, depth);
+  BN_AP_OVERRIDES.set(path, !wasExpanded);
+  bn_renderAP();
+}
+
+/** Renderiza recursivamente las filas con indentación, respetando estado de expansión. */
+function bn_apRenderNode(node, depth, records, ancestors, rows) {
+  const path = ancestors.join('|');
+  const pathEnc = encodeURIComponent(path);
+  const hasChildren = node.children.size > 0;
+  const expanded = hasChildren && bn_apIsExpanded(path, depth);
+
+  const bud = bn_apComputeBudget(node, records, ancestors, BN_AP_LEVELS);
   const av = bud > 0 ? node.total / bud : NaN;
   const color = !isFinite(av) ? '#9ca3af' : av > 1.10 ? '#dc2626' : av > 1.0 ? '#f59e0b' : '#16a34a';
   const semIcon = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
   const pctTxt  = isFinite(av) ? (av * 100).toFixed(1) + '%' : '—';
   const fillW   = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
-  const bgRow = depth === 0 ? '#fef3c7' : depth === 1 ? '#fffbeb' : '#fff';
+  const bgRow = depth === 0 ? '#fef3c7' : depth === 1 ? '#fffbeb' : depth === 2 ? '#fefce8' : '#fff';
   const wgt   = depth === 0 ? '800' : depth === 1 ? '700' : '600';
   const indent = depth * 22;
+  const triangle = hasChildren
+    ? `<span onclick="event.stopPropagation();bn_apToggleNode('${pathEnc}')"
+            style="color:#ea580c;margin-right:6px;cursor:pointer;display:inline-block;width:14px;text-align:center;user-select:none">${expanded ? '▼' : '▸'}</span>`
+    : `<span style="display:inline-block;width:14px;margin-right:6px"></span>`;
 
   rows.push(`
     <tr style="background:${bgRow}">
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;padding-left:${10+indent}px;font-weight:${wgt};font-size:${depth===0?'13':'12'}px">
-        <span style="color:#ea580c;margin-right:6px">${depth===0?'▼':'▸'}</span>${esc(node.name)}
+        ${triangle}${esc(node.name)}
       </td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${node.count}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px">${bn_fmt$(node.total)}</td>
@@ -2020,10 +2062,11 @@ function bn_apRenderNode(node, depth, levels, records, ancestors, rows) {
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:14px">${semIcon}</td>
     </tr>`);
 
-  // Hijos ordenados desc por total
-  const kids = [...node.children.values()].sort((a,b) => b.total - a.total);
-  for (const child of kids) {
-    bn_apRenderNode(child, depth + 1, levels, records, [...ancestors, child.name], rows);
+  if (expanded) {
+    const kids = [...node.children.values()].sort((a,b) => b.total - a.total);
+    for (const child of kids) {
+      bn_apRenderNode(child, depth + 1, records, [...ancestors, child.name], rows);
+    }
   }
 }
 
@@ -2032,16 +2075,14 @@ function bn_renderAP() {
   const wrap = document.getElementById('bn-ap-table');
   if (!wrap) return;
 
-  // Leer niveles seleccionados
-  const levels = Array.from(document.querySelectorAll('#bn-ap-levels input[data-ap-lvl]:checked'))
-    .map(i => i.dataset.apLvl);
-
-  if (!levels.length) {
-    wrap.innerHTML = `<div style="padding:30px;text-align:center;color:#9ca3af;font-size:13px">
-      Selecciona al menos un nivel para desglosar
-    </div>`;
-    return;
-  }
+  // Resaltar el botón de nivel activo
+  document.querySelectorAll('.bn-ap-lvl-btn').forEach(btn => {
+    const lvl = Number(btn.dataset.lvl);
+    const active = (lvl === BN_AP_LEVEL);
+    btn.style.background  = active ? '#ea580c' : 'var(--surface,#fff)';
+    btn.style.color       = active ? '#fff'    : 'var(--text,#374151)';
+    btn.style.borderColor = active ? '#ea580c' : 'var(--border,#d1d5db)';
+  });
 
   // Usar los registros del período (sin restringir por revisado, igual que KPIs)
   const records = bn_kpiRecs(null);
@@ -2052,13 +2093,12 @@ function bn_renderAP() {
     return;
   }
 
-  // Árbol y render
-  const tree = bn_apBuildTree(records, levels);
+  // Árbol con los 4 niveles siempre; la visibilidad se controla por expansión
+  const tree = bn_apBuildTree(records, BN_AP_LEVELS);
   const rows = [];
-  // Niveles superiores (hijos directos de root) ordenados desc
   const top = [...tree.children.values()].sort((a,b) => b.total - a.total);
   for (const node of top) {
-    bn_apRenderNode(node, 0, levels, records, [node.name], rows);
+    bn_apRenderNode(node, 0, records, [node.name], rows);
   }
 
   wrap.innerHTML = `
