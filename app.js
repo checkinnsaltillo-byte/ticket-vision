@@ -2413,8 +2413,9 @@ function bn_createCard(rec, idx) {
     ? `<span class="info-chip" style="color:var(--success,#16a34a)">🧾 ${esc(fac)}</span>`
     : `<span class="info-chip" style="color:var(--text-soft);font-style:italic">Sin factura</span>`;
   const isValidado = rec._validado === 'Sí';
-  const validadoChip = isValidado
-    ? `<span class="info-chip" style="background:#16a34a;color:#fff;font-weight:700">✓ Validado</span>`
+  // Indicador visual: contorno verde en la tarjeta cuando está validado
+  const validadoBorder = isValidado
+    ? 'box-shadow:0 0 0 3px #16a34a,0 4px 12px rgba(22,163,74,.25);border-radius:12px;'
     : '';
 
   // Tab Clasificar
@@ -2448,14 +2449,16 @@ function bn_createCard(rec, idx) {
         <span class="bn-avance-pct" style="font-size:10px">${isFinite(av) ? bn_fmtPct(av) : '—'} presup.</span>
       </div>
       <div class="bn-hdr-presup">${bn_fmt$(bud)}</div>` : ''}
-      <span class="${sev.cls}" style="font-size:10px;padding:2px 7px">${sev.label}</span>
+      ${bud > 0 && sev.label && sev.label !== '—'
+        ? `<span class="${sev.cls}" style="font-size:10px;padding:2px 7px">${sev.label}</span>`
+        : ''}
     </div>`;
 
   return `
-    <div class="ticket-card" id="bn-card-${idx}">
+    <div class="ticket-card" id="bn-card-${idx}" style="${validadoBorder}">
       <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})">
         <div class="ticket-info">
-          <div class="header-chips">${tipoChip}${cuentaChip}${facChip}${validadoChip}</div>
+          <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
           <div class="ticket-store-row">
             <span class="ticket-store ${colorCls}">${esc(name)}</span>
           </div>
@@ -2476,15 +2479,14 @@ function bn_createCard(rec, idx) {
             </label>
             <span class="fhl${dedChecked ? ' on' : ''}" id="fhl-${ci}">${dedChecked ? 'Deducible' : 'No deducible'}</span>
           </div>
-          <div class="header-deducible" onclick="event.stopPropagation()" style="margin-top:6px">
-            <label class="toggle-switch toggle-switch--dark">
-              <input type="checkbox" id="validado-header-${ci}"
-                     ${isValidado ? 'checked' : ''}
-                     onchange="bn_syncValidado(${idx}, this.checked)">
-              <span class="toggle-slider"></span>
-            </label>
-            <span class="fhl${isValidado ? ' on' : ''}" id="vhl-${ci}">${isValidado ? '✓ Validado' : 'Por validar'}</span>
-          </div>
+          <label class="bn-validar-check" onclick="event.stopPropagation()"
+                 style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="validado-header-${ci}"
+                   ${isValidado ? 'checked' : ''}
+                   onchange="bn_syncValidado(${idx}, this.checked)"
+                   style="width:18px;height:18px;accent-color:#16a34a;cursor:pointer">
+            <span id="vhl-${ci}" style="font-size:11px;font-weight:700;color:${isValidado ? '#16a34a' : 'var(--text-soft)'}">${isValidado ? '✓ Validado' : 'Por validar'}</span>
+          </label>
         </div>
       </div>
 
@@ -2811,14 +2813,46 @@ async function bn_saveBnClassification(idx) {
 }
 
 /** Limpia la clasificación del registro y re-renderiza la tarjeta. */
-function bn_limpiarBnClassification(idx) {
+async function bn_limpiarBnClassification(idx) {
   const rec = BN_CUR_RECS[idx];
   if (!rec) return;
+  // Limpiar memoria local y columnas raw
   ['_cuenta','_subcuenta','_categoria_gasto','_concepto','_propiedad',
    '_departamento','_encargado','_deducible','_reembolso','_reembolso_a',
    '_metodo_pago','_clasificado_por'].forEach(k => delete rec[k]);
+  rec.CUENTA = ''; rec.SUBCUENTA = ''; rec.CATEGORIA = ''; rec.CONCEPTO = '';
+  // Recalcular _tipo desde TIPO/signo de monto
+  const monto = Number(rec.Monto) || 0;
+  const _raw  = rec.TIPO || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
+  const _c    = bn_canon(_raw);
+  rec._tipo = _c.includes('egr') ? 'Egresos' : _c.includes('ing') ? 'Ingresos' : _raw;
+  // Re-render tarjeta
   const card = document.getElementById(`bn-card-${idx}`);
   if (card) card.outerHTML = bn_createCard(rec, idx);
+
+  // Persistir limpieza en Sheets (envía valores vacíos)
+  if (!rec.rowNum) return;
+  try {
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rowNum:        rec.rowNum,
+        clasificacion: {
+          cuenta:'', subcuenta:'', categoria_gasto:'', concepto:'',
+          propiedad:'', departamento:'', encargado:'',
+          deducible:'', reembolso:'', reembolso_a:'',
+          metodo_pago:'', clasificado_por:'',
+          validado: rec._validado || '',
+        }
+      }),
+    });
+    const result = await resp.json();
+    if (!result.ok) throw new Error(result.error || 'Error');
+  } catch (e) {
+    console.warn('Error limpiando clasificación:', e.message);
+    alert('Error al limpiar en Sheets: ' + e.message);
+  }
 }
 
 /** Renderiza las tarjetas de la página actual. */
@@ -3094,21 +3128,17 @@ async function bn_syncValidado(idx, checked) {
   const lbl = document.getElementById(`vhl-${ci}`);
   if (lbl) {
     lbl.textContent = checked ? '✓ Validado …' : 'Por validar …';
-    lbl.classList.toggle('on', checked);
+    lbl.style.color = checked ? '#16a34a' : 'var(--text-soft)';
   }
-  // Actualizar chip en header-chips (toggle inline)
+  // Aplicar/quitar contorno verde a la tarjeta
   const card = document.getElementById(`bn-card-${idx}`);
-  const chipsWrap = card?.querySelector('.header-chips');
-  if (chipsWrap) {
-    const existing = chipsWrap.querySelector('.info-chip-validado');
-    if (checked && !existing) {
-      const span = document.createElement('span');
-      span.className = 'info-chip info-chip-validado';
-      span.style.cssText = 'background:#16a34a;color:#fff;font-weight:700';
-      span.textContent = '✓ Validado';
-      chipsWrap.appendChild(span);
-    } else if (!checked && existing) {
-      existing.remove();
+  if (card) {
+    if (checked) {
+      card.style.boxShadow  = '0 0 0 3px #16a34a, 0 4px 12px rgba(22,163,74,.25)';
+      card.style.borderRadius = '12px';
+    } else {
+      card.style.boxShadow = '';
+      card.style.borderRadius = '';
     }
   }
 
