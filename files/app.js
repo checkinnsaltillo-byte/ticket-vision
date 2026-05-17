@@ -3072,12 +3072,41 @@ async function bn_limpiarBnClassification(idx) {
 }
 
 /** Renderiza las tarjetas de la página actual. */
+// Estado: vista cronológica activa/inactiva
+let BN_TIMELINE = false;
+
+/** Toggle handler para la vista cronológica. */
+function bn_toggleTimeline(checked) {
+  BN_TIMELINE = !!checked;
+  BN_CARD_PAGE = 1;
+  bn_renderCards();
+}
+
+/** Devuelve la fecha ISO YYYY-MM-DD de un registro o '' si no es válida. */
+function bn_recDateISO(r) {
+  return bn_formatDiaISO(r.Día || r.Dia || '');
+}
+
+/** Devuelve etiqueta humana para una fecha ISO YYYY-MM-DD ("Hoy", "Ayer", "5 de enero, 2025"). */
+function bn_dateHeaderLabel(iso) {
+  if (!iso) return 'Sin fecha';
+  const NOMBRES = ['enero','febrero','marzo','abril','mayo','junio',
+                   'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const [y, m, d] = iso.split('-').map(Number);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const recDate = new Date(y, m-1, d);
+  const diffDays = Math.round((today - recDate) / 86400000);
+  if (diffDays === 0)  return 'Hoy';
+  if (diffDays === 1)  return 'Ayer';
+  return `${d} de ${NOMBRES[m-1]}, ${y}`;
+}
+
 function bn_renderCards() {
   const container = document.getElementById('bn-cards-container');
   const pagEl     = document.getElementById('bn-card-pagination');
   if (!container) return;
 
-  const recs  = BN_CUR_RECS;
+  let recs  = BN_CUR_RECS;
   const total = recs.length;
 
   if (!total) {
@@ -3089,12 +3118,53 @@ function bn_renderCards() {
     return;
   }
 
+  // Vista cronológica: ordena por fecha desc y agrupa por día con encabezados
+  if (BN_TIMELINE) {
+    recs = recs.slice().sort((a, b) => {
+      const da = bn_recDateISO(a), db = bn_recDateISO(b);
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return db.localeCompare(da); // descendente
+    });
+    BN_CUR_RECS = recs; // mantener para clics, paginación etc.
+  }
+
   const totalPages = Math.max(1, Math.ceil(total / BN_CARD_SIZE));
   BN_CARD_PAGE     = Math.min(BN_CARD_PAGE, totalPages);
   const start      = (BN_CARD_PAGE - 1) * BN_CARD_SIZE;
   const pageRecs   = recs.slice(start, start + BN_CARD_SIZE);
 
-  container.innerHTML = pageRecs.map((rec, j) => bn_createCard(rec, start + j)).join('');
+  if (BN_TIMELINE) {
+    // Construir agrupado con encabezados de fecha + línea de tiempo
+    container.style.position = 'relative';
+    container.style.paddingLeft = '38px';
+    const lineHtml = `<div style="position:absolute;top:14px;bottom:14px;left:18px;width:3px;background:linear-gradient(180deg,#fcd34d,#f59e0b,#ea580c);border-radius:2px;opacity:.4;pointer-events:none;z-index:0"></div>`;
+
+    let lastKey = null;
+    const parts = [lineHtml];
+    pageRecs.forEach((rec, j) => {
+      const iso = bn_recDateISO(rec);
+      const key = iso || '__sin_fecha__';
+      if (key !== lastKey) {
+        const label = iso ? bn_dateHeaderLabel(iso) : 'Sin fecha';
+        parts.push(
+          `<div style="position:relative;margin:18px 0 10px;display:flex;align-items:center;gap:10px">
+             <div style="position:absolute;left:-26px;width:14px;height:14px;border-radius:50%;background:#ea580c;border:3px solid #fff;box-shadow:0 0 0 2px #ea580c;z-index:1"></div>
+             <span style="font-weight:800;font-size:13px;color:#ea580c;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</span>
+             <span style="flex:1;height:1px;background:linear-gradient(90deg,#fed7aa,transparent)"></span>
+           </div>`
+        );
+        lastKey = key;
+      }
+      parts.push(`<div style="position:relative;z-index:1">${bn_createCard(rec, start + j)}</div>`);
+    });
+    container.innerHTML = parts.join('');
+  } else {
+    container.style.position = '';
+    container.style.paddingLeft = '';
+    container.innerHTML = pageRecs.map((rec, j) => bn_createCard(rec, start + j)).join('');
+  }
 
   // Paginación
   if (!pagEl) return;
