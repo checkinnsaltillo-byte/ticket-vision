@@ -1884,8 +1884,8 @@ async function bn_loadData() {
     if (empty) empty.style.display='none';
     bn_populateFilters();
     bn_setDefaultFilters();
-    // Aplicar visibilidad de hamburguesa y resaltado del menú según tipo inicial
-    bn_setTipo(BN_TIPO);
+    // Inicializar categoría (renderiza chips de sub-opciones)
+    bn_setCat(BN_TIPO_PARENT[BN_TIPO] || 'pc');
   } catch(e) {
     if (lbl) lbl.textContent='Error al cargar';
     if (empty) { empty.style.display='flex'; if(emMsg) emMsg.textContent='Error: '+e.message; }
@@ -2479,21 +2479,90 @@ const BN_TIPO_PARENT = {
   A:'pres', AP:'pres',
 };
 
+// Sub-tabs por categoría — renderizadas como chips horizontales en row 2
+const BN_CAT_SUBS = {
+  pc: [
+    { id: 'PC',     label: '📋 Todos' },
+    { id: 'PC_I',   label: '💰 Ingresos' },
+    { id: 'PC_E',   label: '💸 Egresos' },
+    { id: 'PC_AC',  label: '📈 Activos' },
+    { id: 'PC_PA',  label: '📋 Pasivos' },
+    { id: 'PC_CA',  label: '💼 Capital' },
+  ],
+  reg: [
+    { id: 'T',  label: '📋 Todos' },
+    { id: 'I',  label: '💰 Ingresos' },
+    { id: 'E',  label: '💸 Egresos' },
+    { id: 'AC', label: '📈 Activos' },
+    { id: 'PA', label: '📋 Pasivos' },
+    { id: 'CA', label: '💼 Capital' },
+  ],
+  pres: [
+    { id: 'A',  label: '⚠️ Alertas' },
+    { id: 'AP', label: '🧮 Análisis por partida' },
+  ],
+};
+
+/** Cambia la categoría activa (Por clasificar / Registros / Control presup.).
+ *  Renderiza los chips de sub-opciones en la fila inferior y selecciona la
+ *  primera por defecto (o conserva la actual si pertenece a la categoría). */
+function bn_setCat(cat) {
+  // Resaltar el botón de categoría activo
+  ['pc','reg','pres'].forEach(k => {
+    const btn = document.getElementById('bn-cat-' + k);
+    if (!btn) return;
+    const active = (k === cat);
+    btn.style.background    = active ? '#ea580c' : '#fff';
+    btn.style.color         = active ? '#fff'    : '#374151';
+    btn.style.borderColor   = active ? '#ea580c' : '#e5e7eb';
+  });
+  // Renderizar chips de sub-opciones
+  const row = document.getElementById('bn-subcat-row');
+  if (row) {
+    const subs = BN_CAT_SUBS[cat] || [];
+    row.innerHTML = subs.map(s => `
+      <button class="bn-sub-chip" id="bn-tab-${s.id}" onclick="bn_setTipo('${s.id}')"
+              style="padding:6px 12px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-weight:600;font-size:12px;cursor:pointer;border-radius:999px;white-space:nowrap;flex-shrink:0">
+        ${esc(s.label)}
+      </button>`).join('');
+  }
+  // Si el tipo actual no pertenece a esta categoría, seleccionar la primera
+  if (BN_TIPO_PARENT[BN_TIPO] !== cat) {
+    const first = (BN_CAT_SUBS[cat] || [])[0];
+    if (first) bn_setTipo(first.id);
+  } else {
+    // Resaltar el chip activo
+    bn_setTipo(BN_TIPO);
+  }
+}
+
 function bn_setTipo(t) {
   BN_TIPO=t;
   const allTabs = ['T','E','I','AC','PA','CA','PC','PC_I','PC_E','PC_AC','PC_PA','PC_CA','A','F','AP'];
-  allTabs.forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
-  // Cerrar submenús abiertos
-  document.querySelectorAll('.bn-submenu').forEach(el => el.classList.add('hidden'));
-  // Resaltar el menú padre
-  ['pc','reg','pres','F'].forEach(k => {
-    let el;
-    if (k === 'F')  el = document.getElementById('bn-tab-F');
-    else            el = document.getElementById('bn-menu-' + k + '-trigger');
+  // Resaltar el chip activo (entre los chips horizontales del row 2)
+  allTabs.forEach(x => {
+    const el = document.getElementById('bn-tab-'+x);
     if (!el) return;
-    const isActive = (k === 'F'  && t === 'F') || (k === BN_TIPO_PARENT[t]);
-    if (k !== 'F') el.style.borderBottomColor = isActive ? 'var(--primary,#ea580c)' : 'transparent';
+    const active = (x === t);
+    el.classList.toggle('active', active);
+    if (el.classList.contains('bn-sub-chip')) {
+      el.style.background  = active ? '#ea580c' : '#fff';
+      el.style.color       = active ? '#fff'    : '#374151';
+      el.style.borderColor = active ? '#ea580c' : '#e5e7eb';
+    }
   });
+  // Sincronizar resaltado del botón de CATEGORÍA padre
+  const parent = BN_TIPO_PARENT[t];
+  if (parent) {
+    ['pc','reg','pres'].forEach(k => {
+      const btn = document.getElementById('bn-cat-' + k);
+      if (!btn) return;
+      const a = (k === parent);
+      btn.style.background  = a ? '#ea580c' : '#fff';
+      btn.style.color       = a ? '#fff'    : '#374151';
+      btn.style.borderColor = a ? '#ea580c' : '#e5e7eb';
+    });
+  }
 
   // Mostrar el botón hamburguesa solo cuando hay un tab seleccionado de los 3 menús
   // (Indicadores y la sección Análisis por partida no requieren filtros)
@@ -2727,21 +2796,18 @@ function bn_closeDetail() {
 }
 
 // ─── Indicadores — estado y filtros independientes ─────────────────────────
-const BN_IND_STATE = { anio: '', mes: '', initialized: false };
+const BN_IND_STATE = { anio: [], mes: [], initialized: false, chartType: 'line' };
 
-/** Pobla los selectores Año/Mes del modal Indicadores con todos los valores
- *  presentes en BN_RAW; preselecciona el año y mes en curso (la primera vez). */
+/** Renderiza los chips multi-select de Año/Mes en el modal de Indicadores. */
 function bn_indInitFilters() {
-  const selA = document.getElementById('bn-ind-anio');
-  const selM = document.getElementById('bn-ind-mes');
-  if (!selA || !selM) return;
-  const NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const wrapA = document.getElementById('bn-ind-anio-chips');
+  const wrapM = document.getElementById('bn-ind-mes-chips');
+  if (!wrapA || !wrapM) return;
+  const NOMBRES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const now = new Date();
   const curY = String(now.getFullYear());
   const curM = String(now.getMonth()+1).padStart(2,'0');
 
-  // Años únicos en BN_RAW + año en curso
   const years = new Set();
   for (const r of BN_RAW) {
     const iso = bn_formatDiaISO(r.Día || r.Dia || '');
@@ -2749,29 +2815,39 @@ function bn_indInitFilters() {
   }
   years.add(curY);
   const ys = [...years].sort((a,b) => b.localeCompare(a));
-  selA.innerHTML = `<option value="">Todos</option>` +
-    ys.map(y => `<option value="${y}">${y}</option>`).join('');
 
-  // 12 meses
-  selM.innerHTML = `<option value="">Todos</option>` +
-    Array.from({length:12},(_,i)=>{
-      const mm = String(i+1).padStart(2,'0');
-      return `<option value="${mm}">${NOMBRES[i]}</option>`;
-    }).join('');
-
-  // Defaults: año y mes en curso (primera vez al abrir)
   if (!BN_IND_STATE.initialized) {
-    BN_IND_STATE.anio = ys.includes(curY) ? curY : '';
-    BN_IND_STATE.mes  = curM;
+    BN_IND_STATE.anio = ys.includes(curY) ? [curY] : [];
+    BN_IND_STATE.mes  = [curM];
     BN_IND_STATE.initialized = true;
   }
-  selA.value = BN_IND_STATE.anio;
-  selM.value = BN_IND_STATE.mes;
+
+  const chip = (val, label, isSel, field) => `
+    <button onclick="bn_indToggleChip('${field}', '${val}')"
+            style="padding:5px 11px;border:1.5px solid ${isSel?'#ea580c':'#fcd34d'};background:${isSel?'#ea580c':'#fff'};color:${isSel?'#fff':'#92400e'};font-weight:600;font-size:12px;cursor:pointer;border-radius:999px;line-height:1;flex-shrink:0">
+      ${esc(label)}
+    </button>`;
+
+  wrapA.innerHTML = ys.map(y => chip(y, y, BN_IND_STATE.anio.includes(y), 'anio')).join('');
+  wrapM.innerHTML = Array.from({length:12},(_,i)=>{
+    const mm = String(i+1).padStart(2,'0');
+    return chip(mm, NOMBRES[i], BN_IND_STATE.mes.includes(mm), 'mes');
+  }).join('');
+
+  // Actualiza el label del botón de chart type
+  const btn = document.getElementById('bn-ind-chart-type-btn');
+  if (btn) btn.textContent = BN_IND_STATE.chartType === 'line' ? '📊 Cambiar a Barras' : '📈 Cambiar a Líneas';
 }
 
-function bn_indFilterChange() {
-  BN_IND_STATE.anio = document.getElementById('bn-ind-anio')?.value || '';
-  BN_IND_STATE.mes  = document.getElementById('bn-ind-mes')?.value  || '';
+function bn_indToggleChip(field, val) {
+  const arr = BN_IND_STATE[field];
+  const i = arr.indexOf(val);
+  if (i < 0) arr.push(val); else arr.splice(i, 1);
+  bn_renderInd();
+}
+
+function bn_indToggleChartType() {
+  BN_IND_STATE.chartType = BN_IND_STATE.chartType === 'line' ? 'bar' : 'line';
   bn_renderInd();
 }
 
@@ -2796,8 +2872,8 @@ function bn_renderInd() {
   bn_st.cuentaClasif = []; bn_st.subcuenta = []; bn_st.categoria = []; bn_st.concepto = [];
   bn_st.cuentaBan = []; bn_st.dia = []; bn_st.propiedad = []; bn_st.departamento = [];
   bn_st.deducible = []; bn_st.reembolso = []; bn_st.encargado = []; bn_st.q = '';
-  bn_st.anio = BN_IND_STATE.anio ? [BN_IND_STATE.anio] : [];
-  bn_st.mes  = BN_IND_STATE.mes  ? [BN_IND_STATE.mes]  : [];
+  bn_st.anio = BN_IND_STATE.anio.slice();
+  bn_st.mes  = BN_IND_STATE.mes.slice();
   BN_BYPASS_REVISADO = true;
   try {
     bn_renderIndInner();
@@ -2851,6 +2927,7 @@ function bn_renderIndInner() {
 function bn_drawTrend(canvasId,tipId,series) {
   const host=document.getElementById(canvasId), tip=document.getElementById(tipId);
   if(!host) return;
+  const chartType = (typeof BN_IND_STATE !== 'undefined' && BN_IND_STATE.chartType) || 'line';
   const rows=(series&&series.rows)?series.rows:[];
   const DPR=Math.max(1,Math.min(2,window.devicePixelRatio||1));
   const W=Math.max(320,host.parentElement?.clientWidth||600);
@@ -2861,7 +2938,10 @@ function bn_drawTrend(canvasId,tipId,series) {
   ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,Hcss);
   const pL=56,pR=16,pT=14,pB=44,plotW=W-pL-pR,plotH=Hcss-pT-pB;
   if(!rows.length){ ctx.font='12px system-ui'; ctx.fillStyle='rgba(0,0,0,.4)'; ctx.fillText('Sin datos.',pL,pT+20); return; }
-  const maxV=Math.max(1,...rows.map(r=>Math.max(r.I||0,r.E||0,Math.abs(r.U||0))));
+  // En modo barras stacked usar I+E como max (porque están apilados)
+  const maxV = chartType === 'bar'
+    ? Math.max(1, ...rows.map(r => (Math.abs(r.I||0) + Math.abs(r.E||0))))
+    : Math.max(1, ...rows.map(r => Math.max(r.I||0, r.E||0, Math.abs(r.U||0))));
   const xAt=(i)=>pL+(rows.length===1?plotW/2:i*(plotW/(rows.length-1)));
   const yAt=(v)=>pT+(1-(v/maxV))*plotH;
 
@@ -2890,12 +2970,40 @@ function bn_drawTrend(canvasId,tipId,series) {
     ctx.fillStyle=color;
     rows.forEach((r,i)=>{ ctx.beginPath(); ctx.arc(xAt(i),yAt(Math.max(0,r[key]||0)),3,0,Math.PI*2); ctx.fill(); });
   };
-  const drawLegend=()=>{
-    const leg=[['Ingresos','#10b981'],['Egresos','#f59e0b'],['Utilidad','#6366f1']];
-    ctx.font='11px system-ui'; ctx.textAlign='left';
-    leg.forEach(([nm,col],k)=>{ const ox=pL+k*110; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(ox,pT+10,4,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(0,0,0,.65)'; ctx.fillText(nm,ox+10,pT+14); });
+  // Bar mode: stacked I (verde) + E (amber) — Utilidad como línea encima
+  const drawBars = () => {
+    const n = rows.length;
+    const colW = Math.max(8, plotW / n * 0.62);
+    rows.forEach((r,i) => {
+      const cx = xAt(i);
+      const I = Math.abs(r.I||0), E = Math.abs(r.E||0);
+      const baseY = pT + plotH;
+      const hI = (I/maxV)*plotH;
+      const hE = (E/maxV)*plotH;
+      // Ingresos abajo
+      ctx.fillStyle='#10b981';
+      ctx.fillRect(cx - colW/2, baseY - hI, colW, hI);
+      // Egresos encima
+      ctx.fillStyle='#f59e0b';
+      ctx.fillRect(cx - colW/2, baseY - hI - hE, colW, hE);
+    });
+    // Línea de Utilidad
+    ctx.lineWidth=2.5; ctx.strokeStyle='#6366f1';
+    ctx.beginPath();
+    rows.forEach((r,i) => {
+      const v = Math.max(0, Number(r.U||0));
+      i===0 ? ctx.moveTo(xAt(i), yAt(v)) : ctx.lineTo(xAt(i), yAt(v));
+    });
+    ctx.stroke();
+    ctx.fillStyle='#6366f1';
+    rows.forEach((r,i) => { ctx.beginPath(); ctx.arc(xAt(i), yAt(Math.max(0,r.U||0)), 3.5, 0, Math.PI*2); ctx.fill(); });
   };
-  const redraw=()=>{ ctx.clearRect(0,0,W,Hcss); drawAxes(); drawSeries('I','#10b981'); drawSeries('E','#f59e0b'); drawSeries('U','#6366f1'); drawLegend(); };
+  const redraw=()=>{
+    ctx.clearRect(0,0,W,Hcss);
+    drawAxes();
+    if (chartType === 'bar') drawBars();
+    else { drawSeries('I','#10b981'); drawSeries('E','#f59e0b'); drawSeries('U','#6366f1'); }
+  };
   redraw();
 
   const near=(cx)=>{ const rect=host.getBoundingClientRect(),px=cx-rect.left; let b=0,bd=Infinity; for(let i=0;i<rows.length;i++){const d=Math.abs(px-xAt(i));if(d<bd){bd=d;b=i;}} return{idx:b,rect}; };
@@ -3215,7 +3323,12 @@ function bn_toggleBnClassify(idx) {
 
   document.getElementById('bn-classify-modal-resumen').innerHTML =
     bn_buildBnResumenTable(rec, idx);
-  document.getElementById('bn-classify-modal-body').innerHTML    = validarBlock + classifyHtml;
+  // Los botones Duda/Validado van al final, junto al botón Guardar cambios
+  document.getElementById('bn-classify-modal-body').innerHTML    = classifyHtml + `
+    <div style="display:flex;align-items:center;gap:18px;padding:14px;margin-top:10px;border:1px solid #e5e7eb;background:#f9fafb;border-radius:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px">${validarBlock.match(/<button id="validado-panel[\s\S]*?<\/button>/)?.[0] || ''}<span style="font-size:11px;color:#6b7280">Duda</span></div>
+      <div style="display:flex;align-items:center;gap:8px">${validarBlock.match(/<button id="revisado-panel[\s\S]*?<\/button>/)?.[0] || ''}<span style="font-size:11px;color:#6b7280">Validado</span></div>
+    </div>`;
 
   // Mostrar modal
   document.getElementById('bn-classify-overlay').classList.remove('hidden');
