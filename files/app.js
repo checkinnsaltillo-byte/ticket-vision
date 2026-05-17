@@ -1896,38 +1896,71 @@ function bn_populateFilters() {
   fill('bn-f-categoria', bn_uniq(BN_RAW.map(r=>bn_norm(r.CATEGORIA||''))),          'Todas');
   fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO ||''))),          'Todos');
 
-  // Filtro Mes-Año derivado del campo Día
-  const sel = document.getElementById('bn-f-mes-anio');
-  if (sel) {
-    const cur = sel.value;
-    const seen = new Map();
+  // Filtros Año y Mes derivados del campo Día
+  const NOMBRES_MES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                       'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+  // Año: años únicos presentes en los datos, descendente
+  const selA = document.getElementById('bn-f-anio');
+  if (selA) {
+    const cur = selA.value;
+    const years = new Set();
     for (const r of BN_RAW) {
-      const ma = bn_diaToMesAnio(r.Día || r.Dia || '');
-      if (ma && !seen.has(ma.key)) seen.set(ma.key, ma.label);
+      const iso = bn_formatDiaISO(r.Día || r.Dia || '');
+      if (/^\d{4}-/.test(iso)) years.add(iso.substring(0, 4));
     }
-    const keys = [...seen.keys()].sort((a,b) => b.localeCompare(a)); // más recientes primero
-    sel.innerHTML = `<option value="">Todos los meses</option>` +
-      keys.map(k => `<option value="${k}"${k===cur?' selected':''}>${esc(seen.get(k))}</option>`).join('');
+    const sorted = [...years].sort((a,b) => b.localeCompare(a));
+    selA.innerHTML = `<option value="">Todos</option>` +
+      sorted.map(y => `<option value="${y}"${y===cur?' selected':''}>${y}</option>`).join('');
+  }
+
+  // Mes: meses únicos presentes en los datos (o los 12 si están todos)
+  const selM = document.getElementById('bn-f-mes');
+  if (selM) {
+    const cur = selM.value;
+    const months = new Set();
+    for (const r of BN_RAW) {
+      const iso = bn_formatDiaISO(r.Día || r.Dia || '');
+      const m = iso.match(/^\d{4}-(\d{2})/);
+      if (m) months.add(m[1]);
+    }
+    const sorted = [...months].sort();
+    selM.innerHTML = `<option value="">Todos</option>` +
+      sorted.map(mm => `<option value="${mm}"${mm===cur?' selected':''}>${NOMBRES_MES[Number(mm)-1]}</option>`).join('');
   }
 }
 
 function bn_setDefaultFilters() {
-  bn_st.año=bn_st.mes='';
-  bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
+  // Año y Mes en curso por defecto (si están disponibles en los datos)
+  const now = new Date();
+  const curY = String(now.getFullYear());
+  const curM = String(now.getMonth() + 1).padStart(2, '0');
+
+  const selA = document.getElementById('bn-f-anio');
+  const selM = document.getElementById('bn-f-mes');
+  const hasOpt = (sel, val) => sel && Array.from(sel.options).some(o => o.value === val);
+
+  if (hasOpt(selA, curY)) { selA.value = curY; bn_st.año = curY; }
+  else                    { bn_st.año = ''; }
+  if (hasOpt(selM, curM)) { selM.value = curM; bn_st.mes = curM; }
+  else                    { bn_st.mes = ''; }
+
+  bn_st.cuenta = bn_st.categoria = bn_st.concepto = '';
 }
 
 function bn_onFilterChange() {
   bn_st.cuenta    = document.getElementById('bn-f-cuenta')?.value    || '';
   bn_st.categoria = document.getElementById('bn-f-categoria')?.value || '';
   bn_st.concepto  = document.getElementById('bn-f-concepto')?.value  || '';
-  bn_st.mesAnio   = document.getElementById('bn-f-mes-anio')?.value  || '';
+  bn_st.año       = document.getElementById('bn-f-anio')?.value      || '';
+  bn_st.mes       = document.getElementById('bn-f-mes')?.value       || '';
   bn_render();
 }
 
 function bn_clearFilters() {
-  ['bn-f-cuenta','bn-f-categoria','bn-f-concepto','bn-f-text','bn-f-mes-anio']
+  ['bn-f-cuenta','bn-f-categoria','bn-f-concepto','bn-f-text','bn-f-anio','bn-f-mes']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-  bn_st.año=bn_st.mes=bn_st.cuenta=bn_st.categoria=bn_st.concepto=bn_st.mesAnio='';
+  bn_st.año=bn_st.mes=bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
   bn_render();
 }
 
@@ -1952,9 +1985,12 @@ function bn_filteredRecs(tipo) {
     if(s.cuenta    && cta!==s.cuenta)    return false;
     if(s.categoria && cat!==s.categoria) return false;
     if(s.concepto  && con!==s.concepto)  return false;
-    if(s.mesAnio){
-      const ma = bn_diaToMesAnio(r.Día || r.Dia || '');
-      if(!ma || ma.key !== s.mesAnio) return false;
+    if(s.año || s.mes){
+      const iso = bn_formatDiaISO(r.Día || r.Dia || '');
+      const m   = iso.match(/^(\d{4})-(\d{2})/);
+      if(!m) return false;
+      if(s.año && m[1] !== s.año) return false;
+      if(s.mes && m[2] !== s.mes) return false;
     }
     if(tipo==='E'  && !t.includes('egr'))     return false;
     if(tipo==='I'  && !t.includes('ing'))     return false;

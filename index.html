@@ -345,13 +345,22 @@
         </div>
       </div>
 
-      <!-- Filtro Mes-Año (siempre visible, filtra por campo Día) -->
-      <div id="bn-mes-anio-row" style="display:flex;align-items:center;gap:10px;margin:10px 0 14px;flex-wrap:wrap">
-        <label for="bn-f-mes-anio" style="font-weight:700;color:var(--text-soft);font-size:12px;text-transform:uppercase;letter-spacing:.04em">📅 Período</label>
-        <select id="bn-f-mes-anio" class="field-select" onchange="bn_onFilterChange()"
-                style="min-width:200px;max-width:280px">
-          <option value="">Todos los meses</option>
-        </select>
+      <!-- Filtros Año y Mes (siempre visibles, derivados del campo Día) -->
+      <div id="bn-mes-anio-row" style="display:flex;align-items:center;gap:14px;margin:10px 0 14px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <label for="bn-f-anio" style="font-weight:700;color:var(--text-soft);font-size:12px;text-transform:uppercase;letter-spacing:.04em">📅 Año</label>
+          <select id="bn-f-anio" class="field-select" onchange="bn_onFilterChange()"
+                  style="min-width:120px;max-width:160px">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label for="bn-f-mes" style="font-weight:700;color:var(--text-soft);font-size:12px;text-transform:uppercase;letter-spacing:.04em">🗓️ Mes</label>
+          <select id="bn-f-mes" class="field-select" onchange="bn_onFilterChange()"
+                  style="min-width:160px;max-width:200px">
+            <option value="">Todos</option>
+          </select>
+        </div>
       </div>
 
       <!-- KPI cards (debajo de filtros, responden a selección de Año/Mes) -->
@@ -579,6 +588,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=65"></script>
+  <script src="app.js?v=66"></script>
 </body>
 </html>
