@@ -2358,7 +2358,7 @@ function bn_buildBnResumenTable(r, idx) {
     ['Departamento',     '_depto',  r._departamento !== undefined ? String(r._departamento) : '', false],
     ['Encargado',        '_enc',    r._encargado    || '',                                       false],
     ['Clasificado por',  '_clasif', r._clasificado_por || '',                                    false],
-    ['Validado',         '_valid',  r._validado     || '',                                       false],
+    ['Por validar',      '_valid',  r._validado === 'Sí' ? 'Sí' : '',                            false],
   ];
 
   return `<table>
@@ -2458,11 +2458,15 @@ function bn_createCard(rec, idx) {
 
   return `
     <div class="ticket-card" id="bn-card-${idx}" style="position:relative">
-      <!-- Botón Validar en esquina superior izquierda: ✓ validado / ⚠ por validar -->
-      <button id="bn-check-${ci}" onclick="event.stopPropagation();bn_syncValidado(${idx}, !this.dataset.checked || this.dataset.checked==='false')"
+      <!-- Botón "Por validar" en esquina superior izquierda. Activado = aviso amber + texto.
+           Desactivado = gris tenue, sin texto. Marca registros con duda para revisar después. -->
+      <button id="bn-check-${ci}" type="button"
+              onclick="event.stopPropagation();bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
               data-checked="${isValidado}"
-              title="${isValidado ? 'Validado' : 'Por validar'}"
-              style="position:absolute;top:8px;left:8px;width:28px;height:28px;border-radius:50%;border:2px solid ${isValidado ? '#16a34a' : '#f59e0b'};background:${isValidado ? '#16a34a' : '#fef3c7'};color:${isValidado ? '#fff' : '#b45309'};font-size:${isValidado ? '16px' : '15px'};font-weight:900;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center;padding:0">${isValidado ? '✓' : '⚠'}</button>
+              title="${isValidado ? 'Marcado: Por validar' : 'Marcar para revisar después'}"
+              style="position:absolute;top:8px;left:8px;display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 5px;border-radius:14px;border:1.5px solid ${isValidado ? '#f59e0b' : '#e5e7eb'};background:${isValidado ? '#fef3c7' : 'transparent'};color:${isValidado ? '#b45309' : '#cbd5e1'};font-size:11px;font-weight:700;line-height:1;cursor:pointer;z-index:3;opacity:${isValidado ? '1' : '.65'}">
+        <span style="font-size:13px;line-height:1">⚠</span>${isValidado ? '<span>Por validar</span>' : ''}
+      </button>
       <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})">
         <div class="ticket-info">
           <div class="header-chips" style="padding-left:40px">${tipoChip}${cuentaChip}${facChip}</div>
@@ -2541,6 +2545,17 @@ function bn_toggleBnClassify(idx) {
   ).replace('class="classify-panel hidden"', 'class="classify-panel"');
 
   // Inyectar Resumen + botón guardar Descripción + Clasificar en el modal
+  const valOn = rec._validado === 'Sí';
+  const validarBlock = `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#fef3c7' : '#fff'};border-radius:10px;margin-bottom:14px;cursor:pointer;user-select:none">
+      <input type="checkbox" id="validado-panel-${ci}" ${valOn ? 'checked' : ''}
+             onchange="bn_syncValidado(${idx}, this.checked)"
+             style="width:18px;height:18px;accent-color:#f59e0b;cursor:pointer">
+      <span style="font-size:18px;line-height:1;color:${valOn ? '#b45309' : '#9ca3af'}">⚠</span>
+      <span style="font-weight:700;color:${valOn ? '#b45309' : '#6b7280'};font-size:13px">Por validar</span>
+      <span style="font-size:11px;color:${valOn ? '#92400e' : '#9ca3af'}">— marca este registro si tienes dudas y quieres revisarlo después</span>
+    </label>`;
+
   document.getElementById('bn-classify-modal-resumen').innerHTML =
     bn_buildBnResumenTable(rec, idx) +
     `<div style="display:flex;justify-content:flex-end;margin-top:8px">
@@ -2550,7 +2565,7 @@ function bn_toggleBnClassify(idx) {
          💾 Guardar Descripción
        </button>
      </div>`;
-  document.getElementById('bn-classify-modal-body').innerHTML    = classifyHtml;
+  document.getElementById('bn-classify-modal-body').innerHTML    = validarBlock + classifyHtml;
 
   // Mostrar modal
   document.getElementById('bn-classify-overlay').classList.remove('hidden');
@@ -2881,12 +2896,6 @@ async function bn_saveBnClassification(idx) {
   rec._tipo     = _ct2.includes('egr') ? 'Egresos' : _ct2.includes('ing') ? 'Ingresos' :
                   _ct2.includes('activ') ? 'Activos' : _ct2.includes('pasiv') ? 'Pasivos' :
                   _ct2.includes('capital') ? 'Capital' : _rawT2;
-
-  // Auto-validar si la clasificación cubre al menos 2 niveles
-  // (cuenta, subcuenta, categoría, concepto). El usuario puede revertir manualmente.
-  const niveles = [rec._cuenta, rec._subcuenta, rec._categoria_gasto, rec._concepto]
-    .filter(v => v && String(v).trim().length > 0).length;
-  if (niveles >= 2) rec._validado = 'Sí';
 
   // Re-render tarjeta en el DOM y cerrar modal Clasificar
   const card = document.getElementById(`bn-card-${idx}`);
@@ -3249,17 +3258,20 @@ async function bn_syncValidado(idx, checked) {
   if (!rec) return;
   rec._validado = checked ? 'Sí' : 'No';
 
-  // Actualizar el botón palomita/aviso en esquina superior izquierda
+  // Botón de "Por validar" en esquina superior izquierda
   const btn = document.getElementById(`bn-check-${ci}`);
   if (btn) {
     btn.dataset.checked   = checked ? 'true' : 'false';
-    btn.textContent       = checked ? '✓' : '⚠';
-    btn.style.borderColor = checked ? '#16a34a' : '#f59e0b';
-    btn.style.background  = checked ? '#16a34a' : '#fef3c7';
-    btn.style.color       = checked ? '#fff'    : '#b45309';
-    btn.style.fontSize    = checked ? '16px'    : '15px';
-    btn.title             = checked ? 'Validado' : 'Por validar';
+    btn.style.borderColor = checked ? '#f59e0b' : '#e5e7eb';
+    btn.style.background  = checked ? '#fef3c7' : 'transparent';
+    btn.style.color       = checked ? '#b45309' : '#cbd5e1';
+    btn.style.opacity     = checked ? '1' : '.65';
+    btn.title             = checked ? 'Marcado: Por validar' : 'Marcar para revisar después';
+    btn.innerHTML         = `<span style="font-size:13px;line-height:1">⚠</span>${checked ? '<span>Por validar</span>' : ''}`;
   }
+  // Sincronizar checkbox dentro del panel Clasificar (si está abierto)
+  const panelChk = document.getElementById(`validado-panel-${ci}`);
+  if (panelChk) panelChk.checked = checked;
 
   if (!rec.rowNum) { if (lbl) lbl.textContent = checked ? '✓ Validado' : 'Por validar'; return; }
 
