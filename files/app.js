@@ -776,11 +776,11 @@ const PAYMENT_CHIP = {
   MASTERCARD:      { emoji: "💳", color: "#c0392b", bg: "#fde8e8" },
   AMEX:            { emoji: "💳", color: "#1f7a4c", bg: "#d1fae5" },
   TARJETA_DEBITO:  { emoji: "🏦", color: "#6d28d9", bg: "#ede9fe" },
-  TARJETA_CREDITO: { emoji: "💳", color: "#b45309", bg: "#fef3c7" },
+  TARJETA_CREDITO: { emoji: "💳", color: "#b45309", bg: "#e0e7ff" },
   TARJETA_BANCO:   { emoji: "🏦", color: "#1e40af", bg: "#dbeafe" },
   EFECTIVO:        { emoji: "💵", color: "#065f46", bg: "#d1fae5" },
   TRANSFERENCIA:   { emoji: "🔄", color: "#0e7490", bg: "#cffafe" },
-  RETIRO_SIN_TARJETA: { emoji: "🏧", color: "#b45309", bg: "#fef3c7" },
+  RETIRO_SIN_TARJETA: { emoji: "🏧", color: "#b45309", bg: "#e0e7ff" },
   QR:              { emoji: "📱", color: "#7c3aed", bg: "#f3e8ff" },
 };
 
@@ -1720,7 +1720,7 @@ function bn_formatDia(d) {
 function bn_buildBnCatalog() {
   const cat = {};
   for (const b of (BN_BUDGET || [])) {
-    const cuenta = (b.TIPO      || '').trim();
+    const cuenta = (b.CUENTA || b.TIPO || '').trim();
     const sub    = (b.SUBCUENTA || '').trim();
     const catg   = (b.CATEGORIA || '').trim();
     const con    = (b.CONCEPTO  || '').trim();
@@ -1765,9 +1765,9 @@ function bn_activateCatalog() {
   // Esto garantiza que TODOS los renglones de Presupuesto_sys sean buscables
   // independientemente de la estructura jerárquica del catálogo.
   SEARCH_INDEX = (BN_BUDGET || [])
-    .filter(b => b.TIPO)
+    .filter(b => (b.CUENTA || b.TIPO))
     .map(b => ({
-      cuenta:    (b.TIPO      || '').trim(),
+      cuenta:    (b.CUENTA    || b.TIPO || '').trim(),
       subcuenta: (b.SUBCUENTA || '').trim(),
       categoria: (b.CATEGORIA || '').trim(),
       concepto:  (b.CONCEPTO  || '').trim()
@@ -1832,7 +1832,7 @@ function bn_sevUnder(av) {
 function bn_buildBIdx(tipo) {
   const m1=new Map(), m2=new Map();
   for (const b of (BN_BUDGET||[])) {
-    const t = bn_canon(String(b.TIPO??b.CUENTA??''));
+    const t = bn_canon(String(b.CUENTA??b.TIPO??''));
     const isE = t.includes('egr')||t.includes('gasto');
     const isI = t.includes('ing')||t.includes('venta');
     if (t && tipo==='E' && !isE) continue;
@@ -2005,6 +2005,22 @@ const BN_PR_COLS = [
 
 let BN_PR_DRAFT = null; // copia local editable
 
+let BN_PR_ORIGINAL = null; // snapshot original para comparar y detectar cambios
+
+function bn_prSnapshot(arr) {
+  // Devuelve un string canónico para comparar igualdad estructural
+  return JSON.stringify((arr || []).map(r => {
+    const o = {};
+    BN_PR_COLS.forEach(c => o[c.key] = r[c.key] != null ? String(r[c.key]) : '');
+    return o;
+  }));
+}
+
+function bn_prHasChanges() {
+  if (!BN_PR_DRAFT || !BN_PR_ORIGINAL) return false;
+  return bn_prSnapshot(BN_PR_DRAFT) !== BN_PR_ORIGINAL;
+}
+
 function bn_renderPresupuesto() {
   const wrap = document.getElementById('bn-presupuesto');
   if (!wrap) return;
@@ -2016,45 +2032,73 @@ function bn_renderPresupuesto() {
       BN_PR_COLS.forEach(c => row[c.key] = b[c.key] !== undefined ? b[c.key] : '');
       return row;
     });
+    BN_PR_ORIGINAL = bn_prSnapshot(BN_PR_DRAFT);
   }
 
   const headersHtml = BN_PR_COLS.map(c =>
-    `<th style="padding:8px 10px;text-align:${c.numeric?'right':'left'};font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#374151;color:#fff;min-width:${c.width}px;white-space:nowrap">${esc(c.label)}</th>`
-  ).join('') + `<th style="padding:8px 10px;background:#374151;color:#fff;text-align:center;width:48px">✕</th>`;
+    `<th style="padding:8px 10px;text-align:${c.numeric?'right':'left'};font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#475569;color:#fff;min-width:${c.width}px;white-space:nowrap">${esc(c.label)}</th>`
+  ).join('') + `<th style="padding:8px 10px;background:#475569;color:#fff;text-align:center;width:48px">✕</th>`;
 
-  const rowsHtml = BN_PR_DRAFT.map((row, i) => {
+  // "+" insertor de fila (entre/al inicio/al final). Tono profesional gris/azul
+  const inserter = (insertAt) => `
+    <tr class="bn-pr-inserter">
+      <td colspan="${BN_PR_COLS.length + 1}" style="padding:0;text-align:center;height:6px;position:relative">
+        <button onclick="bn_prInsertRow(${insertAt})"
+                title="Insertar fila aquí"
+                style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+                       width:20px;height:20px;border-radius:50%;border:1.5px solid #94a3b8;
+                       background:#fff;color:#475569;font-weight:700;font-size:12px;line-height:1;
+                       cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+                       opacity:.5;transition:opacity .15s"
+                onmouseover="this.style.opacity='1'"
+                onmouseout="this.style.opacity='.5'">+</button>
+      </td>
+    </tr>`;
+
+  const dataRows = BN_PR_DRAFT.map((row, i) => {
     const cells = BN_PR_COLS.map(c => {
       const v = row[c.key] != null ? String(row[c.key]) : '';
       const ta = c.numeric ? 'text-align:right' : '';
       return `<td contenteditable="true" spellcheck="false"
                   data-row="${i}" data-key="${c.key}"
                   oninput="bn_prCellEdit(this)"
-                  style="padding:7px 9px;border-bottom:1px solid #f3f4f6;font-size:12px;min-width:${c.width}px;${ta};outline:none"
-                  onfocus="this.style.background='#fff7ed'"
+                  style="padding:7px 9px;border-bottom:1px solid #e2e8f0;font-size:12px;min-width:${c.width}px;${ta};outline:none"
+                  onfocus="this.style.background='#f1f5f9'"
                   onblur="this.style.background=''">${esc(v)}</td>`;
     }).join('');
-    return `<tr><${''}>${cells}<td style="padding:7px 9px;border-bottom:1px solid #f3f4f6;text-align:center">
+    return `<tr>${cells}<td style="padding:7px 9px;border-bottom:1px solid #e2e8f0;text-align:center">
               <button onclick="bn_prDeleteRow(${i})" title="Eliminar"
                       style="width:24px;height:24px;border:none;background:#fee2e2;color:#dc2626;border-radius:50%;font-weight:800;cursor:pointer">✕</button>
             </td></tr>`;
-  }).join('');
+  });
+
+  // Intercalar inserters: + entre cada par de filas, + al inicio, + al final
+  const bodyParts = [];
+  bodyParts.push(inserter(0));
+  for (let i = 0; i < dataRows.length; i++) {
+    bodyParts.push(dataRows[i]);
+    bodyParts.push(inserter(i + 1));
+  }
+  const rowsHtml = bodyParts.join('');
+
+  const hasChanges = bn_prHasChanges();
+  const actionsHtml = hasChanges ? `
+    <div style="display:flex;gap:8px;margin-left:auto">
+      <button onclick="bn_prResetDraft()" style="padding:8px 14px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">↺ Descartar cambios</button>
+      <button onclick="bn_prSaveConfirm()" style="padding:8px 16px;border:none;background:#1e40af;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">💾 Guardar cambios</button>
+    </div>` : '';
 
   wrap.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-      <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px">💰 Presupuesto <span style="font-size:12px;color:var(--text-soft,#6b7280);font-weight:400">— hoja Presupuesto_sys</span></h3>
-      <div style="display:flex;gap:8px;margin-left:auto">
-        <button onclick="bn_prAddRow()" style="padding:8px 14px;border:1.5px solid #ea580c;background:#fff;color:#ea580c;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">+ Agregar fila</button>
-        <button onclick="bn_prResetDraft()" style="padding:8px 14px;border:1.5px solid var(--border,#d1d5db);background:#fff;color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">↺ Descartar cambios</button>
-        <button onclick="bn_prSaveConfirm()" style="padding:8px 16px;border:none;background:#ea580c;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">💾 Guardar cambios</button>
-      </div>
+      <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px">💰 Presupuesto <span style="font-size:12px;color:var(--text-soft,#64748b);font-weight:400">— hoja Presupuesto_sys</span></h3>
+      ${actionsHtml}
     </div>
-    <div style="overflow-x:auto;border:1px solid var(--border,#e5e7eb);border-radius:10px">
+    <div style="overflow-x:auto;border:1px solid #cbd5e1;border-radius:10px">
       <table style="width:100%;border-collapse:collapse;background:var(--surface,#fff);font-size:12px">
         <thead><tr>${headersHtml}</tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
     </div>
-    <p style="margin-top:10px;font-size:11px;color:var(--text-soft,#6b7280);font-style:italic">Los cambios se aplican localmente al editar. Al presionar "Guardar cambios" se pedirá confirmación antes de sobreescribir la hoja.</p>
   `;
 }
 
@@ -2065,7 +2109,6 @@ function bn_prCellEdit(el) {
   let v = el.textContent.trim();
   const col = BN_PR_COLS.find(c => c.key === k);
   if (col?.numeric) {
-    // Permitir vacío o número
     if (v === '') v = '';
     else {
       const n = Number(v.replace(/[^0-9.\-]/g, ''));
@@ -2073,12 +2116,27 @@ function bn_prCellEdit(el) {
     }
   }
   BN_PR_DRAFT[i][k] = v;
+  // Si entró/salió del estado modificado, mostrar/ocultar acciones
+  bn_prRefreshActions();
 }
 
-function bn_prAddRow() {
+/** Re-renderiza sólo el contenedor de acciones si el estado dirty cambia. */
+function bn_prRefreshActions() {
+  // Para mantenerlo simple, re-renderiza todo cuando el estado dirty cambie
+  // pero sin perder el foco actual: comprobamos si toca alternar
+  const wrap = document.getElementById('bn-presupuesto');
+  if (!wrap) return;
+  const had = !!wrap.querySelector('button[onclick="bn_prSaveConfirm()"]');
+  const now = bn_prHasChanges();
+  if (had === now) return; // sin cambio en visibilidad
+  // Re-render conservando el caret no es trivial; aceptamos un re-render rápido
+  bn_renderPresupuesto();
+}
+
+function bn_prInsertRow(at) {
   const row = {};
   BN_PR_COLS.forEach(c => row[c.key] = '');
-  BN_PR_DRAFT.push(row);
+  BN_PR_DRAFT.splice(Math.max(0, Math.min(BN_PR_DRAFT.length, at)), 0, row);
   bn_renderPresupuesto();
 }
 
@@ -2090,6 +2148,7 @@ function bn_prDeleteRow(i) {
 function bn_prResetDraft() {
   if (!confirm('¿Descartar todos los cambios locales y volver al contenido original?')) return;
   BN_PR_DRAFT = null;
+  BN_PR_ORIGINAL = null;
   bn_renderPresupuesto();
 }
 
@@ -2114,6 +2173,7 @@ async function bn_prSaveConfirm() {
     BN_BUDGET = BN_PR_DRAFT.slice();
     bn_resetBCache();
     BN_PR_DRAFT = null;
+    BN_PR_ORIGINAL = null;
     bn_renderPresupuesto();
   } catch (e) {
     hideLoading?.();
@@ -2167,12 +2227,12 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
   const semIcon = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
   const pctTxt  = isFinite(av) ? (av * 100).toFixed(1) + '%' : '—';
   const fillW   = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
-  const bgRow = depth === 0 ? '#fef3c7' : depth === 1 ? '#fffbeb' : depth === 2 ? '#fefce8' : '#fff';
+  const bgRow = depth === 0 ? '#e0e7ff' : depth === 1 ? '#fffbeb' : depth === 2 ? '#fefce8' : '#fff';
   const wgt   = depth === 0 ? '800' : depth === 1 ? '700' : '600';
   const indent = depth * 22;
   const triangle = hasChildren
     ? `<span onclick="event.stopPropagation();bn_apToggleNode('${pathEnc}')"
-            style="color:#ea580c;cursor:pointer;flex-shrink:0;width:14px;text-align:center;user-select:none">${expanded ? '▼' : '▸'}</span>`
+            style="color:#1e40af;cursor:pointer;flex-shrink:0;width:14px;text-align:center;user-select:none">${expanded ? '▼' : '▸'}</span>`
     : `<span style="flex-shrink:0;width:14px"></span>`;
 
   rows.push(`
@@ -2289,7 +2349,7 @@ function bn_renderReviewPanel() {
       <!-- Barra stacked -->
       <div style="display:flex;height:14px;border-radius:999px;overflow:hidden;background:#e5e7eb;margin-bottom:14px">
         <div title="Validados: ${rev}" style="width:${pctRev.toFixed(2)}%;background:linear-gradient(90deg,#16a34a,#86efac);transition:width .3s"></div>
-        <div title="Pendientes: ${noRev}" style="width:${pctNoRev.toFixed(2)}%;background:linear-gradient(90deg,#fed7aa,#ea580c);transition:width .3s"></div>
+        <div title="Pendientes: ${noRev}" style="width:${pctNoRev.toFixed(2)}%;background:linear-gradient(90deg,#bfdbfe,#1e40af);transition:width .3s"></div>
       </div>
 
       <!-- Tarjetas REVISADOS / PENDIENTES -->
@@ -2301,9 +2361,9 @@ function bn_renderReviewPanel() {
           </div>
           <div style="font-size:20px;font-weight:800;color:#111827">${rev} (${pctRev.toFixed(0)}%)</div>
         </div>
-        <div style="background:#fff;border:1.5px solid #fed7aa;border-radius:10px;padding:12px 14px">
+        <div style="background:#fff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 14px">
           <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;margin-bottom:4px">
-            <span style="width:10px;height:10px;border-radius:50%;background:#ea580c;display:inline-block"></span>
+            <span style="width:10px;height:10px;border-radius:50%;background:#1e40af;display:inline-block"></span>
             Pendientes
           </div>
           <div style="font-size:20px;font-weight:800;color:#111827">${noRev} (${pctNoRev.toFixed(0)}%)</div>
@@ -2476,7 +2536,7 @@ function bn_mselFillOptions(field, options, labelFn) {
     <div style="padding:8px;border-bottom:1px solid #e5e7eb;background:#f9fafb;border-radius:6px 6px 0 0">
       <div style="display:flex;gap:6px;margin-bottom:${isNumeric ? '0' : '6px'}">
         <button type="button" onclick="bn_mselSelectAll('${field}')"
-                style="flex:1;padding:6px 10px;border:none;background:#ea580c;color:#fff;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
+                style="flex:1;padding:6px 10px;border:none;background:#1e40af;color:#fff;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
           ✓ Todos
         </button>
         <button type="button" onclick="bn_mselClear('${field}')"
@@ -2496,10 +2556,10 @@ function bn_mselFillOptions(field, options, labelFn) {
     return `<div onclick="bn_mselToggleOpt('${field}', this)"
                  data-value="${esc(opt)}"
                  data-selected="${isSel}"
-                 style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;font-size:13px;color:${isSel?'#ea580c':'#374151'};background:${isSel?'#fff7ed':'transparent'};font-weight:${isSel?'600':'400'};border-bottom:1px solid #f3f4f6"
+                 style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;font-size:13px;color:${isSel?'#1e40af':'#374151'};background:${isSel?'#eff6ff':'transparent'};font-weight:${isSel?'600':'400'};border-bottom:1px solid #f3f4f6"
                  onmouseover="if(this.dataset.selected!=='true')this.style.background='#f3f4f6'"
                  onmouseout="if(this.dataset.selected!=='true')this.style.background='transparent'">
-              <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;border:1.5px solid ${isSel?'#ea580c':'#d1d5db'};background:${isSel?'#ea580c':'#fff'};color:#fff;font-size:12px;font-weight:900;line-height:1;flex-shrink:0">${isSel?'✓':''}</span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;border:1.5px solid ${isSel?'#1e40af':'#d1d5db'};background:${isSel?'#1e40af':'#fff'};color:#fff;font-size:12px;font-weight:900;line-height:1;flex-shrink:0">${isSel?'✓':''}</span>
               <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(lbl)}</span>
             </div>`;
   }).join('');
@@ -2540,13 +2600,13 @@ function bn_mselToggleOpt(field, rowEl) {
   else            bn_st[field].splice(i, 1);
   // Actualizar visual de la fila
   rowEl.dataset.selected = willSelect ? 'true' : 'false';
-  rowEl.style.background = willSelect ? '#fff7ed' : 'transparent';
-  rowEl.style.color      = willSelect ? '#ea580c' : '#374151';
+  rowEl.style.background = willSelect ? '#eff6ff' : 'transparent';
+  rowEl.style.color      = willSelect ? '#1e40af' : '#374151';
   rowEl.style.fontWeight = willSelect ? '600' : '400';
   const check = rowEl.firstElementChild;
   if (check) {
-    check.style.borderColor = willSelect ? '#ea580c' : '#d1d5db';
-    check.style.background  = willSelect ? '#ea580c' : '#fff';
+    check.style.borderColor = willSelect ? '#1e40af' : '#d1d5db';
+    check.style.background  = willSelect ? '#1e40af' : '#fff';
     check.textContent       = willSelect ? '✓' : '';
   }
   bn_mselUpdateTrigger(field);
@@ -2566,7 +2626,7 @@ function bn_mselUpdateTrigger(field) {
   if (sel.length === 0)      lblEl.textContent = 'Todos';
   else if (sel.length === 1) lblEl.textContent = map[sel[0]] || sel[0];
   else                       lblEl.textContent = `${sel.length} seleccionados`;
-  lblEl.style.color = sel.length ? '#ea580c' : '';
+  lblEl.style.color = sel.length ? '#1e40af' : '';
   lblEl.style.fontWeight = sel.length ? '700' : '';
 }
 
@@ -2620,13 +2680,13 @@ function bn_mselSelectAll(field) {
   if (field === 'ind_mes')  BN_IND_STATE.mes  = bn_st[field];
   panel.querySelectorAll('[data-value]').forEach(el => {
     el.dataset.selected = 'true';
-    el.style.background = '#fff7ed';
-    el.style.color      = '#ea580c';
+    el.style.background = '#eff6ff';
+    el.style.color      = '#1e40af';
     el.style.fontWeight = '600';
     const check = el.firstElementChild;
     if (check) {
-      check.style.borderColor = '#ea580c';
-      check.style.background  = '#ea580c';
+      check.style.borderColor = '#1e40af';
+      check.style.background  = '#1e40af';
       check.textContent       = '✓';
     }
   });
@@ -2865,9 +2925,9 @@ function bn_setCat(cat) {
     const btn = document.getElementById('bn-cat-' + k);
     if (!btn) return;
     const active = (k === cat);
-    btn.style.background    = active ? '#ea580c' : '#fff';
+    btn.style.background    = active ? '#1e40af' : '#fff';
     btn.style.color         = active ? '#fff'    : '#374151';
-    btn.style.borderColor   = active ? '#ea580c' : '#e5e7eb';
+    btn.style.borderColor   = active ? '#1e40af' : '#e5e7eb';
   });
   // Renderizar chips de sub-opciones
   const row = document.getElementById('bn-subcat-row');
@@ -2899,9 +2959,9 @@ function bn_setTipo(t) {
     const active = (x === t);
     el.classList.toggle('active', active);
     if (el.classList.contains('bn-sub-chip')) {
-      el.style.background  = active ? '#ea580c' : '#fff';
+      el.style.background  = active ? '#1e40af' : '#fff';
       el.style.color       = active ? '#fff'    : '#374151';
-      el.style.borderColor = active ? '#ea580c' : '#e5e7eb';
+      el.style.borderColor = active ? '#1e40af' : '#e5e7eb';
     }
   });
   // Sincronizar resaltado del botón de CATEGORÍA padre
@@ -2911,9 +2971,9 @@ function bn_setTipo(t) {
       const btn = document.getElementById('bn-cat-' + k);
       if (!btn) return;
       const a = (k === parent);
-      btn.style.background  = a ? '#ea580c' : '#fff';
+      btn.style.background  = a ? '#1e40af' : '#fff';
       btn.style.color       = a ? '#fff'    : '#374151';
-      btn.style.borderColor = a ? '#ea580c' : '#e5e7eb';
+      btn.style.borderColor = a ? '#1e40af' : '#e5e7eb';
     });
   }
 
@@ -3427,7 +3487,7 @@ function bn_rrect(ctx,x,y,w,h,r) {
 // ─── Bancos: Card-based view ──────────────────────────────────────────────────
 let BN_CUR_RECS  = [];
 let BN_CARD_PAGE = 1;
-let BN_CARD_SIZE = 25;
+let BN_CARD_SIZE = 50;
 
 /** Cambia el tamaño de página (registros visibles por página). */
 function bn_setPageSize(v) {
@@ -3567,11 +3627,11 @@ function bn_createCard(rec, idx) {
     </div>` : '';
 
   return `
-    <div class="ticket-card" id="bn-card-${idx}" style="position:relative;margin-bottom:6px${(BN_SEL_MODE && rec.rowNum && BN_SEL.has(rec.rowNum)) ? ';box-shadow:0 0 0 3px #ea580c,0 4px 12px rgba(234,88,12,.25);border-radius:12px' : ''}">
+    <div class="ticket-card" id="bn-card-${idx}" style="position:relative;margin-bottom:6px${(BN_SEL_MODE && rec.rowNum && BN_SEL.has(rec.rowNum)) ? ';box-shadow:0 0 0 3px #1e40af,0 4px 12px rgba(234,88,12,.25);border-radius:12px' : ''}">
       ${BN_SEL_MODE ? `
       <!-- Checkbox de selección múltiple en esquina superior izquierda -->
       <label onclick="event.stopPropagation()"
-             style="position:absolute;top:8px;left:8px;z-index:4;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:1.5px solid ${BN_SEL.has(rec.rowNum)?'#ea580c':'#cbd5e1'};background:${BN_SEL.has(rec.rowNum)?'#ea580c':'#fff'};color:#fff;cursor:pointer;font-size:14px;font-weight:900;line-height:1">
+             style="position:absolute;top:8px;left:8px;z-index:4;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:1.5px solid ${BN_SEL.has(rec.rowNum)?'#1e40af':'#cbd5e1'};background:${BN_SEL.has(rec.rowNum)?'#1e40af':'#fff'};color:#fff;cursor:pointer;font-size:14px;font-weight:900;line-height:1">
         <input type="checkbox" ${BN_SEL.has(rec.rowNum)?'checked':''}
                onchange="bn_selToggle(${rec.rowNum||0}, this.checked); bn_renderCards()"
                style="display:none">
@@ -3582,7 +3642,7 @@ function bn_createCard(rec, idx) {
               onclick="event.stopPropagation();bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               data-checked="${isDuda}"
               title="${isDuda ? 'Marcado: Duda' : 'Duda'}"
-              style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#f59e0b' : '#e5e7eb'};background:${isDuda ? '#fef3c7' : '#f9fafb'};color:${isDuda ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
+              style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#f59e0b' : '#e5e7eb'};background:${isDuda ? '#e0e7ff' : '#f9fafb'};color:${isDuda ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
       <!-- Botón Validado (✓) debajo del Duda. Activo → registro sale de 'Por clasificar' -->
       <button id="bn-revisado-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
@@ -3672,7 +3732,7 @@ function bn_toggleBnClassify(idx) {
       <button id="validado-panel-${ci}" type="button" data-checked="${valOn}"
               onclick="bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               title="${valOn ? 'Marcado: Duda' : 'Duda'}"
-              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#fef3c7' : '#f9fafb'};color:${valOn ? '#b45309' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">?</button>
+              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#e0e7ff' : '#f9fafb'};color:${valOn ? '#b45309' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">?</button>
       <span style="font-size:12px;color:#6b7280">Marca este registro si tienes <b>dudas</b> y quieres revisarlo después</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -4171,7 +4231,7 @@ function bn_toggleSelMode() {
   const cnt  = document.getElementById('bn-sel-count');
   const bar  = document.getElementById('bn-bulk-bar');
   if (BN_SEL_MODE) {
-    btn.style.background = '#ea580c'; btn.style.color = '#fff'; btn.style.borderColor = '#ea580c';
+    btn.style.background = '#1e40af'; btn.style.color = '#fff'; btn.style.borderColor = '#1e40af';
     btn.innerHTML = '☑️ Seleccionando…';
     btnA?.classList.remove('hidden'); btnC?.classList.remove('hidden'); cnt?.classList.remove('hidden');
   } else {
@@ -4306,7 +4366,7 @@ function bn_bulkShowChoice(opts) {
   const itemsHtml = opts.items.map(it => `
     <button onclick="bn_bulkChoicePick(${JSON.stringify(it.value).replace(/"/g,'&quot;')})"
             style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border:1.5px solid #e5e7eb;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;color:#374151;transition:all .15s"
-            onmouseover="this.style.borderColor='#ea580c';this.style.background='#fff7ed'"
+            onmouseover="this.style.borderColor='#1e40af';this.style.background='#eff6ff'"
             onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
       ${it.icon ? `<span style="font-size:24px;line-height:1">${it.icon}</span>` : ''}
       <span style="text-align:center">${esc(it.label)}</span>
@@ -4315,7 +4375,7 @@ function bn_bulkShowChoice(opts) {
     <div style="background:#fff;border-radius:14px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;padding:20px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.4)" onclick="event.stopPropagation()">
       <button onclick="bn_bulkChoiceClose()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border:none;background:#f3f4f6;border-radius:50%;font-size:18px;cursor:pointer;color:#374151">✕</button>
       <h3 style="margin:0 0 6px;font-size:16px">${esc(opts.title)}</h3>
-      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#ea580c">${BN_SEL.size}</b> registros seleccionados</p>
+      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#1e40af">${BN_SEL.size}</b> registros seleccionados</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">${itemsHtml}</div>
     </div>`;
   // Guardar callback en el overlay
@@ -4350,12 +4410,12 @@ function bn_bulkShowDate(title, onPick) {
     <div style="background:#fff;border-radius:14px;width:100%;max-width:380px;padding:20px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.4)" onclick="event.stopPropagation()">
       <button onclick="document.getElementById('bn-bulk-date-overlay').remove()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border:none;background:#f3f4f6;border-radius:50%;font-size:18px;cursor:pointer;color:#374151">✕</button>
       <h3 style="margin:0 0 6px;font-size:16px">${esc(title)}</h3>
-      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#ea580c">${BN_SEL.size}</b> registros</p>
+      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#1e40af">${BN_SEL.size}</b> registros</p>
       <input type="date" id="bn-bulk-date-input" value="${iso}"
              style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:14px">
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button onclick="document.getElementById('bn-bulk-date-overlay').remove()" style="padding:8px 14px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">Cancelar</button>
-        <button onclick="bn_bulkDatePick()" style="padding:8px 14px;border:none;background:#ea580c;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">Aplicar</button>
+        <button onclick="bn_bulkDatePick()" style="padding:8px 14px;border:none;background:#1e40af;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">Aplicar</button>
       </div>
     </div>`;
   overlay._onPick = onPick;
@@ -4454,7 +4514,7 @@ function bn_bulkClasificar() {
   ).replace('class="classify-panel hidden"', 'class="classify-panel"');
 
   document.getElementById('bn-classify-modal-resumen').innerHTML =
-    `<div style="padding:14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;margin-bottom:8px">
+    `<div style="padding:14px;background:#e0e7ff;border:1px solid #f59e0b;border-radius:10px;margin-bottom:8px">
        <div style="font-weight:700;color:#b45309;font-size:14px;margin-bottom:4px">🏷️ Clasificación masiva</div>
        <div style="font-size:12px;color:#92400e">Se aplicará la clasificación que selecciones a <b>${BN_SEL.size}</b> registros marcados. La tabla de Resumen individual se omite por ser múltiples.</div>
      </div>`;
@@ -4592,9 +4652,9 @@ function bn_renderCards() {
         const label = iso ? bn_dateHeaderLabel(iso) : 'Sin fecha';
         parts.push(
           `<div style="margin:14px 0 8px;display:flex;align-items:center;gap:10px">
-             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ea580c;flex-shrink:0"></span>
-             <span style="font-weight:800;font-size:13px;color:#ea580c;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</span>
-             <span style="flex:1;height:1px;background:linear-gradient(90deg,#fed7aa,transparent)"></span>
+             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1e40af;flex-shrink:0"></span>
+             <span style="font-weight:800;font-size:13px;color:#1e40af;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</span>
+             <span style="flex:1;height:1px;background:linear-gradient(90deg,#bfdbfe,transparent)"></span>
            </div>`
         );
         lastKey = key;
@@ -4857,7 +4917,7 @@ async function bn_syncDuda(idx, checked) {
   if (btn) {
     btn.dataset.checked   = checked ? 'true' : 'false';
     btn.style.borderColor = checked ? '#f59e0b' : '#e5e7eb';
-    btn.style.background  = checked ? '#fef3c7' : '#f9fafb';
+    btn.style.background  = checked ? '#e0e7ff' : '#f9fafb';
     btn.style.color       = checked ? '#b45309' : '#d1d5db';
     btn.title             = checked ? 'Marcado: Duda' : 'Duda';
     btn.textContent       = '?';
@@ -4867,7 +4927,7 @@ async function bn_syncDuda(idx, checked) {
   if (panelBtn) {
     panelBtn.dataset.checked   = checked ? 'true' : 'false';
     panelBtn.style.borderColor = checked ? '#f59e0b' : '#e5e7eb';
-    panelBtn.style.background  = checked ? '#fef3c7' : '#f9fafb';
+    panelBtn.style.background  = checked ? '#e0e7ff' : '#f9fafb';
     panelBtn.style.color       = checked ? '#b45309' : '#d1d5db';
     panelBtn.title             = checked ? 'Marcado: Duda' : 'Duda';
     panelBtn.textContent       = '?';

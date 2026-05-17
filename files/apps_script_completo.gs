@@ -466,6 +466,9 @@ function getBancosData_(ss) {
 
   // ── Índices columnas PRESUPUESTO_SYS ────────────────────────────────────
   const iCuentaP = pickIdx(hP, ["CUENTA"]);
+  const iTipoP   = pickIdx(hP, ["TIPO"]);
+  const iPerP    = pickIdx(hP, ["PERIODICIDAD"]);
+  const iNatP    = pickIdx(hP, ["NATURALEZA"]);
   const iSubP    = pickIdx(hP, ["SUBCUENTA", "SUB-CUENTA"]);
   const iCatP    = pickIdx(hP, ["CATEGORIA", "CATEGORÍA"]);
   const iConP    = pickIdx(hP, ["CONCEPTO"]);
@@ -485,18 +488,21 @@ function getBancosData_(ss) {
       return !(cuenta.startsWith("SUBTOTAL") || cat.startsWith("SUBTOTAL") || con.startsWith("SUBTOTAL"));
     })
     .map(r => ({
-      TIPO:        iCuentaP >= 0 ? String(r[iCuentaP]).trim() : "",
-      SUBCUENTA:   iSubP    >= 0 ? String(r[iSubP]).trim()    : "",
-      CATEGORIA:   iCatP    >= 0 ? String(r[iCatP]).trim()    : "",
-      CONCEPTO:    iConP    >= 0 ? String(r[iConP]).trim()    : "",
-      DESCRIPCION: iDesP    >= 0 ? String(r[iDesP]).trim()    : "",
-      CONCATENADO: iConcP   >= 0 ? String(r[iConcP]).trim()   : "",
-      SEMANAL:     toNumber(iSemP >= 0 ? r[iSemP] : 0),
-      MENSUAL:     toNumber(iMenP >= 0 ? r[iMenP] : 0),
-      BIMESTRAL:   toNumber(iBimP >= 0 ? r[iBimP] : 0),
-      ANUAL:       toNumber(iAnuP >= 0 ? r[iAnuP] : 0)
+      CUENTA:       iCuentaP >= 0 ? String(r[iCuentaP]).trim() : "",
+      TIPO:         iTipoP   >= 0 ? String(r[iTipoP]).trim()   : "",
+      PERIODICIDAD: iPerP    >= 0 ? String(r[iPerP]).trim()    : "",
+      NATURALEZA:   iNatP    >= 0 ? String(r[iNatP]).trim()    : "",
+      SUBCUENTA:    iSubP    >= 0 ? String(r[iSubP]).trim()    : "",
+      CATEGORIA:    iCatP    >= 0 ? String(r[iCatP]).trim()    : "",
+      CONCEPTO:     iConP    >= 0 ? String(r[iConP]).trim()    : "",
+      DESCRIPCION:  iDesP    >= 0 ? String(r[iDesP]).trim()    : "",
+      CONCATENADO:  iConcP   >= 0 ? String(r[iConcP]).trim()   : "",
+      SEMANAL:      toNumber(iSemP >= 0 ? r[iSemP] : 0),
+      MENSUAL:      toNumber(iMenP >= 0 ? r[iMenP] : 0),
+      BIMESTRAL:    toNumber(iBimP >= 0 ? r[iBimP] : 0),
+      ANUAL:        toNumber(iAnuP >= 0 ? r[iAnuP] : 0)
     }))
-    .filter(r => r.TIPO);  // incluir todo renglón que tenga CUENTA
+    .filter(r => r.CUENTA);  // incluir todo renglón que tenga CUENTA
 
   return {
     ok: true,
