@@ -390,11 +390,22 @@
           <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
         </button>
 
-        <!-- Por clasificar (directo) -->
-        <button class="bn-menu-item" id="bn-tab-PC" onclick="bn_setTipo('PC')"
-                style="padding:10px 16px;border:none;background:transparent;font-weight:700;font-size:13px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text,#111827)">
-          🏷️ Por clasificar
-        </button>
+        <!-- Por clasificar (con submenú igual que Registros contables) -->
+        <div class="bn-menu-dropdown" style="position:relative" id="bn-menu-pc">
+          <button class="bn-menu-item" id="bn-menu-pc-trigger" onclick="bn_toggleMenu('pc')"
+                  style="padding:10px 16px;border:none;background:transparent;font-weight:700;font-size:13px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text,#111827);display:inline-flex;align-items:center;gap:4px">
+            🏷️ Por clasificar <span style="font-size:10px">▼</span>
+          </button>
+          <div class="bn-submenu hidden" id="bn-submenu-pc"
+               style="position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--border,#e5e7eb);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:6px;min-width:200px;z-index:100;margin-top:2px">
+            <button class="bn-sub-item" id="bn-tab-PC"     onclick="bn_setTipo('PC')"      style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">📋 Todos</button>
+            <button class="bn-sub-item" id="bn-tab-PC_I"   onclick="bn_setTipo('PC_I')"    style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">💰 Ingresos</button>
+            <button class="bn-sub-item" id="bn-tab-PC_E"   onclick="bn_setTipo('PC_E')"    style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">💸 Egresos</button>
+            <button class="bn-sub-item" id="bn-tab-PC_AC"  onclick="bn_setTipo('PC_AC')"   style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">📈 Activos</button>
+            <button class="bn-sub-item" id="bn-tab-PC_PA"  onclick="bn_setTipo('PC_PA')"   style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">📋 Pasivos</button>
+            <button class="bn-sub-item" id="bn-tab-PC_CA"  onclick="bn_setTipo('PC_CA')"   style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">💼 Capital</button>
+          </div>
+        </div>
 
         <!-- Registros contables (con submenú) -->
         <div class="bn-menu-dropdown" style="position:relative" id="bn-menu-reg">
@@ -595,6 +606,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=73"></script>
+  <script src="app.js?v=74"></script>
 </body>
 </html>

@@ -1904,14 +1904,33 @@ function bn_diaToMesAnio(d) {
 
 // Devuelve los registros que pertenecen a una pestaña (sin aplicar otros filtros).
 // Usado para poblar los dropdowns en función del menú seleccionado.
+/** ¿El tipo activo está bajo el menú 'Por clasificar'? */
+function bn_isPC(tipo) {
+  return tipo === 'PC' || (typeof tipo === 'string' && tipo.startsWith('PC_'));
+}
+/** Devuelve el sub-código de tipo (E, I, AC, PA, CA, T) para un PC_X. */
+function bn_subOfPC(tipo) {
+  if (tipo === 'PC' || tipo === 'PC_T') return 'T';
+  if (typeof tipo === 'string' && tipo.startsWith('PC_')) return tipo.slice(3);
+  return null;
+}
+
 function bn_recsForTipo(tipo) {
+  const isPC = bn_isPC(tipo);
+  const sub  = isPC ? bn_subOfPC(tipo) : null;
   return BN_RAW.filter(r => {
     const t = bn_canon(r._tipo || '');
-    // Revisado: PC = no revisados; Registros contables = solo revisados
     const revisado = r._revisado === 'Sí';
-    if (tipo === 'PC') {
+    if (isPC) {
       if (revisado) return false;
-    } else if (['T','E','I','AC','PA','CA'].includes(tipo)) {
+      if (sub === 'E'  && !t.includes('egr'))     return false;
+      if (sub === 'I'  && !t.includes('ing'))     return false;
+      if (sub === 'AC' && !t.includes('activ'))   return false;
+      if (sub === 'PA' && !t.includes('pasiv'))   return false;
+      if (sub === 'CA' && !t.includes('capital')) return false;
+      return true;
+    }
+    if (['T','E','I','AC','PA','CA'].includes(tipo)) {
       if (!revisado) return false;
     }
     if (tipo === 'E'  && !t.includes('egr'))     return false;
@@ -2203,22 +2222,22 @@ function bn_filteredRecs(tipo) {
   return BN_RAW.filter(r=>{
     const t = bn_canon(r._tipo || '');
 
-    // Nuevo criterio Revisado:
-    //  - 'PC' (Por clasificar) muestra TODOS los no-revisados (default state)
-    //  - Cualquier otro tab de Registros contables (T/E/I/AC/PA/CA) sólo muestra los revisados
+    // Revisado: PC/PC_X muestra solo NO revisados; T/E/I/AC/PA/CA solo revisados
     const revisado = r._revisado === 'Sí';
-    if (tipo === 'PC') {
+    const isPCTab  = bn_isPC(tipo);
+    if (isPCTab) {
       if (revisado) return false;
     } else if (['T','E','I','AC','PA','CA'].includes(tipo)) {
       if (!revisado) return false;
     }
 
-    // Filtros por pestaña (tipo) — clasificación contable
-    if(tipo==='E'  && !t.includes('egr'))     return false;
-    if(tipo==='I'  && !t.includes('ing'))     return false;
-    if(tipo==='AC' && !t.includes('activ'))   return false;
-    if(tipo==='PA' && !t.includes('pasiv'))   return false;
-    if(tipo==='CA' && !t.includes('capital')) return false;
+    // Filtros por sub-tipo (E/I/AC/PA/CA) tanto en Registros contables como en Por clasificar
+    const sub = isPCTab ? bn_subOfPC(tipo) : tipo;
+    if(sub==='E'  && !t.includes('egr'))     return false;
+    if(sub==='I'  && !t.includes('ing'))     return false;
+    if(sub==='AC' && !t.includes('activ'))   return false;
+    if(sub==='PA' && !t.includes('pasiv'))   return false;
+    if(sub==='CA' && !t.includes('capital')) return false;
 
     // Multi-selects: cada campo es array; vacío = todos
     for (const f of BN_MSEL_FIELDS) {
@@ -2306,26 +2325,23 @@ function bn_monthly() {
 // Mapa tipo → menú padre (para resaltar el menú correspondiente)
 const BN_TIPO_PARENT = {
   T:'reg', I:'reg', E:'reg', AC:'reg', PA:'reg', CA:'reg',
+  PC:'pc', PC_I:'pc', PC_E:'pc', PC_AC:'pc', PC_PA:'pc', PC_CA:'pc',
   A:'pres', AP:'pres',
 };
 
 function bn_setTipo(t) {
   BN_TIPO=t;
-  const allTabs = ['T','E','I','AC','PA','CA','PC','A','F','AP'];
+  const allTabs = ['T','E','I','AC','PA','CA','PC','PC_I','PC_E','PC_AC','PC_PA','PC_CA','A','F','AP'];
   allTabs.forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
   // Cerrar submenús abiertos
   document.querySelectorAll('.bn-submenu').forEach(el => el.classList.add('hidden'));
-  // Resaltar el menú padre (Por clasificar / Registros contables / Control presup. / Indicadores)
-  ['PC','reg','pres','F'].forEach(k => {
+  // Resaltar el menú padre
+  ['pc','reg','pres','F'].forEach(k => {
     let el;
-    if (k === 'PC')      el = document.getElementById('bn-tab-PC');
-    else if (k === 'F')  el = document.getElementById('bn-tab-F');
-    else                 el = document.getElementById('bn-menu-' + k + '-trigger');
+    if (k === 'F')  el = document.getElementById('bn-tab-F');
+    else            el = document.getElementById('bn-menu-' + k + '-trigger');
     if (!el) return;
-    const isActive = (k === 'PC' && t === 'PC')
-                  || (k === 'F'  && t === 'F')
-                  || (k === BN_TIPO_PARENT[t]);
-    // Solo aplicar underline a los menus no-Indicadores (que tiene su propio estilo)
+    const isActive = (k === 'F'  && t === 'F') || (k === BN_TIPO_PARENT[t]);
     if (k !== 'F') el.style.borderBottomColor = isActive ? 'var(--primary,#ea580c)' : 'transparent';
   });
 
@@ -2766,7 +2782,10 @@ function bn_createCard(rec, idx) {
   // _tipo siempre tiene un valor (cuenta clasificada o E/I por signo del monto)
   const tipoEfectivo = rec._tipo || (montoN < 0 ? 'Egresos' : montoN > 0 ? 'Ingresos' : '');
   const colorCls = CUENTA_COLOR_CLASS[tipoEfectivo] || '';
-  const clsCls   = colorCls ? `classified ${colorCls}` : '';
+  // En "Por clasificar" no aplicar color tenue al header ni al monto;
+  // el chip de CUENTA y la pestaña Clasificar conservan su color.
+  const inPC     = (typeof BN_TIPO !== 'undefined') && bn_isPC && bn_isPC(BN_TIPO);
+  const clsCls   = (colorCls && !inPC) ? `classified ${colorCls}` : '';
   const tip      = bn_canon(tipoEfectivo);
   const isE      = tip.includes('egr');
   const isI      = tip.includes('ing');

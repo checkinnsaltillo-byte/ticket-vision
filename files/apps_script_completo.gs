@@ -372,6 +372,23 @@ function getBancosData_(ss) {
     };
   }
 
+  // Asegurar que existan las columnas de clasificación (las crea al final si faltan)
+  (function ensureBancosCols(){
+    const REQ = ["CUENTA","SUBCUENTA","CATEGORIA","CONCEPTO","PROPIEDAD","DEPARTAMENTO",
+                 "ENCARGADO","DEDUCIBLE","REEMBOLSO","REEMBOLSO_A","METODO_PAGO",
+                 "CLASIFICADO_POR","FECHA_CLASIF","VALIDADO","REVISADO"];
+    const lastCol = shB.getLastColumn();
+    if (lastCol < 1) return;
+    const headers = shB.getRange(1, 1, 1, lastCol).getValues()[0]
+      .map(h => String(h ?? "").trim().toUpperCase());
+    REQ.forEach(name => {
+      if (!headers.includes(name)) {
+        const newCol = shB.getLastColumn() + 1;
+        shB.getRange(1, newCol).setValue(name);
+      }
+    });
+  })();
+
   const bancos        = shB.getDataRange().getValues();
   const bancosDisplay = shB.getDataRange().getDisplayValues(); // texto tal como aparece en celda
   const pres          = shP.getDataRange().getValues();
