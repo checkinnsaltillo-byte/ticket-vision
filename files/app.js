@@ -1955,10 +1955,34 @@ function bn_apBuildTree(records, levels) {
   return root;
 }
 
-/** Calcula presupuesto agregado de un nodo sumando los buds de todas las
- *  combinaciones (categoría, concepto) de los records que caen bajo el nodo. */
+/** Devuelve {value, cycle} para una entrada de Presupuesto.
+ *  Usa PERIODICIDAD si el cycle corresponde tiene valor; sino prioridad
+ *  Mensual → Bimestral → Semanal → Anual. */
+function bn_apBudgetForRow(b) {
+  const cycles = {
+    Mensual:   Math.abs(Number(b.MENSUAL)   || 0),
+    Bimestral: Math.abs(Number(b.BIMESTRAL) || 0),
+    Semanal:   Math.abs(Number(b.SEMANAL)   || 0),
+    Anual:     Math.abs(Number(b.ANUAL)     || 0),
+  };
+  const per = String(b.PERIODICIDAD || '').toLowerCase();
+  if (per.includes('mens')  && cycles.Mensual   > 0) return { value: cycles.Mensual,   cycle: 'Mensual' };
+  if (per.includes('bimes') && cycles.Bimestral > 0) return { value: cycles.Bimestral, cycle: 'Bimestral' };
+  if (per.includes('seman') && cycles.Semanal   > 0) return { value: cycles.Semanal,   cycle: 'Semanal' };
+  if (per.includes('anu')   && cycles.Anual     > 0) return { value: cycles.Anual,     cycle: 'Anual' };
+  // Fallback: prioridad
+  if (cycles.Mensual   > 0) return { value: cycles.Mensual,   cycle: 'Mensual' };
+  if (cycles.Bimestral > 0) return { value: cycles.Bimestral, cycle: 'Bimestral' };
+  if (cycles.Semanal   > 0) return { value: cycles.Semanal,   cycle: 'Semanal' };
+  if (cycles.Anual     > 0) return { value: cycles.Anual,     cycle: 'Anual' };
+  return { value: 0, cycle: '' };
+}
+
+/** Calcula presupuesto agregado de un nodo. Devuelve {value, cycle} donde
+ *  cycle es 'Mensual'/'Bimestral'/'Semanal'/'Anual' o '' si no aplica.
+ *  Si hay múltiples ciclos diferentes bajo el nodo, devuelve 'Mixto'. */
 function bn_apComputeBudget(node, records, ancestors, allLevels) {
-  // Filtra records que coinciden con todos los ancestros (key:level)
+  // Filtra records que coinciden con todos los ancestros
   let matchingRecs = records;
   for (let i = 0; i < ancestors.length; i++) {
     const lvl = allLevels[i], key = ancestors[i];
@@ -1967,24 +1991,29 @@ function bn_apComputeBudget(node, records, ancestors, allLevels) {
       return v === key;
     });
   }
-  // Tipo (E o I) a partir del primer registro coincidente
-  let tipoBud = 'E';
-  if (matchingRecs[0]) {
-    const t = bn_canon(matchingRecs[0]._tipo || '');
-    tipoBud = t.includes('ing') ? 'I' : 'E';
-  }
-  // Sumar presupuesto único por (cat||con) — evita doble conteo
+  // Sumar presupuesto único por (cat||con)
   const seen = new Set();
   let total = 0;
+  const cyclesSeen = new Set();
   for (const r of matchingRecs) {
     const cat = bn_norm(r.CATEGORIA || r._categoria_gasto || '');
     const con = bn_norm(r.CONCEPTO  || r._concepto || '');
     const k = cat + '||' + con;
     if (seen.has(k)) continue;
     seen.add(k);
-    total += Math.abs(bn_getBud(tipoBud, cat, con) || 0);
+    // Buscar la entrada del presupuesto que coincide con (cat, con)
+    const budRow = (BN_BUDGET || []).find(b =>
+      bn_norm(b.CATEGORIA || '') === cat && bn_norm(b.CONCEPTO || '') === con);
+    if (budRow) {
+      const { value, cycle } = bn_apBudgetForRow(budRow);
+      total += value;
+      if (cycle) cyclesSeen.add(cycle);
+    }
   }
-  return total;
+  let cycleLabel = '';
+  if (cyclesSeen.size === 1) cycleLabel = [...cyclesSeen][0];
+  else if (cyclesSeen.size > 1) cycleLabel = 'Mixto';
+  return { value: total, cycle: cycleLabel };
 }
 
 // ─── Presupuesto — editor de la hoja Presupuesto_sys ──────────────────────
@@ -2039,19 +2068,21 @@ function bn_renderPresupuesto() {
     `<th style="padding:8px 10px;text-align:${c.numeric?'right':'left'};font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#475569;color:#fff;min-width:${c.width}px;white-space:nowrap">${esc(c.label)}</th>`
   ).join('') + `<th style="padding:8px 10px;background:#475569;color:#fff;text-align:center;width:48px">✕</th>`;
 
-  // "+" insertor de fila (entre/al inicio/al final). Tono profesional gris/azul
+  // "+" insertor de fila — siempre visible, claro y prominente entre cada par de filas
   const inserter = (insertAt) => `
     <tr class="bn-pr-inserter">
-      <td colspan="${BN_PR_COLS.length + 1}" style="padding:0;text-align:center;height:6px;position:relative">
+      <td colspan="${BN_PR_COLS.length + 1}" style="padding:6px 0;text-align:center;background:#f8fafc;border-bottom:1px solid #e2e8f0;position:relative">
         <button onclick="bn_prInsertRow(${insertAt})"
                 title="Insertar fila aquí"
-                style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-                       width:20px;height:20px;border-radius:50%;border:1.5px solid #94a3b8;
-                       background:#fff;color:#475569;font-weight:700;font-size:12px;line-height:1;
-                       cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-                       opacity:.5;transition:opacity .15s"
-                onmouseover="this.style.opacity='1'"
-                onmouseout="this.style.opacity='.5'">+</button>
+                style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;
+                       border:1.5px dashed #2563eb;background:#eff6ff;color:#1d4ed8;
+                       font-weight:700;font-size:11px;line-height:1;border-radius:999px;cursor:pointer;
+                       transition:background .15s,transform .15s"
+                onmouseover="this.style.background='#dbeafe';this.style.transform='scale(1.05)'"
+                onmouseout="this.style.background='#eff6ff';this.style.transform=''">
+          <span style="font-size:14px;font-weight:900;line-height:1">+</span>
+          <span>Insertar fila</span>
+        </button>
       </td>
     </tr>`;
 
@@ -2221,7 +2252,7 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
   const hasChildren = node.children.size > 0;
   const expanded = hasChildren && bn_apIsExpanded(path, depth);
 
-  const bud = bn_apComputeBudget(node, records, ancestors, BN_AP_LEVELS);
+  const { value: bud, cycle: budCycle } = bn_apComputeBudget(node, records, ancestors, BN_AP_LEVELS);
   const av = bud > 0 ? node.total / bud : NaN;
   const color = !isFinite(av) ? '#9ca3af' : av > 1.10 ? '#dc2626' : av > 1.0 ? '#f59e0b' : '#16a34a';
   const semIcon = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
@@ -2246,6 +2277,7 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${node.count}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px">${bn_fmt$(node.total)}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?'#1d4ed8':'#9ca3af'}">${budCycle || '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;min-width:140px">
         ${bud > 0 ? `
           <div style="display:flex;align-items:center;gap:6px">
@@ -2301,6 +2333,7 @@ function bn_renderAP() {
           <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">#Mov</th>
           <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Monto</th>
           <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Presupuesto</th>
+          <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Ciclo</th>
           <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Avance</th>
           <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Sem.</th>
         </tr>
@@ -2311,7 +2344,7 @@ function bn_renderAP() {
           <td style="padding:10px">TOTAL GLOBAL</td>
           <td style="padding:10px;text-align:right">${tree.count}</td>
           <td style="padding:10px;text-align:right">${bn_fmt$(tree.total)}</td>
-          <td colspan="3"></td>
+          <td colspan="4"></td>
         </tr>
       </tfoot>
     </table>`;
@@ -2334,7 +2367,7 @@ function bn_renderReviewPanel() {
 
   panel.classList.remove('hidden');
   panel.innerHTML = `
-    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+    <div style="background:#fffbeb;border:1.5px solid #cbd5e1;border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.04)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px">
         <div>
           <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Estado de validación</div>
