@@ -2458,14 +2458,14 @@ function bn_createCard(rec, idx) {
 
   return `
     <div class="ticket-card" id="bn-card-${idx}" style="position:relative">
-      <!-- Palomita Validar en esquina superior izquierda -->
+      <!-- Botón Validar en esquina superior izquierda: ✓ validado / ⚠ por validar -->
       <button id="bn-check-${ci}" onclick="event.stopPropagation();bn_syncValidado(${idx}, !this.dataset.checked || this.dataset.checked==='false')"
               data-checked="${isValidado}"
               title="${isValidado ? 'Validado' : 'Por validar'}"
-              style="position:absolute;top:8px;left:8px;width:28px;height:28px;border-radius:50%;border:2px solid ${isValidado ? '#16a34a' : '#cbd5e1'};background:${isValidado ? '#16a34a' : '#fff'};color:${isValidado ? '#fff' : 'transparent'};font-size:16px;font-weight:900;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center;padding:0">✓</button>
+              style="position:absolute;top:8px;left:8px;width:28px;height:28px;border-radius:50%;border:2px solid ${isValidado ? '#16a34a' : '#f59e0b'};background:${isValidado ? '#16a34a' : '#fef3c7'};color:${isValidado ? '#fff' : '#b45309'};font-size:${isValidado ? '16px' : '15px'};font-weight:900;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center;padding:0">${isValidado ? '✓' : '⚠'}</button>
       <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})">
         <div class="ticket-info">
-          <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
+          <div class="header-chips" style="padding-left:40px">${tipoChip}${cuentaChip}${facChip}</div>
           <div class="ticket-store-row">
             <span class="ticket-store ${colorCls}">${esc(name)}</span>
           </div>
@@ -2797,6 +2797,12 @@ async function bn_saveBnClassification(idx) {
   rec._tipo     = _ct2.includes('egr') ? 'Egresos' : _ct2.includes('ing') ? 'Ingresos' :
                   _ct2.includes('activ') ? 'Activos' : _ct2.includes('pasiv') ? 'Pasivos' :
                   _ct2.includes('capital') ? 'Capital' : _rawT2;
+
+  // Auto-validar si la clasificación cubre al menos 2 niveles
+  // (cuenta, subcuenta, categoría, concepto). El usuario puede revertir manualmente.
+  const niveles = [rec._cuenta, rec._subcuenta, rec._categoria_gasto, rec._concepto]
+    .filter(v => v && String(v).trim().length > 0).length;
+  if (niveles >= 2) rec._validado = 'Sí';
 
   // Re-render tarjeta en el DOM y cerrar modal Clasificar
   const card = document.getElementById(`bn-card-${idx}`);
@@ -3158,13 +3164,15 @@ async function bn_syncValidado(idx, checked) {
   if (!rec) return;
   rec._validado = checked ? 'Sí' : 'No';
 
-  // Actualizar el botón palomita en esquina superior izquierda
+  // Actualizar el botón palomita/aviso en esquina superior izquierda
   const btn = document.getElementById(`bn-check-${ci}`);
   if (btn) {
-    btn.dataset.checked = checked ? 'true' : 'false';
-    btn.style.borderColor = checked ? '#16a34a' : '#cbd5e1';
-    btn.style.background  = checked ? '#16a34a' : '#fff';
-    btn.style.color       = checked ? '#fff'    : 'transparent';
+    btn.dataset.checked   = checked ? 'true' : 'false';
+    btn.textContent       = checked ? '✓' : '⚠';
+    btn.style.borderColor = checked ? '#16a34a' : '#f59e0b';
+    btn.style.background  = checked ? '#16a34a' : '#fef3c7';
+    btn.style.color       = checked ? '#fff'    : '#b45309';
+    btn.style.fontSize    = checked ? '16px'    : '15px';
     btn.title             = checked ? 'Validado' : 'Por validar';
   }
 
