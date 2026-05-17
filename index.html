@@ -304,10 +304,6 @@
       <!-- Top bar con Año / Mes siempre visibles (ARRIBA de los KPIs) -->
       <div class="db-top-bar" style="flex-wrap:wrap;gap:8px">
         <div class="db-top-left">
-          <button class="btn-filter-toggle" id="bn-btn-filter-toggle"
-                  onclick="bn_toggleFilters()" title="Más filtros">
-            <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
-          </button>
           <span class="db-todas-label" id="bn-status-label">Registros contables</span>
         </div>
         <div class="db-top-right">
@@ -397,8 +393,15 @@
         </div>
       </div>
 
-      <!-- Menú principal reestructurado: 3 menús + botón Indicadores -->
+      <!-- Menú principal reestructurado: hamburguesa + 3 menús -->
       <div class="bn-menu-bar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;padding:0;border-bottom:2px solid var(--border,#e5e7eb)">
+        <!-- Filtros (hamburguesa) — visible solo cuando hay un tab seleccionado de los 3 menús -->
+        <button class="btn-filter-toggle hidden" id="bn-btn-filter-toggle"
+                onclick="bn_toggleFilters()" title="Filtros disponibles"
+                style="margin:0 4px 0 0;flex-shrink:0">
+          <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
+        </button>
+
         <!-- Por clasificar (directo) -->
         <button class="bn-menu-item" id="bn-tab-PC" onclick="bn_setTipo('PC')"
                 style="padding:10px 16px;border:none;background:transparent;font-weight:700;font-size:13px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text,#111827)">
@@ -588,6 +591,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=66"></script>
+  <script src="app.js?v=67"></script>
 </body>
 </html>

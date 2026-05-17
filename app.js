@@ -1867,7 +1867,8 @@ async function bn_loadData() {
     if (empty) empty.style.display='none';
     bn_populateFilters();
     bn_setDefaultFilters();
-    bn_render();
+    // Aplicar visibilidad de hamburguesa y resaltado del menú según tipo inicial
+    bn_setTipo(BN_TIPO);
   } catch(e) {
     if (lbl) lbl.textContent='Error al cargar';
     if (empty) { empty.style.display='flex'; if(emMsg) emMsg.textContent='Error: '+e.message; }
@@ -1885,48 +1886,79 @@ function bn_diaToMesAnio(d) {
   return { key: `${y}-${m}`, label: `${NOMBRES[Number(m)-1]} ${y}` };
 }
 
+// Devuelve los registros que pertenecen a una pestaña (sin aplicar otros filtros).
+// Usado para poblar los dropdowns en función del menú seleccionado.
+function bn_recsForTipo(tipo) {
+  return BN_RAW.filter(r => {
+    const t = bn_canon(r._tipo || '');
+    if (tipo === 'E'  && !t.includes('egr'))     return false;
+    if (tipo === 'I'  && !t.includes('ing'))     return false;
+    if (tipo === 'AC' && !t.includes('activ'))   return false;
+    if (tipo === 'PA' && !t.includes('pasiv'))   return false;
+    if (tipo === 'CA' && !t.includes('capital')) return false;
+    if (tipo === 'PC') {
+      const hC = !!(r._cuenta          && String(r._cuenta).trim());
+      const hS = !!(r._subcuenta       && String(r._subcuenta).trim());
+      const hG = !!(r._categoria_gasto && String(r._categoria_gasto).trim());
+      if (hC && hS && hG) return false;
+    }
+    // 'T' (Todos), 'A' (Alertas), 'AP', 'F': no restringen
+    return true;
+  });
+}
+
 function bn_populateFilters() {
+  // Fuente de datos para los dropdowns: registros del tipo actual
+  const recs = (typeof BN_TIPO !== 'undefined' && BN_TIPO) ? bn_recsForTipo(BN_TIPO) : BN_RAW;
+
   const fill=(id,vals,blank)=>{
     const sel=document.getElementById(id); if(!sel) return;
     const cur=sel.value;
+    const opts = vals.filter(v => v); // descartar vacíos
+    // Preservar selección actual si sigue presente; si no, resetear a vacío
+    const keep = opts.includes(cur) ? cur : '';
+    sel.value = '';
     sel.innerHTML=`<option value="">${blank}</option>`+
-      vals.map(v=>`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');
+      opts.map(v=>`<option${v===keep?' selected':''}>${esc(v)}</option>`).join('');
+    if (keep) sel.value = keep;
   };
-  fill('bn-f-cuenta',    bn_uniq(BN_RAW.map(r=>bn_norm(r['Cuenta bancaria']||''))), 'Todas');
-  fill('bn-f-categoria', bn_uniq(BN_RAW.map(r=>bn_norm(r.CATEGORIA||''))),          'Todas');
-  fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO ||''))),          'Todos');
+  fill('bn-f-cuenta',    bn_uniq(recs.map(r=>bn_norm(r['Cuenta bancaria']||''))), 'Todas');
+  fill('bn-f-categoria', bn_uniq(recs.map(r=>bn_norm(r.CATEGORIA||''))),          'Todas');
+  fill('bn-f-concepto',  bn_uniq(recs.map(r=>bn_norm(r.CONCEPTO ||''))),          'Todos');
 
   // Filtros Año y Mes derivados del campo Día
   const NOMBRES_MES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-  // Año: años únicos presentes en los datos, descendente
+  // Año: años únicos presentes en los registros del tipo activo, descendente
   const selA = document.getElementById('bn-f-anio');
   if (selA) {
     const cur = selA.value;
     const years = new Set();
-    for (const r of BN_RAW) {
+    for (const r of recs) {
       const iso = bn_formatDiaISO(r.Día || r.Dia || '');
       if (/^\d{4}-/.test(iso)) years.add(iso.substring(0, 4));
     }
     const sorted = [...years].sort((a,b) => b.localeCompare(a));
+    const keep = sorted.includes(cur) ? cur : '';
     selA.innerHTML = `<option value="">Todos</option>` +
-      sorted.map(y => `<option value="${y}"${y===cur?' selected':''}>${y}</option>`).join('');
+      sorted.map(y => `<option value="${y}"${y===keep?' selected':''}>${y}</option>`).join('');
   }
 
-  // Mes: meses únicos presentes en los datos (o los 12 si están todos)
+  // Mes: meses únicos presentes en los registros del tipo activo
   const selM = document.getElementById('bn-f-mes');
   if (selM) {
     const cur = selM.value;
     const months = new Set();
-    for (const r of BN_RAW) {
+    for (const r of recs) {
       const iso = bn_formatDiaISO(r.Día || r.Dia || '');
       const m = iso.match(/^\d{4}-(\d{2})/);
       if (m) months.add(m[1]);
     }
     const sorted = [...months].sort();
+    const keep = sorted.includes(cur) ? cur : '';
     selM.innerHTML = `<option value="">Todos</option>` +
-      sorted.map(mm => `<option value="${mm}"${mm===cur?' selected':''}>${NOMBRES_MES[Number(mm)-1]}</option>`).join('');
+      sorted.map(mm => `<option value="${mm}"${mm===keep?' selected':''}>${NOMBRES_MES[Number(mm)-1]}</option>`).join('');
   }
 }
 
@@ -2088,6 +2120,17 @@ function bn_setTipo(t) {
     // Solo aplicar underline a los menus no-Indicadores (que tiene su propio estilo)
     if (k !== 'F') el.style.borderBottomColor = isActive ? 'var(--primary,#ea580c)' : 'transparent';
   });
+
+  // Mostrar el botón hamburguesa solo cuando hay un tab seleccionado de los 3 menús
+  // (Indicadores y la sección Análisis por partida no requieren filtros)
+  const ham      = document.getElementById('bn-btn-filter-toggle');
+  const filterBd = document.getElementById('bn-filter-body');
+  const hideFilters = (t === 'F' || t === 'AP');
+  if (ham) ham.classList.toggle('hidden', hideFilters);
+  if (hideFilters && filterBd) filterBd.classList.add('hidden');
+
+  // Repoblar dropdowns en función del tipo activo (contexto)
+  bn_populateFilters();
   bn_render();
 }
 
