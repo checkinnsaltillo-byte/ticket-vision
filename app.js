@@ -1859,6 +1859,7 @@ async function bn_loadData() {
       rec._categoria_gasto = rec.CATEGORIA || '';
       rec._concepto        = rec.CONCEPTO  || '';
       rec._validado        = rec.VALIDADO  || '';
+      rec._revisado        = rec.REVISADO  || '';
       // _tipo: clasificación manual > TIPO del sheet > signo del monto
       // Normalizar a forma canónica para que CUENTA_COLOR_CLASS y filtros funcionen
       const monto = Number(rec.Monto) || 0;
@@ -1906,18 +1907,18 @@ function bn_diaToMesAnio(d) {
 function bn_recsForTipo(tipo) {
   return BN_RAW.filter(r => {
     const t = bn_canon(r._tipo || '');
+    // Revisado: PC = no revisados; Registros contables = solo revisados
+    const revisado = r._revisado === 'Sí';
+    if (tipo === 'PC') {
+      if (revisado) return false;
+    } else if (['T','E','I','AC','PA','CA'].includes(tipo)) {
+      if (!revisado) return false;
+    }
     if (tipo === 'E'  && !t.includes('egr'))     return false;
     if (tipo === 'I'  && !t.includes('ing'))     return false;
     if (tipo === 'AC' && !t.includes('activ'))   return false;
     if (tipo === 'PA' && !t.includes('pasiv'))   return false;
     if (tipo === 'CA' && !t.includes('capital')) return false;
-    if (tipo === 'PC') {
-      const hC = !!(r._cuenta          && String(r._cuenta).trim());
-      const hS = !!(r._subcuenta       && String(r._subcuenta).trim());
-      const hG = !!(r._categoria_gasto && String(r._categoria_gasto).trim());
-      if (hC && hS && hG) return false;
-    }
-    // 'T' (Todos), 'A' (Alertas), 'AP', 'F': no restringen
     return true;
   });
 }
@@ -2202,18 +2203,22 @@ function bn_filteredRecs(tipo) {
   return BN_RAW.filter(r=>{
     const t = bn_canon(r._tipo || '');
 
-    // Filtros por pestaña (tipo)
+    // Nuevo criterio Revisado:
+    //  - 'PC' (Por clasificar) muestra TODOS los no-revisados (default state)
+    //  - Cualquier otro tab de Registros contables (T/E/I/AC/PA/CA) sólo muestra los revisados
+    const revisado = r._revisado === 'Sí';
+    if (tipo === 'PC') {
+      if (revisado) return false;
+    } else if (['T','E','I','AC','PA','CA'].includes(tipo)) {
+      if (!revisado) return false;
+    }
+
+    // Filtros por pestaña (tipo) — clasificación contable
     if(tipo==='E'  && !t.includes('egr'))     return false;
     if(tipo==='I'  && !t.includes('ing'))     return false;
     if(tipo==='AC' && !t.includes('activ'))   return false;
     if(tipo==='PA' && !t.includes('pasiv'))   return false;
     if(tipo==='CA' && !t.includes('capital')) return false;
-    if(tipo==='PC') {
-      const hC = !!(r._cuenta          && String(r._cuenta).trim());
-      const hS = !!(r._subcuenta       && String(r._subcuenta).trim());
-      const hG = !!(r._categoria_gasto && String(r._categoria_gasto).trim());
-      if (hC && hS && hG) return false;
-    }
 
     // Multi-selects: cada campo es array; vacío = todos
     for (const f of BN_MSEL_FIELDS) {
@@ -2731,6 +2736,7 @@ function bn_buildBnResumenTable(r, idx) {
     ['Encargado',        '_enc',    r._encargado    || '',                                       false],
     ['Clasificado por',  '_clasif', r._clasificado_por || '',                                    false],
     ['Por validar',      '_valid',  r._validado === 'Sí' ? 'Sí' : '',                            false],
+    ['Revisado',         '_revis',  r._revisado === 'Sí' ? 'Sí' : '',                            false],
   ];
 
   return `<table>
@@ -2792,6 +2798,7 @@ function bn_createCard(rec, idx) {
     ? `<span class="info-chip" style="color:var(--success,#16a34a)">🧾 ${esc(fac)}</span>`
     : `<span class="info-chip" style="color:var(--text-soft);font-style:italic">Sin factura</span>`;
   const isValidado = rec._validado === 'Sí';
+  const isRevisado = rec._revisado === 'Sí';
 
   // Tab Clasificar
   const isClasif  = !!rec._cuenta;
@@ -2837,6 +2844,12 @@ function bn_createCard(rec, idx) {
               data-checked="${isValidado}"
               title="${isValidado ? 'Marcado: Por validar' : 'Marcar para revisar después'}"
               style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isValidado ? '#f59e0b' : '#e5e7eb'};background:${isValidado ? '#fef3c7' : '#f9fafb'};color:${isValidado ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">⚠</button>
+      <!-- Botón Revisado (✓) debajo del Validar. Activo → registro sale de 'Por clasificar' -->
+      <button id="bn-revisado-${ci}" type="button"
+              onclick="event.stopPropagation();bn_syncRevisado(${idx}, !(this.dataset.checked==='true'))"
+              data-checked="${isRevisado}"
+              title="${isRevisado ? 'Revisado — disponible en Registros contables' : 'Marcar como Revisado (sale de Por clasificar)'}"
+              style="position:absolute;top:40px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isRevisado ? '#16a34a' : '#e5e7eb'};background:${isRevisado ? '#16a34a' : '#f9fafb'};color:${isRevisado ? '#fff' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">✓</button>
       <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})">
         <div class="ticket-info">
           <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
@@ -2914,15 +2927,23 @@ function bn_toggleBnClassify(idx) {
     'Fecha del registro'
   ).replace('class="classify-panel hidden"', 'class="classify-panel"');
 
-  // Inyectar Resumen + Clasificar en el modal. Botón "Por validar" estilo header.
+  // Inyectar Resumen + Clasificar en el modal. Botones estilo encabezado.
   const valOn = rec._validado === 'Sí';
+  const revOn = rec._revisado === 'Sí';
   const validarBlock = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <button id="validado-panel-${ci}" type="button" data-checked="${valOn}"
               onclick="bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
               title="${valOn ? 'Marcado: Por validar' : 'Marcar para revisar después'}"
               style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#fef3c7' : '#f9fafb'};color:${valOn ? '#b45309' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">⚠</button>
       <span style="font-size:12px;color:#6b7280">Marca este registro si tienes dudas y quieres revisarlo después</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button id="revisado-panel-${ci}" type="button" data-checked="${revOn}"
+              onclick="bn_syncRevisado(${idx}, !(this.dataset.checked==='true'))"
+              title="${revOn ? 'Revisado — disponible en Registros contables' : 'Marcar como Revisado'}"
+              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${revOn ? '#16a34a' : '#e5e7eb'};background:${revOn ? '#16a34a' : '#f9fafb'};color:${revOn ? '#fff' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">✓</button>
+      <span style="font-size:12px;color:#6b7280">Marca como <b>Revisado</b> para que el registro salga de <i>Por clasificar</i> y aparezca en su sección de Registros contables</span>
     </div>`;
 
   document.getElementById('bn-classify-modal-resumen').innerHTML =
@@ -3321,6 +3342,7 @@ async function bn_saveBnClassification(idx) {
           metodo_pago:     c.metodo_pago_clasif,
           clasificado_por: currentUser || '',
           validado:        rec._validado || '',
+          revisado:        rec._revisado || '',
         }
       }),
     });
@@ -3769,6 +3791,67 @@ async function bn_syncValidado(idx, checked) {
   } catch (e) {
     console.warn('Error guardando Validado:', e.message);
     if (lbl) lbl.textContent = (checked ? '✓ Validado' : 'Por validar') + ' ⚠';
+  }
+}
+
+// Toggle 'Revisado' (✓) — al activar, el registro sale de 'Por clasificar'
+// y aparece en su sección de Registros contables. Persiste a Sheets.
+async function bn_syncRevisado(idx, checked) {
+  const ci  = 'bn' + idx;
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  rec._revisado = checked ? 'Sí' : 'No';
+
+  // Actualizar botón en encabezado
+  const btn = document.getElementById(`bn-revisado-${ci}`);
+  if (btn) {
+    btn.dataset.checked   = checked ? 'true' : 'false';
+    btn.style.borderColor = checked ? '#16a34a' : '#e5e7eb';
+    btn.style.background  = checked ? '#16a34a' : '#f9fafb';
+    btn.style.color       = checked ? '#fff'    : '#d1d5db';
+    btn.title             = checked ? 'Revisado — disponible en Registros contables' : 'Marcar como Revisado (sale de Por clasificar)';
+  }
+  // Sincronizar botón dentro del panel Clasificar si está abierto
+  const panelBtn = document.getElementById(`revisado-panel-${ci}`);
+  if (panelBtn) {
+    panelBtn.dataset.checked   = checked ? 'true' : 'false';
+    panelBtn.style.borderColor = checked ? '#16a34a' : '#e5e7eb';
+    panelBtn.style.background  = checked ? '#16a34a' : '#f9fafb';
+    panelBtn.style.color       = checked ? '#fff'    : '#d1d5db';
+    panelBtn.title             = checked ? 'Revisado' : 'Marcar como Revisado';
+  }
+
+  if (!rec.rowNum) return;
+  try {
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rowNum:        rec.rowNum,
+        revisado_edit: true,
+        revisado:      rec._revisado,
+        clasificacion: {
+          cuenta:          rec._cuenta          || '',
+          subcuenta:       rec._subcuenta       || '',
+          categoria_gasto: rec._categoria_gasto || '',
+          concepto:        rec._concepto        || '',
+          propiedad:       rec._propiedad       || '',
+          departamento:    rec._departamento    || '',
+          encargado:       rec._encargado       || '',
+          deducible:       rec._deducible       || 'No',
+          reembolso:       rec._reembolso       || 'No',
+          reembolso_a:     rec._reembolso_a     || '',
+          metodo_pago:     rec._metodo_pago     || '',
+          clasificado_por: currentUser || '',
+          validado:        rec._validado        || '',
+          revisado:        rec._revisado        || '',
+        }
+      }),
+    });
+    const result = await resp.json();
+    if (!result.ok) throw new Error(result.error || 'Error');
+  } catch (e) {
+    console.warn('Error guardando Revisado:', e.message);
   }
 }
 

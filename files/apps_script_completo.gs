@@ -396,6 +396,7 @@ function getBancosData_(ss) {
   const iFac    = pickIdx(hB, ["FACTURA"]);
   const iMon    = pickIdx(hB, ["MONTO"]);
   const iVal    = pickIdx(hB, ["VALIDADO"]);
+  const iRev    = pickIdx(hB, ["REVISADO"]);
 
   const records = bancos.slice(1)
     .map((r, i) => ({ r, rowNum: i + 2 }))           // rowNum = índice real en Sheet (antes del filter)
@@ -420,6 +421,7 @@ function getBancosData_(ss) {
         FacturaFlag:       String(factura).trim().length ? "Con factura" : "Sin factura",
         Monto:             toNumber(iMon >= 0 ? r[iMon] : 0),
         VALIDADO:          iVal    >= 0 ? String(r[iVal]).trim()    : "",
+        REVISADO:          iRev    >= 0 ? String(r[iRev]).trim()    : "",
         rowNum:            rowNum
       };
     });
@@ -499,7 +501,7 @@ function saveBancoClasificacion_(ss, data) {
     "PROPIEDAD", "DEPARTAMENTO", "ENCARGADO",
     "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A",
     "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF",
-    "VALIDADO"
+    "VALIDADO", "REVISADO"
   ];
 
   // Leer el header actual
@@ -545,6 +547,14 @@ function saveBancoClasificacion_(ss, data) {
     return { ok: true, rowNum: rowNum, validado: data.validado };
   }
 
+  // Si el frontend pidió actualizar Revisado, escribirlo en columna REVISADO
+  // sin sobrescribir el resto de la clasificación (return temprano)
+  if (data.revisado_edit) {
+    const revCol = getOrCreateCol("REVISADO");
+    if (revCol) shB.getRange(rowNum, revCol).setValue(data.revisado || "");
+    return { ok: true, rowNum: rowNum, revisado: data.revisado };
+  }
+
   writeCell("CUENTA",          c.cuenta          || "");
   writeCell("SUBCUENTA",       c.subcuenta        || "");
   writeCell("CATEGORIA",       c.categoria_gasto  || "");
@@ -559,6 +569,7 @@ function saveBancoClasificacion_(ss, data) {
   writeCell("CLASIFICADO_POR", c.clasificado_por  || "");
   writeCell("FECHA_CLASIF",    now);
   if (c.validado !== undefined) writeCell("VALIDADO", c.validado || "");
+  if (c.revisado !== undefined) writeCell("REVISADO", c.revisado || "");
 
   return { ok: true, rowNum: rowNum, columnsWritten: CLASIF_COLS.length };
 }
