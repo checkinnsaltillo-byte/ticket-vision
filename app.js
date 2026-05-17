@@ -318,6 +318,25 @@ function handleLoginKey(e) {
   if (e.key === "Enter") tryLogin();
 }
 
+// ─── Modo nocturno ─────────────────────────────────────────────────────
+function toggleDarkMode() {
+  document.body.classList.toggle('dark');
+  const on = document.body.classList.contains('dark');
+  try { localStorage.setItem('bn-dark', on ? '1' : '0'); } catch(_) {}
+  const btn = document.getElementById('btn-dark-mode');
+  if (btn) btn.textContent = on ? '☀️' : '🌙';
+}
+// Restaurar preferencia al cargar
+try {
+  if (localStorage.getItem('bn-dark') === '1') {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.body.classList.add('dark');
+      const btn = document.getElementById('btn-dark-mode');
+      if (btn) btn.textContent = '☀️';
+    });
+  }
+} catch(_) {}
+
 window.addEventListener("DOMContentLoaded", () => {
   // ── LOGIN — cambiar DEV_MODE a false para reactivar contraseña ──────────
   const DEV_MODE = true;
@@ -2130,7 +2149,7 @@ function bn_mselFillOptions(field, options, labelFn) {
     return;
   }
 
-  const isNumeric = (field === 'dia' || field === 'departamento' || field === 'anio');
+  const isNumeric = (field === 'dia' || field === 'departamento' || field === 'anio' || field === 'ind_anio');
   const header = `
     <div style="padding:8px;border-bottom:1px solid #e5e7eb;background:#f9fafb;border-radius:6px 6px 0 0">
       <div style="display:flex;gap:6px;margin-bottom:${isNumeric ? '0' : '6px'}">
@@ -2183,6 +2202,12 @@ function bn_mselFilterOpts(field, q) {
   });
 }
 
+/** Selecciona qué renderizador llamar según el contexto del campo. */
+function bn_mselRerender(field) {
+  if (field === 'ind_anio' || field === 'ind_mes') bn_renderInd();
+  else bn_render();
+}
+
 /** Click en una opción del multi-select — alterna selección. */
 function bn_mselToggleOpt(field, rowEl) {
   if (!Array.isArray(bn_st[field])) bn_st[field] = [];
@@ -2203,7 +2228,7 @@ function bn_mselToggleOpt(field, rowEl) {
     check.textContent       = willSelect ? '✓' : '';
   }
   bn_mselUpdateTrigger(field);
-  bn_render();
+  bn_mselRerender(field);
 }
 
 /** Actualiza el texto del trigger según selección. */
@@ -2259,7 +2284,7 @@ function bn_mselChange(field, cb) {
   if (cb.checked && i < 0) bn_st[field].push(v);
   else if (!cb.checked && i >= 0) bn_st[field].splice(i, 1);
   bn_mselUpdateTrigger(field);
-  bn_render();
+  bn_mselRerender(field);
 }
 
 /** Botón "Todos" — marca todas las opciones disponibles. */
@@ -2268,6 +2293,9 @@ function bn_mselSelectAll(field) {
   if (!panel) return;
   const all = Array.from(panel.querySelectorAll('[data-value]')).map(el => el.dataset.value);
   bn_st[field] = all.slice();
+  // Mantener sincronización con BN_IND_STATE
+  if (field === 'ind_anio') BN_IND_STATE.anio = bn_st[field];
+  if (field === 'ind_mes')  BN_IND_STATE.mes  = bn_st[field];
   panel.querySelectorAll('[data-value]').forEach(el => {
     el.dataset.selected = 'true';
     el.style.background = '#fff7ed';
@@ -2281,13 +2309,15 @@ function bn_mselSelectAll(field) {
     }
   });
   bn_mselUpdateTrigger(field);
-  bn_render();
+  bn_mselRerender(field);
 }
 
 /** Botón "Limpiar" — desmarca todo. */
 function bn_mselClear(field) {
   const panel = document.getElementById(`bn-msel-panel-${field}`);
   bn_st[field] = [];
+  if (field === 'ind_anio') BN_IND_STATE.anio = bn_st[field];
+  if (field === 'ind_mes')  BN_IND_STATE.mes  = bn_st[field];
   if (panel) {
     panel.querySelectorAll('[data-value]').forEach(el => {
       el.dataset.selected = 'false';
@@ -2303,7 +2333,7 @@ function bn_mselClear(field) {
     });
   }
   bn_mselUpdateTrigger(field);
-  bn_render();
+  bn_mselRerender(field);
 }
 
 // Cerrar paneles al hacer clic fuera
@@ -2798,12 +2828,11 @@ function bn_closeDetail() {
 // ─── Indicadores — estado y filtros independientes ─────────────────────────
 const BN_IND_STATE = { anio: [], mes: [], initialized: false, chartType: 'line' };
 
-/** Renderiza los chips multi-select de Año/Mes en el modal de Indicadores. */
+/** Inicializa los dropdowns multi-select Año/Mes del modal Indicadores
+ *  reutilizando la lógica de bn_mselFillOptions. */
 function bn_indInitFilters() {
-  const wrapA = document.getElementById('bn-ind-anio-chips');
-  const wrapM = document.getElementById('bn-ind-mes-chips');
-  if (!wrapA || !wrapM) return;
-  const NOMBRES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const now = new Date();
   const curY = String(now.getFullYear());
   const curM = String(now.getMonth()+1).padStart(2,'0');
@@ -2822,28 +2851,18 @@ function bn_indInitFilters() {
     BN_IND_STATE.initialized = true;
   }
 
-  const chip = (val, label, isSel, field) => `
-    <button onclick="bn_indToggleChip('${field}', '${val}')"
-            style="padding:5px 11px;border:1.5px solid ${isSel?'#ea580c':'#fcd34d'};background:${isSel?'#ea580c':'#fff'};color:${isSel?'#fff':'#92400e'};font-weight:600;font-size:12px;cursor:pointer;border-radius:999px;line-height:1;flex-shrink:0">
-      ${esc(label)}
-    </button>`;
-
-  wrapA.innerHTML = ys.map(y => chip(y, y, BN_IND_STATE.anio.includes(y), 'anio')).join('');
-  wrapM.innerHTML = Array.from({length:12},(_,i)=>{
-    const mm = String(i+1).padStart(2,'0');
-    return chip(mm, NOMBRES[i], BN_IND_STATE.mes.includes(mm), 'mes');
-  }).join('');
+  // bn_mselFillOptions usa bn_st[field] como estado; necesitamos exponer
+  // BN_IND_STATE.anio/mes bajo claves ind_anio/ind_mes en bn_st temporalmente.
+  bn_st.ind_anio = BN_IND_STATE.anio;
+  bn_st.ind_mes  = BN_IND_STATE.mes;
+  bn_mselFillOptions('ind_anio', ys);
+  bn_mselFillOptions('ind_mes',
+    Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0')),
+    mm => NOMBRES[Number(mm)-1]);
 
   // Actualiza el label del botón de chart type
   const btn = document.getElementById('bn-ind-chart-type-btn');
   if (btn) btn.textContent = BN_IND_STATE.chartType === 'line' ? '📊 Cambiar a Barras' : '📈 Cambiar a Líneas';
-}
-
-function bn_indToggleChip(field, val) {
-  const arr = BN_IND_STATE[field];
-  const i = arr.indexOf(val);
-  if (i < 0) arr.push(val); else arr.splice(i, 1);
-  bn_renderInd();
 }
 
 function bn_indToggleChartType() {
@@ -3214,7 +3233,7 @@ function bn_createCard(rec, idx) {
     </div>` : '';
 
   return `
-    <div class="ticket-card" id="bn-card-${idx}" style="position:relative${(BN_SEL_MODE && rec.rowNum && BN_SEL.has(rec.rowNum)) ? ';box-shadow:0 0 0 3px #ea580c,0 4px 12px rgba(234,88,12,.25);border-radius:12px' : ''}">
+    <div class="ticket-card" id="bn-card-${idx}" style="position:relative;margin-bottom:6px${(BN_SEL_MODE && rec.rowNum && BN_SEL.has(rec.rowNum)) ? ';box-shadow:0 0 0 3px #ea580c,0 4px 12px rgba(234,88,12,.25);border-radius:12px' : ''}">
       ${BN_SEL_MODE ? `
       <!-- Checkbox de selección múltiple en esquina superior izquierda -->
       <label onclick="event.stopPropagation()"

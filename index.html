@@ -5,6 +5,78 @@
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Ticket Vision | Check Inn Saltillo</title>
   <link rel="stylesheet" href="styles.css?v=53">
+  <style>
+    /* ─── Modo nocturno ─────────────────────────────────────────────── */
+    body.dark {
+      background: #0f172a !important;
+      color: #e5e7eb !important;
+      --text: #e5e7eb;
+      --text-soft: #9ca3af;
+      --border: #334155;
+      --surface: #1e293b;
+      --primary-dark: #fdba74;
+    }
+    body.dark .ticket-card,
+    body.dark .bn-msel-panel,
+    body.dark #bn-classify-modal,
+    body.dark #bn-indicadores-modal,
+    body.dark .confirm-modal,
+    body.dark .upload-sheet,
+    body.dark #bn-bulk-bar,
+    body.dark .db-filter-panel,
+    body.dark .bn-table-wrap,
+    body.dark .bn-modal {
+      background: #1e293b !important;
+      color: #e5e7eb !important;
+      border-color: #334155 !important;
+    }
+    body.dark .ticket-card-header {
+      background: #1e293b !important;
+      color: #e5e7eb !important;
+      border-color: #334155 !important;
+    }
+    body.dark .ticket-card-header.ci-egresos  { background: linear-gradient(180deg,#3f1d1d,#5b2222) !important; }
+    body.dark .ticket-card-header.ci-ingresos { background: linear-gradient(180deg,#14352a,#1a4a37) !important; }
+    body.dark .ticket-card-header.ci-activos  { background: linear-gradient(180deg,#1e293b,#1e3a8a) !important; }
+    body.dark .ticket-card-header.ci-pasivos  { background: linear-gradient(180deg,#2d1b4e,#4c1d95) !important; }
+    body.dark .ticket-card-header.ci-capital  { background: linear-gradient(180deg,#1f2937,#374151) !important; }
+    body.dark .ticket-store, body.dark .ticket-meta,
+    body.dark .info-chip, body.dark .product-summary,
+    body.dark .resumen-key, body.dark th, body.dark td,
+    body.dark .bn-kpi-label, body.dark .bn-kpi-value, body.dark .bn-kpi-sub,
+    body.dark .bn-section-title, body.dark .db-todas-label,
+    body.dark .db-count-inline, body.dark label, body.dark h1, body.dark h2, body.dark h3, body.dark p,
+    body.dark .field-select, body.dark input, body.dark select, body.dark textarea {
+      color: #e5e7eb !important;
+    }
+    body.dark .info-chip:not(.ci-egresos):not(.ci-ingresos):not(.ci-activos):not(.ci-pasivos):not(.ci-capital) {
+      background: #334155 !important;
+      color: #e5e7eb !important;
+    }
+    body.dark .field-select, body.dark input, body.dark select, body.dark textarea,
+    body.dark .db-search-input {
+      background: #0f172a !important;
+      border-color: #334155 !important;
+      color: #e5e7eb !important;
+    }
+    body.dark .bn-kpi-card { background: #1e293b !important; border-color: #334155 !important; }
+    body.dark .bn-menu-bar { border-color: #334155 !important; }
+    body.dark .bn-cat-btn, body.dark .bn-sub-chip {
+      background: #1e293b !important;
+      color: #e5e7eb !important;
+      border-color: #334155 !important;
+    }
+    body.dark .bn-cat-btn.active, body.dark .bn-sub-chip.active {
+      background: #ea580c !important;
+      color: #fff !important;
+      border-color: #ea580c !important;
+    }
+    body.dark .app-header { background: #1e293b !important; border-color: #334155 !important; }
+    body.dark #btn-dark-mode { color: #fcd34d; }
+    body.dark .bn-msel-trigger { background: #0f172a !important; color: #e5e7eb !important; border-color: #334155 !important; }
+    body.dark table th, body.dark table td { border-color: #334155 !important; }
+    body.dark .classify-tab { background: #1e293b !important; color: #e5e7eb !important; }
+  </style>
 </head>
 <body>
 
@@ -76,6 +148,8 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
+        <button id="btn-dark-mode" onclick="toggleDarkMode()" title="Alternar tema claro/oscuro"
+                style="width:34px;height:34px;border:none;background:transparent;cursor:pointer;font-size:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center">🌙</button>
         <span class="user-badge" id="current-user-badge"></span>
         <div class="header-badge">v16.0</div>
       </div>
@@ -406,36 +480,36 @@
       <!-- Vista cronológica siempre activa; toggle oculto -->
       <div id="bn-timeline-toggle-row" class="hidden"></div>
 
+      <!-- Panel "Estado de validación" (sólo en tabs Por Clasificar) -->
+      <div id="bn-review-panel" class="hidden" style="margin:8px 0 12px"></div>
+
       <!-- Toggle de selección múltiple + selector de tamaño de página -->
       <div style="display:flex;align-items:center;gap:10px;margin:6px 0 12px;flex-wrap:wrap">
         <button id="bn-btn-sel-mode" type="button" onclick="bn_toggleSelMode()"
-                style="padding:7px 14px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                style="padding:7px 14px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
           ☑️ Seleccionar
         </button>
         <div style="display:inline-flex;align-items:center;gap:6px">
-          <label for="bn-page-size" style="font-size:11px;color:#6b7280;font-weight:600">Mostrar</label>
+          <label for="bn-page-size" style="font-size:11px;color:var(--text-soft,#6b7280);font-weight:600">Mostrar</label>
           <select id="bn-page-size" onchange="bn_setPageSize(this.value)"
-                  style="padding:7px 10px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">
+                  style="padding:7px 10px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">
             <option value="25" selected>25</option>
             <option value="50">50</option>
             <option value="100">100</option>
             <option value="200">200</option>
           </select>
-          <span style="font-size:11px;color:#6b7280">por página</span>
+          <span style="font-size:11px;color:var(--text-soft,#6b7280)">por página</span>
         </div>
         <button id="bn-btn-sel-all" type="button" onclick="bn_selAllVisible()" class="hidden"
-                style="padding:7px 12px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
+                style="padding:7px 12px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
           Todos visibles
         </button>
         <button id="bn-btn-sel-clear" type="button" onclick="bn_selClear()" class="hidden"
-                style="padding:7px 12px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
+                style="padding:7px 12px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
           Limpiar selección
         </button>
         <span id="bn-sel-count" class="hidden" style="font-size:12px;color:#ea580c;font-weight:700"></span>
       </div>
-
-      <!-- Panel "Estado de revisión" (solo en tabs Por Clasificar) -->
-      <div id="bn-review-panel" class="hidden" style="margin:8px 0 16px"></div>
 
       <!-- Cards view (Egresos / Ingresos) -->
       <div id="bn-cards-container" class="hidden"></div>
@@ -487,20 +561,32 @@
                   style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:none;background:#f3f4f6;border-radius:50%;font-size:18px;cursor:pointer;color:#374151;z-index:2"
                   aria-label="Cerrar">✕</button>
           <h2 style="margin:0 0 14px;font-size:18px;display:flex;align-items:center;gap:8px">📊 Indicadores</h2>
-          <!-- Filtros Año/Mes INDEPENDIENTES (multi-select) — sólo afectan esta vista -->
+          <!-- Filtros Año/Mes INDEPENDIENTES (dropdown multi-select estilo ventana principal) -->
           <div style="margin-bottom:18px;padding:12px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px">
-            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;margin-bottom:8px">
-              <div style="flex:1;min-width:160px">
-                <div style="font-weight:700;color:#92400e;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📅 Año</div>
-                <div id="bn-ind-anio-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">
+              <div class="bn-msel" data-field="ind_anio" style="position:relative;min-width:160px;flex:1">
+                <label style="display:block;font-weight:700;color:#92400e;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📅 Año</label>
+                <button class="bn-msel-trigger" onclick="bn_mselToggle('ind_anio',event)" type="button"
+                        style="width:100%;padding:8px 12px;border:1px solid #fcd34d;border-radius:6px;background:#fff;cursor:pointer;text-align:left;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+                  <span class="bn-msel-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Todos</span>
+                  <span style="font-size:10px;color:#92400e;margin-left:6px">▼</span>
+                </button>
+                <div class="bn-msel-panel hidden" id="bn-msel-panel-ind_anio"
+                     style="position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid #fcd34d;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;z-index:9999;padding:6px;min-width:160px"></div>
               </div>
-              <div style="flex:2;min-width:240px">
-                <div style="font-weight:700;color:#92400e;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🗓️ Mes</div>
-                <div id="bn-ind-mes-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+              <div class="bn-msel" data-field="ind_mes" style="position:relative;min-width:200px;flex:1">
+                <label style="display:block;font-weight:700;color:#92400e;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🗓️ Mes</label>
+                <button class="bn-msel-trigger" onclick="bn_mselToggle('ind_mes',event)" type="button"
+                        style="width:100%;padding:8px 12px;border:1px solid #fcd34d;border-radius:6px;background:#fff;cursor:pointer;text-align:left;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+                  <span class="bn-msel-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Todos</span>
+                  <span style="font-size:10px;color:#92400e;margin-left:6px">▼</span>
+                </button>
+                <div class="bn-msel-panel hidden" id="bn-msel-panel-ind_mes"
+                     style="position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid #fcd34d;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;z-index:9999;padding:6px;min-width:200px"></div>
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-              <span style="font-size:11px;color:#92400e;font-style:italic">Filtros independientes — no afectan la vista principal · Click para multi-seleccionar</span>
+              <span style="font-size:11px;color:#92400e;font-style:italic">Filtros independientes — no afectan la vista principal</span>
               <button onclick="bn_indToggleChartType()" id="bn-ind-chart-type-btn"
                       style="margin-left:auto;padding:6px 12px;border:1.5px solid #fcd34d;background:#fff;color:#92400e;font-weight:600;font-size:11px;cursor:pointer;border-radius:6px">
                 📊 Cambiar a Barras
@@ -641,6 +727,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=83"></script>
+  <script src="app.js?v=84"></script>
 </body>
 </html>
