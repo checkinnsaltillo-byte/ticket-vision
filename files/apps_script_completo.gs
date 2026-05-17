@@ -15,6 +15,7 @@ function doPost(e) {
     if (action === "delete_ticket")                return respond(deleteTicket_(data));
     if (action === "get_bancos_data")              return respond(getBancosData_(SpreadsheetApp.openById(SHEET_ID)));
     if (action === "save_banco_clasificacion")     return respond(saveBancoClasificacion_(SpreadsheetApp.openById(SHEET_ID), data));
+    if (action === "save_presupuesto")             return respond(savePresupuesto_(SpreadsheetApp.openById(SHEET_ID), data));
     return respond({ ok: false, error: "Acción desconocida: " + action });
   } catch (err) {
     return respond({ ok: false, error: err.message });
@@ -637,4 +638,54 @@ function testFinal() {
     file:      { fileName: "test.jpg", mimeType: "image/jpeg", base64: pixel }
   });
   Logger.log(JSON.stringify(result));
+}
+
+// ─── Guardar Presupuesto_sys (reescribe la hoja con las filas dadas) ─────────
+function savePresupuesto_(ss, data) {
+  const norm = (s) => (s ?? "").toString().trim().normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase();
+  const sh = ss.getSheets().find(s => norm(s.getName()).includes("PRESUPUESTO"));
+  if (!sh) return { ok: false, error: "sheet_not_found", message: "No se encontró la hoja Presupuesto_sys" };
+
+  const columns = Array.isArray(data.columns) ? data.columns : [];
+  const rows    = Array.isArray(data.rows)    ? data.rows    : [];
+  if (!columns.length) return { ok: false, error: "no_columns" };
+
+  // Asegurar que los headers existen y obtener el índice para cada columna
+  const lastCol = Math.max(sh.getLastColumn(), columns.length);
+  const headerRow = sh.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(h => String(h ?? "").trim());
+
+  const colIdx = {};
+  columns.forEach(name => {
+    let idx = headerRow.findIndex(h => h.toUpperCase() === String(name).toUpperCase());
+    if (idx < 0) {
+      const newCol = sh.getLastColumn() + 1;
+      sh.getRange(1, newCol).setValue(name);
+      headerRow.push(name);
+      idx = newCol - 1;
+    }
+    colIdx[name] = idx;
+  });
+
+  // Borrar TODAS las filas de datos existentes (preservando el header)
+  const totalLastRow = sh.getLastRow();
+  if (totalLastRow >= 2) {
+    sh.getRange(2, 1, totalLastRow - 1, Math.max(1, sh.getLastColumn())).clearContent();
+  }
+
+  // Escribir las nuevas filas
+  if (rows.length) {
+    const width = sh.getLastColumn();
+    const matrix = rows.map(r => {
+      const out = new Array(width).fill("");
+      for (const col of columns) {
+        const v = r[col];
+        out[colIdx[col]] = (v == null) ? "" : v;
+      }
+      return out;
+    });
+    sh.getRange(2, 1, matrix.length, width).setValues(matrix);
+  }
+
+  return { ok: true, rowsWritten: rows.length };
 }

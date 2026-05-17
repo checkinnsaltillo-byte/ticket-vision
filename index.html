@@ -543,19 +543,27 @@
         </div>
       </div>
 
+      <!-- Presupuesto — editor de la hoja Presupuesto_sys -->
+      <div id="bn-presupuesto" class="hidden" style="padding:14px 4px"></div>
+
       <!-- Análisis por partida — agregado jerárquico con semáforo de presupuesto -->
       <div id="bn-analisis-partida" class="hidden" style="padding:14px 4px">
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap">
           <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px">🧮 Análisis por partida</h3>
           <span style="font-size:11px;color:var(--text-soft,#6b7280);font-style:italic">Elige los niveles a desglosar</span>
         </div>
-        <!-- Selector de nivel de desglose (botones) -->
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;padding:10px 12px;background:var(--surface,#f9fafb);border:1px solid var(--border,#e5e7eb);border-radius:10px;align-items:center">
-          <span style="font-size:11px;font-weight:600;color:var(--text-soft,#6b7280);text-transform:uppercase;letter-spacing:.04em;margin-right:4px">Desglosar hasta:</span>
-          <button class="bn-ap-lvl-btn" data-lvl="1" onclick="bn_setApLevel(1)" style="padding:7px 14px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">🏷️ Cuenta</button>
-          <button class="bn-ap-lvl-btn" data-lvl="2" onclick="bn_setApLevel(2)" style="padding:7px 14px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">📂 Subcuenta</button>
-          <button class="bn-ap-lvl-btn" data-lvl="3" onclick="bn_setApLevel(3)" style="padding:7px 14px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">📁 Categoría</button>
-          <button class="bn-ap-lvl-btn" data-lvl="4" onclick="bn_setApLevel(4)" style="padding:7px 14px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">🔹 Concepto</button>
+        <!-- Selector de nivel de desglose (dropdown único) -->
+        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px;padding:10px 12px;background:var(--surface,#f9fafb);border:1px solid var(--border,#e5e7eb);border-radius:10px;align-items:flex-end">
+          <div style="min-width:200px">
+            <label style="display:block;font-weight:700;color:var(--text-soft,#6b7280);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Nivel de desglose</label>
+            <select id="bn-ap-level-select" onchange="bn_setApLevel(this.value)"
+                    style="width:100%;padding:8px 12px;border:1px solid var(--border,#d1d5db);border-radius:6px;background:var(--surface,#fff);color:var(--text,#374151);cursor:pointer;font-size:13px">
+              <option value="1">🏷️ Cuenta</option>
+              <option value="2">📂 Subcuenta</option>
+              <option value="3">📁 Categoría</option>
+              <option value="4" selected>🔹 Concepto</option>
+            </select>
+          </div>
         </div>
         <!-- Tabla resultado -->
         <div id="bn-ap-table" style="overflow-x:auto"></div>
@@ -738,6 +746,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=86"></script>
+  <script src="app.js?v=87"></script>
 </body>
 </html>

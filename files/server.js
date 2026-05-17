@@ -108,6 +108,27 @@ app.post("/save-banco-clasificacion", async (req, res) => {
   }
 });
 
+// ─── Guardar Presupuesto_sys: reescribe toda la hoja con las filas dadas ────
+
+app.post("/save-presupuesto", async (req, res) => {
+  try {
+    const { columns, rows } = req.body;
+    if (!Array.isArray(columns) || !Array.isArray(rows)) {
+      throw new Error("Payload inválido: se esperan 'columns' y 'rows'");
+    }
+    const result = await callAppsScript({
+      action: "save_presupuesto",
+      columns,
+      rows,
+    });
+    if (!result.ok) throw new Error(result.error || result.message || "Apps Script error");
+    res.json({ ok: true, rowsWritten: result.rowsWritten });
+  } catch (err) {
+    console.error("save_presupuesto_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Test: verifica conexión con Apps Script y sube imagen de prueba ────────
 
 app.get("/test-drive", async (req, res) => {

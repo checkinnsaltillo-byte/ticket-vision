@@ -1987,6 +1987,140 @@ function bn_apComputeBudget(node, records, ancestors, allLevels) {
   return total;
 }
 
+// ─── Presupuesto — editor de la hoja Presupuesto_sys ──────────────────────
+const BN_PR_COLS = [
+  { key: 'CUENTA',        label: 'Cuenta',        width: 130 },
+  { key: 'TIPO',          label: 'Tipo',          width: 90  },
+  { key: 'PERIODICIDAD',  label: 'Periodicidad',  width: 100 },
+  { key: 'NATURALEZA',    label: 'Naturaleza',    width: 100 },
+  { key: 'SUBCUENTA',     label: 'Subcuenta',     width: 160 },
+  { key: 'CATEGORIA',     label: 'Categoría',     width: 150 },
+  { key: 'CONCEPTO',      label: 'Concepto',      width: 150 },
+  { key: 'DESCRIPCION',   label: 'Descripción',   width: 200 },
+  { key: 'SEMANAL',       label: 'Semanal',       width: 110, numeric: true },
+  { key: 'MENSUAL',       label: 'Mensual',       width: 110, numeric: true },
+  { key: 'BIMESTRAL',     label: 'Bimestral',     width: 110, numeric: true },
+  { key: 'ANUAL',         label: 'Anual',         width: 110, numeric: true },
+];
+
+let BN_PR_DRAFT = null; // copia local editable
+
+function bn_renderPresupuesto() {
+  const wrap = document.getElementById('bn-presupuesto');
+  if (!wrap) return;
+
+  // Inicializar draft desde BN_BUDGET la primera vez (o si se cancela)
+  if (!BN_PR_DRAFT) {
+    BN_PR_DRAFT = (BN_BUDGET || []).map(b => {
+      const row = {};
+      BN_PR_COLS.forEach(c => row[c.key] = b[c.key] !== undefined ? b[c.key] : '');
+      return row;
+    });
+  }
+
+  const headersHtml = BN_PR_COLS.map(c =>
+    `<th style="padding:8px 10px;text-align:${c.numeric?'right':'left'};font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#374151;color:#fff;min-width:${c.width}px;white-space:nowrap">${esc(c.label)}</th>`
+  ).join('') + `<th style="padding:8px 10px;background:#374151;color:#fff;text-align:center;width:48px">✕</th>`;
+
+  const rowsHtml = BN_PR_DRAFT.map((row, i) => {
+    const cells = BN_PR_COLS.map(c => {
+      const v = row[c.key] != null ? String(row[c.key]) : '';
+      const ta = c.numeric ? 'text-align:right' : '';
+      return `<td contenteditable="true" spellcheck="false"
+                  data-row="${i}" data-key="${c.key}"
+                  oninput="bn_prCellEdit(this)"
+                  style="padding:7px 9px;border-bottom:1px solid #f3f4f6;font-size:12px;min-width:${c.width}px;${ta};outline:none"
+                  onfocus="this.style.background='#fff7ed'"
+                  onblur="this.style.background=''">${esc(v)}</td>`;
+    }).join('');
+    return `<tr><${''}>${cells}<td style="padding:7px 9px;border-bottom:1px solid #f3f4f6;text-align:center">
+              <button onclick="bn_prDeleteRow(${i})" title="Eliminar"
+                      style="width:24px;height:24px;border:none;background:#fee2e2;color:#dc2626;border-radius:50%;font-weight:800;cursor:pointer">✕</button>
+            </td></tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px">💰 Presupuesto <span style="font-size:12px;color:var(--text-soft,#6b7280);font-weight:400">— hoja Presupuesto_sys</span></h3>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button onclick="bn_prAddRow()" style="padding:8px 14px;border:1.5px solid #ea580c;background:#fff;color:#ea580c;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">+ Agregar fila</button>
+        <button onclick="bn_prResetDraft()" style="padding:8px 14px;border:1.5px solid var(--border,#d1d5db);background:#fff;color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">↺ Descartar cambios</button>
+        <button onclick="bn_prSaveConfirm()" style="padding:8px 16px;border:none;background:#ea580c;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">💾 Guardar cambios</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;border:1px solid var(--border,#e5e7eb);border-radius:10px">
+      <table style="width:100%;border-collapse:collapse;background:var(--surface,#fff);font-size:12px">
+        <thead><tr>${headersHtml}</tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <p style="margin-top:10px;font-size:11px;color:var(--text-soft,#6b7280);font-style:italic">Los cambios se aplican localmente al editar. Al presionar "Guardar cambios" se pedirá confirmación antes de sobreescribir la hoja.</p>
+  `;
+}
+
+function bn_prCellEdit(el) {
+  const i = Number(el.dataset.row);
+  const k = el.dataset.key;
+  if (!BN_PR_DRAFT[i]) return;
+  let v = el.textContent.trim();
+  const col = BN_PR_COLS.find(c => c.key === k);
+  if (col?.numeric) {
+    // Permitir vacío o número
+    if (v === '') v = '';
+    else {
+      const n = Number(v.replace(/[^0-9.\-]/g, ''));
+      if (isFinite(n)) v = n;
+    }
+  }
+  BN_PR_DRAFT[i][k] = v;
+}
+
+function bn_prAddRow() {
+  const row = {};
+  BN_PR_COLS.forEach(c => row[c.key] = '');
+  BN_PR_DRAFT.push(row);
+  bn_renderPresupuesto();
+}
+
+function bn_prDeleteRow(i) {
+  BN_PR_DRAFT.splice(i, 1);
+  bn_renderPresupuesto();
+}
+
+function bn_prResetDraft() {
+  if (!confirm('¿Descartar todos los cambios locales y volver al contenido original?')) return;
+  BN_PR_DRAFT = null;
+  bn_renderPresupuesto();
+}
+
+async function bn_prSaveConfirm() {
+  if (!confirm(`¿Estás seguro de guardar los cambios?\n\n` +
+               `Esto sobreescribirá la hoja Presupuesto_sys con ${BN_PR_DRAFT.length} fila(s).`)) return;
+  if (!confirm('Última confirmación: ¿proceder con la sobreescritura del Presupuesto?')) return;
+  try {
+    showLoading?.('Guardando Presupuesto…', 'Actualizando Sheets…');
+    const resp = await fetch(`${BACKEND}/save-presupuesto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        columns: BN_PR_COLS.map(c => c.key),
+        rows:    BN_PR_DRAFT,
+      }),
+    });
+    const r = await resp.json();
+    hideLoading?.();
+    if (!r.ok) throw new Error(r.error || 'Error al guardar');
+    alert(`Guardado correctamente. ${r.rowsWritten || BN_PR_DRAFT.length} filas escritas.`);
+    BN_BUDGET = BN_PR_DRAFT.slice();
+    bn_resetBCache();
+    BN_PR_DRAFT = null;
+    bn_renderPresupuesto();
+  } catch (e) {
+    hideLoading?.();
+    alert('Error al guardar: ' + e.message);
+  }
+}
+
 // Estado del Análisis por partida — siempre se construye con los 4 niveles;
 // la profundidad visible la controlan: (a) BN_AP_LEVEL (1-4) y (b) overrides
 // manuales por click en el triangulito.
@@ -2038,13 +2172,16 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
   const indent = depth * 22;
   const triangle = hasChildren
     ? `<span onclick="event.stopPropagation();bn_apToggleNode('${pathEnc}')"
-            style="color:#ea580c;margin-right:6px;cursor:pointer;display:inline-block;width:14px;text-align:center;user-select:none">${expanded ? '▼' : '▸'}</span>`
-    : `<span style="display:inline-block;width:14px;margin-right:6px"></span>`;
+            style="color:#ea580c;cursor:pointer;flex-shrink:0;width:14px;text-align:center;user-select:none">${expanded ? '▼' : '▸'}</span>`
+    : `<span style="flex-shrink:0;width:14px"></span>`;
 
   rows.push(`
     <tr style="background:${bgRow}">
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;padding-left:${10+indent}px;font-weight:${wgt};font-size:${depth===0?'13':'12'}px">
-        ${triangle}${esc(node.name)}
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;padding-left:${10+indent}px;font-weight:${wgt};font-size:${depth===0?'13':'12'}px;max-width:380px">
+        <div style="display:flex;align-items:center;gap:6px;min-width:0">
+          ${triangle}
+          <span title="${esc(node.name)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${esc(node.name)}</span>
+        </div>
       </td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${node.count}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px">${bn_fmt$(node.total)}</td>
@@ -2075,14 +2212,9 @@ function bn_renderAP() {
   const wrap = document.getElementById('bn-ap-table');
   if (!wrap) return;
 
-  // Resaltar el botón de nivel activo
-  document.querySelectorAll('.bn-ap-lvl-btn').forEach(btn => {
-    const lvl = Number(btn.dataset.lvl);
-    const active = (lvl === BN_AP_LEVEL);
-    btn.style.background  = active ? '#ea580c' : 'var(--surface,#fff)';
-    btn.style.color       = active ? '#fff'    : 'var(--text,#374151)';
-    btn.style.borderColor = active ? '#ea580c' : 'var(--border,#d1d5db)';
-  });
+  // Sincronizar el dropdown con el nivel activo
+  const lvlSel = document.getElementById('bn-ap-level-select');
+  if (lvlSel) lvlSel.value = String(BN_AP_LEVEL);
 
   // Usar los registros del período (sin restringir por revisado, igual que KPIs)
   const records = bn_kpiRecs(null);
@@ -2696,7 +2828,7 @@ function bn_monthly() {
 const BN_TIPO_PARENT = {
   T:'reg', I:'reg', E:'reg', AC:'reg', PA:'reg', CA:'reg',
   PC:'pc', PC_I:'pc', PC_E:'pc', PC_AC:'pc', PC_PA:'pc', PC_CA:'pc',
-  A:'pres', AP:'pres',
+  A:'pres', AP:'pres', PR:'pres',
 };
 
 // Sub-tabs por categoría — renderizadas como chips horizontales en row 2
@@ -2720,6 +2852,7 @@ const BN_CAT_SUBS = {
   pres: [
     { id: 'A',  label: '⚠️ Alertas' },
     { id: 'AP', label: '🧮 Análisis por partida' },
+    { id: 'PR', label: '💰 Presupuesto' },
   ],
 };
 
@@ -2758,7 +2891,7 @@ function bn_setCat(cat) {
 
 function bn_setTipo(t) {
   BN_TIPO=t;
-  const allTabs = ['T','E','I','AC','PA','CA','PC','PC_I','PC_E','PC_AC','PC_PA','PC_CA','A','F','AP'];
+  const allTabs = ['T','E','I','AC','PA','CA','PC','PC_I','PC_E','PC_AC','PC_PA','PC_CA','A','F','AP','PR'];
   // Resaltar el chip activo (entre los chips horizontales del row 2)
   allTabs.forEach(x => {
     const el = document.getElementById('bn-tab-'+x);
@@ -2876,10 +3009,20 @@ function bn_render() {
   if(BN_TIPO==='AP'){
     tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
     ap?.classList.remove('hidden');
+    document.getElementById('bn-presupuesto')?.classList.add('hidden');
     bn_renderAP();
     return;
   }
   ap?.classList.add('hidden');
+
+  if(BN_TIPO==='PR'){
+    tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
+    const pr = document.getElementById('bn-presupuesto');
+    pr?.classList.remove('hidden');
+    bn_renderPresupuesto();
+    return;
+  }
+  document.getElementById('bn-presupuesto')?.classList.add('hidden');
 
   if(BN_TIPO==='A'){
     tw?.classList.remove('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
