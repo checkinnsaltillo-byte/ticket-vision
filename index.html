@@ -313,34 +313,6 @@
         </div>
       </div>
 
-      <!-- Panel de filtros extra desplegable (texto, cuenta, categoría, concepto) -->
-      <div class="db-filter-panel hidden" id="bn-filter-body">
-        <div class="db-filter-grid">
-          <div class="db-filter-full">
-            <input type="text" id="bn-f-text" placeholder="🔍  Buscar por categoría, concepto, descripción…"
-                   class="db-search-input" oninput="bn_onFilterChange()">
-          </div>
-          <div class="db-filter-half">
-            <label>Cuenta bancaria</label>
-            <select id="bn-f-cuenta" class="field-select" onchange="bn_onFilterChange()">
-              <option value="">Todas</option>
-            </select>
-          </div>
-          <div class="db-filter-half">
-            <label>Categoría</label>
-            <select id="bn-f-categoria" class="field-select" onchange="bn_onFilterChange()">
-              <option value="">Todas</option>
-            </select>
-          </div>
-          <div class="db-filter-half">
-            <label>Concepto</label>
-            <select id="bn-f-concepto" class="field-select" onchange="bn_onFilterChange()">
-              <option value="">Todos</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
       <!-- Filtros Año y Mes (siempre visibles, derivados del campo Día) -->
       <div id="bn-mes-anio-row" style="display:flex;align-items:center;gap:14px;margin:10px 0 14px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:8px">
@@ -438,6 +410,35 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Panel de filtros extra desplegable (texto, cuenta, categoría, concepto)
+           — se despliega DEBAJO del menú al activar la hamburguesa -->
+      <div class="db-filter-panel hidden" id="bn-filter-body">
+        <div class="db-filter-grid">
+          <div class="db-filter-full">
+            <input type="text" id="bn-f-text" placeholder="🔍  Buscar por categoría, concepto, descripción…"
+                   class="db-search-input" oninput="bn_onFilterChange()">
+          </div>
+          <div class="db-filter-half">
+            <label>Cuenta bancaria</label>
+            <select id="bn-f-cuenta" class="field-select" onchange="bn_onFilterChange()">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <div class="db-filter-half">
+            <label>Categoría</label>
+            <select id="bn-f-categoria" class="field-select" onchange="bn_onFilterChange()">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <div class="db-filter-half">
+            <label>Concepto</label>
+            <select id="bn-f-concepto" class="field-select" onchange="bn_onFilterChange()">
+              <option value="">Todos</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <!-- Toggle Vista cronológica (timeline) -->
@@ -591,6 +592,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=67"></script>
+  <script src="app.js?v=68"></script>
 </body>
 </html>
