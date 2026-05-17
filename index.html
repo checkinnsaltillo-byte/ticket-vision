@@ -378,17 +378,50 @@
         </div>
       </div>
 
-      <!-- Tipo tabs -->
-      <div class="bn-tipo-tabs">
-        <button class="bn-tipo-tab active" id="bn-tab-T"  onclick="bn_setTipo('T')">📋 Todos</button>
-        <button class="bn-tipo-tab" id="bn-tab-E"  onclick="bn_setTipo('E')">💸 Egresos</button>
-        <button class="bn-tipo-tab" id="bn-tab-I"  onclick="bn_setTipo('I')">💰 Ingresos</button>
-        <button class="bn-tipo-tab" id="bn-tab-AC" onclick="bn_setTipo('AC')">📈 Activos</button>
-        <button class="bn-tipo-tab" id="bn-tab-PA" onclick="bn_setTipo('PA')">📋 Pasivos</button>
-        <button class="bn-tipo-tab" id="bn-tab-CA" onclick="bn_setTipo('CA')">💼 Capital</button>
-        <button class="bn-tipo-tab" id="bn-tab-PC" onclick="bn_setTipo('PC')">🏷️ Por clasificar</button>
-        <button class="bn-tipo-tab" id="bn-tab-A"  onclick="bn_setTipo('A')">⚠️ Alertas</button>
-        <button class="bn-tipo-tab" id="bn-tab-F"  onclick="bn_setTipo('F')">📊 Indicadores</button>
+      <!-- Menú principal reestructurado: 3 menús + botón Indicadores -->
+      <div class="bn-menu-bar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;padding:0;border-bottom:2px solid var(--border,#e5e7eb)">
+        <!-- Por clasificar (directo) -->
+        <button class="bn-menu-item" id="bn-tab-PC" onclick="bn_setTipo('PC')"
+                style="padding:10px 16px;border:none;background:transparent;font-weight:700;font-size:13px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text,#111827)">
+          🏷️ Por clasificar
+        </button>
+
+        <!-- Registros contables (con submenú) -->
+        <div class="bn-menu-dropdown" style="position:relative" id="bn-menu-reg">
+          <button class="bn-menu-item" id="bn-menu-reg-trigger" onclick="bn_toggleMenu('reg')"
+                  style="padding:10px 16px;border:none;background:transparent;font-weight:700;font-size:13px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text,#111827);display:inline-flex;align-items:center;gap:4px">
+            📚 Registros contables <span style="font-size:10px">▼</span>
+          </button>
+          <div class="bn-submenu hidden" id="bn-submenu-reg"
+               style="position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--border,#e5e7eb);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:6px;min-width:200px;z-index:100;margin-top:2px">
+            <button class="bn-sub-item" id="bn-tab-T"  onclick="bn_setTipo('T')"  style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">📋 Todos</button>
+            <button class="bn-sub-item" id="bn-tab-I"  onclick="bn_setTipo('I')"  style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">💰 Ingresos</button>
+            <button class="bn-sub-item" id="bn-tab-E"  onclick="bn_setTipo('E')"  style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">💸 Egresos</button>
+            <button class="bn-sub-item" id="bn-tab-AC" onclick="bn_setTipo('AC')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">📈 Activos</button>
+            <button class="bn-sub-item" id="bn-tab-PA" onclick="bn_setTipo('PA')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">📋 Pasivos</button>
+            <button class="bn-sub-item" id="bn-tab-CA" onclick="bn_setTipo('CA')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">💼 Capital</button>
+          </div>
+        </div>
+
+        <!-- Control presupuestario (con submenú) -->
+        <div class="bn-menu-dropdown" style="position:relative" id="bn-menu-pres">
+          <button class="bn-menu-item" id="bn-menu-pres-trigger" onclick="bn_toggleMenu('pres')"
+                  style="padding:10px 16px;border:none;background:transparent;font-weight:700;font-size:13px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text,#111827);display:inline-flex;align-items:center;gap:4px">
+            💼 Control presupuestario <span style="font-size:10px">▼</span>
+          </button>
+          <div class="bn-submenu hidden" id="bn-submenu-pres"
+               style="position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--border,#e5e7eb);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:6px;min-width:220px;z-index:100;margin-top:2px">
+            <button class="bn-sub-item" id="bn-tab-A"  onclick="bn_setTipo('A')"  style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">⚠️ Alertas</button>
+            <button class="bn-sub-item" id="bn-tab-AP" onclick="bn_setTipo('AP')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;border-radius:6px;font-size:13px">🧮 Análisis por partida</button>
+          </div>
+        </div>
+
+        <!-- Indicadores (botón derecha) -->
+        <button class="bn-menu-item" id="bn-tab-F" onclick="bn_setTipo('F')"
+                title="Indicadores y análisis"
+                style="margin-left:auto;padding:10px 14px;border:none;background:linear-gradient(135deg,#f59e0b,#ea580c);color:#fff;font-weight:700;font-size:13px;cursor:pointer;border-radius:10px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 6px rgba(0,0,0,.1)">
+          📊 Indicadores
+        </button>
       </div>
 
       <!-- Cards view (Egresos / Ingresos) -->
@@ -407,6 +440,13 @@
             <tbody id="bn-tbody"></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- Análisis por partida (placeholder) -->
+      <div id="bn-analisis-partida" class="hidden" style="padding:50px 20px;text-align:center;color:var(--text-soft,#6b7280)">
+        <div style="font-size:48px;margin-bottom:12px">🧮</div>
+        <h3 style="margin:0 0 8px;color:var(--text,#111827)">Análisis por partida</h3>
+        <p style="margin:0;font-size:13px">Sección en construcción — próximamente.</p>
       </div>
 
       <!-- Indicadores section (hidden unless tab F) -->
@@ -525,6 +565,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=62"></script>
+  <script src="app.js?v=63"></script>
 </body>
 </html>

@@ -2027,11 +2027,49 @@ function bn_monthly() {
 }
 
 // ─── Tab switching ────────────────────────────────────────────────────────────
+// Mapa tipo → menú padre (para resaltar el menú correspondiente)
+const BN_TIPO_PARENT = {
+  T:'reg', I:'reg', E:'reg', AC:'reg', PA:'reg', CA:'reg',
+  A:'pres', AP:'pres',
+};
+
 function bn_setTipo(t) {
   BN_TIPO=t;
-  ['T','E','I','AC','PA','CA','PC','A','F'].forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
+  const allTabs = ['T','E','I','AC','PA','CA','PC','A','F','AP'];
+  allTabs.forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
+  // Cerrar submenús abiertos
+  document.querySelectorAll('.bn-submenu').forEach(el => el.classList.add('hidden'));
+  // Resaltar el menú padre (Por clasificar / Registros contables / Control presup. / Indicadores)
+  ['PC','reg','pres','F'].forEach(k => {
+    let el;
+    if (k === 'PC')      el = document.getElementById('bn-tab-PC');
+    else if (k === 'F')  el = document.getElementById('bn-tab-F');
+    else                 el = document.getElementById('bn-menu-' + k + '-trigger');
+    if (!el) return;
+    const isActive = (k === 'PC' && t === 'PC')
+                  || (k === 'F'  && t === 'F')
+                  || (k === BN_TIPO_PARENT[t]);
+    // Solo aplicar underline a los menus no-Indicadores (que tiene su propio estilo)
+    if (k !== 'F') el.style.borderBottomColor = isActive ? 'var(--primary,#ea580c)' : 'transparent';
+  });
   bn_render();
 }
+
+// Abre/cierra un submenú (Registros contables o Control presupuestario)
+function bn_toggleMenu(name) {
+  const sm = document.getElementById('bn-submenu-' + name);
+  if (!sm) return;
+  const wasHidden = sm.classList.contains('hidden');
+  document.querySelectorAll('.bn-submenu').forEach(el => el.classList.add('hidden'));
+  if (wasHidden) sm.classList.remove('hidden');
+}
+
+// Cerrar submenús al clic fuera
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.bn-menu-dropdown')) {
+    document.querySelectorAll('.bn-submenu').forEach(el => el.classList.add('hidden'));
+  }
+});
 
 // ─── Main render ──────────────────────────────────────────────────────────────
 function bn_render() {
@@ -2070,12 +2108,21 @@ function bn_render() {
   const cw=document.getElementById('bn-cards-container');
   const pw=document.getElementById('bn-card-pagination');
   const iw=document.getElementById('bn-indicadores');
+  const ap=document.getElementById('bn-analisis-partida');
 
   if(BN_TIPO==='F'){
     tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
+    ap?.classList.add('hidden');
     iw?.classList.remove('hidden'); bn_renderInd(); return;
   }
   iw?.classList.add('hidden');
+
+  if(BN_TIPO==='AP'){
+    tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
+    ap?.classList.remove('hidden');
+    return;
+  }
+  ap?.classList.add('hidden');
 
   if(BN_TIPO==='A'){
     tw?.classList.remove('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
