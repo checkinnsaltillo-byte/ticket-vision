@@ -3074,7 +3074,16 @@ function bn_rrect(ctx,x,y,w,h,r) {
 // ─── Bancos: Card-based view ──────────────────────────────────────────────────
 let BN_CUR_RECS  = [];
 let BN_CARD_PAGE = 1;
-const BN_CARD_SIZE = 25;
+let BN_CARD_SIZE = 25;
+
+/** Cambia el tamaño de página (registros visibles por página). */
+function bn_setPageSize(v) {
+  const n = Number(v) || 25;
+  if (n === BN_CARD_SIZE) return;
+  BN_CARD_SIZE = n;
+  BN_CARD_PAGE = 1;
+  bn_renderCards();
+}
 
 /** Tabla Resumen para un registro bancario. CONCEPTO es editable. */
 function bn_buildBnResumenTable(r, idx) {
@@ -3323,12 +3332,25 @@ function bn_toggleBnClassify(idx) {
 
   document.getElementById('bn-classify-modal-resumen').innerHTML =
     bn_buildBnResumenTable(rec, idx);
-  // Los botones Duda/Validado van al final, junto al botón Guardar cambios
-  document.getElementById('bn-classify-modal-body').innerHTML    = classifyHtml + `
-    <div style="display:flex;align-items:center;gap:18px;padding:14px;margin-top:10px;border:1px solid #e5e7eb;background:#f9fafb;border-radius:10px;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:8px">${validarBlock.match(/<button id="validado-panel[\s\S]*?<\/button>/)?.[0] || ''}<span style="font-size:11px;color:#6b7280">Duda</span></div>
-      <div style="display:flex;align-items:center;gap:8px">${validarBlock.match(/<button id="revisado-panel[\s\S]*?<\/button>/)?.[0] || ''}<span style="font-size:11px;color:#6b7280">Validado</span></div>
-    </div>`;
+  document.getElementById('bn-classify-modal-body').innerHTML = classifyHtml;
+
+  // Inyectar botones Duda/Validado dentro de classify-actions (junto a Guardar cambios)
+  // y hacer que classify-actions sea siempre visible (no esperar dirty)
+  setTimeout(() => {
+    const actions = document.getElementById(`classify-actions-${ci}`);
+    if (actions) {
+      actions.classList.remove('hidden');
+      const dudaBtn = validarBlock.match(/<button id="validado-panel[\s\S]*?<\/button>/)?.[0] || '';
+      const valBtn  = validarBlock.match(/<button id="revisado-panel[\s\S]*?<\/button>/)?.[0]  || '';
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:inline-flex;align-items:center;gap:10px;margin-right:auto';
+      wrap.innerHTML = dudaBtn + valBtn;
+      actions.style.display = 'flex';
+      actions.style.alignItems = 'center';
+      actions.style.gap = '10px';
+      actions.insertBefore(wrap, actions.firstChild);
+    }
+  }, 0);
 
   // Mostrar modal
   document.getElementById('bn-classify-overlay').classList.remove('hidden');
@@ -4497,6 +4519,8 @@ async function bn_syncDuda(idx, checked) {
     panelBtn.title             = checked ? 'Marcado: Duda' : 'Duda';
     panelBtn.textContent       = '?';
   }
+  // Sync de la tabla Resumen del modal si está abierto
+  bn_modalLiveSync(idx);
 
   if (!rec.rowNum) return;
 
@@ -4530,6 +4554,32 @@ async function bn_syncDuda(idx, checked) {
   } catch (e) {
     console.warn('Error guardando Duda:', e.message);
   }
+}
+
+/** Sincroniza la tabla Resumen del modal con la selección actual del panel
+ *  Clasificar (Cuenta, Subcuenta, Categoría, Concepto, Fecha, Duda, Validado),
+ *  sin guardar todavía a Sheets — sólo refleja en vivo lo que el usuario ve. */
+function bn_modalLiveSync(idx) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  const ci = 'bn' + idx;
+  const c = (function(){ try { return getClassify(ci); } catch(_) { return {}; } })();
+  // Actualizar campos en memoria desde la selección del panel
+  if (c.cuenta    !== undefined) rec._cuenta          = c.cuenta;
+  if (c.subcuenta !== undefined) rec._subcuenta       = c.subcuenta;
+  if (c.categoria !== undefined) rec._categoria_gasto = c.categoria;
+  if (c.concepto  !== undefined) rec._concepto        = c.concepto;
+  // Sync fecha desde el input
+  const fechaEl = document.getElementById(`fecha-clasif-${ci}`);
+  if (fechaEl && fechaEl.value) rec.Día = fechaEl.value;
+  // Sync flags Duda/Validado desde los botones del panel
+  const dudaBtn = document.getElementById(`validado-panel-${ci}`);
+  if (dudaBtn) rec._duda = (dudaBtn.dataset.checked === 'true') ? 'Sí' : 'No';
+  const valBtn = document.getElementById(`revisado-panel-${ci}`);
+  if (valBtn) rec._validado = (valBtn.dataset.checked === 'true') ? 'Sí' : 'No';
+  // Re-render la tabla Resumen del modal
+  const resumenWrap = document.getElementById('bn-classify-modal-resumen');
+  if (resumenWrap) resumenWrap.innerHTML = bn_buildBnResumenTable(rec, idx);
 }
 
 /** Llamado al editar la celda Descripción de la tabla Resumen. Muestra el
@@ -4568,6 +4618,8 @@ async function bn_syncValidado(idx, checked) {
     panelBtn.style.color       = checked ? '#fff'    : '#d1d5db';
     panelBtn.title             = checked ? 'Validado' : 'Marcar como Validado';
   }
+  // Sync de la tabla Resumen del modal si está abierto
+  bn_modalLiveSync(idx);
 
   if (!rec.rowNum) return;
   try {
@@ -4971,6 +5023,12 @@ function confirmModalOverlayClick(e) {
 function markClassifyDirty(idx) {
   if (classifyAutoPopulating) return;
   document.getElementById(`classify-actions-${idx}`)?.classList.remove("hidden");
+  // Si el idx corresponde a un registro bancario (prefijo "bn"), sincronizar
+  // la tabla Resumen del modal en tiempo real.
+  if (typeof idx === 'string' && /^bn\d+$/.test(idx)) {
+    const n = parseInt(idx.slice(2), 10);
+    if (!isNaN(n)) bn_modalLiveSync(n);
+  }
 }
 function hideClassifyActions(idx) {
   document.getElementById(`classify-actions-${idx}`)?.classList.add("hidden");

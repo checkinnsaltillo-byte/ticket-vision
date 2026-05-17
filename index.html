@@ -406,12 +406,23 @@
       <!-- Vista cronológica siempre activa; toggle oculto -->
       <div id="bn-timeline-toggle-row" class="hidden"></div>
 
-      <!-- Toggle de selección múltiple -->
+      <!-- Toggle de selección múltiple + selector de tamaño de página -->
       <div style="display:flex;align-items:center;gap:10px;margin:6px 0 12px;flex-wrap:wrap">
         <button id="bn-btn-sel-mode" type="button" onclick="bn_toggleSelMode()"
                 style="padding:7px 14px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
           ☑️ Seleccionar
         </button>
+        <div style="display:inline-flex;align-items:center;gap:6px">
+          <label for="bn-page-size" style="font-size:11px;color:#6b7280;font-weight:600">Mostrar</label>
+          <select id="bn-page-size" onchange="bn_setPageSize(this.value)"
+                  style="padding:7px 10px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+          <span style="font-size:11px;color:#6b7280">por página</span>
+        </div>
         <button id="bn-btn-sel-all" type="button" onclick="bn_selAllVisible()" class="hidden"
                 style="padding:7px 12px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
           Todos visibles
@@ -430,18 +441,18 @@
       <div id="bn-cards-container" class="hidden"></div>
       <div id="bn-card-pagination" class="hidden"></div>
 
-      <!-- Barra flotante de acciones masivas -->
+      <!-- Menú vertical de acciones masivas (margen izquierdo). Mini-modales abren a la derecha -->
       <div id="bn-bulk-bar" class="hidden"
-           style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.3);padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;z-index:9000;max-width:96vw">
-        <span id="bn-bulk-count" style="font-weight:700;color:#fde68a;font-size:13px;margin-right:6px"></span>
-        <button onclick="bn_bulkClasificar()"      style="padding:7px 11px;border:none;background:#ea580c;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">🏷️ Clasificar</button>
-        <button onclick="bn_bulkToggleDuda()"      style="padding:7px 11px;border:none;background:#f59e0b;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">? Duda</button>
-        <button onclick="bn_bulkToggleValidar()"   style="padding:7px 11px;border:none;background:#16a34a;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">✓ Validar</button>
-        <button onclick="bn_bulkToggleDeducible()" style="padding:7px 11px;border:none;background:#0e7490;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">💰 Deducible</button>
-        <button onclick="bn_bulkPromptMetodo()"    style="padding:7px 11px;border:none;background:#7c3aed;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">💳 Método pago</button>
-        <button onclick="bn_bulkPromptEncargado()" style="padding:7px 11px;border:none;background:#1d4ed8;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">👤 Encargado</button>
-        <button onclick="bn_bulkPromptFecha()"     style="padding:7px 11px;border:none;background:#374151;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">📅 Fecha</button>
-        <button onclick="bn_toggleSelMode()"       style="padding:7px 11px;border:1.5px solid #6b7280;background:transparent;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">✕ Salir</button>
+           style="position:fixed;top:50%;left:14px;transform:translateY(-50%);background:#fffbeb;border:1.5px solid #fde68a;color:#374151;border-radius:14px;box-shadow:0 8px 22px rgba(234,88,12,.15);padding:8px;display:flex;flex-direction:column;gap:6px;z-index:9000;min-width:54px">
+        <div id="bn-bulk-count" style="font-weight:800;color:#ea580c;font-size:11px;text-align:center;padding:6px 4px;border-bottom:1.5px solid #fde68a;margin-bottom:4px"></div>
+        <button onclick="bn_bulkClasificar()"      title="Clasificar"      style="padding:8px;border:none;background:#ea580c;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">🏷️</button>
+        <button onclick="bn_bulkToggleDuda()"      title="Marcar Duda"     style="padding:8px;border:none;background:#f59e0b;color:#fff;border-radius:8px;font-weight:800;font-size:18px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">?</button>
+        <button onclick="bn_bulkToggleValidar()"   title="Marcar Validado" style="padding:8px;border:none;background:#16a34a;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">✓</button>
+        <button onclick="bn_bulkToggleDeducible()" title="Deducible"       style="padding:8px;border:none;background:#0e7490;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">💰</button>
+        <button onclick="bn_bulkPromptMetodo()"    title="Método de pago"  style="padding:8px;border:none;background:#7c3aed;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">💳</button>
+        <button onclick="bn_bulkPromptEncargado()" title="Encargado"       style="padding:8px;border:none;background:#1d4ed8;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">👤</button>
+        <button onclick="bn_bulkPromptFecha()"     title="Fecha"           style="padding:8px;border:none;background:#374151;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">📅</button>
+        <button onclick="bn_toggleSelMode()"       title="Salir"           style="padding:8px;border:1.5px solid #d1d5db;background:#fff;color:#6b7280;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;margin-top:4px">✕</button>
       </div>
 
       <!-- Alert table (Alertas tab only) -->
@@ -630,6 +641,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=82"></script>
+  <script src="app.js?v=83"></script>
 </body>
 </html>
