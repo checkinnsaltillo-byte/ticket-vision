@@ -1620,7 +1620,7 @@ let BN_RAW    = [];
 let BN_BUDGET = [];
 let BN_TIPO   = 'T';   // 'T' Todos | 'E' Egresos | 'I' Ingresos | 'A' Alertas | 'F' Indicadores
 let BN_LOADED = false;
-const bn_st   = { año: '', mes: '', cuenta: '', categoria: '', concepto: '' };
+const bn_st   = { año: '', mes: '', cuenta: '', categoria: '', concepto: '', mesAnio: '' };
 const BN_BCACHE = { E: null, I: null };
 let BN_CATALOG = {};           // catálogo construido desde Presupuesto_sys
 let _BN_ORIG_CATALOG = null;   // respaldo del CATALOG de tickets
@@ -1875,6 +1875,16 @@ async function bn_loadData() {
 }
 
 // ─── Filters ─────────────────────────────────────────────────────────────────
+// Devuelve {key:'YYYY-MM', label:'Enero 2026'} a partir del campo Día ('YYYY-MM-DD' o Date.toString())
+function bn_diaToMesAnio(d) {
+  const iso = bn_formatDiaISO(d || '');
+  if (!/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
+  const [y, m] = iso.split('-');
+  const NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  return { key: `${y}-${m}`, label: `${NOMBRES[Number(m)-1]} ${y}` };
+}
+
 function bn_populateFilters() {
   const fill=(id,vals,blank)=>{
     const sel=document.getElementById(id); if(!sel) return;
@@ -1885,6 +1895,20 @@ function bn_populateFilters() {
   fill('bn-f-cuenta',    bn_uniq(BN_RAW.map(r=>bn_norm(r['Cuenta bancaria']||''))), 'Todas');
   fill('bn-f-categoria', bn_uniq(BN_RAW.map(r=>bn_norm(r.CATEGORIA||''))),          'Todas');
   fill('bn-f-concepto',  bn_uniq(BN_RAW.map(r=>bn_norm(r.CONCEPTO ||''))),          'Todos');
+
+  // Filtro Mes-Año derivado del campo Día
+  const sel = document.getElementById('bn-f-mes-anio');
+  if (sel) {
+    const cur = sel.value;
+    const seen = new Map();
+    for (const r of BN_RAW) {
+      const ma = bn_diaToMesAnio(r.Día || r.Dia || '');
+      if (ma && !seen.has(ma.key)) seen.set(ma.key, ma.label);
+    }
+    const keys = [...seen.keys()].sort((a,b) => b.localeCompare(a)); // más recientes primero
+    sel.innerHTML = `<option value="">Todos los meses</option>` +
+      keys.map(k => `<option value="${k}"${k===cur?' selected':''}>${esc(seen.get(k))}</option>`).join('');
+  }
 }
 
 function bn_setDefaultFilters() {
@@ -1896,13 +1920,14 @@ function bn_onFilterChange() {
   bn_st.cuenta    = document.getElementById('bn-f-cuenta')?.value    || '';
   bn_st.categoria = document.getElementById('bn-f-categoria')?.value || '';
   bn_st.concepto  = document.getElementById('bn-f-concepto')?.value  || '';
+  bn_st.mesAnio   = document.getElementById('bn-f-mes-anio')?.value  || '';
   bn_render();
 }
 
 function bn_clearFilters() {
-  ['bn-f-cuenta','bn-f-categoria','bn-f-concepto','bn-f-text']
+  ['bn-f-cuenta','bn-f-categoria','bn-f-concepto','bn-f-text','bn-f-mes-anio']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-  bn_st.año=bn_st.mes=bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
+  bn_st.año=bn_st.mes=bn_st.cuenta=bn_st.categoria=bn_st.concepto=bn_st.mesAnio='';
   bn_render();
 }
 
@@ -1927,6 +1952,10 @@ function bn_filteredRecs(tipo) {
     if(s.cuenta    && cta!==s.cuenta)    return false;
     if(s.categoria && cat!==s.categoria) return false;
     if(s.concepto  && con!==s.concepto)  return false;
+    if(s.mesAnio){
+      const ma = bn_diaToMesAnio(r.Día || r.Dia || '');
+      if(!ma || ma.key !== s.mesAnio) return false;
+    }
     if(tipo==='E'  && !t.includes('egr'))     return false;
     if(tipo==='I'  && !t.includes('ing'))     return false;
     if(tipo==='AC' && !t.includes('activ'))   return false;

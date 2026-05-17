@@ -345,6 +345,15 @@
         </div>
       </div>
 
+      <!-- Filtro Mes-Año (siempre visible, filtra por campo Día) -->
+      <div id="bn-mes-anio-row" style="display:flex;align-items:center;gap:10px;margin:10px 0 14px;flex-wrap:wrap">
+        <label for="bn-f-mes-anio" style="font-weight:700;color:var(--text-soft);font-size:12px;text-transform:uppercase;letter-spacing:.04em">📅 Período</label>
+        <select id="bn-f-mes-anio" class="field-select" onchange="bn_onFilterChange()"
+                style="min-width:200px;max-width:280px">
+          <option value="">Todos los meses</option>
+        </select>
+      </div>
+
       <!-- KPI cards (debajo de filtros, responden a selección de Año/Mes) -->
       <div class="bn-kpi-row" id="bn-kpi-row">
         <div class="bn-kpi-card">
@@ -516,6 +525,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=61"></script>
+  <script src="app.js?v=62"></script>
 </body>
 </html>
