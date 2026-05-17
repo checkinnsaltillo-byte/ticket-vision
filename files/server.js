@@ -24,7 +24,7 @@ app.use(express.json({ limit: "20mb" }));
 
 // URL fija — NO usar process.env.APPS_SCRIPT_URL porque Cloud Run tiene
 // una variable de entorno antigua que sobreescribe el valor hardcodeado.
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNrmrI7GMnIGfie2WVZR2cnEd46zo4GnM7mllV--Jam7UnO1bpms1xo10FZrRlP_dC1g/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjOttD6Sg89BQnE9xIS1unVYUhrSqT7nZhWOfmf6YHz4XSRzFJ2AoejvpQ3UGKg3vHOw/exec";
 
 async function callAppsScript(payload) {
   const controller = new AbortController();
