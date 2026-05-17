@@ -1606,7 +1606,7 @@ function markAsClassified(i) {
 // ─── Estado global ───────────────────────────────────────────────────────────
 let BN_RAW    = [];
 let BN_BUDGET = [];
-let BN_TIPO   = 'T';   // 'T' Todos | 'E' Egresos | 'I' Ingresos | 'A' Alertas | 'F' Indicadores
+let BN_TIPO   = 'PC';  // Default: Por clasificar → Todos (sub-tipos: PC_I/PC_E/PC_AC/PC_PA/PC_CA)
 let BN_LOADED = false;
 // Estado de filtros (multi-select). Cada campo es un array; vacío = "Todos".
 const bn_st   = {
@@ -1916,6 +1916,116 @@ function bn_subOfPC(tipo) {
   return null;
 }
 
+/** Panel de estado de revisión — barra stacked + notas, sólo en tabs Por Clasificar. */
+function bn_renderReviewPanel() {
+  const panel = document.getElementById('bn-review-panel');
+  if (!panel) return;
+  if (!bn_isPC(BN_TIPO)) { panel.classList.add('hidden'); return; }
+
+  // Universo: kpiRecs (mismo Año/Mes/multi-selects/búsqueda) filtrado por sub-tipo si aplica
+  const sub = bn_subOfPC(BN_TIPO);
+  const universe = (sub && sub !== 'T') ? bn_kpiRecs(sub) : bn_kpiRecs(null);
+  const total = universe.length;
+  const noRev = universe.filter(r => r._revisado !== 'Sí').length;
+  const rev   = total - noRev;
+  const pctNoRev = total > 0 ? (noRev / total * 100) : 0;
+  const pctRev   = total > 0 ? (rev   / total * 100) : 0;
+
+  panel.classList.remove('hidden');
+  panel.innerHTML = `
+    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+        <div>
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Estado de revisión</div>
+          <div style="font-size:22px;font-weight:800;color:#111827;margin-top:2px">Revisados vs pendientes</div>
+        </div>
+        <div style="padding:8px 16px;border:1.5px solid #fde68a;background:#fef3c7;color:#92400e;border-radius:999px;font-weight:700;font-size:13px">
+          ${noRev} registro${noRev===1?'':'s'} por revisar
+        </div>
+      </div>
+
+      <!-- Barra stacked -->
+      <div style="display:flex;height:14px;border-radius:999px;overflow:hidden;background:#e5e7eb;margin-bottom:14px">
+        <div title="Revisados: ${rev}" style="width:${pctRev.toFixed(2)}%;background:linear-gradient(90deg,#16a34a,#86efac);transition:width .3s"></div>
+        <div title="Pendientes: ${noRev}" style="width:${pctNoRev.toFixed(2)}%;background:linear-gradient(90deg,#fed7aa,#ea580c);transition:width .3s"></div>
+      </div>
+
+      <!-- Tarjetas REVISADOS / PENDIENTES -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px">
+        <div style="background:#fff;border:1.5px solid #d1fae5;border-radius:10px;padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;margin-bottom:4px">
+            <span style="width:10px;height:10px;border-radius:50%;background:#16a34a;display:inline-block"></span>
+            Revisados
+          </div>
+          <div style="font-size:20px;font-weight:800;color:#111827">${rev} (${pctRev.toFixed(0)}%)</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid #fed7aa;border-radius:10px;padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;margin-bottom:4px">
+            <span style="width:10px;height:10px;border-radius:50%;background:#ea580c;display:inline-block"></span>
+            Pendientes
+          </div>
+          <div style="font-size:20px;font-weight:800;color:#111827">${noRev} (${pctNoRev.toFixed(0)}%)</div>
+        </div>
+      </div>
+
+      <!-- Notas -->
+      ${noRev > 0 ? `
+        <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;border-radius:50%;background:#dc2626;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${noRev > 99 ? '99+' : noRev}</div>
+          <div style="font-size:13px;color:#7f1d1d">Registro(s) pendiente(s) requieren tu atención. Marca cada uno como <b>✓ Revisado</b> para sacarlo de esta lista y enviarlo a Registros contables.</div>
+        </div>` : ''}
+      ${rev > 0 ? `
+        <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+          <div style="font-size:18px">✅</div>
+          <div style="font-size:13px;color:#14532d"><b>${rev}</b> registro(s) ya revisado(s) y disponibles en Registros contables.</div>
+        </div>` : ''}
+      ${total === 0 ? `
+        <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:10px 14px;text-align:center;font-size:13px;color:#14532d">
+          🎉 Sin registros pendientes para este filtro
+        </div>` : ''}
+    </div>`;
+}
+
+/** Registros para KPIs del período: aplica Año/Mes/búsqueda/multi-selects
+ *  pero NO restringe por revisado ni por tipo-tab. */
+function bn_kpiRecs(subtype) {
+  const s = bn_st;
+  const q = (s.q || '').toLowerCase().trim();
+  return BN_RAW.filter(r => {
+    const t = bn_canon(r._tipo || '');
+    if (subtype === 'E'  && !t.includes('egr'))     return false;
+    if (subtype === 'I'  && !t.includes('ing'))     return false;
+    if (subtype === 'AC' && !t.includes('activ'))   return false;
+    if (subtype === 'PA' && !t.includes('pasiv'))   return false;
+    if (subtype === 'CA' && !t.includes('capital')) return false;
+    // Multi-selects del hamburguesa
+    for (const f of BN_MSEL_FIELDS) {
+      const arr = s[f.key];
+      if (arr?.length) {
+        const val = (f.from(r) || '').toString().trim();
+        if (!arr.includes(val)) return false;
+      }
+    }
+    // Año / Mes
+    if ((s.anio?.length) || (s.mes?.length)) {
+      const iso = bn_formatDiaISO(r.Día || r.Dia || '');
+      const m   = iso.match(/^(\d{4})-(\d{2})/);
+      if (!m) return false;
+      if (s.anio?.length && !s.anio.includes(m[1])) return false;
+      if (s.mes?.length  && !s.mes .includes(m[2])) return false;
+    }
+    if (q) {
+      const words = q.split(/\s+/).filter(Boolean);
+      const h = [bn_norm(r.SUBCUENTA||''), bn_norm(r.CATEGORIA||''), bn_norm(r.CONCEPTO||''),
+                 bn_norm(r.DESCRIPCION||''), bn_norm(r['Cuenta bancaria']||''),
+                 bn_norm(r._cuenta||''), bn_norm(r._encargado||''),
+                 bn_norm(r._propiedad||''), bn_norm(r._metodo_pago||'')].join(' ').toLowerCase();
+      if (!words.every(w => h.includes(w))) return false;
+    }
+    return true;
+  });
+}
+
 function bn_recsForTipo(tipo) {
   const isPC = bn_isPC(tipo);
   const sub  = isPC ? bn_subOfPC(tipo) : null;
@@ -2024,16 +2134,23 @@ function bn_mselFillOptions(field, options, labelFn) {
     return;
   }
 
+  const isNumeric = (field === 'dia' || field === 'departamento' || field === 'anio');
   const header = `
-    <div style="display:flex;gap:6px;padding:8px;border-bottom:1px solid #e5e7eb;background:#f9fafb;border-radius:6px 6px 0 0">
-      <button type="button" onclick="bn_mselSelectAll('${field}')"
-              style="flex:1;padding:6px 10px;border:none;background:#ea580c;color:#fff;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
-        ✓ Todos
-      </button>
-      <button type="button" onclick="bn_mselClear('${field}')"
-              style="flex:1;padding:6px 10px;border:1px solid #d1d5db;background:#fff;color:#374151;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
-        ✕ Limpiar
-      </button>
+    <div style="padding:8px;border-bottom:1px solid #e5e7eb;background:#f9fafb;border-radius:6px 6px 0 0">
+      <div style="display:flex;gap:6px;margin-bottom:${isNumeric ? '0' : '6px'}">
+        <button type="button" onclick="bn_mselSelectAll('${field}')"
+                style="flex:1;padding:6px 10px;border:none;background:#ea580c;color:#fff;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
+          ✓ Todos
+        </button>
+        <button type="button" onclick="bn_mselClear('${field}')"
+                style="flex:1;padding:6px 10px;border:1px solid #d1d5db;background:#fff;color:#374151;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
+          ✕ Limpiar
+        </button>
+      </div>
+      ${isNumeric ? '' : `<input type="text" placeholder="🔍 Buscar opciones..."
+             oninput="bn_mselFilterOpts('${field}', this.value)"
+             onclick="event.stopPropagation()"
+             style="width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;box-sizing:border-box">`}
     </div>`;
 
   const items = options.map(opt => {
@@ -2056,6 +2173,18 @@ function bn_mselFillOptions(field, options, labelFn) {
     return acc;
   }, {}));
   bn_mselUpdateTrigger(field);
+}
+
+/** Filtra dinámicamente las opciones visibles del multi-select por texto. */
+function bn_mselFilterOpts(field, q) {
+  const panel = document.getElementById(`bn-msel-panel-${field}`);
+  if (!panel) return;
+  const qN = (q || '').toLowerCase().trim();
+  panel.querySelectorAll('[data-value]').forEach(row => {
+    if (!qN) { row.style.display = ''; return; }
+    const text = (row.textContent || '').toLowerCase();
+    row.style.display = text.includes(qN) ? '' : 'none';
+  });
 }
 
 /** Click en una opción del multi-select — alterna selección. */
@@ -2262,11 +2391,14 @@ function bn_filteredRecs(tipo) {
     }
 
 
-    // Búsqueda libre
+    // Búsqueda libre: match parcial, multi-palabra (todas las palabras deben aparecer)
     if(q){
+      const words = q.split(/\s+/).filter(Boolean);
       const h = [bn_norm(r.SUBCUENTA||''), bn_norm(r.CATEGORIA||''), bn_norm(r.CONCEPTO||''),
-                 bn_norm(r.DESCRIPCION||''), bn_norm(r['Cuenta bancaria']||'')].join(' ').toLowerCase();
-      if(!h.includes(q)) return false;
+                 bn_norm(r.DESCRIPCION||''), bn_norm(r['Cuenta bancaria']||''),
+                 bn_norm(r._cuenta||''), bn_norm(r._encargado||''),
+                 bn_norm(r._propiedad||''), bn_norm(r._metodo_pago||'')].join(' ').toLowerCase();
+      if(!words.every(w => h.includes(w))) return false;
     }
     return true;
   });
@@ -2381,16 +2513,21 @@ function bn_render() {
   if(!BN_LOADED) return;
   const sE=bn_aggregate('E'), sI=bn_aggregate('I');
 
-  // KPIs
-  bn_txt('bn-k-egr-real',       bn_fmt$(sE.realM));
-  bn_txt('bn-k-egr-sub',        'Presup. '+bn_fmt$(sE.budM));
-  bn_txt('bn-k-ing-real',       bn_fmt$(sI.realM));
-  bn_txt('bn-k-ing-sub',        sI.rows.length+' movimientos');
+  // KPIs del período: usan bn_kpiRecs que NO restringe por revisado ni tipo-tab
+  const kpiE = bn_kpiRecs('E');
+  const kpiI = bn_kpiRecs('I');
+  const realE = kpiE.reduce((s,r)=>s+Math.abs(Number(r.Monto||0)),0);
+  const realI = kpiI.reduce((s,r)=>s+Math.abs(Number(r.Monto||0)),0);
+
+  bn_txt('bn-k-egr-real',       bn_fmt$(realE));
+  bn_txt('bn-k-egr-sub',        kpiE.length+' movimientos');
+  bn_txt('bn-k-ing-real',       bn_fmt$(realI));
+  bn_txt('bn-k-ing-sub',        kpiI.length+' movimientos');
   bn_txt('bn-k-avance-egr',     isFinite(sE.avM)?bn_fmtPct(sE.avM):'—');
   bn_txt('bn-k-avance-egr-sub', 'Real '+bn_fmt$(sE.realM)+' / '+bn_fmt$(sE.budM));
-  const util=sI.realM-sE.realM;
+  const util=realI-realE;
   bn_txt('bn-k-utilidad',       bn_fmt$(util));
-  const marg=sI.realM>0?(util/sI.realM):NaN;
+  const marg=realI>0?(util/realI):NaN;
   bn_txt('bn-k-utilidad-sub',   isFinite(marg)?'Margen '+bn_fmtPct(marg):'Sin ingresos');
 
   // Color KPI
@@ -2404,6 +2541,9 @@ function bn_render() {
   if(kU) kU.className='bn-kpi-value '+(util>=0?'bn-val-good':'bn-val-bad');
 
   document.getElementById('bn-kpi-row')?.classList.remove('hidden');
+
+  // Panel de estado de revisión (solo en tabs Por Clasificar)
+  bn_renderReviewPanel();
 
   // Subtitle — total filtrado de la pestaña actual
   const visLen = bn_filteredRecs(BN_TIPO).length;
@@ -3857,28 +3997,27 @@ function bn_renderCards() {
   const pageRecs   = recs.slice(start, start + BN_CARD_SIZE);
 
   if (BN_TIMELINE) {
-    // Construir agrupado con encabezados de fecha + línea de tiempo
-    container.style.position = 'relative';
-    container.style.paddingLeft = '38px';
-    const lineHtml = `<div style="position:absolute;top:14px;bottom:14px;left:18px;width:3px;background:linear-gradient(180deg,#fcd34d,#f59e0b,#ea580c);border-radius:2px;opacity:.4;pointer-events:none;z-index:0"></div>`;
+    // Agrupado por fecha con encabezados — sin línea vertical; sólo puntos+texto.
+    container.style.position = '';
+    container.style.paddingLeft = '';
 
     let lastKey = null;
-    const parts = [lineHtml];
+    const parts = [];
     pageRecs.forEach((rec, j) => {
       const iso = bn_recDateISO(rec);
       const key = iso || '__sin_fecha__';
       if (key !== lastKey) {
         const label = iso ? bn_dateHeaderLabel(iso) : 'Sin fecha';
         parts.push(
-          `<div style="position:relative;margin:18px 0 10px;display:flex;align-items:center;gap:10px">
-             <div style="position:absolute;left:-26px;width:14px;height:14px;border-radius:50%;background:#ea580c;border:3px solid #fff;box-shadow:0 0 0 2px #ea580c;z-index:1"></div>
+          `<div style="margin:14px 0 8px;display:flex;align-items:center;gap:10px">
+             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ea580c;flex-shrink:0"></span>
              <span style="font-weight:800;font-size:13px;color:#ea580c;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</span>
              <span style="flex:1;height:1px;background:linear-gradient(90deg,#fed7aa,transparent)"></span>
            </div>`
         );
         lastKey = key;
       }
-      parts.push(`<div style="position:relative;z-index:1">${bn_createCard(rec, start + j)}</div>`);
+      parts.push(bn_createCard(rec, start + j));
     });
     container.innerHTML = parts.join('');
   } else {
