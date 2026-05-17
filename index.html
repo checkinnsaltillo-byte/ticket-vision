@@ -376,6 +376,16 @@
           <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
           <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
         </div>
+        <!-- KPI Indicadores: actúa como atajo a la vista de análisis -->
+        <div class="bn-kpi-card" id="bn-tab-F" onclick="bn_setTipo('F')"
+             style="cursor:pointer;background:linear-gradient(135deg,#f59e0b,#ea580c);color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;transition:transform .15s"
+             onmouseover="this.style.transform='translateY(-2px)'"
+             onmouseout="this.style.transform=''"
+             title="Ver indicadores y gráficas">
+          <div style="font-size:30px;line-height:1">📊</div>
+          <div class="bn-kpi-label" style="color:#fff;opacity:.95;margin:0">Indicadores</div>
+          <div class="bn-kpi-sub" style="color:#fff;opacity:.85;margin:0">Análisis y gráficas</div>
+        </div>
       </div>
 
       <!-- Menú principal reestructurado: 3 menús + botón Indicadores -->
@@ -416,12 +426,6 @@
           </div>
         </div>
 
-        <!-- Indicadores (botón derecha) -->
-        <button class="bn-menu-item" id="bn-tab-F" onclick="bn_setTipo('F')"
-                title="Indicadores y análisis"
-                style="margin-left:auto;padding:10px 14px;border:none;background:linear-gradient(135deg,#f59e0b,#ea580c);color:#fff;font-weight:700;font-size:13px;cursor:pointer;border-radius:10px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 6px rgba(0,0,0,.1)">
-          📊 Indicadores
-        </button>
       </div>
 
       <!-- Cards view (Egresos / Ingresos) -->
@@ -565,6 +569,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=63"></script>
+  <script src="app.js?v=64"></script>
 </body>
 </html>
