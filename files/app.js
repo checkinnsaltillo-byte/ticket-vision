@@ -2363,7 +2363,14 @@ function bn_buildBnResumenTable(r, idx) {
 
   return `<table>
     <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
-    <tbody>${rows.map(([label, field, val, editable]) => {
+    <tbody>${rows
+      .filter(([label, field, val, editable]) => {
+        // Mostrar siempre los editables; ocultar el resto si están vacíos
+        if (editable) return true;
+        const display = val != null ? String(val).trim() : '';
+        return display.length > 0;
+      })
+      .map(([label, field, val, editable]) => {
       const display = val != null ? String(val) : '';
       const td = editable
         ? `<td contenteditable="true" spellcheck="false" data-field="${field}"
@@ -2413,10 +2420,6 @@ function bn_createCard(rec, idx) {
     ? `<span class="info-chip" style="color:var(--success,#16a34a)">🧾 ${esc(fac)}</span>`
     : `<span class="info-chip" style="color:var(--text-soft);font-style:italic">Sin factura</span>`;
   const isValidado = rec._validado === 'Sí';
-  // Indicador visual: contorno verde en la tarjeta cuando está validado
-  const validadoBorder = isValidado
-    ? 'box-shadow:0 0 0 3px #16a34a,0 4px 12px rgba(22,163,74,.25);border-radius:12px;'
-    : '';
 
   // Tab Clasificar
   const isClasif  = !!rec._cuenta;
@@ -2438,9 +2441,8 @@ function bn_createCard(rec, idx) {
   // Mini barra de avance en encabezado
   const avPct  = isFinite(av) ? Math.min(Math.max(av, 0), 2) : 0;
   const barCls = av > 1.10 ? 'bn-bar-bad' : av > 1.0 ? 'bn-bar-warn' : 'bn-bar-good';
-  const avanceHtml = `
+  const avanceHtml = bud > 0 ? `
     <div class="bn-hdr-avance">
-      ${bud > 0 ? `
       <div class="bn-avance-wrap" style="min-width:90px">
         <div class="bn-avance-bar ${barCls}" style="height:5px;border-radius:3px">
           <div class="bn-avance-fill" style="width:${(avPct*100).toFixed(1)}%"></div>
@@ -2448,14 +2450,19 @@ function bn_createCard(rec, idx) {
         </div>
         <span class="bn-avance-pct" style="font-size:10px">${isFinite(av) ? bn_fmtPct(av) : '—'} presup.</span>
       </div>
-      <div class="bn-hdr-presup">${bn_fmt$(bud)}</div>` : ''}
-      ${bud > 0 && sev.label && sev.label !== '—'
+      <div class="bn-hdr-presup">${bn_fmt$(bud)}</div>
+      ${sev.label && sev.label !== '—'
         ? `<span class="${sev.cls}" style="font-size:10px;padding:2px 7px">${sev.label}</span>`
         : ''}
-    </div>`;
+    </div>` : '';
 
   return `
-    <div class="ticket-card" id="bn-card-${idx}" style="${validadoBorder}">
+    <div class="ticket-card" id="bn-card-${idx}" style="position:relative">
+      <!-- Palomita Validar en esquina superior izquierda -->
+      <button id="bn-check-${ci}" onclick="event.stopPropagation();bn_syncValidado(${idx}, !this.dataset.checked || this.dataset.checked==='false')"
+              data-checked="${isValidado}"
+              title="${isValidado ? 'Validado' : 'Por validar'}"
+              style="position:absolute;top:8px;left:8px;width:28px;height:28px;border-radius:50%;border:2px solid ${isValidado ? '#16a34a' : '#cbd5e1'};background:${isValidado ? '#16a34a' : '#fff'};color:${isValidado ? '#fff' : 'transparent'};font-size:16px;font-weight:900;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center;padding:0">✓</button>
       <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})">
         <div class="ticket-info">
           <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
@@ -2479,14 +2486,6 @@ function bn_createCard(rec, idx) {
             </label>
             <span class="fhl${dedChecked ? ' on' : ''}" id="fhl-${ci}">${dedChecked ? 'Deducible' : 'No deducible'}</span>
           </div>
-          <label class="bn-validar-check" onclick="event.stopPropagation()"
-                 style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;user-select:none">
-            <input type="checkbox" id="validado-header-${ci}"
-                   ${isValidado ? 'checked' : ''}
-                   onchange="bn_syncValidado(${idx}, this.checked)"
-                   style="width:18px;height:18px;accent-color:#16a34a;cursor:pointer">
-            <span id="vhl-${ci}" style="font-size:11px;font-weight:700;color:${isValidado ? '#16a34a' : 'var(--text-soft)'}">${isValidado ? '✓ Validado' : 'Por validar'}</span>
-          </label>
         </div>
       </div>
 
@@ -2503,11 +2502,6 @@ function bn_createCard(rec, idx) {
       </div>
 
       ${tabHtml}
-      ${buildClassifyPanel(ci, bn_formatDiaISO(rec.Día || rec.Dia || ''), deptOptions,
-          isClasif ? '💾 Guardar cambios' : '✓ Clasificar',
-          `bn_saveBnClassification(${idx})`,
-          `bn_limpiarBnClassification(${idx})`,
-          'Fecha del registro')}
     </div>`;
 }
 
@@ -2527,53 +2521,92 @@ function bn_showBnTab(idx, tab, btn) {
   btn.classList.add('active');
 }
 
+/** Abre el modal Clasificar (popup) con la tabla Resumen + panel Clasificar. */
 function bn_toggleBnClassify(idx) {
-  const ci    = 'bn' + idx;
-  const panel = document.getElementById(`classify-${ci}`);
-  const tab   = document.getElementById(`bn-btn-classify-${idx}`);
-  if (!panel) return;
-  const isHidden = panel.classList.toggle('hidden');
-  tab?.classList.toggle('open', !isHidden);
-  if (!isHidden) {
-    bn_activateCatalog();
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  const ci  = 'bn' + idx;
 
-    // ── Renderizar tarjetas de Cuenta dinámicamente desde BN_CATALOG ──────
-    // (no hardcoded — toma los valores reales de Presupuesto_sys)
-    const cuentaGrid = document.getElementById(`cuenta-grid-${ci}`);
-    if (cuentaGrid) {
-      const CUENTA_ICONS = { Egresos:'💸', Ingresos:'💰', Pasivos:'📋', Activos:'📈', Capital:'💼' };
-      const CUENTA_SUBS  = { Egresos:'Gastos y pagos', Ingresos:'Cobros y entradas',
-                             Pasivos:'Obligaciones',   Activos:'Inversión / CAPEX',  Capital:'Utilidad / Familiar' };
-      const cuentas = Object.keys(BN_CATALOG);
-      cuentaGrid.innerHTML = [
-        `<div class="cuenta-card" data-value="" onclick="selectCuenta(this,'${ci}')">` +
-          `<div class="cuenta-icon">🏠</div><div class="cuenta-label">Sin cuenta</div>` +
-          `<div class="cuenta-sub">General</div></div>`,
-        ...cuentas.map(c =>
-          `<div class="cuenta-card" data-value="${esc(c)}" onclick="selectCuenta(this,'${ci}')">` +
-          `<div class="cuenta-icon">${CUENTA_ICONS[c] || '📁'}</div>` +
-          `<div class="cuenta-label">${esc(c)}</div>` +
-          (CUENTA_SUBS[c] ? `<div class="cuenta-sub">${CUENTA_SUBS[c]}</div>` : '') +
-          `</div>`)
-      ].join('');
-    }
+  // Construir HTML del panel Clasificar (sin la clase 'hidden' por defecto)
+  const deptOptions = Array.from({length:14},(_,j)=>`<option>${j+1}</option>`).join('');
+  const isClasif   = !!rec._cuenta;
+  const classifyHtml = buildClassifyPanel(
+    ci,
+    bn_formatDiaISO(rec.Día || rec.Dia || ''),
+    deptOptions,
+    isClasif ? '💾 Guardar cambios' : '✓ Clasificar',
+    `bn_saveBnClassification(${idx})`,
+    `bn_limpiarBnClassification(${idx})`,
+    'Fecha del registro'
+  ).replace('class="classify-panel hidden"', 'class="classify-panel"');
 
-    const rec = BN_CUR_RECS[idx];
-    bn_autoPopulateBnClassify(ci, rec);
-    // Pre-seleccionar Cuenta por tipo o signo de monto si aún no está clasificado
-    if (rec && !rec._cuenta) {
-      const tip = bn_canon(rec.CUENTA || rec.TIPO || '');
-      const mN  = Number(rec.Monto || 0);
-      const autoAcc = tip.includes('egr') ? 'Egresos'
-                    : tip.includes('ing') ? 'Ingresos'
-                    : mN < 0 ? 'Egresos' : 'Ingresos';
-      const grid = document.getElementById(`cuenta-grid-${ci}`);
-      const card = Array.from(grid?.querySelectorAll('.cuenta-card') || [])
-        .find(c => c.dataset.value === autoAcc);
-      if (card) selectCuenta(card, ci);
-    }
+  // Inyectar Resumen + Clasificar en el modal
+  document.getElementById('bn-classify-modal-resumen').innerHTML = bn_buildBnResumenTable(rec, idx);
+  document.getElementById('bn-classify-modal-body').innerHTML    = classifyHtml;
+
+  // Mostrar modal
+  document.getElementById('bn-classify-overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+
+  // Renderizar grid de Cuentas dinámicamente (igual que antes)
+  bn_activateCatalog();
+  const cuentaGrid = document.getElementById(`cuenta-grid-${ci}`);
+  if (cuentaGrid) {
+    const CUENTA_ICONS = { Egresos:'💸', Ingresos:'💰', Pasivos:'📋', Activos:'📈', Capital:'💼' };
+    const CUENTA_SUBS  = { Egresos:'Gastos y pagos', Ingresos:'Cobros y entradas',
+                           Pasivos:'Obligaciones',   Activos:'Inversión / CAPEX',  Capital:'Utilidad / Familiar' };
+    const cuentas = Object.keys(BN_CATALOG);
+    cuentaGrid.innerHTML = [
+      `<div class="cuenta-card" data-value="" onclick="selectCuenta(this,'${ci}')">` +
+        `<div class="cuenta-icon">🏠</div><div class="cuenta-label">Sin cuenta</div>` +
+        `<div class="cuenta-sub">General</div></div>`,
+      ...cuentas.map(c =>
+        `<div class="cuenta-card" data-value="${esc(c)}" onclick="selectCuenta(this,'${ci}')">` +
+        `<div class="cuenta-icon">${CUENTA_ICONS[c] || '📁'}</div>` +
+        `<div class="cuenta-label">${esc(c)}</div>` +
+        (CUENTA_SUBS[c] ? `<div class="cuenta-sub">${CUENTA_SUBS[c]}</div>` : '') +
+        `</div>`)
+    ].join('');
+  }
+
+  bn_autoPopulateBnClassify(ci, rec);
+
+  // Pre-seleccionar Cuenta por tipo / signo si aún no está clasificado
+  if (!rec._cuenta) {
+    const tip = bn_canon(rec.CUENTA || rec.TIPO || '');
+    const mN  = Number(rec.Monto || 0);
+    const autoAcc = tip.includes('egr') ? 'Egresos'
+                  : tip.includes('ing') ? 'Ingresos'
+                  : mN < 0 ? 'Egresos' : 'Ingresos';
+    const grid = document.getElementById(`cuenta-grid-${ci}`);
+    const card = Array.from(grid?.querySelectorAll('.cuenta-card') || [])
+      .find(c => c.dataset.value === autoAcc);
+    if (card) selectCuenta(card, ci);
   }
 }
+
+/** Cierra el modal Clasificar y limpia su contenido. */
+function bn_closeClassifyModal() {
+  const ov = document.getElementById('bn-classify-overlay');
+  if (!ov) return;
+  ov.classList.add('hidden');
+  document.body.style.overflow = '';
+  document.getElementById('bn-classify-modal-resumen').innerHTML = '';
+  document.getElementById('bn-classify-modal-body').innerHTML    = '';
+}
+
+/** Click en el backdrop del modal — cerrar (clic fuera del cuadro). */
+function bn_classifyOverlayClick(e) {
+  if (e.target && e.target.id === 'bn-classify-overlay') bn_closeClassifyModal();
+}
+
+// Tecla Esc cierra el modal Clasificar (desktop)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('bn-classify-overlay');
+    if (ov && !ov.classList.contains('hidden')) bn_closeClassifyModal();
+  }
+});
 
 /** Guarda las ediciones del campo Concepto de la tabla Resumen en memoria. */
 async function bn_saveBnResumenEdit(idx) {
@@ -2765,9 +2798,10 @@ async function bn_saveBnClassification(idx) {
                   _ct2.includes('activ') ? 'Activos' : _ct2.includes('pasiv') ? 'Pasivos' :
                   _ct2.includes('capital') ? 'Capital' : _rawT2;
 
-  // Re-render tarjeta en el DOM (el panel queda contraído por defecto)
+  // Re-render tarjeta en el DOM y cerrar modal Clasificar
   const card = document.getElementById(`bn-card-${idx}`);
   if (card) card.outerHTML = bn_createCard(rec, idx);
+  bn_closeClassifyModal();
 
   // Guardar clasificación en Google Sheets (hoja BANCOS)
   try {
@@ -3124,22 +3158,14 @@ async function bn_syncValidado(idx, checked) {
   if (!rec) return;
   rec._validado = checked ? 'Sí' : 'No';
 
-  // Actualizar label
-  const lbl = document.getElementById(`vhl-${ci}`);
-  if (lbl) {
-    lbl.textContent = checked ? '✓ Validado …' : 'Por validar …';
-    lbl.style.color = checked ? '#16a34a' : 'var(--text-soft)';
-  }
-  // Aplicar/quitar contorno verde a la tarjeta
-  const card = document.getElementById(`bn-card-${idx}`);
-  if (card) {
-    if (checked) {
-      card.style.boxShadow  = '0 0 0 3px #16a34a, 0 4px 12px rgba(22,163,74,.25)';
-      card.style.borderRadius = '12px';
-    } else {
-      card.style.boxShadow = '';
-      card.style.borderRadius = '';
-    }
+  // Actualizar el botón palomita en esquina superior izquierda
+  const btn = document.getElementById(`bn-check-${ci}`);
+  if (btn) {
+    btn.dataset.checked = checked ? 'true' : 'false';
+    btn.style.borderColor = checked ? '#16a34a' : '#cbd5e1';
+    btn.style.background  = checked ? '#16a34a' : '#fff';
+    btn.style.color       = checked ? '#fff'    : 'transparent';
+    btn.title             = checked ? 'Validado' : 'Por validar';
   }
 
   if (!rec.rowNum) { if (lbl) lbl.textContent = checked ? '✓ Validado' : 'Por validar'; return; }
