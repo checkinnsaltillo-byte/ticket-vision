@@ -1932,6 +1932,14 @@ function bn_filteredRecs(tipo) {
     if(tipo==='AC' && !t.includes('activ'))   return false;
     if(tipo==='PA' && !t.includes('pasiv'))   return false;
     if(tipo==='CA' && !t.includes('capital')) return false;
+    if(tipo==='PC') {
+      // 'Por clasificar' = clasificación incompleta (faltan CUENTA, SUBCUENTA o CATEGORIA)
+      const hasCuenta    = !!(r._cuenta          && String(r._cuenta).trim());
+      const hasSubcuenta = !!(r._subcuenta       && String(r._subcuenta).trim());
+      const hasCategoria = !!(r._categoria_gasto && String(r._categoria_gasto).trim());
+      const completo = hasCuenta && hasSubcuenta && hasCategoria;
+      if (completo) return false;
+    }
     // 'T' = Todos: no filtra por tipo
     if(q){ const h=(sub+' '+cat+' '+con+' '+bn_norm(r.DESCRIPCION||'')).toLowerCase(); if(!h.includes(q)) return false; }
     return true;
@@ -1992,7 +2000,7 @@ function bn_monthly() {
 // ─── Tab switching ────────────────────────────────────────────────────────────
 function bn_setTipo(t) {
   BN_TIPO=t;
-  ['T','E','I','AC','PA','CA','A','F'].forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
+  ['T','E','I','AC','PA','CA','PC','A','F'].forEach(x=>document.getElementById('bn-tab-'+x)?.classList.toggle('active',x===t));
   bn_render();
 }
 
@@ -2025,8 +2033,8 @@ function bn_render() {
 
   document.getElementById('bn-kpi-row')?.classList.remove('hidden');
 
-  // Subtitle — en Todos usa el total filtrado; en E/I solo suma ambos
-  const visLen = BN_TIPO==='T' ? bn_filteredRecs('T').length : (bn_filteredRecs('E').length+bn_filteredRecs('I').length);
+  // Subtitle — total filtrado de la pestaña actual
+  const visLen = bn_filteredRecs(BN_TIPO).length;
   bn_txt('bn-filter-subtitle', visLen.toLocaleString('es-MX')+' de '+BN_RAW.length.toLocaleString('es-MX')+' movimientos');
 
   const tw=document.getElementById('bn-table-wrap');
