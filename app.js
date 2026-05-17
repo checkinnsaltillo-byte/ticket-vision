@@ -2266,8 +2266,10 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
             style="color:#1e40af;cursor:pointer;flex-shrink:0;width:14px;text-align:center;user-select:none">${expanded ? '▼' : '▸'}</span>`
     : `<span style="flex-shrink:0;width:14px"></span>`;
 
+  const pathEncForClick = encodeURIComponent(JSON.stringify({ ancestors, levels: BN_AP_LEVELS.slice(0, ancestors.length), name: node.name }));
   rows.push(`
-    <tr style="background:${bgRow}">
+    <tr style="background:${bgRow};cursor:pointer" onclick="bn_apOpenRecordsModal('${pathEncForClick}')"
+        onmouseover="this.style.filter='brightness(.97)'" onmouseout="this.style.filter=''">
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;padding-left:${10+indent}px;font-weight:${wgt};font-size:${depth===0?'13':'12'}px;max-width:380px">
         <div style="display:flex;align-items:center;gap:6px;min-width:0">
           ${triangle}
@@ -2298,6 +2300,113 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
     }
   }
 }
+
+/** Abre el modal con los registros que coinciden con la partida (ancestros). */
+function bn_apOpenRecordsModal(pathEnc) {
+  let info;
+  try { info = JSON.parse(decodeURIComponent(pathEnc)); } catch(_) { return; }
+  const { ancestors, levels, name } = info;
+
+  // Filtrar BN_RAW (vía kpiRecs para mantener Año/Mes/multi-selects)
+  const all = bn_kpiRecs(null);
+  const matching = all.filter(r => {
+    for (let i = 0; i < ancestors.length; i++) {
+      const lvl = levels[i];
+      const v = String(r[lvl] || '').trim() || '(Sin asignar)';
+      if (v !== ancestors[i]) return false;
+    }
+    return true;
+  });
+
+  // Orden desc por monto absoluto
+  matching.sort((a,b) => Math.abs(Number(b.Monto)||0) - Math.abs(Number(a.Monto)||0));
+
+  // Max absoluto para escalar la barra de magnitud
+  const maxAbs = matching.reduce((m,r) => Math.max(m, Math.abs(Number(r.Monto)||0)), 0) || 1;
+
+  // Encabezados de la tabla
+  const cols = [
+    { label: 'Descripción',   w: 240 },
+    { label: 'Día',           w: 90  },
+    { label: 'Cuenta bancaria', w: 150 },
+    { label: 'Monto',         w: 110, num: true },
+    { label: 'Magnitud',      w: 160 },
+    { label: 'Factura',       w: 100 },
+    { label: 'Encargado',     w: 120 },
+    { label: 'Reembolso',     w: 100 },
+    { label: 'Método pago',   w: 130 },
+    { label: 'Duda',          w: 70  },
+  ];
+
+  const thead = cols.map(c =>
+    `<th style="padding:9px 10px;text-align:${c.num?'right':'left'};font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#475569;color:#fff;min-width:${c.w}px;white-space:nowrap">${esc(c.label)}</th>`
+  ).join('');
+
+  const totalMonto = matching.reduce((s,r) => s + Math.abs(Number(r.Monto)||0), 0);
+
+  const tbody = matching.map(r => {
+    const monto = Number(r.Monto) || 0;
+    const absM = Math.abs(monto);
+    const pct = (absM / maxAbs) * 100;
+    const isNeg = monto < 0;
+    const barColor = isNeg ? '#dc2626' : '#16a34a';
+    const desc = r.DESCRIPCION || '';
+    const dia  = bn_formatDia ? bn_formatDia(r.Día || r.Dia || '') : (r.Día || r.Dia || '');
+    const cta  = r['Cuenta bancaria'] || '';
+    const fac  = r.FacturaFlag || r.Factura || '';
+    const enc  = r._encargado || '';
+    const reem = r._reembolso || '';
+    const mp   = r._metodo_pago || '';
+    const duda = r._duda === 'Sí' ? '<span title="Marcado: Duda" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#fef3c7;color:#b45309;font-weight:900;line-height:22px;text-align:center">?</span>' : '';
+    return `<tr>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(desc)}">${esc(desc)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b">${esc(dia)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b">${esc(cta)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;text-align:right;font-weight:700;color:${isNeg?'#dc2626':'#16a34a'}">${bn_fmt$(monto)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0">
+        <div style="position:relative;width:140px;height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${pct.toFixed(1)}%;background:${barColor};transition:width .3s"></div>
+        </div>
+      </td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:${fac && fac !== 'Sin factura' ? '#16a34a':'#94a3b8'}">${esc(fac || '—')}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#475569">${esc(enc)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#475569">${esc(reem)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#475569">${esc(mp)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;text-align:center">${duda}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('bn-ap-records-title').textContent =
+    `📋 Registros — ${name}`;
+  document.getElementById('bn-ap-records-sub').textContent =
+    `${matching.length} movimiento${matching.length===1?'':'s'} · Total ${bn_fmt$(totalMonto)} · Ruta: ${ancestors.join(' › ')}`;
+  document.getElementById('bn-ap-records-body').innerHTML = matching.length
+    ? `<table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.05);font-size:12px">
+         <thead><tr>${thead}</tr></thead>
+         <tbody>${tbody}</tbody>
+       </table>`
+    : `<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Sin registros bajo esta partida con los filtros actuales</div>`;
+
+  document.getElementById('bn-ap-records-overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function bn_closeApRecordsModal() {
+  document.getElementById('bn-ap-records-overlay')?.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function bn_apRecordsOverlayClick(e) {
+  if (e.target && e.target.id === 'bn-ap-records-overlay') bn_closeApRecordsModal();
+}
+
+// Esc cierra el modal de registros AP
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('bn-ap-records-overlay');
+    if (ov && !ov.classList.contains('hidden')) bn_closeApRecordsModal();
+  }
+});
 
 /** Renderiza la tabla de Análisis por partida. */
 function bn_renderAP() {
