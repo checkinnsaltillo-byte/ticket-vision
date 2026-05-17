@@ -313,21 +313,27 @@
         </div>
       </div>
 
-      <!-- Filtros Año y Mes (siempre visibles, derivados del campo Día) -->
-      <div id="bn-mes-anio-row" style="display:flex;align-items:center;gap:14px;margin:10px 0 14px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:8px">
-          <label for="bn-f-anio" style="font-weight:700;color:var(--text-soft);font-size:12px;text-transform:uppercase;letter-spacing:.04em">📅 Año</label>
-          <select id="bn-f-anio" class="field-select" onchange="bn_onFilterChange()"
-                  style="min-width:120px;max-width:160px">
-            <option value="">Todos</option>
-          </select>
+      <!-- Filtros Año y Mes (multi-select, siempre visibles, derivados del campo Día) -->
+      <div id="bn-mes-anio-row" style="display:flex;align-items:flex-end;gap:14px;margin:10px 0 14px;flex-wrap:wrap">
+        <div class="bn-msel" data-field="anio" style="position:relative;min-width:160px">
+          <label style="display:block;font-weight:700;color:var(--text-soft);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📅 Año</label>
+          <button class="bn-msel-trigger" onclick="bn_mselToggle('anio',event)" type="button"
+                  style="width:100%;padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;background:#fff;cursor:pointer;text-align:left;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+            <span class="bn-msel-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Todos</span>
+            <span style="font-size:10px;color:var(--text-soft);margin-left:6px">▼</span>
+          </button>
+          <div class="bn-msel-panel hidden" id="bn-msel-panel-anio"
+               style="position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid var(--border,#e5e7eb);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;z-index:90;padding:6px;min-width:160px"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <label for="bn-f-mes" style="font-weight:700;color:var(--text-soft);font-size:12px;text-transform:uppercase;letter-spacing:.04em">🗓️ Mes</label>
-          <select id="bn-f-mes" class="field-select" onchange="bn_onFilterChange()"
-                  style="min-width:160px;max-width:200px">
-            <option value="">Todos</option>
-          </select>
+        <div class="bn-msel" data-field="mes" style="position:relative;min-width:200px">
+          <label style="display:block;font-weight:700;color:var(--text-soft);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🗓️ Mes</label>
+          <button class="bn-msel-trigger" onclick="bn_mselToggle('mes',event)" type="button"
+                  style="width:100%;padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;background:#fff;cursor:pointer;text-align:left;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+            <span class="bn-msel-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Todos</span>
+            <span style="font-size:10px;color:var(--text-soft);margin-left:6px">▼</span>
+          </button>
+          <div class="bn-msel-panel hidden" id="bn-msel-panel-mes"
+               style="position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid var(--border,#e5e7eb);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;z-index:90;padding:6px;min-width:200px"></div>
         </div>
       </div>
 
@@ -412,33 +418,13 @@
 
       </div>
 
-      <!-- Panel de filtros extra desplegable (texto, cuenta, categoría, concepto)
-           — se despliega DEBAJO del menú al activar la hamburguesa -->
-      <div class="db-filter-panel hidden" id="bn-filter-body">
-        <div class="db-filter-grid">
-          <div class="db-filter-full">
-            <input type="text" id="bn-f-text" placeholder="🔍  Buscar por categoría, concepto, descripción…"
-                   class="db-search-input" oninput="bn_onFilterChange()">
-          </div>
-          <div class="db-filter-half">
-            <label>Cuenta bancaria</label>
-            <select id="bn-f-cuenta" class="field-select" onchange="bn_onFilterChange()">
-              <option value="">Todas</option>
-            </select>
-          </div>
-          <div class="db-filter-half">
-            <label>Categoría</label>
-            <select id="bn-f-categoria" class="field-select" onchange="bn_onFilterChange()">
-              <option value="">Todas</option>
-            </select>
-          </div>
-          <div class="db-filter-half">
-            <label>Concepto</label>
-            <select id="bn-f-concepto" class="field-select" onchange="bn_onFilterChange()">
-              <option value="">Todos</option>
-            </select>
-          </div>
+      <!-- Panel de filtros extra desplegable (texto + multi-selects) -->
+      <div class="db-filter-panel hidden" id="bn-filter-body" style="margin:8px 0 14px;padding:12px;background:#f9fafb;border:1px solid var(--border,#e5e7eb);border-radius:10px">
+        <div style="margin-bottom:10px">
+          <input type="text" id="bn-f-text" placeholder="🔍  Buscar por categoría, concepto, descripción…"
+                 class="db-search-input" oninput="bn_onFilterChange()" style="width:100%">
         </div>
+        <div id="bn-msel-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px"></div>
       </div>
 
       <!-- Toggle Vista cronológica (timeline) -->
@@ -592,6 +578,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=68"></script>
+  <script src="app.js?v=69"></script>
 </body>
 </html>

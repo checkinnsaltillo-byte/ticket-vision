@@ -1620,7 +1620,36 @@ let BN_RAW    = [];
 let BN_BUDGET = [];
 let BN_TIPO   = 'T';   // 'T' Todos | 'E' Egresos | 'I' Ingresos | 'A' Alertas | 'F' Indicadores
 let BN_LOADED = false;
-const bn_st   = { año: '', mes: '', cuenta: '', categoria: '', concepto: '', mesAnio: '' };
+// Estado de filtros (multi-select). Cada campo es un array; vacío = "Todos".
+const bn_st   = {
+  cuentaClasif: [], subcuenta: [], categoria: [], concepto: [],
+  cuentaBan:    [], dia: [],
+  propiedad:    [], departamento: [],
+  deducible:    [], reembolso: [],
+  encargado:    [],
+  anio:         [], mes: [],
+  // Texto libre (no multi-select)
+  q: '',
+};
+
+// Configuración de los multi-selects del panel desplegable
+const BN_MSEL_FIELDS = [
+  { key: 'cuentaClasif', label: 'Cuenta',          from: r => r._cuenta             || '' },
+  { key: 'subcuenta',    label: 'Subcuenta',       from: r => r._subcuenta          || '' },
+  { key: 'categoria',    label: 'Categoría',       from: r => r._categoria_gasto    || '' },
+  { key: 'concepto',     label: 'Concepto',        from: r => r._concepto           || '' },
+  { key: 'cuentaBan',    label: 'Cuenta bancaria', from: r => r['Cuenta bancaria']  || '' },
+  { key: 'dia',          label: 'Día',             from: r => {
+      const iso = bn_formatDiaISO(r.Día || r.Dia || '');
+      const m = iso.match(/^\d{4}-\d{2}-(\d{2})/);
+      return m ? String(Number(m[1])) : '';
+    } },
+  { key: 'propiedad',    label: 'Propiedad',       from: r => r._propiedad          || '' },
+  { key: 'departamento', label: '# Departamento',  from: r => (r._departamento !== undefined && r._departamento !== null && r._departamento !== '') ? String(r._departamento) : '' },
+  { key: 'deducible',    label: 'Deducible',       from: r => r._deducible          || '' },
+  { key: 'reembolso',    label: 'Reembolso',       from: r => r._reembolso          || '' },
+  { key: 'encargado',    label: 'Encargado de operación', from: r => r._encargado   || '' },
+];
 const BN_BCACHE = { E: null, I: null };
 let BN_CATALOG = {};           // catálogo construido desde Presupuesto_sys
 let _BN_ORIG_CATALOG = null;   // respaldo del CATALOG de tickets
@@ -1907,48 +1936,55 @@ function bn_recsForTipo(tipo) {
   });
 }
 
+// Construye / re-construye los multi-selects del panel + Año/Mes.
 function bn_populateFilters() {
-  // Fuente de datos para los dropdowns: registros del tipo actual
+  // Fuente de datos: registros del tipo activo
   const recs = (typeof BN_TIPO !== 'undefined' && BN_TIPO) ? bn_recsForTipo(BN_TIPO) : BN_RAW;
 
-  const fill=(id,vals,blank)=>{
-    const sel=document.getElementById(id); if(!sel) return;
-    const cur=sel.value;
-    const opts = vals.filter(v => v); // descartar vacíos
-    // Preservar selección actual si sigue presente; si no, resetear a vacío
-    const keep = opts.includes(cur) ? cur : '';
-    sel.value = '';
-    sel.innerHTML=`<option value="">${blank}</option>`+
-      opts.map(v=>`<option${v===keep?' selected':''}>${esc(v)}</option>`).join('');
-    if (keep) sel.value = keep;
-  };
-  fill('bn-f-cuenta',    bn_uniq(recs.map(r=>bn_norm(r['Cuenta bancaria']||''))), 'Todas');
-  fill('bn-f-categoria', bn_uniq(recs.map(r=>bn_norm(r.CATEGORIA||''))),          'Todas');
-  fill('bn-f-concepto',  bn_uniq(recs.map(r=>bn_norm(r.CONCEPTO ||''))),          'Todos');
+  // Construir grid de multi-selects del panel
+  const grid = document.getElementById('bn-msel-grid');
+  if (grid && !grid.dataset.built) {
+    grid.innerHTML = BN_MSEL_FIELDS.map(f => `
+      <div class="bn-msel" data-field="${f.key}" style="position:relative">
+        <label style="display:block;font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${esc(f.label)}</label>
+        <button class="bn-msel-trigger" onclick="bn_mselToggle('${f.key}',event)" type="button"
+                style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:6px;background:#fff;cursor:pointer;text-align:left;font-size:12px;display:flex;justify-content:space-between;align-items:center">
+          <span class="bn-msel-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Todos</span>
+          <span style="font-size:10px;color:var(--text-soft);margin-left:6px">▼</span>
+        </button>
+        <div class="bn-msel-panel hidden" id="bn-msel-panel-${f.key}"
+             style="position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid var(--border,#e5e7eb);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;z-index:90;padding:6px;min-width:170px"></div>
+      </div>`).join('');
+    grid.dataset.built = '1';
+  }
 
-  // Filtros Año y Mes derivados del campo Día
-  const NOMBRES_MES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                       'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  // Poblar opciones de cada multi-select del panel
+  for (const f of BN_MSEL_FIELDS) {
+    let values = [...new Set(recs.map(r => (f.from(r) || '').toString().trim()).filter(v => v))];
+    // Orden: numérico para Día y Departamento, alfabético para el resto
+    if (f.key === 'dia' || f.key === 'departamento') {
+      values.sort((a,b) => Number(a) - Number(b));
+    } else {
+      values.sort((a,b) => a.localeCompare(b, 'es'));
+    }
+    bn_mselFillOptions(f.key, values);
+  }
 
-  // Año: años únicos presentes en los registros del tipo activo, descendente
-  const selA = document.getElementById('bn-f-anio');
-  if (selA) {
-    const cur = selA.value;
+  // Año (multi)
+  {
     const years = new Set();
     for (const r of recs) {
       const iso = bn_formatDiaISO(r.Día || r.Dia || '');
       if (/^\d{4}-/.test(iso)) years.add(iso.substring(0, 4));
     }
     const sorted = [...years].sort((a,b) => b.localeCompare(a));
-    const keep = sorted.includes(cur) ? cur : '';
-    selA.innerHTML = `<option value="">Todos</option>` +
-      sorted.map(y => `<option value="${y}"${y===keep?' selected':''}>${y}</option>`).join('');
+    bn_mselFillOptions('anio', sorted);
   }
 
-  // Mes: meses únicos presentes en los registros del tipo activo
-  const selM = document.getElementById('bn-f-mes');
-  if (selM) {
-    const cur = selM.value;
+  // Mes (multi) — claves "01".."12", label nombre español
+  {
+    const NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                     'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     const months = new Set();
     for (const r of recs) {
       const iso = bn_formatDiaISO(r.Día || r.Dia || '');
@@ -1956,11 +1992,106 @@ function bn_populateFilters() {
       if (m) months.add(m[1]);
     }
     const sorted = [...months].sort();
-    const keep = sorted.includes(cur) ? cur : '';
-    selM.innerHTML = `<option value="">Todos</option>` +
-      sorted.map(mm => `<option value="${mm}"${mm===keep?' selected':''}>${NOMBRES_MES[Number(mm)-1]}</option>`).join('');
+    bn_mselFillOptions('mes', sorted, mm => NOMBRES[Number(mm)-1]);
   }
 }
+
+/** Rellena las opciones (checkboxes) de un multi-select. */
+function bn_mselFillOptions(field, options, labelFn) {
+  const panel = document.getElementById(`bn-msel-panel-${field}`);
+  if (!panel) return;
+  const sel = bn_st[field] || [];
+  // Filtrar selecciones que ya no estén disponibles en el contexto actual
+  bn_st[field] = sel.filter(v => options.includes(v));
+  const items = options.map(opt => {
+    const lbl = labelFn ? labelFn(opt) : opt;
+    const checked = bn_st[field].includes(opt);
+    return `<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;cursor:pointer;font-size:12px" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">
+      <input type="checkbox" value="${esc(opt)}" ${checked?'checked':''}
+             onchange="bn_mselChange('${field}',this)"
+             style="accent-color:#ea580c;cursor:pointer">
+      <span>${esc(lbl)}</span>
+    </label>`;
+  }).join('');
+  panel.innerHTML = (options.length
+    ? `<div style="display:flex;justify-content:space-between;gap:6px;margin-bottom:6px;padding:0 4px">
+         <button type="button" onclick="bn_mselSelectAll('${field}')" style="font-size:11px;padding:4px 8px;border:none;background:#e5e7eb;border-radius:4px;cursor:pointer">Todos</button>
+         <button type="button" onclick="bn_mselClear('${field}')"     style="font-size:11px;padding:4px 8px;border:none;background:#e5e7eb;border-radius:4px;cursor:pointer">Ninguno</button>
+       </div>${items}`
+    : `<div style="padding:8px;font-size:12px;color:var(--text-soft);text-align:center">Sin opciones</div>`);
+  // Guardar metadata para el label dinámico
+  panel.dataset.labels = JSON.stringify(options.reduce((acc, o) => {
+    acc[o] = labelFn ? labelFn(o) : o;
+    return acc;
+  }, {}));
+  bn_mselUpdateTrigger(field);
+}
+
+/** Actualiza el texto del trigger según selección. */
+function bn_mselUpdateTrigger(field) {
+  const wrap = document.querySelector(`.bn-msel[data-field="${field}"]`);
+  if (!wrap) return;
+  const lblEl = wrap.querySelector('.bn-msel-label');
+  if (!lblEl) return;
+  const sel = bn_st[field] || [];
+  const panel = document.getElementById(`bn-msel-panel-${field}`);
+  let map = {};
+  try { map = JSON.parse(panel?.dataset.labels || '{}'); } catch(_) {}
+  if (sel.length === 0)      lblEl.textContent = 'Todos';
+  else if (sel.length === 1) lblEl.textContent = map[sel[0]] || sel[0];
+  else                       lblEl.textContent = `${sel.length} seleccionados`;
+  lblEl.style.color = sel.length ? '#ea580c' : '';
+  lblEl.style.fontWeight = sel.length ? '700' : '';
+}
+
+/** Abre/cierra un panel de multi-select. */
+function bn_mselToggle(field, ev) {
+  if (ev) ev.stopPropagation();
+  const panel = document.getElementById(`bn-msel-panel-${field}`);
+  if (!panel) return;
+  document.querySelectorAll('.bn-msel-panel').forEach(p => {
+    if (p !== panel) p.classList.add('hidden');
+  });
+  panel.classList.toggle('hidden');
+}
+
+/** Cambio en un checkbox del multi-select: actualiza estado y re-renderiza. */
+function bn_mselChange(field, cb) {
+  if (!Array.isArray(bn_st[field])) bn_st[field] = [];
+  const v = cb.value;
+  const i = bn_st[field].indexOf(v);
+  if (cb.checked && i < 0) bn_st[field].push(v);
+  else if (!cb.checked && i >= 0) bn_st[field].splice(i, 1);
+  bn_mselUpdateTrigger(field);
+  bn_render();
+}
+
+/** Botón "Todos" — marca todas las opciones disponibles. */
+function bn_mselSelectAll(field) {
+  const panel = document.getElementById(`bn-msel-panel-${field}`);
+  if (!panel) return;
+  const all = Array.from(panel.querySelectorAll('input[type="checkbox"]')).map(cb => cb.value);
+  bn_st[field] = all.slice();
+  panel.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+  bn_mselUpdateTrigger(field);
+  bn_render();
+}
+
+/** Botón "Ninguno" — desmarca todo. */
+function bn_mselClear(field) {
+  const panel = document.getElementById(`bn-msel-panel-${field}`);
+  bn_st[field] = [];
+  if (panel) panel.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  bn_mselUpdateTrigger(field);
+  bn_render();
+}
+
+// Cerrar paneles al hacer clic fuera
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.bn-msel')) {
+    document.querySelectorAll('.bn-msel-panel').forEach(p => p.classList.add('hidden'));
+  }
+});
 
 function bn_setDefaultFilters() {
   // Año y Mes en curso por defecto (si están disponibles en los datos)
@@ -1968,31 +2099,43 @@ function bn_setDefaultFilters() {
   const curY = String(now.getFullYear());
   const curM = String(now.getMonth() + 1).padStart(2, '0');
 
-  const selA = document.getElementById('bn-f-anio');
-  const selM = document.getElementById('bn-f-mes');
-  const hasOpt = (sel, val) => sel && Array.from(sel.options).some(o => o.value === val);
+  const hasOpt = (field, val) => {
+    const panel = document.getElementById(`bn-msel-panel-${field}`);
+    return panel ? Array.from(panel.querySelectorAll('input[type="checkbox"]')).some(cb => cb.value === val) : false;
+  };
+  bn_st.anio = hasOpt('anio', curY) ? [curY] : [];
+  bn_st.mes  = hasOpt('mes',  curM) ? [curM] : [];
 
-  if (hasOpt(selA, curY)) { selA.value = curY; bn_st.año = curY; }
-  else                    { bn_st.año = ''; }
-  if (hasOpt(selM, curM)) { selM.value = curM; bn_st.mes = curM; }
-  else                    { bn_st.mes = ''; }
+  // Limpiar todos los demás multi-selects
+  for (const f of BN_MSEL_FIELDS) bn_st[f.key] = [];
+  bn_st.q = '';
 
-  bn_st.cuenta = bn_st.categoria = bn_st.concepto = '';
+  // Reflejar en UI
+  for (const f of [...BN_MSEL_FIELDS.map(x => x.key), 'anio', 'mes']) {
+    const panel = document.getElementById(`bn-msel-panel-${f}`);
+    if (!panel) continue;
+    panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.checked = (bn_st[f] || []).includes(cb.value);
+    });
+    bn_mselUpdateTrigger(f);
+  }
 }
 
 function bn_onFilterChange() {
-  bn_st.cuenta    = document.getElementById('bn-f-cuenta')?.value    || '';
-  bn_st.categoria = document.getElementById('bn-f-categoria')?.value || '';
-  bn_st.concepto  = document.getElementById('bn-f-concepto')?.value  || '';
-  bn_st.año       = document.getElementById('bn-f-anio')?.value      || '';
-  bn_st.mes       = document.getElementById('bn-f-mes')?.value       || '';
+  bn_st.q = (document.getElementById('bn-f-text')?.value || '').toLowerCase().trim();
   bn_render();
 }
 
 function bn_clearFilters() {
-  ['bn-f-cuenta','bn-f-categoria','bn-f-concepto','bn-f-text','bn-f-anio','bn-f-mes']
-    .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-  bn_st.año=bn_st.mes=bn_st.cuenta=bn_st.categoria=bn_st.concepto='';
+  for (const f of [...BN_MSEL_FIELDS.map(x => x.key), 'anio', 'mes']) {
+    bn_st[f] = [];
+    const panel = document.getElementById(`bn-msel-panel-${f}`);
+    if (panel) panel.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+    bn_mselUpdateTrigger(f);
+  }
+  bn_st.q = '';
+  const txt = document.getElementById('bn-f-text');
+  if (txt) txt.value = '';
   bn_render();
 }
 
@@ -2007,38 +2150,49 @@ function bn_toggleFilters() {
 // ─── Filtered records ─────────────────────────────────────────────────────────
 function bn_filteredRecs(tipo) {
   const s=bn_st;
-  const q=(document.getElementById('bn-f-text')?.value||'').toLowerCase().trim();
+  const q=(s.q || (document.getElementById('bn-f-text')?.value||'').toLowerCase().trim());
+  // Helper: array vacío = sin filtro
+  const inArr = (arr, v) => !arr || arr.length === 0 || arr.includes(v);
   return BN_RAW.filter(r=>{
-    const cta=bn_norm(r['Cuenta bancaria']||'');
-    const sub=bn_norm(r.SUBCUENTA ||'');
-    const cat=bn_norm(r.CATEGORIA ||'');
-    const con=bn_norm(r.CONCEPTO  ||'');
-    const t = bn_canon(r._tipo || ''); // 'egresos','ingresos','activos','pasivos','capital'
-    if(s.cuenta    && cta!==s.cuenta)    return false;
-    if(s.categoria && cat!==s.categoria) return false;
-    if(s.concepto  && con!==s.concepto)  return false;
-    if(s.año || s.mes){
-      const iso = bn_formatDiaISO(r.Día || r.Dia || '');
-      const m   = iso.match(/^(\d{4})-(\d{2})/);
-      if(!m) return false;
-      if(s.año && m[1] !== s.año) return false;
-      if(s.mes && m[2] !== s.mes) return false;
-    }
+    const t = bn_canon(r._tipo || '');
+
+    // Filtros por pestaña (tipo)
     if(tipo==='E'  && !t.includes('egr'))     return false;
     if(tipo==='I'  && !t.includes('ing'))     return false;
     if(tipo==='AC' && !t.includes('activ'))   return false;
     if(tipo==='PA' && !t.includes('pasiv'))   return false;
     if(tipo==='CA' && !t.includes('capital')) return false;
     if(tipo==='PC') {
-      // 'Por clasificar' = clasificación incompleta (faltan CUENTA, SUBCUENTA o CATEGORIA)
-      const hasCuenta    = !!(r._cuenta          && String(r._cuenta).trim());
-      const hasSubcuenta = !!(r._subcuenta       && String(r._subcuenta).trim());
-      const hasCategoria = !!(r._categoria_gasto && String(r._categoria_gasto).trim());
-      const completo = hasCuenta && hasSubcuenta && hasCategoria;
-      if (completo) return false;
+      const hC = !!(r._cuenta          && String(r._cuenta).trim());
+      const hS = !!(r._subcuenta       && String(r._subcuenta).trim());
+      const hG = !!(r._categoria_gasto && String(r._categoria_gasto).trim());
+      if (hC && hS && hG) return false;
     }
-    // 'T' = Todos: no filtra por tipo
-    if(q){ const h=(sub+' '+cat+' '+con+' '+bn_norm(r.DESCRIPCION||'')).toLowerCase(); if(!h.includes(q)) return false; }
+
+    // Multi-selects: cada campo es array; vacío = todos
+    for (const f of BN_MSEL_FIELDS) {
+      const arr = s[f.key];
+      if (arr && arr.length) {
+        const val = (f.from(r) || '').toString().trim();
+        if (!arr.includes(val)) return false;
+      }
+    }
+
+    // Año y Mes (multi)
+    if ((s.anio && s.anio.length) || (s.mes && s.mes.length)) {
+      const iso = bn_formatDiaISO(r.Día || r.Dia || '');
+      const m   = iso.match(/^(\d{4})-(\d{2})/);
+      if(!m) return false;
+      if (s.anio && s.anio.length && !s.anio.includes(m[1])) return false;
+      if (s.mes  && s.mes.length  && !s.mes .includes(m[2])) return false;
+    }
+
+    // Búsqueda libre
+    if(q){
+      const h = [bn_norm(r.SUBCUENTA||''), bn_norm(r.CATEGORIA||''), bn_norm(r.CONCEPTO||''),
+                 bn_norm(r.DESCRIPCION||''), bn_norm(r['Cuenta bancaria']||'')].join(' ').toLowerCase();
+      if(!h.includes(q)) return false;
+    }
     return true;
   });
 }
