@@ -1939,8 +1939,9 @@ function bn_renderReviewPanel() {
           <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Estado de validación</div>
           <div style="font-size:22px;font-weight:800;color:#111827;margin-top:2px">Validados vs pendientes</div>
         </div>
-        <div style="padding:8px 16px;border:1.5px solid #fde68a;background:#fef3c7;color:#92400e;border-radius:999px;font-weight:700;font-size:13px">
-          ${noRev} registro${noRev===1?'':'s'} por validar
+        <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border:1.5px solid #fecaca;background:#fef2f2;color:#7f1d1d;border-radius:999px;font-weight:700;font-size:13px">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#dc2626;color:#fff;font-weight:800;font-size:13px">${noRev > 99 ? '99+' : noRev}</span>
+          registro${noRev===1?'':'s'} por validar
         </div>
       </div>
 
@@ -1969,11 +1970,6 @@ function bn_renderReviewPanel() {
       </div>
 
       <!-- Notas -->
-      ${noRev > 0 ? `
-        <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
-          <div style="width:28px;height:28px;border-radius:50%;background:#dc2626;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${noRev > 99 ? '99+' : noRev}</div>
-          <div style="font-size:13px;color:#7f1d1d">Registro(s) pendiente(s) requieren tu atención. Marca cada uno como <b>✓ Validado</b> para sacarlo de esta lista y enviarlo a Registros contables.</div>
-        </div>` : ''}
       ${rev > 0 ? `
         <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px">
           <div style="font-size:18px">✅</div>
@@ -2227,15 +2223,32 @@ function bn_mselUpdateTrigger(field) {
   lblEl.style.fontWeight = sel.length ? '700' : '';
 }
 
-/** Abre/cierra un panel de multi-select. */
+/** Abre/cierra un panel de multi-select. Cuando abre, lo posiciona como fixed
+ *  para que se despliegue por encima de cualquier contenedor (sin recorte). */
 function bn_mselToggle(field, ev) {
   if (ev) ev.stopPropagation();
   const panel = document.getElementById(`bn-msel-panel-${field}`);
   if (!panel) return;
   document.querySelectorAll('.bn-msel-panel').forEach(p => {
-    if (p !== panel) p.classList.add('hidden');
+    if (p !== panel) { p.classList.add('hidden'); p.style.position=''; p.style.top=''; p.style.left=''; p.style.width=''; }
   });
-  panel.classList.toggle('hidden');
+  const willOpen = panel.classList.contains('hidden');
+  if (willOpen) {
+    const trigger = document.querySelector(`.bn-msel[data-field="${field}"] .bn-msel-trigger`);
+    if (trigger) {
+      const r = trigger.getBoundingClientRect();
+      panel.style.position = 'fixed';
+      panel.style.top   = (r.bottom + 4) + 'px';
+      panel.style.left  = r.left + 'px';
+      panel.style.width = r.width + 'px';
+      panel.style.minWidth = '180px';
+      panel.style.maxHeight = Math.min(360, window.innerHeight - r.bottom - 20) + 'px';
+      panel.style.right = 'auto';
+    }
+    panel.classList.remove('hidden');
+  } else {
+    panel.classList.add('hidden');
+  }
 }
 
 /** Cambio en un checkbox del multi-select: actualiza estado y re-renderiza. */
@@ -2355,13 +2368,16 @@ function bn_filteredRecs(tipo) {
   return BN_RAW.filter(r=>{
     const t = bn_canon(r._tipo || '');
 
-    // Revisado: PC/PC_X muestra solo NO revisados; T/E/I/AC/PA/CA solo revisados
-    const revisado = r._validado === 'Sí';
-    const isPCTab  = bn_isPC(tipo);
-    if (isPCTab) {
-      if (revisado) return false;
-    } else if (['T','E','I','AC','PA','CA'].includes(tipo)) {
-      if (!revisado) return false;
+    // Revisado: PC/PC_X muestra solo NO revisados; T/E/I/AC/PA/CA solo revisados.
+    // Bypass cuando se renderizan Indicadores (vista independiente).
+    if (!BN_BYPASS_REVISADO) {
+      const revisado = r._validado === 'Sí';
+      const isPCTab  = bn_isPC(tipo);
+      if (isPCTab) {
+        if (revisado) return false;
+      } else if (['T','E','I','AC','PA','CA'].includes(tipo)) {
+        if (!revisado) return false;
+      }
     }
 
     // Filtros por sub-tipo (E/I/AC/PA/CA) tanto en Registros contables como en Por clasificar
@@ -2710,8 +2726,88 @@ function bn_closeDetail() {
   document.body.style.overflow='';
 }
 
+// ─── Indicadores — estado y filtros independientes ─────────────────────────
+const BN_IND_STATE = { anio: '', mes: '', initialized: false };
+
+/** Pobla los selectores Año/Mes del modal Indicadores con todos los valores
+ *  presentes en BN_RAW; preselecciona el año y mes en curso (la primera vez). */
+function bn_indInitFilters() {
+  const selA = document.getElementById('bn-ind-anio');
+  const selM = document.getElementById('bn-ind-mes');
+  if (!selA || !selM) return;
+  const NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const now = new Date();
+  const curY = String(now.getFullYear());
+  const curM = String(now.getMonth()+1).padStart(2,'0');
+
+  // Años únicos en BN_RAW + año en curso
+  const years = new Set();
+  for (const r of BN_RAW) {
+    const iso = bn_formatDiaISO(r.Día || r.Dia || '');
+    if (/^\d{4}-/.test(iso)) years.add(iso.substring(0, 4));
+  }
+  years.add(curY);
+  const ys = [...years].sort((a,b) => b.localeCompare(a));
+  selA.innerHTML = `<option value="">Todos</option>` +
+    ys.map(y => `<option value="${y}">${y}</option>`).join('');
+
+  // 12 meses
+  selM.innerHTML = `<option value="">Todos</option>` +
+    Array.from({length:12},(_,i)=>{
+      const mm = String(i+1).padStart(2,'0');
+      return `<option value="${mm}">${NOMBRES[i]}</option>`;
+    }).join('');
+
+  // Defaults: año y mes en curso (primera vez al abrir)
+  if (!BN_IND_STATE.initialized) {
+    BN_IND_STATE.anio = ys.includes(curY) ? curY : '';
+    BN_IND_STATE.mes  = curM;
+    BN_IND_STATE.initialized = true;
+  }
+  selA.value = BN_IND_STATE.anio;
+  selM.value = BN_IND_STATE.mes;
+}
+
+function bn_indFilterChange() {
+  BN_IND_STATE.anio = document.getElementById('bn-ind-anio')?.value || '';
+  BN_IND_STATE.mes  = document.getElementById('bn-ind-mes')?.value  || '';
+  bn_renderInd();
+}
+
 // ─── Indicadores ──────────────────────────────────────────────────────────────
+// Flag: cuando true, bn_filteredRecs ignora la restricción de revisado
+let BN_BYPASS_REVISADO = false;
+
 function bn_renderInd() {
+  // Inicializar selectores la primera vez que se abre
+  bn_indInitFilters();
+  // Swap temporal de filtros: vista de indicadores es INDEPENDIENTE de la principal
+  const saved = JSON.parse(JSON.stringify({
+    anio: bn_st.anio, mes: bn_st.mes,
+    cuentaClasif: bn_st.cuentaClasif, subcuenta: bn_st.subcuenta,
+    categoria: bn_st.categoria, concepto: bn_st.concepto,
+    cuentaBan: bn_st.cuentaBan, dia: bn_st.dia,
+    propiedad: bn_st.propiedad, departamento: bn_st.departamento,
+    deducible: bn_st.deducible, reembolso: bn_st.reembolso,
+    encargado: bn_st.encargado, q: bn_st.q,
+  }));
+  // Aplicar SOLO Año/Mes del modal de Indicadores
+  bn_st.cuentaClasif = []; bn_st.subcuenta = []; bn_st.categoria = []; bn_st.concepto = [];
+  bn_st.cuentaBan = []; bn_st.dia = []; bn_st.propiedad = []; bn_st.departamento = [];
+  bn_st.deducible = []; bn_st.reembolso = []; bn_st.encargado = []; bn_st.q = '';
+  bn_st.anio = BN_IND_STATE.anio ? [BN_IND_STATE.anio] : [];
+  bn_st.mes  = BN_IND_STATE.mes  ? [BN_IND_STATE.mes]  : [];
+  BN_BYPASS_REVISADO = true;
+  try {
+    bn_renderIndInner();
+  } finally {
+    BN_BYPASS_REVISADO = false;
+    Object.assign(bn_st, saved);
+  }
+}
+
+function bn_renderIndInner() {
   const s=bn_monthly();
   bn_txt('bn-k-egr-real',     bn_fmt$(s.ytdE));
   bn_txt('bn-k-egr-sub',      'Prom. mensual: '+bn_fmt$(s.avgE)+' ('+s.n+' meses)');
@@ -2897,22 +2993,23 @@ function bn_buildBnResumenTable(r, idx) {
     ['Validado',         '_valid',  r._validado === 'Sí' ? 'Sí' : '',                            false],
   ];
 
-  return `<table>
-    <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+  return `<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px">
+    <thead><tr><th style="width:38%;text-align:left;padding:6px 8px;font-size:11px">Campo</th><th style="text-align:left;padding:6px 8px;font-size:11px">Valor</th></tr></thead>
     <tbody>${rows
       .filter(([label, field, val, editable]) => {
-        // Mostrar siempre los editables; ocultar el resto si están vacíos
         if (editable) return true;
         const display = val != null ? String(val).trim() : '';
         return display.length > 0;
       })
       .map(([label, field, val, editable]) => {
       const display = val != null ? String(val) : '';
+      const tdCommon = 'padding:6px 8px;word-break:break-word;overflow-wrap:anywhere';
       const td = editable
         ? `<td contenteditable="true" spellcheck="false" data-field="${field}"
+              style="${tdCommon}"
               oninput="bn_onResumenEdit(${idx}, this)">${esc(display)}</td>`
-        : `<td>${esc(display)}</td>`;
-      return `<tr><td class="resumen-key">${label}</td>${td}</tr>`;
+        : `<td style="${tdCommon}">${esc(display)}</td>`;
+      return `<tr><td class="resumen-key" style="${tdCommon}">${label}</td>${td}</tr>`;
     }).join('')}</tbody>
   </table>`;
 }
@@ -3026,7 +3123,8 @@ function bn_createCard(rec, idx) {
         <div class="ticket-info">
           <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
           <div class="ticket-store-row">
-            <span class="ticket-store ${colorCls}">${esc(name)}</span>
+            <span class="ticket-store ${colorCls}"
+                  style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word;line-height:1.25">${esc(name)}</span>
           </div>
           <div class="ticket-meta">${esc(diaFmt)}</div>
           ${desc ? `<div class="product-summary">${esc(desc.length > 120 ? desc.slice(0, 117) + '…' : desc)}</div>` : ''}
@@ -3049,10 +3147,7 @@ function bn_createCard(rec, idx) {
       </div>
 
       <div class="ticket-table-wrap hidden" id="bn-tbl-${idx}" data-tidx="${idx}" data-tmod="bnr">
-        <div class="ticket-tabs">
-          <button class="ticket-tab active" onclick="bn_showBnTab(${idx},'resumen',this)">Resumen</button>
-        </div>
-        <div id="bn-tab-resumen-${idx}" class="ticket-tab-content">${bn_buildBnResumenTable(rec, idx)}</div>
+        <div id="bn-tab-resumen-${idx}" class="ticket-tab-content" style="overflow-x:auto">${bn_buildBnResumenTable(rec, idx)}</div>
         <div class="table-actions-bar hidden" id="tact-bnr-${idx}">
           <button class="btn-clasificar-ticket" style="padding:10px 28px;font-size:13px"
                   onclick="bn_saveBnResumenEdit(${idx})">💾 Guardar cambios</button>
