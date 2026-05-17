@@ -1935,6 +1935,156 @@ function bn_subOfPC(tipo) {
   return null;
 }
 
+// ─── Análisis por partida — agregado jerárquico con semáforo ───────────────
+/** Construye un árbol agregado a partir de records y la lista de niveles. */
+function bn_apBuildTree(records, levels) {
+  const root = { name: '__root', children: new Map(), total: 0, count: 0 };
+  for (const r of records) {
+    const monto = Math.abs(Number(r.Monto) || 0);
+    let node = root;
+    node.total += monto; node.count += 1;
+    for (const lvl of levels) {
+      const key = String(r[lvl] || '').trim() || '(Sin asignar)';
+      if (!node.children.has(key)) {
+        node.children.set(key, { name: key, level: lvl, children: new Map(), total: 0, count: 0 });
+      }
+      node = node.children.get(key);
+      node.total += monto; node.count += 1;
+    }
+  }
+  return root;
+}
+
+/** Calcula presupuesto agregado de un nodo sumando los buds de todas las
+ *  combinaciones (categoría, concepto) de los records que caen bajo el nodo. */
+function bn_apComputeBudget(node, records, ancestors, allLevels) {
+  // Filtra records que coinciden con todos los ancestros (key:level)
+  let matchingRecs = records;
+  for (let i = 0; i < ancestors.length; i++) {
+    const lvl = allLevels[i], key = ancestors[i];
+    matchingRecs = matchingRecs.filter(r => {
+      const v = String(r[lvl] || '').trim() || '(Sin asignar)';
+      return v === key;
+    });
+  }
+  // Tipo (E o I) a partir del primer registro coincidente
+  let tipoBud = 'E';
+  if (matchingRecs[0]) {
+    const t = bn_canon(matchingRecs[0]._tipo || '');
+    tipoBud = t.includes('ing') ? 'I' : 'E';
+  }
+  // Sumar presupuesto único por (cat||con) — evita doble conteo
+  const seen = new Set();
+  let total = 0;
+  for (const r of matchingRecs) {
+    const cat = bn_norm(r.CATEGORIA || r._categoria_gasto || '');
+    const con = bn_norm(r.CONCEPTO  || r._concepto || '');
+    const k = cat + '||' + con;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    total += Math.abs(bn_getBud(tipoBud, cat, con) || 0);
+  }
+  return total;
+}
+
+/** Renderiza recursivamente los renglones del árbol con indentación. */
+function bn_apRenderNode(node, depth, levels, records, ancestors, rows) {
+  const bud = bn_apComputeBudget(node, records, ancestors, levels);
+  const av = bud > 0 ? node.total / bud : NaN;
+  const color = !isFinite(av) ? '#9ca3af' : av > 1.10 ? '#dc2626' : av > 1.0 ? '#f59e0b' : '#16a34a';
+  const semIcon = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
+  const pctTxt  = isFinite(av) ? (av * 100).toFixed(1) + '%' : '—';
+  const fillW   = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
+  const bgRow = depth === 0 ? '#fef3c7' : depth === 1 ? '#fffbeb' : '#fff';
+  const wgt   = depth === 0 ? '800' : depth === 1 ? '700' : '600';
+  const indent = depth * 22;
+
+  rows.push(`
+    <tr style="background:${bgRow}">
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;padding-left:${10+indent}px;font-weight:${wgt};font-size:${depth===0?'13':'12'}px">
+        <span style="color:#ea580c;margin-right:6px">${depth===0?'▼':'▸'}</span>${esc(node.name)}
+      </td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${node.count}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px">${bn_fmt$(node.total)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;min-width:140px">
+        ${bud > 0 ? `
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="position:relative;flex:1;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${fillW.toFixed(1)}%;background:${color}"></div>
+              <div style="position:absolute;top:-1px;bottom:-1px;left:50%;width:1.5px;background:#1f2937"></div>
+            </div>
+            <span style="font-size:11px;font-weight:700;color:${color};min-width:46px;text-align:right">${pctTxt}</span>
+          </div>` : '<span style="font-size:11px;color:#9ca3af">—</span>'}
+      </td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:14px">${semIcon}</td>
+    </tr>`);
+
+  // Hijos ordenados desc por total
+  const kids = [...node.children.values()].sort((a,b) => b.total - a.total);
+  for (const child of kids) {
+    bn_apRenderNode(child, depth + 1, levels, records, [...ancestors, child.name], rows);
+  }
+}
+
+/** Renderiza la tabla de Análisis por partida. */
+function bn_renderAP() {
+  const wrap = document.getElementById('bn-ap-table');
+  if (!wrap) return;
+
+  // Leer niveles seleccionados
+  const levels = Array.from(document.querySelectorAll('#bn-ap-levels input[data-ap-lvl]:checked'))
+    .map(i => i.dataset.apLvl);
+
+  if (!levels.length) {
+    wrap.innerHTML = `<div style="padding:30px;text-align:center;color:#9ca3af;font-size:13px">
+      Selecciona al menos un nivel para desglosar
+    </div>`;
+    return;
+  }
+
+  // Usar los registros del período (sin restringir por revisado, igual que KPIs)
+  const records = bn_kpiRecs(null);
+  if (!records.length) {
+    wrap.innerHTML = `<div style="padding:30px;text-align:center;color:#9ca3af;font-size:13px">
+      Sin registros para los filtros seleccionados
+    </div>`;
+    return;
+  }
+
+  // Árbol y render
+  const tree = bn_apBuildTree(records, levels);
+  const rows = [];
+  // Niveles superiores (hijos directos de root) ordenados desc
+  const top = [...tree.children.values()].sort((a,b) => b.total - a.total);
+  for (const node of top) {
+    bn_apRenderNode(node, 0, levels, records, [node.name], rows);
+  }
+
+  wrap.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;background:var(--surface,#fff);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);font-size:12px">
+      <thead>
+        <tr style="background:#374151;color:#fff">
+          <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Partida</th>
+          <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">#Mov</th>
+          <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Monto</th>
+          <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Presupuesto</th>
+          <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Avance</th>
+          <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Sem.</th>
+        </tr>
+      </thead>
+      <tbody>${rows.join('')}</tbody>
+      <tfoot>
+        <tr style="background:#1f2937;color:#fff;font-weight:800">
+          <td style="padding:10px">TOTAL GLOBAL</td>
+          <td style="padding:10px;text-align:right">${tree.count}</td>
+          <td style="padding:10px;text-align:right">${bn_fmt$(tree.total)}</td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
 /** Panel de estado de revisión — barra stacked + notas, sólo en tabs Por Clasificar. */
 function bn_renderReviewPanel() {
   const panel = document.getElementById('bn-review-panel');
@@ -2686,6 +2836,7 @@ function bn_render() {
   if(BN_TIPO==='AP'){
     tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
     ap?.classList.remove('hidden');
+    bn_renderAP();
     return;
   }
   ap?.classList.add('hidden');

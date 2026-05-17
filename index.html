@@ -543,11 +543,33 @@
         </div>
       </div>
 
-      <!-- Análisis por partida (placeholder) -->
-      <div id="bn-analisis-partida" class="hidden" style="padding:50px 20px;text-align:center;color:var(--text-soft,#6b7280)">
-        <div style="font-size:48px;margin-bottom:12px">🧮</div>
-        <h3 style="margin:0 0 8px;color:var(--text,#111827)">Análisis por partida</h3>
-        <p style="margin:0;font-size:13px">Sección en construcción — próximamente.</p>
+      <!-- Análisis por partida — agregado jerárquico con semáforo de presupuesto -->
+      <div id="bn-analisis-partida" class="hidden" style="padding:14px 4px">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap">
+          <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px">🧮 Análisis por partida</h3>
+          <span style="font-size:11px;color:var(--text-soft,#6b7280);font-style:italic">Elige los niveles a desglosar</span>
+        </div>
+        <!-- Controles de nivel -->
+        <div id="bn-ap-levels" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;padding:10px 12px;background:var(--surface,#f9fafb);border:1px solid var(--border,#e5e7eb);border-radius:10px">
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text,#374151)">
+            <input type="checkbox" data-ap-lvl="_cuenta" checked onchange="bn_renderAP()" style="accent-color:#ea580c;cursor:pointer">
+            🏷️ Cuenta
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text,#374151)">
+            <input type="checkbox" data-ap-lvl="_subcuenta" checked onchange="bn_renderAP()" style="accent-color:#ea580c;cursor:pointer">
+            📂 Subcuenta
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text,#374151)">
+            <input type="checkbox" data-ap-lvl="_categoria_gasto" checked onchange="bn_renderAP()" style="accent-color:#ea580c;cursor:pointer">
+            📁 Categoría
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text,#374151)">
+            <input type="checkbox" data-ap-lvl="_concepto" onchange="bn_renderAP()" style="accent-color:#ea580c;cursor:pointer">
+            🔹 Concepto
+          </label>
+        </div>
+        <!-- Tabla resultado -->
+        <div id="bn-ap-table" style="overflow-x:auto"></div>
       </div>
 
       <!-- Indicadores modal overlay -->
@@ -727,6 +749,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=84"></script>
+  <script src="app.js?v=85"></script>
 </body>
 </html>
