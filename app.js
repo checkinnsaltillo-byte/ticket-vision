@@ -1996,35 +1996,76 @@ function bn_populateFilters() {
   }
 }
 
-/** Rellena las opciones (checkboxes) de un multi-select. */
+/** Rellena las opciones de un multi-select con diseño simple tipo lista de checks. */
 function bn_mselFillOptions(field, options, labelFn) {
   const panel = document.getElementById(`bn-msel-panel-${field}`);
   if (!panel) return;
   const sel = bn_st[field] || [];
   // Filtrar selecciones que ya no estén disponibles en el contexto actual
   bn_st[field] = sel.filter(v => options.includes(v));
+
+  if (!options.length) {
+    panel.innerHTML = `<div style="padding:10px;font-size:12px;color:#9ca3af;text-align:center">Sin opciones</div>`;
+    panel.dataset.labels = '{}';
+    bn_mselUpdateTrigger(field);
+    return;
+  }
+
+  const header = `
+    <div style="display:flex;gap:6px;padding:8px;border-bottom:1px solid #e5e7eb;background:#f9fafb;border-radius:6px 6px 0 0">
+      <button type="button" onclick="bn_mselSelectAll('${field}')"
+              style="flex:1;padding:6px 10px;border:none;background:#ea580c;color:#fff;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
+        ✓ Todos
+      </button>
+      <button type="button" onclick="bn_mselClear('${field}')"
+              style="flex:1;padding:6px 10px;border:1px solid #d1d5db;background:#fff;color:#374151;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
+        ✕ Limpiar
+      </button>
+    </div>`;
+
   const items = options.map(opt => {
     const lbl = labelFn ? labelFn(opt) : opt;
-    const checked = bn_st[field].includes(opt);
-    return `<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;cursor:pointer;font-size:12px" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">
-      <input type="checkbox" value="${esc(opt)}" ${checked?'checked':''}
-             onchange="bn_mselChange('${field}',this)"
-             style="accent-color:#ea580c;cursor:pointer">
-      <span>${esc(lbl)}</span>
-    </label>`;
+    const isSel = bn_st[field].includes(opt);
+    return `<div onclick="bn_mselToggleOpt('${field}', this)"
+                 data-value="${esc(opt)}"
+                 data-selected="${isSel}"
+                 style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;font-size:13px;color:${isSel?'#ea580c':'#374151'};background:${isSel?'#fff7ed':'transparent'};font-weight:${isSel?'600':'400'};border-bottom:1px solid #f3f4f6"
+                 onmouseover="if(this.dataset.selected!=='true')this.style.background='#f3f4f6'"
+                 onmouseout="if(this.dataset.selected!=='true')this.style.background='transparent'">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;border:1.5px solid ${isSel?'#ea580c':'#d1d5db'};background:${isSel?'#ea580c':'#fff'};color:#fff;font-size:12px;font-weight:900;line-height:1;flex-shrink:0">${isSel?'✓':''}</span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(lbl)}</span>
+            </div>`;
   }).join('');
-  panel.innerHTML = (options.length
-    ? `<div style="display:flex;justify-content:space-between;gap:6px;margin-bottom:6px;padding:0 4px">
-         <button type="button" onclick="bn_mselSelectAll('${field}')" style="font-size:11px;padding:4px 8px;border:none;background:#e5e7eb;border-radius:4px;cursor:pointer">Todos</button>
-         <button type="button" onclick="bn_mselClear('${field}')"     style="font-size:11px;padding:4px 8px;border:none;background:#e5e7eb;border-radius:4px;cursor:pointer">Ninguno</button>
-       </div>${items}`
-    : `<div style="padding:8px;font-size:12px;color:var(--text-soft);text-align:center">Sin opciones</div>`);
-  // Guardar metadata para el label dinámico
+
+  panel.innerHTML = header + `<div>${items}</div>`;
   panel.dataset.labels = JSON.stringify(options.reduce((acc, o) => {
     acc[o] = labelFn ? labelFn(o) : o;
     return acc;
   }, {}));
   bn_mselUpdateTrigger(field);
+}
+
+/** Click en una opción del multi-select — alterna selección. */
+function bn_mselToggleOpt(field, rowEl) {
+  if (!Array.isArray(bn_st[field])) bn_st[field] = [];
+  const v = rowEl.dataset.value;
+  const i = bn_st[field].indexOf(v);
+  const willSelect = (i < 0);
+  if (willSelect) bn_st[field].push(v);
+  else            bn_st[field].splice(i, 1);
+  // Actualizar visual de la fila
+  rowEl.dataset.selected = willSelect ? 'true' : 'false';
+  rowEl.style.background = willSelect ? '#fff7ed' : 'transparent';
+  rowEl.style.color      = willSelect ? '#ea580c' : '#374151';
+  rowEl.style.fontWeight = willSelect ? '600' : '400';
+  const check = rowEl.firstElementChild;
+  if (check) {
+    check.style.borderColor = willSelect ? '#ea580c' : '#d1d5db';
+    check.style.background  = willSelect ? '#ea580c' : '#fff';
+    check.textContent       = willSelect ? '✓' : '';
+  }
+  bn_mselUpdateTrigger(field);
+  bn_render();
 }
 
 /** Actualiza el texto del trigger según selección. */
@@ -2070,18 +2111,42 @@ function bn_mselChange(field, cb) {
 function bn_mselSelectAll(field) {
   const panel = document.getElementById(`bn-msel-panel-${field}`);
   if (!panel) return;
-  const all = Array.from(panel.querySelectorAll('input[type="checkbox"]')).map(cb => cb.value);
+  const all = Array.from(panel.querySelectorAll('[data-value]')).map(el => el.dataset.value);
   bn_st[field] = all.slice();
-  panel.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+  panel.querySelectorAll('[data-value]').forEach(el => {
+    el.dataset.selected = 'true';
+    el.style.background = '#fff7ed';
+    el.style.color      = '#ea580c';
+    el.style.fontWeight = '600';
+    const check = el.firstElementChild;
+    if (check) {
+      check.style.borderColor = '#ea580c';
+      check.style.background  = '#ea580c';
+      check.textContent       = '✓';
+    }
+  });
   bn_mselUpdateTrigger(field);
   bn_render();
 }
 
-/** Botón "Ninguno" — desmarca todo. */
+/** Botón "Limpiar" — desmarca todo. */
 function bn_mselClear(field) {
   const panel = document.getElementById(`bn-msel-panel-${field}`);
   bn_st[field] = [];
-  if (panel) panel.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  if (panel) {
+    panel.querySelectorAll('[data-value]').forEach(el => {
+      el.dataset.selected = 'false';
+      el.style.background = 'transparent';
+      el.style.color      = '#374151';
+      el.style.fontWeight = '400';
+      const check = el.firstElementChild;
+      if (check) {
+        check.style.borderColor = '#d1d5db';
+        check.style.background  = '#fff';
+        check.textContent       = '';
+      }
+    });
+  }
   bn_mselUpdateTrigger(field);
   bn_render();
 }
@@ -2101,7 +2166,7 @@ function bn_setDefaultFilters() {
 
   const hasOpt = (field, val) => {
     const panel = document.getElementById(`bn-msel-panel-${field}`);
-    return panel ? Array.from(panel.querySelectorAll('input[type="checkbox"]')).some(cb => cb.value === val) : false;
+    return panel ? Array.from(panel.querySelectorAll('[data-value]')).some(el => el.dataset.value === val) : false;
   };
   bn_st.anio = hasOpt('anio', curY) ? [curY] : [];
   bn_st.mes  = hasOpt('mes',  curM) ? [curM] : [];
@@ -2110,15 +2175,8 @@ function bn_setDefaultFilters() {
   for (const f of BN_MSEL_FIELDS) bn_st[f.key] = [];
   bn_st.q = '';
 
-  // Reflejar en UI
-  for (const f of [...BN_MSEL_FIELDS.map(x => x.key), 'anio', 'mes']) {
-    const panel = document.getElementById(`bn-msel-panel-${f}`);
-    if (!panel) continue;
-    panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-      cb.checked = (bn_st[f] || []).includes(cb.value);
-    });
-    bn_mselUpdateTrigger(f);
-  }
+  // Reflejar en UI re-renderizando opciones de cada panel
+  bn_populateFilters();
 }
 
 function bn_onFilterChange() {
@@ -2129,13 +2187,12 @@ function bn_onFilterChange() {
 function bn_clearFilters() {
   for (const f of [...BN_MSEL_FIELDS.map(x => x.key), 'anio', 'mes']) {
     bn_st[f] = [];
-    const panel = document.getElementById(`bn-msel-panel-${f}`);
-    if (panel) panel.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-    bn_mselUpdateTrigger(f);
   }
   bn_st.q = '';
   const txt = document.getElementById('bn-f-text');
   if (txt) txt.value = '';
+  // Re-render opciones para reflejar el estado limpio
+  bn_populateFilters();
   bn_render();
 }
 
