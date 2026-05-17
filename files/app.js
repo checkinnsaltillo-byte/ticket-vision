@@ -2540,8 +2540,16 @@ function bn_toggleBnClassify(idx) {
     'Fecha del registro'
   ).replace('class="classify-panel hidden"', 'class="classify-panel"');
 
-  // Inyectar Resumen + Clasificar en el modal
-  document.getElementById('bn-classify-modal-resumen').innerHTML = bn_buildBnResumenTable(rec, idx);
+  // Inyectar Resumen + botón guardar Descripción + Clasificar en el modal
+  document.getElementById('bn-classify-modal-resumen').innerHTML =
+    bn_buildBnResumenTable(rec, idx) +
+    `<div style="display:flex;justify-content:flex-end;margin-top:8px">
+       <button class="btn-clasificar-ticket"
+               onclick="bn_saveBnDescFromModal(${idx})"
+               style="padding:7px 16px;font-size:12px">
+         💾 Guardar Descripción
+       </button>
+     </div>`;
   document.getElementById('bn-classify-modal-body').innerHTML    = classifyHtml;
 
   // Mostrar modal
@@ -2582,6 +2590,53 @@ function bn_toggleBnClassify(idx) {
     const card = Array.from(grid?.querySelectorAll('.cuenta-card') || [])
       .find(c => c.dataset.value === autoAcc);
     if (card) selectCuenta(card, ci);
+  }
+}
+
+/** Guarda solo la Descripción editada en el modal a Sheets (sin tocar clasificación). */
+async function bn_saveBnDescFromModal(idx) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  const wrap   = document.getElementById('bn-classify-modal-resumen');
+  const descEl = wrap?.querySelector('[data-field="DESC"]');
+  if (!descEl) return;
+  rec.DESCRIPCION = descEl.textContent.trim();
+
+  // Re-render tarjeta (encabezado refleja nueva Descripción)
+  const card = document.getElementById(`bn-card-${idx}`);
+  if (card) card.outerHTML = bn_createCard(rec, idx);
+
+  if (!rec.rowNum) return;
+  try {
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rowNum:           rec.rowNum,
+        descripcion:      bn_norm(rec.DESCRIPCION || ''),
+        descripcion_edit: true,
+        clasificacion: {
+          cuenta:          rec._cuenta          || '',
+          subcuenta:       rec._subcuenta       || '',
+          categoria_gasto: rec._categoria_gasto || '',
+          concepto:        rec._concepto        || '',
+          propiedad:       rec._propiedad       || '',
+          departamento:    rec._departamento    || '',
+          encargado:       rec._encargado       || '',
+          deducible:       rec._deducible       || 'No',
+          reembolso:       rec._reembolso       || 'No',
+          reembolso_a:     rec._reembolso_a     || '',
+          metodo_pago:     rec._metodo_pago     || '',
+          clasificado_por: currentUser || '',
+          validado:        rec._validado || '',
+        }
+      })
+    });
+    const result = await resp.json();
+    if (!result.ok) throw new Error(result.error || 'Error');
+  } catch (e) {
+    console.warn('Error guardando Descripción:', e.message);
+    alert('Error al guardar Descripción: ' + e.message);
   }
 }
 
@@ -2774,6 +2829,21 @@ async function bn_saveBnClassification(idx) {
   const ci = 'bn' + idx;
   const c  = getClassify(ci);
 
+  // Si el modal está abierto, capturar la Descripción editada en la tabla Resumen
+  let descEdited = false;
+  const modalResumen = document.getElementById('bn-classify-modal-resumen');
+  const ov = document.getElementById('bn-classify-overlay');
+  if (modalResumen && ov && !ov.classList.contains('hidden')) {
+    const descEl = modalResumen.querySelector('[data-field="DESC"]');
+    if (descEl) {
+      const nuevaDesc = descEl.textContent.trim();
+      if (nuevaDesc !== (rec.DESCRIPCION || '')) {
+        rec.DESCRIPCION = nuevaDesc;
+        descEdited = true;
+      }
+    }
+  }
+
   rec._cuenta          = c.cuenta;
   rec._subcuenta       = c.subcuenta;
   rec._categoria_gasto = c.categoria;
@@ -2824,6 +2894,7 @@ async function bn_saveBnClassification(idx) {
         categoria:       bn_norm(rec.CATEGORIA  || ''),
         concepto:        bn_norm(rec.CONCEPTO   || ''),
         descripcion:     bn_norm(rec.DESCRIPCION|| ''),
+        descripcion_edit: descEdited,
         monto:           Number(rec.Monto || 0),
         clasificacion: {
           cuenta:          c.cuenta,
