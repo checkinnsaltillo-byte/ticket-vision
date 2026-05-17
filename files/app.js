@@ -1613,9 +1613,8 @@ const bn_st   = {
   cuentaClasif: [], subcuenta: [], categoria: [], concepto: [],
   cuentaBan:    [], dia: [],
   propiedad:    [], departamento: [],
-  deducible:    [], reembolso: [],
-  encargado:    [],
-  anio:         [], mes: [],
+  reembolso:    [], encargado: [],
+  anio:         [], mes: [], deducible: [],
   // Texto libre (no multi-select)
   q: '',
 };
@@ -1634,7 +1633,6 @@ const BN_MSEL_FIELDS = [
     } },
   { key: 'propiedad',    label: 'Propiedad',       from: r => r._propiedad          || '' },
   { key: 'departamento', label: '# Departamento',  from: r => (r._departamento !== undefined && r._departamento !== null && r._departamento !== '') ? String(r._departamento) : '' },
-  { key: 'deducible',    label: 'Deducible',       from: r => r._deducible          || '' },
   { key: 'reembolso',    label: 'Reembolso',       from: r => r._reembolso          || '' },
   { key: 'encargado',    label: 'Encargado de operación', from: r => r._encargado   || '' },
 ];
@@ -1982,6 +1980,9 @@ function bn_populateFilters() {
     const sorted = [...months].sort();
     bn_mselFillOptions('mes', sorted, mm => NOMBRES[Number(mm)-1]);
   }
+
+  // Deducible (siempre visible, multi)
+  bn_mselFillOptions('deducible', ['Sí','No']);
 }
 
 /** Rellena las opciones de un multi-select con diseño simple tipo lista de checks. */
@@ -2173,7 +2174,7 @@ function bn_onFilterChange() {
 }
 
 function bn_clearFilters() {
-  for (const f of [...BN_MSEL_FIELDS.map(x => x.key), 'anio', 'mes']) {
+  for (const f of [...BN_MSEL_FIELDS.map(x => x.key), 'anio', 'mes', 'deducible']) {
     bn_st[f] = [];
   }
   bn_st.q = '';
@@ -2231,6 +2232,9 @@ function bn_filteredRecs(tipo) {
       if (s.anio && s.anio.length && !s.anio.includes(m[1])) return false;
       if (s.mes  && s.mes.length  && !s.mes .includes(m[2])) return false;
     }
+
+    // Deducible (multi, siempre visible)
+    if (s.deducible && s.deducible.length && !s.deducible.includes((r._deducible || '').trim())) return false;
 
     // Búsqueda libre
     if(q){
@@ -2386,14 +2390,20 @@ function bn_render() {
   const cw=document.getElementById('bn-cards-container');
   const pw=document.getElementById('bn-card-pagination');
   const iw=document.getElementById('bn-indicadores');
+  const iov=document.getElementById('bn-indicadores-overlay');
   const ap=document.getElementById('bn-analisis-partida');
 
   if(BN_TIPO==='F'){
-    tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
-    ap?.classList.add('hidden');
-    iw?.classList.remove('hidden'); bn_renderInd(); return;
+    // Indicadores en popup modal
+    iw?.classList.remove('hidden');
+    iov?.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    bn_renderInd();
+    // Volver al tab anterior para que al cerrar el modal el usuario vea su vista normal
+    return;
   }
   iw?.classList.add('hidden');
+  iov?.classList.add('hidden');
 
   if(BN_TIPO==='AP'){
     tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
@@ -2904,17 +2914,16 @@ function bn_toggleBnClassify(idx) {
     'Fecha del registro'
   ).replace('class="classify-panel hidden"', 'class="classify-panel"');
 
-  // Inyectar Resumen + botón guardar Descripción + Clasificar en el modal
+  // Inyectar Resumen + Clasificar en el modal. Botón "Por validar" estilo header.
   const valOn = rec._validado === 'Sí';
   const validarBlock = `
-    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#fef3c7' : '#fff'};border-radius:10px;margin-bottom:14px;cursor:pointer;user-select:none">
-      <input type="checkbox" id="validado-panel-${ci}" ${valOn ? 'checked' : ''}
-             onchange="bn_syncValidado(${idx}, this.checked)"
-             style="width:18px;height:18px;accent-color:#f59e0b;cursor:pointer">
-      <span style="font-size:18px;line-height:1;color:${valOn ? '#b45309' : '#9ca3af'}">⚠</span>
-      <span style="font-weight:700;color:${valOn ? '#b45309' : '#6b7280'};font-size:13px">Por validar</span>
-      <span style="font-size:11px;color:${valOn ? '#92400e' : '#9ca3af'}">— marca este registro si tienes dudas y quieres revisarlo después</span>
-    </label>`;
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button id="validado-panel-${ci}" type="button" data-checked="${valOn}"
+              onclick="bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
+              title="${valOn ? 'Marcado: Por validar' : 'Marcar para revisar después'}"
+              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#fef3c7' : '#f9fafb'};color:${valOn ? '#b45309' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">⚠</button>
+      <span style="font-size:12px;color:#6b7280">Marca este registro si tienes dudas y quieres revisarlo después</span>
+    </div>`;
 
   document.getElementById('bn-classify-modal-resumen').innerHTML =
     bn_buildBnResumenTable(rec, idx);
@@ -3007,6 +3016,32 @@ async function bn_saveBnDescFromModal(idx) {
     alert('Error al guardar Descripción: ' + e.message);
   }
 }
+
+/** Cierra el modal de Indicadores. */
+function bn_closeIndicadoresModal() {
+  const iov = document.getElementById('bn-indicadores-overlay');
+  if (!iov) return;
+  iov.classList.add('hidden');
+  document.body.style.overflow = '';
+  // Volver al último tab no-F para no quedar en F y reaparecer al re-renderizar
+  if (BN_TIPO === 'F') {
+    BN_TIPO = 'T';
+    bn_setTipo('T');
+  }
+}
+
+/** Click en backdrop del modal Indicadores → cerrar. */
+function bn_indicadoresOverlayClick(e) {
+  if (e.target && e.target.id === 'bn-indicadores-overlay') bn_closeIndicadoresModal();
+}
+
+// Esc cierra el modal Indicadores
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('bn-indicadores-overlay');
+    if (ov && !ov.classList.contains('hidden')) bn_closeIndicadoresModal();
+  }
+});
 
 /** Cierra el modal Clasificar y limpia su contenido. */
 function bn_closeClassifyModal() {
@@ -3343,8 +3378,8 @@ async function bn_limpiarBnClassification(idx) {
 }
 
 /** Renderiza las tarjetas de la página actual. */
-// Estado: vista cronológica activa/inactiva
-let BN_TIMELINE = false;
+// Vista cronológica activa por defecto (siempre on)
+let BN_TIMELINE = true;
 
 /** Toggle handler para la vista cronológica. */
 function bn_toggleTimeline(checked) {
@@ -3691,18 +3726,14 @@ async function bn_syncValidado(idx, checked) {
     btn.title             = checked ? 'Marcado: Por validar' : 'Marcar para revisar después';
     btn.textContent       = '⚠';
   }
-  // Sincronizar el bloque completo del checkbox dentro del panel Clasificar (si está abierto)
-  const panelChk = document.getElementById(`validado-panel-${ci}`);
-  if (panelChk) panelChk.checked = checked;
-  const panelLbl = panelChk?.closest('label');
-  if (panelLbl) {
-    panelLbl.style.border     = `1.5px solid ${checked ? '#f59e0b' : '#e5e7eb'}`;
-    panelLbl.style.background = checked ? '#fef3c7' : '#fff';
-    // Texto: ícono + título + descripción
-    const spans = panelLbl.querySelectorAll('span');
-    if (spans[0]) spans[0].style.color = checked ? '#b45309' : '#9ca3af';
-    if (spans[1]) spans[1].style.color = checked ? '#b45309' : '#6b7280';
-    if (spans[2]) spans[2].style.color = checked ? '#92400e' : '#9ca3af';
+  // Sincronizar el botón ⚠ dentro del panel Clasificar (estilo idéntico al del header)
+  const panelBtn = document.getElementById(`validado-panel-${ci}`);
+  if (panelBtn) {
+    panelBtn.dataset.checked   = checked ? 'true' : 'false';
+    panelBtn.style.borderColor = checked ? '#f59e0b' : '#e5e7eb';
+    panelBtn.style.background  = checked ? '#fef3c7' : '#f9fafb';
+    panelBtn.style.color       = checked ? '#b45309' : '#d1d5db';
+    panelBtn.title             = checked ? 'Marcado: Por validar' : 'Marcar para revisar después';
   }
 
   if (!rec.rowNum) { if (lbl) lbl.textContent = checked ? '✓ Validado' : 'Por validar'; return; }
