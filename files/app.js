@@ -668,8 +668,9 @@ const METODO_A_CLASIF = {
   TARJETA_BANCO:   "Tarjeta crédito",
   TARJETA_DEBITO:  "Tarjeta débito",
   EFECTIVO:        "Efectivo",
-  TRANSFERENCIA:   "Transferencia",
-  QR:              "Transferencia",
+  TRANSFERENCIA:   "Transfer.",
+  RETIRO_SIN_TARJETA: "Retiro sin tarjeta",
+  QR:              "Transfer.",
 };
 
 function autoSelectMetodoPago(i, rawMethod) {
@@ -760,6 +761,7 @@ const PAYMENT_CHIP = {
   TARJETA_BANCO:   { emoji: "🏦", color: "#1e40af", bg: "#dbeafe" },
   EFECTIVO:        { emoji: "💵", color: "#065f46", bg: "#d1fae5" },
   TRANSFERENCIA:   { emoji: "🔄", color: "#0e7490", bg: "#cffafe" },
+  RETIRO_SIN_TARJETA: { emoji: "🏧", color: "#b45309", bg: "#fef3c7" },
   QR:              { emoji: "📱", color: "#7c3aed", bg: "#f3e8ff" },
 };
 
@@ -771,7 +773,8 @@ const PAYMENT_LABEL = {
   TARJETA_CREDITO: "Tarjeta crédito",
   TARJETA_BANCO:   "Tarjeta banco",
   EFECTIVO:        "Efectivo",
-  TRANSFERENCIA:   "Transferencia",
+  TRANSFERENCIA:   "Transfer.",
+  RETIRO_SIN_TARJETA: "Retiro s/tarjeta",
   QR:              "Pago QR",
 };
 
@@ -969,27 +972,12 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
         </div>
       </div><!-- /clasif-cuenta-section -->
 
-      <div class="grid">
-        <div class="field">
-          <label>Propiedad</label>
-          <select id="propiedad-${idx}" onchange="togglePropiedadOtro('${idx}', this.value); markClassifyDirty('${idx}')">
-            <option value="">— Seleccionar —</option>
-            <option>Calle Cumbres</option><option>Calle Baja California</option>
-            <option>Calle Oaxaca</option><option>Calle José Cárdenas</option>
-            <option>Calle Matamoros</option><option value="Otro">Otro</option>
-          </select>
-          <div class="hidden" id="propiedad-otro-wrap-${idx}" style="margin-top:8px">
-            <input type="text" id="propiedad-otro-${idx}" class="field-select"
-                   placeholder="Especificar propiedad..." style="appearance:none" oninput="markClassifyDirty('${idx}')">
-          </div>
-        </div>
-        <div class="field">
-          <label># Departamento</label>
-          <select id="departamento-${idx}" onchange="markClassifyDirty('${idx}')">
-            <option value="">— Seleccionar —</option>${deptOpts}
-          </select>
-        </div>
-      </div>
+      <!-- Propiedad y # Departamento removidos del panel Clasificar;
+           disponibles como filtros multi-select bajo la hamburguesa.
+           Inputs hidden conservados para compatibilidad con getClassify(). -->
+      <input type="hidden" id="propiedad-${idx}" value="">
+      <input type="hidden" id="propiedad-otro-${idx}" value="">
+      <input type="hidden" id="departamento-${idx}" value="">
 
       <div class="cuenta-field">
         <label>Encargado de operación</label>
@@ -1054,8 +1042,8 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
           <div class="cuenta-card" data-value="Tarjeta crédito"    onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div></div>
           <div class="cuenta-card" data-value="Tarjeta débito"     onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div></div>
           <div class="cuenta-card" data-value="Efectivo"           onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div></div>
-          <div class="cuenta-card" data-value="Transferencia"      onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🔄</div><div class="cuenta-label">Transferencia</div></div>
-          <div class="cuenta-card" data-value="Retiro sin tarjeta" onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏧</div><div class="cuenta-label">Retiro</div></div>
+          <div class="cuenta-card" data-value="Transferencia"      onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🔄</div><div class="cuenta-label">Transfer.</div></div>
+          <div class="cuenta-card" data-value="Retiro sin tarjeta" onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏧</div><div class="cuenta-label">Retiro s/tarjeta</div></div>
           <div class="cuenta-card" data-value="Cheque"             onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📝</div><div class="cuenta-label">Cheque</div></div>
         </div>
         <input type="hidden" id="metodo-clasif-${idx}" value="">
@@ -2929,14 +2917,7 @@ function bn_toggleBnClassify(idx) {
     </label>`;
 
   document.getElementById('bn-classify-modal-resumen').innerHTML =
-    bn_buildBnResumenTable(rec, idx) +
-    `<div style="display:flex;justify-content:flex-end;margin-top:8px">
-       <button class="btn-clasificar-ticket"
-               onclick="bn_saveBnDescFromModal(${idx})"
-               style="padding:7px 16px;font-size:12px">
-         💾 Guardar Descripción
-       </button>
-     </div>`;
+    bn_buildBnResumenTable(rec, idx);
   document.getElementById('bn-classify-modal-body').innerHTML    = validarBlock + classifyHtml;
 
   // Mostrar modal
@@ -3710,9 +3691,19 @@ async function bn_syncValidado(idx, checked) {
     btn.title             = checked ? 'Marcado: Por validar' : 'Marcar para revisar después';
     btn.textContent       = '⚠';
   }
-  // Sincronizar checkbox dentro del panel Clasificar (si está abierto)
+  // Sincronizar el bloque completo del checkbox dentro del panel Clasificar (si está abierto)
   const panelChk = document.getElementById(`validado-panel-${ci}`);
   if (panelChk) panelChk.checked = checked;
+  const panelLbl = panelChk?.closest('label');
+  if (panelLbl) {
+    panelLbl.style.border     = `1.5px solid ${checked ? '#f59e0b' : '#e5e7eb'}`;
+    panelLbl.style.background = checked ? '#fef3c7' : '#fff';
+    // Texto: ícono + título + descripción
+    const spans = panelLbl.querySelectorAll('span');
+    if (spans[0]) spans[0].style.color = checked ? '#b45309' : '#9ca3af';
+    if (spans[1]) spans[1].style.color = checked ? '#b45309' : '#6b7280';
+    if (spans[2]) spans[2].style.color = checked ? '#92400e' : '#9ca3af';
+  }
 
   if (!rec.rowNum) { if (lbl) lbl.textContent = checked ? '✓ Validado' : 'Por validar'; return; }
 
