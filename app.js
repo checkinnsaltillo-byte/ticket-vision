@@ -2368,11 +2368,11 @@ function bn_filteredRecs(tipo) {
   return BN_RAW.filter(r=>{
     const t = bn_canon(r._tipo || '');
 
+    const isPCTab = bn_isPC(tipo);
     // Revisado: PC/PC_X muestra solo NO revisados; T/E/I/AC/PA/CA solo revisados.
     // Bypass cuando se renderizan Indicadores (vista independiente).
     if (!BN_BYPASS_REVISADO) {
       const revisado = r._validado === 'Sí';
-      const isPCTab  = bn_isPC(tipo);
       if (isPCTab) {
         if (revisado) return false;
       } else if (['T','E','I','AC','PA','CA'].includes(tipo)) {
