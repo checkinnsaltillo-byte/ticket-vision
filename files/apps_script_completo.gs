@@ -372,19 +372,39 @@ function getBancosData_(ss) {
     };
   }
 
-  // Asegurar que existan las columnas de clasificación (las crea al final si faltan)
-  (function ensureBancosCols(){
-    const REQ = ["CUENTA","SUBCUENTA","CATEGORIA","CONCEPTO","PROPIEDAD","DEPARTAMENTO",
-                 "ENCARGADO","DEDUCIBLE","REEMBOLSO","REEMBOLSO_A","METODO_PAGO",
-                 "CLASIFICADO_POR","FECHA_CLASIF","VALIDADO","REVISADO"];
+  // Migración + ensure de columnas de clasificación.
+  //   - Antes: VALIDADO (botón ⚠/duda) y REVISADO (botón ✓)
+  //   - Ahora: DUDA (botón ?) y VALIDADO (botón ✓)
+  // Si las columnas antiguas existen, se renombran preservando los datos.
+  (function migrateAndEnsureCols(){
     const lastCol = shB.getLastColumn();
     if (lastCol < 1) return;
-    const headers = shB.getRange(1, 1, 1, lastCol).getValues()[0]
+    let headers = shB.getRange(1, 1, 1, shB.getLastColumn()).getValues()[0]
       .map(h => String(h ?? "").trim().toUpperCase());
+
+    // Migración paso 1: si no existe DUDA y sí existe VALIDADO viejo,
+    // renombrar VALIDADO → DUDA (datos preservados).
+    if (!headers.includes("DUDA") && headers.includes("VALIDADO")) {
+      const idx = headers.indexOf("VALIDADO");
+      shB.getRange(1, idx + 1).setValue("DUDA");
+      headers[idx] = "DUDA";
+    }
+    // Migración paso 2: ahora VALIDADO no existe → renombrar REVISADO → VALIDADO
+    if (!headers.includes("VALIDADO") && headers.includes("REVISADO")) {
+      const idx = headers.indexOf("REVISADO");
+      shB.getRange(1, idx + 1).setValue("VALIDADO");
+      headers[idx] = "VALIDADO";
+    }
+
+    // Crear las que falten
+    const REQ = ["CUENTA","SUBCUENTA","CATEGORIA","CONCEPTO","PROPIEDAD","DEPARTAMENTO",
+                 "ENCARGADO","DEDUCIBLE","REEMBOLSO","REEMBOLSO_A","METODO_PAGO",
+                 "CLASIFICADO_POR","FECHA_CLASIF","DUDA","VALIDADO"];
     REQ.forEach(name => {
       if (!headers.includes(name)) {
         const newCol = shB.getLastColumn() + 1;
         shB.getRange(1, newCol).setValue(name);
+        headers.push(name);
       }
     });
   })();
@@ -412,8 +432,8 @@ function getBancosData_(ss) {
   const iCon    = pickIdx(hB, ["CONCEPTO"]);
   const iFac    = pickIdx(hB, ["FACTURA"]);
   const iMon    = pickIdx(hB, ["MONTO"]);
+  const iDud    = pickIdx(hB, ["DUDA"]);
   const iVal    = pickIdx(hB, ["VALIDADO"]);
-  const iRev    = pickIdx(hB, ["REVISADO"]);
 
   const records = bancos.slice(1)
     .map((r, i) => ({ r, rowNum: i + 2 }))           // rowNum = índice real en Sheet (antes del filter)
@@ -437,8 +457,8 @@ function getBancosData_(ss) {
         Factura:           String(factura).trim(),
         FacturaFlag:       String(factura).trim().length ? "Con factura" : "Sin factura",
         Monto:             toNumber(iMon >= 0 ? r[iMon] : 0),
+        DUDA:              iDud    >= 0 ? String(r[iDud]).trim()    : "",
         VALIDADO:          iVal    >= 0 ? String(r[iVal]).trim()    : "",
-        REVISADO:          iRev    >= 0 ? String(r[iRev]).trim()    : "",
         rowNum:            rowNum
       };
     });
@@ -518,7 +538,7 @@ function saveBancoClasificacion_(ss, data) {
     "PROPIEDAD", "DEPARTAMENTO", "ENCARGADO",
     "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A",
     "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF",
-    "VALIDADO", "REVISADO"
+    "DUDA", "VALIDADO"
   ];
 
   // Leer el header actual
@@ -556,20 +576,20 @@ function saveBancoClasificacion_(ss, data) {
     if (descCol) shB.getRange(rowNum, descCol).setValue(data.descripcion || "");
   }
 
+  // Si el frontend pidió actualizar Duda, escribirlo en columna DUDA
+  // sin sobrescribir el resto de la clasificación (return temprano)
+  if (data.duda_edit) {
+    const dudCol = getOrCreateCol("DUDA");
+    if (dudCol) shB.getRange(rowNum, dudCol).setValue(data.duda || "");
+    return { ok: true, rowNum: rowNum, duda: data.duda };
+  }
+
   // Si el frontend pidió actualizar Validado, escribirlo en columna VALIDADO
-  // y NO sobrescribir el resto de la clasificación (return temprano)
+  // sin sobrescribir el resto de la clasificación (return temprano)
   if (data.validado_edit) {
     const valCol = getOrCreateCol("VALIDADO");
     if (valCol) shB.getRange(rowNum, valCol).setValue(data.validado || "");
     return { ok: true, rowNum: rowNum, validado: data.validado };
-  }
-
-  // Si el frontend pidió actualizar Revisado, escribirlo en columna REVISADO
-  // sin sobrescribir el resto de la clasificación (return temprano)
-  if (data.revisado_edit) {
-    const revCol = getOrCreateCol("REVISADO");
-    if (revCol) shB.getRange(rowNum, revCol).setValue(data.revisado || "");
-    return { ok: true, rowNum: rowNum, revisado: data.revisado };
   }
 
   // Edición de Fecha del registro (bulk) — escribe en columna DÍA si existe
@@ -601,8 +621,8 @@ function saveBancoClasificacion_(ss, data) {
   writeCell("METODO_PAGO",     c.metodo_pago      || "");
   writeCell("CLASIFICADO_POR", c.clasificado_por  || "");
   writeCell("FECHA_CLASIF",    now);
+  if (c.duda     !== undefined) writeCell("DUDA",     c.duda     || "");
   if (c.validado !== undefined) writeCell("VALIDADO", c.validado || "");
-  if (c.revisado !== undefined) writeCell("REVISADO", c.revisado || "");
 
   return { ok: true, rowNum: rowNum, columnsWritten: CLASIF_COLS.length };
 }
