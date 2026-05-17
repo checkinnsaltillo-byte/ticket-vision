@@ -2733,29 +2733,43 @@ function bn_autoPopulateBnClassify(ci, rec) {
   if (!rec) return;
   classifyAutoPopulating = true;
 
+  // Helpers de match laxo: normaliza Cuenta a forma canónica (plural)
+  // y usa bn_canon (case/acentos insensitive) para sub/cat/concepto.
+  const canonCta = (s) => {
+    const c = bn_canon(s || '');
+    if (c.startsWith('egr'))     return 'egresos';
+    if (c.startsWith('ing'))     return 'ingresos';
+    if (c.startsWith('activ'))   return 'activos';
+    if (c.startsWith('pasiv'))   return 'pasivos';
+    if (c.startsWith('capital')) return 'capital';
+    return c;
+  };
+  const findCardByVal = (gridEl, val, normFn = bn_canon) => {
+    if (!gridEl || !val) return null;
+    const target = normFn(val);
+    return Array.from(gridEl.querySelectorAll('.cuenta-card'))
+      .find(c => normFn(c.dataset.value || '') === target);
+  };
+
   const cuentaVal = rec._cuenta || '';
   if (cuentaVal) {
     const grid = document.getElementById(`cuenta-grid-${ci}`);
-    const card = Array.from(grid?.querySelectorAll('.cuenta-card') || [])
-      .find(c => c.dataset.value === cuentaVal);
+    const card = findCardByVal(grid, cuentaVal, canonCta);
     if (card) {
       selectCuenta(card, ci);
       const subVal = rec._subcuenta || '';
       if (subVal) {
-        const subCard = Array.from(document.getElementById(`subcuenta-grid-${ci}`)?.querySelectorAll('.cuenta-card') || [])
-          .find(c => c.dataset.value === subVal);
+        const subCard = findCardByVal(document.getElementById(`subcuenta-grid-${ci}`), subVal);
         if (subCard) {
           selectSubcuenta(subCard, ci);
           const catVal = rec._categoria_gasto || '';
           if (catVal) {
-            const catCard = Array.from(document.getElementById(`categoria-grid-${ci}`)?.querySelectorAll('.cuenta-card') || [])
-              .find(c => c.dataset.value === catVal);
+            const catCard = findCardByVal(document.getElementById(`categoria-grid-${ci}`), catVal);
             if (catCard) {
               selectCategoria(catCard, ci);
               const conVal = rec._concepto || '';
               if (conVal) {
-                const conCard = Array.from(document.getElementById(`concepto-grid-${ci}`)?.querySelectorAll('.cuenta-card') || [])
-                  .find(c => c.dataset.value === conVal);
+                const conCard = findCardByVal(document.getElementById(`concepto-grid-${ci}`), conVal);
                 if (conCard) selectConcepto(conCard, ci);
               }
             }
