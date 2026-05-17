@@ -2458,18 +2458,16 @@ function bn_createCard(rec, idx) {
 
   return `
     <div class="ticket-card" id="bn-card-${idx}" style="position:relative">
-      <!-- Botón "Por validar" en esquina superior izquierda. Activado = aviso amber + texto.
-           Desactivado = gris tenue, sin texto. Marca registros con duda para revisar después. -->
+      <!-- Botón "Por validar" en esquina superior derecha — sólo ícono ⚠.
+           Activado: amber visible. Desactivado: fondo muy claro, parece desactivado. -->
       <button id="bn-check-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
               data-checked="${isValidado}"
               title="${isValidado ? 'Marcado: Por validar' : 'Marcar para revisar después'}"
-              style="position:absolute;top:8px;left:8px;display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 5px;border-radius:14px;border:1.5px solid ${isValidado ? '#f59e0b' : '#e5e7eb'};background:${isValidado ? '#fef3c7' : 'transparent'};color:${isValidado ? '#b45309' : '#cbd5e1'};font-size:11px;font-weight:700;line-height:1;cursor:pointer;z-index:3;opacity:${isValidado ? '1' : '.65'}">
-        <span style="font-size:13px;line-height:1">⚠</span>${isValidado ? '<span>Por validar</span>' : ''}
-      </button>
+              style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isValidado ? '#f59e0b' : '#e5e7eb'};background:${isValidado ? '#fef3c7' : '#f9fafb'};color:${isValidado ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">⚠</button>
       <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})">
         <div class="ticket-info">
-          <div class="header-chips" style="padding-left:40px">${tipoChip}${cuentaChip}${facChip}</div>
+          <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
           <div class="ticket-store-row">
             <span class="ticket-store ${colorCls}">${esc(name)}</span>
           </div>
@@ -3258,16 +3256,15 @@ async function bn_syncValidado(idx, checked) {
   if (!rec) return;
   rec._validado = checked ? 'Sí' : 'No';
 
-  // Botón de "Por validar" en esquina superior izquierda
+  // Botón de "Por validar" en esquina superior derecha (sólo ícono ⚠)
   const btn = document.getElementById(`bn-check-${ci}`);
   if (btn) {
     btn.dataset.checked   = checked ? 'true' : 'false';
     btn.style.borderColor = checked ? '#f59e0b' : '#e5e7eb';
-    btn.style.background  = checked ? '#fef3c7' : 'transparent';
-    btn.style.color       = checked ? '#b45309' : '#cbd5e1';
-    btn.style.opacity     = checked ? '1' : '.65';
+    btn.style.background  = checked ? '#fef3c7' : '#f9fafb';
+    btn.style.color       = checked ? '#b45309' : '#d1d5db';
     btn.title             = checked ? 'Marcado: Por validar' : 'Marcar para revisar después';
-    btn.innerHTML         = `<span style="font-size:13px;line-height:1">⚠</span>${checked ? '<span>Por validar</span>' : ''}`;
+    btn.textContent       = '⚠';
   }
   // Sincronizar checkbox dentro del panel Clasificar (si está abierto)
   const panelChk = document.getElementById(`validado-panel-${ci}`);
