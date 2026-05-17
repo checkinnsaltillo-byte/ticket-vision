@@ -572,6 +572,22 @@ function saveBancoClasificacion_(ss, data) {
     return { ok: true, rowNum: rowNum, revisado: data.revisado };
   }
 
+  // Edición de Fecha del registro (bulk) — escribe en columna DÍA si existe
+  if (data.fecha_edit) {
+    const headerRow2 = shB.getRange(1, 1, 1, shB.getLastColumn()).getValues()[0];
+    let diaCol = -1;
+    for (let i = 0; i < headerRow2.length; i++) {
+      const n = norm(headerRow2[i]);
+      if (n === "DIA" || n === "DÍA" || n === "FECHA") { diaCol = i + 1; break; }
+    }
+    if (diaCol > 0) {
+      // data.descripcion holds the new date in YYYY-MM-DD or rec.Día
+      const newDate = data.dia || (data.clasificacion && data.clasificacion.dia) || "";
+      shB.getRange(rowNum, diaCol).setValue(newDate);
+    }
+    return { ok: true, rowNum: rowNum, dia_updated: true };
+  }
+
   writeCell("CUENTA",          c.cuenta          || "");
   writeCell("SUBCUENTA",       c.subcuenta        || "");
   writeCell("CATEGORIA",       c.categoria_gasto  || "");

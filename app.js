@@ -2764,7 +2764,7 @@ function bn_buildBnResumenTable(r, idx) {
       const display = val != null ? String(val) : '';
       const td = editable
         ? `<td contenteditable="true" spellcheck="false" data-field="${field}"
-              oninput="showTableActions('bnr',${idx})">${esc(display)}</td>`
+              oninput="bn_onResumenEdit(${idx}, this)">${esc(display)}</td>`
         : `<td>${esc(display)}</td>`;
       return `<tr><td class="resumen-key">${label}</td>${td}</tr>`;
     }).join('')}</tbody>
@@ -2823,10 +2823,13 @@ function bn_createCard(rec, idx) {
   const pathText  = pathParts.join(' › ');
   // En "Por clasificar" la pestaña inferior tampoco lleva color (sólo el chip de CUENTA lo conserva)
   const clasifColorCls = (CUENTA_COLOR_CLASS[rec._cuenta] && !inPC) ? CUENTA_COLOR_CLASS[rec._cuenta] : '';
+  // Color del texto de la pestaña: blanco cuando hay color de fondo (clasificado fuera de PC);
+  // texto oscuro cuando la pestaña queda sin color (no clasificado o en Por clasificar).
+  const tabTxtColor = clasifColorCls ? '#fff' : 'var(--text,#111827)';
   const tabHtml = isClasif
     ? `<div class="classify-tab classified ${clasifColorCls}" id="bn-btn-classify-${idx}" onclick="bn_toggleBnClassify(${idx})">
-         <span class="classify-tab-arrow" style="color:#fff">›</span>
-         <span class="classify-tab-label" style="font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:#fff;">${esc(pathText)}</span>
+         <span class="classify-tab-arrow" style="color:${tabTxtColor}">›</span>
+         <span class="classify-tab-label" style="font-size:10px;text-transform:none;letter-spacing:.01em;font-weight:700;color:${tabTxtColor};">${esc(pathText)}</span>
        </div>`
     : `<div class="classify-tab" id="bn-btn-classify-${idx}" onclick="bn_toggleBnClassify(${idx})">
          <span class="classify-tab-arrow">›</span>
@@ -2851,7 +2854,16 @@ function bn_createCard(rec, idx) {
     </div>` : '';
 
   return `
-    <div class="ticket-card" id="bn-card-${idx}" style="position:relative">
+    <div class="ticket-card" id="bn-card-${idx}" style="position:relative${(BN_SEL_MODE && rec.rowNum && BN_SEL.has(rec.rowNum)) ? ';box-shadow:0 0 0 3px #ea580c,0 4px 12px rgba(234,88,12,.25);border-radius:12px' : ''}">
+      ${BN_SEL_MODE ? `
+      <!-- Checkbox de selección múltiple en esquina superior izquierda -->
+      <label onclick="event.stopPropagation()"
+             style="position:absolute;top:8px;left:8px;z-index:4;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:1.5px solid ${BN_SEL.has(rec.rowNum)?'#ea580c':'#cbd5e1'};background:${BN_SEL.has(rec.rowNum)?'#ea580c':'#fff'};color:#fff;cursor:pointer;font-size:14px;font-weight:900;line-height:1">
+        <input type="checkbox" ${BN_SEL.has(rec.rowNum)?'checked':''}
+               onchange="bn_selToggle(${rec.rowNum||0}, this.checked); bn_renderCards()"
+               style="display:none">
+        ${BN_SEL.has(rec.rowNum)?'✓':''}
+      </label>` : ''}
       <!-- Botón "Por validar" en esquina superior derecha — sólo ícono ⚠.
            Activado: amber visible. Desactivado: fondo muy claro, parece desactivado. -->
       <button id="bn-check-${ci}" type="button"
@@ -3418,6 +3430,264 @@ async function bn_limpiarBnClassification(idx) {
 // Vista cronológica activa por defecto (siempre on)
 let BN_TIMELINE = true;
 
+// ─── Selección múltiple y acciones masivas ──────────────────────────────────
+let BN_SEL_MODE = false;
+const BN_SEL = new Set(); // contiene rowNum's seleccionados (no idx, que cambian al re-render)
+
+/** Toggle del modo de selección múltiple. */
+function bn_toggleSelMode() {
+  BN_SEL_MODE = !BN_SEL_MODE;
+  const btn  = document.getElementById('bn-btn-sel-mode');
+  const btnA = document.getElementById('bn-btn-sel-all');
+  const btnC = document.getElementById('bn-btn-sel-clear');
+  const cnt  = document.getElementById('bn-sel-count');
+  const bar  = document.getElementById('bn-bulk-bar');
+  if (BN_SEL_MODE) {
+    btn.style.background = '#ea580c'; btn.style.color = '#fff'; btn.style.borderColor = '#ea580c';
+    btn.innerHTML = '☑️ Seleccionando…';
+    btnA?.classList.remove('hidden'); btnC?.classList.remove('hidden'); cnt?.classList.remove('hidden');
+  } else {
+    btn.style.background = '#fff'; btn.style.color = '#374151'; btn.style.borderColor = '#d1d5db';
+    btn.innerHTML = '☑️ Seleccionar';
+    btnA?.classList.add('hidden'); btnC?.classList.add('hidden'); cnt?.classList.add('hidden');
+    BN_SEL.clear();
+    bar?.classList.add('hidden');
+  }
+  bn_renderCards();
+  bn_updateSelUI();
+}
+
+/** Marca/desmarca un registro por su rowNum. */
+function bn_selToggle(rowNum, checked) {
+  if (checked) BN_SEL.add(rowNum); else BN_SEL.delete(rowNum);
+  bn_updateSelUI();
+}
+
+/** Selecciona todos los registros visibles en BN_CUR_RECS. */
+function bn_selAllVisible() {
+  for (const r of BN_CUR_RECS) if (r.rowNum) BN_SEL.add(r.rowNum);
+  bn_renderCards();
+  bn_updateSelUI();
+}
+
+/** Limpia la selección. */
+function bn_selClear() {
+  BN_SEL.clear();
+  bn_renderCards();
+  bn_updateSelUI();
+}
+
+/** Actualiza la barra flotante y el contador. */
+function bn_updateSelUI() {
+  const cnt = document.getElementById('bn-sel-count');
+  const bar = document.getElementById('bn-bulk-bar');
+  const bulkCnt = document.getElementById('bn-bulk-count');
+  const n = BN_SEL.size;
+  if (cnt) cnt.textContent = n ? `${n} seleccionado${n>1?'s':''}` : '';
+  if (bulkCnt) bulkCnt.textContent = `${n} reg.`;
+  if (bar) bar.classList.toggle('hidden', !(BN_SEL_MODE && n > 0));
+}
+
+/** Devuelve los registros seleccionados (con rowNum válido). */
+function bn_selectedRecs() {
+  return BN_RAW.filter(r => r.rowNum && BN_SEL.has(r.rowNum));
+}
+
+/** Construye payload base para guardar clasificación de un registro. */
+function bn_buildSavePayload(rec, extras = {}) {
+  return {
+    rowNum:          rec.rowNum,
+    clasificacion: {
+      cuenta:          rec._cuenta          || '',
+      subcuenta:       rec._subcuenta       || '',
+      categoria_gasto: rec._categoria_gasto || '',
+      concepto:        rec._concepto        || '',
+      propiedad:       rec._propiedad       || '',
+      departamento:    rec._departamento    || '',
+      encargado:       rec._encargado       || '',
+      deducible:       rec._deducible       || 'No',
+      reembolso:       rec._reembolso       || 'No',
+      reembolso_a:     rec._reembolso_a     || '',
+      metodo_pago:     rec._metodo_pago     || '',
+      clasificado_por: currentUser || '',
+      validado:        rec._validado       || '',
+      revisado:        rec._revisado       || '',
+    },
+    ...extras
+  };
+}
+
+async function bn_bulkSaveAll(updater, payloadKey) {
+  const recs = bn_selectedRecs();
+  if (!recs.length) { alert('No hay registros seleccionados'); return; }
+  showLoading?.('Aplicando a ' + recs.length + ' registros…', 'Actualizando Sheets…');
+  let ok = 0, fail = 0;
+  for (const rec of recs) {
+    try {
+      updater(rec); // actualiza memoria
+      const payload = bn_buildSavePayload(rec, payloadKey ? { [payloadKey]: true } : {});
+      const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await resp.json();
+      if (j.ok) ok++; else fail++;
+    } catch (e) { fail++; console.warn(e); }
+  }
+  hideLoading?.();
+  bn_render();
+  alert(`Guardados: ${ok}${fail ? ' · Fallidos: ' + fail : ''}`);
+}
+
+async function bn_bulkToggleValidar() {
+  const recs = bn_selectedRecs();
+  if (!recs.length) return;
+  // Decide nuevo estado: si TODOS están validados → desactivar; sino → activar
+  const allSi = recs.every(r => r._validado === 'Sí');
+  const target = allSi ? 'No' : 'Sí';
+  await bn_bulkSaveAll(rec => { rec._validado = target; }, 'validado_edit');
+}
+
+async function bn_bulkToggleRevisar() {
+  const recs = bn_selectedRecs();
+  if (!recs.length) return;
+  const allSi = recs.every(r => r._revisado === 'Sí');
+  const target = allSi ? 'No' : 'Sí';
+  await bn_bulkSaveAll(rec => { rec._revisado = target; }, 'revisado_edit');
+}
+
+async function bn_bulkToggleDeducible() {
+  const recs = bn_selectedRecs();
+  if (!recs.length) return;
+  const allSi = recs.every(r => r._deducible === 'Sí');
+  const target = allSi ? 'No' : 'Sí';
+  await bn_bulkSaveAll(rec => { rec._deducible = target; });
+}
+
+function bn_bulkPromptMetodo() {
+  const opts = ['Tarjeta crédito','Tarjeta débito','Efectivo','Transferencia','Retiro sin tarjeta','Cheque','QR'];
+  const val = prompt('Método de pago para ' + BN_SEL.size + ' registros:\n' + opts.map((o,i)=>(i+1)+'. '+o).join('\n') + '\n\nEscribe el número o el nombre exacto:');
+  if (!val) return;
+  const idx = parseInt(val, 10);
+  const m = (!isNaN(idx) && idx >= 1 && idx <= opts.length) ? opts[idx-1] : opts.find(o => o.toLowerCase() === val.toLowerCase());
+  if (!m) { alert('Opción inválida'); return; }
+  bn_bulkSaveAll(rec => { rec._metodo_pago = m; });
+}
+
+function bn_bulkPromptEncargado() {
+  const val = prompt('Encargado de operación para ' + BN_SEL.size + ' registros:');
+  if (val == null) return;
+  bn_bulkSaveAll(rec => { rec._encargado = val.trim(); });
+}
+
+async function bn_bulkPromptFecha() {
+  const val = prompt('Fecha de registro (YYYY-MM-DD) para ' + BN_SEL.size + ' registros:');
+  if (!val) return;
+  const v = val.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { alert('Formato debe ser YYYY-MM-DD'); return; }
+  const recs = bn_selectedRecs();
+  if (!recs.length) return;
+  showLoading?.('Aplicando fecha a ' + recs.length + ' registros…', '');
+  let ok = 0, fail = 0;
+  for (const rec of recs) {
+    try {
+      rec.Día = v;
+      const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowNum: rec.rowNum, fecha_edit: true, dia: v }),
+      });
+      const j = await resp.json();
+      if (j.ok) ok++; else fail++;
+    } catch (_) { fail++; }
+  }
+  hideLoading?.();
+  bn_render();
+  alert(`Guardados: ${ok}${fail ? ' · Fallidos: ' + fail : ''}`);
+}
+
+/** Abre el popup Clasificar en modo masivo (sin Resumen ni Validar/Revisar). */
+function bn_bulkClasificar() {
+  if (!BN_SEL.size) { alert('No hay registros seleccionados'); return; }
+  const firstRec = bn_selectedRecs()[0];
+  if (!firstRec) return;
+
+  // Usar idx virtual 'bulk' que no choca con índices reales
+  const ci = 'bnbulk';
+  const deptOptions = Array.from({length:14},(_,j)=>`<option>${j+1}</option>`).join('');
+
+  const classifyHtml = buildClassifyPanel(
+    ci, '', deptOptions,
+    `💾 Aplicar a ${BN_SEL.size} reg.`,
+    `bn_bulkApplyClasificar()`,
+    `bn_bulkClearClasificarPanel()`,
+    'Fecha del registro'
+  ).replace('class="classify-panel hidden"', 'class="classify-panel"');
+
+  document.getElementById('bn-classify-modal-resumen').innerHTML =
+    `<div style="padding:14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;margin-bottom:8px">
+       <div style="font-weight:700;color:#b45309;font-size:14px;margin-bottom:4px">🏷️ Clasificación masiva</div>
+       <div style="font-size:12px;color:#92400e">Se aplicará la clasificación que selecciones a <b>${BN_SEL.size}</b> registros marcados. La tabla de Resumen individual se omite por ser múltiples.</div>
+     </div>`;
+  document.getElementById('bn-classify-modal-body').innerHTML = classifyHtml;
+  document.getElementById('bn-classify-overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+
+  // Renderizar grid de Cuentas como en bn_toggleBnClassify
+  bn_activateCatalog();
+  const cuentaGrid = document.getElementById(`cuenta-grid-${ci}`);
+  if (cuentaGrid) {
+    const CUENTA_ICONS = { Egresos:'💸', Ingresos:'💰', Pasivos:'📋', Activos:'📈', Capital:'💼' };
+    const CUENTA_SUBS  = { Egresos:'Gastos y pagos', Ingresos:'Cobros y entradas',
+                           Pasivos:'Obligaciones', Activos:'Inversión / CAPEX', Capital:'Utilidad / Familiar' };
+    const cuentas = Object.keys(BN_CATALOG);
+    cuentaGrid.innerHTML = [
+      `<div class="cuenta-card" data-value="" onclick="selectCuenta(this,'${ci}')">` +
+        `<div class="cuenta-icon">🏠</div><div class="cuenta-label">Sin cuenta</div>` +
+        `<div class="cuenta-sub">General</div></div>`,
+      ...cuentas.map(c =>
+        `<div class="cuenta-card" data-value="${esc(c)}" onclick="selectCuenta(this,'${ci}')">` +
+        `<div class="cuenta-icon">${CUENTA_ICONS[c] || '📁'}</div>` +
+        `<div class="cuenta-label">${esc(c)}</div>` +
+        (CUENTA_SUBS[c] ? `<div class="cuenta-sub">${CUENTA_SUBS[c]}</div>` : '') +
+        `</div>`)
+    ].join('');
+  }
+}
+
+function bn_bulkClearClasificarPanel() {
+  // Limpia las selecciones del panel virtual 'bulk' (botón Limpiar)
+  const ci = 'bnbulk';
+  const grid = document.getElementById(`cuenta-grid-${ci}`);
+  grid?.querySelectorAll('.cuenta-card').forEach(c => c.classList.remove('active'));
+  const sinCta = grid?.querySelector('.cuenta-card[data-value=""]');
+  sinCta?.classList.add('active');
+  ['subcuenta','categoria','concepto'].forEach(k => {
+    const g = document.getElementById(`${k}-grid-${ci}`);
+    if (g) g.innerHTML = '';
+  });
+}
+
+async function bn_bulkApplyClasificar() {
+  const ci = 'bnbulk';
+  const c  = getClassify(ci);
+  if (!c.cuenta) { alert('Selecciona al menos una Cuenta'); return; }
+  await bn_bulkSaveAll(rec => {
+    rec._cuenta          = c.cuenta;
+    rec._subcuenta       = c.subcuenta;
+    rec._categoria_gasto = c.categoria;
+    rec._concepto        = c.concepto;
+    rec.CUENTA = c.cuenta; rec.SUBCUENTA = c.subcuenta;
+    rec.CATEGORIA = c.categoria; rec.CONCEPTO = c.concepto;
+    const monto = Number(rec.Monto) || 0;
+    const _raw = rec._cuenta || rec.TIPO || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
+    const _c   = bn_canon(_raw);
+    rec._tipo = _c.includes('egr') ? 'Egresos' : _c.includes('ing') ? 'Ingresos' :
+                _c.includes('activ') ? 'Activos' : _c.includes('pasiv') ? 'Pasivos' :
+                _c.includes('capital') ? 'Capital' : _raw;
+  });
+  bn_closeClassifyModal();
+}
+
 /** Toggle handler para la vista cronológica. */
 function bn_toggleTimeline(checked) {
   BN_TIMELINE = !!checked;
@@ -3806,6 +4076,16 @@ async function bn_syncValidado(idx, checked) {
   } catch (e) {
     console.warn('Error guardando Validado:', e.message);
     if (lbl) lbl.textContent = (checked ? '✓ Validado' : 'Por validar') + ' ⚠';
+  }
+}
+
+/** Llamado al editar la celda Descripción de la tabla Resumen. Muestra el
+ *  action-bar de la tabla; si la celda está dentro del modal Clasificar,
+ *  también activa el botón 'Guardar cambios' del panel Clasificar. */
+function bn_onResumenEdit(idx, cell) {
+  try { showTableActions('bnr', idx); } catch(_) {}
+  if (cell && cell.closest('#bn-classify-modal-resumen')) {
+    try { markClassifyDirty('bn' + idx); } catch(_) {}
   }
 }
 
