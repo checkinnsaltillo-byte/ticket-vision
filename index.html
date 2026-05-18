@@ -123,6 +123,18 @@
             onclick="switchModule('registros');closeNavMenu()">
           📚 Registros contables
         </li>
+        <li class="nav-sub-item"
+            onclick="switchModule('registros');bn_setCat('pc');closeNavMenu()">
+          🏷️ &nbsp;Por clasificar
+        </li>
+        <li class="nav-sub-item"
+            onclick="switchModule('registros');bn_setCat('reg');closeNavMenu()">
+          📊 &nbsp;Cuentas
+        </li>
+        <li class="nav-sub-item"
+            onclick="switchModule('registros');bn_setCat('pres');closeNavMenu()">
+          📐 &nbsp;Planeación
+        </li>
         <li class="nav-item" id="nav-item-tickets"
             onclick="switchModule('tickets');switchSection('capturados');closeNavMenu()">
           🎫 Tickets
@@ -550,6 +562,11 @@
                     style="padding:7px 12px;border:none;background:#fff;color:#374151;font-weight:600;font-size:12px;cursor:pointer;border-left:1.5px solid var(--border,#d1d5db)">📋 Tabla</button>
           </div>
         </div>
+        <button type="button" onclick="bn_showDownloadPopup()"
+                title="Descargar datos filtrados"
+                style="padding:7px 14px;border:1.5px solid #2563eb;background:#fff;color:#2563eb;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+          ⬇️ Descargar datos
+        </button>
         <button id="bn-btn-sel-all" type="button" onclick="bn_selAllVisible()" class="hidden"
                 style="padding:7px 12px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
           Todos visibles
@@ -845,6 +862,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=100"></script>
+  <script src="app.js?v=101"></script>
 </body>
 </html>

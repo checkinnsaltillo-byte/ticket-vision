@@ -1632,6 +1632,7 @@ const bn_st   = {
   cuentaClasif: [], subcuenta: [], categoria: [], concepto: [],
   cuentaBan:    [], dia: [],
   propiedad:    [], departamento: [],
+  deducible:    [], duda: [], validado: [], factura: [], metodoPago: [],
   reembolso:    [], encargado: [],
   anio:         [], mes: [], deducible: [],
   // Texto libre (no multi-select)
@@ -1653,6 +1654,10 @@ const BN_MSEL_FIELDS = [
   { key: 'propiedad',    label: 'Propiedad',       from: r => r._propiedad          || '' },
   { key: 'departamento', label: '# Departamento',  from: r => (r._departamento !== undefined && r._departamento !== null && r._departamento !== '') ? String(r._departamento) : '' },
   { key: 'deducible',    label: 'Deducible',       from: r => r._deducible          || '' },
+  { key: 'duda',         label: 'Duda',            from: r => r._duda               || '' },
+  { key: 'validado',     label: 'Validado',        from: r => r._validado           || '' },
+  { key: 'factura',      label: 'Factura',         from: r => r.FacturaFlag || (r.Factura ? 'Con factura' : 'Sin factura') },
+  { key: 'metodoPago',   label: 'Método de pago',  from: r => r._metodo_pago        || '' },
   { key: 'reembolso',    label: 'Reembolso',       from: r => r._reembolso          || '' },
   { key: 'encargado',    label: 'Encargado de operación', from: r => r._encargado   || '' },
 ];
@@ -4113,6 +4118,204 @@ let BN_CARD_PAGE = 1;
 let BN_CARD_SIZE = 50;
 let BN_VIEW_MODE = 'cards'; // 'cards' | 'table'
 
+/** Columnas exportadas (todas las disponibles, no sólo las visibles). */
+const BN_EXPORT_COLS = [
+  { k: 'Día',          get: r => bn_formatDia(r.Día || r.Dia || '') },
+  { k: 'Cuenta bancaria', get: r => r['Cuenta bancaria'] || '' },
+  { k: 'Descripción',  get: r => r.DESCRIPCION || '' },
+  { k: 'Monto',        get: r => Number(r.Monto) || 0 },
+  { k: 'Factura',      get: r => r.FacturaFlag || r.Factura || '' },
+  { k: 'Cuenta',       get: r => r._cuenta || '' },
+  { k: 'Subcuenta',    get: r => r._subcuenta || '' },
+  { k: 'Categoría',    get: r => r._categoria_gasto || '' },
+  { k: 'Concepto',     get: r => r._concepto || '' },
+  { k: 'Propiedad',    get: r => r._propiedad || '' },
+  { k: 'Departamento', get: r => r._departamento || '' },
+  { k: 'Encargado',    get: r => r._encargado || '' },
+  { k: 'Deducible',    get: r => r._deducible || '' },
+  { k: 'Reembolso',    get: r => r._reembolso || '' },
+  { k: 'Reembolso a',  get: r => r._reembolso_a || '' },
+  { k: 'Método pago',  get: r => r._metodo_pago || '' },
+  { k: 'Duda',         get: r => r._duda || '' },
+  { k: 'Validado',     get: r => r._validado || '' },
+  { k: 'Clasificado por', get: r => r._clasificado_por || '' },
+];
+
+function bn_showDownloadPopup() {
+  let ov = document.getElementById('bn-download-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'bn-download-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
+  }
+  const n = BN_CUR_RECS.length;
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:460px;padding:22px;box-shadow:0 20px 60px rgba(15,23,42,.4);position:relative" onclick="event.stopPropagation()">
+      <button onclick="document.getElementById('bn-download-overlay').remove()"
+              style="position:absolute;top:10px;right:10px;width:32px;height:32px;border:none;background:#f1f5f9;border-radius:50%;font-size:18px;cursor:pointer">✕</button>
+      <h3 style="margin:0 0 6px;font-size:16px">⬇️ Descargar datos</h3>
+      <p style="margin:0 0 16px;font-size:12px;color:#64748b">
+        Se exportarán <b>${n}</b> registro${n===1?'':'s'} con los filtros actuales y todos los campos disponibles.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button onclick="bn_downloadExcel();document.getElementById('bn-download-overlay').remove()"
+                style="flex:1;min-width:140px;padding:14px;border:1.5px solid #16a34a;background:#f0fdf4;color:#15803d;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px">
+          <span style="font-size:24px">📊</span>
+          <span>Excel / CSV</span>
+          <span style="font-size:10px;font-weight:400;color:#16a34a">.csv (abre en Excel)</span>
+        </button>
+        <button onclick="bn_downloadPDF();document.getElementById('bn-download-overlay').remove()"
+                style="flex:1;min-width:140px;padding:14px;border:1.5px solid #dc2626;background:#fef2f2;color:#991b1b;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px">
+          <span style="font-size:24px">📄</span>
+          <span>PDF</span>
+          <span style="font-size:10px;font-weight:400;color:#dc2626">imprimir → guardar</span>
+        </button>
+      </div>
+    </div>`;
+}
+
+function bn_csvEscape(v) {
+  const s = String(v == null ? '' : v);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function bn_downloadExcel() {
+  const cols = BN_EXPORT_COLS;
+  const head = cols.map(c => bn_csvEscape(c.k)).join(',');
+  const rows = BN_CUR_RECS.map(r => cols.map(c => bn_csvEscape(c.get(r))).join(','));
+  // BOM para que Excel detecte UTF-8
+  const csv = '﻿' + head + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `registros_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function bn_downloadPDF() {
+  const cols = BN_EXPORT_COLS;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Permite ventanas emergentes para imprimir a PDF'); return; }
+  const rows = BN_CUR_RECS.map(r => `<tr>${
+    cols.map((c, i) => {
+      const v = c.get(r);
+      const isNum = i === 3; // Monto
+      const txt = isNum ? bn_fmt$(Number(v)||0) : String(v||'');
+      return `<td style="${isNum?'text-align:right':''}">${esc(txt)}</td>`;
+    }).join('')
+  }</tr>`).join('');
+  w.document.write(`
+    <!DOCTYPE html><html><head><meta charset="utf-8"><title>Registros — Exportar</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; padding: 20px; color: #1f2937; }
+      h1 { margin: 0 0 6px; font-size: 18px; }
+      .meta { color: #64748b; font-size: 11px; margin-bottom: 14px; }
+      table { width: 100%; border-collapse: collapse; font-size: 9px; }
+      th { background: #475569; color: #fff; padding: 6px 5px; text-align: left; font-size: 9px; text-transform: uppercase; }
+      td { padding: 5px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+      tr:nth-child(even) td { background: #f8fafc; }
+      @page { size: landscape; margin: 14mm; }
+      @media print { .noprint { display: none; } }
+    </style></head><body>
+    <button class="noprint" onclick="window.print()" style="padding:8px 16px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-bottom:10px">🖨 Imprimir / Guardar PDF</button>
+    <h1>Registros contables — Sistema Financiero</h1>
+    <div class="meta">Generado: ${new Date().toLocaleString('es-MX')} · ${BN_CUR_RECS.length} registro(s)</div>
+    <table>
+      <thead><tr>${cols.map(c => `<th>${esc(c.k)}</th>`).join('')}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <script>setTimeout(()=>window.print(),300);<\/script>
+    </body></html>`);
+  w.document.close();
+}
+let BN_TBL_EDIT_MODE = false; // modo edición de la columna Descripción
+const BN_TBL_DESC_CHANGES = new Map(); // rowNum → newDesc
+
+function bn_tblToggleEditMode() {
+  if (!BN_TBL_EDIT_MODE) {
+    BN_TBL_EDIT_MODE = true;
+    BN_TBL_DESC_CHANGES.clear();
+    bn_renderCards();
+  } else {
+    // Pedir confirmación; si acepta, guardar todos los cambios
+    bn_tblShowSaveConfirm();
+  }
+}
+
+function bn_tblTrackDescChange(idx, cellEl) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec || !rec.rowNum) return;
+  const newVal = (cellEl.textContent || '').trim();
+  const origVal = (cellEl.dataset.origDesc || '').trim();
+  if (newVal !== origVal) {
+    BN_TBL_DESC_CHANGES.set(rec.rowNum, newVal);
+  } else {
+    BN_TBL_DESC_CHANGES.delete(rec.rowNum);
+  }
+}
+
+function bn_tblShowSaveConfirm() {
+  const n = BN_TBL_DESC_CHANGES.size;
+  let overlay = document.getElementById('bn-tbl-save-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'bn-tbl-save-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+  }
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:420px;padding:20px;position:relative;box-shadow:0 20px 60px rgba(15,23,42,.4)" onclick="event.stopPropagation()">
+      <h3 style="margin:0 0 6px;font-size:16px">💾 Guardar cambios</h3>
+      <p style="margin:0 0 14px;font-size:13px;color:#475569">
+        Se guardarán <b>${n}</b> cambio${n===1?'':'s'} a la columna Descripción.
+        ${n === 0 ? '<br><span style="color:#94a3b8">(No hay cambios pendientes)</span>' : ''}
+      </p>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button onclick="document.getElementById('bn-tbl-save-overlay').remove()"
+                style="padding:8px 14px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">Cancelar</button>
+        <button onclick="bn_tblSaveAllDescChanges()"
+                style="padding:8px 16px;border:none;background:#475569;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer"${n===0?' disabled':''}>
+          Guardar cambios
+        </button>
+      </div>
+    </div>`;
+}
+
+async function bn_tblSaveAllDescChanges() {
+  document.getElementById('bn-tbl-save-overlay')?.remove();
+  const entries = [...BN_TBL_DESC_CHANGES.entries()];
+  if (entries.length) {
+    showLoading?.('Guardando ' + entries.length + ' cambios…', '');
+    const { ok, fail } = await bn_runInBatches(entries, 6, async ([rowNum, newDesc]) => {
+      // Localizar el rec por rowNum y actualizar en memoria
+      const rec = BN_RAW.find(r => r.rowNum === rowNum);
+      if (rec) rec.DESCRIPCION = newDesc;
+      try {
+        const payload = bn_buildSavePayload(rec || { rowNum }, { descripcion_edit: true });
+        payload.descripcion = newDesc;
+        const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const j = await resp.json();
+        return !!j.ok;
+      } catch (_) { return false; }
+    });
+    hideLoading?.();
+    if (fail) alert(`Guardados: ${ok} · Fallidos: ${fail}`);
+  }
+  BN_TBL_EDIT_MODE = false;
+  BN_TBL_DESC_CHANGES.clear();
+  bn_renderCards();
+}
+
 /** Alterna entre vista de tarjetas y vista de tabla. */
 function bn_setView(mode) {
   if (mode !== 'cards' && mode !== 'table') return;
@@ -5286,7 +5489,15 @@ function bn_renderRecordsTable(recs, startIdx) {
         ${BN_SEL_MODE ? '<th style="padding:9px 10px;width:36px"></th>' : ''}
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Cuenta</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Buscar clasificación</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Descripción</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">
+          <div style="display:inline-flex;align-items:center;gap:8px">
+            <span>Descripción</span>
+            <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
+                    style="padding:3px 9px;border:1px solid ${BN_TBL_EDIT_MODE?'#fbbf24':'rgba(255,255,255,.4)'};background:${BN_TBL_EDIT_MODE?'#fbbf24':'transparent'};color:${BN_TBL_EDIT_MODE?'#1f2937':'#fff'};border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:0">
+              ${BN_TBL_EDIT_MODE ? '💾 Guardar' : '✏️ Editar'}
+            </button>
+          </div>
+        </th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Cuenta banc.</th>
         <th style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase">Monto</th>
@@ -5341,11 +5552,13 @@ function bn_renderRecordsTable(recs, startIdx) {
                  onblur="setTimeout(()=>bn_tblSearchHide(),200)"
                  style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;outline:none">
         </td>
-        <td contenteditable="true" spellcheck="false"
+        <td ${BN_TBL_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
+            data-row-idx="${idx}" data-orig-desc="${esc(desc)}"
             onclick="event.stopPropagation()"
-            onblur="bn_tblEditDescripcion(${idx}, this)"
+            onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
+            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${BN_TBL_EDIT_MODE?'#fff':''}';bn_tblTrackDescChange(${idx}, this)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-            style="padding:8px 10px;font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:text" title="${esc(desc)}">${esc(desc)}</td>
+            style="padding:8px 10px;font-size:12px;width:260px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_EDIT_MODE?'text':'default'};background:${BN_TBL_EDIT_MODE?'#fff':'transparent'};${BN_TBL_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(desc)}">${esc(desc)}</td>
         <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
         <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
         <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
@@ -5355,13 +5568,19 @@ function bn_renderRecordsTable(recs, startIdx) {
         <td style="padding:8px 10px;text-align:center;font-size:14px">${fac ? '🧾' : ''}</td>
         <td onclick="event.stopPropagation();bn_syncDeducible(${idx}, ${!dedOn});bn_renderCards()"
             title="${dedOn?'Deducible — clic para desactivar':'No deducible — clic para activar'}"
-            style="padding:8px 10px;text-align:center;font-size:14px;cursor:pointer;opacity:${dedOn?'1':'.3'}">💰</td>
+            style="padding:6px;text-align:center;background:#fff;cursor:pointer">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${dedOn?'#0e7490':'#e2e8f0'};background:${dedOn?'#cffafe':'#fff'};font-size:13px;opacity:${dedOn?'1':'.5'}">💰</span>
+        </td>
         <td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!isDuda});bn_renderCards()"
             title="${isDuda?'Marcado: Duda — clic para quitar':'Marcar como Duda'}"
-            style="padding:8px 10px;text-align:center;font-size:14px;cursor:pointer;color:${isDuda?'#b45309':'#cbd5e1'};font-weight:800">?</td>
+            style="padding:6px;text-align:center;background:#fff;cursor:pointer">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#f59e0b':'#e2e8f0'};background:${isDuda?'#fef3c7':'#fff'};color:${isDuda?'#b45309':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
+        </td>
         <td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!isVal});bn_renderCards()"
             title="${isVal?'Validado — clic para quitar':'Marcar como Validado'}"
-            style="padding:8px 10px;text-align:center;font-size:14px;cursor:pointer;color:${isVal?'#16a34a':'#cbd5e1'};font-weight:800">✓</td>
+            style="padding:6px;text-align:center;background:#fff;cursor:pointer">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isVal?'#16a34a':'#e2e8f0'};background:${isVal?'#dcfce7':'#fff'};color:${isVal?'#16a34a':'#cbd5e1'};font-weight:900;font-size:13px">✓</span>
+        </td>
       </tr>`;
   }).join('');
 
@@ -5376,30 +5595,9 @@ function bn_renderRecordsTable(recs, startIdx) {
          style="position:fixed;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 22px rgba(15,23,42,.15);max-height:260px;overflow-y:auto;z-index:8500;min-width:280px"></div>`;
 }
 
-/** Edición inline de la columna Descripción en la tabla. Guarda al blur si cambió. */
-async function bn_tblEditDescripcion(idx, cellEl) {
-  const rec = BN_CUR_RECS[idx];
-  if (!rec) return;
-  const newDesc = (cellEl.textContent || '').trim();
-  const oldDesc = (rec.DESCRIPCION || '').trim();
-  if (newDesc === oldDesc) return; // sin cambios
-  rec.DESCRIPCION = newDesc;
-  if (!rec.rowNum) return;
-  try {
-    const payload = bn_buildSavePayload(rec, { descripcion_edit: true });
-    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const j = await resp.json();
-    if (!j.ok) throw new Error(j.error || 'Error');
-    // confirma visualmente sin re-renderizar (preserva caret si el usuario sigue)
-    cellEl.title = newDesc;
-  } catch (e) {
-    console.warn('Error guardando Descripción:', e.message);
-    alert('Error al guardar Descripción: ' + e.message);
-  }
-}
+// (Antiguo bn_tblEditDescripcion removido; ahora la edición se hace en lote
+//  vía el botón Editar/Guardar de la cabecera. Ver bn_tblTrackDescChange y
+//  bn_tblSaveAllDescChanges arriba.)
 
 /** Filtra SEARCH_INDEX y muestra dropdown. */
 function bn_tblSearchInput(idx, input) {
@@ -5635,6 +5833,16 @@ function scrollCardIntoView(el) {
 const FACTURABLE_CUENTAS = new Set(["", "Egresos", "Activos", "Pasivos"]);
 
 function selectCuenta(el, i) {
+  // Click sobre la card ya activa → deseleccionar (vuelve a 'Sin cuenta')
+  if (el.classList.contains('active') && el.dataset.value !== '') {
+    el.classList.remove('active');
+    const sinCuenta = el.closest('.cuenta-grid')?.querySelector('.cuenta-card[data-value=""]');
+    if (sinCuenta) sinCuenta.classList.add('active');
+    document.getElementById(`cuenta-${i}`).value = '';
+    resetSubcuenta(i);
+    try { markClassifyDirty(i); } catch(_) {}
+    return;
+  }
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
   scrollCardIntoView(el);
@@ -5663,6 +5871,13 @@ function resetSubcuenta(i) {
 }
 
 function selectSubcuenta(el, i) {
+  if (el.classList.contains('active')) {
+    el.classList.remove('active');
+    document.getElementById(`subcuenta-${i}`).value = '';
+    resetCategoria(i);
+    try { markClassifyDirty(i); } catch(_) {}
+    return;
+  }
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
   scrollCardIntoView(el);
@@ -5706,6 +5921,13 @@ function renderConceptos(conceptos, i) {
 }
 
 function selectConcepto(el, i) {
+  if (el.classList.contains('active')) {
+    el.classList.remove('active');
+    document.getElementById(`concepto-${i}`).value = '';
+    updateClasiPath(i);
+    markClassifyDirty(i);
+    return;
+  }
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
   scrollCardIntoView(el);
@@ -5715,6 +5937,14 @@ function selectConcepto(el, i) {
 }
 
 function selectCategoria(el, i) {
+  if (el.classList.contains('active')) {
+    el.classList.remove('active');
+    document.getElementById(`categoria-${i}`).value = '';
+    resetConcepto(i);
+    updateClasiPath(i);
+    markClassifyDirty(i);
+    return;
+  }
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
   scrollCardIntoView(el);
@@ -5731,6 +5961,12 @@ function selectCategoria(el, i) {
 }
 
 function selectMetodoPago(el, i) {
+  if (el.classList.contains('active')) {
+    el.classList.remove('active');
+    document.getElementById(`metodo-clasif-${i}`).value = '';
+    markClassifyDirty(i);
+    return;
+  }
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
   scrollCardIntoView(el);
@@ -5766,6 +6002,12 @@ function toggleReembolsoOtro(i, value) {
 }
 
 function selectComprador(el, i) {
+  if (el.classList.contains('active')) {
+    el.classList.remove('active');
+    document.getElementById(`comprador-${i}`).value = '';
+    markClassifyDirty(i);
+    return;
+  }
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
   scrollCardIntoView(el);
