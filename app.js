@@ -4111,6 +4111,28 @@ function bn_rrect(ctx,x,y,w,h,r) {
 let BN_CUR_RECS  = [];
 let BN_CARD_PAGE = 1;
 let BN_CARD_SIZE = 50;
+let BN_VIEW_MODE = 'cards'; // 'cards' | 'table'
+
+/** Alterna entre vista de tarjetas y vista de tabla. */
+function bn_setView(mode) {
+  if (mode !== 'cards' && mode !== 'table') return;
+  if (mode === BN_VIEW_MODE) return;
+  BN_VIEW_MODE = mode;
+  const cardsBtn = document.getElementById('bn-view-cards');
+  const tableBtn = document.getElementById('bn-view-table');
+  if (cardsBtn && tableBtn) {
+    const onCss = 'background:#475569;color:#fff';
+    const offCss = 'background:#fff;color:#374151';
+    cardsBtn.style.cssText = (mode === 'cards')
+      ? `padding:7px 12px;border:none;${onCss};font-weight:600;font-size:12px;cursor:pointer`
+      : `padding:7px 12px;border:none;${offCss};font-weight:600;font-size:12px;cursor:pointer`;
+    tableBtn.style.cssText = (mode === 'table')
+      ? `padding:7px 12px;border:none;${onCss};font-weight:600;font-size:12px;cursor:pointer;border-left:1.5px solid var(--border,#d1d5db)`
+      : `padding:7px 12px;border:none;${offCss};font-weight:600;font-size:12px;cursor:pointer;border-left:1.5px solid var(--border,#d1d5db)`;
+  }
+  BN_CARD_PAGE = 1;
+  bn_renderCards();
+}
 
 /** Cambia el tamaño de página (registros visibles por página). */
 function bn_setPageSize(v) {
@@ -4906,8 +4928,15 @@ function bn_selectedRecs() {
 
 /** Construye payload base para guardar clasificación de un registro. */
 function bn_buildSavePayload(rec, extras = {}) {
+  // Incluye campos top-level que el Apps Script lee directamente:
+  // data.validado, data.duda, data.descripcion, data.dia
   return {
     rowNum:          rec.rowNum,
+    // Top-level (los flags *_edit del Apps Script los leen desde aquí)
+    validado:        rec._validado    || '',
+    duda:            rec._duda        || '',
+    descripcion:     rec.DESCRIPCION  || '',
+    dia:             bn_formatDiaISO(rec.Día || rec.Dia || '') || '',
     clasificacion: {
       cuenta:          rec._cuenta          || '',
       subcuenta:       rec._subcuenta       || '',
@@ -4928,23 +4957,40 @@ function bn_buildSavePayload(rec, extras = {}) {
   };
 }
 
+/** Limita la concurrencia de promesas a 'limit' simultáneas. */
+async function bn_runInBatches(items, limit, worker) {
+  let ok = 0, fail = 0;
+  for (let i = 0; i < items.length; i += limit) {
+    const batch = items.slice(i, i + limit);
+    const results = await Promise.allSettled(batch.map(worker));
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value === true) ok++;
+      else fail++;
+    }
+  }
+  return { ok, fail };
+}
+
 async function bn_bulkSaveAll(updater, payloadKey) {
   const recs = bn_selectedRecs();
   if (!recs.length) { alert('No hay registros seleccionados'); return; }
   showLoading?.('Aplicando a ' + recs.length + ' registros…', 'Actualizando Sheets…');
-  let ok = 0, fail = 0;
-  for (const rec of recs) {
+  // Aplicar updater a TODOS en memoria primero (para que el payload de cada uno
+  // refleje los cambios correctamente al construirse).
+  for (const rec of recs) { try { updater(rec); } catch(_) {} }
+
+  // Llamadas en paralelo (lotes de 6) para acelerar significativamente.
+  const { ok, fail } = await bn_runInBatches(recs, 6, async (rec) => {
+    const payload = bn_buildSavePayload(rec, payloadKey ? { [payloadKey]: true } : {});
     try {
-      updater(rec); // actualiza memoria
-      const payload = bn_buildSavePayload(rec, payloadKey ? { [payloadKey]: true } : {});
       const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const j = await resp.json();
-      if (j.ok) ok++; else fail++;
-    } catch (e) { fail++; console.warn(e); }
-  }
+      return !!j.ok;
+    } catch (_) { return false; }
+  });
   hideLoading?.();
   bn_render();
   alert(`Guardados: ${ok}${fail ? ' · Fallidos: ' + fail : ''}`);
@@ -5227,6 +5273,73 @@ function bn_dateHeaderLabel(iso) {
   return `${d} de ${NOMBRES[m-1]}, ${y}`;
 }
 
+/** Renderiza los registros como una tabla. Click en fila abre Clasificar. */
+function bn_renderRecordsTable(recs, startIdx) {
+  if (!recs.length) return '';
+  const CUENTA_EMOJI = { Egresos:'💸', Ingresos:'💰', Activos:'📈', Pasivos:'📋', Capital:'💼' };
+  const head = `
+    <thead>
+      <tr style="background:#475569;color:#fff">
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Cuenta</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Descripción</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Cuenta banc.</th>
+        <th style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase">Monto</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Subcuenta</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Categoría</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Concepto</th>
+        <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Fact.</th>
+        <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Ded.</th>
+        <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Duda</th>
+        <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Val.</th>
+      </tr>
+    </thead>`;
+
+  const body = recs.map((rec, j) => {
+    const idx = startIdx + j;
+    const montoN = Number(rec.Monto || 0);
+    const cuentaClasif = rec._cuenta || '';
+    const tipoEfectivo = rec._tipo || (montoN < 0 ? 'Egresos' : montoN > 0 ? 'Ingresos' : '');
+    const colorCls = CUENTA_COLOR_CLASS[tipoEfectivo] || '';
+    const tipoLbl  = cuentaClasif || (montoN < 0 ? 'Egreso' : montoN > 0 ? 'Ingreso' : '—');
+    const tipoEmoji = CUENTA_EMOJI[cuentaClasif] || '🏦';
+    const chip = `<span class="info-chip ${colorCls}" style="font-size:11px;padding:3px 8px">${tipoEmoji} ${esc(tipoLbl)}</span>`;
+    const dia  = bn_formatDia(rec.Día || rec.Dia || '') || '';
+    const desc = (rec.DESCRIPCION || '').slice(0, 60);
+    const cb   = rec['Cuenta bancaria'] || '';
+    const isDuda = rec._duda     === 'Sí';
+    const isVal  = rec._validado === 'Sí';
+    const dedOn  = rec._deducible === 'Sí';
+    const fac    = rec.FacturaFlag === 'Con factura' || (rec.Factura && String(rec.Factura).trim());
+    return `
+      <tr onclick="bn_toggleBnClassify(${idx})"
+          style="cursor:pointer;border-bottom:1px solid #e2e8f0"
+          onmouseover="this.style.background='#f8fafc'"
+          onmouseout="this.style.background=''">
+        <td style="padding:8px 10px">${chip}</td>
+        <td style="padding:8px 10px;font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(desc)}">${esc(desc)}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
+        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._subcuenta||'')}">${esc(rec._subcuenta||'')}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._categoria_gasto||'')}">${esc(rec._categoria_gasto||'')}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._concepto||'')}">${esc(rec._concepto||'')}</td>
+        <td style="padding:8px 10px;text-align:center;font-size:14px">${fac ? '🧾' : ''}</td>
+        <td style="padding:8px 10px;text-align:center;font-size:14px">${dedOn ? '💰' : ''}</td>
+        <td style="padding:8px 10px;text-align:center;font-size:14px">${isDuda ? '<span style="color:#b45309;font-weight:800">?</span>' : ''}</td>
+        <td style="padding:8px 10px;text-align:center;font-size:14px">${isVal ? '<span style="color:#16a34a;font-weight:800">✓</span>' : ''}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1000px">
+        ${head}
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+}
+
 function bn_renderCards() {
   const container = document.getElementById('bn-cards-container');
   const pagEl     = document.getElementById('bn-card-pagination');
@@ -5261,11 +5374,15 @@ function bn_renderCards() {
   const start      = (BN_CARD_PAGE - 1) * BN_CARD_SIZE;
   const pageRecs   = recs.slice(start, start + BN_CARD_SIZE);
 
-  if (BN_TIMELINE) {
-    // Agrupado por fecha con encabezados — sin línea vertical; sólo puntos+texto.
+  // Modo Tabla — cada registro en una sola fila
+  if (BN_VIEW_MODE === 'table') {
     container.style.position = '';
     container.style.paddingLeft = '';
-
+    container.innerHTML = bn_renderRecordsTable(pageRecs, start);
+  } else if (BN_TIMELINE) {
+    // Cards con encabezados de fecha
+    container.style.position = '';
+    container.style.paddingLeft = '';
     let lastKey = null;
     const parts = [];
     pageRecs.forEach((rec, j) => {
