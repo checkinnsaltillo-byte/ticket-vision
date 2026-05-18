@@ -2215,10 +2215,22 @@ async function bn_prSaveConfirm() {
 // ─── Match: relación entre registros bancarios y tickets ─────────────────
 let BN_TICKETS_CACHE = null; // lista de tickets cargada vía /get-tickets
 
-/** Calcula la similitud (score 0..1) entre un registro bancario y un ticket. */
+/** Parser robusto de monto: acepta números, "1,234.56", "$1,234.56",
+ *  "-1234.5", etc. y devuelve siempre el valor absoluto en number. */
+function bn_parseMonto(v) {
+  if (v == null || v === '') return 0;
+  if (typeof v === 'number' && isFinite(v)) return Math.abs(v);
+  const s = String(v).replace(/[^0-9.\-]/g, '');
+  const n = parseFloat(s);
+  return isFinite(n) ? Math.abs(n) : 0;
+}
+
+/** Calcula la similitud (score 0..1) entre un registro bancario y un ticket.
+ *  El monto se compara siempre en valor absoluto — robusto al signo
+ *  (un ticket de compra es positivo en Tickets y negativo en Registros). */
 function bn_matchScore(rec, ticket) {
-  const recMonto = Math.abs(Number(rec.Monto) || 0);
-  const tkTotal  = Math.abs(Number(ticket.total) || 0);
+  const recMonto = bn_parseMonto(rec.Monto);
+  const tkTotal  = bn_parseMonto(ticket.total != null ? ticket.total : ticket.Total);
   if (!recMonto || !tkTotal) return 0;
 
   // ── Monto (0..0.5) — descarta si la diferencia es enorme ──
