@@ -108,6 +108,80 @@ app.post("/save-banco-clasificacion", async (req, res) => {
   }
 });
 
+// ─── Chatbot financiero (proxy a Anthropic API) ─────────────────────────────
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
+const ANTHROPIC_MODEL   = process.env.ANTHROPIC_MODEL   || "claude-haiku-4-5";
+
+app.post("/chat", async (req, res) => {
+  try {
+    const { message, history = [], context = {} } = req.body || {};
+    if (!message) throw new Error("message requerido");
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error("No hay ANTHROPIC_API_KEY configurada en Cloud Run. Configúrala como variable de entorno para activar el asistente.");
+    }
+
+    const systemPrompt =
+`Eres un asistente financiero experto integrado al sistema 'Sistema Financiero' de Check Inn Saltillo.
+Respondes con DATOS REALES tomados del CONTEXTO_JSON adjunto al final del mensaje del usuario.
+Reglas:
+- Habla en español, conciso y claro. Usa formato Markdown ligero (negritas, listas) si ayuda.
+- Si el usuario pide cifras de un período (mes/año), filtra registros del CONTEXTO_JSON por el campo "Dia" (YYYY-MM-DD).
+- Cuenta "Egresos" / "Ingresos" / "Activos" / "Pasivos" / "Capital" se llama "Cuenta" en cada registro (campo r.Cuenta).
+- Subcuenta / Categoría / Concepto: r.Sub, r.Cat, r.Con. Método de pago: r.MP. Encargado: r.Enc. Propiedad: r.Prop.
+- Para "utilidad" calcula Ingresos − Egresos del período (en términos absolutos del monto).
+- Si la pregunta es sobre tickets, usa el array 'tickets' del contexto (tienda, fecha, total, folio).
+- Si la pregunta es sobre presupuesto, usa 'presupuesto' (con su periodicidad).
+- Si faltan datos para responder, explícalo en una línea. NUNCA inventes cifras.
+- Si la respuesta requiere lista de registros, muestra máximo 10 ejemplos.
+- Cuando muestres totales monetarios usa el formato MXN (\$1,234.56).
+- Fecha de hoy: ${context.fecha_hoy || new Date().toISOString().slice(0,10)}.`;
+
+    // El contexto va como segundo bloque dentro del mismo turno del usuario,
+    // para que el modelo lo tenga visible junto a la pregunta.
+    const userContent = [
+      { type: 'text', text: message },
+      { type: 'text', text: 'CONTEXTO_JSON:\n```json\n' + JSON.stringify(context).slice(0, 180000) + '\n```' },
+    ];
+
+    const messages = [];
+    for (const h of history.slice(0, -1)) {
+      if (!h || !h.role || !h.content) continue;
+      messages.push({ role: h.role, content: h.content });
+    }
+    messages.push({ role: 'user', content: userContent });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60000);
+    let r;
+    try {
+      r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type":      "application/json",
+          "x-api-key":         ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model:      ANTHROPIC_MODEL,
+          max_tokens: 1024,
+          system:     systemPrompt,
+          messages,
+        }),
+        signal: controller.signal,
+      });
+    } finally { clearTimeout(timer); }
+
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error?.message || ("Anthropic " + r.status));
+    const reply = (data.content || []).map(b => b.text || '').join('\n').trim() || '(sin respuesta)';
+    res.json({ ok: true, reply, model: data.model, usage: data.usage });
+  } catch (err) {
+    console.error("chat_error:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Guardar Presupuesto_sys: reescribe toda la hoja con las filas dadas ────
 
 app.post("/save-presupuesto", async (req, res) => {

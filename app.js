@@ -2212,6 +2212,181 @@ async function bn_prSaveConfirm() {
   }
 }
 
+// ─── Chatbot financiero ─────────────────────────────────────────────────
+const BN_CHAT_KEY = 'bn-chat-history-v1';
+let BN_CHAT_HISTORY = [];
+const BN_CHAT_SUGGESTIONS = [
+  'Dame la utilidad de este mes',
+  'Cuánto gasté en Egresos > Insumos en febrero',
+  'Resumen de ingresos por método de pago',
+  '¿Cuántos registros están sin clasificar?',
+  'Tickets de "Sodimac" o "Home Depot"',
+];
+
+function bn_chatToggle() {
+  const p = document.getElementById('bn-chat-panel');
+  if (!p) return;
+  const open = p.classList.toggle('hidden');
+  if (!open) {
+    bn_chatLoadHistory();
+    bn_chatRenderSuggestions();
+    setTimeout(() => document.getElementById('bn-chat-input')?.focus(), 50);
+  }
+}
+
+function bn_chatRenderSuggestions() {
+  const wrap = document.getElementById('bn-chat-suggestions');
+  if (!wrap) return;
+  if (BN_CHAT_HISTORY.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = BN_CHAT_SUGGESTIONS.map(s =>
+    `<button onclick="bn_chatPrefill(${JSON.stringify(s).replace(/"/g,'&quot;')})"
+             style="padding:5px 10px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:999px;font-size:11px;cursor:pointer">
+       ${esc(s)}
+     </button>`).join('');
+}
+
+function bn_chatPrefill(text) {
+  const inp = document.getElementById('bn-chat-input');
+  if (inp) { inp.value = text; inp.focus(); }
+}
+
+function bn_chatLoadHistory() {
+  try { BN_CHAT_HISTORY = JSON.parse(localStorage.getItem(BN_CHAT_KEY) || '[]'); }
+  catch(_) { BN_CHAT_HISTORY = []; }
+  const box = document.getElementById('bn-chat-messages');
+  if (!box) return;
+  if (!BN_CHAT_HISTORY.length) {
+    box.innerHTML = `
+      <div style="padding:14px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;font-size:13px;color:#334155">
+        👋 Hola, soy tu asistente financiero. Puedo responder sobre tus
+        <b>registros contables</b>, <b>tickets</b>, <b>presupuesto</b> y
+        análisis. Pregúntame lo que quieras.
+      </div>`;
+    return;
+  }
+  box.innerHTML = BN_CHAT_HISTORY.map(bn_chatBubble).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function bn_chatBubble(msg) {
+  const isUser = msg.role === 'user';
+  const align = isUser ? 'flex-end' : 'flex-start';
+  const bg    = isUser ? '#475569' : '#fff';
+  const color = isUser ? '#fff'    : '#1f2937';
+  const border = isUser ? 'none'   : '1px solid #e2e8f0';
+  return `<div style="align-self:${align};max-width:85%;padding:10px 12px;background:${bg};color:${color};border:${border};border-radius:12px;font-size:13px;white-space:pre-wrap;line-height:1.5;word-break:break-word">${esc(msg.text)}</div>`;
+}
+
+function bn_chatSave() {
+  try { localStorage.setItem(BN_CHAT_KEY, JSON.stringify(BN_CHAT_HISTORY.slice(-30))); } catch(_) {}
+}
+
+function bn_chatClear() {
+  if (!confirm('¿Limpiar toda la conversación?')) return;
+  BN_CHAT_HISTORY = [];
+  bn_chatSave();
+  bn_chatLoadHistory();
+  bn_chatRenderSuggestions();
+}
+
+function bn_chatPush(role, text) {
+  BN_CHAT_HISTORY.push({ role, text, ts: Date.now() });
+  const box = document.getElementById('bn-chat-messages');
+  if (box) {
+    box.insertAdjacentHTML('beforeend', bn_chatBubble({ role, text }));
+    box.scrollTop = box.scrollHeight;
+  }
+  bn_chatSave();
+  bn_chatRenderSuggestions();
+}
+
+/** Construye un contexto compacto con los datos disponibles para que el
+ *  modelo responda con precisión. */
+function bn_chatBuildContext() {
+  // Records con campos esenciales — limita a últimos ~600 para tamaño
+  const recs = (BN_RAW || []).slice(-600).map(r => ({
+    Dia: bn_formatDiaISO(r.Día || r.Dia || '') || '',
+    Monto: Number(r.Monto) || 0,
+    Desc: (r.DESCRIPCION || '').slice(0, 80),
+    CtaBan: r['Cuenta bancaria'] || '',
+    Cuenta: r._cuenta || '',
+    Sub:    r._subcuenta || '',
+    Cat:    r._categoria_gasto || '',
+    Con:    r._concepto || '',
+    Ded:    r._deducible || '',
+    Reem:   r._reembolso || '',
+    MP:     r._metodo_pago || '',
+    Prop:   r._propiedad || '',
+    Dep:    r._departamento || '',
+    Enc:    r._encargado || '',
+    Val:    r._validado || '',
+    Duda:   r._duda || '',
+    Fact:   r.FacturaFlag || r.Factura || '',
+  }));
+  const budget = (BN_BUDGET || []).slice(0, 200).map(b => ({
+    Cuenta: b.CUENTA || '', Sub: b.SUBCUENTA || '', Cat: b.CATEGORIA || '',
+    Con: b.CONCEPTO || '', Per: b.PERIODICIDAD || '', Nat: b.NATURALEZA || '',
+    Mensual: Number(b.MENSUAL) || 0, Anual: Number(b.ANUAL) || 0,
+    Semanal: Number(b.SEMANAL) || 0, Bimestral: Number(b.BIMESTRAL) || 0,
+  }));
+  const tickets = (BN_TICKETS_CACHE || []).slice(0, 200).map(t => {
+    const tk = bn_ticketFields(t);
+    return {
+      tienda: tk.tienda || '', fecha: tk.fecha || '',
+      total: Number(tk.total) || 0, folio: tk.folio || '',
+      rfc: tk.rfc || '',
+    };
+  });
+  return {
+    fecha_hoy:   new Date().toISOString().slice(0,10),
+    total_registros: BN_RAW.length,
+    tickets_cargados: tickets.length,
+    registros: recs,
+    presupuesto: budget,
+    tickets,
+  };
+}
+
+async function bn_chatSend() {
+  const inp = document.getElementById('bn-chat-input');
+  const btn = document.getElementById('bn-chat-send');
+  if (!inp || !btn) return;
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+  bn_chatPush('user', text);
+
+  // typing indicator
+  const box = document.getElementById('bn-chat-messages');
+  const typingId = 'bn-chat-typing-' + Date.now();
+  if (box) {
+    box.insertAdjacentHTML('beforeend',
+      `<div id="${typingId}" style="align-self:flex-start;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;font-size:13px;color:#94a3b8">⏳ Pensando…</div>`);
+    box.scrollTop = box.scrollHeight;
+  }
+  btn.disabled = true;
+
+  try {
+    const ctx = bn_chatBuildContext();
+    const history = BN_CHAT_HISTORY.slice(-10).map(m => ({ role: m.role, content: m.text }));
+    const resp = await fetch(`${BACKEND}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, history, context: ctx }),
+    });
+    const data = await resp.json();
+    document.getElementById(typingId)?.remove();
+    if (!data.ok) throw new Error(data.error || 'Error en el chat');
+    bn_chatPush('assistant', data.reply || '(sin respuesta)');
+  } catch (e) {
+    document.getElementById(typingId)?.remove();
+    bn_chatPush('assistant', '⚠ Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    inp.focus();
+  }
+}
+
 // ─── Match: relación entre registros bancarios y tickets ─────────────────
 let BN_TICKETS_CACHE = null; // lista de tickets cargada vía /get-tickets
 
