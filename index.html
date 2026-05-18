@@ -458,7 +458,7 @@
           </div>
         </div>
         <!-- Control Presupuestario + Balance General en una sola fila -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px">
           <div>
             <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">💼 Control Presupuestario</div>
             <div class="bn-kpi-row" style="display:grid;grid-template-columns:1fr;gap:10px">
@@ -529,7 +529,7 @@
       <div id="bn-review-panel" class="hidden" style="margin:8px 0 12px"></div>
 
       <!-- Toggle de selección múltiple + selector de tamaño de página -->
-      <div style="display:flex;align-items:center;gap:10px;margin:6px 0 12px;flex-wrap:wrap">
+      <div id="bn-actions-row" style="display:flex;align-items:center;gap:10px;margin:6px 0 12px;flex-wrap:nowrap;white-space:nowrap;overflow-x:auto">
         <button id="bn-btn-sel-mode" type="button" onclick="bn_toggleSelMode()"
                 style="padding:7px 14px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
           ☑️ Seleccionar
@@ -538,7 +538,7 @@
                 style="padding:7px 14px;border:1.5px solid #475569;background:#475569;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
           🔗 Relacionar con tickets
         </button>
-        <div style="display:inline-flex;align-items:center;gap:6px">
+        <div style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
           <label for="bn-page-size" style="font-size:11px;color:var(--text-soft,#6b7280);font-weight:600">Mostrar</label>
           <select id="bn-page-size" onchange="bn_setPageSize(this.value)"
                   style="padding:7px 10px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">
@@ -549,7 +549,7 @@
           </select>
           <span style="font-size:11px;color:var(--text-soft,#6b7280)">por página</span>
         </div>
-        <div style="display:inline-flex;align-items:center;gap:6px">
+        <div style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
           <label style="font-size:11px;color:var(--text-soft,#6b7280);font-weight:600">Vista</label>
           <div style="display:inline-flex;border:1.5px solid var(--border,#d1d5db);border-radius:8px;overflow:hidden">
             <button id="bn-view-cards" type="button" onclick="bn_setView('cards')"
@@ -630,7 +630,7 @@
           <div style="min-width:180px">
             <label style="display:block;font-weight:700;color:var(--text-soft,#6b7280);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Cálculo de %</label>
             <button id="bn-ap-pct-toggle" type="button" onclick="bn_apTogglePctMode()"
-                    style="padding:8px 14px;border:1px solid #475569;background:#475569;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">
+                    style="padding:8px 14px;border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">
               % Absoluto
             </button>
           </div>
@@ -865,6 +865,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=103"></script>
+  <script src="app.js?v=104"></script>
 </body>
 </html>

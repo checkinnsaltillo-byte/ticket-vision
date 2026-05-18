@@ -2609,9 +2609,20 @@ let BN_AP_PCT_MODE = 'abs'; // 'abs' = % vs total de la cuenta raíz; 'rel' = % 
 
 function bn_apTogglePctMode() {
   BN_AP_PCT_MODE = (BN_AP_PCT_MODE === 'abs') ? 'rel' : 'abs';
-  const btn = document.getElementById('bn-ap-pct-toggle');
-  if (btn) btn.textContent = BN_AP_PCT_MODE === 'abs' ? '% Absoluto' : '% Relativo';
+  bn_apApplyPctToggleStyle();
   bn_renderAP();
+}
+
+function bn_apApplyPctToggleStyle() {
+  const btn = document.getElementById('bn-ap-pct-toggle');
+  if (!btn) return;
+  if (BN_AP_PCT_MODE === 'abs') {
+    btn.textContent = '% Absoluto';
+    btn.style.cssText = 'padding:8px 14px;border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700';
+  } else {
+    btn.textContent = '% Relativo';
+    btn.style.cssText = 'padding:8px 14px;border:1px solid #ea580c;background:#ea580c;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700';
+  }
 }
 
 /** Cambia el nivel de desglose; limpia overrides manuales. */
@@ -2658,7 +2669,7 @@ function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, paren
   const semIcon = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
   const pctTxt  = isFinite(av) ? (av * 100).toFixed(1) + '%' : '—';
   const fillW   = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
-  const bgRow = depth === 0 ? '#e2e8f0' : depth === 1 ? '#fffbeb' : depth === 2 ? '#fefce8' : '#fff';
+  const bgRow = depth === 0 ? '#cbd5e1' : depth === 1 ? '#e0e7ff' : depth === 2 ? '#fef3c7' : '#ffffff';
   const wgt   = depth === 0 ? '800' : depth === 1 ? '700' : '600';
   const indent = depth * 22;
   const triangle = hasChildren
@@ -2913,13 +2924,15 @@ function bn_renderAP() {
 
   // Árbol con los 4 niveles siempre; la visibilidad se controla por expansión
   const tree = bn_apBuildTree(records, BN_AP_LEVELS);
-  const rows = [];
+
+  const ER_NAMES = new Set(['Egresos', 'Ingresos']);
+  const BG_NAMES = new Set(['Activos', 'Pasivos', 'Capital']);
   const top = [...tree.children.values()].sort((a,b) => b.total - a.total);
-  for (const node of top) {
-    // Para nodos top (Cuenta): root = su propio total; parent = total global del árbol
-    bn_apRenderNode(node, 0, records, [node.name], rows, node.total, tree.total);
-  }
-  // Total global: suma de presupuesto único por (cat, con) entre todos los registros
+  const erNodes = top.filter(n => ER_NAMES.has(n.name));
+  const bgNodes = top.filter(n => BG_NAMES.has(n.name));
+  const otherNodes = top.filter(n => !ER_NAMES.has(n.name) && !BG_NAMES.has(n.name));
+
+  // Total global: suma de presupuesto único por (cat, con) entre TODOS los registros (igual que antes)
   const seen = new Set();
   let budTotal = 0;
   const cyclesSeen = new Set();
@@ -2938,37 +2951,53 @@ function bn_renderAP() {
     }
   }
   const totalCycleLabel = cyclesSeen.size === 1 ? [...cyclesSeen][0] : (cyclesSeen.size > 1 ? 'Mixto' : '');
-  const totalAv = budTotal > 0 ? tree.total / budTotal : NaN;
-  const totalColor = !isFinite(totalAv) ? '#9ca3af' : totalAv > 1.10 ? '#dc2626' : totalAv > 1.0 ? '#f59e0b' : '#16a34a';
-  const totalSem = !isFinite(totalAv) ? '—' : totalAv > 1.10 ? '🔴' : totalAv > 1.0 ? '🟡' : '🟢';
-  const totalPctTxt = isFinite(totalAv) ? (totalAv*100).toFixed(1) + '%' : '—';
-  const totalFillW = isFinite(totalAv) ? Math.min(totalAv, 2) / 2 * 100 : 0;
 
-  // Exponer totales por cuenta para los KPIs (sincronizado con la tabla)
   bn_apComputeTotalsOnly();
 
-  wrap.innerHTML = `
-    <table style="width:100%;border-collapse:collapse;background:var(--surface,#fff);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);font-size:12px">
-      <thead>
-        <tr style="background:#374151;color:#fff">
-          <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Partida</th>
-          <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">#Mov</th>
-          <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Monto</th>
-          <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em" title="${BN_AP_PCT_MODE==='rel'?'% vs nivel superior':'% vs total de la cuenta'}">%</th>
-          <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Presupuesto</th>
-          <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Ciclo</th>
-          <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Avance</th>
-          <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Sem.</th>
-        </tr>
-      </thead>
-      <tbody>${rows.join('')}</tbody>
-      <tfoot>
-        ${bn_apFooterRow('TOTAL GLOBAL',           tree.count, tree.total, budTotal, totalCycleLabel, totalAv, '#1f2937', null)}
-        ${bn_apFooterRowGroup('PRESUPUESTO OPERATIVO', BN_AP_TOTALS.operativo,   '#334155', tree.total)}
-        ${bn_apFooterRowGroup('REINVERSIÓN',           BN_AP_TOTALS.reinversion, '#475569', tree.total)}
-        ${bn_apFooterRowGroup('RETIRO DE UTILIDADES',  BN_AP_TOTALS.retiro,      '#64748b', tree.total)}
-      </tfoot>
-    </table>`;
+  const header = `
+    <thead>
+      <tr style="background:#374151;color:#fff">
+        <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Partida</th>
+        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">#Mov</th>
+        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Monto</th>
+        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em" title="${BN_AP_PCT_MODE==='rel'?'% vs nivel superior':'% vs total de la cuenta'}">%</th>
+        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Presupuesto</th>
+        <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Ciclo</th>
+        <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Avance</th>
+        <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Sem.</th>
+      </tr>
+    </thead>`;
+
+  // Renderiza un grupo de cuentas a su propio HTML de tabla, con título y (opcional) fila TOTAL.
+  function renderGroup(nodes, title, opts) {
+    if (!nodes.length) return '';
+    const rows = [];
+    let groupTotal = 0, groupCount = 0;
+    for (const node of nodes) {
+      bn_apRenderNode(node, 0, records, [node.name], rows, node.total, tree.total);
+      groupTotal += node.total;
+      groupCount += node.count;
+    }
+    let footerHtml = '';
+    if (opts && opts.showTotal) {
+      const totalAv = budTotal > 0 ? groupTotal / budTotal : NaN;
+      footerHtml = `<tfoot>${bn_apFooterRow('TOTAL GLOBAL', groupCount, groupTotal, budTotal, totalCycleLabel, totalAv, '#1f2937', null)}</tfoot>`;
+    }
+    return `
+      <div style="margin-bottom:18px">
+        <h4 style="margin:0 0 8px;font-size:13px;font-weight:800;color:#1f2937;display:flex;align-items:center;gap:6px">${title}</h4>
+        <table style="width:100%;border-collapse:collapse;background:var(--surface,#fff);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);font-size:12px">
+          ${header}
+          <tbody>${rows.join('')}</tbody>
+          ${footerHtml}
+        </table>
+      </div>`;
+  }
+
+  wrap.innerHTML =
+    renderGroup(erNodes,    '📈 Estado de Resultados', { showTotal: true }) +
+    renderGroup(bgNodes,    '📊 Balance General',      { showTotal: false }) +
+    (otherNodes.length ? renderGroup(otherNodes, '🗂️ Otras cuentas', { showTotal: false }) : '');
 }
 
 /** Panel de estado de revisión — barra stacked + notas, sólo en tabs Por Clasificar. */
@@ -3714,10 +3743,14 @@ function bn_render() {
   const ap=document.getElementById('bn-analisis-partida');
 
   if(BN_TIPO==='F'){
-    // Indicadores como sección inline (NO popup): override estilos del overlay
+    // Indicadores como sección inline aislada: ocultar todo lo demás
     tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
     ap?.classList.add('hidden');
     document.getElementById('bn-presupuesto')?.classList.add('hidden');
+    document.getElementById('bn-kpi-row')?.classList.add('hidden');
+    document.getElementById('bn-actions-row')?.classList.add('hidden');
+    document.getElementById('bn-review-panel')?.classList.add('hidden');
+    document.getElementById('bn-filter-body')?.classList.add('hidden');
     if (iov) {
       iov.classList.remove('hidden');
       iov.style.position = 'static';
@@ -3758,6 +3791,8 @@ function bn_render() {
   }
   iw?.classList.add('hidden');
   iov?.classList.add('hidden');
+  // Restaurar action-row al salir de F
+  document.getElementById('bn-actions-row')?.classList.remove('hidden');
 
   if(BN_TIPO==='AP'){
     tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
@@ -4387,7 +4422,13 @@ function bn_downloadPDF() {
       @media print { .noprint { display: none; } }
     </style></head><body>
     <button class="noprint" onclick="window.print()" style="padding:8px 16px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-bottom:10px">🖨 Imprimir / Guardar PDF</button>
-    <h1>${esc(ds.title)} — Sistema Financiero</h1>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <img src="https://drive.google.com/thumbnail?id=1We0TuuoTb0fDa5xLVMzDqzMZZWwgkb0v&sz=w200"
+           alt="Check Inn Saltillo"
+           style="height:40px;width:auto;object-fit:contain"
+           onerror="this.style.display='none'">
+      <h1 style="margin:0">${esc(ds.title)} — Sistema Financiero</h1>
+    </div>
     <div class="meta">Generado: ${new Date().toLocaleString('es-MX')} · ${ds.rows.length} registro(s)</div>
     <table>
       <thead><tr>${cols.map(c => `<th>${esc(c.k)}</th>`).join('')}</tr></thead>
@@ -4426,11 +4467,28 @@ function bn_tblTrackDescChange(idx, cellEl) {
   if (!rec || !rec.rowNum) return;
   const newVal = (cellEl.textContent || '').trim();
   const origVal = (cellEl.dataset.origDesc || '').trim();
-  if (newVal !== origVal) {
-    BN_TBL_DESC_CHANGES.set(rec.rowNum, newVal);
-  } else {
-    BN_TBL_DESC_CHANGES.delete(rec.rowNum);
-  }
+  if (newVal === origVal) return;
+  // Auto-guardar inmediatamente (sin esperar al botón Guardar)
+  rec.DESCRIPCION = newVal;
+  cellEl.dataset.origDesc = newVal;
+  cellEl.title = newVal;
+  cellEl.style.outline = '2px solid #f59e0b';
+  (async () => {
+    try {
+      const payload = bn_buildSavePayload(rec, { descripcion_edit: true });
+      payload.descripcion = newVal;
+      const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await resp.json();
+      cellEl.style.outline = j.ok ? '2px solid #16a34a' : '2px solid #dc2626';
+      setTimeout(() => { cellEl.style.outline = ''; }, 1200);
+    } catch (_) {
+      cellEl.style.outline = '2px solid #dc2626';
+      setTimeout(() => { cellEl.style.outline = ''; }, 1500);
+    }
+  })();
 }
 
 function bn_tblShowSaveConfirm() {
@@ -4559,7 +4617,8 @@ function bn_buildBnResumenTable(r, idx) {
       const td = editable
         ? `<td contenteditable="true" spellcheck="false" data-field="${field}"
               style="${tdCommon}"
-              oninput="bn_onResumenEdit(${idx}, this)">${esc(display)}</td>`
+              oninput="bn_onResumenEdit(${idx}, this)"
+              onblur="bn_autoSaveResumenDesc(${idx}, this)">${esc(display)}</td>`
         : `<td style="${tdCommon}">${esc(display)}</td>`;
       return `<tr><td class="resumen-key" style="${tdCommon}">${label}</td>${td}</tr>`;
     }).join('')}</tbody>
@@ -5672,7 +5731,7 @@ function bn_renderRecordsTable(recs, startIdx) {
                 💾 Guardar
               </button>
               <button onclick="event.stopPropagation();bn_tblExitEditMode()"
-                      style="padding:4px 9px;border:1.5px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:0">
+                      style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">
                 ✕ Salir
               </button>` : `
               <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
@@ -5714,7 +5773,7 @@ function bn_renderRecordsTable(recs, startIdx) {
     const isSel  = !!(rec.rowNum && BN_SEL.has(rec.rowNum));
     const rowClick = BN_SEL_MODE
       ? `bn_selToggle(${rec.rowNum||0}, ${!isSel}); bn_renderCards()`
-      : `bn_toggleBnClassify(${idx})`;
+      : (BN_TBL_EDIT_MODE ? '' : `bn_toggleBnClassify(${idx})`);
     const rowBg = isSel ? 'background:#fff7ed' : '';
     const selCell = BN_SEL_MODE
       ? `<td style="padding:6px 10px;text-align:center" onclick="event.stopPropagation();bn_selToggle(${rec.rowNum||0}, ${!isSel}); bn_renderCards()">
@@ -5722,8 +5781,8 @@ function bn_renderRecordsTable(recs, startIdx) {
          </td>`
       : '';
     return `
-      <tr onclick="${rowClick}"
-          style="cursor:pointer;border-bottom:1px solid #e2e8f0;${rowBg}"
+      <tr ${rowClick ? `onclick="${rowClick}"` : ''}
+          style="cursor:${rowClick?'pointer':'default'};border-bottom:1px solid #e2e8f0;${rowBg}"
           onmouseover="this.style.filter='brightness(.97)'"
           onmouseout="this.style.filter=''">
         ${selCell}
@@ -6302,6 +6361,7 @@ function bn_classifySnapshot(ci) {
     prop: c.propiedad||'', dep: c.departamento||'', enc: c.comprador||'',
     ded: !!c.deducible, reem: !!c.reembolso, reema: c.reembolso_a||'',
     mp: c.metodo_pago_clasif||'',
+    coment: c.comentarios||'', detalles: c.detalles||'',
     fecha, dudaOn, valOn, desc,
   });
 }
@@ -6352,6 +6412,35 @@ function bn_modalLiveSync(idx) {
 /** Llamado al editar la celda Descripción de la tabla Resumen. Muestra el
  *  action-bar de la tabla; si la celda está dentro del modal Clasificar,
  *  también activa el botón 'Guardar cambios' del panel Clasificar. */
+async function bn_autoSaveResumenDesc(idx, cell) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec || !rec.rowNum) return;
+  const newVal = (cell.textContent || '').trim();
+  if ((rec.DESCRIPCION || '') === newVal) return;
+  rec.DESCRIPCION = newVal;
+  cell.style.outline = '2px solid #f59e0b';
+  try {
+    const payload = bn_buildSavePayload(rec, { descripcion_edit: true });
+    payload.descripcion = newVal;
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const j = await resp.json();
+    cell.style.outline = j.ok ? '2px solid #16a34a' : '2px solid #dc2626';
+    setTimeout(() => { cell.style.outline = ''; }, 1200);
+    if (j.ok) {
+      const card = document.getElementById(`bn-card-${idx}`);
+      if (card && !cell.closest('#bn-classify-modal-resumen')) {
+        card.outerHTML = bn_createCard(rec, idx);
+      }
+    }
+  } catch (_) {
+    cell.style.outline = '2px solid #dc2626';
+    setTimeout(() => { cell.style.outline = ''; }, 1500);
+  }
+}
+
 function bn_onResumenEdit(idx, cell) {
   try { showTableActions('bnr', idx); } catch(_) {}
   if (cell && cell.closest('#bn-classify-modal-resumen')) {
