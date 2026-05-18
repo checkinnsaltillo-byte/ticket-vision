@@ -2212,18 +2212,33 @@ async function bn_prSaveConfirm() {
   }
 }
 
-// Totales del último render de Análisis por partida (compartidos con KPI Avance)
-let BN_AP_TOTALS = { real: 0, bud: 0, av: NaN, cycle: '' };
+// Totales del último render de Análisis por partida (compartidos con KPIs)
+//   global    → todas las cuentas
+//   operativo → cuenta Egresos
+//   reinversion → cuenta Activos
+//   retiro    → cuenta Capital
+let BN_AP_TOTALS = {
+  global:      { real: 0, bud: 0, av: NaN, cycle: '' },
+  operativo:   { real: 0, bud: 0, av: NaN, cycle: '' },
+  reinversion: { real: 0, bud: 0, av: NaN, cycle: '' },
+  retiro:      { real: 0, bud: 0, av: NaN, cycle: '' },
+};
 
-/** Calcula y actualiza BN_AP_TOTALS sin renderizar la tabla; lo usa el KPI
- *  'Avance presupuesto' para mantener números consistentes con la fila
- *  TOTAL GLOBAL de Análisis por partida. */
-function bn_apComputeTotalsOnly() {
-  const records = bn_kpiRecs(null);
-  let realTot = 0;
-  for (const r of records) realTot += Math.abs(Number(r.Monto) || 0);
+/** Helper: ¿el registro pertenece a la cuenta (Egresos/Activos/Capital)? */
+function bn_apMatchesCuenta(r, target) {
+  const t = bn_canon(r._cuenta || r._tipo || '');
+  if (target === 'Egresos')  return t.includes('egr');
+  if (target === 'Activos')  return t.includes('activ');
+  if (target === 'Capital')  return t.includes('capital');
+  return false;
+}
+
+/** Agrega un grupo de records → { real, bud, av, cycle }. */
+function bn_apAggregateGroup(records) {
+  let real = 0;
+  for (const r of records) real += Math.abs(Number(r.Monto) || 0);
   const seen = new Set();
-  let budTot = 0;
+  let bud = 0;
   const cyclesSeen = new Set();
   for (const r of records) {
     const cat = bn_norm(r.CATEGORIA || r._categoria_gasto || '');
@@ -2235,13 +2250,22 @@ function bn_apComputeTotalsOnly() {
       bn_norm(b.CATEGORIA || '') === cat && bn_norm(b.CONCEPTO || '') === con);
     if (budRow) {
       const { value, cycle } = bn_apBudgetForRow(budRow);
-      budTot += value;
+      bud += value;
       if (cycle) cyclesSeen.add(cycle);
     }
   }
-  const av = budTot > 0 ? realTot / budTot : NaN;
+  const av = bud > 0 ? real / bud : NaN;
   const cycle = cyclesSeen.size === 1 ? [...cyclesSeen][0] : (cyclesSeen.size > 1 ? 'Mixto' : '');
-  BN_AP_TOTALS = { real: realTot, bud: budTot, av, cycle };
+  return { real, bud, av, cycle };
+}
+
+/** Calcula totales globales y por cuenta (Egresos/Activos/Capital). */
+function bn_apComputeTotalsOnly() {
+  const records = bn_kpiRecs(null);
+  BN_AP_TOTALS.global      = bn_apAggregateGroup(records);
+  BN_AP_TOTALS.operativo   = bn_apAggregateGroup(records.filter(r => bn_apMatchesCuenta(r, 'Egresos')));
+  BN_AP_TOTALS.reinversion = bn_apAggregateGroup(records.filter(r => bn_apMatchesCuenta(r, 'Activos')));
+  BN_AP_TOTALS.retiro      = bn_apAggregateGroup(records.filter(r => bn_apMatchesCuenta(r, 'Capital')));
 }
 
 // Estado del Análisis por partida — siempre se construye con los 4 niveles;
@@ -2449,6 +2473,73 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+/** Renderiza un KPI tipo 'AP' con monto real, barra/semáforo y sub-texto
+ *  'Real $X / $Y  🟢/🟡/🔴'. Usa los IDs de la KPI card pasados como argumentos. */
+function bn_renderApKpi(valId, barId, subId, totals) {
+  const { real = 0, bud = 0, av = NaN } = totals || {};
+  const color = !isFinite(av) ? '#9ca3af' : av > 1.10 ? '#dc2626' : av > 1.0 ? '#f59e0b' : '#16a34a';
+  const sem   = !isFinite(av) ? '' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
+  const fillW = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
+  bn_txt(valId, bn_fmt$(real));
+  bn_txt(subId, 'Real ' + bn_fmt$(real) + ' / ' + bn_fmt$(bud) + (sem ? '  ' + sem : ''));
+  const barEl = document.getElementById(barId);
+  if (barEl) {
+    if (bud > 0) {
+      const pctTxt = isFinite(av) ? bn_fmtPct(av) : '—';
+      barEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="position:relative;flex:1;height:7px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${fillW.toFixed(1)}%;background:${color};transition:width .3s"></div>
+            <div style="position:absolute;top:-1px;bottom:-1px;left:50%;width:1.5px;background:#1f2937"></div>
+          </div>
+          <span style="font-size:11px;font-weight:700;color:${color};min-width:46px;text-align:right">${pctTxt}</span>
+        </div>`;
+    } else {
+      barEl.innerHTML = '';
+    }
+  }
+  // Color tipo 'val-good/warn/bad' en el valor monto
+  const v = document.getElementById(valId);
+  if (v) {
+    v.className = 'bn-kpi-value';
+    if (isFinite(av)) {
+      if (av > 1.10) v.classList.add('bn-val-bad');
+      else if (av > 1.0) v.classList.add('bn-val-warn');
+      else v.classList.add('bn-val-good');
+    }
+  }
+}
+
+/** Construye una fila de pie con: nombre, count, monto, bud, cycle, barra y sem. */
+function bn_apFooterRow(name, count, real, bud, cycle, av, bg) {
+  const color = !isFinite(av) ? '#9ca3af' : av > 1.10 ? '#dc2626' : av > 1.0 ? '#f59e0b' : '#16a34a';
+  const sem   = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
+  const pct   = isFinite(av) ? (av*100).toFixed(1) + '%' : '—';
+  const fillW = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
+  return `<tr style="background:${bg};color:#fff;font-weight:800">
+    <td style="padding:10px">${esc(name)}</td>
+    <td style="padding:10px;text-align:right">${count != null ? count : ''}</td>
+    <td style="padding:10px;text-align:right">${bn_fmt$(real || 0)}</td>
+    <td style="padding:10px;text-align:right">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
+    <td style="padding:10px;text-align:center;font-size:11px;color:${cycle?'#bfdbfe':'#cbd5e1'}">${cycle || '—'}</td>
+    <td style="padding:10px">
+      ${bud > 0 ? `
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="position:relative;flex:1;height:7px;background:rgba(255,255,255,.18);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${fillW.toFixed(1)}%;background:${color}"></div>
+            <div style="position:absolute;top:-1px;bottom:-1px;left:50%;width:1.5px;background:#fff"></div>
+          </div>
+          <span style="font-size:11px;font-weight:700;color:${color};min-width:50px;text-align:right">${pct}</span>
+        </div>` : '—'}
+    </td>
+    <td style="padding:10px;text-align:center;font-size:14px">${sem}</td>
+  </tr>`;
+}
+
+function bn_apFooterRowGroup(name, totals, bg) {
+  return bn_apFooterRow(name, null, totals.real, totals.bud, totals.cycle, totals.av, bg);
+}
+
 /** Renderiza la tabla de Análisis por partida. */
 function bn_renderAP() {
   const wrap = document.getElementById('bn-ap-table');
@@ -2499,8 +2590,8 @@ function bn_renderAP() {
   const totalPctTxt = isFinite(totalAv) ? (totalAv*100).toFixed(1) + '%' : '—';
   const totalFillW = isFinite(totalAv) ? Math.min(totalAv, 2) / 2 * 100 : 0;
 
-  // Exponer para que el KPI 'Avance presupuesto' use los mismos números
-  BN_AP_TOTALS = { real: tree.total, bud: budTotal, av: totalAv, cycle: totalCycleLabel };
+  // Exponer totales por cuenta para los KPIs (sincronizado con la tabla)
+  bn_apComputeTotalsOnly();
 
   wrap.innerHTML = `
     <table style="width:100%;border-collapse:collapse;background:var(--surface,#fff);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);font-size:12px">
@@ -2517,24 +2608,10 @@ function bn_renderAP() {
       </thead>
       <tbody>${rows.join('')}</tbody>
       <tfoot>
-        <tr style="background:#1f2937;color:#fff;font-weight:800">
-          <td style="padding:10px">TOTAL GLOBAL</td>
-          <td style="padding:10px;text-align:right">${tree.count}</td>
-          <td style="padding:10px;text-align:right">${bn_fmt$(tree.total)}</td>
-          <td style="padding:10px;text-align:right">${budTotal > 0 ? bn_fmt$(budTotal) : '—'}</td>
-          <td style="padding:10px;text-align:center;font-size:11px;color:${totalCycleLabel?'#bfdbfe':'#cbd5e1'}">${totalCycleLabel || '—'}</td>
-          <td style="padding:10px">
-            ${budTotal > 0 ? `
-              <div style="display:flex;align-items:center;gap:6px">
-                <div style="position:relative;flex:1;height:7px;background:rgba(255,255,255,.15);border-radius:4px;overflow:hidden">
-                  <div style="height:100%;width:${totalFillW.toFixed(1)}%;background:${totalColor}"></div>
-                  <div style="position:absolute;top:-1px;bottom:-1px;left:50%;width:1.5px;background:#fff"></div>
-                </div>
-                <span style="font-size:11px;font-weight:700;color:${totalColor};min-width:50px;text-align:right">${totalPctTxt}</span>
-              </div>` : '—'}
-          </td>
-          <td style="padding:10px;text-align:center;font-size:14px">${totalSem}</td>
-        </tr>
+        ${bn_apFooterRow('TOTAL GLOBAL',           tree.count, tree.total, budTotal, totalCycleLabel, totalAv, '#1f2937')}
+        ${bn_apFooterRowGroup('PRESUPUESTO OPERATIVO', BN_AP_TOTALS.operativo,   '#334155')}
+        ${bn_apFooterRowGroup('REINVERSIÓN',           BN_AP_TOTALS.reinversion, '#475569')}
+        ${bn_apFooterRowGroup('RETIRO DE UTILIDADES',  BN_AP_TOTALS.retiro,      '#64748b')}
       </tfoot>
     </table>`;
 }
@@ -3244,46 +3321,17 @@ function bn_render() {
   bn_txt('bn-k-ing-real',       bn_fmt$(realI));
   bn_txt('bn-k-ing-sub',        kpiI.length+' movimientos');
 
-  // KPI 'Avance presupuesto' — recalcular totales agregados (real, presupuesto)
-  // con la misma lógica que la tabla Análisis por partida, para mantener
-  // consistencia entre la fila TOTAL GLOBAL y el KPI.
+  // KPIs Presupuesto Operativo / Reinversión / Retiro de utilidades
+  // (consistentes con los 3 renglones nuevos del pie de Análisis por partida)
   try { bn_apComputeTotalsOnly(); } catch(_) {}
-  const apReal = BN_AP_TOTALS.real;
-  const apBud  = BN_AP_TOTALS.bud;
-  const apAv   = BN_AP_TOTALS.av;
-  const avColor = !isFinite(apAv) ? '#9ca3af' : apAv > 1.10 ? '#dc2626' : apAv > 1.0 ? '#f59e0b' : '#16a34a';
-  const avSem   = !isFinite(apAv) ? '' : apAv > 1.10 ? '🔴' : apAv > 1.0 ? '🟡' : '🟢';
-  const avFill  = isFinite(apAv) ? Math.min(apAv, 2) / 2 * 100 : 0;
-  bn_txt('bn-k-avance-egr',     bn_fmt$(apReal));
-  bn_txt('bn-k-avance-egr-sub', 'Real '+bn_fmt$(apReal)+' / '+bn_fmt$(apBud) + (avSem ? '  ' + avSem : ''));
-  const avBarEl = document.getElementById('bn-k-avance-bar');
-  if (avBarEl) {
-    if (apBud > 0) {
-      const pctTxt = isFinite(apAv) ? bn_fmtPct(apAv) : '—';
-      avBarEl.innerHTML = `
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="position:relative;flex:1;height:7px;background:#e5e7eb;border-radius:4px;overflow:hidden">
-            <div style="height:100%;width:${avFill.toFixed(1)}%;background:${avColor};transition:width .3s"></div>
-            <div style="position:absolute;top:-1px;bottom:-1px;left:50%;width:1.5px;background:#1f2937"></div>
-          </div>
-          <span style="font-size:11px;font-weight:700;color:${avColor};min-width:46px;text-align:right">${pctTxt}</span>
-        </div>`;
-    } else {
-      avBarEl.innerHTML = '';
-    }
-  }
+  bn_renderApKpi('bn-k-avance-egr', 'bn-k-avance-bar', 'bn-k-avance-egr-sub', BN_AP_TOTALS.operativo);
+  bn_renderApKpi('bn-k-reinv',      'bn-k-reinv-bar',  'bn-k-reinv-sub',      BN_AP_TOTALS.reinversion);
+  bn_renderApKpi('bn-k-retiro',     'bn-k-retiro-bar', 'bn-k-retiro-sub',     BN_AP_TOTALS.retiro);
+
   const util=realI-realE;
   bn_txt('bn-k-utilidad',       bn_fmt$(util));
   const marg=realI>0?(util/realI):NaN;
   bn_txt('bn-k-utilidad-sub',   isFinite(marg)?'Margen '+bn_fmtPct(marg):'Sin ingresos');
-
-  // Color KPI Avance
-  const kAv=document.getElementById('bn-k-avance-egr');
-  if(kAv){ kAv.className='bn-kpi-value'; if(isFinite(apAv)){
-    if(apAv>1.10) kAv.classList.add('bn-val-bad');
-    else if(apAv>1.0) kAv.classList.add('bn-val-warn');
-    else kAv.classList.add('bn-val-good');
-  }}
   const kU=document.getElementById('bn-k-utilidad');
   if(kU) kU.className='bn-kpi-value '+(util>=0?'bn-val-good':'bn-val-bad');
 
