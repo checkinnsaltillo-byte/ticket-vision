@@ -2212,6 +2212,130 @@ async function bn_prSaveConfirm() {
   }
 }
 
+// ─── Match: relación entre registros bancarios y tickets ─────────────────
+let BN_TICKETS_CACHE = null; // lista de tickets cargada vía /get-tickets
+
+/** Calcula la similitud (score 0..1) entre un registro bancario y un ticket. */
+function bn_matchScore(rec, ticket) {
+  const recMonto = Math.abs(Number(rec.Monto) || 0);
+  const tkTotal  = Math.abs(Number(ticket.total) || 0);
+  if (!recMonto || !tkTotal) return 0;
+
+  // ── Monto (0..0.5) — descarta si la diferencia es enorme ──
+  const diff = Math.abs(recMonto - tkTotal) / Math.max(recMonto, tkTotal);
+  let s = 0;
+  if (diff < 0.01)       s += 0.50;
+  else if (diff < 0.05)  s += 0.35;
+  else if (diff < 0.15)  s += 0.15;
+  else                   return 0;
+
+  // ── Fecha (0..0.3) ──
+  const recDate = bn_formatDiaISO(rec.Día || rec.Dia || '');
+  const tkDate  = String(ticket.fecha || '').slice(0,10);
+  if (recDate && tkDate && /^\d{4}-\d{2}-\d{2}/.test(tkDate)) {
+    if (recDate === tkDate) s += 0.30;
+    else {
+      const d1 = new Date(recDate), d2 = new Date(tkDate);
+      const dd = Math.abs((d1 - d2) / 86400000);
+      if (dd <= 1)      s += 0.22;
+      else if (dd <= 3) s += 0.12;
+      else if (dd <= 7) s += 0.05;
+    }
+  }
+
+  // ── Descripción (0..0.2) — overlap de palabras significativas ──
+  const norm = (x) => bn_canon(String(x||'')).replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+  const recDesc = norm(rec.DESCRIPCION || '');
+  const tkText  = norm((ticket.tienda || '') + ' ' + (ticket.folio || ''));
+  if (recDesc && tkText) {
+    const words = tkText.split(' ').filter(w => w.length >= 3);
+    if (words.length) {
+      let matches = 0;
+      for (const w of words) if (recDesc.includes(w)) matches++;
+      s += Math.min(matches / words.length, 1) * 0.20;
+    }
+  }
+  return Math.min(s, 1);
+}
+
+/** Encuentra el ticket con mayor score para un registro bancario. */
+function bn_findBestTicket(rec, tickets) {
+  let best = null, bestScore = 0;
+  for (const t of (tickets || [])) {
+    const sc = bn_matchScore(rec, t);
+    if (sc > bestScore) { bestScore = sc; best = t; }
+  }
+  return best ? { ticket: best, score: bestScore } : null;
+}
+
+/** HTML del chip "Ticket encontrado" con semáforo (debajo del Deducible). */
+function bn_matchChipHtml(rec, idx) {
+  const m = rec._matchedTicket;
+  if (!m || !(m.score > 0)) return '';
+  const color = m.score >= 0.7 ? '#16a34a' : m.score >= 0.45 ? '#f59e0b' : '#dc2626';
+  const label = m.score >= 0.7 ? 'Alta' : m.score >= 0.45 ? 'Media' : 'Baja';
+  const tienda = (m.tienda || '—').slice(0, 30);
+  return `
+    <div onclick="event.stopPropagation();bn_showMatchDetail(${idx})"
+         title="${esc(tienda)} · ${(m.score*100).toFixed(0)}% match — clic para detalles"
+         style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;margin-top:6px;
+                background:#fff;border:1.5px solid ${color};color:${color};
+                border-radius:999px;font-weight:600;font-size:11px;cursor:pointer">
+      <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color}"></span>
+      <span>🧾 Ticket encontrado · ${label}</span>
+    </div>`;
+}
+
+function bn_showMatchDetail(idx) {
+  const rec = BN_CUR_RECS[idx];
+  const m = rec?._matchedTicket;
+  if (!m) return;
+  alert(`Posible coincidencia (${(m.score*100).toFixed(0)}%):\n\n` +
+        `Tienda: ${m.tienda || '—'}\n` +
+        `Fecha:  ${m.fecha  || '—'}\n` +
+        `Total:  ${bn_fmt$(Number(m.total)||0)}\n` +
+        (m.folio ? `Folio:  ${m.folio}\n` : '') +
+        `\nMonto del registro bancario: ${bn_fmt$(Number(rec.Monto)||0)}`);
+}
+
+/** Función principal: descarga tickets si hace falta y calcula matches
+ *  para todos los registros visibles. */
+async function bn_relacionarConTickets() {
+  const btn = document.getElementById('bn-btn-match-tickets');
+  const origLabel = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Buscando…'; }
+  try {
+    if (!BN_TICKETS_CACHE) {
+      const res = await fetch(`${BACKEND}/get-tickets`, { cache: 'no-store' });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Error al obtener tickets');
+      BN_TICKETS_CACHE = data.tickets || [];
+    }
+    let matched = 0;
+    for (const rec of BN_RAW) {
+      const r = bn_findBestTicket(rec, BN_TICKETS_CACHE);
+      if (r && r.score >= 0.4) {
+        rec._matchedTicket = {
+          score:   r.score,
+          tienda:  r.ticket.tienda || '',
+          fecha:   r.ticket.fecha  || '',
+          total:   r.ticket.total  || 0,
+          folio:   r.ticket.folio  || '',
+        };
+        matched++;
+      } else {
+        rec._matchedTicket = null;
+      }
+    }
+    bn_render();
+    alert(`${matched} posible(s) coincidencia(s) encontrada(s) sobre ${BN_RAW.length} registros (umbral 40%).`);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+  }
+}
+
 // Totales del último render de Análisis por partida (compartidos con KPIs)
 //   global    → todas las cuentas
 //   operativo → cuenta Egresos
@@ -3970,6 +4094,7 @@ function bn_createCard(rec, idx) {
             </label>
             <span class="fhl${dedChecked ? ' on' : ''}" id="fhl-${ci}">${dedChecked ? 'Deducible' : 'No deducible'}</span>
           </div>
+          ${bn_matchChipHtml(rec, idx)}
         </div>
       </div>
 
