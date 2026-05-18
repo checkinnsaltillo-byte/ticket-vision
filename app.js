@@ -2225,12 +2225,26 @@ function bn_parseMonto(v) {
   return isFinite(n) ? Math.abs(n) : 0;
 }
 
+/** Devuelve un objeto plano con los campos relevantes del ticket,
+ *  aceptando tanto el formato 'plano' como el envuelto en .resumen. */
+function bn_ticketFields(ticket) {
+  const r = (ticket && ticket.resumen) ? ticket.resumen : (ticket || {});
+  return {
+    total:  r.total  ?? ticket.total  ?? '',
+    fecha:  r.fecha  ?? ticket.fecha  ?? '',
+    tienda: r.tienda ?? ticket.tienda ?? '',
+    folio:  r.folio  ?? ticket.folio  ?? '',
+    rfc:    r.rfc    ?? ticket.rfc    ?? '',
+  };
+}
+
 /** Calcula la similitud (score 0..1) entre un registro bancario y un ticket.
  *  El monto se compara siempre en valor absoluto — robusto al signo
  *  (un ticket de compra es positivo en Tickets y negativo en Registros). */
 function bn_matchScore(rec, ticket) {
+  const tk = bn_ticketFields(ticket);
   const recMonto = bn_parseMonto(rec.Monto);
-  const tkTotal  = bn_parseMonto(ticket.total != null ? ticket.total : ticket.Total);
+  const tkTotal  = bn_parseMonto(tk.total);
   if (!recMonto || !tkTotal) return 0;
 
   // ── Monto (0..0.5) — descarta si la diferencia es enorme ──
@@ -2243,7 +2257,7 @@ function bn_matchScore(rec, ticket) {
 
   // ── Fecha (0..0.3) ──
   const recDate = bn_formatDiaISO(rec.Día || rec.Dia || '');
-  const tkDate  = String(ticket.fecha || '').slice(0,10);
+  const tkDate  = String(tk.fecha || '').slice(0,10);
   if (recDate && tkDate && /^\d{4}-\d{2}-\d{2}/.test(tkDate)) {
     if (recDate === tkDate) s += 0.30;
     else {
@@ -2258,7 +2272,7 @@ function bn_matchScore(rec, ticket) {
   // ── Descripción (0..0.2) — overlap de palabras significativas ──
   const norm = (x) => bn_canon(String(x||'')).replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
   const recDesc = norm(rec.DESCRIPCION || '');
-  const tkText  = norm((ticket.tienda || '') + ' ' + (ticket.folio || ''));
+  const tkText  = norm((tk.tienda || '') + ' ' + (tk.folio || ''));
   if (recDesc && tkText) {
     const words = tkText.split(' ').filter(w => w.length >= 3);
     if (words.length) {
@@ -2327,12 +2341,13 @@ async function bn_relacionarConTickets() {
     for (const rec of BN_RAW) {
       const r = bn_findBestTicket(rec, BN_TICKETS_CACHE);
       if (r && r.score >= 0.4) {
+        const tk = bn_ticketFields(r.ticket);
         rec._matchedTicket = {
           score:   r.score,
-          tienda:  r.ticket.tienda || '',
-          fecha:   r.ticket.fecha  || '',
-          total:   r.ticket.total  || 0,
-          folio:   r.ticket.folio  || '',
+          tienda:  tk.tienda || '',
+          fecha:   tk.fecha  || '',
+          total:   tk.total  || 0,
+          folio:   tk.folio  || '',
         };
         matched++;
       } else {
