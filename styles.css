@@ -116,6 +116,12 @@ body {
   max-width: 760px;
   margin: 0 auto;
 }
+@media (min-width: 900px) {
+  .page-shell, #app-root { max-width: 1400px; }
+}
+@media (min-width: 1280px) {
+  .page-shell, #app-root { max-width: 1600px; }
+}
 
 /* ─── Header ───────────────────────────────────────────────── */
 

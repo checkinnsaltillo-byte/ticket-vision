@@ -4044,21 +4044,20 @@ function bn_toggleBnClassify(idx) {
     bn_buildBnResumenTable(rec, idx);
   document.getElementById('bn-classify-modal-body').innerHTML = classifyHtml;
 
-  // Inyectar botones Duda/Validado dentro de classify-actions (junto a Guardar cambios)
-  // y hacer que classify-actions sea siempre visible (no esperar dirty)
+  // Inyectar botones Duda/Validado en una fila SIEMPRE VISIBLE arriba de
+  // classify-actions; el classify-actions sólo aparece cuando hay cambios.
   setTimeout(() => {
     const actions = document.getElementById(`classify-actions-${ci}`);
     if (actions) {
-      actions.classList.remove('hidden');
+      // classify-actions queda hidden por defecto; markClassifyDirty lo muestra
       const dudaBtn = validarBlock.match(/<button id="validado-panel[\s\S]*?<\/button>/)?.[0] || '';
       const valBtn  = validarBlock.match(/<button id="revisado-panel[\s\S]*?<\/button>/)?.[0]  || '';
       const wrap = document.createElement('div');
-      wrap.style.cssText = 'display:inline-flex;align-items:center;gap:10px;margin-right:auto';
+      wrap.style.cssText = 'display:flex;align-items:center;gap:10px;margin:10px 0 0';
       wrap.innerHTML = dudaBtn + valBtn;
-      actions.style.display = 'flex';
-      actions.style.alignItems = 'center';
-      actions.style.gap = '10px';
-      actions.insertBefore(wrap, actions.firstChild);
+      actions.parentNode.insertBefore(wrap, actions);
+      // Snapshot de la clasificación inicial para detectar 'dirty' real
+      bn_classifyInitialSnapshot = bn_classifySnapshot(ci);
     }
   }, 0);
 
@@ -4949,8 +4948,8 @@ function bn_renderCards() {
         const label = iso ? bn_dateHeaderLabel(iso) : 'Sin fecha';
         parts.push(
           `<div style="margin:14px 0 8px;display:flex;align-items:center;gap:10px">
-             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#334155;flex-shrink:0"></span>
-             <span style="font-weight:800;font-size:13px;color:#334155;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</span>
+             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#64748b;flex-shrink:0"></span>
+             <span style="font-weight:700;font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</span>
              <span style="flex:1;height:1px;background:linear-gradient(90deg,#cbd5e1,transparent)"></span>
            </div>`
         );
@@ -5266,6 +5265,41 @@ async function bn_syncDuda(idx, checked) {
   }
 }
 
+// Snapshot inicial de la clasificación al abrir el modal Clasificar, usado
+// para decidir si el botón 'Guardar cambios' debe aparecer.
+let bn_classifyInitialSnapshot = '';
+
+/** Devuelve un string canónico del estado actual de la clasificación. */
+function bn_classifySnapshot(ci) {
+  let c = {};
+  try { c = getClassify(ci) || {}; } catch(_) {}
+  const fecha = document.getElementById(`fecha-clasif-${ci}`)?.value || '';
+  const dudaOn = document.getElementById(`validado-panel-${ci}`)?.dataset.checked || 'false';
+  const valOn  = document.getElementById(`revisado-panel-${ci}`)?.dataset.checked || 'false';
+  // Capturar el texto Descripción si el modal está abierto
+  const descEl = document.querySelector('#bn-classify-modal-resumen [data-field="DESC"]');
+  const desc   = descEl ? descEl.textContent.trim() : '';
+  return JSON.stringify({
+    cuenta: c.cuenta||'', sub: c.subcuenta||'', cat: c.categoria||'', con: c.concepto||'',
+    prop: c.propiedad||'', dep: c.departamento||'', enc: c.comprador||'',
+    ded: !!c.deducible, reem: !!c.reembolso, reema: c.reembolso_a||'',
+    mp: c.metodo_pago_clasif||'',
+    fecha, dudaOn, valOn, desc,
+  });
+}
+
+/** Actualiza visibilidad del botón Guardar cambios según diferencia con snapshot. */
+function bn_classifyRefreshActions(ci) {
+  const actions = document.getElementById(`classify-actions-${ci}`);
+  if (!actions) return;
+  const now = bn_classifySnapshot(ci);
+  if (now !== bn_classifyInitialSnapshot) {
+    actions.classList.remove('hidden');
+  } else {
+    actions.classList.add('hidden');
+  }
+}
+
 /** Sincroniza la tabla Resumen del modal con la selección actual del panel
  *  Clasificar (Cuenta, Subcuenta, Categoría, Concepto, Fecha, Duda, Validado),
  *  sin guardar todavía a Sheets — sólo refleja en vivo lo que el usuario ve. */
@@ -5279,17 +5313,22 @@ function bn_modalLiveSync(idx) {
   if (c.subcuenta !== undefined) rec._subcuenta       = c.subcuenta;
   if (c.categoria !== undefined) rec._categoria_gasto = c.categoria;
   if (c.concepto  !== undefined) rec._concepto        = c.concepto;
-  // Sync fecha desde el input
   const fechaEl = document.getElementById(`fecha-clasif-${ci}`);
   if (fechaEl && fechaEl.value) rec.Día = fechaEl.value;
-  // Sync flags Duda/Validado desde los botones del panel
   const dudaBtn = document.getElementById(`validado-panel-${ci}`);
   if (dudaBtn) rec._duda = (dudaBtn.dataset.checked === 'true') ? 'Sí' : 'No';
   const valBtn = document.getElementById(`revisado-panel-${ci}`);
   if (valBtn) rec._validado = (valBtn.dataset.checked === 'true') ? 'Sí' : 'No';
-  // Re-render la tabla Resumen del modal
-  const resumenWrap = document.getElementById('bn-classify-modal-resumen');
-  if (resumenWrap) resumenWrap.innerHTML = bn_buildBnResumenTable(rec, idx);
+  // Re-render la tabla Resumen del modal SÓLO si el foco no está adentro
+  // (evita destruir el caret cuando el usuario está editando Descripción)
+  const active = document.activeElement;
+  const editingInside = active && active.closest && active.closest('#bn-classify-modal-resumen');
+  if (!editingInside) {
+    const resumenWrap = document.getElementById('bn-classify-modal-resumen');
+    if (resumenWrap) resumenWrap.innerHTML = bn_buildBnResumenTable(rec, idx);
+  }
+  // Actualizar visibilidad del botón 'Guardar cambios' según dirty real
+  bn_classifyRefreshActions(ci);
 }
 
 /** Llamado al editar la celda Descripción de la tabla Resumen. Muestra el
@@ -5732,13 +5771,15 @@ function confirmModalOverlayClick(e) {
 
 function markClassifyDirty(idx) {
   if (classifyAutoPopulating) return;
-  document.getElementById(`classify-actions-${idx}`)?.classList.remove("hidden");
-  // Si el idx corresponde a un registro bancario (prefijo "bn"), sincronizar
-  // la tabla Resumen del modal en tiempo real.
+  // Para registros bancarios usamos comparación contra el snapshot inicial:
+  // sólo mostramos 'Guardar cambios' si hay diferencia real con el estado al abrir.
   if (typeof idx === 'string' && /^bn\d+$/.test(idx)) {
     const n = parseInt(idx.slice(2), 10);
-    if (!isNaN(n)) bn_modalLiveSync(n);
+    if (!isNaN(n)) bn_modalLiveSync(n);   // ya llama bn_classifyRefreshActions
+    return;
   }
+  // Otros módulos (tickets) usan el comportamiento clásico
+  document.getElementById(`classify-actions-${idx}`)?.classList.remove("hidden");
 }
 function hideClassifyActions(idx) {
   document.getElementById(`classify-actions-${idx}`)?.classList.add("hidden");
