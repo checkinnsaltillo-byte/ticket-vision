@@ -1885,6 +1885,7 @@ async function bn_loadData() {
       rec._concepto        = rec.CONCEPTO  || '';
       rec._duda            = rec.DUDA      || '';
       rec._validado        = rec.VALIDADO  || '';
+      rec._comentarios     = rec.COMENTARIOS || rec.Comentarios || '';
       // _tipo: clasificación manual > TIPO del sheet > signo del monto
       // Normalizar a forma canónica para que CUENTA_COLOR_CLASS y filtros funcionen
       const monto = Number(rec.Monto) || 0;
@@ -2073,21 +2074,20 @@ function bn_renderPresupuesto() {
     `<th style="padding:8px 10px;text-align:${c.numeric?'right':'left'};font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#475569;color:#fff;min-width:${c.width}px;white-space:nowrap">${esc(c.label)}</th>`
   ).join('') + `<th style="padding:8px 10px;background:#475569;color:#fff;text-align:center;width:48px">✕</th>`;
 
-  // "+" insertor de fila — siempre visible, claro y prominente entre cada par de filas
+  // "+" insertor de fila angosto — sobre la línea divisoria, sin ocupar alto
   const inserter = (insertAt) => `
     <tr class="bn-pr-inserter">
-      <td colspan="${BN_PR_COLS.length + 1}" style="padding:6px 0;text-align:center;background:#f8fafc;border-bottom:1px solid #e2e8f0;position:relative">
+      <td colspan="${BN_PR_COLS.length + 1}" style="padding:0;height:2px;line-height:0;position:relative;background:#e2e8f0">
         <button onclick="bn_prInsertRow(${insertAt})"
                 title="Insertar fila aquí"
-                style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;
-                       border:1.5px dashed #475569;background:#f1f5f9;color:#334155;
-                       font-weight:700;font-size:11px;line-height:1;border-radius:999px;cursor:pointer;
-                       transition:background .15s,transform .15s"
-                onmouseover="this.style.background='#e2e8f0';this.style.transform='scale(1.05)'"
-                onmouseout="this.style.background='#f1f5f9';this.style.transform=''">
-          <span style="font-size:14px;font-weight:900;line-height:1">+</span>
-          <span>Insertar fila</span>
-        </button>
+                style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+                       width:20px;height:20px;border-radius:50%;border:1.5px solid #2563eb;
+                       background:#fff;color:#2563eb;font-weight:900;font-size:14px;
+                       line-height:1;cursor:pointer;padding:0;
+                       display:inline-flex;align-items:center;justify-content:center;
+                       opacity:.45;transition:opacity .15s,transform .15s;z-index:2"
+                onmouseover="this.style.opacity='1';this.style.transform='translate(-50%,-50%) scale(1.15)'"
+                onmouseout="this.style.opacity='.45';this.style.transform='translate(-50%,-50%)'">+</button>
       </td>
     </tr>`;
 
@@ -2605,6 +2605,14 @@ function bn_apComputeTotalsOnly() {
 let BN_AP_LEVEL = 4; // default: completamente desglosado a Concepto
 const BN_AP_OVERRIDES = new Map(); // path → bool (true=expandido manual, false=colapsado manual)
 const BN_AP_LEVELS = ['_cuenta','_subcuenta','_categoria_gasto','_concepto'];
+let BN_AP_PCT_MODE = 'abs'; // 'abs' = % vs total de la cuenta raíz; 'rel' = % vs nivel inmediato superior
+
+function bn_apTogglePctMode() {
+  BN_AP_PCT_MODE = (BN_AP_PCT_MODE === 'abs') ? 'rel' : 'abs';
+  const btn = document.getElementById('bn-ap-pct-toggle');
+  if (btn) btn.textContent = BN_AP_PCT_MODE === 'abs' ? '% Absoluto' : '% Relativo';
+  bn_renderAP();
+}
 
 /** Cambia el nivel de desglose; limpia overrides manuales. */
 function bn_setApLevel(level) {
@@ -2633,11 +2641,16 @@ function bn_apToggleNode(pathEnc) {
 }
 
 /** Renderiza recursivamente las filas con indentación, respetando estado de expansión. */
-function bn_apRenderNode(node, depth, records, ancestors, rows) {
+function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, parentTotal) {
   const path = ancestors.join('|');
   const pathEnc = encodeURIComponent(path);
   const hasChildren = node.children.size > 0;
   const expanded = hasChildren && bn_apIsExpanded(path, depth);
+
+  // % según modo (Absoluto = vs root; Relativo = vs padre inmediato)
+  const denom = BN_AP_PCT_MODE === 'rel' ? parentTotal : rootTotal;
+  const pctVal = (denom && Math.abs(denom) > 0) ? (node.total / denom) : NaN;
+  const pctCol = isFinite(pctVal) ? (pctVal*100).toFixed(1) + '%' : '—';
 
   const { value: bud, cycle: budCycle } = bn_apComputeBudget(node, records, ancestors, BN_AP_LEVELS);
   const av = bud > 0 ? node.total / bud : NaN;
@@ -2665,6 +2678,7 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
       </td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${node.count}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px">${bn_fmt$(node.total)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:#475569" title="${BN_AP_PCT_MODE==='rel'?'% vs nivel superior':'% vs total de la cuenta'}">${pctCol}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?'#334155':'#9ca3af'}">${budCycle || '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;min-width:140px">
@@ -2682,8 +2696,10 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
 
   if (expanded) {
     const kids = [...node.children.values()].sort((a,b) => b.total - a.total);
+    // Para hijos: rootTotal sigue siendo el de la cuenta raíz; parentTotal pasa a ser node.total
+    const newRoot = (depth === 0) ? node.total : rootTotal;
     for (const child of kids) {
-      bn_apRenderNode(child, depth + 1, records, [...ancestors, child.name], rows);
+      bn_apRenderNode(child, depth + 1, records, [...ancestors, child.name], rows, newRoot, node.total);
     }
   }
 }
@@ -2726,6 +2742,7 @@ function bn_apOpenRecordsModal(pathEnc) {
     { label: 'Encargado',     w: 120 },
     { label: 'Reembolso',     w: 100 },
     { label: 'Método pago',   w: 130 },
+    { label: 'Comentarios',   w: 200 },
     { label: 'Duda',          w: 70  },
   ];
 
@@ -2748,6 +2765,7 @@ function bn_apOpenRecordsModal(pathEnc) {
     const enc  = r._encargado || '';
     const reem = r._reembolso || '';
     const mp   = r._metodo_pago || '';
+    const com  = r._comentarios || '';
     const duda = r._duda === 'Sí' ? '<span title="Marcado: Duda" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#fef3c7;color:#b45309;font-weight:900;line-height:22px;text-align:center">?</span>' : '';
     const cu = r._cuenta || '', su = r._subcuenta || '', ca = r._categoria_gasto || '', co = r._concepto || '';
     return `<tr>
@@ -2768,6 +2786,7 @@ function bn_apOpenRecordsModal(pathEnc) {
       <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#475569">${esc(enc)}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#475569">${esc(reem)}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#475569">${esc(mp)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(com)}">${esc(com)}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;text-align:center">${duda}</td>
     </tr>`;
   }).join('');
@@ -2841,16 +2860,18 @@ function bn_renderApKpi(valId, barId, subId, totals) {
   }
 }
 
-/** Construye una fila de pie con: nombre, count, monto, bud, cycle, barra y sem. */
-function bn_apFooterRow(name, count, real, bud, cycle, av, bg) {
+/** Construye una fila de pie con: nombre, count, monto, %, bud, cycle, barra y sem. */
+function bn_apFooterRow(name, count, real, bud, cycle, av, bg, sharePct) {
   const color = !isFinite(av) ? '#9ca3af' : av > 1.10 ? '#dc2626' : av > 1.0 ? '#f59e0b' : '#16a34a';
   const sem   = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
   const pct   = isFinite(av) ? (av*100).toFixed(1) + '%' : '—';
   const fillW = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
+  const shareTxt = (sharePct == null) ? '100.0%' : (isFinite(sharePct) ? (sharePct*100).toFixed(1) + '%' : '—');
   return `<tr style="background:${bg};color:#fff;font-weight:800">
     <td style="padding:10px">${esc(name)}</td>
     <td style="padding:10px;text-align:right">${count != null ? count : ''}</td>
     <td style="padding:10px;text-align:right">${bn_fmt$(real || 0)}</td>
+    <td style="padding:10px;text-align:right;color:#e2e8f0">${shareTxt}</td>
     <td style="padding:10px;text-align:right">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
     <td style="padding:10px;text-align:center;font-size:11px;color:${cycle?'#bfdbfe':'#cbd5e1'}">${cycle || '—'}</td>
     <td style="padding:10px">
@@ -2867,8 +2888,9 @@ function bn_apFooterRow(name, count, real, bud, cycle, av, bg) {
   </tr>`;
 }
 
-function bn_apFooterRowGroup(name, totals, bg) {
-  return bn_apFooterRow(name, null, totals.real, totals.bud, totals.cycle, totals.av, bg);
+function bn_apFooterRowGroup(name, totals, bg, globalTotal) {
+  const share = (globalTotal && Math.abs(globalTotal) > 0) ? (totals.real / globalTotal) : NaN;
+  return bn_apFooterRow(name, null, totals.real, totals.bud, totals.cycle, totals.av, bg, share);
 }
 
 /** Renderiza la tabla de Análisis por partida. */
@@ -2894,7 +2916,8 @@ function bn_renderAP() {
   const rows = [];
   const top = [...tree.children.values()].sort((a,b) => b.total - a.total);
   for (const node of top) {
-    bn_apRenderNode(node, 0, records, [node.name], rows);
+    // Para nodos top (Cuenta): root = su propio total; parent = total global del árbol
+    bn_apRenderNode(node, 0, records, [node.name], rows, node.total, tree.total);
   }
   // Total global: suma de presupuesto único por (cat, con) entre todos los registros
   const seen = new Set();
@@ -2931,6 +2954,7 @@ function bn_renderAP() {
           <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Partida</th>
           <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">#Mov</th>
           <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Monto</th>
+          <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em" title="${BN_AP_PCT_MODE==='rel'?'% vs nivel superior':'% vs total de la cuenta'}">%</th>
           <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Presupuesto</th>
           <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Ciclo</th>
           <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Avance</th>
@@ -2939,10 +2963,10 @@ function bn_renderAP() {
       </thead>
       <tbody>${rows.join('')}</tbody>
       <tfoot>
-        ${bn_apFooterRow('TOTAL GLOBAL',           tree.count, tree.total, budTotal, totalCycleLabel, totalAv, '#1f2937')}
-        ${bn_apFooterRowGroup('PRESUPUESTO OPERATIVO', BN_AP_TOTALS.operativo,   '#334155')}
-        ${bn_apFooterRowGroup('REINVERSIÓN',           BN_AP_TOTALS.reinversion, '#475569')}
-        ${bn_apFooterRowGroup('RETIRO DE UTILIDADES',  BN_AP_TOTALS.retiro,      '#64748b')}
+        ${bn_apFooterRow('TOTAL GLOBAL',           tree.count, tree.total, budTotal, totalCycleLabel, totalAv, '#1f2937', null)}
+        ${bn_apFooterRowGroup('PRESUPUESTO OPERATIVO', BN_AP_TOTALS.operativo,   '#334155', tree.total)}
+        ${bn_apFooterRowGroup('REINVERSIÓN',           BN_AP_TOTALS.reinversion, '#475569', tree.total)}
+        ${bn_apFooterRowGroup('RETIRO DE UTILIDADES',  BN_AP_TOTALS.retiro,      '#64748b', tree.total)}
       </tfoot>
     </table>`;
 }
@@ -3518,7 +3542,7 @@ function bn_monthly() {
 const BN_TIPO_PARENT = {
   T:'reg', I:'reg', E:'reg', AC:'reg', PA:'reg', CA:'reg',
   PC:'pc', PC_I:'pc', PC_E:'pc', PC_AC:'pc', PC_PA:'pc', PC_CA:'pc',
-  A:'pres', AP:'pres', PR:'pres',
+  A:'pres', AP:'pres', PR:'pres', F:'pres',
 };
 
 // Sub-tabs por categoría — renderizadas como chips horizontales en row 2
@@ -3543,6 +3567,7 @@ const BN_CAT_SUBS = {
     { id: 'A',  label: '⚠️ Alertas' },
     { id: 'AP', label: '🧮 Análisis por partida' },
     { id: 'PR', label: '💰 Presupuesto' },
+    { id: 'F',  label: '📊 Indicadores' },
   ],
 };
 
@@ -3581,6 +3606,12 @@ function bn_setCat(cat) {
 
 function bn_setTipo(t) {
   BN_TIPO=t;
+  // Ocultar/mostrar el selector 'Vista' (sólo válido en Por clasificar y Cuentas)
+  const viewWrap = document.getElementById('bn-view-cards')?.closest('div')?.parentElement;
+  if (viewWrap) {
+    const parent = BN_TIPO_PARENT[t];
+    viewWrap.style.display = (parent === 'pc' || parent === 'reg') ? '' : 'none';
+  }
   const allTabs = ['T','E','I','AC','PA','CA','PC','PC_I','PC_E','PC_AC','PC_PA','PC_CA','A','F','AP','PR'];
   // Resaltar el chip activo (entre los chips horizontales del row 2)
   allTabs.forEach(x => {
@@ -3683,13 +3714,47 @@ function bn_render() {
   const ap=document.getElementById('bn-analisis-partida');
 
   if(BN_TIPO==='F'){
-    // Indicadores en popup modal
+    // Indicadores como sección inline (NO popup): override estilos del overlay
+    tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
+    ap?.classList.add('hidden');
+    document.getElementById('bn-presupuesto')?.classList.add('hidden');
+    if (iov) {
+      iov.classList.remove('hidden');
+      iov.style.position = 'static';
+      iov.style.background = 'transparent';
+      iov.style.padding = '0';
+      iov.style.display = 'block';
+      iov.style.zIndex = '';
+    }
+    const md = document.getElementById('bn-indicadores-modal');
+    if (md) {
+      md.style.maxWidth = '100%';
+      md.style.maxHeight = 'none';
+      md.style.boxShadow = 'none';
+      md.style.padding = '0';
+      md.style.background = 'transparent';
+      // Ocultar el botón ✕ y el h2 cuando es inline
+      md.querySelectorAll('button').forEach(b => {
+        if (b.textContent.trim() === '✕') b.style.display = 'none';
+      });
+      const h2 = md.querySelector('h2'); if (h2) h2.style.display = 'none';
+    }
     iw?.classList.remove('hidden');
-    iov?.classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = '';
     bn_renderInd();
-    // Volver al tab anterior para que al cerrar el modal el usuario vea su vista normal
     return;
+  }
+  // Restaurar estilos de overlay (cuando salimos de F)
+  if (iov && !iov.classList.contains('hidden')) {
+    iov.style.position = ''; iov.style.background = '';
+    iov.style.padding = ''; iov.style.display = ''; iov.style.zIndex = '';
+  }
+  const _md = document.getElementById('bn-indicadores-modal');
+  if (_md) {
+    _md.style.maxWidth = ''; _md.style.maxHeight = '';
+    _md.style.boxShadow = ''; _md.style.padding = ''; _md.style.background = '';
+    _md.querySelectorAll('button').forEach(b => { if (b.textContent.trim() === '✕') b.style.display = ''; });
+    const h2 = _md.querySelector('h2'); if (h2) h2.style.display = '';
   }
   iw?.classList.add('hidden');
   iov?.classList.add('hidden');
@@ -4136,10 +4201,106 @@ const BN_EXPORT_COLS = [
   { k: 'Reembolso',    get: r => r._reembolso || '' },
   { k: 'Reembolso a',  get: r => r._reembolso_a || '' },
   { k: 'Método pago',  get: r => r._metodo_pago || '' },
+  { k: 'Comentarios',  get: r => r._comentarios || '' },
   { k: 'Duda',         get: r => r._duda || '' },
   { k: 'Validado',     get: r => r._validado || '' },
   { k: 'Clasificado por', get: r => r._clasificado_por || '' },
 ];
+
+/** Devuelve {title, cols, rows} con los datos a exportar según la sección actual. */
+function bn_currentDownloadDataset() {
+  const tipo = BN_TIPO;
+  // Sección Presupuesto: exporta BN_BUDGET con sus columnas
+  if (tipo === 'PR') {
+    const cols = (typeof BN_PR_COLS !== 'undefined' ? BN_PR_COLS : []).map(c => ({ k: c.label || c.key, get: r => r[c.key] }));
+    const data = (BN_PR_DRAFT || BN_BUDGET || []).map(r => r);
+    return { title: 'Presupuesto', cols, rows: data };
+  }
+  // Sección Análisis por partida: exporta el árbol agregado
+  if (tipo === 'AP') {
+    return bn_buildAPDownloadDataset();
+  }
+  // Sección Indicadores: exporta los datos mensuales utilizados
+  if (tipo === 'F') {
+    return bn_buildIndDownloadDataset();
+  }
+  // Default (Por clasificar / Cuentas): BN_CUR_RECS con BN_EXPORT_COLS
+  return { title: 'Registros', cols: BN_EXPORT_COLS, rows: BN_CUR_RECS };
+}
+
+function bn_buildAPDownloadDataset() {
+  const records = bn_kpiRecs(null);
+  const cols = [
+    { k: 'Nivel',       get: r => r._nivel || '' },
+    { k: 'Cuenta',      get: r => r.cuenta || '' },
+    { k: 'Subcuenta',   get: r => r.sub || '' },
+    { k: 'Categoría',   get: r => r.cat || '' },
+    { k: 'Concepto',    get: r => r.con || '' },
+    { k: 'Movimientos', get: r => r.count || 0 },
+    { k: 'Monto',       get: r => r.total || 0 },
+    { k: '%',           get: r => isFinite(r.pct) ? (r.pct*100).toFixed(2) + '%' : '' },
+    { k: 'Presupuesto', get: r => r.bud || 0 },
+    { k: 'Ciclo',       get: r => r.cycle || '' },
+    { k: 'Avance %',    get: r => r.bud > 0 ? ((r.total/r.bud)*100).toFixed(2) + '%' : '' },
+  ];
+  const tree = bn_apBuildTree(records, BN_AP_LEVELS);
+  const rows = [];
+  function walk(node, depth, ancestors, rootTotal, parentTotal) {
+    if (depth > 0) {
+      const { value: bud, cycle } = bn_apComputeBudget(node, records, ancestors, BN_AP_LEVELS);
+      const denom = BN_AP_PCT_MODE === 'rel' ? parentTotal : rootTotal;
+      const pct = (denom && Math.abs(denom) > 0) ? (node.total / denom) : NaN;
+      rows.push({
+        _nivel: ['Cuenta','Subcuenta','Categoría','Concepto'][depth-1] || '',
+        cuenta: ancestors[0] || '', sub: ancestors[1] || '',
+        cat:    ancestors[2] || '', con: ancestors[3] || '',
+        count: node.count, total: node.total, bud, cycle, pct,
+      });
+    }
+    const kids = [...node.children.values()].sort((a,b) => b.total - a.total);
+    for (const child of kids) {
+      // Para hijos de la raíz (cuenta): rootTotal = child.total (cuenta misma)
+      const childRoot = (depth === 0) ? child.total : rootTotal;
+      walk(child, depth + 1, [...ancestors, child.name], childRoot, node.total);
+    }
+  }
+  walk(tree, 0, [], 0, tree.total);
+  return { title: 'Análisis por partida', cols, rows };
+}
+
+function bn_buildIndDownloadDataset() {
+  // Aplicar swap igual que bn_renderInd
+  const saved = JSON.parse(JSON.stringify({
+    anio: bn_st.anio, mes: bn_st.mes,
+    cuentaClasif: bn_st.cuentaClasif, subcuenta: bn_st.subcuenta,
+    categoria: bn_st.categoria, concepto: bn_st.concepto,
+    cuentaBan: bn_st.cuentaBan, dia: bn_st.dia,
+    propiedad: bn_st.propiedad, departamento: bn_st.departamento,
+    deducible: bn_st.deducible, reembolso: bn_st.reembolso,
+    encargado: bn_st.encargado, q: bn_st.q,
+  }));
+  bn_st.cuentaClasif = []; bn_st.subcuenta = []; bn_st.categoria = []; bn_st.concepto = [];
+  bn_st.cuentaBan = []; bn_st.dia = []; bn_st.propiedad = []; bn_st.departamento = [];
+  bn_st.deducible = []; bn_st.reembolso = []; bn_st.encargado = []; bn_st.q = '';
+  bn_st.anio = BN_IND_STATE.anio.slice();
+  bn_st.mes  = BN_IND_STATE.mes.slice();
+  BN_BYPASS_REVISADO = true;
+  let monthly;
+  try {
+    monthly = bn_monthly();
+  } finally {
+    BN_BYPASS_REVISADO = false;
+    Object.assign(bn_st, saved);
+  }
+  const cols = [
+    { k: 'Mes',       get: r => r.Mes || '' },
+    { k: 'Ingresos',  get: r => r.I || 0 },
+    { k: 'Egresos',   get: r => r.E || 0 },
+    { k: 'Utilidad',  get: r => r.U || 0 },
+    { k: 'Margen %',  get: r => isFinite(r.M) ? (r.M*100).toFixed(2) + '%' : '' },
+  ];
+  return { title: 'Indicadores', cols, rows: monthly.rows || [] };
+}
 
 function bn_showDownloadPopup() {
   let ov = document.getElementById('bn-download-overlay');
@@ -4183,34 +4344,36 @@ function bn_csvEscape(v) {
 }
 
 function bn_downloadExcel() {
-  const cols = BN_EXPORT_COLS;
+  const ds = bn_currentDownloadDataset();
+  const cols = ds.cols;
   const head = cols.map(c => bn_csvEscape(c.k)).join(',');
-  const rows = BN_CUR_RECS.map(r => cols.map(c => bn_csvEscape(c.get(r))).join(','));
-  // BOM para que Excel detecte UTF-8
+  const rows = ds.rows.map(r => cols.map(c => bn_csvEscape(c.get(r))).join(','));
   const csv = '﻿' + head + '\n' + rows.join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `registros_${new Date().toISOString().slice(0,10)}.csv`;
+  const slug = (ds.title || 'datos').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  a.download = `${slug}_${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
 
 function bn_downloadPDF() {
-  const cols = BN_EXPORT_COLS;
+  const ds = bn_currentDownloadDataset();
+  const cols = ds.cols;
   const w = window.open('', '_blank');
   if (!w) { alert('Permite ventanas emergentes para imprimir a PDF'); return; }
-  const rows = BN_CUR_RECS.map(r => `<tr>${
-    cols.map((c, i) => {
+  const rows = ds.rows.map(r => `<tr>${
+    cols.map(c => {
       const v = c.get(r);
-      const isNum = i === 3; // Monto
-      const txt = isNum ? bn_fmt$(Number(v)||0) : String(v||'');
+      const isNum = typeof v === 'number';
+      const txt = isNum ? bn_fmt$(Number(v)||0) : String(v==null?'':v);
       return `<td style="${isNum?'text-align:right':''}">${esc(txt)}</td>`;
     }).join('')
   }</tr>`).join('');
   w.document.write(`
-    <!DOCTYPE html><html><head><meta charset="utf-8"><title>Registros — Exportar</title>
+    <!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(ds.title)} — Exportar</title>
     <style>
       * { box-sizing: border-box; }
       body { font-family: Arial, sans-serif; padding: 20px; color: #1f2937; }
@@ -4224,8 +4387,8 @@ function bn_downloadPDF() {
       @media print { .noprint { display: none; } }
     </style></head><body>
     <button class="noprint" onclick="window.print()" style="padding:8px 16px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-bottom:10px">🖨 Imprimir / Guardar PDF</button>
-    <h1>Registros contables — Sistema Financiero</h1>
-    <div class="meta">Generado: ${new Date().toLocaleString('es-MX')} · ${BN_CUR_RECS.length} registro(s)</div>
+    <h1>${esc(ds.title)} — Sistema Financiero</h1>
+    <div class="meta">Generado: ${new Date().toLocaleString('es-MX')} · ${ds.rows.length} registro(s)</div>
     <table>
       <thead><tr>${cols.map(c => `<th>${esc(c.k)}</th>`).join('')}</tr></thead>
       <tbody>${rows}</tbody>
@@ -4236,6 +4399,16 @@ function bn_downloadPDF() {
 }
 let BN_TBL_EDIT_MODE = false; // modo edición de la columna Descripción
 const BN_TBL_DESC_CHANGES = new Map(); // rowNum → newDesc
+
+function bn_tblExitEditMode() {
+  const n = BN_TBL_DESC_CHANGES.size;
+  if (n > 0) {
+    if (!confirm(`¿Salir sin guardar los ${n} cambio${n===1?'':'s'} pendiente${n===1?'':'s'}?`)) return;
+  }
+  BN_TBL_EDIT_MODE = false;
+  BN_TBL_DESC_CHANGES.clear();
+  bn_renderCards();
+}
 
 function bn_tblToggleEditMode() {
   if (!BN_TBL_EDIT_MODE) {
@@ -4367,6 +4540,7 @@ function bn_buildBnResumenTable(r, idx) {
     ['Departamento',     '_depto',  r._departamento !== undefined ? String(r._departamento) : '', false],
     ['Encargado',        '_enc',    r._encargado    || '',                                       false],
     ['Clasificado por',  '_clasif', r._clasificado_por || '',                                    false],
+    ['Comentarios',      '_coment', r._comentarios  || '',                                       false],
     ['Duda',             '_duda',   r._duda     === 'Sí' ? 'Sí' : '',                            false],
     ['Validado',         '_valid',  r._validado === 'Sí' ? 'Sí' : '',                            false],
   ];
@@ -5490,12 +5664,21 @@ function bn_renderRecordsTable(recs, startIdx) {
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Cuenta</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Buscar clasificación</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">
-          <div style="display:inline-flex;align-items:center;gap:8px">
+          <div style="display:inline-flex;align-items:center;gap:6px">
             <span>Descripción</span>
-            <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
-                    style="padding:3px 9px;border:1px solid ${BN_TBL_EDIT_MODE?'#fbbf24':'rgba(255,255,255,.4)'};background:${BN_TBL_EDIT_MODE?'#fbbf24':'transparent'};color:${BN_TBL_EDIT_MODE?'#1f2937':'#fff'};border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:0">
-              ${BN_TBL_EDIT_MODE ? '💾 Guardar' : '✏️ Editar'}
-            </button>
+            ${BN_TBL_EDIT_MODE ? `
+              <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
+                      style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">
+                💾 Guardar
+              </button>
+              <button onclick="event.stopPropagation();bn_tblExitEditMode()"
+                      style="padding:4px 9px;border:1.5px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:0">
+                ✕ Salir
+              </button>` : `
+              <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
+                      style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">
+                ✏️ Editar
+              </button>`}
           </div>
         </th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
@@ -5504,6 +5687,7 @@ function bn_renderRecordsTable(recs, startIdx) {
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Subcuenta</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Categoría</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Concepto</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Comentarios</th>
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Fact.</th>
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Ded.</th>
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Duda</th>
@@ -5565,6 +5749,7 @@ function bn_renderRecordsTable(recs, startIdx) {
         <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._subcuenta||'')}">${esc(rec._subcuenta||'')}</td>
         <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._categoria_gasto||'')}">${esc(rec._categoria_gasto||'')}</td>
         <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._concepto||'')}">${esc(rec._concepto||'')}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._comentarios||'')}">${esc(rec._comentarios||'')}</td>
         <td style="padding:8px 10px;text-align:center;font-size:14px">${fac ? '🧾' : ''}</td>
         <td onclick="event.stopPropagation();bn_syncDeducible(${idx}, ${!dedOn});bn_renderCards()"
             title="${dedOn?'Deducible — clic para desactivar':'No deducible — clic para activar'}"
