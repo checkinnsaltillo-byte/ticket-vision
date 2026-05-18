@@ -435,6 +435,7 @@ function getBancosData_(ss) {
   const iMon    = pickIdx(hB, ["MONTO"]);
   const iDud    = pickIdx(hB, ["DUDA"]);
   const iVal    = pickIdx(hB, ["VALIDADO"]);
+  const iComB   = pickIdx(hB, ["COMENTARIOS", "COMENTARIO"]);
 
   const records = bancos.slice(1)
     .map((r, i) => ({ r, rowNum: i + 2 }))           // rowNum = índice real en Sheet (antes del filter)
@@ -460,6 +461,7 @@ function getBancosData_(ss) {
         Monto:             toNumber(iMon >= 0 ? r[iMon] : 0),
         DUDA:              iDud    >= 0 ? String(r[iDud]).trim()    : "",
         VALIDADO:          iVal    >= 0 ? String(r[iVal]).trim()    : "",
+        COMENTARIOS:       iComB   >= 0 ? String(r[iComB]).trim()   : "",
         rowNum:            rowNum
       };
     });
@@ -545,7 +547,7 @@ function saveBancoClasificacion_(ss, data) {
     "PROPIEDAD", "DEPARTAMENTO", "ENCARGADO",
     "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A",
     "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF",
-    "DUDA", "VALIDADO"
+    "DUDA", "VALIDADO", "COMENTARIOS"
   ];
 
   // Leer el header actual
@@ -630,6 +632,7 @@ function saveBancoClasificacion_(ss, data) {
   writeCell("FECHA_CLASIF",    now);
   if (c.duda     !== undefined) writeCell("DUDA",     c.duda     || "");
   if (c.validado !== undefined) writeCell("VALIDADO", c.validado || "");
+  if (c.comentarios !== undefined) writeCell("COMENTARIOS", c.comentarios || "");
 
   return { ok: true, rowNum: rowNum, columnsWritten: CLASIF_COLS.length };
 }

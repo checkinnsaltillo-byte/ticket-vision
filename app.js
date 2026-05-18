@@ -2606,6 +2606,11 @@ let BN_AP_LEVEL = 4; // default: completamente desglosado a Concepto
 const BN_AP_OVERRIDES = new Map(); // path → bool (true=expandido manual, false=colapsado manual)
 const BN_AP_LEVELS = ['_cuenta','_subcuenta','_categoria_gasto','_concepto'];
 let BN_AP_PCT_MODE = 'abs'; // 'abs' = % vs total de la cuenta raíz; 'rel' = % vs nivel inmediato superior
+const BN_AP_COLLAPSED = { er: false, bg: false }; // estado plegado por sección
+function bn_apToggleSection(key) {
+  BN_AP_COLLAPSED[key] = !BN_AP_COLLAPSED[key];
+  bn_renderAP();
+}
 
 function bn_apTogglePctMode() {
   BN_AP_PCT_MODE = (BN_AP_PCT_MODE === 'abs') ? 'rel' : 'abs';
@@ -2689,7 +2694,7 @@ function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, paren
       </td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${node.count}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px">${bn_fmt$(node.total)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:#475569" title="${BN_AP_PCT_MODE==='rel'?'% vs nivel superior':'% vs total de la cuenta'}">${pctCol}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:${BN_AP_PCT_MODE==='rel'?'#ea580c':'#2563eb'}" title="${BN_AP_PCT_MODE==='rel'?'% vs nivel superior':'% vs total de la cuenta'}">${pctCol}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?'#334155':'#9ca3af'}">${budCycle || '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;min-width:140px">
@@ -2968,9 +2973,11 @@ function bn_renderAP() {
       </tr>
     </thead>`;
 
-  // Renderiza un grupo de cuentas a su propio HTML de tabla, con título y (opcional) fila TOTAL.
+  // Renderiza un grupo plegable (drop-down) con su propia tabla.
   function renderGroup(nodes, title, opts) {
     if (!nodes.length) return '';
+    const key = opts.key;
+    const collapsed = !!BN_AP_COLLAPSED[key];
     const rows = [];
     let groupTotal = 0, groupCount = 0;
     for (const node of nodes) {
@@ -2979,25 +2986,33 @@ function bn_renderAP() {
       groupCount += node.count;
     }
     let footerHtml = '';
-    if (opts && opts.showTotal) {
+    if (opts.showTotal) {
       const totalAv = budTotal > 0 ? groupTotal / budTotal : NaN;
       footerHtml = `<tfoot>${bn_apFooterRow('TOTAL GLOBAL', groupCount, groupTotal, budTotal, totalCycleLabel, totalAv, '#1f2937', null)}</tfoot>`;
     }
-    return `
-      <div style="margin-bottom:18px">
-        <h4 style="margin:0 0 8px;font-size:13px;font-weight:800;color:#1f2937;display:flex;align-items:center;gap:6px">${title}</h4>
-        <table style="width:100%;border-collapse:collapse;background:var(--surface,#fff);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);font-size:12px">
+    const tableHtml = collapsed ? '' : `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;background:var(--surface,#fff);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);font-size:12px;min-width:780px">
           ${header}
           <tbody>${rows.join('')}</tbody>
           ${footerHtml}
         </table>
       </div>`;
+    return `
+      <div style="margin-bottom:18px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff">
+        <div onclick="bn_apToggleSection('${key}')"
+             style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f1f5f9;cursor:pointer;user-select:none;border-bottom:${collapsed?'none':'1px solid #e5e7eb'}">
+          <span style="font-size:13px;font-weight:800;color:#334155;flex:1">${title}</span>
+          <span style="font-size:11px;color:#64748b">${collapsed ? '▸ Mostrar' : '▼ Ocultar'}</span>
+        </div>
+        ${collapsed ? '' : `<div style="padding:10px">${tableHtml}</div>`}
+      </div>`;
   }
 
   wrap.innerHTML =
-    renderGroup(erNodes,    '📈 Estado de Resultados', { showTotal: true }) +
-    renderGroup(bgNodes,    '📊 Balance General',      { showTotal: false }) +
-    (otherNodes.length ? renderGroup(otherNodes, '🗂️ Otras cuentas', { showTotal: false }) : '');
+    renderGroup(erNodes,    '📈 Estado de Resultados', { showTotal: true,  key: 'er' }) +
+    renderGroup(bgNodes,    '📊 Balance General',      { showTotal: false, key: 'bg' }) +
+    (otherNodes.length ? renderGroup(otherNodes, '🗂️ Otras cuentas', { showTotal: false, key: 'other' }) : '');
 }
 
 /** Panel de estado de revisión — barra stacked + notas, sólo en tabs Por Clasificar. */
@@ -3571,7 +3586,8 @@ function bn_monthly() {
 const BN_TIPO_PARENT = {
   T:'reg', I:'reg', E:'reg', AC:'reg', PA:'reg', CA:'reg',
   PC:'pc', PC_I:'pc', PC_E:'pc', PC_AC:'pc', PC_PA:'pc', PC_CA:'pc',
-  A:'pres', AP:'pres', PR:'pres', F:'pres',
+  A:'pres', AP:'pres', PR:'pres',
+  F:'ind',
 };
 
 // Sub-tabs por categoría — renderizadas como chips horizontales en row 2
@@ -3596,6 +3612,8 @@ const BN_CAT_SUBS = {
     { id: 'A',  label: '⚠️ Alertas' },
     { id: 'AP', label: '🧮 Análisis por partida' },
     { id: 'PR', label: '💰 Presupuesto' },
+  ],
+  ind: [
     { id: 'F',  label: '📊 Indicadores' },
   ],
 };
@@ -3605,7 +3623,7 @@ const BN_CAT_SUBS = {
  *  primera por defecto (o conserva la actual si pertenece a la categoría). */
 function bn_setCat(cat) {
   // Resaltar el botón de categoría activo
-  ['pc','reg','pres'].forEach(k => {
+  ['pc','reg','pres','ind'].forEach(k => {
     const btn = document.getElementById('bn-cat-' + k);
     if (!btn) return;
     const active = (k === cat);
@@ -3657,7 +3675,7 @@ function bn_setTipo(t) {
   // Sincronizar resaltado del botón de CATEGORÍA padre
   const parent = BN_TIPO_PARENT[t];
   if (parent) {
-    ['pc','reg','pres'].forEach(k => {
+    ['pc','reg','pres','ind'].forEach(k => {
       const btn = document.getElementById('bn-cat-' + k);
       if (!btn) return;
       const a = (k === parent);
@@ -3751,6 +3769,11 @@ function bn_render() {
     document.getElementById('bn-actions-row')?.classList.add('hidden');
     document.getElementById('bn-review-panel')?.classList.add('hidden');
     document.getElementById('bn-filter-body')?.classList.add('hidden');
+    const mesAnio = document.getElementById('bn-mes-anio-row');
+    if (mesAnio) mesAnio.style.display = 'none';
+    // Ocultar barra de búsqueda + botón hamburguesa de filtros
+    const searchBar = document.getElementById('bn-f-text')?.parentElement;
+    if (searchBar) searchBar.style.display = 'none';
     if (iov) {
       iov.classList.remove('hidden');
       iov.style.position = 'static';
@@ -3791,8 +3814,12 @@ function bn_render() {
   }
   iw?.classList.add('hidden');
   iov?.classList.add('hidden');
-  // Restaurar action-row al salir de F
+  // Restaurar elementos ocultados al salir de F
   document.getElementById('bn-actions-row')?.classList.remove('hidden');
+  const mesAnio2 = document.getElementById('bn-mes-anio-row');
+  if (mesAnio2) mesAnio2.style.display = '';
+  const searchBar2 = document.getElementById('bn-f-text')?.parentElement;
+  if (searchBar2) searchBar2.style.display = '';
 
   if(BN_TIPO==='AP'){
     tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
@@ -5148,6 +5175,10 @@ function bn_autoPopulateBnClassify(ci, rec) {
     if (metCard) selectMetodoPago(metCard, ci);
   }
 
+  // Comentarios — restaurar el valor guardado al re-abrir el popup
+  const comEl = document.getElementById(`comentarios-${ci}`);
+  if (comEl) comEl.value = rec._comentarios || '';
+
   updateClasiPath(ci);
   classifyAutoPopulating = false;
 }
@@ -5189,6 +5220,7 @@ async function bn_saveBnClassification(idx) {
   rec._reembolso       = c.reembolso  ? 'Sí' : 'No';
   rec._reembolso_a     = c.reembolso_a;
   rec._metodo_pago     = c.metodo_pago_clasif;
+  rec._comentarios     = c.comentarios || '';
   rec._clasificado_por = currentUser || '';
   // Sincronizar campos raw y _tipo para que filtros y colores sean correctos
   rec.CUENTA    = c.cuenta;
@@ -5388,6 +5420,7 @@ function bn_buildSavePayload(rec, extras = {}) {
       clasificado_por: currentUser || '',
       duda:            rec._duda     || '',
       validado:        rec._validado || '',
+      comentarios:     rec._comentarios || '',
     },
     ...extras
   };

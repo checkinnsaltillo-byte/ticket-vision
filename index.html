@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=57">
+  <link rel="stylesheet" href="styles.css?v=58">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -500,6 +500,8 @@
                   style="padding:8px 14px;border:1.5px solid #e2e8f0;background:#fff;color:#334155;font-weight:700;font-size:12px;cursor:pointer;border-radius:8px;display:inline-flex;align-items:center;gap:5px">📊 Cuentas</button>
           <button class="bn-cat-btn" id="bn-cat-pres" onclick="bn_setCat('pres')"
                   style="padding:8px 14px;border:1.5px solid #e2e8f0;background:#fff;color:#334155;font-weight:700;font-size:12px;cursor:pointer;border-radius:8px;display:inline-flex;align-items:center;gap:5px">📐 Planeación</button>
+          <button class="bn-cat-btn" id="bn-cat-ind" onclick="bn_setCat('ind')"
+                  style="padding:8px 14px;border:1.5px solid #e2e8f0;background:#fff;color:#334155;font-weight:700;font-size:12px;cursor:pointer;border-radius:8px;display:inline-flex;align-items:center;gap:5px">📊 Indicadores</button>
         </div>
         <!-- Row 2: opciones del category activo (chips horizontales con scroll si exceden) -->
         <div id="bn-subcat-row" style="display:flex;flex-wrap:wrap;gap:6px;overflow-x:auto"></div>
@@ -529,13 +531,13 @@
       <div id="bn-review-panel" class="hidden" style="margin:8px 0 12px"></div>
 
       <!-- Toggle de selección múltiple + selector de tamaño de página -->
-      <div id="bn-actions-row" style="display:flex;align-items:center;gap:10px;margin:6px 0 12px;flex-wrap:nowrap;white-space:nowrap;overflow-x:auto">
+      <div id="bn-actions-row" style="display:flex;align-items:center;gap:10px;margin:6px 0 12px;flex-wrap:wrap">
         <button id="bn-btn-sel-mode" type="button" onclick="bn_toggleSelMode()"
-                style="padding:7px 14px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                style="padding:7px 14px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0">
           ☑️ Seleccionar
         </button>
         <button id="bn-btn-match-tickets" type="button" onclick="bn_relacionarConTickets()"
-                style="padding:7px 14px;border:1.5px solid #475569;background:#475569;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                style="padding:7px 14px;border:1.5px solid #475569;background:#475569;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0">
           🔗 Relacionar con tickets
         </button>
         <div style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
@@ -560,15 +562,15 @@
         </div>
         <button type="button" onclick="bn_showDownloadPopup()"
                 title="Descargar datos filtrados"
-                style="padding:7px 14px;border:1.5px solid #2563eb;background:#fff;color:#2563eb;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                style="padding:7px 14px;border:1.5px solid #2563eb;background:#fff;color:#2563eb;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0">
           ⬇️ Descargar datos
         </button>
         <button id="bn-btn-sel-all" type="button" onclick="bn_selAllVisible()" class="hidden"
-                style="padding:7px 12px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
+                style="padding:7px 12px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0">
           Todos visibles
         </button>
         <button id="bn-btn-sel-clear" type="button" onclick="bn_selClear()" class="hidden"
-                style="padding:7px 12px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
+                style="padding:7px 12px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0">
           Limpiar selección
         </button>
         <span id="bn-sel-count" class="hidden" style="font-size:12px;color:#334155;font-weight:700"></span>
@@ -865,6 +867,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=104"></script>
+  <script src="app.js?v=105"></script>
 </body>
 </html>
