@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=55">
+  <link rel="stylesheet" href="styles.css?v=56">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -144,9 +144,10 @@
         <button class="hamburger-btn" onclick="toggleNavMenu()" title="Menú">
           <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
         </button>
-        <div class="header-logo">
-          <img class="logo-icon" src="https://drive.google.com/thumbnail?id=1We0TuuoTb0fDa5xLVMzDqzMZZWwgkb0v&sz=w200"
-               alt="Logo" style="object-fit:contain;background:#fff;padding:3px">
+        <div class="header-logo" style="display:flex;align-items:center;gap:12px">
+          <img src="https://drive.google.com/thumbnail?id=1We0TuuoTb0fDa5xLVMzDqzMZZWwgkb0v&sz=w300"
+               alt="Logo"
+               style="height:56px;width:auto;max-width:120px;object-fit:contain;background:transparent;padding:0;border-radius:0;box-shadow:none">
           <div class="logo-text">
             <h1>Sistema Financiero</h1>
             <span>Check Inn Saltillo</span>
@@ -417,50 +418,67 @@
         </div>
       </div>
 
-      <!-- KPI cards (debajo de filtros, responden a selección de Año/Mes) -->
-      <div class="bn-kpi-row" id="bn-kpi-row">
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Egresos (período)</div>
-          <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
-          <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
+      <!-- KPIs agrupados en 3 secciones -->
+      <div id="bn-kpi-row" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+        <!-- Estado de Resultados -->
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">📈 Estado de Resultados</div>
+          <div class="bn-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+            <div class="bn-kpi-card">
+              <div class="bn-kpi-label">Egresos (período)</div>
+              <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
+              <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
+            </div>
+            <div class="bn-kpi-card">
+              <div class="bn-kpi-label">Ingresos (período)</div>
+              <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
+              <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
+            </div>
+            <div class="bn-kpi-card">
+              <div class="bn-kpi-label">Utilidad (período)</div>
+              <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
+              <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
+            </div>
+          </div>
         </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Ingresos (período)</div>
-          <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
-          <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
+        <!-- Balance General -->
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">📊 Balance General</div>
+          <div class="bn-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+            <div class="bn-kpi-card">
+              <div class="bn-kpi-label">Retiro de utilidades</div>
+              <div class="bn-kpi-value" id="bn-k-retiro">—</div>
+              <div id="bn-k-retiro-bar" style="margin:4px 0 2px"></div>
+              <div class="bn-kpi-sub" id="bn-k-retiro-sub">—</div>
+            </div>
+            <div class="bn-kpi-card">
+              <div class="bn-kpi-label">Reinversión</div>
+              <div class="bn-kpi-value" id="bn-k-reinv">—</div>
+              <div id="bn-k-reinv-bar" style="margin:4px 0 2px"></div>
+              <div class="bn-kpi-sub" id="bn-k-reinv-sub">—</div>
+            </div>
+          </div>
         </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Presupuesto Operativo</div>
-          <div class="bn-kpi-value" id="bn-k-avance-egr">—</div>
-          <div id="bn-k-avance-bar" style="margin:4px 0 2px"></div>
-          <div class="bn-kpi-sub" id="bn-k-avance-egr-sub">—</div>
-        </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Reinversión</div>
-          <div class="bn-kpi-value" id="bn-k-reinv">—</div>
-          <div id="bn-k-reinv-bar" style="margin:4px 0 2px"></div>
-          <div class="bn-kpi-sub" id="bn-k-reinv-sub">—</div>
-        </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Retiro de utilidades</div>
-          <div class="bn-kpi-value" id="bn-k-retiro">—</div>
-          <div id="bn-k-retiro-bar" style="margin:4px 0 2px"></div>
-          <div class="bn-kpi-sub" id="bn-k-retiro-sub">—</div>
-        </div>
-        <div class="bn-kpi-card">
-          <div class="bn-kpi-label">Utilidad (período)</div>
-          <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
-          <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
-        </div>
-        <!-- KPI Indicadores: actúa como atajo a la vista de análisis -->
-        <div class="bn-kpi-card" id="bn-tab-F" onclick="bn_setTipo('F')"
-             style="cursor:pointer;background:linear-gradient(135deg,#475569,#334155);color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;transition:transform .15s"
-             onmouseover="this.style.transform='translateY(-2px)'"
-             onmouseout="this.style.transform=''"
-             title="Ver indicadores y gráficas">
-          <div style="font-size:30px;line-height:1">📊</div>
-          <div class="bn-kpi-label" style="color:#fff;opacity:.95;margin:0">Indicadores</div>
-          <div class="bn-kpi-sub" style="color:#fff;opacity:.85;margin:0">Análisis y gráficas</div>
+        <!-- Control Presupuestario + Indicadores -->
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">💼 Control Presupuestario</div>
+          <div class="bn-kpi-row" style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:stretch">
+            <div class="bn-kpi-card">
+              <div class="bn-kpi-label">Presupuesto Operativo</div>
+              <div class="bn-kpi-value" id="bn-k-avance-egr">—</div>
+              <div id="bn-k-avance-bar" style="margin:4px 0 2px"></div>
+              <div class="bn-kpi-sub" id="bn-k-avance-egr-sub">—</div>
+            </div>
+            <div class="bn-kpi-card" id="bn-tab-F" onclick="bn_setTipo('F')"
+                 style="cursor:pointer;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;transition:transform .15s;min-width:160px"
+                 onmouseover="this.style.transform='translateY(-2px)'"
+                 onmouseout="this.style.transform=''"
+                 title="Ver indicadores y gráficas">
+              <div style="font-size:26px;line-height:1">📊</div>
+              <div class="bn-kpi-label" style="margin:0">Indicadores</div>
+              <div class="bn-kpi-sub" style="margin:0">Análisis y gráficas</div>
+            </div>
+          </div>
         </div>
       </div>
 

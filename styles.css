@@ -30,6 +30,35 @@ body {
   color: var(--text);
 }
 
+/* ─── Responsive desktop ────────────────────────────────────────── */
+@media (min-width: 900px) {
+  body { padding: 20px 32px 90px; }
+  #app-root, .page-shell { max-width: 1600px; margin: 0 auto; }
+  .bn-kpi-card { padding: 12px 14px !important; }
+  .bn-kpi-value { font-size: 18px !important; }
+  .bn-kpi-label { font-size: 11px !important; }
+  .bn-kpi-sub { font-size: 11px !important; }
+  /* Modales pop-up: aprovechan más ancho en desktop */
+  #bn-classify-modal,
+  #bn-indicadores-modal,
+  #bn-ap-records-modal,
+  .bn-modal,
+  .confirm-modal {
+    max-width: 92vw !important;
+  }
+}
+@media (min-width: 1280px) {
+  body { padding: 22px 48px 90px; }
+  #bn-classify-modal     { max-width: 1100px !important; }
+  #bn-indicadores-modal  { max-width: 1300px !important; }
+  #bn-ap-records-modal   { max-width: 1400px !important; }
+}
+@media (min-width: 1600px) {
+  #bn-classify-modal     { max-width: 1300px !important; }
+  #bn-indicadores-modal  { max-width: 1500px !important; }
+  #bn-ap-records-modal   { max-width: 1600px !important; }
+}
+
 .hidden { display: none !important; }
 
 /* ─── Login ─────────────────────────────────────────────────── */
