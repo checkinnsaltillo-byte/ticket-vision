@@ -5341,7 +5341,11 @@ function bn_renderRecordsTable(recs, startIdx) {
                  onblur="setTimeout(()=>bn_tblSearchHide(),200)"
                  style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;outline:none">
         </td>
-        <td style="padding:8px 10px;font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(desc)}">${esc(desc)}</td>
+        <td contenteditable="true" spellcheck="false"
+            onclick="event.stopPropagation()"
+            onblur="bn_tblEditDescripcion(${idx}, this)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+            style="padding:8px 10px;font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:text" title="${esc(desc)}">${esc(desc)}</td>
         <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
         <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
         <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
@@ -5349,9 +5353,15 @@ function bn_renderRecordsTable(recs, startIdx) {
         <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._categoria_gasto||'')}">${esc(rec._categoria_gasto||'')}</td>
         <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._concepto||'')}">${esc(rec._concepto||'')}</td>
         <td style="padding:8px 10px;text-align:center;font-size:14px">${fac ? '🧾' : ''}</td>
-        <td style="padding:8px 10px;text-align:center;font-size:14px">${dedOn ? '💰' : ''}</td>
-        <td style="padding:8px 10px;text-align:center;font-size:14px">${isDuda ? '<span style="color:#b45309;font-weight:800">?</span>' : ''}</td>
-        <td style="padding:8px 10px;text-align:center;font-size:14px">${isVal ? '<span style="color:#16a34a;font-weight:800">✓</span>' : ''}</td>
+        <td onclick="event.stopPropagation();bn_syncDeducible(${idx}, ${!dedOn});bn_renderCards()"
+            title="${dedOn?'Deducible — clic para desactivar':'No deducible — clic para activar'}"
+            style="padding:8px 10px;text-align:center;font-size:14px;cursor:pointer;opacity:${dedOn?'1':'.3'}">💰</td>
+        <td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!isDuda});bn_renderCards()"
+            title="${isDuda?'Marcado: Duda — clic para quitar':'Marcar como Duda'}"
+            style="padding:8px 10px;text-align:center;font-size:14px;cursor:pointer;color:${isDuda?'#b45309':'#cbd5e1'};font-weight:800">?</td>
+        <td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!isVal});bn_renderCards()"
+            title="${isVal?'Validado — clic para quitar':'Marcar como Validado'}"
+            style="padding:8px 10px;text-align:center;font-size:14px;cursor:pointer;color:${isVal?'#16a34a':'#cbd5e1'};font-weight:800">✓</td>
       </tr>`;
   }).join('');
 
@@ -5364,6 +5374,31 @@ function bn_renderRecordsTable(recs, startIdx) {
     </div>
     <div id="bn-tbl-search-dropdown" class="hidden"
          style="position:fixed;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 22px rgba(15,23,42,.15);max-height:260px;overflow-y:auto;z-index:8500;min-width:280px"></div>`;
+}
+
+/** Edición inline de la columna Descripción en la tabla. Guarda al blur si cambió. */
+async function bn_tblEditDescripcion(idx, cellEl) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+  const newDesc = (cellEl.textContent || '').trim();
+  const oldDesc = (rec.DESCRIPCION || '').trim();
+  if (newDesc === oldDesc) return; // sin cambios
+  rec.DESCRIPCION = newDesc;
+  if (!rec.rowNum) return;
+  try {
+    const payload = bn_buildSavePayload(rec, { descripcion_edit: true });
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const j = await resp.json();
+    if (!j.ok) throw new Error(j.error || 'Error');
+    // confirma visualmente sin re-renderizar (preserva caret si el usuario sigue)
+    cellEl.title = newDesc;
+  } catch (e) {
+    console.warn('Error guardando Descripción:', e.message);
+    alert('Error al guardar Descripción: ' + e.message);
+  }
 }
 
 /** Filtra SEARCH_INDEX y muestra dropdown. */
