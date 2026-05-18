@@ -5273,14 +5273,19 @@ function bn_dateHeaderLabel(iso) {
   return `${d} de ${NOMBRES[m-1]}, ${y}`;
 }
 
-/** Renderiza los registros como una tabla. Click en fila abre Clasificar. */
+/** Renderiza los registros como una tabla.
+ *  - Si BN_SEL_MODE: agrega checkbox al inicio y la fila toggle selecciona.
+ *  - Si NO: click en fila abre el modal Clasificar.
+ *  - Columna 'Buscar clasificación' permite autocompletar Cuenta/Sub/Cat/Concepto. */
 function bn_renderRecordsTable(recs, startIdx) {
   if (!recs.length) return '';
   const CUENTA_EMOJI = { Egresos:'💸', Ingresos:'💰', Activos:'📈', Pasivos:'📋', Capital:'💼' };
   const head = `
     <thead>
       <tr style="background:#475569;color:#fff">
+        ${BN_SEL_MODE ? '<th style="padding:9px 10px;width:36px"></th>' : ''}
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Cuenta</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Buscar clasificación</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Descripción</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Cuenta banc.</th>
@@ -5311,12 +5316,31 @@ function bn_renderRecordsTable(recs, startIdx) {
     const isVal  = rec._validado === 'Sí';
     const dedOn  = rec._deducible === 'Sí';
     const fac    = rec.FacturaFlag === 'Con factura' || (rec.Factura && String(rec.Factura).trim());
+    const isSel  = !!(rec.rowNum && BN_SEL.has(rec.rowNum));
+    const rowClick = BN_SEL_MODE
+      ? `bn_selToggle(${rec.rowNum||0}, ${!isSel}); bn_renderCards()`
+      : `bn_toggleBnClassify(${idx})`;
+    const rowBg = isSel ? 'background:#fff7ed' : '';
+    const selCell = BN_SEL_MODE
+      ? `<td style="padding:6px 10px;text-align:center" onclick="event.stopPropagation();bn_selToggle(${rec.rowNum||0}, ${!isSel}); bn_renderCards()">
+           <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;border:1.5px solid ${isSel?'#ea580c':'#cbd5e1'};background:${isSel?'#ea580c':'#fff'};color:#fff;font-weight:800;font-size:13px;cursor:pointer">${isSel?'✓':''}</span>
+         </td>`
+      : '';
     return `
-      <tr onclick="bn_toggleBnClassify(${idx})"
-          style="cursor:pointer;border-bottom:1px solid #e2e8f0"
-          onmouseover="this.style.background='#f8fafc'"
-          onmouseout="this.style.background=''">
+      <tr onclick="${rowClick}"
+          style="cursor:pointer;border-bottom:1px solid #e2e8f0;${rowBg}"
+          onmouseover="this.style.filter='brightness(.97)'"
+          onmouseout="this.style.filter=''">
+        ${selCell}
         <td style="padding:8px 10px">${chip}</td>
+        <td style="padding:6px 8px;min-width:200px" onclick="event.stopPropagation()">
+          <input type="text" id="bn-tbl-search-${idx}" placeholder="🔍 Buscar..."
+                 autocomplete="off"
+                 oninput="bn_tblSearchInput(${idx}, this)"
+                 onfocus="bn_tblSearchInput(${idx}, this)"
+                 onblur="setTimeout(()=>bn_tblSearchHide(),200)"
+                 style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;outline:none">
+        </td>
         <td style="padding:8px 10px;font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(desc)}">${esc(desc)}</td>
         <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
         <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
@@ -5333,11 +5357,99 @@ function bn_renderRecordsTable(recs, startIdx) {
 
   return `
     <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1000px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1200px">
         ${head}
         <tbody>${body}</tbody>
       </table>
-    </div>`;
+    </div>
+    <div id="bn-tbl-search-dropdown" class="hidden"
+         style="position:fixed;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 22px rgba(15,23,42,.15);max-height:260px;overflow-y:auto;z-index:8500;min-width:280px"></div>`;
+}
+
+/** Filtra SEARCH_INDEX y muestra dropdown. */
+function bn_tblSearchInput(idx, input) {
+  const q = (input.value || '').trim().toLowerCase();
+  const dd = document.getElementById('bn-tbl-search-dropdown');
+  if (!dd) return;
+  if (!q || q.length < 2) {
+    dd.classList.add('hidden');
+    return;
+  }
+  // Filtra SEARCH_INDEX (catálogo de combinaciones cuenta/sub/cat/concepto)
+  const idx_ = (typeof SEARCH_INDEX !== 'undefined' && SEARCH_INDEX) ? SEARCH_INDEX : [];
+  const matches = idx_
+    .filter(o => {
+      const t = ((o.cuenta||'') + ' ' + (o.subcuenta||'') + ' ' + (o.categoria||'') + ' ' + (o.concepto||'')).toLowerCase();
+      return q.split(/\s+/).every(w => t.includes(w));
+    })
+    .slice(0, 12);
+  if (!matches.length) {
+    dd.innerHTML = `<div style="padding:10px;font-size:12px;color:#9ca3af">Sin coincidencias</div>`;
+    bn_tblSearchPositionAt(input);
+    dd.classList.remove('hidden');
+    return;
+  }
+  dd.innerHTML = matches.map(o => {
+    const path = [o.cuenta, o.subcuenta, o.categoria, o.concepto].filter(Boolean).join(' › ');
+    const enc = encodeURIComponent(JSON.stringify(o));
+    return `<div onmousedown="event.preventDefault();bn_tblSearchPick(${idx}, '${enc}')"
+                 onmouseover="this.style.background='#f1f5f9'"
+                 onmouseout="this.style.background=''"
+                 style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;cursor:pointer;color:#1f2937">
+              ${esc(path)}
+            </div>`;
+  }).join('');
+  bn_tblSearchPositionAt(input);
+  dd.classList.remove('hidden');
+}
+
+function bn_tblSearchPositionAt(input) {
+  const dd = document.getElementById('bn-tbl-search-dropdown');
+  if (!dd || !input) return;
+  const r = input.getBoundingClientRect();
+  dd.style.top   = (r.bottom + 4) + 'px';
+  dd.style.left  = r.left + 'px';
+  dd.style.width = Math.max(280, r.width) + 'px';
+}
+
+function bn_tblSearchHide() {
+  document.getElementById('bn-tbl-search-dropdown')?.classList.add('hidden');
+}
+
+/** Selecciona una clasificación del catálogo y la persiste en el registro. */
+async function bn_tblSearchPick(idx, enc) {
+  let opt;
+  try { opt = JSON.parse(decodeURIComponent(enc)); } catch(_) { return; }
+  const rec = BN_CUR_RECS[idx];
+  if (!rec) return;
+
+  rec._cuenta          = opt.cuenta    || '';
+  rec._subcuenta       = opt.subcuenta || '';
+  rec._categoria_gasto = opt.categoria || '';
+  rec._concepto        = opt.concepto  || '';
+  rec.CUENTA    = rec._cuenta;
+  rec.SUBCUENTA = rec._subcuenta;
+  rec.CATEGORIA = rec._categoria_gasto;
+  rec.CONCEPTO  = rec._concepto;
+  // Recalcular _tipo
+  const monto = Number(rec.Monto) || 0;
+  const _raw = rec._cuenta || rec.TIPO || (monto < 0 ? 'Egresos' : monto > 0 ? 'Ingresos' : '');
+  const _c   = bn_canon(_raw);
+  rec._tipo = _c.includes('egr') ? 'Egresos' : _c.includes('ing') ? 'Ingresos' :
+              _c.includes('activ') ? 'Activos' : _c.includes('pasiv') ? 'Pasivos' :
+              _c.includes('capital') ? 'Capital' : _raw;
+
+  bn_tblSearchHide();
+  bn_renderCards();
+
+  if (!rec.rowNum) return;
+  try {
+    const payload = bn_buildSavePayload(rec);
+    await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) { console.warn('Error guardando clasificación:', e.message); }
 }
 
 function bn_renderCards() {
