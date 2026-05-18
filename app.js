@@ -776,11 +776,11 @@ const PAYMENT_CHIP = {
   MASTERCARD:      { emoji: "💳", color: "#c0392b", bg: "#fde8e8" },
   AMEX:            { emoji: "💳", color: "#1f7a4c", bg: "#d1fae5" },
   TARJETA_DEBITO:  { emoji: "🏦", color: "#6d28d9", bg: "#ede9fe" },
-  TARJETA_CREDITO: { emoji: "💳", color: "#b45309", bg: "#e0e7ff" },
-  TARJETA_BANCO:   { emoji: "🏦", color: "#1e40af", bg: "#dbeafe" },
+  TARJETA_CREDITO: { emoji: "💳", color: "#b45309", bg: "#e2e8f0" },
+  TARJETA_BANCO:   { emoji: "🏦", color: "#334155", bg: "#e2e8f0" },
   EFECTIVO:        { emoji: "💵", color: "#065f46", bg: "#d1fae5" },
   TRANSFERENCIA:   { emoji: "🔄", color: "#0e7490", bg: "#cffafe" },
-  RETIRO_SIN_TARJETA: { emoji: "🏧", color: "#b45309", bg: "#e0e7ff" },
+  RETIRO_SIN_TARJETA: { emoji: "🏧", color: "#b45309", bg: "#e2e8f0" },
   QR:              { emoji: "📱", color: "#7c3aed", bg: "#f3e8ff" },
 };
 
@@ -2075,11 +2075,11 @@ function bn_renderPresupuesto() {
         <button onclick="bn_prInsertRow(${insertAt})"
                 title="Insertar fila aquí"
                 style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;
-                       border:1.5px dashed #2563eb;background:#eff6ff;color:#1d4ed8;
+                       border:1.5px dashed #475569;background:#f1f5f9;color:#334155;
                        font-weight:700;font-size:11px;line-height:1;border-radius:999px;cursor:pointer;
                        transition:background .15s,transform .15s"
-                onmouseover="this.style.background='#dbeafe';this.style.transform='scale(1.05)'"
-                onmouseout="this.style.background='#eff6ff';this.style.transform=''">
+                onmouseover="this.style.background='#e2e8f0';this.style.transform='scale(1.05)'"
+                onmouseout="this.style.background='#f1f5f9';this.style.transform=''">
           <span style="font-size:14px;font-weight:900;line-height:1">+</span>
           <span>Insertar fila</span>
         </button>
@@ -2116,7 +2116,7 @@ function bn_renderPresupuesto() {
   const actionsHtml = hasChanges ? `
     <div style="display:flex;gap:8px;margin-left:auto">
       <button onclick="bn_prResetDraft()" style="padding:8px 14px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">↺ Descartar cambios</button>
-      <button onclick="bn_prSaveConfirm()" style="padding:8px 16px;border:none;background:#1e40af;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">💾 Guardar cambios</button>
+      <button onclick="bn_prSaveConfirm()" style="padding:8px 16px;border:none;background:#334155;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">💾 Guardar cambios</button>
     </div>` : '';
 
   wrap.innerHTML = `
@@ -2212,6 +2212,38 @@ async function bn_prSaveConfirm() {
   }
 }
 
+// Totales del último render de Análisis por partida (compartidos con KPI Avance)
+let BN_AP_TOTALS = { real: 0, bud: 0, av: NaN, cycle: '' };
+
+/** Calcula y actualiza BN_AP_TOTALS sin renderizar la tabla; lo usa el KPI
+ *  'Avance presupuesto' para mantener números consistentes con la fila
+ *  TOTAL GLOBAL de Análisis por partida. */
+function bn_apComputeTotalsOnly() {
+  const records = bn_kpiRecs(null);
+  let realTot = 0;
+  for (const r of records) realTot += Math.abs(Number(r.Monto) || 0);
+  const seen = new Set();
+  let budTot = 0;
+  const cyclesSeen = new Set();
+  for (const r of records) {
+    const cat = bn_norm(r.CATEGORIA || r._categoria_gasto || '');
+    const con = bn_norm(r.CONCEPTO  || r._concepto || '');
+    const k = cat + '||' + con;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const budRow = (BN_BUDGET || []).find(b =>
+      bn_norm(b.CATEGORIA || '') === cat && bn_norm(b.CONCEPTO || '') === con);
+    if (budRow) {
+      const { value, cycle } = bn_apBudgetForRow(budRow);
+      budTot += value;
+      if (cycle) cyclesSeen.add(cycle);
+    }
+  }
+  const av = budTot > 0 ? realTot / budTot : NaN;
+  const cycle = cyclesSeen.size === 1 ? [...cyclesSeen][0] : (cyclesSeen.size > 1 ? 'Mixto' : '');
+  BN_AP_TOTALS = { real: realTot, bud: budTot, av, cycle };
+}
+
 // Estado del Análisis por partida — siempre se construye con los 4 niveles;
 // la profundidad visible la controlan: (a) BN_AP_LEVEL (1-4) y (b) overrides
 // manuales por click en el triangulito.
@@ -2258,12 +2290,12 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
   const semIcon = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
   const pctTxt  = isFinite(av) ? (av * 100).toFixed(1) + '%' : '—';
   const fillW   = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
-  const bgRow = depth === 0 ? '#e0e7ff' : depth === 1 ? '#fffbeb' : depth === 2 ? '#fefce8' : '#fff';
+  const bgRow = depth === 0 ? '#e2e8f0' : depth === 1 ? '#fffbeb' : depth === 2 ? '#fefce8' : '#fff';
   const wgt   = depth === 0 ? '800' : depth === 1 ? '700' : '600';
   const indent = depth * 22;
   const triangle = hasChildren
     ? `<span onclick="event.stopPropagation();bn_apToggleNode('${pathEnc}')"
-            style="color:#1e40af;cursor:pointer;flex-shrink:0;width:14px;text-align:center;user-select:none">${expanded ? '▼' : '▸'}</span>`
+            style="color:#334155;cursor:pointer;flex-shrink:0;width:14px;text-align:center;user-select:none">${expanded ? '▼' : '▸'}</span>`
     : `<span style="flex-shrink:0;width:14px"></span>`;
 
   const pathEncForClick = encodeURIComponent(JSON.stringify({ ancestors, levels: BN_AP_LEVELS.slice(0, ancestors.length), name: node.name }));
@@ -2279,7 +2311,7 @@ function bn_apRenderNode(node, depth, records, ancestors, rows) {
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${node.count}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px">${bn_fmt$(node.total)}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?'#1d4ed8':'#9ca3af'}">${budCycle || '—'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?'#334155':'#9ca3af'}">${budCycle || '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;min-width:140px">
         ${bud > 0 ? `
           <div style="display:flex;align-items:center;gap:6px">
@@ -2326,6 +2358,10 @@ function bn_apOpenRecordsModal(pathEnc) {
 
   // Encabezados de la tabla
   const cols = [
+    { label: 'Cuenta',        w: 110 },
+    { label: 'Subcuenta',     w: 140 },
+    { label: 'Categoría',     w: 130 },
+    { label: 'Concepto',      w: 130 },
     { label: 'Descripción',   w: 240 },
     { label: 'Día',           w: 90  },
     { label: 'Cuenta bancaria', w: 150 },
@@ -2358,7 +2394,12 @@ function bn_apOpenRecordsModal(pathEnc) {
     const reem = r._reembolso || '';
     const mp   = r._metodo_pago || '';
     const duda = r._duda === 'Sí' ? '<span title="Marcado: Duda" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#fef3c7;color:#b45309;font-weight:900;line-height:22px;text-align:center">?</span>' : '';
+    const cu = r._cuenta || '', su = r._subcuenta || '', ca = r._categoria_gasto || '', co = r._concepto || '';
     return `<tr>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#475569;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cu)}">${esc(cu)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(su)}">${esc(su)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#475569;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(ca)}">${esc(ca)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#475569;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(co)}">${esc(co)}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(desc)}">${esc(desc)}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b">${esc(dia)}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b">${esc(cta)}</td>
@@ -2433,6 +2474,33 @@ function bn_renderAP() {
   for (const node of top) {
     bn_apRenderNode(node, 0, records, [node.name], rows);
   }
+  // Total global: suma de presupuesto único por (cat, con) entre todos los registros
+  const seen = new Set();
+  let budTotal = 0;
+  const cyclesSeen = new Set();
+  for (const r of records) {
+    const cat = bn_norm(r.CATEGORIA || r._categoria_gasto || '');
+    const con = bn_norm(r.CONCEPTO  || r._concepto || '');
+    const k = cat + '||' + con;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const budRow = (BN_BUDGET || []).find(b =>
+      bn_norm(b.CATEGORIA || '') === cat && bn_norm(b.CONCEPTO || '') === con);
+    if (budRow) {
+      const { value, cycle } = bn_apBudgetForRow(budRow);
+      budTotal += value;
+      if (cycle) cyclesSeen.add(cycle);
+    }
+  }
+  const totalCycleLabel = cyclesSeen.size === 1 ? [...cyclesSeen][0] : (cyclesSeen.size > 1 ? 'Mixto' : '');
+  const totalAv = budTotal > 0 ? tree.total / budTotal : NaN;
+  const totalColor = !isFinite(totalAv) ? '#9ca3af' : totalAv > 1.10 ? '#dc2626' : totalAv > 1.0 ? '#f59e0b' : '#16a34a';
+  const totalSem = !isFinite(totalAv) ? '—' : totalAv > 1.10 ? '🔴' : totalAv > 1.0 ? '🟡' : '🟢';
+  const totalPctTxt = isFinite(totalAv) ? (totalAv*100).toFixed(1) + '%' : '—';
+  const totalFillW = isFinite(totalAv) ? Math.min(totalAv, 2) / 2 * 100 : 0;
+
+  // Exponer para que el KPI 'Avance presupuesto' use los mismos números
+  BN_AP_TOTALS = { real: tree.total, bud: budTotal, av: totalAv, cycle: totalCycleLabel };
 
   wrap.innerHTML = `
     <table style="width:100%;border-collapse:collapse;background:var(--surface,#fff);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);font-size:12px">
@@ -2453,7 +2521,19 @@ function bn_renderAP() {
           <td style="padding:10px">TOTAL GLOBAL</td>
           <td style="padding:10px;text-align:right">${tree.count}</td>
           <td style="padding:10px;text-align:right">${bn_fmt$(tree.total)}</td>
-          <td colspan="4"></td>
+          <td style="padding:10px;text-align:right">${budTotal > 0 ? bn_fmt$(budTotal) : '—'}</td>
+          <td style="padding:10px;text-align:center;font-size:11px;color:${totalCycleLabel?'#bfdbfe':'#cbd5e1'}">${totalCycleLabel || '—'}</td>
+          <td style="padding:10px">
+            ${budTotal > 0 ? `
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="position:relative;flex:1;height:7px;background:rgba(255,255,255,.15);border-radius:4px;overflow:hidden">
+                  <div style="height:100%;width:${totalFillW.toFixed(1)}%;background:${totalColor}"></div>
+                  <div style="position:absolute;top:-1px;bottom:-1px;left:50%;width:1.5px;background:#fff"></div>
+                </div>
+                <span style="font-size:11px;font-weight:700;color:${totalColor};min-width:50px;text-align:right">${totalPctTxt}</span>
+              </div>` : '—'}
+          </td>
+          <td style="padding:10px;text-align:center;font-size:14px">${totalSem}</td>
         </tr>
       </tfoot>
     </table>`;
@@ -2476,7 +2556,7 @@ function bn_renderReviewPanel() {
 
   panel.classList.remove('hidden');
   panel.innerHTML = `
-    <div style="background:#fffbeb;border:1.5px solid #cbd5e1;border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+    <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(15,23,42,.05)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px">
         <div>
           <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Estado de validación</div>
@@ -2491,7 +2571,7 @@ function bn_renderReviewPanel() {
       <!-- Barra stacked -->
       <div style="display:flex;height:14px;border-radius:999px;overflow:hidden;background:#e5e7eb;margin-bottom:14px">
         <div title="Validados: ${rev}" style="width:${pctRev.toFixed(2)}%;background:linear-gradient(90deg,#16a34a,#86efac);transition:width .3s"></div>
-        <div title="Pendientes: ${noRev}" style="width:${pctNoRev.toFixed(2)}%;background:linear-gradient(90deg,#bfdbfe,#1e40af);transition:width .3s"></div>
+        <div title="Pendientes: ${noRev}" style="width:${pctNoRev.toFixed(2)}%;background:linear-gradient(90deg,#cbd5e1,#334155);transition:width .3s"></div>
       </div>
 
       <!-- Tarjetas REVISADOS / PENDIENTES -->
@@ -2503,9 +2583,9 @@ function bn_renderReviewPanel() {
           </div>
           <div style="font-size:20px;font-weight:800;color:#111827">${rev} (${pctRev.toFixed(0)}%)</div>
         </div>
-        <div style="background:#fff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 14px">
+        <div style="background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;padding:12px 14px">
           <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;margin-bottom:4px">
-            <span style="width:10px;height:10px;border-radius:50%;background:#1e40af;display:inline-block"></span>
+            <span style="width:10px;height:10px;border-radius:50%;background:#334155;display:inline-block"></span>
             Pendientes
           </div>
           <div style="font-size:20px;font-weight:800;color:#111827">${noRev} (${pctNoRev.toFixed(0)}%)</div>
@@ -2678,7 +2758,7 @@ function bn_mselFillOptions(field, options, labelFn) {
     <div style="padding:8px;border-bottom:1px solid #e5e7eb;background:#f9fafb;border-radius:6px 6px 0 0">
       <div style="display:flex;gap:6px;margin-bottom:${isNumeric ? '0' : '6px'}">
         <button type="button" onclick="bn_mselSelectAll('${field}')"
-                style="flex:1;padding:6px 10px;border:none;background:#1e40af;color:#fff;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
+                style="flex:1;padding:6px 10px;border:none;background:#334155;color:#fff;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
           ✓ Todos
         </button>
         <button type="button" onclick="bn_mselClear('${field}')"
@@ -2698,10 +2778,10 @@ function bn_mselFillOptions(field, options, labelFn) {
     return `<div onclick="bn_mselToggleOpt('${field}', this)"
                  data-value="${esc(opt)}"
                  data-selected="${isSel}"
-                 style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;font-size:13px;color:${isSel?'#1e40af':'#374151'};background:${isSel?'#eff6ff':'transparent'};font-weight:${isSel?'600':'400'};border-bottom:1px solid #f3f4f6"
+                 style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;font-size:13px;color:${isSel?'#334155':'#374151'};background:${isSel?'#f1f5f9':'transparent'};font-weight:${isSel?'600':'400'};border-bottom:1px solid #f3f4f6"
                  onmouseover="if(this.dataset.selected!=='true')this.style.background='#f3f4f6'"
                  onmouseout="if(this.dataset.selected!=='true')this.style.background='transparent'">
-              <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;border:1.5px solid ${isSel?'#1e40af':'#d1d5db'};background:${isSel?'#1e40af':'#fff'};color:#fff;font-size:12px;font-weight:900;line-height:1;flex-shrink:0">${isSel?'✓':''}</span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;border:1.5px solid ${isSel?'#334155':'#d1d5db'};background:${isSel?'#334155':'#fff'};color:#fff;font-size:12px;font-weight:900;line-height:1;flex-shrink:0">${isSel?'✓':''}</span>
               <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(lbl)}</span>
             </div>`;
   }).join('');
@@ -2742,13 +2822,13 @@ function bn_mselToggleOpt(field, rowEl) {
   else            bn_st[field].splice(i, 1);
   // Actualizar visual de la fila
   rowEl.dataset.selected = willSelect ? 'true' : 'false';
-  rowEl.style.background = willSelect ? '#eff6ff' : 'transparent';
-  rowEl.style.color      = willSelect ? '#1e40af' : '#374151';
+  rowEl.style.background = willSelect ? '#f1f5f9' : 'transparent';
+  rowEl.style.color      = willSelect ? '#334155' : '#374151';
   rowEl.style.fontWeight = willSelect ? '600' : '400';
   const check = rowEl.firstElementChild;
   if (check) {
-    check.style.borderColor = willSelect ? '#1e40af' : '#d1d5db';
-    check.style.background  = willSelect ? '#1e40af' : '#fff';
+    check.style.borderColor = willSelect ? '#334155' : '#d1d5db';
+    check.style.background  = willSelect ? '#334155' : '#fff';
     check.textContent       = willSelect ? '✓' : '';
   }
   bn_mselUpdateTrigger(field);
@@ -2768,7 +2848,7 @@ function bn_mselUpdateTrigger(field) {
   if (sel.length === 0)      lblEl.textContent = 'Todos';
   else if (sel.length === 1) lblEl.textContent = map[sel[0]] || sel[0];
   else                       lblEl.textContent = `${sel.length} seleccionados`;
-  lblEl.style.color = sel.length ? '#1e40af' : '';
+  lblEl.style.color = sel.length ? '#334155' : '';
   lblEl.style.fontWeight = sel.length ? '700' : '';
 }
 
@@ -2822,13 +2902,13 @@ function bn_mselSelectAll(field) {
   if (field === 'ind_mes')  BN_IND_STATE.mes  = bn_st[field];
   panel.querySelectorAll('[data-value]').forEach(el => {
     el.dataset.selected = 'true';
-    el.style.background = '#eff6ff';
-    el.style.color      = '#1e40af';
+    el.style.background = '#f1f5f9';
+    el.style.color      = '#334155';
     el.style.fontWeight = '600';
     const check = el.firstElementChild;
     if (check) {
-      check.style.borderColor = '#1e40af';
-      check.style.background  = '#1e40af';
+      check.style.borderColor = '#334155';
+      check.style.background  = '#334155';
       check.textContent       = '✓';
     }
   });
@@ -3067,9 +3147,9 @@ function bn_setCat(cat) {
     const btn = document.getElementById('bn-cat-' + k);
     if (!btn) return;
     const active = (k === cat);
-    btn.style.background    = active ? '#1e40af' : '#fff';
+    btn.style.background    = active ? '#334155' : '#fff';
     btn.style.color         = active ? '#fff'    : '#374151';
-    btn.style.borderColor   = active ? '#1e40af' : '#e5e7eb';
+    btn.style.borderColor   = active ? '#334155' : '#e5e7eb';
   });
   // Renderizar chips de sub-opciones
   const row = document.getElementById('bn-subcat-row');
@@ -3101,9 +3181,9 @@ function bn_setTipo(t) {
     const active = (x === t);
     el.classList.toggle('active', active);
     if (el.classList.contains('bn-sub-chip')) {
-      el.style.background  = active ? '#1e40af' : '#fff';
+      el.style.background  = active ? '#334155' : '#fff';
       el.style.color       = active ? '#fff'    : '#374151';
-      el.style.borderColor = active ? '#1e40af' : '#e5e7eb';
+      el.style.borderColor = active ? '#334155' : '#e5e7eb';
     }
   });
   // Sincronizar resaltado del botón de CATEGORÍA padre
@@ -3113,9 +3193,9 @@ function bn_setTipo(t) {
       const btn = document.getElementById('bn-cat-' + k);
       if (!btn) return;
       const a = (k === parent);
-      btn.style.background  = a ? '#1e40af' : '#fff';
+      btn.style.background  = a ? '#334155' : '#fff';
       btn.style.color       = a ? '#fff'    : '#374151';
-      btn.style.borderColor = a ? '#1e40af' : '#e5e7eb';
+      btn.style.borderColor = a ? '#334155' : '#e5e7eb';
     });
   }
 
@@ -3163,18 +3243,45 @@ function bn_render() {
   bn_txt('bn-k-egr-sub',        kpiE.length+' movimientos');
   bn_txt('bn-k-ing-real',       bn_fmt$(realI));
   bn_txt('bn-k-ing-sub',        kpiI.length+' movimientos');
-  bn_txt('bn-k-avance-egr',     isFinite(sE.avM)?bn_fmtPct(sE.avM):'—');
-  bn_txt('bn-k-avance-egr-sub', 'Real '+bn_fmt$(sE.realM)+' / '+bn_fmt$(sE.budM));
+
+  // KPI 'Avance presupuesto' — recalcular totales agregados (real, presupuesto)
+  // con la misma lógica que la tabla Análisis por partida, para mantener
+  // consistencia entre la fila TOTAL GLOBAL y el KPI.
+  try { bn_apComputeTotalsOnly(); } catch(_) {}
+  const apReal = BN_AP_TOTALS.real;
+  const apBud  = BN_AP_TOTALS.bud;
+  const apAv   = BN_AP_TOTALS.av;
+  const avColor = !isFinite(apAv) ? '#9ca3af' : apAv > 1.10 ? '#dc2626' : apAv > 1.0 ? '#f59e0b' : '#16a34a';
+  const avSem   = !isFinite(apAv) ? '' : apAv > 1.10 ? '🔴' : apAv > 1.0 ? '🟡' : '🟢';
+  const avFill  = isFinite(apAv) ? Math.min(apAv, 2) / 2 * 100 : 0;
+  bn_txt('bn-k-avance-egr',     bn_fmt$(apReal));
+  bn_txt('bn-k-avance-egr-sub', 'Real '+bn_fmt$(apReal)+' / '+bn_fmt$(apBud) + (avSem ? '  ' + avSem : ''));
+  const avBarEl = document.getElementById('bn-k-avance-bar');
+  if (avBarEl) {
+    if (apBud > 0) {
+      const pctTxt = isFinite(apAv) ? bn_fmtPct(apAv) : '—';
+      avBarEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="position:relative;flex:1;height:7px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${avFill.toFixed(1)}%;background:${avColor};transition:width .3s"></div>
+            <div style="position:absolute;top:-1px;bottom:-1px;left:50%;width:1.5px;background:#1f2937"></div>
+          </div>
+          <span style="font-size:11px;font-weight:700;color:${avColor};min-width:46px;text-align:right">${pctTxt}</span>
+        </div>`;
+    } else {
+      avBarEl.innerHTML = '';
+    }
+  }
   const util=realI-realE;
   bn_txt('bn-k-utilidad',       bn_fmt$(util));
   const marg=realI>0?(util/realI):NaN;
   bn_txt('bn-k-utilidad-sub',   isFinite(marg)?'Margen '+bn_fmtPct(marg):'Sin ingresos');
 
-  // Color KPI
+  // Color KPI Avance
   const kAv=document.getElementById('bn-k-avance-egr');
-  if(kAv){ kAv.className='bn-kpi-value'; if(isFinite(sE.avM)){
-    if(sE.avM>1.10) kAv.classList.add('bn-val-bad');
-    else if(sE.avM>1.0) kAv.classList.add('bn-val-warn');
+  if(kAv){ kAv.className='bn-kpi-value'; if(isFinite(apAv)){
+    if(apAv>1.10) kAv.classList.add('bn-val-bad');
+    else if(apAv>1.0) kAv.classList.add('bn-val-warn');
     else kAv.classList.add('bn-val-good');
   }}
   const kU=document.getElementById('bn-k-utilidad');
@@ -3769,11 +3876,11 @@ function bn_createCard(rec, idx) {
     </div>` : '';
 
   return `
-    <div class="ticket-card" id="bn-card-${idx}" style="position:relative;margin-bottom:6px${(BN_SEL_MODE && rec.rowNum && BN_SEL.has(rec.rowNum)) ? ';box-shadow:0 0 0 3px #1e40af,0 4px 12px rgba(234,88,12,.25);border-radius:12px' : ''}">
+    <div class="ticket-card" id="bn-card-${idx}" style="position:relative;margin-bottom:6px${(BN_SEL_MODE && rec.rowNum && BN_SEL.has(rec.rowNum)) ? ';box-shadow:0 0 0 3px #334155,0 4px 12px rgba(234,88,12,.25);border-radius:12px' : ''}">
       ${BN_SEL_MODE ? `
       <!-- Checkbox de selección múltiple en esquina superior izquierda -->
       <label onclick="event.stopPropagation()"
-             style="position:absolute;top:8px;left:8px;z-index:4;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:1.5px solid ${BN_SEL.has(rec.rowNum)?'#1e40af':'#cbd5e1'};background:${BN_SEL.has(rec.rowNum)?'#1e40af':'#fff'};color:#fff;cursor:pointer;font-size:14px;font-weight:900;line-height:1">
+             style="position:absolute;top:8px;left:8px;z-index:4;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:1.5px solid ${BN_SEL.has(rec.rowNum)?'#334155':'#cbd5e1'};background:${BN_SEL.has(rec.rowNum)?'#334155':'#fff'};color:#fff;cursor:pointer;font-size:14px;font-weight:900;line-height:1">
         <input type="checkbox" ${BN_SEL.has(rec.rowNum)?'checked':''}
                onchange="bn_selToggle(${rec.rowNum||0}, this.checked); bn_renderCards()"
                style="display:none">
@@ -3784,7 +3891,7 @@ function bn_createCard(rec, idx) {
               onclick="event.stopPropagation();bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               data-checked="${isDuda}"
               title="${isDuda ? 'Marcado: Duda' : 'Duda'}"
-              style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#f59e0b' : '#e5e7eb'};background:${isDuda ? '#e0e7ff' : '#f9fafb'};color:${isDuda ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
+              style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#f59e0b' : '#e5e7eb'};background:${isDuda ? '#e2e8f0' : '#f9fafb'};color:${isDuda ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
       <!-- Botón Validado (✓) debajo del Duda. Activo → registro sale de 'Por clasificar' -->
       <button id="bn-revisado-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
@@ -3874,7 +3981,7 @@ function bn_toggleBnClassify(idx) {
       <button id="validado-panel-${ci}" type="button" data-checked="${valOn}"
               onclick="bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               title="${valOn ? 'Marcado: Duda' : 'Duda'}"
-              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#e0e7ff' : '#f9fafb'};color:${valOn ? '#b45309' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">?</button>
+              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#e2e8f0' : '#f9fafb'};color:${valOn ? '#b45309' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">?</button>
       <span style="font-size:12px;color:#6b7280">Marca este registro si tienes <b>dudas</b> y quieres revisarlo después</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -4373,7 +4480,7 @@ function bn_toggleSelMode() {
   const cnt  = document.getElementById('bn-sel-count');
   const bar  = document.getElementById('bn-bulk-bar');
   if (BN_SEL_MODE) {
-    btn.style.background = '#1e40af'; btn.style.color = '#fff'; btn.style.borderColor = '#1e40af';
+    btn.style.background = '#334155'; btn.style.color = '#fff'; btn.style.borderColor = '#334155';
     btn.innerHTML = '☑️ Seleccionando…';
     btnA?.classList.remove('hidden'); btnC?.classList.remove('hidden'); cnt?.classList.remove('hidden');
   } else {
@@ -4508,7 +4615,7 @@ function bn_bulkShowChoice(opts) {
   const itemsHtml = opts.items.map(it => `
     <button onclick="bn_bulkChoicePick(${JSON.stringify(it.value).replace(/"/g,'&quot;')})"
             style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border:1.5px solid #e5e7eb;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;color:#374151;transition:all .15s"
-            onmouseover="this.style.borderColor='#1e40af';this.style.background='#eff6ff'"
+            onmouseover="this.style.borderColor='#334155';this.style.background='#f1f5f9'"
             onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
       ${it.icon ? `<span style="font-size:24px;line-height:1">${it.icon}</span>` : ''}
       <span style="text-align:center">${esc(it.label)}</span>
@@ -4517,7 +4624,7 @@ function bn_bulkShowChoice(opts) {
     <div style="background:#fff;border-radius:14px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;padding:20px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.4)" onclick="event.stopPropagation()">
       <button onclick="bn_bulkChoiceClose()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border:none;background:#f3f4f6;border-radius:50%;font-size:18px;cursor:pointer;color:#374151">✕</button>
       <h3 style="margin:0 0 6px;font-size:16px">${esc(opts.title)}</h3>
-      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#1e40af">${BN_SEL.size}</b> registros seleccionados</p>
+      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#334155">${BN_SEL.size}</b> registros seleccionados</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">${itemsHtml}</div>
     </div>`;
   // Guardar callback en el overlay
@@ -4552,12 +4659,12 @@ function bn_bulkShowDate(title, onPick) {
     <div style="background:#fff;border-radius:14px;width:100%;max-width:380px;padding:20px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.4)" onclick="event.stopPropagation()">
       <button onclick="document.getElementById('bn-bulk-date-overlay').remove()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border:none;background:#f3f4f6;border-radius:50%;font-size:18px;cursor:pointer;color:#374151">✕</button>
       <h3 style="margin:0 0 6px;font-size:16px">${esc(title)}</h3>
-      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#1e40af">${BN_SEL.size}</b> registros</p>
+      <p style="margin:0 0 14px;font-size:12px;color:#6b7280">Aplicar a <b style="color:#334155">${BN_SEL.size}</b> registros</p>
       <input type="date" id="bn-bulk-date-input" value="${iso}"
              style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:14px">
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button onclick="document.getElementById('bn-bulk-date-overlay').remove()" style="padding:8px 14px;border:1.5px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">Cancelar</button>
-        <button onclick="bn_bulkDatePick()" style="padding:8px 14px;border:none;background:#1e40af;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">Aplicar</button>
+        <button onclick="bn_bulkDatePick()" style="padding:8px 14px;border:none;background:#334155;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">Aplicar</button>
       </div>
     </div>`;
   overlay._onPick = onPick;
@@ -4656,7 +4763,7 @@ function bn_bulkClasificar() {
   ).replace('class="classify-panel hidden"', 'class="classify-panel"');
 
   document.getElementById('bn-classify-modal-resumen').innerHTML =
-    `<div style="padding:14px;background:#e0e7ff;border:1px solid #f59e0b;border-radius:10px;margin-bottom:8px">
+    `<div style="padding:14px;background:#e2e8f0;border:1px solid #f59e0b;border-radius:10px;margin-bottom:8px">
        <div style="font-weight:700;color:#b45309;font-size:14px;margin-bottom:4px">🏷️ Clasificación masiva</div>
        <div style="font-size:12px;color:#92400e">Se aplicará la clasificación que selecciones a <b>${BN_SEL.size}</b> registros marcados. La tabla de Resumen individual se omite por ser múltiples.</div>
      </div>`;
@@ -4794,9 +4901,9 @@ function bn_renderCards() {
         const label = iso ? bn_dateHeaderLabel(iso) : 'Sin fecha';
         parts.push(
           `<div style="margin:14px 0 8px;display:flex;align-items:center;gap:10px">
-             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1e40af;flex-shrink:0"></span>
-             <span style="font-weight:800;font-size:13px;color:#1e40af;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</span>
-             <span style="flex:1;height:1px;background:linear-gradient(90deg,#bfdbfe,transparent)"></span>
+             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#334155;flex-shrink:0"></span>
+             <span style="font-weight:800;font-size:13px;color:#334155;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</span>
+             <span style="flex:1;height:1px;background:linear-gradient(90deg,#cbd5e1,transparent)"></span>
            </div>`
         );
         lastKey = key;
@@ -5059,7 +5166,7 @@ async function bn_syncDuda(idx, checked) {
   if (btn) {
     btn.dataset.checked   = checked ? 'true' : 'false';
     btn.style.borderColor = checked ? '#f59e0b' : '#e5e7eb';
-    btn.style.background  = checked ? '#e0e7ff' : '#f9fafb';
+    btn.style.background  = checked ? '#e2e8f0' : '#f9fafb';
     btn.style.color       = checked ? '#b45309' : '#d1d5db';
     btn.title             = checked ? 'Marcado: Duda' : 'Duda';
     btn.textContent       = '?';
@@ -5069,7 +5176,7 @@ async function bn_syncDuda(idx, checked) {
   if (panelBtn) {
     panelBtn.dataset.checked   = checked ? 'true' : 'false';
     panelBtn.style.borderColor = checked ? '#f59e0b' : '#e5e7eb';
-    panelBtn.style.background  = checked ? '#e0e7ff' : '#f9fafb';
+    panelBtn.style.background  = checked ? '#e2e8f0' : '#f9fafb';
     panelBtn.style.color       = checked ? '#b45309' : '#d1d5db';
     panelBtn.title             = checked ? 'Marcado: Duda' : 'Duda';
     panelBtn.textContent       = '?';

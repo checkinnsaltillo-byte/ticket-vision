@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
-  <title>Ticket Vision | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=54">
+  <title>Sistema Financiero | Check Inn Saltillo</title>
+  <link rel="stylesheet" href="styles.css?v=55">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -67,9 +67,9 @@
       border-color: #334155 !important;
     }
     body.dark .bn-cat-btn.active, body.dark .bn-sub-chip.active {
-      background: #1e40af !important;
+      background: #334155 !important;
       color: #fff !important;
-      border-color: #1e40af !important;
+      border-color: #334155 !important;
     }
     body.dark .app-header { background: #1e293b !important; border-color: #334155 !important; }
     body.dark #btn-dark-mode { color: #94a3b8; }
@@ -84,9 +84,10 @@
   <div id="loginOverlay" class="login-overlay">
     <div class="login-card">
       <div class="login-logo">
-        <div class="logo-icon" style="width:52px;height:52px;font-size:20px">TV</div>
+        <img src="https://drive.google.com/thumbnail?id=1We0TuuoTb0fDa5xLVMzDqzMZZWwgkb0v&sz=w300"
+             alt="Logo" style="width:64px;height:64px;object-fit:contain;border-radius:12px;background:#fff;padding:4px;box-shadow:0 4px 12px rgba(15,23,42,.12)">
       </div>
-      <h2 class="login-title">Ticket Vision</h2>
+      <h2 class="login-title">Sistema Financiero</h2>
       <p class="login-subtitle">Check Inn Saltillo</p>
       <div class="login-field">
         <input type="password" id="loginPassword" class="login-input"
@@ -127,6 +128,10 @@
           🎫 Tickets
         </li>
         <li class="nav-sub-item"
+            onclick="switchModule('tickets');switchSection('capturados');closeNavMenu()">
+          📋 &nbsp;Tickets capturados
+        </li>
+        <li class="nav-sub-item"
             onclick="switchModule('tickets');switchSection('captura');closeNavMenu()">
           📸 &nbsp;Captura de tickets
         </li>
@@ -140,9 +145,10 @@
           <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
         </button>
         <div class="header-logo">
-          <div class="logo-icon">TV</div>
+          <img class="logo-icon" src="https://drive.google.com/thumbnail?id=1We0TuuoTb0fDa5xLVMzDqzMZZWwgkb0v&sz=w200"
+               alt="Logo" style="object-fit:contain;background:#fff;padding:3px">
           <div class="logo-text">
-            <h1>Ticket Vision</h1>
+            <h1>Sistema Financiero</h1>
             <span>Check Inn Saltillo</span>
           </div>
         </div>
@@ -426,6 +432,7 @@
         <div class="bn-kpi-card">
           <div class="bn-kpi-label">Avance presupuesto</div>
           <div class="bn-kpi-value" id="bn-k-avance-egr">—</div>
+          <div id="bn-k-avance-bar" style="margin:4px 0 2px"></div>
           <div class="bn-kpi-sub" id="bn-k-avance-egr-sub">—</div>
         </div>
         <div class="bn-kpi-card">
@@ -435,7 +442,7 @@
         </div>
         <!-- KPI Indicadores: actúa como atajo a la vista de análisis -->
         <div class="bn-kpi-card" id="bn-tab-F" onclick="bn_setTipo('F')"
-             style="cursor:pointer;background:linear-gradient(135deg,#475569,#1e40af);color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;transition:transform .15s"
+             style="cursor:pointer;background:linear-gradient(135deg,#475569,#334155);color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;transition:transform .15s"
              onmouseover="this.style.transform='translateY(-2px)'"
              onmouseout="this.style.transform=''"
              title="Ver indicadores y gráficas">
@@ -508,7 +515,7 @@
                 style="padding:7px 12px;border:1.5px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
           Limpiar selección
         </button>
-        <span id="bn-sel-count" class="hidden" style="font-size:12px;color:#1e40af;font-weight:700"></span>
+        <span id="bn-sel-count" class="hidden" style="font-size:12px;color:#334155;font-weight:700"></span>
       </div>
 
       <!-- Cards view (Egresos / Ingresos) -->
@@ -518,13 +525,13 @@
       <!-- Menú vertical de acciones masivas (margen izquierdo). Mini-modales abren a la derecha -->
       <div id="bn-bulk-bar" class="hidden"
            style="position:fixed;top:50%;left:14px;transform:translateY(-50%);background:#fffbeb;border:1.5px solid #cbd5e1;color:#374151;border-radius:14px;box-shadow:0 8px 22px rgba(234,88,12,.15);padding:8px;display:flex;flex-direction:column;gap:6px;z-index:9000;min-width:54px">
-        <div id="bn-bulk-count" style="font-weight:800;color:#1e40af;font-size:11px;text-align:center;padding:6px 4px;border-bottom:1.5px solid #cbd5e1;margin-bottom:4px"></div>
-        <button onclick="bn_bulkClasificar()"      title="Clasificar"      style="padding:8px;border:none;background:#1e40af;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">🏷️</button>
+        <div id="bn-bulk-count" style="font-weight:800;color:#334155;font-size:11px;text-align:center;padding:6px 4px;border-bottom:1.5px solid #cbd5e1;margin-bottom:4px"></div>
+        <button onclick="bn_bulkClasificar()"      title="Clasificar"      style="padding:8px;border:none;background:#334155;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">🏷️</button>
         <button onclick="bn_bulkToggleDuda()"      title="Marcar Duda"     style="padding:8px;border:none;background:#f59e0b;color:#fff;border-radius:8px;font-weight:800;font-size:18px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">?</button>
         <button onclick="bn_bulkToggleValidar()"   title="Marcar Validado" style="padding:8px;border:none;background:#16a34a;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">✓</button>
         <button onclick="bn_bulkToggleDeducible()" title="Deducible"       style="padding:8px;border:none;background:#0e7490;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">💰</button>
         <button onclick="bn_bulkPromptMetodo()"    title="Método de pago"  style="padding:8px;border:none;background:#7c3aed;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">💳</button>
-        <button onclick="bn_bulkPromptEncargado()" title="Encargado"       style="padding:8px;border:none;background:#1d4ed8;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">👤</button>
+        <button onclick="bn_bulkPromptEncargado()" title="Encargado"       style="padding:8px;border:none;background:#334155;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">👤</button>
         <button onclick="bn_bulkPromptFecha()"     title="Fecha"           style="padding:8px;border:none;background:#374151;color:#fff;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center">📅</button>
         <button onclick="bn_toggleSelMode()"       title="Salir"           style="padding:8px;border:1.5px solid #d1d5db;background:#fff;color:#6b7280;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;margin-top:4px">✕</button>
       </div>
@@ -762,6 +769,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=90"></script>
+  <script src="app.js?v=91"></script>
 </body>
 </html>
