@@ -2326,33 +2326,81 @@ function bn_chatPush(role, text) {
 /** Construye un contexto compacto con los datos disponibles para que el
  *  modelo responda con precisión. */
 function bn_chatBuildContext() {
-  // Records con campos esenciales — ORDENA por Día desc y toma los más recientes.
-  // (BN_RAW viene en orden del Sheet, no cronológico; antes slice(-600) podía
-  // dejar fuera meses recientes si estaban en medio del array)
-  const sorted = [...(BN_RAW || [])].sort((a, b) => {
-    const da = bn_formatDiaISO(a.Día || a.Dia || '') || '';
-    const db = bn_formatDiaISO(b.Día || b.Dia || '') || '';
-    return db.localeCompare(da);
+  // Construye AGREGADOS sobre TODO BN_RAW (sin slice). El bot no recibe
+  // registros individuales — recibe sumatorias precomputadas que cubren
+  // el 100% de los datos.
+  const all = BN_RAW || [];
+  const fechas = [];
+  // map: clave → { ing, egr, n_ing, n_egr }
+  const acc = (map, key, monto, tipo) => {
+    if (!map[key]) map[key] = { ing: 0, egr: 0, n_ing: 0, n_egr: 0 };
+    const e = map[key];
+    if (tipo === 'I') { e.ing += monto; e.n_ing++; }
+    else if (tipo === 'E') { e.egr += monto; e.n_egr++; }
+  };
+  const porMes = {};                 // YYYY-MM
+  const porCuentaMes = {};           // 'Cuenta||YYYY-MM'
+  const porSubMes = {};              // 'Cuenta||Sub||YYYY-MM'
+  const porCatMes = {};              // 'Cuenta||Sub||Cat||YYYY-MM'
+  const porConMes = {};              // 'Cuenta||Sub||Cat||Con||YYYY-MM'
+  const porCtaBan = {};              // 'CuentaBancaria||YYYY-MM'
+  const porMP    = {};               // 'MetodoPago||YYYY-MM'
+  const porEnc   = {};               // 'Encargado||YYYY-MM'
+  const porProp  = {};               // 'Propiedad||YYYY-MM'
+
+  for (const r of all) {
+    const iso = bn_formatDiaISO(r.Día || r.Dia || '');
+    const m = iso.match(/^(\d{4})-(\d{2})/);
+    if (!m) continue;
+    const ym = m[1] + '-' + m[2];
+    fechas.push(iso);
+    const monto = Math.abs(Number(r.Monto) || 0);
+    const tipoCanon = bn_canon(r._tipo || r._cuenta || '');
+    let tipo = '';
+    if (tipoCanon.includes('ing')) tipo = 'I';
+    else if (tipoCanon.includes('egr')) tipo = 'E';
+    else continue; // Activos/Pasivos/Capital no entran en Ingresos/Egresos
+    const cuenta = r._cuenta || '';
+    const sub    = r._subcuenta || '';
+    const cat    = r._categoria_gasto || '';
+    const con    = r._concepto || '';
+    const ctaBan = r['Cuenta bancaria'] || '(sin cuenta)';
+    const mp     = r._metodo_pago || '(sin método)';
+    const enc    = r._encargado || '(sin encargado)';
+    const prop   = r._propiedad || '(sin propiedad)';
+
+    acc(porMes, ym, monto, tipo);
+    if (cuenta) acc(porCuentaMes, `${cuenta}||${ym}`, monto, tipo);
+    if (cuenta && sub) acc(porSubMes, `${cuenta}||${sub}||${ym}`, monto, tipo);
+    if (cuenta && sub && cat) acc(porCatMes, `${cuenta}||${sub}||${cat}||${ym}`, monto, tipo);
+    if (cuenta && sub && cat && con) acc(porConMes, `${cuenta}||${sub}||${cat}||${con}||${ym}`, monto, tipo);
+    acc(porCtaBan, `${ctaBan}||${ym}`, monto, tipo);
+    acc(porMP, `${mp}||${ym}`, monto, tipo);
+    acc(porEnc, `${enc}||${ym}`, monto, tipo);
+    acc(porProp, `${prop}||${ym}`, monto, tipo);
+  }
+
+  // Convierte mapas a arrays compactos
+  const round2 = n => Math.round(n*100)/100;
+  const toArr = (map, keys) => Object.entries(map).map(([k, v]) => {
+    const parts = k.split('||');
+    const row = {};
+    keys.forEach((kn, i) => row[kn] = parts[i]);
+    row.I = round2(v.ing); row.E = round2(v.egr);
+    row.U = round2(v.ing - v.egr);
+    row.nI = v.n_ing; row.nE = v.n_egr;
+    return row;
   });
-  const recs = sorted.slice(0, 1500).map(r => ({
-    Dia: bn_formatDiaISO(r.Día || r.Dia || '') || '',
-    Monto: Number(r.Monto) || 0,
-    Desc: (r.DESCRIPCION || '').slice(0, 80),
-    CtaBan: r['Cuenta bancaria'] || '',
-    Cuenta: r._cuenta || '',
-    Sub:    r._subcuenta || '',
-    Cat:    r._categoria_gasto || '',
-    Con:    r._concepto || '',
-    Ded:    r._deducible || '',
-    Reem:   r._reembolso || '',
-    MP:     r._metodo_pago || '',
-    Prop:   r._propiedad || '',
-    Dep:    r._departamento || '',
-    Enc:    r._encargado || '',
-    Val:    r._validado || '',
-    Duda:   r._duda || '',
-    Fact:   r.FacturaFlag || r.Factura || '',
-  }));
+
+  const resumenMes = toArr(porMes, ['Mes']).sort((a,b) => a.Mes.localeCompare(b.Mes));
+  const porCuenta_ = toArr(porCuentaMes, ['Cuenta','Mes']);
+  const porSub_    = toArr(porSubMes,    ['Cuenta','Sub','Mes']);
+  const porCat_    = toArr(porCatMes,    ['Cuenta','Sub','Cat','Mes']);
+  const porCon_    = toArr(porConMes,    ['Cuenta','Sub','Cat','Con','Mes']);
+  const porCtaBan_ = toArr(porCtaBan,    ['CtaBancaria','Mes']);
+  const porMP_     = toArr(porMP,        ['MetodoPago','Mes']);
+  const porEnc_    = toArr(porEnc,       ['Encargado','Mes']);
+  const porProp_   = toArr(porProp,      ['Propiedad','Mes']);
   const budget = (BN_BUDGET || []).slice(0, 200).map(b => ({
     Cuenta: b.CUENTA || '', Sub: b.SUBCUENTA || '', Cat: b.CATEGORIA || '',
     Con: b.CONCEPTO || '', Per: b.PERIODICIDAD || '', Nat: b.NATURALEZA || '',
@@ -2367,17 +2415,28 @@ function bn_chatBuildContext() {
       rfc: tk.rfc || '',
     };
   });
-  const fechas = recs.map(r => r.Dia).filter(d => /^\d{4}-\d{2}-\d{2}/.test(d)).sort();
+  fechas.sort();
   const rango = fechas.length
     ? { desde: fechas[0], hasta: fechas[fechas.length - 1] }
     : null;
   return {
-    fecha_hoy:   new Date().toISOString().slice(0,10),
-    total_registros: BN_RAW.length,
-    registros_enviados: recs.length,
+    fecha_hoy:    new Date().toISOString().slice(0,10),
+    total_registros: all.length,
     rango_fechas: rango,
     tickets_cargados: tickets.length,
-    registros: recs,
+    // Agregados — el bot debe responder usando ÚNICAMENTE estos arrays.
+    // Cada fila tiene: I (Ingresos), E (Egresos), U (Utilidad), nI/nE (conteos).
+    agregados: {
+      por_mes:               resumenMes,    // {Mes, I, E, U, nI, nE}
+      por_cuenta_mes:        porCuenta_,    // +Cuenta
+      por_subcuenta_mes:     porSub_,       // +Sub
+      por_categoria_mes:     porCat_,       // +Cat
+      por_concepto_mes:      porCon_,       // +Con
+      por_cuenta_bancaria:   porCtaBan_,    // {CtaBancaria, Mes, ...}
+      por_metodo_pago:       porMP_,        // {MetodoPago, Mes, ...}
+      por_encargado:         porEnc_,       // {Encargado, Mes, ...}
+      por_propiedad:         porProp_,      // {Propiedad, Mes, ...}
+    },
     presupuesto: budget,
     tickets,
   };
