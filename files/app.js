@@ -1058,14 +1058,22 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="cuenta-field">
         <label>Método de pago</label>
         <div class="cuenta-grid cuenta-grid--compact" id="metodo-grid-${idx}">
-          <div class="cuenta-card" data-value="Tarjeta crédito"    onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div></div>
-          <div class="cuenta-card" data-value="Tarjeta débito"     onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div></div>
-          <div class="cuenta-card" data-value="Efectivo"           onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div></div>
-          <div class="cuenta-card" data-value="Transferencia"      onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🔄</div><div class="cuenta-label">Transfer.</div></div>
-          <div class="cuenta-card" data-value="Retiro sin tarjeta" onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏧</div><div class="cuenta-label">Retiro s/tarjeta</div></div>
-          <div class="cuenta-card" data-value="Cheque"             onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📝</div><div class="cuenta-label">Cheque</div></div>
+          <div class="cuenta-card" data-value="BBVA ACR Empresarial"  onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">ACR Empresarial</div></div>
+          <div class="cuenta-card" data-value="BBVA ACR TC Platino"   onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">ACR TC Platino</div></div>
+          <div class="cuenta-card" data-value="BBVA ACL TC Platino"   onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">ACL TC Platino</div></div>
+          <div class="cuenta-card" data-value="BBVA ACL TC Azul"      onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">ACL TC Azul</div></div>
+          <div class="cuenta-card" data-value="BBVA ACL Libreton"     onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📖</div><div class="cuenta-label">ACL Libreton</div></div>
+          <div class="cuenta-card" data-value="BBVA JJLC Empresarial" onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">JJLC Empresarial</div></div>
+          <div class="cuenta-card" data-value="BBVA ACR Libreton"     onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📖</div><div class="cuenta-label">ACR Libreton</div></div>
+          <div class="cuenta-card" data-value="CCL"                   onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💵</div><div class="cuenta-label">CCL</div></div>
+          <div class="cuenta-card" data-value="Otro"                  onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">✏️</div><div class="cuenta-label">Otro</div></div>
         </div>
         <input type="hidden" id="metodo-clasif-${idx}" value="">
+        <div class="hidden" id="metodo-otro-wrap-${idx}" style="margin-top:8px">
+          <input type="text" id="metodo-otro-${idx}" class="field-select"
+                 placeholder="Especificar método..." style="appearance:none"
+                 oninput="bn_metodoOtroInput('${idx}', this); markClassifyDirty('${idx}')">
+        </div>
       </div>
 
       <div class="cuenta-field">
@@ -2663,10 +2671,18 @@ function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, paren
   const hasChildren = node.children.size > 0;
   const expanded = hasChildren && bn_apIsExpanded(path, depth);
 
-  // % según modo (Absoluto = vs root; Relativo = vs padre inmediato)
-  const denom = BN_AP_PCT_MODE === 'rel' ? parentTotal : rootTotal;
-  const pctVal = (denom && Math.abs(denom) > 0) ? (node.total / denom) : NaN;
-  const pctCol = isFinite(pctVal) ? (pctVal*100).toFixed(1) + '%' : '—';
+  // % Total: vs total de la cuenta raíz (jerárquicamente consistente)
+  const pctTotalVal = (rootTotal && Math.abs(rootTotal) > 0) ? (node.total / rootTotal) : NaN;
+  const pctTotalTxt = isFinite(pctTotalVal) ? (pctTotalVal*100).toFixed(1) + '%' : '—';
+  // % Relativo: respecto al padre inmediato
+  const pctRelVal = (parentTotal && Math.abs(parentTotal) > 0) ? (node.total / parentTotal) : NaN;
+  let pctRelTxt;
+  if (hasChildren && isFinite(pctRelVal)) {
+    // Niveles superiores muestran 100% (suma de hijos) + entre paréntesis su % vs el padre
+    pctRelTxt = `100% <span style="font-size:9px;color:#94a3b8;font-weight:500">(${(pctRelVal*100).toFixed(1)}% vs padre)</span>`;
+  } else {
+    pctRelTxt = isFinite(pctRelVal) ? (pctRelVal*100).toFixed(1) + '%' : '—';
+  }
 
   const { value: bud, cycle: budCycle } = bn_apComputeBudget(node, records, ancestors, BN_AP_LEVELS);
   const av = bud > 0 ? node.total / bud : NaN;
@@ -2694,7 +2710,8 @@ function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, paren
       </td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${node.count}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px">${bn_fmt$(node.total)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:${BN_AP_PCT_MODE==='rel'?'#ea580c':'#2563eb'}" title="${BN_AP_PCT_MODE==='rel'?'% vs nivel superior':'% vs total de la cuenta'}">${pctCol}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:#2563eb" title="% del total de la cuenta raíz">${pctTotalTxt}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:#ea580c;white-space:nowrap" title="% del nivel superior inmediato">${pctRelTxt}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?'#334155':'#9ca3af'}">${budCycle || '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;min-width:140px">
@@ -2883,11 +2900,13 @@ function bn_apFooterRow(name, count, real, bud, cycle, av, bg, sharePct) {
   const pct   = isFinite(av) ? (av*100).toFixed(1) + '%' : '—';
   const fillW = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
   const shareTxt = (sharePct == null) ? '100.0%' : (isFinite(sharePct) ? (sharePct*100).toFixed(1) + '%' : '—');
-  return `<tr style="background:${bg};color:#fff;font-weight:800">
+  return `<tr style="background:${bg};color:#fff;font-weight:800"
+    onmouseover="this.style.filter='brightness(1.25)'" onmouseout="this.style.filter=''">
     <td style="padding:10px">${esc(name)}</td>
     <td style="padding:10px;text-align:right">${count != null ? count : ''}</td>
     <td style="padding:10px;text-align:right">${bn_fmt$(real || 0)}</td>
     <td style="padding:10px;text-align:right;color:#e2e8f0">${shareTxt}</td>
+    <td style="padding:10px;text-align:right;color:#e2e8f0">100%</td>
     <td style="padding:10px;text-align:right">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
     <td style="padding:10px;text-align:center;font-size:11px;color:${cycle?'#bfdbfe':'#cbd5e1'}">${cycle || '—'}</td>
     <td style="padding:10px">
@@ -2965,7 +2984,8 @@ function bn_renderAP() {
         <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Partida</th>
         <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">#Mov</th>
         <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Monto</th>
-        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em" title="${BN_AP_PCT_MODE==='rel'?'% vs nivel superior':'% vs total de la cuenta'}">%</th>
+        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#bfdbfe" title="% del total de la cuenta raíz">% Total</th>
+        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#fed7aa" title="% del nivel superior inmediato">% Relativo</th>
         <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Presupuesto</th>
         <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Ciclo</th>
         <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Avance</th>
@@ -2998,12 +3018,18 @@ function bn_renderAP() {
           ${footerHtml}
         </table>
       </div>`;
+    const hdrStyles = {
+      er:    { bg:'linear-gradient(180deg,#1e3a8a,#1e40af)', color:'#fff', sub:'#bfdbfe' },
+      bg:    { bg:'linear-gradient(180deg,#065f46,#047857)', color:'#fff', sub:'#bbf7d0' },
+      other: { bg:'#f1f5f9', color:'#334155', sub:'#64748b' },
+    };
+    const hdr = hdrStyles[key] || hdrStyles.other;
     return `
       <div style="margin-bottom:18px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff">
         <div onclick="bn_apToggleSection('${key}')"
-             style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f1f5f9;cursor:pointer;user-select:none;border-bottom:${collapsed?'none':'1px solid #e5e7eb'}">
-          <span style="font-size:13px;font-weight:800;color:#334155;flex:1">${title}</span>
-          <span style="font-size:11px;color:#64748b">${collapsed ? '▸ Mostrar' : '▼ Ocultar'}</span>
+             style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:${hdr.bg};cursor:pointer;user-select:none">
+          <span style="font-size:13px;font-weight:800;color:${hdr.color};flex:1">${title}</span>
+          <span style="font-size:11px;color:${hdr.sub}">${collapsed ? '▸ Mostrar' : '▼ Ocultar'}</span>
         </div>
         ${collapsed ? '' : `<div style="padding:10px">${tableHtml}</div>`}
       </div>`;
@@ -3033,49 +3059,38 @@ function bn_renderReviewPanel() {
   panel.classList.remove('hidden');
   panel.innerHTML = `
     <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(15,23,42,.05)">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px">
-        <div>
-          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Estado de validación</div>
-          <div style="font-size:22px;font-weight:800;color:#111827;margin-top:2px">Validados vs pendientes</div>
-        </div>
-        <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border:1.5px solid #fecaca;background:#fef2f2;color:#7f1d1d;border-radius:999px;font-weight:700;font-size:13px">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#dc2626;color:#fff;font-weight:800;font-size:13px">${noRev > 99 ? '99+' : noRev}</span>
-          registro${noRev===1?'':'s'} por validar
-        </div>
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Estado de validación</div>
+        <div style="font-size:22px;font-weight:800;color:#111827;margin-top:2px">Validados vs pendientes</div>
       </div>
 
-      <!-- Barra stacked -->
+      <!-- Barra stacked (pendientes en rojo) -->
       <div style="display:flex;height:14px;border-radius:999px;overflow:hidden;background:#e5e7eb;margin-bottom:14px">
         <div title="Validados: ${rev}" style="width:${pctRev.toFixed(2)}%;background:linear-gradient(90deg,#16a34a,#86efac);transition:width .3s"></div>
-        <div title="Pendientes: ${noRev}" style="width:${pctNoRev.toFixed(2)}%;background:linear-gradient(90deg,#cbd5e1,#334155);transition:width .3s"></div>
+        <div title="Pendientes: ${noRev}" style="width:${pctNoRev.toFixed(2)}%;background:linear-gradient(90deg,#fca5a5,#dc2626);transition:width .3s"></div>
       </div>
 
-      <!-- Tarjetas REVISADOS / PENDIENTES -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px">
+      <!-- Tarjetas VALIDADOS / PENDIENTES (con detalle integrado) -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
         <div style="background:#fff;border:1.5px solid #d1fae5;border-radius:10px;padding:12px 14px">
           <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;margin-bottom:4px">
             <span style="width:10px;height:10px;border-radius:50%;background:#16a34a;display:inline-block"></span>
             Validados
           </div>
           <div style="font-size:20px;font-weight:800;color:#111827">${rev} (${pctRev.toFixed(0)}%)</div>
+          ${rev > 0 ? `<div style="margin-top:6px;font-size:11px;color:#14532d;display:flex;align-items:center;gap:6px"><span>✅</span><span><b>${rev}</b> registro${rev===1?'':'s'} ya validado${rev===1?'':'s'} y disponible${rev===1?'':'s'} en Registros contables.</span></div>` : ''}
         </div>
-        <div style="background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;padding:12px 14px">
+        <div style="background:#fff;border:1.5px solid #fecaca;border-radius:10px;padding:12px 14px">
           <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;margin-bottom:4px">
-            <span style="width:10px;height:10px;border-radius:50%;background:#334155;display:inline-block"></span>
+            <span style="width:10px;height:10px;border-radius:50%;background:#dc2626;display:inline-block"></span>
             Pendientes
           </div>
           <div style="font-size:20px;font-weight:800;color:#111827">${noRev} (${pctNoRev.toFixed(0)}%)</div>
+          ${noRev > 0 ? `<div style="margin-top:6px;font-size:11px;color:#7f1d1d;display:flex;align-items:center;gap:6px"><span>⚠️</span><span><b>${noRev}</b> registro${noRev===1?'':'s'} por validar.</span></div>` : ''}
         </div>
       </div>
-
-      <!-- Notas -->
-      ${rev > 0 ? `
-        <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px">
-          <div style="font-size:18px">✅</div>
-          <div style="font-size:13px;color:#14532d"><b>${rev}</b> registro(s) ya validado(s) y disponibles en Registros contables.</div>
-        </div>` : ''}
       ${total === 0 ? `
-        <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:10px 14px;text-align:center;font-size:13px;color:#14532d">
+        <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:10px 14px;text-align:center;font-size:13px;color:#14532d;margin-top:12px">
           🎉 Sin registros pendientes para este filtro
         </div>` : ''}
     </div>`;
@@ -3655,10 +3670,19 @@ function bn_setTipo(t) {
   BN_TIPO=t;
   // Ocultar/mostrar el selector 'Vista' (sólo válido en Por clasificar y Cuentas)
   const viewWrap = document.getElementById('bn-view-cards')?.closest('div')?.parentElement;
+  const parent = BN_TIPO_PARENT[t];
   if (viewWrap) {
-    const parent = BN_TIPO_PARENT[t];
     viewWrap.style.display = (parent === 'pc' || parent === 'reg') ? '' : 'none';
   }
+  // En Planeación e Indicadores: ocultar Seleccionar/Relacionar/Mostrar por página
+  const isPresOrInd = (parent === 'pres' || parent === 'ind');
+  const selBtn = document.getElementById('bn-btn-sel-mode');
+  if (selBtn) selBtn.style.display = isPresOrInd ? 'none' : '';
+  const matchBtn = document.getElementById('bn-btn-match-tickets');
+  if (matchBtn) matchBtn.style.display = isPresOrInd ? 'none' : '';
+  const pageSize = document.getElementById('bn-page-size');
+  const pageSizeWrap = pageSize?.parentElement;
+  if (pageSizeWrap) pageSizeWrap.style.display = isPresOrInd ? 'none' : '';
   const allTabs = ['T','E','I','AC','PA','CA','PC','PC_I','PC_E','PC_AC','PC_PA','PC_CA','A','F','AP','PR'];
   // Resaltar el chip activo (entre los chips horizontales del row 2)
   allTabs.forEach(x => {
@@ -3673,7 +3697,6 @@ function bn_setTipo(t) {
     }
   });
   // Sincronizar resaltado del botón de CATEGORÍA padre
-  const parent = BN_TIPO_PARENT[t];
   if (parent) {
     ['pc','reg','pres','ind'].forEach(k => {
       const btn = document.getElementById('bn-cat-' + k);
@@ -3726,9 +3749,16 @@ function bn_render() {
   const realI = kpiI.reduce((s,r)=>s+Math.abs(Number(r.Monto||0)),0);
 
   bn_txt('bn-k-egr-real',       bn_fmt$(realE));
-  bn_txt('bn-k-egr-sub',        kpiE.length+' movimientos');
+  const egrPctIng = realI > 0 ? (realE/realI) : NaN;
+  bn_txt('bn-k-egr-sub',        kpiE.length+' mov · '+(isFinite(egrPctIng)?bn_fmtPct(egrPctIng):'—')+' de Ingresos');
   bn_txt('bn-k-ing-real',       bn_fmt$(realI));
-  bn_txt('bn-k-ing-sub',        kpiI.length+' movimientos');
+  const ingPctEgr = realE > 0 ? (realI/realE) : NaN;
+  bn_txt('bn-k-ing-sub',        kpiI.length+' mov · '+(isFinite(ingPctEgr)?bn_fmtPct(ingPctEgr):'—')+' de Egresos');
+  // Egresos siempre rojo, Ingresos siempre verde
+  const kE = document.getElementById('bn-k-egr-real');
+  if (kE) { kE.style.color = '#dc2626'; }
+  const kI = document.getElementById('bn-k-ing-real');
+  if (kI) { kI.style.color = '#16a34a'; }
 
   // KPIs Presupuesto Operativo / Reinversión / Retiro de utilidades
   // (consistentes con los 3 renglones nuevos del pie de Análisis por partida)
@@ -3736,13 +3766,25 @@ function bn_render() {
   bn_renderApKpi('bn-k-avance-egr', 'bn-k-avance-bar', 'bn-k-avance-egr-sub', BN_AP_TOTALS.operativo);
   bn_renderApKpi('bn-k-reinv',      'bn-k-reinv-bar',  'bn-k-reinv-sub',      BN_AP_TOTALS.reinversion);
   bn_renderApKpi('bn-k-retiro',     'bn-k-retiro-bar', 'bn-k-retiro-sub',     BN_AP_TOTALS.retiro);
+  // Reinversión: rojo siempre (es egreso); muestra % del Ingreso total
+  const kR = document.getElementById('bn-k-reinv');
+  if (kR) { kR.style.color = '#dc2626'; }
+  const reinvReal = BN_AP_TOTALS.reinversion?.real || 0;
+  const reinvPct = realI > 0 ? reinvReal/realI : NaN;
+  bn_txt('bn-k-reinv-sub', bn_fmt$(reinvReal)+' · '+(isFinite(reinvPct)?bn_fmtPct(reinvPct):'—')+' del Ingreso');
+  // Retiro: verde si positivo, rojo si negativo; muestra % del Ingreso total
+  const retReal = BN_AP_TOTALS.retiro?.real || 0;
+  const kT = document.getElementById('bn-k-retiro');
+  if (kT) { kT.style.color = retReal >= 0 ? '#16a34a' : '#dc2626'; }
+  const retPct = realI > 0 ? Math.abs(retReal)/realI : NaN;
+  bn_txt('bn-k-retiro-sub', bn_fmt$(retReal)+' · '+(isFinite(retPct)?bn_fmtPct(retPct):'—')+' del Ingreso');
 
   const util=realI-realE;
   bn_txt('bn-k-utilidad',       bn_fmt$(util));
   const marg=realI>0?(util/realI):NaN;
   bn_txt('bn-k-utilidad-sub',   isFinite(marg)?'Margen '+bn_fmtPct(marg):'Sin ingresos');
   const kU=document.getElementById('bn-k-utilidad');
-  if(kU) kU.className='bn-kpi-value '+(util>=0?'bn-val-good':'bn-val-bad');
+  if(kU) { kU.className='bn-kpi-value'; kU.style.color = util >= 0 ? '#16a34a' : '#dc2626'; }
 
   document.getElementById('bn-kpi-row')?.classList.remove('hidden');
 
@@ -4467,6 +4509,26 @@ function bn_downloadPDF() {
 }
 let BN_TBL_EDIT_MODE = false; // modo edición de la columna Descripción
 const BN_TBL_DESC_CHANGES = new Map(); // rowNum → newDesc
+let BN_TBL_DESC_WIDTH = 260; // ancho px de la columna Descripción
+
+function bn_tblStartDescResize(ev) {
+  ev.preventDefault(); ev.stopPropagation();
+  const startX = ev.clientX;
+  const startW = BN_TBL_DESC_WIDTH;
+  const onMove = (e) => {
+    BN_TBL_DESC_WIDTH = Math.max(120, Math.min(800, startW + (e.clientX - startX)));
+    document.querySelectorAll('[data-bn-tbl-col="desc"]').forEach(el => {
+      el.style.width = BN_TBL_DESC_WIDTH + 'px';
+      el.style.maxWidth = BN_TBL_DESC_WIDTH + 'px';
+    });
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
 
 function bn_tblExitEditMode() {
   const n = BN_TBL_DESC_CHANGES.size;
@@ -4691,10 +4753,19 @@ function bn_createCard(rec, idx) {
   const CUENTA_EMOJI = {'Egresos':'💸','Ingresos':'💰','Activos':'📈','Pasivos':'📋','Capital':'💼'};
   const tipoEmoji  = CUENTA_EMOJI[cuentaClasif] || '🏦';
   const tipoChip   = `<span class="info-chip ${colorCls}">${tipoEmoji} ${esc(tipoLbl)}</span>`;
-  const cuentaChip = cuenta ? `<span class="info-chip">🏦 ${esc(cuenta)}</span>` : '';
-  const facChip    = fac
-    ? `<span class="info-chip" style="color:var(--success,#16a34a)">🧾 ${esc(fac)}</span>`
-    : `<span class="info-chip" style="color:var(--text-soft);font-style:italic">Sin factura</span>`;
+  // Chips informativos en tonos claros junto al chip de Cuenta
+  const cuentaBancChip = cuenta ? `<span class="info-chip" style="background:#f1f5f9;color:#334155">🏦 ${esc(cuenta)}</span>` : '';
+  const encChip = rec._encargado ? `<span class="info-chip" style="background:#fef3c7;color:#92400e">👤 ${esc(rec._encargado)}</span>` : '';
+  const facChip = fac
+    ? `<span class="info-chip" style="background:#dcfce7;color:#166534">🧾 ${esc(fac)}</span>`
+    : `<span class="info-chip" style="background:#f1f5f9;color:#94a3b8;font-style:italic">Sin factura</span>`;
+  const reemChip = (rec._reembolso === 'Sí')
+    ? `<span class="info-chip" style="background:#ede9fe;color:#5b21b6">↩️ Reembolso${rec._reembolso_a ? ' · ' + esc(rec._reembolso_a) : ''}</span>`
+    : '';
+  // Chip de Método de pago (siempre visible arriba del Monto)
+  const mpChip = rec._metodo_pago
+    ? `<span class="info-chip" style="background:#dbeafe;color:#1e40af">💳 ${esc(rec._metodo_pago)}</span>`
+    : `<span class="info-chip" style="background:#f1f5f9;color:#94a3b8;font-style:italic">Sin método</span>`;
   const isDuda = rec._duda === 'Sí';
   const isValidado = rec._validado === 'Sí';
 
@@ -4759,7 +4830,7 @@ function bn_createCard(rec, idx) {
               style="position:absolute;top:40px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isValidado ? '#16a34a' : '#e5e7eb'};background:${isValidado ? '#16a34a' : '#f9fafb'};color:${isValidado ? '#fff' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">✓</button>
       <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})" style="padding-right:46px">
         <div class="ticket-info">
-          <div class="header-chips">${tipoChip}${cuentaChip}${facChip}</div>
+          <div class="header-chips">${tipoChip}${cuentaBancChip}${encChip}${facChip}${reemChip}</div>
           <div class="ticket-store-row">
             <span class="ticket-store ${colorCls}"
                   style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word;line-height:1.25">${esc(name)}</span>
@@ -4768,6 +4839,7 @@ function bn_createCard(rec, idx) {
           ${desc ? `<div class="product-summary">${esc(desc.length > 120 ? desc.slice(0, 117) + '…' : desc)}</div>` : ''}
         </div>
         <div class="ticket-header-right">
+          <div style="margin-bottom:4px;display:flex;justify-content:flex-end">${mpChip}</div>
           <div class="ticket-total-badge ${clsCls}">
             <span class="total-main">${bn_fmt$(monto)}</span>
           </div>
@@ -5172,7 +5244,17 @@ function bn_autoPopulateBnClassify(ci, rec) {
     const metGrid = document.getElementById(`metodo-grid-${ci}`);
     const metCard = Array.from(metGrid?.querySelectorAll('.cuenta-card') || [])
       .find(c => c.dataset.value === rec._metodo_pago);
-    if (metCard) selectMetodoPago(metCard, ci);
+    if (metCard) {
+      selectMetodoPago(metCard, ci);
+    } else {
+      // Valor libre — activa la opción "Otro" y rellena el input
+      const otroCard = metGrid?.querySelector('.cuenta-card[data-value="Otro"]');
+      if (otroCard) {
+        selectMetodoPago(otroCard, ci);
+        const inp = document.getElementById(`metodo-otro-${ci}`);
+        if (inp) { inp.value = rec._metodo_pago; bn_metodoOtroInput(ci, inp); }
+      }
+    }
   }
 
   // Comentarios — restaurar el valor guardado al re-abrir el popup
@@ -5570,13 +5652,15 @@ function bn_bulkDatePick() {
 
 // Opciones (mismas que en classify panel)
 const BN_METODOS_PAGO = [
-  { value: 'Tarjeta crédito',   label: 'Crédito',           icon: '💳' },
-  { value: 'Tarjeta débito',    label: 'Débito',            icon: '🏦' },
-  { value: 'Efectivo',          label: 'Efectivo',          icon: '💵' },
-  { value: 'Transferencia',     label: 'Transfer.',         icon: '🔄' },
-  { value: 'Retiro sin tarjeta', label: 'Retiro s/tarjeta', icon: '🏧' },
-  { value: 'Cheque',            label: 'Cheque',            icon: '📝' },
-  { value: 'QR',                label: 'QR',                icon: '📱' },
+  { value: 'BBVA ACR Empresarial',  label: 'ACR Empresarial',  icon: '🏦' },
+  { value: 'BBVA ACR TC Platino',   label: 'ACR TC Platino',   icon: '💳' },
+  { value: 'BBVA ACL TC Platino',   label: 'ACL TC Platino',   icon: '💳' },
+  { value: 'BBVA ACL TC Azul',      label: 'ACL TC Azul',      icon: '💳' },
+  { value: 'BBVA ACL Libreton',     label: 'ACL Libreton',     icon: '📖' },
+  { value: 'BBVA JJLC Empresarial', label: 'JJLC Empresarial', icon: '🏦' },
+  { value: 'BBVA ACR Libreton',     label: 'ACR Libreton',     icon: '📖' },
+  { value: 'CCL',                   label: 'CCL',              icon: '💵' },
+  { value: 'Otro',                  label: 'Otro',             icon: '✏️' },
 ];
 
 const BN_ENCARGADOS = [
@@ -5755,7 +5839,7 @@ function bn_renderRecordsTable(recs, startIdx) {
         ${BN_SEL_MODE ? '<th style="padding:9px 10px;width:36px"></th>' : ''}
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Cuenta</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Buscar clasificación</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">
+        <th data-bn-tbl-col="desc" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;position:relative;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px">
           <div style="display:inline-flex;align-items:center;gap:6px">
             <span>Descripción</span>
             ${BN_TBL_EDIT_MODE ? `
@@ -5772,6 +5856,7 @@ function bn_renderRecordsTable(recs, startIdx) {
                 ✏️ Editar
               </button>`}
           </div>
+          <span class="bn-tbl-desc-resizer" onmousedown="bn_tblStartDescResize(event)" title="Arrastrar para redimensionar"></span>
         </th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Cuenta banc.</th>
@@ -5828,13 +5913,13 @@ function bn_renderRecordsTable(recs, startIdx) {
                  onblur="setTimeout(()=>bn_tblSearchHide(),200)"
                  style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;outline:none">
         </td>
-        <td ${BN_TBL_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
+        <td data-bn-tbl-col="desc" ${BN_TBL_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
             data-row-idx="${idx}" data-orig-desc="${esc(desc)}"
             onclick="event.stopPropagation()"
             onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
             onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${BN_TBL_EDIT_MODE?'#fff':''}';bn_tblTrackDescChange(${idx}, this)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-            style="padding:8px 10px;font-size:12px;width:260px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_EDIT_MODE?'text':'default'};background:${BN_TBL_EDIT_MODE?'#fff':'transparent'};${BN_TBL_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(desc)}">${esc(desc)}</td>
+            style="padding:8px 10px;font-size:12px;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_EDIT_MODE?'text':'default'};background:${BN_TBL_EDIT_MODE?'#fff':'transparent'};${BN_TBL_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(desc)}">${esc(desc)}</td>
         <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
         <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
         <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
@@ -6238,17 +6323,35 @@ function selectCategoria(el, i) {
 }
 
 function selectMetodoPago(el, i) {
+  const otroWrap = document.getElementById(`metodo-otro-wrap-${i}`);
   if (el.classList.contains('active')) {
     el.classList.remove('active');
     document.getElementById(`metodo-clasif-${i}`).value = '';
+    if (otroWrap) otroWrap.classList.add('hidden');
     markClassifyDirty(i);
     return;
   }
   el.closest(".cuenta-grid").querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
   el.classList.add("active");
   scrollCardIntoView(el);
-  document.getElementById(`metodo-clasif-${i}`).value = el.dataset.value;
+  const val = el.dataset.value;
+  document.getElementById(`metodo-clasif-${i}`).value = val;
+  if (otroWrap) {
+    if (val === 'Otro') {
+      otroWrap.classList.remove('hidden');
+      setTimeout(() => document.getElementById(`metodo-otro-${i}`)?.focus(), 30);
+    } else {
+      otroWrap.classList.add('hidden');
+      const inp = document.getElementById(`metodo-otro-${i}`);
+      if (inp) inp.value = '';
+    }
+  }
   markClassifyDirty(i);
+}
+
+function bn_metodoOtroInput(i, inputEl) {
+  const v = (inputEl.value || '').trim();
+  document.getElementById(`metodo-clasif-${i}`).value = v ? v : 'Otro';
 }
 
 function toggleReembolso(i, checked) {

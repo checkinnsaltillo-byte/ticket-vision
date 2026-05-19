@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=58">
+  <link rel="stylesheet" href="styles.css?v=59">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -152,6 +152,12 @@
           📸 &nbsp;Captura de tickets
         </li>
       </ul>
+      <div style="margin-top:auto;padding:16px;border-top:1px solid var(--border,#e5e7eb);display:flex;justify-content:center">
+        <button id="btn-dark-mode" onclick="toggleDarkMode()" title="Alternar tema claro/oscuro"
+                style="padding:8px 16px;border:1px solid var(--border,#d1d5db);background:var(--surface,#fff);color:var(--text,#374151);cursor:pointer;font-size:14px;border-radius:8px;display:inline-flex;align-items:center;gap:8px;font-weight:600">
+          🌙 <span>Tema</span>
+        </button>
+      </div>
     </nav>
 
     <!-- Header -->
@@ -163,18 +169,12 @@
         <div class="header-logo" style="display:flex;align-items:center;gap:12px">
           <img src="https://drive.google.com/thumbnail?id=1We0TuuoTb0fDa5xLVMzDqzMZZWwgkb0v&sz=w600"
                alt="Logo"
-               style="height:112px;width:auto;max-width:240px;object-fit:contain;background:transparent;padding:0;border-radius:0;box-shadow:none">
+               style="height:48px;width:auto;max-width:130px;object-fit:contain;background:transparent;padding:0;border-radius:0;box-shadow:none">
           <div class="logo-text">
             <h1>Sistema Financiero</h1>
             <span>Check Inn Saltillo</span>
           </div>
         </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <button id="btn-dark-mode" onclick="toggleDarkMode()" title="Alternar tema claro/oscuro"
-                style="width:34px;height:34px;border:none;background:transparent;cursor:pointer;font-size:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center">🌙</button>
-        <span class="user-badge" id="current-user-badge"></span>
-        <div class="header-badge">v16.0</div>
       </div>
     </header>
 
@@ -537,7 +537,7 @@
           ☑️ Seleccionar
         </button>
         <button id="bn-btn-match-tickets" type="button" onclick="bn_relacionarConTickets()"
-                style="padding:7px 14px;border:1.5px solid #475569;background:#475569;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0">
+                style="padding:7px 14px;border:none;background:linear-gradient(180deg,#f59e0b 0%,#d97706 100%);color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;box-shadow:0 2px 6px rgba(217,119,6,.4)">
           🔗 Relacionar con tickets
         </button>
         <div style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
@@ -552,7 +552,6 @@
           <span style="font-size:11px;color:var(--text-soft,#6b7280)">por página</span>
         </div>
         <div style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
-          <label style="font-size:11px;color:var(--text-soft,#6b7280);font-weight:600">Vista</label>
           <div style="display:inline-flex;border:1.5px solid var(--border,#d1d5db);border-radius:8px;overflow:hidden">
             <button id="bn-view-cards" type="button" onclick="bn_setView('cards')"
                     style="padding:7px 12px;border:none;background:#475569;color:#fff;font-weight:600;font-size:12px;cursor:pointer">📇 Cards</button>
@@ -628,13 +627,6 @@
               <option value="3">📁 Categoría</option>
               <option value="4" selected>🔹 Concepto</option>
             </select>
-          </div>
-          <div style="min-width:180px">
-            <label style="display:block;font-weight:700;color:var(--text-soft,#6b7280);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Cálculo de %</label>
-            <button id="bn-ap-pct-toggle" type="button" onclick="bn_apTogglePctMode()"
-                    style="padding:8px 14px;border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">
-              % Absoluto
-            </button>
           </div>
         </div>
         <!-- Tabla resultado -->
@@ -867,6 +859,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=105"></script>
+  <script src="app.js?v=106"></script>
 </body>
 </html>
