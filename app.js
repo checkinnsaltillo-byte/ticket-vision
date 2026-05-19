@@ -2326,8 +2326,15 @@ function bn_chatPush(role, text) {
 /** Construye un contexto compacto con los datos disponibles para que el
  *  modelo responda con precisión. */
 function bn_chatBuildContext() {
-  // Records con campos esenciales — limita a últimos ~600 para tamaño
-  const recs = (BN_RAW || []).slice(-600).map(r => ({
+  // Records con campos esenciales — ORDENA por Día desc y toma los más recientes.
+  // (BN_RAW viene en orden del Sheet, no cronológico; antes slice(-600) podía
+  // dejar fuera meses recientes si estaban en medio del array)
+  const sorted = [...(BN_RAW || [])].sort((a, b) => {
+    const da = bn_formatDiaISO(a.Día || a.Dia || '') || '';
+    const db = bn_formatDiaISO(b.Día || b.Dia || '') || '';
+    return db.localeCompare(da);
+  });
+  const recs = sorted.slice(0, 1500).map(r => ({
     Dia: bn_formatDiaISO(r.Día || r.Dia || '') || '',
     Monto: Number(r.Monto) || 0,
     Desc: (r.DESCRIPCION || '').slice(0, 80),
@@ -2360,9 +2367,15 @@ function bn_chatBuildContext() {
       rfc: tk.rfc || '',
     };
   });
+  const fechas = recs.map(r => r.Dia).filter(d => /^\d{4}-\d{2}-\d{2}/.test(d)).sort();
+  const rango = fechas.length
+    ? { desde: fechas[0], hasta: fechas[fechas.length - 1] }
+    : null;
   return {
     fecha_hoy:   new Date().toISOString().slice(0,10),
     total_registros: BN_RAW.length,
+    registros_enviados: recs.length,
+    rango_fechas: rango,
     tickets_cargados: tickets.length,
     registros: recs,
     presupuesto: budget,
