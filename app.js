@@ -309,7 +309,7 @@ function tryLogin() {
   currentUser = user;
   document.getElementById("loginOverlay")?.classList.add("hidden");
   document.getElementById("app-root")?.classList.remove("hidden");
-  document.getElementById("current-user-badge").textContent = currentUser.toUpperCase();
+  const _ub = document.getElementById("current-user-badge"); if (_ub) _ub.textContent = currentUser.toUpperCase();
   // Módulo predeterminado: Registros contables
   switchModule("registros");
 }
@@ -344,7 +344,7 @@ window.addEventListener("DOMContentLoaded", () => {
     currentUser = "admin";
     document.getElementById("loginOverlay")?.classList.add("hidden");
     document.getElementById("app-root")?.classList.remove("hidden");
-    document.getElementById("current-user-badge").textContent = "ADMIN (dev)";
+    const ub = document.getElementById("current-user-badge"); if (ub) ub.textContent = "ADMIN (dev)";
     // Cargar automáticamente el módulo Registros contables al entrar
     setTimeout(() => { try { switchModule("registros"); } catch(_) {} }, 0);
   } else {
@@ -1880,6 +1880,7 @@ async function bn_loadData() {
   document.getElementById('bn-table-wrap')?.classList.add('hidden');
   document.getElementById('bn-indicadores')?.classList.add('hidden');
   document.getElementById('bn-kpi-row')?.classList.add('hidden');
+  try { showLoading('Cargando datos…', 'Conectando con Google Sheets'); } catch(_) {}
   try {
     const res  = await fetch(BACKEND+'/get-bancos',{cache:'no-store'});
     const data = await res.json();
@@ -1922,6 +1923,8 @@ async function bn_loadData() {
   } catch(e) {
     if (lbl) lbl.textContent='Error al cargar';
     if (empty) { empty.style.display='flex'; if(emMsg) emMsg.textContent='Error: '+e.message; }
+  } finally {
+    try { hideLoading(); } catch(_) {}
   }
 }
 
@@ -6739,33 +6742,38 @@ function applySearchResult(i, idx) {
   const m = (searchMatches[i] || [])[idx];
   if (!m) return;
 
-  // Seleccionar tarjeta de Cuenta
-  const cuentaCard = Array.from(
-    document.getElementById(`cuenta-grid-${i}`).querySelectorAll(".cuenta-card")
-  ).find(c => c.dataset.value === m.cuenta);
+  // Fuerza una activación limpia: quita 'active' del grid antes para que
+  // selectCuenta no tome el atajo de "click sobre activa → deseleccionar".
+  const cuentaGrid = document.getElementById(`cuenta-grid-${i}`);
+  cuentaGrid?.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+  const cuentaCard = Array.from(cuentaGrid?.querySelectorAll(".cuenta-card") || [])
+    .find(c => c.dataset.value === m.cuenta);
   if (cuentaCard) selectCuenta(cuentaCard, i);
 
   // Seleccionar tarjeta de Subcuenta (ya renderizada por selectCuenta)
   if (m.subcuenta) {
-    const subCard = Array.from(
-      document.getElementById(`subcuenta-grid-${i}`).querySelectorAll(".cuenta-card")
-    ).find(c => c.dataset.value === m.subcuenta);
+    const subGrid = document.getElementById(`subcuenta-grid-${i}`);
+    subGrid?.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+    const subCard = Array.from(subGrid?.querySelectorAll(".cuenta-card") || [])
+      .find(c => c.dataset.value === m.subcuenta);
     if (subCard) selectSubcuenta(subCard, i);
   }
 
   // Seleccionar tarjeta de Categoría (ya renderizada por selectSubcuenta)
   if (m.categoria) {
-    const catCard = Array.from(
-      document.getElementById(`categoria-grid-${i}`).querySelectorAll(".cuenta-card")
-    ).find(c => c.dataset.value === m.categoria);
+    const catGrid = document.getElementById(`categoria-grid-${i}`);
+    catGrid?.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+    const catCard = Array.from(catGrid?.querySelectorAll(".cuenta-card") || [])
+      .find(c => c.dataset.value === m.categoria);
     if (catCard) selectCategoria(catCard, i);
   }
 
   // Seleccionar tarjeta de Concepto (ya renderizada por selectCategoria / selectSubcuenta)
   if (m.concepto) {
-    const conCard = Array.from(
-      document.getElementById(`concepto-grid-${i}`).querySelectorAll(".cuenta-card")
-    ).find(c => c.dataset.value === m.concepto);
+    const conGrid = document.getElementById(`concepto-grid-${i}`);
+    conGrid?.querySelectorAll(".cuenta-card").forEach(c => c.classList.remove("active"));
+    const conCard = Array.from(conGrid?.querySelectorAll(".cuenta-card") || [])
+      .find(c => c.dataset.value === m.concepto);
     if (conCard) selectConcepto(conCard, i);
   }
 
