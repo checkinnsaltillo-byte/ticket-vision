@@ -435,33 +435,32 @@
       </div>
 
       <!-- KPIs agrupados en 3 secciones -->
-      <div id="bn-kpi-row" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-        <!-- Estado de Resultados -->
-        <div>
-          <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">📈 Estado de Resultados</div>
-          <div class="bn-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
-            <div class="bn-kpi-card">
-              <div class="bn-kpi-label">Egresos (período)</div>
-              <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
-              <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
-            </div>
-            <div class="bn-kpi-card">
-              <div class="bn-kpi-label">Ingresos (período)</div>
-              <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
-              <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
-            </div>
-            <div class="bn-kpi-card">
-              <div class="bn-kpi-label">Utilidad (período)</div>
-              <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
-              <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
-            </div>
-          </div>
+      <div id="bn-kpi-wrap" style="margin-bottom:14px;border:1px solid var(--border,#e5e7eb);border-radius:12px;overflow:hidden;background:#fff">
+        <div onclick="bn_toggleKpiSection()" id="bn-kpi-header"
+             style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f1f5f9;cursor:pointer;user-select:none">
+          <span style="font-size:13px;font-weight:800;color:#334155;flex:1">📊 Indicadores principales</span>
+          <span id="bn-kpi-toggle-chev" style="font-size:11px;color:#64748b">▼ Ocultar</span>
         </div>
-        <!-- Control Presupuestario + Balance General en una sola fila -->
-        <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px">
+        <div id="bn-kpi-row" style="display:flex;flex-direction:column;gap:10px;padding:10px">
+          <!-- Estado de Resultados (con Presupuesto Operativo) -->
           <div>
-            <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">💼 Control Presupuestario</div>
-            <div class="bn-kpi-row" style="display:grid;grid-template-columns:1fr;gap:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">📈 Estado de Resultados</div>
+            <div class="bn-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+              <div class="bn-kpi-card">
+                <div class="bn-kpi-label">Egresos (período)</div>
+                <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
+                <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
+              </div>
+              <div class="bn-kpi-card">
+                <div class="bn-kpi-label">Ingresos (período)</div>
+                <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
+                <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
+              </div>
+              <div class="bn-kpi-card">
+                <div class="bn-kpi-label">Utilidad (período)</div>
+                <div class="bn-kpi-value" id="bn-k-utilidad">—</div>
+                <div class="bn-kpi-sub" id="bn-k-utilidad-sub">—</div>
+              </div>
               <div class="bn-kpi-card">
                 <div class="bn-kpi-label">Presupuesto Operativo</div>
                 <div class="bn-kpi-value" id="bn-k-avance-egr">—</div>
@@ -470,9 +469,10 @@
               </div>
             </div>
           </div>
+          <!-- Balance General -->
           <div>
             <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">📊 Balance General</div>
-            <div class="bn-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+            <div class="bn-kpi-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
               <div class="bn-kpi-card">
                 <div class="bn-kpi-label">Retiro de utilidades</div>
                 <div class="bn-kpi-value" id="bn-k-retiro">—</div>
@@ -507,23 +507,6 @@
         <div id="bn-subcat-row" style="display:flex;flex-wrap:wrap;gap:6px;overflow-x:auto"></div>
       </div>
 
-      <!-- Barra: hamburguesa + buscador (debajo del menú) -->
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-        <button class="btn-filter-toggle" id="bn-btn-filter-toggle"
-                onclick="bn_toggleFilters()" title="Filtros"
-                style="flex-shrink:0;margin:0">
-          <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
-        </button>
-        <input type="text" id="bn-f-text" placeholder="🔍  Buscar por descripción, categoría, concepto…"
-               class="db-search-input" oninput="bn_onFilterChange()"
-               style="flex:1;min-width:0">
-      </div>
-
-      <!-- Panel de filtros multi-selects (texto removido — ya está arriba) -->
-      <div class="db-filter-panel hidden" id="bn-filter-body" style="margin:8px 0 14px;padding:12px;background:#f9fafb;border:1px solid var(--border,#e5e7eb);border-radius:10px;overflow:visible">
-        <div id="bn-msel-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px"></div>
-      </div>
-
       <!-- Vista cronológica siempre activa; toggle oculto -->
       <div id="bn-timeline-toggle-row" class="hidden"></div>
 
@@ -537,7 +520,7 @@
           ☑️ Seleccionar
         </button>
         <button id="bn-btn-match-tickets" type="button" onclick="bn_relacionarConTickets()"
-                style="padding:7px 14px;border:none;background:linear-gradient(180deg,#f59e0b 0%,#d97706 100%);color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;box-shadow:0 2px 6px rgba(217,119,6,.4)">
+                style="padding:7px 14px;border:none;background:linear-gradient(180deg,#ef4444 0%,#b91c1c 100%);color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;box-shadow:0 2px 6px rgba(185,28,28,.4)">
           🔗 Relacionar con tickets
         </button>
         <div style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
@@ -573,6 +556,23 @@
           Limpiar selección
         </button>
         <span id="bn-sel-count" class="hidden" style="font-size:12px;color:#334155;font-weight:700"></span>
+      </div>
+
+      <!-- Barra: hamburguesa + buscador (debajo del action-row) -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:nowrap">
+        <button class="btn-filter-toggle" id="bn-btn-filter-toggle"
+                onclick="bn_toggleFilters()" title="Filtros"
+                style="flex-shrink:0;margin:0">
+          <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
+        </button>
+        <input type="text" id="bn-f-text" placeholder="🔍  Buscar por descripción, categoría, concepto…"
+               class="db-search-input" oninput="bn_onFilterChange()"
+               style="flex:1;min-width:0">
+      </div>
+
+      <!-- Panel de filtros multi-selects -->
+      <div class="db-filter-panel hidden" id="bn-filter-body" style="margin:8px 0 14px;padding:12px;background:#f9fafb;border:1px solid var(--border,#e5e7eb);border-radius:10px;overflow:visible">
+        <div id="bn-msel-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px"></div>
       </div>
 
       <!-- Cards view (Egresos / Ingresos) -->
@@ -627,6 +627,13 @@
               <option value="3">📁 Categoría</option>
               <option value="4" selected>🔹 Concepto</option>
             </select>
+          </div>
+          <div style="min-width:200px">
+            <label style="display:block;font-weight:700;color:var(--text-soft,#6b7280);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Fuente de datos</label>
+            <button id="bn-ap-data-toggle" type="button" onclick="bn_apToggleDataMode()"
+                    style="padding:8px 14px;border:1px solid #475569;background:#475569;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">
+              📋 Todos los registros
+            </button>
           </div>
         </div>
         <!-- Tabla resultado -->
@@ -859,6 +866,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=107"></script>
+  <script src="app.js?v=108"></script>
 </body>
 </html>

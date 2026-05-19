@@ -1058,15 +1058,22 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="cuenta-field">
         <label>Método de pago</label>
         <div class="cuenta-grid cuenta-grid--compact" id="metodo-grid-${idx}">
-          <div class="cuenta-card" data-value="BBVA ACR Empresarial"  onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">ACR Empresarial</div></div>
-          <div class="cuenta-card" data-value="BBVA ACR TC Platino"   onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">ACR TC Platino</div></div>
-          <div class="cuenta-card" data-value="BBVA ACL TC Platino"   onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">ACL TC Platino</div></div>
-          <div class="cuenta-card" data-value="BBVA ACL TC Azul"      onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">ACL TC Azul</div></div>
-          <div class="cuenta-card" data-value="BBVA ACL Libreton"     onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📖</div><div class="cuenta-label">ACL Libreton</div></div>
-          <div class="cuenta-card" data-value="BBVA JJLC Empresarial" onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">JJLC Empresarial</div></div>
-          <div class="cuenta-card" data-value="BBVA ACR Libreton"     onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📖</div><div class="cuenta-label">ACR Libreton</div></div>
-          <div class="cuenta-card" data-value="CCL"                   onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💵</div><div class="cuenta-label">CCL</div></div>
-          <div class="cuenta-card" data-value="Otro"                  onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">✏️</div><div class="cuenta-label">Otro</div></div>
+          <div class="cuenta-card" data-value="Tarjeta crédito"        onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">Crédito</div></div>
+          <div class="cuenta-card" data-value="Tarjeta débito"         onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">Débito</div></div>
+          <div class="cuenta-card" data-value="Efectivo"               onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💵</div><div class="cuenta-label">Efectivo</div></div>
+          <div class="cuenta-card" data-value="Transferencia"          onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🔄</div><div class="cuenta-label">Transfer.</div></div>
+          <div class="cuenta-card" data-value="Retiro sin tarjeta"     onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏧</div><div class="cuenta-label">Retiro s/tarjeta</div></div>
+          <div class="cuenta-card" data-value="Cheque"                 onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📝</div><div class="cuenta-label">Cheque</div></div>
+          <div class="cuenta-card" data-value="QR"                     onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📱</div><div class="cuenta-label">QR</div></div>
+          <div class="cuenta-card" data-value="BBVA ACR Empresarial"   onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">ACR Empresarial</div></div>
+          <div class="cuenta-card" data-value="BBVA ACR TC Platino"    onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">ACR TC Platino</div></div>
+          <div class="cuenta-card" data-value="BBVA ACL TC Platino"    onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">ACL TC Platino</div></div>
+          <div class="cuenta-card" data-value="BBVA ACL TC Azul"       onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💳</div><div class="cuenta-label">ACL TC Azul</div></div>
+          <div class="cuenta-card" data-value="BBVA ACL Libreton"      onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📖</div><div class="cuenta-label">ACL Libreton</div></div>
+          <div class="cuenta-card" data-value="BBVA JJLC Empresarial"  onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">🏦</div><div class="cuenta-label">JJLC Empresarial</div></div>
+          <div class="cuenta-card" data-value="BBVA ACR Libreton"      onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">📖</div><div class="cuenta-label">ACR Libreton</div></div>
+          <div class="cuenta-card" data-value="CCL"                    onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">💵</div><div class="cuenta-label">CCL</div></div>
+          <div class="cuenta-card" data-value="Otro"                   onclick="selectMetodoPago(this,'${idx}')"><div class="cuenta-icon">✏️</div><div class="cuenta-label">Otro</div></div>
         </div>
         <input type="hidden" id="metodo-clasif-${idx}" value="">
         <div class="hidden" id="metodo-otro-wrap-${idx}" style="margin-top:8px">
@@ -2618,9 +2625,35 @@ const BN_AP_OVERRIDES = new Map(); // path → bool (true=expandido manual, fals
 const BN_AP_LEVELS = ['_cuenta','_subcuenta','_categoria_gasto','_concepto'];
 let BN_AP_PCT_MODE = 'abs'; // 'abs' = % vs total de la cuenta raíz; 'rel' = % vs nivel inmediato superior
 const BN_AP_COLLAPSED = { er: false, bg: false }; // estado plegado por sección
+let BN_AP_DATA_MODE = 'all'; // 'all' = todos; 'validated' = sólo _validado='Sí'
+function bn_apToggleDataMode() {
+  BN_AP_DATA_MODE = (BN_AP_DATA_MODE === 'all') ? 'validated' : 'all';
+  bn_apApplyDataModeStyle();
+  bn_renderAP();
+}
+function bn_apApplyDataModeStyle() {
+  const btn = document.getElementById('bn-ap-data-toggle');
+  if (!btn) return;
+  if (BN_AP_DATA_MODE === 'validated') {
+    btn.textContent = '✓ Sólo validados';
+    btn.style.cssText = 'padding:8px 14px;border:1px solid #16a34a;background:#16a34a;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700';
+  } else {
+    btn.textContent = '📋 Todos los registros';
+    btn.style.cssText = 'padding:8px 14px;border:1px solid #475569;background:#475569;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700';
+  }
+}
 function bn_apToggleSection(key) {
   BN_AP_COLLAPSED[key] = !BN_AP_COLLAPSED[key];
   bn_renderAP();
+}
+
+function bn_toggleKpiSection() {
+  const body = document.getElementById('bn-kpi-row');
+  const chev = document.getElementById('bn-kpi-toggle-chev');
+  if (!body) return;
+  const willHide = body.style.display !== 'none';
+  body.style.display = willHide ? 'none' : '';
+  if (chev) chev.textContent = willHide ? '▸ Mostrar' : '▼ Ocultar';
 }
 
 function bn_apTogglePctMode() {
@@ -2681,8 +2714,9 @@ function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, paren
   const pctRelVal = (parentTotal && Math.abs(parentTotal) > 0) ? (node.total / parentTotal) : NaN;
   let pctRelTxt;
   if (hasChildren && isFinite(pctRelVal)) {
-    // Niveles superiores muestran 100% (suma de hijos) + entre paréntesis su % vs el padre
-    pctRelTxt = `100% <span style="font-size:9px;color:#94a3b8;font-weight:500">(${(pctRelVal*100).toFixed(1)}% vs padre)</span>`;
+    // Afuera de los paréntesis: % absoluto vs padre.
+    // Dentro de los paréntesis: 100% (suma de hijos).
+    pctRelTxt = `${(pctRelVal*100).toFixed(1)}% <span style="font-size:9px;color:#94a3b8;font-weight:500">(100%)</span>`;
   } else {
     pctRelTxt = isFinite(pctRelVal) ? (pctRelVal*100).toFixed(1) + '%' : '—';
   }
@@ -2939,9 +2973,13 @@ function bn_renderAP() {
   // Sincronizar el dropdown con el nivel activo
   const lvlSel = document.getElementById('bn-ap-level-select');
   if (lvlSel) lvlSel.value = String(BN_AP_LEVEL);
+  bn_apApplyDataModeStyle();
 
-  // Usar los registros del período (sin restringir por revisado, igual que KPIs)
-  const records = bn_kpiRecs(null);
+  // Usar los registros del período; si está activo "Sólo validados", filtra _validado='Sí'
+  let records = bn_kpiRecs(null);
+  if (BN_AP_DATA_MODE === 'validated') {
+    records = records.filter(r => r._validado === 'Sí');
+  }
   if (!records.length) {
     wrap.innerHTML = `<div style="padding:30px;text-align:center;color:#9ca3af;font-size:13px">
       Sin registros para los filtros seleccionados
@@ -2987,8 +3025,8 @@ function bn_renderAP() {
         <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Partida</th>
         <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">#Mov</th>
         <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Monto</th>
-        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#bfdbfe" title="% del total de la cuenta raíz">% Total</th>
-        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#fed7aa" title="% del nivel superior inmediato">% Relativo</th>
+        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#2563eb;background:#dbeafe" title="% del total de la cuenta raíz">% Total</th>
+        <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#ea580c;background:#fed7aa" title="% del nivel superior inmediato">% Relativo</th>
         <th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Presupuesto</th>
         <th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Ciclo</th>
         <th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Avance</th>
@@ -3314,6 +3352,11 @@ function bn_mselToggleOpt(field, rowEl) {
   const willSelect = (i < 0);
   if (willSelect) bn_st[field].push(v);
   else            bn_st[field].splice(i, 1);
+  // Sync con BN_IND_STATE para que bn_renderInd no sobreescriba la selección
+  if (typeof BN_IND_STATE !== 'undefined') {
+    if (field === 'ind_anio') BN_IND_STATE.anio = bn_st[field].slice();
+    if (field === 'ind_mes')  BN_IND_STATE.mes  = bn_st[field].slice();
+  }
   // Actualizar visual de la fila
   rowEl.dataset.selected = willSelect ? 'true' : 'false';
   rowEl.style.background = willSelect ? '#f1f5f9' : 'transparent';
@@ -3434,9 +3477,18 @@ function bn_mselClear(field) {
   bn_mselRerender(field);
 }
 
-// Cerrar paneles al hacer clic fuera
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.bn-msel')) {
+// Cerrar paneles al hacer clic fuera — usa mousedown en captura para reaccionar
+// incluso si algún hijo hace stopPropagation y aún cuando el panel está
+// position:fixed (sigue dentro del .bn-msel en el DOM)
+document.addEventListener('mousedown', (e) => {
+  const inMsel = e.target.closest && e.target.closest('.bn-msel');
+  if (!inMsel) {
+    document.querySelectorAll('.bn-msel-panel').forEach(p => p.classList.add('hidden'));
+  }
+}, true);
+// Escape cierra todos los paneles multi-select
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
     document.querySelectorAll('.bn-msel-panel').forEach(p => p.classList.add('hidden'));
   }
 });
@@ -3755,8 +3807,7 @@ function bn_render() {
   const egrPctIng = realI > 0 ? (realE/realI) : NaN;
   bn_txt('bn-k-egr-sub',        kpiE.length+' mov · '+(isFinite(egrPctIng)?bn_fmtPct(egrPctIng):'—')+' de Ingresos');
   bn_txt('bn-k-ing-real',       bn_fmt$(realI));
-  const ingPctEgr = realE > 0 ? (realI/realE) : NaN;
-  bn_txt('bn-k-ing-sub',        kpiI.length+' mov · '+(isFinite(ingPctEgr)?bn_fmtPct(ingPctEgr):'—')+' de Egresos');
+  bn_txt('bn-k-ing-sub',        kpiI.length+' mov');
   // Egresos siempre rojo, Ingresos siempre verde
   const kE = document.getElementById('bn-k-egr-real');
   if (kE) { kE.style.color = '#dc2626'; }
@@ -5655,15 +5706,22 @@ function bn_bulkDatePick() {
 
 // Opciones (mismas que en classify panel)
 const BN_METODOS_PAGO = [
-  { value: 'BBVA ACR Empresarial',  label: 'ACR Empresarial',  icon: '🏦' },
-  { value: 'BBVA ACR TC Platino',   label: 'ACR TC Platino',   icon: '💳' },
-  { value: 'BBVA ACL TC Platino',   label: 'ACL TC Platino',   icon: '💳' },
-  { value: 'BBVA ACL TC Azul',      label: 'ACL TC Azul',      icon: '💳' },
-  { value: 'BBVA ACL Libreton',     label: 'ACL Libreton',     icon: '📖' },
-  { value: 'BBVA JJLC Empresarial', label: 'JJLC Empresarial', icon: '🏦' },
-  { value: 'BBVA ACR Libreton',     label: 'ACR Libreton',     icon: '📖' },
-  { value: 'CCL',                   label: 'CCL',              icon: '💵' },
-  { value: 'Otro',                  label: 'Otro',             icon: '✏️' },
+  { value: 'Tarjeta crédito',       label: 'Crédito',           icon: '💳' },
+  { value: 'Tarjeta débito',        label: 'Débito',            icon: '🏦' },
+  { value: 'Efectivo',              label: 'Efectivo',          icon: '💵' },
+  { value: 'Transferencia',         label: 'Transfer.',         icon: '🔄' },
+  { value: 'Retiro sin tarjeta',    label: 'Retiro s/tarjeta',  icon: '🏧' },
+  { value: 'Cheque',                label: 'Cheque',            icon: '📝' },
+  { value: 'QR',                    label: 'QR',                icon: '📱' },
+  { value: 'BBVA ACR Empresarial',  label: 'ACR Empresarial',   icon: '🏦' },
+  { value: 'BBVA ACR TC Platino',   label: 'ACR TC Platino',    icon: '💳' },
+  { value: 'BBVA ACL TC Platino',   label: 'ACL TC Platino',    icon: '💳' },
+  { value: 'BBVA ACL TC Azul',      label: 'ACL TC Azul',       icon: '💳' },
+  { value: 'BBVA ACL Libreton',     label: 'ACL Libreton',      icon: '📖' },
+  { value: 'BBVA JJLC Empresarial', label: 'JJLC Empresarial',  icon: '🏦' },
+  { value: 'BBVA ACR Libreton',     label: 'ACR Libreton',      icon: '📖' },
+  { value: 'CCL',                   label: 'CCL',               icon: '💵' },
+  { value: 'Otro',                  label: 'Otro',              icon: '✏️' },
 ];
 
 const BN_ENCARGADOS = [
