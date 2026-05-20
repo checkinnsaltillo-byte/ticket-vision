@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=62">
+  <link rel="stylesheet" href="styles.css?v=63">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -438,7 +438,8 @@
       <div id="bn-kpi-wrap" style="margin-bottom:14px;border:1px solid var(--border,#e5e7eb);border-radius:12px;overflow:hidden;background:#fff">
         <div onclick="bn_toggleKpiSection()" id="bn-kpi-header"
              style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f1f5f9;cursor:pointer;user-select:none">
-          <span style="font-size:13px;font-weight:800;color:#334155;flex:1">📊 Indicadores principales</span>
+          <span style="font-size:13px;font-weight:800;color:#334155">📊 Indicadores principales</span>
+          <span id="bn-kpi-period-summary" style="flex:1;font-size:11px;color:#475569;font-weight:600">—</span>
           <span id="bn-kpi-toggle-chev" style="font-size:11px;color:#64748b">▼ Ocultar</span>
         </div>
         <div id="bn-kpi-row" style="display:flex;flex-direction:column;gap:10px;padding:10px">
@@ -446,13 +447,13 @@
           <div>
             <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">📈 Estado de Resultados</div>
             <div class="bn-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
-              <div class="bn-kpi-card">
-                <div class="bn-kpi-label">Egresos (período)</div>
+              <div class="bn-kpi-card" style="cursor:pointer" onclick="bn_kpiOpenSubcuentasPopup('Egresos')">
+                <div class="bn-kpi-label">Egresos (período) <span style="font-size:9px;color:#94a3b8">▾ clic detalle</span></div>
                 <div class="bn-kpi-value" id="bn-k-egr-real">—</div>
                 <div class="bn-kpi-sub" id="bn-k-egr-sub">—</div>
               </div>
-              <div class="bn-kpi-card">
-                <div class="bn-kpi-label">Ingresos (período)</div>
+              <div class="bn-kpi-card" style="cursor:pointer" onclick="bn_kpiOpenSubcuentasPopup('Ingresos')">
+                <div class="bn-kpi-label">Ingresos (período) <span style="font-size:9px;color:#94a3b8">▾ clic detalle</span></div>
                 <div class="bn-kpi-value" id="bn-k-ing-real">—</div>
                 <div class="bn-kpi-sub" id="bn-k-ing-sub">—</div>
               </div>
@@ -473,14 +474,14 @@
           <div>
             <div style="font-size:10px;font-weight:700;color:var(--text-soft,#64748b);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;padding-left:2px">📊 Balance General</div>
             <div class="bn-kpi-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-              <div class="bn-kpi-card">
-                <div class="bn-kpi-label">Retiro de utilidades</div>
+              <div class="bn-kpi-card" style="cursor:pointer" onclick="bn_kpiOpenSubcuentasPopup('Capital')">
+                <div class="bn-kpi-label">Retiro de utilidades <span style="font-size:9px;color:#94a3b8">▾ clic detalle</span></div>
                 <div class="bn-kpi-value" id="bn-k-retiro">—</div>
                 <div id="bn-k-retiro-bar" style="margin:4px 0 2px"></div>
                 <div class="bn-kpi-sub" id="bn-k-retiro-sub">—</div>
               </div>
-              <div class="bn-kpi-card">
-                <div class="bn-kpi-label">Reinversión</div>
+              <div class="bn-kpi-card" style="cursor:pointer" onclick="bn_kpiOpenSubcuentasPopup('Capital')">
+                <div class="bn-kpi-label">Reinversión <span style="font-size:9px;color:#94a3b8">▾ clic detalle</span></div>
                 <div class="bn-kpi-value" id="bn-k-reinv">—</div>
                 <div id="bn-k-reinv-bar" style="margin:4px 0 2px"></div>
                 <div class="bn-kpi-sub" id="bn-k-reinv-sub">—</div>
@@ -558,20 +559,28 @@
         <span id="bn-sel-count" class="hidden" style="font-size:12px;color:#334155;font-weight:700"></span>
       </div>
 
-      <!-- Barra: hamburguesa + buscador (debajo del action-row) -->
-      <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:10px;flex-wrap:nowrap;width:100%">
+      <!-- Barra: hamburguesa + buscador (grid para forzar mismo renglón) -->
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:stretch;margin-bottom:8px;width:100%">
         <button class="btn-filter-toggle" id="bn-btn-filter-toggle"
-                onclick="bn_toggleFilters()" title="Filtros"
-                style="flex:0 0 auto;margin:0;align-self:stretch">
+                onclick="bn_toggleFilters()" title="Filtros" style="margin:0">
           <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
         </button>
         <input type="text" id="bn-f-text" placeholder="🔍  Buscar por descripción, categoría, concepto…"
                class="db-search-input" oninput="bn_onFilterChange()"
-               style="flex:1 1 0;min-width:0;width:auto">
+               style="min-width:0;width:100%">
       </div>
+
+      <!-- Tarea 13: Botones Guardar/Limpiar (réplica de los inferiores) -->
+      <div id="bn-card-actions-top" class="hidden" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap"></div>
 
       <!-- Panel de filtros multi-selects -->
       <div class="db-filter-panel hidden" id="bn-filter-body" style="margin:8px 0 14px;padding:12px;background:#f9fafb;border:1px solid var(--border,#e5e7eb);border-radius:10px;overflow:visible">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+          <button type="button" onclick="bn_clearFilters()"
+                  style="padding:6px 12px;border:1px solid #cbd5e1;background:#fff;color:#475569;font-weight:600;font-size:12px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px">
+            ✕ Limpiar filtros
+          </button>
+        </div>
         <div id="bn-msel-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px"></div>
       </div>
 
@@ -866,6 +875,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=118"></script>
+  <script src="app.js?v=119"></script>
 </body>
 </html>

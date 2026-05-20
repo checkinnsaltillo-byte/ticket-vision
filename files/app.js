@@ -2063,14 +2063,14 @@ function bn_apComputeBudget(node, records, ancestors, allLevels) {
 
 // ─── Presupuesto — editor de la hoja Presupuesto_sys ──────────────────────
 const BN_PR_COLS = [
-  { key: 'CUENTA',        label: 'Cuenta',        width: 130 },
-  { key: 'TIPO',          label: 'Tipo',          width: 90  },
-  { key: 'PERIODICIDAD',  label: 'Periodicidad',  width: 100 },
-  { key: 'NATURALEZA',    label: 'Naturaleza',    width: 100 },
+  { key: 'CUENTA',        label: 'Cuenta',        width: 130, chip: true },
   { key: 'SUBCUENTA',     label: 'Subcuenta',     width: 160 },
   { key: 'CATEGORIA',     label: 'Categoría',     width: 150 },
   { key: 'CONCEPTO',      label: 'Concepto',      width: 150 },
   { key: 'DESCRIPCION',   label: 'Descripción',   width: 200 },
+  { key: 'TIPO',          label: 'Tipo',          width: 90  },
+  { key: 'PERIODICIDAD',  label: 'Periodicidad',  width: 100 },
+  { key: 'NATURALEZA',    label: 'Naturaleza',    width: 100 },
   { key: 'SEMANAL',       label: 'Semanal',       width: 110, numeric: true },
   { key: 'MENSUAL',       label: 'Mensual',       width: 110, numeric: true },
   { key: 'BIMESTRAL',     label: 'Bimestral',     width: 110, numeric: true },
@@ -2111,7 +2111,7 @@ function bn_renderPresupuesto() {
 
   const headersHtml = BN_PR_COLS.map(c =>
     `<th style="padding:8px 10px;text-align:${c.numeric?'right':'left'};font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#475569;color:#fff;min-width:${c.width}px;white-space:nowrap">${esc(c.label)}</th>`
-  ).join('') + `<th style="padding:8px 10px;background:#475569;color:#fff;text-align:center;width:48px">✕</th>`;
+  ).join('') + `<th style="padding:8px 10px;background:#475569;color:#fff;text-align:center;width:90px;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Eliminar fila</th>`;
 
   // "+" insertor de fila angosto — sobre la línea divisoria, sin ocupar alto
   const inserter = (insertAt) => `
@@ -2130,10 +2130,25 @@ function bn_renderPresupuesto() {
       </td>
     </tr>`;
 
+  // Colores por cuenta (mismos que registros bancarios)
+  const PR_CUENTA_BG = { Egresos:'#fee2e2', Ingresos:'#dcfce7', Activos:'#dbeafe', Pasivos:'#ede9fe', Capital:'#fef3c7' };
+  const PR_CUENTA_FG = { Egresos:'#991b1b', Ingresos:'#166534', Activos:'#1e40af', Pasivos:'#5b21b6', Capital:'#92400e' };
+  const PR_CUENTA_EMOJI = { Egresos:'💸', Ingresos:'💰', Activos:'📈', Pasivos:'📋', Capital:'💼' };
   const dataRows = BN_PR_DRAFT.map((row, i) => {
     const cells = BN_PR_COLS.map(c => {
       const v = row[c.key] != null ? String(row[c.key]) : '';
       const ta = c.numeric ? 'text-align:right' : '';
+      if (c.chip && c.key === 'CUENTA') {
+        const bg = PR_CUENTA_BG[v] || '#f1f5f9';
+        const fg = PR_CUENTA_FG[v] || '#334155';
+        const em = PR_CUENTA_EMOJI[v] || '🏷️';
+        return `<td contenteditable="true" spellcheck="false"
+                    data-row="${i}" data-key="${c.key}"
+                    oninput="bn_prCellEdit(this)"
+                    style="padding:6px 9px;border-bottom:1px solid #e2e8f0;font-size:12px;min-width:${c.width}px;outline:none">
+                  <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;background:${bg};color:${fg};font-weight:700;font-size:11px">${em} ${esc(v)}</span>
+                </td>`;
+      }
       return `<td contenteditable="true" spellcheck="false"
                   data-row="${i}" data-key="${c.key}"
                   oninput="bn_prCellEdit(this)"
@@ -2142,7 +2157,7 @@ function bn_renderPresupuesto() {
                   onblur="this.style.background=''">${esc(v)}</td>`;
     }).join('');
     return `<tr>${cells}<td style="padding:7px 9px;border-bottom:1px solid #e2e8f0;text-align:center">
-              <button onclick="bn_prDeleteRow(${i})" title="Eliminar"
+              <button onclick="bn_prDeleteRow(${i})" title="Eliminar fila"
                       style="width:24px;height:24px;border:none;background:#fee2e2;color:#dc2626;border-radius:50%;font-weight:800;cursor:pointer">✕</button>
             </td></tr>`;
   });
@@ -2740,6 +2755,90 @@ function bn_apToggleSection(key) {
   bn_renderAP();
 }
 
+/** Popup con la sumatoria por Subcuenta de una cuenta raíz (Egresos/Ingresos/Capital).
+ *  Muestra Monto, barra de magnitud relativa y % del total. Botón "Detalles" lleva
+ *  a Análisis por partida con la cuenta pre-expandida. */
+function bn_kpiOpenSubcuentasPopup(cuentaRaiz) {
+  const records = (typeof bn_kpiRecs === 'function' ? bn_kpiRecs(null) : BN_RAW)
+    .filter(r => (r._cuenta || '') === cuentaRaiz);
+  // Agrupar por subcuenta
+  const map = new Map();
+  for (const r of records) {
+    const sub = (r._subcuenta || '(Sin subcuenta)').trim() || '(Sin subcuenta)';
+    const monto = Math.abs(Number(r.Monto) || 0);
+    if (!map.has(sub)) map.set(sub, { sub, total: 0, count: 0 });
+    const e = map.get(sub); e.total += monto; e.count++;
+  }
+  const list = [...map.values()].sort((a, b) => b.total - a.total);
+  const grand = list.reduce((s, x) => s + x.total, 0);
+  const maxV  = list.reduce((m, x) => Math.max(m, x.total), 0) || 1;
+  // Estilo del overlay
+  let ov = document.getElementById('bn-kpi-pop-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'bn-kpi-pop-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
+  }
+  const rows = list.map(it => {
+    const pct = grand > 0 ? (it.total / grand) * 100 : 0;
+    const w   = (it.total / maxV) * 100;
+    return `<tr style="border-bottom:1px solid #e2e8f0">
+      <td style="padding:8px 10px;font-size:12px;color:#1f2937">${esc(it.sub)}</td>
+      <td style="padding:8px 10px;text-align:right;font-size:12px;font-weight:700;color:${cuentaRaiz==='Ingresos'?'#16a34a':cuentaRaiz==='Egresos'?'#dc2626':'#1f2937'};white-space:nowrap">${bn_fmt$(it.total)}</td>
+      <td style="padding:8px 10px;min-width:160px">
+        <div style="position:relative;height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden">
+          <div style="height:100%;width:${w.toFixed(1)}%;background:#475569"></div>
+        </div>
+      </td>
+      <td style="padding:8px 10px;text-align:right;font-size:11px;color:#475569;font-weight:600">${pct.toFixed(1)}%</td>
+      <td style="padding:8px 10px;text-align:right;font-size:11px;color:#94a3b8">${it.count}</td>
+    </tr>`;
+  }).join('');
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:680px;max-height:80vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(15,23,42,.4)" onclick="event.stopPropagation()">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h3 style="margin:0;font-size:16px;color:#1f2937">${esc(cuentaRaiz)} — Detalle por Subcuenta</h3>
+        <button onclick="document.getElementById('bn-kpi-pop-overlay').remove()"
+                style="width:32px;height:32px;border:none;background:#f1f5f9;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
+      </div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:14px">
+        Total: <b style="color:#1f2937">${bn_fmt$(grand)}</b> · ${records.length} movimientos · ${list.length} subcuentas
+      </div>
+      ${list.length ? `
+      <table style="width:100%;border-collapse:collapse;background:#fff">
+        <thead><tr style="background:#475569;color:#fff">
+          <th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase">Subcuenta</th>
+          <th style="padding:8px 10px;text-align:right;font-size:11px;text-transform:uppercase">$ Monto</th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase">Magnitud</th>
+          <th style="padding:8px 10px;text-align:right;font-size:11px;text-transform:uppercase">% Total</th>
+          <th style="padding:8px 10px;text-align:right;font-size:11px;text-transform:uppercase">#Mov</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>` : `<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Sin movimientos en esta cuenta con los filtros actuales</div>`}
+      <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px">
+        <button onclick="bn_kpiGoToAP('${esc(cuentaRaiz)}')"
+                style="padding:8px 16px;border:none;background:#334155;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">
+          📊 Detalles — Análisis por partida
+        </button>
+      </div>
+    </div>`;
+}
+
+/** Cierra el popup KPI y navega a Análisis por partida con la cuenta visible. */
+function bn_kpiGoToAP(cuentaRaiz) {
+  document.getElementById('bn-kpi-pop-overlay')?.remove();
+  try { bn_setCat('pres'); bn_setTipo('AP'); } catch(_) {}
+  // Pre-expandir la cuenta raíz en el AP (best-effort)
+  setTimeout(() => {
+    if (typeof BN_AP_OVERRIDES !== 'undefined' && BN_AP_OVERRIDES) {
+      BN_AP_OVERRIDES.set(cuentaRaiz, true);
+      try { bn_renderAP(); } catch(_) {}
+    }
+  }, 60);
+}
+
 function bn_toggleKpiSection() {
   const body = document.getElementById('bn-kpi-row');
   const chev = document.getElementById('bn-kpi-toggle-chev');
@@ -2820,7 +2919,10 @@ function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, paren
   const semIcon = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
   const pctTxt  = isFinite(av) ? (av * 100).toFixed(1) + '%' : '—';
   const fillW   = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
-  const bgRow = depth === 0 ? '#cbd5e1' : depth === 1 ? '#e2e8f0' : depth === 2 ? '#f1f5f9' : '#ffffff';
+  // Sombreado por jerarquía: cuanto más profundo, más claro. Texto contrasta.
+  const bgRow   = depth === 0 ? '#475569' : depth === 1 ? '#94a3b8' : depth === 2 ? '#cbd5e1' : depth === 3 ? '#e2e8f0' : '#f8fafc';
+  const txtRow  = depth === 0 ? '#fff'    : depth === 1 ? '#fff'    : depth === 2 ? '#1f2937' : '#1f2937';
+  const mutedTx = depth <= 1 ? 'rgba(255,255,255,.85)' : '#475569';
   const wgt   = depth === 0 ? '800' : depth === 1 ? '700' : '600';
   const indent = depth * 22;
   const triangle = hasChildren
@@ -2832,18 +2934,18 @@ function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, paren
   rows.push(`
     <tr style="background:${bgRow};cursor:pointer" onclick="bn_apOpenRecordsModal('${pathEncForClick}')"
         onmouseover="this.style.filter='brightness(.97)'" onmouseout="this.style.filter=''">
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;padding-left:${10+indent}px;font-weight:${wgt};font-size:${depth===0?'13':'12'}px;max-width:380px">
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;padding-left:${10+indent}px;font-weight:${wgt};font-size:${depth===0?'13':'12'}px;max-width:380px;color:${txtRow}">
         <div style="display:flex;align-items:center;gap:6px;min-width:0">
           ${triangle}
           <span title="${esc(node.name)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${esc(node.name)}</span>
         </div>
       </td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${node.count}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px">${bn_fmt$(node.total)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:#2563eb" title="% del total de la cuenta raíz">${pctTotalTxt}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:#ea580c;white-space:nowrap" title="% del nivel superior inmediato">${pctRelTxt}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:var(--text-soft,#6b7280)">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?'#334155':'#9ca3af'}">${budCycle || '—'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:${mutedTx}">${node.count}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px;color:${txtRow}">${bn_fmt$(node.total)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:${depth<=1?'#bfdbfe':'#2563eb'}" title="% del total de la cuenta raíz">${pctTotalTxt}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:${depth<=1?'#fed7aa':'#ea580c'};white-space:nowrap" title="% del nivel superior inmediato">${pctRelTxt}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:${mutedTx}">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?(depth<=1?'#fff':'#334155'):mutedTx}">${budCycle || '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;min-width:140px">
         ${bud > 0 ? `
           <div style="display:flex;align-items:center;gap:6px">
@@ -3192,41 +3294,19 @@ function bn_renderReviewPanel() {
 
   panel.classList.remove('hidden');
   panel.innerHTML = `
-    <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(15,23,42,.05)">
-      <div style="margin-bottom:12px">
-        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Estado de validación</div>
-        <div style="font-size:22px;font-weight:800;color:#111827;margin-top:2px">Validados vs pendientes</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#14532d;white-space:nowrap">
+        <span style="width:9px;height:9px;border-radius:50%;background:#16a34a;display:inline-block"></span>
+        ${rev} (${pctRev.toFixed(0)}%) Validados
       </div>
-
-      <!-- Barra stacked (pendientes en rojo) -->
-      <div style="display:flex;height:14px;border-radius:999px;overflow:hidden;background:#e5e7eb;margin-bottom:14px">
+      <div style="flex:1;display:flex;height:12px;border-radius:999px;overflow:hidden;background:#e5e7eb">
         <div title="Validados: ${rev}" style="width:${pctRev.toFixed(2)}%;background:linear-gradient(90deg,#16a34a,#86efac);transition:width .3s"></div>
         <div title="Pendientes: ${noRev}" style="width:${pctNoRev.toFixed(2)}%;background:linear-gradient(90deg,#fca5a5,#dc2626);transition:width .3s"></div>
       </div>
-
-      <!-- Tarjetas VALIDADOS / PENDIENTES (con detalle integrado) -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-        <div style="background:#fff;border:1.5px solid #d1fae5;border-radius:10px;padding:12px 14px">
-          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;margin-bottom:4px">
-            <span style="width:10px;height:10px;border-radius:50%;background:#16a34a;display:inline-block"></span>
-            Validados
-          </div>
-          <div style="font-size:20px;font-weight:800;color:#111827">${rev} (${pctRev.toFixed(0)}%)</div>
-          ${rev > 0 ? `<div style="margin-top:6px;font-size:11px;color:#14532d;display:flex;align-items:center;gap:6px"><span>✅</span><span><b>${rev}</b> registro${rev===1?'':'s'} ya validado${rev===1?'':'s'} y disponible${rev===1?'':'s'} en Registros contables.</span></div>` : ''}
-        </div>
-        <div style="background:#fff;border:1.5px solid #fecaca;border-radius:10px;padding:12px 14px">
-          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;margin-bottom:4px">
-            <span style="width:10px;height:10px;border-radius:50%;background:#dc2626;display:inline-block"></span>
-            Pendientes
-          </div>
-          <div style="font-size:20px;font-weight:800;color:#111827">${noRev} (${pctNoRev.toFixed(0)}%)</div>
-          ${noRev > 0 ? `<div style="margin-top:6px;font-size:11px;color:#7f1d1d;display:flex;align-items:center;gap:6px"><span>⚠️</span><span><b>${noRev}</b> registro${noRev===1?'':'s'} por validar.</span></div>` : ''}
-        </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#7f1d1d;white-space:nowrap">
+        Pendientes ${noRev} (${pctNoRev.toFixed(0)}%)
+        <span style="width:9px;height:9px;border-radius:50%;background:#dc2626;display:inline-block"></span>
       </div>
-      ${total === 0 ? `
-        <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:10px 14px;text-align:center;font-size:13px;color:#14532d;margin-top:12px">
-          🎉 Sin registros pendientes para este filtro
-        </div>` : ''}
     </div>`;
 }
 
@@ -4075,6 +4155,34 @@ function bn_render() {
   if(kU) { kU.className='bn-kpi-value'; kU.style.color = util >= 0 ? '#16a34a' : '#dc2626'; }
 
   document.getElementById('bn-kpi-row')?.classList.remove('hidden');
+  // Tarea 13: réplica de los botones Guardar/Clasificar/Limpiar arriba (mismo flujo
+  // que el bulk-bar inferior). Sólo aparece cuando hay registros seleccionados.
+  (function buildTopActions(){
+    const wrap = document.getElementById('bn-card-actions-top'); if (!wrap) return;
+    if (!BN_SEL_MODE || BN_SEL.size === 0) {
+      wrap.classList.add('hidden'); wrap.innerHTML = ''; return;
+    }
+    wrap.classList.remove('hidden');
+    wrap.innerHTML = `
+      <div style="font-weight:800;color:#334155;font-size:11px;padding:6px 10px;border-right:1.5px solid #cbd5e1;margin-right:4px;white-space:nowrap">${BN_SEL.size} seleccionado(s)</div>
+      <button onclick="bn_bulkClasificar()"      style="padding:7px 12px;border:none;background:#334155;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">🏷️ Clasificar</button>
+      <button onclick="bn_bulkToggleValidar()"   style="padding:7px 12px;border:none;background:#16a34a;color:#fff;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">✓ Validar</button>
+      <button onclick="bn_selClear()"            style="padding:7px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">✕ Limpiar</button>`;
+  })();
+  // Resumen del período (Año + Mes) considerado en los KPIs
+  (function updatePeriodSummary(){
+    const el = document.getElementById('bn-kpi-period-summary'); if (!el) return;
+    const NMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const a = (bn_st.anio || []).slice().sort();
+    const m = (bn_st.mes  || []).slice().sort();
+    const aTxt = a.length ? a.join(', ') : 'Todos los años';
+    const mTxt = m.length ? m.map(x => NMES[Number(x)-1] || x).join(', ') : 'Todos los meses';
+    let rango = '';
+    if (bn_st.dia_desde || bn_st.dia_hasta) {
+      rango = ` · 📅 ${bn_st.dia_desde||'…'} → ${bn_st.dia_hasta||'…'}`;
+    }
+    el.textContent = `· ${aTxt} · ${mTxt}${rango}`;
+  })();
 
   // Panel de estado de revisión (solo en tabs Por Clasificar)
   bn_renderReviewPanel();
@@ -4177,6 +4285,10 @@ function bn_render() {
   // E o I → tarjetas individuales
   tw?.classList.add('hidden'); cw?.classList.remove('hidden'); pw?.classList.remove('hidden');
   BN_CUR_RECS = bn_filteredRecs(BN_TIPO);
+  // Sort aplicado sobre TODO el universo filtrado (no sólo sobre la página).
+  if (BN_TBL_SORT && BN_TBL_SORT.key) {
+    BN_CUR_RECS = bn_tblApplySort(BN_CUR_RECS);
+  }
   BN_CARD_PAGE = 1;
   bn_renderCards();
 }
@@ -5187,8 +5299,18 @@ function bn_createCard(rec, idx) {
   const CUENTA_EMOJI = {'Egresos':'💸','Ingresos':'💰','Activos':'📈','Pasivos':'📋','Capital':'💼'};
   const tipoEmoji  = CUENTA_EMOJI[cuentaClasif] || '🏦';
   const tipoChip   = `<span class="info-chip ${colorCls}">${tipoEmoji} ${esc(tipoLbl)}</span>`;
-  // Chips informativos en tonos claros junto al chip de Cuenta
-  const cuentaBancChip = cuenta ? `<span class="info-chip" style="background:#f1f5f9;color:#334155">🏦 ${esc(cuenta)}</span>` : '';
+  // Chips informativos. Regla: arriba del Monto va sólo UNO:
+  //   - Ingreso → Cuenta bancaria
+  //   - Egreso → Método de pago
+  // Ese mismo chip se OMITE del header-chips (no duplicar).
+  const cuentaBancChipHtml = cuenta ? `<span class="info-chip" style="background:#f1f5f9;color:#334155">🏦 ${esc(cuenta)}</span>` : '';
+  const mpChipHtml = rec._metodo_pago
+    ? `<span class="info-chip" style="background:#dbeafe;color:#1e40af">💳 ${esc(rec._metodo_pago)}</span>`
+    : `<span class="info-chip" style="background:#f1f5f9;color:#94a3b8;font-style:italic">Sin método</span>`;
+  // Chip que va sobre el Monto y chips que van en el header
+  const topChip = isI ? cuentaBancChipHtml : mpChipHtml;
+  const cuentaBancChip = isI ? '' : cuentaBancChipHtml; // omitir si ya está arriba
+  const mpChip        = isI ? mpChipHtml : '';          // sólo mostrar si NO está arriba
   const encChip = rec._encargado ? `<span class="info-chip" style="background:#e2e8f0;color:#334155">👤 ${esc(rec._encargado)}</span>` : '';
   const propChip = rec._propiedad ? `<span class="info-chip" style="background:#e0e7ff;color:#3730a3">🏠 ${esc(rec._propiedad)}</span>` : '';
   const deptChip = (rec._departamento !== undefined && rec._departamento !== '') ? `<span class="info-chip" style="background:#e0f2fe;color:#075985">🏢 Depto ${esc(String(rec._departamento))}</span>` : '';
@@ -5198,10 +5320,6 @@ function bn_createCard(rec, idx) {
   const reemChip = (rec._reembolso === 'Sí')
     ? `<span class="info-chip" style="background:#ede9fe;color:#5b21b6">↩️ Reembolso${rec._reembolso_a ? ' · ' + esc(rec._reembolso_a) : ''}</span>`
     : '';
-  // Chip de Método de pago (siempre visible arriba del Monto)
-  const mpChip = rec._metodo_pago
-    ? `<span class="info-chip" style="background:#dbeafe;color:#1e40af">💳 ${esc(rec._metodo_pago)}</span>`
-    : `<span class="info-chip" style="background:#f1f5f9;color:#94a3b8;font-style:italic">Sin método</span>`;
   const isDuda = rec._duda === 'Sí';
   const isValidado = rec._validado === 'Sí';
 
@@ -5281,7 +5399,7 @@ function bn_createCard(rec, idx) {
           ${desc ? `<div class="product-summary">${esc(desc.length > 120 ? desc.slice(0, 117) + '…' : desc)}</div>` : ''}
         </div>
         <div class="ticket-header-right">
-          <div style="margin-bottom:4px;display:flex;justify-content:flex-end">${mpChip}</div>
+          <div style="margin-bottom:4px;display:flex;justify-content:flex-end">${topChip}</div>
           <div class="ticket-total-badge ${clsCls}">
             <span class="total-main">${bn_fmt$(monto)}</span>
           </div>
@@ -6280,7 +6398,7 @@ function bn_dateHeaderLabel(iso) {
  *  - Columna 'Buscar clasificación' permite autocompletar Cuenta/Sub/Cat/Concepto. */
 function bn_renderRecordsTable(recs, startIdx) {
   if (!recs.length) return '';
-  recs = bn_tblApplySort(recs);
+  // (Ya viene ordenado globalmente desde bn_render; no re-ordenar la página.)
   const CUENTA_EMOJI = { Egresos:'💸', Ingresos:'💰', Activos:'📈', Pasivos:'📋', Capital:'💼' };
   const editBtnsDesc = BN_TBL_EDIT_MODE ? `
     <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
@@ -6310,12 +6428,19 @@ function bn_renderRecordsTable(recs, startIdx) {
     <thead>
       <tr style="background:#475569;color:#fff">
         ${BN_SEL_MODE ? '<th style="padding:9px 10px;width:36px"></th>' : ''}
+        ${sortableThCenter('validado', 'Val.')}
+        ${sortableThCenter('duda', 'Duda')}
+        <th onclick="bn_tblSort('dudaNota')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por Dudas texto">
+          <div style="display:inline-flex;align-items:center;gap:6px"><span>Dudas texto${bn_tblSortIcon('dudaNota')}</span>${editBtnsDudaNota}</div>
+        </th>
+        ${sortableThCenter('deducible', 'Ded.')}
         ${sortableTh('dia', 'Día')}
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Buscar clasificación</th>
         ${sortableTh('cuenta', 'Cuenta', 'letter-spacing:.04em')}
         ${sortableTh('subcuenta', 'Subcuenta')}
         ${sortableTh('categoria', 'Categoría')}
         ${sortableTh('concepto', 'Concepto')}
+        ${sortableThRight('monto', 'Monto')}
         <th data-bn-tbl-col="desc" onclick="bn_tblSort('descripcion')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;position:relative;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;cursor:pointer;user-select:none" title="Ordenar por Descripción">
           <div style="display:inline-flex;align-items:center;gap:6px"><span>Descripción${bn_tblSortIcon('descripcion')}</span>${editBtnsDesc}</div>
           <span class="bn-tbl-desc-resizer" onclick="event.stopPropagation()" onmousedown="event.stopPropagation();bn_tblStartDescResize(event)" title="Arrastrar para redimensionar">⇿</span>
@@ -6323,15 +6448,8 @@ function bn_renderRecordsTable(recs, startIdx) {
         <th onclick="bn_tblSort('comentarios')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por Comentarios">
           <div style="display:inline-flex;align-items:center;gap:6px"><span>Comentarios${bn_tblSortIcon('comentarios')}</span>${editBtnsCom}</div>
         </th>
-        ${sortableThRight('monto', 'Monto')}
         ${sortableTh('cuentaBanc', 'Cuenta banc.')}
         ${sortableThCenter('factura', 'Fact.')}
-        ${sortableThCenter('deducible', 'Ded.')}
-        ${sortableThCenter('duda', 'Duda')}
-        <th onclick="bn_tblSort('dudaNota')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por Dudas texto">
-          <div style="display:inline-flex;align-items:center;gap:6px"><span>Dudas texto${bn_tblSortIcon('dudaNota')}</span>${editBtnsDudaNota}</div>
-        </th>
-        ${sortableThCenter('validado', 'Val.')}
       </tr>
     </thead>`;
 
@@ -6375,6 +6493,29 @@ function bn_renderRecordsTable(recs, startIdx) {
           onmouseout="this.style.filter=''">
         ${selCell}
         <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
+        <td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!isVal});bn_renderCards()"
+            title="${isVal?'Validado — clic para quitar':'Marcar como Validado'}"
+            style="padding:6px;text-align:center;cursor:pointer">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isVal?'#16a34a':'#e2e8f0'};background:${isVal?'#dcfce7':'#fff'};color:${isVal?'#16a34a':'#cbd5e1'};font-weight:900;font-size:13px">✓</span>
+        </td>
+        <td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!isDuda});bn_renderCards()"
+            title="${isDuda?(rec._duda_nota||'Marcado: Duda — clic para quitar'):'Marcar como Duda'}"
+            style="padding:6px;text-align:center;cursor:pointer">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#f59e0b':'#e2e8f0'};background:${isDuda?'#fef3c7':'#fff'};color:${isDuda?'#b45309':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
+        </td>
+        <td ${BN_TBL_DUDANT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
+            data-row-idx="${idx}" data-orig-dudant="${esc(dudaNt)}"
+            onclick="event.stopPropagation()"
+            onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
+            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${dudaNtBg}';bn_tblTrackDudaNotaChange(${idx}, this)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+            style="padding:8px 10px;font-size:11px;color:#92400e;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_DUDANT_EDIT_MODE?'text':'default'};${dudaNtBg?'background:'+dudaNtBg+';':''}${BN_TBL_DUDANT_EDIT_MODE?'border-left:2px solid #f59e0b':''}" title="${esc(dudaNt)}">${esc(dudaNt)}</td>
+        <td onclick="event.stopPropagation();bn_syncDeducible(${idx}, ${!dedOn});bn_renderCards()"
+            title="${dedOn?'Deducible — clic para desactivar':'No deducible — clic para activar'}"
+            style="padding:6px;text-align:center;cursor:pointer">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${dedOn?'#0e7490':'#e2e8f0'};background:${dedOn?'#cffafe':'#fff'};font-size:13px;opacity:${dedOn?'1':'.5'}">💰</span>
+        </td>
+        <td style="padding:8px 10px;font-size:11px;color:#2563eb;font-weight:700;white-space:nowrap">● ${esc(dia)}</td>
         <td style="padding:6px 8px;min-width:200px" onclick="event.stopPropagation()">
           <input type="text" id="bn-tbl-search-${idx}" placeholder="🔍 Buscar..."
                  autocomplete="off"
@@ -6387,6 +6528,7 @@ function bn_renderRecordsTable(recs, startIdx) {
         <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._subcuenta||'')}">${esc(rec._subcuenta||'')}</td>
         <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._categoria_gasto||'')}">${esc(rec._categoria_gasto||'')}</td>
         <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._concepto||'')}">${esc(rec._concepto||'')}</td>
+        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
         <td data-bn-tbl-col="desc" ${BN_TBL_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
             data-row-idx="${idx}" data-orig-desc="${esc(desc)}"
             onclick="event.stopPropagation()"
@@ -6401,31 +6543,8 @@ function bn_renderRecordsTable(recs, startIdx) {
             onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${comBg}';bn_tblTrackComentChange(${idx}, this)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
             style="padding:8px 10px;font-size:11px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_COMENT_EDIT_MODE?'text':'default'};${comBg?'background:'+comBg+';':''}${BN_TBL_COMENT_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(com)}">${esc(com)}</td>
-        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
         <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
         <td style="padding:8px 10px;text-align:center;font-size:14px">${fac ? '🧾' : ''}</td>
-        <td onclick="event.stopPropagation();bn_syncDeducible(${idx}, ${!dedOn});bn_renderCards()"
-            title="${dedOn?'Deducible — clic para desactivar':'No deducible — clic para activar'}"
-            style="padding:6px;text-align:center;cursor:pointer">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${dedOn?'#0e7490':'#e2e8f0'};background:${dedOn?'#cffafe':'#fff'};font-size:13px;opacity:${dedOn?'1':'.5'}">💰</span>
-        </td>
-        <td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!isDuda});bn_renderCards()"
-            title="${isDuda?(rec._duda_nota||'Marcado: Duda — clic para quitar'):'Marcar como Duda'}"
-            style="padding:6px;text-align:center;cursor:pointer">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#f59e0b':'#e2e8f0'};background:${isDuda?'#fef3c7':'#fff'};color:${isDuda?'#b45309':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
-        </td>
-        <td ${BN_TBL_DUDANT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
-            data-row-idx="${idx}" data-orig-dudant="${esc(dudaNt)}"
-            onclick="event.stopPropagation()"
-            onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
-            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${dudaNtBg}';bn_tblTrackDudaNotaChange(${idx}, this)"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-            style="padding:8px 10px;font-size:11px;color:#92400e;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_DUDANT_EDIT_MODE?'text':'default'};${dudaNtBg?'background:'+dudaNtBg+';':''}${BN_TBL_DUDANT_EDIT_MODE?'border-left:2px solid #f59e0b':''}" title="${esc(dudaNt)}">${esc(dudaNt)}</td>
-        <td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!isVal});bn_renderCards()"
-            title="${isVal?'Validado — clic para quitar':'Marcar como Validado'}"
-            style="padding:6px;text-align:center;cursor:pointer">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isVal?'#16a34a':'#e2e8f0'};background:${isVal?'#dcfce7':'#fff'};color:${isVal?'#16a34a':'#cbd5e1'};font-weight:900;font-size:13px">✓</span>
-        </td>
       </tr>`;
   }).join('');
 

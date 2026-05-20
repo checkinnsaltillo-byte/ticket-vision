@@ -386,13 +386,16 @@ textarea { min-height: 80px; resize: vertical; }
 
 .ticket-card-header {
   position: relative;
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 12px 20px 12px 26px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 14px 7px 18px;
   background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
   border-bottom: 1px solid var(--border);
   cursor: pointer; user-select: none;
   transition: background .15s;
 }
+.ticket-card { margin-bottom: 4px !important; }
+.ticket-meta { font-size: 11px; color: #2563eb !important; font-weight: 700; line-height: 1.2; }
+.ticket-meta::before { content: "● "; color: #2563eb; }
 .ticket-card-header:hover { background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%); }
 .ticket-card-header.collapsed { border-bottom: none; }
 .ticket-info { flex: 1; min-width: 0; }
