@@ -4636,6 +4636,65 @@ function bn_downloadPDF() {
 let BN_TBL_EDIT_MODE = false; // modo edición de la columna Descripción
 const BN_TBL_DESC_CHANGES = new Map(); // rowNum → newDesc
 let BN_TBL_DESC_WIDTH = 260; // ancho px de la columna Descripción
+let BN_TBL_COMENT_EDIT_MODE = false; // modo edición de la columna Comentarios
+const BN_TBL_COMENT_CHANGES = new Map(); // rowNum → newComentarios
+
+function bn_tblToggleComentEditMode() {
+  if (!BN_TBL_COMENT_EDIT_MODE) {
+    BN_TBL_COMENT_EDIT_MODE = true;
+    BN_TBL_COMENT_CHANGES.clear();
+    bn_renderCards();
+  } else {
+    bn_tblShowSaveComentConfirm();
+  }
+}
+
+function bn_tblExitComentEditMode() {
+  const n = BN_TBL_COMENT_CHANGES.size;
+  if (n > 0) {
+    if (!confirm(`¿Salir sin guardar los ${n} cambio${n===1?'':'s'} pendiente${n===1?'':'s'} en Comentarios?`)) return;
+  }
+  BN_TBL_COMENT_EDIT_MODE = false;
+  BN_TBL_COMENT_CHANGES.clear();
+  bn_renderCards();
+}
+
+function bn_tblTrackComentChange(idx, cellEl) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec || !rec.rowNum) return;
+  const newVal = (cellEl.textContent || '').trim();
+  const origVal = (cellEl.dataset.origComent || '').trim();
+  if (newVal === origVal) return;
+  rec._comentarios = newVal;
+  cellEl.dataset.origComent = newVal;
+  cellEl.title = newVal;
+  cellEl.style.outline = '2px solid #f59e0b';
+  (async () => {
+    try {
+      const payload = bn_buildSavePayload(rec, {});
+      payload.clasificacion.comentarios = newVal;
+      const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await resp.json();
+      cellEl.style.outline = j.ok ? '2px solid #16a34a' : '2px solid #dc2626';
+      setTimeout(() => { cellEl.style.outline = ''; }, 1200);
+    } catch (_) {
+      cellEl.style.outline = '2px solid #dc2626';
+      setTimeout(() => { cellEl.style.outline = ''; }, 1500);
+    }
+  })();
+}
+
+function bn_tblShowSaveComentConfirm() {
+  const n = BN_TBL_COMENT_CHANGES.size;
+  // Aplicación inmediata via bn_tblTrackComentChange (autoguarda al blur);
+  // este botón sólo cierra el modo de edición.
+  BN_TBL_COMENT_EDIT_MODE = false;
+  BN_TBL_COMENT_CHANGES.clear();
+  bn_renderCards();
+}
 
 function bn_tblStartDescResize(ev) {
   ev.preventDefault(); ev.stopPropagation();
@@ -5442,10 +5501,9 @@ async function bn_saveBnClassification(idx) {
                   _ct2.includes('activ') ? 'Activos' : _ct2.includes('pasiv') ? 'Pasivos' :
                   _ct2.includes('capital') ? 'Capital' : _rawT2;
 
-  // Re-render tarjeta en el DOM y cerrar modal Clasificar
-  const card = document.getElementById(`bn-card-${idx}`);
-  if (card) card.outerHTML = bn_createCard(rec, idx);
+  // Re-render: actualizar SIEMPRE la vista activa (cards o tabla)
   bn_closeClassifyModal();
+  bn_renderCards();
 
   // Guardar clasificación en Google Sheets (hoja BANCOS)
   try {
@@ -5966,42 +6024,43 @@ function bn_dateHeaderLabel(iso) {
 function bn_renderRecordsTable(recs, startIdx) {
   if (!recs.length) return '';
   const CUENTA_EMOJI = { Egresos:'💸', Ingresos:'💰', Activos:'📈', Pasivos:'📋', Capital:'💼' };
+  const editBtnsDesc = BN_TBL_EDIT_MODE ? `
+    <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
+            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">💾 Guardar</button>
+    <button onclick="event.stopPropagation();bn_tblExitEditMode()"
+            style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✕ Salir</button>` : `
+    <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
+            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
+  const editBtnsCom = BN_TBL_COMENT_EDIT_MODE ? `
+    <button onclick="event.stopPropagation();bn_tblToggleComentEditMode()"
+            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">💾 Guardar</button>
+    <button onclick="event.stopPropagation();bn_tblExitComentEditMode()"
+            style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✕ Salir</button>` : `
+    <button onclick="event.stopPropagation();bn_tblToggleComentEditMode()"
+            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
   const head = `
     <thead>
       <tr style="background:#475569;color:#fff">
         ${BN_SEL_MODE ? '<th style="padding:9px 10px;width:36px"></th>' : ''}
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Cuenta</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Buscar clasificación</th>
-        <th data-bn-tbl-col="desc" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;position:relative;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px">
-          <div style="display:inline-flex;align-items:center;gap:6px">
-            <span>Descripción</span>
-            ${BN_TBL_EDIT_MODE ? `
-              <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
-                      style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">
-                💾 Guardar
-              </button>
-              <button onclick="event.stopPropagation();bn_tblExitEditMode()"
-                      style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">
-                ✕ Salir
-              </button>` : `
-              <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
-                      style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">
-                ✏️ Editar
-              </button>`}
-          </div>
-          <span class="bn-tbl-desc-resizer" onmousedown="bn_tblStartDescResize(event)" title="Arrastrar para redimensionar"></span>
-        </th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Cuenta banc.</th>
-        <th style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase">Monto</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Cuenta</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Subcuenta</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Categoría</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Concepto</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Comentarios</th>
+        <th data-bn-tbl-col="desc" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;position:relative;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px">
+          <div style="display:inline-flex;align-items:center;gap:6px"><span>Descripción</span>${editBtnsDesc}</div>
+          <span class="bn-tbl-desc-resizer" onmousedown="bn_tblStartDescResize(event)" title="Arrastrar para redimensionar"></span>
+        </th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">
+          <div style="display:inline-flex;align-items:center;gap:6px"><span>Comentarios</span>${editBtnsCom}</div>
+        </th>
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Fact.</th>
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Ded.</th>
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Duda</th>
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Val.</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Cuenta banc.</th>
+        <th style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase">Monto</th>
       </tr>
     </thead>`;
 
@@ -6031,13 +6090,17 @@ function bn_renderRecordsTable(recs, startIdx) {
            <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;border:1.5px solid ${isSel?'#ea580c':'#cbd5e1'};background:${isSel?'#ea580c':'#fff'};color:#fff;font-weight:800;font-size:13px;cursor:pointer">${isSel?'✓':''}</span>
          </td>`
       : '';
+    const com  = (rec._comentarios || '').slice(0, 200);
+    // Cuando NO se edita la columna, no fijar background inline para permitir
+    // que el striping zebra (tr:nth-child(even)) se aplique como en el resto.
+    const descBg  = BN_TBL_EDIT_MODE       ? '#fff' : '';
+    const comBg   = BN_TBL_COMENT_EDIT_MODE ? '#fff' : '';
     return `
       <tr ${rowClick ? `onclick="${rowClick}"` : ''}
           style="cursor:${rowClick?'pointer':'default'};border-bottom:1px solid #e2e8f0;${rowBg}"
           onmouseover="this.style.filter='brightness(.97)'"
           onmouseout="this.style.filter=''">
         ${selCell}
-        <td style="padding:8px 10px">${chip}</td>
         <td style="padding:6px 8px;min-width:200px" onclick="event.stopPropagation()">
           <input type="text" id="bn-tbl-search-${idx}" placeholder="🔍 Buscar..."
                  autocomplete="off"
@@ -6046,36 +6109,43 @@ function bn_renderRecordsTable(recs, startIdx) {
                  onblur="setTimeout(()=>bn_tblSearchHide(),200)"
                  style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;outline:none">
         </td>
+        <td style="padding:8px 10px">${chip}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._subcuenta||'')}">${esc(rec._subcuenta||'')}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._categoria_gasto||'')}">${esc(rec._categoria_gasto||'')}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._concepto||'')}">${esc(rec._concepto||'')}</td>
         <td data-bn-tbl-col="desc" ${BN_TBL_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
             data-row-idx="${idx}" data-orig-desc="${esc(desc)}"
             onclick="event.stopPropagation()"
             onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
-            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${BN_TBL_EDIT_MODE?'#fff':''}';bn_tblTrackDescChange(${idx}, this)"
+            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${descBg}';bn_tblTrackDescChange(${idx}, this)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-            style="padding:8px 10px;font-size:12px;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_EDIT_MODE?'text':'default'};background:${BN_TBL_EDIT_MODE?'#fff':'transparent'};${BN_TBL_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(desc)}">${esc(desc)}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
-        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._subcuenta||'')}">${esc(rec._subcuenta||'')}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._categoria_gasto||'')}">${esc(rec._categoria_gasto||'')}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._concepto||'')}">${esc(rec._concepto||'')}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._comentarios||'')}">${esc(rec._comentarios||'')}</td>
+            style="padding:8px 10px;font-size:12px;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_EDIT_MODE?'text':'default'};${descBg?'background:'+descBg+';':''}${BN_TBL_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(desc)}">${esc(desc)}</td>
+        <td ${BN_TBL_COMENT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
+            data-row-idx="${idx}" data-orig-coment="${esc(com)}"
+            onclick="event.stopPropagation()"
+            onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
+            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${comBg}';bn_tblTrackComentChange(${idx}, this)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+            style="padding:8px 10px;font-size:11px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_COMENT_EDIT_MODE?'text':'default'};${comBg?'background:'+comBg+';':''}${BN_TBL_COMENT_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(com)}">${esc(com)}</td>
         <td style="padding:8px 10px;text-align:center;font-size:14px">${fac ? '🧾' : ''}</td>
         <td onclick="event.stopPropagation();bn_syncDeducible(${idx}, ${!dedOn});bn_renderCards()"
             title="${dedOn?'Deducible — clic para desactivar':'No deducible — clic para activar'}"
-            style="padding:6px;text-align:center;background:#fff;cursor:pointer">
+            style="padding:6px;text-align:center;cursor:pointer">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${dedOn?'#0e7490':'#e2e8f0'};background:${dedOn?'#cffafe':'#fff'};font-size:13px;opacity:${dedOn?'1':'.5'}">💰</span>
         </td>
         <td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!isDuda});bn_renderCards()"
             title="${isDuda?'Marcado: Duda — clic para quitar':'Marcar como Duda'}"
-            style="padding:6px;text-align:center;background:#fff;cursor:pointer">
+            style="padding:6px;text-align:center;cursor:pointer">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#f59e0b':'#e2e8f0'};background:${isDuda?'#fef3c7':'#fff'};color:${isDuda?'#b45309':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
         </td>
         <td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!isVal});bn_renderCards()"
             title="${isVal?'Validado — clic para quitar':'Marcar como Validado'}"
-            style="padding:6px;text-align:center;background:#fff;cursor:pointer">
+            style="padding:6px;text-align:center;cursor:pointer">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isVal?'#16a34a':'#e2e8f0'};background:${isVal?'#dcfce7':'#fff'};color:${isVal?'#16a34a':'#cbd5e1'};font-weight:900;font-size:13px">✓</span>
         </td>
+        <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
+        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
       </tr>`;
   }).join('');
 
@@ -6654,6 +6724,14 @@ function bn_modalLiveSync(idx) {
   const rec = BN_CUR_RECS[idx];
   if (!rec) return;
   const ci = 'bn' + idx;
+  // CRÍTICO: si el modal Clasificar NO está abierto, NO sincronizar campos del panel.
+  // getClassify() devolvería '' para todos los inputs inexistentes, borrando la
+  // clasificación del registro.
+  const ov = document.getElementById('bn-classify-overlay');
+  if (!ov || ov.classList.contains('hidden')) {
+    bn_classifyRefreshActions(ci);
+    return;
+  }
   const c = (function(){ try { return getClassify(ci); } catch(_) { return {}; } })();
   // Actualizar campos en memoria desde la selección del panel
   if (c.cuenta    !== undefined) rec._cuenta          = c.cuenta;
