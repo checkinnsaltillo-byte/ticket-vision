@@ -5130,15 +5130,18 @@ function bn_createCard(rec, idx) {
                style="display:none">
         ${BN_SEL.has(rec.rowNum)?'✓':''}
       </label>` : ''}
+      <!-- Nota de duda (arriba del botón ?) — clic para editar; sólo se renderiza si Duda está activa -->
+      ${isDuda ? `
+      <div id="bn-duda-note-${idx}"
+           onclick="event.stopPropagation();bn_openDudaNotaEditor(${idx})"
+           title="${esc(rec._duda_nota || 'Sin nota — clic para agregar')}"
+           style="position:absolute;top:8px;right:42px;max-width:200px;padding:3px 8px;border-radius:6px;background:#fef3c7;color:#92400e;font-size:10px;font-weight:600;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:3;border:1px solid #fcd34d;cursor:pointer">📝 ${esc(rec._duda_nota || '(sin nota)')}</div>` : ''}
       <!-- Botón "Duda" (?) en esquina superior derecha. Marca registros con duda para revisar después. -->
       <button id="bn-check-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               data-checked="${isDuda}"
               title="${isDuda ? (rec._duda_nota || 'Marcado: Duda') : 'Duda'}"
               style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#f59e0b' : '#e5e7eb'};background:${isDuda ? '#e2e8f0' : '#f9fafb'};color:${isDuda ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
-      ${(isDuda && rec._duda_nota) ? `
-      <div id="bn-duda-note-${idx}" title="${esc(rec._duda_nota)}"
-           style="position:absolute;top:72px;right:8px;max-width:180px;padding:3px 8px;border-radius:6px;background:#fef3c7;color:#92400e;font-size:10px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:3;border:1px solid #fcd34d">📝 ${esc(rec._duda_nota)}</div>` : ''}
       <!-- Botón Validado (✓) debajo del Duda. Activo → registro sale de 'Por clasificar' -->
       <button id="bn-revisado-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
@@ -6778,15 +6781,13 @@ async function bn_syncDuda(idx, checked) {
   const rec = BN_CUR_RECS[idx];
   if (!rec) return;
   rec._duda = checked ? 'Sí' : 'No';
-  // Al ACTIVAR la duda: pedir/editar el texto siempre. Al desactivar: limpiar.
-  if (checked) {
-    const prev = rec._duda_nota || '';
-    const nota = window.prompt('Dudas texto — describe la duda:', prev);
-    if (nota === null) { rec._duda = 'No'; return; } // canceló
-    rec._duda_nota = nota.trim();
-  } else {
-    rec._duda_nota = '';
-  }
+  // Al ACTIVAR: la nota se edita inline (no prompt nativo). Al desactivar: limpiar.
+  if (!checked) rec._duda_nota = '';
+  // Re-render la card para que aparezca/desaparezca el badge de nota inmediatamente
+  const card = document.getElementById(`bn-card-${idx}`);
+  if (card) card.outerHTML = bn_createCard(rec, idx);
+  // Si acabamos de activar, abre el editor inline al instante (sin nota previa o con la previa)
+  if (checked) setTimeout(() => bn_openDudaNotaEditor(idx), 30);
 
   // Botón Duda (?) en esquina superior derecha
   const btn = document.getElementById(`bn-check-${ci}`);
@@ -6845,6 +6846,66 @@ async function bn_syncDuda(idx, checked) {
   } catch (e) {
     console.warn('Error guardando Duda:', e.message);
   }
+}
+
+/** Abre un editor inline para la nota de duda — pequeño recuadro anclado al
+ *  badge 📝, con el mismo aspecto. Enter o blur guarda; Esc cancela. */
+function bn_openDudaNotaEditor(idx) {
+  const rec = BN_CUR_RECS[idx]; if (!rec) return;
+  const card = document.getElementById(`bn-card-${idx}`);
+  const anchor = document.getElementById(`bn-duda-note-${idx}`) ||
+                 document.getElementById(`bn-check-bn${idx}`);
+  if (!card || !anchor) return;
+  // Evitar duplicar editor
+  if (document.getElementById(`bn-duda-editor-${idx}`)) {
+    document.getElementById(`bn-duda-editor-${idx}`).querySelector('input')?.focus();
+    return;
+  }
+  const r = anchor.getBoundingClientRect();
+  const wrap = document.createElement('div');
+  wrap.id = `bn-duda-editor-${idx}`;
+  wrap.style.cssText = `position:fixed;top:${r.bottom + 4}px;left:${Math.max(8, r.right - 260)}px;width:260px;z-index:9000;background:#fef3c7;border:1.5px solid #fcd34d;border-radius:8px;padding:6px;box-shadow:0 8px 22px rgba(15,23,42,.18);display:flex;gap:6px;align-items:center`;
+  wrap.innerHTML = `
+    <span style="font-size:13px">📝</span>
+    <input type="text" placeholder="Describe la duda…" value="${esc(rec._duda_nota || '')}"
+           style="flex:1;padding:5px 8px;border:1px solid #fcd34d;background:#fffbeb;color:#92400e;border-radius:6px;font-size:11px;font-weight:600;outline:none">
+    <button type="button" title="Guardar"
+            style="padding:4px 8px;border:none;background:#16a34a;color:#fff;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✓</button>
+    <button type="button" title="Cancelar"
+            style="padding:4px 8px;border:none;background:#e2e8f0;color:#475569;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✕</button>`;
+  document.body.appendChild(wrap);
+  const input = wrap.querySelector('input');
+  const [btnSave, btnCancel] = wrap.querySelectorAll('button');
+  input.focus(); input.select();
+
+  const save = () => {
+    const newVal = (input.value || '').trim();
+    rec._duda_nota = newVal;
+    wrap.remove();
+    // Re-render card para reflejar la nota en el badge
+    const c2 = document.getElementById(`bn-card-${idx}`);
+    if (c2) c2.outerHTML = bn_createCard(rec, idx);
+    // Persistir en background
+    if (rec.rowNum) {
+      fetch(`${BACKEND}/save-banco-clasificacion`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowNum: rec.rowNum, duda_nota_edit: true, duda_nota: newVal }),
+      }).catch(e => console.warn('Error guardando nota:', e.message));
+    }
+  };
+  const cancel = () => wrap.remove();
+
+  btnSave.onclick = (ev) => { ev.stopPropagation(); save(); };
+  btnCancel.onclick = (ev) => { ev.stopPropagation(); cancel(); };
+  input.onkeydown = (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); cancel(); }
+  };
+  // Cerrar al hacer clic fuera
+  const docHandler = (ev) => {
+    if (!wrap.contains(ev.target)) { wrap.remove(); document.removeEventListener('mousedown', docHandler, true); }
+  };
+  setTimeout(() => document.addEventListener('mousedown', docHandler, true), 50);
 }
 
 // Snapshot inicial de la clasificación al abrir el modal Clasificar, usado
