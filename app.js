@@ -2929,7 +2929,7 @@ function bn_apOpenRecordsModal(pathEnc) {
     const reem = r._reembolso || '';
     const mp   = r._metodo_pago || '';
     const com  = r._comentarios || '';
-    const duda = r._duda === 'Sí' ? '<span title="Marcado: Duda" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#e2e8f0;color:#334155;font-weight:900;line-height:22px;text-align:center">?</span>' : '';
+    const duda = r._duda === 'Sí' ? '<span title="Marcado: Duda" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#fef3c7;color:#b45309;font-weight:900;line-height:22px;text-align:center">?</span>' : '';
     const cu = r._cuenta || '', su = r._subcuenta || '', ca = r._categoria_gasto || '', co = r._concepto || '';
     return `<tr>
       <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#475569;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cu)}">${esc(cu)}</td>
@@ -5143,13 +5143,13 @@ function bn_createCard(rec, idx) {
       <div id="bn-duda-note-${idx}"
            onclick="event.stopPropagation();bn_openDudaNotaEditor(${idx})"
            title="${esc(rec._duda_nota || 'Sin nota — clic para agregar')}"
-           style="position:absolute;top:8px;right:42px;max-width:200px;padding:3px 8px;border-radius:6px;background:#f1f5f9;color:#334155;font-size:10px;font-weight:600;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:3;border:1px solid #cbd5e1;cursor:pointer">📝 ${esc(rec._duda_nota || '(sin nota)')}</div>` : ''}
+           style="position:absolute;top:8px;right:42px;max-width:200px;padding:3px 8px;border-radius:6px;background:#fef3c7;color:#92400e;font-size:10px;font-weight:600;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:3;border:1px solid #f59e0b;cursor:pointer">📝 ${esc(rec._duda_nota || '(sin nota)')}</div>` : ''}
       <!-- Botón "Duda" (?) en esquina superior derecha. Marca registros con duda para revisar después. -->
       <button id="bn-check-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               data-checked="${isDuda}"
               title="${isDuda ? (rec._duda_nota || 'Marcado: Duda') : 'Duda'}"
-              style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#334155' : '#e5e7eb'};background:${isDuda ? '#e2e8f0' : '#f9fafb'};color:${isDuda ? '#334155' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
+              style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#f59e0b' : '#e5e7eb'};background:${isDuda ? '#fef3c7' : '#f9fafb'};color:${isDuda ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
       <!-- Botón Validado (✓) debajo del Duda. Activo → registro sale de 'Por clasificar' -->
       <button id="bn-revisado-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
@@ -5241,7 +5241,7 @@ function bn_toggleBnClassify(idx) {
       <button id="validado-panel-${ci}" type="button" data-checked="${valOn}"
               onclick="bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               title="${valOn ? 'Marcado: Duda' : 'Duda'}"
-              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#334155' : '#e5e7eb'};background:${valOn ? '#e2e8f0' : '#f9fafb'};color:${valOn ? '#334155' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">?</button>
+              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#fef3c7' : '#f9fafb'};color:${valOn ? '#b45309' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">?</button>
       <span style="font-size:12px;color:#6b7280">Marca este registro si tienes <b>dudas</b> y quieres revisarlo después</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -6298,7 +6298,7 @@ function bn_renderRecordsTable(recs, startIdx) {
         <td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!isDuda});bn_renderCards()"
             title="${isDuda?(rec._duda_nota||'Marcado: Duda — clic para quitar'):'Marcar como Duda'}"
             style="padding:6px;text-align:center;cursor:pointer">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#334155':'#e2e8f0'};background:${isDuda?'#e2e8f0':'#fff'};color:${isDuda?'#334155':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#f59e0b':'#e2e8f0'};background:${isDuda?'#fef3c7':'#fff'};color:${isDuda?'#b45309':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
         </td>
         <td ${BN_TBL_DUDANT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
             data-row-idx="${idx}" data-orig-dudant="${esc(dudaNt)}"
@@ -6306,7 +6306,7 @@ function bn_renderRecordsTable(recs, startIdx) {
             onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
             onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${dudaNtBg}';bn_tblTrackDudaNotaChange(${idx}, this)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-            style="padding:8px 10px;font-size:11px;color:#334155;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_DUDANT_EDIT_MODE?'text':'default'};${dudaNtBg?'background:'+dudaNtBg+';':''}${BN_TBL_DUDANT_EDIT_MODE?'border-left:2px solid #334155':''}" title="${esc(dudaNt)}">${esc(dudaNt)}</td>
+            style="padding:8px 10px;font-size:11px;color:#92400e;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_DUDANT_EDIT_MODE?'text':'default'};${dudaNtBg?'background:'+dudaNtBg+';':''}${BN_TBL_DUDANT_EDIT_MODE?'border-left:2px solid #f59e0b':''}" title="${esc(dudaNt)}">${esc(dudaNt)}</td>
         <td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!isVal});bn_renderCards()"
             title="${isVal?'Validado — clic para quitar':'Marcar como Validado'}"
             style="padding:6px;text-align:center;cursor:pointer">
@@ -6872,15 +6872,15 @@ function bn_openDudaNotaEditor(idx) {
   const r = anchor.getBoundingClientRect();
   const wrap = document.createElement('div');
   wrap.id = `bn-duda-editor-${idx}`;
-  wrap.style.cssText = `position:fixed;top:${r.bottom + 4}px;left:${Math.max(8, r.right - 260)}px;width:260px;z-index:9000;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:8px;padding:6px;box-shadow:0 8px 22px rgba(15,23,42,.18);display:flex;gap:6px;align-items:center`;
+  wrap.style.cssText = `position:fixed;top:${r.bottom + 4}px;left:${Math.max(8, r.right - 260)}px;width:260px;z-index:9000;background:#fef3c7;border:1.5px solid #f59e0b;border-radius:8px;padding:6px;box-shadow:0 8px 22px rgba(180,83,9,.25);display:flex;gap:6px;align-items:center`;
   wrap.innerHTML = `
     <span style="font-size:13px">📝</span>
     <input type="text" placeholder="Describe la duda…" value="${esc(rec._duda_nota || '')}"
-           style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:6px;font-size:11px;font-weight:600;outline:none">
+           style="flex:1;padding:5px 8px;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:6px;font-size:11px;font-weight:600;outline:none">
     <button type="button" title="Guardar"
-            style="padding:4px 8px;border:none;background:#334155;color:#fff;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✓</button>
+            style="padding:4px 8px;border:none;background:#ea580c;color:#fff;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✓</button>
     <button type="button" title="Cancelar"
-            style="padding:4px 8px;border:none;background:#e2e8f0;color:#475569;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✕</button>`;
+            style="padding:4px 8px;border:none;background:#fde68a;color:#92400e;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✕</button>`;
   document.body.appendChild(wrap);
   const input = wrap.querySelector('input');
   const [btnSave, btnCancel] = wrap.querySelectorAll('button');
