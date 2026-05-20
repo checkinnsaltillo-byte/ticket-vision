@@ -3242,13 +3242,21 @@ function bn_kpiRecs(subtype) {
     if (subtype === 'AC' && !t.includes('activ'))   return false;
     if (subtype === 'PA' && !t.includes('pasiv'))   return false;
     if (subtype === 'CA' && !t.includes('capital')) return false;
-    // Multi-selects del hamburguesa
+    // Multi-selects del hamburguesa (excepto 'dia' que ahora es rango)
     for (const f of BN_MSEL_FIELDS) {
+      if (f.key === 'dia') continue;
       const arr = s[f.key];
       if (arr?.length) {
         const val = (f.from(r) || '').toString().trim();
         if (!arr.includes(val)) return false;
       }
+    }
+    // Rango de fechas
+    if (s.dia_desde || s.dia_hasta) {
+      const isoR = bn_formatDiaISO(r.Día || r.Dia || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(isoR)) return false;
+      if (s.dia_desde && isoR < s.dia_desde) return false;
+      if (s.dia_hasta && isoR > s.dia_hasta) return false;
     }
     // Año / Mes
     if ((s.anio?.length) || (s.mes?.length)) {
@@ -3367,6 +3375,12 @@ function bn_populateFilters() {
 function bn_mselFillOptions(field, options, labelFn) {
   const panel = document.getElementById(`bn-msel-panel-${field}`);
   if (!panel) return;
+
+  // Caso especial: 'dia' usa un selector de rango de fechas (calendario)
+  if (field === 'dia') {
+    return bn_mselRenderDiaCalendar(panel);
+  }
+
   const sel = bn_st[field] || [];
   // Filtrar selecciones que ya no estén disponibles en el contexto actual
   bn_st[field] = sel.filter(v => options.includes(v));
@@ -3417,6 +3431,86 @@ function bn_mselFillOptions(field, options, labelFn) {
     return acc;
   }, {}));
   bn_mselUpdateTrigger(field);
+}
+
+/** Renderiza el panel de "Día" como un selector de rango de fechas (calendario). */
+function bn_mselRenderDiaCalendar(panel) {
+  const desde = bn_st.dia_desde || '';
+  const hasta = bn_st.dia_hasta || '';
+  panel.innerHTML = `
+    <div style="padding:10px;display:flex;flex-direction:column;gap:8px;min-width:240px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <label style="font-size:11px;font-weight:700;color:#475569;min-width:46px">Desde</label>
+        <input type="date" id="bn-dia-desde" value="${esc(desde)}"
+               onchange="bn_setDiaRange('desde', this.value)"
+               style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;background:#fff;color:#334155">
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <label style="font-size:11px;font-weight:700;color:#475569;min-width:46px">Hasta</label>
+        <input type="date" id="bn-dia-hasta" value="${esc(hasta)}"
+               onchange="bn_setDiaRange('hasta', this.value)"
+               style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;background:#fff;color:#334155">
+      </div>
+      <div style="display:flex;gap:6px;margin-top:2px">
+        <button type="button" onclick="bn_setDiaPreset('hoy')"
+                style="flex:1;padding:5px 8px;border:1px solid #d1d5db;background:#f1f5f9;color:#334155;font-weight:600;font-size:11px;border-radius:5px;cursor:pointer">Hoy</button>
+        <button type="button" onclick="bn_setDiaPreset('semana')"
+                style="flex:1;padding:5px 8px;border:1px solid #d1d5db;background:#f1f5f9;color:#334155;font-weight:600;font-size:11px;border-radius:5px;cursor:pointer">Semana</button>
+        <button type="button" onclick="bn_setDiaPreset('mes')"
+                style="flex:1;padding:5px 8px;border:1px solid #d1d5db;background:#f1f5f9;color:#334155;font-weight:600;font-size:11px;border-radius:5px;cursor:pointer">Mes</button>
+      </div>
+      <button type="button" onclick="bn_clearDiaRange()"
+              style="padding:6px 8px;border:1px solid #d1d5db;background:#fff;color:#475569;font-weight:600;font-size:12px;border-radius:5px;cursor:pointer">
+        ✕ Limpiar rango
+      </button>
+    </div>`;
+  panel.dataset.labels = '{}';
+  bn_mselUpdateTrigger('dia');
+}
+
+function bn_setDiaRange(which, val) {
+  if (which === 'desde') bn_st.dia_desde = val || '';
+  if (which === 'hasta') bn_st.dia_hasta = val || '';
+  bn_mselUpdateTrigger('dia');
+  bn_render();
+}
+
+function bn_setDiaPreset(preset) {
+  const today = new Date();
+  const iso = d => d.toISOString().slice(0, 10);
+  if (preset === 'hoy') {
+    bn_st.dia_desde = iso(today);
+    bn_st.dia_hasta = iso(today);
+  } else if (preset === 'semana') {
+    const dow = today.getDay() || 7;
+    const monday = new Date(today); monday.setDate(today.getDate() - (dow - 1));
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+    bn_st.dia_desde = iso(monday);
+    bn_st.dia_hasta = iso(sunday);
+  } else if (preset === 'mes') {
+    bn_st.dia_desde = iso(new Date(today.getFullYear(), today.getMonth(), 1));
+    bn_st.dia_hasta = iso(new Date(today.getFullYear(), today.getMonth()+1, 0));
+  }
+  const panel = document.getElementById('bn-msel-panel-dia');
+  if (panel) bn_mselRenderDiaCalendar(panel);
+  bn_render();
+}
+
+function bn_clearDiaRange() {
+  bn_st.dia_desde = ''; bn_st.dia_hasta = '';
+  const panel = document.getElementById('bn-msel-panel-dia');
+  if (panel) bn_mselRenderDiaCalendar(panel);
+  bn_render();
+}
+
+/** Etiqueta visible del trigger 'dia' usando el rango. */
+function bn_diaTriggerLabel() {
+  const d = bn_st.dia_desde || '', h = bn_st.dia_hasta || '';
+  if (!d && !h) return 'Todos';
+  if (d && h && d === h) return d;
+  if (d && h) return `${d} → ${h}`;
+  if (d) return `Desde ${d}`;
+  return `Hasta ${h}`;
 }
 
 /** Filtra dinámicamente las opciones visibles del multi-select por texto. */
@@ -3471,6 +3565,15 @@ function bn_mselUpdateTrigger(field) {
   if (!wrap) return;
   const lblEl = wrap.querySelector('.bn-msel-label');
   if (!lblEl) return;
+  // Caso especial: 'dia' usa rango de fechas, no array de selecciones
+  if (field === 'dia') {
+    const txt = bn_diaTriggerLabel();
+    lblEl.textContent = txt;
+    const active = txt !== 'Todos';
+    lblEl.style.color = active ? '#334155' : '';
+    lblEl.style.fontWeight = active ? '700' : '';
+    return;
+  }
   const sel = bn_st[field] || [];
   const panel = document.getElementById(`bn-msel-panel-${field}`);
   let map = {};
@@ -3617,6 +3720,8 @@ function bn_clearFilters() {
     bn_st[f] = [];
   }
   bn_st.q = '';
+  bn_st.dia_desde = '';
+  bn_st.dia_hasta = '';
   const txt = document.getElementById('bn-f-text');
   if (txt) txt.value = '';
   // Re-render opciones para reflejar el estado limpio
@@ -3661,13 +3766,22 @@ function bn_filteredRecs(tipo) {
     if(sub==='PA' && !t.includes('pasiv'))   return false;
     if(sub==='CA' && !t.includes('capital')) return false;
 
-    // Multi-selects: cada campo es array; vacío = todos
+    // Multi-selects: cada campo es array; vacío = todos.
+    // 'dia' se omite — ahora usa rango de fechas (dia_desde / dia_hasta).
     for (const f of BN_MSEL_FIELDS) {
+      if (f.key === 'dia') continue;
       const arr = s[f.key];
       if (arr && arr.length) {
         const val = (f.from(r) || '').toString().trim();
         if (!arr.includes(val)) return false;
       }
+    }
+    // Rango de fechas para 'dia'
+    if (s.dia_desde || s.dia_hasta) {
+      const iso = bn_formatDiaISO(r.Día || r.Dia || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+      if (s.dia_desde && iso < s.dia_desde) return false;
+      if (s.dia_hasta && iso > s.dia_hasta) return false;
     }
 
     // Año y Mes (multi)
