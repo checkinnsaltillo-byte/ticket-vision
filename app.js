@@ -991,13 +991,6 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
         </div>
       </div><!-- /clasif-cuenta-section -->
 
-      <!-- Propiedad y # Departamento removidos del panel Clasificar;
-           disponibles como filtros multi-select bajo la hamburguesa.
-           Inputs hidden conservados para compatibilidad con getClassify(). -->
-      <input type="hidden" id="propiedad-${idx}" value="">
-      <input type="hidden" id="propiedad-otro-${idx}" value="">
-      <input type="hidden" id="departamento-${idx}" value="">
-
       <div class="cuenta-field">
         <label>Encargado de operación</label>
         <div class="cuenta-grid cuenta-grid--compact" id="comprador-grid-${idx}">
@@ -1012,6 +1005,32 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
           <div class="cuenta-card" data-value="Damariz"  onclick="selectComprador(this,'${idx}')"><div class="cuenta-icon">👩</div><div class="cuenta-label">Damariz</div></div>
         </div>
         <input type="hidden" id="comprador-${idx}" value="">
+      </div>
+
+      <div class="cuenta-field">
+        <label>Propiedad</label>
+        <select id="propiedad-${idx}" class="field-select" onchange="togglePropiedadOtro('${idx}', this.value); markClassifyDirty('${idx}')">
+          <option value="">— Seleccionar —</option>
+          <option>Calle Cumbres</option>
+          <option>Calle Baja California</option>
+          <option>Calle Oaxaca</option>
+          <option>Calle José Cárdenas</option>
+          <option>Calle Matamoros</option>
+          <option value="Otro">Otro</option>
+        </select>
+        <div class="hidden" id="propiedad-otro-wrap-${idx}" style="margin-top:8px">
+          <input type="text" id="propiedad-otro-${idx}" class="field-select"
+                 placeholder="Especificar propiedad..." style="appearance:none"
+                 oninput="markClassifyDirty('${idx}')">
+        </div>
+      </div>
+
+      <div class="cuenta-field">
+        <label># Departamento</label>
+        <select id="departamento-${idx}" class="field-select" onchange="markClassifyDirty('${idx}')">
+          <option value="">— Seleccionar —</option>
+          ${Array.from({length:14},(_,j)=>`<option>${j+1}</option>`).join('')}
+        </select>
       </div>
 
       <div class="cuenta-field" id="deducible-field-${idx}">
@@ -1086,7 +1105,8 @@ function buildClassifyPanel(idx, fecha, deptOpts, saveLabel, saveOnclick, limpia
       <div class="cuenta-field">
         <label>Comentarios</label>
         <textarea id="comentarios-${idx}" class="classify-textarea"
-                  placeholder="Notas adicionales sobre este ticket..." oninput="markClassifyDirty('${idx}')"></textarea>
+                  placeholder="Notas adicionales sobre este ticket..."
+                  oninput="bn_onComentariosTextareaInput('${idx}', this); markClassifyDirty('${idx}')"></textarea>
       </div>
 
       <div class="classify-actions hidden" id="classify-actions-${idx}">
@@ -1661,10 +1681,10 @@ const BN_MSEL_FIELDS = [
   { key: 'categoria',    label: 'Categoría',       from: r => r._categoria_gasto    || '' },
   { key: 'concepto',     label: 'Concepto',        from: r => r._concepto           || '' },
   { key: 'cuentaBan',    label: 'Cuenta bancaria', from: r => r['Cuenta bancaria']  || '' },
-  { key: 'dia',          label: 'Día',             from: r => {
+  { key: 'dia',          label: '📅 Día (fecha)',  from: r => {
       const iso = bn_formatDiaISO(r.Día || r.Dia || '');
-      const m = iso.match(/^\d{4}-\d{2}-(\d{2})/);
-      return m ? String(Number(m[1])) : '';
+      const m = iso.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : '';
     } },
   { key: 'propiedad',    label: 'Propiedad',       from: r => r._propiedad          || '' },
   { key: 'departamento', label: '# Departamento',  from: r => (r._departamento !== undefined && r._departamento !== null && r._departamento !== '') ? String(r._departamento) : '' },
@@ -4857,6 +4877,7 @@ function bn_buildBnResumenTable(r, idx) {
   // Descripción es el único campo editable de texto libre
   const rows = [
     ['Descripción',      'DESC',    r.DESCRIPCION,                                               true ],
+    ['Comentarios',      'COMENT',  r._comentarios  || '',                                       true ],
     ['Día',              'DÍA',     bn_formatDia(r.Día || r.Dia || '') || r.Mes || r.Año || '', false],
     ['Cuenta bancaria',  'CUENTA_B', r['Cuenta bancaria'],                                      false],
     ['Monto',            'MONTO',   r.Monto != null ? bn_fmt$(Number(r.Monto || 0)) : '',       false],
@@ -4869,10 +4890,9 @@ function bn_buildBnResumenTable(r, idx) {
     ['Categoría gasto',  '_cat',    r._categoria_gasto || '',                                    false],
     ['Concepto clasif.', '_con',    r._concepto     || '',                                       false],
     ['Propiedad',        '_prop',   r._propiedad    || '',                                       false],
-    ['Departamento',     '_depto',  r._departamento !== undefined ? String(r._departamento) : '', false],
+    ['Departamento',     '_depto',  r._departamento !== undefined && r._departamento !== '' ? String(r._departamento) : '', false],
     ['Encargado',        '_enc',    r._encargado    || '',                                       false],
     ['Clasificado por',  '_clasif', r._clasificado_por || '',                                    false],
-    ['Comentarios',      '_coment', r._comentarios  || '',                                       false],
     ['Duda',             '_duda',   r._duda     === 'Sí' ? 'Sí' : '',                            false],
     ['Validado',         '_valid',  r._validado === 'Sí' ? 'Sí' : '',                            false],
   ];
@@ -4888,11 +4908,18 @@ function bn_buildBnResumenTable(r, idx) {
       .map(([label, field, val, editable]) => {
       const display = val != null ? String(val) : '';
       const tdCommon = 'padding:6px 8px;word-break:break-word;overflow-wrap:anywhere';
+      const isComent = (field === 'COMENT');
+      const handlerInput = isComent
+        ? `bn_onResumenComentEdit(${idx}, this)`
+        : `bn_onResumenEdit(${idx}, this)`;
+      const handlerBlur = isComent
+        ? `bn_autoSaveResumenComent(${idx}, this)`
+        : `bn_autoSaveResumenDesc(${idx}, this)`;
       const td = editable
         ? `<td contenteditable="true" spellcheck="false" data-field="${field}"
               style="${tdCommon}"
-              oninput="bn_onResumenEdit(${idx}, this)"
-              onblur="bn_autoSaveResumenDesc(${idx}, this)">${esc(display)}</td>`
+              oninput="${handlerInput}"
+              onblur="${handlerBlur}">${esc(display)}</td>`
         : `<td style="${tdCommon}">${esc(display)}</td>`;
       return `<tr><td class="resumen-key" style="${tdCommon}">${label}</td>${td}</tr>`;
     }).join('')}</tbody>
@@ -4941,6 +4968,8 @@ function bn_createCard(rec, idx) {
   // Chips informativos en tonos claros junto al chip de Cuenta
   const cuentaBancChip = cuenta ? `<span class="info-chip" style="background:#f1f5f9;color:#334155">🏦 ${esc(cuenta)}</span>` : '';
   const encChip = rec._encargado ? `<span class="info-chip" style="background:#fef3c7;color:#92400e">👤 ${esc(rec._encargado)}</span>` : '';
+  const propChip = rec._propiedad ? `<span class="info-chip" style="background:#e0e7ff;color:#3730a3">🏠 ${esc(rec._propiedad)}</span>` : '';
+  const deptChip = (rec._departamento !== undefined && rec._departamento !== '') ? `<span class="info-chip" style="background:#e0f2fe;color:#075985">🏢 Depto ${esc(String(rec._departamento))}</span>` : '';
   const facChip = fac
     ? `<span class="info-chip" style="background:#dcfce7;color:#166534">🧾 ${esc(fac)}</span>`
     : `<span class="info-chip" style="background:#f1f5f9;color:#94a3b8;font-style:italic">Sin factura</span>`;
@@ -5015,7 +5044,7 @@ function bn_createCard(rec, idx) {
               style="position:absolute;top:40px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isValidado ? '#16a34a' : '#e5e7eb'};background:${isValidado ? '#16a34a' : '#f9fafb'};color:${isValidado ? '#fff' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">✓</button>
       <div class="ticket-card-header ${clsCls}" id="bn-hdr-${idx}" onclick="bn_toggleBnCard(${idx})" style="padding-right:46px">
         <div class="ticket-info">
-          <div class="header-chips">${tipoChip}${cuentaBancChip}${encChip}${facChip}${reemChip}</div>
+          <div class="header-chips">${tipoChip}${cuentaBancChip}${encChip}${propChip}${deptChip}${facChip}${reemChip}</div>
           <div class="ticket-store-row">
             <span class="ticket-store ${colorCls}"
                   style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word;line-height:1.25">${esc(name)}</span>
@@ -6042,15 +6071,18 @@ function bn_renderRecordsTable(recs, startIdx) {
     <thead>
       <tr style="background:#475569;color:#fff">
         ${BN_SEL_MODE ? '<th style="padding:9px 10px;width:36px"></th>' : ''}
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Buscar clasificación</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Cuenta</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Subcuenta</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Categoría</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Concepto</th>
         <th data-bn-tbl-col="desc" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;position:relative;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px">
-          <div style="display:inline-flex;align-items:center;gap:6px"><span>Descripción</span>${editBtnsDesc}</div>
+          <div style="display:inline-flex;align-items:center;gap:6px"><span>Descripción</span>${editBtnsDesc}<span style="font-size:13px;color:#fde68a;margin-left:4px" title="Arrastrar borde derecho para redimensionar">↔</span></div>
           <span class="bn-tbl-desc-resizer" onmousedown="bn_tblStartDescResize(event)" title="Arrastrar para redimensionar"></span>
         </th>
+        <th style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase">Monto</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Cuenta banc.</th>
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">
           <div style="display:inline-flex;align-items:center;gap:6px"><span>Comentarios</span>${editBtnsCom}</div>
         </th>
@@ -6058,9 +6090,6 @@ function bn_renderRecordsTable(recs, startIdx) {
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Ded.</th>
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Duda</th>
         <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Val.</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Cuenta banc.</th>
-        <th style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase">Monto</th>
       </tr>
     </thead>`;
 
@@ -6101,6 +6130,7 @@ function bn_renderRecordsTable(recs, startIdx) {
           onmouseover="this.style.filter='brightness(.97)'"
           onmouseout="this.style.filter=''">
         ${selCell}
+        <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
         <td style="padding:6px 8px;min-width:200px" onclick="event.stopPropagation()">
           <input type="text" id="bn-tbl-search-${idx}" placeholder="🔍 Buscar..."
                  autocomplete="off"
@@ -6120,6 +6150,8 @@ function bn_renderRecordsTable(recs, startIdx) {
             onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${descBg}';bn_tblTrackDescChange(${idx}, this)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
             style="padding:8px 10px;font-size:12px;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_EDIT_MODE?'text':'default'};${descBg?'background:'+descBg+';':''}${BN_TBL_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(desc)}">${esc(desc)}</td>
+        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
         <td ${BN_TBL_COMENT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
             data-row-idx="${idx}" data-orig-coment="${esc(com)}"
             onclick="event.stopPropagation()"
@@ -6143,9 +6175,6 @@ function bn_renderRecordsTable(recs, startIdx) {
             style="padding:6px;text-align:center;cursor:pointer">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isVal?'#16a34a':'#e2e8f0'};background:${isVal?'#dcfce7':'#fff'};color:${isVal?'#16a34a':'#cbd5e1'};font-weight:900;font-size:13px">✓</span>
         </td>
-        <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
-        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
       </tr>`;
   }).join('');
 
@@ -6738,6 +6767,9 @@ function bn_modalLiveSync(idx) {
   if (c.subcuenta !== undefined) rec._subcuenta       = c.subcuenta;
   if (c.categoria !== undefined) rec._categoria_gasto = c.categoria;
   if (c.concepto  !== undefined) rec._concepto        = c.concepto;
+  if (c.propiedad     !== undefined) rec._propiedad     = c.propiedad;
+  if (c.departamento  !== undefined) rec._departamento  = c.departamento;
+  if (c.comprador     !== undefined) rec._encargado     = c.comprador;
   const fechaEl = document.getElementById(`fecha-clasif-${ci}`);
   if (fechaEl && fechaEl.value) rec.Día = fechaEl.value;
   const dudaBtn = document.getElementById(`validado-panel-${ci}`);
@@ -6792,6 +6824,60 @@ function bn_onResumenEdit(idx, cell) {
   try { showTableActions('bnr', idx); } catch(_) {}
   if (cell && cell.closest('#bn-classify-modal-resumen')) {
     try { markClassifyDirty('bn' + idx); } catch(_) {}
+  }
+}
+
+/** Edición en vivo de Comentarios en la tabla Resumen del modal:
+ *  refleja al textarea inferior y al estado rec en tiempo real. */
+/** Llamado al editar el textarea Comentarios inferior del panel Clasificar:
+ *  refleja en la celda Comentarios de la tabla de detalles sin destruir caret. */
+function bn_onComentariosTextareaInput(ci, textarea) {
+  const m = /^bn(\d+)$/.exec(ci);
+  if (!m) return;
+  const idx = parseInt(m[1], 10);
+  const rec = BN_CUR_RECS[idx]; if (!rec) return;
+  rec._comentarios = textarea.value;
+  // Actualizar celda Comentarios en la tabla Resumen si el foco no está dentro
+  const cell = document.querySelector('#bn-classify-modal-resumen [data-field="COMENT"]');
+  if (cell && document.activeElement !== cell) cell.textContent = textarea.value;
+}
+
+function bn_onResumenComentEdit(idx, cell) {
+  const rec = BN_CUR_RECS[idx]; if (!rec) return;
+  const newVal = (cell.textContent || '').trim();
+  rec._comentarios = newVal;
+  // Sincroniza con el textarea Comentarios del panel inferior si está visible
+  const ci = 'bn' + idx;
+  const textarea = document.getElementById(`comentarios-${ci}`);
+  if (textarea && textarea.value !== newVal) textarea.value = newVal;
+  try { showTableActions('bnr', idx); } catch(_) {}
+  if (cell.closest('#bn-classify-modal-resumen')) {
+    try { markClassifyDirty('bn' + idx); } catch(_) {}
+  }
+}
+
+/** Persiste Comentarios al blur con indicador visual. */
+async function bn_autoSaveResumenComent(idx, cell) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec || !rec.rowNum) return;
+  const newVal = (cell.textContent || '').trim();
+  if ((rec._comentarios || '') === newVal && cell.dataset.savedOnce) return;
+  rec._comentarios = newVal;
+  cell.dataset.savedOnce = '1';
+  cell.style.outline = '2px solid #f59e0b';
+  try {
+    const payload = bn_buildSavePayload(rec, {});
+    payload.clasificacion.comentarios = newVal;
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const j = await resp.json();
+    cell.style.outline = j.ok ? '2px solid #16a34a' : '2px solid #dc2626';
+    setTimeout(() => { cell.style.outline = ''; }, 1200);
+  } catch (_) {
+    cell.style.outline = '2px solid #dc2626';
+    setTimeout(() => { cell.style.outline = ''; }, 1500);
   }
 }
 
