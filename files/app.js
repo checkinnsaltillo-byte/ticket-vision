@@ -1920,6 +1920,7 @@ async function bn_loadData() {
       rec._categoria_gasto = rec.CATEGORIA || '';
       rec._concepto        = rec.CONCEPTO  || '';
       rec._duda            = rec.DUDA      || '';
+      rec._duda_nota       = rec.DUDA_NOTA || '';
       rec._validado        = rec.VALIDADO  || '';
       rec._comentarios     = rec.COMENTARIOS || rec.Comentarios || '';
       // _tipo: clasificación manual > TIPO del sheet > signo del monto
@@ -3783,12 +3784,13 @@ const BN_CAT_SUBS = {
 /** Cambia la categoría activa (Por clasificar / Registros / Control presup.).
  *  Renderiza los chips de sub-opciones en la fila inferior y selecciona la
  *  primera por defecto (o conserva la actual si pertenece a la categoría). */
-// Paleta por categoría: padre (activo / inactivo) + hijos (claro activo / claro inactivo)
+// Paleta ejecutiva — TODOS los elementos no seleccionados van en tono claro;
+// sólo el activo destaca con el tono fuerte (texto claro) de su categoría.
 const BN_CAT_PALETTE = {
-  pc:   { parent:'#0e7490', parentInactive:'#475569', child:'#ecfeff', childActive:'#67e8f9', childText:'#155e75' },
-  reg:  { parent:'#1e40af', parentInactive:'#475569', child:'#eff6ff', childActive:'#93c5fd', childText:'#1e3a8a' },
-  pres: { parent:'#047857', parentInactive:'#475569', child:'#ecfdf5', childActive:'#86efac', childText:'#065f46' },
-  ind:  { parent:'#b45309', parentInactive:'#475569', child:'#fff7ed', childActive:'#fdba74', childText:'#7c2d12' },
+  pc:   { parent:'#0f766e', child:'#f0fdfa', childActive:'#0f766e', childText:'#0f766e', childActiveText:'#fff', parentTextInactive:'#0f766e' },
+  reg:  { parent:'#1e3a8a', child:'#eff6ff', childActive:'#1e3a8a', childText:'#1e3a8a', childActiveText:'#fff', parentTextInactive:'#1e3a8a' },
+  pres: { parent:'#7e22ce', child:'#faf5ff', childActive:'#7e22ce', childText:'#7e22ce', childActiveText:'#fff', parentTextInactive:'#7e22ce' },
+  ind:  { parent:'#b45309', child:'#fffbeb', childActive:'#b45309', childText:'#b45309', childActiveText:'#fff', parentTextInactive:'#b45309' },
 };
 
 function bn_setCat(cat) {
@@ -3799,9 +3801,10 @@ function bn_setCat(cat) {
     if (!btn) return;
     const active = (k === cat);
     const p = BN_CAT_PALETTE[k] || BN_CAT_PALETTE.pc;
-    btn.style.background = active ? p.parent : p.parentInactive;
-    btn.style.color      = '#fff';
-    btn.style.boxShadow  = active ? 'inset 0 -3px 0 rgba(0,0,0,.25)' : 'none';
+    btn.style.background = active ? p.parent : p.child;
+    btn.style.color      = active ? '#fff'   : p.parentTextInactive;
+    btn.style.boxShadow  = active ? 'inset 0 -3px 0 rgba(0,0,0,.18)' : 'none';
+    btn.style.fontWeight = active ? '800' : '600';
   });
   // Renderizar sub-opciones como cuadros contiguos full-width en tono claro
   const row = document.getElementById('bn-subcat-row');
@@ -3811,7 +3814,7 @@ function bn_setCat(cat) {
       row.style.gridTemplateColumns = `repeat(${subs.length}, 1fr)`;
       row.innerHTML = subs.map((s, i) => `
         <button class="bn-sub-chip" id="bn-tab-${s.id}" onclick="bn_setTipo('${s.id}')"
-                style="padding:10px 8px;border:none;${i < subs.length-1 ? `border-right:1px solid ${pal.parent}33;` : ''}background:${pal.child};color:${pal.childText};font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                style="padding:10px 8px;border:none;${i < subs.length-1 ? `border-right:1px solid ${pal.parent}22;` : ''}background:${pal.child};color:${pal.childText};font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
           ${esc(s.label)}
         </button>`).join('');
     } else {
@@ -3854,7 +3857,7 @@ function bn_setTipo(t) {
     el.classList.toggle('active', active);
     if (el.classList.contains('bn-sub-chip')) {
       el.style.background = active ? pal.childActive : pal.child;
-      el.style.color      = pal.childText;
+      el.style.color      = active ? pal.childActiveText : pal.childText;
       el.style.fontWeight = active ? '800' : '600';
     }
   });
@@ -3865,9 +3868,10 @@ function bn_setTipo(t) {
       if (!btn) return;
       const a = (k === parent);
       const p = BN_CAT_PALETTE[k] || BN_CAT_PALETTE.pc;
-      btn.style.background = a ? p.parent : p.parentInactive;
-      btn.style.color      = '#fff';
-      btn.style.boxShadow  = a ? 'inset 0 -3px 0 rgba(0,0,0,.25)' : 'none';
+      btn.style.background = a ? p.parent : p.child;
+      btn.style.color      = a ? '#fff'   : p.parentTextInactive;
+      btn.style.boxShadow  = a ? 'inset 0 -3px 0 rgba(0,0,0,.18)' : 'none';
+      btn.style.fontWeight = a ? '800' : '600';
     });
   }
 
@@ -4679,6 +4683,7 @@ const BN_TBL_SORT_DEFS = {
   concepto:   { kind: 'text',   get: r => r._concepto || '' },
   descripcion:{ kind: 'text',   get: r => r.DESCRIPCION || '' },
   comentarios:{ kind: 'text',   get: r => r._comentarios || '' },
+  dudaNota:   { kind: 'text',   get: r => r._duda_nota || '' },
   monto:      { kind: 'number', get: r => Number(r.Monto) || 0 },
   cuentaBanc: { kind: 'text',   get: r => r['Cuenta bancaria'] || '' },
   factura:    { kind: 'text',   get: r => r.FacturaFlag || '' },
@@ -4720,6 +4725,35 @@ const BN_TBL_DESC_CHANGES = new Map(); // rowNum → newDesc
 let BN_TBL_DESC_WIDTH = 260; // ancho px de la columna Descripción
 let BN_TBL_COMENT_EDIT_MODE = false; // modo edición de la columna Comentarios
 const BN_TBL_COMENT_CHANGES = new Map(); // rowNum → newComentarios
+let BN_TBL_DUDANT_EDIT_MODE = false; // modo edición de la columna Dudas texto
+
+function bn_tblToggleDudaNotaEditMode() {
+  BN_TBL_DUDANT_EDIT_MODE = !BN_TBL_DUDANT_EDIT_MODE;
+  bn_renderCards();
+}
+function bn_tblExitDudaNotaEditMode() {
+  BN_TBL_DUDANT_EDIT_MODE = false;
+  bn_renderCards();
+}
+async function bn_tblTrackDudaNotaChange(idx, cellEl) {
+  const rec = BN_CUR_RECS[idx]; if (!rec || !rec.rowNum) return;
+  const newVal = (cellEl.textContent || '').trim();
+  if ((rec._duda_nota || '') === newVal) return;
+  rec._duda_nota = newVal;
+  cellEl.style.outline = '2px solid #f59e0b';
+  try {
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rowNum: rec.rowNum, duda_nota_edit: true, duda_nota: newVal }),
+    });
+    const j = await resp.json();
+    cellEl.style.outline = j.ok ? '2px solid #16a34a' : '2px solid #dc2626';
+    setTimeout(() => { cellEl.style.outline = ''; }, 1200);
+  } catch (_) {
+    cellEl.style.outline = '2px solid #dc2626';
+    setTimeout(() => { cellEl.style.outline = ''; }, 1500);
+  }
+}
 
 function bn_tblToggleComentEditMode() {
   if (!BN_TBL_COMENT_EDIT_MODE) {
@@ -4956,6 +4990,7 @@ function bn_buildBnResumenTable(r, idx) {
     ['Encargado',        '_enc',    r._encargado    || '',                                       false],
     ['Clasificado por',  '_clasif', r._clasificado_por || '',                                    false],
     ['Duda',             '_duda',   r._duda     === 'Sí' ? 'Sí' : '',                            false],
+    ['Dudas texto',      'DUDANT',  r._duda_nota || '',                                          true ],
     ['Validado',         '_valid',  r._validado === 'Sí' ? 'Sí' : '',                            false],
   ];
 
@@ -4970,13 +5005,16 @@ function bn_buildBnResumenTable(r, idx) {
       .map(([label, field, val, editable]) => {
       const display = val != null ? String(val) : '';
       const tdCommon = 'padding:6px 8px;word-break:break-word;overflow-wrap:anywhere';
-      const isComent = (field === 'COMENT');
-      const handlerInput = isComent
-        ? `bn_onResumenComentEdit(${idx}, this)`
-        : `bn_onResumenEdit(${idx}, this)`;
-      const handlerBlur = isComent
-        ? `bn_autoSaveResumenComent(${idx}, this)`
-        : `bn_autoSaveResumenDesc(${idx}, this)`;
+      const isComent  = (field === 'COMENT');
+      const isDudaNt  = (field === 'DUDANT');
+      const handlerInput =
+        isComent ? `bn_onResumenComentEdit(${idx}, this)` :
+        isDudaNt ? `bn_onResumenDudaNotaEdit(${idx}, this)` :
+                   `bn_onResumenEdit(${idx}, this)`;
+      const handlerBlur =
+        isComent ? `bn_autoSaveResumenComent(${idx}, this)` :
+        isDudaNt ? `bn_autoSaveResumenDudaNota(${idx}, this)` :
+                   `bn_autoSaveResumenDesc(${idx}, this)`;
       const td = editable
         ? `<td contenteditable="true" spellcheck="false" data-field="${field}"
               style="${tdCommon}"
@@ -5096,8 +5134,11 @@ function bn_createCard(rec, idx) {
       <button id="bn-check-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               data-checked="${isDuda}"
-              title="${isDuda ? 'Marcado: Duda' : 'Duda'}"
+              title="${isDuda ? (rec._duda_nota || 'Marcado: Duda') : 'Duda'}"
               style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#f59e0b' : '#e5e7eb'};background:${isDuda ? '#e2e8f0' : '#f9fafb'};color:${isDuda ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
+      ${(isDuda && rec._duda_nota) ? `
+      <div id="bn-duda-note-${idx}" title="${esc(rec._duda_nota)}"
+           style="position:absolute;top:72px;right:8px;max-width:180px;padding:3px 8px;border-radius:6px;background:#fef3c7;color:#92400e;font-size:10px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:3;border:1px solid #fcd34d">📝 ${esc(rec._duda_nota)}</div>` : ''}
       <!-- Botón Validado (✓) debajo del Duda. Activo → registro sale de 'Por clasificar' -->
       <button id="bn-revisado-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
@@ -5775,6 +5816,7 @@ function bn_buildSavePayload(rec, extras = {}) {
       metodo_pago:     rec._metodo_pago     || '',
       clasificado_por: currentUser || '',
       duda:            rec._duda     || '',
+      duda_nota:       rec._duda_nota || '',
       validado:        rec._validado || '',
       comentarios:     rec._comentarios || '',
     },
@@ -6129,6 +6171,13 @@ function bn_renderRecordsTable(recs, startIdx) {
             style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✕ Salir</button>` : `
     <button onclick="event.stopPropagation();bn_tblToggleComentEditMode()"
             style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
+  const editBtnsDudaNota = BN_TBL_DUDANT_EDIT_MODE ? `
+    <button onclick="event.stopPropagation();bn_tblToggleDudaNotaEditMode()"
+            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">💾 Guardar</button>
+    <button onclick="event.stopPropagation();bn_tblExitDudaNotaEditMode()"
+            style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✕ Salir</button>` : `
+    <button onclick="event.stopPropagation();bn_tblToggleDudaNotaEditMode()"
+            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
   const sortableTh = (key, label, extra='') => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none;${extra}" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
   const sortableThRight = (key, label) => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
   const sortableThCenter = (key, label) => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
@@ -6154,6 +6203,9 @@ function bn_renderRecordsTable(recs, startIdx) {
         ${sortableThCenter('factura', 'Fact.')}
         ${sortableThCenter('deducible', 'Ded.')}
         ${sortableThCenter('duda', 'Duda')}
+        <th onclick="bn_tblSort('dudaNota')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por Dudas texto">
+          <div style="display:inline-flex;align-items:center;gap:6px"><span>Dudas texto${bn_tblSortIcon('dudaNota')}</span>${editBtnsDudaNota}</div>
+        </th>
         ${sortableThCenter('validado', 'Val.')}
       </tr>
     </thead>`;
@@ -6185,10 +6237,12 @@ function bn_renderRecordsTable(recs, startIdx) {
          </td>`
       : '';
     const com  = (rec._comentarios || '').slice(0, 200);
+    const dudaNt = (rec._duda_nota || '').slice(0, 200);
     // Cuando NO se edita la columna, no fijar background inline para permitir
     // que el striping zebra (tr:nth-child(even)) se aplique como en el resto.
-    const descBg  = BN_TBL_EDIT_MODE       ? '#fff' : '';
-    const comBg   = BN_TBL_COMENT_EDIT_MODE ? '#fff' : '';
+    const descBg    = BN_TBL_EDIT_MODE        ? '#fff' : '';
+    const comBg     = BN_TBL_COMENT_EDIT_MODE ? '#fff' : '';
+    const dudaNtBg  = BN_TBL_DUDANT_EDIT_MODE ? '#fff' : '';
     return `
       <tr ${rowClick ? `onclick="${rowClick}"` : ''}
           style="cursor:${rowClick?'pointer':'default'};border-bottom:1px solid #e2e8f0;${rowBg}"
@@ -6231,10 +6285,17 @@ function bn_renderRecordsTable(recs, startIdx) {
           <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${dedOn?'#0e7490':'#e2e8f0'};background:${dedOn?'#cffafe':'#fff'};font-size:13px;opacity:${dedOn?'1':'.5'}">💰</span>
         </td>
         <td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!isDuda});bn_renderCards()"
-            title="${isDuda?'Marcado: Duda — clic para quitar':'Marcar como Duda'}"
+            title="${isDuda?(rec._duda_nota||'Marcado: Duda — clic para quitar'):'Marcar como Duda'}"
             style="padding:6px;text-align:center;cursor:pointer">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#f59e0b':'#e2e8f0'};background:${isDuda?'#fef3c7':'#fff'};color:${isDuda?'#b45309':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
         </td>
+        <td ${BN_TBL_DUDANT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
+            data-row-idx="${idx}" data-orig-dudant="${esc(dudaNt)}"
+            onclick="event.stopPropagation()"
+            onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
+            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${dudaNtBg}';bn_tblTrackDudaNotaChange(${idx}, this)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+            style="padding:8px 10px;font-size:11px;color:#92400e;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_DUDANT_EDIT_MODE?'text':'default'};${dudaNtBg?'background:'+dudaNtBg+';':''}${BN_TBL_DUDANT_EDIT_MODE?'border-left:2px solid #f59e0b':''}" title="${esc(dudaNt)}">${esc(dudaNt)}</td>
         <td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!isVal});bn_renderCards()"
             title="${isVal?'Validado — clic para quitar':'Marcar como Validado'}"
             style="padding:6px;text-align:center;cursor:pointer">
@@ -6717,6 +6778,15 @@ async function bn_syncDuda(idx, checked) {
   const rec = BN_CUR_RECS[idx];
   if (!rec) return;
   rec._duda = checked ? 'Sí' : 'No';
+  // Al ACTIVAR la duda: pedir/editar el texto siempre. Al desactivar: limpiar.
+  if (checked) {
+    const prev = rec._duda_nota || '';
+    const nota = window.prompt('Dudas texto — describe la duda:', prev);
+    if (nota === null) { rec._duda = 'No'; return; } // canceló
+    rec._duda_nota = nota.trim();
+  } else {
+    rec._duda_nota = '';
+  }
 
   // Botón Duda (?) en esquina superior derecha
   const btn = document.getElementById(`bn-check-${ci}`);
@@ -6751,6 +6821,7 @@ async function bn_syncDuda(idx, checked) {
         rowNum:    rec.rowNum,
         duda_edit: true,
         duda:      rec._duda,
+        duda_nota: rec._duda_nota || '',
         clasificacion: {
           cuenta:          rec._cuenta          || '',
           subcuenta:       rec._subcuenta       || '',
@@ -6765,6 +6836,7 @@ async function bn_syncDuda(idx, checked) {
           metodo_pago:     rec._metodo_pago     || '',
           clasificado_por: currentUser || '',
           duda:            rec._duda,
+          duda_nota:       rec._duda_nota || '',
         }
       }),
     });
@@ -6918,6 +6990,43 @@ function bn_onResumenComentEdit(idx, cell) {
   try { showTableActions('bnr', idx); } catch(_) {}
   if (cell.closest('#bn-classify-modal-resumen')) {
     try { markClassifyDirty('bn' + idx); } catch(_) {}
+  }
+}
+
+/** Edición en vivo de "Dudas texto" en la tabla resumen: refleja al rec y la card. */
+function bn_onResumenDudaNotaEdit(idx, cell) {
+  const rec = BN_CUR_RECS[idx]; if (!rec) return;
+  rec._duda_nota = (cell.textContent || '').trim();
+  // Actualiza el subtítulo de la nota debajo del botón ? del card si existe
+  const noteEl = document.getElementById(`bn-duda-note-${idx}`);
+  if (noteEl) {
+    noteEl.textContent = rec._duda_nota;
+    noteEl.style.display = rec._duda_nota ? '' : 'none';
+  }
+  try { showTableActions('bnr', idx); } catch(_) {}
+  if (cell.closest('#bn-classify-modal-resumen')) {
+    try { markClassifyDirty('bn' + idx); } catch(_) {}
+  }
+}
+
+/** Persiste "Dudas texto" al blur con indicador visual. */
+async function bn_autoSaveResumenDudaNota(idx, cell) {
+  const rec = BN_CUR_RECS[idx];
+  if (!rec || !rec.rowNum) return;
+  const newVal = (cell.textContent || '').trim();
+  rec._duda_nota = newVal;
+  cell.style.outline = '2px solid #f59e0b';
+  try {
+    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rowNum: rec.rowNum, duda_nota_edit: true, duda_nota: newVal }),
+    });
+    const j = await resp.json();
+    cell.style.outline = j.ok ? '2px solid #16a34a' : '2px solid #dc2626';
+    setTimeout(() => { cell.style.outline = ''; }, 1200);
+  } catch (_) {
+    cell.style.outline = '2px solid #dc2626';
+    setTimeout(() => { cell.style.outline = ''; }, 1500);
   }
 }
 

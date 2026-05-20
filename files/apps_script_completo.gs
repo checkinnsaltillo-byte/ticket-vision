@@ -434,6 +434,7 @@ function getBancosData_(ss) {
   const iFac    = pickIdx(hB, ["FACTURA"]);
   const iMon    = pickIdx(hB, ["MONTO"]);
   const iDud    = pickIdx(hB, ["DUDA"]);
+  const iDudN   = pickIdx(hB, ["DUDA_NOTA", "DUDA NOTA", "NOTA_DUDA"]);
   const iVal    = pickIdx(hB, ["VALIDADO"]);
   const iComB   = pickIdx(hB, ["COMENTARIOS", "COMENTARIO"]);
 
@@ -460,6 +461,7 @@ function getBancosData_(ss) {
         FacturaFlag:       String(factura).trim().length ? "Con factura" : "Sin factura",
         Monto:             toNumber(iMon >= 0 ? r[iMon] : 0),
         DUDA:              iDud    >= 0 ? String(r[iDud]).trim()    : "",
+        DUDA_NOTA:         iDudN   >= 0 ? String(r[iDudN]).trim()   : "",
         VALIDADO:          iVal    >= 0 ? String(r[iVal]).trim()    : "",
         COMENTARIOS:       iComB   >= 0 ? String(r[iComB]).trim()   : "",
         rowNum:            rowNum
@@ -547,7 +549,7 @@ function saveBancoClasificacion_(ss, data) {
     "PROPIEDAD", "DEPARTAMENTO", "ENCARGADO",
     "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A",
     "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF",
-    "DUDA", "VALIDADO", "COMENTARIOS"
+    "DUDA", "DUDA_NOTA", "VALIDADO", "COMENTARIOS"
   ];
 
   // Leer el header actual
@@ -585,12 +587,23 @@ function saveBancoClasificacion_(ss, data) {
     if (descCol) shB.getRange(rowNum, descCol).setValue(data.descripcion || "");
   }
 
-  // Si el frontend pidió actualizar Duda, escribirlo en columna DUDA
+  // Si el frontend pidió actualizar Duda, escribirlo en columna DUDA (+ nota)
   // sin sobrescribir el resto de la clasificación (return temprano)
   if (data.duda_edit) {
     const dudCol = getOrCreateCol("DUDA");
     if (dudCol) shB.getRange(rowNum, dudCol).setValue(data.duda || "");
-    return { ok: true, rowNum: rowNum, duda: data.duda };
+    if (data.duda_nota !== undefined) {
+      const ndCol = getOrCreateCol("DUDA_NOTA");
+      if (ndCol) shB.getRange(rowNum, ndCol).setValue(data.duda_nota || "");
+    }
+    return { ok: true, rowNum: rowNum, duda: data.duda, duda_nota: data.duda_nota || "" };
+  }
+
+  // Edición aislada de DUDA_NOTA (sin tocar DUDA ni el resto)
+  if (data.duda_nota_edit) {
+    const ndCol = getOrCreateCol("DUDA_NOTA");
+    if (ndCol) shB.getRange(rowNum, ndCol).setValue(data.duda_nota || "");
+    return { ok: true, rowNum: rowNum, duda_nota: data.duda_nota || "" };
   }
 
   // Si el frontend pidió actualizar Validado, escribirlo en columna VALIDADO
@@ -631,6 +644,7 @@ function saveBancoClasificacion_(ss, data) {
   writeCell("CLASIFICADO_POR", c.clasificado_por  || "");
   writeCell("FECHA_CLASIF",    now);
   if (c.duda     !== undefined) writeCell("DUDA",     c.duda     || "");
+  if (c.duda_nota !== undefined) writeCell("DUDA_NOTA", c.duda_nota || "");
   if (c.validado !== undefined) writeCell("VALIDADO", c.validado || "");
   if (c.comentarios !== undefined) writeCell("COMENTARIOS", c.comentarios || "");
 
