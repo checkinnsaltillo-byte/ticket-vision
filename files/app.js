@@ -2820,7 +2820,7 @@ function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, paren
   const semIcon = !isFinite(av) ? '—' : av > 1.10 ? '🔴' : av > 1.0 ? '🟡' : '🟢';
   const pctTxt  = isFinite(av) ? (av * 100).toFixed(1) + '%' : '—';
   const fillW   = isFinite(av) ? Math.min(av, 2) / 2 * 100 : 0;
-  const bgRow = depth === 0 ? '#cbd5e1' : depth === 1 ? '#e0e7ff' : depth === 2 ? '#fef3c7' : '#ffffff';
+  const bgRow = depth === 0 ? '#cbd5e1' : depth === 1 ? '#e2e8f0' : depth === 2 ? '#f1f5f9' : '#ffffff';
   const wgt   = depth === 0 ? '800' : depth === 1 ? '700' : '600';
   const indent = depth * 22;
   const triangle = hasChildren
@@ -2929,7 +2929,7 @@ function bn_apOpenRecordsModal(pathEnc) {
     const reem = r._reembolso || '';
     const mp   = r._metodo_pago || '';
     const com  = r._comentarios || '';
-    const duda = r._duda === 'Sí' ? '<span title="Marcado: Duda" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#fef3c7;color:#b45309;font-weight:900;line-height:22px;text-align:center">?</span>' : '';
+    const duda = r._duda === 'Sí' ? '<span title="Marcado: Duda" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#e2e8f0;color:#334155;font-weight:900;line-height:22px;text-align:center">?</span>' : '';
     const cu = r._cuenta || '', su = r._subcuenta || '', ca = r._categoria_gasto || '', co = r._concepto || '';
     return `<tr>
       <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#475569;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cu)}">${esc(cu)}</td>
@@ -3784,13 +3784,21 @@ const BN_CAT_SUBS = {
 /** Cambia la categoría activa (Por clasificar / Registros / Control presup.).
  *  Renderiza los chips de sub-opciones en la fila inferior y selecciona la
  *  primera por defecto (o conserva la actual si pertenece a la categoría). */
-// Paleta ejecutiva — TODOS los elementos no seleccionados van en tono claro;
-// sólo el activo destaca con el tono fuerte (texto claro) de su categoría.
+// Paleta grises ejecutiva — mismo tono para las 4 categorías.
+// Padre activo: gris oscuro. Hijo activo: gris medio. Resto: gris claro.
+const BN_GREY_PALETTE = {
+  parent:'#334155',         // gris oscuro para padre seleccionado
+  child:'#f1f5f9',          // gris claro para inactivos
+  childActive:'#64748b',    // gris medio para hijo seleccionado
+  childText:'#475569',      // texto en inactivos
+  childActiveText:'#fff',
+  parentTextInactive:'#475569',
+};
 const BN_CAT_PALETTE = {
-  pc:   { parent:'#0f766e', child:'#f0fdfa', childActive:'#0f766e', childText:'#0f766e', childActiveText:'#fff', parentTextInactive:'#0f766e' },
-  reg:  { parent:'#1e3a8a', child:'#eff6ff', childActive:'#1e3a8a', childText:'#1e3a8a', childActiveText:'#fff', parentTextInactive:'#1e3a8a' },
-  pres: { parent:'#7e22ce', child:'#faf5ff', childActive:'#7e22ce', childText:'#7e22ce', childActiveText:'#fff', parentTextInactive:'#7e22ce' },
-  ind:  { parent:'#b45309', child:'#fffbeb', childActive:'#b45309', childText:'#b45309', childActiveText:'#fff', parentTextInactive:'#b45309' },
+  pc:   BN_GREY_PALETTE,
+  reg:  BN_GREY_PALETTE,
+  pres: BN_GREY_PALETTE,
+  ind:  BN_GREY_PALETTE,
 };
 
 function bn_setCat(cat) {
@@ -4716,8 +4724,8 @@ function bn_tblApplySort(recs) {
 function bn_tblSortIcon(key) {
   if (BN_TBL_SORT.key !== key) return '<span style="opacity:.4;font-size:10px;margin-left:4px">⇅</span>';
   return BN_TBL_SORT.dir === 'asc'
-    ? '<span style="font-size:10px;margin-left:4px;color:#fde68a">▲</span>'
-    : '<span style="font-size:10px;margin-left:4px;color:#fde68a">▼</span>';
+    ? '<span style="font-size:10px;margin-left:4px;color:#cbd5e1">▲</span>'
+    : '<span style="font-size:10px;margin-left:4px;color:#cbd5e1">▼</span>';
 }
 
 let BN_TBL_EDIT_MODE = false; // modo edición de la columna Descripción
@@ -4740,7 +4748,7 @@ async function bn_tblTrackDudaNotaChange(idx, cellEl) {
   const newVal = (cellEl.textContent || '').trim();
   if ((rec._duda_nota || '') === newVal) return;
   rec._duda_nota = newVal;
-  cellEl.style.outline = '2px solid #f59e0b';
+  cellEl.style.outline = '2px solid #64748b';
   try {
     const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4784,7 +4792,7 @@ function bn_tblTrackComentChange(idx, cellEl) {
   rec._comentarios = newVal;
   cellEl.dataset.origComent = newVal;
   cellEl.title = newVal;
-  cellEl.style.outline = '2px solid #f59e0b';
+  cellEl.style.outline = '2px solid #64748b';
   (async () => {
     try {
       const payload = bn_buildSavePayload(rec, {});
@@ -4862,7 +4870,7 @@ function bn_tblTrackDescChange(idx, cellEl) {
   rec.DESCRIPCION = newVal;
   cellEl.dataset.origDesc = newVal;
   cellEl.title = newVal;
-  cellEl.style.outline = '2px solid #f59e0b';
+  cellEl.style.outline = '2px solid #64748b';
   (async () => {
     try {
       const payload = bn_buildSavePayload(rec, { descripcion_edit: true });
@@ -5067,7 +5075,7 @@ function bn_createCard(rec, idx) {
   const tipoChip   = `<span class="info-chip ${colorCls}">${tipoEmoji} ${esc(tipoLbl)}</span>`;
   // Chips informativos en tonos claros junto al chip de Cuenta
   const cuentaBancChip = cuenta ? `<span class="info-chip" style="background:#f1f5f9;color:#334155">🏦 ${esc(cuenta)}</span>` : '';
-  const encChip = rec._encargado ? `<span class="info-chip" style="background:#fef3c7;color:#92400e">👤 ${esc(rec._encargado)}</span>` : '';
+  const encChip = rec._encargado ? `<span class="info-chip" style="background:#e2e8f0;color:#334155">👤 ${esc(rec._encargado)}</span>` : '';
   const propChip = rec._propiedad ? `<span class="info-chip" style="background:#e0e7ff;color:#3730a3">🏠 ${esc(rec._propiedad)}</span>` : '';
   const deptChip = (rec._departamento !== undefined && rec._departamento !== '') ? `<span class="info-chip" style="background:#e0f2fe;color:#075985">🏢 Depto ${esc(String(rec._departamento))}</span>` : '';
   const facChip = fac
@@ -5135,13 +5143,13 @@ function bn_createCard(rec, idx) {
       <div id="bn-duda-note-${idx}"
            onclick="event.stopPropagation();bn_openDudaNotaEditor(${idx})"
            title="${esc(rec._duda_nota || 'Sin nota — clic para agregar')}"
-           style="position:absolute;top:8px;right:42px;max-width:200px;padding:3px 8px;border-radius:6px;background:#fef3c7;color:#92400e;font-size:10px;font-weight:600;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:3;border:1px solid #fcd34d;cursor:pointer">📝 ${esc(rec._duda_nota || '(sin nota)')}</div>` : ''}
+           style="position:absolute;top:8px;right:42px;max-width:200px;padding:3px 8px;border-radius:6px;background:#f1f5f9;color:#334155;font-size:10px;font-weight:600;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:3;border:1px solid #cbd5e1;cursor:pointer">📝 ${esc(rec._duda_nota || '(sin nota)')}</div>` : ''}
       <!-- Botón "Duda" (?) en esquina superior derecha. Marca registros con duda para revisar después. -->
       <button id="bn-check-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               data-checked="${isDuda}"
               title="${isDuda ? (rec._duda_nota || 'Marcado: Duda') : 'Duda'}"
-              style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#f59e0b' : '#e5e7eb'};background:${isDuda ? '#e2e8f0' : '#f9fafb'};color:${isDuda ? '#b45309' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
+              style="position:absolute;top:8px;right:8px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${isDuda ? '#334155' : '#e5e7eb'};background:${isDuda ? '#e2e8f0' : '#f9fafb'};color:${isDuda ? '#334155' : '#d1d5db'};font-size:14px;font-weight:900;line-height:1;cursor:pointer;z-index:3;padding:0">?</button>
       <!-- Botón Validado (✓) debajo del Duda. Activo → registro sale de 'Por clasificar' -->
       <button id="bn-revisado-${ci}" type="button"
               onclick="event.stopPropagation();bn_syncValidado(${idx}, !(this.dataset.checked==='true'))"
@@ -5233,7 +5241,7 @@ function bn_toggleBnClassify(idx) {
       <button id="validado-panel-${ci}" type="button" data-checked="${valOn}"
               onclick="bn_syncDuda(${idx}, !(this.dataset.checked==='true'))"
               title="${valOn ? 'Marcado: Duda' : 'Duda'}"
-              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#f59e0b' : '#e5e7eb'};background:${valOn ? '#e2e8f0' : '#f9fafb'};color:${valOn ? '#b45309' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">?</button>
+              style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid ${valOn ? '#334155' : '#e5e7eb'};background:${valOn ? '#e2e8f0' : '#f9fafb'};color:${valOn ? '#334155' : '#d1d5db'};font-size:17px;font-weight:900;line-height:1;cursor:pointer;padding:0;flex-shrink:0">?</button>
       <span style="font-size:12px;color:#6b7280">Marca este registro si tienes <b>dudas</b> y quieres revisarlo después</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -6062,9 +6070,9 @@ function bn_bulkClasificar() {
   ).replace('class="classify-panel hidden"', 'class="classify-panel"');
 
   document.getElementById('bn-classify-modal-resumen').innerHTML =
-    `<div style="padding:14px;background:#e2e8f0;border:1px solid #f59e0b;border-radius:10px;margin-bottom:8px">
-       <div style="font-weight:700;color:#b45309;font-size:14px;margin-bottom:4px">🏷️ Clasificación masiva</div>
-       <div style="font-size:12px;color:#92400e">Se aplicará la clasificación que selecciones a <b>${BN_SEL.size}</b> registros marcados. La tabla de Resumen individual se omite por ser múltiples.</div>
+    `<div style="padding:14px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:8px">
+       <div style="font-weight:700;color:#334155;font-size:14px;margin-bottom:4px">🏷️ Clasificación masiva</div>
+       <div style="font-size:12px;color:#475569">Se aplicará la clasificación que selecciones a <b>${BN_SEL.size}</b> registros marcados. La tabla de Resumen individual se omite por ser múltiples.</div>
      </div>`;
   document.getElementById('bn-classify-modal-body').innerHTML = classifyHtml;
   document.getElementById('bn-classify-overlay').classList.remove('hidden');
@@ -6162,25 +6170,25 @@ function bn_renderRecordsTable(recs, startIdx) {
   const CUENTA_EMOJI = { Egresos:'💸', Ingresos:'💰', Activos:'📈', Pasivos:'📋', Capital:'💼' };
   const editBtnsDesc = BN_TBL_EDIT_MODE ? `
     <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
-            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">💾 Guardar</button>
+            style="padding:4px 10px;border:none;background:#475569;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">💾 Guardar</button>
     <button onclick="event.stopPropagation();bn_tblExitEditMode()"
             style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✕ Salir</button>` : `
     <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
-            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
+            style="padding:4px 10px;border:none;background:#475569;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
   const editBtnsCom = BN_TBL_COMENT_EDIT_MODE ? `
     <button onclick="event.stopPropagation();bn_tblToggleComentEditMode()"
-            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">💾 Guardar</button>
+            style="padding:4px 10px;border:none;background:#475569;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">💾 Guardar</button>
     <button onclick="event.stopPropagation();bn_tblExitComentEditMode()"
             style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✕ Salir</button>` : `
     <button onclick="event.stopPropagation();bn_tblToggleComentEditMode()"
-            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
+            style="padding:4px 10px;border:none;background:#475569;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
   const editBtnsDudaNota = BN_TBL_DUDANT_EDIT_MODE ? `
     <button onclick="event.stopPropagation();bn_tblToggleDudaNotaEditMode()"
-            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">💾 Guardar</button>
+            style="padding:4px 10px;border:none;background:#475569;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">💾 Guardar</button>
     <button onclick="event.stopPropagation();bn_tblExitDudaNotaEditMode()"
             style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✕ Salir</button>` : `
     <button onclick="event.stopPropagation();bn_tblToggleDudaNotaEditMode()"
-            style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
+            style="padding:4px 10px;border:none;background:#475569;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
   const sortableTh = (key, label, extra='') => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none;${extra}" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
   const sortableThRight = (key, label) => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
   const sortableThCenter = (key, label) => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
@@ -6290,7 +6298,7 @@ function bn_renderRecordsTable(recs, startIdx) {
         <td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!isDuda});bn_renderCards()"
             title="${isDuda?(rec._duda_nota||'Marcado: Duda — clic para quitar'):'Marcar como Duda'}"
             style="padding:6px;text-align:center;cursor:pointer">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#f59e0b':'#e2e8f0'};background:${isDuda?'#fef3c7':'#fff'};color:${isDuda?'#b45309':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#334155':'#e2e8f0'};background:${isDuda?'#e2e8f0':'#fff'};color:${isDuda?'#334155':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
         </td>
         <td ${BN_TBL_DUDANT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
             data-row-idx="${idx}" data-orig-dudant="${esc(dudaNt)}"
@@ -6298,7 +6306,7 @@ function bn_renderRecordsTable(recs, startIdx) {
             onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
             onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${dudaNtBg}';bn_tblTrackDudaNotaChange(${idx}, this)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-            style="padding:8px 10px;font-size:11px;color:#92400e;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_DUDANT_EDIT_MODE?'text':'default'};${dudaNtBg?'background:'+dudaNtBg+';':''}${BN_TBL_DUDANT_EDIT_MODE?'border-left:2px solid #f59e0b':''}" title="${esc(dudaNt)}">${esc(dudaNt)}</td>
+            style="padding:8px 10px;font-size:11px;color:#334155;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_DUDANT_EDIT_MODE?'text':'default'};${dudaNtBg?'background:'+dudaNtBg+';':''}${BN_TBL_DUDANT_EDIT_MODE?'border-left:2px solid #334155':''}" title="${esc(dudaNt)}">${esc(dudaNt)}</td>
         <td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!isVal});bn_renderCards()"
             title="${isVal?'Validado — clic para quitar':'Marcar como Validado'}"
             style="padding:6px;text-align:center;cursor:pointer">
@@ -6864,13 +6872,13 @@ function bn_openDudaNotaEditor(idx) {
   const r = anchor.getBoundingClientRect();
   const wrap = document.createElement('div');
   wrap.id = `bn-duda-editor-${idx}`;
-  wrap.style.cssText = `position:fixed;top:${r.bottom + 4}px;left:${Math.max(8, r.right - 260)}px;width:260px;z-index:9000;background:#fef3c7;border:1.5px solid #fcd34d;border-radius:8px;padding:6px;box-shadow:0 8px 22px rgba(15,23,42,.18);display:flex;gap:6px;align-items:center`;
+  wrap.style.cssText = `position:fixed;top:${r.bottom + 4}px;left:${Math.max(8, r.right - 260)}px;width:260px;z-index:9000;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:8px;padding:6px;box-shadow:0 8px 22px rgba(15,23,42,.18);display:flex;gap:6px;align-items:center`;
   wrap.innerHTML = `
     <span style="font-size:13px">📝</span>
     <input type="text" placeholder="Describe la duda…" value="${esc(rec._duda_nota || '')}"
-           style="flex:1;padding:5px 8px;border:1px solid #fcd34d;background:#fffbeb;color:#92400e;border-radius:6px;font-size:11px;font-weight:600;outline:none">
+           style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:6px;font-size:11px;font-weight:600;outline:none">
     <button type="button" title="Guardar"
-            style="padding:4px 8px;border:none;background:#16a34a;color:#fff;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✓</button>
+            style="padding:4px 8px;border:none;background:#334155;color:#fff;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✓</button>
     <button type="button" title="Cancelar"
             style="padding:4px 8px;border:none;background:#e2e8f0;color:#475569;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✕</button>`;
   document.body.appendChild(wrap);
@@ -6995,7 +7003,7 @@ async function bn_autoSaveResumenDesc(idx, cell) {
   const newVal = (cell.textContent || '').trim();
   if ((rec.DESCRIPCION || '') === newVal) return;
   rec.DESCRIPCION = newVal;
-  cell.style.outline = '2px solid #f59e0b';
+  cell.style.outline = '2px solid #64748b';
   try {
     const payload = bn_buildSavePayload(rec, { descripcion_edit: true });
     payload.descripcion = newVal;
@@ -7076,7 +7084,7 @@ async function bn_autoSaveResumenDudaNota(idx, cell) {
   if (!rec || !rec.rowNum) return;
   const newVal = (cell.textContent || '').trim();
   rec._duda_nota = newVal;
-  cell.style.outline = '2px solid #f59e0b';
+  cell.style.outline = '2px solid #64748b';
   try {
     const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -7099,7 +7107,7 @@ async function bn_autoSaveResumenComent(idx, cell) {
   if ((rec._comentarios || '') === newVal && cell.dataset.savedOnce) return;
   rec._comentarios = newVal;
   cell.dataset.savedOnce = '1';
-  cell.style.outline = '2px solid #f59e0b';
+  cell.style.outline = '2px solid #64748b';
   try {
     const payload = bn_buildSavePayload(rec, {});
     payload.clasificacion.comentarios = newVal;
