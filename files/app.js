@@ -3783,32 +3783,46 @@ const BN_CAT_SUBS = {
 /** Cambia la categoría activa (Por clasificar / Registros / Control presup.).
  *  Renderiza los chips de sub-opciones en la fila inferior y selecciona la
  *  primera por defecto (o conserva la actual si pertenece a la categoría). */
+// Paleta por categoría: padre (activo / inactivo) + hijos (claro activo / claro inactivo)
+const BN_CAT_PALETTE = {
+  pc:   { parent:'#0e7490', parentInactive:'#475569', child:'#ecfeff', childActive:'#67e8f9', childText:'#155e75' },
+  reg:  { parent:'#1e40af', parentInactive:'#475569', child:'#eff6ff', childActive:'#93c5fd', childText:'#1e3a8a' },
+  pres: { parent:'#047857', parentInactive:'#475569', child:'#ecfdf5', childActive:'#86efac', childText:'#065f46' },
+  ind:  { parent:'#b45309', parentInactive:'#475569', child:'#fff7ed', childActive:'#fdba74', childText:'#7c2d12' },
+};
+
 function bn_setCat(cat) {
-  // Resaltar el botón de categoría activo
+  const pal = BN_CAT_PALETTE[cat] || BN_CAT_PALETTE.pc;
+  // Resaltar el botón de categoría activo con el tono de su paleta
   ['pc','reg','pres','ind'].forEach(k => {
     const btn = document.getElementById('bn-cat-' + k);
     if (!btn) return;
     const active = (k === cat);
-    btn.style.background    = active ? '#334155' : '#fff';
-    btn.style.color         = active ? '#fff'    : '#374151';
-    btn.style.borderColor   = active ? '#334155' : '#e5e7eb';
+    const p = BN_CAT_PALETTE[k] || BN_CAT_PALETTE.pc;
+    btn.style.background = active ? p.parent : p.parentInactive;
+    btn.style.color      = '#fff';
+    btn.style.boxShadow  = active ? 'inset 0 -3px 0 rgba(0,0,0,.25)' : 'none';
   });
-  // Renderizar chips de sub-opciones
+  // Renderizar sub-opciones como cuadros contiguos full-width en tono claro
   const row = document.getElementById('bn-subcat-row');
   if (row) {
     const subs = BN_CAT_SUBS[cat] || [];
-    row.innerHTML = subs.map(s => `
-      <button class="bn-sub-chip" id="bn-tab-${s.id}" onclick="bn_setTipo('${s.id}')"
-              style="padding:6px 12px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-weight:600;font-size:12px;cursor:pointer;border-radius:999px;white-space:nowrap;flex-shrink:0">
-        ${esc(s.label)}
-      </button>`).join('');
+    if (subs.length) {
+      row.style.gridTemplateColumns = `repeat(${subs.length}, 1fr)`;
+      row.innerHTML = subs.map((s, i) => `
+        <button class="bn-sub-chip" id="bn-tab-${s.id}" onclick="bn_setTipo('${s.id}')"
+                style="padding:10px 8px;border:none;${i < subs.length-1 ? `border-right:1px solid ${pal.parent}33;` : ''}background:${pal.child};color:${pal.childText};font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${esc(s.label)}
+        </button>`).join('');
+    } else {
+      row.innerHTML = '';
+    }
   }
   // Si el tipo actual no pertenece a esta categoría, seleccionar la primera
   if (BN_TIPO_PARENT[BN_TIPO] !== cat) {
     const first = (BN_CAT_SUBS[cat] || [])[0];
     if (first) bn_setTipo(first.id);
   } else {
-    // Resaltar el chip activo
     bn_setTipo(BN_TIPO);
   }
 }
@@ -3831,16 +3845,17 @@ function bn_setTipo(t) {
   const pageSizeWrap = pageSize?.parentElement;
   if (pageSizeWrap) pageSizeWrap.style.display = isPresOrInd ? 'none' : '';
   const allTabs = ['T','E','I','AC','PA','CA','PC','PC_I','PC_E','PC_AC','PC_PA','PC_CA','A','F','AP','PR'];
-  // Resaltar el chip activo (entre los chips horizontales del row 2)
+  const pal = BN_CAT_PALETTE[parent] || BN_CAT_PALETTE.pc;
+  // Resaltar el chip activo (hijo activo en tono medio; resto en tono claro)
   allTabs.forEach(x => {
     const el = document.getElementById('bn-tab-'+x);
     if (!el) return;
     const active = (x === t);
     el.classList.toggle('active', active);
     if (el.classList.contains('bn-sub-chip')) {
-      el.style.background  = active ? '#334155' : '#fff';
-      el.style.color       = active ? '#fff'    : '#374151';
-      el.style.borderColor = active ? '#334155' : '#e5e7eb';
+      el.style.background = active ? pal.childActive : pal.child;
+      el.style.color      = pal.childText;
+      el.style.fontWeight = active ? '800' : '600';
     }
   });
   // Sincronizar resaltado del botón de CATEGORÍA padre
@@ -3849,9 +3864,10 @@ function bn_setTipo(t) {
       const btn = document.getElementById('bn-cat-' + k);
       if (!btn) return;
       const a = (k === parent);
-      btn.style.background  = a ? '#334155' : '#fff';
-      btn.style.color       = a ? '#fff'    : '#374151';
-      btn.style.borderColor = a ? '#334155' : '#e5e7eb';
+      const p = BN_CAT_PALETTE[k] || BN_CAT_PALETTE.pc;
+      btn.style.background = a ? p.parent : p.parentInactive;
+      btn.style.color      = '#fff';
+      btn.style.boxShadow  = a ? 'inset 0 -3px 0 rgba(0,0,0,.25)' : 'none';
     });
   }
 
@@ -4653,6 +4669,52 @@ function bn_downloadPDF() {
     </body></html>`);
   w.document.close();
 }
+// Ordenamiento en la vista Tabla — { key, dir: 'asc' | 'desc' }
+let BN_TBL_SORT = { key: '', dir: 'asc' };
+const BN_TBL_SORT_DEFS = {
+  dia:        { kind: 'date',   get: r => bn_formatDiaISO(r.Día || r.Dia || '') },
+  cuenta:     { kind: 'text',   get: r => r._cuenta || '' },
+  subcuenta:  { kind: 'text',   get: r => r._subcuenta || '' },
+  categoria:  { kind: 'text',   get: r => r._categoria_gasto || '' },
+  concepto:   { kind: 'text',   get: r => r._concepto || '' },
+  descripcion:{ kind: 'text',   get: r => r.DESCRIPCION || '' },
+  comentarios:{ kind: 'text',   get: r => r._comentarios || '' },
+  monto:      { kind: 'number', get: r => Number(r.Monto) || 0 },
+  cuentaBanc: { kind: 'text',   get: r => r['Cuenta bancaria'] || '' },
+  factura:    { kind: 'text',   get: r => r.FacturaFlag || '' },
+  deducible:  { kind: 'text',   get: r => r._deducible || '' },
+  duda:       { kind: 'text',   get: r => r._duda || '' },
+  validado:   { kind: 'text',   get: r => r._validado || '' },
+};
+
+function bn_tblSort(key) {
+  if (BN_TBL_SORT.key === key) {
+    BN_TBL_SORT.dir = (BN_TBL_SORT.dir === 'asc') ? 'desc' : 'asc';
+  } else {
+    BN_TBL_SORT = { key, dir: 'asc' };
+  }
+  bn_renderCards();
+}
+
+function bn_tblApplySort(recs) {
+  const def = BN_TBL_SORT_DEFS[BN_TBL_SORT.key];
+  if (!def) return recs;
+  const dir = BN_TBL_SORT.dir === 'desc' ? -1 : 1;
+  return [...recs].sort((a, b) => {
+    let va = def.get(a), vb = def.get(b);
+    if (def.kind === 'number') return ((Number(va)||0) - (Number(vb)||0)) * dir;
+    va = String(va || ''); vb = String(vb || '');
+    return va.localeCompare(vb, 'es', { numeric: true, sensitivity: 'base' }) * dir;
+  });
+}
+
+function bn_tblSortIcon(key) {
+  if (BN_TBL_SORT.key !== key) return '<span style="opacity:.4;font-size:10px;margin-left:4px">⇅</span>';
+  return BN_TBL_SORT.dir === 'asc'
+    ? '<span style="font-size:10px;margin-left:4px;color:#fde68a">▲</span>'
+    : '<span style="font-size:10px;margin-left:4px;color:#fde68a">▼</span>';
+}
+
 let BN_TBL_EDIT_MODE = false; // modo edición de la columna Descripción
 const BN_TBL_DESC_CHANGES = new Map(); // rowNum → newDesc
 let BN_TBL_DESC_WIDTH = 260; // ancho px de la columna Descripción
@@ -5531,52 +5593,51 @@ async function bn_saveBnClassification(idx) {
                   _ct2.includes('capital') ? 'Capital' : _rawT2;
 
   // Re-render: actualizar SIEMPRE la vista activa (cards o tabla)
+  // UI instantánea: cierra modal + re-renderiza ANTES del fetch
   bn_closeClassifyModal();
   bn_renderCards();
 
-  // Guardar clasificación en Google Sheets (hoja BANCOS)
-  try {
-    showLoading('Guardando clasificación…', 'Actualizando registro en Sheets…');
-    const resp = await fetch(`${BACKEND}/save-banco-clasificacion`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        rowNum:          rec.rowNum,
-        mes:             bn_norm(rec.Mes),
-        cuenta_bancaria: bn_norm(rec['Cuenta bancaria'] || ''),
-        cuenta:          bn_norm(rec.CUENTA     || ''),
-        subcuenta:       bn_norm(rec.SUBCUENTA  || ''),
-        categoria:       bn_norm(rec.CATEGORIA  || ''),
-        concepto:        bn_norm(rec.CONCEPTO   || ''),
-        descripcion:     bn_norm(rec.DESCRIPCION|| ''),
-        descripcion_edit: descEdited,
-        monto:           Number(rec.Monto || 0),
-        clasificacion: {
-          cuenta:          c.cuenta,
-          subcuenta:       c.subcuenta,
-          categoria_gasto: c.categoria,
-          concepto:        c.concepto,
-          propiedad:       c.propiedad,
-          departamento:    c.departamento,
-          encargado:       c.comprador,
-          deducible:       c.deducible ? 'Sí' : 'No',
-          reembolso:       c.reembolso ? 'Sí' : 'No',
-          reembolso_a:     c.reembolso_a,
-          metodo_pago:     c.metodo_pago_clasif,
-          clasificado_por: currentUser || '',
-          duda:            rec._duda || '',
-          validado:        rec._validado || '',
-        }
-      }),
+  // Persistencia en background (sin bloquear ni mostrar spinner global)
+  // Si falla, avisamos pero la UI ya quedó actualizada.
+  fetch(`${BACKEND}/save-banco-clasificacion`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      rowNum:          rec.rowNum,
+      mes:             bn_norm(rec.Mes),
+      cuenta_bancaria: bn_norm(rec['Cuenta bancaria'] || ''),
+      cuenta:          bn_norm(rec.CUENTA     || ''),
+      subcuenta:       bn_norm(rec.SUBCUENTA  || ''),
+      categoria:       bn_norm(rec.CATEGORIA  || ''),
+      concepto:        bn_norm(rec.CONCEPTO   || ''),
+      descripcion:     bn_norm(rec.DESCRIPCION|| ''),
+      descripcion_edit: descEdited,
+      monto:           Number(rec.Monto || 0),
+      clasificacion: {
+        cuenta:          c.cuenta,
+        subcuenta:       c.subcuenta,
+        categoria_gasto: c.categoria,
+        concepto:        c.concepto,
+        propiedad:       c.propiedad,
+        departamento:    c.departamento,
+        encargado:       c.comprador,
+        deducible:       c.deducible ? 'Sí' : 'No',
+        reembolso:       c.reembolso ? 'Sí' : 'No',
+        reembolso_a:     c.reembolso_a,
+        metodo_pago:     c.metodo_pago_clasif,
+        clasificado_por: currentUser || '',
+        duda:            rec._duda || '',
+        validado:        rec._validado || '',
+        comentarios:     c.comentarios || '',
+      }
+    }),
+  })
+    .then(r => r.json())
+    .then(result => { if (!result.ok) throw new Error(result.error || 'Error desconocido'); })
+    .catch(e => {
+      console.warn('Error guardando clasificación:', e.message);
+      alert('⚠ Error al guardar en Sheets (la UI ya está actualizada): ' + e.message);
     });
-    const result = await resp.json();
-    if (!result.ok) throw new Error(result.error || 'Error desconocido');
-  } catch(e) {
-    console.warn('Error guardando clasificación en Sheets:', e.message);
-    alert('Error al guardar clasificación: ' + e.message);
-  } finally {
-    hideLoading();
-  }
 }
 
 /** Limpia la clasificación del registro y re-renderiza la tarjeta. */
@@ -6052,6 +6113,7 @@ function bn_dateHeaderLabel(iso) {
  *  - Columna 'Buscar clasificación' permite autocompletar Cuenta/Sub/Cat/Concepto. */
 function bn_renderRecordsTable(recs, startIdx) {
   if (!recs.length) return '';
+  recs = bn_tblApplySort(recs);
   const CUENTA_EMOJI = { Egresos:'💸', Ingresos:'💰', Activos:'📈', Pasivos:'📋', Capital:'💼' };
   const editBtnsDesc = BN_TBL_EDIT_MODE ? `
     <button onclick="event.stopPropagation();bn_tblToggleEditMode()"
@@ -6067,29 +6129,32 @@ function bn_renderRecordsTable(recs, startIdx) {
             style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✕ Salir</button>` : `
     <button onclick="event.stopPropagation();bn_tblToggleComentEditMode()"
             style="padding:4px 10px;border:none;background:#fbbf24;color:#1f2937;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
+  const sortableTh = (key, label, extra='') => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none;${extra}" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
+  const sortableThRight = (key, label) => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
+  const sortableThCenter = (key, label) => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
   const head = `
     <thead>
       <tr style="background:#475569;color:#fff">
         ${BN_SEL_MODE ? '<th style="padding:9px 10px;width:36px"></th>' : ''}
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Día</th>
+        ${sortableTh('dia', 'Día')}
         <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Buscar clasificación</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Cuenta</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Subcuenta</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Categoría</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Concepto</th>
-        <th data-bn-tbl-col="desc" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;position:relative;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px">
-          <div style="display:inline-flex;align-items:center;gap:6px"><span>Descripción</span>${editBtnsDesc}<span style="font-size:13px;color:#fde68a;margin-left:4px" title="Arrastrar borde derecho para redimensionar">↔</span></div>
-          <span class="bn-tbl-desc-resizer" onmousedown="bn_tblStartDescResize(event)" title="Arrastrar para redimensionar"></span>
+        ${sortableTh('cuenta', 'Cuenta', 'letter-spacing:.04em')}
+        ${sortableTh('subcuenta', 'Subcuenta')}
+        ${sortableTh('categoria', 'Categoría')}
+        ${sortableTh('concepto', 'Concepto')}
+        <th data-bn-tbl-col="desc" onclick="bn_tblSort('descripcion')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;position:relative;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;cursor:pointer;user-select:none" title="Ordenar por Descripción">
+          <div style="display:inline-flex;align-items:center;gap:6px"><span>Descripción${bn_tblSortIcon('descripcion')}</span>${editBtnsDesc}</div>
+          <span class="bn-tbl-desc-resizer" onclick="event.stopPropagation()" onmousedown="event.stopPropagation();bn_tblStartDescResize(event)" title="Arrastrar para redimensionar">⇿</span>
         </th>
-        <th style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase">Monto</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Cuenta banc.</th>
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">
-          <div style="display:inline-flex;align-items:center;gap:6px"><span>Comentarios</span>${editBtnsCom}</div>
+        <th onclick="bn_tblSort('comentarios')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por Comentarios">
+          <div style="display:inline-flex;align-items:center;gap:6px"><span>Comentarios${bn_tblSortIcon('comentarios')}</span>${editBtnsCom}</div>
         </th>
-        <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Fact.</th>
-        <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Ded.</th>
-        <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Duda</th>
-        <th style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase">Val.</th>
+        ${sortableThRight('monto', 'Monto')}
+        ${sortableTh('cuentaBanc', 'Cuenta banc.')}
+        ${sortableThCenter('factura', 'Fact.')}
+        ${sortableThCenter('deducible', 'Ded.')}
+        ${sortableThCenter('duda', 'Duda')}
+        ${sortableThCenter('validado', 'Val.')}
       </tr>
     </thead>`;
 
@@ -6150,8 +6215,6 @@ function bn_renderRecordsTable(recs, startIdx) {
             onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${descBg}';bn_tblTrackDescChange(${idx}, this)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
             style="padding:8px 10px;font-size:12px;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_EDIT_MODE?'text':'default'};${descBg?'background:'+descBg+';':''}${BN_TBL_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(desc)}">${esc(desc)}</td>
-        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
         <td ${BN_TBL_COMENT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
             data-row-idx="${idx}" data-orig-coment="${esc(com)}"
             onclick="event.stopPropagation()"
@@ -6159,6 +6222,8 @@ function bn_renderRecordsTable(recs, startIdx) {
             onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${comBg}';bn_tblTrackComentChange(${idx}, this)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
             style="padding:8px 10px;font-size:11px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_COMENT_EDIT_MODE?'text':'default'};${comBg?'background:'+comBg+';':''}${BN_TBL_COMENT_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(com)}">${esc(com)}</td>
+        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
         <td style="padding:8px 10px;text-align:center;font-size:14px">${fac ? '🧾' : ''}</td>
         <td onclick="event.stopPropagation();bn_syncDeducible(${idx}, ${!dedOn});bn_renderCards()"
             title="${dedOn?'Deducible — clic para desactivar':'No deducible — clic para activar'}"

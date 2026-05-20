@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=60">
+  <link rel="stylesheet" href="styles.css?v=61">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -490,21 +490,21 @@
         </div>
       </div>
 
-      <!-- Menú principal — chips horizontales SIEMPRE visibles -->
-      <div class="bn-menu-bar" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--border,#e2e8f0)">
-        <!-- Row 1: categorías principales -->
-        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-          <button class="bn-cat-btn" id="bn-cat-pc"   onclick="bn_setCat('pc')"
-                  style="padding:8px 14px;border:1.5px solid #e2e8f0;background:#fff;color:#334155;font-weight:700;font-size:12px;cursor:pointer;border-radius:8px;display:inline-flex;align-items:center;gap:5px">🏷️ Por clasificar</button>
-          <button class="bn-cat-btn" id="bn-cat-reg"  onclick="bn_setCat('reg')"
-                  style="padding:8px 14px;border:1.5px solid #e2e8f0;background:#fff;color:#334155;font-weight:700;font-size:12px;cursor:pointer;border-radius:8px;display:inline-flex;align-items:center;gap:5px">📊 Cuentas</button>
-          <button class="bn-cat-btn" id="bn-cat-pres" onclick="bn_setCat('pres')"
-                  style="padding:8px 14px;border:1.5px solid #e2e8f0;background:#fff;color:#334155;font-weight:700;font-size:12px;cursor:pointer;border-radius:8px;display:inline-flex;align-items:center;gap:5px">📐 Planeación</button>
-          <button class="bn-cat-btn" id="bn-cat-ind" onclick="bn_setCat('ind')"
-                  style="padding:8px 14px;border:1.5px solid #e2e8f0;background:#fff;color:#334155;font-weight:700;font-size:12px;cursor:pointer;border-radius:8px;display:inline-flex;align-items:center;gap:5px">📊 Indicadores</button>
+      <!-- Menú principal — barras full-width con jerarquía padre→hijos -->
+      <div class="bn-menu-bar" style="margin-bottom:12px;border:1px solid var(--border,#e2e8f0);border-radius:10px;overflow:hidden">
+        <!-- Row 1: categorías padre, divididas en cuadros contiguos full-width -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0">
+          <button class="bn-cat-btn" id="bn-cat-pc" data-cat="pc" onclick="bn_setCat('pc')"
+                  style="padding:12px 10px;border:none;border-right:1px solid rgba(255,255,255,.25);background:#475569;color:#fff;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px">🏷️ Por clasificar</button>
+          <button class="bn-cat-btn" id="bn-cat-reg" data-cat="reg" onclick="bn_setCat('reg')"
+                  style="padding:12px 10px;border:none;border-right:1px solid rgba(255,255,255,.25);background:#475569;color:#fff;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px">📊 Cuentas</button>
+          <button class="bn-cat-btn" id="bn-cat-pres" data-cat="pres" onclick="bn_setCat('pres')"
+                  style="padding:12px 10px;border:none;border-right:1px solid rgba(255,255,255,.25);background:#475569;color:#fff;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px">📐 Planeación</button>
+          <button class="bn-cat-btn" id="bn-cat-ind" data-cat="ind" onclick="bn_setCat('ind')"
+                  style="padding:12px 10px;border:none;background:#475569;color:#fff;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px">📊 Indicadores</button>
         </div>
-        <!-- Row 2: opciones del category activo (chips horizontales con scroll si exceden) -->
-        <div id="bn-subcat-row" style="display:flex;flex-wrap:wrap;gap:6px;overflow-x:auto"></div>
+        <!-- Row 2: subcategorías del padre activo — cuadros contiguos full-width en tono más claro -->
+        <div id="bn-subcat-row" style="display:grid;gap:0"></div>
       </div>
 
       <!-- Vista cronológica siempre activa; toggle oculto -->
@@ -866,6 +866,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=112"></script>
+  <script src="app.js?v=113"></script>
 </body>
 </html>

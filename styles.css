@@ -146,14 +146,19 @@ body {
   .logo-text h1 { font-size: 15px !important; }
 }
 html, body { overflow-x: hidden; max-width: 100vw; }
-/* Columna Descripción redimensionable en la vista Tabla — handle visible */
+/* Columna Descripción redimensionable — ícono ⇿ universal de col-resize */
 .bn-tbl-desc-resizer {
-  position: absolute; right: 0; top: 0; bottom: 0;
-  width: 8px; cursor: col-resize; user-select: none;
-  background: linear-gradient(90deg, transparent 0%, rgba(253, 230, 138, .35) 50%, rgba(253, 230, 138, .8) 100%);
-  border-right: 2px solid #fbbf24;
+  position: absolute; right: -2px; top: 50%;
+  transform: translateY(-50%);
+  width: 22px; height: 22px;
+  cursor: col-resize; user-select: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fbbf24; color: #1f2937;
+  border-radius: 4px;
+  font-size: 14px; font-weight: 900; line-height: 1;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
 }
-.bn-tbl-desc-resizer:hover { background: rgba(253, 230, 138, .9); border-right-color: #f59e0b; }
+.bn-tbl-desc-resizer:hover { background: #f59e0b; color: #fff; }
 .header-logo { display: flex; align-items: center; gap: 14px; }
 .logo-icon {
   width: 44px; height: 44px;
