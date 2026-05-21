@@ -411,8 +411,8 @@
       </div>
 
       <!-- Filtros Año y Mes (multi-select, siempre visibles, derivados del campo Día) -->
-      <div id="bn-mes-anio-row" style="display:flex;align-items:flex-end;gap:14px;margin:10px 0 14px;flex-wrap:nowrap">
-        <div class="bn-msel" data-field="anio" style="position:relative;min-width:140px;flex:1">
+      <div id="bn-mes-anio-row" style="display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:10px;margin:10px 0 14px">
+        <div class="bn-msel" data-field="anio" style="position:relative;min-width:0">
           <label style="display:block;font-weight:700;color:var(--text-soft);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📅 Año</label>
           <button class="bn-msel-trigger" onclick="bn_mselToggle('anio',event)" type="button"
                   style="width:100%;padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;background:#fff;cursor:pointer;text-align:left;font-size:13px;display:flex;justify-content:space-between;align-items:center">
@@ -422,7 +422,7 @@
           <div class="bn-msel-panel hidden" id="bn-msel-panel-anio"
                style="position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid var(--border,#e5e7eb);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;z-index:90;padding:6px;min-width:160px"></div>
         </div>
-        <div class="bn-msel" data-field="mes" style="position:relative;min-width:160px;flex:1">
+        <div class="bn-msel" data-field="mes" style="position:relative;min-width:0">
           <label style="display:block;font-weight:700;color:var(--text-soft);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🗓️ Mes</label>
           <button class="bn-msel-trigger" onclick="bn_mselToggle('mes',event)" type="button"
                   style="width:100%;padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;background:#fff;cursor:pointer;text-align:left;font-size:13px;display:flex;justify-content:space-between;align-items:center">
@@ -559,15 +559,21 @@
         <span id="bn-sel-count" class="hidden" style="font-size:12px;color:#334155;font-weight:700"></span>
       </div>
 
-      <!-- Barra: hamburguesa + buscador (grid para forzar mismo renglón) -->
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:stretch;margin-bottom:8px;width:100%">
-        <button class="btn-filter-toggle" id="bn-btn-filter-toggle"
-                onclick="bn_toggleFilters()" title="Filtros" style="margin:0">
-          <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
-        </button>
-        <input type="text" id="bn-f-text" placeholder="🔍  Buscar por descripción, categoría, concepto…"
-               class="db-search-input" oninput="bn_onFilterChange()"
-               style="min-width:0;width:100%">
+      <!-- Barra: hamburguesa + buscador (table-row guarantees same line) -->
+      <div style="display:table;width:100%;border-collapse:separate;border-spacing:8px 0;margin-bottom:8px">
+        <div style="display:table-row">
+          <div style="display:table-cell;width:1px;vertical-align:middle;white-space:nowrap">
+            <button class="btn-filter-toggle" id="bn-btn-filter-toggle"
+                    onclick="bn_toggleFilters()" title="Filtros" style="margin:0">
+              <span class="hb-line"></span><span class="hb-line"></span><span class="hb-line"></span>
+            </button>
+          </div>
+          <div style="display:table-cell;vertical-align:middle;width:auto">
+            <input type="text" id="bn-f-text" placeholder="🔍  Buscar por descripción, categoría, concepto…"
+                   class="db-search-input" oninput="bn_onFilterChange()"
+                   style="width:100%;display:block;box-sizing:border-box">
+          </div>
+        </div>
       </div>
 
       <!-- Tarea 13: Botones Guardar/Limpiar (réplica de los inferiores) -->
@@ -875,6 +881,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=119"></script>
+  <script src="app.js?v=120"></script>
 </body>
 </html>

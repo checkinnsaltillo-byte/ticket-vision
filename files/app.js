@@ -2784,12 +2784,15 @@ function bn_kpiOpenSubcuentasPopup(cuentaRaiz) {
   const rows = list.map(it => {
     const pct = grand > 0 ? (it.total / grand) * 100 : 0;
     const w   = (it.total / maxV) * 100;
+    const montoColor = cuentaRaiz==='Ingresos'?'#16a34a':cuentaRaiz==='Egresos'?'#dc2626':'#1f2937';
     return `<tr style="border-bottom:1px solid #e2e8f0">
       <td style="padding:8px 10px;font-size:12px;color:#1f2937">${esc(it.sub)}</td>
-      <td style="padding:8px 10px;text-align:right;font-size:12px;font-weight:700;color:${cuentaRaiz==='Ingresos'?'#16a34a':cuentaRaiz==='Egresos'?'#dc2626':'#1f2937'};white-space:nowrap">${bn_fmt$(it.total)}</td>
-      <td style="padding:8px 10px;min-width:160px">
-        <div style="position:relative;height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden">
-          <div style="height:100%;width:${w.toFixed(1)}%;background:#475569"></div>
+      <td style="padding:8px 10px;min-width:260px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-weight:700;color:${montoColor};white-space:nowrap;min-width:90px;text-align:right">${bn_fmt$(it.total)}</span>
+          <div style="position:relative;flex:1;height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden">
+            <div style="height:100%;width:${w.toFixed(1)}%;background:${montoColor};opacity:.75"></div>
+          </div>
         </div>
       </td>
       <td style="padding:8px 10px;text-align:right;font-size:11px;color:#475569;font-weight:600">${pct.toFixed(1)}%</td>
@@ -2810,8 +2813,7 @@ function bn_kpiOpenSubcuentasPopup(cuentaRaiz) {
       <table style="width:100%;border-collapse:collapse;background:#fff">
         <thead><tr style="background:#475569;color:#fff">
           <th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase">Subcuenta</th>
-          <th style="padding:8px 10px;text-align:right;font-size:11px;text-transform:uppercase">$ Monto</th>
-          <th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase">Magnitud</th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase">$ Monto</th>
           <th style="padding:8px 10px;text-align:right;font-size:11px;text-transform:uppercase">% Total</th>
           <th style="padding:8px 10px;text-align:right;font-size:11px;text-transform:uppercase">#Mov</th>
         </tr></thead>
@@ -2931,21 +2933,23 @@ function bn_apRenderNode(node, depth, records, ancestors, rows, rootTotal, paren
     : `<span style="flex-shrink:0;width:14px"></span>`;
 
   const pathEncForClick = encodeURIComponent(JSON.stringify({ ancestors, levels: BN_AP_LEVELS.slice(0, ancestors.length), name: node.name }));
+  // Fondo aplicado en cada <td> para que gane sobre cualquier CSS global
+  const tdBg = `background:${bgRow};`;
   rows.push(`
-    <tr style="background:${bgRow};cursor:pointer" onclick="bn_apOpenRecordsModal('${pathEncForClick}')"
-        onmouseover="this.style.filter='brightness(.97)'" onmouseout="this.style.filter=''">
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;padding-left:${10+indent}px;font-weight:${wgt};font-size:${depth===0?'13':'12'}px;max-width:380px;color:${txtRow}">
+    <tr class="bn-ap-row" data-depth="${depth}" style="background:${bgRow};cursor:pointer" onclick="bn_apOpenRecordsModal('${pathEncForClick}')"
+        onmouseover="this.querySelectorAll('td').forEach(c => c.style.filter='brightness(.95)')" onmouseout="this.querySelectorAll('td').forEach(c => c.style.filter='')">
+      <td style="${tdBg}padding:8px 10px;border-bottom:1px solid #f3f4f6;padding-left:${10+indent}px;font-weight:${wgt};font-size:${depth===0?'13':'12'}px;max-width:380px;color:${txtRow}">
         <div style="display:flex;align-items:center;gap:6px;min-width:0">
           ${triangle}
           <span title="${esc(node.name)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${esc(node.name)}</span>
         </div>
       </td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:${mutedTx}">${node.count}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px;color:${txtRow}">${bn_fmt$(node.total)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:${depth<=1?'#bfdbfe':'#2563eb'}" title="% del total de la cuenta raíz">${pctTotalTxt}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:${depth<=1?'#fed7aa':'#ea580c'};white-space:nowrap" title="% del nivel superior inmediato">${pctRelTxt}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:${mutedTx}">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?(depth<=1?'#fff':'#334155'):mutedTx}">${budCycle || '—'}</td>
+      <td style="${tdBg}padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:${mutedTx}">${node.count}</td>
+      <td style="${tdBg}padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:${wgt};font-size:12px;color:${txtRow}">${bn_fmt$(node.total)}</td>
+      <td style="${tdBg}padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:${depth<=1?'#bfdbfe':'#2563eb'}" title="% del total de la cuenta raíz">${pctTotalTxt}</td>
+      <td style="${tdBg}padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;font-weight:${wgt};color:${depth<=1?'#fed7aa':'#ea580c'};white-space:nowrap" title="% del nivel superior inmediato">${pctRelTxt}</td>
+      <td style="${tdBg}padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:11px;color:${mutedTx}">${bud > 0 ? bn_fmt$(bud) : '—'}</td>
+      <td style="${tdBg}padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:11px;font-weight:600;color:${budCycle?(depth<=1?'#fff':'#334155'):mutedTx}">${budCycle || '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;min-width:140px">
         ${bud > 0 ? `
           <div style="display:flex;align-items:center;gap:6px">
@@ -4907,6 +4911,43 @@ function bn_downloadPDF() {
     </body></html>`);
   w.document.close();
 }
+// Orden de columnas (drag-drop) — claves canónicas que coinciden con headers/body
+const BN_TBL_DEFAULT_ORDER = [
+  'validado','duda','dudaNota','deducible','dia','buscarClasif','cuenta',
+  'subcuenta','categoria','concepto','monto','descripcion','comentarios',
+  'cuentaBanc','factura'
+];
+let BN_TBL_COL_ORDER = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('BN_TBL_COL_ORDER') || '[]');
+    if (Array.isArray(saved) && saved.length === BN_TBL_DEFAULT_ORDER.length &&
+        BN_TBL_DEFAULT_ORDER.every(k => saved.includes(k))) return saved;
+  } catch(_) {}
+  return BN_TBL_DEFAULT_ORDER.slice();
+})();
+function bn_tblSaveColOrder() {
+  try { localStorage.setItem('BN_TBL_COL_ORDER', JSON.stringify(BN_TBL_COL_ORDER)); } catch(_) {}
+}
+let BN_TBL_DRAG_FROM = null;
+function bn_tblColDragStart(ev, key) {
+  BN_TBL_DRAG_FROM = key;
+  ev.dataTransfer.effectAllowed = 'move';
+  try { ev.dataTransfer.setData('text/plain', key); } catch(_) {}
+}
+function bn_tblColDragOver(ev) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; }
+function bn_tblColDrop(ev, key) {
+  ev.preventDefault();
+  const from = BN_TBL_DRAG_FROM; BN_TBL_DRAG_FROM = null;
+  if (!from || from === key) return;
+  const i = BN_TBL_COL_ORDER.indexOf(from);
+  const j = BN_TBL_COL_ORDER.indexOf(key);
+  if (i < 0 || j < 0) return;
+  BN_TBL_COL_ORDER.splice(i, 1);
+  BN_TBL_COL_ORDER.splice(j, 0, from);
+  bn_tblSaveColOrder();
+  bn_renderCards();
+}
+
 // Ordenamiento en la vista Tabla — { key, dir: 'asc' | 'desc' }
 let BN_TBL_SORT = { key: '', dir: 'asc' };
 const BN_TBL_SORT_DEFS = {
@@ -6421,35 +6462,49 @@ function bn_renderRecordsTable(recs, startIdx) {
             style="padding:4px 10px;border:none;background:#dc2626;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✕ Salir</button>` : `
     <button onclick="event.stopPropagation();bn_tblToggleDudaNotaEditMode()"
             style="padding:4px 10px;border:none;background:#475569;color:#fff;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">✏️ Editar</button>`;
-  const sortableTh = (key, label, extra='') => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none;${extra}" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
-  const sortableThRight = (key, label) => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:right;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
-  const sortableThCenter = (key, label) => `<th onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:center;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por ${label}">${label}${bn_tblSortIcon(key)}</th>`;
+  // Helper: th draggable, ordenable, con etiqueta
+  const dragAttrs = (key) => `draggable="true" data-col-key="${key}" ondragstart="bn_tblColDragStart(event,'${key}')" ondragover="bn_tblColDragOver(event)" ondrop="bn_tblColDrop(event,'${key}')"`;
+  const mkTh = (key, label, align='left', extra='') =>
+    `<th ${dragAttrs(key)} onclick="bn_tblSort('${key}')" style="padding:9px 10px;text-align:${align};font-size:11px;text-transform:uppercase;cursor:grab;user-select:none;${extra}" title="Ordenar por ${label} · arrastra para reordenar">${label}${bn_tblSortIcon(key)}</th>`;
+  // Definiciones por clave: header HTML y constructor del td
+  const COLS = {
+    validado: { th: mkTh('validado','Val.','center'),
+                td: (rec, idx, ctx) => `<td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!ctx.isVal});bn_renderCards()" title="${ctx.isVal?'Validado — clic para quitar':'Marcar como Validado'}" style="padding:6px;text-align:center;cursor:pointer"><span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${ctx.isVal?'#16a34a':'#e2e8f0'};background:${ctx.isVal?'#dcfce7':'#fff'};color:${ctx.isVal?'#16a34a':'#cbd5e1'};font-weight:900;font-size:13px">✓</span></td>` },
+    duda: { th: mkTh('duda','Duda','center'),
+            td: (rec, idx, ctx) => `<td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!ctx.isDuda});bn_renderCards()" title="${ctx.isDuda?(rec._duda_nota||'Marcado: Duda — clic para quitar'):'Marcar como Duda'}" style="padding:6px;text-align:center;cursor:pointer"><span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${ctx.isDuda?'#f59e0b':'#e2e8f0'};background:${ctx.isDuda?'#fef3c7':'#fff'};color:${ctx.isDuda?'#b45309':'#cbd5e1'};font-weight:900;font-size:13px">?</span></td>` },
+    dudaNota: { th: `<th ${dragAttrs('dudaNota')} onclick="bn_tblSort('dudaNota')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:grab;user-select:none" title="Dudas texto · arrastra para reordenar"><div style="display:inline-flex;align-items:center;gap:6px"><span>Dudas texto${bn_tblSortIcon('dudaNota')}</span>${editBtnsDudaNota}</div></th>`,
+                td: (rec, idx, ctx) => `<td ${BN_TBL_DUDANT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false" data-row-idx="${idx}" data-orig-dudant="${esc(ctx.dudaNt)}" onclick="event.stopPropagation()" onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'" onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${ctx.dudaNtBg}';bn_tblTrackDudaNotaChange(${idx}, this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}" style="padding:8px 10px;font-size:11px;color:#92400e;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_DUDANT_EDIT_MODE?'text':'default'};${ctx.dudaNtBg?'background:'+ctx.dudaNtBg+';':''}${BN_TBL_DUDANT_EDIT_MODE?'border-left:2px solid #f59e0b':''}" title="${esc(ctx.dudaNt)}">${esc(ctx.dudaNt)}</td>` },
+    deducible: { th: mkTh('deducible','Ded.','center'),
+                 td: (rec, idx, ctx) => `<td onclick="event.stopPropagation();bn_syncDeducible(${idx}, ${!ctx.dedOn});bn_renderCards()" title="${ctx.dedOn?'Deducible':'No deducible'}" style="padding:6px;text-align:center;cursor:pointer"><span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${ctx.dedOn?'#0e7490':'#e2e8f0'};background:${ctx.dedOn?'#cffafe':'#fff'};font-size:13px;opacity:${ctx.dedOn?'1':'.5'}">💰</span></td>` },
+    dia: { th: mkTh('dia','Día'),
+           td: (rec, idx, ctx) => `<td style="padding:8px 10px;font-size:11px;color:#2563eb;font-weight:700;white-space:nowrap">● ${esc(ctx.dia)}</td>` },
+    buscarClasif: { th: `<th ${dragAttrs('buscarClasif')} style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:grab" title="Arrastra para reordenar">Buscar clasificación</th>`,
+                    td: (rec, idx, ctx) => `<td style="padding:6px 8px;min-width:200px" onclick="event.stopPropagation()"><input type="text" id="bn-tbl-search-${idx}" placeholder="🔍 Buscar..." autocomplete="off" oninput="bn_tblSearchInput(${idx}, this)" onfocus="bn_tblSearchInput(${idx}, this)" onblur="setTimeout(()=>bn_tblSearchHide(),200)" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;outline:none"></td>` },
+    cuenta: { th: mkTh('cuenta','Cuenta','left','letter-spacing:.04em'),
+              td: (rec, idx, ctx) => `<td style="padding:8px 10px">${ctx.chip}</td>` },
+    subcuenta: { th: mkTh('subcuenta','Subcuenta'),
+                 td: (rec, idx, ctx) => `<td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._subcuenta||'')}">${esc(rec._subcuenta||'')}</td>` },
+    categoria: { th: mkTh('categoria','Categoría'),
+                 td: (rec, idx, ctx) => `<td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._categoria_gasto||'')}">${esc(rec._categoria_gasto||'')}</td>` },
+    concepto: { th: mkTh('concepto','Concepto'),
+                td: (rec, idx, ctx) => `<td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._concepto||'')}">${esc(rec._concepto||'')}</td>` },
+    monto: { th: mkTh('monto','Monto','right'),
+             td: (rec, idx, ctx) => `<td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${ctx.montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(ctx.montoN)}</td>` },
+    descripcion: { th: `<th ${dragAttrs('descripcion')} data-bn-tbl-col="desc" onclick="bn_tblSort('descripcion')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;position:relative;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;cursor:grab;user-select:none" title="Descripción · arrastra para reordenar"><div style="display:inline-flex;align-items:center;gap:6px"><span>Descripción${bn_tblSortIcon('descripcion')}</span>${editBtnsDesc}</div><span class="bn-tbl-desc-resizer" onclick="event.stopPropagation()" onmousedown="event.stopPropagation();bn_tblStartDescResize(event)" title="Arrastrar para redimensionar">⇿</span></th>`,
+                   td: (rec, idx, ctx) => `<td data-bn-tbl-col="desc" ${BN_TBL_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false" data-row-idx="${idx}" data-orig-desc="${esc(ctx.desc)}" onclick="event.stopPropagation()" onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'" onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${ctx.descBg}';bn_tblTrackDescChange(${idx}, this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}" style="padding:8px 10px;font-size:12px;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_EDIT_MODE?'text':'default'};${ctx.descBg?'background:'+ctx.descBg+';':''}${BN_TBL_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(ctx.desc)}">${esc(ctx.desc)}</td>` },
+    comentarios: { th: `<th ${dragAttrs('comentarios')} onclick="bn_tblSort('comentarios')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:grab;user-select:none" title="Comentarios · arrastra para reordenar"><div style="display:inline-flex;align-items:center;gap:6px"><span>Comentarios${bn_tblSortIcon('comentarios')}</span>${editBtnsCom}</div></th>`,
+                   td: (rec, idx, ctx) => `<td ${BN_TBL_COMENT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false" data-row-idx="${idx}" data-orig-coment="${esc(ctx.com)}" onclick="event.stopPropagation()" onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'" onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${ctx.comBg}';bn_tblTrackComentChange(${idx}, this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}" style="padding:8px 10px;font-size:11px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_COMENT_EDIT_MODE?'text':'default'};${ctx.comBg?'background:'+ctx.comBg+';':''}${BN_TBL_COMENT_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(ctx.com)}">${esc(ctx.com)}</td>` },
+    cuentaBanc: { th: mkTh('cuentaBanc','Cuenta banc.'),
+                  td: (rec, idx, ctx) => `<td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(ctx.cb)}">${esc(ctx.cb)}</td>` },
+    factura: { th: mkTh('factura','Fact.','center'),
+               td: (rec, idx, ctx) => `<td style="padding:8px 10px;text-align:center;font-size:14px">${ctx.fac ? '🧾' : ''}</td>` },
+  };
+  const headerCells = BN_TBL_COL_ORDER.map(k => COLS[k]?.th || '').join('');
   const head = `
     <thead>
       <tr style="background:#475569;color:#fff">
         ${BN_SEL_MODE ? '<th style="padding:9px 10px;width:36px"></th>' : ''}
-        ${sortableThCenter('validado', 'Val.')}
-        ${sortableThCenter('duda', 'Duda')}
-        <th onclick="bn_tblSort('dudaNota')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por Dudas texto">
-          <div style="display:inline-flex;align-items:center;gap:6px"><span>Dudas texto${bn_tblSortIcon('dudaNota')}</span>${editBtnsDudaNota}</div>
-        </th>
-        ${sortableThCenter('deducible', 'Ded.')}
-        ${sortableTh('dia', 'Día')}
-        <th style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase">Buscar clasificación</th>
-        ${sortableTh('cuenta', 'Cuenta', 'letter-spacing:.04em')}
-        ${sortableTh('subcuenta', 'Subcuenta')}
-        ${sortableTh('categoria', 'Categoría')}
-        ${sortableTh('concepto', 'Concepto')}
-        ${sortableThRight('monto', 'Monto')}
-        <th data-bn-tbl-col="desc" onclick="bn_tblSort('descripcion')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;position:relative;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;cursor:pointer;user-select:none" title="Ordenar por Descripción">
-          <div style="display:inline-flex;align-items:center;gap:6px"><span>Descripción${bn_tblSortIcon('descripcion')}</span>${editBtnsDesc}</div>
-          <span class="bn-tbl-desc-resizer" onclick="event.stopPropagation()" onmousedown="event.stopPropagation();bn_tblStartDescResize(event)" title="Arrastrar para redimensionar">⇿</span>
-        </th>
-        <th onclick="bn_tblSort('comentarios')" style="padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;cursor:pointer;user-select:none" title="Ordenar por Comentarios">
-          <div style="display:inline-flex;align-items:center;gap:6px"><span>Comentarios${bn_tblSortIcon('comentarios')}</span>${editBtnsCom}</div>
-        </th>
-        ${sortableTh('cuentaBanc', 'Cuenta banc.')}
-        ${sortableThCenter('factura', 'Fact.')}
+        ${headerCells}
       </tr>
     </thead>`;
 
@@ -6486,65 +6541,15 @@ function bn_renderRecordsTable(recs, startIdx) {
     const descBg    = BN_TBL_EDIT_MODE        ? '#fff' : '';
     const comBg     = BN_TBL_COMENT_EDIT_MODE ? '#fff' : '';
     const dudaNtBg  = BN_TBL_DUDANT_EDIT_MODE ? '#fff' : '';
+    const ctx = { isVal, isDuda, dedOn, dudaNt, dudaNtBg, dia, chip, montoN, desc, descBg, com, comBg, cb, fac };
+    const bodyCells = BN_TBL_COL_ORDER.map(k => COLS[k]?.td(rec, idx, ctx) || '').join('');
     return `
       <tr ${rowClick ? `onclick="${rowClick}"` : ''}
           style="cursor:${rowClick?'pointer':'default'};border-bottom:1px solid #e2e8f0;${rowBg}"
           onmouseover="this.style.filter='brightness(.97)'"
           onmouseout="this.style.filter=''">
         ${selCell}
-        <td style="padding:8px 10px;font-size:11px;color:#64748b;white-space:nowrap">${esc(dia)}</td>
-        <td onclick="event.stopPropagation();bn_syncValidado(${idx}, ${!isVal});bn_renderCards()"
-            title="${isVal?'Validado — clic para quitar':'Marcar como Validado'}"
-            style="padding:6px;text-align:center;cursor:pointer">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isVal?'#16a34a':'#e2e8f0'};background:${isVal?'#dcfce7':'#fff'};color:${isVal?'#16a34a':'#cbd5e1'};font-weight:900;font-size:13px">✓</span>
-        </td>
-        <td onclick="event.stopPropagation();bn_syncDuda(${idx}, ${!isDuda});bn_renderCards()"
-            title="${isDuda?(rec._duda_nota||'Marcado: Duda — clic para quitar'):'Marcar como Duda'}"
-            style="padding:6px;text-align:center;cursor:pointer">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${isDuda?'#f59e0b':'#e2e8f0'};background:${isDuda?'#fef3c7':'#fff'};color:${isDuda?'#b45309':'#cbd5e1'};font-weight:900;font-size:13px">?</span>
-        </td>
-        <td ${BN_TBL_DUDANT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
-            data-row-idx="${idx}" data-orig-dudant="${esc(dudaNt)}"
-            onclick="event.stopPropagation()"
-            onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
-            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${dudaNtBg}';bn_tblTrackDudaNotaChange(${idx}, this)"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-            style="padding:8px 10px;font-size:11px;color:#92400e;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_DUDANT_EDIT_MODE?'text':'default'};${dudaNtBg?'background:'+dudaNtBg+';':''}${BN_TBL_DUDANT_EDIT_MODE?'border-left:2px solid #f59e0b':''}" title="${esc(dudaNt)}">${esc(dudaNt)}</td>
-        <td onclick="event.stopPropagation();bn_syncDeducible(${idx}, ${!dedOn});bn_renderCards()"
-            title="${dedOn?'Deducible — clic para desactivar':'No deducible — clic para activar'}"
-            style="padding:6px;text-align:center;cursor:pointer">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1.5px solid ${dedOn?'#0e7490':'#e2e8f0'};background:${dedOn?'#cffafe':'#fff'};font-size:13px;opacity:${dedOn?'1':'.5'}">💰</span>
-        </td>
-        <td style="padding:8px 10px;font-size:11px;color:#2563eb;font-weight:700;white-space:nowrap">● ${esc(dia)}</td>
-        <td style="padding:6px 8px;min-width:200px" onclick="event.stopPropagation()">
-          <input type="text" id="bn-tbl-search-${idx}" placeholder="🔍 Buscar..."
-                 autocomplete="off"
-                 oninput="bn_tblSearchInput(${idx}, this)"
-                 onfocus="bn_tblSearchInput(${idx}, this)"
-                 onblur="setTimeout(()=>bn_tblSearchHide(),200)"
-                 style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;outline:none">
-        </td>
-        <td style="padding:8px 10px">${chip}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._subcuenta||'')}">${esc(rec._subcuenta||'')}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._categoria_gasto||'')}">${esc(rec._categoria_gasto||'')}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#475569;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rec._concepto||'')}">${esc(rec._concepto||'')}</td>
-        <td style="padding:8px 10px;font-size:12px;text-align:right;font-weight:700;color:${montoN<0?'#dc2626':'#16a34a'};white-space:nowrap">${bn_fmt$(montoN)}</td>
-        <td data-bn-tbl-col="desc" ${BN_TBL_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
-            data-row-idx="${idx}" data-orig-desc="${esc(desc)}"
-            onclick="event.stopPropagation()"
-            onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
-            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${descBg}';bn_tblTrackDescChange(${idx}, this)"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-            style="padding:8px 10px;font-size:12px;width:${BN_TBL_DESC_WIDTH}px;max-width:${BN_TBL_DESC_WIDTH}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_EDIT_MODE?'text':'default'};${descBg?'background:'+descBg+';':''}${BN_TBL_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(desc)}">${esc(desc)}</td>
-        <td ${BN_TBL_COMENT_EDIT_MODE ? 'contenteditable="true"' : ''} spellcheck="false"
-            data-row-idx="${idx}" data-orig-coment="${esc(com)}"
-            onclick="event.stopPropagation()"
-            onfocus="this.style.overflow='auto';this.style.textOverflow='clip';this.style.background='#fff'"
-            onblur="this.style.overflow='hidden';this.style.textOverflow='ellipsis';this.style.background='${comBg}';bn_tblTrackComentChange(${idx}, this)"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-            style="padding:8px 10px;font-size:11px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none;cursor:${BN_TBL_COMENT_EDIT_MODE?'text':'default'};${comBg?'background:'+comBg+';':''}${BN_TBL_COMENT_EDIT_MODE?'border-left:2px solid #2563eb':''}" title="${esc(com)}">${esc(com)}</td>
-        <td style="padding:8px 10px;font-size:11px;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cb)}">${esc(cb)}</td>
-        <td style="padding:8px 10px;text-align:center;font-size:14px">${fac ? '🧾' : ''}</td>
+        ${bodyCells}
       </tr>`;
   }).join('');
 
