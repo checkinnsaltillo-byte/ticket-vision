@@ -7995,11 +7995,16 @@ function esc(v) {
 
 /** Cambia entre módulos de nivel superior */
 function switchModule(mod) {
-  ["tickets", "registros"].forEach(m => {
+  ["tickets", "registros", "huespedes"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== mod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === mod);
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === mod);
   });
+  if (mod === "huespedes") {
+    // Cargar datos sólo la primera vez (o cuando se haya limpiado el cache)
+    if (!HU_STATE.loaded && !HU_STATE.loading) huespedesLoadData();
+    else huespedesRender();
+  }
 }
 
 // ─── Hamburger nav menu ───────────────────────────────────────────────────────
@@ -8869,4 +8874,170 @@ async function saveDbClassification(i) {
   } finally {
     hideLoading();
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  MÓDULO: Información de huéspedes  (Perfiles + Vehículos + Reservaciones)
+// ════════════════════════════════════════════════════════════════════════════
+
+const HU_STATE = {
+  loaded: false,
+  loading: false,
+  section: 'reservaciones',  // 'reservaciones' | 'perfiles' | 'vehiculos'
+  raw: { perfiles: [], vehiculos: [], reservaciones: [] },
+  headers: { perfiles: [], vehiculos: [], reservaciones: [] },
+  search: '',
+  page: 1,
+  pageSize: 50,
+};
+
+async function huespedesLoadData() {
+  const empty = document.getElementById('hu-empty');
+  const wrap  = document.getElementById('hu-table-wrap');
+  const lbl   = document.getElementById('hu-status-label');
+  HU_STATE.loading = true;
+  if (empty) { empty.classList.remove('hidden'); empty.textContent = 'Cargando datos…'; }
+  wrap?.classList.add('hidden');
+  if (lbl) lbl.textContent = 'Cargando…';
+
+  try {
+    const res = await fetch(`${BACKEND}/huespedes-data`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || data.message || 'Error al obtener datos');
+    HU_STATE.raw = {
+      perfiles:      data.perfiles      || [],
+      vehiculos:     data.vehiculos     || [],
+      reservaciones: data.reservaciones || [],
+    };
+    HU_STATE.headers = data.headers || { perfiles: [], vehiculos: [], reservaciones: [] };
+    HU_STATE.loaded = true;
+    if (lbl) {
+      const c = data.counts || {};
+      lbl.textContent = `Perfiles: ${c.perfiles||0} · Vehículos: ${c.vehiculos||0} · Reservaciones: ${c.reservaciones||0}`;
+    }
+    huespedesRender();
+  } catch (e) {
+    if (lbl) lbl.textContent = 'Error: ' + e.message;
+    if (empty) { empty.textContent = '⚠ ' + e.message; empty.classList.remove('hidden'); }
+  } finally {
+    HU_STATE.loading = false;
+  }
+}
+
+function huespedesShowSection(sec) {
+  HU_STATE.section = sec;
+  HU_STATE.page = 1;
+  // Estilos de los botones tab
+  ['reservaciones','perfiles','vehiculos'].forEach(s => {
+    const btn = document.getElementById(`hu-tab-${s}`);
+    if (!btn) return;
+    const active = (s === sec);
+    btn.style.background = active ? '#334155' : '#f1f5f9';
+    btn.style.color      = active ? '#fff'    : '#475569';
+  });
+  huespedesRender();
+}
+
+function huespedesClearFilters() {
+  HU_STATE.search = '';
+  HU_STATE.page = 1;
+  const s = document.getElementById('hu-search'); if (s) s.value = '';
+  huespedesRender();
+}
+
+function huespedesRender() {
+  const sec = HU_STATE.section;
+  const rows = HU_STATE.raw[sec] || [];
+  const empty = document.getElementById('hu-empty');
+  const wrap  = document.getElementById('hu-table-wrap');
+  const kpis  = document.getElementById('hu-kpis');
+
+  // Búsqueda libre (cualquier campo)
+  const sEl = document.getElementById('hu-search');
+  HU_STATE.search = sEl ? sEl.value.toLowerCase().trim() : '';
+  const psEl = document.getElementById('hu-page-size');
+  HU_STATE.pageSize = psEl ? Number(psEl.value) || 50 : 50;
+  let filtered = rows;
+  if (HU_STATE.search) {
+    const q = HU_STATE.search;
+    filtered = rows.filter(r => {
+      for (const k in r) {
+        if (k === '_rowNum') continue;
+        if (String(r[k] || '').toLowerCase().includes(q)) return true;
+      }
+      return false;
+    });
+  }
+
+  // KPIs simples por sección
+  if (kpis) {
+    const total = filtered.length;
+    const totalCargados = rows.length;
+    let extra = '';
+    if (sec === 'reservaciones') {
+      const conFactura = filtered.filter(r => String(r['¿Requiere factura?']||'').trim().toLowerCase() === 'sí').length;
+      const sinFactura = filtered.filter(r => String(r['¿Requiere factura?']||'').trim().toLowerCase() === 'no').length;
+      extra = `
+        <div class="bn-kpi-card"><div class="bn-kpi-label">Con factura</div><div class="bn-kpi-value">${conFactura}</div></div>
+        <div class="bn-kpi-card"><div class="bn-kpi-label">Sin factura</div><div class="bn-kpi-value">${sinFactura}</div></div>`;
+    } else if (sec === 'perfiles') {
+      const propsSet = new Set(filtered.map(r => r['Propiedad']).filter(Boolean));
+      extra = `<div class="bn-kpi-card"><div class="bn-kpi-label">Propiedades distintas</div><div class="bn-kpi-value">${propsSet.size}</div></div>`;
+    } else if (sec === 'vehiculos') {
+      const propsSet = new Set(filtered.map(r => r['Propiedad']).filter(Boolean));
+      extra = `<div class="bn-kpi-card"><div class="bn-kpi-label">Propiedades distintas</div><div class="bn-kpi-value">${propsSet.size}</div></div>`;
+    }
+    kpis.innerHTML = `
+      <div class="bn-kpi-card"><div class="bn-kpi-label">Mostrados</div><div class="bn-kpi-value">${total}</div></div>
+      <div class="bn-kpi-card"><div class="bn-kpi-label">Total cargados</div><div class="bn-kpi-value">${totalCargados}</div></div>
+      ${extra}`;
+  }
+
+  // Paginación cliente
+  const totalPages = Math.max(1, Math.ceil(filtered.length / HU_STATE.pageSize));
+  if (HU_STATE.page > totalPages) HU_STATE.page = totalPages;
+  const start = (HU_STATE.page - 1) * HU_STATE.pageSize;
+  const pageRows = filtered.slice(start, start + HU_STATE.pageSize);
+
+  // Construir tabla con todos los headers de la sección
+  const headers = HU_STATE.headers[sec] || (rows[0] ? Object.keys(rows[0]).filter(k => k !== '_rowNum') : []);
+  if (!pageRows.length) {
+    if (empty) {
+      empty.textContent = rows.length === 0
+        ? `Sin datos en ${sec}. ¿Cargaste el sheet correcto?`
+        : 'Sin resultados con esta búsqueda.';
+      empty.classList.remove('hidden');
+    }
+    wrap?.classList.add('hidden');
+    return;
+  }
+  empty?.classList.add('hidden');
+  wrap?.classList.remove('hidden');
+
+  const fmt = v => {
+    if (v == null) return '';
+    const s = String(v);
+    return s.length > 80 ? s.slice(0, 78) + '…' : s;
+  };
+
+  const head = `<thead><tr style="background:#475569;color:#fff">${
+    headers.map(h => `<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">${esc(h)}</th>`).join('')
+  }</tr></thead>`;
+  const body = `<tbody>${
+    pageRows.map((r, i) => `<tr style="border-bottom:1px solid #e2e8f0;background:${i%2 ? '#f8fafc' : '#fff'}">${
+      headers.map(h => {
+        const v = r[h];
+        return `<td style="padding:7px 10px;font-size:12px;color:#1f2937;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(String(v ?? ''))}">${esc(fmt(v))}</td>`;
+      }).join('')
+    }</tr>`).join('')
+  }</tbody>`;
+
+  const pager = totalPages > 1 ? `
+    <div style="display:flex;justify-content:center;gap:6px;padding:10px;background:#f8fafc;border-top:1px solid #e2e8f0">
+      <button ${HU_STATE.page<=1?'disabled':''} onclick="HU_STATE.page--;huespedesRender()" style="padding:6px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:12px;cursor:pointer">‹ Anterior</button>
+      <span style="padding:6px 10px;font-size:12px;color:#475569;font-weight:600">${HU_STATE.page} / ${totalPages}</span>
+      <button ${HU_STATE.page>=totalPages?'disabled':''} onclick="HU_STATE.page++;huespedesRender()" style="padding:6px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:12px;cursor:pointer">Siguiente ›</button>
+    </div>` : '';
+
+  wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">${head}${body}</table>${pager}`;
 }

@@ -16,6 +16,7 @@ function doPost(e) {
     if (action === "get_bancos_data")              return respond(getBancosData_(SpreadsheetApp.openById(SHEET_ID)));
     if (action === "save_banco_clasificacion")     return respond(saveBancoClasificacion_(SpreadsheetApp.openById(SHEET_ID), data));
     if (action === "save_presupuesto")             return respond(savePresupuesto_(SpreadsheetApp.openById(SHEET_ID), data));
+    if (action === "get_huespedes_data")           return respond(getHuespedesData_(SpreadsheetApp.openById(SHEET_ID)));
     return respond({ ok: false, error: "Acción desconocida: " + action });
   } catch (err) {
     return respond({ ok: false, error: err.message });
@@ -711,4 +712,111 @@ function savePresupuesto_(ss, data) {
   }
 
   return { ok: true, rowsWritten: rows.length };
+}
+
+// ─── Información de huéspedes: lee Perfiles + Vehículos + Reservaciones ──────
+// Las 3 hojas están en "Ticket Vision — Resultados" (mismo SHEET_ID).
+// Devuelve los registros de cada una más una vista unificada por reservación.
+function getHuespedesData_(ss) {
+  const norm = (s) => (s ?? "").toString()
+    .replace(/[​-‍﻿]/g, "")
+    .replace(/ /g, " ")
+    .trim()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+
+  const pickSheet = (names) => {
+    const sheets = ss.getSheets();
+    const wanted = names.map(norm);
+    for (const sh of sheets) {
+      const n = norm(sh.getName());
+      if (wanted.includes(n)) return sh;
+    }
+    for (const sh of sheets) {
+      const n = norm(sh.getName());
+      if (wanted.some(w => n.includes(w) || w.includes(n))) return sh;
+    }
+    return null;
+  };
+
+  // Lee una hoja completa como array de objetos {header: value}
+  const readSheet = (sh) => {
+    if (!sh || sh.getLastRow() < 2) return { headers: [], rows: [] };
+    const lastCol = sh.getLastColumn();
+    const lastRow = sh.getLastRow();
+    const values  = sh.getRange(1, 1, lastRow, lastCol).getValues();
+    const display = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
+    const headers = values[0].map(h => String(h ?? "").trim());
+    const TZ = Session.getScriptTimeZone();
+    const rows = [];
+    for (let r = 1; r < values.length; r++) {
+      const row = {};
+      let anyContent = false;
+      for (let c = 0; c < headers.length; c++) {
+        if (!headers[c]) continue;
+        let v = values[r][c];
+        // Fechas → ISO usando displayValue para evitar bug de timezone
+        if (v instanceof Date) {
+          if (v.getFullYear() <= 1900) {
+            v = display[r][c]; // sólo hora (HH:mm)
+          } else {
+            v = Utilities.formatDate(v, TZ, "yyyy-MM-dd");
+          }
+        } else if (v == null) {
+          v = "";
+        } else {
+          v = String(v).trim();
+        }
+        if (v !== "" && v != null) anyContent = true;
+        row[headers[c]] = v;
+      }
+      if (anyContent) {
+        row._rowNum = r + 1;
+        rows.push(row);
+      }
+    }
+    return { headers, rows };
+  };
+
+  const shPerfiles      = pickSheet(["PERFILES", "PERFIL"]);
+  const shVehiculos     = pickSheet(["VEHICULOS", "VEHÍCULOS"]);
+  const shReservaciones = pickSheet(["RESERVACIONES", "RESERVACION"]);
+
+  if (!shReservaciones) {
+    return {
+      ok: false,
+      error: "sheet_not_found",
+      message: "No se encontró la hoja Reservaciones",
+      sheets_available: ss.getSheets().map(s => s.getName())
+    };
+  }
+
+  const perfiles      = readSheet(shPerfiles);
+  const vehiculos     = readSheet(shVehiculos);
+  const reservaciones = readSheet(shReservaciones);
+
+  return {
+    ok: true,
+    spreadsheetId:  ss.getId(),
+    spreadsheetUrl: ss.getUrl(),
+    sourceSheets: {
+      perfiles:      shPerfiles      ? shPerfiles.getName()      : null,
+      vehiculos:     shVehiculos     ? shVehiculos.getName()     : null,
+      reservaciones: shReservaciones ? shReservaciones.getName() : null,
+    },
+    counts: {
+      perfiles:      perfiles.rows.length,
+      vehiculos:     vehiculos.rows.length,
+      reservaciones: reservaciones.rows.length,
+    },
+    perfiles:      perfiles.rows,
+    vehiculos:     vehiculos.rows,
+    reservaciones: reservaciones.rows,
+    headers: {
+      perfiles:      perfiles.headers,
+      vehiculos:     vehiculos.headers,
+      reservaciones: reservaciones.headers,
+    },
+  };
 }

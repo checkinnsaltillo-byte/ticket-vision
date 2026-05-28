@@ -86,6 +86,17 @@ app.get("/get-bancos", async (req, res) => {
   }
 });
 
+// ─── Información de huéspedes: lee Perfiles + Vehículos + Reservaciones ─────
+
+app.get("/huespedes-data", async (req, res) => {
+  try {
+    const result = await callAppsScript({ action: "get_huespedes_data" });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Guardar clasificación de registro bancario en hoja BANCOS ───────────────
 
 app.post("/save-banco-clasificacion", async (req, res) => {
