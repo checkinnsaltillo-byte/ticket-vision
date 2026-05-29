@@ -9462,23 +9462,13 @@ function huImageZoomClose() {
 }
 
 /** Convierte un Drive URL en thumbnail. Acepta /file/d/{ID}/view, ?id=ID o ID puro. */
+/** URL pasada por el proxy del backend de Ticket Vision. Robusto contra Drive
+ *  hot-link blocking porque el binario lo recoge Cloud Run y nosotros sólo lo
+ *  vemos como una imagen ya servida desde nuestro origen. */
 function huDriveThumb(url, size) {
   if (!url) return '';
   const s = String(url).trim();
-  // Si ya es thumbnail, sólo ajusta sz
-  if (/drive\.google\.com\/thumbnail\?/.test(s)) {
-    return s.replace(/[?&]sz=[^&]+/, '') + (s.includes('?') ? '&' : '?') + 'sz=' + (size || 'w400');
-  }
-  let id = '';
-  const m1 = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-  const m2 = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  const m3 = s.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
-  const m4 = s.match(/^([a-zA-Z0-9_-]{20,})$/);
-  if (m1) id = m1[1]; else if (m2) id = m2[1]; else if (m3) id = m3[1]; else if (m4) id = m4[1];
-  if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=${size || 'w400'}`;
-  // No es Drive — devuelve la URL tal cual (puede ser http(s))
-  if (/^https?:\/\//i.test(s)) return s;
-  return '';
+  return `${BACKEND}/huespedes-image-proxy?url=${encodeURIComponent(s)}&size=${encodeURIComponent(size || 'w800')}`;
 }
 
 /** Placeholder elegante cuando no hay foto (en lugar de aspect-ratio:1 vacío). */
@@ -9505,44 +9495,19 @@ function huPhotoBox(url, label, options) {
   const sizeStyle = height
     ? `height:${height}`
     : `aspect-ratio:${aspectRatio}`;
-  // Extrae Drive ID si se puede para preparar URLs alternativas
-  const idMatch = String(url).match(/\/file\/d\/([a-zA-Z0-9_-]+)|[?&]id=([a-zA-Z0-9_-]+)|\/d\/([a-zA-Z0-9_-]{20,})/);
-  const driveId = idMatch ? (idMatch[1] || idMatch[2] || idMatch[3]) : '';
-  const altUrls = driveId ? [
-    `https://drive.google.com/thumbnail?id=${driveId}&sz=${size}`,
-    `https://lh3.googleusercontent.com/d/${driveId}=${size}`,
-    `https://drive.google.com/uc?export=view&id=${driveId}`,
-  ] : [String(url)];
+  const phHtml = huPhotoPlaceholder(label, icon, '100%').replace(/"/g, '&quot;');
   return `
     <div style="position:relative;cursor:zoom-in;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc;${sizeStyle};transition:transform 180ms cubic-bezier(.34,1.56,.64,1),box-shadow 180ms"
          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(15,23,42,.18)'"
          onmouseout="this.style.transform='';this.style.boxShadow=''"
-         onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')"
-         data-hu-alt-urls='${esc(JSON.stringify(altUrls))}'>
-      <img src="${esc(thumb)}" alt="${esc(label)}" referrerpolicy="no-referrer" loading="lazy" crossorigin="anonymous"
+         onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')">
+      <img src="${esc(thumb)}" alt="${esc(label)}" loading="lazy"
            style="width:100%;height:100%;object-fit:cover;display:block;background:#f8fafc"
-           onerror="huTryNextPhoto(this, '${esc(label)}', '${esc(JSON.stringify({icon, height:'100%'}).replace(/'/g,'&apos;'))}')">
+           onerror="this.parentElement.innerHTML='${phHtml}';this.parentElement.style.cursor='default';this.parentElement.onclick=null">
       <div style="position:absolute;bottom:0;left:0;right:0;padding:6px 8px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.7));color:#fff;font-size:10px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.5);text-transform:uppercase;letter-spacing:.04em">${esc(label)}</div>
       <div style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(15,23,42,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px">🔍</div>
     </div>`;
 }
-
-/** Si una URL de foto falla, intenta la siguiente del array alternativo. */
-window.huTryNextPhoto = function(imgEl, label, optsJson) {
-  const wrap = imgEl.closest('[data-hu-alt-urls]'); if (!wrap) return;
-  let urls = []; try { urls = JSON.parse(wrap.dataset.huAltUrls || '[]'); } catch(_) {}
-  const tried = Number(imgEl.dataset.tried || '0');
-  if (tried + 1 < urls.length) {
-    imgEl.dataset.tried = String(tried + 1);
-    imgEl.src = urls[tried + 1];
-    return;
-  }
-  // Sin más alternativas → placeholder
-  let opts = {}; try { opts = JSON.parse((optsJson||'{}').replace(/&apos;/g,"'")); } catch(_) {}
-  wrap.innerHTML = huPhotoPlaceholder(label, opts.icon || '📷', opts.height || '100%');
-  wrap.style.cursor = 'default';
-  wrap.onclick = null;
-};
 
 /** Construye la "ID Card" del perfil del huésped (columna izquierda). Tema claro. */
 function huBuildIdCard(r) {

@@ -146,6 +146,59 @@ app.get("/huespedes-filter-options", async (req, res) => {
   }
 });
 
+// Proxy de imágenes: descarga la URL de Drive (o cualquier https) server-side
+// y la stream-ea al cliente. Bypassa hot-link blocking, headers de referrer,
+// cookies, etc. Soporta Drive en cualquiera de sus formatos comunes.
+function huExtractDriveId(url) {
+  if (!url) return "";
+  const s = String(url).trim();
+  const m1 = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  const m2 = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  const m3 = s.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (m1) return m1[1];
+  if (m2) return m2[1];
+  if (m3) return m3[1];
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(s)) return s;
+  return "";
+}
+
+app.get("/huespedes-image-proxy", async (req, res) => {
+  try {
+    const rawUrl = String(req.query.url || "").trim();
+    if (!rawUrl) return res.status(400).send("Missing url");
+    const size = String(req.query.size || "w800").replace(/[^a-z0-9]/gi, "");
+    const driveId = huExtractDriveId(rawUrl);
+    // Lista de URLs a intentar — la primera que devuelva binario gana.
+    const candidates = driveId ? [
+      `https://lh3.googleusercontent.com/d/${driveId}=${size}`,
+      `https://drive.google.com/thumbnail?id=${driveId}&sz=${size}`,
+      `https://drive.google.com/uc?export=view&id=${driveId}`,
+      `https://drive.usercontent.google.com/download?id=${driveId}&export=view&authuser=0`,
+    ] : (/^https?:\/\//i.test(rawUrl) ? [rawUrl] : []);
+    if (!candidates.length) return res.status(400).send("Unsupported url");
+    let lastErr = null;
+    for (const u of candidates) {
+      try {
+        const r = await fetch(u, {
+          redirect: "follow",
+          headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*,*/*" },
+        });
+        const ct = r.headers.get("content-type") || "";
+        if (!r.ok) { lastErr = `${r.status} on ${u}`; continue; }
+        if (!ct.startsWith("image/")) { lastErr = `non-image ct=${ct} on ${u}`; continue; }
+        const buf = Buffer.from(await r.arrayBuffer());
+        res.setHeader("Content-Type", ct);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        return res.send(buf);
+      } catch (e) { lastErr = e.message; }
+    }
+    res.status(502).send("All sources failed: " + (lastErr || "unknown"));
+  } catch (err) {
+    res.status(500).send("proxy error: " + err.message);
+  }
+});
+
 app.get("/huespedes-detail", async (req, res) => {
   try {
     const result = await callCheckinAppsScript("get_record_detail", { record_id: req.query.record_id || "" });
