@@ -9070,84 +9070,62 @@ function huRecalcAirbnb(inputAirbnb) {
   huMaybePersistCardMonto(card, fac ? fac.toFixed(2) : '');
 }
 
-/** Punto único de persistencia: dado un card, lee el monto facturado actual
- *  (sea el del input calculado o el valor pasado explícitamente) y lo guarda
- *  si difiere del último valor guardado. Idempotente — no spam al backend. */
-function huMaybePersistCardMonto(cardEl, valueOverride) {
-  if (!cardEl) return;
+/** Sincroniza el campo (+) Monto facturado Total del card con la columna
+ *  "$ Monto facturado Total" del sheet. Sin debounce, sin skips: si el
+ *  input tiene un valor numérico > 0, lo guarda. */
+async function huPersistCardMonto(cardEl) {
+  if (!cardEl) { console.warn('[HU] persist: no card'); return; }
   const recordId = cardEl.dataset.recordId || '';
-  if (!recordId) {
-    console.warn('[HU] huMaybePersistCardMonto: card sin recordId', cardEl);
-    return;
-  }
-  // Resuelve el valor a persistir
-  let monto = String(valueOverride ?? '').trim();
-  if (!monto) {
-    const facInp = cardEl.querySelector('[data-hu-airbnb-facturado="1"]');
-    if (facInp) monto = String(facInp.value || '').trim();
-  }
+  if (!recordId) { console.warn('[HU] persist: no recordId'); return; }
+  const facInp = cardEl.querySelector('[data-hu-airbnb-facturado="1"]');
+  if (!facInp) { console.warn('[HU] persist: no input facturado en card', recordId); return; }
+  const monto = String(facInp.value || '').trim();
   if (!monto || isNaN(Number(monto)) || Number(monto) <= 0) {
-    console.debug('[HU] persist skip — sin monto', { recordId, monto });
+    console.info('[HU] persist: monto inválido o cero', { recordId, monto });
     return;
   }
-  // Skip si coincide con lo último guardado conocido (cache)
-  const r = (HU_STATE.rows||[]).find(x => String(x['ID']||x['row_number']||'') === String(recordId));
-  const prevRaw = r ? String(r['$ Monto facturado Total'] || '').trim() : '';
-  const prevNum = Number(prevRaw.replace(/[^0-9.\-]/g,'')) || 0;
-  const newNum  = Number(monto);
-  if (Math.abs(prevNum - newNum) < 0.005) {
-    console.debug('[HU] persist skip — ya está guardado', { recordId, prev: prevRaw, new: monto });
-    return;
-  }
-  huSaveMontoFacturadoDebounced(recordId, monto, cardEl);
-}
-
-/** Llamado por <details ontoggle> cuando se abre el dropdown del card.
- *  Si la card es Airbnb y el calculado difiere del sheet, dispara save. */
-window.huOnDetailsToggle = function(detailsEl) {
-  if (!detailsEl?.open) return;
-  // Pequeño delay para que cualquier render asíncrono termine
-  setTimeout(() => huMaybePersistCardMonto(detailsEl), 50);
-};
-
-/** Guarda el monto con debounce de 700ms (un timer por recordId). */
-const HU_SAVE_TIMERS = {};
-function huSaveMontoFacturadoDebounced(recordId, monto, cardEl) {
-  if (!recordId) return;
-  if (HU_SAVE_TIMERS[recordId]) clearTimeout(HU_SAVE_TIMERS[recordId]);
-  HU_SAVE_TIMERS[recordId] = setTimeout(() => {
-    huSaveMontoFacturadoNow(recordId, monto, cardEl);
-    delete HU_SAVE_TIMERS[recordId];
-  }, 700);
-}
-async function huSaveMontoFacturadoNow(recordId, monto, cardEl) {
-  console.info('[HU] saving monto', { recordId, monto });
-  const hdrAmt = cardEl?.querySelector('[data-hu-header-amount="1"]');
-  const prevColor = hdrAmt?.style.color;
+  // Indicador visual en el header
+  const hdrAmt = cardEl.querySelector('[data-hu-header-amount="1"]');
   if (hdrAmt) hdrAmt.style.color = '#a16207';
+  console.info('[HU] POST /huespedes-save-monto', { recordId, monto });
   try {
     const res = await fetch(`${BACKEND}/huespedes-save-monto`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ record_id: recordId, monto_facturado_total: String(monto) }),
+      body: JSON.stringify({ record_id: recordId, monto_facturado_total: monto }),
     });
     const json = await res.json();
-    console.info('[HU] save response', json);
-    if (!json.ok) throw new Error(json.error || json.message || 'Error al guardar monto');
+    console.info('[HU] response:', json);
+    if (!json.ok) throw new Error(json.error || json.message || 'save failed');
+    // Refleja en cache local para que un render posterior muestre el valor
     const r = (HU_STATE.rows||[]).find(x => String(x['ID']||x['row_number']||'') === String(recordId));
     if (r) r['$ Monto facturado Total'] = monto;
     if (hdrAmt) {
       hdrAmt.style.color = '#16a34a';
-      setTimeout(() => { if (hdrAmt) hdrAmt.style.color = prevColor || '#111827'; }, 1000);
+      setTimeout(() => { if (hdrAmt) hdrAmt.style.color = '#111827'; }, 1500);
     }
   } catch (e) {
-    console.error('[HU] save error', e);
+    console.error('[HU] save error:', e);
     if (hdrAmt) {
       hdrAmt.style.color = '#dc2626';
-      hdrAmt.title = 'Error al guardar: ' + e.message;
-      setTimeout(() => { if (hdrAmt) { hdrAmt.style.color = prevColor || '#111827'; hdrAmt.title = ''; } }, 1800);
+      hdrAmt.title = 'Error: ' + e.message;
+      setTimeout(() => { if (hdrAmt) { hdrAmt.style.color = '#111827'; hdrAmt.title = ''; } }, 2500);
     }
   }
+}
+
+/** Llamado al abrir o cerrar el <details>. Si se abrió, dispara el save. */
+window.huOnDetailsToggle = function(detailsEl) {
+  console.info('[HU] toggle', { open: detailsEl?.open, recordId: detailsEl?.dataset?.recordId });
+  if (!detailsEl?.open) return;
+  setTimeout(() => huPersistCardMonto(detailsEl), 100);
+};
+
+/** Alias para mantener compat con huRecalcAirbnb (un toque debounce). */
+let HU_RECALC_TIMER = null;
+function huMaybePersistCardMonto(cardEl) {
+  if (HU_RECALC_TIMER) clearTimeout(HU_RECALC_TIMER);
+  HU_RECALC_TIMER = setTimeout(() => huPersistCardMonto(cardEl), 600);
 }
 /** Mensaje canónico para "consultar ticket emitido". */
 function huBuildTicketConsultaMsg(url) {
