@@ -9534,12 +9534,16 @@ function huFmtMontoEditable(v) {
   return limpio;
 }
 
-/** Construye la URL completa de facturapi con todos los params (igual al original). */
-function huBuildFacturapiUrlFromRow(row, baseUrl) {
+/** Construye la URL completa de facturapi con todos los params (igual al original).
+ *  cantidadOverride: si se pasa, sobrescribe el valor de "quantity" (típicamente
+ *  proveniente del input calculado del card). */
+function huBuildFacturapiUrlFromRow(row, baseUrl, cantidadOverride) {
   const p = new URLSearchParams();
   p.set('source', 'control_huespedes');
-  p.set('quantity',
-    huFmtMontoEditable(huValueFlexible(row, ['$ Monto facturado Total','Monto facturado Total'])) || '1');
+  const cantidad = (cantidadOverride != null && String(cantidadOverride).trim() !== '')
+    ? huFmtMontoEditable(cantidadOverride)
+    : huFmtMontoEditable(huValueFlexible(row, ['$ Monto facturado Total','Monto facturado Total']));
+  p.set('quantity', cantidad || '1');
   p.set('currency', huNormalizeCurrencyFromSheet(huValueFlexible(row, ['Divisa monto pagado','Moneda','Currency'])));
   const email     = huValueFlexible(row, ['Correo electrónico','Correo electronico','Email']);
   const whatsapp  = huNormalizePhoneWA(huValueFlexible(row, ['Cel/Whatsapp (principal)','Celular principal','Whatsapp principal']));
@@ -9578,15 +9582,53 @@ async function huespedesGenerarTicket(recordId) {
     } catch (_) {}
   }
 
+  // Leer el monto facturado actual del input calculado del card (el valor
+  // ya considera el cálculo Airbnb − comisión cuando aplica).
+  let cantidad = '';
+  const card = document.querySelector(`.hu-record[data-record-id="${recordId}"]`);
+  const facInput = card?.querySelector('[data-hu-airbnb-facturado="1"]');
+  if (facInput && String(facInput.value).trim() !== '') cantidad = facInput.value;
+
   // URL base de facturapi (hardcoded al Cloud Run del check-in, override
   // posible vía localStorage.HU_FACTURAPI_URL)
   const base = huGetFacturapiUrl();
-  const url = huBuildFacturapiUrlFromRow(row, base);
+  const url = huBuildFacturapiUrlFromRow(row, base, cantidad);
   if (!url) { alert('No se pudo construir la URL de Facturapi.'); return; }
 
-  // Abrir en nueva pestaña (más confiable que iframe cross-origin)
-  window.open(url, '_blank', 'noopener,noreferrer');
+  // Abrir en modal con iframe embebido (en lugar de pestaña independiente)
+  huespedesOpenFacturapi(url);
 }
+
+/** Abre el modal de Facturapi con el iframe apuntando a la URL dada. */
+function huespedesOpenFacturapi(url) {
+  const ov   = document.getElementById('hu-facturapi-overlay');
+  const ifr  = document.getElementById('hu-facturapi-frame');
+  const ext  = document.getElementById('hu-facturapi-external');
+  if (!ov || !ifr) { window.open(url, '_blank', 'noopener'); return; }
+  if (ext) ext.href = url;
+  ifr.src = url;
+  ov.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+/** Cierra el modal de Facturapi. */
+function huespedesCloseFacturapi() {
+  const ov  = document.getElementById('hu-facturapi-overlay');
+  const ifr = document.getElementById('hu-facturapi-frame');
+  if (ifr) ifr.src = 'about:blank';
+  if (ov) ov.classList.add('hidden');
+  document.body.style.overflow = '';
+  // Refresca los datos por si se generó factura
+  if (HU_STATE.loaded) huespedesLoad(true);
+}
+
+// Esc cierra el modal de Facturapi
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('hu-facturapi-overlay');
+    if (ov && !ov.classList.contains('hidden')) huespedesCloseFacturapi();
+  }
+});
 
 /** Permite resetear la URL base si quedó mal configurada. */
 window.huespedesResetFacturapiUrl = function() {
