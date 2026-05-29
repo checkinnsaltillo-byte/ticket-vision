@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=69">
+  <link rel="stylesheet" href="styles.css?v=70">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -787,6 +787,35 @@
           </select>
           <div style="font-size:10px;color:#94a3b8;margin-top:3px">Muestra registros cuya estancia toca al menos un día del mes.</div>
         </div>
+
+        <!-- Ponderaciones del Índice de Lealtad (afectan la insignia + score) -->
+        <div style="flex:1;min-width:300px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <label style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">🏅 Ponderaciones del Índice de Lealtad</label>
+            <button type="button" onclick="huResetLoyaltyWeights()" style="padding:3px 8px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">↺ Default</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            <label style="font-size:10px;color:#64748b;font-weight:600">
+              🌙 Noches
+              <input type="number" id="hu-w-noches" min="0" max="100" step="5" value="40"
+                     oninput="huOnLoyaltyWeightChange()"
+                     style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;margin-top:2px;font-weight:700;color:#0f172a">
+            </label>
+            <label style="font-size:10px;color:#64748b;font-weight:600">
+              🧳 Visitas
+              <input type="number" id="hu-w-visitas" min="0" max="100" step="5" value="30"
+                     oninput="huOnLoyaltyWeightChange()"
+                     style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;margin-top:2px;font-weight:700;color:#0f172a">
+            </label>
+            <label style="font-size:10px;color:#64748b;font-weight:600">
+              💰 Monto
+              <input type="number" id="hu-w-monto" min="0" max="100" step="5" value="30"
+                     oninput="huOnLoyaltyWeightChange()"
+                     style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;margin-top:2px;font-weight:700;color:#0f172a">
+            </label>
+          </div>
+          <div id="hu-w-sum-note" style="font-size:10px;color:#94a3b8;margin-top:4px">Suma = 100. Score 0-100 → Oro ≥70 · Plata ≥45 · Bronce ≥25 · Recurrente ≥10.</div>
+        </div>
       </div>
 
       <!-- Filtros granulares (selects con valores únicos del backend) -->
@@ -1032,6 +1061,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=140"></script>
+  <script src="app.js?v=141"></script>
 </body>
 </html>

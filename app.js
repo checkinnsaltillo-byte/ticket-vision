@@ -9018,58 +9018,70 @@ function huParseDate(v) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-/** Asigna una insignia (tier) al huésped basado en noches+visitas globales.
- *  Reglas:
- *    Oro       — ≥ 20 noches Y ≥ 8 visitas
- *    Plata     — ≥ 10 noches y < 15 noches Y ≥ 4 visitas
- *    Bronce    — ≥ 5 noches y < 10 noches
- *    Recurrente— > 1 noche y < 5 noches
- *    null      — sin insignia
- *  Devuelve { label, icon, bg, fg, border, shadow, tooltip } o null. */
-function huGuestTier(noches, visitas) {
-  const n = Number(noches)||0, v = Number(visitas)||0;
-  if (n >= 20 && v >= 8) {
-    return { label:'Oro', icon:'🏆',
+/** Asigna una insignia (tier) al huésped según el score de lealtad 0-100.
+ *  Umbrales:
+ *    Oro       ≥ 70
+ *    Plata     ≥ 45
+ *    Bronce    ≥ 25
+ *    Recurrente≥ 10
+ *    null      < 10
+ *  Devuelve { label, icon, bg, fg, border, shadow, tooltip, score } o null. */
+function huGuestTier(score, stats) {
+  const s = Math.round(Number(score)||0);
+  const tip = stats
+    ? `Score ${s}/100 · ${stats.totalNoches} noches · ${stats.visitas} visitas · ${huFmtMonto(stats.montoGlobal)}`
+    : `Score ${s}/100`;
+  if (s >= 70) {
+    return { score:s, label:'Oro', icon:'🏆',
       bg:'linear-gradient(135deg,#fef3c7,#fde68a 60%,#facc15)', fg:'#78350f',
-      border:'#f59e0b', shadow:'rgba(234,179,8,.5)',
-      tooltip:`Oro · ${n} noches en ${v} visitas` };
+      border:'#f59e0b', shadow:'rgba(234,179,8,.5)', tooltip:tip };
   }
-  if (n >= 10 && n < 15 && v >= 4) {
-    return { label:'Plata', icon:'🥈',
+  if (s >= 45) {
+    return { score:s, label:'Plata', icon:'🥈',
       bg:'linear-gradient(135deg,#f1f5f9,#e2e8f0 60%,#cbd5e1)', fg:'#334155',
-      border:'#94a3b8', shadow:'rgba(100,116,139,.4)',
-      tooltip:`Plata · ${n} noches en ${v} visitas` };
+      border:'#94a3b8', shadow:'rgba(100,116,139,.4)', tooltip:tip };
   }
-  if (n >= 5 && n < 10) {
-    return { label:'Bronce', icon:'🥉',
+  if (s >= 25) {
+    return { score:s, label:'Bronce', icon:'🥉',
       bg:'linear-gradient(135deg,#fed7aa,#fdba74 60%,#f97316)', fg:'#7c2d12',
-      border:'#ea580c', shadow:'rgba(234,88,12,.4)',
-      tooltip:`Bronce · ${n} noches en ${v} visitas` };
+      border:'#ea580c', shadow:'rgba(234,88,12,.4)', tooltip:tip };
   }
-  if (n > 1 && n < 5) {
-    return { label:'Recurrente', icon:'⭐',
+  if (s >= 10) {
+    return { score:s, label:'Recurrente', icon:'⭐',
       bg:'linear-gradient(135deg,#e0e7ff,#c7d2fe 60%,#a5b4fc)', fg:'#3730a3',
-      border:'#6366f1', shadow:'rgba(99,102,241,.4)',
-      tooltip:`Recurrente · ${n} noches en ${v} visitas` };
+      border:'#6366f1', shadow:'rgba(99,102,241,.4)', tooltip:tip };
   }
   return null;
 }
 
-/** Devuelve el estado de la estancia respecto a hoy:
- *  - "concluida" si la salida ya pasó
- *  - "en_curso"  si hoy está entre ingreso y salida (inclusivo)
- *  - "proxima"   si la ingreso es futura
- *  - ""          si no hay fechas */
+/** Estado semaforizado de la estancia (4 estados):
+ *  - "concluida"  → salida < hoy           (gris)
+ *  - "activa"     → en curso, NO sale hoy  (verde)
+ *  - "salida_hoy" → la salida es hoy       (rojo)
+ *  - "proxima"    → ingreso es mañana+     (amarillo)
+ *  - ""           → sin fechas */
 function huGetStayState(ingreso, salida) {
   const di = huParseDate(ingreso); const ds = huParseDate(salida);
   if (!di && !ds) return '';
   const today = new Date(); today.setHours(0,0,0,0);
   const start = di || ds;
   const end   = ds || di;
-  if (end < today) return 'concluida';
-  if (start > today) return 'proxima';
-  return 'en_curso';
+  // Comparamos por día (sin hora)
+  const startDay = new Date(start); startDay.setHours(0,0,0,0);
+  const endDay   = new Date(end);   endDay.setHours(0,0,0,0);
+  if (endDay < today) return 'concluida';
+  if (endDay.getTime() === today.getTime()) return 'salida_hoy';
+  if (startDay > today) return 'proxima';
+  return 'activa';
 }
+/** Mapa estado → color + leyenda. */
+const HU_STAY_DOT = {
+  concluida:  { color:'#94a3b8', label:'Concluida' },
+  activa:     { color:'#16a34a', label:'Activa' },
+  salida_hoy: { color:'#dc2626', label:'Salida hoy' },
+  proxima:    { color:'#f59e0b', label:'Próxima' },
+  '':         { color:'#cbd5e1', label:'—' },
+};
 
 /** Llena el <select id="hu-filtro-mes"> con los meses únicos presentes en
  *  HU_STATE.rows. Texto legible: "Mayo 2026". Valor: "2026-05".
@@ -9585,17 +9597,91 @@ function huComputeGuestStats(currentRow, allRows) {
   let lastEnd    = null;
   for (const s of parsed) {
     totalNoches += s.noches > 0 ? s.noches : Math.max(0, Math.round((s.sal - s.ing) / 86400000));
-    // Si lastEnd existe y la diferencia entre lastEnd y s.ing es <= 0 días, misma visita.
-    // (es decir, salen el mismo día que entra a otra propiedad)
     if (lastEnd === null) {
       visitas = 1;
     } else {
       const diffDays = Math.round((s.ing - lastEnd) / 86400000);
-      if (diffDays > 0) visitas += 1; // hay hueco → nueva visita
+      if (diffDays > 0) visitas += 1;
     }
     if (lastEnd === null || s.sal > lastEnd) lastEnd = s.sal;
   }
-  return { totalNoches, visitas, reservaciones: parsed.length };
+  // Monto global = suma de "$ Monto facturado Total" en todas las reservas
+  // del mismo Cel. Usa el mismo sanitizador que huFmtMonto para tolerar
+  // valores ISO-date corruptos y coma decimal es-MX.
+  const montoGlobal = list.reduce((acc, x) => {
+    const raw = huValueFlexible(x, ['$ Monto facturado Total','Monto facturado Total']);
+    return acc + huParseMontoRobust(raw);
+  }, 0);
+  return { totalNoches, visitas, reservaciones: parsed.length, montoGlobal };
+}
+
+/** Parser numérico tolerante: maneja "2534,8", "$25,348.00",
+ *  "2534-08-01T06:00:00.000Z" (corrupción de fecha) y devuelve 0 si no se
+ *  puede inferir. Espejo de la lógica de huFmtMonto. */
+function huParseMontoRobust(raw) {
+  if (raw == null) return 0;
+  let s = String(raw).trim();
+  if (!s) return 0;
+  const iso = s.match(/^(-?\d+)-(\d{2})-(\d{2})T/);
+  if (iso) s = `${iso[1]}.${parseInt(iso[2],10)}`;
+  if (/,\d{1,2}$/.test(s) && !/\./.test(s)) s = s.replace(',', '.');
+  const n = Number(s.replace(/[^0-9.\-]/g, ''));
+  return isFinite(n) ? n : 0;
+}
+
+// ─── Índice de Lealtad: score 0-100 con ponderaciones editables ──────────
+const HU_LOYALTY_DEFAULTS = { w_noches:40, w_visitas:30, w_monto:30 };
+// Valores de referencia con los que cada KPI llega a 100 puntos. Calibrados
+// a partir de la metodología solicitada (Oro = ≥20 noches y ≥8 visitas):
+const HU_LOYALTY_REF = { ref_noches:30, ref_visitas:12, ref_monto:100000 };
+
+function huGetLoyaltyWeights() {
+  const wN = Number(document.getElementById('hu-w-noches')?.value);
+  const wV = Number(document.getElementById('hu-w-visitas')?.value);
+  const wM = Number(document.getElementById('hu-w-monto')?.value);
+  const def = HU_LOYALTY_DEFAULTS;
+  return {
+    w_noches:  isFinite(wN) ? wN : def.w_noches,
+    w_visitas: isFinite(wV) ? wV : def.w_visitas,
+    w_monto:   isFinite(wM) ? wM : def.w_monto,
+  };
+}
+
+/** Calcula el score 0-100 (saturado) a partir de los KPIs globales. */
+function huComputeLoyaltyScore(stats) {
+  const w = huGetLoyaltyWeights();
+  const sum = (w.w_noches + w.w_visitas + w.w_monto) || 1;
+  const nNoches  = Math.min(1, (Number(stats.totalNoches) || 0) / HU_LOYALTY_REF.ref_noches);
+  const nVisitas = Math.min(1, (Number(stats.visitas)     || 0) / HU_LOYALTY_REF.ref_visitas);
+  const nMonto   = Math.min(1, (Number(stats.montoGlobal) || 0) / HU_LOYALTY_REF.ref_monto);
+  const score = (w.w_noches*nNoches + w.w_visitas*nVisitas + w.w_monto*nMonto) * (100/sum);
+  return Math.round(Math.max(0, Math.min(100, score)));
+}
+
+/** Reset de ponderaciones a los valores por defecto + re-render. */
+window.huResetLoyaltyWeights = function() {
+  document.getElementById('hu-w-noches').value  = HU_LOYALTY_DEFAULTS.w_noches;
+  document.getElementById('hu-w-visitas').value = HU_LOYALTY_DEFAULTS.w_visitas;
+  document.getElementById('hu-w-monto').value   = HU_LOYALTY_DEFAULTS.w_monto;
+  huUpdateLoyaltySumNote();
+  if (typeof huespedesRender === 'function') huespedesRender();
+};
+/** Cambio en cualquiera de los inputs de ponderación: re-render debounced. */
+let HU_W_TIMER = null;
+window.huOnLoyaltyWeightChange = function() {
+  huUpdateLoyaltySumNote();
+  if (HU_W_TIMER) clearTimeout(HU_W_TIMER);
+  HU_W_TIMER = setTimeout(() => {
+    if (typeof huespedesRender === 'function') huespedesRender();
+  }, 300);
+};
+function huUpdateLoyaltySumNote() {
+  const w = huGetLoyaltyWeights();
+  const sum = w.w_noches + w.w_visitas + w.w_monto;
+  const note = document.getElementById('hu-w-sum-note');
+  if (!note) return;
+  const color = sum === 100 ? '#16a34a' : '#dc2626';
+  note.innerHTML = `Suma = <b style="color:${color}">${sum}</b> ${sum===100?'✓':'(idealmente 100)'} · Oro ≥70 · Plata ≥45 · Bronce ≥25 · Recurrente ≥10.`;
 }
 
 // ─── Lightbox para fotos (Esc + X + clic fuera para cerrar) ─────────────────
@@ -9855,9 +9941,13 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
     // El punto representa estado de la estancia (no de la factura):
     // verde = en curso, gris = concluida, azul = próxima.
     const stayState = huGetStayState(ingreso, salida);
-    const dotColor  = stayState === 'en_curso' ? '#16a34a' : stayState === 'proxima' ? '#3b82f6' : '#94a3b8';
-    const dotTitle  = stayState === 'en_curso' ? 'En curso'  : stayState === 'proxima' ? 'Próxima'  : 'Concluida';
-    const dotPulse  = stayState === 'en_curso' ? 'animation:hu-dot-pulse 1.4s ease-in-out infinite;' : '';
+    const dotMeta   = HU_STAY_DOT[stayState] || HU_STAY_DOT[''];
+    const dotColor  = dotMeta.color;
+    const dotTitle  = dotMeta.label;
+    // Verde "Activa" pulsa suave; rojo "Salida hoy" pulsa más fuerte para llamar la atención.
+    const dotPulse  = stayState === 'activa'     ? 'animation:hu-dot-pulse 1.4s ease-in-out infinite;'
+                    : stayState === 'salida_hoy' ? 'animation:hu-dot-pulse-strong 1s ease-in-out infinite;'
+                    : '';
     return `
       <div onclick="event.stopPropagation();huSelectReservation('${esc(outerCardRecId)}','${esc(xid)}')"
            data-hu-history-id="${esc(xid)}"
@@ -9867,7 +9957,10 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
            onmouseout="if(!this.classList.contains('hu-history-active')){this.style.boxShadow='0 1px 2px rgba(15,23,42,.06)';this.style.transform=''}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div style="font-size:11px;font-weight:800;color:#1f2937;letter-spacing:.02em">${huFmtFecha(ingreso)} → ${huFmtFecha(salida)}</div>
-          <span title="${dotTitle}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${dotColor};box-shadow:0 0 0 2px rgba(255,255,255,.7);${dotPulse}"></span>
+          <span style="display:inline-flex;align-items:center;gap:5px" title="${dotTitle}">
+            <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${dotColor};box-shadow:0 0 0 2px rgba(255,255,255,.7);${dotPulse}"></span>
+            <span style="font-size:9px;font-weight:700;color:${dotColor};text-transform:uppercase;letter-spacing:.04em">${esc(dotTitle)}</span>
+          </span>
         </div>
         <div style="font-size:11px;color:#64748b;font-weight:600">${esc(prop || '—')}${depto?' · # '+esc(depto):''}</div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
@@ -10111,15 +10204,22 @@ function huBuildRecordCard(r) {
 
   // KPIs del huésped (sumando su historial completo de reservaciones)
   const stats = huComputeGuestStats(r, HU_STATE.rows);
-  const tier  = huGuestTier(stats.totalNoches, stats.visitas);
+  const score = huComputeLoyaltyScore(stats);
+  const tier  = huGuestTier(score, stats);
   const tierBadge = tier ? `
     <div title="${esc(tier.tooltip)}"
          style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:${tier.bg};color:${tier.fg};font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:1.5px solid ${tier.border};box-shadow:0 2px 8px ${tier.shadow};animation:hu-badge-glow 2.6s ease-in-out infinite">
       <span style="font-size:14px">${tier.icon}</span>
       <span>${tier.label}</span>
-    </div>` : '';
+      <span style="display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:18px;padding:0 6px;border-radius:9px;background:rgba(255,255,255,.7);color:${tier.fg};font-size:10px;font-weight:800;letter-spacing:0">${tier.score}</span>
+    </div>` : `
+    <div title="Score ${score}/100 — sin insignia (umbral mínimo: 10)"
+         style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:#f8fafc;color:#64748b;font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:1.5px dashed #cbd5e1">
+      <span style="font-size:13px">·</span><span>Sin tier</span>
+      <span style="display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:18px;padding:0 6px;border-radius:9px;background:#e2e8f0;color:#475569;font-size:10px;font-weight:800;letter-spacing:0">${score}</span>
+    </div>`;
   const kpisHtml = `
-    <div style="display:flex;gap:8px;align-items:center">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:84px;text-align:center;backdrop-filter:blur(4px)" title="Suma global de noches en todas las reservaciones del huésped">
         <div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:.05em;text-transform:uppercase">🌙 Noches globales</div>
         <div style="font-size:18px;font-weight:800;color:#0f172a;line-height:1.1">${stats.totalNoches}</div>
@@ -10127,6 +10227,10 @@ function huBuildRecordCard(r) {
       <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:84px;text-align:center;backdrop-filter:blur(4px)" title="Visitas globales distintas (reservaciones consecutivas cuentan como una sola visita)">
         <div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:.05em;text-transform:uppercase">🧳 Visitas globales</div>
         <div style="font-size:18px;font-weight:800;color:#0f172a;line-height:1.1">${stats.visitas}</div>
+      </div>
+      <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:104px;text-align:center;backdrop-filter:blur(4px)" title="Suma de $ Monto facturado Total de todas las reservaciones del huésped">
+        <div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:.05em;text-transform:uppercase">💰 Monto global</div>
+        <div style="font-size:16px;font-weight:800;color:#0f172a;line-height:1.1">${stats.montoGlobal > 0 ? huFmtMonto(stats.montoGlobal) : '—'}</div>
       </div>
       ${tierBadge}
     </div>`;

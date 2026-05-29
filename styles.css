@@ -1908,10 +1908,15 @@ select:not(:disabled):not(:focus):hover {
   50%      { opacity: 1; }
 }
 
-/* ─── Pulso del dot "en curso" del historial ──────────────────────────── */
+/* ─── Pulso del dot "Activa" del historial ──────────────────────────── */
 @keyframes hu-dot-pulse {
   0%, 100% { box-shadow: 0 0 0 2px rgba(255,255,255,.7), 0 0 0 0 rgba(22,163,74,.55); }
   50%      { box-shadow: 0 0 0 2px rgba(255,255,255,.7), 0 0 0 6px rgba(22,163,74,0); }
+}
+/* Pulso más fuerte para "Salida hoy" (rojo) — llama la atención. */
+@keyframes hu-dot-pulse-strong {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255,255,255,.8), 0 0 0 0 rgba(220,38,38,.7); }
+  50%      { box-shadow: 0 0 0 2px rgba(255,255,255,.8), 0 0 0 8px rgba(220,38,38,0); }
 }
 
 /* ─── Glow sutil para la insignia de tier (Oro/Plata/Bronce/Recurrente) ── */
