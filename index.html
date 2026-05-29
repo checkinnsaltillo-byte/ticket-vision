@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=63">
+  <link rel="stylesheet" href="styles.css?v=64">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -798,14 +798,77 @@
                 style="padding:8px 14px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">⬇ Exportar CSV</button>
       </div>
 
-      <!-- KPIs -->
-      <div id="hu-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px"></div>
+      <!-- KPIs (los 3 conteos + tarjeta ancha de Estado de tickets) -->
+      <div class="hu-kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
+        <div class="hu-kpi-card">
+          <div class="hu-kpi-label">Registros encontrados</div>
+          <div class="hu-kpi-value" id="hu-kpi-total">0</div>
+        </div>
+        <div class="hu-kpi-card">
+          <div class="hu-kpi-label">Con factura</div>
+          <div class="hu-kpi-value" id="hu-kpi-con-factura">0</div>
+        </div>
+        <div class="hu-kpi-card">
+          <div class="hu-kpi-label">Sin factura</div>
+          <div class="hu-kpi-value" id="hu-kpi-sin-factura">0</div>
+        </div>
+      </div>
+
+      <!-- Estado de tickets — tarjeta ancha con barra stacked + métricas -->
+      <div class="hu-ticket-status-card" id="hu-ticket-status-card" style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(15,23,42,.05)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+          <div>
+            <div class="hu-kpi-label">Estado de tickets</div>
+            <div style="font-size:18px;font-weight:800;color:#111827;margin-top:2px">Emitidos vs pendientes</div>
+          </div>
+          <div id="hu-tickets-total-requieren" style="display:inline-flex;align-items:center;padding:6px 14px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#334155;border-radius:999px;font-weight:700;font-size:12px">
+            0 tickets requieren factura
+          </div>
+        </div>
+        <div style="display:flex;height:14px;border-radius:999px;overflow:hidden;background:#e5e7eb;margin-bottom:12px">
+          <div id="hu-bar-emitido"   style="height:100%;width:0%;background:linear-gradient(90deg,#16a34a,#86efac);transition:width .3s"></div>
+          <div id="hu-bar-pendiente" style="height:100%;width:0%;background:linear-gradient(90deg,#fca5a5,#dc2626);transition:width .3s"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">
+          <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+            <span style="width:10px;height:10px;border-radius:50%;background:#16a34a;display:inline-block;flex-shrink:0"></span>
+            <div>
+              <div style="font-size:11px;color:#14532d;text-transform:uppercase;font-weight:700;letter-spacing:.04em">Emitidos</div>
+              <div style="font-size:16px;font-weight:800;color:#14532d"><span id="hu-emitidos-num">0</span> (<span id="hu-pct-emitidos">0%</span>)</div>
+            </div>
+          </div>
+          <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+            <span style="width:10px;height:10px;border-radius:50%;background:#dc2626;display:inline-block;flex-shrink:0"></span>
+            <div>
+              <div style="font-size:11px;color:#7f1d1d;text-transform:uppercase;font-weight:700;letter-spacing:.04em">Pendientes</div>
+              <div style="font-size:16px;font-weight:800;color:#7f1d1d"><span id="hu-pendientes-num">0</span> (<span id="hu-pct-pendientes">0%</span>)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alertas dashboard (pendientes en rojo / emitidos en verde) -->
+      <div id="hu-alerts" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+
+      <!-- Meta de resultados (texto descriptivo) -->
+      <div id="hu-meta" style="font-size:12px;color:#475569;margin-bottom:10px;font-style:italic">Sin consulta todavía.</div>
+
+      <!-- Switch de visualización: Lista / Calendario -->
+      <div style="display:inline-flex;border:1.5px solid #cbd5e1;border-radius:10px;overflow:hidden;margin-bottom:12px">
+        <button id="hu-view-lista" onclick="huespedesSetView('lista')"
+                style="padding:8px 18px;border:none;background:#334155;color:#fff;font-weight:700;font-size:13px;cursor:pointer;border-right:1.5px solid #cbd5e1">Lista</button>
+        <button id="hu-view-calendario" onclick="huespedesSetView('calendario')"
+                style="padding:8px 18px;border:none;background:#fff;color:#475569;font-weight:700;font-size:13px;cursor:pointer">Calendario</button>
+      </div>
 
       <!-- Empty / loading -->
       <div id="hu-empty" class="empty-state" style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Cargando datos…</div>
 
-      <!-- Tabla / lista -->
-      <div id="hu-table-wrap" class="hidden" style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff"></div>
+      <!-- Vista Lista — cards expandibles -->
+      <div id="hu-records-wrap" class="hidden" style="display:flex;flex-direction:column;gap:8px"></div>
+
+      <!-- Vista Calendario -->
+      <div id="hu-calendar-wrap" class="hidden" style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px"></div>
 
       <!-- Paginador -->
       <div id="hu-pager" style="display:flex;justify-content:center;gap:6px;padding:12px;margin-top:8px"></div>
@@ -947,6 +1010,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=122"></script>
+  <script src="app.js?v=123"></script>
 </body>
 </html>
