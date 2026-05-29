@@ -86,11 +86,69 @@ app.get("/get-bancos", async (req, res) => {
   }
 });
 
-// ─── Información de huéspedes: lee Perfiles + Vehículos + Reservaciones ─────
+// ─── Información de huéspedes: proxy al Apps Script del check-in ─────────────
+// El check-in tiene su PROPIO Apps Script (code_1.gs) con la lógica completa
+// de listGuestRecords_, getGuestFilterOptions_ y getGuestRecordDetail_.
+// Lo reutilizamos vía GET en lugar de duplicar la lógica.
+const CHECKIN_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz20RenzxIlbrDQ_spxyFyDq42LgJ4h8E6jeIUSveC4zs302ZnadzUC8MsptsSBkCzo8Q/exec";
 
-app.get("/huespedes-data", async (req, res) => {
+async function callCheckinAppsScript(action, paramsObj) {
+  const url = new URL(CHECKIN_APPS_SCRIPT_URL);
+  url.searchParams.set("action", action);
+  if (paramsObj) {
+    for (const [k, v] of Object.entries(paramsObj)) {
+      if (v == null || v === "") continue;
+      url.searchParams.set(k, String(v));
+    }
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
   try {
-    const result = await callAppsScript({ action: "get_huespedes_data" });
+    const r = await fetch(url.toString(), { method: "GET", signal: controller.signal, redirect: "follow" });
+    const text = await r.text();
+    try { return JSON.parse(text); } catch { return { ok: false, raw: text.slice(0, 500) }; }
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("Timeout: Apps Script tardó más de 25s");
+    throw err;
+  } finally { clearTimeout(timer); }
+}
+
+app.get("/huespedes-list", async (req, res) => {
+  try {
+    const params = {
+      page: req.query.page || "1",
+      page_size: req.query.page_size || "10000",
+      nombre_reservacion: req.query.nombre_reservacion || "",
+      medio_reservacion:  req.query.medio_reservacion  || "",
+      celular_principal:  req.query.celular_principal  || "",
+      requiere_factura:   req.query.requiere_factura   || "",
+      razon_social:       req.query.razon_social       || "",
+      forma_pago:         req.query.forma_pago         || "",
+      correo:             req.query.correo             || "",
+      fecha_entrada_desde: req.query.fecha_entrada_desde || "",
+      fecha_entrada_hasta: req.query.fecha_entrada_hasta || "",
+      fecha_salida_desde:  req.query.fecha_salida_desde  || "",
+      fecha_salida_hasta:  req.query.fecha_salida_hasta  || "",
+    };
+    const result = await callCheckinAppsScript("list_records", params);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/huespedes-filter-options", async (req, res) => {
+  try {
+    const result = await callCheckinAppsScript("list_filter_options");
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/huespedes-detail", async (req, res) => {
+  try {
+    const result = await callCheckinAppsScript("get_record_detail", { record_id: req.query.record_id || "" });
     res.json(result);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

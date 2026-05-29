@@ -8001,8 +8001,7 @@ function switchModule(mod) {
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === mod);
   });
   if (mod === "huespedes") {
-    // Cargar datos sólo la primera vez (o cuando se haya limpiado el cache)
-    if (!HU_STATE.loaded && !HU_STATE.loading) huespedesLoadData();
+    if (!HU_STATE.loaded && !HU_STATE.loading) huespedesLoad(true);
     else huespedesRender();
   }
 }
@@ -8877,44 +8876,76 @@ async function saveDbClassification(i) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  MÓDULO: Información de huéspedes  (Perfiles + Vehículos + Reservaciones)
+//  MÓDULO: Información de huéspedes  (proxy al check-in: list_records)
 // ════════════════════════════════════════════════════════════════════════════
 
 const HU_STATE = {
   loaded: false,
   loading: false,
-  section: 'reservaciones',  // 'reservaciones' | 'perfiles' | 'vehiculos'
-  raw: { perfiles: [], vehiculos: [], reservaciones: [] },
-  headers: { perfiles: [], vehiculos: [], reservaciones: [] },
-  search: '',
+  filterOptions: null,
+  rows: [],            // todas las filas devueltas (page_size=10000)
+  filteredRows: [],    // tras aplicar filtro mes client-side
   page: 1,
-  pageSize: 50,
+  pageSize: 25,
+  // Counters server-side
+  serverTotal: 0,
+  totalConFactura: 0,
+  totalSinFactura: 0,
+  totalMediosUnicos: 0,
 };
 
-async function huespedesLoadData() {
+const HU_FILTERS = {
+  nombre_reservacion: '',
+  medio_reservacion:  '',
+  celular_principal:  '',
+  requiere_factura:   '',
+  razon_social:       '',
+  forma_pago:         '',
+  correo:             '',
+};
+
+/** Auto-selecciona el mes en curso si está vacío y carga datos. */
+async function huespedesLoad(forceRefetch) {
   const empty = document.getElementById('hu-empty');
   const wrap  = document.getElementById('hu-table-wrap');
   const lbl   = document.getElementById('hu-status-label');
+
+  // Auto-mes-actual la primera vez
+  const mesEl = document.getElementById('hu-filtro-mes');
+  if (mesEl && !mesEl.value) {
+    const now = new Date();
+    mesEl.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  }
+
+  if (!HU_STATE.filterOptions) await huespedesLoadFilterOptions();
+
   HU_STATE.loading = true;
-  if (empty) { empty.classList.remove('hidden'); empty.textContent = 'Cargando datos…'; }
+  if (empty) { empty.classList.remove('hidden'); empty.textContent = 'Cargando reservaciones…'; }
   wrap?.classList.add('hidden');
   if (lbl) lbl.textContent = 'Cargando…';
 
   try {
-    const res = await fetch(`${BACKEND}/huespedes-data`, { cache: 'no-store' });
+    const qs = new URLSearchParams({
+      page: '1',
+      page_size: '10000',
+      nombre_reservacion: HU_FILTERS.nombre_reservacion,
+      medio_reservacion:  HU_FILTERS.medio_reservacion,
+      celular_principal:  HU_FILTERS.celular_principal,
+      requiere_factura:   HU_FILTERS.requiere_factura,
+      razon_social:       HU_FILTERS.razon_social,
+      forma_pago:         HU_FILTERS.forma_pago,
+      correo:             HU_FILTERS.correo,
+    });
+    const res = await fetch(`${BACKEND}/huespedes-list?${qs.toString()}`, { cache: 'no-store' });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || data.message || 'Error al obtener datos');
-    HU_STATE.raw = {
-      perfiles:      data.perfiles      || [],
-      vehiculos:     data.vehiculos     || [],
-      reservaciones: data.reservaciones || [],
-    };
-    HU_STATE.headers = data.headers || { perfiles: [], vehiculos: [], reservaciones: [] };
+    if (!data.ok) throw new Error(data.error || data.message || 'Error al obtener registros');
+    HU_STATE.rows = data.rows || [];
+    HU_STATE.serverTotal = data.total || 0;
+    HU_STATE.totalConFactura = data.total_con_factura || 0;
+    HU_STATE.totalSinFactura = data.total_sin_factura || 0;
+    HU_STATE.totalMediosUnicos = data.total_medios_unicos || 0;
     HU_STATE.loaded = true;
-    if (lbl) {
-      const c = data.counts || {};
-      lbl.textContent = `Perfiles: ${c.perfiles||0} · Vehículos: ${c.vehiculos||0} · Reservaciones: ${c.reservaciones||0}`;
-    }
+    if (lbl) lbl.textContent = `${data.total || 0} reservaciones`;
     huespedesRender();
   } catch (e) {
     if (lbl) lbl.textContent = 'Error: ' + e.message;
@@ -8924,120 +8955,223 @@ async function huespedesLoadData() {
   }
 }
 
-function huespedesShowSection(sec) {
-  HU_STATE.section = sec;
-  HU_STATE.page = 1;
-  // Estilos de los botones tab
-  ['reservaciones','perfiles','vehiculos'].forEach(s => {
-    const btn = document.getElementById(`hu-tab-${s}`);
-    if (!btn) return;
-    const active = (s === sec);
-    btn.style.background = active ? '#334155' : '#f1f5f9';
-    btn.style.color      = active ? '#fff'    : '#475569';
-  });
-  huespedesRender();
+/** Trae los valores únicos para llenar los selects de filtros. */
+async function huespedesLoadFilterOptions() {
+  try {
+    const res = await fetch(`${BACKEND}/huespedes-filter-options`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error filter options');
+    HU_STATE.filterOptions = data.options || {};
+    huespedesBuildFilters();
+  } catch (e) {
+    console.warn('Error filter options:', e.message);
+  }
+}
+
+/** Render de los selects de filtros. */
+function huespedesBuildFilters() {
+  const cont = document.getElementById('hu-filters');
+  if (!cont) return;
+  const opts = HU_STATE.filterOptions || {};
+  const mkSelect = (key, label, list) => {
+    const items = (list || []).map(v => `<option value="${esc(v)}" ${HU_FILTERS[key]===v?'selected':''}>${esc(v)}</option>`).join('');
+    return `<div>
+      <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${label}</label>
+      <select onchange="HU_FILTERS['${key}']=this.value;huespedesLoad(true)"
+              style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
+        <option value="">Todos</option>${items}
+      </select>
+    </div>`;
+  };
+  const facturaSelect = `<div>
+    <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">¿Requiere factura?</label>
+    <select onchange="HU_FILTERS.requiere_factura=this.value;huespedesLoad(true)"
+            style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
+      <option value="">Todos</option>
+      <option value="Sí" ${HU_FILTERS.requiere_factura==='Sí'?'selected':''}>Sí</option>
+      <option value="No" ${HU_FILTERS.requiere_factura==='No'?'selected':''}>No</option>
+    </select></div>`;
+  cont.innerHTML =
+    mkSelect('nombre_reservacion', 'Nombre reservación', opts.nombres_reservacion) +
+    mkSelect('medio_reservacion',  'Medio de reservación', opts.medios_reservacion) +
+    mkSelect('celular_principal',  'Cel/Whatsapp', opts.celulares_principales) +
+    facturaSelect +
+    mkSelect('razon_social',       'Razón social', opts.razones_sociales) +
+    mkSelect('forma_pago',         'Forma de pago', opts.formas_pago) +
+    mkSelect('correo',             'Correo electrónico', opts.correos);
 }
 
 function huespedesClearFilters() {
-  HU_STATE.search = '';
-  HU_STATE.page = 1;
-  const s = document.getElementById('hu-search'); if (s) s.value = '';
-  huespedesRender();
+  Object.keys(HU_FILTERS).forEach(k => HU_FILTERS[k] = '');
+  const mesEl = document.getElementById('hu-filtro-mes'); if (mesEl) mesEl.value = '';
+  huespedesBuildFilters();
+  huespedesLoad(true);
+}
+
+/** Parser flexible de fecha (acepta YYYY-MM-DD, ISO, DD/MM/YYYY). */
+function huParseDate(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return new Date(s.slice(0, 10) + 'T00:00:00');
+  const ddmm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (ddmm) return new Date(`${ddmm[3]}-${String(ddmm[2]).padStart(2,'0')}-${String(ddmm[1]).padStart(2,'0')}T00:00:00`);
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Aplica filtro Mes (estancia toca al menos un día del mes seleccionado). */
+function huApplyMonthFilter(rows) {
+  const mesEl = document.getElementById('hu-filtro-mes');
+  const mesVal = mesEl?.value || '';
+  if (!mesVal) return rows;
+  const m = mesVal.match(/^(\d{4})-(\d{2})/);
+  if (!m) return rows;
+  const startDate = new Date(`${m[1]}-${m[2]}-01T00:00:00`);
+  const endDate   = new Date(startDate.getFullYear(), startDate.getMonth()+1, 0, 23, 59, 59, 999);
+  return rows.filter(r => {
+    const entrada = huParseDate(r['Fecha de ingreso']);
+    const salida  = huParseDate(r['Fecha de salida']);
+    if (!entrada && !salida) return false;
+    const stayStart = entrada || salida;
+    const stayEnd   = salida  || entrada;
+    return stayStart <= endDate && stayEnd >= startDate;
+  });
 }
 
 function huespedesRender() {
-  const sec = HU_STATE.section;
-  const rows = HU_STATE.raw[sec] || [];
   const empty = document.getElementById('hu-empty');
   const wrap  = document.getElementById('hu-table-wrap');
   const kpis  = document.getElementById('hu-kpis');
+  const pager = document.getElementById('hu-pager');
 
-  // Búsqueda libre (cualquier campo)
-  const sEl = document.getElementById('hu-search');
-  HU_STATE.search = sEl ? sEl.value.toLowerCase().trim() : '';
-  const psEl = document.getElementById('hu-page-size');
-  HU_STATE.pageSize = psEl ? Number(psEl.value) || 50 : 50;
-  let filtered = rows;
-  if (HU_STATE.search) {
-    const q = HU_STATE.search;
-    filtered = rows.filter(r => {
-      for (const k in r) {
-        if (k === '_rowNum') continue;
-        if (String(r[k] || '').toLowerCase().includes(q)) return true;
-      }
-      return false;
-    });
-  }
+  // Mes filter client-side
+  HU_STATE.filteredRows = huApplyMonthFilter(HU_STATE.rows);
 
-  // KPIs simples por sección
+  // KPIs (con/sin factura recalculados sobre filtered)
   if (kpis) {
-    const total = filtered.length;
-    const totalCargados = rows.length;
-    let extra = '';
-    if (sec === 'reservaciones') {
-      const conFactura = filtered.filter(r => String(r['¿Requiere factura?']||'').trim().toLowerCase() === 'sí').length;
-      const sinFactura = filtered.filter(r => String(r['¿Requiere factura?']||'').trim().toLowerCase() === 'no').length;
-      extra = `
-        <div class="bn-kpi-card"><div class="bn-kpi-label">Con factura</div><div class="bn-kpi-value">${conFactura}</div></div>
-        <div class="bn-kpi-card"><div class="bn-kpi-label">Sin factura</div><div class="bn-kpi-value">${sinFactura}</div></div>`;
-    } else if (sec === 'perfiles') {
-      const propsSet = new Set(filtered.map(r => r['Propiedad']).filter(Boolean));
-      extra = `<div class="bn-kpi-card"><div class="bn-kpi-label">Propiedades distintas</div><div class="bn-kpi-value">${propsSet.size}</div></div>`;
-    } else if (sec === 'vehiculos') {
-      const propsSet = new Set(filtered.map(r => r['Propiedad']).filter(Boolean));
-      extra = `<div class="bn-kpi-card"><div class="bn-kpi-label">Propiedades distintas</div><div class="bn-kpi-value">${propsSet.size}</div></div>`;
-    }
+    const con = HU_STATE.filteredRows.filter(r => String(r['¿Requiere factura?']||'').trim().toLowerCase() === 'sí').length;
+    const sin = HU_STATE.filteredRows.filter(r => String(r['¿Requiere factura?']||'').trim().toLowerCase() === 'no').length;
     kpis.innerHTML = `
-      <div class="bn-kpi-card"><div class="bn-kpi-label">Mostrados</div><div class="bn-kpi-value">${total}</div></div>
-      <div class="bn-kpi-card"><div class="bn-kpi-label">Total cargados</div><div class="bn-kpi-value">${totalCargados}</div></div>
-      ${extra}`;
+      <div class="bn-kpi-card"><div class="bn-kpi-label">Mostrados</div><div class="bn-kpi-value">${HU_STATE.filteredRows.length}</div></div>
+      <div class="bn-kpi-card"><div class="bn-kpi-label">Total backend</div><div class="bn-kpi-value">${HU_STATE.serverTotal}</div></div>
+      <div class="bn-kpi-card"><div class="bn-kpi-label">Con factura</div><div class="bn-kpi-value">${con}</div></div>
+      <div class="bn-kpi-card"><div class="bn-kpi-label">Sin factura</div><div class="bn-kpi-value">${sin}</div></div>`;
   }
 
-  // Paginación cliente
-  const totalPages = Math.max(1, Math.ceil(filtered.length / HU_STATE.pageSize));
+  // Paginación
+  const totalPages = Math.max(1, Math.ceil(HU_STATE.filteredRows.length / HU_STATE.pageSize));
   if (HU_STATE.page > totalPages) HU_STATE.page = totalPages;
   const start = (HU_STATE.page - 1) * HU_STATE.pageSize;
-  const pageRows = filtered.slice(start, start + HU_STATE.pageSize);
+  const pageRows = HU_STATE.filteredRows.slice(start, start + HU_STATE.pageSize);
 
-  // Construir tabla con todos los headers de la sección
-  const headers = HU_STATE.headers[sec] || (rows[0] ? Object.keys(rows[0]).filter(k => k !== '_rowNum') : []);
   if (!pageRows.length) {
     if (empty) {
-      empty.textContent = rows.length === 0
-        ? `Sin datos en ${sec}. ¿Cargaste el sheet correcto?`
-        : 'Sin resultados con esta búsqueda.';
+      empty.textContent = HU_STATE.rows.length === 0
+        ? 'Sin reservaciones con los filtros actuales.'
+        : 'Sin reservaciones que toquen el mes seleccionado.';
       empty.classList.remove('hidden');
     }
     wrap?.classList.add('hidden');
+    if (pager) pager.innerHTML = '';
     return;
   }
   empty?.classList.add('hidden');
   wrap?.classList.remove('hidden');
 
-  const fmt = v => {
-    if (v == null) return '';
-    const s = String(v);
-    return s.length > 80 ? s.slice(0, 78) + '…' : s;
-  };
-
+  const cols = [
+    { k: 'Fecha de ingreso',   l: 'Ingreso' },
+    { k: 'Fecha de salida',    l: 'Salida'  },
+    { k: 'Nombre de la persona que hizo la reservación', l: 'Reservación a nombre de' },
+    { k: 'Propiedad',          l: 'Propiedad' },
+    { k: '# Departamento',     l: 'Depto' },
+    { k: '# Huéspedes',        l: '# Huésp.' },
+    { k: 'Medio de reservación', l: 'Medio' },
+    { k: 'Forma de pago',      l: 'Forma pago' },
+    { k: '($) Monto Total pagado', l: 'Monto' },
+    { k: '¿Requiere factura?', l: 'Factura' },
+    { k: 'Razón social',       l: 'Razón social' },
+    { k: 'Cel/Whatsapp (principal)', l: 'Teléfono' },
+  ];
   const head = `<thead><tr style="background:#475569;color:#fff">${
-    headers.map(h => `<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">${esc(h)}</th>`).join('')
+    cols.map(c => `<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">${esc(c.l)}</th>`).join('')
   }</tr></thead>`;
   const body = `<tbody>${
-    pageRows.map((r, i) => `<tr style="border-bottom:1px solid #e2e8f0;background:${i%2 ? '#f8fafc' : '#fff'}">${
-      headers.map(h => {
-        const v = r[h];
-        return `<td style="padding:7px 10px;font-size:12px;color:#1f2937;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(String(v ?? ''))}">${esc(fmt(v))}</td>`;
-      }).join('')
-    }</tr>`).join('')
+    pageRows.map((r, i) => {
+      const recId = r['ID'] || r['__row_number'] || r._rowNum || '';
+      return `<tr style="border-bottom:1px solid #e2e8f0;background:${i%2 ? '#f8fafc' : '#fff'};cursor:pointer" onclick="huespedesOpenDetail('${esc(String(recId))}')">${
+        cols.map(c => {
+          const v = r[c.k];
+          const txt = v == null ? '' : String(v);
+          const short = txt.length > 60 ? txt.slice(0, 58) + '…' : txt;
+          return `<td style="padding:7px 10px;font-size:12px;color:#1f2937;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(txt)}">${esc(short)}</td>`;
+        }).join('')
+      }</tr>`;
+    }).join('')
   }</tbody>`;
+  wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1200px">${head}${body}</table>`;
 
-  const pager = totalPages > 1 ? `
-    <div style="display:flex;justify-content:center;gap:6px;padding:10px;background:#f8fafc;border-top:1px solid #e2e8f0">
+  // Pager
+  if (pager) {
+    const psSel = `<select onchange="HU_STATE.pageSize=Number(this.value);HU_STATE.page=1;huespedesRender()"
+              style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px">
+      ${[10,25,50,100,200].map(n => `<option value="${n}" ${HU_STATE.pageSize===n?'selected':''}>${n}/pág</option>`).join('')}
+    </select>`;
+    pager.innerHTML = totalPages > 1 ? `
       <button ${HU_STATE.page<=1?'disabled':''} onclick="HU_STATE.page--;huespedesRender()" style="padding:6px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:12px;cursor:pointer">‹ Anterior</button>
       <span style="padding:6px 10px;font-size:12px;color:#475569;font-weight:600">${HU_STATE.page} / ${totalPages}</span>
       <button ${HU_STATE.page>=totalPages?'disabled':''} onclick="HU_STATE.page++;huespedesRender()" style="padding:6px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:12px;cursor:pointer">Siguiente ›</button>
-    </div>` : '';
+      ${psSel}
+    ` : psSel;
+  }
+}
 
-  wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">${head}${body}</table>${pager}`;
+/** Abre el modal de detalle de una reservación. */
+async function huespedesOpenDetail(recordId) {
+  const ov = document.getElementById('hu-detail-overlay');
+  const body = document.getElementById('hu-detail-body');
+  const title = document.getElementById('hu-detail-title');
+  if (!ov || !body) return;
+  ov.classList.remove('hidden');
+  body.innerHTML = '<div style="padding:30px;text-align:center;color:#94a3b8">Cargando detalle…</div>';
+  if (title) title.textContent = 'Detalle de reservación';
+  try {
+    const res = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recordId)}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error al obtener detalle');
+    const r = data.record || {};
+    if (title) title.textContent = `${r['Nombre de la persona que hizo la reservación'] || 'Reservación'} · ${r['Fecha de ingreso'] || ''}`;
+    const rows = Object.entries(r)
+      .filter(([k, v]) => k !== '__row_number' && v != null && String(v).trim() !== '')
+      .map(([k, v]) => `<tr style="border-bottom:1px solid #f3f4f6">
+        <td style="padding:6px 10px;font-weight:700;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#f8fafc;width:38%">${esc(k)}</td>
+        <td style="padding:6px 10px;color:#1f2937;font-size:12px;word-break:break-word">${esc(String(v))}</td>
+      </tr>`).join('');
+    body.innerHTML = `<table style="width:100%;border-collapse:collapse">${rows}</table>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:#dc2626">⚠ ${esc(e.message)}</div>`;
+  }
+}
+
+/** Exporta los registros filtrados a CSV. */
+function huespedesExportCsv() {
+  if (!HU_STATE.filteredRows.length) {
+    alert('No hay registros para exportar.');
+    return;
+  }
+  const headers = [
+    '¿Requiere factura?','$ Monto facturado Total','Fecha de ingreso','Fecha de salida',
+    'Nombre de la persona que hizo la reservación','Medio de reservación',
+    'Cel/Whatsapp (principal)','Razón social','Forma de pago','Correo electrónico',
+    'Propiedad','# Departamento','# Huéspedes'
+  ];
+  const esc2 = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
+  const lines = [headers.join(','), ...HU_STATE.filteredRows.map(r => headers.map(h => esc2(r[h])).join(','))];
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `huespedes_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }

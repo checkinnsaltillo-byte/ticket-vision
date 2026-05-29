@@ -155,18 +155,6 @@
             onclick="switchModule('huespedes');closeNavMenu()">
           🏨 Información de huéspedes
         </li>
-        <li class="nav-sub-item"
-            onclick="switchModule('huespedes');huespedesShowSection('reservaciones');closeNavMenu()">
-          🛏️ &nbsp;Reservaciones
-        </li>
-        <li class="nav-sub-item"
-            onclick="switchModule('huespedes');huespedesShowSection('perfiles');closeNavMenu()">
-          👥 &nbsp;Perfiles
-        </li>
-        <li class="nav-sub-item"
-            onclick="switchModule('huespedes');huespedesShowSection('vehiculos');closeNavMenu()">
-          🚗 &nbsp;Vehículos
-        </li>
       </ul>
       <div style="margin-top:auto;padding:16px;border-top:1px solid var(--border,#e5e7eb);display:flex;justify-content:center">
         <button id="btn-dark-mode" onclick="toggleDarkMode()" title="Alternar tema claro/oscuro"
@@ -784,42 +772,33 @@
         </div>
         <div class="db-top-right">
           <span class="db-count-inline" id="hu-status-label">—</span>
-          <button class="btn-limpiar" style="margin:0" onclick="huespedesLoadData()">↻ Actualizar</button>
-          <button class="btn-limpiar" style="margin:0" onclick="huespedesClearFilters()">✕ Limpiar</button>
+          <button class="btn-limpiar" style="margin:0" onclick="huespedesLoad(true)">↻ Actualizar</button>
+          <button class="btn-limpiar" style="margin:0" onclick="huespedesClearFilters()">✕ Limpiar filtros</button>
         </div>
       </div>
 
-      <!-- Sub-tabs: Reservaciones / Perfiles / Vehículos -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin:10px 0 12px;background:#f8fafc">
-        <button class="hu-tab-btn active" id="hu-tab-reservaciones" onclick="huespedesShowSection('reservaciones')"
-                style="padding:10px;border:none;background:#334155;color:#fff;font-weight:700;font-size:13px;cursor:pointer;border-right:1px solid rgba(255,255,255,.25)">🛏️ Reservaciones</button>
-        <button class="hu-tab-btn" id="hu-tab-perfiles" onclick="huespedesShowSection('perfiles')"
-                style="padding:10px;border:none;background:#f1f5f9;color:#475569;font-weight:700;font-size:13px;cursor:pointer;border-right:1px solid #e2e8f0">👥 Perfiles</button>
-        <button class="hu-tab-btn" id="hu-tab-vehiculos" onclick="huespedesShowSection('vehiculos')"
-                style="padding:10px;border:none;background:#f1f5f9;color:#475569;font-weight:700;font-size:13px;cursor:pointer">🚗 Vehículos</button>
-      </div>
-
-      <!-- Filtros simples para la sección activa -->
-      <div id="hu-filters" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:end">
-        <div style="flex:1;min-width:200px">
-          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Buscar</label>
-          <input type="text" id="hu-search" placeholder="🔍 nombre, propiedad, departamento, teléfono…"
-                 oninput="huespedesRender()"
-                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;outline:none">
-        </div>
-        <div style="min-width:140px">
-          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Mostrar</label>
-          <select id="hu-page-size" onchange="huespedesRender()"
-                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-            <option value="25">25</option>
-            <option value="50" selected>50</option>
-            <option value="100">100</option>
-            <option value="200">200</option>
-          </select>
+      <!-- Filtro Mes (auto-selecciona mes actual) -->
+      <div style="display:flex;gap:12px;align-items:end;margin:10px 0 8px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;flex-wrap:wrap">
+        <div style="min-width:180px">
+          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📅 Mes de estancia</label>
+          <input type="month" id="hu-filtro-mes" onchange="huespedesRender()"
+                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          <div style="font-size:10px;color:#94a3b8;margin-top:3px">Muestra registros cuya estancia toca al menos un día del mes.</div>
         </div>
       </div>
 
-      <!-- KPIs por sección -->
+      <!-- Filtros granulares (selects con valores únicos del backend) -->
+      <div id="hu-filters" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:10px"></div>
+
+      <!-- Botones de acción del dashboard -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button onclick="huespedesLoad(true)"
+                style="padding:8px 16px;border:none;background:#334155;color:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🔍 Buscar registros</button>
+        <button onclick="huespedesExportCsv()"
+                style="padding:8px 14px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">⬇ Exportar CSV</button>
+      </div>
+
+      <!-- KPIs -->
       <div id="hu-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px"></div>
 
       <!-- Empty / loading -->
@@ -827,6 +806,23 @@
 
       <!-- Tabla / lista -->
       <div id="hu-table-wrap" class="hidden" style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff"></div>
+
+      <!-- Paginador -->
+      <div id="hu-pager" style="display:flex;justify-content:center;gap:6px;padding:12px;margin-top:8px"></div>
+
+      <!-- Modal detalle -->
+      <div id="hu-detail-overlay" class="hidden"
+           style="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px"
+           onclick="if(event.target===this)this.classList.add('hidden')">
+        <div style="background:#fff;border-radius:14px;width:100%;max-width:760px;max-height:88vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(15,23,42,.4)" onclick="event.stopPropagation()">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <h3 style="margin:0;font-size:16px;color:#1f2937" id="hu-detail-title">Detalle</h3>
+            <button onclick="document.getElementById('hu-detail-overlay').classList.add('hidden')"
+                    style="width:32px;height:32px;border:none;background:#f1f5f9;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
+          </div>
+          <div id="hu-detail-body"></div>
+        </div>
+      </div>
     </div><!-- /module-huespedes -->
 
     <!-- Detail modal for Bancos drilldown -->
@@ -951,6 +947,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=121"></script>
+  <script src="app.js?v=122"></script>
 </body>
 </html>
