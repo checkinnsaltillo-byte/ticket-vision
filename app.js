@@ -9545,7 +9545,21 @@ function huReqFacturaBadge(v) {
 /** Formatea un monto crudo a "$ 1,234.56" o "—". */
 function huFmtMonto(raw) {
   if (raw == null || String(raw).trim() === '') return '—';
-  const n = Number(String(raw).replace(/[^0-9.\-]/g, ''));
+  let s = String(raw).trim();
+  // Caso patológico: el Apps Script a veces serializa un número como ISO date
+  // (p. ej. "2534-08-01T06:00:00.000Z" en vez de "2534.8"). Si detectamos
+  // ese patrón, reconstruimos el número original a partir del año + mes/día.
+  // En el ejemplo "2534-08-01" → 2534 año, 08 mes, 01 día → "2534.8".
+  const iso = s.match(/^(-?\d+)-(\d{2})-(\d{2})T/);
+  if (iso) {
+    const ent = iso[1];
+    // El "mes" suele ser el decimal real (08 → .8). El "día" suele ser 01 → fin.
+    const decMonth = String(parseInt(iso[2], 10)); // "08" → "8"
+    s = `${ent}.${decMonth}`;
+  }
+  // Soporta coma decimal (es-MX): "2534,8" → "2534.8"
+  if (/,\d{1,2}$/.test(s) && !/\./.test(s)) s = s.replace(',', '.');
+  const n = Number(s.replace(/[^0-9.\-]/g, ''));
   if (!isFinite(n)) return String(raw);
   return '$ ' + n.toLocaleString('es-MX', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
 }
@@ -9643,11 +9657,23 @@ function huPhotoPlaceholder(label, icon, height) {
 
 /** Overlay de "Cargando…" superpuesto en el recuadro mientras el <img> baja. */
 function huPhotoLoadingOverlay() {
-  return `<div data-hu-photo-loading="1" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#f8fafc,#eef2f7);color:#64748b;pointer-events:none;animation:hu-pulse 1.2s ease-in-out infinite">
+  return `<div class="hu-photo-loading" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#f8fafc,#eef2f7);color:#64748b;pointer-events:none;animation:hu-pulse 1.2s ease-in-out infinite">
     <div style="width:22px;height:22px;border:2.5px solid #cbd5e1;border-top-color:#0d9488;border-radius:50%;animation:hu-spin 0.8s linear infinite"></div>
     <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Cargando…</div>
   </div>`;
 }
+/** Handler global del <img> en ID Card: quita el overlay "Cargando…". Se
+ *  expone en window porque los handlers inline no pueden usar querySelector
+ *  con comillas dobles sin romper el atributo HTML. */
+window.huPhotoImgLoaded = function(img) {
+  try {
+    const parent = img && img.parentElement;
+    if (!parent) return;
+    const ov = parent.getElementsByClassName('hu-photo-loading')[0];
+    if (ov) ov.remove();
+    img.style.opacity = '1';
+  } catch (_) {}
+};
 
 /** Construye una foto-thumb con click→zoom. Si no hay url, devuelve placeholder. */
 function huPhotoBox(url, label, options) {
@@ -9671,7 +9697,6 @@ function huPhotoBox(url, label, options) {
   const sizeStyle = height ? `height:${height}` : `aspect-ratio:${aspectRatio}`;
   const phHtml = huPhotoPlaceholder(label, icon, '100%').replace(/"/g, '&quot;');
   const onerrFn = `(function(img){var t=img.dataset.tryStep||'0';if(t==='0'&&'${esc(fb1)}'){img.dataset.tryStep='1';img.src='${esc(fb1)}';return;}if((t==='0'||t==='1')&&'${esc(fb2)}'){img.dataset.tryStep='2';img.src='${esc(fb2)}';return;}img.parentElement.innerHTML='${phHtml}';img.parentElement.style.cursor='default';img.parentElement.onclick=null;})(this)`;
-  const onloadFn = `(function(img){var ov=img.parentElement.querySelector('[data-hu-photo-loading=\"1\"]');if(ov)ov.remove();})(this)`;
   return `
     <div style="position:relative;cursor:zoom-in;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc;${sizeStyle};transition:transform 180ms cubic-bezier(.34,1.56,.64,1),box-shadow 180ms"
          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(15,23,42,.18)'"
@@ -9679,8 +9704,8 @@ function huPhotoBox(url, label, options) {
          onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')">
       ${huPhotoLoadingOverlay()}
       <img src="${esc(thumb)}" alt="${esc(label)}" loading="lazy" referrerpolicy="no-referrer"
-           style="width:100%;height:100%;object-fit:cover;display:block;background:#f8fafc"
-           onload="${onloadFn}"
+           style="width:100%;height:100%;object-fit:cover;display:block;background:#f8fafc;opacity:0;transition:opacity 200ms ease-out"
+           onload="huPhotoImgLoaded(this)"
            onerror="${onerrFn}">
       <div style="position:absolute;bottom:0;left:0;right:0;padding:6px 8px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.7));color:#fff;font-size:10px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.5);text-transform:uppercase;letter-spacing:.04em">${esc(label)}</div>
       <div style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(15,23,42,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px">🔍</div>
@@ -9816,7 +9841,14 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
     const salida  = huValueFlexible(x, ['Fecha de salida']);
     const prop    = huValueFlexible(x, ['Propiedad']);
     const depto   = huValueFlexible(x, ['# Departamento']);
-    const noches  = huValueFlexible(x, ['# Noches']);
+    let   noches  = huValueFlexible(x, ['# Noches']);
+    if (!noches || Number(noches) <= 0) {
+      const di = huParseDate(ingreso); const ds = huParseDate(salida);
+      if (di && ds) {
+        const n = Math.max(0, Math.round((ds - di) / 86400000));
+        if (n > 0) noches = String(n);
+      }
+    }
     const monto   = huValueFlexible(x, ['$ Monto facturado Total','($) Monto Total pagado']);
     const status  = huGetFacturaStatus(x);
     const isSel   = xid === selectedRecId;
@@ -9839,7 +9871,7 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
         </div>
         <div style="font-size:11px;color:#64748b;font-weight:600">${esc(prop || '—')}${depto?' · # '+esc(depto):''}</div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
-          <span style="font-size:10px;color:#94a3b8">${esc(noches||'?')} noche${noches==='1'?'':'s'}</span>
+          <span style="font-size:10px;color:#94a3b8">${esc(noches||'—')} noche${String(noches)==='1'?'':'s'}</span>
           ${monto ? `<span style="font-size:11px;font-weight:700;color:#0f766e">${huFmtMonto(monto)}</span>` : ''}
         </div>
       </div>`;
@@ -10032,7 +10064,16 @@ function huBuildRecordCard(r) {
   const nombre     = huValueFlexible(r, ['Nombre de la persona que hizo la reservación','mbre de la persona que hizo la reservación']);
   const ingreso    = huValueFlexible(r, ['Fecha de ingreso','Fecha de entrada']);
   const salida     = huValueFlexible(r, ['Fecha de salida']);
-  const noches     = huValueFlexible(r, ['# Noches']);
+  let   noches     = huValueFlexible(r, ['# Noches']);
+  if (!noches || Number(noches) <= 0) {
+    const di = huParseDate(ingreso); const ds = huParseDate(salida);
+    if (di && ds) {
+      const n = Math.max(0, Math.round((ds - di) / 86400000));
+      if (n > 0) noches = String(n);
+    }
+  }
+  const horaIng    = huValueFlexible(r, ['Hora estimada de llegada','Hora de llegada']);
+  const horaSal    = huValueFlexible(r, ['Hora estimada de salida','Hora de salida']);
   const huespedes  = huValueFlexible(r, ['# Huéspedes']);
   const propiedad  = huValueFlexible(r, ['Propiedad']);
   const departamento = huValueFlexible(r, ['# Departamento']);
@@ -10098,6 +10139,12 @@ function huBuildRecordCard(r) {
         <div style="font-size:18px;font-weight:800;color:#111827;line-height:1.25;margin-bottom:6px">${esc(nombre || '—')}</div>
         <div style="font-size:13px;color:#64748b;font-weight:500">${esc(propiedad || '—')}${departamento ? ' · # ' + esc(departamento) : ''}</div>
         <div style="font-size:13px;color:#64748b;font-weight:500;margin-top:2px">${huFmtFecha(ingreso)} → ${huFmtFecha(salida)}</div>
+        <div style="font-size:12px;color:#475569;font-weight:600;margin-top:3px">🌙 ${esc(noches && Number(noches)>0 ? noches : '—')} noche${String(noches)==='1'?'':'s'}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;font-size:11px;color:#64748b">
+          <span title="Llegada estimada">🛬 <b style="color:#1f2937">${esc(horaIng ? huFmtHoraSimple(horaIng) : '—')}</b></span>
+          <span title="Salida estimada">🛫 <b style="color:#1f2937">${esc(horaSal ? huFmtHoraSimple(horaSal) : '—')}</b></span>
+          <span title="# Huéspedes">👥 <b style="color:#1f2937">${esc(huespedes || '—')}</b></span>
+        </div>
       </div>
       ${kpisHtml}
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:160px">
