@@ -9085,11 +9085,24 @@ function huMedioBadge(medio) {
   const m = String(medio||'').trim();
   if (!m) return '';
   const lc = m.toLowerCase();
-  const styles = lc.includes('airbnb') ? 'background:#ffe4e6;color:#be123c;border-color:#fda4af'
-               : lc.includes('booking') ? 'background:#dbeafe;color:#1e40af;border-color:#93c5fd'
-               : lc.includes('directo')  ? 'background:#ecfdf5;color:#065f46;border-color:#6ee7b7'
-               : 'background:#f1f5f9;color:#334155;border-color:#cbd5e1';
-  return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid;${styles}">${esc(m)}</span>`;
+  // Estilo del badge según medio
+  let dotBg, dotColor, pillBg, pillColor, pillBorder, initial;
+  if (lc.includes('airbnb')) {
+    dotBg = '#be123c'; dotColor = '#fff'; pillBg = '#ffe4e6'; pillColor = '#9f1239'; pillBorder = '#fbcfe8'; initial = 'A';
+  } else if (lc.includes('booking')) {
+    dotBg = '#1e40af'; dotColor = '#fff'; pillBg = '#dbeafe'; pillColor = '#1e3a8a'; pillBorder = '#bfdbfe'; initial = 'B';
+  } else if (lc.includes('directo') || lc.includes('check')) {
+    // Ej. "Check-inn-Saltillo.com" → globo 🌐 azul claro
+    return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px 4px 8px;border-radius:999px;background:#dbeafe;color:#1e40af;font-weight:700;font-size:12px;border:1px solid #bfdbfe">
+      <span style="font-size:13px">🌐</span><span>${esc(m)}</span>
+    </span>`;
+  } else {
+    dotBg = '#475569'; dotColor = '#fff'; pillBg = '#f1f5f9'; pillColor = '#334155'; pillBorder = '#cbd5e1'; initial = m[0].toUpperCase();
+  }
+  return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px 4px 4px;border-radius:999px;background:${pillBg};color:${pillColor};font-weight:700;font-size:12px;border:1px solid ${pillBorder}">
+    <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${dotBg};color:${dotColor};font-size:10px;font-weight:900">${initial}</span>
+    <span>${esc(m)}</span>
+  </span>`;
 }
 function huFacturaHeaderBadge(row) {
   const status = huGetFacturaStatus(row);
@@ -9229,7 +9242,38 @@ function huUpdateMeta(total, ini, fin) {
   m.textContent = `${total} registros encontrados según filtros. Mostrando ${ini}-${fin}. Registros que Sí requieren factura siempre primero.`;
 }
 
-/** Card expandible de una reservación (vista Lista). */
+/** Formatea YYYY-MM-DD a "DD de mes" en español. */
+const HU_MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function huFmtFecha(iso) {
+  if (!iso) return '—';
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  const d = parseInt(m[3], 10);
+  const mes = HU_MESES_ES[parseInt(m[2], 10) - 1] || '';
+  return `${d} de ${mes}`;
+}
+
+/** Badge "Sí/No" para ¿Requiere factura?. */
+function huReqFacturaBadge(v) {
+  const t = String(v||'').trim().toLowerCase();
+  if (t === 'sí' || t === 'si' || t === 'yes') {
+    return `<span style="display:inline-block;padding:5px 18px;border-radius:999px;background:#fce7f3;color:#9f1239;font-weight:700;font-size:13px;border:1px solid #fbcfe8">Sí</span>`;
+  }
+  if (t === 'no') {
+    return `<span style="display:inline-block;padding:5px 18px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:700;font-size:13px;border:1px solid #cbd5e1">No</span>`;
+  }
+  return esc(v || '—');
+}
+
+/** Formatea un monto crudo a "$ 1,234.56" o "—". */
+function huFmtMonto(raw) {
+  if (raw == null || String(raw).trim() === '') return '—';
+  const n = Number(String(raw).replace(/[^0-9.\-]/g, ''));
+  if (!isFinite(n)) return String(raw);
+  return '$ ' + n.toLocaleString('es-MX', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+}
+
+/** Card expandible de una reservación (vista Lista) — diseño que coincide con el original. */
 function huBuildRecordCard(r) {
   const status     = huGetFacturaStatus(r);
   const recId      = String(r['ID'] || r['row_number'] || '');
@@ -9244,61 +9288,121 @@ function huBuildRecordCard(r) {
   const formaPago  = huValueFlexible(r, ['Forma de pago']);
   const montoPag   = huValueFlexible(r, ['($) Monto Total pagado','$ Monto Total pagado','Monto Total pagado']);
   const montoFact  = huValueFlexible(r, ['$ Monto facturado Total','Monto facturado Total']);
+  const montoAirbnb= huValueFlexible(r, ['$ Monto total Airbnb','Monto total Airbnb','Monto Airbnb']);
   const reqFactura = huValueFlexible(r, ['¿Requiere factura?']);
   const razon      = huValueFlexible(r, ['Razón social']);
+  const regimen    = huValueFlexible(r, ['Régimen fiscal','Regimen fiscal']);
   const cel        = huValueFlexible(r, ['Cel/Whatsapp (principal)']);
-  const correo     = huValueFlexible(r, ['Correo electrónico']);
+  const folio      = huValueFlexible(r, ['Folio facturapi','Folio Facturapi','Folio']);
+  const ticketUrl  = huExtractTicketUrl(r);
+  const esAirbnb   = String(medio||'').toLowerCase().includes('airbnb');
 
-  const borderL = status === 'pendiente' ? '4px solid #dc2626'
-                : status === 'emitida'    ? '4px solid #16a34a'
-                : '4px solid #cbd5e1';
-  const bgHead  = status === 'pendiente' ? '#fef2f2' : status === 'emitida' ? '#f0fdf4' : '#f8fafc';
+  // Paleta semafórica (basada en el screenshot)
+  const palette = status === 'pendiente'
+      ? { border:'#fecaca', bg:'#fef2f2', leftAcc:'#dc2626' }
+      : status === 'emitida'
+      ? { border:'#bbf7d0', bg:'#f0fdf4', leftAcc:'#16a34a' }
+      : { border:'#cbd5e1', bg:'#f8fafc', leftAcc:'#94a3b8' };
 
-  const facBadge   = huFacturaHeaderBadge(r);
+  // Header chips: medio + factura
   const medioBadge = huMedioBadge(medio);
+  const facBadge   = status === 'emitida'
+    ? (ticketUrl
+        ? `<a href="${esc(ticketUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="text-decoration:none">
+             <span style="display:inline-block;padding:5px 12px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:11px;border:1px solid #86efac">🧾 Ticket emitido${folio?' - Folio #'+esc(folio):''}</span>
+           </a>`
+        : `<span style="display:inline-block;padding:5px 12px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:11px;border:1px solid #86efac">🧾 Ticket emitido${folio?' - Folio #'+esc(folio):''}</span>`)
+    : status === 'pendiente'
+    ? `<span style="display:inline-block;padding:5px 12px;border-radius:999px;background:#fff7ed;color:#c2410c;font-weight:700;font-size:11px;border:1.5px solid #fdba74">🧾 Ticket pendiente</span>`
+    : '';
+
+  // Header SUMMARY — clic abre/cierra (sin marker nativo)
+  const summary = `
+    <summary style="cursor:pointer;list-style:none;padding:16px 18px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:start">
+      <div>
+        <div style="margin-bottom:10px">${medioBadge}</div>
+        <div style="font-size:18px;font-weight:800;color:#111827;line-height:1.25;margin-bottom:6px">${esc(nombre || '—')}</div>
+        <div style="font-size:13px;color:#64748b;font-weight:500">${esc(propiedad || '—')}${departamento ? ' · # ' + esc(departamento) : ''}</div>
+        <div style="font-size:13px;color:#64748b;font-weight:500;margin-top:2px">${huFmtFecha(ingreso)} → ${huFmtFecha(salida)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:160px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Monto facturado</div>
+        <div style="font-size:22px;font-weight:800;color:#111827">${montoFact ? huFmtMonto(montoFact) : '—'}</div>
+        <div>${facBadge}</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:14px;flex-shrink:0;align-self:center" class="hu-record-chev">▾</div>
+    </summary>`;
+
+  // Cuerpo expandido — grid de tarjetas-campo
+  const fieldCard = (label, valueHtml) => `
+    <div style="border:1.5px solid #e2e8f0;border-radius:12px;padding:11px 14px;background:#fff">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;margin-bottom:6px">${esc(label)}</div>
+      <div style="font-size:13.5px;color:#1f2937">${valueHtml || '—'}</div>
+    </div>`;
+
+  // Bloque Airbnb auto-facturación (3 inputs)
+  const airbnbBox = `
+    <div style="border:1.5px solid #e2e8f0;border-radius:12px;padding:11px 14px;background:#fff">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;margin-bottom:10px">Ticket para auto-facturación</div>
+      ${esAirbnb ? `
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:8px">
+          <div style="font-size:11px;color:#1e40af;font-weight:700;margin-bottom:6px">(=) $ Monto total Airbnb</div>
+          <input type="text" value="${esc(montoAirbnb)}" placeholder=""
+                 onclick="event.stopPropagation()"
+                 style="width:100%;padding:7px 10px;border:1px solid #bfdbfe;border-radius:6px;background:#fff;font-size:13px;color:#1e40af;font-weight:600">
+          <div style="font-size:10px;color:#3b82f6;margin-top:4px">Base editable para calcular comisión y monto facturado.</div>
+        </div>
+        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px;margin-bottom:8px;opacity:.85">
+          <div style="font-size:11px;color:#92400e;font-weight:700;margin-bottom:6px">(-) $ Comisión Airbnb</div>
+          <input type="text" value="" readonly onclick="event.stopPropagation()"
+                 style="width:100%;padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;background:#fffbeb;font-size:13px;color:#92400e;font-weight:600">
+          <div style="font-size:10px;color:#a16207;margin-top:4px">Calculado: Airbnb × (15.5%)</div>
+        </div>` : ''}
+      <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:8px;padding:10px;margin-bottom:10px">
+        <div style="font-size:11px;color:#5b21b6;font-weight:700;margin-bottom:6px">(+) $ Monto facturado Total</div>
+        <input type="text" value="${esc(montoFact)}" ${esAirbnb?'readonly':''} onclick="event.stopPropagation()"
+               style="width:100%;padding:7px 10px;border:1px solid #c4b5fd;border-radius:6px;background:${esAirbnb?'#f5f3ff':'#fff'};font-size:13px;color:#5b21b6;font-weight:600">
+        ${esAirbnb?'<div style="font-size:10px;color:#7c3aed;margin-top:4px">Calculado: $ Monto total Airbnb - $ Comisión Airbnb.</div>':''}
+      </div>
+      <button onclick="event.stopPropagation();huespedesGenerarTicket('${esc(recId)}')"
+              style="padding:8px 22px;border:none;background:linear-gradient(180deg,#ef4444 0%,#b91c1c 100%);color:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(185,28,28,.4)">
+        Generar Ticket
+      </button>
+    </div>`;
+
+  // Cel con link
   const wa = huBuildWhatsAppUrl(cel);
-  const phoneHtml = wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#16a34a;text-decoration:none;font-weight:600">📱 ${esc(cel)}</a>` : esc(cel);
+  const phoneHtml = wa
+    ? `<a href="${esc(wa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#0d9488;text-decoration:none;font-weight:800;font-size:15px">${esc(cel)}</a>`
+    : `<span style="font-weight:700;color:#1f2937">${esc(cel || '—')}</span>`;
 
   return `
-    <details class="hu-record" data-record-id="${esc(recId)}" style="border:1.5px solid #e2e8f0;border-left:${borderL};border-radius:10px;background:#fff;overflow:hidden">
-      <summary style="cursor:pointer;list-style:none;padding:12px 16px;background:${bgHead};display:flex;flex-direction:column;gap:8px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
-          <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-            ${medioBadge}
-            ${facBadge}
-          </div>
-          <div style="font-size:12px;color:#64748b;font-weight:600">${esc(ingreso)} → ${esc(salida)} · ${esc(noches)} noche(s)</div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:8px">
-          <div>
-            <div style="font-size:15px;font-weight:800;color:#111827">${esc(nombre)}</div>
-            <div style="font-size:12px;color:#475569">🏠 ${esc(propiedad)}${departamento ? ' · 🚪 Depto ' + esc(departamento) : ''} · 👥 ${esc(huespedes)} huésp.</div>
-          </div>
-          <div style="font-size:13px;color:#1f2937;font-weight:700">${montoPag ? '$' + esc(montoPag) : ''}</div>
-        </div>
-      </summary>
-      <div style="padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;background:#fff">
-        ${huSummaryItem('Forma de pago', esc(formaPago))}
-        ${huSummaryItem('Monto Total pagado', montoPag ? '$' + esc(montoPag) : '—')}
-        ${huSummaryItem('Monto facturado Total', montoFact ? '$' + esc(montoFact) : '—')}
-        ${huSummaryItem('¿Requiere factura?', esc(reqFactura))}
-        ${huSummaryItem('Razón social', esc(razon))}
-        ${huSummaryItem('Correo electrónico', esc(correo))}
-        ${huSummaryItem('Cel/Whatsapp', phoneHtml)}
-      </div>
-      <div style="padding:0 16px 14px">
-        <button onclick="event.stopPropagation();huespedesOpenDetail('${esc(recId)}')"
-                style="padding:7px 14px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer">
-          📋 Ver detalle completo
-        </button>
+    <details class="hu-record" data-record-id="${esc(recId)}" style="border:1.5px solid ${palette.border};border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
+      ${summary}
+      <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;background:#fff">
+        ${fieldCard('Nombre de la persona que realizó la reservación', esc(nombre) || '—')}
+        ${fieldCard('Medio de reservación', medioBadge || '—')}
+        ${fieldCard('Propiedad', esc(propiedad) || '—')}
+        ${fieldCard('# Departamento', esc(departamento) || '—')}
+        ${fieldCard('¿Requiere factura?', huReqFacturaBadge(reqFactura))}
+        ${fieldCard('Razón social', esc(razon) || '—')}
+        ${fieldCard('Régimen fiscal', esc(regimen) || '—')}
+        ${fieldCard('Forma de pago', esc(formaPago) || '—')}
+        ${fieldCard('($) Monto Total pagado', montoPag ? huFmtMonto(montoPag) : '—')}
+        ${airbnbBox}
+        ${fieldCard('Cel/Whatsapp (principal)', phoneHtml)}
+        ${fieldCard('Detalle',
+          `<button onclick="event.stopPropagation();huespedesOpenDetail('${esc(recId)}')"
+                   style="padding:7px 18px;border:none;background:linear-gradient(180deg,#f59e0b 0%,#d97706 100%);color:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(217,119,6,.35)">
+             Ver detalles
+           </button>`)}
       </div>
     </details>`;
 }
-function huSummaryItem(label, value) {
-  return `<div>
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:700;margin-bottom:2px">${esc(label)}</div>
-    <div style="font-size:13px;color:#1f2937">${value || '—'}</div>
-  </div>`;
+
+/** Placeholder para generar ticket (delega a Cloud Run / Apps Script en futuro). */
+function huespedesGenerarTicket(recordId) {
+  alert('Generar ticket facturapi para el registro: ' + recordId + '\n(Acción de integración pendiente de implementar en este módulo.)');
 }
 
 /** Cambia entre vista Lista y Calendario. */
