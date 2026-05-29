@@ -9618,8 +9618,14 @@ function huespedesCloseFacturapi() {
   if (ifr) ifr.src = 'about:blank';
   if (ov) ov.classList.add('hidden');
   document.body.style.overflow = '';
-  // Refresca los datos por si se generó factura
-  if (HU_STATE.loaded) huespedesLoad(true);
+  // Refresca para reflejar folio + monto facturado guardados por Facturapi.
+  // Pequeño delay para que el Apps Script termine de escribir/flush
+  // antes de re-leer (evita race condition entre cierre del modal y refresh).
+  if (HU_STATE.loaded) {
+    const lbl = document.getElementById('hu-status-label');
+    if (lbl) lbl.textContent = 'Actualizando…';
+    setTimeout(() => huespedesLoad(true), 600);
+  }
 }
 
 // Esc cierra el modal de Facturapi
