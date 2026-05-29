@@ -9489,10 +9489,116 @@ function huBuildRecordCard(r) {
     </details>`;
 }
 
-/** Placeholder para generar ticket (delega a Cloud Run / Apps Script en futuro). */
-function huespedesGenerarTicket(recordId) {
-  alert('Generar ticket facturapi para el registro: ' + recordId + '\n(Acción de integración pendiente de implementar en este módulo.)');
+// ─── Integración Facturapi ──────────────────────────────────────────────────
+// URL base del facturapi del check-in. Configurable: la primera vez pide al
+// usuario que la pegue y la guarda en localStorage para futuras llamadas.
+function huGetFacturapiUrl() {
+  let url = '';
+  try { url = localStorage.getItem('HU_FACTURAPI_URL') || ''; } catch(_) {}
+  if (url) return url;
+  url = window.prompt(
+    'Configura por única vez la URL base de Facturapi (la página /facturapi del check-in).\n' +
+    'Ej.: https://checkin-app-XXXX.run.app/facturapi',
+    ''
+  );
+  if (!url) return '';
+  try { localStorage.setItem('HU_FACTURAPI_URL', url.trim()); } catch(_) {}
+  return url.trim();
 }
+
+const HU_CHECKIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbz20RenzxIlbrDQ_spxyFyDq42LgJ4h8E6jeIUSveC4zs302ZnadzUC8MsptsSBkCzo8Q/exec';
+
+function huNormalizeCurrencyFromSheet(v) {
+  const raw = String(v||'').trim().toUpperCase();
+  if (!raw) return 'MXN';
+  if (raw.includes('USD') || raw.includes('DÓLAR') || raw.includes('DOLAR')) return 'USD';
+  if (raw.includes('EUR') || raw.includes('EURO')) return 'EUR';
+  if (raw.includes('GBP') || raw.includes('LIBRA')) return 'GBP';
+  if (raw.includes('BRL') || raw.includes('REAL')) return 'BRL';
+  return 'MXN';
+}
+
+function huResolveConceptoPorRegimen(regimenFiscal) {
+  const norm = String(regimenFiscal || '').trim().toLowerCase();
+  return norm === 'general de ley personas morales'
+    ? '1. Arrendamiento en Saltillo, Coah.'
+    : '2. Arrendamiento en Saltillo, Coah.';
+}
+
+function huNormalizePhoneWA(phone) {
+  let clean = String(phone || '').replace(/\D/g, '');
+  if (!clean) return '';
+  if (clean.length === 10) clean = '52' + clean;
+  return clean;
+}
+
+function huFmtMontoEditable(v) {
+  const raw = String(v||'').trim();
+  if (!raw) return '';
+  const limpio = raw.replace(/[^0-9.,-]/g, '').replace(/,/g, '');
+  return limpio;
+}
+
+/** Construye la URL completa de facturapi con todos los params (igual al original). */
+function huBuildFacturapiUrlFromRow(row, baseUrl) {
+  const p = new URLSearchParams();
+  p.set('source', 'control_huespedes');
+  p.set('quantity',
+    huFmtMontoEditable(huValueFlexible(row, ['$ Monto facturado Total','Monto facturado Total'])) || '1');
+  p.set('currency', huNormalizeCurrencyFromSheet(huValueFlexible(row, ['Divisa monto pagado','Moneda','Currency'])));
+  const email     = huValueFlexible(row, ['Correo electrónico','Correo electronico','Email']);
+  const whatsapp  = huNormalizePhoneWA(huValueFlexible(row, ['Cel/Whatsapp (principal)','Celular principal','Whatsapp principal']));
+  const taxRegime = huValueFlexible(row, ['Régimen fiscal','Regimen fiscal','Tax regime']);
+  const concepto  = huResolveConceptoPorRegimen(taxRegime);
+  const recordId  = String(row['ID'] || row['row_number'] || '').trim();
+  const rowNumber = String(row['row_number'] || '').trim();
+  if (email) p.set('email', email);
+  if (concepto) { p.set('concepto', concepto); p.set('descripcion', concepto); }
+  if (whatsapp) p.set('whatsapp', whatsapp);
+  if (taxRegime) p.set('taxRegime', taxRegime);
+  if (recordId) {
+    p.set('externalId', 'CHECKIN-' + recordId);
+    p.set('recordId', recordId);
+    p.set('rowNumber', rowNumber);
+  }
+  p.set('checkinWebAppUrl', HU_CHECKIN_WEBAPP_URL);
+  return `${baseUrl}?${p.toString()}`;
+}
+
+/** Genera ticket facturapi para un registro. */
+async function huespedesGenerarTicket(recordId) {
+  if (!recordId) { alert('No se pudo identificar el registro.'); return; }
+
+  // Buscar row en cache local
+  let row = (HU_STATE.rows || []).find(r => String(r['ID']||r['row_number']||'') === String(recordId));
+  if (!row) { alert('No se encontró la información del registro seleccionado.'); return; }
+
+  // Si falta régimen fiscal, lo traemos del detalle (igual que el original)
+  const missingRegime = !huValueFlexible(row, ['Régimen fiscal','Regimen fiscal','Tax regime']);
+  if (missingRegime) {
+    try {
+      const res = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recordId)}`);
+      const json = await res.json();
+      if (json?.ok && json.record) row = { ...row, ...json.record };
+    } catch (_) {}
+  }
+
+  // Pedir/obtener URL base de facturapi
+  const base = huGetFacturapiUrl();
+  if (!base) { alert('No se configuró la URL de Facturapi. Cancelado.'); return; }
+
+  const url = huBuildFacturapiUrlFromRow(row, base);
+  if (!url) { alert('No se pudo construir la URL de Facturapi.'); return; }
+
+  // Abrir en nueva pestaña (más confiable que iframe cross-origin)
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/** Permite resetear la URL base si quedó mal configurada. */
+window.huespedesResetFacturapiUrl = function() {
+  try { localStorage.removeItem('HU_FACTURAPI_URL'); } catch(_) {}
+  alert('URL de Facturapi reseteada. La próxima vez que generes un ticket te pedirá la URL nueva.');
+};
 
 /** Cambia entre vista Lista y Calendario. */
 function huespedesSetView(v) {
