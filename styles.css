@@ -2087,3 +2087,29 @@ button[title], a[title], .info-chip[title] { cursor: pointer; }
 }
 .bn-cat-btn:hover::after { left: 20%; right: 20%; opacity: .35; }
 .bn-cat-btn.active::after { left: 12%; right: 12%; opacity: 1; }
+
+/* ─── Layout 3-col del cuerpo expandido de huéspedes ─────────────────── */
+@media (max-width: 1100px) {
+  .hu-record-body {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .hu-record-body .hu-col-detail {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 720px) {
+  .hu-record-body {
+    grid-template-columns: 1fr !important;
+  }
+}
+/* Scrollbar fino para la lista de historial */
+.hu-col-history > div:last-child::-webkit-scrollbar { width: 6px; }
+.hu-col-history > div:last-child::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+/* Lightbox de fotos — no rotar el botón ✕ del lightbox al hover */
+#hu-img-zoom-overlay button { transition: transform 200ms cubic-bezier(.34,1.56,.64,1), background-color 120ms; }
+#hu-img-zoom-overlay button:hover { transform: scale(1.1); background: #f1f5f9 !important; }
+/* Historial: highlight extra para el activo */
+.hu-history-item.hu-history-active {
+  background: linear-gradient(90deg, #f1f5f9, #fff) !important;
+  border-left: 3px solid #334155 !important;
+}

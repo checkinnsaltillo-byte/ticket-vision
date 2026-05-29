@@ -9075,7 +9075,9 @@ function huRecalcAirbnb(inputAirbnb) {
  *  input tiene un valor numérico > 0, lo guarda. */
 async function huPersistCardMonto(cardEl) {
   if (!cardEl) { console.warn('[HU] persist: no card'); return; }
-  const recordId = cardEl.dataset.recordId || '';
+  // Si el cardEl es un wrapper de reservación seleccionada (3-col layout),
+  // usa su record-id en lugar del de la details outer.
+  const recordId = cardEl.dataset.huResvId || cardEl.dataset.recordId || '';
   if (!recordId) { console.warn('[HU] persist: no recordId'); return; }
   const facInp = cardEl.querySelector('[data-hu-airbnb-facturado="1"]');
   if (!facInp) { console.warn('[HU] persist: no input facturado en card', recordId); return; }
@@ -9395,6 +9397,360 @@ function huFmtMonto(raw) {
 }
 
 /** Card expandible de una reservación (vista Lista) — diseño que coincide con el original. */
+// ─── Lightbox para fotos (Esc + X + clic fuera para cerrar) ─────────────────
+function huImageZoom(url, title) {
+  if (!url) return;
+  let ov = document.getElementById('hu-img-zoom-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'hu-img-zoom-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.92);z-index:10000;display:none;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;animation:hu-modal-back-in 200ms ease-out';
+    ov.onclick = (e) => { if (e.target === ov) huImageZoomClose(); };
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && ov.style.display === 'flex') huImageZoomClose();
+    });
+  }
+  ov.innerHTML = `
+    <div style="position:relative;max-width:96vw;max-height:96vh;display:flex;flex-direction:column;align-items:center;animation:hu-modal-card-in 280ms cubic-bezier(.34,1.56,.64,1)" onclick="event.stopPropagation()">
+      ${title ? `<div style="color:#fff;font-size:13px;font-weight:600;margin-bottom:10px;text-shadow:0 1px 3px rgba(0,0,0,.5);padding:6px 14px;background:rgba(0,0,0,.45);border-radius:999px">${esc(title)}</div>` : ''}
+      <img src="${esc(url)}" alt="${esc(title||'foto')}" referrerpolicy="no-referrer"
+           style="max-width:96vw;max-height:88vh;object-fit:contain;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6);background:#fff" />
+      <button onclick="huImageZoomClose()" aria-label="Cerrar"
+              style="position:absolute;top:-12px;right:-12px;width:42px;height:42px;border-radius:50%;border:none;background:#fff;color:#1f2937;font-size:20px;font-weight:900;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center">✕</button>
+    </div>`;
+  ov.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function huImageZoomClose() {
+  const ov = document.getElementById('hu-img-zoom-overlay');
+  if (ov) { ov.style.display = 'none'; ov.innerHTML = ''; }
+  document.body.style.overflow = '';
+}
+
+/** Convierte un Drive URL en thumbnail. Acepta /file/d/{ID}/view, ?id=ID o ID puro. */
+function huDriveThumb(url, size) {
+  if (!url) return '';
+  const s = String(url).trim();
+  let id = '';
+  const m1 = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  const m2 = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  const m3 = s.match(/^([a-zA-Z0-9_-]{20,})$/);
+  if (m1) id = m1[1]; else if (m2) id = m2[1]; else if (m3) id = m3[1];
+  if (!id) return s;
+  return `https://drive.google.com/thumbnail?id=${id}&sz=${size || 'w400'}`;
+}
+
+/** Construye una foto-thumb con click→zoom. Si no hay url, devuelve placeholder. */
+function huPhotoBox(url, label, size) {
+  const thumb = url ? huDriveThumb(url, size || 'w400') : '';
+  const full  = url ? huDriveThumb(url, 'w1600') : '';
+  if (!thumb) {
+    return `<div style="width:100%;aspect-ratio:1;border:1.5px dashed #cbd5e1;border-radius:10px;display:flex;align-items:center;justify-content:center;background:#f8fafc;color:#94a3b8;font-size:11px;text-align:center;padding:8px">${esc(label)}<br><span style="opacity:.6">Sin foto</span></div>`;
+  }
+  return `
+    <div style="position:relative;cursor:zoom-in;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc;aspect-ratio:1;transition:transform 180ms cubic-bezier(.34,1.56,.64,1),box-shadow 180ms"
+         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(15,23,42,.18)'"
+         onmouseout="this.style.transform='';this.style.boxShadow=''"
+         onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')">
+      <img src="${esc(thumb)}" alt="${esc(label)}" referrerpolicy="no-referrer"
+           style="width:100%;height:100%;object-fit:cover;display:block"
+           onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;padding:8px;text-align:center\\'>${esc(label)}<br>Sin previsualización</div>'">
+      <div style="position:absolute;bottom:0;left:0;right:0;padding:6px 8px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.7));color:#fff;font-size:10px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.5);text-transform:uppercase;letter-spacing:.04em">${esc(label)}</div>
+      <div style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(15,23,42,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px">🔍</div>
+    </div>`;
+}
+
+/** Construye la "ID Card" del perfil del huésped (columna izquierda). */
+function huBuildIdCard(r) {
+  const nombre   = huValueFlexible(r, ['Nombre del huésped','Nombre de la persona que hizo la reservación']);
+  const cel      = huValueFlexible(r, ['Cel/Whatsapp (principal)']);
+  const celEmer  = huValueFlexible(r, ['Cel/Whatsapp (contacto de emergencia)']);
+  const correoP  = huValueFlexible(r, ['Correo electrónico para el envío de la factura','Correo electrónico']);
+  const tipoId   = huValueFlexible(r, ['Tipo de identificación']);
+  const razon    = huValueFlexible(r, ['Razón social']);
+  const rfc      = huValueFlexible(r, ['RFC']);
+  const regimen  = huValueFlexible(r, ['Régimen fiscal']);
+  const cp       = huValueFlexible(r, ['Código Postal']);
+  const reqFact  = huValueFlexible(r, ['¿Requiere factura?']);
+  // Fotos
+  const ineFront = huValueFlexible(r, ['Link INE frontal','INE frontal']);
+  const ineBack  = huValueFlexible(r, ['Link INE trasero','INE trasero']);
+  const idUnica  = huValueFlexible(r, ['Link identificación única','Identificación única']);
+  // Vehículo
+  const tieneVeh = huValueFlexible(r, ['¿Cuenta con vehículo?']);
+  const marca    = huValueFlexible(r, ['Marca vehículo']);
+  const modelo   = huValueFlexible(r, ['Modelo vehículo']);
+  const colorV   = huValueFlexible(r, ['Color vehículo']);
+  const placas   = huValueFlexible(r, ['Placas']);
+  const horaSal  = huValueFlexible(r, ['Hora habitual de salida']);
+  const fotoVeh  = huValueFlexible(r, ['Link foto vehículo','Foto vehículo']);
+
+  const wa = huBuildWhatsAppUrl(cel);
+  const waEmer = huBuildWhatsAppUrl(celEmer);
+
+  return `
+    <div class="hu-id-card" style="background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);border-radius:16px;padding:16px;color:#f8fafc;box-shadow:0 8px 24px rgba(15,23,42,.18);position:relative;overflow:hidden">
+      <!-- accent bar -->
+      <div style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#0ea5e9,#a855f7,#ec4899)"></div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="font-size:9px;letter-spacing:.18em;color:#94a3b8;font-weight:800">PERFIL DEL HUÉSPED</div>
+        <div style="font-size:9px;color:#64748b;text-transform:uppercase">ID Card</div>
+      </div>
+
+      <!-- Nombre y datos top -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:18px;font-weight:800;color:#fff;line-height:1.2;margin-bottom:6px">${esc(nombre || '—')}</div>
+        ${tipoId ? `<div style="font-size:10px;color:#cbd5e1;letter-spacing:.04em">${esc(tipoId)}</div>` : ''}
+      </div>
+
+      <!-- Fotos INE -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:9px;letter-spacing:.12em;color:#94a3b8;font-weight:700;margin-bottom:6px">IDENTIFICACIÓN</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${huPhotoBox(ineFront, 'INE frontal')}
+          ${huPhotoBox(ineBack,  'INE trasero')}
+        </div>
+        ${idUnica ? `<div style="margin-top:8px">${huPhotoBox(idUnica, 'Identificación única')}</div>` : ''}
+      </div>
+
+      <!-- Contacto -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:9px;letter-spacing:.12em;color:#94a3b8;font-weight:700;margin-bottom:8px">CONTACTO</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+            <span style="opacity:.6">📱</span>
+            ${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#5eead4;font-weight:700;text-decoration:none">${esc(cel)}</a>` : `<span style="color:#cbd5e1">${esc(cel||'—')}</span>`}
+          </div>
+          ${celEmer ? `<div style="display:flex;align-items:center;gap:8px;font-size:11px">
+            <span style="opacity:.6">🚨</span>
+            ${waEmer ? `<a href="${esc(waEmer)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#fcd34d;font-weight:600;text-decoration:none">${esc(celEmer)}</a>` : `<span style="color:#cbd5e1">${esc(celEmer)}</span>`}
+            <span style="font-size:9px;color:#64748b">EMERGENCIA</span>
+          </div>` : ''}
+          ${correoP ? `<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#cbd5e1;word-break:break-all">
+            <span style="opacity:.6">📧</span><span>${esc(correoP)}</span>
+          </div>` : ''}
+        </div>
+      </div>
+
+      <!-- Facturación si aplica -->
+      ${(razon || rfc || regimen) ? `
+      <div style="margin-bottom:14px;padding:10px;background:rgba(15,23,42,.5);border:1px solid #334155;border-radius:10px">
+        <div style="font-size:9px;letter-spacing:.12em;color:#94a3b8;font-weight:700;margin-bottom:6px">DATOS FISCALES ${huIsFacturaYes(reqFact)?'<span style="color:#5eead4">· Requiere factura</span>':''}</div>
+        ${razon   ? `<div style="font-size:12px;color:#fff;font-weight:600;margin-bottom:3px">${esc(razon)}</div>` : ''}
+        ${rfc     ? `<div style="font-size:11px;color:#cbd5e1;font-family:monospace;letter-spacing:.04em">RFC: ${esc(rfc)}</div>` : ''}
+        ${regimen ? `<div style="font-size:10px;color:#94a3b8;margin-top:3px">${esc(regimen)}</div>` : ''}
+        ${cp      ? `<div style="font-size:10px;color:#94a3b8;margin-top:3px">C.P. ${esc(cp)}</div>` : ''}
+      </div>` : ''}
+
+      <!-- Vehículo si aplica -->
+      ${(huIsFacturaYes(tieneVeh) || marca || placas || fotoVeh) ? `
+      <div style="padding:10px;background:rgba(15,23,42,.5);border:1px solid #334155;border-radius:10px">
+        <div style="font-size:9px;letter-spacing:.12em;color:#94a3b8;font-weight:700;margin-bottom:8px">🚗 VEHÍCULO</div>
+        ${fotoVeh ? `<div style="margin-bottom:8px">${huPhotoBox(fotoVeh, 'Foto vehículo')}</div>` : ''}
+        ${(marca||modelo) ? `<div style="font-size:12px;color:#fff;font-weight:600">${esc(marca)} ${esc(modelo)}</div>` : ''}
+        ${colorV ? `<div style="font-size:11px;color:#cbd5e1">Color: ${esc(colorV)}</div>` : ''}
+        ${placas ? `<div style="font-size:11px;color:#fff;font-family:monospace;font-weight:700;background:rgba(255,255,255,.1);padding:3px 8px;border-radius:4px;display:inline-block;margin-top:4px;letter-spacing:.08em">${esc(placas)}</div>` : ''}
+        ${horaSal ? `<div style="font-size:10px;color:#94a3b8;margin-top:6px">⏰ Salida habitual: ${esc(horaSal)}</div>` : ''}
+      </div>` : ''}
+    </div>`;
+}
+
+/** Lista historial de reservaciones del mismo celular. */
+function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
+  const cel = huValueFlexible(currentR, ['Cel/Whatsapp (principal)']);
+  const list = (allRows || HU_STATE.rows || [])
+    .filter(x => huValueFlexible(x, ['Cel/Whatsapp (principal)']) === cel && cel)
+    .sort((a, b) => {
+      const da = huValueFlexible(a, ['Fecha de ingreso']) || '';
+      const db = huValueFlexible(b, ['Fecha de ingreso']) || '';
+      return db.localeCompare(da);
+    });
+  const items = list.map(x => {
+    const xid     = String(x['ID'] || x['row_number'] || '');
+    const ingreso = huValueFlexible(x, ['Fecha de ingreso']);
+    const salida  = huValueFlexible(x, ['Fecha de salida']);
+    const prop    = huValueFlexible(x, ['Propiedad']);
+    const depto   = huValueFlexible(x, ['# Departamento']);
+    const noches  = huValueFlexible(x, ['# Noches']);
+    const monto   = huValueFlexible(x, ['$ Monto facturado Total','($) Monto Total pagado']);
+    const status  = huGetFacturaStatus(x);
+    const isSel   = xid === selectedRecId;
+    const statusDot = status === 'pendiente' ? '#dc2626' : status === 'emitida' ? '#16a34a' : '#94a3b8';
+    return `
+      <div onclick="event.stopPropagation();huSelectReservation('${esc(outerCardRecId)}','${esc(xid)}')"
+           data-hu-history-id="${esc(xid)}"
+           class="hu-history-item ${isSel?'hu-history-active':''}"
+           style="padding:10px 12px;border:1.5px solid ${isSel?'#334155':'#e2e8f0'};border-radius:10px;cursor:pointer;background:${isSel?'#f1f5f9':'#fff'};transition:all 180ms cubic-bezier(.16,1,.3,1);${isSel?'box-shadow:0 4px 12px rgba(15,23,42,.10);transform:translateX(2px)':''}"
+           onmouseover="if(!this.classList.contains('hu-history-active')){this.style.borderColor='#cbd5e1';this.style.background='#f8fafc';this.style.transform='translateX(2px)'}"
+           onmouseout="if(!this.classList.contains('hu-history-active')){this.style.borderColor='#e2e8f0';this.style.background='#fff';this.style.transform=''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:800;color:#1f2937;letter-spacing:.02em">${huFmtFecha(ingreso)} → ${huFmtFecha(salida)}</div>
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusDot};box-shadow:0 0 0 2px rgba(255,255,255,.5)"></span>
+        </div>
+        <div style="font-size:11px;color:#64748b;font-weight:600">${esc(prop || '—')}${depto?' · # '+esc(depto):''}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+          <span style="font-size:10px;color:#94a3b8">${esc(noches||'?')} noche${noches==='1'?'':'s'}</span>
+          ${monto ? `<span style="font-size:11px;font-weight:700;color:#0f766e">${huFmtMonto(monto)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:0;height:100%">
+      <div style="font-size:10px;letter-spacing:.12em;color:#475569;font-weight:800;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+        <span>📚 HISTORIAL · ${list.length} reservación${list.length===1?'':'es'}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:680px;padding-right:4px">
+        ${items || '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin historial.</div>'}
+      </div>
+    </div>`;
+}
+
+/** Construye el contenido de la columna derecha (detalle de la reservación seleccionada).
+ *  Incluye la caja de auto-facturación con sus inputs editables/calculados. */
+function huBuildReservationDetail(r) {
+  const status     = huGetFacturaStatus(r);
+  const recId      = String(r['ID'] || r['row_number'] || '');
+  const ingreso    = huValueFlexible(r, ['Fecha de ingreso']);
+  const salida     = huValueFlexible(r, ['Fecha de salida']);
+  const noches     = huValueFlexible(r, ['# Noches']);
+  const huespedes  = huValueFlexible(r, ['# Huéspedes']);
+  const propiedad  = huValueFlexible(r, ['Propiedad']);
+  const departamento = huValueFlexible(r, ['# Departamento']);
+  const medio      = huValueFlexible(r, ['Medio de reservación']);
+  const formaPago  = huValueFlexible(r, ['Forma de pago']);
+  const montoPag   = huValueFlexible(r, ['($) Monto Total pagado','$ Monto Total pagado']);
+  const montoFact  = huValueFlexible(r, ['$ Monto facturado Total']);
+  const montoAirbnb= huValueFlexible(r, ['$ Monto total Airbnb']);
+  const reqFactura = huValueFlexible(r, ['¿Requiere factura?']);
+  const folio      = huValueFlexible(r, ['Folio facturapi','Folio Facturapi','Folio']);
+  const ticketUrl  = huExtractTicketUrl(r);
+  const esAirbnb   = String(medio||'').toLowerCase().includes('airbnb');
+  const medioBadge = huMedioBadge(medio);
+
+  // Pre-cálculo Airbnb
+  const airbnbVal    = esAirbnb ? huParseMontoAirbnb(montoAirbnb) : 0;
+  const comisionPre  = esAirbnb && airbnbVal ? huCalcComisionAirbnb(airbnbVal).toFixed(2)        : '';
+  const facturadoPre = esAirbnb && airbnbVal ? huCalcMontoFacturadoAirbnb(airbnbVal).toFixed(2) : montoFact;
+
+  const mensajeConsulta = ticketUrl ? huBuildTicketConsultaMsg(ticketUrl) : '';
+  const btnVerTicket = (status === 'emitida' && ticketUrl) ? `
+    <a href="${esc(ticketUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
+       style="display:inline-block;padding:7px 14px;border:none;background:#16a34a;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;text-decoration:none;margin-right:6px;box-shadow:0 2px 4px rgba(22,163,74,.3)">
+      🧾 Ver ticket${folio ? ' - Folio #' + esc(folio) : ''}
+    </a>` : '';
+  const btnCopiarMsg = (status === 'emitida' && mensajeConsulta) ? `
+    <button type="button" onclick="event.stopPropagation();huespedesCopiarMsgConsulta(this,'${encodeURIComponent(mensajeConsulta)}')"
+            style="padding:7px 14px;border:none;background:#475569;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">
+      📋 Copiar mensaje para consultar ticket emitido
+    </button>` : '';
+  const btnGenerar = (status === 'pendiente') ? `
+    <button onclick="event.stopPropagation();huespedesGenerarTicket('${esc(recId)}')"
+            style="padding:8px 22px;border:none;background:linear-gradient(180deg,#ef4444 0%,#b91c1c 100%);color:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(185,28,28,.4)">
+      Generar Ticket
+    </button>` : '';
+
+  const fldRow = (label, value) => `
+    <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;align-self:center">${esc(label)}</div>
+      <div style="font-size:13px;color:#1f2937">${value || '—'}</div>
+    </div>`;
+
+  const airbnbBox = `
+    <div data-hu-airbnb-box="1" style="border:1.5px solid #c4b5fd;border-radius:12px;padding:12px;background:linear-gradient(180deg,#faf5ff,#fff);margin-top:12px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7c3aed;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:6px">🧾 Ticket para auto-facturación</div>
+      ${esAirbnb ? `
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:8px">
+          <div style="font-size:11px;color:#1e40af;font-weight:700;margin-bottom:6px">(=) $ Monto total Airbnb</div>
+          <input type="number" step="0.01" min="0" value="${esc(montoAirbnb)}" placeholder="0.00"
+                 onclick="event.stopPropagation()"
+                 oninput="huRecalcAirbnb(this)"
+                 onblur="huMaybePersistCardMonto(this.closest('.hu-resv-detail'))"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+                 style="width:100%;padding:7px 10px;border:1px solid #bfdbfe;border-radius:6px;background:#fff;font-size:13px;color:#1e40af;font-weight:700;outline:none">
+          <div style="font-size:10px;color:#3b82f6;margin-top:4px">Base editable.</div>
+        </div>
+        <div style="background:#fde68a;border:1px solid #f59e0b;border-radius:8px;padding:10px;margin-bottom:8px">
+          <div style="font-size:11px;color:#78350f;font-weight:700;margin-bottom:6px">(-) $ Comisión Airbnb</div>
+          <input type="number" step="0.01" data-hu-airbnb-comision="1" value="${esc(comisionPre)}" readonly
+                 onclick="event.stopPropagation()"
+                 style="width:100%;padding:7px 10px;border:1px solid #f59e0b;border-radius:6px;background:#fef3c7;font-size:13px;color:#78350f;font-weight:700;cursor:not-allowed;outline:none">
+          <div style="font-size:10px;color:#92400e;margin-top:4px;font-weight:600">🔒 Airbnb × 15.5%</div>
+        </div>` : ''}
+      <div style="background:${esAirbnb?'#ddd6fe':'#ede9fe'};border:1px solid #a78bfa;border-radius:8px;padding:10px;margin-bottom:10px">
+        <div style="font-size:11px;color:#4c1d95;font-weight:700;margin-bottom:6px">(+) $ Monto facturado Total</div>
+        <input type="number" step="0.01" data-hu-airbnb-facturado="1" value="${esc(facturadoPre)}" ${esAirbnb?'readonly':''}
+               onclick="event.stopPropagation()"
+               style="width:100%;padding:7px 10px;border:1px solid #a78bfa;border-radius:6px;background:${esAirbnb?'#c4b5fd':'#fff'};font-size:13px;color:#4c1d95;font-weight:700;outline:none">
+        ${esAirbnb?'<div style="font-size:10px;color:#6d28d9;margin-top:4px;font-weight:600">🔒 Airbnb − Comisión</div>':''}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${btnVerTicket}${btnCopiarMsg}${btnGenerar}</div>
+    </div>`;
+
+  // Pill de estado
+  const statusPill = status === 'emitida'
+    ? `<span style="display:inline-block;padding:4px 12px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:10px;border:1px solid #86efac">EMITIDA${folio?' · '+esc(folio):''}</span>`
+    : status === 'pendiente'
+    ? `<span style="display:inline-block;padding:4px 12px;border-radius:999px;background:#fef3c7;color:#92400e;font-weight:700;font-size:10px;border:1px solid #fcd34d">PENDIENTE</span>`
+    : `<span style="display:inline-block;padding:4px 12px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:700;font-size:10px;border:1px solid #cbd5e1">SIN FACTURA</span>`;
+
+  return `
+    <div class="hu-resv-detail" data-hu-resv-id="${esc(recId)}"
+         style="background:#fff;border-radius:14px;padding:16px;border:1.5px solid #e2e8f0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid #f1f5f9">
+        <div>
+          <div style="font-size:10px;letter-spacing:.12em;color:#475569;font-weight:800;margin-bottom:4px">DETALLE DE RESERVACIÓN</div>
+          <div style="font-size:14px;font-weight:800;color:#0f172a">${huFmtFecha(ingreso)} → ${huFmtFecha(salida)}</div>
+        </div>
+        ${statusPill}
+      </div>
+
+      <div style="margin-bottom:8px">${medioBadge}</div>
+
+      <div style="display:flex;flex-direction:column">
+        ${fldRow('Propiedad', esc(propiedad))}
+        ${fldRow('# Departamento', esc(departamento))}
+        ${fldRow('# Noches', esc(noches))}
+        ${fldRow('# Huéspedes', esc(huespedes))}
+        ${fldRow('Forma de pago', esc(formaPago))}
+        ${fldRow('Monto Total pagado', montoPag ? huFmtMonto(montoPag) : '—')}
+        ${fldRow('Monto Facturado', montoFact ? `<span data-hu-header-amount="1" style="font-weight:800;color:#0f172a">${huFmtMonto(montoFact)}</span>` : '<span data-hu-header-amount="1">—</span>')}
+        ${fldRow('¿Requiere factura?', huReqFacturaBadge(reqFactura))}
+      </div>
+
+      ${airbnbBox}
+
+      <div style="margin-top:14px;display:flex;justify-content:flex-end">
+        <button onclick="event.stopPropagation();huespedesOpenDetail('${esc(recId)}')"
+                style="padding:7px 16px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-weight:600;font-size:11px;cursor:pointer">
+          Ver todos los campos
+        </button>
+      </div>
+    </div>`;
+}
+
+/** Click en una entrada del historial: re-renderiza la columna derecha y
+ *  marca el nuevo seleccionado. outerRecId es el id del details outer. */
+window.huSelectReservation = function(outerRecId, selectedRecId) {
+  const r = (HU_STATE.rows||[]).find(x => String(x['ID']||x['row_number']||'') === String(selectedRecId));
+  if (!r) return;
+  const card = document.querySelector(`.hu-record[data-record-id="${outerRecId}"]`);
+  if (!card) return;
+  const detailCol = card.querySelector('.hu-col-detail');
+  const historyCol = card.querySelector('.hu-col-history');
+  if (detailCol) {
+    detailCol.innerHTML = huBuildReservationDetail(r);
+    detailCol.style.animation = 'hu-fade-in 280ms cubic-bezier(.16,1,.3,1)';
+    setTimeout(() => { detailCol.style.animation = ''; }, 300);
+  }
+  if (historyCol) {
+    // Re-renderizar history con nuevo selected
+    historyCol.innerHTML = huBuildHistoryList(r, HU_STATE.rows, selectedRecId, outerRecId);
+  }
+};
+
 function huBuildRecordCard(r) {
   const status     = huGetFacturaStatus(r);
   const recId      = String(r['ID'] || r['row_number'] || '');
@@ -9530,23 +9886,10 @@ function huBuildRecordCard(r) {
   return `
     <details class="hu-record" data-record-id="${esc(recId)}" ontoggle="huOnDetailsToggle(this)" style="border:1.5px solid ${palette.border};border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
       ${summary}
-      <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;background:#fff">
-        ${fieldCard('Nombre de la persona que realizó la reservación', esc(nombre) || '—')}
-        ${fieldCard('Medio de reservación', medioBadge || '—')}
-        ${fieldCard('Propiedad', esc(propiedad) || '—')}
-        ${fieldCard('# Departamento', esc(departamento) || '—')}
-        ${fieldCard('¿Requiere factura?', huReqFacturaBadge(reqFactura))}
-        ${fieldCard('Razón social', esc(razon) || '—')}
-        ${fieldCard('Régimen fiscal', esc(regimen) || '—')}
-        ${fieldCard('Forma de pago', esc(formaPago) || '—')}
-        ${fieldCard('($) Monto Total pagado', montoPag ? huFmtMonto(montoPag) : '—')}
-        ${airbnbBox}
-        ${fieldCard('Cel/Whatsapp (principal)', phoneHtml)}
-        ${fieldCard('Detalle',
-          `<button onclick="event.stopPropagation();huespedesOpenDetail('${esc(recId)}')"
-                   style="padding:7px 18px;border:none;background:linear-gradient(180deg,#f59e0b 0%,#d97706 100%);color:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(217,119,6,.35)">
-             Ver detalles
-           </button>`)}
+      <div class="hu-record-body" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
+        <div class="hu-col-profile">${huBuildIdCard(r)}</div>
+        <div class="hu-col-history">${huBuildHistoryList(r, HU_STATE.rows, recId, recId)}</div>
+        <div class="hu-col-detail">${huBuildReservationDetail(r)}</div>
       </div>
     </details>`;
 }
