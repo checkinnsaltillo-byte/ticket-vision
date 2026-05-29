@@ -2089,18 +2089,25 @@ button[title], a[title], .info-chip[title] { cursor: pointer; }
 .bn-cat-btn.active::after { left: 12%; right: 12%; opacity: 1; }
 
 /* ─── Layout 3-col del cuerpo expandido de huéspedes ─────────────────── */
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .hu-record-body {
     grid-template-columns: 1fr 1fr !important;
   }
-  .hu-record-body .hu-col-detail {
-    grid-column: 1 / -1;
-  }
+  .hu-record-body .hu-col-detail { grid-column: 1 / -1; }
 }
-@media (max-width: 720px) {
+@media (max-width: 760px) {
   .hu-record-body {
     grid-template-columns: 1fr !important;
+    padding: 10px !important;
+    gap: 10px !important;
   }
+  .hu-record-body .hu-col-card { border-radius: 14px; }
+  .hu-record-body .hu-col-card > div:nth-child(2) { padding: 12px !important; }
+  .hu-record-body .hu-id-card > div:nth-child(2) { padding: 12px !important; }
+  /* Reduce el padding del summary del card */
+  .hu-record > summary { padding: 12px 14px !important; gap: 10px !important; }
+  /* Historial: scroll cap más bajo en móvil */
+  .hu-col-history .hu-history-item { padding: 9px 11px !important; }
 }
 /* Scrollbar fino para la lista de historial */
 .hu-col-history > div:last-child::-webkit-scrollbar { width: 6px; }
