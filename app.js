@@ -9116,12 +9116,44 @@ async function huPersistCardMonto(cardEl) {
   }
 }
 
-/** Llamado al abrir o cerrar el <details>. Si se abrió, dispara el save. */
+/** Llamado al abrir o cerrar el <details>. Si se abrió, dispara el save
+ *  y enriquece el row con los campos completos (incluidas URLs de fotos
+ *  INE/identificación/vehículo) que NO vienen en /huespedes-list. */
 window.huOnDetailsToggle = function(detailsEl) {
   console.info('[HU] toggle', { open: detailsEl?.open, recordId: detailsEl?.dataset?.recordId });
   if (!detailsEl?.open) return;
   setTimeout(() => huPersistCardMonto(detailsEl), 100);
+  huEnrichRowAndRerenderIdCard(detailsEl);
 };
+
+/** Trae el detalle completo del registro (incluye links de fotos) y re-renderiza
+ *  la columna del ID Card. Idempotente: si ya enriquecimos antes, no repite. */
+async function huEnrichRowAndRerenderIdCard(detailsEl) {
+  try {
+    if (!detailsEl || detailsEl.dataset.huEnriched === '1') return;
+    const recordId = detailsEl.dataset.recordId;
+    if (!recordId) return;
+    const rows = HU_STATE.rows || [];
+    const idx = rows.findIndex(r => String(r['ID']||r['row_number']||'') === String(recordId));
+    if (idx < 0) return;
+    detailsEl.dataset.huEnriched = '1'; // marcar antes de await para evitar dobles
+    const res = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recordId)}`);
+    const json = await res.json();
+    if (!json?.ok || !json.record) { detailsEl.dataset.huEnriched = ''; return; }
+    // Merge: el detail tiene prioridad para los campos que faltan en list
+    const merged = { ...rows[idx], ...json.record };
+    HU_STATE.rows[idx] = merged;
+    const profileCol = detailsEl.querySelector('.hu-col-profile');
+    if (profileCol) profileCol.innerHTML = huBuildIdCard(merged);
+    const detailCol = detailsEl.querySelector('.hu-col-detail');
+    if (detailCol && typeof huBuildReservationDetail === 'function') {
+      detailCol.innerHTML = huBuildReservationDetail(merged);
+    }
+  } catch (e) {
+    console.warn('[HU] enrich fail', e);
+    if (detailsEl) detailsEl.dataset.huEnriched = '';
+  }
+}
 
 /** Alias para mantener compat con huRecalcAirbnb (un toque debounce). */
 let HU_RECALC_TIMER = null;
