@@ -9461,14 +9461,20 @@ function huImageZoomClose() {
   document.body.style.overflow = '';
 }
 
-/** Convierte un Drive URL en thumbnail. Acepta /file/d/{ID}/view, ?id=ID o ID puro. */
-/** URL pasada por el proxy del backend de Ticket Vision. Robusto contra Drive
- *  hot-link blocking porque el binario lo recoge Cloud Run y nosotros sólo lo
- *  vemos como una imagen ya servida desde nuestro origen. */
+/** Convierte un Drive URL en thumbnail directo (mismo enfoque que check-in
+ *  /public/registro, que sí muestra las fotos correctamente). Acepta
+ *  /file/d/{ID}/view, /d/{ID}, ?id=ID o ID puro. El size acepta "w1200" o 1200. */
 function huDriveThumb(url, size) {
   if (!url) return '';
   const s = String(url).trim();
-  return `${BACKEND}/huespedes-image-proxy?url=${encodeURIComponent(s)}&size=${encodeURIComponent(size || 'w800')}`;
+  const sz = String(size || 'w800').replace(/^w/i, '');
+  let id = '';
+  let m = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);  if (m) id = m[1];
+  if (!id) { m = s.match(/\/d\/([a-zA-Z0-9_-]+)/);       if (m) id = m[1]; }
+  if (!id) { m = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);     if (m) id = m[1]; }
+  if (!id && /^[a-zA-Z0-9_-]{20,}$/.test(s)) id = s;
+  if (!id) return s; // último recurso: la url tal cual
+  return `https://drive.google.com/thumbnail?id=${id}&sz=w${sz}`;
 }
 
 /** Placeholder elegante cuando no hay foto (en lugar de aspect-ratio:1 vacío). */
@@ -9491,19 +9497,26 @@ function huPhotoBox(url, label, options) {
   const thumb = url ? huDriveThumb(url, size) : '';
   const full  = url ? huDriveThumb(url, 'w1600') : '';
   if (!thumb) return huPhotoPlaceholder(label, icon, height || '110px');
-  const placeholderHtml = huPhotoPlaceholder(label, icon, '100%').replace(/'/g, "\\'").replace(/\n/g, '');
-  const sizeStyle = height
-    ? `height:${height}`
-    : `aspect-ratio:${aspectRatio}`;
+  // Fallback chain: thumbnail → lh3 → uc?export=view → placeholder
+  let driveId = '';
+  const sRaw = String(url).trim();
+  let mm = sRaw.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);  if (mm) driveId = mm[1];
+  if (!driveId) { mm = sRaw.match(/\/d\/([a-zA-Z0-9_-]+)/);    if (mm) driveId = mm[1]; }
+  if (!driveId) { mm = sRaw.match(/[?&]id=([a-zA-Z0-9_-]+)/);  if (mm) driveId = mm[1]; }
+  if (!driveId && /^[a-zA-Z0-9_-]{20,}$/.test(sRaw)) driveId = sRaw;
+  const fb1 = driveId ? `https://lh3.googleusercontent.com/d/${driveId}=w800` : '';
+  const fb2 = driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : '';
+  const sizeStyle = height ? `height:${height}` : `aspect-ratio:${aspectRatio}`;
   const phHtml = huPhotoPlaceholder(label, icon, '100%').replace(/"/g, '&quot;');
+  const onerrFn = `(function(img){var t=img.dataset.tryStep||'0';if(t==='0'&&'${esc(fb1)}'){img.dataset.tryStep='1';img.src='${esc(fb1)}';return;}if((t==='0'||t==='1')&&'${esc(fb2)}'){img.dataset.tryStep='2';img.src='${esc(fb2)}';return;}img.parentElement.innerHTML='${phHtml}';img.parentElement.style.cursor='default';img.parentElement.onclick=null;})(this)`;
   return `
     <div style="position:relative;cursor:zoom-in;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc;${sizeStyle};transition:transform 180ms cubic-bezier(.34,1.56,.64,1),box-shadow 180ms"
          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(15,23,42,.18)'"
          onmouseout="this.style.transform='';this.style.boxShadow=''"
          onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')">
-      <img src="${esc(thumb)}" alt="${esc(label)}" loading="lazy"
+      <img src="${esc(thumb)}" alt="${esc(label)}" loading="lazy" referrerpolicy="no-referrer"
            style="width:100%;height:100%;object-fit:cover;display:block;background:#f8fafc"
-           onerror="this.parentElement.innerHTML='${phHtml}';this.parentElement.style.cursor='default';this.parentElement.onclick=null">
+           onerror="${onerrFn}">
       <div style="position:absolute;bottom:0;left:0;right:0;padding:6px 8px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.7));color:#fff;font-size:10px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.5);text-transform:uppercase;letter-spacing:.04em">${esc(label)}</div>
       <div style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(15,23,42,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px">🔍</div>
     </div>`;
