@@ -9062,21 +9062,55 @@ function huRecalcAirbnb(inputAirbnb) {
   const com = huCalcComisionAirbnb(inputAirbnb.value);
   const fac = huCalcMontoFacturadoAirbnb(inputAirbnb.value);
   if (comInp) comInp.value = com ? com.toFixed(2) : '';
-  if (facInp) {
-    facInp.value = fac ? fac.toFixed(2) : '';
-  }
-  // Actualizar el monto facturado del header del card
+  if (facInp) facInp.value = fac ? fac.toFixed(2) : '';
   const card = inputAirbnb.closest('.hu-record');
   const hdrAmt = card?.querySelector('[data-hu-header-amount="1"]');
   if (hdrAmt) hdrAmt.textContent = fac ? huFmtMonto(fac) : '—';
-  // Persistir en background el valor calculado (debounced — no satura al backend
-  // mientras el usuario sigue escribiendo).
-  const recordId = card?.dataset.recordId || '';
-  if (recordId) huSaveMontoFacturadoDebounced(recordId, fac ? fac.toFixed(2) : '', card);
+  // Persistir (debounced) en cuanto el valor cambia.
+  huMaybePersistCardMonto(card, fac ? fac.toFixed(2) : '');
 }
 
-/** Guarda el monto facturado para un record, con un debounce de 700ms para evitar
- *  llamadas excesivas al backend mientras el usuario escribe. */
+/** Punto único de persistencia: dado un card, lee el monto facturado actual
+ *  (sea el del input calculado o el valor pasado explícitamente) y lo guarda
+ *  si difiere del último valor guardado. Idempotente — no spam al backend. */
+function huMaybePersistCardMonto(cardEl, valueOverride) {
+  if (!cardEl) return;
+  const recordId = cardEl.dataset.recordId || '';
+  if (!recordId) {
+    console.warn('[HU] huMaybePersistCardMonto: card sin recordId', cardEl);
+    return;
+  }
+  // Resuelve el valor a persistir
+  let monto = String(valueOverride ?? '').trim();
+  if (!monto) {
+    const facInp = cardEl.querySelector('[data-hu-airbnb-facturado="1"]');
+    if (facInp) monto = String(facInp.value || '').trim();
+  }
+  if (!monto || isNaN(Number(monto)) || Number(monto) <= 0) {
+    console.debug('[HU] persist skip — sin monto', { recordId, monto });
+    return;
+  }
+  // Skip si coincide con lo último guardado conocido (cache)
+  const r = (HU_STATE.rows||[]).find(x => String(x['ID']||x['row_number']||'') === String(recordId));
+  const prevRaw = r ? String(r['$ Monto facturado Total'] || '').trim() : '';
+  const prevNum = Number(prevRaw.replace(/[^0-9.\-]/g,'')) || 0;
+  const newNum  = Number(monto);
+  if (Math.abs(prevNum - newNum) < 0.005) {
+    console.debug('[HU] persist skip — ya está guardado', { recordId, prev: prevRaw, new: monto });
+    return;
+  }
+  huSaveMontoFacturadoDebounced(recordId, monto, cardEl);
+}
+
+/** Llamado por <details ontoggle> cuando se abre el dropdown del card.
+ *  Si la card es Airbnb y el calculado difiere del sheet, dispara save. */
+window.huOnDetailsToggle = function(detailsEl) {
+  if (!detailsEl?.open) return;
+  // Pequeño delay para que cualquier render asíncrono termine
+  setTimeout(() => huMaybePersistCardMonto(detailsEl), 50);
+};
+
+/** Guarda el monto con debounce de 700ms (un timer por recordId). */
 const HU_SAVE_TIMERS = {};
 function huSaveMontoFacturadoDebounced(recordId, monto, cardEl) {
   if (!recordId) return;
@@ -9087,10 +9121,10 @@ function huSaveMontoFacturadoDebounced(recordId, monto, cardEl) {
   }, 700);
 }
 async function huSaveMontoFacturadoNow(recordId, monto, cardEl) {
-  // Indicador visual mientras guarda
+  console.info('[HU] saving monto', { recordId, monto });
   const hdrAmt = cardEl?.querySelector('[data-hu-header-amount="1"]');
   const prevColor = hdrAmt?.style.color;
-  if (hdrAmt) hdrAmt.style.color = '#a16207'; // ámbar mientras guarda
+  if (hdrAmt) hdrAmt.style.color = '#a16207';
   try {
     const res = await fetch(`${BACKEND}/huespedes-save-monto`, {
       method: 'POST',
@@ -9098,21 +9132,21 @@ async function huSaveMontoFacturadoNow(recordId, monto, cardEl) {
       body: JSON.stringify({ record_id: recordId, monto_facturado_total: String(monto) }),
     });
     const json = await res.json();
+    console.info('[HU] save response', json);
     if (!json.ok) throw new Error(json.error || json.message || 'Error al guardar monto');
-    // Actualiza el rec en cache local para que un refresh inmediato lo refleje
     const r = (HU_STATE.rows||[]).find(x => String(x['ID']||x['row_number']||'') === String(recordId));
     if (r) r['$ Monto facturado Total'] = monto;
     if (hdrAmt) {
-      hdrAmt.style.color = '#16a34a'; // verde confirmación
+      hdrAmt.style.color = '#16a34a';
       setTimeout(() => { if (hdrAmt) hdrAmt.style.color = prevColor || '#111827'; }, 1000);
     }
   } catch (e) {
+    console.error('[HU] save error', e);
     if (hdrAmt) {
-      hdrAmt.style.color = '#dc2626'; // rojo error
+      hdrAmt.style.color = '#dc2626';
       hdrAmt.title = 'Error al guardar: ' + e.message;
       setTimeout(() => { if (hdrAmt) { hdrAmt.style.color = prevColor || '#111827'; hdrAmt.title = ''; } }, 1800);
     }
-    console.warn('huSaveMontoFacturadoNow error:', e.message);
   }
 }
 /** Mensaje canónico para "consultar ticket emitido". */
@@ -9453,18 +9487,8 @@ function huBuildRecordCard(r) {
   const airbnbVal = esAirbnb ? huParseMontoAirbnb(montoAirbnb) : 0;
   const comisionPre  = esAirbnb && airbnbVal ? huCalcComisionAirbnb(airbnbVal).toFixed(2)        : '';
   const facturadoPre = esAirbnb && airbnbVal ? huCalcMontoFacturadoAirbnb(airbnbVal).toFixed(2) : montoFact;
-  // Si el valor pre-calculado difiere de lo que tiene el sheet (montoFact),
-  // schedule un save para sincronizar el sheet con lo que se muestra en la card.
-  // Esto cubre el caso "guardar en cuanto aparece el monto" cuando viene del
-  // cálculo indirecto de Airbnb.
-  if (esAirbnb && airbnbVal > 0) {
-    const facturadoPreNum = Number(facturadoPre || 0);
-    const montoFactNum    = Number(huFmtMontoEditable(montoFact) || 0);
-    if (facturadoPreNum > 0 && Math.abs(facturadoPreNum - montoFactNum) > 0.005) {
-      setTimeout(() => huSaveMontoFacturadoDebounced(recId, facturadoPre,
-        document.querySelector(`.hu-record[data-record-id="${recId}"]`)), 400);
-    }
-  }
+  // El auto-save ahora se dispara desde el ontoggle del <details> cuando se
+  // abre la card. Esto es más confiable que un setTimeout dependiente del DOM.
 
   // Botones cuando el ticket está emitido
   const mensajeConsulta = ticketUrl ? huBuildTicketConsultaMsg(ticketUrl) : '';
@@ -9495,6 +9519,7 @@ function huBuildRecordCard(r) {
           <input type="number" step="0.01" min="0" value="${esc(montoAirbnb)}" placeholder="0.00"
                  onclick="event.stopPropagation()"
                  oninput="huRecalcAirbnb(this)"
+                 onblur="huMaybePersistCardMonto(this.closest('.hu-record'))"
                  onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
                  style="width:100%;padding:7px 10px;border:1px solid #bfdbfe;border-radius:6px;background:#fff;font-size:13px;color:#1e40af;font-weight:700;outline:none">
           <div style="font-size:10px;color:#3b82f6;margin-top:4px">Base editable para calcular comisión y monto facturado.</div>
@@ -9525,7 +9550,7 @@ function huBuildRecordCard(r) {
     : `<span style="font-weight:700;color:#1f2937">${esc(cel || '—')}</span>`;
 
   return `
-    <details class="hu-record" data-record-id="${esc(recId)}" style="border:1.5px solid ${palette.border};border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
+    <details class="hu-record" data-record-id="${esc(recId)}" ontoggle="huOnDetailsToggle(this)" style="border:1.5px solid ${palette.border};border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
       ${summary}
       <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;background:#fff">
         ${fieldCard('Nombre de la persona que realizó la reservación', esc(nombre) || '—')}
