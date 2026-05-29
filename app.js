@@ -9260,6 +9260,25 @@ window.huOnDetailsToggle = function(detailsEl) {
   huEnrichRowAndRerenderIdCard(detailsEl);
 };
 
+/** Actualiza in-place los spans del header (summary) con los valores que SÍ
+ *  vienen en /huespedes-detail pero NO en /huespedes-list. */
+function huUpdateHeaderFromMerged(detailsEl, r) {
+  if (!detailsEl || !r) return;
+  const horaIng = huValueFlexible(r, ['Hora estimada de llegada','Hora de llegada']);
+  const horaSal = huValueFlexible(r, ['Hora estimada de salida','Hora de salida']);
+  const hI = detailsEl.querySelector('[data-hu-hdr-horaing]');
+  if (hI) hI.textContent = horaIng ? huFmtHoraSimple(horaIng) : '—';
+  const hS = detailsEl.querySelector('[data-hu-hdr-horasal]');
+  if (hS) hS.textContent = horaSal ? huFmtHoraSimple(horaSal) : '—';
+  // Huéspedes y noches sí vienen en list pero re-renderizar por seguridad
+  const hu = huValueFlexible(r, ['# Huéspedes']);
+  const chip = detailsEl.querySelector('[data-hu-hdr-huespedes]');
+  if (chip && hu) {
+    chip.innerHTML = `👥 ${esc(hu)} huésped${String(hu)==='1'?'':'es'}`;
+    chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:11px;border:1px solid #c7d2fe;letter-spacing:.02em';
+  }
+}
+
 /** Trae el detalle completo del registro (incluye links de fotos) y re-renderiza
  *  la columna del ID Card. Idempotente: si ya enriquecimos antes, no repite. */
 async function huEnrichRowAndRerenderIdCard(detailsEl) {
@@ -9283,6 +9302,9 @@ async function huEnrichRowAndRerenderIdCard(detailsEl) {
     if (detailCol && typeof huBuildReservationDetail === 'function') {
       detailCol.innerHTML = huBuildReservationDetail(merged);
     }
+    // También actualizar los campos del header (Hora estimada llegada/salida,
+    // # Huéspedes, # Noches) que NO venían en /huespedes-list.
+    huUpdateHeaderFromMerged(detailsEl, merged);
   } catch (e) {
     console.warn('[HU] enrich fail', e);
     if (detailsEl) detailsEl.dataset.huEnriched = '';
@@ -10190,8 +10212,11 @@ function huBuildRecordCard(r) {
       ? { border:'#bbf7d0', bg:'#f0fdf4', leftAcc:'#16a34a' }
       : { border:'#cbd5e1', bg:'#f8fafc', leftAcc:'#94a3b8' };
 
-  // Header chips: medio + factura
+  // Header chips: medio + factura + huéspedes
   const medioBadge = huMedioBadge(medio);
+  const huespedesChip = huespedes
+    ? `<span data-hu-hdr-huespedes style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:11px;border:1px solid #c7d2fe;letter-spacing:.02em">👥 ${esc(huespedes)} huésped${String(huespedes)==='1'?'':'es'}</span>`
+    : '<span data-hu-hdr-huespedes></span>';
   const facBadge   = status === 'emitida'
     ? (ticketUrl
         ? `<a href="${esc(ticketUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="text-decoration:none">
@@ -10212,12 +10237,7 @@ function huBuildRecordCard(r) {
       <span style="font-size:14px">${tier.icon}</span>
       <span>${tier.label}</span>
       <span style="display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:18px;padding:0 6px;border-radius:9px;background:rgba(255,255,255,.7);color:${tier.fg};font-size:10px;font-weight:800;letter-spacing:0">${tier.score}</span>
-    </div>` : `
-    <div title="Score ${score}/100 — sin insignia (umbral mínimo: 10)"
-         style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:#f8fafc;color:#64748b;font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:1.5px dashed #cbd5e1">
-      <span style="font-size:13px">·</span><span>Sin tier</span>
-      <span style="display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:18px;padding:0 6px;border-radius:9px;background:#e2e8f0;color:#475569;font-size:10px;font-weight:800;letter-spacing:0">${score}</span>
-    </div>`;
+    </div>` : '';
   const kpisHtml = `
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:84px;text-align:center;backdrop-filter:blur(4px)" title="Suma global de noches en todas las reservaciones del huésped">
@@ -10239,15 +10259,14 @@ function huBuildRecordCard(r) {
   const summary = `
     <summary style="cursor:pointer;list-style:none;padding:16px 18px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto auto;gap:14px;align-items:center">
       <div>
-        <div style="margin-bottom:10px">${medioBadge}</div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px">${medioBadge}${huespedesChip}</div>
         <div style="font-size:18px;font-weight:800;color:#111827;line-height:1.25;margin-bottom:6px">${esc(nombre || '—')}</div>
         <div style="font-size:13px;color:#64748b;font-weight:500">${esc(propiedad || '—')}${departamento ? ' · # ' + esc(departamento) : ''}</div>
         <div style="font-size:13px;color:#64748b;font-weight:500;margin-top:2px">${huFmtFecha(ingreso)} → ${huFmtFecha(salida)}</div>
-        <div style="font-size:12px;color:#475569;font-weight:600;margin-top:3px">🌙 ${esc(noches && Number(noches)>0 ? noches : '—')} noche${String(noches)==='1'?'':'s'}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;font-size:11px;color:#64748b">
-          <span title="Llegada estimada">🛬 <b style="color:#1f2937">${esc(horaIng ? huFmtHoraSimple(horaIng) : '—')}</b></span>
-          <span title="Salida estimada">🛫 <b style="color:#1f2937">${esc(horaSal ? huFmtHoraSimple(horaSal) : '—')}</b></span>
-          <span title="# Huéspedes">👥 <b style="color:#1f2937">${esc(huespedes || '—')}</b></span>
+        <div style="font-size:12px;color:#475569;font-weight:600;margin-top:3px">🌙 <span data-hu-hdr-noches>${esc(noches && Number(noches)>0 ? noches : '—')}</span> noche${String(noches)==='1'?'':'s'}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;font-size:11px;color:#64748b">
+          <span><span style="color:#94a3b8;font-weight:600">Llegada estimada:</span> <b data-hu-hdr-horaing style="color:#1f2937">${esc(horaIng ? huFmtHoraSimple(horaIng) : '—')}</b></span>
+          <span><span style="color:#94a3b8;font-weight:600">Salida estimada:</span> <b data-hu-hdr-horasal style="color:#1f2937">${esc(horaSal ? huFmtHoraSimple(horaSal) : '—')}</b></span>
         </div>
       </div>
       ${kpisHtml}
