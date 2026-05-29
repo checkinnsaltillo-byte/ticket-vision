@@ -2113,3 +2113,13 @@ button[title], a[title], .info-chip[title] { cursor: pointer; }
   background: linear-gradient(90deg, #f1f5f9, #fff) !important;
   border-left: 3px solid #334155 !important;
 }
+/* Summary del card: en móviles colapsa los KPIs/monto/chevron en dos filas */
+@media (max-width: 820px) {
+  .hu-record > summary {
+    grid-template-columns: 1fr auto !important;
+  }
+  .hu-record > summary > div:nth-child(2) {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}

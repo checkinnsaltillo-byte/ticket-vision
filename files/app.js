@@ -9397,6 +9397,39 @@ function huFmtMonto(raw) {
 }
 
 /** Card expandible de una reservación (vista Lista) — diseño que coincide con el original. */
+// ─── Cálculos de historial (noches totales + nº de visitas) ────────────────
+// Una "visita" agrupa reservaciones consecutivas (sin días-hueco entre salida
+// y siguiente ingreso). Reservaciones separadas por ≥1 día son visitas distintas.
+function huComputeGuestStats(currentRow, allRows) {
+  const cel = huValueFlexible(currentRow, ['Cel/Whatsapp (principal)']);
+  const list = (allRows || HU_STATE.rows || [])
+    .filter(x => huValueFlexible(x, ['Cel/Whatsapp (principal)']) === cel && cel);
+  // Parseo + ordenamiento por fecha de ingreso ascendente
+  const parsed = list.map(x => {
+    const ing = huParseDate(huValueFlexible(x, ['Fecha de ingreso']));
+    const sal = huParseDate(huValueFlexible(x, ['Fecha de salida']));
+    const noches = Number(huValueFlexible(x, ['# Noches'])) || 0;
+    return { ing, sal, noches };
+  }).filter(s => s.ing && s.sal).sort((a, b) => a.ing - b.ing);
+
+  let totalNoches = 0;
+  let visitas    = 0;
+  let lastEnd    = null;
+  for (const s of parsed) {
+    totalNoches += s.noches > 0 ? s.noches : Math.max(0, Math.round((s.sal - s.ing) / 86400000));
+    // Si lastEnd existe y la diferencia entre lastEnd y s.ing es <= 0 días, misma visita.
+    // (es decir, salen el mismo día que entra a otra propiedad)
+    if (lastEnd === null) {
+      visitas = 1;
+    } else {
+      const diffDays = Math.round((s.ing - lastEnd) / 86400000);
+      if (diffDays > 0) visitas += 1; // hay hueco → nueva visita
+    }
+    if (lastEnd === null || s.sal > lastEnd) lastEnd = s.sal;
+  }
+  return { totalNoches, visitas, reservaciones: parsed.length };
+}
+
 // ─── Lightbox para fotos (Esc + X + clic fuera para cerrar) ─────────────────
 function huImageZoom(url, title) {
   if (!url) return;
@@ -9441,27 +9474,44 @@ function huDriveThumb(url, size) {
   return `https://drive.google.com/thumbnail?id=${id}&sz=${size || 'w400'}`;
 }
 
-/** Construye una foto-thumb con click→zoom. Si no hay url, devuelve placeholder. */
-function huPhotoBox(url, label, size) {
-  const thumb = url ? huDriveThumb(url, size || 'w400') : '';
-  const full  = url ? huDriveThumb(url, 'w1600') : '';
-  if (!thumb) {
-    return `<div style="width:100%;aspect-ratio:1;border:1.5px dashed #cbd5e1;border-radius:10px;display:flex;align-items:center;justify-content:center;background:#f8fafc;color:#94a3b8;font-size:11px;text-align:center;padding:8px">${esc(label)}<br><span style="opacity:.6">Sin foto</span></div>`;
-  }
+/** Placeholder elegante cuando no hay foto (en lugar de aspect-ratio:1 vacío). */
+function huPhotoPlaceholder(label, icon, height) {
   return `
-    <div style="position:relative;cursor:zoom-in;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc;aspect-ratio:1;transition:transform 180ms cubic-bezier(.34,1.56,.64,1),box-shadow 180ms"
+    <div style="width:100%;height:${height||'120px'};border:1.5px dashed #cbd5e1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#f8fafc,#f1f5f9);color:#94a3b8;padding:10px;text-align:center">
+      <div style="font-size:22px;opacity:.5">${icon || '📷'}</div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em">${esc(label)}</div>
+      <div style="font-size:9px;opacity:.7;font-style:italic">Sin foto disponible</div>
+    </div>`;
+}
+
+/** Construye una foto-thumb con click→zoom. Si no hay url, devuelve placeholder. */
+function huPhotoBox(url, label, options) {
+  const opt = options || {};
+  const size = opt.size || 'w400';
+  const icon = opt.icon || '📷';
+  const aspectRatio = opt.aspect || '1';
+  const height = opt.height;
+  const thumb = url ? huDriveThumb(url, size) : '';
+  const full  = url ? huDriveThumb(url, 'w1600') : '';
+  if (!thumb) return huPhotoPlaceholder(label, icon, height || '110px');
+  const placeholderHtml = huPhotoPlaceholder(label, icon, '100%').replace(/'/g, "\\'").replace(/\n/g, '');
+  const sizeStyle = height
+    ? `height:${height}`
+    : `aspect-ratio:${aspectRatio}`;
+  return `
+    <div style="position:relative;cursor:zoom-in;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc;${sizeStyle};transition:transform 180ms cubic-bezier(.34,1.56,.64,1),box-shadow 180ms"
          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(15,23,42,.18)'"
          onmouseout="this.style.transform='';this.style.boxShadow=''"
          onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')">
       <img src="${esc(thumb)}" alt="${esc(label)}" referrerpolicy="no-referrer"
            style="width:100%;height:100%;object-fit:cover;display:block"
-           onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;padding:8px;text-align:center\\'>${esc(label)}<br>Sin previsualización</div>'">
+           onerror="this.parentElement.innerHTML='${placeholderHtml}'">
       <div style="position:absolute;bottom:0;left:0;right:0;padding:6px 8px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.7));color:#fff;font-size:10px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.5);text-transform:uppercase;letter-spacing:.04em">${esc(label)}</div>
       <div style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(15,23,42,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px">🔍</div>
     </div>`;
 }
 
-/** Construye la "ID Card" del perfil del huésped (columna izquierda). */
+/** Construye la "ID Card" del perfil del huésped (columna izquierda). Tema claro. */
 function huBuildIdCard(r) {
   const nombre   = huValueFlexible(r, ['Nombre del huésped','Nombre de la persona que hizo la reservación']);
   const cel      = huValueFlexible(r, ['Cel/Whatsapp (principal)']);
@@ -9473,87 +9523,104 @@ function huBuildIdCard(r) {
   const regimen  = huValueFlexible(r, ['Régimen fiscal']);
   const cp       = huValueFlexible(r, ['Código Postal']);
   const reqFact  = huValueFlexible(r, ['¿Requiere factura?']);
-  // Fotos
-  const ineFront = huValueFlexible(r, ['Link INE frontal','INE frontal']);
-  const ineBack  = huValueFlexible(r, ['Link INE trasero','INE trasero']);
-  const idUnica  = huValueFlexible(r, ['Link identificación única','Identificación única']);
+  // Fotos (intentamos todas las variantes habituales del Apps Script)
+  const ineFront = huValueFlexible(r, ['Link INE frontal','INE frontal','Link foto INE frontal']);
+  const ineBack  = huValueFlexible(r, ['Link INE trasero','INE trasero','Link foto INE trasero']);
+  const idUnica  = huValueFlexible(r, ['Link identificación única','Identificación única','Link otra identificación','Identificación otro']);
   // Vehículo
   const tieneVeh = huValueFlexible(r, ['¿Cuenta con vehículo?']);
   const marca    = huValueFlexible(r, ['Marca vehículo']);
+  const marcaOtro= huValueFlexible(r, ['Marca vehículo otro']);
   const modelo   = huValueFlexible(r, ['Modelo vehículo']);
+  const modeloOtr= huValueFlexible(r, ['Modelo vehículo otro']);
   const colorV   = huValueFlexible(r, ['Color vehículo']);
   const placas   = huValueFlexible(r, ['Placas']);
   const horaSal  = huValueFlexible(r, ['Hora habitual de salida']);
   const fotoVeh  = huValueFlexible(r, ['Link foto vehículo','Foto vehículo']);
+  const marcaTxt = (marca && marca.toLowerCase() === 'otro') ? (marcaOtro || marca) : marca;
+  const modeloTxt= (modelo && modelo.toLowerCase() === 'otro') ? (modeloOtr || modelo) : modelo;
 
   const wa = huBuildWhatsAppUrl(cel);
   const waEmer = huBuildWhatsAppUrl(celEmer);
 
+  // Sección Vehículo: mostrar si CUALQUIER campo tiene contenido
+  const tieneVehInfo = !!(huIsFacturaYes(tieneVeh) || marcaTxt || modeloTxt || colorV || placas || fotoVeh || horaSal);
+
   return `
-    <div class="hu-id-card" style="background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);border-radius:16px;padding:16px;color:#f8fafc;box-shadow:0 8px 24px rgba(15,23,42,.18);position:relative;overflow:hidden">
-      <!-- accent bar -->
-      <div style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#0ea5e9,#a855f7,#ec4899)"></div>
+    <div class="hu-id-card" style="background:#fff;border-radius:16px;padding:0;color:#0f172a;box-shadow:0 4px 16px rgba(15,23,42,.08);position:relative;overflow:hidden;border:1.5px solid #e2e8f0">
+      <!-- accent bar superior -->
+      <div style="height:4px;background:linear-gradient(90deg,#0ea5e9,#a855f7,#ec4899)"></div>
 
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <div style="font-size:9px;letter-spacing:.18em;color:#94a3b8;font-weight:800">PERFIL DEL HUÉSPED</div>
-        <div style="font-size:9px;color:#64748b;text-transform:uppercase">ID Card</div>
-      </div>
-
-      <!-- Nombre y datos top -->
-      <div style="margin-bottom:14px">
-        <div style="font-size:18px;font-weight:800;color:#fff;line-height:1.2;margin-bottom:6px">${esc(nombre || '—')}</div>
-        ${tipoId ? `<div style="font-size:10px;color:#cbd5e1;letter-spacing:.04em">${esc(tipoId)}</div>` : ''}
-      </div>
-
-      <!-- Fotos INE -->
-      <div style="margin-bottom:14px">
-        <div style="font-size:9px;letter-spacing:.12em;color:#94a3b8;font-weight:700;margin-bottom:6px">IDENTIFICACIÓN</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${huPhotoBox(ineFront, 'INE frontal')}
-          ${huPhotoBox(ineBack,  'INE trasero')}
+      <div style="padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:9px;letter-spacing:.18em;color:#64748b;font-weight:800">PERFIL DEL HUÉSPED</div>
+          <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;font-weight:700;padding:2px 8px;background:#f1f5f9;border-radius:999px">ID Card</div>
         </div>
-        ${idUnica ? `<div style="margin-top:8px">${huPhotoBox(idUnica, 'Identificación única')}</div>` : ''}
-      </div>
 
-      <!-- Contacto -->
-      <div style="margin-bottom:14px">
-        <div style="font-size:9px;letter-spacing:.12em;color:#94a3b8;font-weight:700;margin-bottom:8px">CONTACTO</div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;align-items:center;gap:8px;font-size:12px">
-            <span style="opacity:.6">📱</span>
-            ${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#5eead4;font-weight:700;text-decoration:none">${esc(cel)}</a>` : `<span style="color:#cbd5e1">${esc(cel||'—')}</span>`}
+        <!-- Nombre y tipo -->
+        <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1.5px solid #f1f5f9">
+          <div style="font-size:17px;font-weight:800;color:#0f172a;line-height:1.25;margin-bottom:4px">${esc(nombre || '—')}</div>
+          ${tipoId ? `<div style="font-size:10px;color:#64748b;letter-spacing:.04em;text-transform:uppercase;font-weight:600">${esc(tipoId)}</div>` : ''}
+        </div>
+
+        <!-- Fotos INE -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:9px;letter-spacing:.12em;color:#475569;font-weight:800;margin-bottom:8px">📇 IDENTIFICACIÓN</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            ${huPhotoBox(ineFront, 'INE frontal', { icon: '🪪', height: '140px' })}
+            ${huPhotoBox(ineBack,  'INE trasero', { icon: '🪪', height: '140px' })}
           </div>
-          ${celEmer ? `<div style="display:flex;align-items:center;gap:8px;font-size:11px">
-            <span style="opacity:.6">🚨</span>
-            ${waEmer ? `<a href="${esc(waEmer)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#fcd34d;font-weight:600;text-decoration:none">${esc(celEmer)}</a>` : `<span style="color:#cbd5e1">${esc(celEmer)}</span>`}
-            <span style="font-size:9px;color:#64748b">EMERGENCIA</span>
-          </div>` : ''}
-          ${correoP ? `<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#cbd5e1;word-break:break-all">
-            <span style="opacity:.6">📧</span><span>${esc(correoP)}</span>
-          </div>` : ''}
+          ${idUnica ? `<div style="margin-top:8px">${huPhotoBox(idUnica, 'Identificación única', { icon: '🆔', height: '120px' })}</div>` : ''}
         </div>
+
+        <!-- Contacto -->
+        <div style="margin-bottom:14px;padding:10px 12px;background:linear-gradient(180deg,#f0fdfa,#fff);border:1px solid #99f6e4;border-radius:10px">
+          <div style="font-size:9px;letter-spacing:.12em;color:#0f766e;font-weight:800;margin-bottom:8px">📞 CONTACTO</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${cel ? `<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+              <span>📱</span>
+              ${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:800;text-decoration:none">${esc(cel)}</a>` : `<span style="color:#0f172a;font-weight:700">${esc(cel)}</span>`}
+              <span style="font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Principal</span>
+            </div>` : ''}
+            ${correoP ? `<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#1f2937;word-break:break-all">
+              <span>📧</span><span>${esc(correoP)}</span>
+            </div>` : ''}
+          </div>
+        </div>
+
+        <!-- Contacto de emergencia (cuando exista) -->
+        ${celEmer ? `
+        <div style="margin-bottom:14px;padding:10px 12px;background:linear-gradient(180deg,#fef2f2,#fff);border:1px solid #fecaca;border-radius:10px">
+          <div style="font-size:9px;letter-spacing:.12em;color:#b91c1c;font-weight:800;margin-bottom:8px">🚨 CONTACTO DE EMERGENCIA</div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+            <span>📱</span>
+            ${waEmer ? `<a href="${esc(waEmer)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#b91c1c;font-weight:800;text-decoration:none">${esc(celEmer)}</a>` : `<span style="color:#7f1d1d;font-weight:700">${esc(celEmer)}</span>`}
+          </div>
+        </div>` : ''}
+
+        <!-- Facturación si aplica -->
+        ${(razon || rfc || regimen) ? `
+        <div style="margin-bottom:14px;padding:10px 12px;background:linear-gradient(180deg,#eff6ff,#fff);border:1px solid #bfdbfe;border-radius:10px">
+          <div style="font-size:9px;letter-spacing:.12em;color:#1e40af;font-weight:800;margin-bottom:6px">🧾 DATOS FISCALES ${huIsFacturaYes(reqFact)?'<span style="color:#15803d;background:#dcfce7;padding:1px 7px;border-radius:999px;margin-left:4px;font-weight:700">Requiere factura</span>':''}</div>
+          ${razon   ? `<div style="font-size:12px;color:#0f172a;font-weight:700;margin-bottom:3px">${esc(razon)}</div>` : ''}
+          ${rfc     ? `<div style="font-size:11px;color:#1f2937;font-family:'SFMono-Regular',Consolas,monospace;letter-spacing:.04em;background:#dbeafe;padding:2px 6px;border-radius:4px;display:inline-block;margin-bottom:3px">RFC: <b>${esc(rfc)}</b></div>` : ''}
+          ${regimen ? `<div style="font-size:10px;color:#475569;margin-top:3px">${esc(regimen)}</div>` : ''}
+          ${cp      ? `<div style="font-size:10px;color:#475569;margin-top:3px">📮 C.P. ${esc(cp)}</div>` : ''}
+        </div>` : ''}
+
+        <!-- Vehículo si aplica -->
+        ${tieneVehInfo ? `
+        <div style="padding:10px 12px;background:linear-gradient(180deg,#f5f3ff,#fff);border:1px solid #ddd6fe;border-radius:10px">
+          <div style="font-size:9px;letter-spacing:.12em;color:#6d28d9;font-weight:800;margin-bottom:8px">🚗 VEHÍCULO</div>
+          ${fotoVeh ? `<div style="margin-bottom:10px">${huPhotoBox(fotoVeh, 'Foto vehículo', { icon: '🚗', height: '140px' })}</div>` : ''}
+          ${(marcaTxt||modeloTxt) ? `<div style="font-size:13px;color:#0f172a;font-weight:700;margin-bottom:4px">${esc(marcaTxt||'')} ${esc(modeloTxt||'')}</div>` : ''}
+          <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px">
+            ${colorV ? `<span style="font-size:10px;color:#475569;background:#f1f5f9;padding:2px 8px;border-radius:999px">🎨 ${esc(colorV)}</span>` : ''}
+            ${placas ? `<span style="font-size:11px;color:#0f172a;font-family:'SFMono-Regular',Consolas,monospace;font-weight:800;background:#fef3c7;padding:3px 10px;border-radius:4px;border:1.5px solid #fcd34d;letter-spacing:.08em">${esc(placas)}</span>` : ''}
+          </div>
+          ${horaSal ? `<div style="font-size:10px;color:#6b7280;margin-top:8px;display:flex;align-items:center;gap:5px">⏰ <span>Salida habitual: <b style="color:#1f2937">${esc(horaSal)}</b></span></div>` : ''}
+        </div>` : ''}
       </div>
-
-      <!-- Facturación si aplica -->
-      ${(razon || rfc || regimen) ? `
-      <div style="margin-bottom:14px;padding:10px;background:rgba(15,23,42,.5);border:1px solid #334155;border-radius:10px">
-        <div style="font-size:9px;letter-spacing:.12em;color:#94a3b8;font-weight:700;margin-bottom:6px">DATOS FISCALES ${huIsFacturaYes(reqFact)?'<span style="color:#5eead4">· Requiere factura</span>':''}</div>
-        ${razon   ? `<div style="font-size:12px;color:#fff;font-weight:600;margin-bottom:3px">${esc(razon)}</div>` : ''}
-        ${rfc     ? `<div style="font-size:11px;color:#cbd5e1;font-family:monospace;letter-spacing:.04em">RFC: ${esc(rfc)}</div>` : ''}
-        ${regimen ? `<div style="font-size:10px;color:#94a3b8;margin-top:3px">${esc(regimen)}</div>` : ''}
-        ${cp      ? `<div style="font-size:10px;color:#94a3b8;margin-top:3px">C.P. ${esc(cp)}</div>` : ''}
-      </div>` : ''}
-
-      <!-- Vehículo si aplica -->
-      ${(huIsFacturaYes(tieneVeh) || marca || placas || fotoVeh) ? `
-      <div style="padding:10px;background:rgba(15,23,42,.5);border:1px solid #334155;border-radius:10px">
-        <div style="font-size:9px;letter-spacing:.12em;color:#94a3b8;font-weight:700;margin-bottom:8px">🚗 VEHÍCULO</div>
-        ${fotoVeh ? `<div style="margin-bottom:8px">${huPhotoBox(fotoVeh, 'Foto vehículo')}</div>` : ''}
-        ${(marca||modelo) ? `<div style="font-size:12px;color:#fff;font-weight:600">${esc(marca)} ${esc(modelo)}</div>` : ''}
-        ${colorV ? `<div style="font-size:11px;color:#cbd5e1">Color: ${esc(colorV)}</div>` : ''}
-        ${placas ? `<div style="font-size:11px;color:#fff;font-family:monospace;font-weight:700;background:rgba(255,255,255,.1);padding:3px 8px;border-radius:4px;display:inline-block;margin-top:4px;letter-spacing:.08em">${esc(placas)}</div>` : ''}
-        ${horaSal ? `<div style="font-size:10px;color:#94a3b8;margin-top:6px">⏰ Salida habitual: ${esc(horaSal)}</div>` : ''}
-      </div>` : ''}
     </div>`;
 }
 
@@ -9615,10 +9682,18 @@ function huBuildReservationDetail(r) {
   const recId      = String(r['ID'] || r['row_number'] || '');
   const ingreso    = huValueFlexible(r, ['Fecha de ingreso']);
   const salida     = huValueFlexible(r, ['Fecha de salida']);
+  const horaIng    = huValueFlexible(r, ['Hora estimada de llegada','Hora de llegada']);
+  const horaSal    = huValueFlexible(r, ['Hora estimada de salida','Hora de salida']);
   const noches     = huValueFlexible(r, ['# Noches']);
   const huespedes  = huValueFlexible(r, ['# Huéspedes']);
   const propiedad  = huValueFlexible(r, ['Propiedad']);
   const departamento = huValueFlexible(r, ['# Departamento']);
+  const motivo     = huValueFlexible(r, ['Motivo de tu hospedaje','Motivo hospedaje','Motivo']);
+  const motivoOtro = huValueFlexible(r, ['Motivo otro']);
+  const motivoTxt  = (motivo && motivo.toLowerCase() === 'otro') ? (motivoOtro || motivo) : motivo;
+  const comentarios= huValueFlexible(r, ['Notas','Envía tus comentarios','Comentarios']);
+  const comentFact = huValueFlexible(r, ['Envía tus comentarios con relación a la factura']);
+  const nombresHues= huValueFlexible(r, ['Nombres de TODOS los huéspedes (separados por comas)']);
   const medio      = huValueFlexible(r, ['Medio de reservación']);
   const formaPago  = huValueFlexible(r, ['Forma de pago']);
   const montoPag   = huValueFlexible(r, ['($) Monto Total pagado','$ Monto Total pagado']);
@@ -9712,12 +9787,18 @@ function huBuildReservationDetail(r) {
       <div style="display:flex;flex-direction:column">
         ${fldRow('Propiedad', esc(propiedad))}
         ${fldRow('# Departamento', esc(departamento))}
+        ${fldRow('Hora estimada de llegada', horaIng ? `<span style="display:inline-flex;align-items:center;gap:4px"><span>⏰</span><b>${esc(horaIng)}</b></span>` : '—')}
+        ${fldRow('Hora estimada de salida', horaSal ? `<span style="display:inline-flex;align-items:center;gap:4px"><span>⏰</span><b>${esc(horaSal)}</b></span>` : '—')}
         ${fldRow('# Noches', esc(noches))}
         ${fldRow('# Huéspedes', esc(huespedes))}
+        ${nombresHues ? fldRow('Nombres de huéspedes', `<span style="font-size:12px;line-height:1.5">${esc(nombresHues)}</span>`) : ''}
+        ${motivoTxt ? fldRow('Motivo del hospedaje', `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#ede9fe;color:#5b21b6;font-weight:700;font-size:11px;border:1px solid #c4b5fd">${esc(motivoTxt)}</span>`) : ''}
         ${fldRow('Forma de pago', esc(formaPago))}
         ${fldRow('Monto Total pagado', montoPag ? huFmtMonto(montoPag) : '—')}
         ${fldRow('Monto Facturado', montoFact ? `<span data-hu-header-amount="1" style="font-weight:800;color:#0f172a">${huFmtMonto(montoFact)}</span>` : '<span data-hu-header-amount="1">—</span>')}
         ${fldRow('¿Requiere factura?', huReqFacturaBadge(reqFactura))}
+        ${comentarios ? fldRow('Comentarios', `<div style="font-size:12px;line-height:1.5;background:#f8fafc;padding:8px 10px;border-radius:6px;border-left:3px solid #94a3b8;font-style:italic;color:#334155">${esc(comentarios)}</div>`) : ''}
+        ${comentFact ? fldRow('Comentarios sobre factura', `<div style="font-size:12px;line-height:1.5;background:#fef3c7;padding:8px 10px;border-radius:6px;border-left:3px solid #f59e0b;font-style:italic;color:#78350f">${esc(comentFact)}</div>`) : ''}
       </div>
 
       ${airbnbBox}
@@ -9793,21 +9874,36 @@ function huBuildRecordCard(r) {
     ? `<span style="display:inline-block;padding:5px 12px;border-radius:999px;background:#fff7ed;color:#c2410c;font-weight:700;font-size:11px;border:1.5px solid #fdba74">🧾 Ticket pendiente</span>`
     : '';
 
+  // KPIs del huésped (sumando su historial completo de reservaciones)
+  const stats = huComputeGuestStats(r, HU_STATE.rows);
+  const kpisHtml = `
+    <div style="display:flex;gap:8px;align-items:stretch">
+      <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:74px;text-align:center;backdrop-filter:blur(4px)" title="Suma de noches en todas las reservaciones del huésped">
+        <div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:.05em;text-transform:uppercase">🌙 Noches</div>
+        <div style="font-size:18px;font-weight:800;color:#0f172a;line-height:1.1">${stats.totalNoches}</div>
+      </div>
+      <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:74px;text-align:center;backdrop-filter:blur(4px)" title="Visitas distintas (reservaciones consecutivas cuentan como una sola visita)">
+        <div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:.05em;text-transform:uppercase">🧳 Visitas</div>
+        <div style="font-size:18px;font-weight:800;color:#0f172a;line-height:1.1">${stats.visitas}</div>
+      </div>
+    </div>`;
+
   // Header SUMMARY — clic abre/cierra (sin marker nativo)
   const summary = `
-    <summary style="cursor:pointer;list-style:none;padding:16px 18px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:start">
+    <summary style="cursor:pointer;list-style:none;padding:16px 18px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto auto;gap:14px;align-items:center">
       <div>
         <div style="margin-bottom:10px">${medioBadge}</div>
         <div style="font-size:18px;font-weight:800;color:#111827;line-height:1.25;margin-bottom:6px">${esc(nombre || '—')}</div>
         <div style="font-size:13px;color:#64748b;font-weight:500">${esc(propiedad || '—')}${departamento ? ' · # ' + esc(departamento) : ''}</div>
         <div style="font-size:13px;color:#64748b;font-weight:500;margin-top:2px">${huFmtFecha(ingreso)} → ${huFmtFecha(salida)}</div>
       </div>
+      ${kpisHtml}
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:160px">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Monto facturado</div>
         <div data-hu-header-amount="1" style="font-size:22px;font-weight:800;color:#111827">${montoFact ? huFmtMonto(montoFact) : '—'}</div>
         <div>${facBadge}</div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:14px;flex-shrink:0;align-self:center" class="hu-record-chev">▾</div>
+      <div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:14px;flex-shrink:0" class="hu-record-chev">▾</div>
     </summary>`;
 
   // Cuerpo expandido — grid de tarjetas-campo
