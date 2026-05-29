@@ -9062,11 +9062,58 @@ function huRecalcAirbnb(inputAirbnb) {
   const com = huCalcComisionAirbnb(inputAirbnb.value);
   const fac = huCalcMontoFacturadoAirbnb(inputAirbnb.value);
   if (comInp) comInp.value = com ? com.toFixed(2) : '';
-  if (facInp) facInp.value = fac ? fac.toFixed(2) : '';
+  if (facInp) {
+    facInp.value = fac ? fac.toFixed(2) : '';
+  }
   // Actualizar el monto facturado del header del card
   const card = inputAirbnb.closest('.hu-record');
   const hdrAmt = card?.querySelector('[data-hu-header-amount="1"]');
   if (hdrAmt) hdrAmt.textContent = fac ? huFmtMonto(fac) : '—';
+  // Persistir en background el valor calculado (debounced — no satura al backend
+  // mientras el usuario sigue escribiendo).
+  const recordId = card?.dataset.recordId || '';
+  if (recordId) huSaveMontoFacturadoDebounced(recordId, fac ? fac.toFixed(2) : '', card);
+}
+
+/** Guarda el monto facturado para un record, con un debounce de 700ms para evitar
+ *  llamadas excesivas al backend mientras el usuario escribe. */
+const HU_SAVE_TIMERS = {};
+function huSaveMontoFacturadoDebounced(recordId, monto, cardEl) {
+  if (!recordId) return;
+  if (HU_SAVE_TIMERS[recordId]) clearTimeout(HU_SAVE_TIMERS[recordId]);
+  HU_SAVE_TIMERS[recordId] = setTimeout(() => {
+    huSaveMontoFacturadoNow(recordId, monto, cardEl);
+    delete HU_SAVE_TIMERS[recordId];
+  }, 700);
+}
+async function huSaveMontoFacturadoNow(recordId, monto, cardEl) {
+  // Indicador visual mientras guarda
+  const hdrAmt = cardEl?.querySelector('[data-hu-header-amount="1"]');
+  const prevColor = hdrAmt?.style.color;
+  if (hdrAmt) hdrAmt.style.color = '#a16207'; // ámbar mientras guarda
+  try {
+    const res = await fetch(`${BACKEND}/huespedes-save-monto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ record_id: recordId, monto_facturado_total: String(monto) }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || json.message || 'Error al guardar monto');
+    // Actualiza el rec en cache local para que un refresh inmediato lo refleje
+    const r = (HU_STATE.rows||[]).find(x => String(x['ID']||x['row_number']||'') === String(recordId));
+    if (r) r['$ Monto facturado Total'] = monto;
+    if (hdrAmt) {
+      hdrAmt.style.color = '#16a34a'; // verde confirmación
+      setTimeout(() => { if (hdrAmt) hdrAmt.style.color = prevColor || '#111827'; }, 1000);
+    }
+  } catch (e) {
+    if (hdrAmt) {
+      hdrAmt.style.color = '#dc2626'; // rojo error
+      hdrAmt.title = 'Error al guardar: ' + e.message;
+      setTimeout(() => { if (hdrAmt) { hdrAmt.style.color = prevColor || '#111827'; hdrAmt.title = ''; } }, 1800);
+    }
+    console.warn('huSaveMontoFacturadoNow error:', e.message);
+  }
 }
 /** Mensaje canónico para "consultar ticket emitido". */
 function huBuildTicketConsultaMsg(url) {
@@ -9406,6 +9453,18 @@ function huBuildRecordCard(r) {
   const airbnbVal = esAirbnb ? huParseMontoAirbnb(montoAirbnb) : 0;
   const comisionPre  = esAirbnb && airbnbVal ? huCalcComisionAirbnb(airbnbVal).toFixed(2)        : '';
   const facturadoPre = esAirbnb && airbnbVal ? huCalcMontoFacturadoAirbnb(airbnbVal).toFixed(2) : montoFact;
+  // Si el valor pre-calculado difiere de lo que tiene el sheet (montoFact),
+  // schedule un save para sincronizar el sheet con lo que se muestra en la card.
+  // Esto cubre el caso "guardar en cuanto aparece el monto" cuando viene del
+  // cálculo indirecto de Airbnb.
+  if (esAirbnb && airbnbVal > 0) {
+    const facturadoPreNum = Number(facturadoPre || 0);
+    const montoFactNum    = Number(huFmtMontoEditable(montoFact) || 0);
+    if (facturadoPreNum > 0 && Math.abs(facturadoPreNum - montoFactNum) > 0.005) {
+      setTimeout(() => huSaveMontoFacturadoDebounced(recId, facturadoPre,
+        document.querySelector(`.hu-record[data-record-id="${recId}"]`)), 400);
+    }
+  }
 
   // Botones cuando el ticket está emitido
   const mensajeConsulta = ticketUrl ? huBuildTicketConsultaMsg(ticketUrl) : '';

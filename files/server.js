@@ -155,6 +155,33 @@ app.get("/huespedes-detail", async (req, res) => {
   }
 });
 
+// Guarda el monto facturado total (campo "(+) $ Monto facturado Total" del card)
+// en la columna "$ Monto facturado Total" de Reservaciones.
+app.post("/huespedes-save-monto", async (req, res) => {
+  try {
+    const recordId = req.body?.record_id || "";
+    const monto    = req.body?.monto_facturado_total ?? "";
+    if (!recordId) throw new Error("Falta record_id");
+    // El Apps Script del check-in expone esta acción vía doPost; usamos POST con
+    // text/plain (igual que en la check-in app) para evitar preflight CORS.
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "update_facturado_total",
+        record_id: recordId,
+        monto_facturado_total: String(monto),
+      }),
+    });
+    const text = await r.text();
+    let json = {};
+    try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
+    res.json(json);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Guardar clasificación de registro bancario en hoja BANCOS ───────────────
 
 app.post("/save-banco-clasificacion", async (req, res) => {
