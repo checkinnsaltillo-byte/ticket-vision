@@ -9040,6 +9040,68 @@ function huApplyMonthFilter(rows) {
   });
 }
 
+// ─── Constantes y helpers de cálculo Airbnb (portados de check-in) ──────────
+const HU_AIRBNB_COMISION = 0.155;
+function huParseMontoAirbnb(value) {
+  const clean = String(value || '').replace(/,/g, '').replace(/[^0-9.\-]/g, '');
+  const n = Number(clean);
+  return Number.isFinite(n) ? n : 0;
+}
+function huCalcComisionAirbnb(total) {
+  return Math.max(0, huParseMontoAirbnb(total) * HU_AIRBNB_COMISION);
+}
+function huCalcMontoFacturadoAirbnb(total) {
+  const t = huParseMontoAirbnb(total);
+  return Math.max(0, t - huCalcComisionAirbnb(t));
+}
+/** Recalcula y refleja en los inputs hijos + en el header del card. */
+function huRecalcAirbnb(inputAirbnb) {
+  const box = inputAirbnb.closest('[data-hu-airbnb-box="1"]'); if (!box) return;
+  const comInp = box.querySelector('[data-hu-airbnb-comision="1"]');
+  const facInp = box.querySelector('[data-hu-airbnb-facturado="1"]');
+  const com = huCalcComisionAirbnb(inputAirbnb.value);
+  const fac = huCalcMontoFacturadoAirbnb(inputAirbnb.value);
+  if (comInp) comInp.value = com ? com.toFixed(2) : '';
+  if (facInp) facInp.value = fac ? fac.toFixed(2) : '';
+  // Actualizar el monto facturado del header del card
+  const card = inputAirbnb.closest('.hu-record');
+  const hdrAmt = card?.querySelector('[data-hu-header-amount="1"]');
+  if (hdrAmt) hdrAmt.textContent = fac ? huFmtMonto(fac) : '—';
+}
+/** Mensaje canónico para "consultar ticket emitido". */
+function huBuildTicketConsultaMsg(url) {
+  const clean = String(url||'').trim();
+  if (!/^https?:\/\//i.test(clean)) return '';
+  return `Hemos enviado el TICKET para AUTO-FACTURACIÓN al correo proporcionado.\n\nURL de la factura:\n${clean}\n\nRecuerda que sólo estará vigente dentro del mes fiscal en curso.`;
+}
+/** Copia texto al portapapeles (soporta navegadores sin clipboard API). */
+async function huCopyTextUniversal(text) {
+  const v = String(text||'');
+  if (!v) return false;
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(v); return true; } catch(_) {}
+  }
+  const ta = document.createElement('textarea');
+  ta.value = v; ta.setAttribute('readonly','');
+  ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch(_) { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
+window.huespedesCopiarMsgConsulta = async function(btn, encoded) {
+  const msg = decodeURIComponent(encoded || '');
+  const original = btn.textContent;
+  const ok = await huCopyTextUniversal(msg);
+  btn.textContent = ok ? '✓ Mensaje copiado' : '⚠ No se pudo copiar';
+  btn.style.background = ok ? '#16a34a' : '#dc2626';
+  setTimeout(() => {
+    btn.textContent = original;
+    btn.style.background = '#475569';
+  }, 1800);
+};
+
 // ─── Helpers de status de factura (portados de check-in) ────────────────────
 function huValueFlexible(row, candidates) {
   if (!row || typeof row !== 'object') return '';
@@ -9327,7 +9389,7 @@ function huBuildRecordCard(r) {
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:160px">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Monto facturado</div>
-        <div style="font-size:22px;font-weight:800;color:#111827">${montoFact ? huFmtMonto(montoFact) : '—'}</div>
+        <div data-hu-header-amount="1" style="font-size:22px;font-weight:800;color:#111827">${montoFact ? huFmtMonto(montoFact) : '—'}</div>
         <div>${facBadge}</div>
       </div>
       <div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:14px;flex-shrink:0;align-self:center" class="hu-record-chev">▾</div>
@@ -9340,34 +9402,61 @@ function huBuildRecordCard(r) {
       <div style="font-size:13.5px;color:#1f2937">${valueHtml || '—'}</div>
     </div>`;
 
-  // Bloque Airbnb auto-facturación (3 inputs)
+  // Pre-cálculo Airbnb cuando aplique (para que el primer render ya muestre los valores)
+  const airbnbVal = esAirbnb ? huParseMontoAirbnb(montoAirbnb) : 0;
+  const comisionPre  = esAirbnb && airbnbVal ? huCalcComisionAirbnb(airbnbVal).toFixed(2)        : '';
+  const facturadoPre = esAirbnb && airbnbVal ? huCalcMontoFacturadoAirbnb(airbnbVal).toFixed(2) : montoFact;
+
+  // Botones cuando el ticket está emitido
+  const mensajeConsulta = ticketUrl ? huBuildTicketConsultaMsg(ticketUrl) : '';
+  const btnVerTicket = (status === 'emitida' && ticketUrl) ? `
+    <a href="${esc(ticketUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
+       style="display:inline-block;padding:7px 14px;border:none;background:#16a34a;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;text-decoration:none;margin-right:6px;box-shadow:0 2px 4px rgba(22,163,74,.3)">
+      🧾 Ver ticket${folio ? ' - Folio #' + esc(folio) : ''}
+    </a>` : '';
+  const btnCopiarMsg = (status === 'emitida' && mensajeConsulta) ? `
+    <button type="button" onclick="event.stopPropagation();huespedesCopiarMsgConsulta(this,'${encodeURIComponent(mensajeConsulta)}')"
+            style="padding:7px 14px;border:none;background:#475569;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 2px 4px rgba(71,85,105,.3)">
+      📋 Copiar mensaje para consultar ticket emitido
+    </button>` : '';
+  const btnGenerar = (status === 'pendiente') ? `
+    <button onclick="event.stopPropagation();huespedesGenerarTicket('${esc(recId)}')"
+            style="padding:8px 22px;border:none;background:linear-gradient(180deg,#ef4444 0%,#b91c1c 100%);color:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(185,28,28,.4)">
+      Generar Ticket
+    </button>` : '';
+
+  // Bloque Airbnb auto-facturación
   const airbnbBox = `
-    <div style="border:1.5px solid #e2e8f0;border-radius:12px;padding:11px 14px;background:#fff">
+    <div data-hu-airbnb-box="1" style="border:1.5px solid #e2e8f0;border-radius:12px;padding:11px 14px;background:#fff">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;margin-bottom:10px">Ticket para auto-facturación</div>
       ${esAirbnb ? `
+        <!-- (=) Monto total Airbnb — editable -->
         <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:8px">
           <div style="font-size:11px;color:#1e40af;font-weight:700;margin-bottom:6px">(=) $ Monto total Airbnb</div>
-          <input type="text" value="${esc(montoAirbnb)}" placeholder=""
+          <input type="number" step="0.01" min="0" value="${esc(montoAirbnb)}" placeholder="0.00"
                  onclick="event.stopPropagation()"
-                 style="width:100%;padding:7px 10px;border:1px solid #bfdbfe;border-radius:6px;background:#fff;font-size:13px;color:#1e40af;font-weight:600">
+                 oninput="huRecalcAirbnb(this)"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+                 style="width:100%;padding:7px 10px;border:1px solid #bfdbfe;border-radius:6px;background:#fff;font-size:13px;color:#1e40af;font-weight:700;outline:none">
           <div style="font-size:10px;color:#3b82f6;margin-top:4px">Base editable para calcular comisión y monto facturado.</div>
         </div>
-        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px;margin-bottom:8px;opacity:.85">
-          <div style="font-size:11px;color:#92400e;font-weight:700;margin-bottom:6px">(-) $ Comisión Airbnb</div>
-          <input type="text" value="" readonly onclick="event.stopPropagation()"
-                 style="width:100%;padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;background:#fffbeb;font-size:13px;color:#92400e;font-weight:600">
-          <div style="font-size:10px;color:#a16207;margin-top:4px">Calculado: Airbnb × (15.5%)</div>
+        <!-- (-) Comisión Airbnb — calculado, fondo más sombreado -->
+        <div style="background:#fde68a;border:1px solid #f59e0b;border-radius:8px;padding:10px;margin-bottom:8px">
+          <div style="font-size:11px;color:#78350f;font-weight:700;margin-bottom:6px">(-) $ Comisión Airbnb</div>
+          <input type="number" step="0.01" data-hu-airbnb-comision="1" value="${esc(comisionPre)}" readonly aria-readonly="true"
+                 onclick="event.stopPropagation()"
+                 style="width:100%;padding:7px 10px;border:1px solid #f59e0b;border-radius:6px;background:#fef3c7;font-size:13px;color:#78350f;font-weight:700;cursor:not-allowed;outline:none">
+          <div style="font-size:10px;color:#92400e;margin-top:4px;font-weight:600">🔒 Calculado automáticamente: Airbnb × 15.5%</div>
         </div>` : ''}
-      <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:8px;padding:10px;margin-bottom:10px">
-        <div style="font-size:11px;color:#5b21b6;font-weight:700;margin-bottom:6px">(+) $ Monto facturado Total</div>
-        <input type="text" value="${esc(montoFact)}" ${esAirbnb?'readonly':''} onclick="event.stopPropagation()"
-               style="width:100%;padding:7px 10px;border:1px solid #c4b5fd;border-radius:6px;background:${esAirbnb?'#f5f3ff':'#fff'};font-size:13px;color:#5b21b6;font-weight:600">
-        ${esAirbnb?'<div style="font-size:10px;color:#7c3aed;margin-top:4px">Calculado: $ Monto total Airbnb - $ Comisión Airbnb.</div>':''}
+      <!-- (+) Monto facturado Total — calculado/editable según medio -->
+      <div style="background:${esAirbnb?'#ddd6fe':'#ede9fe'};border:1px solid #a78bfa;border-radius:8px;padding:10px;margin-bottom:10px">
+        <div style="font-size:11px;color:#4c1d95;font-weight:700;margin-bottom:6px">(+) $ Monto facturado Total</div>
+        <input type="number" step="0.01" data-hu-airbnb-facturado="1" value="${esc(facturadoPre)}" ${esAirbnb?'readonly aria-readonly="true"':''} onclick="event.stopPropagation()"
+               style="width:100%;padding:7px 10px;border:1px solid #a78bfa;border-radius:6px;background:${esAirbnb?'#c4b5fd':'#fff'};font-size:13px;color:#4c1d95;font-weight:700;${esAirbnb?'cursor:not-allowed;':''}outline:none">
+        ${esAirbnb?'<div style="font-size:10px;color:#6d28d9;margin-top:4px;font-weight:600">🔒 Calculado automáticamente: $ Monto total Airbnb − $ Comisión Airbnb</div>':''}
       </div>
-      <button onclick="event.stopPropagation();huespedesGenerarTicket('${esc(recId)}')"
-              style="padding:8px 22px;border:none;background:linear-gradient(180deg,#ef4444 0%,#b91c1c 100%);color:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(185,28,28,.4)">
-        Generar Ticket
-      </button>
+      <!-- Botones: Ver ticket + Copiar mensaje (cuando emitida) o Generar Ticket (cuando pendiente) -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${btnVerTicket}${btnCopiarMsg}${btnGenerar}</div>
     </div>`;
 
   // Cel con link
