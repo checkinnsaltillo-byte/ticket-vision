@@ -9275,7 +9275,7 @@ function huUpdateHeaderFromMerged(detailsEl, r) {
   const chip = detailsEl.querySelector('[data-hu-hdr-huespedes]');
   if (chip && hu) {
     chip.innerHTML = `👥 ${esc(hu)} huésped${String(hu)==='1'?'':'es'}`;
-    chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:11px;border:1px solid #c7d2fe;letter-spacing:.02em';
+    chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;background:#fff;color:#1f2937;font-weight:800;font-size:11px;border:1px solid #e2e8f0;letter-spacing:.02em;box-shadow:0 1px 2px rgba(15,23,42,.05)';
   }
 }
 
@@ -9652,7 +9652,7 @@ function huParseMontoRobust(raw) {
 }
 
 // ─── Índice de Lealtad: score 0-100 con ponderaciones editables ──────────
-const HU_LOYALTY_DEFAULTS = { w_noches:40, w_visitas:30, w_monto:30 };
+const HU_LOYALTY_DEFAULTS = { w_noches:30, w_visitas:20, w_monto:50 };
 // Valores de referencia con los que cada KPI llega a 100 puntos. Calibrados
 // a partir de la metodología solicitada (Oro = ≥20 noches y ≥8 visitas):
 const HU_LOYALTY_REF = { ref_noches:30, ref_visitas:12, ref_monto:100000 };
@@ -10215,7 +10215,7 @@ function huBuildRecordCard(r) {
   // Header chips: medio + factura + huéspedes
   const medioBadge = huMedioBadge(medio);
   const huespedesChip = huespedes
-    ? `<span data-hu-hdr-huespedes style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:11px;border:1px solid #c7d2fe;letter-spacing:.02em">👥 ${esc(huespedes)} huésped${String(huespedes)==='1'?'':'es'}</span>`
+    ? `<span data-hu-hdr-huespedes style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;background:#fff;color:#1f2937;font-weight:800;font-size:11px;border:1px solid #e2e8f0;letter-spacing:.02em;box-shadow:0 1px 2px rgba(15,23,42,.05)">👥 ${esc(huespedes)} huésped${String(huespedes)==='1'?'':'es'}</span>`
     : '<span data-hu-hdr-huespedes></span>';
   const facBadge   = status === 'emitida'
     ? (ticketUrl
