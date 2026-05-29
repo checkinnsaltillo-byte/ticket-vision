@@ -212,8 +212,10 @@ app.get("/huespedes-detail", async (req, res) => {
 // en la columna "$ Monto facturado Total" de Reservaciones.
 app.post("/huespedes-save-monto", async (req, res) => {
   try {
-    const recordId = req.body?.record_id || "";
-    const monto    = req.body?.monto_facturado_total ?? "";
+    const recordId    = req.body?.record_id || "";
+    const monto       = req.body?.monto_facturado_total ?? "";
+    const comisionAir = req.body?.comision_airbnb ?? "";
+    const totalAirbnb = req.body?.monto_total_airbnb ?? "";
     if (!recordId) throw new Error("Falta record_id");
     // El Apps Script del check-in expone esta acción vía doPost; usamos POST con
     // text/plain (igual que en la check-in app) para evitar preflight CORS.
@@ -224,6 +226,10 @@ app.post("/huespedes-save-monto", async (req, res) => {
         action: "update_facturado_total",
         record_id: recordId,
         monto_facturado_total: String(monto),
+        // Solo se mandan cuando vienen llenos (caso Airbnb). El Apps Script
+        // debe escribirlos en "$ Comisión Airbnb" y "$ MONTO TOTAL Airbnb".
+        comision_airbnb:    String(comisionAir || ""),
+        monto_total_airbnb: String(totalAirbnb || ""),
       }),
     });
     const text = await r.text();

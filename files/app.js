@@ -8911,12 +8911,8 @@ async function huespedesLoad(forceRefetch) {
   const wrap  = document.getElementById('hu-table-wrap');
   const lbl   = document.getElementById('hu-status-label');
 
-  // Auto-mes-actual la primera vez
-  const mesEl = document.getElementById('hu-filtro-mes');
-  if (mesEl && !mesEl.value) {
-    const now = new Date();
-    mesEl.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  }
+  // El populate del select y la auto-selección del mes actual ocurren después
+  // de cargar las filas (ver más abajo, justo antes de huespedesRender).
 
   if (!HU_STATE.filterOptions) await huespedesLoadFilterOptions();
 
@@ -8947,6 +8943,7 @@ async function huespedesLoad(forceRefetch) {
     HU_STATE.totalMediosUnicos = data.total_medios_unicos || 0;
     HU_STATE.loaded = true;
     if (lbl) lbl.textContent = `${data.total || 0} reservaciones`;
+    huPopulateMesOptions();
     huespedesRender();
   } catch (e) {
     if (lbl) lbl.textContent = 'Error: ' + e.message;
@@ -9021,6 +9018,90 @@ function huParseDate(v) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+/** Asigna una insignia (tier) al huésped basado en noches+visitas globales.
+ *  Reglas:
+ *    Oro       — ≥ 20 noches Y ≥ 8 visitas
+ *    Plata     — ≥ 10 noches y < 15 noches Y ≥ 4 visitas
+ *    Bronce    — ≥ 5 noches y < 10 noches
+ *    Recurrente— > 1 noche y < 5 noches
+ *    null      — sin insignia
+ *  Devuelve { label, icon, bg, fg, border, shadow, tooltip } o null. */
+function huGuestTier(noches, visitas) {
+  const n = Number(noches)||0, v = Number(visitas)||0;
+  if (n >= 20 && v >= 8) {
+    return { label:'Oro', icon:'🏆',
+      bg:'linear-gradient(135deg,#fef3c7,#fde68a 60%,#facc15)', fg:'#78350f',
+      border:'#f59e0b', shadow:'rgba(234,179,8,.5)',
+      tooltip:`Oro · ${n} noches en ${v} visitas` };
+  }
+  if (n >= 10 && n < 15 && v >= 4) {
+    return { label:'Plata', icon:'🥈',
+      bg:'linear-gradient(135deg,#f1f5f9,#e2e8f0 60%,#cbd5e1)', fg:'#334155',
+      border:'#94a3b8', shadow:'rgba(100,116,139,.4)',
+      tooltip:`Plata · ${n} noches en ${v} visitas` };
+  }
+  if (n >= 5 && n < 10) {
+    return { label:'Bronce', icon:'🥉',
+      bg:'linear-gradient(135deg,#fed7aa,#fdba74 60%,#f97316)', fg:'#7c2d12',
+      border:'#ea580c', shadow:'rgba(234,88,12,.4)',
+      tooltip:`Bronce · ${n} noches en ${v} visitas` };
+  }
+  if (n > 1 && n < 5) {
+    return { label:'Recurrente', icon:'⭐',
+      bg:'linear-gradient(135deg,#e0e7ff,#c7d2fe 60%,#a5b4fc)', fg:'#3730a3',
+      border:'#6366f1', shadow:'rgba(99,102,241,.4)',
+      tooltip:`Recurrente · ${n} noches en ${v} visitas` };
+  }
+  return null;
+}
+
+/** Devuelve el estado de la estancia respecto a hoy:
+ *  - "concluida" si la salida ya pasó
+ *  - "en_curso"  si hoy está entre ingreso y salida (inclusivo)
+ *  - "proxima"   si la ingreso es futura
+ *  - ""          si no hay fechas */
+function huGetStayState(ingreso, salida) {
+  const di = huParseDate(ingreso); const ds = huParseDate(salida);
+  if (!di && !ds) return '';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const start = di || ds;
+  const end   = ds || di;
+  if (end < today) return 'concluida';
+  if (start > today) return 'proxima';
+  return 'en_curso';
+}
+
+/** Llena el <select id="hu-filtro-mes"> con los meses únicos presentes en
+ *  HU_STATE.rows. Texto legible: "Mayo 2026". Valor: "2026-05".
+ *  Si el usuario aún no seleccionó nada, auto-selecciona el mes actual si
+ *  existe entre las opciones; si no, deja "Todos los meses". */
+function huPopulateMesOptions() {
+  const sel = document.getElementById('hu-filtro-mes');
+  if (!sel) return;
+  const MES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const set = new Set();
+  (HU_STATE.rows || []).forEach(r => {
+    const d = huParseDate(huValueFlexible(r, ['Fecha de ingreso']));
+    if (d && !isNaN(d.getTime())) set.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  });
+  const sorted = Array.from(set).sort().reverse(); // más reciente primero
+  const prevVal = sel.value;
+  const opts = ['<option value="">Todos los meses</option>'].concat(
+    sorted.map(v => {
+      const [y, m] = v.split('-');
+      return `<option value="${v}">${MES[Number(m)-1]} ${y}</option>`;
+    })
+  );
+  sel.innerHTML = opts.join('');
+  if (prevVal && sorted.includes(prevVal)) {
+    sel.value = prevVal;
+  } else if (!prevVal) {
+    const now = new Date();
+    const cur = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    if (sorted.includes(cur)) sel.value = cur;
+  }
+}
+
 /** Aplica filtro Mes (estancia toca al menos un día del mes seleccionado). */
 function huApplyMonthFilter(rows) {
   const mesEl = document.getElementById('hu-filtro-mes');
@@ -9038,6 +9119,30 @@ function huApplyMonthFilter(rows) {
     const stayEnd   = salida  || entrada;
     return stayStart <= endDate && stayEnd >= startDate;
   });
+}
+
+/** Formatea una hora a "HH:MM" 24h limpio. Acepta "9:00 a. m.", "21:30", Date, etc. */
+function huFmtHoraSimple(v) {
+  const raw = String(v || '').trim();
+  if (!raw) return '';
+  // Si ya es HH:MM 24h
+  const m24 = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) return `${String(m24[1]).padStart(2,'0')}:${m24[2]}`;
+  // Si trae am/pm
+  const m12 = raw.match(/(\d{1,2}):?(\d{2})?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)/i);
+  if (m12) {
+    let h = Number(m12[1]); const mm = m12[2] || '00';
+    const pm = /p/i.test(m12[3]);
+    if (pm && h < 12) h += 12;
+    if (!pm && h === 12) h = 0;
+    return `${String(h).padStart(2,'0')}:${mm}`;
+  }
+  // Fallback: si Date parseable
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) {
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+  return raw;
 }
 
 // ─── Constantes y helpers de cálculo Airbnb (portados de check-in) ──────────
@@ -9086,15 +9191,32 @@ async function huPersistCardMonto(cardEl) {
     console.info('[HU] persist: monto inválido o cero', { recordId, monto });
     return;
   }
+  // Detectar si es Airbnb para mandar también comisión y total Airbnb.
+  const r = (HU_STATE.rows||[]).find(x => String(x['ID']||x['row_number']||'') === String(recordId));
+  const medio = r ? huValueFlexible(r, ['Medio de reservación','Medio de reservacion']) : '';
+  const esAirbnb = String(medio||'').toLowerCase().includes('airbnb');
+  let comisionAirbnb = '';
+  let totalAirbnb    = '';
+  if (esAirbnb) {
+    const comInp = cardEl.querySelector('[data-hu-airbnb-comision="1"]');
+    const airBox = cardEl.querySelector('[data-hu-airbnb-box="1"] input[type="number"]'); // primer input = total Airbnb
+    comisionAirbnb = String(comInp?.value || '').trim();
+    totalAirbnb    = String(airBox?.value || '').trim();
+  }
   // Indicador visual en el header
   const hdrAmt = cardEl.querySelector('[data-hu-header-amount="1"]');
   if (hdrAmt) hdrAmt.style.color = '#a16207';
-  console.info('[HU] POST /huespedes-save-monto', { recordId, monto });
+  console.info('[HU] POST /huespedes-save-monto', { recordId, monto, comisionAirbnb, totalAirbnb });
   try {
     const res = await fetch(`${BACKEND}/huespedes-save-monto`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ record_id: recordId, monto_facturado_total: monto }),
+      body: JSON.stringify({
+        record_id: recordId,
+        monto_facturado_total: monto,
+        comision_airbnb: comisionAirbnb,
+        monto_total_airbnb: totalAirbnb,
+      }),
     });
     const json = await res.json();
     console.info('[HU] response:', json);
@@ -9515,8 +9637,16 @@ function huPhotoPlaceholder(label, icon, height) {
     <div style="width:100%;height:${height||'120px'};border:1.5px dashed #cbd5e1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#f8fafc,#f1f5f9);color:#94a3b8;padding:10px;text-align:center">
       <div style="font-size:22px;opacity:.5">${icon || '📷'}</div>
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em">${esc(label)}</div>
-      <div style="font-size:9px;opacity:.7;font-style:italic">Sin foto disponible</div>
+      <div style="font-size:9px;opacity:.7;font-style:italic">No hay foto</div>
     </div>`;
+}
+
+/** Overlay de "Cargando…" superpuesto en el recuadro mientras el <img> baja. */
+function huPhotoLoadingOverlay() {
+  return `<div data-hu-photo-loading="1" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#f8fafc,#eef2f7);color:#64748b;pointer-events:none;animation:hu-pulse 1.2s ease-in-out infinite">
+    <div style="width:22px;height:22px;border:2.5px solid #cbd5e1;border-top-color:#0d9488;border-radius:50%;animation:hu-spin 0.8s linear infinite"></div>
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Cargando…</div>
+  </div>`;
 }
 
 /** Construye una foto-thumb con click→zoom. Si no hay url, devuelve placeholder. */
@@ -9541,13 +9671,16 @@ function huPhotoBox(url, label, options) {
   const sizeStyle = height ? `height:${height}` : `aspect-ratio:${aspectRatio}`;
   const phHtml = huPhotoPlaceholder(label, icon, '100%').replace(/"/g, '&quot;');
   const onerrFn = `(function(img){var t=img.dataset.tryStep||'0';if(t==='0'&&'${esc(fb1)}'){img.dataset.tryStep='1';img.src='${esc(fb1)}';return;}if((t==='0'||t==='1')&&'${esc(fb2)}'){img.dataset.tryStep='2';img.src='${esc(fb2)}';return;}img.parentElement.innerHTML='${phHtml}';img.parentElement.style.cursor='default';img.parentElement.onclick=null;})(this)`;
+  const onloadFn = `(function(img){var ov=img.parentElement.querySelector('[data-hu-photo-loading=\"1\"]');if(ov)ov.remove();})(this)`;
   return `
     <div style="position:relative;cursor:zoom-in;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc;${sizeStyle};transition:transform 180ms cubic-bezier(.34,1.56,.64,1),box-shadow 180ms"
          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(15,23,42,.18)'"
          onmouseout="this.style.transform='';this.style.boxShadow=''"
          onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')">
+      ${huPhotoLoadingOverlay()}
       <img src="${esc(thumb)}" alt="${esc(label)}" loading="lazy" referrerpolicy="no-referrer"
            style="width:100%;height:100%;object-fit:cover;display:block;background:#f8fafc"
+           onload="${onloadFn}"
            onerror="${onerrFn}">
       <div style="position:absolute;bottom:0;left:0;right:0;padding:6px 8px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.7));color:#fff;font-size:10px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.5);text-transform:uppercase;letter-spacing:.04em">${esc(label)}</div>
       <div style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(15,23,42,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px">🔍</div>
@@ -9687,7 +9820,12 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
     const monto   = huValueFlexible(x, ['$ Monto facturado Total','($) Monto Total pagado']);
     const status  = huGetFacturaStatus(x);
     const isSel   = xid === selectedRecId;
-    const statusDot = status === 'pendiente' ? '#dc2626' : status === 'emitida' ? '#16a34a' : '#94a3b8';
+    // El punto representa estado de la estancia (no de la factura):
+    // verde = en curso, gris = concluida, azul = próxima.
+    const stayState = huGetStayState(ingreso, salida);
+    const dotColor  = stayState === 'en_curso' ? '#16a34a' : stayState === 'proxima' ? '#3b82f6' : '#94a3b8';
+    const dotTitle  = stayState === 'en_curso' ? 'En curso'  : stayState === 'proxima' ? 'Próxima'  : 'Concluida';
+    const dotPulse  = stayState === 'en_curso' ? 'animation:hu-dot-pulse 1.4s ease-in-out infinite;' : '';
     return `
       <div onclick="event.stopPropagation();huSelectReservation('${esc(outerCardRecId)}','${esc(xid)}')"
            data-hu-history-id="${esc(xid)}"
@@ -9697,7 +9835,7 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
            onmouseout="if(!this.classList.contains('hu-history-active')){this.style.boxShadow='0 1px 2px rgba(15,23,42,.06)';this.style.transform=''}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div style="font-size:11px;font-weight:800;color:#1f2937;letter-spacing:.02em">${huFmtFecha(ingreso)} → ${huFmtFecha(salida)}</div>
-          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusDot};box-shadow:0 0 0 2px rgba(255,255,255,.6)"></span>
+          <span title="${dotTitle}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${dotColor};box-shadow:0 0 0 2px rgba(255,255,255,.7);${dotPulse}"></span>
         </div>
         <div style="font-size:11px;color:#64748b;font-weight:600">${esc(prop || '—')}${depto?' · # '+esc(depto):''}</div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
@@ -9731,7 +9869,15 @@ function huBuildReservationDetail(r) {
   const salida     = huValueFlexible(r, ['Fecha de salida']);
   const horaIng    = huValueFlexible(r, ['Hora estimada de llegada','Hora de llegada']);
   const horaSal    = huValueFlexible(r, ['Hora estimada de salida','Hora de salida']);
-  const noches     = huValueFlexible(r, ['# Noches']);
+  let noches       = huValueFlexible(r, ['# Noches']);
+  // Si no viene en el row, calcúlalo a partir de fecha de ingreso/salida.
+  if (!noches || Number(noches) <= 0) {
+    const di = huParseDate(ingreso); const ds = huParseDate(salida);
+    if (di && ds) {
+      const n = Math.max(0, Math.round((ds - di) / 86400000));
+      if (n > 0) noches = String(n);
+    }
+  }
   const huespedes  = huValueFlexible(r, ['# Huéspedes']);
   const propiedad  = huValueFlexible(r, ['Propiedad']);
   const departamento = huValueFlexible(r, ['# Departamento']);
@@ -9743,7 +9889,6 @@ function huBuildReservationDetail(r) {
   const nombresHues= huValueFlexible(r, ['Nombres de TODOS los huéspedes (separados por comas)']);
   const medio      = huValueFlexible(r, ['Medio de reservación']);
   const formaPago  = huValueFlexible(r, ['Forma de pago']);
-  const montoPag   = huValueFlexible(r, ['($) Monto Total pagado','$ Monto Total pagado']);
   const montoFact  = huValueFlexible(r, ['$ Monto facturado Total']);
   const montoAirbnb= huValueFlexible(r, ['$ Monto total Airbnb']);
   const reqFactura = huValueFlexible(r, ['¿Requiere factura?']);
@@ -9836,14 +9981,13 @@ function huBuildReservationDetail(r) {
       <div style="display:flex;flex-direction:column">
         ${fldRow('Propiedad', esc(propiedad))}
         ${fldRow('# Departamento', esc(departamento))}
-        ${fldRow('Hora estimada de llegada', horaIng ? `<span style="display:inline-flex;align-items:center;gap:4px"><span>⏰</span><b>${esc(horaIng)}</b></span>` : '—')}
-        ${fldRow('Hora estimada de salida', horaSal ? `<span style="display:inline-flex;align-items:center;gap:4px"><span>⏰</span><b>${esc(horaSal)}</b></span>` : '—')}
-        ${fldRow('# Noches', esc(noches))}
+        ${fldRow('Llegada estimada', horaIng ? esc(huFmtHoraSimple(horaIng)) : '—')}
+        ${fldRow('Salida estimada', horaSal ? esc(huFmtHoraSimple(horaSal)) : '—')}
+        ${fldRow('# Noches', (noches && Number(noches)>0) ? `<b>${esc(noches)}</b>` : '—')}
         ${fldRow('# Huéspedes', esc(huespedes))}
         ${nombresHues ? fldRow('Nombres de huéspedes', `<span style="font-size:12px;line-height:1.5">${esc(nombresHues)}</span>`) : ''}
         ${motivoTxt ? fldRow('Motivo del hospedaje', `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#ede9fe;color:#5b21b6;font-weight:700;font-size:11px;border:1px solid #c4b5fd">${esc(motivoTxt)}</span>`) : ''}
         ${fldRow('Forma de pago', esc(formaPago))}
-        ${fldRow('Monto Total pagado', montoPag ? huFmtMonto(montoPag) : '—')}
         ${fldRow('Monto Facturado', montoFact ? `<span data-hu-header-amount="1" style="font-weight:800;color:#0f172a">${huFmtMonto(montoFact)}</span>` : '<span data-hu-header-amount="1">—</span>')}
         ${fldRow('¿Requiere factura?', huReqFacturaBadge(reqFactura))}
         ${comentarios ? fldRow('Comentarios', `<div style="font-size:12px;line-height:1.5;background:#f8fafc;padding:8px 10px;border-radius:6px;border-left:3px solid #94a3b8;font-style:italic;color:#334155">${esc(comentarios)}</div>`) : ''}
@@ -9926,16 +10070,24 @@ function huBuildRecordCard(r) {
 
   // KPIs del huésped (sumando su historial completo de reservaciones)
   const stats = huComputeGuestStats(r, HU_STATE.rows);
+  const tier  = huGuestTier(stats.totalNoches, stats.visitas);
+  const tierBadge = tier ? `
+    <div title="${esc(tier.tooltip)}"
+         style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:${tier.bg};color:${tier.fg};font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:1.5px solid ${tier.border};box-shadow:0 2px 8px ${tier.shadow};animation:hu-badge-glow 2.6s ease-in-out infinite">
+      <span style="font-size:14px">${tier.icon}</span>
+      <span>${tier.label}</span>
+    </div>` : '';
   const kpisHtml = `
-    <div style="display:flex;gap:8px;align-items:stretch">
-      <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:74px;text-align:center;backdrop-filter:blur(4px)" title="Suma de noches en todas las reservaciones del huésped">
-        <div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:.05em;text-transform:uppercase">🌙 Noches</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:84px;text-align:center;backdrop-filter:blur(4px)" title="Suma global de noches en todas las reservaciones del huésped">
+        <div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:.05em;text-transform:uppercase">🌙 Noches globales</div>
         <div style="font-size:18px;font-weight:800;color:#0f172a;line-height:1.1">${stats.totalNoches}</div>
       </div>
-      <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:74px;text-align:center;backdrop-filter:blur(4px)" title="Visitas distintas (reservaciones consecutivas cuentan como una sola visita)">
-        <div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:.05em;text-transform:uppercase">🧳 Visitas</div>
+      <div style="background:rgba(255,255,255,.75);border:1.5px solid ${palette.border};border-radius:10px;padding:6px 12px;min-width:84px;text-align:center;backdrop-filter:blur(4px)" title="Visitas globales distintas (reservaciones consecutivas cuentan como una sola visita)">
+        <div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:.05em;text-transform:uppercase">🧳 Visitas globales</div>
         <div style="font-size:18px;font-weight:800;color:#0f172a;line-height:1.1">${stats.visitas}</div>
       </div>
+      ${tierBadge}
     </div>`;
 
   // Header SUMMARY — clic abre/cierra (sin marker nativo)

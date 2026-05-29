@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=68">
+  <link rel="stylesheet" href="styles.css?v=69">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -781,8 +781,10 @@
       <div style="display:flex;gap:12px;align-items:end;margin:10px 0 8px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;flex-wrap:wrap">
         <div style="min-width:180px">
           <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📅 Mes de estancia</label>
-          <input type="month" id="hu-filtro-mes" onchange="huespedesRender()"
-                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          <select id="hu-filtro-mes" onchange="huespedesRender()"
+                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
+            <option value="">Todos los meses</option>
+          </select>
           <div style="font-size:10px;color:#94a3b8;margin-top:3px">Muestra registros cuya estancia toca al menos un día del mes.</div>
         </div>
       </div>
@@ -1030,6 +1032,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=138"></script>
+  <script src="app.js?v=139"></script>
 </body>
 </html>

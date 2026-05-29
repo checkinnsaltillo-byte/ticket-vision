@@ -1870,7 +1870,54 @@ select:not(:disabled):not(:focus):hover {
   border-color: #cbd5e1;
 }
 .hu-record:hover {
-  box-shadow: 0 4px 14px rgba(15, 23, 42, .07);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .12), 0 3px 8px rgba(15, 23, 42, .06);
+  border-color: #94a3b8 !important;
+}
+
+/* ─── Hover destellos para botones tipo "Ver ticket / Ticket emitido / Generar" ── */
+.hu-record summary a[href][target="_blank"],
+.hu-record button,
+.hu-resv-detail a[href][target="_blank"],
+.hu-resv-detail button {
+  transition: transform 180ms cubic-bezier(.34,1.56,.64,1),
+              box-shadow 180ms ease-out,
+              filter 180ms ease-out;
+  position: relative;
+  overflow: hidden;
+}
+.hu-record summary a[href][target="_blank"]:hover,
+.hu-record button:not(:disabled):hover,
+.hu-resv-detail a[href][target="_blank"]:hover,
+.hu-resv-detail button:not(:disabled):hover {
+  transform: translateY(-1.5px) scale(1.025);
+  filter: brightness(1.08) saturate(1.1);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .18) !important;
+}
+.hu-record summary a[href][target="_blank"]:active,
+.hu-record button:not(:disabled):active,
+.hu-resv-detail a[href][target="_blank"]:active,
+.hu-resv-detail button:not(:disabled):active {
+  transform: translateY(0) scale(.985);
+}
+
+/* ─── Spinner y overlay de carga para las fotos del ID Card ───────────── */
+@keyframes hu-spin { to { transform: rotate(360deg); } }
+@keyframes hu-pulse {
+  0%, 100% { opacity: .85; }
+  50%      { opacity: 1; }
+}
+
+/* ─── Pulso del dot "en curso" del historial ──────────────────────────── */
+@keyframes hu-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255,255,255,.7), 0 0 0 0 rgba(22,163,74,.55); }
+  50%      { box-shadow: 0 0 0 2px rgba(255,255,255,.7), 0 0 0 6px rgba(22,163,74,0); }
+}
+
+/* ─── Glow sutil para la insignia de tier (Oro/Plata/Bronce/Recurrente) ── */
+@keyframes hu-badge-glow {
+  0%, 100% { transform: translateY(0) scale(1);    filter: brightness(1); }
+  50%      { transform: translateY(-1px) scale(1.02); filter: brightness(1.08); }
 }
 /* Cards clickeables enfatizan más (los KPI con onclick="bn_kpiOpen...") */
 .bn-kpi-card[style*="cursor:pointer"]:hover {
