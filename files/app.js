@@ -9490,20 +9490,15 @@ function huBuildRecordCard(r) {
 }
 
 // ─── Integración Facturapi ──────────────────────────────────────────────────
-// URL base del facturapi del check-in. Configurable: la primera vez pide al
-// usuario que la pegue y la guarda en localStorage para futuras llamadas.
+// URL base del facturapi del check-in (Cloud Run us-central1).
+// Se puede sobreescribir guardando otra en localStorage.HU_FACTURAPI_URL.
+const HU_FACTURAPI_DEFAULT = 'https://checkin-app-957627511957.us-central1.run.app/facturapi';
 function huGetFacturapiUrl() {
-  let url = '';
-  try { url = localStorage.getItem('HU_FACTURAPI_URL') || ''; } catch(_) {}
-  if (url) return url;
-  url = window.prompt(
-    'Configura por única vez la URL base de Facturapi (la página /facturapi del check-in).\n' +
-    'Ej.: https://checkin-app-XXXX.run.app/facturapi',
-    ''
-  );
-  if (!url) return '';
-  try { localStorage.setItem('HU_FACTURAPI_URL', url.trim()); } catch(_) {}
-  return url.trim();
+  try {
+    const override = localStorage.getItem('HU_FACTURAPI_URL');
+    if (override && override.trim()) return override.trim();
+  } catch(_) {}
+  return HU_FACTURAPI_DEFAULT;
 }
 
 const HU_CHECKIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbz20RenzxIlbrDQ_spxyFyDq42LgJ4h8E6jeIUSveC4zs302ZnadzUC8MsptsSBkCzo8Q/exec';
@@ -9583,10 +9578,9 @@ async function huespedesGenerarTicket(recordId) {
     } catch (_) {}
   }
 
-  // Pedir/obtener URL base de facturapi
+  // URL base de facturapi (hardcoded al Cloud Run del check-in, override
+  // posible vía localStorage.HU_FACTURAPI_URL)
   const base = huGetFacturapiUrl();
-  if (!base) { alert('No se configuró la URL de Facturapi. Cancelado.'); return; }
-
   const url = huBuildFacturapiUrlFromRow(row, base);
   if (!url) { alert('No se pudo construir la URL de Facturapi.'); return; }
 
