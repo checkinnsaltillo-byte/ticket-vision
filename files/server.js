@@ -90,7 +90,7 @@ app.get("/get-bancos", async (req, res) => {
 // El check-in tiene su PROPIO Apps Script (code_1.gs) con la lógica completa
 // de listGuestRecords_, getGuestFilterOptions_ y getGuestRecordDetail_.
 // Lo reutilizamos vía GET en lugar de duplicar la lógica.
-const CHECKIN_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz20RenzxIlbrDQ_spxyFyDq42LgJ4h8E6jeIUSveC4zs302ZnadzUC8MsptsSBkCzo8Q/exec";
+const CHECKIN_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec";
 
 async function callCheckinAppsScript(action, paramsObj) {
   const url = new URL(CHECKIN_APPS_SCRIPT_URL);

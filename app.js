@@ -10374,7 +10374,7 @@ function huGetFacturapiUrl() {
   return HU_FACTURAPI_DEFAULT;
 }
 
-const HU_CHECKIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbz20RenzxIlbrDQ_spxyFyDq42LgJ4h8E6jeIUSveC4zs302ZnadzUC8MsptsSBkCzo8Q/exec';
+const HU_CHECKIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec';
 
 function huNormalizeCurrencyFromSheet(v) {
   const raw = String(v||'').trim().toUpperCase();
