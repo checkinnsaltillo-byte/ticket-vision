@@ -210,6 +210,25 @@ app.get("/huespedes-detail", async (req, res) => {
 
 // Guarda el monto facturado total (campo "(+) $ Monto facturado Total" del card)
 // en la columna "$ Monto facturado Total" de Reservaciones.
+// Elimina una reservación completa (fila en la hoja "Reservaciones") por su ID.
+app.post("/huespedes-delete", async (req, res) => {
+  try {
+    const recordId = req.body?.record_id || "";
+    if (!recordId) throw new Error("Falta record_id");
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "delete_reservacion", record_id: recordId }),
+    });
+    const text = await r.text();
+    let json = {};
+    try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
+    res.json(json);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post("/huespedes-save-monto", async (req, res) => {
   try {
     const recordId    = req.body?.record_id || "";

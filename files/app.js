@@ -9250,6 +9250,37 @@ async function huPersistCardMonto(cardEl) {
   }
 }
 
+/** Elimina la reservación del huésped (fila de "Reservaciones"). Usa el
+ *  mismo modal showConfirm que las cards de "Tickets capturados". */
+window.deleteHuespedRecord = async function(recordId, nombre) {
+  if (!recordId) { alert('No se pudo identificar la reservación.'); return; }
+  const label = nombre && nombre.trim() ? `"${nombre.trim()}"` : 'esta reservación';
+  const confirmed = await showConfirm({
+    icon:    "🗑",
+    title:   `¿Eliminar ${label}?`,
+    msg:     "Esta acción borrará la reservación de la hoja \"Reservaciones\" del sheets. No se puede deshacer.",
+    okLabel: "Sí, eliminar",
+  });
+  if (!confirmed) return;
+  try {
+    if (typeof showLoading === 'function') showLoading("Eliminando reservación…", "Borrando registro de Sheets…");
+    const res = await fetch(`${BACKEND}/huespedes-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ record_id: recordId }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || data.message || 'Error al eliminar');
+    // Quitar de cache local
+    HU_STATE.rows = (HU_STATE.rows || []).filter(x => String(x['ID']||x['row_number']||'') !== String(recordId));
+    if (typeof huespedesRender === 'function') huespedesRender();
+  } catch (err) {
+    alert("Error al eliminar: " + err.message);
+  } finally {
+    if (typeof hideLoading === 'function') hideLoading();
+  }
+};
+
 /** Llamado al abrir o cerrar el <details>. Si se abrió, dispara el save
  *  y enriquece el row con los campos completos (incluidas URLs de fotos
  *  INE/identificación/vehículo) que NO vienen en /huespedes-list. */
@@ -10352,7 +10383,10 @@ function huBuildRecordCard(r) {
     : `<span style="font-weight:700;color:#1f2937">${esc(cel || '—')}</span>`;
 
   return `
-    <details class="hu-record" data-record-id="${esc(recId)}" ontoggle="huOnDetailsToggle(this)" style="border:1.5px solid ${palette.border};border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
+    <details class="hu-record" data-record-id="${esc(recId)}" ontoggle="huOnDetailsToggle(this)" style="position:relative;border:1.5px solid ${palette.border};border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
+      <button class="btn-x" title="Eliminar reservación"
+              onclick="event.stopPropagation(); event.preventDefault(); deleteHuespedRecord('${esc(recId)}', '${esc(nombre || '').replace(/'/g, "\\'")}')"
+              style="position:absolute;top:10px;left:10px;z-index:5">×</button>
       ${summary}
       <div class="hu-record-body" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
         <div class="hu-col-profile">${huBuildIdCard(r)}</div>

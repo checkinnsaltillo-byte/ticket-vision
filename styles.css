@@ -2109,8 +2109,11 @@ input[type="checkbox"] + .toggle-slider,
 
 /* ─── Tooltips nativos del browser: leve mejora visual (no es CSS real
        sobre title pero estiliza algunos contextos custom) ─────────────── */
-[title]:not([title=""]):hover { cursor: help; }
-button[title], a[title], .info-chip[title] { cursor: pointer; }
+/* Solo elementos NO interactivos muestran cursor de "ayuda" cuando tienen title.
+   Botones, enlaces, inputs, [role=button], [onclick] y .menu/.btn/.chip-clickable
+   mantienen su cursor de pointer normal. */
+[title]:not([title=""]):not(button):not(a):not(input):not(select):not(textarea):not(summary):not(label):not([role="button"]):not([onclick]):not(.btn):not(.btn-x):not(.btn-limpiar):not(.btn-del-row):hover { cursor: help; }
+button[title], a[title], .info-chip[title], [role="button"][title], [onclick][title] { cursor: pointer; }
 
 /* ─── Scrollbar más fino y elegante (WebKit) ───────────────────────────── */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
