@@ -7995,7 +7995,7 @@ function esc(v) {
 
 /** Cambia entre módulos de nivel superior */
 function switchModule(mod) {
-  ["tickets", "registros", "huespedes"].forEach(m => {
+  ["tickets", "registros", "huespedes", "lodgify"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== mod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === mod);
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === mod);
@@ -8003,6 +8003,10 @@ function switchModule(mod) {
   if (mod === "huespedes") {
     if (!HU_STATE.loaded && !HU_STATE.loading) huespedesLoad(true);
     else huespedesRender();
+  }
+  if (mod === "lodgify") {
+    if (!LG_STATE.loaded && !LG_STATE.loading) lodgifyLoad(true);
+    else lodgifyRender();
   }
 }
 
@@ -10638,4 +10642,353 @@ function huespedesExportCsv() {
   a.download = `huespedes_${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── MÓDULO: Reservas Lodgify ──────────────────────────────────────────────
+// Consume el backend de Lodgify (mismo que usa el archivo "otc_FIXED_…html")
+// que ya está deployado en Cloud Run. Aggrega los rows por booking Id porque
+// la API devuelve un row por LineItem (RoomRate + Fee + …).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const LG_API_BASE = "https://checkinnreservas-1044570371371.northamerica-south1.run.app";
+const LG_STATE = {
+  raw: [],          // rows tal cual del backend (uno por line item)
+  bookings: [],     // agregados por Id
+  loaded: false,
+  loading: false,
+  from: '',
+  to: '',
+};
+
+/** MM/DD/YYYY → Date (UTC). */
+function lgParseMMDD(s) {
+  if (!s) return null;
+  const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return null;
+  return new Date(Date.UTC(+m[3], +m[1]-1, +m[2]));
+}
+
+/** Devuelve "DD de mes" en es-MX a partir de MM/DD/YYYY. */
+function lgFmtFecha(mmdd) {
+  const d = lgParseMMDD(mmdd);
+  if (!d) return '—';
+  const mes = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][d.getUTCMonth()];
+  return `${d.getUTCDate()} de ${mes}`;
+}
+
+/** Trunca un texto largo de HouseName a algo legible como "Baja California #4". */
+function lgFmtPropiedad(houseName) {
+  const s = String(houseName || '').trim();
+  if (!s) return '—';
+  // Toma todo hasta el "(" si existe
+  const m = s.match(/^([^(]+)/);
+  return (m ? m[1] : s).trim();
+}
+
+/** Badge del Source — colores por canal. */
+function lgSourceBadge(src) {
+  const s = String(src || '').trim();
+  if (!s) return '<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:700;font-size:11px;border:1px solid #cbd5e1">Sin canal</span>';
+  const lc = s.toLowerCase();
+  let bg='#f1f5f9', fg='#475569', bd='#cbd5e1', ico='🌐';
+  if (lc.includes('airbnb'))       { bg='#fef2f2'; fg='#dc2626'; bd='#fecaca'; ico='🅰'; }
+  else if (lc.includes('booking')) { bg='#dbeafe'; fg='#1e40af'; bd='#93c5fd'; ico='🅱'; }
+  else if (lc.includes('expedia')) { bg='#fef3c7'; fg='#92400e'; bd='#fcd34d'; ico='Ⓔ'; }
+  else if (lc.includes('vrbo'))    { bg='#dcfce7'; fg='#166534'; bd='#86efac'; ico='Ⓥ'; }
+  else if (lc.includes('manual'))  { bg='#ede9fe'; fg='#5b21b6'; bd='#c4b5fd'; ico='✋'; }
+  return `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;background:${bg};color:${fg};font-weight:800;font-size:11px;border:1px solid ${bd};letter-spacing:.02em">${ico} ${esc(s)}</span>`;
+}
+
+/** Badge del Status (Open/Booked/Tentative/Declined). */
+function lgStatusBadge(st) {
+  const s = String(st || '').trim();
+  if (!s) return '';
+  const lc = s.toLowerCase();
+  let bg='#f1f5f9', fg='#475569', bd='#cbd5e1';
+  if (lc === 'booked')        { bg='#dcfce7'; fg='#166534'; bd='#86efac'; }
+  else if (lc === 'open')     { bg='#dbeafe'; fg='#1e40af'; bd='#93c5fd'; }
+  else if (lc === 'tentative'){ bg='#fef3c7'; fg='#92400e'; bd='#fcd34d'; }
+  else if (lc === 'declined' || lc === 'cancelled') { bg='#fee2e2'; fg='#991b1b'; bd='#fca5a5'; }
+  return `<span style="display:inline-block;padding:4px 12px;border-radius:999px;background:${bg};color:${fg};font-weight:700;font-size:10px;border:1px solid ${bd};text-transform:uppercase;letter-spacing:.04em">${esc(s)}</span>`;
+}
+
+/** Formato monetario tolerante (igual que huFmtMonto pero sin recuperación ISO). */
+function lgFmtMoney(n, currency) {
+  const v = Number(n) || 0;
+  const cur = (currency || 'MXN').toUpperCase();
+  return v.toLocaleString('es-MX', { style:'currency', currency: cur, minimumFractionDigits: v % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+}
+
+/** Construye el rango desde/hasta a partir del select de días. */
+function lgGetRange() {
+  const days = Number(document.getElementById('lg-filtro-rango')?.value) || 30;
+  const today = new Date();
+  const to = today.toISOString().slice(0,10);
+  const fromDate = new Date(today.getTime() - days * 86400000);
+  const from = fromDate.toISOString().slice(0,10);
+  return { from, to, days };
+}
+
+/** Agrega los rows (uno por line item) en un objeto por booking Id. */
+function lgAggregateBookings(rows) {
+  const byId = new Map();
+  for (const r of rows || []) {
+    const id = r.Id;
+    if (!id) continue;
+    let agg = byId.get(id);
+    if (!agg) {
+      agg = {
+        Id: id,
+        Source: r.Source || '',
+        SourceTextRaw: r.SourceText || '',
+        Status: r.Status || '',
+        DateArrival: r.DateArrival || '',
+        DateDeparture: r.DateDeparture || '',
+        DateCancelled: r.DateCancelled || '',
+        Nights: Number(r.Nights) || 0,
+        HouseName: r.HouseName || '',
+        HouseId: r.HouseId || '',
+        RoomTypeNames: r.RoomTypeNames || '',
+        GuestName: r.GuestName || '',
+        GuestEmail: r.GuestEmail || '',
+        GuestPhone: r.GuestPhone || '',
+        GuestCountryCode: r.GuestCountryCode || '',
+        NumberOfGuests: Number(r.NumberOfGuests) || 0,
+        Adults: Number(r.Adults) || 0,
+        Children: Number(r.Children) || 0,
+        Infants: Number(r.Infants) || 0,
+        Pets: Number(r.Pets) || 0,
+        Currency: r.Currency || 'MXN',
+        ChannelBooking: r.ChannelBooking || '',
+        Gross: 0,
+        Net: 0,
+        Vat: 0,
+        LineItems: [],
+      };
+      byId.set(id, agg);
+    }
+    agg.Gross += Number(r.GrossAmount) || 0;
+    agg.Net   += Number(r.NetAmount)   || 0;
+    agg.Vat   += Number(r.VatAmount)   || 0;
+    agg.LineItems.push({
+      kind: r.LineItem || '',
+      desc: r.LineItemDescription || '',
+      gross: Number(r.GrossAmount) || 0,
+      net:   Number(r.NetAmount)   || 0,
+      vat:   Number(r.VatAmount)   || 0,
+    });
+  }
+  // Parseo del SourceText (JSON) para extraer confirmationCode etc.
+  for (const b of byId.values()) {
+    try {
+      const meta = JSON.parse(b.SourceTextRaw || '{}');
+      b.ConfirmationCode = meta.confirmationCode || '';
+      b.ListingId = meta.listingId || '';
+      b.ThreadId  = meta.threadId  || '';
+    } catch(_) { b.ConfirmationCode=''; b.ListingId=''; b.ThreadId=''; }
+  }
+  // Ordenar por DateArrival descendente (más reciente primero).
+  return Array.from(byId.values()).sort((a,b) => {
+    const da = lgParseMMDD(a.DateArrival)?.getTime() || 0;
+    const db = lgParseMMDD(b.DateArrival)?.getTime() || 0;
+    return db - da;
+  });
+}
+
+/** Carga los datos del backend de Lodgify. */
+async function lodgifyLoad(force) {
+  const lbl = document.getElementById('lg-status-label');
+  const empty = document.getElementById('lg-empty');
+  const cont = document.getElementById('lg-cards');
+  if (LG_STATE.loading) return;
+  LG_STATE.loading = true;
+  if (lbl) lbl.textContent = 'Cargando…';
+  if (empty) { empty.textContent = 'Cargando reservaciones de Lodgify…'; empty.classList.remove('hidden'); }
+  if (cont) cont.innerHTML = '';
+  try {
+    const { from, to, days } = lgGetRange();
+    LG_STATE.from = from; LG_STATE.to = to;
+    const url = `${LG_API_BASE}/api/otc?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+    const res = await fetch(url, { headers: { 'Accept':'application/json' }, cache:'no-store' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    LG_STATE.raw = data.rows || [];
+    LG_STATE.bookings = lgAggregateBookings(LG_STATE.raw);
+    LG_STATE.loaded = true;
+    if (lbl) lbl.textContent = `${LG_STATE.bookings.length} reservaciones (${days}d)`;
+    lgRebuildFilterOptions();
+    lodgifyRender();
+  } catch (e) {
+    if (lbl) lbl.textContent = 'Error: ' + e.message;
+    if (empty) { empty.textContent = '⚠ ' + e.message; empty.classList.remove('hidden'); }
+  } finally {
+    LG_STATE.loading = false;
+  }
+}
+
+/** Llena los selects de Source y Status con los valores únicos. */
+function lgRebuildFilterOptions() {
+  const sources = [...new Set(LG_STATE.bookings.map(b => b.Source).filter(Boolean))].sort();
+  const selSrc = document.getElementById('lg-filtro-source');
+  if (selSrc) {
+    const prev = selSrc.value;
+    selSrc.innerHTML = '<option value="">Todas</option>' +
+      sources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    if (sources.includes(prev)) selSrc.value = prev;
+  }
+  const statuses = [...new Set(LG_STATE.bookings.map(b => b.Status).filter(Boolean))].sort();
+  const selSt = document.getElementById('lg-filtro-status');
+  if (selSt) {
+    const prev = selSt.value;
+    selSt.innerHTML = '<option value="">Todos</option>' +
+      statuses.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    if (statuses.includes(prev)) selSt.value = prev;
+  }
+}
+
+/** Aplica filtros locales y devuelve los bookings a mostrar. */
+function lgGetFiltered() {
+  const src = (document.getElementById('lg-filtro-source')?.value || '').toLowerCase();
+  const st  = (document.getElementById('lg-filtro-status')?.value || '').toLowerCase();
+  const nb  = (document.getElementById('lg-filtro-nombre')?.value || '').toLowerCase().trim();
+  return LG_STATE.bookings.filter(b => {
+    if (src && String(b.Source||'').toLowerCase() !== src) return false;
+    if (st  && String(b.Status||'').toLowerCase() !== st)  return false;
+    if (nb  && !String(b.GuestName||'').toLowerCase().includes(nb)) return false;
+    return true;
+  });
+}
+
+/** Renderiza KPIs + lista de cards. */
+function lodgifyRender() {
+  const list = lgGetFiltered();
+  // KPIs
+  const nights = list.reduce((a,b) => a + (b.Nights || 0), 0);
+  const gross  = list.reduce((a,b) => a + (b.Gross  || 0), 0);
+  const cur    = list[0]?.Currency || 'MXN';
+  const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  setT('lg-kpi-count', String(list.length));
+  setT('lg-kpi-nights', String(nights));
+  setT('lg-kpi-gross', gross > 0 ? lgFmtMoney(gross, cur) : '—');
+  setT('lg-kpi-avg',   nights > 0 ? lgFmtMoney(gross/nights, cur) : '—');
+  // Cards
+  const cont = document.getElementById('lg-cards');
+  const empty = document.getElementById('lg-empty');
+  if (!list.length) {
+    cont.innerHTML = '';
+    if (empty) { empty.textContent = 'Sin reservaciones según los filtros.'; empty.classList.remove('hidden'); }
+    return;
+  }
+  if (empty) empty.classList.add('hidden');
+  cont.innerHTML = list.map(lgBuildCard).join('');
+}
+
+/** Card de una reservación de Lodgify — diseño idéntico al de huéspedes. */
+function lgBuildCard(b) {
+  const nombre = b.GuestName || 'Sin nombre';
+  const prop   = lgFmtPropiedad(b.HouseName);
+  const ingreso = lgFmtFecha(b.DateArrival);
+  const salida  = lgFmtFecha(b.DateDeparture);
+  const noches  = b.Nights || 0;
+  const stayState = lgGetStayState(b.DateArrival, b.DateDeparture);
+  const palette = stayState === 'concluida' ? { border:'#cbd5e1', bg:'#f8fafc' }
+                : stayState === 'salida_hoy'? { border:'#fecaca', bg:'#fef2f2' }
+                : stayState === 'activa'    ? { border:'#bbf7d0', bg:'#f0fdf4' }
+                :                              { border:'#fde68a', bg:'#fffbeb' };
+
+  const huespedesChip = b.NumberOfGuests
+    ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;background:#fff;color:#1f2937;font-weight:800;font-size:11px;border:1px solid #e2e8f0;letter-spacing:.02em;box-shadow:0 1px 2px rgba(15,23,42,.05)">👥 ${b.NumberOfGuests} huésped${b.NumberOfGuests===1?'':'es'}</span>`
+    : '';
+
+  // Header summary
+  const summary = `
+    <summary style="cursor:pointer;list-style:none;padding:16px 18px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center">
+      <div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px">${lgSourceBadge(b.Source)}${huespedesChip}</div>
+        <div style="font-size:18px;font-weight:800;color:#111827;line-height:1.25;margin-bottom:6px">${esc(nombre)}</div>
+        <div style="font-size:13px;color:#64748b;font-weight:500">${esc(prop)}</div>
+        <div style="font-size:13px;color:#64748b;font-weight:500;margin-top:2px">${ingreso} → ${salida}</div>
+        <div style="font-size:12px;color:#475569;font-weight:600;margin-top:3px">🌙 ${noches} noche${noches===1?'':'s'}</div>
+        ${b.GuestPhone || b.GuestEmail ? `
+        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;font-size:11px;color:#64748b">
+          ${b.GuestPhone ? `<span><span style="color:#94a3b8;font-weight:600">📱</span> <b style="color:#1f2937">${esc(b.GuestPhone)}</b></span>` : ''}
+          ${b.GuestEmail ? `<span><span style="color:#94a3b8;font-weight:600">✉️</span> <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
+        </div>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:160px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Ingreso bruto</div>
+        <div style="font-size:22px;font-weight:800;color:#111827">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
+        <div>${lgStatusBadge(b.Status)}</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:14px;flex-shrink:0" class="hu-record-chev">▾</div>
+    </summary>`;
+
+  // Detalle expandido
+  const fldRow = (label, value) => `
+    <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;align-self:center">${esc(label)}</div>
+      <div style="font-size:13px;color:#1f2937">${value || '—'}</div>
+    </div>`;
+
+  const lineItemsHtml = (b.LineItems || []).map(li => `
+    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;border-bottom:1px dashed #e2e8f0;font-size:12px">
+      <div><b style="color:#0f172a">${esc(li.kind || '—')}</b>${li.desc ? `<span style="color:#64748b"> · ${esc(li.desc)}</span>` : ''}</div>
+      <div style="font-weight:700;color:#0f766e">${lgFmtMoney(li.gross, b.Currency)}</div>
+    </div>`).join('');
+
+  const detalleBody = `
+    <div style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff)">
+      <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
+        <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📑 DETALLE DE RESERVACIÓN</div>
+        ${fldRow('ID booking', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.Id)}</code>`)}
+        ${b.ConfirmationCode ? fldRow('Confirmation code', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.ConfirmationCode)}</code>`) : ''}
+        ${fldRow('Fuente', lgSourceBadge(b.Source))}
+        ${fldRow('Estado', lgStatusBadge(b.Status))}
+        ${fldRow('Propiedad', esc(b.HouseName))}
+        ${b.RoomTypeNames ? fldRow('Tipo de habitación', esc(b.RoomTypeNames)) : ''}
+        ${fldRow('Llegada', esc(b.DateArrival))}
+        ${fldRow('Salida', esc(b.DateDeparture))}
+        ${fldRow('# Noches', `<b>${b.Nights}</b>`)}
+        ${b.DateCancelled ? fldRow('Fecha cancelación', esc(b.DateCancelled)) : ''}
+        ${fldRow('Nombre del huésped', esc(b.GuestName))}
+        ${b.GuestEmail ? fldRow('Correo', `<a href="mailto:${esc(b.GuestEmail)}" style="color:#0d9488">${esc(b.GuestEmail)}</a>`) : ''}
+        ${b.GuestPhone ? fldRow('Teléfono', `<a href="https://wa.me/${esc(String(b.GuestPhone).replace(/\D/g,''))}" target="_blank" rel="noopener" style="color:#0d9488">${esc(b.GuestPhone)}</a>`) : ''}
+        ${b.GuestCountryCode ? fldRow('País', esc(b.GuestCountryCode)) : ''}
+        ${fldRow('Personas', `👥 ${b.NumberOfGuests} (Adultos: ${b.Adults}, Niños: ${b.Children}${b.Infants?`, Infantes: ${b.Infants}`:''}${b.Pets?`, Mascotas: ${b.Pets}`:''})`)}
+        ${fldRow('Currency', esc(b.Currency))}
+        ${fldRow('Gross / Net / VAT', `${lgFmtMoney(b.Gross, b.Currency)} / ${lgFmtMoney(b.Net, b.Currency)} / ${lgFmtMoney(b.Vat, b.Currency)}`)}
+        ${b.ChannelBooking ? fldRow('Channel booking', esc(b.ChannelBooking)) : ''}
+        ${b.ListingId ? fldRow('Listing ID', esc(b.ListingId)) : ''}
+      </div>
+      ${lineItemsHtml ? `
+      <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0;margin-top:12px">
+        <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">💰 LÍNEAS DE COBRO</div>
+        ${lineItemsHtml}
+        <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 0 0;font-size:13px;border-top:2px solid #e2e8f0;margin-top:6px">
+          <div style="font-weight:800;color:#0f172a">Total</div>
+          <div style="font-weight:800;color:#0f766e">${lgFmtMoney(b.Gross, b.Currency)}</div>
+        </div>
+      </div>` : ''}
+    </div>`;
+
+  return `
+    <details class="hu-record" data-lg-id="${esc(b.Id)}" style="border:1.5px solid ${palette.border};border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
+      ${summary}
+      ${detalleBody}
+    </details>`;
+}
+
+/** Estado de estancia de un booking (mismo semáforo que huéspedes). */
+function lgGetStayState(arrivalMMDD, departureMMDD) {
+  const di = lgParseMMDD(arrivalMMDD);
+  const ds = lgParseMMDD(departureMMDD);
+  if (!di && !ds) return '';
+  const today = new Date(); today.setUTCHours(0,0,0,0);
+  const start = di || ds;
+  const end   = ds || di;
+  if (end < today) return 'concluida';
+  if (end.getTime() === today.getTime()) return 'salida_hoy';
+  if (start > today) return 'proxima';
+  return 'activa';
 }
