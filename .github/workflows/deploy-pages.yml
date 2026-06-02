@@ -1,0 +1,99 @@
+name: Deploy GitHub Pages (master + test preview)
+
+on:
+  push:
+    branches: [master, test]
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write
+
+jobs:
+  # Push a `test` no puede deployar Pages directamente (el environment
+  # github-pages solo acepta master). Cuando alguien pushea a test,
+  # disparamos el workflow desde master para que tome ambos branches.
+  redirect-from-test:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch deploy desde master
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-pages.yml --ref master --repo ${{ github.repository }}
+
+  build:
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: master-src
+
+      - name: Checkout test
+        uses: actions/checkout@v4
+        with:
+          ref: test
+          path: test-src
+        continue-on-error: true
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          # Copia master al raíz (excluye .git, .github, files/, node_modules, tickets_images,
+          # Dockerfile, cloudbuild.yaml — nada de lo necesario para servir el frontend estático)
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='node_modules' \
+            --exclude='files' \
+            --exclude='tickets_images' \
+            --exclude='Dockerfile' \
+            --exclude='cloudbuild.yaml' \
+            --exclude='files.zip' \
+            --exclude='*.bak' \
+            master-src/ _site/
+          # Copia test bajo /preview/ (si la rama existe)
+          if [ -d "test-src" ]; then
+            mkdir -p _site/preview
+            rsync -a \
+              --exclude='.git' \
+              --exclude='.github' \
+              --exclude='node_modules' \
+              --exclude='files' \
+              --exclude='tickets_images' \
+              --exclude='Dockerfile' \
+              --exclude='cloudbuild.yaml' \
+              --exclude='files.zip' \
+              --exclude='*.bak' \
+              test-src/ _site/preview/
+          fi
+          echo "=== Estructura final ==="
+          find _site -maxdepth 2 -type f | head -30
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
