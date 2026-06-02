@@ -338,8 +338,8 @@ try {
 } catch(_) {}
 
 window.addEventListener("DOMContentLoaded", () => {
-  // ── LOGIN — cambiar DEV_MODE a false para reactivar contraseña ──────────
-  const DEV_MODE = true;
+  // ── LOGIN — contraseñas válidas: acl, ccl, admin (ver VALID_PASSWORDS) ──
+  const DEV_MODE = false;
   if (DEV_MODE) {
     currentUser = "admin";
     document.getElementById("loginOverlay")?.classList.add("hidden");
