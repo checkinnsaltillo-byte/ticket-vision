@@ -10797,26 +10797,43 @@ function lgAggregateBookings(rows) {
 }
 
 /** Carga los datos del backend de Lodgify. */
+/** Lee desde el sheet (vía Cloud Run → Apps Script → hoja "Reservas_Lodgify").
+ *  Es la lectura rápida (default). No consulta Lodgify directamente. */
 async function lodgifyLoad(force) {
   const lbl = document.getElementById('lg-status-label');
+  const lastSyncLbl = document.getElementById('lg-last-sync');
   const empty = document.getElementById('lg-empty');
   const cont = document.getElementById('lg-cards');
   if (LG_STATE.loading) return;
   LG_STATE.loading = true;
   if (lbl) lbl.textContent = 'Cargando…';
-  if (empty) { empty.textContent = 'Cargando reservaciones de Lodgify…'; empty.classList.remove('hidden'); }
+  if (empty) { empty.textContent = 'Cargando reservaciones desde Sheets…'; empty.classList.remove('hidden'); }
   if (cont) cont.innerHTML = '';
   try {
-    const { from, to, days } = lgGetRange();
-    LG_STATE.from = from; LG_STATE.to = to;
-    const url = `${LG_API_BASE}/api/otc?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-    const res = await fetch(url, { headers: { 'Accept':'application/json' }, cache:'no-store' });
+    const res = await fetch(`${BACKEND}/lodgify-list`, { cache:'no-store' });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    LG_STATE.raw = data.rows || [];
-    LG_STATE.bookings = lgAggregateBookings(LG_STATE.raw);
+    // Normaliza nombres de campos del sheet (GrossTotal → Gross, etc.)
+    // para mantener compatibilidad con lgBuildCard original.
+    LG_STATE.bookings = (data.bookings || []).map(b => ({
+      ...b,
+      Gross: Number(b.GrossTotal != null ? b.GrossTotal : b.Gross) || 0,
+      Net:   Number(b.NetTotal   != null ? b.NetTotal   : b.Net)   || 0,
+      Vat:   Number(b.VatTotal   != null ? b.VatTotal   : b.Vat)   || 0,
+      LineItems: Array.isArray(b.LineItems) ? b.LineItems : [],
+    }));
     LG_STATE.loaded = true;
-    if (lbl) lbl.textContent = `${LG_STATE.bookings.length} reservaciones (${days}d)`;
+    LG_STATE.lastSync = data.last_synced_at || '';
+    if (lbl) lbl.textContent = `${LG_STATE.bookings.length} reservaciones`;
+    if (lastSyncLbl) {
+      lastSyncLbl.textContent = LG_STATE.lastSync
+        ? '· última sync: ' + lgFmtRelativeTime(LG_STATE.lastSync)
+        : '· sin sincronizar';
+    }
+    if (!LG_STATE.bookings.length && empty) {
+      empty.textContent = 'La hoja "Reservas_Lodgify" está vacía. Click en "🔄 Sincronizar" para popular.';
+      empty.classList.remove('hidden');
+    }
     lgRebuildFilterOptions();
     lodgifyRender();
   } catch (e) {
@@ -10825,6 +10842,43 @@ async function lodgifyLoad(force) {
   } finally {
     LG_STATE.loading = false;
   }
+}
+
+/** Dispara sincronización contra Lodgify (rolling o full). */
+async function lodgifySync(full) {
+  const lbl = document.getElementById('lg-status-label');
+  const empty = document.getElementById('lg-empty');
+  const msg = full ? 'Sync completa (puede tardar 2-5 min)…' : 'Sincronizando…';
+  if (!confirm(`${msg}\n\n¿Continuar?`)) return;
+  try {
+    if (lbl) lbl.textContent = msg;
+    if (empty) { empty.textContent = msg; empty.classList.remove('hidden'); }
+    const res = await fetch(`${BACKEND}/lodgify-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ full: !!full }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || data.raw || `HTTP ${res.status}`);
+    alert(`✓ Sync OK\n\nRango: ${data.from} → ${data.to}\nBookings: ${data.bookings}\nInsertadas: ${data.inserted}\nActualizadas: ${data.updated}\nTotal en sheet: ${data.total_in_sheet}\nTiempo: ${(data.elapsed_ms/1000).toFixed(1)}s`);
+    await lodgifyLoad(true);
+  } catch (e) {
+    if (lbl) lbl.textContent = 'Error: ' + e.message;
+    alert('Error en sync: ' + e.message);
+  }
+}
+
+/** Formato tipo "hace 2h" / "ayer" / fecha ISO corta. */
+function lgFmtRelativeTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return 'hace segundos';
+  if (diff < 3600) return `hace ${Math.floor(diff/60)} min`;
+  if (diff < 86400) return `hace ${Math.floor(diff/3600)} h`;
+  if (diff < 86400*7) return `hace ${Math.floor(diff/86400)} d`;
+  return d.toISOString().slice(0,16).replace('T',' ');
 }
 
 /** Llena los selects de Source y Status con los valores únicos. */

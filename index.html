@@ -949,25 +949,17 @@
         <div class="db-top-left">
           <span class="db-todas-label">Reservas Lodgify</span>
         </div>
-        <div class="db-top-right">
+        <div class="db-top-right" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="db-count-inline" id="lg-status-label">—</span>
-          <button class="btn-limpiar" style="margin:0" onclick="lodgifyLoad(true)">↻ Actualizar</button>
+          <span id="lg-last-sync" style="font-size:11px;color:#64748b;font-weight:600">—</span>
+          <button class="btn-limpiar" style="margin:0" onclick="lodgifyLoad(true)" title="Recarga desde Sheets (instantáneo, no consulta Lodgify)">↻ Refrescar</button>
+          <button class="btn-limpiar" style="margin:0;background:#0d9488;color:#fff;border-color:#0d9488" onclick="lodgifySync(false)" title="Sincroniza últimos 60d + futuro 1 año desde Lodgify">🔄 Sincronizar</button>
+          <button class="btn-limpiar" style="margin:0" onclick="lodgifySync(true)" title="Sincronización completa: 2 años atrás/adelante (2-5 min)">⏳ Sync completa</button>
         </div>
       </div>
 
       <!-- Filtros -->
       <div style="display:flex;gap:12px;align-items:end;margin:10px 0 8px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;flex-wrap:wrap">
-        <div style="min-width:180px">
-          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📅 Rango</label>
-          <select id="lg-filtro-rango" onchange="lodgifyLoad(true)"
-                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
-            <option value="7">Últimos 7 días</option>
-            <option value="14">Últimos 14 días</option>
-            <option value="30" selected>Últimos 30 días</option>
-            <option value="60">Últimos 60 días</option>
-            <option value="90">Últimos 90 días</option>
-          </select>
-        </div>
         <div style="min-width:160px">
           <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🔌 Fuente</label>
           <select id="lg-filtro-source" onchange="lodgifyRender()"
@@ -1124,6 +1116,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=147"></script>
+  <script src="app.js?v=148"></script>
 </body>
 </html>

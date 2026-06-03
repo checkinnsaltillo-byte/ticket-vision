@@ -210,6 +210,49 @@ app.get("/huespedes-detail", async (req, res) => {
 
 // Guarda el monto facturado total (campo "(+) $ Monto facturado Total" del card)
 // en la columna "$ Monto facturado Total" de Reservaciones.
+// ─── Reservas Lodgify (cache en Google Sheets vía Apps Script) ──────────────
+app.get("/lodgify-list", async (req, res) => {
+  try {
+    const params = {
+      source: req.query.source || "",
+      status: req.query.status || "",
+      name_contains: req.query.name_contains || "",
+      limit: req.query.limit || "",
+    };
+    const result = await callCheckinAppsScript("lodgify_list", params);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/lodgify-sync", async (req, res) => {
+  try {
+    const full = req.body?.full ? "true" : "";
+    const daysBack = req.body?.days_back || "";
+    const daysFwd  = req.body?.days_fwd  || "";
+    // Sync puede tardar minutos (rolling ~60s, full hasta 5 min). Timeout
+    // generoso para no cortar a media operación.
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), 5 * 60 * 1000);
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "lodgify_sync",
+        full, days_back: daysBack, days_fwd: daysFwd,
+      }),
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(tm));
+    const text = await r.text();
+    let json = {};
+    try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
+    res.json(json);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Elimina una reservación completa (fila en la hoja "Reservaciones") por su ID.
 app.post("/huespedes-delete", async (req, res) => {
   try {
