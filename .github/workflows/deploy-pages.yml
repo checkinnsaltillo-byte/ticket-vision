@@ -1,8 +1,8 @@
-name: Deploy GitHub Pages (master + test preview)
+name: Deploy GitHub Pages (main + test preview)
 
 on:
   push:
-    branches: [master, test]
+    branches: [main, test]
   workflow_dispatch:
 
 concurrency:
@@ -17,26 +17,26 @@ permissions:
 
 jobs:
   # Push a `test` no puede deployar Pages directamente (el environment
-  # github-pages solo acepta master). Cuando alguien pushea a test,
-  # disparamos el workflow desde master para que tome ambos branches.
+  # github-pages solo acepta main). Cuando alguien pushea a test,
+  # disparamos el workflow desde main para que tome ambos branches.
   redirect-from-test:
     if: github.event_name == 'push' && github.ref == 'refs/heads/test'
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch deploy desde master
+      - name: Dispatch deploy desde main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run deploy-pages.yml --ref master --repo ${{ github.repository }}
+        run: gh workflow run deploy-pages.yml --ref main --repo ${{ github.repository }}
 
   build:
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout master
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: master
-          path: master-src
+          ref: main
+          path: main-src
 
       - name: Checkout test
         uses: actions/checkout@v4
@@ -48,8 +48,6 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          # Copia master al raíz (excluye .git, .github, files/, node_modules, tickets_images,
-          # Dockerfile, cloudbuild.yaml — nada de lo necesario para servir el frontend estático)
           rsync -a \
             --exclude='.git' \
             --exclude='.github' \
@@ -60,8 +58,7 @@ jobs:
             --exclude='cloudbuild.yaml' \
             --exclude='files.zip' \
             --exclude='*.bak' \
-            master-src/ _site/
-          # Copia test bajo /preview/ (si la rama existe)
+            main-src/ _site/
           if [ -d "test-src" ]; then
             mkdir -p _site/preview
             rsync -a \
