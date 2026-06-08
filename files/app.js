@@ -10732,22 +10732,37 @@ function lgDaysDiff(isoA, isoB) {
   return Math.abs(Math.round((a - b) / 86400000));
 }
 
+/** Devuelve los últimos 10 dígitos del PRIMER campo del row que parezca un
+ *  teléfono (clave contiene "cel", "whats", "tel" o "phone"). Esto es más
+ *  robusto que buscar nombres exactos de campos. */
+function lgExtractHuespedPhoneTail(h) {
+  if (!h || typeof h !== 'object') return '';
+  for (const k of Object.keys(h)) {
+    const norm = String(k).toLowerCase();
+    if (!/cel|whats|tel[eé]?fono|phone/.test(norm)) continue;
+    if (/emergencia|emergency/.test(norm)) continue; // ignorar el de emergencia
+    const digits = lgNormalizePhone(h[k]);
+    if (digits.length >= 10) return digits.slice(-10);
+  }
+  return '';
+}
+
 /** Busca una coincidencia en HU_STATE.rows para un booking de Lodgify.
  *  CRITERIOS ESTRICTOS (los 2 deben cumplirse):
  *    1) Últimos 10 dígitos del teléfono (omitiendo espacios) coinciden.
- *    2) Fechas de entrada y salida coinciden exactamente.
- *  Devuelve el row de huéspedes o null. */
+ *    2) Fechas de entrada y salida coinciden exactamente. */
 function lgMatchHuesped(booking) {
   const rows = HU_STATE.rows || [];
   if (!rows.length) return null;
-  const bPhone10 = lgNormalizePhone(booking.GuestPhone).slice(-10);
+  const bPhoneAll = lgNormalizePhone(booking.GuestPhone);
+  const bPhone10 = bPhoneAll.slice(-10);
   if (bPhone10.length < 10) return null;
   const bArrIso = lgMMDDtoIsoDate(booking.DateArrival);
   const bDepIso = lgMMDDtoIsoDate(booking.DateDeparture);
   if (!bArrIso || !bDepIso) return null;
 
   for (const h of rows) {
-    const hPhone10 = lgNormalizePhone(huValueFlexible(h, ['Cel/Whatsapp (principal)','Celular principal'])).slice(-10);
+    const hPhone10 = lgExtractHuespedPhoneTail(h);
     if (hPhone10 !== bPhone10) continue;
     const hArr = String(huValueFlexible(h, ['Fecha de ingreso','Fecha de entrada']) || '').slice(0,10);
     const hDep = String(huValueFlexible(h, ['Fecha de salida']) || '').slice(0,10);
@@ -10767,21 +10782,14 @@ function lgComputeMatches() {
   }
   LG_STATE.matches = map;
   console.info(`[LG] matches: ${map.size} de ${bookings.length} bookings (huéspedes: ${huRows.length} rows)`);
-  // Si no hubo matches y sí hay datos en ambas, muestra una muestra para debug
-  if (map.size === 0 && bookings.length && huRows.length) {
-    const sample = bookings[0];
-    const huSample = huRows[0];
-    console.warn('[LG] 0 matches — diagnóstico de muestra:', {
-      booking_id:    sample.Id,
-      booking_phone: lgNormalizePhone(sample.GuestPhone),
-      booking_name:  sample.GuestName,
-      booking_dates: `${sample.DateArrival} → ${sample.DateDeparture}`,
-      booking_house: sample.HouseName,
-      huesped_keys_disponibles: Object.keys(huSample).slice(0,15),
-      huesped_phone: lgNormalizePhone(huValueFlexible(huSample, ['Cel/Whatsapp (principal)','Celular principal'])),
-      huesped_name:  huValueFlexible(huSample, ['Nombre del huésped','Nombre de la persona que hizo la reservación']),
-      huesped_prop:  huValueFlexible(huSample, ['Propiedad']),
-    });
+  // Diagnóstico: muestra info de huéspedes para verificar campos
+  if (huRows.length) {
+    const phoneKeys = new Set();
+    huRows.forEach(h => Object.keys(h).forEach(k => {
+      const nk = String(k).toLowerCase();
+      if (/cel|whats|tel|phone/.test(nk)) phoneKeys.add(k);
+    }));
+    console.info('[LG] keys-teléfono detectadas en huéspedes:', [...phoneKeys]);
   }
 }
 
@@ -10967,14 +10975,19 @@ function lgAggregateBookings(rows) {
 /** HTML del loader animado de Check-inn (mismo del proyecto check-in). */
 const LG_LOADER_BASE = 'https://checkinnsaltillo-byte.github.io/checkin-app/public/registro';
 function lgLoaderHtml(msg) {
+  // Estructura HTML idéntica a la de checkin-app/public/registro:
+  // - <div class="ci-face"> para front/back
+  // - <img class="ci-spacer"> DIRECTO (sin wrap en span) — esto da ancho
+  //   real al .ci-pin para que rote sobre su eje central, no sobre el
+  //   margen izquierdo.
   return `
     <div class="lg-loading-state">
-      <div class="checkinn-loader size-lg">
+      <div class="checkinn-loader size-lg" role="img" aria-label="Cargando">
         <div class="ci-pin-scene">
           <div class="ci-pin">
-            <span class="ci-face front"><img src="${LG_LOADER_BASE}/loader_pin.png" alt=""></span>
-            <span class="ci-face back"><img src="${LG_LOADER_BASE}/loader_pin.png" alt=""></span>
-            <span class="ci-spacer"><img src="${LG_LOADER_BASE}/loader_pin.png" alt=""></span>
+            <div class="ci-face front"><img src="${LG_LOADER_BASE}/loader_pin.png" alt=""></div>
+            <div class="ci-face back"><img src="${LG_LOADER_BASE}/loader_pin.png" alt=""></div>
+            <img class="ci-spacer" src="${LG_LOADER_BASE}/loader_pin.png" alt="">
           </div>
         </div>
         <img class="ci-text" src="${LG_LOADER_BASE}/loader_text.png" alt="Check-inn">
@@ -11660,27 +11673,34 @@ window.lgOpenDetailModal = async function(bookingId) {
     body.innerHTML = `<div style="padding:20px;color:#dc2626">Error renderizando detalle: ${esc(err.message||err)}</div>`;
   }
   overlay.classList.remove('hidden');
-  // Si hay match, enriquecer huésped en background con /huespedes-detail
+  // Si hay match, enriquecer huésped solo si NO trae ya las fotos.
+  // Esto evita el "parpadeo" donde la card se abre y casi al instante
+  // se vuelve a renderizar (porque caía la respuesta del fetch).
   if (huesped) {
-    try {
-      const recId = String(huesped['ID'] || huesped['row_number'] || '');
-      if (recId) {
-        const r = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`);
-        const j = await r.json();
-        if (j?.ok && j.record) {
-          const merged = { ...huesped, ...j.record };
-          // Actualizar el row en HU_STATE para futuras vistas
-          const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
-          if (idx >= 0) HU_STATE.rows[idx] = merged;
-          LG_STATE.matches.set(String(b.Id), merged);
-          // Re-render del modal con el row enriquecido
-          if (!overlay.classList.contains('hidden')) {
-            try { body.innerHTML = lgBuildModalContent(b, merged); }
-            catch (err) { console.error('[LG] modal rebuild error:', err); }
+    const alreadyEnriched = !!(
+      huesped['Link INE frontal'] || huesped['INE frontal'] ||
+      huesped['Link INE trasero'] || huesped['INE trasero'] ||
+      huesped['Link foto vehículo']
+    );
+    if (!alreadyEnriched) {
+      try {
+        const recId = String(huesped['ID'] || huesped['row_number'] || '');
+        if (recId) {
+          const r = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`);
+          const j = await r.json();
+          if (j?.ok && j.record) {
+            const merged = { ...huesped, ...j.record };
+            const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
+            if (idx >= 0) HU_STATE.rows[idx] = merged;
+            LG_STATE.matches.set(String(b.Id), merged);
+            if (!overlay.classList.contains('hidden')) {
+              try { body.innerHTML = lgBuildModalContent(b, merged); }
+              catch (err) { console.error('[LG] modal rebuild error:', err); }
+            }
           }
         }
-      }
-    } catch (e) { console.warn('[LG] enrich huesped en modal falló:', e.message); }
+      } catch (e) { console.warn('[LG] enrich huesped en modal falló:', e.message); }
+    }
   }
 };
 
@@ -11758,19 +11778,34 @@ function lgBuildModalContent(b, huesped) {
       </div>
     </div>` : ''}`;
 
-  // Bloque de Información de huéspedes — siempre vertical (sin layout en 3
-  // columnas que rompe en pantallas chicas o cuando faltan estilos). Genera
-  // perfil + datos manuales + historial.
+  // Bloque de Información de huéspedes — usa EXACTAMENTE el mismo layout
+  // de 3 columnas (perfil + historial + detalle) que el módulo "Información
+  // de huéspedes", reutilizando huBuildIdCard / huBuildHistoryList /
+  // huBuildReservationDetail.
   let huespedSection = '';
   if (huesped) {
+    let idCard = '', history = '', huDetail = '';
+    try { idCard = (typeof huBuildIdCard === 'function') ? huBuildIdCard(huesped) : ''; }
+    catch (e) { console.error('[LG] huBuildIdCard error:', e); idCard = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar perfil: ${esc(e.message||e)}</div>`; }
+    try {
+      const recId = String(huesped['ID']||huesped['row_number']||'');
+      history = (typeof huBuildHistoryList === 'function')
+        ? huBuildHistoryList(huesped, HU_STATE.rows, recId, recId)
+        : '';
+    } catch (e) { console.error('[LG] huBuildHistoryList error:', e); history = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar historial</div>`; }
+    try { huDetail = (typeof huBuildReservationDetail === 'function') ? huBuildReservationDetail(huesped) : ''; }
+    catch (e) { console.error('[LG] huBuildReservationDetail error:', e); huDetail = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar detalle</div>`; }
+
     huespedSection = `
       <div style="margin-top:18px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
           <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:10px;border:1px solid #92400e;letter-spacing:.04em">📋 REGISTRO MANUAL DEL HUÉSPED</span>
         </div>
-        ${lgBuildHuespedProfile(huesped)}
-        ${lgBuildHuespedBlock(huesped, fldRow)}
-        ${lgBuildHuespedHistory(huesped, b)}
+        <div class="hu-record-body" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
+          <div class="hu-col-profile">${idCard}</div>
+          <div class="hu-col-history">${history}</div>
+          <div class="hu-col-detail">${huDetail}</div>
+        </div>
       </div>`;
   }
 
@@ -11909,10 +11944,7 @@ function lgBuildHuespedBlock(h, fldRow) {
 
   return `
     <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #86efac;margin-top:12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:11px;letter-spacing:.18em;color:#166534;font-weight:800;display:flex;align-items:center;gap:6px">📋 REGISTRO MANUAL DEL HUÉSPED</div>
-        ${recId ? `<button onclick="event.stopPropagation();huespedesOpenDetail('${esc(recId)}')" style="padding:5px 10px;border:1px solid #16a34a;background:#fff;color:#166534;border-radius:6px;font-weight:700;font-size:10px;cursor:pointer">Ver registro completo →</button>` : ''}
-      </div>
+      <div style="font-size:11px;letter-spacing:.18em;color:#166534;font-weight:800;display:flex;align-items:center;gap:6px;margin-bottom:10px">📋 DATOS DEL REGISTRO MANUAL</div>
       ${rows || '<div style="padding:8px;color:#94a3b8;font-style:italic;font-size:12px">Sin información adicional registrada.</div>'}
     </div>`;
 }
