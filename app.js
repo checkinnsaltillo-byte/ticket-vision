@@ -10732,77 +10732,27 @@ function lgDaysDiff(isoA, isoB) {
 }
 
 /** Busca una coincidencia en HU_STATE.rows para un booking de Lodgify.
- *  Estrategia tolerante (no estricta):
- *    a) Match fuerte: últimos 8+ dígitos del teléfono coinciden.
- *    b) Si no hay teléfono o no matchea, busca por nombre similar +
- *       fechas cercanas (±2 días) + propiedad similar.
+ *  CRITERIOS ESTRICTOS (los 2 deben cumplirse):
+ *    1) Últimos 10 dígitos del teléfono (omitiendo espacios) coinciden.
+ *    2) Fechas de entrada y salida coinciden exactamente.
  *  Devuelve el row de huéspedes o null. */
 function lgMatchHuesped(booking) {
   const rows = HU_STATE.rows || [];
   if (!rows.length) return null;
-
-  const bPhone = lgNormalizePhone(booking.GuestPhone);
-  const bPhoneTail = bPhone.slice(-8); // 8 dígitos = suficiente para identificar único
-  const bName  = String(booking.GuestName || '');
+  const bPhone10 = lgNormalizePhone(booking.GuestPhone).slice(-10);
+  if (bPhone10.length < 10) return null;
   const bArrIso = lgMMDDtoIsoDate(booking.DateArrival);
   const bDepIso = lgMMDDtoIsoDate(booking.DateDeparture);
-  const bPropFull = lgNormalizeText(booking.HouseName);
-  const bPropShort = lgNormalizeText(lgFmtPropiedad(booking.HouseName));
+  if (!bArrIso || !bDepIso) return null;
 
-  // 1) Calcular score para cada row de huéspedes
-  let best = null;
-  let bestScore = 0;
   for (const h of rows) {
-    const hPhone = lgNormalizePhone(huValueFlexible(h, ['Cel/Whatsapp (principal)','Celular principal','Cel/Whatsapp principal']));
-    const hPhoneTail = hPhone.slice(-8);
-    const hName  = huValueFlexible(h, ['Nombre del huésped','Nombre de la persona que hizo la reservación','Nombre huésped']);
-    const hArr   = String(huValueFlexible(h, ['Fecha de ingreso','Fecha de entrada']) || '').slice(0,10);
-    const hDep   = String(huValueFlexible(h, ['Fecha de salida']) || '').slice(0,10);
-    // Propiedad: en huéspedes puede venir separada en "Propiedad" y
-    // "# Departamento". Las combinamos para comparar contra "Cumbres #14".
-    const hPropRaw  = huValueFlexible(h, ['Propiedad']);
-    const hDepto    = huValueFlexible(h, ['# Departamento','Departamento']);
-    const hProp     = lgNormalizeText(`${hPropRaw} ${hDepto}`);
-
-    let score = 0;
-    // Teléfono: 10 dígitos exactos = +10, 8 dígitos = +7
-    if (bPhoneTail && hPhoneTail && bPhoneTail.length >= 8) {
-      if (bPhone.slice(-10) === hPhone.slice(-10) && bPhone.length >= 10) score += 10;
-      else if (bPhoneTail === hPhoneTail) score += 7;
-    }
-    // Nombre similar
-    const nameSim = lgSimilarity(bName, hName);
-    if (nameSim >= 0.9) score += 5;
-    else if (nameSim >= 0.6) score += 3;
-    else if (nameSim >= 0.4) score += 1;
-    // Fechas
-    const arrDiff = lgDaysDiff(bArrIso, hArr);
-    const depDiff = lgDaysDiff(bDepIso, hDep);
-    if (arrDiff === 0) score += 4;
-    else if (arrDiff <= 2) score += 2;
-    if (depDiff === 0) score += 3;
-    else if (depDiff <= 2) score += 1;
-    // Propiedad (compara con HouseName completo y con la forma corta)
-    if (hProp && bPropShort) {
-      if (bPropShort.includes(hProp) || hProp.includes(bPropShort)) score += 2;
-      else if (bPropFull.includes(hProp) || hProp.includes(bPropFull.split(' ')[0])) score += 1;
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = h;
-    }
+    const hPhone10 = lgNormalizePhone(huValueFlexible(h, ['Cel/Whatsapp (principal)','Celular principal'])).slice(-10);
+    if (hPhone10 !== bPhone10) continue;
+    const hArr = String(huValueFlexible(h, ['Fecha de ingreso','Fecha de entrada']) || '').slice(0,10);
+    const hDep = String(huValueFlexible(h, ['Fecha de salida']) || '').slice(0,10);
+    if (hArr === bArrIso && hDep === bDepIso) return h;
   }
-
-  // Umbral mínimo para considerar match: 5 puntos.
-  // Ejemplos:
-  //   - Solo teléfono 10 dígitos = 10 ✓
-  //   - Solo teléfono 8 dígitos + cualquier fecha cerca = 9 ✓
-  //   - Nombre exacto + fechas exactas = 5 + 4 + 3 = 12 ✓
-  //   - Nombre similar + fechas exactas = 3 + 4 + 3 = 10 ✓
-  //   - Solo nombre exacto sin fechas = 5 (justo en el límite) ✓
-  if (bestScore < 5) return null;
-  return best;
+  return null;
 }
 
 /** Recalcula LG_STATE.matches para todos los bookings cacheados. */
@@ -11583,15 +11533,15 @@ function lgBuildCard(b) {
     : '';
 
   // Ícono de "registro manual completo": aparece cuando hay match en
-  // Información de huéspedes (mismo teléfono + idealmente fechas/propiedad).
+  // Información de huéspedes (mismo teléfono + mismas fechas).
   const huespedMatch = LG_STATE.matches?.get(String(b.Id)) || null;
   const matchBadge = huespedMatch
-    ? `<span title="Registro manual completado por el huésped" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:800;font-size:9px;border:1px solid #86efac;letter-spacing:.02em">📋 Registrado</span>`
+    ? `<span title="Registro manual completado por el huésped" style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:9px;border:1px solid #92400e;letter-spacing:.04em;box-shadow:0 1px 3px rgba(217,119,6,.35)">📋 REGISTRADO</span>`
     : '';
 
-  // Header summary (compacto)
+  // Header summary (compacto). Click → abre modal con todos los detalles.
   const summary = `
-    <summary style="cursor:pointer;list-style:none;padding:9px 11px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center">
+    <div style="cursor:pointer;padding:9px 11px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center">
       <div style="min-width:0">
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:4px">${lgSourceBadge(b.Source)}${huespedesChip}${matchBadge}</div>
         <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.2;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
@@ -11608,8 +11558,8 @@ function lgBuildCard(b) {
         <div style="font-size:14px;font-weight:800;color:#111827;line-height:1.1">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
         <div>${lgStatusBadge(b.Status)}</div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:12px;flex-shrink:0" class="hu-record-chev">▾</div>
-    </summary>`;
+      <div title="Ver detalles" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:11px;flex-shrink:0">↗</div>
+    </div>`;
 
   // Detalle expandido
   const fldRow = (label, value) => `
@@ -11661,10 +11611,151 @@ function lgBuildCard(b) {
     </div>`;
 
   return `
-    <details class="hu-record" data-lg-id="${esc(b.Id)}" style="border:1.5px solid ${palette.border};border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
+    <div class="lg-card hu-record" data-lg-id="${esc(b.Id)}"
+         onclick="lgOpenDetailModal('${esc(b.Id)}')"
+         style="border:1.5px solid ${palette.border};border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04);transition:transform 120ms ease-out, box-shadow 120ms ease-out"
+         onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(15,23,42,.10)'"
+         onmouseout="this.style.transform='';this.style.boxShadow='0 1px 3px rgba(15,23,42,.04)'">
       ${summary}
-      ${detalleBody}
-    </details>`;
+    </div>`;
+}
+
+// ─── Modal de detalle de reservación Lodgify ────────────────────────────────
+
+/** Abre el modal con todos los detalles del booking. Si hay match en
+ *  Información de huéspedes, también carga el perfil, historial y
+ *  detalle de la reservación correspondiente. */
+window.lgOpenDetailModal = async function(bookingId) {
+  const overlay = document.getElementById('lg-detail-overlay');
+  const body    = document.getElementById('lg-detail-body');
+  if (!overlay || !body) return;
+  const b = (LG_STATE.bookings || []).find(x => String(x.Id) === String(bookingId));
+  if (!b) return;
+  const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
+  // Render inicial (sin photos enriquecidas)
+  body.innerHTML = lgBuildModalContent(b, huesped);
+  overlay.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  // Si hay match, enriquecer huésped en background con /huespedes-detail
+  if (huesped) {
+    try {
+      const recId = String(huesped['ID'] || huesped['row_number'] || '');
+      if (recId) {
+        const r = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`);
+        const j = await r.json();
+        if (j?.ok && j.record) {
+          const merged = { ...huesped, ...j.record };
+          // Actualizar el row en HU_STATE para futuras vistas
+          const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
+          if (idx >= 0) HU_STATE.rows[idx] = merged;
+          LG_STATE.matches.set(String(b.Id), merged);
+          // Re-render del modal con el row enriquecido
+          if (!overlay.classList.contains('hidden')) {
+            body.innerHTML = lgBuildModalContent(b, merged);
+          }
+        }
+      }
+    } catch (e) { console.warn('[LG] enrich huesped en modal falló:', e.message); }
+  }
+};
+
+window.lgCloseDetailModal = function() {
+  const overlay = document.getElementById('lg-detail-overlay');
+  if (overlay) overlay.classList.add('hidden');
+  document.body.style.overflow = '';
+};
+
+// Escape cierra el modal
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('lg-detail-overlay');
+    if (ov && !ov.classList.contains('hidden')) lgCloseDetailModal();
+  }
+});
+
+/** Construye el contenido HTML del modal de detalle. */
+function lgBuildModalContent(b, huesped) {
+  const ingreso = lgFmtFecha(b.DateArrival);
+  const salida  = lgFmtFecha(b.DateDeparture);
+  const prop    = lgFmtPropiedad(b.HouseName);
+  const nombre  = b.GuestName || 'Sin nombre';
+
+  // Header: source/status + nombre + propiedad/fechas/monto
+  const header = `
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px">
+      ${lgSourceBadge(b.Source)}
+      ${lgStatusBadge(b.Status)}
+      ${huesped ? `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:10px;border:1px solid #92400e;letter-spacing:.04em;box-shadow:0 1px 3px rgba(217,119,6,.35)">📋 REGISTRADO</span>` : ''}
+    </div>
+    <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f172a;font-weight:800">${esc(nombre)}</h2>
+    <div style="font-size:14px;color:#64748b;font-weight:500">${esc(prop)} · ${ingreso} → ${salida} · 🌙 ${b.Nights} noche${b.Nights===1?'':'s'}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:13px;color:#64748b">
+      ${b.GuestPhone ? `<span>📱 <b style="color:#0f766e">${esc(b.GuestPhone)}</b></span>` : ''}
+      ${b.GuestEmail ? `<span>✉️ <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
+    </div>
+    <div style="margin-top:8px;font-size:15px;color:#a16207;font-weight:800">${b.Gross > 0 ? `Ingreso bruto: ${lgFmtMoney(b.Gross, b.Currency)}` : ''}</div>
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0">`;
+
+  // Detalle Lodgify
+  const fldRow = (label, value) => `
+    <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;align-self:center">${esc(label)}</div>
+      <div style="font-size:13px;color:#1f2937">${value || '—'}</div>
+    </div>`;
+
+  const lineItemsHtml = (b.LineItems || []).map(li => `
+    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;border-bottom:1px dashed #e2e8f0;font-size:12px">
+      <div><b style="color:#0f172a">${esc(li.kind || '—')}</b>${li.desc ? `<span style="color:#64748b"> · ${esc(li.desc)}</span>` : ''}</div>
+      <div style="font-weight:700;color:#0f766e">${lgFmtMoney(li.gross, b.Currency)}</div>
+    </div>`).join('');
+
+  const lodgifyBlock = `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
+      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📑 DETALLE LODGIFY</div>
+      ${fldRow('ID booking', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.Id)}</code>`)}
+      ${b.ConfirmationCode ? fldRow('Confirmation code', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.ConfirmationCode)}</code>`) : ''}
+      ${fldRow('Propiedad', esc(b.HouseName))}
+      ${b.RoomTypeNames ? fldRow('Tipo de habitación', esc(b.RoomTypeNames)) : ''}
+      ${fldRow('Llegada', esc(b.DateArrival))}
+      ${fldRow('Salida', esc(b.DateDeparture))}
+      ${fldRow('# Noches', `<b>${b.Nights}</b>`)}
+      ${b.DateCancelled ? fldRow('Cancelada', esc(b.DateCancelled)) : ''}
+      ${fldRow('Personas', `👥 ${b.NumberOfGuests} (Adultos: ${b.Adults}, Niños: ${b.Children}${b.Infants?`, Infantes: ${b.Infants}`:''}${b.Pets?`, Mascotas: ${b.Pets}`:''})`)}
+      ${fldRow('Gross / Net / VAT', `${lgFmtMoney(b.Gross, b.Currency)} / ${lgFmtMoney(b.Net, b.Currency)} / ${lgFmtMoney(b.Vat, b.Currency)}`)}
+      ${b.ChannelBooking ? fldRow('Channel booking', esc(b.ChannelBooking)) : ''}
+    </div>
+    ${lineItemsHtml ? `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0;margin-top:12px">
+      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">💰 LÍNEAS DE COBRO</div>
+      ${lineItemsHtml}
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 0 0;font-size:13px;border-top:2px solid #e2e8f0;margin-top:6px">
+        <div style="font-weight:800;color:#0f172a">Total</div>
+        <div style="font-weight:800;color:#0f766e">${lgFmtMoney(b.Gross, b.Currency)}</div>
+      </div>
+    </div>` : ''}`;
+
+  // Bloque de Información de huéspedes (3 columnas) si hay match
+  let huespedSection = '';
+  if (huesped) {
+    const idCard  = (typeof huBuildIdCard === 'function') ? huBuildIdCard(huesped) : '';
+    const history = (typeof huBuildHistoryList === 'function')
+      ? huBuildHistoryList(huesped, HU_STATE.rows, String(huesped['ID']||huesped['row_number']||''), String(huesped['ID']||huesped['row_number']||''))
+      : '';
+    const huDetail = (typeof huBuildReservationDetail === 'function') ? huBuildReservationDetail(huesped) : '';
+    huespedSection = `
+      <div style="margin-top:18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:10px;border:1px solid #92400e;letter-spacing:.04em">📋 REGISTRO MANUAL DEL HUÉSPED</span>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:12px;align-items:start">
+          <div>${idCard}</div>
+          <div>${history}</div>
+          <div>${huDetail}</div>
+        </div>
+      </div>`;
+  }
+
+  return header + lodgifyBlock + huespedSection;
 }
 
 /** Bloque visual con los datos del registro manual (Información de huéspedes)

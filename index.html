@@ -1009,6 +1009,18 @@
       <!-- Cards container -->
       <div id="lg-cards" style="display:flex;flex-direction:column;gap:10px"></div>
       <div id="lg-empty" class="empty hidden">Sin reservaciones en el rango seleccionado.</div>
+
+      <!-- Modal de detalle de reservación Lodgify -->
+      <div id="lg-detail-overlay" class="hidden"
+           onclick="lgCloseDetailModal()"
+           style="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px)">
+        <div onclick="event.stopPropagation()"
+             style="background:#fff;border-radius:16px;width:100%;max-width:1100px;max-height:92vh;overflow:auto;padding:0;box-shadow:0 24px 60px rgba(15,23,42,.45);position:relative">
+          <button onclick="lgCloseDetailModal()" title="Cerrar (Esc)" aria-label="Cerrar"
+                  style="position:absolute;top:14px;right:14px;width:36px;height:36px;border:none;background:#fff;color:#1f2937;border-radius:50%;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);z-index:10">✕</button>
+          <div id="lg-detail-body" style="padding:22px"></div>
+        </div>
+      </div>
     </div><!-- /module-lodgify -->
 
     <!-- Detail modal for Bancos drilldown -->
@@ -1133,6 +1145,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=160"></script>
+  <script src="app.js?v=161"></script>
 </body>
 </html>
