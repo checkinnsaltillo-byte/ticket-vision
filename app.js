@@ -10668,6 +10668,29 @@ const LG_STATE = {
   lastAutoSyncMs: 0,
 };
 
+/** Normaliza cualquier formato de fecha (MM/DD/YYYY, ISO 2026-08-05T…,
+ *  YYYY-MM-DD, Date object) a "MM/DD/YYYY" — el formato canónico que usa
+ *  el módulo en toda la UI. Devuelve "" si no es parseable. */
+function lgNormalizeDate(v) {
+  if (v == null) return '';
+  const s = String(v).trim();
+  if (!s) return '';
+  // Caso 1: ya viene como MM/DD/YYYY o M/D/YYYY
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${String(m[1]).padStart(2,'0')}/${String(m[2]).padStart(2,'0')}/${m[3]}`;
+  // Caso 2: ISO completa "2026-08-05T06:00:00.000Z" o "2026-08-05"
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[2]}/${m[3]}/${m[1]}`;
+  // Caso 3: cualquier cosa que Date pueda parsear
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+    const dd = String(d.getUTCDate()).padStart(2,'0');
+    return `${mm}/${dd}/${d.getUTCFullYear()}`;
+  }
+  return s; // último recurso: tal cual
+}
+
 /** MM/DD/YYYY → Date (UTC). */
 function lgParseMMDD(s) {
   if (!s) return null;
@@ -10821,9 +10844,14 @@ async function lodgifyLoad(force) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
     // Normaliza nombres de campos del sheet (GrossTotal → Gross, etc.)
-    // para mantener compatibilidad con lgBuildCard original.
+    // y normaliza fechas al formato MM/DD/YYYY (algunas celdas del sheet
+    // están formateadas como fecha y Apps Script las devuelve como ISO
+    // "2026-08-05T06:00:00.000Z" en vez de "08/05/2026").
     LG_STATE.bookings = (data.bookings || []).map(b => ({
       ...b,
+      DateArrival:   lgNormalizeDate(b.DateArrival),
+      DateDeparture: lgNormalizeDate(b.DateDeparture),
+      DateCancelled: lgNormalizeDate(b.DateCancelled),
       Gross: Number(b.GrossTotal != null ? b.GrossTotal : b.Gross) || 0,
       Net:   Number(b.NetTotal   != null ? b.NetTotal   : b.Net)   || 0,
       Vat:   Number(b.VatTotal   != null ? b.VatTotal   : b.Vat)   || 0,
