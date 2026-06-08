@@ -11004,26 +11004,24 @@ function lgMultiRender(id, label, allValues, opts) {
     const checked = sel.has(v) ? 'checked' : '';
     const disp = opts.optionRenderer ? opts.optionRenderer(v) : esc(v);
     return `
-      <label style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:12.5px;color:#1f2937" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">
-        <input type="checkbox" value="${esc(v)}" ${checked} onchange="lgMultiToggle('${id}','${esc(v)}')" style="cursor:pointer;flex-shrink:0">
-        <span>${disp}</span>
+      <label class="lg-multi-opt">
+        <input type="checkbox" class="lg-multi-cb" value="${esc(v)}" ${checked} onchange="lgMultiToggle('${id}','${esc(v)}')">
+        <span class="lg-multi-opt-txt">${disp}</span>
       </label>`;
   };
   c.innerHTML = `
     <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${esc(label)}</label>
-    <div style="position:relative">
-      <button type="button" onclick="lgMultiTogglePanel('${id}',event)" id="lg-multi-btn-${id}"
-              style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="lg-multi-lbl-${id}">${esc(labelTxt)}</span>
-        <span style="color:#94a3b8;flex-shrink:0">▾</span>
+    <div class="lg-multi-wrap">
+      <button type="button" onclick="lgMultiTogglePanel('${id}',event)" id="lg-multi-btn-${id}" class="lg-multi-btn">
+        <span class="lg-multi-btn-lbl" id="lg-multi-lbl-${id}">${esc(labelTxt)}</span>
+        <span class="lg-multi-btn-caret">▾</span>
       </button>
-      <div id="lg-multi-panel-${id}" class="hidden"
-           style="position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid #d1d5db;border-radius:6px;box-shadow:0 4px 16px rgba(15,23,42,.15);z-index:50;max-height:320px;overflow-y:auto;min-width:220px">
-        <div style="display:flex;gap:4px;padding:6px;border-bottom:1px solid #e2e8f0;background:#f8fafc;position:sticky;top:0;z-index:1">
-          <button type="button" onclick="lgMultiSetAll('${id}')" style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✓ Todas</button>
-          <button type="button" onclick="lgMultiSetNone('${id}')" style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✕ Ninguna</button>
+      <div id="lg-multi-panel-${id}" class="lg-multi-panel hidden">
+        <div class="lg-multi-actions">
+          <button type="button" onclick="lgMultiSetAll('${id}')" class="lg-multi-action">✓ Todas</button>
+          <button type="button" onclick="lgMultiSetNone('${id}')" class="lg-multi-action">✕ Ninguna</button>
         </div>
-        <div style="padding:6px">
+        <div class="lg-multi-options">
           ${allValues.map(renderOption).join('')}
         </div>
       </div>
