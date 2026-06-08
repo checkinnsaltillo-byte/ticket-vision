@@ -10998,16 +10998,20 @@ function lgLoaderHtml(msg) {
 
 /** Lee desde el sheet (vía Cloud Run → Apps Script → hoja "Reservas_Lodgify").
  *  Es la lectura rápida (default). No consulta Lodgify directamente. */
-async function lodgifyLoad(force) {
+async function lodgifyLoad(force, opts) {
+  opts = opts || {};
+  const silent = !!opts.silent; // si true, no limpia el contenedor ni muestra spinner
   const lbl = document.getElementById('lg-status-label');
   const lastSyncLbl = document.getElementById('lg-last-sync');
   const empty = document.getElementById('lg-empty');
   const cont = document.getElementById('lg-cards');
   if (LG_STATE.loading) return;
   LG_STATE.loading = true;
-  if (lbl) lbl.textContent = 'Cargando…';
-  if (empty) empty.classList.add('hidden');
-  if (cont) cont.innerHTML = lgLoaderHtml('Cargando reservaciones…');
+  if (!silent) {
+    if (lbl) lbl.textContent = 'Cargando…';
+    if (empty) empty.classList.add('hidden');
+    if (cont) cont.innerHTML = lgLoaderHtml('Cargando reservaciones…');
+  }
   try {
     const res = await fetch(`${BACKEND}/lodgify-list`, { cache:'no-store' });
     const data = await res.json();
@@ -11075,7 +11079,10 @@ async function lodgifySync(full) {
 }
 
 /** Sync silencioso al entrar al módulo. Throttle: máx 1 vez cada 10 min.
- *  Ventana: 7 días atrás + 2 años adelante (todas las futuras). */
+ *  Ventana: 7 días atrás + 2 años adelante (todas las futuras).
+ *  CLAVE: NO debe limpiar la pantalla ni mostrar spinner — el usuario ya
+ *  está viendo las cards. Si la hoja no cambió (insertadas==0 + updated==0),
+ *  ni siquiera se recarga. */
 async function lodgifyMaybeAutoSync() {
   const lastMs = Number(LG_STATE.lastAutoSyncMs || 0);
   if (lastMs && (Date.now() - lastMs) < 10 * 60 * 1000) {
@@ -11095,8 +11102,16 @@ async function lodgifyMaybeAutoSync() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || data.raw || 'sync failed');
     console.info('[LG] auto-sync OK:', data);
-    // Recarga del sheet para reflejar cambios sin reset del modo de vista
-    await lodgifyLoad(true);
+    if (lbl) lbl.textContent = prev;
+    // Si NO hubo cambios, evitamos la recarga: la UI sigue intacta.
+    const changes = (Number(data.inserted)||0) + (Number(data.updated)||0);
+    if (changes === 0) {
+      console.info('[LG] auto-sync: sin cambios, no se recarga');
+      return;
+    }
+    // Hubo cambios: recargamos SILENCIOSAMENTE — sin limpiar el contenedor
+    // ni mostrar spinner. Las cards se actualizan in-place al final.
+    await lodgifyLoad(true, { silent: true });
   } catch (e) {
     console.warn('[LG] auto-sync error:', e.message);
     if (lbl) lbl.textContent = prev + ' · ⚠ sync falló';
