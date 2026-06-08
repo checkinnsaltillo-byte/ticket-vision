@@ -10943,17 +10943,16 @@ function lgGetFiltered() {
   const st  = (document.getElementById('lg-filtro-status')?.value || '').toLowerCase();
   const pg  = (document.getElementById('lg-filtro-programacion')?.value || '').toLowerCase();
   const nb  = (document.getElementById('lg-filtro-nombre')?.value || '').toLowerCase().trim();
-  const fe  = String(document.getElementById('lg-filtro-fecha-entrada')?.value || '').trim();
-  const fs  = String(document.getElementById('lg-filtro-fecha-salida')?.value || '').trim();
-  // Convierte YYYY-MM-DD (formato del <input type="date">) a Date local.
-  const parseIso = (s) => {
-    if (!s) return null;
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!m) return null;
-    return new Date(+m[1], +m[2]-1, +m[3]);
+  const feIso = String(document.getElementById('lg-filtro-fecha-entrada')?.value || '').trim(); // YYYY-MM-DD
+  const fsIso = String(document.getElementById('lg-filtro-fecha-salida')?.value || '').trim();  // YYYY-MM-DD
+  // Convierte MM/DD/YYYY (formato Lodgify) a YYYY-MM-DD para comparación
+  // por string (independiente de la zona horaria). Esto evita el bug donde
+  // "Fecha de salida" no matcheaba por desfase TZ.
+  const mmddToIso = (s) => {
+    const m = String(s||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (!m) return '';
+    return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
   };
-  const dateFE = parseIso(fe);
-  const dateFS = parseIso(fs);
   // Ventana visible default: últimos 7 días + activas + futuras.
   // Se desactiva con el toggle "Histórico completo".
   const fullHistory = document.getElementById('lg-toggle-history')?.checked;
@@ -10967,16 +10966,15 @@ function lgGetFiltered() {
       const state = lgGetStayState(b.DateArrival, b.DateDeparture);
       if (state !== pg) return false;
     }
-    // Filtros por fecha exacta de entrada / salida (match día).
-    if (dateFE) {
-      const di = lgParseMMDD(b.DateArrival);
-      if (!di || di.getUTCFullYear()!==dateFE.getFullYear() || di.getUTCMonth()!==dateFE.getMonth() || di.getUTCDate()!==dateFE.getDate()) return false;
+    // Filtros por fecha exacta de entrada / salida (match día, comparando
+    // strings ISO YYYY-MM-DD para ser inmunes a la zona horaria).
+    if (feIso) {
+      if (mmddToIso(b.DateArrival) !== feIso) return false;
     }
-    if (dateFS) {
-      const ds = lgParseMMDD(b.DateDeparture);
-      if (!ds || ds.getUTCFullYear()!==dateFS.getFullYear() || ds.getUTCMonth()!==dateFS.getMonth() || ds.getUTCDate()!==dateFS.getDate()) return false;
+    if (fsIso) {
+      if (mmddToIso(b.DateDeparture) !== fsIso) return false;
     }
-    if (!fullHistory && !dateFE && !dateFS) {
+    if (!fullHistory && !feIso && !fsIso) {
       // Mostrar solo bookings cuya salida sea >= hoy-7d (concluidas recientes,
       // activas y futuras todas). Esto descarta el histórico viejo.
       const m = String(b.DateDeparture||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
