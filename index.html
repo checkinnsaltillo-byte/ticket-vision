@@ -965,9 +965,10 @@
           <select id="lg-filtro-programacion" onchange="lodgifyRender()"
                   style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
             <option value="">Todas</option>
-            <option value="proxima">🟡 Próxima</option>
-            <option value="activa">🟢 Activa (en curso)</option>
             <option value="salida_hoy">🔴 Salida hoy</option>
+            <option value="activa">🔵 Activa (en curso)</option>
+            <option value="entrada_hoy">🟢 Entrada hoy</option>
+            <option value="proxima">🟡 Próxima</option>
             <option value="concluida">⚪ Concluida</option>
           </select>
         </div>
@@ -1000,25 +1001,23 @@
           <input type="text" id="lg-filtro-nombre" placeholder="Buscar por nombre…" oninput="lodgifyRender()"
                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
         </div>
+        <div>
+          <button type="button" onclick="lgClearFilters()"
+                  style="padding:8px 14px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">✕ Borrar filtros</button>
+        </div>
       </div>
 
-      <!-- Toggle de vista (lista/kanban) + ventana de fechas -->
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:8px 0 10px">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Vista:</div>
-          <div style="display:inline-flex;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:4px">
-            <button id="lg-view-list" onclick="lgSetViewMode('list')"
-                    style="padding:6px 12px;border:1.5px solid #0d9488;background:#0d9488;color:#fff;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📋 Lista</button>
-            <button id="lg-view-kanban" onclick="lgSetViewMode('kanban')"
-                    style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">🗂️ 3 columnas</button>
-            <button id="lg-view-table" onclick="lgSetViewMode('table')"
-                    style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📊 Tabla</button>
-          </div>
+      <!-- Toggle de vista (lista / kanban / tabla) -->
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 10px">
+        <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Vista:</div>
+        <div style="display:inline-flex;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:4px">
+          <button id="lg-view-list" onclick="lgSetViewMode('list')"
+                  style="padding:6px 12px;border:1.5px solid #0d9488;background:#0d9488;color:#fff;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📋 Lista</button>
+          <button id="lg-view-kanban" onclick="lgSetViewMode('kanban')"
+                  style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">🗂️ 4 columnas</button>
+          <button id="lg-view-table" onclick="lgSetViewMode('table')"
+                  style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📊 Tabla</button>
         </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#475569;font-weight:600;cursor:pointer" title="Por defecto se muestran solo las reservas de los últimos 7 días + en curso + futuras. Activa este toggle para ver TODO el histórico.">
-          <input type="checkbox" id="lg-toggle-history" onchange="lodgifyRender()" style="cursor:pointer">
-          🗄️ Histórico completo
-        </label>
       </div>
 
       <!-- KPIs -->
@@ -1156,6 +1155,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=155"></script>
+  <script src="app.js?v=156"></script>
 </body>
 </html>

@@ -10727,7 +10727,7 @@ function lgSourceBadge(src) {
   else if (lc.includes('expedia')) { bg='#fef3c7'; fg='#92400e'; bd='#fcd34d'; ico='Ⓔ'; }
   else if (lc.includes('vrbo'))    { bg='#dcfce7'; fg='#166534'; bd='#86efac'; ico='Ⓥ'; }
   else if (lc.includes('manual'))  { bg='#ede9fe'; fg='#5b21b6'; bd='#c4b5fd'; ico='✋'; }
-  return `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;background:${bg};color:${fg};font-weight:800;font-size:11px;border:1px solid ${bd};letter-spacing:.02em">${ico} ${esc(s)}</span>`;
+  return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;background:${bg};color:${fg};font-weight:800;font-size:9px;border:1px solid ${bd};letter-spacing:.02em">${ico} ${esc(s)}</span>`;
 }
 
 /** Badge del Status (Open/Booked/Tentative/Declined). */
@@ -10740,7 +10740,7 @@ function lgStatusBadge(st) {
   else if (lc === 'open')     { bg='#dbeafe'; fg='#1e40af'; bd='#93c5fd'; }
   else if (lc === 'tentative'){ bg='#fef3c7'; fg='#92400e'; bd='#fcd34d'; }
   else if (lc === 'declined' || lc === 'cancelled') { bg='#fee2e2'; fg='#991b1b'; bd='#fca5a5'; }
-  return `<span style="display:inline-block;padding:4px 12px;border-radius:999px;background:${bg};color:${fg};font-weight:700;font-size:10px;border:1px solid ${bd};text-transform:uppercase;letter-spacing:.04em">${esc(s)}</span>`;
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:${bg};color:${fg};font-weight:700;font-size:8px;border:1px solid ${bd};text-transform:uppercase;letter-spacing:.04em">${esc(s)}</span>`;
 }
 
 /** Formato monetario tolerante (igual que huFmtMonto pero sin recuperación ISO). */
@@ -10981,9 +10981,7 @@ function lgGetFiltered() {
     if (!m) return '';
     return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
   };
-  // Ventana visible default: últimos 7 días + activas + futuras.
-  // Se desactiva con el toggle "Histórico completo".
-  const fullHistory = document.getElementById('lg-toggle-history')?.checked;
+  // Ventana visible default: últimos 7 días + en curso + futuras.
   const cutoff = new Date(); cutoff.setHours(0,0,0,0);
   cutoff.setDate(cutoff.getDate() - 7);
   const filtered = LG_STATE.bookings.filter(b => {
@@ -11002,7 +11000,7 @@ function lgGetFiltered() {
     if (fsIso) {
       if (mmddToIso(b.DateDeparture) !== fsIso) return false;
     }
-    if (!fullHistory && !feIso && !fsIso) {
+    if (!feIso && !fsIso) {
       // Mostrar solo bookings cuya salida sea >= hoy-7d (concluidas recientes,
       // activas y futuras todas). Esto descarta el histórico viejo.
       const m = String(b.DateDeparture||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
@@ -11020,7 +11018,7 @@ function lgGetFiltered() {
     const dir = LG_STATE.sortDir === 'desc' ? -1 : 1;
     const accessor = (b) => {
       switch (key) {
-        case 'Programacion': return ({ proxima:1, activa:2, salida_hoy:3, concluida:4 }[lgGetStayState(b.DateArrival, b.DateDeparture)] || 99);
+        case 'Programacion': return ({ salida_hoy:1, activa:2, entrada_hoy:3, proxima:4, concluida:5 }[lgGetStayState(b.DateArrival, b.DateDeparture)] || 99);
         case 'Propiedad':    return lgFmtPropiedad(b.HouseName).toLowerCase();
         case 'GuestName':    return String(b.GuestName||'').toLowerCase();
         case 'DateArrival':  return lgParseMMDD(b.DateArrival)?.getTime() || 0;
@@ -11056,7 +11054,7 @@ function lgGetFiltered() {
   // Ordenamiento por Programación: Próxima → Activa → Salida hoy → Concluida.
   // Dentro de cada grupo, las próximas más cercanas primero, las concluidas
   // más recientes primero (mismo criterio: fecha de llegada).
-  const rank = { proxima: 1, activa: 2, salida_hoy: 3, concluida: 4 };
+  const rank = { salida_hoy: 1, activa: 2, entrada_hoy: 3, proxima: 4, concluida: 5 };
   const tsArrival = (b) => {
     const m = String(b.DateArrival||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     return m ? new Date(+m[3], +m[1]-1, +m[2]).getTime() : 0;
@@ -11066,10 +11064,9 @@ function lgGetFiltered() {
     const sb = rank[lgGetStayState(b.DateArrival, b.DateDeparture)] || 99;
     if (sa !== sb) return sa - sb;
     const ta = tsArrival(a), tb = tsArrival(b);
-    // Próximas: las más cercanas (menor fecha) primero.
-    // Activas / Salida hoy: ascendente también.
-    // Concluidas: las más recientes (mayor fecha) primero.
-    if (sa === 4) return tb - ta;
+    // Próximas / Entrada hoy / Activa / Salida hoy: ascendente por fecha.
+    // Concluidas: las más recientes primero.
+    if (sa === 5) return tb - ta;
     return ta - tb;
   });
   return filtered;
@@ -11108,33 +11105,43 @@ function lodgifyRender() {
   }
 }
 
-/** Construye las 3 columnas: Salida hoy · Activa · Próxima.
+/** Construye las 4 columnas: Salida hoy · Activa · Entrada hoy · Próxima.
  *  (Concluida queda fuera del kanban porque no requiere acción.) */
 function lgBuildKanban(list) {
-  const groups = { salida_hoy: [], activa: [], proxima: [], concluida: [] };
+  const groups = { salida_hoy: [], activa: [], entrada_hoy: [], proxima: [], concluida: [] };
   list.forEach(b => {
     const state = lgGetStayState(b.DateArrival, b.DateDeparture) || 'concluida';
     if (groups[state]) groups[state].push(b);
   });
   const col = (title, icon, accent, bookings) => `
-    <div style="flex:1;min-width:280px;background:#fff;border-radius:14px;border:1.5px solid ${accent.border};box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;display:flex;flex-direction:column">
-      <div style="padding:12px 14px;background:${accent.bg};border-bottom:1.5px solid ${accent.border};display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <div style="display:flex;align-items:center;gap:8px;font-weight:800;color:${accent.fg};font-size:13px;letter-spacing:.02em">
-          <span style="font-size:16px">${icon}</span>${esc(title)}
+    <div style="flex:1;min-width:220px;background:#fff;border-radius:11px;border:1.5px solid ${accent.border};box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:8px 10px;background:${accent.bg};border-bottom:1.5px solid ${accent.border};display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="display:flex;align-items:center;gap:5px;font-weight:800;color:${accent.fg};font-size:11px;letter-spacing:.02em">
+          <span style="font-size:13px">${icon}</span>${esc(title)}
         </div>
-        <span style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:22px;padding:0 8px;border-radius:11px;background:#fff;color:${accent.fg};font-weight:800;font-size:11px;border:1px solid ${accent.border}">${bookings.length}</span>
+        <span style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:18px;padding:0 6px;border-radius:9px;background:#fff;color:${accent.fg};font-weight:800;font-size:10px;border:1px solid ${accent.border}">${bookings.length}</span>
       </div>
-      <div style="padding:10px;background:#f8fafc;flex:1;display:block;max-height:78vh;overflow-y:auto">
-        ${bookings.length ? bookings.map(b => `<div style="margin-bottom:8px">${lgBuildCard(b)}</div>`).join('') : `<div style="padding:18px 12px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>`}
+      <div style="padding:6px;background:#f8fafc;flex:1;display:block;max-height:78vh;overflow-y:auto">
+        ${bookings.length ? bookings.map(b => `<div style="margin-bottom:5px">${lgBuildCard(b)}</div>`).join('') : `<div style="padding:14px 10px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">Sin reservaciones</div>`}
       </div>
     </div>`;
   return `
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:stretch">
-      ${col('Salida hoy', '🔴', { bg:'#fef2f2', border:'#fecaca', fg:'#991b1b' }, groups.salida_hoy)}
-      ${col('Activa (en curso)', '🟢', { bg:'#f0fdf4', border:'#bbf7d0', fg:'#166534' }, groups.activa)}
-      ${col('Próxima', '🟡', { bg:'#fffbeb', border:'#fde68a', fg:'#92400e' }, groups.proxima)}
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">
+      ${col(LG_STATE_META.salida_hoy.label,  LG_STATE_META.salida_hoy.emoji,  { bg:LG_STATE_META.salida_hoy.bg,  border:LG_STATE_META.salida_hoy.border,  fg:LG_STATE_META.salida_hoy.accentFg  }, groups.salida_hoy)}
+      ${col(LG_STATE_META.activa.label,      LG_STATE_META.activa.emoji,      { bg:LG_STATE_META.activa.bg,      border:LG_STATE_META.activa.border,      fg:LG_STATE_META.activa.accentFg      }, groups.activa)}
+      ${col(LG_STATE_META.entrada_hoy.label, LG_STATE_META.entrada_hoy.emoji, { bg:LG_STATE_META.entrada_hoy.bg, border:LG_STATE_META.entrada_hoy.border, fg:LG_STATE_META.entrada_hoy.accentFg }, groups.entrada_hoy)}
+      ${col(LG_STATE_META.proxima.label,     LG_STATE_META.proxima.emoji,     { bg:LG_STATE_META.proxima.bg,     border:LG_STATE_META.proxima.border,     fg:LG_STATE_META.proxima.accentFg     }, groups.proxima)}
     </div>`;
 }
+
+/** Borra todos los filtros y vuelve al estado por defecto. */
+window.lgClearFilters = function() {
+  const ids = ['lg-filtro-programacion','lg-filtro-source','lg-filtro-status','lg-filtro-fecha-entrada','lg-filtro-fecha-salida','lg-filtro-nombre'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  LG_STATE.sortKey = '';
+  LG_STATE.sortDir = '';
+  lodgifyRender();
+};
 
 /** Cambia el modo de vista (lista / kanban / table) y re-renderiza. */
 window.lgSetViewMode = function(mode) {
@@ -11172,12 +11179,9 @@ function lgBuildTable(list) {
   const cols = [
     { key:'Programacion',   label:'Programación',    cellClass:'lg-td-tag', formatter: (b) => {
         const s = lgGetStayState(b.DateArrival, b.DateDeparture);
-        const map = { proxima: ['🟡 Próxima','#fffbeb','#92400e','#fde68a'],
-                      activa:  ['🟢 Activa','#f0fdf4','#166534','#bbf7d0'],
-                      salida_hoy:['🔴 Salida hoy','#fef2f2','#991b1b','#fecaca'],
-                      concluida:['⚪ Concluida','#f8fafc','#475569','#cbd5e1'] };
-        const [t,bg,fg,bd] = map[s] || ['—','#f1f5f9','#64748b','#cbd5e1'];
-        return `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:${bg};color:${fg};font-weight:700;font-size:11px;border:1px solid ${bd}">${t}</span>`;
+        const m = LG_STATE_META[s];
+        if (!m) return '<span style="color:#94a3b8">—</span>';
+        return `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:${m.bg};color:${m.accentFg};font-weight:700;font-size:11px;border:1px solid ${m.border}">${m.emoji} ${esc(m.label)}</span>`;
       }},
     { key:'Propiedad',      label:'Propiedad',       formatter: (b) => esc(lgFmtPropiedad(b.HouseName)) },
     { key:'GuestName',      label:'Nombre del huésped', formatter: (b) => esc(b.GuestName||'—') },
@@ -11232,36 +11236,33 @@ function lgBuildCard(b) {
   const salida  = lgFmtFecha(b.DateDeparture);
   const noches  = b.Nights || 0;
   const stayState = lgGetStayState(b.DateArrival, b.DateDeparture);
-  const palette = stayState === 'concluida' ? { border:'#cbd5e1', bg:'#f8fafc' }
-                : stayState === 'salida_hoy'? { border:'#fecaca', bg:'#fef2f2' }
-                : stayState === 'activa'    ? { border:'#bbf7d0', bg:'#f0fdf4' }
-                :                              { border:'#fde68a', bg:'#fffbeb' };
+  const meta = LG_STATE_META[stayState] || LG_STATE_META.concluida;
+  const palette = { border: meta.border, bg: meta.bg };
 
   const huespedesChip = b.NumberOfGuests
-    ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;background:#fff;color:#1f2937;font-weight:800;font-size:11px;border:1px solid #e2e8f0;letter-spacing:.02em;box-shadow:0 1px 2px rgba(15,23,42,.05)">👥 ${b.NumberOfGuests} huésped${b.NumberOfGuests===1?'':'es'}</span>`
+    ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;background:#fff;color:#1f2937;font-weight:700;font-size:9px;border:1px solid #e2e8f0;letter-spacing:.02em">👥 ${b.NumberOfGuests}</span>`
     : '';
 
-  // Header summary
+  // Header summary (compacto)
   const summary = `
-    <summary style="cursor:pointer;list-style:none;padding:16px 18px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center">
-      <div>
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px">${lgSourceBadge(b.Source)}${huespedesChip}</div>
-        <div style="font-size:18px;font-weight:800;color:#111827;line-height:1.25;margin-bottom:6px">${esc(nombre)}</div>
-        <div style="font-size:13px;color:#64748b;font-weight:500">${esc(prop)}</div>
-        <div style="font-size:13px;color:#64748b;font-weight:500;margin-top:2px">${ingreso} → ${salida}</div>
-        <div style="font-size:12px;color:#475569;font-weight:600;margin-top:3px">🌙 ${noches} noche${noches===1?'':'s'}</div>
+    <summary style="cursor:pointer;list-style:none;padding:9px 11px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center">
+      <div style="min-width:0">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:4px">${lgSourceBadge(b.Source)}${huespedesChip}</div>
+        <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.2;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
+        <div style="font-size:11px;color:#64748b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(prop)}</div>
+        <div style="font-size:11px;color:#64748b;font-weight:500;margin-top:1px">${ingreso} → ${salida} <span style="color:#475569;font-weight:600">· 🌙 ${noches}n</span></div>
         ${b.GuestPhone || b.GuestEmail ? `
-        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;font-size:11px;color:#64748b">
-          ${b.GuestPhone ? `<span><span style="color:#94a3b8;font-weight:600">📱</span> <b style="color:#1f2937">${esc(b.GuestPhone)}</b></span>` : ''}
-          ${b.GuestEmail ? `<span><span style="color:#94a3b8;font-weight:600">✉️</span> <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:3px;font-size:10px;color:#64748b">
+          ${b.GuestPhone ? `<span>📱 <b style="color:#1f2937">${esc(b.GuestPhone)}</b></span>` : ''}
+          ${b.GuestEmail ? `<span>✉️ <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
         </div>` : ''}
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:160px">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Ingreso bruto</div>
-        <div style="font-size:22px;font-weight:800;color:#111827">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:110px">
+        <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Ingreso bruto</div>
+        <div style="font-size:14px;font-weight:800;color:#111827;line-height:1.1">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
         <div>${lgStatusBadge(b.Status)}</div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:14px;flex-shrink:0" class="hu-record-chev">▾</div>
+      <div style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:12px;flex-shrink:0" class="hu-record-chev">▾</div>
     </summary>`;
 
   // Detalle expandido
@@ -11313,7 +11314,7 @@ function lgBuildCard(b) {
     </div>`;
 
   return `
-    <details class="hu-record" data-lg-id="${esc(b.Id)}" style="border:1.5px solid ${palette.border};border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
+    <details class="hu-record" data-lg-id="${esc(b.Id)}" style="border:1.5px solid ${palette.border};border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)">
       ${summary}
       ${detalleBody}
     </details>`;
@@ -11329,6 +11330,16 @@ function lgGetStayState(arrivalMMDD, departureMMDD) {
   const end   = ds || di;
   if (end < today) return 'concluida';
   if (end.getTime() === today.getTime()) return 'salida_hoy';
+  if (start.getTime() === today.getTime()) return 'entrada_hoy';
   if (start > today) return 'proxima';
   return 'activa';
 }
+
+/** Paleta + etiqueta de cada estado del semáforo de Programación. */
+const LG_STATE_META = {
+  salida_hoy:  { label:'Salida hoy',  emoji:'🔴', border:'#fecaca', bg:'#fef2f2', accentFg:'#991b1b' },
+  activa:      { label:'Activa',      emoji:'🔵', border:'#bfdbfe', bg:'#eff6ff', accentFg:'#1e40af' },
+  entrada_hoy: { label:'Entrada hoy', emoji:'🟢', border:'#bbf7d0', bg:'#f0fdf4', accentFg:'#166534' },
+  proxima:     { label:'Próxima',     emoji:'🟡', border:'#fde68a', bg:'#fffbeb', accentFg:'#92400e' },
+  concluida:   { label:'Concluida',   emoji:'⚪', border:'#cbd5e1', bg:'#f8fafc', accentFg:'#475569' },
+};
