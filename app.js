@@ -11438,8 +11438,10 @@ function lodgifyRender() {
  *  (Concluida queda fuera del kanban porque no requiere acción.) */
 function lgBuildKanban(list) {
   const groups = { salida_hoy: [], activa: [], entrada_hoy: [], proxima: [], concluida: [] };
+  const sinFecha = [];
   list.forEach(b => {
-    const state = lgGetStayState(b.DateArrival, b.DateDeparture) || 'concluida';
+    const state = lgGetStayState(b.DateArrival, b.DateDeparture);
+    if (!state) { sinFecha.push(b); return; }
     if (groups[state]) groups[state].push(b);
   });
   const col = (title, icon, accent, bookings) => `
@@ -11454,13 +11456,27 @@ function lgBuildKanban(list) {
         ${bookings.length ? bookings.map(b => `<div style="margin-bottom:5px">${lgBuildCard(b)}</div>`).join('') : `<div style="padding:14px 10px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">Sin reservaciones</div>`}
       </div>
     </div>`;
+  // Pie informativo: la vista de 4 columnas NO muestra las "Concluidas"
+  // ni las reservaciones sin fechas válidas, pero el KPI total sí las
+  // cuenta. Aquí informamos al usuario para que el delta se entienda.
+  const ocultas = groups.concluida.length + sinFecha.length;
+  const footer = ocultas > 0 ? `
+    <div style="margin-top:12px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:11px;color:#64748b;display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between">
+      <div>
+        ℹ️ <b>${ocultas}</b> reservación${ocultas===1?'':'es'} no se muestran en las 4 columnas:
+        ${groups.concluida.length ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:700;font-size:10px;margin-left:4px">⚪ ${groups.concluida.length} concluida${groups.concluida.length===1?'':'s'}</span>` : ''}
+        ${sinFecha.length ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:999px;background:#fef2f2;color:#991b1b;font-weight:700;font-size:10px;margin-left:4px">⚠ ${sinFecha.length} sin fecha</span>` : ''}
+      </div>
+      <span style="color:#94a3b8;font-style:italic">Cambia a vista 📋 Lista o usa el filtro Programación para verlas.</span>
+    </div>` : '';
   return `
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">
       ${col(LG_STATE_META.salida_hoy.label,  LG_STATE_META.salida_hoy.emoji,  { bg:LG_STATE_META.salida_hoy.bg,  border:LG_STATE_META.salida_hoy.border,  fg:LG_STATE_META.salida_hoy.accentFg  }, groups.salida_hoy)}
       ${col(LG_STATE_META.activa.label,      LG_STATE_META.activa.emoji,      { bg:LG_STATE_META.activa.bg,      border:LG_STATE_META.activa.border,      fg:LG_STATE_META.activa.accentFg      }, groups.activa)}
       ${col(LG_STATE_META.entrada_hoy.label, LG_STATE_META.entrada_hoy.emoji, { bg:LG_STATE_META.entrada_hoy.bg, border:LG_STATE_META.entrada_hoy.border, fg:LG_STATE_META.entrada_hoy.accentFg }, groups.entrada_hoy)}
       ${col(LG_STATE_META.proxima.label,     LG_STATE_META.proxima.emoji,     { bg:LG_STATE_META.proxima.bg,     border:LG_STATE_META.proxima.border,     fg:LG_STATE_META.proxima.accentFg     }, groups.proxima)}
-    </div>`;
+    </div>
+    ${footer}`;
 }
 
 /** Borra todos los filtros y vuelve al estado por defecto. */
@@ -11898,6 +11914,26 @@ function lgBuildHuespedSectionHtml(huesped) {
   if (!huesped) return '';
   const v  = (cands) => huValueFlexible(huesped, Array.isArray(cands) ? cands : [cands]);
   const lgV = (val) => val == null || String(val).trim() === '' ? '—' : esc(String(val));
+  // Helpers para formatear fechas y horas igual que el módulo huéspedes.
+  // Las celdas en Sheets pueden venir como "2026-06-08" o como ISO
+  // "2026-06-08T06:00:00.000Z" o como "1899-12-30T20:41:16.000Z" (cuando
+  // la celda es Time-only y Sheets le pone fecha base 1899).
+  const fmtFecha = (raw) => {
+    if (raw == null || String(raw).trim() === '') return '—';
+    const s = String(raw).trim();
+    // Extraer YYYY-MM-DD para pasárselo a huFmtFecha
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const iso = m ? `${m[1]}-${m[2]}-${m[3]}` : s;
+    return (typeof huFmtFecha === 'function') ? huFmtFecha(iso) : esc(iso);
+  };
+  const fmtHora = (raw) => {
+    if (raw == null || String(raw).trim() === '') return '—';
+    const s = String(raw).trim();
+    // Si viene como ISO full, extraer la parte HH:MM directamente
+    const m = s.match(/T(\d{2}):(\d{2})/);
+    if (m) return `${m[1]}:${m[2]}`;
+    return (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple(s) : esc(s);
+  };
 
   // ─── Col 1: Perfil del huésped (ID Card) ───
   const nombre  = v(['Nombre del huésped','Nombre de la persona que hizo la reservación']);
@@ -11988,13 +12024,13 @@ function lgBuildHuespedSectionHtml(huesped) {
     return `
       <div style="padding:9px 11px;border:1.5px solid ${isCurr?'#fbbf24':'transparent'};border-radius:8px;background:#fff;margin-bottom:5px;box-shadow:0 1px 2px rgba(15,23,42,.04)">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px">
-          <div style="font-size:11px;font-weight:800;color:#0f172a">${esc(ingreso)} → ${esc(salida)}</div>
+          <div style="font-size:11px;font-weight:800;color:#0f172a">${fmtFecha(ingreso)} → ${fmtFecha(salida)}</div>
           ${isCurr ? '<span style="font-size:8px;padding:1px 6px;border-radius:999px;background:#fbbf24;color:#451a03;font-weight:800;letter-spacing:.04em">ESTA</span>' : ''}
         </div>
         <div style="font-size:10px;color:#64748b;font-weight:500">${esc(prop||'—')}${depto?' · # '+esc(depto):''}</div>
         <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:10px">
-          <span style="color:#94a3b8">${esc(noches||'—')}n</span>
-          ${monto ? `<span style="color:#0f766e;font-weight:700">${esc(monto)}</span>` : ''}
+          <span style="color:#94a3b8">${esc(noches||'—')} noche${String(noches)==='1'?'':'s'}</span>
+          ${monto ? `<span style="color:#0f766e;font-weight:700">${(typeof huFmtMonto==='function')?huFmtMonto(monto):esc(monto)}</span>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -12040,11 +12076,11 @@ function lgBuildHuespedSectionHtml(huesped) {
         <div style="font-size:10px;letter-spacing:.16em;color:#64748b;font-weight:800;text-transform:uppercase">Detalle de reservación</div>
         ${folio ? `<span style="font-size:9px;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;letter-spacing:.04em">EMITIDA · ${lgV(folio)}</span>` : ''}
       </div>
-      <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:8px">${lgV(ingreso)} → ${lgV(salida)}</div>
+      <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:8px">${fmtFecha(ingreso)} → ${fmtFecha(salida)}</div>
       ${detailRow('Propiedad', lgV(propiedad))}
       ${detailRow('# Departamento', lgV(depto))}
-      ${detailRow('Llegada est.', lgV(horaIng))}
-      ${detailRow('Salida est.', lgV(horaSal))}
+      ${detailRow('Llegada estimada', fmtHora(horaIng))}
+      ${detailRow('Salida estimada', fmtHora(horaSal))}
       ${detailRow('# Huéspedes', lgV(huespCount))}
       ${nombresT ? detailRow('Nombres', `<span style="font-size:11px;line-height:1.4">${lgV(nombresT)}</span>`) : ''}
       ${motivo ? detailRow('Motivo', lgV(motivo)) : ''}
