@@ -10675,19 +10675,19 @@ function lgNormalizeDate(v) {
   if (v == null) return '';
   const s = String(v).trim();
   if (!s) return '';
-  // Caso 1: ya viene como MM/DD/YYYY o M/D/YYYY
+  // Caso 1: ya viene como MM/DD/YYYY o M/D/YYYY (string nativo)
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m) return `${String(m[1]).padStart(2,'0')}/${String(m[2]).padStart(2,'0')}/${m[3]}`;
-  // Caso 2: ISO completa "2026-08-05T06:00:00.000Z" o "2026-08-05"
-  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  // Caso 2: ISO completa con T "2026-08-05T06:00:00.000Z"
+  // Esto solo ocurre cuando la celda del sheet quedó como Date object,
+  // lo que en locale es-MX significa que Sheets parseó como DD/MM antes.
+  // → Por eso swappeamos: el "MM" en ISO es realmente el día original,
+  // y el "DD" en ISO es realmente el mes original.
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`; // swap: ISO-DD → MM, ISO-MM → DD
+  // Caso 3: ISO solo fecha "2026-08-05" (string sin T, no parseado por Sheets)
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) return `${m[2]}/${m[3]}/${m[1]}`;
-  // Caso 3: cualquier cosa que Date pueda parsear
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) {
-    const mm = String(d.getUTCMonth()+1).padStart(2,'0');
-    const dd = String(d.getUTCDate()).padStart(2,'0');
-    return `${mm}/${dd}/${d.getUTCFullYear()}`;
-  }
   return s; // último recurso: tal cual
 }
 
@@ -11124,8 +11124,8 @@ function lgBuildKanban(list) {
         </div>
         <span style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:22px;padding:0 8px;border-radius:11px;background:#fff;color:${accent.fg};font-weight:800;font-size:11px;border:1px solid ${accent.border}">${bookings.length}</span>
       </div>
-      <div style="padding:10px;background:#f8fafc;flex:1;display:flex;flex-direction:column;gap:8px;max-height:78vh;overflow-y:auto">
-        ${bookings.length ? bookings.map(lgBuildCard).join('') : `<div style="padding:18px 12px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>`}
+      <div style="padding:10px;background:#f8fafc;flex:1;display:block;max-height:78vh;overflow-y:auto">
+        ${bookings.length ? bookings.map(b => `<div style="margin-bottom:8px">${lgBuildCard(b)}</div>`).join('') : `<div style="padding:18px 12px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>`}
       </div>
     </div>`;
   return `
