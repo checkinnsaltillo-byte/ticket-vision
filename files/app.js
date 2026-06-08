@@ -10662,6 +10662,10 @@ const LG_STATE = {
   loading: false,
   from: '',
   to: '',
+  viewMode: 'list', // 'list' | 'kanban' | 'table'
+  sortKey: '',      // columna activa para sort (vista tabla)
+  sortDir: '',      // 'asc' | 'desc' | ''
+  lastAutoSyncMs: 0,
 };
 
 /** MM/DD/YYYY → Date (UTC). */
@@ -10939,6 +10943,17 @@ function lgGetFiltered() {
   const st  = (document.getElementById('lg-filtro-status')?.value || '').toLowerCase();
   const pg  = (document.getElementById('lg-filtro-programacion')?.value || '').toLowerCase();
   const nb  = (document.getElementById('lg-filtro-nombre')?.value || '').toLowerCase().trim();
+  const fe  = String(document.getElementById('lg-filtro-fecha-entrada')?.value || '').trim();
+  const fs  = String(document.getElementById('lg-filtro-fecha-salida')?.value || '').trim();
+  // Convierte YYYY-MM-DD (formato del <input type="date">) a Date local.
+  const parseIso = (s) => {
+    if (!s) return null;
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    return new Date(+m[1], +m[2]-1, +m[3]);
+  };
+  const dateFE = parseIso(fe);
+  const dateFS = parseIso(fs);
   // Ventana visible default: últimos 7 días + activas + futuras.
   // Se desactiva con el toggle "Histórico completo".
   const fullHistory = document.getElementById('lg-toggle-history')?.checked;
@@ -10952,7 +10967,16 @@ function lgGetFiltered() {
       const state = lgGetStayState(b.DateArrival, b.DateDeparture);
       if (state !== pg) return false;
     }
-    if (!fullHistory) {
+    // Filtros por fecha exacta de entrada / salida (match día).
+    if (dateFE) {
+      const di = lgParseMMDD(b.DateArrival);
+      if (!di || di.getUTCFullYear()!==dateFE.getFullYear() || di.getUTCMonth()!==dateFE.getMonth() || di.getUTCDate()!==dateFE.getDate()) return false;
+    }
+    if (dateFS) {
+      const ds = lgParseMMDD(b.DateDeparture);
+      if (!ds || ds.getUTCFullYear()!==dateFS.getFullYear() || ds.getUTCMonth()!==dateFS.getMonth() || ds.getUTCDate()!==dateFS.getDate()) return false;
+    }
+    if (!fullHistory && !dateFE && !dateFS) {
       // Mostrar solo bookings cuya salida sea >= hoy-7d (concluidas recientes,
       // activas y futuras todas). Esto descarta el histórico viejo.
       const m = String(b.DateDeparture||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
@@ -10963,6 +10987,46 @@ function lgGetFiltered() {
     }
     return true;
   });
+  // Si el usuario eligió una columna para ordenar (vista Tabla), aplica
+  // ese orden a TODOS los registros filtrados.
+  if (LG_STATE.sortKey) {
+    const key = LG_STATE.sortKey;
+    const dir = LG_STATE.sortDir === 'desc' ? -1 : 1;
+    const accessor = (b) => {
+      switch (key) {
+        case 'Programacion': return ({ proxima:1, activa:2, salida_hoy:3, concluida:4 }[lgGetStayState(b.DateArrival, b.DateDeparture)] || 99);
+        case 'Propiedad':    return lgFmtPropiedad(b.HouseName).toLowerCase();
+        case 'GuestName':    return String(b.GuestName||'').toLowerCase();
+        case 'DateArrival':  return lgParseMMDD(b.DateArrival)?.getTime() || 0;
+        case 'DateDeparture':return lgParseMMDD(b.DateDeparture)?.getTime() || 0;
+        case 'Nights':       return Number(b.Nights)||0;
+        case 'Source':       return String(b.Source||'').toLowerCase();
+        case 'Status':       return String(b.Status||'').toLowerCase();
+        case 'NumberOfGuests':return Number(b.NumberOfGuests)||0;
+        case 'Adults':       return Number(b.Adults)||0;
+        case 'Children':     return Number(b.Children)||0;
+        case 'Gross':        return Number(b.Gross)||0;
+        case 'Net':          return Number(b.Net)||0;
+        case 'Vat':          return Number(b.Vat)||0;
+        case 'Currency':     return String(b.Currency||'').toLowerCase();
+        case 'GuestEmail':   return String(b.GuestEmail||'').toLowerCase();
+        case 'GuestPhone':   return String(b.GuestPhone||'').toLowerCase();
+        case 'ConfirmationCode': return String(b.ConfirmationCode||'').toLowerCase();
+        case 'DateCancelled': return lgParseMMDD(b.DateCancelled)?.getTime() || 0;
+        case 'RoomTypeNames':return String(b.RoomTypeNames||'').toLowerCase();
+        case 'ChannelBooking': return String(b.ChannelBooking||'').toLowerCase();
+        case 'Id':           return String(b.Id||'');
+        default:             return String(b[key]||'');
+      }
+    };
+    filtered.sort((a, b) => {
+      const va = accessor(a), vb = accessor(b);
+      if (va < vb) return -1 * dir;
+      if (va > vb) return  1 * dir;
+      return 0;
+    });
+    return filtered; // saltar el orden por Programación cuando hay sort explícito
+  }
   // Ordenamiento por Programación: Próxima → Activa → Salida hoy → Concluida.
   // Dentro de cada grupo, las próximas más cercanas primero, las concluidas
   // más recientes primero (mismo criterio: fecha de llegada).
@@ -11007,10 +11071,12 @@ function lodgifyRender() {
   }
   if (empty) empty.classList.add('hidden');
 
-  // Modo de visualización: lista (default) o 3 columnas kanban
+  // Modo de visualización: lista (default), kanban (3 columnas) o table
   const mode = LG_STATE.viewMode || 'list';
   if (mode === 'kanban') {
     cont.innerHTML = lgBuildKanban(list);
+  } else if (mode === 'table') {
+    cont.innerHTML = lgBuildTable(list);
   } else {
     cont.innerHTML = list.map(lgBuildCard).join('');
   }
@@ -11044,20 +11110,93 @@ function lgBuildKanban(list) {
     </div>`;
 }
 
-/** Cambia el modo de vista lista ↔ kanban y re-renderiza. */
+/** Cambia el modo de vista (lista / kanban / table) y re-renderiza. */
 window.lgSetViewMode = function(mode) {
   LG_STATE.viewMode = mode;
-  // Visual toggle: actualizar estilo de los botones
   const btnList = document.getElementById('lg-view-list');
   const btnKb   = document.getElementById('lg-view-kanban');
-  if (btnList && btnKb) {
-    const active   = 'background:#0d9488;color:#fff;border-color:#0d9488';
-    const inactive = 'background:#fff;color:#475569;border-color:#cbd5e1';
-    btnList.setAttribute('style', `padding:6px 12px;border:1.5px solid;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;${mode==='list'?active:inactive}`);
-    btnKb.setAttribute('style',   `padding:6px 12px;border:1.5px solid;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;${mode==='kanban'?active:inactive}`);
+  const btnTb   = document.getElementById('lg-view-table');
+  const active   = 'background:#0d9488;color:#fff;border-color:#0d9488';
+  const inactive = 'background:#fff;color:#475569;border-color:#cbd5e1';
+  const style = (act) => `padding:6px 12px;border:1.5px solid;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;${act ? active : inactive}`;
+  if (btnList) btnList.setAttribute('style', style(mode==='list'));
+  if (btnKb)   btnKb.setAttribute('style',   style(mode==='kanban'));
+  if (btnTb)   btnTb.setAttribute('style',   style(mode==='table'));
+  lodgifyRender();
+};
+
+/** Cambia la columna de orden de la tabla. Si ya está en ese key,
+ *  alterna asc → desc → off. */
+window.lgSetSort = function(key) {
+  if (LG_STATE.sortKey === key) {
+    if (LG_STATE.sortDir === 'asc') LG_STATE.sortDir = 'desc';
+    else if (LG_STATE.sortDir === 'desc') { LG_STATE.sortKey = ''; LG_STATE.sortDir = ''; }
+    else LG_STATE.sortDir = 'asc';
+  } else {
+    LG_STATE.sortKey = key;
+    LG_STATE.sortDir = 'asc';
   }
   lodgifyRender();
 };
+
+/** Vista en tabla. Aplica a TODOS los registros filtrados (no solo a
+ *  los visibles), respetando el orden establecido con lgSetSort. */
+function lgBuildTable(list) {
+  // Columnas: las primeras 8 fijas en orden, luego las "extras".
+  const cols = [
+    { key:'Programacion',   label:'Programación',    cellClass:'lg-td-tag', formatter: (b) => {
+        const s = lgGetStayState(b.DateArrival, b.DateDeparture);
+        const map = { proxima: ['🟡 Próxima','#fffbeb','#92400e','#fde68a'],
+                      activa:  ['🟢 Activa','#f0fdf4','#166534','#bbf7d0'],
+                      salida_hoy:['🔴 Salida hoy','#fef2f2','#991b1b','#fecaca'],
+                      concluida:['⚪ Concluida','#f8fafc','#475569','#cbd5e1'] };
+        const [t,bg,fg,bd] = map[s] || ['—','#f1f5f9','#64748b','#cbd5e1'];
+        return `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:${bg};color:${fg};font-weight:700;font-size:11px;border:1px solid ${bd}">${t}</span>`;
+      }},
+    { key:'Propiedad',      label:'Propiedad',       formatter: (b) => esc(lgFmtPropiedad(b.HouseName)) },
+    { key:'GuestName',      label:'Nombre del huésped', formatter: (b) => esc(b.GuestName||'—') },
+    { key:'DateArrival',    label:'Fecha de entrada',formatter: (b) => esc(b.DateArrival||'—') },
+    { key:'DateDeparture',  label:'Fecha de salida', formatter: (b) => esc(b.DateDeparture||'—') },
+    { key:'Nights',         label:'# Noches',        formatter: (b) => `<b>${Number(b.Nights)||0}</b>` },
+    { key:'Source',         label:'Fuente',          formatter: (b) => esc(b.Source||'—') },
+    { key:'Status',         label:'Estado',          formatter: (b) => esc(b.Status||'—') },
+    { key:'NumberOfGuests', label:'# Huéspedes',     formatter: (b) => String(b.NumberOfGuests||0) },
+    { key:'Adults',         label:'Adultos',         formatter: (b) => String(b.Adults||0) },
+    { key:'Children',       label:'Niños',           formatter: (b) => String(b.Children||0) },
+    { key:'GuestEmail',     label:'Correo',          formatter: (b) => b.GuestEmail ? `<a href="mailto:${esc(b.GuestEmail)}" style="color:#0d9488">${esc(b.GuestEmail)}</a>` : '—' },
+    { key:'GuestPhone',     label:'Teléfono',        formatter: (b) => b.GuestPhone ? `<a href="https://wa.me/${esc(String(b.GuestPhone).replace(/\D/g,''))}" target="_blank" rel="noopener" style="color:#0d9488">${esc(b.GuestPhone)}</a>` : '—' },
+    { key:'Currency',       label:'Moneda',          formatter: (b) => esc(b.Currency||'MXN') },
+    { key:'Gross',          label:'Gross',           formatter: (b) => Number(b.Gross)>0 ? lgFmtMoney(b.Gross, b.Currency) : '—' },
+    { key:'Net',            label:'Net',             formatter: (b) => Number(b.Net)>0   ? lgFmtMoney(b.Net,   b.Currency) : '—' },
+    { key:'Vat',            label:'VAT',             formatter: (b) => Number(b.Vat)>0   ? lgFmtMoney(b.Vat,   b.Currency) : '—' },
+    { key:'ConfirmationCode', label:'Confirmation',  formatter: (b) => b.ConfirmationCode ? `<code style="font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${esc(b.ConfirmationCode)}</code>` : '—' },
+    { key:'DateCancelled',  label:'Cancelada',       formatter: (b) => esc(b.DateCancelled||'—') },
+    { key:'RoomTypeNames',  label:'Habitación',      formatter: (b) => esc(b.RoomTypeNames||'—') },
+    { key:'ChannelBooking', label:'Channel ID',      formatter: (b) => esc(b.ChannelBooking||'—') },
+    { key:'Id',             label:'Booking ID',      formatter: (b) => `<code style="font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${esc(b.Id)}</code>` },
+  ];
+  const sortIcon = (key) => {
+    if (LG_STATE.sortKey !== key) return '<span style="opacity:.3;font-size:10px">↕</span>';
+    return LG_STATE.sortDir === 'asc' ? '<span style="color:#0d9488;font-size:11px">▲</span>' : '<span style="color:#0d9488;font-size:11px">▼</span>';
+  };
+  const head = cols.map(c => `
+    <th onclick="lgSetSort('${c.key}')"
+        style="cursor:pointer;user-select:none;padding:10px 12px;background:#f1f5f9;border-bottom:2px solid #cbd5e1;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#475569;font-weight:800;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:2"
+        title="Click para ordenar por ${esc(c.label)}">
+      <span style="display:inline-flex;align-items:center;gap:6px">${esc(c.label)} ${sortIcon(c.key)}</span>
+    </th>`).join('');
+  const rows = list.map((b, i) => {
+    const tds = cols.map(c => `<td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;color:#1f2937;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis" title="${typeof c.formatter(b) === 'string' && !c.formatter(b).startsWith('<') ? esc(c.formatter(b).replace(/<[^>]+>/g,'')) : ''}">${c.formatter(b)}</td>`).join('');
+    return `<tr style="background:${i%2?'#fff':'#fafbfc'};transition:background 120ms" onmouseover="this.style.background='#eef2f7'" onmouseout="this.style.background='${i%2?'#fff':'#fafbfc'}'">${tds}</tr>`;
+  }).join('');
+  return `
+    <div style="background:#fff;border-radius:12px;border:1.5px solid #e2e8f0;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:auto;max-height:78vh">
+      <table style="width:100%;border-collapse:collapse;font-family:inherit">
+        <thead><tr>${head}</tr></thead>
+        <tbody>${rows || `<tr><td colspan="${cols.length}" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Sin registros</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
 
 /** Card de una reservación de Lodgify — diseño idéntico al de huéspedes. */
 function lgBuildCard(b) {
