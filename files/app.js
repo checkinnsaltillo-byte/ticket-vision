@@ -11571,6 +11571,76 @@ function lgBuildCard(b) {
     ? `<span title="Registro manual completado por el huésped" style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:9px;border:1px solid #92400e;letter-spacing:.04em;box-shadow:0 1px 3px rgba(217,119,6,.35)">📋 REGISTRADO</span>`
     : '';
 
+  // ─── Si hay match, calculamos los chips y KPIs del módulo huéspedes ───
+  let kpisHtml = '';
+  let extrasHtml = '';        // chips Llegada estimada / Salida estimada
+  let facBadge = '';           // chip "Ticket emitido/pendiente"
+  let montoFacturadoHtml = ''; // bloque Monto Facturado (columna derecha)
+  if (huespedMatch) {
+    const status = (typeof huGetFacturaStatus === 'function') ? huGetFacturaStatus(huespedMatch) : '';
+    const folio = huValueFlexible(huespedMatch, ['Folio facturapi','Folio Facturapi','Folio']);
+    const ticketUrl = (typeof huExtractTicketUrl === 'function') ? huExtractTicketUrl(huespedMatch) : '';
+    const montoFact = huValueFlexible(huespedMatch, ['$ Monto facturado Total','Monto facturado Total']);
+    const horaIng = huValueFlexible(huespedMatch, ['Hora estimada de llegada','Hora de llegada']);
+    const horaSal = huValueFlexible(huespedMatch, ['Hora estimada de salida','Hora de salida']);
+    // Chip Ticket emitido / pendiente (mismo diseño que en módulo huéspedes)
+    facBadge = status === 'emitida'
+      ? (ticketUrl
+          ? `<a href="${esc(ticketUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="text-decoration:none">
+               <span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:10px;border:1px solid #86efac">🧾 Ticket emitido${folio?' - Folio #'+esc(folio):''}</span>
+             </a>`
+          : `<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:10px;border:1px solid #86efac">🧾 Ticket emitido${folio?' - Folio #'+esc(folio):''}</span>`)
+      : status === 'pendiente'
+      ? `<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#fff7ed;color:#c2410c;font-weight:700;font-size:10px;border:1.5px solid #fdba74">🧾 Ticket pendiente</span>`
+      : '';
+    // KPIs globales del huésped + tier
+    if (typeof huComputeGuestStats === 'function') {
+      const stats = huComputeGuestStats(huespedMatch, HU_STATE.rows);
+      const score = (typeof huComputeLoyaltyScore === 'function') ? huComputeLoyaltyScore(stats) : 0;
+      const tier  = (typeof huGuestTier === 'function') ? huGuestTier(score, stats) : null;
+      const tierBadge = tier ? `
+        <div title="${esc(tier.tooltip)}"
+             style="display:flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;background:${tier.bg};color:${tier.fg};font-weight:800;font-size:9px;letter-spacing:.04em;text-transform:uppercase;border:1.5px solid ${tier.border};box-shadow:0 1px 4px ${tier.shadow}">
+          <span style="font-size:11px">${tier.icon}</span><span>${tier.label}</span>
+          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:14px;padding:0 4px;border-radius:7px;background:rgba(255,255,255,.7);color:${tier.fg};font-size:9px;font-weight:800">${tier.score}</span>
+        </div>` : '';
+      kpisHtml = `
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:5px">
+          <div style="background:rgba(255,255,255,.8);border:1px solid ${palette.border};border-radius:8px;padding:3px 7px;min-width:56px;text-align:center" title="Suma global de noches del huésped">
+            <div style="font-size:7px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">🌙 Noches</div>
+            <div style="font-size:12px;font-weight:800;color:#0f172a;line-height:1.1">${stats.totalNoches}</div>
+          </div>
+          <div style="background:rgba(255,255,255,.8);border:1px solid ${palette.border};border-radius:8px;padding:3px 7px;min-width:56px;text-align:center" title="Visitas globales (consecutivas cuentan como una)">
+            <div style="font-size:7px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">🧳 Visitas</div>
+            <div style="font-size:12px;font-weight:800;color:#0f172a;line-height:1.1">${stats.visitas}</div>
+          </div>
+          <div style="background:rgba(255,255,255,.8);border:1px solid ${palette.border};border-radius:8px;padding:3px 7px;min-width:72px;text-align:center" title="Suma de Monto facturado en todas las reservaciones del huésped">
+            <div style="font-size:7px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">💰 Monto</div>
+            <div style="font-size:11px;font-weight:800;color:#0f172a;line-height:1.1">${stats.montoGlobal > 0 ? ((typeof huFmtMonto==='function')?huFmtMonto(stats.montoGlobal):('$ '+stats.montoGlobal)) : '—'}</div>
+          </div>
+          ${tierBadge}
+        </div>`;
+    }
+    // Chips Llegada / Salida estimadas
+    const fmtH = (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple : (x => x);
+    if (horaIng || horaSal) {
+      extrasHtml = `
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:3px;font-size:10px;color:#64748b">
+          <span><span style="color:#94a3b8;font-weight:600">Llegada est.:</span> <b style="color:#1f2937">${esc(horaIng ? fmtH(horaIng) : '—')}</b></span>
+          <span><span style="color:#94a3b8;font-weight:600">Salida est.:</span> <b style="color:#1f2937">${esc(horaSal ? fmtH(horaSal) : '—')}</b></span>
+        </div>`;
+    }
+    // Bloque "Monto Facturado" (columna derecha, debajo del Ingreso bruto)
+    if (montoFact || facBadge) {
+      montoFacturadoHtml = `
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin-top:5px;padding-top:5px;border-top:1px dashed #cbd5e1">
+          <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Monto facturado</div>
+          <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.1">${montoFact ? ((typeof huFmtMonto==='function')?huFmtMonto(montoFact):('$ '+esc(montoFact))) : '—'}</div>
+          ${facBadge ? `<div style="margin-top:2px">${facBadge}</div>` : ''}
+        </div>`;
+    }
+  }
+
   // Header summary (compacto). Click → abre modal con todos los detalles.
   const summary = `
     <div style="cursor:pointer;padding:9px 11px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center">
@@ -11579,16 +11649,19 @@ function lgBuildCard(b) {
         <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.2;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
         <div style="font-size:11px;color:#64748b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(prop)}</div>
         <div style="font-size:11px;color:#64748b;font-weight:500;margin-top:1px">${ingreso} → ${salida} <span style="color:#475569;font-weight:600">· 🌙 ${noches}n</span></div>
+        ${extrasHtml}
         ${b.GuestPhone || b.GuestEmail ? `
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:3px;font-size:10px;color:#64748b">
           ${b.GuestPhone ? `<span>📱 <b style="color:#1f2937">${esc(b.GuestPhone)}</b></span>` : ''}
           ${b.GuestEmail ? `<span>✉️ <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
         </div>` : ''}
+        ${kpisHtml}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:110px">
         <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Ingreso bruto</div>
         <div style="font-size:14px;font-weight:800;color:#111827;line-height:1.1">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
         <div>${lgStatusBadge(b.Status)}</div>
+        ${montoFacturadoHtml}
       </div>
       <div title="Ver detalles" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:11px;flex-shrink:0">↗</div>
     </div>`;
