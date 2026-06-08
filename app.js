@@ -8010,6 +8010,9 @@ function switchModule(mod) {
     // Auto-sync silencioso: revisa Lodgify por cambios en últimos 7d + todo
     // el futuro. Throttle 10 min para no saturar Apps Script.
     lodgifyMaybeAutoSync();
+    // En paralelo, traer Información de huéspedes para cruzar registros
+    // y mostrar el ícono 📋 en bookings que ya tienen registro manual.
+    lgEnsureHuespedesAndMatch();
   }
 }
 
@@ -10673,7 +10676,92 @@ const LG_STATE = {
     status: null,
     propiedad: null,
   },
+  // Map booking.Id (string) → row de Información de huéspedes
+  matches: new Map(),
 };
+
+/** Normaliza un teléfono a solo dígitos. Útil para comparar números
+ *  internacionales o locales con formatos distintos. */
+function lgNormalizePhone(phone) {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+/** Convierte MM/DD/YYYY → YYYY-MM-DD para comparar contra fechas de
+ *  Información de huéspedes (que vienen del Sheets ISO). */
+function lgMMDDtoIsoDate(mmdd) {
+  const m = String(mmdd || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return '';
+  return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
+}
+
+/** Busca una coincidencia en HU_STATE.rows para un booking de Lodgify.
+ *  Estrategia (prioridad): teléfono → fechas → propiedad.
+ *  Devuelve el row de huéspedes o null. */
+function lgMatchHuesped(booking) {
+  const rows = HU_STATE.rows || [];
+  if (!rows.length) return null;
+  const bPhone = lgNormalizePhone(booking.GuestPhone);
+  if (!bPhone) return null;
+  const bPhone10 = bPhone.slice(-10);
+  if (bPhone10.length < 10) return null;
+
+  // 1) Filtrar por teléfono (match de últimos 10 dígitos)
+  const phoneMatches = rows.filter(h => {
+    const hP = lgNormalizePhone(huValueFlexible(h, ['Cel/Whatsapp (principal)','Celular principal']));
+    return hP && hP.slice(-10) === bPhone10;
+  });
+  if (!phoneMatches.length) return null;
+  if (phoneMatches.length === 1) return phoneMatches[0];
+
+  // 2) Entre los matches de teléfono, ranquear por coincidencia de fechas + propiedad
+  const bArrIso = lgMMDDtoIsoDate(booking.DateArrival);
+  const bDepIso = lgMMDDtoIsoDate(booking.DateDeparture);
+  const bProp   = String(lgFmtPropiedad(booking.HouseName) || '').toLowerCase();
+  let best = null, bestScore = -1;
+  for (const h of phoneMatches) {
+    const hArr = String(huValueFlexible(h, ['Fecha de ingreso']) || '').slice(0, 10);
+    const hDep = String(huValueFlexible(h, ['Fecha de salida'])  || '').slice(0, 10);
+    const hPr  = String(huValueFlexible(h, ['Propiedad']) || '').toLowerCase();
+    let score = 0;
+    if (bArrIso && hArr === bArrIso) score += 4;
+    if (bDepIso && hDep === bDepIso) score += 3;
+    if (bProp && hPr && (hPr.includes(bProp.split('#')[0].trim()) || bProp.includes(hPr.split('#')[0].trim()))) score += 1;
+    if (score > bestScore) { bestScore = score; best = h; }
+  }
+  return best || phoneMatches[0];
+}
+
+/** Recalcula LG_STATE.matches para todos los bookings cacheados. */
+function lgComputeMatches() {
+  const map = new Map();
+  for (const b of (LG_STATE.bookings || [])) {
+    const h = lgMatchHuesped(b);
+    if (h) map.set(String(b.Id), h);
+  }
+  LG_STATE.matches = map;
+  console.info('[LG] matches computed:', map.size, 'de', LG_STATE.bookings.length);
+}
+
+/** Garantiza que HU_STATE.rows esté disponible (carga si no lo está)
+ *  y dispara el cómputo de matches + re-render del módulo Lodgify. */
+async function lgEnsureHuespedesAndMatch() {
+  try {
+    if (!HU_STATE.loaded && !HU_STATE.loading) {
+      // huespedesLoad escribe en HU_STATE.rows pero llama a huespedesRender
+      // (que es del módulo de huéspedes). Eso es OK aunque estemos en
+      // Lodgify: huéspedesRender se ejecuta sobre su propio contenedor
+      // y no afecta visualmente al módulo activo (Lodgify).
+      await huespedesLoad(true);
+    }
+    // Si las dos colecciones ya están listas, cruzar.
+    if (LG_STATE.loaded && HU_STATE.loaded) {
+      lgComputeMatches();
+      lodgifyRender();
+    }
+  } catch (e) {
+    console.warn('[LG] cruce con huéspedes falló:', e.message);
+  }
+}
 
 /** Normaliza cualquier formato de fecha (MM/DD/YYYY, ISO 2026-08-05T…,
  *  YYYY-MM-DD, Date object) a "MM/DD/YYYY" — el formato canónico que usa
@@ -10877,6 +10965,8 @@ async function lodgifyLoad(force) {
       empty.classList.remove('hidden');
     }
     lgRebuildFilterOptions();
+    // Si huéspedes ya está cargado, computar matches antes de renderizar
+    if (HU_STATE.loaded) lgComputeMatches();
     lodgifyRender();
   } catch (e) {
     if (lbl) lbl.textContent = 'Error: ' + e.message;
@@ -11400,11 +11490,18 @@ function lgBuildCard(b) {
     ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;background:#fff;color:#1f2937;font-weight:700;font-size:9px;border:1px solid #e2e8f0;letter-spacing:.02em">👥 ${b.NumberOfGuests}</span>`
     : '';
 
+  // Ícono de "registro manual completo": aparece cuando hay match en
+  // Información de huéspedes (mismo teléfono + idealmente fechas/propiedad).
+  const huespedMatch = LG_STATE.matches?.get(String(b.Id)) || null;
+  const matchBadge = huespedMatch
+    ? `<span title="Registro manual completado por el huésped" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:800;font-size:9px;border:1px solid #86efac;letter-spacing:.02em">📋 Registrado</span>`
+    : '';
+
   // Header summary (compacto)
   const summary = `
     <summary style="cursor:pointer;list-style:none;padding:9px 11px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center">
       <div style="min-width:0">
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:4px">${lgSourceBadge(b.Source)}${huespedesChip}</div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:4px">${lgSourceBadge(b.Source)}${huespedesChip}${matchBadge}</div>
         <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.2;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
         <div style="font-size:11px;color:#64748b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(prop)}</div>
         <div style="font-size:11px;color:#64748b;font-weight:500;margin-top:1px">${ingreso} → ${salida} <span style="color:#475569;font-weight:600">· 🌙 ${noches}n</span></div>
@@ -11468,6 +11565,7 @@ function lgBuildCard(b) {
           <div style="font-weight:800;color:#0f766e">${lgFmtMoney(b.Gross, b.Currency)}</div>
         </div>
       </div>` : ''}
+      ${huespedMatch ? lgBuildHuespedBlock(huespedMatch, fldRow) : ''}
     </div>`;
 
   return `
@@ -11475,6 +11573,58 @@ function lgBuildCard(b) {
       ${summary}
       ${detalleBody}
     </details>`;
+}
+
+/** Bloque visual con los datos del registro manual (Información de huéspedes)
+ *  asociado a un booking de Lodgify. Recibe el row de HU + la función fldRow. */
+function lgBuildHuespedBlock(h, fldRow) {
+  if (!h) return '';
+  const v = (cands) => huValueFlexible(h, Array.isArray(cands) ? cands : [cands]);
+  const nombre = v(['Nombre del huésped','Nombre de la persona que hizo la reservación']);
+  const correo = v(['Correo electrónico','Correo electrónico para el envío de la factura']);
+  const cel    = v(['Cel/Whatsapp (principal)','Celular principal']);
+  const celEm  = v(['Cel/Whatsapp (contacto de emergencia)']);
+  const req    = v(['¿Requiere factura?']);
+  const razon  = v(['Razón social']);
+  const rfc    = v(['RFC']);
+  const regimen= v(['Régimen fiscal']);
+  const cp     = v(['Código Postal']);
+  const huesp  = v(['# Huéspedes']);
+  const motivo = v(['Motivo de tu hospedaje','Motivo']);
+  const horaIn = v(['Hora estimada de llegada']);
+  const horaOut= v(['Hora estimada de salida']);
+  const formaP = v(['Forma de pago']);
+  const folio  = v(['Folio facturapi','Folio']);
+  const comen  = v(['Notas','Comentarios','Envía tus comentarios']);
+  const recId  = String(h['ID'] || h['row_number'] || '');
+
+  const rows = [
+    nombre  ? fldRow('Nombre (manual)',  esc(nombre)) : '',
+    cel     ? fldRow('Cel/WhatsApp',     esc(cel))    : '',
+    celEm   ? fldRow('Cel emergencia',   esc(celEm))  : '',
+    correo  ? fldRow('Correo',           `<a href="mailto:${esc(correo)}" style="color:#0d9488">${esc(correo)}</a>`) : '',
+    huesp   ? fldRow('# Huéspedes',      esc(huesp))  : '',
+    motivo  ? fldRow('Motivo',           esc(motivo)) : '',
+    horaIn  ? fldRow('Llegada estimada', esc(horaIn)) : '',
+    horaOut ? fldRow('Salida estimada',  esc(horaOut)): '',
+    formaP  ? fldRow('Forma de pago',    esc(formaP)) : '',
+    req     ? fldRow('¿Requiere factura?', esc(req))  : '',
+    razon   ? fldRow('Razón social',     esc(razon))  : '',
+    rfc     ? fldRow('RFC',              `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(rfc)}</code>`) : '',
+    regimen ? fldRow('Régimen fiscal',   esc(regimen)): '',
+    cp      ? fldRow('Código Postal',    esc(cp))     : '',
+    folio   ? fldRow('Folio facturapi',  `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(folio)}</code>`) : '',
+    comen   ? fldRow('Comentarios',      `<div style="font-style:italic;color:#475569;background:#f8fafc;padding:6px 10px;border-left:3px solid #94a3b8;border-radius:4px;font-size:12px">${esc(comen)}</div>`) : '',
+  ].filter(Boolean).join('');
+
+  return `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #86efac;margin-top:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:11px;letter-spacing:.18em;color:#166534;font-weight:800;display:flex;align-items:center;gap:6px">📋 REGISTRO MANUAL DEL HUÉSPED</div>
+        ${recId ? `<button onclick="event.stopPropagation();huespedesOpenDetail('${esc(recId)}')" style="padding:5px 10px;border:1px solid #16a34a;background:#fff;color:#166534;border-radius:6px;font-weight:700;font-size:10px;cursor:pointer">Ver registro completo →</button>` : ''}
+      </div>
+      ${rows || '<div style="padding:8px;color:#94a3b8;font-style:italic;font-size:12px">Sin información adicional registrada.</div>'}
+    </div>`;
 }
 
 /** Estado de estancia de un booking (mismo semáforo que huéspedes). */
