@@ -10662,10 +10662,17 @@ const LG_STATE = {
   loading: false,
   from: '',
   to: '',
-  viewMode: 'list', // 'list' | 'kanban' | 'table'
+  viewMode: 'kanban', // 'list' | 'kanban' | 'table'  (default: kanban)
   sortKey: '',      // columna activa para sort (vista tabla)
   sortDir: '',      // 'asc' | 'desc' | ''
   lastAutoSyncMs: 0,
+  // multi-select state: id → Set de valores seleccionados
+  multiSel: {
+    programacion: null,
+    source: null,
+    status: null,
+    propiedad: null,
+  },
 };
 
 /** Normaliza cualquier formato de fecha (MM/DD/YYYY, ISO 2026-08-05T…,
@@ -10945,31 +10952,159 @@ function lgFmtRelativeTime(iso) {
   return d.toISOString().slice(0,16).replace('T',' ');
 }
 
-/** Llena los selects de Source y Status con los valores únicos. */
+// ─── Multi-select widget ────────────────────────────────────────────────────
+// Cada filtro categórico (Programación, Fuente, Estado, Propiedad) usa este
+// widget custom porque <select multiple> es feo y no soporta "Todas/Ninguna".
+//
+// Estado: LG_STATE.multiSel[id] = Set de valores seleccionados (null = first
+// init, en cuyo caso se aplica el default).
+// ────────────────────────────────────────────────────────────────────────────
+
+function lgMultiInitIfNeeded(id, allValues, defaultSelected) {
+  if (LG_STATE.multiSel[id] !== null) return;
+  // Si hay default explícito, lo respetamos filtrando contra valores existentes.
+  // Si no, todos seleccionados (= sin filtro).
+  if (Array.isArray(defaultSelected)) {
+    const lcAll = new Set(allValues.map(v => v.toLowerCase()));
+    const sel = new Set(defaultSelected.filter(v => lcAll.has(String(v).toLowerCase())));
+    LG_STATE.multiSel[id] = sel;
+  } else {
+    LG_STATE.multiSel[id] = new Set(allValues);
+  }
+}
+
+/** Devuelve los valores seleccionados como Set en minúsculas, o null si
+ *  no hay filtro activo (todos los valores están seleccionados). */
+function lgMultiGetSet(id, allValues) {
+  const sel = LG_STATE.multiSel[id];
+  if (!sel || sel.size === 0) return new Set(); // 0 = ninguno
+  // Si está marcado todo → no filtra
+  if (sel.size === allValues.length) return null;
+  return new Set([...sel].map(v => String(v).toLowerCase()));
+}
+
+/** Genera el HTML del widget en su contenedor. */
+function lgMultiRender(id, label, allValues, opts) {
+  opts = opts || {};
+  const containerId = 'lg-multi-' + id;
+  const c = document.getElementById(containerId);
+  if (!c) return;
+  lgMultiInitIfNeeded(id, allValues, opts.defaultSelected);
+  const sel = LG_STATE.multiSel[id];
+  const total = allValues.length;
+  const selCount = sel.size;
+  const labelTxt = selCount === total
+      ? `Todas (${total})`
+      : selCount === 0
+      ? 'Ninguna'
+      : selCount === 1
+      ? [...sel][0]
+      : `${selCount} de ${total}`;
+  const renderOption = (v) => {
+    const checked = sel.has(v) ? 'checked' : '';
+    const disp = opts.optionRenderer ? opts.optionRenderer(v) : esc(v);
+    return `
+      <label style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:12.5px;color:#1f2937" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">
+        <input type="checkbox" value="${esc(v)}" ${checked} onchange="lgMultiToggle('${id}','${esc(v)}')" style="cursor:pointer;flex-shrink:0">
+        <span>${disp}</span>
+      </label>`;
+  };
+  c.innerHTML = `
+    <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${esc(label)}</label>
+    <div style="position:relative">
+      <button type="button" onclick="lgMultiTogglePanel('${id}',event)" id="lg-multi-btn-${id}"
+              style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="lg-multi-lbl-${id}">${esc(labelTxt)}</span>
+        <span style="color:#94a3b8;flex-shrink:0">▾</span>
+      </button>
+      <div id="lg-multi-panel-${id}" class="hidden"
+           style="position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid #d1d5db;border-radius:6px;box-shadow:0 4px 16px rgba(15,23,42,.15);z-index:50;max-height:320px;overflow-y:auto;min-width:220px">
+        <div style="display:flex;gap:4px;padding:6px;border-bottom:1px solid #e2e8f0;background:#f8fafc;position:sticky;top:0;z-index:1">
+          <button type="button" onclick="lgMultiSetAll('${id}')" style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✓ Todas</button>
+          <button type="button" onclick="lgMultiSetNone('${id}')" style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">✕ Ninguna</button>
+        </div>
+        <div style="padding:6px">
+          ${allValues.map(renderOption).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+window.lgMultiTogglePanel = function(id, ev) {
+  if (ev) ev.stopPropagation();
+  // Cierra otros paneles
+  document.querySelectorAll('[id^="lg-multi-panel-"]').forEach(p => {
+    if (p.id !== `lg-multi-panel-${id}`) p.classList.add('hidden');
+  });
+  const p = document.getElementById(`lg-multi-panel-${id}`);
+  if (p) p.classList.toggle('hidden');
+};
+window.lgMultiToggle = function(id, value) {
+  const set = LG_STATE.multiSel[id];
+  if (!set) return;
+  if (set.has(value)) set.delete(value);
+  else set.add(value);
+  lgMultiUpdateLabel(id);
+  lodgifyRender();
+};
+window.lgMultiSetAll = function(id) {
+  const opts = LG_FILTER_OPTIONS[id] || [];
+  LG_STATE.multiSel[id] = new Set(opts);
+  lgRebuildFilterOptions();
+  lodgifyRender();
+};
+window.lgMultiSetNone = function(id) {
+  LG_STATE.multiSel[id] = new Set();
+  lgRebuildFilterOptions();
+  lodgifyRender();
+};
+function lgMultiUpdateLabel(id) {
+  const opts = LG_FILTER_OPTIONS[id] || [];
+  const sel = LG_STATE.multiSel[id];
+  const lbl = document.getElementById(`lg-multi-lbl-${id}`);
+  if (!lbl || !sel) return;
+  const txt = sel.size === opts.length ? `Todas (${opts.length})`
+            : sel.size === 0 ? 'Ninguna'
+            : sel.size === 1 ? [...sel][0]
+            : `${sel.size} de ${opts.length}`;
+  lbl.textContent = txt;
+}
+
+// Cerrar paneles al hacer click fuera
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[id^="lg-multi-"]')) {
+    document.querySelectorAll('[id^="lg-multi-panel-"]').forEach(p => p.classList.add('hidden'));
+  }
+});
+
+// Cache global de las opciones disponibles para cada filtro categórico.
+const LG_FILTER_OPTIONS = { programacion: [], source: [], status: [], propiedad: [] };
+
+/** Llena las opciones de los 4 filtros multi-select. */
 function lgRebuildFilterOptions() {
-  const sources = [...new Set(LG_STATE.bookings.map(b => b.Source).filter(Boolean))].sort();
-  const selSrc = document.getElementById('lg-filtro-source');
-  if (selSrc) {
-    const prev = selSrc.value;
-    selSrc.innerHTML = '<option value="">Todas</option>' +
-      sources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
-    if (sources.includes(prev)) selSrc.value = prev;
-  }
-  const statuses = [...new Set(LG_STATE.bookings.map(b => b.Status).filter(Boolean))].sort();
-  const selSt = document.getElementById('lg-filtro-status');
-  if (selSt) {
-    const prev = selSt.value;
-    selSt.innerHTML = '<option value="">Todos</option>' +
-      statuses.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
-    if (statuses.includes(prev)) selSt.value = prev;
-  }
+  // Programación: estática
+  LG_FILTER_OPTIONS.programacion = ['salida_hoy','activa','entrada_hoy','proxima','concluida'];
+  // Source / Status / Propiedad: valores únicos del cache
+  LG_FILTER_OPTIONS.source    = [...new Set(LG_STATE.bookings.map(b => b.Source).filter(Boolean))].sort();
+  LG_FILTER_OPTIONS.status    = [...new Set(LG_STATE.bookings.map(b => b.Status).filter(Boolean))].sort();
+  LG_FILTER_OPTIONS.propiedad = [...new Set(LG_STATE.bookings.map(b => lgFmtPropiedad(b.HouseName)).filter(v => v && v !== '—'))].sort((a,b) => a.localeCompare(b,'es'));
+
+  lgMultiRender('programacion', '🗓️ Programación', LG_FILTER_OPTIONS.programacion, {
+    optionRenderer: (v) => { const m = LG_STATE_META[v]; return m ? `${m.emoji} ${esc(m.label)}` : esc(v); },
+  });
+  lgMultiRender('source',    '🔌 Fuente',     LG_FILTER_OPTIONS.source);
+  // Default Booked + Tentative (solo aplica si existen en los datos)
+  lgMultiRender('status',    '📊 Estado',     LG_FILTER_OPTIONS.status, { defaultSelected: ['Booked','Tentative'] });
+  lgMultiRender('propiedad', '🏠 Propiedad',  LG_FILTER_OPTIONS.propiedad);
 }
 
 /** Aplica filtros locales y devuelve los bookings a mostrar. */
 function lgGetFiltered() {
-  const src = (document.getElementById('lg-filtro-source')?.value || '').toLowerCase();
-  const st  = (document.getElementById('lg-filtro-status')?.value || '').toLowerCase();
-  const pg  = (document.getElementById('lg-filtro-programacion')?.value || '').toLowerCase();
+  // Sets de valores activos para cada filtro multi-select (null = no filtra)
+  const pgSet = lgMultiGetSet('programacion', LG_FILTER_OPTIONS.programacion || []);
+  const srcSet = lgMultiGetSet('source',     LG_FILTER_OPTIONS.source     || []);
+  const stSet  = lgMultiGetSet('status',     LG_FILTER_OPTIONS.status     || []);
+  const prSet  = lgMultiGetSet('propiedad',  LG_FILTER_OPTIONS.propiedad  || []);
   const nb  = (document.getElementById('lg-filtro-nombre')?.value || '').toLowerCase().trim();
   const feIso = String(document.getElementById('lg-filtro-fecha-entrada')?.value || '').trim(); // YYYY-MM-DD
   const fsIso = String(document.getElementById('lg-filtro-fecha-salida')?.value || '').trim();  // YYYY-MM-DD
@@ -10985,12 +11120,29 @@ function lgGetFiltered() {
   const cutoff = new Date(); cutoff.setHours(0,0,0,0);
   cutoff.setDate(cutoff.getDate() - 7);
   const filtered = LG_STATE.bookings.filter(b => {
-    if (src && String(b.Source||'').toLowerCase() !== src) return false;
-    if (st  && String(b.Status||'').toLowerCase() !== st)  return false;
-    if (nb  && !String(b.GuestName||'').toLowerCase().includes(nb)) return false;
-    if (pg) {
+    if (srcSet) {
+      if (!srcSet.has(String(b.Source||'').toLowerCase())) return false;
+    }
+    if (stSet) {
+      if (!stSet.has(String(b.Status||'').toLowerCase())) return false;
+    }
+    if (prSet) {
+      if (!prSet.has(String(lgFmtPropiedad(b.HouseName)||'').toLowerCase())) return false;
+    }
+    if (pgSet) {
       const state = lgGetStayState(b.DateArrival, b.DateDeparture);
-      if (state !== pg) return false;
+      if (!pgSet.has(state)) return false;
+    }
+    if (nb) {
+      // Búsqueda libre: nombre, correo, teléfono, booking ID
+      const hay = [
+        String(b.GuestName||''),
+        String(b.GuestEmail||''),
+        String(b.GuestPhone||''),
+        String(b.Id||''),
+        String(b.ConfirmationCode||''),
+      ].join(' ').toLowerCase();
+      if (!hay.includes(nb)) return false;
     }
     // Filtros por fecha exacta de entrada / salida (match día, comparando
     // strings ISO YYYY-MM-DD para ser inmunes a la zona horaria).
@@ -11136,10 +11288,17 @@ function lgBuildKanban(list) {
 
 /** Borra todos los filtros y vuelve al estado por defecto. */
 window.lgClearFilters = function() {
-  const ids = ['lg-filtro-programacion','lg-filtro-source','lg-filtro-status','lg-filtro-fecha-entrada','lg-filtro-fecha-salida','lg-filtro-nombre'];
-  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  // Multi-select: todo seleccionado = sin filtro
+  ['programacion','source','status','propiedad'].forEach(id => {
+    LG_STATE.multiSel[id] = new Set(LG_FILTER_OPTIONS[id] || []);
+  });
+  // Inputs
+  ['lg-filtro-fecha-entrada','lg-filtro-fecha-salida','lg-filtro-nombre'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
   LG_STATE.sortKey = '';
   LG_STATE.sortDir = '';
+  lgRebuildFilterOptions();
   lodgifyRender();
 };
 

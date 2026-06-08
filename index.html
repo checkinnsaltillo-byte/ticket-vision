@@ -960,32 +960,10 @@
 
       <!-- Filtros -->
       <div style="display:flex;gap:12px;align-items:end;margin:10px 0 8px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;flex-wrap:wrap">
-        <div style="min-width:160px">
-          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🗓️ Programación</label>
-          <select id="lg-filtro-programacion" onchange="lodgifyRender()"
-                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
-            <option value="">Todas</option>
-            <option value="salida_hoy">🔴 Salida hoy</option>
-            <option value="activa">🔵 Activa (en curso)</option>
-            <option value="entrada_hoy">🟢 Entrada hoy</option>
-            <option value="proxima">🟡 Próxima</option>
-            <option value="concluida">⚪ Concluida</option>
-          </select>
-        </div>
-        <div style="min-width:160px">
-          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🔌 Fuente</label>
-          <select id="lg-filtro-source" onchange="lodgifyRender()"
-                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
-            <option value="">Todas</option>
-          </select>
-        </div>
-        <div style="min-width:160px">
-          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📊 Estado</label>
-          <select id="lg-filtro-status" onchange="lodgifyRender()"
-                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
-            <option value="">Todos</option>
-          </select>
-        </div>
+        <div style="min-width:170px" id="lg-multi-programacion"></div>
+        <div style="min-width:170px" id="lg-multi-source"></div>
+        <div style="min-width:170px" id="lg-multi-status"></div>
+        <div style="min-width:170px" id="lg-multi-propiedad"></div>
         <div style="min-width:160px">
           <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📥 Fecha de entrada</label>
           <input type="date" id="lg-filtro-fecha-entrada" onchange="lodgifyRender()"
@@ -997,8 +975,8 @@
                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
         </div>
         <div style="min-width:200px;flex:1">
-          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🔍 Huésped</label>
-          <input type="text" id="lg-filtro-nombre" placeholder="Buscar por nombre…" oninput="lodgifyRender()"
+          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🔍 Buscar</label>
+          <input type="text" id="lg-filtro-nombre" placeholder="Nombre, correo, teléfono o Booking ID…" oninput="lodgifyRender()"
                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
         </div>
         <div>
@@ -1012,9 +990,9 @@
         <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Vista:</div>
         <div style="display:inline-flex;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:4px">
           <button id="lg-view-list" onclick="lgSetViewMode('list')"
-                  style="padding:6px 12px;border:1.5px solid #0d9488;background:#0d9488;color:#fff;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📋 Lista</button>
+                  style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📋 Lista</button>
           <button id="lg-view-kanban" onclick="lgSetViewMode('kanban')"
-                  style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">🗂️ 4 columnas</button>
+                  style="padding:6px 12px;border:1.5px solid #0d9488;background:#0d9488;color:#fff;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">🗂️ 4 columnas</button>
           <button id="lg-view-table" onclick="lgSetViewMode('table')"
                   style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📊 Tabla</button>
         </div>
@@ -1155,6 +1133,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=156"></script>
+  <script src="app.js?v=157"></script>
 </body>
 </html>
