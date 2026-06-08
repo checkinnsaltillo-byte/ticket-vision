@@ -995,6 +995,17 @@
         </div>
       </div>
 
+      <!-- Toggle de vista: lista vs kanban (3 columnas) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:8px 0 10px">
+        <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Vista:</div>
+        <div style="display:inline-flex;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:4px">
+          <button id="lg-view-list" onclick="lgSetViewMode('list')"
+                  style="padding:6px 12px;border:1.5px solid #0d9488;background:#0d9488;color:#fff;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📋 Lista</button>
+          <button id="lg-view-kanban" onclick="lgSetViewMode('kanban')"
+                  style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">🗂️ 3 columnas</button>
+        </div>
+      </div>
+
       <!-- KPIs -->
       <div class="hu-kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
         <div class="hu-kpi-card"><div class="hu-kpi-label">Reservaciones</div><div class="hu-kpi-value" id="lg-kpi-count">0</div></div>
@@ -1130,6 +1141,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=149"></script>
+  <script src="app.js?v=150"></script>
 </body>
 </html>

@@ -10960,8 +10960,58 @@ function lodgifyRender() {
     return;
   }
   if (empty) empty.classList.add('hidden');
-  cont.innerHTML = list.map(lgBuildCard).join('');
+
+  // Modo de visualización: lista (default) o 3 columnas kanban
+  const mode = LG_STATE.viewMode || 'list';
+  if (mode === 'kanban') {
+    cont.innerHTML = lgBuildKanban(list);
+  } else {
+    cont.innerHTML = list.map(lgBuildCard).join('');
+  }
 }
+
+/** Construye las 3 columnas: Salida hoy · Activa · Próxima.
+ *  (Concluida queda fuera del kanban porque no requiere acción.) */
+function lgBuildKanban(list) {
+  const groups = { salida_hoy: [], activa: [], proxima: [], concluida: [] };
+  list.forEach(b => {
+    const state = lgGetStayState(b.DateArrival, b.DateDeparture) || 'concluida';
+    if (groups[state]) groups[state].push(b);
+  });
+  const col = (title, icon, accent, bookings) => `
+    <div style="flex:1;min-width:280px;background:#fff;border-radius:14px;border:1.5px solid ${accent.border};box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:12px 14px;background:${accent.bg};border-bottom:1.5px solid ${accent.border};display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px;font-weight:800;color:${accent.fg};font-size:13px;letter-spacing:.02em">
+          <span style="font-size:16px">${icon}</span>${esc(title)}
+        </div>
+        <span style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:22px;padding:0 8px;border-radius:11px;background:#fff;color:${accent.fg};font-weight:800;font-size:11px;border:1px solid ${accent.border}">${bookings.length}</span>
+      </div>
+      <div style="padding:10px;background:#f8fafc;flex:1;display:flex;flex-direction:column;gap:8px;max-height:78vh;overflow-y:auto">
+        ${bookings.length ? bookings.map(lgBuildCard).join('') : `<div style="padding:18px 12px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>`}
+      </div>
+    </div>`;
+  return `
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:stretch">
+      ${col('Salida hoy', '🔴', { bg:'#fef2f2', border:'#fecaca', fg:'#991b1b' }, groups.salida_hoy)}
+      ${col('Activa (en curso)', '🟢', { bg:'#f0fdf4', border:'#bbf7d0', fg:'#166534' }, groups.activa)}
+      ${col('Próxima', '🟡', { bg:'#fffbeb', border:'#fde68a', fg:'#92400e' }, groups.proxima)}
+    </div>`;
+}
+
+/** Cambia el modo de vista lista ↔ kanban y re-renderiza. */
+window.lgSetViewMode = function(mode) {
+  LG_STATE.viewMode = mode;
+  // Visual toggle: actualizar estilo de los botones
+  const btnList = document.getElementById('lg-view-list');
+  const btnKb   = document.getElementById('lg-view-kanban');
+  if (btnList && btnKb) {
+    const active   = 'background:#0d9488;color:#fff;border-color:#0d9488';
+    const inactive = 'background:#fff;color:#475569;border-color:#cbd5e1';
+    btnList.setAttribute('style', `padding:6px 12px;border:1.5px solid;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;${mode==='list'?active:inactive}`);
+    btnKb.setAttribute('style',   `padding:6px 12px;border:1.5px solid;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;${mode==='kanban'?active:inactive}`);
+  }
+  lodgifyRender();
+};
 
 /** Card de una reservación de Lodgify — diseño idéntico al de huéspedes. */
 function lgBuildCard(b) {
