@@ -8007,6 +8007,9 @@ function switchModule(mod) {
   if (mod === "lodgify") {
     if (!LG_STATE.loaded && !LG_STATE.loading) lodgifyLoad(true);
     else lodgifyRender();
+    // Auto-sync silencioso: revisa Lodgify por cambios en últimos 7d + todo
+    // el futuro. Throttle 10 min para no saturar Apps Script.
+    lodgifyMaybeAutoSync();
   }
 }
 
@@ -10868,6 +10871,35 @@ async function lodgifySync(full) {
   }
 }
 
+/** Sync silencioso al entrar al módulo. Throttle: máx 1 vez cada 10 min.
+ *  Ventana: 7 días atrás + 2 años adelante (todas las futuras). */
+async function lodgifyMaybeAutoSync() {
+  const lastMs = Number(LG_STATE.lastAutoSyncMs || 0);
+  if (lastMs && (Date.now() - lastMs) < 10 * 60 * 1000) {
+    console.info('[LG] auto-sync skipped: thrown <10 min ago');
+    return;
+  }
+  LG_STATE.lastAutoSyncMs = Date.now();
+  const lbl = document.getElementById('lg-status-label');
+  const prev = lbl ? lbl.textContent : '';
+  try {
+    if (lbl) lbl.textContent = (prev ? prev + ' · ' : '') + '🔄 Auto-sync…';
+    const res = await fetch(`${BACKEND}/lodgify-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ days_back: 7, days_fwd: 730 }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || data.raw || 'sync failed');
+    console.info('[LG] auto-sync OK:', data);
+    // Recarga del sheet para reflejar cambios sin reset del modo de vista
+    await lodgifyLoad(true);
+  } catch (e) {
+    console.warn('[LG] auto-sync error:', e.message);
+    if (lbl) lbl.textContent = prev + ' · ⚠ sync falló';
+  }
+}
+
 /** Formato tipo "hace 2h" / "ayer" / fecha ISO corta. */
 function lgFmtRelativeTime(iso) {
   if (!iso) return '—';
@@ -10907,6 +10939,11 @@ function lgGetFiltered() {
   const st  = (document.getElementById('lg-filtro-status')?.value || '').toLowerCase();
   const pg  = (document.getElementById('lg-filtro-programacion')?.value || '').toLowerCase();
   const nb  = (document.getElementById('lg-filtro-nombre')?.value || '').toLowerCase().trim();
+  // Ventana visible default: últimos 7 días + activas + futuras.
+  // Se desactiva con el toggle "Histórico completo".
+  const fullHistory = document.getElementById('lg-toggle-history')?.checked;
+  const cutoff = new Date(); cutoff.setHours(0,0,0,0);
+  cutoff.setDate(cutoff.getDate() - 7);
   const filtered = LG_STATE.bookings.filter(b => {
     if (src && String(b.Source||'').toLowerCase() !== src) return false;
     if (st  && String(b.Status||'').toLowerCase() !== st)  return false;
@@ -10914,6 +10951,15 @@ function lgGetFiltered() {
     if (pg) {
       const state = lgGetStayState(b.DateArrival, b.DateDeparture);
       if (state !== pg) return false;
+    }
+    if (!fullHistory) {
+      // Mostrar solo bookings cuya salida sea >= hoy-7d (concluidas recientes,
+      // activas y futuras todas). Esto descarta el histórico viejo.
+      const m = String(b.DateDeparture||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) {
+        const dep = new Date(+m[3], +m[1]-1, +m[2]);
+        if (dep < cutoff) return false;
+      }
     }
     return true;
   });
