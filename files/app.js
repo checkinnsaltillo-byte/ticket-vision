@@ -11654,54 +11654,70 @@ function lgBuildCard(b) {
 
 // ─── Modal de detalle de reservación Lodgify ────────────────────────────────
 
-/** Abre el modal con todos los detalles del booking. Si hay match en
- *  Información de huéspedes, también carga el perfil, historial y
- *  detalle de la reservación correspondiente. */
-window.lgOpenDetailModal = async function(bookingId) {
+/** Abre el modal en 2 pasadas para que sea fluido:
+ *    Paso 1: render INMEDIATO del header + bloque Lodgify (~liviano).
+ *    Paso 2 (deferred con requestAnimationFrame): inyecta el bloque
+ *      de huéspedes (3 columnas pesadas) DESPUÉS del primer paint.
+ *    Paso 3 (opcional async): si el huésped no trae fotos enriquecidas,
+ *      fetch a /huespedes-detail y se reemplaza solo el bloque de huésped. */
+window.lgOpenDetailModal = function(bookingId) {
   const overlay = document.getElementById('lg-detail-overlay');
   const body    = document.getElementById('lg-detail-body');
   if (!overlay || !body) return;
   const b = (LG_STATE.bookings || []).find(x => String(x.Id) === String(bookingId));
   if (!b) return;
   const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
-  // Render inicial (sin photos enriquecidas). Wrap en try/catch para que un
-  // bug en el builder NO deje la pantalla en estado inválido.
+
+  // ── Paso 1: render rápido (solo header + Lodgify) ──
   try {
-    body.innerHTML = lgBuildModalContent(b, huesped);
+    body.innerHTML = lgBuildModalShellHtml(b, !!huesped);
   } catch (err) {
-    console.error('[LG] modal build error:', err);
-    body.innerHTML = `<div style="padding:20px;color:#dc2626">Error renderizando detalle: ${esc(err.message||err)}</div>`;
+    console.error('[LG] modal shell error:', err);
+    body.innerHTML = `<div style="padding:20px;color:#dc2626">Error renderizando detalle.</div>`;
   }
   overlay.classList.remove('hidden');
-  // Si hay match, enriquecer huésped solo si NO trae ya las fotos.
-  // Esto evita el "parpadeo" donde la card se abre y casi al instante
-  // se vuelve a renderizar (porque caía la respuesta del fetch).
-  if (huesped) {
-    const alreadyEnriched = !!(
-      huesped['Link INE frontal'] || huesped['INE frontal'] ||
-      huesped['Link INE trasero'] || huesped['INE trasero'] ||
-      huesped['Link foto vehículo']
-    );
-    if (!alreadyEnriched) {
-      try {
-        const recId = String(huesped['ID'] || huesped['row_number'] || '');
-        if (recId) {
-          const r = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`);
-          const j = await r.json();
-          if (j?.ok && j.record) {
-            const merged = { ...huesped, ...j.record };
-            const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
-            if (idx >= 0) HU_STATE.rows[idx] = merged;
-            LG_STATE.matches.set(String(b.Id), merged);
-            if (!overlay.classList.contains('hidden')) {
-              try { body.innerHTML = lgBuildModalContent(b, merged); }
-              catch (err) { console.error('[LG] modal rebuild error:', err); }
-            }
-          }
-        }
-      } catch (e) { console.warn('[LG] enrich huesped en modal falló:', e.message); }
+
+  if (!huesped) return;
+
+  // ── Paso 2: inyecta el bloque de huéspedes en el siguiente frame ──
+  // Esto permite al browser pintar el modal antes de procesar el HTML
+  // pesado del 3-columnas. Diferencia visual: el modal aparece instantáneo.
+  requestAnimationFrame(() => {
+    if (overlay.classList.contains('hidden')) return;
+    const slot = document.getElementById('lg-huesped-slot');
+    if (!slot) return;
+    try { slot.innerHTML = lgBuildHuespedSectionHtml(huesped); }
+    catch (err) {
+      console.error('[LG] huesped section error:', err);
+      slot.innerHTML = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar datos del huésped.</div>`;
     }
-  }
+  });
+
+  // ── Paso 3: enrich async si no tiene fotos ──
+  const alreadyEnriched = !!(
+    huesped['Link INE frontal'] || huesped['INE frontal'] ||
+    huesped['Link INE trasero'] || huesped['INE trasero'] ||
+    huesped['Link foto vehículo']
+  );
+  if (alreadyEnriched) return;
+  const recId = String(huesped['ID'] || huesped['row_number'] || '');
+  if (!recId) return;
+  fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`)
+    .then(r => r.json())
+    .then(j => {
+      if (!j?.ok || !j.record) return;
+      if (overlay.classList.contains('hidden')) return;
+      const merged = { ...huesped, ...j.record };
+      const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
+      if (idx >= 0) HU_STATE.rows[idx] = merged;
+      LG_STATE.matches.set(String(b.Id), merged);
+      const slot = document.getElementById('lg-huesped-slot');
+      if (slot) {
+        try { slot.innerHTML = lgBuildHuespedSectionHtml(merged); }
+        catch (err) { console.error('[LG] huesped re-render error:', err); }
+      }
+    })
+    .catch(e => console.warn('[LG] enrich huesped falló:', e.message));
 };
 
 window.lgCloseDetailModal = function() {
@@ -11717,7 +11733,104 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-/** Construye el contenido HTML del modal de detalle. */
+/** ─── Shell del modal (render rápido — header + Lodgify + slot vacío) ─── */
+function lgBuildModalShellHtml(b, hasHuesped) {
+  const main = lgBuildModalLodgifyHtml(b, hasHuesped);
+  // El slot del huésped se llena en el siguiente animation frame. Usamos
+  // content-visibility:auto para que el browser pueda saltar layout/paint
+  // del bloque mientras esté fuera del viewport.
+  const slot = hasHuesped
+    ? `<div id="lg-huesped-slot" style="content-visibility:auto;contain-intrinsic-size:1px 500px"></div>`
+    : '';
+  return main + slot;
+}
+
+/** Genera SOLO el header + bloque Lodgify. Ligero, sin dependencias HU_*. */
+function lgBuildModalLodgifyHtml(b, hasHuesped) {
+  const ingreso = lgFmtFecha(b.DateArrival);
+  const salida  = lgFmtFecha(b.DateDeparture);
+  const prop    = lgFmtPropiedad(b.HouseName);
+  const nombre  = b.GuestName || 'Sin nombre';
+  const fldRow = (label, value) => `
+    <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;align-self:center">${esc(label)}</div>
+      <div style="font-size:13px;color:#1f2937">${value || '—'}</div>
+    </div>`;
+  const lineItemsHtml = (b.LineItems || []).map(li => `
+    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;border-bottom:1px dashed #e2e8f0;font-size:12px">
+      <div><b style="color:#0f172a">${esc(li.kind || '—')}</b>${li.desc ? `<span style="color:#64748b"> · ${esc(li.desc)}</span>` : ''}</div>
+      <div style="font-weight:700;color:#0f766e">${lgFmtMoney(li.gross, b.Currency)}</div>
+    </div>`).join('');
+  const header = `
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px">
+      ${lgSourceBadge(b.Source)}
+      ${lgStatusBadge(b.Status)}
+      ${hasHuesped ? `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:10px;border:1px solid #92400e;letter-spacing:.04em;box-shadow:0 1px 3px rgba(217,119,6,.35)">📋 REGISTRADO</span>` : ''}
+    </div>
+    <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f172a;font-weight:800">${esc(nombre)}</h2>
+    <div style="font-size:14px;color:#64748b;font-weight:500">${esc(prop)} · ${ingreso} → ${salida} · 🌙 ${b.Nights} noche${b.Nights===1?'':'s'}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:13px;color:#64748b">
+      ${b.GuestPhone ? `<span>📱 <b style="color:#0f766e">${esc(b.GuestPhone)}</b></span>` : ''}
+      ${b.GuestEmail ? `<span>✉️ <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
+    </div>
+    <div style="margin-top:8px;font-size:15px;color:#a16207;font-weight:800">${b.Gross > 0 ? `Ingreso bruto: ${lgFmtMoney(b.Gross, b.Currency)}` : ''}</div>
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0">`;
+  const lodgifyBlock = `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
+      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📑 DETALLE LODGIFY</div>
+      ${fldRow('ID booking', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.Id)}</code>`)}
+      ${b.ConfirmationCode ? fldRow('Confirmation code', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.ConfirmationCode)}</code>`) : ''}
+      ${fldRow('Propiedad', esc(b.HouseName))}
+      ${b.RoomTypeNames ? fldRow('Tipo de habitación', esc(b.RoomTypeNames)) : ''}
+      ${fldRow('Llegada', esc(b.DateArrival))}
+      ${fldRow('Salida', esc(b.DateDeparture))}
+      ${fldRow('# Noches', `<b>${b.Nights}</b>`)}
+      ${b.DateCancelled ? fldRow('Cancelada', esc(b.DateCancelled)) : ''}
+      ${fldRow('Personas', `👥 ${b.NumberOfGuests} (Adultos: ${b.Adults}, Niños: ${b.Children}${b.Infants?`, Infantes: ${b.Infants}`:''}${b.Pets?`, Mascotas: ${b.Pets}`:''})`)}
+      ${fldRow('Gross / Net / VAT', `${lgFmtMoney(b.Gross, b.Currency)} / ${lgFmtMoney(b.Net, b.Currency)} / ${lgFmtMoney(b.Vat, b.Currency)}`)}
+      ${b.ChannelBooking ? fldRow('Channel booking', esc(b.ChannelBooking)) : ''}
+    </div>
+    ${lineItemsHtml ? `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0;margin-top:12px">
+      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">💰 LÍNEAS DE COBRO</div>
+      ${lineItemsHtml}
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 0 0;font-size:13px;border-top:2px solid #e2e8f0;margin-top:6px">
+        <div style="font-weight:800;color:#0f172a">Total</div>
+        <div style="font-weight:800;color:#0f766e">${lgFmtMoney(b.Gross, b.Currency)}</div>
+      </div>
+    </div>` : ''}`;
+  return header + lodgifyBlock;
+}
+
+/** Genera el bloque pesado de huéspedes (3 columnas: perfil + historial +
+ *  detalle). Se llama deferred desde requestAnimationFrame. */
+function lgBuildHuespedSectionHtml(huesped) {
+  if (!huesped) return '';
+  let idCard = '', history = '', huDetail = '';
+  try { idCard = (typeof huBuildIdCard === 'function') ? huBuildIdCard(huesped) : ''; }
+  catch (e) { console.error('[LG] huBuildIdCard error:', e); idCard = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar perfil</div>`; }
+  try {
+    const recId = String(huesped['ID']||huesped['row_number']||'');
+    history = (typeof huBuildHistoryList === 'function')
+      ? huBuildHistoryList(huesped, HU_STATE.rows, recId, recId)
+      : '';
+  } catch (e) { console.error('[LG] huBuildHistoryList error:', e); history = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar historial</div>`; }
+  try { huDetail = (typeof huBuildReservationDetail === 'function') ? huBuildReservationDetail(huesped) : ''; }
+  catch (e) { console.error('[LG] huBuildReservationDetail error:', e); huDetail = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar detalle</div>`; }
+  return `
+    <div style="margin-top:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:10px;border:1px solid #92400e;letter-spacing:.04em">📋 REGISTRO MANUAL DEL HUÉSPED</span>
+      </div>
+      <div class="hu-record-body" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
+        <div class="hu-col-profile">${idCard}</div>
+        <div class="hu-col-history">${history}</div>
+        <div class="hu-col-detail">${huDetail}</div>
+      </div>
+    </div>`;
+}
+
+/** ─── Implementación legacy (mantenida por compatibilidad si algo la llama) ─── */
 function lgBuildModalContent(b, huesped) {
   const ingreso = lgFmtFecha(b.DateArrival);
   const salida  = lgFmtFecha(b.DateDeparture);
