@@ -10694,52 +10694,144 @@ function lgMMDDtoIsoDate(mmdd) {
   return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
 }
 
+/** Normaliza texto para comparación tolerante: minúsculas + sin acentos +
+ *  sin caracteres especiales. Útil para comparar nombres y propiedades. */
+function lgNormalizeText(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // quita tildes
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** Similitud trigramaria entre dos strings (0..1). Tolerante a diferencias
+ *  pequeñas como espacios, orden de palabras, abreviaciones. */
+function lgSimilarity(a, b) {
+  const na = lgNormalizeText(a);
+  const nb = lgNormalizeText(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  if (na.includes(nb) || nb.includes(na)) return 0.9;
+  // Por palabras: cuántas palabras de la más corta están en la más larga
+  const wa = new Set(na.split(' ').filter(w => w.length > 1));
+  const wb = new Set(nb.split(' ').filter(w => w.length > 1));
+  if (!wa.size || !wb.size) return 0;
+  let common = 0;
+  for (const w of wa) if (wb.has(w)) common++;
+  return common / Math.min(wa.size, wb.size);
+}
+
+/** Diferencia en días entre dos fechas ISO (YYYY-MM-DD). Devuelve Infinity
+ *  si alguna no es válida. */
+function lgDaysDiff(isoA, isoB) {
+  if (!isoA || !isoB) return Infinity;
+  const a = new Date(isoA.slice(0,10));
+  const b = new Date(isoB.slice(0,10));
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return Infinity;
+  return Math.abs(Math.round((a - b) / 86400000));
+}
+
 /** Busca una coincidencia en HU_STATE.rows para un booking de Lodgify.
- *  Estrategia (prioridad): teléfono → fechas → propiedad.
+ *  Estrategia tolerante (no estricta):
+ *    a) Match fuerte: últimos 8+ dígitos del teléfono coinciden.
+ *    b) Si no hay teléfono o no matchea, busca por nombre similar +
+ *       fechas cercanas (±2 días) + propiedad similar.
  *  Devuelve el row de huéspedes o null. */
 function lgMatchHuesped(booking) {
   const rows = HU_STATE.rows || [];
   if (!rows.length) return null;
+
   const bPhone = lgNormalizePhone(booking.GuestPhone);
-  if (!bPhone) return null;
-  const bPhone10 = bPhone.slice(-10);
-  if (bPhone10.length < 10) return null;
-
-  // 1) Filtrar por teléfono (match de últimos 10 dígitos)
-  const phoneMatches = rows.filter(h => {
-    const hP = lgNormalizePhone(huValueFlexible(h, ['Cel/Whatsapp (principal)','Celular principal']));
-    return hP && hP.slice(-10) === bPhone10;
-  });
-  if (!phoneMatches.length) return null;
-  if (phoneMatches.length === 1) return phoneMatches[0];
-
-  // 2) Entre los matches de teléfono, ranquear por coincidencia de fechas + propiedad
+  const bPhoneTail = bPhone.slice(-8); // 8 dígitos = suficiente para identificar único
+  const bName  = String(booking.GuestName || '');
   const bArrIso = lgMMDDtoIsoDate(booking.DateArrival);
   const bDepIso = lgMMDDtoIsoDate(booking.DateDeparture);
-  const bProp   = String(lgFmtPropiedad(booking.HouseName) || '').toLowerCase();
-  let best = null, bestScore = -1;
-  for (const h of phoneMatches) {
-    const hArr = String(huValueFlexible(h, ['Fecha de ingreso']) || '').slice(0, 10);
-    const hDep = String(huValueFlexible(h, ['Fecha de salida'])  || '').slice(0, 10);
-    const hPr  = String(huValueFlexible(h, ['Propiedad']) || '').toLowerCase();
+  const bPropFull = lgNormalizeText(booking.HouseName);
+  const bPropShort = lgNormalizeText(lgFmtPropiedad(booking.HouseName));
+
+  // 1) Calcular score para cada row de huéspedes
+  let best = null;
+  let bestScore = 0;
+  for (const h of rows) {
+    const hPhone = lgNormalizePhone(huValueFlexible(h, ['Cel/Whatsapp (principal)','Celular principal','Cel/Whatsapp principal']));
+    const hPhoneTail = hPhone.slice(-8);
+    const hName  = huValueFlexible(h, ['Nombre del huésped','Nombre de la persona que hizo la reservación','Nombre huésped']);
+    const hArr   = String(huValueFlexible(h, ['Fecha de ingreso','Fecha de entrada']) || '').slice(0,10);
+    const hDep   = String(huValueFlexible(h, ['Fecha de salida']) || '').slice(0,10);
+    // Propiedad: en huéspedes puede venir separada en "Propiedad" y
+    // "# Departamento". Las combinamos para comparar contra "Cumbres #14".
+    const hPropRaw  = huValueFlexible(h, ['Propiedad']);
+    const hDepto    = huValueFlexible(h, ['# Departamento','Departamento']);
+    const hProp     = lgNormalizeText(`${hPropRaw} ${hDepto}`);
+
     let score = 0;
-    if (bArrIso && hArr === bArrIso) score += 4;
-    if (bDepIso && hDep === bDepIso) score += 3;
-    if (bProp && hPr && (hPr.includes(bProp.split('#')[0].trim()) || bProp.includes(hPr.split('#')[0].trim()))) score += 1;
-    if (score > bestScore) { bestScore = score; best = h; }
+    // Teléfono: 10 dígitos exactos = +10, 8 dígitos = +7
+    if (bPhoneTail && hPhoneTail && bPhoneTail.length >= 8) {
+      if (bPhone.slice(-10) === hPhone.slice(-10) && bPhone.length >= 10) score += 10;
+      else if (bPhoneTail === hPhoneTail) score += 7;
+    }
+    // Nombre similar
+    const nameSim = lgSimilarity(bName, hName);
+    if (nameSim >= 0.9) score += 5;
+    else if (nameSim >= 0.6) score += 3;
+    else if (nameSim >= 0.4) score += 1;
+    // Fechas
+    const arrDiff = lgDaysDiff(bArrIso, hArr);
+    const depDiff = lgDaysDiff(bDepIso, hDep);
+    if (arrDiff === 0) score += 4;
+    else if (arrDiff <= 2) score += 2;
+    if (depDiff === 0) score += 3;
+    else if (depDiff <= 2) score += 1;
+    // Propiedad (compara con HouseName completo y con la forma corta)
+    if (hProp && bPropShort) {
+      if (bPropShort.includes(hProp) || hProp.includes(bPropShort)) score += 2;
+      else if (bPropFull.includes(hProp) || hProp.includes(bPropFull.split(' ')[0])) score += 1;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = h;
+    }
   }
-  return best || phoneMatches[0];
+
+  // Umbral mínimo para considerar match: 5 puntos.
+  // Ejemplos:
+  //   - Solo teléfono 10 dígitos = 10 ✓
+  //   - Solo teléfono 8 dígitos + cualquier fecha cerca = 9 ✓
+  //   - Nombre exacto + fechas exactas = 5 + 4 + 3 = 12 ✓
+  //   - Nombre similar + fechas exactas = 3 + 4 + 3 = 10 ✓
+  //   - Solo nombre exacto sin fechas = 5 (justo en el límite) ✓
+  if (bestScore < 5) return null;
+  return best;
 }
 
 /** Recalcula LG_STATE.matches para todos los bookings cacheados. */
 function lgComputeMatches() {
   const map = new Map();
-  for (const b of (LG_STATE.bookings || [])) {
+  const bookings = LG_STATE.bookings || [];
+  const huRows = HU_STATE.rows || [];
+  for (const b of bookings) {
     const h = lgMatchHuesped(b);
     if (h) map.set(String(b.Id), h);
   }
   LG_STATE.matches = map;
-  console.info('[LG] matches computed:', map.size, 'de', LG_STATE.bookings.length);
+  console.info(`[LG] matches: ${map.size} de ${bookings.length} bookings (huéspedes: ${huRows.length} rows)`);
+  // Si no hubo matches y sí hay datos en ambas, muestra una muestra para debug
+  if (map.size === 0 && bookings.length && huRows.length) {
+    const sample = bookings[0];
+    const huSample = huRows[0];
+    console.warn('[LG] 0 matches — diagnóstico de muestra:', {
+      booking_id:    sample.Id,
+      booking_phone: lgNormalizePhone(sample.GuestPhone),
+      booking_name:  sample.GuestName,
+      booking_dates: `${sample.DateArrival} → ${sample.DateDeparture}`,
+      booking_house: sample.HouseName,
+      huesped_keys_disponibles: Object.keys(huSample).slice(0,15),
+      huesped_phone: lgNormalizePhone(huValueFlexible(huSample, ['Cel/Whatsapp (principal)','Celular principal'])),
+      huesped_name:  huValueFlexible(huSample, ['Nombre del huésped','Nombre de la persona que hizo la reservación']),
+      huesped_prop:  huValueFlexible(huSample, ['Propiedad']),
+    });
+  }
 }
 
 /** Garantiza que HU_STATE.rows esté disponible (carga si no lo está)
