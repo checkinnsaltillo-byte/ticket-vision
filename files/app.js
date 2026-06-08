@@ -10905,13 +10905,38 @@ function lgRebuildFilterOptions() {
 function lgGetFiltered() {
   const src = (document.getElementById('lg-filtro-source')?.value || '').toLowerCase();
   const st  = (document.getElementById('lg-filtro-status')?.value || '').toLowerCase();
+  const pg  = (document.getElementById('lg-filtro-programacion')?.value || '').toLowerCase();
   const nb  = (document.getElementById('lg-filtro-nombre')?.value || '').toLowerCase().trim();
-  return LG_STATE.bookings.filter(b => {
+  const filtered = LG_STATE.bookings.filter(b => {
     if (src && String(b.Source||'').toLowerCase() !== src) return false;
     if (st  && String(b.Status||'').toLowerCase() !== st)  return false;
     if (nb  && !String(b.GuestName||'').toLowerCase().includes(nb)) return false;
+    if (pg) {
+      const state = lgGetStayState(b.DateArrival, b.DateDeparture);
+      if (state !== pg) return false;
+    }
     return true;
   });
+  // Ordenamiento por Programación: Próxima → Activa → Salida hoy → Concluida.
+  // Dentro de cada grupo, las próximas más cercanas primero, las concluidas
+  // más recientes primero (mismo criterio: fecha de llegada).
+  const rank = { proxima: 1, activa: 2, salida_hoy: 3, concluida: 4 };
+  const tsArrival = (b) => {
+    const m = String(b.DateArrival||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? new Date(+m[3], +m[1]-1, +m[2]).getTime() : 0;
+  };
+  filtered.sort((a, b) => {
+    const sa = rank[lgGetStayState(a.DateArrival, a.DateDeparture)] || 99;
+    const sb = rank[lgGetStayState(b.DateArrival, b.DateDeparture)] || 99;
+    if (sa !== sb) return sa - sb;
+    const ta = tsArrival(a), tb = tsArrival(b);
+    // Próximas: las más cercanas (menor fecha) primero.
+    // Activas / Salida hoy: ascendente también.
+    // Concluidas: las más recientes (mayor fecha) primero.
+    if (sa === 4) return tb - ta;
+    return ta - tb;
+  });
+  return filtered;
 }
 
 /** Renderiza KPIs + lista de cards. */
