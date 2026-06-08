@@ -310,8 +310,9 @@ function tryLogin() {
   document.getElementById("loginOverlay")?.classList.add("hidden");
   document.getElementById("app-root")?.classList.remove("hidden");
   const _ub = document.getElementById("current-user-badge"); if (_ub) _ub.textContent = currentUser.toUpperCase();
-  // Módulo predeterminado: Registros contables
-  switchModule("registros");
+  // Módulo predeterminado: Reservas Lodgify (la carga real es asíncrona y
+  // muestra un spinner mientras tanto; no bloquea la UI).
+  setTimeout(() => { try { switchModule("lodgify"); } catch(_) {} }, 0);
 }
 
 function handleLoginKey(e) {
@@ -346,7 +347,7 @@ window.addEventListener("DOMContentLoaded", () => {
     document.getElementById("app-root")?.classList.remove("hidden");
     const ub = document.getElementById("current-user-badge"); if (ub) ub.textContent = "ADMIN (dev)";
     // Cargar automáticamente el módulo Registros contables al entrar
-    setTimeout(() => { try { switchModule("registros"); } catch(_) {} }, 0);
+    setTimeout(() => { try { switchModule("lodgify"); } catch(_) {} }, 0);
   } else {
     document.getElementById("loginOverlay")?.classList.remove("hidden");
     document.getElementById("app-root")?.classList.add("hidden");
@@ -10963,7 +10964,25 @@ function lgAggregateBookings(rows) {
   });
 }
 
-/** Carga los datos del backend de Lodgify. */
+/** HTML del loader animado de Check-inn (mismo del proyecto check-in). */
+const LG_LOADER_BASE = 'https://checkinnsaltillo-byte.github.io/checkin-app/public/registro';
+function lgLoaderHtml(msg) {
+  return `
+    <div class="lg-loading-state">
+      <div class="checkinn-loader size-lg">
+        <div class="ci-pin-scene">
+          <div class="ci-pin">
+            <span class="ci-face front"><img src="${LG_LOADER_BASE}/loader_pin.png" alt=""></span>
+            <span class="ci-face back"><img src="${LG_LOADER_BASE}/loader_pin.png" alt=""></span>
+            <span class="ci-spacer"><img src="${LG_LOADER_BASE}/loader_pin.png" alt=""></span>
+          </div>
+        </div>
+        <img class="ci-text" src="${LG_LOADER_BASE}/loader_text.png" alt="Check-inn">
+      </div>
+      <div class="lg-loading-msg">${esc(msg || 'Cargando…')}</div>
+    </div>`;
+}
+
 /** Lee desde el sheet (vía Cloud Run → Apps Script → hoja "Reservas_Lodgify").
  *  Es la lectura rápida (default). No consulta Lodgify directamente. */
 async function lodgifyLoad(force) {
@@ -10974,8 +10993,8 @@ async function lodgifyLoad(force) {
   if (LG_STATE.loading) return;
   LG_STATE.loading = true;
   if (lbl) lbl.textContent = 'Cargando…';
-  if (empty) { empty.textContent = 'Cargando reservaciones desde Sheets…'; empty.classList.remove('hidden'); }
-  if (cont) cont.innerHTML = '';
+  if (empty) empty.classList.add('hidden');
+  if (cont) cont.innerHTML = lgLoaderHtml('Cargando reservaciones…');
   try {
     const res = await fetch(`${BACKEND}/lodgify-list`, { cache:'no-store' });
     const data = await res.json();
@@ -11632,10 +11651,15 @@ window.lgOpenDetailModal = async function(bookingId) {
   const b = (LG_STATE.bookings || []).find(x => String(x.Id) === String(bookingId));
   if (!b) return;
   const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
-  // Render inicial (sin photos enriquecidas)
-  body.innerHTML = lgBuildModalContent(b, huesped);
+  // Render inicial (sin photos enriquecidas). Wrap en try/catch para que un
+  // bug en el builder NO deje la pantalla en estado inválido.
+  try {
+    body.innerHTML = lgBuildModalContent(b, huesped);
+  } catch (err) {
+    console.error('[LG] modal build error:', err);
+    body.innerHTML = `<div style="padding:20px;color:#dc2626">Error renderizando detalle: ${esc(err.message||err)}</div>`;
+  }
   overlay.classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
   // Si hay match, enriquecer huésped en background con /huespedes-detail
   if (huesped) {
     try {
@@ -11651,7 +11675,8 @@ window.lgOpenDetailModal = async function(bookingId) {
           LG_STATE.matches.set(String(b.Id), merged);
           // Re-render del modal con el row enriquecido
           if (!overlay.classList.contains('hidden')) {
-            body.innerHTML = lgBuildModalContent(b, merged);
+            try { body.innerHTML = lgBuildModalContent(b, merged); }
+            catch (err) { console.error('[LG] modal rebuild error:', err); }
           }
         }
       }
@@ -11662,7 +11687,6 @@ window.lgOpenDetailModal = async function(bookingId) {
 window.lgCloseDetailModal = function() {
   const overlay = document.getElementById('lg-detail-overlay');
   if (overlay) overlay.classList.add('hidden');
-  document.body.style.overflow = '';
 };
 
 // Escape cierra el modal
@@ -11734,28 +11758,111 @@ function lgBuildModalContent(b, huesped) {
       </div>
     </div>` : ''}`;
 
-  // Bloque de Información de huéspedes (3 columnas) si hay match
+  // Bloque de Información de huéspedes — siempre vertical (sin layout en 3
+  // columnas que rompe en pantallas chicas o cuando faltan estilos). Genera
+  // perfil + datos manuales + historial.
   let huespedSection = '';
   if (huesped) {
-    const idCard  = (typeof huBuildIdCard === 'function') ? huBuildIdCard(huesped) : '';
-    const history = (typeof huBuildHistoryList === 'function')
-      ? huBuildHistoryList(huesped, HU_STATE.rows, String(huesped['ID']||huesped['row_number']||''), String(huesped['ID']||huesped['row_number']||''))
-      : '';
-    const huDetail = (typeof huBuildReservationDetail === 'function') ? huBuildReservationDetail(huesped) : '';
     huespedSection = `
       <div style="margin-top:18px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
           <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:10px;border:1px solid #92400e;letter-spacing:.04em">📋 REGISTRO MANUAL DEL HUÉSPED</span>
         </div>
-        <div style="display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:12px;align-items:start">
-          <div>${idCard}</div>
-          <div>${history}</div>
-          <div>${huDetail}</div>
-        </div>
+        ${lgBuildHuespedProfile(huesped)}
+        ${lgBuildHuespedBlock(huesped, fldRow)}
+        ${lgBuildHuespedHistory(huesped, b)}
       </div>`;
   }
 
   return header + lodgifyBlock + huespedSection;
+}
+
+/** Perfil del huésped: fotos (INE frontal/trasero, vehículo) + datos
+ *  de contacto + datos fiscales. Layout simple en grid de 2 columnas. */
+function lgBuildHuespedProfile(h) {
+  if (!h) return '';
+  const v = (cands) => huValueFlexible(h, Array.isArray(cands) ? cands : [cands]);
+  const ineFront = v(['Link INE frontal','INE frontal','Link foto INE frontal']);
+  const ineBack  = v(['Link INE trasero','INE trasero','Link foto INE trasero']);
+  const idUnica  = v(['Link identificación única','Identificación única']);
+  const fotoVeh  = v(['Link foto vehículo','Foto vehículo']);
+  const marca    = v(['Marca vehículo']);
+  const modelo   = v(['Modelo vehículo']);
+  const placas   = v(['Placas']);
+  const colorV   = v(['Color vehículo']);
+
+  // Usa huPhotoBox si existe (del módulo huéspedes); si no, fallback simple.
+  const photo = (url, label, icon) => {
+    if (!url) return '';
+    if (typeof huPhotoBox === 'function') {
+      try { return huPhotoBox(url, label, { icon, height: '120px' }); } catch(_) {}
+    }
+    return `<div style="background:#f8fafc;border:1.5px dashed #cbd5e1;border-radius:10px;padding:10px;text-align:center;color:#94a3b8;font-size:11px">${icon} ${esc(label)}</div>`;
+  };
+
+  const hasPhoto = ineFront || ineBack || idUnica || fotoVeh;
+  if (!hasPhoto) return '';
+  const vehInfo = (marca || modelo || placas || colorV)
+    ? `<div style="font-size:12px;color:#64748b;margin-top:8px"><b style="color:#1f2937">🚗 ${esc([marca, modelo, colorV].filter(Boolean).join(' '))}</b>${placas ? ' · ' + esc(placas) : ''}</div>`
+    : '';
+  return `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0;margin-bottom:12px">
+      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">🪪 IDENTIFICACIÓN Y VEHÍCULO</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+        ${photo(ineFront, 'INE frontal', '🪪')}
+        ${photo(ineBack,  'INE trasero', '🪪')}
+        ${idUnica  ? photo(idUnica,  'Identificación', '🆔') : ''}
+        ${fotoVeh  ? photo(fotoVeh,  'Vehículo',     '🚗') : ''}
+      </div>
+      ${vehInfo}
+    </div>`;
+}
+
+/** Historial de reservaciones del huésped (otras estancias del mismo
+ *  teléfono). Marca la reservación que coincide con el booking actual. */
+function lgBuildHuespedHistory(h, currentBooking) {
+  if (!h) return '';
+  const cel = huValueFlexible(h, ['Cel/Whatsapp (principal)','Celular principal']);
+  if (!cel) return '';
+  const list = (HU_STATE.rows || []).filter(x =>
+    lgNormalizePhone(huValueFlexible(x, ['Cel/Whatsapp (principal)','Celular principal'])).slice(-10) ===
+    lgNormalizePhone(cel).slice(-10)
+  );
+  if (list.length <= 1) return '';
+  const currentRecId = String(h['ID'] || h['row_number'] || '');
+  // Ordenar por fecha de ingreso descendente
+  list.sort((a, b) => {
+    const da = String(huValueFlexible(a, ['Fecha de ingreso'])||'').slice(0,10);
+    const db = String(huValueFlexible(b, ['Fecha de ingreso'])||'').slice(0,10);
+    return db.localeCompare(da);
+  });
+  const items = list.map(x => {
+    const xid     = String(x['ID'] || x['row_number'] || '');
+    const ingreso = String(huValueFlexible(x, ['Fecha de ingreso'])||'').slice(0,10);
+    const salida  = String(huValueFlexible(x, ['Fecha de salida'])||'').slice(0,10);
+    const prop    = huValueFlexible(x, ['Propiedad']);
+    const depto   = huValueFlexible(x, ['# Departamento']);
+    const noches  = huValueFlexible(x, ['# Noches']);
+    const monto   = huValueFlexible(x, ['$ Monto facturado Total','Monto Total pagado','($) Monto Total pagado']);
+    const isCurr  = xid === currentRecId;
+    return `
+      <div style="padding:10px 12px;border:1.5px solid ${isCurr?'#fbbf24':'#e2e8f0'};border-radius:8px;background:${isCurr?'#fffbeb':'#fff'};margin-bottom:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px">
+          <div style="font-size:12px;font-weight:800;color:#0f172a">${esc(ingreso)} → ${esc(salida)}</div>
+          ${isCurr ? '<span style="font-size:9px;padding:2px 7px;border-radius:999px;background:#fbbf24;color:#451a03;font-weight:800;letter-spacing:.04em">ESTA RESERVACIÓN</span>' : ''}
+        </div>
+        <div style="font-size:11px;color:#64748b">${esc(prop||'—')}${depto ? ' · # '+esc(depto) : ''}</div>
+        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:11px">
+          <span style="color:#94a3b8">${esc(noches||'—')} noche${noches==='1'?'':'s'}</span>
+          ${monto ? `<span style="font-weight:700;color:#0f766e">${(typeof huFmtMonto==='function')?huFmtMonto(monto):esc(monto)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  return `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0;margin-top:12px">
+      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📚 HISTORIAL DE RESERVACIONES (${list.length})</div>
+      ${items}
+    </div>`;
 }
 
 /** Bloque visual con los datos del registro manual (Información de huéspedes)

@@ -2290,3 +2290,68 @@ input[type="checkbox"].lg-multi-cb {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ─── Loader Check-inn (pin 3D animado + texto "Check-inn") ───────────── */
+.checkinn-loader {
+  --ci-pin-h: 56px;
+  --ci-dur: 3.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--ci-pin-h) * 0.05);
+  line-height: 0;
+}
+.checkinn-loader.size-sm { --ci-pin-h: 21px; --ci-dur: 2.8s; }
+.checkinn-loader.size-md { --ci-pin-h: 36px; }
+.checkinn-loader.size-lg { --ci-pin-h: 56px; --ci-dur: 3.2s; }
+.ci-pin-scene {
+  perspective: 700px;
+  height: var(--ci-pin-h);
+}
+.ci-pin {
+  position: relative;
+  height: var(--ci-pin-h);
+  transform-style: preserve-3d;
+  animation: ci-spin var(--ci-dur) linear infinite;
+  will-change: transform;
+}
+.ci-face {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: var(--ci-pin-h);
+  backface-visibility: hidden;
+}
+.ci-face img,
+.ci-spacer {
+  display: block;
+  height: var(--ci-pin-h);
+  width: auto;
+}
+.ci-face.back { transform: rotateY(180deg); }
+.ci-spacer { visibility: hidden; }
+.ci-text {
+  display: block;
+  height: calc(var(--ci-pin-h) * 0.552);
+  width: auto;
+}
+@keyframes ci-spin { to { transform: rotateY(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .ci-pin { animation: none; }
+}
+
+/* Contenedor del estado de carga del módulo Lodgify */
+.lg-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 60px 20px;
+  text-align: center;
+}
+.lg-loading-state .lg-loading-msg {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
