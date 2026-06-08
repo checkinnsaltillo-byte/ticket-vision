@@ -11802,33 +11802,192 @@ function lgBuildModalLodgifyHtml(b, hasHuesped) {
   return header + lodgifyBlock;
 }
 
-/** Genera el bloque pesado de huéspedes (3 columnas: perfil + historial +
- *  detalle). Se llama deferred desde requestAnimationFrame. */
+/** Genera el bloque de huéspedes con vista LIGERA, READ-ONLY.
+ *  No usa huBuildIdCard/HistoryList/ReservationDetail (que son pesados,
+ *  con cajas Airbnb, inputs, handlers inline que ralentizan el navegador).
+ *  Construye su propio HTML mínimo replicando visualmente el diseño. */
 function lgBuildHuespedSectionHtml(huesped) {
   if (!huesped) return '';
-  let idCard = '', history = '', huDetail = '';
-  try { idCard = (typeof huBuildIdCard === 'function') ? huBuildIdCard(huesped) : ''; }
-  catch (e) { console.error('[LG] huBuildIdCard error:', e); idCard = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar perfil</div>`; }
-  try {
-    const recId = String(huesped['ID']||huesped['row_number']||'');
-    history = (typeof huBuildHistoryList === 'function')
-      ? huBuildHistoryList(huesped, HU_STATE.rows, recId, recId)
-      : '';
-  } catch (e) { console.error('[LG] huBuildHistoryList error:', e); history = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar historial</div>`; }
-  try { huDetail = (typeof huBuildReservationDetail === 'function') ? huBuildReservationDetail(huesped) : ''; }
-  catch (e) { console.error('[LG] huBuildReservationDetail error:', e); huDetail = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar detalle</div>`; }
+  const v  = (cands) => huValueFlexible(huesped, Array.isArray(cands) ? cands : [cands]);
+  const lgV = (val) => val == null || String(val).trim() === '' ? '—' : esc(String(val));
+
+  // ─── Col 1: Perfil del huésped (ID Card) ───
+  const nombre  = v(['Nombre del huésped','Nombre de la persona que hizo la reservación']);
+  const tipoId  = v(['Tipo de identificación']);
+  const cel     = v(['Cel/Whatsapp (principal)','Celular principal']);
+  const celEm   = v(['Cel/Whatsapp (contacto de emergencia)']);
+  const correo  = v(['Correo electrónico','Correo electrónico para el envío de la factura']);
+  const razon   = v(['Razón social']);
+  const rfc     = v(['RFC']);
+  const regimen = v(['Régimen fiscal']);
+  const ineFront= v(['Link INE frontal','INE frontal']);
+  const ineBack = v(['Link INE trasero','INE trasero']);
+  const idUnica = v(['Link identificación única','Identificación única']);
+  const reqFact = v(['¿Requiere factura?']);
+
+  // Photo: img lazy, sin onerror cascade, sin handlers. Si Drive falla,
+  // el browser muestra el alt. Sin múltiples fetches por placeholder.
+  const lgPhoto = (url, label, icon) => {
+    if (!url) {
+      return `<div style="aspect-ratio:1.5/1;background:linear-gradient(135deg,#f8fafc,#f1f5f9);border:1.5px dashed #cbd5e1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;padding:8px;text-align:center;font-size:10px">
+        <div style="font-size:18px;opacity:.5">${icon}</div>
+        <div style="font-weight:700;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</div>
+      </div>`;
+    }
+    // Extraer ID de Drive para usar thumbnail directo
+    const m = String(url).match(/\/d\/([a-zA-Z0-9_-]+)/) || String(url).match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    const driveId = m ? m[1] : '';
+    const thumb = driveId ? `https://drive.google.com/thumbnail?id=${driveId}&sz=w400` : esc(url);
+    const full  = driveId ? `https://drive.google.com/thumbnail?id=${driveId}&sz=w1600` : esc(url);
+    return `<div data-zoom-url="${esc(full)}" data-zoom-label="${esc(label)}" style="position:relative;cursor:zoom-in;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc;aspect-ratio:1.5/1">
+      <img src="${thumb}" alt="${esc(label)}" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+           style="width:100%;height:100%;object-fit:cover;display:block">
+      <div style="position:absolute;bottom:0;left:0;right:0;padding:4px 8px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.65));color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${esc(label)}</div>
+    </div>`;
+  };
+
+  const profileCol = `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;border:1.5px solid #e2e8f0;box-shadow:0 2px 8px rgba(15,23,42,.05)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:10px;letter-spacing:.16em;color:#64748b;font-weight:800;text-transform:uppercase">Perfil del huésped</div>
+        <div style="font-size:9px;padding:2px 7px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:700;letter-spacing:.06em">ID CARD</div>
+      </div>
+      <div style="font-size:16px;font-weight:800;color:#0f172a;margin-bottom:2px">${lgV(nombre)}</div>
+      <div style="font-size:11px;color:#64748b;font-weight:600;letter-spacing:.04em;margin-bottom:12px">${lgV(tipoId)}</div>
+      <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.06em;margin-bottom:6px">🪪 IDENTIFICACIÓN</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+        ${lgPhoto(ineFront, 'INE frontal', '🪪')}
+        ${lgPhoto(ineBack,  'INE trasero', '🪪')}
+      </div>
+      ${idUnica ? `<div style="margin-bottom:12px">${lgPhoto(idUnica, 'Identif. única', '🆔')}</div>` : ''}
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+        <div style="font-size:9px;font-weight:700;color:#166534;letter-spacing:.06em;margin-bottom:3px">📞 CONTACTO</div>
+        ${cel    ? `<div style="font-size:12px;color:#0f766e;font-weight:700">📱 ${lgV(cel)}</div>` : ''}
+        ${celEm  ? `<div style="font-size:11px;color:#0f766e;margin-top:2px">📞 ${lgV(celEm)} <span style="color:#64748b;font-weight:500">(emergencia)</span></div>` : ''}
+        ${correo ? `<div style="font-size:11px;color:#475569;margin-top:2px;word-break:break-all">✉️ ${lgV(correo)}</div>` : ''}
+      </div>
+      ${(razon || rfc) ? `
+      <div style="background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:8px 10px">
+        <div style="font-size:9px;font-weight:700;color:#854d0e;letter-spacing:.06em;margin-bottom:4px">📄 DATOS FISCALES ${reqFact ? `<span style="color:${/s[ií]/i.test(reqFact)?'#166534':'#991b1b'};margin-left:6px">${lgV(reqFact)}</span>` : ''}</div>
+        ${razon  ? `<div style="font-size:12px;color:#1f2937;font-weight:700">${lgV(razon)}</div>` : ''}
+        ${rfc    ? `<div style="font-size:11px;color:#475569;margin-top:2px"><code style="background:#fff;padding:1px 6px;border-radius:4px;border:1px solid #fde047">${lgV(rfc)}</code></div>` : ''}
+        ${regimen? `<div style="font-size:10px;color:#64748b;margin-top:2px">${lgV(regimen)}</div>` : ''}
+      </div>` : ''}
+    </div>`;
+
+  // ─── Col 2: Historial de reservaciones (filtrado por teléfono, máx 30) ───
+  const celTail = lgNormalizePhone(cel).slice(-10);
+  const history = celTail
+    ? (HU_STATE.rows || []).filter(x => lgExtractHuespedPhoneTail(x) === celTail)
+    : [huesped];
+  // Orden descendente por fecha de ingreso
+  history.sort((a, b) => {
+    const da = String(huValueFlexible(a, ['Fecha de ingreso']) || '');
+    const db = String(huValueFlexible(b, ['Fecha de ingreso']) || '');
+    return db.localeCompare(da);
+  });
+  const currentRecId = String(huesped['ID']||huesped['row_number']||'');
+  const maxHistory = Math.min(history.length, 30);
+  const historyItems = history.slice(0, maxHistory).map(x => {
+    const xid     = String(x['ID'] || x['row_number'] || '');
+    const ingreso = String(huValueFlexible(x, ['Fecha de ingreso'])||'').slice(0,10);
+    const salida  = String(huValueFlexible(x, ['Fecha de salida'])||'').slice(0,10);
+    const prop    = huValueFlexible(x, ['Propiedad']);
+    const depto   = huValueFlexible(x, ['# Departamento']);
+    const noches  = huValueFlexible(x, ['# Noches']);
+    const monto   = huValueFlexible(x, ['$ Monto facturado Total','($) Monto Total pagado']);
+    const isCurr  = xid === currentRecId;
+    return `
+      <div style="padding:9px 11px;border:1.5px solid ${isCurr?'#fbbf24':'transparent'};border-radius:8px;background:#fff;margin-bottom:5px;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px">
+          <div style="font-size:11px;font-weight:800;color:#0f172a">${esc(ingreso)} → ${esc(salida)}</div>
+          ${isCurr ? '<span style="font-size:8px;padding:1px 6px;border-radius:999px;background:#fbbf24;color:#451a03;font-weight:800;letter-spacing:.04em">ESTA</span>' : ''}
+        </div>
+        <div style="font-size:10px;color:#64748b;font-weight:500">${esc(prop||'—')}${depto?' · # '+esc(depto):''}</div>
+        <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:10px">
+          <span style="color:#94a3b8">${esc(noches||'—')}n</span>
+          ${monto ? `<span style="color:#0f766e;font-weight:700">${esc(monto)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  const truncatedNote = history.length > maxHistory
+    ? `<div style="padding:6px;text-align:center;font-size:10px;color:#94a3b8;font-style:italic">… y ${history.length - maxHistory} reservaciones más</div>`
+    : '';
+  const historyCol = `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;border:1.5px solid #e2e8f0;box-shadow:0 2px 8px rgba(15,23,42,.05)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:10px;letter-spacing:.16em;color:#64748b;font-weight:800;text-transform:uppercase">Historial de reservaciones</div>
+        <span style="font-size:9px;padding:2px 8px;border-radius:999px;background:#ccfbf1;color:#0d9488;font-weight:700;letter-spacing:.04em">${history.length} ${history.length===1?'RESERVA':'RESERVAS'}</span>
+      </div>
+      <div style="background:#f8fafc;border-radius:10px;padding:6px;border:1px solid #e2e8f0">
+        ${historyItems || '<div style="padding:10px;text-align:center;font-size:11px;color:#94a3b8;font-style:italic">Sin historial.</div>'}
+        ${truncatedNote}
+      </div>
+    </div>`;
+
+  // ─── Col 3: Detalle de reservación actual (read-only) ───
+  const ingreso   = v(['Fecha de ingreso','Fecha de entrada']);
+  const salida    = v(['Fecha de salida']);
+  const horaIng   = v(['Hora estimada de llegada']);
+  const horaSal   = v(['Hora estimada de salida']);
+  const huespCount= v(['# Huéspedes']);
+  const propiedad = v(['Propiedad']);
+  const depto     = v(['# Departamento','Departamento']);
+  const motivo    = v(['Motivo de tu hospedaje','Motivo']);
+  const formaPago = v(['Forma de pago']);
+  const montoPag  = v(['($) Monto Total pagado','Monto Total pagado']);
+  const montoFact = v(['$ Monto facturado Total','Monto facturado Total']);
+  const folio     = v(['Folio facturapi','Folio']);
+  const nombresT  = v(['Nombres de TODOS los huéspedes (separados por comas)']);
+  const comen     = v(['Notas','Comentarios','Envía tus comentarios']);
+
+  const detailRow = (label, value) => `
+    <div style="display:grid;grid-template-columns:130px 1fr;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#a16207;font-weight:700;align-self:center">${esc(label)}</div>
+      <div style="font-size:12px;color:#1f2937">${value || '—'}</div>
+    </div>`;
+  const detailCol = `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;border:1.5px solid #e2e8f0;box-shadow:0 2px 8px rgba(15,23,42,.05)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:10px;letter-spacing:.16em;color:#64748b;font-weight:800;text-transform:uppercase">Detalle de reservación</div>
+        ${folio ? `<span style="font-size:9px;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;letter-spacing:.04em">EMITIDA · ${lgV(folio)}</span>` : ''}
+      </div>
+      <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:8px">${lgV(ingreso)} → ${lgV(salida)}</div>
+      ${detailRow('Propiedad', lgV(propiedad))}
+      ${detailRow('# Departamento', lgV(depto))}
+      ${detailRow('Llegada est.', lgV(horaIng))}
+      ${detailRow('Salida est.', lgV(horaSal))}
+      ${detailRow('# Huéspedes', lgV(huespCount))}
+      ${nombresT ? detailRow('Nombres', `<span style="font-size:11px;line-height:1.4">${lgV(nombresT)}</span>`) : ''}
+      ${motivo ? detailRow('Motivo', lgV(motivo)) : ''}
+      ${formaPago ? detailRow('Forma de pago', lgV(formaPago)) : ''}
+      ${montoPag ? detailRow('Monto pagado', `<b style="color:#0f766e">$ ${lgV(montoPag)}</b>`) : ''}
+      ${montoFact? detailRow('Monto facturado', `<b style="color:#0f766e">$ ${lgV(montoFact)}</b>`) : ''}
+      ${comen ? detailRow('Comentarios', `<div style="font-size:11px;line-height:1.4;background:#f8fafc;padding:6px 8px;border-radius:4px;border-left:3px solid #94a3b8;font-style:italic;color:#475569">${lgV(comen)}</div>`) : ''}
+    </div>`;
+
   return `
     <div style="margin-top:18px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
         <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:10px;border:1px solid #92400e;letter-spacing:.04em">📋 REGISTRO MANUAL DEL HUÉSPED</span>
       </div>
-      <div class="hu-record-body" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
-        <div class="hu-col-profile">${idCard}</div>
-        <div class="hu-col-history">${history}</div>
-        <div class="hu-col-detail">${huDetail}</div>
+      <div onclick="lgHandleProfileZoom(event)" style="padding:14px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(240px,1fr) minmax(200px,.9fr) minmax(280px,1.4fr);gap:12px;align-items:start">
+        ${profileCol}
+        ${historyCol}
+        ${detailCol}
       </div>
     </div>`;
 }
+
+/** Click handler delegado para abrir el zoom de las fotos del perfil. */
+window.lgHandleProfileZoom = function(ev) {
+  const el = ev.target.closest('[data-zoom-url]');
+  if (!el) return;
+  ev.stopPropagation();
+  const url   = el.getAttribute('data-zoom-url');
+  const label = el.getAttribute('data-zoom-label') || 'Foto';
+  if (typeof huImageZoom === 'function') huImageZoom(url, label);
+};
 
 /** ─── Implementación legacy (mantenida por compatibilidad si algo la llama) ─── */
 function lgBuildModalContent(b, huesped) {
