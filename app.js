@@ -12390,18 +12390,23 @@ function lgBuildHuespedBlock(h, fldRow) {
     </div>`;
 }
 
-/** Estado de estancia de un booking (mismo semáforo que huéspedes). */
+/** Estado de estancia de un booking (mismo semáforo que huéspedes).
+ *  Compara strings ISO YYYY-MM-DD en horario LOCAL del navegador.
+ *  Antes usaba Date.setUTCHours(0,0,0,0) que daba medianoche UTC y por
+ *  ejemplo en CDMX (UTC-6) a las 18:24 ya era 00:24 UTC del día siguiente
+ *  → las salidas del día siguiente aparecían como "Salida hoy". */
 function lgGetStayState(arrivalMMDD, departureMMDD) {
-  const di = lgParseMMDD(arrivalMMDD);
-  const ds = lgParseMMDD(departureMMDD);
-  if (!di && !ds) return '';
-  const today = new Date(); today.setUTCHours(0,0,0,0);
-  const start = di || ds;
-  const end   = ds || di;
-  if (end < today) return 'concluida';
-  if (end.getTime() === today.getTime()) return 'salida_hoy';
-  if (start.getTime() === today.getTime()) return 'entrada_hoy';
-  if (start > today) return 'proxima';
+  const ai = lgMMDDtoIsoDate(arrivalMMDD);
+  const di = lgMMDDtoIsoDate(departureMMDD);
+  if (!ai && !di) return '';
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const start = ai || di;
+  const end   = di || ai;
+  if (end < todayIso) return 'concluida';
+  if (end === todayIso) return 'salida_hoy';
+  if (start === todayIso) return 'entrada_hoy';
+  if (start > todayIso) return 'proxima';
   return 'activa';
 }
 
