@@ -11596,15 +11596,16 @@ function lgBuildCard(b) {
     : '';
 
   // Ícono de "registro manual completo": aparece cuando hay match en
-  // Información de huéspedes (mismo teléfono + mismas fechas).
+  // Información de huéspedes. Ahora se coloca encima del "Ingreso Bruto"
+  // (columna derecha), con fondo verde aqua brillante.
   const huespedMatch = LG_STATE.matches?.get(String(b.Id)) || null;
   const matchBadge = huespedMatch
-    ? `<span title="Registro manual completado por el huésped" style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:9px;border:1px solid #92400e;letter-spacing:.04em;box-shadow:0 1px 3px rgba(217,119,6,.35)">📋 REGISTRADO</span>`
+    ? `<span title="Registro manual completado por el huésped" style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:999px;background:linear-gradient(135deg,#22d3ee,#06b6d4);color:#083344;font-weight:800;font-size:9px;border:1px solid #0891b2;letter-spacing:.04em;box-shadow:0 1px 4px rgba(8,145,178,.35);text-shadow:0 1px 1px rgba(255,255,255,.4)">📋 REGISTRADO</span>`
     : '';
 
   // ─── Si hay match, calculamos los chips y KPIs del módulo huéspedes ───
-  let kpisHtml = '';
-  let extrasHtml = '';        // chips Llegada estimada / Salida estimada
+  let kpisBarHtml = '';        // barra inferior horizontal con KPIs + tier
+  let extrasHtml = '';         // chips Llegada estimada / Salida estimada
   let facBadge = '';           // chip "Ticket emitido/pendiente"
   let montoFacturadoHtml = ''; // bloque Monto Facturado (columna derecha)
   if (huespedMatch) {
@@ -11635,21 +11636,25 @@ function lgBuildCard(b) {
           <span style="font-size:11px">${tier.icon}</span><span>${tier.label}</span>
           <span style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:14px;padding:0 4px;border-radius:7px;background:rgba(255,255,255,.7);color:${tier.fg};font-size:9px;font-weight:800">${tier.score}</span>
         </div>` : '';
-      kpisHtml = `
-        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:5px">
-          <div style="background:rgba(255,255,255,.8);border:1px solid ${palette.border};border-radius:8px;padding:3px 7px;min-width:56px;text-align:center" title="Suma global de noches del huésped">
-            <div style="font-size:7px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">🌙 Noches</div>
-            <div style="font-size:12px;font-weight:800;color:#0f172a;line-height:1.1">${stats.totalNoches}</div>
+      kpisBarHtml = `
+        <div style="display:flex;gap:6px;align-items:stretch;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid ${palette.border}">
+          <div style="flex:1;background:rgba(255,255,255,.9);border:1px solid ${palette.border};border-radius:8px;padding:4px 8px;text-align:center;min-width:0" title="Suma global de noches del huésped">
+            <div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">🌙 Noches</div>
+            <div style="font-size:13px;font-weight:800;color:#0f172a;line-height:1.1">${stats.totalNoches}</div>
           </div>
-          <div style="background:rgba(255,255,255,.8);border:1px solid ${palette.border};border-radius:8px;padding:3px 7px;min-width:56px;text-align:center" title="Visitas globales (consecutivas cuentan como una)">
-            <div style="font-size:7px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">🧳 Visitas</div>
-            <div style="font-size:12px;font-weight:800;color:#0f172a;line-height:1.1">${stats.visitas}</div>
+          <div style="flex:1;background:rgba(255,255,255,.9);border:1px solid ${palette.border};border-radius:8px;padding:4px 8px;text-align:center;min-width:0" title="Visitas globales (consecutivas cuentan como una)">
+            <div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">🧳 Visitas</div>
+            <div style="font-size:13px;font-weight:800;color:#0f172a;line-height:1.1">${stats.visitas}</div>
           </div>
-          <div style="background:rgba(255,255,255,.8);border:1px solid ${palette.border};border-radius:8px;padding:3px 7px;min-width:72px;text-align:center" title="Suma de Monto facturado en todas las reservaciones del huésped">
-            <div style="font-size:7px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">💰 Monto</div>
-            <div style="font-size:11px;font-weight:800;color:#0f172a;line-height:1.1">${stats.montoGlobal > 0 ? ((typeof huFmtMonto==='function')?huFmtMonto(stats.montoGlobal):('$ '+stats.montoGlobal)) : '—'}</div>
+          <div style="flex:1.4;background:rgba(255,255,255,.9);border:1px solid ${palette.border};border-radius:8px;padding:4px 8px;text-align:center;min-width:0" title="Suma de Monto facturado en todas las reservaciones del huésped">
+            <div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">💰 Monto</div>
+            <div style="font-size:12px;font-weight:800;color:#0f172a;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${stats.montoGlobal > 0 ? ((typeof huFmtMonto==='function')?huFmtMonto(stats.montoGlobal):('$ '+stats.montoGlobal)) : '—'}</div>
           </div>
-          ${tierBadge}
+          ${tier ? `
+          <div title="${esc(tier.tooltip)}" style="flex:1.2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:4px 8px;border-radius:8px;background:${tier.bg};color:${tier.fg};font-weight:800;letter-spacing:.04em;text-transform:uppercase;border:1px solid ${tier.border};box-shadow:0 1px 4px ${tier.shadow};min-width:0">
+            <div style="display:flex;align-items:center;gap:3px;font-size:10px"><span style="font-size:12px">${tier.icon}</span><span>${tier.label}</span></div>
+            <div style="display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:14px;padding:0 4px;border-radius:7px;background:rgba(255,255,255,.7);color:${tier.fg};font-size:9px;font-weight:800">${tier.score}</div>
+          </div>` : ''}
         </div>`;
     }
     // Chips Llegada / Salida estimadas
@@ -11672,29 +11677,37 @@ function lgBuildCard(b) {
     }
   }
 
-  // Header summary (compacto). Click → abre modal con todos los detalles.
+  // Helper para construir el link a WhatsApp con el número del huésped.
+  const waPhone = b.GuestPhone ? String(b.GuestPhone).replace(/\D/g, '') : '';
+  const phoneHtml = b.GuestPhone
+    ? `<a href="https://wa.me/${waPhone}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:700;text-decoration:none">📱 ${esc(b.GuestPhone)}</a>`
+    : '';
+
+  // Header summary. Click → abre modal con todos los detalles.
   const summary = `
-    <div style="cursor:pointer;padding:9px 11px;background:${palette.bg};display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center">
-      <div style="min-width:0">
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:4px">${lgSourceBadge(b.Source)}${huespedesChip}${matchBadge}</div>
-        <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.2;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
-        <div style="font-size:11px;color:#64748b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(prop)}</div>
-        <div style="font-size:11px;color:#64748b;font-weight:500;margin-top:1px">${ingreso} → ${salida} <span style="color:#475569;font-weight:600">· 🌙 ${noches}n</span></div>
-        ${extrasHtml}
-        ${b.GuestPhone || b.GuestEmail ? `
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:3px;font-size:10px;color:#64748b">
-          ${b.GuestPhone ? `<span>📱 <b style="color:#1f2937">${esc(b.GuestPhone)}</b></span>` : ''}
-          ${b.GuestEmail ? `<span>✉️ <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
-        </div>` : ''}
-        ${kpisHtml}
+    <div style="cursor:pointer;padding:9px 11px;background:${palette.bg}">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">
+        <div style="min-width:0">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:4px">${lgSourceBadge(b.Source)}${huespedesChip}</div>
+          <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.2;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
+          <div style="font-size:11px;color:#64748b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(prop)}</div>
+          <div style="font-size:11px;color:#64748b;font-weight:500;margin-top:1px">${ingreso} → ${salida} <span style="color:#475569;font-weight:600">· 🌙 ${noches}n</span></div>
+          ${extrasHtml}
+          ${b.GuestPhone || b.GuestEmail ? `
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:3px;font-size:10px;color:#64748b">
+            ${phoneHtml}
+            ${b.GuestEmail ? `<span>✉️ <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
+          </div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:110px">
+          ${matchBadge ? `<div style="margin-bottom:3px">${matchBadge}</div>` : ''}
+          <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Ingreso bruto</div>
+          <div style="font-size:14px;font-weight:800;color:#111827;line-height:1.1">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
+          <div>${lgStatusBadge(b.Status)}</div>
+          ${montoFacturadoHtml}
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:110px">
-        <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Ingreso bruto</div>
-        <div style="font-size:14px;font-weight:800;color:#111827;line-height:1.1">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
-        <div>${lgStatusBadge(b.Status)}</div>
-        ${montoFacturadoHtml}
-      </div>
-      <div title="Ver detalles" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;border:1.5px solid ${palette.border};background:#fff;color:#475569;font-size:11px;flex-shrink:0">↗</div>
+      ${kpisBarHtml}
     </div>`;
 
   // Detalle expandido
@@ -11906,11 +11919,43 @@ function lgBuildModalLodgifyHtml(b, hasHuesped) {
   return header + lodgifyBlock;
 }
 
-/** Genera el bloque de huéspedes con vista LIGERA, READ-ONLY.
- *  No usa huBuildIdCard/HistoryList/ReservationDetail (que son pesados,
- *  con cajas Airbnb, inputs, handlers inline que ralentizan el navegador).
- *  Construye su propio HTML mínimo replicando visualmente el diseño. */
-function lgBuildHuespedSectionHtml(huesped) {
+/** Genera el bloque de huéspedes usando las funciones del módulo de
+ *  Información de huéspedes (huBuildIdCard / huBuildHistoryList /
+ *  huBuildReservationDetail) — mismo diseño visual exacto, incluyendo
+ *  la caja "Ticket para auto-facturación" y todos los campos.
+ *  Se difiere el render con requestAnimationFrame desde lgOpenDetailModal
+ *  para no bloquear la apertura del modal. */
+function lgBuildHuespedSectionHtml_real(huesped) {
+  if (!huesped) return '';
+  let idCard = '', history = '', huDetail = '';
+  try { idCard = (typeof huBuildIdCard === 'function') ? huBuildIdCard(huesped) : ''; }
+  catch (e) { console.error('[LG] huBuildIdCard error:', e); idCard = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar perfil</div>`; }
+  try {
+    const recId = String(huesped['ID']||huesped['row_number']||'');
+    history = (typeof huBuildHistoryList === 'function')
+      ? huBuildHistoryList(huesped, HU_STATE.rows, recId, recId)
+      : '';
+  } catch (e) { console.error('[LG] huBuildHistoryList error:', e); history = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar historial</div>`; }
+  try { huDetail = (typeof huBuildReservationDetail === 'function') ? huBuildReservationDetail(huesped) : ''; }
+  catch (e) { console.error('[LG] huBuildReservationDetail error:', e); huDetail = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar detalle</div>`; }
+  return `
+    <div style="margin-top:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#22d3ee,#06b6d4);color:#083344;font-weight:800;font-size:10px;border:1px solid #0891b2;letter-spacing:.04em;box-shadow:0 1px 4px rgba(8,145,178,.3)">📋 REGISTRO MANUAL DEL HUÉSPED</span>
+      </div>
+      <div class="hu-record-body" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
+        <div class="hu-col-profile">${idCard}</div>
+        <div class="hu-col-history">${history}</div>
+        <div class="hu-col-detail">${huDetail}</div>
+      </div>
+    </div>`;
+}
+
+/** Alias: la versión "real" reemplaza a la liviana. */
+function lgBuildHuespedSectionHtml(huesped) { return lgBuildHuespedSectionHtml_real(huesped); }
+
+/** Versión liviana legacy (mantenida para compatibilidad si algo la llama). */
+function lgBuildHuespedSectionHtml_lite(huesped) {
   if (!huesped) return '';
   const v  = (cands) => huValueFlexible(huesped, Array.isArray(cands) ? cands : [cands]);
   const lgV = (val) => val == null || String(val).trim() === '' ? '—' : esc(String(val));
