@@ -1179,6 +1179,13 @@
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#334155;color:#fff;flex-shrink:0">
         <div style="font-weight:800;font-size:14px">🧾 Generar ticket Facturapi</div>
         <div style="display:flex;gap:8px;align-items:center">
+          <div id="hu-facturapi-org-toggle" role="group" aria-label="Organización Facturapi"
+               style="display:inline-flex;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.25);border-radius:8px;overflow:hidden;font-size:11px;font-weight:700">
+            <button type="button" data-org="1" onclick="huFacturapiSetOrg('1')"
+                    style="padding:6px 10px;border:none;background:transparent;color:#fff;cursor:pointer">Org 1</button>
+            <button type="button" data-org="2" onclick="huFacturapiSetOrg('2')"
+                    style="padding:6px 10px;border:none;background:transparent;color:#fff;cursor:pointer">Org 2</button>
+          </div>
           <a id="hu-facturapi-external" href="#" target="_blank" rel="noopener"
              style="padding:6px 12px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">↗ Abrir aparte</a>
           <button onclick="huespedesCloseFacturapi()"
@@ -1193,6 +1200,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=195"></script>
+  <script src="app.js?v=196"></script>
 </body>
 </html>

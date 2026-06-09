@@ -10559,6 +10559,49 @@ function huGetFacturapiUrl() {
   return HU_FACTURAPI_DEFAULT;
 }
 
+// Toggle de organización Facturapi: el frontend sólo envía ?org=1|2 al
+// Cloud Run; el backend escoge qué Live Secret Key usar
+// (FACTURAPI_SECRET_KEY_ORG1 vs FACTURAPI_SECRET_KEY_ORG2). Las llaves NUNCA
+// viven en el frontend. Default = '2' (la organización más reciente).
+function huGetFacturapiOrg() {
+  try {
+    const v = String(localStorage.getItem('HU_FACTURAPI_ORG') || '').trim();
+    if (v === '1' || v === '2') return v;
+  } catch(_) {}
+  return '2';
+}
+function huFacturapiSetOrg(org) {
+  org = (org === '1') ? '1' : '2';
+  try { localStorage.setItem('HU_FACTURAPI_ORG', org); } catch(_) {}
+  huFacturapiPaintOrgToggle();
+  const ifr = document.getElementById('hu-facturapi-frame');
+  const ext = document.getElementById('hu-facturapi-external');
+  if (ifr && ifr.src && ifr.src !== 'about:blank') {
+    const next = huFacturapiReplaceOrgInUrl(ifr.src, org);
+    ifr.src = next;
+    if (ext) ext.href = next;
+  }
+}
+function huFacturapiReplaceOrgInUrl(url, org) {
+  try {
+    const u = new URL(url);
+    u.searchParams.set('org', org);
+    return u.toString();
+  } catch(_) {
+    if (/[?&]org=/.test(url)) return url.replace(/([?&]org=)[^&]*/, '$1' + org);
+    return url + (url.includes('?') ? '&' : '?') + 'org=' + org;
+  }
+}
+function huFacturapiPaintOrgToggle() {
+  const cur = huGetFacturapiOrg();
+  document.querySelectorAll('#hu-facturapi-org-toggle button[data-org]').forEach(btn => {
+    const active = btn.getAttribute('data-org') === cur;
+    btn.style.background = active ? '#fff' : 'transparent';
+    btn.style.color      = active ? '#0f172a' : '#fff';
+  });
+}
+document.addEventListener('DOMContentLoaded', huFacturapiPaintOrgToggle);
+
 const HU_CHECKIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec';
 
 function huNormalizeCurrencyFromSheet(v) {
@@ -10619,6 +10662,7 @@ function huBuildFacturapiUrlFromRow(row, baseUrl, cantidadOverride) {
     p.set('rowNumber', rowNumber);
   }
   p.set('checkinWebAppUrl', HU_CHECKIN_WEBAPP_URL);
+  p.set('org', huGetFacturapiOrg());
   return `${baseUrl}?${p.toString()}`;
 }
 
@@ -10667,6 +10711,7 @@ function huespedesOpenFacturapi(url) {
   ifr.src = url;
   ov.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
+  huFacturapiPaintOrgToggle();
 }
 
 /** Cierra el modal de Facturapi. */
