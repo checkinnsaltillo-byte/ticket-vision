@@ -11607,7 +11607,13 @@ function lgBuildDetailView(list, cont) {
         </div>
         <div class="rd-list">${sidebarItems || '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>'}</div>
       </aside>
-      <div id="lg-detail-main" class="lg-detail-main"></div>
+      <div class="lg-detail-panel">
+        <div class="lg-detail-panel-header">
+          <div class="rd-sidebar-title">Detalles de la Reserva</div>
+          <div class="rd-sidebar-count" id="lg-detail-subtitle">—</div>
+        </div>
+        <div id="lg-detail-main" class="lg-detail-panel-body"></div>
+      </div>
     </div>`;
 
   if (selected) lgDetailRenderMain(selected);
@@ -11630,6 +11636,9 @@ window.lgDetailSelect = function(id) {
 function lgDetailRenderMain(b) {
   const main = document.getElementById('lg-detail-main');
   if (!main) return;
+  // Subtítulo en el header del panel: nombre + #ID
+  const subtitle = document.getElementById('lg-detail-subtitle');
+  if (subtitle) subtitle.textContent = `${b.GuestName || 'Sin nombre'} · #${b.Id}`;
   const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
   // Paso 1: shell rápido. El header es EXACTAMENTE el mismo que el de las
   // cards de la vista "Lista" (lgBuildCardSummary). Luego vienen el bloque
