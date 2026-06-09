@@ -11595,17 +11595,16 @@ function lgBuildCard(b) {
     ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;background:#fff;color:#1f2937;font-weight:700;font-size:9px;border:1px solid #e2e8f0;letter-spacing:.02em">👥 ${b.NumberOfGuests}</span>`
     : '';
 
-  // Ícono de "registro manual completo": aparece cuando hay match en
-  // Información de huéspedes. Ahora se coloca encima del "Ingreso Bruto"
-  // (columna derecha), con fondo verde aqua brillante.
+  // Chip "REGISTRADO" — gris obscuro (cambio del aqua anterior).
+  // Ahora vive DEBAJO de la línea divisoria, junto al chip de Ticket.
   const huespedMatch = LG_STATE.matches?.get(String(b.Id)) || null;
   const matchBadge = huespedMatch
-    ? `<span title="Registro manual completado por el huésped" style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:999px;background:linear-gradient(135deg,#22d3ee,#06b6d4);color:#083344;font-weight:800;font-size:9px;border:1px solid #0891b2;letter-spacing:.04em;box-shadow:0 1px 4px rgba(8,145,178,.35);text-shadow:0 1px 1px rgba(255,255,255,.4)">📋 REGISTRADO</span>`
+    ? `<span title="Registro manual completado por el huésped" style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:999px;background:linear-gradient(135deg,#475569,#334155);color:#fff;font-weight:800;font-size:9px;border:1px solid #1e293b;letter-spacing:.04em;box-shadow:0 1px 4px rgba(15,23,42,.35)">📋 REGISTRADO</span>`
     : '';
 
   // ─── Si hay match, calculamos los chips y KPIs del módulo huéspedes ───
-  let kpisBarHtml = '';        // barra inferior horizontal con KPIs + tier
-  let extrasHtml = '';         // chips Llegada estimada / Salida estimada
+  let kpisBarHtml = '';        // barra horizontal con KPIs + tier
+  let belowLineRowHtml = '';   // chips REGISTRADO / Ticket + Llegada/Salida est.
   let facBadge = '';           // chip "Ticket emitido/pendiente"
   let montoFacturadoHtml = ''; // bloque Monto Facturado (columna derecha)
   if (huespedMatch) {
@@ -11637,7 +11636,7 @@ function lgBuildCard(b) {
           <span style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:14px;padding:0 4px;border-radius:7px;background:rgba(255,255,255,.7);color:${tier.fg};font-size:9px;font-weight:800">${tier.score}</span>
         </div>` : '';
       kpisBarHtml = `
-        <div style="display:flex;gap:6px;align-items:stretch;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid ${palette.border}">
+        <div style="display:flex;gap:6px;align-items:stretch;justify-content:space-between;margin-top:6px">
           <div style="flex:1;background:rgba(255,255,255,.9);border:1px solid ${palette.border};border-radius:8px;padding:4px 8px;text-align:center;min-width:0" title="Suma global de noches del huésped">
             <div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">🌙 Noches</div>
             <div style="font-size:13px;font-weight:800;color:#0f172a;line-height:1.1">${stats.totalNoches}</div>
@@ -11657,22 +11656,28 @@ function lgBuildCard(b) {
           </div>` : ''}
         </div>`;
     }
-    // Chips Llegada / Salida estimadas
-    const fmtH = (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple : (x => x);
-    if (horaIng || horaSal) {
-      extrasHtml = `
-        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:3px;font-size:10px;color:#64748b">
-          <span><span style="color:#94a3b8;font-weight:600">Llegada est.:</span> <b style="color:#1f2937">${esc(horaIng ? fmtH(horaIng) : '—')}</b></span>
-          <span><span style="color:#94a3b8;font-weight:600">Salida est.:</span> <b style="color:#1f2937">${esc(horaSal ? fmtH(horaSal) : '—')}</b></span>
-        </div>`;
-    }
     // Bloque "Monto Facturado" (columna derecha, debajo del Ingreso bruto)
-    if (montoFact || facBadge) {
+    // Ya NO incluye el chip facBadge — ese se movió debajo de la línea.
+    if (montoFact) {
       montoFacturadoHtml = `
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin-top:5px;padding-top:5px;border-top:1px dashed #cbd5e1">
           <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Monto facturado</div>
-          <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.1">${montoFact ? ((typeof huFmtMonto==='function')?huFmtMonto(montoFact):('$ '+esc(montoFact))) : '—'}</div>
-          ${facBadge ? `<div style="margin-top:2px">${facBadge}</div>` : ''}
+          <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.1">${(typeof huFmtMonto==='function')?huFmtMonto(montoFact):('$ '+esc(montoFact))}</div>
+        </div>`;
+    }
+    // Bloque DEBAJO de la línea divisoria: REGISTRADO + Ticket + Llegada/Salida.
+    const fmtH = (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple : (x => x);
+    const horasHtml = (horaIng || horaSal) ? `
+      <div style="display:flex;align-items:center;gap:14px;font-size:11px;color:#64748b;margin-left:auto">
+        <span><span style="color:#94a3b8;font-weight:600">Llegada estimada:</span> <b style="color:#1f2937">${esc(horaIng ? fmtH(horaIng) : '—')}</b></span>
+        <span><span style="color:#94a3b8;font-weight:600">Salida estimada:</span> <b style="color:#1f2937">${esc(horaSal ? fmtH(horaSal) : '—')}</b></span>
+      </div>` : '';
+    if (matchBadge || facBadge || horasHtml) {
+      belowLineRowHtml = `
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid ${palette.border}">
+          ${matchBadge}
+          ${facBadge}
+          ${horasHtml}
         </div>`;
     }
   }
@@ -11692,7 +11697,6 @@ function lgBuildCard(b) {
           <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.2;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
           <div style="font-size:11px;color:#64748b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(prop)}</div>
           <div style="font-size:11px;color:#64748b;font-weight:500;margin-top:1px">${ingreso} → ${salida} <span style="color:#475569;font-weight:600">· 🌙 ${noches}n</span></div>
-          ${extrasHtml}
           ${b.GuestPhone || b.GuestEmail ? `
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:3px;font-size:10px;color:#64748b">
             ${phoneHtml}
@@ -11700,13 +11704,13 @@ function lgBuildCard(b) {
           </div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:110px">
-          ${matchBadge ? `<div style="margin-bottom:3px">${matchBadge}</div>` : ''}
           <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Ingreso bruto</div>
           <div style="font-size:14px;font-weight:800;color:#111827;line-height:1.1">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
           <div>${lgStatusBadge(b.Status)}</div>
           ${montoFacturadoHtml}
         </div>
       </div>
+      ${belowLineRowHtml}
       ${kpisBarHtml}
     </div>`;
 
