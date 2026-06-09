@@ -8006,15 +8006,14 @@ function switchModule(mod) {
     else huespedesRender();
   }
   if (mod === "lodgify") {
+    // Paso 1: lectura instantánea desde Sheets (lo que el usuario ya
+    // sincronizó queda intacto y se muestra de inmediato).
     if (!LG_STATE.loaded && !LG_STATE.loading) lodgifyLoad(true);
     else lodgifyRender();
-    // AUTO-SYNC DESACTIVADO. La API de Lodgify (vía el backend OTC) puede
-    // devolver montos distintos según la ventana de fechas — el sync con
-    // window=7d/730d a veces devolvía aggregates distintos que el sync
-    // manual (60d/365d), generando "reversiones" silenciosas tras un
-    // sync exitoso del usuario. La data se actualiza únicamente cuando
-    // el usuario hace click en "🔄 Sincronizar".
-    // lodgifyMaybeAutoSync();   ← desactivado intencionalmente
+    // Paso 2: auto-sync con ventana NARROW (-7d a hoy) — solo cubre
+    // estancias actuales y recientes. NO toca las futuras, por lo que
+    // tu sync manual (con ventana amplia) NO se revierte.
+    lodgifyMaybeAutoSync();
     // En paralelo, traer Información de huéspedes para cruzar registros
     // y mostrar el ícono 📋 en bookings que ya tienen registro manual.
     lgEnsureHuespedesAndMatch();
@@ -11117,7 +11116,11 @@ async function lodgifySync(full) {
 }
 
 /** Sync silencioso al entrar al módulo. Throttle: máx 1 vez cada 10 min.
- *  Ventana: 7 días atrás + 2 años adelante (todas las futuras).
+ *  Ventana: 7 días atrás a HOY únicamente (sin forward window).
+ *  Esto evita el bug donde windows grandes (con días_fwd=730) hacían que
+ *  el backend OTC devolviera aggregates inflados/inconsistentes por
+ *  paginación, revirtiendo el sync manual del usuario.
+ *  Las reservaciones futuras NO se tocan en auto-sync — solo manual.
  *  CLAVE: NO debe limpiar la pantalla ni mostrar spinner — el usuario ya
  *  está viendo las cards. Si la hoja no cambió (insertadas==0 + updated==0),
  *  ni siquiera se recarga. */
@@ -11135,7 +11138,9 @@ async function lodgifyMaybeAutoSync() {
     const res = await fetch(`${BACKEND}/lodgify-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ days_back: 7, days_fwd: 730 }),
+      // Ventana NARROW (-7d a hoy). Solo cubre estancias actuales y muy
+      // recientes. Las futuras NO se tocan en auto-sync.
+      body: JSON.stringify({ days_back: 7, days_fwd: 0 }),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || data.raw || 'sync failed');
