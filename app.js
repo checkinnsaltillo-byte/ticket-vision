@@ -11027,7 +11027,25 @@ async function lodgifyLoad(force, opts) {
     // y normaliza fechas al formato MM/DD/YYYY (algunas celdas del sheet
     // están formateadas como fecha y Apps Script las devuelve como ISO
     // "2026-08-05T06:00:00.000Z" en vez de "08/05/2026").
-    LG_STATE.bookings = (data.bookings || []).map(b => ({
+    // Defensa contra filas duplicadas en el sheet: si el mismo Id aparece
+    // más de una vez, conservamos el de last_synced_at más reciente. Sin
+    // esto, el frontend renderiza ambas y los montos se ven inconsistentes.
+    const rawByteId = new Map();
+    (data.bookings || []).forEach(b => {
+      const id = String(b.Id || '');
+      if (!id) return;
+      const prev = rawByteId.get(id);
+      const lsa = String(b.last_synced_at || '');
+      if (!prev || lsa > String(prev.last_synced_at || '')) {
+        rawByteId.set(id, b);
+      }
+    });
+    const dedupedBookings = Array.from(rawByteId.values());
+    const dupsHere = (data.bookings || []).length - dedupedBookings.length;
+    if (dupsHere > 0) {
+      console.warn(`[LG] ${dupsHere} fila(s) duplicada(s) ignoradas en frontend. Recomendado: redesplegar Apps Script + Sincronizar.`);
+    }
+    LG_STATE.bookings = dedupedBookings.map(b => ({
       ...b,
       DateArrival:   lgNormalizeDate(b.DateArrival),
       DateDeparture: lgNormalizeDate(b.DateDeparture),
@@ -11077,7 +11095,8 @@ async function lodgifySync(full) {
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || data.raw || `HTTP ${res.status}`);
-    alert(`✓ Sync OK\n\nRango: ${data.from} → ${data.to}\nBookings: ${data.bookings}\nInsertadas: ${data.inserted}\nActualizadas: ${data.updated}\nTotal en sheet: ${data.total_in_sheet}\nTiempo: ${(data.elapsed_ms/1000).toFixed(1)}s`);
+    const dupsLine = data.duplicates_removed > 0 ? `\nDuplicadas eliminadas: ${data.duplicates_removed}` : '';
+    alert(`✓ Sync OK\n\nRango: ${data.from} → ${data.to}\nBookings: ${data.bookings}\nInsertadas: ${data.inserted}\nActualizadas: ${data.updated}${dupsLine}\nTotal en sheet: ${data.total_in_sheet}\nTiempo: ${(data.elapsed_ms/1000).toFixed(1)}s`);
     await lodgifyLoad(true);
   } catch (e) {
     if (lbl) lbl.textContent = 'Error: ' + e.message;
