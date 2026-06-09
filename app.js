@@ -10683,6 +10683,7 @@ const LG_STATE = {
     source: null,
     status: null,
     propiedad: null,
+    factura: null,
   },
   // Map booking.Id (string) → row de Información de huéspedes
   matches: new Map(),
@@ -11281,9 +11282,18 @@ document.addEventListener('click', (e) => {
 });
 
 // Cache global de las opciones disponibles para cada filtro categórico.
-const LG_FILTER_OPTIONS = { programacion: [], source: [], status: [], propiedad: [] };
+const LG_FILTER_OPTIONS = { programacion: [], source: [], status: [], propiedad: [], factura: [] };
 
-/** Llena las opciones de los 4 filtros multi-select. */
+/** Devuelve si un booking REQUIERE FACTURA según el match con huéspedes.
+ *  Si el huésped declaró "Sí" → "Con factura". Cualquier otro caso → "Sin factura". */
+function lgBookingFacturaState(b) {
+  const h = LG_STATE.matches?.get(String(b.Id));
+  if (!h) return 'Sin factura';
+  const req = String(huValueFlexible(h, ['¿Requiere factura?']) || '').trim();
+  return /^s[ií]?$/i.test(req) ? 'Con factura' : 'Sin factura';
+}
+
+/** Llena las opciones de los 5 filtros multi-select. */
 function lgRebuildFilterOptions() {
   // Programación: estática
   LG_FILTER_OPTIONS.programacion = ['salida_hoy','activa','entrada_hoy','proxima','concluida'];
@@ -11291,6 +11301,8 @@ function lgRebuildFilterOptions() {
   LG_FILTER_OPTIONS.source    = [...new Set(LG_STATE.bookings.map(b => b.Source).filter(Boolean))].sort();
   LG_FILTER_OPTIONS.status    = [...new Set(LG_STATE.bookings.map(b => b.Status).filter(Boolean))].sort();
   LG_FILTER_OPTIONS.propiedad = [...new Set(LG_STATE.bookings.map(b => lgFmtPropiedad(b.HouseName)).filter(v => v && v !== '—'))].sort((a,b) => a.localeCompare(b,'es'));
+  // Factura: 2 valores estáticos
+  LG_FILTER_OPTIONS.factura   = ['Con factura', 'Sin factura'];
 
   lgMultiRender('programacion', '🗓️ Programación', LG_FILTER_OPTIONS.programacion, {
     optionRenderer: (v) => { const m = LG_STATE_META[v]; return m ? `${m.emoji} ${esc(m.label)}` : esc(v); },
@@ -11299,6 +11311,11 @@ function lgRebuildFilterOptions() {
   // Default Booked + Tentative (solo aplica si existen en los datos)
   lgMultiRender('status',    '📊 Estado',     LG_FILTER_OPTIONS.status, { defaultSelected: ['Booked','Tentative'] });
   lgMultiRender('propiedad', '🏠 Propiedad',  LG_FILTER_OPTIONS.propiedad);
+  lgMultiRender('factura',   '📄 Factura',    LG_FILTER_OPTIONS.factura, {
+    optionRenderer: (v) => v === 'Con factura'
+      ? '✅ Con factura'
+      : '❌ Sin factura',
+  });
 }
 
 /** Aplica filtros locales y devuelve los bookings a mostrar. */
@@ -11308,6 +11325,7 @@ function lgGetFiltered() {
   const srcSet = lgMultiGetSet('source',     LG_FILTER_OPTIONS.source     || []);
   const stSet  = lgMultiGetSet('status',     LG_FILTER_OPTIONS.status     || []);
   const prSet  = lgMultiGetSet('propiedad',  LG_FILTER_OPTIONS.propiedad  || []);
+  const facSet = lgMultiGetSet('factura',    LG_FILTER_OPTIONS.factura    || []);
   const nb  = (document.getElementById('lg-filtro-nombre')?.value || '').toLowerCase().trim();
   const feIso = String(document.getElementById('lg-filtro-fecha-entrada')?.value || '').trim(); // YYYY-MM-DD
   const fsIso = String(document.getElementById('lg-filtro-fecha-salida')?.value || '').trim();  // YYYY-MM-DD
@@ -11335,6 +11353,9 @@ function lgGetFiltered() {
     if (pgSet) {
       const state = lgGetStayState(b.DateArrival, b.DateDeparture);
       if (!pgSet.has(state)) return false;
+    }
+    if (facSet) {
+      if (!facSet.has(lgBookingFacturaState(b).toLowerCase())) return false;
     }
     if (nb) {
       // Búsqueda libre: nombre, correo, teléfono, booking ID
@@ -11705,7 +11726,7 @@ function lgBuildKanban(list) {
 /** Borra todos los filtros y vuelve al estado por defecto. */
 window.lgClearFilters = function() {
   // Multi-select: todo seleccionado = sin filtro
-  ['programacion','source','status','propiedad'].forEach(id => {
+  ['programacion','source','status','propiedad','factura'].forEach(id => {
     LG_STATE.multiSel[id] = new Set(LG_FILTER_OPTIONS[id] || []);
   });
   // Inputs

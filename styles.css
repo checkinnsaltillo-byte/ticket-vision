@@ -2442,15 +2442,37 @@ input[type="checkbox"].lg-multi-cb {
 }
 .rd-item {
   padding: 10px 12px;
-  border-bottom: 1px solid #f1f5f9;
+  margin: 0 8px 8px;             /* separación visible entre celdas */
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
   cursor: pointer;
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  transition: background 120ms;
+  transition: transform 140ms ease-out, box-shadow 140ms ease-out, border-color 140ms ease-out;
+  position: relative;
 }
-.rd-item:hover { background: #f8fafc; }
-.rd-item.rd-active { background: #f1f5f9; border-left: 3px solid #475569; padding-left: 9px; }
+.rd-item:hover {
+  transform: translateY(-1px);
+  border-color: #94a3b8;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, .10);
+}
+.rd-item.rd-active {
+  border-color: #0d9488;
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, .35), 0 4px 14px rgba(13, 148, 136, .18);
+  background: #fff !important;     /* override del color tenue para destacar */
+  border-left: 3px solid #0d9488 !important;
+  padding-left: 9px;
+}
+.rd-item.rd-active::before {
+  content: '';
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #0d9488;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, .25);
+}
 .rd-item-thumb {
   width: 38px;
   height: 38px;
