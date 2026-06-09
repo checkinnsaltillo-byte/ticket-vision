@@ -11539,21 +11539,21 @@ function lgBuildDetailSidebarItem(b, selectedId) {
 
   return `
     <div class="rd-item ${isSel?'rd-active':''}" onclick="lgDetailSelect('${esc(b.Id)}')"
-         style="background:${itemBg};border-left:3px solid ${accentColor};padding-left:9px">
+         style="background:${itemBg};border-left:3px solid ${accentColor};padding-left:9px;display:block">
+      <!-- Top: chips Fuente + Ticket/Requiere factura, en línea horizontal sin wrap -->
       ${sourceChip || tktChip ? `
-      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${sourceChip}${tktChip}</div>` : ''}
-      <div style="display:flex;gap:10px;align-items:flex-start">
-        <div class="rd-item-thumb">${esc(initials || '?')}</div>
-        <div class="rd-item-body">
-          <div class="rd-item-row1">
-            <span class="rd-status-badge rd-status-${statusUi}">${esc(statusUi)}</span>
-            <span class="rd-item-date">${esc(rdFmtFechaCorta(b.DateArrival))}</span>
-          </div>
-          <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}${hasMatch?' <span style="font-size:9px;color:#475569" title="Registro manual">📋</span>':''}</div>
-          <div class="rd-item-meta"><span>🌙 ${esc(ing)} - ${esc(sal)}</span><span>· 👥 ${b.NumberOfGuests||0}</span></div>
-          <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:6px;min-width:0">${sourceChip}${tktChip}</div>` : ''}
+      <!-- Centro: nombre, fechas, status, monto. SIN thumb de iniciales. -->
+      <div style="min-width:0">
+        <div class="rd-item-row1">
+          <span class="rd-status-badge rd-status-${statusUi}">${esc(statusUi)}</span>
+          <span class="rd-item-date">${esc(rdFmtFechaCorta(b.DateArrival))}</span>
         </div>
+        <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}${hasMatch?' <span style="font-size:9px;color:#475569" title="Registro manual">📋</span>':''}</div>
+        <div class="rd-item-meta"><span>🌙 ${esc(ing)} - ${esc(sal)}</span><span>· 👥 ${b.NumberOfGuests||0}</span></div>
+        <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
       </div>
+      <!-- Bottom: cajas Noches + Tier (última línea) -->
       ${bottomBoxesHtml}
     </div>`;
 }
@@ -11610,9 +11610,11 @@ function lgDetailRenderMain(b) {
   const main = document.getElementById('lg-detail-main');
   if (!main) return;
   const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
-  // Paso 1: shell rápido (header + detalle Lodgify)
+  // Paso 1: shell rápido. El header es EXACTAMENTE el mismo que el de las
+  // cards de la vista "Lista" (lgBuildCardSummary). Luego vienen el bloque
+  // detalle Lodgify + líneas de cobro + slot huésped.
   try {
-    main.innerHTML = lgBuildModalShellHtml(b, !!huesped);
+    main.innerHTML = lgBuildDetailShellHtml(b, !!huesped);
   } catch (err) {
     console.error('[LG] detail shell error:', err);
     main.innerHTML = `<div style="padding:20px;color:#dc2626">Error: ${esc(err.message||err)}</div>`;
@@ -11901,8 +11903,25 @@ function lgBuildTable(list) {
 }
 
 
-/** Card de una reservación de Lodgify — diseño idéntico al de huéspedes. */
+/** Card de una reservación de Lodgify — diseño idéntico al de huéspedes.
+ *  Wrapper clickeable que abre el modal. El contenido del header (mismo que
+ *  el header del panel "Detalles") se construye con lgBuildCardSummary. */
 function lgBuildCard(b) {
+  const stayState = lgGetStayState(b.DateArrival, b.DateDeparture);
+  const meta = LG_STATE_META[stayState] || LG_STATE_META.concluida;
+  return `
+    <div class="lg-card hu-record" data-lg-id="${esc(b.Id)}"
+         onclick="lgOpenDetailModal('${esc(b.Id)}')"
+         style="border:1.5px solid ${meta.border};border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04);transition:transform 120ms ease-out, box-shadow 120ms ease-out"
+         onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(15,23,42,.10)'"
+         onmouseout="this.style.transform='';this.style.boxShadow='0 1px 3px rgba(15,23,42,.04)'">
+      ${lgBuildCardSummary(b)}
+    </div>`;
+}
+
+/** Construye SOLO el contenido del header de una card de reservación
+ *  (sin el wrapper clickeable). Reusable en el panel de la vista Detalles. */
+function lgBuildCardSummary(b) {
   const nombre = b.GuestName || 'Sin nombre';
   const prop   = lgFmtPropiedad(b.HouseName);
   const ingreso = lgFmtFecha(b.DateArrival);
@@ -12084,14 +12103,7 @@ function lgBuildCard(b) {
       ${huespedMatch ? lgBuildHuespedBlock(huespedMatch, fldRow) : ''}
     </div>`;
 
-  return `
-    <div class="lg-card hu-record" data-lg-id="${esc(b.Id)}"
-         onclick="lgOpenDetailModal('${esc(b.Id)}')"
-         style="border:1.5px solid ${palette.border};border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04);transition:transform 120ms ease-out, box-shadow 120ms ease-out"
-         onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(15,23,42,.10)'"
-         onmouseout="this.style.transform='';this.style.boxShadow='0 1px 3px rgba(15,23,42,.04)'">
-      ${summary}
-    </div>`;
+  return summary;
 }
 
 // ─── Modal de detalle de reservación Lodgify ────────────────────────────────
@@ -12185,6 +12197,61 @@ function lgBuildModalShellHtml(b, hasHuesped) {
     ? `<div id="lg-huesped-slot" style="content-visibility:auto;contain-intrinsic-size:1px 500px"></div>`
     : '';
   return main + slot;
+}
+
+/** Shell de la vista "Detalles" — usa el MISMO header que las cards de la
+ *  vista "Lista" (lgBuildCardSummary), seguido del bloque Lodgify y el slot
+ *  del huésped (se llena async). */
+function lgBuildDetailShellHtml(b, hasHuesped) {
+  const stayState = lgGetStayState(b.DateArrival, b.DateDeparture);
+  const meta = LG_STATE_META[stayState] || LG_STATE_META.concluida;
+  const headerCard = `
+    <div style="border:1.5px solid ${meta.border};border-radius:12px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04);margin-bottom:14px">
+      ${lgBuildCardSummary(b)}
+    </div>`;
+  const lodgifyBlock = lgBuildLodgifyDetailBlock(b);
+  const slot = hasHuesped
+    ? `<div id="lg-huesped-slot" style="content-visibility:auto;contain-intrinsic-size:1px 500px"></div>`
+    : '';
+  return headerCard + lodgifyBlock + slot;
+}
+
+/** Bloque "📑 DETALLE LODGIFY" + "💰 LÍNEAS DE COBRO" (extracto reutilizable). */
+function lgBuildLodgifyDetailBlock(b) {
+  const fldRow = (label, value) => `
+    <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;align-self:center">${esc(label)}</div>
+      <div style="font-size:13px;color:#1f2937">${value || '—'}</div>
+    </div>`;
+  const lineItemsHtml = (b.LineItems || []).map(li => `
+    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;border-bottom:1px dashed #e2e8f0;font-size:12px">
+      <div><b style="color:#0f172a">${esc(li.kind || '—')}</b>${li.desc ? `<span style="color:#64748b"> · ${esc(li.desc)}</span>` : ''}</div>
+      <div style="font-weight:700;color:#0f766e">${lgFmtMoney(li.gross, b.Currency)}</div>
+    </div>`).join('');
+  return `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
+      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📑 DETALLE LODGIFY</div>
+      ${fldRow('ID booking', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.Id)}</code>`)}
+      ${b.ConfirmationCode ? fldRow('Confirmation code', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.ConfirmationCode)}</code>`) : ''}
+      ${fldRow('Propiedad', esc(b.HouseName))}
+      ${b.RoomTypeNames ? fldRow('Tipo de habitación', esc(b.RoomTypeNames)) : ''}
+      ${fldRow('Llegada', esc(b.DateArrival))}
+      ${fldRow('Salida', esc(b.DateDeparture))}
+      ${fldRow('# Noches', `<b>${b.Nights}</b>`)}
+      ${b.DateCancelled ? fldRow('Cancelada', esc(b.DateCancelled)) : ''}
+      ${fldRow('Personas', `👥 ${b.NumberOfGuests} (Adultos: ${b.Adults}, Niños: ${b.Children}${b.Infants?`, Infantes: ${b.Infants}`:''}${b.Pets?`, Mascotas: ${b.Pets}`:''})`)}
+      ${fldRow('Gross / Net / VAT', `${lgFmtMoney(b.Gross, b.Currency)} / ${lgFmtMoney(b.Net, b.Currency)} / ${lgFmtMoney(b.Vat, b.Currency)}`)}
+      ${b.ChannelBooking ? fldRow('Channel booking', esc(b.ChannelBooking)) : ''}
+    </div>
+    ${lineItemsHtml ? `
+    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0;margin-top:12px">
+      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">💰 LÍNEAS DE COBRO</div>
+      ${lineItemsHtml}
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 0 0;font-size:13px;border-top:2px solid #e2e8f0;margin-top:6px">
+        <div style="font-weight:800;color:#0f172a">Total</div>
+        <div style="font-weight:800;color:#0f766e">${lgFmtMoney(b.Gross, b.Currency)}</div>
+      </div>
+    </div>` : ''}`;
 }
 
 /** Genera SOLO el header + bloque Lodgify. Ligero, sin dependencias HU_*. */

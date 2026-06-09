@@ -2702,7 +2702,7 @@ input[type="checkbox"].lg-multi-cb {
 /* ─── Vista "Detalles" de Reservas Lodgify (sidebar + área amplia) ─── */
 .lg-detail-shell {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 365px 1fr; /* +30% sobre el ancho original (280) */
   gap: 14px;
   align-items: stretch;
 }
