@@ -11527,58 +11527,156 @@ window.lgSetSort = function(key) {
 /** Vista en tabla. Aplica a TODOS los registros filtrados (no solo a
  *  los visibles), respetando el orden establecido con lgSetSort. */
 function lgBuildTable(list) {
-  // Columnas: las primeras 8 fijas en orden, luego las "extras".
+  // Helper: obtiene un valor del row de huéspedes (match) si existe.
+  const huV = (b, cands) => {
+    const h = LG_STATE.matches?.get(String(b.Id));
+    if (!h) return '';
+    return huValueFlexible(h, Array.isArray(cands) ? cands : [cands]);
+  };
+  // Formato fecha YYYY-MM-DD o ISO → "8 de junio"
+  const fmtFechaIso = (raw) => {
+    if (!raw) return '—';
+    const s = String(raw).trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const iso = m ? `${m[1]}-${m[2]}-${m[3]}` : s;
+    return (typeof huFmtFecha === 'function') ? huFmtFecha(iso) : esc(iso);
+  };
+  const fmtHora = (raw) => {
+    if (!raw) return '—';
+    const s = String(raw).trim();
+    const m = s.match(/T(\d{2}):(\d{2})/);
+    if (m) return `${m[1]}:${m[2]}`;
+    return (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple(s) : esc(s);
+  };
+  const fmtMonto = (v) => {
+    if (v == null || String(v).trim() === '') return '—';
+    return (typeof huFmtMonto === 'function') ? huFmtMonto(v) : esc(v);
+  };
+
+  // Columnas: primero los campos clave de Lodgify, luego los campos
+  // importados de "Información de huéspedes" cuando hay match.
   const cols = [
-    { key:'Programacion',   label:'Programación',    cellClass:'lg-td-tag', formatter: (b) => {
+    // ─── Datos primarios (Lodgify) ───
+    { key:'Programacion',   label:'Programación', formatter: (b) => {
         const s = lgGetStayState(b.DateArrival, b.DateDeparture);
         const m = LG_STATE_META[s];
         if (!m) return '<span style="color:#94a3b8">—</span>';
         return `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:${m.bg};color:${m.accentFg};font-weight:700;font-size:11px;border:1px solid ${m.border}">${m.emoji} ${esc(m.label)}</span>`;
       }},
-    { key:'Propiedad',      label:'Propiedad',       formatter: (b) => esc(lgFmtPropiedad(b.HouseName)) },
+    { key:'Registrado',     label:'Registrado', formatter: (b) => LG_STATE.matches?.has(String(b.Id))
+        ? `<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:linear-gradient(135deg,#475569,#334155);color:#fff;font-weight:800;font-size:10px;border:1px solid #1e293b;letter-spacing:.04em">📋</span>`
+        : '<span style="color:#cbd5e1">—</span>' },
+    { key:'Propiedad',      label:'Propiedad', formatter: (b) => esc(lgFmtPropiedad(b.HouseName)) },
     { key:'GuestName',      label:'Nombre del huésped', formatter: (b) => esc(b.GuestName||'—') },
-    { key:'DateArrival',    label:'Fecha de entrada',formatter: (b) => esc(b.DateArrival||'—') },
+    { key:'DateArrival',    label:'Fecha de entrada', formatter: (b) => esc(b.DateArrival||'—') },
     { key:'DateDeparture',  label:'Fecha de salida', formatter: (b) => esc(b.DateDeparture||'—') },
-    { key:'Nights',         label:'# Noches',        formatter: (b) => `<b>${Number(b.Nights)||0}</b>` },
-    { key:'Source',         label:'Fuente',          formatter: (b) => esc(b.Source||'—') },
-    { key:'Status',         label:'Estado',          formatter: (b) => esc(b.Status||'—') },
-    { key:'NumberOfGuests', label:'# Huéspedes',     formatter: (b) => String(b.NumberOfGuests||0) },
-    { key:'Adults',         label:'Adultos',         formatter: (b) => String(b.Adults||0) },
-    { key:'Children',       label:'Niños',           formatter: (b) => String(b.Children||0) },
-    { key:'GuestEmail',     label:'Correo',          formatter: (b) => b.GuestEmail ? `<a href="mailto:${esc(b.GuestEmail)}" style="color:#0d9488">${esc(b.GuestEmail)}</a>` : '—' },
-    { key:'GuestPhone',     label:'Teléfono',        formatter: (b) => b.GuestPhone ? `<a href="https://wa.me/${esc(String(b.GuestPhone).replace(/\D/g,''))}" target="_blank" rel="noopener" style="color:#0d9488">${esc(b.GuestPhone)}</a>` : '—' },
-    { key:'Currency',       label:'Moneda',          formatter: (b) => esc(b.Currency||'MXN') },
-    { key:'Gross',          label:'Gross',           formatter: (b) => Number(b.Gross)>0 ? lgFmtMoney(b.Gross, b.Currency) : '—' },
-    { key:'Net',            label:'Net',             formatter: (b) => Number(b.Net)>0   ? lgFmtMoney(b.Net,   b.Currency) : '—' },
-    { key:'Vat',            label:'VAT',             formatter: (b) => Number(b.Vat)>0   ? lgFmtMoney(b.Vat,   b.Currency) : '—' },
-    { key:'ConfirmationCode', label:'Confirmation',  formatter: (b) => b.ConfirmationCode ? `<code style="font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${esc(b.ConfirmationCode)}</code>` : '—' },
-    { key:'DateCancelled',  label:'Cancelada',       formatter: (b) => esc(b.DateCancelled||'—') },
-    { key:'RoomTypeNames',  label:'Habitación',      formatter: (b) => esc(b.RoomTypeNames||'—') },
-    { key:'ChannelBooking', label:'Channel ID',      formatter: (b) => esc(b.ChannelBooking||'—') },
-    { key:'Id',             label:'Booking ID',      formatter: (b) => `<code style="font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${esc(b.Id)}</code>` },
+    { key:'Nights',         label:'# Noches', formatter: (b) => `<b>${Number(b.Nights)||0}</b>` },
+    { key:'Source',         label:'Fuente', formatter: (b) => esc(b.Source||'—') },
+    { key:'Status',         label:'Estado', formatter: (b) => esc(b.Status||'—') },
+    { key:'NumberOfGuests', label:'# Huéspedes', formatter: (b) => String(b.NumberOfGuests||0) },
+    { key:'Adults',         label:'Adultos', formatter: (b) => String(b.Adults||0) },
+    { key:'Children',       label:'Niños', formatter: (b) => String(b.Children||0) },
+    { key:'GuestEmail',     label:'Correo', formatter: (b) => b.GuestEmail ? `<a href="mailto:${esc(b.GuestEmail)}" style="color:#0d9488">${esc(b.GuestEmail)}</a>` : '—' },
+    { key:'GuestPhone',     label:'Teléfono', formatter: (b) => b.GuestPhone ? `<a href="https://wa.me/${esc(String(b.GuestPhone).replace(/\D/g,''))}" target="_blank" rel="noopener" style="color:#0d9488">${esc(b.GuestPhone)}</a>` : '—' },
+    { key:'Currency',       label:'Moneda', formatter: (b) => esc(b.Currency||'MXN') },
+    { key:'Gross',          label:'Gross', formatter: (b) => Number(b.Gross)>0 ? lgFmtMoney(b.Gross, b.Currency) : '—' },
+    { key:'Net',            label:'Net', formatter: (b) => Number(b.Net)>0 ? lgFmtMoney(b.Net, b.Currency) : '—' },
+    { key:'Vat',            label:'VAT', formatter: (b) => Number(b.Vat)>0 ? lgFmtMoney(b.Vat, b.Currency) : '—' },
+
+    // ─── Campos importados de "Información de huéspedes" (solo si hay match) ───
+    { key:'hu_HoraLlegada', label:'Llegada estimada', huesped:true, formatter: (b) => {
+        const v = huV(b, ['Hora estimada de llegada','Hora de llegada']);
+        return v ? esc(fmtHora(v)) : '<span style="color:#cbd5e1">—</span>';
+      }},
+    { key:'hu_HoraSalida',  label:'Salida estimada', huesped:true, formatter: (b) => {
+        const v = huV(b, ['Hora estimada de salida','Hora de salida']);
+        return v ? esc(fmtHora(v)) : '<span style="color:#cbd5e1">—</span>';
+      }},
+    { key:'hu_FormaPago',   label:'Forma de pago', huesped:true, formatter: (b) => esc(huV(b, ['Forma de pago']) || '—') },
+    { key:'hu_MontoFact',   label:'Monto facturado', huesped:true, formatter: (b) => {
+        const v = huV(b, ['$ Monto facturado Total','Monto facturado Total']);
+        return v ? esc(fmtMonto(v)) : '<span style="color:#cbd5e1">—</span>';
+      }},
+    { key:'hu_StatusFact',  label:'Factura', huesped:true, formatter: (b) => {
+        const h = LG_STATE.matches?.get(String(b.Id));
+        if (!h) return '<span style="color:#cbd5e1">—</span>';
+        const status = (typeof huGetFacturaStatus === 'function') ? huGetFacturaStatus(h) : '';
+        const folio = huValueFlexible(h, ['Folio facturapi','Folio']);
+        if (status === 'emitida') return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:10px;border:1px solid #86efac">🧾 Emitida${folio?' #'+esc(folio):''}</span>`;
+        if (status === 'pendiente') return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fff7ed;color:#c2410c;font-weight:700;font-size:10px;border:1px solid #fdba74">🧾 Pendiente</span>`;
+        return '<span style="color:#cbd5e1">—</span>';
+      }},
+    { key:'hu_Folio',       label:'Folio facturapi', huesped:true, formatter: (b) => {
+        const v = huV(b, ['Folio facturapi','Folio Facturapi','Folio']);
+        return v ? `<code style="font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${esc(v)}</code>` : '<span style="color:#cbd5e1">—</span>';
+      }},
+    { key:'hu_ReqFactura',  label:'¿Req. factura?', huesped:true, formatter: (b) => {
+        const v = huV(b, ['¿Requiere factura?']);
+        if (!v) return '<span style="color:#cbd5e1">—</span>';
+        const yes = /s[ií]/i.test(v);
+        return `<span style="font-weight:700;color:${yes?'#166534':'#475569'}">${esc(v)}</span>`;
+      }},
+    { key:'hu_Razon',       label:'Razón social', huesped:true, formatter: (b) => esc(huV(b, ['Razón social']) || '—') },
+    { key:'hu_RFC',         label:'RFC', huesped:true, formatter: (b) => {
+        const v = huV(b, ['RFC']);
+        return v ? `<code style="font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${esc(v)}</code>` : '<span style="color:#cbd5e1">—</span>';
+      }},
+    { key:'hu_Regimen',     label:'Régimen fiscal', huesped:true, formatter: (b) => esc(huV(b, ['Régimen fiscal']) || '—') },
+    { key:'hu_CP',          label:'Código Postal', huesped:true, formatter: (b) => esc(huV(b, ['Código Postal']) || '—') },
+    { key:'hu_Motivo',      label:'Motivo', huesped:true, formatter: (b) => esc(huV(b, ['Motivo de tu hospedaje','Motivo']) || '—') },
+    { key:'hu_CelEmer',     label:'Cel emergencia', huesped:true, formatter: (b) => esc(huV(b, ['Cel/Whatsapp (contacto de emergencia)']) || '—') },
+    { key:'hu_Comentarios', label:'Comentarios', huesped:true, formatter: (b) => {
+        const v = huV(b, ['Notas','Comentarios','Envía tus comentarios']);
+        return v ? `<span title="${esc(v)}">${esc(v.length>40?v.slice(0,40)+'…':v)}</span>` : '<span style="color:#cbd5e1">—</span>';
+      }},
+
+    // ─── Campos secundarios de Lodgify ───
+    { key:'ConfirmationCode', label:'Confirmation', formatter: (b) => b.ConfirmationCode ? `<code style="font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${esc(b.ConfirmationCode)}</code>` : '—' },
+    { key:'DateCancelled',  label:'Cancelada', formatter: (b) => esc(b.DateCancelled||'—') },
+    { key:'RoomTypeNames',  label:'Habitación', formatter: (b) => esc(b.RoomTypeNames||'—') },
+    { key:'ChannelBooking', label:'Channel ID', formatter: (b) => esc(b.ChannelBooking||'—') },
+    { key:'Id',             label:'Booking ID', formatter: (b) => `<code style="font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${esc(b.Id)}</code>` },
   ];
+
   const sortIcon = (key) => {
     if (LG_STATE.sortKey !== key) return '<span style="opacity:.3;font-size:10px">↕</span>';
     return LG_STATE.sortDir === 'asc' ? '<span style="color:#0d9488;font-size:11px">▲</span>' : '<span style="color:#0d9488;font-size:11px">▼</span>';
   };
-  const head = cols.map(c => `
-    <th onclick="lgSetSort('${c.key}')"
-        style="cursor:pointer;user-select:none;padding:10px 12px;background:#f1f5f9;border-bottom:2px solid #cbd5e1;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#475569;font-weight:800;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:2"
-        title="Click para ordenar por ${esc(c.label)}">
-      <span style="display:inline-flex;align-items:center;gap:6px">${esc(c.label)} ${sortIcon(c.key)}</span>
-    </th>`).join('');
-  const rows = list.map((b, i) => {
-    const tds = cols.map(c => `<td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;color:#1f2937;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis" title="${typeof c.formatter(b) === 'string' && !c.formatter(b).startsWith('<') ? esc(c.formatter(b).replace(/<[^>]+>/g,'')) : ''}">${c.formatter(b)}</td>`).join('');
-    return `<tr style="background:${i%2?'#fff':'#fafbfc'};transition:background 120ms" onmouseover="this.style.background='#eef2f7'" onmouseout="this.style.background='${i%2?'#fff':'#fafbfc'}'">${tds}</tr>`;
+
+  const head = cols.map(c => {
+    const isHu = !!c.huesped;
+    const bg   = isHu ? '#f8fafc' : '#ffffff';
+    const fg   = isHu ? '#475569' : '#64748b';
+    const icon = isHu ? '<span style="font-size:9px;margin-right:3px" title="Importado de Información de huéspedes">📋</span>' : '';
+    return `
+      <th onclick="lgSetSort('${c.key}')"
+          style="cursor:pointer;user-select:none;padding:10px 12px;background:${bg};border-bottom:1px solid #e5e7eb;border-right:1px solid #f1f5f9;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:${fg};font-weight:800;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:2"
+          title="Click para ordenar por ${esc(c.label)}${isHu?' (importado de Información de huéspedes)':''}">
+        <span style="display:inline-flex;align-items:center;gap:5px">${icon}${esc(c.label)} ${sortIcon(c.key)}</span>
+      </th>`;
   }).join('');
+
+  // Filas con fondo blanco. Líneas grises claras horizontales y verticales.
+  // Hover: aplica una clase CSS que oscurece ligeramente toda la fila.
+  const rows = list.map((b) => {
+    const tds = cols.map(c => {
+      const isHu = !!c.huesped;
+      // Solo los headers de columnas-huésped tienen fondo gris claro; las
+      // celdas de datos siempre van en blanco.
+      return `<td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;border-right:1px solid #f1f5f9;background:#fff;font-size:12.5px;color:#1f2937;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis">${c.formatter(b)}</td>`;
+    }).join('');
+    return `<tr class="lg-tbl-row">${tds}</tr>`;
+  }).join('');
+
   return `
-    <div style="background:#fff;border-radius:12px;border:1.5px solid #e2e8f0;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:auto;max-height:78vh">
-      <table style="width:100%;border-collapse:collapse;font-family:inherit">
+    <div style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(15,23,42,.04);overflow:auto;max-height:78vh">
+      <table style="width:100%;border-collapse:collapse;font-family:inherit;background:#fff">
         <thead><tr>${head}</tr></thead>
-        <tbody>${rows || `<tr><td colspan="${cols.length}" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Sin registros</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="${cols.length}" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic;background:#fff">Sin registros</td></tr>`}</tbody>
       </table>
     </div>`;
 }
+
 
 /** Card de una reservación de Lodgify — diseño idéntico al de huéspedes. */
 function lgBuildCard(b) {

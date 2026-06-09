@@ -2355,3 +2355,7 @@ input[type="checkbox"].lg-multi-cb {
   font-weight: 600;
   letter-spacing: .02em;
 }
+
+/* ─── Hover de filas en la vista Tabla de Reservas Lodgify ───────────── */
+.lg-tbl-row { transition: background 120ms; }
+.lg-tbl-row:hover > td { background: #f8fafc !important; }
