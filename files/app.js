@@ -8008,9 +8008,13 @@ function switchModule(mod) {
   if (mod === "lodgify") {
     if (!LG_STATE.loaded && !LG_STATE.loading) lodgifyLoad(true);
     else lodgifyRender();
-    // Auto-sync silencioso: revisa Lodgify por cambios en últimos 7d + todo
-    // el futuro. Throttle 10 min para no saturar Apps Script.
-    lodgifyMaybeAutoSync();
+    // AUTO-SYNC DESACTIVADO. La API de Lodgify (vía el backend OTC) puede
+    // devolver montos distintos según la ventana de fechas — el sync con
+    // window=7d/730d a veces devolvía aggregates distintos que el sync
+    // manual (60d/365d), generando "reversiones" silenciosas tras un
+    // sync exitoso del usuario. La data se actualiza únicamente cuando
+    // el usuario hace click en "🔄 Sincronizar".
+    // lodgifyMaybeAutoSync();   ← desactivado intencionalmente
     // En paralelo, traer Información de huéspedes para cruzar registros
     // y mostrar el ícono 📋 en bookings que ya tienen registro manual.
     lgEnsureHuespedesAndMatch();
