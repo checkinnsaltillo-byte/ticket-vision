@@ -11462,6 +11462,102 @@ function lodgifyRender() {
   }
 }
 
+/** Versión compacta del chip de fuente para los items del sidebar de la
+ *  vista Detalles. Pequeño, padding mínimo. */
+function lgSourceChipMini(src) {
+  const s = String(src || '').trim();
+  if (!s) return '<span style="display:inline-block;padding:1px 7px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:700;font-size:9px;border:1px solid #cbd5e1">—</span>';
+  const lc = s.toLowerCase();
+  let bg='#f1f5f9', fg='#475569', bd='#cbd5e1', ico='🌐';
+  if (lc.includes('airbnb'))       { bg='#fef2f2'; fg='#dc2626'; bd='#fecaca'; ico='Ⓐ'; }
+  else if (lc.includes('booking')) { bg='#dbeafe'; fg='#1e40af'; bd='#93c5fd'; ico='Ⓑ'; }
+  else if (lc.includes('expedia')) { bg='#fef3c7'; fg='#92400e'; bd='#fcd34d'; ico='Ⓔ'; }
+  else if (lc.includes('vrbo'))    { bg='#dcfce7'; fg='#166534'; bd='#86efac'; ico='Ⓥ'; }
+  else if (lc.includes('manual'))  { bg='#ede9fe'; fg='#5b21b6'; bd='#c4b5fd'; ico='✋'; }
+  return `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;background:${bg};color:${fg};font-weight:800;font-size:9px;border:1px solid ${bd};letter-spacing:.02em">${ico} ${esc(s)}</span>`;
+}
+
+/** Construye un item del sidebar de la vista "Detalles" con:
+ *  - Top: chip Fuente + chip Ticket emitido / pendiente / Requiere factura
+ *  - Centro: thumb, nombre, fechas, status badge, monto
+ *  - Bottom: cajas Noches globales y Tier del huésped (si hay match)
+ *  - Fondo: color del estado de programación (tenue). */
+function lgBuildDetailSidebarItem(b, selectedId) {
+  const isSel = String(b.Id) === String(selectedId);
+  const statusUi = rdMapStatus(b);
+  const ing = rdFmtFechaCortaNoYear(b.DateArrival);
+  const sal = rdFmtFechaCortaNoYear(b.DateDeparture);
+  const hasMatch = LG_STATE.matches?.has(String(b.Id));
+  const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
+  const initials = String(b.GuestName||'?').split(/\s+/).map(w => w[0]||'').slice(0,2).join('').toUpperCase();
+
+  // Color de fondo según estado de programación (tenue) — ya son colores
+  // ligeros en LG_STATE_META.bg. Usamos esos directamente. La franja
+  // izquierda toma el color del border para resaltar el estado.
+  const stayState = lgGetStayState(b.DateArrival, b.DateDeparture) || '';
+  const stMeta = LG_STATE_META[stayState] || LG_STATE_META.concluida;
+  const itemBg = stMeta.bg;
+  const accentColor = stMeta.border;
+
+  // ─── Top: source + ticket / requiere factura ───
+  const sourceChip = lgSourceChipMini(b.Source);
+  let tktChip = '';
+  if (huesped) {
+    const status = (typeof huGetFacturaStatus === 'function') ? huGetFacturaStatus(huesped) : '';
+    const folio = huValueFlexible(huesped, ['Folio facturapi','Folio Facturapi','Folio']);
+    const reqFac = huValueFlexible(huesped, ['¿Requiere factura?']);
+    if (status === 'emitida') {
+      tktChip = `<span style="display:inline-block;padding:1px 7px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:9px;border:1px solid #86efac">🧾 Emitida${folio?' #'+esc(folio):''}</span>`;
+    } else if (status === 'pendiente') {
+      tktChip = `<span style="display:inline-block;padding:1px 7px;border-radius:999px;background:#fff7ed;color:#c2410c;font-weight:700;font-size:9px;border:1px solid #fdba74">🧾 Pendiente</span>`;
+    } else if (/s[ií]/i.test(reqFac)) {
+      tktChip = `<span style="display:inline-block;padding:1px 7px;border-radius:999px;background:#fef3c7;color:#92400e;font-weight:700;font-size:9px;border:1px solid #fde68a">📄 Req. factura</span>`;
+    }
+  }
+
+  // ─── Bottom: cajas Noches + Tier (solo si hay match) ───
+  let bottomBoxesHtml = '';
+  if (huesped && typeof huComputeGuestStats === 'function') {
+    try {
+      const stats = huComputeGuestStats(huesped, HU_STATE.rows);
+      const score = (typeof huComputeLoyaltyScore === 'function') ? huComputeLoyaltyScore(stats) : 0;
+      const tier  = (typeof huGuestTier === 'function') ? huGuestTier(score, stats) : null;
+      const nochesBox = `
+        <div style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:3px 7px;text-align:center;min-width:0" title="Noches globales del huésped">
+          <div style="font-size:7px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">🌙 Noches</div>
+          <div style="font-size:11px;font-weight:800;color:#0f172a;line-height:1.1">${stats.totalNoches}</div>
+        </div>`;
+      const tierBox = tier ? `
+        <div title="${esc(tier.tooltip)}" style="flex:1.2;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3px 6px;border-radius:6px;background:${tier.bg};color:${tier.fg};font-weight:800;letter-spacing:.04em;border:1px solid ${tier.border};box-shadow:0 1px 3px ${tier.shadow};min-width:0">
+          <div style="display:flex;align-items:center;gap:2px;font-size:9px;text-transform:uppercase"><span style="font-size:11px">${tier.icon}</span>${esc(tier.label)}</div>
+          <div style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:12px;padding:0 4px;border-radius:6px;background:rgba(255,255,255,.65);color:${tier.fg};font-size:9px;font-weight:800">${tier.score}</div>
+        </div>` : '<div style="flex:1.2"></div>';
+      bottomBoxesHtml = `
+        <div style="display:flex;gap:5px;margin-top:7px">${nochesBox}${tierBox}</div>`;
+    } catch (e) { /* silent */ }
+  }
+
+  return `
+    <div class="rd-item ${isSel?'rd-active':''}" onclick="lgDetailSelect('${esc(b.Id)}')"
+         style="background:${itemBg};border-left:3px solid ${accentColor};padding-left:9px">
+      ${sourceChip || tktChip ? `
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${sourceChip}${tktChip}</div>` : ''}
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <div class="rd-item-thumb">${esc(initials || '?')}</div>
+        <div class="rd-item-body">
+          <div class="rd-item-row1">
+            <span class="rd-status-badge rd-status-${statusUi}">${esc(statusUi)}</span>
+            <span class="rd-item-date">${esc(rdFmtFechaCorta(b.DateArrival))}</span>
+          </div>
+          <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}${hasMatch?' <span style="font-size:9px;color:#475569" title="Registro manual">📋</span>':''}</div>
+          <div class="rd-item-meta"><span>🌙 ${esc(ing)} - ${esc(sal)}</span><span>· 👥 ${b.NumberOfGuests||0}</span></div>
+          <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
+        </div>
+      </div>
+      ${bottomBoxesHtml}
+    </div>`;
+}
+
 /** Vista "Detalles": sidebar izquierdo con lista de reservas + área amplia
  *  a la derecha con el MISMO contenido del modal pop-up (header Lodgify +
  *  detalle + bloque huéspedes 3-columnas). Cuando se selecciona un item del
@@ -11477,27 +11573,7 @@ function lgBuildDetailView(list, cont) {
   const selected = list.find(b => String(b.Id) === String(selectedId));
 
   // Sidebar HTML
-  const sidebarItems = list.slice(0, 200).map(b => {
-    const isSel = String(b.Id) === String(selectedId);
-    const statusUi = rdMapStatus(b);
-    const ing = rdFmtFechaCortaNoYear(b.DateArrival);
-    const sal = rdFmtFechaCortaNoYear(b.DateDeparture);
-    const hasMatch = LG_STATE.matches?.has(String(b.Id));
-    const initials = String(b.GuestName||'?').split(/\s+/).map(w => w[0]||'').slice(0,2).join('').toUpperCase();
-    return `
-      <div class="rd-item ${isSel?'rd-active':''}" onclick="lgDetailSelect('${esc(b.Id)}')">
-        <div class="rd-item-thumb">${esc(initials || '?')}</div>
-        <div class="rd-item-body">
-          <div class="rd-item-row1">
-            <span class="rd-status-badge rd-status-${statusUi}">${esc(statusUi)}</span>
-            <span class="rd-item-date">${esc(rdFmtFechaCorta(b.DateArrival))}</span>
-          </div>
-          <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}${hasMatch?' <span style="font-size:9px;color:#475569" title="Registro manual">📋</span>':''}</div>
-          <div class="rd-item-meta"><span>🌙 ${esc(ing)} - ${esc(sal)}</span><span>· 👥 ${b.NumberOfGuests||0}</span></div>
-          <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
-        </div>
-      </div>`;
-  }).join('');
+  const sidebarItems = list.slice(0, 200).map(b => lgBuildDetailSidebarItem(b, selectedId)).join('');
 
   cont.innerHTML = `
     <div class="lg-detail-shell">
