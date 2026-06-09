@@ -11430,15 +11430,134 @@ function lodgifyRender() {
   }
   if (empty) empty.classList.add('hidden');
 
-  // Modo de visualización: lista (default), kanban (3 columnas) o table
+  // Modo de visualización: lista (default), kanban (4 columnas), table o detail
   const mode = LG_STATE.viewMode || 'list';
   if (mode === 'kanban') {
     cont.innerHTML = lgBuildKanban(list);
   } else if (mode === 'table') {
     cont.innerHTML = lgBuildTable(list);
+  } else if (mode === 'detail') {
+    lgBuildDetailView(list, cont);
   } else {
     cont.innerHTML = list.map(lgBuildCard).join('');
   }
+}
+
+/** Vista "Detalles": sidebar izquierdo con lista de reservas + área amplia
+ *  a la derecha con el MISMO contenido del modal pop-up (header Lodgify +
+ *  detalle + bloque huéspedes 3-columnas). Cuando se selecciona un item del
+ *  sidebar, solo se re-renderiza el área de detalle. */
+function lgBuildDetailView(list, cont) {
+  // Determina el booking seleccionado: prioridad LG_STATE.detailSelectedId,
+  // si no, el primero de la lista filtrada.
+  let selectedId = LG_STATE.detailSelectedId;
+  if (!selectedId || !list.find(b => String(b.Id) === String(selectedId))) {
+    selectedId = list.length ? String(list[0].Id) : null;
+    LG_STATE.detailSelectedId = selectedId;
+  }
+  const selected = list.find(b => String(b.Id) === String(selectedId));
+
+  // Sidebar HTML
+  const sidebarItems = list.slice(0, 200).map(b => {
+    const isSel = String(b.Id) === String(selectedId);
+    const statusUi = rdMapStatus(b);
+    const ing = rdFmtFechaCortaNoYear(b.DateArrival);
+    const sal = rdFmtFechaCortaNoYear(b.DateDeparture);
+    const hasMatch = LG_STATE.matches?.has(String(b.Id));
+    const initials = String(b.GuestName||'?').split(/\s+/).map(w => w[0]||'').slice(0,2).join('').toUpperCase();
+    return `
+      <div class="rd-item ${isSel?'rd-active':''}" onclick="lgDetailSelect('${esc(b.Id)}')">
+        <div class="rd-item-thumb">${esc(initials || '?')}</div>
+        <div class="rd-item-body">
+          <div class="rd-item-row1">
+            <span class="rd-status-badge rd-status-${statusUi}">${esc(statusUi)}</span>
+            <span class="rd-item-date">${esc(rdFmtFechaCorta(b.DateArrival))}</span>
+          </div>
+          <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}${hasMatch?' <span style="font-size:9px;color:#475569" title="Registro manual">📋</span>':''}</div>
+          <div class="rd-item-meta"><span>🌙 ${esc(ing)} - ${esc(sal)}</span><span>· 👥 ${b.NumberOfGuests||0}</span></div>
+          <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  cont.innerHTML = `
+    <div class="lg-detail-shell">
+      <aside class="rd-sidebar" style="height:calc(100vh - 220px);min-height:500px">
+        <div class="rd-sidebar-header">
+          <div>
+            <div class="rd-sidebar-title">Reservas</div>
+            <div class="rd-sidebar-count">${list.length} reserva${list.length===1?'':'s'}</div>
+          </div>
+        </div>
+        <div class="rd-list">${sidebarItems || '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>'}</div>
+      </aside>
+      <div id="lg-detail-main" class="lg-detail-main"></div>
+    </div>`;
+
+  if (selected) lgDetailRenderMain(selected);
+}
+
+/** Click en una card del sidebar de Detalles. */
+window.lgDetailSelect = function(id) {
+  LG_STATE.detailSelectedId = String(id);
+  // Marca el activo sin re-render del sidebar (preserva scroll)
+  document.querySelectorAll('.lg-detail-shell .rd-item').forEach(el => el.classList.remove('rd-active'));
+  const items = [...document.querySelectorAll('.lg-detail-shell .rd-item')];
+  const sel = items.find(it => it.outerHTML.includes(`lgDetailSelect('${id}')`));
+  if (sel) sel.classList.add('rd-active');
+  const b = (LG_STATE.bookings || []).find(x => String(x.Id) === String(id));
+  if (b) lgDetailRenderMain(b);
+};
+
+/** Renderiza el contenido principal de la vista Detalles con el mismo
+ *  contenido del modal pop-up. */
+function lgDetailRenderMain(b) {
+  const main = document.getElementById('lg-detail-main');
+  if (!main) return;
+  const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
+  // Paso 1: shell rápido (header + detalle Lodgify)
+  try {
+    main.innerHTML = lgBuildModalShellHtml(b, !!huesped);
+  } catch (err) {
+    console.error('[LG] detail shell error:', err);
+    main.innerHTML = `<div style="padding:20px;color:#dc2626">Error: ${esc(err.message||err)}</div>`;
+    return;
+  }
+  if (!huesped) return;
+  // Paso 2: inyecta el bloque de huéspedes en el siguiente frame
+  requestAnimationFrame(() => {
+    const slot = document.getElementById('lg-huesped-slot');
+    if (!slot) return;
+    try { slot.innerHTML = lgBuildHuespedSectionHtml(huesped); }
+    catch (err) {
+      console.error('[LG] detail huesped section error:', err);
+      slot.innerHTML = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar datos del huésped.</div>`;
+    }
+  });
+  // Paso 3: enrich async si no hay fotos
+  const alreadyEnriched = !!(
+    huesped['Link INE frontal'] || huesped['INE frontal'] ||
+    huesped['Link INE trasero'] || huesped['INE trasero'] ||
+    huesped['Link foto vehículo']
+  );
+  if (alreadyEnriched) return;
+  const recId = String(huesped['ID'] || huesped['row_number'] || '');
+  if (!recId) return;
+  fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`)
+    .then(r => r.json())
+    .then(j => {
+      if (!j?.ok || !j.record) return;
+      const merged = { ...huesped, ...j.record };
+      const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
+      if (idx >= 0) HU_STATE.rows[idx] = merged;
+      LG_STATE.matches.set(String(b.Id), merged);
+      const slot = document.getElementById('lg-huesped-slot');
+      if (slot) {
+        try { slot.innerHTML = lgBuildHuespedSectionHtml(merged); }
+        catch (err) { console.error('[LG] detail huesped re-render error:', err); }
+      }
+    })
+    .catch(e => console.warn('[LG] detail enrich falló:', e.message));
 }
 
 /** Construye las 4 columnas: Salida hoy · Activa · Entrada hoy · Próxima.
@@ -11502,18 +11621,20 @@ window.lgClearFilters = function() {
   lodgifyRender();
 };
 
-/** Cambia el modo de vista (lista / kanban / table) y re-renderiza. */
+/** Cambia el modo de vista (lista / kanban / table / detail) y re-renderiza. */
 window.lgSetViewMode = function(mode) {
   LG_STATE.viewMode = mode;
   const btnList = document.getElementById('lg-view-list');
   const btnKb   = document.getElementById('lg-view-kanban');
   const btnTb   = document.getElementById('lg-view-table');
+  const btnDt   = document.getElementById('lg-view-detail');
   const active   = 'background:#0d9488;color:#fff;border-color:#0d9488';
   const inactive = 'background:#fff;color:#475569;border-color:#cbd5e1';
   const style = (act) => `padding:6px 12px;border:1.5px solid;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;${act ? active : inactive}`;
   if (btnList) btnList.setAttribute('style', style(mode==='list'));
   if (btnKb)   btnKb.setAttribute('style',   style(mode==='kanban'));
   if (btnTb)   btnTb.setAttribute('style',   style(mode==='table'));
+  if (btnDt)   btnDt.setAttribute('style',   style(mode==='detail'));
   lodgifyRender();
 };
 
@@ -11805,7 +11926,7 @@ function lgBuildCard(b) {
           ${b.GuestPhone || b.GuestEmail ? `
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:3px;font-size:10px;color:#64748b">
             ${phoneHtml}
-            ${b.GuestEmail ? `<span>✉️ <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
+            ${b.GuestEmail ? `<a href="mailto:${esc(b.GuestEmail)}" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:700;text-decoration:none">✉️ ${esc(b.GuestEmail)}</a>` : ''}
           </div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:110px">
@@ -11996,8 +12117,8 @@ function lgBuildModalLodgifyHtml(b, hasHuesped) {
     <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f172a;font-weight:800">${esc(nombre)}</h2>
     <div style="font-size:14px;color:#64748b;font-weight:500">${esc(prop)} · ${ingreso} → ${salida} · 🌙 ${b.Nights} noche${b.Nights===1?'':'s'}</div>
     <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:13px;color:#64748b">
-      ${b.GuestPhone ? `<span>📱 <b style="color:#0f766e">${esc(b.GuestPhone)}</b></span>` : ''}
-      ${b.GuestEmail ? `<span>✉️ <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
+      ${b.GuestPhone ? `<a href="https://wa.me/${esc(String(b.GuestPhone).replace(/\D/g,''))}" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700;text-decoration:none">📱 ${esc(b.GuestPhone)}</a>` : ''}
+      ${b.GuestEmail ? `<a href="mailto:${esc(b.GuestEmail)}" style="color:#0d9488;font-weight:700;text-decoration:none">✉️ ${esc(b.GuestEmail)}</a>` : ''}
     </div>
     <div style="margin-top:8px;font-size:15px;color:#a16207;font-weight:800">${b.Gross > 0 ? `Ingreso bruto: ${lgFmtMoney(b.Gross, b.Currency)}` : ''}</div>
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0">`;
@@ -12284,8 +12405,8 @@ function lgBuildModalContent(b, huesped) {
     <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f172a;font-weight:800">${esc(nombre)}</h2>
     <div style="font-size:14px;color:#64748b;font-weight:500">${esc(prop)} · ${ingreso} → ${salida} · 🌙 ${b.Nights} noche${b.Nights===1?'':'s'}</div>
     <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:13px;color:#64748b">
-      ${b.GuestPhone ? `<span>📱 <b style="color:#0f766e">${esc(b.GuestPhone)}</b></span>` : ''}
-      ${b.GuestEmail ? `<span>✉️ <b style="color:#1f2937">${esc(b.GuestEmail)}</b></span>` : ''}
+      ${b.GuestPhone ? `<a href="https://wa.me/${esc(String(b.GuestPhone).replace(/\D/g,''))}" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700;text-decoration:none">📱 ${esc(b.GuestPhone)}</a>` : ''}
+      ${b.GuestEmail ? `<a href="mailto:${esc(b.GuestEmail)}" style="color:#0d9488;font-weight:700;text-decoration:none">✉️ ${esc(b.GuestEmail)}</a>` : ''}
     </div>
     <div style="margin-top:8px;font-size:15px;color:#a16207;font-weight:800">${b.Gross > 0 ? `Ingreso bruto: ${lgFmtMoney(b.Gross, b.Currency)}` : ''}</div>
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0">`;
