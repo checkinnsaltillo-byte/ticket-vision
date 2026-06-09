@@ -10077,17 +10077,23 @@ function huBuildAirbnbBox(r) {
   const comisionPre  = esAirbnb && airbnbVal ? huCalcComisionAirbnb(airbnbVal).toFixed(2)        : '';
   const facturadoPre = esAirbnb && airbnbVal ? huCalcMontoFacturadoAirbnb(airbnbVal).toFixed(2) : montoFact;
   const mensajeConsulta = ticketUrl ? huBuildTicketConsultaMsg(ticketUrl) : '';
-  const btnVerTicket = (status === 'emitida' && ticketUrl) ? `
+  // Botones: visibles según la disponibilidad real de los datos, no según
+  // el "status" calculado (¿Requiere factura?). Esto asegura que SIEMPRE
+  // se pueda generar/consultar un ticket, aunque el huésped haya marcado
+  // que no requiere factura.
+  const hasTicket = !!ticketUrl;
+  const btnVerTicket = hasTicket ? `
     <a href="${esc(ticketUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
        style="display:inline-block;padding:7px 14px;border:none;background:#16a34a;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;text-decoration:none;margin-right:6px;box-shadow:0 2px 4px rgba(22,163,74,.3)">
       🧾 Ver ticket${folio ? ' - Folio #' + esc(folio) : ''}
     </a>` : '';
-  const btnCopiarMsg = (status === 'emitida' && mensajeConsulta) ? `
+  const btnCopiarMsg = hasTicket && mensajeConsulta ? `
     <button type="button" onclick="event.stopPropagation();huespedesCopiarMsgConsulta(this,'${encodeURIComponent(mensajeConsulta)}')"
             style="padding:7px 14px;border:none;background:#475569;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">
       📋 Copiar mensaje para consultar ticket emitido
     </button>` : '';
-  const btnGenerar = (status === 'pendiente') ? `
+  // "Generar Ticket" visible siempre que NO haya ticket emitido aún.
+  const btnGenerar = !hasTicket ? `
     <button onclick="event.stopPropagation();huespedesGenerarTicket('${esc(recId)}')"
             style="padding:8px 22px;border:none;background:linear-gradient(180deg,#ef4444 0%,#b91c1c 100%);color:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(185,28,28,.4)">
       Generar Ticket
