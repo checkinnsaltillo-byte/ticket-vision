@@ -11099,15 +11099,12 @@ async function lodgifySync(full) {
   try {
     if (lbl) lbl.textContent = msg;
     if (empty) { empty.textContent = msg; empty.classList.remove('hidden'); }
-    // Sync MANUAL ROLLING usa ventana 730/730 (igual que Sync Completa).
-    // Razón: el backend OTC prorratea los montos según cuántas noches del
-    // stay caen en la ventana. Para reservaciones de largo plazo (ej. stays
-    // mensuales con Nights=31 como el de Brayan ID 20331362), ventanas
-    // estrechas devuelven montos PROPORCIONALES, no totales. Solo ventanas
-    // que abarcan todo el stay devuelven el monto real completo.
-    // Trade-off: rolling y completa hacen lo mismo. La completa es solo un
-    // alias semántico — ambas tardan 2-5 min pero garantizan datos correctos.
-    const body = full ? { full: true } : { days_back: 730, days_fwd: 730 };
+    // Sync MANUAL ROLLING usa ventana 60/60 (60d atrás, 60d adelante).
+    // Razón: balance entre cobertura y rapidez. Captura bookings recientes
+    // y los próximos 2 meses (incluye stays largos como Brayan si su
+    // arrival está dentro de los próximos 60 días).
+    // Para stays muy lejanos en el futuro: usar Sync Completa (730/730).
+    const body = full ? { full: true } : { days_back: 60, days_fwd: 60 };
     const res = await fetch(`${BACKEND}/lodgify-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -11147,12 +11144,9 @@ async function lodgifyMaybeAutoSync() {
     const res = await fetch(`${BACKEND}/lodgify-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // Ventana AMPLIA (730/730) — la misma que el sync manual. Razón:
-      // el OTC prorratea por ventana. Ventanas estrechas devuelven montos
-      // proporcionales (incorrectos) para stays largos. Solo windows que
-      // abarcan TODO el stay devuelven el monto real.
-      // Auto-sync tarda más pero es necesario para datos correctos.
-      body: JSON.stringify({ days_back: 730, days_fwd: 730 }),
+      // Ventana 60/60 — la misma que el sync manual rolling. Balance
+      // entre cobertura (incluye próximos 2 meses) y rapidez del sync.
+      body: JSON.stringify({ days_back: 60, days_fwd: 60 }),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || data.raw || 'sync failed');
