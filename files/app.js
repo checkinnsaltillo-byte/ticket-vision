@@ -11099,11 +11099,12 @@ async function lodgifySync(full) {
   try {
     if (lbl) lbl.textContent = msg;
     if (empty) { empty.textContent = msg; empty.classList.remove('hidden'); }
-    // Sync MANUAL ROLLING ahora usa la misma ventana que el auto-sync
-    // (days_back=7, days_fwd=0) para garantizar consistencia. Solo
-    // estancias actuales y últimos 7 días. Para futuras → Sync completa.
+    // Sync MANUAL ROLLING usa ventana 60d back / 365d fwd. Confirmado por
+    // query directa al backend OTC: con ventanas más estrechas, el backend
+    // omite bookings con Source=Manual (bug de paginación interno). Con
+    // 60/365 vuelven a aparecer todas las reservaciones futuras del año.
     // Sync COMPLETA mantiene su ventana amplia (730/730 vía full:true).
-    const body = full ? { full: true } : { days_back: 7, days_fwd: 0 };
+    const body = full ? { full: true } : { days_back: 60, days_fwd: 365 };
     const res = await fetch(`${BACKEND}/lodgify-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
