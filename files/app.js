@@ -12488,25 +12488,73 @@ function lgBuildModalLodgifyHtml(b, hasHuesped) {
 function lgBuildHuespedSectionHtml_real(huesped, booking) {
   if (!huesped) return '';
   let idCard = '', history = '';
+  const matchedRecId = String(huesped['ID']||huesped['row_number']||'');
   try { idCard = (typeof huBuildIdCard === 'function') ? huBuildIdCard(huesped) : ''; }
   catch (e) { console.error('[LG] huBuildIdCard error:', e); idCard = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar perfil</div>`; }
   try {
-    const recId = String(huesped['ID']||huesped['row_number']||'');
     history = (typeof huBuildHistoryList === 'function')
-      ? huBuildHistoryList(huesped, HU_STATE.rows, recId, recId)
+      ? huBuildHistoryList(huesped, HU_STATE.rows, matchedRecId, matchedRecId)
       : '';
+    // Reemplaza onclick "huSelectReservation" por nuestro handler propio
+    // que sabe sobre la booking de Lodgify y re-renderiza la col 3
+    // fusionada en lugar de solo el detalle huésped.
+    if (booking && history) {
+      history = history.replace(
+        /huSelectReservation\(([^)]+)\)/g,
+        `lgHistorySelect('${esc(String(booking.Id))}',$1)`
+      );
+    }
   } catch (e) { console.error('[LG] huBuildHistoryList error:', e); history = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar historial</div>`; }
   // Col 3 fusionada: campos Lodgify + campos huésped + líneas de cobro
   let detailFused = '';
   try { detailFused = booking ? lgBuildCombinedDetailColumn(booking, huesped) : ''; }
   catch (e) { console.error('[LG] combined detail error:', e); detailFused = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar detalle</div>`; }
   return `
-    <div class="hu-record-body" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
+    <div class="hu-record-body" data-lg-booking-id="${esc(String(booking?.Id||''))}" data-lg-matched-rec-id="${esc(matchedRecId)}" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
       <div class="hu-col-profile">${idCard}</div>
       <div class="hu-col-history">${history}</div>
       <div class="hu-col-detail">${detailFused}</div>
     </div>`;
 }
+
+/** Click en una entrada del historial DENTRO de la vista Detalles Lodgify.
+ *  Re-renderiza col 2 (history con nuevo selected) y col 3 (detalle).
+ *  Si el clicked es el huésped que matchea con la booking → col 3 fusionado.
+ *  Si es otro → col 3 muestra solo el detalle huésped (huBuildReservationDetail). */
+window.lgHistorySelect = function(bookingId, outerRecIdQuoted, selectedRecIdQuoted) {
+  // huBuildHistoryList llama así: huSelectReservation('outer','selected')
+  // Después del replace queda: lgHistorySelect('bookingId','outer','selected')
+  const outerRecId = String(outerRecIdQuoted || '');
+  const selectedRecId = String(selectedRecIdQuoted || '');
+  const r = (HU_STATE.rows || []).find(x => String(x['ID']||x['row_number']||'') === selectedRecId);
+  if (!r) return;
+  // Buscar el wrapper. Puede ser slot (vista Detalles) o body del modal.
+  const wrapper = document.querySelector(`.hu-record-body[data-lg-booking-id="${bookingId}"]`);
+  if (!wrapper) return;
+  const booking = (LG_STATE.bookings || []).find(x => String(x.Id) === String(bookingId));
+  const historyCol = wrapper.querySelector('.hu-col-history');
+  const detailCol  = wrapper.querySelector('.hu-col-detail');
+  // Re-render history con nuevo selected (igual que huéspedes original)
+  if (historyCol) {
+    let html = huBuildHistoryList(r, HU_STATE.rows, selectedRecId, outerRecId);
+    html = html.replace(
+      /huSelectReservation\(([^)]+)\)/g,
+      `lgHistorySelect('${esc(bookingId)}',$1)`
+    );
+    historyCol.innerHTML = html;
+  }
+  // Re-render detail. Si es el matched → fusión Lodgify+huésped; else → solo huésped.
+  if (detailCol) {
+    const isMatched = selectedRecId === outerRecId;
+    if (isMatched && booking) {
+      detailCol.innerHTML = lgBuildCombinedDetailColumn(booking, r);
+    } else if (typeof huBuildReservationDetail === 'function') {
+      detailCol.innerHTML = huBuildReservationDetail(r);
+    }
+    detailCol.style.animation = 'hu-fade-in 280ms cubic-bezier(.16,1,.3,1)';
+    setTimeout(() => { detailCol.style.animation = ''; }, 300);
+  }
+};
 
 /** Alias: la versión "real" reemplaza a la liviana. */
 function lgBuildHuespedSectionHtml(huesped, booking) { return lgBuildHuespedSectionHtml_real(huesped, booking); }
