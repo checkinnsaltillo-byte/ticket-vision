@@ -11029,19 +11029,26 @@ async function lodgifyLoad(force, opts) {
     // están formateadas como fecha y Apps Script las devuelve como ISO
     // "2026-08-05T06:00:00.000Z" en vez de "08/05/2026").
     // Defensa contra filas duplicadas en el sheet: si el mismo Id aparece
-    // más de una vez, conservamos el de last_synced_at más reciente. Sin
-    // esto, el frontend renderiza ambas y los montos se ven inconsistentes.
-    const rawByteId = new Map();
+    // más de una vez, conservamos:
+    //   1) el de last_synced_at MÁS RECIENTE,
+    //   2) si empatan, el de mayor GrossTotal (probable dato real vs blanco),
+    //   3) si vuelven a empatar, el primero encontrado.
+    const rawById = new Map();
     (data.bookings || []).forEach(b => {
       const id = String(b.Id || '');
       if (!id) return;
-      const prev = rawByteId.get(id);
-      const lsa = String(b.last_synced_at || '');
-      if (!prev || lsa > String(prev.last_synced_at || '')) {
-        rawByteId.set(id, b);
+      const prev = rawById.get(id);
+      if (!prev) { rawById.set(id, b); return; }
+      const lsaNew = String(b.last_synced_at || '');
+      const lsaOld = String(prev.last_synced_at || '');
+      if (lsaNew > lsaOld) { rawById.set(id, b); return; }
+      if (lsaNew === lsaOld) {
+        const gNew = Number(b.GrossTotal || b.Gross) || 0;
+        const gOld = Number(prev.GrossTotal || prev.Gross) || 0;
+        if (gNew > gOld) rawById.set(id, b);
       }
     });
-    const dedupedBookings = Array.from(rawByteId.values());
+    const dedupedBookings = Array.from(rawById.values());
     const dupsHere = (data.bookings || []).length - dedupedBookings.length;
     if (dupsHere > 0) {
       console.warn(`[LG] ${dupsHere} fila(s) duplicada(s) ignoradas en frontend. Recomendado: redesplegar Apps Script + Sincronizar.`);
