@@ -10673,7 +10673,7 @@ const LG_STATE = {
   loading: false,
   from: '',
   to: '',
-  viewMode: 'kanban', // 'list' | 'kanban' | 'table'  (default: kanban)
+  viewMode: 'detail', // 'detail' | 'kanban' | 'table' | 'list' (default: detail)
   sortKey: '',      // columna activa para sort (vista tabla)
   sortDir: '',      // 'asc' | 'desc' | ''
   lastAutoSyncMs: 0,

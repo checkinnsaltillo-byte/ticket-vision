@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=79">
+  <link rel="stylesheet" href="styles.css?v=80">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -994,14 +994,17 @@
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 10px">
         <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Vista:</div>
         <div style="display:inline-flex;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:4px">
-          <button id="lg-view-list" onclick="lgSetViewMode('list')"
-                  style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📋 Lista</button>
+          <!-- "Detalles" ahora es el botón default, en primera posición -->
+          <button id="lg-view-detail" onclick="lgSetViewMode('detail')"
+                  style="padding:6px 12px;border:1.5px solid #0d9488;background:#0d9488;color:#fff;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📂 Detalles</button>
           <button id="lg-view-kanban" onclick="lgSetViewMode('kanban')"
-                  style="padding:6px 12px;border:1.5px solid #0d9488;background:#0d9488;color:#fff;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">🗂️ 4 columnas</button>
+                  style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">🗂️ 4 columnas</button>
           <button id="lg-view-table" onclick="lgSetViewMode('table')"
                   style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📊 Tabla</button>
-          <button id="lg-view-detail" onclick="lgSetViewMode('detail')"
-                  style="padding:6px 12px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">📂 Detalles</button>
+          <!-- Vista "Lista" oculta por ahora; se mantiene el botón en el DOM
+               para preservar el modo si el código JS lo referencia. -->
+          <button id="lg-view-list" onclick="lgSetViewMode('list')"
+                  style="display:none">📋 Lista</button>
         </div>
       </div>
 
@@ -1189,6 +1192,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=179"></script>
+  <script src="app.js?v=180"></script>
 </body>
 </html>
