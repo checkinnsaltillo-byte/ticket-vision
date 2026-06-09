@@ -912,26 +912,6 @@
       <!-- Paginador -->
       <div id="hu-pager" style="display:flex;justify-content:center;gap:6px;padding:12px;margin-top:8px"></div>
 
-      <!-- Modal Facturapi (iframe embebido) -->
-      <div id="hu-facturapi-overlay" class="hidden"
-           style="position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px"
-           onclick="if(event.target===this)huespedesCloseFacturapi()">
-        <div style="background:#fff;border-radius:14px;width:100%;max-width:1100px;height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(15,23,42,.5);position:relative">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#334155;color:#fff;flex-shrink:0">
-            <div style="font-weight:800;font-size:14px">🧾 Generar ticket Facturapi</div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <a id="hu-facturapi-external" href="#" target="_blank" rel="noopener"
-                 style="padding:6px 12px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">↗ Abrir aparte</a>
-              <button onclick="huespedesCloseFacturapi()"
-                      style="width:32px;height:32px;border:none;background:rgba(255,255,255,.15);color:#fff;border-radius:50%;font-size:18px;cursor:pointer">✕</button>
-            </div>
-          </div>
-          <iframe id="hu-facturapi-frame" src="about:blank"
-                  style="flex:1;border:none;background:#fff;width:100%"
-                  allow="clipboard-write *; clipboard-read *"></iframe>
-        </div>
-      </div>
-
       <!-- Modal detalle -->
       <div id="hu-detail-overlay" class="hidden"
            style="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px"
@@ -1190,8 +1170,29 @@
     </div>
   </div>
 
+  <!-- Modal Facturapi (iframe embebido) — FUERA de todos los módulos para que
+       funcione desde cualquier vista (Huéspedes, Reservas Lodgify, etc.) -->
+  <div id="hu-facturapi-overlay" class="hidden"
+       style="position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px"
+       onclick="if(event.target===this)huespedesCloseFacturapi()">
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:1100px;height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(15,23,42,.5);position:relative">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#334155;color:#fff;flex-shrink:0">
+        <div style="font-weight:800;font-size:14px">🧾 Generar ticket Facturapi</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <a id="hu-facturapi-external" href="#" target="_blank" rel="noopener"
+             style="padding:6px 12px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">↗ Abrir aparte</a>
+          <button onclick="huespedesCloseFacturapi()"
+                  style="width:32px;height:32px;border:none;background:rgba(255,255,255,.15);color:#fff;border-radius:50%;font-size:18px;cursor:pointer">✕</button>
+        </div>
+      </div>
+      <iframe id="hu-facturapi-frame" src="about:blank"
+              style="flex:1;border:none;background:#fff;width:100%"
+              allow="clipboard-write *; clipboard-read *"></iframe>
+    </div>
+  </div>
+
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=192"></script>
+  <script src="app.js?v=194"></script>
 </body>
 </html>
