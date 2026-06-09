@@ -10073,6 +10073,11 @@ function huBuildAirbnbBox(r) {
   const esAirbnb   = String(medio||'').toLowerCase().includes('airbnb');
   const montoFact  = huValueFlexible(r, ['$ Monto facturado Total']);
   const montoAirbnb= huValueFlexible(r, ['$ Monto total Airbnb']);
+  // Si el huésped marcó EXPLÍCITAMENTE "No" en ¿Requiere factura? y aún no
+  // hay ticket emitido, NO mostramos la caja de auto-facturación (no aplica).
+  const reqFactRaw = String(huValueFlexible(r, ['¿Requiere factura?','Requiere factura'])||'').trim().toLowerCase();
+  const noRequiereExplicito = reqFactRaw === 'no';
+  if (noRequiereExplicito && !ticketUrl && !folio) return '';
   const airbnbVal    = esAirbnb ? huParseMontoAirbnb(montoAirbnb) : 0;
   const comisionPre  = esAirbnb && airbnbVal ? huCalcComisionAirbnb(airbnbVal).toFixed(2)        : '';
   const facturadoPre = esAirbnb && airbnbVal ? huCalcMontoFacturadoAirbnb(airbnbVal).toFixed(2) : montoFact;
