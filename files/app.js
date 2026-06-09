@@ -7996,7 +7996,7 @@ function esc(v) {
 
 /** Cambia entre módulos de nivel superior */
 function switchModule(mod) {
-  ["tickets", "registros", "huespedes", "lodgify"].forEach(m => {
+  ["tickets", "registros", "huespedes", "lodgify", "reservas-detalles"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== mod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === mod);
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === mod);
@@ -8014,6 +8014,13 @@ function switchModule(mod) {
     // En paralelo, traer Información de huéspedes para cruzar registros
     // y mostrar el ícono 📋 en bookings que ya tienen registro manual.
     lgEnsureHuespedesAndMatch();
+  }
+  if (mod === "reservas-detalles") {
+    // Reusa LG_STATE.bookings (ya cargado por el módulo Lodgify). Si no
+    // estaba cargado, lo carga ahora silenciosamente.
+    if (!LG_STATE.loaded && !LG_STATE.loading) lodgifyLoad(true);
+    lgEnsureHuespedesAndMatch();
+    rdRender();
   }
 }
 
@@ -12520,3 +12527,378 @@ const LG_STATE_META = {
   proxima:     { label:'Próxima',     emoji:'🟡', border:'#fde68a', bg:'#fffbeb', accentFg:'#92400e' },
   concluida:   { label:'Concluida',   emoji:'⚪', border:'#cbd5e1', bg:'#f8fafc', accentFg:'#475569' },
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── MÓDULO: Reservas - detalles  (réplica del UI de Lodgify) ─────────────
+// Reusa LG_STATE.bookings y LG_STATE.matches; no carga datos propios.
+// ═══════════════════════════════════════════════════════════════════════════
+const RD_STATE = {
+  selectedId: null,
+  search: '',
+  searchVisible: false,
+};
+
+window.rdToggleSearch = function() {
+  RD_STATE.searchVisible = !RD_STATE.searchVisible;
+  document.getElementById('rd-search-box')?.classList.toggle('hidden', !RD_STATE.searchVisible);
+  if (RD_STATE.searchVisible) setTimeout(() => document.getElementById('rd-search-input')?.focus(), 0);
+};
+window.rdToggleFilter = function() {
+  alert('Filtros adicionales: por implementar.');
+};
+
+/** Status del booking → texto para la UI ("Reservada", "Abierta", etc.). */
+function rdMapStatus(b) {
+  const s = String(b.Status || '').toLowerCase();
+  if (s === 'booked') return 'Reservada';
+  if (s === 'open') return 'Abierta';
+  if (s === 'tentative') return 'Provisional';
+  if (s === 'declined' || s === 'cancelled') return 'Concluida';
+  return b.Status || '—';
+}
+
+/** "MM/DD/YYYY" → "8 jun 2026" estilo Lodgify. */
+function rdFmtFechaCorta(mmdd) {
+  if (!mmdd) return '—';
+  const m = String(mmdd).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return mmdd;
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${parseInt(m[2],10)} ${meses[parseInt(m[1],10)-1]} ${m[3]}`;
+}
+
+/** "MM/DD/YYYY" → "8 jun" (sin año). */
+function rdFmtFechaCortaNoYear(mmdd) {
+  if (!mmdd) return '—';
+  const m = String(mmdd).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return mmdd;
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${parseInt(m[2],10)} ${meses[parseInt(m[1],10)-1]}`;
+}
+
+/** Render del módulo completo. */
+window.rdRender = function() {
+  const bookings = (LG_STATE.bookings || []).slice().sort((a,b) => {
+    const da = lgParseMMDD(a.DateArrival)?.getTime() || 0;
+    const db = lgParseMMDD(b.DateArrival)?.getTime() || 0;
+    return db - da; // más reciente primero
+  });
+  const search = String(document.getElementById('rd-search-input')?.value || '').toLowerCase().trim();
+  const filtered = search
+    ? bookings.filter(b => {
+        const hay = [b.GuestName, b.Id, b.HouseName, b.GuestEmail, b.GuestPhone]
+          .map(x => String(x||'').toLowerCase()).join(' ');
+        return hay.includes(search);
+      })
+    : bookings;
+
+  const countEl = document.getElementById('rd-count');
+  if (countEl) countEl.textContent = `${filtered.length} reserva${filtered.length===1?'':'s'}`;
+
+  // Lista izquierda
+  const list = document.getElementById('rd-list');
+  if (list) {
+    if (!filtered.length) {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>';
+    } else {
+      list.innerHTML = filtered.slice(0, 200).map(b => rdBuildListItem(b)).join('');
+    }
+  }
+
+  // Si no hay selección y hay reservaciones, selecciona la primera.
+  if (!RD_STATE.selectedId && filtered.length) {
+    RD_STATE.selectedId = String(filtered[0].Id);
+  }
+  rdRenderSelected();
+};
+
+function rdBuildListItem(b) {
+  const isSel = String(b.Id) === String(RD_STATE.selectedId);
+  const statusUi = rdMapStatus(b);
+  const guests = b.NumberOfGuests || 0;
+  const fechaCreada = '8 jun 2026'; // no tenemos fecha de creación en data; usar fecha actual o salida
+  const ingreso = rdFmtFechaCortaNoYear(b.DateArrival);
+  const salida  = rdFmtFechaCortaNoYear(b.DateDeparture);
+  const hasMatch = LG_STATE.matches?.has(String(b.Id));
+  // Iniciales del nombre para la "miniatura"
+  const initials = String(b.GuestName||'?').split(/\s+/).map(w => w[0]||'').slice(0,2).join('').toUpperCase();
+  return `
+    <div class="rd-item ${isSel?'rd-active':''}" onclick="rdSelect('${esc(b.Id)}')">
+      <div class="rd-item-thumb">${esc(initials || '?')}</div>
+      <div class="rd-item-body">
+        <div class="rd-item-row1">
+          <span class="rd-status-badge rd-status-${statusUi}">${esc(statusUi)}</span>
+          <span class="rd-item-date">${esc(rdFmtFechaCorta(b.DateArrival))}</span>
+        </div>
+        <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}${hasMatch?' <span style="font-size:9px;color:#475569" title="Registro manual">📋</span>':''}</div>
+        <div class="rd-item-meta">
+          <span>🌙 ${esc(ingreso)} - ${esc(salida)}</span>
+          <span>· 👥 ${guests}</span>
+        </div>
+        <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
+      </div>
+    </div>`;
+}
+
+window.rdSelect = function(id) {
+  RD_STATE.selectedId = String(id);
+  // Solo re-render de items + panel; no toca la lista entera para evitar scroll reset.
+  document.querySelectorAll('.rd-item').forEach(el => el.classList.remove('rd-active'));
+  const el = [...document.querySelectorAll('.rd-item')].find(it => it.outerHTML.includes(`rdSelect('${id}')`));
+  if (el) el.classList.add('rd-active');
+  rdRenderSelected();
+};
+
+function rdRenderSelected() {
+  const main = document.getElementById('rd-main');
+  const right = document.getElementById('rd-rightbar');
+  if (!main || !right) return;
+  const b = (LG_STATE.bookings || []).find(x => String(x.Id) === String(RD_STATE.selectedId));
+  if (!b) {
+    main.innerHTML = '<div class="rd-empty-state"><div style="font-size:38px;opacity:.3">📒</div><div>Selecciona una reservación de la lista</div></div>';
+    right.innerHTML = '';
+    return;
+  }
+  const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
+  main.innerHTML  = rdBuildMainHtml(b, huesped);
+  right.innerHTML = rdBuildRightbarHtml(b, huesped);
+}
+
+function rdBuildMainHtml(b, huesped) {
+  const statusUi = rdMapStatus(b);
+  const ingreso = rdFmtFechaCorta(b.DateArrival);
+  const salida  = rdFmtFechaCorta(b.DateDeparture);
+  const propShort = lgFmtPropiedad(b.HouseName);
+  const propFull  = b.HouseName || '—';
+  const total = b.Gross || 0;
+  // Pendiente / Pagado — Lodgify no expone esto en el feed, asumimos pendiente=total.
+  // Si hay huesped match con montoFacturado, se considera "pagado" parcial.
+  const montoFact = huesped ? Number(huValueFlexible(huesped, ['$ Monto facturado Total','Monto facturado Total'])) || 0 : 0;
+  const pagado = 0; // Lodgify no expone pagos en el feed actual
+  const pendiente = total - pagado;
+  const lineItems = b.LineItems || [];
+  // Agrupa lineitems por descripción
+  const subtotal = lineItems.reduce((acc, li) => acc + (Number(li.gross)||0), 0);
+
+  const fechaCreacion = '8 jun 2026'; // no tenemos campo "DateCreated" en /api/otc
+  const sourceChip = lgSourceBadge(b.Source);
+
+  return `
+    <!-- Header -->
+    <div class="rd-detail-header">
+      <div>
+        <h1 class="rd-detail-title">${esc(b.GuestName || 'Sin nombre')}</h1>
+        <div class="rd-detail-subtitle">#${esc(b.Id)} creada el ${esc(fechaCreacion)}, desde ${esc(b.Source || '—')}</div>
+        <div style="margin-top:10px"><span class="rd-chip rd-chip-aceptada">${esc(statusUi)}</span></div>
+        <div style="margin-top:14px;font-size:13px;color:#1f2937">
+          <b>${esc(propFull)}</b> - ${b.NumberOfGuests} Adulto${b.NumberOfGuests===1?'':'s'}
+          <div style="font-size:12px;color:#64748b;margin-top:2px">${esc(propShort)}</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;color:#1f2937">
+          <b>${esc(ingreso)}</b> <span style="color:#94a3b8">→</span> <b>${esc(salida)}</b> · <span style="color:#64748b">${b.Nights} Noche${b.Nights===1?'':'s'}</span>
+        </div>
+      </div>
+      <div class="rd-detail-stats">
+        <div class="rd-amount-card">
+          <div class="rd-amount-card-label">Pagado</div>
+          <div class="rd-amount-card-value">${pagado.toLocaleString('es-MX')}</div>
+        </div>
+        <div class="rd-amount-card" style="background:#fef2f2;border-color:#fecaca">
+          <div class="rd-amount-card-label" style="color:#991b1b">Pendiente</div>
+          <div class="rd-amount-card-value" style="color:#991b1b">${lgFmtMoney(pendiente, b.Currency)}</div>
+        </div>
+        <div class="rd-amount-card">
+          <div class="rd-amount-card-label">Total</div>
+          <div class="rd-amount-card-value">${lgFmtMoney(total, b.Currency)}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Presupuesto -->
+    <div class="rd-section">
+      <div class="rd-section-title">
+        <span>Presupuesto #${esc(b.ConfirmationCode || b.Id)}</span>
+      </div>
+      <div class="rd-row">
+        <span class="rd-row-label">Estado</span>
+        <span><span class="rd-chip rd-chip-aceptada">Aceptada</span></span>
+      </div>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f5f9">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px">${esc(propFull)}</div>
+        ${lineItems.map(li => `
+          <div class="rd-row">
+            <span class="rd-row-label">${esc(li.desc || li.kind || '—')}</span>
+            <span>${lgFmtMoney(li.gross, b.Currency)}</span>
+          </div>`).join('')}
+        <div class="rd-row" style="margin-top:6px;border-top:1px solid #f1f5f9;padding-top:8px">
+          <span class="rd-row-label">Subtotal</span>
+          <span><b>${lgFmtMoney(subtotal, b.Currency)}</b></span>
+        </div>
+        <div class="rd-row rd-row-strong">
+          <span>TOTAL</span>
+          <span>${lgFmtMoney(total, b.Currency)}</span>
+        </div>
+      </div>
+      <div class="rd-row" style="margin-top:14px"><span class="rd-row-label">Política</span><span>Ninguno</span></div>
+      <div class="rd-row"><span class="rd-row-label">Condiciones del alquiler</span><span>Ninguno</span></div>
+    </div>
+
+    <!-- Facturación -->
+    <div class="rd-section">
+      <div class="rd-section-title">
+        <span>Facturación</span>
+        <button onclick="alert('Modificar configuraciones')" style="padding:5px 10px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600">Modificar configuraciones</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div>
+          <div style="font-size:12px;color:#64748b">Presupuesto total</div>
+          <div style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px">${lgFmtMoney(total, b.Currency)}</div>
+        </div>
+        <button onclick="alert('Generar factura — por implementar')" style="padding:8px 14px;border:1px solid #e5e7eb;background:#f8fafc;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Generar factura</button>
+      </div>
+    </div>
+
+    <!-- Cobro del pago -->
+    <div class="rd-section">
+      <div class="rd-section-title">
+        <span>Cobro del pago</span>
+        <button style="padding:3px 8px;border:none;background:#f1f5f9;color:#64748b;border-radius:6px;cursor:pointer">⋯</button>
+      </div>
+      <div class="rd-row">
+        <span class="rd-row-label">Presupuesto #${esc(b.ConfirmationCode || b.Id)}</span>
+        <span>${lgFmtMoney(total, b.Currency)}</span>
+      </div>
+      <div class="rd-row rd-row-strong">
+        <span>Importe total</span>
+        <span>${lgFmtMoney(total, b.Currency)}</span>
+      </div>
+      <div class="rd-row" style="margin-top:10px;padding-top:10px;border-top:1px solid #f1f5f9">
+        <span class="rd-row-label">Saldo pendiente</span>
+        <span style="font-weight:700;color:#991b1b">${lgFmtMoney(pendiente, b.Currency)}</span>
+      </div>
+    </div>
+
+    ${huesped ? rdBuildHuespedSection(huesped) : ''}
+  `;
+}
+
+function rdBuildHuespedSection(huesped) {
+  const v = (cands) => huValueFlexible(huesped, Array.isArray(cands) ? cands : [cands]);
+  const horaIn = v(['Hora estimada de llegada']);
+  const horaOut= v(['Hora estimada de salida']);
+  const motivo = v(['Motivo de tu hospedaje','Motivo']);
+  const formaP = v(['Forma de pago']);
+  const reqFac = v(['¿Requiere factura?']);
+  const razon  = v(['Razón social']);
+  const rfc    = v(['RFC']);
+  const regimen= v(['Régimen fiscal']);
+  const cp     = v(['Código Postal']);
+  const folio  = v(['Folio facturapi','Folio']);
+  const montoF = v(['$ Monto facturado Total','Monto facturado Total']);
+  const correo = v(['Correo electrónico','Correo electrónico para el envío de la factura']);
+  const celEm  = v(['Cel/Whatsapp (contacto de emergencia)']);
+  const comen  = v(['Notas','Comentarios','Envía tus comentarios']);
+  const status = (typeof huGetFacturaStatus === 'function') ? huGetFacturaStatus(huesped) : '';
+  const facChip = status === 'emitida' ? `<span class="rd-chip rd-chip-emitida">🧾 Emitida${folio?' #'+esc(folio):''}</span>`
+                : status === 'pendiente' ? `<span class="rd-chip rd-chip-pendiente">🧾 Pendiente</span>`
+                : '';
+  const fmtH = (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple : (x => x);
+
+  const row = (label, value) => value ? `
+    <div class="rd-row" style="padding:7px 0">
+      <span class="rd-row-label">${esc(label)}</span>
+      <span>${value}</span>
+    </div>` : '';
+
+  return `
+    <div class="rd-section">
+      <div class="rd-section-title">
+        <span style="display:flex;align-items:center;gap:8px">📋 Información del registro manual del huésped
+          <span class="rd-chip" style="background:linear-gradient(135deg,#475569,#334155);color:#fff;border-color:#1e293b;font-size:9px">REGISTRADO</span>
+        </span>
+      </div>
+      ${row('Llegada estimada', horaIn ? esc(fmtH(horaIn)) : '')}
+      ${row('Salida estimada', horaOut ? esc(fmtH(horaOut)) : '')}
+      ${row('Forma de pago', esc(formaP))}
+      ${row('Motivo del hospedaje', esc(motivo))}
+      ${row('¿Requiere factura?', esc(reqFac))}
+      ${row('Estado factura', facChip)}
+      ${row('Monto facturado', montoF ? `<b>${(typeof huFmtMonto==='function')?huFmtMonto(montoF):esc(montoF)}</b>` : '')}
+      ${row('Razón social', esc(razon))}
+      ${row('RFC', rfc ? `<code style="font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${esc(rfc)}</code>` : '')}
+      ${row('Régimen fiscal', esc(regimen))}
+      ${row('Código Postal', esc(cp))}
+      ${row('Cel emergencia', esc(celEm))}
+      ${row('Correo', correo ? `<a href="mailto:${esc(correo)}" style="color:#0d9488">${esc(correo)}</a>` : '')}
+      ${comen ? `<div style="margin-top:10px;padding:10px;background:#f8fafc;border-radius:6px;border-left:3px solid #94a3b8;font-style:italic;font-size:12px;color:#475569"><b style="font-style:normal;color:#475569">Comentarios:</b> ${esc(comen)}</div>` : ''}
+    </div>`;
+}
+
+function rdBuildRightbarHtml(b, huesped) {
+  const v = (cands) => huesped ? huValueFlexible(huesped, Array.isArray(cands) ? cands : [cands]) : '';
+  const phone = b.GuestPhone ? String(b.GuestPhone) : '';
+  const phoneDigits = phone.replace(/\D/g,'');
+  const fmtH = (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple : (x => x);
+  const horaIn = v(['Hora estimada de llegada']);
+  const horaOut= v(['Hora estimada de salida']);
+  return `
+    <!-- Presupuesto externo -->
+    <div class="rd-side-section">
+      <div class="rd-side-section-title">Presupuesto externo</div>
+      <div class="rd-side-field">
+        <div class="rd-side-field-label">Presupuesto externo</div>
+        <div class="rd-side-field-value"><a href="#" onclick="event.preventDefault()">Mostrar los detalles</a></div>
+      </div>
+      <div class="rd-side-field">
+        <div class="rd-side-field-label">Url</div>
+        <div class="rd-side-field-value"><a href="#" onclick="event.preventDefault()">Modificar reserva en ${esc(b.Source||'plataforma')}</a></div>
+      </div>
+      <div class="rd-side-field">
+        <div class="rd-side-field-label">Origen</div>
+        <div class="rd-side-field-value">${lgSourceBadge(b.Source)}</div>
+      </div>
+    </div>
+
+    <!-- Huésped -->
+    <div class="rd-side-section">
+      <div class="rd-side-section-title">Huésped</div>
+      <div class="rd-side-field">
+        <div class="rd-side-field-label">Nombre</div>
+        <div class="rd-side-field-value">${esc(b.GuestName || '—')}</div>
+      </div>
+      <div class="rd-side-field">
+        <div class="rd-side-field-label">Teléfono</div>
+        <div class="rd-phone-row">
+          <div class="rd-side-field-value">+${esc(phoneDigits || '—')}</div>
+          ${phone ? `<a class="rd-wa-btn" href="https://wa.me/${phoneDigits}" target="_blank" rel="noopener" title="WhatsApp">📱</a>` : ''}
+        </div>
+      </div>
+      ${b.GuestEmail ? `<div class="rd-side-field"><div class="rd-side-field-label">Correo</div><div class="rd-side-field-value"><a href="mailto:${esc(b.GuestEmail)}">${esc(b.GuestEmail)}</a></div></div>` : ''}
+      <div class="rd-side-field">
+        <div class="rd-side-field-label">Ubicación</div>
+        <div class="rd-side-field-value">${esc(b.GuestCountryCode || 'N/D')}</div>
+      </div>
+      <div class="rd-side-field">
+        <div class="rd-side-field-label">Idioma</div>
+        <div class="rd-side-field-value">Español</div>
+      </div>
+      <div class="rd-side-field">
+        <div class="rd-side-field-label">Horario estimado de llegada: ${esc(rdFmtFechaCortaNoYear(b.DateArrival))} ${b.DateArrival ? '20' + b.DateArrival.slice(-2) : ''}</div>
+        <div class="rd-side-field-value"><b>${horaIn ? esc(fmtH(horaIn)) : 'N/D'}</b> ${horaIn ? '<span class="rd-chip" style="background:#f1f5f9;color:#475569;border-color:#e5e7eb;font-size:9px">Basado en la política</span>' : ''}</div>
+      </div>
+      <div class="rd-side-field">
+        <div class="rd-side-field-label">Horario estimado de salida: ${esc(rdFmtFechaCortaNoYear(b.DateDeparture))} ${b.DateDeparture ? '20' + b.DateDeparture.slice(-2) : ''}</div>
+        <div class="rd-side-field-value"><b>${horaOut ? esc(fmtH(horaOut)) : 'N/D'}</b> ${horaOut ? '<span class="rd-chip" style="background:#f1f5f9;color:#475569;border-color:#e5e7eb;font-size:9px">Basado en la política</span>' : ''}</div>
+      </div>
+    </div>
+
+    <!-- Notas -->
+    <div class="rd-side-section">
+      <div class="rd-side-section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Notas</span>
+        <button style="border:none;background:#f1f5f9;color:#475569;border-radius:50%;width:24px;height:24px;cursor:pointer;font-weight:800">+</button>
+      </div>
+      ${huesped && huValueFlexible(huesped, ['Notas','Comentarios','Envía tus comentarios'])
+        ? `<div style="font-size:12px;color:#475569;font-style:italic">${esc(huValueFlexible(huesped, ['Notas','Comentarios','Envía tus comentarios']))}</div>`
+        : '<div style="font-size:11px;color:#94a3b8;font-style:italic">Sin notas.</div>'}
+    </div>`;
+}
