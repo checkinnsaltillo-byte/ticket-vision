@@ -10061,6 +10061,69 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
 
 /** Construye el contenido de la columna derecha (detalle de la reservación seleccionada).
  *  Incluye la caja de auto-facturación con sus inputs editables/calculados. */
+/** Construye la caja "Ticket para auto-facturación" (inputs editables +
+ *  cálculo Airbnb + botones). Extraída de huBuildReservationDetail para
+ *  reutilizarla en la vista Detalles Lodgify (col 3 fusionada). */
+function huBuildAirbnbBox(r) {
+  const status     = huGetFacturaStatus(r);
+  const recId      = String(r['ID'] || r['row_number'] || '');
+  const medio      = huValueFlexible(r, ['Medio de reservación']);
+  const folio      = huValueFlexible(r, ['Folio facturapi','Folio Facturapi','Folio']);
+  const ticketUrl  = huExtractTicketUrl(r);
+  const esAirbnb   = String(medio||'').toLowerCase().includes('airbnb');
+  const montoFact  = huValueFlexible(r, ['$ Monto facturado Total']);
+  const montoAirbnb= huValueFlexible(r, ['$ Monto total Airbnb']);
+  const airbnbVal    = esAirbnb ? huParseMontoAirbnb(montoAirbnb) : 0;
+  const comisionPre  = esAirbnb && airbnbVal ? huCalcComisionAirbnb(airbnbVal).toFixed(2)        : '';
+  const facturadoPre = esAirbnb && airbnbVal ? huCalcMontoFacturadoAirbnb(airbnbVal).toFixed(2) : montoFact;
+  const mensajeConsulta = ticketUrl ? huBuildTicketConsultaMsg(ticketUrl) : '';
+  const btnVerTicket = (status === 'emitida' && ticketUrl) ? `
+    <a href="${esc(ticketUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
+       style="display:inline-block;padding:7px 14px;border:none;background:#16a34a;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;text-decoration:none;margin-right:6px;box-shadow:0 2px 4px rgba(22,163,74,.3)">
+      🧾 Ver ticket${folio ? ' - Folio #' + esc(folio) : ''}
+    </a>` : '';
+  const btnCopiarMsg = (status === 'emitida' && mensajeConsulta) ? `
+    <button type="button" onclick="event.stopPropagation();huespedesCopiarMsgConsulta(this,'${encodeURIComponent(mensajeConsulta)}')"
+            style="padding:7px 14px;border:none;background:#475569;color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">
+      📋 Copiar mensaje para consultar ticket emitido
+    </button>` : '';
+  const btnGenerar = (status === 'pendiente') ? `
+    <button onclick="event.stopPropagation();huespedesGenerarTicket('${esc(recId)}')"
+            style="padding:8px 22px;border:none;background:linear-gradient(180deg,#ef4444 0%,#b91c1c 100%);color:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(185,28,28,.4)">
+      Generar Ticket
+    </button>` : '';
+  return `
+    <div data-hu-airbnb-box="1" style="border:1.5px solid #c4b5fd;border-radius:12px;padding:12px;background:linear-gradient(180deg,#faf5ff,#fff);margin-top:12px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7c3aed;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:6px">🧾 Ticket para auto-facturación</div>
+      ${esAirbnb ? `
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:8px">
+          <div style="font-size:11px;color:#1e40af;font-weight:700;margin-bottom:6px">(=) $ Monto total Airbnb</div>
+          <input type="number" step="0.01" min="0" value="${esc(montoAirbnb)}" placeholder="0.00"
+                 onclick="event.stopPropagation()"
+                 oninput="huRecalcAirbnb(this)"
+                 onblur="huMaybePersistCardMonto(this.closest('.hu-resv-detail') || this.closest('[data-hu-airbnb-box]')?.parentElement)"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+                 style="width:100%;padding:7px 10px;border:1px solid #bfdbfe;border-radius:6px;background:#fff;font-size:13px;color:#1e40af;font-weight:700;outline:none">
+          <div style="font-size:10px;color:#3b82f6;margin-top:4px">Base editable.</div>
+        </div>
+        <div style="background:#fde68a;border:1px solid #f59e0b;border-radius:8px;padding:10px;margin-bottom:8px">
+          <div style="font-size:11px;color:#78350f;font-weight:700;margin-bottom:6px">(-) $ Comisión Airbnb</div>
+          <input type="number" step="0.01" data-hu-airbnb-comision="1" value="${esc(comisionPre)}" readonly
+                 onclick="event.stopPropagation()"
+                 style="width:100%;padding:7px 10px;border:1px solid #f59e0b;border-radius:6px;background:#fef3c7;font-size:13px;color:#78350f;font-weight:700;cursor:not-allowed;outline:none">
+          <div style="font-size:10px;color:#92400e;margin-top:4px;font-weight:600">🔒 Airbnb × 15.5%</div>
+        </div>` : ''}
+      <div style="background:${esAirbnb?'#ddd6fe':'#ede9fe'};border:1px solid #a78bfa;border-radius:8px;padding:10px;margin-bottom:10px">
+        <div style="font-size:11px;color:#4c1d95;font-weight:700;margin-bottom:6px">(+) $ Monto facturado Total</div>
+        <input type="number" step="0.01" data-hu-airbnb-facturado="1" value="${esc(facturadoPre)}" ${esAirbnb?'readonly':''}
+               onclick="event.stopPropagation()"
+               style="width:100%;padding:7px 10px;border:1px solid #a78bfa;border-radius:6px;background:${esAirbnb?'#c4b5fd':'#fff'};font-size:13px;color:#4c1d95;font-weight:700;outline:none">
+        ${esAirbnb?'<div style="font-size:10px;color:#6d28d9;margin-top:4px;font-weight:600">🔒 Airbnb − Comisión</div>':''}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${btnVerTicket}${btnCopiarMsg}${btnGenerar}</div>
+    </div>`;
+}
+
 function huBuildReservationDetail(r) {
   const status     = huGetFacturaStatus(r);
   const recId      = String(r['ID'] || r['row_number'] || '');
@@ -12372,8 +12435,15 @@ function lgBuildCombinedDetailColumn(b, huesped) {
       </div>
     </div>` : '';
 
+  // Caja de auto-facturación (editable) — solo cuando hay match en huéspedes.
+  let airbnbBoxHtml = '';
+  if (huesped && typeof huBuildAirbnbBox === 'function') {
+    try { airbnbBoxHtml = huBuildAirbnbBox(huesped); }
+    catch (e) { console.error('[LG] airbnbBox error:', e); }
+  }
+
   return `
-    <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
+    <div class="hu-resv-detail" data-hu-resv-id="${esc(huesped ? String(huesped['ID']||huesped['row_number']||'') : '')}" style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800">📑 DETALLE DE RESERVACIÓN</div>
         ${lgStatusBadge(b.Status)}
@@ -12381,6 +12451,7 @@ function lgBuildCombinedDetailColumn(b, huesped) {
       ${lodgifyFields}
       ${huespedFields}
       ${lineItemsBlock}
+      ${airbnbBoxHtml}
     </div>`;
 }
 
