@@ -11534,9 +11534,11 @@ function lgGetFiltered() {
     if (!m) return '';
     return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
   };
-  // Ventana visible default: últimos 7 días + en curso + futuras.
-  const cutoff = new Date(); cutoff.setHours(0,0,0,0);
-  cutoff.setDate(cutoff.getDate() - 7);
+  // NOTA: antes había una "ventana visible default" silenciosa que escondía
+  // toda reserva con salida < hoy-7d. Eso ocultaba reservas históricas que
+  // sí tenían registros en Reservaciones, sin que el usuario lo supiera y
+  // dejando inútil la opción "Concluida" del filtro Programación. Ahora se
+  // muestra todo por default; usa Programación / fechas para filtrar.
   const filtered = LG_STATE.bookings.filter(b => {
     if (srcSet) {
       if (!srcSet.has(String(b.Source||'').toLowerCase())) return false;
@@ -11572,15 +11574,6 @@ function lgGetFiltered() {
     }
     if (fsIso) {
       if (mmddToIso(b.DateDeparture) !== fsIso) return false;
-    }
-    if (!feIso && !fsIso) {
-      // Mostrar solo bookings cuya salida sea >= hoy-7d (concluidas recientes,
-      // activas y futuras todas). Esto descarta el histórico viejo.
-      const m = String(b.DateDeparture||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      if (m) {
-        const dep = new Date(+m[3], +m[1]-1, +m[2]);
-        if (dep < cutoff) return false;
-      }
     }
     return true;
   });
