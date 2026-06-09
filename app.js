@@ -9254,9 +9254,14 @@ async function huPersistCardMonto(cardEl) {
     const json = await res.json();
     console.info('[HU] response:', json);
     if (!json.ok) throw new Error(json.error || json.message || 'save failed');
-    // Refleja en cache local para que un render posterior muestre el valor
+    // Refleja en cache local los tres montos para que un render posterior los
+    // muestre y NO vuelva a disparar el auto-fill desde Lodgify.
     const r = (HU_STATE.rows||[]).find(x => String(x['ID']||x['row_number']||'') === String(recordId));
-    if (r) r['$ Monto facturado Total'] = monto;
+    if (r) {
+      r['$ Monto facturado Total'] = monto;
+      if (totalAirbnb)    r['$ Monto total Airbnb'] = totalAirbnb;
+      if (comisionAirbnb) r['$ Comisión Airbnb']    = comisionAirbnb;
+    }
     if (hdrAmt) {
       hdrAmt.style.color = '#16a34a';
       setTimeout(() => { if (hdrAmt) hdrAmt.style.color = '#111827'; }, 1500);
@@ -9368,6 +9373,47 @@ let HU_RECALC_TIMER = null;
 function huMaybePersistCardMonto(cardEl) {
   if (HU_RECALC_TIMER) clearTimeout(HU_RECALC_TIMER);
   HU_RECALC_TIMER = setTimeout(() => huPersistCardMonto(cardEl), 600);
+}
+
+// Observa la aparición de cajas de auto-facturación con
+// data-hu-airbnb-autofilled="1" y dispara la persistencia una sola vez por
+// recId. Usado cuando el monto fue auto-rellenado desde Líneas de cobro de
+// Lodgify (b.Gross) para que las 3 columnas del sheet
+// ("$ MONTO TOTAL Airbnb", "$ Comisión Airbnb", "$ Monto facturado Total")
+// se actualicen sin intervención del usuario.
+const HU_AUTOFILL_PERSISTED = new Set();
+function huFireAirbnbAutofillPersist(root) {
+  const boxes = (root || document).querySelectorAll('[data-hu-airbnb-autofilled="1"]');
+  boxes.forEach(box => {
+    const recId = box.getAttribute('data-hu-airbnb-recid') || '';
+    if (!recId || HU_AUTOFILL_PERSISTED.has(recId)) return;
+    // Asciende al contenedor que huPersistCardMonto sabe leer (.hu-resv-detail
+    // en Lodgify-fusion o .hu-record en cards normales).
+    const cardEl = box.closest('.hu-resv-detail') || box.closest('.hu-record') || box.parentElement;
+    if (!cardEl) return;
+    HU_AUTOFILL_PERSISTED.add(recId);
+    // Pequeño delay para asegurar que el cache local refleje los valores
+    // recién inyectados antes de leer del DOM.
+    setTimeout(() => huPersistCardMonto(cardEl), 200);
+  });
+}
+// Single observer global. Cubre tanto re-renders parciales (detailCol.innerHTML)
+// como el primer render del shell.
+if (typeof window !== 'undefined' && !window.__HU_AUTOFILL_OBS) {
+  window.__HU_AUTOFILL_OBS = new MutationObserver(muts => {
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        if (n.matches && n.matches('[data-hu-airbnb-autofilled="1"]')) huFireAirbnbAutofillPersist(n.parentNode);
+        else if (n.querySelector && n.querySelector('[data-hu-airbnb-autofilled="1"]')) huFireAirbnbAutofillPersist(n);
+      }
+    }
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    window.__HU_AUTOFILL_OBS.observe(document.body, { childList: true, subtree: true });
+    // Trigger inicial por si la caja ya está en el DOM al cargar.
+    huFireAirbnbAutofillPersist(document.body);
+  });
 }
 /** Mensaje canónico para "consultar ticket emitido". */
 function huBuildTicketConsultaMsg(url) {
@@ -10064,7 +10110,7 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
 /** Construye la caja "Ticket para auto-facturación" (inputs editables +
  *  cálculo Airbnb + botones). Extraída de huBuildReservationDetail para
  *  reutilizarla en la vista Detalles Lodgify (col 3 fusionada). */
-function huBuildAirbnbBox(r) {
+function huBuildAirbnbBox(r, opts) {
   const status     = huGetFacturaStatus(r);
   const recId      = String(r['ID'] || r['row_number'] || '');
   const medio      = huValueFlexible(r, ['Medio de reservación']);
@@ -10072,12 +10118,22 @@ function huBuildAirbnbBox(r) {
   const ticketUrl  = huExtractTicketUrl(r);
   const esAirbnb   = String(medio||'').toLowerCase().includes('airbnb');
   const montoFact  = huValueFlexible(r, ['$ Monto facturado Total']);
-  const montoAirbnb= huValueFlexible(r, ['$ Monto total Airbnb']);
+  let   montoAirbnb= huValueFlexible(r, ['$ Monto total Airbnb']);
   // Si el huésped marcó EXPLÍCITAMENTE "No" en ¿Requiere factura? y aún no
   // hay ticket emitido, NO mostramos la caja de auto-facturación (no aplica).
   const reqFactRaw = String(huValueFlexible(r, ['¿Requiere factura?','Requiere factura'])||'').trim().toLowerCase();
   const noRequiereExplicito = reqFactRaw === 'no';
   if (noRequiereExplicito && !ticketUrl && !folio) return '';
+  // Auto-fill desde el Total de "Líneas de cobro" de Lodgify (opts.defaultMontoAirbnb)
+  // cuando el sheet aún no tiene "$ Monto total Airbnb" y el medio es Airbnb.
+  // Marcamos la caja con data-hu-airbnb-autofilled="1" para que el render
+  // dispare la persistencia automática al sheet.
+  let autoFilled = false;
+  const defAirbnb = Number(opts && opts.defaultMontoAirbnb);
+  if (esAirbnb && Number.isFinite(defAirbnb) && defAirbnb > 0 && huParseMontoAirbnb(montoAirbnb) <= 0) {
+    montoAirbnb = defAirbnb.toFixed(2);
+    autoFilled = true;
+  }
   const airbnbVal    = esAirbnb ? huParseMontoAirbnb(montoAirbnb) : 0;
   const comisionPre  = esAirbnb && airbnbVal ? huCalcComisionAirbnb(airbnbVal).toFixed(2)        : '';
   const facturadoPre = esAirbnb && airbnbVal ? huCalcMontoFacturadoAirbnb(airbnbVal).toFixed(2) : montoFact;
@@ -10104,7 +10160,7 @@ function huBuildAirbnbBox(r) {
       Generar Ticket
     </button>` : '';
   return `
-    <div data-hu-airbnb-box="1" style="border:1.5px solid #c4b5fd;border-radius:12px;padding:12px;background:linear-gradient(180deg,#faf5ff,#fff);margin-top:12px">
+    <div data-hu-airbnb-box="1" ${autoFilled ? `data-hu-airbnb-autofilled="1" data-hu-airbnb-recid="${esc(recId)}"` : ''} style="border:1.5px solid #c4b5fd;border-radius:12px;padding:12px;background:linear-gradient(180deg,#faf5ff,#fff);margin-top:12px">
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7c3aed;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:6px">🧾 Ticket para auto-facturación</div>
       ${esAirbnb ? `
         <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:8px">
@@ -12447,9 +12503,11 @@ function lgBuildCombinedDetailColumn(b, huesped) {
     </div>` : '';
 
   // Caja de auto-facturación (editable) — solo cuando hay match en huéspedes.
+  // Pasamos b.Gross (Total de "Líneas de cobro") como defaultMontoAirbnb para
+  // auto-rellenar la caja cuando el sheet aún no tiene "$ Monto total Airbnb".
   let airbnbBoxHtml = '';
   if (huesped && typeof huBuildAirbnbBox === 'function') {
-    try { airbnbBoxHtml = huBuildAirbnbBox(huesped); }
+    try { airbnbBoxHtml = huBuildAirbnbBox(huesped, { defaultMontoAirbnb: Number(b.Gross) || 0 }); }
     catch (e) { console.error('[LG] airbnbBox error:', e); }
   }
 
