@@ -11099,10 +11099,15 @@ async function lodgifySync(full) {
   try {
     if (lbl) lbl.textContent = msg;
     if (empty) { empty.textContent = msg; empty.classList.remove('hidden'); }
+    // Sync MANUAL ROLLING ahora usa la misma ventana que el auto-sync
+    // (days_back=7, days_fwd=0) para garantizar consistencia. Solo
+    // estancias actuales y últimos 7 días. Para futuras → Sync completa.
+    // Sync COMPLETA mantiene su ventana amplia (730/730 vía full:true).
+    const body = full ? { full: true } : { days_back: 7, days_fwd: 0 };
     const res = await fetch(`${BACKEND}/lodgify-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ full: !!full }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || data.raw || `HTTP ${res.status}`);
