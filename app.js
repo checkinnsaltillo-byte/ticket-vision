@@ -11894,22 +11894,68 @@ function lgBuildDetailSidebarItem(b, selectedId) {
 
   return `
     <div class="rd-item ${isSel?'rd-active':''}" onclick="lgDetailSelect('${esc(b.Id)}')"
+         data-lg-booking-id="${esc(b.Id)}"
+         data-lg-state="${stayState||'concluida'}"
          style="background:${itemBg};border-left:3px solid ${accentColor};padding-left:9px;display:block;${activeShadow}">
-      <!-- Top: chips Fuente + Ticket/Requiere factura, en línea horizontal sin wrap -->
-      ${sourceChip || tktChip ? `
-      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:6px;min-width:0">${sourceChip}${tktChip}</div>` : ''}
-      <!-- Centro: nombre, fechas, status, monto. SIN thumb de iniciales. -->
+      <!-- Top: chips Fuente + Registrado/Ticket -->
+      ${(sourceChip || tktChip || hasMatch) ? `
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:6px;min-width:0">${sourceChip}${hasMatch?'<span style="display:inline-block;padding:1px 7px;border-radius:999px;background:linear-gradient(135deg,#475569,#334155);color:#fff;font-weight:800;font-size:9px;border:1px solid #1e293b;letter-spacing:.04em">REGISTRADO</span>':''}${tktChip}</div>` : ''}
+      <!-- Centro: nombre, propiedad, fechas, status, monto. -->
       <div style="min-width:0">
         <div class="rd-item-row1">
           <span class="rd-status-badge rd-status-${statusUi}">${esc(statusUi)}</span>
           <span class="rd-item-date">${esc(rdFmtFechaCorta(b.DateArrival))}</span>
         </div>
-        <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}${hasMatch?' <span style="font-size:9px;color:#475569" title="Registro manual">📋</span>':''}</div>
+        <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}</div>
+        <div style="font-size:11px;color:#475569;font-weight:600;margin-top:2px">${esc(lgFmtPropiedad(b.HouseName) || '—')}</div>
         <div class="rd-item-meta"><span>🌙 ${esc(ing)} - ${esc(sal)}</span><span>· 👥 ${b.NumberOfGuests||0}</span></div>
         <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
       </div>
       <!-- Bottom: cajas Noches + Tier (última línea) -->
       ${bottomBoxesHtml}
+    </div>`;
+}
+
+/** Leyenda de Factura (Con factura / Sin factura + Todas / Ninguna). */
+function lgBuildFacturaLegendHtml() {
+  const allValues = LG_FILTER_OPTIONS.factura || ['Con factura','Sin factura'];
+  lgMultiInitIfNeeded('factura', allValues);
+  const sel = LG_STATE.multiSel['factura'] || new Set();
+  const styles = {
+    'Con factura': { bgIntense:'#dcfce7', border:'#86efac', accentFg:'#166534', shadow:'rgba(22,163,74,.22)', icon:'✅' },
+    'Sin factura': { bgIntense:'#fee2e2', border:'#fca5a5', accentFg:'#991b1b', shadow:'rgba(220,38,38,.22)', icon:'❌' },
+  };
+  const chip = (v) => {
+    const s = styles[v]; if (!s) return '';
+    const active = sel.has(v);
+    return `
+      <button type="button" onclick="event.stopPropagation();lgMultiToggle('factura','${esc(v)}');lodgifyRender()"
+              title="${esc(v)}"
+              style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;
+                     border:1.5px solid ${s.border};
+                     background:${active ? s.bgIntense : '#fff'};
+                     color:${active ? s.accentFg : '#cbd5e1'};
+                     font-weight:800;font-size:10px;letter-spacing:.02em;cursor:pointer;
+                     transition:transform 120ms ease, box-shadow 120ms ease;
+                     ${active ? `box-shadow:0 2px 6px ${s.shadow};` : 'opacity:.55;'}
+                     white-space:nowrap">
+        <span style="font-size:11px;line-height:1">${s.icon}</span>${esc(v)}
+      </button>`;
+  };
+  const todasBtn = `
+    <button type="button" onclick="event.stopPropagation();lgMultiSetAll('factura');lodgifyRender()"
+            style="padding:4px 9px;border-radius:999px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#475569;font-weight:800;font-size:10px;cursor:pointer">✓ Todas</button>`;
+  const ningunaBtn = `
+    <button type="button" onclick="event.stopPropagation();lgMultiSetNone('factura');lodgifyRender()"
+            style="padding:4px 9px;border-radius:999px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#475569;font-weight:800;font-size:10px;cursor:pointer">✕ Ninguna</button>`;
+  return `
+    <div style="padding:8px 12px;border-bottom:1px solid #e2e8f0;background:#fafbfc">
+      <div style="font-size:9px;letter-spacing:.16em;color:#94a3b8;font-weight:800;margin-bottom:6px;text-transform:uppercase">📄 Factura · filtro</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+        ${allValues.map(chip).join('')}
+        <span style="width:1px;height:18px;background:#e2e8f0;margin:0 2px"></span>
+        ${todasBtn}${ningunaBtn}
+      </div>
     </div>`;
 }
 
@@ -11926,16 +11972,16 @@ function lgBuildProgLegendHtml() {
     const active = sel.has(state);
     return `
       <button type="button" onclick="event.stopPropagation();lgMultiToggle('programacion','${state}');lodgifyRender()"
-              title="${esc(m.label)}"
+              title="${esc(m.label)}${active?' (activo)':' (desactivado — click para activar)'}"
               style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;
-                     border:1.5px solid ${m.border};
+                     border:1.5px solid ${active ? m.border : '#e2e8f0'};
                      background:${active ? m.bgIntense : '#fff'};
-                     color:${active ? m.accentFg : '#94a3b8'};
+                     color:${active ? m.accentFg : '#cbd5e1'};
                      font-weight:800;font-size:10px;letter-spacing:.02em;cursor:pointer;
-                     transition:transform 120ms ease, box-shadow 120ms ease;
-                     ${active ? `box-shadow:0 2px 6px ${m.shadowAccent};` : 'opacity:.72;'}
+                     transition:transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+                     ${active ? `box-shadow:0 2px 6px ${m.shadowAccent};` : 'opacity:.55;'}
                      white-space:nowrap">
-        <span style="font-size:11px;line-height:1">${m.emoji}</span>${esc(m.label)}
+        <span style="font-size:11px;line-height:1;${active?'':'filter:grayscale(.6)'}">${m.emoji}</span>${esc(m.label)}
       </button>`;
   };
   const todasBtn = `
@@ -11971,6 +12017,7 @@ function lgBuildDetailView(list, cont) {
 
   // Sidebar HTML
   const sidebarItems = list.slice(0, 200).map(b => lgBuildDetailSidebarItem(b, selectedId)).join('');
+  const facturaLegendHtml = lgBuildFacturaLegendHtml();
   const legendHtml = lgBuildProgLegendHtml();
 
   cont.innerHTML = `
@@ -11982,6 +12029,7 @@ function lgBuildDetailView(list, cont) {
             <div class="rd-sidebar-count">${list.length} reserva${list.length===1?'':'s'}</div>
           </div>
         </div>
+        ${facturaLegendHtml}
         ${legendHtml}
         <div class="rd-list">${sidebarItems || '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>'}</div>
       </aside>
@@ -12000,11 +12048,23 @@ function lgBuildDetailView(list, cont) {
 /** Click en una card del sidebar de Detalles. */
 window.lgDetailSelect = function(id) {
   LG_STATE.detailSelectedId = String(id);
-  // Marca el activo sin re-render del sidebar (preserva scroll)
-  document.querySelectorAll('.lg-detail-shell .rd-item').forEach(el => el.classList.remove('rd-active'));
-  const items = [...document.querySelectorAll('.lg-detail-shell .rd-item')];
-  const sel = items.find(it => it.outerHTML.includes(`lgDetailSelect('${id}')`));
-  if (sel) sel.classList.add('rd-active');
+  // Re-skin de cada item: bg = intenso/normal según selección, + sombra inline
+  // para el seleccionado (preserva scroll del sidebar, no re-genera HTML).
+  document.querySelectorAll('.lg-detail-shell .rd-item').forEach(el => {
+    const bid = el.getAttribute('data-lg-booking-id');
+    const state = el.getAttribute('data-lg-state') || 'concluida';
+    const meta = LG_STATE_META[state] || LG_STATE_META.concluida;
+    const isThis = String(bid) === String(id);
+    if (isThis) {
+      el.classList.add('rd-active');
+      el.style.background = meta.bgIntense;
+      el.style.boxShadow  = `0 6px 16px ${meta.shadowAccent}, 0 2px 4px ${meta.shadowAccent}`;
+    } else {
+      el.classList.remove('rd-active');
+      el.style.background = meta.bg;
+      el.style.boxShadow  = '';
+    }
+  });
   const b = (LG_STATE.bookings || []).find(x => String(x.Id) === String(id));
   if (b) lgDetailRenderMain(b);
 };
