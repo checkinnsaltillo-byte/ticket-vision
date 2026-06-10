@@ -13224,20 +13224,29 @@ function lgBuildCombinedDetailColumn(b, huesped) {
   const sumKind = (matcher) => lineItems
     .filter(li => matcher(String(li.kind || '').toLowerCase()))
     .reduce((acc, li) => acc + (Number(li.gross) || 0), 0);
-  const numFromHu = (cands) => {
+  // LECTURA DIRECTA de campos $ (sin huValueFlexible). huValueFlexible
+  // normaliza claves quitando $ # y caracteres especiales, lo que hace que
+  // "$ Noches" (costo) y "# Noches" (cantidad) colisionen al normalizar
+  // ambos a "noches" → devuelve un valor incorrecto. Acá leemos exact key.
+  const numFromHuExact = (keys) => {
     if (!huesped) return 0;
-    const v = huValueFlexible(huesped, cands);
-    const s = String(v || '').replace(/[^0-9.\-]/g, '');
-    return Number(s) || 0;
+    for (const k of keys) {
+      const v = huesped[k];
+      if (v == null || String(v).trim() === '') continue;
+      const s = String(v).replace(/[^0-9.\-]/g, '');
+      const n = Number(s);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 0;
   };
   const tarifaHosp = sumKind(k => k.includes('roomrate') || k.includes('room'))
-                  || numFromHu(['$ Noches']);
+                  || numFromHuExact(['$ Noches']);
   const tarifaLimp = sumKind(k => k.includes('fee') || k.includes('clean') || k.includes('limpieza'))
-                  || numFromHu(['$ Cuota de limpieza']);
+                  || numFromHuExact(['$ Cuota de limpieza']);
   const impuestos  = sumKind(k => k.includes('tax') || k.includes('vat') || k.includes('iva'));
   const totalCobros = Number(b.Gross)
                    || (tarifaHosp + tarifaLimp + impuestos)
-                   || numFromHu(['($) Monto Total pagado','$ MONTO TOTAL Airbnb','$ Monto facturado Total']);
+                   || numFromHuExact(['($) Monto Total pagado','$ MONTO TOTAL Airbnb','$ Monto facturado Total']);
   const cur = b.Currency || 'MXN';
   const moneyOrDash = (n) => n > 0 ? `<b style="color:#0f766e">${lgFmtMoney(n, cur)}</b>` : '—';
   const section2 = `
