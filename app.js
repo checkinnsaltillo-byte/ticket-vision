@@ -9976,26 +9976,43 @@ function huPhotoBox(url, label, options) {
   const icon = opt.icon || '📷';
   const aspectRatio = opt.aspect || '1';
   const height = opt.height;
-  const sizeStyle = height ? `height:${height}` : `aspect-ratio:${aspectRatio}`;
-  // Sin URL → texto simple "Foto no disponible", sin caja (cero ruido visual).
+  // Sin URL → texto compacto "Foto no disponible".
   if (!url) {
     return `
-      <div style="padding:6px 10px;font-size:10px;color:#94a3b8;font-style:italic;text-align:center;letter-spacing:.02em">
+      <div style="padding:8px 10px;font-size:10px;color:#94a3b8;font-style:italic;text-align:center;letter-spacing:.02em;border:1px dashed #e2e8f0;border-radius:8px;background:#f8fafc">
         ${esc(label)}: foto no disponible
       </div>`;
   }
-  // Con URL → botón "Ver foto" que abre el modal de zoom.
-  const full = huDriveThumb(url, 'w1600');
+  // Con URL → preview real de la imagen, click para zoom.
+  const thumb = huDriveThumb(url, opt.size || 'w400');
+  const full  = huDriveThumb(url, 'w1600');
+  const sizeStyle = height ? `height:${height}` : `aspect-ratio:${aspectRatio}`;
+  // Cadena de fallback de URLs Drive (thumbnail → lh3 → uc?export=view)
+  let driveId = '';
+  const sRaw = String(url).trim();
+  let mm = sRaw.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);  if (mm) driveId = mm[1];
+  if (!driveId) { mm = sRaw.match(/\/d\/([a-zA-Z0-9_-]+)/);    if (mm) driveId = mm[1]; }
+  if (!driveId) { mm = sRaw.match(/[?&]id=([a-zA-Z0-9_-]+)/);  if (mm) driveId = mm[1]; }
+  const fb1 = driveId ? `https://lh3.googleusercontent.com/d/${driveId}=w800` : '';
+  const fb2 = driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : '';
+  const onerrFn = `(function(img){var t=img.dataset.tryStep||'0';if(t==='0'&&'${esc(fb1)}'){img.dataset.tryStep='1';img.src='${esc(fb1)}';return;}if((t==='0'||t==='1')&&'${esc(fb2)}'){img.dataset.tryStep='2';img.src='${esc(fb2)}';return;}img.style.display='none';img.parentElement.querySelector('.hu-photo-placeholder').style.display='flex';})(this)`;
   return `
-    <button type="button"
-            onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')"
-            style="${sizeStyle};width:100%;border:1.5px dashed #cbd5e1;border-radius:10px;background:linear-gradient(180deg,#f8fafc,#fff);color:#475569;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px;transition:all 160ms ease"
-            onmouseover="this.style.borderColor='#7c3aed';this.style.background='#faf5ff';this.style.color='#5b21b6'"
-            onmouseout="this.style.borderColor='#cbd5e1';this.style.background='linear-gradient(180deg,#f8fafc,#fff)';this.style.color='#475569'">
-      <div style="font-size:24px;opacity:.7">${icon}</div>
-      <div style="font-size:10px;letter-spacing:.04em;color:inherit;font-weight:800;text-transform:uppercase;text-align:center;line-height:1.2">${esc(label)}</div>
-      <div style="font-size:9px;color:#94a3b8;font-weight:700">▶ Ver foto</div>
-    </button>`;
+    <div style="position:relative;cursor:zoom-in;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc;${sizeStyle};transition:transform 180ms cubic-bezier(.34,1.56,.64,1),box-shadow 180ms"
+         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(15,23,42,.18)'"
+         onmouseout="this.style.transform='';this.style.boxShadow=''"
+         onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')">
+      <img src="${esc(thumb)}" alt="${esc(label)}" loading="lazy" referrerpolicy="no-referrer"
+           style="width:100%;height:100%;object-fit:cover;display:block;background:#f8fafc"
+           onerror="${onerrFn}">
+      <div class="hu-photo-placeholder" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#94a3b8;font-size:11px;background:#f8fafc">
+        <div style="font-size:24px;opacity:.5">${icon}</div>
+        <div style="font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:9px">${esc(label)}</div>
+      </div>
+      <!-- Overlay: nombre + zoom hint -->
+      <div style="position:absolute;bottom:0;left:0;right:0;padding:5px 8px;background:linear-gradient(180deg,transparent,rgba(15,23,42,.65));color:#fff;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;pointer-events:none">
+        <span>${esc(label)}</span><span style="opacity:.85">🔍 Zoom</span>
+      </div>
+    </div>`;
 }
 
 /** Fetch lazy del detalle del huésped para obtener una URL de foto que
@@ -12363,42 +12380,31 @@ function lgDetailRenderMain(b) {
       slot.innerHTML = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar datos del huésped.</div>`;
     }
   });
-  // Paso 3: enrich lazy SOLO cuando faltan campos clave del formulario
-  // (Hora estimada de llegada, Nombres de huéspedes, Motivo, etc.). Esto
-  // ocurre cuando el Apps Script de listGuestRecords_ todavía no devuelve
-  // esos campos (versión vieja desplegada). El fetch trae la fila completa
-  // de Reservaciones, la guarda en HU_STATE.rows, e invalida el cache de
-  // synthetics para que el próximo render incluya los datos. Solo se hace
-  // 1 vez por record (flag __huEnriched). Re-render ÚNICO al final.
+  // Paso 3: enrich UNA SOLA VEZ por record (marcado con __huEnriched). Trae
+  // todos los campos extra que /huespedes-list no devuelve: fotos INE,
+  // vehículo, Lodgify Id, Nombres de huéspedes, Motivo, montos detallados,
+  // datos fiscales completos, etc. Re-render del slot UNA sola vez.
   if (!effectiveHuesped['__huEnriched']) {
-    const missingKeyFields = !effectiveHuesped['Nombres de TODOS los huéspedes (separados por comas)']
-                          && !effectiveHuesped['Motivo de tu hospedaje']
-                          && !effectiveHuesped['Lodgify Id']
-                          && !effectiveHuesped['$ Noches'];
-    if (missingKeyFields) {
-      const recId = String(effectiveHuesped['ID'] || effectiveHuesped['row_number'] || '');
-      if (recId) {
-        fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`)
-          .then(r => r.json())
-          .then(j => {
-            if (!j?.ok || !j.record) return;
-            const merged = { ...effectiveHuesped, ...j.record, __huEnriched: true };
-            const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
-            if (idx >= 0) HU_STATE.rows[idx] = merged;
-            // Invalida el cache de synthetics
-            LG_STATE.__syntheticCache = null;
-            LG_STATE.__syntheticCacheKey = null;
-            // Re-render del slot UNA sola vez
-            const slot = document.getElementById('lg-huesped-slot');
-            if (slot) {
-              try {
-                const bookingArg = huesped ? b : null;
-                slot.innerHTML = lgBuildHuespedSectionHtml(merged, bookingArg, !huesped ? b : null);
-              } catch (err) { console.error('[LG] enrich re-render error:', err); }
-            }
-          })
-          .catch(e => console.warn('[LG] detail enrich fail:', e.message));
-      }
+    const recId = String(effectiveHuesped['ID'] || effectiveHuesped['row_number'] || '');
+    if (recId) {
+      fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`)
+        .then(r => r.json())
+        .then(j => {
+          if (!j?.ok || !j.record) return;
+          const merged = { ...effectiveHuesped, ...j.record, __huEnriched: true };
+          const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
+          if (idx >= 0) HU_STATE.rows[idx] = merged;
+          LG_STATE.__syntheticCache = null;
+          LG_STATE.__syntheticCacheKey = null;
+          const slot = document.getElementById('lg-huesped-slot');
+          if (slot) {
+            try {
+              const bookingArg = huesped ? b : null;
+              slot.innerHTML = lgBuildHuespedSectionHtml(merged, bookingArg, !huesped ? b : null);
+            } catch (err) { console.error('[LG] enrich re-render error:', err); }
+          }
+        })
+        .catch(e => console.warn('[LG] detail enrich fail:', e.message));
     }
   }
 }
