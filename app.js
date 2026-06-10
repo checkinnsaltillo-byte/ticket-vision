@@ -10290,18 +10290,13 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
   };
   const cel  = huValueFlexible(currentR, ['Cel/Whatsapp (principal)']);
   const tail = phoneTail(cel);
-  // Si el sidebar de Lodgify Detalles ya tiene una lista filtrada vigente
-  // (LG_STATE.lastFilteredList = synthetic bookings), usarla → el historial
-  // coincide EXACTAMENTE con la columna izquierda (misma cuenta, mismos
-  // registros). Caemos al fallback (filtrar HU_STATE.rows por teléfono)
-  // cuando el historial se renderiza desde el módulo Información de
-  // huéspedes (no en Lodgify).
+  // El sidebar ahora muestra 1 card por huésped (deduplicado). El historial
+  // SIEMPRE debe mostrar TODAS las reservaciones del mismo teléfono, no
+  // solo la elegida por el sidebar. Por eso filtramos HU_STATE.rows
+  // directamente, sin pasar por LG_STATE.lastFilteredList.
   let list;
-  const filtered = LG_STATE && Array.isArray(LG_STATE.lastFilteredList) ? LG_STATE.lastFilteredList : null;
-  if (filtered) {
-    list = filtered
-      .filter(b => b && b.__reservacion && phoneTail(b.GuestPhone || huValueFlexible(b.__reservacion, ['Cel/Whatsapp (principal)'])) === tail)
-      .map(b => b.__reservacion);
+  if (false) {
+    list = [];
   } else {
     list = (allRows || HU_STATE.rows || [])
       .filter(x => tail && phoneTail(huValueFlexible(x, ['Cel/Whatsapp (principal)'])) === tail);
@@ -12566,8 +12561,9 @@ function lgDetailRenderMain(b) {
       slot.innerHTML = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar datos del huésped.</div>`;
     }
   });
-  // Paso 3: enrich UNA SOLA VEZ por record. Gateado por token: si el usuario
-  // cambió de card antes de que llegue la respuesta, descartamos el merge.
+  // Paso 3: enrich UNA SOLA VEZ por record. Re-renderiza TODO el main panel
+  // (header + slot) — así el HEADER recibe las URLs de fotos INE/vehículo
+  // que vienen en /huespedes-detail. Gateado por token.
   if (!effectiveHuesped['__huEnriched']) {
     const recId = String(effectiveHuesped['ID'] || effectiveHuesped['row_number'] || '');
     if (recId) {
@@ -12575,21 +12571,35 @@ function lgDetailRenderMain(b) {
         .then(r => r.json())
         .then(j => {
           if (!j?.ok || !j.record) return;
-          // Actualizamos el cache local SIEMPRE (no depende del card activo)
           const merged = { ...effectiveHuesped, ...j.record, __huEnriched: true };
           const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
           if (idx >= 0) HU_STATE.rows[idx] = merged;
           LG_STATE.__syntheticCache = null;
           LG_STATE.__syntheticCacheKey = null;
-          // Pero el re-render del slot SOLO si seguimos en el card original
           if (isStaleGen()) return;
-          const slot = document.getElementById('lg-huesped-slot');
-          if (slot) {
-            try {
-              const bookingArg = huesped ? b : null;
-              slot.innerHTML = lgBuildHuespedSectionHtml(merged, bookingArg, !huesped ? b : null);
-            } catch (err) { console.error('[LG] enrich re-render error:', err); }
-          }
+          // Re-render del MAIN COMPLETO → el header (perfil con fotos) Y el
+          // slot (3 columnas) reciben los datos enriquecidos.
+          try {
+            let finalB = b;
+            if (b.__reservacion && typeof huRowToSyntheticBooking === 'function') {
+              const reb = huRowToSyntheticBooking(merged);
+              if (reb) {
+                finalB = reb;
+                finalB.__reservacion = merged;
+              }
+            }
+            main.innerHTML = lgBuildDetailShellHtml(finalB, huHasManualRegistration(merged));
+            main.dataset.lgGen = String(myGen);
+            requestAnimationFrame(() => {
+              if (isStaleGen()) return;
+              const slot = document.getElementById('lg-huesped-slot');
+              if (!slot) return;
+              try {
+                const bookingArg = huesped ? finalB : null;
+                slot.innerHTML = lgBuildHuespedSectionHtml(merged, bookingArg, !huesped ? finalB : null);
+              } catch (err) { console.error('[LG] enrich slot re-render error:', err); }
+            });
+          } catch (err) { console.error('[LG] enrich shell re-render error:', err); }
         })
         .catch(e => console.warn('[LG] detail enrich fail:', e.message));
     }
