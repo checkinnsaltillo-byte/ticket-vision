@@ -12850,6 +12850,121 @@ function lgBuildCard(b) {
 
 /** Construye SOLO el contenido del header de una card de reservación
  *  (sin el wrapper clickeable). Reusable en el panel de la vista Detalles. */
+/** Versión COMPACTA-HORIZONTAL del perfil del huésped para vivir en el
+ *  header de "Detalles de la Reserva" (arriba, antes de la barra de KPIs).
+ *  4 bloques en grid: Identificación · Contacto · Datos fiscales · Vehículo.
+ *  Solo dibuja los bloques que tengan datos. */
+function lgBuildProfileHeaderHtml(r, palette) {
+  if (!r) return '';
+  const recId    = String(r['ID'] || r['row_number'] || '');
+  const nombreP  = huValueFlexible(r, ['Nombre del huésped','Nombre de la persona que hizo la reservación']);
+  const tipoId   = huValueFlexible(r, ['Tipo de identificación']);
+  const ineFront = huValueFlexible(r, ['Link INE frontal','INE frontal','Link foto INE frontal']);
+  const ineBack  = huValueFlexible(r, ['Link INE trasero','INE trasero','Link foto INE trasero']);
+  const idUnica  = huValueFlexible(r, ['Link identificación única','Identificación única']);
+  const cel      = huValueFlexible(r, ['Cel/Whatsapp (principal)']);
+  const celEmer  = huValueFlexible(r, ['Cel/Whatsapp (contacto de emergencia)']);
+  const correoP  = huValueFlexible(r, ['Correo electrónico para el envío de la factura','Correo electrónico']);
+  const razon    = huValueFlexible(r, ['Razón social']);
+  const rfc      = huValueFlexible(r, ['RFC']);
+  const regimen  = huValueFlexible(r, ['Régimen fiscal']);
+  const cp       = huValueFlexible(r, ['Código Postal']);
+  const reqFact  = huValueFlexible(r, ['¿Requiere factura?']);
+  const tieneVeh = huValueFlexible(r, ['¿Cuenta con vehículo?']);
+  const marca    = huValueFlexible(r, ['Marca vehículo']);
+  const marcaOtr = huValueFlexible(r, ['Marca vehículo otro']);
+  const modelo   = huValueFlexible(r, ['Modelo vehículo']);
+  const modeloOtr= huValueFlexible(r, ['Modelo vehículo otro']);
+  const colorV   = huValueFlexible(r, ['Color vehículo']);
+  const placas   = huValueFlexible(r, ['Placas']);
+  const fotoVeh  = huValueFlexible(r, ['Link foto vehículo','Foto vehículo']);
+  const marcaTxt = (marca && marca.toLowerCase() === 'otro') ? (marcaOtr || marca) : marca;
+  const modeloTxt= (modelo && modelo.toLowerCase() === 'otro') ? (modeloOtr || modelo) : modelo;
+
+  // Mini foto cuadrada (solo si hay URL)
+  const photo = (url, label, icon) => {
+    if (!url) return `
+      <div style="height:80px;border:1px dashed #e2e8f0;border-radius:8px;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#cbd5e1;font-size:9px;letter-spacing:.04em">
+        <div style="font-size:18px;opacity:.5">${icon}</div>
+        <div style="font-weight:700;text-transform:uppercase">${esc(label)}</div>
+        <div style="font-size:8px;font-style:italic">No disponible</div>
+      </div>`;
+    const thumb = huDriveThumb(url, 'w200');
+    const full  = huDriveThumb(url, 'w1600');
+    let driveId = '';
+    const sRaw = String(url).trim();
+    let mm = sRaw.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);  if (mm) driveId = mm[1];
+    if (!driveId) { mm = sRaw.match(/\/d\/([a-zA-Z0-9_-]+)/);    if (mm) driveId = mm[1]; }
+    if (!driveId) { mm = sRaw.match(/[?&]id=([a-zA-Z0-9_-]+)/);  if (mm) driveId = mm[1]; }
+    const fb1 = driveId ? `https://lh3.googleusercontent.com/d/${driveId}=w400` : '';
+    const onerr = `(function(img){if(!img.dataset.t&&'${esc(fb1)}'){img.dataset.t='1';img.src='${esc(fb1)}';return;}img.style.display='none';img.nextElementSibling.style.display='flex';})(this)`;
+    return `
+      <div style="position:relative;height:80px;cursor:zoom-in;border-radius:8px;overflow:hidden;border:1.5px solid #e2e8f0;background:#f8fafc"
+           onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')">
+        <img src="${esc(thumb)}" alt="${esc(label)}" loading="lazy" referrerpolicy="no-referrer"
+             style="width:100%;height:100%;object-fit:cover;display:block" onerror="${onerr}">
+        <div style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;font-size:9px;background:#f8fafc">
+          <div style="font-size:18px;opacity:.5">${icon}</div><div style="font-weight:700;text-transform:uppercase">${esc(label)}</div>
+        </div>
+        <div style="position:absolute;bottom:0;left:0;right:0;padding:2px 5px;background:linear-gradient(180deg,transparent,rgba(15,23,42,.7));color:#fff;font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">${esc(label)} 🔍</div>
+      </div>`;
+  };
+
+  // Bloque Identificación (fotos)
+  const tieneFotos = !!(ineFront || ineBack || idUnica);
+  const idBlock = tieneFotos ? `
+    <div style="background:rgba(255,255,255,.85);border:1px solid ${palette.border};border-radius:10px;padding:8px 10px;min-width:0">
+      <div style="font-size:8px;letter-spacing:.12em;color:#64748b;font-weight:800;margin-bottom:6px;text-transform:uppercase">📇 Identificación${tipoId ? ` · ${esc(tipoId)}`:''}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
+        ${photo(ineFront, 'INE frontal', '🪪')}
+        ${photo(ineBack,  'INE trasero', '🪪')}
+        ${photo(idUnica,  'ID única',    '🆔')}
+      </div>
+    </div>` : '';
+
+  // Bloque Contacto
+  const wa = cel ? `https://wa.me/${String(cel).replace(/\D/g,'')}` : '';
+  const waEm = celEmer ? `https://wa.me/${String(celEmer).replace(/\D/g,'')}` : '';
+  const tieneContacto = !!(cel || correoP || celEmer);
+  const contactoBlock = tieneContacto ? `
+    <div style="background:rgba(255,255,255,.85);border:1px solid ${palette.border};border-radius:10px;padding:8px 10px;min-width:0">
+      <div style="font-size:8px;letter-spacing:.12em;color:#0f766e;font-weight:800;margin-bottom:6px;text-transform:uppercase">📞 Contacto</div>
+      ${cel ? `<div style="font-size:11px;color:#1f2937;margin-bottom:3px"><span style="font-size:10px">📱</span> <a href="${esc(wa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:800;text-decoration:none">${esc(cel)}</a></div>` : ''}
+      ${correoP ? `<div style="font-size:10px;color:#1f2937;word-break:break-all;margin-bottom:3px">📧 ${esc(correoP)}</div>` : ''}
+      ${celEmer ? `<div style="font-size:10px;color:#7f1d1d;margin-top:4px;padding-top:4px;border-top:1px dashed #fecaca">🚨 <a href="${esc(waEm)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#b91c1c;font-weight:700;text-decoration:none">${esc(celEmer)}</a></div>` : ''}
+    </div>` : '';
+
+  // Bloque Datos fiscales
+  const tieneFiscales = !!(razon || rfc || regimen || cp);
+  const fiscalesBlock = tieneFiscales ? `
+    <div style="background:rgba(255,255,255,.85);border:1px solid ${palette.border};border-radius:10px;padding:8px 10px;min-width:0">
+      <div style="font-size:8px;letter-spacing:.12em;color:#1e40af;font-weight:800;margin-bottom:6px;text-transform:uppercase">🧾 Datos fiscales${huIsFacturaYes(reqFact)?' <span style="color:#15803d;background:#dcfce7;padding:0 5px;border-radius:999px;margin-left:3px;font-weight:700">Requiere</span>':''}</div>
+      ${razon ? `<div style="font-size:11px;color:#0f172a;font-weight:700;margin-bottom:3px;word-break:break-word">${esc(razon)}</div>` : ''}
+      ${rfc ? `<div style="font-size:10px;color:#1f2937;font-family:'SFMono-Regular',Consolas,monospace;letter-spacing:.04em;background:#dbeafe;padding:1px 5px;border-radius:3px;display:inline-block;margin-bottom:3px">RFC: <b>${esc(rfc)}</b></div>` : ''}
+      ${regimen ? `<div style="font-size:9px;color:#475569;margin-top:2px">${esc(regimen)}</div>` : ''}
+      ${cp ? `<div style="font-size:9px;color:#475569">📮 C.P. ${esc(cp)}</div>` : ''}
+    </div>` : '';
+
+  // Bloque Vehículo
+  const tieneVehInfo = !!(huIsFacturaYes(tieneVeh) || marcaTxt || modeloTxt || colorV || placas || fotoVeh);
+  const vehBlock = tieneVehInfo ? `
+    <div style="background:rgba(255,255,255,.85);border:1px solid ${palette.border};border-radius:10px;padding:8px 10px;min-width:0">
+      <div style="font-size:8px;letter-spacing:.12em;color:#6d28d9;font-weight:800;margin-bottom:6px;text-transform:uppercase">🚗 Vehículo</div>
+      ${fotoVeh ? `<div style="margin-bottom:6px">${photo(fotoVeh, 'Vehículo', '🚗')}</div>` : ''}
+      ${(marcaTxt||modeloTxt) ? `<div style="font-size:11px;color:#0f172a;font-weight:700;margin-bottom:3px">${esc(marcaTxt||'')} ${esc(modeloTxt||'')}</div>` : ''}
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        ${colorV ? `<span style="font-size:9px;color:#475569;background:#f1f5f9;padding:1px 6px;border-radius:999px">🎨 ${esc(colorV)}</span>` : ''}
+        ${placas ? `<span style="font-size:10px;color:#0f172a;font-family:'SFMono-Regular',Consolas,monospace;font-weight:800;background:#fef3c7;padding:2px 6px;border-radius:3px;border:1px solid #fcd34d;letter-spacing:.06em">${esc(placas)}</span>` : ''}
+      </div>
+    </div>` : '';
+
+  if (!idBlock && !contactoBlock && !fiscalesBlock && !vehBlock) return '';
+  return `
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid ${palette.border};display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;align-items:start">
+      ${idBlock}${contactoBlock}${fiscalesBlock}${vehBlock}
+    </div>`;
+}
+
 function lgBuildCardSummary(b) {
   const nombre = b.GuestName || 'Sin nombre';
   const prop   = lgPropOf(b);
@@ -12934,21 +13049,11 @@ function lgBuildCardSummary(b) {
           <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.1">${(typeof huFmtMonto==='function')?huFmtMonto(montoFact):('$ '+esc(montoFact))}</div>
         </div>`;
     }
-    // Bloque DEBAJO de la línea divisoria: REGISTRADO + Ticket + Llegada/Salida.
-    const fmtH = (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple : (x => x);
-    const horasHtml = (horaIng || horaSal) ? `
-      <div style="display:flex;align-items:center;gap:14px;font-size:11px;color:#64748b;margin-left:auto">
-        <span><span style="color:#94a3b8;font-weight:600">Llegada estimada:</span> <b style="color:#1f2937">${esc(horaIng ? fmtH(horaIng) : '—')}</b></span>
-        <span><span style="color:#94a3b8;font-weight:600">Salida estimada:</span> <b style="color:#1f2937">${esc(horaSal ? fmtH(horaSal) : '—')}</b></span>
-      </div>` : '';
-    if (matchBadge || facBadge || horasHtml) {
-      belowLineRowHtml = `
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid ${palette.border}">
-          ${matchBadge}
-          ${facBadge}
-          ${horasHtml}
-        </div>`;
-    }
+    // Bloque DEBAJO de la línea divisoria: vacío por requerimiento del
+    // usuario — REGISTRADO / Ticket pendiente / Llegada estimada / Salida
+    // estimada se removieron del header. (Los chips siguen vivos en las
+    // cards del sidebar; aquí no aparecen.)
+    belowLineRowHtml = '';
   }
 
   // Helper para construir el link a WhatsApp con el número del huésped.
@@ -12980,6 +13085,7 @@ function lgBuildCardSummary(b) {
         </div>
       </div>
       ${belowLineRowHtml}
+      ${huespedMatch ? lgBuildProfileHeaderHtml(huespedMatch, palette) : ''}
       ${kpisBarHtml}
     </div>`;
 
@@ -13329,6 +13435,137 @@ function lgBuildCombinedDetailColumn(b, huesped) {
     </div>`;
 }
 
+/** Solo Sección 1 (datos generales) en su propia tarjeta. */
+function lgBuildSection1DetailHtml(b, huesped) {
+  // Reutilizamos lgBuildCombinedDetailColumn pero recortamos solo la Sección 1
+  // tomando los <fldRow> hasta el divider. Para evitar duplicar código,
+  // reconstruimos los mismos cálculos aquí y devolvemos solo la mitad.
+  const fldRow = (label, value) => `
+    <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;align-self:center">${esc(label)}</div>
+      <div style="font-size:13px;color:#1f2937">${value === '' || value == null ? '—' : value}</div>
+    </div>`;
+  const hv = (cands) => huesped ? huValueFlexible(huesped, Array.isArray(cands) ? cands : [cands]) : '';
+  const fmtHora = (raw) => {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    const m = s.match(/T(\d{2}):(\d{2})/);
+    if (m) return `${m[1]}:${m[2]}`;
+    return (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple(s) : s;
+  };
+  const lodgifyId = (b.__lodgify && b.__lodgify.Id) || b.LodgifyId || (b.__reservacion ? '' : (b.Id || ''));
+  const registroId = b.__reservacion ? (b.__reservacion['ID'] || b.__reservacion['row_number'] || '') : '';
+  const llegada   = hv(['Fecha de ingreso']) || b.DateArrival;
+  const salida    = hv(['Fecha de salida'])  || b.DateDeparture;
+  const horaIng   = hv(['Hora estimada de llegada','Hora de llegada']);
+  const horaSal   = hv(['Hora estimada de salida','Hora de salida']);
+  const noches    = hv(['# Noches']) || b.Nights;
+  const personas  = hv(['# Huéspedes']) || b.NumberOfGuests;
+  const nombresT  = hv(['Nombres de TODOS los huéspedes (separados por comas)']);
+  const motivo    = hv(['Motivo de tu hospedaje','Motivo']);
+  const reqFactRaw= String(hv(['¿Requiere factura?','Tipo de factura']) || '').trim();
+  const comen     = hv(['Envía tus comentarios','Comentarios','Notas']);
+  let reqFactChip = '';
+  if (reqFactRaw) {
+    const isYes = /^s[ií]/i.test(reqFactRaw);
+    const isNo  = /^no/i.test(reqFactRaw);
+    if (isYes) reqFactChip = `<span style="display:inline-block;padding:2px 9px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:11px;border:1px solid #86efac">✅ Sí</span>`;
+    else if (isNo) reqFactChip = `<span style="display:inline-block;padding:2px 9px;border-radius:999px;background:#fee2e2;color:#991b1b;font-weight:700;font-size:11px;border:1px solid #fca5a5">❌ No</span>`;
+    else reqFactChip = `<span style="display:inline-block;padding:2px 9px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:700;font-size:11px;border:1px solid #cbd5e1">${esc(reqFactRaw)}</span>`;
+  }
+  return `
+    <div class="hu-resv-detail" data-hu-resv-id="${esc(huesped ? String(huesped['ID']||huesped['row_number']||'') : '')}" style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800">📑 DETALLE DE RESERVACIÓN</div>
+        ${lgStatusBadge(b.Status)}
+      </div>
+      ${lodgifyId  ? fldRow('Lodgify Id',  `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(lodgifyId)}</code>`) : ''}
+      ${registroId ? fldRow('Registro Id', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(registroId)}</code>`) : ''}
+      ${fldRow('Fuente',   lgSourceBadge(b.Source))}
+      ${fldRow('Estado',   lgStatusBadge(b.Status))}
+      ${fldRow('Propiedad', esc(lgPropOf(b) || ''))}
+      ${fldRow('Llegada',  esc(llegada || ''))}
+      ${fldRow('Hora llegada', horaIng ? esc(fmtHora(horaIng)) : '—')}
+      ${fldRow('Salida',   esc(salida  || ''))}
+      ${fldRow('Hora salida',  horaSal ? esc(fmtHora(horaSal)) : '—')}
+      ${fldRow('# Noches', noches ? `🌙 <b>${esc(String(noches))}</b>` : '—')}
+      ${fldRow('Personas', personas ? `👥 <b>${esc(String(personas))}</b>` : '—')}
+      ${fldRow('Nombres de huéspedes', nombresT ? `<span style="font-size:12px;line-height:1.5">${esc(nombresT)}</span>` : '—')}
+      ${fldRow('Motivo', motivo ? esc(motivo) : '—')}
+      ${fldRow('¿Requiere factura?', reqFactChip || '—')}
+      ${fldRow('Comentarios', comen ? `<div style="font-size:12px;line-height:1.5;background:#f8fafc;padding:8px 10px;border-radius:6px;border-left:3px solid #94a3b8;font-style:italic;color:#334155">${esc(comen)}</div>` : '—')}
+    </div>`;
+}
+
+/** Solo Sección 2 (cobros) + Importar $Montos + Ticket auto-facturación. */
+function lgBuildSection2CobrosHtml(b, huesped) {
+  const fldRow = (label, value) => `
+    <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;align-self:center">${esc(label)}</div>
+      <div style="font-size:13px;color:#1f2937">${value === '' || value == null ? '—' : value}</div>
+    </div>`;
+  const lineItems = b.LineItems || [];
+  const sumKind = (matcher) => lineItems
+    .filter(li => matcher(String(li.kind || '').toLowerCase()))
+    .reduce((acc, li) => acc + (Number(li.gross) || 0), 0);
+  const numFromHuExact = (keys) => {
+    if (!huesped) return 0;
+    for (const k of keys) {
+      const v = huesped[k];
+      if (v == null || String(v).trim() === '') continue;
+      const s = String(v).replace(/[^0-9.\-]/g, '');
+      const n = Number(s);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 0;
+  };
+  const tarifaHosp = sumKind(k => k.includes('roomrate') || k.includes('room'))
+                  || numFromHuExact(['$ Noches']);
+  const tarifaLimp = sumKind(k => k.includes('fee') || k.includes('clean') || k.includes('limpieza'))
+                  || numFromHuExact(['$ Cuota de limpieza']);
+  const impuestos  = sumKind(k => k.includes('tax') || k.includes('vat') || k.includes('iva'));
+  const totalCobros = Number(b.Gross)
+                   || (tarifaHosp + tarifaLimp + impuestos)
+                   || numFromHuExact(['($) Monto Total pagado','$ MONTO TOTAL Airbnb','$ Monto facturado Total']);
+  const cur = b.Currency || 'MXN';
+  const moneyOrDash = (n) => n > 0 ? `<b style="color:#0f766e">${lgFmtMoney(n, cur)}</b>` : '—';
+  let airbnbBoxHtml = '';
+  if (huesped && typeof huBuildAirbnbBox === 'function') {
+    try { airbnbBoxHtml = huBuildAirbnbBox(huesped); }
+    catch (e) { console.error('[LG] airbnbBox error:', e); }
+  }
+  const medioHu = huesped ? String(huValueFlexible(huesped, ['Medio de reservación']) || '') : '';
+  const esAirbnbBtn = medioHu.toLowerCase().includes('airbnb') || String(b.Source||'').toLowerCase().includes('airbnb');
+  const grossNum = Number(b.Gross) || 0;
+  const importBtnHtml = (airbnbBoxHtml && grossNum > 0) ? `
+    <div style="margin:14px 0 0;display:flex;justify-content:center">
+      <button type="button"
+              onclick="event.stopPropagation();huImportLodgifyMontos(this)"
+              data-lg-gross="${grossNum}"
+              data-lg-esairbnb="${esAirbnbBtn ? '1' : '0'}"
+              title="Copia el Total de Líneas de cobro al campo ${esAirbnbBtn ? '(=) $ Monto total Airbnb' : '(+) $ Monto facturado Total'}"
+              style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border:1.5px solid #7c3aed;background:linear-gradient(180deg,#ede9fe,#fff);color:#5b21b6;border-radius:10px;font-weight:800;font-size:12px;cursor:pointer;box-shadow:0 2px 6px rgba(124,58,237,.18)">
+        <span style="font-size:14px">⤓</span> Importar $Montos
+      </button>
+    </div>` : '';
+  return `
+    <div class="hu-resv-cobros" style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800">💰 COBROS</div>
+      </div>
+      ${fldRow('Divisa', b.Currency ? `<b>${esc(b.Currency)}</b>` : '—')}
+      ${fldRow('Tarifa hospedaje', moneyOrDash(tarifaHosp))}
+      ${fldRow('Tarifa limpieza',  moneyOrDash(tarifaLimp))}
+      ${fldRow('Impuestos',        moneyOrDash(impuestos))}
+      <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:10px 0;border-top:2px solid #e2e8f0;margin-top:4px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:800;align-self:center">TOTAL</div>
+        <div style="font-size:15px;font-weight:800;color:#0f766e">${totalCobros > 0 ? lgFmtMoney(totalCobros, cur) : '<span style="color:#94a3b8">N/A</span>'}</div>
+      </div>
+      ${importBtnHtml}
+      ${airbnbBoxHtml}
+    </div>`;
+}
+
 /** Bloque "📑 DETALLE LODGIFY" + "💰 LÍNEAS DE COBRO" (extracto reutilizable). */
 function lgBuildLodgifyDetailBlock(b) {
   const fldRow = (label, value) => `
@@ -13437,11 +13674,10 @@ function lgBuildModalLodgifyHtml(b, hasHuesped) {
  *                  Col 3 muestra sólo datos Lodgify (sin fusionar con huésped). */
 function lgBuildHuespedSectionHtml_real(huesped, booking, phoneOnlyB) {
   if (!huesped) return '';
-  let idCard = '', history = '';
+  let history = '', section1 = '', section2 = '';
   const matchedRecId = String(huesped['ID']||huesped['row_number']||'');
   const bookingForHandler = booking || phoneOnlyB;
-  try { idCard = (typeof huBuildIdCard === 'function') ? huBuildIdCard(huesped) : ''; }
-  catch (e) { console.error('[LG] huBuildIdCard error:', e); idCard = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar perfil</div>`; }
+  // Col 1: Reservas totales
   try {
     history = (typeof huBuildHistoryList === 'function')
       ? huBuildHistoryList(huesped, HU_STATE.rows, matchedRecId, matchedRecId)
@@ -13453,22 +13689,24 @@ function lgBuildHuespedSectionHtml_real(huesped, booking, phoneOnlyB) {
       );
     }
   } catch (e) { console.error('[LG] huBuildHistoryList error:', e); history = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar historial</div>`; }
-  // Col 3: si hay match exacto → fusión Lodgify+huésped.
-  //        si es phone-only   → sólo Lodgify (sin fusionar con esta persona).
-  //        si no hay booking  → detalle huésped puro.
-  let detailFused = '';
+  // Cols 2 y 3: detalle y cobros. Si hay match exacto, sección 2 (cobros)
+  // se enriquece con LineItems Lodgify. Si solo es phone-only, usar bookingB.
   try {
-    if (booking) {
-      detailFused = lgBuildCombinedDetailColumn(booking, huesped);
-    } else if (phoneOnlyB) {
-      detailFused = lgBuildCombinedDetailColumn(phoneOnlyB, null);
+    const bForDetail = booking || phoneOnlyB;
+    if (bForDetail) {
+      section1 = lgBuildSection1DetailHtml(bForDetail, booking ? huesped : null);
+      section2 = lgBuildSection2CobrosHtml(bForDetail, booking ? huesped : null);
     }
-  } catch (e) { console.error('[LG] combined detail error:', e); detailFused = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar detalle</div>`; }
+  } catch (e) {
+    console.error('[LG] detail/cobros build error:', e);
+    section1 = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar detalle</div>`;
+    section2 = '';
+  }
   return `
-    <div class="hu-record-body" data-lg-booking-id="${esc(String(bookingForHandler?.Id||''))}" data-lg-matched-rec-id="${esc(matchedRecId)}" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
-      <div class="hu-col-profile">${idCard}</div>
+    <div class="hu-record-body" data-lg-booking-id="${esc(String(bookingForHandler?.Id||''))}" data-lg-matched-rec-id="${esc(matchedRecId)}" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(280px,1.1fr) minmax(280px,1.1fr);gap:14px;align-items:start">
       <div class="hu-col-history">${history}</div>
-      <div class="hu-col-detail">${detailFused}</div>
+      <div class="hu-col-detail">${section1}</div>
+      <div class="hu-col-cobros">${section2}</div>
     </div>`;
 }
 
@@ -13498,16 +13736,18 @@ window.lgHistorySelect = function(bookingId, outerRecIdQuoted, selectedRecIdQuot
     );
     historyCol.innerHTML = html;
   }
-  // Re-render detail: SIEMPRE usar la nueva caja unificada
-  // lgBuildCombinedDetailColumn (2 secciones + Líneas de cobro). Si el row
-  // tiene Lodgify Id vinculado, huRowToSyntheticBooking hidrata b.__lodgify
-  // con el booking real → la sección 2 (Tarifa hospedaje, limpieza,
-  // impuestos, total) se llena con LineItemsJSON.
-  if (detailCol) {
+  // Re-render: ahora son DOS columnas separadas — detail (sección 1) y cobros (sección 2)
+  const cobrosCol = wrapper.querySelector('.hu-col-cobros');
+  if (detailCol || cobrosCol) {
     const syn = huRowToSyntheticBooking(r);
-    if (syn) detailCol.innerHTML = lgBuildCombinedDetailColumn(syn, r);
-    detailCol.style.animation = 'hu-fade-in 280ms cubic-bezier(.16,1,.3,1)';
-    setTimeout(() => { detailCol.style.animation = ''; }, 300);
+    if (syn) {
+      if (detailCol) detailCol.innerHTML = lgBuildSection1DetailHtml(syn, r);
+      if (cobrosCol) cobrosCol.innerHTML = lgBuildSection2CobrosHtml(syn, r);
+    }
+    if (detailCol) {
+      detailCol.style.animation = 'hu-fade-in 280ms cubic-bezier(.16,1,.3,1)';
+      setTimeout(() => { detailCol.style.animation = ''; }, 300);
+    }
   }
 };
 
