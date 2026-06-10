@@ -13063,18 +13063,29 @@ function lgBuildCombinedDetailColumn(b, huesped) {
     ${fldRow('¿Requiere factura?', reqFactChip || '—')}
     ${fldRow('Comentarios', comen ? `<div style="font-size:12px;line-height:1.5;background:#f8fafc;padding:8px 10px;border-radius:6px;border-left:3px solid #94a3b8;font-style:italic;color:#334155">${esc(comen)}</div>` : '—')}`;
 
-  // ─── Sección 2: Líneas de cobro Lodgify ───
-  // Agrupamos LineItems por categoría (RoomRate / Fee / Tax) — el campo
-  // li.kind viene de Lodgify y se traduce a TARIFA HOSPEDAJE / TARIFA
-  // LIMPIEZA / IMPUESTOS respectivamente. Cualquier otro kind se ignora.
+  // ─── Sección 2: Líneas de cobro ───
+  // Prioridad 1: Lodgify LineItemsJSON agrupado por kind (RoomRate / Fee /
+  // Tax). Prioridad 2 (fallback): campos de la hoja Reservaciones
+  // ($ Noches, $ Cuota de limpieza, ($) Monto Total pagado / $ Monto
+  // facturado Total). Cuando ambos están vacíos → "—" / N/A.
   const lineItems = b.LineItems || [];
   const sumKind = (matcher) => lineItems
     .filter(li => matcher(String(li.kind || '').toLowerCase()))
     .reduce((acc, li) => acc + (Number(li.gross) || 0), 0);
-  const tarifaHosp  = sumKind(k => k.includes('roomrate') || k.includes('room'));
-  const tarifaLimp  = sumKind(k => k.includes('fee') || k.includes('clean') || k.includes('limpieza'));
-  const impuestos   = sumKind(k => k.includes('tax') || k.includes('vat') || k.includes('iva'));
-  const totalCobros = Number(b.Gross) || (tarifaHosp + tarifaLimp + impuestos);
+  const numFromHu = (cands) => {
+    if (!huesped) return 0;
+    const v = huValueFlexible(huesped, cands);
+    const s = String(v || '').replace(/[^0-9.\-]/g, '');
+    return Number(s) || 0;
+  };
+  const tarifaHosp = sumKind(k => k.includes('roomrate') || k.includes('room'))
+                  || numFromHu(['$ Noches']);
+  const tarifaLimp = sumKind(k => k.includes('fee') || k.includes('clean') || k.includes('limpieza'))
+                  || numFromHu(['$ Cuota de limpieza']);
+  const impuestos  = sumKind(k => k.includes('tax') || k.includes('vat') || k.includes('iva'));
+  const totalCobros = Number(b.Gross)
+                   || (tarifaHosp + tarifaLimp + impuestos)
+                   || numFromHu(['($) Monto Total pagado','$ MONTO TOTAL Airbnb','$ Monto facturado Total']);
   const cur = b.Currency || 'MXN';
   const moneyOrDash = (n) => n > 0 ? `<b style="color:#0f766e">${lgFmtMoney(n, cur)}</b>` : '—';
   const section2 = `
