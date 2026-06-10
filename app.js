@@ -13310,14 +13310,14 @@ window.lgHistorySelect = function(bookingId, outerRecIdQuoted, selectedRecIdQuot
     );
     historyCol.innerHTML = html;
   }
-  // Re-render detail. Si es el matched → fusión Lodgify+huésped; else → solo huésped.
+  // Re-render detail: SIEMPRE usar la nueva caja unificada
+  // lgBuildCombinedDetailColumn (2 secciones + Líneas de cobro). Si el row
+  // tiene Lodgify Id vinculado, huRowToSyntheticBooking hidrata b.__lodgify
+  // con el booking real → la sección 2 (Tarifa hospedaje, limpieza,
+  // impuestos, total) se llena con LineItemsJSON.
   if (detailCol) {
-    const isMatched = selectedRecId === outerRecId;
-    if (isMatched && booking) {
-      detailCol.innerHTML = lgBuildCombinedDetailColumn(booking, r);
-    } else if (typeof huBuildReservationDetail === 'function') {
-      detailCol.innerHTML = huBuildReservationDetail(r);
-    }
+    const syn = huRowToSyntheticBooking(r);
+    if (syn) detailCol.innerHTML = lgBuildCombinedDetailColumn(syn, r);
     detailCol.style.animation = 'hu-fade-in 280ms cubic-bezier(.16,1,.3,1)';
     setTimeout(() => { detailCol.style.animation = ''; }, 300);
   }
