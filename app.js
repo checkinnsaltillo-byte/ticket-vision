@@ -11792,6 +11792,19 @@ function lodgifyRender() {
   // Cards
   const cont = document.getElementById('lg-cards');
   const empty = document.getElementById('lg-empty');
+
+  // Modo de visualización: lista (default), kanban (4 columnas), table o detail
+  const mode = LG_STATE.viewMode || 'list';
+
+  // En modo "detail" SIEMPRE renderizamos el sidebar (con leyendas de filtros)
+  // aunque la lista filtrada esté vacía — así el usuario puede re-activar
+  // chips desde Ninguna sin perder el control.
+  if (mode === 'detail') {
+    lgBuildDetailView(list, cont);
+    if (empty) empty.classList.add('hidden');
+    return;
+  }
+
   if (!list.length) {
     cont.innerHTML = '';
     if (empty) { empty.textContent = 'Sin reservaciones según los filtros.'; empty.classList.remove('hidden'); }
@@ -11799,14 +11812,10 @@ function lodgifyRender() {
   }
   if (empty) empty.classList.add('hidden');
 
-  // Modo de visualización: lista (default), kanban (4 columnas), table o detail
-  const mode = LG_STATE.viewMode || 'list';
   if (mode === 'kanban') {
     cont.innerHTML = lgBuildKanban(list);
   } else if (mode === 'table') {
     cont.innerHTML = lgBuildTable(list);
-  } else if (mode === 'detail') {
-    lgBuildDetailView(list, cont);
   } else {
     cont.innerHTML = list.map(lgBuildCard).join('');
   }
