@@ -10055,6 +10055,44 @@ function huBuildIdCard(r) {
 }
 
 /** Lista historial de reservaciones del mismo celular. */
+/** Suma Gross (Total Líneas de cobro Lodgify) de los bookings del mismo
+ *  teléfono cuya fecha de llegada caiga dentro del rango [ingreso, salida].
+ *  Devuelve null si no encuentra ningún booking (para caer al fallback). */
+function huComputeLodgifyGrossForStay(reservacion, ingresoRaw, salidaRaw) {
+  const bookings = (typeof LG_STATE !== 'undefined' && LG_STATE && Array.isArray(LG_STATE.bookings))
+    ? LG_STATE.bookings : [];
+  if (!bookings.length) return null;
+  const phone10 = (function(){
+    const s = String(huValueFlexible(reservacion, ['Cel/Whatsapp (principal)','Cel/Whatsapp','Celular']) || '').replace(/\D/g,'');
+    return s.length >= 10 ? s.slice(-10) : '';
+  })();
+  if (!phone10) return null;
+  const toIso = (raw) => {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
+    return '';
+  };
+  const ingIso = toIso(ingresoRaw);
+  const salIso = toIso(salidaRaw);
+  if (!ingIso || !salIso) return null;
+  let sum = 0; let matched = 0;
+  for (const b of bookings) {
+    const bPhone10 = String(b.GuestPhone || '').replace(/\D/g,'').slice(-10);
+    if (bPhone10 !== phone10) continue;
+    const bArrIso = toIso(b.DateArrival);
+    if (!bArrIso) continue;
+    if (bArrIso >= ingIso && bArrIso <= salIso) {
+      sum += Number(b.Gross) || 0;
+      matched++;
+    }
+  }
+  return matched > 0 ? sum : null;
+}
+
 function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
   const cel = huValueFlexible(currentR, ['Cel/Whatsapp (principal)']);
   const list = (allRows || HU_STATE.rows || [])
@@ -10078,7 +10116,15 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
         if (n > 0) noches = String(n);
       }
     }
-    const monto   = huValueFlexible(x, ['$ Monto facturado Total','($) Monto Total pagado']);
+    // Monto = SUMA de Gross (Total de Líneas de cobro) de los bookings
+    // Lodgify del mismo teléfono cuya fecha de llegada caiga dentro del
+    // rango [ingreso, salida] de esta reservación manual. Esto cubre el
+    // caso de un check-in continuo que abarca múltiples bookings Lodgify.
+    // Fallback: el valor del sheet de Reservaciones si no se encuentra
+    // ningún booking Lodgify.
+    let monto = huValueFlexible(x, ['$ Monto facturado Total','($) Monto Total pagado']);
+    const lgGross = huComputeLodgifyGrossForStay(x, ingreso, salida);
+    if (lgGross != null) monto = String(lgGross);
     const status  = huGetFacturaStatus(x);
     const isSel   = xid === selectedRecId;
     // El punto representa estado de la estancia (no de la factura):
