@@ -10957,6 +10957,27 @@ function lgMatchHuesped(booking) {
   return null;
 }
 
+/** Fallback: si NO hay match exacto (phone + fechas), busca CUALQUIER fila
+ *  de huéspedes con el mismo phone (últimos 10 dígitos). Sirve para mostrar
+ *  Perfil + Historial cuando el booking de Lodgify aún no tiene un check-in
+ *  manual asociado (mismas fechas), pero la persona sí existe en el sistema.
+ *  Devuelve la reservación con Fecha de ingreso MÁS RECIENTE como "representante"
+ *  para que huBuildIdCard tenga los datos más actualizados del perfil. */
+function lgFindHuespedRepresentativeByPhone(booking) {
+  const rows = HU_STATE.rows || [];
+  if (!rows.length) return null;
+  const bPhone10 = lgNormalizePhone(booking.GuestPhone).slice(-10);
+  if (bPhone10.length < 10) return null;
+  let best = null;
+  let bestArr = '';
+  for (const h of rows) {
+    if (lgExtractHuespedPhoneTail(h) !== bPhone10) continue;
+    const hArr = String(huValueFlexible(h, ['Fecha de ingreso','Fecha de entrada']) || '').slice(0,10);
+    if (!best || hArr > bestArr) { best = h; bestArr = hArr; }
+  }
+  return best;
+}
+
 /** Recalcula LG_STATE.matches para todos los bookings cacheados. */
 function lgComputeMatches() {
   const map = new Map();
@@ -11830,47 +11851,60 @@ function lgDetailRenderMain(b) {
   const subtitle = document.getElementById('lg-detail-subtitle');
   if (subtitle) subtitle.textContent = `${b.GuestName || 'Sin nombre'} · #${b.Id}`;
   const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
-  // Paso 1: shell rápido. El header es EXACTAMENTE el mismo que el de las
-  // cards de la vista "Lista" (lgBuildCardSummary). Luego vienen el bloque
-  // detalle Lodgify + líneas de cobro + slot huésped.
+  // Fallback: si no hay match exacto (phone+fechas) pero existe alguna otra
+  // reservación con el mismo teléfono, usamos esa persona como "representante"
+  // para llenar Perfil + Historial. La columna Detalle queda con sólo datos
+  // de Lodgify (no hay reservación manual exacta que fusionar).
+  const phoneHuesped = huesped ? null : lgFindHuespedRepresentativeByPhone(b);
+  const effectiveHuesped = huesped || phoneHuesped;
+  // Paso 1: shell rápido.
   try {
-    main.innerHTML = lgBuildDetailShellHtml(b, !!huesped);
+    main.innerHTML = lgBuildDetailShellHtml(b, !!effectiveHuesped);
   } catch (err) {
     console.error('[LG] detail shell error:', err);
     main.innerHTML = `<div style="padding:20px;color:#dc2626">Error: ${esc(err.message||err)}</div>`;
     return;
   }
-  if (!huesped) return; // ya tiene los placeholders + col 3 con Lodgify
+  if (!effectiveHuesped) return; // ya tiene los placeholders + col 3 con Lodgify
   // Paso 2: inyecta el bloque 3-col con datos completos del huésped
   requestAnimationFrame(() => {
     const slot = document.getElementById('lg-huesped-slot');
     if (!slot) return;
-    try { slot.innerHTML = lgBuildHuespedSectionHtml(huesped, b); }
+    try {
+      // Si solo es phone-match (no match exacto), col 3 = Lodgify-only.
+      const bookingArg = huesped ? b : null;
+      slot.innerHTML = lgBuildHuespedSectionHtml(effectiveHuesped, bookingArg, !huesped ? b : null);
+    }
     catch (err) {
       console.error('[LG] detail huesped section error:', err);
       slot.innerHTML = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar datos del huésped.</div>`;
     }
   });
-  // Paso 3: enrich async si no hay fotos
+  // Paso 3: enrich async si no hay fotos (sobre la persona efectiva, sea match
+  // exacto o phone-only)
   const alreadyEnriched = !!(
-    huesped['Link INE frontal'] || huesped['INE frontal'] ||
-    huesped['Link INE trasero'] || huesped['INE trasero'] ||
-    huesped['Link foto vehículo']
+    effectiveHuesped['Link INE frontal'] || effectiveHuesped['INE frontal'] ||
+    effectiveHuesped['Link INE trasero'] || effectiveHuesped['INE trasero'] ||
+    effectiveHuesped['Link foto vehículo']
   );
   if (alreadyEnriched) return;
-  const recId = String(huesped['ID'] || huesped['row_number'] || '');
+  const recId = String(effectiveHuesped['ID'] || effectiveHuesped['row_number'] || '');
   if (!recId) return;
   fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`)
     .then(r => r.json())
     .then(j => {
       if (!j?.ok || !j.record) return;
-      const merged = { ...huesped, ...j.record };
+      const merged = { ...effectiveHuesped, ...j.record };
       const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
       if (idx >= 0) HU_STATE.rows[idx] = merged;
-      LG_STATE.matches.set(String(b.Id), merged);
+      // Sólo actualiza el cache de matches exactos cuando había match exacto.
+      if (huesped) LG_STATE.matches.set(String(b.Id), merged);
       const slot = document.getElementById('lg-huesped-slot');
       if (slot) {
-        try { slot.innerHTML = lgBuildHuespedSectionHtml(merged, b); }
+        try {
+          const bookingArg = huesped ? b : null;
+          slot.innerHTML = lgBuildHuespedSectionHtml(merged, bookingArg, !huesped ? b : null);
+        }
         catch (err) { console.error('[LG] detail huesped re-render error:', err); }
       }
     })
@@ -12663,32 +12697,42 @@ function lgBuildModalLodgifyHtml(b, hasHuesped) {
  *  la caja "Ticket para auto-facturación" y todos los campos.
  *  Se difiere el render con requestAnimationFrame desde lgOpenDetailModal
  *  para no bloquear la apertura del modal. */
-function lgBuildHuespedSectionHtml_real(huesped, booking) {
+/** `huesped`     = persona a mostrar en Perfil + Historial
+ *  `booking`     = booking Lodgify con match EXACTO (phone+fechas). Si se
+ *                  provee, col 3 fusiona Lodgify + huésped.
+ *  `phoneOnlyB`  = booking Lodgify SIN match exacto pero match por teléfono.
+ *                  Col 3 muestra sólo datos Lodgify (sin fusionar con huésped). */
+function lgBuildHuespedSectionHtml_real(huesped, booking, phoneOnlyB) {
   if (!huesped) return '';
   let idCard = '', history = '';
   const matchedRecId = String(huesped['ID']||huesped['row_number']||'');
+  const bookingForHandler = booking || phoneOnlyB;
   try { idCard = (typeof huBuildIdCard === 'function') ? huBuildIdCard(huesped) : ''; }
   catch (e) { console.error('[LG] huBuildIdCard error:', e); idCard = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar perfil</div>`; }
   try {
     history = (typeof huBuildHistoryList === 'function')
       ? huBuildHistoryList(huesped, HU_STATE.rows, matchedRecId, matchedRecId)
       : '';
-    // Reemplaza onclick "huSelectReservation" por nuestro handler propio
-    // que sabe sobre la booking de Lodgify y re-renderiza la col 3
-    // fusionada en lugar de solo el detalle huésped.
-    if (booking && history) {
+    if (bookingForHandler && history) {
       history = history.replace(
         /huSelectReservation\(([^)]+)\)/g,
-        `lgHistorySelect('${esc(String(booking.Id))}',$1)`
+        `lgHistorySelect('${esc(String(bookingForHandler.Id))}',$1)`
       );
     }
   } catch (e) { console.error('[LG] huBuildHistoryList error:', e); history = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar historial</div>`; }
-  // Col 3 fusionada: campos Lodgify + campos huésped + líneas de cobro
+  // Col 3: si hay match exacto → fusión Lodgify+huésped.
+  //        si es phone-only   → sólo Lodgify (sin fusionar con esta persona).
+  //        si no hay booking  → detalle huésped puro.
   let detailFused = '';
-  try { detailFused = booking ? lgBuildCombinedDetailColumn(booking, huesped) : ''; }
-  catch (e) { console.error('[LG] combined detail error:', e); detailFused = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar detalle</div>`; }
+  try {
+    if (booking) {
+      detailFused = lgBuildCombinedDetailColumn(booking, huesped);
+    } else if (phoneOnlyB) {
+      detailFused = lgBuildCombinedDetailColumn(phoneOnlyB, null);
+    }
+  } catch (e) { console.error('[LG] combined detail error:', e); detailFused = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar detalle</div>`; }
   return `
-    <div class="hu-record-body" data-lg-booking-id="${esc(String(booking?.Id||''))}" data-lg-matched-rec-id="${esc(matchedRecId)}" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
+    <div class="hu-record-body" data-lg-booking-id="${esc(String(bookingForHandler?.Id||''))}" data-lg-matched-rec-id="${esc(matchedRecId)}" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
       <div class="hu-col-profile">${idCard}</div>
       <div class="hu-col-history">${history}</div>
       <div class="hu-col-detail">${detailFused}</div>
@@ -12735,7 +12779,7 @@ window.lgHistorySelect = function(bookingId, outerRecIdQuoted, selectedRecIdQuot
 };
 
 /** Alias: la versión "real" reemplaza a la liviana. */
-function lgBuildHuespedSectionHtml(huesped, booking) { return lgBuildHuespedSectionHtml_real(huesped, booking); }
+function lgBuildHuespedSectionHtml(huesped, booking, phoneOnlyB) { return lgBuildHuespedSectionHtml_real(huesped, booking, phoneOnlyB); }
 
 /** Versión liviana legacy (mantenida para compatibilidad si algo la llama). */
 function lgBuildHuespedSectionHtml_lite(huesped) {
