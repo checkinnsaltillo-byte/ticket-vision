@@ -9977,28 +9977,24 @@ function huPhotoBox(url, label, options) {
   const aspectRatio = opt.aspect || '1';
   const height = opt.height;
   const sizeStyle = height ? `height:${height}` : `aspect-ratio:${aspectRatio}`;
-  // Render unificado: SIEMPRE como botón. Si tenemos URL → abre zoom directo.
-  // Si no la tenemos pero pasamos recordId + field → al click hace fetch
-  // lazy de /huespedes-detail, lo guarda en cache y abre el zoom.
-  // Esto elimina el flicker del enrich-and-rerender que había antes.
-  const recId = opt.recordId || '';
-  const field = opt.field || '';
-  const onclickAttr = url
-    ? `event.stopPropagation();huImageZoom('${esc(huDriveThumb(url, 'w1600'))}','${esc(label)}')`
-    : (recId && field
-        ? `event.stopPropagation();huImageZoomLazy('${esc(recId)}','${esc(field)}','${esc(label)}',this)`
-        : '');
-  if (!onclickAttr) return huPhotoPlaceholder(label, icon, height || '110px');
-  const ctaText = url ? '▶ Ver foto' : '⤓ Cargar foto';
+  // Sin URL → texto simple "Foto no disponible", sin caja (cero ruido visual).
+  if (!url) {
+    return `
+      <div style="padding:6px 10px;font-size:10px;color:#94a3b8;font-style:italic;text-align:center;letter-spacing:.02em">
+        ${esc(label)}: foto no disponible
+      </div>`;
+  }
+  // Con URL → botón "Ver foto" que abre el modal de zoom.
+  const full = huDriveThumb(url, 'w1600');
   return `
     <button type="button"
-            onclick="${onclickAttr}"
+            onclick="event.stopPropagation();huImageZoom('${esc(full)}','${esc(label)}')"
             style="${sizeStyle};width:100%;border:1.5px dashed #cbd5e1;border-radius:10px;background:linear-gradient(180deg,#f8fafc,#fff);color:#475569;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px;transition:all 160ms ease"
             onmouseover="this.style.borderColor='#7c3aed';this.style.background='#faf5ff';this.style.color='#5b21b6'"
             onmouseout="this.style.borderColor='#cbd5e1';this.style.background='linear-gradient(180deg,#f8fafc,#fff)';this.style.color='#475569'">
       <div style="font-size:24px;opacity:.7">${icon}</div>
       <div style="font-size:10px;letter-spacing:.04em;color:inherit;font-weight:800;text-transform:uppercase;text-align:center;line-height:1.2">${esc(label)}</div>
-      <div style="font-size:9px;color:#94a3b8;font-weight:700">${ctaText}</div>
+      <div style="font-size:9px;color:#94a3b8;font-weight:700">▶ Ver foto</div>
     </button>`;
 }
 
@@ -12367,12 +12363,44 @@ function lgDetailRenderMain(b) {
       slot.innerHTML = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar datos del huésped.</div>`;
     }
   });
-  // Paso 3 REMOVIDO: antes hacíamos enrich async (fetch /huespedes-detail)
-  // para traer URLs de fotos INE/vehículo y RE-renderizar el slot completo.
-  // Eso causaba flicker visible cada vez que se abría una card y duplicaba
-  // el trabajo de render. Las fotos ahora se cargan ON-DEMAND cuando el
-  // usuario oprime el botón "Ver foto" (huPhotoBox), y el fetch del detail
-  // sucede sólo cuando es necesario (huImageZoomLazy).
+  // Paso 3: enrich lazy SOLO cuando faltan campos clave del formulario
+  // (Hora estimada de llegada, Nombres de huéspedes, Motivo, etc.). Esto
+  // ocurre cuando el Apps Script de listGuestRecords_ todavía no devuelve
+  // esos campos (versión vieja desplegada). El fetch trae la fila completa
+  // de Reservaciones, la guarda en HU_STATE.rows, e invalida el cache de
+  // synthetics para que el próximo render incluya los datos. Solo se hace
+  // 1 vez por record (flag __huEnriched). Re-render ÚNICO al final.
+  if (!effectiveHuesped['__huEnriched']) {
+    const missingKeyFields = !effectiveHuesped['Nombres de TODOS los huéspedes (separados por comas)']
+                          && !effectiveHuesped['Motivo de tu hospedaje']
+                          && !effectiveHuesped['Lodgify Id']
+                          && !effectiveHuesped['$ Noches'];
+    if (missingKeyFields) {
+      const recId = String(effectiveHuesped['ID'] || effectiveHuesped['row_number'] || '');
+      if (recId) {
+        fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`)
+          .then(r => r.json())
+          .then(j => {
+            if (!j?.ok || !j.record) return;
+            const merged = { ...effectiveHuesped, ...j.record, __huEnriched: true };
+            const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
+            if (idx >= 0) HU_STATE.rows[idx] = merged;
+            // Invalida el cache de synthetics
+            LG_STATE.__syntheticCache = null;
+            LG_STATE.__syntheticCacheKey = null;
+            // Re-render del slot UNA sola vez
+            const slot = document.getElementById('lg-huesped-slot');
+            if (slot) {
+              try {
+                const bookingArg = huesped ? b : null;
+                slot.innerHTML = lgBuildHuespedSectionHtml(merged, bookingArg, !huesped ? b : null);
+              } catch (err) { console.error('[LG] enrich re-render error:', err); }
+            }
+          })
+          .catch(e => console.warn('[LG] detail enrich fail:', e.message));
+      }
+    }
+  }
 }
 
 /** Construye las 4 columnas: Salida hoy · Activa · Entrada hoy · Próxima.
