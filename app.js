@@ -12193,6 +12193,25 @@ function lgBuildKanban(list) {
 }
 
 /** Borra todos los filtros y vuelve al estado por defecto. */
+/** Refresca AMBOS caches (Lodgify + Reservaciones) y recalcula matches.
+ *  Útil cuando agregas/editas filas manualmente en el sheet sin reabrir la
+ *  app. (Antes el botón Refrescar solo recargaba Lodgify, dejando
+ *  HU_STATE.rows con datos viejos del Reservaciones.) */
+window.lgRefreshAll = async function() {
+  try {
+    await Promise.all([
+      lodgifyLoad(true),
+      huespedesLoad(true),
+    ]);
+    if (LG_STATE.loaded && HU_STATE.loaded) {
+      lgComputeMatches();
+      lodgifyRender();
+    }
+  } catch (e) {
+    console.warn('[LG] refresh-all error:', e?.message || e);
+  }
+};
+
 window.lgClearFilters = function() {
   // Multi-select: todo seleccionado = sin filtro
   ['programacion','source','status','propiedad','factura'].forEach(id => {
