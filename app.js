@@ -9973,6 +9973,77 @@ window.huPhotoImgLoaded = function(img) {
 /** Construye una foto-thumb con click→zoom. Si no hay url, devuelve placeholder. */
 function huPhotoBox(url, label, options) {
   const opt = options || {};
+  const icon = opt.icon || '📷';
+  const aspectRatio = opt.aspect || '1';
+  const height = opt.height;
+  const sizeStyle = height ? `height:${height}` : `aspect-ratio:${aspectRatio}`;
+  // Render unificado: SIEMPRE como botón. Si tenemos URL → abre zoom directo.
+  // Si no la tenemos pero pasamos recordId + field → al click hace fetch
+  // lazy de /huespedes-detail, lo guarda en cache y abre el zoom.
+  // Esto elimina el flicker del enrich-and-rerender que había antes.
+  const recId = opt.recordId || '';
+  const field = opt.field || '';
+  const onclickAttr = url
+    ? `event.stopPropagation();huImageZoom('${esc(huDriveThumb(url, 'w1600'))}','${esc(label)}')`
+    : (recId && field
+        ? `event.stopPropagation();huImageZoomLazy('${esc(recId)}','${esc(field)}','${esc(label)}',this)`
+        : '');
+  if (!onclickAttr) return huPhotoPlaceholder(label, icon, height || '110px');
+  const ctaText = url ? '▶ Ver foto' : '⤓ Cargar foto';
+  return `
+    <button type="button"
+            onclick="${onclickAttr}"
+            style="${sizeStyle};width:100%;border:1.5px dashed #cbd5e1;border-radius:10px;background:linear-gradient(180deg,#f8fafc,#fff);color:#475569;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px;transition:all 160ms ease"
+            onmouseover="this.style.borderColor='#7c3aed';this.style.background='#faf5ff';this.style.color='#5b21b6'"
+            onmouseout="this.style.borderColor='#cbd5e1';this.style.background='linear-gradient(180deg,#f8fafc,#fff)';this.style.color='#475569'">
+      <div style="font-size:24px;opacity:.7">${icon}</div>
+      <div style="font-size:10px;letter-spacing:.04em;color:inherit;font-weight:800;text-transform:uppercase;text-align:center;line-height:1.2">${esc(label)}</div>
+      <div style="font-size:9px;color:#94a3b8;font-weight:700">${ctaText}</div>
+    </button>`;
+}
+
+/** Fetch lazy del detalle del huésped para obtener una URL de foto que
+ *  no estaba en HU_STATE.rows. Tras el fetch, abre el modal de zoom. */
+window.huImageZoomLazy = async function(recordId, fieldName, label, btnEl) {
+  if (!recordId) return;
+  // Buffer visual: cambia el texto del botón mientras carga
+  const original = btnEl ? btnEl.innerHTML : '';
+  if (btnEl) {
+    btnEl.style.cursor = 'wait';
+    btnEl.querySelector('div:last-child').textContent = '⏳ Cargando…';
+  }
+  try {
+    const rIdx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === String(recordId));
+    let row = rIdx >= 0 ? HU_STATE.rows[rIdx] : null;
+    // Si ya tenemos la URL en cache, abre directamente
+    const candidateKeys = [fieldName, `Link ${fieldName}`, `Link foto ${fieldName}`];
+    let url = row ? candidateKeys.map(k => row[k]).find(Boolean) : '';
+    if (!url) {
+      const res = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recordId)}`);
+      const j = await res.json();
+      if (!j?.ok || !j.record) throw new Error('No record');
+      const merged = { ...(row||{}), ...j.record };
+      if (rIdx >= 0) HU_STATE.rows[rIdx] = merged;
+      url = candidateKeys.map(k => merged[k]).find(Boolean);
+    }
+    if (!url) {
+      alert('No hay foto disponible para ' + label);
+      return;
+    }
+    huImageZoom(huDriveThumb(url, 'w1600'), label);
+  } catch (e) {
+    alert('Error cargando foto: ' + (e.message || e));
+  } finally {
+    if (btnEl) {
+      btnEl.style.cursor = 'pointer';
+      btnEl.innerHTML = original;
+    }
+  }
+};
+
+// ─── Función original con preview (kept como referencia, no usada) ─────────
+function huPhotoBox_eager(url, label, options) {
+  const opt = options || {};
   const size = opt.size || 'w400';
   const icon = opt.icon || '📷';
   const aspectRatio = opt.aspect || '1';
@@ -10009,6 +10080,7 @@ function huPhotoBox(url, label, options) {
 
 /** Construye la "ID Card" del perfil del huésped (columna izquierda). Tema claro. */
 function huBuildIdCard(r) {
+  const recId    = String(r['ID'] || r['row_number'] || '');
   const nombre   = huValueFlexible(r, ['Nombre del huésped','Nombre de la persona que hizo la reservación']);
   const cel      = huValueFlexible(r, ['Cel/Whatsapp (principal)']);
   const celEmer  = huValueFlexible(r, ['Cel/Whatsapp (contacto de emergencia)']);
@@ -10063,10 +10135,10 @@ function huBuildIdCard(r) {
         <div style="margin-bottom:14px">
           <div style="font-size:9px;letter-spacing:.12em;color:#475569;font-weight:800;margin-bottom:8px">📇 IDENTIFICACIÓN</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            ${huPhotoBox(ineFront, 'INE frontal', { icon: '🪪', height: '140px' })}
-            ${huPhotoBox(ineBack,  'INE trasero', { icon: '🪪', height: '140px' })}
+            ${huPhotoBox(ineFront, 'INE frontal', { icon: '🪪', height: '140px', recordId: recId, field: 'INE frontal' })}
+            ${huPhotoBox(ineBack,  'INE trasero', { icon: '🪪', height: '140px', recordId: recId, field: 'INE trasero' })}
           </div>
-          ${idUnica ? `<div style="margin-top:8px">${huPhotoBox(idUnica, 'Identificación única', { icon: '🆔', height: '120px' })}</div>` : ''}
+          ${huPhotoBox(idUnica, 'Identificación única', { icon: '🆔', height: '120px', recordId: recId, field: 'Identificación única' })}
         </div>
 
         <!-- Contacto -->
@@ -10108,7 +10180,7 @@ function huBuildIdCard(r) {
         ${tieneVehInfo ? `
         <div style="padding:10px 12px;background:linear-gradient(180deg,#f5f3ff,#fff);border:1px solid #ddd6fe;border-radius:10px">
           <div style="font-size:9px;letter-spacing:.12em;color:#6d28d9;font-weight:800;margin-bottom:8px">🚗 VEHÍCULO</div>
-          ${fotoVeh ? `<div style="margin-bottom:10px">${huPhotoBox(fotoVeh, 'Foto vehículo', { icon: '🚗', height: '140px' })}</div>` : ''}
+          <div style="margin-bottom:10px">${huPhotoBox(fotoVeh, 'Foto vehículo', { icon: '🚗', height: '140px', recordId: recId, field: 'Foto vehículo' })}</div>
           ${(marcaTxt||modeloTxt) ? `<div style="font-size:13px;color:#0f172a;font-weight:700;margin-bottom:4px">${esc(marcaTxt||'')} ${esc(modeloTxt||'')}</div>` : ''}
           <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px">
             ${colorV ? `<span style="font-size:10px;color:#475569;background:#f1f5f9;padding:2px 8px;border-radius:999px">🎨 ${esc(colorV)}</span>` : ''}
@@ -11681,20 +11753,11 @@ function lgGetHuespedForBooking(b) {
  *  que el huésped completó el formulario. */
 function huHasManualRegistration(r) {
   if (!r) return false;
-  const manualOnlyFields = [
-    'Hora estimada de llegada','Hora estimada de salida',
-    'Forma de pago','¿Requiere factura?','Motivo de tu hospedaje',
-    'Razón social','RFC','Régimen fiscal','Código Postal',
-    'Tipo de identificación','INE frontal','Link INE frontal',
-    'Nombres de TODOS los huéspedes (separados por comas)',
-    'Cel/Whatsapp (contacto de emergencia)',
-    'ID_Vehiculo','Marca vehículo','Placas',
-  ];
-  for (const k of manualOnlyFields) {
-    const v = r[k];
-    if (v != null && String(v).trim() !== '') return true;
-  }
-  return false;
+  // Solo el campo "Nombres de TODOS los huéspedes (separados por comas)"
+  // es señal inequívoca: solo aparece cuando el huésped lo escribió en
+  // el formulario de check-in. La propagación de Lodgify lo deja vacío.
+  const v = r['Nombres de TODOS los huéspedes (separados por comas)'];
+  return v != null && String(v).trim() !== '';
 }
 
 function lgBookingFacturaState(b) {
@@ -11943,9 +12006,20 @@ function lodgifyRender() {
   }
   // En modo "detail" el sidebar muestra Reservaciones (no Lodgify), respetando
   // el mismo diseño de cards (synthetic bookings con mismos campos).
-  const detailSource = (mode === 'detail')
-    ? (HU_STATE.rows || []).map(huRowToSyntheticBooking).filter(Boolean)
-    : null;
+  // Cache de la lista de synthetic bookings: invalidate solo cuando cambie
+  // el tamaño de HU_STATE.rows o LG_STATE.bookings. Construir 785 sintéticos
+  // por cada filter/click es prohibitivo (≈300ms por re-render).
+  let detailSource = null;
+  if (mode === 'detail') {
+    const hu = HU_STATE.rows || [];
+    const lg = LG_STATE.bookings || [];
+    const cacheKey = `${hu.length}|${lg.length}`;
+    if (!LG_STATE.__syntheticCache || LG_STATE.__syntheticCacheKey !== cacheKey) {
+      LG_STATE.__syntheticCache = hu.map(huRowToSyntheticBooking).filter(Boolean);
+      LG_STATE.__syntheticCacheKey = cacheKey;
+    }
+    detailSource = LG_STATE.__syntheticCache;
+  }
   const list = lgGetFiltered(detailSource);
   // Memoriza la lista filtrada actual para que el Historial use exactamente
   // los mismos registros (mismas reglas de filtro = misma cuenta).
@@ -12293,35 +12367,12 @@ function lgDetailRenderMain(b) {
       slot.innerHTML = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar datos del huésped.</div>`;
     }
   });
-  // Paso 3: enrich async si no hay fotos (sobre la persona efectiva, sea match
-  // exacto o phone-only)
-  const alreadyEnriched = !!(
-    effectiveHuesped['Link INE frontal'] || effectiveHuesped['INE frontal'] ||
-    effectiveHuesped['Link INE trasero'] || effectiveHuesped['INE trasero'] ||
-    effectiveHuesped['Link foto vehículo']
-  );
-  if (alreadyEnriched) return;
-  const recId = String(effectiveHuesped['ID'] || effectiveHuesped['row_number'] || '');
-  if (!recId) return;
-  fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recId)}`)
-    .then(r => r.json())
-    .then(j => {
-      if (!j?.ok || !j.record) return;
-      const merged = { ...effectiveHuesped, ...j.record };
-      const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
-      if (idx >= 0) HU_STATE.rows[idx] = merged;
-      // Sólo actualiza el cache de matches exactos cuando había match exacto.
-      if (huesped) LG_STATE.matches.set(String(b.Id), merged);
-      const slot = document.getElementById('lg-huesped-slot');
-      if (slot) {
-        try {
-          const bookingArg = huesped ? b : null;
-          slot.innerHTML = lgBuildHuespedSectionHtml(merged, bookingArg, !huesped ? b : null);
-        }
-        catch (err) { console.error('[LG] detail huesped re-render error:', err); }
-      }
-    })
-    .catch(e => console.warn('[LG] detail enrich falló:', e.message));
+  // Paso 3 REMOVIDO: antes hacíamos enrich async (fetch /huespedes-detail)
+  // para traer URLs de fotos INE/vehículo y RE-renderizar el slot completo.
+  // Eso causaba flicker visible cada vez que se abría una card y duplicaba
+  // el trabajo de render. Las fotos ahora se cargan ON-DEMAND cuando el
+  // usuario oprime el botón "Ver foto" (huPhotoBox), y el fetch del detail
+  // sucede sólo cuando es necesario (huImageZoomLazy).
 }
 
 /** Construye las 4 columnas: Salida hoy · Activa · Entrada hoy · Próxima.
