@@ -12460,11 +12460,20 @@ window.lgDetailSelect = function(id) {
   if (b) lgDetailRenderMain(b);
 };
 
+// Token de generación para abortar callbacks asíncronos obsoletos. Cada vez
+// que el usuario clickea otro card, este contador sube; cualquier fetch /
+// requestAnimationFrame en vuelo cuyo token no coincida con el actual debe
+// descartar su resultado (no pisar el DOM con datos del card anterior).
+let LG_RENDER_GEN = 0;
+
 /** Renderiza el contenido principal de la vista Detalles con el mismo
  *  contenido del modal pop-up. */
 function lgDetailRenderMain(b) {
   const main = document.getElementById('lg-detail-main');
   if (!main) return;
+  // Generación de este render — invalida cualquier render anterior en vuelo.
+  const myGen = ++LG_RENDER_GEN;
+  main.dataset.lgGen = String(myGen);
   // Subtítulo en el header del panel: nombre + #ID
   const subtitle = document.getElementById('lg-detail-subtitle');
   if (subtitle) subtitle.textContent = `${b.GuestName || 'Sin nombre'} · #${b.Id}`;
@@ -12478,18 +12487,24 @@ function lgDetailRenderMain(b) {
   // Paso 1: shell rápido.
   try {
     main.innerHTML = lgBuildDetailShellHtml(b, huHasManualRegistration(effectiveHuesped));
+    main.dataset.lgGen = String(myGen); // tras setear innerHTML re-aplicamos el gen
   } catch (err) {
     console.error('[LG] detail shell error:', err);
     main.innerHTML = `<div style="padding:20px;color:#dc2626">Error: ${esc(err.message||err)}</div>`;
     return;
   }
   if (!effectiveHuesped) return; // ya tiene los placeholders + col 3 con Lodgify
+
+  // Helper: verifica si este render sigue siendo el activo. Si el usuario
+  // ya cambió a otro card, abortamos cualquier escritura al DOM.
+  const isStaleGen = () => Number(main.dataset.lgGen) !== myGen;
+
   // Paso 2: inyecta el bloque 3-col con datos completos del huésped
   requestAnimationFrame(() => {
+    if (isStaleGen()) return;
     const slot = document.getElementById('lg-huesped-slot');
     if (!slot) return;
     try {
-      // Si solo es phone-match (no match exacto), col 3 = Lodgify-only.
       const bookingArg = huesped ? b : null;
       slot.innerHTML = lgBuildHuespedSectionHtml(effectiveHuesped, bookingArg, !huesped ? b : null);
     }
@@ -12498,10 +12513,8 @@ function lgDetailRenderMain(b) {
       slot.innerHTML = `<div style="padding:12px;color:#dc2626;font-size:12px">Error al cargar datos del huésped.</div>`;
     }
   });
-  // Paso 3: enrich UNA SOLA VEZ por record (marcado con __huEnriched). Trae
-  // todos los campos extra que /huespedes-list no devuelve: fotos INE,
-  // vehículo, Lodgify Id, Nombres de huéspedes, Motivo, montos detallados,
-  // datos fiscales completos, etc. Re-render del slot UNA sola vez.
+  // Paso 3: enrich UNA SOLA VEZ por record. Gateado por token: si el usuario
+  // cambió de card antes de que llegue la respuesta, descartamos el merge.
   if (!effectiveHuesped['__huEnriched']) {
     const recId = String(effectiveHuesped['ID'] || effectiveHuesped['row_number'] || '');
     if (recId) {
@@ -12509,11 +12522,14 @@ function lgDetailRenderMain(b) {
         .then(r => r.json())
         .then(j => {
           if (!j?.ok || !j.record) return;
+          // Actualizamos el cache local SIEMPRE (no depende del card activo)
           const merged = { ...effectiveHuesped, ...j.record, __huEnriched: true };
           const idx = (HU_STATE.rows || []).findIndex(x => String(x['ID']||x['row_number']||'') === recId);
           if (idx >= 0) HU_STATE.rows[idx] = merged;
           LG_STATE.__syntheticCache = null;
           LG_STATE.__syntheticCacheKey = null;
+          // Pero el re-render del slot SOLO si seguimos en el card original
+          if (isStaleGen()) return;
           const slot = document.getElementById('lg-huesped-slot');
           if (slot) {
             try {
