@@ -11648,6 +11648,8 @@ function lgRebuildFilterOptions() {
       ? '✅ Con factura'
       : '❌ Sin factura',
   });
+  // Slider de fechas — construir si aún no, y aplicar default (mes en curso).
+  lgDateSliderBuild();
 }
 
 /** Aplica filtros locales y devuelve los bookings a mostrar. */
@@ -11659,8 +11661,10 @@ function lgGetFiltered() {
   const prSet  = lgMultiGetSet('propiedad',  LG_FILTER_OPTIONS.propiedad  || []);
   const facSet = lgMultiGetSet('factura',    LG_FILTER_OPTIONS.factura    || []);
   const nb  = (document.getElementById('lg-filtro-nombre')?.value || '').toLowerCase().trim();
-  const feIso = String(document.getElementById('lg-filtro-fecha-entrada')?.value || '').trim(); // YYYY-MM-DD
-  const fsIso = String(document.getElementById('lg-filtro-fecha-salida')?.value || '').trim();  // YYYY-MM-DD
+  // Rango del slider (YYYY-MM-DD). Booking pasa si toca cualquier fecha:
+  // DateArrival <= rangeEnd  AND  DateDeparture >= rangeStart
+  const rIni = String(document.getElementById('lg-filtro-fecha-inicio')?.value || '').trim();
+  const rFin = String(document.getElementById('lg-filtro-fecha-fin')?.value || '').trim();
   // Convierte MM/DD/YYYY (formato Lodgify) a YYYY-MM-DD para comparación
   // por string (independiente de la zona horaria). Esto evita el bug donde
   // "Fecha de salida" no matcheaba por desfase TZ.
@@ -11702,13 +11706,13 @@ function lgGetFiltered() {
       ].join(' ').toLowerCase();
       if (!hay.includes(nb)) return false;
     }
-    // Filtros por fecha exacta de entrada / salida (match día, comparando
-    // strings ISO YYYY-MM-DD para ser inmunes a la zona horaria).
-    if (feIso) {
-      if (mmddToIso(b.DateArrival) !== feIso) return false;
-    }
-    if (fsIso) {
-      if (mmddToIso(b.DateDeparture) !== fsIso) return false;
+    // Filtro por rango del slider: booking pasa si su estancia "toca" el
+    // rango (overlap = DateArrival <= rFin AND DateDeparture >= rIni).
+    if (rIni || rFin) {
+      const arrIso = mmddToIso(b.DateArrival);
+      const depIso = mmddToIso(b.DateDeparture);
+      if (rIni && depIso && depIso < rIni) return false;
+      if (rFin && arrIso && arrIso > rFin) return false;
     }
     return true;
   });
@@ -11842,8 +11846,13 @@ function lgBuildDetailSidebarItem(b, selectedId) {
   // izquierda toma el color del border para resaltar el estado.
   const stayState = lgGetStayState(b.DateArrival, b.DateDeparture) || '';
   const stMeta = LG_STATE_META[stayState] || LG_STATE_META.concluida;
-  const itemBg = stMeta.bg;
+  // Cuando está seleccionado: bg más vivo del mismo tono + sombra tenue en
+  // misma tonalidad (NO más claro ni más obscuro).
+  const itemBg = isSel ? stMeta.bgIntense : stMeta.bg;
   const accentColor = stMeta.border;
+  const activeShadow = isSel
+    ? `box-shadow:0 6px 16px ${stMeta.shadowAccent}, 0 2px 4px ${stMeta.shadowAccent};`
+    : '';
 
   // ─── Top: source + ticket / requiere factura ───
   const sourceChip = lgSourceChipMini(b.Source);
@@ -11885,7 +11894,7 @@ function lgBuildDetailSidebarItem(b, selectedId) {
 
   return `
     <div class="rd-item ${isSel?'rd-active':''}" onclick="lgDetailSelect('${esc(b.Id)}')"
-         style="background:${itemBg};border-left:3px solid ${accentColor};padding-left:9px;display:block">
+         style="background:${itemBg};border-left:3px solid ${accentColor};padding-left:9px;display:block;${activeShadow}">
       <!-- Top: chips Fuente + Ticket/Requiere factura, en línea horizontal sin wrap -->
       ${sourceChip || tktChip ? `
       <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:6px;min-width:0">${sourceChip}${tktChip}</div>` : ''}
@@ -11901,6 +11910,48 @@ function lgBuildDetailSidebarItem(b, selectedId) {
       </div>
       <!-- Bottom: cajas Noches + Tier (última línea) -->
       ${bottomBoxesHtml}
+    </div>`;
+}
+
+/** Construye la leyenda de Programación (5 chips de color + Todas + Ninguna)
+ *  arriba del sidebar "Reservas". Comparte el estado del filtro
+ *  `programacion` con el dropdown global → un click aquí filtra la lista del
+ *  sidebar Y la lista general. */
+function lgBuildProgLegendHtml() {
+  const allValues = LG_FILTER_OPTIONS.programacion || ['salida_hoy','activa','entrada_hoy','proxima','concluida'];
+  lgMultiInitIfNeeded('programacion', allValues);
+  const sel = LG_STATE.multiSel['programacion'] || new Set();
+  const chip = (state) => {
+    const m = LG_STATE_META[state]; if (!m) return '';
+    const active = sel.has(state);
+    return `
+      <button type="button" onclick="event.stopPropagation();lgMultiToggle('programacion','${state}');lodgifyRender()"
+              title="${esc(m.label)}"
+              style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;
+                     border:1.5px solid ${m.border};
+                     background:${active ? m.bgIntense : '#fff'};
+                     color:${active ? m.accentFg : '#94a3b8'};
+                     font-weight:800;font-size:10px;letter-spacing:.02em;cursor:pointer;
+                     transition:transform 120ms ease, box-shadow 120ms ease;
+                     ${active ? `box-shadow:0 2px 6px ${m.shadowAccent};` : 'opacity:.72;'}
+                     white-space:nowrap">
+        <span style="font-size:11px;line-height:1">${m.emoji}</span>${esc(m.label)}
+      </button>`;
+  };
+  const todasBtn = `
+    <button type="button" onclick="event.stopPropagation();lgMultiSetAll('programacion');lodgifyRender()"
+            style="padding:4px 9px;border-radius:999px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#475569;font-weight:800;font-size:10px;cursor:pointer">✓ Todas</button>`;
+  const ningunaBtn = `
+    <button type="button" onclick="event.stopPropagation();lgMultiSetNone('programacion');lodgifyRender()"
+            style="padding:4px 9px;border-radius:999px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#475569;font-weight:800;font-size:10px;cursor:pointer">✕ Ninguna</button>`;
+  return `
+    <div style="padding:8px 12px;border-bottom:1px solid #e2e8f0;background:#fafbfc">
+      <div style="font-size:9px;letter-spacing:.16em;color:#94a3b8;font-weight:800;margin-bottom:6px;text-transform:uppercase">🗓️ Programación · filtro</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+        ${['salida_hoy','activa','entrada_hoy','proxima','concluida'].map(chip).join('')}
+        <span style="width:1px;height:18px;background:#e2e8f0;margin:0 2px"></span>
+        ${todasBtn}${ningunaBtn}
+      </div>
     </div>`;
 }
 
@@ -11920,6 +11971,7 @@ function lgBuildDetailView(list, cont) {
 
   // Sidebar HTML
   const sidebarItems = list.slice(0, 200).map(b => lgBuildDetailSidebarItem(b, selectedId)).join('');
+  const legendHtml = lgBuildProgLegendHtml();
 
   cont.innerHTML = `
     <div class="lg-detail-shell">
@@ -11930,6 +11982,7 @@ function lgBuildDetailView(list, cont) {
             <div class="rd-sidebar-count">${list.length} reserva${list.length===1?'':'s'}</div>
           </div>
         </div>
+        ${legendHtml}
         <div class="rd-list">${sidebarItems || '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>'}</div>
       </aside>
       <div class="lg-detail-panel">
@@ -12077,14 +12130,124 @@ window.lgClearFilters = function() {
     LG_STATE.multiSel[id] = new Set(LG_FILTER_OPTIONS[id] || []);
   });
   // Inputs
-  ['lg-filtro-fecha-entrada','lg-filtro-fecha-salida','lg-filtro-nombre'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
-  });
+  const nb = document.getElementById('lg-filtro-nombre'); if (nb) nb.value = '';
+  // Slider de fechas → restaurar default (mes en curso)
+  lgDateSliderResetToCurrentMonth();
   LG_STATE.sortKey = '';
   LG_STATE.sortDir = '';
   lgRebuildFilterOptions();
   lodgifyRender();
 };
+
+// ─── Slider de rango de fechas ────────────────────────────────────────────
+// Doble thumb arrastrable que reemplaza los inputs "Fecha entrada"/"Salida".
+// Rango total = [hoy - 365d, hoy + 730d]. Default = 1 → último día mes en curso.
+
+const LG_DATE_SLIDER = {
+  minDate: null, // Date
+  maxDate: null, // Date
+  startDay: 0,   // offset (días) desde minDate
+  endDay: 0,
+  built: false,
+};
+
+function lgDateSliderDayToIso(off) {
+  const d = new Date(LG_DATE_SLIDER.minDate.getTime());
+  d.setDate(d.getDate() + off);
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+function lgDateSliderIsoToDay(iso) {
+  if (!iso) return 0;
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); if (!m) return 0;
+  const d = new Date(+m[1], +m[2]-1, +m[3]);
+  return Math.round((d - LG_DATE_SLIDER.minDate) / 86400000);
+}
+function lgDateSliderFmtLabel(iso) {
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); if (!m) return iso;
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${+m[3]} ${meses[+m[2]-1]} ${m[1]}`;
+}
+
+function lgDateSliderResetToCurrentMonth() {
+  const now = new Date();
+  const y = now.getFullYear(), mo = now.getMonth();
+  const first = new Date(y, mo, 1);
+  const last  = new Date(y, mo+1, 0); // día 0 del mes siguiente = último del actual
+  const fy = first.getFullYear(), fm = String(first.getMonth()+1).padStart(2,'0'), fd = String(first.getDate()).padStart(2,'0');
+  const ly = last.getFullYear(),  lm = String(last.getMonth()+1).padStart(2,'0'),  ld = String(last.getDate()).padStart(2,'0');
+  const ini = `${fy}-${fm}-${fd}`;
+  const fin = `${ly}-${lm}-${ld}`;
+  const hidIni = document.getElementById('lg-filtro-fecha-inicio');
+  const hidFin = document.getElementById('lg-filtro-fecha-fin');
+  if (hidIni) hidIni.value = ini;
+  if (hidFin) hidFin.value = fin;
+  if (LG_DATE_SLIDER.built && LG_DATE_SLIDER.minDate) {
+    LG_DATE_SLIDER.startDay = lgDateSliderIsoToDay(ini);
+    LG_DATE_SLIDER.endDay   = lgDateSliderIsoToDay(fin);
+    lgDateSliderUpdateUi();
+  }
+}
+
+function lgDateSliderBuild() {
+  const mount = document.getElementById('lg-date-slider-mount');
+  if (!mount || LG_DATE_SLIDER.built) return;
+  // Rango total: 365 días atrás + 730 días adelante (≈ 3 años)
+  const today = new Date(); today.setHours(0,0,0,0);
+  LG_DATE_SLIDER.minDate = new Date(today.getTime() - 365 * 86400000);
+  LG_DATE_SLIDER.maxDate = new Date(today.getTime() + 730 * 86400000);
+  const totalDays = Math.round((LG_DATE_SLIDER.maxDate - LG_DATE_SLIDER.minDate) / 86400000);
+  mount.innerHTML = `
+    <div style="position:relative;height:42px">
+      <!-- Etiquetas extremos -->
+      <div id="lg-ds-lbl-start" style="position:absolute;top:0;left:0;font-size:11px;font-weight:800;color:#0f766e;background:#ccfbf1;border:1px solid #5eead4;padding:1px 7px;border-radius:6px;pointer-events:none;transform:translateX(-50%);white-space:nowrap"></div>
+      <div id="lg-ds-lbl-end" style="position:absolute;top:0;right:0;font-size:11px;font-weight:800;color:#7c3aed;background:#ede9fe;border:1px solid #c4b5fd;padding:1px 7px;border-radius:6px;pointer-events:none;transform:translateX(-50%);white-space:nowrap"></div>
+      <!-- Track + fill -->
+      <div style="position:absolute;top:30px;left:0;right:0;height:6px;background:#e2e8f0;border-radius:999px"></div>
+      <div id="lg-ds-fill" style="position:absolute;top:30px;height:6px;background:linear-gradient(90deg,#14b8a6,#7c3aed);border-radius:999px"></div>
+      <!-- Inputs range overlapping -->
+      <input type="range" id="lg-ds-start" min="0" max="${totalDays}" value="0" step="1"
+             class="lg-date-slider-input" oninput="lgDateSliderOnInput('start',this.value)">
+      <input type="range" id="lg-ds-end"   min="0" max="${totalDays}" value="${totalDays}" step="1"
+             class="lg-date-slider-input" oninput="lgDateSliderOnInput('end',this.value)">
+    </div>`;
+  LG_DATE_SLIDER.built = true;
+  // Estado inicial = mes en curso
+  lgDateSliderResetToCurrentMonth();
+}
+
+window.lgDateSliderOnInput = function(which, val) {
+  let v = Number(val) || 0;
+  let s = LG_DATE_SLIDER.startDay, e = LG_DATE_SLIDER.endDay;
+  if (which === 'start') s = Math.min(v, e);
+  else                   e = Math.max(v, s);
+  LG_DATE_SLIDER.startDay = s;
+  LG_DATE_SLIDER.endDay   = e;
+  const isoIni = lgDateSliderDayToIso(s);
+  const isoFin = lgDateSliderDayToIso(e);
+  const hidIni = document.getElementById('lg-filtro-fecha-inicio');
+  const hidFin = document.getElementById('lg-filtro-fecha-fin');
+  if (hidIni) hidIni.value = isoIni;
+  if (hidFin) hidFin.value = isoFin;
+  lgDateSliderUpdateUi();
+  lodgifyRender();
+};
+
+function lgDateSliderUpdateUi() {
+  const totalDays = Math.round((LG_DATE_SLIDER.maxDate - LG_DATE_SLIDER.minDate) / 86400000) || 1;
+  const sPct = (LG_DATE_SLIDER.startDay / totalDays) * 100;
+  const ePct = (LG_DATE_SLIDER.endDay   / totalDays) * 100;
+  const lblS = document.getElementById('lg-ds-lbl-start');
+  const lblE = document.getElementById('lg-ds-lbl-end');
+  const fill = document.getElementById('lg-ds-fill');
+  const inpS = document.getElementById('lg-ds-start');
+  const inpE = document.getElementById('lg-ds-end');
+  if (lblS) { lblS.textContent = lgDateSliderFmtLabel(lgDateSliderDayToIso(LG_DATE_SLIDER.startDay)); lblS.style.left = `calc(${sPct}% )`; }
+  if (lblE) { lblE.textContent = lgDateSliderFmtLabel(lgDateSliderDayToIso(LG_DATE_SLIDER.endDay));   lblE.style.left = `calc(${ePct}% )`; lblE.style.right = 'auto'; }
+  if (fill) { fill.style.left = `${sPct}%`; fill.style.width = `${Math.max(0,ePct-sPct)}%`; }
+  if (inpS) inpS.value = String(LG_DATE_SLIDER.startDay);
+  if (inpE) inpE.value = String(LG_DATE_SLIDER.endDay);
+}
 
 /** Cambia el modo de vista (lista / kanban / table / detail) y re-renderiza. */
 window.lgSetViewMode = function(mode) {
@@ -13376,11 +13539,16 @@ function lgGetStayState(arrivalMMDD, departureMMDD) {
 
 /** Paleta + etiqueta de cada estado del semáforo de Programación. */
 const LG_STATE_META = {
-  salida_hoy:  { label:'Salida hoy',  emoji:'🔴', border:'#fecaca', bg:'#fef2f2', accentFg:'#991b1b' },
-  activa:      { label:'Activa',      emoji:'🔵', border:'#bfdbfe', bg:'#eff6ff', accentFg:'#1e40af' },
-  entrada_hoy: { label:'Entrada hoy', emoji:'🟢', border:'#bbf7d0', bg:'#f0fdf4', accentFg:'#166534' },
-  proxima:     { label:'Próxima',     emoji:'🟡', border:'#fde68a', bg:'#fffbeb', accentFg:'#92400e' },
-  concluida:   { label:'Concluida',   emoji:'⚪', border:'#cbd5e1', bg:'#f8fafc', accentFg:'#475569' },
+  salida_hoy:  { label:'Salida hoy',  emoji:'🔴', border:'#fecaca', bg:'#fef2f2', accentFg:'#991b1b',
+                 bgIntense:'#fecaca', shadowAccent:'rgba(220,38,38,.22)' },
+  activa:      { label:'Activa',      emoji:'🔵', border:'#bfdbfe', bg:'#eff6ff', accentFg:'#1e40af',
+                 bgIntense:'#bfdbfe', shadowAccent:'rgba(37,99,235,.22)' },
+  entrada_hoy: { label:'Entrada hoy', emoji:'🟢', border:'#bbf7d0', bg:'#f0fdf4', accentFg:'#166534',
+                 bgIntense:'#bbf7d0', shadowAccent:'rgba(22,163,74,.22)' },
+  proxima:     { label:'Próxima',     emoji:'🟡', border:'#fde68a', bg:'#fffbeb', accentFg:'#92400e',
+                 bgIntense:'#fde68a', shadowAccent:'rgba(217,119,6,.22)' },
+  concluida:   { label:'Concluida',   emoji:'⚪', border:'#cbd5e1', bg:'#f8fafc', accentFg:'#475569',
+                 bgIntense:'#cbd5e1', shadowAccent:'rgba(100,116,139,.22)' },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

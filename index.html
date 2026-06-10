@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
   <title>Sistema Financiero | Check Inn Saltillo</title>
-  <link rel="stylesheet" href="styles.css?v=81">
+  <link rel="stylesheet" href="styles.css?v=82">
   <style>
     /* ─── Modo nocturno ─────────────────────────────────────────────── */
     body.dark {
@@ -949,15 +949,15 @@
         <div style="min-width:170px" id="lg-multi-status"></div>
         <div style="min-width:170px" id="lg-multi-propiedad"></div>
         <div style="min-width:170px" id="lg-multi-factura"></div>
-        <div style="min-width:160px">
-          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📥 Fecha de entrada</label>
-          <input type="date" id="lg-filtro-fecha-entrada" onchange="lodgifyRender()"
-                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
-        </div>
-        <div style="min-width:160px">
-          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📤 Fecha de salida</label>
-          <input type="date" id="lg-filtro-fecha-salida" onchange="lodgifyRender()"
-                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">
+        <!-- Slider de rango de fechas (reemplaza los dos inputs Fecha entrada/salida).
+             Default: día 1 → último día del mes en curso. Filtra bookings que
+             "tocan" cualquier fecha del rango. -->
+        <div style="min-width:340px;flex:1.4">
+          <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📅 Rango de fechas (toca el rango)</label>
+          <div id="lg-date-slider-mount" style="padding:6px 4px"></div>
+          <!-- Inputs hidden con la fecha resultante (YYYY-MM-DD); los lee lgGetFiltered. -->
+          <input type="hidden" id="lg-filtro-fecha-inicio" value="">
+          <input type="hidden" id="lg-filtro-fecha-fin" value="">
         </div>
         <div style="min-width:200px;flex:1">
           <label style="display:block;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🔍 Buscar</label>
@@ -1200,6 +1200,6 @@
 
   <!-- PDF.js para previsualizar PDFs como imágenes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="app.js?v=202"></script>
+  <script src="app.js?v=203"></script>
 </body>
 </html>

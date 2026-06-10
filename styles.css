@@ -2457,12 +2457,9 @@ input[type="checkbox"].lg-multi-cb {
   filter: brightness(.96);
 }
 .rd-item.rd-active {
-  /* Misma tonalidad, más viva y saturada (no más obscura).
-     Sombra para dar relieve sin cambiar el matiz. */
-  filter: saturate(2.2) brightness(1.05);
-  box-shadow:
-    0 6px 16px rgba(15, 23, 42, .18),
-    0 2px 4px rgba(15, 23, 42, .08);
+  /* Color e sombra se aplican inline desde JS por estado de programación
+     (LG_STATE_META.bgIntense / shadowAccent). Solo aseguramos el peso visual. */
+  font-weight: 700;
 }
 .rd-item-thumb {
   width: 38px;
@@ -2763,4 +2760,47 @@ input[type="checkbox"].lg-multi-cb {
 @media (max-width: 800px) {
   .lg-detail-shell { grid-template-columns: 1fr; }
   .lg-detail-shell .rd-sidebar { height: 320px !important; min-height: 0 !important; }
+}
+
+/* ─── Slider dual de fechas (Lodgify) ───────────────────────────────────── */
+.lg-date-slider-input {
+  position: absolute;
+  left: 0; right: 0;
+  top: 26px;
+  width: 100%;
+  height: 14px;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: none; /* el track es decorativo; solo el thumb capta clicks */
+  margin: 0;
+}
+.lg-date-slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2.5px solid #0d9488;
+  box-shadow: 0 2px 6px rgba(13,148,136,.35);
+  cursor: grab;
+  pointer-events: auto;
+  margin-top: -2px;
+}
+.lg-date-slider-input::-webkit-slider-thumb:active { cursor: grabbing; }
+.lg-date-slider-input::-moz-range-thumb {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2.5px solid #0d9488;
+  box-shadow: 0 2px 6px rgba(13,148,136,.35);
+  cursor: grab;
+  pointer-events: auto;
+}
+/* Diferenciar visualmente el thumb derecho (end) en púrpura */
+#lg-ds-end::-webkit-slider-thumb { border-color: #7c3aed; box-shadow: 0 2px 6px rgba(124,58,237,.35); }
+#lg-ds-end::-moz-range-thumb     { border-color: #7c3aed; box-shadow: 0 2px 6px rgba(124,58,237,.35); }
+.lg-date-slider-input::-webkit-slider-runnable-track,
+.lg-date-slider-input::-moz-range-track {
+  background: transparent; border: none;
 }
