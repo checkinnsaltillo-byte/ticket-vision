@@ -11640,10 +11640,17 @@ function lgBookingFacturaState(b) {
 function lgRebuildFilterOptions() {
   // Programación: estática
   LG_FILTER_OPTIONS.programacion = ['salida_hoy','activa','entrada_hoy','proxima','concluida'];
-  // Source / Status / Propiedad: valores únicos del cache
-  LG_FILTER_OPTIONS.source    = [...new Set(LG_STATE.bookings.map(b => b.Source).filter(Boolean))].sort();
-  LG_FILTER_OPTIONS.status    = [...new Set(LG_STATE.bookings.map(b => b.Status).filter(Boolean))].sort();
-  LG_FILTER_OPTIONS.propiedad = [...new Set(LG_STATE.bookings.map(b => lgFmtPropiedad(b.HouseName)).filter(v => v && v !== '—'))].sort((a,b) => a.localeCompare(b,'es'));
+  // Source / Status / Propiedad: combinamos valores de Lodgify (LG_STATE)
+  // Y Reservaciones (HU_STATE), porque el sidebar de Detalles ahora muestra
+  // Reservaciones y sus "Medio de reservación" / "Propiedad" pueden tener
+  // valores que NO existen en Lodgify (ej. "Manual local", "Walk-in", etc.).
+  const lgSources = LG_STATE.bookings.map(b => b.Source).filter(Boolean);
+  const huSources = (HU_STATE.rows || []).map(r => r['Medio de reservación']).filter(Boolean);
+  LG_FILTER_OPTIONS.source = [...new Set([...lgSources, ...huSources])].sort();
+  LG_FILTER_OPTIONS.status = [...new Set([...LG_STATE.bookings.map(b => b.Status), 'Booked'].filter(Boolean))].sort();
+  const lgProps = LG_STATE.bookings.map(b => lgFmtPropiedad(b.HouseName));
+  const huProps = (HU_STATE.rows || []).map(r => lgFmtPropiedad(r['Propiedad'] || ''));
+  LG_FILTER_OPTIONS.propiedad = [...new Set([...lgProps, ...huProps].filter(v => v && v !== '—'))].sort((a,b) => a.localeCompare(b,'es'));
   // Factura: 2 valores estáticos
   LG_FILTER_OPTIONS.factura   = ['Con factura', 'Sin factura'];
 
@@ -11664,7 +11671,65 @@ function lgRebuildFilterOptions() {
 }
 
 /** Aplica filtros locales y devuelve los bookings a mostrar. */
-function lgGetFiltered() {
+/** Convierte una fila de Reservaciones a "booking sintético" con la misma
+ *  forma que un Lodgify booking (Source, Status, DateArrival, etc.) para
+ *  reutilizar todo el render del sidebar/detail SIN duplicar código.
+ *  Si la fila tiene "Lodgify Id" y existe el booking real en LG_STATE.bookings,
+ *  hidrata con sus campos (LineItems, Gross real, etc.). */
+function huRowToSyntheticBooking(r) {
+  if (!r) return null;
+  const phone = String(r['Cel/Whatsapp (principal)'] || '');
+  const arrivalRaw = String(r['Fecha de ingreso'] || '');
+  const departureRaw = String(r['Fecha de salida'] || '');
+  // Las fechas en Reservaciones vienen como ISO YYYY-MM-DD; Lodgify formato
+  // MM/DD/YYYY. El render espera MM/DD/YYYY (lgGetStayState, mmddToIso).
+  const toMMDD = (iso) => {
+    const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[2]}/${m[3]}/${m[1]}`;
+    return String(iso || '');
+  };
+  const lodId = String(r['Lodgify Id'] || '').trim();
+  const realLg = lodId ? (LG_STATE.bookings || []).find(b => String(b.Id) === lodId) : null;
+  const arrival   = realLg?.DateArrival   || toMMDD(arrivalRaw);
+  const departure = realLg?.DateDeparture || toMMDD(departureRaw);
+  // Noches: si hay Lodgify, usarlo; si no, calcular de las fechas
+  let nights = Number(r['# Noches']) || Number(realLg?.Nights) || 0;
+  if (!nights && arrival && departure) {
+    const da = arrival.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    const dd = departure.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (da && dd) {
+      const t1 = new Date(+da[3], +da[1]-1, +da[2]).getTime();
+      const t2 = new Date(+dd[3], +dd[1]-1, +dd[2]).getTime();
+      nights = Math.max(0, Math.round((t2 - t1) / 86400000));
+    }
+  }
+  return {
+    Id: String(r['ID'] || r['row_number'] || ''),
+    GuestName: realLg?.GuestName || r['Nombre de la persona que hizo la reservación'] || '',
+    GuestPhone: realLg?.GuestPhone || phone,
+    GuestEmail: realLg?.GuestEmail || r['Correo electrónico'] || '',
+    DateArrival: arrival,
+    DateDeparture: departure,
+    Nights: nights,
+    NumberOfGuests: Number(realLg?.NumberOfGuests || r['# Huéspedes']) || 0,
+    Adults: Number(realLg?.Adults || r['# Huéspedes']) || 0,
+    Children: Number(realLg?.Children) || 0,
+    Source: realLg?.Source || r['Medio de reservación'] || 'Manual',
+    Status: realLg?.Status || 'Booked',
+    HouseName: realLg?.HouseName || r['Propiedad'] || '',
+    Gross: realLg ? (Number(realLg.Gross) || 0) :
+           (Number(r['$ Monto facturado Total']) || Number(r['($) Monto Total pagado']) || 0),
+    Currency: realLg?.Currency || 'MXN',
+    LineItems: realLg?.LineItems || [],
+    ConfirmationCode: realLg?.ConfirmationCode || '',
+    LodgifyId: lodId,
+    // Referencias inversas para el render del detail:
+    __reservacion: r,
+    __lodgify: realLg,
+  };
+}
+
+function lgGetFiltered(sourceList) {
   // Sets de valores activos para cada filtro multi-select (null = no filtra)
   const pgSet = lgMultiGetSet('programacion', LG_FILTER_OPTIONS.programacion || []);
   const srcSet = lgMultiGetSet('source',     LG_FILTER_OPTIONS.source     || []);
@@ -11689,7 +11754,8 @@ function lgGetFiltered() {
   // sí tenían registros en Reservaciones, sin que el usuario lo supiera y
   // dejando inútil la opción "Concluida" del filtro Programación. Ahora se
   // muestra todo por default; usa Programación / fechas para filtrar.
-  const filtered = LG_STATE.bookings.filter(b => {
+  const bookingsSrc = sourceList || LG_STATE.bookings;
+  const filtered = bookingsSrc.filter(b => {
     if (srcSet) {
       if (!srcSet.has(String(b.Source||'').toLowerCase())) return false;
     }
@@ -11790,7 +11856,13 @@ function lgGetFiltered() {
 
 /** Renderiza KPIs + lista de cards. */
 function lodgifyRender() {
-  const list = lgGetFiltered();
+  const mode = LG_STATE.viewMode || 'list';
+  // En modo "detail" el sidebar muestra Reservaciones (no Lodgify), respetando
+  // el mismo diseño de cards (synthetic bookings con mismos campos).
+  const detailSource = (mode === 'detail')
+    ? (HU_STATE.rows || []).map(huRowToSyntheticBooking).filter(Boolean)
+    : null;
+  const list = lgGetFiltered(detailSource);
   // KPIs
   const nights = list.reduce((a,b) => a + (b.Nights || 0), 0);
   const gross  = list.reduce((a,b) => a + (b.Gross  || 0), 0);
@@ -11803,9 +11875,6 @@ function lodgifyRender() {
   // Cards
   const cont = document.getElementById('lg-cards');
   const empty = document.getElementById('lg-empty');
-
-  // Modo de visualización: lista (default), kanban (4 columnas), table o detail
-  const mode = LG_STATE.viewMode || 'list';
 
   // En modo "detail" SIEMPRE renderizamos el sidebar (con leyendas de filtros)
   // aunque la lista filtrada esté vacía — así el usuario puede re-activar
@@ -12085,6 +12154,14 @@ window.lgDetailSelect = function(id) {
       el.style.boxShadow  = '';
     }
   });
+  // En vista Detalles el sidebar muestra Reservaciones (sintéticas). Buscamos
+  // primero en HU_STATE.rows (id = ID de Reservaciones), si no, fallback a
+  // LG_STATE.bookings (id = Lodgify Id) para compat con otras vistas.
+  const r = (HU_STATE.rows || []).find(x => String(x['ID']||x['row_number']||'') === String(id));
+  if (r) {
+    const b = huRowToSyntheticBooking(r);
+    if (b) { lgDetailRenderMain(b); return; }
+  }
   const b = (LG_STATE.bookings || []).find(x => String(x.Id) === String(id));
   if (b) lgDetailRenderMain(b);
 };
@@ -12097,11 +12174,11 @@ function lgDetailRenderMain(b) {
   // Subtítulo en el header del panel: nombre + #ID
   const subtitle = document.getElementById('lg-detail-subtitle');
   if (subtitle) subtitle.textContent = `${b.GuestName || 'Sin nombre'} · #${b.Id}`;
-  const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
-  // Fallback: si no hay match exacto (phone+fechas) pero existe alguna otra
-  // reservación con el mismo teléfono, usamos esa persona como "representante"
-  // para llenar Perfil + Historial. La columna Detalle queda con sólo datos
-  // de Lodgify (no hay reservación manual exacta que fusionar).
+  // Si el booking es "sintético" (originado en Reservaciones), ya trae la
+  // referencia a la fila como __reservacion → match directo. Para el Detalle
+  // fusionado, si la fila tiene Lodgify Id, también traemos el booking real
+  // (b.__lodgify) y lo usamos para Línea de cobro, etc.
+  let huesped = b.__reservacion || LG_STATE.matches?.get(String(b.Id)) || null;
   const phoneHuesped = huesped ? null : lgFindHuespedRepresentativeByPhone(b);
   const effectiveHuesped = huesped || phoneHuesped;
   // Paso 1: shell rápido.
