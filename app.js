@@ -10343,11 +10343,13 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
     const dotPulse  = stayState === 'activa'     ? 'animation:hu-dot-pulse 1.4s ease-in-out infinite;'
                     : stayState === 'salida_hoy' ? 'animation:hu-dot-pulse-strong 1s ease-in-out infinite;'
                     : '';
+    const lgStateMeta = (typeof LG_STATE_META !== 'undefined') ? (LG_STATE_META[stayState] || LG_STATE_META.concluida) : null;
+    const progBorder = lgStateMeta ? lgStateMeta.border : '#e2e8f0';
     return `
       <div onclick="event.stopPropagation();huSelectReservation('${esc(outerCardRecId)}','${esc(xid)}')"
            data-hu-history-id="${esc(xid)}"
            class="hu-history-item ${isSel?'hu-history-active':''}"
-           style="padding:11px 13px;border:none;border-radius:10px;cursor:pointer;background:#fff;transition:all 180ms cubic-bezier(.16,1,.3,1);${isSel?'box-shadow:0 4px 14px rgba(15,23,42,.14);transform:translateX(3px)':'box-shadow:0 1px 2px rgba(15,23,42,.06)'}"
+           style="padding:11px 11px 11px 13px;border:none;border-left:7px solid ${progBorder};border-radius:10px;cursor:pointer;background:#fff;transition:all 180ms cubic-bezier(.16,1,.3,1);${isSel?'box-shadow:0 4px 14px rgba(15,23,42,.14);transform:translateX(3px)':'box-shadow:0 1px 2px rgba(15,23,42,.06)'}"
            onmouseover="if(!this.classList.contains('hu-history-active')){this.style.boxShadow='0 4px 10px rgba(15,23,42,.10)';this.style.transform='translateX(2px)'}"
            onmouseout="if(!this.classList.contains('hu-history-active')){this.style.boxShadow='0 1px 2px rgba(15,23,42,.06)';this.style.transform=''}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -10370,7 +10372,7 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
       <div style="height:4px;background:linear-gradient(90deg,#10b981,#06b6d4,#3b82f6)"></div>
       <div style="padding:14px 16px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:9px;letter-spacing:.18em;color:#64748b;font-weight:800">📚 RESERVAS TOTALES</div>
+          <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800">📚 RESERVAS TOTALES</div>
           <div style="font-size:9px;color:#0d9488;text-transform:uppercase;font-weight:700;padding:2px 8px;background:#ccfbf1;border-radius:999px">${list.length} ${list.length===1?'reserva':'reservas'}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;max-height:680px;padding:8px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0">
@@ -11942,21 +11944,41 @@ function lgRebuildFilterOptions() {
   LG_FILTER_OPTIONS.propiedad = [...new Set([...lgProps, ...huProps].filter(v => v && v !== '—'))].sort((a,b) => a.localeCompare(b,'es'));
   // Factura: 2 valores estáticos
   LG_FILTER_OPTIONS.factura   = ['Con factura', 'Sin factura'];
+  // Meses presentes en bookings + reservaciones (formato "YYYY-MM"). Ordenados
+  // descendente (más recientes primero).
+  const mesesSet = new Set();
+  const addMes = (dateRaw) => {
+    const s = String(dateRaw || '').trim();
+    let m = s.match(/^(\d{4})-(\d{2})/);
+    if (m) { mesesSet.add(`${m[1]}-${m[2]}`); return; }
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) mesesSet.add(`${m[3]}-${String(m[1]).padStart(2,'0')}`);
+  };
+  LG_STATE.bookings.forEach(b => addMes(b.DateArrival));
+  (HU_STATE.rows || []).forEach(r => addMes(r['Fecha de ingreso']));
+  LG_FILTER_OPTIONS.meses = Array.from(mesesSet).sort().reverse();
 
   lgMultiRender('programacion', '🗓️ Programación', LG_FILTER_OPTIONS.programacion, {
     optionRenderer: (v) => { const m = LG_STATE_META[v]; return m ? `${m.emoji} ${esc(m.label)}` : esc(v); },
   });
   lgMultiRender('source',    '🔌 Fuente',     LG_FILTER_OPTIONS.source);
-  // Default Booked + Tentative (solo aplica si existen en los datos)
   lgMultiRender('status',    '📊 Estado',     LG_FILTER_OPTIONS.status, { defaultSelected: ['Booked','Tentative'] });
   lgMultiRender('propiedad', '🏠 Propiedad',  LG_FILTER_OPTIONS.propiedad);
   lgMultiRender('factura',   '📄 Factura',    LG_FILTER_OPTIONS.factura, {
-    optionRenderer: (v) => v === 'Con factura'
-      ? '✅ Con factura'
-      : '❌ Sin factura',
+    optionRenderer: (v) => v === 'Con factura' ? '✅ Con factura' : '❌ Sin factura',
   });
-  // Slider de fechas — construir si aún no, y aplicar default (mes en curso).
-  lgDateSliderBuild();
+  // Meses: default = mes en curso. Formatea como "Enero 2026".
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const fmtMes = (ym) => {
+    const m = String(ym).match(/^(\d{4})-(\d{2})/);
+    return m ? `${meses[+m[2]-1]} ${m[1]}` : ym;
+  };
+  const now = new Date();
+  const defaultMes = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  lgMultiRender('meses', '📅 Meses', LG_FILTER_OPTIONS.meses, {
+    defaultSelected: LG_FILTER_OPTIONS.meses.includes(defaultMes) ? [defaultMes] : [],
+    optionRenderer: (v) => esc(fmtMes(v)),
+  });
 }
 
 /** Aplica filtros locales y devuelve los bookings a mostrar. */
@@ -12032,8 +12054,8 @@ function lgGetFiltered(sourceList) {
   const nb  = (document.getElementById('lg-filtro-nombre')?.value || '').toLowerCase().trim();
   // Rango del slider (YYYY-MM-DD). Booking pasa si toca cualquier fecha:
   // DateArrival <= rangeEnd  AND  DateDeparture >= rangeStart
-  const rIni = String(document.getElementById('lg-filtro-fecha-inicio')?.value || '').trim();
-  const rFin = String(document.getElementById('lg-filtro-fecha-fin')?.value || '').trim();
+  // Filtro de meses: set de "YYYY-MM" seleccionados.
+  const mesSet = lgMultiGetSet('meses', LG_FILTER_OPTIONS.meses || []);
   // Convierte MM/DD/YYYY (formato Lodgify) a YYYY-MM-DD para comparación
   // por string (independiente de la zona horaria). Esto evita el bug donde
   // "Fecha de salida" no matcheaba por desfase TZ.
@@ -12076,13 +12098,12 @@ function lgGetFiltered(sourceList) {
       ].join(' ').toLowerCase();
       if (!hay.includes(nb)) return false;
     }
-    // Filtro por rango del slider: booking pasa si su estancia "toca" el
-    // rango (overlap = DateArrival <= rFin AND DateDeparture >= rIni).
-    if (rIni || rFin) {
+    // Filtro por MESES: booking pasa si la fecha de llegada cae en alguno
+    // de los meses seleccionados (formato YYYY-MM). null = no filtra.
+    if (mesSet) {
       const arrIso = mmddToIso(b.DateArrival);
-      const depIso = mmddToIso(b.DateDeparture);
-      if (rIni && depIso && depIso < rIni) return false;
-      if (rFin && arrIso && arrIso > rFin) return false;
+      const mesArr = arrIso ? arrIso.slice(0,7) : '';
+      if (!mesArr || !mesSet.has(mesArr)) return false;
     }
     return true;
   });
@@ -12126,15 +12147,31 @@ function lgGetFiltered(sourceList) {
     });
     return filtered; // saltar el orden por Programación cuando hay sort explícito
   }
-  // Ordenamiento por Programación: Próxima → Activa → Salida hoy → Concluida.
-  // Dentro de cada grupo, las próximas más cercanas primero, las concluidas
-  // más recientes primero (mismo criterio: fecha de llegada).
+  // Ordenamiento global:
+  //   1) Con factura + Pendiente  (factRank=0)
+  //   2) Con factura + Emitida    (factRank=1)
+  //   3) Resto                    (factRank=2)
+  // Dentro del grupo factura, sub-orden por Programación (Próxima → Activa →
+  // Salida hoy → Concluida) y luego fecha de llegada.
+  const factRankOf = (b) => {
+    const h = lgGetHuespedForBooking(b);
+    if (!h) return 2;
+    const st = (typeof huGetFacturaStatus === 'function') ? huGetFacturaStatus(h) : '';
+    const req = huValueFlexible(h, ['¿Requiere factura?']);
+    const conFact = /s[ií]/i.test(String(req||'')) || st === 'emitida' || st === 'pendiente';
+    if (!conFact) return 2;
+    if (st === 'pendiente') return 0;
+    if (st === 'emitida')   return 1;
+    return 2;
+  };
   const rank = { salida_hoy: 1, activa: 2, entrada_hoy: 3, proxima: 4, concluida: 5 };
   const tsArrival = (b) => {
     const m = String(b.DateArrival||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     return m ? new Date(+m[3], +m[1]-1, +m[2]).getTime() : 0;
   };
   filtered.sort((a, b) => {
+    const fa = factRankOf(a), fb = factRankOf(b);
+    if (fa !== fb) return fa - fb;
     const sa = rank[lgGetStayState(a.DateArrival, a.DateDeparture)] || 99;
     const sb = rank[lgGetStayState(b.DateArrival, b.DateDeparture)] || 99;
     if (sa !== sb) return sa - sb;
@@ -12272,14 +12309,21 @@ function lgBuildDetailSidebarItem(b, selectedId) {
   const hasMatch = huHasManualRegistration(huesped);
   const initials = String(b.GuestName||'?').split(/\s+/).map(w => w[0]||'').slice(0,2).join('').toUpperCase();
 
-  // Color de fondo según estado de programación (tenue) — ya son colores
-  // ligeros en LG_STATE_META.bg. Usamos esos directamente. La franja
-  // izquierda toma el color del border para resaltar el estado.
   const stayState = lgGetStayState(b.DateArrival, b.DateDeparture) || '';
   const stMeta = LG_STATE_META[stayState] || LG_STATE_META.concluida;
-  // Cuando está seleccionado: bg más vivo del mismo tono + sombra tenue en
-  // misma tonalidad (NO más claro ni más obscuro).
-  const itemBg = isSel ? stMeta.bgIntense : stMeta.bg;
+  // BG según factura (NO programación). Programación se mueve al borde
+  // izquierdo más grueso para distinguir cards visualmente sin perder el
+  // canal "factura".
+  //   Con factura + Emitida #X → verde claro
+  //   Con factura + Pendiente  → rojo claro
+  //   Sin factura              → blanco
+  const facStatus = huesped ? ((typeof huGetFacturaStatus === 'function') ? huGetFacturaStatus(huesped) : '') : '';
+  const reqFac = huesped ? huValueFlexible(huesped, ['¿Requiere factura?']) : '';
+  const conFactura = /s[ií]/i.test(String(reqFac||'')) || facStatus === 'emitida' || facStatus === 'pendiente';
+  let itemBg = '#fff';
+  if (conFactura && facStatus === 'emitida')  itemBg = '#dcfce7';      // verde claro
+  else if (conFactura && facStatus === 'pendiente') itemBg = '#fee2e2'; // rojo claro
+  // (sin factura → blanco; default ya)
   const accentColor = stMeta.border;
   const activeShadow = isSel
     ? `box-shadow:0 6px 16px ${stMeta.shadowAccent}, 0 2px 4px ${stMeta.shadowAccent};`
@@ -12323,14 +12367,21 @@ function lgBuildDetailSidebarItem(b, selectedId) {
     } catch (e) { /* silent */ }
   }
 
+  // Programación: punto animado + label + label texto (Activa, Concluida, etc.)
+  const progDot = stayState ? `${stMeta.emoji} <span style="color:${stMeta.accentFg};font-weight:800">${esc(stMeta.label)}</span>` : '';
+
   return `
     <div class="rd-item ${isSel?'rd-active':''}" onclick="lgDetailSelect('${esc(b.Id)}')"
          data-lg-booking-id="${esc(b.Id)}"
          data-lg-state="${stayState||'concluida'}"
-         style="background:${itemBg};border-left:3px solid ${accentColor};padding-left:9px;display:block;${activeShadow}">
-      <!-- Top: chips Fuente + Registrado/Ticket -->
-      ${(sourceChip || tktChip || hasMatch) ? `
-      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:6px;min-width:0">${sourceChip}${hasMatch?'<span style="display:inline-block;padding:1px 7px;border-radius:999px;background:linear-gradient(135deg,#475569,#334155);color:#fff;font-weight:800;font-size:9px;border:1px solid #1e293b;letter-spacing:.04em">REGISTRADO</span>':''}${tktChip}</div>` : ''}
+         style="background:${itemBg};border-left:7px solid ${accentColor};padding-left:9px;display:block;${activeShadow}">
+      <!-- Top: chips Fuente + Registrado/Ticket + Programación inline -->
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:6px;min-width:0">
+        ${sourceChip}
+        ${hasMatch?'<span style="display:inline-block;padding:1px 7px;border-radius:999px;background:linear-gradient(135deg,#475569,#334155);color:#fff;font-weight:800;font-size:9px;border:1px solid #1e293b;letter-spacing:.04em">REGISTRADO</span>':''}
+        ${tktChip}
+        ${progDot ? `<span style="font-size:9px;letter-spacing:.04em;text-transform:uppercase">${progDot}</span>` : ''}
+      </div>
       <!-- Centro: nombre, propiedad, fechas, status, monto. -->
       <div style="min-width:0">
         <div class="rd-item-row1">
@@ -12451,17 +12502,25 @@ function lgBuildDetailView(list, cont) {
   const facturaLegendHtml = lgBuildFacturaLegendHtml();
   const legendHtml = lgBuildProgLegendHtml();
 
+  // Hamburguesa de filtros: predeterminadamente desplegada (LG_STATE.filtersOpen).
+  if (LG_STATE.filtersOpen === undefined) LG_STATE.filtersOpen = true;
+  const filtersExpanded = !!LG_STATE.filtersOpen;
   cont.innerHTML = `
     <div class="lg-detail-shell">
       <aside class="rd-sidebar">
-        <div class="rd-sidebar-header">
+        <div class="rd-sidebar-header" style="display:flex;align-items:center;gap:10px">
+          <button type="button" onclick="lgToggleSidebarFilters(this)"
+                  title="Mostrar/ocultar filtros"
+                  style="border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center">☰</button>
           <div>
             <div class="rd-sidebar-title">Huéspedes</div>
             <div class="rd-sidebar-count">${list.length} huésped${list.length===1?'':'es'}</div>
           </div>
         </div>
-        ${facturaLegendHtml}
-        ${legendHtml}
+        <div id="lg-sidebar-filters" style="${filtersExpanded ? '' : 'display:none'}">
+          ${facturaLegendHtml}
+          ${legendHtml}
+        </div>
         <div class="rd-list">${sidebarItems || '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>'}</div>
       </aside>
       <div class="lg-detail-panel">
@@ -12477,10 +12536,16 @@ function lgBuildDetailView(list, cont) {
 }
 
 /** Click en una card del sidebar de Detalles. */
+window.lgToggleSidebarFilters = function(btn) {
+  LG_STATE.filtersOpen = !LG_STATE.filtersOpen;
+  const box = document.getElementById('lg-sidebar-filters');
+  if (box) box.style.display = LG_STATE.filtersOpen ? '' : 'none';
+};
+
 window.lgDetailSelect = function(id) {
   LG_STATE.detailSelectedId = String(id);
-  // Re-skin de cada item: bg = intenso/normal según selección, + sombra inline
-  // para el seleccionado (preserva scroll del sidebar, no re-genera HTML).
+  // Re-skin de cada item: SOLO sombra/clase activa cambian al cambiar
+  // selección. El BG es de factura (no programación) y NO se debe pisar.
   document.querySelectorAll('.lg-detail-shell .rd-item').forEach(el => {
     const bid = el.getAttribute('data-lg-booking-id');
     const state = el.getAttribute('data-lg-state') || 'concluida';
@@ -12488,11 +12553,10 @@ window.lgDetailSelect = function(id) {
     const isThis = String(bid) === String(id);
     if (isThis) {
       el.classList.add('rd-active');
-      el.style.background = meta.bgIntense;
       el.style.boxShadow  = `0 6px 16px ${meta.shadowAccent}, 0 2px 4px ${meta.shadowAccent}`;
     } else {
       el.classList.remove('rd-active');
-      el.style.background = meta.bg;
+      el.style.background = '';
       el.style.boxShadow  = '';
     }
   });
@@ -12672,14 +12736,16 @@ window.lgRefreshAll = async function() {
 };
 
 window.lgClearFilters = function() {
-  // Multi-select: todo seleccionado = sin filtro
+  // Multi-select: todo seleccionado = sin filtro (excepto meses, que mantiene
+  // el mes en curso para no traer históricos infinitos)
   ['programacion','source','status','propiedad','factura'].forEach(id => {
     LG_STATE.multiSel[id] = new Set(LG_FILTER_OPTIONS[id] || []);
   });
+  const now = new Date();
+  const defMes = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  LG_STATE.multiSel['meses'] = (LG_FILTER_OPTIONS.meses || []).includes(defMes) ? new Set([defMes]) : new Set();
   // Inputs
   const nb = document.getElementById('lg-filtro-nombre'); if (nb) nb.value = '';
-  // Slider de fechas → restaurar default (mes en curso)
-  lgDateSliderResetToCurrentMonth();
   LG_STATE.sortKey = '';
   LG_STATE.sortDir = '';
   lgRebuildFilterOptions();
@@ -12973,15 +13039,18 @@ function lgBuildProfileHeaderHtml(r, palette) {
       </div>`;
   };
 
-  // Bloque Identificación (fotos)
-  const tieneFotos = !!(ineFront || ineBack || idUnica);
-  const idBlock = tieneFotos ? `
+  // Bloque Identificación (fotos) — SOLO renderizamos las cajas que SÍ
+  // tienen URL. Sin URLs, ni siquiera mostramos el bloque.
+  const photoCells = [
+    ineFront ? photo(ineFront, 'INE frontal', '🪪') : '',
+    ineBack  ? photo(ineBack,  'INE trasero', '🪪') : '',
+    idUnica  ? photo(idUnica,  'ID única',    '🆔') : '',
+  ].filter(Boolean);
+  const idBlock = photoCells.length ? `
     <div style="background:rgba(255,255,255,.85);border:1px solid ${palette.border};border-radius:10px;padding:8px 10px;min-width:0">
       <div style="font-size:8px;letter-spacing:.12em;color:#64748b;font-weight:800;margin-bottom:6px;text-transform:uppercase">📇 Identificación${tipoId ? ` · ${esc(tipoId)}`:''}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
-        ${photo(ineFront, 'INE frontal', '🪪')}
-        ${photo(ineBack,  'INE trasero', '🪪')}
-        ${photo(idUnica,  'ID única',    '🆔')}
+      <div style="display:grid;grid-template-columns:repeat(${photoCells.length}, 1fr);gap:5px">
+        ${photoCells.join('')}
       </div>
     </div>` : '';
 
@@ -13050,10 +13119,11 @@ function lgBuildCardSummary(b) {
     : '';
 
   // ─── Si hay match, calculamos los chips y KPIs del módulo huéspedes ───
-  let kpisBarHtml = '';        // barra horizontal con KPIs + tier
-  let belowLineRowHtml = '';   // chips REGISTRADO / Ticket + Llegada/Salida est.
-  let facBadge = '';           // chip "Ticket emitido/pendiente"
-  let montoFacturadoHtml = ''; // bloque Monto Facturado (columna derecha)
+  let kpisBarHtml = '';            // barra horizontal con KPIs
+  let kpisBarHtml_tierInline = ''; // tier inline (sin caja) al lado del nombre
+  let belowLineRowHtml = '';       // chips REGISTRADO / Ticket + Llegada/Salida est.
+  let facBadge = '';               // chip "Ticket emitido/pendiente"
+  let montoFacturadoHtml = '';     // bloque Monto Facturado (columna derecha)
   if (huespedMatch) {
     const status = (typeof huGetFacturaStatus === 'function') ? huGetFacturaStatus(huespedMatch) : '';
     const folio = huValueFlexible(huespedMatch, ['Folio facturapi','Folio Facturapi','Folio']);
@@ -13076,12 +13146,14 @@ function lgBuildCardSummary(b) {
       const stats = huComputeGuestStats(huespedMatch, HU_STATE.rows);
       const score = (typeof huComputeLoyaltyScore === 'function') ? huComputeLoyaltyScore(stats) : 0;
       const tier  = (typeof huGuestTier === 'function') ? huGuestTier(score, stats) : null;
-      const tierBadge = tier ? `
-        <div title="${esc(tier.tooltip)}"
-             style="display:flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;background:${tier.bg};color:${tier.fg};font-weight:800;font-size:9px;letter-spacing:.04em;text-transform:uppercase;border:1.5px solid ${tier.border};box-shadow:0 1px 4px ${tier.shadow}">
-          <span style="font-size:11px">${tier.icon}</span><span>${tier.label}</span>
-          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:14px;padding:0 4px;border-radius:7px;background:rgba(255,255,255,.7);color:${tier.fg};font-size:9px;font-weight:800">${tier.score}</span>
-        </div>` : '';
+      // Tier INLINE (sin caja/fondo) — se inyecta al lado del nombre.
+      kpisBarHtml_tierInline = tier ? `
+        <span title="${esc(tier.tooltip)}" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:${tier.fg};font-weight:800;letter-spacing:.04em;text-transform:uppercase;line-height:1">
+          <span style="font-size:18px">${tier.icon}</span>
+          <span>${tier.label}</span>
+          <span style="font-size:11px;color:#475569;text-transform:none;letter-spacing:0;font-weight:700">· Score final: <b style="color:#0f172a">${tier.score}</b></span>
+        </span>` : '';
+      // KPIs (sin tier — el tier va inline al lado del nombre)
       kpisBarHtml = `
         <div style="display:flex;gap:6px;align-items:stretch;justify-content:space-between;margin-top:6px">
           <div style="flex:1;background:rgba(255,255,255,.9);border:1px solid ${palette.border};border-radius:8px;padding:4px 8px;text-align:center;min-width:0" title="Suma global de noches del huésped">
@@ -13092,15 +13164,10 @@ function lgBuildCardSummary(b) {
             <div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">🧳 Visitas</div>
             <div style="font-size:13px;font-weight:800;color:#0f172a;line-height:1.1">${stats.visitas}</div>
           </div>
-          <div style="flex:1.4;background:rgba(255,255,255,.9);border:1px solid ${palette.border};border-radius:8px;padding:4px 8px;text-align:center;min-width:0" title="Suma de Monto facturado en todas las reservaciones del huésped">
+          <div style="flex:1.4;background:rgba(255,255,255,.9);border:1px solid ${palette.border};border-radius:8px;padding:4px 8px;text-align:center;min-width:0" title="Suma de los TOTAL de Cobros en todas las reservaciones">
             <div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">💰 Monto</div>
             <div style="font-size:12px;font-weight:800;color:#0f172a;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${stats.montoTotal > 0 ? ((typeof huFmtMonto==='function')?huFmtMonto(stats.montoTotal):('$ '+stats.montoTotal)) : '—'}</div>
           </div>
-          ${tier ? `
-          <div title="${esc(tier.tooltip)}" style="flex:1.2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:4px 8px;border-radius:8px;background:${tier.bg};color:${tier.fg};font-weight:800;letter-spacing:.04em;text-transform:uppercase;border:1px solid ${tier.border};box-shadow:0 1px 4px ${tier.shadow};min-width:0">
-            <div style="display:flex;align-items:center;gap:3px;font-size:10px"><span style="font-size:12px">${tier.icon}</span><span>${tier.label}</span></div>
-            <div style="display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:14px;padding:0 4px;border-radius:7px;background:rgba(255,255,255,.7);color:${tier.fg};font-size:9px;font-weight:800">${tier.score}</div>
-          </div>` : ''}
         </div>`;
     }
     // Bloque "Monto Facturado" (columna derecha, debajo del Ingreso bruto)
@@ -13125,11 +13192,14 @@ function lgBuildCardSummary(b) {
     ? `<a href="https://wa.me/${waPhone}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:700;text-decoration:none">📱 ${esc(b.GuestPhone)}</a>`
     : '';
 
-  // Header MINIMAL — solo nombre grande, KPIs y perfil. Sin chips de source,
-  // ingreso bruto, fechas, propiedad, etc.
+  // Header MINIMAL — solo nombre grande + tier inline a la derecha, KPIs y
+  // perfil debajo. Fondo = mismo tono intenso que la card seleccionada.
   const summary = `
-    <div style="cursor:pointer;padding:12px 14px;background:${palette.bg}">
-      <div style="font-size:22px;font-weight:900;color:#0f172a;line-height:1.15;margin-bottom:10px;letter-spacing:-.01em">${esc(nombre)}</div>
+    <div style="cursor:pointer;padding:12px 14px;background:${meta.bgIntense || palette.bg}">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:10px;flex-wrap:wrap">
+        <div style="font-size:22px;font-weight:900;color:#0f172a;line-height:1.15;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nombre)}</div>
+        ${kpisBarHtml_tierInline}
+      </div>
       ${kpisBarHtml}
       ${huespedMatch ? lgBuildProfileHeaderHtml(huespedMatch, palette) : ''}
     </div>`;
@@ -13519,8 +13589,10 @@ function lgBuildSection1DetailHtml(b, huesped) {
     else reqFactChip = `<span style="display:inline-block;padding:2px 9px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:700;font-size:11px;border:1px solid #cbd5e1">${esc(reqFactRaw)}</span>`;
   }
   return `
-    <div class="hu-resv-detail" data-hu-resv-id="${esc(huesped ? String(huesped['ID']||huesped['row_number']||'') : '')}" style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div class="hu-resv-detail hu-col-card" data-hu-resv-id="${esc(huesped ? String(huesped['ID']||huesped['row_number']||'') : '')}" style="background:#fff;border-radius:16px;padding:0;box-shadow:0 4px 16px rgba(15,23,42,.08);border:1.5px solid #e2e8f0;overflow:hidden">
+      <div style="height:4px;background:linear-gradient(90deg,#f59e0b,#ef4444,#ec4899)"></div>
+      <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800">📑 DETALLE DE RESERVACIÓN</div>
         ${lgStatusBadge(b.Status)}
       </div>
@@ -13539,6 +13611,7 @@ function lgBuildSection1DetailHtml(b, huesped) {
       ${fldRow('Motivo', motivo ? esc(motivo) : '—')}
       ${fldRow('¿Requiere factura?', reqFactChip || '—')}
       ${fldRow('Comentarios', comen ? `<div style="font-size:12px;line-height:1.5;background:#f8fafc;padding:8px 10px;border-radius:6px;border-left:3px solid #94a3b8;font-style:italic;color:#334155">${esc(comen)}</div>` : '—')}
+      </div>
     </div>`;
 }
 
@@ -13594,8 +13667,10 @@ function lgBuildSection2CobrosHtml(b, huesped) {
       </button>
     </div>` : '';
   return `
-    <div class="hu-resv-cobros" style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div class="hu-resv-cobros hu-col-card" style="background:#fff;border-radius:16px;padding:0;box-shadow:0 4px 16px rgba(15,23,42,.08);border:1.5px solid #e2e8f0;overflow:hidden">
+      <div style="height:4px;background:linear-gradient(90deg,#fbbf24,#f59e0b,#a16207)"></div>
+      <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800">💰 COBROS</div>
       </div>
       ${fldRow('Divisa', b.Currency ? `<b>${esc(b.Currency)}</b>` : '—')}
@@ -13608,6 +13683,7 @@ function lgBuildSection2CobrosHtml(b, huesped) {
       </div>
       ${importBtnHtml}
       ${airbnbBoxHtml}
+      </div>
     </div>`;
 }
 
