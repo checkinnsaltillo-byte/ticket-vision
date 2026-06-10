@@ -137,6 +137,17 @@ app.get("/huespedes-list", async (req, res) => {
   }
 });
 
+// Proxy a la hoja "alojamientos" (catálogo de propiedades) — usado por el
+// frontend para homologar nombres entre Reservas_Lodgify y Reservaciones.
+app.get("/alojamientos-list", async (req, res) => {
+  try {
+    const result = await callCheckinAppsScript("list_alojamientos");
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get("/huespedes-filter-options", async (req, res) => {
   try {
     const result = await callCheckinAppsScript("list_filter_options");

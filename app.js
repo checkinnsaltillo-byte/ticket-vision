@@ -339,6 +339,9 @@ try {
 } catch(_) {}
 
 window.addEventListener("DOMContentLoaded", () => {
+  // Carga el catálogo "alojamientos" (background, no bloquea) para que
+  // lgFmtPropiedad pueda homologar nombres en cuanto se necesite.
+  if (typeof lgLoadAlojamientos === 'function') lgLoadAlojamientos();
   // ── LOGIN — contraseñas válidas: acl, ccl, admin (ver VALID_PASSWORDS) ──
   const DEV_MODE = false;
   if (DEV_MODE) {
@@ -11302,12 +11305,123 @@ function lgFmtFecha(mmdd) {
 }
 
 /** Trunca un texto largo de HouseName a algo legible como "Baja California #4". */
-function lgFmtPropiedad(houseName) {
-  const s = String(houseName || '').trim();
+// ─── Catálogo de alojamientos (homologa nombres entre Lodgify ↔ Reservaciones) ──
+// Estado global con índices por HouseId, HouseName, Propiedad, # Departamento.
+// Se carga UNA VEZ al inicio vía /alojamientos-list.
+const ALOJ_STATE = {
+  rows: [],
+  byHouseId: new Map(),       // "602128" → row
+  byHouseName: new Map(),     // lowercase normalized → row
+  byPropDepto: new Map(),     // "propiedad|depto" → row
+  loaded: false,
+  loading: false,
+};
+
+function alojNorm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+async function lgLoadAlojamientos() {
+  if (ALOJ_STATE.loaded || ALOJ_STATE.loading) return;
+  ALOJ_STATE.loading = true;
+  try {
+    const res = await fetch(`${BACKEND}/alojamientos-list`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'fetch failed');
+    ALOJ_STATE.rows = data.rows || [];
+    ALOJ_STATE.byHouseId.clear();
+    ALOJ_STATE.byHouseName.clear();
+    ALOJ_STATE.byPropDepto.clear();
+    for (const r of ALOJ_STATE.rows) {
+      const hid = String(r['HouseId'] || '').trim();
+      if (hid) ALOJ_STATE.byHouseId.set(hid, r);
+      const hname = alojNorm(r['HouseName']);
+      if (hname) ALOJ_STATE.byHouseName.set(hname, r);
+      const prop = alojNorm(r['Propiedad']);
+      const dpt  = alojNorm(r['# Departamento']);
+      if (prop || dpt) ALOJ_STATE.byPropDepto.set(`${prop}|${dpt}`, r);
+    }
+    ALOJ_STATE.loaded = true;
+    console.info(`[ALOJ] catálogo: ${ALOJ_STATE.rows.length} alojamientos`);
+  } catch (e) {
+    console.warn('[ALOJ] no cargó:', e.message);
+  } finally {
+    ALOJ_STATE.loading = false;
+  }
+}
+
+/** Obtiene la fila del catálogo "alojamientos" para una reserva (de Lodgify
+ *  vía HouseId/HouseName, o de Reservaciones vía Propiedad/# Departamento). */
+function lgFindAlojamiento(opts) {
+  if (!ALOJ_STATE.loaded) return null;
+  const { houseId, houseName, propiedad, departamento } = opts || {};
+  if (houseId) {
+    const r = ALOJ_STATE.byHouseId.get(String(houseId).trim());
+    if (r) return r;
+  }
+  if (houseName) {
+    const r = ALOJ_STATE.byHouseName.get(alojNorm(houseName));
+    if (r) return r;
+  }
+  if (propiedad || departamento) {
+    const r = ALOJ_STATE.byPropDepto.get(`${alojNorm(propiedad)}|${alojNorm(departamento)}`);
+    if (r) return r;
+    // Fallback solo por Propiedad si no hay match exacto
+    for (const row of ALOJ_STATE.rows) {
+      if (alojNorm(row['Propiedad']) === alojNorm(propiedad)) return row;
+    }
+  }
+  return null;
+}
+
+/** Formatea el label canónico "Propiedad - #Departamento" (ej. "José
+ *  Cárdenas - #4"). Acepta opts con datos del booking Lodgify y/o del
+ *  registro Reservaciones; prefiere el catálogo "alojamientos" cuando
+ *  matchea, cae a los datos directos si no. */
+function lgFmtPropiedad(arg, opts) {
+  // Compat: si se llama con solo un string (legacy), lo trata como houseName.
+  if (typeof arg === 'string' && opts === undefined) {
+    const aloj = lgFindAlojamiento({ houseName: arg });
+    if (aloj) return formatPropDeptoFromAloj_(aloj);
+    // Fallback al comportamiento viejo: corta antes del "("
+    const s = String(arg || '').trim();
+    if (!s) return '—';
+    const m = s.match(/^([^(]+)/);
+    return (m ? m[1] : s).trim();
+  }
+  const o = (typeof arg === 'object' && arg) ? arg : (opts || {});
+  const aloj = lgFindAlojamiento(o);
+  if (aloj) return formatPropDeptoFromAloj_(aloj);
+  // Fallback: combina los valores crudos
+  const prop = String(o.propiedad || '').trim();
+  const dpt  = String(o.departamento || '').trim();
+  if (prop && dpt) return `${prop} - #${dpt.replace(/^#\s*/, '')}`;
+  if (prop) return prop;
+  // Último recurso: limpiar el houseName
+  const s = String(o.houseName || '').trim();
   if (!s) return '—';
-  // Toma todo hasta el "(" si existe
   const m = s.match(/^([^(]+)/);
   return (m ? m[1] : s).trim();
+}
+
+/** Extrae los campos de propiedad de un booking (real o synthetic) y los
+ *  pasa a lgFmtPropiedad para obtener el label canónico
+ *  "Propiedad - #Departamento". Se llama desde TODO lugar que muestra la
+ *  propiedad — card sidebar, header, detalle, filtros, tabla. */
+function lgPropOf(b) {
+  if (!b) return '—';
+  return lgFmtPropiedad({
+    houseId:      b.HouseId || '',
+    houseName:    b.HouseName || '',
+    propiedad:    b.PropiedadRaw    || (b.__reservacion ? b.__reservacion['Propiedad']      : ''),
+    departamento: b.DepartamentoRaw || (b.__reservacion ? b.__reservacion['# Departamento'] : ''),
+  });
+}
+
+function formatPropDeptoFromAloj_(aloj) {
+  const prop = String(aloj['Propiedad'] || '').trim();
+  const dpt  = String(aloj['# Departamento'] || '').trim().replace(/^#\s*/, '');
+  if (prop && dpt) return `${prop} - #${dpt}`;
+  if (prop) return prop;
+  return String(aloj['HouseName'] || '—').trim();
 }
 
 /** Badge del Source — colores por canal. */
@@ -11792,8 +11906,8 @@ function lgRebuildFilterOptions() {
   const huSources = (HU_STATE.rows || []).map(r => r['Medio de reservación']).filter(Boolean);
   LG_FILTER_OPTIONS.source = [...new Set([...lgSources, ...huSources])].sort();
   LG_FILTER_OPTIONS.status = [...new Set([...LG_STATE.bookings.map(b => b.Status), 'Booked'].filter(Boolean))].sort();
-  const lgProps = LG_STATE.bookings.map(b => lgFmtPropiedad(b.HouseName));
-  const huProps = (HU_STATE.rows || []).map(r => lgFmtPropiedad(r['Propiedad'] || ''));
+  const lgProps = LG_STATE.bookings.map(b => lgPropOf(b));
+  const huProps = (HU_STATE.rows || []).map(r => lgFmtPropiedad({ propiedad: r['Propiedad'] || '', departamento: r['# Departamento'] || '' }));
   LG_FILTER_OPTIONS.propiedad = [...new Set([...lgProps, ...huProps].filter(v => v && v !== '—'))].sort((a,b) => a.localeCompare(b,'es'));
   // Factura: 2 valores estáticos
   LG_FILTER_OPTIONS.factura   = ['Con factura', 'Sin factura'];
@@ -11861,6 +11975,10 @@ function huRowToSyntheticBooking(r) {
     Source: realLg?.Source || r['Medio de reservación'] || 'Manual',
     Status: realLg?.Status || 'Booked',
     HouseName: realLg?.HouseName || r['Propiedad'] || '',
+    HouseId: realLg?.HouseId || '',
+    // Campos crudos para el resolver de propiedad:
+    PropiedadRaw: r['Propiedad'] || '',
+    DepartamentoRaw: r['# Departamento'] || '',
     Gross: realLg ? (Number(realLg.Gross) || 0) :
            (Number(r['$ Monto facturado Total']) || Number(r['($) Monto Total pagado']) || 0),
     Currency: realLg?.Currency || 'MXN',
@@ -11907,7 +12025,7 @@ function lgGetFiltered(sourceList) {
       if (!stSet.has(String(b.Status||'').toLowerCase())) return false;
     }
     if (prSet) {
-      if (!prSet.has(String(lgFmtPropiedad(b.HouseName)||'').toLowerCase())) return false;
+      if (!prSet.has(String(lgPropOf(b)||'').toLowerCase())) return false;
     }
     if (pgSet) {
       const state = lgGetStayState(b.DateArrival, b.DateDeparture);
@@ -11945,7 +12063,7 @@ function lgGetFiltered(sourceList) {
     const accessor = (b) => {
       switch (key) {
         case 'Programacion': return ({ salida_hoy:1, activa:2, entrada_hoy:3, proxima:4, concluida:5 }[lgGetStayState(b.DateArrival, b.DateDeparture)] || 99);
-        case 'Propiedad':    return lgFmtPropiedad(b.HouseName).toLowerCase();
+        case 'Propiedad':    return lgPropOf(b).toLowerCase();
         case 'GuestName':    return String(b.GuestName||'').toLowerCase();
         case 'DateArrival':  return lgParseMMDD(b.DateArrival)?.getTime() || 0;
         case 'DateDeparture':return lgParseMMDD(b.DateDeparture)?.getTime() || 0;
@@ -12172,7 +12290,7 @@ function lgBuildDetailSidebarItem(b, selectedId) {
           <span class="rd-item-date">${esc(rdFmtFechaCorta(b.DateArrival))}</span>
         </div>
         <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}</div>
-        <div style="font-size:11px;color:#475569;font-weight:600;margin-top:2px">${esc(lgFmtPropiedad(b.HouseName) || '—')}</div>
+        <div style="font-size:11px;color:#475569;font-weight:600;margin-top:2px">${esc(lgPropOf(b) || '—')}</div>
         <div class="rd-item-meta"><span>🌙 ${esc(ing)} - ${esc(sal)}</span><span>· 👥 ${b.NumberOfGuests||0}</span></div>
         <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '<span style="color:#94a3b8;font-weight:700;font-size:11px">N/A</span>'}</div>
       </div>
@@ -12586,7 +12704,7 @@ function lgBuildTable(list) {
     { key:'Registrado',     label:'Registrado', formatter: (b) => LG_STATE.matches?.has(String(b.Id))
         ? `<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:linear-gradient(135deg,#475569,#334155);color:#fff;font-weight:800;font-size:10px;border:1px solid #1e293b;letter-spacing:.04em">📋</span>`
         : '<span style="color:#cbd5e1">—</span>' },
-    { key:'Propiedad',      label:'Propiedad', formatter: (b) => esc(lgFmtPropiedad(b.HouseName)) },
+    { key:'Propiedad',      label:'Propiedad', formatter: (b) => esc(lgPropOf(b)) },
     { key:'GuestName',      label:'Nombre del huésped', formatter: (b) => esc(b.GuestName||'—') },
     { key:'DateArrival',    label:'Fecha de entrada', formatter: (b) => esc(b.DateArrival||'—') },
     { key:'DateDeparture',  label:'Fecha de salida', formatter: (b) => esc(b.DateDeparture||'—') },
@@ -12718,7 +12836,7 @@ function lgBuildCard(b) {
  *  (sin el wrapper clickeable). Reusable en el panel de la vista Detalles. */
 function lgBuildCardSummary(b) {
   const nombre = b.GuestName || 'Sin nombre';
-  const prop   = lgFmtPropiedad(b.HouseName);
+  const prop   = lgPropOf(b);
   const ingreso = lgFmtFecha(b.DateArrival);
   const salida  = lgFmtFecha(b.DateDeparture);
   const noches  = b.Nights || 0;
@@ -12870,7 +12988,7 @@ function lgBuildCardSummary(b) {
         ${b.ConfirmationCode ? fldRow('Confirmation code', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.ConfirmationCode)}</code>`) : ''}
         ${fldRow('Fuente', lgSourceBadge(b.Source))}
         ${fldRow('Estado', lgStatusBadge(b.Status))}
-        ${fldRow('Propiedad', esc(b.HouseName))}
+        ${fldRow('Propiedad', esc(lgPropOf(b)))}
         ${b.RoomTypeNames ? fldRow('Tipo de habitación', esc(b.RoomTypeNames)) : ''}
         ${fldRow('Llegada', esc(b.DateArrival))}
         ${fldRow('Salida', esc(b.DateDeparture))}
@@ -13085,7 +13203,7 @@ function lgBuildCombinedDetailColumn(b, huesped) {
     ${registroId ? fldRow('Registro Id', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(registroId)}</code>`) : ''}
     ${fldRow('Fuente',   lgSourceBadge(b.Source))}
     ${fldRow('Estado',   lgStatusBadge(b.Status))}
-    ${fldRow('Propiedad', esc(b.HouseName || ''))}
+    ${fldRow('Propiedad', esc(lgPropOf(b) || ''))}
     ${fldRow('Llegada',  esc(llegada || ''))}
     ${fldRow('Hora llegada', horaIng ? esc(fmtHora(horaIng)) : '—')}
     ${fldRow('Salida',   esc(salida  || ''))}
@@ -13203,7 +13321,7 @@ function lgBuildLodgifyDetailBlock(b) {
       <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📑 DETALLE LODGIFY</div>
       ${fldRow('ID booking', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.Id)}</code>`)}
       ${b.ConfirmationCode ? fldRow('Confirmation code', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.ConfirmationCode)}</code>`) : ''}
-      ${fldRow('Propiedad', esc(b.HouseName))}
+      ${fldRow('Propiedad', esc(lgPropOf(b)))}
       ${b.RoomTypeNames ? fldRow('Tipo de habitación', esc(b.RoomTypeNames)) : ''}
       ${fldRow('Llegada', esc(b.DateArrival))}
       ${fldRow('Salida', esc(b.DateDeparture))}
@@ -13228,7 +13346,7 @@ function lgBuildLodgifyDetailBlock(b) {
 function lgBuildModalLodgifyHtml(b, hasHuesped) {
   const ingreso = lgFmtFecha(b.DateArrival);
   const salida  = lgFmtFecha(b.DateDeparture);
-  const prop    = lgFmtPropiedad(b.HouseName);
+  const prop    = lgPropOf(b);
   const nombre  = b.GuestName || 'Sin nombre';
   const fldRow = (label, value) => `
     <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
@@ -13259,7 +13377,7 @@ function lgBuildModalLodgifyHtml(b, hasHuesped) {
       <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📑 DETALLE LODGIFY</div>
       ${fldRow('ID booking', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.Id)}</code>`)}
       ${b.ConfirmationCode ? fldRow('Confirmation code', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.ConfirmationCode)}</code>`) : ''}
-      ${fldRow('Propiedad', esc(b.HouseName))}
+      ${fldRow('Propiedad', esc(lgPropOf(b)))}
       ${b.RoomTypeNames ? fldRow('Tipo de habitación', esc(b.RoomTypeNames)) : ''}
       ${fldRow('Llegada', esc(b.DateArrival))}
       ${fldRow('Salida', esc(b.DateDeparture))}
@@ -13579,7 +13697,7 @@ window.lgHandleProfileZoom = function(ev) {
 function lgBuildModalContent(b, huesped) {
   const ingreso = lgFmtFecha(b.DateArrival);
   const salida  = lgFmtFecha(b.DateDeparture);
-  const prop    = lgFmtPropiedad(b.HouseName);
+  const prop    = lgPropOf(b);
   const nombre  = b.GuestName || 'Sin nombre';
 
   // Header: source/status + nombre + propiedad/fechas/monto
@@ -13616,7 +13734,7 @@ function lgBuildModalContent(b, huesped) {
       <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📑 DETALLE LODGIFY</div>
       ${fldRow('ID booking', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.Id)}</code>`)}
       ${b.ConfirmationCode ? fldRow('Confirmation code', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.ConfirmationCode)}</code>`) : ''}
-      ${fldRow('Propiedad', esc(b.HouseName))}
+      ${fldRow('Propiedad', esc(lgPropOf(b)))}
       ${b.RoomTypeNames ? fldRow('Tipo de habitación', esc(b.RoomTypeNames)) : ''}
       ${fldRow('Llegada', esc(b.DateArrival))}
       ${fldRow('Salida', esc(b.DateDeparture))}
@@ -13980,7 +14098,7 @@ function rdBuildMainHtml(b, huesped) {
   const statusUi = rdMapStatus(b);
   const ingreso = rdFmtFechaCorta(b.DateArrival);
   const salida  = rdFmtFechaCorta(b.DateDeparture);
-  const propShort = lgFmtPropiedad(b.HouseName);
+  const propShort = lgPropOf(b);
   const propFull  = b.HouseName || '—';
   const total = b.Gross || 0;
   // Pendiente / Pagado — Lodgify no expone esto en el feed, asumimos pendiente=total.
