@@ -12031,7 +12031,7 @@ function lgBuildDetailView(list, cont) {
 
   cont.innerHTML = `
     <div class="lg-detail-shell">
-      <aside class="rd-sidebar" style="min-height:600px">
+      <aside class="rd-sidebar">
         <div class="rd-sidebar-header">
           <div>
             <div class="rd-sidebar-title">Reservas</div>

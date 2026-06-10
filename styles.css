@@ -2712,34 +2712,40 @@ input[type="checkbox"].lg-multi-cb {
 /* ─── Vista "Detalles" de Reservas Lodgify (sidebar + área amplia) ─── */
 .lg-detail-shell {
   display: grid;
-  grid-template-columns: 365px 1fr; /* +30% sobre el ancho original (280) */
+  grid-template-columns: 365px 1fr;
   gap: 14px;
   align-items: stretch;
+  /* Altura fija para que el sidebar muestre exactamente ~10 cards y la caja
+     derecha tenga la misma altura. Cards promedian ~120px + 8px gap, más
+     header (~50) + leyendas Factura (~75) + Programación (~75) = ~1400px. */
+  --lg-detail-h: 1400px;
 }
 .lg-detail-shell .rd-sidebar {
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   overflow: hidden;
   background: #fff;
+  height: var(--lg-detail-h);
+  max-height: var(--lg-detail-h);
 }
 .lg-detail-main {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 22px;
-  min-height: 600px;
-  /* sin max-height / overflow: que el contenido decida la altura.
-     La página entera scrollea, no este box. */
+  height: var(--lg-detail-h);
+  max-height: var(--lg-detail-h);
+  overflow-y: auto;
 }
 
-/* Panel derecho con header propio (que alinea con "Reservas" del sidebar).
-   Crece a la altura natural del contenido (3 columnas Perfil/Historial/
-   Detalle). Sidebar se iguala vía align-items:stretch del grid. */
+/* Panel derecho con header propio. Misma altura que el sidebar; el body
+   scrollea internamente si las 3 columnas exceden esa altura. */
 .lg-detail-panel {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  min-height: 600px;
+  height: var(--lg-detail-h);
+  max-height: var(--lg-detail-h);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2755,6 +2761,7 @@ input[type="checkbox"].lg-multi-cb {
 }
 .lg-detail-panel-body {
   flex: 1;
+  overflow-y: auto;       /* scroll interno cuando 3-col excede altura fija */
   padding: 18px 20px;
 }
 @media (max-width: 800px) {
