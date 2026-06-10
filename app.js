@@ -8943,9 +8943,11 @@ async function huespedesLoad(forceRefetch) {
   if (lbl) lbl.textContent = 'Cargando…';
 
   try {
-    const qs = new URLSearchParams({
-      page: '1',
-      page_size: '10000',
+    // El Apps Script tiene un page_size cap interno de 200. Para tener TODAS
+    // las reservaciones cacheadas (necesario para cross-match con Lodgify
+    // por teléfono), iteramos todas las páginas y concatenamos.
+    const baseParams = {
+      page_size: '200',
       nombre_reservacion: HU_FILTERS.nombre_reservacion,
       medio_reservacion:  HU_FILTERS.medio_reservacion,
       celular_principal:  HU_FILTERS.celular_principal,
@@ -8953,11 +8955,32 @@ async function huespedesLoad(forceRefetch) {
       razon_social:       HU_FILTERS.razon_social,
       forma_pago:         HU_FILTERS.forma_pago,
       correo:             HU_FILTERS.correo,
-    });
-    const res = await fetch(`${BACKEND}/huespedes-list?${qs.toString()}`, { cache: 'no-store' });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || data.message || 'Error al obtener registros');
-    HU_STATE.rows = data.rows || [];
+    };
+    const fetchPage = async (n) => {
+      const qs = new URLSearchParams({ ...baseParams, page: String(n) });
+      const r = await fetch(`${BACKEND}/huespedes-list?${qs.toString()}`, { cache: 'no-store' });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || j.message || 'Error al obtener registros');
+      return j;
+    };
+    const first = await fetchPage(1);
+    const totalPages = Math.max(1, Number(first.total_pages || 1));
+    let rows = (first.rows || []).slice();
+    if (totalPages > 1) {
+      if (lbl) lbl.textContent = `Cargando 1 de ${totalPages}…`;
+      const pageNums = [];
+      for (let p = 2; p <= totalPages; p++) pageNums.push(p);
+      // Paralelo en lotes de 4 para no saturar Apps Script.
+      const BATCH = 4;
+      for (let i = 0; i < pageNums.length; i += BATCH) {
+        const batch = pageNums.slice(i, i + BATCH);
+        const results = await Promise.all(batch.map(fetchPage));
+        results.forEach(j => rows = rows.concat(j.rows || []));
+        if (lbl) lbl.textContent = `Cargando ${Math.min(rows.length, first.total)} de ${first.total}…`;
+      }
+    }
+    const data = { ...first, rows };
+    HU_STATE.rows = data.rows;
     HU_STATE.serverTotal = data.total || 0;
     HU_STATE.totalConFactura = data.total_con_factura || 0;
     HU_STATE.totalSinFactura = data.total_sin_factura || 0;
