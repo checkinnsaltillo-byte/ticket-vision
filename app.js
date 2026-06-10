@@ -10166,37 +10166,27 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
   };
   const cel  = huValueFlexible(currentR, ['Cel/Whatsapp (principal)']);
   const tail = phoneTail(cel);
-  // Mismo rango de fechas que la columna izquierda: filtra las reservas
-  // cuya estancia "toca" cualquier día del rango seleccionado en los
-  // calendarios. Sin rango → muestra todas las del mismo teléfono.
-  const rIni = String(document.getElementById('lg-filtro-fecha-inicio')?.value || '').trim();
-  const rFin = String(document.getElementById('lg-filtro-fecha-fin')?.value || '').trim();
-  const toIso = (raw) => {
-    if (!raw) return '';
-    const s = String(raw).trim();
-    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (m) return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
-    return '';
-  };
-  const touchesRange = (x) => {
-    if (!rIni && !rFin) return true;
-    const a = toIso(huValueFlexible(x, ['Fecha de ingreso']));
-    const d = toIso(huValueFlexible(x, ['Fecha de salida']));
-    if (!a && !d) return true;       // sin fechas → no filtramos
-    if (rIni && d && d < rIni) return false;
-    if (rFin && a && a > rFin) return false;
-    return true;
-  };
-  const list = (allRows || HU_STATE.rows || [])
-    .filter(x => tail && phoneTail(huValueFlexible(x, ['Cel/Whatsapp (principal)'])) === tail)
-    .filter(touchesRange)
-    .sort((a, b) => {
-      const da = huValueFlexible(a, ['Fecha de ingreso']) || '';
-      const db = huValueFlexible(b, ['Fecha de ingreso']) || '';
-      return db.localeCompare(da);
-    });
+  // Si el sidebar de Lodgify Detalles ya tiene una lista filtrada vigente
+  // (LG_STATE.lastFilteredList = synthetic bookings), usarla → el historial
+  // coincide EXACTAMENTE con la columna izquierda (misma cuenta, mismos
+  // registros). Caemos al fallback (filtrar HU_STATE.rows por teléfono)
+  // cuando el historial se renderiza desde el módulo Información de
+  // huéspedes (no en Lodgify).
+  let list;
+  const filtered = LG_STATE && Array.isArray(LG_STATE.lastFilteredList) ? LG_STATE.lastFilteredList : null;
+  if (filtered) {
+    list = filtered
+      .filter(b => b && b.__reservacion && phoneTail(b.GuestPhone || huValueFlexible(b.__reservacion, ['Cel/Whatsapp (principal)'])) === tail)
+      .map(b => b.__reservacion);
+  } else {
+    list = (allRows || HU_STATE.rows || [])
+      .filter(x => tail && phoneTail(huValueFlexible(x, ['Cel/Whatsapp (principal)'])) === tail);
+  }
+  list.sort((a, b) => {
+    const da = huValueFlexible(a, ['Fecha de ingreso']) || '';
+    const db = huValueFlexible(b, ['Fecha de ingreso']) || '';
+    return db.localeCompare(da);
+  });
   const items = list.map(x => {
     const xid     = String(x['ID'] || x['row_number'] || '');
     const ingreso = huValueFlexible(x, ['Fecha de ingreso']);
@@ -10251,7 +10241,7 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
         <div style="font-size:11px;color:#64748b;font-weight:600">${esc(prop || '—')}${depto?' · # '+esc(depto):''}</div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
           <span style="font-size:10px;color:#94a3b8">${esc(noches||'—')} noche${String(noches)==='1'?'':'s'}</span>
-          ${monto ? `<span style="font-size:11px;font-weight:700;color:#0f766e">${huFmtMonto(monto)}</span>` : ''}
+          ${monto ? `<span style="font-size:11px;font-weight:700;color:#0f766e">${huFmtMonto(monto)}</span>` : '<span style="font-size:11px;color:#94a3b8;font-weight:700">N/A</span>'}
         </div>
       </div>`;
   }).join('');
@@ -10261,7 +10251,7 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
       <div style="height:4px;background:linear-gradient(90deg,#10b981,#06b6d4,#3b82f6)"></div>
       <div style="padding:14px 16px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:9px;letter-spacing:.18em;color:#64748b;font-weight:800">📚 HISTORIAL DE RESERVACIONES</div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#64748b;font-weight:800">📚 RESERVAS TOTALES</div>
           <div style="font-size:9px;color:#0d9488;text-transform:uppercase;font-weight:700;padding:2px 8px;background:#ccfbf1;border-radius:999px">${list.length} ${list.length===1?'reserva':'reservas'}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;max-height:680px;padding:8px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0">
@@ -11930,6 +11920,9 @@ function lodgifyRender() {
     ? (HU_STATE.rows || []).map(huRowToSyntheticBooking).filter(Boolean)
     : null;
   const list = lgGetFiltered(detailSource);
+  // Memoriza la lista filtrada actual para que el Historial use exactamente
+  // los mismos registros (mismas reglas de filtro = misma cuenta).
+  LG_STATE.lastFilteredList = list;
   // KPIs
   const nights = list.reduce((a,b) => a + (b.Nights || 0), 0);
   const gross  = list.reduce((a,b) => a + (b.Gross  || 0), 0);
@@ -12065,7 +12058,7 @@ function lgBuildDetailSidebarItem(b, selectedId) {
         <div class="rd-item-name">${esc(b.GuestName||'Sin nombre')}</div>
         <div style="font-size:11px;color:#475569;font-weight:600;margin-top:2px">${esc(lgFmtPropiedad(b.HouseName) || '—')}</div>
         <div class="rd-item-meta"><span>🌙 ${esc(ing)} - ${esc(sal)}</span><span>· 👥 ${b.NumberOfGuests||0}</span></div>
-        <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
+        <div class="rd-item-amount">${b.Gross>0 ? lgFmtMoney(b.Gross, b.Currency) : '<span style="color:#94a3b8;font-weight:700;font-size:11px">N/A</span>'}</div>
       </div>
       <!-- Bottom: cajas Noches + Tier (última línea) -->
       ${bottomBoxesHtml}
@@ -12733,7 +12726,7 @@ function lgBuildCardSummary(b) {
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:110px">
           <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Ingreso bruto</div>
-          <div style="font-size:14px;font-weight:800;color:#111827;line-height:1.1">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '—'}</div>
+          <div style="font-size:14px;font-weight:800;color:#111827;line-height:1.1">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '<span style="color:#94a3b8">N/A</span>'}</div>
           <div>${lgStatusBadge(b.Status)}</div>
           ${montoFacturadoHtml}
         </div>
@@ -12917,7 +12910,7 @@ function lgBuildEmpty3ColLayout(b) {
   return `
     <div class="hu-record-body" style="padding:16px;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:14px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,1fr) minmax(320px,1.4fr);gap:14px;align-items:start">
       <div class="hu-col-profile">${emptyCol('Perfil del huésped', '👤')}</div>
-      <div class="hu-col-history">${emptyCol('Historial de reservaciones', '📚')}</div>
+      <div class="hu-col-history">${emptyCol('Reservas totales', '📚')}</div>
       <div class="hu-col-detail">${lgBuildCombinedDetailColumn(b, null)}</div>
     </div>`;
 }
@@ -13328,7 +13321,7 @@ function lgBuildHuespedSectionHtml_lite(huesped) {
       </div>` : ''}
     </div>`;
 
-  // ─── Col 2: Historial de reservaciones (filtrado por teléfono, máx 30) ───
+  // ─── Col 2: Reservas totales (filtrado por teléfono, máx 30) ───
   const celTail = lgNormalizePhone(cel).slice(-10);
   const history = celTail
     ? (HU_STATE.rows || []).filter(x => lgExtractHuespedPhoneTail(x) === celTail)
@@ -13369,7 +13362,7 @@ function lgBuildHuespedSectionHtml_lite(huesped) {
   const historyCol = `
     <div style="background:#fff;border-radius:14px;padding:14px 16px;border:1.5px solid #e2e8f0;box-shadow:0 2px 8px rgba(15,23,42,.05)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:10px;letter-spacing:.16em;color:#64748b;font-weight:800;text-transform:uppercase">Historial de reservaciones</div>
+        <div style="font-size:10px;letter-spacing:.16em;color:#64748b;font-weight:800;text-transform:uppercase">Reservas totales</div>
         <span style="font-size:9px;padding:2px 8px;border-radius:999px;background:#ccfbf1;color:#0d9488;font-weight:700;letter-spacing:.04em">${history.length} ${history.length===1?'RESERVA':'RESERVAS'}</span>
       </div>
       <div style="background:#f8fafc;border-radius:10px;padding:6px;border:1px solid #e2e8f0">
@@ -13578,7 +13571,7 @@ function lgBuildHuespedProfile(h) {
     </div>`;
 }
 
-/** Historial de reservaciones del huésped (otras estancias del mismo
+/** Reservas totales del huésped (otras estancias del mismo
  *  teléfono). Marca la reservación que coincide con el booking actual. */
 function lgBuildHuespedHistory(h, currentBooking) {
   if (!h) return '';
@@ -13620,7 +13613,7 @@ function lgBuildHuespedHistory(h, currentBooking) {
   }).join('');
   return `
     <div style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0;margin-top:12px">
-      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📚 HISTORIAL DE RESERVACIONES (${list.length})</div>
+      <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800;margin-bottom:10px">📚 RESERVAS TOTALES (${list.length})</div>
       ${items}
     </div>`;
 }
