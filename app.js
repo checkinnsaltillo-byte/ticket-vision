@@ -10160,20 +10160,38 @@ function huComputeLodgifyGrossForStay(reservacion, ingresoRaw, salidaRaw) {
 }
 
 function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
-  // Comparamos por LAST-10-DIGITS, no por igualdad de string. Las filas
-  // pueden tener el mismo número con formatos distintos ("52 8115569120",
-  // "+528115569120", "528115569120"), y la igualdad exacta excluía
-  // hermanos válidos. Esto es lo que hacía que el booking de Lodgify
-  // importado (row 643) no apareciera en el Historial junto a las
-  // reservaciones manuales del mismo huésped.
   const phoneTail = (v) => {
     const s = String(v || '').replace(/\D/g, '');
     return s.length >= 10 ? s.slice(-10) : '';
   };
   const cel  = huValueFlexible(currentR, ['Cel/Whatsapp (principal)']);
   const tail = phoneTail(cel);
+  // Mismo rango de fechas que la columna izquierda: filtra las reservas
+  // cuya estancia "toca" cualquier día del rango seleccionado en los
+  // calendarios. Sin rango → muestra todas las del mismo teléfono.
+  const rIni = String(document.getElementById('lg-filtro-fecha-inicio')?.value || '').trim();
+  const rFin = String(document.getElementById('lg-filtro-fecha-fin')?.value || '').trim();
+  const toIso = (raw) => {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
+    return '';
+  };
+  const touchesRange = (x) => {
+    if (!rIni && !rFin) return true;
+    const a = toIso(huValueFlexible(x, ['Fecha de ingreso']));
+    const d = toIso(huValueFlexible(x, ['Fecha de salida']));
+    if (!a && !d) return true;       // sin fechas → no filtramos
+    if (rIni && d && d < rIni) return false;
+    if (rFin && a && a > rFin) return false;
+    return true;
+  };
   const list = (allRows || HU_STATE.rows || [])
     .filter(x => tail && phoneTail(huValueFlexible(x, ['Cel/Whatsapp (principal)'])) === tail)
+    .filter(touchesRange)
     .sort((a, b) => {
       const da = huValueFlexible(a, ['Fecha de ingreso']) || '';
       const db = huValueFlexible(b, ['Fecha de ingreso']) || '';
@@ -10193,15 +10211,17 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
         if (n > 0) noches = String(n);
       }
     }
-    // Monto = SUMA de Gross (Total de Líneas de cobro) de los bookings
-    // Lodgify del mismo teléfono cuya fecha de llegada caiga dentro del
-    // rango [ingreso, salida] de esta reservación manual. Esto cubre el
-    // caso de un check-in continuo que abarca múltiples bookings Lodgify.
-    // Fallback: el valor del sheet de Reservaciones si no se encuentra
-    // ningún booking Lodgify.
-    let monto = huValueFlexible(x, ['$ Monto facturado Total','($) Monto Total pagado']);
-    const lgGross = huComputeLodgifyGrossForStay(x, ingreso, salida);
-    if (lgGross != null) monto = String(lgGross);
+    // Monto: prioridad 1 = Lodgify "Total" (Líneas de cobro = b.Gross) del
+    // booking vinculado vía "Lodgify Id". Prioridad 2 (fallback) =
+    // "$ Monto facturado Total" del sheet. Para reservaciones que no
+    // tienen relación con Lodgify, sólo aplica el fallback.
+    let monto = '';
+    const lodId = String(x['Lodgify Id'] || '').trim();
+    if (lodId) {
+      const lg = (LG_STATE.bookings || []).find(bk => String(bk.Id) === lodId);
+      if (lg && Number(lg.Gross) > 0) monto = String(lg.Gross);
+    }
+    if (!monto) monto = String(huValueFlexible(x, ['$ Monto facturado Total','($) Monto Total pagado']) || '');
     const status  = huGetFacturaStatus(x);
     const isSel   = xid === selectedRecId;
     // El punto representa estado de la estancia (no de la factura):
@@ -12362,114 +12382,28 @@ window.lgClearFilters = function() {
   lodgifyRender();
 };
 
-// ─── Slider de rango de fechas ────────────────────────────────────────────
-// Doble thumb arrastrable que reemplaza los inputs "Fecha entrada"/"Salida".
-// Rango total = [hoy - 365d, hoy + 730d]. Default = 1 → último día mes en curso.
+// ─── Rango de fechas (dos inputs date) ─────────────────────────────────────
+// Default = día 1 → último día del mes en curso. Filtro de "toca el rango"
+// se aplica en lgGetFiltered (intersección de estancia con [inicio, fin]).
 
-const LG_DATE_SLIDER = {
-  minDate: null, // Date
-  maxDate: null, // Date
-  startDay: 0,   // offset (días) desde minDate
-  endDay: 0,
-  built: false,
-};
-
-function lgDateSliderDayToIso(off) {
-  const d = new Date(LG_DATE_SLIDER.minDate.getTime());
-  d.setDate(d.getDate() + off);
-  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${dd}`;
-}
-function lgDateSliderIsoToDay(iso) {
-  if (!iso) return 0;
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); if (!m) return 0;
-  const d = new Date(+m[1], +m[2]-1, +m[3]);
-  return Math.round((d - LG_DATE_SLIDER.minDate) / 86400000);
-}
-function lgDateSliderFmtLabel(iso) {
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); if (!m) return iso;
-  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-  return `${+m[3]} ${meses[+m[2]-1]} ${m[1]}`;
-}
+const LG_DATE_PICKER = { built: false };
 
 function lgDateSliderResetToCurrentMonth() {
   const now = new Date();
   const y = now.getFullYear(), mo = now.getMonth();
   const first = new Date(y, mo, 1);
-  const last  = new Date(y, mo+1, 0); // día 0 del mes siguiente = último del actual
-  const fy = first.getFullYear(), fm = String(first.getMonth()+1).padStart(2,'0'), fd = String(first.getDate()).padStart(2,'0');
-  const ly = last.getFullYear(),  lm = String(last.getMonth()+1).padStart(2,'0'),  ld = String(last.getDate()).padStart(2,'0');
-  const ini = `${fy}-${fm}-${fd}`;
-  const fin = `${ly}-${lm}-${ld}`;
+  const last  = new Date(y, mo+1, 0);
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const hidIni = document.getElementById('lg-filtro-fecha-inicio');
   const hidFin = document.getElementById('lg-filtro-fecha-fin');
-  if (hidIni) hidIni.value = ini;
-  if (hidFin) hidFin.value = fin;
-  if (LG_DATE_SLIDER.built && LG_DATE_SLIDER.minDate) {
-    LG_DATE_SLIDER.startDay = lgDateSliderIsoToDay(ini);
-    LG_DATE_SLIDER.endDay   = lgDateSliderIsoToDay(fin);
-    lgDateSliderUpdateUi();
-  }
+  if (hidIni) hidIni.value = fmt(first);
+  if (hidFin) hidFin.value = fmt(last);
 }
 
 function lgDateSliderBuild() {
-  const mount = document.getElementById('lg-date-slider-mount');
-  if (!mount || LG_DATE_SLIDER.built) return;
-  // Rango total: 365 días atrás + 730 días adelante (≈ 3 años)
-  const today = new Date(); today.setHours(0,0,0,0);
-  LG_DATE_SLIDER.minDate = new Date(today.getTime() - 365 * 86400000);
-  LG_DATE_SLIDER.maxDate = new Date(today.getTime() + 730 * 86400000);
-  const totalDays = Math.round((LG_DATE_SLIDER.maxDate - LG_DATE_SLIDER.minDate) / 86400000);
-  mount.innerHTML = `
-    <div style="position:relative;height:42px">
-      <!-- Etiquetas extremos -->
-      <div id="lg-ds-lbl-start" style="position:absolute;top:0;left:0;font-size:11px;font-weight:800;color:#0f766e;background:#ccfbf1;border:1px solid #5eead4;padding:1px 7px;border-radius:6px;pointer-events:none;transform:translateX(-50%);white-space:nowrap"></div>
-      <div id="lg-ds-lbl-end" style="position:absolute;top:0;right:0;font-size:11px;font-weight:800;color:#7c3aed;background:#ede9fe;border:1px solid #c4b5fd;padding:1px 7px;border-radius:6px;pointer-events:none;transform:translateX(-50%);white-space:nowrap"></div>
-      <!-- Track + fill -->
-      <div style="position:absolute;top:30px;left:0;right:0;height:6px;background:#e2e8f0;border-radius:999px"></div>
-      <div id="lg-ds-fill" style="position:absolute;top:30px;height:6px;background:linear-gradient(90deg,#14b8a6,#7c3aed);border-radius:999px"></div>
-      <!-- Inputs range overlapping -->
-      <input type="range" id="lg-ds-start" min="0" max="${totalDays}" value="0" step="1"
-             class="lg-date-slider-input" oninput="lgDateSliderOnInput('start',this.value)">
-      <input type="range" id="lg-ds-end"   min="0" max="${totalDays}" value="${totalDays}" step="1"
-             class="lg-date-slider-input" oninput="lgDateSliderOnInput('end',this.value)">
-    </div>`;
-  LG_DATE_SLIDER.built = true;
-  // Estado inicial = mes en curso
+  if (LG_DATE_PICKER.built) return;
+  LG_DATE_PICKER.built = true;
   lgDateSliderResetToCurrentMonth();
-}
-
-window.lgDateSliderOnInput = function(which, val) {
-  let v = Number(val) || 0;
-  let s = LG_DATE_SLIDER.startDay, e = LG_DATE_SLIDER.endDay;
-  if (which === 'start') s = Math.min(v, e);
-  else                   e = Math.max(v, s);
-  LG_DATE_SLIDER.startDay = s;
-  LG_DATE_SLIDER.endDay   = e;
-  const isoIni = lgDateSliderDayToIso(s);
-  const isoFin = lgDateSliderDayToIso(e);
-  const hidIni = document.getElementById('lg-filtro-fecha-inicio');
-  const hidFin = document.getElementById('lg-filtro-fecha-fin');
-  if (hidIni) hidIni.value = isoIni;
-  if (hidFin) hidFin.value = isoFin;
-  lgDateSliderUpdateUi();
-  lodgifyRender();
-};
-
-function lgDateSliderUpdateUi() {
-  const totalDays = Math.round((LG_DATE_SLIDER.maxDate - LG_DATE_SLIDER.minDate) / 86400000) || 1;
-  const sPct = (LG_DATE_SLIDER.startDay / totalDays) * 100;
-  const ePct = (LG_DATE_SLIDER.endDay   / totalDays) * 100;
-  const lblS = document.getElementById('lg-ds-lbl-start');
-  const lblE = document.getElementById('lg-ds-lbl-end');
-  const fill = document.getElementById('lg-ds-fill');
-  const inpS = document.getElementById('lg-ds-start');
-  const inpE = document.getElementById('lg-ds-end');
-  if (lblS) { lblS.textContent = lgDateSliderFmtLabel(lgDateSliderDayToIso(LG_DATE_SLIDER.startDay)); lblS.style.left = `calc(${sPct}% )`; }
-  if (lblE) { lblE.textContent = lgDateSliderFmtLabel(lgDateSliderDayToIso(LG_DATE_SLIDER.endDay));   lblE.style.left = `calc(${ePct}% )`; lblE.style.right = 'auto'; }
-  if (fill) { fill.style.left = `${sPct}%`; fill.style.width = `${Math.max(0,ePct-sPct)}%`; }
-  if (inpS) inpS.value = String(LG_DATE_SLIDER.startDay);
-  if (inpE) inpE.value = String(LG_DATE_SLIDER.endDay);
 }
 
 /** Cambia el modo de vista (lista / kanban / table / detail) y re-renderiza. */
