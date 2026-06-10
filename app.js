@@ -13002,84 +13002,99 @@ function lgBuildCombinedDetailColumn(b, huesped) {
   const fldRow = (label, value) => `
     <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700;align-self:center">${esc(label)}</div>
-      <div style="font-size:13px;color:#1f2937">${value || '—'}</div>
+      <div style="font-size:13px;color:#1f2937">${value === '' || value == null ? '—' : value}</div>
     </div>`;
-  // Campos Lodgify (siempre)
-  const lodgifyFields = `
-    ${fldRow('ID booking', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.Id)}</code>`)}
-    ${b.ConfirmationCode ? fldRow('Confirmation code', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(b.ConfirmationCode)}</code>`) : ''}
-    ${fldRow('Fuente', lgSourceBadge(b.Source))}
-    ${fldRow('Estado', lgStatusBadge(b.Status))}
-    ${fldRow('Propiedad', esc(b.HouseName))}
-    ${b.RoomTypeNames && b.RoomTypeNames !== b.HouseName ? fldRow('Tipo de habitación', esc(b.RoomTypeNames)) : ''}
-    ${fldRow('Llegada', esc(b.DateArrival))}
-    ${fldRow('Salida', esc(b.DateDeparture))}
-    ${fldRow('# Noches', `<b>${b.Nights}</b>`)}
-    ${b.DateCancelled ? fldRow('Cancelada', esc(b.DateCancelled)) : ''}
-    ${fldRow('Personas', `👥 ${b.NumberOfGuests} (Adultos: ${b.Adults}, Niños: ${b.Children}${b.Infants?`, Infantes: ${b.Infants}`:''}${b.Pets?`, Mascotas: ${b.Pets}`:''})`)}
-    ${fldRow('Currency', esc(b.Currency))}
-    ${fldRow('Gross / Net / VAT', `${lgFmtMoney(b.Gross, b.Currency)} / ${lgFmtMoney(b.Net, b.Currency)} / ${lgFmtMoney(b.Vat, b.Currency)}`)}
-    ${b.ChannelBooking ? fldRow('Channel booking', esc(b.ChannelBooking)) : ''}`;
 
-  // Campos huésped (solo si hay match) — agregados como continuación
-  let huespedFields = '';
-  if (huesped) {
-    const v = (cands) => huValueFlexible(huesped, Array.isArray(cands) ? cands : [cands]);
-    const fmtHora = (raw) => {
-      if (!raw) return '—';
-      const s = String(raw).trim();
-      const m = s.match(/T(\d{2}):(\d{2})/);
-      if (m) return `${m[1]}:${m[2]}`;
-      return (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple(s) : esc(s);
-    };
-    const fmtMonto = (raw) => {
-      if (raw == null || String(raw).trim() === '') return '—';
-      return (typeof huFmtMonto === 'function') ? huFmtMonto(raw) : esc(raw);
-    };
-    const horaIng = v(['Hora estimada de llegada','Hora de llegada']);
-    const horaSal = v(['Hora estimada de salida','Hora de salida']);
-    const motivo  = v(['Motivo de tu hospedaje','Motivo']);
-    const formaP  = v(['Forma de pago']);
-    const reqFact = v(['¿Requiere factura?']);
-    const razon   = v(['Razón social']);
-    const rfc     = v(['RFC']);
-    const regimen = v(['Régimen fiscal']);
-    const cp      = v(['Código Postal']);
-    const folio   = v(['Folio facturapi','Folio']);
-    const montoF  = v(['$ Monto facturado Total','Monto facturado Total']);
-    const comen   = v(['Notas','Comentarios','Envía tus comentarios']);
-    const nombresT= v(['Nombres de TODOS los huéspedes (separados por comas)']);
-    huespedFields = `
-      ${horaIng ? fldRow('Llegada estimada', `<b>${esc(fmtHora(horaIng))}</b>`) : ''}
-      ${horaSal ? fldRow('Salida estimada',  `<b>${esc(fmtHora(horaSal))}</b>`) : ''}
-      ${motivo  ? fldRow('Motivo del hospedaje', esc(motivo)) : ''}
-      ${nombresT? fldRow('Nombres', `<span style="font-size:12px;line-height:1.5">${esc(nombresT)}</span>`) : ''}
-      ${formaP  ? fldRow('Forma de pago', esc(formaP)) : ''}
-      ${montoF  ? fldRow('Monto facturado', `<b style="color:#0f766e">${esc(fmtMonto(montoF))}</b>`) : ''}
-      ${reqFact ? fldRow('¿Requiere factura?', esc(reqFact)) : ''}
-      ${razon   ? fldRow('Razón social', esc(razon)) : ''}
-      ${rfc     ? fldRow('RFC', `<code style="font-size:11px;background:#f1f5f9;padding:2px 6px;border-radius:4px">${esc(rfc)}</code>`) : ''}
-      ${regimen ? fldRow('Régimen fiscal', esc(regimen)) : ''}
-      ${cp      ? fldRow('Código Postal', esc(cp)) : ''}
-      ${folio   ? fldRow('Folio facturapi', `<code style="font-size:11px;background:#f1f5f9;padding:2px 6px;border-radius:4px">${esc(folio)}</code>`) : ''}
-      ${comen   ? fldRow('Comentarios', `<div style="font-size:12px;line-height:1.5;background:#f8fafc;padding:8px 10px;border-radius:6px;border-left:3px solid #94a3b8;font-style:italic;color:#334155">${esc(comen)}</div>`) : ''}`;
+  // Helper: lee del huésped manual (Reservaciones) cuando exista.
+  const hv = (cands) => huesped ? huValueFlexible(huesped, Array.isArray(cands) ? cands : [cands]) : '';
+  const fmtHora = (raw) => {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    const m = s.match(/T(\d{2}):(\d{2})/);
+    if (m) return `${m[1]}:${m[2]}`;
+    return (typeof huFmtHoraSimple === 'function') ? huFmtHoraSimple(s) : s;
+  };
+
+  // ─── Ids ───
+  // Lodgify Id: si es synthetic, b.LodgifyId (del campo Reservaciones:Lodgify Id)
+  // o b.__lodgify.Id (booking real). Si es booking real puro, b.Id.
+  const lodgifyId = (b.__lodgify && b.__lodgify.Id) || b.LodgifyId || (b.__reservacion ? '' : (b.Id || ''));
+  // Registro Id: ID de Reservaciones (solo aplica a synthetic bookings).
+  const registroId = b.__reservacion ? (b.__reservacion['ID'] || b.__reservacion['row_number'] || '') : '';
+
+  // ─── Datos combinados (preferencia Reservaciones > Lodgify para fechas
+  //     / personas / # noches; Lodgify para HouseName, Source, Status) ───
+  const llegada   = hv(['Fecha de ingreso']) || b.DateArrival;
+  const salida    = hv(['Fecha de salida'])  || b.DateDeparture;
+  const horaIng   = hv(['Hora estimada de llegada','Hora de llegada']);
+  const horaSal   = hv(['Hora estimada de salida','Hora de salida']);
+  const noches    = hv(['# Noches']) || b.Nights;
+  const personas  = hv(['# Huéspedes']) || b.NumberOfGuests;
+  const nombresT  = hv(['Nombres de TODOS los huéspedes (separados por comas)']);
+  const motivo    = hv(['Motivo de tu hospedaje','Motivo']);
+  const reqFactRaw= String(hv(['¿Requiere factura?','Tipo de factura']) || '').trim();
+  const comen     = hv(['Envía tus comentarios','Comentarios','Notas']);
+
+  // Chip "¿Requiere factura?": verde si sí, rojo si no, gris si vacío
+  let reqFactChip = '';
+  if (reqFactRaw) {
+    const isYes = /^s[ií]/i.test(reqFactRaw);
+    const isNo  = /^no/i.test(reqFactRaw);
+    if (isYes) reqFactChip = `<span style="display:inline-block;padding:2px 9px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:11px;border:1px solid #86efac">✅ Sí</span>`;
+    else if (isNo) reqFactChip = `<span style="display:inline-block;padding:2px 9px;border-radius:999px;background:#fee2e2;color:#991b1b;font-weight:700;font-size:11px;border:1px solid #fca5a5">❌ No</span>`;
+    else reqFactChip = `<span style="display:inline-block;padding:2px 9px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:700;font-size:11px;border:1px solid #cbd5e1">${esc(reqFactRaw)}</span>`;
   }
 
-  // Líneas de cobro
-  const lineItemsHtml = (b.LineItems || []).map(li => `
-    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;border-bottom:1px dashed #e2e8f0;font-size:12px">
-      <div><b style="color:#0f172a">${esc(li.kind || '—')}</b>${li.desc ? `<span style="color:#64748b"> · ${esc(li.desc)}</span>` : ''}</div>
-      <div style="font-weight:700;color:#0f766e">${lgFmtMoney(li.gross, b.Currency)}</div>
-    </div>`).join('');
-  const lineItemsBlock = lineItemsHtml ? `
-    <div style="margin-top:14px;padding-top:10px;border-top:1.5px solid #e2e8f0">
-      <div style="font-size:10px;letter-spacing:.16em;color:#64748b;font-weight:800;text-transform:uppercase;margin-bottom:8px">💰 Líneas de cobro</div>
-      ${lineItemsHtml}
-      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:8px 0 0;font-size:13px;border-top:2px solid #e2e8f0;margin-top:6px">
-        <div style="font-weight:800;color:#0f172a">Total</div>
-        <div style="font-weight:800;color:#0f766e">${lgFmtMoney(b.Gross, b.Currency)}</div>
-      </div>
-    </div>` : '';
+  // ─── Sección 1: campos generales ───
+  const section1 = `
+    ${lodgifyId  ? fldRow('Lodgify Id',  `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(lodgifyId)}</code>`) : ''}
+    ${registroId ? fldRow('Registro Id', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px">${esc(registroId)}</code>`) : ''}
+    ${fldRow('Fuente',   lgSourceBadge(b.Source))}
+    ${fldRow('Estado',   lgStatusBadge(b.Status))}
+    ${fldRow('Propiedad', esc(b.HouseName || ''))}
+    ${fldRow('Llegada',  esc(llegada || ''))}
+    ${fldRow('Hora llegada', horaIng ? esc(fmtHora(horaIng)) : '—')}
+    ${fldRow('Salida',   esc(salida  || ''))}
+    ${fldRow('Hora salida',  horaSal ? esc(fmtHora(horaSal)) : '—')}
+    ${fldRow('# Noches', noches ? `🌙 <b>${esc(String(noches))}</b>` : '—')}
+    ${fldRow('Personas', personas ? `👥 <b>${esc(String(personas))}</b>` : '—')}
+    ${fldRow('Nombres de huéspedes', nombresT ? `<span style="font-size:12px;line-height:1.5">${esc(nombresT)}</span>` : '—')}
+    ${fldRow('Motivo', motivo ? esc(motivo) : '—')}
+    ${fldRow('¿Requiere factura?', reqFactChip || '—')}
+    ${fldRow('Comentarios', comen ? `<div style="font-size:12px;line-height:1.5;background:#f8fafc;padding:8px 10px;border-radius:6px;border-left:3px solid #94a3b8;font-style:italic;color:#334155">${esc(comen)}</div>` : '—')}`;
+
+  // ─── Sección 2: Líneas de cobro Lodgify ───
+  // Agrupamos LineItems por categoría (RoomRate / Fee / Tax) — el campo
+  // li.kind viene de Lodgify y se traduce a TARIFA HOSPEDAJE / TARIFA
+  // LIMPIEZA / IMPUESTOS respectivamente. Cualquier otro kind se ignora.
+  const lineItems = b.LineItems || [];
+  const sumKind = (matcher) => lineItems
+    .filter(li => matcher(String(li.kind || '').toLowerCase()))
+    .reduce((acc, li) => acc + (Number(li.gross) || 0), 0);
+  const tarifaHosp  = sumKind(k => k.includes('roomrate') || k.includes('room'));
+  const tarifaLimp  = sumKind(k => k.includes('fee') || k.includes('clean') || k.includes('limpieza'));
+  const impuestos   = sumKind(k => k.includes('tax') || k.includes('vat') || k.includes('iva'));
+  const totalCobros = Number(b.Gross) || (tarifaHosp + tarifaLimp + impuestos);
+  const cur = b.Currency || 'MXN';
+  const moneyOrDash = (n) => n > 0 ? `<b style="color:#0f766e">${lgFmtMoney(n, cur)}</b>` : '—';
+  const section2 = `
+    ${fldRow('Divisa', b.Currency ? `<b>${esc(b.Currency)}</b>` : '—')}
+    ${fldRow('Tarifa hospedaje', moneyOrDash(tarifaHosp))}
+    ${fldRow('Tarifa limpieza',  moneyOrDash(tarifaLimp))}
+    ${fldRow('Impuestos',        moneyOrDash(impuestos))}
+    <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:10px 0;border-top:2px solid #e2e8f0;margin-top:4px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:800;align-self:center">TOTAL</div>
+      <div style="font-size:15px;font-weight:800;color:#0f766e">${totalCobros > 0 ? lgFmtMoney(totalCobros, cur) : '<span style="color:#94a3b8">N/A</span>'}</div>
+    </div>`;
+
+  // Línea divisoria visible entre sección 1 y sección 2
+  const divider = `
+    <div style="margin:14px 0;border-top:2px dashed #cbd5e1"></div>`;
+
+  // Para mantener compat con código existente que esperaba estas vars:
+  const lodgifyFields = section1;
+  const huespedFields = '';
+  const lineItemsBlock = divider + section2;
 
   // Caja de auto-facturación (editable) — solo cuando hay match en huéspedes.
   // YA NO auto-rellena al abrir; el usuario debe oprimir el botón
