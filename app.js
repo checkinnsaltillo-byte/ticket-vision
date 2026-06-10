@@ -9398,6 +9398,51 @@ function huMaybePersistCardMonto(cardEl) {
   HU_RECALC_TIMER = setTimeout(() => huPersistCardMonto(cardEl), 600);
 }
 
+/** Click handler del botón "Importar $Montos" en la col 3 del detalle Lodgify.
+ *  - Si esAirbnb: copia el Total Lodgify al input "(=) $ Monto total Airbnb"
+ *    y dispara huRecalcAirbnb (que recalcula comisión + monto facturado +
+ *    persiste los 3 al sheet).
+ *  - Si no: copia el Total al input "(+) $ Monto facturado Total" y dispara
+ *    persistencia. */
+window.huImportLodgifyMontos = function(btn) {
+  const gross = Number(btn.getAttribute('data-lg-gross')) || 0;
+  const esAirbnb = btn.getAttribute('data-lg-esairbnb') === '1';
+  if (gross <= 0) {
+    btn.textContent = '⚠ Sin Total para importar';
+    setTimeout(() => { btn.innerHTML = '<span style="font-size:14px">⤓</span> Importar $Montos'; }, 1800);
+    return;
+  }
+  const card = btn.closest('.hu-resv-detail');
+  const box  = card?.querySelector('[data-hu-airbnb-box="1"]');
+  if (!box) { console.warn('[HU] importar: no se encontró la caja'); return; }
+  const valueStr = gross.toFixed(2);
+  if (esAirbnb) {
+    // El input "(=) $ Monto total Airbnb" es el ÚNICO input number sin
+    // data-hu-airbnb-comision ni data-hu-airbnb-facturado (ver huBuildAirbnbBox).
+    const baseInput = box.querySelector('input[type="number"]:not([data-hu-airbnb-comision]):not([data-hu-airbnb-facturado])');
+    if (!baseInput) { console.warn('[HU] importar: no se encontró input base Airbnb'); return; }
+    baseInput.value = valueStr;
+    huRecalcAirbnb(baseInput); // cascadea + persiste (debounce 600ms)
+  } else {
+    const facInput = box.querySelector('[data-hu-airbnb-facturado="1"]');
+    if (!facInput) { console.warn('[HU] importar: no se encontró input facturado'); return; }
+    facInput.value = valueStr;
+    huMaybePersistCardMonto(card);
+  }
+  // Feedback visual
+  const original = btn.innerHTML;
+  btn.innerHTML = '✓ Importado';
+  btn.style.background = '#16a34a';
+  btn.style.color = '#fff';
+  btn.style.borderColor = '#15803d';
+  setTimeout(() => {
+    btn.innerHTML = original;
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+  }, 1500);
+};
+
 // Observa la aparición de cajas de auto-facturación con
 // data-hu-airbnb-autofilled="1" y dispara la persistencia una sola vez por
 // recId. Usado cuando el monto fue auto-rellenado desde Líneas de cobro de
@@ -12644,13 +12689,35 @@ function lgBuildCombinedDetailColumn(b, huesped) {
     </div>` : '';
 
   // Caja de auto-facturación (editable) — solo cuando hay match en huéspedes.
-  // Pasamos b.Gross (Total de "Líneas de cobro") como defaultMontoAirbnb para
-  // auto-rellenar la caja cuando el sheet aún no tiene "$ Monto total Airbnb".
+  // YA NO auto-rellena al abrir; el usuario debe oprimir el botón
+  // "Importar $Montos" entre Líneas de cobro y esta caja.
   let airbnbBoxHtml = '';
   if (huesped && typeof huBuildAirbnbBox === 'function') {
-    try { airbnbBoxHtml = huBuildAirbnbBox(huesped, { defaultMontoAirbnb: Number(b.Gross) || 0 }); }
+    try { airbnbBoxHtml = huBuildAirbnbBox(huesped); }
     catch (e) { console.error('[LG] airbnbBox error:', e); }
   }
+
+  // Botón "Importar $Montos" — copia el Total de Líneas de cobro al campo
+  // correspondiente: si la reserva es Airbnb → "(=) $ Monto total Airbnb"
+  // (que cascadea a comisión y monto facturado), si no → "(+) $ Monto
+  // facturado Total" directo. Solo se inserta cuando hay caja de
+  // auto-facturación visible Y hay un Gross > 0 que importar.
+  const medioHu = huesped ? String(huValueFlexible(huesped, ['Medio de reservación']) || '') : '';
+  const esAirbnbBtn = medioHu.toLowerCase().includes('airbnb') || String(b.Source||'').toLowerCase().includes('airbnb');
+  const grossNum = Number(b.Gross) || 0;
+  const importBtnHtml = (airbnbBoxHtml && grossNum > 0) ? `
+    <div style="margin:14px 0 0;display:flex;justify-content:center">
+      <button type="button"
+              onclick="event.stopPropagation();huImportLodgifyMontos(this)"
+              data-lg-gross="${grossNum}"
+              data-lg-esairbnb="${esAirbnbBtn ? '1' : '0'}"
+              title="Copia el Total de Líneas de cobro al campo ${esAirbnbBtn ? '(=) $ Monto total Airbnb' : '(+) $ Monto facturado Total'}"
+              style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border:1.5px solid #7c3aed;background:linear-gradient(180deg,#ede9fe,#fff);color:#5b21b6;border-radius:10px;font-weight:800;font-size:12px;cursor:pointer;box-shadow:0 2px 6px rgba(124,58,237,.18);transition:transform 120ms ease, box-shadow 120ms ease"
+              onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 10px rgba(124,58,237,.25)'"
+              onmouseout="this.style.transform='';this.style.boxShadow='0 2px 6px rgba(124,58,237,.18)'">
+        <span style="font-size:14px">⤓</span> Importar $Montos
+      </button>
+    </div>` : '';
 
   return `
     <div class="hu-resv-detail" data-hu-resv-id="${esc(huesped ? String(huesped['ID']||huesped['row_number']||'') : '')}" style="background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(15,23,42,.06);border:1.5px solid #e2e8f0">
@@ -12661,6 +12728,7 @@ function lgBuildCombinedDetailColumn(b, huesped) {
       ${lodgifyFields}
       ${huespedFields}
       ${lineItemsBlock}
+      ${importBtnHtml}
       ${airbnbBoxHtml}
     </div>`;
 }
