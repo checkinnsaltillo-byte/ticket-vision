@@ -9817,14 +9817,50 @@ function huComputeGuestStats(currentRow, allRows) {
     }
     if (lastEnd === null || s.sal > lastEnd) lastEnd = s.sal;
   }
-  // Monto global = suma de "$ Monto facturado Total" en todas las reservas
-  // del mismo Cel. Usa el mismo sanitizador que huFmtMonto para tolerar
-  // valores ISO-date corruptos y coma decimal es-MX.
+  // Monto global "legacy" — suma de "$ Monto facturado Total".
   const montoGlobal = list.reduce((acc, x) => {
     const raw = huValueFlexible(x, ['$ Monto facturado Total','Monto facturado Total']);
     return acc + huParseMontoRobust(raw);
   }, 0);
-  return { totalNoches, visitas, reservaciones: parsed.length, montoGlobal };
+  // Monto Total (KPI "Monto" en el header) — suma del valor TOTAL de la
+  // sección Cobros para cada reservación del mismo huésped. Mismas reglas
+  // de prioridad que lgBuildSection2CobrosHtml.
+  const montoTotal = list.reduce((acc, x) => acc + huComputeRowTotal(x), 0);
+  return { totalNoches, visitas, reservaciones: parsed.length, montoGlobal, montoTotal };
+}
+
+/** Calcula el "TOTAL" mostrado en la sección Cobros para una fila de
+ *  Reservaciones. Prioridad:
+ *    1) Gross del booking Lodgify vinculado vía Lodgify Id
+ *    2) Suma de tarifas (Noches + Cuota limpieza) — campos directos
+ *    3) Fallbacks: ($) Monto Total pagado / $ MONTO TOTAL Airbnb / $ Monto facturado Total
+ */
+function huComputeRowTotal(r) {
+  if (!r) return 0;
+  // 1) Lodgify Gross
+  const lodId = String(r['Lodgify Id'] || '').trim();
+  if (lodId && typeof LG_STATE !== 'undefined' && Array.isArray(LG_STATE.bookings)) {
+    const lg = LG_STATE.bookings.find(b => String(b.Id) === lodId);
+    if (lg && Number(lg.Gross) > 0) return Number(lg.Gross);
+  }
+  // 2) Suma directa $ Noches + $ Cuota limpieza (campos exactos para evitar
+  //    colisión con "# Noches" en el normalizador de huValueFlexible)
+  const exactNum = (k) => {
+    const v = r[k];
+    if (v == null || String(v).trim() === '') return 0;
+    const s = String(v).replace(/[^0-9.\-]/g, '');
+    const n = Number(s);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const sumTarifas = exactNum('$ Noches') + exactNum('$ Cuota de limpieza');
+  if (sumTarifas > 0) return sumTarifas;
+  // 3) Fallbacks
+  const tryKeys = ['($) Monto Total pagado','$ MONTO TOTAL Airbnb','$ Monto facturado Total'];
+  for (const k of tryKeys) {
+    const n = exactNum(k);
+    if (n > 0) return n;
+  }
+  return 0;
 }
 
 /** Parser numérico tolerante: maneja "2534,8", "$25,348.00",
@@ -12146,7 +12182,24 @@ function lodgifyRender() {
     const lg = LG_STATE.bookings || [];
     const cacheKey = `${hu.length}|${lg.length}`;
     if (!LG_STATE.__syntheticCache || LG_STATE.__syntheticCacheKey !== cacheKey) {
-      LG_STATE.__syntheticCache = hu.map(huRowToSyntheticBooking).filter(Boolean);
+      // SIDEBAR = HUÉSPEDES: 1 card por persona (dedupe por últimos 10
+      // dígitos del teléfono); el card refleja la reservación MÁS RECIENTE
+      // (mayor Fecha de ingreso) de esa persona.
+      const phoneTail = (v) => {
+        const s = String(v || '').replace(/\D/g, '');
+        return s.length >= 10 ? s.slice(-10) : '';
+      };
+      const latestByTail = new Map();
+      for (const r of hu) {
+        const tail = phoneTail(r['Cel/Whatsapp (principal)']);
+        if (!tail) continue;
+        const cur = latestByTail.get(tail);
+        const dThis = String(r['Fecha de ingreso'] || '');
+        if (!cur || dThis > String(cur['Fecha de ingreso'] || '')) {
+          latestByTail.set(tail, r);
+        }
+      }
+      LG_STATE.__syntheticCache = Array.from(latestByTail.values()).map(huRowToSyntheticBooking).filter(Boolean);
       LG_STATE.__syntheticCacheKey = cacheKey;
     }
     detailSource = LG_STATE.__syntheticCache;
@@ -12408,8 +12461,8 @@ function lgBuildDetailView(list, cont) {
       <aside class="rd-sidebar">
         <div class="rd-sidebar-header">
           <div>
-            <div class="rd-sidebar-title">Reservas</div>
-            <div class="rd-sidebar-count">${list.length} reserva${list.length===1?'':'s'}</div>
+            <div class="rd-sidebar-title">Huéspedes</div>
+            <div class="rd-sidebar-count">${list.length} huésped${list.length===1?'':'es'}</div>
           </div>
         </div>
         ${facturaLegendHtml}
@@ -12418,7 +12471,7 @@ function lgBuildDetailView(list, cont) {
       </aside>
       <div class="lg-detail-panel">
         <div class="lg-detail-panel-header">
-          <div class="rd-sidebar-title">Detalles de la Reserva</div>
+          <div class="rd-sidebar-title">Detalles</div>
           <div class="rd-sidebar-count" id="lg-detail-subtitle">—</div>
         </div>
         <div id="lg-detail-main" class="lg-detail-panel-body"></div>
@@ -13031,7 +13084,7 @@ function lgBuildCardSummary(b) {
           </div>
           <div style="flex:1.4;background:rgba(255,255,255,.9);border:1px solid ${palette.border};border-radius:8px;padding:4px 8px;text-align:center;min-width:0" title="Suma de Monto facturado en todas las reservaciones del huésped">
             <div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:.04em;text-transform:uppercase">💰 Monto</div>
-            <div style="font-size:12px;font-weight:800;color:#0f172a;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${stats.montoGlobal > 0 ? ((typeof huFmtMonto==='function')?huFmtMonto(stats.montoGlobal):('$ '+stats.montoGlobal)) : '—'}</div>
+            <div style="font-size:12px;font-weight:800;color:#0f172a;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${stats.montoTotal > 0 ? ((typeof huFmtMonto==='function')?huFmtMonto(stats.montoTotal):('$ '+stats.montoTotal)) : '—'}</div>
           </div>
           ${tier ? `
           <div title="${esc(tier.tooltip)}" style="flex:1.2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:4px 8px;border-radius:8px;background:${tier.bg};color:${tier.fg};font-weight:800;letter-spacing:.04em;text-transform:uppercase;border:1px solid ${tier.border};box-shadow:0 1px 4px ${tier.shadow};min-width:0">
@@ -13062,31 +13115,13 @@ function lgBuildCardSummary(b) {
     ? `<a href="https://wa.me/${waPhone}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:700;text-decoration:none">📱 ${esc(b.GuestPhone)}</a>`
     : '';
 
-  // Header summary. Click → abre modal con todos los detalles.
+  // Header MINIMAL — solo nombre grande, KPIs y perfil. Sin chips de source,
+  // ingreso bruto, fechas, propiedad, etc.
   const summary = `
-    <div style="cursor:pointer;padding:9px 11px;background:${palette.bg}">
-      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">
-        <div style="min-width:0">
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:4px">${lgSourceBadge(b.Source)}${huespedesChip}</div>
-          <div style="font-size:13px;font-weight:800;color:#111827;line-height:1.2;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
-          <div style="font-size:11px;color:#64748b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(prop)}</div>
-          <div style="font-size:11px;color:#64748b;font-weight:500;margin-top:1px">${ingreso} → ${salida} <span style="color:#475569;font-weight:600">· 🌙 ${noches}n</span></div>
-          ${b.GuestPhone || b.GuestEmail ? `
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:3px;font-size:10px;color:#64748b">
-            ${phoneHtml}
-            ${b.GuestEmail ? `<a href="mailto:${esc(b.GuestEmail)}" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:700;text-decoration:none">✉️ ${esc(b.GuestEmail)}</a>` : ''}
-          </div>` : ''}
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:110px">
-          <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;font-weight:700">Ingreso bruto</div>
-          <div style="font-size:14px;font-weight:800;color:#111827;line-height:1.1">${b.Gross > 0 ? lgFmtMoney(b.Gross, b.Currency) : '<span style="color:#94a3b8">N/A</span>'}</div>
-          <div>${lgStatusBadge(b.Status)}</div>
-          ${montoFacturadoHtml}
-        </div>
-      </div>
-      ${belowLineRowHtml}
-      ${huespedMatch ? lgBuildProfileHeaderHtml(huespedMatch, palette) : ''}
+    <div style="cursor:pointer;padding:12px 14px;background:${palette.bg}">
+      <div style="font-size:22px;font-weight:900;color:#0f172a;line-height:1.15;margin-bottom:10px;letter-spacing:-.01em">${esc(nombre)}</div>
       ${kpisBarHtml}
+      ${huespedMatch ? lgBuildProfileHeaderHtml(huespedMatch, palette) : ''}
     </div>`;
 
   // Detalle expandido
