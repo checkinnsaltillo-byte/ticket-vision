@@ -9427,8 +9427,11 @@ window.huImportLodgifyMontos = function(btn) {
     setTimeout(() => { btn.innerHTML = '<span style="font-size:14px">⤓</span> Importar $Montos'; }, 1800);
     return;
   }
-  const card = btn.closest('.hu-resv-detail');
-  const box  = card?.querySelector('[data-hu-airbnb-box="1"]');
+  // El botón puede vivir en .hu-resv-cobros (vista Detalles dividida) o en
+  // .hu-resv-detail (vista combinada legacy). Busca la caja Airbnb en su
+  // contenedor más cercano que la incluya; si no, fallback a document.
+  const card = btn.closest('.hu-resv-cobros') || btn.closest('.hu-resv-detail') || document;
+  const box  = card.querySelector('[data-hu-airbnb-box="1"]') || document.querySelector('[data-hu-airbnb-box="1"]');
   if (!box) { console.warn('[HU] importar: no se encontró la caja'); return; }
   const valueStr = gross.toFixed(2);
   if (esAirbnb) {
@@ -11139,6 +11142,7 @@ const LG_STATE = {
     status: null,
     propiedad: null,
     factura: null,
+    meses: null,
   },
   // Map booking.Id (string) → row de Información de huéspedes
   matches: new Map(),
@@ -11374,6 +11378,12 @@ async function lgLoadAlojamientos() {
     }
     ALOJ_STATE.loaded = true;
     console.info(`[ALOJ] catálogo: ${ALOJ_STATE.rows.length} alojamientos`);
+    // Rebuild filter options now that Propiedad can be homologated to
+    // "José Cárdenas - #3" via the catalog.
+    try {
+      if (typeof lgRebuildFilterOptions === 'function') lgRebuildFilterOptions();
+      if (typeof lodgifyRender === 'function' && LG_STATE.loaded) lodgifyRender();
+    } catch (e) { /* silent */ }
   } catch (e) {
     console.warn('[ALOJ] no cargó:', e.message);
   } finally {
@@ -11938,7 +11948,7 @@ function lgRebuildFilterOptions() {
   const lgSources = LG_STATE.bookings.map(b => b.Source).filter(Boolean);
   const huSources = (HU_STATE.rows || []).map(r => r['Medio de reservación']).filter(Boolean);
   LG_FILTER_OPTIONS.source = [...new Set([...lgSources, ...huSources])].sort();
-  LG_FILTER_OPTIONS.status = [...new Set([...LG_STATE.bookings.map(b => b.Status), 'Booked'].filter(Boolean))].sort();
+  LG_FILTER_OPTIONS.status = [...new Set([...LG_STATE.bookings.map(b => b.Status), 'Booked', 'Tentative'].filter(Boolean))].sort();
   const lgProps = LG_STATE.bookings.map(b => lgPropOf(b));
   const huProps = (HU_STATE.rows || []).map(r => lgFmtPropiedad({ propiedad: r['Propiedad'] || '', departamento: r['# Departamento'] || '' }));
   LG_FILTER_OPTIONS.propiedad = [...new Set([...lgProps, ...huProps].filter(v => v && v !== '—'))].sort((a,b) => a.localeCompare(b,'es'));
@@ -12367,8 +12377,19 @@ function lgBuildDetailSidebarItem(b, selectedId) {
     } catch (e) { /* silent */ }
   }
 
-  // Programación: punto animado + label + label texto (Activa, Concluida, etc.)
-  const progDot = stayState ? `${stMeta.emoji} <span style="color:${stMeta.accentFg};font-weight:800">${esc(stMeta.label)}</span>` : '';
+  // Programación: punto animado (mismo patrón que historial de Reservas
+  // totales) + label texto (Activa, Concluida, Próxima, etc.).
+  const dotColor = stMeta.border;
+  const dotPulse = stayState === 'activa'      ? 'animation:hu-dot-pulse 1.4s ease-in-out infinite;'
+                 : stayState === 'salida_hoy'  ? 'animation:hu-dot-pulse-strong 1s ease-in-out infinite;'
+                 : stayState === 'entrada_hoy' ? 'animation:hu-dot-pulse 1.4s ease-in-out infinite;'
+                 : stayState === 'proxima'     ? 'animation:hu-dot-pulse 2s ease-in-out infinite;'
+                 : '';
+  const progDot = stayState ? `
+    <span style="display:inline-flex;align-items:center;gap:4px">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};box-shadow:0 0 0 2px rgba(255,255,255,.7);${dotPulse}"></span>
+      <span style="color:${stMeta.accentFg};font-weight:800">${esc(stMeta.label)}</span>
+    </span>` : '';
 
   return `
     <div class="rd-item ${isSel?'rd-active':''}" onclick="lgDetailSelect('${esc(b.Id)}')"
@@ -12524,10 +12545,6 @@ function lgBuildDetailView(list, cont) {
         <div class="rd-list">${sidebarItems || '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;font-style:italic">Sin reservaciones</div>'}</div>
       </aside>
       <div class="lg-detail-panel">
-        <div class="lg-detail-panel-header">
-          <div class="rd-sidebar-title">Detalles</div>
-          <div class="rd-sidebar-count" id="lg-detail-subtitle">—</div>
-        </div>
         <div id="lg-detail-main" class="lg-detail-panel-body"></div>
       </div>
     </div>`;
@@ -13667,7 +13684,7 @@ function lgBuildSection2CobrosHtml(b, huesped) {
       </button>
     </div>` : '';
   return `
-    <div class="hu-resv-cobros hu-col-card" style="background:#fff;border-radius:16px;padding:0;box-shadow:0 4px 16px rgba(15,23,42,.08);border:1.5px solid #e2e8f0;overflow:hidden">
+    <div class="hu-resv-cobros hu-col-card" data-hu-resv-id="${esc(huesped ? String(huesped['ID']||huesped['row_number']||'') : '')}" style="background:#fff;border-radius:16px;padding:0;box-shadow:0 4px 16px rgba(15,23,42,.08);border:1.5px solid #e2e8f0;overflow:hidden">
       <div style="height:4px;background:linear-gradient(90deg,#fbbf24,#f59e0b,#a16207)"></div>
       <div style="padding:14px 16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">

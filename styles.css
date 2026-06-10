@@ -2173,7 +2173,8 @@ button[title], a[title], .info-chip[title], [role="button"][title], [onclick][ti
 /* Historial: highlight extra para el activo */
 .hu-history-item.hu-history-active {
   background: linear-gradient(90deg, #f1f5f9, #fff) !important;
-  border-left: 3px solid #334155 !important;
+  /* NO sobreescribir border-left: el inline style usa 7px con el color de
+     Programación (salida_hoy/activa/etc.) y debe prevalecer aún seleccionado. */
 }
 /* Summary del card: en móviles colapsa los KPIs/monto/chevron en dos filas */
 @media (max-width: 820px) {
