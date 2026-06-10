@@ -11670,6 +11670,33 @@ function lgGetHuespedForBooking(b) {
   return b.__reservacion || LG_STATE.matches?.get(String(b.Id)) || null;
 }
 
+/** Decide si una fila de Reservaciones representa un REGISTRO MANUAL real
+ *  (el huésped llenó el formulario de check-in) vs. una fila básica
+ *  auto-creada por la propagación de Lodgify (que NO completa los campos
+ *  del formulario).
+ *
+ *  La propagación llena solo: ID, Cel, Marca temporal, Medio, Propiedad,
+ *  # Departamento, Fechas, # Noches, # Huéspedes, Nombre, Correo, Lodgify Id.
+ *  Cualquier valor en los campos "manuales" abajo es señal inequívoca de
+ *  que el huésped completó el formulario. */
+function huHasManualRegistration(r) {
+  if (!r) return false;
+  const manualOnlyFields = [
+    'Hora estimada de llegada','Hora estimada de salida',
+    'Forma de pago','¿Requiere factura?','Motivo de tu hospedaje',
+    'Razón social','RFC','Régimen fiscal','Código Postal',
+    'Tipo de identificación','INE frontal','Link INE frontal',
+    'Nombres de TODOS los huéspedes (separados por comas)',
+    'Cel/Whatsapp (contacto de emergencia)',
+    'ID_Vehiculo','Marca vehículo','Placas',
+  ];
+  for (const k of manualOnlyFields) {
+    const v = r[k];
+    if (v != null && String(v).trim() !== '') return true;
+  }
+  return false;
+}
+
 function lgBookingFacturaState(b) {
   const h = lgGetHuespedForBooking(b);
   if (!h) return 'Sin factura';
@@ -11987,7 +12014,9 @@ function lgBuildDetailSidebarItem(b, selectedId) {
   const ing = rdFmtFechaCortaNoYear(b.DateArrival);
   const sal = rdFmtFechaCortaNoYear(b.DateDeparture);
   const huesped = lgGetHuespedForBooking(b);
-  const hasMatch = !!huesped;
+  // hasMatch = registro manual REAL (huésped llenó formulario), no sólo una
+  // fila básica importada de Lodgify.
+  const hasMatch = huHasManualRegistration(huesped);
   const initials = String(b.GuestName||'?').split(/\s+/).map(w => w[0]||'').slice(0,2).join('').toUpperCase();
 
   // Color de fondo según estado de programación (tenue) — ya son colores
@@ -12243,7 +12272,7 @@ function lgDetailRenderMain(b) {
   const effectiveHuesped = huesped || phoneHuesped;
   // Paso 1: shell rápido.
   try {
-    main.innerHTML = lgBuildDetailShellHtml(b, !!effectiveHuesped);
+    main.innerHTML = lgBuildDetailShellHtml(b, huHasManualRegistration(effectiveHuesped));
   } catch (err) {
     console.error('[LG] detail shell error:', err);
     main.innerHTML = `<div style="padding:20px;color:#dc2626">Error: ${esc(err.message||err)}</div>`;
@@ -12616,10 +12645,10 @@ function lgBuildCardSummary(b) {
     ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;background:#fff;color:#1f2937;font-weight:700;font-size:9px;border:1px solid #e2e8f0;letter-spacing:.02em">👥 ${b.NumberOfGuests}</span>`
     : '';
 
-  // Chip "REGISTRADO" — gris obscuro (cambio del aqua anterior).
-  // Ahora vive DEBAJO de la línea divisoria, junto al chip de Ticket.
-  const huespedMatch = LG_STATE.matches?.get(String(b.Id)) || null;
-  const matchBadge = huespedMatch
+  // Chip "REGISTRADO" — solo si el huésped llenó EL FORMULARIO manual.
+  // Una fila importada de Lodgify (sin datos del formulario) NO califica.
+  const huespedMatch = lgGetHuespedForBooking(b);
+  const matchBadge = huHasManualRegistration(huespedMatch)
     ? `<span title="Registro manual completado por el huésped" style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:999px;background:linear-gradient(135deg,#475569,#334155);color:#fff;font-weight:800;font-size:9px;border:1px solid #1e293b;letter-spacing:.04em;box-shadow:0 1px 4px rgba(15,23,42,.35)">📋 REGISTRADO</span>`
     : '';
 
@@ -12805,7 +12834,7 @@ window.lgOpenDetailModal = function(bookingId) {
 
   // ── Paso 1: render rápido (solo header + Lodgify) ──
   try {
-    body.innerHTML = lgBuildModalShellHtml(b, !!huesped);
+    body.innerHTML = lgBuildModalShellHtml(b, huHasManualRegistration(huesped));
   } catch (err) {
     console.error('[LG] modal shell error:', err);
     body.innerHTML = `<div style="padding:20px;color:#dc2626">Error renderizando detalle.</div>`;
@@ -13447,7 +13476,7 @@ function lgBuildModalContent(b, huesped) {
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px">
       ${lgSourceBadge(b.Source)}
       ${lgStatusBadge(b.Status)}
-      ${huesped ? `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:10px;border:1px solid #92400e;letter-spacing:.04em;box-shadow:0 1px 3px rgba(217,119,6,.35)">📋 REGISTRADO</span>` : ''}
+      ${huHasManualRegistration(huesped) ? `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#451a03;font-weight:800;font-size:10px;border:1px solid #92400e;letter-spacing:.04em;box-shadow:0 1px 3px rgba(217,119,6,.35)">📋 REGISTRADO</span>` : ''}
     </div>
     <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f172a;font-weight:800">${esc(nombre)}</h2>
     <div style="font-size:14px;color:#64748b;font-weight:500">${esc(prop)} · ${ingreso} → ${salida} · 🌙 ${b.Nights} noche${b.Nights===1?'':'s'}</div>
