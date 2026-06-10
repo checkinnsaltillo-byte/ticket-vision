@@ -8989,6 +8989,18 @@ async function huespedesLoad(forceRefetch) {
     if (lbl) lbl.textContent = `${data.total || 0} reservaciones`;
     huPopulateMesOptions();
     huespedesRender();
+    // Si el usuario está viendo Lodgify Detalles, ahora HU_STATE está completo
+    // → re-render para mostrar las cards sintéticas (antes mostraba "Cargando…").
+    const moduleLodgifyVisible = document.getElementById('module-lodgify');
+    const moduleRDVisible = document.getElementById('module-reservas-detalles');
+    const inLodgify = moduleLodgifyVisible && !moduleLodgifyVisible.classList.contains('hidden');
+    const inRD      = moduleRDVisible      && !moduleRDVisible.classList.contains('hidden');
+    if (inLodgify) {
+      if (LG_STATE.loaded) lgComputeMatches();
+      lgRebuildFilterOptions();
+      lodgifyRender();
+    }
+    if (inRD && typeof rdRender === 'function') rdRender();
   } catch (e) {
     if (lbl) lbl.textContent = 'Error: ' + e.message;
     if (empty) { empty.textContent = '⚠ ' + e.message; empty.classList.remove('hidden'); }
@@ -11867,6 +11879,22 @@ function lgGetFiltered(sourceList) {
 /** Renderiza KPIs + lista de cards. */
 function lodgifyRender() {
   const mode = LG_STATE.viewMode || 'list';
+  // En modo "detail" el sidebar muestra Reservaciones. Si HU_STATE aún no
+  // está cargado (las páginas están en curso), evitamos renderizar con datos
+  // parciales — sería el flicker que ve el usuario. Mostramos placeholder
+  // y volvemos a llamar a lodgifyRender desde huespedesLoad al finalizar.
+  if (mode === 'detail' && !HU_STATE.loaded) {
+    const cont = document.getElementById('lg-cards');
+    if (cont && !cont.querySelector('.lg-detail-loading-placeholder')) {
+      cont.innerHTML = `
+        <div class="lg-detail-loading-placeholder" style="padding:60px 20px;text-align:center;color:#64748b;font-size:13px">
+          <div style="font-size:28px;margin-bottom:10px">⏳</div>
+          <div style="font-weight:700;margin-bottom:4px">Cargando reservaciones…</div>
+          <div style="font-size:11px;color:#94a3b8">Trayendo todas las páginas de Reservaciones. Tarda 1–3s.</div>
+        </div>`;
+    }
+    return;
+  }
   // En modo "detail" el sidebar muestra Reservaciones (no Lodgify), respetando
   // el mismo diseño de cards (synthetic bookings con mismos campos).
   const detailSource = (mode === 'detail')
