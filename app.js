@@ -9781,9 +9781,18 @@ function huFmtMonto(raw) {
 // Una "visita" agrupa reservaciones consecutivas (sin días-hueco entre salida
 // y siguiente ingreso). Reservaciones separadas por ≥1 día son visitas distintas.
 function huComputeGuestStats(currentRow, allRows) {
-  const cel = huValueFlexible(currentRow, ['Cel/Whatsapp (principal)']);
+  // Comparación por LAST-10-DIGITS, no por igualdad exacta de string.
+  // Los teléfonos en el sheet pueden venir con formatos distintos
+  // ("+528115569120", "52 8115569120", "528115569120") y la igualdad
+  // estricta tratabaal mismo huésped como personas distintas → noches/
+  // visitas/tier se calculaban por subconjuntos.
+  const phoneTail = (v) => {
+    const s = String(v || '').replace(/\D/g, '');
+    return s.length >= 10 ? s.slice(-10) : '';
+  };
+  const tail = phoneTail(huValueFlexible(currentRow, ['Cel/Whatsapp (principal)']));
   const list = (allRows || HU_STATE.rows || [])
-    .filter(x => huValueFlexible(x, ['Cel/Whatsapp (principal)']) === cel && cel);
+    .filter(x => tail && phoneTail(huValueFlexible(x, ['Cel/Whatsapp (principal)'])) === tail);
   // Parseo + ordenamiento por fecha de ingreso ascendente
   const parsed = list.map(x => {
     const ing = huParseDate(huValueFlexible(x, ['Fecha de ingreso']));
