@@ -10139,9 +10139,20 @@ function huComputeLodgifyGrossForStay(reservacion, ingresoRaw, salidaRaw) {
 }
 
 function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
-  const cel = huValueFlexible(currentR, ['Cel/Whatsapp (principal)']);
+  // Comparamos por LAST-10-DIGITS, no por igualdad de string. Las filas
+  // pueden tener el mismo número con formatos distintos ("52 8115569120",
+  // "+528115569120", "528115569120"), y la igualdad exacta excluía
+  // hermanos válidos. Esto es lo que hacía que el booking de Lodgify
+  // importado (row 643) no apareciera en el Historial junto a las
+  // reservaciones manuales del mismo huésped.
+  const phoneTail = (v) => {
+    const s = String(v || '').replace(/\D/g, '');
+    return s.length >= 10 ? s.slice(-10) : '';
+  };
+  const cel  = huValueFlexible(currentR, ['Cel/Whatsapp (principal)']);
+  const tail = phoneTail(cel);
   const list = (allRows || HU_STATE.rows || [])
-    .filter(x => huValueFlexible(x, ['Cel/Whatsapp (principal)']) === cel && cel)
+    .filter(x => tail && phoneTail(huValueFlexible(x, ['Cel/Whatsapp (principal)'])) === tail)
     .sort((a, b) => {
       const da = huValueFlexible(a, ['Fecha de ingreso']) || '';
       const db = huValueFlexible(b, ['Fecha de ingreso']) || '';
