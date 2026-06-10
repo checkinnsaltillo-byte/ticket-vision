@@ -11629,8 +11629,18 @@ const LG_FILTER_OPTIONS = { programacion: [], source: [], status: [], propiedad:
 
 /** Devuelve si un booking REQUIERE FACTURA según el match con huéspedes.
  *  Si el huésped declaró "Sí" → "Con factura". Cualquier otro caso → "Sin factura". */
+/** Obtiene la fila de Reservaciones (huésped) asociada a un booking:
+ *  - Si el booking es sintético (sidebar Detalles desde Reservaciones),
+ *    ya trae la referencia en b.__reservacion.
+ *  - Si es un booking real de Lodgify, busca en LG_STATE.matches (que
+ *    está keyed por Lodgify booking Id). */
+function lgGetHuespedForBooking(b) {
+  if (!b) return null;
+  return b.__reservacion || LG_STATE.matches?.get(String(b.Id)) || null;
+}
+
 function lgBookingFacturaState(b) {
-  const h = LG_STATE.matches?.get(String(b.Id));
+  const h = lgGetHuespedForBooking(b);
   if (!h) return 'Sin factura';
   const req = String(huValueFlexible(h, ['¿Requiere factura?']) || '').trim();
   return /^s[ií]?$/i.test(req) ? 'Con factura' : 'Sin factura';
@@ -11926,8 +11936,8 @@ function lgBuildDetailSidebarItem(b, selectedId) {
   const statusUi = rdMapStatus(b);
   const ing = rdFmtFechaCortaNoYear(b.DateArrival);
   const sal = rdFmtFechaCortaNoYear(b.DateDeparture);
-  const hasMatch = LG_STATE.matches?.has(String(b.Id));
-  const huesped = LG_STATE.matches?.get(String(b.Id)) || null;
+  const huesped = lgGetHuespedForBooking(b);
+  const hasMatch = !!huesped;
   const initials = String(b.GuestName||'?').split(/\s+/).map(w => w[0]||'').slice(0,2).join('').toUpperCase();
 
   // Color de fondo según estado de programación (tenue) — ya son colores
