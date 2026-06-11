@@ -13276,13 +13276,14 @@ function lgBuildCardSummary(b) {
   // sidebar:  bg según FACTURA (verde intenso si emitida, rojo intenso si
   // pendiente, gris claro si sin factura), border-left 7px con color de
   // PROGRAMACIÓN (meta.border).
-  let headerBg = '#f1f5f9'; // sin factura → gris claro (igual que bgSel neutro)
+  // Mismo bg que la card del sidebar SIN seleccionar (tonalidad clara).
+  let headerBg = '#fff'; // sin factura → blanco
   if (huespedMatch) {
     const facStHeader = (typeof huGetFacturaStatus === 'function') ? huGetFacturaStatus(huespedMatch) : '';
     const reqFacHeader = huValueFlexible(huespedMatch, ['¿Requiere factura?']);
     const conFacHeader = /s[ií]/i.test(String(reqFacHeader||'')) || facStHeader === 'emitida' || facStHeader === 'pendiente';
-    if (conFacHeader && facStHeader === 'emitida')  headerBg = '#86efac'; // verde intenso
-    else if (conFacHeader && facStHeader === 'pendiente') headerBg = '#fca5a5'; // rojo intenso
+    if (conFacHeader && facStHeader === 'emitida')  headerBg = '#dcfce7'; // verde claro
+    else if (conFacHeader && facStHeader === 'pendiente') headerBg = '#fee2e2'; // rojo claro
   }
   const summary = `
     <div style="cursor:pointer;padding:12px 14px;background:${headerBg};border-left:7px solid ${meta.border}">
