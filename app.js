@@ -10359,6 +10359,22 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
                     : '';
     const lgStateMeta = (typeof LG_STATE_META !== 'undefined') ? (LG_STATE_META[stayState] || LG_STATE_META.concluida) : null;
     const progBorder = lgStateMeta ? lgStateMeta.border : '#e2e8f0';
+    // Chip Ticket (arriba de las fechas):
+    //   · emitida → BOTÓN "Ver ticket - Folio #X" (link al ticketUrl)
+    //   · pendiente Y ¿Requiere factura?=Sí → CHIP "Pendiente"
+    //   · otro → nada
+    const folioHist  = huValueFlexible(x, ['Folio facturapi','Folio Facturapi','Folio']);
+    const reqFacHist = huValueFlexible(x, ['¿Requiere factura?']);
+    const ticketUrlHist = (typeof huExtractTicketUrl === 'function') ? huExtractTicketUrl(x) : '';
+    let ticketChipHtml = '';
+    if (status === 'emitida') {
+      const lbl = `🧾 Ver ticket${folioHist ? ' - Folio #' + esc(folioHist) : ''}`;
+      ticketChipHtml = ticketUrlHist
+        ? `<a href="${esc(ticketUrlHist)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="display:inline-block;padding:3px 9px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:800;font-size:9px;border:1px solid #86efac;text-decoration:none;letter-spacing:.02em">${lbl}</a>`
+        : `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:800;font-size:9px;border:1px solid #86efac;letter-spacing:.02em">${lbl}</span>`;
+    } else if (status === 'pendiente' || /s[ií]/i.test(String(reqFacHist||''))) {
+      ticketChipHtml = `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:#fff7ed;color:#c2410c;font-weight:800;font-size:9px;border:1px solid #fdba74;letter-spacing:.02em">🧾 Pendiente</span>`;
+    }
     return `
       <div onclick="event.stopPropagation();huSelectReservation('${esc(outerCardRecId)}','${esc(xid)}')"
            data-hu-history-id="${esc(xid)}"
@@ -10366,6 +10382,7 @@ function huBuildHistoryList(currentR, allRows, selectedRecId, outerCardRecId) {
            style="padding:11px 11px 11px 13px;border:none;border-left:7px solid ${progBorder};border-radius:10px;cursor:pointer;background:#fff;transition:all 180ms cubic-bezier(.16,1,.3,1);${isSel?'box-shadow:0 4px 14px rgba(15,23,42,.14);transform:translateX(3px)':'box-shadow:0 1px 2px rgba(15,23,42,.06)'}"
            onmouseover="if(!this.classList.contains('hu-history-active')){this.style.boxShadow='0 4px 10px rgba(15,23,42,.10)';this.style.transform='translateX(2px)'}"
            onmouseout="if(!this.classList.contains('hu-history-active')){this.style.boxShadow='0 1px 2px rgba(15,23,42,.06)';this.style.transform=''}">
+        ${ticketChipHtml ? `<div style="margin-bottom:6px">${ticketChipHtml}</div>` : ''}
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div style="font-size:11px;font-weight:800;color:#1f2937;letter-spacing:.02em">${huFmtFecha(ingreso)} → ${huFmtFecha(salida)}</div>
           <span style="display:inline-flex;align-items:center;gap:5px" title="${dotTitle}">
@@ -12010,12 +12027,13 @@ function lgRebuildFilterOptions() {
     const m = String(ym).match(/^(\d{4})-(\d{2})/);
     return m ? `${meses[+m[2]-1]} ${m[1]}` : ym;
   };
-  // Default = ÚLTIMO mes con datos (la lista ya está sorted desc → meses[0]).
-  // Si la lista está vacía (datos aún no cargan) NO inicializamos para que
-  // lgMultiInitIfNeeded se salte el init y se reintente al siguiente rebuild.
-  const defaultMes = LG_FILTER_OPTIONS.meses[0] || '';
+  // Default = mes EN CURSO (si está en la lista de meses con datos).
+  // Si la lista está vacía (datos no cargan aún) NO inicializamos → se
+  // reintenta en el próximo rebuild cuando ya haya opciones.
+  const now = new Date();
+  const defaultMes = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   lgMultiRender('meses', '📅 Meses', LG_FILTER_OPTIONS.meses, {
-    defaultSelected: defaultMes ? [defaultMes] : [],
+    defaultSelected: LG_FILTER_OPTIONS.meses.includes(defaultMes) ? [defaultMes] : [],
     optionRenderer: (v) => esc(fmtMes(v)),
   });
 }
@@ -13124,7 +13142,7 @@ function lgBuildProfileHeaderHtml(r, palette) {
     <div style="background:rgba(255,255,255,.85);border:1px solid ${palette.border};border-radius:10px;padding:8px 10px;min-width:0">
       <div style="font-size:8px;letter-spacing:.12em;color:#0f766e;font-weight:800;margin-bottom:6px;text-transform:uppercase">📞 Contacto</div>
       ${cel ? `<div style="font-size:11px;color:#1f2937;margin-bottom:3px"><span style="font-size:10px">📱</span> <a href="${esc(wa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:800;text-decoration:none">${esc(cel)}</a></div>` : ''}
-      ${correoP ? `<div style="font-size:10px;color:#1f2937;word-break:break-all;margin-bottom:3px">📧 ${esc(correoP)}</div>` : ''}
+      ${correoP ? `<div style="font-size:10px;word-break:break-all;margin-bottom:3px"><a href="mailto:${esc(correoP)}" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:700;text-decoration:none">📧 ${esc(correoP)}</a></div>` : ''}
       ${celEmer ? `<div style="font-size:10px;color:#7f1d1d;margin-top:4px;padding-top:4px;border-top:1px dashed #fecaca">🚨 <a href="${esc(waEm)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#b91c1c;font-weight:700;text-decoration:none">${esc(celEmer)}</a></div>` : ''}
     </div>` : '';
 
@@ -13254,10 +13272,20 @@ function lgBuildCardSummary(b) {
     ? `<a href="https://wa.me/${waPhone}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#0d9488;font-weight:700;text-decoration:none">📱 ${esc(b.GuestPhone)}</a>`
     : '';
 
-  // Header MINIMAL — solo nombre grande + tier inline a la derecha, KPIs y
-  // perfil debajo. Fondo = mismo tono intenso que la card seleccionada.
+  // Header — bg + border-left HOMOLOGADOS con la card seleccionada del
+  // sidebar:  bg según FACTURA (verde intenso si emitida, rojo intenso si
+  // pendiente, gris claro si sin factura), border-left 7px con color de
+  // PROGRAMACIÓN (meta.border).
+  let headerBg = '#f1f5f9'; // sin factura → gris claro (igual que bgSel neutro)
+  if (huespedMatch) {
+    const facStHeader = (typeof huGetFacturaStatus === 'function') ? huGetFacturaStatus(huespedMatch) : '';
+    const reqFacHeader = huValueFlexible(huespedMatch, ['¿Requiere factura?']);
+    const conFacHeader = /s[ií]/i.test(String(reqFacHeader||'')) || facStHeader === 'emitida' || facStHeader === 'pendiente';
+    if (conFacHeader && facStHeader === 'emitida')  headerBg = '#86efac'; // verde intenso
+    else if (conFacHeader && facStHeader === 'pendiente') headerBg = '#fca5a5'; // rojo intenso
+  }
   const summary = `
-    <div style="cursor:pointer;padding:12px 14px;background:${meta.bgIntense || palette.bg}">
+    <div style="cursor:pointer;padding:12px 14px;background:${headerBg};border-left:7px solid ${meta.border}">
       <div style="display:flex;align-items:baseline;justify-content:flex-start;gap:14px;margin-bottom:10px;flex-wrap:wrap">
         <div style="font-size:22px;font-weight:900;color:#0f172a;line-height:1.15;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nombre)}</div>
         ${kpisBarHtml_tierInline}
