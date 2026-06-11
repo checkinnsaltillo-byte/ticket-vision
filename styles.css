@@ -2112,7 +2112,9 @@ input[type="checkbox"] + .toggle-slider,
 /* Solo elementos NO interactivos muestran cursor de "ayuda" cuando tienen title.
    Botones, enlaces, inputs, [role=button], [onclick] y .menu/.btn/.chip-clickable
    mantienen su cursor de pointer normal. */
-[title]:not([title=""]):not(button):not(a):not(input):not(select):not(textarea):not(summary):not(label):not([role="button"]):not([onclick]):not(.btn):not(.btn-x):not(.btn-limpiar):not(.btn-del-row):hover { cursor: help; }
+/* Antes ponía cursor:help (símbolo "?") en cualquier elemento con title.
+   Desactivado a petición del usuario. */
+[title]:not([title=""]):not(button):not(a):not(input):not(select):not(textarea):not(summary):not(label):not([role="button"]):not([onclick]):not(.btn):not(.btn-x):not(.btn-limpiar):not(.btn-del-row):hover { cursor: default; }
 button[title], a[title], .info-chip[title], [role="button"][title], [onclick][title] { cursor: pointer; }
 
 /* ─── Scrollbar más fino y elegante (WebKit) ───────────────────────────── */

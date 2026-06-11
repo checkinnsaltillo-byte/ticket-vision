@@ -9741,11 +9741,22 @@ function huUpdateMeta(total, ini, fin) {
 const HU_MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 function huFmtFecha(iso) {
   if (!iso) return '—';
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return iso;
-  const d = parseInt(m[3], 10);
-  const mes = HU_MESES_ES[parseInt(m[2], 10) - 1] || '';
-  return `${d} de ${mes}`;
+  const s = String(iso);
+  // ISO YYYY-MM-DD
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const d = parseInt(m[3], 10);
+    const mes = HU_MESES_ES[parseInt(m[2], 10) - 1] || '';
+    return `${d} de ${mes}`;
+  }
+  // Lodgify MM/DD/YYYY
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) {
+    const d = parseInt(m[2], 10);
+    const mes = HU_MESES_ES[parseInt(m[1], 10) - 1] || '';
+    return `${d} de ${mes}`;
+  }
+  return s;
 }
 
 /** Badge "Sí/No" para ¿Requiere factura?. */
@@ -11784,6 +11795,10 @@ function lgFmtRelativeTime(iso) {
 
 function lgMultiInitIfNeeded(id, allValues, defaultSelected) {
   if (LG_STATE.multiSel[id] !== null) return;
+  // Si todavía NO hay opciones (datos no cargados) NO inicializamos: dejamos
+  // multiSel[id] en null para reintentar al próximo rebuild. lgMultiGetSet
+  // tratará null como "sin filtro" (no esconde nada).
+  if (!Array.isArray(allValues) || allValues.length === 0) return;
   // Si hay default explícito, lo respetamos filtrando contra valores existentes.
   // Si no, todos seleccionados (= sin filtro).
   if (Array.isArray(defaultSelected)) {
@@ -11799,7 +11814,9 @@ function lgMultiInitIfNeeded(id, allValues, defaultSelected) {
  *  no hay filtro activo (todos los valores están seleccionados). */
 function lgMultiGetSet(id, allValues) {
   const sel = LG_STATE.multiSel[id];
-  if (!sel || sel.size === 0) return new Set(); // 0 = ninguno
+  // null = sin inicializar (datos pendientes) → no filtra (muestra todo).
+  if (sel === null || sel === undefined) return null;
+  if (sel.size === 0) return new Set(); // ninguno seleccionado → oculta todo
   // Si está marcado todo → no filtra
   if (sel.size === allValues.length) return null;
   return new Set([...sel].map(v => String(v).toLowerCase()));
@@ -11949,9 +11966,19 @@ function lgRebuildFilterOptions() {
   const huSources = (HU_STATE.rows || []).map(r => r['Medio de reservación']).filter(Boolean);
   LG_FILTER_OPTIONS.source = [...new Set([...lgSources, ...huSources])].sort();
   LG_FILTER_OPTIONS.status = [...new Set([...LG_STATE.bookings.map(b => b.Status), 'Booked', 'Tentative'].filter(Boolean))].sort();
-  const lgProps = LG_STATE.bookings.map(b => lgPropOf(b));
-  const huProps = (HU_STATE.rows || []).map(r => lgFmtPropiedad({ propiedad: r['Propiedad'] || '', departamento: r['# Departamento'] || '' }));
-  LG_FILTER_OPTIONS.propiedad = [...new Set([...lgProps, ...huProps].filter(v => v && v !== '—'))].sort((a,b) => a.localeCompare(b,'es'));
+  // Propiedad: SIEMPRE desde el catálogo "alojamientos" (homologado).
+  // Si el catálogo aún no carga, fallback a los valores derivados de bookings/
+  // huéspedes (homologados por lgPropOf cuando ALOJ_STATE ya cargó).
+  if (ALOJ_STATE.loaded && ALOJ_STATE.rows.length) {
+    const alojProps = ALOJ_STATE.rows
+      .map(r => formatPropDeptoFromAloj_(r))
+      .filter(v => v && v !== '—');
+    LG_FILTER_OPTIONS.propiedad = [...new Set(alojProps)].sort((a,b) => a.localeCompare(b,'es'));
+  } else {
+    const lgProps = LG_STATE.bookings.map(b => lgPropOf(b));
+    const huProps = (HU_STATE.rows || []).map(r => lgFmtPropiedad({ propiedad: r['Propiedad'] || '', departamento: r['# Departamento'] || '' }));
+    LG_FILTER_OPTIONS.propiedad = [...new Set([...lgProps, ...huProps].filter(v => v && v !== '—'))].sort((a,b) => a.localeCompare(b,'es'));
+  }
   // Factura: 2 valores estáticos
   LG_FILTER_OPTIONS.factura   = ['Con factura', 'Sin factura'];
   // Meses presentes en bookings + reservaciones (formato "YYYY-MM"). Ordenados
@@ -11983,10 +12010,12 @@ function lgRebuildFilterOptions() {
     const m = String(ym).match(/^(\d{4})-(\d{2})/);
     return m ? `${meses[+m[2]-1]} ${m[1]}` : ym;
   };
-  const now = new Date();
-  const defaultMes = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  // Default = ÚLTIMO mes con datos (la lista ya está sorted desc → meses[0]).
+  // Si la lista está vacía (datos aún no cargan) NO inicializamos para que
+  // lgMultiInitIfNeeded se salte el init y se reintente al siguiente rebuild.
+  const defaultMes = LG_FILTER_OPTIONS.meses[0] || '';
   lgMultiRender('meses', '📅 Meses', LG_FILTER_OPTIONS.meses, {
-    defaultSelected: LG_FILTER_OPTIONS.meses.includes(defaultMes) ? [defaultMes] : [],
+    defaultSelected: defaultMes ? [defaultMes] : [],
     optionRenderer: (v) => esc(fmtMes(v)),
   });
 }
@@ -12331,12 +12360,14 @@ function lgBuildDetailSidebarItem(b, selectedId) {
   const reqFac = huesped ? huValueFlexible(huesped, ['¿Requiere factura?']) : '';
   const conFactura = /s[ií]/i.test(String(reqFac||'')) || facStatus === 'emitida' || facStatus === 'pendiente';
   let itemBg = '#fff';
-  if (conFactura && facStatus === 'emitida')  itemBg = '#dcfce7';      // verde claro
-  else if (conFactura && facStatus === 'pendiente') itemBg = '#fee2e2'; // rojo claro
-  // (sin factura → blanco; default ya)
+  let itemBgSel = '#f1f5f9'; // resaltado neutro para "sin factura"
+  if (conFactura && facStatus === 'emitida')  { itemBg = '#dcfce7'; itemBgSel = '#86efac'; }      // verde claro → verde más intenso
+  else if (conFactura && facStatus === 'pendiente') { itemBg = '#fee2e2'; itemBgSel = '#fca5a5'; } // rojo claro  → rojo más intenso
+  // (sin factura → blanco; default ya; resaltado = gris claro)
   const accentColor = stMeta.border;
+  const finalBg = isSel ? itemBgSel : itemBg;
   const activeShadow = isSel
-    ? `box-shadow:0 6px 16px ${stMeta.shadowAccent}, 0 2px 4px ${stMeta.shadowAccent};`
+    ? `box-shadow:0 6px 18px ${stMeta.shadowAccent}, 0 2px 6px rgba(15,23,42,.18);transform:translateX(2px);`
     : '';
 
   // ─── Top: source + ticket / requiere factura ───
@@ -12395,13 +12426,18 @@ function lgBuildDetailSidebarItem(b, selectedId) {
     <div class="rd-item ${isSel?'rd-active':''}" onclick="lgDetailSelect('${esc(b.Id)}')"
          data-lg-booking-id="${esc(b.Id)}"
          data-lg-state="${stayState||'concluida'}"
-         style="background:${itemBg};border-left:7px solid ${accentColor};padding-left:9px;display:block;${activeShadow}">
-      <!-- Top: chips Fuente + Registrado/Ticket + Programación inline -->
-      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:6px;min-width:0">
-        ${sourceChip}
-        ${hasMatch?'<span style="display:inline-block;padding:1px 7px;border-radius:999px;background:linear-gradient(135deg,#475569,#334155);color:#fff;font-weight:800;font-size:9px;border:1px solid #1e293b;letter-spacing:.04em">REGISTRADO</span>':''}
-        ${tktChip}
-        ${progDot ? `<span style="font-size:9px;letter-spacing:.04em;text-transform:uppercase">${progDot}</span>` : ''}
+         data-lg-bg="${finalBg}"
+         data-lg-bg-sel="${itemBgSel}"
+         data-lg-bg-norm="${itemBg}"
+         style="background:${finalBg};border-left:7px solid ${accentColor};padding-left:9px;display:block;${activeShadow}">
+      <!-- Top: chips Fuente + Registrado/Ticket (izquierda)  + Programación (derecha) -->
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:6px;min-width:0;justify-content:space-between">
+        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;min-width:0">
+          ${sourceChip}
+          ${hasMatch?'<span style="display:inline-block;padding:1px 7px;border-radius:999px;background:linear-gradient(135deg,#475569,#334155);color:#fff;font-weight:800;font-size:9px;border:1px solid #1e293b;letter-spacing:.04em">REGISTRADO</span>':''}
+          ${tktChip}
+        </div>
+        ${progDot ? `<span style="font-size:9px;letter-spacing:.04em;text-transform:uppercase;margin-left:auto">${progDot}</span>` : ''}
       </div>
       <!-- Centro: nombre, propiedad, fechas, status, monto. -->
       <div style="min-width:0">
@@ -12473,18 +12509,22 @@ function lgBuildProgLegendHtml() {
   const chip = (state) => {
     const m = LG_STATE_META[state]; if (!m) return '';
     const active = sel.has(state);
+    // Fondo blanco siempre. La identidad de cada chip se refleja en una
+    // LÍNEA gruesa a la izquierda (5px) — mismo color que el borde izquierdo
+    // de las cards del sidebar (que también marca Programación).
     return `
       <button type="button" onclick="event.stopPropagation();lgMultiToggle('programacion','${state}');lodgifyRender()"
               title="${esc(m.label)}${active?' (activo)':' (desactivado — click para activar)'}"
-              style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;
-                     border:1.5px solid ${active ? m.border : '#e2e8f0'};
-                     background:${active ? m.bgIntense : '#fff'};
-                     color:${active ? m.accentFg : '#cbd5e1'};
+              style="display:inline-flex;align-items:center;gap:6px;padding:4px 9px 4px 0;border-radius:6px;
+                     border:1px solid ${active ? '#94a3b8' : '#e2e8f0'};
+                     background:#fff;
+                     color:${active ? '#0f172a' : '#cbd5e1'};
                      font-weight:800;font-size:10px;letter-spacing:.02em;cursor:pointer;
-                     transition:transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
-                     ${active ? `box-shadow:0 2px 6px ${m.shadowAccent};` : 'opacity:.55;'}
-                     white-space:nowrap">
-        <span style="font-size:11px;line-height:1;${active?'':'filter:grayscale(.6)'}">${m.emoji}</span>${esc(m.label)}
+                     transition:opacity 120ms ease, border-color 120ms ease;
+                     ${active ? '' : 'opacity:.55;'}
+                     white-space:nowrap;overflow:hidden">
+        <span style="display:inline-block;width:5px;align-self:stretch;background:${m.border};border-radius:6px 0 0 6px"></span>
+        <span>${esc(m.label)}</span>
       </button>`;
   };
   const todasBtn = `
@@ -12561,20 +12601,25 @@ window.lgToggleSidebarFilters = function(btn) {
 
 window.lgDetailSelect = function(id) {
   LG_STATE.detailSelectedId = String(id);
-  // Re-skin de cada item: SOLO sombra/clase activa cambian al cambiar
-  // selección. El BG es de factura (no programación) y NO se debe pisar.
+  // Re-skin: la card seleccionada usa bg INTENSO (data-lg-bg-sel) y sombra.
+  // Las demás vuelven al bg normal (data-lg-bg-norm).
   document.querySelectorAll('.lg-detail-shell .rd-item').forEach(el => {
     const bid = el.getAttribute('data-lg-booking-id');
     const state = el.getAttribute('data-lg-state') || 'concluida';
     const meta = LG_STATE_META[state] || LG_STATE_META.concluida;
+    const bgNorm = el.getAttribute('data-lg-bg-norm') || '#fff';
+    const bgSel  = el.getAttribute('data-lg-bg-sel')  || '#f1f5f9';
     const isThis = String(bid) === String(id);
     if (isThis) {
       el.classList.add('rd-active');
-      el.style.boxShadow  = `0 6px 16px ${meta.shadowAccent}, 0 2px 4px ${meta.shadowAccent}`;
+      el.style.background = bgSel;
+      el.style.boxShadow  = `0 6px 18px ${meta.shadowAccent}, 0 2px 6px rgba(15,23,42,.18)`;
+      el.style.transform  = 'translateX(2px)';
     } else {
       el.classList.remove('rd-active');
-      el.style.background = '';
+      el.style.background = bgNorm;
       el.style.boxShadow  = '';
+      el.style.transform  = '';
     }
   });
   // En vista Detalles el sidebar muestra Reservaciones (sintéticas). Buscamos
@@ -13213,7 +13258,7 @@ function lgBuildCardSummary(b) {
   // perfil debajo. Fondo = mismo tono intenso que la card seleccionada.
   const summary = `
     <div style="cursor:pointer;padding:12px 14px;background:${meta.bgIntense || palette.bg}">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:baseline;justify-content:flex-start;gap:14px;margin-bottom:10px;flex-wrap:wrap">
         <div style="font-size:22px;font-weight:900;color:#0f172a;line-height:1.15;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nombre)}</div>
         ${kpisBarHtml_tierInline}
       </div>
@@ -13971,7 +14016,7 @@ function lgBuildHuespedSectionHtml_lite(huesped) {
         <div style="font-size:9px;font-weight:700;color:#166534;letter-spacing:.06em;margin-bottom:3px">📞 CONTACTO</div>
         ${cel    ? `<div style="font-size:12px;color:#0f766e;font-weight:700">📱 ${lgV(cel)}</div>` : ''}
         ${celEm  ? `<div style="font-size:11px;color:#0f766e;margin-top:2px">📞 ${lgV(celEm)} <span style="color:#64748b;font-weight:500">(emergencia)</span></div>` : ''}
-        ${correo ? `<div style="font-size:11px;color:#475569;margin-top:2px;word-break:break-all">✉️ ${lgV(correo)}</div>` : ''}
+        ${correo ? `<div style="font-size:11px;margin-top:2px;word-break:break-all"><a href="mailto:${esc(correo)}" style="color:#0d9488;text-decoration:none;font-weight:700">✉️ ${esc(correo)}</a></div>` : ''}
       </div>
       ${(razon || rfc) ? `
       <div style="background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:8px 10px">
