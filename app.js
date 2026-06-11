@@ -9239,7 +9239,12 @@ function huRecalcAirbnb(inputAirbnb) {
   const fac = huCalcMontoFacturadoAirbnb(inputAirbnb.value);
   if (comInp) comInp.value = com ? com.toFixed(2) : '';
   if (facInp) facInp.value = fac ? fac.toFixed(2) : '';
-  const card = inputAirbnb.closest('.hu-record');
+  // Card puede ser .hu-record (vista huéspedes legacy), .hu-resv-detail
+  // (vista Detalles fusionada legacy) o .hu-resv-cobros (vista Detalles
+  // dividida actual). Cualquiera de los 3 sirve si lleva data-hu-resv-id.
+  const card = inputAirbnb.closest('.hu-record')
+            || inputAirbnb.closest('.hu-resv-detail')
+            || inputAirbnb.closest('.hu-resv-cobros');
   const hdrAmt = card?.querySelector('[data-hu-header-amount="1"]');
   if (hdrAmt) hdrAmt.textContent = fac ? huFmtMonto(fac) : '—';
   // Persistir (debounced) en cuanto el valor cambia.
@@ -9430,23 +9435,45 @@ window.huImportLodgifyMontos = function(btn) {
   // El botón puede vivir en .hu-resv-cobros (vista Detalles dividida) o en
   // .hu-resv-detail (vista combinada legacy). Busca la caja Airbnb en su
   // contenedor más cercano que la incluya; si no, fallback a document.
-  const card = btn.closest('.hu-resv-cobros') || btn.closest('.hu-resv-detail') || document;
+  const card = btn.closest('.hu-resv-cobros') || btn.closest('.hu-resv-detail') || document.body;
   const box  = card.querySelector('[data-hu-airbnb-box="1"]') || document.querySelector('[data-hu-airbnb-box="1"]');
   if (!box) { console.warn('[HU] importar: no se encontró la caja'); return; }
   const valueStr = gross.toFixed(2);
+  // recId desde el wrapper (data-hu-resv-id) o desde el atributo del box
+  // (data-hu-airbnb-recid) o desde data-record-id (.hu-record).
+  const recIdAttr = (card.getAttribute && (card.getAttribute('data-hu-resv-id') || card.getAttribute('data-record-id')))
+                 || box.getAttribute('data-hu-airbnb-recid') || '';
   if (esAirbnb) {
-    // El input "(=) $ Monto total Airbnb" es el ÚNICO input number sin
-    // data-hu-airbnb-comision ni data-hu-airbnb-facturado (ver huBuildAirbnbBox).
     const baseInput = box.querySelector('input[type="number"]:not([data-hu-airbnb-comision]):not([data-hu-airbnb-facturado])');
     if (!baseInput) { console.warn('[HU] importar: no se encontró input base Airbnb'); return; }
     baseInput.value = valueStr;
-    huRecalcAirbnb(baseInput); // cascadea + persiste (debounce 600ms)
+    huRecalcAirbnb(baseInput); // cascadea inputs + dispara persist debounced
   } else {
     const facInput = box.querySelector('[data-hu-airbnb-facturado="1"]');
     if (!facInput) { console.warn('[HU] importar: no se encontró input facturado'); return; }
     facInput.value = valueStr;
-    huMaybePersistCardMonto(card);
   }
+  // CRÍTICO: actualizar HU_STATE INMEDIATAMENTE (antes de cualquier
+  // re-render) y disparar el POST SIN debounce. El bug anterior era que el
+  // debounce de 600 ms permitía que un re-render leyera HU_STATE viejo
+  // (con $ vacío) y reescribiera los inputs como vacíos antes de que el
+  // POST se completara.
+  if (recIdAttr) {
+    const r = (HU_STATE.rows || []).find(x => String(x['ID']||x['row_number']||'') === String(recIdAttr));
+    if (r) {
+      const facInpNow = card.querySelector ? card.querySelector('[data-hu-airbnb-facturado="1"]') : null;
+      const facVal = facInpNow ? facInpNow.value : (esAirbnb ? '' : valueStr);
+      if (facVal) r['$ Monto facturado Total'] = facVal;
+      if (esAirbnb) r['$ Monto total Airbnb'] = valueStr;
+      if (esAirbnb) {
+        const comInpNow = card.querySelector ? card.querySelector('[data-hu-airbnb-comision="1"]') : null;
+        if (comInpNow?.value) r['$ Comisión Airbnb'] = comInpNow.value;
+      }
+    }
+  }
+  // Persist INMEDIATO (cancela cualquier debounce previo)
+  if (HU_RECALC_TIMER) { clearTimeout(HU_RECALC_TIMER); HU_RECALC_TIMER = null; }
+  try { huPersistCardMonto(card); } catch (e) { console.warn('[HU] persist err:', e); }
   // Feedback visual
   const original = btn.innerHTML;
   btn.innerHTML = '✓ Importado';
@@ -10993,10 +11020,18 @@ async function huespedesGenerarTicket(recordId) {
   }
 
   // Leer el monto facturado actual del input calculado del card (el valor
-  // ya considera el cálculo Airbnb − comisión cuando aplica).
+  // ya considera el cálculo Airbnb − comisión cuando aplica). El card puede
+  // estar en cualquiera de las 3 vistas: .hu-record (huéspedes legacy),
+  // .hu-resv-detail (Detalles fusionada legacy), .hu-resv-cobros (Detalles
+  // dividida actual). Buscamos por data-hu-resv-id o data-record-id; si nada
+  // matchea por recordId, caemos al primer input airbnb visible en pantalla
+  // (porque en vista Detalles solo hay 1 caja visible a la vez).
   let cantidad = '';
-  const card = document.querySelector(`.hu-record[data-record-id="${recordId}"]`);
-  const facInput = card?.querySelector('[data-hu-airbnb-facturado="1"]');
+  const card = document.querySelector(`.hu-record[data-record-id="${recordId}"]`)
+            || document.querySelector(`.hu-resv-cobros[data-hu-resv-id="${recordId}"]`)
+            || document.querySelector(`.hu-resv-detail[data-hu-resv-id="${recordId}"]`);
+  const facInput = card?.querySelector('[data-hu-airbnb-facturado="1"]')
+                || document.querySelector('[data-hu-airbnb-facturado="1"]');
   if (facInput && String(facInput.value).trim() !== '') cantidad = facInput.value;
 
   // URL base de facturapi (hardcoded al Cloud Run del check-in, override
