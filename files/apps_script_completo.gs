@@ -16,6 +16,9 @@ function doPost(e) {
     if (action === "get_bancos_data")              return respond(getBancosData_(SpreadsheetApp.openById(SHEET_ID)));
     if (action === "save_banco_clasificacion")     return respond(saveBancoClasificacion_(SpreadsheetApp.openById(SHEET_ID), data));
     if (action === "save_presupuesto")             return respond(savePresupuesto_(SpreadsheetApp.openById(SHEET_ID), data));
+    if (action === "bn_cuentas_bancarias_list")    return respond(bnCuentasBancariasList_(SpreadsheetApp.openById(SHEET_ID)));
+    if (action === "bn_bancos_dedupe_index")       return respond(bnBancosDedupeIndex_(SpreadsheetApp.openById(SHEET_ID)));
+    if (action === "bn_bancos_insert_bulk")        return respond(bnBancosInsertBulk_(SpreadsheetApp.openById(SHEET_ID), data));
     return respond({ ok: false, error: "Acción desconocida: " + action });
   } catch (err) {
     return respond({ ok: false, error: err.message });
@@ -711,5 +714,159 @@ function savePresupuesto_(ss, data) {
   }
 
   return { ok: true, rowsWritten: rows.length };
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// ║  CARGA DE DATOS BANCARIOS — Apps Script actions                     ║
+// ║                                                                      ║
+// ║  Estas 3 acciones soportan la subsección "Carga de datos bancarios" ║
+// ║  del módulo Registros contables: lectura de cuentas_bancarias para  ║
+// ║  el mapeo de subcuentas, dedupe contra BANCOS existente, e inserción║
+// ║  por lotes de los movimientos parseados del frontend.                ║
+// ╚════════════════════════════════════════════════════════════════════════
+
+/** Devuelve los registros de la hoja `cuentas_bancarias` para el frontend.
+ *  Schema esperado: cuenta_nombre | cuenta_numero | cuenta_tag |
+ *                   cuenta_tag_original | cuenta_tipo
+ *  El frontend lo usa para matchear el texto literal del marker en el
+ *  Excel (ej. "Digital *2220") contra `cuenta_tag_original` y obtener
+ *  cuenta_nombre + cuenta_tag + cuenta_tipo.
+ */
+function bnCuentasBancariasList_(ss) {
+  // Detección case-insensitive del nombre de la hoja (puede haber sido
+  // renombrada de "cuentas_bancaria" → "cuentas_bancarias").
+  var sheets = ss.getSheets();
+  var sh = sheets.find(function(s){
+    var n = String(s.getName() || "").trim().toLowerCase();
+    return n === "cuentas_bancarias" || n === "cuentas_bancaria";
+  });
+  if (!sh) return { ok: false, error: "No se encontró la hoja 'cuentas_bancarias'." };
+  var data = sh.getDataRange().getValues();
+  if (data.length < 2) return { ok: true, rows: [] };
+  var headers = data[0].map(function(h){ return String(h || "").trim().toLowerCase(); });
+  function idx(name) { return headers.indexOf(name); }
+  var iNom = idx("cuenta_nombre"),
+      iNum = idx("cuenta_numero"),
+      iTag = idx("cuenta_tag"),
+      iOri = idx("cuenta_tag_original"),
+      iTip = idx("cuenta_tipo");
+  var rows = [];
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    var nombre = iNom >= 0 ? String(row[iNom] || "").trim() : "";
+    if (!nombre) continue; // ignora filas vacías
+    rows.push({
+      cuenta_nombre:       nombre,
+      cuenta_numero:       iNum >= 0 ? String(row[iNum] || "").trim() : "",
+      cuenta_tag:          iTag >= 0 ? String(row[iTag] || "").trim() : "",
+      cuenta_tag_original: iOri >= 0 ? String(row[iOri] || "").trim() : "",
+      cuenta_tipo:         iTip >= 0 ? String(row[iTip] || "").trim() : "",
+    });
+  }
+  return { ok: true, rows: rows };
+}
+
+/** Devuelve un índice de keys de dedupe de la hoja BANCOS para que el
+ *  frontend pueda detectar duplicados ANTES de pedir la inserción.
+ *  Key = Día|Cuenta bancaria|Subcuenta|DESCRIPCION(normalizada)|CARGO|ABONO|#N
+ *  El contador #N se asigna por orden de aparición dentro del mismo grupo
+ *  (para distinguir cargos legítimos idénticos: ej. 2 MERPAGO el mismo día).
+ */
+function bnBancosDedupeIndex_(ss) {
+  var sh = ss.getSheets().find(function(s){
+    return String(s.getName() || "").trim().toUpperCase() === "BANCOS";
+  });
+  if (!sh) return { ok: false, error: "No se encontró la hoja BANCOS." };
+  var data = sh.getDataRange().getValues();
+  if (data.length < 2) return { ok: true, keys: [] };
+  var headers = data[0].map(function(h){ return String(h || "").trim().toUpperCase(); });
+  function pickIdx_(opts) {
+    for (var i = 0; i < opts.length; i++) {
+      var k = headers.indexOf(opts[i].toUpperCase());
+      if (k >= 0) return k;
+    }
+    return -1;
+  }
+  var iDia = pickIdx_(["DÍA","DIA","FECHA"]);
+  var iCta = pickIdx_(["CUENTA BANCARIA"]);
+  var iSub = pickIdx_(["SUBCUENTA","SUB-CUENTA"]);
+  var iDes = pickIdx_(["DESCRIPCION","DESCRIPCIÓN"]);
+  var iCar = pickIdx_(["CARGO"]);
+  var iAbo = pickIdx_(["ABONO"]);
+  if (iDia < 0 || iDes < 0) {
+    return { ok: false, error: "Faltan columnas DÍA o DESCRIPCION en BANCOS." };
+  }
+  // Para Día usar DisplayValues para que las celdas Date no se serialicen
+  // como ISO con timezone (lo que rompería match con el frontend).
+  var displ = sh.getDataRange().getDisplayValues();
+  function norm_(s) { return String(s || "").trim().toLowerCase(); }
+  function numStr_(v) {
+    if (v === null || v === undefined || v === "") return "";
+    var n = Number(v);
+    if (isFinite(n)) return String(Math.round(n * 100) / 100); // 2 decimales máx
+    return String(v).trim();
+  }
+  // Cuenta cuántas veces ya existe cada (sin contador) → asigna #1, #2, …
+  var seen = {};
+  var keys = [];
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    if (row.join("").toString().trim() === "") continue;
+    var dia = iDia >= 0 ? String(displ[r][iDia] || "").trim() : "";
+    if (!dia) continue;
+    var base = [
+      dia,
+      iCta >= 0 ? String(row[iCta] || "").trim() : "",
+      iSub >= 0 ? String(row[iSub] || "").trim() : "",
+      iDes >= 0 ? norm_(row[iDes]) : "",
+      iCar >= 0 ? numStr_(row[iCar]) : "",
+      iAbo >= 0 ? numStr_(row[iAbo]) : "",
+    ].join("|");
+    seen[base] = (seen[base] || 0) + 1;
+    keys.push(base + "|#" + seen[base]);
+  }
+  return { ok: true, keys: keys };
+}
+
+/** Inserta filas validadas en BANCOS. El frontend manda un array de objetos
+ *  con los campos ya calculados (Monto firmado, Subcuenta, Cuenta bancaria,
+ *  Año, Mes, etc.). Esta función NO recalcula nada — solo escribe a la hoja
+ *  respetando los headers actuales (mapea por nombre, no por posición).
+ *  data.rows = [{ "Día":"YYYY-MM-DD", "DESCRIPCION":"…", "CARGO":… , "ABONO":… ,
+ *                 "SALDO":…|texto, "Monto":…|"", "Cuenta bancaria":"…",
+ *                 "Subcuenta":"…", "Año":"…", "Mes":"…", "COMENTARIOS":"…" }, …]
+ */
+function bnBancosInsertBulk_(ss, data) {
+  var rows = (data && data.rows) || [];
+  if (!Array.isArray(rows) || !rows.length) {
+    return { ok: true, inserted: 0, message: "Sin filas para insertar." };
+  }
+  var sh = ss.getSheets().find(function(s){
+    return String(s.getName() || "").trim().toUpperCase() === "BANCOS";
+  });
+  if (!sh) return { ok: false, error: "No se encontró la hoja BANCOS." };
+  // LockService para serializar inserciones concurrentes y evitar race.
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (e) {
+    return { ok: false, error: "No se pudo adquirir lock (otra escritura en curso)." };
+  }
+  try {
+    var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]
+                    .map(function(h){ return String(h || "").trim(); });
+    // Mapea cada fila incoming a un array según los headers del sheet.
+    var matrix = rows.map(function(r){
+      return headers.map(function(h){
+        var v = r[h];
+        if (v === undefined || v === null) return "";
+        return v;
+      });
+    });
+    var startRow = sh.getLastRow() + 1;
+    sh.getRange(startRow, 1, matrix.length, headers.length).setValues(matrix);
+    SpreadsheetApp.flush();
+    return { ok: true, inserted: matrix.length, startRow: startRow };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
