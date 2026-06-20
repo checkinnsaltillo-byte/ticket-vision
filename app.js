@@ -5462,8 +5462,9 @@ function bn_createCard(rec, idx) {
   // Color del texto de la pestaña: blanco cuando hay color de fondo (clasificado fuera de PC);
   // texto oscuro cuando la pestaña queda sin color (no clasificado o en Por clasificar).
   const tabTxtColor = clasifColorCls ? '#fff' : 'var(--text,#111827)';
-  // Auto: probabilidad semaforizada
-  const probPct = Math.round((Number(rec._prob_clasif) || 0) * 100);
+  // Auto: probabilidad semaforizada (acepta 0-1 o 0-100)
+  const _probRaw = Number(rec._prob_clasif) || 0;
+  const probPct = Math.round(_probRaw > 1 ? _probRaw : _probRaw * 100);
   const probCol = probPct >= 80 ? '#16a34a' : probPct >= 50 ? '#f59e0b' : '#dc2626';
   const probBg  = probPct >= 80 ? '#dcfce7' : probPct >= 50 ? '#fef3c7' : '#fee2e2';
   const autoTabHtml = `
