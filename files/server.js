@@ -266,6 +266,25 @@ app.post("/lodgify-sync", async (req, res) => {
   }
 });
 
+// Oculta una reservación de Lodgify del frontend (no la borra del sheet maestro)
+app.post("/lg-hide-booking", async (req, res) => {
+  try {
+    const id = String(req.body?.id || "").trim();
+    if (!id) throw new Error("Falta id");
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "lg_hide_booking", id, hidden_by: req.body?.hidden_by || "" }),
+    });
+    const text = await r.text();
+    let json = {};
+    try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
+    res.json(json);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Elimina una reservación completa (fila en la hoja "Reservaciones") por su ID.
 app.post("/huespedes-delete", async (req, res) => {
   try {
