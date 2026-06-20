@@ -266,6 +266,32 @@ app.post("/lodgify-sync", async (req, res) => {
   }
 });
 
+// Unifica dos filas de Reservaciones (winner = manual, loser = propagada de Lodgify)
+app.post("/lg-unify-records", async (req, res) => {
+  try {
+    const winnerId = String(req.body?.winner_id || "").trim();
+    const loserId  = String(req.body?.loser_id  || "").trim();
+    if (!winnerId || !loserId) throw new Error("Faltan winner_id y/o loser_id");
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "unify_reservaciones",
+        winner_id: winnerId,
+        loser_id: loserId,
+        fields: req.body?.fields || {},
+        hidden_by: req.body?.hidden_by || "",
+      }),
+    });
+    const text = await r.text();
+    let json = {};
+    try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
+    res.json(json);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Oculta una reservación de Lodgify del frontend (no la borra del sheet maestro)
 app.post("/lg-hide-booking", async (req, res) => {
   try {
