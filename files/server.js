@@ -292,6 +292,25 @@ app.post("/lg-unify-records", async (req, res) => {
   }
 });
 
+// Oculta una fila de Reservaciones del frontend (sin borrarla del sheet)
+app.post("/lg-hide-reservacion", async (req, res) => {
+  try {
+    const id = String(req.body?.id || "").trim();
+    if (!id) throw new Error("Falta id");
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "hide_reservacion", id, hidden_by: req.body?.hidden_by || "" }),
+    });
+    const text = await r.text();
+    let json = {};
+    try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
+    res.json(json);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Deshace una unificación: quita ID de Reservaciones_Hidden
 app.post("/lg-unhide-reservacion", async (req, res) => {
   try {
