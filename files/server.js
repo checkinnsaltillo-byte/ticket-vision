@@ -24,7 +24,9 @@ app.use(express.json({ limit: "20mb" }));
 
 // URL fija — NO usar process.env.APPS_SCRIPT_URL porque Cloud Run tiene
 // una variable de entorno antigua que sobreescribe el valor hardcodeado.
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2ScMpkR2yWYJKU1fC3QtEuOKk3Lqu2dUHzwQD9DfZxOETdyv9RzJjF1CbBnQ5adUgBg/exec";
+// Unificado: ahora toda la lógica (tickets + BANCOS read/save + presupuesto)
+// vive en checkin_normalized.gs (Apps Script master).
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec";
 
 async function callAppsScript(payload) {
   const controller = new AbortController();
