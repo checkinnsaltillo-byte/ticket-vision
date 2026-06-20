@@ -437,6 +437,12 @@ function getBancosData_(ss) {
   const iDudN   = pickIdx(hB, ["DUDA_NOTA", "DUDA NOTA", "NOTA_DUDA"]);
   const iVal    = pickIdx(hB, ["VALIDADO"]);
   const iComB   = pickIdx(hB, ["COMENTARIOS", "COMENTARIO"]);
+  const iCuentaA = pickIdx(hB, ["CUENTA_AUTO", "CUENTA AUTO"]);
+  const iSubA    = pickIdx(hB, ["SUBCUENTA_AUTO", "SUBCUENTA AUTO"]);
+  const iCatA    = pickIdx(hB, ["CATEGORIA_AUTO", "CATEGORÍA_AUTO", "CATEGORIA AUTO"]);
+  const iConA    = pickIdx(hB, ["CONCEPTO_AUTO", "CONCEPTO AUTO"]);
+  const iProb    = pickIdx(hB, ["PROBABILIDAD_CLASIF", "PROBABILIDAD CLASIF", "PROBABILIDAD"]);
+  const iArgs    = pickIdx(hB, ["ARGUMENTOS_CLASIF", "ARGUMENTOS CLASIF", "ARGUMENTOS"]);
 
   const records = bancos.slice(1)
     .map((r, i) => ({ r, rowNum: i + 2 }))           // rowNum = índice real en Sheet (antes del filter)
@@ -464,6 +470,12 @@ function getBancosData_(ss) {
         DUDA_NOTA:         iDudN   >= 0 ? String(r[iDudN]).trim()   : "",
         VALIDADO:          iVal    >= 0 ? String(r[iVal]).trim()    : "",
         COMENTARIOS:       iComB   >= 0 ? String(r[iComB]).trim()   : "",
+        CUENTA_auto:       iCuentaA>= 0 ? String(r[iCuentaA]).trim(): "",
+        SUBCUENTA_auto:    iSubA   >= 0 ? String(r[iSubA]).trim()   : "",
+        CATEGORIA_auto:    iCatA   >= 0 ? String(r[iCatA]).trim()   : "",
+        CONCEPTO_auto:     iConA   >= 0 ? String(r[iConA]).trim()   : "",
+        Probabilidad_clasif: iProb >= 0 ? toNumber(r[iProb])        : 0,
+        Argumentos_clasif: iArgs   >= 0 ? String(r[iArgs]).trim()   : "",
         rowNum:            rowNum
       };
     });
