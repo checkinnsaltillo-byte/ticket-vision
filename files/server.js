@@ -18,7 +18,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const upload = multer({ dest: UPLOAD_DIR });
 
 app.use(cors({ origin: true }));
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({ limit: "32mb" }));
 
 // ─── Apps Script URL (maneja Drive y Sheets) ───────────────────────────────
 
@@ -155,6 +155,36 @@ app.get("/personal-list", async (req, res) => {
     const result = await callCheckinAppsScript("list_personal");
     res.json(result);
   } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── Guardar reporte de incidencia ───────────────────────────────────────────
+// Recibe { payload: {fecha, propiedad, depto, ...}, fotos: [{name, base64, mimeType}] }
+// 1) Sube cada foto via Apps Script → DriveApp en /Drive/Incidencias/{año}/{mes}
+// 2) Inserta una fila en la hoja "Incidencias" con las URLs públicas
+app.post("/save-incidencia", async (req, res) => {
+  try {
+    const payload = req.body?.payload || {};
+    const fotos = Array.isArray(req.body?.fotos) ? req.body.fotos : [];
+    const fotosUrls = [];
+    for (const f of fotos) {
+      if (!f || !f.base64) continue;
+      const up = await callCheckinAppsScript("upload_incidencia_image", {
+        fecha: payload.fecha || '',
+        alojamiento: payload.alojamiento || '',
+        file: JSON.stringify({ fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 }),
+      });
+      if (up && up.ok && up.url) fotosUrls.push(up.url);
+      else console.warn("save_incidencia: foto fallida", up && up.error);
+    }
+    const saveResult = await callCheckinAppsScript("save_incidencia", {
+      payload: JSON.stringify({ ...payload, fotos_urls: fotosUrls }),
+    });
+    if (!saveResult || !saveResult.ok) throw new Error(saveResult?.error || 'Apps Script save error');
+    res.json({ ok: true, id: saveResult.id, timestamp: saveResult.timestamp, fotos_uploaded: fotosUrls.length });
+  } catch (err) {
+    console.error("save_incidencia_error", err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
