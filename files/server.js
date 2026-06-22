@@ -184,6 +184,16 @@ app.get("/personal-list", async (req, res) => {
   }
 });
 
+// ─── Listar reportes de incidencias guardados ────────────────────────────────
+app.get("/incidencias-list", async (req, res) => {
+  try {
+    const result = await callCheckinAppsScript("list_incidencias");
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Guardar reporte de incidencia ───────────────────────────────────────────
 // Recibe { payload: {fecha, propiedad, depto, ...}, fotos: [{name, base64, mimeType}] }
 // 1) Sube cada foto via Apps Script → DriveApp en /Drive/Incidencias/{año}/{mes}
