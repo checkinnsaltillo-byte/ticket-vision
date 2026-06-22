@@ -150,6 +150,15 @@ app.get("/alojamientos-list", async (req, res) => {
   }
 });
 
+app.get("/personal-list", async (req, res) => {
+  try {
+    const result = await callCheckinAppsScript("list_personal");
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get("/huespedes-filter-options", async (req, res) => {
   try {
     const result = await callCheckinAppsScript("list_filter_options");
