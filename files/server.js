@@ -115,6 +115,31 @@ async function callCheckinAppsScript(action, paramsObj) {
   } finally { clearTimeout(timer); }
 }
 
+// Variante POST con body JSON para payloads grandes (base64 de imágenes,
+// arrays de filas). GET trunca URLs largas → fotos llegan corruptas y
+// nunca suben. doPost en Apps Script parsea e.postData.contents.
+async function callCheckinAppsScriptPost(action, dataObj) {
+  const body = JSON.stringify(Object.assign({ action }, dataObj || {}));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000); // 60s para uploads
+  try {
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      // text/plain evita el preflight CORS y Apps Script igualmente recibe
+      // el body en e.postData.contents (patrón estándar para Apps Script).
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body,
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    const text = await r.text();
+    try { return JSON.parse(text); } catch { return { ok: false, raw: text.slice(0, 500) }; }
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("Timeout: Apps Script tardó más de 60s");
+    throw err;
+  } finally { clearTimeout(timer); }
+}
+
 app.get("/huespedes-list", async (req, res) => {
   try {
     const params = {
@@ -170,16 +195,17 @@ app.post("/save-incidencia", async (req, res) => {
     const fotosUrls = [];
     for (const f of fotos) {
       if (!f || !f.base64) continue;
-      const up = await callCheckinAppsScript("upload_incidencia_image", {
+      // POST con JSON — base64 puede pesar varios MB, GET truncaría.
+      const up = await callCheckinAppsScriptPost("upload_incidencia_image", {
         fecha: payload.fecha || '',
         alojamiento: payload.alojamiento || '',
-        file: JSON.stringify({ fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 }),
+        file: { fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 },
       });
       if (up && up.ok && up.url) fotosUrls.push(up.url);
-      else console.warn("save_incidencia: foto fallida", up && up.error);
+      else console.warn("save_incidencia: foto fallida", JSON.stringify(up).slice(0, 300));
     }
-    const saveResult = await callCheckinAppsScript("save_incidencia", {
-      payload: JSON.stringify({ ...payload, fotos_urls: fotosUrls }),
+    const saveResult = await callCheckinAppsScriptPost("save_incidencia", {
+      payload: { ...payload, fotos_urls: fotosUrls },
     });
     if (!saveResult || !saveResult.ok) throw new Error(saveResult?.error || 'Apps Script save error');
     res.json({ ok: true, id: saveResult.id, timestamp: saveResult.timestamp, fotos_uploaded: fotosUrls.length });
