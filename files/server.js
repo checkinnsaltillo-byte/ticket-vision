@@ -185,15 +185,42 @@ app.get("/personal-list", async (req, res) => {
 });
 
 // ─── Actualizar una incidencia existente ─────────────────────────────────────
+// Acepta: { id, fields, fotos?: [{name,base64,mimeType}], keepUrls?: [string] }
+// Si vienen fotos nuevas: las sube a Drive vía Apps Script y compone el CSV
+// final Fotos_URLs = keepUrls + nuevas URLs subidas, que se inyecta en fields.
 app.post("/update-incidencia", async (req, res) => {
   try {
     const id = String(req.body?.id || '').trim();
-    const fields = req.body?.fields || {};
+    const fields = Object.assign({}, req.body?.fields || {});
+    const newFotos = Array.isArray(req.body?.fotos) ? req.body.fotos : null;
+    const keepUrls = Array.isArray(req.body?.keepUrls) ? req.body.keepUrls : null;
     if (!id) return res.status(400).json({ ok: false, error: 'Falta id' });
+    let finalUrls = null;
+    if (newFotos !== null || keepUrls !== null) {
+      // El frontend está controlando las fotos → calcular el CSV final
+      const uploaded = [];
+      for (const f of (newFotos || [])) {
+        if (!f || !f.base64) continue;
+        const up = await callCheckinAppsScriptPost("upload_incidencia_image", {
+          fecha: fields.fecha || '',
+          alojamiento: fields.alojamiento || '',
+          file: { fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 },
+        });
+        if (up && up.ok && up.url) uploaded.push(up.url);
+        else console.warn("update_incidencia: foto fallida", JSON.stringify(up).slice(0, 300));
+      }
+      finalUrls = (keepUrls || []).concat(uploaded);
+      fields.fotos_urls = finalUrls.join(', ');
+      fields.fotos_count = finalUrls.length;
+    }
     const result = await callCheckinAppsScriptPost("update_incidencia", {
       payload: { id, fields },
     });
     if (!result || !result.ok) throw new Error(result?.error || 'Apps Script update error');
+    if (finalUrls !== null) {
+      result.fotos_urls = fields.fotos_urls;
+      result.fotos_count = fields.fotos_count;
+    }
     res.json(result);
   } catch (err) {
     console.error("update_incidencia_error", err.message);
