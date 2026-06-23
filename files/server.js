@@ -184,6 +184,23 @@ app.get("/personal-list", async (req, res) => {
   }
 });
 
+// ─── Actualizar una incidencia existente ─────────────────────────────────────
+app.post("/update-incidencia", async (req, res) => {
+  try {
+    const id = String(req.body?.id || '').trim();
+    const fields = req.body?.fields || {};
+    if (!id) return res.status(400).json({ ok: false, error: 'Falta id' });
+    const result = await callCheckinAppsScriptPost("update_incidencia", {
+      payload: { id, fields },
+    });
+    if (!result || !result.ok) throw new Error(result?.error || 'Apps Script update error');
+    res.json(result);
+  } catch (err) {
+    console.error("update_incidencia_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Listar reportes de incidencias guardados ────────────────────────────────
 app.get("/incidencias-list", async (req, res) => {
   try {
