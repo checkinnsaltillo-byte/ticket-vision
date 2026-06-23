@@ -228,6 +228,78 @@ app.post("/update-incidencia", async (req, res) => {
   }
 });
 
+// ─── OBJETOS OLVIDADOS — paralelo a Incidencias ──────────────────────────────
+app.get("/objetos-list", async (req, res) => {
+  try {
+    const result = await callCheckinAppsScript("list_objetos");
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/save-objeto", async (req, res) => {
+  try {
+    const payload = req.body?.payload || {};
+    const fotos = Array.isArray(req.body?.fotos) ? req.body.fotos : [];
+    const fotosUrls = [];
+    for (const f of fotos) {
+      if (!f || !f.base64) continue;
+      const up = await callCheckinAppsScriptPost("upload_objeto_image", {
+        fecha: payload.fecha_encontrado || '',
+        alojamiento: payload.alojamiento || '',
+        file: { fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 },
+      });
+      if (up && up.ok && up.url) fotosUrls.push(up.url);
+      else console.warn("save_objeto: foto fallida", JSON.stringify(up).slice(0, 300));
+    }
+    const saveResult = await callCheckinAppsScriptPost("save_objeto", {
+      payload: { ...payload, fotos_urls: fotosUrls },
+    });
+    if (!saveResult || !saveResult.ok) throw new Error(saveResult?.error || 'Apps Script save error');
+    res.json({ ok: true, id: saveResult.id, timestamp: saveResult.timestamp, fotos_uploaded: fotosUrls.length });
+  } catch (err) {
+    console.error("save_objeto_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/update-objeto", async (req, res) => {
+  try {
+    const id = String(req.body?.id || '').trim();
+    const fields = Object.assign({}, req.body?.fields || {});
+    const newFotos = Array.isArray(req.body?.fotos) ? req.body.fotos : null;
+    const keepUrls = Array.isArray(req.body?.keepUrls) ? req.body.keepUrls : null;
+    if (!id) return res.status(400).json({ ok: false, error: 'Falta id' });
+    let finalUrls = null;
+    if (newFotos !== null || keepUrls !== null) {
+      const uploaded = [];
+      for (const f of (newFotos || [])) {
+        if (!f || !f.base64) continue;
+        const up = await callCheckinAppsScriptPost("upload_objeto_image", {
+          fecha: fields.fecha_encontrado || '',
+          alojamiento: fields.alojamiento || '',
+          file: { fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 },
+        });
+        if (up && up.ok && up.url) uploaded.push(up.url);
+      }
+      finalUrls = (keepUrls || []).concat(uploaded);
+      fields.fotos_urls = finalUrls.join(', ');
+      fields.fotos_count = finalUrls.length;
+    }
+    const result = await callCheckinAppsScriptPost("update_objeto", { payload: { id, fields } });
+    if (!result || !result.ok) throw new Error(result?.error || 'Apps Script update error');
+    if (finalUrls !== null) {
+      result.fotos_urls = fields.fotos_urls;
+      result.fotos_count = fields.fotos_count;
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("update_objeto_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Listar reportes de incidencias guardados ────────────────────────────────
 app.get("/incidencias-list", async (req, res) => {
   try {
