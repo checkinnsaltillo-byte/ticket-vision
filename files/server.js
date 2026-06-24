@@ -216,6 +216,18 @@ app.get("/rh/ausencias",      rhMakeListEndpoint("rh_list_ausencias"));
 app.post("/rh/ausencias",     rhMakeSaveEndpoint("rh_save_ausencia"));
 app.get("/rh/compensaciones", rhMakeListEndpoint("rh_list_compensaciones"));
 app.post("/rh/compensaciones", rhMakeSaveEndpoint("rh_save_compensacion"));
+function rhMakeDeleteEndpoint(action) {
+  return async (req, res) => {
+    try {
+      const id = req.params.id;
+      const result = await callCheckinAppsScriptPost(action, { payload: { ID: id } });
+      res.json(result);
+    } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+  };
+}
+app.delete("/rh/compensaciones/:id", rhMakeDeleteEndpoint("rh_delete_compensacion"));
+app.delete("/rh/asistencia/:id",     rhMakeDeleteEndpoint("rh_delete_asistencia"));
+app.delete("/rh/ausencias/:id",      rhMakeDeleteEndpoint("rh_delete_ausencia"));
 
 // ─── Actualizar una incidencia existente ─────────────────────────────────────
 // Acepta: { id, fields, fotos?: [{name,base64,mimeType}], keepUrls?: [string] }
