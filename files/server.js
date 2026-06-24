@@ -184,6 +184,39 @@ app.get("/personal-list", async (req, res) => {
   }
 });
 
+// ─── RECURSOS HUMANOS ────────────────────────────────────────────────────────
+// Genérico: GET list → action sin payload; POST save → action con {payload}.
+function rhMakeListEndpoint(action) {
+  return async (req, res) => {
+    try {
+      const result = await callCheckinAppsScript(action);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  };
+}
+function rhMakeSaveEndpoint(action) {
+  return async (req, res) => {
+    try {
+      const payload = req.body?.payload || req.body || {};
+      const result = await callCheckinAppsScriptPost(action, { payload });
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  };
+}
+
+app.get("/rh/empleados",      rhMakeListEndpoint("rh_list_empleados"));
+app.post("/rh/empleados",     rhMakeSaveEndpoint("rh_save_empleado"));
+app.get("/rh/asistencia",     rhMakeListEndpoint("rh_list_asistencia"));
+app.post("/rh/asistencia",    rhMakeSaveEndpoint("rh_save_asistencia"));
+app.get("/rh/ausencias",      rhMakeListEndpoint("rh_list_ausencias"));
+app.post("/rh/ausencias",     rhMakeSaveEndpoint("rh_save_ausencia"));
+app.get("/rh/compensaciones", rhMakeListEndpoint("rh_list_compensaciones"));
+app.post("/rh/compensaciones", rhMakeSaveEndpoint("rh_save_compensacion"));
+
 // ─── Actualizar una incidencia existente ─────────────────────────────────────
 // Acepta: { id, fields, fotos?: [{name,base64,mimeType}], keepUrls?: [string] }
 // Si vienen fotos nuevas: las sube a Drive vía Apps Script y compone el CSV
