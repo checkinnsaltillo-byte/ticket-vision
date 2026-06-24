@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ticket-vision-backend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["files/server.js"],
+      "port": 8080
+    },
+    {
+      "name": "ticket-vision-frontend",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5500"],
+      "port": 5500
+    }
+  ]
+}
