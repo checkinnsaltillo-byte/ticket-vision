@@ -229,6 +229,13 @@ app.delete("/rh/compensaciones/:id", rhMakeDeleteEndpoint("rh_delete_compensacio
 app.delete("/rh/asistencia/:id",     rhMakeDeleteEndpoint("rh_delete_asistencia"));
 app.delete("/rh/ausencias/:id",      rhMakeDeleteEndpoint("rh_delete_ausencia"));
 
+app.post("/sys/login", async (req, res) => {
+  try {
+    const result = await callCheckinAppsScriptPost("sys_login", { payload: req.body || {} });
+    res.json(result);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 // ─── Actualizar una incidencia existente ─────────────────────────────────────
 // Acepta: { id, fields, fotos?: [{name,base64,mimeType}], keepUrls?: [string] }
 // Si vienen fotos nuevas: las sube a Drive vía Apps Script y compone el CSV
