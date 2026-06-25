@@ -664,6 +664,24 @@ app.post("/save-banco-clasificacion", async (req, res) => {
   }
 });
 
+// ─── Persistir matches Banco↔Ticket en columnas de BANCOS ───────────────────
+
+app.post("/bn/set-ticket-matches", async (req, res) => {
+  try {
+    const updates = req.body?.updates || [];
+    if (!Array.isArray(updates) || !updates.length) throw new Error('updates vacío');
+    const result = await callAppsScript({
+      action: "bn_set_ticket_matches_bulk",
+      updates,
+    });
+    if (!result.ok) throw new Error(result.error || "Apps Script error");
+    res.json({ ok: true, written: result.written });
+  } catch (err) {
+    console.error("bn_set_ticket_matches_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Chatbot financiero (proxy a Anthropic API) ─────────────────────────────
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
