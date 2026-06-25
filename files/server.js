@@ -682,6 +682,47 @@ app.post("/bn/set-ticket-matches", async (req, res) => {
   }
 });
 
+// ─── Enviar ticket emitido en Facturapi por correo ──────────────────────────
+// Necesita env vars FACTURAPI_SECRET_KEY_ORG1 y/o FACTURAPI_SECRET_KEY_ORG2
+// configurados en Cloud Run. Sin ellos, devuelve error claro.
+app.post("/facturapi/send-email", async (req, res) => {
+  try {
+    const { folio, email, org } = req.body || {};
+    if (!folio) throw new Error('folio requerido');
+    const orgN = String(org || '2');
+    const key = orgN === '1'
+      ? (process.env.FACTURAPI_SECRET_KEY_ORG1 || process.env.FACTURAPI_SECRET_KEY)
+      : (process.env.FACTURAPI_SECRET_KEY_ORG2 || process.env.FACTURAPI_SECRET_KEY);
+    if (!key) throw new Error('FACTURAPI_SECRET_KEY no configurada en Cloud Run (org ' + orgN + ')');
+    const auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
+    // 1) Buscar invoice por folio_number
+    const searchUrl = `https://www.facturapi.io/v2/invoices?folio_number=${encodeURIComponent(folio)}&limit=1`;
+    const sResp = await fetch(searchUrl, { headers: { 'Authorization': auth } });
+    if (!sResp.ok) {
+      const t = await sResp.text().catch(() => '');
+      throw new Error(`Facturapi search ${sResp.status}: ${t.slice(0, 200)}`);
+    }
+    const search = await sResp.json();
+    const inv = (search?.data || [])[0];
+    if (!inv) throw new Error(`No se encontró invoice con folio ${folio} en Facturapi`);
+    // 2) Enviar email — la API acepta { email: [string] } para sobrescribir; sin body usa el del cliente
+    const body = email ? JSON.stringify({ email: [email] }) : '{}';
+    const eResp = await fetch(`https://www.facturapi.io/v2/invoices/${inv.id}/email`, {
+      method: 'POST',
+      headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+      body,
+    });
+    if (!eResp.ok) {
+      const t = await eResp.text().catch(() => '');
+      throw new Error(`Facturapi send ${eResp.status}: ${t.slice(0, 200)}`);
+    }
+    res.json({ ok: true, sent_to: email || (inv.customer?.email || ''), invoice_id: inv.id, folio });
+  } catch (err) {
+    console.error("facturapi_send_email_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Chatbot financiero (proxy a Anthropic API) ─────────────────────────────
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
