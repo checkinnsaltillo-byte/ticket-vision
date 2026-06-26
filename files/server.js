@@ -664,6 +664,20 @@ app.post("/save-banco-clasificacion", async (req, res) => {
   }
 });
 
+// ─── Update bulk de filas en BANCOS (edición desde Efectivo) ────────────────
+app.post("/bn/update-rows", async (req, res) => {
+  try {
+    const updates = req.body?.updates || [];
+    if (!Array.isArray(updates) || !updates.length) throw new Error('updates vacío');
+    const result = await callAppsScript({ action: "bn_update_rows_bulk", updates });
+    if (!result.ok) throw new Error(result.error || "Apps Script error");
+    res.json({ ok: true, written: result.written });
+  } catch (err) {
+    console.error("bn_update_rows_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Persistir matches Banco↔Ticket en columnas de BANCOS ───────────────────
 
 app.post("/bn/set-ticket-matches", async (req, res) => {
