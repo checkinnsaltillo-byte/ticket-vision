@@ -1226,9 +1226,24 @@ let _tuyaListCache = null; // { ts, data } — TTL 5 min
 function tuyaSha256(s) { return crypto.createHash("sha256").update(s).digest("hex"); }
 function tuyaSign(str) { return crypto.createHmac("sha256", TUYA_SECRET).update(str).digest("hex").toUpperCase(); }
 
+// Tuya v2 sign: query params ORDENADOS alfabéticamente tanto en StringToSign
+// como en la URL real (deben coincidir). Sin esto: "sign invalid".
+function tuyaCanonPath(path) {
+  const i = path.indexOf("?");
+  if (i < 0) return path;
+  const base = path.substring(0, i);
+  const qs = path.substring(i + 1);
+  const parts = qs.split("&").filter(Boolean)
+    .map(p => { const eq = p.indexOf("="); return eq < 0 ? [p, ""] : [p.substring(0, eq), p.substring(eq + 1)]; })
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([k, v]) => v === "" ? k : `${k}=${v}`);
+  return base + "?" + parts.join("&");
+}
+
 async function tuyaRequest(method, path, { body = "", withToken = true } = {}) {
   if (!TUYA_ID || !TUYA_SECRET) throw new Error("TUYA_ACCESS_ID/SECRET no configurados");
   if (withToken) await tuyaEnsureToken();
+  path = tuyaCanonPath(path);
   const t = Date.now().toString();
   const nonce = "";
   const contentHash = tuyaSha256(body || "");
