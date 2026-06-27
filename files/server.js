@@ -1199,6 +1199,136 @@ function cleanupFiles(files) {
   }
 }
 
+// ─── Tuya Cloud (Smart Life) ──────────────────────────────────────────────
+// Devices view-only: lista por Home/Room + historial de eventos.
+// Secretos en env vars: TUYA_ACCESS_ID, TUYA_ACCESS_SECRET, TUYA_UID, TUYA_REGION.
+// Firma v2: ver https://developer.tuya.com/en/docs/iot/new-singnature
+
+const crypto = require("crypto");
+
+const TUYA_HOSTS = {
+  wa: "https://openapi.tuyaus.com",
+  ue: "https://openapi-ueaz.tuyaus.com",
+  eu: "https://openapi.tuyaeu.com",
+  weu: "https://openapi-weaz.tuyaeu.com",
+  in: "https://openapi.tuyain.com",
+  cn: "https://openapi.tuyacn.com",
+  sg: "https://openapi.tuyasg.com",
+};
+const TUYA_HOST = TUYA_HOSTS[process.env.TUYA_REGION || "wa"] || TUYA_HOSTS.wa;
+const TUYA_ID = process.env.TUYA_ACCESS_ID || "";
+const TUYA_SECRET = process.env.TUYA_ACCESS_SECRET || "";
+const TUYA_UID = process.env.TUYA_UID || "";
+
+let _tuyaToken = null; // { access_token, expires_at }
+let _tuyaListCache = null; // { ts, data } — TTL 5 min
+
+function tuyaSha256(s) { return crypto.createHash("sha256").update(s).digest("hex"); }
+function tuyaSign(str) { return crypto.createHmac("sha256", TUYA_SECRET).update(str).digest("hex").toUpperCase(); }
+
+async function tuyaRequest(method, path, { body = "", withToken = true } = {}) {
+  if (!TUYA_ID || !TUYA_SECRET) throw new Error("TUYA_ACCESS_ID/SECRET no configurados");
+  if (withToken) await tuyaEnsureToken();
+  const t = Date.now().toString();
+  const nonce = "";
+  const contentHash = tuyaSha256(body || "");
+  const stringToSign = `${method.toUpperCase()}\n${contentHash}\n\n${path}`;
+  const signStr = withToken
+    ? `${TUYA_ID}${_tuyaToken.access_token}${t}${nonce}${stringToSign}`
+    : `${TUYA_ID}${t}${nonce}${stringToSign}`;
+  const headers = {
+    "client_id": TUYA_ID,
+    "sign": tuyaSign(signStr),
+    "t": t,
+    "sign_method": "HMAC-SHA256",
+    "nonce": nonce,
+    "Content-Type": "application/json",
+  };
+  if (withToken) headers["access_token"] = _tuyaToken.access_token;
+  const url = TUYA_HOST + path;
+  const opts = { method, headers };
+  if (body) opts.body = body;
+  const r = await fetch(url, opts);
+  const j = await r.json();
+  if (!j.success) throw new Error(`Tuya ${path}: ${j.msg || j.code || "error"}`);
+  return j.result;
+}
+
+async function tuyaEnsureToken() {
+  if (_tuyaToken && Date.now() < _tuyaToken.expires_at - 60_000) return;
+  const r = await tuyaRequest("GET", "/v1.0/token?grant_type=1", { withToken: false });
+  _tuyaToken = {
+    access_token: r.access_token,
+    expires_at: Date.now() + (r.expire_time * 1000),
+  };
+}
+
+// Devuelve { homes:[{id,name,rooms:[{id,name}]}], devices:[{id,name,category,product_name,online,status,home_id,room_id,update_time}] }
+app.get("/tuya/devices", async (req, res) => {
+  try {
+    if (_tuyaListCache && (Date.now() - _tuyaListCache.ts) < 5 * 60 * 1000 && !req.query.fresh) {
+      return res.json({ ok: true, ...(_tuyaListCache.data), cached: true });
+    }
+    if (!TUYA_UID) throw new Error("TUYA_UID no configurado");
+    const homes = await tuyaRequest("GET", `/v1.0/users/${TUYA_UID}/homes`);
+    const out = { homes: [], devices: [] };
+    for (const h of (homes || [])) {
+      const rooms = await tuyaRequest("GET", `/v1.0/homes/${h.home_id}/rooms`).catch(() => []);
+      out.homes.push({
+        id: String(h.home_id),
+        name: h.name || "",
+        rooms: (rooms?.rooms || rooms || []).map(rm => ({ id: String(rm.room_id), name: rm.name || "" })),
+      });
+      const devs = await tuyaRequest("GET", `/v1.0/homes/${h.home_id}/devices`);
+      for (const d of (devs || [])) {
+        out.devices.push({
+          id: d.id,
+          name: d.name || d.product_name || d.id,
+          category: d.category || "",
+          product_name: d.product_name || "",
+          online: !!d.online,
+          status: d.status || [],
+          home_id: String(h.home_id),
+          room_id: d.room_id ? String(d.room_id) : "",
+          update_time: d.update_time || d.active_time || 0,
+        });
+      }
+    }
+    _tuyaListCache = { ts: Date.now(), data: out };
+    res.json({ ok: true, ...out, cached: false });
+  } catch (e) {
+    console.error("tuya_devices_error", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Detalle de un device (status detallado)
+app.get("/tuya/device/:id", async (req, res) => {
+  try {
+    const r = await tuyaRequest("GET", `/v1.0/devices/${encodeURIComponent(req.params.id)}`);
+    res.json({ ok: true, device: r });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Historial de eventos. Por defecto últimos 7 días, size=50.
+// type=7 = report state (cambios). Puede combinarse: type=1,7 (online + state).
+app.get("/tuya/device/:id/logs", async (req, res) => {
+  try {
+    const days = Math.min(30, Number(req.query.days) || 7);
+    const size = Math.min(100, Number(req.query.size) || 50);
+    const type = req.query.type || "1,2,3,4,5,6,7";
+    const end = Date.now();
+    const start = end - days * 24 * 60 * 60 * 1000;
+    const path = `/v1.0/devices/${encodeURIComponent(req.params.id)}/logs?start_time=${start}&end_time=${end}&type=${type}&size=${size}`;
+    const r = await tuyaRequest("GET", path);
+    res.json({ ok: true, logs: r?.logs || [], has_next: !!r?.has_next });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ─── Start ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 8080;
