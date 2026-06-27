@@ -1335,25 +1335,31 @@ app.post("/tuya/logs-bulk", async (req, res) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
     const size = Math.min(10, Number(req.body?.size) || 2);
     const days = Math.min(7, Number(req.body?.days) || 2);
+    const explicitStart = Number(req.body?.start_time) || 0;
+    const explicitEnd = Number(req.body?.end_time) || 0;
+    // Si vienen start/end explícitos, NO se cachea (rango arbitrario por reserva).
+    const useCache = !explicitStart && !explicitEnd;
     const ttlMs = 60_000;
     const now = Date.now();
     const out = {};
-    // pending = ids sin caché válido
     const pending = [];
-    for (const id of ids) {
-      const c = _tuyaLogsCache.get(id);
-      if (c && (now - c.ts) < ttlMs) out[id] = c.logs.slice(0, size);
-      else pending.push(id);
+    if (useCache) {
+      for (const id of ids) {
+        const c = _tuyaLogsCache.get(id);
+        if (c && (now - c.ts) < ttlMs) out[id] = c.logs.slice(0, size);
+        else pending.push(id);
+      }
+    } else {
+      pending.push(...ids);
     }
-    // Concurrencia 8
-    const end = now;
-    const start = end - days * 24 * 60 * 60 * 1000;
+    const end = explicitEnd || now;
+    const start = explicitStart || (end - days * 24 * 60 * 60 * 1000);
     const fetchOne = async (id) => {
       try {
         const path = `/v1.0/devices/${encodeURIComponent(id)}/logs?start_time=${start}&end_time=${end}&type=1,2,3,4,5,6,7&size=${size}`;
         const r = await tuyaRequest("GET", path);
         const logs = r?.logs || [];
-        _tuyaLogsCache.set(id, { ts: now, logs });
+        if (useCache) _tuyaLogsCache.set(id, { ts: now, logs });
         out[id] = logs.slice(0, size);
       } catch (e) {
         out[id] = [];
