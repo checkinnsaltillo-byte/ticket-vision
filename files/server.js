@@ -1327,6 +1327,49 @@ app.get("/tuya/device/:id", async (req, res) => {
   }
 });
 
+// Bulk: últimos N logs para varios dispositivos a la vez. Concurrencia limitada
+// para no saturar Tuya. Caché 60s por device para evitar refetches en re-render.
+const _tuyaLogsCache = new Map(); // id → { ts, logs }
+app.post("/tuya/logs-bulk", async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const size = Math.min(10, Number(req.body?.size) || 2);
+    const days = Math.min(7, Number(req.body?.days) || 2);
+    const ttlMs = 60_000;
+    const now = Date.now();
+    const out = {};
+    // pending = ids sin caché válido
+    const pending = [];
+    for (const id of ids) {
+      const c = _tuyaLogsCache.get(id);
+      if (c && (now - c.ts) < ttlMs) out[id] = c.logs.slice(0, size);
+      else pending.push(id);
+    }
+    // Concurrencia 8
+    const end = now;
+    const start = end - days * 24 * 60 * 60 * 1000;
+    const fetchOne = async (id) => {
+      try {
+        const path = `/v1.0/devices/${encodeURIComponent(id)}/logs?start_time=${start}&end_time=${end}&type=1,2,3,4,5,6,7&size=${size}`;
+        const r = await tuyaRequest("GET", path);
+        const logs = r?.logs || [];
+        _tuyaLogsCache.set(id, { ts: now, logs });
+        out[id] = logs.slice(0, size);
+      } catch (e) {
+        out[id] = [];
+      }
+    };
+    const queue = pending.slice();
+    const workers = Array.from({ length: 8 }, async () => {
+      while (queue.length) { const id = queue.shift(); if (id) await fetchOne(id); }
+    });
+    await Promise.all(workers);
+    res.json({ ok: true, byId: out });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Historial de eventos. Por defecto últimos 7 días, size=50.
 // type=7 = report state (cambios). Puede combinarse: type=1,7 (online + state).
 app.get("/tuya/device/:id/logs", async (req, res) => {
