@@ -229,6 +229,26 @@ app.delete("/rh/compensaciones/:id", rhMakeDeleteEndpoint("rh_delete_compensacio
 app.delete("/rh/asistencia/:id",     rhMakeDeleteEndpoint("rh_delete_asistencia"));
 app.delete("/rh/ausencias/:id",      rhMakeDeleteEndpoint("rh_delete_ausencia"));
 
+// Obligaciones (cuotas IMSS + recibos de nómina por empleado)
+app.get("/rh/obligaciones", async (req, res) => {
+  try {
+    const year = parseInt(req.query.year, 10) || (new Date()).getFullYear();
+    const result = await callCheckinAppsScriptPost("rh_list_obligaciones", { year });
+    res.json(result);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post("/rh/obligacion/upload", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const result = await callCheckinAppsScriptPost("rh_upload_obligacion", {
+      year: b.year, month: b.month, kind: b.kind,
+      empleadoId: b.empleadoId || '', empleadoNombre: b.empleadoNombre || '',
+      file: b.file || null,
+    });
+    res.json(result);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 app.post("/sys/login", async (req, res) => {
   try {
     const result = await callCheckinAppsScriptPost("sys_login", { payload: req.body || {} });
