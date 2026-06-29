@@ -237,6 +237,14 @@ app.get("/rh/obligaciones", async (req, res) => {
     res.json(result);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
+app.post("/rh/obligacion/delete", async (req, res) => {
+  try {
+    const fileId = String(req.body?.fileId || '').trim();
+    if (!fileId) return res.status(400).json({ ok: false, error: 'Falta fileId' });
+    const result = await callCheckinAppsScriptPost("rh_delete_obligacion", { fileId });
+    res.json(result);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
 app.post("/rh/obligacion/upload", async (req, res) => {
   try {
     const b = req.body || {};
