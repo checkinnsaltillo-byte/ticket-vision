@@ -237,6 +237,22 @@ app.get("/rh/obligaciones", async (req, res) => {
     res.json(result);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
+app.get("/rh/obligacion/totales", async (req, res) => {
+  try {
+    const year = parseInt(req.query.year, 10) || (new Date()).getFullYear();
+    const result = await callCheckinAppsScriptPost("rh_list_obligacion_totales", { year });
+    res.json(result);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post("/rh/obligacion/total", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const result = await callCheckinAppsScriptPost("rh_set_obligacion_total", {
+      year: b.year, month: b.month, total: b.total,
+    });
+    res.json(result);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
 app.post("/rh/obligacion/delete", async (req, res) => {
   try {
     const fileId = String(req.body?.fileId || '').trim();
