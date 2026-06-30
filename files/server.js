@@ -1383,10 +1383,25 @@ app.get("/tuya/device/:id", async (req, res) => {
 // Bulk: últimos N logs para varios dispositivos a la vez. Concurrencia limitada
 // para no saturar Tuya. Caché 60s por device para evitar refetches en re-render.
 const _tuyaLogsCache = new Map(); // id → { ts, logs }
+// Diagnóstico: una sola llamada a Tuya logs y devuelve la respuesta cruda
+app.get("/tuya/_diag/logs/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const days = Math.min(30, Number(req.query.days) || 7);
+    const size = Math.min(100, Number(req.query.size) || 100);
+    const end = Date.now();
+    const start = end - days * 24 * 60 * 60 * 1000;
+    const lrk = req.query.lrk ? `&start_row_key=${(req.query.lrk)}` : "";
+    const path = `/v1.0/devices/${encodeURIComponent(id)}/logs?start_time=${start}&end_time=${end}&type=1,2,3,4,5,6,7&size=${size}${lrk}`;
+    const r = await tuyaRequest("GET", path);
+    res.json({ ok: true, path, keys: Object.keys(r||{}), has_next: r?.has_next, next_row_key: r?.next_row_key, current_row_key: r?.current_row_key, logs_count: (r?.logs||[]).length, first_ts: (r?.logs||[]).slice(-1)[0]?.event_time, last_ts: (r?.logs||[])[0]?.event_time });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.post("/tuya/logs-bulk", async (req, res) => {
   try {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
-    const size = Math.min(2000, Number(req.body?.size) || 2);
+    const size = Math.min(5000, Number(req.body?.size) || 2);
     const days = Math.min(30, Number(req.body?.days) || 2);
     const explicitStart = Number(req.body?.start_time) || 0;
     const explicitEnd = Number(req.body?.end_time) || 0;
@@ -1411,22 +1426,23 @@ app.post("/tuya/logs-bulk", async (req, res) => {
     // Para cubrir el rango completo, paginamos hasta acumular `size` logs
     // o hasta agotar (~10 páginas como guardia).
     const PAGE = 100;
-    const MAX_PAGES = 12;
+    const MAX_PAGES = 50;
     const fetchOne = async (id) => {
       try {
         const collected = [];
-        let lastRowKey = "";
+        let nextRowKey = "";
         let hasMore = true;
         let pages = 0;
         while (hasMore && collected.length < size && pages < MAX_PAGES) {
           const need = Math.min(PAGE, size - collected.length);
-          const params = `start_time=${start}&end_time=${end}&type=1,2,3,4,5,6,7&size=${need}` + (lastRowKey ? `&last_row_key=${encodeURIComponent(lastRowKey)}` : "");
+          // Tuya: el cursor de paginación se llama next_row_key/start_row_key.
+          const params = `start_time=${start}&end_time=${end}&type=1,2,3,4,5,6,7&size=${need}` + (nextRowKey ? `&start_row_key=${(nextRowKey)}` : "");
           const path = `/v1.0/devices/${encodeURIComponent(id)}/logs?${params}`;
           const r = await tuyaRequest("GET", path);
           const page = r?.logs || [];
           collected.push(...page);
-          lastRowKey = r?.last_row_key || "";
-          hasMore = !!r?.has_next && lastRowKey;
+          nextRowKey = r?.next_row_key || "";
+          hasMore = !!r?.has_next && nextRowKey;
           pages++;
           if (!page.length) break;
         }
