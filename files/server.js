@@ -521,6 +521,104 @@ app.get("/huespedes-detail", async (req, res) => {
 // Guarda el monto facturado total (campo "(+) $ Monto facturado Total" del card)
 // en la columna "$ Monto facturado Total" de Reservaciones.
 // ─── Reservas Lodgify (cache en Google Sheets vía Apps Script) ──────────────
+// Llama directo a Lodgify v2 /reservations/bookings — devuelve TODAS las
+// reservas incluyendo manuales sin presupuesto (que /api/otc omite).
+// Formato de salida = mismo shape que /api/otc para drop-in del Apps Script.
+const _lodgifyBookingsCache = new Map();
+app.get("/lodgify-bookings-all", async (req, res) => {
+  try {
+    const apiKey = process.env.LODGIFY_API_KEY;
+    if (!apiKey) return res.status(500).json({ ok:false, error:"LODGIFY_API_KEY no configurada" });
+    const from = String(req.query.from || "").slice(0,10);
+    const to   = String(req.query.to   || "").slice(0,10);
+    if (!from || !to) return res.status(400).json({ ok:false, error:"params from y to son requeridos (YYYY-MM-DD)" });
+    const cacheKey = `${from}|${to}`;
+    const now = Date.now();
+    const cached = _lodgifyBookingsCache.get(cacheKey);
+    if (cached && (now - cached.ts) < 60_000) return res.json({ ok:true, rows: cached.rows, cached:true });
+
+    // Pagina /v2/reservations/bookings con stayFilter=All y period range.
+    // Lodgify devuelve {count, items} — cada item es UNA reserva.
+    const items = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore && page <= 50) {
+      const url = `https://api.lodgify.com/v2/reservations/bookings?stayFilter=All&page=${page}&size=50&periodStart=${from}&periodEnd=${to}&includeCount=true&includeTransactions=true`;
+      const r = await fetch(url, { headers: { "X-ApiKey": apiKey, accept:"application/json" }});
+      if (!r.ok) {
+        const txt = await r.text();
+        return res.status(502).json({ ok:false, error:`Lodgify HTTP ${r.status}`, raw: txt.slice(0,300) });
+      }
+      const j = await r.json();
+      const pageItems = j.items || j.Items || [];
+      items.push(...pageItems);
+      hasMore = pageItems.length === 50;
+      page++;
+    }
+
+    // Convierte cada booking → 1+ "rows" con el shape que aggregateLodgifyRows_
+    // del Apps Script espera (mismo que /api/otc).
+    const rows = [];
+    const fmtDate = (s) => {
+      if (!s) return "";
+      const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? `${m[2]}/${m[3]}/${m[1]}` : String(s);
+    };
+    for (const b of items) {
+      const room = (b.rooms && b.rooms[0]) || {};
+      const guest = (b.guest) || {};
+      const baseRow = {
+        Id: b.id,
+        Source: b.source_text || b.source || "",
+        SourceText: JSON.stringify({ confirmationCode: b.confirmation_code || "", listingId: b.listing_id || "", threadId: b.thread_id || "" }),
+        ChannelBooking: b.channel_booking_id || "",
+        Status: b.status || "",
+        DateCancelled: b.date_cancelled || "",
+        DateArrival: fmtDate(b.arrival),
+        DateDeparture: fmtDate(b.departure),
+        Nights: Number(b.nights) || 0,
+        HouseName: room.name || room.room_type_name || "",
+        HouseId: b.property_id || room.property_id || "",
+        RoomTypeNames: room.room_type_name || "",
+        RoomTypeIds: room.room_type_id || "",
+        GuestName: guest.name || guest.display_name || "",
+        GuestEmail: guest.email || "",
+        GuestPhone: guest.phone || "",
+        GuestCountryCode: guest.country_code || "",
+        NumberOfGuests: Number(b.people) || 0,
+        Adults: Number(room.people) || Number(b.people) || 0,
+        Children: 0,
+        Infants: 0,
+        Pets: 0,
+        Currency: b.currency_code || "MXN",
+      };
+      const tx = Array.isArray(b.quote && b.quote.amounts_breakdown) ? b.quote.amounts_breakdown
+              : Array.isArray(b.amount_breakdown) ? b.amount_breakdown
+              : Array.isArray(b.transactions) ? b.transactions : [];
+      if (!tx.length) {
+        // Reserva sin presupuesto/line-items — emite UNA fila con totales en 0
+        rows.push({ ...baseRow, LineItem: "", LineItemDescription: "", GrossAmount: Number(b.total_amount) || 0, NetAmount: 0, VatAmount: 0 });
+      } else {
+        for (const t of tx) {
+          rows.push({
+            ...baseRow,
+            LineItem: t.type || t.kind || "",
+            LineItemDescription: t.description || t.note || "",
+            GrossAmount: Number(t.gross_amount ?? t.amount ?? t.gross) || 0,
+            NetAmount: Number(t.net_amount ?? t.net) || 0,
+            VatAmount: Number(t.vat_amount ?? t.vat) || 0,
+          });
+        }
+      }
+    }
+
+    _lodgifyBookingsCache.set(cacheKey, { ts: now, rows });
+    res.json({ ok:true, rows, totalBookings: items.length });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
+
 app.get("/lodgify-list", async (req, res) => {
   try {
     const params = {
