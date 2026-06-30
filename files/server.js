@@ -175,6 +175,15 @@ app.get("/alojamientos-list", async (req, res) => {
   }
 });
 
+app.get("/dispositivos-list", async (req, res) => {
+  try {
+    const result = await callCheckinAppsScript("list_dispositivos");
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get("/personal-list", async (req, res) => {
   try {
     const result = await callCheckinAppsScript("list_personal");
