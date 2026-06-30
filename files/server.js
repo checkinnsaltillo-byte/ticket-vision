@@ -104,52 +104,36 @@ async function callCheckinAppsScript(action, paramsObj) {
     }
   }
   const TIMEOUT_MS = 120_000;
-  // Sigue redirects manualmente: Apps Script 302 → googleusercontent. Para
-  // respuestas grandes (≥8 MB) seguir automáticamente con `redirect:'follow'`
-  // a veces devuelve la página de error de Google. Hacerlo a 2 pasos con
-  // headers explícitos resuelve esa inestabilidad.
-  async function _fetchWithManualRedirect(targetUrl) {
+  // User-Agent Mozilla es CRÍTICO: Apps Script rechaza con 403 cualquier UA
+  // no-navegador. redirect:'follow' maneja automáticamente el 302 a googleusercontent.
+  async function _attempt() {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const r = await fetch(targetUrl, {
+      const r = await fetch(url.toString(), {
         method: "GET",
         signal: controller.signal,
-        redirect: "manual",
+        redirect: "follow",
         headers: { "Accept": "application/json, text/plain, */*", "User-Agent": "Mozilla/5.0 (compatible; ticket-vision)" },
       });
-      // Si hay redirect, seguirlo manualmente UNA vez
-      if (r.status >= 300 && r.status < 400) {
-        const loc = r.headers.get("location");
-        if (loc) {
-          const r2 = await fetch(loc, {
-            method: "GET",
-            signal: controller.signal,
-            redirect: "follow",
-            headers: { "Accept": "application/json, text/plain, */*", "User-Agent": "Mozilla/5.0 (compatible; ticket-vision)" },
-          });
-          return await r2.text();
-        }
-      }
       return await r.text();
     } finally { clearTimeout(timer); }
   }
-  // Reintenta hasta 2 veces si la respuesta no es JSON válido
+  // Reintenta hasta 2 veces si la respuesta es HTML (Apps Script flaky)
   let text = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      text = await _fetchWithManualRedirect(url.toString());
+      text = await _attempt();
       try { return JSON.parse(text); } catch (_) {
-        // Si la respuesta es HTML "página no encontrada" → reintenta
-        if (text.includes("<!DOCTYPE") && attempt === 0) {
-          await new Promise(r => setTimeout(r, 800));
+        if (text.startsWith("<") && attempt === 0) {
+          await new Promise(r => setTimeout(r, 1000));
           continue;
         }
         return { ok: false, raw: text.slice(0, 500) };
       }
     } catch (err) {
       if (err.name === "AbortError") throw new Error(`Timeout: Apps Script tardó más de ${TIMEOUT_MS/1000}s`);
-      if (attempt === 0) { await new Promise(r => setTimeout(r, 800)); continue; }
+      if (attempt === 0) { await new Promise(r => setTimeout(r, 1000)); continue; }
       throw err;
     }
   }
@@ -621,12 +605,41 @@ app.get("/lodgify-bookings-all", async (req, res) => {
       const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
       return m ? `${m[2]}/${m[3]}/${m[1]}` : String(s);
     };
+    function _normalizeSource(b) {
+      // Lodgify v2: b.source puede ser "Manual", "Lodgify", o un JSON string con
+      // metadata cuando la reserva vino de un OTA externo (Airbnb, Booking, etc.).
+      const raw = b.source_text || b.source || "";
+      if (!raw) return "";
+      const s = String(raw);
+      // Si parece JSON con listingId → es OTA. Tratamos de identificar cuál
+      // por el campo `channel` o `channel_booking_id` o por la presencia de
+      // confirmationCode tipo "HMxxx" (Airbnb usa códigos así).
+      if (s.startsWith("{") && s.includes("listingId")) {
+        try {
+          const meta = JSON.parse(s);
+          const cc = String(meta.confirmationCode || "");
+          // Heurística: Airbnb confirmation codes empiezan con "HM"
+          if (cc.startsWith("HM")) return "Airbnb";
+          // Pista por channel_booking_id en el booking raíz
+          const cbi = String(b.channel_booking_id || "");
+          if (cbi.startsWith("HM")) return "Airbnb";
+          if (/booking\.com|booking_com/i.test(cbi)) return "Booking.com";
+          if (/vrbo/i.test(cbi)) return "Vrbo";
+          if (/expedia/i.test(cbi)) return "Expedia";
+          // Por defecto si tiene listingId asumimos Airbnb (caso más común)
+          return "Airbnb";
+        } catch (_) { return s.slice(0, 30); }
+      }
+      // Limpia URLs como "www.check-inn-saltillo.com" → "Direct"
+      if (/check-inn-saltillo|checkinnsaltillo/i.test(s)) return "Direct";
+      return s;
+    }
     for (const b of items) {
       const room = (b.rooms && b.rooms[0]) || {};
       const guest = (b.guest) || {};
       const baseRow = {
         Id: b.id,
-        Source: b.source_text || b.source || "",
+        Source: _normalizeSource(b),
         SourceText: JSON.stringify({ confirmationCode: b.confirmation_code || "", listingId: b.listing_id || "", threadId: b.thread_id || "" }),
         ChannelBooking: b.channel_booking_id || "",
         Status: b.status || "",
@@ -676,16 +689,50 @@ app.get("/lodgify-bookings-all", async (req, res) => {
   }
 });
 
+// Cache server-side de la lista completa (60s TTL) + filtro por rango fechas
+// para evitar transferir 8.7 MB cada vez. Frontend puede pasar from/to (YYYY-MM-DD).
+const _lodgifyListCache = { ts: 0, payload: null };
 app.get("/lodgify-list", async (req, res) => {
   try {
-    const params = {
-      source: req.query.source || "",
-      status: req.query.status || "",
-      name_contains: req.query.name_contains || "",
-      limit: req.query.limit || "",
-    };
-    const result = await callCheckinAppsScript("lodgify_list", params);
-    res.json(result);
+    const TTL = 60_000;
+    const now = Date.now();
+    let payload = _lodgifyListCache.payload;
+    if (!payload || (now - _lodgifyListCache.ts) > TTL) {
+      const params = {
+        source: req.query.source || "",
+        status: req.query.status || "",
+        name_contains: req.query.name_contains || "",
+        limit: req.query.limit || "",
+      };
+      payload = await callCheckinAppsScript("lodgify_list", params);
+      if (payload && payload.ok) {
+        _lodgifyListCache.ts = now;
+        _lodgifyListCache.payload = payload;
+      }
+    }
+    // Filtra por rango de estancia si vienen from/to
+    const from = String(req.query.from || "").slice(0,10);
+    const to   = String(req.query.to   || "").slice(0,10);
+    if ((from || to) && payload && payload.ok && Array.isArray(payload.bookings)) {
+      const fromTs = from ? new Date(from + "T00:00:00").getTime() : -Infinity;
+      const toTs   = to   ? new Date(to   + "T23:59:59").getTime() :  Infinity;
+      const _parse = (s) => {
+        if (!s) return 0;
+        const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (m) return new Date(+m[3], +m[1]-1, +m[2]).getTime();
+        const t = Date.parse(s);
+        return isFinite(t) ? t : 0;
+      };
+      const filtered = payload.bookings.filter(b => {
+        const arr = _parse(b.DateArrival);
+        const dep = _parse(b.DateDeparture);
+        if (!arr && !dep) return false;
+        // Que el rango de estancia TOQUE el rango pedido
+        return (dep || arr) >= fromTs && (arr || dep) <= toTs;
+      });
+      return res.json({ ...payload, bookings: filtered, total: filtered.length, cached: true });
+    }
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
