@@ -537,13 +537,17 @@ app.get("/lodgify-bookings-all", async (req, res) => {
     const cached = _lodgifyBookingsCache.get(cacheKey);
     if (cached && (now - cached.ts) < 60_000) return res.json({ ok:true, rows: cached.rows, cached:true });
 
-    // Pagina /v2/reservations/bookings con stayFilter=All y period range.
-    // Lodgify devuelve {count, items} — cada item es UNA reserva.
+    // Lodgify v2 /reservations/bookings: pagina y filtra por updatedSince para
+    // traer solo las reservas modificadas/creadas recientemente. El "from" del
+    // request se mapea a updatedSince (ej. desde hace 90 días).
+    // size=100 (max permitido), page hasta agotar.
+    const updatedSince = req.query.updatedSince || from; // YYYY-MM-DD
     const items = [];
     let page = 1;
     let hasMore = true;
-    while (hasMore && page <= 50) {
-      const url = `https://api.lodgify.com/v2/reservations/bookings?stayFilter=All&page=${page}&size=50&periodStart=${from}&periodEnd=${to}&includeCount=true&includeTransactions=true`;
+    const MAX_PAGES = 100;
+    while (hasMore && page <= MAX_PAGES) {
+      const url = `https://api.lodgify.com/v2/reservations/bookings?stayFilter=All&page=${page}&size=100&includeCount=true&updatedSince=${encodeURIComponent(updatedSince)}T00:00:00`;
       const r = await fetch(url, { headers: { "X-ApiKey": apiKey, accept:"application/json" }});
       if (!r.ok) {
         const txt = await r.text();
@@ -552,9 +556,22 @@ app.get("/lodgify-bookings-all", async (req, res) => {
       const j = await r.json();
       const pageItems = j.items || j.Items || [];
       items.push(...pageItems);
-      hasMore = pageItems.length === 50;
+      hasMore = pageItems.length === 100;
       page++;
     }
+    // Filtra por rango de fechas de estancia (arrival entre from y to+buffer)
+    const fromTs = new Date(from + 'T00:00:00').getTime();
+    const toTs = new Date(to + 'T23:59:59').getTime();
+    const inRange = items.filter(b => {
+      const arr = b.arrival ? new Date(b.arrival).getTime() : 0;
+      const dep = b.departure ? new Date(b.departure).getTime() : 0;
+      // Reserva toca el rango si dep >= fromTs && arr <= toTs
+      if (!arr && !dep) return false;
+      return (dep || arr) >= fromTs && (arr || dep) <= toTs;
+    });
+    // Para el aggregateLodgifyRows_ usamos las filtradas; el cliente paginará todo si quiere
+    items.length = 0;
+    items.push(...inRange);
 
     // Convierte cada booking → 1+ "rows" con el shape que aggregateLodgifyRows_
     // del Apps Script espera (mismo que /api/otc).
