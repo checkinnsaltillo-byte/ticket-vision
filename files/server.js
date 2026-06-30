@@ -1426,14 +1426,15 @@ app.post("/tuya/logs-bulk", async (req, res) => {
     // Para cubrir el rango completo, paginamos hasta acumular `size` logs
     // o hasta agotar (~10 páginas como guardia).
     const PAGE = 100;
-    const MAX_PAGES = 50;
+    const MAX_PAGES = 30;
+    const HARD_DEADLINE = Date.now() + 45_000;
     const fetchOne = async (id) => {
       try {
         const collected = [];
         let nextRowKey = "";
         let hasMore = true;
         let pages = 0;
-        while (hasMore && collected.length < size && pages < MAX_PAGES) {
+        while (hasMore && collected.length < size && pages < MAX_PAGES && Date.now() < HARD_DEADLINE) {
           const need = Math.min(PAGE, size - collected.length);
           // Tuya: el cursor de paginación se llama next_row_key/start_row_key.
           const params = `start_time=${start}&end_time=${end}&type=1,2,3,4,5,6,7&size=${need}` + (nextRowKey ? `&start_row_key=${(nextRowKey)}` : "");
