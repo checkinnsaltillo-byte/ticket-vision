@@ -1634,15 +1634,17 @@ app.post("/tuya/logs-bulk", async (req, res) => {
     const days = Math.min(30, Number(req.body?.days) || 2);
     const explicitStart = Number(req.body?.start_time) || 0;
     const explicitEnd = Number(req.body?.end_time) || 0;
-    // Si vienen start/end explícitos, NO se cachea (rango arbitrario por reserva).
-    const useCache = !explicitStart && !explicitEnd;
-    const ttlMs = 60_000;
+    // Cache TAMBIÉN para rangos explícitos: la clave incluye start+end.
+    // Beneficia las re-aperturas del panel de detalle (Ocupación/Gestión).
+    const useCache = true;
+    const cacheKey = explicitStart && explicitEnd ? `${explicitStart}-${explicitEnd}` : 'all';
+    const ttlMs = 5 * 60_000; // 5 min para rangos explícitos
     const now = Date.now();
     const out = {};
     const pending = [];
     if (useCache) {
       for (const id of ids) {
-        const c = _tuyaLogsCache.get(id);
+        const c = _tuyaLogsCache.get(`${id}|${cacheKey}`);
         if (c && (now - c.ts) < ttlMs) out[id] = c.logs.slice(0, size);
         else pending.push(id);
       }
@@ -1676,7 +1678,7 @@ app.post("/tuya/logs-bulk", async (req, res) => {
           pages++;
           if (!page.length) break;
         }
-        if (useCache) _tuyaLogsCache.set(id, { ts: now, logs: collected });
+        if (useCache) _tuyaLogsCache.set(`${id}|${cacheKey}`, { ts: now, logs: collected });
         out[id] = collected.slice(0, size);
       } catch (e) {
         out[id] = [];
