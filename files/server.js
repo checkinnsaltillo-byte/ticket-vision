@@ -1407,13 +1407,31 @@ app.post("/tuya/logs-bulk", async (req, res) => {
     }
     const end = explicitEnd || now;
     const start = explicitStart || (end - days * 24 * 60 * 60 * 1000);
+    // Tuya devuelve hasta 100 por página y los más recientes primero.
+    // Para cubrir el rango completo, paginamos hasta acumular `size` logs
+    // o hasta agotar (~10 páginas como guardia).
+    const PAGE = 100;
+    const MAX_PAGES = 12;
     const fetchOne = async (id) => {
       try {
-        const path = `/v1.0/devices/${encodeURIComponent(id)}/logs?start_time=${start}&end_time=${end}&type=1,2,3,4,5,6,7&size=${size}`;
-        const r = await tuyaRequest("GET", path);
-        const logs = r?.logs || [];
-        if (useCache) _tuyaLogsCache.set(id, { ts: now, logs });
-        out[id] = logs.slice(0, size);
+        const collected = [];
+        let lastRowKey = "";
+        let hasMore = true;
+        let pages = 0;
+        while (hasMore && collected.length < size && pages < MAX_PAGES) {
+          const need = Math.min(PAGE, size - collected.length);
+          const params = `start_time=${start}&end_time=${end}&type=1,2,3,4,5,6,7&size=${need}` + (lastRowKey ? `&last_row_key=${encodeURIComponent(lastRowKey)}` : "");
+          const path = `/v1.0/devices/${encodeURIComponent(id)}/logs?${params}`;
+          const r = await tuyaRequest("GET", path);
+          const page = r?.logs || [];
+          collected.push(...page);
+          lastRowKey = r?.last_row_key || "";
+          hasMore = !!r?.has_next && lastRowKey;
+          pages++;
+          if (!page.length) break;
+        }
+        if (useCache) _tuyaLogsCache.set(id, { ts: now, logs: collected });
+        out[id] = collected.slice(0, size);
       } catch (e) {
         out[id] = [];
       }
