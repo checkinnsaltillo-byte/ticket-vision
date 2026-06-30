@@ -104,13 +104,14 @@ async function callCheckinAppsScript(action, paramsObj) {
     }
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
+  const TIMEOUT_MS = 90000;
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const r = await fetch(url.toString(), { method: "GET", signal: controller.signal, redirect: "follow" });
     const text = await r.text();
     try { return JSON.parse(text); } catch { return { ok: false, raw: text.slice(0, 500) }; }
   } catch (err) {
-    if (err.name === "AbortError") throw new Error("Timeout: Apps Script tardó más de 25s");
+    if (err.name === "AbortError") throw new Error(`Timeout: Apps Script tardó más de ${TIMEOUT_MS/1000}s`);
     throw err;
   } finally { clearTimeout(timer); }
 }
