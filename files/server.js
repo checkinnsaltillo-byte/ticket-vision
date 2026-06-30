@@ -692,6 +692,28 @@ app.get("/lodgify-bookings-all", async (req, res) => {
 // Cache server-side de la lista completa (60s TTL) + filtro por rango fechas
 // para evitar transferir 8.7 MB cada vez. Frontend puede pasar from/to (YYYY-MM-DD).
 const _lodgifyListCache = { ts: 0, payload: null };
+// Normaliza un Source contaminado con JSON blob (de syncs anteriores que
+// guardaron mal el campo) a una etiqueta legible: Airbnb / Booking.com / Direct
+function _normalizeBookingSource(b) {
+  const raw = b && b.Source;
+  if (raw == null) return "";
+  const s = String(raw);
+  if (!s.startsWith("{")) {
+    if (/check-inn-saltillo|checkinnsaltillo/i.test(s)) return "Direct";
+    return s;
+  }
+  try {
+    const meta = JSON.parse(s);
+    const cc = String(meta.confirmationCode || "");
+    if (cc.startsWith("HM")) return "Airbnb";
+    if (/booking/i.test(cc)) return "Booking.com";
+    if (/vrbo/i.test(cc))    return "Vrbo";
+    if (/expedia/i.test(cc)) return "Expedia";
+    // Si tiene listingId pero no codeshipping, asumimos Airbnb (caso más común)
+    if (meta.listingId) return "Airbnb";
+    return "Other";
+  } catch (_) { return "Other"; }
+}
 app.get("/lodgify-list", async (req, res) => {
   try {
     const TTL = 60_000;
@@ -705,7 +727,9 @@ app.get("/lodgify-list", async (req, res) => {
         limit: req.query.limit || "",
       };
       payload = await callCheckinAppsScript("lodgify_list", params);
-      if (payload && payload.ok) {
+      if (payload && payload.ok && Array.isArray(payload.bookings)) {
+        // Limpia Sources contaminados con JSON blob de syncs previos
+        payload.bookings.forEach(b => { if (b) b.Source = _normalizeBookingSource(b); });
         _lodgifyListCache.ts = now;
         _lodgifyListCache.payload = payload;
       }
