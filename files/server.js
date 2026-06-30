@@ -1386,8 +1386,8 @@ const _tuyaLogsCache = new Map(); // id → { ts, logs }
 app.post("/tuya/logs-bulk", async (req, res) => {
   try {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
-    const size = Math.min(10, Number(req.body?.size) || 2);
-    const days = Math.min(7, Number(req.body?.days) || 2);
+    const size = Math.min(2000, Number(req.body?.size) || 2);
+    const days = Math.min(30, Number(req.body?.days) || 2);
     const explicitStart = Number(req.body?.start_time) || 0;
     const explicitEnd = Number(req.body?.end_time) || 0;
     // Si vienen start/end explícitos, NO se cachea (rango arbitrario por reserva).
