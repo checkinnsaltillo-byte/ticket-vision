@@ -103,17 +103,57 @@ async function callCheckinAppsScript(action, paramsObj) {
       url.searchParams.set(k, String(v));
     }
   }
-  const controller = new AbortController();
-  const TIMEOUT_MS = 90000;
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const r = await fetch(url.toString(), { method: "GET", signal: controller.signal, redirect: "follow" });
-    const text = await r.text();
-    try { return JSON.parse(text); } catch { return { ok: false, raw: text.slice(0, 500) }; }
-  } catch (err) {
-    if (err.name === "AbortError") throw new Error(`Timeout: Apps Script tardó más de ${TIMEOUT_MS/1000}s`);
-    throw err;
-  } finally { clearTimeout(timer); }
+  const TIMEOUT_MS = 120_000;
+  // Sigue redirects manualmente: Apps Script 302 → googleusercontent. Para
+  // respuestas grandes (≥8 MB) seguir automáticamente con `redirect:'follow'`
+  // a veces devuelve la página de error de Google. Hacerlo a 2 pasos con
+  // headers explícitos resuelve esa inestabilidad.
+  async function _fetchWithManualRedirect(targetUrl) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const r = await fetch(targetUrl, {
+        method: "GET",
+        signal: controller.signal,
+        redirect: "manual",
+        headers: { "Accept": "application/json, text/plain, */*", "User-Agent": "Mozilla/5.0 (compatible; ticket-vision)" },
+      });
+      // Si hay redirect, seguirlo manualmente UNA vez
+      if (r.status >= 300 && r.status < 400) {
+        const loc = r.headers.get("location");
+        if (loc) {
+          const r2 = await fetch(loc, {
+            method: "GET",
+            signal: controller.signal,
+            redirect: "follow",
+            headers: { "Accept": "application/json, text/plain, */*", "User-Agent": "Mozilla/5.0 (compatible; ticket-vision)" },
+          });
+          return await r2.text();
+        }
+      }
+      return await r.text();
+    } finally { clearTimeout(timer); }
+  }
+  // Reintenta hasta 2 veces si la respuesta no es JSON válido
+  let text = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      text = await _fetchWithManualRedirect(url.toString());
+      try { return JSON.parse(text); } catch (_) {
+        // Si la respuesta es HTML "página no encontrada" → reintenta
+        if (text.includes("<!DOCTYPE") && attempt === 0) {
+          await new Promise(r => setTimeout(r, 800));
+          continue;
+        }
+        return { ok: false, raw: text.slice(0, 500) };
+      }
+    } catch (err) {
+      if (err.name === "AbortError") throw new Error(`Timeout: Apps Script tardó más de ${TIMEOUT_MS/1000}s`);
+      if (attempt === 0) { await new Promise(r => setTimeout(r, 800)); continue; }
+      throw err;
+    }
+  }
+  return { ok: false, raw: (text || "").slice(0, 500) };
 }
 
 // Variante POST con body JSON para payloads grandes (base64 de imágenes,
