@@ -1,4 +1,5 @@
 const express   = require("express");
+const compression = require("compression");
 const multer    = require("multer");
 const Anthropic = require("@anthropic-ai/sdk");
 const XLSX      = require("xlsx");
@@ -18,6 +19,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const upload = multer({ dest: UPLOAD_DIR });
 
 app.use(cors({ origin: true }));
+app.use(compression()); // gzip de respuestas — reduce 8.7MB → ~700KB en lodgify-list
 app.use(express.json({ limit: "32mb" }));
 
 // ─── Apps Script URL (maneja Drive y Sheets) ───────────────────────────────
