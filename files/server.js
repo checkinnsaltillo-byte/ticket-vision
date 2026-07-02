@@ -960,6 +960,20 @@ app.post("/bn/update-rows", async (req, res) => {
   }
 });
 
+// ─── Delete single row en BANCOS (desde Efectivo, botón ✕) ─────────────────
+app.post("/bn/delete-row", async (req, res) => {
+  try {
+    const rowNum = Number(req.body?.rowNum);
+    if (!rowNum || rowNum < 2) throw new Error('rowNum inválido');
+    const result = await callAppsScript({ action: "bn_bancos_delete_row", rowNum });
+    if (!result.ok) throw new Error(result.error || "Apps Script error");
+    res.json({ ok: true, deleted: result.deleted });
+  } catch (err) {
+    console.error("bn_delete_row_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Persistir matches Banco↔Ticket en columnas de BANCOS ───────────────────
 
 app.post("/bn/set-ticket-matches", async (req, res) => {
