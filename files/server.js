@@ -202,6 +202,18 @@ app.get("/alojamientos-list", async (req, res) => {
   }
 });
 
+// Persistencia de cambios del catálogo "alojamientos" desde el panel admin
+// de Guías de bienvenida.
+app.post("/alojamientos/save", async (req, res) => {
+  try {
+    const payload = req.body?.payload || req.body || {};
+    const result = await callCheckinAppsScriptPost("save_alojamiento", { payload });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get("/dispositivos-list", async (req, res) => {
   try {
     const result = await callCheckinAppsScript("list_dispositivos");
