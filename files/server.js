@@ -748,17 +748,10 @@ app.get("/lodgify-list", async (req, res) => {
         _lodgifyListCache.payload = payload;
       }
     }
-    // Filtros server-side: from/to (rango de estancia que TOCA el rango pedido)
-    // + statuses (lista separada por coma; matching case-insensitive).
-    // Se aplican SIEMPRE que venga cualquiera de los tres parámetros, para
-    // reducir el payload que viaja al frontend (y el trabajo de parse/render).
+    // Filtra por rango de estancia si vienen from/to
     const from = String(req.query.from || "").slice(0,10);
     const to   = String(req.query.to   || "").slice(0,10);
-    const statusesRaw = String(req.query.statuses || "").trim();
-    const statusesArr = statusesRaw
-      ? statusesRaw.split(",").map(s => s.trim().toLowerCase()).filter(Boolean)
-      : null;
-    if ((from || to || statusesArr) && payload && payload.ok && Array.isArray(payload.bookings)) {
+    if ((from || to) && payload && payload.ok && Array.isArray(payload.bookings)) {
       const fromTs = from ? new Date(from + "T00:00:00").getTime() : -Infinity;
       const toTs   = to   ? new Date(to   + "T23:59:59").getTime() :  Infinity;
       const _parse = (s) => {
@@ -768,18 +761,13 @@ app.get("/lodgify-list", async (req, res) => {
         const t = Date.parse(s);
         return isFinite(t) ? t : 0;
       };
-      let filtered = payload.bookings;
-      if (from || to) {
-        filtered = filtered.filter(b => {
-          const arr = _parse(b.DateArrival);
-          const dep = _parse(b.DateDeparture);
-          if (!arr && !dep) return false;
-          return (dep || arr) >= fromTs && (arr || dep) <= toTs;
-        });
-      }
-      if (statusesArr) {
-        filtered = filtered.filter(b => statusesArr.includes(String(b.Status || "").toLowerCase()));
-      }
+      const filtered = payload.bookings.filter(b => {
+        const arr = _parse(b.DateArrival);
+        const dep = _parse(b.DateDeparture);
+        if (!arr && !dep) return false;
+        // Que el rango de estancia TOQUE el rango pedido
+        return (dep || arr) >= fromTs && (arr || dep) <= toTs;
+      });
       return res.json({ ...payload, bookings: filtered, total: filtered.length, cached: true });
     }
     res.json(payload);
