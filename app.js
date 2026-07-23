@@ -30672,7 +30672,16 @@ function guiasRenderContent() {
   const waPhone = wa.replace(/[^0-9+]/g,'');
   // Texto: usa titulo_txt (fallback al nombre del alojamiento si vacío).
   const tituloTxt = isReadOne ? (guiasVal_(alojs[0], 'titulo_txt') || nombreProp) : '';
-  const waMsg = isReadOne ? `Hola, estoy hospedado en ${tituloTxt}. Mi nombre es: ` : '';
+  // Nombre corto para WhatsApp: "Propiedad #Depto" (sin la descripción larga).
+  const waPropShort = isReadOne
+    ? (() => {
+        const p = String(guiasVal_(alojs[0], 'Propiedad', 'propiedad') || '').trim();
+        const d = String(guiasVal_(alojs[0], '# Departamento', 'Departamento', 'departamento') || '').trim();
+        if (p && d) return `${p} #${d}`;
+        return p || tituloTxt || 'el alojamiento';
+      })()
+    : '';
+  const waMsg = isReadOne ? `Hola, estoy hospedado en ${waPropShort}. Mi nombre es: ` : '';
   // Guarda para que el listener de postMessage del iframe pueda usarlos.
   window.__guiasCheckinWaPhone = waPhone;
   // Pre-llenado del formulario de registro exprés (Propiedad + # Departamento)
