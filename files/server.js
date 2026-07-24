@@ -193,10 +193,28 @@ app.get("/huespedes-list", async (req, res) => {
 
 // Proxy a la hoja "alojamientos" (catálogo de propiedades) — usado por el
 // frontend para homologar nombres entre Reservas_Lodgify y Reservaciones.
+// Cache en memoria (60 s) del listado completo. La guía pública en cellular
+// paga la primera llamada del minuto; las demás son instantáneas.
+let _alojCache = { ts: 0, payload: null };
+
 app.get("/alojamientos-list", async (req, res) => {
   try {
-    const result = await callCheckinAppsScript("list_alojamientos");
-    res.json(result);
+    const now = Date.now();
+    if (!_alojCache.payload || (now - _alojCache.ts) > 60_000) {
+      _alojCache.payload = await callCheckinAppsScript("list_alojamientos");
+      _alojCache.ts = now;
+    }
+    let payload = _alojCache.payload;
+    // Filtro server-side por HouseId: la guía pública sólo necesita 1 fila,
+    // pasar de 322 KB a ~5 KB reduce drásticamente el tiempo en cellular.
+    const wantId = String(req.query.id || "").trim().toLowerCase();
+    if (wantId && payload && payload.ok && Array.isArray(payload.rows)) {
+      const filtered = payload.rows.filter(r =>
+        String(r.HouseId || r.HouseID || r.ID || "").trim().toLowerCase() === wantId
+      );
+      return res.json({ ...payload, rows: filtered, total: filtered.length, cached: true });
+    }
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
