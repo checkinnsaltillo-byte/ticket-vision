@@ -274,6 +274,39 @@ function rhMakeSaveEndpoint(action) {
   };
 }
 
+// ─── INQUILINOS: perfiles + pagos + upload de contratos/fotos ─────────
+app.get("/inquilinos", async (req, res) => {
+  try { res.json(await callCheckinAppsScript("inquilinos_list")); }
+  catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post("/inquilinos", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inquilinos_save", req.body || {})); }
+  catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post("/inquilinos/delete", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inquilinos_delete", { ID: (req.body||{}).ID })); }
+  catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post("/inquilinos/upload", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inquilinos_upload_file", req.body || {})); }
+  catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.get("/inquilinos-pagos", async (req, res) => {
+  try {
+    const iid = String(req.query.inquilino_id || '').trim();
+    const params = iid ? { inquilino_id: iid } : {};
+    res.json(await callCheckinAppsScript("inquilinos_pagos_list", params));
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post("/inquilinos-pagos", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inquilinos_pagos_save", req.body || {})); }
+  catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post("/inquilinos-pagos/delete", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inquilinos_pagos_delete", { ID: (req.body||{}).ID })); }
+  catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 app.get("/rh/empleados",      rhMakeListEndpoint("rh_list_empleados"));
 app.post("/rh/empleados",     rhMakeSaveEndpoint("rh_save_empleado"));
 app.get("/rh/asistencia",     rhMakeListEndpoint("rh_list_asistencia"));
