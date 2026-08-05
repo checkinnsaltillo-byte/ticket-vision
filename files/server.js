@@ -1060,7 +1060,7 @@ app.post("/bn/set-ticket-matches", async (req, res) => {
 // configurados en Cloud Run. Sin ellos, devuelve error claro.
 app.post("/facturapi/send-email", async (req, res) => {
   try {
-    const { folio, email, org } = req.body || {};
+    const { folio, email, org, kind } = req.body || {};
     if (!folio) throw new Error('folio requerido');
     const orgN = String(org || '2');
     const key = orgN === '1'
@@ -1068,28 +1068,48 @@ app.post("/facturapi/send-email", async (req, res) => {
       : (process.env.FACTURAPI_SECRET_KEY_ORG2 || process.env.FACTURAPI_SECRET_KEY);
     if (!key) throw new Error('FACTURAPI_SECRET_KEY no configurada en Cloud Run (org ' + orgN + ')');
     const auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
-    // 1) Buscar invoice por folio_number
-    const searchUrl = `https://www.facturapi.io/v2/invoices?folio_number=${encodeURIComponent(folio)}&limit=1`;
-    const sResp = await fetch(searchUrl, { headers: { 'Authorization': auth } });
-    if (!sResp.ok) {
-      const t = await sResp.text().catch(() => '');
-      throw new Error(`Facturapi search ${sResp.status}: ${t.slice(0, 200)}`);
+    // Puede ser una FACTURA (invoice) o un RECIBO (receipt). Los recibos son
+    // los "tickets" que se generan para inquilinos — viven en un endpoint
+    // distinto. Estrategia: si viene kind='receipt' probamos receipts primero;
+    // en cualquier otro caso probamos invoices y caemos a receipts si no
+    // hay match. Permite mantener compatibilidad con reservas (invoices) y
+    // agregar soporte para recibos de inquilinos sin cambiar el frontend.
+    async function searchAt(collection) {
+      const url = `https://www.facturapi.io/v2/${collection}?folio_number=${encodeURIComponent(folio)}&limit=1`;
+      const r = await fetch(url, { headers: { 'Authorization': auth } });
+      if (!r.ok) {
+        const t = await r.text().catch(() => '');
+        throw new Error(`Facturapi search ${collection} ${r.status}: ${t.slice(0, 200)}`);
+      }
+      const j = await r.json();
+      return { hit: (j?.data || [])[0] || null };
     }
-    const search = await sResp.json();
-    const inv = (search?.data || [])[0];
-    if (!inv) throw new Error(`No se encontró invoice con folio ${folio} en Facturapi`);
-    // 2) Enviar email — la API acepta { email: [string] } para sobrescribir; sin body usa el del cliente
+    const primary = String(kind || '').toLowerCase() === 'receipt' ? 'receipts' : 'invoices';
+    const fallback = primary === 'receipts' ? 'invoices' : 'receipts';
+    let collection = primary;
+    let { hit } = await searchAt(primary);
+    if (!hit) {
+      const other = await searchAt(fallback);
+      hit = other.hit;
+      if (hit) collection = fallback;
+    }
+    if (!hit) throw new Error(`No se encontró invoice ni receipt con folio ${folio} en Facturapi`);
+    // La API acepta { email: [string] } para sobrescribir; sin body usa el
+    // del cliente. Endpoint distinto según sea recibo o factura.
     const body = email ? JSON.stringify({ email: [email] }) : '{}';
-    const eResp = await fetch(`https://www.facturapi.io/v2/invoices/${inv.id}/email`, {
+    const eResp = await fetch(`https://www.facturapi.io/v2/${collection}/${hit.id}/email`, {
       method: 'POST',
       headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
       body,
     });
     if (!eResp.ok) {
       const t = await eResp.text().catch(() => '');
-      throw new Error(`Facturapi send ${eResp.status}: ${t.slice(0, 200)}`);
+      throw new Error(`Facturapi send ${collection} ${eResp.status}: ${t.slice(0, 200)}`);
     }
-    res.json({ ok: true, sent_to: email || (inv.customer?.email || ''), invoice_id: inv.id, folio });
+    res.json({
+      ok: true, sent_to: email || (hit.customer?.email || ''),
+      resource_id: hit.id, folio, kind: collection === 'receipts' ? 'receipt' : 'invoice',
+    });
   } catch (err) {
     console.error("facturapi_send_email_error", err.message);
     res.status(500).json({ ok: false, error: err.message });
