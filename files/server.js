@@ -307,6 +307,62 @@ app.post("/inquilinos-pagos/delete", async (req, res) => {
   catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
+// ─── Inventarios ────────────────────────────────────────────────────────
+app.get("/inventarios/productos", async (_req, res) => {
+  try { res.json(await callCheckinAppsScript("inventarios_productos_list")); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.post("/inventarios/productos", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inventarios_producto_save", req.body || {})); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.post("/inventarios/productos/delete", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inventarios_producto_delete", { ID: (req.body||{}).ID })); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.post("/inventarios/productos/upload", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inventarios_producto_upload", req.body || {})); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.get("/inventarios/stock", async (req, res) => {
+  try {
+    const iid = String(req.query.producto_id || '').trim();
+    res.json(await callCheckinAppsScriptPost("inventarios_stock_list", iid ? { producto_id: iid } : {}));
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.post("/inventarios/stock", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inventarios_stock_save", req.body || {})); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.post("/inventarios/stock/delete", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inventarios_stock_delete", { ID: (req.body||{}).ID })); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.post("/inventarios/movimiento", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inventarios_movimiento_save", req.body || {})); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.get("/inventarios/movimientos", async (req, res) => {
+  try {
+    const filters = {};
+    if (req.query.stock_id) filters.stock_id = String(req.query.stock_id);
+    if (req.query.producto_id) filters.producto_id = String(req.query.producto_id);
+    res.json(await callCheckinAppsScriptPost("inventarios_movimientos_list", filters));
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.get("/inventarios/ordenes", async (_req, res) => {
+  try { res.json(await callCheckinAppsScript("inventarios_ordenes_list")); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.post("/inventarios/ordenes", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inventarios_orden_save", req.body || {})); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.post("/inventarios/ordenes/delete", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("inventarios_orden_delete", { ID: (req.body||{}).ID })); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
 app.get("/rh/empleados",      rhMakeListEndpoint("rh_list_empleados"));
 app.post("/rh/empleados",     rhMakeSaveEndpoint("rh_save_empleado"));
 app.get("/rh/asistencia",     rhMakeListEndpoint("rh_list_asistencia"));
