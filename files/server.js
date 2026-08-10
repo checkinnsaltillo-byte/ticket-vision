@@ -309,7 +309,7 @@ app.post("/inquilinos-pagos/delete", async (req, res) => {
 
 // ─── Inventarios ────────────────────────────────────────────────────────
 app.get("/inventarios/productos", async (_req, res) => {
-  try { res.json(await callCheckinAppsScript("inventarios_productos_list")); }
+  try { res.json(await callCheckinAppsScriptPost("inventarios_productos_list", {})); }
   catch (err) { res.status(500).json({ ok:false, error: err.message }); }
 });
 app.post("/inventarios/productos", async (req, res) => {
@@ -351,7 +351,7 @@ app.get("/inventarios/movimientos", async (req, res) => {
   } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
 });
 app.get("/inventarios/ordenes", async (_req, res) => {
-  try { res.json(await callCheckinAppsScript("inventarios_ordenes_list")); }
+  try { res.json(await callCheckinAppsScriptPost("inventarios_ordenes_list", {})); }
   catch (err) { res.status(500).json({ ok:false, error: err.message }); }
 });
 app.post("/inventarios/ordenes", async (req, res) => {
