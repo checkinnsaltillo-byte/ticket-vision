@@ -193,21 +193,36 @@ app.get("/huespedes-list", async (req, res) => {
 
 // Proxy a la hoja "alojamientos" (catálogo de propiedades) — usado por el
 // frontend para homologar nombres entre Reservas_Lodgify y Reservaciones.
-// Cache en memoria (60 s) del listado completo. La guía pública en cellular
-// paga la primera llamada del minuto; las demás son instantáneas.
+// Cache en memoria del listado completo (5 min = 300 s). Reduce round-trips a
+// Apps Script (que agrega 500-2000 ms) — con min-instances=1 el contenedor
+// mantiene esta cache viva y las peticiones se resuelven en <100ms.
 let _alojCache = { ts: 0, payload: null };
+const ALOJ_CACHE_MS = 5 * 60 * 1000;
 
 app.get("/alojamientos-list", async (req, res) => {
   try {
     const now = Date.now();
-    if (!_alojCache.payload || (now - _alojCache.ts) > 60_000) {
+    if (!_alojCache.payload || (now - _alojCache.ts) > ALOJ_CACHE_MS) {
       _alojCache.payload = await callCheckinAppsScript("list_alojamientos");
       _alojCache.ts = now;
     }
     let payload = _alojCache.payload;
-    // Filtro server-side por HouseId: la guía pública sólo necesita 1 fila,
-    // pasar de 322 KB a ~5 KB reduce drásticamente el tiempo en cellular.
     const wantId = String(req.query.id || "").trim().toLowerCase();
+    // Cache-Control agresivo por-id: la guía pública se puede cachear en el
+    // navegador y en cualquier CDN intermedio (Cloudflare/proxies del ISP)
+    // sin miedo — los datos de una guía cambian raro. Si el admin edita,
+    // basta con esperar 10 min o refrescar hard (Ctrl+Shift+R).
+    // stale-while-revalidate=86400: sirve stale por hasta 24h mientras
+    // revalida en background → cellular con conexión intermitente ve la
+    // guía al instante desde cache y refresca cuando puede.
+    if (wantId) {
+      res.set("Cache-Control", "public, max-age=600, s-maxage=600, stale-while-revalidate=86400");
+      res.set("CDN-Cache-Control", "public, max-age=600");
+      res.set("Vary", "Accept-Encoding");
+    } else {
+      // Lista completa: cache más corto (admin la usa; datos cambian más seguido)
+      res.set("Cache-Control", "public, max-age=60, s-maxage=60, stale-while-revalidate=300");
+    }
     if (wantId && payload && payload.ok && Array.isArray(payload.rows)) {
       const filtered = payload.rows.filter(r =>
         String(r.HouseId || r.HouseID || r.ID || "").trim().toLowerCase() === wantId
