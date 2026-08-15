@@ -361,24 +361,26 @@ app.post("/wa/url-guia", async (req, res) => {
 });
 
 // POST /wa/scheduled-add — programa un mensaje personalizado para envío futuro.
-// Body: { bookingId, to, scheduledAt (ISO), body, asunto?, createdBy?: string }
+// Body: { bookingId, to (string CSV o array), scheduledAt (ISO), body, asunto?, createdBy? }
 app.post("/wa/scheduled-add", async (req, res) => {
   try {
     const p = req.body || {};
-    const to = _waFormatTo(p.to);
-    if (!to) return res.status(400).json({ ok: false, error: "to requerido" });
+    const list = _waFormatToList(p.to);
+    if (!list.length) return res.status(400).json({ ok: false, error: "to requerido (al menos 1 destinatario)" });
     if (!p.scheduledAt) return res.status(400).json({ ok: false, error: "scheduledAt requerido" });
     if (!p.body || !String(p.body).trim()) return res.status(400).json({ ok: false, error: "body requerido" });
+    // Guardar como CSV para que el cron/send iteren.
+    const toCsv = list.join(",");
     const r = await callCheckinAppsScriptPost("wa_scheduled_add", {
       booking_id: p.bookingId || "",
-      tipo: "custom",
-      to,
+      tipo: p.tipo || "custom",
+      to: toCsv,
       scheduled_at: p.scheduledAt,
       body: p.body,
       asunto: p.asunto || "",
       created_by: p.createdBy || "admin",
     });
-    res.json(r);
+    res.json({ ...r, to: toCsv, recipients_count: list.length });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
