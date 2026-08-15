@@ -398,6 +398,50 @@ app.post("/wa/scheduled-delete", async (req, res) => {
   }
 });
 
+// ─── Templates (Configuración Admin) ─────────────────────────────────────
+app.post("/wa/templates-list", async (req, res) => {
+  try {
+    const r = await callCheckinAppsScriptPost("wa_templates_list", {});
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/wa/templates-upsert", async (req, res) => {
+  try {
+    const p = req.body || {};
+    if (!p.nombre || !String(p.nombre).trim()) {
+      return res.status(400).json({ ok: false, error: "nombre requerido" });
+    }
+    const r = await callCheckinAppsScriptPost("wa_templates_upsert", {
+      id: p.id || "",
+      nombre: p.nombre,
+      body: p.body || "",
+      asunto: p.asunto || "",
+      schedule_type: p.schedule_type || "never",
+      schedule_time: p.schedule_time || "",
+      alojamientos: p.alojamientos || "",
+      enabled: p.enabled === true,
+      updated_by: p.updated_by || "admin",
+    });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/wa/templates-delete", async (req, res) => {
+  try {
+    const id = String((req.body && req.body.id) || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "id requerido" });
+    const r = await callCheckinAppsScriptPost("wa_templates_delete", { id });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // POST /wa/scheduled-list — lista mensajes programados de una reserva.
 // Body: { bookingId } → { ok: true, items: [...] }
 app.post("/wa/scheduled-list", async (req, res) => {
