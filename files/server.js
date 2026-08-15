@@ -249,21 +249,30 @@ app.get("/alojamientos-list", async (req, res) => {
 
 /** Normaliza destino a formato "whatsapp:+52…". Acepta "8115569120",
  *  "5218115569120", "+528115569120", "+52 811 556 9120", etc. */
-function _waFormatTo(to) {
+function _waFormatToSingle(to) {
   let s = String(to || "").trim().replace(/[^\d+]/g, "");
   if (!s) return "";
   if (s.startsWith("whatsapp:")) return s;
   if (!s.startsWith("+")) {
-    if (s.length === 10) s = "+521" + s;           // celular MX 10 dígitos → +521 (móvil)
-    else if (s.length === 12 && s.startsWith("52")) s = "+521" + s.slice(2);  // 52XXXXXXXXXX → +521XXXXXXXXXX
+    if (s.length === 10) s = "+521" + s;
+    else if (s.length === 12 && s.startsWith("52")) s = "+521" + s.slice(2);
     else if (s.length === 13 && s.startsWith("521")) s = "+" + s;
     else s = "+" + s;
   } else {
-    // Normaliza +52XXXXXXXXXX (12 dígitos totales) → +521XXXXXXXXXX
-    // Requerido por WhatsApp para móviles MX (Meta rechaza sin el "1").
     if (/^\+52\d{10}$/.test(s)) s = "+521" + s.slice(3);
   }
   return "whatsapp:" + s;
+}
+/** Devuelve un array de recipients normalizados (acepta CSV o array). */
+function _waFormatToList(to) {
+  if (!to) return [];
+  const arr = Array.isArray(to) ? to : String(to).split(/[,;]+/);
+  return arr.map(_waFormatToSingle).filter(Boolean);
+}
+/** Compat: devuelve solo el primero (para endpoints que aún esperan string). */
+function _waFormatTo(to) {
+  const arr = _waFormatToList(to);
+  return arr[0] || "";
 }
 
 async function _twilioSendMessage(params) {
@@ -436,19 +445,28 @@ app.post("/wa/scheduled-send-now", async (req, res) => {
     const list = await callCheckinAppsScriptPost("wa_scheduled_list", { booking_id: "" });
     const item = ((list && list.items) || []).find(x => x.id === id);
     if (!item) return res.status(404).json({ ok: false, error: "no encontrado" });
-    if (item.status !== "pending") return res.status(409).json({ ok: false, error: `status=${item.status}, no puede enviarse` });
-    try {
-      const m = await _twilioSendMessage({ to: item.to, body: item.body });
-      await callCheckinAppsScriptPost("wa_scheduled_mark_sent", { id, sid: m.sid, status: m.status || "sent" });
-      _waLog({
-        booking_id: item.booking_id, tipo: "custom-scheduled", origin: "manual-admin",
-        to: item.to, sid: m.sid, status: m.status || "sent", body_preview: item.body,
-      });
-      res.json({ ok: true, sid: m.sid, status: m.status });
-    } catch (e) {
-      await callCheckinAppsScriptPost("wa_scheduled_mark_sent", { id, sid: "", status: "failed" });
-      throw e;
+    // Re-enviar permitido: si ya fue enviado antes, se envía de nuevo.
+    // Solo omitidos NO se pueden enviar.
+    if (item.status === "omitted") return res.status(409).json({ ok: false, error: "status=omitted" });
+    const rcps = _waFormatToList(item.to);
+    if (!rcps.length) return res.status(400).json({ ok: false, error: "sin destinatarios válidos" });
+    let ok = 0, failed = 0, sids = [], lastErr = "";
+    for (const to of rcps) {
+      try {
+        const m = await _twilioSendMessage({ to, body: item.body });
+        _waLog({
+          booking_id: item.booking_id, tipo: "custom-scheduled", origin: "manual-admin",
+          to, sid: m.sid, status: m.status || "sent", body_preview: item.body,
+        });
+        ok++; sids.push(m.sid);
+      } catch (e) { failed++; lastErr = e.message; }
     }
+    const finalStatus = ok === rcps.length ? "sent" : (ok === 0 ? "failed" : "partial");
+    await callCheckinAppsScriptPost("wa_scheduled_mark_sent", {
+      id, sid: sids.join(","), status: finalStatus,
+    });
+    if (ok === 0) throw new Error(lastErr || "todos fallaron");
+    res.json({ ok: true, sid: sids[0], status: finalStatus, sent: ok, failed });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -466,18 +484,22 @@ app.post("/wa/cron-scheduled-tick", async (req, res) => {
     const items = (p && p.items) || [];
     let sent = 0, failed = 0;
     for (const it of items) {
-      try {
-        const m = await _twilioSendMessage({ to: it.to, body: it.body });
-        await callCheckinAppsScriptPost("wa_scheduled_mark_sent", { id: it.id, sid: m.sid, status: m.status || "sent" });
-        _waLog({
-          booking_id: it.booking_id, tipo: "custom-scheduled", origin: "auto-cron",
-          to: it.to, sid: m.sid, status: m.status || "sent", body_preview: it.body,
-        });
-        sent++;
-      } catch (e) {
-        await callCheckinAppsScriptPost("wa_scheduled_mark_sent", { id: it.id, sid: "", status: "failed" });
-        failed++;
+      const rcps = _waFormatToList(it.to);
+      if (!rcps.length) { failed++; continue; }
+      let ok = 0, itFail = 0, sids = [];
+      for (const to of rcps) {
+        try {
+          const m = await _twilioSendMessage({ to, body: it.body });
+          _waLog({
+            booking_id: it.booking_id, tipo: "custom-scheduled", origin: "auto-cron",
+            to, sid: m.sid, status: m.status || "sent", body_preview: it.body,
+          });
+          ok++; sids.push(m.sid);
+        } catch (e) { itFail++; }
       }
+      const finalStatus = ok === rcps.length ? "sent" : (ok === 0 ? "failed" : "partial");
+      await callCheckinAppsScriptPost("wa_scheduled_mark_sent", { id: it.id, sid: sids.join(","), status: finalStatus });
+      if (ok > 0) sent++; else failed++;
     }
     res.json({ ok: true, total: items.length, sent, failed });
   } catch (err) {
