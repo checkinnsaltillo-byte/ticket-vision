@@ -455,18 +455,43 @@ app.post("/wa/cron-scheduled-tick", async (req, res) => {
   }
 });
 
-// POST /wa/config-set — toggle auto_enabled para una reserva
-// Body: { bookingId, autoEnabled: bool, updatedBy?: string }
+// POST /wa/config-set — toggle auto_enabled y/o disabled_templates para una reserva
+// Body: { bookingId, autoEnabled?: bool, disabledTemplates?: [templateId,...], updatedBy? }
 app.post("/wa/config-set", async (req, res) => {
   try {
     const p = req.body || {};
     if (!p.bookingId) return res.status(400).json({ ok: false, error: "bookingId requerido" });
-    const r = await callCheckinAppsScriptPost("wa_config_set", {
-      booking_id: p.bookingId,
-      auto_enabled: !!p.autoEnabled,
-      updated_by: p.updatedBy || "admin",
-    });
+    const payload = { booking_id: p.bookingId, updated_by: p.updatedBy || "admin" };
+    if (Object.prototype.hasOwnProperty.call(p, "autoEnabled"))       payload.auto_enabled = !!p.autoEnabled;
+    if (Object.prototype.hasOwnProperty.call(p, "disabledTemplates")) payload.disabled_templates = p.disabledTemplates;
+    const r = await callCheckinAppsScriptPost("wa_config_set", payload);
     res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /wa/toggle-template — habilita/deshabilita un template individual para
+// esa reserva (no afecta a otras reservas ni al toggle global Auto).
+// Body: { bookingId, templateId, enabled: bool }
+app.post("/wa/toggle-template", async (req, res) => {
+  try {
+    const p = req.body || {};
+    if (!p.bookingId || !p.templateId) return res.status(400).json({ ok: false, error: "bookingId y templateId requeridos" });
+    // Leer config actual → mutar array → guardar
+    const cur = await callCheckinAppsScriptPost("wa_config_get_batch", { booking_ids: [p.bookingId] });
+    const cfg = (cur && cur.config && cur.config[p.bookingId]) || { disabled_templates: [] };
+    const disabled = Array.isArray(cfg.disabled_templates) ? cfg.disabled_templates.slice() : [];
+    const idx = disabled.indexOf(p.templateId);
+    if (p.enabled === false) {
+      if (idx < 0) disabled.push(p.templateId);
+    } else {
+      if (idx >= 0) disabled.splice(idx, 1);
+    }
+    const r = await callCheckinAppsScriptPost("wa_config_set", {
+      booking_id: p.bookingId, disabled_templates: disabled, updated_by: "admin",
+    });
+    res.json({ ok: true, disabled_templates: disabled });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -627,6 +652,14 @@ app.post("/wa/cron-guest-reminders", async (req, res) => {
       if (!bypassToggle && !autoEnabled) {
         skipped++;
         results.push({ bookingId: b.id, skipped: "auto_enabled=false" });
+        continue;
+      }
+      // Chequeo template individual: si está en disabled_templates → skip.
+      const disabledArr = (cfg && Array.isArray(cfg.disabled_templates)) ? cfg.disabled_templates : [];
+      const tplKey = (type === "checkin") ? "recordatorio_checkin_24h" : "recordatorio_checkout";
+      if (!bypassToggle && disabledArr.indexOf(tplKey) >= 0) {
+        skipped++;
+        results.push({ bookingId: b.id, skipped: `template ${tplKey} deshabilitado` });
         continue;
       }
 
