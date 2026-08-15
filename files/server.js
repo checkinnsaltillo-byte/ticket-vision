@@ -518,6 +518,7 @@ app.post("/wa/config-set", async (req, res) => {
     const payload = { booking_id: p.bookingId, updated_by: p.updatedBy || "admin" };
     if (Object.prototype.hasOwnProperty.call(p, "autoEnabled"))       payload.auto_enabled = !!p.autoEnabled;
     if (Object.prototype.hasOwnProperty.call(p, "disabledTemplates")) payload.disabled_templates = p.disabledTemplates;
+    if (Object.prototype.hasOwnProperty.call(p, "recipients"))        payload.recipients = p.recipients;
     const r = await callCheckinAppsScriptPost("wa_config_set", payload);
     res.json(r);
   } catch (err) {
