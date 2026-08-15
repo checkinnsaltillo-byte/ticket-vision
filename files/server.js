@@ -235,6 +235,455 @@ app.get("/alojamientos-list", async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ WhatsApp Business (vía Twilio)                                          ║
+// ║ Env vars requeridas en Cloud Run:                                        ║
+// ║   TWILIO_ACCOUNT_SID   (ACxxxx…)                                        ║
+// ║   TWILIO_AUTH_TOKEN    (secret)                                          ║
+// ║   TWILIO_WA_FROM       (formato "whatsapp:+14155238886" sandbox         ║
+// ║                          o "whatsapp:+17542903346" producción)          ║
+// ║ Modelo: mensaje libre (dentro de ventana 24h del huésped) o template   ║
+// ║ pre-aprobado por Meta (fuera de ventana). Twilio expone template       ║
+// ║ mediante ContentSid del Content Template Builder.                       ║
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Normaliza destino a formato "whatsapp:+52…". Acepta "8115569120",
+ *  "5218115569120", "+528115569120", "+52 811 556 9120", etc. */
+function _waFormatTo(to) {
+  let s = String(to || "").trim().replace(/[^\d+]/g, "");
+  if (!s) return "";
+  if (s.startsWith("whatsapp:")) return s;
+  if (!s.startsWith("+")) {
+    if (s.length === 10) s = "+521" + s;           // celular MX 10 dígitos → +521 (móvil)
+    else if (s.length === 12 && s.startsWith("52")) s = "+521" + s.slice(2);  // 52XXXXXXXXXX → +521XXXXXXXXXX
+    else if (s.length === 13 && s.startsWith("521")) s = "+" + s;
+    else s = "+" + s;
+  } else {
+    // Normaliza +52XXXXXXXXXX (12 dígitos totales) → +521XXXXXXXXXX
+    // Requerido por WhatsApp para móviles MX (Meta rechaza sin el "1").
+    if (/^\+52\d{10}$/.test(s)) s = "+521" + s.slice(3);
+  }
+  return "whatsapp:" + s;
+}
+
+async function _twilioSendMessage(params) {
+  const sid    = process.env.TWILIO_ACCOUNT_SID;
+  const keySid = process.env.TWILIO_API_KEY_SID;
+  const keySec = process.env.TWILIO_API_KEY_SECRET;
+  const token  = process.env.TWILIO_AUTH_TOKEN; // fallback si aún no hay API Key
+  const from   = process.env.TWILIO_WA_FROM;
+  const user = keySid || sid;
+  const pass = keySec || token;
+  if (!sid || !user || !pass || !from) {
+    throw new Error("Twilio env vars faltantes (necesito TWILIO_ACCOUNT_SID + TWILIO_API_KEY_SID/SECRET o TWILIO_AUTH_TOKEN + TWILIO_WA_FROM)");
+  }
+  const body = new URLSearchParams();
+  body.set("From", from);
+  body.set("To",   params.to);
+  if (params.body)          body.set("Body", params.body);
+  if (params.contentSid)    body.set("ContentSid", params.contentSid);
+  if (params.contentVars)   body.set("ContentVariables", JSON.stringify(params.contentVars));
+  const auth = Buffer.from(user + ":" + pass).toString("base64");
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: "POST",
+    headers: { "Authorization": "Basic " + auth, "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(`Twilio ${r.status}: ${j.message || JSON.stringify(j).slice(0,200)}`);
+  return j;
+}
+
+// POST /wa/send — envía WhatsApp (freeform si "body", o template si "contentSid").
+// Body: { to, body?, contentSid?, contentVars?, bookingId? (para log), tipo? }
+app.post("/wa/send", async (req, res) => {
+  try {
+    const p = req.body || {};
+    const to = _waFormatTo(p.to);
+    if (!to) return res.status(400).json({ ok: false, error: "to requerido" });
+    if (!p.body && !p.contentSid) return res.status(400).json({ ok: false, error: "body o contentSid requerido" });
+    const msg = await _twilioSendMessage({ to, body: p.body, contentSid: p.contentSid, contentVars: p.contentVars });
+    // Log no-bloqueante (falla del log no debe romper el envío)
+    _waLog({
+      booking_id: p.bookingId || "",
+      tipo: p.tipo || (p.contentSid ? "manual-template" : "manual-freeform"),
+      origin: "manual-admin",
+      to, sid: msg.sid, status: msg.status,
+      body_preview: p.body || (p.contentVars ? JSON.stringify(p.contentVars) : ""),
+    });
+    res.json({ ok: true, sid: msg.sid, status: msg.status, to: msg.to });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+function _waLog(entry) {
+  callCheckinAppsScriptPost("wa_log_add", entry).catch(e => console.warn("[wa-log]", e.message));
+}
+
+// POST /wa/config-get — batch de config para varias reservas
+// Body: { bookingIds: [id1, id2, …] }  (vacío = todos)
+// Response: { ok: true, config: { id: { auto_enabled, updated_at, updated_by }, ... }, logs: { id: [...] } }
+app.post("/wa/config-get", async (req, res) => {
+  try {
+    const p = req.body || {};
+    const ids = Array.isArray(p.bookingIds) ? p.bookingIds : [];
+    const [cfg, log] = await Promise.all([
+      callCheckinAppsScriptPost("wa_config_get_batch", { booking_ids: ids }),
+      callCheckinAppsScriptPost("wa_log_get_batch",    { booking_ids: ids, limit_per_booking: 5 }),
+    ]);
+    res.json({ ok: true, config: (cfg && cfg.config) || {}, logs: (log && log.logs) || {} });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /wa/config-set — toggle auto_enabled para una reserva
+// Body: { bookingId, autoEnabled: bool, updatedBy?: string }
+app.post("/wa/config-set", async (req, res) => {
+  try {
+    const p = req.body || {};
+    if (!p.bookingId) return res.status(400).json({ ok: false, error: "bookingId requerido" });
+    const r = await callCheckinAppsScriptPost("wa_config_set", {
+      booking_id: p.bookingId,
+      auto_enabled: !!p.autoEnabled,
+      updated_by: p.updatedBy || "admin",
+    });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /wa/inbound — webhook para respuestas de huéspedes (Twilio lo llama).
+// Registra el mensaje en Google Sheets vía Apps Script para historial + trigger
+// automatizaciones (ej: "cancelar" liberar reserva).
+app.post("/wa/inbound", express.urlencoded({ extended: false }), async (req, res) => {
+  try {
+    const p = req.body || {};
+    console.log("[WA inbound]", p.From, "→", p.To, ":", (p.Body || "").slice(0, 200));
+    // Delegar registro a Apps Script (no bloqueante).
+    callCheckinAppsScriptPost("wa_inbound_log", {
+      from: p.From, to: p.To, body: p.Body, sid: p.MessageSid,
+      profileName: p.ProfileName, ts: new Date().toISOString(),
+    }).catch(e => console.warn("[WA inbound] log falló:", e.message));
+    // Twilio espera TwiML vacío para no auto-responder.
+    res.set("Content-Type", "text/xml").send("<Response></Response>");
+  } catch (err) {
+    console.warn("[WA inbound] error:", err.message);
+    res.set("Content-Type", "text/xml").send("<Response></Response>");
+  }
+});
+
+// POST /wa/cron-guest-reminders — dispara recordatorios WhatsApp masivos.
+// Body: { type: "checkin"|"checkout", daysAhead?: number, dryRun?: bool,
+//          overrideTo?: string (fuerza destinatario, útil para pruebas Sandbox) }
+// Header: X-Sync-Secret
+// Templates (aprobados en Meta para producción):
+//   checkin  → HX71192c768d8240f08daf76f94c501f2c (recordatorio_checkin_24h)
+//   checkout → HXcd62e32ae21e80655192928e522d01b8 (recordatorio_checkout)
+const _WA_TEMPLATE_SIDS = {
+  checkin:  "HX71192c768d8240f08daf76f94c501f2c",
+  checkout: "HXcd62e32ae21e80655192928e522d01b8",
+};
+
+function _mesEs(m) {
+  return ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"][m] || "";
+}
+function _fechaHoraEs(iso, hora) {
+  try {
+    const d = iso ? new Date(iso + "T00:00:00") : null;
+    const f = d ? `${d.getDate()} de ${_mesEs(d.getMonth())}` : "";
+    const h = String(hora || "").trim();
+    return h ? `${f}, ${h}` : (f || "próximo");
+  } catch (_) { return "próximo"; }
+}
+function _todayIso(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + Number(offsetDays || 0));
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+
+async function _fetchLodgifyBookingsForDate(dateIso, kind /* "arrival"|"departure" */) {
+  const apiKey = process.env.LODGIFY_API_KEY;
+  if (!apiKey) throw new Error("LODGIFY_API_KEY faltante");
+  // stayFilter:
+  //   arrival (recordatorio check-in): Upcoming (bookings que aún no empiezan)
+  //   departure (recordatorio check-out): Current (bookings dentro de estancia)
+  const stayFilter = (kind === "arrival") ? "Upcoming" : "Current";
+  const all = [];
+  let page = 1;
+  const maxPages = 5; // hasta 500 bookings por corrida, suficiente
+  for (; page <= maxPages; page++) {
+    const url = `https://api.lodgify.com/v2/reservations/bookings?stayFilter=${stayFilter}&page=${page}&size=100&includeCount=false`;
+    const r = await fetch(url, { headers: { "X-ApiKey": apiKey, accept: "application/json" }});
+    if (!r.ok) throw new Error(`Lodgify ${r.status} (page ${page})`);
+    const j = await r.json();
+    const items = Array.isArray(j.items) ? j.items : (Array.isArray(j) ? j : []);
+    if (!items.length) break;
+    all.push(...items);
+    if (items.length < 100) break; // última página
+  }
+  // Filtro exacto por fecha + status válido (excluye Declined/Cancelled/Open tentativos)
+  const VALID_STATUS = new Set(["Booked", "Confirmed", "InHouse", "CheckedIn"]);
+  return all.filter(b => {
+    const dateField = kind === "arrival" ? b.arrival : b.departure;
+    if (String(dateField || "").slice(0, 10) !== dateIso) return false;
+    const st = String(b.status || "");
+    return VALID_STATUS.has(st);
+  });
+}
+
+app.post("/wa/cron-guest-reminders", async (req, res) => {
+  try {
+    const secret = req.get("X-Sync-Secret") || "";
+    if (!process.env.SYNC_SECRET || secret !== process.env.SYNC_SECRET) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    const p = req.body || {};
+    const type = String(p.type || "").toLowerCase();
+    if (!["checkin","checkout"].includes(type)) {
+      return res.status(400).json({ ok: false, error: "type debe ser 'checkin' o 'checkout'" });
+    }
+    const daysAhead = Number(p.daysAhead != null ? p.daysAhead : (type === "checkin" ? 1 : 0));
+    const dateIso = _todayIso(daysAhead);
+    const kind = type === "checkin" ? "arrival" : "departure";
+    const contentSid = _WA_TEMPLATE_SIDS[type];
+    const dryRun = !!p.dryRun;
+    const overrideTo = p.overrideTo ? _waFormatTo(p.overrideTo) : null;
+
+    console.log(`[wa-cron] type=${type} dateIso=${dateIso} dryRun=${dryRun} override=${overrideTo||"-"}`);
+
+    const bookings = await _fetchLodgifyBookingsForDate(dateIso, kind);
+    console.log(`[wa-cron] bookings encontrados: ${bookings.length}`);
+
+    // Config batch: solo enviar a bookings con auto_enabled=true.
+    // Los que no tienen fila en WA_Config quedan como auto_enabled=false (default).
+    // Excepción: si dryRun O overrideTo, ignoramos el toggle (para pruebas).
+    let waConfig = {};
+    try {
+      const bookingIds = bookings.map(b => String(b.id));
+      const cfgRes = await callCheckinAppsScriptPost("wa_config_get_batch", { booking_ids: bookingIds });
+      waConfig = (cfgRes && cfgRes.config) || {};
+    } catch (e) { console.warn("[wa-cron] config falló:", e.message); }
+    const bypassToggle = dryRun || !!overrideTo;
+
+    // Map property_id → nombre desde el cache de alojamientos (BANCOS/Apps Script).
+    // Reusa el mismo _alojCache que alimenta /alojamientos-list.
+    let alojIdx = new Map();
+    try {
+      const now = Date.now();
+      if (!_alojCache.payload || (now - _alojCache.ts) > ALOJ_CACHE_MS) {
+        _alojCache.payload = await callCheckinAppsScript("list_alojamientos");
+        _alojCache.ts = now;
+      }
+      const rows = (_alojCache.payload && _alojCache.payload.rows) || [];
+      for (const r of rows) {
+        const id = String(r.HouseId || r.HouseID || r.ID || "").trim();
+        if (id) alojIdx.set(id, r);
+      }
+    } catch (e) { console.warn("[wa-cron] alojamientos map falló:", e.message); }
+
+    const results = [];
+    let sent = 0, failed = 0, skipped = 0;
+    for (const b of bookings) {
+      const guest = b.guest || {};
+      const nombre = String(guest.name || "").trim();
+      const firstName = nombre.split(/\s+/)[0] || "Huésped";
+      const phoneRaw = guest.phone || (b.messaging && b.messaging.guest_phone) || "";
+      const houseId = String(b.property_id || "");
+      // Nombre alojamiento: preferir HouseName del cache; fallback a "tu alojamiento".
+      const alojRow = alojIdx.get(houseId);
+      const propReal = alojRow && (alojRow.Propiedad || "");
+      const deptReal = alojRow && (alojRow["# Departamento"] || "");
+      const houseNameFull = alojRow && (alojRow.HouseName || "");
+      const alojamiento = (propReal && deptReal) ? `${propReal} #${deptReal}` : (houseNameFull || propReal || "tu alojamiento");
+      const guiaUrl = houseId ? `https://www.check-inn.mx/public/guia/?id=${encodeURIComponent(houseId)}` : "https://www.check-inn.mx";
+
+      const to = overrideTo || _waFormatTo(phoneRaw);
+      if (!to) { skipped++; results.push({ bookingId: b.id, skipped: "sin teléfono" }); continue; }
+
+      // Chequeo toggle: si NO está auto_enabled y NO es dryRun/override → skip.
+      const cfg = waConfig[String(b.id)];
+      const autoEnabled = !!(cfg && cfg.auto_enabled);
+      if (!bypassToggle && !autoEnabled) {
+        skipped++;
+        results.push({ bookingId: b.id, skipped: "auto_enabled=false" });
+        continue;
+      }
+
+      const contentVars = (type === "checkin")
+        ? { "1": firstName, "2": alojamiento, "3": _fechaHoraEs(dateIso, ""), "4": guiaUrl }
+        : { "1": firstName, "2": alojamiento, "3": "12:00 pm", "4": guiaUrl };
+
+      if (dryRun) {
+        results.push({ bookingId: b.id, to, dryRun: true, autoEnabled, contentVars });
+        continue;
+      }
+      try {
+        const m = await _twilioSendMessage({ to, contentSid, contentVars });
+        sent++;
+        results.push({ bookingId: b.id, to, sid: m.sid, status: m.status });
+        _waLog({
+          booking_id: String(b.id), tipo: type, origin: "auto-cron",
+          to, sid: m.sid, status: m.status,
+          body_preview: JSON.stringify(contentVars),
+        });
+      } catch (e) {
+        failed++;
+        results.push({ bookingId: b.id, to, error: e.message });
+        _waLog({
+          booking_id: String(b.id), tipo: type, origin: "auto-cron",
+          to, sid: "", status: "failed",
+          body_preview: "ERR: " + e.message,
+        });
+      }
+    }
+
+    res.json({ ok: true, type, dateIso, bookingsTotal: bookings.length, sent, failed, skipped, dryRun, results });
+  } catch (err) {
+    console.error("[wa-cron] ERROR:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── Sync guías → GitHub Pages ─────────────────────────────────────────────
+// Genera un JSON estático por alojamiento en el repo checkin-app
+// (public/guia/data/<HouseId>.json). El frontend público lee desde ahí
+// (Fastly IPs) en vez del backend (Google Cloud IPs que Telcel bloquea).
+// Se llama desde Cloud Scheduler cada hora con header X-Sync-Secret.
+// Usa Git Data API para hacer 1 commit con TODOS los archivos (mucho
+// más rápido y limpio que 50 PUTs individuales).
+app.post("/internal/sync-guias-to-github", async (req, res) => {
+  try {
+    const secret = req.get("X-Sync-Secret") || "";
+    if (!process.env.SYNC_SECRET || secret !== process.env.SYNC_SECRET) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    const ghToken = process.env.GH_TOKEN;
+    if (!ghToken) return res.status(500).json({ ok: false, error: "GH_TOKEN missing" });
+    const owner  = process.env.GH_OWNER  || "checkinnsaltillo-byte";
+    const repo   = process.env.GH_REPO   || "checkin-app";
+    const branch = process.env.GH_BRANCH || "main";
+    const baseDir = "public/guia/data";
+
+    // 1) Datos frescos desde Apps Script (Cloud Run → Apps Script SÍ funciona,
+    //    a diferencia de GitHub Actions → Apps Script que Google bloquea).
+    const payload = await callCheckinAppsScript("list_alojamientos");
+    const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+    if (!rows.length) return res.status(502).json({ ok: false, error: "backend devolvió 0 rows" });
+
+    const generatedAt = new Date().toISOString();
+    const files = [];
+    const summary = [];
+
+    // Traer fotos de Lodgify por alojamiento (galería del botón "Ver fotos").
+    // Guardamos las URLs junto al row para que el JSON estático las incluya —
+    // así el móvil arma el lightbox sin depender de fetch a Google Cloud.
+    const lodgifyKey = process.env.LODGIFY_API_KEY || "";
+    async function fetchLodgifyPhotos(propertyId) {
+      if (!lodgifyKey) return [];
+      try {
+        const r = await fetch(`https://api.lodgify.com/v2/properties/${encodeURIComponent(propertyId)}/rooms`, {
+          headers: { "X-ApiKey": lodgifyKey, "accept": "application/json" },
+        });
+        if (!r.ok) return [];
+        const rooms = await r.json();
+        if (!Array.isArray(rooms)) return [];
+        const photos = [];
+        for (const room of rooms) {
+          const imgs = Array.isArray(room && room.images) ? room.images : [];
+          for (const im of imgs) {
+            if (!im || !im.url) continue;
+            // URL sin protocolo (//l.icdbcdn.com/...) — sacar ?f=32 para servir
+            // el original grande en el lightbox (Lodgify sirve el ancho nativo).
+            const clean = String(im.url).replace(/^\/\//, "https://").replace(/\?f=\d+$/i, "");
+            photos.push({ url: clean, alt: String(im.text || "") });
+          }
+        }
+        return photos;
+      } catch (_) { return []; }
+    }
+
+    for (const row of rows) {
+      const id = String(row.HouseId || row.HouseID || row.ID || "").trim();
+      if (!id) continue;
+      const photos = await fetchLodgifyPhotos(id);
+      const rowWithPhotos = Object.assign({}, row, { photos });
+      files.push({
+        path: `${baseDir}/${id}.json`,
+        content: JSON.stringify({ ok: true, generatedAt, rows: [rowWithPhotos] }),
+      });
+      summary.push({ id, name: row.HouseName || "", photos: photos.length });
+    }
+    files.push({
+      path: `${baseDir}/index.json`,
+      content: JSON.stringify({ ok: true, generatedAt, count: files.length, items: summary }, null, 2),
+    });
+
+    // 2) Git Data API — 1 commit atómico con todos los archivos.
+    const gh = async (path, opts = {}) => {
+      const r = await fetch(`https://api.github.com/repos/${owner}/${repo}${path}`, {
+        method: opts.method || "GET",
+        headers: {
+          "Authorization": `token ${ghToken}`,
+          "Accept": "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "User-Agent": "ticket-vision-sync",
+        },
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+      });
+      const txt = await r.text();
+      if (!r.ok) throw new Error(`GH ${opts.method || "GET"} ${path}: ${r.status} ${txt.slice(0,200)}`);
+      return txt ? JSON.parse(txt) : {};
+    };
+
+    const ref = await gh(`/git/ref/heads/${branch}`);
+    const parentSha = ref.object.sha;
+    const parentCommit = await gh(`/git/commits/${parentSha}`);
+    const baseTreeSha = parentCommit.tree.sha;
+
+    // Crear blobs (uno por archivo)
+    const treeEntries = [];
+    for (const f of files) {
+      const blob = await gh(`/git/blobs`, {
+        method: "POST",
+        body: { content: f.content, encoding: "utf-8" },
+      });
+      treeEntries.push({ path: f.path, mode: "100644", type: "blob", sha: blob.sha });
+    }
+
+    // Crear tree con base_tree para preservar el resto del repo
+    const newTree = await gh(`/git/trees`, {
+      method: "POST",
+      body: { base_tree: baseTreeSha, tree: treeEntries },
+    });
+
+    // Si el árbol es idéntico al parent (nada cambió), no crear commit
+    if (newTree.sha === baseTreeSha) {
+      return res.json({ ok: true, changed: false, files: files.length, generatedAt });
+    }
+
+    const newCommit = await gh(`/git/commits`, {
+      method: "POST",
+      body: {
+        message: `chore(guias): snapshot horario JSON ${generatedAt}`,
+        tree: newTree.sha,
+        parents: [parentSha],
+      },
+    });
+    await gh(`/git/refs/heads/${branch}`, {
+      method: "PATCH",
+      body: { sha: newCommit.sha, force: false },
+    });
+
+    res.json({ ok: true, changed: true, files: files.length, commit: newCommit.sha, generatedAt });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Persistencia de cambios del catálogo "alojamientos" desde el panel admin
 // de Guías de bienvenida.
 app.post("/alojamientos/save", async (req, res) => {
