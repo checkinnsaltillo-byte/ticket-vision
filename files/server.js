@@ -421,6 +421,8 @@ app.post("/wa/templates-upsert", async (req, res) => {
       asunto: p.asunto || "",
       schedule_type: p.schedule_type || "never",
       schedule_time: p.schedule_time || "",
+      schedule_event: p.schedule_event || "",
+      schedule_offset: (p.schedule_offset || p.schedule_offset === 0) ? String(p.schedule_offset) : "",
       alojamientos: p.alojamientos || "",
       enabled: p.enabled === true,
       updated_by: p.updated_by || "admin",
