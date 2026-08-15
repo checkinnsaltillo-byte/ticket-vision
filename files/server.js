@@ -398,6 +398,23 @@ app.post("/wa/scheduled-omit", async (req, res) => {
   }
 });
 
+// POST /wa/scheduled-update — actualiza body/scheduledAt/status de un scheduled.
+// Body: { id, body?, scheduledAt?, status?  (pending|omitted) }
+app.post("/wa/scheduled-update", async (req, res) => {
+  try {
+    const p = req.body || {};
+    if (!p.id) return res.status(400).json({ ok: false, error: "id requerido" });
+    const payload = { id: p.id };
+    if (Object.prototype.hasOwnProperty.call(p, "body"))        payload.body = p.body;
+    if (Object.prototype.hasOwnProperty.call(p, "scheduledAt")) payload.scheduled_at = p.scheduledAt;
+    if (Object.prototype.hasOwnProperty.call(p, "status"))      payload.status = p.status;
+    const r = await callCheckinAppsScriptPost("wa_scheduled_update", payload);
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // POST /wa/scheduled-send-now — envía un programado inmediatamente y marca sent.
 app.post("/wa/scheduled-send-now", async (req, res) => {
   try {
