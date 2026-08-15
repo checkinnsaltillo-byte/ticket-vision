@@ -338,6 +338,123 @@ app.post("/wa/config-get", async (req, res) => {
   }
 });
 
+// POST /wa/url-guia — devuelve la URL de guía real desde alojamientos.
+// Body: { houseId: "605555" } → { ok: true, url_guia: "https://..." }
+app.post("/wa/url-guia", async (req, res) => {
+  try {
+    const houseId = String((req.body && req.body.houseId) || "").trim();
+    if (!houseId) return res.status(400).json({ ok: false, error: "houseId requerido" });
+    const r = await callCheckinAppsScriptPost("wa_url_guia_get", { house_id: houseId });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /wa/scheduled-add — programa un mensaje personalizado para envío futuro.
+// Body: { bookingId, to, scheduledAt (ISO), body, createdBy?: string }
+app.post("/wa/scheduled-add", async (req, res) => {
+  try {
+    const p = req.body || {};
+    const to = _waFormatTo(p.to);
+    if (!to) return res.status(400).json({ ok: false, error: "to requerido" });
+    if (!p.scheduledAt) return res.status(400).json({ ok: false, error: "scheduledAt requerido" });
+    if (!p.body || !String(p.body).trim()) return res.status(400).json({ ok: false, error: "body requerido" });
+    const r = await callCheckinAppsScriptPost("wa_scheduled_add", {
+      booking_id: p.bookingId || "",
+      tipo: "custom",
+      to,
+      scheduled_at: p.scheduledAt,
+      body: p.body,
+      created_by: p.createdBy || "admin",
+    });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /wa/scheduled-list — lista mensajes programados de una reserva.
+// Body: { bookingId } → { ok: true, items: [...] }
+app.post("/wa/scheduled-list", async (req, res) => {
+  try {
+    const bookingId = String((req.body && req.body.bookingId) || "").trim();
+    const r = await callCheckinAppsScriptPost("wa_scheduled_list", { booking_id: bookingId });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /wa/scheduled-omit — cancela un mensaje programado (marca status=omitted).
+app.post("/wa/scheduled-omit", async (req, res) => {
+  try {
+    const id = String((req.body && req.body.id) || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "id requerido" });
+    const r = await callCheckinAppsScriptPost("wa_scheduled_omit", { id });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /wa/scheduled-send-now — envía un programado inmediatamente y marca sent.
+app.post("/wa/scheduled-send-now", async (req, res) => {
+  try {
+    const id = String((req.body && req.body.id) || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "id requerido" });
+    const list = await callCheckinAppsScriptPost("wa_scheduled_list", { booking_id: "" });
+    const item = ((list && list.items) || []).find(x => x.id === id);
+    if (!item) return res.status(404).json({ ok: false, error: "no encontrado" });
+    if (item.status !== "pending") return res.status(409).json({ ok: false, error: `status=${item.status}, no puede enviarse` });
+    try {
+      const m = await _twilioSendMessage({ to: item.to, body: item.body });
+      await callCheckinAppsScriptPost("wa_scheduled_mark_sent", { id, sid: m.sid, status: m.status || "sent" });
+      _waLog({
+        booking_id: item.booking_id, tipo: "custom-scheduled", origin: "manual-admin",
+        to: item.to, sid: m.sid, status: m.status || "sent", body_preview: item.body,
+      });
+      res.json({ ok: true, sid: m.sid, status: m.status });
+    } catch (e) {
+      await callCheckinAppsScriptPost("wa_scheduled_mark_sent", { id, sid: "", status: "failed" });
+      throw e;
+    }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /wa/cron-scheduled-tick — Cloud Scheduler cada 15 min: envía todos
+// los mensajes programados con scheduled_at <= now.
+app.post("/wa/cron-scheduled-tick", async (req, res) => {
+  try {
+    const secret = req.get("X-Sync-Secret") || "";
+    if (!process.env.SYNC_SECRET || secret !== process.env.SYNC_SECRET) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    const p = await callCheckinAppsScriptPost("wa_scheduled_pending", {});
+    const items = (p && p.items) || [];
+    let sent = 0, failed = 0;
+    for (const it of items) {
+      try {
+        const m = await _twilioSendMessage({ to: it.to, body: it.body });
+        await callCheckinAppsScriptPost("wa_scheduled_mark_sent", { id: it.id, sid: m.sid, status: m.status || "sent" });
+        _waLog({
+          booking_id: it.booking_id, tipo: "custom-scheduled", origin: "auto-cron",
+          to: it.to, sid: m.sid, status: m.status || "sent", body_preview: it.body,
+        });
+        sent++;
+      } catch (e) {
+        await callCheckinAppsScriptPost("wa_scheduled_mark_sent", { id: it.id, sid: "", status: "failed" });
+        failed++;
+      }
+    }
+    res.json({ ok: true, total: items.length, sent, failed });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // POST /wa/config-set — toggle auto_enabled para una reserva
 // Body: { bookingId, autoEnabled: bool, updatedBy?: string }
 app.post("/wa/config-set", async (req, res) => {
