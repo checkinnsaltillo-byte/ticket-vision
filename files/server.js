@@ -352,7 +352,7 @@ app.post("/wa/url-guia", async (req, res) => {
 });
 
 // POST /wa/scheduled-add — programa un mensaje personalizado para envío futuro.
-// Body: { bookingId, to, scheduledAt (ISO), body, createdBy?: string }
+// Body: { bookingId, to, scheduledAt (ISO), body, asunto?, createdBy?: string }
 app.post("/wa/scheduled-add", async (req, res) => {
   try {
     const p = req.body || {};
@@ -366,8 +366,21 @@ app.post("/wa/scheduled-add", async (req, res) => {
       to,
       scheduled_at: p.scheduledAt,
       body: p.body,
+      asunto: p.asunto || "",
       created_by: p.createdBy || "admin",
     });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /wa/scheduled-delete — borra fila del sheet.
+app.post("/wa/scheduled-delete", async (req, res) => {
+  try {
+    const id = String((req.body && req.body.id) || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "id requerido" });
+    const r = await callCheckinAppsScriptPost("wa_scheduled_delete", { id });
     res.json(r);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
