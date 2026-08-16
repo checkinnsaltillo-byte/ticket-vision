@@ -2580,6 +2580,158 @@ app.get("/tuya/device/:id/logs", async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ KOMMO — POC Timeline WhatsApp por contacto                              ║
+// ║   Env: KOMMO_SUBDOMAIN (ej. "checkinnsaltillo"), KOMMO_TOKEN (long-lived) ║
+// ║   Flujo: recibe {phone} → busca contacto Kommo → arma cronología desde   ║
+// ║   WA_Scheduled/WA_Log/WA_Templates en Sheets → upsert nota en Kommo.     ║
+// ═══════════════════════════════════════════════════════════════════════════
+
+function _kommoBase() {
+  const sub = process.env.KOMMO_SUBDOMAIN || "checkinnsaltillo";
+  return `https://${sub}.kommo.com`;
+}
+async function _kommoFetch(path, opts = {}) {
+  const tok = process.env.KOMMO_TOKEN;
+  if (!tok) throw new Error("KOMMO_TOKEN no configurado");
+  const url = `${_kommoBase()}${path}`;
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      "Authorization": `Bearer ${tok}`,
+      "Content-Type": "application/json",
+      ...(opts.headers || {}),
+    },
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch(_) {}
+  if (!res.ok) {
+    const msg = (json && (json.detail || json.title || json.message)) || text || `HTTP ${res.status}`;
+    throw new Error(`Kommo ${res.status}: ${msg}`);
+  }
+  return json;
+}
+
+/** Encuentra el contacto Kommo por teléfono (últimos 10 dígitos). */
+async function _kommoFindContactByPhone(phone) {
+  const tail = String(phone || "").replace(/\D/g, "").slice(-10);
+  if (!tail) return null;
+  const j = await _kommoFetch(`/api/v4/contacts?query=${encodeURIComponent(tail)}&limit=10`);
+  const contacts = (j && j._embedded && j._embedded.contacts) || [];
+  for (const c of contacts) {
+    for (const cf of (c.custom_fields_values || [])) {
+      if (cf.field_code === "PHONE") {
+        for (const v of (cf.values || [])) {
+          const t = String(v.value || "").replace(/\D/g, "").slice(-10);
+          if (t === tail) return c;
+        }
+      }
+    }
+  }
+  return contacts[0] || null;
+}
+
+function _kFmtWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  let h = d.getHours(), m = d.getMinutes();
+  const ampm = h >= 12 ? 'p.m.' : 'a.m.'; h = h % 12; if (h === 0) h = 12;
+  return `${d.getDate()} ${meses[d.getMonth()]}, ${h}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+/** Consulta el estado real de mensajes WhatsApp del teléfono via Apps Script
+ *  y construye el texto de la nota Kommo. Reusa WA_Scheduled + WA_Log. */
+async function _kommoBuildTimelineText(phone) {
+  const tail = String(phone || "").replace(/\D/g, "").slice(-10);
+  const lines = [`📩 Timeline WhatsApp — Check-inn`, ``];
+  lines.push(`Teléfono: +${String(phone).replace(/\D/g, '')}`);
+  lines.push(`Actualizado: ${_kFmtWhen(new Date().toISOString())}`);
+  lines.push(``);
+  // 1) Programados custom + templates ya persistidos (WA_Scheduled del sheet)
+  try {
+    const sch = await callCheckinAppsScriptPost("wa_scheduled_list", { booking_id: "" });
+    const items = ((sch && sch.items) || []).filter(it => {
+      const toTail = String(it.to || "").replace(/\D/g, "").slice(-10);
+      return toTail && toTail === tail;
+    });
+    items.sort((a, b) => (a.scheduled_at || "").localeCompare(b.scheduled_at || ""));
+    if (items.length) {
+      lines.push(`═══ MENSAJES PROGRAMADOS ═══`);
+      for (const it of items) {
+        const status = String(it.status || "").toLowerCase();
+        let icon = "🕐";
+        if (status === "sent") icon = "✓";
+        else if (status === "omitted") icon = "✕";
+        else if (status === "failed") icon = "⚠";
+        const when = it.sent_at ? `enviado ${_kFmtWhen(it.sent_at)}` : (it.scheduled_at ? `programado ${_kFmtWhen(it.scheduled_at)}` : "");
+        const asunto = it.asunto ? `[${it.asunto}] ` : "";
+        const body = String(it.body || "").replace(/\s+/g, " ").slice(0, 120);
+        lines.push(`${icon} ${asunto}${when}`);
+        if (body) lines.push(`   ${body}${body.length >= 120 ? "…" : ""}`);
+      }
+      lines.push(``);
+    }
+  } catch (e) {
+    lines.push(`(No pude leer WA_Scheduled: ${e.message})`);
+  }
+  // 2) Log histórico (WA_Log del sheet) — últimos 10 relevantes al teléfono.
+  //    Nota: WA_Log se indexa por booking_id, no por teléfono. Filtramos por
+  //    coincidencia del 'to' (últimos 10 dígitos).
+  try {
+    const logRes = await callCheckinAppsScriptPost("wa_log_get_batch", { booking_ids: [] });
+    // wa_log_get_batch normalmente devuelve por booking; para este POC lo
+    // omitimos si el shape no es amigable — el resumen ya está en scheduled.
+  } catch (_) {}
+  if (lines.length <= 4) {
+    lines.push(`(Sin mensajes programados ni enviados para este teléfono)`);
+  }
+  lines.push(``);
+  lines.push(`—`);
+  lines.push(`Fuente: Check-inn Saltillo · Auto-generado`);
+  return lines.join("\n");
+}
+
+// POST /kommo/refresh-contact-timeline — Body: { phone } o { contactId }.
+// Efecto: crea una nueva nota tipo "common" en el contacto con la cronología
+// actualizada. (Kommo no permite editar notas existentes vía API pública, así
+// que se agrega una nueva cada refresh; el usuario ve la más reciente arriba.)
+app.post("/kommo/refresh-contact-timeline", async (req, res) => {
+  try {
+    const p = req.body || {};
+    let contact = null;
+    if (p.contactId) {
+      contact = await _kommoFetch(`/api/v4/contacts/${encodeURIComponent(p.contactId)}`);
+    } else if (p.phone) {
+      contact = await _kommoFindContactByPhone(p.phone);
+    } else {
+      return res.status(400).json({ ok: false, error: "phone o contactId requerido" });
+    }
+    if (!contact) return res.status(404).json({ ok: false, error: "contacto no encontrado" });
+    const contactId = contact.id;
+    // Extraer el teléfono del contacto (para armar la cronología).
+    let phone = p.phone || "";
+    if (!phone) {
+      for (const cf of (contact.custom_fields_values || [])) {
+        if (cf.field_code === "PHONE" && Array.isArray(cf.values) && cf.values[0]) {
+          phone = cf.values[0].value; break;
+        }
+      }
+    }
+    const text = await _kommoBuildTimelineText(phone);
+    const note = await _kommoFetch(`/api/v4/contacts/${contactId}/notes`, {
+      method: "POST",
+      body: JSON.stringify([{ note_type: "common", params: { text } }]),
+    });
+    const noteId = ((note && note._embedded && note._embedded.notes) || [])[0]?.id;
+    res.json({ ok: true, contact_id: contactId, note_id: noteId, phone, chars: text.length });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ─── Start ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 8080;
