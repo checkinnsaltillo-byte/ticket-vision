@@ -452,6 +452,10 @@ app.post("/llaves-list", async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
+// Body: { houseId, alojamiento, cell, state, date, updated_by }
+//  - cell: 'puerta'|'caja_seguridad'|'claudia'|'damariz'|'mantenimiento'|'oficina'
+//  - state: 'V' (verificado) | 'F' (falta) | '' (default/no set)
+//  - date: 'YYYY-MM-DD'
 app.post("/llaves-upsert", async (req, res) => {
   try {
     const p = req.body || {};
@@ -459,14 +463,9 @@ app.post("/llaves-upsert", async (req, res) => {
     const r = await callCheckinAppsScriptPost("llaves_upsert", {
       houseId: String(p.houseId),
       alojamiento: p.alojamiento || "",
-      puerta: p.puerta || "",
-      caja_seguridad: p.caja_seguridad || "",
-      claudia: p.claudia || "",
-      damariz: p.damariz || "",
-      acr: p.acr || "",
-      oficina: p.oficina || "",
-      ultima_actualizacion: p.ultima_actualizacion || "",
-      verificado: p.verificado === true,
+      cell: (p.cell || "").toLowerCase(),
+      state: (p.state || "").toUpperCase(),
+      date: p.date || "",
       updated_by: p.updated_by || "admin",
     });
     res.json(r);
