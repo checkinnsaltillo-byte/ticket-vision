@@ -444,6 +444,35 @@ app.post("/wa/templates-delete", async (req, res) => {
   }
 });
 
+// ─── Llaves (control de llaves y códigos por alojamiento) ────────────────
+app.post("/llaves-list", async (req, res) => {
+  try {
+    const r = await callCheckinAppsScriptPost("llaves_list", {});
+    res.json(r);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
+app.post("/llaves-upsert", async (req, res) => {
+  try {
+    const p = req.body || {};
+    if (!p.houseId) return res.status(400).json({ ok: false, error: "houseId requerido" });
+    const r = await callCheckinAppsScriptPost("llaves_upsert", {
+      houseId: String(p.houseId),
+      alojamiento: p.alojamiento || "",
+      puerta: p.puerta || "",
+      caja_seguridad: p.caja_seguridad || "",
+      claudia: p.claudia || "",
+      damariz: p.damariz || "",
+      acr: p.acr || "",
+      oficina: p.oficina || "",
+      ultima_actualizacion: p.ultima_actualizacion || "",
+      verificado: p.verificado === true,
+      updated_by: p.updated_by || "admin",
+    });
+    res.json(r);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 // POST /wa/scheduled-list — lista mensajes programados de una reserva.
 // Body: { bookingId } → { ok: true, items: [...] }
 app.post("/wa/scheduled-list", async (req, res) => {
