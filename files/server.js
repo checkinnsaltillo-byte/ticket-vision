@@ -834,6 +834,31 @@ app.post("/wa/cron-guest-reminders", async (req, res) => {
 // Se llama desde Cloud Scheduler cada hora con header X-Sync-Secret.
 // Usa Git Data API para hacer 1 commit con TODOS los archivos (mucho
 // más rápido y limpio que 50 PUTs individuales).
+// Endpoint público para botón "Actualizar" del módulo Guías (admin).
+// Delega al endpoint interno inyectando el secret desde env. Sin secret
+// requerido del cliente — el server actúa como proxy autorizado.
+app.post("/guias/sync-now", async (req, res) => {
+  try {
+    if (!process.env.SYNC_SECRET) {
+      return res.status(500).json({ ok: false, error: "SYNC_SECRET no configurado" });
+    }
+    // Reusar lógica del endpoint interno: forward con el secret propio.
+    const port = process.env.PORT || 8080;
+    const r = await fetch(`http://127.0.0.1:${port}/internal/sync-guias-to-github`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Sync-Secret": process.env.SYNC_SECRET,
+      },
+      body: "{}",
+    });
+    const j = await r.json();
+    res.status(r.status).json(j);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post("/internal/sync-guias-to-github", async (req, res) => {
   try {
     const secret = req.get("X-Sync-Secret") || "";
