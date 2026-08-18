@@ -1603,6 +1603,157 @@ function _normalizeBookingSource(b) {
     return "Other";
   } catch (_) { return "Other"; }
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// GET /lodgify-availability
+// Consulta disponibilidad + precio para TODAS las propiedades activas usando
+// la Lodgify API v2 (endpoint /v2/quote). Retorna solo las que están disponibles.
+//
+// Query params:
+//   arrival    (YYYY-MM-DD)  requerido
+//   departure  (YYYY-MM-DD)  requerido
+//   guests     (int)         default 1
+//
+// Response:
+//   {
+//     ok, arrival, departure, guests, queried, available: [
+//       { propertyId, propertyName, roomTypeId, price, currency, nights,
+//         capacity, checkoutUrl, propertyUrl }
+//     ], errors: [ { propertyId, message } ]
+//   }
+//
+// Cache de roomTypeId por propertyId (permanente en memoria del proceso).
+// ═══════════════════════════════════════════════════════════════════════════
+const _lodgifyRoomTypeCache = new Map(); // propertyId → { roomTypeId, capacity, propertyName }
+const _lodgifyAvailCache = new Map();    // key(arrival|departure|guests) → { ts, payload }
+
+app.get("/lodgify-availability", async (req, res) => {
+  try {
+    const apiKey = process.env.LODGIFY_API_KEY;
+    if (!apiKey) return res.status(500).json({ ok: false, error: "LODGIFY_API_KEY faltante" });
+    const arrival = String(req.query.arrival || "").trim();
+    const departure = String(req.query.departure || "").trim();
+    const guests = Math.max(1, parseInt(String(req.query.guests || "1"), 10) || 1);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(arrival) || !/^\d{4}-\d{2}-\d{2}$/.test(departure)) {
+      return res.status(400).json({ ok: false, error: "arrival/departure YYYY-MM-DD requeridos" });
+    }
+    if (new Date(arrival) >= new Date(departure)) {
+      return res.status(400).json({ ok: false, error: "departure debe ser posterior a arrival" });
+    }
+
+    // Cache 5 min
+    const cacheKey = `${arrival}|${departure}|${guests}`;
+    const cached = _lodgifyAvailCache.get(cacheKey);
+    if (cached && (Date.now() - cached.ts) < 5 * 60_000) {
+      return res.json({ ok: true, cached: true, ...cached.payload });
+    }
+
+    // 1. Obtener lista de propiedades activas del catálogo local
+    //    (usamos alojamientos-list pasando por Apps Script)
+    let alojRows = [];
+    try {
+      const alojR = await callCheckinAppsScript("alojamientos_list", {});
+      alojRows = (alojR && alojR.rows) || [];
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: "alojamientos_list falló: " + e.message });
+    }
+    const properties = alojRows
+      .filter(r => r && r.HouseId && String(r.HouseId).trim())
+      .map(r => ({
+        propertyId: String(r.HouseId).trim(),
+        propertyName: `${r.Propiedad || ""} #${r["# Departamento"] || ""}`.trim(),
+      }));
+    if (!properties.length) {
+      return res.status(500).json({ ok: false, error: "Sin propiedades con HouseId en el catálogo" });
+    }
+
+    // 2. Para cada propiedad, obtener roomTypeId (cache) y luego consultar quote.
+    const lodgifyHeaders = { "X-ApiKey": apiKey, "accept": "application/json" };
+
+    async function ensureRoomTypeId(propertyId) {
+      const c = _lodgifyRoomTypeCache.get(propertyId);
+      if (c) return c;
+      const r = await fetch(`https://api.lodgify.com/v2/properties/${encodeURIComponent(propertyId)}/rooms`, { headers: lodgifyHeaders });
+      if (!r.ok) throw new Error(`rooms HTTP ${r.status}`);
+      const rooms = await r.json();
+      if (!Array.isArray(rooms) || !rooms.length) throw new Error("sin rooms");
+      const first = rooms[0];
+      const info = {
+        roomTypeId: String(first.id || first.Id || ""),
+        capacity: Number(first.max_people || first.Max_People || first.people || 1),
+      };
+      if (!info.roomTypeId) throw new Error("sin roomTypeId");
+      _lodgifyRoomTypeCache.set(propertyId, info);
+      return info;
+    }
+
+    async function fetchQuote(propertyId, roomTypeId) {
+      // Endpoint quote: GET /v2/quote/{propertyId}?RoomTypes[0].Id=X&RoomTypes[0].People=N&Arrival=Y&Departure=Z
+      const qs = new URLSearchParams();
+      qs.set("Arrival", arrival);
+      qs.set("Departure", departure);
+      qs.set("RoomTypes[0].Id", roomTypeId);
+      qs.set("RoomTypes[0].People", String(guests));
+      const url = `https://api.lodgify.com/v2/quote/${encodeURIComponent(propertyId)}?${qs.toString()}`;
+      const r = await fetch(url, { headers: lodgifyHeaders });
+      const text = await r.text();
+      if (r.status === 400 || r.status === 404) return { available: false, reason: text.slice(0, 100) };
+      if (!r.ok) throw new Error(`quote HTTP ${r.status}: ${text.slice(0, 100)}`);
+      const arr = JSON.parse(text);
+      const q = Array.isArray(arr) ? arr[0] : arr;
+      if (!q) return { available: false, reason: "empty quote" };
+      const total = Number(q.total_including_vat || q.total || q.Total || 0);
+      const currency = String(q.currency_code || q.Currency || q.currency || "MXN");
+      return { available: total > 0, total, currency };
+    }
+
+    // Throttle: max 10 concurrent
+    const concurrency = 10;
+    const results = [];
+    const errors = [];
+    const queue = properties.slice();
+    async function worker() {
+      while (queue.length) {
+        const p = queue.shift();
+        try {
+          const rt = await ensureRoomTypeId(p.propertyId);
+          const q = await fetchQuote(p.propertyId, rt.roomTypeId);
+          if (q.available) {
+            const nights = Math.round((new Date(departure) - new Date(arrival)) / 86400000);
+            results.push({
+              propertyId: p.propertyId,
+              propertyName: p.propertyName,
+              roomTypeId: rt.roomTypeId,
+              capacity: rt.capacity,
+              price: q.total,
+              currency: q.currency,
+              nights,
+              // URL público con dates pre-llenadas (formato Lodgify booknow)
+              checkoutUrl: `https://checkout.lodgify.com/es/check-inn/booknow?PropertyId=${encodeURIComponent(p.propertyId)}&Arrival=${arrival}&Departure=${departure}&RoomTypes[0].Id=${encodeURIComponent(rt.roomTypeId)}&RoomTypes[0].People=${guests}`,
+            });
+          }
+        } catch (e) {
+          errors.push({ propertyId: p.propertyId, propertyName: p.propertyName, message: e.message });
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: concurrency }, worker));
+
+    // Ordenar por precio asc
+    results.sort((a, b) => a.price - b.price);
+
+    const payload = {
+      arrival, departure, guests,
+      queried: properties.length,
+      available: results,
+      errors,
+    };
+    _lodgifyAvailCache.set(cacheKey, { ts: Date.now(), payload });
+    res.json({ ok: true, cached: false, ...payload });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
 app.get("/lodgify-list", async (req, res) => {
   try {
     const TTL = 60_000;
