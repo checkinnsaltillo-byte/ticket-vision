@@ -1803,6 +1803,78 @@ app.get("/lodgify-list", async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// GET /perfiles-kpis-list
+// Devuelve { phone10 → { noches, visitas, monto, updated_at } } leyendo los
+// KPIs pre-computados de la hoja Perfiles. Cache 5 min.
+// ═══════════════════════════════════════════════════════════════════════════
+const _perfilesKpisCache = { ts: 0, payload: null };
+app.get("/perfiles-kpis-list", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (_perfilesKpisCache.payload && (now - _perfilesKpisCache.ts) < 5 * 60_000) {
+      return res.json({ ok: true, cached: true, ...(_perfilesKpisCache.payload) });
+    }
+    // perfiles_kpis en Apps Script devuelve el mapa ligero {by_phone, total}
+    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=perfiles_kpis`;
+    const r = await fetch(url);
+    const text = await r.text();
+    const j = JSON.parse(text);
+    if (!j.ok) {
+      return res.status(500).json({ ok: false, error: j.error || "perfiles_kpis falló" });
+    }
+    const payload = { by_phone: j.by_phone || {}, total: j.total || 0 };
+    _perfilesKpisCache.ts = now;
+    _perfilesKpisCache.payload = payload;
+    res.json({ ok: true, cached: false, ...payload });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /perfiles-recalc-kpis  (llamado por Cloud Scheduler diario ~03:00)
+// Recalcula kpi_noches/kpi_visitas/kpi_monto en hoja Perfiles a partir de
+// Reservas_Lodgify Status=Booked. Evita que Gestión de reservas recompute
+// KPIs en cada carga.
+// ═══════════════════════════════════════════════════════════════════════════
+app.post("/perfiles-recalc-kpis", async (req, res) => {
+  try {
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), 3 * 60 * 1000);
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "perfiles_recalc_kpis" }),
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(tm));
+    const text = await r.text();
+    try { res.json(JSON.parse(text)); }
+    catch { res.status(500).json({ ok: false, error: "Respuesta no-JSON del Apps Script: " + text.slice(0, 200) }); }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GET /bookings-by-guest?phone=<10dig>
+// Devuelve historial COMPLETO de bookings del huésped (sin filtro fecha).
+// Usado on-demand al expandir una card en Gestión de reservas.
+// ═══════════════════════════════════════════════════════════════════════════
+app.get("/bookings-by-guest", async (req, res) => {
+  try {
+    const phone = String(req.query.phone || "").replace(/\D/g, "");
+    if (phone.length < 10) return res.status(400).json({ ok: false, error: "phone (10+ dígitos) requerido" });
+    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=bookings_by_guest&phone=${encodeURIComponent(phone)}`;
+    const r = await fetch(url);
+    const text = await r.text();
+    try { res.json(JSON.parse(text)); }
+    catch { res.status(500).json({ ok: false, error: "Respuesta no-JSON del Apps Script: " + text.slice(0, 200) }); }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post("/lodgify-sync", async (req, res) => {
   try {
     const full = req.body?.full ? "true" : "";
