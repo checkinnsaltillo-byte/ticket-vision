@@ -425,6 +425,7 @@ app.post("/wa/templates-upsert", async (req, res) => {
       schedule_offset: (p.schedule_offset || p.schedule_offset === 0) ? String(p.schedule_offset) : "",
       alojamientos: p.alojamientos || "",
       enabled: p.enabled === true,
+      responsivo: p.responsivo === true,
       updated_by: p.updated_by || "admin",
     });
     res.json(r);
