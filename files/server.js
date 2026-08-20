@@ -300,6 +300,28 @@ async function _twilioSendMessage(params) {
   });
   const j = await r.json();
   if (!r.ok) throw new Error(`Twilio ${r.status}: ${j.message || JSON.stringify(j).slice(0,200)}`);
+  // MIRROR a WA_ChatContext (fire-and-forget) — así los env�os outbound
+  // (templates, cron, /wa/send manual) tambi�n aparecen en el hilo del
+  // panel bot-chats. Skip si el destino no tiene formato v�lido.
+  try {
+    const phone10 = String(params.to || "").replace(/\D/g,"").slice(-10);
+    if (phone10.length === 10) {
+      const bodyForLog = String(params.body || (params.contentSid ? `(template ${params.contentSid})` : ""));
+      if (bodyForLog) {
+        fetch(CHECKIN_APPS_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "wa_chat_context_append",
+            phone: phone10,
+            role: params.tipo ? "template" : "admin",
+            body: bodyForLog,
+            meta: { sid: j.sid, tipo: params.tipo || "", contentSid: params.contentSid || "" }
+          })
+        }).catch(()=>{});
+      }
+    }
+  } catch(_) {}
   return j;
 }
 
