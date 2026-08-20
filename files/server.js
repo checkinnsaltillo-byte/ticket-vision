@@ -602,6 +602,99 @@ app.get("/wa/webhook-inbound", (req, res) => {
   res.type("text/plain").send("wa/webhook-inbound OK — configure Twilio para POST aquí.");
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ ENDPOINTS del PANEL ADMIN Bot Chats                                     ║
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** GET /wa/bot/conversations — lista conversaciones activas del bot. */
+app.get("/wa/bot/conversations", async (req, res) => {
+  try {
+    const filter = String(req.query.filter || "all");
+    const limit = String(req.query.limit || "100");
+    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=wa_chat_conversations&filter=${encodeURIComponent(filter)}&limit=${encodeURIComponent(limit)}`;
+    const r = await fetch(url);
+    const j = await r.json();
+    res.json(j);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/** GET /wa/bot/context?phone=X&limit=N — historial de una conversación + estado. */
+app.get("/wa/bot/context", async (req, res) => {
+  try {
+    const phone = String(req.query.phone || "").replace(/\D/g,"").slice(-10);
+    if (!phone) return res.status(400).json({ ok: false, error: "phone requerido" });
+    const limit = String(req.query.limit || "50");
+    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=wa_chat_context_get&phone=${encodeURIComponent(phone)}&limit=${encodeURIComponent(limit)}`;
+    const r = await fetch(url);
+    const j = await r.json();
+    res.json(j);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/** POST /wa/bot/set-control { phone, control: 'bot'|'human', reason? }
+ *  Cambia control del chat (Tomar control / Devolver al bot). */
+app.post("/wa/bot/set-control", async (req, res) => {
+  try {
+    const p = req.body || {};
+    const phone = String(p.phone || "").replace(/\D/g,"").slice(-10);
+    const control = String(p.control || "");
+    if (!phone || !/^(bot|human)$/.test(control)) return res.status(400).json({ ok: false, error: "phone + control (bot|human) requeridos" });
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "wa_chat_set_control", phone, control, reason: p.reason || "", notes: p.notes || "" }),
+    });
+    const j = await r.json();
+    res.json(j);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/** POST /wa/bot/send-as-admin { phone, body }
+ *  Admin envía msg manual al huésped desde el panel. Marca control=human
+ *  automáticamente para que el bot no responda encima. */
+app.post("/wa/bot/send-as-admin", async (req, res) => {
+  try {
+    const p = req.body || {};
+    const phone = String(p.phone || "").replace(/\D/g,"").slice(-10);
+    const body = String(p.body || "").trim();
+    if (!phone || !body) return res.status(400).json({ ok: false, error: "phone + body requeridos" });
+    // 1) Enviar por Twilio
+    const to = `whatsapp:+52${phone}`;
+    const msg = await _twilioSendMessage({ to, body });
+    // 2) Loguear como 'admin' y asegurar control=human
+    fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "wa_chat_context_append", phone, role: "admin", body, meta: { sid: msg.sid } }),
+    }).catch(()=>{});
+    fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "wa_chat_set_control", phone, control: "human", reason: "admin envió msg manual" }),
+    }).catch(()=>{});
+    res.json({ ok: true, sid: msg.sid, status: msg.status });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/** GET /wa/bot/alojamientos — lista alojamientos con flag bot_enabled. */
+app.get("/wa/bot/alojamientos", async (req, res) => {
+  try {
+    const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=wa_bot_alojamientos`);
+    const j = await r.json();
+    res.json(j);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post("/wa/send", async (req, res) => {
   try {
     const p = req.body || {};
