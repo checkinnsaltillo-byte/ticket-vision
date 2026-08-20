@@ -305,6 +305,274 @@ async function _twilioSendMessage(params) {
 
 // POST /wa/send — envía WhatsApp (freeform si "body", o template si "contentSid").
 // Body: { to, body?, contentSid?, contentVars?, bookingId? (para log), tipo? }
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ BOT IA WHATSAPP — Webhook inbound + Claude Haiku + tools               ║
+// ║                                                                          ║
+// ║ Flujo: Twilio webhook → /wa/webhook-inbound → identifica reserva →     ║
+// ║   arma contexto alojamiento → llama Claude → responde vía Twilio →      ║
+// ║   loguea en WA_ChatContext (Apps Script).                                ║
+// ║                                                                          ║
+// ║ Piloto restringido: solo responde a huéspedes cuya reserva tiene un     ║
+// ║ HouseId con bot_enabled=TRUE en la hoja alojamientos.                    ║
+// ═══════════════════════════════════════════════════════════════════════════
+const ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
+const ANTHROPIC_MAX_TOKENS = 500;
+
+/** Llama Claude Messages API. Devuelve { text, stop_reason, usage, tool_use }. */
+async function _llmChat({ system, history, userMsg, tools }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY faltante");
+  // history = [{role:'user|assistant', content:'...'}, ...] (últimos N msgs)
+  const messages = (history || []).map(m => ({ role: m.role, content: String(m.body || m.content || "") }));
+  messages.push({ role: "user", content: String(userMsg || "") });
+  const body = {
+    model: ANTHROPIC_MODEL,
+    max_tokens: ANTHROPIC_MAX_TOKENS,
+    system: String(system || ""),
+    messages,
+  };
+  if (Array.isArray(tools) && tools.length) body.tools = tools;
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(`Claude HTTP ${r.status}: ${j.error?.message || JSON.stringify(j).slice(0,200)}`);
+  // Response shape: { content: [{type:'text',text:'...'} | {type:'tool_use',...}] }
+  const parts = j.content || [];
+  const textPart = parts.find(p => p.type === "text");
+  const toolPart = parts.find(p => p.type === "tool_use");
+  return {
+    text: textPart ? String(textPart.text || "") : "",
+    tool_use: toolPart || null,
+    stop_reason: j.stop_reason || "",
+    usage: j.usage || {},
+  };
+}
+
+/** Detecta intents "sensibles" que exigen escalado a humano inmediato. */
+function _botDetectSensitive(msgLower) {
+  const patterns = [
+    /\b(queja|reclam|molest|inconform|indignad|denuncia)\b/i,
+    /\b(reembolso|devoluci[oó]n|refund)\b/i,
+    /\b(demanda|abogad|legal|juzgad|profeco)\b/i,
+    /\b(cobrar|cobraron|cargo|charge).*\b(mal|extra|incorrect|de m[aá]s)\b/i,
+    /\b(hablar|comunicar).*(persona|human|gerente|due[ñn]o|jef)/i,
+    /\b(emergencia|urgente|urgencia|robo|acciden|incendio|inund)/i,
+  ];
+  for (const re of patterns) if (re.test(msgLower)) return re.source;
+  return null;
+}
+
+/** Arma el bloque de contexto del alojamiento a partir de una row de la hoja alojamientos. */
+function _botBuildAlojamientoContext(alojRow, booking) {
+  if (!alojRow) return "(sin info de alojamiento resoluble)";
+  const lines = [];
+  const push = (label, value) => {
+    const v = String(value || "").trim();
+    if (v && v !== "—") lines.push(`- ${label}: ${v}`);
+  };
+  const prop = String(alojRow.Propiedad || "").trim();
+  const dep = String(alojRow["# Departamento"] || "").trim();
+  push("Alojamiento", `${prop}${dep ? ` #${dep}` : ""}`);
+  push("Dirección", alojRow.direccion);
+  push("Referencia", alojRow.referencia);
+  push("Google Maps", alojRow.url_google_maps);
+  push("Método de llegada / acceso", alojRow.metodo_llegada);
+  push("Detalles de ubicación", alojRow.ubicacion_txt);
+  push("Clave de acceso / puerta", alojRow.clave_acceso);
+  push("WiFi (red)", alojRow.wifi_red || alojRow.wifi_name_1);
+  push("WiFi (contraseña)", alojRow.wifi_contrasena);
+  push("Instrucciones WiFi", alojRow.wifi_txt);
+  push("Hora entrada (default)", alojRow.hora_llegada);
+  push("Hora salida (default)", alojRow.hora_salida);
+  push("Estacionamiento", `${alojRow.estacionamiento_tipo || ""} ${alojRow.estacionamiento_instrucciones || ""}`.trim());
+  push("Lavandería", alojRow.lavanderia_ubicacion);
+  push("Reglas lavandería", alojRow.lavanderia_reglamento);
+  push("Insumos ubicación", alojRow.insumos_ubicacion);
+  push("Insumos disponibles", alojRow.insumos);
+  push("Reglamento", alojRow.reglamento);
+  push("Instrucciones de salida", alojRow.salida_instrucciones);
+  push("Contacto emergencia 1", `${alojRow.contacto_emergencia_1_nombre || ""} ${alojRow.contacto_emergencia_1_numero || ""}`.trim());
+  push("Contacto emergencia 2", `${alojRow.contacto_emergencia_2_nombre || ""} ${alojRow.contacto_emergencia_2_numero || ""}`.trim());
+  push("Guía completa", alojRow.url_guia);
+  if (booking) {
+    lines.push("\n--- Datos de la reserva actual ---");
+    push("Nombre del huésped", booking.GuestName);
+    push("Llegada", (booking.DateArrival || "").slice(0,10));
+    push("Salida", (booking.DateDeparture || "").slice(0,10));
+    push("# Huéspedes", booking.NumberOfGuests);
+  }
+  return lines.join("\n");
+}
+
+const BOT_SYSTEM_PROMPT_BASE = `Eres un asistente de atención a huéspedes de Check-inn Saltillo, una empresa de hospedaje en Saltillo, Coahuila, México. Respondes por WhatsApp.
+
+REGLAS DE RESPUESTA:
+- Escribe corto, natural, amable. Máximo 3-4 oraciones.
+- Usa el mismo tono con el que te escriben (casual si casual, formal si formal).
+- Nunca inventes info que no esté en el CONTEXTO. Si no sabes algo del alojamiento, dilo directo y ofrece escalar.
+- Si el huésped pide algo que requiere acción (limpieza extra, mantenimiento, cambio de horario), usa la herramienta correspondiente en vez de solo responder texto.
+- Si el mensaje suena a queja, reclamo, emergencia, mención de dinero/cobros, o pide hablar con humano, NO respondas — el sistema escalará automáticamente.
+- No des precios, no negocies, no prometas descuentos.
+- Usa emojis con moderación (uno cada 2-3 respuestas, no en cada frase).
+- Firma solo si presentas info nueva: "Check-inn Saltillo 🏠"
+
+CONTEXTO DEL ALOJAMIENTO DEL HUÉSPED:
+`;
+
+/** Trae contexto de conversación previa desde Apps Script. */
+async function _botFetchConversation(phone10, limit = 15) {
+  const url = `${CHECKIN_APPS_SCRIPT_URL}?action=wa_chat_context_get&phone=${encodeURIComponent(phone10)}&limit=${limit}`;
+  const r = await fetch(url);
+  const j = await r.json();
+  return j && j.ok ? j : { messages: [], state: { control: "bot" } };
+}
+
+/** Persiste un mensaje al historial via Apps Script. */
+async function _botAppendMessage(phone10, role, body, meta) {
+  await fetch(CHECKIN_APPS_SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action: "wa_chat_context_append",
+      phone: phone10, role, body, meta: meta || {},
+    }),
+  }).catch(e => console.warn("[bot] append msg falló:", e.message));
+}
+
+/** Marca la conversación como escalada (human control). */
+async function _botEscalate(phone10, reason) {
+  await fetch(CHECKIN_APPS_SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action: "wa_chat_set_control",
+      phone: phone10, control: "human", reason,
+    }),
+  }).catch(e => console.warn("[bot] escalate falló:", e.message));
+}
+
+/** Encuentra la reserva ACTIVA del huésped (hoy entre arrival y departure).
+ *  Fallback a la más próxima si no hay activa. Devuelve { booking, alojRow } o null. */
+async function _botFindActiveBooking(phone10) {
+  try {
+    // 1) Bookings del huésped
+    const bkR = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=bookings_by_guest&phone=${encodeURIComponent(phone10)}`);
+    const bkJ = await bkR.json();
+    const bookings = (bkJ && bkJ.ok && bkJ.bookings) || [];
+    if (!bookings.length) return null;
+    const today = new Date().toISOString().slice(0,10);
+    // Prioridad: activa (arrival <= today <= departure) > próxima
+    const active = bookings.find(b => {
+      const arr = String(b.DateArrival || "").slice(0,10);
+      const dep = String(b.DateDeparture || "").slice(0,10);
+      return arr && dep && arr <= today && today <= dep;
+    });
+    const proxima = bookings
+      .filter(b => String(b.DateArrival || "").slice(0,10) >= today)
+      .sort((a,b) => String(a.DateArrival).localeCompare(String(b.DateArrival)))[0];
+    const booking = active || proxima || bookings[bookings.length - 1];
+    if (!booking) return null;
+    // 2) alojRow por HouseId
+    const alR = await fetch(`https://api.check-inn.mx/alojamientos-list`);
+    const alJ = await alR.json();
+    const rows = (alJ && alJ.rows) || [];
+    const alojRow = rows.find(r => String(r.HouseId || "").trim() === String(booking.HouseId || "").trim());
+    return { booking, alojRow: alojRow || null };
+  } catch (e) {
+    console.warn("[bot] findActiveBooking falló:", e.message);
+    return null;
+  }
+}
+
+/** ¿El bot está habilitado para este alojamiento (piloto restringido)? */
+async function _botIsAlojamientoEnabled(houseId) {
+  try {
+    const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=wa_bot_alojamientos`);
+    const j = await r.json();
+    if (!j || !j.ok) return false;
+    const rows = j.alojamientos || [];
+    const row = rows.find(x => String(x.HouseId) === String(houseId));
+    return !!(row && row.bot_enabled);
+  } catch (_) { return false; }
+}
+
+/** POST /wa/webhook-inbound — Twilio manda aquí los mensajes entrantes. */
+app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (req, res) => {
+  // Responder 200 rápido para no timeout Twilio — procesamos async.
+  res.status(200).type("text/xml").send("<Response></Response>");
+  const b = req.body || {};
+  const fromRaw = String(b.From || b.WaId || "");
+  const bodyMsg = String(b.Body || "").trim();
+  if (!fromRaw || !bodyMsg) return;
+  const phone10 = fromRaw.replace(/\D/g, "").slice(-10);
+  if (!phone10) return;
+  console.info(`[bot-in] ${phone10}: ${bodyMsg.slice(0,80)}`);
+  try {
+    // 1) Loguear msg entrante
+    await _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw });
+    // 2) Verificar control humano — si human, no responder
+    const ctxResp = await _botFetchConversation(phone10, 15);
+    const state = ctxResp.state || { control: "bot" };
+    if (String(state.control) === "human") {
+      console.info(`[bot-in] ${phone10}: skip (human control)`);
+      return;
+    }
+    // 3) Detectar intent sensible — escalar y salir
+    const sensitive = _botDetectSensitive(bodyMsg);
+    if (sensitive) {
+      console.info(`[bot-in] ${phone10}: escalando por sensitive intent: ${sensitive}`);
+      await _botEscalate(phone10, `Sensitive intent: ${sensitive}`);
+      await _twilioSendMessage({ to: fromRaw, body: "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏" }).catch(()=>{});
+      await _botAppendMessage(phone10, "assistant", "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏", { auto_escalate: true });
+      return;
+    }
+    // 4) Identificar reserva activa
+    const ctx = await _botFindActiveBooking(phone10);
+    if (!ctx || !ctx.booking) {
+      // Sin reserva → escalar (no sabemos quién es)
+      console.info(`[bot-in] ${phone10}: sin reserva → escalar`);
+      await _botEscalate(phone10, "sin reserva activa/próxima");
+      return;
+    }
+    // 5) Verificar piloto habilitado
+    const enabled = await _botIsAlojamientoEnabled(ctx.booking.HouseId);
+    if (!enabled) {
+      console.info(`[bot-in] ${phone10}: alojamiento ${ctx.booking.HouseId} no en piloto — skip`);
+      return;
+    }
+    // 6) Armar system prompt + llamar Claude
+    const context = _botBuildAlojamientoContext(ctx.alojRow, ctx.booking);
+    const system = BOT_SYSTEM_PROMPT_BASE + context;
+    const history = (ctxResp.messages || []).slice(-10, -1); // excluir el msg actual que ya está
+    const llm = await _llmChat({ system, history: history.map(m => ({ role: m.role, body: m.body })), userMsg: bodyMsg });
+    const replyText = String(llm.text || "").trim();
+    if (!replyText) {
+      console.warn(`[bot-in] ${phone10}: respuesta vacía del LLM — escalar`);
+      await _botEscalate(phone10, "respuesta vacía del LLM");
+      return;
+    }
+    // 7) Enviar respuesta
+    await _twilioSendMessage({ to: fromRaw, body: replyText });
+    await _botAppendMessage(phone10, "assistant", replyText, { model: ANTHROPIC_MODEL, usage: llm.usage });
+    console.info(`[bot-out] ${phone10}: ${replyText.slice(0,80)}`);
+  } catch (err) {
+    console.error("[bot] error:", err.message);
+    await _botEscalate(phone10, "error interno: " + err.message).catch(()=>{});
+  }
+});
+
+/** GET /wa/webhook-inbound — solo para verificación de Twilio (echo simple). */
+app.get("/wa/webhook-inbound", (req, res) => {
+  res.type("text/plain").send("wa/webhook-inbound OK — configure Twilio para POST aquí.");
+});
+
 app.post("/wa/send", async (req, res) => {
   try {
     const p = req.body || {};
