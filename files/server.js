@@ -318,6 +318,37 @@ async function _twilioSendMessage(params) {
 const BOT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
 const BOT_ANTHROPIC_MAX_TOKENS = 500;
 
+// Cache in-memory (5 min TTL) para reducir round-trips a Apps Script.
+// Estos datos cambian raramente durante la vida de una conversación.
+const _botAlojEnabledCache = { ts: 0, map: null }; // HouseId → bool
+const _botAlojRowsCache    = { ts: 0, rows: null };
+const _BOT_CACHE_TTL       = 5 * 60_000;
+async function _botGetEnabledMap() {
+  if (_botAlojEnabledCache.map && (Date.now() - _botAlojEnabledCache.ts) < _BOT_CACHE_TTL) {
+    return _botAlojEnabledCache.map;
+  }
+  try {
+    const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=wa_bot_alojamientos`);
+    const j = await r.json();
+    const map = {};
+    for (const a of ((j && j.alojamientos) || [])) map[String(a.HouseId)] = !!a.bot_enabled;
+    _botAlojEnabledCache.map = map; _botAlojEnabledCache.ts = Date.now();
+    return map;
+  } catch (_) { return _botAlojEnabledCache.map || {}; }
+}
+async function _botGetAlojRows() {
+  if (_botAlojRowsCache.rows && (Date.now() - _botAlojRowsCache.ts) < _BOT_CACHE_TTL) {
+    return _botAlojRowsCache.rows;
+  }
+  try {
+    const r = await fetch(`https://api.check-inn.mx/alojamientos-list`);
+    const j = await r.json();
+    const rows = (j && j.rows) || [];
+    _botAlojRowsCache.rows = rows; _botAlojRowsCache.ts = Date.now();
+    return rows;
+  } catch (_) { return _botAlojRowsCache.rows || []; }
+}
+
 /** Llama Claude Messages API. Devuelve { text, stop_reason, usage, tool_use }. */
 async function _llmChat({ system, history, userMsg, tools }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -462,13 +493,14 @@ async function _botEscalate(phone10, reason) {
  *  Fallback a la más próxima si no hay activa. Devuelve { booking, alojRow } o null. */
 async function _botFindActiveBooking(phone10) {
   try {
-    // 1) Bookings del huésped
-    const bkR = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=bookings_by_guest&phone=${encodeURIComponent(phone10)}`);
-    const bkJ = await bkR.json();
+    // Paralelizar: bookings + alojamientos (cached) desde el arranque.
+    const [bkJ, rows] = await Promise.all([
+      fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=bookings_by_guest&phone=${encodeURIComponent(phone10)}`).then(r => r.json()).catch(()=>null),
+      _botGetAlojRows(),
+    ]);
     const bookings = (bkJ && bkJ.ok && bkJ.bookings) || [];
     if (!bookings.length) return null;
     const today = new Date().toISOString().slice(0,10);
-    // Prioridad: activa (arrival <= today <= departure) > próxima
     const active = bookings.find(b => {
       const arr = String(b.DateArrival || "").slice(0,10);
       const dep = String(b.DateDeparture || "").slice(0,10);
@@ -479,10 +511,6 @@ async function _botFindActiveBooking(phone10) {
       .sort((a,b) => String(a.DateArrival).localeCompare(String(b.DateArrival)))[0];
     const booking = active || proxima || bookings[bookings.length - 1];
     if (!booking) return null;
-    // 2) alojRow por HouseId
-    const alR = await fetch(`https://api.check-inn.mx/alojamientos-list`);
-    const alJ = await alR.json();
-    const rows = (alJ && alJ.rows) || [];
     const alojRow = rows.find(r => String(r.HouseId || "").trim() === String(booking.HouseId || "").trim());
     return { booking, alojRow: alojRow || null };
   } catch (e) {
@@ -491,16 +519,10 @@ async function _botFindActiveBooking(phone10) {
   }
 }
 
-/** ¿El bot está habilitado para este alojamiento (piloto restringido)? */
+/** ¿El bot está habilitado para este alojamiento? Usa cache 5min. */
 async function _botIsAlojamientoEnabled(houseId) {
-  try {
-    const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=wa_bot_alojamientos`);
-    const j = await r.json();
-    if (!j || !j.ok) return false;
-    const rows = j.alojamientos || [];
-    const row = rows.find(x => String(x.HouseId) === String(houseId));
-    return !!(row && row.bot_enabled);
-  } catch (_) { return false; }
+  const map = await _botGetEnabledMap();
+  return !!map[String(houseId)];
 }
 
 /** POST /wa/webhook-inbound — Twilio manda aquí los mensajes entrantes. */
@@ -513,58 +535,65 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   if (!fromRaw || !bodyMsg) return;
   const phone10 = fromRaw.replace(/\D/g, "").slice(-10);
   if (!phone10) return;
+  const t0 = Date.now();
   console.info(`[bot-in] ${phone10}: ${bodyMsg.slice(0,80)}`);
   try {
-    // 1) Loguear msg entrante
-    await _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw });
-    // 2) Verificar control humano — si human, no responder
-    const ctxResp = await _botFetchConversation(phone10, 15);
+    // OPT: fire-and-forget para loguear msg entrante (no bloquea respuesta)
+    _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw });
+    // Detectar intent sensible ANTES de fetches (barato, síncrono)
+    const sensitive = _botDetectSensitive(bodyMsg);
+    if (sensitive) {
+      console.info(`[bot-in] ${phone10}: escalar por sensitive: ${sensitive}`);
+      _botEscalate(phone10, `Sensitive intent: ${sensitive}`);
+      const msg = "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏";
+      await _twilioSendMessage({ to: fromRaw, body: msg }).catch(()=>{});
+      _botAppendMessage(phone10, "assistant", msg, { auto_escalate: true });
+      return;
+    }
+    // OPT: PARALELIZAR — conversación + reserva activa simultáneas.
+    // Antes: 4 requests secuenciales (append user, conv, bookings, alojamientos)
+    // = ~25-30s. Ahora: 1 fire-and-forget + 2 en paralelo = ~8-10s.
+    const [ctxResp, ctx] = await Promise.all([
+      _botFetchConversation(phone10, 15),
+      _botFindActiveBooking(phone10),
+    ]);
+    console.info(`[bot-in] ${phone10}: fetches paralelos en ${Date.now()-t0}ms`);
     const state = ctxResp.state || { control: "bot" };
     if (String(state.control) === "human") {
       console.info(`[bot-in] ${phone10}: skip (human control)`);
       return;
     }
-    // 3) Detectar intent sensible — escalar y salir
-    const sensitive = _botDetectSensitive(bodyMsg);
-    if (sensitive) {
-      console.info(`[bot-in] ${phone10}: escalando por sensitive intent: ${sensitive}`);
-      await _botEscalate(phone10, `Sensitive intent: ${sensitive}`);
-      await _twilioSendMessage({ to: fromRaw, body: "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏" }).catch(()=>{});
-      await _botAppendMessage(phone10, "assistant", "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏", { auto_escalate: true });
-      return;
-    }
-    // 4) Identificar reserva activa
-    const ctx = await _botFindActiveBooking(phone10);
     if (!ctx || !ctx.booking) {
-      // Sin reserva → escalar (no sabemos quién es)
       console.info(`[bot-in] ${phone10}: sin reserva → escalar`);
-      await _botEscalate(phone10, "sin reserva activa/próxima");
+      _botEscalate(phone10, "sin reserva activa/próxima");
       return;
     }
-    // 5) Verificar piloto habilitado
+    // Chequeo enabled (cached, ~0ms usualmente)
     const enabled = await _botIsAlojamientoEnabled(ctx.booking.HouseId);
     if (!enabled) {
-      console.info(`[bot-in] ${phone10}: alojamiento ${ctx.booking.HouseId} no en piloto — skip`);
+      console.info(`[bot-in] ${phone10}: aloj ${ctx.booking.HouseId} no en piloto — skip`);
       return;
     }
-    // 6) Armar system prompt + llamar Claude
+    // System prompt + Claude
     const context = _botBuildAlojamientoContext(ctx.alojRow, ctx.booking);
     const system = BOT_SYSTEM_PROMPT_BASE + context;
-    const history = (ctxResp.messages || []).slice(-10, -1); // excluir el msg actual que ya está
+    const history = (ctxResp.messages || []).slice(-10, -1); // excluir el user actual (ya guardado)
+    const tLlm = Date.now();
     const llm = await _llmChat({ system, history: history.map(m => ({ role: m.role, body: m.body })), userMsg: bodyMsg });
+    console.info(`[bot-in] ${phone10}: LLM en ${Date.now()-tLlm}ms`);
     const replyText = String(llm.text || "").trim();
     if (!replyText) {
       console.warn(`[bot-in] ${phone10}: respuesta vacía del LLM — escalar`);
-      await _botEscalate(phone10, "respuesta vacía del LLM");
+      _botEscalate(phone10, "respuesta vacía del LLM");
       return;
     }
-    // 7) Enviar respuesta
+    // Enviar respuesta (bloqueante) + persistir en background
     await _twilioSendMessage({ to: fromRaw, body: replyText });
-    await _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, usage: llm.usage });
-    console.info(`[bot-out] ${phone10}: ${replyText.slice(0,80)}`);
+    _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, usage: llm.usage });
+    console.info(`[bot-out] ${phone10}: total ${Date.now()-t0}ms · "${replyText.slice(0,80)}"`);
   } catch (err) {
     console.error("[bot] error:", err.message);
-    await _botEscalate(phone10, "error interno: " + err.message).catch(()=>{});
+    _botEscalate(phone10, "error interno: " + err.message);
   }
 });
 
