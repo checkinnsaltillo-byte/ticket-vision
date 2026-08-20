@@ -695,6 +695,28 @@ app.get("/wa/bot/alojamientos", async (req, res) => {
   }
 });
 
+/** POST /wa/bot/alojamientos-set { houseIds: [...] }
+ *  Actualiza masivamente qué alojamientos tienen bot_enabled=TRUE. Los que
+ *  NO están en la lista quedan desactivados. Invalida el cache in-memory
+ *  para que el próximo mensaje entrante refleje los cambios inmediatamente. */
+app.post("/wa/bot/alojamientos-set", async (req, res) => {
+  try {
+    const p = req.body || {};
+    if (!Array.isArray(p.houseIds)) return res.status(400).json({ ok: false, error: "houseIds (array) requerido" });
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "wa_bot_alojamientos_set", houseIds: p.houseIds }),
+    });
+    const j = await r.json();
+    // Invalidar cache in-memory del webhook para que aplique de inmediato
+    _botAlojEnabledCache.map = null; _botAlojEnabledCache.ts = 0;
+    res.json(j);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post("/wa/send", async (req, res) => {
   try {
     const p = req.body || {};
