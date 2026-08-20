@@ -695,6 +695,20 @@ app.get("/wa/bot/alojamientos", async (req, res) => {
   }
 });
 
+/** GET /wa/bot/all-messages?phone=X — historial COMPLETO WA (bot + logs). */
+app.get("/wa/bot/all-messages", async (req, res) => {
+  try {
+    const phone = String(req.query.phone || "").replace(/\D/g,"").slice(-10);
+    if (!phone) return res.status(400).json({ ok: false, error: "phone requerido" });
+    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=wa_all_messages&phone=${encodeURIComponent(phone)}&limit=500`;
+    const r = await fetch(url);
+    const j = await r.json();
+    res.json(j);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 /** POST /wa/bot/alojamientos-set { houseIds: [...] }
  *  Actualiza masivamente qué alojamientos tienen bot_enabled=TRUE. Los que
  *  NO están en la lista quedan desactivados. Invalida el cache in-memory
