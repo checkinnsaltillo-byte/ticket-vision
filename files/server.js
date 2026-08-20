@@ -315,8 +315,8 @@ async function _twilioSendMessage(params) {
 // ║ Piloto restringido: solo responde a huéspedes cuya reserva tiene un     ║
 // ║ HouseId con bot_enabled=TRUE en la hoja alojamientos.                    ║
 // ═══════════════════════════════════════════════════════════════════════════
-const ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
-const ANTHROPIC_MAX_TOKENS = 500;
+const BOT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
+const BOT_ANTHROPIC_MAX_TOKENS = 500;
 
 /** Llama Claude Messages API. Devuelve { text, stop_reason, usage, tool_use }. */
 async function _llmChat({ system, history, userMsg, tools }) {
@@ -326,8 +326,8 @@ async function _llmChat({ system, history, userMsg, tools }) {
   const messages = (history || []).map(m => ({ role: m.role, content: String(m.body || m.content || "") }));
   messages.push({ role: "user", content: String(userMsg || "") });
   const body = {
-    model: ANTHROPIC_MODEL,
-    max_tokens: ANTHROPIC_MAX_TOKENS,
+    model: BOT_ANTHROPIC_MODEL,
+    max_tokens: BOT_ANTHROPIC_MAX_TOKENS,
     system: String(system || ""),
     messages,
   };
@@ -560,7 +560,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     }
     // 7) Enviar respuesta
     await _twilioSendMessage({ to: fromRaw, body: replyText });
-    await _botAppendMessage(phone10, "assistant", replyText, { model: ANTHROPIC_MODEL, usage: llm.usage });
+    await _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, usage: llm.usage });
     console.info(`[bot-out] ${phone10}: ${replyText.slice(0,80)}`);
   } catch (err) {
     console.error("[bot] error:", err.message);
