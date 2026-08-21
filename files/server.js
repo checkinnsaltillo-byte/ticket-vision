@@ -609,6 +609,19 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       _botEscalate(phone10, "respuesta vacía del LLM");
       return;
     }
+    // Modo SUPERVISED: no enviar. Guardar como pending draft para que el
+    // admin lo revise en el panel bot-chats y decida (send/edit/skip).
+    if (String(state.control) === "supervised") {
+      try {
+        await fetch(CHECKIN_APPS_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "wa_chat_set_draft", phone: phone10, body: replyText }),
+        });
+      } catch (e) { console.warn("[bot-in] set_draft error:", e.message); }
+      console.info(`[bot-out] ${phone10}: supervised draft guardado (${replyText.length} chars)`);
+      return;
+    }
     // Enviar respuesta (bloqueante) + persistir en background
     await _twilioSendMessage({ to: fromRaw, body: replyText });
     _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, usage: llm.usage });
@@ -664,7 +677,7 @@ app.post("/wa/bot/set-control", async (req, res) => {
     const p = req.body || {};
     const phone = String(p.phone || "").replace(/\D/g,"").slice(-10);
     const control = String(p.control || "");
-    if (!phone || !/^(bot|human)$/.test(control)) return res.status(400).json({ ok: false, error: "phone + control (bot|human) requeridos" });
+    if (!phone || !/^(bot|human|supervised)$/.test(control)) return res.status(400).json({ ok: false, error: "phone + control (bot|human|supervised) requeridos" });
     const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -701,6 +714,55 @@ app.post("/wa/bot/send-as-admin", async (req, res) => {
       body: JSON.stringify({ action: "wa_chat_set_control", phone, control: "human", reason: "admin envió msg manual" }),
     }).catch(()=>{});
     res.json({ ok: true, sid: msg.sid, status: msg.status });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/** POST /wa/bot/draft-action { phone, action: 'send'|'edit'|'skip', body? }
+ *  Procesa la decisión del admin sobre el pending draft (modo supervised):
+ *   - send: envía el draft actual como assistant, limpia draft.
+ *   - edit: envía body nuevo como assistant, limpia draft.
+ *   - skip: descarta el draft sin enviar. */
+app.post("/wa/bot/draft-action", async (req, res) => {
+  try {
+    const p = req.body || {};
+    const phone = String(p.phone || "").replace(/\D/g,"").slice(-10);
+    const action = String(p.action || "");
+    if (!phone || !/^(send|edit|skip)$/.test(action)) {
+      return res.status(400).json({ ok: false, error: "phone + action (send|edit|skip) requeridos" });
+    }
+    if (action === "skip") {
+      await fetch(CHECKIN_APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "wa_chat_set_draft", phone, body: "" }),
+      });
+      return res.json({ ok: true, skipped: true });
+    }
+    // send / edit → necesito el body a enviar
+    let outBody = String(p.body || "").trim();
+    if (action === "send" && !outBody) {
+      // Traer del state actual (pending_draft_body)
+      const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=wa_chat_context_get&phone=${encodeURIComponent(phone)}&limit=1`);
+      const j = await r.json();
+      outBody = String(j && j.state && j.state.pending_draft_body || "").trim();
+    }
+    if (!outBody) return res.status(400).json({ ok: false, error: "sin body para enviar" });
+    const to = `whatsapp:+52${phone}`;
+    const msg = await _twilioSendMessage({ to, body: outBody });
+    // Log como assistant + limpiar draft (fire-and-forget)
+    fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "wa_chat_context_append", phone, role: "assistant", body: outBody, meta: { sid: msg.sid, supervised: true, action } }),
+    }).catch(()=>{});
+    fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "wa_chat_set_draft", phone, body: "" }),
+    }).catch(()=>{});
+    res.json({ ok: true, sid: msg.sid, status: msg.status, action });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
