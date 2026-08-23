@@ -949,6 +949,53 @@ app.post("/wa/bot/draft-action", async (req, res) => {
 });
 
 /** GET /wa/bot/alojamientos — lista alojamientos con flag bot_enabled. */
+/** POST /wa/bot/summarize { phone } — genera un resumen sintético de toda
+ *  la conversación (bot + admin + huésped) para que el agente entienda
+ *  rápido el estado, con énfasis en el último tema o asunto pendiente. */
+app.post("/wa/bot/summarize", async (req, res) => {
+  try {
+    const phone = String(req.body?.phone || "").replace(/\D/g,"").slice(-10);
+    if (!phone) return res.status(400).json({ ok: false, error: "phone requerido" });
+    // Traer TODO el historial combinado (context + logs) para máximo contexto.
+    const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=wa_all_messages&phone=${encodeURIComponent(phone)}`);
+    const j = await r.json();
+    const msgs = (j && j.ok && Array.isArray(j.messages)) ? j.messages : [];
+    if (!msgs.length) return res.json({ ok: true, summary: "Sin mensajes en la conversación." });
+    // Ordenar cronológicamente por timestamp.
+    msgs.sort((a, b) => String(a.timestamp || "").localeCompare(String(b.timestamp || "")));
+    // Truncar a los últimos 100 msgs para no explotar tokens.
+    const recent = msgs.slice(-100);
+    const transcript = recent.map(m => {
+      const who = m.role === 'user' ? 'HUÉSPED'
+                : m.role === 'assistant' ? 'BOT'
+                : m.role === 'admin' ? 'ADMIN'
+                : m.role === 'template' ? 'TEMPLATE'
+                : String(m.role || '?').toUpperCase();
+      const ts = String(m.timestamp || '').slice(0, 16).replace('T', ' ');
+      return `[${ts}] ${who}: ${String(m.body || '').slice(0, 500)}`;
+    }).join("\n");
+    const system = `Eres un asistente que resume conversaciones de WhatsApp entre huéspedes de un hotel y el equipo (bot + admin humano).
+
+Genera un resumen SINTÉTICO (máx. 200 palabras) para que un agente entienda de un vistazo:
+1. **Contexto**: quién es el huésped y sobre qué alojamiento habla (si se menciona).
+2. **Temas tratados**: lista breve (bullet) de asuntos que se discutieron.
+3. **Último tema / pendiente** (ÉNFASIS): qué es lo último que quedó abierto o pendiente de respuesta. Marca claramente si el huésped está esperando algo.
+4. **Riesgos**: menciona si hay queja, reembolso, molestia u otro tema sensible.
+
+Escribe en español, tono profesional, en formato markdown con headings ##. Sé breve — el agente tiene 10 segundos para leer.`;
+    const llm = await _llmChat({
+      system,
+      history: [],
+      userMsg: `Resume esta conversación:\n\n${transcript}`,
+    });
+    const summary = String(llm.text || "").trim() || "No se pudo generar resumen.";
+    res.json({ ok: true, summary, msgs_analizados: recent.length, msgs_total: msgs.length });
+  } catch (err) {
+    console.error("[summarize]", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get("/wa/bot/alojamientos", async (req, res) => {
   try {
     const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=wa_bot_alojamientos`);
