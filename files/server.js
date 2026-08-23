@@ -2015,6 +2015,58 @@ app.post("/update-objeto", async (req, res) => {
 });
 
 // ─── Listar reportes de incidencias guardados ────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ REPORTES TÉCNICOS (MVP F1) — passthrough a Apps Script                  ║
+// ═══════════════════════════════════════════════════════════════════════════
+app.get("/reportes-tecnicos-list", async (req, res) => {
+  try {
+    const r = await callCheckinAppsScriptPost("rt_list", {});
+    res.json(r);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post("/reportes-tecnicos-upsert", async (req, res) => {
+  try {
+    const payload = req.body?.payload || {};
+    const fotosAntes = Array.isArray(req.body?.fotos_antes) ? req.body.fotos_antes : [];
+    const fotosDespues = Array.isArray(req.body?.fotos_despues) ? req.body.fotos_despues : [];
+    const uploadAll = async (list) => {
+      const urls = [];
+      for (const f of list) {
+        if (!f || !f.base64) continue;
+        const up = await callCheckinAppsScriptPost("rt_upload_image", {
+          name: f.name || `rt_${Date.now()}.jpg`,
+          mimeType: f.mimeType || "image/jpeg",
+          base64: f.base64,
+        });
+        if (up && up.ok && up.url) urls.push(up.url);
+        else console.warn("rt upload failed:", JSON.stringify(up).slice(0, 200));
+      }
+      return urls;
+    };
+    const antes = await uploadAll(fotosAntes);
+    const despues = await uploadAll(fotosDespues);
+    // Preservar URLs previas si vienen (edición) + append de nuevas.
+    const prevAntes = String(payload.Fotos_antes_urls || "").split(",").map(s => s.trim()).filter(Boolean);
+    const prevDespues = String(payload.Fotos_despues_urls || "").split(",").map(s => s.trim()).filter(Boolean);
+    const finalPayload = {
+      ...payload,
+      Fotos_antes_urls: [...prevAntes, ...antes].join(","),
+      Fotos_despues_urls: [...prevDespues, ...despues].join(","),
+    };
+    const r = await callCheckinAppsScriptPost("rt_upsert", finalPayload);
+    if (!r || !r.ok) throw new Error(r?.error || "upsert failed");
+    res.json({ ...r, fotos_antes_uploaded: antes.length, fotos_despues_uploaded: despues.length });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post("/reportes-tecnicos-delete", async (req, res) => {
+  try {
+    const id = String(req.body?.id || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "id requerido" });
+    const r = await callCheckinAppsScriptPost("rt_delete", { id });
+    res.json(r);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 app.get("/incidencias-list", async (req, res) => {
   try {
     const result = await callCheckinAppsScript("list_incidencias");
