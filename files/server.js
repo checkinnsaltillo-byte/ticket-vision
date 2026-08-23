@@ -976,11 +976,13 @@ app.post("/wa/bot/summarize", async (req, res) => {
     }).join("\n");
     const system = `Eres un asistente que resume conversaciones de WhatsApp entre huéspedes de un hotel y el equipo (bot + admin humano).
 
-Genera un resumen SINTÉTICO (máx. 200 palabras) para que un agente entienda de un vistazo:
+Genera un resumen SINTÉTICO (máx. 220 palabras) para que un agente entienda de un vistazo:
 1. **Contexto**: quién es el huésped y sobre qué alojamiento habla (si se menciona).
-2. **Temas tratados**: lista breve (bullet) de asuntos que se discutieron.
-3. **Último tema / pendiente** (ÉNFASIS): qué es lo último que quedó abierto o pendiente de respuesta. Marca claramente si el huésped está esperando algo.
-4. **Riesgos**: menciona si hay queja, reembolso, molestia u otro tema sensible.
+2. **Temas tratados**: lista breve (bullet) de asuntos discutidos. **Cada bullet debe empezar con la fecha y hora en formato compacto entre corchetes**, ej. \`[23-ago 15:28]\`. Toma la fecha/hora del bullet PRIMER mensaje del tema. Extrae el día+mes+hora:min de los timestamps que aparecen en el transcript (formato \`[YYYY-MM-DD HH:MM]\`).
+3. **Último tema / pendiente** (ÉNFASIS): incluye la fecha y hora del último mensaje relevante. Marca claramente si el huésped está esperando algo.
+4. **Riesgos**: menciona si hay queja, reembolso, molestia u otro tema sensible, con la fecha y hora en que se detectó.
+
+Formato de fecha compacta: día-mes hh:mm (24h). Ejemplo: \`[23-ago 15:28]\`. Usa nombre corto del mes en español (ene, feb, mar, abr, may, jun, jul, ago, sep, oct, nov, dic).
 
 Escribe en español, tono profesional, en formato markdown con headings ##. Sé breve — el agente tiene 10 segundos para leer.`;
     const llm = await _llmChat({
