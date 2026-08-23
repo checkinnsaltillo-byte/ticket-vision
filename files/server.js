@@ -385,16 +385,23 @@ async function _llmChat({ system, history, userMsg, tools }) {
     messages,
   };
   if (Array.isArray(tools) && tools.length) body.tools = tools;
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  const j = await r.json();
+  // Timeout 30s para no colgar el webhook si Anthropic no responde.
+  const ctrl = new AbortController();
+  const tm = setTimeout(() => ctrl.abort(), 30_000);
+  let r, j;
+  try {
+    r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    j = await r.json();
+  } finally { clearTimeout(tm); }
   if (!r.ok) throw new Error(`Claude HTTP ${r.status}: ${j.error?.message || JSON.stringify(j).slice(0,200)}`);
   // Response shape: { content: [{type:'text',text:'...'} | {type:'tool_use',...}] }
   const parts = j.content || [];
@@ -423,7 +430,7 @@ function _botDetectSensitive(msgLower) {
 }
 
 /** Arma el bloque de contexto del alojamiento a partir de una row de la hoja alojamientos. */
-function _botBuildAlojamientoContext(alojRow, booking) {
+function _botBuildAlojamientoContext(alojRow, booking, allBookings) {
   if (!alojRow) return "(sin info de alojamiento resoluble)";
   const lines = [];
   const push = (label, value) => {
@@ -455,11 +462,54 @@ function _botBuildAlojamientoContext(alojRow, booking) {
   push("Contacto emergencia 2", `${alojRow.contacto_emergencia_2_nombre || ""} ${alojRow.contacto_emergencia_2_numero || ""}`.trim());
   push("Guía completa", alojRow.url_guia);
   if (booking) {
-    lines.push("\n--- Datos de la reserva actual ---");
+    lines.push("\n--- Reserva ACTUAL (por prioridad Activa > Próxima > Reciente) ---");
     push("Nombre del huésped", booking.GuestName);
+    push("Alojamiento reserva", `${booking.PropertyName || ""} ${booking.RoomTypeName ? "· " + booking.RoomTypeName : ""}`.trim());
     push("Llegada", (booking.DateArrival || "").slice(0,10));
     push("Salida", (booking.DateDeparture || "").slice(0,10));
     push("# Huéspedes", booking.NumberOfGuests);
+    push("Fuente", booking.Source);
+  }
+  // Historial COMPLETO de reservas del huésped (mismo phone) — permite al
+  // bot contestar preguntas del tipo "cuál es mi próxima reserva", "cuántas
+  // veces me he hospedado", "mi reserva pasada fue en dónde".
+  if (Array.isArray(allBookings) && allBookings.length) {
+    const toIso = (v) => {
+      if (!v) return "";
+      const s = String(v);
+      let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
+      const d = new Date(s); return isNaN(d) ? "" : d.toISOString().slice(0,10);
+    };
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
+    const classify = (b) => {
+      const a = toIso(b.DateArrival), d = toIso(b.DateDeparture);
+      if (a && d && a <= today && today <= d) return "ACTIVA";
+      if (a && a > today) return "PRÓXIMA";
+      return "PASADA";
+    };
+    // Ordenar por arrival ascendente
+    const sorted = allBookings.slice().sort((a,b) => toIso(a.DateArrival).localeCompare(toIso(b.DateArrival)));
+    lines.push(`\n--- Historial de reservas del huésped (total ${sorted.length}) ---`);
+    for (const b of sorted) {
+      const arr = toIso(b.DateArrival), dep = toIso(b.DateDeparture);
+      const prop = b.RoomTypeName || b.PropertyName || "?";
+      const extras = [];
+      if (b.MontoTotal) extras.push(`Monto: ${b.MontoTotal}`);
+      if (b.FolioFacturapi || b.TicketUrl) {
+        const parts = [];
+        if (b.FolioFacturapi) parts.push(`Ticket facturapi #${b.FolioFacturapi}`);
+        if (b.TicketUrl)      parts.push(`Link ticket: ${b.TicketUrl}`);
+        if (b.TicketFolderUrl) parts.push(`Carpeta ticket: ${b.TicketFolderUrl}`);
+        extras.push(parts.join(' · '));
+      } else if (/s[ií]/i.test(String(b.RequiereFactura))) {
+        extras.push(`Factura solicitada (aún sin emitir)`);
+      }
+      const extrasStr = extras.length ? ` · ${extras.join(' · ')}` : '';
+      lines.push(`- [${classify(b)}] ${prop} · ${arr || "?"} → ${dep || "?"}${b.NumberOfGuests ? ` · ${b.NumberOfGuests} huésp` : ""}${extrasStr}`);
+    }
   }
   return lines.join("\n");
 }
@@ -520,21 +570,106 @@ async function _botFindActiveBooking(phone10) {
       fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=bookings_by_guest&phone=${encodeURIComponent(phone10)}`).then(r => r.json()).catch(()=>null),
       _botGetAlojRows(),
     ]);
-    const bookings = (bkJ && bkJ.ok && bkJ.bookings) || [];
+    const lgBookings = (bkJ && bkJ.ok && Array.isArray(bkJ.bookings)) ? bkJ.bookings : [];
+    const huRows = (bkJ && bkJ.ok && Array.isArray(bkJ.huRows)) ? bkJ.huRows : [];
+    // ISO YYYY-MM-DD normalizer (acepta ISO, Date serializada, MM/DD/YYYY).
+    const toIso = (v) => {
+      if (!v) return "";
+      const s = String(v);
+      let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
+      const d = new Date(s);
+      return isNaN(d) ? "" : d.toISOString().slice(0,10);
+    };
+    // Convertir huRow → shape booking-like. Solo campos que consume
+    // _botBuildAlojamientoContext + el pick. Skip si ya está cubierto por
+    // Lodgify (LodgifyId o fechas+propiedad).
+    const bookings = lgBookings.slice();
+    const seen = new Set(bookings.map(b => String(b.Id || b.LodgifyId || "") || `F:${toIso(b.DateArrival)}|${toIso(b.DateDeparture)}|${String(b.RoomTypeName||b.PropertyName||"").toLowerCase()}`));
+    for (const r of huRows) {
+      const lodId = String(r["Lodgify Id"] || "").trim();
+      const arrIso = toIso(r["Fecha de ingreso"]);
+      const depIso = toIso(r["Fecha de salida"]);
+      const prop = String(r["Propiedad"] || "").trim();
+      const dep  = String(r["# Departamento"] || r["Departamento"] || "").trim();
+      const propFull = dep ? `${prop} - #${dep}` : prop;
+      const k = lodId || `F:${arrIso}|${depIso}|${propFull.toLowerCase()}`;
+      if (seen.has(k) || seen.has(lodId)) continue;
+      seen.add(k);
+      // HouseId no vive en Reservaciones — se resuelve contra alojamientos
+      // (Propiedad + Departamento) más abajo, antes de usar el booking.
+      bookings.push({
+        Id: String(r["ID"] || r["Id"] || r["row_number"] || `hu-${phone10}-${arrIso}`),
+        LodgifyId: lodId,
+        DateArrival: arrIso,
+        DateDeparture: depIso,
+        GuestName: String(r["Nombre"] || ""),
+        GuestPhone: phone10,
+        PropertyName: prop,
+        RoomTypeName: propFull,
+        HouseId: "", // se resuelve abajo
+        NumberOfGuests: Number(r["# Huéspedes"] || r["Huéspedes"] || 0),
+        Source: String(r["Medio de reservación"] || r["Medio"] || "Manual"),
+        // Facturación / ticket auto-facturación (viene en huRow si emitido).
+        FolioFacturapi: String(r["Folio facturapi"] || r["Folio Facturapi"] || r["Folio"] || "").trim(),
+        // El campo canónico en Reservaciones es 'Ticket facturapi url' (con
+        // minúscula final). Aceptamos alias por robustez.
+        TicketUrl: String(
+          r["Ticket facturapi url"] || r["Ticket_facturapi_url"] ||
+          r["Ticket URL"] || r["ticket_url"] || r["Facturapi URL"] || ""
+        ).trim(),
+        TicketFolderUrl: String(r["Ticket facturapi carpeta url"] || r["Ticket_facturapi_carpeta_url"] || "").trim(),
+        RequiereFactura: String(r["¿Requiere factura?"] || "").trim(),
+        MontoTotal: String(r["Monto"] || r["Total"] || "").trim(),
+        __fromHuRow: true,
+        __prop: prop,
+        __depto: dep,
+      });
+    }
     if (!bookings.length) return null;
-    const today = new Date().toISOString().slice(0,10);
+    // Hoy en zona local (America/Mexico_City ≈ UTC-6): usar toLocaleDateString
+    // con locale sv-SE (formato ISO) para YYYY-MM-DD.
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
     const active = bookings.find(b => {
-      const arr = String(b.DateArrival || "").slice(0,10);
-      const dep = String(b.DateDeparture || "").slice(0,10);
+      const arr = toIso(b.DateArrival);
+      const dep = toIso(b.DateDeparture);
       return arr && dep && arr <= today && today <= dep;
     });
     const proxima = bookings
-      .filter(b => String(b.DateArrival || "").slice(0,10) >= today)
-      .sort((a,b) => String(a.DateArrival).localeCompare(String(b.DateArrival)))[0];
-    const booking = active || proxima || bookings[bookings.length - 1];
+      .filter(b => toIso(b.DateArrival) >= today)
+      .sort((a,b) => toIso(a.DateArrival).localeCompare(toIso(b.DateArrival)))[0];
+    const reciente = bookings.slice()
+      .sort((a,b) => toIso(b.DateDeparture).localeCompare(toIso(a.DateDeparture)))[0];
+    const booking = active || proxima || reciente || bookings[bookings.length - 1];
     if (!booking) return null;
-    const alojRow = rows.find(r => String(r.HouseId || "").trim() === String(booking.HouseId || "").trim());
-    return { booking, alojRow: alojRow || null };
+    console.info(`[bot-in] ${phone10}: pick=${active ? 'ACTIVA' : proxima ? 'PROXIMA' : 'RECIENTE'} ${booking.RoomTypeName || booking.PropertyName || ''} ${toIso(booking.DateArrival)}→${toIso(booking.DateDeparture)}`);
+    // HouseId puede venir vacío en huRow — buscar por Propiedad+Departamento
+    // contra alojamientos. El endpoint waBotAlojamientosList_ ya devuelve
+    // {HouseId, Propiedad, Departamento, bot_enabled} normalizado.
+    let alojRow = rows.find(r => String(r.HouseId || "").trim() === String(booking.HouseId || "").trim() && booking.HouseId);
+    if (!alojRow && booking.__fromHuRow) {
+      const bp = String(booking.__prop || booking.PropertyName || "").toLowerCase().trim();
+      const bd = String(booking.__depto || "").trim();
+      alojRow = rows.find(r => {
+        const p = String(r.Propiedad || r.propiedad || "").toLowerCase().trim();
+        // /alojamientos-list devuelve la columna con nombre canónico
+        // "# Departamento" (waBotAlojamientosList_ la renombra a "Departamento";
+        // aquí usamos el endpoint directo con nombres crudos).
+        const d = String(r["# Departamento"] || r.Departamento || r.departamento || "").trim();
+        return p === bp && d === bd;
+      });
+      if (alojRow) {
+        booking.HouseId = String(alojRow.HouseId || "").trim();
+        console.info(`[bot-in] ${phone10}: HouseId resuelto por Propiedad+Departamento → ${booking.HouseId}`);
+      } else {
+        // Log sample de alojamientos para diagnosticar el mismatch.
+        const sample = rows.slice(0, 5).map(r => `"${String(r.Propiedad||"").toLowerCase().trim()}"#${String(r.Departamento||"").trim()}`).join(", ");
+        console.warn(`[bot-in] ${phone10}: NO match alojamiento para "${bp}" #${bd}. Sample rows (${rows.length}): ${sample}`);
+      }
+    }
+    return { booking, alojRow: alojRow || null, allBookings: bookings };
   } catch (e) {
     console.warn("[bot] findActiveBooking falló:", e.message);
     return null;
@@ -581,6 +716,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     ]);
     console.info(`[bot-in] ${phone10}: fetches paralelos en ${Date.now()-t0}ms`);
     const state = ctxResp.state || { control: "bot" };
+    console.info(`[bot-in] ${phone10}: state.control="${state.control}" msgs=${(ctxResp.messages||[]).length}`);
     if (String(state.control) === "human") {
       console.info(`[bot-in] ${phone10}: skip (human control)`);
       return;
@@ -590,18 +726,35 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       _botEscalate(phone10, "sin reserva activa/próxima");
       return;
     }
-    // Chequeo enabled (cached, ~0ms usualmente)
-    const enabled = await _botIsAlojamientoEnabled(ctx.booking.HouseId);
-    if (!enabled) {
-      console.info(`[bot-in] ${phone10}: aloj ${ctx.booking.HouseId} no en piloto — skip`);
-      return;
+    console.info(`[bot-in] ${phone10}: booking Id=${ctx.booking.Id} HouseId=${ctx.booking.HouseId}`);
+    // El filtro de piloto (bot_enabled) SOLO aplica en modo Automático.
+    // En Supervisado el admin aprueba cada respuesta manualmente — no hay
+    // riesgo de mandar algo indebido, entonces generamos draft sin importar
+    // si el alojamiento está en el piloto.
+    if (String(state.control) === "bot") {
+      const enabled = await _botIsAlojamientoEnabled(ctx.booking.HouseId);
+      console.info(`[bot-in] ${phone10}: enabled=${enabled}`);
+      if (!enabled) {
+        console.info(`[bot-in] ${phone10}: aloj ${ctx.booking.HouseId} no en piloto — skip (modo bot)`);
+        return;
+      }
+    } else {
+      console.info(`[bot-in] ${phone10}: modo ${state.control} — skip check de piloto`);
     }
     // System prompt + Claude
-    const context = _botBuildAlojamientoContext(ctx.alojRow, ctx.booking);
+    const context = _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings);
     const system = BOT_SYSTEM_PROMPT_BASE + context;
     const history = (ctxResp.messages || []).slice(-10, -1); // excluir el user actual (ya guardado)
+    // Anthropic solo acepta roles 'user' | 'assistant'. Nuestros roles
+    // internos incluyen 'admin' (envío manual del panel), 'template'
+    // (mensajes programados) y 'system'. Mapeamos:
+    //   admin / template → assistant  (mensaje saliente al huésped)
+    //   system            → skip
+    const historyForLlm = history
+      .filter(m => m.role !== 'system')
+      .map(m => ({ role: (m.role === 'admin' || m.role === 'template') ? 'assistant' : (m.role === 'user' ? 'user' : 'assistant'), body: m.body }));
     const tLlm = Date.now();
-    const llm = await _llmChat({ system, history: history.map(m => ({ role: m.role, body: m.body })), userMsg: bodyMsg });
+    const llm = await _llmChat({ system, history: historyForLlm, userMsg: bodyMsg });
     console.info(`[bot-in] ${phone10}: LLM en ${Date.now()-tLlm}ms`);
     const replyText = String(llm.text || "").trim();
     if (!replyText) {
@@ -641,15 +794,31 @@ app.get("/wa/webhook-inbound", (req, res) => {
 // ║ ENDPOINTS del PANEL ADMIN Bot Chats                                     ║
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Cache in-memory para reducir presión sobre Apps Script (saturable).
+// Convs cache 20s por filter; context cache 8s por phone.
+const _wa_cache = { convs: new Map(), context: new Map() };
+const _CONVS_TTL = 20_000, _CONTEXT_TTL = 8_000;
+
 /** GET /wa/bot/conversations — lista conversaciones activas del bot. */
 app.get("/wa/bot/conversations", async (req, res) => {
   try {
     const filter = String(req.query.filter || "all");
     const limit = String(req.query.limit || "100");
+    const key = `${filter}|${limit}`;
+    const now = Date.now();
+    const hit = _wa_cache.convs.get(key);
+    if (hit && (now - hit.t) < _CONVS_TTL) return res.json(hit.j);
     const url = `${CHECKIN_APPS_SCRIPT_URL}?action=wa_chat_conversations&filter=${encodeURIComponent(filter)}&limit=${encodeURIComponent(limit)}`;
-    const r = await fetch(url);
-    const j = await r.json();
-    res.json(j);
+    try {
+      const r = await fetch(url);
+      const j = await r.json();
+      if (j && j.ok) _wa_cache.convs.set(key, { t: now, j });
+      res.json(j);
+    } catch (fetchErr) {
+      // Fallback: si hay respuesta cacheada aunque expirada, servirla stale.
+      if (hit) return res.json(hit.j);
+      throw fetchErr;
+    }
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -661,9 +830,20 @@ app.get("/wa/bot/context", async (req, res) => {
     const phone = String(req.query.phone || "").replace(/\D/g,"").slice(-10);
     if (!phone) return res.status(400).json({ ok: false, error: "phone requerido" });
     const limit = String(req.query.limit || "50");
+    const key = `${phone}|${limit}`;
+    const now = Date.now();
+    const hit = _wa_cache.context.get(key);
+    if (hit && (now - hit.t) < _CONTEXT_TTL) return res.json(hit.j);
     const url = `${CHECKIN_APPS_SCRIPT_URL}?action=wa_chat_context_get&phone=${encodeURIComponent(phone)}&limit=${encodeURIComponent(limit)}`;
-    const r = await fetch(url);
-    const j = await r.json();
+    let r, j;
+    try {
+      r = await fetch(url);
+      j = await r.json();
+      if (j && j.ok) _wa_cache.context.set(key, { t: now, j });
+    } catch (fetchErr) {
+      if (hit) return res.json(hit.j);
+      throw fetchErr;
+    }
     res.json(j);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -937,6 +1117,10 @@ app.post("/wa/templates-upsert", async (req, res) => {
       enabled: p.enabled === true,
       responsivo: p.responsivo === true,
       updated_by: p.updated_by || "admin",
+      // JSON string (array de {name, value}) — passthrough al Apps Script.
+      placeholders_custom: (p.placeholders_custom != null)
+        ? (typeof p.placeholders_custom === "string" ? p.placeholders_custom : JSON.stringify(p.placeholders_custom))
+        : undefined,
     });
     res.json(r);
   } catch (err) {
