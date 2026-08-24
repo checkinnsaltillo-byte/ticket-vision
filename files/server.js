@@ -2103,13 +2103,17 @@ app.post("/reportes-tecnicos-upsert", async (req, res) => {
     const antes = await uploadAll(fotosAntes);
     const despues = await uploadAll(fotosDespues);
     // Preservar URLs previas si vienen (edición) + append de nuevas.
+    // Solo tocar Fotos_*_urls si el payload las trae o si hay fotos nuevas —
+    // patches parciales (ej. cambio de Fecha) NO deben borrar fotos existentes.
     const prevAntes = String(payload.Fotos_antes_urls || "").split(",").map(s => s.trim()).filter(Boolean);
     const prevDespues = String(payload.Fotos_despues_urls || "").split(",").map(s => s.trim()).filter(Boolean);
-    const finalPayload = {
-      ...payload,
-      Fotos_antes_urls: [...prevAntes, ...antes].join(","),
-      Fotos_despues_urls: [...prevDespues, ...despues].join(","),
-    };
+    const finalPayload = { ...payload };
+    if (antes.length || "Fotos_antes_urls" in payload) {
+      finalPayload.Fotos_antes_urls = [...prevAntes, ...antes].join(",");
+    }
+    if (despues.length || "Fotos_despues_urls" in payload) {
+      finalPayload.Fotos_despues_urls = [...prevDespues, ...despues].join(",");
+    }
     const r = await callCheckinAppsScriptPost("rt_upsert", finalPayload);
     if (!r || !r.ok) throw new Error(r?.error || "upsert failed");
     res.json({ ...r, fotos_antes_uploaded: antes.length, fotos_despues_uploaded: despues.length });
