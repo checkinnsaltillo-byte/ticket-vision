@@ -682,6 +682,22 @@ async function _botIsAlojamientoEnabled(houseId) {
   return !!map[String(houseId)];
 }
 
+// ─── Modo Prueba (in-memory) — el bot solo responde al phone whitelisted ─
+let _BOT_TEST_MODE = { enabled: false, phone: "+528444443922" };
+function _botTestNormalizePhone(s) {
+  return String(s || "").replace(/\D/g, "").slice(-10);
+}
+app.get("/wa/bot/test-mode", (req, res) => {
+  res.json({ ok: true, enabled: !!_BOT_TEST_MODE.enabled, phone: _BOT_TEST_MODE.phone || "" });
+});
+app.post("/wa/bot/test-mode", (req, res) => {
+  const b = req.body || {};
+  if (typeof b.enabled === "boolean") _BOT_TEST_MODE.enabled = b.enabled;
+  if (typeof b.phone === "string") _BOT_TEST_MODE.phone = b.phone.trim();
+  console.info(`[bot-test] enabled=${_BOT_TEST_MODE.enabled} phone=${_BOT_TEST_MODE.phone}`);
+  res.json({ ok: true, ..._BOT_TEST_MODE });
+});
+
 /** POST /wa/webhook-inbound — Twilio manda aquí los mensajes entrantes. */
 app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (req, res) => {
   // Responder 200 rápido para no timeout Twilio — procesamos async.
@@ -694,6 +710,16 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   if (!phone10) return;
   const t0 = Date.now();
   console.info(`[bot-in] ${phone10}: ${bodyMsg.slice(0,80)}`);
+  // Modo Prueba: si activo, ignorar mensajes de cualquier número que no sea
+  // el whitelisted. Aún guardamos el user msg para verlo en el panel.
+  if (_BOT_TEST_MODE.enabled) {
+    const allowed = _botTestNormalizePhone(_BOT_TEST_MODE.phone);
+    if (phone10 !== allowed) {
+      console.info(`[bot-in] ${phone10}: TEST MODE — solo responde a ${allowed}, skip`);
+      _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw });
+      return;
+    }
+  }
   try {
     // OPT: fire-and-forget para loguear msg entrante (no bloquea respuesta)
     _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw });
