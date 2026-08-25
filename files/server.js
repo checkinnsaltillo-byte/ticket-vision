@@ -4000,6 +4000,15 @@ app.get("/reservas/properties", async (_req, res) => {
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 // Diagnóstico: retorna el error/response crudo del quote para 1 propiedad.
+// Diagnóstico: raw completo de una propiedad (para ver si trae slug/hosted_url).
+app.get("/reservas/prop-raw", async (req, res) => {
+  try {
+    const id = String(req.query.id || "");
+    if (!id) return res.status(400).json({ ok:false, error:"id requerido" });
+    const j = await _lodgifyFetch(`/v2/properties/${id}`, {});
+    res.json({ ok: true, data: j });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
 app.get("/reservas/quote-debug", async (req, res) => {
   try {
     const propId = String(req.query.propertyId || "");
@@ -4032,15 +4041,27 @@ app.get("/reservas/search", async (req, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(arrival) || !/^\d{4}-\d{2}-\d{2}$/.test(departure)) {
       return res.status(400).json({ ok: false, error: "arrival y departure requeridos (YYYY-MM-DD)" });
     }
-    // 1) Listar propiedades (con caché).
+    // 1) Listar propiedades (Lodgify) + catálogo local de alojamientos
+    //    (Google Sheets) en paralelo. El catálogo trae url_lodgify oficial
+    //    por HouseId — evita construir slugs a mano.
     let props = null;
     const now = Date.now();
-    if (_lodgifyPropsCache.data && (now - _lodgifyPropsCache.t) < 5 * 60_000) {
-      props = _lodgifyPropsCache.data;
-    } else {
-      const pj = await _lodgifyFetch("/v2/properties", { size: 100 });
-      props = Array.isArray(pj) ? pj : (pj.items || pj.results || []);
-      _lodgifyPropsCache = { t: now, data: props };
+    const [pjOrCache, alojRows] = await Promise.all([
+      (_lodgifyPropsCache.data && (now - _lodgifyPropsCache.t) < 5 * 60_000)
+        ? Promise.resolve(_lodgifyPropsCache.data)
+        : _lodgifyFetch("/v2/properties", { size: 100 }).then(pj => {
+            const list = Array.isArray(pj) ? pj : (pj.items || pj.results || []);
+            _lodgifyPropsCache = { t: now, data: list };
+            return list;
+          }),
+      _botGetAlojRows().catch(() => []),
+    ]);
+    props = pjOrCache;
+    // HouseId (Lodgify id) → fila del catálogo.
+    const alojById = {};
+    for (const a of (alojRows || [])) {
+      const id = String(a.HouseId || "").trim();
+      if (id) alojById[id] = a;
     }
     // 2) Filtro suave por ubicación (nombre / ciudad / dirección).
     const inLoc = (p) => {
@@ -4081,25 +4102,37 @@ app.get("/reservas/search", async (req, res) => {
         // Normalizar image_url de Lodgify (viene como //l.icdbcdn.com/...)
         const normImg = (u) => u ? (u.startsWith('//') ? 'https:' + u : u) : '';
         const rawImg = p.image_url || (p.image && p.image.url) || (Array.isArray(p.images) && p.images[0] && (p.images[0].url || p.images[0].image_url)) || '';
+        // Enrich con el catálogo local si tenemos match por HouseId (=id Lodgify).
+        const aloj = alojById[String(propId)] || null;
+        // URL oficial del sitio hosted — viene ya lista del sheet.
+        let hostedUrl = aloj && String(aloj.url_lodgify || '').trim();
+        if (hostedUrl) {
+          // El sheet a veces trae "?adults=1" pegado; limpiar querystring
+          // para agregar la nuestra desde el frontend sin duplicar.
+          const q = hostedUrl.indexOf('?');
+          if (q >= 0) hostedUrl = hostedUrl.slice(0, q);
+        }
         return {
           id: propId,
           name: p.name || "",
-          type: p.property_type || p.type || "",
+          type: (aloj && aloj.tipo) || p.property_type || p.type || "",
           city: p.city || "",
-          address: p.address || "",
+          address: (aloj && aloj.direccion) || p.address || "",
           latitude: p.latitude || null,
           longitude: p.longitude || null,
           image: normImg(rawImg),
           images: (Array.isArray(p.images) ? p.images.map(x => normImg(x.url || x.image_url)).filter(Boolean) : []),
-          amenities: (Array.isArray(p.amenities) ? p.amenities : []).map(a => a.name || a).filter(Boolean).slice(0, 10),
-          bedrooms: p.bedrooms || null,
-          bathrooms: p.bathrooms || null,
-          max_people: p.max_people || (rooms[0] && rooms[0].max_people) || null,
+          amenities: aloj && aloj.amenidades
+            ? String(aloj.amenidades).split(/[,;·|]/).map(s => s.trim()).filter(Boolean).slice(0, 8)
+            : (Array.isArray(p.amenities) ? p.amenities : []).map(a => a.name || a).filter(Boolean).slice(0, 8),
+          bedrooms: (aloj && aloj.recamaras) || p.bedrooms || null,
+          bathrooms: (aloj && aloj.banos) || p.bathrooms || null,
+          max_people: (aloj && aloj.capacidad) || p.max_people || (rooms[0] && rooms[0].max_people) || null,
           currency: first.currency_code || first.currency || p.currency_code || "MXN",
           total,
           nights: Math.max(1, Math.round((new Date(departure) - new Date(arrival)) / 86_400_000)),
           quote_raw: first,
-          hostedUrl: p.hosted_url || p.website || null,
+          hostedUrl: hostedUrl || null,
         };
       } catch (e) {
         // 400 típicamente = no hay disponibilidad para el rango. Ignorar.
