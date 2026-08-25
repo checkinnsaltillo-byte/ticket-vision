@@ -300,12 +300,14 @@ async function _twilioSendMessage(params) {
   });
   const j = await r.json();
   if (!r.ok) throw new Error(`Twilio ${r.status}: ${j.message || JSON.stringify(j).slice(0,200)}`);
-  // MIRROR a WA_ChatContext (fire-and-forget) — así los env�os outbound
-  // (templates, cron, /wa/send manual) tambi�n aparecen en el hilo del
-  // panel bot-chats. Skip si el destino no tiene formato v�lido.
+  // MIRROR a WA_ChatContext (fire-and-forget) — así los envíos outbound
+  // (templates, cron, /wa/send manual) también aparecen en el hilo del
+  // panel bot-chats. Skip si el destino no tiene formato válido o si el
+  // caller pasó skipMirror:true (bot/admin ya loguean por su cuenta y
+  // duplicarían el mensaje).
   try {
     const phone10 = String(params.to || "").replace(/\D/g,"").slice(-10);
-    if (phone10.length === 10) {
+    if (!params.skipMirror && phone10.length === 10) {
       const bodyForLog = String(params.body || (params.contentSid ? `(template ${params.contentSid})` : ""));
       if (bodyForLog) {
         fetch(CHECKIN_APPS_SCRIPT_URL, {
@@ -742,7 +744,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       console.info(`[bot-in] ${phone10}: escalar por sensitive: ${sensitive}`);
       _botEscalate(phone10, `Sensitive intent: ${sensitive}`);
       const msg = "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏";
-      await _twilioSendMessage({ to: fromRaw, body: msg }).catch(()=>{});
+      await _twilioSendMessage({ to: fromRaw, body: msg, skipMirror: true }).catch(()=>{});
       _botAppendMessage(phone10, "assistant", msg, { auto_escalate: true });
       return;
     }
@@ -801,13 +803,13 @@ REGLAS ESTRICTAS
           console.info(`[bot-out] ${phone10}: lead supervised draft guardado`);
           return;
         }
-        await _twilioSendMessage({ to: fromRaw, body: replyText });
+        await _twilioSendMessage({ to: fromRaw, body: replyText, skipMirror: true });
         _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, lead: true, usage: llm.usage });
         console.info(`[bot-out] ${phone10}: lead reply en total ${Date.now()-t0}ms`);
       } catch (e) {
         console.warn("[bot-in] lead LLM error:", e.message);
         const fallback = "¡Hola! Gracias por contactar Check-inn Saltillo. Para poder ayudarte, ¿me compartes tu nombre, el alojamiento o zona que te interesa, fechas tentativas y número de huéspedes? 🏠";
-        await _twilioSendMessage({ to: fromRaw, body: fallback }).catch(()=>{});
+        await _twilioSendMessage({ to: fromRaw, body: fallback, skipMirror: true }).catch(()=>{});
         _botAppendMessage(phone10, "assistant", fallback, { lead: true, fallback: true });
       }
       return;
@@ -862,7 +864,7 @@ REGLAS ESTRICTAS
       return;
     }
     // Enviar respuesta (bloqueante) + persistir en background
-    await _twilioSendMessage({ to: fromRaw, body: replyText });
+    await _twilioSendMessage({ to: fromRaw, body: replyText, skipMirror: true });
     _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, usage: llm.usage });
     console.info(`[bot-out] ${phone10}: total ${Date.now()-t0}ms · "${replyText.slice(0,80)}"`);
   } catch (err) {
@@ -1009,7 +1011,7 @@ app.post("/wa/bot/send-as-admin", async (req, res) => {
     if (!phone || !body) return res.status(400).json({ ok: false, error: "phone + body requeridos" });
     // 1) Enviar por Twilio
     const to = `whatsapp:+52${phone}`;
-    const msg = await _twilioSendMessage({ to, body });
+    const msg = await _twilioSendMessage({ to, body, skipMirror: true });
     // 2) Loguear como 'admin' y asegurar control=human
     fetch(CHECKIN_APPS_SCRIPT_URL, {
       method: "POST",
