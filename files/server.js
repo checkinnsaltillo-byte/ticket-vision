@@ -683,7 +683,8 @@ async function _botIsAlojamientoEnabled(houseId) {
 }
 
 // ─── Modo Prueba (in-memory) — el bot solo responde al phone whitelisted ─
-let _BOT_TEST_MODE = { enabled: false, phone: "+528444443922" };
+// Predeterminado ENABLED para evitar responder a números no autorizados.
+let _BOT_TEST_MODE = { enabled: true, phone: "+528444443922" };
 function _botTestNormalizePhone(s) {
   return String(s || "").replace(/\D/g, "").slice(-10);
 }
