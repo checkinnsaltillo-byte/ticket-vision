@@ -1060,7 +1060,7 @@ app.post("/wa/bot/draft-action", async (req, res) => {
     }
     if (!outBody) return res.status(400).json({ ok: false, error: "sin body para enviar" });
     const to = `whatsapp:+52${phone}`;
-    const msg = await _twilioSendMessage({ to, body: outBody });
+    const msg = await _twilioSendMessage({ to, body: outBody, skipMirror: true });
     // Log como assistant + limpiar draft (fire-and-forget)
     fetch(CHECKIN_APPS_SCRIPT_URL, {
       method: "POST",
