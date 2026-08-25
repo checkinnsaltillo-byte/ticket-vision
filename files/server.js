@@ -3965,6 +3965,123 @@ app.post("/kommo/refresh-contact-timeline", async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// MÓDULO RESERVAS — Proxy a Lodgify Public API v2 (X-ApiKey)
+// GET  /reservas/properties        → lista de propiedades (cache 5min)
+// GET  /reservas/search?arrival&departure&adults[&location][&children][&pets]
+//   → propiedades disponibles con precio del rango consultado
+// ═══════════════════════════════════════════════════════════════════════
+const LODGIFY_API = "https://api.lodgify.com";
+let _lodgifyPropsCache = { t: 0, data: null };
+async function _lodgifyFetch(path, params) {
+  const key = process.env.LODGIFY_API_KEY;
+  if (!key) throw new Error("LODGIFY_API_KEY no configurada");
+  const url = new URL(LODGIFY_API + path);
+  if (params) Object.entries(params).forEach(([k, v]) => {
+    if (v != null && v !== "") url.searchParams.append(k, String(v));
+  });
+  const r = await fetch(url.toString(), {
+    headers: { "X-ApiKey": key, "Accept": "application/json" },
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`Lodgify ${r.status}: ${text.slice(0, 300)}`);
+  try { return JSON.parse(text); } catch { return text; }
+}
+app.get("/reservas/properties", async (_req, res) => {
+  try {
+    const now = Date.now();
+    if (_lodgifyPropsCache.data && (now - _lodgifyPropsCache.t) < 5 * 60_000) {
+      return res.json({ ok: true, cached: true, properties: _lodgifyPropsCache.data });
+    }
+    const j = await _lodgifyFetch("/v2/properties", { size: 100, includeInOut: false });
+    const list = Array.isArray(j) ? j : (j.items || j.results || []);
+    _lodgifyPropsCache = { t: now, data: list };
+    res.json({ ok: true, cached: false, properties: list });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.get("/reservas/search", async (req, res) => {
+  try {
+    const arrival   = String(req.query.arrival || "").slice(0, 10);
+    const departure = String(req.query.departure || "").slice(0, 10);
+    const adults    = Math.max(1, parseInt(req.query.adults || "2", 10) || 2);
+    const children  = Math.max(0, parseInt(req.query.children || "0", 10) || 0);
+    const pets      = Math.max(0, parseInt(req.query.pets || "0", 10) || 0);
+    const locationQ = String(req.query.location || "").trim().toLowerCase();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(arrival) || !/^\d{4}-\d{2}-\d{2}$/.test(departure)) {
+      return res.status(400).json({ ok: false, error: "arrival y departure requeridos (YYYY-MM-DD)" });
+    }
+    // 1) Listar propiedades (con caché).
+    let props = null;
+    const now = Date.now();
+    if (_lodgifyPropsCache.data && (now - _lodgifyPropsCache.t) < 5 * 60_000) {
+      props = _lodgifyPropsCache.data;
+    } else {
+      const pj = await _lodgifyFetch("/v2/properties", { size: 100 });
+      props = Array.isArray(pj) ? pj : (pj.items || pj.results || []);
+      _lodgifyPropsCache = { t: now, data: props };
+    }
+    // 2) Filtro suave por ubicación (nombre / ciudad / dirección).
+    const inLoc = (p) => {
+      if (!locationQ) return true;
+      const hay = [p.name, p.city, p.address, p.state, p.subdivision]
+        .filter(Boolean).map(x => String(x).toLowerCase()).join(" | ");
+      return hay.indexOf(locationQ) >= 0;
+    };
+    const candidates = props.filter(inLoc);
+    // 3) Para cada candidato pedir quote en paralelo.
+    const totalPeople = adults + children;
+    const settled = await Promise.allSettled(candidates.map(async (p) => {
+      const propId = p.id;
+      // Room type: intentar el primero de la propiedad.
+      const rooms = Array.isArray(p.rooms) ? p.rooms : [];
+      const rtId = (rooms[0] && (rooms[0].id || rooms[0].room_type_id)) || null;
+      // Endpoint quote v2. Usamos "roomTypes" con Id + People.
+      const qParams = {
+        arrival, departure,
+        "roomTypes[0].Id": rtId || 0,
+        "roomTypes[0].People": totalPeople,
+        includeExtras: false,
+      };
+      try {
+        const q = await _lodgifyFetch(`/v2/quote/${propId}`, qParams);
+        const first = Array.isArray(q) ? q[0] : q;
+        if (!first) return null;
+        const total = Number(first.total_including_vat || first.total || 0);
+        if (!(total > 0)) return null;
+        return {
+          id: propId,
+          name: p.name || "",
+          type: p.property_type || p.type || "",
+          city: p.city || "",
+          address: p.address || "",
+          latitude: p.latitude || null,
+          longitude: p.longitude || null,
+          image: (p.image && p.image.url) || (Array.isArray(p.images) && p.images[0] && p.images[0].url) || "",
+          images: (Array.isArray(p.images) ? p.images.map(x => x.url).filter(Boolean) : []),
+          amenities: (Array.isArray(p.amenities) ? p.amenities : []).map(a => a.name || a).filter(Boolean).slice(0, 10),
+          bedrooms: p.bedrooms || null,
+          bathrooms: p.bathrooms || null,
+          max_people: p.max_people || (rooms[0] && rooms[0].max_people) || null,
+          currency: first.currency_code || first.currency || "MXN",
+          total,
+          nights: Math.max(1, Math.round((new Date(departure) - new Date(arrival)) / 86_400_000)),
+          quote_raw: first,
+          hostedUrl: p.hosted_url || p.website || null,
+        };
+      } catch (e) {
+        // 400 típicamente = no hay disponibilidad para el rango. Ignorar.
+        return null;
+      }
+    }));
+    const results = settled
+      .map(s => s.status === "fulfilled" ? s.value : null)
+      .filter(Boolean);
+    res.json({ ok: true, count: results.length, results });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Start ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 8080;
