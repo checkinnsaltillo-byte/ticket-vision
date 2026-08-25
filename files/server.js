@@ -910,6 +910,48 @@ app.get("/wa/bot/conversations", async (req, res) => {
   }
 });
 
+/** POST /wa/bot/sys-ia — el admin le pide al LLM una sugerencia para
+ *  responder al huésped. Devuelve texto sugerido; NO envía nada. */
+app.post("/wa/bot/sys-ia", async (req, res) => {
+  try {
+    const phone = String(req.body?.phone || "").replace(/\D/g, "").slice(-10);
+    const prompt = String(req.body?.prompt || "").trim();
+    if (!phone) return res.status(400).json({ ok:false, error:"phone requerido" });
+    if (!prompt) return res.status(400).json({ ok:false, error:"prompt requerido" });
+    // Cargar contexto (conversación previa + reserva si existe) en paralelo.
+    const [ctxResp, ctx] = await Promise.all([
+      _botFetchConversation(phone, 20),
+      _botFindActiveBooking(phone),
+    ]);
+    let alojContext = "";
+    if (ctx && ctx.booking) {
+      alojContext = _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings);
+    } else {
+      alojContext = "\n[No hay reserva registrada para este número — lead sin contexto de alojamiento.]";
+    }
+    const sysIaPrompt = `Eres un asistente para el ADMIN de Check-inn Saltillo. El admin está atendiendo a un huésped por WhatsApp y necesita tu ayuda para redactar una respuesta.
+
+REGLAS ESTRICTAS:
+- NO inventes datos. Solo puedes afirmar lo que está en el contexto abajo.
+- Redacta la respuesta EN PRIMERA PERSONA como si el admin la fuera a mandar tal cual al huésped.
+- Sé breve, natural y cordial. Máximo 3-4 oraciones.
+- Si el admin te pide algo que requiere info que no tenemos, dilo en la respuesta: "No tengo el dato exacto, en un momento te confirmo" — no inventes.
+- No incluyas explicaciones al admin, solo la respuesta lista para copiar y enviar al huésped.
+
+INSTRUCCIÓN DEL ADMIN: ${prompt}
+${alojContext}`;
+    const history = (ctxResp.messages || []).slice(-10)
+      .filter(m => m.role !== 'system')
+      .map(m => ({ role: (m.role === 'admin' || m.role === 'template') ? 'assistant' : (m.role === 'user' ? 'user' : 'assistant'), body: m.body }));
+    const llm = await _llmChat({ system: sysIaPrompt, history, userMsg: prompt });
+    const reply = String(llm.text || "").trim();
+    res.json({ ok: true, reply });
+  } catch (err) {
+    console.error("[sys-ia] error:", err.message);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
 /** GET /wa/bot/context?phone=X&limit=N — historial de una conversación + estado. */
 app.get("/wa/bot/context", async (req, res) => {
   try {
