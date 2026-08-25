@@ -3999,6 +3999,28 @@ app.get("/reservas/properties", async (_req, res) => {
     res.json({ ok: true, cached: false, properties: list });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
+// Diagnóstico: retorna el error/response crudo del quote para 1 propiedad.
+app.get("/reservas/quote-debug", async (req, res) => {
+  try {
+    const propId = String(req.query.propertyId || "");
+    const arrival = String(req.query.arrival || "");
+    const departure = String(req.query.departure || "");
+    const roomId = String(req.query.roomId || "0");
+    const people = String(req.query.people || "2");
+    const qParams = {
+      arrival, departure,
+      "roomTypes[0].Id": roomId,
+      "roomTypes[0].People": people,
+      includeExtras: false,
+    };
+    try {
+      const q = await _lodgifyFetch(`/v2/quote/${propId}`, qParams);
+      res.json({ ok: true, quote: q });
+    } catch (e) {
+      res.json({ ok: false, error: e.message, params: qParams });
+    }
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
 app.get("/reservas/search", async (req, res) => {
   try {
     const arrival   = String(req.query.arrival || "").slice(0, 10);
@@ -4046,8 +4068,19 @@ app.get("/reservas/search", async (req, res) => {
         const q = await _lodgifyFetch(`/v2/quote/${propId}`, qParams);
         const first = Array.isArray(q) ? q[0] : q;
         if (!first) return null;
-        const total = Number(first.total_including_vat || first.total || 0);
+        // Lodgify: total_including_vat suele venir null cuando el IVA=0.
+        // Fallback a amount_gross / total_excluding_vat / total.
+        const total = Number(
+          first.amount_gross ||
+          first.total_including_vat ||
+          first.total_excluding_vat ||
+          first.total ||
+          0
+        );
         if (!(total > 0)) return null;
+        // Normalizar image_url de Lodgify (viene como //l.icdbcdn.com/...)
+        const normImg = (u) => u ? (u.startsWith('//') ? 'https:' + u : u) : '';
+        const rawImg = p.image_url || (p.image && p.image.url) || (Array.isArray(p.images) && p.images[0] && (p.images[0].url || p.images[0].image_url)) || '';
         return {
           id: propId,
           name: p.name || "",
@@ -4056,13 +4089,13 @@ app.get("/reservas/search", async (req, res) => {
           address: p.address || "",
           latitude: p.latitude || null,
           longitude: p.longitude || null,
-          image: (p.image && p.image.url) || (Array.isArray(p.images) && p.images[0] && p.images[0].url) || "",
-          images: (Array.isArray(p.images) ? p.images.map(x => x.url).filter(Boolean) : []),
+          image: normImg(rawImg),
+          images: (Array.isArray(p.images) ? p.images.map(x => normImg(x.url || x.image_url)).filter(Boolean) : []),
           amenities: (Array.isArray(p.amenities) ? p.amenities : []).map(a => a.name || a).filter(Boolean).slice(0, 10),
           bedrooms: p.bedrooms || null,
           bathrooms: p.bathrooms || null,
           max_people: p.max_people || (rooms[0] && rooms[0].max_people) || null,
-          currency: first.currency_code || first.currency || "MXN",
+          currency: first.currency_code || first.currency || p.currency_code || "MXN",
           total,
           nights: Math.max(1, Math.round((new Date(departure) - new Date(arrival)) / 86_400_000)),
           quote_raw: first,
