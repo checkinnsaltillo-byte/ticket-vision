@@ -749,8 +749,55 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       return;
     }
     if (!ctx || !ctx.booking) {
-      console.info(`[bot-in] ${phone10}: sin reserva → escalar`);
-      _botEscalate(phone10, "sin reserva activa/próxima");
+      // Lead entrante sin reserva. En vez de escalar directamente, generamos
+      // una respuesta de captura de datos (nombre, alojamiento de interés,
+      // fechas). NO accede a datos privados de otros huéspedes.
+      console.info(`[bot-in] ${phone10}: sin reserva → lead entrante (modo captura)`);
+      const leadSystem = BOT_SYSTEM_PROMPT_BASE + `
+
+CONTEXTO ESPECIAL — LEAD ENTRANTE SIN RESERVA
+No tenemos una reserva asociada a este número. Tu objetivo es SOLO capturar los datos mínimos para poder cotizar y armar la reserva:
+- Nombre del huésped.
+- Alojamiento o zona de interés (Cumbres, Baja California, José Cárdenas, Matamoros, etc — pregunta cuál le interesa).
+- Fechas tentativas (llegada y salida) o número de noches.
+- Número de huéspedes.
+
+REGLAS ESTRICTAS
+- NO menciones ni compartas datos de OTROS huéspedes, reservas ajenas ni información privada.
+- Si el huésped ya se identificó por su nombre en el chat, no vuelvas a pedirlo.
+- Sé breve, cordial y directo. Máximo 2-3 líneas por mensaje.
+- Si el huésped pide precios sin dar fechas, pídele fechas y personas antes de cotizar.
+- Cuando tengas los 4 datos básicos, dile que en un momento el equipo de reservas le confirma disponibilidad y precio final.`;
+      const historyForLlm = (ctxResp.messages || []).slice(-10, -1)
+        .filter(m => m.role !== 'system')
+        .map(m => ({ role: (m.role === 'admin' || m.role === 'template') ? 'assistant' : (m.role === 'user' ? 'user' : 'assistant'), body: m.body }));
+      try {
+        const tLlm = Date.now();
+        const llm = await _llmChat({ system: leadSystem, history: historyForLlm, userMsg: bodyMsg });
+        console.info(`[bot-in] ${phone10}: LLM lead en ${Date.now()-tLlm}ms`);
+        const replyText = String(llm.text || "").trim() ||
+          "¡Hola! Gracias por contactar Check-inn Saltillo. Para poder ayudarte, ¿me compartes tu nombre, el alojamiento o zona que te interesa, fechas tentativas y número de huéspedes? 🏠";
+        // Modo SUPERVISED: guardar como draft para revisión humana.
+        if (String(state.control) === "supervised") {
+          try {
+            await fetch(CHECKIN_APPS_SCRIPT_URL, {
+              method: "POST",
+              headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify({ action: "wa_chat_set_draft", phone: phone10, body: replyText }),
+            });
+          } catch (e) { console.warn("[bot-in] set_draft error:", e.message); }
+          console.info(`[bot-out] ${phone10}: lead supervised draft guardado`);
+          return;
+        }
+        await _twilioSendMessage({ to: fromRaw, body: replyText });
+        _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, lead: true, usage: llm.usage });
+        console.info(`[bot-out] ${phone10}: lead reply en total ${Date.now()-t0}ms`);
+      } catch (e) {
+        console.warn("[bot-in] lead LLM error:", e.message);
+        const fallback = "¡Hola! Gracias por contactar Check-inn Saltillo. Para poder ayudarte, ¿me compartes tu nombre, el alojamiento o zona que te interesa, fechas tentativas y número de huéspedes? 🏠";
+        await _twilioSendMessage({ to: fromRaw, body: fallback }).catch(()=>{});
+        _botAppendMessage(phone10, "assistant", fallback, { lead: true, fallback: true });
+      }
       return;
     }
     console.info(`[bot-in] ${phone10}: booking Id=${ctx.booking.Id} HouseId=${ctx.booking.HouseId}`);
