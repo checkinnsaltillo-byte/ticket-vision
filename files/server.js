@@ -698,7 +698,12 @@ async function _botExecTool(toolUse, ctx) {
       const j = await r.json();
       if (!j.ok) return { content: `Error al crear reporte: ${j.error || "desconocido"}`, notifyText: null };
       const folio = String(j.folio || j.id || "");
-      const resumen = `${alojLabel} · ${payload.Prioridad}\n${payload.Titulo}\nHuésped: ${ctx.phone10}${folio ? `\nFolio: ${folio}` : ""}`;
+      const nombre = String(bk.GuestName || bk["Nombre reservación"] || "").trim();
+      const arr = String(bk.DateArrival || bk["Fecha de ingreso"] || "").slice(0, 10);
+      const dep = String(bk.DateDeparture || bk["Fecha de salida"] || "").slice(0, 10);
+      const fechas = (arr && dep) ? `${arr} → ${dep}` : (arr || dep || "");
+      const medio = String(bk.Source || bk.SourceText || bk.source || "").trim();
+      const resumen = `${alojLabel} · ${payload.Prioridad}\n${payload.Titulo}${nombre ? `\nHuésped: ${nombre} (${ctx.phone10})` : `\nHuésped: ${ctx.phone10}`}${fechas ? `\nReserva: ${fechas}` : ""}${medio ? `\nMedio: ${medio}` : ""}${folio ? `\nFolio: ${folio}` : ""}`;
       // Si es P1 (crítico), dispara ADEMÁS la lista de emergencia.
       if (String(payload.Prioridad).toUpperCase() === "P1") {
         _botNotifyEmergency(`🚨 REPORTE CRÍTICO (P1) vía bot\n${resumen}`);
@@ -726,9 +731,14 @@ async function _botExecTool(toolUse, ctx) {
       let j; try { j = JSON.parse(rawTxt); } catch(_) { j = { ok:false, error: "respuesta no-JSON: " + rawTxt.slice(0,120) }; }
       console.info(`[bot-tool late_checkout] AS response: ${JSON.stringify(j).slice(0,300)}`);
       if (!j.ok) return { content: `No pude registrar el cambio: ${j.error || "desconocido"}`, notifyText: null };
+      const nombreLc = String(bk.GuestName || bk["Nombre reservación"] || "").trim();
+      const arrLc = String(bk.DateArrival || bk["Fecha de ingreso"] || "").slice(0, 10);
+      const depLc = String(bk.DateDeparture || bk["Fecha de salida"] || "").slice(0, 10);
+      const fechasLc = (arrLc && depLc) ? `${arrLc} → ${depLc}` : (arrLc || depLc || "");
+      const medioLc = String(bk.Source || bk.SourceText || bk.source || "").trim();
       return {
         content: JSON.stringify({ ok: true, hora, mensaje: "Solicitud registrada. Queda pendiente de confirmación por el equipo." }),
-        notifyText: `🕐 Solicitud de late checkout vía bot\n${alojLabel}\nNueva hora: ${hora}\nHuésped: ${ctx.phone10}`,
+        notifyText: `🕐 Solicitud de late checkout vía bot\n${alojLabel}\nNueva hora: ${hora}${nombreLc ? `\nHuésped: ${nombreLc} (${ctx.phone10})` : `\nHuésped: ${ctx.phone10}`}${fechasLc ? `\nReserva: ${fechasLc}` : ""}${medioLc ? `\nMedio: ${medioLc}` : ""}`,
       };
     }
     return { content: `Tool desconocida: ${name}`, notifyText: null };
