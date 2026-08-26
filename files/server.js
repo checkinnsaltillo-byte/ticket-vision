@@ -539,7 +539,8 @@ HERRAMIENTAS DISPONIBLES Y CUÁNDO USARLAS:
    • Si falta un dato, pregunta SOLO por el que falta, breve y amable: "¿Para cuántas personas?" / "¿Qué día llegas?" / "¿Y cuándo te vas?". Nunca "necesito 3 datos: 1)... 2)...".
    • Cuando tengas los 3 datos, ANTES de llamar la tool envía un resumen para confirmar. Formato natural, ej: "Perfecto, entonces sería del 17 al 19 de septiembre para 2 personas. ¿Está bien así o quieres cambiar algo?". Espera confirmación explícita ("sí", "correcto", "adelante", "está bien"). SOLO ENTONCES llama la tool.
    • Si el huésped pide modificar algo en el resumen, ajusta el dato correspondiente y vuelve a mostrar el resumen actualizado antes de confirmar.
-   • Al recibir el resultado, envía SIEMPRE al huésped el campo "link_ver_resultados" del resultado — es la URL donde puede ver todas las opciones con fotos, precios y mapa. Formato de mensaje sugerido: 1-2 oraciones de contexto ("Encontré N alojamientos para esas fechas") + el link en línea aparte. NO listes cada alojamiento en el chat — con el link basta; la vista web presenta todo mejor.
+   • Al recibir el resultado, envía SIEMPRE al huésped el campo "link_ver_resultados" — es la URL con todas las opciones (fotos, precios, mapa). Formato de mensaje sugerido: 1 oración breve + link en línea aparte. NO listes alojamientos en el chat — con el link basta.
+   • Usa el campo "total_disponibles" (número total encontrado), NO "mostrando_top". Si "hay_mas" es true, el link muestra TODOS. Ejemplo correcto: "Tenemos 12 alojamientos disponibles para esas fechas ✨\n{link}". Ejemplo INCORRECTO: "Tengo 5 alojamientos disponibles…" (5 es sólo un preview interno tuyo — el link muestra los 12).
 2) crear_reporte_mantenimiento — cuando el huésped reporte algo roto, que no funciona, fuga, ruido de electrodoméstico, etc. FLUJO OBLIGATORIO: (a) resume lo que entendiste ("Entiendo: [problema] en [lugar]. ¿Quieres que abra un reporte para que el equipo lo revise?"), (b) espera confirmación explícita del huésped ("sí", "adelante", "confirmo"), (c) SOLO ENTONCES llama la tool. Nunca la llames sin confirmación previa.
 3) agendar_late_checkout — cuando el huésped pida salir más tarde de la hora estándar. FLUJO OBLIGATORIO: (a) pregunta la nueva hora deseada si no la dio, (b) resume "Voy a solicitar tu salida a las HH:MM. Queda pendiente de confirmación por el equipo. ¿Adelante?", (c) espera "sí", (d) llama la tool. NO prometas que está aprobado — solo queda como solicitud pendiente.
 - Si el mensaje suena a queja, reclamo, emergencia, mención de dinero/cobros, o pide hablar con humano, NO respondas — el sistema escalará automáticamente.
@@ -633,7 +634,8 @@ async function _botExecTool(toolUse, ctx) {
       const r = await fetch(url.toString(), { cache: "no-store" });
       const j = await r.json();
       if (!j.ok) return { content: `Error consultando disponibilidad: ${j.error || "desconocido"}`, notifyText: null };
-      const top = (j.results || []).slice(0, 5).map(x => ({
+      const allResults = j.results || [];
+      const top = allResults.slice(0, 5).map(x => ({
         alojamiento: x.name,
         tipo: x.type || "",
         capacidad: x.max_people || null,
@@ -650,10 +652,12 @@ async function _botExecTool(toolUse, ctx) {
       publicUrl.searchParams.set("rsv_go", "1");
       return {
         content: JSON.stringify({
-          encontrados: top.length,
+          total_disponibles: allResults.length,
+          mostrando_top: top.length,
+          hay_mas: allResults.length > top.length,
           fechas: `${args.arrival} → ${args.departure}`,
           huespedes: args.adults,
-          alojamientos: top,
+          alojamientos_top: top,
           link_ver_resultados: publicUrl.toString(),
         }),
         notifyText: null, // cotizar no notifica
