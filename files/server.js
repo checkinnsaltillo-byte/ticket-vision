@@ -604,7 +604,7 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_reportes_reserva",
-    description: "Consulta los reportes técnicos EXISTENTES vinculados al alojamiento del huésped (o a su reservación específica). Úsalo ANTES de crear un reporte nuevo o cuando el huésped pregunte por el estado de algo ya reportado ('¿ya vieron lo de las hormigas?', '¿arreglaron el aire?', '¿qué pasó con mi reporte?'). Devuelve título, estado, prioridad y fecha de cada uno. No requiere confirmación.",
+    description: "Consulta los reportes técnicos EXISTENTES vinculados al alojamiento del huésped (o a su reservación específica). Úsalo ANTES de crear un reporte nuevo o cuando el huésped pregunte por el estado de algo ya reportado ('¿ya vieron lo de las hormigas?', '¿arreglaron el aire?', '¿qué pasó con mi reporte?'). Devuelve título, estado, prioridad y fecha de cada uno. IMPORTANTE — sinónimos: el filtro reconoce grupos ('insectos', 'plagas', 'hormigas', 'cucarachas', 'moscas' cuentan igual; 'aire', 'clima', 'minisplit' cuentan igual; 'luz', 'apagón', 'corriente' cuentan igual; etc.). Si tu primera consulta devuelve 0 resultados, LLÁMALA DE NUEVO SIN FILTRO para ver toda la lista del alojamiento y busca tú mismo por relación semántica antes de decir 'no hay reporte'. No requiere confirmación.",
     input_schema: {
       type: "object",
       properties: {
@@ -690,7 +690,21 @@ async function _botExecTool(toolUse, ctx) {
       const r = await fetch(`http://127.0.0.1:${PORT}/reportes-tecnicos-list`, { cache: "no-store" });
       const j = await r.json();
       const rows = Array.isArray(j.rows) ? j.rows : [];
-      // Match por Reservacion_id (preferido) o por Propiedad + Departamento.
+      // Grupos de sinónimos: si el filtro cae en un grupo, hace match con
+      // cualquier término del grupo (evita "insectos" no matchee "hormigas").
+      const SYN_GROUPS = [
+        ["plaga","plagas","insecto","insectos","bicho","bichos","hormiga","hormigas","cucaracha","cucarachas","mosca","moscas","mosquito","mosquitos","zancudo","zancudos","aran","alacran","alacran","piojo","pulga","pulgas","chinche","chinches","fumigacion"],
+        ["aire","clima","ac","a/c","minisplit","aire acondicionado","enfriar"],
+        ["agua","fuga","gotera","tuberia","tinaco","boiler","calentador","caliente","fria"],
+        ["luz","electrico","electrica","corriente","apagon","apagón","foco","lampara","enchufe","contacto","breaker"],
+        ["wifi","internet","red","modem","router","señal","senal"],
+        ["gas","estufa","fugagas","fuga de gas"],
+        ["ruido","ruidos","musica","fiesta","vecino","vecinos"],
+        ["limpieza","sucio","polvo","aseo","cabellos","olor","olores"],
+      ];
+      const filtroTerms = filtro
+        ? (SYN_GROUPS.find(g => g.some(t => filtro.includes(t))) || [filtro])
+        : [];
       const matches = rows.filter(row => {
         const rId = String(row.Reservacion_id || "").trim();
         if (rvId && rId && rId === rvId) return true;
@@ -698,9 +712,9 @@ async function _botExecTool(toolUse, ctx) {
         const rd = String(row["# Departamento"] || "").trim();
         return propN && rp === propN && (!deptN || rd === deptN);
       }).filter(row => {
-        if (!filtro) return true;
+        if (!filtroTerms.length) return true;
         const hay = (String(row.Titulo || "") + " " + String(row.Descripcion || "") + " " + String(row.Categoria || "")).toLowerCase();
-        return hay.includes(filtro);
+        return filtroTerms.some(t => hay.includes(t));
       });
       const compact = matches.slice(0, 10).map(r => ({
         folio: r.Folio,
