@@ -1195,18 +1195,25 @@ app.post("/wa/bot/sys-ia", async (req, res) => {
     const sysIaPrompt = `Eres un asistente para el ADMIN de Check-inn Saltillo. El admin está atendiendo a un huésped por WhatsApp y necesita tu ayuda para redactar una respuesta.
 
 REGLAS ESTRICTAS:
-- NO inventes datos. Solo puedes afirmar lo que está en el contexto abajo.
+- NO inventes datos. Solo puedes afirmar lo que está en el contexto abajo o lo que devuelvan las herramientas.
 - Redacta la respuesta EN PRIMERA PERSONA como si el admin la fuera a mandar tal cual al huésped.
 - Sé breve, natural y cordial. Máximo 3-4 oraciones.
-- Si el admin te pide algo que requiere info que no tenemos, dilo en la respuesta: "No tengo el dato exacto, en un momento te confirmo" — no inventes.
 - No incluyas explicaciones al admin, solo la respuesta lista para copiar y enviar al huésped.
+
+HERRAMIENTAS DISPONIBLES:
+Tienes acceso a las mismas herramientas que el bot cuando atiende al huésped. Úsalas cuando el admin te pida algo que requiera datos en vivo:
+- cotizar_disponibilidad(arrival YYYY-MM-DD, departure YYYY-MM-DD, adults N): consulta disponibilidad real. Cuando el admin te pida algo tipo "dame la búsqueda del 5 al 10 de octubre para 1 persona", INTERPRETA las fechas (año actual o próximo si ya pasó), llama la herramienta DIRECTAMENTE, y con el resultado redacta una respuesta corta al huésped que incluya el campo "link_ver_resultados" en línea aparte.
+- crear_reporte_mantenimiento / agendar_late_checkout: NO las llames desde aquí. El admin decidirá si crear registros; tu rol es sólo redactar texto.
 
 INSTRUCCIÓN DEL ADMIN: ${prompt}
 ${alojContext}`;
     const history = (ctxResp.messages || []).slice(-10)
       .filter(m => m.role !== 'system')
       .map(m => ({ role: (m.role === 'admin' || m.role === 'template') ? 'assistant' : (m.role === 'user' ? 'user' : 'assistant'), body: m.body }));
-    const llm = await _llmChat({ system: sysIaPrompt, history, userMsg: prompt });
+    // Usa el loop de tools — permite que Sys-IA llame cotizar_disponibilidad
+    // igual que el bot. Los otros tools (crear_reporte, late_checkout) están
+    // desalentados en el prompt para que no persistan cambios desde aquí.
+    const llm = await _botLlmLoop({ system: sysIaPrompt, history, userMsg: prompt, ctx: { phone10: phone, fromRaw: `whatsapp:+52${phone}`, booking: ctx?.booking || {}, alojRow: ctx?.alojRow || {} } });
     const reply = String(llm.text || "").trim();
     res.json({ ok: true, reply });
   } catch (err) {
