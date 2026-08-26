@@ -1129,16 +1129,10 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   try {
     // OPT: fire-and-forget para loguear msg entrante (no bloquea respuesta)
     _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw });
-    // Detectar intent sensible ANTES de fetches (barato, síncrono)
+    // Intent sensible (queja / reembolso / legal): sólo AUTO-escala si el
+    // modo actual es 'bot'. Si el admin ya está en supervised/manual/human,
+    // respetamos su modo y sólo dejamos el mensaje visible en el panel.
     const sensitive = _botDetectSensitive(bodyMsg);
-    if (sensitive) {
-      console.info(`[bot-in] ${phone10}: escalar por sensitive: ${sensitive}`);
-      _botEscalate(phone10, `Sensitive intent: ${sensitive}`);
-      const msg = "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏";
-      await _twilioSendMessage({ to: fromRaw, body: msg, skipMirror: true }).catch(()=>{});
-      _botAppendMessage(phone10, "assistant", msg, { auto_escalate: true });
-      return;
-    }
     // OPT: PARALELIZAR — conversación + reserva activa simultáneas.
     // Antes: 4 requests secuenciales (append user, conv, bookings, alojamientos)
     // = ~25-30s. Ahora: 1 fire-and-forget + 2 en paralelo = ~8-10s.
@@ -1152,6 +1146,19 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     if (String(state.control) === "human") {
       console.info(`[bot-in] ${phone10}: skip (human control)`);
       return;
+    }
+    // Sensitive + modo bot → auto-escala. En supervised/manual dejamos que
+    // el admin lo revise y decida (el mensaje ya está en el panel).
+    if (sensitive && String(state.control) === "bot") {
+      console.info(`[bot-in] ${phone10}: escalar por sensitive: ${sensitive}`);
+      _botEscalate(phone10, `Sensitive intent: ${sensitive}`);
+      const msg = "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏";
+      await _twilioSendMessage({ to: fromRaw, body: msg, skipMirror: true }).catch(()=>{});
+      _botAppendMessage(phone10, "assistant", msg, { auto_escalate: true });
+      return;
+    }
+    if (sensitive) {
+      console.info(`[bot-in] ${phone10}: sensitive detectado pero modo=${state.control} — respeta modo, no escala`);
     }
     if (!ctx || !ctx.booking) {
       // Lead entrante sin reserva. En vez de escalar directamente, generamos
@@ -1243,8 +1250,9 @@ REGLAS ESTRICTAS
     }
     const replyText = String(llm.text || "").trim();
     if (!replyText) {
-      console.warn(`[bot-in] ${phone10}: respuesta vacía del LLM — escalar`);
-      _botEscalate(phone10, "respuesta vacía del LLM");
+      console.warn(`[bot-in] ${phone10}: respuesta vacía del LLM (modo=${state.control}) — no cambia modo`);
+      // No escalamos automáticamente — respetamos el modo del admin.
+      // El mensaje del huésped ya está guardado y visible en el panel.
       return;
     }
     // Modo SUPERVISED: no enviar. Guardar como pending draft para que el
@@ -1266,7 +1274,8 @@ REGLAS ESTRICTAS
     console.info(`[bot-out] ${phone10}: total ${Date.now()-t0}ms · "${replyText.slice(0,80)}"`);
   } catch (err) {
     console.error("[bot] error:", err.message);
-    _botEscalate(phone10, "error interno: " + err.message);
+    // Error interno: NO cambiar modo. El admin ya eligió su modo — si algo
+    // falla, el mensaje del huésped queda en el panel y el admin decide.
   }
 });
 
@@ -1407,8 +1416,9 @@ app.post("/wa/bot/set-control", async (req, res) => {
 });
 
 /** POST /wa/bot/send-as-admin { phone, body }
- *  Admin envía msg manual al huésped desde el panel. Marca control=human
- *  automáticamente para que el bot no responda encima. */
+ *  Admin envía msg manual al huésped desde el panel. NO cambia el modo
+ *  de control — el admin ya eligió su modo (bot/supervised/manual/human)
+ *  explícitamente con los toggles del panel, y ese modo se preserva. */
 app.post("/wa/bot/send-as-admin", async (req, res) => {
   try {
     const p = req.body || {};
@@ -1418,16 +1428,12 @@ app.post("/wa/bot/send-as-admin", async (req, res) => {
     // 1) Enviar por Twilio
     const to = `whatsapp:+52${phone}`;
     const msg = await _twilioSendMessage({ to, body, skipMirror: true });
-    // 2) Loguear como 'admin' y asegurar control=human
+    // 2) Loguear como 'admin'. NO tocar wa_chat_set_control — respeta el
+    //    modo ya seleccionado por el usuario en el panel.
     fetch(CHECKIN_APPS_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ action: "wa_chat_context_append", phone, role: "admin", body, meta: { sid: msg.sid } }),
-    }).catch(()=>{});
-    fetch(CHECKIN_APPS_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "wa_chat_set_control", phone, control: "human", reason: "admin envió msg manual" }),
     }).catch(()=>{});
     res.json({ ok: true, sid: msg.sid, status: msg.status });
   } catch (err) {
