@@ -521,7 +521,8 @@ const BOT_SYSTEM_PROMPT_BASE = `Eres un asistente de atención a huéspedes de C
 REGLAS DE RESPUESTA:
 - CADA MENSAJE DEL HUÉSPED SE EVALÚA DE FORMA INDEPENDIENTE. Si el mensaje nuevo cambia de tema respecto al hilo anterior (ej. veníamos hablando de cotizar y ahora reporta un problema, o al revés), ABANDONA el flujo anterior y atiende el nuevo tema con la lógica correspondiente. Nunca insistas en el tema previo cuando el huésped claramente cambió.
 - Detecta el intent del último mensaje ANTES de decidir qué responder:
-  · problema/falla/desperfecto ("se fue la luz", "no hay agua", "no funciona el X", "está roto", "gotea") → reporte de mantenimiento
+  · problema/falla/desperfecto ("se fue la luz", "no hay agua", "no funciona el X", "está roto", "gotea") → PRIMERO consulta reportes existentes; luego reporte de mantenimiento si no hay uno abierto
+  · pregunta por estado de un reporte previo ("¿ya arreglaron?", "¿qué pasó con X?", "sigue el problema de Y") → consultar_reportes_reserva y responde con el estado
   · pregunta de disponibilidad/precio ("¿tienen?", "¿cuánto cuesta?", "para tal fecha") → cotizar
   · pedido de cambio de horario de salida → late checkout
   · queja/reembolso/emergencia/legal → NO respondas, escala
@@ -541,7 +542,7 @@ HERRAMIENTAS DISPONIBLES Y CUÁNDO USARLAS:
    • Si el huésped pide modificar algo en el resumen, ajusta el dato correspondiente y vuelve a mostrar el resumen actualizado antes de confirmar.
    • Al recibir el resultado, envía SIEMPRE al huésped el campo "link_ver_resultados" — es la URL con todas las opciones (fotos, precios, mapa). Formato de mensaje sugerido: 1 oración breve + link en línea aparte. NO listes alojamientos en el chat — con el link basta.
    • Usa el campo "total_disponibles" (número total encontrado), NO "mostrando_top". Si "hay_mas" es true, el link muestra TODOS. Ejemplo correcto: "Tenemos 12 alojamientos disponibles para esas fechas ✨\n{link}". Ejemplo INCORRECTO: "Tengo 5 alojamientos disponibles…" (5 es sólo un preview interno tuyo — el link muestra los 12).
-2) crear_reporte_mantenimiento — cuando el huésped reporte algo roto, que no funciona, fuga, ruido de electrodoméstico, etc. FLUJO OBLIGATORIO: (a) resume lo que entendiste ("Entiendo: [problema] en [lugar]. ¿Quieres que abra un reporte para que el equipo lo revise?"), (b) espera confirmación explícita del huésped ("sí", "adelante", "confirmo"), (c) SOLO ENTONCES llama la tool. Nunca la llames sin confirmación previa.
+2) crear_reporte_mantenimiento — cuando el huésped reporte algo roto, que no funciona, fuga, ruido de electrodoméstico, etc. ANTES de proponer crear el reporte, LLAMA consultar_reportes_reserva con un filtro relevante ("hormigas", "aire", "agua", etc.) para saber si ya existe uno. Si YA hay reporte activo del mismo tema (Estado ≠ 'resuelto' / 'cancelado'), NO crees duplicado: infórmale al huésped el estado del reporte existente ("Ya tenemos un reporte de hormigas abierto, folio X, en estado 'en_proceso' — el equipo lo está atendiendo"). Si NO hay reporte previo, FLUJO OBLIGATORIO: (a) resume lo que entendiste ("Entiendo: [problema] en [lugar]. ¿Quieres que abra un reporte para que el equipo lo revise?"), (b) espera confirmación explícita del huésped ("sí", "adelante", "confirmo"), (c) SOLO ENTONCES llama crear_reporte_mantenimiento.
 3) agendar_late_checkout — cuando el huésped pida salir más tarde de la hora estándar. FLUJO OBLIGATORIO: (a) pregunta la nueva hora deseada si no la dio, (b) resume "Voy a solicitar tu salida a las HH:MM. Queda pendiente de confirmación por el equipo. ¿Adelante?", (c) espera "sí", (d) llama la tool. NO prometas que está aprobado — solo queda como solicitud pendiente.
 - Si el mensaje suena a queja, reclamo, emergencia, mención de dinero/cobros, o pide hablar con humano, NO respondas — el sistema escalará automáticamente.
 - No des precios, no negocies, no prometas descuentos.
@@ -599,6 +600,16 @@ const BOT_TOOLS = [
         categoria:   { type: "string", description: "plomería | eléctrico | aire | wifi | cerradura | limpieza | otros" },
       },
       required: ["titulo", "descripcion", "prioridad"],
+    },
+  },
+  {
+    name: "consultar_reportes_reserva",
+    description: "Consulta los reportes técnicos EXISTENTES vinculados al alojamiento del huésped (o a su reservación específica). Úsalo ANTES de crear un reporte nuevo o cuando el huésped pregunte por el estado de algo ya reportado ('¿ya vieron lo de las hormigas?', '¿arreglaron el aire?', '¿qué pasó con mi reporte?'). Devuelve título, estado, prioridad y fecha de cada uno. No requiere confirmación.",
+    input_schema: {
+      type: "object",
+      properties: {
+        filtro: { type: "string", description: "Opcional: palabra clave para filtrar por título/descripción (ej. 'hormigas', 'aire', 'agua'). Vacío = todos los del alojamiento." },
+      },
     },
   },
   {
@@ -669,6 +680,46 @@ async function _botExecTool(toolUse, ctx) {
           link_ver_resultados: publicUrl.toString(),
         }),
         notifyText: null, // cotizar no notifica
+      };
+    }
+    if (name === "consultar_reportes_reserva") {
+      const filtro = String(args.filtro || "").trim().toLowerCase();
+      const rvId = String(bk.Id || "").trim();
+      const propN = String(propiedad || "").toLowerCase().replace(/\s+/g,' ').trim();
+      const deptN = String(depto || "").trim();
+      const r = await fetch(`http://127.0.0.1:${PORT}/reportes-tecnicos-list`, { cache: "no-store" });
+      const j = await r.json();
+      const rows = Array.isArray(j.rows) ? j.rows : [];
+      // Match por Reservacion_id (preferido) o por Propiedad + Departamento.
+      const matches = rows.filter(row => {
+        const rId = String(row.Reservacion_id || "").trim();
+        if (rvId && rId && rId === rvId) return true;
+        const rp = String(row.Propiedad || "").toLowerCase().replace(/\s+/g,' ').trim();
+        const rd = String(row["# Departamento"] || "").trim();
+        return propN && rp === propN && (!deptN || rd === deptN);
+      }).filter(row => {
+        if (!filtro) return true;
+        const hay = (String(row.Titulo || "") + " " + String(row.Descripcion || "") + " " + String(row.Categoria || "")).toLowerCase();
+        return hay.includes(filtro);
+      });
+      const compact = matches.slice(0, 10).map(r => ({
+        folio: r.Folio,
+        titulo: r.Titulo,
+        descripcion: String(r.Descripcion || "").slice(0, 140),
+        estado: r.Estado,
+        prioridad: r.Prioridad,
+        categoria: r.Categoria,
+        fecha: String(r.Fecha || r.Timestamp || "").slice(0, 10),
+        solucion: r.Descripcion_solucion || "",
+      }));
+      return {
+        content: JSON.stringify({
+          encontrados: matches.length,
+          alojamiento: alojLabel,
+          filtro: filtro || null,
+          reportes: compact,
+        }),
+        notifyText: null,
       };
     }
     if (name === "crear_reporte_mantenimiento") {
