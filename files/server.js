@@ -1185,8 +1185,12 @@ REGLAS ESTRICTAS
         .map(m => ({ role: (m.role === 'admin' || m.role === 'template') ? 'assistant' : (m.role === 'user' ? 'user' : 'assistant'), body: m.body }));
       try {
         const tLlm = Date.now();
-        const llm = await _llmChat({ system: leadSystem, history: historyForLlm, userMsg: bodyMsg });
-        console.info(`[bot-in] ${phone10}: LLM lead en ${Date.now()-tLlm}ms`);
+        // Usa loop de tools también en lead — cotizar_disponibilidad
+        // funciona sin reserva (solo requiere fechas + huéspedes). Si NO se
+        // pasa el loop, el modelo alucina la llamada como texto JSON.
+        const llm = await _botLlmLoop({ system: leadSystem, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: {}, alojRow: {} } });
+        console.info(`[bot-in] ${phone10}: LLM lead+tools en ${Date.now()-tLlm}ms (${(llm.toolsUsed||[]).length} tools)`);
+        for (const t of (llm.toolsUsed || [])) { if (t.notifyText) _botNotifyAdmin(t.notifyText); }
         const replyText = String(llm.text || "").trim() ||
           "¡Hola! Gracias por contactar Check-inn Saltillo. Para poder ayudarte, ¿me compartes tu nombre, el alojamiento o zona que te interesa, fechas tentativas y número de huéspedes? 🏠";
         // Modo SUPERVISED: guardar como draft para revisión humana.
