@@ -672,6 +672,9 @@ async function _botExecTool(toolUse, ctx) {
         Alojamiento: alojLabel,
         Titulo: String(args.titulo || "").slice(0, 80),
         Descripcion: String(args.descripcion || ""),
+        Reservacion_id: String(bk.Id || ""),
+        Huesped_nombre: String(bk.GuestName || ""),
+        Huesped_contacto: String(ctx.phone10 || ""),
         Reportado_por: `bot · huésped ${ctx.phone10}`,
         Updated_by: "wa-bot",
       };
