@@ -622,9 +622,17 @@ async function _botExecTool(toolUse, ctx) {
   const args = toolUse.input || {};
   const bk = ctx.booking || {};
   const aloj = ctx.alojRow || {};
-  const propiedad = String(bk.Propiedad || aloj.Propiedad || "");
-  const depto = String(bk["# Departamento"] || aloj["# Departamento"] || "");
-  const alojLabel = String(bk.Alojamiento || aloj.HouseName || `${propiedad} ${depto}`.trim() || "(sin alojamiento)");
+  const propiedad = String(bk.Propiedad || aloj.Propiedad || "").trim();
+  const depto = String(bk["# Departamento"] || aloj["# Departamento"] || "").trim();
+  // Preferir "Propiedad #Depto" (humano) sobre HouseName (a veces trae solo
+  // el HouseId numérico) y sobre el HouseId como último recurso.
+  const humanoPropDepto = propiedad && depto ? `${propiedad} #${depto}` : (propiedad || "");
+  const alojLabel = String(
+    bk.Alojamiento
+    || humanoPropDepto
+    || aloj.HouseName
+    || `HouseId ${bk.HouseId || aloj.HouseId || "?"}`
+  );
   try {
     if (name === "cotizar_disponibilidad") {
       const url = new URL(`http://127.0.0.1:${PORT}/reservas/search`);
