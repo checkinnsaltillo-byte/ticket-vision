@@ -521,7 +521,12 @@ const BOT_SYSTEM_PROMPT_BASE = `Eres un asistente de atención a huéspedes de C
 REGLAS DE RESPUESTA:
 - Escribe corto, natural, amable. Máximo 3-4 oraciones.
 - Usa el mismo tono con el que te escriben (casual si casual, formal si formal).
-- Si el huésped pide algo que requiere acción (limpieza extra, mantenimiento, cambio de horario), usa la herramienta correspondiente en vez de solo responder texto.
+- Si el huésped pide algo que requiere acción (mantenimiento, cambio de horario de salida, cotizar disponibilidad), usa la herramienta correspondiente en vez de solo responder texto.
+
+HERRAMIENTAS DISPONIBLES Y CUÁNDO USARLAS:
+1) cotizar_disponibilidad — cuando el huésped pregunte por disponibilidad, precios, "¿tienen para tal fecha?", "¿cuánto cuesta?", etc. OBLIGATORIO pedir los 3 datos ANTES de llamar la tool: fecha de entrada, fecha de salida y número de huéspedes. Si falta cualquiera, pregunta primero — nunca adivines. Al recibir el resultado, presenta máximo 3 opciones al huésped en formato conciso (nombre + precio total + noches + link para reservar). NO requiere confirmación.
+2) crear_reporte_mantenimiento — cuando el huésped reporte algo roto, que no funciona, fuga, ruido de electrodoméstico, etc. FLUJO OBLIGATORIO: (a) resume lo que entendiste ("Entiendo: [problema] en [lugar]. ¿Quieres que abra un reporte para que el equipo lo revise?"), (b) espera confirmación explícita del huésped ("sí", "adelante", "confirmo"), (c) SOLO ENTONCES llama la tool. Nunca la llames sin confirmación previa.
+3) agendar_late_checkout — cuando el huésped pida salir más tarde de la hora estándar. FLUJO OBLIGATORIO: (a) pregunta la nueva hora deseada si no la dio, (b) resume "Voy a solicitar tu salida a las HH:MM. Queda pendiente de confirmación por el equipo. ¿Adelante?", (c) espera "sí", (d) llama la tool. NO prometas que está aprobado — solo queda como solicitud pendiente.
 - Si el mensaje suena a queja, reclamo, emergencia, mención de dinero/cobros, o pide hablar con humano, NO respondas — el sistema escalará automáticamente.
 - No des precios, no negocies, no prometas descuentos.
 - Usa emojis con moderación (uno cada 2-3 respuestas, no en cada frase).
@@ -542,6 +547,211 @@ REGLA CRÍTICA — CERO ALUCINACIONES (LA MÁS IMPORTANTE):
 
 CONTEXTO DEL ALOJAMIENTO DEL HUÉSPED:
 `;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ BOT TOOLS — cotizar, crear reporte técnico, agendar late checkout        ║
+// ║ Ver /wa/bot/tools-doc para la referencia. Cada tool tiene un schema      ║
+// ║ JSON que Claude usa para decidir cuándo llamarlo y con qué args, y un    ║
+// ║ handler que ejecuta la acción real (Cloud Run → Apps Script / self).    ║
+// ║ Los tools que crean registro REQUIEREN confirmación textual del         ║
+// ║ huésped antes de dispararse (el prompt lo pide; el modelo lo respeta).  ║
+// ║ Toda ejecución de tool notifica al admin (ADMIN_NOTIFY_PHONE).          ║
+// ═══════════════════════════════════════════════════════════════════════════
+const BOT_TOOLS = [
+  {
+    name: "cotizar_disponibilidad",
+    description: "Consulta disponibilidad y precios de alojamientos para un rango de fechas. Llama esta herramienta CUANDO el huésped haya proporcionado las 3 datos requeridos: fecha de entrada, fecha de salida y número de huéspedes. Si falta alguno, PREGUNTA primero — no adivines. No requiere confirmación.",
+    input_schema: {
+      type: "object",
+      properties: {
+        arrival:   { type: "string", description: "Fecha de entrada YYYY-MM-DD" },
+        departure: { type: "string", description: "Fecha de salida YYYY-MM-DD" },
+        adults:    { type: "integer", description: "Número de huéspedes (adultos)", minimum: 1 },
+      },
+      required: ["arrival", "departure", "adults"],
+    },
+  },
+  {
+    name: "crear_reporte_mantenimiento",
+    description: "Crea un reporte técnico de mantenimiento para el alojamiento del huésped. Usa esta herramienta SOLO después de que el huésped confirmó explícitamente ('sí', 'adelante', 'confirmado'). ANTES de llamarla, DEBES enviar un mensaje resumiendo lo que se va a reportar y esperar el 'sí'. Prioridad: P1 (riesgo inmediato / no habitable), P2 (afecta uso pero no urgente), P3 (menor).",
+    input_schema: {
+      type: "object",
+      properties: {
+        titulo:      { type: "string", description: "Título corto (max 80 chars) — ej. 'Fuga en llave de cocina'" },
+        descripcion: { type: "string", description: "Detalle del problema tal como lo describió el huésped" },
+        prioridad:   { type: "string", enum: ["P1", "P2", "P3"], description: "P1 urgente, P2 medio, P3 menor" },
+        categoria:   { type: "string", description: "plomería | eléctrico | aire | wifi | cerradura | limpieza | otros" },
+      },
+      required: ["titulo", "descripcion", "prioridad"],
+    },
+  },
+  {
+    name: "agendar_late_checkout",
+    description: "Registra la solicitud de late checkout (salida más tarde) del huésped. Usa esta herramienta SOLO después de que el huésped confirmó explícitamente. ANTES de llamarla, DEBES enviar un mensaje del tipo 'Voy a solicitar tu salida a las HH:MM del DD/MM. ¿Confirmas?' y esperar el 'sí'. NO prometas que está aprobado — sólo queda como solicitud pendiente para que el equipo confirme.",
+    input_schema: {
+      type: "object",
+      properties: {
+        hora_nueva: { type: "string", description: "Nueva hora de salida en formato HH:MM (24h). Ej: '15:00'" },
+      },
+      required: ["hora_nueva"],
+    },
+  },
+];
+
+/** Ejecuta un tool_use devuelto por Claude. Devuelve { content, notifyText }.
+ *  ctx = { phone10, fromRaw, booking, alojRow } — el contexto de la reserva
+ *  activa del huésped, para saber a qué alojamiento imputar la acción. */
+async function _botExecTool(toolUse, ctx) {
+  const name = String(toolUse.name || "");
+  const args = toolUse.input || {};
+  const bk = ctx.booking || {};
+  const aloj = ctx.alojRow || {};
+  const propiedad = String(bk.Propiedad || aloj.Propiedad || "");
+  const depto = String(bk["# Departamento"] || aloj["# Departamento"] || "");
+  const alojLabel = String(bk.Alojamiento || aloj.HouseName || `${propiedad} ${depto}`.trim() || "(sin alojamiento)");
+  try {
+    if (name === "cotizar_disponibilidad") {
+      const url = new URL(`http://127.0.0.1:${PORT}/reservas/search`);
+      url.searchParams.set("arrival",   String(args.arrival || ""));
+      url.searchParams.set("departure", String(args.departure || ""));
+      url.searchParams.set("adults",    String(args.adults || 1));
+      const r = await fetch(url.toString(), { cache: "no-store" });
+      const j = await r.json();
+      if (!j.ok) return { content: `Error consultando disponibilidad: ${j.error || "desconocido"}`, notifyText: null };
+      const top = (j.results || []).slice(0, 5).map(x => ({
+        alojamiento: x.name,
+        tipo: x.type || "",
+        capacidad: x.max_people || null,
+        precio_total_mxn: x.total,
+        noches: x.nights,
+        link_reservar: x.hostedUrl || null,
+      }));
+      return {
+        content: JSON.stringify({
+          encontrados: top.length,
+          fechas: `${args.arrival} → ${args.departure}`,
+          huespedes: args.adults,
+          alojamientos: top,
+        }),
+        notifyText: null, // cotizar no notifica
+      };
+    }
+    if (name === "crear_reporte_mantenimiento") {
+      const payload = {
+        action: "rt_upsert",
+        Fecha: new Date().toISOString().slice(0, 10),
+        Estado: "nuevo",
+        Prioridad: String(args.prioridad || "P3"),
+        Tipo: "correctivo",
+        Categoria: String(args.categoria || "otros"),
+        Propiedad: propiedad,
+        "# Departamento": depto,
+        Alojamiento: alojLabel,
+        Titulo: String(args.titulo || "").slice(0, 80),
+        Descripcion: String(args.descripcion || ""),
+        Reportado_por: `bot · huésped ${ctx.phone10}`,
+        Updated_by: "wa-bot",
+      };
+      const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      if (!j.ok) return { content: `Error al crear reporte: ${j.error || "desconocido"}`, notifyText: null };
+      const folio = String(j.folio || j.id || "");
+      return {
+        content: JSON.stringify({ ok: true, folio, mensaje: "Reporte creado. El equipo lo atenderá pronto." }),
+        notifyText: `🔧 Nuevo reporte de mantenimiento vía bot\n${alojLabel} · ${payload.Prioridad}\n${payload.Titulo}\nHuésped: ${ctx.phone10}${folio ? `\nFolio: ${folio}` : ""}`,
+      };
+    }
+    if (name === "agendar_late_checkout") {
+      const hora = String(args.hora_nueva || "").trim();
+      const arrival = String(bk["Fecha de ingreso"] || "").slice(0, 10);
+      const payload = {
+        action: "wa_set_late_checkout",
+        phone: ctx.phone10,
+        arrival,
+        hora_nueva: hora,
+      };
+      const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      if (!j.ok) return { content: `No pude registrar el cambio: ${j.error || "desconocido"}`, notifyText: null };
+      return {
+        content: JSON.stringify({ ok: true, hora, mensaje: "Solicitud registrada. Queda pendiente de confirmación por el equipo." }),
+        notifyText: `🕐 Solicitud de late checkout vía bot\n${alojLabel}\nNueva hora: ${hora}\nHuésped: ${ctx.phone10}`,
+      };
+    }
+    return { content: `Tool desconocida: ${name}`, notifyText: null };
+  } catch (e) {
+    console.error(`[bot-tool ${name}] error:`, e.message);
+    return { content: `Error ejecutando ${name}: ${e.message}`, notifyText: null };
+  }
+}
+
+/** Notifica al admin (WhatsApp) sobre una acción automática del bot.
+ *  Requiere env ADMIN_NOTIFY_PHONE (formato E.164, ej: +528444443922).
+ *  Si falta, solo loguea. */
+async function _botNotifyAdmin(text) {
+  const to = String(process.env.ADMIN_NOTIFY_PHONE || "").trim();
+  if (!to) { console.info("[bot-notify] ADMIN_NOTIFY_PHONE no configurado — solo log:", text); return; }
+  try {
+    await _twilioSendMessage({ to: `whatsapp:${to}`, body: text, skipMirror: true });
+  } catch (e) { console.warn("[bot-notify] falló:", e.message); }
+}
+
+/** Loop de resolución de tools: llama LLM, ejecuta tool si Claude lo pide,
+ *  vuelve a llamar con el resultado, hasta obtener respuesta de texto
+ *  (o hit del cap de 4 iteraciones). Devuelve { text, toolsUsed }. */
+async function _botLlmLoop({ system, history, userMsg, ctx }) {
+  const runMessages = (history || []).map(m => ({ role: m.role, content: String(m.body || m.content || "") }));
+  runMessages.push({ role: "user", content: String(userMsg || "") });
+  const toolsUsed = [];
+  for (let iter = 0; iter < 4; iter++) {
+    const body = {
+      model: BOT_ANTHROPIC_MODEL,
+      max_tokens: BOT_ANTHROPIC_MAX_TOKENS,
+      system: String(system || ""),
+      messages: runMessages,
+      tools: BOT_TOOLS,
+    };
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(`Claude HTTP ${r.status}: ${j.error?.message || JSON.stringify(j).slice(0,200)}`);
+    const parts = j.content || [];
+    if (j.stop_reason !== "tool_use") {
+      const txt = parts.filter(p => p.type === "text").map(p => p.text).join("\n").trim();
+      return { text: txt, toolsUsed };
+    }
+    // Agregar la respuesta del assistant tal cual (con tool_use blocks).
+    runMessages.push({ role: "assistant", content: parts });
+    const toolResults = [];
+    for (const p of parts) {
+      if (p.type !== "tool_use") continue;
+      const exec = await _botExecTool(p, ctx);
+      toolsUsed.push({ name: p.name, args: p.input, notifyText: exec.notifyText });
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: p.id,
+        content: String(exec.content || ""),
+      });
+    }
+    runMessages.push({ role: "user", content: toolResults });
+  }
+  return { text: "", toolsUsed };
+}
 
 /** Trae contexto de conversación previa desde Apps Script. */
 async function _botFetchConversation(phone10, limit = 15) {
@@ -861,8 +1071,14 @@ REGLAS ESTRICTAS
       .filter(m => m.role !== 'system')
       .map(m => ({ role: (m.role === 'admin' || m.role === 'template') ? 'assistant' : (m.role === 'user' ? 'user' : 'assistant'), body: m.body }));
     const tLlm = Date.now();
-    const llm = await _llmChat({ system, history: historyForLlm, userMsg: bodyMsg });
-    console.info(`[bot-in] ${phone10}: LLM en ${Date.now()-tLlm}ms`);
+    // Loop de tools: cotizar / crear reporte / late checkout. Cada tool
+    // resuelta se aplica antes de que Claude emita el texto final.
+    const llm = await _botLlmLoop({ system, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: ctx.booking, alojRow: ctx.alojRow } });
+    console.info(`[bot-in] ${phone10}: LLM+tools en ${Date.now()-tLlm}ms (${llm.toolsUsed.length} tool${llm.toolsUsed.length===1?'':'s'})`);
+    // Notifica al admin por cada tool ejecutada que dejó un resumen.
+    for (const t of (llm.toolsUsed || [])) {
+      if (t.notifyText) _botNotifyAdmin(t.notifyText);
+    }
     const replyText = String(llm.text || "").trim();
     if (!replyText) {
       console.warn(`[bot-in] ${phone10}: respuesta vacía del LLM — escalar`);
@@ -884,7 +1100,7 @@ REGLAS ESTRICTAS
     }
     // Enviar respuesta (bloqueante) + persistir en background
     await _twilioSendMessage({ to: fromRaw, body: replyText, skipMirror: true });
-    _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, usage: llm.usage });
+    _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, tools: (llm.toolsUsed || []).map(t => t.name) });
     console.info(`[bot-out] ${phone10}: total ${Date.now()-t0}ms · "${replyText.slice(0,80)}"`);
   } catch (err) {
     console.error("[bot] error:", err.message);
