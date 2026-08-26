@@ -347,6 +347,100 @@ async function _twilioSendMessage(params) {
 // ║ HouseId con bot_enabled=TRUE en la hoja alojamientos.                    ║
 // ═══════════════════════════════════════════════════════════════════════════
 const BOT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ Bot Prompts (procesos del negocio) — cache in-memory TTL 5 min.        ║
+// ║ Se lee UNA vez desde Apps Script y se inyecta en cada system prompt.   ║
+// ║ Invalidación manual: POST /wa/bot/prompts/reload (lo hace la UI al     ║
+// ║ guardar).                                                                ║
+// ═══════════════════════════════════════════════════════════════════════════
+let _botPromptsCache = { ts: 0, rows: [] };
+const _BOT_PROMPTS_TTL = 5 * 60 * 1000;
+async function _botGetPrompts() {
+  const now = Date.now();
+  if (_botPromptsCache.rows.length && (now - _botPromptsCache.ts) < _BOT_PROMPTS_TTL) {
+    return _botPromptsCache.rows;
+  }
+  const ctrl = new AbortController();
+  const tm = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=bot_prompts_list`, { signal: ctrl.signal });
+    const j = await r.json();
+    const rows = (j && j.ok && Array.isArray(j.rows)) ? j.rows.filter(x => x.Activo) : [];
+    _botPromptsCache = { ts: now, rows };
+    return rows;
+  } catch (e) {
+    console.warn("[bot-prompts] fetch falló:", e.message, "— sirvo cache stale:", _botPromptsCache.rows.length);
+    return _botPromptsCache.rows;
+  } finally { clearTimeout(tm); }
+}
+function _botBuildPromptsBlock(prompts) {
+  if (!prompts || !prompts.length) return "";
+  const bullets = arr => (arr || "").split(/\||\n/).map(s => s.trim()).filter(Boolean).map(s => "     · " + s).join("\n");
+  const secs = prompts.map(p => {
+    const parts = [`### ${p.Nombre}`];
+    if (p.Objetivo)        parts.push(`   Objetivo: ${p.Objetivo}`);
+    if (p.Trigger)         parts.push(`   Detección (cuándo aplica):\n${bullets(p.Trigger)}`);
+    if (p.Datos_obtener)   parts.push(`   Datos a obtener del huésped:\n${bullets(p.Datos_obtener)}`);
+    if (p.Datos_compartir) parts.push(`   Datos que puedes compartir:\n${bullets(p.Datos_compartir)}`);
+    if (p.Reglas)          parts.push(`   Reglas del negocio (LÍNEAS DURAS — no negociables):\n${bullets(p.Reglas)}`);
+    if (p.Flujo)           parts.push(`   Flujo esperado:\n${bullets(p.Flujo)}`);
+    if (p.Riesgos)         parts.push(`   Riesgos / prohibiciones:\n${bullets(p.Riesgos)}`);
+    if (p.Herramienta)     parts.push(`   Herramienta vinculada: ${p.Herramienta}`);
+    return parts.join("\n");
+  }).join("\n\n");
+  return `
+
+═══════════════════════════════════════════════════════════════════════
+PROCESOS DEL NEGOCIO — reglas por proceso (los administradores las editan
+en el panel; síguelas SIEMPRE por encima de cualquier otra guía):
+═══════════════════════════════════════════════════════════════════════
+
+${secs}
+
+═══════════════════════════════════════════════════════════════════════`;
+}
+app.get("/wa/bot/prompts", async (req, res) => {
+  try {
+    const rows = await _botGetPrompts();
+    res.json({ ok: true, rows });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/wa/bot/prompts/all", async (req, res) => {
+  try {
+    const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=bot_prompts_list`);
+    const j = await r.json();
+    res.json(j);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/wa/bot/prompts", async (req, res) => {
+  try {
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "bot_prompts_upsert", ...(req.body || {}) }),
+    });
+    const j = await r.json();
+    _botPromptsCache = { ts: 0, rows: _botPromptsCache.rows }; // bust
+    res.json(j);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/wa/bot/prompts/delete", async (req, res) => {
+  try {
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "bot_prompts_delete", ...(req.body || {}) }),
+    });
+    const j = await r.json();
+    _botPromptsCache = { ts: 0, rows: _botPromptsCache.rows };
+    res.json(j);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/wa/bot/prompts/reload", (req, res) => {
+  _botPromptsCache = { ts: 0, rows: [] };
+  res.json({ ok: true, reloaded: true });
+});
 const BOT_ANTHROPIC_MAX_TOKENS = 500;
 
 // Cache in-memory (5 min TTL) para reducir round-trips a Apps Script.
@@ -1165,7 +1259,8 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       // una respuesta de captura de datos (nombre, alojamiento de interés,
       // fechas). NO accede a datos privados de otros huéspedes.
       console.info(`[bot-in] ${phone10}: sin reserva → lead entrante (modo captura)`);
-      const leadSystem = BOT_SYSTEM_PROMPT_BASE + `
+      const leadPromptsBlock = _botBuildPromptsBlock(await _botGetPrompts());
+      const leadSystem = BOT_SYSTEM_PROMPT_BASE + leadPromptsBlock + `
 
 CONTEXTO ESPECIAL — LEAD ENTRANTE SIN RESERVA
 No tenemos una reserva asociada a este número. Tu objetivo es SOLO capturar los datos mínimos para poder cotizar y armar la reserva:
@@ -1233,7 +1328,8 @@ REGLAS ESTRICTAS
     }
     // System prompt + Claude
     const context = _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings);
-    const system = BOT_SYSTEM_PROMPT_BASE + context;
+    const promptsBlock = _botBuildPromptsBlock(await _botGetPrompts());
+    const system = BOT_SYSTEM_PROMPT_BASE + promptsBlock + context;
     const history = (ctxResp.messages || []).slice(-10, -1); // excluir el user actual (ya guardado)
     // Anthropic solo acepta roles 'user' | 'assistant'. Nuestros roles
     // internos incluyen 'admin' (envío manual del panel), 'template'
@@ -1357,7 +1453,8 @@ Tienes acceso a las MISMAS herramientas que el bot cuando atiende al huésped. L
 Cuando llames herramientas que crean registro (reporte, late checkout), el sistema notifica automáticamente al admin en WhatsApp. No lo menciones en el texto para el huésped.
 
 INSTRUCCIÓN DEL ADMIN: ${prompt}
-${alojContext}`;
+${alojContext}
+${_botBuildPromptsBlock(await _botGetPrompts())}`;
     const history = (ctxResp.messages || []).slice(-10)
       .filter(m => m.role !== 'system')
       .map(m => ({ role: (m.role === 'admin' || m.role === 'template') ? 'assistant' : (m.role === 'user' ? 'user' : 'assistant'), body: m.body }));
