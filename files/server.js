@@ -690,9 +690,14 @@ async function _botExecTool(toolUse, ctx) {
       const j = await r.json();
       if (!j.ok) return { content: `Error al crear reporte: ${j.error || "desconocido"}`, notifyText: null };
       const folio = String(j.folio || j.id || "");
+      const resumen = `${alojLabel} · ${payload.Prioridad}\n${payload.Titulo}\nHuésped: ${ctx.phone10}${folio ? `\nFolio: ${folio}` : ""}`;
+      // Si es P1 (crítico), dispara ADEMÁS la lista de emergencia.
+      if (String(payload.Prioridad).toUpperCase() === "P1") {
+        _botNotifyEmergency(`🚨 REPORTE CRÍTICO (P1) vía bot\n${resumen}`);
+      }
       return {
         content: JSON.stringify({ ok: true, folio, mensaje: "Reporte creado. El equipo lo atenderá pronto." }),
-        notifyText: `🔧 Nuevo reporte de mantenimiento vía bot\n${alojLabel} · ${payload.Prioridad}\n${payload.Titulo}\nHuésped: ${ctx.phone10}${folio ? `\nFolio: ${folio}` : ""}`,
+        notifyText: `🔧 Nuevo reporte de mantenimiento vía bot\n${resumen}`,
       };
     }
     if (name === "agendar_late_checkout") {
@@ -941,6 +946,30 @@ async function _botIsAlojamientoEnabled(houseId) {
 // ─── Modo Prueba (in-memory) — el bot solo responde a números whitelisted ─
 // Predeterminado ENABLED para evitar responder a números no autorizados.
 let _BOT_TEST_MODE = { enabled: true, phones: ["+528444443922"] };
+// Lista in-memory de números que reciben notificación EXTRA cuando un
+// proceso crítico se ejecuta (por ahora: reporte P1). Se administra
+// desde la UI del módulo Chats bot (barra "Emergencia").
+let _BOT_EMERGENCY = { phones: [] };
+app.get("/wa/bot/emergency-phones", (req, res) => {
+  res.json({ ok: true, phones: (_BOT_EMERGENCY.phones || []).slice() });
+});
+app.post("/wa/bot/emergency-phones", (req, res) => {
+  const b = req.body || {};
+  if (Array.isArray(b.phones)) {
+    _BOT_EMERGENCY.phones = b.phones.map(p => String(p||'').trim()).filter(Boolean);
+  }
+  console.info(`[bot-emergency] phones=${JSON.stringify(_BOT_EMERGENCY.phones)}`);
+  res.json({ ok: true, phones: _BOT_EMERGENCY.phones });
+});
+/** Reenvía un texto a TODOS los números de la lista de emergencia. */
+async function _botNotifyEmergency(text) {
+  const list = (_BOT_EMERGENCY.phones || []).filter(Boolean);
+  if (!list.length) { console.info("[bot-emergency] lista vacía — skip"); return; }
+  for (const p of list) {
+    try { await _twilioSendMessage({ to: `whatsapp:${p}`, body: text, skipMirror: true }); }
+    catch (e) { console.warn(`[bot-emergency] falló ${p}:`, e.message); }
+  }
+}
 function _botTestNormalizePhone(s) {
   return String(s || "").replace(/\D/g, "").slice(-10);
 }
