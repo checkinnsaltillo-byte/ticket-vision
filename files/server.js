@@ -709,7 +709,9 @@ async function _botExecTool(toolUse, ctx) {
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload),
       });
-      const j = await r.json();
+      const rawTxt = await r.text();
+      let j; try { j = JSON.parse(rawTxt); } catch(_) { j = { ok:false, error: "respuesta no-JSON: " + rawTxt.slice(0,120) }; }
+      console.info(`[bot-tool late_checkout] AS response: ${JSON.stringify(j).slice(0,300)}`);
       if (!j.ok) return { content: `No pude registrar el cambio: ${j.error || "desconocido"}`, notifyText: null };
       return {
         content: JSON.stringify({ ok: true, hora, mensaje: "Solicitud registrada. Queda pendiente de confirmación por el equipo." }),
