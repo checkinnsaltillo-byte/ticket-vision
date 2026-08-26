@@ -530,7 +530,7 @@ HERRAMIENTAS DISPONIBLES Y CUÁNDO USARLAS:
    • Si falta un dato, pregunta SOLO por el que falta, breve y amable: "¿Para cuántas personas?" / "¿Qué día llegas?" / "¿Y cuándo te vas?". Nunca "necesito 3 datos: 1)... 2)...".
    • Cuando tengas los 3 datos, ANTES de llamar la tool envía un resumen para confirmar. Formato natural, ej: "Perfecto, entonces sería del 17 al 19 de septiembre para 2 personas. ¿Está bien así o quieres cambiar algo?". Espera confirmación explícita ("sí", "correcto", "adelante", "está bien"). SOLO ENTONCES llama la tool.
    • Si el huésped pide modificar algo en el resumen, ajusta el dato correspondiente y vuelve a mostrar el resumen actualizado antes de confirmar.
-   • Al recibir el resultado, presenta máximo 3 opciones en formato conciso (nombre + precio total + noches + link).
+   • Al recibir el resultado, envía SIEMPRE al huésped el campo "link_ver_resultados" del resultado — es la URL donde puede ver todas las opciones con fotos, precios y mapa. Formato de mensaje sugerido: 1-2 oraciones de contexto ("Encontré N alojamientos para esas fechas") + el link en línea aparte. NO listes cada alojamiento en el chat — con el link basta; la vista web presenta todo mejor.
 2) crear_reporte_mantenimiento — cuando el huésped reporte algo roto, que no funciona, fuga, ruido de electrodoméstico, etc. FLUJO OBLIGATORIO: (a) resume lo que entendiste ("Entiendo: [problema] en [lugar]. ¿Quieres que abra un reporte para que el equipo lo revise?"), (b) espera confirmación explícita del huésped ("sí", "adelante", "confirmo"), (c) SOLO ENTONCES llama la tool. Nunca la llames sin confirmación previa.
 3) agendar_late_checkout — cuando el huésped pida salir más tarde de la hora estándar. FLUJO OBLIGATORIO: (a) pregunta la nueva hora deseada si no la dio, (b) resume "Voy a solicitar tu salida a las HH:MM. Queda pendiente de confirmación por el equipo. ¿Adelante?", (c) espera "sí", (d) llama la tool. NO prometas que está aprobado — solo queda como solicitud pendiente.
 - Si el mensaje suena a queja, reclamo, emergencia, mención de dinero/cobros, o pide hablar con humano, NO respondas — el sistema escalará automáticamente.
@@ -632,12 +632,20 @@ async function _botExecTool(toolUse, ctx) {
         noches: x.nights,
         link_reservar: x.hostedUrl || null,
       }));
+      // Link a la página pública /reservas/ con los mismos filtros — para
+      // que el huésped abra la vista completa (cards + mapa) en el navegador.
+      const publicUrl = new URL("https://www.check-inn.mx/reservas/");
+      publicUrl.searchParams.set("rsv_arrival", String(args.arrival || ""));
+      publicUrl.searchParams.set("rsv_departure", String(args.departure || ""));
+      publicUrl.searchParams.set("rsv_adults", String(args.adults || 1));
+      publicUrl.searchParams.set("rsv_go", "1");
       return {
         content: JSON.stringify({
           encontrados: top.length,
           fechas: `${args.arrival} → ${args.departure}`,
           huespedes: args.adults,
           alojamientos: top,
+          link_ver_resultados: publicUrl.toString(),
         }),
         notifyText: null, // cotizar no notifica
       };
