@@ -4511,7 +4511,34 @@ app.get("/reservas/search", async (req, res) => {
     const results = settled
       .map(s => s.status === "fulfilled" ? s.value : null)
       .filter(Boolean);
-    res.json({ ok: true, count: results.length, results });
+    // ── Split Stay (DEMO) ──────────────────────────────────────────────
+    // Genera SIEMPRE una combinación ficticia de 2 alojamientos que juntos
+    // cubran el periodo, para poder validar visualmente el flujo en UI.
+    // En v2 reemplazar por algoritmo real que consulte /v2/availability
+    // por propiedad y arme combos reales cuando results.length === 0.
+    const splitStays = [];
+    if (results.length >= 2) {
+      const nights = Math.max(2, Math.round((new Date(departure) - new Date(arrival)) / 86_400_000));
+      const halfN = Math.max(1, Math.floor(nights / 2));
+      const mid = new Date(new Date(arrival).getTime() + halfN * 86_400_000).toISOString().slice(0, 10);
+      const p1 = results[0], p2 = results[1];
+      const perNight1 = (p1.total || 0) / Math.max(1, (p1.nights || nights));
+      const perNight2 = (p2.total || 0) / Math.max(1, (p2.nights || nights));
+      const sub1 = Math.round(perNight1 * halfN);
+      const sub2 = Math.round(perNight2 * (nights - halfN));
+      splitStays.push({
+        id: "ss-demo-1",
+        isDemo: true,
+        currency: p1.currency || "MXN",
+        nights,
+        total: sub1 + sub2,
+        legs: [
+          { step: 1, alojamiento: p1, arrival, departure: mid, nights: halfN, subtotal: sub1 },
+          { step: 2, alojamiento: p2, arrival: mid, departure, nights: nights - halfN, subtotal: sub2 },
+        ],
+      });
+    }
+    res.json({ ok: true, count: results.length, results, splitStays });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
