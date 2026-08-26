@@ -1043,7 +1043,10 @@ async function _botIsAlojamientoEnabled(houseId) {
 
 // ─── Modo Prueba (in-memory) — el bot solo responde a números whitelisted ─
 // Predeterminado ENABLED para evitar responder a números no autorizados.
-let _BOT_TEST_MODE = { enabled: true, phones: ["+528444443922"] };
+// Lista predeterminada del piloto — se restaura en cada arranque del
+// servicio (memoria in-memory). Editable desde la UI "Modo prueba" y esos
+// cambios sobreviven hasta el próximo redeploy de Cloud Run.
+let _BOT_TEST_MODE = { enabled: true, phones: ["+528444443922", "+528115569120", "+528110208743", "+528442798802"] };
 // Lista in-memory de números que reciben notificación EXTRA cuando un
 // proceso crítico se ejecuta (por ahora: reporte P1). Se administra
 // desde la UI del módulo Chats bot (barra "Emergencia").
