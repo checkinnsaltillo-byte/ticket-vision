@@ -203,8 +203,15 @@ app.get("/alojamientos-list", async (req, res) => {
   try {
     const now = Date.now();
     if (!_alojCache.payload || (now - _alojCache.ts) > ALOJ_CACHE_MS) {
-      _alojCache.payload = await callCheckinAppsScript("list_alojamientos");
-      _alojCache.ts = now;
+      try {
+        _alojCache.payload = await callCheckinAppsScript("list_alojamientos");
+        _alojCache.ts = now;
+      } catch (fetchErr) {
+        // Apps Script cayó/saturado. Si tenemos cache stale, servirlo
+        // (mejor un valor viejo que un 500 que bloquea toda la UI).
+        console.warn("[alojamientos-list] fetch falló:", fetchErr.message, "— sirvo stale:", !!_alojCache.payload);
+        if (!_alojCache.payload) throw fetchErr;
+      }
     }
     let payload = _alojCache.payload;
     const wantId = String(req.query.id || "").trim().toLowerCase();
@@ -364,13 +371,21 @@ async function _botGetAlojRows() {
   if (_botAlojRowsCache.rows && (Date.now() - _botAlojRowsCache.ts) < _BOT_CACHE_TTL) {
     return _botAlojRowsCache.rows;
   }
+  // Loop local — evita roundtrip por la red pública (que agrega latencia
+  // y a veces devuelve 500 cuando Apps Script se satura). Timeout duro
+  // de 5s para no atrancar el search si Apps Script tarda.
+  const ctrl = new AbortController();
+  const tm = setTimeout(() => ctrl.abort(), 5000);
   try {
-    const r = await fetch(`https://api.check-inn.mx/alojamientos-list`);
+    const r = await fetch(`http://127.0.0.1:${PORT}/alojamientos-list`, { signal: ctrl.signal });
     const j = await r.json();
     const rows = (j && j.rows) || [];
     _botAlojRowsCache.rows = rows; _botAlojRowsCache.ts = Date.now();
     return rows;
-  } catch (_) { return _botAlojRowsCache.rows || []; }
+  } catch (e) {
+    console.warn("[bot-aloj] fetch falló:", e.message);
+    return _botAlojRowsCache.rows || [];
+  } finally { clearTimeout(tm); }
 }
 
 /** Llama Claude Messages API. Devuelve { text, stop_reason, usage, tool_use }. */
