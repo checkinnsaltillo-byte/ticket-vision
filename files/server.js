@@ -1139,9 +1139,9 @@ async function _transcribeTwilioAudio(mediaUrl, mimeType) {
     enableAutomaticPunctuation: true,
     model: "latest_long",
   };
-  // WhatsApp/Twilio: notas de voz vienen como Opus mono 16 kHz. Google
+  // WhatsApp/Twilio: notas de voz vienen como Opus mono 48 kHz. Google
   // exige sampleRateHertz explícito para OGG_OPUS.
-  if (encoding === "OGG_OPUS") config.sampleRateHertz = 16000;
+  if (encoding === "OGG_OPUS") config.sampleRateHertz = 48000;
   const [resp] = await client.recognize({
     audio: { content: buf.toString("base64") },
     config,
