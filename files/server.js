@@ -1617,8 +1617,11 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     }
   }
   try {
-    // OPT: fire-and-forget para loguear msg entrante (no bloquea respuesta)
-    if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw }); bodyAlreadyPersisted = true; }
+    // AWAIT el append del user actual: sin esto, el fetch de conversación
+    // corre en paralelo y puede NO ver este mensaje ni los previos si el
+    // huésped manda varios mensajes en pocos segundos. Race típica que
+    // hacía al bot "olvidar" fechas ya dadas.
+    if (!bodyAlreadyPersisted) { await _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw }); bodyAlreadyPersisted = true; }
     // Intent sensible (queja / reembolso / legal): sólo AUTO-escala si el
     // modo actual es 'bot'. Si el admin ya está en supervised/manual/human,
     // respetamos su modo y sólo dejamos el mensaje visible en el panel.
@@ -1700,7 +1703,7 @@ REGLAS ESTRICTAS
           return;
         }
         await _twilioSendMessage({ to: fromRaw, body: replyText, skipMirror: true });
-        _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, lead: true, usage: llm.usage });
+        await _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, lead: true, usage: llm.usage });
         console.info(`[bot-out] ${phone10}: lead reply en total ${Date.now()-t0}ms`);
       } catch (e) {
         console.warn("[bot-in] lead LLM error:", e.message);
@@ -1774,7 +1777,7 @@ REGLAS ESTRICTAS
     }
     // Enviar respuesta (bloqueante) + persistir en background
     await _twilioSendMessage({ to: fromRaw, body: replyText, skipMirror: true });
-    _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, tools: (llm.toolsUsed || []).map(t => t.name) });
+    await _botAppendMessage(phone10, "assistant", replyText, { model: BOT_ANTHROPIC_MODEL, tools: (llm.toolsUsed || []).map(t => t.name) });
     console.info(`[bot-out] ${phone10}: total ${Date.now()-t0}ms · "${replyText.slice(0,80)}"`);
   } catch (err) {
     console.error("[bot] error:", err.message);
