@@ -1094,6 +1094,13 @@ Reglas:
   }
 }
 
+// ─── Modo prueba por admin ─────────────────────────────────────────────────
+// Un admin puede activar temporalmente que se le trate como huésped
+// enviando "modo prueba" (útil para probar el flujo huésped desde su
+// propio número). "modo admin" lo restaura. Estado en memoria — se
+// pierde en restart del container y vuelve a admin (default).
+const _bot_admin_guest_mode = new Map(); // phone10 → boolean
+
 // ─── Detección admin por teléfono (cachea 5min) ────────────────────────────
 const _bot_admin_cache = new Map(); // phone10 → { isAdmin, nombre, t }
 async function _botIsAdminPhone(phone10) {
@@ -1427,13 +1434,33 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // Ejecución directa sin cortesías. NO se persiste en WA_ChatContext
   // (nunca aparece en Chats bot). Los tools que ejecuta (crear_incidencia,
   // cotizar_disponibilidad, etc.) sí dejan su rastro en sus módulos.
-  // Modo ADMIN: SOLO se activa con prefijo "@". Sin "@", el mensaje va
-  // al flujo huésped normal (respetando reserva del admin cuando la
-  // tenga — el mismo número puede probar como huésped sin colisionar
-  // con el modo admin).
-  if (bodyMsg.startsWith("@")) {
-    const adm = await _botIsAdminPhone(phone10);
-    if (adm.isAdmin) {
+  // Modo ADMIN: DEFAULT para números admin. Cualquier mensaje del admin
+  // se procesa en modo admin (con o sin "@").
+  // Toggle "modo prueba" → el admin se trata como huésped hasta que diga
+  // "modo admin". Estado en memoria (Map global) — se resetea en restart.
+  const admCheck = await _botIsAdminPhone(phone10);
+  if (admCheck.isAdmin) {
+    const low = bodyMsg.toLowerCase().trim();
+    if (/^modo\s+(prueba|test|hu[eé]sped|guest)$/i.test(low)) {
+      _bot_admin_guest_mode.set(phone10, true);
+      const reply = `Modo prueba ACTIVADO. Te trato como huésped. Envía "modo admin" para volver.`;
+      await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
+      _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true });
+      _botAppendMessage(phone10, "assistant", reply, { admin: true, mode_toggle: "guest" });
+      return;
+    }
+    if (/^modo\s+(admin|prod|real|producci[oó]n)$/i.test(low)) {
+      _bot_admin_guest_mode.set(phone10, false);
+      const reply = `Modo admin ACTIVADO.`;
+      await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
+      _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true });
+      _botAppendMessage(phone10, "assistant", reply, { admin: true, mode_toggle: "admin" });
+      return;
+    }
+    const isGuestMode = _bot_admin_guest_mode.get(phone10) === true;
+    if (!isGuestMode) {
+      const adm = admCheck;
+      {
       const cmd = bodyMsg.replace(/^@\s*/, "").trim();
       console.info(`[bot-admin] ${phone10} (${adm.nombre}): ${cmd.slice(0,80)}`);
       // Persiste el mensaje admin en WA_ChatContext para que aparezca en
@@ -1475,8 +1502,11 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         await _twilioSendMessage({ to: fromRaw, body: `Error: ${e.message}`, skipMirror: true }).catch(()=>{});
       }
       return;
+      }
+    } // fin if (!isGuestMode) — admin en modo prueba cae al flujo huésped abajo.
+    else {
+      console.info(`[bot-in] ${phone10}: admin en modo prueba → flujo huésped`);
     }
-    console.info(`[bot-in] ${phone10}: msg con "@" pero no es admin — trato como huésped normal`);
   }
   // Modo Prueba: si activo, ignorar mensajes de números no incluidos en la
   // lista whitelisted. Aún guardamos el user msg para verlo en el panel.
