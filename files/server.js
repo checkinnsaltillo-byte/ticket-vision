@@ -1094,6 +1094,52 @@ Reglas:
   }
 }
 
+// ─── Transcripción audio WhatsApp (Google Cloud Speech-to-Text) ────────────
+// Descarga el audio de Twilio (basic auth), lo pasa a Speech-to-Text v1
+// en modelo "latest_long" con español y devuelve el texto.
+let _gcpSpeechClient = null;
+function _getSpeechClient() {
+  if (_gcpSpeechClient) return _gcpSpeechClient;
+  // Lazy require para no penalizar el cold-start del container si nunca
+  // llega un audio.
+  const { SpeechClient } = require("@google-cloud/speech");
+  _gcpSpeechClient = new SpeechClient();
+  return _gcpSpeechClient;
+}
+async function _transcribeTwilioAudio(mediaUrl, mimeType) {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  if (!sid || !token) throw new Error("TWILIO_ACCOUNT_SID/AUTH_TOKEN faltan");
+  // Descarga (Twilio requiere basic auth)
+  const auth = "Basic " + Buffer.from(`${sid}:${token}`).toString("base64");
+  const r = await fetch(mediaUrl, { headers: { Authorization: auth }, redirect: "follow" });
+  if (!r.ok) throw new Error(`Twilio media ${r.status}`);
+  const buf = Buffer.from(await r.arrayBuffer());
+  // Twilio WhatsApp manda audio en ogg/opus. Google Speech acepta OGG_OPUS
+  // sin sampleRateHertz (lo detecta del header). Para otros formatos
+  // (mpeg, wav) usamos ENCODING_UNSPECIFIED + autoDecodingConfig.
+  const mt = String(mimeType || "").toLowerCase();
+  const encoding = mt.includes("ogg") ? "OGG_OPUS"
+                 : mt.includes("wav") ? "LINEAR16"
+                 : mt.includes("mpeg") || mt.includes("mp3") ? "MP3"
+                 : "ENCODING_UNSPECIFIED";
+  const client = _getSpeechClient();
+  const [resp] = await client.recognize({
+    audio: { content: buf.toString("base64") },
+    config: {
+      encoding,
+      languageCode: "es-MX",
+      alternativeLanguageCodes: ["es-US", "es-ES"],
+      enableAutomaticPunctuation: true,
+      model: "latest_long",
+    },
+  });
+  const text = (resp.results || [])
+    .map(r => (r.alternatives && r.alternatives[0] && r.alternatives[0].transcript) || "")
+    .filter(Boolean).join(" ").trim();
+  return text;
+}
+
 // ─── Modo prueba por admin ─────────────────────────────────────────────────
 // Un admin puede activar temporalmente que se le trate como huésped
 // enviando "modo prueba" (útil para probar el flujo huésped desde su
@@ -1410,22 +1456,50 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   if (!fromRaw) return;
   const phone10 = fromRaw.replace(/\D/g, "").slice(-10);
   if (!phone10) return;
-  // Multimedia: si Twilio manda un audio/imagen/video, Body suele venir
-  // vacío. Registramos el mensaje en el panel (para que el admin lo vea)
-  // y avisamos que aún no procesamos audio. Sin esto, la nota de voz
-  // "desaparece" del hilo.
+  // Multimedia: si Twilio manda audio, lo transcribimos y usamos el
+  // texto como si el usuario lo hubiera escrito. Para imagen/video
+  // dejamos aviso (aún sin procesar) para no perder el mensaje.
+  let bodyAlreadyPersisted = false;
   const numMedia = parseInt(String(b.NumMedia || "0"), 10) || 0;
   if (!bodyMsg && numMedia > 0) {
     const mediaType = String(b.MediaContentType0 || "").toLowerCase();
-    const kind = /audio/.test(mediaType) ? "Nota de voz"
-               : /image/.test(mediaType) ? "Imagen"
-               : /video/.test(mediaType) ? "Video"
-               : "Archivo adjunto";
-    _botAppendMessage(phone10, "user", `[${kind}]`, { from: fromRaw, media: true, media_type: mediaType });
-    const aviso = `Recibimos tu ${kind.toLowerCase()}. Por ahora no procesamos audio/media — un miembro del equipo lo revisará. Si es urgente, escribe el mensaje. 🙏`;
-    await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
-    _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
-    return;
+    const mediaUrl = String(b.MediaUrl0 || "");
+    if (/audio/.test(mediaType) && mediaUrl) {
+      try {
+        const t = Date.now();
+        const texto = await _transcribeTwilioAudio(mediaUrl, mediaType);
+        console.info(`[bot-in] ${phone10}: audio transcrito en ${Date.now()-t}ms · "${(texto||'').slice(0,80)}"`);
+        if (texto) {
+          // Persistimos el mensaje con la transcripción visible en el panel
+          // y le prependemos "🎙" para que el admin sepa que vino de audio.
+          _botAppendMessage(phone10, "user", `🎙 ${texto}`, { from: fromRaw, media: true, media_type: mediaType, transcribed: true });
+          bodyMsg = texto; // continúa el flujo normal (admin o huésped)
+          bodyAlreadyPersisted = true; // evita duplicar el user msg abajo
+        } else {
+          _botAppendMessage(phone10, "user", "[Nota de voz sin voz reconocible]", { from: fromRaw, media: true, media_type: mediaType });
+          const aviso = "No pude escuchar bien tu nota de voz. ¿Podrías reenviarla o escribir el mensaje? 🙏";
+          await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
+          _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
+          return;
+        }
+      } catch (e) {
+        console.warn("[bot-in] transcripción falló:", e.message);
+        _botAppendMessage(phone10, "user", "[Nota de voz — error al transcribir]", { from: fromRaw, media: true, media_type: mediaType, error: e.message });
+        const aviso = "Recibí tu nota de voz pero no pude transcribirla. ¿Podrías escribirla? 🙏";
+        await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
+        _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
+        return;
+      }
+    } else {
+      const kind = /image/.test(mediaType) ? "Imagen"
+                 : /video/.test(mediaType) ? "Video"
+                 : "Archivo adjunto";
+      _botAppendMessage(phone10, "user", `[${kind}]`, { from: fromRaw, media: true, media_type: mediaType });
+      const aviso = `Recibimos tu ${kind.toLowerCase()}. Por ahora solo procesamos audio y texto — un miembro del equipo lo revisará. 🙏`;
+      await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
+      _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
+      return;
+    }
   }
   if (!bodyMsg) return;
   const t0 = Date.now();
@@ -1445,7 +1519,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       _bot_admin_guest_mode.set(phone10, true);
       const reply = `Modo prueba ACTIVADO. Te trato como huésped. Envía "modo admin" para volver.`;
       await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
-      _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true });
+      if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true }); bodyAlreadyPersisted = true; }
       _botAppendMessage(phone10, "assistant", reply, { admin: true, mode_toggle: "guest" });
       return;
     }
@@ -1453,7 +1527,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       _bot_admin_guest_mode.set(phone10, false);
       const reply = `Modo admin ACTIVADO.`;
       await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
-      _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true });
+      if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true }); bodyAlreadyPersisted = true; }
       _botAppendMessage(phone10, "assistant", reply, { admin: true, mode_toggle: "admin" });
       return;
     }
@@ -1466,7 +1540,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       // Persiste el mensaje admin en WA_ChatContext para que aparezca en
       // el panel Chats bot (con flag admin:true para que el frontend
       // pueda estilizarlo si lo desea).
-      _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true });
+      if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true }); bodyAlreadyPersisted = true; }
       try {
         // Inyecta fecha actual en el system prompt (Claude no la sabe
         // por sí mismo; sin esto interpreta "octubre" como cualquier año).
@@ -1514,13 +1588,13 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     const allowed = _botTestGetAllowedSet();
     if (!allowed.has(phone10)) {
       console.info(`[bot-in] ${phone10}: TEST MODE — solo responde a [${Array.from(allowed).join(', ')}], skip`);
-      _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw });
+      if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw }); bodyAlreadyPersisted = true; }
       return;
     }
   }
   try {
     // OPT: fire-and-forget para loguear msg entrante (no bloquea respuesta)
-    _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw });
+    if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw }); bodyAlreadyPersisted = true; }
     // Intent sensible (queja / reembolso / legal): sólo AUTO-escala si el
     // modo actual es 'bot'. Si el admin ya está en supervised/manual/human,
     // respetamos su modo y sólo dejamos el mensaje visible en el panel.
