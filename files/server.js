@@ -674,6 +674,26 @@ REGLA CRÍTICA — CERO ALUCINACIONES (LA MÁS IMPORTANTE):
 CONTEXTO DEL ALOJAMIENTO DEL HUÉSPED:
 `;
 
+// ─── MODO ADMIN (prefijo "@") ──────────────────────────────────────────────
+// Cuando un admin (número en sys_users con Puesto="Administración") empieza
+// su mensaje con "@", entramos a este modo: sin cortesías, ejecución directa
+// del proceso. Los mensajes admin NO se persisten en WA_ChatContext (no
+// aparecen en Chats bot). Las incidencias creadas SÍ quedan en la hoja
+// Incidencias y aparecen en su módulo.
+const BOT_SYSTEM_PROMPT_ADMIN = `Eres el asistente admin de Check-inn Saltillo. Tu interlocutor es un ADMINISTRADOR del sistema (no un huésped).
+
+REGLAS:
+- Cero cortesías. Sin saludos, sin "claro que sí", sin firmas. Respuestas ejecutivas de 1-3 líneas.
+- NO pidas confirmación antes de ejecutar tools — el admin ya validó su intención al escribir "@".
+- Si el admin escribe fechas y personas ("del 10 al 18 de octubre, 2 personas") → invoca cotizar_disponibilidad de inmediato. Infiere el año actual o el próximo si la fecha ya pasó.
+- Si el admin escribe "@incidencia, <alojamiento_shortcode>, <descripción>, <criticidad>" → invoca crear_incidencia con:
+  · alojamiento_shortcode: el segundo campo (ej. "jc2", "mt10", "cu4b"), tal cual el admin lo escribió.
+  · descripcion: el texto completo del problema (tercer campo, o todo lo que sigue).
+  · criticidad: "critico" | "alto" | "medio" | "bajo" según el último campo o el tono ("crítico", "urgente" → critico; sin adjetivo → medio).
+- Si falta un dato crítico (ej. fechas incompletas), pídelo en UNA línea.
+- Al recibir el resultado de una tool, resume el resultado en 1-2 líneas + el link/folio relevante. Sin adornos.
+`;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ║ BOT TOOLS — cotizar, crear reporte técnico, agendar late checkout        ║
 // ║ Ver /wa/bot/tools-doc para la referencia. Cada tool tiene un schema      ║
@@ -719,6 +739,19 @@ const BOT_TOOLS = [
       properties: {
         filtro: { type: "string", description: "Opcional: palabra clave para filtrar por título/descripción (ej. 'hormigas', 'aire', 'agua'). Vacío = todos los del alojamiento." },
       },
+    },
+  },
+  {
+    name: "crear_incidencia",
+    description: "Crea una incidencia (limpieza / mantenimiento / insumos) en el módulo Incidencias. SÓLO se expone en modo ADMIN. La incidencia queda registrada SIN reserva asignada. Los campos 'Motivos' y 'Clasificacion' se autoclasifican en el backend a partir de la descripción — tú solo pasa alojamiento_shortcode, descripcion y criticidad.",
+    input_schema: {
+      type: "object",
+      properties: {
+        alojamiento_shortcode: { type: "string", description: "Código corto o internal_name del alojamiento tal como lo escribió el admin (ej. 'jc2', 'mt10', 'cu4b'). Case-insensitive." },
+        descripcion:           { type: "string", description: "Descripción de la incidencia tal como la reportó el admin, sin adornos." },
+        criticidad:            { type: "string", enum: ["critico","alto","medio","bajo"], description: "Nivel de severidad." },
+      },
+      required: ["alojamiento_shortcode", "descripcion", "criticidad"],
     },
   },
   {
@@ -915,10 +948,136 @@ async function _botExecTool(toolUse, ctx) {
         notifyText: `🕐 Solicitud de late checkout vía bot\n${alojLabel}\nNueva hora: ${hora}${nombreLc ? `\nHuésped: ${nombreLc} (${ctx.phone10})` : `\nHuésped: ${ctx.phone10}`}${fechasLc ? `\nReserva: ${fechasLc}` : ""}${medioLc ? `\nMedio: ${medioLc}` : ""}`,
       };
     }
+    if (name === "crear_incidencia") {
+      const shortcode = String(args.alojamiento_shortcode || "").trim();
+      const descripcion = String(args.descripcion || "").trim();
+      const criticidad = String(args.criticidad || "medio").toLowerCase();
+      if (!shortcode || !descripcion) {
+        return { content: JSON.stringify({ ok:false, error:"Faltan alojamiento_shortcode o descripcion" }), notifyText: null };
+      }
+      // 1) Resolver alojamiento por internal_name (Lodgify) contra el
+      //    catálogo local. Usamos la lista completa paginada.
+      const propsAll = await _lodgifyFetchAllProperties().catch(() => []);
+      const scLow = shortcode.toLowerCase().replace(/\s+/g, "");
+      const alojRows = await _botGetAlojRows().catch(() => []);
+      // Matcheo por internal_name (Lodgify) y por HouseId como fallback.
+      const propMatch = propsAll.find(p => String(p.internal_name || "").toLowerCase().replace(/\s+/g,"") === scLow)
+                     || propsAll.find(p => String(p.id) === shortcode);
+      const houseId = propMatch ? String(propMatch.id) : "";
+      const rowMatch = houseId
+        ? alojRows.find(r => String(r.HouseId || "") === houseId)
+        : null;
+      const propiedad = (rowMatch && rowMatch.Propiedad) || (propMatch && propMatch.name) || shortcode;
+      const depto = (rowMatch && rowMatch["# Departamento"]) || "";
+      const alojLabel = propiedad + (depto ? ` #${depto}` : "");
+      if (!propMatch) {
+        const validos = alojRows
+          .map(r => String(r.internal_name || r.HouseName || "").trim())
+          .filter(Boolean).slice(0, 20).join(", ");
+        return { content: JSON.stringify({ ok:false, error:`Shortcode '${shortcode}' no encontrado. Válidos (parcial): ${validos}` }), notifyText: null };
+      }
+      // 2) Autoclasificar Motivos + Clasificacion via LLM.
+      const clas = await _botAutoClasificarIncidencia(descripcion);
+      // 3) Mapear criticidad al enum del módulo (Baja/Media/Alta/Crítica).
+      const nivelMap = { critico: "Crítica", alto: "Alta", medio: "Media", bajo: "Baja" };
+      const nivel = nivelMap[criticidad] || "Media";
+      // 4) Guardar via /save-incidencia (Apps Script). Sin reserva asignada.
+      const payload = {
+        Fecha: new Date().toISOString().slice(0,10),
+        Propiedad: propiedad,
+        "# Departamento": depto,
+        Alojamiento: alojLabel,
+        Personas: "",
+        Motivos: (clas.motivos || []).join(", "),
+        Clasificacion: (clas.clasificaciones || []).join(", "),
+        Nivel: nivel,
+        Estatus: "Abierta",
+        Reportante: `Admin (bot) · ${ctx.phone10}`,
+        Descripcion: descripcion,
+        Acciones: "",
+        Seguimiento: "",
+      };
+      const r = await fetch(`http://127.0.0.1:${PORT}/save-incidencia`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload }),
+      });
+      const j = await r.json();
+      if (!j.ok) return { content: JSON.stringify({ ok:false, error: j.error || "Error backend" }), notifyText: null };
+      const id = j.id || "";
+      return {
+        content: JSON.stringify({
+          ok: true, id, alojamiento: alojLabel, nivel,
+          motivos: clas.motivos, clasificaciones: clas.clasificaciones,
+          mensaje: `Incidencia ${id} registrada.`,
+        }),
+        notifyText: `📋 Incidencia via bot admin\n${alojLabel} · ${nivel}\n${(clas.motivos||[]).join(", ")} · ${(clas.clasificaciones||[]).join(", ")}\n${descripcion.slice(0,140)}\nFolio: ${id}`,
+      };
+    }
     return { content: `Tool desconocida: ${name}`, notifyText: null };
   } catch (e) {
     console.error(`[bot-tool ${name}] error:`, e.message);
     return { content: `Error ejecutando ${name}: ${e.message}`, notifyText: null };
+  }
+}
+
+// ─── Autoclasificación Motivos/Clasificacion ───────────────────────────────
+// Enum canónico — DEBE mantenerse sincronizado con app.js INC_CLASIF_POR_MOTIVO.
+const _BOT_INC_ENUM = {
+  Limpieza:     ["Baño sucio","Sábanas sucias","Basura detectada","Plaga o insectos"],
+  Mantenimiento:["Fuga de agua","Falla eléctrica","Falla de electrodomésticos","Ausencia de controles"],
+  Insumos:      ["Toallas faltantes","Pilas faltantes","Productos de limpieza faltantes"],
+};
+async function _botAutoClasificarIncidencia(descripcion) {
+  const enumTxt = Object.entries(_BOT_INC_ENUM)
+    .map(([m, list]) => `${m}: ${list.join(" | ")}`).join("\n");
+  const system = `Eres un clasificador. Recibes la descripción de una incidencia y devuelves JSON estricto con los motivos y clasificaciones aplicables del enum. Sin texto extra.
+
+ENUM:
+${enumTxt}
+
+Reglas:
+- "motivos" es un subconjunto de: Limpieza, Mantenimiento, Insumos.
+- "clasificaciones" solo puede contener valores del ENUM de los motivos elegidos.
+- Puedes elegir múltiples si la descripción cubre varios (ej. "baño sucio y sin papel" → motivos:[Limpieza,Insumos]).
+- Si NADA aplica claramente, devuelve {"motivos":[],"clasificaciones":[]}.
+- Respuesta EXCLUSIVA: JSON válido, sin markdown.`;
+  try {
+    const out = await _llmChat({
+      system,
+      history: [],
+      userMsg: `Descripción: "${descripcion}"\nDevuelve JSON.`,
+    });
+    const txt = String(out.text || "").trim();
+    const json = txt.replace(/^```json?\s*|\s*```$/g, "");
+    const parsed = JSON.parse(json);
+    return {
+      motivos: Array.isArray(parsed.motivos) ? parsed.motivos.filter(m => _BOT_INC_ENUM[m]) : [],
+      clasificaciones: Array.isArray(parsed.clasificaciones) ? parsed.clasificaciones.filter(c =>
+        Object.values(_BOT_INC_ENUM).some(list => list.includes(c))
+      ) : [],
+    };
+  } catch (e) {
+    console.warn("[bot-autoclas] fallo:", e.message);
+    return { motivos: [], clasificaciones: [] };
+  }
+}
+
+// ─── Detección admin por teléfono (cachea 5min) ────────────────────────────
+const _bot_admin_cache = new Map(); // phone10 → { isAdmin, nombre, t }
+async function _botIsAdminPhone(phone10) {
+  const cached = _bot_admin_cache.get(phone10);
+  if (cached && (Date.now() - cached.t) < 5 * 60_000) return cached;
+  try {
+    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=bot_is_admin_phone&phone10=${encodeURIComponent(phone10)}`;
+    const r = await fetch(url);
+    const j = await r.json();
+    const rec = { isAdmin: !!j.isAdmin, nombre: String(j.nombre || ""), t: Date.now() };
+    _bot_admin_cache.set(phone10, rec);
+    return rec;
+  } catch (e) {
+    console.warn("[bot-admin] check fallo:", e.message);
+    return { isAdmin: false, nombre: "", t: Date.now() };
   }
 }
 
@@ -936,17 +1095,22 @@ async function _botNotifyAdmin(text) {
 /** Loop de resolución de tools: llama LLM, ejecuta tool si Claude lo pide,
  *  vuelve a llamar con el resultado, hasta obtener respuesta de texto
  *  (o hit del cap de 4 iteraciones). Devuelve { text, toolsUsed }. */
-async function _botLlmLoop({ system, history, userMsg, ctx }) {
+async function _botLlmLoop({ system, history, userMsg, ctx, tools }) {
   const runMessages = (history || []).map(m => ({ role: m.role, content: String(m.body || m.content || "") }));
   runMessages.push({ role: "user", content: String(userMsg || "") });
   const toolsUsed = [];
+  // Si no se pasa tools, exponemos BOT_TOOLS excepto crear_incidencia
+  // (esa es exclusiva del modo admin — el modo huésped no debe verla).
+  const activeTools = Array.isArray(tools) && tools.length
+    ? tools
+    : BOT_TOOLS.filter(t => t.name !== "crear_incidencia");
   for (let iter = 0; iter < 4; iter++) {
     const body = {
       model: BOT_ANTHROPIC_MODEL,
       max_tokens: BOT_ANTHROPIC_MAX_TOKENS,
       system: String(system || ""),
       messages: runMessages,
-      tools: BOT_TOOLS,
+      tools: activeTools,
     };
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -1210,6 +1374,35 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   if (!phone10) return;
   const t0 = Date.now();
   console.info(`[bot-in] ${phone10}: ${bodyMsg.slice(0,80)}`);
+  // ─── Modo ADMIN: mensajes que empiezan con "@" desde un número admin ──
+  // Ejecución directa sin cortesías. NO se persiste en WA_ChatContext
+  // (nunca aparece en Chats bot). Los tools que ejecuta (crear_incidencia,
+  // cotizar_disponibilidad, etc.) sí dejan su rastro en sus módulos.
+  if (bodyMsg.startsWith("@")) {
+    const adm = await _botIsAdminPhone(phone10);
+    if (adm.isAdmin) {
+      const cmd = bodyMsg.replace(/^@\s*/, "").trim();
+      console.info(`[bot-admin] ${phone10} (${adm.nombre}): ${cmd.slice(0,80)}`);
+      try {
+        const llm = await _botLlmLoop({
+          system: BOT_SYSTEM_PROMPT_ADMIN,
+          history: [],
+          userMsg: cmd,
+          ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: true },
+          tools: BOT_TOOLS, // modo admin: expone todos, incluida crear_incidencia
+        });
+        for (const t of (llm.toolsUsed || [])) { if (t.notifyText) _botNotifyAdmin(t.notifyText); }
+        const reply = String(llm.text || "").trim() || "OK.";
+        await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true });
+        console.info(`[bot-admin] ${phone10}: reply en ${Date.now()-t0}ms · "${reply.slice(0,80)}"`);
+      } catch (e) {
+        console.error("[bot-admin] error:", e.message);
+        await _twilioSendMessage({ to: fromRaw, body: `Error: ${e.message}`, skipMirror: true }).catch(()=>{});
+      }
+      return;
+    }
+    console.info(`[bot-in] ${phone10}: msg con "@" pero no es admin — trato como huésped normal`);
+  }
   // Modo Prueba: si activo, ignorar mensajes de números no incluidos en la
   // lista whitelisted. Aún guardamos el user msg para verlo en el panel.
   if (_BOT_TEST_MODE.enabled) {
@@ -4494,12 +4687,19 @@ let _lodgifyPropsCache = { t: 0, data: null };
 // fuera propiedades nuevas (ej. Matamoros #10 id 704167).
 async function _lodgifyFetchAllProperties() {
   const all = [];
-  const MAX_PAGES = 20; // 20 × 100 = 2000 propiedades — margen sobrado.
+  const MAX_PAGES = 40;
+  const seen = new Set();
   for (let page = 1; page <= MAX_PAGES; page++) {
     const j = await _lodgifyFetch("/v2/properties", { size: 100, page });
     const list = Array.isArray(j) ? j : (j.items || j.results || []);
-    all.push(...list);
-    if (list.length < 100) break;
+    if (!list.length) break;
+    let added = 0;
+    for (const p of list) {
+      const id = String(p && p.id);
+      if (seen.has(id)) continue;
+      seen.add(id); all.push(p); added++;
+    }
+    if (added === 0) break;
   }
   return all;
 }
