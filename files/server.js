@@ -3002,9 +3002,28 @@ app.get("/lodgify-bookings-all", async (req, res) => {
         Pets: 0,
         Currency: b.currency_code || "MXN",
       };
-      const tx = Array.isArray(b.quote && b.quote.amounts_breakdown) ? b.quote.amounts_breakdown
-              : Array.isArray(b.amount_breakdown) ? b.amount_breakdown
-              : Array.isArray(b.transactions) ? b.transactions : [];
+      // Lodgify v2 devuelve el desglose en `subtotals` — NO en
+      // `amount_breakdown` (siempre null) ni en `transactions` (pagos).
+      // Mapeamos: stay→RoomRate, fees→Fee, taxes→Tax. Ignoramos promotions
+      // (descuentos) y addons/vat aparte para no duplicar.
+      let tx = [];
+      const st = (b && b.subtotals) || {};
+      const stayN  = Number(st.stay)  || 0;
+      const feesN  = Number(st.fees)  || 0;
+      const taxesN = Number(st.taxes) || 0;
+      const promoN = Number(st.promotions) || 0;
+      const addonsN= Number(st.addons) || 0;
+      if (stayN)   tx.push({ type: "RoomRate",   description: "Tarifa hospedaje", gross_amount: stayN });
+      if (feesN)   tx.push({ type: "Fee",        description: "Tarifa limpieza",  gross_amount: feesN });
+      if (taxesN)  tx.push({ type: "Tax",        description: "Impuestos",        gross_amount: taxesN });
+      if (addonsN) tx.push({ type: "Addon",      description: "Extras",            gross_amount: addonsN });
+      if (promoN)  tx.push({ type: "Promotion",  description: "Descuento",         gross_amount: -promoN });
+      // Fallback si subtotals no está: intentar amount_breakdown o transactions.
+      if (!tx.length) {
+        tx = Array.isArray(b.quote && b.quote.amounts_breakdown) ? b.quote.amounts_breakdown
+           : Array.isArray(b.amount_breakdown) ? b.amount_breakdown
+           : Array.isArray(b.transactions) ? b.transactions : [];
+      }
       if (!tx.length) {
         // Reserva sin presupuesto/line-items — emite UNA fila con totales en 0
         rows.push({ ...baseRow, LineItem: "", LineItemDescription: "", GrossAmount: Number(b.total_amount) || 0, NetAmount: 0, VatAmount: 0 });
