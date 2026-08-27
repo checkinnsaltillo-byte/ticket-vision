@@ -1427,13 +1427,13 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // Ejecución directa sin cortesías. NO se persiste en WA_ChatContext
   // (nunca aparece en Chats bot). Los tools que ejecuta (crear_incidencia,
   // cotizar_disponibilidad, etc.) sí dejan su rastro en sus módulos.
-  // Modo ADMIN: si el teléfono es de un admin, TODOS sus mensajes se
-  // procesan en modo admin (el "@" es opcional; sirve como marcador
-  // explícito pero no es requerido). Esto permite follow-ups sin @.
-  const admCheck = await _botIsAdminPhone(phone10);
-  if (admCheck.isAdmin) {
-    const adm = admCheck;
-    {
+  // Modo ADMIN: SOLO se activa con prefijo "@". Sin "@", el mensaje va
+  // al flujo huésped normal (respetando reserva del admin cuando la
+  // tenga — el mismo número puede probar como huésped sin colisionar
+  // con el modo admin).
+  if (bodyMsg.startsWith("@")) {
+    const adm = await _botIsAdminPhone(phone10);
+    if (adm.isAdmin) {
       const cmd = bodyMsg.replace(/^@\s*/, "").trim();
       console.info(`[bot-admin] ${phone10} (${adm.nombre}): ${cmd.slice(0,80)}`);
       // Persiste el mensaje admin en WA_ChatContext para que aparezca en
@@ -1476,6 +1476,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       }
       return;
     }
+    console.info(`[bot-in] ${phone10}: msg con "@" pero no es admin — trato como huésped normal`);
   }
   // Modo Prueba: si activo, ignorar mensajes de números no incluidos en la
   // lista whitelisted. Aún guardamos el user msg para verlo en el panel.
