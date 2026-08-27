@@ -2909,7 +2909,10 @@ app.get("/lodgify-bookings-all", async (req, res) => {
     const items = [];
     let page = 1;
     let hasMore = true;
-    const MAX_PAGES = 100;
+    // MAX_PAGES=500 (× 100 size = 50k bookings). Suficiente para varios
+    // años de operación. Antes era 100 → cortaba a los 10k bookings
+    // ordenados por Lodgify y dejaba fuera el resto.
+    const MAX_PAGES = 500;
     while (hasMore && page <= MAX_PAGES) {
       const url = `https://api.lodgify.com/v2/reservations/bookings?stayFilter=All&page=${page}&size=100&includeCount=true&updatedSince=${encodeURIComponent(updatedSince)}T00:00:00`;
       const r = await fetch(url, { headers: { "X-ApiKey": apiKey, accept:"application/json" }});
