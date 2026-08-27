@@ -4489,6 +4489,20 @@ app.post("/kommo/refresh-contact-timeline", async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════
 const LODGIFY_API = "https://api.lodgify.com";
 let _lodgifyPropsCache = { t: 0, data: null };
+// Trae TODAS las propiedades paginando /v2/properties. Lodgify tope
+// por página = 100. Sin esto solo devolvía las primeras 100, dejando
+// fuera propiedades nuevas (ej. Matamoros #10 id 704167).
+async function _lodgifyFetchAllProperties() {
+  const all = [];
+  const MAX_PAGES = 20; // 20 × 100 = 2000 propiedades — margen sobrado.
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const j = await _lodgifyFetch("/v2/properties", { size: 100, page });
+    const list = Array.isArray(j) ? j : (j.items || j.results || []);
+    all.push(...list);
+    if (list.length < 100) break;
+  }
+  return all;
+}
 async function _lodgifyFetch(path, params) {
   const key = process.env.LODGIFY_API_KEY;
   if (!key) throw new Error("LODGIFY_API_KEY no configurada");
@@ -4509,8 +4523,7 @@ app.get("/reservas/properties", async (_req, res) => {
     if (_lodgifyPropsCache.data && (now - _lodgifyPropsCache.t) < 5 * 60_000) {
       return res.json({ ok: true, cached: true, properties: _lodgifyPropsCache.data });
     }
-    const j = await _lodgifyFetch("/v2/properties", { size: 100, includeInOut: false });
-    const list = Array.isArray(j) ? j : (j.items || j.results || []);
+    const list = await _lodgifyFetchAllProperties();
     _lodgifyPropsCache = { t: now, data: list };
     res.json({ ok: true, cached: false, properties: list });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
@@ -4565,8 +4578,7 @@ app.get("/reservas/search", async (req, res) => {
     const [pjOrCache, alojRows] = await Promise.all([
       (_lodgifyPropsCache.data && (now - _lodgifyPropsCache.t) < 5 * 60_000)
         ? Promise.resolve(_lodgifyPropsCache.data)
-        : _lodgifyFetch("/v2/properties", { size: 100 }).then(pj => {
-            const list = Array.isArray(pj) ? pj : (pj.items || pj.results || []);
+        : _lodgifyFetchAllProperties().then(list => {
             _lodgifyPropsCache = { t: now, data: list };
             return list;
           }),
