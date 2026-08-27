@@ -1164,6 +1164,22 @@ async function _transcribeTwilioAudio(mediaUrl, mimeType) {
   return text;
 }
 
+// ─── Mutex por teléfono ────────────────────────────────────────────────────
+// Serializa el procesamiento de mensajes entrantes por número. Sin esto,
+// dos notas de voz consecutivas del mismo huésped se procesan en paralelo:
+// la 2da leve el historial ANTES de que la 1ra haya persistido su
+// respuesta, así el bot "olvida" datos y repregunta.
+const _bot_phone_locks = new Map(); // phone10 → Promise
+async function _botLockPhone(phone10, fn) {
+  const prev = _bot_phone_locks.get(phone10) || Promise.resolve();
+  const next = prev.catch(() => {}).then(fn);
+  _bot_phone_locks.set(phone10, next);
+  try { return await next; }
+  finally {
+    if (_bot_phone_locks.get(phone10) === next) _bot_phone_locks.delete(phone10);
+  }
+}
+
 // ─── Modo prueba por admin ─────────────────────────────────────────────────
 // Un admin puede activar temporalmente que se le trate como huésped
 // enviando "modo prueba" (útil para probar el flujo huésped desde su
@@ -1480,6 +1496,10 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   if (!fromRaw) return;
   const phone10 = fromRaw.replace(/\D/g, "").slice(-10);
   if (!phone10) return;
+  // Serializar por teléfono: garantiza que mensajes del mismo huésped se
+  // procesen en orden estricto (crítico para que el bot vea el historial
+  // completo antes de responder al siguiente turno).
+  await _botLockPhone(phone10, async () => {
   // Multimedia: si Twilio manda audio, lo transcribimos y usamos el
   // texto como si el usuario lo hubiera escrito. Para imagen/video
   // dejamos aviso (aún sin procesar) para no perder el mensaje.
@@ -1784,6 +1804,7 @@ REGLAS ESTRICTAS
     // Error interno: NO cambiar modo. El admin ya eligió su modo — si algo
     // falla, el mensaje del huésped queda en el panel y el admin decide.
   }
+  }); // fin _botLockPhone
 });
 
 /** GET /wa/webhook-inbound — solo para verificación de Twilio (echo simple). */
