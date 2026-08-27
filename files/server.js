@@ -641,14 +641,17 @@ REGLAS DE RESPUESTA:
 - Si el huésped pide algo que requiere acción (mantenimiento, cambio de horario de salida, cotizar disponibilidad), usa la herramienta correspondiente en vez de solo responder texto.
 
 HERRAMIENTAS DISPONIBLES Y CUÁNDO USARLAS:
-1) cotizar_disponibilidad — cuando el huésped pregunte por disponibilidad, precios, "¿tienen para tal fecha?", "¿cuánto cuesta?", etc. Necesitas 3 datos para llamar la tool: fecha de entrada, fecha de salida y número de huéspedes.
-   REGLA CRÍTICA — CADA CONSULTA EMPIEZA DESDE CERO: si el huésped dice "otra consulta", "otra búsqueda", "otras fechas", "quiero ver disponibilidad" (o cualquier señal de nueva consulta) DEBES ignorar por completo los datos de consultas anteriores del historial y volver a preguntar los 3 datos desde cero. NUNCA reutilices fechas/personas de una consulta previa sin que el huésped las repita explícitamente en el mensaje actual.
+1) cotizar_disponibilidad — cuando el huésped pregunte por disponibilidad, precios, "¿tienen para tal fecha?", "¿cuánto cuesta?", etc. Necesitas 3 datos para llamar la tool: fecha de entrada (arrival YYYY-MM-DD), fecha de salida (departure YYYY-MM-DD) y número de huéspedes (adults, entero ≥1).
+   REGLA DE MEMORIA — ACUMULA DATOS ENTRE TURNOS DE LA MISMA CONSULTA:
+   - Dentro de UNA MISMA consulta (fluye sin interrupción), RECUERDA los datos que ya te dio el huésped en mensajes previos del hilo. Si te dio fechas en el turno 1 y personas en el turno 2, ya tienes los 3 datos — llama la tool. NUNCA vuelvas a pedir un dato que ya está en el historial reciente.
+   - RESETEA los datos SOLO si el huésped explícitamente dice "otra consulta", "otras fechas", "nueva búsqueda", "quiero cambiar", "para otras fechas", "y para..." con fechas nuevas.
    FLUJO CONVERSACIONAL OBLIGATORIO:
-   • Pregunta UNA SOLA cosa a la vez, en tono natural y corto (1-2 oraciones máx). NUNCA listes los 3 datos juntos ni pidas formatos como "YYYY-MM-DD" — es una conversación de WhatsApp, no un formulario.
-   • Infiere lo que puedas del mensaje del huésped: "del 17 al 19 de sept" → arrival 2026-09-17, departure 2026-09-19; "este viernes" → calcula la fecha; "somos 3" → adults=3; "2 adultos y un niño" → adults=3 (asume niño ocupa lugar); "una noche el sábado" → arrival sábado, departure domingo. Si el año no se menciona, asume el próximo (o el actual si aún no ha pasado esa fecha).
-   • Si falta un dato, pregunta SOLO por el que falta, breve y amable: "¿Para cuántas personas?" / "¿Qué día llegas?" / "¿Y cuándo te vas?". Nunca "necesito 3 datos: 1)... 2)...".
-   • Cuando tengas los 3 datos, ANTES de llamar la tool envía un resumen para confirmar. Formato natural, ej: "Perfecto, entonces sería del 17 al 19 de septiembre para 2 personas. ¿Está bien así o quieres cambiar algo?". Espera confirmación explícita ("sí", "correcto", "adelante", "está bien"). SOLO ENTONCES llama la tool.
-   • Si el huésped pide modificar algo en el resumen, ajusta el dato correspondiente y vuelve a mostrar el resumen actualizado antes de confirmar.
+   • JAMÁS pidas formatos técnicos ("DD/MM", "DD-MM", "YYYY-MM-DD"). El huésped habla natural — tú traduces internamente. Si dice "del 1 al 4 de septiembre" ya tienes arrival y departure; si dice "primero de septiembre al 4" es lo mismo.
+   • Pregunta UNA SOLA cosa a la vez, en tono natural y corto (1-2 oraciones máx). NUNCA listes los 3 datos juntos.
+   • Infiere lo que puedas: "del 1 al 4 de septiembre" → arrival 2026-09-01, departure 2026-09-04 (año actual si no ha pasado, si no el próximo); "este viernes" → calcula fecha; "somos 3" → adults=3; "2 adultos y 2 niños" → adults=4 (SUMA adultos+niños, todos ocupan lugar); "una noche el sábado" → arrival sábado, departure domingo. El AÑO ACTUAL se te indica en el CONTEXTO TEMPORAL más abajo — úsalo por default.
+   • Si falta un dato, pregunta SOLO por el que falta, breve: "¿Para cuántas personas?" / "¿Qué día llegas?" / "¿Y cuándo te vas?". Nunca "necesito 3 datos: 1)...".
+   • Cuando tengas los 3 datos, ANTES de llamar la tool envía UN resumen para confirmar: "Perfecto, del 1 al 4 de septiembre para 4 personas. ¿Confirmas?". Espera "sí"/"correcto"/"adelante". SOLO ENTONCES llama la tool. NO repitas el resumen si el huésped no cambió nada.
+   • Si el huésped ya te dijo los 3 datos claros (aunque haya sido en 2-3 mensajes), NO simules pedir el mismo dato dos veces. Confirma con el resumen y espera "sí".
    • Al recibir el resultado, envía SIEMPRE al huésped el campo "link_ver_resultados" — es la URL con todas las opciones (fotos, precios, mapa). Formato de mensaje sugerido: 1 oración breve + link en línea aparte. NO listes alojamientos en el chat — con el link basta.
    • Usa el campo "total_disponibles" (número total encontrado), NO "mostrando_top". Si "hay_mas" es true, el link muestra TODOS. Ejemplo correcto: "Tenemos 12 alojamientos disponibles para esas fechas ✨\n{link}". Ejemplo INCORRECTO: "Tengo 5 alojamientos disponibles…" (5 es sólo un preview interno tuyo — el link muestra los 12).
 2) crear_reporte_mantenimiento — cuando el huésped reporte algo roto, que no funciona, fuga, ruido de electrodoméstico, etc. ANTES de proponer crear el reporte, LLAMA consultar_reportes_reserva con un filtro relevante ("hormigas", "aire", "agua", etc.) para saber si ya existe uno. Si YA hay reporte activo del mismo tema (Estado ≠ 'resuelto' / 'cancelado'), NO crees duplicado: infórmale al huésped el estado del reporte existente ("Ya tenemos un reporte de hormigas abierto, folio X, en estado 'en_proceso' — el equipo lo está atendiendo"). Si NO hay reporte previo, FLUJO OBLIGATORIO: (a) resume lo que entendiste ("Entiendo: [problema] en [lugar]. ¿Quieres que abra un reporte para que el equipo lo revise?"), (b) espera confirmación explícita del huésped ("sí", "adelante", "confirmo"), (c) SOLO ENTONCES llama crear_reporte_mantenimiento.
@@ -1644,7 +1647,10 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       // fechas). NO accede a datos privados de otros huéspedes.
       console.info(`[bot-in] ${phone10}: sin reserva → lead entrante (modo captura)`);
       const leadPromptsBlock = _botBuildPromptsBlock(await _botGetPrompts());
-      const leadSystem = BOT_SYSTEM_PROMPT_BASE + leadPromptsBlock + `
+      const _todayL = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
+      const _yearL  = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
+      const _tempoL = `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${_todayL} (América/Mexico_City).\n- AÑO ACTUAL: ${_yearL}. Úsalo por default si no se menciona año.`;
+      const leadSystem = BOT_SYSTEM_PROMPT_BASE + leadPromptsBlock + _tempoL + `
 
 CONTEXTO ESPECIAL — LEAD ENTRANTE SIN RESERVA
 No tenemos una reserva asociada a este número. Tu objetivo es SOLO capturar los datos mínimos para poder cotizar y armar la reserva:
@@ -1713,7 +1719,12 @@ REGLAS ESTRICTAS
     // System prompt + Claude
     const context = _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings);
     const promptsBlock = _botBuildPromptsBlock(await _botGetPrompts());
-    const system = BOT_SYSTEM_PROMPT_BASE + promptsBlock + context;
+    // Fecha actual explícita — evita que Claude interprete "1 al 4 de
+    // septiembre" con un año arbitrario.
+    const _today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
+    const _year  = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
+    const _tempo = `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${_today} (América/Mexico_City).\n- AÑO ACTUAL: ${_year}. Úsalo por default si el huésped no menciona año; si esa fecha ya pasó, salta al año siguiente.`;
+    const system = BOT_SYSTEM_PROMPT_BASE + promptsBlock + _tempo + context;
     const history = (ctxResp.messages || []).slice(-10, -1); // excluir el user actual (ya guardado)
     // Anthropic solo acepta roles 'user' | 'assistant'. Nuestros roles
     // internos incluyen 'admin' (envío manual del panel), 'template'
