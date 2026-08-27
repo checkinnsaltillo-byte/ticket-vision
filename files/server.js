@@ -1132,15 +1132,19 @@ async function _transcribeTwilioAudio(mediaUrl, mimeType) {
                  : mt.includes("mpeg") || mt.includes("mp3") ? "MP3"
                  : "ENCODING_UNSPECIFIED";
   const client = _getSpeechClient();
+  const config = {
+    encoding,
+    languageCode: "es-MX",
+    alternativeLanguageCodes: ["es-US", "es-ES"],
+    enableAutomaticPunctuation: true,
+    model: "latest_long",
+  };
+  // WhatsApp/Twilio: notas de voz vienen como Opus mono 16 kHz. Google
+  // exige sampleRateHertz explícito para OGG_OPUS.
+  if (encoding === "OGG_OPUS") config.sampleRateHertz = 16000;
   const [resp] = await client.recognize({
     audio: { content: buf.toString("base64") },
-    config: {
-      encoding,
-      languageCode: "es-MX",
-      alternativeLanguageCodes: ["es-US", "es-ES"],
-      enableAutomaticPunctuation: true,
-      model: "latest_long",
-    },
+    config,
   });
   const text = (resp.results || [])
     .map(r => (r.alternatives && r.alternatives[0] && r.alternatives[0].transcript) || "")
