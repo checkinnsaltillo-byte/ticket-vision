@@ -42773,8 +42773,11 @@ function _botcRenderSidebar() {
     const waitChip = isPendingReply
       ? '<span style="display:inline-block;font-size:9px;font-weight:800;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:99px;border:1px solid #fde68a;margin-right:6px;vertical-align:middle;letter-spacing:.03em">⏳ ESPERA RESPUESTA</span>'
       : '';
+    // Footer gris por default; rojo claro cuando hay "espera respuesta"
+    // para que la conversación pendiente sea imposible de perder de vista.
+    const footerBg = isPendingReply ? '#fee2e2' : '#f1f5f9';
     const chatMeta = `
-      <div class="botc-card-footer" style="padding:8px 14px 10px;background:#f1f5f9">
+      <div class="botc-card-footer" style="padding:8px 14px 10px;background:${footerBg}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
           ${controlChip}
           <div style="display:flex;align-items:center;gap:6px">
