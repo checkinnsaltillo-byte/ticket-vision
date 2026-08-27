@@ -4637,12 +4637,13 @@ app.get("/reservas/search", async (req, res) => {
       .map(s => s.status === "fulfilled" ? s.value : null)
       .filter(Boolean);
     // ── Split Stay (DEMO) ──────────────────────────────────────────────
-    // Genera SIEMPRE una combinación ficticia de 2 alojamientos que juntos
-    // cubran el periodo, para poder validar visualmente el flujo en UI.
-    // En v2 reemplazar por algoritmo real que consulte /v2/availability
-    // por propiedad y arme combos reales cuando results.length === 0.
+    // Combinación ficticia de 2 alojamientos que juntos cubran el periodo.
+    // OFF por default para prod — activar temporalmente con:
+    //   gcloud run services update ticket-vision --update-env-vars SPLIT_STAY_DEMO=1
+    // desactivar de vuelta: --update-env-vars SPLIT_STAY_DEMO=0
+    // En v2 reemplazar por algoritmo real que consulte /v2/availability.
     const splitStays = [];
-    if (results.length >= 2) {
+    if (String(process.env.SPLIT_STAY_DEMO || '') === '1' && results.length >= 2) {
       const nights = Math.max(2, Math.round((new Date(departure) - new Date(arrival)) / 86_400_000));
       const halfN = Math.max(1, Math.floor(nights / 2));
       const mid = new Date(new Date(arrival).getTime() + halfN * 86_400_000).toISOString().slice(0, 10);
