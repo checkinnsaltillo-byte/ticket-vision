@@ -685,7 +685,11 @@ const BOT_SYSTEM_PROMPT_ADMIN = `Eres el asistente admin de Check-inn Saltillo. 
 REGLAS:
 - Cero cortesías. Sin saludos, sin "claro que sí", sin firmas. Respuestas ejecutivas de 1-3 líneas.
 - NO pidas confirmación antes de ejecutar tools — el admin ya validó su intención al escribir "@".
-- Si el admin escribe fechas y personas ("del 10 al 18 de octubre, 2 personas") → invoca cotizar_disponibilidad de inmediato. Infiere el año actual o el próximo si la fecha ya pasó.
+- REGLA DE FECHAS (CRÍTICA):
+  · Si el admin NO menciona el año, usa SIEMPRE el AÑO ACTUAL indicado más abajo en "CONTEXTO TEMPORAL".
+  · Solo si esa fecha en el año actual YA PASÓ, salta al próximo año.
+  · NUNCA uses años pasados (ej. 2024 si estamos en 2026). Si dudas, usa el año actual.
+- Si el admin escribe fechas y personas ("del 10 al 18 de octubre, 2 personas") → invoca cotizar_disponibilidad de inmediato. Aplica la regla de fechas arriba.
 - Si el admin escribe "@incidencia, <alojamiento_shortcode>, <descripción>, <criticidad>" → invoca crear_incidencia con:
   · alojamiento_shortcode: el segundo campo (ej. "jc2", "mt10", "cu4b"), tal cual el admin lo escribió.
   · descripcion: el texto completo del problema (tercer campo, o todo lo que sigue).
@@ -1368,10 +1372,28 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   res.status(200).type("text/xml").send("<Response></Response>");
   const b = req.body || {};
   const fromRaw = String(b.From || b.WaId || "");
-  const bodyMsg = String(b.Body || "").trim();
-  if (!fromRaw || !bodyMsg) return;
+  let bodyMsg = String(b.Body || "").trim();
+  if (!fromRaw) return;
   const phone10 = fromRaw.replace(/\D/g, "").slice(-10);
   if (!phone10) return;
+  // Multimedia: si Twilio manda un audio/imagen/video, Body suele venir
+  // vacío. Registramos el mensaje en el panel (para que el admin lo vea)
+  // y avisamos que aún no procesamos audio. Sin esto, la nota de voz
+  // "desaparece" del hilo.
+  const numMedia = parseInt(String(b.NumMedia || "0"), 10) || 0;
+  if (!bodyMsg && numMedia > 0) {
+    const mediaType = String(b.MediaContentType0 || "").toLowerCase();
+    const kind = /audio/.test(mediaType) ? "Nota de voz"
+               : /image/.test(mediaType) ? "Imagen"
+               : /video/.test(mediaType) ? "Video"
+               : "Archivo adjunto";
+    _botAppendMessage(phone10, "user", `[${kind}]`, { from: fromRaw, media: true, media_type: mediaType });
+    const aviso = `Recibimos tu ${kind.toLowerCase()}. Por ahora no procesamos audio/media — un miembro del equipo lo revisará. Si es urgente, escribe el mensaje. 🙏`;
+    await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
+    _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
+    return;
+  }
+  if (!bodyMsg) return;
   const t0 = Date.now();
   console.info(`[bot-in] ${phone10}: ${bodyMsg.slice(0,80)}`);
   // ─── Modo ADMIN: mensajes que empiezan con "@" desde un número admin ──
@@ -1383,9 +1405,18 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     if (adm.isAdmin) {
       const cmd = bodyMsg.replace(/^@\s*/, "").trim();
       console.info(`[bot-admin] ${phone10} (${adm.nombre}): ${cmd.slice(0,80)}`);
+      // Persiste el mensaje admin en WA_ChatContext para que aparezca en
+      // el panel Chats bot (con flag admin:true para que el frontend
+      // pueda estilizarlo si lo desea).
+      _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true });
       try {
+        // Inyecta fecha actual en el system prompt (Claude no la sabe
+        // por sí mismo; sin esto interpreta "octubre" como cualquier año).
+        const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
+        const nowYear = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
+        const dynSystem = BOT_SYSTEM_PROMPT_ADMIN + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${today} (América/Mexico_City).\n- AÑO ACTUAL: ${nowYear}. Úsalo por defecto cuando no se mencione año.`;
         const llm = await _botLlmLoop({
-          system: BOT_SYSTEM_PROMPT_ADMIN,
+          system: dynSystem,
           history: [],
           userMsg: cmd,
           ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: true },
@@ -1394,6 +1425,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         for (const t of (llm.toolsUsed || [])) { if (t.notifyText) _botNotifyAdmin(t.notifyText); }
         const reply = String(llm.text || "").trim() || "OK.";
         await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true });
+        _botAppendMessage(phone10, "assistant", reply, { model: BOT_ANTHROPIC_MODEL, admin: true, tools: (llm.toolsUsed || []).map(t => t.name) });
         console.info(`[bot-admin] ${phone10}: reply en ${Date.now()-t0}ms · "${reply.slice(0,80)}"`);
       } catch (e) {
         console.error("[bot-admin] error:", e.message);
