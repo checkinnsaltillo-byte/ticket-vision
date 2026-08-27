@@ -4586,7 +4586,10 @@ app.get("/reservas/search", async (req, res) => {
         .filter(Boolean).map(x => String(x).toLowerCase()).join(" | ");
       return hay.indexOf(locationQ) >= 0;
     };
-    const candidates = props.filter(inLoc);
+    // Solo propiedades asignadas al sitio web público (is_active=true).
+    // Las inactivas existen en Lodgify pero no están publicadas — mostrar
+    // aquí crearía discrepancia con el sitio hosted que ve el huésped.
+    const candidates = props.filter(p => p && p.is_active !== false).filter(inLoc);
     // 3) Para cada candidato pedir quote en paralelo.
     const totalPeople = adults + children;
     const settled = await Promise.allSettled(candidates.map(async (p) => {
