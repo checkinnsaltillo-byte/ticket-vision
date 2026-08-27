@@ -1107,11 +1107,19 @@ function _getSpeechClient() {
   return _gcpSpeechClient;
 }
 async function _transcribeTwilioAudio(mediaUrl, mimeType) {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) throw new Error("TWILIO_ACCOUNT_SID/AUTH_TOKEN faltan");
-  // Descarga (Twilio requiere basic auth)
-  const auth = "Basic " + Buffer.from(`${sid}:${token}`).toString("base64");
+  // Twilio media URLs requieren basic auth. Aceptamos dos esquemas:
+  //   (a) Account SID + Auth Token (clásico).
+  //   (b) API Key SID + API Key Secret (mejor, se puede rotar sin tumbar
+  //       el account). En este proyecto usamos (b).
+  const keySid  = process.env.TWILIO_API_KEY_SID;
+  const keySec  = process.env.TWILIO_API_KEY_SECRET;
+  const acctSid = process.env.TWILIO_ACCOUNT_SID;
+  const token   = process.env.TWILIO_AUTH_TOKEN;
+  let user, pass;
+  if (keySid && keySec) { user = keySid; pass = keySec; }
+  else if (acctSid && token) { user = acctSid; pass = token; }
+  else throw new Error("Twilio creds faltan (API_KEY_SID+SECRET o ACCOUNT_SID+AUTH_TOKEN)");
+  const auth = "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
   const r = await fetch(mediaUrl, { headers: { Authorization: auth }, redirect: "follow" });
   if (!r.ok) throw new Error(`Twilio media ${r.status}`);
   const buf = Buffer.from(await r.arrayBuffer());
