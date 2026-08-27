@@ -346,7 +346,7 @@ async function _twilioSendMessage(params) {
 // ║ Piloto restringido: solo responde a huéspedes cuya reserva tiene un     ║
 // ║ HouseId con bot_enabled=TRUE en la hoja alojamientos.                    ║
 // ═══════════════════════════════════════════════════════════════════════════
-const BOT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
+const BOT_ANTHROPIC_MODEL = "claude-sonnet-5";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ║ Bot Prompts (procesos del negocio) — cache in-memory TTL 5 min.        ║
