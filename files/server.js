@@ -690,12 +690,19 @@ REGLAS:
   · Solo si esa fecha en el año actual YA PASÓ, salta al próximo año.
   · NUNCA uses años pasados (ej. 2024 si estamos en 2026). Si dudas, usa el año actual.
 - Si el admin escribe fechas y personas ("del 10 al 18 de octubre, 2 personas") → invoca cotizar_disponibilidad de inmediato. Aplica la regla de fechas arriba.
-- Si el admin escribe "@incidencia, <alojamiento_shortcode>, <descripción>, <criticidad>" → invoca crear_incidencia con:
+- Si el admin escribe "incidencia, <alojamiento_shortcode>, <descripción>, <criticidad>" (limpieza, faltantes de insumos, ropa sucia, plagas) → invoca crear_incidencia con:
   · alojamiento_shortcode: el segundo campo (ej. "jc2", "mt10", "cu4b"), tal cual el admin lo escribió.
-  · descripcion: el texto completo del problema (tercer campo, o todo lo que sigue).
+  · descripcion: el texto del problema.
   · criticidad: "critico" | "alto" | "medio" | "bajo" según el último campo o el tono ("crítico", "urgente" → critico; sin adjetivo → medio).
-- Si falta un dato crítico (ej. fechas incompletas), pídelo en UNA línea.
-- Al recibir el resultado de una tool, resume el resultado en 1-2 líneas + el link/folio relevante. Sin adornos.
+- Si el admin escribe "reporte de <problema> en <shortcode>" o similar (falla, se rompió, no funciona, fuga, luz, agua, cerradura, aire) → invoca crear_reporte_mantenimiento con:
+  · titulo: 3-6 palabras que describan el problema (ej. "Falla de luz").
+  · descripcion: texto original del admin.
+  · prioridad: INFIERE — P1 para "urgente/crítico/no habitable/luz/agua/gas/fuga"; P3 para "menor/detalle"; P2 en el resto. NUNCA preguntes por prioridad — decide y crea.
+  · categoria: INFIERE — luz/foco/enchufe→eléctrico; agua/fuga/tubería→plomería; aire/AC→aire; wifi/internet→wifi; puerta/cerradura→cerradura; sucio/plaga→limpieza; otro→otros.
+  · alojamiento_shortcode: OBLIGATORIO. Extrae el código corto que sigue a "en" o "cu"/"mt"/"jc"/"ox"/"bc" (ej. "cu13", "mt10"). Case-insensitive.
+- REGLA DE ORO ADMIN: ejecuta directo. NUNCA preguntes por prioridad, categoría, ni confirmación. Si el admin no dio criticidad, DECIDE tú y crea.
+- Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
+- Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -723,14 +730,15 @@ const BOT_TOOLS = [
   },
   {
     name: "crear_reporte_mantenimiento",
-    description: "Crea un reporte técnico de mantenimiento para el alojamiento del huésped. Usa esta herramienta SOLO después de que el huésped confirmó explícitamente ('sí', 'adelante', 'confirmado'). ANTES de llamarla, DEBES enviar un mensaje resumiendo lo que se va a reportar y esperar el 'sí'. Prioridad: P1 (riesgo inmediato / no habitable), P2 (afecta uso pero no urgente), P3 (menor).",
+    description: "Crea un reporte técnico de mantenimiento. En modo HUÉSPED: se imputa al alojamiento de su reserva; SOLO después de confirmación explícita. En modo ADMIN: acepta 'alojamiento_shortcode' obligatorio (ej. 'cu13', 'mt10', 'jc2') y NO requiere confirmación — invócalo directo. Prioridad: P1 (urgente/no habitable), P2 (afecta uso), P3 (menor). Infiere prioridad y categoría del texto sin preguntar cuando estés en modo admin.",
     input_schema: {
       type: "object",
       properties: {
         titulo:      { type: "string", description: "Título corto (max 80 chars) — ej. 'Fuga en llave de cocina'" },
-        descripcion: { type: "string", description: "Detalle del problema tal como lo describió el huésped" },
+        descripcion: { type: "string", description: "Detalle del problema" },
         prioridad:   { type: "string", enum: ["P1", "P2", "P3"], description: "P1 urgente, P2 medio, P3 menor" },
         categoria:   { type: "string", description: "plomería | eléctrico | aire | wifi | cerradura | limpieza | otros" },
+        alojamiento_shortcode: { type: "string", description: "SOLO modo admin: código corto o internal_name del alojamiento (ej. 'cu13', 'mt10'). En modo huésped se ignora." },
       },
       required: ["titulo", "descripcion", "prioridad"],
     },
@@ -883,6 +891,25 @@ async function _botExecTool(toolUse, ctx) {
       };
     }
     if (name === "crear_reporte_mantenimiento") {
+      // Modo admin: si viene alojamiento_shortcode, resolvemos el alojamiento
+      // vía catálogo Lodgify + hoja Alojamientos (equivalente a crear_incidencia).
+      let rProp = propiedad, rDep = depto, rAloj = alojLabel;
+      const sc = String(args.alojamiento_shortcode || "").trim();
+      if (ctx.isAdmin && sc) {
+        const propsAll = await _lodgifyFetchAllProperties().catch(() => []);
+        const scLow = sc.toLowerCase().replace(/\s+/g, "");
+        const alojRowsAll = await _botGetAlojRows().catch(() => []);
+        const propMatch = propsAll.find(p => String(p.internal_name || "").toLowerCase().replace(/\s+/g,"") === scLow)
+                       || propsAll.find(p => String(p.id) === sc);
+        if (!propMatch) {
+          return { content: JSON.stringify({ ok:false, error: `Shortcode '${sc}' no encontrado` }), notifyText: null };
+        }
+        const houseId = String(propMatch.id);
+        const rowMatch = alojRowsAll.find(r => String(r.HouseId || "") === houseId);
+        rProp = (rowMatch && rowMatch.Propiedad) || propMatch.name || sc;
+        rDep = (rowMatch && rowMatch["# Departamento"]) || "";
+        rAloj = rProp + (rDep ? ` #${rDep}` : "");
+      }
       const payload = {
         action: "rt_upsert",
         Fecha: new Date().toISOString().slice(0, 10),
@@ -890,15 +917,15 @@ async function _botExecTool(toolUse, ctx) {
         Prioridad: String(args.prioridad || "P3"),
         Tipo: "correctivo",
         Categoria: String(args.categoria || "otros"),
-        Propiedad: propiedad,
-        "# Departamento": depto,
-        Alojamiento: alojLabel,
+        Propiedad: rProp,
+        "# Departamento": rDep,
+        Alojamiento: rAloj,
         Titulo: String(args.titulo || "").slice(0, 80),
         Descripcion: String(args.descripcion || ""),
-        Reservacion_id: String(bk.Id || ""),
-        Huesped_nombre: String(bk.GuestName || ""),
+        Reservacion_id: ctx.isAdmin ? "" : String(bk.Id || ""),
+        Huesped_nombre: ctx.isAdmin ? "" : String(bk.GuestName || ""),
         Huesped_contacto: String(ctx.phone10 || ""),
-        Reportado_por: `bot · huésped ${ctx.phone10}`,
+        Reportado_por: ctx.isAdmin ? `Admin (bot) · ${ctx.phone10}` : `bot · huésped ${ctx.phone10}`,
         Updated_by: "wa-bot",
       };
       const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
@@ -1400,9 +1427,13 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // Ejecución directa sin cortesías. NO se persiste en WA_ChatContext
   // (nunca aparece en Chats bot). Los tools que ejecuta (crear_incidencia,
   // cotizar_disponibilidad, etc.) sí dejan su rastro en sus módulos.
-  if (bodyMsg.startsWith("@")) {
-    const adm = await _botIsAdminPhone(phone10);
-    if (adm.isAdmin) {
+  // Modo ADMIN: si el teléfono es de un admin, TODOS sus mensajes se
+  // procesan en modo admin (el "@" es opcional; sirve como marcador
+  // explícito pero no es requerido). Esto permite follow-ups sin @.
+  const admCheck = await _botIsAdminPhone(phone10);
+  if (admCheck.isAdmin) {
+    const adm = admCheck;
+    {
       const cmd = bodyMsg.replace(/^@\s*/, "").trim();
       console.info(`[bot-admin] ${phone10} (${adm.nombre}): ${cmd.slice(0,80)}`);
       // Persiste el mensaje admin en WA_ChatContext para que aparezca en
@@ -1415,9 +1446,21 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
         const nowYear = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
         const dynSystem = BOT_SYSTEM_PROMPT_ADMIN + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${today} (América/Mexico_City).\n- AÑO ACTUAL: ${nowYear}. Úsalo por defecto cuando no se mencione año.`;
+        // Historial: solo mensajes admin previos del MISMO teléfono para
+        // permitir seguimientos ("Urgente" tras "@reporte..."). Filtramos
+        // fuera cualquier mensaje que no sea admin (protege de contaminar
+        // el hilo si el mismo número también escribe como huésped).
+        let adminHistory = [];
+        try {
+          const ctxResp = await _botFetchConversation(phone10, 20);
+          adminHistory = (ctxResp.messages || [])
+            .filter(m => m && m.meta && m.meta.admin === true)
+            .slice(-10, -1) // excluir el user actual (recién guardado)
+            .map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', body: m.body }));
+        } catch (_) { adminHistory = []; }
         const llm = await _botLlmLoop({
           system: dynSystem,
-          history: [],
+          history: adminHistory,
           userMsg: cmd,
           ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: true },
           tools: BOT_TOOLS, // modo admin: expone todos, incluida crear_incidencia
@@ -1433,7 +1476,6 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       }
       return;
     }
-    console.info(`[bot-in] ${phone10}: msg con "@" pero no es admin — trato como huésped normal`);
   }
   // Modo Prueba: si activo, ignorar mensajes de números no incluidos en la
   // lista whitelisted. Aún guardamos el user msg para verlo en el panel.
