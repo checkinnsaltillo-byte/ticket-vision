@@ -1516,11 +1516,11 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         if (texto) {
           // Persistimos el mensaje con la transcripción visible en el panel
           // y le prependemos "🎙" para que el admin sepa que vino de audio.
-          _botAppendMessage(phone10, "user", `🎙 ${texto}`, { from: fromRaw, media: true, media_type: mediaType, transcribed: true });
+          _botAppendMessage(phone10, "user", `🎙 ${texto}`, { from: fromRaw, media: true, media_type: mediaType, media_url: mediaUrl, transcribed: true });
           bodyMsg = texto; // continúa el flujo normal (admin o huésped)
           bodyAlreadyPersisted = true; // evita duplicar el user msg abajo
         } else {
-          _botAppendMessage(phone10, "user", "[Nota de voz sin voz reconocible]", { from: fromRaw, media: true, media_type: mediaType });
+          _botAppendMessage(phone10, "user", "[Nota de voz sin voz reconocible]", { from: fromRaw, media: true, media_type: mediaType, media_url: mediaUrl });
           const aviso = "No pude escuchar bien tu nota de voz. ¿Podrías reenviarla o escribir el mensaje? 🙏";
           await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
           _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
@@ -1528,7 +1528,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         }
       } catch (e) {
         console.warn("[bot-in] transcripción falló:", e.message);
-        _botAppendMessage(phone10, "user", "[Nota de voz — error al transcribir]", { from: fromRaw, media: true, media_type: mediaType, error: e.message });
+        _botAppendMessage(phone10, "user", "[Nota de voz — error al transcribir]", { from: fromRaw, media: true, media_type: mediaType, media_url: mediaUrl, error: e.message });
         const aviso = "Recibí tu nota de voz pero no pude transcribirla. ¿Podrías escribirla? 🙏";
         await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
         _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
@@ -1538,7 +1538,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       const kind = /image/.test(mediaType) ? "Imagen"
                  : /video/.test(mediaType) ? "Video"
                  : "Archivo adjunto";
-      _botAppendMessage(phone10, "user", `[${kind}]`, { from: fromRaw, media: true, media_type: mediaType });
+      _botAppendMessage(phone10, "user", `[${kind}]`, { from: fromRaw, media: true, media_type: mediaType, media_url: mediaUrl });
       const aviso = `Recibimos tu ${kind.toLowerCase()}. Por ahora solo procesamos audio y texto — un miembro del equipo lo revisará. 🙏`;
       await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
       _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
@@ -2971,6 +2971,104 @@ function rhMakeDeleteEndpoint(action) {
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
   };
 }
+// ─── Reenvío de mensajes a otro WhatsApp ─────────────────────────────────────
+app.post("/wa/send-forward", async (req, res) => {
+  try {
+    const to = String(req.body?.to || "").trim();
+    const body = String(req.body?.body || "").trim();
+    if (!to.startsWith("whatsapp:+")) return res.status(400).json({ ok: false, error: "to inválido (esperado whatsapp:+E164)" });
+    if (!body) return res.status(400).json({ ok: false, error: "body vacío" });
+    if (body.length > 4000) return res.status(400).json({ ok: false, error: "body demasiado largo" });
+    await _twilioSendMessage({ to, body, skipMirror: true });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ─── Analizar comprobante de pago (Claude Vision + texto) ────────────────────
+app.post("/wa/analizar-comprobante", async (req, res) => {
+  try {
+    const phone10 = String(req.body?.phone || "").replace(/\D/g, "").slice(-10);
+    const media = Array.isArray(req.body?.media) ? req.body.media : [];
+    const texts = Array.isArray(req.body?.texts) ? req.body.texts : [];
+    if (!media.length && !texts.length) return res.status(400).json({ ok: false, error: "sin contenido" });
+    // Descarga y base64 de las imágenes de Twilio (basic auth).
+    const keySid = process.env.TWILIO_API_KEY_SID, keySec = process.env.TWILIO_API_KEY_SECRET;
+    const acctSid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN;
+    const user = (keySid && keySec) ? keySid : acctSid;
+    const pass = (keySid && keySec) ? keySec : token;
+    const authTw = user && pass ? "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") : null;
+    const imgBlocks = [];
+    for (const m of media) {
+      const mt = String(m.type || "").toLowerCase();
+      if (!/image/.test(mt)) continue;
+      const url = String(m.url || "");
+      if (!url) continue;
+      try {
+        const rr = await fetch(url, authTw ? { headers: { Authorization: authTw }, redirect: "follow" } : {});
+        if (!rr.ok) continue;
+        const buf = Buffer.from(await rr.arrayBuffer());
+        imgBlocks.push({
+          type: "image",
+          source: { type: "base64", media_type: mt || "image/jpeg", data: buf.toString("base64") },
+        });
+      } catch (_) { /* skip */ }
+    }
+    const textBlock = texts.filter(Boolean).join("\n---\n").slice(0, 3000);
+    // Consulta reserva activa del phone (para asociar el pago).
+    let reservaId = "", reservaLabel = "";
+    try {
+      const ctx = await _botFindActiveBooking(phone10);
+      if (ctx && ctx.booking) {
+        reservaId = String(ctx.booking.Id || "");
+        const arr = String(ctx.booking.DateArrival || "").slice(0, 10);
+        const dep = String(ctx.booking.DateDeparture || "").slice(0, 10);
+        const nombre = String(ctx.booking.GuestName || "");
+        reservaLabel = `${reservaId} · ${nombre} · ${arr} → ${dep}`.trim();
+      }
+    } catch (_) {}
+    // Prompt Vision
+    const sys = `Eres un extractor de datos de comprobantes de pago mexicanos (SPEI, transferencia, depósito, terminal POS). Devuelve JSON estricto (sin texto extra) con estos campos:
+{
+  "monto": number,                 // el monto en MXN, solo el número
+  "banco": string,                 // banco emisor o receptor (BBVA, Santander, etc.)
+  "metodo": string,                // "SPEI" | "Transferencia" | "Depósito" | "POS" | "Efectivo" | "Otro"
+  "fecha": "YYYY-MM-DD",           // fecha del movimiento
+  "referencia": string,            // clave de rastreo, folio o concepto
+  "asunto": string,                // beneficiario u observación breve
+  "confianza": "alta" | "media" | "baja"
+}
+Si un dato NO se ve claro devuélvelo vacío ("" o 0). Si la imagen o texto NO es un comprobante, devuelve {"confianza":"baja","monto":0}. Respuesta EXCLUSIVA JSON válido.`;
+    const userBlocks = [];
+    for (const ib of imgBlocks) userBlocks.push(ib);
+    if (textBlock) userBlocks.push({ type: "text", text: `Texto adjunto del huésped:\n${textBlock}` });
+    if (!userBlocks.length) userBlocks.push({ type: "text", text: "(sin contenido — devuelve confianza:baja)" });
+    const call = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 500,
+        system: sys,
+        messages: [{ role: "user", content: userBlocks }],
+      }),
+    });
+    const j = await call.json();
+    if (!call.ok) return res.status(502).json({ ok: false, error: `Claude ${call.status}: ${(j.error && j.error.message) || ""}` });
+    const raw = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("\n").trim();
+    const clean = raw.replace(/^```json?\s*|\s*```$/g, "");
+    let data = null;
+    try { data = JSON.parse(clean); } catch (e) { return res.json({ ok: true, data: { confianza: "baja" }, reservaId, reservaLabel, raw }); }
+    res.json({ ok: true, data, reservaId, reservaLabel });
+  } catch (e) {
+    console.error("[comprobante] error:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ─── Pagos manuales (fuera de Stripe/Lodgify) ────────────────────────────────
 app.get("/pagos-manuales", async (req, res) => {
   try {
