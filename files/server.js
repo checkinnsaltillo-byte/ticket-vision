@@ -3342,7 +3342,7 @@ app.get("/lodgify-bookings-all", async (req, res) => {
     // ordenados por Lodgify y dejaba fuera el resto.
     const MAX_PAGES = 500;
     while (hasMore && page <= MAX_PAGES) {
-      const url = `https://api.lodgify.com/v2/reservations/bookings?stayFilter=All&page=${page}&size=100&includeCount=true&updatedSince=${encodeURIComponent(updatedSince)}T00:00:00`;
+      const url = `https://api.lodgify.com/v2/reservations/bookings?stayFilter=All&page=${page}&size=100&includeCount=true&includeTransactions=true&updatedSince=${encodeURIComponent(updatedSince)}T00:00:00`;
       const r = await fetch(url, { headers: { "X-ApiKey": apiKey, accept:"application/json" }});
       if (!r.ok) {
         const txt = await r.text();
@@ -3405,11 +3405,45 @@ app.get("/lodgify-bookings-all", async (req, res) => {
       if (/check-inn-saltillo|checkinnsaltillo/i.test(s)) return "Direct";
       return s;
     }
+    // Deriva PaymentStatus del estado numérico de pagos. Reglas:
+    //   Sin pago  → amount_paid == 0 && total_amount > 0
+    //   Pagada    → amount_due <= 0 && amount_paid >= total_amount
+    //   Parcial   → 0 < amount_paid < total_amount
+    //   Reembolsada → amount_paid < 0 (o hay transactions Refund netos)
+    //   Sin cargo → total_amount == 0 (Declined/canceladas sin cobro)
+    function _derivePaymentStatus(total, paid, due, status) {
+      const t = Number(total) || 0, p = Number(paid) || 0, d = Number(due) || 0;
+      const st = String(status || "").toLowerCase();
+      if (st === "declined" && p === 0) return "Sin cargo";
+      if (t === 0 && p === 0) return "Sin cargo";
+      if (p < 0) return "Reembolsada";
+      if (t > 0 && p === 0) return "Sin pago";
+      if (d <= 0 && p > 0) return "Pagada";
+      if (p > 0 && p < t) return "Parcial";
+      return "—";
+    }
     for (const b of items) {
       const room = (b.rooms && b.rooms[0]) || {};
       const guest = (b.guest) || {};
+      const totalAmount = Number(b.total_amount) || 0;
+      const amountPaid  = Number(b.amount_paid)  || 0;
+      const amountDue   = Number(b.amount_due)   || 0;
+      const paymentStatus = _derivePaymentStatus(totalAmount, amountPaid, amountDue, b.status);
+      const paymentPolicy = String(((b.quote || {}).policy || {}).payments || "").slice(0, 500);
+      // Guardamos solo campos clave de cada transacción para acotar payload.
+      const txCompact = Array.isArray(b.transactions) ? b.transactions.map(t => ({
+        id: t.id, type: t.type, status: t.status, payment_type: t.payment_type,
+        amount: t.amount, processed_at: t.processed_at,
+        description: String(t.description || "").slice(0, 120),
+      })) : [];
       const baseRow = {
         Id: b.id,
+        TotalAmount: totalAmount,
+        AmountPaid: amountPaid,
+        AmountDue: amountDue,
+        PaymentStatus: paymentStatus,
+        PaymentPolicy: paymentPolicy,
+        TransactionsJSON: JSON.stringify(txCompact),
         Source: _normalizeSource(b),
         SourceText: JSON.stringify({ confirmationCode: b.confirmation_code || "", listingId: b.listing_id || "", threadId: b.thread_id || "" }),
         ChannelBooking: b.channel_booking_id || "",
