@@ -1535,13 +1535,18 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         return;
       }
     } else {
-      const kind = /image/.test(mediaType) ? "Imagen"
+      const isImage = /image/.test(mediaType);
+      const kind = isImage ? "Imagen"
                  : /video/.test(mediaType) ? "Video"
                  : "Archivo adjunto";
       _botAppendMessage(phone10, "user", `[${kind}]`, { from: fromRaw, media: true, media_type: mediaType, media_url: mediaUrl });
-      const aviso = `Recibimos tu ${kind.toLowerCase()}. Por ahora solo procesamos audio y texto — un miembro del equipo lo revisará. 🙏`;
-      await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
-      _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
+      // Imágenes: NO responder al huésped — el admin la analiza desde el
+      // panel Chats bot (multi-select → Comprobante de pago, etc.).
+      if (!isImage) {
+        const aviso = `Recibimos tu ${kind.toLowerCase()}. Por ahora solo procesamos audio y texto — un miembro del equipo lo revisará. 🙏`;
+        await _twilioSendMessage({ to: fromRaw, body: aviso, skipMirror: true }).catch(()=>{});
+        _botAppendMessage(phone10, "assistant", aviso, { media_notice: true });
+      }
       return;
     }
   }
@@ -2971,6 +2976,29 @@ function rhMakeDeleteEndpoint(action) {
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
   };
 }
+// ─── Proxy de media de Twilio (imágenes de WhatsApp) ────────────────────────
+// Twilio requiere basic auth para descargar MediaUrl. El frontend NO puede
+// pasar credenciales, así que proxeamos: GET /wa/media?url=<encoded>.
+app.get("/wa/media", async (req, res) => {
+  try {
+    const url = String(req.query.url || "");
+    if (!/^https:\/\/api\.twilio\.com\//.test(url)) return res.status(400).send("url inválida");
+    const keySid = process.env.TWILIO_API_KEY_SID, keySec = process.env.TWILIO_API_KEY_SECRET;
+    const acctSid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN;
+    const user = (keySid && keySec) ? keySid : acctSid;
+    const pass = (keySid && keySec) ? keySec : token;
+    if (!user || !pass) return res.status(500).send("Twilio creds faltan");
+    const auth = "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
+    const r = await fetch(url, { headers: { Authorization: auth }, redirect: "follow" });
+    if (!r.ok) return res.status(r.status).send("upstream " + r.status);
+    const ct = r.headers.get("content-type") || "application/octet-stream";
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.setHeader("Content-Type", ct);
+    res.setHeader("Cache-Control", "public, max-age=86400"); // 1 día
+    res.send(buf);
+  } catch (e) { res.status(500).send("err: " + e.message); }
+});
+
 // ─── Reenvío de mensajes a otro WhatsApp ─────────────────────────────────────
 app.post("/wa/send-forward", async (req, res) => {
   try {
