@@ -2971,6 +2971,28 @@ function rhMakeDeleteEndpoint(action) {
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
   };
 }
+// ─── Pagos manuales (fuera de Stripe/Lodgify) ────────────────────────────────
+app.get("/pagos-manuales", async (req, res) => {
+  try {
+    const reservaId = String(req.query.reservaId || "").trim();
+    const r = await callCheckinAppsScript("list_pagos_manuales", reservaId ? { reservaId } : {});
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/pagos-manuales", async (req, res) => {
+  try {
+    const payload = req.body?.payload || req.body || {};
+    const r = await callCheckinAppsScriptPost("save_pago_manual", { payload });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.delete("/pagos-manuales/:id", async (req, res) => {
+  try {
+    const r = await callCheckinAppsScriptPost("delete_pago_manual", { payload: { id: String(req.params.id) } });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.delete("/rh/compensaciones/:id", rhMakeDeleteEndpoint("rh_delete_compensacion"));
 app.delete("/rh/asistencia/:id",     rhMakeDeleteEndpoint("rh_delete_asistencia"));
 app.delete("/rh/ausencias/:id",      rhMakeDeleteEndpoint("rh_delete_ausencia"));
