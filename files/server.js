@@ -3124,6 +3124,32 @@ Si un dato NO se ve claro devuélvelo vacío ("" o 0). Si la imagen o texto NO e
   }
 });
 
+// ─── Reservas · phones extra ────────────────────────────────────────────────
+app.get("/reservas/phone-extras", async (req, res) => {
+  try {
+    const params = {};
+    const p = String(req.query.phone || "").trim();
+    const rid = String(req.query.reservaId || "").trim();
+    if (p) params.phone = p;
+    if (rid) params.reservaId = rid;
+    const r = await callCheckinAppsScript("list_reserva_phones_extra", params);
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/reservas/attach-phone", async (req, res) => {
+  try {
+    const payload = req.body?.payload || req.body || {};
+    const r = await callCheckinAppsScriptPost("save_reserva_phone_extra", { payload });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.delete("/reservas/phone-extras/:id", async (req, res) => {
+  try {
+    const r = await callCheckinAppsScriptPost("delete_reserva_phone_extra", { payload: { id: String(req.params.id) } });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ─── Pagos manuales (fuera de Stripe/Lodgify) ────────────────────────────────
 app.get("/pagos-manuales", async (req, res) => {
   try {
