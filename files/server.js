@@ -2976,6 +2976,33 @@ function rhMakeDeleteEndpoint(action) {
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
   };
 }
+// ─── Set draft supervised en WA_ChatContext ───────────────────────────────
+// Pasa un mensaje generado (ej. auto-pago) como draft que el admin puede
+// aceptar/editar/omitir en la caja supervised del chat.
+app.post("/wa/chat-set-draft", async (req, res) => {
+  try {
+    const phone = String(req.body?.phone || "").replace(/\D/g, "").slice(-10);
+    const body  = String(req.body?.body || "");
+    if (!phone) return res.status(400).json({ ok: false, error: "phone requerido" });
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "wa_chat_set_draft", phone, body }),
+    });
+    const j = await r.json().catch(() => ({ ok: true }));
+    // Además: si el estado control es 'bot', escalamos a 'supervised' para
+    // que la caja del draft aparezca en el panel.
+    try {
+      await fetch(CHECKIN_APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "wa_chat_set_control", phone, control: "supervised", reason: "auto-pago draft" }),
+      });
+    } catch(_){}
+    res.json(j || { ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ─── Proxy de media de Twilio (imágenes de WhatsApp) ────────────────────────
 // Twilio requiere basic auth para descargar MediaUrl. El frontend NO puede
 // pasar credenciales, así que proxeamos: GET /wa/media?url=<encoded>.
