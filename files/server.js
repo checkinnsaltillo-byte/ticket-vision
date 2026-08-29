@@ -4000,32 +4000,61 @@ app.get("/bookings-by-guest", async (req, res) => {
   try {
     const phone = String(req.query.phone || "").replace(/\D/g, "");
     if (phone.length < 10) return res.status(400).json({ ok: false, error: "phone (10+ dígitos) requerido" });
+    const p10 = phone.slice(-10);
+
+    async function _lodgify() {
+      try {
+        const lodR = await fetch(`http://127.0.0.1:${PORT}/lodgify-list`);
+        const lodJ = await lodR.json();
+        const map = {};
+        if (lodJ && Array.isArray(lodJ.bookings)) {
+          lodJ.bookings.forEach(b => { if (b && b.Id != null) map[String(b.Id)] = b; });
+        }
+        return { map, all: (lodJ && lodJ.bookings) || [] };
+      } catch (_) { return { map: {}, all: [] }; }
+    }
+    async function _extraIds() {
+      try {
+        const r = await fetch(`http://127.0.0.1:${PORT}/reservas/phone-extras?phone=${encodeURIComponent(p10)}`);
+        const j = await r.json();
+        if (!j || !j.ok || !Array.isArray(j.rows)) return [];
+        return j.rows.map(x => String(x.ReservaId || "").trim()).filter(Boolean);
+      } catch (_) { return []; }
+    }
+    const [extraIds, lodgify] = await Promise.all([_extraIds(), _lodgify()]);
+    const extraBookings = extraIds.map(id => lodgify.map[id]).filter(Boolean);
+    function _mergeUnique(base, extras) {
+      const seen = new Set((base || []).map(b => String(b && b.Id || "")));
+      const out = (base || []).slice();
+      extras.forEach(b => {
+        const id = String(b && b.Id || "");
+        if (id && !seen.has(id)) { seen.add(id); out.push(b); }
+      });
+      return out;
+    }
+
     const url = `${CHECKIN_APPS_SCRIPT_URL}?action=bookings_by_guest&phone=${encodeURIComponent(phone)}`;
-    // Retry x2 con backoff — Apps Script a veces devuelve HTML de login
-    // por cold-start / cuota, y un segundo intento suele funcionar.
     let lastText = "";
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const r = await fetch(url, { redirect: "follow" });
         const text = await r.text();
         lastText = text;
-        try { return res.json(JSON.parse(text)); } catch (_) { /* HTML — retry */ }
+        try {
+          const j = JSON.parse(text);
+          if (j && j.ok && Array.isArray(j.bookings)) {
+            j.bookings = _mergeUnique(j.bookings, extraBookings);
+            if (extraBookings.length) j.extras_added = extraBookings.length;
+          }
+          return res.json(j);
+        } catch (_) { /* HTML — retry */ }
       } catch (_) { /* network — retry */ }
       if (attempt === 0) await new Promise(rs => setTimeout(rs, 800));
     }
-    // Fallback: como el modal WA depende críticamente de tener AL MENOS una
-    // booking del huésped para no romper (busca en Lodgify también), si el
-    // Apps Script falla intentamos armar una respuesta desde LG bookings
-    // (mismo endpoint /lodgify-list que ya devuelve JSON estable).
-    try {
-      const lodR = await fetch(`http://127.0.0.1:${PORT}/lodgify-list`);
-      const lodJ = await lodR.json();
-      if (lodJ && Array.isArray(lodJ.bookings)) {
-        const p10 = phone.slice(-10);
-        const rows = lodJ.bookings.filter(b => String(b.GuestPhone || "").replace(/\D/g, "").slice(-10) === p10);
-        return res.json({ ok: true, bookings: rows, fallback: "lodgify-list" });
-      }
-    } catch (_) {}
+    // Fallback Apps Script caído
+    const lgMatches = lodgify.all.filter(b => String(b.GuestPhone || "").replace(/\D/g, "").slice(-10) === p10);
+    const bookings = _mergeUnique(lgMatches, extraBookings);
+    if (bookings.length) return res.json({ ok: true, bookings, fallback: "lodgify-list", extras_added: extraBookings.length });
     res.status(502).json({ ok: false, error: "Apps Script no respondió JSON (2 intentos): " + String(lastText).slice(0, 200) });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
