@@ -282,7 +282,64 @@ function _waFormatTo(to) {
   return arr[0] || "";
 }
 
+// Twilio WA impone límite ~1600 chars por mensaje. Cuando el body excede,
+// dividimos por saltos de línea en chunks ≤ MAX y enviamos en secuencia.
+// Mantiene ordenamiento: espera cada envío antes del siguiente.
+const TWILIO_WA_MAX_CHARS = 1500;
+function _splitForTwilio(text, max) {
+  const s = String(text || '');
+  if (s.length <= max) return [s];
+  const chunks = [];
+  const lines = s.split('\n');
+  let cur = '';
+  for (const line of lines) {
+    // Si el propio line excede max, córtalo duro por chars.
+    if (line.length > max) {
+      if (cur) { chunks.push(cur); cur = ''; }
+      for (let i = 0; i < line.length; i += max) chunks.push(line.slice(i, i + max));
+      continue;
+    }
+    const cand = cur ? cur + '\n' + line : line;
+    if (cand.length > max) { chunks.push(cur); cur = line; }
+    else cur = cand;
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
 async function _twilioSendMessage(params) {
+  // Si el body supera el límite Twilio, dividir y enviar en secuencia.
+  // Cada chunk como mensaje WA independiente; en WA_ChatContext registramos
+  // 1 sola entrada con el body ORIGINAL completo (fire-and-forget) para no
+  // saturar el historial con N filas.
+  if (params.body && String(params.body).length > TWILIO_WA_MAX_CHARS && !params.contentSid) {
+    const originalBody = String(params.body);
+    const chunks = _splitForTwilio(originalBody, TWILIO_WA_MAX_CHARS);
+    let last = null;
+    for (let i = 0; i < chunks.length; i++) {
+      const p = { ...params, body: chunks[i], skipMirror: true };
+      last = await _twilioSendMessage(p);
+    }
+    // Mirror único con el body completo, si el caller no pidió skipMirror.
+    if (!params.skipMirror && last) {
+      try {
+        const phone10 = String(params.to || '').replace(/\D/g,'').slice(-10);
+        if (phone10.length === 10) {
+          fetch(CHECKIN_APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'wa_chat_context_append',
+              phone: phone10,
+              role: params.tipo ? 'template' : 'admin',
+              body: originalBody,
+              meta: { sid: last.sid, tipo: params.tipo || '', chunks: chunks.length }
+            })
+          }).catch(()=>{});
+        }
+      } catch(_){}
+    }
+    return last;
+  }
   const sid    = process.env.TWILIO_ACCOUNT_SID;
   const keySid = process.env.TWILIO_API_KEY_SID;
   const keySec = process.env.TWILIO_API_KEY_SECRET;
@@ -441,7 +498,11 @@ app.post("/wa/bot/prompts/reload", (req, res) => {
   _botPromptsCache = { ts: 0, rows: [] };
   res.json({ ok: true, reloaded: true });
 });
-const BOT_ANTHROPIC_MAX_TOKENS = 500;
+// 4000 tokens — Sonnet 5 con extended thinking gasta cientos internamente
+// antes de producir texto; 500 alcanzaba para Haiku pero no para Sonnet 5.
+// Con listados largos (ej. tickets con URLs de Drive) puede necesitar 1500+
+// tokens output + varios cientos de thinking.
+const BOT_ANTHROPIC_MAX_TOKENS = 4000;
 
 // Cache in-memory (5 min TTL) para reducir round-trips a Apps Script.
 // Estos datos cambian raramente durante la vida de una conversación.
@@ -779,6 +840,27 @@ const BOT_TOOLS = [
     },
   },
   {
+    name: "listar_reservas_sin_ticket",
+    description: "Lista las reservas DEL HUÉSPED ACTUAL que aún no tienen ticket de auto-facturación emitido (no tienen 'Folio facturapi'). Solo incluye reservas con estadía iniciada o completada (arrival <= hoy). Devuelve Id, Alojamiento, fechas y total. Úsalo cuando el huésped pregunte por su ticket / factura / autofacturación / CFDI. NO requiere confirmación. Si el resultado es vacío, dile al huésped que todas sus reservas ya están facturadas o que aún no puede facturar una que no ha ocurrido.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "listar_tickets_emitidos",
+    description: "Devuelve el ESTADO DE FACTURACIÓN de TODAS las reservas del huésped en UNA sola respuesta: las que ya tienen ticket emitido (con folio+URL) Y las que aún no. Cada item trae 'estado': 'emitido' | 'pendiente' | 'no_elegible' (no elegible = arrival futuro, cancelada o sin cargo). Úsalo cuando el huésped pida un resumen de sus tickets/facturas, quiera saber cuáles ya tiene y cuáles faltan, o pregunte por folios/URLs. Presenta la lista completa al huésped en un solo mensaje (marca claramente cuáles ya emitidas y cuáles pendientes, ofreciendo tramitar las pendientes si aplica).",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "solicitar_ticket_admin",
+    description: "Solicita al admin (vía notificación) que emita el ticket de auto-facturación para UNA reserva específica. Úsalo SÓLO después de que el huésped confirmó explícitamente cuál reserva quiere facturar (elección por Id, no por nombre). NO emite el ticket directamente — solo señaliza al admin. El bot debe responder al huésped 'listo, ya avisé al equipo; en unos minutos te llega el ticket por correo'. No prometas tiempos exactos.",
+    input_schema: {
+      type: "object",
+      properties: {
+        reservaId: { type: "string", description: "Lodgify Id (o Id de la reserva) que el huésped eligió facturar." },
+      },
+      required: ["reservaId"],
+    },
+  },
+  {
     name: "agendar_late_checkout",
     description: "Registra la solicitud de late checkout (salida más tarde) del huésped. Usa esta herramienta SOLO después de que el huésped confirmó explícitamente. ANTES de llamarla, DEBES enviar un mensaje del tipo 'Voy a solicitar tu salida a las HH:MM del DD/MM. ¿Confirmas?' y esperar el 'sí'. NO prometas que está aprobado — sólo queda como solicitud pendiente para que el equipo confirme.",
     input_schema: {
@@ -961,6 +1043,182 @@ async function _botExecTool(toolUse, ctx) {
       return {
         content: JSON.stringify({ ok: true, folio, mensaje: "Reporte creado. El equipo lo atenderá pronto." }),
         notifyText: `🔧 Nuevo reporte de mantenimiento vía bot\n${resumen}`,
+      };
+    }
+    // Helper compartido para tickets. Combina bookings (Reservas_Lodgify) con
+    // huRows (Reservaciones). Los datos de facturación viven en huRows —
+    // se indexan por 'Lodgify Id' o por (fechas + tel).
+    async function _factReservasMerged(phone10) {
+      const r = await fetch(`http://127.0.0.1:${PORT}/bookings-by-guest?phone=${encodeURIComponent(phone10)}`);
+      const j = await r.json();
+      const bookings = (j && j.ok && Array.isArray(j.bookings)) ? j.bookings : [];
+      const huRows = Array.isArray(j.huRows) ? j.huRows : [];
+      function _toIso(v) {
+        const s = String(v || '');
+        const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m1) return `${m1[1]}-${m1[2]}-${m1[3]}`;
+        const m2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (m2) return `${m2[3]}-${String(m2[1]).padStart(2,'0')}-${String(m2[2]).padStart(2,'0')}`;
+        return '';
+      }
+      // Indexar huRows por Lodgify Id — la vía autoritativa.
+      const huById = {};
+      for (const h of huRows) {
+        const lid = String(h['Lodgify Id'] || h['lodgify_id'] || '').trim();
+        if (lid) huById[lid] = h;
+      }
+      // También mantenemos huRows "huérfanos" (sin Lodgify Id) — son manuales
+      // que no matchean con Reservas_Lodgify. Los devolvemos aparte para que
+      // no se pierdan cuando el huésped pregunte por sus tickets.
+      const items = bookings.map(b => {
+        const id = String(b.Id || b.LodgifyId || '');
+        const hu = huById[id] || {};
+        const folio = String(hu['Folio facturapi'] || hu['Folio Facturapi'] || '').trim();
+        const url   = String(hu['Ticket facturapi url'] || hu['ticket facturapi url'] || '').trim();
+        return {
+          Id: id,
+          Alojamiento: String(b.HouseName || (b.Propiedad ? `${b.Propiedad}${b['# Departamento'] ? ' #' + b['# Departamento'] : ''}` : '') || `HouseId ${b.HouseId || '?'}`),
+          DateArrival: _toIso(b.DateArrival),
+          DateDeparture: _toIso(b.DateDeparture),
+          TotalAmount: Number(b.TotalAmount) || 0,
+          Currency: String(b.Currency || 'MXN'),
+          Status: String(b.Status || ''),
+          FolioFacturapi: folio,
+          TicketUrl: url,
+        };
+      });
+      // Agregar huRows huérfanos con folio como items "manuales".
+      for (const h of huRows) {
+        const lid = String(h['Lodgify Id'] || h['lodgify_id'] || '').trim();
+        if (lid) continue;
+        const folio = String(h['Folio facturapi'] || h['Folio Facturapi'] || '').trim();
+        const url   = String(h['Ticket facturapi url'] || '').trim();
+        if (!folio && !url) continue;
+        items.push({
+          Id: '',
+          Alojamiento: String(h['Propiedad'] || h['Alojamiento'] || 'Manual'),
+          DateArrival: _toIso(h['Fecha de ingreso'] || h['Ingreso']),
+          DateDeparture: _toIso(h['Fecha de salida'] || h['Salida']),
+          TotalAmount: Number(h['$ Monto facturado Total'] || h['Monto']) || 0,
+          Currency: 'MXN',
+          Status: 'Manual',
+          FolioFacturapi: folio,
+          TicketUrl: url,
+        });
+      }
+      return items;
+    }
+    if (name === "listar_reservas_sin_ticket") {
+      try {
+        const items = await _factReservasMerged(ctx.phone10);
+        const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
+        const elegibles = items.filter(x => {
+          if (!x.DateArrival || x.DateArrival > hoy) return false; // aún no inicia
+          const st = String(x.Status || '').toLowerCase();
+          if (['declined','cancelled','canceled','deleted','tentative'].includes(st)) return false;
+          return !x.FolioFacturapi && !x.TicketUrl;
+        }).map(({ Status, ...rest }) => rest);
+        return { content: JSON.stringify({ ok: true, count: elegibles.length, items: elegibles }) };
+      } catch (e) {
+        return { content: JSON.stringify({ ok: false, error: e.message }) };
+      }
+    }
+    if (name === "listar_tickets_emitidos") {
+      try {
+        const items = await _factReservasMerged(ctx.phone10);
+        const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
+        const enriched = items.map(x => {
+          let estado;
+          if (x.FolioFacturapi || x.TicketUrl) estado = 'emitido';
+          else {
+            const st = String(x.Status || '').toLowerCase();
+            const cancel = ['declined','cancelled','canceled','deleted','tentative'].includes(st);
+            const futuro = !x.DateArrival || x.DateArrival > hoy;
+            estado = (cancel || futuro) ? 'no_elegible' : 'pendiente';
+          }
+          const { Status, ...rest } = x;
+          return { ...rest, estado };
+        });
+        // Construir formatted_message determinístico — Claude Sonnet 5 tiende a
+        // comprimir listas largas; entregamos el texto ya armado y en el prompt
+        // le decimos que lo envíe verbatim.
+        const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+        function fmtRango(a, b) {
+          if (!a && !b) return '';
+          const p = (s) => { const m = String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? { y:+m[1], mo:+m[2], d:+m[3] } : null; };
+          const A = p(a), B = p(b);
+          if (A && B && A.y === B.y && A.mo === B.mo) return `${String(A.d).padStart(2,'0')}-${String(B.d).padStart(2,'0')} ${meses[A.mo-1]}`;
+          if (A && B) return `${String(A.d).padStart(2,'0')} ${meses[A.mo-1]} - ${String(B.d).padStart(2,'0')} ${meses[B.mo-1]}`;
+          if (A) return `${String(A.d).padStart(2,'0')} ${meses[A.mo-1]}`;
+          return '';
+        }
+        function fmtMonto(n) {
+          const v = Number(n) || 0;
+          if (v === 0) return '$0';
+          return '$' + v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        const linesText = enriched.map((x, i) => {
+          const parts = [String(x.Alojamiento || '').trim()];
+          const rango = fmtRango(x.DateArrival, x.DateDeparture);
+          if (rango) parts.push(rango);
+          if (x.TotalAmount != null && x.TotalAmount !== '') parts.push(fmtMonto(x.TotalAmount));
+          if (x.FolioFacturapi) parts.push('Folio ' + String(x.FolioFacturapi));
+          if (x.TicketUrl) parts.push(String(x.TicketUrl));
+          let line = `${i + 1}. ${parts.filter(Boolean).join(' — ')}`;
+          if (x.estado === 'pendiente') line += ' (pendiente)';
+          else if (x.estado === 'no_elegible') line += ' (no aplica)';
+          return line;
+        });
+        const hayPendientes = enriched.some(x => x.estado === 'pendiente');
+        const formatted_message = [
+          'Aquí tienes tus tickets emitidos:',
+          '',
+          ...linesText,
+          ...(hayPendientes ? ['', '¿Quieres que tramite ticket para alguna de las pendientes?'] : []),
+        ].join('\n');
+        // Devolvemos SOLO formatted_message (+count) para minimizar tokens
+        // que Claude tiene que procesar en la vuelta 2 (el items array duplicaba
+        // la información y aumentaba el riesgo de exceder max_tokens).
+        return { content: JSON.stringify({ ok: true, count: enriched.length, formatted_message }) };
+      } catch (e) {
+        return { content: JSON.stringify({ ok: false, error: e.message }) };
+      }
+    }
+    if (name === "solicitar_ticket_admin") {
+      const reservaId = String(args.reservaId || '').trim();
+      if (!reservaId) return { content: JSON.stringify({ ok: false, error: 'reservaId requerido' }) };
+      // Enriquecer con datos de la reserva para el resumen del admin.
+      let bkResumen = 'Reserva ' + reservaId;
+      try {
+        const r = await fetch(`http://127.0.0.1:${PORT}/lodgify-list`);
+        const j = await r.json();
+        const bk = (j && Array.isArray(j.bookings) ? j.bookings : []).find(x => String(x.Id) === reservaId);
+        if (bk) {
+          const aloj = String(bk.HouseName || `HouseId ${bk.HouseId || '?'}`);
+          const arr = String(bk.DateArrival || '').slice(0,10);
+          const dep = String(bk.DateDeparture || '').slice(0,10);
+          const tot = Number(bk.TotalAmount) || 0;
+          const cur = String(bk.Currency || 'MXN');
+          const nombre = String(bk.GuestName || '').trim();
+          bkResumen = `${aloj} · ${arr} → ${dep} · Total $${tot.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} ${cur}${nombre?` · Huésped: ${nombre}`:''} · Id: ${reservaId}`;
+        }
+      } catch(_){}
+      const notifyText = `📄 SOLICITUD de ticket auto-facturación vía bot\nPhone: +${ctx.phone10}\n${bkResumen}\n\nAcción sugerida: emitir el ticket en Facturapi y verificar envío por correo.`;
+      // Persistir en hoja Solicitudes_Pendientes (fire-and-forget — no bloquea
+      // el reply al huésped si Apps Script tarda).
+      try {
+        fetch(`http://127.0.0.1:${PORT}/solicitudes`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payload: {
+            Phone: ctx.phone10,
+            Tipo: 'ticket_autofacturacion',
+            ReservaId: reservaId,
+            Resumen: bkResumen,
+          }}),
+        }).catch(()=>{});
+      } catch(_){}
+      return {
+        content: JSON.stringify({ ok: true, mensaje: "Solicitud registrada. El admin recibió la notificación." }),
+        notifyText,
       };
     }
     if (name === "agendar_late_checkout") {
@@ -1250,7 +1508,13 @@ async function _botLlmLoop({ system, history, userMsg, ctx, tools }) {
     const parts = j.content || [];
     if (j.stop_reason !== "tool_use") {
       const txt = parts.filter(p => p.type === "text").map(p => p.text).join("\n").trim();
-      return { text: txt, toolsUsed };
+      if (!txt) {
+        // Log detallado para diagnosticar texto vacío persistente.
+        try {
+          console.warn(`[llm-empty] stop=${j.stop_reason} parts=${JSON.stringify(parts).slice(0,500)} usage=${JSON.stringify(j.usage||{})} msgs=${runMessages.length}`);
+        } catch(_){}
+      }
+      return { text: txt, toolsUsed, stopReason: j.stop_reason || "" };
     }
     // Agregar la respuesta del assistant tal cual (con tool_use blocks).
     runMessages.push({ role: "assistant", content: parts });
@@ -1564,17 +1828,20 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   const admCheck = await _botIsAdminPhone(phone10);
   if (admCheck.isAdmin) {
     const low = bodyMsg.toLowerCase().trim();
-    if (/^modo\s+(prueba|test|hu[eé]sped|guest)$/i.test(low)) {
+    // Toggles de modo — cualquiera funciona (mensaje ENTERO, case-insensitive):
+    //   Ir a huésped: "@huesped" / "@huésped" / "modo prueba" / "modo test" / "modo huésped" / "modo guest"
+    //   Volver a admin: "@admin"   / "modo admin"  / "modo prod" / "modo real" / "modo producción"
+    if (/^@?\s*hu[eé]sped$/i.test(low) || /^@?\s*guest$/i.test(low) || /^modo\s+(prueba|test|hu[eé]sped|guest)$/i.test(low)) {
       _bot_admin_guest_mode.set(phone10, true);
-      const reply = `Modo prueba ACTIVADO. Te trato como huésped. Envía "modo admin" para volver.`;
+      const reply = `OK — ahora te trato como HUÉSPED. Envía "@admin" para volver.`;
       await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
       if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true }); bodyAlreadyPersisted = true; }
       _botAppendMessage(phone10, "assistant", reply, { admin: true, mode_toggle: "guest" });
       return;
     }
-    if (/^modo\s+(admin|prod|real|producci[oó]n)$/i.test(low)) {
+    if (/^@?\s*admin$/i.test(low) || /^modo\s+(admin|prod|real|producci[oó]n)$/i.test(low)) {
       _bot_admin_guest_mode.set(phone10, false);
-      const reply = `Modo admin ACTIVADO.`;
+      const reply = `OK — ahora te trato como ADMIN. Envía "@huesped" para probar el flujo huésped.`;
       await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
       if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true }); bodyAlreadyPersisted = true; }
       _botAppendMessage(phone10, "assistant", reply, { admin: true, mode_toggle: "admin" });
@@ -1595,7 +1862,8 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         // por sí mismo; sin esto interpreta "octubre" como cualquier año).
         const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
         const nowYear = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
-        const dynSystem = BOT_SYSTEM_PROMPT_ADMIN + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${today} (América/Mexico_City).\n- AÑO ACTUAL: ${nowYear}. Úsalo por defecto cuando no se mencione año.`;
+        const adminPromptsBlock = _botBuildPromptsBlock(await _botGetPrompts());
+        const dynSystem = BOT_SYSTEM_PROMPT_ADMIN + adminPromptsBlock + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${today} (América/Mexico_City).\n- AÑO ACTUAL: ${nowYear}. Úsalo por defecto cuando no se mencione año.`;
         // Historial: solo mensajes admin previos del MISMO teléfono para
         // permitir seguimientos ("Urgente" tras "@reporte..."). Filtramos
         // fuera cualquier mensaje que no sea admin (protege de contaminar
@@ -3146,6 +3414,36 @@ app.post("/reservas/attach-phone", async (req, res) => {
 app.delete("/reservas/phone-extras/:id", async (req, res) => {
   try {
     const r = await callCheckinAppsScriptPost("delete_reserva_phone_extra", { payload: { id: String(req.params.id) } });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ─── Solicitudes pendientes (bot notifications persistidas) ────────────
+app.get("/solicitudes", async (req, res) => {
+  try {
+    const params = {};
+    if (req.query.phone) params.phone = String(req.query.phone);
+    if (req.query.estado) params.estado = String(req.query.estado);
+    const r = await callCheckinAppsScript("list_solicitudes", params);
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/solicitudes", async (req, res) => {
+  try {
+    const payload = req.body?.payload || req.body || {};
+    const r = await callCheckinAppsScriptPost("save_solicitud", { payload });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/solicitudes/:id/estado", async (req, res) => {
+  try {
+    const payload = {
+      id: String(req.params.id),
+      estado: String((req.body || {}).estado || ""),
+      AtendidoPor: String((req.body || {}).AtendidoPor || ""),
+      Notas: String((req.body || {}).Notas || ""),
+    };
+    const r = await callCheckinAppsScriptPost("update_solicitud_estado", { payload });
     res.json(r);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
