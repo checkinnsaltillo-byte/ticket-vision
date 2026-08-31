@@ -850,6 +850,67 @@ const BOT_TOOLS = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "solicitar_late_checkout",
+    description: "Registra una solicitud de LATE CHECKOUT (salida más tarde de la hora habitual). Requiere APROBACIÓN del admin — no confirmes al huésped que está aprobado; solo di 'se envió al equipo para revisar disponibilidad'. Usa después de confirmar la hora deseada con el huésped.",
+    input_schema: {
+      type: "object",
+      properties: {
+        hora_nueva: { type: "string", description: "Nueva hora de salida en formato HH:MM (24h). Ej: '15:00'." },
+        notas:      { type: "string", description: "Cualquier detalle relevante que el huésped mencionó." },
+      },
+      required: ["hora_nueva"],
+    },
+  },
+  {
+    name: "solicitar_early_checkin",
+    description: "Registra una solicitud de EARLY CHECK-IN (llegar antes de la hora habitual). Requiere APROBACIÓN del admin — no confirmes al huésped que está aprobado; solo di 'se envió al equipo para revisar disponibilidad'. Usa después de confirmar la hora deseada con el huésped.",
+    input_schema: {
+      type: "object",
+      properties: {
+        hora_llegada: { type: "string", description: "Hora de llegada solicitada en formato HH:MM (24h). Ej: '11:00'." },
+        fecha:        { type: "string", description: "Fecha de llegada YYYY-MM-DD (si difiere de la reserva)." },
+        notas:        { type: "string", description: "Cualquier detalle relevante." },
+      },
+      required: ["hora_llegada"],
+    },
+  },
+  {
+    name: "solicitar_insumos",
+    description: "Registra una solicitud de INSUMOS extra (toallas, sábanas, café, jabón, papel, almohadas, etc.). NO requiere aprobación — solo el admin marca 'atendido' cuando entrega. Usa después de listar exactamente qué pide el huésped.",
+    input_schema: {
+      type: "object",
+      properties: {
+        articulos: { type: "string", description: "Lista concreta de artículos pedidos (ej. '2 toallas de baño + 1 juego de sábanas matrimoniales')." },
+      },
+      required: ["articulos"],
+    },
+  },
+  {
+    name: "solicitar_metodo_pago",
+    description: "Registra una solicitud de MÉTODO DE PAGO distinto al default de la reserva (efectivo, transferencia SPEI, pagos en parcialidades, etc.). NO requiere aprobación — el admin coordina y marca 'atendido'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        metodo: { type: "string", description: "Método propuesto (ej. 'efectivo', 'transferencia SPEI', 'pagos en 2 exhibiciones')." },
+        notas:  { type: "string", description: "Detalle: monto, fechas, referencias, etc." },
+      },
+      required: ["metodo"],
+    },
+  },
+  {
+    name: "solicitar_accion_admin",
+    description: "Registra una SOLICITUD GENÉRICA para el admin cuando el huésped pide algo que necesita intervención humana y NO existe una tool específica para ese caso. Ejemplos: early check-in, cambio de reserva, cuna/silla infantil, artículos extra (toallas, sábanas), ajuste de precio, refacturación, etc. Usa SIEMPRE esta tool después de confirmar con el huésped (obtén todos los datos relevantes primero). Persiste en Solicitudes_Pendientes y notifica al admin. NO uses esta tool si el caso tiene tool específica: cotizar_disponibilidad, crear_reporte_mantenimiento, agendar_late_checkout, listar_reservas_sin_ticket, solicitar_ticket_admin, extra_cleaning — ya cubren esos casos.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tipo:      { type: "string", description: "Slug corto en snake_case que identifique el tipo (ej. 'early_checkin', 'cambio_reserva', 'articulos_extra', 'ajuste_precio', 'cuna_infantil'). No inventes uno complicado — usa el más corto que describa la petición." },
+        resumen:   { type: "string", description: "Descripción completa y auto-contenida de lo que pide el huésped: qué, cuándo, dónde, condiciones. Incluye datos concretos (hora exacta, fechas, cantidades). El admin debe poder entender toda la petición leyendo SOLO este campo." },
+        reservaId: { type: "string", description: "Id de reserva Lodgify si aplica (opcional). Extráelo de las reservas activas del huésped." },
+      },
+      required: ["tipo", "resumen"],
+    },
+  },
+  {
     name: "solicitar_ticket_admin",
     description: "Solicita al admin (vía notificación) que emita el ticket de auto-facturación para UNA reserva específica. Úsalo SÓLO después de que el huésped confirmó explícitamente cuál reserva quiere facturar (elección por Id, no por nombre). NO emite el ticket directamente — solo señaliza al admin. El bot debe responder al huésped 'listo, ya avisé al equipo; en unos minutos te llega el ticket por correo'. No prometas tiempos exactos.",
     input_schema: {
@@ -1182,6 +1243,79 @@ async function _botExecTool(toolUse, ctx) {
       } catch (e) {
         return { content: JSON.stringify({ ok: false, error: e.message }) };
       }
+    }
+    // Helper: registra en Solicitudes_Pendientes + arma notifyText común
+    async function _regSolicitud(tipo, resumen, reservaId) {
+      const nombre = String(bk.GuestName || '').trim();
+      const notifyText = `📌 SOLICITUD (${tipo}) vía bot\nPhone: +${ctx.phone10}${nombre?` · ${nombre}`:''}${reservaId?`\nReserva: ${reservaId}`:''}\n\n${resumen}`;
+      try {
+        fetch(`http://127.0.0.1:${PORT}/solicitudes`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payload: { Phone: ctx.phone10, Tipo: tipo, ReservaId: reservaId || '', Resumen: resumen } }),
+        }).catch(()=>{});
+      } catch(_){}
+      return notifyText;
+    }
+    if (name === "solicitar_late_checkout") {
+      const hora = String(args.hora_nueva || '').trim();
+      if (!hora) return { content: JSON.stringify({ ok:false, error:'hora_nueva requerida' }) };
+      const notas = String(args.notas || '').trim();
+      const arrival = String(bk.DateArrival || bk['Fecha de ingreso'] || '').slice(0,10);
+      const departure = String(bk.DateDeparture || bk['Fecha de salida'] || '').slice(0,10);
+      const reservaId = String(bk.Id || '');
+      const resumen = `Late check-out hasta ${hora}${departure?` el ${departure}`:''}${arrival?` (reserva ${arrival}→${departure})`:''}${notas?`\nNotas: ${notas}`:''}`;
+      const notifyText = await _regSolicitud('late_checkout', resumen, reservaId);
+      return { content: JSON.stringify({ ok:true, mensaje:'Solicitud registrada. Requiere aprobación del equipo.' }), notifyText };
+    }
+    if (name === "solicitar_early_checkin") {
+      const hora = String(args.hora_llegada || '').trim();
+      if (!hora) return { content: JSON.stringify({ ok:false, error:'hora_llegada requerida' }) };
+      const fecha = String(args.fecha || bk.DateArrival || bk['Fecha de ingreso'] || '').slice(0,10);
+      const notas = String(args.notas || '').trim();
+      const reservaId = String(bk.Id || '');
+      const resumen = `Early check-in a las ${hora}${fecha?` el ${fecha}`:''}${notas?`\nNotas: ${notas}`:''}`;
+      const notifyText = await _regSolicitud('early_checkin', resumen, reservaId);
+      return { content: JSON.stringify({ ok:true, mensaje:'Solicitud registrada. Requiere aprobación del equipo.' }), notifyText };
+    }
+    if (name === "solicitar_insumos") {
+      const articulos = String(args.articulos || '').trim();
+      if (!articulos) return { content: JSON.stringify({ ok:false, error:'articulos requerido' }) };
+      const reservaId = String(bk.Id || '');
+      const resumen = `Insumos solicitados: ${articulos}`;
+      const notifyText = await _regSolicitud('insumos', resumen, reservaId);
+      return { content: JSON.stringify({ ok:true, mensaje:'Solicitud registrada.' }), notifyText };
+    }
+    if (name === "solicitar_metodo_pago") {
+      const metodo = String(args.metodo || '').trim();
+      if (!metodo) return { content: JSON.stringify({ ok:false, error:'metodo requerido' }) };
+      const notas = String(args.notas || '').trim();
+      const reservaId = String(bk.Id || '');
+      const resumen = `Método de pago propuesto: ${metodo}${notas?`\nNotas: ${notas}`:''}`;
+      const notifyText = await _regSolicitud('metodo_pago', resumen, reservaId);
+      return { content: JSON.stringify({ ok:true, mensaje:'Solicitud registrada.' }), notifyText };
+    }
+    if (name === "solicitar_accion_admin") {
+      const tipo = String(args.tipo || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g,'_').replace(/^_+|_+$/g,'') || 'otro';
+      const resumen = String(args.resumen || '').trim();
+      const reservaId = String(args.reservaId || '').trim();
+      if (!resumen) return { content: JSON.stringify({ ok: false, error: 'resumen requerido' }) };
+      const nombre = String(bk.GuestName || '').trim();
+      const notifyText = `📌 SOLICITUD (${tipo}) vía bot\nPhone: +${ctx.phone10}${nombre?` · ${nombre}`:''}${reservaId?`\nReserva: ${reservaId}`:''}\n\n${resumen}`;
+      try {
+        fetch(`http://127.0.0.1:${PORT}/solicitudes`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payload: {
+            Phone: ctx.phone10,
+            Tipo: tipo,
+            ReservaId: reservaId,
+            Resumen: resumen,
+          }}),
+        }).catch(()=>{});
+      } catch(_){}
+      return {
+        content: JSON.stringify({ ok: true, mensaje: "Solicitud registrada. El admin recibió la notificación." }),
+        notifyText,
+      };
     }
     if (name === "solicitar_ticket_admin") {
       const reservaId = String(args.reservaId || '').trim();
