@@ -748,8 +748,33 @@ HERRAMIENTAS DISPONIBLES Y CUÁNDO USARLAS:
    • Si el huésped ya te dijo los 3 datos claros (aunque haya sido en 2-3 mensajes), NO simules pedir el mismo dato dos veces. Confirma con el resumen y espera "sí".
    • Al recibir el resultado, envía SIEMPRE al huésped el campo "link_ver_resultados" — es la URL con todas las opciones (fotos, precios, mapa). Formato de mensaje sugerido: 1 oración breve + link en línea aparte. NO listes alojamientos en el chat — con el link basta.
    • Usa el campo "total_disponibles" (número total encontrado), NO "mostrando_top". Si "hay_mas" es true, el link muestra TODOS. Ejemplo correcto: "Tenemos 12 alojamientos disponibles para esas fechas ✨\n{link}". Ejemplo INCORRECTO: "Tengo 5 alojamientos disponibles…" (5 es sólo un preview interno tuyo — el link muestra los 12).
-2) crear_reporte_mantenimiento — cuando el huésped reporte algo roto, que no funciona, fuga, ruido de electrodoméstico, etc. ANTES de proponer crear el reporte, LLAMA consultar_reportes_reserva con un filtro relevante ("hormigas", "aire", "agua", etc.) para saber si ya existe uno. Si YA hay reporte activo del mismo tema (Estado ≠ 'resuelto' / 'cancelado'), NO crees duplicado: infórmale al huésped el estado del reporte existente ("Ya tenemos un reporte de hormigas abierto, folio X, en estado 'en_proceso' — el equipo lo está atendiendo"). Si NO hay reporte previo, FLUJO OBLIGATORIO: (a) resume lo que entendiste ("Entiendo: [problema] en [lugar]. ¿Quieres que abra un reporte para que el equipo lo revise?"), (b) espera confirmación explícita del huésped ("sí", "adelante", "confirmo"), (c) SOLO ENTONCES llama crear_reporte_mantenimiento.
+2) crear_reporte_mantenimiento — cuando el huésped reporte algo roto, que no funciona, fuga, ruido de electrodoméstico, etc.
+   CLASIFICACIÓN CRÍTICA OBLIGATORIA (prioridad = P1, criticidad = critico) — si el mensaje del huésped o del admin menciona CUALQUIERA de los siguientes temas, DEBES asignar P1/critico sin excepción:
+     · Electricidad: "se fue la luz", "se cortó la luz", "se fue la electricidad", "no hay electricidad", "apagón", "sin luz", "sin corriente".
+     · Agua: "se fue el agua", "no hay agua", "hay fuga", "se está tirando el agua", "no sale agua", "sin agua", "está goteando fuerte", "reventó tubería".
+     · Gas / cocina: "huele a gas", "olor a gas", "no hay gas", "no prende la estufa", "no hay agua caliente", "sin gas", "boiler no enciende".
+     · Limpieza/blancos deficiente al llegar: "encontramos sucio el departamento", "no se realizó la limpieza", "está desordenado el departamento", "no se hizo cambio de sábanas", "no se cambiaron blancos", "hay mucha suciedad", "los baños están sucios", "no se realizó el aseo", "el depa está sucio".
+     · Ruido / conducta molesta: "se escucha mucho ruido", "hay ruido excesivo", "alguien hace mucho ruido", "hay música muy fuerte", "están hablando demasiado fuerte", "no dejan dormir", "no dejan descansar", "vecinos ruidosos".
+     · Violencia / seguridad: "se escuchan gritos", "hay violencia", "se están peleando", "gente agresiva", "gente problemática", "personas golpeándose", "hay una pelea", "riña".
+   Estas situaciones tienen impacto directo en salud, seguridad o habitabilidad — SIEMPRE P1/critico. NUNCA las clasifiques P2/alto ni menor.
+   Nota terminológica: aunque la tool acepta "P1"/"P2"/"P3", en la conversación con el huésped/admin no digas el código — di "urgente" o describe la acción. ANTES de proponer crear el reporte, LLAMA consultar_reportes_reserva con un filtro relevante ("hormigas", "aire", "agua", etc.) para saber si ya existe uno. Si YA hay reporte activo del mismo tema (Estado ≠ 'resuelto' / 'cancelado'), NO crees duplicado: infórmale al huésped el estado del reporte existente ("Ya tenemos un reporte de hormigas abierto, folio X, en estado 'en_proceso' — el equipo lo está atendiendo"). Si NO hay reporte previo, FLUJO OBLIGATORIO: (a) resume lo que entendiste ("Entiendo: [problema] en [lugar]. ¿Quieres que abra un reporte para que el equipo lo revise?"), (b) espera confirmación explícita del huésped ("sí", "adelante", "confirmo"), (c) SOLO ENTONCES llama crear_reporte_mantenimiento.
 3) agendar_late_checkout — cuando el huésped pida salir más tarde de la hora estándar. FLUJO OBLIGATORIO: (a) pregunta la nueva hora deseada si no la dio, (b) resume "Voy a solicitar tu salida a las HH:MM. Queda pendiente de confirmación por el equipo. ¿Adelante?", (c) espera "sí", (d) llama la tool. NO prometas que está aprobado — solo queda como solicitud pendiente.
+4) listar_reservas_sin_ticket / solicitar_ticket_admin — cuando el huésped pida ticket de auto-facturación / factura / CFDI:
+   TERMINOLOGÍA OBLIGATORIA — NUNCA digas "facturar", "factura", "vamos a facturar", "ya se facturó", "recibirás tu factura":
+   • Nosotros NO emitimos facturas timbradas por el SAT — solo emitimos un TICKET DE AUTO-FACTURACIÓN. El huésped luego usa el código/link del ticket para auto-facturarse llenando SUS datos fiscales en el portal correspondiente.
+   • Decir "factura" confunde al huésped: cree que ya tiene su CFDI timbrado, pero NO — apenas tiene el insumo para hacerlo él mismo.
+   • VOCABULARIO CORRECTO: "ticket de auto-facturación", "ticket para auto-facturar", "te llegará un ticket con el código para que tú puedas auto-facturarte", "ya se emitió el ticket".
+   • VOCABULARIO PROHIBIDO: "facturar", "factura", "CFDI ya emitido", "factura timbrada", "SAT".
+   • Cuando el huésped te diga "quiero facturar" / "necesito mi factura" — RESPONDES con lenguaje correcto: "Con gusto te envío el TICKET DE AUTO-FACTURACIÓN para que tú puedas auto-facturarte. ¿Cuál reserva?".
+   • Al confirmar la solicitud al huésped: "Listo, ya avisé al equipo. En unos minutos te llega el ticket por correo — con ese código podrás auto-facturarte en el portal 📄".
+   REGLA DE PERIODO VÁLIDO (obligatoria):
+   • El ticket SOLO se puede tramitar desde el DÍA DE ENTRADA de la estancia en adelante (arrival <= hoy). Estancias en curso o ya terminadas: OK. Estancias FUTURAS (arrival > hoy): NO.
+   • listar_reservas_sin_ticket devuelve dos arreglos: "items" (elegibles) y "futuras" (Booked pero aún no inicia).
+   • Si el huésped identifica UNA reserva de "items" y confirma, invoca solicitar_ticket_admin con esa reservaId.
+   • Si el huésped identifica UNA reserva de "futuras" (ej. "la de noviembre" cuando estamos en agosto) o pide una reserva cuyo arrival > hoy, RESPONDE con la NOTA "ticket_no_iniciado" (texto abajo). NO invoques solicitar_ticket_admin.
+   • Si "items" está vacío y "futuras" tiene entradas, ofrece la lista de futuras aclarando que estarán disponibles a partir de su fecha de entrada.
+   NOTA "ticket_no_iniciado" (usa este texto tal cual, sustituyendo {alojamiento} y {arrival}):
+   "El ticket de auto-facturación se puede generar únicamente a partir del día de entrada. Tu reserva {alojamiento} inicia el {arrival} — vuelve a solicitarlo desde esa fecha en adelante y con gusto lo tramitamos. 📄"
 - Si el mensaje suena a queja, reclamo, emergencia, mención de dinero/cobros, o pide hablar con humano, NO respondas — el sistema escalará automáticamente.
 - No des precios, no negocies, no prometas descuentos.
 - Usa emojis con moderación (uno cada 2-3 respuestas, no en cada frase).
@@ -865,7 +890,7 @@ const BOT_TOOLS = [
   },
   {
     name: "listar_reservas_sin_ticket",
-    description: "Lista las reservas DEL HUÉSPED ACTUAL que aún no tienen ticket de auto-facturación emitido (no tienen 'Folio facturapi'). Solo incluye reservas con estadía iniciada o completada (arrival <= hoy). Devuelve Id, Alojamiento, fechas y total. Úsalo cuando el huésped pregunte por su ticket / factura / autofacturación / CFDI. NO requiere confirmación. Si el resultado es vacío, dile al huésped que todas sus reservas ya están facturadas o que aún no puede facturar una que no ha ocurrido.",
+    description: "Lista las reservas DEL HUÉSPED ACTUAL que aún no tienen ticket de auto-facturación emitido (no tienen 'Folio facturapi'). Devuelve dos arreglos: `items` (elegibles: arrival <= hoy, estadía iniciada o completada) y `futuras` (Booked pero cuyo arrival aún NO llega — NO se pueden facturar todavía). Úsalo cuando el huésped pregunte por su ticket / factura / autofacturación / CFDI. NO requiere confirmación. Si el huésped pide facturar una reserva de `futuras`, RESPONDE con el mensaje exacto de la nota 'ticket_no_iniciado' (ver instrucciones abajo). Si `items` y `futuras` están vacíos, dile que todas están facturadas.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -1148,7 +1173,14 @@ async function _botExecTool(toolUse, ctx) {
     async function _factReservasMerged(phone10) {
       const r = await fetch(`http://127.0.0.1:${PORT}/bookings-by-guest?phone=${encodeURIComponent(phone10)}`);
       const j = await r.json();
-      const bookings = (j && j.ok && Array.isArray(j.bookings)) ? j.bookings : [];
+      // Solo Booked (Lodgify) — igual que _botFindActiveBooking.
+      const bookingsRaw = (j && j.ok && Array.isArray(j.bookings)) ? j.bookings : [];
+      const bookings = bookingsRaw.filter(b => {
+        // Manual/huRows heredan Status vacío o 'Manual' → los conservamos.
+        const st = String(b.Status || '').toLowerCase();
+        if (!st || st === 'manual') return true;
+        return st === 'booked';
+      });
       const huRows = Array.isArray(j.huRows) ? j.huRows : [];
       function _toIso(v) {
         const s = String(v || '');
@@ -1208,13 +1240,18 @@ async function _botExecTool(toolUse, ctx) {
       try {
         const items = await _factReservasMerged(ctx.phone10);
         const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
-        const elegibles = items.filter(x => {
-          if (!x.DateArrival || x.DateArrival > hoy) return false; // aún no inicia
+        const elegibles = [];
+        const futuras = [];
+        for (const x of items) {
+          if (!x.DateArrival) continue;
           const st = String(x.Status || '').toLowerCase();
-          if (['declined','cancelled','canceled','deleted','tentative'].includes(st)) return false;
-          return !x.FolioFacturapi && !x.TicketUrl;
-        }).map(({ Status, ...rest }) => rest);
-        return { content: JSON.stringify({ ok: true, count: elegibles.length, items: elegibles }) };
+          if (st && st !== 'booked' && st !== 'manual') continue;
+          if (x.FolioFacturapi || x.TicketUrl) continue;
+          const clean = ({ Status, ...rest }) => rest;
+          if (x.DateArrival > hoy) futuras.push(clean(x));
+          else elegibles.push(clean(x));
+        }
+        return { content: JSON.stringify({ ok: true, count: elegibles.length, items: elegibles, futuras }) };
       } catch (e) {
         return { content: JSON.stringify({ ok: false, error: e.message }) };
       }
@@ -1377,20 +1414,48 @@ async function _botExecTool(toolUse, ctx) {
       if (!reservaId) return { content: JSON.stringify({ ok: false, error: 'reservaId requerido' }) };
       // Enriquecer con datos de la reserva para el resumen del admin.
       let bkResumen = 'Reserva ' + reservaId;
+      let bkArrIso = '';
+      let bkDepIso = '';
+      let bkAlojLabel = '';
+      let bkStatus = '';
+      let bkFound = false;
       try {
         const r = await fetch(`http://127.0.0.1:${PORT}/lodgify-list`);
         const j = await r.json();
         const bk = (j && Array.isArray(j.bookings) ? j.bookings : []).find(x => String(x.Id) === reservaId);
         if (bk) {
+          bkFound = true;
+          bkStatus = String(bk.Status || '');
           const aloj = String(bk.HouseName || `HouseId ${bk.HouseId || '?'}`);
+          bkAlojLabel = aloj;
           const arr = String(bk.DateArrival || '').slice(0,10);
           const dep = String(bk.DateDeparture || '').slice(0,10);
+          const toIso = s => { const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}` : s; };
+          bkArrIso = toIso(arr);
+          bkDepIso = toIso(dep);
           const tot = Number(bk.TotalAmount) || 0;
           const cur = String(bk.Currency || 'MXN');
           const nombre = String(bk.GuestName || '').trim();
           bkResumen = `${aloj} · ${arr} → ${dep} · Total $${tot.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} ${cur}${nombre?` · Huésped: ${nombre}`:''} · Id: ${reservaId}`;
         }
       } catch(_){}
+      // Guard: reserva Lodgify NO Booked (Open/Tentative/Declined/Cancelled/Deleted)
+      // NO puede facturarse — no importa la fecha. Bloquea antes de crear solicitud.
+      if (bkFound && bkStatus && bkStatus.toLowerCase() !== 'booked') {
+        return { content: JSON.stringify({
+          ok: false, error: 'reserva_no_confirmada',
+          mensaje: `Esa reserva no está confirmada (estado: ${bkStatus}). Solo se pueden emitir tickets de reservas confirmadas. Si crees que es un error, avísale al equipo. 🙏`,
+        }) };
+      }
+      // Regla: solo se puede solicitar el ticket a partir del día de entrada.
+      const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
+      if (bkArrIso && bkArrIso > hoy) {
+        return { content: JSON.stringify({
+          ok: false, error: 'estancia_no_iniciada',
+          mensaje: `El ticket de auto-facturación se puede generar únicamente a partir del día de entrada (${bkArrIso}). Vuelve a solicitarlo desde esa fecha en adelante y con gusto lo tramitamos. 📄`,
+          arrival: bkArrIso, departure: bkDepIso, alojamiento: bkAlojLabel,
+        }) };
+      }
       const notifyText = `📄 SOLICITUD de ticket auto-facturación vía bot\nPhone: +${ctx.phone10}\n${bkResumen}\n\nAcción sugerida: emitir el ticket en Facturapi y verificar envío por correo.`;
       // Persistir en hoja Solicitudes_Pendientes (fire-and-forget — no bloquea
       // el reply al huésped si Apps Script tarda).
@@ -1764,7 +1829,16 @@ async function _botFindActiveBooking(phone10) {
       fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=bookings_by_guest&phone=${encodeURIComponent(phone10)}`).then(r => r.json()).catch(()=>null),
       _botGetAlojRows(),
     ]);
-    const lgBookings = (bkJ && bkJ.ok && Array.isArray(bkJ.bookings)) ? bkJ.bookings : [];
+    // Solo reservas Lodgify con Status === 'Booked' — excluye Open, Tentative,
+    // Declined, Cancelled, etc. Cualquier acción del bot (reportes, solicitudes,
+    // tickets) debe basarse únicamente en reservas confirmadas.
+    const lgBookingsRaw = (bkJ && bkJ.ok && Array.isArray(bkJ.bookings)) ? bkJ.bookings : [];
+    const lgBookings = lgBookingsRaw.filter(b => String(b.Status || '').toLowerCase() === 'booked');
+    if (lgBookingsRaw.length !== lgBookings.length) {
+      const dropped = lgBookingsRaw.filter(b => String(b.Status || '').toLowerCase() !== 'booked')
+        .map(b => `${b.Id}(${b.Status})`).join(', ');
+      console.info(`[bot-in] ${phone10}: filtered ${lgBookingsRaw.length - lgBookings.length} non-Booked bookings: ${dropped}`);
+    }
     const huRows = (bkJ && bkJ.ok && Array.isArray(bkJ.huRows)) ? bkJ.huRows : [];
     // ISO YYYY-MM-DD normalizer (acepta ISO, Date serializada, MM/DD/YYYY).
     const toIso = (v) => {
