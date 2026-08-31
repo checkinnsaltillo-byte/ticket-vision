@@ -1291,21 +1291,11 @@ async function _botExecTool(toolUse, ctx) {
           body: JSON.stringify({ payload: { Phone: ctx.phone10, Tipo: tipo, ReservaId: reservaId || '', Resumen: resumen } }),
         }).catch(()=>{});
       } catch(_){}
-      // Solo enviar acuse a tipos NO de aprobación (aprobación tiene su propio
-      // mensaje de "revisamos con el equipo" desde el prompt).
-      const aprobacionTypes = ['late_checkout','early_checkin'];
-      if (!aprobacionTypes.includes(String(tipo).toLowerCase())) {
-        try {
-          const tipoLabel = { insumos:'insumos', metodo_pago:'método de pago', ticket_autofacturacion:'ticket de auto-facturación', limpieza:'limpieza', limpieza_extra:'limpieza' }[String(tipo).toLowerCase()] || 'solicitud';
-          const tplBody = await _getWaTemplateBody('SOL: registro');
-          const fallback = `¡Recibido! Registramos tu solicitud de ${tipoLabel}. Nuestro equipo la revisa y te avisamos en cuanto quede agendada. 🙌`;
-          const acuse = tplBody
-            ? String(tplBody).replace(/\{\{?\s*tipo\s*\}?\}/gi, tipoLabel).trim()
-            : fallback;
-          const to = 'whatsapp:+' + (String(ctx.phone10).startsWith('52') ? ctx.phone10 : ('52' + ctx.phone10));
-          _twilioSendMessage({ to, body: acuse, skipMirror: false }).catch(()=>{});
-        } catch(_){}
-      }
+      // NOTA: no enviamos acuse determinístico aquí — el LLM (siguiendo el
+      // prompt del proceso) responde al huésped después de que la tool
+      // termina. Enviar acuse aquí + reply del LLM = mensaje duplicado.
+      // Si en el futuro Claude devuelve vacío con frecuencia, considerar
+      // acuse fallback SOLO cuando reply.text === '' en el webhook.
       return notifyText;
     }
     if (name === "solicitar_late_checkout") {
