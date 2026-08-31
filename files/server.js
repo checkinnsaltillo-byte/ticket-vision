@@ -887,7 +887,7 @@ const BOT_TOOLS = [
   },
   {
     name: "solicitar_extension",
-    description: "Registra una solicitud de EXTENSIÓN DE RESERVA (el huésped quiere quedarse más noches). Requiere APROBACIÓN del admin — no confirmes al huésped que está aprobado; solo di 'se envió al equipo para revisar disponibilidad'. Usa después de confirmar cuántas noches o fecha nueva de salida.",
+    description: "Registra una solicitud de EXTENSIÓN DE RESERVA (el huésped quiere quedarse más noches). El admin la coordina y marca 'atendida' cuando queda arreglada. Responde al huésped: 'registrado, el equipo revisa disponibilidad y te contacta'.",
     input_schema: {
       type: "object",
       properties: {
@@ -1293,7 +1293,7 @@ async function _botExecTool(toolUse, ctx) {
       } catch(_){}
       // Solo enviar acuse a tipos NO de aprobación (aprobación tiene su propio
       // mensaje de "revisamos con el equipo" desde el prompt).
-      const aprobacionTypes = ['late_checkout','early_checkin','extension'];
+      const aprobacionTypes = ['late_checkout','early_checkin'];
       if (!aprobacionTypes.includes(String(tipo).toLowerCase())) {
         try {
           const tipoLabel = { insumos:'insumos', metodo_pago:'método de pago', ticket_autofacturacion:'ticket de auto-facturación', limpieza:'limpieza', limpieza_extra:'limpieza' }[String(tipo).toLowerCase()] || 'solicitud';
@@ -1330,7 +1330,7 @@ async function _botExecTool(toolUse, ctx) {
       const detalle = nuevaSalida ? `hasta ${nuevaSalida}` : `${nochesExtra} noche${nochesExtra===1?'':'s'} extra`;
       const resumen = `Extensión de reserva: ${detalle}${departureActual?` (salida actual ${departureActual})`:''}${arrival?`, arrival ${arrival}`:''}${notas?`\nNotas: ${notas}`:''}`;
       const notifyText = await _regSolicitud('extension', resumen, reservaId);
-      return { content: JSON.stringify({ ok:true, mensaje:'Solicitud registrada. Requiere aprobación del equipo.' }), notifyText };
+      return { content: JSON.stringify({ ok:true, mensaje:'Solicitud registrada. El equipo coordina y te contacta.' }), notifyText };
     }
     if (name === "solicitar_early_checkin") {
       const hora = String(args.hora_llegada || '').trim();
