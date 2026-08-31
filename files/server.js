@@ -1244,7 +1244,8 @@ async function _botExecTool(toolUse, ctx) {
         return { content: JSON.stringify({ ok: false, error: e.message }) };
       }
     }
-    // Helper: registra en Solicitudes_Pendientes + arma notifyText común
+    // Helper: registra en Solicitudes_Pendientes + arma notifyText común +
+    // envía mensaje automático "SOL: registro" al huésped (fire-and-forget).
     async function _regSolicitud(tipo, resumen, reservaId) {
       const nombre = String(bk.GuestName || '').trim();
       const notifyText = `📌 SOLICITUD (${tipo}) vía bot\nPhone: +${ctx.phone10}${nombre?` · ${nombre}`:''}${reservaId?`\nReserva: ${reservaId}`:''}\n\n${resumen}`;
@@ -1254,6 +1255,17 @@ async function _botExecTool(toolUse, ctx) {
           body: JSON.stringify({ payload: { Phone: ctx.phone10, Tipo: tipo, ReservaId: reservaId || '', Resumen: resumen } }),
         }).catch(()=>{});
       } catch(_){}
+      // Solo enviar acuse a tipos NO de aprobación (aprobación tiene su propio
+      // mensaje de "revisamos con el equipo" desde el prompt).
+      const aprobacionTypes = ['late_checkout','early_checkin'];
+      if (!aprobacionTypes.includes(String(tipo).toLowerCase())) {
+        try {
+          const tipoLabel = { insumos:'insumos', metodo_pago:'método de pago', ticket_autofacturacion:'ticket de auto-facturación', limpieza:'limpieza', limpieza_extra:'limpieza' }[String(tipo).toLowerCase()] || 'solicitud';
+          const acuse = `¡Recibido! Registramos tu solicitud de ${tipoLabel}. Nuestro equipo la revisa y te avisamos en cuanto quede agendada. 🙌`;
+          const to = 'whatsapp:+' + (String(ctx.phone10).startsWith('52') ? ctx.phone10 : ('52' + ctx.phone10));
+          _twilioSendMessage({ to, body: acuse, skipMirror: false }).catch(()=>{});
+        } catch(_){}
+      }
       return notifyText;
     }
     if (name === "solicitar_late_checkout") {
@@ -3577,6 +3589,9 @@ app.post("/solicitudes/:id/estado", async (req, res) => {
       AtendidoPor: String((req.body || {}).AtendidoPor || ""),
       Notas: String((req.body || {}).Notas || ""),
     };
+    // Si se pasa ProgramadaAt, se incluye — el handler Apps Script actualiza
+    // la columna 11 solo si viene.
+    if (req.body && req.body.ProgramadaAt) payload.ProgramadaAt = String(req.body.ProgramadaAt);
     const r = await callCheckinAppsScriptPost("update_solicitud_estado", { payload });
     res.json(r);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
