@@ -886,6 +886,18 @@ const BOT_TOOLS = [
     },
   },
   {
+    name: "solicitar_extension",
+    description: "Registra una solicitud de EXTENSIÓN DE RESERVA (el huésped quiere quedarse más noches). Requiere APROBACIÓN del admin — no confirmes al huésped que está aprobado; solo di 'se envió al equipo para revisar disponibilidad'. Usa después de confirmar cuántas noches o fecha nueva de salida.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nueva_salida: { type: "string", description: "Fecha nueva de salida en formato YYYY-MM-DD (si el huésped la mencionó explícita)." },
+        noches_extra: { type: "integer", description: "Número de noches adicionales que solicita (si el huésped lo mencionó así en vez de fecha)." },
+        notas:        { type: "string", description: "Cualquier detalle relevante (motivo, huéspedes adicionales, etc.)." },
+      },
+    },
+  },
+  {
     name: "solicitar_early_checkin",
     description: "Registra una solicitud de EARLY CHECK-IN (llegar antes de la hora habitual). Requiere APROBACIÓN del admin — no confirmes al huésped que está aprobado; solo di 'se envió al equipo para revisar disponibilidad'. Usa después de confirmar la hora deseada con el huésped.",
     input_schema: {
@@ -1281,7 +1293,7 @@ async function _botExecTool(toolUse, ctx) {
       } catch(_){}
       // Solo enviar acuse a tipos NO de aprobación (aprobación tiene su propio
       // mensaje de "revisamos con el equipo" desde el prompt).
-      const aprobacionTypes = ['late_checkout','early_checkin'];
+      const aprobacionTypes = ['late_checkout','early_checkin','extension'];
       if (!aprobacionTypes.includes(String(tipo).toLowerCase())) {
         try {
           const tipoLabel = { insumos:'insumos', metodo_pago:'método de pago', ticket_autofacturacion:'ticket de auto-facturación', limpieza:'limpieza', limpieza_extra:'limpieza' }[String(tipo).toLowerCase()] || 'solicitud';
@@ -1305,6 +1317,19 @@ async function _botExecTool(toolUse, ctx) {
       const reservaId = String(bk.Id || '');
       const resumen = `Late check-out hasta ${hora}${departure?` el ${departure}`:''}${arrival?` (reserva ${arrival}→${departure})`:''}${notas?`\nNotas: ${notas}`:''}`;
       const notifyText = await _regSolicitud('late_checkout', resumen, reservaId);
+      return { content: JSON.stringify({ ok:true, mensaje:'Solicitud registrada. Requiere aprobación del equipo.' }), notifyText };
+    }
+    if (name === "solicitar_extension") {
+      const nuevaSalida = String(args.nueva_salida || '').trim();
+      const nochesExtra = Number(args.noches_extra || 0);
+      if (!nuevaSalida && !nochesExtra) return { content: JSON.stringify({ ok:false, error:'nueva_salida o noches_extra requerida' }) };
+      const notas = String(args.notas || '').trim();
+      const arrival = String(bk.DateArrival || bk['Fecha de ingreso'] || '').slice(0,10);
+      const departureActual = String(bk.DateDeparture || bk['Fecha de salida'] || '').slice(0,10);
+      const reservaId = String(bk.Id || '');
+      const detalle = nuevaSalida ? `hasta ${nuevaSalida}` : `${nochesExtra} noche${nochesExtra===1?'':'s'} extra`;
+      const resumen = `Extensión de reserva: ${detalle}${departureActual?` (salida actual ${departureActual})`:''}${arrival?`, arrival ${arrival}`:''}${notas?`\nNotas: ${notas}`:''}`;
+      const notifyText = await _regSolicitud('extension', resumen, reservaId);
       return { content: JSON.stringify({ ok:true, mensaje:'Solicitud registrada. Requiere aprobación del equipo.' }), notifyText };
     }
     if (name === "solicitar_early_checkin") {
