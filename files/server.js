@@ -3491,7 +3491,10 @@ app.post("/wa/send-forward", async (req, res) => {
     if (!to.startsWith("whatsapp:+")) return res.status(400).json({ ok: false, error: "to inválido (esperado whatsapp:+E164)" });
     if (!body) return res.status(400).json({ ok: false, error: "body vacío" });
     if (body.length > 4000) return res.status(400).json({ ok: false, error: "body demasiado largo" });
-    await _twilioSendMessage({ to, body, skipMirror: true });
+    // skipMirror:false → el mensaje se guarda en WA_ChatContext (bitácora del
+    // chat). Se usaba true antes; cambio a false para que las solicitudes
+    // (programada, atendida) y mensajes reenviados aparezcan en el historial.
+    await _twilioSendMessage({ to, body, skipMirror: false });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
