@@ -504,6 +504,30 @@ app.post("/wa/bot/prompts/reload", (req, res) => {
 // tokens output + varios cientos de thinking.
 const BOT_ANTHROPIC_MAX_TOKENS = 4000;
 
+// Cache in-memory (5 min) de WA_Templates para lookup por nombre desde
+// código servidor. El endpoint /wa/templates-list hace POST a Apps Script.
+const _waTplCache = { ts: 0, byName: null };
+async function _getWaTemplateBody(nombre) {
+  const TTL = 5 * 60_000;
+  const need = String(nombre || '').toLowerCase().trim();
+  if (!need) return '';
+  if (_waTplCache.byName && (Date.now() - _waTplCache.ts) < TTL) {
+    return _waTplCache.byName[need] || '';
+  }
+  try {
+    const r = await callCheckinAppsScriptPost('wa_templates_list', {});
+    const items = (r && Array.isArray(r.items)) ? r.items : (r && r.rows || []);
+    const map = {};
+    for (const t of items) {
+      const nom = String(t.nombre || t.Nombre || '').trim().toLowerCase();
+      if (nom) map[nom] = String(t.body || t.Body || '');
+    }
+    _waTplCache.byName = map;
+    _waTplCache.ts = Date.now();
+    return map[need] || '';
+  } catch(_) { return ''; }
+}
+
 // Cache in-memory (5 min TTL) para reducir round-trips a Apps Script.
 // Estos datos cambian raramente durante la vida de una conversación.
 const _botAlojEnabledCache = { ts: 0, map: null }; // HouseId → bool
@@ -1261,7 +1285,11 @@ async function _botExecTool(toolUse, ctx) {
       if (!aprobacionTypes.includes(String(tipo).toLowerCase())) {
         try {
           const tipoLabel = { insumos:'insumos', metodo_pago:'método de pago', ticket_autofacturacion:'ticket de auto-facturación', limpieza:'limpieza', limpieza_extra:'limpieza' }[String(tipo).toLowerCase()] || 'solicitud';
-          const acuse = `¡Recibido! Registramos tu solicitud de ${tipoLabel}. Nuestro equipo la revisa y te avisamos en cuanto quede agendada. 🙌`;
+          const tplBody = await _getWaTemplateBody('SOL: registro');
+          const fallback = `¡Recibido! Registramos tu solicitud de ${tipoLabel}. Nuestro equipo la revisa y te avisamos en cuanto quede agendada. 🙌`;
+          const acuse = tplBody
+            ? String(tplBody).replace(/\{\{?\s*tipo\s*\}?\}/gi, tipoLabel).trim()
+            : fallback;
           const to = 'whatsapp:+' + (String(ctx.phone10).startsWith('52') ? ctx.phone10 : ('52' + ctx.phone10));
           _twilioSendMessage({ to, body: acuse, skipMirror: false }).catch(()=>{});
         } catch(_){}
