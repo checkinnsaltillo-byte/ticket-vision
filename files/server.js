@@ -4606,6 +4606,23 @@ app.post("/perfiles-recalc-kpis", async (req, res) => {
   }
 });
 
+// ─── Perfil (por teléfono) — usado por Chats bot → editar perfil ──────────
+app.get("/perfil/by-phone", async (req, res) => {
+  try {
+    const phone = String(req.query.phone || "").replace(/\D/g,"").slice(-10);
+    if (phone.length < 10) return res.status(400).json({ ok:false, error:"phone (10 dígitos) requerido" });
+    const r = await callCheckinAppsScriptPost("perfil_get_by_phone", { phone });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
+});
+app.post("/perfil/upsert", async (req, res) => {
+  try {
+    const payload = (req.body && req.body.payload) || req.body || {};
+    const r = await callCheckinAppsScriptPost("perfil_upsert_by_phone", { payload });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /bookings-by-guest?phone=<10dig>
 // Devuelve historial COMPLETO de bookings del huésped (sin filtro fecha).
