@@ -4646,6 +4646,23 @@ app.post("/perfil/upsert", async (req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
+// ─── Llaves — notas libres por propiedad ─────────────────────────────────
+app.get("/llaves/notas", async (req, res) => {
+  try {
+    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=llaves_notas_list`;
+    const r = await fetch(url, { redirect: "follow" });
+    const j = await r.json();
+    res.json(j);
+  } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
+});
+app.post("/llaves/notas", async (req, res) => {
+  try {
+    const payload = (req.body && req.body.payload) || req.body || {};
+    const r = await callCheckinAppsScriptPost("llaves_notas_set", { payload });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /bookings-by-guest?phone=<10dig>
 // Devuelve historial COMPLETO de bookings del huésped (sin filtro fecha).
