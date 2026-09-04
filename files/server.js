@@ -2007,20 +2007,43 @@ let _BOT_TEST_MODE = { enabled: true, phones: ["+528444443922", "+528115569120",
 // Lista in-memory de números que reciben notificación EXTRA cuando un
 // proceso crítico se ejecuta (por ahora: reporte P1). Se administra
 // desde la UI del módulo Chats bot (barra "Emergencia").
-let _BOT_EMERGENCY = { phones: [] };
-app.get("/wa/bot/emergency-phones", (req, res) => {
-  res.json({ ok: true, phones: (_BOT_EMERGENCY.phones || []).slice() });
+// Cache en memoria (5min) del sheet Emergency_Contacts — evita hit a
+// Apps Script en cada request; se refresca cuando el POST reescribe.
+let _BOT_EMERGENCY = { phones: [], contacts: [], ts: 0 };
+async function _emergencyLoadFromSheet() {
+  try {
+    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=emergency_contacts_list`;
+    const r = await fetch(url, { redirect: "follow" });
+    const j = await r.json();
+    _BOT_EMERGENCY = {
+      phones: (j && Array.isArray(j.phones)) ? j.phones : [],
+      contacts: (j && Array.isArray(j.contacts)) ? j.contacts : [],
+      ts: Date.now(),
+    };
+  } catch (e) { console.warn("[bot-emergency] load sheet fallo:", e.message); }
+}
+app.get("/wa/bot/emergency-phones", async (req, res) => {
+  const stale = !_BOT_EMERGENCY.ts || (Date.now() - _BOT_EMERGENCY.ts) > 5*60*1000;
+  if (stale) await _emergencyLoadFromSheet();
+  res.json({ ok: true, phones: (_BOT_EMERGENCY.phones || []).slice(), contacts: (_BOT_EMERGENCY.contacts || []).slice() });
 });
-app.post("/wa/bot/emergency-phones", (req, res) => {
-  const b = req.body || {};
-  if (Array.isArray(b.phones)) {
-    _BOT_EMERGENCY.phones = b.phones.map(p => String(p||'').trim()).filter(Boolean);
-  }
-  console.info(`[bot-emergency] phones=${JSON.stringify(_BOT_EMERGENCY.phones)}`);
-  res.json({ ok: true, phones: _BOT_EMERGENCY.phones });
+app.post("/wa/bot/emergency-phones", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const payload = {};
+    if (Array.isArray(b.phones))   payload.phones = b.phones.map(p => String(p||'').trim()).filter(Boolean);
+    if (Array.isArray(b.contacts)) payload.contacts = b.contacts;
+    if (b.updated_by) payload.updated_by = String(b.updated_by);
+    const r = await callCheckinAppsScriptPost("emergency_contacts_set", { payload });
+    if (!r || !r.ok) throw new Error((r && r.error) || "Apps Script fallo");
+    _BOT_EMERGENCY = { phones: r.phones || [], contacts: [], ts: 0 }; // invalida cache; próximo GET recarga contactos
+    console.info(`[bot-emergency] phones=${JSON.stringify(_BOT_EMERGENCY.phones)}`);
+    res.json({ ok: true, phones: _BOT_EMERGENCY.phones });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 /** Reenvía un texto a TODOS los números de la lista de emergencia. */
 async function _botNotifyEmergency(text) {
+  if (!_BOT_EMERGENCY.ts || (Date.now() - _BOT_EMERGENCY.ts) > 5*60*1000) await _emergencyLoadFromSheet();
   const list = (_BOT_EMERGENCY.phones || []).filter(Boolean);
   if (!list.length) { console.info("[bot-emergency] lista vacía — skip"); return; }
   for (const p of list) {
