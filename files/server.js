@@ -5083,6 +5083,7 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     const reservaId = String(b.reservaId || '').trim();
     const phone = String(b.phone || '').replace(/\D/g,'').slice(-10);
     const correo = String(b.correo || '').trim();
+    const correoCopia = String(b.correo_copia || '').trim();
     const monto = Number(b.monto || 0);
     const currency = String(b.currency || 'MXN').toUpperCase();
     const propiedad = String(b.propiedad || '').trim();
@@ -5143,10 +5144,12 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     // 3) Enviar email vía Facturapi
     let mailSent = false;
     try {
+      const emailList = [correo];
+      if (correoCopia) emailList.push(correoCopia);
       const eResp = await fetch(`https://www.facturapi.io/v2/receipts/${receiptId}/email`, {
         method: 'POST',
         headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: [correo] }),
+        body: JSON.stringify({ email: emailList }),
       });
       mailSent = eResp.ok;
     } catch(e) { console.warn('[emit-auto] email falló:', e.message); }
