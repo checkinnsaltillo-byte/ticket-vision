@@ -4284,7 +4284,20 @@ app.get("/lodgify-bookings-all", async (req, res) => {
         PaymentPolicy: paymentPolicy,
         TransactionsJSON: JSON.stringify(txCompact),
         Source: _normalizeSource(b),
-        SourceText: JSON.stringify({ confirmationCode: b.confirmation_code || "", listingId: b.listing_id || "", threadId: b.thread_id || "" }),
+        // Extrae confirmationCode/listingId/threadId del JSON que Lodgify manda
+        // en b.source_text. Los campos snake_case (b.confirmation_code, etc.)
+        // NO existen en la respuesta v2 — antes salían "" y por eso el sync
+        // dejaba ConfirmationCode vacío en el sheet.
+        SourceText: (() => {
+          const raw = String(b.source_text || "");
+          let meta = {};
+          if (raw.startsWith("{")) { try { meta = JSON.parse(raw); } catch(_){} }
+          return JSON.stringify({
+            confirmationCode: meta.confirmationCode || meta.confirmation_code || "",
+            listingId:        meta.listingId        || meta.listing_id        || "",
+            threadId:         meta.threadId         || meta.thread_id         || "",
+          });
+        })(),
         ChannelBooking: b.channel_booking_id || "",
         Status: b.status || "",
         DateCancelled: b.date_cancelled || "",
@@ -5018,6 +5031,117 @@ app.post("/facturapi/send-email", async (req, res) => {
     });
   } catch (err) {
     console.error("facturapi_send_email_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ║  POST /facturapi/emit-auto — Emisión automática one-click (Pieza A)     ║
+// ║  Body: { reservaId, phone, correo, monto, currency, propiedad, arrival, ║
+// ║         departure, razon?, rfc?, regimen?, cp?, org? }                   ║
+// ║  Flujo: crea receipt en Facturapi → actualiza folio en Reservaciones →  ║
+// ║         envía email → envía WhatsApp con el link para auto-facturar.    ║
+// ║  Devuelve: { ok, folio, url, id, mail_sent, wa_sent }                    ║
+// ═══════════════════════════════════════════════════════════════════════════
+app.post("/facturapi/emit-auto", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const reservaId = String(b.reservaId || '').trim();
+    const phone = String(b.phone || '').replace(/\D/g,'').slice(-10);
+    const correo = String(b.correo || '').trim();
+    const monto = Number(b.monto || 0);
+    const currency = String(b.currency || 'MXN').toUpperCase();
+    const propiedad = String(b.propiedad || '').trim();
+    const arrival = String(b.arrival || '').trim();
+    const departure = String(b.departure || '').trim();
+    if (!reservaId) throw new Error('reservaId requerido');
+    if (!monto || monto <= 0) throw new Error('monto inválido');
+    if (!correo) throw new Error('correo requerido');
+    const orgN = String(b.org || '2');
+    const key = orgN === '1'
+      ? (process.env.FACTURAPI_SECRET_KEY_ORG1 || process.env.FACTURAPI_SECRET_KEY)
+      : (process.env.FACTURAPI_SECRET_KEY_ORG2 || process.env.FACTURAPI_SECRET_KEY);
+    if (!key) throw new Error('FACTURAPI_SECRET_KEY no configurada en Cloud Run');
+    const auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
+    // 1) Emitir receipt (ticket de auto-facturación)
+    const expiration = (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      d.setDate(0); // último día del mes siguiente
+      return d.toISOString().slice(0, 10);
+    })();
+    const description = `Hospedaje ${propiedad || 'Check-inn Saltillo'}${arrival && departure ? ` · ${arrival} → ${departure}` : ''} · Reserva ${reservaId}`;
+    const receiptBody = {
+      items: [{
+        quantity: 1,
+        product: {
+          description: description.slice(0, 250),
+          product_key: '90121500', // Servicio de hospedaje
+          price: Number(monto.toFixed(2)),
+          tax_included: true,
+          taxes: [{ type: 'IVA', rate: 0.16 }],
+        },
+      }],
+      expiration_date: expiration,
+      payment_form: '03', // transferencia electrónica
+      currency,
+    };
+    const rResp = await fetch('https://www.facturapi.io/v2/receipts', {
+      method: 'POST',
+      headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify(receiptBody),
+    });
+    const rText = await rResp.text();
+    if (!rResp.ok) throw new Error(`Facturapi receipt ${rResp.status}: ${rText.slice(0,300)}`);
+    const receipt = JSON.parse(rText);
+    const folio = String(receipt.folio_number || '');
+    const receiptId = String(receipt.id || '');
+    const receiptUrl = String(receipt.self_invoice_url || receipt.url || '');
+    // 2) Actualizar folio en Reservaciones (Apps Script action)
+    let sheetUpdated = false;
+    try {
+      const upd = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'reservacion_set_folio_by_lodgify_id',
+          lodgify_id: reservaId,
+          folio: folio,
+        }),
+        redirect: 'follow',
+      });
+      const uj = await upd.json().catch(() => ({}));
+      sheetUpdated = !!(uj && uj.ok);
+    } catch (e) { console.warn('[emit-auto] sheet update falló:', e.message); }
+    // 3) Enviar email vía Facturapi
+    let mailSent = false;
+    try {
+      const eResp = await fetch(`https://www.facturapi.io/v2/receipts/${receiptId}/email`, {
+        method: 'POST',
+        headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: [correo] }),
+      });
+      mailSent = eResp.ok;
+    } catch(e) { console.warn('[emit-auto] email falló:', e.message); }
+    // 4) Enviar WhatsApp con el link
+    let waSent = false;
+    if (phone && receiptUrl) {
+      try {
+        const waBody = `📄 Tu ticket de auto-facturación de Check-inn Saltillo:\n\nFolio: ${folio}\nMonto: $${monto.toFixed(2)} ${currency}\n\nCompleta tu factura aquí:\n${receiptUrl}\n\nTambién te lo enviamos por correo a ${correo}. Vigencia: ${expiration}.`;
+        const waResp = await fetch(`http://127.0.0.1:${PORT}/wa/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: `+52${phone}`, body: waBody, tipo: 'ticket_autofact' }),
+        });
+        waSent = waResp.ok;
+      } catch(e) { console.warn('[emit-auto] wa falló:', e.message); }
+    }
+    res.json({
+      ok: true, folio, id: receiptId, url: receiptUrl,
+      sheet_updated: sheetUpdated, mail_sent: mailSent, wa_sent: waSent,
+    });
+  } catch (err) {
+    console.error("facturapi_emit_auto_error", err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
