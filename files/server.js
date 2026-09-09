@@ -5035,6 +5035,40 @@ app.post("/facturapi/send-email", async (req, res) => {
   }
 });
 
+// GET /facturapi/ticket-url?folio=X[&org=2] — devuelve self_invoice_url de un
+// receipt de Facturapi. Usado por el popup Auto-facturación de la guía para
+// abrir el ticket al hacer click en el chip "Ver Ticket · Folio #X".
+app.get("/facturapi/ticket-url", async (req, res) => {
+  try {
+    const folio = String(req.query.folio || '').trim();
+    const orgN = String(req.query.org || '2');
+    if (!folio) throw new Error('folio requerido');
+    const key = orgN === '1'
+      ? (process.env.FACTURAPI_SECRET_KEY_ORG1 || process.env.FACTURAPI_SECRET_KEY)
+      : (process.env.FACTURAPI_SECRET_KEY_ORG2 || process.env.FACTURAPI_SECRET_KEY);
+    if (!key) throw new Error('FACTURAPI_SECRET_KEY no configurada');
+    const auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
+    // Busca primero en receipts, luego en invoices como fallback
+    async function searchAt(collection) {
+      const r = await fetch(`https://www.facturapi.io/v2/${collection}?folio_number=${encodeURIComponent(folio)}&limit=1`, {
+        headers: { 'Authorization': auth }
+      });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return (j?.data || [])[0] || null;
+    }
+    let hit = await searchAt('receipts');
+    let kind = 'receipt';
+    if (!hit) { hit = await searchAt('invoices'); kind = 'invoice'; }
+    if (!hit) return res.status(404).json({ ok:false, error:`Folio ${folio} no encontrado` });
+    const url = String(hit.self_invoice_url || hit.verification_url || hit.url || '');
+    res.json({ ok:true, folio, id: hit.id, kind, url });
+  } catch (err) {
+    console.error("facturapi_ticket_url_error", err.message);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ║  POST /facturapi/emit-auto — Emisión automática one-click (Pieza A)     ║
 // ║  Body: { reservaId, phone, correo, monto, currency, propiedad, arrival, ║
@@ -5064,12 +5098,6 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     if (!key) throw new Error('FACTURAPI_SECRET_KEY no configurada en Cloud Run');
     const auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
     // 1) Emitir receipt (ticket de auto-facturación)
-    const expiration = (() => {
-      const d = new Date();
-      d.setMonth(d.getMonth() + 1);
-      d.setDate(0); // último día del mes siguiente
-      return d.toISOString().slice(0, 10);
-    })();
     const description = `Hospedaje ${propiedad || 'Check-inn Saltillo'}${arrival && departure ? ` · ${arrival} → ${departure}` : ''} · Reserva ${reservaId}`;
     const receiptBody = {
       items: [{
@@ -5082,7 +5110,6 @@ app.post("/facturapi/emit-auto", async (req, res) => {
           taxes: [{ type: 'IVA', rate: 0.16 }],
         },
       }],
-      expiration_date: expiration,
       payment_form: '03', // transferencia electrónica
       currency,
     };
@@ -5127,7 +5154,7 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     let waSent = false;
     if (phone && receiptUrl) {
       try {
-        const waBody = `📄 Tu ticket de auto-facturación de Check-inn Saltillo:\n\nFolio: ${folio}\nMonto: $${monto.toFixed(2)} ${currency}\n\nCompleta tu factura aquí:\n${receiptUrl}\n\nTambién te lo enviamos por correo a ${correo}. Vigencia: ${expiration}.`;
+        const waBody = `📄 Tu ticket de auto-facturación de Check-inn Saltillo:\n\nFolio: ${folio}\nMonto: $${monto.toFixed(2)} ${currency}\n\nCompleta tu factura aquí:\n${receiptUrl}\n\nTambién te lo enviamos por correo a ${correo}.`;
         const waResp = await fetch(`http://127.0.0.1:${PORT}/wa/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
