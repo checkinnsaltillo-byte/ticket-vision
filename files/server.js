@@ -2247,7 +2247,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const emoji = _asistIntent === "entrada" ? "🕘" : "🕕";
         const verbo = _asistIntent === "entrada" ? "Entrada" : "Salida";
         const nombre = String(resp.empleado || "").split(" ")[0];
-        const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n\n📍 Si quieres, comparte tu ubicación (opcional) — la guardamos en tu registro.\n\nGracias, ${nombre}!`;
+        const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n\n📍 Ahora comparte tu ubicación (obligatoria) — sin ella el registro queda incompleto.\n\nGracias, ${nombre}!`;
         await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
       } else {
         await _twilioSendMessage({ to: fromRaw, body: `⚠️ No pude registrar tu ${_asistIntent}. Contacta al admin.`, skipMirror: true }).catch(()=>{});
