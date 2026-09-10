@@ -33347,8 +33347,38 @@ function asistRowMonto_(row) {
   return n;
 }
 
+/** Normaliza un timestamp a "YYYY-MM-DD HH:MM:SS" acepta:
+ *  - Date object serializado como ISO
+ *  - "M/D/YYYY H:MM:SS" (formato Google Sheets US)
+ *  - "YYYY-MM-DD HH:MM:SS" (ya normalizado)
+ *  Devuelve la cadena original si no puede parsear. */
+function _asistFmtTimestamp(v) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim();
+  // Ya viene en formato YYYY-MM-DD HH:MM(:SS) — solo asegura 2 dígitos.
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    const [_, Y, Mo, D, H, Mi, Sec] = m;
+    return `${Y}-${Mo.padStart(2,'0')}-${D.padStart(2,'0')} ${H.padStart(2,'0')}:${Mi}:${(Sec||'00').padStart(2,'0')}`;
+  }
+  // Formato US: "M/D/YYYY H:MM:SS"
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    const [_, Mo, D, Y, H, Mi, Sec] = m;
+    return `${Y}-${Mo.padStart(2,'0')}-${D.padStart(2,'0')} ${H.padStart(2,'0')}:${Mi}:${(Sec||'00').padStart(2,'0')}`;
+  }
+  // Intento último: Date parse
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const pad = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  return s;
+}
+
 /** Devuelve el valor de una columna para un row, incluye columnas derivadas. */
 function asistCellValue(row, col, dayIdx) {
+  if (col === 'Timestamp') return _asistFmtTimestamp(row[col]);
   if (col === 'Entrada' || col === 'Salida' || col === 'Horas') {
     const nombre = String(row.Empleado_Nombre||'').trim();
     const fecha  = String(row.Fecha||'').slice(0,10);
