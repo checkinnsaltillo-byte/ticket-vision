@@ -4421,11 +4421,22 @@ app.get("/lodgify-bookings-all", async (req, res) => {
         GuestEmail: guest.email || "",
         GuestPhone: guest.phone || "",
         GuestCountryCode: guest.country_code || "",
-        NumberOfGuests: Number(b.people) || 0,
-        Adults: Number(room.people) || Number(b.people) || 0,
-        Children: 0,
-        Infants: 0,
-        Pets: 0,
+        // Lodgify v2 con OTA (Airbnb, Booking, Vrbo) a veces no manda
+        // b.people. Fallback: usa room.people o suma adults+children+infants.
+        NumberOfGuests: (function(){
+          const p = Number(b.people) || 0;
+          if (p > 0) return p;
+          const rp = Number(room.people) || 0;
+          if (rp > 0) return rp;
+          const a = Number(b.adults) || Number(room.adults) || 0;
+          const c = Number(b.children) || Number(room.children) || 0;
+          const i = Number(b.infants) || Number(room.infants) || 0;
+          return a + c + i;
+        })(),
+        Adults: Number(room.adults) || Number(b.adults) || Number(room.people) || Number(b.people) || 0,
+        Children: Number(room.children) || Number(b.children) || 0,
+        Infants: Number(room.infants) || Number(b.infants) || 0,
+        Pets: Number(b.pets) || 0,
         Currency: b.currency_code || "MXN",
       };
       // Lodgify v2 devuelve el desglose en `subtotals` — NO en
