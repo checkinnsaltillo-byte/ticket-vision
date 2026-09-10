@@ -5125,8 +5125,19 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     const folio = String(receipt.folio_number || '');
     const receiptId = String(receipt.id || '');
     const receiptUrl = String(receipt.self_invoice_url || receipt.url || '');
-    // 2) Actualizar folio en Reservaciones (Apps Script action)
+    // 2) Actualizar folio + montos en Reservaciones (Apps Script action)
+    // Cálculo de montos: si el frontend pasó isAirbnb + totales, los usamos.
+    // Si no, derivamos: base=monto (ya facturado), monto_antes=monto/1.16.
+    const isAirbnb = !!b.isAirbnb;
+    const totalReserva = Number(b.totalReserva || monto);
+    const totalAirbnb    = isAirbnb ? Number(b.totalAirbnb || totalReserva) : "";
+    const comisionAirbnb = isAirbnb ? Number(b.comisionAirbnb || +(totalReserva * 0.155).toFixed(2)) : "";
+    const totalPagado    = Number(b.totalPagado || (isAirbnb ? totalReserva : monto));
+    const montoFacturado = Number(b.montoFacturado || monto);
+    const montoAntes     = +(montoFacturado / 1.16).toFixed(2);
     let sheetUpdated = false;
+    let sheetRowNumber = "";
+    let sheetRaw = "";
     try {
       const upd = await fetch(CHECKIN_APPS_SCRIPT_URL, {
         method: 'POST',
@@ -5135,12 +5146,65 @@ app.post("/facturapi/emit-auto", async (req, res) => {
           action: 'reservacion_set_folio_by_lodgify_id',
           lodgify_id: reservaId,
           folio: folio,
+          total_airbnb: totalAirbnb,
+          comision_airbnb: comisionAirbnb,
+          monto_antes: montoAntes,
+          total_pagado: totalPagado,
+          monto_facturado: montoFacturado,
         }),
         redirect: 'follow',
       });
-      const uj = await upd.json().catch(() => ({}));
+      sheetRaw = await upd.text();
+      let uj = {};
+      try { uj = JSON.parse(sheetRaw); } catch(_) {}
       sheetUpdated = !!(uj && uj.ok);
+      sheetRowNumber = (uj && (uj.row_number || uj.row)) || "";
+      console.log('[emit-auto] set_folio resp:', sheetRaw.slice(0,300));
     } catch (e) { console.warn('[emit-auto] sheet update falló:', e.message); }
+    // 2b) Descargar PDF de Facturapi y guardarlo en Drive vía Apps Script.
+    // Rellena Ticket facturapi url/id archivo/nombre/carpeta url/carpeta ruta.
+    let pdfSaved = false;
+    let ticketUrlDrive = "";
+    let pdfError = "";
+    try {
+      const pdfResp = await fetch(`https://www.facturapi.io/v2/receipts/${receiptId}/pdf`, {
+        method: 'GET',
+        headers: { 'Authorization': auth, 'Accept': 'application/pdf' },
+        redirect: 'follow',
+      });
+      if (pdfResp.ok) {
+        const buf = Buffer.from(await pdfResp.arrayBuffer());
+        const base64 = buf.toString('base64');
+        const savePayload = {
+          action: 'save_facturapi_pdf',
+          lodgify_id: reservaId, // handler resuelve la fila por 'Lodgify Id'
+          receipt_id: receiptId,
+          folio_facturapi: folio,
+          file: {
+            fileName: `ticket-${folio || receiptId}.pdf`,
+            mimeType: 'application/pdf',
+            base64,
+          },
+        };
+        if (sheetRowNumber) savePayload.row_number = sheetRowNumber;
+        const saveResp = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(savePayload),
+          redirect: 'follow',
+          signal: AbortSignal.timeout(90000),
+        });
+        const txt = await saveResp.text();
+        let sj = {};
+        try { sj = JSON.parse(txt); } catch(_) { sj = { ok:false, error:'non-JSON: ' + txt.slice(0,200) }; }
+        pdfSaved = !!(sj && sj.ok);
+        ticketUrlDrive = String((sj && sj.ticket_facturapi_url) || "");
+        if (!pdfSaved) pdfError = 'save: ' + (sj.error || sj.message || 'unknown');
+        console.log('[emit-auto] save_facturapi_pdf resp:', txt.slice(0,300));
+      } else {
+        pdfError = `fapi pdf HTTP ${pdfResp.status}`;
+      }
+    } catch (e) { pdfError = 'exc: ' + e.message; }
     // 3) Enviar email vía Facturapi
     let mailSent = false;
     try {
@@ -5168,7 +5232,9 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     }
     res.json({
       ok: true, folio, id: receiptId, url: receiptUrl,
-      sheet_updated: sheetUpdated, mail_sent: mailSent, wa_sent: waSent,
+      sheet_updated: sheetUpdated, pdf_saved: pdfSaved,
+      ticket_url_drive: ticketUrlDrive, pdf_error: pdfError,
+      mail_sent: mailSent, wa_sent: waSent,
     });
   } catch (err) {
     console.error("facturapi_emit_auto_error", err.message);
