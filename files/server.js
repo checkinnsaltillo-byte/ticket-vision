@@ -3681,7 +3681,8 @@ function rhMakeDeleteEndpoint(action) {
   return async (req, res) => {
     try {
       const id = req.params.id;
-      const result = await callCheckinAppsScriptPost(action, { payload: { ID: id } });
+      // Apps Script handler lee data.ID directamente (no data.payload.ID).
+      const result = await callCheckinAppsScriptPost(action, { ID: id });
       res.json(result);
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
   };
