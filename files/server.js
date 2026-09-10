@@ -1747,6 +1747,70 @@ async function _botLockPhone(phone10, fn) {
 // pierde en restart del container y vuelve a admin (default).
 const _bot_admin_guest_mode = new Map(); // phone10 → boolean
 
+// ═══ Control de Asistencia por WhatsApp ═══
+// Map phone10 → { tipo: 'entrada'|'salida', ts: Date.now() }
+// Se llena cuando el empleado manda "ya llegué" y expira en 10 min.
+const _asistenciaPending = new Map();
+const _ASIST_PENDING_TTL_MS = 10 * 60 * 1000;
+// Cache de lookup empleado por celular (5 min) para no golpear el sheet
+// en cada mensaje recibido de un mismo número.
+const _asistenciaEmpCache = new Map();
+const _ASIST_EMP_TTL_MS = 5 * 60 * 1000;
+
+function _detectAsistenciaIntent(text) {
+  const t = String(text || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").trim();
+  // Entrada: "ya llegué", "ya llegue", "llegue", "llegue al trabajo", "entrada",
+  //          "estoy en el trabajo", "check in", "checkin"
+  if (/\b(ya\s+)?llegu[eé]\b/.test(t)) return "entrada";
+  if (/\bentrada\b/.test(t) && !/\bsalida\b/.test(t)) return "entrada";
+  if (/^(check[\s-]?in|checkin)$/.test(t)) return "entrada";
+  // Salida: "ya me voy", "me voy", "salida", "check out", "checkout", "termine"
+  if (/\b(ya\s+)?me\s+voy\b/.test(t)) return "salida";
+  if (/\bsalida\b/.test(t) && !/\bentrada\b/.test(t)) return "salida";
+  if (/^(check[\s-]?out|checkout)$/.test(t)) return "salida";
+  if (/\btermin[eé]\b/.test(t)) return "salida";
+  return null;
+}
+
+async function _asistenciaLookupEmpleado(phone10) {
+  const cached = _asistenciaEmpCache.get(phone10);
+  if (cached && (Date.now() - cached.ts) < _ASIST_EMP_TTL_MS) return cached.data;
+  try {
+    const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=asistencia_lookup_empleado&cel=${encodeURIComponent(phone10)}`, { redirect: 'follow' });
+    const txt = await r.text();
+    let j = {};
+    try { j = JSON.parse(txt); } catch(_){}
+    _asistenciaEmpCache.set(phone10, { data: j, ts: Date.now() });
+    return j;
+  } catch(e) {
+    console.warn("[asistencia] lookup falló:", e.message);
+    return null;
+  }
+}
+
+async function _asistenciaMarcarEnSheet(phone10, tipo, lat, lng, accuracy) {
+  try {
+    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'asistencia_marcar',
+        cel: phone10, tipo: tipo,
+        lat: lat, lng: lng, accuracy: accuracy,
+      }),
+      redirect: 'follow',
+    });
+    const txt = await r.text();
+    let j = {};
+    try { j = JSON.parse(txt); } catch(_){}
+    return j;
+  } catch(e) {
+    console.warn("[asistencia] marcar falló:", e.message);
+    return { ok:false, error: e.message };
+  }
+}
+
+
 // ─── Detección admin por teléfono (cachea 5min) ────────────────────────────
 const _bot_admin_cache = new Map(); // phone10 → { isAdmin, nombre, t }
 async function _botIsAdminPhone(phone10) {
@@ -2148,7 +2212,51 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       return;
     }
   }
+  // ─── Ubicación adjunta (Twilio manda Latitude / Longitude cuando el      ───
+  // ─── usuario comparte 📍). Si tenemos una marca pendiente, la aplicamos. ───
+  const latRaw = b.Latitude != null ? String(b.Latitude).trim() : "";
+  const lngRaw = b.Longitude != null ? String(b.Longitude).trim() : "";
+  const hasLocation = latRaw && lngRaw && !isNaN(Number(latRaw)) && !isNaN(Number(lngRaw));
+  if (hasLocation) {
+    const pending = _asistenciaPending.get(phone10);
+    if (pending && (Date.now() - pending.ts) < _ASIST_PENDING_TTL_MS) {
+      _asistenciaPending.delete(phone10);
+      const resp = await _asistenciaMarcarEnSheet(phone10, pending.tipo, latRaw, lngRaw, "");
+      if (resp && resp.ok) {
+        const emoji = pending.tipo === "entrada" ? "🕘" : "🕕";
+        const verbo = pending.tipo === "entrada" ? "Entrada" : "Salida";
+        const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n📍 Ubicación guardada\nGracias, ${resp.empleado.split(" ")[0]}!`;
+        await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
+      }
+      return;
+    }
+    // Ubicación llegó sin intent previo — la ignoramos silenciosamente
+    // (podría ser una ubicación mandada por error). Bot huésped no maneja loc.
+    return;
+  }
   if (!bodyMsg) return;
+  // ─── Control de asistencia: intent de entrada / salida ──────────────────
+  const _asistIntent = _detectAsistenciaIntent(bodyMsg);
+  if (_asistIntent) {
+    const emp = await _asistenciaLookupEmpleado(phone10);
+    if (emp && emp.ok && emp.empleado) {
+      // Marca directamente sin ubicación (llegará luego, o no)
+      const resp = await _asistenciaMarcarEnSheet(phone10, _asistIntent, "", "", "");
+      if (resp && resp.ok) {
+        _asistenciaPending.set(phone10, { tipo: _asistIntent, ts: Date.now() });
+        const emoji = _asistIntent === "entrada" ? "🕘" : "🕕";
+        const verbo = _asistIntent === "entrada" ? "Entrada" : "Salida";
+        const nombre = String(resp.empleado || "").split(" ")[0];
+        const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n\n📍 Si quieres, comparte tu ubicación (opcional) — la guardamos en tu registro.\n\nGracias, ${nombre}!`;
+        await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
+      } else {
+        await _twilioSendMessage({ to: fromRaw, body: `⚠️ No pude registrar tu ${_asistIntent}. Contacta al admin.`, skipMirror: true }).catch(()=>{});
+      }
+      return;  // NO caemos al flujo huésped/admin
+    }
+    // Si el celular NO está en sys_users, seguimos al flujo normal (huésped)
+  }
+
   const t0 = Date.now();
   console.info(`[bot-in] ${phone10}: ${bodyMsg.slice(0,80)}`);
   // ─── Modo ADMIN: mensajes que empiezan con "@" desde un número admin ──
