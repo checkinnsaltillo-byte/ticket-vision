@@ -3682,7 +3682,11 @@ function rhMakeDeleteEndpoint(action) {
     try {
       const id = req.params.id;
       // Apps Script handler lee data.ID directamente (no data.payload.ID).
-      const result = await callCheckinAppsScriptPost(action, { ID: id });
+      // Pasamos también force/reason/actor para el soft-delete/protección WhatsApp.
+      const force  = String(req.query.force || '').toLowerCase() === 'true';
+      const reason = String(req.query.reason || '').slice(0, 300);
+      const actor  = String(req.query.actor  || '').slice(0, 120);
+      const result = await callCheckinAppsScriptPost(action, { ID: id, force, reason, actor });
       res.json(result);
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
   };
