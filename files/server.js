@@ -1789,7 +1789,12 @@ async function _asistenciaLookupEmpleado(phone10) {
 }
 
 async function _asistenciaMarcarEnSheet(phone10, tipo, lat, lng, accuracy) {
-  try {
+  // Reintenta hasta 2 veces si la respuesta es HTML (Apps Script intermitente
+  // devuelve la interstitial ppConfig). Cuando persiste el HTML tras el
+  // retry, NO gritamos "falló" al empleado — asumimos que la escritura pudo
+  // haber pasado y devolvemos { ok:true, degraded:true } para que el flujo
+  // marque pending y no envíe el mensaje "⚠️ No pude registrar".
+  async function _once() {
     const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1800,14 +1805,28 @@ async function _asistenciaMarcarEnSheet(phone10, tipo, lat, lng, accuracy) {
       }),
       redirect: 'follow',
     });
-    const txt = await r.text();
-    let j = {};
-    try { j = JSON.parse(txt); } catch(_){}
-    return j;
+    return await r.text();
+  }
+  let txt = "";
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      txt = await _once();
+      try { return JSON.parse(txt); } catch(_) {
+        if (txt.startsWith("<") && attempt === 0) {
+          // AS interstitial → reintenta tras 1s.
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+        // Segundo intento también HTML — asumimos éxito degradado.
+        console.warn("[asistencia] AS devolvió HTML tras retry — asumo éxito degradado. phone=" + phone10 + " tipo=" + tipo);
+        return { ok:true, degraded:true, hora: new Date().toISOString().slice(11,16), empleado: "" };
+      }
+    }
   } catch(e) {
     console.warn("[asistencia] marcar falló:", e.message);
     return { ok:false, error: e.message };
   }
+  return { ok:false, error: "no response" };
 }
 
 
