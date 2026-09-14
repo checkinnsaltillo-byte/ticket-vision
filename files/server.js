@@ -1775,17 +1775,43 @@ function _detectAsistenciaIntent(text) {
 async function _asistenciaLookupEmpleado(phone10) {
   const cached = _asistenciaEmpCache.get(phone10);
   if (cached && (Date.now() - cached.ts) < _ASIST_EMP_TTL_MS) return cached.data;
-  try {
+  // Reintenta 1 vez si la respuesta es HTML (Apps Script hipos).
+  async function _once() {
     const r = await fetch(`${CHECKIN_APPS_SCRIPT_URL}?action=asistencia_lookup_empleado&cel=${encodeURIComponent(phone10)}`, { redirect: 'follow' });
-    const txt = await r.text();
-    let j = {};
-    try { j = JSON.parse(txt); } catch(_){}
-    _asistenciaEmpCache.set(phone10, { data: j, ts: Date.now() });
-    return j;
+    return await r.text();
+  }
+  let txt = "";
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      txt = await _once();
+      try {
+        const j = JSON.parse(txt);
+        _asistenciaEmpCache.set(phone10, { data: j, ts: Date.now() });
+        return j;
+      } catch(_) {
+        if (txt.startsWith("<") && attempt === 0) {
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+        // Segundo intento tampoco parseó — si tenemos cache EXPIRADA para este
+        // teléfono, la usamos como fallback antes de dejar al empleado sin
+        // respuesta. Evita el hueco "el bot no me respondió" cuando el
+        // empleado ya está registrado y solo hubo un hipo de AS.
+        if (cached && cached.data && cached.data.empleado) {
+          console.warn("[asistencia] lookup HTML tras retry — uso cache expirada para " + phone10);
+          return cached.data;
+        }
+        console.warn("[asistencia] lookup HTML tras retry, sin cache. phone=" + phone10);
+        return {};
+      }
+    }
   } catch(e) {
     console.warn("[asistencia] lookup falló:", e.message);
+    // Fallback: cache expirada si existe
+    if (cached && cached.data) return cached.data;
     return null;
   }
+  return {};
 }
 
 async function _asistenciaMarcarEnSheet(phone10, tipo, lat, lng, accuracy) {
