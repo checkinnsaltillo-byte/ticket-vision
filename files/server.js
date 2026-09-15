@@ -167,6 +167,21 @@ async function callCheckinAppsScriptPost(action, dataObj) {
   } finally { clearTimeout(timer); }
 }
 
+// Cache in-memory por página con TTL 90s + coalescing de peticiones
+// concurrentes. La primera carga cold es cara (~2-4s × N páginas hitting
+// Apps Script) pero las siguientes (misma o nueva sesión) hidratan en
+// <30ms. Con min-instances=1 en Cloud Run, la cache sobrevive entre
+// peticiones. Invalidación automática al guardar/borrar/sync.
+const _huespedesCache = new Map(); // key(params sig) → { ts, payload }
+const _huespedesInflight = new Map(); // key → Promise (coalesce concurrent fetches)
+const HU_LIST_TTL_MS = 90_000;
+function _huespedesCacheInvalidate() {
+  _huespedesCache.clear();
+  _huespedesInflight.clear();
+}
+function _huespedesCacheKey(params) {
+  return JSON.stringify(params);
+}
 app.get("/huespedes-list", async (req, res) => {
   try {
     const params = {
@@ -184,7 +199,31 @@ app.get("/huespedes-list", async (req, res) => {
       fecha_salida_desde:  req.query.fecha_salida_desde  || "",
       fecha_salida_hasta:  req.query.fecha_salida_hasta  || "",
     };
-    const result = await callCheckinAppsScript("list_records", params);
+    const key = _huespedesCacheKey(params);
+    const now = Date.now();
+    const cached = _huespedesCache.get(key);
+    if (cached && (now - cached.ts) < HU_LIST_TTL_MS) {
+      return res.json({ ...cached.payload, cached: true });
+    }
+    // Coalesce: si otra petición ya está trayendo esta misma página, la
+    // esperamos en vez de disparar otra llamada a Apps Script. Evita
+    // que 6 usuarios simultáneos peguen Apps Script 36 veces.
+    let inflight = _huespedesInflight.get(key);
+    if (!inflight) {
+      inflight = (async () => {
+        try {
+          const result = await callCheckinAppsScript("list_records", params);
+          if (result && result.ok) {
+            _huespedesCache.set(key, { ts: Date.now(), payload: result });
+          }
+          return result;
+        } finally {
+          _huespedesInflight.delete(key);
+        }
+      })();
+      _huespedesInflight.set(key, inflight);
+    }
+    const result = await inflight;
     res.json(result);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -4949,6 +4988,10 @@ app.post("/lodgify-sync", async (req, res) => {
     const text = await r.text();
     let json = {};
     try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
+    // Un sync de Lodgify propaga filas nuevas/actualizadas a Reservaciones.
+    // Invalidamos ambos caches para que la próxima consulta traiga fresco.
+    _huespedesCacheInvalidate();
+    if (typeof _lodgifyListCache !== "undefined") _lodgifyListCache.payload = null;
     res.json(json);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -5051,6 +5094,7 @@ app.post("/huespedes-delete", async (req, res) => {
     const text = await r.text();
     let json = {};
     try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
+    _huespedesCacheInvalidate();
     res.json(json);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -5082,6 +5126,7 @@ app.post("/huespedes-save-monto", async (req, res) => {
     const text = await r.text();
     let json = {};
     try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
+    _huespedesCacheInvalidate();
     res.json(json);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
