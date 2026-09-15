@@ -3603,10 +3603,21 @@ app.get("/personal-list", async (req, res) => {
 
 // ─── RECURSOS HUMANOS ────────────────────────────────────────────────────────
 // Genérico: GET list → action sin payload; POST save → action con {payload}.
+// Cache in-memory de las listas RH — evita re-leer las hojas en cada
+// entrada al módulo. TTL 45s, invalidación automática al guardar/borrar.
+const _rhListCache = new Map(); // action → { ts, payload }
+const RH_LIST_TTL_MS = 45_000;
+function _rhListCacheInvalidate() { _rhListCache.clear(); }
 function rhMakeListEndpoint(action) {
   return async (req, res) => {
     try {
+      const now = Date.now();
+      const cached = _rhListCache.get(action);
+      if (cached && (now - cached.ts) < RH_LIST_TTL_MS) {
+        return res.json({ ...cached.payload, cached: true });
+      }
       const result = await callCheckinAppsScript(action);
+      if (result && result.ok) _rhListCache.set(action, { ts: now, payload: result });
       res.json(result);
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
@@ -3618,6 +3629,7 @@ function rhMakeSaveEndpoint(action) {
     try {
       const payload = req.body?.payload || req.body || {};
       const result = await callCheckinAppsScriptPost(action, { payload });
+      _rhListCacheInvalidate();
       res.json(result);
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
@@ -3732,6 +3744,7 @@ function rhMakeDeleteEndpoint(action) {
       const reason = String(req.query.reason || '').slice(0, 300);
       const actor  = String(req.query.actor  || '').slice(0, 120);
       const result = await callCheckinAppsScriptPost(action, { ID: id, force, reason, actor });
+      _rhListCacheInvalidate();
       res.json(result);
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
   };
