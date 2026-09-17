@@ -243,8 +243,16 @@ app.get("/alojamientos-list", async (req, res) => {
     const now = Date.now();
     if (!_alojCache.payload || (now - _alojCache.ts) > ALOJ_CACHE_MS) {
       try {
-        _alojCache.payload = await callCheckinAppsScript("list_alojamientos");
-        _alojCache.ts = now;
+        const fresh = await callCheckinAppsScript("list_alojamientos");
+        if (fresh && fresh.ok && Array.isArray(fresh.rows)) {
+          _alojCache.payload = fresh;
+          _alojCache.ts = now;
+        } else if (!_alojCache.payload) {
+          _alojCache.payload = fresh;
+          _alojCache.ts = now;
+        } else {
+          console.warn("[alojamientos-list] Apps Script devolvió no-ok — mantengo cache anterior");
+        }
       } catch (fetchErr) {
         // Apps Script cayó/saturado. Si tenemos cache stale, servirlo
         // (mejor un valor viejo que un 500 que bloquea toda la UI).
@@ -5352,6 +5360,19 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     const folio = String(receipt.folio_number || '');
     const receiptId = String(receipt.id || '');
     const receiptUrl = String(receipt.self_invoice_url || receipt.url || '');
+    // ⚡ OPTIMIZACIÓN: responde INMEDIATAMENTE con folio+url para que el
+    // usuario no espere los 60-120s que tardan Apps Script + Drive.
+    // Los pasos 2 (folio en sheet), 2b (PDF a Drive), 3 (email), 4 (WA)
+    // se disparan en background — el usuario ya tiene su ticket confirmado.
+    if (!res.headersSent) {
+      res.json({
+        ok: true, folio, id: receiptId, url: receiptUrl,
+        sheet_updated: false, pdf_saved: false,
+        ticket_url_drive: "", pdf_error: "",
+        mail_sent: false, wa_sent: false,
+        _async: true, // indicador para el frontend: el resto va en background
+      });
+    }
     // 2) Actualizar folio + montos en Reservaciones (Apps Script action)
     // Cálculo de montos: si el frontend pasó isAirbnb + totales, los usamos.
     // Si no, derivamos: base=monto (ya facturado), monto_antes=monto/1.16.
@@ -5457,15 +5478,15 @@ app.post("/facturapi/emit-auto", async (req, res) => {
         waSent = waResp.ok;
       } catch(e) { console.warn('[emit-auto] wa falló:', e.message); }
     }
-    res.json({
-      ok: true, folio, id: receiptId, url: receiptUrl,
-      sheet_updated: sheetUpdated, pdf_saved: pdfSaved,
-      ticket_url_drive: ticketUrlDrive, pdf_error: pdfError,
-      mail_sent: mailSent, wa_sent: waSent,
-    });
+    // Ya respondimos al frontend arriba (justo tras el paso 1). Log final:
+    console.log('[emit-auto] async done:', JSON.stringify({
+      folio, sheetUpdated, pdfSaved, mailSent, waSent, pdfError
+    }));
   } catch (err) {
     console.error("facturapi_emit_auto_error", err.message);
-    res.status(500).json({ ok: false, error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
   }
 });
 
