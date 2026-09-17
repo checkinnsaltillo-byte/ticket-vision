@@ -5399,6 +5399,7 @@ app.post("/facturapi/emit-auto", async (req, res) => {
           monto_antes: montoAntes,
           total_pagado: totalPagado,
           monto_facturado: montoFacturado,
+          medio_emision: 'auto-facturación',
         }),
         redirect: 'follow',
       });
