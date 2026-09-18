@@ -4033,17 +4033,46 @@ app.delete("/rh/asistencia/:id",     rhMakeDeleteEndpoint("rh_delete_asistencia"
 app.delete("/rh/ausencias/:id",      rhMakeDeleteEndpoint("rh_delete_ausencia"));
 
 // Obligaciones (cuotas IMSS + recibos de nómina por empleado)
+// Cache in-memory para /rh/obligaciones y /rh/obligacion/totales — el handler
+// de Apps Script recorre el árbol de Drive (año/mes/tipo/empleado/archivo)
+// haciendo una llamada por carpeta y archivo; puede tardar 3-8 min en frío.
+// TTL 5 min: subsecuentes cargas del módulo son ~instantáneas.
+const _rhObCache = new Map(); // key(year) → { ts, payload }
+const _rhObInflight = new Map();
+const RH_OB_TTL_MS = 5 * 60 * 1000;
+function _rhObCacheInvalidate() { _rhObCache.clear(); _rhObInflight.clear(); }
+async function _rhObFetch(action, cacheKey) {
+  const now = Date.now();
+  const cached = _rhObCache.get(cacheKey);
+  if (cached && (now - cached.ts) < RH_OB_TTL_MS) {
+    return { ...cached.payload, cached: true };
+  }
+  let inflight = _rhObInflight.get(cacheKey);
+  if (!inflight) {
+    inflight = (async () => {
+      try {
+        const [scriptAction, params] = action;
+        const result = await callCheckinAppsScriptPost(scriptAction, params);
+        if (result && result.ok) _rhObCache.set(cacheKey, { ts: Date.now(), payload: result });
+        return result;
+      } finally { _rhObInflight.delete(cacheKey); }
+    })();
+    _rhObInflight.set(cacheKey, inflight);
+  }
+  return inflight;
+}
+
 app.get("/rh/obligaciones", async (req, res) => {
   try {
     const year = parseInt(req.query.year, 10) || (new Date()).getFullYear();
-    const result = await callCheckinAppsScriptPost("rh_list_obligaciones", { year });
+    const result = await _rhObFetch(["rh_list_obligaciones", { year }], `ob-${year}`);
     res.json(result);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 app.get("/rh/obligacion/totales", async (req, res) => {
   try {
     const year = parseInt(req.query.year, 10) || (new Date()).getFullYear();
-    const result = await callCheckinAppsScriptPost("rh_list_obligacion_totales", { year });
+    const result = await _rhObFetch(["rh_list_obligacion_totales", { year }], `tot-${year}`);
     res.json(result);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
@@ -4053,6 +4082,7 @@ app.post("/rh/obligacion/total", async (req, res) => {
     const result = await callCheckinAppsScriptPost("rh_set_obligacion_total", {
       year: b.year, month: b.month, total: b.total,
     });
+    _rhObCacheInvalidate();
     res.json(result);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
@@ -4061,6 +4091,7 @@ app.post("/rh/obligacion/delete", async (req, res) => {
     const fileId = String(req.body?.fileId || '').trim();
     if (!fileId) return res.status(400).json({ ok: false, error: 'Falta fileId' });
     const result = await callCheckinAppsScriptPost("rh_delete_obligacion", { fileId });
+    _rhObCacheInvalidate();
     res.json(result);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
@@ -4072,6 +4103,7 @@ app.post("/rh/obligacion/upload", async (req, res) => {
       empleadoId: b.empleadoId || '', empleadoNombre: b.empleadoNombre || '',
       file: b.file || null,
     });
+    _rhObCacheInvalidate();
     res.json(result);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
