@@ -4880,6 +4880,35 @@ app.get("/perfiles-kpis-list", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// GET /perfiles-list
+// Lee SOLO Perfiles + Vehículos (2 scans) y devuelve la lista completa de
+// personas lista para renderizar en el módulo Huéspedes/Inquilinos.
+// NO joins con Reservaciones. Típicamente <3s en frío, <100ms cacheada.
+// Cache 5 min.
+// ═══════════════════════════════════════════════════════════════════════════
+const _perfilesListCache = { ts: 0, payload: null };
+const _PERFILES_LIST_TTL_MS = 5 * 60_000;
+function _perfilesListCacheInvalidate() { _perfilesListCache.ts = 0; _perfilesListCache.payload = null; }
+app.get("/perfiles-list", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (_perfilesListCache.payload && (now - _perfilesListCache.ts) < _PERFILES_LIST_TTL_MS) {
+      return res.json({ ok: true, cached: true, ..._perfilesListCache.payload });
+    }
+    const result = await callCheckinAppsScript("perfiles_list_full");
+    if (!result || !result.ok) {
+      return res.status(500).json({ ok: false, error: result?.error || 'perfiles_list_full falló' });
+    }
+    const payload = { personas: result.personas || [], total: result.total || 0, elapsed_ms: result.elapsed_ms || null };
+    _perfilesListCache.ts = now;
+    _perfilesListCache.payload = payload;
+    res.json({ ok: true, cached: false, ...payload });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // POST /perfiles-recalc-kpis  (llamado por Cloud Scheduler diario ~03:00)
 // Recalcula kpi_noches/kpi_visitas/kpi_monto en hoja Perfiles a partir de
 // Reservas_Lodgify Status=Booked. Evita que Gestión de reservas recompute
