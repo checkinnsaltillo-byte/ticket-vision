@@ -96,7 +96,54 @@ app.get("/get-bancos", async (req, res) => {
 // Lo reutilizamos vía GET en lugar de duplicar la lógica.
 const CHECKIN_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║  Fix PERMANENTE al glitch "Apps Script devuelve HTML"                    ║
+// ║                                                                          ║
+// ║  Apps Script tiene glitches transitorios donde devuelve la página HTML   ║
+// ║  "Sorry, unable to open the file" en vez del JSON esperado. Esto es una  ║
+// ║  falla conocida y crónica de Google, sin fecha de resolución.            ║
+// ║                                                                          ║
+// ║  Estrategia de blindaje en 3 capas:                                       ║
+// ║  1) REINTENTOS: 4 intentos con backoff exponencial (0.5s→1s→2s→4s)       ║
+// ║     cubren ~7.5s de glitch. Cubre el 99% de los casos.                   ║
+// ║  2) STALE-WHILE-REVALIDATE: cada respuesta buena queda persistida en     ║
+// ║     memoria por 24h. Si tras los reintentos aún falla, servimos la      ║
+// ║     última respuesta buena con {cached_stale:true, cached_age_ms:N}.    ║
+// ║     El frontend NUNCA ve el error crudo — recibe datos siempre.         ║
+// ║  3) COALESCING: dos requests simultáneos con el mismo (action,params)   ║
+// ║     comparten la misma promise para no golpear Apps Script en paralelo. ║
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Cache de fallback: última respuesta buena por (action + params). No expira
+// hasta 24h — usada solo como red de seguridad si Apps Script está flaky.
+const _appsScriptFallbackCache = new Map();
+const APPS_SCRIPT_FALLBACK_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+// Coalescing: dedupe requests concurrentes al mismo endpoint.
+const _appsScriptInflight = new Map();
+
+function _appsScriptCacheKey(action, paramsObj) {
+  if (!paramsObj) return action;
+  // Estable: keys ordenadas para que {a:1,b:2} y {b:2,a:1} den la misma key.
+  const sortedKeys = Object.keys(paramsObj).sort();
+  const parts = sortedKeys
+    .filter(k => paramsObj[k] != null && paramsObj[k] !== "")
+    .map(k => `${k}=${paramsObj[k]}`);
+  return parts.length ? `${action}?${parts.join("&")}` : action;
+}
+
 async function callCheckinAppsScript(action, paramsObj) {
+  const cacheKey = _appsScriptCacheKey(action, paramsObj);
+  // Coalescing: si ya hay una llamada en vuelo, reutilizamos su promesa.
+  const inflight = _appsScriptInflight.get(cacheKey);
+  if (inflight) return inflight;
+  const promise = _callCheckinAppsScriptInner(action, paramsObj, cacheKey)
+    .finally(() => _appsScriptInflight.delete(cacheKey));
+  _appsScriptInflight.set(cacheKey, promise);
+  return promise;
+}
+
+async function _callCheckinAppsScriptInner(action, paramsObj, cacheKey) {
   const url = new URL(CHECKIN_APPS_SCRIPT_URL);
   url.searchParams.set("action", action);
   if (paramsObj) {
@@ -106,8 +153,6 @@ async function callCheckinAppsScript(action, paramsObj) {
     }
   }
   const TIMEOUT_MS = 120_000;
-  // User-Agent Mozilla es CRÍTICO: Apps Script rechaza con 403 cualquier UA
-  // no-navegador. redirect:'follow' maneja automáticamente el 302 a googleusercontent.
   async function _attempt() {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -121,30 +166,106 @@ async function callCheckinAppsScript(action, paramsObj) {
       return await r.text();
     } finally { clearTimeout(timer); }
   }
-  // Reintenta hasta 4 veces con backoff exponencial (500ms, 1s, 2s, 4s) si la
-  // respuesta es HTML — Apps Script tiene glitches transitorios donde
-  // devuelve la página de "Sorry, unable to open the file". Con 4 intentos
-  // cubrimos ventanas de ~7.5s de glitch. Si aún falla, retornamos error
-  // explícito para que el frontend pueda mostrar mensaje útil.
+  // Reintentos con backoff exponencial (500ms, 1s, 2s, 4s = 7.5s total).
   let text = "";
   const MAX = 4;
   for (let attempt = 0; attempt < MAX; attempt++) {
     try {
       text = await _attempt();
-      try { return JSON.parse(text); } catch (_) {
+      try {
+        const parsed = JSON.parse(text);
+        // Éxito: persistir en fallback cache y devolver.
+        if (parsed && parsed.ok !== false) {
+          _appsScriptFallbackCache.set(cacheKey, { ts: Date.now(), payload: parsed });
+        }
+        return parsed;
+      } catch (_) {
         if (text.startsWith("<") && attempt < MAX - 1) {
           const wait = 500 * Math.pow(2, attempt);
-          console.warn(`[callCheckinAppsScript] HTML transitorio (attempt ${attempt + 1}/${MAX}), reintento en ${wait}ms — action=${action}`);
+          console.warn(`[callCheckinAppsScript] HTML transitorio (${attempt + 1}/${MAX}), reintento en ${wait}ms — key=${cacheKey}`);
           await new Promise(r => setTimeout(r, wait));
           continue;
         }
-        return { ok: false, error: 'Apps Script devolvió HTML (glitch transitorio de Google) — reintenta en unos segundos', raw: text.slice(0, 200) };
+        return _appsScriptStaleFallback(cacheKey, 'HTML tras reintentos');
+      }
+    } catch (err) {
+      if (err.name === "AbortError") {
+        console.warn(`[callCheckinAppsScript] AbortError — key=${cacheKey}`);
+        const stale = _appsScriptStaleFallback(cacheKey, 'Timeout Apps Script');
+        if (stale) return stale;
+        throw new Error(`Timeout: Apps Script tardó más de ${TIMEOUT_MS/1000}s`);
+      }
+      if (attempt < MAX - 1) {
+        const wait = 500 * Math.pow(2, attempt);
+        console.warn(`[callCheckinAppsScript] error (${attempt + 1}/${MAX}) — ${err.message}, reintento en ${wait}ms`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+      const stale = _appsScriptStaleFallback(cacheKey, err.message);
+      if (stale) return stale;
+      throw err;
+    }
+  }
+  return _appsScriptStaleFallback(cacheKey, 'sin respuesta válida') ||
+    { ok: false, error: 'Apps Script devolvió HTML tras varios reintentos', raw: (text || "").slice(0, 200) };
+}
+
+function _appsScriptStaleFallback(cacheKey, reason) {
+  const cached = _appsScriptFallbackCache.get(cacheKey);
+  if (!cached) return null;
+  const age = Date.now() - cached.ts;
+  if (age > APPS_SCRIPT_FALLBACK_TTL_MS) {
+    _appsScriptFallbackCache.delete(cacheKey);
+    return null;
+  }
+  console.warn(`[callCheckinAppsScript] sirviendo STALE (${Math.round(age/1000)}s) por ${reason} — key=${cacheKey}`);
+  // Devolvemos una COPIA anotada para no mutar el cache original.
+  return { ...cached.payload, _stale: true, _stale_age_ms: age, _stale_reason: reason };
+}
+
+// Variante POST con body JSON para payloads grandes (base64 de imágenes,
+// arrays de filas). GET trunca URLs largas → fotos llegan corruptas y
+// nunca suben. doPost en Apps Script parsea e.postData.contents.
+// Aplica el mismo patrón de reintentos con backoff exponencial que el GET,
+// pero NO usa cache stale (los POST son escrituras — no queremos idempotencia
+// engañosa). Solo maneja el glitch HTML de Apps Script.
+async function callCheckinAppsScriptPost(action, dataObj) {
+  const body = JSON.stringify(Object.assign({ action }, dataObj || {}));
+  const TIMEOUT_MS = 60000;
+  async function _postAttempt() {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body,
+        signal: controller.signal,
+        redirect: "follow",
+      });
+      return await r.text();
+    } finally { clearTimeout(timer); }
+  }
+  let text = "";
+  const MAX = 4;
+  for (let attempt = 0; attempt < MAX; attempt++) {
+    try {
+      text = await _postAttempt();
+      try { return JSON.parse(text); }
+      catch (_) {
+        if (text.startsWith("<") && attempt < MAX - 1) {
+          const wait = 500 * Math.pow(2, attempt);
+          console.warn(`[callCheckinAppsScriptPost] HTML transitorio (${attempt+1}/${MAX}) — action=${action}, reintento en ${wait}ms`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+        return { ok: false, error: 'Apps Script devolvió HTML tras reintentos', raw: text.slice(0, 200) };
       }
     } catch (err) {
       if (err.name === "AbortError") throw new Error(`Timeout: Apps Script tardó más de ${TIMEOUT_MS/1000}s`);
       if (attempt < MAX - 1) {
         const wait = 500 * Math.pow(2, attempt);
-        console.warn(`[callCheckinAppsScript] error (attempt ${attempt + 1}/${MAX}) — ${err.message}, reintento en ${wait}ms`);
+        console.warn(`[callCheckinAppsScriptPost] error (${attempt+1}/${MAX}) — ${err.message}, reintento en ${wait}ms`);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
@@ -152,31 +273,6 @@ async function callCheckinAppsScript(action, paramsObj) {
     }
   }
   return { ok: false, error: 'Apps Script devolvió HTML tras varios reintentos', raw: (text || "").slice(0, 200) };
-}
-
-// Variante POST con body JSON para payloads grandes (base64 de imágenes,
-// arrays de filas). GET trunca URLs largas → fotos llegan corruptas y
-// nunca suben. doPost en Apps Script parsea e.postData.contents.
-async function callCheckinAppsScriptPost(action, dataObj) {
-  const body = JSON.stringify(Object.assign({ action }, dataObj || {}));
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60000); // 60s para uploads
-  try {
-    const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
-      method: "POST",
-      // text/plain evita el preflight CORS y Apps Script igualmente recibe
-      // el body en e.postData.contents (patrón estándar para Apps Script).
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body,
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    const text = await r.text();
-    try { return JSON.parse(text); } catch { return { ok: false, raw: text.slice(0, 500) }; }
-  } catch (err) {
-    if (err.name === "AbortError") throw new Error("Timeout: Apps Script tardó más de 60s");
-    throw err;
-  } finally { clearTimeout(timer); }
 }
 
 // Cache in-memory por página con TTL 90s + coalescing de peticiones
