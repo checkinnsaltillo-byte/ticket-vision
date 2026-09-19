@@ -121,25 +121,37 @@ async function callCheckinAppsScript(action, paramsObj) {
       return await r.text();
     } finally { clearTimeout(timer); }
   }
-  // Reintenta hasta 2 veces si la respuesta es HTML (Apps Script flaky)
+  // Reintenta hasta 4 veces con backoff exponencial (500ms, 1s, 2s, 4s) si la
+  // respuesta es HTML — Apps Script tiene glitches transitorios donde
+  // devuelve la página de "Sorry, unable to open the file". Con 4 intentos
+  // cubrimos ventanas de ~7.5s de glitch. Si aún falla, retornamos error
+  // explícito para que el frontend pueda mostrar mensaje útil.
   let text = "";
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const MAX = 4;
+  for (let attempt = 0; attempt < MAX; attempt++) {
     try {
       text = await _attempt();
       try { return JSON.parse(text); } catch (_) {
-        if (text.startsWith("<") && attempt === 0) {
-          await new Promise(r => setTimeout(r, 1000));
+        if (text.startsWith("<") && attempt < MAX - 1) {
+          const wait = 500 * Math.pow(2, attempt);
+          console.warn(`[callCheckinAppsScript] HTML transitorio (attempt ${attempt + 1}/${MAX}), reintento en ${wait}ms — action=${action}`);
+          await new Promise(r => setTimeout(r, wait));
           continue;
         }
-        return { ok: false, raw: text.slice(0, 500) };
+        return { ok: false, error: 'Apps Script devolvió HTML (glitch transitorio de Google) — reintenta en unos segundos', raw: text.slice(0, 200) };
       }
     } catch (err) {
       if (err.name === "AbortError") throw new Error(`Timeout: Apps Script tardó más de ${TIMEOUT_MS/1000}s`);
-      if (attempt === 0) { await new Promise(r => setTimeout(r, 1000)); continue; }
+      if (attempt < MAX - 1) {
+        const wait = 500 * Math.pow(2, attempt);
+        console.warn(`[callCheckinAppsScript] error (attempt ${attempt + 1}/${MAX}) — ${err.message}, reintento en ${wait}ms`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
       throw err;
     }
   }
-  return { ok: false, raw: (text || "").slice(0, 500) };
+  return { ok: false, error: 'Apps Script devolvió HTML tras varios reintentos', raw: (text || "").slice(0, 200) };
 }
 
 // Variante POST con body JSON para payloads grandes (base64 de imágenes,
@@ -4900,8 +4912,12 @@ app.get("/perfiles-list", async (req, res) => {
       return res.status(500).json({ ok: false, error: result?.error || 'perfiles_list_full falló' });
     }
     const payload = { personas: result.personas || [], total: result.total || 0, elapsed_ms: result.elapsed_ms || null };
-    _perfilesListCache.ts = now;
-    _perfilesListCache.payload = payload;
+    // Solo cachear cuando hay datos reales (evita persistir respuestas vacías
+    // del Apps Script pre-redeploy que se quedaban cacheadas 5min).
+    if (payload.total > 0) {
+      _perfilesListCache.ts = now;
+      _perfilesListCache.payload = payload;
+    }
     res.json({ ok: true, cached: false, ...payload });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
