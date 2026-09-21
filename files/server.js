@@ -4910,48 +4910,83 @@ app.get("/lodgify-availability", async (req, res) => {
   }
 });
 
-app.get("/lodgify-list", async (req, res) => {
-  try {
-    const TTL = 60_000;
-    const now = Date.now();
-    let payload = _lodgifyListCache.payload;
-    if (!payload || (now - _lodgifyListCache.ts) > TTL) {
-      const params = {
-        source: req.query.source || "",
-        status: req.query.status || "",
-        name_contains: req.query.name_contains || "",
-        limit: req.query.limit || "",
-      };
-      payload = await callCheckinAppsScript("lodgify_list", params);
-      if (payload && payload.ok && Array.isArray(payload.bookings)) {
-        // Limpia Sources contaminados con JSON blob de syncs previos
-        payload.bookings.forEach(b => { if (b) b.Source = _normalizeBookingSource(b); });
-        _lodgifyListCache.ts = now;
-        _lodgifyListCache.payload = payload;
-      }
-    }
-    // Filtra por rango de estancia si vienen from/to
-    const from = String(req.query.from || "").slice(0,10);
-    const to   = String(req.query.to   || "").slice(0,10);
-    if ((from || to) && payload && payload.ok && Array.isArray(payload.bookings)) {
-      const fromTs = from ? new Date(from + "T00:00:00").getTime() : -Infinity;
-      const toTs   = to   ? new Date(to   + "T23:59:59").getTime() :  Infinity;
-      const _parse = (s) => {
+// Cache SWR por rango: key = "from|to". TTL 5min (matches Lodgify cron 10min).
+// Si hay cache stale y no expiró (24h), lo servimos INMEDIATAMENTE y disparamos
+// un refresh en background — el usuario nunca espera Apps Script.
+const _lodgifyListRangeCache = new Map(); // key → { ts, payload }
+const _lodgifyListInflight = new Map();
+const LG_LIST_TTL_MS = 5 * 60_000;
+const LG_LIST_MAX_STALE_MS = 24 * 60 * 60_000;
+
+async function _lodgifyFetchAndCache(key, params) {
+  const payload = await callCheckinAppsScript("lodgify_list", params);
+  if (payload && payload.ok && Array.isArray(payload.bookings)) {
+    payload.bookings.forEach(b => { if (b) b.Source = _normalizeBookingSource(b); });
+    // Fallback: si Apps Script devuelve TODAS las bookings (versión sin
+    // filtro server-side), filtramos aquí. Idempotente cuando la .gs ya
+    // filtra (recibe menos bookings, todas dentro del rango).
+    const from = params.from || params.from_iso || '';
+    const to   = params.to   || params.to_iso   || '';
+    if (from || to) {
+      const fromTs = from ? new Date(from + 'T00:00:00').getTime() : -Infinity;
+      const toTs   = to   ? new Date(to   + 'T23:59:59').getTime() :  Infinity;
+      const _p = (s) => {
         if (!s) return 0;
         const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
         if (m) return new Date(+m[3], +m[1]-1, +m[2]).getTime();
         const t = Date.parse(s);
         return isFinite(t) ? t : 0;
       };
-      const filtered = payload.bookings.filter(b => {
-        const arr = _parse(b.DateArrival);
-        const dep = _parse(b.DateDeparture);
+      payload.bookings = payload.bookings.filter(b => {
+        const arr = _p(b.DateArrival);
+        const dep = _p(b.DateDeparture);
         if (!arr && !dep) return false;
-        // Que el rango de estancia TOQUE el rango pedido
         return (dep || arr) >= fromTs && (arr || dep) <= toTs;
       });
-      return res.json({ ...payload, bookings: filtered, total: filtered.length, cached: true });
+      payload.total = payload.bookings.length;
     }
+    _lodgifyListRangeCache.set(key, { ts: Date.now(), payload });
+  }
+  return payload;
+}
+
+app.get("/lodgify-list", async (req, res) => {
+  try {
+    const from = String(req.query.from || "").slice(0,10);
+    const to   = String(req.query.to   || "").slice(0,10);
+    const source = req.query.source || "";
+    const status = req.query.status || "";
+    const name_contains = req.query.name_contains || "";
+    const limit = req.query.limit || "";
+    const key = `${from}|${to}|${source}|${status}|${name_contains}|${limit}`;
+    const now = Date.now();
+    const cached = _lodgifyListRangeCache.get(key);
+    const params = { source, status, name_contains, limit, from, to, from_iso: from, to_iso: to };
+
+    // Cache fresh → servir instantáneo.
+    if (cached && (now - cached.ts) < LG_LIST_TTL_MS) {
+      return res.json({ ...cached.payload, cached: true, cached_age_ms: now - cached.ts });
+    }
+
+    // Cache stale pero utilizable → servir y refrescar en background.
+    if (cached && (now - cached.ts) < LG_LIST_MAX_STALE_MS) {
+      res.json({ ...cached.payload, cached: true, stale: true, cached_age_ms: now - cached.ts });
+      // Refetch en background si no hay otro ya corriendo.
+      if (!_lodgifyListInflight.get(key)) {
+        const p = _lodgifyFetchAndCache(key, params).catch(e => console.warn('[lodgify-list bg refresh]', e.message))
+          .finally(() => _lodgifyListInflight.delete(key));
+        _lodgifyListInflight.set(key, p);
+      }
+      return;
+    }
+
+    // Sin cache útil → coalesce y esperar el fetch fresco.
+    let inflight = _lodgifyListInflight.get(key);
+    if (!inflight) {
+      inflight = _lodgifyFetchAndCache(key, params).finally(() => _lodgifyListInflight.delete(key));
+      _lodgifyListInflight.set(key, inflight);
+    }
+    const payload = await inflight;
     res.json(payload);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
