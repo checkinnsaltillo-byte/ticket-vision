@@ -275,21 +275,38 @@ async function callCheckinAppsScriptPost(action, dataObj) {
   return { ok: false, error: 'Apps Script devolvió HTML tras varios reintentos', raw: (text || "").slice(0, 200) };
 }
 
-// Cache in-memory por página con TTL 90s + coalescing de peticiones
-// concurrentes. La primera carga cold es cara (~2-4s × N páginas hitting
-// Apps Script) pero las siguientes (misma o nueva sesión) hidratan en
-// <30ms. Con min-instances=1 en Cloud Run, la cache sobrevive entre
-// peticiones. Invalidación automática al guardar/borrar/sync.
-const _huespedesCache = new Map(); // key(params sig) → { ts, payload }
-const _huespedesInflight = new Map(); // key → Promise (coalesce concurrent fetches)
-const HU_LIST_TTL_MS = 90_000;
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ /huespedes-list — cache con SWR robusto                                  ║
+// ║                                                                          ║
+// ║ Antes: TTL 90s. Si el cache expiraba (o Cloud Run escalaba a nuevo       ║
+// ║ instance con memoria vacía), cada usuario esperaba 10-15s por el scan   ║
+// ║ de 8k+ filas + joins en Apps Script.                                     ║
+// ║                                                                          ║
+// ║ Ahora:                                                                    ║
+// ║ - Fresh TTL: 5 min (matches typical use pattern)                          ║
+// ║ - Stale TTL: 24h (SWR fallback — jamás mostrar error si hay cache viejo) ║
+// ║ - Coalescing por key: dos requests idénticos comparten promise           ║
+// ║ - Cache invalidation al save/delete via _huespedesCacheInvalidate       ║
+// ║ - Background refresh: sirve stale + refresca async (usuario no espera)  ║
+// ╚═══════════════════════════════════════════════════════════════════════════
+const _huespedesCache = new Map();
+const _huespedesInflight = new Map();
+const HU_LIST_FRESH_MS = 5 * 60_000;      // 5 min: servir sin refresh
+const HU_LIST_STALE_MS = 24 * 60 * 60_000; // 24h: servir stale mientras refresca
 function _huespedesCacheInvalidate() {
   _huespedesCache.clear();
   _huespedesInflight.clear();
 }
-function _huespedesCacheKey(params) {
-  return JSON.stringify(params);
+function _huespedesCacheKey(params) { return JSON.stringify(params); }
+
+async function _huespedesFetchAndCache(key, params) {
+  const result = await callCheckinAppsScript("list_records", params);
+  if (result && result.ok) {
+    _huespedesCache.set(key, { ts: Date.now(), payload: result });
+  }
+  return result;
 }
+
 app.get("/huespedes-list", async (req, res) => {
   try {
     const params = {
@@ -310,25 +327,26 @@ app.get("/huespedes-list", async (req, res) => {
     const key = _huespedesCacheKey(params);
     const now = Date.now();
     const cached = _huespedesCache.get(key);
-    if (cached && (now - cached.ts) < HU_LIST_TTL_MS) {
-      return res.json({ ...cached.payload, cached: true });
+    // Fresh → instantáneo
+    if (cached && (now - cached.ts) < HU_LIST_FRESH_MS) {
+      return res.json({ ...cached.payload, cached: true, cached_age_ms: now - cached.ts });
     }
-    // Coalesce: si otra petición ya está trayendo esta misma página, la
-    // esperamos en vez de disparar otra llamada a Apps Script. Evita
-    // que 6 usuarios simultáneos peguen Apps Script 36 veces.
+    // Stale utilizable → servir + refresh async
+    if (cached && (now - cached.ts) < HU_LIST_STALE_MS) {
+      res.json({ ...cached.payload, cached: true, stale: true, cached_age_ms: now - cached.ts });
+      if (!_huespedesInflight.get(key)) {
+        const p = _huespedesFetchAndCache(key, params)
+          .catch(e => console.warn('[huespedes-list bg refresh]', e.message))
+          .finally(() => _huespedesInflight.delete(key));
+        _huespedesInflight.set(key, p);
+      }
+      return;
+    }
+    // Sin cache utilizable → coalesce + esperar
     let inflight = _huespedesInflight.get(key);
     if (!inflight) {
-      inflight = (async () => {
-        try {
-          const result = await callCheckinAppsScript("list_records", params);
-          if (result && result.ok) {
-            _huespedesCache.set(key, { ts: Date.now(), payload: result });
-          }
-          return result;
-        } finally {
-          _huespedesInflight.delete(key);
-        }
-      })();
+      inflight = _huespedesFetchAndCache(key, params)
+        .finally(() => _huespedesInflight.delete(key));
       _huespedesInflight.set(key, inflight);
     }
     const result = await inflight;
@@ -6780,4 +6798,36 @@ app.get("/reservas/search", async (req, res) => {
 // ─── Start ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Ticket Vision v7 — Claude Vision — port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Ticket Vision v7 — Claude Vision — port ${PORT}`);
+  // Warm-up: precalienta cache de endpoints críticos al arrancar. Con
+  // min-instances=1 en Cloud Run, esto asegura que los usuarios nunca
+  // esperen el "cold call" de Apps Script después del primer deploy.
+  // Corre en background 2s después para no bloquear el arranque.
+  setTimeout(async () => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(yyyy, now.getMonth() + 1, 0).getDate();
+    const from = `${yyyy}-${mm}-01`;
+    const to   = `${yyyy}-${mm}-${String(lastDay).padStart(2,'0')}`;
+    const warmups = [
+      { name: 'lodgify-list', url: `http://127.0.0.1:${PORT}/lodgify-list?from=${from}&to=${to}` },
+      { name: 'huespedes-list', url: `http://127.0.0.1:${PORT}/huespedes-list?page_size=10000` },
+      { name: 'alojamientos-list', url: `http://127.0.0.1:${PORT}/alojamientos-list` },
+      { name: 'perfiles-kpis-list', url: `http://127.0.0.1:${PORT}/perfiles-kpis-list` },
+      { name: 'perfiles-list', url: `http://127.0.0.1:${PORT}/perfiles-list` },
+    ];
+    for (const w of warmups) {
+      const t0 = Date.now();
+      try {
+        const r = await fetch(w.url);
+        await r.text();
+        console.log(`[warmup] ${w.name}: ${Date.now() - t0}ms`);
+      } catch (e) {
+        console.warn(`[warmup] ${w.name} falló: ${e.message}`);
+      }
+    }
+    console.log('[warmup] done — cache precaliente para primer usuario');
+  }, 2000);
+});
