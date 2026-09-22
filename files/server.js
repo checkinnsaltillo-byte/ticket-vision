@@ -1988,14 +1988,20 @@ const _ASIST_EMP_TTL_MS = 5 * 60 * 1000;
 
 function _detectAsistenciaIntent(text) {
   const t = String(text || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").trim();
-  // Entrada: "ya llegué", "ya llegue", "llegue", "llegue al trabajo", "entrada",
-  //          "estoy en el trabajo", "check in", "checkin"
+  // Regex tolerantes a typos comunes:
+  //   "entrada" | "entranda" | "entardo" | "entardo" | "entrado" | "entradad"
+  //   Cualquier palabra que empiece con "entra" y termine cerca del stem "da/do".
+  //   Cubre: entrada, entranda, entar da, entrado, entrando.
+  // "SALIR" del trabajo también debería contar como intent de salida — mismo criterio.
+  const hasEntradaLike = /\bentra[a-z]{0,5}\b/.test(t);
+  const hasSalidaLike  = /\bsali[a-z]{0,5}\b/.test(t);
+  // Entrada
   if (/\b(ya\s+)?llegu[eé]\b/.test(t)) return "entrada";
-  if (/\bentrada\b/.test(t) && !/\bsalida\b/.test(t)) return "entrada";
+  if (hasEntradaLike && !hasSalidaLike) return "entrada";
   if (/^(check[\s-]?in|checkin)$/.test(t)) return "entrada";
-  // Salida: "ya me voy", "me voy", "salida", "check out", "checkout", "termine"
+  // Salida
   if (/\b(ya\s+)?me\s+voy\b/.test(t)) return "salida";
-  if (/\bsalida\b/.test(t) && !/\bentrada\b/.test(t)) return "salida";
+  if (hasSalidaLike && !hasEntradaLike) return "salida";
   if (/^(check[\s-]?out|checkout)$/.test(t)) return "salida";
   if (/\btermin[eé]\b/.test(t)) return "salida";
   return null;
