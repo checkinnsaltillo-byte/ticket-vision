@@ -3965,6 +3965,15 @@ app.get("/rh/empleados",      rhMakeListEndpoint("rh_list_empleados"));
 app.post("/rh/empleados",     rhMakeSaveEndpoint("rh_save_empleado"));
 app.get("/rh/asistencia",     rhMakeListEndpoint("rh_list_asistencia"));
 app.post("/rh/asistencia",    rhMakeSaveEndpoint("rh_save_asistencia"));
+// Pagos semanales de nómina (Método + Fecha + Comentarios por Empleado × Semana)
+app.get("/rh/pagos-semanal", async (_req, res) => {
+  try { res.json(await callCheckinAppsScript("rh_pago_semanal_list")); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+app.post("/rh/pagos-semanal", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("rh_pago_semanal_upsert", req.body || {})); }
+  catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
 app.get("/rh/ausencias",      rhMakeListEndpoint("rh_list_ausencias"));
 app.post("/rh/ausencias",     rhMakeSaveEndpoint("rh_save_ausencia"));
 app.get("/rh/compensaciones", rhMakeListEndpoint("rh_list_compensaciones"));
