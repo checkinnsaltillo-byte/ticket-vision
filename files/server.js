@@ -5036,31 +5036,33 @@ function _lodgifyLoadCacheFromDisk() {
 }
 _lodgifyLoadCacheFromDisk();
 
+function _lgFilterRange(bookings, from, to) {
+  if (!from && !to) return bookings;
+  const fromTs = from ? new Date(from + 'T00:00:00').getTime() : -Infinity;
+  const toTs   = to   ? new Date(to   + 'T23:59:59').getTime() :  Infinity;
+  const _p = (s) => {
+    if (!s) return 0;
+    const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return new Date(+m[3], +m[1]-1, +m[2]).getTime();
+    const t = Date.parse(s);
+    return isFinite(t) ? t : 0;
+  };
+  return bookings.filter(b => {
+    const arr = _p(b.DateArrival);
+    const dep = _p(b.DateDeparture);
+    if (!arr && !dep) return false;
+    return (dep || arr) >= fromTs && (arr || dep) <= toTs;
+  });
+}
+
 async function _lodgifyFetchAndCache(key, params) {
   const payload = await callCheckinAppsScript("lodgify_list", params);
   if (payload && payload.ok && Array.isArray(payload.bookings)) {
     payload.bookings.forEach(b => { if (b) b.Source = _normalizeBookingSource(b); });
-    // Fallback: si Apps Script devuelve TODAS las bookings (versión sin
-    // filtro server-side), filtramos aquí. Idempotente cuando la .gs ya
-    // filtra (recibe menos bookings, todas dentro del rango).
     const from = params.from || params.from_iso || '';
     const to   = params.to   || params.to_iso   || '';
     if (from || to) {
-      const fromTs = from ? new Date(from + 'T00:00:00').getTime() : -Infinity;
-      const toTs   = to   ? new Date(to   + 'T23:59:59').getTime() :  Infinity;
-      const _p = (s) => {
-        if (!s) return 0;
-        const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-        if (m) return new Date(+m[3], +m[1]-1, +m[2]).getTime();
-        const t = Date.parse(s);
-        return isFinite(t) ? t : 0;
-      };
-      payload.bookings = payload.bookings.filter(b => {
-        const arr = _p(b.DateArrival);
-        const dep = _p(b.DateDeparture);
-        if (!arr && !dep) return false;
-        return (dep || arr) >= fromTs && (arr || dep) <= toTs;
-      });
+      payload.bookings = _lgFilterRange(payload.bookings, from, to);
       payload.total = payload.bookings.length;
     }
     _lodgifyListCacheSet(key, payload);
@@ -5068,8 +5070,83 @@ async function _lodgifyFetchAndCache(key, params) {
   return payload;
 }
 
+// ── Snapshot único de reservas: hoy−LG_SNAP_BACK_DAYS → futuro ─────────────
+// Apps Script tarda 35-60 s en CADA lectura (lee la hoja completa). Por eso
+// ninguna petición de usuario debe esperarlo: el servidor mantiene UNA copia
+// refrescada en segundo plano y cualquier rango dentro de la ventana se
+// responde filtrando en memoria. La instancia no acepta tráfico hasta tener
+// la copia (ver arranque al final del archivo).
+const LG_SNAP_BACK_DAYS = 75;
+const LG_SNAP_TO = '2099-12-31';
+const LG_SNAP_REFRESH_MS = 10 * 60_000;
+const LG_SNAP_FILE = path.join(LG_CACHE_DIR, 'snapshot_v1.json');
+const _lgSnap = { ts: 0, from: '', payload: null, inflight: null, lastMs: 0, lastErr: '', lastReason: '' };
+
+function _lgSnapFromIso() {
+  return new Date(Date.now() - LG_SNAP_BACK_DAYS * 86400000).toISOString().slice(0, 10);
+}
+
+function _lgSnapLoadFromDisk() {
+  try {
+    const obj = JSON.parse(fs.readFileSync(LG_SNAP_FILE, 'utf8'));
+    if (obj && obj.payload && Array.isArray(obj.payload.bookings)) {
+      Object.assign(_lgSnap, { ts: obj.ts, from: obj.from, payload: obj.payload });
+      console.log(`[lg-snap] cargado de disco: ${obj.payload.bookings.length} bookings`);
+    }
+  } catch (_) {}
+}
+
+function _lgSnapRefresh(reason) {
+  if (_lgSnap.inflight) return _lgSnap.inflight;
+  const from = _lgSnapFromIso();
+  const t0 = Date.now();
+  _lgSnap.inflight = (async () => {
+    try {
+      const payload = await callCheckinAppsScript("lodgify_list", { from, to: LG_SNAP_TO, from_iso: from, to_iso: LG_SNAP_TO });
+      if (!payload || !payload.ok || !Array.isArray(payload.bookings)) {
+        throw new Error((payload && payload.error) || 'respuesta inválida de Apps Script');
+      }
+      // Fallback viejo del helper de Apps Script: no pisar una copia más nueva.
+      if (payload.cached_stale && _lgSnap.payload) throw new Error('Apps Script falló; se conserva la copia actual');
+      payload.bookings.forEach(b => { if (b) b.Source = _normalizeBookingSource(b); });
+      payload.bookings = _lgFilterRange(payload.bookings, from, LG_SNAP_TO);
+      Object.assign(_lgSnap, { payload, ts: Date.now(), from, lastMs: Date.now() - t0, lastErr: '', lastReason: reason });
+      console.log(`[lg-snap] ${reason}: ${payload.bookings.length} bookings en ${_lgSnap.lastMs}ms`);
+      setImmediate(() => {
+        try { fs.writeFileSync(LG_SNAP_FILE, JSON.stringify({ ts: _lgSnap.ts, from, payload })); } catch (_) {}
+      });
+    } catch (e) {
+      _lgSnap.lastErr = e.message;
+      console.warn(`[lg-snap] ${reason} falló en ${Date.now() - t0}ms: ${e.message}`);
+    } finally {
+      _lgSnap.inflight = null;
+    }
+  })();
+  return _lgSnap.inflight;
+}
+
+_lgSnapLoadFromDisk();
+setInterval(() => {
+  if (Date.now() - _lgSnap.ts >= LG_SNAP_REFRESH_MS - 60_000) _lgSnapRefresh('intervalo');
+}, 60_000);
+
+app.get("/lodgify-snapshot-status", (_req, res) => {
+  res.json({
+    ok: true,
+    loaded: !!_lgSnap.payload,
+    bookings: _lgSnap.payload ? _lgSnap.payload.bookings.length : 0,
+    window_from: _lgSnap.from,
+    age_ms: _lgSnap.ts ? Date.now() - _lgSnap.ts : null,
+    last_refresh_ms: _lgSnap.lastMs,
+    last_reason: _lgSnap.lastReason,
+    last_error: _lgSnap.lastErr,
+    refreshing: !!_lgSnap.inflight,
+  });
+});
+
 app.get("/lodgify-list", async (req, res) => {
   try {
+    const t0 = Date.now();
     const from = String(req.query.from || "").slice(0,10);
     const to   = String(req.query.to   || "").slice(0,10);
     const source = req.query.source || "";
@@ -5078,6 +5155,25 @@ app.get("/lodgify-list", async (req, res) => {
     const limit = req.query.limit || "";
     const key = `${from}|${to}|${source}|${status}|${name_contains}|${limit}`;
     const now = Date.now();
+
+    // Rango dentro de la ventana del snapshot → filtro en memoria (ms).
+    const plain = !source && !status && !name_contains && !limit;
+    if (plain && from) {
+      if (!_lgSnap.payload) await _lgSnapRefresh('primera-peticion');
+      if (_lgSnap.payload && from >= _lgSnap.from) {
+        const bookings = _lgFilterRange(_lgSnap.payload.bookings, from, to);
+        res.set('Server-Timing', `snapshot;dur=${Date.now() - t0}`);
+        return res.json({
+          ..._lgSnap.payload,
+          bookings,
+          total: bookings.length,
+          cached: true,
+          snapshot: true,
+          cached_age_ms: now - _lgSnap.ts,
+        });
+      }
+    }
+
     const cached = _lodgifyListRangeCache.get(key);
     const params = { source, status, name_contains, limit, from, to, from_iso: from, to_iso: to };
 
@@ -5326,6 +5422,7 @@ app.post("/lodgify-sync", async (req, res) => {
     // Invalidamos ambos caches para que la próxima consulta traiga fresco.
     _huespedesCacheInvalidate();
     if (typeof _lodgifyListCache !== "undefined") _lodgifyListCache.payload = null;
+    _lgSnapRefresh('post-sync');
     res.json(json);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -6898,21 +6995,28 @@ app.get("/reservas/search", async (req, res) => {
 // ─── Start ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
+// Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
+// a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
+// lectura lenta de Apps Script tras un deploy o un escalado.
+(async () => {
+  if (!_lgSnap.payload) {
+    const t0 = Date.now();
+    await Promise.race([_lgSnapRefresh('arranque'), new Promise(r => setTimeout(r, 220_000))]);
+    console.log(`[lg-snap] arranque listo en ${Date.now() - t0}ms (cargado=${!!_lgSnap.payload})`);
+  } else {
+    _lgSnapRefresh('arranque-refresco');
+  }
+  app.listen(PORT, _onListen);
+})();
+
+function _onListen() {
   console.log(`Ticket Vision v7 — Claude Vision — port ${PORT}`);
   // Warm-up: precalienta cache de endpoints críticos al arrancar. Con
   // min-instances=1 en Cloud Run, esto asegura que los usuarios nunca
   // esperen el "cold call" de Apps Script después del primer deploy.
   // Corre en background 2s después para no bloquear el arranque.
   setTimeout(async () => {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const lastDay = new Date(yyyy, now.getMonth() + 1, 0).getDate();
-    const from = `${yyyy}-${mm}-01`;
-    const to   = `${yyyy}-${mm}-${String(lastDay).padStart(2,'0')}`;
     const warmups = [
-      { name: 'lodgify-list', url: `http://127.0.0.1:${PORT}/lodgify-list?from=${from}&to=${to}` },
       { name: 'huespedes-list', url: `http://127.0.0.1:${PORT}/huespedes-list?page_size=10000` },
       { name: 'alojamientos-list', url: `http://127.0.0.1:${PORT}/alojamientos-list` },
       { name: 'perfiles-kpis-list', url: `http://127.0.0.1:${PORT}/perfiles-kpis-list` },
@@ -6930,4 +7034,4 @@ app.listen(PORT, () => {
     }
     console.log('[warmup] done — cache precaliente para primer usuario');
   }, 2000);
-});
+}
