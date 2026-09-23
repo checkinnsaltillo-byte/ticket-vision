@@ -298,6 +298,26 @@ function _huCachePath(key) {
   return path.join(HU_CACHE_DIR, safe + '.json');
 }
 
+// Refresca en segundo plano las consultas usadas recientemente SIN borrar la
+// caché: mientras Apps Script responde (35-60 s), los usuarios reciben la
+// versión anterior al instante.
+function _huespedesCacheRefreshInBackground(reason) {
+  const recent = Array.from(_huespedesCache.entries())
+    .sort((a, b) => b[1].ts - a[1].ts)
+    .slice(0, 3);
+  for (const [key] of recent) {
+    if (_huespedesInflight.get(key)) continue;
+    let params;
+    try { params = JSON.parse(key); } catch (_) { continue; }
+    const t0 = Date.now();
+    const p = _huespedesFetchAndCache(key, params)
+      .then(() => console.log(`[huespedes-cache] ${reason}: refrescado en ${Date.now() - t0}ms`))
+      .catch(e => console.warn(`[huespedes-cache] ${reason} falló:`, e.message))
+      .finally(() => _huespedesInflight.delete(key));
+    _huespedesInflight.set(key, p);
+  }
+}
+
 function _huespedesCacheInvalidate() {
   _huespedesCache.clear();
   _huespedesInflight.clear();
@@ -4525,10 +4545,35 @@ app.post("/save-incidencia", async (req, res) => {
   }
 });
 
+// Caché stale-while-revalidate para endpoints de una sola consulta: responde
+// al instante con la última respuesta buena y refresca en segundo plano.
+// Solo espera a Apps Script si nunca ha habido respuesta buena.
+function _swrCache(fetcher, freshMs, staleMs) {
+  const st = { ts: 0, payload: null, inflight: null };
+  const refresh = () => {
+    if (!st.inflight) {
+      st.inflight = fetcher()
+        .then(p => { if (p && p.ok !== false) { st.payload = p; st.ts = Date.now(); } return p; })
+        .finally(() => { st.inflight = null; });
+    }
+    return st.inflight;
+  };
+  const get = async () => {
+    const age = Date.now() - st.ts;
+    if (st.payload && age < freshMs) return { ...st.payload, cached: true, cached_age_ms: age };
+    if (st.payload && age < staleMs) {
+      refresh().catch(() => {});
+      return { ...st.payload, cached: true, stale: true, cached_age_ms: age };
+    }
+    return await refresh();
+  };
+  return { get, refresh };
+}
+
+const _huFilterOptionsCache = _swrCache(() => callCheckinAppsScript("list_filter_options"), 30 * 60_000, 7 * 24 * 60 * 60_000);
 app.get("/huespedes-filter-options", async (req, res) => {
   try {
-    const result = await callCheckinAppsScript("list_filter_options");
-    res.json(result);
+    res.json(await _huFilterOptionsCache.get());
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -5212,25 +5257,16 @@ app.get("/lodgify-list", async (req, res) => {
 // Devuelve { phone10 → { noches, visitas, monto, updated_at } } leyendo los
 // KPIs pre-computados de la hoja Perfiles. Cache 5 min.
 // ═══════════════════════════════════════════════════════════════════════════
-const _perfilesKpisCache = { ts: 0, payload: null };
+// Los KPIs se recalculan una vez al día (perfiles-kpis-daily), así que una
+// copia de hasta 24 h es válida mientras se refresca en segundo plano.
+const _perfilesKpisCache = _swrCache(async () => {
+  const j = await callCheckinAppsScript("perfiles_kpis");
+  if (!j || !j.ok) throw new Error((j && j.error) || "perfiles_kpis falló");
+  return { ok: true, by_phone: j.by_phone || {}, total: j.total || 0 };
+}, 5 * 60_000, 24 * 60 * 60_000);
 app.get("/perfiles-kpis-list", async (req, res) => {
   try {
-    const now = Date.now();
-    if (_perfilesKpisCache.payload && (now - _perfilesKpisCache.ts) < 5 * 60_000) {
-      return res.json({ ok: true, cached: true, ...(_perfilesKpisCache.payload) });
-    }
-    // perfiles_kpis en Apps Script devuelve el mapa ligero {by_phone, total}
-    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=perfiles_kpis`;
-    const r = await fetch(url);
-    const text = await r.text();
-    const j = JSON.parse(text);
-    if (!j.ok) {
-      return res.status(500).json({ ok: false, error: j.error || "perfiles_kpis falló" });
-    }
-    const payload = { by_phone: j.by_phone || {}, total: j.total || 0 };
-    _perfilesKpisCache.ts = now;
-    _perfilesKpisCache.payload = payload;
-    res.json({ ok: true, cached: false, ...payload });
+    res.json(await _perfilesKpisCache.get());
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -5419,10 +5455,16 @@ app.post("/lodgify-sync", async (req, res) => {
     let json = {};
     try { json = JSON.parse(text); } catch { json = { ok: false, raw: text.slice(0, 400) }; }
     // Un sync de Lodgify propaga filas nuevas/actualizadas a Reservaciones.
-    // Invalidamos ambos caches para que la próxima consulta traiga fresco.
-    _huespedesCacheInvalidate();
-    if (typeof _lodgifyListCache !== "undefined") _lodgifyListCache.payload = null;
-    _lgSnapRefresh('post-sync');
+    // El scheduler lo llama cada pocos minutos: NO borramos cachés (eso
+    // obligaba al siguiente usuario a esperar 40 s+ a Apps Script). Solo si
+    // hubo cambios, refrescamos en segundo plano sirviendo lo anterior.
+    const changed = !(json && json.ok
+      && Number(json.updated || 0) === 0 && Number(json.inserted || 0) === 0
+      && (json.updated != null || json.inserted != null));
+    if (changed) {
+      _huespedesCacheRefreshInBackground('post-sync');
+      _lgSnapRefresh('post-sync');
+    }
     res.json(json);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -6999,13 +7041,28 @@ const PORT = process.env.PORT || 8080;
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
 // lectura lenta de Apps Script tras un deploy o un escalado.
 (async () => {
-  if (!_lgSnap.payload) {
-    const t0 = Date.now();
-    await Promise.race([_lgSnapRefresh('arranque'), new Promise(r => setTimeout(r, 220_000))]);
-    console.log(`[lg-snap] arranque listo en ${Date.now() - t0}ms (cargado=${!!_lgSnap.payload})`);
-  } else {
-    _lgSnapRefresh('arranque-refresco');
+  const t0 = Date.now();
+  const pending = [];
+  if (!_lgSnap.payload) pending.push(_lgSnapRefresh('arranque'));
+  else _lgSnapRefresh('arranque-refresco');
+  // Consulta por defecto de huespedes-list (la que usa el frontend).
+  const huParams = {
+    page: "1", page_size: "10000", nombre_reservacion: "", medio_reservacion: "",
+    celular_principal: "", requiere_factura: "", razon_social: "", forma_pago: "",
+    correo: "", fecha_entrada_desde: "", fecha_entrada_hasta: "",
+    fecha_salida_desde: "", fecha_salida_hasta: "",
+  };
+  const huKey = _huespedesCacheKey(huParams);
+  if (!_huespedesCache.get(huKey)) {
+    const p = _huespedesFetchAndCache(huKey, huParams).catch(e => console.warn('[huespedes-cache] arranque falló:', e.message))
+      .finally(() => _huespedesInflight.delete(huKey));
+    _huespedesInflight.set(huKey, p);
+    pending.push(p);
   }
+  if (pending.length) {
+    await Promise.race([Promise.all(pending), new Promise(r => setTimeout(r, 220_000))]);
+  }
+  console.log(`[arranque] cachés listas en ${Date.now() - t0}ms (reservas=${!!_lgSnap.payload}, huespedes=${!!_huespedesCache.get(huKey)})`);
   app.listen(PORT, _onListen);
 })();
 
@@ -7020,6 +7077,7 @@ function _onListen() {
       { name: 'huespedes-list', url: `http://127.0.0.1:${PORT}/huespedes-list?page_size=10000` },
       { name: 'alojamientos-list', url: `http://127.0.0.1:${PORT}/alojamientos-list` },
       { name: 'perfiles-kpis-list', url: `http://127.0.0.1:${PORT}/perfiles-kpis-list` },
+      { name: 'huespedes-filter-options', url: `http://127.0.0.1:${PORT}/huespedes-filter-options` },
       { name: 'perfiles-list', url: `http://127.0.0.1:${PORT}/perfiles-list` },
     ];
     for (const w of warmups) {
