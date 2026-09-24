@@ -5621,7 +5621,7 @@ app.post("/save-banco-clasificacion", async (req, res) => {
     });
 
     if (!result.ok) throw new Error(result.error || result.message || "Apps Script error");
-    res.json({ ok: true, rowNum, columnsWritten: result.columnsWritten });
+    res.json({ ok: true, rowNum, columnsWritten: result.columnsWritten, archivado: result.archivado });
   } catch (err) {
     console.error("save_banco_clasificacion_error", err.message);
     res.status(500).json({ ok: false, error: err.message });
