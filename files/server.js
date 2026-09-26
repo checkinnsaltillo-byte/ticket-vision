@@ -5131,10 +5131,11 @@ async function _lodgifyFetchAndCache(key, params) {
 // refrescada en segundo plano y cualquier rango dentro de la ventana se
 // responde filtrando en memoria. La instancia no acepta tráfico hasta tener
 // la copia (ver arranque al final del archivo).
-const LG_SNAP_BACK_DAYS = 75;
+// 25 meses: Gestión de reservas pide 2 meses atrás y el Dashboard 24 meses.
+const LG_SNAP_BACK_DAYS = 760;
 const LG_SNAP_TO = '2099-12-31';
 const LG_SNAP_REFRESH_MS = 10 * 60_000;
-const LG_SNAP_FILE = path.join(LG_CACHE_DIR, 'snapshot_v1.json');
+const LG_SNAP_FILE = path.join(LG_CACHE_DIR, 'snapshot_v2.json');
 const _lgSnap = { ts: 0, from: '', payload: null, inflight: null, lastMs: 0, lastErr: '', lastReason: '' };
 
 function _lgSnapFromIso() {
@@ -5216,7 +5217,17 @@ app.get("/lodgify-list", async (req, res) => {
     if (plain && from) {
       if (!_lgSnap.payload) await _lgSnapRefresh('primera-peticion');
       if (_lgSnap.payload && from >= _lgSnap.from) {
-        const bookings = _lgFilterRange(_lgSnap.payload.bookings, from, to);
+        let bookings = _lgFilterRange(_lgSnap.payload.bookings, from, to);
+        // view=dash: Dashboard (24 meses) — solo Booked/Tentative y los campos
+        // que usa. Baja de ~12.8 MB a una fracción.
+        if (String(req.query.view || "") === "dash") {
+          const F = ["Id","Status","Source","DateArrival","DateDeparture","DateCancelled","HouseId","HouseName",
+                     "TotalAmount","GrossTotal","Gross","NetTotal","Net","VatTotal","Vat","Currency",
+                     "NumberOfGuests","GuestName","GuestPhone","Nights","last_synced_at"];
+          bookings = bookings
+            .filter(b => /^(booked|tentative)$/i.test(String(b.Status || "")))
+            .map(b => { const o = {}; for (const k of F) if (b[k] !== undefined && b[k] !== "") o[k] = b[k]; return o; });
+        }
         res.set('Server-Timing', `snapshot;dur=${Date.now() - t0}`);
         return res.json({
           ..._lgSnap.payload,
