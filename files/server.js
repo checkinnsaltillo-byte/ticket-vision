@@ -440,28 +440,42 @@ app.get("/huespedes-list", async (req, res) => {
 let _alojCache = { ts: 0, payload: null };
 const ALOJ_CACHE_MS = 5 * 60 * 1000;
 
-app.get("/alojamientos-list", async (req, res) => {
-  try {
-    const now = Date.now();
-    if (!_alojCache.payload || (now - _alojCache.ts) > ALOJ_CACHE_MS) {
-      try {
-        const fresh = await callCheckinAppsScript("list_alojamientos");
+// Stale-while-revalidate: responde con la copia guardada al instante y, si
+// tiene más de 5 min, la refresca en segundo plano. Solo espera a Apps Script
+// (25-100 s en horas saturadas) si nunca hubo copia.
+let _alojRefreshing = null;
+function _alojRefresh() {
+  if (!_alojRefreshing) {
+    const t0 = Date.now();
+    _alojRefreshing = callCheckinAppsScript("list_alojamientos")
+      .then(fresh => {
         if (fresh && fresh.ok && Array.isArray(fresh.rows)) {
           _alojCache.payload = fresh;
-          _alojCache.ts = now;
+          _alojCache.ts = Date.now();
         } else if (!_alojCache.payload) {
           _alojCache.payload = fresh;
-          _alojCache.ts = now;
+          _alojCache.ts = Date.now();
         } else {
-          console.warn("[alojamientos-list] Apps Script devolvió no-ok — mantengo cache anterior");
+          console.warn("[alojamientos-list] Apps Script devolvió no-ok — mantengo copia anterior");
         }
-      } catch (fetchErr) {
-        // Apps Script cayó/saturado. Si tenemos cache stale, servirlo
-        // (mejor un valor viejo que un 500 que bloquea toda la UI).
-        console.warn("[alojamientos-list] fetch falló:", fetchErr.message, "— sirvo stale:", !!_alojCache.payload);
-        if (!_alojCache.payload) throw fetchErr;
-      }
-    }
+        console.log(`[alojamientos-list] refrescado en ${Date.now() - t0}ms`);
+        return _alojCache.payload;
+      })
+      .finally(() => { _alojRefreshing = null; });
+  }
+  return _alojRefreshing;
+}
+async function _alojGetPayload() {
+  if (!_alojCache.payload) return await _alojRefresh();
+  if (Date.now() - _alojCache.ts > ALOJ_CACHE_MS) {
+    _alojRefresh().catch(e => console.warn("[alojamientos-list] refresco falló:", e.message));
+  }
+  return _alojCache.payload;
+}
+
+app.get("/alojamientos-list", async (req, res) => {
+  try {
+    await _alojGetPayload();
     let payload = _alojCache.payload;
     const wantId = String(req.query.id || "").trim().toLowerCase();
     // Cache-Control agresivo por-id: la guía pública se puede cachear en el
@@ -3582,11 +3596,7 @@ app.post("/wa/cron-guest-reminders", async (req, res) => {
     // Reusa el mismo _alojCache que alimenta /alojamientos-list.
     let alojIdx = new Map();
     try {
-      const now = Date.now();
-      if (!_alojCache.payload || (now - _alojCache.ts) > ALOJ_CACHE_MS) {
-        _alojCache.payload = await callCheckinAppsScript("list_alojamientos");
-        _alojCache.ts = now;
-      }
+      await _alojGetPayload();
       const rows = (_alojCache.payload && _alojCache.payload.rows) || [];
       for (const r of rows) {
         const id = String(r.HouseId || r.HouseID || r.ID || "").trim();
@@ -7059,6 +7069,7 @@ const PORT = process.env.PORT || 8080;
     _huespedesInflight.set(huKey, p);
     pending.push(p);
   }
+  if (!_alojCache.payload) pending.push(_alojRefresh().catch(e => console.warn('[alojamientos-list] arranque falló:', e.message)));
   if (pending.length) {
     await Promise.race([Promise.all(pending), new Promise(r => setTimeout(r, 220_000))]);
   }
