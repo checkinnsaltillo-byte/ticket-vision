@@ -3900,6 +3900,18 @@ app.get("/personal-list", async (req, res) => {
 const _rhListCache = new Map(); // action → { ts, payload }
 const RH_LIST_TTL_MS = 45_000;
 function _rhListCacheInvalidate() { _rhListCache.clear(); }
+// Write-through para RH_Asistencia: en vez de tirar la lista cacheada tras
+// guardar/borrar (lo que obligaba a re-leer la hoja en Apps Script, ~5s),
+// aplicamos el cambio a la copia en memoria. Las demás listas RH sí se
+// invalidan. Si el cambio no se puede aplicar con certeza → invalidar todo.
+function _rhAsistCachePatch(fn) {
+  const cached = _rhListCache.get("rh_list_asistencia");
+  const others = Array.from(_rhListCache.keys()).filter(k => k !== "rh_list_asistencia");
+  others.forEach(k => _rhListCache.delete(k));
+  if (!cached || !Array.isArray(cached.payload?.rows)) return;
+  try { if (fn(cached.payload.rows) === false) _rhListCache.delete("rh_list_asistencia"); }
+  catch (_) { _rhListCache.delete("rh_list_asistencia"); }
+}
 function rhMakeListEndpoint(action) {
   return async (req, res) => {
     try {
@@ -3921,7 +3933,22 @@ function rhMakeSaveEndpoint(action) {
     try {
       const payload = req.body?.payload || req.body || {};
       const result = await callCheckinAppsScriptPost(action, { payload });
-      _rhListCacheInvalidate();
+      const mode = result && result.ok ? String(result.mode || "") : "";
+      if (action === "rh_save_asistencia" && (mode === "update" || mode === "insert")) {
+        _rhAsistCachePatch(rows => {
+          const id = String(result.id || "");
+          if (!id) return false;
+          const vals = {};
+          for (const k of Object.keys(payload)) vals[k] = payload[k] == null ? "" : String(payload[k]);
+          vals.ID = id;
+          const row = rows.find(r => String(r.ID || "") === id);
+          if (row) Object.assign(row, vals);
+          else if (mode === "insert") rows.push(vals);
+          else return false;
+        });
+      } else {
+        _rhListCacheInvalidate();
+      }
       res.json(result);
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
@@ -4045,7 +4072,14 @@ function rhMakeDeleteEndpoint(action) {
       const reason = String(req.query.reason || '').slice(0, 300);
       const actor  = String(req.query.actor  || '').slice(0, 120);
       const result = await callCheckinAppsScriptPost(action, { ID: id, force, reason, actor });
-      _rhListCacheInvalidate();
+      if (action === "rh_delete_asistencia" && result && result.ok) {
+        _rhAsistCachePatch(rows => {
+          const i = rows.findIndex(r => String(r.ID || "") === String(id));
+          if (i >= 0) rows.splice(i, 1);
+        });
+      } else {
+        _rhListCacheInvalidate();
+      }
       res.json(result);
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
   };
