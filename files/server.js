@@ -30,10 +30,11 @@ app.use(express.json({ limit: "32mb" }));
 // vive en checkin_normalized.gs (Apps Script master).
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec";
 
-async function callAppsScript(payload, _intento) {
+async function callAppsScript(payload, _intento, _timeoutMs) {
   const intento = _intento || 1;
+  const timeoutMs = _timeoutMs || 25000; // 25s por defecto; los callers pesados pasan más
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000); // 25s timeout
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let parsed;
   try {
     const res = await fetch(APPS_SCRIPT_URL, {
@@ -45,7 +46,7 @@ async function callAppsScript(payload, _intento) {
     const text = await res.text();
     try { parsed = JSON.parse(text); } catch { return { ok: false, raw: text }; }
   } catch (err) {
-    if (err.name === "AbortError") throw new Error("Timeout: Apps Script tardó más de 25s");
+    if (err.name === "AbortError") throw new Error(`Timeout: Apps Script tardó más de ${Math.round(timeoutMs/1000)}s`);
     throw err;
   } finally {
     clearTimeout(timer);
@@ -56,7 +57,7 @@ async function callAppsScript(payload, _intento) {
     if (intento < 3) {
       console.warn(`[callAppsScript] respuesta de doGet (${intento}/3) — action=${payload && payload.action}, reintento`);
       await new Promise(r => setTimeout(r, 700 * intento));
-      return callAppsScript(payload, intento + 1);
+      return callAppsScript(payload, intento + 1, timeoutMs);
     }
     return { ok: false, error: 'Apps Script no ejecutó la acción (respondió como lectura). Intenta de nuevo.' };
   }
@@ -95,10 +96,24 @@ app.get("/get-tickets", async (req, res) => {
 // ─── Registros contables: datos de BANCOS y Presupuesto_sys ───────────────
 
 app.get("/get-bancos", async (req, res) => {
+  // getBancosData_ procesa ~2,900 filas de BANCOS + Presupuesto_sys en Apps
+  // Script (normal 8-12s, pero un cold-start puede pasar de 25s). Para que el
+  // módulo NUNCA se quede sin datos: (1) timeout amplio de 60s para que un
+  // arranque frío alcance a responder con datos frescos; (2) si aun así falla,
+  // servimos la última respuesta buena cacheada (stale) en vez de un error.
+  const cacheKey = "get_bancos_data";
   try {
-    const result = await callAppsScript({ action: "get_bancos_data" });
+    const result = await callAppsScript({ action: "get_bancos_data" }, 1, 60000);
+    if (result && result.ok !== false) {
+      _appsScriptFallbackCache.set(cacheKey, { ts: Date.now(), payload: result });
+    }
     res.json(result);
   } catch (err) {
+    const stale = _appsScriptStaleFallback(cacheKey, err.message);
+    if (stale) {
+      console.warn(`[get-bancos] Apps Script falló (${err.message}) — sirviendo copia cacheada`);
+      return res.json(stale);
+    }
     res.status(500).json({ ok: false, error: err.message });
   }
 });
