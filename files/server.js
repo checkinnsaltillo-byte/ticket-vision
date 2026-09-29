@@ -30,9 +30,11 @@ app.use(express.json({ limit: "32mb" }));
 // vive en checkin_normalized.gs (Apps Script master).
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec";
 
-async function callAppsScript(payload) {
+async function callAppsScript(payload, _intento) {
+  const intento = _intento || 1;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000); // 25s timeout
+  let parsed;
   try {
     const res = await fetch(APPS_SCRIPT_URL, {
       method:  "POST",
@@ -41,13 +43,24 @@ async function callAppsScript(payload) {
       signal:  controller.signal,
     });
     const text = await res.text();
-    try { return JSON.parse(text); } catch { return { ok: false, raw: text }; }
+    try { parsed = JSON.parse(text); } catch { return { ok: false, raw: text }; }
   } catch (err) {
     if (err.name === "AbortError") throw new Error("Timeout: Apps Script tardó más de 25s");
     throw err;
   } finally {
     clearTimeout(timer);
   }
+  // Respuesta por defecto de doGet: el POST llegó como GET y la acción no se
+  // ejecutó. Es un "ok" falso → reintentar (hasta 3 intentos).
+  if (parsed && parsed.ok === true && /^Web app activo/.test(String(parsed.message || ""))) {
+    if (intento < 3) {
+      console.warn(`[callAppsScript] respuesta de doGet (${intento}/3) — action=${payload && payload.action}, reintento`);
+      await new Promise(r => setTimeout(r, 700 * intento));
+      return callAppsScript(payload, intento + 1);
+    }
+    return { ok: false, error: 'Apps Script no ejecutó la acción (respondió como lectura). Intenta de nuevo.' };
+  }
+  return parsed;
 }
 
 // ─── Health ────────────────────────────────────────────────────────────────
@@ -251,7 +264,21 @@ async function callCheckinAppsScriptPost(action, dataObj) {
   for (let attempt = 0; attempt < MAX; attempt++) {
     try {
       text = await _postAttempt();
-      try { return JSON.parse(text); }
+      try {
+        const parsed = JSON.parse(text);
+        // Respuesta por defecto de doGet: Google entregó el POST como GET y
+        // la acción NO se ejecutó. Es un "ok" falso → reintentar.
+        if (parsed && parsed.ok === true && /^Web app activo/.test(String(parsed.message || ""))) {
+          if (attempt < MAX - 1) {
+            const wait = 500 * Math.pow(2, attempt);
+            console.warn(`[callCheckinAppsScriptPost] respuesta de doGet (${attempt+1}/${MAX}) — action=${action}, reintento en ${wait}ms`);
+            await new Promise(r => setTimeout(r, wait));
+            continue;
+          }
+          return { ok: false, error: 'Apps Script no ejecutó la acción (respondió como lectura). Intenta de nuevo.' };
+        }
+        return parsed;
+      }
       catch (_) {
         if (text.startsWith("<") && attempt < MAX - 1) {
           const wait = 500 * Math.pow(2, attempt);
@@ -4338,6 +4365,9 @@ app.post("/rh/obligacion/upload", async (req, res) => {
 app.post("/sys/login", async (req, res) => {
   try {
     const result = await callCheckinAppsScriptPost("sys_login", { payload: req.body || {} });
+    if (result && result.ok && !(result.user && result.user.Nombre)) {
+      return res.json({ ok: false, error: 'No se pudo verificar la contraseña. Intenta de nuevo.' });
+    }
     res.json(result);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
