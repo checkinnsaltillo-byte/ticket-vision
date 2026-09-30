@@ -3927,14 +3927,33 @@ function _rhAsistCachePatch(fn) {
   try { if (fn(cached.payload.rows) === false) _rhListCache.delete("rh_list_asistencia"); }
   catch (_) { _rhListCache.delete("rh_list_asistencia"); }
 }
+// Refrescos en vuelo por acción (evita disparar varias revalidaciones a la vez).
+const _rhListRefreshing = new Set();
+function _rhListRevalidate(action) {
+  if (_rhListRefreshing.has(action)) return;
+  _rhListRefreshing.add(action);
+  callCheckinAppsScript(action)
+    .then(r => { if (r && r.ok && !r._stale) _rhListCache.set(action, { ts: Date.now(), payload: r }); })
+    .catch(() => {})
+    .finally(() => _rhListRefreshing.delete(action));
+}
+// Stale-while-revalidate: algunas hojas RH (sobre todo RH_Asistencia, ~2 min en
+// Apps Script) son lentísimas de leer. Para que el módulo NUNCA se quede
+// "cargando": si ya hay copia en cache se devuelve AL INSTANTE, y si está
+// vieja se revalida en segundo plano. Solo la PRIMERA carga (cache frío) espera
+// la lectura completa. Las escrituras siguen parchando el cache (write-through),
+// así que los cambios propios se reflejan de inmediato.
 function rhMakeListEndpoint(action) {
   return async (req, res) => {
     try {
       const now = Date.now();
       const cached = _rhListCache.get(action);
-      if (cached && (now - cached.ts) < RH_LIST_TTL_MS) {
-        return res.json({ ...cached.payload, cached: true });
+      if (cached) {
+        const fresh = (now - cached.ts) < RH_LIST_TTL_MS;
+        if (!fresh) _rhListRevalidate(action); // refresca en background, no bloquea
+        return res.json({ ...cached.payload, cached: true, stale: !fresh });
       }
+      // Sin cache aún (primer arranque / instancia fría): lectura síncrona.
       const result = await callCheckinAppsScript(action);
       if (result && result.ok) _rhListCache.set(action, { ts: now, payload: result });
       res.json(result);
