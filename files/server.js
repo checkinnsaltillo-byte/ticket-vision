@@ -3982,7 +3982,7 @@ function rhMakeSaveEndpoint(action) {
         });
       } else if (action.startsWith("tareas_")) {
         // Tareas: solo invalida sus listas (no tirar RH_Asistencia, que es lenta).
-        _rhListCache.delete("tareas_list"); _rhListCache.delete("tareas_config_list");
+        for (const k of Array.from(_rhListCache.keys())) if (k.startsWith("tareas_")) _rhListCache.delete(k);
       } else {
         _rhListCacheInvalidate();
       }
@@ -4110,7 +4110,7 @@ function rhMakeDeleteEndpoint(action) {
       const actor  = String(req.query.actor  || '').slice(0, 120);
       const result = await callCheckinAppsScriptPost(action, { ID: id, force, reason, actor });
       if (action === "tareas_delete") {
-        _rhListCache.delete("tareas_list");
+        for (const k of Array.from(_rhListCache.keys())) if (k.startsWith("tareas_")) _rhListCache.delete(k);
       } else if (action === "rh_delete_asistencia" && result && result.ok) {
         _rhAsistCachePatch(rows => {
           const i = rows.findIndex(r => String(r.ID || "") === String(id));
@@ -4363,6 +4363,10 @@ app.post("/tareas",           rhMakeSaveEndpoint("tareas_save"));
 app.delete("/tareas/:id",     rhMakeDeleteEndpoint("tareas_delete"));
 app.get("/tareas/config",     rhMakeListEndpoint("tareas_config_list"));
 app.post("/tareas/config",    rhMakeSaveEndpoint("tareas_config_save"));
+app.get("/tareas/ocurrencias",  rhMakeListEndpoint("tareas_ocur_list"));
+app.post("/tareas/ocurrencias", rhMakeSaveEndpoint("tareas_ocur_save"));
+app.get("/tareas/historial",    rhMakeListEndpoint("tareas_hist_list"));
+app.post("/tareas/historial",   rhMakeSaveEndpoint("tareas_hist_add"));
 app.delete("/rh/ausencias/:id",      rhMakeDeleteEndpoint("rh_delete_ausencia"));
 
 // Obligaciones (cuotas IMSS + recibos de nómina por empleado)
