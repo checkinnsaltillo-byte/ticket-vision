@@ -3980,6 +3980,9 @@ function rhMakeSaveEndpoint(action) {
           else if (mode === "insert") rows.push(vals);
           else return false;
         });
+      } else if (action.startsWith("tareas_")) {
+        // Tareas: solo invalida sus listas (no tirar RH_Asistencia, que es lenta).
+        _rhListCache.delete("tareas_list"); _rhListCache.delete("tareas_config_list");
       } else {
         _rhListCacheInvalidate();
       }
@@ -4106,7 +4109,9 @@ function rhMakeDeleteEndpoint(action) {
       const reason = String(req.query.reason || '').slice(0, 300);
       const actor  = String(req.query.actor  || '').slice(0, 120);
       const result = await callCheckinAppsScriptPost(action, { ID: id, force, reason, actor });
-      if (action === "rh_delete_asistencia" && result && result.ok) {
+      if (action === "tareas_delete") {
+        _rhListCache.delete("tareas_list");
+      } else if (action === "rh_delete_asistencia" && result && result.ok) {
         _rhAsistCachePatch(rows => {
           const i = rows.findIndex(r => String(r.ID || "") === String(id));
           if (i >= 0) rows.splice(i, 1);
@@ -4352,6 +4357,12 @@ app.delete("/pagos-manuales/:id", async (req, res) => {
 
 app.delete("/rh/compensaciones/:id", rhMakeDeleteEndpoint("rh_delete_compensacion"));
 app.delete("/rh/asistencia/:id",     rhMakeDeleteEndpoint("rh_delete_asistencia"));
+// ─── Programación de tareas recurrentes ───────────────────────────────────
+app.get("/tareas",            rhMakeListEndpoint("tareas_list"));
+app.post("/tareas",           rhMakeSaveEndpoint("tareas_save"));
+app.delete("/tareas/:id",     rhMakeDeleteEndpoint("tareas_delete"));
+app.get("/tareas/config",     rhMakeListEndpoint("tareas_config_list"));
+app.post("/tareas/config",    rhMakeSaveEndpoint("tareas_config_save"));
 app.delete("/rh/ausencias/:id",      rhMakeDeleteEndpoint("rh_delete_ausencia"));
 
 // Obligaciones (cuotas IMSS + recibos de nómina por empleado)
