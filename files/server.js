@@ -103,11 +103,26 @@ app.get("/get-bancos", async (req, res) => {
   // servimos la última respuesta buena cacheada (stale) en vez de un error.
   const cacheKey = "get_bancos_data";
   try {
-    const result = await callAppsScript({ action: "get_bancos_data" }, 1, 60000);
-    if (result && result.ok !== false) {
-      _appsScriptFallbackCache.set(cacheKey, { ts: Date.now(), payload: result });
+    // Hasta 2 intentos: Apps Script a veces devuelve una página HTML de error
+    // ({ok:false, raw}) o tarda de más en un arranque frío.
+    let result = null, lastErr = "";
+    for (let a = 1; a <= 2; a++) {
+      try {
+        result = await callAppsScript({ action: "get_bancos_data" }, 1, 60000);
+        if (result && result.ok !== false && Array.isArray(result.records)) break;
+        lastErr = (result && (result.error || (result.raw ? "Apps Script devolvió HTML" : ""))) || "respuesta sin datos";
+      } catch (e) { lastErr = e.message; result = null; }
+      console.warn(`[get-bancos] intento ${a} falló: ${lastErr}`);
+      if (a < 2) await new Promise(r => setTimeout(r, 1500));
     }
-    res.json(result);
+    if (result && result.ok !== false && Array.isArray(result.records)) {
+      _appsScriptFallbackCache.set(cacheKey, { ts: Date.now(), payload: result });
+      return res.json(result);
+    }
+    // Sin datos frescos → última copia buena (si hay); si no, error claro.
+    const stale = _appsScriptStaleFallback(cacheKey, lastErr);
+    if (stale) return res.json(stale);
+    return res.status(502).json({ ok: false, error: "Google Sheets no respondió (" + lastErr + "). Intenta de nuevo en unos segundos." });
   } catch (err) {
     const stale = _appsScriptStaleFallback(cacheKey, err.message);
     if (stale) {
@@ -7199,6 +7214,11 @@ const PORT = process.env.PORT || 8080;
   }
   console.log(`[arranque] cachés listas en ${Date.now() - t0}ms (reservas=${!!_lgSnap.payload}, huespedes=${!!_huespedesCache.get(huKey)})`);
   app.listen(PORT, _onListen);
+  // Copia de respaldo de BANCOS (no bloquea el arranque): si Google Sheets
+  // falla en una petición de Registros contables, /get-bancos sirve esta copia.
+  callAppsScript({ action: "get_bancos_data" }, 1, 90000)
+    .then(r => { if (r && r.ok !== false && Array.isArray(r.records)) _appsScriptFallbackCache.set("get_bancos_data", { ts: Date.now(), payload: r }); })
+    .catch(e => console.warn('[get-bancos] precarga falló:', e.message));
 })();
 
 function _onListen() {
