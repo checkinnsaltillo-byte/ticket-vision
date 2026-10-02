@@ -95,43 +95,70 @@ app.get("/get-tickets", async (req, res) => {
 
 // ─── Registros contables: datos de BANCOS y Presupuesto_sys ───────────────
 
-app.get("/get-bancos", async (req, res) => {
-  // getBancosData_ procesa ~2,900 filas de BANCOS + Presupuesto_sys en Apps
-  // Script (normal 8-12s, pero un cold-start puede pasar de 25s). Para que el
-  // módulo NUNCA se quede sin datos: (1) timeout amplio de 60s para que un
-  // arranque frío alcance a responder con datos frescos; (2) si aun así falla,
-  // servimos la última respuesta buena cacheada (stale) en vez de un error.
-  const cacheKey = "get_bancos_data";
-  try {
-    // Hasta 2 intentos: Apps Script a veces devuelve una página HTML de error
-    // ({ok:false, raw}) o tarda de más en un arranque frío.
-    let result = null, lastErr = "";
-    for (let a = 1; a <= 2; a++) {
+// ─── Registros contables: copia en memoria de BANCOS (stale-while-revalidate) ──
+// Medido 2026-10-02: Apps Script tarda 11-18 s desde fuera, pero desde Cloud
+// Run falla seguido (HTML / doGet / >60 s) → el módulo esperaba 80-140 s.
+// Ahora /get-bancos responde AL INSTANTE con la copia en memoria y la refresca
+// en segundo plano (1 sola consulta a la vez). ?fresh=1 espera la versión
+// nueva (se usa tras insertar movimientos de efectivo).
+const BANCOS_TTL_MS = 2 * 60 * 1000;
+const _bancos = { payload: null, ts: 0, inflight: null, dirty: false, lastError: "", lastMs: 0 };
+function _bancosRefresh(reason) {
+  if (_bancos.inflight) return _bancos.inflight;
+  const t0 = Date.now();
+  _bancos.dirty = false;
+  _bancos.inflight = (async () => {
+    let lastErr = "";
+    for (let a = 1; a <= 3; a++) {
       try {
-        result = await callAppsScript({ action: "get_bancos_data" }, 1, 60000);
-        if (result && result.ok !== false && Array.isArray(result.records)) break;
-        lastErr = (result && (result.error || (result.raw ? "Apps Script devolvió HTML" : ""))) || "respuesta sin datos";
-      } catch (e) { lastErr = e.message; result = null; }
-      console.warn(`[get-bancos] intento ${a} falló: ${lastErr}`);
-      if (a < 2) await new Promise(r => setTimeout(r, 1500));
+        const r = await callAppsScript({ action: "get_bancos_data" }, 1, 90000);
+        if (r && r.ok !== false && Array.isArray(r.records)) {
+          _bancos.payload = r; _bancos.ts = Date.now(); _bancos.lastError = ""; _bancos.lastMs = Date.now() - t0;
+          _appsScriptFallbackCache.set("get_bancos_data", { ts: _bancos.ts, payload: r });
+          console.log(`[bancos] refresco OK (${reason}) en ${_bancos.lastMs} ms, intento ${a}, ${r.records.length} registros`);
+          return r;
+        }
+        lastErr = (r && (r.error || (r.raw ? "HTML: " + String(r.raw).replace(/\s+/g, " ").slice(0, 200) : ""))) || "respuesta sin datos";
+      } catch (e) { lastErr = e.message; }
+      console.warn(`[bancos] refresco intento ${a} falló (${reason}): ${lastErr}`);
+      if (a < 3) await new Promise(r => setTimeout(r, 2000 * a));
     }
-    if (result && result.ok !== false && Array.isArray(result.records)) {
-      _appsScriptFallbackCache.set(cacheKey, { ts: Date.now(), payload: result });
-      return res.json(result);
+    _bancos.lastError = lastErr;
+    throw new Error(lastErr);
+  })().finally(() => { _bancos.inflight = null; });
+  return _bancos.inflight;
+}
+function _bancosMarkDirty() { _bancos.dirty = true; _bancosRefresh("cambio").catch(() => {}); }
+
+app.get("/get-bancos", async (req, res) => {
+  const t0 = Date.now();
+  try {
+    const fresh = String(req.query.fresh || "") === "1";
+    const age = _bancos.payload ? Date.now() - _bancos.ts : Infinity;
+    if (_bancos.payload && !fresh) {
+      if (age > BANCOS_TTL_MS || _bancos.dirty) _bancosRefresh("antigüedad").catch(() => {});
+      res.set("Server-Timing", `bancos-cache;dur=${Date.now() - t0}`);
+      return res.json({ ..._bancos.payload, cached: true, cached_age_ms: age });
     }
-    // Sin datos frescos → última copia buena (si hay); si no, error claro.
-    const stale = _appsScriptStaleFallback(cacheKey, lastErr);
-    if (stale) return res.json(stale);
-    return res.status(502).json({ ok: false, error: "Google Sheets no respondió (" + lastErr + "). Intenta de nuevo en unos segundos." });
+    // Sin copia (arranque) o ?fresh=1 → esperar la versión nueva.
+    try {
+      const r = await _bancosRefresh(fresh ? "fresh" : "sin-copia");
+      return res.json({ ...r, cached: false });
+    } catch (e) {
+      if (_bancos.payload) return res.json({ ..._bancos.payload, cached: true, stale: true, cached_age_ms: age, refresh_error: e.message });
+      return res.status(502).json({ ok: false, error: "Google Sheets no respondió (" + e.message + "). Intenta de nuevo en unos segundos." });
+    }
   } catch (err) {
-    const stale = _appsScriptStaleFallback(cacheKey, err.message);
-    if (stale) {
-      console.warn(`[get-bancos] Apps Script falló (${err.message}) — sirviendo copia cacheada`);
-      return res.json(stale);
-    }
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+app.get("/bancos-cache-status", (_req, res) => {
+  res.json({ ok: true, loaded: !!_bancos.payload, age_ms: _bancos.payload ? Date.now() - _bancos.ts : null,
+    registros: _bancos.payload ? _bancos.payload.records.length : 0, refrescando: !!_bancos.inflight,
+    dirty: _bancos.dirty, ultimo_refresco_ms: _bancos.lastMs, ultimo_error: _bancos.lastError });
+});
+// El navegador inserta en BANCOS directo contra Apps Script: avisa aquí.
+app.post("/bn/invalidate", (_req, res) => { _bancosMarkDirty(); res.json({ ok: true }); });
 
 // ─── Información de huéspedes: proxy al Apps Script del check-in ─────────────
 // El check-in tiene su PROPIO Apps Script (code_1.gs) con la lógica completa
@@ -5770,6 +5797,7 @@ app.post("/save-banco-clasificacion", async (req, res) => {
     });
 
     if (!result.ok) throw new Error(result.error || result.message || "Apps Script error");
+    _bancosMarkDirty();
     res.json({ ok: true, rowNum, columnsWritten: result.columnsWritten, archivado: result.archivado });
   } catch (err) {
     console.error("save_banco_clasificacion_error", err.message);
@@ -5784,6 +5812,7 @@ app.post("/bn/update-rows", async (req, res) => {
     if (!Array.isArray(updates) || !updates.length) throw new Error('updates vacío');
     const result = await callAppsScript({ action: "bn_update_rows_bulk", updates });
     if (!result.ok) throw new Error(result.error || "Apps Script error");
+    _bancosMarkDirty();
     res.json({ ok: true, written: result.written });
   } catch (err) {
     console.error("bn_update_rows_error", err.message);
@@ -5798,6 +5827,7 @@ app.post("/bn/delete-row", async (req, res) => {
     if (!rowNum || rowNum < 2) throw new Error('rowNum inválido');
     const result = await callAppsScript({ action: "bn_bancos_delete_row", rowNum });
     if (!result.ok) throw new Error(result.error || "Apps Script error");
+    _bancosMarkDirty();
     res.json({ ok: true, deleted: result.deleted });
   } catch (err) {
     console.error("bn_delete_row_error", err.message);
@@ -5816,6 +5846,7 @@ app.post("/bn/set-ticket-matches", async (req, res) => {
       updates,
     });
     if (!result.ok) throw new Error(result.error || "Apps Script error");
+    _bancosMarkDirty();
     res.json({ ok: true, written: result.written });
   } catch (err) {
     console.error("bn_set_ticket_matches_error", err.message);
@@ -6209,6 +6240,7 @@ app.post("/save-presupuesto", async (req, res) => {
       rows,
     });
     if (!result.ok) throw new Error(result.error || result.message || "Apps Script error");
+    _bancosMarkDirty();
     res.json({ ok: true, rowsWritten: result.rowsWritten });
   } catch (err) {
     console.error("save_presupuesto_error", err.message);
@@ -7216,9 +7248,7 @@ const PORT = process.env.PORT || 8080;
   app.listen(PORT, _onListen);
   // Copia de respaldo de BANCOS (no bloquea el arranque): si Google Sheets
   // falla en una petición de Registros contables, /get-bancos sirve esta copia.
-  callAppsScript({ action: "get_bancos_data" }, 1, 90000)
-    .then(r => { if (r && r.ok !== false && Array.isArray(r.records)) _appsScriptFallbackCache.set("get_bancos_data", { ts: Date.now(), payload: r }); })
-    .catch(e => console.warn('[get-bancos] precarga falló:', e.message));
+  _bancosRefresh("arranque").catch(e => console.warn('[bancos] precarga falló:', e.message));
 })();
 
 function _onListen() {
