@@ -5321,6 +5321,7 @@ function _lgSnapRefresh(reason) {
       if (payload.cached_stale && _lgSnap.payload) throw new Error('Apps Script falló; se conserva la copia actual');
       payload.bookings.forEach(b => { if (b) b.Source = _normalizeBookingSource(b); });
       payload.bookings = _lgFilterRange(payload.bookings, from, LG_SNAP_TO);
+      try { _lgDetectExtensiones(_lgSnap.payload, payload); } catch (e) { console.warn('[lg-ext] detección falló:', e.message); }
       Object.assign(_lgSnap, { payload, ts: Date.now(), from, lastMs: Date.now() - t0, lastErr: '', lastReason: reason });
       console.log(`[lg-snap] ${reason}: ${payload.bookings.length} bookings en ${_lgSnap.lastMs}ms`);
       setImmediate(() => {
@@ -5335,6 +5336,62 @@ function _lgSnapRefresh(reason) {
   })();
   return _lgSnap.inflight;
 }
+
+// ─── Extensiones de reservas ────────────────────────────────────────────
+// Lodgify sobrescribe DateDeparture/TotalAmount en cada sync (no hay
+// historial). Al refrescar el snapshot comparamos contra la copia anterior:
+// si la salida de una reserva activa se movió a una fecha POSTERIOR, se
+// registra la extensión en la hoja Reservas_Extensiones (vía Apps Script).
+function _lgIso(v) {
+  const s = String(v || '').trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
+  return '';
+}
+const _lgExt = { rows: null, ts: 0, inflight: null };
+function _lgDetectExtensiones(oldPayload, newPayload) {
+  if (!oldPayload || !Array.isArray(oldPayload.bookings)) return;
+  const prev = new Map();
+  oldPayload.bookings.forEach(b => { if (b && b.Id) prev.set(String(b.Id), b); });
+  const nuevas = [];
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  for (const b of newPayload.bookings || []) {
+    if (!b || !b.Id || !/^(booked|tentative)$/i.test(String(b.Status || ''))) continue;
+    const o = prev.get(String(b.Id)); if (!o) continue;
+    const dOld = _lgIso(o.DateDeparture), dNew = _lgIso(b.DateDeparture);
+    if (!dOld || !dNew || dNew <= dOld) continue;
+    if (_lgIso(o.DateArrival) !== _lgIso(b.DateArrival)) continue; // cambio de llegada = re-programación, no extensión
+    const tot = x => Number(x.TotalAmount) || Number(x.GrossTotal) || 0;
+    nuevas.push({ Lodgify_Id: String(b.Id), Huesped: b.GuestName || '', Fuente: b.Source || '',
+      Salida_anterior: dOld, Salida_nueva: dNew, Total_anterior: tot(o), Total_nuevo: tot(b), Detectado: now });
+  }
+  if (!nuevas.length) return;
+  console.log(`[lg-ext] ${nuevas.length} extensión(es) detectada(s): ${nuevas.map(x => x.Lodgify_Id).join(', ')}`);
+  if (Array.isArray(_lgExt.rows)) nuevas.forEach(x => _lgExt.rows.push({ ...x, ID: 'tmp' }));
+  callCheckinAppsScriptPost('reservas_ext_add', { payload: { rows: nuevas } })
+    .then(r => { if (!r || !r.ok) console.warn('[lg-ext] no se guardó:', r && r.error); })
+    .catch(e => console.warn('[lg-ext] no se guardó:', e.message));
+}
+async function _lgExtLoad(force) {
+  if (_lgExt.inflight) return _lgExt.inflight;
+  if (_lgExt.rows && !force && Date.now() - _lgExt.ts < 10 * 60_000) return _lgExt.rows;
+  _lgExt.inflight = (async () => {
+    try {
+      const r = await callCheckinAppsScript('reservas_ext_list');
+      if (r && r.ok && Array.isArray(r.rows)) { _lgExt.rows = r.rows; _lgExt.ts = Date.now(); }
+      else if (!_lgExt.rows) _lgExt.rows = [];
+    } catch (e) { if (!_lgExt.rows) _lgExt.rows = []; }
+    return _lgExt.rows;
+  })().finally(() => { _lgExt.inflight = null; });
+  return _lgExt.inflight;
+}
+app.get("/lodgify-extensiones", async (_req, res) => {
+  try {
+    if (_lgExt.rows) { res.json({ ok: true, rows: _lgExt.rows }); if (Date.now() - _lgExt.ts > 10 * 60_000) _lgExtLoad(true).catch(() => {}); return; }
+    const rows = await _lgExtLoad();
+    res.json({ ok: true, rows: rows || [] });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 
 _lgSnapLoadFromDisk();
 setInterval(() => {
