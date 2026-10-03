@@ -3997,7 +3997,8 @@ function rhMakeListEndpoint(action) {
       }
       // Sin cache aún (primer arranque / instancia fría): lectura síncrona.
       const result = await callCheckinAppsScript(action);
-      if (result && result.ok) _rhListCache.set(action, { ts: now, payload: result });
+      // Sin "rows" = Apps Script aún no conoce la acción (responde el doGet por defecto): no cachear.
+      if (result && result.ok && Array.isArray(result.rows)) _rhListCache.set(action, { ts: now, payload: result });
       res.json(result);
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
@@ -4022,9 +4023,10 @@ function rhMakeSaveEndpoint(action) {
           else if (mode === "insert") rows.push(vals);
           else return false;
         });
-      } else if (action.startsWith("tareas_")) {
-        // Tareas: solo invalida sus listas (no tirar RH_Asistencia, que es lenta).
-        for (const k of Array.from(_rhListCache.keys())) if (k.startsWith("tareas_")) _rhListCache.delete(k);
+      } else if (action.startsWith("tareas_") || action.startsWith("procesos_")) {
+        // Tareas / Procesos: solo invalida sus listas (no tirar RH_Asistencia, que es lenta).
+        const pref = action.split("_")[0] + "_";
+        for (const k of Array.from(_rhListCache.keys())) if (k.startsWith(pref)) _rhListCache.delete(k);
       } else {
         _rhListCacheInvalidate();
       }
@@ -4151,8 +4153,9 @@ function rhMakeDeleteEndpoint(action) {
       const reason = String(req.query.reason || '').slice(0, 300);
       const actor  = String(req.query.actor  || '').slice(0, 120);
       const result = await callCheckinAppsScriptPost(action, { ID: id, force, reason, actor });
-      if (action === "tareas_delete") {
-        for (const k of Array.from(_rhListCache.keys())) if (k.startsWith("tareas_")) _rhListCache.delete(k);
+      if (action === "tareas_delete" || action === "procesos_delete") {
+        const pref = action.split("_")[0] + "_";
+        for (const k of Array.from(_rhListCache.keys())) if (k.startsWith(pref)) _rhListCache.delete(k);
       } else if (action === "rh_delete_asistencia" && result && result.ok) {
         _rhAsistCachePatch(rows => {
           const i = rows.findIndex(r => String(r.ID || "") === String(id));
@@ -4409,6 +4412,16 @@ app.get("/tareas/ocurrencias",  rhMakeListEndpoint("tareas_ocur_list"));
 app.post("/tareas/ocurrencias", rhMakeSaveEndpoint("tareas_ocur_save"));
 app.get("/tareas/historial",    rhMakeListEndpoint("tareas_hist_list"));
 app.post("/tareas/historial",   rhMakeSaveEndpoint("tareas_hist_add"));
+// ─── Documentación de procesos (Configuración admin) ──────────────────
+app.get("/procesos",              rhMakeListEndpoint("procesos_list"));
+app.post("/procesos",             rhMakeSaveEndpoint("procesos_save"));
+app.delete("/procesos/:id",       rhMakeDeleteEndpoint("procesos_delete"));
+app.get("/procesos/historial",    rhMakeListEndpoint("procesos_hist_list"));
+app.post("/procesos/historial",   rhMakeSaveEndpoint("procesos_hist_add"));
+app.post("/procesos/upload", async (req, res) => {
+  try { res.json(await callCheckinAppsScriptPost("procesos_upload_file", req.body || {})); }
+  catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
 app.delete("/rh/ausencias/:id",      rhMakeDeleteEndpoint("rh_delete_ausencia"));
 
 // Obligaciones (cuotas IMSS + recibos de nómina por empleado)
