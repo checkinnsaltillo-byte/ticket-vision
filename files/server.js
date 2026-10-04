@@ -7378,6 +7378,17 @@ function _vSession(req) {
 }
 function _vNewSession(s) { const exp = Date.now() + _V_SESSION_MS; return { token: _vSign({ t: "s", u: s.u, exp, n: crypto.randomBytes(6).toString("hex") }), exp }; }
 const _vCodeSends = [];            // marcas de tiempo de envíos (límite global)
+// SMS directo con Twilio (sin plantillas ni ventana de 24 h). From: TWILIO_SMS_FROM o el número del WhatsApp.
+async function _vSendSms(to, body) {
+  const acct = process.env.TWILIO_ACCOUNT_SID, user = process.env.TWILIO_API_KEY_SID || acct, pass = process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN;
+  const from = String(process.env.TWILIO_SMS_FROM || process.env.TWILIO_WA_FROM || "").replace(/^whatsapp:/, "");
+  if (!acct || !pass || !from) throw new Error("Twilio SMS no configurado");
+  const f = new URLSearchParams(); f.set("From", from); f.set("To", to); f.set("Body", body);
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${acct}/Messages.json`, { method: "POST", headers: { Authorization: "Basic " + Buffer.from(user + ":" + pass).toString("base64"), "Content-Type": "application/x-www-form-urlencoded" }, body: f.toString() });
+  const j = await r.json();
+  if (!r.ok) throw new Error(`Twilio ${r.status}: ${j.message || ""}`);
+  return j;
+}
 const _vAttempts = new Map();      // nonce → intentos fallidos
 // 1) Enviar código
 app.post("/vault/code", async (req, res) => {
@@ -7395,13 +7406,17 @@ app.post("/vault/code", async (req, res) => {
     const user = String((req.body || {}).user || "").slice(0, 80);
     const h = crypto.createHmac("sha256", _vKeys().mac).update(`${nonce}:${code}`).digest("base64url");
     const challenge = _vSign({ t: "c", n: nonce, h, u: user, exp: now + _V_CODE_MS });
-    const body = `🔐 Check Inn · Código de acceso a "Control de contraseñas y accesos": *${code}*\n\nVence en 5 minutos. Solicitado por: ${user || "usuario del sistema"}. Si no fuiste tú, ignóralo.`;
-    const sent = await Promise.all(phones.map(ph => _twilioSendMessage({ to: `whatsapp:${ph}`, body, skipMirror: true })
+    const sms = String((req.body || {}).channel || "") === "sms";
+    const body = sms
+      ? `Check Inn: tu codigo de acceso a Control de contrasenas es ${code}. Vence en 5 min. Solicitado por: ${user || "usuario del sistema"}. Si no fuiste tu, ignoralo.`
+      : `🔐 Check Inn · Código de acceso a "Control de contraseñas y accesos": *${code}*\n\nVence en 5 minutos. Solicitado por: ${user || "usuario del sistema"}. Si no fuiste tú, ignóralo.`;
+    const send = ph => sms ? _vSendSms(ph, body) : _twilioSendMessage({ to: `whatsapp:${ph}`, body, skipMirror: true });
+    const sent = await Promise.all(phones.map(ph => send(ph)
       .then(m => ({ to: "•••• " + ph.slice(-4), sid: m && m.sid }), e => ({ to: "•••• " + ph.slice(-4), error: e.message }))));
     const ok = sent.filter(x => x.sid);
     if (!ok.length) throw new Error(sent.map(x => `${x.to}: ${x.error}`).join(" · "));
     _vCodeSends.push(now);
-    res.json({ ok: true, challenge, to: ok.map(x => x.to).join(" y "), sent });
+    res.json({ ok: true, challenge, channel: sms ? "sms" : "whatsapp", to: ok.map(x => x.to).join(" y "), sent });
   } catch (e) { console.warn("[vault] code:", e.message); res.status(500).json({ ok: false, error: e.message }); }
 });
 // 1b) Estado de entrega del WhatsApp (para avisar si no llegó)
