@@ -7383,8 +7383,9 @@ const _vAttempts = new Map();      // nonce → intentos fallidos
 app.post("/vault/code", async (req, res) => {
   try {
     if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-    const phone = String(process.env.VAULT_PHONE || "").trim();
-    if (!phone) return res.status(500).json({ ok: false, error: "VAULT_PHONE no configurado" });
+    // VAULT_PHONE admite varios números separados por ";" o ",". El mismo código va a todos.
+    const phones = String(process.env.VAULT_PHONE || "").split(/[;,]/).map(x => x.trim()).filter(Boolean);
+    if (!phones.length) return res.status(500).json({ ok: false, error: "VAULT_PHONE no configurado" });
     const now = Date.now();
     while (_vCodeSends.length && now - _vCodeSends[0] > 3600e3) _vCodeSends.shift();
     if (_vCodeSends.length && now - _vCodeSends[_vCodeSends.length - 1] < 30e3) return res.status(429).json({ ok: false, error: "Espera 30 segundos antes de pedir otro código." });
@@ -7394,9 +7395,13 @@ app.post("/vault/code", async (req, res) => {
     const user = String((req.body || {}).user || "").slice(0, 80);
     const h = crypto.createHmac("sha256", _vKeys().mac).update(`${nonce}:${code}`).digest("base64url");
     const challenge = _vSign({ t: "c", n: nonce, h, u: user, exp: now + _V_CODE_MS });
-    const msg = await _twilioSendMessage({ to: `whatsapp:${phone}`, body: `🔐 Check Inn · Código de acceso a "Control de contraseñas y accesos": *${code}*\n\nVence en 5 minutos. Solicitado por: ${user || "usuario del sistema"}. Si no fuiste tú, ignóralo.`, skipMirror: true });
+    const body = `🔐 Check Inn · Código de acceso a "Control de contraseñas y accesos": *${code}*\n\nVence en 5 minutos. Solicitado por: ${user || "usuario del sistema"}. Si no fuiste tú, ignóralo.`;
+    const sent = await Promise.all(phones.map(ph => _twilioSendMessage({ to: `whatsapp:${ph}`, body, skipMirror: true })
+      .then(m => ({ to: "•••• " + ph.slice(-4), sid: m && m.sid }), e => ({ to: "•••• " + ph.slice(-4), error: e.message }))));
+    const ok = sent.filter(x => x.sid);
+    if (!ok.length) throw new Error(sent.map(x => `${x.to}: ${x.error}`).join(" · "));
     _vCodeSends.push(now);
-    res.json({ ok: true, challenge, to: "•••• " + phone.slice(-4), sid: msg && msg.sid });
+    res.json({ ok: true, challenge, to: ok.map(x => x.to).join(" y "), sent });
   } catch (e) { console.warn("[vault] code:", e.message); res.status(500).json({ ok: false, error: e.message }); }
 });
 // 1b) Estado de entrega del WhatsApp (para avisar si no llegó)
