@@ -7357,16 +7357,28 @@ async function _vWrite(data, gen) {
     method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: JSON.stringify(_vEncrypt(data)),
   });
   if (r.status === 412) { const e = new Error("conflicto"); e.conflict = true; throw e; }
+  // 429/503: Cloud Storage limita ~1 escritura por segundo al mismo objeto → reintentar.
+  if (r.status === 429 || r.status === 503) { const e = new Error(`Cloud Storage ${r.status}`); e.retry = true; throw e; }
   if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
 }
 // Lee → aplica cambio → escribe, con reintento si otra sesión escribió en medio.
-async function _vMutate(fn) {
-  for (let i = 0; i < 4; i++) {
+// Además serializa las escrituras de esta instancia (cola) para no rebasar el límite.
+let _vQueue = Promise.resolve();
+function _vMutate(fn) {
+  const run = _vQueue.then(() => _vMutateNow(fn));
+  _vQueue = run.catch(() => {});
+  return run;
+}
+async function _vMutateNow(fn) {
+  for (let i = 0; i < 7; i++) {
     const { data, gen } = await _vRead();
     const out = fn(data);
     if (data.log.length > 2000) data.log = data.log.slice(-2000);
     try { await _vWrite(data, gen); return out; }
-    catch (e) { if (!e.conflict) throw e; }
+    catch (e) {
+      if (!e.conflict && !e.retry) throw e;
+      await new Promise(r => setTimeout(r, Math.min(8000, 1100 * Math.pow(1.6, i)) + Math.random() * 300));
+    }
   }
   throw new Error("No se pudo guardar (conflicto). Intenta de nuevo.");
 }
@@ -7482,6 +7494,25 @@ app.post("/vault/save", async (req, res) => {
     });
     res.json({ ok: true, id, ...(_vNewSession(s)) });
   } catch (e) { console.warn("[vault] save:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+// Alta masiva (importaciones): todos los registros en UNA sola escritura.
+app.post("/vault/save-many", async (req, res) => {
+  const s = _vGuard(req, res); if (!s) return;
+  try {
+    const list = Array.isArray((req.body || {}).records) ? req.body.records.filter(r => r && typeof r === "object").slice(0, 500) : [];
+    if (!list.length) return res.status(400).json({ ok: false, error: "records requerido" });
+    const ids = await _vMutate(d => {
+      const now = new Date().toISOString();
+      const out = list.map(rec => {
+        const r = { ...rec, id: rec.id || ("V" + Date.now().toString(36) + crypto.randomBytes(3).toString("hex")), createdAt: now, updatedAt: now, updatedBy: s.u };
+        d.records.push(r);
+        return r.id;
+      });
+      d.log.push({ ts: now, u: s.u, a: `Importó ${out.length} registros`, t: String((req.body || {}).origen || "").slice(0, 80) });
+      return out;
+    });
+    res.json({ ok: true, ids, ...(_vNewSession(s)) });
+  } catch (e) { console.warn("[vault] save-many:", e.message); res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/vault/delete", async (req, res) => {
   const s = _vGuard(req, res); if (!s) return;
