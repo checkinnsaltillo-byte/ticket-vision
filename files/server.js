@@ -7287,6 +7287,203 @@ app.get("/reservas/search", async (req, res) => {
 
 // ─── Start ─────────────────────────────────────────────────────────────────
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ BÓVEDA — Control de contraseñas y accesos (Configuración admin)          ║
+// ║ • Acceso SOLO con código de 6 dígitos enviado por WhatsApp a VAULT_PHONE ║
+// ║   (cada ingreso; ni el admin entra sin código).                          ║
+// ║ • Sesión firmada (HMAC) de 15 min deslizante; vive solo en memoria del   ║
+// ║   navegador.                                                              ║
+// ║ • Datos cifrados con AES-256-GCM (llave VAULT_KEY) en un bucket privado  ║
+// ║   de Cloud Storage (VAULT_BUCKET) con versiones. Nunca pasan por Sheets  ║
+// ║   ni Apps Script. Nunca se registra el código ni el contenido en logs.   ║
+// ═══════════════════════════════════════════════════════════════════════════
+const _V_OBJ = "boveda.json";
+const _V_SESSION_MS = 15 * 60 * 1000;
+const _V_CODE_MS = 5 * 60 * 1000;
+const _V_ORIGINS = /^https:\/\/(www\.)?check-inn\.mx$|^http:\/\/localhost(:\d+)?$/;
+function _vKeys() {
+  const raw = String(process.env.VAULT_KEY || "");
+  if (!raw) throw new Error("VAULT_KEY no configurada");
+  const master = Buffer.from(raw, "base64");
+  if (master.length !== 32) throw new Error("VAULT_KEY inválida");
+  const derive = info => Buffer.from(crypto.hkdfSync("sha256", master, Buffer.alloc(0), Buffer.from(info), 32));
+  return { enc: derive("checkinn-boveda-enc"), mac: derive("checkinn-boveda-mac") };
+}
+function _vSign(obj) {
+  const p = Buffer.from(JSON.stringify(obj)).toString("base64url");
+  const s = crypto.createHmac("sha256", _vKeys().mac).update(p).digest("base64url");
+  return `${p}.${s}`;
+}
+function _vUnsign(tok) {
+  const [p, s] = String(tok || "").split(".");
+  if (!p || !s) return null;
+  const exp = crypto.createHmac("sha256", _vKeys().mac).update(p).digest();
+  const got = Buffer.from(s, "base64url");
+  if (got.length !== exp.length || !crypto.timingSafeEqual(got, exp)) return null;
+  try { return JSON.parse(Buffer.from(p, "base64url").toString()); } catch (_) { return null; }
+}
+function _vEncrypt(obj) {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv("aes-256-gcm", _vKeys().enc, iv);
+  const ct = Buffer.concat([c.update(JSON.stringify(obj), "utf8"), c.final()]);
+  return { v: 1, iv: iv.toString("base64"), tag: c.getAuthTag().toString("base64"), ct: ct.toString("base64") };
+}
+function _vDecrypt(box) {
+  const d = crypto.createDecipheriv("aes-256-gcm", _vKeys().enc, Buffer.from(box.iv, "base64"));
+  d.setAuthTag(Buffer.from(box.tag, "base64"));
+  return JSON.parse(Buffer.concat([d.update(Buffer.from(box.ct, "base64")), d.final()]).toString("utf8"));
+}
+async function _vGcsToken() {
+  const r = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token", { headers: { "Metadata-Flavor": "Google" } });
+  if (!r.ok) throw new Error("No hay credenciales de Cloud Storage");
+  return (await r.json()).access_token;
+}
+async function _vRead() {
+  const bucket = process.env.VAULT_BUCKET;
+  if (!bucket) throw new Error("VAULT_BUCKET no configurado");
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(_V_OBJ)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
+  if (r.status === 404) return { data: { records: [], log: [] }, gen: "0" };
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+  const gen = r.headers.get("x-goog-generation") || "0";
+  const data = _vDecrypt(await r.json());
+  data.records = data.records || []; data.log = data.log || [];
+  return { data, gen };
+}
+async function _vWrite(data, gen) {
+  const bucket = process.env.VAULT_BUCKET;
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(_V_OBJ)}&ifGenerationMatch=${gen}`, {
+    method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: JSON.stringify(_vEncrypt(data)),
+  });
+  if (r.status === 412) { const e = new Error("conflicto"); e.conflict = true; throw e; }
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+}
+// Lee → aplica cambio → escribe, con reintento si otra sesión escribió en medio.
+async function _vMutate(fn) {
+  for (let i = 0; i < 4; i++) {
+    const { data, gen } = await _vRead();
+    const out = fn(data);
+    if (data.log.length > 2000) data.log = data.log.slice(-2000);
+    try { await _vWrite(data, gen); return out; }
+    catch (e) { if (!e.conflict) throw e; }
+  }
+  throw new Error("No se pudo guardar (conflicto). Intenta de nuevo.");
+}
+function _vOriginOk(req) { const o = String(req.headers.origin || ""); return !o || _V_ORIGINS.test(o); }
+function _vSession(req) {
+  const s = _vUnsign(req.headers["x-vault-token"]);
+  if (!s || s.t !== "s" || Date.now() > s.exp) return null;
+  return s;
+}
+function _vNewSession(s) { const exp = Date.now() + _V_SESSION_MS; return { token: _vSign({ t: "s", u: s.u, exp, n: crypto.randomBytes(6).toString("hex") }), exp }; }
+const _vCodeSends = [];            // marcas de tiempo de envíos (límite global)
+const _vAttempts = new Map();      // nonce → intentos fallidos
+// 1) Enviar código
+app.post("/vault/code", async (req, res) => {
+  try {
+    if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+    const phone = String(process.env.VAULT_PHONE || "").trim();
+    if (!phone) return res.status(500).json({ ok: false, error: "VAULT_PHONE no configurado" });
+    const now = Date.now();
+    while (_vCodeSends.length && now - _vCodeSends[0] > 3600e3) _vCodeSends.shift();
+    if (_vCodeSends.length && now - _vCodeSends[_vCodeSends.length - 1] < 30e3) return res.status(429).json({ ok: false, error: "Espera 30 segundos antes de pedir otro código." });
+    if (_vCodeSends.length >= 12) return res.status(429).json({ ok: false, error: "Demasiados códigos en la última hora. Intenta más tarde." });
+    const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
+    const nonce = crypto.randomBytes(12).toString("hex");
+    const user = String((req.body || {}).user || "").slice(0, 80);
+    const h = crypto.createHmac("sha256", _vKeys().mac).update(`${nonce}:${code}`).digest("base64url");
+    const challenge = _vSign({ t: "c", n: nonce, h, u: user, exp: now + _V_CODE_MS });
+    const msg = await _twilioSendMessage({ to: `whatsapp:${phone}`, body: `🔐 Check Inn · Código de acceso a "Control de contraseñas y accesos": *${code}*\n\nVence en 5 minutos. Solicitado por: ${user || "usuario del sistema"}. Si no fuiste tú, ignóralo.`, skipMirror: true });
+    _vCodeSends.push(now);
+    res.json({ ok: true, challenge, to: "•••• " + phone.slice(-4), sid: msg && msg.sid });
+  } catch (e) { console.warn("[vault] code:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+// 1b) Estado de entrega del WhatsApp (para avisar si no llegó)
+app.get("/vault/code-status", async (req, res) => {
+  try {
+    const sid = String(req.query.sid || "");
+    if (!/^SM[0-9a-f]{32}$|^MM[0-9a-f]{32}$/i.test(sid)) return res.status(400).json({ ok: false });
+    const acct = process.env.TWILIO_ACCOUNT_SID, user = process.env.TWILIO_API_KEY_SID || acct, pass = process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN;
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${acct}/Messages/${sid}.json`, { headers: { Authorization: "Basic " + Buffer.from(user + ":" + pass).toString("base64") } });
+    const j = await r.json();
+    res.json({ ok: true, status: j.status, errorCode: j.error_code || null });
+  } catch (e) { res.status(500).json({ ok: false }); }
+});
+// 2) Verificar código → sesión
+app.post("/vault/verify", async (req, res) => {
+  try {
+    if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+    const { challenge, code } = req.body || {};
+    const c = _vUnsign(challenge);
+    if (!c || c.t !== "c") return res.status(400).json({ ok: false, error: "Solicitud inválida. Pide un código nuevo." });
+    if (Date.now() > c.exp) return res.status(400).json({ ok: false, error: "El código venció. Pide uno nuevo." });
+    const n = _vAttempts.get(c.n) || 0;
+    if (n >= 5) return res.status(429).json({ ok: false, error: "Demasiados intentos. Pide un código nuevo." });
+    const h = crypto.createHmac("sha256", _vKeys().mac).update(`${c.n}:${String(code || "").trim()}`).digest("base64url");
+    if (h.length !== c.h.length || !crypto.timingSafeEqual(Buffer.from(h), Buffer.from(c.h))) {
+      _vAttempts.set(c.n, n + 1);
+      return res.status(401).json({ ok: false, error: `Código incorrecto (${4 - n} intento${4 - n === 1 ? "" : "s"} restante${4 - n === 1 ? "" : "s"}).` });
+    }
+    _vAttempts.set(c.n, 99); // un código sirve una sola vez
+    const ses = _vNewSession({ u: c.u });
+    _vMutate(d => { d.log.push({ ts: new Date().toISOString(), u: c.u, a: "Ingresó a la bóveda" }); }).catch(e => console.warn("[vault] log:", e.message));
+    res.json({ ok: true, ...ses });
+  } catch (e) { console.warn("[vault] verify:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+function _vGuard(req, res) {
+  if (!_vOriginOk(req)) { res.status(403).json({ ok: false, error: "Origen no permitido" }); return null; }
+  const s = _vSession(req);
+  if (!s) { res.status(401).json({ ok: false, error: "Sesión vencida", locked: true }); return null; }
+  return s;
+}
+// 3) Leer
+app.get("/vault/data", async (req, res) => {
+  const s = _vGuard(req, res); if (!s) return;
+  try {
+    const { data } = await _vRead();
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, records: data.records, log: data.log.slice(-300).reverse(), ...(_vNewSession(s)) });
+  } catch (e) { console.warn("[vault] read:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+// 4) Guardar / eliminar / bitácora
+app.post("/vault/save", async (req, res) => {
+  const s = _vGuard(req, res); if (!s) return;
+  try {
+    const rec = (req.body || {}).record;
+    if (!rec || typeof rec !== "object") return res.status(400).json({ ok: false, error: "record requerido" });
+    const id = await _vMutate(d => {
+      const now = new Date().toISOString();
+      const r = { ...rec, id: rec.id || ("V" + Date.now().toString(36) + crypto.randomBytes(3).toString("hex")), updatedAt: now, updatedBy: s.u };
+      const i = d.records.findIndex(x => x.id === r.id);
+      if (i >= 0) { r.createdAt = d.records[i].createdAt; d.records[i] = r; } else { r.createdAt = now; d.records.push(r); }
+      d.log.push({ ts: now, u: s.u, a: i >= 0 ? "Editó registro" : "Creó registro", r: r.id, t: String(r.titulo || "").slice(0, 80) });
+      return r.id;
+    });
+    res.json({ ok: true, id, ...(_vNewSession(s)) });
+  } catch (e) { console.warn("[vault] save:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/vault/delete", async (req, res) => {
+  const s = _vGuard(req, res); if (!s) return;
+  try {
+    const id = String((req.body || {}).id || "");
+    await _vMutate(d => {
+      const r = d.records.find(x => x.id === id);
+      d.records = d.records.filter(x => x.id !== id);
+      d.log.push({ ts: new Date().toISOString(), u: s.u, a: "Eliminó registro", r: id, t: r ? String(r.titulo || "").slice(0, 80) : "" });
+    });
+    res.json({ ok: true, ...(_vNewSession(s)) });
+  } catch (e) { console.warn("[vault] delete:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/vault/log", async (req, res) => {
+  const s = _vGuard(req, res); if (!s) return;
+  try {
+    const b = req.body || {};
+    await _vMutate(d => { d.log.push({ ts: new Date().toISOString(), u: s.u, a: String(b.a || "").slice(0, 60), r: String(b.r || "").slice(0, 40), t: String(b.t || "").slice(0, 120) }); });
+    res.json({ ok: true, ...(_vNewSession(s)) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 const PORT = process.env.PORT || 8080;
 // Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
