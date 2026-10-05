@@ -1217,8 +1217,9 @@ REGLAS:
   · prioridad: INFIERE — P1 para "urgente/crítico/no habitable/luz/agua/gas/fuga"; P3 para "menor/detalle"; P2 en el resto. NUNCA preguntes por prioridad — decide y crea.
   · categoria: INFIERE — luz/foco/enchufe→eléctrico; agua/fuga/tubería→plomería; aire/AC→aire; wifi/internet→wifi; puerta/cerradura→cerradura; sucio/plaga→limpieza; otro→otros.
   · alojamiento_shortcode: OBLIGATORIO. Extrae el código corto que sigue a "en" o "cu"/"mt"/"jc"/"ox"/"bc" (ej. "cu13", "mt10"). Case-insensitive.
-- REGLA DE ORO ADMIN: ejecuta directo. NUNCA preguntes por prioridad, categoría, ni confirmación. Si el admin no dio criticidad, DECIDE tú y crea. (ÚNICA EXCEPCIÓN: tareas programadas, abajo.)
-- TAREAS PROGRAMADAS — si el admin pide programar/agendar/asignar una tarea o un pendiente ("tarea: …", "programa que …", "agenda para el viernes …", "que Juana revise … mañana", "recuérdale a Paco …"):
+- REGLA DE ORO ADMIN: ejecuta directo. NUNCA preguntes por prioridad, categoría, ni confirmación. Si el admin no dio criticidad, DECIDE tú y crea. (ÚNICAS EXCEPCIONES: tareas programadas y recordatorios de la pizarra, abajo.)
+- ¿TAREA o RECORDATORIO? Si dice "tarea", "programa", "agenda", "asigna la tarea" → TAREA PROGRAMADA. Si dice "recordatorio", "recuérdame/recuérdale", "anota", "apunta", "pizarra", "pendiente de hoy" → RECORDATORIO DE PIZARRA. Si no queda claro, pregunta en UNA línea: "¿Lo registro como tarea programada o como recordatorio en la pizarra?".
+- TAREAS PROGRAMADAS — si el admin pide programar/agendar/asignar una tarea ("tarea: …", "programa que …", "agenda para el viernes …", "que Juana revise … mañana"):
   · Extrae: descripcion (OBLIGATORIA: qué hay que hacer, redactada clara y breve), fecha (OBLIGATORIA, una sola fecha — la naturaleza siempre es "Único"), personal (OPCIONAL: nombres tal cual los escribió, aunque sean cortos o incompletos: "Juani", "Paco", "la de limpieza Alma").
   · FECHA en lenguaje natural → conviértela tú a YYYY-MM-DD con el CONTEXTO TEMPORAL: "hoy", "mañana", "pasado mañana", "el viernes" (= el próximo viernes), "el lunes que viene", "en 3 días", "15/10", "15-oct", "15 de octubre", "el 3", "fin de mes". Si NO hay fecha, pregúntala en UNA línea. Nunca inventes fecha.
   · NO pidas clasificación ni subclasificación: el sistema las asigna solo.
@@ -1235,6 +1236,18 @@ REGLAS:
     Si hay no_encontrados o ambiguos, dilo en una línea (ej. "No encontré a 'Paco' en Personal" o "'Ana' puede ser: Ana López, Ana Ruiz — ¿cuál?").
   · AQUÍ SÍ debes esperar confirmación: SOLO cuando el admin responda afirmativamente en un mensaje POSTERIOR ("sí", "ok", "dale", "confirmo", "guárdala") llama confirmar_tarea_programada con el draft_id. Si pide cambios, vuelve a llamar preparar_tarea_programada con todo corregido y muestra el resumen nuevo. Si dice "no"/"cancela", no guardes y responde "Cancelada.".
   · Tras confirmar, responde en 1 línea con el folio: "✅ Tarea guardada (folio X) para <fecha_texto>."
+- RECORDATORIOS DE LA PIZARRA (Panel de control › 📌 Pizarra del día; son avisos rápidos, NO tareas programadas) — "recordatorio: …", "anota en la pizarra …", "recuérdale a Paco que …", "apunta que hay que …":
+  · Extrae: texto (OBLIGATORIO, breve y claro), prioridad (INFIERE, no preguntes: "urgente/ya/hoy sin falta/importante" → alta; "cuando se pueda/sin prisa/no urge" → baja; resto → media), personal (OPCIONAL, nombres tal cual), fecha (OPCIONAL: por defecto HOY; si dice "mañana", "el viernes", conviértela a YYYY-MM-DD con el CONTEXTO TEMPORAL).
+  · Llama preparar_recordatorio_pizarra. Con su resultado envía este resumen y pregunta:
+    "📌 Recordatorio para la pizarra (por confirmar)
+    • Recordatorio: <texto>
+    • Urgencia: <Alta/Media/Baja>
+    • Para: <personal o 'Sin asignar'>
+    • Día: <fecha_texto>
+    ¿Lo agrego? (sí / no / cambios)"
+    Si hay no_encontrados o ambiguos, dilo en una línea.
+  · Igual que en tareas: SOLO cuando el admin confirme en un mensaje POSTERIOR llama confirmar_recordatorio_pizarra. Si pide cambios, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
+  · Tras confirmar: "✅ Agregado a la pizarra." (1 línea).
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
 - Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
 `;
@@ -1312,6 +1325,29 @@ const BOT_TOOLS = [
         fecha_limite: { type: "boolean", description: "true si la fecha es un LÍMITE para tenerla resuelta ('fecha límite', 'a más tardar', 'antes del', 'tiene hasta el', 'para el … sin falta')." },
       },
       required: ["descripcion", "fecha"],
+    },
+  },
+  {
+    name: "preparar_recordatorio_pizarra",
+    description: "SOLO modo ADMIN. Prepara (NO guarda) un recordatorio para la Pizarra del día del Panel de control (avisos rápidos, no tareas programadas). Resuelve el personal contra la hoja Personal (acepta nombres cortos o incompletos). Devuelve draft_id + resumen para mostrar al admin y pedir confirmación.",
+    input_schema: {
+      type: "object",
+      properties: {
+        texto:     { type: "string", description: "El recordatorio, breve y claro." },
+        prioridad: { type: "string", enum: ["alta", "media", "baja"], description: "Urgencia inferida del mensaje (alta = urgente/importante; baja = sin prisa; media = resto)." },
+        personal:  { type: "array", items: { type: "string" }, description: "Opcional. Nombres tal como los escribió el admin." },
+        fecha:     { type: "string", description: "Opcional. Día YYYY-MM-DD; por defecto hoy." },
+      },
+      required: ["texto"],
+    },
+  },
+  {
+    name: "confirmar_recordatorio_pizarra",
+    description: "SOLO modo ADMIN. Agrega a la pizarra el recordatorio preparado con preparar_recordatorio_pizarra. Llamar ÚNICAMENTE después de que el admin confirmó en un mensaje posterior al resumen.",
+    input_schema: {
+      type: "object",
+      properties: { draft_id: { type: "string", description: "Opcional: draft_id devuelto por preparar_recordatorio_pizarra." } },
+      required: [],
     },
   },
   {
@@ -1434,7 +1470,8 @@ const BOT_TOOLS = [
  *  ctx = { phone10, fromRaw, booking, alojRow } — el contexto de la reserva
  *  activa del huésped, para saber a qué alojamiento imputar la acción. */
 // ─── Bot admin → Tareas programadas ─────────────────────────────────────────
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 const _botTarDrafts = new Map(); // phone10 → borrador pendiente de confirmar
 const _BOT_TAR_DEFAULT_CLASIF = { "Recursos humanos": [], "Servicios": [], "Limpieza": [], "Mantenimiento": [], "Inventarios": [], "Proveedores": [] };
 function _botNorm(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim(); }
@@ -2035,6 +2072,40 @@ async function _botExecTool(toolUse, ctx) {
         clasificacion: clas.clasificacion || "Sin clasificación", subclasificacion: clas.subclasificacion || "—",
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_limite: draft.limite ? "Sí — debe quedar resuelta a más tardar en esa fecha" : "No",
         instruccion: "Muestra el resumen al admin y pregunta si confirma. NO llames confirmar_tarea_programada hasta que responda en un mensaje nuevo." }), notifyText: null };
+    }
+    if (name === "preparar_recordatorio_pizarra") {
+      if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
+      const texto = String(args.texto || "").trim().slice(0, 500);
+      if (!texto) return { content: JSON.stringify({ ok: false, error: "Falta el texto del recordatorio" }), notifyText: null };
+      const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Mexico_City" });
+      let fecha = String(args.fecha || "").trim() || hoy;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || isNaN(new Date(fecha + "T12:00:00"))) return { content: JSON.stringify({ ok: false, error: "Fecha inválida: usa YYYY-MM-DD" }), notifyText: null };
+      if (fecha < hoy) fecha = hoy;
+      const prioridad = ["alta", "media", "baja"].includes(args.prioridad) ? args.prioridad : "media";
+      const nombres = await _botPersonalActivo().catch(() => []);
+      const per = _botResolverPersonal(Array.isArray(args.personal) ? args.personal : (args.personal ? [String(args.personal)] : []), nombres);
+      const id = "PD" + Date.now().toString(36);
+      const draft = { id, msgTs: ctx.msgTs || Date.now(), exp: Date.now() + 30 * 60 * 1000, texto: texto.charAt(0).toUpperCase() + texto.slice(1), prioridad, personal: per.ok, fecha };
+      _botPzDrafts.set(ctx.phone10, draft);
+      return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, urgencia: { alta: "Alta", media: "Media", baja: "Baja" }[prioridad],
+        personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_iso: fecha, fecha_texto: fecha === hoy ? "Hoy" : _botFechaLarga(fecha),
+        instruccion: "Muestra el resumen al admin y pregunta si lo agrega. NO llames confirmar_recordatorio_pizarra hasta que responda en un mensaje nuevo." }), notifyText: null };
+    }
+    if (name === "confirmar_recordatorio_pizarra") {
+      if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
+      const d = _botPzDrafts.get(ctx.phone10);
+      if (!d) return { content: JSON.stringify({ ok: false, error: "No hay un recordatorio pendiente de confirmar. Vuelve a prepararlo." }), notifyText: null };
+      if (Date.now() > d.exp) { _botPzDrafts.delete(ctx.phone10); return { content: JSON.stringify({ ok: false, error: "El borrador venció (30 min). Vuelve a preparar el recordatorio." }), notifyText: null }; }
+      if (!(ctx.msgTs > d.msgTs)) return { content: JSON.stringify({ ok: false, error: "Aún no hay confirmación del admin. Muestra el resumen y espera su respuesta." }), notifyText: null };
+      const user = ctx.adminNombre || `Bot · ${ctx.phone10}`, now = new Date().toISOString();
+      try {
+        await _pzMutate(data => {
+          data.items.push({ id: "PZ" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex"), creadoPor: user, creadoAt: now, hecho: false,
+            texto: d.texto, prioridad: d.prioridad, asignados: d.personal, fecha: d.fecha, origen: "Bot WhatsApp", updatedAt: now, updatedBy: user });
+        });
+      } catch (e) { return { content: JSON.stringify({ ok: false, error: "No se pudo guardar en la pizarra: " + e.message }), notifyText: null }; }
+      _botPzDrafts.delete(ctx.phone10);
+      return { content: JSON.stringify({ ok: true, texto: d.texto, urgencia: d.prioridad, personal: d.personal }), notifyText: null };
     }
     if (name === "confirmar_tarea_programada") {
       if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
