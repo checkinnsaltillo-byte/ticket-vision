@@ -7469,6 +7469,36 @@ function _vGuard(req, res) {
   if (!s) { res.status(401).json({ ok: false, error: "Sesión vencida", locked: true }); return null; }
   return s;
 }
+// Campos sensibles por tipo (espejo de VA_TIPOS en app.js). 'p' = se muestra últimos 4.
+const _V_SECRET = {
+  banco: { tarjeta: "p", clabe: "p", cuenta: "p", nip: "s", pass: "s" },
+  cuenta: { pass: "s" }, servicio: { pass: "s" }, dispositivo: { pass: "s" },
+  acceso: { clave: "s" }, internet: { pass: "s" }, otro: { pass: "s" },
+};
+function _vRestringido(r) { return r.restringido !== false; } // registros previos sin bandera = restringidos
+// Versión SIN sesión: los registros restringidos van sin sus datos sensibles.
+function _vPublicRecord(r) {
+  if (!_vRestringido(r)) return r;
+  const o = JSON.parse(JSON.stringify(r)); o._masked = {};
+  const sec = _V_SECRET[o.tipo] || { pass: "s", nip: "s", clave: "s" };
+  Object.keys(o.f || {}).forEach(k => {
+    const kind = sec[k] || (/^(pass|nip|clave|pin)$/i.test(k) ? "s" : "");
+    if (!kind || !o.f[k]) return;
+    o._masked[k] = kind === "p" ? "•••• " + String(o.f[k]).replace(/\s/g, "").slice(-4) : "••••••••";
+    delete o.f[k];
+  });
+  (o.extras || []).forEach((x, i) => { if (x.secret && x.v) { o._masked["x" + i] = "••••••••"; x.v = ""; } });
+  return o;
+}
+// 3a) Leer SIN código: registros no restringidos completos + restringidos sin datos sensibles.
+app.get("/vault/list", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const { data } = await _vRead();
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, records: data.records.map(_vPublicRecord) });
+  } catch (e) { console.warn("[vault] list:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
 // 3) Leer
 app.get("/vault/data", async (req, res) => {
   const s = _vGuard(req, res); if (!s) return;
