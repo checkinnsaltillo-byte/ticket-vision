@@ -1241,7 +1241,7 @@ REGLAS:
   · SIEMPRE llama preparar_recordatorio_pizarra ANTES de escribir el resumen (nunca lo redactes sin la herramienta: sin borrador no se puede guardar). Con su resultado envía este resumen y pregunta:
     "📌 Recordatorio para la pizarra (por confirmar)
     • Recordatorio: <texto>
-    • Urgencia: <Crítica/Alta/Media/Baja>
+    • Prioridad: <Crítico/Alto/Medio/Bajo>
     • Para: <personal o 'Sin asignar'>
     • Día: <fecha_texto>
     ¿Lo agrego? (sí / no / cambios)"
@@ -2098,7 +2098,7 @@ async function _botExecTool(toolUse, ctx) {
       const yaConfirmo = _botEsSiAResumen(ctx, /pizarra/i);
       const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, texto: texto.charAt(0).toUpperCase() + texto.slice(1), prioridad, personal: per.ok, fecha };
       _botPzDrafts.set(ctx.phone10, draft);
-      return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, urgencia: { critica: "Crítica", alta: "Alta", media: "Media", baja: "Baja" }[prioridad],
+      return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, urgencia: { critica: "Crítico", alta: "Alto", media: "Medio", baja: "Bajo" }[prioridad],
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_iso: fecha, fecha_texto: fecha === hoy ? "Hoy" : _botFechaLarga(fecha),
         instruccion: yaConfirmo ? "El admin YA confirmó el resumen anterior con este mensaje: llama confirmar_recordatorio_pizarra ahora, sin volver a mostrar el resumen." : "Muestra el resumen al admin y pregunta si lo agrega. NO llames confirmar_recordatorio_pizarra hasta que responda en un mensaje nuevo." }), notifyText: null };
     }
