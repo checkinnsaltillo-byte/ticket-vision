@@ -1223,7 +1223,7 @@ REGLAS:
   · Extrae: descripcion (OBLIGATORIA: qué hay que hacer, redactada clara y breve), fecha (OBLIGATORIA, una sola fecha — la naturaleza siempre es "Único"), personal (OPCIONAL: nombres tal cual los escribió, aunque sean cortos o incompletos: "Juani", "Paco", "la de limpieza Alma").
   · FECHA en lenguaje natural → conviértela tú a YYYY-MM-DD con el CONTEXTO TEMPORAL: "hoy", "mañana", "pasado mañana", "el viernes" (= el próximo viernes), "el lunes que viene", "en 3 días", "15/10", "15-oct", "15 de octubre", "el 3", "fin de mes". Si NO hay fecha, pregúntala en UNA línea. Nunca inventes fecha.
   · NO pidas clasificación ni subclasificación: el sistema las asigna solo.
-  · Llama preparar_tarea_programada. Con su resultado envía este resumen y pregunta:
+  · SIEMPRE llama preparar_tarea_programada ANTES de escribir el resumen (nunca lo redactes sin la herramienta: sin borrador no se puede guardar). Con su resultado envía este resumen y pregunta:
     "📋 Tarea programada (por confirmar)
     • Tarea: <nombre>
     • Fecha: <fecha_texto>
@@ -1238,7 +1238,7 @@ REGLAS:
   · Tras confirmar, responde en 1 línea con el folio: "✅ Tarea guardada (folio X) para <fecha_texto>."
 - RECORDATORIOS DE LA PIZARRA (Panel de control › 📌 Pizarra del día; son avisos rápidos, NO tareas programadas) — "recordatorio: …", "anota en la pizarra …", "recuérdale a Paco que …", "apunta que hay que …":
   · Extrae: texto (OBLIGATORIO, breve y claro), prioridad (INFIERE, no preguntes: "crítico/emergencia/ya mismo" → critica; "urgente/hoy sin falta/importante" → alta; "cuando se pueda/sin prisa/no urge" → baja; resto → media), personal (OPCIONAL, nombres tal cual), fecha (OPCIONAL: por defecto HOY; si dice "mañana", "el viernes", conviértela a YYYY-MM-DD con el CONTEXTO TEMPORAL).
-  · Llama preparar_recordatorio_pizarra. Con su resultado envía este resumen y pregunta:
+  · SIEMPRE llama preparar_recordatorio_pizarra ANTES de escribir el resumen (nunca lo redactes sin la herramienta: sin borrador no se puede guardar). Con su resultado envía este resumen y pregunta:
     "📌 Recordatorio para la pizarra (por confirmar)
     • Recordatorio: <texto>
     • Urgencia: <Crítica/Alta/Media/Baja>
@@ -1246,7 +1246,7 @@ REGLAS:
     • Día: <fecha_texto>
     ¿Lo agrego? (sí / no / cambios)"
     Si hay no_encontrados o ambiguos, dilo en una línea.
-  · Igual que en tareas: SOLO cuando el admin confirme en un mensaje POSTERIOR llama confirmar_recordatorio_pizarra. Si pide cambios, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
+  · Igual que en tareas: SOLO cuando el admin confirme en un mensaje POSTERIOR llama confirmar_recordatorio_pizarra (directo, sin volver a preparar). Si responde que no hay borrador, llama preparar_recordatorio_pizarra con los datos del resumen y luego confirmar_recordatorio_pizarra en ese mismo turno. Si pide cambios, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
   · Tras confirmar: "✅ Agregado a la pizarra." (1 línea).
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
 - Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
@@ -1472,6 +1472,15 @@ const BOT_TOOLS = [
 // ─── Bot admin → Tareas programadas ─────────────────────────────────────────
 const _BOT_ADMIN_ONLY_TOOLS = new Set(["crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
+// ¿El mensaje actual es un "sí" a un resumen "(por confirmar)" que el bot YA envió?
+// Cubre el caso en que el modelo escribió el resumen sin preparar el borrador y,
+// al recibir el "sí", prepara y confirma en el mismo turno (el candado lo bloqueaba
+// y el bot se ciclaba repitiendo el resumen).
+function _botEsSiAResumen(ctx, marca) {
+  const t = _botNorm(ctx.userMsg || "");
+  const si = /^(si|sip|simon|ok|okay|va|vale|dale|claro|correcto|confirmo|confirmado|de acuerdo|adelante|hazlo|agregalo|agregala|guardalo|guardala|registralo|registrala|si (agregalo|agregala|guardalo|guardala|por favor|porfa|confirmo|hazlo|dale|adelante|correcto|claro|registralo|registrala))( por favor| porfa| gracias)?$/.test(t);
+  return si && /por confirmar/i.test(ctx.lastAssistant || "") && marca.test(ctx.lastAssistant || "");
+}
 const _botTarDrafts = new Map(); // phone10 → borrador pendiente de confirmar
 const _BOT_TAR_DEFAULT_CLASIF = { "Recursos humanos": [], "Servicios": [], "Limpieza": [], "Mantenimiento": [], "Inventarios": [], "Proveedores": [] };
 function _botNorm(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim(); }
@@ -2066,12 +2075,13 @@ async function _botExecTool(toolUse, ctx) {
       const clas = await _botTarClasificar(desc, cat);
       const nombre = desc.charAt(0).toUpperCase() + desc.slice(1);
       const id = "TD" + Date.now().toString(36);
-      const draft = { id, msgTs: ctx.msgTs || Date.now(), exp: Date.now() + 30 * 60 * 1000, nombre, fecha, clasificacion: clas.clasificacion, subclasificacion: clas.subclasificacion, personal: per.ok, limite: args.fecha_limite === true };
+      const yaConfirmo = _botEsSiAResumen(ctx, /tarea programada/i);
+      const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, nombre, fecha, clasificacion: clas.clasificacion, subclasificacion: clas.subclasificacion, personal: per.ok, limite: args.fecha_limite === true };
       _botTarDrafts.set(ctx.phone10, draft);
       return { content: JSON.stringify({ ok: true, draft_id: id, nombre, fecha_iso: fecha, fecha_texto: _botFechaLarga(fecha),
         clasificacion: clas.clasificacion || "Sin clasificación", subclasificacion: clas.subclasificacion || "—",
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_limite: draft.limite ? "Sí — debe quedar resuelta a más tardar en esa fecha" : "No",
-        instruccion: "Muestra el resumen al admin y pregunta si confirma. NO llames confirmar_tarea_programada hasta que responda en un mensaje nuevo." }), notifyText: null };
+        instruccion: yaConfirmo ? "El admin YA confirmó el resumen anterior con este mensaje: llama confirmar_tarea_programada ahora, sin volver a mostrar el resumen." : "Muestra el resumen al admin y pregunta si confirma. NO llames confirmar_tarea_programada hasta que responda en un mensaje nuevo." }), notifyText: null };
     }
     if (name === "preparar_recordatorio_pizarra") {
       if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
@@ -2085,11 +2095,12 @@ async function _botExecTool(toolUse, ctx) {
       const nombres = await _botPersonalActivo().catch(() => []);
       const per = _botResolverPersonal(Array.isArray(args.personal) ? args.personal : (args.personal ? [String(args.personal)] : []), nombres);
       const id = "PD" + Date.now().toString(36);
-      const draft = { id, msgTs: ctx.msgTs || Date.now(), exp: Date.now() + 30 * 60 * 1000, texto: texto.charAt(0).toUpperCase() + texto.slice(1), prioridad, personal: per.ok, fecha };
+      const yaConfirmo = _botEsSiAResumen(ctx, /pizarra/i);
+      const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, texto: texto.charAt(0).toUpperCase() + texto.slice(1), prioridad, personal: per.ok, fecha };
       _botPzDrafts.set(ctx.phone10, draft);
       return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, urgencia: { critica: "Crítica", alta: "Alta", media: "Media", baja: "Baja" }[prioridad],
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_iso: fecha, fecha_texto: fecha === hoy ? "Hoy" : _botFechaLarga(fecha),
-        instruccion: "Muestra el resumen al admin y pregunta si lo agrega. NO llames confirmar_recordatorio_pizarra hasta que responda en un mensaje nuevo." }), notifyText: null };
+        instruccion: yaConfirmo ? "El admin YA confirmó el resumen anterior con este mensaje: llama confirmar_recordatorio_pizarra ahora, sin volver a mostrar el resumen." : "Muestra el resumen al admin y pregunta si lo agrega. NO llames confirmar_recordatorio_pizarra hasta que responda en un mensaje nuevo." }), notifyText: null };
     }
     if (name === "confirmar_recordatorio_pizarra") {
       if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
@@ -2965,7 +2976,8 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
           system: dynSystem,
           history: adminHistory,
           userMsg: cmd,
-          ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: true, msgTs: t0, adminNombre: adm.nombre || "" },
+          ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: true, msgTs: t0, adminNombre: adm.nombre || "", userMsg: cmd,
+                 lastAssistant: ((adminHistory.filter(m => m.role === 'assistant').slice(-1)[0]) || {}).body || "" },
           tools: BOT_TOOLS, // modo admin: expone todos, incluida crear_incidencia
         });
         for (const t of (llm.toolsUsed || [])) { if (t.notifyText) _botNotifyAdmin(t.notifyText); }
