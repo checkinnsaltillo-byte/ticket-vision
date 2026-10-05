@@ -7471,7 +7471,7 @@ function _vGuard(req, res) {
 }
 // Campos sensibles por tipo (espejo de VA_TIPOS en app.js). 'p' = se muestra últimos 4.
 const _V_SECRET = {
-  banco: { tarjeta: "p", clabe: "p", cuenta: "p", nip: "s", pass: "s" },
+  banco: { tarjeta: "p", clabe: "p", cuenta: "p", nip: "s", pass: "s", passOp: "s" },
   cuenta: { pass: "s" }, servicio: { pass: "s" }, dispositivo: { pass: "s" },
   acceso: { clave: "s" }, internet: { pass: "s" }, otro: { pass: "s" },
 };
@@ -7482,7 +7482,7 @@ function _vPublicRecord(r) {
   const o = JSON.parse(JSON.stringify(r)); o._masked = {};
   const sec = _V_SECRET[o.tipo] || { pass: "s", nip: "s", clave: "s" };
   Object.keys(o.f || {}).forEach(k => {
-    const kind = sec[k] || (/^(pass|nip|clave|pin)$/i.test(k) ? "s" : "");
+    const kind = sec[k] || (/^(pass|nip|clave|pin)/i.test(k) ? "s" : "");
     if (!kind || !o.f[k]) return;
     o._masked[k] = kind === "p" ? "•••• " + String(o.f[k]).replace(/\s/g, "").slice(-4) : "••••••••";
     delete o.f[k];
