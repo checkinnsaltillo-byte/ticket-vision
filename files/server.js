@@ -7739,6 +7739,101 @@ app.post("/vault/log", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ SEÑALÉTICA — kit editable de señales para impresión                     ║
+// ║ Datos (marca + diseños) en gs://check-in-493804-senaletica/datos/…json   ║
+// ║ Imágenes públicas en …/media/ (las lee el editor y el PDF).              ║
+// ═══════════════════════════════════════════════════════════════════════════
+const _SN_BUCKET = "check-in-493804-senaletica";
+const _SN_OBJ = "datos/senaletica.json";
+async function _snRead() {
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_SN_BUCKET}/o/${encodeURIComponent(_SN_OBJ)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
+  if (r.status === 404) return { data: { v: 1, marca: {}, disenos: [] }, gen: "0" };
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+  return { data: await r.json(), gen: r.headers.get("x-goog-generation") || "0" };
+}
+async function _snWriteObj(name, body, contentType, gen, cache) {
+  const tok = await _vGcsToken();
+  const meta = { name, contentType, cacheControl: cache || "no-store" };
+  const boundary = "sn" + crypto.randomBytes(8).toString("hex");
+  const pre = Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`);
+  const post = Buffer.from(`\r\n--${boundary}--`);
+  const url = `https://storage.googleapis.com/upload/storage/v1/b/${_SN_BUCKET}/o?uploadType=multipart${gen != null ? `&ifGenerationMatch=${gen}` : ""}`;
+  const r = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": `multipart/related; boundary=${boundary}` }, body: Buffer.concat([pre, Buffer.isBuffer(body) ? body : Buffer.from(body), post]) });
+  if (r.status === 412) { const e = new Error("conflicto"); e.conflict = true; throw e; }
+  if (r.status === 429 || r.status === 503) { const e = new Error(`Cloud Storage ${r.status}`); e.retry = true; throw e; }
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+  return r.json();
+}
+let _snQueue = Promise.resolve();
+function _snMutate(fn) {
+  const run = _snQueue.then(async () => {
+    for (let i = 0; i < 7; i++) {
+      const { data, gen } = await _snRead();
+      const out = fn(data);
+      try { await _snWriteObj(_SN_OBJ, JSON.stringify(data), "application/json", gen); return out; }
+      catch (e) { if (!e.conflict && !e.retry) throw e; await new Promise(r => setTimeout(r, Math.min(8000, 1100 * Math.pow(1.6, i)))); }
+    }
+    throw new Error("No se pudo guardar (conflicto). Intenta de nuevo.");
+  });
+  _snQueue = run.catch(() => {});
+  return run;
+}
+function _snOrigin(req, res) { if (_vOriginOk(req)) return true; res.status(403).json({ ok: false, error: "Origen no permitido" }); return false; }
+app.get("/senal/data", async (req, res) => {
+  if (!_snOrigin(req, res)) return;
+  try { const { data } = await _snRead(); res.set("Cache-Control", "no-store"); res.json({ ok: true, base: `https://storage.googleapis.com/${_SN_BUCKET}/`, ...data }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/senal/save", async (req, res) => {
+  if (!_snOrigin(req, res)) return;
+  try {
+    const d = (req.body || {}).diseno;
+    if (!d || typeof d !== "object" || !Array.isArray(d.els)) return res.status(400).json({ ok: false, error: "diseno inválido" });
+    const user = String((req.body || {}).user || "").slice(0, 80);
+    const id = await _snMutate(data => {
+      data.disenos = data.disenos || [];
+      const now = new Date().toISOString();
+      const r = { ...d, id: d.id || ("D" + Date.now().toString(36)), updatedAt: now, updatedBy: user };
+      const i = data.disenos.findIndex(x => x.id === r.id);
+      if (i >= 0) data.disenos[i] = r; else { r.orden = (Math.max(0, ...data.disenos.map(x => x.orden || 0)) + 1); data.disenos.push(r); }
+      return r.id;
+    });
+    res.json({ ok: true, id });
+  } catch (e) { console.warn("[senal] save:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/senal/delete", async (req, res) => {
+  if (!_snOrigin(req, res)) return;
+  try { const id = String((req.body || {}).id || ""); await _snMutate(data => { data.disenos = (data.disenos || []).filter(x => x.id !== id); }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/senal/marca", async (req, res) => {
+  if (!_snOrigin(req, res)) return;
+  try {
+    const m = (req.body || {}).marca;
+    if (!m || typeof m !== "object") return res.status(400).json({ ok: false, error: "marca inválida" });
+    await _snMutate(data => { data.marca = m; data.marcaUpdatedAt = new Date().toISOString(); });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Sube una imagen (dataURL PNG/JPG/SVG/WebP) a media/ y devuelve su ruta relativa.
+app.post("/senal/upload", async (req, res) => {
+  if (!_snOrigin(req, res)) return;
+  try {
+    const { data, name } = req.body || {};
+    const m = String(data || "").match(/^data:(image\/(png|jpeg|svg\+xml|webp));base64,(.+)$/);
+    if (!m) return res.status(400).json({ ok: false, error: "Formato no soportado (PNG, JPG, SVG o WebP)" });
+    const buf = Buffer.from(m[3], "base64");
+    if (buf.length > 12 * 1024 * 1024) return res.status(400).json({ ok: false, error: "Imagen mayor a 12 MB" });
+    const ext = { "image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg", "image/webp": "webp" }[m[1]];
+    const safe = String(name || "imagen").normalize("NFD").replace(/[^\w.-]+/g, "-").replace(/\.[a-z0-9]+$/i, "").slice(0, 40) || "imagen";
+    const obj = `media/u-${Date.now().toString(36)}-${safe}.${ext}`;
+    await _snWriteObj(obj, buf, m[1], null, "public, max-age=31536000");
+    res.json({ ok: true, path: obj });
+  } catch (e) { console.warn("[senal] upload:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+
 const PORT = process.env.PORT || 8080;
 // Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
