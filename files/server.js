@@ -1237,11 +1237,11 @@ REGLAS:
   · AQUÍ SÍ debes esperar confirmación: SOLO cuando el admin responda afirmativamente en un mensaje POSTERIOR ("sí", "ok", "dale", "confirmo", "guárdala") llama confirmar_tarea_programada con el draft_id. Si pide cambios, vuelve a llamar preparar_tarea_programada con todo corregido y muestra el resumen nuevo. Si dice "no"/"cancela", no guardes y responde "Cancelada.".
   · Tras confirmar, responde en 1 línea con el folio: "✅ Tarea guardada (folio X) para <fecha_texto>."
 - RECORDATORIOS DE LA PIZARRA (Panel de control › 📌 Pizarra del día; son avisos rápidos, NO tareas programadas) — "recordatorio: …", "anota en la pizarra …", "recuérdale a Paco que …", "apunta que hay que …":
-  · Extrae: texto (OBLIGATORIO, breve y claro), prioridad (INFIERE, no preguntes: "urgente/ya/hoy sin falta/importante" → alta; "cuando se pueda/sin prisa/no urge" → baja; resto → media), personal (OPCIONAL, nombres tal cual), fecha (OPCIONAL: por defecto HOY; si dice "mañana", "el viernes", conviértela a YYYY-MM-DD con el CONTEXTO TEMPORAL).
+  · Extrae: texto (OBLIGATORIO, breve y claro), prioridad (INFIERE, no preguntes: "crítico/emergencia/ya mismo" → critica; "urgente/hoy sin falta/importante" → alta; "cuando se pueda/sin prisa/no urge" → baja; resto → media), personal (OPCIONAL, nombres tal cual), fecha (OPCIONAL: por defecto HOY; si dice "mañana", "el viernes", conviértela a YYYY-MM-DD con el CONTEXTO TEMPORAL).
   · Llama preparar_recordatorio_pizarra. Con su resultado envía este resumen y pregunta:
     "📌 Recordatorio para la pizarra (por confirmar)
     • Recordatorio: <texto>
-    • Urgencia: <Alta/Media/Baja>
+    • Urgencia: <Crítica/Alta/Media/Baja>
     • Para: <personal o 'Sin asignar'>
     • Día: <fecha_texto>
     ¿Lo agrego? (sí / no / cambios)"
@@ -1334,7 +1334,7 @@ const BOT_TOOLS = [
       type: "object",
       properties: {
         texto:     { type: "string", description: "El recordatorio, breve y claro." },
-        prioridad: { type: "string", enum: ["alta", "media", "baja"], description: "Urgencia inferida del mensaje (alta = urgente/importante; baja = sin prisa; media = resto)." },
+        prioridad: { type: "string", enum: ["critica", "alta", "media", "baja"], description: "Urgencia inferida del mensaje (critica = emergencia/ya mismo/crítico; alta = urgente/importante/hoy sin falta; baja = sin prisa; media = resto)." },
         personal:  { type: "array", items: { type: "string" }, description: "Opcional. Nombres tal como los escribió el admin." },
         fecha:     { type: "string", description: "Opcional. Día YYYY-MM-DD; por defecto hoy." },
       },
@@ -2081,13 +2081,13 @@ async function _botExecTool(toolUse, ctx) {
       let fecha = String(args.fecha || "").trim() || hoy;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || isNaN(new Date(fecha + "T12:00:00"))) return { content: JSON.stringify({ ok: false, error: "Fecha inválida: usa YYYY-MM-DD" }), notifyText: null };
       if (fecha < hoy) fecha = hoy;
-      const prioridad = ["alta", "media", "baja"].includes(args.prioridad) ? args.prioridad : "media";
+      const prioridad = ["critica", "alta", "media", "baja"].includes(args.prioridad) ? args.prioridad : "media";
       const nombres = await _botPersonalActivo().catch(() => []);
       const per = _botResolverPersonal(Array.isArray(args.personal) ? args.personal : (args.personal ? [String(args.personal)] : []), nombres);
       const id = "PD" + Date.now().toString(36);
       const draft = { id, msgTs: ctx.msgTs || Date.now(), exp: Date.now() + 30 * 60 * 1000, texto: texto.charAt(0).toUpperCase() + texto.slice(1), prioridad, personal: per.ok, fecha };
       _botPzDrafts.set(ctx.phone10, draft);
-      return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, urgencia: { alta: "Alta", media: "Media", baja: "Baja" }[prioridad],
+      return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, urgencia: { critica: "Crítica", alta: "Alta", media: "Media", baja: "Baja" }[prioridad],
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_iso: fecha, fecha_texto: fecha === hoy ? "Hoy" : _botFechaLarga(fecha),
         instruccion: "Muestra el resumen al admin y pregunta si lo agrega. NO llames confirmar_recordatorio_pizarra hasta que responda en un mensaje nuevo." }), notifyText: null };
     }
@@ -8120,7 +8120,7 @@ app.post("/pizarra/save", async (req, res) => {
         data.items.push(x);
       }
       if (it.texto != null) x.texto = _pzClean(it.texto, 500).trim();
-      if (it.prioridad != null) x.prioridad = ["alta", "media", "baja"].includes(it.prioridad) ? it.prioridad : "media";
+      if (it.prioridad != null) x.prioridad = ["critica", "alta", "media", "baja"].includes(it.prioridad) ? it.prioridad : "media";
       if (!x.prioridad) x.prioridad = "media";
       if (it.asignados != null) x.asignados = (Array.isArray(it.asignados) ? it.asignados : []).map(n => _pzClean(n, 80).trim()).filter(Boolean).slice(0, 12);
       if (it.fecha != null) x.fecha = /^\d{4}-\d{2}-\d{2}$/.test(it.fecha) ? it.fecha : now.slice(0, 10);
