@@ -7834,6 +7834,162 @@ app.post("/senal/upload", async (req, res) => {
   } catch (e) { console.warn("[senal] upload:", e.message); res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ── Generar una señal con Claude a partir de una descripción ─────────────
+// Claude devuelve una escena simplificada (JSON con esquema estricto) que aquí
+// se valida y se convierte al formato del editor. Íconos: Lucide (ISC).
+let _snIcons = {};
+try { _snIcons = require("./senal_icons.json").iconos || {}; } catch (e) { console.warn("[senal] sin catálogo de íconos:", e.message); }
+app.get("/senal/icons", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.json({ ok: true, vb: 24, iconos: _snIcons }); });
+const _snGenHits = new Map();
+function _snGenSchema() {
+  const num = { type: "number" };
+  const run = { type: "object", additionalProperties: false, required: ["text", "size", "bold", "color", "font"],
+    properties: { text: { type: "string" }, size: num, bold: { type: "boolean" }, color: { type: "string" }, font: { type: "string", enum: ["$fTitulo", "$fTexto"] } } };
+  const el = { type: "object", additionalProperties: false, required: ["t", "x", "y", "w", "h"], properties: {
+    t: { type: "string", enum: ["rect", "ellipse", "poly", "line", "text", "icon", "qr", "logo"] },
+    x: num, y: num, w: num, h: num,
+    fill: { type: "string" }, stroke: { type: "string" }, sw: num, r: num,
+    pts: { type: "array", items: { type: "object", additionalProperties: false, required: ["x", "y"], properties: { x: num, y: num } } },
+    align: { type: "string", enum: ["left", "center", "right"] },
+    anchor: { type: "string", enum: ["top", "middle", "bottom"] },
+    paras: { type: "array", items: { type: "object", additionalProperties: false, required: ["runs"], properties: { runs: { type: "array", items: run } } } },
+    icon: { type: "string", enum: Object.keys(_snIcons).length ? Object.keys(_snIcons) : ["info"] },
+    data: { type: "string" },
+  } };
+  return { type: "object", additionalProperties: false, required: ["nombre", "cat", "els"],
+    properties: { nombre: { type: "string" }, cat: { type: "string" }, els: { type: "array", items: el } } };
+}
+function _snGenSystem(marca, op, W, H, pieH) {
+  const col = marca.colores || {};
+  const tokens = Object.keys(col).map(k => `$${k} = ${col[k]}`).join(", ");
+  const iconos = Object.entries(_snIcons).map(([n, v]) => `${n} (${v.k})`).join("; ");
+  const altoUtil = (H - pieH).toFixed(2);
+  const k = Math.min(W, H) / 7.5, kf = x => Math.round(x * k * 10) / 10;
+  return `Eres diseñador gráfico experto en señalética e impresos para alojamientos de renta corta (${marca.nombre || "la marca"}).
+Diseñas UNA pieza ${W > H ? "horizontal" : W < H ? "vertical" : "cuadrada"} de ${W} × ${H} pulgadas (${(W * 2.54).toFixed(1)} × ${(H * 2.54).toFixed(1)} cm).
+ESCALA: los tamaños de referencia de abajo ya están ajustados a este formato (factor ${k.toFixed(2)} respecto a una hoja de 7.5 × 10 in). Todas las coordenadas y medidas (x, y, w, h, r, pts) son en PULGADAS desde la esquina superior izquierda. Los tamaños de texto (size) son en PUNTOS (72 pt = 1 pulgada).
+${pieH ? `La franja inferior desde y = ${altoUtil} hasta ${H} está RESERVADA para el pie de marca (se agrega automáticamente): no pongas nada ahí. Tu área útil es de y = 0 a y = ${altoUtil}.` : "No incluyas pie de marca."}
+
+ELEMENTOS (el orden del arreglo es el orden de dibujo: el primero queda al fondo):
+- rect: rectángulo. fill (relleno), stroke + sw (borde, sw en pt), r (radio de esquina en pulgadas).
+- ellipse: círculo/elipse dentro de la caja x,y,w,h. fill, stroke, sw.
+- poly: polígono; pts = vértices en pulgadas RELATIVOS a la esquina (x,y) de la caja. fill.
+- line: línea recta de (x, y) a (x + w, y + h) (w o h pueden ser 0 o negativos). stroke, sw.
+- text: cuadro de texto que hace salto de línea automático dentro del ancho w. align (left/center/right), anchor (top/middle/bottom: alineación vertical dentro de h). paras = párrafos; cada uno con runs (fragmentos con su estilo). Deja h suficiente: cada renglón ocupa ≈ size × 1.2 / 72 pulgadas.
+- icon: ícono de línea simple (estilo pictograma) dentro de una caja cuadrada; icon = nombre del catálogo; stroke = color del trazo; sw = grosor relativo (1.5 a 2.5; 2 normal).
+- qr: código QR; data = URL o texto; fill = color de los módulos. Mínimo ${Math.max(0.7, 1.6 * k).toFixed(2)} in de lado.
+- logo: logotipo de la marca (pin), proporción ancho:alto = 676:980.
+
+COLORES: usa "#RRGGBB" o un token de la marca (${tokens || "sin tokens"}). Fondo: si la señal debe tener color de fondo, pon primero un rect que cubra toda la hoja (0,0,${W},${altoUtil}).
+${op.marca ? "Prefiere los tokens de color de la marca, salvo que la descripción del usuario pida otros colores." : "Elige la paleta que pida el usuario; si no la especifica, usa una paleta sobria."}
+"Colores ejecutivos" = azul marino (#0B1F3A / #1E3A5F), gris carbón (#334155), grises claros (#E2E8F0 / #F1F5F9), blanco y un solo color de acento (p. ej. rojo #C62828 para prohibiciones, ámbar #F59E0B para precaución, verde #15803D para permitido).
+FUENTES: font = "$fTitulo" (${(marca.fuentes || {}).fTitulo || "Poppins"}, para títulos) o "$fTexto" (${(marca.fuentes || {}).fTexto || "Carlito"}, para textos).
+
+REGLAS DE DISEÑO:
+- Márgenes mínimos de ${Math.max(0.12, 0.4 * k).toFixed(2)} in. Nada fuera de la hoja.
+- Jerarquía clara: un mensaje principal grande (título ${kf(60)}–${kf(110)} pt en mayúsculas si es aviso), un pictograma o ícono protagonista (${kf(2.5)}–${kf(4)} in), y texto secundario breve (${kf(20)}–${kf(32)} pt). ${k < 0.6 ? "Es un impreso pequeño: se lee de cerca, prioriza claridad y poco texto." : "Debe leerse a 3 metros."}
+- Aprovecha la proporción de la hoja: en formatos horizontales acomoda ícono y texto lado a lado.
+- Para prohibiciones usa el símbolo universal: un ícono del objeto y encima un círculo (ellipse sin relleno, stroke rojo, sw ${kf(18)}–${kf(26)} pt) con una diagonal (line del mismo color y grosor) de arriba-izquierda a abajo-derecha, inscrita en el círculo; o usa los íconos "ban", "cigarette-off", "volume-off" cuando existan.
+- Textos en el idioma que pida el usuario (por defecto español de México). Sin faltas de ortografía. Mensajes cortos y amables pero firmes.
+- Puedes usar los textos {{marca}}, {{web}} y {{tel}}: se reemplazan por los datos de la marca (${marca.nombre || ""} · ${marca.web || ""} · ${marca.tel || ""}).
+- Estilo limpio, mucho espacio en blanco, alineaciones consistentes, máximo 3 colores además de blanco/negro.
+- No inventes elementos que no existan en el esquema; para dibujos complejos usa íconos del catálogo.
+
+CATÁLOGO DE ÍCONOS (nombre (significado)): ${iconos}
+
+Devuelve: nombre (título corto de la señal), cat (categoría: Reglamentos, Seguridad, Estacionamiento, Áreas comunes, Bienvenida, Mapas u otra breve) y els.`;
+}
+function _snGenColor(v, marca, def) {
+  const s = String(v || "").trim();
+  if (/^\$\w+$/.test(s) && (marca.colores || {})[s.slice(1)]) return s;
+  if (/^#[0-9a-f]{6}$/i.test(s)) return s.toUpperCase();
+  if (/^#[0-9a-f]{3}$/i.test(s)) return ("#" + s.slice(1).split("").map(c => c + c).join("")).toUpperCase();
+  return def;
+}
+function _snGenConvert(out, marca, W, H) {
+  const n = (v, d) => (typeof v === "number" && isFinite(v) ? v : d);
+  const clampBox = e => { e.w = Math.max(0.05, Math.min(W, n(e.w, 1))); e.h = Math.max(0.05, Math.min(H, n(e.h, 1))); e.x = Math.max(-0.1, Math.min(W - 0.05, n(e.x, 0))); e.y = Math.max(-0.1, Math.min(H - 0.05, n(e.y, 0))); return e; };
+  const els = [];
+  for (const raw of (out.els || []).slice(0, 80)) {
+    const e = clampBox({ ...raw });
+    const fill = _snGenColor(e.fill, marca, null), stroke = _snGenColor(e.stroke, marca, null);
+    const sw = Math.max(0, Math.min(60, n(e.sw, 0)));
+    if (e.t === "rect") els.push({ t: "rect", x: e.x, y: e.y, w: e.w, h: e.h, fill, stroke, sw: stroke ? sw || 2 : 0, r: Math.max(0, Math.min(Math.min(e.w, e.h) / 2, n(e.r, 0))) });
+    else if (e.t === "ellipse") els.push({ t: "ellipse", x: e.x, y: e.y, w: e.w, h: e.h, fill, stroke, sw: stroke ? sw || 2 : 0 });
+    else if (e.t === "poly" && Array.isArray(e.pts) && e.pts.length >= 3) {
+      const xs = e.pts.map(p => n(p.x, 0)), ys = e.pts.map(p => n(p.y, 0));
+      const mx = Math.min(...xs), my = Math.min(...ys), w = Math.max(...xs) - mx, h = Math.max(...ys) - my;
+      if (w > 0.02 && h > 0.02) els.push({ t: "poly", x: e.x + mx, y: e.y + my, w, h, fill: fill || "#000000", stroke, sw: stroke ? sw || 2 : 0, pts: xs.map((x, i) => [x - mx, ys[i] - my]) });
+    } else if (e.t === "line") {
+      const w = n(raw.w, 0), h = n(raw.h, 0);
+      els.push({ t: "line", x1: n(raw.x, 0), y1: n(raw.y, 0), x2: n(raw.x, 0) + w, y2: n(raw.y, 0) + h, stroke: stroke || fill || "#000000", sw: sw || 4 });
+    } else if (e.t === "text" && Array.isArray(e.paras) && e.paras.length) {
+      const align = ["left", "center", "right"].includes(e.align) ? e.align : "center";
+      const paras = e.paras.slice(0, 20).map(p => ({ align, runs: (p.runs || []).slice(0, 20).map(r => ({
+        text: String(r.text || "").slice(0, 400), size: Math.max(6, Math.min(220, n(r.size, 24))), bold: !!r.bold,
+        color: _snGenColor(r.color, marca, "#000000"), font: r.font === "$fTexto" ? "$fTexto" : "$fTitulo" })).filter(r => r.text) })).filter(p => p.runs.length);
+      if (paras.length) els.push({ t: "text", x: e.x, y: e.y, w: e.w, h: e.h, anchor: ["top", "middle", "bottom"].includes(e.anchor) ? e.anchor : "middle", wrap: true, pad: [0, 0, 0, 0], paras });
+    } else if (e.t === "icon" && _snIcons[e.icon]) {
+      const s = Math.min(e.w, e.h);
+      els.push({ t: "icon", name: e.icon, x: e.x + (e.w - s) / 2, y: e.y + (e.h - s) / 2, w: s, h: s, color: stroke || fill || "#000000", sw: Math.max(0.75, Math.min(4, n(e.sw, 2) || 2)) });
+    } else if (e.t === "qr" && e.data) {
+      const s = Math.max(Math.min(1.2, W / 3, H / 3), Math.min(e.w, e.h));
+      els.push({ t: "qr", x: e.x + (e.w - s) / 2, y: e.y + (e.h - s) / 2, w: s, h: s, data: String(e.data).slice(0, 600), fill: fill || "#000000" });
+    } else if (e.t === "logo") {
+      const r = 676 / 980; let w = e.w, h = w / r; if (h > e.h) { h = e.h; w = h * r; }
+      els.push({ t: "image", x: e.x + (e.w - w) / 2, y: e.y + (e.h - h) / 2, w, h, src: "$logo", nat: [676, 980] });
+    }
+  }
+  return els;
+}
+app.post("/senal/generar", async (req, res) => {
+  if (!_snOrigin(req, res)) return;
+  const b = req.body || {};
+  const prompt = String(b.prompt || "").trim().slice(0, 2000);
+  if (prompt.length < 5) return res.status(400).json({ ok: false, error: "Describe la señal que quieres crear." });
+  const ip = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim();
+  const now = Date.now(), hits = (_snGenHits.get(ip) || []).filter(t => now - t < 3600e3);
+  if (hits.length >= 30) return res.status(429).json({ ok: false, error: "Límite de 30 señales por hora alcanzado. Intenta más tarde." });
+  hits.push(now); _snGenHits.set(ip, hits);
+  const op = { marca: b.marca !== false, pie: b.pie !== false };
+  const dim = v => Math.round(Math.max(1, Math.min(120, Number(v) || 0)) * 100) / 100;
+  const W = b.w ? dim(b.w) : 7.5, H = b.h ? dim(b.h) : 10, k = Math.min(W, H) / 7.5, pieH = op.pie ? 1.14 * k : 0;
+  try {
+    const { data } = await _snRead();
+    const marca = data.marca || {};
+    const params = {
+      model: "claude-opus-5-5",
+      max_tokens: 24000,
+      output_config: { effort: "medium", format: { type: "json_schema", schema: _snGenSchema() } },
+      system: _snGenSystem(marca, op, W, H, pieH),
+      messages: [{ role: "user", content: `Crea esta señal: ${prompt}` }],
+    };
+    let msg;
+    try { msg = await anthropic.beta.messages.stream({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" }).finalMessage(); }
+    catch (e) {
+      if (e && e.status === 400 && /fallback/i.test(String(e.message))) msg = await anthropic.messages.stream(params).finalMessage();
+      else throw e;
+    }
+    if (msg.stop_reason === "refusal") return res.status(422).json({ ok: false, error: "Claude no pudo generar esta señal con esa descripción. Prueba redactarla de otra forma." });
+    if (msg.stop_reason === "max_tokens") return res.status(422).json({ ok: false, error: "La señal resultó demasiado compleja. Simplifica la descripción." });
+    const txt = (msg.content || []).filter(c => c.type === "text").map(c => c.text).pop() || "";
+    let out; try { out = JSON.parse(txt); } catch (_) { return res.status(502).json({ ok: false, error: "Respuesta inválida de Claude. Intenta de nuevo." }); }
+    const els = _snGenConvert(out, marca, W, H);
+    if (!els.length) return res.status(502).json({ ok: false, error: "Claude no devolvió elementos. Intenta de nuevo." });
+    if (op.pie) els.push(
+      { t: "rect", x: 0, y: H - pieH, w: W, h: pieH, fill: (marca.colores || {}).amarillo ? "$amarillo" : "#F1F5F9" },
+      { t: "image", x: 0.25 * k, y: H - 1.05 * k, w: 0.66 * k, h: 0.96 * k, src: "$logo", nat: [676, 980] },
+      { t: "text", x: 1 * k, y: H - 1.05 * k, w: W - 1.2 * k, h: 0.9 * k, anchor: "middle", wrap: true, pad: [0.05 * k, 0, 0.05 * k, 0], paras: [
+        { align: "left", runs: [{ text: "{{marca}}", size: Math.round(40 * k * 10) / 10, color: "#000000", font: "$fTitulo" }] },
+        { align: "left", runs: [{ text: "{{web}}", size: Math.round(14 * k * 10) / 10, color: "#000000", font: "$fTitulo" }] }] });
+    console.log(`[senal] generar ok · ${els.length} elementos · ${msg.usage?.input_tokens}+${msg.usage?.output_tokens} tokens · ${msg.model}`);
+    res.json({ ok: true, diseno: { id: "", nombre: String(out.nombre || "Señal generada").slice(0, 80), cat: String(out.cat || "Generadas con IA").slice(0, 40), w: W, h: H, els, ia: { prompt, at: new Date().toISOString() } } });
+  } catch (e) {
+    console.warn("[senal] generar:", e.status || "", e.message);
+    res.status(500).json({ ok: false, error: e.status === 529 || e.status === 503 ? "Claude está saturado en este momento; intenta en un minuto." : e.message });
+  }
+});
+
 const PORT = process.env.PORT || 8080;
 // Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
