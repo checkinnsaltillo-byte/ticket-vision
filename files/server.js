@@ -1236,18 +1236,19 @@ REGLAS:
     Si hay no_encontrados o ambiguos, dilo en una línea (ej. "No encontré a 'Paco' en Personal" o "'Ana' puede ser: Ana López, Ana Ruiz — ¿cuál?").
   · AQUÍ SÍ debes esperar confirmación: SOLO cuando el admin responda afirmativamente en un mensaje POSTERIOR ("sí", "ok", "dale", "confirmo", "guárdala") llama confirmar_tarea_programada con el draft_id. Si pide cambios, vuelve a llamar preparar_tarea_programada con todo corregido y muestra el resumen nuevo. Si dice "no"/"cancela", no guardes y responde "Cancelada.".
   · Tras confirmar, responde en 1 línea con el folio: "✅ Tarea guardada (folio X) para <fecha_texto>."
-- RECORDATORIOS DE LA PIZARRA (Panel de control › 📌 Pizarra del día; son avisos rápidos, NO tareas programadas) — "recordatorio: …", "anota en la pizarra …", "recuérdale a Paco que …", "apunta que hay que …":
+- RECORDATORIOS (se guardan en Tareas programadas con tipo "Recordatorio": siempre únicos, aparecen cada día en "Pendientes del día" hasta resolverse; NO llevan programación ni recurrencia) — "recordatorio: …", "anota en la pizarra …", "recuérdale a Paco que …", "apunta que hay que …":
   · Extrae: texto (OBLIGATORIO, breve y claro), prioridad (INFIERE, no preguntes: "crítico/emergencia/ya mismo" → critica; "urgente/hoy sin falta/importante" → alta; "cuando se pueda/sin prisa/no urge" → baja; resto → media), personal (OPCIONAL, nombres tal cual), fecha (OPCIONAL: por defecto HOY; si dice "mañana", "el viernes", conviértela a YYYY-MM-DD con el CONTEXTO TEMPORAL).
   · SIEMPRE llama preparar_recordatorio_pizarra ANTES de escribir el resumen (nunca lo redactes sin la herramienta: sin borrador no se puede guardar). Con su resultado envía este resumen y pregunta:
-    "📌 Recordatorio para la pizarra (por confirmar)
+    "📌 Recordatorio (por confirmar)
     • Recordatorio: <texto>
+    • Clasificación: <clasificacion> › <subclasificacion>
     • Prioridad: <Crítico/Alto/Medio/Bajo>
     • Para: <personal o 'Sin asignar'>
     • Día: <fecha_texto>
     ¿Lo agrego? (sí / no / cambios)"
     Si hay no_encontrados o ambiguos, dilo en una línea.
   · Igual que en tareas: SOLO cuando el admin confirme en un mensaje POSTERIOR llama confirmar_recordatorio_pizarra (directo, sin volver a preparar). Si responde que no hay borrador, llama preparar_recordatorio_pizarra con los datos del resumen y luego confirmar_recordatorio_pizarra en ese mismo turno. Si pide cambios, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
-  · Tras confirmar: "✅ Agregado a la pizarra." (1 línea).
+  · Tras confirmar: "✅ Recordatorio guardado (folio X); aparece en Pendientes del día." (1 línea).
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
 - Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
 `;
@@ -1329,7 +1330,7 @@ const BOT_TOOLS = [
   },
   {
     name: "preparar_recordatorio_pizarra",
-    description: "SOLO modo ADMIN. Prepara (NO guarda) un recordatorio para la Pizarra del día del Panel de control (avisos rápidos, no tareas programadas). Resuelve el personal contra la hoja Personal (acepta nombres cortos o incompletos). Devuelve draft_id + resumen para mostrar al admin y pedir confirmación.",
+    description: "SOLO modo ADMIN. Prepara (NO guarda) un RECORDATORIO: se guarda en Tareas programadas con tipo Recordatorio (siempre único, aparece cada día en Pendientes del día hasta resolverse). El backend asigna clasificación y subclasificación del catálogo. Resuelve el personal contra la hoja Personal (acepta nombres cortos o incompletos). Devuelve draft_id + resumen para mostrar al admin y pedir confirmación.",
     input_schema: {
       type: "object",
       properties: {
@@ -1343,7 +1344,7 @@ const BOT_TOOLS = [
   },
   {
     name: "confirmar_recordatorio_pizarra",
-    description: "SOLO modo ADMIN. Agrega a la pizarra el recordatorio preparado con preparar_recordatorio_pizarra. Llamar ÚNICAMENTE después de que el admin confirmó en un mensaje posterior al resumen.",
+    description: "SOLO modo ADMIN. Guarda (en Tareas programadas, tipo Recordatorio) el recordatorio preparado con preparar_recordatorio_pizarra. Llamar ÚNICAMENTE después de que el admin confirmó en un mensaje posterior al resumen.",
     input_schema: {
       type: "object",
       properties: { draft_id: { type: "string", description: "Opcional: draft_id devuelto por preparar_recordatorio_pizarra." } },
@@ -2092,13 +2093,14 @@ async function _botExecTool(toolUse, ctx) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || isNaN(new Date(fecha + "T12:00:00"))) return { content: JSON.stringify({ ok: false, error: "Fecha inválida: usa YYYY-MM-DD" }), notifyText: null };
       if (fecha < hoy) fecha = hoy;
       const prioridad = ["critica", "alta", "media", "baja"].includes(args.prioridad) ? args.prioridad : "media";
-      const nombres = await _botPersonalActivo().catch(() => []);
+      const [cat, nombres] = await Promise.all([_botTarCatalogo(), _botPersonalActivo().catch(() => [])]);
       const per = _botResolverPersonal(Array.isArray(args.personal) ? args.personal : (args.personal ? [String(args.personal)] : []), nombres);
+      const clas = await _botTarClasificar(texto, cat);
       const id = "PD" + Date.now().toString(36);
-      const yaConfirmo = _botEsSiAResumen(ctx, /pizarra/i);
-      const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, texto: texto.charAt(0).toUpperCase() + texto.slice(1), prioridad, personal: per.ok, fecha };
+      const yaConfirmo = _botEsSiAResumen(ctx, /recordatorio/i);
+      const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, texto: texto.charAt(0).toUpperCase() + texto.slice(1), prioridad, personal: per.ok, fecha, clasificacion: clas.clasificacion || "", subclasificacion: clas.subclasificacion || "" };
       _botPzDrafts.set(ctx.phone10, draft);
-      return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, urgencia: { critica: "Crítico", alta: "Alto", media: "Medio", baja: "Bajo" }[prioridad],
+      return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, clasificacion: draft.clasificacion || "Sin clasificación", subclasificacion: draft.subclasificacion || "—", urgencia: { critica: "Crítico", alta: "Alto", media: "Medio", baja: "Bajo" }[prioridad],
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_iso: fecha, fecha_texto: fecha === hoy ? "Hoy" : _botFechaLarga(fecha),
         instruccion: yaConfirmo ? "El admin YA confirmó el resumen anterior con este mensaje: llama confirmar_recordatorio_pizarra ahora, sin volver a mostrar el resumen." : "Muestra el resumen al admin y pregunta si lo agrega. NO llames confirmar_recordatorio_pizarra hasta que responda en un mensaje nuevo." }), notifyText: null };
     }
@@ -2108,15 +2110,25 @@ async function _botExecTool(toolUse, ctx) {
       if (!d) return { content: JSON.stringify({ ok: false, error: "No hay un recordatorio pendiente de confirmar. Vuelve a prepararlo." }), notifyText: null };
       if (Date.now() > d.exp) { _botPzDrafts.delete(ctx.phone10); return { content: JSON.stringify({ ok: false, error: "El borrador venció (30 min). Vuelve a preparar el recordatorio." }), notifyText: null }; }
       if (!(ctx.msgTs > d.msgTs)) return { content: JSON.stringify({ ok: false, error: "Aún no hay confirmación del admin. Muestra el resumen y espera su respuesta." }), notifyText: null };
-      const user = ctx.adminNombre || `Bot · ${ctx.phone10}`, now = new Date().toISOString();
-      try {
-        await _pzMutate(data => {
-          data.items.push({ id: "PZ" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex"), creadoPor: user, creadoAt: now, hecho: false, estado: "pendiente",
-            texto: d.texto, prioridad: d.prioridad, asignados: d.personal, fecha: d.fecha, origen: "Bot WhatsApp", updatedAt: now, updatedBy: user });
-        });
-      } catch (e) { return { content: JSON.stringify({ ok: false, error: "No se pudo guardar en la pizarra: " + e.message }), notifyText: null }; }
+      // Los recordatorios son Tareas programadas con Tipo = "Recordatorio" (siempre "Único";
+      // aparecen cada día desde su fecha hasta que se resuelven).
+      const user = ctx.adminNombre || `Bot · ${ctx.phone10}`;
+      const MES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+      const dd = new Date(d.fecha + "T12:00:00");
+      const payload = {
+        Tipo: "Recordatorio", Nombre: d.texto, Clasificacion: d.clasificacion || "", Subclasificacion: d.subclasificacion || "",
+        Prioridad: { critica: "Crítico", alta: "Alto", media: "Medio", baja: "Bajo" }[d.prioridad] || "Medio", Naturaleza: "Único",
+        Programacion: JSON.stringify({ tipo: "unica", fechas: [d.fecha], dias_semana: [], dias_mes: [], inicio: "", fin: "" }),
+        Programacion_texto: `Recordatorio · desde ${dd.getDate()} ${MES[dd.getMonth()]} ${dd.getFullYear()}`,
+        Personal: d.personal.join(", "), WhatsApp: "No", Mensaje: "", Template_ID: "", Estado: "Activa", Fecha_limite: "No",
+        Comentarios: `Creado por WhatsApp (bot) · ${ctx.adminNombre || ctx.phone10}`, Creado_por: user, Origen: "Bot WhatsApp", Updated_at: new Date().toISOString(),
+      };
+      const r = await callCheckinAppsScriptPost("tareas_save", { payload });
+      if (!r || !r.ok) return { content: JSON.stringify({ ok: false, error: (r && r.error) || "No se pudo guardar el recordatorio" }), notifyText: null };
+      for (const k of Array.from(_rhListCache.keys())) if (k.startsWith("tareas_")) _rhListCache.delete(k);
+      callCheckinAppsScriptPost("tareas_hist_add", { payload: { rows: [{ Tarea_ID: r.id, Fecha: "", Campo: "Creación", Antes: "", Despues: `${d.texto} (recordatorio vía bot WhatsApp)`, Usuario: ctx.adminNombre || ctx.phone10 }] } }).catch(() => {});
       _botPzDrafts.delete(ctx.phone10);
-      return { content: JSON.stringify({ ok: true, texto: d.texto, urgencia: d.prioridad, personal: d.personal }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, id: r.id, texto: d.texto, prioridad: d.prioridad, personal: d.personal }), notifyText: null };
     }
     if (name === "confirmar_tarea_programada") {
       if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
