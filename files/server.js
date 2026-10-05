@@ -7990,6 +7990,83 @@ app.post("/senal/generar", async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ PIZARRA del Panel de control — recordatorios del día (no son tareas).    ║
+// ║ gs://check-in-493804-panel/pizarra.json (versionado). Compartida.        ║
+// ═══════════════════════════════════════════════════════════════════════════
+const _PZ_BUCKET = "check-in-493804-panel", _PZ_OBJ = "pizarra.json";
+async function _pzRead() {
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(_PZ_OBJ)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
+  if (r.status === 404) return { data: { items: [] }, gen: "0" };
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+  return { data: await r.json(), gen: r.headers.get("x-goog-generation") || "0" };
+}
+async function _pzWrite(data, gen) {
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(_PZ_OBJ)}&ifGenerationMatch=${gen}`,
+    { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: JSON.stringify(data) });
+  if (r.status === 412) { const e = new Error("conflicto"); e.retry = true; throw e; }
+  if (r.status === 429 || r.status === 503) { const e = new Error(`Cloud Storage ${r.status}`); e.retry = true; throw e; }
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+}
+let _pzQueue = Promise.resolve();
+function _pzMutate(fn) {
+  const run = _pzQueue.then(async () => {
+    for (let i = 0; i < 7; i++) {
+      const { data, gen } = await _pzRead();
+      data.items = Array.isArray(data.items) ? data.items : [];
+      const out = fn(data);
+      // Limpieza: hechos con más de 30 días se archivan fuera de la lista.
+      const lim = new Date(Date.now() - 30 * 864e5).toISOString();
+      data.items = data.items.filter(x => !x.hecho || (x.hechoAt || x.creadoAt || "") > lim);
+      try { await _pzWrite(data, gen); return out; }
+      catch (e) { if (!e.retry) throw e; await new Promise(r => setTimeout(r, Math.min(6000, 700 * Math.pow(1.6, i)))); }
+    }
+    throw new Error("No se pudo guardar (conflicto). Intenta de nuevo.");
+  });
+  _pzQueue = run.catch(() => {});
+  return run;
+}
+function _pzOrigin(req, res) { if (_vOriginOk(req)) return true; res.status(403).json({ ok: false, error: "Origen no permitido" }); return false; }
+const _pzClean = (v, n) => String(v == null ? "" : v).slice(0, n);
+app.get("/pizarra/list", async (req, res) => {
+  if (!_pzOrigin(req, res)) return;
+  try { const { data } = await _pzRead(); res.set("Cache-Control", "no-store"); res.json({ ok: true, items: data.items || [] }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Crea o actualiza un recordatorio (merge de campos permitidos).
+app.post("/pizarra/save", async (req, res) => {
+  if (!_pzOrigin(req, res)) return;
+  try {
+    const b = req.body || {}, it = b.item || {}, user = _pzClean(b.user, 80);
+    const now = new Date().toISOString();
+    const item = await _pzMutate(data => {
+      let x = it.id ? data.items.find(y => y.id === it.id) : null;
+      if (!x) {
+        if (!String(it.texto || "").trim()) throw new Error("Escribe el recordatorio.");
+        x = { id: "PZ" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex"), creadoPor: user, creadoAt: now, hecho: false };
+        data.items.push(x);
+      }
+      if (it.texto != null) x.texto = _pzClean(it.texto, 500).trim();
+      if (it.prioridad != null) x.prioridad = ["alta", "media", "baja"].includes(it.prioridad) ? it.prioridad : "media";
+      if (!x.prioridad) x.prioridad = "media";
+      if (it.asignados != null) x.asignados = (Array.isArray(it.asignados) ? it.asignados : []).map(n => _pzClean(n, 80).trim()).filter(Boolean).slice(0, 12);
+      if (it.fecha != null) x.fecha = /^\d{4}-\d{2}-\d{2}$/.test(it.fecha) ? it.fecha : now.slice(0, 10);
+      if (!x.fecha) x.fecha = now.slice(0, 10);
+      if (it.hecho != null && !!it.hecho !== !!x.hecho) { x.hecho = !!it.hecho; x.hechoPor = x.hecho ? user : ""; x.hechoAt = x.hecho ? now : ""; }
+      x.updatedAt = now; x.updatedBy = user;
+      return x;
+    });
+    res.json({ ok: true, item });
+  } catch (e) { res.status(/Escribe/.test(e.message) ? 400 : 500).json({ ok: false, error: e.message }); }
+});
+app.post("/pizarra/delete", async (req, res) => {
+  if (!_pzOrigin(req, res)) return;
+  try { const id = String((req.body || {}).id || ""); await _pzMutate(data => { data.items = data.items.filter(x => x.id !== id); }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 const PORT = process.env.PORT || 8080;
 // Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
