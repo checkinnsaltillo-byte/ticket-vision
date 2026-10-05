@@ -1217,7 +1217,21 @@ REGLAS:
   · prioridad: INFIERE — P1 para "urgente/crítico/no habitable/luz/agua/gas/fuga"; P3 para "menor/detalle"; P2 en el resto. NUNCA preguntes por prioridad — decide y crea.
   · categoria: INFIERE — luz/foco/enchufe→eléctrico; agua/fuga/tubería→plomería; aire/AC→aire; wifi/internet→wifi; puerta/cerradura→cerradura; sucio/plaga→limpieza; otro→otros.
   · alojamiento_shortcode: OBLIGATORIO. Extrae el código corto que sigue a "en" o "cu"/"mt"/"jc"/"ox"/"bc" (ej. "cu13", "mt10"). Case-insensitive.
-- REGLA DE ORO ADMIN: ejecuta directo. NUNCA preguntes por prioridad, categoría, ni confirmación. Si el admin no dio criticidad, DECIDE tú y crea.
+- REGLA DE ORO ADMIN: ejecuta directo. NUNCA preguntes por prioridad, categoría, ni confirmación. Si el admin no dio criticidad, DECIDE tú y crea. (ÚNICA EXCEPCIÓN: tareas programadas, abajo.)
+- TAREAS PROGRAMADAS — si el admin pide programar/agendar/asignar una tarea o un pendiente ("tarea: …", "programa que …", "agenda para el viernes …", "que Juana revise … mañana", "recuérdale a Paco …"):
+  · Extrae: descripcion (OBLIGATORIA: qué hay que hacer, redactada clara y breve), fecha (OBLIGATORIA, una sola fecha — la naturaleza siempre es "Único"), personal (OPCIONAL: nombres tal cual los escribió, aunque sean cortos o incompletos: "Juani", "Paco", "la de limpieza Alma").
+  · FECHA en lenguaje natural → conviértela tú a YYYY-MM-DD con el CONTEXTO TEMPORAL: "hoy", "mañana", "pasado mañana", "el viernes" (= el próximo viernes), "el lunes que viene", "en 3 días", "15/10", "15-oct", "15 de octubre", "el 3", "fin de mes". Si NO hay fecha, pregúntala en UNA línea. Nunca inventes fecha.
+  · NO pidas clasificación ni subclasificación: el sistema las asigna solo.
+  · Llama preparar_tarea_programada. Con su resultado envía este resumen y pregunta:
+    "📋 Tarea programada (por confirmar)
+    • Tarea: <nombre>
+    • Fecha: <fecha_texto>
+    • Clasificación: <clasificacion> › <subclasificacion>
+    • Personal: <personal o 'Sin asignar'>
+    ¿Confirmas para guardarla? (sí / no / cambios)"
+    Si hay no_encontrados o ambiguos, dilo en una línea (ej. "No encontré a 'Paco' en Personal" o "'Ana' puede ser: Ana López, Ana Ruiz — ¿cuál?").
+  · AQUÍ SÍ debes esperar confirmación: SOLO cuando el admin responda afirmativamente en un mensaje POSTERIOR ("sí", "ok", "dale", "confirmo", "guárdala") llama confirmar_tarea_programada con el draft_id. Si pide cambios, vuelve a llamar preparar_tarea_programada con todo corregido y muestra el resumen nuevo. Si dice "no"/"cancela", no guardes y responde "Cancelada.".
+  · Tras confirmar, responde en 1 línea con el folio: "✅ Tarea guardada (folio X) para <fecha_texto>."
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
 - Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
 `;
@@ -1281,6 +1295,28 @@ const BOT_TOOLS = [
         criticidad:            { type: "string", enum: ["critico","alto","medio","bajo"], description: "Nivel de severidad." },
       },
       required: ["alojamiento_shortcode", "descripcion", "criticidad"],
+    },
+  },
+  {
+    name: "preparar_tarea_programada",
+    description: "SOLO modo ADMIN. Prepara (NO guarda) una tarea programada de naturaleza 'Único' para el módulo Tareas programadas. El backend asigna clasificación y subclasificación del catálogo a partir de la descripción y resuelve el personal contra la hoja Personal (acepta nombres cortos o incompletos). Devuelve draft_id + resumen para que se lo muestres al admin y le pidas confirmación.",
+    input_schema: {
+      type: "object",
+      properties: {
+        descripcion: { type: "string", description: "Qué hay que hacer (nombre de la tarea), claro y breve." },
+        fecha:       { type: "string", description: "Fecha única YYYY-MM-DD ya convertida desde el lenguaje natural del admin." },
+        personal:    { type: "array", items: { type: "string" }, description: "Opcional. Nombres tal como los escribió el admin (pueden ser cortos/incompletos)." },
+      },
+      required: ["descripcion", "fecha"],
+    },
+  },
+  {
+    name: "confirmar_tarea_programada",
+    description: "SOLO modo ADMIN. Guarda la tarea preparada con preparar_tarea_programada. Llamar ÚNICAMENTE después de que el admin confirmó en un mensaje posterior al resumen.",
+    input_schema: {
+      type: "object",
+      properties: { draft_id: { type: "string", description: "Opcional: draft_id devuelto por preparar_tarea_programada (si no lo tienes, se usa la tarea pendiente del admin)." } },
+      required: [],
     },
   },
   {
@@ -1393,6 +1429,84 @@ const BOT_TOOLS = [
 /** Ejecuta un tool_use devuelto por Claude. Devuelve { content, notifyText }.
  *  ctx = { phone10, fromRaw, booking, alojRow } — el contexto de la reserva
  *  activa del huésped, para saber a qué alojamiento imputar la acción. */
+// ─── Bot admin → Tareas programadas ─────────────────────────────────────────
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada"]);
+const _botTarDrafts = new Map(); // phone10 → borrador pendiente de confirmar
+const _BOT_TAR_DEFAULT_CLASIF = { "Recursos humanos": [], "Servicios": [], "Limpieza": [], "Mantenimiento": [], "Inventarios": [], "Proveedores": [] };
+function _botNorm(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim(); }
+function _botFechaLarga(iso) {
+  const t = new Date(iso + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+let _botPersCache = { ts: 0, list: [] };
+async function _botPersonalActivo() {
+  if (_botPersCache.list.length && Date.now() - _botPersCache.ts < 10 * 60 * 1000) return _botPersCache.list;
+  const r = await callCheckinAppsScript("list_personal");
+  const full = pr => {
+    const nom = String(pr.Nombre || "").trim(), ap = String(pr.Apellido_paterno || "").trim(), am = String(pr.Apellido_materno || "").trim();
+    const n = _botNorm(nom);
+    if ((!ap || n.includes(_botNorm(ap))) && (!am || n.includes(_botNorm(am)))) return nom;
+    return [nom, ap, am].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  };
+  const list = Array.from(new Set(((r && r.rows) || []).filter(x => !x.Estado || /activo/i.test(String(x.Estado))).map(full).filter(Boolean)));
+  _botPersCache = { ts: Date.now(), list };
+  return list;
+}
+// Nombres cortos/incompletos → nombre completo del Personal. "Juani"→"Juana …", "Paco"→"Francisco …".
+const _BOT_APODOS = { paco: "francisco", pancho: "francisco", pepe: "jose", chuy: "jesus", lupe: "guadalupe", lalo: "eduardo", memo: "guillermo", toño: "antonio", tono: "antonio", nacho: "ignacio", beto: "alberto", juani: "juana", gaby: "gabriela", lety: "leticia", male: "maria elena", rosy: "rosa", cris: "cristina", fer: "fernanda", ale: "alejandra", dany: "daniela" };
+function _botResolverPersonal(qs, nombres) {
+  const ok = [], no = [], amb = {};
+  const idx = nombres.map(n => ({ n, toks: _botNorm(n).split(" ") }));
+  for (const raw of qs) {
+    const q = _botNorm(raw).replace(/^(la|el|a|de|del)\s+/, "");
+    if (!q) continue;
+    const variantes = [q, _BOT_APODOS[q.split(" ")[0]] ? q.replace(q.split(" ")[0], _BOT_APODOS[q.split(" ")[0]]) : null].filter(Boolean);
+    let cands = [];
+    for (const v of variantes) {
+      const qt = v.split(" ").filter(t => t.length > 1);
+      // 1) cada palabra del nombre buscado es inicio de alguna palabra del nombre completo
+      cands = idx.filter(x => qt.every(t => x.toks.some(w => w.startsWith(t))));
+      // 2) si no hay, prefijo de 3+ letras (ej. "juani" → "juana")
+      if (!cands.length) cands = idx.filter(x => qt.every(t => t.length >= 3 && x.toks.some(w => w.startsWith(t.slice(0, Math.max(3, t.length - 2))))));
+      if (cands.length) break;
+    }
+    // 3) frases con palabras de relleno ("la de limpieza Alma"): basta una palabra que identifique a una sola persona.
+    if (!cands.length) {
+      const RELL = new Set(["la", "el", "de", "del", "los", "las", "y", "a", "con", "limpieza", "mantenimiento", "senora", "senor", "sra", "sr", "don", "dona", "chica", "chico", "muchacha", "muchacho", "tecnico", "supervisor", "supervisora"]);
+      for (const t of q.split(" ").filter(t => t.length >= 3 && !RELL.has(t))) {
+        const c = idx.filter(x => x.toks.some(w => w.startsWith(t)));
+        if (c.length === 1) { cands = c; break; }
+        if (c.length > 1 && !cands.length) cands = c;
+      }
+    }
+    if (cands.length === 1) { if (!ok.includes(cands[0].n)) ok.push(cands[0].n); }
+    else if (cands.length > 1) amb[raw] = cands.map(c => c.n).slice(0, 5);
+    else no.push(raw);
+  }
+  return { ok, no, amb };
+}
+async function _botTarCatalogo() {
+  try {
+    const r = await callCheckinAppsScript("tareas_config_list");
+    const row = ((r && r.rows) || []).find(x => x.ID === "CATALOGO");
+    const c = row ? JSON.parse(row.Clasificaciones_json || "null") : null;
+    if (c && typeof c === "object" && Object.keys(c).length) return c;
+  } catch (_) {}
+  return _BOT_TAR_DEFAULT_CLASIF;
+}
+async function _botTarClasificar(desc, cat) {
+  const enumTxt = Object.entries(cat).map(([k, subs]) => `${k}: ${(subs || []).join(" | ") || "(sin sub-clasificaciones)"}`).join("\n");
+  try {
+    const out = await _llmChat({
+      system: `Eres un clasificador. Recibes la descripción de una tarea operativa de un negocio de rentas vacacionales y devuelves JSON estricto {"clasificacion":"…","subclasificacion":"…"} usando SOLO valores del catálogo. Si ninguna sub-clasificación aplica, usa "". Sin texto extra.\n\nCATÁLOGO (clasificación: sub-clasificaciones):\n${enumTxt}`,
+      history: [], userMsg: `Tarea: "${desc}"\nDevuelve JSON.`,
+    });
+    const p = JSON.parse(String(out.text || "").trim().replace(/^```json?\s*|\s*```$/g, ""));
+    const cl = Object.keys(cat).find(k => _botNorm(k) === _botNorm(p.clasificacion)) || "";
+    const sub = cl ? ((cat[cl] || []).find(x => _botNorm(x) === _botNorm(p.subclasificacion)) || "") : "";
+    return { clasificacion: cl, subclasificacion: sub };
+  } catch (e) { console.warn("[bot-tarea] clasificar:", e.message); return { clasificacion: "", subclasificacion: "" }; }
+}
 async function _botExecTool(toolUse, ctx) {
   const name = String(toolUse.name || "");
   const args = toolUse.input || {};
@@ -1898,6 +2012,52 @@ async function _botExecTool(toolUse, ctx) {
         notifyText: `🕐 Solicitud de late checkout vía bot\n${alojLabel}\nNueva hora: ${hora}${nombreLc ? `\nHuésped: ${nombreLc} (${ctx.phone10})` : `\nHuésped: ${ctx.phone10}`}${fechasLc ? `\nReserva: ${fechasLc}` : ""}${medioLc ? `\nMedio: ${medioLc}` : ""}`,
       };
     }
+    if (name === "preparar_tarea_programada") {
+      if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
+      const desc = String(args.descripcion || "").trim();
+      const fecha = String(args.fecha || "").trim();
+      if (!desc) return { content: JSON.stringify({ ok: false, error: "Falta la descripción de la tarea" }), notifyText: null };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || isNaN(new Date(fecha + "T12:00:00"))) return { content: JSON.stringify({ ok: false, error: "Fecha inválida: usa YYYY-MM-DD" }), notifyText: null };
+      const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Mexico_City" });
+      if (fecha < hoy) return { content: JSON.stringify({ ok: false, error: `La fecha ${fecha} ya pasó (hoy es ${hoy}). Pide otra fecha.` }), notifyText: null };
+      const [cat, nombres] = await Promise.all([_botTarCatalogo(), _botPersonalActivo().catch(() => [])]);
+      const per = _botResolverPersonal(Array.isArray(args.personal) ? args.personal : (args.personal ? [String(args.personal)] : []), nombres);
+      const clas = await _botTarClasificar(desc, cat);
+      const nombre = desc.charAt(0).toUpperCase() + desc.slice(1);
+      const id = "TD" + Date.now().toString(36);
+      const draft = { id, msgTs: ctx.msgTs || Date.now(), exp: Date.now() + 30 * 60 * 1000, nombre, fecha, clasificacion: clas.clasificacion, subclasificacion: clas.subclasificacion, personal: per.ok };
+      _botTarDrafts.set(ctx.phone10, draft);
+      return { content: JSON.stringify({ ok: true, draft_id: id, nombre, fecha_iso: fecha, fecha_texto: _botFechaLarga(fecha),
+        clasificacion: clas.clasificacion || "Sin clasificación", subclasificacion: clas.subclasificacion || "—",
+        personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb,
+        instruccion: "Muestra el resumen al admin y pregunta si confirma. NO llames confirmar_tarea_programada hasta que responda en un mensaje nuevo." }), notifyText: null };
+    }
+    if (name === "confirmar_tarea_programada") {
+      if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
+      const d = _botTarDrafts.get(ctx.phone10);
+      // Un solo borrador por admin: se usa el pendiente aunque el modelo no recuerde el draft_id.
+      if (!d) return { content: JSON.stringify({ ok: false, error: "No hay una tarea pendiente de confirmar. Vuelve a preparar la tarea." }), notifyText: null };
+      if (Date.now() > d.exp) { _botTarDrafts.delete(ctx.phone10); return { content: JSON.stringify({ ok: false, error: "El borrador venció (30 min). Vuelve a preparar la tarea." }), notifyText: null }; }
+      // Candado: la confirmación debe venir en un mensaje POSTERIOR al del resumen.
+      if (!(ctx.msgTs > d.msgTs)) return { content: JSON.stringify({ ok: false, error: "Aún no hay confirmación del admin. Muestra el resumen y espera su respuesta." }), notifyText: null };
+      const MES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+      const dd = new Date(d.fecha + "T12:00:00");
+      const prog = { tipo: "unica", fechas: [d.fecha], dias_semana: [], dias_mes: [], inicio: "", fin: "" };
+      const payload = {
+        Nombre: d.nombre, Clasificacion: d.clasificacion || "", Subclasificacion: d.subclasificacion || "",
+        Prioridad: "Medio", Naturaleza: "Único",
+        Programacion: JSON.stringify(prog), Programacion_texto: `Única · ${dd.getDate()} ${MES[dd.getMonth()]} ${dd.getFullYear()}`,
+        Personal: d.personal.join(", "), WhatsApp: "No", Mensaje: "", Template_ID: "", Estado: "Activa",
+        Comentarios: `Creada por WhatsApp (bot) · ${ctx.adminNombre || ctx.phone10}`,
+        Creado_por: ctx.adminNombre || `Bot · ${ctx.phone10}`, Origen: "Bot WhatsApp", Updated_at: new Date().toISOString(),
+      };
+      const r = await callCheckinAppsScriptPost("tareas_save", { payload });
+      if (!r || !r.ok) return { content: JSON.stringify({ ok: false, error: (r && r.error) || "No se pudo guardar en Tareas" }), notifyText: null };
+      _botTarDrafts.delete(ctx.phone10);
+      for (const k of Array.from(_rhListCache.keys())) if (k.startsWith("tareas_")) _rhListCache.delete(k);
+      callCheckinAppsScriptPost("tareas_hist_add", { payload: { rows: [{ Tarea_ID: r.id, Fecha: "", Campo: "Creación", Antes: "", Despues: `${d.nombre} (vía bot WhatsApp)`, Usuario: ctx.adminNombre || ctx.phone10 }] } }).catch(() => {});
+      return { content: JSON.stringify({ ok: true, id: r.id, nombre: d.nombre, fecha_texto: _botFechaLarga(d.fecha), personal: d.personal }), notifyText: null };
+    }
     if (name === "crear_incidencia") {
       const shortcode = String(args.alojamiento_shortcode || "").trim();
       const descripcion = String(args.descripcion || "").trim();
@@ -2249,7 +2409,7 @@ async function _botLlmLoop({ system, history, userMsg, ctx, tools }) {
   // (esa es exclusiva del modo admin — el modo huésped no debe verla).
   const activeTools = Array.isArray(tools) && tools.length
     ? tools
-    : BOT_TOOLS.filter(t => t.name !== "crear_incidencia");
+    : BOT_TOOLS.filter(t => !_BOT_ADMIN_ONLY_TOOLS.has(t.name));
   for (let iter = 0; iter < 4; iter++) {
     const body = {
       model: BOT_ANTHROPIC_MODEL,
@@ -2703,7 +2863,8 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
         const nowYear = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
         const adminPromptsBlock = _botBuildPromptsBlock(await _botGetPrompts());
-        const dynSystem = BOT_SYSTEM_PROMPT_ADMIN + adminPromptsBlock + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${today} (América/Mexico_City).\n- AÑO ACTUAL: ${nowYear}. Úsalo por defecto cuando no se mencione año.`;
+        const hoyLargo = new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const dynSystem = BOT_SYSTEM_PROMPT_ADMIN + adminPromptsBlock + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${today} (${hoyLargo}, América/Mexico_City).\n- AÑO ACTUAL: ${nowYear}. Úsalo por defecto cuando no se mencione año.`;
         // Historial: solo mensajes admin previos del MISMO teléfono para
         // permitir seguimientos ("Urgente" tras "@reporte..."). Filtramos
         // fuera cualquier mensaje que no sea admin (protege de contaminar
@@ -2720,7 +2881,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
           system: dynSystem,
           history: adminHistory,
           userMsg: cmd,
-          ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: true },
+          ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: true, msgTs: t0, adminNombre: adm.nombre || "" },
           tools: BOT_TOOLS, // modo admin: expone todos, incluida crear_incidencia
         });
         for (const t of (llm.toolsUsed || [])) { if (t.notifyText) _botNotifyAdmin(t.notifyText); }
