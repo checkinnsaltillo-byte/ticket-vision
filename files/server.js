@@ -2111,7 +2111,7 @@ async function _botExecTool(toolUse, ctx) {
       const user = ctx.adminNombre || `Bot · ${ctx.phone10}`, now = new Date().toISOString();
       try {
         await _pzMutate(data => {
-          data.items.push({ id: "PZ" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex"), creadoPor: user, creadoAt: now, hecho: false,
+          data.items.push({ id: "PZ" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex"), creadoPor: user, creadoAt: now, hecho: false, estado: "pendiente",
             texto: d.texto, prioridad: d.prioridad, asignados: d.personal, fecha: d.fecha, origen: "Bot WhatsApp", updatedAt: now, updatedBy: user });
         });
       } catch (e) { return { content: JSON.stringify({ ok: false, error: "No se pudo guardar en la pizarra: " + e.message }), notifyText: null }; }
@@ -8102,7 +8102,7 @@ function _pzMutate(fn) {
       const out = fn(data);
       // Limpieza: hechos con más de 30 días se archivan fuera de la lista.
       const lim = new Date(Date.now() - 30 * 864e5).toISOString();
-      data.items = data.items.filter(x => !x.hecho || (x.hechoAt || x.creadoAt || "") > lim);
+      data.items = data.items.filter(x => !(x.hecho || x.estado === "cancelado") || (x.estadoAt || x.hechoAt || x.creadoAt || "") > lim);
       try { await _pzWrite(data, gen); return out; }
       catch (e) { if (!e.retry) throw e; await new Promise(r => setTimeout(r, Math.min(6000, 700 * Math.pow(1.6, i)))); }
     }
@@ -8137,7 +8137,13 @@ app.post("/pizarra/save", async (req, res) => {
       if (it.asignados != null) x.asignados = (Array.isArray(it.asignados) ? it.asignados : []).map(n => _pzClean(n, 80).trim()).filter(Boolean).slice(0, 12);
       if (it.fecha != null) x.fecha = /^\d{4}-\d{2}-\d{2}$/.test(it.fecha) ? it.fecha : now.slice(0, 10);
       if (!x.fecha) x.fecha = now.slice(0, 10);
-      if (it.hecho != null && !!it.hecho !== !!x.hecho) { x.hecho = !!it.hecho; x.hechoPor = x.hecho ? user : ""; x.hechoAt = x.hecho ? now : ""; }
+      // Estado (columnas de la pizarra): pendiente | proceso | resuelto | cancelado. `hecho` = resuelto (compatibilidad).
+      if (!x.estado) x.estado = x.hecho ? "resuelto" : "pendiente";
+      let est = it.estado != null ? String(it.estado) : (it.hecho != null ? (it.hecho ? "resuelto" : "pendiente") : null);
+      if (est && ["pendiente", "proceso", "resuelto", "cancelado"].includes(est) && est !== x.estado) {
+        x.estado = est; x.estadoPor = user; x.estadoAt = now;
+        x.hecho = est === "resuelto"; x.hechoPor = x.hecho ? user : ""; x.hechoAt = x.hecho ? now : "";
+      }
       x.updatedAt = now; x.updatedBy = user;
       return x;
     });
