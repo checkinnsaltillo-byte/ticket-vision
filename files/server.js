@@ -1228,7 +1228,10 @@ REGLAS:
     • Fecha: <fecha_texto>
     • Clasificación: <clasificacion> › <subclasificacion>
     • Personal: <personal o 'Sin asignar'>
+    • Fecha límite: <Sí/No>
     ¿Confirmas para guardarla? (sí / no / cambios)"
+  · Si el admin dice "fecha límite", "a más tardar", "antes del", "tiene hasta el" → fecha_limite=true.
+  · Si pide una tarea RECURRENTE ("cada viernes", "semanal", "diario", "cada mes"): por WhatsApp solo se registran tareas de una sola fecha. Dile en una línea que la recurrente se da de alta en el módulo Tareas programadas, y ofrece registrar la próxima fecha como tarea única.
     Si hay no_encontrados o ambiguos, dilo en una línea (ej. "No encontré a 'Paco' en Personal" o "'Ana' puede ser: Ana López, Ana Ruiz — ¿cuál?").
   · AQUÍ SÍ debes esperar confirmación: SOLO cuando el admin responda afirmativamente en un mensaje POSTERIOR ("sí", "ok", "dale", "confirmo", "guárdala") llama confirmar_tarea_programada con el draft_id. Si pide cambios, vuelve a llamar preparar_tarea_programada con todo corregido y muestra el resumen nuevo. Si dice "no"/"cancela", no guardes y responde "Cancelada.".
   · Tras confirmar, responde en 1 línea con el folio: "✅ Tarea guardada (folio X) para <fecha_texto>."
@@ -1306,6 +1309,7 @@ const BOT_TOOLS = [
         descripcion: { type: "string", description: "Qué hay que hacer (nombre de la tarea), claro y breve." },
         fecha:       { type: "string", description: "Fecha única YYYY-MM-DD ya convertida desde el lenguaje natural del admin." },
         personal:    { type: "array", items: { type: "string" }, description: "Opcional. Nombres tal como los escribió el admin (pueden ser cortos/incompletos)." },
+        fecha_limite: { type: "boolean", description: "true si la fecha es un LÍMITE para tenerla resuelta ('fecha límite', 'a más tardar', 'antes del', 'tiene hasta el', 'para el … sin falta')." },
       },
       required: ["descripcion", "fecha"],
     },
@@ -2025,11 +2029,11 @@ async function _botExecTool(toolUse, ctx) {
       const clas = await _botTarClasificar(desc, cat);
       const nombre = desc.charAt(0).toUpperCase() + desc.slice(1);
       const id = "TD" + Date.now().toString(36);
-      const draft = { id, msgTs: ctx.msgTs || Date.now(), exp: Date.now() + 30 * 60 * 1000, nombre, fecha, clasificacion: clas.clasificacion, subclasificacion: clas.subclasificacion, personal: per.ok };
+      const draft = { id, msgTs: ctx.msgTs || Date.now(), exp: Date.now() + 30 * 60 * 1000, nombre, fecha, clasificacion: clas.clasificacion, subclasificacion: clas.subclasificacion, personal: per.ok, limite: args.fecha_limite === true };
       _botTarDrafts.set(ctx.phone10, draft);
       return { content: JSON.stringify({ ok: true, draft_id: id, nombre, fecha_iso: fecha, fecha_texto: _botFechaLarga(fecha),
         clasificacion: clas.clasificacion || "Sin clasificación", subclasificacion: clas.subclasificacion || "—",
-        personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb,
+        personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_limite: draft.limite ? "Sí — debe quedar resuelta a más tardar en esa fecha" : "No",
         instruccion: "Muestra el resumen al admin y pregunta si confirma. NO llames confirmar_tarea_programada hasta que responda en un mensaje nuevo." }), notifyText: null };
     }
     if (name === "confirmar_tarea_programada") {
@@ -2049,7 +2053,7 @@ async function _botExecTool(toolUse, ctx) {
         Programacion: JSON.stringify(prog), Programacion_texto: `Única · ${dd.getDate()} ${MES[dd.getMonth()]} ${dd.getFullYear()}`,
         Personal: d.personal.join(", "), WhatsApp: "No", Mensaje: "", Template_ID: "", Estado: "Activa",
         Comentarios: `Creada por WhatsApp (bot) · ${ctx.adminNombre || ctx.phone10}`,
-        Creado_por: ctx.adminNombre || `Bot · ${ctx.phone10}`, Origen: "Bot WhatsApp", Updated_at: new Date().toISOString(),
+        Creado_por: ctx.adminNombre || `Bot · ${ctx.phone10}`, Origen: "Bot WhatsApp", Fecha_limite: d.limite ? "Sí" : "No", Updated_at: new Date().toISOString(),
       };
       const r = await callCheckinAppsScriptPost("tareas_save", { payload });
       if (!r || !r.ok) return { content: JSON.stringify({ ok: false, error: (r && r.error) || "No se pudo guardar en Tareas" }), notifyText: null };
@@ -2374,17 +2378,26 @@ const _bot_admin_cache = new Map(); // phone10 → { isAdmin, nombre, t }
 async function _botIsAdminPhone(phone10) {
   const cached = _bot_admin_cache.get(phone10);
   if (cached && (Date.now() - cached.t) < 5 * 60_000) return cached;
-  try {
-    const url = `${CHECKIN_APPS_SCRIPT_URL}?action=bot_is_admin_phone&phone10=${encodeURIComponent(phone10)}`;
-    const r = await fetch(url);
-    const j = await r.json();
-    const rec = { isAdmin: !!j.isAdmin, nombre: String(j.nombre || ""), t: Date.now() };
-    _bot_admin_cache.set(phone10, rec);
-    return rec;
-  } catch (e) {
-    console.warn("[bot-admin] check fallo:", e.message);
-    return { isAdmin: false, nombre: "", t: Date.now() };
+  // Apps Script a veces responde una página HTML (error temporal / mientras se
+  // publica una versión nueva). Reintentamos y, si sigue fallando, NO degradamos
+  // a un admin conocido a "huésped": usamos su último estado conocido o, para los
+  // números del dueño (ADMIN_NOTIFY_PHONE / VAULT_PHONE), lo tratamos como admin.
+  let lastErr = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const url = `${CHECKIN_APPS_SCRIPT_URL}?action=bot_is_admin_phone&phone10=${encodeURIComponent(phone10)}`;
+      const r = await fetch(url);
+      const j = await r.json();
+      const rec = { isAdmin: !!j.isAdmin, nombre: String(j.nombre || ""), t: Date.now() };
+      _bot_admin_cache.set(phone10, rec);
+      return rec;
+    } catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 1500 * (i + 1))); }
   }
+  console.warn("[bot-admin] check fallo tras 3 intentos:", lastErr && lastErr.message);
+  if (cached) return { ...cached, t: Date.now() - 4 * 60_000 }; // estado previo; reintenta en ~1 min
+  const duenos = String(process.env.ADMIN_NOTIFY_PHONE || "") + ";" + String(process.env.VAULT_PHONE || "");
+  const esDueno = duenos.split(/[;,]/).map(x => x.replace(/\D/g, "").slice(-10)).filter(Boolean).includes(phone10);
+  return { isAdmin: esDueno, nombre: "", t: Date.now() };
 }
 
 /** Notifica al admin (WhatsApp) sobre una acción automática del bot.
