@@ -8440,6 +8440,54 @@ app.post("/config/hu-reglas", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ PROVEEDORES (Directorio › Proveedores)                                   ║
+// ║ gs://check-in-493804-panel/datos/proveedores.json → { items: [...] }     ║
+// ═══════════════════════════════════════════════════════════════════════════
+const _PRV_OBJ = "datos/proveedores.json";
+const _PRV_KEYS = ["Empresa", "Giro", "Contacto", "Puesto", "Telefono", "Whatsapp", "Correo", "Sitio_web", "RFC", "Razon_social", "Direccion", "Banco", "Clabe", "Condiciones_pago", "Estado", "Notas"];
+let _prvQ = Promise.resolve();
+function _prvMutate(fn) {
+  const run = _prvQ.then(async () => {
+    const d = await _rhdGetJson(_PRV_OBJ);
+    if (!Array.isArray(d.items)) d.items = [];
+    const out = fn(d);
+    await _rhdPut(_PRV_OBJ, JSON.stringify(d), "application/json");
+    return out;
+  });
+  _prvQ = run.catch(() => {});
+  return run;
+}
+app.get("/proveedores/list", async (req, res) => {
+  try { res.set("Cache-Control", "no-store"); const d = await _rhdGetJson(_PRV_OBJ); res.json({ ok: true, items: Array.isArray(d.items) ? d.items : [] }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/proveedores/save", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = (req.body || {}).item || {}, user = String((req.body || {}).user || "").slice(0, 80);
+    const clean = {};
+    for (const k of _PRV_KEYS) clean[k] = String(b[k] == null ? "" : b[k]).slice(0, 2000).trim();
+    if (!clean.Empresa && !clean.Contacto) return res.status(400).json({ ok: false, error: "Captura el nombre del proveedor o del contacto" });
+    const item = await _prvMutate(d => {
+      const now = new Date().toISOString();
+      let it = b.ID ? d.items.find(x => x.ID === String(b.ID)) : null;
+      if (it) Object.assign(it, clean, { updated_at: now, updated_by: user });
+      else { it = Object.assign({ ID: "PRV-" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex") }, clean, { created_at: now, created_by: user }); d.items.push(it); }
+      return it;
+    });
+    res.json({ ok: true, item });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/proveedores/delete", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const id = String((req.body || {}).id || "");
+    const n = await _prvMutate(d => { const a = d.items.length; d.items = d.items.filter(x => x.ID !== id); return a - d.items.length; });
+    res.json({ ok: true, deleted: n });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 const PORT = process.env.PORT || 8080;
 // Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
