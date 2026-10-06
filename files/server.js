@@ -8419,6 +8419,27 @@ app.get("/rh/docs/file", async (req, res) => {
   } catch (e) { res.status(500).send("Error"); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ REGLAS DE CLASIFICACIÓN DE HUÉSPEDES (Directorio › Huéspedes)            ║
+// ║ gs://check-in-493804-panel/config/hu-reglas.json — compartidas.         ║
+// ═══════════════════════════════════════════════════════════════════════════
+const _HUR_OBJ = "config/hu-reglas.json";
+const _HUR_KEYS = ["oro", "plata", "bronce", "recurrente", "w_noches", "w_visitas", "w_monto", "ref_noches", "ref_visitas", "ref_monto", "primera_max_visitas", "larga_noches", "mensual_noches"];
+app.get("/config/hu-reglas", async (req, res) => {
+  try { res.set("Cache-Control", "no-store"); res.json({ ok: true, reglas: await _rhdGetJson(_HUR_OBJ) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/config/hu-reglas", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = (req.body || {}).reglas || {}, out = {};
+    for (const k of _HUR_KEYS) { const v = Number(b[k]); if (isFinite(v) && v >= 0) out[k] = v; }
+    out.updated_at = new Date().toISOString(); out.updated_by = String((req.body || {}).user || "").slice(0, 80);
+    await _rhdPut(_HUR_OBJ, JSON.stringify(out), "application/json");
+    res.json({ ok: true, reglas: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 const PORT = process.env.PORT || 8080;
 // Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
