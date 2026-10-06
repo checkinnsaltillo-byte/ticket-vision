@@ -8212,6 +8212,36 @@ function _rhdPublic(emp, m) {
   }
   return out;
 }
+// Resumen para la tabla de personal: { emp: { ine: true, cif: true, ... } }. Cache 2 min.
+let _rhdRes = { ts: 0, data: null, inflight: null };
+async function _rhdResumen(force) {
+  if (!force && _rhdRes.data && Date.now() - _rhdRes.ts < 120000) return _rhdRes.data;
+  if (_rhdRes.inflight) return _rhdRes.inflight;
+  _rhdRes.inflight = (async () => {
+    const tok = await _vGcsToken();
+    const names = []; let pageToken = "";
+    do {
+      const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o?prefix=rh-docs/&fields=items(name),nextPageToken${pageToken ? "&pageToken=" + pageToken : ""}`, { headers: { Authorization: `Bearer ${tok}` } });
+      if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+      const j = await r.json();
+      (j.items || []).forEach(it => { if (/\/manifest\.json$/.test(it.name)) names.push(it.name); });
+      pageToken = j.nextPageToken || "";
+    } while (pageToken);
+    const out = {};
+    await Promise.all(names.map(async n => {
+      const emp = n.split("/")[1];
+      try { const m = await _rhdGetJson(n); const o = {}; Object.keys(_RHD_KINDS).forEach(k => { if (m[k] && m[k].path) o[k] = true; }); out[emp] = o; } catch (_) {}
+    }));
+    _rhdRes = { ts: Date.now(), data: out, inflight: null };
+    return out;
+  })().finally(() => { _rhdRes.inflight = null; });
+  return _rhdRes.inflight;
+}
+app.get("/rh/docs/resumen", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { res.set("Cache-Control", "no-store"); res.json({ ok: true, emps: await _rhdResumen(req.query.fresh === "1") }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/rh/docs", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   const emp = _rhdEmp(req.query.emp); if (!emp) return res.status(400).json({ ok: false, error: "Falta empleado" });
@@ -8231,6 +8261,7 @@ app.post("/rh/docs/upload", async (req, res) => {
     const path = `rh-docs/${emp}/${kind}-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}.${ext}`;
     await _rhdPut(path, buf, m[1]);
     const user = String(b.user || "").slice(0, 80);
+    _rhdRes.ts = 0;
     const docs = await _rhdMutate(emp, man => {
       man[kind] = { path, name: String(b.name || `${kind}.${ext}`).slice(0, 120), mime: m[1], size: buf.length, at: new Date().toISOString(), by: user };
       (man._hist = man._hist || []).push({ a: "subió", kind, path, at: man[kind].at, by: user });
@@ -8245,6 +8276,7 @@ app.post("/rh/docs/delete", async (req, res) => {
     const b = req.body || {}, emp = _rhdEmp(b.emp), kind = String(b.kind || "");
     if (!emp || !_RHD_KINDS[kind]) return res.status(400).json({ ok: false, error: "Datos incompletos" });
     // El archivo se conserva (bucket versionado); solo se quita del expediente.
+    _rhdRes.ts = 0;
     const docs = await _rhdMutate(emp, man => {
       if (man[kind]) (man._hist = man._hist || []).push({ a: "quitó", kind, path: man[kind].path, at: new Date().toISOString(), by: String(b.user || "").slice(0, 80) });
       delete man[kind]; return _rhdPublic(emp, man);
