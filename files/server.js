@@ -2151,6 +2151,12 @@ async function _botExecTool(toolUse, ctx) {
       const yaConfirmo = _botEsSiAResumen(ctx, /tarea programada/i);
       const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, nombre, fecha, clasificacion: clas.clasificacion, subclasificacion: clas.subclasificacion, personal: per.ok, limite: args.fecha_limite === true };
       _botTarDrafts.set(ctx.phone10, draft);
+      // El "sí" ya llegó: se guarda aquí mismo (no dependemos de que el modelo llame confirmar).
+      if (yaConfirmo) {
+        const rc = await _botExecTool({ name: "confirmar_tarea_programada", input: { draft_id: id } }, ctx);
+        let jr = {}; try { jr = JSON.parse(rc.content || "{}"); } catch (_) {}
+        return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "Tarea GUARDADA. Responde en 1 línea con el folio: ✅ Tarea guardada (folio X) para <fecha_texto>. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
+      }
       return { content: JSON.stringify({ ok: true, draft_id: id, nombre, fecha_iso: fecha, fecha_texto: _botFechaLarga(fecha),
         clasificacion: clas.clasificacion || "Sin clasificación", subclasificacion: clas.subclasificacion || "—",
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_limite: draft.limite ? "Sí — debe quedar resuelta a más tardar en esa fecha" : "No",
@@ -2207,6 +2213,11 @@ async function _botExecTool(toolUse, ctx) {
       const yaConfirmo = _botEsSiAResumen(ctx, /recordatorio/i);
       const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, texto: texto.charAt(0).toUpperCase() + texto.slice(1), prioridad, personal: per.ok, fecha, clasificacion: clas.clasificacion || "", subclasificacion: clas.subclasificacion || "" };
       _botPzDrafts.set(ctx.phone10, draft);
+      if (yaConfirmo) {
+        const rc = await _botExecTool({ name: "confirmar_recordatorio_pizarra", input: { draft_id: id } }, ctx);
+        let jr = {}; try { jr = JSON.parse(rc.content || "{}"); } catch (_) {}
+        return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "Recordatorio GUARDADO. Responde en 1 línea: ✅ Recordatorio guardado (folio X); aparece en Pendientes del día. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
+      }
       return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, clasificacion: draft.clasificacion || "Sin clasificación", subclasificacion: draft.subclasificacion || "—", urgencia: { critica: "Crítico", alta: "Alto", media: "Medio", baja: "Bajo" }[prioridad],
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_iso: fecha, fecha_texto: fecha === hoy ? "Hoy" : _botFechaLarga(fecha),
         instruccion: yaConfirmo ? "El admin YA confirmó el resumen anterior con este mensaje: llama confirmar_recordatorio_pizarra ahora, sin volver a mostrar el resumen." : "Muestra el resumen al admin y pregunta si lo agrega. NO llames confirmar_recordatorio_pizarra hasta que responda en un mensaje nuevo." }), notifyText: null };
