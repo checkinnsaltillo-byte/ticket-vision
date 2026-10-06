@@ -8168,6 +8168,107 @@ app.post("/pizarra/delete", async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ DOCUMENTOS DEL PERSONAL (INE, CIF, comprobante de domicilio, NSS)        ║
+// ║ Privados: gs://check-in-493804-panel/rh-docs/<empleado>/… + manifest.json ║
+// ║ Se ven con un link firmado (HMAC) que entrega /rh/docs.                   ║
+// ═══════════════════════════════════════════════════════════════════════════
+const _RHD_KINDS = { ine: "INE", domicilio: "Comprobante de domicilio", cif: "Certificado de Identificación Fiscal (CIF)", nss: "No. Seguro Social" };
+const _RHD_SECRET = process.env.SYNC_SECRET || process.env.GH_TOKEN || "rh-docs";
+const _rhdEmp = v => String(v || "").replace(/[^\w-]/g, "").slice(0, 60);
+const _rhdSig = (emp, kind, path) => crypto.createHmac("sha256", _RHD_SECRET).update(`${emp}|${kind}|${path}`).digest("hex").slice(0, 32);
+async function _rhdGetJson(name) {
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(name)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
+  if (r.status === 404) return {};
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+  return r.json();
+}
+async function _rhdPut(name, body, contentType) {
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(name)}`,
+    { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": contentType }, body });
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+}
+const _rhdQueue = new Map(); // un manifest por empleado → escrituras en serie
+function _rhdMutate(emp, fn) {
+  const prev = _rhdQueue.get(emp) || Promise.resolve();
+  const run = prev.then(async () => {
+    const name = `rh-docs/${emp}/manifest.json`;
+    const m = await _rhdGetJson(name);
+    const out = fn(m);
+    await _rhdPut(name, JSON.stringify(m), "application/json");
+    return out;
+  });
+  _rhdQueue.set(emp, run.catch(() => {}));
+  return run;
+}
+function _rhdPublic(emp, m) {
+  const out = {};
+  for (const k of Object.keys(_RHD_KINDS)) {
+    const d = m[k]; if (!d || !d.path) continue;
+    out[k] = { name: d.name, mime: d.mime, size: d.size, at: d.at, by: d.by,
+      url: `/rh/docs/file?emp=${encodeURIComponent(emp)}&kind=${k}&t=${_rhdSig(emp, k, d.path)}` };
+  }
+  return out;
+}
+app.get("/rh/docs", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  const emp = _rhdEmp(req.query.emp); if (!emp) return res.status(400).json({ ok: false, error: "Falta empleado" });
+  try { res.set("Cache-Control", "no-store"); res.json({ ok: true, docs: _rhdPublic(emp, await _rhdGetJson(`rh-docs/${emp}/manifest.json`)) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/rh/docs/upload", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, emp = _rhdEmp(b.emp), kind = String(b.kind || "");
+    if (!emp || !_RHD_KINDS[kind]) return res.status(400).json({ ok: false, error: "Datos incompletos" });
+    const m = String(b.data || "").match(/^data:(image\/(?:png|jpeg|webp|heic|heif)|application\/pdf);base64,(.+)$/);
+    if (!m) return res.status(400).json({ ok: false, error: "Solo se aceptan imágenes (JPG, PNG, WebP) o PDF" });
+    const buf = Buffer.from(m[2], "base64");
+    if (buf.length > 15 * 1024 * 1024) return res.status(400).json({ ok: false, error: "El archivo pesa más de 15 MB" });
+    const ext = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/heic": "heic", "image/heif": "heif", "application/pdf": "pdf" }[m[1]];
+    const path = `rh-docs/${emp}/${kind}-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}.${ext}`;
+    await _rhdPut(path, buf, m[1]);
+    const user = String(b.user || "").slice(0, 80);
+    const docs = await _rhdMutate(emp, man => {
+      man[kind] = { path, name: String(b.name || `${kind}.${ext}`).slice(0, 120), mime: m[1], size: buf.length, at: new Date().toISOString(), by: user };
+      (man._hist = man._hist || []).push({ a: "subió", kind, path, at: man[kind].at, by: user });
+      return _rhdPublic(emp, man);
+    });
+    res.json({ ok: true, docs });
+  } catch (e) { console.warn("[rh-docs] upload:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/rh/docs/delete", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, emp = _rhdEmp(b.emp), kind = String(b.kind || "");
+    if (!emp || !_RHD_KINDS[kind]) return res.status(400).json({ ok: false, error: "Datos incompletos" });
+    // El archivo se conserva (bucket versionado); solo se quita del expediente.
+    const docs = await _rhdMutate(emp, man => {
+      if (man[kind]) (man._hist = man._hist || []).push({ a: "quitó", kind, path: man[kind].path, at: new Date().toISOString(), by: String(b.user || "").slice(0, 80) });
+      delete man[kind]; return _rhdPublic(emp, man);
+    });
+    res.json({ ok: true, docs });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/rh/docs/file", async (req, res) => {
+  try {
+    const emp = _rhdEmp(req.query.emp), kind = String(req.query.kind || "");
+    const man = await _rhdGetJson(`rh-docs/${emp}/manifest.json`);
+    const d = man[kind];
+    if (!d || !d.path || String(req.query.t || "") !== _rhdSig(emp, kind, d.path)) return res.status(404).send("No encontrado");
+    const tok = await _vGcsToken();
+    const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(d.path)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
+    if (!r.ok) return res.status(404).send("No encontrado");
+    res.set("Content-Type", d.mime || "application/octet-stream");
+    res.set("Content-Disposition", `inline; filename="${String(d.name || "documento").replace(/[^\w.\- ]/g, "_")}"`);
+    res.set("Cache-Control", "private, max-age=300");
+    res.set("X-Robots-Tag", "noindex");
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) { res.status(500).send("Error"); }
+});
+
 const PORT = process.env.PORT || 8080;
 // Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
