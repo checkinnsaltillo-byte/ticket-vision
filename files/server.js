@@ -1236,6 +1236,9 @@ REGLAS:
     Si hay no_encontrados o ambiguos, dilo en una línea (ej. "No encontré a 'Paco' en Personal" o "'Ana' puede ser: Ana López, Ana Ruiz — ¿cuál?").
   · AQUÍ SÍ debes esperar confirmación: SOLO cuando el admin responda afirmativamente en un mensaje POSTERIOR ("sí", "ok", "dale", "confirmo", "guárdala") llama confirmar_tarea_programada con el draft_id. Si pide cambios, vuelve a llamar preparar_tarea_programada con todo corregido y muestra el resumen nuevo. Si dice "no"/"cancela", no guardes y responde "Cancelada.".
   · Tras confirmar, responde en 1 línea con el folio: "✅ Tarea guardada (folio X) para <fecha_texto>."
+- PENDIENTES DEL DÍA — si el admin pide sus pendientes, las tareas o recordatorios de hoy (o de otro día), "¿qué hay que hacer hoy?", "pendientes de mañana", "mis pendientes", "pendientes de Paco":
+  · Llama consultar_pendientes_del_dia (fecha YYYY-MM-DD si menciona otro día, por defecto hoy; solo_mios=true si dice "mis/míos"; personal si nombra a alguien; incluir_resueltos=true solo si pide también lo ya hecho).
+  · Responde con el campo formatted_message TAL CUAL (sin resumirlo ni reordenarlo). Si no hay pendientes, dilo en 1 línea.
 - RECORDATORIOS (se guardan en Tareas programadas con tipo "Recordatorio": siempre únicos, aparecen cada día en "Pendientes del día" hasta resolverse; NO llevan programación ni recurrencia) — "recordatorio: …", "anota en la pizarra …", "recuérdale a Paco que …", "apunta que hay que …":
   · Extrae: texto (OBLIGATORIO, breve y claro), prioridad (INFIERE, no preguntes: "crítico/emergencia/ya mismo" → critica; "urgente/hoy sin falta/importante" → alta; "cuando se pueda/sin prisa/no urge" → baja; resto → media), personal (OPCIONAL, nombres tal cual), fecha (OPCIONAL: por defecto HOY; si dice "mañana", "el viernes", conviértela a YYYY-MM-DD con el CONTEXTO TEMPORAL).
   · SIEMPRE llama preparar_recordatorio_pizarra ANTES de escribir el resumen (nunca lo redactes sin la herramienta: sin borrador no se puede guardar). Con su resultado envía este resumen y pregunta:
@@ -1326,6 +1329,20 @@ const BOT_TOOLS = [
         fecha_limite: { type: "boolean", description: "true si la fecha es un LÍMITE para tenerla resuelta ('fecha límite', 'a más tardar', 'antes del', 'tiene hasta el', 'para el … sin falta')." },
       },
       required: ["descripcion", "fecha"],
+    },
+  },
+  {
+    name: "consultar_pendientes_del_dia",
+    description: "SOLO modo ADMIN. Devuelve los pendientes de un día (tareas programadas y recordatorios del módulo Tareas programadas, igual que 'Pendientes del día' del Panel de control) agrupados por estado y ordenados por prioridad, con un formatted_message listo para enviar por WhatsApp.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fecha: { type: "string", description: "Opcional. Día YYYY-MM-DD; por defecto hoy." },
+        solo_mios: { type: "boolean", description: "true si el admin pide SUS pendientes (filtra por su nombre)." },
+        personal: { type: "string", description: "Opcional. Nombre (aunque sea corto) para ver solo los pendientes de esa persona." },
+        incluir_resueltos: { type: "boolean", description: "true para listar también lo resuelto/cancelado ese día (por defecto solo se cuenta)." },
+      },
+      required: [],
     },
   },
   {
@@ -1471,7 +1488,62 @@ const BOT_TOOLS = [
  *  ctx = { phone10, fromRaw, booking, alojRow } — el contexto de la reserva
  *  activa del huésped, para saber a qué alojamiento imputar la acción. */
 // ─── Bot admin → Tareas programadas ─────────────────────────────────────────
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+// ─── Bot admin → Pendientes del día (misma lógica que el módulo Tareas) ─────
+async function _botRhListCached(action) {
+  const c = _rhListCache.get(action);
+  if (c && Date.now() - c.ts < 60 * 1000) return (c.payload && c.payload.rows) || [];
+  const r = await callCheckinAppsScript(action);
+  if (r && r.ok && Array.isArray(r.rows)) { _rhListCache.set(action, { ts: Date.now(), payload: r }); return r.rows; }
+  return (c && c.payload && c.payload.rows) || [];
+}
+function _botIsoDay(v) { const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : ""; }
+function _botTarProg(r) {
+  let p = null; try { p = JSON.parse(String(r.Programacion || "") || "null"); } catch (_) {}
+  p = Object.assign({ tipo: r.Naturaleza === "Recurrente" ? "semanal" : "unica", fechas: [], dias_semana: [], dias_mes: [], inicio: "", fin: "" }, p || {});
+  ["fechas", "dias_semana", "dias_mes"].forEach(k => { if (!Array.isArray(p[k])) p[k] = []; });
+  return p;
+}
+function _botTarDelDia(rows, ocur, iso, hoy) {
+  const byTar = new Map();
+  ocur.forEach(o => { if (!byTar.has(o.Tarea_ID)) byTar.set(o.Tarea_ID, []); byTar.get(o.Tarea_ID).push(o); });
+  byTar.forEach(a => a.sort((x, y) => _botIsoDay(x.Fecha).localeCompare(_botIsoDay(y.Fecha))));
+  const out = [];
+  for (const r of rows) {
+    if (!r.ID) continue;
+    const rec = String(r.Tipo || "") === "Recordatorio";
+    const vig = /paus/i.test(r.Estado || "") ? "Pausada" : /cancel/i.test(r.Estado || "") ? "Cancelada" : "Activa";
+    const p = _botTarProg(r), a = byTar.get(r.ID) || [];
+    let toca = false, oc = null;
+    if (rec) {
+      const ini = p.fechas.slice().sort()[0] || _botIsoDay(r.Timestamp) || hoy;
+      const last = a[a.length - 1];
+      const cierre = last && /^(Resuelto|Cancelado)$/.test(last.Estado) ? _botIsoDay(last.Fecha) : "";
+      toca = iso >= ini && iso <= (cierre || hoy);
+      for (const x of a) { if (_botIsoDay(x.Fecha) <= iso) oc = x; else break; }
+    } else {
+      const d = new Date(iso + "T12:00:00");
+      if (p.tipo === "unica") toca = p.fechas.includes(iso);
+      else {
+        const inicio = p.inicio || _botIsoDay(r.Timestamp);
+        if (!(inicio && iso < inicio) && !(p.fin && iso > p.fin)) {
+          if (p.tipo === "semanal") toca = p.dias_semana.map(Number).includes(d.getDay());
+          else {
+            const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(), day = d.getDate();
+            toca = p.dias_mes.some(x => Number(x) === day || (day === dim && Number(x) > dim));
+            if (toca && p.tipo === "bimestral") { const b = inicio ? new Date(inicio + "T12:00:00") : d; const diff = (d.getFullYear() - b.getFullYear()) * 12 + (d.getMonth() - b.getMonth()); toca = ((diff % 2) + 2) % 2 === 0; }
+          }
+        }
+      }
+      oc = a.find(x => _botIsoDay(x.Fecha) === iso) || null;
+    }
+    if (!toca || (vig !== "Activa" && !oc)) continue;
+    out.push({ r, rec, estado: (oc && oc.Estado) || "Pendiente", por: (oc && oc.Atendido_por) || "" });
+  }
+  return out;
+}
+const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
+const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 // ¿El mensaje actual es un "sí" a un resumen "(por confirmar)" que el bot YA envió?
 // Cubre el caso en que el modelo escribió el resumen sin preparar el borrador y,
@@ -2083,6 +2155,41 @@ async function _botExecTool(toolUse, ctx) {
         clasificacion: clas.clasificacion || "Sin clasificación", subclasificacion: clas.subclasificacion || "—",
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_limite: draft.limite ? "Sí — debe quedar resuelta a más tardar en esa fecha" : "No",
         instruccion: yaConfirmo ? "El admin YA confirmó el resumen anterior con este mensaje: llama confirmar_tarea_programada ahora, sin volver a mostrar el resumen." : "Muestra el resumen al admin y pregunta si confirma. NO llames confirmar_tarea_programada hasta que responda en un mensaje nuevo." }), notifyText: null };
+    }
+    if (name === "consultar_pendientes_del_dia") {
+      if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
+      const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Mexico_City" });
+      const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? String(args.fecha) : hoy;
+      const [rows, ocur] = await Promise.all([_botRhListCached("tareas_list"), _botRhListCached("tareas_ocur_list")]);
+      let items = _botTarDelDia(rows, ocur, fecha, hoy);
+      // Filtro por persona (solo_mios → nombre del admin; personal → nombre corto/apodo)
+      let quien = "";
+      const pedidos = args.solo_mios ? [ctx.adminNombre || ""] : (args.personal ? [String(args.personal)] : []);
+      if (pedidos.filter(Boolean).length) {
+        const nombres = Array.from(new Set(rows.flatMap(r => String(r.Personal || "").split(",").map(x => x.trim()).filter(Boolean))));
+        const res = _botResolverPersonal(pedidos.filter(Boolean), nombres);
+        const objetivo = res.ok.length ? res.ok : [];
+        if (!objetivo.length) return { content: JSON.stringify({ ok: true, fecha, formatted_message: `No encontré pendientes asignados a "${pedidos[0]}" para ${fecha === hoy ? "hoy" : _botFechaLarga(fecha)}.` }), notifyText: null };
+        quien = objetivo.join(", ");
+        items = items.filter(x => String(x.r.Personal || "").split(",").map(n => n.trim()).some(n => objetivo.includes(n)));
+      }
+      const abiertos = items.filter(x => x.estado === "Pendiente" || x.estado === "En proceso");
+      const cerrados = items.filter(x => !(x.estado === "Pendiente" || x.estado === "En proceso"));
+      const sortP = (a, b) => (_BOT_PRIO_W[b.r.Prioridad] || 2) - (_BOT_PRIO_W[a.r.Prioridad] || 2) || String(a.r.Nombre).localeCompare(String(b.r.Nombre), "es");
+      const linea = x => {
+        const per = String(x.r.Personal || "").split(",").map(n => n.trim()).filter(Boolean).map(n => n.split(" ")[0]).join(", ");
+        const lim = String(x.r.Fecha_limite || "") === "Sí" ? " ⏳" : "";
+        return `${_BOT_PRIO_E[x.r.Prioridad] || "🟡"} ${x.rec ? "📌" : "📋"} ${x.r.Nombre}${per ? ` — ${per}` : ""}${lim}`;
+      };
+      const tit = fecha === hoy ? "hoy" : _botFechaLarga(fecha);
+      const partes = [`📋 *Pendientes ${fecha === hoy ? "del día" : "de " + tit}*${quien ? ` · ${quien}` : ""}`, `${abiertos.length} abierto${abiertos.length === 1 ? "" : "s"} · ${cerrados.length} cerrado${cerrados.length === 1 ? "" : "s"}`];
+      const enProc = abiertos.filter(x => x.estado === "En proceso").sort(sortP), pend = abiertos.filter(x => x.estado === "Pendiente").sort(sortP);
+      if (enProc.length) partes.push("", "⏳ *En proceso*", ...enProc.map(linea));
+      if (pend.length) partes.push("", "📝 *Pendientes*", ...pend.map(linea));
+      if (!abiertos.length) partes.push("", "✨ No hay pendientes abiertos.");
+      if (args.incluir_resueltos && cerrados.length) partes.push("", "✅ *Resueltos / cancelados*", ...cerrados.sort(sortP).map(x => `${x.estado === "Cancelado" ? "✖️" : "✅"} ${x.rec ? "📌" : "📋"} ${x.r.Nombre}`));
+      partes.push("", "🔴 Crítico · 🟠 Alto · 🟡 Medio · 🔵 Bajo · 📌 Recordatorio · 📋 Tarea · ⏳ Fecha límite");
+      return { content: JSON.stringify({ ok: true, fecha, total: items.length, abiertos: abiertos.length, formatted_message: partes.join("\n") }), notifyText: null };
     }
     if (name === "preparar_recordatorio_pizarra") {
       if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
