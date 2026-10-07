@@ -64463,6 +64463,7 @@ function aseoEnsureCss_() {
   .mv-chg > select.mv-hora{width:auto !important;min-width:0 !important;max-width:none !important;flex:1 0 auto !important;min-height:19px;
     border:0 !important;border-radius:0 !important;box-shadow:inset 1.5px 0 0 #fb923c;text-align:center;text-align-last:center}
   .mv-chg.ok > select.mv-hora{box-shadow:inset 1.5px 0 0 rgba(255,255,255,.55)}
+  .mv-ac .mv-ac-chips > .mv-chg, .mv-ac .mv-acts > .mv-chg, .mv-cols .mv-ac .mv-ac-chips > .mv-chg, .mv-cols .mv-ac .mv-acts > .mv-chg{height:auto !important;max-width:100% !important;overflow:hidden !important}
   .mv-prio{font-size:10.5px;font-weight:900;letter-spacing:.04em;padding:2px 9px;border-radius:999px;background:#7f1d1d;color:#fff;--ac:#dc2626;animation:mvPulse 1.6s ease-in-out infinite;white-space:nowrap}
   .mv-ac.prio{border-left-color:#7f1d1d;box-shadow:0 0 0 2px rgba(127,29,29,.25),0 8px 22px -10px rgba(127,29,29,.5)}
   .mv-temp-chip.ok{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:1.5px solid transparent;--ac:#22c55e}
