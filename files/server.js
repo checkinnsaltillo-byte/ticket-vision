@@ -9006,6 +9006,7 @@ async function _aseoResumenHoy() {
     else if (!c.sal && c.ent && !(pub && /^(terminado|inspeccionado)$/.test(pub.estado))) aviso = "⚠️ Requiere validación";
     return { code: a ? a.code.toUpperCase() : "", nombre: a ? a.nombre : `Alojamiento ${c.hid}`, entra: !!c.ent, sale: !!c.sal, estado, sel, aviso, aseo: aseoP, insp: inspP,
       temprana: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).on),
+      tempAceptada: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).aceptada),
       aseoArr: (as.aseo || as.personal || []).slice(), inspArr: (as.inspeccion || []).slice(),
       salio: c.sal ? c.sal.guest : "", entra_huesped: c.ent ? c.ent.guest : "" };
   });
@@ -9016,7 +9017,7 @@ async function _aseoResumenHoy() {
   const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (✱)`, ""];
   items.forEach((i, n) => {
     lineas.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
-    if (i.temprana) lineas.push(`   ⏰ *ENTRADA TEMPRANA* — prioridad`);
+    if (i.temprana) lineas.push(`   ⏰ *ENTRADA TEMPRANA* — prioridad${i.tempAceptada ? " (solicitud aceptada ✓)" : ""}`);
     lineas.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     lineas.push(`   🧹 Aseo: ${i.aseo || "—"} · 🔍 Inspección: ${i.insp || "—"}`);
   });
@@ -9043,7 +9044,7 @@ async function _aseoListaEmpleado(nombre, opts) {
   const l = [`🧽 *${pila}, tus limpiezas de hoy* (${mias.length})`, mias.some(i => i.entra) ? "✱ = entra huésped hoy (prioridad)" : "", ""];
   mias.forEach((i, n) => {
     l.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
-    if (i.temprana) l.push(`   ⏰ *ENTRADA TEMPRANA* — prioridad`);
+    if (i.temprana) l.push(`   ⏰ *ENTRADA TEMPRANA* — prioridad${i.tempAceptada ? " (solicitud aceptada ✓)" : ""}`);
     l.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     l.push(`   Tipo de tarea: ${i.roles.join(" e ")}`);
   });
@@ -9120,7 +9121,16 @@ app.post("/aseo/temprana", async (req, res) => {
     const id = String((req.body || {}).id || "").replace(/[^\w-]/g, "").slice(0, 40);
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
     const on = !!req.body.on, user = String(req.body.user || "").slice(0, 80);
-    const out = await _aseoMutate(_ASEO_TEMP_OBJ, "temprana", d => { if (on) d[id] = { on: true, by: user, at: new Date().toISOString() }; else delete d[id]; return d[id] || null; });
+    // aceptada: true/false = el admin aceptó (o retiró la aceptación de) la solicitud del huésped.
+    const acep = req.body.aceptada;
+    const out = await _aseoMutate(_ASEO_TEMP_OBJ, "temprana", d => {
+      if (!on) { delete d[id]; return null; }
+      const cur = d[id] || { on: true, by: user, at: new Date().toISOString() };
+      cur.on = true;
+      if (acep === true) Object.assign(cur, { aceptada: true, aceptadaPor: user, aceptadaAt: new Date().toISOString() });
+      else if (acep === false) { delete cur.aceptada; delete cur.aceptadaPor; delete cur.aceptadaAt; }
+      d[id] = cur; return cur;
+    });
     _aseo.tempTs = Date.now();
     res.json({ ok: true, temprana: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
