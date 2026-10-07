@@ -64462,7 +64462,7 @@ function aseoEnsureCss_() {
   .mv-chg.ok > select.mv-hora{border-top:1.5px solid rgba(255,255,255,.45) !important;background:rgba(0,0,0,.12);color:#fff}
   select.mv-hora option{color:#0f172a;background:#fff}
   .mv-cols .mv-chg > .mv-temp-chip, .mv-cols .mv-chg > .mv-tg, .mv-cols .mv-chg > select.mv-hora{font-size:9.5px !important}
-  .mv-ac .mv-ac-chips > .mv-chg, .mv-ac .mv-acts > .mv-chg, .mv-cols .mv-ac .mv-ac-chips > .mv-chg, .mv-cols .mv-ac .mv-acts > .mv-chg{height:auto !important;padding:0 !important;font-size:inherit !important;line-height:normal !important}
+  .mv-ac .mv-ac-chips > .mv-chg, .mv-ac .mv-acts > .mv-chg, .mv-cols .mv-ac .mv-ac-chips > .mv-chg, .mv-cols .mv-ac .mv-acts > .mv-chg{height:auto !important;padding:0 !important;font-size:inherit !important;line-height:normal !important;border-radius:7px !important}
   .mv-prio{font-size:10.5px;font-weight:900;letter-spacing:.04em;padding:2px 9px;border-radius:999px;background:#7f1d1d;color:#fff;--ac:#dc2626;animation:mvPulse 1.6s ease-in-out infinite;white-space:nowrap}
   .mv-ac.prio{border-left-color:#7f1d1d;box-shadow:0 0 0 2px rgba(127,29,29,.25),0 8px 22px -10px rgba(127,29,29,.5)}
   .mv-temp-chip.ok{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:1.5px solid transparent;--ac:#22c55e}
