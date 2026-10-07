@@ -8968,6 +8968,7 @@ async function _aseoResumenHoy() {
   if (!_aseo.rows || Date.now() - _aseo.ts > 20_000) await _aseoLiveLoad();
   if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
   if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
+  if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
   const hoy = _mxHoy();
   const bk = new Map();
   ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && b.Id) bk.set(String(b.Id), { id: String(b.Id), st: String(b.Status || ""), arr: _lgIso(b.DateArrival), dep: _lgIso(b.DateDeparture), hid: String(b.HouseId || ""), guest: b.GuestName || "" }); });
@@ -9004,16 +9005,18 @@ async function _aseoResumenHoy() {
     if (c.sal && c.ent && sel === "pendiente" && horaMx >= 14) aviso = "🚨 Urge validación";
     else if (!c.sal && c.ent && !(pub && /^(terminado|inspeccionado)$/.test(pub.estado))) aviso = "⚠️ Requiere validación";
     return { code: a ? a.code.toUpperCase() : "", nombre: a ? a.nombre : `Alojamiento ${c.hid}`, entra: !!c.ent, sale: !!c.sal, estado, sel, aviso, aseo: aseoP, insp: inspP,
+      temprana: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).on),
       aseoArr: (as.aseo || as.personal || []).slice(), inspArr: (as.inspeccion || []).slice(),
       salio: c.sal ? c.sal.guest : "", entra_huesped: c.ent ? c.ent.guest : "" };
   });
   const ordenE = { pendiente: 0, en_proceso: 1, terminado: 2, inspeccionado: 3 };
-  items.sort((x, y) => (y.entra - x.entra) || ((ordenE[x.sel] ?? 0) - (ordenE[y.sel] ?? 0)) || String(x.code || x.nombre).localeCompare(String(y.code || y.nombre), "es", { numeric: true }));
+  items.sort((x, y) => (y.entra - x.entra) || (y.temprana - x.temprana) || ((ordenE[x.sel] ?? 0) - (ordenE[y.sel] ?? 0)) || String(x.code || x.nombre).localeCompare(String(y.code || y.nombre), "es", { numeric: true }));
   const fecha = new Date(hoy + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
   // Marca de prioridad "✱" (un "* " al inicio de renglón WhatsApp lo convierte en viñeta).
   const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (✱)`, ""];
   items.forEach((i, n) => {
     lineas.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
+    if (i.temprana) lineas.push(`   ⏰ *ENTRADA TEMPRANA* — prioridad`);
     lineas.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     lineas.push(`   🧹 Aseo: ${i.aseo || "—"} · 🔍 Inspección: ${i.insp || "—"}`);
   });
@@ -9040,6 +9043,7 @@ async function _aseoListaEmpleado(nombre, opts) {
   const l = [`🧽 *${pila}, tus limpiezas de hoy* (${mias.length})`, mias.some(i => i.entra) ? "✱ = entra huésped hoy (prioridad)" : "", ""];
   mias.forEach((i, n) => {
     l.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
+    if (i.temprana) l.push(`   ⏰ *ENTRADA TEMPRANA* — prioridad`);
     l.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     l.push(`   Tipo de tarea: ${i.roles.join(" e ")}`);
   });
@@ -9060,7 +9064,7 @@ async function _aseoNotifGuardar(nombre, items) {
     d.personas = d.personas || {};
     // Una sola entrada por persona aunque el nombre venga escrito distinto.
     const k = Object.keys(d.personas).find(x => _aseoMismaPersona(x, nombre)) || nombre;
-    d.personas[k] = { items: items.map(i => ({ code: i.code || i.nombre, nombre: i.nombre, roles: i.roles })), at: new Date().toISOString() };
+    d.personas[k] = { items: items.map(i => ({ code: i.code || i.nombre, nombre: i.nombre, roles: i.roles, temprana: !!i.temprana })), at: new Date().toISOString() };
   });
 }
 // Envía la lista del día a un empleado y registra lo enviado.
@@ -9097,11 +9101,14 @@ async function _aseoCambiosAsignacion() {
     const kPrev = Object.keys(notif.personas || {}).find(x => _aseoMismaPersona(x, nombre));
     const antes = kPrev ? notif.personas[kPrev].items || [] : [];
     const sA = new Set(antes.map(_aseoSig)), sN = new Set(ahora.map(_aseoSig));
-    const agregados = ahora.filter(i => !sA.has(_aseoSig(i))).map(i => `${i.code || i.nombre} (${i.roles.join(" e ")})`);
+    const agregados = ahora.filter(i => !sA.has(_aseoSig(i))).map(i => `${i.code || i.nombre} (${i.roles.join(" e ")})${i.temprana ? " ⏰" : ""}`);
     const quitados = antes.filter(i => !sN.has(_aseoSig(i))).map(i => `${i.code || i.nombre} (${(i.roles || []).join(" e ")})`);
-    if (!agregados.length && !quitados.length) continue;
+    // Cambio de prioridad: se marcó/desmarcó "Entrada temprana" en algo que ya tenía asignado.
+    const temprana = ahora.filter(i => { const p = antes.find(a => _aseoSig(a) === _aseoSig(i)); return p && !!p.temprana !== !!i.temprana; })
+      .map(i => `${i.code || i.nombre}${i.temprana ? " ahora con ⏰ entrada temprana" : " ya sin entrada temprana"}`);
+    if (!agregados.length && !quitados.length && !temprana.length) continue;
     const t = tels.find(x => _aseoMismaPersona(x.nombre, nombre));
-    out.push({ persona: nombre, tel: t ? t.tel : "", primerEnvio: !kPrev, agregados, quitados, total: ahora.length });
+    out.push({ persona: nombre, tel: t ? t.tel : "", primerEnvio: !kPrev, agregados, quitados, temprana, total: ahora.length });
   }
   return { resumen: r, cambios: out.sort((a, b) => a.persona.localeCompare(b.persona, "es")) };
 }
@@ -9171,7 +9178,8 @@ app.post("/aseo/notificar", async (req, res) => {
       const mias = _aseoMiasDe(resumen, c.persona);
       const cab = [`🔄 *Actualización de tus limpiezas de hoy*`,
         ...(c.agregados.length ? [`➕ Se agregó: ${c.agregados.join(", ")}`] : []),
-        ...(c.quitados.length ? [`➖ Ya no te toca: ${c.quitados.join(", ")}`] : [])].join("\n");
+        ...(c.quitados.length ? [`➖ Ya no te toca: ${c.quitados.join(", ")}`] : []),
+        ...(c.temprana.length ? [`⏰ Prioridad: ${c.temprana.join(", ")}`] : [])].join("\n");
       const cuerpo = mias.length ? await _aseoListaEmpleado(c.persona, { resumen }) : `🧽 ${c.persona.split(" ")[0]}, ya no tienes limpiezas ni inspecciones asignadas hoy.`;
       const txt = `${cab}\n\n${cuerpo}`;
       try {
