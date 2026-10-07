@@ -8954,8 +8954,12 @@ app.get("/aseo/estado-aloj", async (req, res) => {
     const pub = _aseoPub(reg); // solo lo VALIDADO se muestra en la guía
     const est = pub ? pub.estado : "pendiente";
     let modo = "";
-    // Pendiente: si alguien sale hoy → "se desocupa hoy"; si solo hay entrada → "espera" (te avisaremos).
-    if (salHoy || entHoy) modo = est !== "pendiente" ? "aseo" : (salHoy ? "desocupa" : "espera");
+    // · Sale hoy: estado de aseo; si sigue pendiente → "se desocupa hoy", salvo que también
+    //   entre alguien hoy y ya sean las 2:00 p.m. (entonces nada; las cards avisan "urge validación").
+    // · Solo entra hoy: nada hasta que se valide "terminado" o "inspeccionado".
+    const horaMx = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
+    if (salHoy) modo = est !== "pendiente" ? "aseo" : (entHoy && horaMx >= 14 ? "" : "desocupa");
+    else if (entHoy) modo = (est === "terminado" || est === "inspeccionado") ? "aseo" : "";
     else if (ocupado) modo = "ocupado";
     const estado = modo === "aseo" ? est : "";
     res.json({ ok: true, hid, modo, estado, label: estado ? _ASEO_ETQ[estado] : "", listo: estado === "terminado" || estado === "inspeccionado",
