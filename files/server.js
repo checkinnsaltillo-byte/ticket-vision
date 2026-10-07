@@ -1252,6 +1252,7 @@ REGLAS:
     Si hay no_encontrados o ambiguos, dilo en una línea.
   · Igual que en tareas: SOLO cuando el admin confirme en un mensaje POSTERIOR llama confirmar_recordatorio_pizarra (directo, sin volver a preparar). Si responde que no hay borrador, llama preparar_recordatorio_pizarra con los datos del resumen y luego confirmar_recordatorio_pizarra en ese mismo turno. Si pide cambios, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
   · Tras confirmar: "✅ Recordatorio guardado (folio X); aparece en Pendientes del día." (1 línea).
+- LIMPIEZAS DE HOY — "resumen de limpieza", "limpiezas de hoy", "lista de limpiezas", "limpiezas hoy", "¿cómo va el aseo?": llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL.
 - ESTADO DE ASEO — "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando":
   · Llama preparar_estado_aseo con los alojamientos TAL CUAL (el backend los reconoce aunque vengan abreviados o mal escritos), el estado (listo/terminado = terminado · inspeccionado/revisado = inspeccionado · empezando/limpiando = en_proceso), validado=true solo si lo dice explícitamente, y persona si nombra a alguien.
   · Envía el campo resumen TAL CUAL. SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
@@ -1282,6 +1283,11 @@ const BOT_TOOLS = [
       },
       required: ["alojamientos", "estado"],
     },
+  },
+  {
+    name: "consultar_limpiezas_hoy",
+    description: "ADMIN o PERSONAL. Lista de limpiezas de HOY (las mismas cards de Control de aseo): cada alojamiento con su estado de aseo y quién hizo aseo e inspección; primero los que tienen entrada hoy (marcados con *). Usar ante 'resumen de limpieza', 'limpiezas de hoy', 'lista de limpiezas', 'limpiezas hoy', '¿cómo va el aseo?' o similares.",
+    input_schema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "confirmar_estado_aseo",
@@ -1565,7 +1571,7 @@ function _botTarDelDia(rows, ocur, iso, hoy) {
 }
 const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
 const _ASEO_EST_TXT = { en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado" };
@@ -2220,6 +2226,11 @@ async function _botExecTool(toolUse, ctx) {
       if (args.incluir_resueltos && cerrados.length) partes.push("", "✅ *Resueltos / cancelados*", ...cerrados.sort(sortP).map(x => `${x.estado === "Cancelado" ? "✖️" : "✅"} ${x.rec ? "📌" : "📋"} ${x.r.Nombre}`));
       partes.push("", "🔴 Crítico · 🟠 Alto · 🟡 Medio · 🔵 Bajo · 📌 Recordatorio · 📋 Tarea · ⏳ Fecha límite");
       return { content: JSON.stringify({ ok: true, fecha, total: items.length, abiertos: abiertos.length, formatted_message: partes.join("\n") }), notifyText: null };
+    }
+    if (name === "consultar_limpiezas_hoy") {
+      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      const r = await _aseoResumenHoy();
+      return { content: JSON.stringify({ ok: true, total: r.total, formatted_message: r.formatted_message, instruccion: "Responde con formatted_message TAL CUAL, sin resumirlo ni reordenarlo." }), notifyText: null };
     }
     if (name === "preparar_estado_aseo") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
@@ -3236,7 +3247,8 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
           } catch (_) {}
           const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
           const sys = `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
-Tu ÚNICA función en este chat es registrar el ESTADO DE ASEO de los alojamientos.
+Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos y dar la lista de limpiezas de hoy.
+- "resumen de limpieza", "limpiezas de hoy", "lista de limpiezas", "limpiezas hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL.
 - Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
   · Llama preparar_estado_aseo con: alojamientos TAL CUAL los escribió (el sistema los reconoce aunque estén abreviados o con errores), estado (listo/lista/terminado/terminé/acabé = terminado · inspeccionado/revisado/checado = inspeccionado · empezando/limpiando/en proceso = en_proceso), validado=true SOLO si dice validado/publicado, y persona SOLO si nombra a alguien distinto de quien escribe (ej. "Alma").
   · Envía el campo resumen TAL CUAL y espera respuesta.
@@ -3244,9 +3256,9 @@ Tu ÚNICA función en este chat es registrar el ESTADO DE ASEO de los alojamient
   · Si corrige algo ("no, es cu3", "fue Brenda", "nada más terminado"), vuelve a llamar preparar_estado_aseo con TODO corregido y muestra el nuevo resumen.
   · Si dice "no" / "cancela", responde "Cancelado." y no guardes.
 - Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
-- Si el mensaje no es sobre aseo, responde en 1 línea que por este medio solo registras estados de aseo (ej. "cu2 listo").
+- Si el mensaje no es sobre aseo, responde en 1 línea que por este medio solo registras estados de aseo (ej. "cu2 listo") o das la lista de limpiezas de hoy.
 - Sé breve, sin cortesías ni emojis extra.`;
-          const ASEO_TOOLS = BOT_TOOLS.filter(t => t.name === "preparar_estado_aseo" || t.name === "confirmar_estado_aseo");
+          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy"].includes(t.name));
           const llm = await _botLlmLoop({
             system: sys, history: hist, userMsg: bodyMsg,
             ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: nombre, msgTs: t0, userMsg: bodyMsg,
@@ -8912,6 +8924,65 @@ function _aseoMatchAloj(q, cat) {
   if (cands.length > 1) return { ok: false, ambiguo: cands.map(c => `${c.nombre} (${c.code.toUpperCase()})`), error: `"${q}" puede ser: ${cands.map(c => c.nombre).join(" o ")}` };
   return { ok: true, aloj: cands[0], seguro: best <= 0.2 };
 }
+// ── Resumen de limpiezas de HOY (mismas cards que Control de aseo › Por alojamiento):
+// salidas de hoy, entradas sin salida y alojamientos con estado actualizado hoy. Solo Booked.
+async function _aseoResumenHoy() {
+  if (!_aseo.rows || Date.now() - _aseo.ts > 20_000) await _aseoLiveLoad();
+  if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
+  if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
+  const hoy = _mxHoy();
+  const bk = new Map();
+  ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && b.Id) bk.set(String(b.Id), { id: String(b.Id), st: String(b.Status || ""), arr: _lgIso(b.DateArrival), dep: _lgIso(b.DateDeparture), hid: String(b.HouseId || ""), guest: b.GuestName || "" }); });
+  (_aseo.rows || []).forEach(x => { const o = bk.get(String(x.Id)) || {}; bk.set(String(x.Id), { id: String(x.Id), st: x.Status, arr: x.DateArrival, dep: x.DateDeparture, hid: String(x.HouseId || ""), guest: x.GuestName || o.guest || "" }); });
+  const booked = [...bk.values()].filter(b => /^booked$/i.test(b.st) && b.hid);
+  const cat = await _aseoCatalogo();
+  const porHid = new Map(cat.map(c => [c.hid, c]));
+  const casas = new Map(); // hid → { sal, ent, estId }
+  const casa = hid => { if (!casas.has(hid)) casas.set(hid, { hid, sal: null, ent: null, estId: "" }); return casas.get(hid); };
+  booked.filter(b => b.dep === hoy).forEach(b => { const c = casa(b.hid); c.sal = b; c.estId = b.id; });
+  booked.filter(b => b.arr === hoy).forEach(b => { const c = casa(b.hid); if (!c.ent) c.ent = b; });
+  const turnover = hid => { let u = null; booked.forEach(b => { if (b.hid === hid && b.dep && b.dep <= hoy && (!u || b.dep > u.dep)) u = b; }); return u ? u.id : "H" + hid; };
+  casas.forEach(c => { if (!c.estId) c.estId = turnover(c.hid); });
+  // Estado actualizado hoy sin salida/entrada hoy
+  Object.entries(_aseo.estados || {}).forEach(([id, r]) => {
+    if (!r || !r.hid || !r.at) return;
+    if (new Date(r.at).toLocaleDateString("en-CA", { timeZone: "America/Monterrey" }) !== hoy || casas.has(String(r.hid))) return;
+    const c = casa(String(r.hid)); c.estId = id;
+  });
+  const horaMx = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
+  const limpia = n => String(n || "").replace(/\s*\(WhatsApp\)\s*$/, "").trim();
+  const items = [...casas.values()].map(c => {
+    const a = porHid.get(c.hid);
+    const r = (_aseo.estados || {})[c.estId] || null;
+    const pub = _aseoPub(r);
+    const sel = r ? r.estado : "pendiente";
+    const as = (_aseo.asig || {})[c.estId] || {};
+    const aseoP = (as.aseo || as.personal || []).join(", ") || limpia(r && r.hist && (r.hist.terminado || r.hist.en_proceso) && (r.hist.terminado || r.hist.en_proceso).by);
+    const inspP = (as.inspeccion || []).join(", ") || limpia(r && r.hist && r.hist.inspeccionado && r.hist.inspeccionado.by);
+    let estado = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "🧹 Terminado", inspeccionado: "✅ Inspeccionado" }[sel] || sel;
+    if (sel === "terminado") estado += pub && pub.estado === "terminado" ? " (validado)" : " (sin validar)";
+    let aviso = "";
+    if (c.sal && c.ent && sel === "pendiente" && horaMx >= 14) aviso = "🚨 Urge validación";
+    else if (!c.sal && c.ent && !(pub && /^(terminado|inspeccionado)$/.test(pub.estado))) aviso = "⚠️ Requiere validación";
+    return { code: a ? a.code.toUpperCase() : "", nombre: a ? a.nombre : `Alojamiento ${c.hid}`, entra: !!c.ent, sale: !!c.sal, estado, sel, aviso, aseo: aseoP, insp: inspP,
+      salio: c.sal ? c.sal.guest : "", entra_huesped: c.ent ? c.ent.guest : "" };
+  });
+  const ordenE = { pendiente: 0, en_proceso: 1, terminado: 2, inspeccionado: 3 };
+  items.sort((x, y) => (y.entra - x.entra) || ((ordenE[x.sel] ?? 0) - (ordenE[y.sel] ?? 0)) || String(x.code || x.nombre).localeCompare(String(y.code || y.nombre), "es", { numeric: true }));
+  const fecha = new Date(hoy + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
+  const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (*)`, ""];
+  items.forEach((i, n) => {
+    lineas.push(`${i.entra ? "* " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
+    lineas.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
+    lineas.push(`   🧹 Aseo: ${i.aseo || "—"} · 🔍 Inspección: ${i.insp || "—"}`);
+  });
+  if (!items.length) lineas.push("No hay salidas ni entradas hoy.");
+  return { fecha: hoy, total: items.length, items, formatted_message: lineas.join("\n") };
+}
+app.get("/aseo/resumen-hoy", async (req, res) => {
+  try { res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, await _aseoResumenHoy())); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/aseo/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
