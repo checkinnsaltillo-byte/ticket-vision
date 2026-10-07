@@ -8698,12 +8698,24 @@ app.get("/aseo/estado-aloj", async (req, res) => {
     const m = new Map();
     ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && String(b.HouseId) === hid) m.set(String(b.Id), { Status: String(b.Status || ""), dep: _lgIso(b.DateDeparture), arr: _lgIso(b.DateArrival) }); });
     (_aseo.rows || []).forEach(x => { if (String(x.HouseId) === hid) m.set(String(x.Id), { Status: x.Status, dep: x.DateDeparture, arr: x.DateArrival }); });
-    let ult = null;
-    m.forEach((v, id) => { if (_aseoViva(v.Status) && v.dep && v.dep <= hoy && (!ult || v.dep > ult.dep)) ult = { id, ...v }; });
+    // Situación del alojamiento HOY (hora de Monterrey):
+    //  · salida y/o entrada hoy → estado de aseo; si sigue pendiente y hay salida → "se desocupa hoy"
+    //  · huésped hospedado (ni entra ni sale hoy) → "ocupado"
+    //  · vacío → nada
+    const vivas = [...m.entries()].filter(([, v]) => _aseoViva(v.Status) && v.arr && v.dep).map(([id, v]) => ({ id, ...v }));
+    const salHoy = vivas.find(v => v.dep === hoy) || null;
+    const entHoy = vivas.find(v => v.arr === hoy) || null;
+    const ocupado = vivas.find(v => v.arr < hoy && v.dep > hoy) || null;
+    let ult = salHoy;
+    if (!ult) vivas.forEach(v => { if (v.dep < hoy && (!ult || v.dep > ult.dep)) ult = v; });
     const reg = ult ? (_aseo.estados || {})[ult.id] : null;
-    let estado = reg ? reg.estado : (ult && ult.dep === hoy ? "pendiente" : "");
-    res.json({ ok: true, hid, estado, label: estado ? _ASEO_ETQ[estado] : "", listo: estado === "inspeccionado",
-      at: reg ? reg.at : "", salida: ult ? ult.dep : "", hist: reg ? reg.hist : {}, ts: _aseo.okTs, now: Date.now() });
+    const est = reg ? reg.estado : "pendiente";
+    let modo = "";
+    if (salHoy || entHoy) modo = est !== "pendiente" ? "aseo" : (salHoy ? "desocupa" : "");
+    else if (ocupado) modo = "ocupado";
+    const estado = modo === "aseo" ? est : "";
+    res.json({ ok: true, hid, modo, estado, label: estado ? _ASEO_ETQ[estado] : "", listo: estado === "terminado" || estado === "inspeccionado",
+      at: modo === "aseo" && reg ? reg.at : "", salida: ult ? ult.dep : "", entradaHoy: !!entHoy, salidaHoy: !!salHoy, hist: reg ? reg.hist : {}, ts: _aseo.okTs, now: Date.now() });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
