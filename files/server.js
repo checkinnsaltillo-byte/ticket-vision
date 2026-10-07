@@ -1252,7 +1252,7 @@ REGLAS:
     Si hay no_encontrados o ambiguos, dilo en una línea.
   · Igual que en tareas: SOLO cuando el admin confirme en un mensaje POSTERIOR llama confirmar_recordatorio_pizarra (directo, sin volver a preparar). Si responde que no hay borrador, llama preparar_recordatorio_pizarra con los datos del resumen y luego confirmar_recordatorio_pizarra en ese mismo turno. Si pide cambios, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
   · Tras confirmar: "✅ Recordatorio guardado (folio X); aparece en Pendientes del día." (1 línea).
-- LIMPIEZAS DE HOY — "resumen de limpieza", "limpiezas de hoy", "lista de limpiezas", "limpiezas hoy", "¿cómo va el aseo?": llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL.
+- LIMPIEZAS DE HOY — "resumen de limpieza", "limpiezas de hoy", "lista de limpiezas", "limpiezas hoy", "¿cómo va el aseo?": llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
 - ESTADO DE ASEO — "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando":
   · Llama preparar_estado_aseo con los alojamientos TAL CUAL (el backend los reconoce aunque vengan abreviados o mal escritos), el estado (listo/terminado = terminado · inspeccionado/revisado = inspeccionado · empezando/limpiando = en_proceso), validado=true solo si lo dice explícitamente, y persona si nombra a alguien.
   · Envía el campo resumen TAL CUAL. SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
@@ -1286,8 +1286,11 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_limpiezas_hoy",
-    description: "ADMIN o PERSONAL. Lista de limpiezas de HOY (las mismas cards de Control de aseo): cada alojamiento con su estado de aseo y quién hizo aseo e inspección; primero los que tienen entrada hoy (marcados con *). Usar ante 'resumen de limpieza', 'limpiezas de hoy', 'lista de limpiezas', 'limpiezas hoy', '¿cómo va el aseo?' o similares.",
-    input_schema: { type: "object", properties: {}, required: [] },
+    description: "ADMIN o PERSONAL. Lista de limpiezas de HOY (las mismas cards de Control de aseo): cada alojamiento con su estado de aseo y quién hizo aseo e inspección; primero los que tienen entrada hoy. Usar ante 'resumen de limpieza', 'limpiezas de hoy', 'lista de limpiezas', 'limpiezas hoy', '¿cómo va el aseo?' o similares. Con solo_mias=true ('mis limpiezas', 'qué me toca', 'mis aseos') filtra a lo asignado a quien escribe (según su número de WhatsApp); con persona ('limpiezas de Alma') filtra a esa persona.",
+    input_schema: { type: "object", properties: {
+      solo_mias: { type: "boolean", description: "true si pide SUS limpiezas ('mis limpiezas', 'qué me toca', 'mis inspecciones')." },
+      persona: { type: "string", description: "Opcional. Nombre (aunque sea corto) para ver solo lo asignado a esa persona." },
+    }, required: [] },
   },
   {
     name: "confirmar_estado_aseo",
@@ -2229,8 +2232,21 @@ async function _botExecTool(toolUse, ctx) {
     }
     if (name === "consultar_limpiezas_hoy") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      let quien = "";
+      if (args.persona) {
+        const rp = _botResolverPersonal([String(args.persona)], await _botPersonalActivo().catch(() => []));
+        if (!rp.ok.length) return { content: JSON.stringify({ ok: false, error: (rp.amb && Object.keys(rp.amb).length) ? `"${args.persona}" puede ser: ${Object.values(rp.amb)[0].join(", ")}` : `No encontré a "${args.persona}" en Personal` }), notifyText: null };
+        quien = rp.ok[0];
+      } else if (args.solo_mias) {
+        quien = ctx.staffNombre || ctx.adminNombre || "";
+        if (!quien) return { content: JSON.stringify({ ok: false, error: "No identifiqué a quién pertenece este número de WhatsApp en Personal." }), notifyText: null };
+      }
+      if (quien) {
+        const txt = await _aseoListaEmpleado(quien, { consulta: true });
+        return { content: JSON.stringify({ ok: true, persona: quien, formatted_message: txt || `🧽 ${quien.split(" ")[0]}, no ${args.persona ? "tiene" : "tienes"} limpiezas ni inspecciones asignadas hoy.`, instruccion: "Responde con formatted_message TAL CUAL, sin agregar explicaciones." }), notifyText: null };
+      }
       const r = await _aseoResumenHoy();
-      return { content: JSON.stringify({ ok: true, total: r.total, formatted_message: r.formatted_message, instruccion: "Responde con formatted_message TAL CUAL, sin resumirlo ni reordenarlo." }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, total: r.total, formatted_message: r.formatted_message, instruccion: "Responde con formatted_message TAL CUAL, sin resumirlo ni reordenarlo ni agregar explicaciones." }), notifyText: null };
     }
     if (name === "preparar_estado_aseo") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
@@ -3261,7 +3277,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
           const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
           const sys = `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
 Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos y dar la lista de limpiezas de hoy.
-- "resumen de limpieza", "limpiezas de hoy", "lista de limpiezas", "limpiezas hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL.
+- "resumen de limpieza", "limpiezas de hoy", "lista de limpiezas", "limpiezas hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
 - Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
   · Llama preparar_estado_aseo con: alojamientos TAL CUAL los escribió (el sistema los reconoce aunque estén abreviados o con errores), estado (listo/lista/terminado/terminé/acabé = terminado · inspeccionado/revisado/checado = inspeccionado · empezando/limpiando/en proceso = en_proceso), validado=true SOLO si dice validado/publicado, y persona SOLO si nombra a alguien distinto de quien escribe (ej. "Alma").
   · Envía el campo resumen TAL CUAL y espera respuesta.
@@ -8993,9 +9009,10 @@ async function _aseoResumenHoy() {
   const ordenE = { pendiente: 0, en_proceso: 1, terminado: 2, inspeccionado: 3 };
   items.sort((x, y) => (y.entra - x.entra) || ((ordenE[x.sel] ?? 0) - (ordenE[y.sel] ?? 0)) || String(x.code || x.nombre).localeCompare(String(y.code || y.nombre), "es", { numeric: true }));
   const fecha = new Date(hoy + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
-  const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (*)`, ""];
+  // Marca de prioridad "✱" (un "* " al inicio de renglón WhatsApp lo convierte en viñeta).
+  const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (✱)`, ""];
   items.forEach((i, n) => {
-    lineas.push(`${i.entra ? "* " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
+    lineas.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
     lineas.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     lineas.push(`   🧹 Aseo: ${i.aseo || "—"} · 🔍 Inspección: ${i.insp || "—"}`);
   });
@@ -9010,15 +9027,15 @@ function _aseoMismaPersona(a, b) {
   return cortos.every(t => largos.includes(t));
 }
 // Lista de limpiezas/inspecciones de HOY asignadas a un empleado (null si no tiene).
-async function _aseoListaEmpleado(nombre) {
+async function _aseoListaEmpleado(nombre, opts) {
   const r = await _aseoResumenHoy();
   const mias = r.items.map(i => ({ ...i, roles: [i.aseoArr.some(n => _aseoMismaPersona(n, nombre)) ? "Aseo" : "", i.inspArr.some(n => _aseoMismaPersona(n, nombre)) ? "Inspección" : ""].filter(Boolean) }))
     .filter(i => i.roles.length);
   if (!mias.length) return null;
   const pila = String(nombre || "").split(" ")[0];
-  const l = [`🧽 *${pila}, tus limpiezas de hoy* (${mias.length})`, mias.some(i => i.entra) ? "* = entra huésped hoy (prioridad)" : "", ""];
+  const l = [`🧽 *${pila}, tus limpiezas de hoy* (${mias.length})`, mias.some(i => i.entra) ? "✱ = entra huésped hoy (prioridad)" : "", ""];
   mias.forEach((i, n) => {
-    l.push(`${i.entra ? "* " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
+    l.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
     l.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     l.push(`   Te toca: ${i.roles.join(" e ")}`);
   });
