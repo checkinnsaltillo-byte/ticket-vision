@@ -1256,6 +1256,9 @@ REGLAS:
 - ESTADO DE ASEO — "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando":
   · Llama preparar_estado_aseo con los alojamientos TAL CUAL (el backend los reconoce aunque vengan abreviados o mal escritos), el estado (listo/terminado = terminado · inspeccionado/revisado = inspeccionado · empezando/limpiando = en_proceso), validado=true solo si lo dice explícitamente, y persona si nombra a alguien.
   · Envía el campo resumen TAL CUAL. SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
+- SOLICITUD DE ENTRADA TEMPRANA / SALIDA TARDÍA — "cu2 entrada temprana 10am", "ox6 salida tardía 1pm aceptada", "acepta la entrada de jc3", "quita la salida de bc5":
+  · Llama preparar_solicitud_aseo (alojamientos TAL CUAL, tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla). Envía el campo resumen TAL CUAL.
+  · SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
 - Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
 `;
@@ -1291,6 +1294,26 @@ const BOT_TOOLS = [
       solo_mias: { type: "boolean", description: "true si pide SUS limpiezas ('mis limpiezas', 'qué me toca', 'mis inspecciones')." },
       persona: { type: "string", description: "Opcional. Nombre (aunque sea corto) para ver solo lo asignado a esa persona." },
     }, required: [] },
+  },
+  {
+    name: "preparar_solicitud_aseo",
+    description: "ADMIN o PERSONAL. Prepara (NO guarda) una SOLICITUD de ENTRADA temprana o SALIDA tardía para uno o varios alojamientos, con su hora y si ya está aceptada (ej. 'cu2 entrada temprana 10am', 'ox6 salida tardía a la 1 aceptada', 'acepta la entrada de jc3', 'quita la salida tardía de bc5', 'cambia la hora de entrada de cu6 a 11:30'). Entrada = la reserva que llega (hoy o la próxima); salida = la reserva que sale (hoy o la estancia en curso). Devuelve resumen para confirmar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        alojamientos: { type: "array", items: { type: "string" }, description: "Alojamientos TAL CUAL los escribió (ej. ['cu2'])." },
+        tipo: { type: "string", enum: ["entrada", "salida"], description: "entrada = entrada temprana (llegar antes) · salida = salida tardía (salir después)." },
+        hora: { type: "string", description: "Opcional. Hora en 24 h HH:MM (10am → 10:00, 1 pm → 13:00, 11:30 → 11:30). Omitir si no la dice." },
+        aceptada: { type: "boolean", description: "Opcional. true si dice aceptada/aceptar/autorizada/aprobada; false si pide quitar la aceptación (dejarla como solicitud). Omitir si no lo dice." },
+        quitar: { type: "boolean", description: "true si pide QUITAR/cancelar/eliminar la solicitud." },
+      },
+      required: ["alojamientos", "tipo"],
+    },
+  },
+  {
+    name: "confirmar_solicitud_aseo",
+    description: "ADMIN o PERSONAL. Guarda la solicitud de entrada/salida preparada con preparar_solicitud_aseo. Llamar ÚNICAMENTE después de que el usuario confirmó ('sí') en un mensaje posterior al resumen.",
+    input_schema: { type: "object", properties: { draft_id: { type: "string" } }, required: [] },
   },
   {
     name: "confirmar_estado_aseo",
@@ -1574,7 +1597,7 @@ function _botTarDelDia(rows, ocur, iso, hoy) {
 }
 const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
 const _ASEO_EST_TXT = { en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado" };
@@ -2297,9 +2320,70 @@ async function _botExecTool(toolUse, ctx) {
         "¿Confirmas? (sí / no / corrige lo que haga falta)"].join("\n");
       return { content: JSON.stringify({ ok: true, draft_id: id, resumen, instruccion: "Envía el campo resumen TAL CUAL y espera la respuesta. NO llames confirmar_estado_aseo hasta que conteste 'sí' en un mensaje nuevo. Si corrige algo (otro alojamiento, estado o persona), vuelve a llamar preparar_estado_aseo con todo corregido." }), notifyText: null };
     }
+    if (name === "preparar_solicitud_aseo") {
+      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      const tipo = args.tipo === "salida" ? "salida" : args.tipo === "entrada" ? "entrada" : "";
+      if (!tipo) return { content: JSON.stringify({ ok: false, error: "¿Es solicitud de entrada temprana o de salida tardía?" }), notifyText: null };
+      let hora = String(args.hora || "").trim();
+      const mh = hora.match(/^(\d{1,2})(?::(\d{2}))?$/);
+      hora = mh && +mh[1] < 24 && (!mh[2] || +mh[2] < 60) ? `${mh[1].padStart(2, "0")}:${mh[2] || "00"}` : "";
+      const qs = (Array.isArray(args.alojamientos) ? args.alojamientos : [args.alojamientos]).map(x => String(x || "").trim()).filter(Boolean).slice(0, 10);
+      if (!qs.length) return { content: JSON.stringify({ ok: false, error: "Falta el alojamiento" }), notifyText: null };
+      const cat = await _aseoCatalogo();
+      const items = [], errores = [];
+      for (const q of qs) {
+        const m = _aseoMatchAloj(q, cat);
+        if (!m.ok) { errores.push(m.error); continue; }
+        if (!m.aloj.hid) { errores.push(`${m.aloj.nombre}: no tiene número de Lodgify en el catálogo`); continue; }
+        const b = await _aseoReservaSolicitud(m.aloj.hid, tipo);
+        if (!b) { errores.push(`${m.aloj.code.toUpperCase()}: no encontré una reserva que ${tipo === "entrada" ? "llegue hoy o próximamente" : "salga hoy o esté en curso"}`); continue; }
+        const prev = await _aseoSolicitudDe(tipo, b.id);
+        items.push({ hid: m.aloj.hid, nombre: m.aloj.nombre, code: m.aloj.code.toUpperCase(), booking: b.id, huesped: b.guest || "", fecha: tipo === "entrada" ? b.arr : b.dep, prev });
+      }
+      if (!items.length) return { content: JSON.stringify({ ok: false, errores, instruccion: "Explica el problema en 1-2 líneas y pide el alojamiento correcto (ej. CU2, JC1, OX3)." }), notifyText: null };
+      const quitar = !!args.quitar;
+      const aceptada = typeof args.aceptada === "boolean" ? args.aceptada : undefined;
+      const id = "SA" + Date.now().toString(36);
+      const persona = ctx.staffNombre || ctx.adminNombre || ctx.phone10;
+      const yaConfirmo = _botEsSiAResumen(ctx, /solicitud/i);
+      const draft = { kind: "sol", id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, tipo, hora, aceptada, quitar, persona, items };
+      _botAseoDrafts.set(ctx.phone10, draft);
+      if (yaConfirmo) {
+        const rc = await _botExecTool({ name: "confirmar_solicitud_aseo", input: { draft_id: id } }, ctx);
+        let jr = {}; try { jr = JSON.parse(rc.content || "{}"); } catch (_) {}
+        return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "GUARDADO. Responde en 1-2 líneas con lo guardado. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
+      }
+      const T = tipo === "entrada" ? "Entrada temprana" : "Salida tardía";
+      const fmtD = iso => iso ? new Date(iso + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : "";
+      const lin = x => {
+        if (quitar) return `• ${x.nombre} (${x.code}) · ${x.huesped}${x.prev ? "" : " — no tenía solicitud"}`;
+        const h = hora || (x.prev && x.prev.hora) || (tipo === "entrada" ? "12:00" : "11:00");
+        const ac = aceptada !== undefined ? aceptada : !!(x.prev && x.prev.aceptada);
+        return `• ${x.nombre} (${x.code}) · ${x.huesped} (${tipo === "entrada" ? "llega" : "sale"} ${fmtD(x.fecha)}) · 🕚 ${_aseoHora12(h)} · ${ac ? "✓ Aceptada" : "⏳ Pendiente de aceptar"}`;
+      };
+      const resumen = [`${tipo === "entrada" ? "⏰" : "🕚"} Solicitud de ${T.toLowerCase()} (por confirmar)${quitar ? " — QUITAR" : ""}`, ...items.map(lin),
+        ...(errores.length ? [`⚠️ ${errores.join(" · ")}`] : []), "¿Confirmas? (sí / no / corrige lo que haga falta)"].join("\n");
+      return { content: JSON.stringify({ ok: true, draft_id: id, resumen, instruccion: "Envía el campo resumen TAL CUAL y espera la respuesta. NO llames confirmar_solicitud_aseo hasta que conteste 'sí' en un mensaje nuevo. Si corrige algo, vuelve a llamar preparar_solicitud_aseo con todo corregido." }), notifyText: null };
+    }
+    if (name === "confirmar_solicitud_aseo") {
+      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      const d = _botAseoDrafts.get(ctx.phone10);
+      if (!d || d.kind !== "sol") return { content: JSON.stringify({ ok: false, error: "No hay una solicitud de entrada/salida pendiente. Vuelve a prepararla." }), notifyText: null };
+      if (Date.now() > d.exp) { _botAseoDrafts.delete(ctx.phone10); return { content: JSON.stringify({ ok: false, error: "El borrador venció (30 min). Vuelve a prepararlo." }), notifyText: null }; }
+      if (!(ctx.msgTs > d.msgTs)) return { content: JSON.stringify({ ok: false, error: "Aún no hay confirmación. Muestra el resumen y espera su respuesta." }), notifyText: null };
+      const user = `${d.persona} (WhatsApp)`, hechos = [];
+      for (const x of d.items) {
+        const r = await _aseoSolicitudSet(d.tipo, x.booking, { on: !d.quitar, hora: d.hora, aceptada: d.aceptada, user });
+        hechos.push(d.quitar ? `${x.code} sin solicitud` : `${x.code} ${_aseoHora12(r.hora)} ${r.aceptada ? "✓ aceptada" : "⏳ pendiente"}`);
+      }
+      _botAseoDrafts.delete(ctx.phone10);
+      const T = d.tipo === "entrada" ? "Entrada temprana" : "Salida tardía";
+      return { content: JSON.stringify({ ok: true, guardados: hechos, instruccion: `Responde en 1 línea: ✅ ${T}: ${hechos.join(" · ")}.` }), notifyText: null };
+    }
     if (name === "confirmar_estado_aseo") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
       const d = _botAseoDrafts.get(ctx.phone10);
+      if (d && d.kind === "sol") return { content: JSON.stringify({ ok: false, error: "Lo pendiente es una solicitud de entrada/salida: usa confirmar_solicitud_aseo." }), notifyText: null };
       if (!d) return { content: JSON.stringify({ ok: false, error: "No hay una actualización de aseo pendiente. Vuelve a prepararla." }), notifyText: null };
       if (Date.now() > d.exp) { _botAseoDrafts.delete(ctx.phone10); return { content: JSON.stringify({ ok: false, error: "El borrador venció (30 min). Vuelve a prepararlo." }), notifyText: null }; }
       if (!(ctx.msgTs > d.msgTs)) return { content: JSON.stringify({ ok: false, error: "Aún no hay confirmación. Muestra el resumen y espera su respuesta." }), notifyText: null };
@@ -3257,7 +3341,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // de un empleado (hoja Personal) y el mensaje habla de aseo o hay un borrador
   // pendiente de confirmar (para el "sí / no / corrección").
   {
-    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|validad\w*|aseo)\b/;
+    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|validad\w*|aseo|temprana|tardia|solicitud)\b/;
     const _aseoDraft = _botAseoDrafts.get(phone10);
     const _aseoPend = _aseoDraft && Date.now() < _aseoDraft.exp;
     if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
@@ -3274,7 +3358,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
           } catch (_) {}
           const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
           const sys = `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
-Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos y dar la lista de limpiezas de hoy.
+Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, registrar solicitudes de entrada temprana / salida tardía y dar la lista de limpiezas de hoy.
 - "resumen de limpieza", "limpiezas de hoy", "lista de limpiezas", "limpiezas hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
 - Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
   · Llama preparar_estado_aseo con: alojamientos TAL CUAL los escribió (el sistema los reconoce aunque estén abreviados o con errores), estado (listo/lista/terminado/terminé/acabé = terminado · inspeccionado/revisado/checado = inspeccionado · empezando/limpiando/en proceso = en_proceso), validado=true SOLO si dice validado/publicado, y persona SOLO si nombra a alguien distinto de quien escribe (ej. "Alma").
@@ -3282,10 +3366,11 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos y da
   · SOLO si contesta afirmativamente ("sí", "ok", "correcto", "dale") en un mensaje POSTERIOR, llama confirmar_estado_aseo y responde en 1 línea.
   · Si corrige algo ("no, es cu3", "fue Brenda", "nada más terminado"), vuelve a llamar preparar_estado_aseo con TODO corregido y muestra el nuevo resumen.
   · Si dice "no" / "cancela", responde "Cancelado." y no guardes.
+- Solicitudes de ENTRADA temprana o SALIDA tardía ("cu2 entrada temprana 10am", "ox6 salida tardía 1pm aceptada", "acepta la entrada de jc3", "quita la salida de bc5"): llama preparar_solicitud_aseo (tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla), envía resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo.
 - Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
-- Si el mensaje no es sobre aseo, responde en 1 línea que por este medio solo registras estados de aseo (ej. "cu2 listo") o das la lista de limpiezas de hoy.
+- Si el mensaje no es sobre aseo, responde en 1 línea que por este medio solo registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida o das la lista de limpiezas de hoy.
 - Sé breve, sin cortesías ni emojis extra.`;
-          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy"].includes(t.name));
+          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "preparar_solicitud_aseo", "confirmar_solicitud_aseo"].includes(t.name));
           const llm = await _botLlmLoop({
             system: sys, history: hist, userMsg: bodyMsg,
             ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: nombre, msgTs: t0, userMsg: bodyMsg,
@@ -9010,7 +9095,7 @@ async function _aseoResumenHoy() {
     return { code: a ? a.code.toUpperCase() : "", nombre: a ? a.nombre : `Alojamiento ${c.hid}`, entra: !!c.ent, sale: !!c.sal, estado, sel, aviso, aseo: aseoP, insp: inspP,
       temprana: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).on),
       tempAceptada: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).aceptada),
-      tempHora: (c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).hora) || "12:00",
+      tempHora: (c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).hora) || "",
       tardia: (c.sal && ((_aseo.tardia || {})[c.sal.id] || {}).on) ? ((_aseo.tardia || {})[c.sal.id]) : null,
       aseoArr: (as.aseo || as.personal || []).slice(), inspArr: (as.inspeccion || []).slice(),
       salio: c.sal ? c.sal.guest : "", entra_huesped: c.ent ? c.ent.guest : "" };
@@ -9023,13 +9108,19 @@ async function _aseoResumenHoy() {
   const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (✱)`, ""];
   items.forEach((i, n) => {
     lineas.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}${i.tempAceptada ? " · *PRIORITARIA*" : ""}`);
-    if (i.temprana) lineas.push(`   ⏰ *ENTRADA TEMPRANA ${i.tempHora} h* — prioridad${i.tempAceptada ? " (solicitud aceptada ✓)" : ""}`);
-    if (i.tardia) lineas.push(`   🕚 Salida tardía ${i.tardia.hora || "11:00"} h${i.tardia.aceptada ? " (aceptada ✓ · su aseo va al final)" : " (solicitud)"}`);
+    _aseoLineasSol(i).forEach(x => lineas.push(x));
     lineas.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     lineas.push(`   🧹 Aseo: ${i.aseo || "—"} · 🔍 Inspección: ${i.insp || "—"}`);
   });
   if (!items.length) lineas.push("No hay salidas ni entradas hoy.");
   return { fecha: hoy, total: items.length, items, formatted_message: lineas.join("\n") };
+}
+// Renglones de solicitudes (entrada temprana / salida tardía): estado y hora si está definida.
+function _aseoLineasSol(i) {
+  const out = [];
+  if (i.temprana) out.push(`   ⏰ *Solicitud de entrada temprana*${i.tempHora ? ` · ${_aseoHora12(i.tempHora)}` : ""} · ${i.tempAceptada ? "✓ Aceptada (prioridad)" : "⏳ Pendiente de aceptar"}`);
+  if (i.tardia) out.push(`   🕚 *Solicitud de salida tardía*${i.tardia.hora ? ` · ${_aseoHora12(i.tardia.hora)}` : ""} · ${i.tardia.aceptada ? "✓ Aceptada (su aseo va al final)" : "⏳ Pendiente de aceptar"}`);
+  return out;
 }
 // ¿Es la misma persona? (nombre del registro de asistencia vs nombre asignado en la card)
 function _aseoMismaPersona(a, b) {
@@ -9051,8 +9142,7 @@ async function _aseoListaEmpleado(nombre, opts) {
   const l = [`🧽 *${pila}, tus limpiezas de hoy* (${mias.length})`, mias.some(i => i.entra) ? "✱ = entra huésped hoy (prioridad)" : "", ""];
   mias.forEach((i, n) => {
     l.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}${i.tempAceptada ? " · *PRIORITARIA*" : ""}`);
-    if (i.temprana) l.push(`   ⏰ *ENTRADA TEMPRANA ${i.tempHora} h* — prioridad${i.tempAceptada ? " (solicitud aceptada ✓)" : ""}`);
-    if (i.tardia) l.push(`   🕚 Salida tardía ${i.tardia.hora || "11:00"} h${i.tardia.aceptada ? " (aceptada ✓ · su aseo va al final)" : " (solicitud)"}`);
+    _aseoLineasSol(i).forEach(x => l.push(x));
     l.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     l.push(`   Tipo de tarea: ${i.roles.join(" e ")}`);
   });
@@ -9123,6 +9213,37 @@ async function _aseoCambiosAsignacion() {
 }
 // ── Entrada temprana (por reserva) y SMS "tu alojamiento está listo" ──────────
 const _ASEO_TEMP_OBJ = "aseo/temprana.json", _ASEO_SMS_OBJ = "aseo/sms.json", _ASEO_TARD_OBJ = "aseo/tardia.json";
+function _aseoHora12(h) { const m = String(h || "").match(/^(\d{1,2}):(\d{2})$/); if (!m) return ""; const H = +m[1]; return `${H % 12 || 12}:${m[2]} ${H < 12 ? "a.m." : "p.m."}`; }
+// Reserva a la que aplica la solicitud: entrada = la que llega hoy o la próxima; salida = la que sale hoy o la estancia en curso.
+async function _aseoReservaSolicitud(hid, tipo) {
+  if (!_aseo.rows || Date.now() - _aseo.ts > 30_000) await _aseoLiveLoad();
+  const hoy = _mxHoy(), m = new Map();
+  ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && String(b.HouseId) === String(hid)) m.set(String(b.Id), { id: String(b.Id), st: String(b.Status || ""), dep: _lgIso(b.DateDeparture), arr: _lgIso(b.DateArrival), guest: b.GuestName || "" }); });
+  (_aseo.rows || []).forEach(x => { if (String(x.HouseId) === String(hid)) m.set(String(x.Id), { id: String(x.Id), st: x.Status, dep: x.DateDeparture, arr: x.DateArrival, guest: x.GuestName || (m.get(String(x.Id)) || {}).guest || "" }); });
+  const v = [...m.values()].filter(b => /^booked$/i.test(b.st));
+  if (tipo === "entrada") return v.filter(b => b.arr && b.arr >= hoy).sort((a, b) => a.arr.localeCompare(b.arr))[0] || null;
+  return v.filter(b => b.dep && b.dep >= hoy && b.arr && b.arr <= hoy).sort((a, b) => a.dep.localeCompare(b.dep))[0] || null;
+}
+async function _aseoSolicitudDe(tipo, id) {
+  const [obj, k, ts] = tipo === "entrada" ? [_ASEO_TEMP_OBJ, "temprana", "tempTs"] : [_ASEO_TARD_OBJ, "tardia", "tardTs"];
+  if (!_aseo[k] || Date.now() - (_aseo[ts] || 0) > 30_000) { _aseo[k] = await _rhdGetJson(obj).catch(() => _aseo[k] || {}); _aseo[ts] = Date.now(); }
+  const r = (_aseo[k] || {})[String(id)]; return r && r.on ? r : null;
+}
+// Mismo registro que los botones de la card (POST /aseo/temprana y /aseo/tardia).
+async function _aseoSolicitudSet(tipo, id, { on, hora, aceptada, user }) {
+  const [obj, k, ts, def] = tipo === "entrada" ? [_ASEO_TEMP_OBJ, "temprana", "tempTs", "12:00"] : [_ASEO_TARD_OBJ, "tardia", "tardTs", "11:00"];
+  const out = await _aseoMutate(obj, k, d => {
+    if (!on) { delete d[id]; return null; }
+    const cur = d[id] || { on: true, hora: def, by: user, at: new Date().toISOString() };
+    cur.on = true;
+    if (hora) cur.hora = hora;
+    if (aceptada === true) Object.assign(cur, { aceptada: true, aceptadaPor: user, aceptadaAt: new Date().toISOString() });
+    else if (aceptada === false) { delete cur.aceptada; delete cur.aceptadaPor; delete cur.aceptadaAt; }
+    d[id] = cur; return cur;
+  });
+  _aseo[ts] = 0; // re-leer en la siguiente consulta
+  return out || {};
+}
 // Salida tardía (por reserva que sale): { on, hora "HH:MM", aceptada, … }. Aceptada → su aseo va al final.
 app.post("/aseo/tardia", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
