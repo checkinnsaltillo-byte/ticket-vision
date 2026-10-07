@@ -8760,7 +8760,10 @@ setInterval(() => { _aseoLiveLoad().catch(() => {}); }, 60_000);
 setTimeout(() => { _aseoLiveLoad().catch(() => {}); }, 15_000);
 app.get("/aseo/live", async (req, res) => {
   try {
-    if (!_aseo.rows || Date.now() - _aseo.ts > 20_000) await _aseoLiveLoad();
+    // ?force=1 (botón "Actualizar"): consulta Lodgify y Cloud Storage en este momento.
+    const force = req.query.force === "1" && Date.now() - (_aseo.forceTs || 0) > 3000;
+    if (force) { _aseo.forceTs = Date.now(); _aseo.cambiosTs = 0; _aseo.asigTs = 0; _aseo.estadosTs = 0; if (_aseo.inflight) await _aseo.inflight; }
+    if (force || !_aseo.rows || Date.now() - _aseo.ts > 20_000) await _aseoLiveLoad();
     if (!_aseo.cambios || Date.now() - (_aseo.cambiosTs || 0) > 60_000) { _aseo.cambios = await _rhdGetJson(_ASEO_CAMBIOS_OBJ).catch(() => _aseo.cambios || {}); _aseo.cambiosTs = Date.now(); }
     if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
     res.set("Cache-Control", "no-store");
