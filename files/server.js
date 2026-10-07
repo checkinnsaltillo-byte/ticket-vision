@@ -8497,7 +8497,10 @@ app.post("/proveedores/delete", async (req, res) => {
 // ║ Personal asignado por reserva → gs://…-panel/aseo/asignaciones.json.      ║
 // ═══════════════════════════════════════════════════════════════════════════
 const _ASEO_CAMBIOS_OBJ = "aseo/cambios.json", _ASEO_ASIG_OBJ = "aseo/asignaciones.json";
-const _aseo = { rows: null, ts: 0, inflight: null, prev: null, cambios: null, asig: null, err: "" };
+// Último estado conocido de cada reserva (persistido): si el servidor se reinicia
+// (nueva versión, mantenimiento) se compara contra esto y no se pierde ningún cambio.
+const _ASEO_BASE_OBJ = "aseo/base.json";
+const _aseo = { rows: null, ts: 0, okTs: 0, inflight: null, prev: null, cambios: null, asig: null, err: "", baseSavedTs: 0 };
 const _aseoQ = {};
 function _aseoMutate(obj, key, fn) {
   const prev = _aseoQ[obj] || Promise.resolve();
@@ -8535,7 +8538,7 @@ async function _aseoLiveLoad() {
     try {
       const apiKey = process.env.LODGIFY_API_KEY;
       if (!apiKey) throw new Error("LODGIFY_API_KEY faltante");
-      const since = _todayIso(-3);
+      const since = _todayIso(-7);
       const items = [];
       for (let page = 1; page <= 10; page++) {
         const r = await fetch(`https://api.lodgify.com/v2/reservations/bookings?stayFilter=All&page=${page}&size=100&includeCount=false&updatedSince=${since}T00:00:00`,
@@ -8547,18 +8550,29 @@ async function _aseoLiveLoad() {
         if (it.length < 100) break;
       }
       const rows = items.map(_aseoLiveRow).filter(x => x.Id);
-      // Línea base para comparar: la consulta anterior; la primera vez, el snapshot.
+      // La copia completa (snapshot) sirve de respaldo para reservas que no estén en la línea base.
+      if (!_lgSnap.payload) { try { await _lgSnapRefresh('aseo-base'); } catch (_) {} }
+      const snapPrev = new Map();
+      ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => {
+        if (b && b.Id) snapPrev.set(Number(b.Id), { Status: String(b.Status || ""), DateArrival: _lgIso(b.DateArrival), DateDeparture: _lgIso(b.DateDeparture) });
+      });
+      // Línea base para comparar: la consulta anterior; tras un reinicio, el último
+      // estado guardado en Cloud Storage; si no existe, el snapshot.
       let base = _aseo.prev;
       if (!base) {
-        base = new Map();
-        ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => {
-          if (b && b.Id) base.set(Number(b.Id), { Status: String(b.Status || ""), DateArrival: _lgIso(b.DateArrival), DateDeparture: _lgIso(b.DateDeparture) });
-        });
+        try {
+          const g = await _rhdGetJson(_ASEO_BASE_OBJ);
+          if (g && g.rows && Object.keys(g.rows).length) {
+            base = new Map(Object.entries(g.rows).map(([id, v]) => [Number(id), { Status: v[0], DateArrival: v[1], DateDeparture: v[2] }]));
+            console.log(`[aseo] línea base restaurada de Cloud Storage (${base.size} reservas, guardada ${g.ts})`);
+          }
+        } catch (e) { console.warn("[aseo] no se pudo leer la línea base:", e.message); }
       }
+      if (!base) base = new Map(snapPrev);
       const nuevos = [];
       const now = new Date().toISOString();
       for (const x of rows) {
-        const o = base.get(x.Id); if (!o) continue;
+        const o = base.get(x.Id) || snapPrev.get(x.Id); if (!o) continue;
         let tipo = "";
         if (_aseoViva(o.Status) && !_aseoViva(x.Status) && /declin|cancel/i.test(x.Status)) tipo = "cancelada";
         else if (_aseoViva(x.Status) && o.DateArrival && o.DateDeparture && x.DateArrival && x.DateDeparture) {
@@ -8569,18 +8583,36 @@ async function _aseoLiveLoad() {
         if (tipo) nuevos.push({ id: String(x.Id), tipo, antes: { arr: o.DateArrival, dep: o.DateDeparture, st: o.Status }, ahora: { arr: x.DateArrival, dep: x.DateDeparture, st: x.Status }, at: now, huesped: x.GuestName });
       }
       const next = new Map(base);
-      rows.forEach(x => next.set(x.Id, { Status: x.Status, DateArrival: x.DateArrival, DateDeparture: x.DateDeparture }));
+      let difiere = false;
+      rows.forEach(x => {
+        const o = next.get(x.Id);
+        if (!o || o.Status !== x.Status || o.DateArrival !== x.DateArrival || o.DateDeparture !== x.DateDeparture) difiere = true;
+        next.set(x.Id, { Status: x.Status, DateArrival: x.DateArrival, DateDeparture: x.DateDeparture });
+      });
       _aseo.prev = next;
-      Object.assign(_aseo, { rows, ts: Date.now(), err: "" });
+      Object.assign(_aseo, { rows, ts: Date.now(), okTs: Date.now(), err: "" });
+      // Persiste la línea base (solo reservas recientes/futuras) cuando cambia algo o cada 10 min.
+      if (difiere || Date.now() - _aseo.baseSavedTs > 10 * 60_000) {
+        const lim = _todayIso(-15), out = {};
+        next.forEach((v, id) => { if (!v.DateDeparture || v.DateDeparture >= lim) out[id] = [v.Status, v.DateArrival, v.DateDeparture]; });
+        _aseo.baseSavedTs = Date.now();
+        _rhdPut(_ASEO_BASE_OBJ, JSON.stringify({ ts: new Date().toISOString(), rows: out }), "application/json")
+          .catch(e => { _aseo.baseSavedTs = 0; console.warn("[aseo] línea base no guardada:", e.message); });
+      }
       if (nuevos.length) {
         console.log(`[aseo] cambios: ${nuevos.map(c => c.id + ":" + c.tipo).join(", ")}`);
         const lim = Date.now() - 21 * 864e5;
         await _aseoMutate(_ASEO_CAMBIOS_OBJ, "cambios", d => {
           for (const k of Object.keys(d)) if (!Array.isArray(d[k]) || !d[k].length || Date.parse(d[k][d[k].length - 1].at) < lim) delete d[k];
-          nuevos.forEach(c => { (d[c.id] = d[c.id] || []).push(c); });
+          // Sin duplicados (p. ej. dos instancias del servidor detectando lo mismo durante un cambio de versión).
+          nuevos.forEach(c => {
+            const l = d[c.id] = d[c.id] || [], u = l[l.length - 1];
+            if (u && u.tipo === c.tipo && JSON.stringify(u.ahora) === JSON.stringify(c.ahora)) return;
+            l.push(c);
+          });
         }).catch(e => console.warn("[aseo] cambios no guardados:", e.message));
       }
-    } catch (e) { _aseo.err = e.message; console.warn("[aseo] live:", e.message); }
+    } catch (e) { _aseo.err = e.message; _aseo.ts = Date.now(); console.warn("[aseo] live:", e.message); }
     return _aseo.rows;
   })().finally(() => { _aseo.inflight = null; });
   return _aseo.inflight;
@@ -8590,10 +8622,10 @@ setTimeout(() => { _aseoLiveLoad().catch(() => {}); }, 15_000);
 app.get("/aseo/live", async (req, res) => {
   try {
     if (!_aseo.rows || Date.now() - _aseo.ts > 20_000) await _aseoLiveLoad();
-    if (!_aseo.cambios) _aseo.cambios = await _rhdGetJson(_ASEO_CAMBIOS_OBJ).catch(() => ({}));
-    if (!_aseo.asig) _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => ({}));
+    if (!_aseo.cambios || Date.now() - (_aseo.cambiosTs || 0) > 60_000) { _aseo.cambios = await _rhdGetJson(_ASEO_CAMBIOS_OBJ).catch(() => _aseo.cambios || {}); _aseo.cambiosTs = Date.now(); }
+    if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
     res.set("Cache-Control", "no-store");
-    res.json({ ok: true, ts: _aseo.ts, err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {} });
+    res.json({ ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {} });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/aseo/asignar", async (req, res) => {
