@@ -2266,7 +2266,10 @@ async function _botExecTool(toolUse, ctx) {
         let jr = {}; try { jr = JSON.parse(rc.content || "{}"); } catch (_) {}
         return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "GUARDADO. Responde en 1-2 líneas con lo guardado. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
       }
-      const pub = estado === "terminado" ? (validar ? "Sí (validado)" : "No — queda pendiente de validar en el sistema") : "Sí";
+      if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
+      const yaVal = x => { const p = _aseoPub((_aseo.estados || {})[x.booking]); return !!p && _ASEO_ETAPAS.indexOf(p.estado) >= _ASEO_ETAPAS.indexOf(estado); };
+      const todosYa = items.every(yaVal), algunoYa = items.some(yaVal);
+      const pub = estado === "terminado" ? (validar ? "Sí (validado)" : todosYa ? "Sí (ya estaba validado)" : algunoYa ? `Solo ${items.filter(yaVal).map(x => x.code).join(", ")} (ya estaba validado); el resto queda pendiente de validar` : "No — queda pendiente de validar en el sistema") : "Sí";
       const fmtD = iso => { const d = new Date(iso + "T12:00:00"); return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" }); };
       const resumen = ["🧽 Estado de aseo (por confirmar)",
         ...items.map(x => `• ${x.nombre} (${x.code})${x.huesped ? ` · salió ${x.huesped} (${fmtD(x.salida)})` : ""}`),
@@ -2286,15 +2289,17 @@ async function _botExecTool(toolUse, ctx) {
       if (!(ctx.msgTs > d.msgTs)) return { content: JSON.stringify({ ok: false, error: "Aún no hay confirmación. Muestra el resumen y espera su respuesta." }), notifyText: null };
       const user = `${d.persona || ctx.staffNombre || ctx.adminNombre || ctx.phone10} (WhatsApp)`;
       const rol = d.estado === "inspeccionado" ? "inspeccion" : "aseo";
-      const hechos = [];
+      const hechos = [], pend = [];
       for (const x of d.items) {
-        await _aseoGuardarEstado({ id: x.booking, hid: x.hid, estado: d.estado, validar: d.validar, user });
+        const reg = await _aseoGuardarEstado({ id: x.booking, hid: x.hid, estado: d.estado, validar: d.validar, user });
         if (d.persona) await _aseoAsignarRol(x.booking, rol, d.persona, user).catch(() => {});
         hechos.push(`${x.code}`);
+        if (reg && reg.validado === false) pend.push(x.code); // mismo dato que muestran las cards
       }
       _botAseoDrafts.delete(ctx.phone10);
-      return { content: JSON.stringify({ ok: true, guardados: hechos, estado: _ASEO_EST_TXT[d.estado], publicado: d.validar, persona: d.persona,
-        instruccion: `Responde en 1 línea: ✅ ${hechos.join(", ")} → ${_ASEO_EST_TXT[d.estado]}${d.validar ? " (publicado en la guía)" : " (pendiente de validar)"}${d.persona ? " · " + d.persona : ""}.` }), notifyText: null };
+      const nota = !pend.length ? " (validado · publicado en la guía)" : pend.length === hechos.length ? " (pendiente de validar)" : ` (pendiente de validar: ${pend.join(", ")})`;
+      return { content: JSON.stringify({ ok: true, guardados: hechos, estado: _ASEO_EST_TXT[d.estado], pendientes_de_validar: pend, persona: d.persona,
+        instruccion: `Responde en 1 línea: ✅ ${hechos.join(", ")} → ${_ASEO_EST_TXT[d.estado]}${nota}${d.persona ? " · " + d.persona : ""}.` }), notifyText: null };
     }
     if (name === "preparar_recordatorio_pizarra") {
       if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
@@ -8838,6 +8843,13 @@ async function _aseoGuardarEstado({ id, hid, estado, validar, user }) {
     const cur = d[id] || { hist: {} };
     if (cur.validado === undefined && cur.estado) { cur.validado = true; cur.pub = { estado: cur.estado, at: cur.at, by: cur.by }; }
     cur.hist = cur.hist || {};
+    // Si esa etapa (o una posterior) ya se validó antes, se conserva validada: no se pierde
+    // la validación por volver a reportar "terminado" (card, bot y guía quedan iguales).
+    if (!validar && cur.pub && _ASEO_ETAPAS.indexOf(cur.pub.estado) >= _ASEO_ETAPAS.indexOf(estado)) {
+      Object.assign(cur, { estado, at: now, by: user || "", hid: hid || cur.hid || "", validado: true });
+      d[id] = cur;
+      return cur;
+    }
     Object.assign(cur, { estado, at: now, by: user || "", hid: hid || cur.hid || "", validado: validar });
     if (validar) {
       // Validar publica el estado; las etapas previas quedan registradas, las posteriores se borran.
