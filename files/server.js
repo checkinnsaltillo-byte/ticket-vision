@@ -8673,7 +8673,8 @@ app.post("/aseo/estado", async (req, res) => {
     const b = req.body || {};
     const id = String(b.id || "").replace(/[^\w-]/g, "").slice(0, 40);
     const estado = String(b.estado || "");
-    const validar = !!b.validar;
+    // Solo "terminado" e "inspeccionado" requieren validación; "en_proceso" y "pendiente" se publican directo.
+    const validar = !!b.validar || !["terminado", "inspeccionado"].includes(estado);
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
     if (estado !== "pendiente" && !_ASEO_ETAPAS.includes(estado)) return res.status(400).json({ ok: false, error: "Estado inválido" });
     const user = String(b.user || "").slice(0, 80), hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
