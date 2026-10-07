@@ -8810,7 +8810,8 @@ app.get("/aseo/live", async (req, res) => {
     let guias = {}; try { guias = _aseoGuiasTodas(); } catch (e) { console.warn("[aseo] guías:", e.message); }
     if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
     if (!_aseo.sms || Date.now() - (_aseo.smsTs || 0) > 30_000) { _aseo.sms = await _rhdGetJson(_ASEO_SMS_OBJ).catch(() => _aseo.sms || {}); _aseo.smsTs = Date.now(); }
-    res.json({ ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
+    if (!_aseo.tardia || Date.now() - (_aseo.tardTs || 0) > 30_000) { _aseo.tardia = await _rhdGetJson(_ASEO_TARD_OBJ).catch(() => _aseo.tardia || {}); _aseo.tardTs = Date.now(); }
+    res.json({ tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
       temprana: _aseo.temprana || {}, sms: _aseo.sms || {} });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -8969,6 +8970,7 @@ async function _aseoResumenHoy() {
   if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
   if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
   if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
+  if (!_aseo.tardia || Date.now() - (_aseo.tardTs || 0) > 30_000) { _aseo.tardia = await _rhdGetJson(_ASEO_TARD_OBJ).catch(() => _aseo.tardia || {}); _aseo.tardTs = Date.now(); }
   const hoy = _mxHoy();
   const bk = new Map();
   ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && b.Id) bk.set(String(b.Id), { id: String(b.Id), st: String(b.Status || ""), arr: _lgIso(b.DateArrival), dep: _lgIso(b.DateDeparture), hid: String(b.HouseId || ""), guest: b.GuestName || "" }); });
@@ -9007,17 +9009,20 @@ async function _aseoResumenHoy() {
     return { code: a ? a.code.toUpperCase() : "", nombre: a ? a.nombre : `Alojamiento ${c.hid}`, entra: !!c.ent, sale: !!c.sal, estado, sel, aviso, aseo: aseoP, insp: inspP,
       temprana: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).on),
       tempAceptada: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).aceptada),
+      tardia: (c.sal && ((_aseo.tardia || {})[c.sal.id] || {}).on) ? ((_aseo.tardia || {})[c.sal.id]) : null,
       aseoArr: (as.aseo || as.personal || []).slice(), inspArr: (as.inspeccion || []).slice(),
       salio: c.sal ? c.sal.guest : "", entra_huesped: c.ent ? c.ent.guest : "" };
   });
   const ordenE = { pendiente: 0, en_proceso: 1, terminado: 2, inspeccionado: 3 };
-  items.sort((x, y) => (y.tempAceptada - x.tempAceptada) || (y.entra - x.entra) || (y.temprana - x.temprana) || ((ordenE[x.sel] ?? 0) - (ordenE[y.sel] ?? 0)) || String(x.code || x.nombre).localeCompare(String(y.code || y.nombre), "es", { numeric: true }));
+  const tardA = i => (i.tardia && i.tardia.aceptada) ? 1 : 0;
+  items.sort((x, y) => (y.tempAceptada - x.tempAceptada) || (tardA(x) - tardA(y)) || (y.entra - x.entra) || (y.temprana - x.temprana) || ((ordenE[x.sel] ?? 0) - (ordenE[y.sel] ?? 0)) || String(x.code || x.nombre).localeCompare(String(y.code || y.nombre), "es", { numeric: true }));
   const fecha = new Date(hoy + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
   // Marca de prioridad "✱" (un "* " al inicio de renglón WhatsApp lo convierte en viñeta).
   const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (✱)`, ""];
   items.forEach((i, n) => {
     lineas.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}${i.tempAceptada ? " · *PRIORITARIA*" : ""}`);
     if (i.temprana) lineas.push(`   ⏰ *ENTRADA TEMPRANA* — prioridad${i.tempAceptada ? " (solicitud aceptada ✓)" : ""}`);
+    if (i.tardia) lineas.push(`   🕚 Salida tardía ${i.tardia.hora || "11:00"} h${i.tardia.aceptada ? " (aceptada ✓ · su aseo va al final)" : " (solicitud)"}`);
     lineas.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     lineas.push(`   🧹 Aseo: ${i.aseo || "—"} · 🔍 Inspección: ${i.insp || "—"}`);
   });
@@ -9045,6 +9050,7 @@ async function _aseoListaEmpleado(nombre, opts) {
   mias.forEach((i, n) => {
     l.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}${i.tempAceptada ? " · *PRIORITARIA*" : ""}`);
     if (i.temprana) l.push(`   ⏰ *ENTRADA TEMPRANA* — prioridad${i.tempAceptada ? " (solicitud aceptada ✓)" : ""}`);
+    if (i.tardia) l.push(`   🕚 Salida tardía ${i.tardia.hora || "11:00"} h${i.tardia.aceptada ? " (aceptada ✓ · su aseo va al final)" : " (solicitud)"}`);
     l.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     l.push(`   Tipo de tarea: ${i.roles.join(" e ")}`);
   });
@@ -9114,7 +9120,29 @@ async function _aseoCambiosAsignacion() {
   return { resumen: r, cambios: out.sort((a, b) => a.persona.localeCompare(b.persona, "es")) };
 }
 // ── Entrada temprana (por reserva) y SMS "tu alojamiento está listo" ──────────
-const _ASEO_TEMP_OBJ = "aseo/temprana.json", _ASEO_SMS_OBJ = "aseo/sms.json";
+const _ASEO_TEMP_OBJ = "aseo/temprana.json", _ASEO_SMS_OBJ = "aseo/sms.json", _ASEO_TARD_OBJ = "aseo/tardia.json";
+// Salida tardía (por reserva que sale): { on, hora "HH:MM", aceptada, … }. Aceptada → su aseo va al final.
+app.post("/aseo/tardia", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {};
+    const id = String(b.id || "").replace(/[^\w-]/g, "").slice(0, 40);
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    const on = !!b.on, user = String(b.user || "").slice(0, 80);
+    const hora = /^\d{2}:\d{2}$/.test(String(b.hora || "")) ? String(b.hora) : "";
+    const out = await _aseoMutate(_ASEO_TARD_OBJ, "tardia", d => {
+      if (!on) { delete d[id]; return null; }
+      const cur = d[id] || { on: true, hora: "11:00", by: user, at: new Date().toISOString() };
+      cur.on = true;
+      if (hora) cur.hora = hora;
+      if (b.aceptada === true) Object.assign(cur, { aceptada: true, aceptadaPor: user, aceptadaAt: new Date().toISOString() });
+      else if (b.aceptada === false) { delete cur.aceptada; delete cur.aceptadaPor; delete cur.aceptadaAt; }
+      d[id] = cur; return cur;
+    });
+    _aseo.tardTs = Date.now();
+    res.json({ ok: true, tardia: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/aseo/temprana", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
