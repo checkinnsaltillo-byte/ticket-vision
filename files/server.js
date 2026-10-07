@@ -3130,6 +3130,11 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const verbo = pending.tipo === "entrada" ? "Entrada" : "Salida";
         const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n📍 Ubicación guardada\nGracias, ${resp.empleado.split(" ")[0]}!`;
         await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
+        // Registro de ENTRADA completo (con ubicación) → lista de limpiezas/inspecciones asignadas hoy.
+        if (pending.tipo === "entrada") {
+          try { await _aseoEnviarLista(String(resp.empleado || ""), fromRaw, phone10, "limpiezas_al_llegar"); }
+          catch (e) { console.warn("[aseo] lista al registrar llegada:", e.message); }
+        }
       }
       return;
     }
@@ -3152,14 +3157,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const nombre = String(resp.empleado || "").split(" ")[0];
         const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n\n📍 Ahora comparte tu ubicación (obligatoria) — sin ella el registro queda incompleto.\n\nGracias, ${nombre}!`;
         await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
-        // Al registrar la LLEGADA: si tiene limpiezas o inspecciones asignadas hoy, le mandamos su lista.
-        if (_asistIntent === "entrada") {
-          const quien = String(resp.empleado || emp.empleado || "");
-          _aseoListaEmpleado(quien).then(txt => {
-            if (!txt) return;
-            return _twilioSendMessage({ to: fromRaw, body: txt, skipMirror: true }).then(() => _botAppendMessage(phone10, "assistant", txt, { staff: true, auto: "limpiezas_al_llegar" }));
-          }).catch(e => console.warn("[aseo] lista al registrar llegada:", e.message));
-        }
+
       } else {
         await _twilioSendMessage({ to: fromRaw, body: `⚠️ No pude registrar tu ${_asistIntent}. Contacta al admin.`, skipMirror: true }).catch(()=>{});
       }
@@ -9027,10 +9025,13 @@ function _aseoMismaPersona(a, b) {
   return cortos.every(t => largos.includes(t));
 }
 // Lista de limpiezas/inspecciones de HOY asignadas a un empleado (null si no tiene).
-async function _aseoListaEmpleado(nombre, opts) {
-  const r = await _aseoResumenHoy();
-  const mias = r.items.map(i => ({ ...i, roles: [i.aseoArr.some(n => _aseoMismaPersona(n, nombre)) ? "Aseo" : "", i.inspArr.some(n => _aseoMismaPersona(n, nombre)) ? "Inspección" : ""].filter(Boolean) }))
+function _aseoMiasDe(r, nombre) {
+  return r.items.map(i => ({ ...i, roles: [i.aseoArr.some(n => _aseoMismaPersona(n, nombre)) ? "Aseo" : "", i.inspArr.some(n => _aseoMismaPersona(n, nombre)) ? "Inspección" : ""].filter(Boolean) }))
     .filter(i => i.roles.length);
+}
+async function _aseoListaEmpleado(nombre, opts) {
+  const r = (opts && opts.resumen) || await _aseoResumenHoy();
+  const mias = _aseoMiasDe(r, nombre);
   if (!mias.length) return null;
   const pila = String(nombre || "").split(" ")[0];
   const l = [`🧽 *${pila}, tus limpiezas de hoy* (${mias.length})`, mias.some(i => i.entra) ? "✱ = entra huésped hoy (prioridad)" : "", ""];
@@ -9042,6 +9043,96 @@ async function _aseoListaEmpleado(nombre, opts) {
   l.push("", `Para actualizar escribe, por ejemplo: «${mias[0].code || "CU2"} listo» o «${mias[0].code || "CU2"} inspeccionado».`);
   return l.filter((x, k) => x !== "" || k > 0).join("\n");
 }
+// ── Registro de lo ENVIADO a cada persona hoy (para "Notificar actualizaciones") ──
+// gs://…-panel/aseo/notificados.json → { fecha, personas: { <nombre>: { items:[{code,roles}], at } } }
+const _ASEO_NOTIF_OBJ = "aseo/notificados.json";
+const _aseoSig = it => `${it.code || it.nombre}:${[...(it.roles || [])].sort().join("+")}`;
+async function _aseoNotifLeer() {
+  const d = await _rhdGetJson(_ASEO_NOTIF_OBJ).catch(() => ({}));
+  return d && d.fecha === _mxHoy() ? d : { fecha: _mxHoy(), personas: {} };
+}
+async function _aseoNotifGuardar(nombre, items) {
+  return _aseoMutate(_ASEO_NOTIF_OBJ, "notif", d => {
+    if (d.fecha !== _mxHoy()) { d.fecha = _mxHoy(); d.personas = {}; }
+    d.personas = d.personas || {};
+    // Una sola entrada por persona aunque el nombre venga escrito distinto.
+    const k = Object.keys(d.personas).find(x => _aseoMismaPersona(x, nombre)) || nombre;
+    d.personas[k] = { items: items.map(i => ({ code: i.code || i.nombre, nombre: i.nombre, roles: i.roles })), at: new Date().toISOString() };
+  });
+}
+// Envía la lista del día a un empleado y registra lo enviado.
+async function _aseoEnviarLista(nombre, to, phone10, auto) {
+  const r = await _aseoResumenHoy();
+  const mias = _aseoMiasDe(r, nombre);
+  if (!mias.length) return false;
+  const txt = await _aseoListaEmpleado(nombre, { resumen: r });
+  await _twilioSendMessage({ to, body: txt, skipMirror: true });
+  _botAppendMessage(phone10, "assistant", txt, { staff: true, auto });
+  await _aseoNotifGuardar(nombre, mias).catch(() => {});
+  return true;
+}
+// Celulares del Personal activo (nombre completo → 10 dígitos).
+async function _aseoTelPersonal() {
+  const r = await callCheckinAppsScript("list_personal");
+  return ((r && r.rows) || []).filter(x => !x.Estado || /activo/i.test(String(x.Estado))).map(x => {
+    const nom = String(x.Nombre || "").trim(), ap = String(x.Apellido_paterno || "").trim(), am = String(x.Apellido_materno || "").trim();
+    const n = _botNorm(nom);
+    const nombre = ((!ap || n.includes(_botNorm(ap))) && (!am || n.includes(_botNorm(am)))) ? nom : [nom, ap, am].filter(Boolean).join(" ");
+    const tel = String(x.Celular || x.Telefono || "").replace(/\D/g, "").slice(-10);
+    return { nombre: nombre.replace(/\s+/g, " ").trim(), tel: tel.length === 10 ? tel : "" };
+  }).filter(x => x.nombre);
+}
+// Cambios de asignación por persona desde el último envío de hoy.
+async function _aseoCambiosAsignacion() {
+  const [r, notif, tels] = await Promise.all([_aseoResumenHoy(), _aseoNotifLeer(), _aseoTelPersonal().catch(() => [])]);
+  const nombres = new Map(); // persona canónica → items actuales
+  r.items.forEach(i => [...i.aseoArr, ...i.inspArr].forEach(n => { if (n && ![...nombres.keys()].some(k => _aseoMismaPersona(k, n))) nombres.set(n, null); }));
+  Object.keys(notif.personas || {}).forEach(n => { if (![...nombres.keys()].some(k => _aseoMismaPersona(k, n))) nombres.set(n, null); });
+  const out = [];
+  for (const nombre of nombres.keys()) {
+    const ahora = _aseoMiasDe(r, nombre);
+    const kPrev = Object.keys(notif.personas || {}).find(x => _aseoMismaPersona(x, nombre));
+    const antes = kPrev ? notif.personas[kPrev].items || [] : [];
+    const sA = new Set(antes.map(_aseoSig)), sN = new Set(ahora.map(_aseoSig));
+    const agregados = ahora.filter(i => !sA.has(_aseoSig(i))).map(i => `${i.code || i.nombre} (${i.roles.join(" e ")})`);
+    const quitados = antes.filter(i => !sN.has(_aseoSig(i))).map(i => `${i.code || i.nombre} (${(i.roles || []).join(" e ")})`);
+    if (!agregados.length && !quitados.length) continue;
+    const t = tels.find(x => _aseoMismaPersona(x.nombre, nombre));
+    out.push({ persona: nombre, tel: t ? t.tel : "", primerEnvio: !kPrev, agregados, quitados, total: ahora.length });
+  }
+  return { resumen: r, cambios: out.sort((a, b) => a.persona.localeCompare(b.persona, "es")) };
+}
+app.get("/aseo/notificar/preview", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const { cambios } = await _aseoCambiosAsignacion();
+    res.json({ ok: true, cambios: cambios.map(c => ({ ...c, tel: c.tel ? "••••" + c.tel.slice(-4) : "" })) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/aseo/notificar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const pedidas = (Array.isArray((req.body || {}).personas) ? req.body.personas : []).map(String);
+    const { resumen, cambios } = await _aseoCambiosAsignacion();
+    const resultados = [];
+    for (const c of cambios.filter(c => pedidas.some(p => _aseoMismaPersona(p, c.persona)))) {
+      if (!c.tel) { resultados.push({ persona: c.persona, ok: false, error: "Sin celular registrado en Personal" }); continue; }
+      const mias = _aseoMiasDe(resumen, c.persona);
+      const cab = [`🔄 *Actualización de tus limpiezas de hoy*`,
+        ...(c.agregados.length ? [`➕ Se agregó: ${c.agregados.join(", ")}`] : []),
+        ...(c.quitados.length ? [`➖ Ya no te toca: ${c.quitados.join(", ")}`] : [])].join("\n");
+      const cuerpo = mias.length ? await _aseoListaEmpleado(c.persona, { resumen }) : `🧽 ${c.persona.split(" ")[0]}, ya no tienes limpiezas ni inspecciones asignadas hoy.`;
+      const txt = `${cab}\n\n${cuerpo}`;
+      try {
+        await _twilioSendMessage({ to: _waFormatTo(c.tel), body: txt, skipMirror: true });
+        _botAppendMessage(c.tel, "assistant", txt, { staff: true, auto: "limpiezas_actualizacion" });
+        await _aseoNotifGuardar(c.persona, mias);
+        resultados.push({ persona: c.persona, ok: true });
+      } catch (e) { resultados.push({ persona: c.persona, ok: false, error: e.message }); }
+    }
+    res.json({ ok: true, resultados });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/aseo/resumen-hoy", async (req, res) => {
   try {
     res.set("Cache-Control", "no-store");
