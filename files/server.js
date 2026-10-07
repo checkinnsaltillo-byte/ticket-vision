@@ -9091,7 +9091,7 @@ async function _aseoResumenHoy() {
     if (sel === "terminado") estado += (r && (r.validado === undefined || r.validado)) ? " (validado)" : " (sin validar)";
     let aviso = "";
     if (c.sal && c.ent && sel === "pendiente" && horaMx >= 14) aviso = "🚨 Urge validación";
-    else if (!c.sal && c.ent && !(pub && /^(terminado|inspeccionado)$/.test(pub.estado))) aviso = "⚠️ Requiere validación";
+    else if (!c.sal && c.ent && !(pub && /^(terminado|inspeccionado)$/.test(pub.estado))) aviso = "⚠️ Requiere inspección";
     return { code: a ? a.code.toUpperCase() : "", nombre: a ? a.nombre : `Alojamiento ${c.hid}`, entra: !!c.ent, sale: !!c.sal, estado, sel, aviso, aseo: aseoP, insp: inspP,
       temprana: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).on),
       tempAceptada: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).aceptada),
