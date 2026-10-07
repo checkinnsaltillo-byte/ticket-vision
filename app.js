@@ -63860,6 +63860,8 @@ function aseoEnsureCss_() {
   .aseo-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
   .aseo-grid .ocup-cal-container{max-height:calc(100vh - 210px)}
   .aseo-cal .ocup-cal{--ocup-aloj-w:170px;--ocup-day-w:52px}
+  .aseo-cal .ocup-aloj-cell{opacity:1;z-index:9;box-shadow:4px 0 8px -6px rgba(15,23,42,.25)}
+  .aseo-cal .ocup-head-aloj{opacity:1;z-index:12}
   .aseo-cal .ocup-bar{transition:box-shadow .2s,filter .2s,opacity .2s}
   .aseo-cal.has-sel .ocup-bar{opacity:.55}
   .aseo-cal .ocup-bar.sel{opacity:1;z-index:6;outline:3px solid #f59e0b;outline-offset:1px;box-shadow:0 0 0 6px rgba(245,158,11,.35),0 6px 16px rgba(15,23,42,.35);filter:saturate(1.25)}
@@ -63947,6 +63949,7 @@ function aseoMarcarSel_() {
 }
 // Selección compartida: barra del calendario ↔ card del panel lateral.
 window.aseoSelect_ = function (id) {
+  const desdeCal = !!(window.event && window.event.target && window.event.target.closest && window.event.target.closest('.ocup-bar'));
   const same = id && String(ASEO.sel) === String(id);
   ASEO.sel = same || !id ? null : String(id);
   const bar = aseoMarcarSel_();
@@ -63954,7 +63957,13 @@ window.aseoSelect_ = function (id) {
   if (!ASEO.sel) return;
   const card = document.querySelector(`#aseo-side .pc-mv-it[data-bid="${CSS.escape(ASEO.sel)}"]`);
   if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  // Desde una card: lleva el calendario a la fila de esa reserva (vertical) y
+  // mantiene el día en curso al centro (horizontal).
+  if (bar && !desdeCal) {
+    const cal = document.getElementById('aseo-cal'), row = bar.closest('.ocup-cal-row') || bar;
+    cal.scrollTo({ top: Math.max(0, row.offsetTop - cal.clientHeight / 2 + row.offsetHeight / 2), behavior: 'smooth' });
+    ocupCentrarHoy_(cal, true);
+  }
 };
 window.aseoHoy_ = function () { const cal = document.getElementById('aseo-cal'); if (cal) ocupCentrarHoy_(cal, true); };
 window.aseoRecargar_ = async function () { await aseoRefresh_(); ASEO.calSig = ''; aseoRender_(); if (document.getElementById('pc-sec-movs')) pcRenderMovs_(); };
