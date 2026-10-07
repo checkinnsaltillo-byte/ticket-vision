@@ -8488,6 +8488,129 @@ app.post("/proveedores/delete", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ║ ASEO / MOVIMIENTOS DEL DÍA EN (CASI) TIEMPO REAL                          ║
+// ║ El snapshot de reservas se actualiza cada ~10 min (sync Apps Script).     ║
+// ║ Aquí se consulta Lodgify directo (reservas modificadas en los últimos 3   ║
+// ║ días, ~0.5 s) cada minuto y se detectan cambios: cancelación, extensión,  ║
+// ║ acortamiento y cambio de fechas → gs://…-panel/aseo/cambios.json.         ║
+// ║ Personal asignado por reserva → gs://…-panel/aseo/asignaciones.json.      ║
+// ═══════════════════════════════════════════════════════════════════════════
+const _ASEO_CAMBIOS_OBJ = "aseo/cambios.json", _ASEO_ASIG_OBJ = "aseo/asignaciones.json";
+const _aseo = { rows: null, ts: 0, inflight: null, prev: null, cambios: null, asig: null, err: "" };
+const _aseoQ = {};
+function _aseoMutate(obj, key, fn) {
+  const prev = _aseoQ[obj] || Promise.resolve();
+  const run = prev.then(async () => {
+    const d = await _rhdGetJson(obj);
+    const out = fn(d);
+    await _rhdPut(obj, JSON.stringify(d), "application/json");
+    _aseo[key] = d;
+    return out;
+  });
+  _aseoQ[obj] = run.catch(() => {});
+  return run;
+}
+function _aseoLiveRow(b) {
+  const g = b.guest || {};
+  let src = String(b.source || "");
+  const st = String(b.source_text || "");
+  if (/airbnb/i.test(src + st) || (st.startsWith("{") && st.includes("listingId"))) src = "Airbnb";
+  else if (/booking/i.test(src + st)) src = "Booking.com";
+  else if (/vrbo|homeaway/i.test(src + st)) src = "Vrbo";
+  else if (/expedia/i.test(src + st)) src = "Expedia";
+  else if (/manual/i.test(src)) src = "Manual";
+  else if (!src || /lodgify|website|direct/i.test(src)) src = "Direct";
+  return {
+    Id: Number(b.id), Status: String(b.status || ""), DateArrival: String(b.arrival || "").slice(0, 10), DateDeparture: String(b.departure || "").slice(0, 10),
+    HouseId: b.property_id, GuestName: g.name || "", GuestPhone: g.phone || "", GuestEmail: g.email || "", Source: src,
+    TotalAmount: Number(b.total_amount) || 0, AmountPaid: Number(b.amount_paid) || 0, AmountDue: Number(b.amount_due) || 0,
+    DateCancelled: b.canceled_at || "", UpdatedAt: b.updated_at || "", Deleted: !!b.is_deleted,
+  };
+}
+const _aseoViva = s => /^(booked|tentative)$/i.test(String(s || ""));
+async function _aseoLiveLoad() {
+  if (_aseo.inflight) return _aseo.inflight;
+  _aseo.inflight = (async () => {
+    try {
+      const apiKey = process.env.LODGIFY_API_KEY;
+      if (!apiKey) throw new Error("LODGIFY_API_KEY faltante");
+      const since = _todayIso(-3);
+      const items = [];
+      for (let page = 1; page <= 10; page++) {
+        const r = await fetch(`https://api.lodgify.com/v2/reservations/bookings?stayFilter=All&page=${page}&size=100&includeCount=false&updatedSince=${since}T00:00:00`,
+          { headers: { "X-ApiKey": apiKey, accept: "application/json" } });
+        if (!r.ok) throw new Error(`Lodgify ${r.status}`);
+        const j = await r.json();
+        const it = Array.isArray(j.items) ? j.items : [];
+        items.push(...it);
+        if (it.length < 100) break;
+      }
+      const rows = items.map(_aseoLiveRow).filter(x => x.Id);
+      // Línea base para comparar: la consulta anterior; la primera vez, el snapshot.
+      let base = _aseo.prev;
+      if (!base) {
+        base = new Map();
+        ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => {
+          if (b && b.Id) base.set(Number(b.Id), { Status: String(b.Status || ""), DateArrival: _lgIso(b.DateArrival), DateDeparture: _lgIso(b.DateDeparture) });
+        });
+      }
+      const nuevos = [];
+      const now = new Date().toISOString();
+      for (const x of rows) {
+        const o = base.get(x.Id); if (!o) continue;
+        let tipo = "";
+        if (_aseoViva(o.Status) && !_aseoViva(x.Status) && /declin|cancel/i.test(x.Status)) tipo = "cancelada";
+        else if (_aseoViva(x.Status) && o.DateArrival && o.DateDeparture && x.DateArrival && x.DateDeparture) {
+          if (o.DateArrival !== x.DateArrival) tipo = "reprogramada";
+          else if (x.DateDeparture > o.DateDeparture) tipo = "extendida";
+          else if (x.DateDeparture < o.DateDeparture) tipo = "acortada";
+        }
+        if (tipo) nuevos.push({ id: String(x.Id), tipo, antes: { arr: o.DateArrival, dep: o.DateDeparture, st: o.Status }, ahora: { arr: x.DateArrival, dep: x.DateDeparture, st: x.Status }, at: now, huesped: x.GuestName });
+      }
+      const next = new Map(base);
+      rows.forEach(x => next.set(x.Id, { Status: x.Status, DateArrival: x.DateArrival, DateDeparture: x.DateDeparture }));
+      _aseo.prev = next;
+      Object.assign(_aseo, { rows, ts: Date.now(), err: "" });
+      if (nuevos.length) {
+        console.log(`[aseo] cambios: ${nuevos.map(c => c.id + ":" + c.tipo).join(", ")}`);
+        const lim = Date.now() - 21 * 864e5;
+        await _aseoMutate(_ASEO_CAMBIOS_OBJ, "cambios", d => {
+          for (const k of Object.keys(d)) if (!Array.isArray(d[k]) || !d[k].length || Date.parse(d[k][d[k].length - 1].at) < lim) delete d[k];
+          nuevos.forEach(c => { (d[c.id] = d[c.id] || []).push(c); });
+        }).catch(e => console.warn("[aseo] cambios no guardados:", e.message));
+      }
+    } catch (e) { _aseo.err = e.message; console.warn("[aseo] live:", e.message); }
+    return _aseo.rows;
+  })().finally(() => { _aseo.inflight = null; });
+  return _aseo.inflight;
+}
+setInterval(() => { _aseoLiveLoad().catch(() => {}); }, 60_000);
+setTimeout(() => { _aseoLiveLoad().catch(() => {}); }, 15_000);
+app.get("/aseo/live", async (req, res) => {
+  try {
+    if (!_aseo.rows || Date.now() - _aseo.ts > 20_000) await _aseoLiveLoad();
+    if (!_aseo.cambios) _aseo.cambios = await _rhdGetJson(_ASEO_CAMBIOS_OBJ).catch(() => ({}));
+    if (!_aseo.asig) _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => ({}));
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, ts: _aseo.ts, err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {} });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/aseo/asignar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const id = String((req.body || {}).id || "").replace(/[^\w-]/g, "").slice(0, 40);
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    const personal = (Array.isArray(req.body.personal) ? req.body.personal : []).map(n => String(n || "").trim().slice(0, 80)).filter(Boolean).slice(0, 20);
+    const user = String(req.body.user || "").slice(0, 80);
+    const out = await _aseoMutate(_ASEO_ASIG_OBJ, "asig", d => {
+      if (personal.length) d[id] = { personal, by: user, at: new Date().toISOString() }; else delete d[id];
+      return d[id] || null;
+    });
+    res.json({ ok: true, asig: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 const PORT = process.env.PORT || 8080;
 // Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
