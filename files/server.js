@@ -9038,7 +9038,7 @@ async function _aseoListaEmpleado(nombre, opts) {
   mias.forEach((i, n) => {
     l.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
     l.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
-    l.push(`   Te toca: ${i.roles.join(" e ")}`);
+    l.push(`   Tipo de tarea: ${i.roles.join(" e ")}`);
   });
   l.push("", `Para actualizar escribe, por ejemplo: «${mias[0].code || "CU2"} listo» o «${mias[0].code || "CU2"} inspeccionado».`);
   return l.filter((x, k) => x !== "" || k > 0).join("\n");
