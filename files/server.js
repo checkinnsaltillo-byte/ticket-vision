@@ -2232,9 +2232,10 @@ async function _botExecTool(toolUse, ctx) {
       for (const q of qs) {
         const m = _aseoMatchAloj(q, cat);
         if (!m.ok) { errores.push(m.error); continue; }
+        if (!m.aloj.hid) { errores.push(`${m.aloj.nombre}: no tiene número de Lodgify en el catálogo de alojamientos`); continue; }
+        // Sin salida registrada: el estado se guarda a nombre del alojamiento ("H<hid>").
         const t = await _aseoTurnover(m.aloj.hid);
-        if (!t) { errores.push(`${m.aloj.nombre}: no encontré una salida reciente para registrar el aseo`); continue; }
-        items.push({ q, hid: m.aloj.hid, nombre: m.aloj.nombre, code: m.aloj.code.toUpperCase(), booking: t.id, salida: t.dep, huesped: t.guest || "", seguro: m.seguro });
+        items.push({ q, hid: m.aloj.hid, nombre: m.aloj.nombre, code: m.aloj.code.toUpperCase(), booking: t ? t.id : "H" + m.aloj.hid, salida: t ? t.dep : "", huesped: t ? (t.guest || "") : "", seguro: m.seguro });
       }
       // Persona: la nombrada en el texto (tolerante a nombres cortos) o el dueño del celular.
       let persona = ctx.staffNombre || ctx.adminNombre || "", personaNota = "";
@@ -8944,7 +8945,9 @@ app.get("/aseo/estado-aloj", async (req, res) => {
     const ocupado = vivas.find(v => v.arr < hoy && v.dep > hoy) || null;
     let ult = salHoy;
     if (!ult) vivas.forEach(v => { if (v.dep < hoy && (!ult || v.dep > ult.dep)) ult = v; });
-    const reg = ult ? (_aseo.estados || {})[ult.id] : null;
+    const regH = (_aseo.estados || {})["H" + hid] || null; // estado guardado a nombre del alojamiento
+    let reg = ult ? (_aseo.estados || {})[ult.id] : null;
+    if (regH && (!reg || String(regH.at) > String(reg.at))) reg = regH;
     const pub = _aseoPub(reg); // solo lo VALIDADO se muestra en la guía
     const est = pub ? pub.estado : "pendiente";
     let modo = "";
