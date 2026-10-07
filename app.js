@@ -64456,8 +64456,13 @@ function aseoEnsureCss_() {
   .mv-chg.ok > select.mv-hora:hover{background:rgba(255,255,255,.3)}
   select.mv-hora option{color:#0f172a;background:#fff}
   .mv-cols select.mv-hora{font-size:9.5px;padding:0 8px 0 6px}
-  .mv-chg > select.mv-hora{width:auto !important;min-width:0 !important;max-width:none !important;flex:0 0 auto !important}
-  .mv-chg > .mv-temp-chip, .mv-chg > .mv-tg{flex:0 1 auto !important}
+  /* Sin recortes: si no cabe en una línea, texto arriba y hora abajo en el mismo recuadro. */
+  .mv-chg{flex-wrap:wrap !important;border-radius:12px !important;height:auto !important;min-height:22px}
+  .mv-chg > .mv-temp-chip, .mv-chg > .mv-tg{flex:1 0 auto !important;overflow:visible !important;text-overflow:clip !important;min-height:19px}
+  .mv-chg > .mv-tg .tx{overflow:visible;text-overflow:clip}
+  .mv-chg > select.mv-hora{width:auto !important;min-width:0 !important;max-width:none !important;flex:1 0 auto !important;min-height:19px;
+    border:0 !important;border-radius:0 !important;box-shadow:inset 1.5px 0 0 #fb923c;text-align:center;text-align-last:center}
+  .mv-chg.ok > select.mv-hora{box-shadow:inset 1.5px 0 0 rgba(255,255,255,.55)}
   .mv-prio{font-size:10.5px;font-weight:900;letter-spacing:.04em;padding:2px 9px;border-radius:999px;background:#7f1d1d;color:#fff;--ac:#dc2626;animation:mvPulse 1.6s ease-in-out infinite;white-space:nowrap}
   .mv-ac.prio{border-left-color:#7f1d1d;box-shadow:0 0 0 2px rgba(127,29,29,.25),0 8px 22px -10px rgba(127,29,29,.5)}
   .mv-temp-chip.ok{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:1.5px solid transparent;--ac:#22c55e}
