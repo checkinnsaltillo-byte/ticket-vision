@@ -8601,11 +8601,19 @@ app.post("/aseo/asignar", async (req, res) => {
   try {
     const id = String((req.body || {}).id || "").replace(/[^\w-]/g, "").slice(0, 40);
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    // Dos roles por reserva: personal de aseo y personal de inspección.
+    const rol = String(req.body.rol || "aseo") === "inspeccion" ? "inspeccion" : "aseo";
     const personal = (Array.isArray(req.body.personal) ? req.body.personal : []).map(n => String(n || "").trim().slice(0, 80)).filter(Boolean).slice(0, 20);
     const user = String(req.body.user || "").slice(0, 80);
     const out = await _aseoMutate(_ASEO_ASIG_OBJ, "asig", d => {
-      if (personal.length) d[id] = { personal, by: user, at: new Date().toISOString() }; else delete d[id];
-      return d[id] || null;
+      const cur = d[id] || {};
+      if (cur.personal && !cur.aseo) cur.aseo = cur.personal; // formato anterior → aseo
+      delete cur.personal;
+      cur[rol] = personal;
+      if (!(cur.aseo || []).length && !(cur.inspeccion || []).length) { delete d[id]; return null; }
+      Object.assign(cur, { by: user, at: new Date().toISOString() });
+      d[id] = cur;
+      return cur;
     });
     res.json({ ok: true, asig: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
