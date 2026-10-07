@@ -8793,7 +8793,8 @@ app.get("/aseo/live", async (req, res) => {
     if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
     res.set("Cache-Control", "no-store");
     if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
-    res.json({ ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {} });
+    let guias = {}; try { guias = _aseoGuiasTodas(); } catch (e) { console.warn("[aseo] guías:", e.message); }
+    res.json({ ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/aseo/asignar", async (req, res) => {
@@ -9047,6 +9048,52 @@ app.post("/aseo/estado", async (req, res) => {
 });
 // Público (guía de bienvenida): estado de aseo del alojamiento = el de su salida
 // más reciente (hoy o antes). Sin registro → "pendiente" solo si la salida es hoy.
+// ── Qué muestra la GUÍA de cada alojamiento HOY (regla única: la usan la guía pública
+//    y las cards del sistema, para que siempre digan lo mismo). Solo reservas Booked.
+const _ASEO_GUIA_TXT = {
+  ocupado: "Este alojamiento está actualmente ocupado",
+  desocupa: "Este alojamiento se desocupa hoy. Te avisaremos en cuanto esté listo para el ingreso.",
+  en_proceso: "Aseo en proceso",
+  terminado: "Ya puedes ingresar a tu alojamiento",
+  inspeccionado: "Ya puedes ingresar a tu alojamiento",
+};
+function _aseoIdxCasas() {
+  const idx = new Map();
+  const put = (hid, id, v) => { hid = String(hid || ""); if (!hid) return; if (!idx.has(hid)) idx.set(hid, new Map()); idx.get(hid).set(String(id), v); };
+  ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && b.Id) put(b.HouseId, b.Id, { Status: String(b.Status || ""), dep: _lgIso(b.DateDeparture), arr: _lgIso(b.DateArrival) }); });
+  (_aseo.rows || []).forEach(x => put(x.HouseId, x.Id, { Status: x.Status, dep: x.DateDeparture, arr: x.DateArrival }));
+  return idx;
+}
+function _aseoGuiaCalc(hid, m, hoy, horaMx) {
+  // · Sale hoy: estado de aseo; si sigue pendiente → "se desocupa hoy", salvo que también
+  //   entre alguien hoy y ya sean las 2:00 p.m. (entonces nada; las cards avisan "urge validación").
+  // · Solo entra hoy: nada hasta que se valide "terminado" o "inspeccionado".
+  // · Huésped hospedado (ni entra ni sale hoy) → "ocupado". · Vacío → nada.
+  const vivas = [...(m || new Map()).entries()].filter(([, v]) => /^booked$/i.test(String(v.Status || "").trim()) && v.arr && v.dep).map(([id, v]) => ({ id, ...v }));
+  const salHoy = vivas.find(v => v.dep === hoy) || null;
+  const entHoy = vivas.find(v => v.arr === hoy) || null;
+  const ocupado = vivas.find(v => v.arr < hoy && v.dep > hoy) || null;
+  let ult = salHoy;
+  if (!ult) vivas.forEach(v => { if (v.dep < hoy && (!ult || v.dep > ult.dep)) ult = v; });
+  const regH = (_aseo.estados || {})["H" + hid] || null; // estado guardado a nombre del alojamiento
+  let reg = ult ? (_aseo.estados || {})[ult.id] : null;
+  if (regH && (!reg || String(regH.at) > String(reg.at))) reg = regH;
+  const pub = _aseoPub(reg); // solo lo VALIDADO se muestra en la guía
+  const est = pub ? pub.estado : "pendiente";
+  let modo = "";
+  if (salHoy) modo = est !== "pendiente" ? "aseo" : (entHoy && horaMx >= 14 ? "" : "desocupa");
+  else if (entHoy) modo = (est === "terminado" || est === "inspeccionado") ? "aseo" : "";
+  else if (ocupado) modo = "ocupado";
+  const estado = modo === "aseo" ? est : "";
+  const texto = modo === "aseo" ? (_ASEO_GUIA_TXT[estado] || "") : (_ASEO_GUIA_TXT[modo] || "");
+  return { modo, estado, texto, pub, reg, ult, salHoy, entHoy };
+}
+const _aseoHoraMx = () => Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
+function _aseoGuiasTodas() {
+  const idx = _aseoIdxCasas(), hoy = _mxHoy(), h = _aseoHoraMx(), out = {};
+  idx.forEach((m, hid) => { const g = _aseoGuiaCalc(hid, m, hoy, h); out[hid] = { modo: g.modo, estado: g.estado, texto: g.texto }; });
+  return out;
+}
 app.get("/aseo/estado-aloj", async (req, res) => {
   res.set("Cache-Control", "no-store");
   try {
@@ -9054,36 +9101,9 @@ app.get("/aseo/estado-aloj", async (req, res) => {
     if (!hid) return res.status(400).json({ ok: false, error: "Falta hid" });
     if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
     if (!_aseo.rows || Date.now() - _aseo.ts > 30_000) await _aseoLiveLoad();
-    const hoy = _mxHoy();
-    const m = new Map();
-    ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && String(b.HouseId) === hid) m.set(String(b.Id), { Status: String(b.Status || ""), dep: _lgIso(b.DateDeparture), arr: _lgIso(b.DateArrival) }); });
-    (_aseo.rows || []).forEach(x => { if (String(x.HouseId) === hid) m.set(String(x.Id), { Status: x.Status, dep: x.DateDeparture, arr: x.DateArrival }); });
-    // Situación del alojamiento HOY (hora de Monterrey):
-    //  · salida y/o entrada hoy → estado de aseo; si sigue pendiente y hay salida → "se desocupa hoy"
-    //  · huésped hospedado (ni entra ni sale hoy) → "ocupado"
-    //  · vacío → nada
-    const vivas = [...m.entries()].filter(([, v]) => _aseoViva(v.Status) && v.arr && v.dep).map(([id, v]) => ({ id, ...v }));
-    const salHoy = vivas.find(v => v.dep === hoy) || null;
-    const entHoy = vivas.find(v => v.arr === hoy) || null;
-    const ocupado = vivas.find(v => v.arr < hoy && v.dep > hoy) || null;
-    let ult = salHoy;
-    if (!ult) vivas.forEach(v => { if (v.dep < hoy && (!ult || v.dep > ult.dep)) ult = v; });
-    const regH = (_aseo.estados || {})["H" + hid] || null; // estado guardado a nombre del alojamiento
-    let reg = ult ? (_aseo.estados || {})[ult.id] : null;
-    if (regH && (!reg || String(regH.at) > String(reg.at))) reg = regH;
-    const pub = _aseoPub(reg); // solo lo VALIDADO se muestra en la guía
-    const est = pub ? pub.estado : "pendiente";
-    let modo = "";
-    // · Sale hoy: estado de aseo; si sigue pendiente → "se desocupa hoy", salvo que también
-    //   entre alguien hoy y ya sean las 2:00 p.m. (entonces nada; las cards avisan "urge validación").
-    // · Solo entra hoy: nada hasta que se valide "terminado" o "inspeccionado".
-    const horaMx = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
-    if (salHoy) modo = est !== "pendiente" ? "aseo" : (entHoy && horaMx >= 14 ? "" : "desocupa");
-    else if (entHoy) modo = (est === "terminado" || est === "inspeccionado") ? "aseo" : "";
-    else if (ocupado) modo = "ocupado";
-    const estado = modo === "aseo" ? est : "";
-    res.json({ ok: true, hid, modo, estado, label: estado ? _ASEO_ETQ[estado] : "", listo: estado === "terminado" || estado === "inspeccionado",
-      at: modo === "aseo" && pub ? pub.at : "", salida: ult ? ult.dep : "", entradaHoy: !!entHoy, salidaHoy: !!salHoy, hist: reg ? reg.hist : {}, ts: _aseo.okTs, now: Date.now() });
+    const g = _aseoGuiaCalc(hid, _aseoIdxCasas().get(hid), _mxHoy(), _aseoHoraMx());
+    res.json({ ok: true, hid, modo: g.modo, estado: g.estado, texto: g.texto, label: g.estado ? _ASEO_ETQ[g.estado] : "", listo: g.estado === "terminado" || g.estado === "inspeccionado",
+      at: g.modo === "aseo" && g.pub ? g.pub.at : "", salida: g.ult ? g.ult.dep : "", entradaHoy: !!g.entHoy, salidaHoy: !!g.salHoy, hist: g.reg ? g.reg.hist : {}, ts: _aseo.okTs, now: Date.now() });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
