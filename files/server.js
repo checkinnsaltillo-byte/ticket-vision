@@ -8807,6 +8807,7 @@ app.get("/aseo/live", async (req, res) => {
     if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
     res.set("Cache-Control", "no-store");
     if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
+    await _aseoGuiaOffLoad();
     let guias = {}; try { guias = _aseoGuiasTodas(); } catch (e) { console.warn("[aseo] guías:", e.message); }
     if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
     if (!_aseo.sms || Date.now() - (_aseo.smsTs || 0) > 30_000) { _aseo.sms = await _rhdGetJson(_ASEO_SMS_OBJ).catch(() => _aseo.sms || {}); _aseo.smsTs = Date.now(); }
@@ -9292,19 +9293,37 @@ function _aseoGuiaCalc(hid, m, hoy, horaMx) {
   if (salHoy) modo = est !== "pendiente" ? "aseo" : (entHoy && horaMx >= 14 ? "" : "desocupa");
   else if (entHoy) modo = (est === "terminado" || est === "inspeccionado") ? "aseo" : "";
   else if (ocupado) modo = "ocupado";
+  // "No publicado" (casilla de la card): la guía de ese alojamiento no muestra nada.
+  const keyPub = ult ? String(ult.id) : "H" + hid;
+  const noPub = !!((_aseo.guiaoff || {})[keyPub] || {}).off;
+  if (noPub) modo = "";
   const estado = modo === "aseo" ? est : "";
   const texto = modo === "aseo" ? (_ASEO_GUIA_TXT[estado] || "") : (_ASEO_GUIA_TXT[modo] || "");
-  return { modo, estado, texto, pub, reg, ult, salHoy, entHoy };
+  return { modo, estado, texto, pub, reg, ult, salHoy, entHoy, noPub, keyPub };
 }
 const _aseoHoraMx = () => Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
 function _aseoGuiasTodas() {
   const idx = _aseoIdxCasas(), hoy = _mxHoy(), h = _aseoHoraMx(), out = {};
-  idx.forEach((m, hid) => { const g = _aseoGuiaCalc(hid, m, hoy, h); out[hid] = { modo: g.modo, estado: g.estado, texto: g.texto }; });
+  idx.forEach((m, hid) => { const g = _aseoGuiaCalc(hid, m, hoy, h); out[hid] = { modo: g.modo, estado: g.estado, texto: g.texto, noPub: g.noPub, keyPub: g.keyPub }; });
   return out;
 }
+const _ASEO_GUIAOFF_OBJ = "aseo/guiaoff.json";
+async function _aseoGuiaOffLoad() { if (!_aseo.guiaoff || Date.now() - (_aseo.guiaoffTs || 0) > 15_000) { _aseo.guiaoff = await _rhdGetJson(_ASEO_GUIAOFF_OBJ).catch(() => _aseo.guiaoff || {}); _aseo.guiaoffTs = Date.now(); } }
+app.post("/aseo/guia", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const id = String((req.body || {}).id || "").replace(/[^\w-]/g, "").slice(0, 40);
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    const publicar = (req.body || {}).publicar !== false, user = String((req.body || {}).user || "").slice(0, 80);
+    await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { if (publicar) delete d[id]; else d[id] = { off: true, by: user, at: new Date().toISOString() }; });
+    _aseo.guiaoffTs = Date.now();
+    res.json({ ok: true, publicar });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/aseo/estado-aloj", async (req, res) => {
   res.set("Cache-Control", "no-store");
   try {
+    await _aseoGuiaOffLoad();
     const hid = String(req.query.hid || "").replace(/\D/g, "");
     if (!hid) return res.status(400).json({ ok: false, error: "Falta hid" });
     if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
