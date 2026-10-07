@@ -8711,7 +8711,8 @@ app.get("/aseo/estado-aloj", async (req, res) => {
     const reg = ult ? (_aseo.estados || {})[ult.id] : null;
     const est = reg ? reg.estado : "pendiente";
     let modo = "";
-    if (salHoy || entHoy) modo = est !== "pendiente" ? "aseo" : (salHoy ? "desocupa" : "");
+    // Pendiente: si alguien sale hoy → "se desocupa hoy"; si solo hay entrada → "espera" (te avisaremos).
+    if (salHoy || entHoy) modo = est !== "pendiente" ? "aseo" : (salHoy ? "desocupa" : "espera");
     else if (ocupado) modo = "ocupado";
     const estado = modo === "aseo" ? est : "";
     res.json({ ok: true, hid, modo, estado, label: estado ? _ASEO_ETQ[estado] : "", listo: estado === "terminado" || estado === "inspeccionado",
