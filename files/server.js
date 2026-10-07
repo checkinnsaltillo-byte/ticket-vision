@@ -1252,6 +1252,9 @@ REGLAS:
     Si hay no_encontrados o ambiguos, dilo en una línea.
   · Igual que en tareas: SOLO cuando el admin confirme en un mensaje POSTERIOR llama confirmar_recordatorio_pizarra (directo, sin volver a preparar). Si responde que no hay borrador, llama preparar_recordatorio_pizarra con los datos del resumen y luego confirmar_recordatorio_pizarra en ese mismo turno. Si pide cambios, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
   · Tras confirmar: "✅ Recordatorio guardado (folio X); aparece en Pendientes del día." (1 línea).
+- ESTADO DE ASEO — "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando":
+  · Llama preparar_estado_aseo con los alojamientos TAL CUAL (el backend los reconoce aunque vengan abreviados o mal escritos), el estado (listo/terminado = terminado · inspeccionado/revisado = inspeccionado · empezando/limpiando = en_proceso), validado=true solo si lo dice explícitamente, y persona si nombra a alguien.
+  · Envía el campo resumen TAL CUAL. SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
 - Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
 `;
@@ -1266,6 +1269,25 @@ REGLAS:
 // ║ Toda ejecución de tool notifica al admin (ADMIN_NOTIFY_PHONE).          ║
 // ═══════════════════════════════════════════════════════════════════════════
 const BOT_TOOLS = [
+  {
+    name: "preparar_estado_aseo",
+    description: "ADMIN o PERSONAL. Prepara (NO guarda) la actualización del ESTADO DE ASEO de uno o varios alojamientos (ej. 'cu2 listo', 'Jc1 terminado Alma', 'ox1 inspeccionado', 'Cumbres 2 terminado y validado'). El backend reconoce el alojamiento aunque venga abreviado o con errores (cu2, jc2, 'jose cardenas 2', 'oaxaca1', 'oxaca 1'…), busca la reserva que salió, y asigna a la persona (la del celular, o la que se nombre en el texto). Devuelve draft_id + resumen para mostrar y pedir confirmación.",
+    input_schema: {
+      type: "object",
+      properties: {
+        alojamientos: { type: "array", items: { type: "string" }, description: "Alojamientos TAL CUAL los escribió el usuario (ej. ['cu2'], ['jose cardenas 2','ox1'])." },
+        estado: { type: "string", enum: ["en_proceso", "terminado", "inspeccionado"], description: "listo/lista/terminado/terminé/acabé/limpio = terminado · inspeccionado/revisado/checado/supervisado = inspeccionado · empezando/limpiando/en proceso = en_proceso." },
+        validado: { type: "boolean", description: "true SOLO si dice explícitamente validado/validar/publicado/publícalo. 'inspeccionado' siempre se publica solo." },
+        persona: { type: "string", description: "Opcional. Nombre de quien hizo el aseo/inspección SI lo menciona (ej. 'Alma'). Si no lo menciona, se usa el dueño del celular." },
+      },
+      required: ["alojamientos", "estado"],
+    },
+  },
+  {
+    name: "confirmar_estado_aseo",
+    description: "ADMIN o PERSONAL. Guarda la actualización de estado de aseo preparada con preparar_estado_aseo. Llamar ÚNICAMENTE después de que el usuario confirmó ('sí') en un mensaje posterior al resumen.",
+    input_schema: { type: "object", properties: { draft_id: { type: "string" } }, required: [] },
+  },
   {
     name: "cotizar_disponibilidad",
     description: "Consulta disponibilidad y precios de alojamientos para un rango de fechas. Llama esta herramienta CUANDO el huésped haya proporcionado las 3 datos requeridos: fecha de entrada, fecha de salida y número de huéspedes. Si falta alguno, PREGUNTA primero — no adivines. No requiere confirmación.",
@@ -1543,8 +1565,10 @@ function _botTarDelDia(rows, ocur, iso, hoy) {
 }
 const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
+const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
+const _ASEO_EST_TXT = { en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado" };
 // ¿El mensaje actual es un "sí" a un resumen "(por confirmar)" que el bot YA envió?
 // Cubre el caso en que el modelo escribió el resumen sin preparar el borrador y,
 // al recibir el "sí", prepara y confirma en el mismo turno (el candado lo bloqueaba
@@ -2196,6 +2220,69 @@ async function _botExecTool(toolUse, ctx) {
       if (args.incluir_resueltos && cerrados.length) partes.push("", "✅ *Resueltos / cancelados*", ...cerrados.sort(sortP).map(x => `${x.estado === "Cancelado" ? "✖️" : "✅"} ${x.rec ? "📌" : "📋"} ${x.r.Nombre}`));
       partes.push("", "🔴 Crítico · 🟠 Alto · 🟡 Medio · 🔵 Bajo · 📌 Recordatorio · 📋 Tarea · ⏳ Fecha límite");
       return { content: JSON.stringify({ ok: true, fecha, total: items.length, abiertos: abiertos.length, formatted_message: partes.join("\n") }), notifyText: null };
+    }
+    if (name === "preparar_estado_aseo") {
+      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      const estado = ["en_proceso", "terminado", "inspeccionado"].includes(args.estado) ? args.estado : "";
+      if (!estado) return { content: JSON.stringify({ ok: false, error: "No identifiqué el estado (en proceso / terminado / inspeccionado)" }), notifyText: null };
+      const qs = (Array.isArray(args.alojamientos) ? args.alojamientos : [args.alojamientos]).map(x => String(x || "").trim()).filter(Boolean).slice(0, 10);
+      if (!qs.length) return { content: JSON.stringify({ ok: false, error: "Falta el alojamiento" }), notifyText: null };
+      const cat = await _aseoCatalogo();
+      const items = [], errores = [];
+      for (const q of qs) {
+        const m = _aseoMatchAloj(q, cat);
+        if (!m.ok) { errores.push(m.error); continue; }
+        const t = await _aseoTurnover(m.aloj.hid);
+        if (!t) { errores.push(`${m.aloj.nombre}: no encontré una salida reciente para registrar el aseo`); continue; }
+        items.push({ q, hid: m.aloj.hid, nombre: m.aloj.nombre, code: m.aloj.code.toUpperCase(), booking: t.id, salida: t.dep, huesped: t.guest || "", seguro: m.seguro });
+      }
+      // Persona: la nombrada en el texto (tolerante a nombres cortos) o el dueño del celular.
+      let persona = ctx.staffNombre || ctx.adminNombre || "", personaNota = "";
+      if (args.persona) {
+        const r = _botResolverPersonal([String(args.persona)], await _botPersonalActivo().catch(() => []));
+        if (r.ok.length) persona = r.ok[0];
+        else personaNota = (r.amb && Object.keys(r.amb).length) ? `"${args.persona}" puede ser: ${Object.values(r.amb)[0].join(", ")}` : `No encontré a "${args.persona}" en Personal`;
+      }
+      if (!items.length) return { content: JSON.stringify({ ok: false, errores, instruccion: "Explica el problema en 1-2 líneas y pide el alojamiento correcto (ej. CU2, JC1, OX3)." }), notifyText: null };
+      const validar = estado !== "terminado" || !!args.validado;
+      const id = "AS" + Date.now().toString(36);
+      const yaConfirmo = _botEsSiAResumen(ctx, /aseo/i);
+      const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, estado, validar, persona, items };
+      _botAseoDrafts.set(ctx.phone10, draft);
+      if (yaConfirmo) {
+        const rc = await _botExecTool({ name: "confirmar_estado_aseo", input: { draft_id: id } }, ctx);
+        let jr = {}; try { jr = JSON.parse(rc.content || "{}"); } catch (_) {}
+        return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "GUARDADO. Responde en 1-2 líneas con lo guardado. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
+      }
+      const pub = estado === "terminado" ? (validar ? "Sí (validado)" : "No — queda pendiente de validar en el sistema") : "Sí";
+      const fmtD = iso => { const d = new Date(iso + "T12:00:00"); return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" }); };
+      const resumen = ["🧽 Estado de aseo (por confirmar)",
+        ...items.map(x => `• ${x.nombre} (${x.code})${x.huesped ? ` · salió ${x.huesped} (${fmtD(x.salida)})` : ""}`),
+        `• Estado: ${_ASEO_EST_TXT[estado]}`,
+        `• Publicar en guía: ${pub}`,
+        `• ${estado === "inspeccionado" ? "Inspeccionó" : "Realizó"}: ${persona || "Sin asignar"}`,
+        ...(errores.length ? [`⚠️ ${errores.join(" · ")}`] : []),
+        ...(personaNota ? [`⚠️ ${personaNota}`] : []),
+        "¿Confirmas? (sí / no / corrige lo que haga falta)"].join("\n");
+      return { content: JSON.stringify({ ok: true, draft_id: id, resumen, instruccion: "Envía el campo resumen TAL CUAL y espera la respuesta. NO llames confirmar_estado_aseo hasta que conteste 'sí' en un mensaje nuevo. Si corrige algo (otro alojamiento, estado o persona), vuelve a llamar preparar_estado_aseo con todo corregido." }), notifyText: null };
+    }
+    if (name === "confirmar_estado_aseo") {
+      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      const d = _botAseoDrafts.get(ctx.phone10);
+      if (!d) return { content: JSON.stringify({ ok: false, error: "No hay una actualización de aseo pendiente. Vuelve a prepararla." }), notifyText: null };
+      if (Date.now() > d.exp) { _botAseoDrafts.delete(ctx.phone10); return { content: JSON.stringify({ ok: false, error: "El borrador venció (30 min). Vuelve a prepararlo." }), notifyText: null }; }
+      if (!(ctx.msgTs > d.msgTs)) return { content: JSON.stringify({ ok: false, error: "Aún no hay confirmación. Muestra el resumen y espera su respuesta." }), notifyText: null };
+      const user = `${d.persona || ctx.staffNombre || ctx.adminNombre || ctx.phone10} (WhatsApp)`;
+      const rol = d.estado === "inspeccionado" ? "inspeccion" : "aseo";
+      const hechos = [];
+      for (const x of d.items) {
+        await _aseoGuardarEstado({ id: x.booking, hid: x.hid, estado: d.estado, validar: d.validar, user });
+        if (d.persona) await _aseoAsignarRol(x.booking, rol, d.persona, user).catch(() => {});
+        hechos.push(`${x.code}`);
+      }
+      _botAseoDrafts.delete(ctx.phone10);
+      return { content: JSON.stringify({ ok: true, guardados: hechos, estado: _ASEO_EST_TXT[d.estado], publicado: d.validar, persona: d.persona,
+        instruccion: `Responde en 1 línea: ✅ ${hechos.join(", ")} → ${_ASEO_EST_TXT[d.estado]}${d.validar ? " (publicado en la guía)" : " (pendiente de validar)"}${d.persona ? " · " + d.persona : ""}.` }), notifyText: null };
     }
     if (name === "preparar_recordatorio_pizarra") {
       if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
@@ -3124,6 +3211,57 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     } // fin if (!isGuestMode) — admin en modo prueba cae al flujo huésped abajo.
     else {
       console.info(`[bot-in] ${phone10}: admin en modo prueba → flujo huésped`);
+    }
+  }
+  // ─── PERSONAL (no admin): actualización del ESTADO DE ASEO por WhatsApp ───
+  // "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado"… Solo si el celular es
+  // de un empleado (hoja Personal) y el mensaje habla de aseo o hay un borrador
+  // pendiente de confirmar (para el "sí / no / corrección").
+  {
+    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|validad\w*|aseo)\b/;
+    const _aseoDraft = _botAseoDrafts.get(phone10);
+    const _aseoPend = _aseoDraft && Date.now() < _aseoDraft.exp;
+    if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
+      const emp = await _asistenciaLookupEmpleado(phone10).catch(() => null);
+      if (emp && emp.ok && emp.empleado) {
+        const nombre = String(emp.empleado || "").trim();
+        if (!bodyAlreadyPersisted) { await _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, staff: true }); bodyAlreadyPersisted = true; }
+        try {
+          let hist = [];
+          try {
+            const cr = await _botFetchConversation(phone10, 20);
+            hist = (cr.messages || []).filter(m => m && m.meta && m.meta.staff === true).slice(-8, -1)
+              .map(m => ({ role: m.role === "user" ? "user" : "assistant", body: m.body }));
+          } catch (_) {}
+          const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+          const sys = `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
+Tu ÚNICA función en este chat es registrar el ESTADO DE ASEO de los alojamientos.
+- Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
+  · Llama preparar_estado_aseo con: alojamientos TAL CUAL los escribió (el sistema los reconoce aunque estén abreviados o con errores), estado (listo/lista/terminado/terminé/acabé = terminado · inspeccionado/revisado/checado = inspeccionado · empezando/limpiando/en proceso = en_proceso), validado=true SOLO si dice validado/publicado, y persona SOLO si nombra a alguien distinto de quien escribe (ej. "Alma").
+  · Envía el campo resumen TAL CUAL y espera respuesta.
+  · SOLO si contesta afirmativamente ("sí", "ok", "correcto", "dale") en un mensaje POSTERIOR, llama confirmar_estado_aseo y responde en 1 línea.
+  · Si corrige algo ("no, es cu3", "fue Brenda", "nada más terminado"), vuelve a llamar preparar_estado_aseo con TODO corregido y muestra el nuevo resumen.
+  · Si dice "no" / "cancela", responde "Cancelado." y no guardes.
+- Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
+- Si el mensaje no es sobre aseo, responde en 1 línea que por este medio solo registras estados de aseo (ej. "cu2 listo").
+- Sé breve, sin cortesías ni emojis extra.`;
+          const ASEO_TOOLS = BOT_TOOLS.filter(t => t.name === "preparar_estado_aseo" || t.name === "confirmar_estado_aseo");
+          const llm = await _botLlmLoop({
+            system: sys, history: hist, userMsg: bodyMsg,
+            ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: nombre, msgTs: t0, userMsg: bodyMsg,
+                   lastAssistant: ((hist.filter(m => m.role === "assistant").slice(-1)[0]) || {}).body || "" },
+            tools: ASEO_TOOLS,
+          });
+          const reply = String(llm.text || "").trim() || "OK.";
+          await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true });
+          _botAppendMessage(phone10, "assistant", reply, { model: BOT_ANTHROPIC_MODEL, staff: true, tools: (llm.toolsUsed || []).map(t => t.name) });
+          console.info(`[bot-staff] ${phone10} (${nombre}): reply en ${Date.now() - t0}ms · "${reply.slice(0, 80)}"`);
+        } catch (e) {
+          console.error("[bot-staff] error:", e.message);
+          await _twilioSendMessage({ to: fromRaw, body: `No pude registrar el aseo (${e.message}). Intenta de nuevo.`, skipMirror: true }).catch(() => {});
+        }
+        return;
+      }
     }
   }
   // Modo Prueba: si activo, ignorar mensajes de números no incluidos en la
@@ -8667,34 +8805,119 @@ function _aseoPub(reg) {
   if (reg.validado === undefined) return reg.estado ? { estado: reg.estado, at: reg.at, by: reg.by } : null;
   return reg.pub || null;
 }
+// Guarda el estado de aseo de una salida. Solo "terminado" requiere validación;
+// "en_proceso", "inspeccionado" y "pendiente" se publican directo.
+async function _aseoGuardarEstado({ id, hid, estado, validar, user }) {
+  validar = !!validar || estado !== "terminado";
+  const now = new Date().toISOString();
+  const out = await _aseoMutate(_ASEO_ESTADOS_OBJ, "estados", d => {
+    const cur = d[id] || { hist: {} };
+    if (cur.validado === undefined && cur.estado) { cur.validado = true; cur.pub = { estado: cur.estado, at: cur.at, by: cur.by }; }
+    cur.hist = cur.hist || {};
+    Object.assign(cur, { estado, at: now, by: user || "", hid: hid || cur.hid || "", validado: validar });
+    if (validar) {
+      // Validar publica el estado; las etapas previas quedan registradas, las posteriores se borran.
+      const n = _ASEO_ETAPAS.indexOf(estado);
+      _ASEO_ETAPAS.forEach((e, i) => { if (i <= n) { if (!cur.hist[e]) cur.hist[e] = { at: now, by: user || "" }; } else delete cur.hist[e]; });
+      if (estado === "pendiente") delete cur.pub; else cur.pub = { estado, at: now, by: user || "" };
+    }
+    if (estado === "pendiente" && !cur.pub) { delete d[id]; return null; }
+    d[id] = cur;
+    return cur;
+  });
+  _aseo.estadosTs = Date.now();
+  return out;
+}
+// Agrega a una persona al rol (aseo | inspeccion) de la reserva, sin quitar a los demás.
+async function _aseoAsignarRol(id, rol, nombre, user) {
+  if (!nombre) return null;
+  return _aseoMutate(_ASEO_ASIG_OBJ, "asig", d => {
+    const cur = d[id] || {};
+    if (cur.personal && !cur.aseo) cur.aseo = cur.personal;
+    delete cur.personal;
+    const l = Array.isArray(cur[rol]) ? cur[rol] : [];
+    if (!l.includes(nombre)) l.push(nombre);
+    cur[rol] = l;
+    Object.assign(cur, { by: user || "", at: new Date().toISOString() });
+    d[id] = cur;
+    return cur;
+  });
+}
+// Reserva cuya salida corresponde al aseo de un alojamiento: la que sale HOY o, si no, la última que salió.
+async function _aseoTurnover(hid) {
+  if (!_aseo.rows || Date.now() - _aseo.ts > 30_000) await _aseoLiveLoad();
+  const hoy = _mxHoy(), m = new Map();
+  ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && String(b.HouseId) === String(hid)) m.set(String(b.Id), { Status: String(b.Status || ""), dep: _lgIso(b.DateDeparture), arr: _lgIso(b.DateArrival), guest: b.GuestName || "" }); });
+  (_aseo.rows || []).forEach(x => { if (String(x.HouseId) === String(hid)) m.set(String(x.Id), { Status: x.Status, dep: x.DateDeparture, arr: x.DateArrival, guest: x.GuestName || (m.get(String(x.Id)) || {}).guest || "" }); });
+  let ult = null;
+  m.forEach((v, id) => { if (_aseoViva(v.Status) && v.dep && v.dep <= hoy && (!ult || v.dep > ult.dep)) ult = { id, ...v }; });
+  return ult;
+}
+// ── Búsqueda tolerante de alojamientos: "cu2", "CU 2", "cumbres 2", "Calle Cumbres #2",
+//    "jose cardenas 2", "jc2", "oaxaca1", "oaxca 1" (errores de dedo), "cu4a"…
+function _aseoLev(a, b) {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+async function _aseoCatalogo() {
+  const pl = await _alojGetPayload().catch(() => null);
+  return ((pl && pl.rows) || []).map(r => {
+    const prop = String(r.Propiedad || "").trim(), dep = String(r["# Departamento"] || "").trim().replace(/^#\s*/, "");
+    const code = String(r.device_name || r.Device_name || "").trim();
+    const hid = String(r.HouseId || r.id_lodgify || "").replace(/\D/g, "");
+    const pn = _botNorm(prop).replace(/^(calle|av|avenida|plaza|privada)\s+/, "");
+    return { prop, dep: dep.toLowerCase(), code: code.toLowerCase(), hid, nombre: `${prop} #${dep}`,
+      pref: code.toLowerCase().replace(/[0-9].*$/, ""), pn: pn.replace(/\s+/g, ""), words: pn.split(" ").filter(Boolean),
+      ini: pn.split(" ").filter(Boolean).map(w => w[0]).join("") };
+  }).filter(x => x.prop && x.dep);
+}
+function _aseoMatchAloj(q, cat) {
+  let t = _botNorm(q).replace(/\b(calle|plaza|av|avenida|privada|depto|departamento|dpto|numero|num|no|el|la|del|de|alojamiento|depa)\b/g, " ").replace(/\s+/g, " ").trim();
+  // número de depto al final (acepta "4 a" → "4a")
+  const mm = t.match(/(\d+)\s*([a-z])?$/);
+  if (!mm) return { ok: false, error: `No identifiqué el número de departamento en "${q}"` };
+  const dep = (mm[1] + (mm[2] || "")).toLowerCase();
+  const p = t.slice(0, mm.index).replace(/\s+/g, "");
+  if (!p) return { ok: false, error: `No identifiqué la propiedad en "${q}"` };
+  const score = c => {
+    if (p === c.pref || p === c.pn || p === c.ini) return 0;
+    if (p.length >= 3 && (c.pn.startsWith(p) || c.words.some(w => w.startsWith(p)))) return 0.2;
+    if (p.length >= 4 && c.words.some(w => _aseoLev(p, w) <= 1)) return 0.4;
+    const d = Math.min(_aseoLev(p, c.pn), ...c.words.map(w => _aseoLev(p, w)));
+    const rel = d / Math.max(p.length, 1);
+    if (p.length >= 4 && rel <= 0.34) return 0.5 + rel;
+    if (p.length <= 3 && (_aseoLev(p, c.pref) <= 1 && p[0] === c.pref[0])) return 0.8;
+    return 9;
+  };
+  const props = new Map();
+  cat.forEach(c => { const k = c.prop; if (!props.has(k)) props.set(k, score(c)); });
+  const best = Math.min(...props.values());
+  if (best >= 9) return { ok: false, error: `No reconozco la propiedad de "${q}"` };
+  const top = [...props.entries()].filter(([, v]) => v === best).map(([k]) => k);
+  const cands = cat.filter(c => top.includes(c.prop) && c.dep === dep);
+  if (!cands.length) {
+    const sug = cat.filter(c => top.includes(c.prop) && c.dep.startsWith(dep)).map(c => c.code.toUpperCase());
+    return { ok: false, error: `${top.join(" / ")} no tiene el departamento ${dep.toUpperCase()}${sug.length ? ` — ¿${sug.join(" o ")}?` : ""}` };
+  }
+  if (cands.length > 1) return { ok: false, ambiguo: cands.map(c => `${c.nombre} (${c.code.toUpperCase()})`), error: `"${q}" puede ser: ${cands.map(c => c.nombre).join(" o ")}` };
+  return { ok: true, aloj: cands[0], seguro: best <= 0.2 };
+}
 app.post("/aseo/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const b = req.body || {};
     const id = String(b.id || "").replace(/[^\w-]/g, "").slice(0, 40);
     const estado = String(b.estado || "");
-    // Solo "terminado" e "inspeccionado" requieren validación; "en_proceso" y "pendiente" se publican directo.
-    const validar = !!b.validar || !["terminado", "inspeccionado"].includes(estado);
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
     if (estado !== "pendiente" && !_ASEO_ETAPAS.includes(estado)) return res.status(400).json({ ok: false, error: "Estado inválido" });
     const user = String(b.user || "").slice(0, 80), hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
-    const now = new Date().toISOString();
-    const out = await _aseoMutate(_ASEO_ESTADOS_OBJ, "estados", d => {
-      const cur = d[id] || { hist: {} };
-      if (cur.validado === undefined && cur.estado) { cur.validado = true; cur.pub = { estado: cur.estado, at: cur.at, by: cur.by }; }
-      cur.hist = cur.hist || {};
-      Object.assign(cur, { estado, at: now, by: user, hid: hid || cur.hid || "", validado: validar });
-      if (validar) {
-        // Validar publica el estado; las etapas previas quedan registradas, las posteriores se borran.
-        const n = _ASEO_ETAPAS.indexOf(estado);
-        _ASEO_ETAPAS.forEach((e, i) => { if (i <= n) { if (!cur.hist[e]) cur.hist[e] = { at: now, by: user }; } else delete cur.hist[e]; });
-        if (estado === "pendiente") delete cur.pub; else cur.pub = { estado, at: now, by: user };
-      }
-      if (estado === "pendiente" && !cur.pub) { delete d[id]; return null; }
-      d[id] = cur;
-      return cur;
-    });
-    _aseo.estadosTs = Date.now();
+    const out = await _aseoGuardarEstado({ id, hid, estado, validar: !!b.validar, user });
     res.json({ ok: true, estado: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
