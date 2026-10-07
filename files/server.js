@@ -3131,6 +3131,14 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const nombre = String(resp.empleado || "").split(" ")[0];
         const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n\n📍 Ahora comparte tu ubicación (obligatoria) — sin ella el registro queda incompleto.\n\nGracias, ${nombre}!`;
         await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
+        // Al registrar la LLEGADA: si tiene limpiezas o inspecciones asignadas hoy, le mandamos su lista.
+        if (_asistIntent === "entrada") {
+          const quien = String(resp.empleado || emp.empleado || "");
+          _aseoListaEmpleado(quien).then(txt => {
+            if (!txt) return;
+            return _twilioSendMessage({ to: fromRaw, body: txt, skipMirror: true }).then(() => _botAppendMessage(phone10, "assistant", txt, { staff: true, auto: "limpiezas_al_llegar" }));
+          }).catch(e => console.warn("[aseo] lista al registrar llegada:", e.message));
+        }
       } else {
         await _twilioSendMessage({ to: fromRaw, body: `⚠️ No pude registrar tu ${_asistIntent}. Contacta al admin.`, skipMirror: true }).catch(()=>{});
       }
@@ -8960,11 +8968,13 @@ async function _aseoResumenHoy() {
     const aseoP = (as.aseo || as.personal || []).join(", ") || limpia(r && r.hist && (r.hist.terminado || r.hist.en_proceso) && (r.hist.terminado || r.hist.en_proceso).by);
     const inspP = (as.inspeccion || []).join(", ") || limpia(r && r.hist && r.hist.inspeccionado && r.hist.inspeccionado.by);
     let estado = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "🧹 Terminado", inspeccionado: "✅ Inspeccionado" }[sel] || sel;
-    if (sel === "terminado") estado += pub && pub.estado === "terminado" ? " (validado)" : " (sin validar)";
+    // "(validado)" se refiere al ÚLTIMO registro, no a una validación anterior que siga publicada.
+    if (sel === "terminado") estado += (r && (r.validado === undefined || r.validado)) ? " (validado)" : " (sin validar)";
     let aviso = "";
     if (c.sal && c.ent && sel === "pendiente" && horaMx >= 14) aviso = "🚨 Urge validación";
     else if (!c.sal && c.ent && !(pub && /^(terminado|inspeccionado)$/.test(pub.estado))) aviso = "⚠️ Requiere validación";
     return { code: a ? a.code.toUpperCase() : "", nombre: a ? a.nombre : `Alojamiento ${c.hid}`, entra: !!c.ent, sale: !!c.sal, estado, sel, aviso, aseo: aseoP, insp: inspP,
+      aseoArr: (as.aseo || as.personal || []).slice(), inspArr: (as.inspeccion || []).slice(),
       salio: c.sal ? c.sal.guest : "", entra_huesped: c.ent ? c.ent.guest : "" };
   });
   const ordenE = { pendiente: 0, en_proceso: 1, terminado: 2, inspeccionado: 3 };
@@ -8979,8 +8989,35 @@ async function _aseoResumenHoy() {
   if (!items.length) lineas.push("No hay salidas ni entradas hoy.");
   return { fecha: hoy, total: items.length, items, formatted_message: lineas.join("\n") };
 }
+// ¿Es la misma persona? (nombre del registro de asistencia vs nombre asignado en la card)
+function _aseoMismaPersona(a, b) {
+  const ta = _botNorm(a).split(" ").filter(t => t.length > 1), tb = _botNorm(b).split(" ").filter(t => t.length > 1);
+  if (!ta.length || !tb.length) return false;
+  const [cortos, largos] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+  return cortos.every(t => largos.includes(t));
+}
+// Lista de limpiezas/inspecciones de HOY asignadas a un empleado (null si no tiene).
+async function _aseoListaEmpleado(nombre) {
+  const r = await _aseoResumenHoy();
+  const mias = r.items.map(i => ({ ...i, roles: [i.aseoArr.some(n => _aseoMismaPersona(n, nombre)) ? "Aseo" : "", i.inspArr.some(n => _aseoMismaPersona(n, nombre)) ? "Inspección" : ""].filter(Boolean) }))
+    .filter(i => i.roles.length);
+  if (!mias.length) return null;
+  const pila = String(nombre || "").split(" ")[0];
+  const l = [`🧽 *${pila}, tus limpiezas de hoy* (${mias.length})`, mias.some(i => i.entra) ? "* = entra huésped hoy (prioridad)" : "", ""];
+  mias.forEach((i, n) => {
+    l.push(`${i.entra ? "* " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}`);
+    l.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
+    l.push(`   Te toca: ${i.roles.join(" e ")}`);
+  });
+  l.push("", `Para actualizar escribe, por ejemplo: «${mias[0].code || "CU2"} listo» o «${mias[0].code || "CU2"} inspeccionado».`);
+  return l.filter((x, k) => x !== "" || k > 0).join("\n");
+}
 app.get("/aseo/resumen-hoy", async (req, res) => {
-  try { res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, await _aseoResumenHoy())); }
+  try {
+    res.set("Cache-Control", "no-store");
+    if (req.query.para) return res.json({ ok: true, mensaje: await _aseoListaEmpleado(String(req.query.para)) }); // vista previa del mensaje al llegar
+    res.json(Object.assign({ ok: true }, await _aseoResumenHoy()));
+  }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/aseo/estado", async (req, res) => {
