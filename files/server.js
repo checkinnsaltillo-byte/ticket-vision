@@ -8625,7 +8625,8 @@ app.get("/aseo/live", async (req, res) => {
     if (!_aseo.cambios || Date.now() - (_aseo.cambiosTs || 0) > 60_000) { _aseo.cambios = await _rhdGetJson(_ASEO_CAMBIOS_OBJ).catch(() => _aseo.cambios || {}); _aseo.cambiosTs = Date.now(); }
     if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
     res.set("Cache-Control", "no-store");
-    res.json({ ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {} });
+    if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
+    res.json({ ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {} });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/aseo/asignar", async (req, res) => {
@@ -8648,6 +8649,61 @@ app.post("/aseo/asignar", async (req, res) => {
       return cur;
     });
     res.json({ ok: true, asig: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ─── Estado de aseo por salida (reserva que sale) ───────────────────────────
+// Etapas en orden: en_proceso → terminado → inspeccionado (= listo para recibir
+// huéspedes). Marcar una etapa completa las anteriores; regresar borra las posteriores.
+const _ASEO_ESTADOS_OBJ = "aseo/estados.json";
+const _ASEO_ETAPAS = ["en_proceso", "terminado", "inspeccionado"];
+const _ASEO_ETQ = { pendiente: "Aseo pendiente", en_proceso: "Aseo en proceso", terminado: "Aseo terminado", inspeccionado: "Inspeccionado · listo para recibir huéspedes" };
+const _mxHoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Monterrey" });
+app.post("/aseo/estado", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {};
+    const id = String(b.id || "").replace(/[^\w-]/g, "").slice(0, 40);
+    const estado = String(b.estado || "");
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    if (estado !== "pendiente" && !_ASEO_ETAPAS.includes(estado)) return res.status(400).json({ ok: false, error: "Estado inválido" });
+    const user = String(b.user || "").slice(0, 80), hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
+    const now = new Date().toISOString();
+    const out = await _aseoMutate(_ASEO_ESTADOS_OBJ, "estados", d => {
+      if (estado === "pendiente") { delete d[id]; return null; }
+      const cur = d[id] || { hist: {} };
+      const n = _ASEO_ETAPAS.indexOf(estado);
+      _ASEO_ETAPAS.forEach((e, i) => {
+        if (i <= n) { if (!cur.hist[e]) cur.hist[e] = { at: now, by: user }; }
+        else delete cur.hist[e];
+      });
+      Object.assign(cur, { estado, at: now, by: user, hid: hid || cur.hid || "" });
+      d[id] = cur;
+      return cur;
+    });
+    _aseo.estadosTs = Date.now();
+    res.json({ ok: true, estado: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Público (guía de bienvenida): estado de aseo del alojamiento = el de su salida
+// más reciente (hoy o antes). Sin registro → "pendiente" solo si la salida es hoy.
+app.get("/aseo/estado-aloj", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const hid = String(req.query.hid || "").replace(/\D/g, "");
+    if (!hid) return res.status(400).json({ ok: false, error: "Falta hid" });
+    if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
+    if (!_aseo.rows || Date.now() - _aseo.ts > 30_000) await _aseoLiveLoad();
+    const hoy = _mxHoy();
+    const m = new Map();
+    ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && String(b.HouseId) === hid) m.set(String(b.Id), { Status: String(b.Status || ""), dep: _lgIso(b.DateDeparture), arr: _lgIso(b.DateArrival) }); });
+    (_aseo.rows || []).forEach(x => { if (String(x.HouseId) === hid) m.set(String(x.Id), { Status: x.Status, dep: x.DateDeparture, arr: x.DateArrival }); });
+    let ult = null;
+    m.forEach((v, id) => { if (_aseoViva(v.Status) && v.dep && v.dep <= hoy && (!ult || v.dep > ult.dep)) ult = { id, ...v }; });
+    const reg = ult ? (_aseo.estados || {})[ult.id] : null;
+    let estado = reg ? reg.estado : (ult && ult.dep === hoy ? "pendiente" : "");
+    res.json({ ok: true, hid, estado, label: estado ? _ASEO_ETQ[estado] : "", listo: estado === "inspeccionado",
+      at: reg ? reg.at : "", salida: ult ? ult.dep : "", hist: reg ? reg.hist : {}, ts: _aseo.okTs, now: Date.now() });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
