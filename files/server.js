@@ -8808,7 +8808,10 @@ app.get("/aseo/live", async (req, res) => {
     res.set("Cache-Control", "no-store");
     if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
     let guias = {}; try { guias = _aseoGuiasTodas(); } catch (e) { console.warn("[aseo] guías:", e.message); }
-    res.json({ ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias });
+    if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
+    if (!_aseo.sms || Date.now() - (_aseo.smsTs || 0) > 30_000) { _aseo.sms = await _rhdGetJson(_ASEO_SMS_OBJ).catch(() => _aseo.sms || {}); _aseo.smsTs = Date.now(); }
+    res.json({ ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
+      temprana: _aseo.temprana || {}, sms: _aseo.sms || {} });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/aseo/asignar", async (req, res) => {
@@ -9102,6 +9105,54 @@ async function _aseoCambiosAsignacion() {
   }
   return { resumen: r, cambios: out.sort((a, b) => a.persona.localeCompare(b.persona, "es")) };
 }
+// ── Entrada temprana (por reserva) y SMS "tu alojamiento está listo" ──────────
+const _ASEO_TEMP_OBJ = "aseo/temprana.json", _ASEO_SMS_OBJ = "aseo/sms.json";
+app.post("/aseo/temprana", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const id = String((req.body || {}).id || "").replace(/[^\w-]/g, "").slice(0, 40);
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    const on = !!req.body.on, user = String(req.body.user || "").slice(0, 80);
+    const out = await _aseoMutate(_ASEO_TEMP_OBJ, "temprana", d => { if (on) d[id] = { on: true, by: user, at: new Date().toISOString() }; else delete d[id]; return d[id] || null; });
+    _aseo.tempTs = Date.now();
+    res.json({ ok: true, temprana: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Teléfono del huésped de una reserva → E.164 (+52 para números de 10 dígitos).
+function _aseoTelHuesped(id) {
+  const b = ((_lgSnap.payload && _lgSnap.payload.bookings) || []).find(x => x && String(x.Id) === String(id));
+  const l = (_aseo.rows || []).find(x => String(x.Id) === String(id));
+  const raw = String((b && b.GuestPhone) || (l && l.GuestPhone) || "").trim();
+  let d = raw.replace(/\D/g, "");
+  if (!d) return { tel: "", nombre: (b && b.GuestName) || (l && l.GuestName) || "", hid: String((b && b.HouseId) || (l && l.HouseId) || "") };
+  let tel;
+  if (raw.startsWith("+")) tel = "+" + d;
+  else if (d.length === 10) tel = "+52" + d;
+  else if (d.length === 13 && d.startsWith("521")) tel = "+52" + d.slice(3);
+  else tel = "+" + d;
+  return { tel, nombre: (b && b.GuestName) || (l && l.GuestName) || "", hid: String((b && b.HouseId) || (l && l.HouseId) || "") };
+}
+app.get("/aseo/sms/destino", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  const t = _aseoTelHuesped(String(req.query.id || ""));
+  res.json({ ok: true, tel: t.tel, nombre: t.nombre });
+});
+app.post("/aseo/sms", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const id = String((req.body || {}).id || "").replace(/[^\w-]/g, "").slice(0, 40);
+    const body = String((req.body || {}).body || "").trim().slice(0, 600);
+    const user = String((req.body || {}).user || "").slice(0, 80);
+    if (!id || !body) return res.status(400).json({ ok: false, error: "Faltan datos" });
+    const t = _aseoTelHuesped(id);
+    if (!t.tel) return res.status(400).json({ ok: false, error: "La reserva no tiene teléfono del huésped" });
+    const j = await _vSendSms(t.tel, body);
+    const rec = { at: new Date().toISOString(), by: user, to: "••••" + t.tel.slice(-4), sid: j && j.sid || "" };
+    await _aseoMutate(_ASEO_SMS_OBJ, "sms", d => { (d[id] = d[id] || []).push(rec); });
+    _aseo.smsTs = Date.now();
+    res.json({ ok: true, sms: rec });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/aseo/notificar/preview", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
