@@ -8659,25 +8659,37 @@ const _ASEO_ESTADOS_OBJ = "aseo/estados.json";
 const _ASEO_ETAPAS = ["en_proceso", "terminado", "inspeccionado"];
 const _ASEO_ETQ = { pendiente: "Aseo pendiente", en_proceso: "Aseo en proceso", terminado: "Aseo terminado", inspeccionado: "Inspeccionado · listo para recibir huéspedes" };
 const _mxHoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Monterrey" });
+// Dos pasos: (1) se ELIGE el estado (combobox) → queda sin validar; (2) se VALIDA con
+// la palomita → solo entonces se publica (campo `pub`, el que leen las guías).
+// Registros anteriores a este esquema (sin `validado`) cuentan como publicados.
+function _aseoPub(reg) {
+  if (!reg) return null;
+  if (reg.validado === undefined) return reg.estado ? { estado: reg.estado, at: reg.at, by: reg.by } : null;
+  return reg.pub || null;
+}
 app.post("/aseo/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const b = req.body || {};
     const id = String(b.id || "").replace(/[^\w-]/g, "").slice(0, 40);
     const estado = String(b.estado || "");
+    const validar = !!b.validar;
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
     if (estado !== "pendiente" && !_ASEO_ETAPAS.includes(estado)) return res.status(400).json({ ok: false, error: "Estado inválido" });
     const user = String(b.user || "").slice(0, 80), hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
     const now = new Date().toISOString();
     const out = await _aseoMutate(_ASEO_ESTADOS_OBJ, "estados", d => {
-      if (estado === "pendiente") { delete d[id]; return null; }
       const cur = d[id] || { hist: {} };
-      const n = _ASEO_ETAPAS.indexOf(estado);
-      _ASEO_ETAPAS.forEach((e, i) => {
-        if (i <= n) { if (!cur.hist[e]) cur.hist[e] = { at: now, by: user }; }
-        else delete cur.hist[e];
-      });
-      Object.assign(cur, { estado, at: now, by: user, hid: hid || cur.hid || "" });
+      if (cur.validado === undefined && cur.estado) { cur.validado = true; cur.pub = { estado: cur.estado, at: cur.at, by: cur.by }; }
+      cur.hist = cur.hist || {};
+      Object.assign(cur, { estado, at: now, by: user, hid: hid || cur.hid || "", validado: validar });
+      if (validar) {
+        // Validar publica el estado; las etapas previas quedan registradas, las posteriores se borran.
+        const n = _ASEO_ETAPAS.indexOf(estado);
+        _ASEO_ETAPAS.forEach((e, i) => { if (i <= n) { if (!cur.hist[e]) cur.hist[e] = { at: now, by: user }; } else delete cur.hist[e]; });
+        if (estado === "pendiente") delete cur.pub; else cur.pub = { estado, at: now, by: user };
+      }
+      if (estado === "pendiente" && !cur.pub) { delete d[id]; return null; }
       d[id] = cur;
       return cur;
     });
@@ -8709,14 +8721,15 @@ app.get("/aseo/estado-aloj", async (req, res) => {
     let ult = salHoy;
     if (!ult) vivas.forEach(v => { if (v.dep < hoy && (!ult || v.dep > ult.dep)) ult = v; });
     const reg = ult ? (_aseo.estados || {})[ult.id] : null;
-    const est = reg ? reg.estado : "pendiente";
+    const pub = _aseoPub(reg); // solo lo VALIDADO se muestra en la guía
+    const est = pub ? pub.estado : "pendiente";
     let modo = "";
     // Pendiente: si alguien sale hoy → "se desocupa hoy"; si solo hay entrada → "espera" (te avisaremos).
     if (salHoy || entHoy) modo = est !== "pendiente" ? "aseo" : (salHoy ? "desocupa" : "espera");
     else if (ocupado) modo = "ocupado";
     const estado = modo === "aseo" ? est : "";
     res.json({ ok: true, hid, modo, estado, label: estado ? _ASEO_ETQ[estado] : "", listo: estado === "terminado" || estado === "inspeccionado",
-      at: modo === "aseo" && reg ? reg.at : "", salida: ult ? ult.dep : "", entradaHoy: !!entHoy, salidaHoy: !!salHoy, hist: reg ? reg.hist : {}, ts: _aseo.okTs, now: Date.now() });
+      at: modo === "aseo" && pub ? pub.at : "", salida: ult ? ult.dep : "", entradaHoy: !!entHoy, salidaHoy: !!salHoy, hist: reg ? reg.hist : {}, ts: _aseo.okTs, now: Date.now() });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
