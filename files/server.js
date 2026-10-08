@@ -2676,8 +2676,9 @@ async function _botExecTool(toolUse, ctx) {
 // Enum canónico — DEBE mantenerse sincronizado con app.js INC_CLASIF_POR_MOTIVO.
 const _BOT_INC_ENUM = {
   Limpieza:     ["Baño sucio","Sábanas sucias","Basura detectada","Plaga o insectos"],
-  Mantenimiento:["Fuga de agua","Falla eléctrica","Falla de electrodomésticos","Ausencia de controles"],
+  "Inspección": [],
   Insumos:      ["Toallas faltantes","Pilas faltantes","Productos de limpieza faltantes"],
+  Mantenimiento:["Fuga de agua","Falla eléctrica","Falla de electrodomésticos","Ausencia de controles"],
 };
 async function _botAutoClasificarIncidencia(descripcion) {
   const ENUM = await _incCatalogo().catch(() => _BOT_INC_ENUM); // Motivos › Sub-motivos editables (Check-list › Incidencias › Clasificaciones)
@@ -9440,7 +9441,7 @@ app.post("/aseo/tarea", async (req, res) => {
     const hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
     const titulo = txt(b.titulo, 140);
     if (!hid || !titulo || !iso.test(String(b.fecha || ""))) return res.status(400).json({ ok: false, error: "Faltan alojamiento, título o fecha" });
-    const depto = ["limpieza", "inspeccion", "mantenimiento"].includes(b.depto) ? b.depto : "limpieza";
+    const depto = ["limpieza", "inspeccion", "insumos", "mantenimiento"].includes(b.depto) ? b.depto : "limpieza";
     const rp = b.repite && ["diario", "semanal", "mensual", "anual", "cada"].includes(b.repite.tipo)
       ? { tipo: b.repite.tipo, n: Math.max(1, Math.min(365, Number(b.repite.n) || 1)), fin: iso.test(String(b.repite.fin || "")) ? b.repite.fin : "" } : null;
     const id = /^[a-z0-9]{6,20}$/.test(String(b.id || "")) ? String(b.id) : Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
