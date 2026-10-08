@@ -9406,10 +9406,14 @@ app.post("/aseo/reprog", async (req, res) => {
     if (!id || !iso.test(fecha) || !iso.test(orig)) return res.status(400).json({ ok: false, error: "Datos incompletos" });
     let antes = "";
     const out = await _aseoMutate(_ASEO_REPROG_OBJ, "reprog", d => {
-      const o = d[id] && d[id].orig ? d[id].orig : orig;
-      antes = d[id] ? d[id].fecha : o;
-      if (fecha === o) { delete d[id]; return null; }
-      d[id] = { fecha, orig: o, hid, by: user, at: new Date().toISOString() }; return d[id];
+      const prev = d[id] || null;
+      const o = prev && prev.orig ? prev.orig : orig;
+      antes = prev ? prev.fecha : o;
+      // Mover a mano (card o arrastre en el calendario) no deja copia punteada; pero si antes hubo
+      // una reprogramación automática (3 pm), sus días "fantasma" se conservan.
+      const fant = prev && prev.auto ? (prev.fantasmas || []).filter(f => f !== fecha) : [];
+      if (fecha === o && !fant.length) { delete d[id]; return null; }
+      d[id] = Object.assign({ fecha, orig: o, hid, by: user, at: new Date().toISOString() }, fant.length ? { auto: true, fantasmas: fant } : {}); return d[id];
     });
     _aseo.reprogTs = Date.now();
     const hoy = _mxHoy();
