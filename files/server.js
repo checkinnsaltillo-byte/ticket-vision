@@ -9017,8 +9017,11 @@ app.get("/aseo/live", async (req, res) => {
     if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
     if (!_aseo.sms || Date.now() - (_aseo.smsTs || 0) > 30_000) { _aseo.sms = await _rhdGetJson(_ASEO_SMS_OBJ).catch(() => _aseo.sms || {}); _aseo.smsTs = Date.now(); }
     if (!_aseo.tardia || Date.now() - (_aseo.tardTs || 0) > 30_000) { _aseo.tardia = await _rhdGetJson(_ASEO_TARD_OBJ).catch(() => _aseo.tardia || {}); _aseo.tardTs = Date.now(); }
-    await _aseoReprogLoad(); await _aseoAutoCfgLoad(); await _aseoNoSaleLoad();
-    res.json({ nosale: _aseo.nosale || {}, reprog: _aseo.reprog || {}, autonotif: _aseo.autoCfg || {}, tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
+    await _aseoReprogLoad(); await _aseoAutoCfgLoad(); await _aseoNoSaleLoad(); await _aseoTareasLoad();
+    // Tareas con enlace firmado de cada adjunto.
+    const tareas = {};
+    Object.values(_aseo.tareas || {}).forEach(t => { tareas[t.id] = Object.assign({}, t, { adjuntos: (t.adjuntos || []).map(a => Object.assign({}, a, { url: `/aseo/adjunto?k=${encodeURIComponent(a.k)}&s=${_aseoAdjSig(a.k)}` })) }); });
+    res.json({ tareas, nosale: _aseo.nosale || {}, reprog: _aseo.reprog || {}, autonotif: _aseo.autoCfg || {}, tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
       temprana: _aseo.temprana || {}, sms: _aseo.sms || {} });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -9385,6 +9388,79 @@ app.post("/aseo/nosale", async (req, res) => {
     const hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20) || _aseoHidDe(id);
     res.json({ ok: true, nosale: await _aseoNoSaleSet(id, hid, !!b.on, String(b.user || "").slice(0, 80)) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ── Tareas manuales de Control de aseo ("＋ Nueva tarea"): aseo/tareas.json → { <id>: tarea } ──
+// tarea = { id, hid, depto (limpieza|inspeccion|mantenimiento), problema, prioridad (1..5), titulo, desc,
+//   fecha, hora, repite: { tipo: diario|semanal|mensual|anual|cada, n, fin } | null, asignados[], etiquetas[],
+//   adjuntos[{ k, nombre, tipo, tam }], reserva (bookingId|""), by, at }. El estado de cada día va en
+//   aseo/estados.json con la llave "T<id>-<fecha>" (mismo selector que las cards).
+const _ASEO_TAREAS_OBJ = "aseo/tareas.json";
+async function _aseoTareasLoad() { if (!_aseo.tareas || Date.now() - (_aseo.tareasTs || 0) > 5_000) { _aseo.tareas = await _rhdGetJson(_ASEO_TAREAS_OBJ).catch(() => _aseo.tareas || {}); _aseo.tareasTs = Date.now(); } }
+app.post("/aseo/tarea", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = (req.body || {}).tarea || {}, user = String((req.body || {}).user || "").slice(0, 80);
+    const iso = /^\d{4}-\d{2}-\d{2}$/, txt = (v, n) => String(v || "").trim().slice(0, n);
+    const hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
+    const titulo = txt(b.titulo, 140);
+    if (!hid || !titulo || !iso.test(String(b.fecha || ""))) return res.status(400).json({ ok: false, error: "Faltan alojamiento, título o fecha" });
+    const depto = ["limpieza", "inspeccion", "mantenimiento"].includes(b.depto) ? b.depto : "limpieza";
+    const rp = b.repite && ["diario", "semanal", "mensual", "anual", "cada"].includes(b.repite.tipo)
+      ? { tipo: b.repite.tipo, n: Math.max(1, Math.min(365, Number(b.repite.n) || 1)), fin: iso.test(String(b.repite.fin || "")) ? b.repite.fin : "" } : null;
+    const id = /^[a-z0-9]{6,20}$/.test(String(b.id || "")) ? String(b.id) : Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
+    let nueva = false;
+    const out = await _aseoMutate(_ASEO_TAREAS_OBJ, "tareas", d => {
+      const prev = d[id] || null; nueva = !prev;
+      d[id] = { id, hid, depto, problema: !!b.problema, prioridad: Math.max(1, Math.min(5, Number(b.prioridad) || 3)), titulo, desc: txt(b.desc, 2000),
+        fecha: b.fecha, hora: /^\d{2}:\d{2}$/.test(String(b.hora || "")) ? b.hora : "", repite: rp,
+        asignados: (Array.isArray(b.asignados) ? b.asignados : []).map(n => txt(n, 80)).filter(Boolean).slice(0, 20),
+        etiquetas: (Array.isArray(b.etiquetas) ? b.etiquetas : []).map(n => txt(n, 40)).filter(Boolean).slice(0, 20),
+        adjuntos: (Array.isArray(b.adjuntos) ? b.adjuntos : []).filter(a => a && /^aseo\/adjuntos\//.test(a.k)).slice(0, 20).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80), tam: Number(a.tam) || 0 })),
+        reserva: String(b.reserva || "").replace(/\D/g, "").slice(0, 20),
+        by: prev ? prev.by : user, at: prev ? prev.at : new Date().toISOString(), editBy: prev ? user : "", editAt: prev ? new Date().toISOString() : "" };
+      return d[id];
+    });
+    _aseo.tareasTs = Date.now();
+    if (out.fecha === _mxHoy()) _aseoAutoMarca(hid, nueva ? "agregada" : "modificado", `${nueva ? "Nueva tarea" : "Tarea editada"}: ${titulo}`);
+    res.json({ ok: true, tarea: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/aseo/tarea/borrar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const id = String((req.body || {}).id || "").replace(/[^a-z0-9]/g, "").slice(0, 20);
+    await _aseoMutate(_ASEO_TAREAS_OBJ, "tareas", d => { delete d[id]; });
+    _aseo.tareasTs = Date.now();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Adjuntos privados: se suben en base64 y se ven con un enlace firmado (HMAC).
+const _aseoAdjSig = k => crypto.createHmac("sha256", _RHD_SECRET).update("aseo-adj|" + k).digest("hex").slice(0, 32);
+app.post("/aseo/adjunto", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {};
+    const buf = Buffer.from(String(b.data || "").replace(/^data:[^,]*,/, ""), "base64");
+    if (!buf.length) return res.status(400).json({ ok: false, error: "Archivo vacío" });
+    if (buf.length > 15 * 1024 * 1024) return res.status(400).json({ ok: false, error: "Máximo 15 MB por archivo" });
+    const nombre = String(b.nombre || "archivo").replace(/[^\w.\- ()áéíóúñÁÉÍÓÚÑ]/g, "_").slice(0, 100);
+    const tipo = String(b.tipo || "application/octet-stream").slice(0, 80);
+    const k = `aseo/adjuntos/${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}-${nombre}`;
+    await _rhdPut(k, buf, tipo);
+    res.json({ ok: true, adjunto: { k, nombre, tipo, tam: buf.length, url: `/aseo/adjunto?k=${encodeURIComponent(k)}&s=${_aseoAdjSig(k)}` } });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/aseo/adjunto", async (req, res) => {
+  try {
+    const k = String(req.query.k || "");
+    if (!/^aseo\/adjuntos\//.test(k) || req.query.s !== _aseoAdjSig(k)) return res.status(403).send("Enlace no válido");
+    const tok = await _vGcsToken();
+    const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(k)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
+    if (!r.ok) return res.status(r.status).send("No encontrado");
+    res.set("Content-Type", r.headers.get("content-type") || "application/octet-stream");
+    res.set("Cache-Control", "private, max-age=3600");
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) { res.status(500).send(e.message); }
 });
 // ── Fecha de aseo editable (card): aseo/reprog.json → { <asigId>: { fecha, orig, hid, by, at } } ──
 const _ASEO_REPROG_OBJ = "aseo/reprog.json";
