@@ -5328,6 +5328,13 @@ app.post("/update-incidencia", async (req, res) => {
       result.fotos_urls = fields.fotos_urls;
       result.fotos_count = fields.fotos_count;
     }
+    try {
+      const i1 = _incInfo(req.body?.info), i2 = _incInfo(fields), info = {}; Object.keys(i1).forEach(k => { info[k] = i2[k] || i1[k]; });
+      const det = fields.estatus && Object.keys(fields).filter(k => k !== "UpdatedAt").length === 1 ? `Estado: ${fields.estatus}`
+        : fields.nivel && Object.keys(fields).filter(k => k !== "UpdatedAt").length === 1 ? `Nivel: ${fields.nivel}`
+        : fields.seguimiento != null && Object.keys(fields).filter(k => k !== "UpdatedAt").length === 1 ? `Seguimiento: ${String(fields.seguimiento).slice(0, 120)}` : "✏️ Editada";
+      _incAutoMarca(id, det, info);
+    } catch (_) {}
     res.json(result);
   } catch (err) {
     console.error("update_incidencia_error", err.message);
@@ -5505,6 +5512,7 @@ app.post("/save-incidencia", async (req, res) => {
       payload: { ...payload, fotos_urls: fotosUrls },
     });
     if (!saveResult || !saveResult.ok) throw new Error(saveResult?.error || 'Apps Script save error');
+    try { const I = _incInfo(payload); _incAutoMarca(saveResult.id, `🆕 Nueva incidencia${payload.reportante || payload.Reportante ? " · reportó " + (payload.reportante || payload.Reportante) : ""}`, I); } catch (_) {}
     res.json({ ok: true, id: saveResult.id, timestamp: saveResult.timestamp, fotos_uploaded: fotosUrls.length });
   } catch (err) {
     console.error("save_incidencia_error", err.message);
@@ -9758,7 +9766,7 @@ async function _gcsDelete(name) {
 function _aseoAutoGuardar(o) {
   (async () => {
     await _aseoAutoCfgLoad();
-    if (!_aseoDestinatarios(o.sec === "tareas" ? "tareas" : "checkinn").length) return;
+    if (!_aseoDestinatarios(o.sec === "tareas" || o.sec === "incidencias" ? o.sec : "checkinn").length) return;
     const t = Date.now();
     await _rhdPut(`${_ASEO_PEND_PREFIX}${t}-${crypto.randomBytes(4).toString("hex")}.json`, JSON.stringify(Object.assign({ t }, o)), "application/json");
   })().catch(e => console.warn("[aseo-auto] no se anotó el cambio:", e.message));
@@ -9774,8 +9782,9 @@ async function _aseoAutoTick() {
   const regs = [];
   for (const n of names) { try { regs.push(await _rhdGetJson(n)); } catch (_) {} }
   for (const n of names) await _gcsDelete(n).catch(() => {}); // solo los leídos; lo nuevo queda para el siguiente minuto
-  const marcas = new Map(), fueraM = new Map(), tar = new Map();
+  const marcas = new Map(), fueraM = new Map(), tar = new Map(), inc = new Map();
   regs.sort((a, b) => (a.t || 0) - (b.t || 0)).forEach(x => {
+    if (x && x.sec === "incidencias") { const p = inc.get(x.id) || { info: {}, det: [] }; const campo = String(x.det).split(":")[0]; p.det = p.det.filter(d => d.split(":")[0] !== campo).concat(x.det); Object.assign(p.info, x.info || {}); inc.set(x.id, p); return; }
     if (x && x.sec === "tareas") { const l = tar.get(x.id) || []; const campo = String(x.det).split(":")[0]; tar.set(x.id, l.filter(d => d.split(":")[0] !== campo).concat(x.det)); return; }
     if (!x || !x.hid) return;
     if (x.fuera) { fueraM.set(x.hid, x.fuera); return; }
@@ -9791,7 +9800,30 @@ async function _aseoAutoTick() {
   });
   if (marcas.size || fueraM.size) await _aseoAutoEnviar(marcas, fueraM);
   if (tar.size) await _tarAutoEnviar(tar).catch(e => console.warn("[tar-auto]", e.message));
+  if (inc.size) await _incAutoEnviar(inc).catch(e => console.warn("[inc-auto]", e.message));
   return { ok: true, enviados: regs.length };
+}
+// Incidencias (sección de Check-list): cada alta o cambio se anota y se manda junto 1 min después.
+function _incAutoMarca(id, det, info) { if (id) _aseoAutoGuardar({ sec: "incidencias", id: String(id), det: String(det || "✏️ Editada"), info: info || {} }); }
+function _incInfo(o) {
+  o = o || {}; const g = (...k) => { for (const x of k) if (o[x] != null && String(o[x]).trim()) return String(o[x]).trim(); return ""; };
+  const tit = [g("motivos", "Motivos"), g("clasificaciones", "Clasificacion")].map(v => Array.isArray(v) ? v.join(", ") : v).filter(Boolean).join(" — ");
+  return { titulo: tit, aloj: g("alojamiento", "Alojamiento"), estatus: g("estatus", "Estatus"), nivel: g("nivel", "Nivel") };
+}
+async function _incAutoEnviar(inc) {
+  const dest = _aseoDestinatarios("incidencias"); if (!dest.length) return;
+  const L = ["🚨 *Cambios en Incidencias*", ""];
+  inc.forEach((p, id) => {
+    const I = p.info || {};
+    L.push(`• *${[I.aloj, I.titulo].filter(Boolean).join(" · ") || "Incidencia"}*${id ? ` (${id})` : ""}`); p.det.forEach(d => L.push(`   ${d}`));
+    if (I.estatus || I.nivel) L.push(`   Ahora: ${[I.estatus, I.nivel ? "nivel " + String(I.nivel).toLowerCase() : ""].filter(Boolean).join(" · ")}`);
+  });
+  const txt = L.join("\n"), tels = await _aseoTelPersonal().catch(() => []);
+  for (const n of dest) {
+    const t = tels.find(x => _aseoMismaPersona(x.nombre, n)); if (!t || !t.tel) continue;
+    try { await _twilioSendMessage({ to: _waFormatTo(t.tel), body: txt, skipMirror: true }); _botAppendMessage(t.tel, "assistant", txt, { staff: true, auto: "incidencias_auto" }); }
+    catch (e) { console.warn(`[inc-auto] ${n}:`, e.message); }
+  }
 }
 async function _tarAutoEnviar(tar) {
   const dest = _aseoDestinatarios("tareas"); if (!dest.length) return;
@@ -9854,7 +9886,7 @@ app.post("/aseo/autonotif", async (req, res) => {
     const perfiles = {};
     Object.entries(b.perfiles && typeof b.perfiles === "object" ? b.perfiles : {}).slice(0, 60).forEach(([n, v]) => {
       const nom = String(n || "").trim().slice(0, 80); if (!nom || !v) return;
-      perfiles[nom] = { rol: v.rol === "admin" ? "admin" : v.rol === "empleado" ? "empleado" : "", auto: { checkinn: !!(v.auto && v.auto.checkinn), tareas: !!(v.auto && v.auto.tareas) },
+      perfiles[nom] = { rol: v.rol === "admin" ? "admin" : v.rol === "empleado" ? "empleado" : "", auto: { checkinn: !!(v.auto && v.auto.checkinn), tareas: !!(v.auto && v.auto.tareas), incidencias: !!(v.auto && v.auto.incidencias) },
         recordatorio: v.recordatorio !== false, avanzadas: !!v.avanzadas };
     });
     // Compatibilidad: «personas» = quienes reciben automáticamente Check-inn.
