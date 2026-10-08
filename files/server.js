@@ -9706,7 +9706,8 @@ app.post("/aseo/extra", async (req, res) => {
     const out = await _aseoMutate(_ASEO_EXTRA_OBJ, "extra", d => {
       const cur = d[key] || {};
       if (typeof b.checkout === "boolean") cur.checkout = b.checkout;
-      if (typeof b.incidencia === "boolean") { cur.incidencia = b.incidencia; cur.incBy = user; cur.incAt = new Date().toISOString(); }
+      if (typeof b.incidencia === "boolean") { cur.incidencia = b.incidencia; cur.incBy = user; cur.incAt = new Date().toISOString(); if (!b.incidencia) delete cur.incId; }
+      if (typeof b.incId === "string" && b.incId) cur.incId = b.incId.replace(/[^\w-]/g, "").slice(0, 60); // incidencia ligada (Check-list › Incidencias)
       Object.assign(cur, { by: user, at: new Date().toISOString() });
       d[key] = cur; return cur;
     });
