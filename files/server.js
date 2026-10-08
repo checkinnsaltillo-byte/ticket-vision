@@ -9516,7 +9516,7 @@ async function _incCatalogo() {
   return _incSt.cat;
 }
 const _incSt = { d: null, ts: 0, mig: null };
-const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento", reserva: "Reservacion_id", huesped: "Huesped_nombre", tarea: "Tarea_ligada" };
+const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento", reserva: "Reservacion_id", huesped: "Huesped_nombre", tarea: "Tarea_ligada", archivada: "Archivada" };
 const _incFotoSig = k => crypto.createHmac("sha256", _RHD_SECRET).update("inc-foto|" + k).digest("hex").slice(0, 32);
 const _incFotoUrl = k => `https://api.check-inn.mx/incidencias/foto?k=${encodeURIComponent(k)}&s=${_incFotoSig(k)}`;
 const _incMxNow = () => new Date().toLocaleString("sv-SE", { timeZone: "America/Monterrey" }).slice(0, 19);
@@ -9684,7 +9684,8 @@ app.post("/update-incidencia", async (req, res) => {
       const solo = Object.keys(fields).filter(k => k !== "UpdatedAt");
       if (solo.length === 1 && solo[0] === "tarea") throw 0; // solo se ligó la tarea levantada: sin aviso
       const det = solo.length === 1 && fields.estatus ? `Estado: ${fields.estatus}` : solo.length === 1 && fields.nivel ? `Nivel: ${fields.nivel}`
-        : solo.length === 1 && fields.seguimiento != null ? `Seguimiento: ${String(fields.seguimiento).slice(0, 120)}` : "✏️ Editada";
+        : solo.length === 1 && fields.seguimiento != null ? `Seguimiento: ${String(fields.seguimiento).slice(0, 120)}`
+        : solo.length === 1 && fields.archivada != null ? (fields.archivada ? "🗄 Archivada" : "Desarchivada") : "✏️ Editada";
       _incAutoMarca(id, det, info);
     } catch (_) {}
     const out = { ok: true, id, updated };
@@ -9710,6 +9711,7 @@ app.post("/aseo/extra", async (req, res) => {
       if (typeof b.checkout === "boolean") cur.checkout = b.checkout;
       if (typeof b.correctivo === "boolean") cur.correctivo = b.correctivo; // Tipo de servicio: Check-out · Correctivo · Preventivo · General
       if (typeof b.preventivo === "boolean") cur.preventivo = b.preventivo;
+      if (typeof b.archivada === "boolean") { if (b.archivada) { cur.archivada = true; cur.archAt = new Date().toISOString(); cur.archBy = user; } else delete cur.archivada; } // tarea archivada con su incidencia
       if (typeof b.incidencia === "boolean") { cur.incidencia = b.incidencia; cur.incBy = user; cur.incAt = new Date().toISOString(); if (!b.incidencia) delete cur.incId; }
       if (typeof b.incId === "string" && b.incId) cur.incId = b.incId.replace(/[^\w-]/g, "").slice(0, 60); // incidencia ligada (Check-list › Incidencias)
       Object.assign(cur, { by: user, at: new Date().toISOString() });
