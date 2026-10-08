@@ -9453,7 +9453,7 @@ app.post("/aseo/tarea", async (req, res) => {
         fecha: b.fecha, hora: /^\d{2}:\d{2}$/.test(String(b.hora || "")) ? b.hora : "", repite: rp,
         asignados: (Array.isArray(b.asignados) ? b.asignados : []).map(n => txt(n, 80)).filter(Boolean).slice(0, 20),
         etiquetas: (Array.isArray(b.etiquetas) ? b.etiquetas : []).map(n => txt(n, 40)).filter(Boolean).slice(0, 20),
-        adjuntos: (Array.isArray(b.adjuntos) ? b.adjuntos : []).filter(a => a && /^aseo\/adjuntos\//.test(a.k)).slice(0, 20).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80), tam: Number(a.tam) || 0 })),
+        adjuntos: (Array.isArray(b.adjuntos) ? b.adjuntos : []).filter(a => a && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.k)).slice(0, 20).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80), tam: Number(a.tam) || 0 })),
         reserva: String(b.reserva || "").replace(/\D/g, "").slice(0, 20),
         by: prev ? prev.by : user, at: prev ? prev.at : new Date().toISOString(), editBy: prev ? user : "", editAt: prev ? new Date().toISOString() : "" };
       return d[id];
@@ -9491,7 +9491,7 @@ app.post("/aseo/adjunto", async (req, res) => {
 app.get("/aseo/adjunto", async (req, res) => {
   try {
     const k = String(req.query.k || "");
-    if (!/^aseo\/adjuntos\//.test(k) || req.query.s !== _aseoAdjSig(k)) return res.status(403).send("Enlace no válido");
+    if (!/^(aseo\/adjuntos|incidencias\/fotos)\//.test(k) || req.query.s !== _aseoAdjSig(k)) return res.status(403).send("Enlace no válido"); // fotos de incidencia adjuntas a una tarea
     const tok = await _vGcsToken();
     const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(k)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
     if (!r.ok) return res.status(r.status).send("No encontrado");
@@ -9515,7 +9515,7 @@ async function _incCatalogo() {
   return _incSt.cat;
 }
 const _incSt = { d: null, ts: 0, mig: null };
-const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento", reserva: "Reservacion_id", huesped: "Huesped_nombre" };
+const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento", reserva: "Reservacion_id", huesped: "Huesped_nombre", tarea: "Tarea_ligada" };
 const _incFotoSig = k => crypto.createHmac("sha256", _RHD_SECRET).update("inc-foto|" + k).digest("hex").slice(0, 32);
 const _incFotoUrl = k => `https://api.check-inn.mx/incidencias/foto?k=${encodeURIComponent(k)}&s=${_incFotoSig(k)}`;
 const _incMxNow = () => new Date().toLocaleString("sv-SE", { timeZone: "America/Monterrey" }).slice(0, 19);
@@ -9681,6 +9681,7 @@ app.post("/update-incidencia", async (req, res) => {
     try {
       const i1 = _incInfo(req.body?.info), i2 = _incInfo(fields), info = {}; Object.keys(i1).forEach(k => { info[k] = i2[k] || i1[k]; });
       const solo = Object.keys(fields).filter(k => k !== "UpdatedAt");
+      if (solo.length === 1 && solo[0] === "tarea") throw 0; // solo se ligó la tarea levantada: sin aviso
       const det = solo.length === 1 && fields.estatus ? `Estado: ${fields.estatus}` : solo.length === 1 && fields.nivel ? `Nivel: ${fields.nivel}`
         : solo.length === 1 && fields.seguimiento != null ? `Seguimiento: ${String(fields.seguimiento).slice(0, 120)}` : "✏️ Editada";
       _incAutoMarca(id, det, info);
@@ -9706,6 +9707,7 @@ app.post("/aseo/extra", async (req, res) => {
     const out = await _aseoMutate(_ASEO_EXTRA_OBJ, "extra", d => {
       const cur = d[key] || {};
       if (typeof b.checkout === "boolean") cur.checkout = b.checkout;
+      if (typeof b.correctivo === "boolean") cur.correctivo = b.correctivo; // Tipo de servicio: Check-out · General · Correctivo
       if (typeof b.incidencia === "boolean") { cur.incidencia = b.incidencia; cur.incBy = user; cur.incAt = new Date().toISOString(); if (!b.incidencia) delete cur.incId; }
       if (typeof b.incId === "string" && b.incId) cur.incId = b.incId.replace(/[^\w-]/g, "").slice(0, 60); // incidencia ligada (Check-list › Incidencias)
       Object.assign(cur, { by: user, at: new Date().toISOString() });
