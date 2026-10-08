@@ -9516,7 +9516,7 @@ async function _incCatalogo() {
   return _incSt.cat;
 }
 const _incSt = { d: null, ts: 0, mig: null };
-const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento", reserva: "Reservacion_id", huesped: "Huesped_nombre", tarea: "Tarea_ligada", archivada: "Archivada" };
+const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento", reserva: "Reservacion_id", huesped: "Huesped_nombre", tarea: "Tarea_ligada", archivada: "Archivada", origen: "Card_origen" };
 const _incFotoSig = k => crypto.createHmac("sha256", _RHD_SECRET).update("inc-foto|" + k).digest("hex").slice(0, 32);
 const _incFotoUrl = k => `https://api.check-inn.mx/incidencias/foto?k=${encodeURIComponent(k)}&s=${_incFotoSig(k)}`;
 const _incMxNow = () => new Date().toLocaleString("sv-SE", { timeZone: "America/Monterrey" }).slice(0, 19);
@@ -9714,6 +9714,10 @@ app.post("/aseo/extra", async (req, res) => {
       if (typeof b.archivada === "boolean") { if (b.archivada) { cur.archivada = true; cur.archAt = new Date().toISOString(); cur.archBy = user; } else delete cur.archivada; } // tarea archivada con su incidencia
       if (typeof b.incidencia === "boolean") { cur.incidencia = b.incidencia; cur.incBy = user; cur.incAt = new Date().toISOString(); if (!b.incidencia) delete cur.incId; }
       if (typeof b.incId === "string" && b.incId) cur.incId = b.incId.replace(/[^\w-]/g, "").slice(0, 60); // incidencia ligada (Check-list › Incidencias)
+      if (Array.isArray(b.incIds)) { // varias incidencias por card
+        const L = [...new Set(b.incIds.map(x => String(x || "").replace(/[^\w-]/g, "").slice(0, 60)).filter(Boolean))].slice(-30);
+        if (L.length) { cur.incIds = L; cur.incId = L[L.length - 1]; } else { delete cur.incIds; delete cur.incId; }
+      }
       Object.assign(cur, { by: user, at: new Date().toISOString() });
       d[key] = cur; return cur;
     });
