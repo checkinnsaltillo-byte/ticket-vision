@@ -1261,6 +1261,8 @@ REGLAS:
   · Llama preparar_solicitud_aseo (alojamientos TAL CUAL, tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla). Envía el campo resumen TAL CUAL.
   · SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
 - VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
+- NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
+- El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
 - Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
 `;
@@ -1331,6 +1333,14 @@ const BOT_TOOLS = [
     name: "confirmar_solicitud_aseo",
     description: "ADMIN o PERSONAL. Guarda la solicitud de entrada/salida preparada con preparar_solicitud_aseo. Llamar ÚNICAMENTE después de que el usuario confirmó ('sí') en un mensaje posterior al resumen.",
     input_schema: { type: "object", properties: { draft_id: { type: "string" } }, required: [] },
+  },
+  {
+    name: "reportar_no_desalojo",
+    description: "ADMIN o PERSONAL. Reporta que el huésped que SALE hoy AÚN NO DESALOJA el alojamiento (ej. 'cu2 no ha salido', 'ox3 no ha desalojado', 'cu2 aún hay gente adentro', 'jc1 siguen adentro'), o que YA desalojó (ya_salio=true: 'cu2 ya salió', 'ox3 ya desalojaron'). Se guarda DE INMEDIATO (sin pedir confirmación) y activa la alerta 🚨 en la card.",
+    input_schema: { type: "object", properties: {
+      alojamientos: { type: "array", items: { type: "string" }, description: "Alojamientos TAL CUAL (ej. ['cu2'])." },
+      ya_salio: { type: "boolean", description: "true si avisa que YA desalojó (quita la alerta)." },
+    }, required: ["alojamientos"] },
   },
   {
     name: "consultar_resumen_dia",
@@ -1619,7 +1629,7 @@ function _botTarDelDia(rows, ocur, iso, hoy) {
 }
 const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
 const _ASEO_EST_TXT = { en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado" };
@@ -2275,8 +2285,24 @@ async function _botExecTool(toolUse, ctx) {
       partes.push("", "🔴 Crítico · 🟠 Alto · 🟡 Medio · 🔵 Bajo · 📌 Recordatorio · 📋 Tarea · ⏳ Fecha límite");
       return { content: JSON.stringify({ ok: true, fecha, total: items.length, abiertos: abiertos.length, formatted_message: partes.join("\n") }), notifyText: null };
     }
-    if (name === "consultar_resumen_dia") {
+    if (name === "reportar_no_desalojo") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      const cat = await _aseoCatalogo(), hoy = _mxHoy(), on = !args.ya_salio;
+      const user = `${ctx.staffNombre || ctx.adminNombre || ctx.phone10} (WhatsApp)`;
+      const hechos = [], errores = [];
+      for (const q of (Array.isArray(args.alojamientos) ? args.alojamientos : [args.alojamientos]).map(x => String(x || "").trim()).filter(Boolean).slice(0, 10)) {
+        const m = _aseoMatchAloj(q, cat);
+        if (!m.ok) { errores.push(m.error); continue; }
+        const b = await _aseoReservaSolicitud(m.aloj.hid, "salida");
+        if (!b || b.dep !== hoy) { errores.push(`${m.aloj.code.toUpperCase()}: no tiene una reserva que salga hoy`); continue; }
+        await _aseoNoSaleSet(b.id, m.aloj.hid, on, user);
+        hechos.push(`${m.aloj.code.toUpperCase()}${b.guest ? " (" + b.guest + ")" : ""}`);
+      }
+      if (!hechos.length) return { content: JSON.stringify({ ok: false, errores, instruccion: "Explica el problema en 1 línea y pide el alojamiento correcto (ej. CU2)." }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ${on ? "🚨 Registrado: NO ha desalojado" : "✅ Registrado: ya desalojó"} ${hechos.join(", ")}${errores.length ? " · ⚠️ " + errores.join(" · ") : ""}.` }), notifyText: null };
+    }
+    if (name === "consultar_resumen_dia") {
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "El resumen del día solo lo pueden consultar administración y las personas del reenvío automático.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       return { content: JSON.stringify({ ok: true, formatted_message: await _aseoResumenDiaTxt(), instruccion: "Responde con formatted_message TAL CUAL, sin resumirlo ni agregar explicaciones." }), notifyText: null };
     }
     if (name === "consultar_limpiezas_hoy") {
@@ -2303,6 +2329,7 @@ async function _botExecTool(toolUse, ctx) {
       if (!estado) return { content: JSON.stringify({ ok: false, error: "No identifiqué el estado (en proceso / terminado / inspeccionado)" }), notifyText: null };
       let qs = (Array.isArray(args.alojamientos) ? args.alojamientos : [args.alojamientos]).map(x => String(x || "").trim()).filter(Boolean).slice(0, 10);
       // "validar todos" / "inspeccionar todos": los terminados de hoy (sin validar o todos).
+      if ((args.grupo === "sin_validar" || args.grupo === "terminados") && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Esa instrucción del resumen del día solo la pueden dar administración y las personas del reenvío automático." }), notifyText: null };
       if (args.grupo === "sin_validar" || args.grupo === "terminados") {
         const rh = await _aseoResumenHoy();
         qs = rh.items.filter(i => !i.fantasma && i.code && i.sel === "terminado" && (args.grupo === "terminados" || /sin validar/.test(i.estado))).map(i => i.code).slice(0, 20);
@@ -2398,7 +2425,7 @@ async function _botExecTool(toolUse, ctx) {
       return { content: JSON.stringify({ ok: true, draft_id: id, resumen, instruccion: "Envía el campo resumen TAL CUAL y espera la respuesta. NO llames confirmar_solicitud_aseo hasta que conteste 'sí' en un mensaje nuevo. Si corrige algo, vuelve a llamar preparar_solicitud_aseo con todo corregido." }), notifyText: null };
     }
     if (name === "preparar_reprog_aseo") {
-      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Reprogramar desde el resumen del día solo lo pueden hacer administración y las personas del reenvío automático." }), notifyText: null };
       const hoy = _mxHoy(), dm = new Date(hoy + "T12:00:00"); dm.setDate(dm.getDate() + 1);
       const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? String(args.fecha) : dm.toISOString().slice(0, 10);
       if (fecha <= hoy) return { content: JSON.stringify({ ok: false, error: "La nueva fecha debe ser posterior a hoy." }), notifyText: null };
@@ -3423,7 +3450,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // de un empleado (hoja Personal) y el mensaje habla de aseo o hay un borrador
   // pendiente de confirmar (para el "sí / no / corrección").
   {
-    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre)\b/;
+    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro)\b/;
     const _aseoDraft = _botAseoDrafts.get(phone10);
     const _aseoPend = _aseoDraft && Date.now() < _aseoDraft.exp;
     if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
@@ -3451,10 +3478,12 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
   · Si dice "no" / "cancela", responde "Cancelado." y no guardes.
 - Solicitudes de ENTRADA temprana o SALIDA tardía ("cu2 entrada temprana 10am", "ox6 salida tardía 1pm aceptada", "acepta la entrada de jc3", "quita la salida de bc5"): llama preparar_solicitud_aseo (tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla), envía resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo.
 - VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
+- NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
+- El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
 - Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
 - Si el mensaje no es sobre aseo, responde en 1 línea que por este medio solo registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida o das la lista de limpiezas de hoy.
 - Sé breve, sin cortesías ni emojis extra.`;
-          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
+          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "reportar_no_desalojo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
           const llm = await _botLlmLoop({
             system: sys, history: hist, userMsg: bodyMsg,
             ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: nombre, msgTs: t0, userMsg: bodyMsg,
@@ -8988,8 +9017,8 @@ app.get("/aseo/live", async (req, res) => {
     if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
     if (!_aseo.sms || Date.now() - (_aseo.smsTs || 0) > 30_000) { _aseo.sms = await _rhdGetJson(_ASEO_SMS_OBJ).catch(() => _aseo.sms || {}); _aseo.smsTs = Date.now(); }
     if (!_aseo.tardia || Date.now() - (_aseo.tardTs || 0) > 30_000) { _aseo.tardia = await _rhdGetJson(_ASEO_TARD_OBJ).catch(() => _aseo.tardia || {}); _aseo.tardTs = Date.now(); }
-    await _aseoReprogLoad(); await _aseoAutoCfgLoad();
-    res.json({ reprog: _aseo.reprog || {}, autonotif: _aseo.autoCfg || {}, tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
+    await _aseoReprogLoad(); await _aseoAutoCfgLoad(); await _aseoNoSaleLoad();
+    res.json({ nosale: _aseo.nosale || {}, reprog: _aseo.reprog || {}, autonotif: _aseo.autoCfg || {}, tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
       temprana: _aseo.temprana || {}, sms: _aseo.sms || {} });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -9150,6 +9179,7 @@ function _aseoMatchAloj(q, cat) {
 // salidas de hoy, entradas sin salida y alojamientos con estado actualizado hoy. Solo Booked.
 async function _aseoResumenHoy(opts) {
   const marcas = (opts && opts.marcas) || null;
+  await _aseoNoSaleLoad();
   if (!_aseo.rows || Date.now() - _aseo.ts > 20_000) await _aseoLiveLoad();
   if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
   if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
@@ -9199,7 +9229,9 @@ async function _aseoResumenHoy(opts) {
     // "(validado)" se refiere al ÚLTIMO registro, no a una validación anterior que siga publicada.
     if (sel === "terminado") estado += (r && (r.validado === undefined || r.validado)) ? " (validado)" : " (sin validar)";
     let aviso = "";
-    if (c.fantasma) aviso = "🗓️ ¡CERRAR FECHA EN CALENDARIO! Reprogramado para el día siguiente";
+    const noSale = !!(c.sal && ((_aseo.nosale || {})[c.sal.id] || {}).on);
+    if (noSale) aviso = "🚨 *NO HA DESALOJADO*";
+    else if (c.fantasma) aviso = "🗓️ ¡CERRAR FECHA EN CALENDARIO! Reprogramado para el día siguiente";
     else if (c.sal && c.ent && sel === "pendiente" && horaMx >= 14) aviso = "🚨 Urge validación";
     else if (!c.sal && c.ent && !(pub && /^(terminado|inspeccionado)$/.test(pub.estado))) aviso = "⚠️ Requiere inspección";
     return { code: a ? a.code.toUpperCase() : "", nombre: a ? a.nombre : `Alojamiento ${c.hid}`, entra: !!c.ent, sale: !!c.sal, estado, sel, aviso, aseo: aseoP, insp: inspP,
@@ -9325,6 +9357,35 @@ async function _aseoCambiosAsignacion() {
   }
   return { resumen: r, cambios: out.sort((a, b) => a.persona.localeCompare(b.persona, "es")) };
 }
+// ── ¿Quién puede ver el resumen/cierre del día y dar sus instrucciones? Administración + personas del reenvío.
+async function _aseoPuedeCierre(ctx) {
+  if (ctx && ctx.isAdmin) return true;
+  await _aseoAutoCfgLoad();
+  const yo = (ctx && (ctx.staffNombre || ctx.adminNombre)) || "";
+  return !!yo && ((_aseo.autoCfg || {}).personas || []).some(n => _aseoMismaPersona(n, yo));
+}
+// ── "No ha desalojado": alerta por reserva que SALE (aseo/nosale.json → { <bookingId>: { on, hid, by, at } }) ──
+const _ASEO_NOSALE_OBJ = "aseo/nosale.json";
+async function _aseoNoSaleLoad() { if (!_aseo.nosale || Date.now() - (_aseo.nosaleTs || 0) > 5_000) { _aseo.nosale = await _rhdGetJson(_ASEO_NOSALE_OBJ).catch(() => _aseo.nosale || {}); _aseo.nosaleTs = Date.now(); } }
+async function _aseoNoSaleSet(id, hid, on, user) {
+  const out = await _aseoMutate(_ASEO_NOSALE_OBJ, "nosale", d => {
+    if (!on) { delete d[id]; return null; }
+    d[id] = { on: true, hid: String(hid || ""), by: user || "", at: new Date().toISOString() }; return d[id];
+  });
+  _aseo.nosaleTs = Date.now();
+  _aseoAutoMarca(hid || _aseoHidDe(id), "modificado", on ? "Desalojo: 🚨 *NO HA DESALOJADO*" : "Desalojo: ✅ ya desalojó");
+  return out;
+}
+app.post("/aseo/nosale", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {};
+    const id = String(b.id || "").replace(/[^\w-]/g, "").slice(0, 40);
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    const hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20) || _aseoHidDe(id);
+    res.json({ ok: true, nosale: await _aseoNoSaleSet(id, hid, !!b.on, String(b.user || "").slice(0, 80)) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── Fecha de aseo editable (card): aseo/reprog.json → { <asigId>: { fecha, orig, hid, by, at } } ──
 const _ASEO_REPROG_OBJ = "aseo/reprog.json";
 async function _aseoReprogLoad() { if (!_aseo.reprog || Date.now() - (_aseo.reprogTs || 0) > 20_000) { _aseo.reprog = await _rhdGetJson(_ASEO_REPROG_OBJ).catch(() => _aseo.reprog || {}); _aseo.reprogTs = Date.now(); } }
@@ -9434,7 +9495,6 @@ setInterval(() => { _aseoAutoReprogTick().catch(e => console.warn("[aseo] reprog
 // aseo/autonotif.json → { on, personas:[nombres], by, at }. Cada cambio de HOY marca el
 // alojamiento; 45 s después del último cambio se envía la lista con las marcas.
 const _ASEO_AUTO_OBJ = "aseo/autonotif.json";
-const _aseoAuto = { marcas: new Map(), fuera: new Map(), timer: null };
 async function _aseoAutoCfgLoad() { if (!_aseo.autoCfg || Date.now() - (_aseo.autoCfgTs || 0) > 20_000) { _aseo.autoCfg = await _rhdGetJson(_ASEO_AUTO_OBJ).catch(() => _aseo.autoCfg || {}); _aseo.autoCfgTs = Date.now(); } }
 const _ASEO_EST_DET = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "🧹 Terminado", inspeccionado: "✅ Inspeccionado" };
 function _aseoEstadoDet(reg, estado) { return `Estado: ${_ASEO_EST_DET[estado] || estado}${estado === "terminado" ? (reg && reg.validado === false ? " (sin validar)" : " (validado)") : ""}`; }
@@ -9443,40 +9503,71 @@ function _aseoMarcaTxt(m) {
   const t = [...((m && m.tipos) || m || [])];
   return t.includes("agregada") ? "— 🆕 *Agregada*" : t.includes("reprogramada") ? "— 📅 *Reprogramada*" : "— ✏️ *Modificado*";
 }
-function _aseoAutoProgramar() {
-  clearTimeout(_aseoAuto.timer);
-  _aseoAuto.timer = setTimeout(() => { _aseoAutoEnviar().catch(e => console.warn("[aseo-auto]", e.message)); }, 45_000);
+// Cada cambio se guarda como un archivo propio en gs://…/aseo/autopend/ (todas las copias del
+// servidor escriben en el mismo lugar, sin pisarse). Cloud Scheduler llama cada minuto a
+// /aseo/autonotif/tick: si ya pasó 1 minuto desde el último cambio, junta todo en UN mensaje.
+const _ASEO_PEND_PREFIX = "aseo/autopend/";
+async function _gcsList(prefix) {
+  const tok = await _vGcsToken(), out = [];
+  let page = "";
+  do {
+    const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o?prefix=${encodeURIComponent(prefix)}&fields=items(name),nextPageToken${page ? "&pageToken=" + page : ""}`, { headers: { Authorization: `Bearer ${tok}` } });
+    if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+    const j = await r.json(); (j.items || []).forEach(x => out.push(x.name)); page = j.nextPageToken || "";
+  } while (page);
+  return out;
 }
-function _aseoAutoMarca(hid, tipo, det) {
-  hid = String(hid || ""); if (!hid) return;
+async function _gcsDelete(name) {
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(name)}`, { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } });
+  if (!r.ok && r.status !== 404) throw new Error(`Cloud Storage ${r.status}`);
+}
+function _aseoAutoGuardar(o) {
   (async () => {
     await _aseoAutoCfgLoad();
     if (!(_aseo.autoCfg && _aseo.autoCfg.on && (_aseo.autoCfg.personas || []).length)) return;
-    if (!_aseoAuto.marcas.has(hid)) _aseoAuto.marcas.set(hid, { tipos: new Set(), det: [] });
-    const m = _aseoAuto.marcas.get(hid);
-    m.tipos.add(tipo);
-    if (det) {
-      // Mismo campo cambiado varias veces → queda solo el último (ej. Estado).
-      const campo = String(det).split(":")[0];
-      m.det = m.det.filter(x => !(campo.startsWith("Estado") && x.startsWith("Estado")) && !(campo.startsWith("Solicitud") && x.split(":")[0] === campo));
-      m.det.push(det);
+    const t = Date.now();
+    await _rhdPut(`${_ASEO_PEND_PREFIX}${t}-${crypto.randomBytes(4).toString("hex")}.json`, JSON.stringify(Object.assign({ t }, o)), "application/json");
+  })().catch(e => console.warn("[aseo-auto] no se anotó el cambio:", e.message));
+}
+function _aseoAutoMarca(hid, tipo, det) { hid = String(hid || ""); if (hid) _aseoAutoGuardar({ hid, tipo, det: det || "" }); }
+function _aseoAutoFuera(hid, fecha) { _aseoAutoGuardar({ hid: String(hid || ""), fuera: fecha }); }
+let _aseoTickRun = null;
+async function _aseoAutoTick() {
+  const names = (await _gcsList(_ASEO_PEND_PREFIX)).filter(n => n.endsWith(".json")).sort();
+  if (!names.length) return { ok: true, pendientes: 0 };
+  const ultimo = Number(names[names.length - 1].slice(_ASEO_PEND_PREFIX.length).split("-")[0]) || 0;
+  if (Date.now() - ultimo < 60_000) return { ok: true, pendientes: names.length, espera: true }; // aún hay cambios recientes
+  const regs = [];
+  for (const n of names) { try { regs.push(await _rhdGetJson(n)); } catch (_) {} }
+  for (const n of names) await _gcsDelete(n).catch(() => {}); // solo los leídos; lo nuevo queda para el siguiente minuto
+  const marcas = new Map(), fueraM = new Map();
+  regs.sort((a, b) => (a.t || 0) - (b.t || 0)).forEach(x => {
+    if (!x || !x.hid) return;
+    if (x.fuera) { fueraM.set(x.hid, x.fuera); return; }
+    if (!marcas.has(x.hid)) marcas.set(x.hid, { tipos: new Set(), det: [] });
+    const m = marcas.get(x.hid); m.tipos.add(x.tipo);
+    if (x.det) {
+      // Mismo dato cambiado varias veces → queda solo el último (Estado, Solicitud, Desalojo).
+      const campo = String(x.det).split(":")[0];
+      const unico = /^(Estado|Solicitud|Desalojo)/.test(campo);
+      m.det = m.det.filter(d => !(unico && d.split(":")[0] === campo) && d !== x.det);
+      m.det.push(x.det);
     }
-    _aseoAutoProgramar();
-  })().catch(() => {});
+  });
+  await _aseoAutoEnviar(marcas, fueraM);
+  return { ok: true, enviados: regs.length };
 }
-function _aseoAutoFuera(hid, fecha) {
-  (async () => {
-    await _aseoAutoCfgLoad();
-    if (!(_aseo.autoCfg && _aseo.autoCfg.on && (_aseo.autoCfg.personas || []).length)) return;
-    _aseoAuto.fuera.set(String(hid), fecha);
-    _aseoAutoProgramar();
-  })().catch(() => {});
-}
-async function _aseoAutoEnviar() {
+app.post("/aseo/autonotif/tick", async (req, res) => {
+  if (!process.env.SYNC_SECRET || (req.get("X-Sync-Secret") || "") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
+  try {
+    if (!_aseoTickRun) _aseoTickRun = _aseoAutoTick().finally(() => { _aseoTickRun = null; });
+    res.json(await _aseoTickRun);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+async function _aseoAutoEnviar(marcas, fueraM) {
   await _aseoAutoCfgLoad();
   const cfg = _aseo.autoCfg || {};
-  const marcas = _aseoAuto.marcas, fueraM = _aseoAuto.fuera;
-  _aseoAuto.marcas = new Map(); _aseoAuto.fuera = new Map();
   if (!cfg.on || !(cfg.personas || []).length || (!marcas.size && !fueraM.size)) return;
   const cat = await _aseoCatalogo();
   const fuera = [...fueraM.entries()].map(([hid, f]) => { const a = cat.find(c => c.hid === hid); return `${a ? a.code.toUpperCase() : "Alojamiento " + hid} → ${new Date(f + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`; });
