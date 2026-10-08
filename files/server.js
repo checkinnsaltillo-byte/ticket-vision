@@ -9834,10 +9834,12 @@ async function _aseoGuiaOffLoad() { if (!_aseo.guiaoff || Date.now() - (_aseo.gu
 app.post("/aseo/guia", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
-    const id = String((req.body || {}).id || "").replace(/[^\w-]/g, "").slice(0, 40);
-    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    // id (una card) o ids (botón "Publicar en guías" de la barra: todas las cards en pantalla).
+    const lim = v => String(v || "").replace(/[^\w-]/g, "").slice(0, 40);
+    const ids = (Array.isArray((req.body || {}).ids) ? req.body.ids : [(req.body || {}).id]).map(lim).filter(Boolean).slice(0, 200);
+    if (!ids.length) return res.status(400).json({ ok: false, error: "Falta id" });
     const publicar = (req.body || {}).publicar !== false, user = String((req.body || {}).user || "").slice(0, 80);
-    await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { if (publicar) delete d[id]; else d[id] = { off: true, by: user, at: new Date().toISOString() }; });
+    await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { ids.forEach(id => { if (publicar) delete d[id]; else d[id] = { off: true, by: user, at: new Date().toISOString() }; }); });
     _aseo.guiaoffTs = Date.now();
     res.json({ ok: true, publicar });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
