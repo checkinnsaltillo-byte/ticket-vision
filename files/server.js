@@ -9708,7 +9708,8 @@ app.post("/aseo/extra", async (req, res) => {
     const out = await _aseoMutate(_ASEO_EXTRA_OBJ, "extra", d => {
       const cur = d[key] || {};
       if (typeof b.checkout === "boolean") cur.checkout = b.checkout;
-      if (typeof b.correctivo === "boolean") cur.correctivo = b.correctivo; // Tipo de servicio: Check-out · General · Correctivo
+      if (typeof b.correctivo === "boolean") cur.correctivo = b.correctivo; // Tipo de servicio: Check-out · Correctivo · Preventivo · General
+      if (typeof b.preventivo === "boolean") cur.preventivo = b.preventivo;
       if (typeof b.incidencia === "boolean") { cur.incidencia = b.incidencia; cur.incBy = user; cur.incAt = new Date().toISOString(); if (!b.incidencia) delete cur.incId; }
       if (typeof b.incId === "string" && b.incId) cur.incId = b.incId.replace(/[^\w-]/g, "").slice(0, 60); // incidencia ligada (Check-list › Incidencias)
       Object.assign(cur, { by: user, at: new Date().toISOString() });
