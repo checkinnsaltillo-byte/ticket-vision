@@ -9411,7 +9411,9 @@ app.post("/aseo/tarea", async (req, res) => {
     let nueva = false;
     const out = await _aseoMutate(_ASEO_TAREAS_OBJ, "tareas", d => {
       const prev = d[id] || null; nueva = !prev;
-      d[id] = { id, hid, depto, problema: !!b.problema, prioridad: Math.max(1, Math.min(5, Number(b.prioridad) || 3)), titulo, desc: txt(b.desc, 2000),
+      d[id] = { id, hid, depto, problema: !!b.problema,
+        // Prioridad homologada (4 niveles, igual que Reportes técnicos); la escala anterior 1–5 se convierte.
+        prioridad: ["baja", "media", "alta", "critica"].includes(b.prioridad) ? b.prioridad : ({ 1: "baja", 2: "baja", 3: "media", 4: "alta", 5: "critica" })[Number(b.prioridad)] || "media", titulo, desc: txt(b.desc, 2000),
         fecha: b.fecha, hora: /^\d{2}:\d{2}$/.test(String(b.hora || "")) ? b.hora : "", repite: rp,
         asignados: (Array.isArray(b.asignados) ? b.asignados : []).map(n => txt(n, 80)).filter(Boolean).slice(0, 20),
         etiquetas: (Array.isArray(b.etiquetas) ? b.etiquetas : []).map(n => txt(n, 40)).filter(Boolean).slice(0, 20),
