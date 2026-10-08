@@ -5413,8 +5413,16 @@ app.post("/reportes-tecnicos-upsert", async (req, res) => {
           mimeType: f.mimeType || "image/jpeg",
           base64: f.base64,
         });
-        if (up && up.ok && up.url) urls.push(up.url);
-        else console.warn("rt upload failed:", JSON.stringify(up).slice(0, 200));
+        if (up && up.ok && up.url) { urls.push(up.url); continue; }
+        console.warn("rt upload failed:", JSON.stringify(up).slice(0, 200));
+        // Respaldo: si Drive (Apps Script) falla, la foto se guarda privada en Cloud Storage con enlace firmado.
+        try {
+          const buf = Buffer.from(String(f.base64).replace(/^data:[^,]*,/, ""), "base64");
+          const nombre = String(f.name || "foto.jpg").replace(/[^\w.\- ()áéíóúñÁÉÍÓÚÑ]/g, "_").slice(0, 100);
+          const k = `aseo/adjuntos/rt-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}-${nombre}`;
+          await _rhdPut(k, buf, f.mimeType || "image/jpeg");
+          urls.push(`https://api.check-inn.mx/aseo/adjunto?k=${encodeURIComponent(k)}&s=${_aseoAdjSig(k)}`);
+        } catch (e) { console.warn("rt upload respaldo falló:", e.message); }
       }
       return urls;
     };
