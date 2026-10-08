@@ -2680,7 +2680,8 @@ const _BOT_INC_ENUM = {
   Insumos:      ["Toallas faltantes","Pilas faltantes","Productos de limpieza faltantes"],
 };
 async function _botAutoClasificarIncidencia(descripcion) {
-  const enumTxt = Object.entries(_BOT_INC_ENUM)
+  const ENUM = await _incCatalogo().catch(() => _BOT_INC_ENUM); // Motivos › Sub-motivos editables (Check-list › Incidencias › Clasificaciones)
+  const enumTxt = Object.entries(ENUM)
     .map(([m, list]) => `${m}: ${list.join(" | ")}`).join("\n");
   const system = `Eres un clasificador. Recibes la descripción de una incidencia y devuelves JSON estricto con los motivos y clasificaciones aplicables del enum. Sin texto extra.
 
@@ -2688,7 +2689,7 @@ ENUM:
 ${enumTxt}
 
 Reglas:
-- "motivos" es un subconjunto de: Limpieza, Mantenimiento, Insumos.
+- "motivos" es un subconjunto de: ${Object.keys(ENUM).join(", ")}.
 - "clasificaciones" solo puede contener valores del ENUM de los motivos elegidos.
 - Puedes elegir múltiples si la descripción cubre varios (ej. "baño sucio y sin papel" → motivos:[Limpieza,Insumos]).
 - Si NADA aplica claramente, devuelve {"motivos":[],"clasificaciones":[]}.
@@ -2703,9 +2704,9 @@ Reglas:
     const json = txt.replace(/^```json?\s*|\s*```$/g, "");
     const parsed = JSON.parse(json);
     return {
-      motivos: Array.isArray(parsed.motivos) ? parsed.motivos.filter(m => _BOT_INC_ENUM[m]) : [],
+      motivos: Array.isArray(parsed.motivos) ? parsed.motivos.filter(m => ENUM[m]) : [],
       clasificaciones: Array.isArray(parsed.clasificaciones) ? parsed.clasificaciones.filter(c =>
-        Object.values(_BOT_INC_ENUM).some(list => list.includes(c))
+        Object.values(ENUM).some(list => list.includes(c))
       ) : [],
     };
   } catch (e) {
@@ -9507,7 +9508,12 @@ app.get("/aseo/adjunto", async (req, res) => {
 // Fotos privadas en incidencias/fotos/<ID>/… con enlace firmado (/incidencias/foto).
 // La primera lectura migra sola la hoja «Incidencias» (Apps Script) y copia sus fotos de Drive.
 // ═══════════════════════════════════════════════════════════════════════════
-const _INC_OBJ = "incidencias/incidencias.json";
+const _INC_OBJ = "incidencias/incidencias.json", _INC_CAT_OBJ = "incidencias/catalogo.json";
+// Catálogo editable Motivo › Sub-motivos: { motivos: { <Motivo>: [<Sub-motivo>, …] }, by, at }. Sin guardar → el de siempre.
+async function _incCatalogo() {
+  if (!_incSt.cat || Date.now() - (_incSt.catTs || 0) > 10_000) { const d = await _rhdGetJson(_INC_CAT_OBJ).catch(() => ({})); _incSt.cat = d && d.motivos && Object.keys(d.motivos).length ? d.motivos : JSON.parse(JSON.stringify(_BOT_INC_ENUM)); _incSt.catTs = Date.now(); }
+  return _incSt.cat;
+}
 const _incSt = { d: null, ts: 0, mig: null };
 const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento" };
 const _incFotoSig = k => crypto.createHmac("sha256", _RHD_SECRET).update("inc-foto|" + k).digest("hex").slice(0, 32);
@@ -9593,7 +9599,7 @@ app.get("/incidencias-list", async (req, res) => {
   try {
     const d = await _incDatos(req.query.fresh === "1");
     const rows = (d.rows || []).slice().sort((a, b) => String(b.Timestamp || "").localeCompare(String(a.Timestamp || "")));
-    res.json({ ok: true, rows, total: rows.length, origen: "gcs", migrado: d.migrado || null });
+    res.json({ ok: true, rows, total: rows.length, origen: "gcs", migrado: d.migrado || null, catalogo: await _incCatalogo() });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 app.get("/incidencias/foto", async (req, res) => {
@@ -9608,6 +9614,17 @@ app.get("/incidencias/foto", async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.send(Buffer.from(await r.arrayBuffer()));
   } catch (e) { res.status(500).send(e.message); }
+});
+app.post("/incidencias/catalogo", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const src = (req.body && req.body.motivos) || {}, motivos = {};
+    Object.keys(src).slice(0, 60).forEach(m => { const k = String(m || "").trim().slice(0, 60); if (!k) return; motivos[k] = [...new Set((Array.isArray(src[m]) ? src[m] : []).map(x => String(x || "").trim().slice(0, 80)).filter(Boolean))].slice(0, 80); });
+    if (!Object.keys(motivos).length) return res.status(400).json({ ok: false, error: "Debe haber al menos un motivo" });
+    await _rhdPut(_INC_CAT_OBJ, JSON.stringify({ motivos, by: String((req.body && req.body.user) || "").slice(0, 80), at: new Date().toISOString() }), "application/json");
+    _incSt.cat = motivos; _incSt.catTs = Date.now();
+    res.json({ ok: true, catalogo: motivos });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // Re-ejecutar la migración a mano (solo con la clave de sincronización).
 app.post("/incidencias/migrar", async (req, res) => {
