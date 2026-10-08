@@ -2632,7 +2632,7 @@ async function _botExecTool(toolUse, ctx) {
       // 3) Mapear criticidad al enum del módulo (Baja/Media/Alta/Crítica).
       const nivelMap = { critico: "Crítica", alto: "Alta", medio: "Media", bajo: "Baja" };
       const nivel = nivelMap[criticidad] || "Media";
-      // 4) Guardar via /save-incidencia (Apps Script). Sin reserva asignada.
+      // 4) Guardar via /save-incidencia (Google Cloud Storage). Sin reserva asignada.
       const payload = {
         Fecha: new Date().toISOString().slice(0,10),
         Propiedad: propiedad,
@@ -5295,52 +5295,6 @@ app.post("/sys/login", async (req, res) => {
 // Acepta: { id, fields, fotos?: [{name,base64,mimeType}], keepUrls?: [string] }
 // Si vienen fotos nuevas: las sube a Drive vía Apps Script y compone el CSV
 // final Fotos_URLs = keepUrls + nuevas URLs subidas, que se inyecta en fields.
-app.post("/update-incidencia", async (req, res) => {
-  try {
-    const id = String(req.body?.id || '').trim();
-    const fields = Object.assign({}, req.body?.fields || {});
-    const newFotos = Array.isArray(req.body?.fotos) ? req.body.fotos : null;
-    const keepUrls = Array.isArray(req.body?.keepUrls) ? req.body.keepUrls : null;
-    if (!id) return res.status(400).json({ ok: false, error: 'Falta id' });
-    let finalUrls = null;
-    if (newFotos !== null || keepUrls !== null) {
-      // El frontend está controlando las fotos → calcular el CSV final
-      const uploaded = [];
-      for (const f of (newFotos || [])) {
-        if (!f || !f.base64) continue;
-        const up = await callCheckinAppsScriptPost("upload_incidencia_image", {
-          fecha: fields.fecha || '',
-          alojamiento: fields.alojamiento || '',
-          file: { fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 },
-        });
-        if (up && up.ok && up.url) uploaded.push(up.url);
-        else console.warn("update_incidencia: foto fallida", JSON.stringify(up).slice(0, 300));
-      }
-      finalUrls = (keepUrls || []).concat(uploaded);
-      fields.fotos_urls = finalUrls.join(', ');
-      fields.fotos_count = finalUrls.length;
-    }
-    const result = await callCheckinAppsScriptPost("update_incidencia", {
-      payload: { id, fields },
-    });
-    if (!result || !result.ok) throw new Error(result?.error || 'Apps Script update error');
-    if (finalUrls !== null) {
-      result.fotos_urls = fields.fotos_urls;
-      result.fotos_count = fields.fotos_count;
-    }
-    try {
-      const i1 = _incInfo(req.body?.info), i2 = _incInfo(fields), info = {}; Object.keys(i1).forEach(k => { info[k] = i2[k] || i1[k]; });
-      const det = fields.estatus && Object.keys(fields).filter(k => k !== "UpdatedAt").length === 1 ? `Estado: ${fields.estatus}`
-        : fields.nivel && Object.keys(fields).filter(k => k !== "UpdatedAt").length === 1 ? `Nivel: ${fields.nivel}`
-        : fields.seguimiento != null && Object.keys(fields).filter(k => k !== "UpdatedAt").length === 1 ? `Seguimiento: ${String(fields.seguimiento).slice(0, 120)}` : "✏️ Editada";
-      _incAutoMarca(id, det, info);
-    } catch (_) {}
-    res.json(result);
-  } catch (err) {
-    console.error("update_incidencia_error", err.message);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
 
 // ─── OBJETOS OLVIDADOS — paralelo a Incidencias ──────────────────────────────
 app.get("/objetos-list", async (req, res) => {
@@ -5479,46 +5433,11 @@ app.post("/reportes-tecnicos-delete", async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
-app.get("/incidencias-list", async (req, res) => {
-  try {
-    const result = await callCheckinAppsScript("list_incidencias");
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
 
 // ─── Guardar reporte de incidencia ───────────────────────────────────────────
 // Recibe { payload: {fecha, propiedad, depto, ...}, fotos: [{name, base64, mimeType}] }
 // 1) Sube cada foto via Apps Script → DriveApp en /Drive/Incidencias/{año}/{mes}
 // 2) Inserta una fila en la hoja "Incidencias" con las URLs públicas
-app.post("/save-incidencia", async (req, res) => {
-  try {
-    const payload = req.body?.payload || {};
-    const fotos = Array.isArray(req.body?.fotos) ? req.body.fotos : [];
-    const fotosUrls = [];
-    for (const f of fotos) {
-      if (!f || !f.base64) continue;
-      // POST con JSON — base64 puede pesar varios MB, GET truncaría.
-      const up = await callCheckinAppsScriptPost("upload_incidencia_image", {
-        fecha: payload.fecha || '',
-        alojamiento: payload.alojamiento || '',
-        file: { fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 },
-      });
-      if (up && up.ok && up.url) fotosUrls.push(up.url);
-      else console.warn("save_incidencia: foto fallida", JSON.stringify(up).slice(0, 300));
-    }
-    const saveResult = await callCheckinAppsScriptPost("save_incidencia", {
-      payload: { ...payload, fotos_urls: fotosUrls },
-    });
-    if (!saveResult || !saveResult.ok) throw new Error(saveResult?.error || 'Apps Script save error');
-    try { const I = _incInfo(payload); _incAutoMarca(saveResult.id, `🆕 Nueva incidencia${payload.reportante || payload.Reportante ? " · reportó " + (payload.reportante || payload.Reportante) : ""}`, I); } catch (_) {}
-    res.json({ ok: true, id: saveResult.id, timestamp: saveResult.timestamp, fotos_uploaded: fotosUrls.length });
-  } catch (err) {
-    console.error("save_incidencia_error", err.message);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
 
 // Caché stale-while-revalidate para endpoints de una sola consulta: responde
 // al instante con la última respuesta buena y refresca en segundo plano.
@@ -9579,6 +9498,183 @@ app.get("/aseo/adjunto", async (req, res) => {
     res.set("Cache-Control", "private, max-age=3600");
     res.send(Buffer.from(await r.arrayBuffer()));
   } catch (e) { res.status(500).send(e.message); }
+});
+// ═══════════════════════════════════════════════════════════════════════════
+// INCIDENCIAS en Google Cloud (v1601): gs://check-in-493804-panel/incidencias/incidencias.json
+//   { rows: [ {ID, Timestamp, Fecha, Propiedad, '# Departamento', Alojamiento, Personas, Motivos,
+//              Clasificacion, Nivel, Estatus, Reportante, Descripcion, Acciones, Seguimiento,
+//              Fotos_count, Fotos_URLs, Updated_at} ], migrado: {...} }
+// Fotos privadas en incidencias/fotos/<ID>/… con enlace firmado (/incidencias/foto).
+// La primera lectura migra sola la hoja «Incidencias» (Apps Script) y copia sus fotos de Drive.
+// ═══════════════════════════════════════════════════════════════════════════
+const _INC_OBJ = "incidencias/incidencias.json";
+const _incSt = { d: null, ts: 0, mig: null };
+const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento" };
+const _incFotoSig = k => crypto.createHmac("sha256", _RHD_SECRET).update("inc-foto|" + k).digest("hex").slice(0, 32);
+const _incFotoUrl = k => `https://api.check-inn.mx/incidencias/foto?k=${encodeURIComponent(k)}&s=${_incFotoSig(k)}`;
+const _incMxNow = () => new Date().toLocaleString("sv-SE", { timeZone: "America/Monterrey" }).slice(0, 19);
+const _incCsv = v => Array.isArray(v) ? v.map(x => String(x || "").trim()).filter(Boolean).join(", ") : String(v == null ? "" : v);
+function _incEst(v) { const s = String(v || "").trim(); return !s || /^(abiert|pendiente|nuev)/i.test(s) ? "Nuevo" : /parcial|espera/i.test(s) ? "En proceso" : /cerrad/i.test(s) ? "Resuelto" : s; }
+// Descarga una imagen (Drive en cualquiera de sus formatos, o https) → { buf, ct } | null
+async function _incBajarImagen(url) {
+  const id = huExtractDriveId(url);
+  const cand = id ? [`https://drive.google.com/uc?export=view&id=${id}`, `https://drive.usercontent.google.com/download?id=${id}&export=view&authuser=0`, `https://lh3.googleusercontent.com/d/${id}=w2400`, `https://drive.google.com/thumbnail?id=${id}&sz=w2400`]
+    : (/^https?:\/\//i.test(url) ? [url] : []);
+  for (const u of cand) {
+    try {
+      const r = await fetch(u, { redirect: "follow", headers: { "User-Agent": "Mozilla/5.0", Accept: "image/*,*/*" } });
+      const ct = r.headers.get("content-type") || "";
+      if (r.ok && ct.startsWith("image/")) return { buf: Buffer.from(await r.arrayBuffer()), ct };
+    } catch (_) {}
+  }
+  return null;
+}
+async function _incGuardarFoto(id, buf, ct, nombre) {
+  const ext = (String(ct).split("/")[1] || "jpg").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "jpg";
+  const nom = String(nombre || `foto.${ext}`).replace(/[^\w.\- ()áéíóúñÁÉÍÓÚÑ]/g, "_").slice(0, 80);
+  const k = `incidencias/fotos/${String(id).replace(/[^\w-]/g, "")}/${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}-${nom}`;
+  await _rhdPut(k, buf, ct || "image/jpeg");
+  return _incFotoUrl(k);
+}
+async function _incSubirFotos(id, fotos) {
+  const out = [];
+  for (const f of (fotos || [])) {
+    if (!f || !f.base64) continue;
+    try {
+      const buf = Buffer.from(String(f.base64).replace(/^data:[^,]*,/, ""), "base64");
+      if (!buf.length || buf.length > 20 * 1024 * 1024) continue;
+      out.push(await _incGuardarFoto(id, buf, f.mimeType || "image/jpeg", f.name));
+    } catch (e) { console.warn("[inc] foto no subida:", e.message); }
+  }
+  return out;
+}
+// Migración única desde la hoja (idempotente: si ya hay datos en Cloud Storage no hace nada, salvo force).
+function _incMigrar(force) {
+  if (_incSt.mig) return _incSt.mig;
+  _incSt.mig = (async () => {
+    const actual = await _rhdGetJson(_INC_OBJ);
+    if (Array.isArray(actual.rows) && !force) return actual;
+    const src = await callCheckinAppsScript("list_incidencias");
+    if (!src || src.ok === false || !Array.isArray(src.rows)) throw new Error("No se pudo leer la hoja Incidencias: " + ((src && src.error) || "sin datos"));
+    let fotos = 0, fallidas = 0;
+    const rows = [];
+    for (const r0 of src.rows) {
+      const r = Object.assign({}, r0); if (!String(r.ID || "").trim()) continue;
+      const urls = String(r.Fotos_URLs || "").split(",").map(s => s.trim()).filter(Boolean), nuevas = [];
+      for (const u of urls) {
+        const img = await _incBajarImagen(u);
+        if (img) { try { nuevas.push(await _incGuardarFoto(r.ID, img.buf, img.ct)); fotos++; continue; } catch (_) {} }
+        fallidas++; nuevas.push(u); // si Drive no la entrega se conserva el enlace original
+      }
+      if (urls.length) { r.Fotos_URLs_drive = urls.join(", "); r.Fotos_URLs = nuevas.join(", "); r.Fotos_count = String(nuevas.length); }
+      r.Estatus = _incEst(r.Estatus);
+      rows.push(r);
+    }
+    rows.sort((a, b) => String(b.Timestamp || "").localeCompare(String(a.Timestamp || "")));
+    const d = { rows, migrado: { at: new Date().toISOString(), desde: "Hoja «Incidencias» (Apps Script)", n: rows.length, fotos, fallidas } };
+    await _aseoMutate(_INC_OBJ, "incData", x => { for (const k of Object.keys(x)) delete x[k]; Object.assign(x, d); });
+    console.log(`[inc] migración: ${rows.length} incidencias, ${fotos} fotos copiadas, ${fallidas} sin copiar`);
+    return d;
+  })().finally(() => { _incSt.mig = null; });
+  return _incSt.mig;
+}
+async function _incDatos(fresco) {
+  if (!fresco && _incSt.d && Date.now() - _incSt.ts < 5_000) return _incSt.d;
+  let d = await _rhdGetJson(_INC_OBJ);
+  if (!Array.isArray(d.rows)) d = await _incMigrar();
+  _incSt.d = d; _incSt.ts = Date.now();
+  return d;
+}
+function _incMutar(fn) {
+  return _incDatos(true).then(() => _aseoMutate(_INC_OBJ, "incData", d => { if (!Array.isArray(d.rows)) d.rows = []; return fn(d); }))
+    .then(out => { _incSt.d = _aseo.incData; _incSt.ts = Date.now(); return out; });
+}
+app.get("/incidencias-list", async (req, res) => {
+  try {
+    const d = await _incDatos(req.query.fresh === "1");
+    const rows = (d.rows || []).slice().sort((a, b) => String(b.Timestamp || "").localeCompare(String(a.Timestamp || "")));
+    res.json({ ok: true, rows, total: rows.length, origen: "gcs", migrado: d.migrado || null });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.get("/incidencias/foto", async (req, res) => {
+  try {
+    const k = String(req.query.k || "");
+    if (!/^incidencias\/fotos\//.test(k) || req.query.s !== _incFotoSig(k)) return res.status(403).send("Enlace no válido");
+    const tok = await _vGcsToken();
+    const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(k)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
+    if (!r.ok) return res.status(r.status).send("No encontrado");
+    res.set("Content-Type", r.headers.get("content-type") || "image/jpeg");
+    res.set("Cache-Control", "private, max-age=86400");
+    res.set("Access-Control-Allow-Origin", "*");
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) { res.status(500).send(e.message); }
+});
+// Re-ejecutar la migración a mano (solo con la clave de sincronización).
+app.post("/incidencias/migrar", async (req, res) => {
+  if (!process.env.SYNC_SECRET || (req.get("X-Sync-Secret") || "") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
+  try { const d = await _incMigrar(req.query.force === "1"); _incSt.d = null; res.json({ ok: true, migrado: d.migrado || null, total: (d.rows || []).length }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Alta: acepta el formato del sistema (minúsculas) y el del bot (encabezados de la hoja).
+app.post("/save-incidencia", async (req, res) => {
+  try {
+    const p = req.body?.payload || {};
+    const g = k => { const v = p[k] != null ? p[k] : p[_INC_COLS[k]]; return _incCsv(v); };
+    const now = _incMxNow();
+    const id = `INC-${now.slice(0, 10).replace(/-/g, "")}-${now.slice(11).replace(/:/g, "")}-${Math.floor(Math.random() * 10000)}`;
+    const fotos = await _incSubirFotos(id, Array.isArray(req.body?.fotos) ? req.body.fotos : []);
+    const previas = (Array.isArray(p.fotos_urls) ? p.fotos_urls : String(p.fotos_urls || "").split(",")).map(s => String(s).trim()).filter(Boolean);
+    const urls = previas.concat(fotos);
+    const row = { ID: id, Timestamp: now };
+    Object.keys(_INC_COLS).forEach(k => { row[_INC_COLS[k]] = g(k); });
+    row.Estatus = _incEst(row.Estatus); row.Nivel = row.Nivel || "Media";
+    row.Fotos_count = String(urls.length); row.Fotos_URLs = urls.join(", ");
+    await _incMutar(d => { d.rows.unshift(row); });
+    try { _incAutoMarca(id, `🆕 Nueva incidencia${row.Reportante ? " · reportó " + row.Reportante : ""}`, _incInfo(p)); } catch (_) {}
+    res.json({ ok: true, id, timestamp: now, fotos_uploaded: fotos.length, row });
+  } catch (err) {
+    console.error("save_incidencia_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+// Edición: solo cambia los campos recibidos. Fotos: keepUrls + nuevas (si el sistema las controla).
+app.post("/update-incidencia", async (req, res) => {
+  try {
+    const id = String(req.body?.id || "").trim();
+    const fields = Object.assign({}, req.body?.fields || {});
+    const newFotos = Array.isArray(req.body?.fotos) ? req.body.fotos : null;
+    const keepUrls = Array.isArray(req.body?.keepUrls) ? req.body.keepUrls : null;
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    const subidas = newFotos ? await _incSubirFotos(id, newFotos) : [];
+    let final = null, updated = [];
+    const ok = await _incMutar(d => {
+      const r = d.rows.find(x => String(x.ID) === id); if (!r) return false;
+      Object.keys(fields).forEach(k => {
+        const col = _INC_COLS[k] || (Object.values(_INC_COLS).includes(k) ? k : null); if (!col) return;
+        r[col] = col === "Estatus" ? _incEst(_incCsv(fields[k])) : _incCsv(fields[k]); updated.push(col);
+      });
+      if (newFotos !== null || keepUrls !== null) {
+        final = (keepUrls || String(r.Fotos_URLs || "").split(",").map(s => s.trim()).filter(Boolean)).concat(subidas);
+        r.Fotos_URLs = final.join(", "); r.Fotos_count = String(final.length); updated.push("Fotos_URLs");
+      }
+      r.Updated_at = _incMxNow(); r.UpdatedAt = new Date().toISOString();
+      return true;
+    });
+    if (!ok) return res.status(404).json({ ok: false, error: "ID no encontrado: " + id });
+    try {
+      const i1 = _incInfo(req.body?.info), i2 = _incInfo(fields), info = {}; Object.keys(i1).forEach(k => { info[k] = i2[k] || i1[k]; });
+      const solo = Object.keys(fields).filter(k => k !== "UpdatedAt");
+      const det = solo.length === 1 && fields.estatus ? `Estado: ${fields.estatus}` : solo.length === 1 && fields.nivel ? `Nivel: ${fields.nivel}`
+        : solo.length === 1 && fields.seguimiento != null ? `Seguimiento: ${String(fields.seguimiento).slice(0, 120)}` : "✏️ Editada";
+      _incAutoMarca(id, det, info);
+    } catch (_) {}
+    const out = { ok: true, id, updated };
+    if (final) { out.fotos_urls = final.join(", "); out.fotos_count = final.length; }
+    res.json(out);
+  } catch (err) {
+    console.error("update_incidencia_error", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 // ── Campos generales de las cards de «Aseo y Mantenimiento»: aseo/extra.json →
 //    { <llave>: { checkout: bool (tipo Check-out), incidencia: bool, by, at } }  (llave = id de aseo, "T<id>" o "R<id>")
