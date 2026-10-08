@@ -9515,7 +9515,7 @@ async function _incCatalogo() {
   return _incSt.cat;
 }
 const _incSt = { d: null, ts: 0, mig: null };
-const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento" };
+const _INC_COLS = { fecha: "Fecha", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", personas: "Personas", motivos: "Motivos", clasificaciones: "Clasificacion", nivel: "Nivel", estatus: "Estatus", reportante: "Reportante", descripcion: "Descripcion", acciones: "Acciones", seguimiento: "Seguimiento", reserva: "Reservacion_id", huesped: "Huesped_nombre" };
 const _incFotoSig = k => crypto.createHmac("sha256", _RHD_SECRET).update("inc-foto|" + k).digest("hex").slice(0, 32);
 const _incFotoUrl = k => `https://api.check-inn.mx/incidencias/foto?k=${encodeURIComponent(k)}&s=${_incFotoSig(k)}`;
 const _incMxNow = () => new Date().toLocaleString("sv-SE", { timeZone: "America/Monterrey" }).slice(0, 19);
