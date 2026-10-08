@@ -9043,11 +9043,11 @@ app.get("/aseo/live", async (req, res) => {
     if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
     if (!_aseo.sms || Date.now() - (_aseo.smsTs || 0) > 30_000) { _aseo.sms = await _rhdGetJson(_ASEO_SMS_OBJ).catch(() => _aseo.sms || {}); _aseo.smsTs = Date.now(); }
     if (!_aseo.tardia || Date.now() - (_aseo.tardTs || 0) > 30_000) { _aseo.tardia = await _rhdGetJson(_ASEO_TARD_OBJ).catch(() => _aseo.tardia || {}); _aseo.tardTs = Date.now(); }
-    await _aseoReprogLoad(); await _aseoAutoCfgLoad(); await _aseoNoSaleLoad(); await _aseoTareasLoad(); await _aseoPrioLoad();
+    await _aseoReprogLoad(); await _aseoAutoCfgLoad(); await _aseoNoSaleLoad(); await _aseoTareasLoad(); await _aseoPrioLoad(); await _aseoExtraLoad();
     // Tareas con enlace firmado de cada adjunto.
     const tareas = {};
     Object.values(_aseo.tareas || {}).forEach(t => { tareas[t.id] = Object.assign({}, t, { adjuntos: (t.adjuntos || []).map(a => Object.assign({}, a, { url: `/aseo/adjunto?k=${encodeURIComponent(a.k)}&s=${_aseoAdjSig(a.k)}` })) }); });
-    res.json({ prio: _aseo.prio || {}, tareas, nosale: _aseo.nosale || {}, reprog: _aseo.reprog || {}, autonotif: _aseo.autoCfg || {}, tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
+    res.json({ extra: _aseo.extra || {}, prio: _aseo.prio || {}, tareas, nosale: _aseo.nosale || {}, reprog: _aseo.reprog || {}, autonotif: _aseo.autoCfg || {}, tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
       temprana: _aseo.temprana || {}, sms: _aseo.sms || {} });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -9571,6 +9571,28 @@ app.get("/aseo/adjunto", async (req, res) => {
     res.set("Cache-Control", "private, max-age=3600");
     res.send(Buffer.from(await r.arrayBuffer()));
   } catch (e) { res.status(500).send(e.message); }
+});
+// ── Campos generales de las cards de «Aseo y Mantenimiento»: aseo/extra.json →
+//    { <llave>: { checkout: bool (tipo Check-out), incidencia: bool, by, at } }  (llave = id de aseo, "T<id>" o "R<id>")
+const _ASEO_EXTRA_OBJ = "aseo/extra.json";
+async function _aseoExtraLoad() { if (!_aseo.extra || Date.now() - (_aseo.extraTs || 0) > 5_000) { _aseo.extra = await _rhdGetJson(_ASEO_EXTRA_OBJ).catch(() => _aseo.extra || {}); _aseo.extraTs = Date.now(); } }
+app.post("/aseo/extra", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, key = String(b.key || "").replace(/[^\w-]/g, "").slice(0, 40);
+    if (!key) return res.status(400).json({ ok: false, error: "Falta la llave" });
+    const user = String(b.user || "").slice(0, 80);
+    const out = await _aseoMutate(_ASEO_EXTRA_OBJ, "extra", d => {
+      const cur = d[key] || {};
+      if (typeof b.checkout === "boolean") cur.checkout = b.checkout;
+      if (typeof b.incidencia === "boolean") { cur.incidencia = b.incidencia; cur.incBy = user; cur.incAt = new Date().toISOString(); }
+      Object.assign(cur, { by: user, at: new Date().toISOString() });
+      d[key] = cur; return cur;
+    });
+    _aseo.extraTs = Date.now();
+    if (typeof b.incidencia === "boolean") _aseoAutoMarca(String(b.hid || _aseoHidDe(key)), "modificado", b.incidencia ? "Incidencia: ⚠️ reportada" : "Incidencia: ya no");
+    res.json({ ok: true, extra: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Prioridad elegida a mano en una card de aseo (clic en el indicador): aseo/prioridad.json → { <asigId>: "baja|media|alta|critica" } ──
 const _ASEO_PRIO_OBJ = "aseo/prioridad.json";
