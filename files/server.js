@@ -1252,14 +1252,15 @@ REGLAS:
     Si hay no_encontrados o ambiguos, dilo en una línea.
   · Igual que en tareas: SOLO cuando el admin confirme en un mensaje POSTERIOR llama confirmar_recordatorio_pizarra (directo, sin volver a preparar). Si responde que no hay borrador, llama preparar_recordatorio_pizarra con los datos del resumen y luego confirmar_recordatorio_pizarra en ese mismo turno. Si pide cambios, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
   · Tras confirmar: "✅ Recordatorio guardado (folio X); aparece en Pendientes del día." (1 línea).
-- LIMPIEZAS DE HOY — "resumen de limpieza", "limpiezas de hoy", "lista de limpiezas", "limpiezas hoy", "¿cómo va el aseo?": llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
+- RESUMEN DEL DÍA — "dame el resumen del día", "cierre del día", "resume las limpiezas", "resumen de limpiezas": llama consultar_resumen_dia y responde con formatted_message TAL CUAL.
+- LIMPIEZAS DE HOY (lista completa) — "lista actualizada de limpiezas", "dame el estado de las limpiezas", "dame la lista de limpiezas", "limpiezas de hoy", "¿cómo va el aseo?": llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
 - ESTADO DE ASEO — "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando":
   · Llama preparar_estado_aseo con los alojamientos TAL CUAL (el backend los reconoce aunque vengan abreviados o mal escritos), el estado (listo/terminado = terminado · inspeccionado/revisado = inspeccionado · empezando/limpiando = en_proceso), validado=true solo si lo dice explícitamente, y persona si nombra a alguien.
   · Envía el campo resumen TAL CUAL. SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
 - SOLICITUD DE ENTRADA TEMPRANA / SALIDA TARDÍA — "cu2 entrada temprana 10am", "ox6 salida tardía 1pm aceptada", "acepta la entrada de jc3", "quita la salida de bc5":
   · Llama preparar_solicitud_aseo (alojamientos TAL CUAL, tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla). Envía el campo resumen TAL CUAL.
   · SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
-- VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen de las 3 pm): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
+- VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
 - Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
 `;
@@ -1291,7 +1292,7 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_limpiezas_hoy",
-    description: "ADMIN o PERSONAL. Lista de limpiezas de HOY (las mismas cards de Control de aseo): cada alojamiento con su estado de aseo y quién hizo aseo e inspección; primero los que tienen entrada hoy. Usar ante 'resumen de limpieza', 'limpiezas de hoy', 'lista de limpiezas', 'limpiezas hoy', '¿cómo va el aseo?' o similares. Con solo_mias=true ('mis limpiezas', 'qué me toca', 'mis aseos') filtra a lo asignado a quien escribe (según su número de WhatsApp); con persona ('limpiezas de Alma') filtra a esa persona.",
+    description: "ADMIN o PERSONAL. LISTA COMPLETA de limpiezas de HOY con detalles (las mismas cards de Control de aseo): cada alojamiento con su estado de aseo, solicitudes y quién hizo aseo e inspección; primero los que tienen entrada hoy. Usar ante 'lista actualizada de limpiezas', 'dame el estado de las limpiezas', 'dame la lista de limpiezas', 'limpiezas de hoy', '¿cómo va el aseo?' o similares. Para 'resumen del día' / 'cierre del día' usar consultar_resumen_dia. Con solo_mias=true ('mis limpiezas', 'qué me toca', 'mis aseos') filtra a lo asignado a quien escribe (según su número de WhatsApp); con persona ('limpiezas de Alma') filtra a esa persona.",
     input_schema: { type: "object", properties: {
       solo_mias: { type: "boolean", description: "true si pide SUS limpiezas ('mis limpiezas', 'qué me toca', 'mis inspecciones')." },
       persona: { type: "string", description: "Opcional. Nombre (aunque sea corto) para ver solo lo asignado a esa persona." },
@@ -1330,6 +1331,11 @@ const BOT_TOOLS = [
     name: "confirmar_solicitud_aseo",
     description: "ADMIN o PERSONAL. Guarda la solicitud de entrada/salida preparada con preparar_solicitud_aseo. Llamar ÚNICAMENTE después de que el usuario confirmó ('sí') en un mensaje posterior al resumen.",
     input_schema: { type: "object", properties: { draft_id: { type: "string" } }, required: [] },
+  },
+  {
+    name: "consultar_resumen_dia",
+    description: "ADMIN o PERSONAL. RESUMEN / CIERRE del día de limpiezas: alojamientos agrupados por estado (pendientes, en proceso, terminados, inspeccionados), sin detalles, con opciones para validar, inspeccionar o reprogramar. Usar ante 'dame el resumen del día', 'cierre del día', 'resume las limpiezas', 'resumen de limpiezas' o similares. NO usar para la lista completa (eso es consultar_limpiezas_hoy).",
+    input_schema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "confirmar_estado_aseo",
@@ -1613,7 +1619,7 @@ function _botTarDelDia(rows, ocur, iso, hoy) {
 }
 const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
 const _ASEO_EST_TXT = { en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado" };
@@ -2268,6 +2274,10 @@ async function _botExecTool(toolUse, ctx) {
       if (args.incluir_resueltos && cerrados.length) partes.push("", "✅ *Resueltos / cancelados*", ...cerrados.sort(sortP).map(x => `${x.estado === "Cancelado" ? "✖️" : "✅"} ${x.rec ? "📌" : "📋"} ${x.r.Nombre}`));
       partes.push("", "🔴 Crítico · 🟠 Alto · 🟡 Medio · 🔵 Bajo · 📌 Recordatorio · 📋 Tarea · ⏳ Fecha límite");
       return { content: JSON.stringify({ ok: true, fecha, total: items.length, abiertos: abiertos.length, formatted_message: partes.join("\n") }), notifyText: null };
+    }
+    if (name === "consultar_resumen_dia") {
+      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, formatted_message: await _aseoResumenDiaTxt(), instruccion: "Responde con formatted_message TAL CUAL, sin resumirlo ni agregar explicaciones." }), notifyText: null };
     }
     if (name === "consultar_limpiezas_hoy") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
@@ -3413,7 +3423,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // de un empleado (hoja Personal) y el mensaje habla de aseo o hay un borrador
   // pendiente de confirmar (para el "sí / no / corrección").
   {
-    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar)\b/;
+    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre)\b/;
     const _aseoDraft = _botAseoDrafts.get(phone10);
     const _aseoPend = _aseoDraft && Date.now() < _aseoDraft.exp;
     if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
@@ -3431,7 +3441,8 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
           const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
           const sys = `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
 Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, registrar solicitudes de entrada temprana / salida tardía y dar la lista de limpiezas de hoy.
-- "resumen de limpieza", "limpiezas de hoy", "lista de limpiezas", "limpiezas hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
+- "resumen del día", "cierre del día", "resume las limpiezas", "resumen de limpiezas" → llama consultar_resumen_dia y responde con formatted_message TAL CUAL.
+- "lista actualizada de limpiezas", "estado de las limpiezas", "lista de limpiezas", "limpiezas de hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
 - Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
   · Llama preparar_estado_aseo con: alojamientos TAL CUAL los escribió (el sistema los reconoce aunque estén abreviados o con errores), estado (listo/lista/terminado/terminé/acabé = terminado · inspeccionado/revisado/checado = inspeccionado · empezando/limpiando/en proceso = en_proceso), validado=true SOLO si dice validado/publicado, y persona SOLO si nombra a alguien distinto de quien escribe (ej. "Alma").
   · Envía el campo resumen TAL CUAL y espera respuesta.
@@ -3439,11 +3450,11 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
   · Si corrige algo ("no, es cu3", "fue Brenda", "nada más terminado"), vuelve a llamar preparar_estado_aseo con TODO corregido y muestra el nuevo resumen.
   · Si dice "no" / "cancela", responde "Cancelado." y no guardes.
 - Solicitudes de ENTRADA temprana o SALIDA tardía ("cu2 entrada temprana 10am", "ox6 salida tardía 1pm aceptada", "acepta la entrada de jc3", "quita la salida de bc5"): llama preparar_solicitud_aseo (tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla), envía resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo.
-- VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen de las 3 pm): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
+- VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
 - Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
 - Si el mensaje no es sobre aseo, responde en 1 línea que por este medio solo registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida o das la lista de limpiezas de hoy.
 - Sé breve, sin cortesías ni emojis extra.`;
-          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
+          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
           const llm = await _botLlmLoop({
             system: sys, history: hist, userMsg: bodyMsg,
             ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: nombre, msgTs: t0, userMsg: bodyMsg,
@@ -9348,16 +9359,12 @@ app.post("/aseo/reprog", async (req, res) => {
 // ── Regla de las 3 pm: salió hoy, no entra nadie hoy y el aseo sigue "Pendiente" → se
 //    reprograma al día siguiente (la card de hoy queda como fantasma). Si la copia vuelve a
 //    quedar pendiente a las 3 pm se recorre otro día. Si se avanza el estado ese mismo día, se deshace.
-// Resumen de las 3 pm a las personas del reenvío automático (una vez al día): alojamientos
-// agrupados por estado + opciones para responder (validar, inspeccionar, reprogramar).
+// Resumen del día (cierre): alojamientos agrupados por estado + opciones para responder
+// (validar, inspeccionar, reprogramar). Se envía solo a las 2 pm a las personas del reenvío
+// automático y el bot lo da cuando lo piden ("resumen del día", "cierre del día").
 const _ASEO_R3_OBJ = "aseo/resumen3pm.json";
-async function _aseoResumen3pm() {
-  await _aseoAutoCfgLoad();
-  const cfg = _aseo.autoCfg || {};
-  if (!cfg.on || !(cfg.personas || []).length) return;
+async function _aseoResumenDiaTxt() {
   const hoy = _mxHoy();
-  const toca = await _aseoMutate(_ASEO_R3_OBJ, "r3", d => { if (d.fecha === hoy) return false; d.fecha = hoy; d.at = new Date().toISOString(); return true; });
-  if (!toca) return;
   const r = await _aseoResumenHoy();
   const it = r.items.filter(i => !i.fantasma);
   const lst = f => it.filter(f).map(i => `${i.code || i.nombre}${i.entra ? "✱" : ""}`);
@@ -9367,15 +9374,25 @@ async function _aseoResumen3pm() {
   const autoRp = it.filter(i => i.sel === "pendiente" && !i.entra && (i.sale || i.reprog)).map(i => i.code || i.nombre);
   const g = (ico, t, l) => l.length ? `${ico} *${t} (${l.length}):* ${l.join(", ")}` : "";
   const fecha = new Date(hoy + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
-  const L = [`🕒 *Resumen de limpiezas · 3:00 p.m.* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${it.length} alojamiento${it.length === 1 ? "" : "s"} · ✱ = entra huésped hoy`, "",
-    g("⏳", "Pendientes", pend), autoRp.length ? `   (sin entrada hoy, se pasan solos a mañana: ${autoRp.join(", ")})` : "",
+  const hora = new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" });
+  const L = [`🕒 *Resumen del día · ${hora}* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${it.length} alojamiento${it.length === 1 ? "" : "s"} · ✱ = entra huésped hoy`, "",
+    g("⏳", "Pendientes", pend), autoRp.length ? `   (sin entrada hoy: a las 3:00 p.m. se pasan solos a mañana: ${autoRp.join(", ")})` : "",
     g("🧽", "En proceso", proc), g("🧹", "Terminados sin validar", sinV), g("🧹", "Terminados validados", term), g("✅", "Inspeccionados", insp)].filter(Boolean);
   const op = [];
   if (sinV.length) op.push(`✅ Validar faltantes: «validar todos» o «validar ${sinV[0].replace("✱", "")}»`);
   if (sinV.length || term.length) op.push(`🔍 Marcar inspeccionados: «inspeccionar todos» o «${(sinV[0] || term[0]).replace("✱", "")} inspeccionado»`);
   if (pend.length) op.push(`📅 Reprogramar pendientes: «reprogramar pendientes» o «reprogramar ${pend[0].replace("✱", "")} para mañana»`);
   if (op.length) L.push("", "*¿Qué hacemos? Responde, por ejemplo:*", ...op);
-  const txt = L.join("\n");
+  return L.join("\n");
+}
+async function _aseoResumen3pm() {
+  await _aseoAutoCfgLoad();
+  const cfg = _aseo.autoCfg || {};
+  if (!cfg.on || !(cfg.personas || []).length) return;
+  const hoy = _mxHoy();
+  const toca = await _aseoMutate(_ASEO_R3_OBJ, "r3", d => { if (d.fecha === hoy) return false; d.fecha = hoy; d.at = new Date().toISOString(); return true; });
+  if (!toca) return;
+  const txt = await _aseoResumenDiaTxt();
   const tels = await _aseoTelPersonal().catch(() => []);
   for (const n of cfg.personas) {
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n));
@@ -9387,8 +9404,8 @@ async function _aseoResumen3pm() {
 }
 async function _aseoAutoReprogTick() {
   const h = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
-  if (h < 15) return;
-  if (h < 18) await _aseoResumen3pm().catch(e => console.warn("[aseo-3pm]", e.message)); // antes de recorrer los pendientes (no se manda de noche)
+  if (h >= 14 && h < 18) await _aseoResumen3pm().catch(e => console.warn("[aseo-2pm]", e.message)); // resumen del día a las 2 pm (no se manda de noche)
+  if (h < 15) return; // la reprogramación automática sigue a las 3 pm
   const hoy = _mxHoy(), d = new Date(hoy + "T12:00:00"); d.setDate(d.getDate() + 1);
   const man = d.toISOString().slice(0, 10);
   const r = await _aseoResumenHoy();
