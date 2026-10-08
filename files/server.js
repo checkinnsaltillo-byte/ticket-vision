@@ -9084,10 +9084,13 @@ async function _aseoResumenHoy(opts) {
   // Fecha de aseo editada en la card: fuera las movidas a otro día; dentro las movidas a hoy.
   await _aseoReprogLoad();
   const RP = _aseo.reprog || {};
-  casas.forEach((c, hid) => { const r = RP[c.estId]; if (r && r.fecha && r.fecha !== hoy) casas.delete(hid); });
+  // Reprogramación automática (3 pm): la card se queda "fantasma" en los días que quedó pendiente.
+  const fantasmaHoy = r => !!(r && r.auto && r.fecha !== hoy && (r.orig === hoy || (r.fantasmas || []).includes(hoy)));
+  casas.forEach((c, hid) => { const r = RP[c.estId]; if (r && r.fecha && r.fecha !== hoy) { if (fantasmaHoy(r)) c.fantasma = true; else casas.delete(hid); } });
   Object.entries(RP).forEach(([id, r]) => {
-    if (!r || r.fecha !== hoy || !r.hid || r.orig === hoy) return;
-    const c = casa(String(r.hid)); c.estId = id; c.reprog = r.orig || "";
+    if (!r || !r.hid || r.orig === hoy) return;
+    if (r.fecha !== hoy && !fantasmaHoy(r)) return;
+    const c = casa(String(r.hid)); c.estId = id; c.reprog = r.orig || ""; c.fantasma = r.fecha !== hoy;
   });
   // Estado actualizado hoy sin salida/entrada hoy
   Object.entries(_aseo.estados || {}).forEach(([id, r]) => {
@@ -9109,7 +9112,8 @@ async function _aseoResumenHoy(opts) {
     // "(validado)" se refiere al ÚLTIMO registro, no a una validación anterior que siga publicada.
     if (sel === "terminado") estado += (r && (r.validado === undefined || r.validado)) ? " (validado)" : " (sin validar)";
     let aviso = "";
-    if (c.sal && c.ent && sel === "pendiente" && horaMx >= 14) aviso = "🚨 Urge validación";
+    if (c.fantasma) aviso = "🗓️ ¡CERRAR FECHA EN CALENDARIO! Reprogramado para el día siguiente";
+    else if (c.sal && c.ent && sel === "pendiente" && horaMx >= 14) aviso = "🚨 Urge validación";
     else if (!c.sal && c.ent && !(pub && /^(terminado|inspeccionado)$/.test(pub.estado))) aviso = "⚠️ Requiere inspección";
     return { code: a ? a.code.toUpperCase() : "", nombre: a ? a.nombre : `Alojamiento ${c.hid}`, entra: !!c.ent, sale: !!c.sal, estado, sel, aviso, aseo: aseoP, insp: inspP,
       temprana: !!(c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).on),
@@ -9117,7 +9121,7 @@ async function _aseoResumenHoy(opts) {
       tempHora: (c.ent && ((_aseo.temprana || {})[c.ent.id] || {}).hora) || "",
       tardia: (c.sal && ((_aseo.tardia || {})[c.sal.id] || {}).on) ? ((_aseo.tardia || {})[c.sal.id]) : null,
       aseoArr: (as.aseo || as.personal || []).slice(), inspArr: (as.inspeccion || []).slice(),
-      salio: c.sal ? c.sal.guest : "", entra_huesped: c.ent ? c.ent.guest : "", hid: c.hid, reprog: c.reprog || "" };
+      salio: c.sal ? c.sal.guest : "", entra_huesped: c.ent ? c.ent.guest : "", hid: c.hid, reprog: c.reprog || "", estId: c.estId, fantasma: !!c.fantasma };
   });
   const ordenE = { pendiente: 0, en_proceso: 1, terminado: 2, inspeccionado: 3 };
   const tardA = i => (i.tardia && i.tardia.aceptada) ? 1 : 0;
@@ -9128,7 +9132,7 @@ async function _aseoResumenHoy(opts) {
   items.forEach((i, n) => {
     const mk = marcas && marcas.get(String(i.hid));
     lineas.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}${i.tempAceptada ? " · *PRIORITARIA*" : ""}${mk ? " " + _aseoMarcaTxt(mk) : ""}`);
-    if (i.reprog) lineas.push(`   📅 Reprogramada (era del ${new Date(i.reprog + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })})`);
+    if (i.reprog && !i.fantasma) { const nd = Math.round((Date.parse(hoy) - Date.parse(i.reprog)) / 864e5); lineas.push(`   📅 Reprogramado para hoy · salida hace ${nd} día${nd === 1 ? "" : "s"}`); }
     _aseoLineasSol(i).forEach(x => lineas.push(x));
     lineas.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     lineas.push(`   🧹 Aseo: ${i.aseo || "—"} · 🔍 Inspección: ${i.insp || "—"}`);
@@ -9266,6 +9270,35 @@ app.post("/aseo/reprog", async (req, res) => {
     res.json({ ok: true, reprog: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Regla de las 3 pm: salió hoy, no entra nadie hoy y el aseo sigue "Pendiente" → se
+//    reprograma al día siguiente (la card de hoy queda como fantasma). Si la copia vuelve a
+//    quedar pendiente a las 3 pm se recorre otro día. Si se avanza el estado ese mismo día, se deshace.
+async function _aseoAutoReprogTick() {
+  const h = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
+  if (h < 15) return;
+  const hoy = _mxHoy(), d = new Date(hoy + "T12:00:00"); d.setDate(d.getDate() + 1);
+  const man = d.toISOString().slice(0, 10);
+  const r = await _aseoResumenHoy();
+  const RP = _aseo.reprog || {}, E = _aseo.estados || {};
+  const pend = id => !E[id] || E[id].estado === "pendiente";
+  const mover = r.items.filter(i => i.estId && !i.fantasma && !i.entra && (i.sale || i.reprog) && i.sel === "pendiente" && !(RP[i.estId] && RP[i.estId].fecha > hoy));
+  const deshacer = Object.entries(RP).filter(([id, x]) => x && x.auto && x.fecha === man && (x.fantasmas || []).slice(-1)[0] === hoy && !pend(id)).map(([id]) => id);
+  if (!mover.length && !deshacer.length) return;
+  await _aseoMutate(_ASEO_REPROG_OBJ, "reprog", D => {
+    mover.forEach(i => {
+      const p = D[i.estId];
+      D[i.estId] = { fecha: man, orig: (p && p.orig) || hoy, hid: i.hid, auto: true, fantasmas: [...new Set([...((p && p.fantasmas) || []), hoy])], by: "Automático 3 pm", at: new Date().toISOString() };
+    });
+    deshacer.forEach(id => {
+      const x = D[id]; if (!x) return;
+      x.fantasmas = (x.fantasmas || []).filter(f => f !== hoy);
+      if (!x.fantasmas.length && x.orig === hoy) delete D[id]; else x.fecha = hoy;
+    });
+  });
+  _aseo.reprogTs = Date.now();
+  console.log(`[aseo] reprogramación 3 pm → ${man}: ${mover.map(i => i.code || i.hid).join(", ") || "—"}${deshacer.length ? ` · deshechas: ${deshacer.join(", ")}` : ""}`);
+}
+setInterval(() => { _aseoAutoReprogTick().catch(e => console.warn("[aseo] reprog 3pm:", e.message)); }, 5 * 60_000);
 // ── Reenvío automático de la lista de limpiezas (botón "Notificar actualizaciones") ──
 // aseo/autonotif.json → { on, personas:[nombres], by, at }. Cada cambio de HOY marca el
 // alojamiento; 45 s después del último cambio se envía la lista con las marcas.
