@@ -8979,9 +8979,10 @@ app.get("/aseo/live", async (req, res) => {
     if (force) { _aseo.forceTs = Date.now(); _aseo.cambiosTs = 0; _aseo.asigTs = 0; _aseo.estadosTs = 0; if (_aseo.inflight) await _aseo.inflight; }
     if (force || !_aseo.rows || Date.now() - _aseo.ts > 20_000) await _aseoLiveLoad();
     if (!_aseo.cambios || Date.now() - (_aseo.cambiosTs || 0) > 60_000) { _aseo.cambios = await _rhdGetJson(_ASEO_CAMBIOS_OBJ).catch(() => _aseo.cambios || {}); _aseo.cambiosTs = Date.now(); }
-    if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 30_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
+    // Con varias copias del servidor, cada una relee de Cloud Storage cada 5 s (un cambio hecho en otra copia se ve casi al instante).
+    if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 5_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
     res.set("Cache-Control", "no-store");
-    if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
+    if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 5_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
     await _aseoGuiaOffLoad();
     let guias = {}; try { guias = _aseoGuiasTodas(); } catch (e) { console.warn("[aseo] guías:", e.message); }
     if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
