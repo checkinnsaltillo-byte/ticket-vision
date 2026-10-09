@@ -1262,7 +1262,7 @@ REGLAS:
   · SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
 - VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
 - CHECK-LIST · TAREAS (Limpieza, Inspección, Insumos, Mantenimiento) — "tareas de hoy", "tareas de check-list", "tareas de mantenimiento", "qué hay de insumos", "tareas de inspección", "tareas de cu2": llama consultar_tareas_checklist (tipo/alojamiento/fecha si los dice) y responde con formatted_message TAL CUAL. Para cambiar el estado de una tarea usa su [ref] con actualizar_tarea_checklist (directo en modo admin).
-- INCIDENCIAS — "incidencias", "hay incidencias?", "incidencias abiertas/terminadas", "incidencias de mt7", "detalle de INC-…", "qué pasó en ox5": llama consultar_incidencias (folio para el detalle: reserva/huésped, personas, seguimiento y sus tareas correctivas) y responde con formatted_message TAL CUAL. "pasa INC-… a en proceso", "marca INC-… terminada", "sube a crítica INC-…", "seguimiento de INC-…: …" → actualizar_incidencia (directo en modo admin).
+- INCIDENCIAS — "incidencias", "hay incidencias?", "incidencias abiertas/terminadas", "incidencias de mt7", "detalle de INC-…", "qué pasó en ox5": llama consultar_incidencias (sin estado = ESTADO ACTUAL, solo abiertas; terminadas/canceladas/historial solo si lo pide explícitamente; folio para el detalle: reserva/huésped, personas, seguimiento y sus tareas correctivas) y responde con formatted_message TAL CUAL. "pasa INC-… a en proceso", "marca INC-… terminada", "sube a crítica INC-…", "seguimiento de INC-…: …" → actualizar_incidencia (directo en modo admin).
 - "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
 - RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message, uno después del otro.
 - NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
@@ -1367,12 +1367,12 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_incidencias",
-    description: "FUNCIÓN AVANZADA. INCIDENCIAS del módulo Check-list: lista (por defecto las abiertas: pendientes y en proceso) con alojamiento, motivo, estado, prioridad, fecha y cuántas tareas correctivas tienen; o el DETALLE de una (folio INC-…) con descripción, seguimiento, personas, reserva/huésped ligado y sus tareas correctivas con su estado. Usar ante 'incidencias', 'hay incidencias?', 'incidencias abiertas', 'incidencias de cu2', 'detalle de la incidencia INC-…', 'qué pasó en ox5'.",
+    description: "FUNCIÓN AVANZADA. INCIDENCIAS del módulo Check-list: lista del ESTADO ACTUAL (por defecto y para cualquier 'resumen de incidencias', 'incidencias de hoy': solo las abiertas = pendientes y en proceso; usa estado 'todas', 'terminado' o 'cancelado' ÚNICAMENTE si el usuario pide explícitamente ver terminadas/canceladas/historial) con alojamiento, motivo, estado, prioridad, fecha y cuántas tareas correctivas tienen; o el DETALLE de una (folio INC-…) con descripción, seguimiento, personas, reserva/huésped ligado y sus tareas correctivas con su estado. Usar ante 'incidencias', 'hay incidencias?', 'incidencias abiertas', 'incidencias de cu2', 'detalle de la incidencia INC-…', 'qué pasó en ox5'.",
     input_schema: { type: "object", properties: {
-      estado: { type: "string", enum: ["abiertas", "pendiente", "en_proceso", "terminado", "cancelado", "todas"], description: "Opcional (por defecto abiertas)." },
+      estado: { type: "string", enum: ["abiertas", "pendiente", "en_proceso", "terminado", "cancelado", "todas"], description: "Opcional. Por defecto 'abiertas' (estado actual). 'todas'/'terminado'/'cancelado' solo si lo pide explícitamente." },
       alojamiento: { type: "string", description: "Opcional. Alojamiento TAL CUAL (ej. mt7)." },
       folio: { type: "string", description: "Opcional. Folio de la incidencia (INC-…) para ver su detalle completo." },
-      dias: { type: "number", description: "Opcional. Solo las de los últimos N días." } }, required: [] },
+      dias: { type: "number", description: "Opcional. Solo las reportadas en los últimos N días (no lo uses para 'de hoy': el resumen ya muestra el estado actual)." } }, required: [] },
   },
   {
     name: "actualizar_incidencia",
@@ -9981,23 +9981,34 @@ function _clTareasTxt(L, dia, titulo) {
   if (!L.length) out.push("", "No hay tareas de Check-list para este día.");
   return out.join("\n");
 }
+// Tareas correctivas que existen hoy (no borradas ni archivadas).
+async function _incLigsValFn() {
+  await _aseoTareasLoad(); await _aseoExtraLoad();
+  const X = _aseo.extra || {}; let rts = null;
+  const okR = async id => { if (!rts) rts = await _clRtRows(); return rts.some(z => String(z.ID) === id); };
+  return async r => { const out = []; for (const l of String(r.Tarea_ligada || "").split(",").map(x => x.trim()).filter(Boolean)) { if ((X[l] || {}).archivada) continue; const id = l.slice(1); if (l[0] === "T" ? !!(_aseo.tareas || {})[id] : await okR(id)) out.push(l); } return out; };
+}
 async function _incListaTxt(args) {
-  const d = await _incDatos(), C = await _clCat(), hoy = _mxHoy();
+  const d = await _incDatos(), C = await _clCat(), hoy = _mxHoy(), ligsDe = await _incLigsValFn();
   let L = (d.rows || []).filter(r => !_incArch(r));
   const est = String(args.estado || "abiertas"), MAP = { pendiente: "Nuevo", en_proceso: "En proceso", terminado: "Resuelto", cancelado: "Cancelado" };
   if (est === "abiertas") L = L.filter(_incAbiertaBot); else if (MAP[est]) L = L.filter(r => _incEstBot(r.Estatus) === MAP[est]);
   if (args.alojamiento) { const m = _aseoMatchAloj(String(args.alojamiento), C.cat); if (!m.ok) return m.error; L = L.filter(r => C.hidDe(r.Propiedad, r["# Departamento"]) === String(m.aloj.hid)); }
   if (Number(args.dias) > 0) { const lim = new Date(hoy + "T12:00:00"); lim.setDate(lim.getDate() - Number(args.dias)); const li = lim.toISOString().slice(0, 10); L = L.filter(r => String(r.Fecha || "").slice(0, 10) >= li); }
   L.sort((a, b) => (_CL_PRIO_N[String(b.Nivel || "").toLowerCase()] || 0) - (_CL_PRIO_N[String(a.Nivel || "").toLowerCase()] || 0) || String(b.Fecha || "").localeCompare(String(a.Fecha || "")));
-  const lbl = est === "abiertas" ? "abiertas" : est === "todas" ? "" : (_INC_EST_TXT[MAP[est]] || est).toLowerCase() + "s";
+  const lbl = est === "abiertas" ? "abiertas (estado actual)" : est === "todas" ? "" : (_INC_EST_TXT[MAP[est]] || est).toLowerCase() + "s";
   const out = [`⚠️ *Incidencias ${lbl}* (${L.length})`.replace("  ", " ")];
-  L.slice(0, 25).forEach(r => {
-    const hid = C.hidDe(r.Propiedad, r["# Departamento"]), ligs = String(r.Tarea_ligada || "").split(",").map(x => x.trim()).filter(Boolean);
+  if (est === "abiertas") { // contexto del día sin listar las cerradas
+    const H = (d.rows || []).filter(r => !_incArch(r) && String(r.Fecha || "").slice(0, 10) === hoy), n = k => H.filter(r => _incEstBot(r.Estatus) === k).length;
+    if (H.length) out.push(`Hoy: ${H.length} reportada${H.length === 1 ? "" : "s"} · ${n("Resuelto")} terminada${n("Resuelto") === 1 ? "" : "s"} · ${n("Cancelado")} cancelada${n("Cancelado") === 1 ? "" : "s"}`);
+  }
+  for (const r of L.slice(0, 25)) {
+    const hid = C.hidDe(r.Propiedad, r["# Departamento"]), ligs = await ligsDe(r);
     const tit = String(r.Clasificacion || r.Motivos || "Incidencia");
     out.push(`• ${hid ? C.code(hid) : (r.Alojamiento || "—")} · ${tit} — ${_INC_EST_TXT[_incEstBot(r.Estatus)]} · ${String(r.Nivel || "Media").toLowerCase()} · ${_clDiaCorto(String(r.Fecha || "").slice(0, 10))}${ligs.length ? ` · 🛠 ${ligs.length} tarea${ligs.length === 1 ? "" : "s"} correctiva${ligs.length === 1 ? "" : "s"}` : ""} [${r.ID}]`);
-  });
+  }
   if (L.length > 25) out.push(`… y ${L.length - 25} más.`);
-  if (!L.length) out.push("No hay incidencias con ese filtro.");
+  if (!L.length) out.push(est === "abiertas" ? "✅ No hay incidencias abiertas." : "No hay incidencias con ese filtro.");
   else out.push("", "Pide «detalle de la incidencia INC-…» para ver todo.");
   return out.join("\n");
 }
@@ -10006,7 +10017,7 @@ async function _incDetalleTxt(folio) {
   const r = (d.rows || []).find(x => String(x.ID).toUpperCase() === q) || (d.rows || []).find(x => String(x.ID).toUpperCase().endsWith(q.replace(/^INC-?/, "")));
   if (!r) return `No encontré la incidencia ${folio}.`;
   const hid = C.hidDe(r.Propiedad, r["# Departamento"]);
-  const ligs = String(r.Tarea_ligada || "").split(",").map(x => x.trim()).filter(Boolean);
+  const ligs = await (await _incLigsValFn())(r); // solo las que existen hoy
   const tareas = [];
   if (ligs.length) {
     await _aseoTareasLoad();
