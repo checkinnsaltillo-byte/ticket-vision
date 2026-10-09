@@ -1349,7 +1349,7 @@ const BOT_TOOLS = [
   {
     name: "consultar_resumen_tareas",
     description: "FUNCIÓN AVANZADA. Resumen de TAREAS PROGRAMADAS del día (pendientes, en proceso, resueltas, canceladas, con prioridad y personal). Usar ante 'resumen de tareas programadas', 'cómo van las tareas programadas', 'tareas programadas de hoy' o al pedir el resumen de TODAS las secciones (junto con consultar_resumen_dia).",
-    input_schema: { type: "object", properties: { fecha: { type: "string", description: "Opcional YYYY-MM-DD (por defecto hoy)." } }, required: [] },
+    input_schema: { type: "object", properties: { fecha: { type: "string", description: "Opcional YYYY-MM-DD (por defecto hoy)." }, incluir_cerradas: { type: "boolean", description: "true SOLO si pide explícitamente ver también las resueltas/canceladas. Por defecto: estado actual (solo abiertas)." } }, required: [] },
   },
   {
     name: "consultar_resumen_dia",
@@ -1363,7 +1363,8 @@ const BOT_TOOLS = [
       fecha: { type: "string", description: "Opcional YYYY-MM-DD (por defecto hoy)." },
       tipo: { type: "string", enum: ["todos", "limpieza", "inspeccion", "insumos", "mantenimiento"], description: "Opcional. Filtra por tipo de tarea." },
       alojamiento: { type: "string", description: "Opcional. Alojamiento TAL CUAL (ej. cu2, ox5)." },
-      solo_mias: { type: "boolean", description: "true si pide SUS tareas ('mis tareas', 'qué me toca')." } }, required: [] },
+      solo_mias: { type: "boolean", description: "true si pide SUS tareas ('mis tareas', 'qué me toca')." },
+      incluir_cerradas: { type: "boolean", description: "true SOLO si pide explícitamente ver también las terminadas/canceladas. Por defecto: estado actual (solo pendientes y en proceso)." } }, required: [] },
   },
   {
     name: "consultar_incidencias",
@@ -2347,7 +2348,7 @@ async function _botExecTool(toolUse, ctx) {
     if (name === "consultar_resumen_tareas") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Los resúmenes son una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       const f = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? args.fecha : _mxHoy();
-      return { content: JSON.stringify({ ok: true, formatted_message: await _tarResumenTxt(f), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, formatted_message: await _tarResumenTxt(f, !args.incluir_cerradas), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "consultar_tareas_checklist") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
@@ -2358,7 +2359,7 @@ async function _botExecTool(toolUse, ctx) {
       if (args.alojamiento) { const cat = await _aseoCatalogo().catch(() => []), m = _aseoMatchAloj(String(args.alojamiento), cat); if (!m.ok) return { content: JSON.stringify({ ok: false, error: m.error }), notifyText: null }; L = L.filter(i => String(i.hid) === String(m.aloj.hid)); }
       const mias = args.solo_mias || !avz;
       if (mias) L = L.filter(i => i.asig.some(n => _aseoMismaPersona(n, yo)));
-      return { content: JSON.stringify({ ok: true, formatted_message: _clTareasTxt(L, f, mias ? "Tus tareas" : "Tareas"), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, formatted_message: _clTareasTxt(L, f, mias ? "Tus tareas" : "Tareas", !args.incluir_cerradas), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "consultar_incidencias") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Las incidencias son una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
@@ -9470,16 +9471,23 @@ function _tarToca(D, r, iso) {
 function _tarDelDia(D, iso) { return D.rows.filter(r => _tarToca(D, r, iso) && (_tarVig(r) === "Activa" || _tarOcurVig(D, r, iso))); }
 const _TAR_PRIO = { "Bajo": "Baja", "Medio": "Media", "Alto": "Alta", "Crítico": "Crítica" };
 const _tarPers = r => String(r.Personal || "").split(",").map(x => x.trim()).filter(Boolean);
-async function _tarResumenTxt(iso) {
+async function _tarResumenTxt(iso, actual) { // actual=true (bot a petición): solo pendientes/en proceso + conteo de cerradas
   const D = await _tarDatos(); iso = iso || _mxHoy();
   const L = _tarDelDia(D, iso);
   const fecha = new Date(iso + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
   const hora = new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" });
   const lin = r => `• ${r.Nombre || "Sin nombre"}${_tarEsRec(r) ? " 📌" : ""} · ${_TAR_PRIO[r.Prioridad || "Medio"] || r.Prioridad}${_tarPers(r).length ? " · " + _tarPers(r).map(_aseoCorto).join(", ") : " · sin asignar"}`;
   const out = [`🗓️ *Tareas programadas · ${hora}* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${L.length} tarea${L.length === 1 ? "" : "s"} · 📌 = recordatorio`];
-  [["⏳", "Pendientes", "Pendiente"], ["🧽", "En proceso", "En proceso"], ["✅", "Resueltas", "Resuelto"], ["✖️", "Canceladas", "Cancelado"]].forEach(([ico, t, k]) => {
+  const G = [["⏳", "Pendientes", "Pendiente"], ["🧽", "En proceso", "En proceso"], ["✅", "Resueltas", "Resuelto"], ["✖️", "Canceladas", "Cancelado"]];
+  (actual ? G.slice(0, 2) : G).forEach(([ico, t, k]) => {
     const X = L.filter(r => _tarEstado(D, r, iso) === k); if (X.length) out.push("", `${ico} *${t} (${X.length}):*`, ...X.map(lin));
   });
+  if (actual) {
+    const n = k => L.filter(r => _tarEstado(D, r, iso) === k).length, ab = n("Pendiente") + n("En proceso");
+    if (L.length && !ab) out.push("", "✅ No hay tareas programadas abiertas.");
+    if (n("Resuelto") || n("Cancelado")) out.push("", `Cerradas hoy: ${n("Resuelto")} resuelta${n("Resuelto") === 1 ? "" : "s"} · ${n("Cancelado")} cancelada${n("Cancelado") === 1 ? "" : "s"} (pide «incluye las resueltas» para verlas)`);
+    out[1] = `${ab} abierta${ab === 1 ? "" : "s"} de ${L.length} · 📌 = recordatorio`;
+  }
   if (!L.length) out.push("", "No hay tareas programadas para este día.");
   return out.join("\n");
 }
@@ -9969,16 +9977,18 @@ async function _clTareas(dia) {
   });
   return out;
 }
-function _clTareasTxt(L, dia, titulo) {
+function _clTareasTxt(L0, dia, titulo, actual) { // actual=true: solo pendientes/en proceso + conteo de las cerradas
   const ord = ["pendiente", "en_proceso", "terminado", "inspeccionado", "cancelado"];
-  const out = [`✅ *Check-list · ${titulo}* — ${_clFecha(dia)}`, `${L.length} tarea${L.length === 1 ? "" : "s"} · ⚠️ = ligada a una incidencia · [ref] para cambiar su estado`];
+  const abierta = i => i.est === "pendiente" || i.est === "en_proceso", L = actual ? L0.filter(abierta) : L0;
+  const out = [`✅ *Check-list · ${titulo}${actual ? " (estado actual)" : ""}* — ${_clFecha(dia)}`, `${L.length} tarea${L.length === 1 ? "" : "s"}${actual ? " abierta" + (L.length === 1 ? "" : "s") : ""} · ⚠️ = ligada a una incidencia · [ref] para cambiar su estado`];
+  if (actual) { const c = L0.filter(i => !abierta(i)), n = k => c.filter(i => i.est === k).length; if (c.length) out.push(`Cerradas hoy: ${n("terminado") + n("inspeccionado")} terminada${n("terminado") + n("inspeccionado") === 1 ? "" : "s"} · ${n("cancelado")} cancelada${n("cancelado") === 1 ? "" : "s"} (pide «incluye las terminadas» para verlas)`); }
   Object.keys(_CL_TIPO).forEach(tp => {
     const X = L.filter(i => i.tipo === tp).sort((a, b) => ord.indexOf(a.est) - ord.indexOf(b.est) || (_CL_PRIO_N[b.prio] || 0) - (_CL_PRIO_N[a.prio] || 0));
     if (!X.length) return;
     out.push("", `*${_CL_TIPO[tp]} (${X.length})*`);
     X.forEach(i => out.push(`• ${i.aloj} · ${i.titulo} — ${_CL_EST[i.est] || i.est}${i.atrasado ? ` (desde ${_clDiaCorto(i.fecha)})` : ""} · ${i.prio}${i.asig.length ? " · " + _clNombres(i.asig) : " · sin asignar"}${i.inc.length ? " ⚠️" : ""} [${i.ref}]`));
   });
-  if (!L.length) out.push("", "No hay tareas de Check-list para este día.");
+  if (!L.length) out.push("", actual && L0.length ? "✅ No hay tareas de Check-list abiertas." : "No hay tareas de Check-list para este día.");
   return out.join("\n");
 }
 // Tareas correctivas que existen hoy (no borradas ni archivadas).
@@ -10057,7 +10067,7 @@ app.get("/bot/checklist-preview", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const dia = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.fecha || "")) ? req.query.fecha : _mxHoy();
-    const out = { ok: true, tareas: _clTareasTxt(await _clTareas(dia), dia, "Tareas"), incidencias: await _incListaTxt({ estado: req.query.estado || "abiertas" }), avisos: await _clAvisosTxt() };
+    const out = { ok: true, tareas: _clTareasTxt(await _clTareas(dia), dia, "Tareas", req.query.todas !== "1"), programadas: await _tarResumenTxt(dia, req.query.todas !== "1"), incidencias: await _incListaTxt({ estado: req.query.estado || "abiertas" }), avisos: await _clAvisosTxt() };
     if (req.query.folio) out.detalle = await _incDetalleTxt(String(req.query.folio));
     res.json(out);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
