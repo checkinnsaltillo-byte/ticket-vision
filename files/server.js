@@ -1267,6 +1267,7 @@ REGLAS:
 - NUNCA muestres códigos, folios, claves ni IDs (INC-…, RT-…, T…, folio X). Identifica todo por alojamiento y descripción. Si una herramienta devuelve opciones, muéstralas TAL CUAL y pregunta cuál.
 - "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
 - RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message, uno después del otro.
+- DATOS DEL HUÉSPED — después de reportar que no ha desalojado preguntas «¿Quieres los datos del huésped y su reserva?»; si responde "sí" llama consultar_datos_reserva (sin alojamiento) y responde con formatted_message TAL CUAL. También ante "datos del huésped de cu2", "celular del huésped de ox3".
 - NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
 - El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
@@ -1379,6 +1380,11 @@ const BOT_TOOLS = [
       folio: { type: "string", description: "Uso interno; no lo pidas al usuario." },
       fecha: { type: "string", description: "'hoy', 'ayer' o YYYY-MM-DD. Úsalo para 'incidencias del día'/'de hoy'/'de ayer': lista TODAS las reportadas ese día con su estado actual." },
       dias: { type: "number", description: "Opcional. Solo las reportadas en los últimos N días." } }, required: [] },
+  },
+  {
+    name: "consultar_datos_reserva",
+    description: "ADMIN o PERSONAL. Datos básicos del HUÉSPED y su RESERVA en un alojamiento (nombre, medio de reserva, fechas de entrada y salida, celular). Usar cuando el usuario responde 'sí' a «¿Quieres los datos del huésped y su reserva?» (después de reportar que no ha desalojado) o ante 'datos del huésped de cu2', 'quién está en ox3', 'celular del huésped de mt7'.",
+    input_schema: { type: "object", properties: { alojamiento: { type: "string", description: "Alojamiento TAL CUAL (ej. cu2). Si viene de la pregunta tras «no ha desalojado», puede omitirse." } }, required: [] },
   },
   {
     name: "consultar_historial",
@@ -1691,9 +1697,10 @@ function _botTarDelDia(rows, ocur, iso, hoy) {
 }
 const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_datos_reserva", "consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
+const _botNsDatos = new Map(); // phone10 → reservas reportadas «no ha desalojado» (para «¿Quieres los datos del huésped…?»)
 const _ASEO_EST_TXT = { en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado" };
 // ¿El mensaje actual es un "sí" a un resumen "(por confirmar)" que el bot YA envió?
 // Cubre el caso en que el modelo escribió el resumen sin preparar el borrador y,
@@ -2351,7 +2358,7 @@ async function _botExecTool(toolUse, ctx) {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
       const cat = await _aseoCatalogo(), hoy = _mxHoy(), on = !args.ya_salio;
       const user = `${ctx.staffNombre || ctx.adminNombre || ctx.phone10} (WhatsApp)`;
-      const hechos = [], errores = [];
+      const hechos = [], errores = [], nsIds = [];
       for (const q of (Array.isArray(args.alojamientos) ? args.alojamientos : [args.alojamientos]).map(x => String(x || "").trim()).filter(Boolean).slice(0, 10)) {
         const m = _aseoMatchAloj(q, cat);
         if (!m.ok) { errores.push(m.error); continue; }
@@ -2359,9 +2366,11 @@ async function _botExecTool(toolUse, ctx) {
         if (!b || b.dep !== hoy) { errores.push(`${m.aloj.code.toUpperCase()}: no tiene una reserva que salga hoy`); continue; }
         await _aseoNoSaleSet(b.id, m.aloj.hid, on, user);
         hechos.push(`${m.aloj.code.toUpperCase()}${b.guest ? " (" + b.guest + ")" : ""}`);
+        if (on) nsIds.push({ id: b.id, hid: m.aloj.hid, code: m.aloj.code.toUpperCase() });
       }
+      if (nsIds.length) _botNsDatos.set(ctx.phone10, { items: nsIds, exp: Date.now() + 30 * 60 * 1000 });
       if (!hechos.length) return { content: JSON.stringify({ ok: false, errores, instruccion: "Explica el problema en 1 línea y pide el alojamiento correcto (ej. CU2)." }), notifyText: null };
-      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ${on ? "🚨 Registrado: NO ha desalojado" : "✅ Registrado: ya desalojó"} ${hechos.join(", ")}${errores.length ? " · ⚠️ " + errores.join(" · ") : ""}.` }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ${on ? "🚨 Registrado: NO ha desalojado" : "✅ Registrado: ya desalojó"} ${hechos.join(", ")}${errores.length ? " · ⚠️ " + errores.join(" · ") : ""}.${on ? " Y en una segunda línea pregunta EXACTAMENTE: «¿Quieres los datos del huésped y su reserva?» (si contesta que sí, llama consultar_datos_reserva)." : ""}` }), notifyText: null };
     }
     if (name === "consultar_resumen_tareas") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Los resúmenes son una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
@@ -2391,6 +2400,32 @@ async function _botExecTool(toolUse, ctx) {
         return { content: JSON.stringify({ ok: true, formatted_message: await _incDetalleTxt(b.r.ID), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
       }
       return { content: JSON.stringify({ ok: true, formatted_message: await _incListaTxt(args), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
+    }
+    if (name === "consultar_datos_reserva") {
+      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      let objetivos = [];
+      if (args.alojamiento) {
+        const cat = await _aseoCatalogo().catch(() => []), m = _aseoMatchAloj(String(args.alojamiento), cat);
+        if (!m.ok) return { content: JSON.stringify({ ok: false, error: m.error }), notifyText: null };
+        const b = await _aseoReservaSolicitud(m.aloj.hid, "salida") || await _aseoReservaSolicitud(m.aloj.hid, "entrada");
+        if (!b) return { content: JSON.stringify({ ok: false, error: `${m.aloj.code.toUpperCase()} no tiene una reserva en curso ni próxima.` }), notifyText: null };
+        objetivos = [{ id: b.id, code: m.aloj.code.toUpperCase() }];
+      } else {
+        const d = _botNsDatos.get(ctx.phone10);
+        if (!d || Date.now() > d.exp) return { content: JSON.stringify({ ok: false, error: "¿De qué alojamiento? (ej. cu2)" }), notifyText: null };
+        objetivos = d.items;
+      }
+      _botNsDatos.delete(ctx.phone10);
+      const bks = (_lgSnap.payload && _lgSnap.payload.bookings) || [];
+      const fmt = iso => iso ? new Date(iso + "T12:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }) : "—";
+      const tel = v => { const dg = String(v || "").replace(/\D/g, ""); if (!dg) return "sin celular registrado"; const t = dg.length > 10 ? dg.slice(-10) : dg; return (dg.length > 10 && !dg.startsWith("52") ? "+" + dg.slice(0, dg.length - 10) + " " : "") + t.replace(/(\d{3})(\d{3})(\d{4})/, "$1 $2 $3"); };
+      const out = objetivos.map(o => {
+        const b = bks.find(x => x && String(x.Id) === String(o.id)) || {}, l = (_aseo.rows || []).find(x => String(x.Id) === String(o.id)) || {};
+        const arr = _lgIso(b.DateArrival) || l.DateArrival, dep = _lgIso(b.DateDeparture) || l.DateDeparture;
+        return [`👤 *Huésped de ${o.code}*`, `Nombre: ${b.GuestName || l.GuestName || "—"}`, `Medio de reserva: ${l.Source || b.Source || "—"}`,
+          `Entrada: ${fmt(arr)} · Salida: ${fmt(dep)}`, `Celular: ${tel(b.GuestPhone || l.GuestPhone)}`].join("\n");
+      });
+      return { content: JSON.stringify({ ok: true, formatted_message: out.join("\n\n"), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "consultar_historial") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "El historial de cambios es una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
@@ -3611,9 +3646,10 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // de un empleado (hoja Personal) y el mensaje habla de aseo o hay un borrador
   // pendiente de confirmar (para el "sí / no / corrección").
   {
-    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,}|historial|modific\w*|cambi\w*)\b/;
+    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,}|historial|modific\w*|cambi\w*|huesped\w*|celular|datos)\b/;
     const _aseoDraft = _botAseoDrafts.get(phone10);
-    const _aseoPend = _aseoDraft && Date.now() < _aseoDraft.exp;
+    const _nsD = _botNsDatos.get(phone10);
+    const _aseoPend = (_aseoDraft && Date.now() < _aseoDraft.exp) || (_nsD && Date.now() < _nsD.exp); // incluye la pregunta de datos del huésped
     if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
       const emp = await _asistenciaLookupEmpleado(phone10).catch(() => null);
       if (emp && emp.ok && emp.empleado) {
@@ -3647,12 +3683,13 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
 - Solicitudes de ENTRADA temprana o SALIDA tardía ("cu2 entrada temprana 10am", "ox6 salida tardía 1pm aceptada", "acepta la entrada de jc3", "quita la salida de bc5"): llama preparar_solicitud_aseo (tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla), envía resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo.
 - VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
 - RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message, uno después del otro.
+- DATOS DEL HUÉSPED — después de reportar que no ha desalojado preguntas «¿Quieres los datos del huésped y su reserva?»; si responde "sí" llama consultar_datos_reserva (sin alojamiento) y responde con formatted_message TAL CUAL. También ante "datos del huésped de cu2", "celular del huésped de ox3".
 - NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
 - El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
 - Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
 - Si el mensaje no es sobre la operación, responde en 1 línea que por este medio registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida, y das información de limpiezas, tareas de Check-list, incidencias y tareas programadas.
 - Sé breve, sin cortesías ni emojis extra.`;
-          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
+          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["consultar_datos_reserva", "consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
           const llm = await _botLlmLoop({
             system: sys, history: hist, userMsg: bodyMsg,
             ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: nombre, msgTs: t0, userMsg: bodyMsg,
