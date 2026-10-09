@@ -1263,6 +1263,7 @@ REGLAS:
 - VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
 - CHECK-LIST · TAREAS (Limpieza, Inspección, Insumos, Mantenimiento) — "tareas de hoy", "tareas de check-list", "tareas de mantenimiento", "qué hay de insumos", "tareas de inspección", "tareas de cu2": llama consultar_tareas_checklist (tipo/alojamiento/fecha si los dice) y responde con formatted_message TAL CUAL. Para cambiar el estado de una tarea llama actualizar_tarea_checklist con el alojamiento y la descripción que use el usuario (ej. "la de sábanas sucias de mt7 ya quedó") (directo en modo admin).
 - INCIDENCIAS — "incidencias", "hay incidencias?", "incidencias abiertas/terminadas", "incidencias de mt7", "detalle de la incidencia de mt7", "qué pasó en ox5": llama consultar_incidencias ("del día"/"de hoy"/"de ayer" → fecha = todas las de ese día con su estado actual; sin fecha = solo abiertas; terminadas/canceladas/historial solo si lo pide explícitamente; detalle=true con alojamiento y/o descripción para ver reserva/huésped, personas, seguimiento y sus tareas correctivas) y responde con formatted_message TAL CUAL. "pasa la incidencia de mt7 a en proceso", "marca terminada la de toallas de ox5", "sube a crítica la de cu5", "seguimiento de la de mt8: …" → actualizar_incidencia con alojamiento y descripción (directo en modo admin).
+- HISTORIAL — "historial de la incidencia de mt7", "quién cambió la tarea de toallas de ox5", "cambios de la limpieza de bc1": llama consultar_historial (tipo incidencia/tarea/limpieza, alojamiento y descripción) y responde con formatted_message TAL CUAL.
 - NUNCA muestres códigos, folios, claves ni IDs (INC-…, RT-…, T…, folio X). Identifica todo por alojamiento y descripción. Si una herramienta devuelve opciones, muéstralas TAL CUAL y pregunta cuál.
 - "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
 - RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message, uno después del otro.
@@ -1378,6 +1379,14 @@ const BOT_TOOLS = [
       folio: { type: "string", description: "Uso interno; no lo pidas al usuario." },
       fecha: { type: "string", description: "'hoy', 'ayer' o YYYY-MM-DD. Úsalo para 'incidencias del día'/'de hoy'/'de ayer': lista TODAS las reportadas ese día con su estado actual." },
       dias: { type: "number", description: "Opcional. Solo las reportadas en los últimos N días." } }, required: [] },
+  },
+  {
+    name: "consultar_historial",
+    description: "FUNCIÓN AVANZADA. HISTORIAL DE CAMBIOS (quién cambió qué y cuándo) de una INCIDENCIA, de una TAREA de Check-list (Limpieza, Inspección, Insumos, Mantenimiento) o de la LIMPIEZA de un alojamiento hoy. Se identifica por alojamiento y descripción, sin códigos. Usar ante 'historial de la incidencia de mt7', 'quién cambió la tarea de toallas de ox5', 'cambios de la limpieza de bc1', 'qué se modificó en…'.",
+    input_schema: { type: "object", properties: {
+      tipo: { type: "string", enum: ["incidencia", "tarea", "limpieza"] },
+      alojamiento: { type: "string", description: "Alojamiento TAL CUAL (ej. mt7)." },
+      descripcion: { type: "string", description: "Palabras de la incidencia o tarea (ej. 'toallas')." } }, required: ["tipo"] },
   },
   {
     name: "actualizar_incidencia",
@@ -1682,7 +1691,7 @@ function _botTarDelDia(rows, ocur, iso, hoy) {
 }
 const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
 const _ASEO_EST_TXT = { en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado" };
@@ -2383,6 +2392,35 @@ async function _botExecTool(toolUse, ctx) {
       }
       return { content: JSON.stringify({ ok: true, formatted_message: await _incListaTxt(args), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
+    if (name === "consultar_historial") {
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "El historial de cambios es una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      let keys = [], titulo = "";
+      if (args.tipo === "incidencia") {
+        const b = await _incBuscar(args);
+        if (b.error) return { content: JSON.stringify({ ok: false, error: b.error }), notifyText: null };
+        if (b.opciones) return { content: JSON.stringify({ ok: false, opciones: b.opciones.join("\n"), instruccion: "Pregunta de cuál incidencia quiere el historial, mostrando las opciones TAL CUAL." }), notifyText: null };
+        keys = ["I:" + b.r.ID]; titulo = "Incidencia · " + b.nombre;
+      } else if (args.tipo === "tarea") {
+        const bt = await _clBuscarTarea(args);
+        if (bt.error) return { content: JSON.stringify({ ok: false, error: bt.error }), notifyText: null };
+        if (bt.opciones) return { content: JSON.stringify({ ok: false, opciones: bt.opciones.join("\n"), instruccion: "Pregunta de cuál tarea quiere el historial, mostrando las opciones TAL CUAL." }), notifyText: null };
+        keys = [_histKey(bt.it.k)]; titulo = `${bt.it.aloj} · ${bt.it.titulo}`;
+      } else {
+        if (!args.alojamiento) return { content: JSON.stringify({ ok: false, error: "¿De qué alojamiento? (ej. bc1)" }), notifyText: null };
+        const cat = await _aseoCatalogo().catch(() => []), m = _aseoMatchAloj(String(args.alojamiento), cat);
+        if (!m.ok) return { content: JSON.stringify({ ok: false, error: m.error }), notifyText: null };
+        const r = await _aseoResumenHoy(), i = r.items.find(x => String(x.hid) === String(m.aloj.hid));
+        if (!i || !i.estId) return { content: JSON.stringify({ ok: false, error: `${m.aloj.code.toUpperCase()} no tiene limpieza hoy.` }), notifyText: null };
+        keys = ["A:" + i.estId]; titulo = `Limpieza de ${i.code || i.nombre}`;
+      }
+      const L = await _histDe(keys);
+      const hora = iso => new Date(iso).toLocaleString("es-MX", { timeZone: "America/Monterrey", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+      const out = [`🕘 *Historial de cambios* — ${titulo}`];
+      L.slice(0, 15).forEach(h => out.push(`• ${hora(h.at)} · ${_aseoCorto(h.by)} — ${h.campo}: ${h.antes ? h.antes + " → " : ""}${h.despues || "—"}`));
+      if (L.length > 15) out.push(`… y ${L.length - 15} cambio${L.length - 15 === 1 ? "" : "s"} más (en el sistema).`);
+      if (!L.length) out.push("Sin cambios registrados todavía.");
+      return { content: JSON.stringify({ ok: true, formatted_message: out.join("\n"), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
+    }
     if (name === "actualizar_incidencia") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Cambiar incidencias es una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       const b = await _incBuscar(args, true);
@@ -2395,7 +2433,7 @@ async function _botExecTool(toolUse, ctx) {
       if (NIV[args.prioridad]) { fields.nivel = NIV[args.prioridad]; cambios.push("prioridad: " + NIV[args.prioridad]); }
       if (args.seguimiento) { fields.seguimiento = String(args.seguimiento).slice(0, 1000); cambios.push("seguimiento actualizado"); }
       if (!cambios.length) return { content: JSON.stringify({ ok: false, error: "No indicaste qué cambiar (estado, prioridad o seguimiento)." }), notifyText: null };
-      const j = await fetch(`http://127.0.0.1:${PORT}/update-incidencia`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.ID, fields: Object.assign(fields, { UpdatedAt: new Date().toISOString() }), info: { motivos: r.Motivos, clasificaciones: r.Clasificacion, alojamiento: r.Alojamiento } }) }).then(x => x.json()).catch(e => ({ ok: false, error: e.message }));
+      const j = await fetch(`http://127.0.0.1:${PORT}/update-incidencia`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.ID, user: `${ctx.staffNombre || ctx.adminNombre || ctx.phone10} (WhatsApp)`, fields: Object.assign(fields, { UpdatedAt: new Date().toISOString() }), info: { motivos: r.Motivos, clasificaciones: r.Clasificacion, alojamiento: r.Alojamiento } }) }).then(x => x.json()).catch(e => ({ ok: false, error: e.message }));
       if (!j.ok) return { content: JSON.stringify({ ok: false, error: j.error || "No se pudo guardar" }), notifyText: null };
       return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ✅ Incidencia ${b.nombre} · ${cambios.join(" · ")}.` }), notifyText: null };
     }
@@ -3573,7 +3611,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // de un empleado (hoja Personal) y el mensaje habla de aseo o hay un borrador
   // pendiente de confirmar (para el "sí / no / corrección").
   {
-    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,})\b/;
+    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,}|historial|modific\w*|cambi\w*)\b/;
     const _aseoDraft = _botAseoDrafts.get(phone10);
     const _aseoPend = _aseoDraft && Date.now() < _aseoDraft.exp;
     if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
@@ -3594,6 +3632,7 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
 - "tareas de hoy", "tareas de check-list", "tareas de mantenimiento/insumos/inspección/limpieza", "mis tareas" → llama consultar_tareas_checklist (tipo si lo dice, solo_mias si dice "mis") y responde con formatted_message TAL CUAL.
 - "ya quedó la de toallas de ox5", "empecé la inspección de mt7", "terminé la tarea de focos de bc1" → confirma en 1 línea qué cambiarás y, SOLO con un "sí" en un mensaje posterior, llama actualizar_tarea_checklist (alojamiento, descripción y estado).
 - "incidencias del día" / "de hoy" / "de ayer" → consultar_incidencias con fecha "hoy"/"ayer" (todas las de ese día con su estado actual). "incidencias", "hay incidencias?", "incidencias de mt7", "detalle de la incidencia de mt7" → llama consultar_incidencias (detalle=true con alojamiento/descripción para el detalle) y responde con formatted_message TAL CUAL. Para cambiar estado/prioridad/seguimiento de una incidencia: confirma en 1 línea y, con un "sí" posterior, llama actualizar_incidencia (alojamiento y descripción).
+- "historial de …", "quién cambió …", "qué se modificó en …" → llama consultar_historial (tipo incidencia/tarea/limpieza, alojamiento y descripción) y responde con formatted_message TAL CUAL (función avanzada).
 - NUNCA muestres códigos, folios, claves ni IDs. Si una herramienta devuelve opciones, muéstralas TAL CUAL y pregunta cuál.
 - "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
 - Si una herramienta responde que no tiene permiso (función avanzada), dilo en 1 línea.
@@ -3613,7 +3652,7 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
 - Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
 - Si el mensaje no es sobre la operación, responde en 1 línea que por este medio registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida, y das información de limpiezas, tareas de Check-list, incidencias y tareas programadas.
 - Sé breve, sin cortesías ni emojis extra.`;
-          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
+          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
           const llm = await _botLlmLoop({
             system: sys, history: hist, userMsg: bodyMsg,
             ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: nombre, msgTs: t0, userMsg: bodyMsg,
@@ -5536,8 +5575,21 @@ app.post("/reportes-tecnicos-upsert", async (req, res) => {
     if (despues.length || "Fotos_despues_urls" in payload) {
       finalPayload.Fotos_despues_urls = [...prevDespues, ...despues].join(",");
     }
+    const rtPrev = payload.ID ? ((await _clRtRows().catch(() => [])).find(x => String(x.ID) === String(payload.ID)) || null) : null;
     const r = await callCheckinAppsScriptPost("rt_upsert", finalPayload);
     if (!r || !r.ok) throw new Error(r?.error || "upsert failed");
+    try { // historial del reporte de Mantenimiento
+      const who = payload.Updated_by || payload.Reportado_por || "", rid = String(r.id || payload.ID || "");
+      const EST = { nuevo: "Pendiente", pendiente: "Pendiente", en_proceso: "En proceso", resuelto: "Terminado", cancelado: "Cancelado" };
+      if (!payload.ID) _histAdd("R:" + rid, [["Creado", "", payload.Titulo || "Reporte técnico"]], who);
+      else if (rtPrev) {
+        const C = [["Estado", "Estado"], ["Prioridad", "Prioridad"], ["Titulo", "Título"], ["Descripcion", "Descripción"], ["Asignado_a", "Asignados"], ["Fecha", "Fecha"], ["Fecha_compromiso", "Compromiso"], ["Categoria", "Categoría"],
+          ["Bloquea_habitabilidad", "Bloquea habitabilidad"], ["Reincidente", "Reincidente"], ["Descripcion_solucion", "Solución"], ["Costo_total", "Costo"], ["Proveedor", "Proveedor"], ["Responsabilidad", "Responsabilidad"]];
+        const v = (k, x) => { x = String(x == null ? "" : x); if (k === "Estado") return EST[x.toLowerCase()] || x; if (/Fecha/.test(k)) return x.slice(0, 10); if (k === "Bloquea_habitabilidad" || k === "Reincidente") return /^(true|s[ií]|1)$/i.test(x) ? "Sí" : "No"; return x; };
+        _histAdd("R:" + rid, C.filter(([k]) => k in payload).map(([k, t]) => [t, v(k, rtPrev[k]), v(k, payload[k])]), who);
+        Object.assign(rtPrev, payload); // la copia en memoria queda al día para el siguiente cambio
+      }
+    } catch (_) {}
     res.json({ ...r, fotos_antes_uploaded: antes.length, fotos_despues_uploaded: despues.length });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
@@ -9118,6 +9170,7 @@ app.post("/aseo/asignar", async (req, res) => {
     });
     const cambiosA = [...personal.filter(n => !antes.includes(n)).map(n => `${_aseoCorto(n)} (nuevo)`), ...antes.filter(n => !personal.includes(n)).map(n => `${_aseoCorto(n)} (eliminado)`)];
     if (cambiosA.length) _aseoAutoMarca(_aseoHidDe(id), "modificado", `${rol === "inspeccion" ? "🔍 Inspección" : "🧹 Aseo"}: ${cambiosA.join(", ")}`);
+    _histAdd("A:" + id, [[rol === "inspeccion" ? "Personal de inspección" : "Personal de aseo", antes.join(", ") || "Sin asignar", personal.join(", ") || "Sin asignar"]], user);
     res.json({ ok: true, asig: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -9139,7 +9192,35 @@ function _aseoPub(reg) {
 }
 // Guarda el estado de aseo de una salida. Solo "terminado" requiere validación;
 // "en_proceso", "inspeccionado" y "pendiente" se publican directo.
+// ═══ HISTORIAL DE CAMBIOS (Check-list): gs://…/historial/checklist.json → { "<A|T|R|I>:<id>": [ {at, by, campo, antes, despues} ] } ═══
+// A = card de aseo (reserva) · T = tarea de Check-list · R = reporte de Mantenimiento · I = incidencia.
+const _HIST_OBJ = "historial/checklist.json", _HIST_EST = { pendiente: "Pendiente", en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado", cancelado: "Cancelado" };
+let _histQ = Promise.resolve();
+function _histV(v) { if (v === true) return "Sí"; if (v === false) return "No"; if (Array.isArray(v)) return v.join(", "); if (v && typeof v === "object") return JSON.stringify(v).slice(0, 200); return String(v == null ? "" : v).slice(0, 300); }
+function _histKey(id) { id = String(id || ""); const m = id.match(/^T([a-z0-9]{6,})(?:-\d{4}-\d{2}-\d{2})?$/); if (m) return "T:" + m[1]; if (/^R./.test(id)) return "R:" + id.slice(1); return "A:" + id; }
+function _histAdd(key, campos, user) {
+  key = String(key || ""); const L = (campos || []).filter(c => c && _histV(c[1]) !== _histV(c[2]));
+  if (!key || !L.length) return;
+  const at = new Date().toISOString(), by = String(user || "").replace(/\s*\(WhatsApp\)\s*$/, " (WhatsApp)").slice(0, 80) || "Sistema";
+  _histQ = _histQ.then(() => _aseoMutate(_HIST_OBJ, "hist", d => {
+    const a = d[key] || (d[key] = []);
+    L.forEach(([campo, antes, despues]) => a.push({ at, by, campo, antes: _histV(antes), despues: _histV(despues) }));
+    if (a.length > 200) a.splice(0, a.length - 200);
+  })).catch(e => console.warn("[hist]", e.message));
+}
+async function _histDe(keys) { const d = await _rhdGetJson(_HIST_OBJ).catch(() => ({})); return keys.flatMap(k => (d[k] || []).map(x => Object.assign({ k }, x))).sort((a, b) => String(b.at).localeCompare(String(a.at))); }
+app.get("/historial", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const keys = String(req.query.k || "").split(",").map(x => x.trim()).filter(x => /^[ATRI]:[\w-]+$/.test(x)).slice(0, 20); res.json({ ok: true, items: (await _histDe(keys)).slice(0, 300) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 async function _aseoGuardarEstado({ id, hid, estado, validar, user }) {
+  { // historial: estado anterior → nuevo (las tareas guardan el día)
+    const prev = ((_aseo.estados || {})[id] || {}), m = String(id).match(/^T([a-z0-9]+)-(\d{4}-\d{2}-\d{2})$/);
+    const antes = prev.estado || "pendiente", key = m ? "T:" + m[1] : "A:" + id, dia = m ? ` (${m[2]})` : "";
+    if (antes === estado && validar && estado === "terminado" && prev.validado === false) _histAdd(key, [["Validación", "Sin validar", "Validado"]], user);
+    else _histAdd(key, [["Estado" + dia, _HIST_EST[antes] || antes, (_HIST_EST[estado] || estado) + (estado === "terminado" && !validar ? " (sin validar)" : "")]], user);
+  }
   validar = !!validar || estado !== "terminado";
   const now = new Date().toISOString();
   const out = await _aseoMutate(_ASEO_ESTADOS_OBJ, "estados", d => {
@@ -9546,6 +9627,7 @@ async function _aseoNoSaleSet(id, hid, on, user) {
     d[id] = { on: true, hid: String(hid || ""), by: user || "", at: new Date().toISOString() }; return d[id];
   });
   _aseo.nosaleTs = Date.now();
+  _histAdd("A:" + id, [["Desalojo", on ? "Normal" : "No ha desalojado", on ? "No ha desalojado" : "Ya desalojó"]], user);
   _aseoAutoMarca(hid || _aseoHidDe(id), "modificado", on ? "Desalojo: 🚨 *NO HA DESALOJADO*" : "Desalojo: ✅ ya desalojó");
   return out;
 }
@@ -9578,9 +9660,9 @@ app.post("/aseo/tarea", async (req, res) => {
     const rp = b.repite && ["diario", "semanal", "mensual", "anual", "cada"].includes(b.repite.tipo)
       ? { tipo: b.repite.tipo, n: Math.max(1, Math.min(365, Number(b.repite.n) || 1)), fin: iso.test(String(b.repite.fin || "")) ? b.repite.fin : "" } : null;
     const id = /^[a-z0-9]{6,20}$/.test(String(b.id || "")) ? String(b.id) : Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
-    let nueva = false;
+    let nueva = false, tPrev = null;
     const out = await _aseoMutate(_ASEO_TAREAS_OBJ, "tareas", d => {
-      const prev = d[id] || null; nueva = !prev;
+      const prev = d[id] || null; nueva = !prev; tPrev = prev ? JSON.parse(JSON.stringify(prev)) : null;
       d[id] = { id, hid, depto, problema: !!b.problema,
         // Prioridad homologada (4 niveles, igual que Reportes técnicos); la escala anterior 1–5 se convierte.
         prioridad: ["baja", "media", "alta", "critica"].includes(b.prioridad) ? b.prioridad : ({ 1: "baja", 2: "baja", 3: "media", 4: "alta", 5: "critica" })[Number(b.prioridad)] || "media", titulo, desc: txt(b.desc, 2000),
@@ -9593,6 +9675,11 @@ app.post("/aseo/tarea", async (req, res) => {
       return d[id];
     });
     _aseo.tareasTs = Date.now();
+    { const TIPO = { limpieza: "Limpieza", inspeccion: "Inspección", insumos: "Insumos", mantenimiento: "Mantenimiento" }, rep = r => r ? `${r.tipo}${r.tipo === "cada" ? " " + r.n + " días" : ""}${r.fin ? " hasta " + r.fin : ""}` : "No";
+      if (nueva) _histAdd("T:" + id, [["Creada", "", titulo]], user);
+      else _histAdd("T:" + id, [["Título", tPrev.titulo, out.titulo], ["Descripción", tPrev.desc, out.desc], ["Tipo de tarea", TIPO[tPrev.depto] || tPrev.depto, TIPO[out.depto] || out.depto],
+        ["Fecha", tPrev.fecha, out.fecha], ["Hora", tPrev.hora || "Sin hora", out.hora || "Sin hora"], ["Prioridad", tPrev.prioridad, out.prioridad], ["Asignados", (tPrev.asignados || []).join(", ") || "Sin asignar", (out.asignados || []).join(", ") || "Sin asignar"],
+        ["Repetición", rep(tPrev.repite), rep(out.repite)], ["Alojamiento", tPrev.hid, out.hid], ["Reserva", tPrev.reserva || "Sin reserva", out.reserva || "Sin reserva"], ["Etiquetas", (tPrev.etiquetas || []).join(", "), (out.etiquetas || []).join(", ")]], user); }
     if (out.fecha === _mxHoy()) _aseoAutoMarca(hid, nueva ? "agregada" : "modificado", `${nueva ? "Nueva tarea" : "Tarea editada"}: ${titulo}`);
     res.json({ ok: true, tarea: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -9781,6 +9868,7 @@ app.post("/save-incidencia", async (req, res) => {
     row.Estatus = _incEst(row.Estatus); row.Nivel = row.Nivel || "Media";
     row.Fotos_count = String(urls.length); row.Fotos_URLs = urls.join(", ");
     await _incMutar(d => { d.rows.unshift(row); });
+    _histAdd("I:" + id, [["Creada", "", [row.Motivos, row.Clasificacion].filter(Boolean).join(" › ") || "Incidencia"]], String(req.body?.user || row.Reportante || ""));
     try { _incAutoMarca(id, `🆕 Nueva incidencia${row.Reportante ? " · reportó " + row.Reportante : ""}`, _incInfo(p)); } catch (_) {}
     res.json({ ok: true, id, timestamp: now, fotos_uploaded: fotos.length, row });
   } catch (err) {
@@ -9797,9 +9885,9 @@ app.post("/update-incidencia", async (req, res) => {
     const keepUrls = Array.isArray(req.body?.keepUrls) ? req.body.keepUrls : null;
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
     const subidas = newFotos ? await _incSubirFotos(id, newFotos) : [];
-    let final = null, updated = [];
+    let final = null, updated = [], iAntes = null;
     const ok = await _incMutar(d => {
-      const r = d.rows.find(x => String(x.ID) === id); if (!r) return false;
+      const r = d.rows.find(x => String(x.ID) === id); if (!r) return false; iAntes = JSON.parse(JSON.stringify(r));
       Object.keys(fields).forEach(k => {
         const col = _INC_COLS[k] || (Object.values(_INC_COLS).includes(k) ? k : null); if (!col) return;
         r[col] = col === "Estatus" ? _incEst(_incCsv(fields[k])) : _incCsv(fields[k]); updated.push(col);
@@ -9812,6 +9900,12 @@ app.post("/update-incidencia", async (req, res) => {
       return true;
     });
     if (!ok) return res.status(404).json({ ok: false, error: "ID no encontrado: " + id });
+    try { // historial de la incidencia: cada columna que cambió
+      const r2 = (_incSt.d && (_incSt.d.rows || []).find(x => String(x.ID) === id)) || {};
+      const NOM = { Fecha: "Fecha", Propiedad: "Propiedad", "# Departamento": "Departamento", Personas: "Personas involucradas", Motivos: "Motivo", Clasificacion: "Sub-motivo", Nivel: "Prioridad", Estatus: "Estado", Reportante: "Reportó", Descripcion: "Descripción", Acciones: "Acciones realizadas", Seguimiento: "Seguimiento", Reservacion_id: "Reserva", Tarea_ligada: "Tareas correctivas", Archivada: "Archivada", Fotos_count: "Fotos" };
+      const est = v => ({ "Nuevo": "Pendiente", "Resuelto": "Terminado" })[v] || v;
+      _histAdd("I:" + id, Object.keys(NOM).filter(c => updated.includes(c) || (c === "Fotos_count" && updated.includes("Fotos_URLs"))).map(c => [NOM[c], c === "Estatus" ? est(iAntes[c]) : iAntes[c], c === "Estatus" ? est(r2[c]) : r2[c]]), String(req.body?.user || ""));
+    } catch (_) {}
     try {
       const i1 = _incInfo(req.body?.info), i2 = _incInfo(fields), info = {}; Object.keys(i1).forEach(k => { info[k] = i2[k] || i1[k]; });
       const solo = Object.keys(fields).filter(k => k !== "UpdatedAt");
@@ -9839,8 +9933,10 @@ app.post("/aseo/extra", async (req, res) => {
     const b = req.body || {}, key = String(b.key || "").replace(/[^\w-]/g, "").slice(0, 40);
     if (!key) return res.status(400).json({ ok: false, error: "Falta la llave" });
     const user = String(b.user || "").slice(0, 80);
+    const srvDe = e => e.correctivo ? "Correctivo" : e.preventivo ? "Preventivo" : e.checkout ? "Check-out" : "General";
+    let hAntes = null;
     const out = await _aseoMutate(_ASEO_EXTRA_OBJ, "extra", d => {
-      const cur = d[key] || {};
+      const cur = d[key] || {}; hAntes = JSON.parse(JSON.stringify(cur));
       if (typeof b.checkout === "boolean") cur.checkout = b.checkout;
       if (typeof b.correctivo === "boolean") cur.correctivo = b.correctivo; // Tipo de servicio: Check-out · Correctivo · Preventivo · General
       if (typeof b.preventivo === "boolean") cur.preventivo = b.preventivo;
@@ -9855,6 +9951,11 @@ app.post("/aseo/extra", async (req, res) => {
       d[key] = cur; return cur;
     });
     _aseo.extraTs = Date.now();
+    { const a = hAntes || {}, n = out || {}, H = [];
+      if (["checkout", "correctivo", "preventivo"].some(k => typeof b[k] === "boolean")) H.push(["Tipo de servicio", srvDe(a), srvDe(n)]);
+      if (typeof b.incidencia === "boolean") H.push(["Incidencia", a.incidencia ? "Reportada" : "Sin incidencia", n.incidencia ? "Reportada" : "Sin incidencia"]);
+      if (typeof b.archivada === "boolean") H.push(["Archivada", !!a.archivada, !!n.archivada]);
+      _histAdd(_histKey(key), H, user); }
     if (typeof b.incidencia === "boolean") _aseoAutoMarca(String(b.hid || _aseoHidDe(key)), "modificado", b.incidencia ? "Incidencia: ⚠️ reportada" : "Incidencia: ya no");
     res.json({ ok: true, extra: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -9867,8 +9968,10 @@ app.post("/aseo/prioridad", async (req, res) => {
   try {
     const id = String((req.body || {}).id || "").replace(/[^\w-]/g, "").slice(0, 40), p = String((req.body || {}).prioridad || "");
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
-    await _aseoMutate(_ASEO_PRIO_OBJ, "prio", d => { if (["baja", "media", "alta", "critica"].includes(p)) d[id] = p; else delete d[id]; });
+    let pAntes = "";
+    await _aseoMutate(_ASEO_PRIO_OBJ, "prio", d => { pAntes = d[id] || "automática"; if (["baja", "media", "alta", "critica"].includes(p)) d[id] = p; else delete d[id]; });
     _aseo.prioTs = Date.now();
+    _histAdd(_histKey(id), [["Prioridad", pAntes, p || "automática"]], String((req.body || {}).user || ""));
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -9905,6 +10008,7 @@ app.post("/aseo/reprog", async (req, res) => {
     const hoy = _mxHoy();
     if (fecha === hoy) _aseoAutoMarca(hid, "reprogramada", "📅 Reprogramada para hoy");
     else if (antes === hoy) _aseoAutoFuera(hid, fecha);
+    _histAdd("A:" + id, [["Fecha de aseo", antes, fecha]], user);
     res.json({ ok: true, reprog: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -10612,7 +10716,9 @@ app.post("/aseo/guia", async (req, res) => {
     const ids = (Array.isArray((req.body || {}).ids) ? req.body.ids : [(req.body || {}).id]).map(lim).filter(Boolean).slice(0, 200);
     if (!ids.length) return res.status(400).json({ ok: false, error: "Falta id" });
     const publicar = (req.body || {}).publicar !== false, user = String((req.body || {}).user || "").slice(0, 80);
-    await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { ids.forEach(id => { if (publicar) delete d[id]; else d[id] = { off: true, by: user, at: new Date().toISOString() }; }); });
+    const gAntes = {};
+    await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { ids.forEach(id => { gAntes[id] = !(d[id] && d[id].off); if (publicar) delete d[id]; else d[id] = { off: true, by: user, at: new Date().toISOString() }; }); });
+    ids.forEach(id => _histAdd("A:" + id, [["Publicado en la guía", gAntes[id], publicar]], user));
     _aseo.guiaoffTs = Date.now();
     res.json({ ok: true, publicar });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
