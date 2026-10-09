@@ -2356,12 +2356,14 @@ async function _botExecTool(toolUse, ctx) {
     }
     if (name === "consultar_resumen_tareas") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Los resúmenes son una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
-      const f = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? args.fecha : _mxHoy();
+      const dp = _botDiaPedido(ctx); if (dp) args.incluir_cerradas = true; // «tareas programadas de hoy» → todas con su estado
+      const f = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? args.fecha : (dp ? _botIsoDe(dp) : _mxHoy());
       return { content: JSON.stringify({ ok: true, formatted_message: await _tarResumenTxt(f, !args.incluir_cerradas), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "consultar_tareas_checklist") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
-      const f = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? args.fecha : _mxHoy();
+      const dp = _botDiaPedido(ctx); if (dp) args.incluir_cerradas = true; // «tareas de hoy» → todas las del día con su estado
+      const f = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? args.fecha : (dp ? _botIsoDe(dp) : _mxHoy());
       const yo = ctx.staffNombre || ctx.adminNombre || "", avz = await _aseoPuedeCierre(ctx);
       let L = await _clTareas(f);
       if (args.tipo && args.tipo !== "todos") L = L.filter(i => i.tipo === args.tipo);
@@ -2372,6 +2374,7 @@ async function _botExecTool(toolUse, ctx) {
     }
     if (name === "consultar_incidencias") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Las incidencias son una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      { const dp = _botDiaPedido(ctx); if (dp && !args.fecha && !args.folio && !args.detalle && !args.estado) args.fecha = dp; } // «incidencias de hoy» → todas las del día
       if (args.folio || args.detalle) {
         const b = await _incBuscar(args);
         if (b.error) return { content: JSON.stringify({ ok: false, error: b.error }), notifyText: null };
@@ -9936,6 +9939,15 @@ async function _aseoResumenDiaTxt() {
   if (op.length) L.push("", "*¿Qué hacemos? Responde, por ejemplo:*", ...op);
   return L.join("\n");
 }
+// ¿El mensaje pide un día («de hoy», «del día», «de ayer»)? → lista COMPLETA de ese día con el estado de cada una.
+function _botDiaPedido(ctx) {
+  const t = _botNorm(String((ctx && ctx.userMsg) || ""));
+  if (/\babiert/.test(t)) return ""; // «abiertas de hoy» = solo abiertas
+  if (/\bayer\b/.test(t)) return "ayer";
+  if (/\b(hoy|del dia|de este dia|en el dia|durante el dia)\b/.test(t)) return "hoy";
+  return "";
+}
+function _botIsoDe(dp) { const h = _mxHoy(); if (dp !== "ayer") return h; const y = new Date(h + "T12:00:00"); y.setDate(y.getDate() - 1); return y.toISOString().slice(0, 10); }
 // ═══ Bot · Check-list (tareas por tipo), Incidencias y su relación con alojamientos, reservas y tareas ═══
 const _CL_TIPO = { limpieza: "🧹 Limpieza", inspeccion: "📋 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
 const _CL_EST = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "✅ Terminado", inspeccionado: "🔍 Inspeccionado", cancelado: "✖️ Cancelado" };
@@ -9997,7 +10009,8 @@ async function _clTareas(dia) {
 function _clTareasTxt(L0, dia, titulo, actual) { // actual=true: solo pendientes/en proceso + conteo de las cerradas
   const ord = ["pendiente", "en_proceso", "terminado", "inspeccionado", "cancelado"];
   const abierta = i => i.est === "pendiente" || i.est === "en_proceso", L = actual ? L0.filter(abierta) : L0;
-  const out = [`✅ *Check-list · ${titulo}${actual ? " (estado actual)" : ""}* — ${_clFecha(dia)}`, `${L.length} tarea${L.length === 1 ? "" : "s"}${actual ? " abierta" + (L.length === 1 ? "" : "s") : ""} · ⚠️ = ligada a una incidencia`];
+  const out = [`✅ *Check-list · ${titulo}${actual ? " (estado actual)" : " del día"}* — ${_clFecha(dia)}`, `${L.length} tarea${L.length === 1 ? "" : "s"}${actual ? " abierta" + (L.length === 1 ? "" : "s") : ""} · ⚠️ = ligada a una incidencia`];
+  if (!actual && L.length) { const n = k => L.filter(i => i.est === k).length, ab = L.filter(abierta).length; out[1] = `${L.length} tarea${L.length === 1 ? "" : "s"} · ${ab} abierta${ab === 1 ? "" : "s"} · ${n("terminado") + n("inspeccionado")} terminada${n("terminado") + n("inspeccionado") === 1 ? "" : "s"} · ${n("cancelado")} cancelada${n("cancelado") === 1 ? "" : "s"} · ⚠️ = ligada a una incidencia`; }
   if (actual) { const c = L0.filter(i => !abierta(i)), n = k => c.filter(i => i.est === k).length; if (c.length) out.push(`Cerradas hoy: ${n("terminado") + n("inspeccionado")} terminada${n("terminado") + n("inspeccionado") === 1 ? "" : "s"} · ${n("cancelado")} cancelada${n("cancelado") === 1 ? "" : "s"} (pide «incluye las terminadas» para verlas)`); }
   Object.keys(_CL_TIPO).forEach(tp => {
     const X = L.filter(i => i.tipo === tp).sort((a, b) => ord.indexOf(a.est) - ord.indexOf(b.est) || (_CL_PRIO_N[b.prio] || 0) - (_CL_PRIO_N[a.prio] || 0));
