@@ -9440,7 +9440,7 @@ app.post("/aseo/tarea", async (req, res) => {
     const iso = /^\d{4}-\d{2}-\d{2}$/, txt = (v, n) => String(v || "").trim().slice(0, n);
     const hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
     const titulo = txt(b.titulo, 140);
-    if (!hid || !titulo || !iso.test(String(b.fecha || ""))) return res.status(400).json({ ok: false, error: "Faltan alojamiento, título o fecha" });
+    if (!titulo || !iso.test(String(b.fecha || ""))) return res.status(400).json({ ok: false, error: "Faltan título o fecha" }); // alojamiento opcional
     const depto = ["limpieza", "inspeccion", "insumos", "mantenimiento"].includes(b.depto) ? b.depto : "limpieza";
     const rp = b.repite && ["diario", "semanal", "mensual", "anual", "cada"].includes(b.repite.tipo)
       ? { tipo: b.repite.tipo, n: Math.max(1, Math.min(365, Number(b.repite.n) || 1)), fin: iso.test(String(b.repite.fin || "")) ? b.repite.fin : "" } : null;
