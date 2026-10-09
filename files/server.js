@@ -9923,7 +9923,9 @@ async function _aseoResumenDiaTxt() {
   const g = (ico, t, l) => l.length ? `${ico} *${t} (${l.length}):* ${l.join(", ")}` : "";
   const fecha = new Date(hoy + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
   const hora = new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" });
+  const noSalen = r.items.filter(i => /NO HA DESALOJADO/.test(i.aviso || "")).map(i => `${i.code || i.nombre}${i.entra ? "✱" : ""}`); // alerta «No ha desalojado»
   const L = [`🕒 *Resumen del día · ${hora}* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${it.length} alojamiento${it.length === 1 ? "" : "s"} · ✱ = entra huésped hoy`, "",
+    noSalen.length ? `🚨 *No han desalojado (${noSalen.length}):* ${noSalen.join(", ")}` : "",
     g("⏳", "Pendientes", pend), autoRp.length ? `   (sin entrada hoy: a las 3:00 p.m. se pasan solos a mañana: ${autoRp.join(", ")})` : "",
     g("🧽", "En proceso", proc), g("🧹", "Terminados sin validar", sinV), g("🧹", "Terminados validados", term), g("✅", "Inspeccionados", insp)].filter(Boolean);
   const op = [];
