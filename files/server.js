@@ -3539,7 +3539,14 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   }
   if (!bodyMsg) return;
   // ─── Control de asistencia: intent de entrada / salida ──────────────────
+  const _prueba = await _aseoPruebaComo(phone10).catch(() => "");
   const _asistIntent = _detectAsistenciaIntent(bodyMsg);
+  if (_asistIntent && _prueba) { // prueba: no se registra asistencia; se muestra lo que recibiría la persona
+    const r0 = `🧪 Prueba como ${_prueba}: aquí se registraría su ${_asistIntent} (no se guardó nada).`;
+    await _twilioSendMessage({ to: fromRaw, body: r0, skipMirror: true }).catch(() => {});
+    if (_asistIntent === "entrada") await _aseoEnviarLista(_prueba, fromRaw, phone10, "prueba").catch(() => {});
+    return;
+  }
   if (_asistIntent) {
     const emp = await _asistenciaLookupEmpleado(phone10);
     if (emp && emp.ok && emp.empleado) {
@@ -3571,7 +3578,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // se procesa en modo admin (con o sin "@").
   // Toggle "modo prueba" → el admin se trata como huésped hasta que diga
   // "modo admin". Estado en memoria (Map global) — se resetea en restart.
-  const admCheck = await _botIsAdminPhone(phone10);
+  const admCheck = _prueba ? { isAdmin: false } : await _botIsAdminPhone(phone10); // en «Prueba como» se responde como el empleado
   if (admCheck.isAdmin) {
     const low = bodyMsg.toLowerCase().trim();
     // Toggles de modo — cualquiera funciona (mensaje ENTERO, case-insensitive):
@@ -3657,7 +3664,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     const _nsD = _botNsDatos.get(phone10);
     const _aseoPend = (_aseoDraft && Date.now() < _aseoDraft.exp) || (_nsD && Date.now() < _nsD.exp); // incluye la pregunta de datos del huésped
     if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
-      const emp = await _asistenciaLookupEmpleado(phone10).catch(() => null);
+      const emp = _prueba ? { ok: true, empleado: _prueba } : await _asistenciaLookupEmpleado(phone10).catch(() => null);
       if (emp && emp.ok && emp.empleado) {
         const nombre = String(emp.empleado || "").trim();
         if (!bodyAlreadyPersisted) { await _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, staff: true }); bodyAlreadyPersisted = true; }
@@ -3702,7 +3709,7 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
                    lastAssistant: ((hist.filter(m => m.role === "assistant").slice(-1)[0]) || {}).body || "" },
             tools: ASEO_TOOLS,
           });
-          const reply = String(llm.text || "").trim() || "OK.";
+          const reply = (_prueba ? `🧪 _Prueba como ${_prueba}_\n` : "") + (String(llm.text || "").trim() || "OK.");
           await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true });
           _botAppendMessage(phone10, "assistant", reply, { model: BOT_ANTHROPIC_MODEL, staff: true, tools: (llm.toolsUsed || []).map(t => t.name) });
           console.info(`[bot-staff] ${phone10} (${nombre}): reply en ${Date.now() - t0}ms · "${reply.slice(0, 80)}"`);
@@ -9668,6 +9675,68 @@ function _aseoPerfil(nombre) {
   const k = Object.keys(P).find(x => _aseoMismaPersona(x, nombre));
   return k ? P[k] : null;
 }
+// «🧪 Prueba como»: el perfil de un administrador puede elegir a una persona del Personal; el bot le
+// responde a ESE número como lo haría con esa persona (sus permisos y configuración). Nada se registra como asistencia.
+// Procesos de consulta del bot que se pueden simular desde «📣 Notificaciones» (Prueba como).
+const _BOT_SIM = {
+  limpiezas_hoy: { t: "Lista de limpiezas de hoy", tool: "consultar_limpiezas_hoy", args: {}, msg: "limpiezas de hoy" },
+  mis_limpiezas: { t: "Mis limpiezas de hoy", tool: "consultar_limpiezas_hoy", args: { solo_mias: true }, msg: "mis limpiezas" },
+  resumen_dia: { t: "Resumen del día (limpiezas)", tool: "consultar_resumen_dia", args: {}, msg: "resumen del día" },
+  tareas_hoy: { t: "Tareas de Check-list de hoy", tool: "consultar_tareas_checklist", args: {}, msg: "tareas de hoy" },
+  mis_tareas: { t: "Mis tareas de Check-list", tool: "consultar_tareas_checklist", args: { solo_mias: true }, msg: "mis tareas" },
+  incidencias: { t: "Incidencias abiertas", tool: "consultar_incidencias", args: {}, msg: "incidencias abiertas" },
+  incidencias_dia: { t: "Incidencias del día", tool: "consultar_incidencias", args: { fecha: "hoy" }, msg: "incidencias de hoy" },
+  programadas: { t: "Tareas programadas", tool: "consultar_resumen_tareas", args: {}, msg: "tareas programadas" },
+  programadas_dia: { t: "Tareas programadas del día (todas)", tool: "consultar_resumen_tareas", args: { incluir_cerradas: true }, msg: "tareas programadas de hoy" },
+  recordatorio: { t: "Recordatorio diario (al registrar su entrada)" },
+  auto_2pm: { t: "Resumen automático de las 2 pm" },
+};
+app.get("/bot/simular/procesos", (req, res) => res.json({ ok: true, procesos: Object.entries(_BOT_SIM).map(([k, v]) => ({ k, t: v.t })) }));
+// Simula un proceso como si lo pidiera «como» y envía la respuesta al WhatsApp de «perfil» (quien prueba).
+app.post("/bot/simular", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, P = _BOT_SIM[String(b.proceso || "")];
+    const como = String(b.como || "").trim(), perfil = String(b.perfil || "").trim();
+    if (!P || !como || !perfil) return res.status(400).json({ ok: false, error: "Faltan datos" });
+    await _aseoAutoCfgLoad();
+    const tels = await _aseoTelPersonal().catch(() => []), yo = tels.find(t => _aseoMismaPersona(t.nombre, perfil));
+    if (!yo || !yo.tel) return res.status(400).json({ ok: false, error: `${perfil} no tiene celular en Personal` });
+    const ctx = { phone10: yo.tel, fromRaw: _waFormatTo(yo.tel), booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: como, msgTs: Date.now(), userMsg: P.msg || "" };
+    let txt = "";
+    if (P.tool) {
+      const r = await _botExecTool({ name: P.tool, input: Object.assign({}, P.args) }, ctx);
+      let j = {}; try { j = JSON.parse(r.content || "{}"); } catch (_) { j = { error: String(r.content || "") }; }
+      txt = j.formatted_message || (j.error ? `⚠️ ${j.error}` : "") || String(j.instruccion || "Sin respuesta");
+    } else if (b.proceso === "recordatorio") {
+      const pf = _aseoPerfil(como);
+      if (pf && pf.recordatorio === false) txt = "⚠️ Esta persona tiene desactivado el «Recordatorio diario»: no recibiría nada al registrar su entrada.";
+      else {
+        const r0 = await _aseoResumenHoy(), mias = _aseoMiasDe(r0, como), tl = await _tarListaEmpleado(como).catch(() => null);
+        txt = [mias.length ? await _aseoListaEmpleado(como, { resumen: r0 }) : "", tl || ""].filter(Boolean).join("\n\n") || "No tiene limpiezas ni tareas asignadas hoy: no recibiría lista.";
+      }
+    } else if (b.proceso === "auto_2pm") {
+      const pf = _aseoPerfil(como) || {}, a = pf.auto || {}, cfg = _aseo.autoCfg || {};
+      const L = [];
+      if (!cfg.on) L.push("⚠️ El reenvío automático está apagado: hoy nadie recibe el resumen de las 2 pm.");
+      if (a.checkinn) L.push(await _aseoResumenDiaTxt());
+      if (a.tareas) L.push(await _tarResumenTxt(_mxHoy()).catch(() => ""));
+      txt = L.filter(Boolean).join("\n\n") || "Esta persona no tiene activadas las secciones de envío automático: a las 2 pm no recibe nada.";
+    }
+    const body = `🧪 *Prueba como ${como}* · ${P.t}\n\n${txt}`;
+    if (b.enviar !== false) await _aseoEnviarPersona(perfil, yo.tel, body, "prueba").catch(e => { throw new Error("No se pudo enviar: " + e.message); });
+    res.json({ ok: true, texto: body, enviado: b.enviar !== false });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+async function _aseoPruebaComo(phone10) {
+  await _aseoAutoCfgLoad();
+  const P = ((_aseo.autoCfg || {}).perfiles) || {};
+  if (!Object.values(P).some(p => p && p.pruebaComo)) return "";
+  const tels = await _aseoTelPersonal().catch(() => []);
+  const yo = tels.find(t => t.tel && t.tel === String(phone10).slice(-10)); if (!yo) return "";
+  const pf = _aseoPerfil(yo.nombre);
+  return pf && pf.pruebaComo && !_aseoMismaPersona(pf.pruebaComo, yo.nombre) ? String(pf.pruebaComo) : "";
+}
 function _aseoDestinatarios(sec) {
   const cfg = _aseo.autoCfg || {}; if (!cfg.on) return [];
   const P = cfg.perfiles || {};
@@ -10542,7 +10611,8 @@ app.post("/aseo/autonotif", async (req, res) => {
     Object.entries(b.perfiles && typeof b.perfiles === "object" ? b.perfiles : {}).slice(0, 60).forEach(([n, v]) => {
       const nom = String(n || "").trim().slice(0, 80); if (!nom || !v) return;
       perfiles[nom] = { rol: v.rol === "admin" ? "admin" : v.rol === "empleado" ? "empleado" : "", auto: { checkinn: !!(v.auto && v.auto.checkinn), tareas: !!(v.auto && v.auto.tareas), incidencias: !!(v.auto && v.auto.incidencias) },
-        recordatorio: v.recordatorio !== false, avanzadas: !!v.avanzadas, canal: v.canal === "sms" || v.canal === "ambos" ? v.canal : "whatsapp" };
+        recordatorio: v.recordatorio !== false, avanzadas: !!v.avanzadas, canal: v.canal === "sms" || v.canal === "ambos" ? v.canal : "whatsapp",
+        pruebaComo: String(v.pruebaComo || "").trim().slice(0, 80) };
     });
     // Compatibilidad: «personas» = quienes reciben automáticamente Check-inn.
     const personas = Object.keys(perfiles).length ? Object.keys(perfiles).filter(n => perfiles[n].auto.checkinn)
