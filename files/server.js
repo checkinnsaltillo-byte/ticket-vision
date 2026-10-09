@@ -10300,6 +10300,20 @@ app.post("/aseo/autonotif/tick", async (req, res) => {
     res.json(await _aseoTickRun);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// Detalle de un cambio en palabras simples (para el aviso «Cambios en las limpiezas de hoy»).
+function _aseoDetHumano(d) {
+  d = String(d || "").trim(); if (!d) return "";
+  let m = d.match(/^(🧹 Aseo|🔍 Inspección):\s*(.+)$/);
+  if (m) {
+    const aseo = m[1].includes("Aseo"), rol = aseo ? "el aseo" : "la inspección";
+    return m[2].split(/,\s*/).map(x => { const k = x.match(/^(.*?)\s*\((nuevo|eliminado)\)$/); return !k ? `${m[1]}: ${x}` : k[2] === "nuevo" ? `${aseo ? "🧹 Aseo asignado" : "🔍 Inspección asignada"} a ${k[1]}` : `${k[1]} ya no tiene ${rol}`; }).join(" · ");
+  }
+  if ((m = d.match(/^Estado:\s*(.+)$/))) return `Pasó a ${m[1]}`;
+  if (/^Desalojo:/.test(d)) return /ya desaloj/i.test(d) ? "✅ El huésped ya desalojó" : "🚨 El huésped *aún no desaloja*";
+  if ((m = d.match(/^Solicitud:\s*(.+)$/))) return `Solicitud: ${m[1]}`;
+  if ((m = d.match(/^Incidencia:\s*(.+)$/))) return /ya no/i.test(m[1]) ? "Se quitó la marca de incidencia" : "⚠️ Se reportó una incidencia";
+  return d;
+}
 async function _aseoAutoEnviar(marcas, fueraM) {
   await _aseoAutoCfgLoad();
   const cfg = _aseo.autoCfg || {};
@@ -10312,9 +10326,11 @@ async function _aseoAutoEnviar(marcas, fueraM) {
   marcas.forEach((m, hid) => {
     const i = r.items.find(x => String(x.hid) === String(hid));
     if (!i) return; // cambio en una card de otro día
-    L.push(`• *${i.code || i.nombre}*${i.code ? " · " + i.nombre : ""} ${_aseoMarcaTxt(m)}`);
-    m.det.forEach(d => L.push(`   ${d}`));
-    L.push(`   Ahora: ${i.estado} · 🧹 ${i.aseo ? i.aseo.split(", ").map(_aseoCorto).join(", ") : "—"} · 🔍 ${i.insp ? i.insp.split(", ").map(_aseoCorto).join(", ") : "—"}`);
+    const tag = [...(m.tipos || [])].includes("agregada") ? " 🆕" : [...(m.tipos || [])].includes("reprogramada") ? " 📅" : "";
+    L.push(`• *${i.code || i.nombre}*${i.code ? " · " + i.nombre : ""}${tag}`);
+    const dets = m.det.map(_aseoDetHumano).filter(Boolean);
+    if (dets.length) { L.push("   _Qué cambió:_"); dets.forEach(d => L.push(`   ▸ ${d}`)); }
+    L.push(`   _Cómo quedó:_ ${i.estado} · Aseo: ${i.aseo ? i.aseo.split(", ").map(_aseoCorto).join(", ") : "sin asignar"} · Inspección: ${i.insp ? i.insp.split(", ").map(_aseoCorto).join(", ") : "sin asignar"}`);
   });
   if (fuera.length) L.push(`• 📅 Movidas a otro día: ${fuera.join(", ")}`);
   if (L.length <= 2) return;
