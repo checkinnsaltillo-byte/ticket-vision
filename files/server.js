@@ -9270,6 +9270,18 @@ async function _aseoNotifGuardar(nombre, items) {
     d.personas[k] = { items: items.map(i => ({ code: i.code || i.nombre, nombre: i.nombre, roles: i.roles, temprana: !!i.temprana })), at: new Date().toISOString() };
   });
 }
+// Envío a una persona del Personal según el canal de su perfil (📣 Notificaciones): whatsapp (default) · sms · ambos.
+async function _aseoEnviarPersona(nombre, tel10, body, auto, waTo) {
+  const pf = _aseoPerfil(nombre) || {}, canal = pf.canal === "sms" || pf.canal === "ambos" ? pf.canal : "whatsapp";
+  let ok = false, err = null;
+  if (canal !== "sms") {
+    try { await _twilioSendMessage({ to: waTo || _waFormatTo(tel10), body, skipMirror: true }); _botAppendMessage(tel10, "assistant", body, { staff: true, auto }); ok = true; } catch (e) { err = e; }
+  }
+  if (canal !== "whatsapp") {
+    try { await _vSendSms("+52" + String(tel10).replace(/\D/g, "").slice(-10), String(body).replace(/\*/g, "")); ok = true; } catch (e) { err = err || e; }
+  }
+  if (!ok && err) throw err;
+}
 // Envía la lista del día a un empleado y registra lo enviado.
 async function _aseoEnviarLista(nombre, to, phone10, auto) {
   await _aseoAutoCfgLoad();
@@ -9280,8 +9292,7 @@ async function _aseoEnviarLista(nombre, to, phone10, auto) {
   const tl = await _tarListaEmpleado(nombre).catch(() => null);
   if (!mias.length && !tl) return false;
   const txt = [mias.length ? await _aseoListaEmpleado(nombre, { resumen: r }) : "", tl || ""].filter(Boolean).join("\n\n");
-  await _twilioSendMessage({ to, body: txt, skipMirror: true });
-  _botAppendMessage(phone10, "assistant", txt, { staff: true, auto });
+  await _aseoEnviarPersona(nombre, phone10, txt, auto, to);
   if (mias.length) await _aseoNotifGuardar(nombre, mias).catch(() => {});
   return true;
 }
@@ -9816,7 +9827,7 @@ async function _aseoResumen3pm() {
   const tels0 = destTar.length ? await _aseoTelPersonal().catch(() => []) : [];
   for (const n of destTar) {
     const t = tels0.find(x => _aseoMismaPersona(x.nombre, n)); if (!t || !t.tel || !txtTar) continue;
-    try { await _twilioSendMessage({ to: _waFormatTo(t.tel), body: txtTar, skipMirror: true }); _botAppendMessage(t.tel, "assistant", txtTar, { staff: true, auto: "tareas_2pm" }); } catch (e) { console.warn(`[tar-2pm] ${n}:`, e.message); }
+    try { await _aseoEnviarPersona(n, t.tel, txtTar, "tareas_2pm"); } catch (e) { console.warn(`[tar-2pm] ${n}:`, e.message); }
   }
   if (!(cfg.personas || []).length) return;
   const txt = await _aseoResumenDiaTxt();
@@ -9824,7 +9835,7 @@ async function _aseoResumen3pm() {
   for (const n of cfg.personas) {
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n));
     if (!t || !t.tel) continue;
-    try { await _twilioSendMessage({ to: _waFormatTo(t.tel), body: txt, skipMirror: true }); _botAppendMessage(t.tel, "assistant", txt, { staff: true, auto: "limpiezas_3pm" }); }
+    try { await _aseoEnviarPersona(n, t.tel, txt, "limpiezas_3pm"); }
     catch (e) { console.warn(`[aseo-3pm] ${n}:`, e.message); }
   }
   console.log(`[aseo-3pm] resumen enviado a ${cfg.personas.length} persona(s)`);
@@ -9945,7 +9956,7 @@ async function _incAutoEnviar(inc) {
   const txt = L.join("\n"), tels = await _aseoTelPersonal().catch(() => []);
   for (const n of dest) {
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n)); if (!t || !t.tel) continue;
-    try { await _twilioSendMessage({ to: _waFormatTo(t.tel), body: txt, skipMirror: true }); _botAppendMessage(t.tel, "assistant", txt, { staff: true, auto: "incidencias_auto" }); }
+    try { await _aseoEnviarPersona(n, t.tel, txt, "incidencias_auto"); }
     catch (e) { console.warn(`[inc-auto] ${n}:`, e.message); }
   }
 }
@@ -9961,7 +9972,7 @@ async function _tarAutoEnviar(tar) {
   const txt = L.join("\n"), tels = await _aseoTelPersonal().catch(() => []);
   for (const n of dest) {
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n)); if (!t || !t.tel) continue;
-    try { await _twilioSendMessage({ to: _waFormatTo(t.tel), body: txt, skipMirror: true }); _botAppendMessage(t.tel, "assistant", txt, { staff: true, auto: "tareas_auto" }); }
+    try { await _aseoEnviarPersona(n, t.tel, txt, "tareas_auto"); }
     catch (e) { console.warn(`[tar-auto] ${n}:`, e.message); }
   }
 }
@@ -9996,8 +10007,7 @@ async function _aseoAutoEnviar(marcas, fueraM) {
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n));
     if (!t || !t.tel) { console.warn(`[aseo-auto] ${n}: sin celular en Personal`); continue; }
     try {
-      await _twilioSendMessage({ to: _waFormatTo(t.tel), body: txt, skipMirror: true });
-      _botAppendMessage(t.tel, "assistant", txt, { staff: true, auto: "limpiezas_auto" });
+      await _aseoEnviarPersona(n, t.tel, txt, "limpiezas_auto");
     } catch (e) { console.warn(`[aseo-auto] ${n}:`, e.message); }
   }
   console.log(`[aseo-auto] lista enviada a ${cfg.personas.length} persona(s); ${marcas.size} con cambios`);
@@ -10011,7 +10021,7 @@ app.post("/aseo/autonotif", async (req, res) => {
     Object.entries(b.perfiles && typeof b.perfiles === "object" ? b.perfiles : {}).slice(0, 60).forEach(([n, v]) => {
       const nom = String(n || "").trim().slice(0, 80); if (!nom || !v) return;
       perfiles[nom] = { rol: v.rol === "admin" ? "admin" : v.rol === "empleado" ? "empleado" : "", auto: { checkinn: !!(v.auto && v.auto.checkinn), tareas: !!(v.auto && v.auto.tareas), incidencias: !!(v.auto && v.auto.incidencias) },
-        recordatorio: v.recordatorio !== false, avanzadas: !!v.avanzadas };
+        recordatorio: v.recordatorio !== false, avanzadas: !!v.avanzadas, canal: v.canal === "sms" || v.canal === "ambos" ? v.canal : "whatsapp" };
     });
     // Compatibilidad: «personas» = quienes reciben automáticamente Check-inn.
     const personas = Object.keys(perfiles).length ? Object.keys(perfiles).filter(n => perfiles[n].auto.checkinn)
