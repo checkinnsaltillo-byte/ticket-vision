@@ -9208,7 +9208,30 @@ function _histAdd(key, campos, user) {
     if (a.length > 200) a.splice(0, a.length - 200);
   })).catch(e => console.warn("[hist]", e.message));
 }
-async function _histDe(keys) { const d = await _rhdGetJson(_HIST_OBJ).catch(() => ({})); return keys.flatMap(k => (d[k] || []).map(x => Object.assign({ k }, x))).sort((a, b) => String(b.at).localeCompare(String(a.at))); }
+async function _histDe(keys) { const d = await _rhdGetJson(_HIST_OBJ).catch(() => ({})); return _histHumano(keys.flatMap(k => (d[k] || []).map(x => Object.assign({ k }, x))).sort((a, b) => String(b.at).localeCompare(String(a.at)))); }
+// Sin códigos: tareas correctivas → «tipo · descripción», alojamiento → código corto, reserva → huésped.
+async function _histHumano(L) {
+  const need = c => L.some(h => h.campo === c);
+  const TIPO = { limpieza: "🧹 Limpieza", inspeccion: "📋 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
+  let tareas = null, rts = null, cat = null;
+  if (need("Tareas correctivas")) { await _aseoTareasLoad().catch(() => {}); tareas = _aseo.tareas || {}; rts = await _clRtRows().catch(() => []); }
+  if (need("Alojamiento")) cat = await _aseoCatalogo().catch(() => []);
+  const bks = need("Reserva") ? ((_lgSnap.payload && _lgSnap.payload.bookings) || []) : [];
+  const lig = v => String(v || "").split(",").map(x => x.trim()).filter(Boolean).map(c => {
+    const id = c.slice(1);
+    if (c[0] === "T") { const t = tareas[id]; return t ? `${TIPO[t.depto] || "Tarea"} · ${String(t.titulo || "").replace(/^Incidencia\s*·\s*/, "")}` : "Tarea eliminada"; }
+    if (c[0] === "R") { const r = rts.find(x => String(x.ID) === id); return r ? `🔧 Mantenimiento · ${r.Titulo || ""}` : "Reporte eliminado"; }
+    return c;
+  }).join(", ");
+  const aloj = v => { const c = cat.find(x => x.hid === String(v || "")); return c ? (c.code ? c.code.toUpperCase() : c.nombre) : (v || "Sin alojamiento"); };
+  const res = v => { const b = /^\d+$/.test(String(v || "")) ? bks.find(x => x && String(x.Id) === String(v)) : null; return b ? (b.GuestName || "Huésped") : v; };
+  return L.map(h => {
+    if (h.campo === "Tareas correctivas") return Object.assign({}, h, { antes: lig(h.antes), despues: lig(h.despues) });
+    if (h.campo === "Alojamiento") return Object.assign({}, h, { antes: aloj(h.antes), despues: aloj(h.despues) });
+    if (h.campo === "Reserva") return Object.assign({}, h, { antes: res(h.antes), despues: res(h.despues) });
+    return h;
+  });
+}
 app.get("/historial", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const keys = String(req.query.k || "").split(",").map(x => x.trim()).filter(x => /^[ATRI]:[\w-]+$/.test(x)).slice(0, 20); res.json({ ok: true, items: (await _histDe(keys)).slice(0, 300) }); }
