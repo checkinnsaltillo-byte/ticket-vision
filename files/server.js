@@ -1235,7 +1235,7 @@ REGLAS:
   · Si pide una tarea RECURRENTE ("cada viernes", "semanal", "diario", "cada mes"): por WhatsApp solo se registran tareas de una sola fecha. Dile en una línea que la recurrente se da de alta en el módulo Tareas programadas, y ofrece registrar la próxima fecha como tarea única.
     Si hay no_encontrados o ambiguos, dilo en una línea (ej. "No encontré a 'Paco' en Personal" o "'Ana' puede ser: Ana López, Ana Ruiz — ¿cuál?").
   · AQUÍ SÍ debes esperar confirmación: SOLO cuando el admin responda afirmativamente en un mensaje POSTERIOR ("sí", "ok", "dale", "confirmo", "guárdala") llama confirmar_tarea_programada con el draft_id. Si pide cambios, vuelve a llamar preparar_tarea_programada con todo corregido y muestra el resumen nuevo. Si dice "no"/"cancela", no guardes y responde "Cancelada.".
-  · Tras confirmar, responde en 1 línea con el folio: "✅ Tarea guardada (folio X) para <fecha_texto>."
+  · Tras confirmar, responde en 1 línea: "✅ Tarea guardada para <fecha_texto>."
 - PENDIENTES DEL DÍA — si el admin pide sus pendientes, las tareas o recordatorios de hoy (o de otro día), "¿qué hay que hacer hoy?", "pendientes de mañana", "mis pendientes", "pendientes de Paco":
   · Llama consultar_pendientes_del_dia (fecha YYYY-MM-DD si menciona otro día, por defecto hoy; solo_mios=true si dice "mis/míos"; personal si nombra a alguien; incluir_resueltos=true solo si pide también lo ya hecho).
   · Responde con el campo formatted_message TAL CUAL (sin resumirlo ni reordenarlo). Si no hay pendientes, dilo en 1 línea.
@@ -1251,7 +1251,7 @@ REGLAS:
     ¿Lo agrego? (sí / no / cambios)"
     Si hay no_encontrados o ambiguos, dilo en una línea.
   · Igual que en tareas: SOLO cuando el admin confirme en un mensaje POSTERIOR llama confirmar_recordatorio_pizarra (directo, sin volver a preparar). Si responde que no hay borrador, llama preparar_recordatorio_pizarra con los datos del resumen y luego confirmar_recordatorio_pizarra en ese mismo turno. Si pide cambios, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
-  · Tras confirmar: "✅ Recordatorio guardado (folio X); aparece en Pendientes del día." (1 línea).
+  · Tras confirmar: "✅ Recordatorio guardado; aparece en Pendientes del día." (1 línea).
 - RESUMEN DEL DÍA — "dame el resumen del día", "cierre del día", "resume las limpiezas", "resumen de limpiezas": llama consultar_resumen_dia y responde con formatted_message TAL CUAL.
 - LIMPIEZAS DE HOY (lista completa) — "lista actualizada de limpiezas", "dame el estado de las limpiezas", "dame la lista de limpiezas", "limpiezas de hoy", "¿cómo va el aseo?": llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
 - ESTADO DE ASEO — "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando":
@@ -1261,14 +1261,15 @@ REGLAS:
   · Llama preparar_solicitud_aseo (alojamientos TAL CUAL, tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla). Envía el campo resumen TAL CUAL.
   · SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
 - VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
-- CHECK-LIST · TAREAS (Limpieza, Inspección, Insumos, Mantenimiento) — "tareas de hoy", "tareas de check-list", "tareas de mantenimiento", "qué hay de insumos", "tareas de inspección", "tareas de cu2": llama consultar_tareas_checklist (tipo/alojamiento/fecha si los dice) y responde con formatted_message TAL CUAL. Para cambiar el estado de una tarea usa su [ref] con actualizar_tarea_checklist (directo en modo admin).
-- INCIDENCIAS — "incidencias", "hay incidencias?", "incidencias abiertas/terminadas", "incidencias de mt7", "detalle de INC-…", "qué pasó en ox5": llama consultar_incidencias (sin estado = ESTADO ACTUAL, solo abiertas; terminadas/canceladas/historial solo si lo pide explícitamente; folio para el detalle: reserva/huésped, personas, seguimiento y sus tareas correctivas) y responde con formatted_message TAL CUAL. "pasa INC-… a en proceso", "marca INC-… terminada", "sube a crítica INC-…", "seguimiento de INC-…: …" → actualizar_incidencia (directo en modo admin).
+- CHECK-LIST · TAREAS (Limpieza, Inspección, Insumos, Mantenimiento) — "tareas de hoy", "tareas de check-list", "tareas de mantenimiento", "qué hay de insumos", "tareas de inspección", "tareas de cu2": llama consultar_tareas_checklist (tipo/alojamiento/fecha si los dice) y responde con formatted_message TAL CUAL. Para cambiar el estado de una tarea llama actualizar_tarea_checklist con el alojamiento y la descripción que use el usuario (ej. "la de sábanas sucias de mt7 ya quedó") (directo en modo admin).
+- INCIDENCIAS — "incidencias", "hay incidencias?", "incidencias abiertas/terminadas", "incidencias de mt7", "detalle de la incidencia de mt7", "qué pasó en ox5": llama consultar_incidencias (sin estado = ESTADO ACTUAL, solo abiertas; terminadas/canceladas/historial solo si lo pide explícitamente; detalle=true con alojamiento y/o descripción para ver reserva/huésped, personas, seguimiento y sus tareas correctivas) y responde con formatted_message TAL CUAL. "pasa la incidencia de mt7 a en proceso", "marca terminada la de toallas de ox5", "sube a crítica la de cu5", "seguimiento de la de mt8: …" → actualizar_incidencia con alojamiento y descripción (directo en modo admin).
+- NUNCA muestres códigos, folios, claves ni IDs (INC-…, RT-…, T…, folio X). Identifica todo por alojamiento y descripción. Si una herramienta devuelve opciones, muéstralas TAL CUAL y pregunta cuál.
 - "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
 - RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message, uno después del otro.
 - NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
 - El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
-- Al recibir el resultado de una tool, resume en 1-2 líneas + el folio/link. Sin adornos ni cortesías.
+- Al recibir el resultado de una tool, resume en 1-2 líneas, sin folios, códigos ni claves. Sin adornos ni cortesías.
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1358,7 +1359,7 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_tareas_checklist",
-    description: "ADMIN o PERSONAL. Tareas del módulo Check-list de un día (las creadas con «Nueva tarea» y los reportes de MANTENIMIENTO), agrupadas por tipo: Limpieza, Inspección, Insumos, Mantenimiento, con estado, prioridad, asignados, si están ligadas a una incidencia (⚠️) y su referencia [T…/R…] para cambiarlas. Usar ante 'tareas de check-list', 'tareas de hoy', 'tareas de mantenimiento', 'qué hay de insumos', 'tareas de inspección', 'mis tareas'. NO incluye las limpiezas de salida de las reservas (para eso consultar_resumen_dia / consultar_limpiezas_hoy). Sin función avanzada solo verá las tareas asignadas a él.",
+    description: "ADMIN o PERSONAL. Tareas del módulo Check-list de un día (las creadas con «Nueva tarea» y los reportes de MANTENIMIENTO), agrupadas por tipo: Limpieza, Inspección, Insumos, Mantenimiento, con estado, prioridad, asignados, y si están ligadas a una incidencia (⚠️). Usar ante 'tareas de check-list', 'tareas de hoy', 'tareas de mantenimiento', 'qué hay de insumos', 'tareas de inspección', 'mis tareas'. NO incluye las limpiezas de salida de las reservas (para eso consultar_resumen_dia / consultar_limpiezas_hoy). Sin función avanzada solo verá las tareas asignadas a él.",
     input_schema: { type: "object", properties: {
       fecha: { type: "string", description: "Opcional YYYY-MM-DD (por defecto hoy)." },
       tipo: { type: "string", enum: ["todos", "limpieza", "inspeccion", "insumos", "mantenimiento"], description: "Opcional. Filtra por tipo de tarea." },
@@ -1368,28 +1369,35 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_incidencias",
-    description: "FUNCIÓN AVANZADA. INCIDENCIAS del módulo Check-list: lista del ESTADO ACTUAL (por defecto y para cualquier 'resumen de incidencias', 'incidencias de hoy': solo las abiertas = pendientes y en proceso; usa estado 'todas', 'terminado' o 'cancelado' ÚNICAMENTE si el usuario pide explícitamente ver terminadas/canceladas/historial) con alojamiento, motivo, estado, prioridad, fecha y cuántas tareas correctivas tienen; o el DETALLE de una (folio INC-…) con descripción, seguimiento, personas, reserva/huésped ligado y sus tareas correctivas con su estado. Usar ante 'incidencias', 'hay incidencias?', 'incidencias abiertas', 'incidencias de cu2', 'detalle de la incidencia INC-…', 'qué pasó en ox5'.",
+    description: "FUNCIÓN AVANZADA. INCIDENCIAS del módulo Check-list: lista del ESTADO ACTUAL (por defecto y para cualquier 'resumen de incidencias', 'incidencias de hoy': solo las abiertas = pendientes y en proceso; usa estado 'todas', 'terminado' o 'cancelado' ÚNICAMENTE si el usuario pide explícitamente ver terminadas/canceladas/historial) con alojamiento, motivo, estado, prioridad, fecha y cuántas tareas correctivas tienen; o el DETALLE de una (detalle=true + alojamiento y/o descripción) con descripción, seguimiento, personas, reserva/huésped ligado y sus tareas correctivas con su estado. Usar ante 'incidencias', 'hay incidencias?', 'incidencias abiertas', 'incidencias de cu2', 'detalle de la incidencia de mt7', 'qué pasó en ox5'. Nunca muestres folios ni códigos.",
     input_schema: { type: "object", properties: {
       estado: { type: "string", enum: ["abiertas", "pendiente", "en_proceso", "terminado", "cancelado", "todas"], description: "Opcional. Por defecto 'abiertas' (estado actual). 'todas'/'terminado'/'cancelado' solo si lo pide explícitamente." },
       alojamiento: { type: "string", description: "Opcional. Alojamiento TAL CUAL (ej. mt7)." },
-      folio: { type: "string", description: "Opcional. Folio de la incidencia (INC-…) para ver su detalle completo." },
+      detalle: { type: "boolean", description: "true para ver el detalle completo de UNA incidencia (identificada por alojamiento y/o descripción)." },
+      descripcion: { type: "string", description: "Opcional. Palabras de la incidencia (ej. 'toallas', 'sábanas sucias')." },
+      folio: { type: "string", description: "Uso interno; no lo pidas al usuario." },
       dias: { type: "number", description: "Opcional. Solo las reportadas en los últimos N días (no lo uses para 'de hoy': el resumen ya muestra el estado actual)." } }, required: [] },
   },
   {
     name: "actualizar_incidencia",
-    description: "FUNCIÓN AVANZADA. Cambia el ESTADO, la PRIORIDAD o el SEGUIMIENTO de una incidencia (folio INC-…). Antes de llamarla repite en 1 línea qué vas a cambiar y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
+    description: "FUNCIÓN AVANZADA. Cambia el ESTADO, la PRIORIDAD o el SEGUIMIENTO de una incidencia identificada por ALOJAMIENTO y DESCRIPCIÓN (ej. mt7 + 'sábanas sucias'). Si hay varias que coinciden, devuelve opciones para preguntar cuál. Antes de llamarla repite en 1 línea qué vas a cambiar y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
     input_schema: { type: "object", properties: {
-      folio: { type: "string" },
+      alojamiento: { type: "string", description: "Alojamiento TAL CUAL (ej. mt7)." },
+      descripcion: { type: "string", description: "Palabras de la incidencia (ej. 'sábanas sucias')." },
+      folio: { type: "string", description: "Uso interno; no lo pidas al usuario." },
       estado: { type: "string", enum: ["pendiente", "en_proceso", "terminado", "cancelado"] },
       prioridad: { type: "string", enum: ["baja", "media", "alta", "critica"] },
-      seguimiento: { type: "string", description: "Texto de seguimiento requerido." } }, required: ["folio"] },
+      seguimiento: { type: "string", description: "Texto de seguimiento requerido." } }, required: [] },
   },
   {
     name: "actualizar_tarea_checklist",
-    description: "Cambia el ESTADO de una tarea del Check-list usando su referencia [T…] o [R…] (la que muestra consultar_tareas_checklist). Lo puede hacer quien tenga función avanzada o la persona asignada a la tarea. Antes de llamarla repite en 1 línea el cambio y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
+    description: "Cambia el ESTADO de una tarea del Check-list identificada por ALOJAMIENTO y DESCRIPCIÓN (ej. ox5 + 'toallas'), opcionalmente su tipo. Si hay varias que coinciden, devuelve opciones para preguntar cuál. Lo puede hacer quien tenga función avanzada o la persona asignada a la tarea. Antes de llamarla repite en 1 línea el cambio y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
     input_schema: { type: "object", properties: {
-      ref: { type: "string", description: "Referencia T… o R… de la tarea." },
-      estado: { type: "string", enum: ["pendiente", "en_proceso", "terminado", "inspeccionado", "cancelado"] } }, required: ["ref", "estado"] },
+      alojamiento: { type: "string", description: "Alojamiento TAL CUAL (ej. ox5)." },
+      descripcion: { type: "string", description: "Palabras de la tarea (ej. 'toallas', 'cambiar focos')." },
+      tipo: { type: "string", enum: ["limpieza", "inspeccion", "insumos", "mantenimiento"] },
+      ref: { type: "string", description: "Uso interno; no lo pidas al usuario." },
+      estado: { type: "string", enum: ["pendiente", "en_proceso", "terminado", "inspeccionado", "cancelado"] } }, required: ["estado"] },
   },
   {
     name: "confirmar_estado_aseo",
@@ -2287,7 +2295,7 @@ async function _botExecTool(toolUse, ctx) {
       if (yaConfirmo) {
         const rc = await _botExecTool({ name: "confirmar_tarea_programada", input: { draft_id: id } }, ctx);
         let jr = {}; try { jr = JSON.parse(rc.content || "{}"); } catch (_) {}
-        return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "Tarea GUARDADA. Responde en 1 línea con el folio: ✅ Tarea guardada (folio X) para <fecha_texto>. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
+        return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "Tarea GUARDADA. Responde en 1 línea: ✅ Tarea guardada para <fecha_texto>. Sin folio. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
       }
       return { content: JSON.stringify({ ok: true, draft_id: id, nombre, fecha_iso: fecha, fecha_texto: _botFechaLarga(fecha),
         clasificacion: clas.clasificacion || "Sin clasificación", subclasificacion: clas.subclasificacion || "—",
@@ -2363,14 +2371,20 @@ async function _botExecTool(toolUse, ctx) {
     }
     if (name === "consultar_incidencias") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Las incidencias son una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
-      const txt = args.folio ? await _incDetalleTxt(String(args.folio)) : await _incListaTxt(args);
-      return { content: JSON.stringify({ ok: true, formatted_message: txt, instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
+      if (args.folio || args.detalle) {
+        const b = await _incBuscar(args);
+        if (b.error) return { content: JSON.stringify({ ok: false, error: b.error }), notifyText: null };
+        if (b.opciones) return { content: JSON.stringify({ ok: false, opciones: b.opciones.join("\n"), instruccion: "Pregunta cuál de estas incidencias quiere ver, mostrando las opciones TAL CUAL." }), notifyText: null };
+        return { content: JSON.stringify({ ok: true, formatted_message: await _incDetalleTxt(b.r.ID), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
+      }
+      return { content: JSON.stringify({ ok: true, formatted_message: await _incListaTxt(args), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "actualizar_incidencia") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Cambiar incidencias es una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
-      const d = await _incDatos(true), q = String(args.folio || "").trim().toUpperCase();
-      const r = (d.rows || []).find(x => String(x.ID).toUpperCase() === q) || (d.rows || []).find(x => String(x.ID).toUpperCase().endsWith(q.replace(/^INC-?/, "")));
-      if (!r) return { content: JSON.stringify({ ok: false, error: `No encontré la incidencia ${args.folio}` }), notifyText: null };
+      const b = await _incBuscar(args, true);
+      if (b.error) return { content: JSON.stringify({ ok: false, error: b.error }), notifyText: null };
+      if (b.opciones) return { content: JSON.stringify({ ok: false, opciones: b.opciones.join("\n"), instruccion: "Pregunta a cuál incidencia se refiere, mostrando las opciones TAL CUAL." }), notifyText: null };
+      const r = b.r;
       const fields = {}, cambios = [];
       const EST = { pendiente: "Nuevo", en_proceso: "En proceso", terminado: "Resuelto", cancelado: "Cancelado" }, NIV = { baja: "Baja", media: "Media", alta: "Alta", critica: "Crítica" };
       if (EST[args.estado]) { fields.estatus = EST[args.estado]; cambios.push("estado: " + _INC_EST_TXT[EST[args.estado]]); }
@@ -2379,16 +2393,15 @@ async function _botExecTool(toolUse, ctx) {
       if (!cambios.length) return { content: JSON.stringify({ ok: false, error: "No indicaste qué cambiar (estado, prioridad o seguimiento)." }), notifyText: null };
       const j = await fetch(`http://127.0.0.1:${PORT}/update-incidencia`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.ID, fields: Object.assign(fields, { UpdatedAt: new Date().toISOString() }), info: { motivos: r.Motivos, clasificaciones: r.Clasificacion, alojamiento: r.Alojamiento } }) }).then(x => x.json()).catch(e => ({ ok: false, error: e.message }));
       if (!j.ok) return { content: JSON.stringify({ ok: false, error: j.error || "No se pudo guardar" }), notifyText: null };
-      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ✅ Incidencia ${r.ID} · ${cambios.join(" · ")}.` }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ✅ Incidencia ${b.nombre} · ${cambios.join(" · ")}.` }), notifyText: null };
     }
     if (name === "actualizar_tarea_checklist") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
-      let ref = String(args.ref || "").replace(/[\[\]\s]/g, "").toUpperCase(), estado = String(args.estado || "");
-      if (/^RRT-/.test(ref)) ref = ref.slice(1); if (/^\d{4}-\d+$/.test(ref)) ref = "RT-" + ref; // acepta RT-2026-000020, R…, 2026-000020
-      const L = await _clTareas(_mxHoy());
-      let it = L.find(i => i.ref.toUpperCase() === ref);
-      if (!it && ref[0] === "T") { await _aseoTareasLoad(); const t = Object.values(_aseo.tareas || {}).find(x => ("T" + String(x.id).slice(-5)).toUpperCase() === ref); if (t) it = { ref, id: t.id, k: "T" + t.id, key: `T${t.id}-${t.fecha}`, tipo: t.depto || "limpieza", titulo: t.titulo, hid: t.hid || "", asig: t.asignados || [] }; }
-      if (!it) return { content: JSON.stringify({ ok: false, error: `No encontré la tarea ${args.ref}. Pide la lista con «tareas de hoy» para ver las referencias.` }), notifyText: null };
+      const estado = String(args.estado || "");
+      const bt = await _clBuscarTarea(args);
+      if (bt.error) return { content: JSON.stringify({ ok: false, error: bt.error }), notifyText: null };
+      if (bt.opciones) return { content: JSON.stringify({ ok: false, opciones: bt.opciones.join("\n"), instruccion: "Pregunta a cuál tarea se refiere, mostrando las opciones TAL CUAL." }), notifyText: null };
+      const it = bt.it;
       const yo = ctx.staffNombre || ctx.adminNombre || "";
       if (!(await _aseoPuedeCierre(ctx)) && !it.asig.some(n => _aseoMismaPersona(n, yo))) return { content: JSON.stringify({ ok: false, error: "Solo puedes cambiar tareas que tienes asignadas (o con función avanzada).", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       const user = `${yo || ctx.phone10} (WhatsApp)`;
@@ -2401,7 +2414,7 @@ async function _botExecTool(toolUse, ctx) {
         const j = await fetch(`http://127.0.0.1:${PORT}/reportes-tecnicos-upsert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payload: { ID: it.id, Estado: RT[estado], UpdatedAt: new Date().toISOString(), Updated_by: user } }) }).then(x => x.json()).catch(e => ({ ok: false, error: e.message }));
         if (!j.ok) return { content: JSON.stringify({ ok: false, error: j.error || "No se pudo guardar" }), notifyText: null };
       }
-      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ✅ ${it.titulo} [${it.ref}] → ${_CL_EST[estado] || estado}.` }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ✅ ${it.aloj ? it.aloj + " · " : ""}${it.titulo} → ${_CL_EST[estado] || estado}.` }), notifyText: null };
     }
     if (name === "consultar_resumen_dia") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "El resumen del día solo lo pueden consultar administración y las personas del reenvío automático.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
@@ -2633,7 +2646,7 @@ async function _botExecTool(toolUse, ctx) {
       if (yaConfirmo) {
         const rc = await _botExecTool({ name: "confirmar_recordatorio_pizarra", input: { draft_id: id } }, ctx);
         let jr = {}; try { jr = JSON.parse(rc.content || "{}"); } catch (_) {}
-        return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "Recordatorio GUARDADO. Responde en 1 línea: ✅ Recordatorio guardado (folio X); aparece en Pendientes del día. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
+        return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "Recordatorio GUARDADO. Responde en 1 línea: ✅ Recordatorio guardado; aparece en Pendientes del día. Sin folio. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
       }
       return { content: JSON.stringify({ ok: true, draft_id: id, texto: draft.texto, clasificacion: draft.clasificacion || "Sin clasificación", subclasificacion: draft.subclasificacion || "—", urgencia: { critica: "Crítico", alta: "Alto", media: "Medio", baja: "Bajo" }[prioridad],
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_iso: fecha, fecha_texto: fecha === hoy ? "Hoy" : _botFechaLarga(fecha),
@@ -2752,9 +2765,9 @@ async function _botExecTool(toolUse, ctx) {
         content: JSON.stringify({
           ok: true, id, alojamiento: alojLabel, nivel,
           motivos: clas.motivos, clasificaciones: clas.clasificaciones,
-          mensaje: `Incidencia ${id} registrada.`,
+          mensaje: `Incidencia registrada en ${alojLabel}.`, instruccion: "Responde en 1 línea sin folio ni código.",
         }),
-        notifyText: `📋 Incidencia via bot admin\n${alojLabel} · ${nivel}\n${(clas.motivos||[]).join(", ")} · ${(clas.clasificaciones||[]).join(", ")}\n${descripcion.slice(0,140)}\nFolio: ${id}`,
+        notifyText: `📋 Incidencia via bot admin\n${alojLabel} · ${nivel}\n${(clas.motivos||[]).join(", ")} · ${(clas.clasificaciones||[]).join(", ")}\n${descripcion.slice(0,140)}`,
       };
     }
     return { content: `Tool desconocida: ${name}`, notifyText: null };
@@ -3575,8 +3588,9 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
           const sys = `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
 Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, registrar solicitudes de entrada temprana / salida tardía, dar la lista de limpiezas de hoy y la información del módulo CHECK-LIST (tareas de Limpieza, Inspección, Insumos y Mantenimiento, Incidencias y Tareas programadas).
 - "tareas de hoy", "tareas de check-list", "tareas de mantenimiento/insumos/inspección/limpieza", "mis tareas" → llama consultar_tareas_checklist (tipo si lo dice, solo_mias si dice "mis") y responde con formatted_message TAL CUAL.
-- "cu2 [T1234] terminada", "la tarea R-… ya quedó", "empecé la tarea T…" → confirma en 1 línea qué cambiarás y, SOLO con un "sí" en un mensaje posterior, llama actualizar_tarea_checklist (ref y estado).
-- "incidencias", "hay incidencias?", "incidencias de mt7", "detalle de INC-…" → llama consultar_incidencias (folio para el detalle) y responde con formatted_message TAL CUAL. Para cambiar estado/prioridad/seguimiento de una incidencia: confirma en 1 línea y, con un "sí" posterior, llama actualizar_incidencia.
+- "ya quedó la de toallas de ox5", "empecé la inspección de mt7", "terminé la tarea de focos de bc1" → confirma en 1 línea qué cambiarás y, SOLO con un "sí" en un mensaje posterior, llama actualizar_tarea_checklist (alojamiento, descripción y estado).
+- "incidencias", "hay incidencias?", "incidencias de mt7", "detalle de la incidencia de mt7" → llama consultar_incidencias (detalle=true con alojamiento/descripción para el detalle) y responde con formatted_message TAL CUAL. Para cambiar estado/prioridad/seguimiento de una incidencia: confirma en 1 línea y, con un "sí" posterior, llama actualizar_incidencia (alojamiento y descripción).
+- NUNCA muestres códigos, folios, claves ni IDs. Si una herramienta devuelve opciones, muéstralas TAL CUAL y pregunta cuál.
 - "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
 - Si una herramienta responde que no tiene permiso (función avanzada), dilo en 1 línea.
 - "resumen del día", "cierre del día", "resume las limpiezas", "resumen de limpiezas" → llama consultar_resumen_dia y responde con formatted_message TAL CUAL.
@@ -9980,13 +9994,13 @@ async function _clTareas(dia) {
 function _clTareasTxt(L0, dia, titulo, actual) { // actual=true: solo pendientes/en proceso + conteo de las cerradas
   const ord = ["pendiente", "en_proceso", "terminado", "inspeccionado", "cancelado"];
   const abierta = i => i.est === "pendiente" || i.est === "en_proceso", L = actual ? L0.filter(abierta) : L0;
-  const out = [`✅ *Check-list · ${titulo}${actual ? " (estado actual)" : ""}* — ${_clFecha(dia)}`, `${L.length} tarea${L.length === 1 ? "" : "s"}${actual ? " abierta" + (L.length === 1 ? "" : "s") : ""} · ⚠️ = ligada a una incidencia · [ref] para cambiar su estado`];
+  const out = [`✅ *Check-list · ${titulo}${actual ? " (estado actual)" : ""}* — ${_clFecha(dia)}`, `${L.length} tarea${L.length === 1 ? "" : "s"}${actual ? " abierta" + (L.length === 1 ? "" : "s") : ""} · ⚠️ = ligada a una incidencia`];
   if (actual) { const c = L0.filter(i => !abierta(i)), n = k => c.filter(i => i.est === k).length; if (c.length) out.push(`Cerradas hoy: ${n("terminado") + n("inspeccionado")} terminada${n("terminado") + n("inspeccionado") === 1 ? "" : "s"} · ${n("cancelado")} cancelada${n("cancelado") === 1 ? "" : "s"} (pide «incluye las terminadas» para verlas)`); }
   Object.keys(_CL_TIPO).forEach(tp => {
     const X = L.filter(i => i.tipo === tp).sort((a, b) => ord.indexOf(a.est) - ord.indexOf(b.est) || (_CL_PRIO_N[b.prio] || 0) - (_CL_PRIO_N[a.prio] || 0));
     if (!X.length) return;
     out.push("", `*${_CL_TIPO[tp]} (${X.length})*`);
-    X.forEach(i => out.push(`• ${i.aloj} · ${i.titulo} — ${_CL_EST[i.est] || i.est}${i.atrasado ? ` (desde ${_clDiaCorto(i.fecha)})` : ""} · ${i.prio}${i.asig.length ? " · " + _clNombres(i.asig) : " · sin asignar"}${i.inc.length ? " ⚠️" : ""} [${i.ref}]`));
+    X.forEach(i => out.push(`• ${i.aloj} · ${i.titulo} — ${_CL_EST[i.est] || i.est}${i.atrasado ? ` (desde ${_clDiaCorto(i.fecha)})` : ""} · ${i.prio}${i.asig.length ? " · " + _clNombres(i.asig) : " · sin asignar"}${i.inc.length ? " ⚠️" : ""}`));
   });
   if (!L.length) out.push("", actual && L0.length ? "✅ No hay tareas de Check-list abiertas." : "No hay tareas de Check-list para este día.");
   return out.join("\n");
@@ -10007,7 +10021,7 @@ async function _incListaTxt(args) {
   if (Number(args.dias) > 0) { const lim = new Date(hoy + "T12:00:00"); lim.setDate(lim.getDate() - Number(args.dias)); const li = lim.toISOString().slice(0, 10); L = L.filter(r => String(r.Fecha || "").slice(0, 10) >= li); }
   L.sort((a, b) => (_CL_PRIO_N[String(b.Nivel || "").toLowerCase()] || 0) - (_CL_PRIO_N[String(a.Nivel || "").toLowerCase()] || 0) || String(b.Fecha || "").localeCompare(String(a.Fecha || "")));
   const lbl = est === "abiertas" ? "abiertas (estado actual)" : est === "todas" ? "" : (_INC_EST_TXT[MAP[est]] || est).toLowerCase() + "s";
-  const out = [`⚠️ *Incidencias ${lbl}* (${L.length})`.replace("  ", " ")];
+  const out = [`⚠️ *Incidencias${lbl ? " " + lbl : ""}* (${L.length})`];
   if (est === "abiertas") { // contexto del día sin listar las cerradas
     const H = (d.rows || []).filter(r => !_incArch(r) && String(r.Fecha || "").slice(0, 10) === hoy), n = k => H.filter(r => _incEstBot(r.Estatus) === k).length;
     if (H.length) out.push(`Hoy: ${H.length} reportada${H.length === 1 ? "" : "s"} · ${n("Resuelto")} terminada${n("Resuelto") === 1 ? "" : "s"} · ${n("Cancelado")} cancelada${n("Cancelado") === 1 ? "" : "s"}`);
@@ -10015,11 +10029,11 @@ async function _incListaTxt(args) {
   for (const r of L.slice(0, 25)) {
     const hid = C.hidDe(r.Propiedad, r["# Departamento"]), ligs = await ligsDe(r);
     const tit = String(r.Clasificacion || r.Motivos || "Incidencia");
-    out.push(`• ${hid ? C.code(hid) : (r.Alojamiento || "—")} · ${tit} — ${_INC_EST_TXT[_incEstBot(r.Estatus)]} · ${String(r.Nivel || "Media").toLowerCase()} · ${_clDiaCorto(String(r.Fecha || "").slice(0, 10))}${ligs.length ? ` · 🛠 ${ligs.length} tarea${ligs.length === 1 ? "" : "s"} correctiva${ligs.length === 1 ? "" : "s"}` : ""} [${r.ID}]`);
+    out.push(`• ${hid ? C.code(hid) : (r.Alojamiento || "—")} · ${tit} — ${_INC_EST_TXT[_incEstBot(r.Estatus)]} · ${String(r.Nivel || "Media").toLowerCase()} · ${_clDiaCorto(String(r.Fecha || "").slice(0, 10))}${ligs.length ? ` · 🛠 ${ligs.length} tarea${ligs.length === 1 ? "" : "s"} correctiva${ligs.length === 1 ? "" : "s"}` : ""}`);
   }
   if (L.length > 25) out.push(`… y ${L.length - 25} más.`);
   if (!L.length) out.push(est === "abiertas" ? "✅ No hay incidencias abiertas." : "No hay incidencias con ese filtro.");
-  else out.push("", "Pide «detalle de la incidencia INC-…» para ver todo.");
+  else out.push("", "Pide «detalle de la incidencia de …» (alojamiento) para ver todo.");
   return out.join("\n");
 }
 async function _incDetalleTxt(folio) {
@@ -10035,11 +10049,11 @@ async function _incDetalleTxt(folio) {
     const rts = ligs.some(l => l[0] === "R") ? await _clRtRows() : [];
     ligs.forEach(l => {
       const id = l.slice(1);
-      if (l[0] === "T") { const t = (_aseo.tareas || {})[id]; if (!t) return; const e = ((_aseo.estados || {})[`T${t.id}-${t.fecha}`] || {}).estado || "pendiente"; tareas.push(`   ${_CL_TIPO[t.depto] || "Tarea"} · ${t.titulo} — ${_CL_EST[e] || e}${(t.asignados || []).length ? " · " + t.asignados.map(_aseoCorto).join(", ") : ""} [T${String(t.id).slice(-5)}]`); }
-      else { const x = rts.find(z => String(z.ID) === id); if (!x) return; const e = _rtEstBot(x.Estado); tareas.push(`   🔧 Mantenimiento · ${x.Titulo || ""} — ${_CL_EST[e]} [${_clRefRt(x)}]`); }
+      if (l[0] === "T") { const t = (_aseo.tareas || {})[id]; if (!t) return; const e = ((_aseo.estados || {})[`T${t.id}-${t.fecha}`] || {}).estado || "pendiente"; tareas.push(`   ${_CL_TIPO[t.depto] || "Tarea"} · ${t.titulo} — ${_CL_EST[e] || e}${(t.asignados || []).length ? " · " + _clNombres(t.asignados) : ""}`); }
+      else { const x = rts.find(z => String(z.ID) === id); if (!x) return; const e = _rtEstBot(x.Estado); tareas.push(`   🔧 Mantenimiento · ${x.Titulo || ""} — ${_CL_EST[e]}`); }
     });
   }
-  const L = [`⚠️ *Incidencia ${r.ID}*`, `${hid ? C.code(hid) + " · " : ""}${r.Alojamiento || ""}`,
+  const L = [`⚠️ *Incidencia${hid ? " en " + C.code(hid) : ""}*`, `${r.Alojamiento || ""}`,
     `Motivo: ${r.Motivos || "—"}${r.Clasificacion ? " › " + r.Clasificacion : ""}`,
     `Estado: ${_INC_EST_TXT[_incEstBot(r.Estatus)]}${_incArch(r) ? " (archivada)" : ""} · Prioridad: ${r.Nivel || "Media"} · Fecha: ${_clDiaCorto(String(r.Fecha || "").slice(0, 10))}`];
   if (r.Reservacion_id) L.push(`Reserva: ${r.Huesped_nombre || "Huésped"} · ${r.Reservacion_id}`);
@@ -10051,6 +10065,33 @@ async function _incDetalleTxt(folio) {
   if (Number(r.Fotos_count) > 0) L.push(`📷 ${r.Fotos_count} foto(s) en el sistema`);
   L.push("", tareas.length ? `🛠 *Tareas correctivas (${tareas.length}):*` : "🛠 Sin tareas correctivas.", ...tareas);
   return L.join("\n");
+}
+// ── Identificar tareas e incidencias SIN códigos: por alojamiento + descripción (y tipo). ──
+function _clCoincide(q, txt) { const w = _botNorm(q).split(" ").filter(x => x.length > 2); const t = _botNorm(txt); return !w.length || w.every(x => t.includes(x) || t.includes(x.replace(/s$/, ""))); }
+async function _clBuscarTarea(args) {
+  let X = await _clTareas(_mxHoy());
+  if (args.ref) { const q = String(args.ref).replace(/[\[\]\s]/g, "").toUpperCase(); const Y = X.filter(i => i.ref.toUpperCase() === q); if (Y.length) X = Y; }
+  if (args.alojamiento) { const cat = await _aseoCatalogo().catch(() => []), m = _aseoMatchAloj(String(args.alojamiento), cat); if (!m.ok) return { error: m.error }; X = X.filter(i => String(i.hid) === String(m.aloj.hid)); }
+  if (args.tipo) X = X.filter(i => i.tipo === args.tipo);
+  if (args.descripcion) { const Y = X.filter(i => _clCoincide(args.descripcion, i.titulo + " " + _CL_TIPO[i.tipo])); if (Y.length) X = Y; }
+  const ab = X.filter(i => i.est === "pendiente" || i.est === "en_proceso"); if (X.length > 1 && ab.length) X = ab;
+  if (X.length === 1) return { it: X[0] };
+  if (!X.length) return { error: "No encontré esa tarea hoy. Pide «tareas de hoy» para ver la lista." };
+  return { opciones: X.slice(0, 8).map((i, n) => `${n + 1}) ${i.aloj} · ${i.titulo} (${_CL_TIPO[i.tipo]}, ${_CL_EST[i.est]})`) };
+}
+async function _incBuscar(args, fresco) {
+  const d = await _incDatos(!!fresco), C = await _clCat();
+  let X = (d.rows || []).filter(r => !_incArch(r));
+  if (args.folio) { const q = String(args.folio).trim().toUpperCase(); const Y = X.filter(r => String(r.ID).toUpperCase() === q || String(r.ID).toUpperCase().endsWith(q.replace(/^INC-?/, ""))); if (Y.length) X = Y; }
+  if (args.alojamiento) { const m = _aseoMatchAloj(String(args.alojamiento), C.cat); if (!m.ok) return { error: m.error }; X = X.filter(r => C.hidDe(r.Propiedad, r["# Departamento"]) === String(m.aloj.hid)); }
+  if (args.descripcion) { const Y = X.filter(r => _clCoincide(args.descripcion, [r.Motivos, r.Clasificacion, r.Descripcion].join(" "))); if (Y.length) X = Y; }
+  if (!args.folio && !args.alojamiento && !args.descripcion) X = X.filter(_incAbiertaBot);
+  const ab = X.filter(_incAbiertaBot); if (X.length > 1 && ab.length) X = ab;
+  X.sort((a, b) => String(b.Fecha || "").localeCompare(String(a.Fecha || "")));
+  const nom = r => { const hid = C.hidDe(r.Propiedad, r["# Departamento"]); return `${hid ? C.code(hid) : (r.Alojamiento || "—")} · ${r.Clasificacion || r.Motivos || "Incidencia"}`; };
+  if (X.length === 1) return { r: X[0], nombre: `${nom(X[0])}` };
+  if (!X.length) return { error: "No encontré esa incidencia. Pide «incidencias» para ver la lista." };
+  return { opciones: X.slice(0, 8).map((r, n) => `${n + 1}) ${nom(r)} — ${_INC_EST_TXT[_incEstBot(r.Estatus)]} · ${_clDiaCorto(String(r.Fecha || "").slice(0, 10))}`) };
 }
 // Avisos al final del resumen del día: tareas de Check-list pendientes e incidencias abiertas.
 async function _clAvisosTxt() {
@@ -10207,7 +10248,7 @@ async function _incAutoEnviar(inc) {
   const L = ["🚨 *Cambios en Incidencias*", ""];
   inc.forEach((p, id) => {
     const I = p.info || {};
-    L.push(`• *${[I.aloj, I.titulo].filter(Boolean).join(" · ") || "Incidencia"}*${id ? ` (${id})` : ""}`); p.det.forEach(d => L.push(`   ${d}`));
+    L.push(`• *${[I.aloj, I.titulo].filter(Boolean).join(" · ") || "Incidencia"}*`); p.det.forEach(d => L.push(`   ${d}`));
     if (I.estatus || I.nivel) L.push(`   Ahora: ${[I.estatus, I.nivel ? "nivel " + String(I.nivel).toLowerCase() : ""].filter(Boolean).join(" · ")}`);
   });
   const txt = L.join("\n"), tels = await _aseoTelPersonal().catch(() => []);
