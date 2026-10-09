@@ -9073,7 +9073,7 @@ async function _aseoLiveLoad() {
         const o = base.get(x.Id) || snapPrev.get(x.Id);
         if (!o) { // reserva nueva que entra o sale hoy → "Agregada" en el reenvío automático
           const h = _mxHoy();
-          if (base.size && _aseoViva(x.Status) && (x.DateArrival === h || x.DateDeparture === h)) _aseoAutoMarca(x.HouseId, "agregada", `Reserva nueva: ${x.GuestName || ""} (${x.DateArrival === h ? "entra" : "sale"} hoy)`);
+          if (base.size && _aseoViva(x.Status) && (x.DateArrival === h || x.DateDeparture === h)) _aseoAutoMarca(x.HouseId, "agregada", `Reserva nueva hecha hoy a las ${new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" })}${x.Source ? " por " + x.Source : ""}: ${x.GuestName || ""} (${x.DateArrival === h ? "entra" : "sale"} hoy)`); // reserva de último momento
           continue;
         }
         let tipo = "";
