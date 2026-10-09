@@ -10561,15 +10561,16 @@ function _aseoGuiaCalc(hid, m, hoy, horaMx) {
   // "No publicado" (casilla de la card): la guía de ese alojamiento no muestra nada.
   const keyPub = ult ? String(ult.id) : "H" + hid;
   const noPub = !!((_aseo.guiaoff || {})[keyPub] || {}).off;
+  const textoPrev = modo === "aseo" ? (_ASEO_GUIA_TXT[est] || "") : (_ASEO_GUIA_TXT[modo] || ""); // lo que diría si se publica
   if (noPub) modo = "";
   const estado = modo === "aseo" ? est : "";
   const texto = modo === "aseo" ? (_ASEO_GUIA_TXT[estado] || "") : (_ASEO_GUIA_TXT[modo] || "");
-  return { modo, estado, texto, pub, reg, ult, salHoy, entHoy, noPub, keyPub };
+  return { modo, estado, texto, textoPrev, pub, reg, ult, salHoy, entHoy, noPub, keyPub };
 }
 const _aseoHoraMx = () => Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
 function _aseoGuiasTodas() {
   const idx = _aseoIdxCasas(), hoy = _mxHoy(), h = _aseoHoraMx(), out = {};
-  idx.forEach((m, hid) => { const g = _aseoGuiaCalc(hid, m, hoy, h); out[hid] = { modo: g.modo, estado: g.estado, texto: g.texto, noPub: g.noPub, keyPub: g.keyPub }; });
+  idx.forEach((m, hid) => { const g = _aseoGuiaCalc(hid, m, hoy, h); out[hid] = { modo: g.modo, estado: g.estado, texto: g.texto, textoPrev: g.textoPrev, noPub: g.noPub, keyPub: g.keyPub }; });
   return out;
 }
 const _ASEO_GUIAOFF_OBJ = "aseo/guiaoff.json";
