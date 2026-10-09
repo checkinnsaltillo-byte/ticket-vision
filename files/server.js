@@ -1261,7 +1261,10 @@ REGLAS:
   · Llama preparar_solicitud_aseo (alojamientos TAL CUAL, tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla). Envía el campo resumen TAL CUAL.
   · SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
 - VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
-- RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia y consultar_resumen_tareas y envía ambos formatted_message, uno después del otro.
+- CHECK-LIST · TAREAS (Limpieza, Inspección, Insumos, Mantenimiento) — "tareas de hoy", "tareas de check-list", "tareas de mantenimiento", "qué hay de insumos", "tareas de inspección", "tareas de cu2": llama consultar_tareas_checklist (tipo/alojamiento/fecha si los dice) y responde con formatted_message TAL CUAL. Para cambiar el estado de una tarea usa su [ref] con actualizar_tarea_checklist (directo en modo admin).
+- INCIDENCIAS — "incidencias", "hay incidencias?", "incidencias abiertas/terminadas", "incidencias de mt7", "detalle de INC-…", "qué pasó en ox5": llama consultar_incidencias (folio para el detalle: reserva/huésped, personas, seguimiento y sus tareas correctivas) y responde con formatted_message TAL CUAL. "pasa INC-… a en proceso", "marca INC-… terminada", "sube a crítica INC-…", "seguimiento de INC-…: …" → actualizar_incidencia (directo en modo admin).
+- "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
+- RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message, uno después del otro.
 - NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
 - El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
 - Si genuinamente falta un dato IMPRESCINDIBLE (ej. shortcode ausente por completo), pídelo en UNA línea corta. Nunca pidas datos que puedes inferir.
@@ -1352,6 +1355,40 @@ const BOT_TOOLS = [
     name: "consultar_resumen_dia",
     description: "ADMIN o PERSONAL. RESUMEN / CIERRE del día de limpiezas: alojamientos agrupados por estado (pendientes, en proceso, terminados, inspeccionados), sin detalles, con opciones para validar, inspeccionar o reprogramar. Usar ante 'dame el resumen del día', 'cierre del día', 'resume las limpiezas', 'resumen de limpiezas' o similares. NO usar para la lista completa (eso es consultar_limpiezas_hoy).",
     input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "consultar_tareas_checklist",
+    description: "ADMIN o PERSONAL. Tareas del módulo Check-list de un día (las creadas con «Nueva tarea» y los reportes de MANTENIMIENTO), agrupadas por tipo: Limpieza, Inspección, Insumos, Mantenimiento, con estado, prioridad, asignados, si están ligadas a una incidencia (⚠️) y su referencia [T…/R…] para cambiarlas. Usar ante 'tareas de check-list', 'tareas de hoy', 'tareas de mantenimiento', 'qué hay de insumos', 'tareas de inspección', 'mis tareas'. NO incluye las limpiezas de salida de las reservas (para eso consultar_resumen_dia / consultar_limpiezas_hoy). Sin función avanzada solo verá las tareas asignadas a él.",
+    input_schema: { type: "object", properties: {
+      fecha: { type: "string", description: "Opcional YYYY-MM-DD (por defecto hoy)." },
+      tipo: { type: "string", enum: ["todos", "limpieza", "inspeccion", "insumos", "mantenimiento"], description: "Opcional. Filtra por tipo de tarea." },
+      alojamiento: { type: "string", description: "Opcional. Alojamiento TAL CUAL (ej. cu2, ox5)." },
+      solo_mias: { type: "boolean", description: "true si pide SUS tareas ('mis tareas', 'qué me toca')." } }, required: [] },
+  },
+  {
+    name: "consultar_incidencias",
+    description: "FUNCIÓN AVANZADA. INCIDENCIAS del módulo Check-list: lista (por defecto las abiertas: pendientes y en proceso) con alojamiento, motivo, estado, prioridad, fecha y cuántas tareas correctivas tienen; o el DETALLE de una (folio INC-…) con descripción, seguimiento, personas, reserva/huésped ligado y sus tareas correctivas con su estado. Usar ante 'incidencias', 'hay incidencias?', 'incidencias abiertas', 'incidencias de cu2', 'detalle de la incidencia INC-…', 'qué pasó en ox5'.",
+    input_schema: { type: "object", properties: {
+      estado: { type: "string", enum: ["abiertas", "pendiente", "en_proceso", "terminado", "cancelado", "todas"], description: "Opcional (por defecto abiertas)." },
+      alojamiento: { type: "string", description: "Opcional. Alojamiento TAL CUAL (ej. mt7)." },
+      folio: { type: "string", description: "Opcional. Folio de la incidencia (INC-…) para ver su detalle completo." },
+      dias: { type: "number", description: "Opcional. Solo las de los últimos N días." } }, required: [] },
+  },
+  {
+    name: "actualizar_incidencia",
+    description: "FUNCIÓN AVANZADA. Cambia el ESTADO, la PRIORIDAD o el SEGUIMIENTO de una incidencia (folio INC-…). Antes de llamarla repite en 1 línea qué vas a cambiar y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
+    input_schema: { type: "object", properties: {
+      folio: { type: "string" },
+      estado: { type: "string", enum: ["pendiente", "en_proceso", "terminado", "cancelado"] },
+      prioridad: { type: "string", enum: ["baja", "media", "alta", "critica"] },
+      seguimiento: { type: "string", description: "Texto de seguimiento requerido." } }, required: ["folio"] },
+  },
+  {
+    name: "actualizar_tarea_checklist",
+    description: "Cambia el ESTADO de una tarea del Check-list usando su referencia [T…] o [R…] (la que muestra consultar_tareas_checklist). Lo puede hacer quien tenga función avanzada o la persona asignada a la tarea. Antes de llamarla repite en 1 línea el cambio y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
+    input_schema: { type: "object", properties: {
+      ref: { type: "string", description: "Referencia T… o R… de la tarea." },
+      estado: { type: "string", enum: ["pendiente", "en_proceso", "terminado", "inspeccionado", "cancelado"] } }, required: ["ref", "estado"] },
   },
   {
     name: "confirmar_estado_aseo",
@@ -1635,7 +1672,7 @@ function _botTarDelDia(rows, ocur, iso, hoy) {
 }
 const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
 const _ASEO_EST_TXT = { en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado" };
@@ -2312,9 +2349,63 @@ async function _botExecTool(toolUse, ctx) {
       const f = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? args.fecha : _mxHoy();
       return { content: JSON.stringify({ ok: true, formatted_message: await _tarResumenTxt(f), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
+    if (name === "consultar_tareas_checklist") {
+      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      const f = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? args.fecha : _mxHoy();
+      const yo = ctx.staffNombre || ctx.adminNombre || "", avz = await _aseoPuedeCierre(ctx);
+      let L = await _clTareas(f);
+      if (args.tipo && args.tipo !== "todos") L = L.filter(i => i.tipo === args.tipo);
+      if (args.alojamiento) { const cat = await _aseoCatalogo().catch(() => []), m = _aseoMatchAloj(String(args.alojamiento), cat); if (!m.ok) return { content: JSON.stringify({ ok: false, error: m.error }), notifyText: null }; L = L.filter(i => String(i.hid) === String(m.aloj.hid)); }
+      const mias = args.solo_mias || !avz;
+      if (mias) L = L.filter(i => i.asig.some(n => _aseoMismaPersona(n, yo)));
+      return { content: JSON.stringify({ ok: true, formatted_message: _clTareasTxt(L, f, mias ? "Tus tareas" : "Tareas"), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
+    }
+    if (name === "consultar_incidencias") {
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Las incidencias son una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      const txt = args.folio ? await _incDetalleTxt(String(args.folio)) : await _incListaTxt(args);
+      return { content: JSON.stringify({ ok: true, formatted_message: txt, instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
+    }
+    if (name === "actualizar_incidencia") {
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Cambiar incidencias es una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      const d = await _incDatos(true), q = String(args.folio || "").trim().toUpperCase();
+      const r = (d.rows || []).find(x => String(x.ID).toUpperCase() === q) || (d.rows || []).find(x => String(x.ID).toUpperCase().endsWith(q.replace(/^INC-?/, "")));
+      if (!r) return { content: JSON.stringify({ ok: false, error: `No encontré la incidencia ${args.folio}` }), notifyText: null };
+      const fields = {}, cambios = [];
+      const EST = { pendiente: "Nuevo", en_proceso: "En proceso", terminado: "Resuelto", cancelado: "Cancelado" }, NIV = { baja: "Baja", media: "Media", alta: "Alta", critica: "Crítica" };
+      if (EST[args.estado]) { fields.estatus = EST[args.estado]; cambios.push("estado: " + _INC_EST_TXT[EST[args.estado]]); }
+      if (NIV[args.prioridad]) { fields.nivel = NIV[args.prioridad]; cambios.push("prioridad: " + NIV[args.prioridad]); }
+      if (args.seguimiento) { fields.seguimiento = String(args.seguimiento).slice(0, 1000); cambios.push("seguimiento actualizado"); }
+      if (!cambios.length) return { content: JSON.stringify({ ok: false, error: "No indicaste qué cambiar (estado, prioridad o seguimiento)." }), notifyText: null };
+      const j = await fetch(`http://127.0.0.1:${PORT}/update-incidencia`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.ID, fields: Object.assign(fields, { UpdatedAt: new Date().toISOString() }), info: { motivos: r.Motivos, clasificaciones: r.Clasificacion, alojamiento: r.Alojamiento } }) }).then(x => x.json()).catch(e => ({ ok: false, error: e.message }));
+      if (!j.ok) return { content: JSON.stringify({ ok: false, error: j.error || "No se pudo guardar" }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ✅ Incidencia ${r.ID} · ${cambios.join(" · ")}.` }), notifyText: null };
+    }
+    if (name === "actualizar_tarea_checklist") {
+      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      let ref = String(args.ref || "").replace(/[\[\]\s]/g, "").toUpperCase(), estado = String(args.estado || "");
+      if (/^RRT-/.test(ref)) ref = ref.slice(1); if (/^\d{4}-\d+$/.test(ref)) ref = "RT-" + ref; // acepta RT-2026-000020, R…, 2026-000020
+      const L = await _clTareas(_mxHoy());
+      let it = L.find(i => i.ref.toUpperCase() === ref);
+      if (!it && ref[0] === "T") { await _aseoTareasLoad(); const t = Object.values(_aseo.tareas || {}).find(x => ("T" + String(x.id).slice(-5)).toUpperCase() === ref); if (t) it = { ref, id: t.id, k: "T" + t.id, key: `T${t.id}-${t.fecha}`, tipo: t.depto || "limpieza", titulo: t.titulo, hid: t.hid || "", asig: t.asignados || [] }; }
+      if (!it) return { content: JSON.stringify({ ok: false, error: `No encontré la tarea ${args.ref}. Pide la lista con «tareas de hoy» para ver las referencias.` }), notifyText: null };
+      const yo = ctx.staffNombre || ctx.adminNombre || "";
+      if (!(await _aseoPuedeCierre(ctx)) && !it.asig.some(n => _aseoMismaPersona(n, yo))) return { content: JSON.stringify({ ok: false, error: "Solo puedes cambiar tareas que tienes asignadas (o con función avanzada).", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      const user = `${yo || ctx.phone10} (WhatsApp)`;
+      if (it.k[0] === "T") {
+        if (!["pendiente", "en_proceso", "terminado", "inspeccionado"].includes(estado) || (estado === "inspeccionado" && it.tipo !== "limpieza")) return { content: JSON.stringify({ ok: false, error: "Estado no válido para esta tarea (Inspeccionado solo aplica a Limpieza)." }), notifyText: null };
+        await _aseoGuardarEstado({ id: it.key, hid: it.hid, estado, validar: false, user });
+      } else {
+        const RT = { pendiente: "nuevo", en_proceso: "en_proceso", terminado: "resuelto", cancelado: "cancelado" };
+        if (!RT[estado]) return { content: JSON.stringify({ ok: false, error: "Estado no válido para Mantenimiento." }), notifyText: null };
+        const j = await fetch(`http://127.0.0.1:${PORT}/reportes-tecnicos-upsert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payload: { ID: it.id, Estado: RT[estado], UpdatedAt: new Date().toISOString(), Updated_by: user } }) }).then(x => x.json()).catch(e => ({ ok: false, error: e.message }));
+        if (!j.ok) return { content: JSON.stringify({ ok: false, error: j.error || "No se pudo guardar" }), notifyText: null };
+      }
+      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ✅ ${it.titulo} [${it.ref}] → ${_CL_EST[estado] || estado}.` }), notifyText: null };
+    }
     if (name === "consultar_resumen_dia") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "El resumen del día solo lo pueden consultar administración y las personas del reenvío automático.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
-      return { content: JSON.stringify({ ok: true, formatted_message: await _aseoResumenDiaTxt(), instruccion: "Responde con formatted_message TAL CUAL, sin resumirlo ni agregar explicaciones." }), notifyText: null };
+      const extra = await _clAvisosTxt().catch(() => "");
+      return { content: JSON.stringify({ ok: true, formatted_message: (await _aseoResumenDiaTxt()) + extra, instruccion: "Responde con formatted_message TAL CUAL, sin resumirlo ni agregar explicaciones." }), notifyText: null };
     }
     if (name === "consultar_limpiezas_hoy") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
@@ -3464,7 +3555,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // de un empleado (hoja Personal) y el mensaje habla de aseo o hay un borrador
   // pendiente de confirmar (para el "sí / no / corrección").
   {
-    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?)\b/;
+    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,})\b/;
     const _aseoDraft = _botAseoDrafts.get(phone10);
     const _aseoPend = _aseoDraft && Date.now() < _aseoDraft.exp;
     if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
@@ -3481,7 +3572,12 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
           } catch (_) {}
           const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
           const sys = `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
-Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, registrar solicitudes de entrada temprana / salida tardía y dar la lista de limpiezas de hoy.
+Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, registrar solicitudes de entrada temprana / salida tardía, dar la lista de limpiezas de hoy y la información del módulo CHECK-LIST (tareas de Limpieza, Inspección, Insumos y Mantenimiento, Incidencias y Tareas programadas).
+- "tareas de hoy", "tareas de check-list", "tareas de mantenimiento/insumos/inspección/limpieza", "mis tareas" → llama consultar_tareas_checklist (tipo si lo dice, solo_mias si dice "mis") y responde con formatted_message TAL CUAL.
+- "cu2 [T1234] terminada", "la tarea R-… ya quedó", "empecé la tarea T…" → confirma en 1 línea qué cambiarás y, SOLO con un "sí" en un mensaje posterior, llama actualizar_tarea_checklist (ref y estado).
+- "incidencias", "hay incidencias?", "incidencias de mt7", "detalle de INC-…" → llama consultar_incidencias (folio para el detalle) y responde con formatted_message TAL CUAL. Para cambiar estado/prioridad/seguimiento de una incidencia: confirma en 1 línea y, con un "sí" posterior, llama actualizar_incidencia.
+- "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
+- Si una herramienta responde que no tiene permiso (función avanzada), dilo en 1 línea.
 - "resumen del día", "cierre del día", "resume las limpiezas", "resumen de limpiezas" → llama consultar_resumen_dia y responde con formatted_message TAL CUAL.
 - "lista actualizada de limpiezas", "estado de las limpiezas", "lista de limpiezas", "limpiezas de hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
 - Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
@@ -3492,13 +3588,13 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
   · Si dice "no" / "cancela", responde "Cancelado." y no guardes.
 - Solicitudes de ENTRADA temprana o SALIDA tardía ("cu2 entrada temprana 10am", "ox6 salida tardía 1pm aceptada", "acepta la entrada de jc3", "quita la salida de bc5"): llama preparar_solicitud_aseo (tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla), envía resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo.
 - VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
-- RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia y consultar_resumen_tareas y envía ambos formatted_message, uno después del otro.
+- RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message, uno después del otro.
 - NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
 - El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
 - Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
-- Si el mensaje no es sobre aseo, responde en 1 línea que por este medio solo registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida o das la lista de limpiezas de hoy.
+- Si el mensaje no es sobre la operación, responde en 1 línea que por este medio registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida, y das información de limpiezas, tareas de Check-list, incidencias y tareas programadas.
 - Sé breve, sin cortesías ni emojis extra.`;
-          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
+          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
           const llm = await _botLlmLoop({
             system: sys, history: hist, userMsg: bodyMsg,
             ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: nombre, msgTs: t0, userMsg: bodyMsg,
@@ -9815,6 +9911,146 @@ async function _aseoResumenDiaTxt() {
   if (op.length) L.push("", "*¿Qué hacemos? Responde, por ejemplo:*", ...op);
   return L.join("\n");
 }
+// ═══ Bot · Check-list (tareas por tipo), Incidencias y su relación con alojamientos, reservas y tareas ═══
+const _CL_TIPO = { limpieza: "🧹 Limpieza", inspeccion: "📋 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
+const _CL_EST = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "✅ Terminado", inspeccionado: "🔍 Inspeccionado", cancelado: "✖️ Cancelado" };
+const _INC_EST_TXT = { "Nuevo": "Pendiente", "En proceso": "En proceso", "Resuelto": "Terminado", "Cancelado": "Cancelado" }; // mismos nombres que el sistema
+const _CL_PRIO_N = { critica: 4, "crítica": 4, alta: 3, alto: 3, media: 2, medio: 2, baja: 1, bajo: 1 };
+// Prioridad legible (también la escala vieja p1…p4 de los reportes técnicos).
+function _clPrio(v) { const s = String(v || "media").toLowerCase().trim(); return /^(p1|cr[ií]tic)/.test(s) ? "crítica" : /^(p2|alt)/.test(s) ? "alta" : /^(p4|baj)/.test(s) ? "baja" : "media"; }
+// Nombres cortos; si dos personas quedan iguales (ej. dos «Andrés Carreón») se muestran completos.
+function _clNombres(L) { const c = L.map(_aseoCorto); return L.map((n, i) => c.filter(x => x === c[i]).length > 1 ? n : c[i]).join(", "); }
+function _clRefRt(r) { const f = String(r.Folio || "").trim(); return /^rt-/i.test(f) ? f.toUpperCase() : "R" + (f || r.ID); }
+function _clFecha(iso) { const f = new Date(iso + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" }); return f.charAt(0).toUpperCase() + f.slice(1); }
+function _clDiaCorto(iso) { return iso ? new Date(iso + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : "—"; }
+function _clToca(t, dia) {
+  if (!t || !t.fecha || dia < t.fecha) return false;
+  const r = t.repite; if (!r) return dia === t.fecha;
+  if (r.fin && dia > r.fin) return false;
+  const a = new Date(t.fecha + "T12:00:00"), b = new Date(dia + "T12:00:00"), dd = Math.round((b - a) / 864e5);
+  if (r.tipo === "diario") return true;
+  if (r.tipo === "cada") return dd % (r.n || 1) === 0;
+  if (r.tipo === "semanal") return a.getDay() === b.getDay();
+  if (r.tipo === "mensual") return a.getDay() === b.getDay() && Math.ceil(a.getDate() / 7) === Math.ceil(b.getDate() / 7);
+  if (r.tipo === "anual") return a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  return false;
+}
+function _rtEstBot(v) { const s = String(v || "").toLowerCase(); return /cancel/.test(s) ? "cancelado" : /resuel|cerrad|termin/.test(s) ? "terminado" : /proceso|espera|parcial/.test(s) ? "en_proceso" : "pendiente"; }
+function _incEstBot(v) { const s = _incEst(v); return _INC_EST_TXT[s] ? s : /cancel/i.test(s) ? "Cancelado" : /resuel|cerr|termin/i.test(s) ? "Resuelto" : /proceso/i.test(s) ? "En proceso" : "Nuevo"; }
+function _incArch(r) { return /^s[ií]/i.test(String(r.Archivada || "")); }
+function _incAbiertaBot(r) { const e = _incEstBot(r.Estatus); return (e === "Nuevo" || e === "En proceso") && !_incArch(r); }
+async function _clCat() {
+  const cat = await _aseoCatalogo().catch(() => []);
+  const n = v => _botNorm(v).replace(/^calle\s+/, "");
+  return { cat,
+    code: hid => { const c = cat.find(x => x.hid === String(hid || "")); return c ? (c.code ? c.code.toUpperCase() : c.nombre) : (hid ? "Aloj. " + hid : "Sin alojamiento"); },
+    hidDe: (prop, dep) => { const p = n(prop), d = String(dep || "").replace(/^#\s*/, "").toLowerCase().trim(); const c = cat.find(x => n(x.prop) === p && x.dep === d); return c ? c.hid : ""; } };
+}
+let _clRt = { ts: 0, rows: [] };
+async function _clRtRows() { if (Date.now() - _clRt.ts > 60_000) { const r = await callCheckinAppsScriptPost("rt_list", {}).catch(() => null); if (r && Array.isArray(r.rows)) _clRt = { ts: Date.now(), rows: r.rows }; } return _clRt.rows; }
+async function _clTareas(dia) {
+  await _aseoTareasLoad(); await _aseoExtraLoad();
+  if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
+  const C = await _clCat(), X = _aseo.extra || {}, out = [];
+  const incDe = k => { const e = X[k] || {}; return e.incidencia ? (Array.isArray(e.incIds) ? e.incIds : e.incId ? [e.incId] : []) : []; };
+  Object.values(_aseo.tareas || {}).forEach(t => {
+    const k = "T" + t.id; if ((X[k] || {}).archivada || !_clToca(t, dia)) return;
+    const key = `T${t.id}-${t.repite ? dia : t.fecha}`;
+    out.push({ ref: "T" + String(t.id).slice(-5), key, id: t.id, k, tipo: t.depto || "limpieza", titulo: t.titulo || "Tarea", aloj: C.code(t.hid), hid: t.hid || "",
+      est: ((_aseo.estados || {})[key] || {}).estado || "pendiente", prio: _clPrio(t.prioridad), asig: [...new Set(t.asignados || [])], inc: incDe(k), fecha: t.fecha });
+  });
+  (await _clRtRows()).forEach(r => {
+    if (!r || !r.ID) return; const k = "R" + r.ID; if ((X[k] || {}).archivada) return;
+    const fecha = String(r.Fecha || "").slice(0, 10), est = _rtEstBot(r.Estado), abierto = est !== "terminado" && est !== "cancelado";
+    if (!(fecha === dia || (abierto && fecha < dia && dia === _mxHoy()))) return;
+    const hid = C.hidDe(r.Propiedad, r["# Departamento"]);
+    out.push({ ref: _clRefRt(r), id: r.ID, k, tipo: "mantenimiento", titulo: r.Titulo || "Reporte técnico", aloj: hid ? C.code(hid) : (r.Alojamiento || "Sin alojamiento"), hid,
+      est, prio: _clPrio(r.Prioridad), asig: [...new Set(String(r.Asignado_a || "").split(/\s*,\s*/).filter(Boolean))], inc: incDe(k), fecha, atrasado: fecha < dia });
+  });
+  return out;
+}
+function _clTareasTxt(L, dia, titulo) {
+  const ord = ["pendiente", "en_proceso", "terminado", "inspeccionado", "cancelado"];
+  const out = [`✅ *Check-list · ${titulo}* — ${_clFecha(dia)}`, `${L.length} tarea${L.length === 1 ? "" : "s"} · ⚠️ = ligada a una incidencia · [ref] para cambiar su estado`];
+  Object.keys(_CL_TIPO).forEach(tp => {
+    const X = L.filter(i => i.tipo === tp).sort((a, b) => ord.indexOf(a.est) - ord.indexOf(b.est) || (_CL_PRIO_N[b.prio] || 0) - (_CL_PRIO_N[a.prio] || 0));
+    if (!X.length) return;
+    out.push("", `*${_CL_TIPO[tp]} (${X.length})*`);
+    X.forEach(i => out.push(`• ${i.aloj} · ${i.titulo} — ${_CL_EST[i.est] || i.est}${i.atrasado ? ` (desde ${_clDiaCorto(i.fecha)})` : ""} · ${i.prio}${i.asig.length ? " · " + _clNombres(i.asig) : " · sin asignar"}${i.inc.length ? " ⚠️" : ""} [${i.ref}]`));
+  });
+  if (!L.length) out.push("", "No hay tareas de Check-list para este día.");
+  return out.join("\n");
+}
+async function _incListaTxt(args) {
+  const d = await _incDatos(), C = await _clCat(), hoy = _mxHoy();
+  let L = (d.rows || []).filter(r => !_incArch(r));
+  const est = String(args.estado || "abiertas"), MAP = { pendiente: "Nuevo", en_proceso: "En proceso", terminado: "Resuelto", cancelado: "Cancelado" };
+  if (est === "abiertas") L = L.filter(_incAbiertaBot); else if (MAP[est]) L = L.filter(r => _incEstBot(r.Estatus) === MAP[est]);
+  if (args.alojamiento) { const m = _aseoMatchAloj(String(args.alojamiento), C.cat); if (!m.ok) return m.error; L = L.filter(r => C.hidDe(r.Propiedad, r["# Departamento"]) === String(m.aloj.hid)); }
+  if (Number(args.dias) > 0) { const lim = new Date(hoy + "T12:00:00"); lim.setDate(lim.getDate() - Number(args.dias)); const li = lim.toISOString().slice(0, 10); L = L.filter(r => String(r.Fecha || "").slice(0, 10) >= li); }
+  L.sort((a, b) => (_CL_PRIO_N[String(b.Nivel || "").toLowerCase()] || 0) - (_CL_PRIO_N[String(a.Nivel || "").toLowerCase()] || 0) || String(b.Fecha || "").localeCompare(String(a.Fecha || "")));
+  const lbl = est === "abiertas" ? "abiertas" : est === "todas" ? "" : (_INC_EST_TXT[MAP[est]] || est).toLowerCase() + "s";
+  const out = [`⚠️ *Incidencias ${lbl}* (${L.length})`.replace("  ", " ")];
+  L.slice(0, 25).forEach(r => {
+    const hid = C.hidDe(r.Propiedad, r["# Departamento"]), ligs = String(r.Tarea_ligada || "").split(",").map(x => x.trim()).filter(Boolean);
+    const tit = String(r.Clasificacion || r.Motivos || "Incidencia");
+    out.push(`• ${hid ? C.code(hid) : (r.Alojamiento || "—")} · ${tit} — ${_INC_EST_TXT[_incEstBot(r.Estatus)]} · ${String(r.Nivel || "Media").toLowerCase()} · ${_clDiaCorto(String(r.Fecha || "").slice(0, 10))}${ligs.length ? ` · 🛠 ${ligs.length} tarea${ligs.length === 1 ? "" : "s"} correctiva${ligs.length === 1 ? "" : "s"}` : ""} [${r.ID}]`);
+  });
+  if (L.length > 25) out.push(`… y ${L.length - 25} más.`);
+  if (!L.length) out.push("No hay incidencias con ese filtro.");
+  else out.push("", "Pide «detalle de la incidencia INC-…» para ver todo.");
+  return out.join("\n");
+}
+async function _incDetalleTxt(folio) {
+  const d = await _incDatos(), q = String(folio || "").trim().toUpperCase(), C = await _clCat();
+  const r = (d.rows || []).find(x => String(x.ID).toUpperCase() === q) || (d.rows || []).find(x => String(x.ID).toUpperCase().endsWith(q.replace(/^INC-?/, "")));
+  if (!r) return `No encontré la incidencia ${folio}.`;
+  const hid = C.hidDe(r.Propiedad, r["# Departamento"]);
+  const ligs = String(r.Tarea_ligada || "").split(",").map(x => x.trim()).filter(Boolean);
+  const tareas = [];
+  if (ligs.length) {
+    await _aseoTareasLoad();
+    if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
+    const rts = ligs.some(l => l[0] === "R") ? await _clRtRows() : [];
+    ligs.forEach(l => {
+      const id = l.slice(1);
+      if (l[0] === "T") { const t = (_aseo.tareas || {})[id]; if (!t) return; const e = ((_aseo.estados || {})[`T${t.id}-${t.fecha}`] || {}).estado || "pendiente"; tareas.push(`   ${_CL_TIPO[t.depto] || "Tarea"} · ${t.titulo} — ${_CL_EST[e] || e}${(t.asignados || []).length ? " · " + t.asignados.map(_aseoCorto).join(", ") : ""} [T${String(t.id).slice(-5)}]`); }
+      else { const x = rts.find(z => String(z.ID) === id); if (!x) return; const e = _rtEstBot(x.Estado); tareas.push(`   🔧 Mantenimiento · ${x.Titulo || ""} — ${_CL_EST[e]} [${_clRefRt(x)}]`); }
+    });
+  }
+  const L = [`⚠️ *Incidencia ${r.ID}*`, `${hid ? C.code(hid) + " · " : ""}${r.Alojamiento || ""}`,
+    `Motivo: ${r.Motivos || "—"}${r.Clasificacion ? " › " + r.Clasificacion : ""}`,
+    `Estado: ${_INC_EST_TXT[_incEstBot(r.Estatus)]}${_incArch(r) ? " (archivada)" : ""} · Prioridad: ${r.Nivel || "Media"} · Fecha: ${_clDiaCorto(String(r.Fecha || "").slice(0, 10))}`];
+  if (r.Reservacion_id) L.push(`Reserva: ${r.Huesped_nombre || "Huésped"} · ${r.Reservacion_id}`);
+  if (r.Reportante) L.push(`Reportó: ${r.Reportante}`);
+  if (r.Personas) L.push(`Personas involucradas: ${r.Personas}`);
+  if (r.Descripcion) L.push("", `📝 ${r.Descripcion}`);
+  if (r.Acciones) L.push(`Acciones realizadas: ${r.Acciones}`);
+  if (r.Seguimiento) L.push(`Seguimiento requerido: ${r.Seguimiento}`);
+  if (Number(r.Fotos_count) > 0) L.push(`📷 ${r.Fotos_count} foto(s) en el sistema`);
+  L.push("", tareas.length ? `🛠 *Tareas correctivas (${tareas.length}):*` : "🛠 Sin tareas correctivas.", ...tareas);
+  return L.join("\n");
+}
+// Avisos al final del resumen del día: tareas de Check-list pendientes e incidencias abiertas.
+async function _clAvisosTxt() {
+  const hoy = _mxHoy(), T = await _clTareas(hoy), d = await _incDatos();
+  const pend = T.filter(i => i.est === "pendiente" || i.est === "en_proceso");
+  const inc = (d.rows || []).filter(_incAbiertaBot);
+  const L = [];
+  if (pend.length) L.push(`✅ *Tareas de Check-list sin terminar (${pend.length}):* ${Object.keys(_CL_TIPO).map(tp => { const n = pend.filter(i => i.tipo === tp).length; return n ? `${_CL_TIPO[tp]} ${n}` : ""; }).filter(Boolean).join(" · ")} — pide «tareas de hoy»`);
+  if (inc.length) { const urg = inc.filter(r => /cr[ií]tica|alta/i.test(String(r.Nivel || ""))).length; L.push(`⚠️ *Incidencias abiertas (${inc.length})*${urg ? `, ${urg} alta/crítica` : ""} — pide «incidencias»`); }
+  return L.length ? "\n\n" + L.join("\n") : "";
+}
+// Vista previa (sistema): los mismos textos que el bot envía para Check-list e Incidencias.
+app.get("/bot/checklist-preview", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const dia = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.fecha || "")) ? req.query.fecha : _mxHoy();
+    const out = { ok: true, tareas: _clTareasTxt(await _clTareas(dia), dia, "Tareas"), incidencias: await _incListaTxt({ estado: req.query.estado || "abiertas" }), avisos: await _clAvisosTxt() };
+    if (req.query.folio) out.detalle = await _incDetalleTxt(String(req.query.folio));
+    res.json(out);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 async function _aseoResumen3pm() {
   await _aseoAutoCfgLoad();
   const cfg = _aseo.autoCfg || {};
