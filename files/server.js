@@ -2996,6 +2996,12 @@ function _detectAsistenciaIntent(text) {
   //   Cualquier palabra que empiece con "entra" y termine cerca del stem "da/do".
   //   Cubre: entrada, entranda, entar da, entrado, entrando.
   // "SALIR" del trabajo también debería contar como intent de salida — mismo criterio.
+  // NO es asistencia si el mensaje habla de un alojamiento o de la operación (ej. «no ha salido JC3»,
+  // «entrada temprana cu2», «terminé cu2», «el huésped ya salió»): eso lo atiende el bot de aseo.
+  if (/\b[a-z]{2,3}\s?\d{1,2}[a-z]?\b/.test(t)) return null;                                  // cu2, jc 3, bc10, cu4a, ox5…
+  if (/\b(no|aun|todavia|sigue|siguen|nadie|ninguno)\b/.test(t)) return null;                  // negaciones / reportes
+  if (/\b(huesped\w*|desaloj\w*|adentro|aseo|limpi\w*|inspecc\w*|tarea\w*|incidenc\w*|reserva\w*|temprana|tardia|solicitud\w*|alojamiento\w*|depa\w*|departamento\w*|cuarto|habitacion|llave\w*|cliente\w*|gente|familia|senor\w*|sra|sr)\b/.test(t)) return null;
+  if (t.split(/\s+/).filter(Boolean).length > 6) return null;                                  // los registros son mensajes cortos
   const hasEntradaLike = /\bentra[a-z]{0,5}\b/.test(t);
   const hasSalidaLike  = /\bsali[a-z]{0,5}\b/.test(t);
   // Entrada
