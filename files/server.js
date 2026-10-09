@@ -10445,9 +10445,14 @@ async function _aseoAutoEnviar(marcas, fueraM) {
     if (!i) return; // cambio en una card de otro día
     const tag = [...(m.tipos || [])].includes("agregada") ? " 🆕" : [...(m.tipos || [])].includes("reprogramada") ? " 📅" : "";
     L.push(`• *${i.code || i.nombre}*${i.code ? " · " + i.nombre : ""}${tag}`);
-    const dets = m.det.map(_aseoDetHumano).filter(Boolean);
-    if (dets.length) { L.push("   _Qué cambió:_"); dets.forEach(d => L.push(`   ▸ ${d}`)); }
-    L.push(`   _Cómo quedó:_ ${i.estado} · Aseo: ${i.aseo ? i.aseo.split(", ").map(_aseoCorto).join(", ") : "sin asignar"} · Inspección: ${i.insp ? i.insp.split(", ").map(_aseoCorto).join(", ") : "sin asignar"}`);
+    const dets = m.det.map(_aseoDetHumano).filter(Boolean), todo = dets.join(" ");
+    dets.forEach(d => L.push(`   ▸ ${d}`));
+    // Contexto SIN repetir lo que ya dice el cambio (estado / aseo / inspección).
+    const ctx = [];
+    if (!/Pasó a /.test(todo)) ctx.push(i.estado);
+    if (!/Aseo asignado|ya no tiene el aseo/.test(todo)) ctx.push(`Aseo: ${i.aseo ? i.aseo.split(", ").map(_aseoCorto).join(", ") : "sin asignar"}`);
+    if (!/Inspección asignada|ya no tiene la inspección/.test(todo)) ctx.push(`Inspección: ${i.insp ? i.insp.split(", ").map(_aseoCorto).join(", ") : "sin asignar"}`);
+    if (ctx.length) L.push(`   ${ctx.join(" · ")}`);
   });
   if (fuera.length) L.push(`• 📅 Movidas a otro día: ${fuera.join(", ")}`);
   if (L.length <= 2) return;
