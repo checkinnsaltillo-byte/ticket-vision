@@ -9902,12 +9902,12 @@ app.post("/bot/simular", async (req, res) => {
         // Respuesta a un cierre de jornada de prueba en curso: sigue en tu WhatsApp.
         const sink = []; _cierreSink.set(yo.tel, sink);
         try { await _cierreResponder(ciS, libre, _waFormatTo(yo.tel), yo.tel); } finally { _cierreSink.delete(yo.tel); }
-        return res.json({ ok: true, texto: `🧪 *Prueba como ${como}* · Mensaje: «${libre}»\n\n${sink.join("\n\n— — —\n\n")}`, enviado: true });
+        return res.json({ ok: true, texto: `🧪 *Prueba como ${como}*\n💬 ${_aseoCorto(como)} escribe: «${libre}»\n\n${_simMsgs(sink, _aseoCorto(como))}`, enviado: true });
       }
       if (ai === "salida" && !mismo) {
         const sink = []; _cierreSink.set(yo.tel, sink);
         try { await _cierreIniciar({ nombre: como, hora: new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" }), fromRaw: _waFormatTo(yo.tel), phone10: yo.tel, dry: true, ubic: true }); } finally { _cierreSink.delete(yo.tel); }
-        return res.json({ ok: true, texto: `🧪 *Prueba como ${como}* · Mensaje: «${libre}» → 🕕 *registro de SALIDA* (prueba: no se registra ni se guardan estados; contesta aquí o en WhatsApp)\n\n${sink.join("\n\n— — —\n\n")}`, enviado: true });
+        return res.json({ ok: true, texto: `🧪 *Prueba como ${como}* · 🕕 *registro de SALIDA* (prueba: no se registra ni se guardan estados)\n💬 ${_aseoCorto(como)} escribe: «${libre}»\n\n${_simMsgs(sink, _aseoCorto(como))}\n\n💡 Contesta como lo haría ${como.split(" ")[0]}, aquí o en tu WhatsApp.`, enviado: true });
       }
       if (ai) {
         txt = ai === "entrada" ? `🕘 Se reconoce como *registro de ENTRADA*: se registra la hora, se pide la ubicación y al compartirla recibe su lista del día.\n\n${(await _aseoListaEmpleado(como, { consulta: true }).catch(() => null)) || "No tiene limpiezas asignadas hoy."}` : "🕕 Se reconoce como *registro de SALIDA* (lista actualizada + estado de sus tareas abiertas).";
@@ -9949,6 +9949,8 @@ app.post("/bot/simular", async (req, res) => {
 // ── «⚙️ Simular evento del sistema» (Prueba del bot): lo que el SISTEMA envía solo ante una acción
 //    (botón «No ha desalojado», solicitud aceptada, limpieza terminada…). Usa el mismo armado y los mismos
 //    destinatarios que el aviso real, sin guardar nada; el resultado se manda al WhatsApp de quien prueba.
+// Vista previa: cada mensaje que la persona recibe por separado, numerado.
+const _simMsgs = (arr, quien) => { const L = (arr || []).map(m => String(m).replace(/^🧪 _Prueba como [^_]*_\n/, "")); return L.length ? L.map((m, i) => `📩 *${L.length > 1 ? `Mensaje ${i + 1} de ${L.length}` : "Mensaje"} que recibe ${quien}:*\n${m}`).join("\n\n━━━━━━━━━━\n\n") : "(no recibe ningún mensaje)"; };
 const _BOT_EVT = {
   ns: { t: "🚨 No ha desalojado" }, ns_off: { t: "✅ Ya desalojó" },
   tardia: { t: "🕚 Salida tardía aceptada" }, temprana: { t: "⏰ Entrada temprana aceptada" },
@@ -9982,19 +9984,18 @@ app.post("/bot/simular-evento", async (req, res) => {
       let msgs = [];
       if (ev === "entrada") {
         msgs.push(`🕘 Entrada registrada · ${hora}\n\n📍 Ahora comparte tu ubicación (obligatoria) — sin ella el registro queda incompleto.\n\nGracias, ${pila}!`);
-        msgs.push(`(cuando comparte su ubicación)\n🕘 Entrada registrada · ${hora}\n📍 Ubicación guardada\nGracias, ${pila}!`);
+        msgs.push(`_(después de compartir su ubicación)_\n🕘 Entrada registrada · ${hora}\n📍 Ubicación guardada\nGracias, ${pila}!`);
         if (pfC.recordatorio !== false) { // igual que el registro real: solo «🔔 Sus tareas del día» apagado lo evita
           const r0 = await _aseoResumenHoy(), l1 = await _aseoListaEmpleado(como, { resumen: r0 }).catch(() => null), l2 = await _tarListaEmpleado(como).catch(() => null);
           msgs.push([l1, l2].filter(Boolean).join("\n\n") || "(no tiene limpiezas ni tareas asignadas hoy: no recibe lista)");
         }
-        msgs = msgs.map(m => `🧪 _Prueba como ${como}_\n${m}`);
-        const body = `🧪 *Evento del sistema* · ${E.t} · ${_aseoCorto(como)}\n_(Simulación: no se registró nada)_${notas.length ? "\n" + notas.join("\n") : ""}\n\n${msgs.join("\n\n— — —\n\n")}`;
+        const body = `🧪 *Evento del sistema* · ${E.t} · ${_aseoCorto(como)}\n_(Simulación: no se registró nada)_${notas.length ? "\n" + notas.join("\n") : ""}\n💬 ${_aseoCorto(como)} escribe: «entrada»\n\n${_simMsgs(msgs, _aseoCorto(como))}`;
         if (b.enviar !== false) await _aseoEnviarPersona(perfil, yo.tel, body, "prueba").catch(e => { throw new Error("No se pudo enviar: " + e.message); });
         return res.json({ ok: true, texto: body, enviado: b.enviar !== false });
       }
       const sink = []; _cierreSink.set(yo.tel, sink);
       try { await _cierreIniciar({ nombre: como, hora, fromRaw: _waFormatTo(yo.tel), phone10: yo.tel, dry: true, ubic: false }); } finally { _cierreSink.delete(yo.tel); }
-      return res.json({ ok: true, texto: `🧪 *Evento del sistema* · ${E.t} · ${_aseoCorto(como)}\n_(Simulación: no se registra la salida ni se guardan estados)_${notas.length ? "\n" + notas.join("\n") : ""}\n\n${sink.join("\n\n— — —\n\n")}${_asistCierre.get(yo.tel) ? `\n\n💡 Contesta como lo haría ${pila} en tu WhatsApp o en «O escribe un mensaje».` : ""}`, enviado: true });
+      return res.json({ ok: true, texto: `🧪 *Evento del sistema* · ${E.t} · ${_aseoCorto(como)}\n_(Simulación: no se registra la salida ni se guardan estados)_${notas.length ? "\n" + notas.join("\n") : ""}\n💬 ${_aseoCorto(como)} escribe: «ya me voy»\n\n${_simMsgs(sink, _aseoCorto(como))}${_asistCierre.get(yo.tel) ? `\n\n💡 Contesta como lo haría ${pila} en tu WhatsApp o en «O escribe un mensaje».` : ""}`, enviado: true });
     }
     if (ev === "pend3") { // conversación de prueba en tu WhatsApp (en seco): contesta ahí o con «O escribe un mensaje»
       const L = await _aseoPend3Lista();
