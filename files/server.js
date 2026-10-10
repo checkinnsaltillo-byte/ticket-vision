@@ -11329,9 +11329,9 @@ function _aseoGuiaCalc(hid, m, hoy, horaMx) {
   if (salHoy) modo = est !== "pendiente" ? "aseo" : (entHoy && horaMx >= 14 ? "" : "desocupa");
   else if (entHoy) modo = (est === "terminado" || est === "inspeccionado") ? "aseo" : "";
   else if (ocupado) modo = "ocupado";
-  // "No publicado" (casilla de la card): la guía de ese alojamiento no muestra nada.
+  // Publicar en la guía es OPT-IN (pedido del usuario 2026-10-10): sin marca {on:true} la guía no muestra nada.
   const keyPub = ult ? String(ult.id) : "H" + hid;
-  const noPub = !!((_aseo.guiaoff || {})[keyPub] || {}).off;
+  const noPub = !((_aseo.guiaoff || {})[keyPub] || {}).on;
   const textoPrev = modo === "aseo" ? (_ASEO_GUIA_TXT[est] || "") : (_ASEO_GUIA_TXT[modo] || ""); // lo que diría si se publica
   if (noPub) modo = "";
   const estado = modo === "aseo" ? est : "";
@@ -11355,7 +11355,7 @@ app.post("/aseo/guia", async (req, res) => {
     if (!ids.length) return res.status(400).json({ ok: false, error: "Falta id" });
     const publicar = (req.body || {}).publicar !== false, user = String((req.body || {}).user || "").slice(0, 80);
     const gAntes = {};
-    await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { ids.forEach(id => { gAntes[id] = !(d[id] && d[id].off); if (publicar) delete d[id]; else d[id] = { off: true, by: user, at: new Date().toISOString() }; }); });
+    await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { ids.forEach(id => { gAntes[id] = !!(d[id] && d[id].on); if (publicar) d[id] = { on: true, by: user, at: new Date().toISOString() }; else delete d[id]; }); });
     ids.forEach(id => _histAdd("A:" + id, [["Publicado en la guía", gAntes[id], publicar]], user));
     _aseo.guiaoffTs = Date.now();
     res.json({ ok: true, publicar });
