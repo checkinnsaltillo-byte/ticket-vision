@@ -9949,7 +9949,7 @@ app.post("/bot/simular-evento", async (req, res) => {
     const mh = hora.match(/^(\d{1,2})(?::(\d{2}))?/), h24 = mh ? `${mh[1].padStart(2, "0")}:${mh[2] || "00"}` : "13:00";
     const ahora = new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" });
     const quien = persona ? ((_botResolverPersonal([persona], await _botPersonalActivo().catch(() => [])).ok || [])[0] || persona) : como;
-    const col = new Map(); let nota = "";
+    const col = new Map(); let nota = "", mk = null;
     if (ev === "resumen") {
       const msgs = await _aseoActividadDiaTxt(_mxHoy());
       _aseoDestinatarios("resumen", true).forEach(n => col.set(n, { L: msgs }));
@@ -9961,18 +9961,28 @@ app.post("/bot/simular-evento", async (req, res) => {
         reserva: `Reserva nueva hecha hoy a las ${ahora} por Airbnb: Huésped de prueba (entra hoy)` }[ev];
       const r0 = await _aseoResumenHoy();
       if (!r0.items.some(i => String(i.hid) === hid)) nota = `${code} no tiene card hoy: los avisos automáticos de cambios solo cubren las cards del día.`;
-      await _aseoAutoEnviar(new Map([[hid, { tipos: new Set([ev === "reserva" ? "agregada" : "modificado"]), det: [det] }]]), new Map(), col, true);
+      mk = new Map([[hid, { tipos: new Set([ev === "reserva" ? "agregada" : "modificado"]), det: [det] }]]);
+      await _aseoAutoEnviar(mk, new Map(), col, true);
+      await _aseoAvisarEmpleados(mk, col, true);
+    }
+    const pf = _aseoPerfil(como) || {}, L = [];
+    // Si la persona está Desactivada: qué le llegaría si fuera Empleado.
+    let supuesto = "";
+    if (!pf.rol && mk && !_aseoMismaPersona(como, perfil)) {
+      const c2 = new Map(); await _aseoAvisarEmpleados(mk, c2, true, como).catch(() => {});
+      const v = [...c2.entries()].find(([n]) => _aseoMismaPersona(n, como));
+      supuesto = v ? `💡 Si ${_aseoCorto(como)} estuviera como *Empleado*, le llegaría:\n\n${v[1].L.join("\n\n")}` : `💡 Aunque ${_aseoCorto(como)} estuviera como Empleado no le llegaría: ${code} no es una de sus tareas de hoy.`;
     }
     const recib = [...col.keys()], mio = [...col.entries()].find(([n]) => _aseoMismaPersona(n, como));
-    const pf = _aseoPerfil(como) || {}, L = [];
     if (!cfg.on) L.push("⚠️ Los «Mensajes automáticos» están APAGADOS: hoy en realidad nadie lo recibiría. Así llegaría si estuvieran encendidos:");
     if (!recib.length) L.push(nota || (ev === "incidencia" ? "Nadie lo recibiría: ningún administrador tiene activadas las «🚨 Alertas»." : ev === "resumen" ? "Nadie lo recibiría: ningún administrador tiene activado el «📋 Resumen del día»." :
       /^ns/.test(ev) ? "Nadie lo recibiría: ningún administrador tiene activadas las «🚨 Alertas» ni «🔄 Cada cambio»." : "Nadie lo recibiría: ningún administrador tiene activado «🔄 Cada cambio en las tareas»."));
     else {
       L.push(`📬 Lo recibirían: ${recib.map(_aseoCorto).join(", ")}`, "");
       if (mio) L.push(`Así le llega a ${_aseoCorto(como)}:`, "", mio[1].L.join("\n\n"));
-      else L.push(`${_aseoCorto(como)} NO lo recibe (${pf.rol === "admin" ? "no tiene activada esa opción" : "los avisos automáticos solo les llegan a los administradores"}). Así les llega a ellos:`, "", col.values().next().value.L.join("\n\n"));
+      else L.push(`${_aseoCorto(como)} NO lo recibe (${pf.rol === "admin" ? "no tiene activada esa opción" : !pf.rol ? "está Desactivado" : pf.recordatorio === false ? "tiene apagado «🔔 Sus tareas del día»" : `a un empleado solo le llega su lista actualizada cuando el cambio toca una de SUS tareas, y ${code || "ese alojamiento"} no la tiene asignada hoy`}). Así les llega a ${recib.length === 1 ? _aseoCorto(recib[0]) : "ellos"}:`, "", col.values().next().value.L.join("\n\n"));
     }
+    if (supuesto) L.push("", "— — —", "", supuesto);
     const body = `🧪 *Evento del sistema* · ${E.t}${code ? " · " + code : ""}\n_(Simulación: no se guardó ni se avisó a nadie más)_\n\n${L.join("\n")}`;
     if (b.enviar !== false) await _aseoEnviarPersona(perfil, yo.tel, body, "prueba").catch(e => { throw new Error("No se pudo enviar: " + e.message); });
     res.json({ ok: true, texto: body, enviado: b.enviar !== false });
@@ -10780,6 +10790,7 @@ async function _aseoAutoTick() {
   const col = new Map();
   if (inc.size) await _incAutoEnviar(inc, col).catch(e => console.warn("[inc-auto]", e.message));
   if (marcas.size || fueraM.size) await _aseoAutoEnviar(marcas, fueraM, col);
+  if (marcas.size) await _aseoAvisarEmpleados(marcas, col).catch(e => console.warn("[aseo-emp]", e.message));
   if (tar.size) await _tarAutoEnviar(tar, col).catch(e => console.warn("[tar-auto]", e.message));
   for (const [n, v] of col) { try { await _aseoEnviarPersona(n, v.tel, v.L.join("\n\n"), v.tag); } catch (e) { console.warn(`[aseo-auto] ${n}:`, e.message); } }
   return { ok: true, enviados: regs.length };
@@ -10790,6 +10801,34 @@ function _incInfo(o) {
   o = o || {}; const g = (...k) => { for (const x of k) if (o[x] != null && String(o[x]).trim()) return String(o[x]).trim(); return ""; };
   const tit = [g("motivos", "Motivos"), g("clasificaciones", "Clasificacion")].map(v => Array.isArray(v) ? v.join(", ") : v).filter(Boolean).join(" — ");
   return { titulo: tit, aloj: g("alojamiento", "Alojamiento"), estatus: g("estatus", "Estatus"), nivel: g("nivel", "Nivel") };
+}
+// Empleados: cuando un cambio toca una de SUS tareas de hoy (asignación, solicitud aceptada, no ha desalojado,
+// reserva nueva, reprogramación…) recibe su lista actualizada con el motivo. Los cambios de estado no la disparan.
+// Requiere perfil con rol y «🔔 Sus tareas del día» activo. Quien ya recibe el aviso completo (admin) no la recibe doble.
+const _aseoDetEmp = d => !/^(Estado|Incidencia):/.test(String(d || ""));
+async function _aseoAvisarEmpleados(marcas, col, forzar, supon) { // supon: (simulación) nombre a tratar como Empleado
+  const cfg = _aseo.autoCfg || {}; if (!cfg.on && !forzar) return;
+  const P = cfg.perfiles || {}, r = await _aseoResumenHoy(), tels = await _aseoTelPersonal().catch(() => []);
+  const por = new Map();
+  const add = (n, l) => { const k = [...por.keys()].find(x => _aseoMismaPersona(x, n)) || n; if (!por.has(k)) por.set(k, []); por.get(k).push(l); };
+  marcas.forEach((m, hid) => {
+    const dets = (m.det || []).filter(_aseoDetEmp); if (!dets.length) return;
+    const i = r.items.find(x => String(x.hid) === String(hid)); if (!i) return;
+    const linea = `• *${i.code || i.nombre}*: ${dets.map(_aseoDetHumano).filter(Boolean).join(" · ")}`;
+    const gente = [...i.aseoArr, ...i.inspArr];
+    dets.forEach(d => { const k = String(d).match(/^(?:🧹 Aseo|🔍 Inspección):\s*(.+)$/); if (k) k[1].split(/,\s*/).forEach(x => { const e = x.match(/^(.*?)\s*\(eliminado\)$/); if (e) { const t = tels.find(t => _aseoMismaPersona(t.nombre, e[1])); gente.push(t ? t.nombre : e[1]); } }); });
+    gente.forEach(n => add(n, linea));
+  });
+  for (const [nombre, lineas] of por) {
+    const pk0 = Object.keys(P).find(x => _aseoMismaPersona(x, nombre)), sup = supon && _aseoMismaPersona(supon, nombre);
+    const pk = pk0 || nombre, pf = sup ? { rol: "empleado", recordatorio: true } : pk0 ? P[pk0] : null;
+    if (!pf || !pf.rol || pf.recordatorio === false) continue;
+    if ([...col.keys()].some(n => _aseoMismaPersona(n, nombre))) continue;
+    const t = tels.find(x => _aseoMismaPersona(x.nombre, nombre)); if (!t || !t.tel) continue;
+    const lista = await _aseoListaEmpleado(nombre, { resumen: r });
+    _aseoCol(col, pk, t.tel, [`🔄 *${String(nombre).split(" ")[0]}, cambió tu lista de hoy*`, ...new Set(lineas), "", lista || "Ya no tienes limpiezas ni inspecciones asignadas hoy."].join("\n"), "lista_auto");
+    if (!forzar) _aseoNotifGuardar(nombre, _aseoMiasDe(r, nombre)).catch(() => {});
+  }
 }
 function _aseoCol(col, n, tel, txt, tag) { const v = col.get(n) || { tel, L: [], tag }; v.L.push(txt); col.set(n, v); }
 async function _incAutoEnviar(inc, col, forzar) {
