@@ -10197,6 +10197,7 @@ app.post("/aseo/tarea", async (req, res) => {
         etiquetas: (Array.isArray(b.etiquetas) ? b.etiquetas : []).map(n => txt(n, 40)).filter(Boolean).slice(0, 20),
         adjuntos: (Array.isArray(b.adjuntos) ? b.adjuntos : []).filter(a => a && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.k)).slice(0, 20).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80), tam: Number(a.tam) || 0 })),
         reserva: String(b.reserva || "").replace(/\D/g, "").slice(0, 20),
+        plantilla: String(b.plantilla || "").replace(/[^\w-]/g, "").slice(0, 40), // Plantilla (formulario) asignada a la tarea
         by: prev ? prev.by : user, at: prev ? prev.at : new Date().toISOString(), editBy: prev ? user : "", editAt: prev ? new Date().toISOString() : "" };
       return d[id];
     });
@@ -10205,7 +10206,7 @@ app.post("/aseo/tarea", async (req, res) => {
       if (nueva) _histAdd("T:" + id, [["Creada", "", titulo]], user);
       else _histAdd("T:" + id, [["Título", tPrev.titulo, out.titulo], ["Descripción", tPrev.desc, out.desc], ["Tipo de tarea", TIPO[tPrev.depto] || tPrev.depto, TIPO[out.depto] || out.depto],
         ["Fecha", tPrev.fecha, out.fecha], ["Hora", tPrev.hora || "Sin hora", out.hora || "Sin hora"], ["Prioridad", tPrev.prioridad, out.prioridad], ["Asignados", (tPrev.asignados || []).join(", ") || "Sin asignar", (out.asignados || []).join(", ") || "Sin asignar"],
-        ["Repetición", rep(tPrev.repite), rep(out.repite)], ["Alojamiento", tPrev.hid, out.hid], ["Reserva", tPrev.reserva || "Sin reserva", out.reserva || "Sin reserva"], ["Etiquetas", (tPrev.etiquetas || []).join(", "), (out.etiquetas || []).join(", ")]], user); }
+        ["Repetición", rep(tPrev.repite), rep(out.repite)], ["Alojamiento", tPrev.hid, out.hid], ["Reserva", tPrev.reserva || "Sin reserva", out.reserva || "Sin reserva"], ["Plantilla", _plNombre(tPrev.plantilla), _plNombre(out.plantilla)], ["Etiquetas", (tPrev.etiquetas || []).join(", "), (out.etiquetas || []).join(", ")]], user); }
     if (out.fecha === _mxHoy()) _aseoAutoMarca(hid, nueva ? "agregada" : "modificado", `${nueva ? "Nueva tarea" : "Tarea editada"}: ${titulo}`);
     res.json({ ok: true, tarea: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -10217,6 +10218,88 @@ app.post("/aseo/tarea/borrar", async (req, res) => {
     await _aseoMutate(_ASEO_TAREAS_OBJ, "tareas", d => { delete d[id]; });
     _aseo.tareasTs = Date.now();
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ═══ Check-list › 📋 Plantillas (formularios tipo Breezeway) ═══
+// aseo/plantillas.json → { <id>: { id, titulo, depto, prioridad, descripcion, secciones:[{ id, titulo, items:[{ id, tipo, texto, foto, ref:[], min, max, escala, sub:[] }] }] } }
+// Respuestas por tarea (llave = día de la tarea: "T<id>-<fecha>"): aseo/plresp/<llave>.json; avance en aseo/plresp-idx.json → { <llave>: { p, h, t, at } }.
+const _ASEO_PLANT_OBJ = "aseo/plantillas.json", _ASEO_PLIDX_OBJ = "aseo/plresp-idx.json";
+const _PL_TIPOS = ["condicion", "lista", "foto", "contar", "texto", "sino", "calif"];
+async function _plLoad() {
+  if (!_aseo.plantillas || Date.now() - (_aseo.plantTs || 0) > 15_000) {
+    let d = await _rhdGetJson(_ASEO_PLANT_OBJ).catch(() => null);
+    if (!d || !Object.keys(d).length && !d._sembrada) { // primera vez: las 4 plantillas de Breezeway
+      const seed = JSON.parse(fs.readFileSync(path.join(__dirname, "plantillas-seed.json"), "utf8"));
+      await _aseoMutate(_ASEO_PLANT_OBJ, "plantillas", x => { if (!Object.keys(x).filter(k => k !== "_sembrada").length) Object.assign(x, seed, { _sembrada: true }); });
+      d = _aseo.plantillas;
+    }
+    _aseo.plantillas = d; _aseo.plantTs = Date.now();
+  }
+  return _aseo.plantillas || {};
+}
+function _plNombre(id) { const p = id && (_aseo.plantillas || {})[id]; return id ? (p ? p.titulo : id) : "Sin plantilla"; }
+function _plLimpia(b, user, prev) {
+  const txt = (v, n) => String(v == null ? "" : v).trim().slice(0, n), sid = v => String(v || "").replace(/[^\w-]/g, "").slice(0, 24) || crypto.randomBytes(4).toString("hex");
+  const num = v => v === "" || v == null || isNaN(Number(v)) ? undefined : Number(v);
+  const refs = L => (Array.isArray(L) ? L : []).filter(a => a && /^aseo\/adjuntos\//.test(a.k)).slice(0, 6).map(a => ({ k: a.k, url: txt(a.url, 400), nombre: txt(a.nombre, 120) }));
+  return { id: prev ? prev.id : sid(b.id), titulo: txt(b.titulo, 140) || "Sin título",
+    depto: ["limpieza", "inspeccion", "insumos", "mantenimiento"].includes(b.depto) ? b.depto : "inspeccion",
+    prioridad: ["baja", "media", "alta", "critica"].includes(b.prioridad) ? b.prioridad : "media", descripcion: txt(b.descripcion, 2000),
+    secciones: (Array.isArray(b.secciones) ? b.secciones : []).slice(0, 120).map(sx => ({ id: sid(sx.id), titulo: txt(sx.titulo, 160) || "Sección",
+      items: (Array.isArray(sx.items) ? sx.items : []).slice(0, 150).filter(it => _PL_TIPOS.includes(it && it.tipo)).map(it => {
+        const o = { id: sid(it.id), tipo: it.tipo, texto: txt(it.texto, 400), foto: !!it.foto, ref: refs(it.ref) };
+        if (it.tipo === "contar") { const mi = num(it.min), ma = num(it.max); if (mi !== undefined) o.min = mi; if (ma !== undefined) o.max = ma; }
+        if (it.tipo === "calif") o.escala = [3, 5, 10].includes(Number(it.escala)) ? Number(it.escala) : 5;
+        if (it.tipo === "lista") o.sub = (Array.isArray(it.sub) ? it.sub : []).map(x => txt(x, 200)).filter(Boolean).slice(0, 60);
+        return o;
+      }) })),
+    by: prev ? prev.by : user, at: prev ? prev.at : new Date().toISOString(), editBy: prev ? user : "", editAt: prev ? new Date().toISOString() : "" };
+}
+app.get("/aseo/plantillas", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { const d = await _plLoad(); const out = {}; Object.entries(d).forEach(([k, v]) => { if (k !== "_sembrada" && v && v.id) out[k] = v; }); res.json({ ok: true, plantillas: out }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/aseo/plantilla", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    await _plLoad();
+    const b = (req.body || {}).plantilla || {}, user = String((req.body || {}).user || "").slice(0, 80);
+    const out = await _aseoMutate(_ASEO_PLANT_OBJ, "plantillas", d => { const prev = b.id && d[b.id] ? d[b.id] : null; const p = _plLimpia(b, user, prev); d[p.id] = p; return p; });
+    _aseo.plantTs = Date.now();
+    res.json({ ok: true, plantilla: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/aseo/plantilla/borrar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const id = String((req.body || {}).id || "").replace(/[^\w-]/g, "").slice(0, 40);
+    await _aseoMutate(_ASEO_PLANT_OBJ, "plantillas", d => { delete d[id]; });
+    _aseo.plantTs = Date.now();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+const _plKey = v => String(v || "").replace(/[^\w-]/g, "").slice(0, 60);
+app.get("/aseo/plantilla-resp", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    if (req.query.idx) return res.json({ ok: true, idx: await _rhdGetJson(_ASEO_PLIDX_OBJ).catch(() => ({})) });
+    const k = _plKey(req.query.k); if (!k) return res.status(400).json({ ok: false, error: "Falta k" });
+    res.json({ ok: true, resp: await _rhdGetJson(`aseo/plresp/${k}.json`).catch(() => ({})) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/aseo/plantilla-resp", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, k = _plKey(b.k), user = String(b.user || "").slice(0, 80);
+    if (!k) return res.status(400).json({ ok: false, error: "Falta k" });
+    const resp = b.resp && typeof b.resp === "object" ? b.resp : {};
+    const s = JSON.stringify(resp); if (s.length > 400_000) return res.status(400).json({ ok: false, error: "Respuesta demasiado grande" });
+    const av = b.avance || {}, p = Math.max(0, Math.min(100, Math.round(Number(av.p) || 0)));
+    const doc = { plantilla: String(b.plantilla || "").replace(/[^\w-]/g, "").slice(0, 40), resp, avance: { p, h: Number(av.h) || 0, t: Number(av.t) || 0 }, by: user, at: new Date().toISOString() };
+    await _rhdPut(`aseo/plresp/${k}.json`, JSON.stringify(doc), "application/json");
+    await _aseoMutate(_ASEO_PLIDX_OBJ, "plidx", d => { d[k] = { p, h: doc.avance.h, t: doc.avance.t, pl: doc.plantilla, at: doc.at, by: user }; });
+    res.json({ ok: true, at: doc.at });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // Adjuntos privados: se suben en base64 y se ven con un enlace firmado (HMAC).
