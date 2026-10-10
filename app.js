@@ -212,8 +212,23 @@ function isPdf(file) {
   return !!(file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")));
 }
 
+// Librerías pesadas (PDF.js ~300 KB, SheetJS ~860 KB) se descargan solo cuando se usan, no al abrir la página
+// (en datos móviles retrasaban la carga inicial).
+const _LIBS = { pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', xlsx: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js' };
+const _libP = {};
+function cargarLib_(k) {
+  if (k === 'pdf' && typeof pdfjsLib !== 'undefined') return Promise.resolve();
+  if (k === 'xlsx' && typeof XLSX !== 'undefined') return Promise.resolve();
+  return _libP[k] = _libP[k] || new Promise((ok, ko) => {
+    const sc = document.createElement('script'); sc.src = _LIBS[k]; sc.async = true;
+    sc.onload = () => { if (k === 'pdf' && typeof pdfjsLib !== 'undefined') pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; ok(); };
+    sc.onerror = () => { delete _libP[k]; ko(new Error('No se pudo descargar la librería ' + k)); };
+    document.head.appendChild(sc);
+  });
+}
 /** Renderiza una sola página de un PDF a Blob JPEG */
 async function renderPdfPageToBlob(file, pageNum = 1, scale = 1.5) {
+  await cargarLib_('pdf');
   const data  = await file.arrayBuffer();
   const pdf   = await pdfjsLib.getDocument({ data }).promise;
   const page  = await pdf.getPage(Math.min(pageNum, pdf.numPages));
@@ -227,6 +242,7 @@ async function renderPdfPageToBlob(file, pageNum = 1, scale = 1.5) {
 
 /** Renderiza todas las páginas de un PDF en un único canvas vertical → Blob JPEG */
 async function renderPdfAllPagesToBlob(file, scale = 2.0) {
+  await cargarLib_('pdf');
   const data  = await file.arrayBuffer();
   const pdf   = await pdfjsLib.getDocument({ data }).promise;
   const pages = [];
@@ -22519,6 +22535,7 @@ async function bnUploadHandleFiles(files) {
   if (!BN_UPLOAD_STATE.cuentasMap || !BN_UPLOAD_STATE.dedupeKeys || !BN_UPLOAD_STATE.classifiedHistory) {
     await bnUploadInit();
   }
+  try { await cargarLib_('xlsx'); } catch (_) {}
   if (typeof XLSX === 'undefined') {
     if (status) status.textContent = '⚠ La librería SheetJS no se cargó. Recarga la página.';
     return;
@@ -23357,6 +23374,7 @@ window.bnDriveProcessSelected = async function() {
     if (status) status.textContent = `⚠ No se pudo cargar ${falta} desde Apps Script. Reintenta o recarga la página.`;
     return;
   }
+  try { await cargarLib_('xlsx'); } catch (_) {}
   if (typeof XLSX === 'undefined') {
     if (status) status.textContent = '⚠ SheetJS no se cargó. Recarga la página.';
     return;
