@@ -10685,6 +10685,9 @@ async function _aseoAutoEnviar(marcas, fueraM, col) {
   }
   console.log(`[aseo-auto] lista enviada a ${cfg.personas.length} persona(s); ${marcas.size} con cambios`);
 }
+app.get("/aseo/autonotif", async (req, res) => {
+  try { _aseo.autoCfgTs = 0; await _aseoAutoCfgLoad(); res.json({ ok: true, autonotif: _aseo.autoCfg || {} }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/aseo/autonotif", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
@@ -10697,6 +10700,12 @@ app.post("/aseo/autonotif", async (req, res) => {
         recordatorio: v.recordatorio !== false, canal: v.canal === "sms" || v.canal === "ambos" ? v.canal : "whatsapp",
         pruebaComo: String(v.pruebaComo || "").trim().slice(0, 80) };
     });
+    // Protección: los perfiles que NO vienen en la petición se conservan (una ventana que abrió
+    // antes de cargar los datos no puede borrar a los demás). Para quitar a alguien se manda con rol "".
+    await _aseoAutoCfgLoad();
+    const prevP = ((_aseo.autoCfg || {}).perfiles) || {};
+    Object.keys(prevP).forEach(n => { if (!Object.keys(perfiles).some(k => _aseoMismaPersona(k, n))) perfiles[n] = prevP[n]; });
+    Object.keys(perfiles).forEach(n => { const p = perfiles[n]; if (!p.rol && p.recordatorio !== false && !p.pruebaComo && (!p.canal || p.canal === "whatsapp")) delete perfiles[n]; });
     // Compatibilidad: «personas» = quienes reciben automáticamente Check-inn.
     const personas = Object.keys(perfiles).length ? Object.keys(perfiles).filter(n => perfiles[n].rol === "admin" && (perfiles[n].auto.cambios || perfiles[n].auto.alertas))
       : (Array.isArray(b.personas) ? b.personas : []).map(n => String(n || "").trim().slice(0, 80)).filter(Boolean).slice(0, 30);
