@@ -9659,10 +9659,10 @@ async function _aseoResumenHoy(opts) {
   items.splice(0, items.length, ...ordenado);
   const fecha = new Date(hoy + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
   // Marca de prioridad "✱" (un "* " al inicio de renglón WhatsApp lo convierte en viñeta).
-  const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (✱)`, ""];
+  const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (✱)${items.some(i => i.entra && i.temprana) ? " · ✱✱ = pide entrada temprana" : ""}`, ""];
   items.forEach((i, n) => {
     const mk = marcas && marcas.get(String(i.hid)); // { tipos, det }
-    lineas.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}${i.tempAceptada ? " · *PRIORITARIA*" : ""}${mk ? " " + _aseoMarcaTxt(mk) : ""}`);
+    lineas.push(`${_aseoMk(i)}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}${i.tempAceptada ? " · *PRIORITARIA*" : ""}${mk ? " " + _aseoMarcaTxt(mk) : ""}`);
     if (i.reprog && !i.fantasma) { const nd = Math.round((Date.parse(hoy) - Date.parse(i.reprog)) / 864e5); lineas.push(`   📅 Reprogramado para hoy · salida hace ${nd} día${nd === 1 ? "" : "s"}`); }
     _aseoLineasSol(i).forEach(x => lineas.push(x));
     lineas.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
@@ -9688,6 +9688,8 @@ function _aseoMismaPersona(a, b) {
   return cortos.every(t => largos.includes(t));
 }
 // Lista de limpiezas/inspecciones de HOY asignadas a un empleado (null si no tiene).
+// Marca al inicio del renglón: ✱ entra huésped hoy · ✱✱ además pide entrada temprana.
+const _aseoMk = i => !i.entra ? "" : i.temprana ? "✱✱ " : "✱ ";
 function _aseoMiasDe(r, nombre) {
   return r.items.map(i => ({ ...i, roles: [i.aseoArr.some(n => _aseoMismaPersona(n, nombre)) ? "Aseo" : "", i.inspArr.some(n => _aseoMismaPersona(n, nombre)) ? "Inspección" : ""].filter(Boolean) }))
     .filter(i => i.roles.length);
@@ -9697,9 +9699,9 @@ async function _aseoListaEmpleado(nombre, opts) {
   const mias = _aseoMiasDe(r, nombre);
   if (!mias.length) return null;
   const pila = String(nombre || "").split(" ")[0];
-  const l = [`🧽 *${pila}, tus limpiezas de hoy* (${mias.length})`, mias.some(i => i.entra) ? "✱ = entra huésped hoy (prioridad)" : "", ""];
+  const l = [`🧽 *${pila}, tus limpiezas de hoy* (${mias.length})`, mias.some(i => i.entra) ? `✱ = entra huésped hoy (prioridad)${mias.some(i => i.entra && i.temprana) ? " · ✱✱ = pide entrada temprana" : ""}` : "", ""];
   mias.forEach((i, n) => {
-    l.push(`${i.entra ? "✱ " : ""}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}${i.tempAceptada ? " · *PRIORITARIA*" : ""}`);
+    l.push(`${_aseoMk(i)}${n + 1}. ${i.code ? i.code + " · " : ""}${i.nombre}${i.entra ? " — 🔑 Entran hoy" : ""}${i.tempAceptada ? " · *PRIORITARIA*" : ""}`);
     _aseoLineasSol(i).forEach(x => l.push(x));
     l.push(`   ${i.estado}${i.aviso ? " · " + i.aviso : ""}`);
     l.push(`   Tipo de tarea: ${i.roles.join(" e ")}`);
@@ -9953,6 +9955,7 @@ const _BOT_EVT = {
   terminado: { t: "🧹 Limpieza terminada" }, inspeccionado: { t: "✅ Limpieza inspeccionada" },
   asignado: { t: "👤 Aseo asignado" }, reserva: { t: "🆕 Reserva nueva de hoy" },
   incidencia: { t: "🚨 Incidencia nueva" }, resumen: { t: "📋 Resumen de las 2 pm" }, pend3: { t: "⏳ Limpiezas pendientes 3 pm" },
+  entrada: { t: "🕘 Registro de entrada del personal" }, salida: { t: "🕕 Registro de salida del personal" },
 };
 app.get("/bot/simular/eventos", (req, res) => res.json({ ok: true, eventos: Object.entries(_BOT_EVT).map(([k, v]) => ({ k, t: v.t })) }));
 app.post("/bot/simular-evento", async (req, res) => {
@@ -9972,6 +9975,27 @@ app.post("/bot/simular-evento", async (req, res) => {
     const cfg = _aseo.autoCfg || {}, tels = await _aseoTelPersonal().catch(() => []), yo = tels.find(t => _aseoMismaPersona(t.nombre, perfil));
     if (!yo || !yo.tel) return res.status(400).json({ ok: false, error: `${perfil} no tiene celular en Personal` });
     let hid = "", code = "", nombreA = "";
+    if (ev === "entrada" || ev === "salida") { // lo que recibe la persona de «Prueba como» al registrar (en seco)
+      const hora = new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" }), pila = como.split(" ")[0];
+      const pfC = _aseoPerfil(como) || {}, tC = tels.find(t => _aseoMismaPersona(t.nombre, como));
+      const notas = [!tC || !tC.tel ? `⚠️ ${_aseoCorto(como)} no tiene celular en Personal: en la vida real el bot no lo reconocería.` : ""].filter(Boolean);
+      let msgs = [];
+      if (ev === "entrada") {
+        msgs.push(`🕘 Entrada registrada · ${hora}\n\n📍 Ahora comparte tu ubicación (obligatoria) — sin ella el registro queda incompleto.\n\nGracias, ${pila}!`);
+        msgs.push(`(cuando comparte su ubicación)\n🕘 Entrada registrada · ${hora}\n📍 Ubicación guardada\nGracias, ${pila}!`);
+        if (pfC.recordatorio !== false) { // igual que el registro real: solo «🔔 Sus tareas del día» apagado lo evita
+          const r0 = await _aseoResumenHoy(), l1 = await _aseoListaEmpleado(como, { resumen: r0 }).catch(() => null), l2 = await _tarListaEmpleado(como).catch(() => null);
+          msgs.push([l1, l2].filter(Boolean).join("\n\n") || "(no tiene limpiezas ni tareas asignadas hoy: no recibe lista)");
+        }
+        msgs = msgs.map(m => `🧪 _Prueba como ${como}_\n${m}`);
+        const body = `🧪 *Evento del sistema* · ${E.t} · ${_aseoCorto(como)}\n_(Simulación: no se registró nada)_${notas.length ? "\n" + notas.join("\n") : ""}\n\n${msgs.join("\n\n— — —\n\n")}`;
+        if (b.enviar !== false) await _aseoEnviarPersona(perfil, yo.tel, body, "prueba").catch(e => { throw new Error("No se pudo enviar: " + e.message); });
+        return res.json({ ok: true, texto: body, enviado: b.enviar !== false });
+      }
+      const sink = []; _cierreSink.set(yo.tel, sink);
+      try { await _cierreIniciar({ nombre: como, hora, fromRaw: _waFormatTo(yo.tel), phone10: yo.tel, dry: true, ubic: false }); } finally { _cierreSink.delete(yo.tel); }
+      return res.json({ ok: true, texto: `🧪 *Evento del sistema* · ${E.t} · ${_aseoCorto(como)}\n_(Simulación: no se registra la salida ni se guardan estados)_${notas.length ? "\n" + notas.join("\n") : ""}\n\n${sink.join("\n\n— — —\n\n")}${_asistCierre.get(yo.tel) ? `\n\n💡 Contesta como lo haría ${pila} en tu WhatsApp o en «O escribe un mensaje».` : ""}`, enviado: true });
+    }
     if (ev === "pend3") { // conversación de prueba en tu WhatsApp (en seco): contesta ahí o con «O escribe un mensaje»
       const L = await _aseoPend3Lista();
       if (!L.length) return res.json({ ok: true, texto: "⏳ Ahora mismo no hay limpiezas de salida pendientes (sin entrada ese día): a las 3 pm no se mandaría aviso.", enviado: false });
@@ -10465,7 +10489,7 @@ async function _aseoResumenDiaTxt() {
   const hoy = _mxHoy();
   const r = await _aseoResumenHoy();
   const it = r.items.filter(i => !i.fantasma);
-  const lst = f => it.filter(f).map(i => `${i.code || i.nombre}${i.entra ? "✱" : ""}`);
+  const lst = f => it.filter(f).map(i => `${i.code || i.nombre}${_aseoMk(i).trim()}`);
   const pend = lst(i => i.sel === "pendiente"), proc = lst(i => i.sel === "en_proceso");
   const sinV = lst(i => i.sel === "terminado" && /sin validar/.test(i.estado)), term = lst(i => i.sel === "terminado" && !/sin validar/.test(i.estado));
   const insp = lst(i => i.sel === "inspeccionado");
@@ -10473,15 +10497,15 @@ async function _aseoResumenDiaTxt() {
   const g = (ico, t, l) => l.length ? `${ico} *${t} (${l.length}):* ${l.join(", ")}` : "";
   const fecha = new Date(hoy + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
   const hora = new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" });
-  const noSalen = r.items.filter(i => /NO HA DESALOJADO/.test(i.aviso || "")).map(i => `${i.code || i.nombre}${i.entra ? "✱" : ""}`); // alerta «No ha desalojado»
-  const L = [`🕒 *Resumen del día · ${hora}* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${it.length} alojamiento${it.length === 1 ? "" : "s"} · ✱ = entra huésped hoy`, "",
+  const noSalen = r.items.filter(i => /NO HA DESALOJADO/.test(i.aviso || "")).map(i => `${i.code || i.nombre}${_aseoMk(i).trim()}`); // alerta «No ha desalojado»
+  const L = [`🕒 *Resumen del día · ${hora}* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${it.length} alojamiento${it.length === 1 ? "" : "s"} · ✱ = entra huésped hoy · ✱✱ = pide entrada temprana`, "",
     noSalen.length ? `🚨 *No han desalojado (${noSalen.length}):* ${noSalen.join(", ")}` : "",
     g("⏳", "Pendientes", pend), autoRp.length ? `   (sin entrada hoy: a las 3:00 p.m. se pasan solos a mañana: ${autoRp.join(", ")})` : "",
     g("🧽", "En proceso", proc), g("🧹", "Terminados sin validar", sinV), g("🧹", "Terminados validados", term), g("✅", "Inspeccionados", insp)].filter(Boolean);
   const op = [];
-  if (sinV.length) op.push(`✅ Validar faltantes: «validar todos» o «validar ${sinV[0].replace("✱", "")}»`);
-  if (sinV.length || term.length) op.push(`🔍 Marcar inspeccionados: «inspeccionar todos» o «${(sinV[0] || term[0]).replace("✱", "")} inspeccionado»`);
-  if (pend.length) op.push(`📅 Reprogramar pendientes: «reprogramar pendientes» o «reprogramar ${pend[0].replace("✱", "")} para mañana»`);
+  if (sinV.length) op.push(`✅ Validar faltantes: «validar todos» o «validar ${sinV[0].replace(/✱/g, "")}»`);
+  if (sinV.length || term.length) op.push(`🔍 Marcar inspeccionados: «inspeccionar todos» o «${(sinV[0] || term[0]).replace(/✱/g, "")} inspeccionado»`);
+  if (pend.length) op.push(`📅 Reprogramar pendientes: «reprogramar pendientes» o «reprogramar ${pend[0].replace(/✱/g, "")} para mañana»`);
   if (op.length) L.push("", "*¿Qué hacemos? Responde, por ejemplo:*", ...op);
   return L.join("\n");
 }
