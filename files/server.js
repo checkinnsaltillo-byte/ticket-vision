@@ -9912,6 +9912,72 @@ app.post("/bot/simular", async (req, res) => {
     res.json({ ok: true, texto: body, enviado: b.enviar !== false });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── «⚙️ Simular evento del sistema» (Prueba del bot): lo que el SISTEMA envía solo ante una acción
+//    (botón «No ha desalojado», solicitud aceptada, limpieza terminada…). Usa el mismo armado y los mismos
+//    destinatarios que el aviso real, sin guardar nada; el resultado se manda al WhatsApp de quien prueba.
+const _BOT_EVT = {
+  ns: { t: "🚨 No ha desalojado" }, ns_off: { t: "✅ Ya desalojó" },
+  tardia: { t: "🕚 Salida tardía aceptada" }, temprana: { t: "⏰ Entrada temprana aceptada" },
+  terminado: { t: "🧹 Limpieza terminada" }, inspeccionado: { t: "✅ Limpieza inspeccionada" },
+  asignado: { t: "👤 Aseo asignado" }, reserva: { t: "🆕 Reserva nueva de hoy" },
+  incidencia: { t: "🚨 Incidencia nueva" }, resumen: { t: "📋 Resumen de las 2 pm" },
+};
+app.get("/bot/simular/eventos", (req, res) => res.json({ ok: true, eventos: Object.entries(_BOT_EVT).map(([k, v]) => ({ k, t: v.t })) }));
+app.post("/bot/simular-evento", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, perfil = String(b.perfil || "").trim(), como = String(b.como || perfil).trim(), texto = String(b.texto || "").trim().slice(0, 600);
+    let ev = String(b.evento || ""), aloj = String(b.aloj || "").trim(), hora = String(b.hora || "").trim(), persona = String(b.persona || "").trim(), titulo = "";
+    if (texto) {
+      const sys = `Convierte la descripción de un evento del sistema de limpiezas en JSON. Eventos posibles: ${Object.entries(_BOT_EVT).map(([k, v]) => `${k} = ${v.t.replace(/^\S+\s/, "")}`).join(" · ")}. ` +
+        `Responde SOLO JSON: {"evento": clave, "aloj": "alojamiento tal cual (ej. JC3, cumbres 4a)", "hora": "HH:MM en 24 h o vacío", "persona": "nombre si asigna a alguien o vacío", "titulo": "motivo breve si es incidencia o vacío"}.`;
+      const r = await _llmChat({ system: sys, history: [], userMsg: texto });
+      const m = String(r.text || "").match(/\{[\s\S]*\}/); let j = {}; try { j = JSON.parse(m ? m[0] : "{}"); } catch (_) {}
+      if (_BOT_EVT[j.evento]) ev = j.evento; aloj = j.aloj || aloj; hora = j.hora || hora; persona = j.persona || persona; titulo = String(j.titulo || "");
+    }
+    const E = _BOT_EVT[ev]; if (!E) return res.status(400).json({ ok: false, error: "No identifiqué el evento. Elige uno de los botones o descríbelo de nuevo." });
+    await _aseoAutoCfgLoad();
+    const cfg = _aseo.autoCfg || {}, tels = await _aseoTelPersonal().catch(() => []), yo = tels.find(t => _aseoMismaPersona(t.nombre, perfil));
+    if (!yo || !yo.tel) return res.status(400).json({ ok: false, error: `${perfil} no tiene celular en Personal` });
+    let hid = "", code = "", nombreA = "";
+    if (ev !== "resumen") {
+      if (!aloj) return res.status(400).json({ ok: false, error: "Falta el alojamiento (ej. JC3)." });
+      const mm = _aseoMatchAloj(aloj, await _aseoCatalogo());
+      if (!mm.ok) return res.status(400).json({ ok: false, error: mm.error });
+      hid = String(mm.aloj.hid); code = mm.aloj.code.toUpperCase(); nombreA = mm.aloj.nombre;
+    }
+    const mh = hora.match(/^(\d{1,2})(?::(\d{2}))?/), h24 = mh ? `${mh[1].padStart(2, "0")}:${mh[2] || "00"}` : "13:00";
+    const ahora = new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" });
+    const quien = persona ? ((_botResolverPersonal([persona], await _botPersonalActivo().catch(() => [])).ok || [])[0] || persona) : como;
+    const col = new Map(); let nota = "";
+    if (ev === "resumen") {
+      const msgs = await _aseoActividadDiaTxt(_mxHoy());
+      _aseoDestinatarios("resumen", true).forEach(n => col.set(n, { L: msgs }));
+    } else if (ev === "incidencia") {
+      await _incAutoEnviar(new Map([["SIM", { info: { titulo: titulo || "Incidencia de prueba", aloj: nombreA, estatus: "Nuevo", nivel: "Medio" }, det: [`🆕 Nueva incidencia · reportó ${_aseoCorto(como)}`] }]]), col, true);
+    } else {
+      const det = { ns: "Desalojo: 🚨 *NO HA DESALOJADO*", ns_off: "Desalojo: ✅ ya desalojó", tardia: `Solicitud salida: ✅ aceptada · ${_aseoHora12(h24)}`, temprana: `Solicitud entrada: ✅ aceptada · ${_aseoHora12(h24)}`,
+        terminado: _aseoEstadoDet({ validado: false }, "terminado"), inspeccionado: _aseoEstadoDet(null, "inspeccionado"), asignado: `🧹 Aseo: ${_aseoCorto(quien)} (nuevo)`,
+        reserva: `Reserva nueva hecha hoy a las ${ahora} por Airbnb: Huésped de prueba (entra hoy)` }[ev];
+      const r0 = await _aseoResumenHoy();
+      if (!r0.items.some(i => String(i.hid) === hid)) nota = `${code} no tiene card hoy: los avisos automáticos de cambios solo cubren las cards del día.`;
+      await _aseoAutoEnviar(new Map([[hid, { tipos: new Set([ev === "reserva" ? "agregada" : "modificado"]), det: [det] }]]), new Map(), col, true);
+    }
+    const recib = [...col.keys()], mio = [...col.entries()].find(([n]) => _aseoMismaPersona(n, como));
+    const pf = _aseoPerfil(como) || {}, L = [];
+    if (!cfg.on) L.push("⚠️ Los «Mensajes automáticos» están APAGADOS: hoy en realidad nadie lo recibiría. Así llegaría si estuvieran encendidos:");
+    if (!recib.length) L.push(nota || (ev === "incidencia" ? "Nadie lo recibiría: ningún administrador tiene activadas las «🚨 Alertas»." : ev === "resumen" ? "Nadie lo recibiría: ningún administrador tiene activado el «📋 Resumen del día»." :
+      /^ns/.test(ev) ? "Nadie lo recibiría: ningún administrador tiene activadas las «🚨 Alertas» ni «🔄 Cada cambio»." : "Nadie lo recibiría: ningún administrador tiene activado «🔄 Cada cambio en las tareas»."));
+    else {
+      L.push(`📬 Lo recibirían: ${recib.map(_aseoCorto).join(", ")}`, "");
+      if (mio) L.push(`Así le llega a ${_aseoCorto(como)}:`, "", mio[1].L.join("\n\n"));
+      else L.push(`${_aseoCorto(como)} NO lo recibe (${pf.rol === "admin" ? "no tiene activada esa opción" : "los avisos automáticos solo les llegan a los administradores"}). Así les llega a ellos:`, "", col.values().next().value.L.join("\n\n"));
+    }
+    const body = `🧪 *Evento del sistema* · ${E.t}${code ? " · " + code : ""}\n_(Simulación: no se guardó ni se avisó a nadie más)_\n\n${L.join("\n")}`;
+    if (b.enviar !== false) await _aseoEnviarPersona(perfil, yo.tel, body, "prueba").catch(e => { throw new Error("No se pudo enviar: " + e.message); });
+    res.json({ ok: true, texto: body, enviado: b.enviar !== false });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 async function _aseoPruebaComo(phone10) {
   await _aseoAutoCfgLoad();
   const P = ((_aseo.autoCfg || {}).perfiles) || {};
@@ -9927,8 +9993,8 @@ function _aseoAutoDe(p) {
   const a = (p && p.auto) || {}, v = (k, d) => (typeof a[k] === "boolean" ? a[k] : !!d);
   return { resumen: v("resumen", a.checkinn || a.tareas), alertas: v("alertas", a.incidencias || a.checkinn), cambios: v("cambios", a.checkinn || a.tareas) };
 }
-function _aseoDestinatarios(sec) {
-  const cfg = _aseo.autoCfg || {}; if (!cfg.on) return [];
+function _aseoDestinatarios(sec, forzar) {
+  const cfg = _aseo.autoCfg || {}; if (!cfg.on && !forzar) return [];
   const P = cfg.perfiles || {};
   if (!Object.keys(P).length) return sec === "checkinn" || sec === "resumen" ? (cfg.personas || []) : [];
   const keys = { checkinn: ["cambios", "alertas"], tareas: ["cambios"], incidencias: ["alertas"], resumen: ["resumen"], cambios: ["cambios"], alertas: ["alertas"] }[sec] || [sec];
@@ -10726,8 +10792,8 @@ function _incInfo(o) {
   return { titulo: tit, aloj: g("alojamiento", "Alojamiento"), estatus: g("estatus", "Estatus"), nivel: g("nivel", "Nivel") };
 }
 function _aseoCol(col, n, tel, txt, tag) { const v = col.get(n) || { tel, L: [], tag }; v.L.push(txt); col.set(n, v); }
-async function _incAutoEnviar(inc, col) {
-  const dest = _aseoDestinatarios("incidencias"); if (!dest.length) return;
+async function _incAutoEnviar(inc, col, forzar) {
+  const dest = _aseoDestinatarios("incidencias", forzar); if (!dest.length) return;
   const L = ["🚨 *Cambios en Incidencias*", ""];
   inc.forEach((p, id) => {
     const I = p.info || {};
@@ -10780,10 +10846,10 @@ function _aseoDetHumano(d) {
   if ((m = d.match(/^Incidencia:\s*(.+)$/))) return /ya no/i.test(m[1]) ? "Se quitó la marca de incidencia" : "⚠️ Se reportó una incidencia";
   return d;
 }
-async function _aseoAutoEnviar(marcas, fueraM, col) {
+async function _aseoAutoEnviar(marcas, fueraM, col, forzar) {
   await _aseoAutoCfgLoad();
   const cfg = _aseo.autoCfg || {};
-  if (!cfg.on || !(cfg.personas || []).length || (!marcas.size && !fueraM.size)) return;
+  if ((!cfg.on && !forzar) || !(cfg.personas || []).length || (!marcas.size && !fueraM.size)) return;
   const cat = await _aseoCatalogo();
   const fuera = [...fueraM.entries()].map(([hid, f]) => { const a = cat.find(c => c.hid === hid); return `${a ? a.code.toUpperCase() : "Alojamiento " + hid} → ${new Date(f + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`; });
   // Solo los alojamientos con cambios, con el detalle de cada cambio.
@@ -10809,7 +10875,7 @@ async function _aseoAutoEnviar(marcas, fueraM, col) {
   if (L.length <= 2) return;
   const txt = L.join("\n"), txtA = LA.length > 2 ? LA.join("\n") : "";
   const tels = await _aseoTelPersonal().catch(() => []);
-  const conCambios = _aseoDestinatarios("cambios"), conAlertas = _aseoDestinatarios("alertas");
+  const conCambios = _aseoDestinatarios("cambios", forzar), conAlertas = _aseoDestinatarios("alertas", forzar);
   for (const n of cfg.personas) {
     const m = conCambios.includes(n) || !Object.keys(cfg.perfiles || {}).length ? txt : conAlertas.includes(n) ? txtA : "";
     if (!m) continue;
