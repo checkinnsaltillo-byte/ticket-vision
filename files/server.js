@@ -2454,7 +2454,12 @@ async function _botExecTool(toolUse, ctx) {
       if (args.alojamiento) { const cat = await _aseoCatalogo().catch(() => []), m = _aseoMatchAloj(String(args.alojamiento), cat); if (!m.ok) return { content: JSON.stringify({ ok: false, error: m.error }), notifyText: null }; L = L.filter(i => String(i.hid) === String(m.aloj.hid)); }
       const mias = args.solo_mias || !avz;
       if (mias) L = L.filter(i => i.asig.some(n => _aseoMismaPersona(n, yo)));
-      return { content: JSON.stringify({ ok: true, formatted_message: _clTareasTxt(L, f, mias ? "Tus tareas" : "Tareas", !args.incluir_cerradas), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
+      // «Mis tareas / tareas de hoy» de una persona: también sus limpiezas e inspecciones del día (cards de reservas),
+      // a cualquier hora; antes solo salían las tareas manuales y de mantenimiento → «0 tareas» aunque tuviera limpiezas.
+      const conLimp = mias && yo && f === _mxHoy() && !args.alojamiento && (!args.tipo || ["todos", "limpieza", "inspeccion"].includes(args.tipo));
+      const limp = conLimp ? await _aseoListaEmpleado(yo, { consulta: true }).catch(() => null) : null;
+      const msg = limp ? [limp, ...(L.length ? ["", _clTareasTxt(L, f, "Tus otras tareas", !args.incluir_cerradas)] : [])].join("\n") : _clTareasTxt(L, f, mias ? "Tus tareas" : "Tareas", !args.incluir_cerradas);
+      return { content: JSON.stringify({ ok: true, formatted_message: msg, instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "consultar_incidencias") {
       if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden consultar incidencias.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
