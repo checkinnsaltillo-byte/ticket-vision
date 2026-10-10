@@ -9624,7 +9624,17 @@ async function _aseoResumenHoy(opts) {
   });
   const ordenE = { pendiente: 0, en_proceso: 1, terminado: 2, inspeccionado: 3 };
   const tardA = i => (i.tardia && i.tardia.aceptada) ? 1 : 0;
-  items.sort((x, y) => (y.tempAceptada - x.tempAceptada) || (tardA(x) - tardA(y)) || (y.entra - x.entra) || (y.temprana - x.temprana) || ((ordenE[x.sel] ?? 0) - (ordenE[y.sel] ?? 0)) || String(x.code || x.nombre).localeCompare(String(y.code || y.nombre), "es", { numeric: true }));
+  // Orden: agrupado por PROPIEDAD (no se intercalan); dentro de cada una, primero la entrada más temprana
+  // (hora de la solicitud de entrada temprana o 3:00 p.m.; sin entrada hoy, al final) y al último la salida más
+  // tardía (hora de la salida tardía o 10:00 a.m.). Las propiedades van según su tarea más urgente.
+  const hm = h => { const m = String(h || "").match(/^(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; };
+  const kEnt = i => i.entra ? (i.temprana && hm(i.tempHora) != null ? hm(i.tempHora) : 15 * 60) : 9999;
+  const kSal = i => i.tardia && hm(i.tardia.hora) != null ? hm(i.tardia.hora) : 10 * 60;
+  const cmpI = (x, y) => (x.fantasma - y.fantasma) || (kEnt(x) - kEnt(y)) || (y.tempAceptada - x.tempAceptada) || (kSal(x) - kSal(y)) || (tardA(x) - tardA(y)) || ((ordenE[x.sel] ?? 0) - (ordenE[y.sel] ?? 0)) || String(x.code || x.nombre).localeCompare(String(y.code || y.nombre), "es", { numeric: true });
+  const prop = i => String(i.nombre || "").replace(/\s*#.*$/, "").trim() || String(i.code || "").replace(/\d.*$/, "");
+  const grupos = new Map(); items.sort(cmpI).forEach(i => { const k = prop(i); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(i); });
+  const ordenado = [...grupos.values()].sort((a, b) => cmpI(a[0], b[0])).flat();
+  items.splice(0, items.length, ...ordenado);
   const fecha = new Date(hoy + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
   // Marca de prioridad "✱" (un "* " al inicio de renglón WhatsApp lo convierte en viñeta).
   const lineas = [`🧽 *Limpiezas de hoy* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${items.length} alojamiento${items.length === 1 ? "" : "s"} · ${items.filter(i => i.entra).length} con entrada hoy (✱)`, ""];
