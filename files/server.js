@@ -3182,7 +3182,8 @@ async function _cierreFinal(ci, hechos, fromRaw, phone10) {
     const siguen = (ci.items || []).filter(x => x.est === "pendiente");
     const L3 = [];
     if (hechos.length) L3.push("✅ *Limpiezas actualizadas*", ...hechos, "");
-    L3.push(siguen.length ? `⏳ Siguen pendientes: ${siguen.map(x => x.code || x.nombre).join(", ")}. Si nadie las actualiza, a las 9 pm pasan al día siguiente.` : "Listo, no queda ninguna pendiente.");
+    const hh = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
+    L3.push(siguen.length ? `⏳ Siguen pendientes: ${siguen.map(x => x.code || x.nombre).join(", ")}.${hh < 20 ? " Te las recuerdo a las 8 pm;" : ""} si nadie las actualiza, a las 9 pm pasan al día siguiente.` : "Listo, no queda ninguna pendiente: ya no habrá recordatorios.");
     await _cierreEnviar(fromRaw, phone10, L3.join("\n"));
     return;
   }
@@ -9895,7 +9896,7 @@ app.post("/bot/simular", async (req, res) => {
       // Mismo camino que un WhatsApp real: administrador del sistema → modo admin; personal → modo personal (si el mensaje es de operación).
       const sctx = Object.assign({}, ctx, { phone10: "sim" + yo.tel, simular: true, userMsg: libre });
       const ai = _detectAsistenciaIntent(libre), ciS = _asistCierre.get(yo.tel);
-      if (ciS && ciS.dry && Date.now() < ciS.exp && ai !== "entrada") {
+      if (ciS && ciS.dry && Date.now() < ciS.exp && ai !== "entrada" && (ciS.modo !== "pend3" || mismo)) {
         // Respuesta a un cierre de jornada de prueba en curso: sigue en tu WhatsApp.
         const sink = []; _cierreSink.set(yo.tel, sink);
         try { await _cierreResponder(ciS, libre, _waFormatTo(yo.tel), yo.tel); } finally { _cierreSink.delete(yo.tel); }
@@ -9951,7 +9952,7 @@ const _BOT_EVT = {
   tardia: { t: "🕚 Salida tardía aceptada" }, temprana: { t: "⏰ Entrada temprana aceptada" },
   terminado: { t: "🧹 Limpieza terminada" }, inspeccionado: { t: "✅ Limpieza inspeccionada" },
   asignado: { t: "👤 Aseo asignado" }, reserva: { t: "🆕 Reserva nueva de hoy" },
-  incidencia: { t: "🚨 Incidencia nueva" }, resumen: { t: "📋 Resumen de las 2 pm" },
+  incidencia: { t: "🚨 Incidencia nueva" }, resumen: { t: "📋 Resumen de las 2 pm" }, pend3: { t: "⏳ Limpiezas pendientes 3 pm" },
 };
 app.get("/bot/simular/eventos", (req, res) => res.json({ ok: true, eventos: Object.entries(_BOT_EVT).map(([k, v]) => ({ k, t: v.t })) }));
 app.post("/bot/simular-evento", async (req, res) => {
@@ -9971,6 +9972,13 @@ app.post("/bot/simular-evento", async (req, res) => {
     const cfg = _aseo.autoCfg || {}, tels = await _aseoTelPersonal().catch(() => []), yo = tels.find(t => _aseoMismaPersona(t.nombre, perfil));
     if (!yo || !yo.tel) return res.status(400).json({ ok: false, error: `${perfil} no tiene celular en Personal` });
     let hid = "", code = "", nombreA = "";
+    if (ev === "pend3") { // conversación de prueba en tu WhatsApp (en seco): contesta ahí o con «O escribe un mensaje»
+      const L = await _aseoPend3Lista();
+      if (!L.length) return res.json({ ok: true, texto: "⏳ Ahora mismo no hay limpiezas de salida pendientes (sin entrada ese día): a las 3 pm no se mandaría aviso.", enviado: false });
+      const sink = []; _cierreSink.set(yo.tel, sink);
+      try { await _aseoPend3Avisar(L, false, { n: perfil, t: yo }); } finally { _cierreSink.delete(yo.tel); }
+      return res.json({ ok: true, texto: `${sink.join("\n\n")}\n\n💡 Contesta en WhatsApp o en «O escribe un mensaje» (con «Prueba como» en Nadie). Lo recibirían: ${(await _aseoAdminsTel()).map(a => _aseoCorto(a.n)).join(", ") || "nadie (no hay administradores con celular)"}.`, enviado: true });
+    }
     if (ev !== "resumen") {
       if (!aloj) return res.status(400).json({ ok: false, error: "Falta el alojamiento (ej. JC3)." });
       const mm = _aseoMatchAloj(aloj, await _aseoCatalogo());
@@ -10716,8 +10724,13 @@ async function _aseoAdminsTel() {
   const P = (_aseo.autoCfg || {}).perfiles || {}, tels = await _aseoTelPersonal().catch(() => []);
   return Object.keys(P).filter(n => P[n].rol === "admin").map(n => ({ n, t: tels.find(x => _aseoMismaPersona(x.nombre, n)) })).filter(x => x.t && x.t.tel);
 }
-async function _aseoPend3Avisar(pendientes, recordatorio) {
-  const adm = await _aseoAdminsTel(); if (!adm.length) return;
+// Limpiezas de salida de hoy que siguen «Pendiente» y no tienen entrada ese día.
+async function _aseoPend3Lista() {
+  const hoy = _mxHoy(), r = await _aseoResumenHoy(), RP = _aseo.reprog || {};
+  return r.items.filter(i => i.estId && !i.fantasma && !i.entra && (i.sale || i.reprog) && i.sel === "pendiente" && !(RP[i.estId] && RP[i.estId].fecha > hoy));
+}
+async function _aseoPend3Avisar(pendientes, recordatorio, soloA) { // soloA: (simulación) { n, t:{tel} } en seco
+  const adm = soloA ? [soloA] : await _aseoAdminsTel(); if (!adm.length) return;
   const items = pendientes.map(i => ({ t: "aseo", hid: i.hid, estId: i.estId, code: i.code, nombre: i.nombre, que: "Limpieza", est: "pendiente", insp: false, aseo: i.aseo }));
   const txt = [recordatorio ? "🔔 *Recordatorio · limpiezas aún pendientes*" : "⏳ *Limpiezas de hoy aún pendientes (3 pm)*", "",
     ...items.map((x, k) => `${k + 1}. ${x.code ? x.code + " · " : ""}${x.nombre}${x.aseo ? ` — 🧹 ${x.aseo.split(", ").map(_aseoCorto).join(", ")}` : " — sin asignar"}`), "",
@@ -10725,8 +10738,8 @@ async function _aseoPend3Avisar(pendientes, recordatorio) {
     `Si nadie las actualiza, a las *9 pm* pasan al día siguiente${recordatorio ? "" : " (te recuerdo a las 8 pm)"}. «déjalas» = que se reprogramen.`].join("\n");
   for (const a of adm) {
     try {
-      await _aseoEnviarPersona(a.n, a.t.tel, txt, recordatorio ? "pend_8pm" : "pend_3pm");
-      _asistCierre.set(a.t.tel, { modo: "pend3", nombre: a.n, items: JSON.parse(JSON.stringify(items)), draft: null, exp: Date.now() + 7 * 3600 * 1000 });
+      await _cierreEnviar(_waFormatTo(a.t.tel), a.t.tel, (soloA ? "🧪 _Simulación del aviso de las 3 pm (no se guarda nada)_\n" : "") + txt);
+      _asistCierre.set(a.t.tel, { modo: "pend3", nombre: a.n, items: JSON.parse(JSON.stringify(items)), draft: null, dry: !!soloA, exp: Date.now() + 7 * 3600 * 1000 });
     } catch (e) { console.warn(`[aseo-3pm] ${a.n}:`, e.message); }
   }
 }
@@ -10747,7 +10760,7 @@ async function _aseoAutoReprogTick() {
   const r = await _aseoResumenHoy();
   const RP = _aseo.reprog || {}, E = _aseo.estados || {};
   const pend = id => !E[id] || E[id].estado === "pendiente";
-  const pendientes = r.items.filter(i => i.estId && !i.fantasma && !i.entra && (i.sale || i.reprog) && i.sel === "pendiente" && !(RP[i.estId] && RP[i.estId].fecha > hoy));
+  const pendientes = await _aseoPend3Lista();
   const etapa = h >= 21 ? "" : h >= 20 ? "20" : "15";
   if (etapa && pendientes.length) {
     const toca = await _aseoMutate(_ASEO_P3_OBJ, "p3", D => { if (D.fecha !== hoy) { for (const k of Object.keys(D)) delete D[k]; D.fecha = hoy; } if (D["e" + etapa]) return false; D["e" + etapa] = new Date().toISOString(); return true; });
