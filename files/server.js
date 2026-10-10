@@ -1985,7 +1985,7 @@ async function _botExecTool(toolUse, ctx) {
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload),
       });
-      const j = await r.json();
+      const j = await r.json(); if (typeof _rtLista !== "undefined") { _rtLista.payload = null; } // la lista de Mantenimiento trae el reporte nuevo
       if (!j.ok) return { content: `Error al crear reporte: ${j.error || "desconocido"}`, notifyText: null };
       const folio = String(j.folio || j.id || "");
       const nombre = String(bk.GuestName || bk["Nombre reservación"] || "").trim();
@@ -5753,10 +5753,18 @@ app.post("/update-objeto", async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // ║ REPORTES TÉCNICOS (MVP F1) — passthrough a Apps Script                  ║
 // ═══════════════════════════════════════════════════════════════════════════
+const _rtLista = { ts: 0, payload: null, p: null };
+function _rtListaCargar() {
+  if (!_rtLista.p) _rtLista.p = callCheckinAppsScriptPost("rt_list", {}).then(r => { if (r && r.ok !== false && Array.isArray(r.rows)) { _rtLista.payload = r; _rtLista.ts = Date.now(); } return r; }).finally(() => { _rtLista.p = null; });
+  return _rtLista.p;
+}
 app.get("/reportes-tecnicos-list", async (req, res) => {
   try {
-    const r = await callCheckinAppsScriptPost("rt_list", {});
-    res.json(r);
+    if (_rtLista.payload && req.query.fresh !== "1") {
+      if (Date.now() - _rtLista.ts > 30_000) _rtListaCargar().catch(() => {}); // se refresca sin hacer esperar
+      return res.json(_rtLista.payload);
+    }
+    res.json(await _rtListaCargar());
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 app.post("/reportes-tecnicos-upsert", async (req, res) => {
@@ -5764,7 +5772,16 @@ app.post("/reportes-tecnicos-upsert", async (req, res) => {
     const payload = req.body?.payload || {};
     const fotosAntes = Array.isArray(req.body?.fotos_antes) ? req.body.fotos_antes : [];
     const fotosDespues = Array.isArray(req.body?.fotos_despues) ? req.body.fotos_despues : [];
-    const uploadAll = async (list) => {
+    const uploadAll = async (list) => Promise.all(list.filter(f => f && f.base64).map(async f => {
+      try {
+        const buf = Buffer.from(String(f.base64).replace(/^data:[^,]*,/, ""), "base64");
+        const nombre = String(f.name || "foto.jpg").replace(/[^\w.\- ()áéíóúñÁÉÍÓÚÑ]/g, "_").slice(0, 100);
+        const k = `aseo/adjuntos/rt-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}-${nombre}`;
+        await _rhdPut(k, buf, f.mimeType || "image/jpeg");
+        return `https://api.check-inn.mx/aseo/adjunto?k=${encodeURIComponent(k)}&s=${_aseoAdjSig(k)}`;
+      } catch (e) { console.warn("rt foto no subida:", e.message); return null; }
+    })).then(L => L.filter(Boolean));
+    const uploadAllViejo = async (list) => {
       const urls = [];
       for (const f of list) {
         if (!f || !f.base64) continue;
@@ -5786,8 +5803,7 @@ app.post("/reportes-tecnicos-upsert", async (req, res) => {
       }
       return urls;
     };
-    const antes = await uploadAll(fotosAntes);
-    const despues = await uploadAll(fotosDespues);
+    const [antes, despues] = await Promise.all([uploadAll(fotosAntes), uploadAll(fotosDespues)]);
     // Preservar URLs previas si vienen (edición) + append de nuevas.
     // Solo tocar Fotos_*_urls si el payload las trae o si hay fotos nuevas —
     // patches parciales (ej. cambio de Fecha) NO deben borrar fotos existentes.
@@ -5803,6 +5819,7 @@ app.post("/reportes-tecnicos-upsert", async (req, res) => {
     const rtPrev = payload.ID ? ((await _clRtRows().catch(() => [])).find(x => String(x.ID) === String(payload.ID)) || null) : null;
     const r = await callCheckinAppsScriptPost("rt_upsert", finalPayload);
     if (!r || !r.ok) throw new Error(r?.error || "upsert failed");
+    _rtLista.payload = null; _rtListaCargar().catch(() => {}); // la siguiente lectura trae el cambio
     try { // historial del reporte de Mantenimiento
       const who = payload.Updated_by || payload.Reportado_por || "", rid = String(r.id || payload.ID || "");
       const EST = { nuevo: "Pendiente", pendiente: "Pendiente", en_proceso: "En proceso", resuelto: "Terminado", cancelado: "Cancelado" };
@@ -5823,6 +5840,7 @@ app.post("/reportes-tecnicos-delete", async (req, res) => {
     const id = String(req.body?.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "id requerido" });
     const r = await callCheckinAppsScriptPost("rt_delete", { id });
+    _rtLista.payload = null; _rtListaCargar().catch(() => {});
     res.json(r);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
@@ -10247,17 +10265,16 @@ async function _incGuardarFoto(id, buf, ct, nombre) {
   await _rhdPut(k, buf, ct || "image/jpeg");
   return _incFotoUrl(k);
 }
-async function _incSubirFotos(id, fotos) {
-  const out = [];
-  for (const f of (fotos || [])) {
-    if (!f || !f.base64) continue;
+async function _incSubirFotos(id, fotos) { // todas a la vez (antes, una por una)
+  const L = await Promise.all((fotos || []).map(async f => {
+    if (!f || !f.base64) return null;
     try {
       const buf = Buffer.from(String(f.base64).replace(/^data:[^,]*,/, ""), "base64");
-      if (!buf.length || buf.length > 20 * 1024 * 1024) continue;
-      out.push(await _incGuardarFoto(id, buf, f.mimeType || "image/jpeg", f.name));
-    } catch (e) { console.warn("[inc] foto no subida:", e.message); }
-  }
-  return out;
+      if (!buf.length || buf.length > 20 * 1024 * 1024) return null;
+      return await _incGuardarFoto(id, buf, f.mimeType || "image/jpeg", f.name);
+    } catch (e) { console.warn("[inc] foto no subida:", e.message); return null; }
+  }));
+  return L.filter(Boolean);
 }
 // Migración única desde la hoja (idempotente: si ya hay datos en Cloud Storage no hace nada, salvo force).
 function _incMigrar(force) {
