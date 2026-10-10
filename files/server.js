@@ -9712,7 +9712,9 @@ app.post("/bot/simular", async (req, res) => {
     await _aseoAutoCfgLoad();
     const tels = await _aseoTelPersonal().catch(() => []), yo = tels.find(t => _aseoMismaPersona(t.nombre, perfil));
     if (!yo || !yo.tel) return res.status(400).json({ ok: false, error: `${perfil} no tiene celular en Personal` });
-    const ctx = { phone10: yo.tel, fromRaw: _waFormatTo(yo.tel), booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: como, msgTs: Date.now(), userMsg: P.msg || "" };
+    // Simulación para uno mismo: con sus permisos reales (administrador del sistema si su número lo es).
+    const mismo = _aseoMismaPersona(como, perfil), adm = mismo ? await _botIsAdminPhone(yo.tel).catch(() => ({})) : {};
+    const ctx = { phone10: yo.tel, fromRaw: _waFormatTo(yo.tel), booking: {}, alojRow: {}, isAdmin: !!adm.isAdmin, adminNombre: adm.isAdmin ? como : "", isStaff: true, staffNombre: como, msgTs: Date.now(), userMsg: P.msg || "" };
     let txt = "";
     if (P.tool) {
       const r = await _botExecTool({ name: P.tool, input: Object.assign({}, P.args) }, ctx);
@@ -9734,7 +9736,7 @@ app.post("/bot/simular", async (req, res) => {
       else L.push(...(await _aseoActividadDiaTxt(_mxHoy())));
       txt = L.filter(Boolean).join("\n\n");
     }
-    const body = `🧪 *Prueba como ${como}* · ${P.t}\n\n${txt}`;
+    const body = `🧪 *${mismo ? "Simulación" : "Prueba como " + como}* · ${P.t}\n\n${txt}`;
     if (b.enviar !== false) await _aseoEnviarPersona(perfil, yo.tel, body, "prueba").catch(e => { throw new Error("No se pudo enviar: " + e.message); });
     res.json({ ok: true, texto: body, enviado: b.enviar !== false });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
