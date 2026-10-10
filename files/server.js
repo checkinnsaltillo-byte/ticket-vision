@@ -1787,9 +1787,55 @@ async function _botTarClasificar(desc, cat) {
     return { clasificacion: cl, subclasificacion: sub };
   } catch (e) { console.warn("[bot-tarea] clasificar:", e.message); return { clasificacion: "", subclasificacion: "" }; }
 }
+// Conversación del PERSONAL por WhatsApp (estado de aseo, Check-list…): palabras que la activan, prompt y herramientas.
+const _BOT_ASEO_KW = /\b(me toca\w*|que me toca|asignad\w*|pendientes?|listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,}|historial|modific\w*|cambi\w*|huesped\w*|celular|datos)\b/;
+function _botStaffSys(nombre) {
+  const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
+Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, registrar solicitudes de entrada temprana / salida tardía, dar la lista de limpiezas de hoy y la información del módulo CHECK-LIST (tareas de Limpieza, Inspección, Insumos y Mantenimiento, Incidencias y Tareas programadas).
+- "tareas de hoy", "tareas de check-list", "tareas de mantenimiento/insumos/inspección/limpieza", "mis tareas" → llama consultar_tareas_checklist (tipo si lo dice, solo_mias si dice "mis") y responde con formatted_message TAL CUAL.
+- "ya quedó la de toallas de ox5", "empecé la inspección de mt7", "terminé la tarea de focos de bc1" → confirma en 1 línea qué cambiarás y, SOLO con un "sí" en un mensaje posterior, llama actualizar_tarea_checklist (alojamiento, descripción y estado).
+- "incidencias del día" / "de hoy" / "de ayer" → consultar_incidencias con fecha "hoy"/"ayer" (todas las de ese día con su estado actual). "incidencias", "hay incidencias?", "incidencias de mt7", "detalle de la incidencia de mt7" → llama consultar_incidencias (detalle=true con alojamiento/descripción para el detalle) y responde con formatted_message TAL CUAL. Para cambiar estado/prioridad/seguimiento de una incidencia: confirma en 1 línea y, con un "sí" posterior, llama actualizar_incidencia (alojamiento y descripción).
+- "historial de …", "quién cambió …", "qué se modificó en …" → llama consultar_historial (tipo incidencia/tarea/limpieza, alojamiento y descripción) y responde con formatted_message TAL CUAL (solo administradores).
+- NUNCA muestres códigos, folios, claves ni IDs. Si una herramienta devuelve opciones, muéstralas TAL CUAL y pregunta cuál.
+- "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
+- Si una herramienta responde que no tiene permiso (solo administradores), dilo en 1 línea.
+- "resumen del día", "cierre del día", "resume las limpiezas", "resumen de limpiezas" → llama consultar_resumen_dia y responde con formatted_message TAL CUAL.
+- "lista actualizada de limpiezas", "estado de las limpiezas", "lista de limpiezas", "limpiezas de hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
+- Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
+  · Llama preparar_estado_aseo con: alojamientos TAL CUAL los escribió (el sistema los reconoce aunque estén abreviados o con errores), estado (listo/lista/terminado/terminé/acabé = terminado · inspeccionado/revisado/checado = inspeccionado · empezando/limpiando/en proceso = en_proceso), validado=true SOLO si dice validado/publicado, y persona SOLO si nombra a alguien distinto de quien escribe (ej. "Alma").
+  · Envía el campo resumen TAL CUAL y espera respuesta.
+  · SOLO si contesta afirmativamente ("sí", "ok", "correcto", "dale") en un mensaje POSTERIOR, llama confirmar_estado_aseo y responde en 1 línea.
+  · Si corrige algo ("no, es cu3", "fue Brenda", "nada más terminado"), vuelve a llamar preparar_estado_aseo con TODO corregido y muestra el nuevo resumen.
+  · Si dice "no" / "cancela", responde "Cancelado." y no guardes.
+- Solicitudes de ENTRADA temprana o SALIDA tardía ("cu2 entrada temprana 10am", "ox6 salida tardía 1pm aceptada", "acepta la entrada de jc3", "quita la salida de bc5"): llama preparar_solicitud_aseo (tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla), envía resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo.
+- VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
+- RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message, uno después del otro.
+- DATOS DEL HUÉSPED — después de reportar que no ha desalojado preguntas «¿Quieres los datos del huésped y su reserva?»; si responde "sí" llama consultar_datos_reserva (sin alojamiento) y responde con formatted_message TAL CUAL. También ante "datos del huésped de cu2", "celular del huésped de ox3".
+- NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
+- El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
+- Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
+- Si el mensaje no es sobre la operación, responde en 1 línea que por este medio registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida, y das información de limpiezas, tareas de Check-list, incidencias y tareas programadas.
+- Si pide LEVANTAR una incidencia, crear una tarea nueva, reprogramar, cambiar prioridad o asignar responsables y no tienes herramienta para eso, responde en 1 línea: «Solo los administradores pueden hacerlo; avísale a un administrador.»
+- Sé breve, sin cortesías ni emojis extra.`;
+}
+function _botStaffTools() { return BOT_TOOLS.filter(t => ["consultar_datos_reserva", "consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name)); }
+async function _botAdminSys() {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
+  const nowYear = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
+  const hoyLargo = new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return BOT_SYSTEM_PROMPT_ADMIN + _botBuildPromptsBlock(await _botGetPrompts()) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${today} (${hoyLargo}, América/Mexico_City).\n- AÑO ACTUAL: ${nowYear}. Úsalo por defecto cuando no se mencione año.`;
+}
+// Simulación («🧪 Prueba del bot»): las herramientas que guardan o avisan NO se ejecutan.
+const _BOT_SIM_ESCRIBE = new Set(["reportar_no_desalojo", "actualizar_incidencia", "actualizar_tarea_checklist", "confirmar_estado_aseo", "confirmar_solicitud_aseo", "confirmar_reprog_aseo", "confirmar_recordatorio_pizarra", "confirmar_tarea_programada", "crear_incidencia", "crear_reporte_mantenimiento", "agendar_late_checkout", "solicitar_late_checkout", "solicitar_extension", "solicitar_early_checkin", "solicitar_insumos", "solicitar_metodo_pago", "solicitar_accion_admin", "solicitar_ticket_admin"]);
+const _BOT_SIM_SOLO_ADMIN = { actualizar_incidencia: "cambiar o validar incidencias", crear_incidencia: "levantar incidencias", crear_reporte_mantenimiento: "levantar tareas de mantenimiento, insumos o inspección", confirmar_reprog_aseo: "reprogramar tareas a otras fechas" };
 async function _botExecTool(toolUse, ctx) {
   const name = String(toolUse.name || "");
   const args = toolUse.input || {};
+  if (ctx && ctx.simular && _BOT_SIM_ESCRIBE.has(name)) {
+    if (_BOT_SIM_SOLO_ADMIN[name] && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: `Solo los administradores pueden ${_BOT_SIM_SOLO_ADMIN[name]}.`, instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+    return { content: JSON.stringify({ ok: true, simulacion: true, instruccion: `SIMULACIÓN: no se guardó ni se avisó nada. Responde exactamente como lo harías si ${name} se hubiera realizado con éxito con estos datos: ${JSON.stringify(args).slice(0, 400)}.${(await _aseoPuedeCierre(ctx)) ? "" : " Esta persona NO es administradora: no le ofrezcas datos del huésped ni funciones de administrador."}` }), notifyText: null };
+  }
   const bk = ctx.booking || {};
   const aloj = ctx.alojRow || {};
   const propiedad = String(bk.Propiedad || aloj.Propiedad || "").trim();
@@ -3627,7 +3673,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const nowYear = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
         const adminPromptsBlock = _botBuildPromptsBlock(await _botGetPrompts());
         const hoyLargo = new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        const dynSystem = BOT_SYSTEM_PROMPT_ADMIN + adminPromptsBlock + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${today} (${hoyLargo}, América/Mexico_City).\n- AÑO ACTUAL: ${nowYear}. Úsalo por defecto cuando no se mencione año.`;
+        const dynSystem = await _botAdminSys();
         // Historial: solo mensajes admin previos del MISMO teléfono para
         // permitir seguimientos ("Urgente" tras "@reporte..."). Filtramos
         // fuera cualquier mensaje que no sea admin (protege de contaminar
@@ -3669,7 +3715,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // de un empleado (hoja Personal) y el mensaje habla de aseo o hay un borrador
   // pendiente de confirmar (para el "sí / no / corrección").
   {
-    const _aseoKw = /\b(listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,}|historial|modific\w*|cambi\w*|huesped\w*|celular|datos)\b/;
+    const _aseoKw = _BOT_ASEO_KW;
     const _aseoDraft = _botAseoDrafts.get(phone10);
     const _nsD = _botNsDatos.get(phone10);
     const _aseoPend = (_aseoDraft && Date.now() < _aseoDraft.exp) || (_nsD && Date.now() < _nsD.exp); // incluye la pregunta de datos del huésped
@@ -3685,34 +3731,8 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
             hist = (cr.messages || []).filter(m => m && m.meta && m.meta.staff === true).slice(-8, -1)
               .map(m => ({ role: m.role === "user" ? "user" : "assistant", body: m.body }));
           } catch (_) {}
-          const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
-          const sys = `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
-Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, registrar solicitudes de entrada temprana / salida tardía, dar la lista de limpiezas de hoy y la información del módulo CHECK-LIST (tareas de Limpieza, Inspección, Insumos y Mantenimiento, Incidencias y Tareas programadas).
-- "tareas de hoy", "tareas de check-list", "tareas de mantenimiento/insumos/inspección/limpieza", "mis tareas" → llama consultar_tareas_checklist (tipo si lo dice, solo_mias si dice "mis") y responde con formatted_message TAL CUAL.
-- "ya quedó la de toallas de ox5", "empecé la inspección de mt7", "terminé la tarea de focos de bc1" → confirma en 1 línea qué cambiarás y, SOLO con un "sí" en un mensaje posterior, llama actualizar_tarea_checklist (alojamiento, descripción y estado).
-- "incidencias del día" / "de hoy" / "de ayer" → consultar_incidencias con fecha "hoy"/"ayer" (todas las de ese día con su estado actual). "incidencias", "hay incidencias?", "incidencias de mt7", "detalle de la incidencia de mt7" → llama consultar_incidencias (detalle=true con alojamiento/descripción para el detalle) y responde con formatted_message TAL CUAL. Para cambiar estado/prioridad/seguimiento de una incidencia: confirma en 1 línea y, con un "sí" posterior, llama actualizar_incidencia (alojamiento y descripción).
-- "historial de …", "quién cambió …", "qué se modificó en …" → llama consultar_historial (tipo incidencia/tarea/limpieza, alojamiento y descripción) y responde con formatted_message TAL CUAL (solo administradores).
-- NUNCA muestres códigos, folios, claves ni IDs. Si una herramienta devuelve opciones, muéstralas TAL CUAL y pregunta cuál.
-- "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
-- Si una herramienta responde que no tiene permiso (solo administradores), dilo en 1 línea.
-- "resumen del día", "cierre del día", "resume las limpiezas", "resumen de limpiezas" → llama consultar_resumen_dia y responde con formatted_message TAL CUAL.
-- "lista actualizada de limpiezas", "estado de las limpiezas", "lista de limpiezas", "limpiezas de hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
-- Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
-  · Llama preparar_estado_aseo con: alojamientos TAL CUAL los escribió (el sistema los reconoce aunque estén abreviados o con errores), estado (listo/lista/terminado/terminé/acabé = terminado · inspeccionado/revisado/checado = inspeccionado · empezando/limpiando/en proceso = en_proceso), validado=true SOLO si dice validado/publicado, y persona SOLO si nombra a alguien distinto de quien escribe (ej. "Alma").
-  · Envía el campo resumen TAL CUAL y espera respuesta.
-  · SOLO si contesta afirmativamente ("sí", "ok", "correcto", "dale") en un mensaje POSTERIOR, llama confirmar_estado_aseo y responde en 1 línea.
-  · Si corrige algo ("no, es cu3", "fue Brenda", "nada más terminado"), vuelve a llamar preparar_estado_aseo con TODO corregido y muestra el nuevo resumen.
-  · Si dice "no" / "cancela", responde "Cancelado." y no guardes.
-- Solicitudes de ENTRADA temprana o SALIDA tardía ("cu2 entrada temprana 10am", "ox6 salida tardía 1pm aceptada", "acepta la entrada de jc3", "quita la salida de bc5"): llama preparar_solicitud_aseo (tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla), envía resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo.
-- VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
-- RESUMEN DE TAREAS PROGRAMADAS — "resumen de tareas programadas", "cómo van las tareas programadas", "tareas programadas de hoy": llama consultar_resumen_tareas y responde con formatted_message TAL CUAL. "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message, uno después del otro.
-- DATOS DEL HUÉSPED — después de reportar que no ha desalojado preguntas «¿Quieres los datos del huésped y su reserva?»; si responde "sí" llama consultar_datos_reserva (sin alojamiento) y responde con formatted_message TAL CUAL. También ante "datos del huésped de cu2", "celular del huésped de ox3".
-- NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
-- El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
-- Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
-- Si el mensaje no es sobre la operación, responde en 1 línea que por este medio registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida, y das información de limpiezas, tareas de Check-list, incidencias y tareas programadas.
-- Sé breve, sin cortesías ni emojis extra.`;
-          const ASEO_TOOLS = BOT_TOOLS.filter(t => ["consultar_datos_reserva", "consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "preparar_estado_aseo", "confirmar_estado_aseo", "consultar_limpiezas_hoy", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo"].includes(t.name));
+          const sys = _botStaffSys(nombre);
+          const ASEO_TOOLS = _botStaffTools();
           const llm = await _botLlmLoop({
             system: sys, history: hist, userMsg: bodyMsg,
             ctx: { phone10, fromRaw, booking: {}, alojRow: {}, isAdmin: false, isStaff: true, staffNombre: nombre, msgTs: t0, userMsg: bodyMsg,
@@ -9706,7 +9726,8 @@ app.get("/bot/simular/procesos", (req, res) => res.json({ ok: true, procesos: Ob
 app.post("/bot/simular", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
-    const b = req.body || {}, P = _BOT_SIM[String(b.proceso || "")];
+    const b = req.body || {}, libre = String(b.mensaje || "").trim().slice(0, 1000);
+    const P = libre ? { t: `Mensaje: «${libre}»`, msg: libre } : _BOT_SIM[String(b.proceso || "")];
     const como = String(b.como || "").trim(), perfil = String(b.perfil || "").trim();
     if (!P || !como || !perfil) return res.status(400).json({ ok: false, error: "Faltan datos" });
     await _aseoAutoCfgLoad();
@@ -9716,7 +9737,20 @@ app.post("/bot/simular", async (req, res) => {
     const mismo = _aseoMismaPersona(como, perfil), adm = mismo ? await _botIsAdminPhone(yo.tel).catch(() => ({})) : {};
     const ctx = { phone10: yo.tel, fromRaw: _waFormatTo(yo.tel), booking: {}, alojRow: {}, isAdmin: !!adm.isAdmin, adminNombre: adm.isAdmin ? como : "", isStaff: true, staffNombre: como, msgTs: Date.now(), userMsg: P.msg || "" };
     let txt = "";
-    if (P.tool) {
+    if (libre) {
+      // Mismo camino que un WhatsApp real: administrador del sistema → modo admin; personal → modo personal (si el mensaje es de operación).
+      const sctx = Object.assign({}, ctx, { phone10: "sim" + yo.tel, simular: true, userMsg: libre });
+      if (adm.isAdmin) {
+        const llm = await _botLlmLoop({ system: await _botAdminSys(), history: [], userMsg: libre.replace(/^@\s*/, ""), ctx: Object.assign(sctx, { isStaff: false }), tools: BOT_TOOLS });
+        txt = String(llm.text || "").trim() || "OK.";
+      } else if (!_BOT_ASEO_KW.test(_botNorm(libre))) {
+        txt = "ℹ️ Este mensaje no tiene palabras de operación (limpieza, tareas, incidencias, listo, terminado…): el bot NO lo trataría como personal y le respondería como a un huésped.";
+      } else {
+        const llm = await _botLlmLoop({ system: _botStaffSys(como), history: [], userMsg: libre, ctx: sctx, tools: _botStaffTools() });
+        txt = String(llm.text || "").trim() || "OK.";
+      }
+      txt += "\n\n_(Simulación: no se guardó ni se avisó nada)_";
+    } else if (P.tool) {
       const r = await _botExecTool({ name: P.tool, input: Object.assign({}, P.args) }, ctx);
       let j = {}; try { j = JSON.parse(r.content || "{}"); } catch (_) { j = { error: String(r.content || "") }; }
       txt = j.formatted_message || (j.error ? `⚠️ ${j.error}` : "") || String(j.instruccion || "Sin respuesta");
