@@ -9462,7 +9462,21 @@ app.get("/historial", async (req, res) => {
   try { const keys = String(req.query.k || "").split(",").map(x => x.trim()).filter(x => /^[ATRI]:[\w-]+$/.test(x)).slice(0, 20); res.json({ ok: true, items: (await _histDe(keys)).slice(0, 300) }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
-async function _aseoGuardarEstado({ id, hid, estado, validar, user }) {
+async function _aseoGuardarEstado({ id, hid, estado, validar, user, desvalidar }) {
+  if (desvalidar) {
+    const m0 = String(id).match(/^T([a-z0-9]+)-(\d{4}-\d{2}-\d{2})$/);
+    _histAdd(m0 ? "T:" + m0[1] : "A:" + id, [["Validación", "Validado", "Sin validar"]], user);
+    const now0 = new Date().toISOString();
+    return _aseoMutate(_ASEO_ESTADOS_OBJ, "estados", d => {
+      const cur = d[id]; if (!cur) return null;
+      cur.hist = cur.hist || {};
+      Object.assign(cur, { estado, at: now0, by: user || "", hid: hid || cur.hid || "", validado: false });
+      // La guía regresa a la última etapa anterior registrada (o a nada).
+      const prevE = _ASEO_ETAPAS.slice(0, _ASEO_ETAPAS.indexOf(estado)).reverse().find(e => cur.hist[e]);
+      if (prevE) cur.pub = { estado: prevE, at: cur.hist[prevE].at, by: cur.hist[prevE].by }; else delete cur.pub;
+      d[id] = cur; return cur;
+    });
+  }
   { // historial: estado anterior → nuevo (las tareas guardan el día)
     const prev = ((_aseo.estados || {})[id] || {}), m = String(id).match(/^T([a-z0-9]+)-(\d{4}-\d{2}-\d{2})$/);
     const antes = prev.estado || "pendiente", key = m ? "T:" + m[1] : "A:" + id, dia = m ? ` (${m[2]})` : "";
@@ -11231,8 +11245,8 @@ app.post("/aseo/estado", async (req, res) => {
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
     if (estado !== "pendiente" && !_ASEO_ETAPAS.includes(estado)) return res.status(400).json({ ok: false, error: "Estado inválido" });
     const user = String(b.user || "").slice(0, 80), hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
-    const out = await _aseoGuardarEstado({ id, hid, estado, validar: !!b.validar, user });
-    _aseoAutoMarca(hid || _aseoHidDe(id), "modificado", _aseoEstadoDet(out, estado));
+    const out = await _aseoGuardarEstado({ id, hid, estado, validar: !!b.validar, user, desvalidar: !!b.desvalidar });
+    _aseoAutoMarca(hid || _aseoHidDe(id), "modificado", b.desvalidar ? "Validación: quitada (queda por validar)" : _aseoEstadoDet(out, estado));
     res.json({ ok: true, estado: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
