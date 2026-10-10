@@ -1361,7 +1361,7 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_tareas_checklist",
-    description: "ADMIN o PERSONAL. Tareas del módulo Check-list de un día (las creadas con «Nueva tarea» y los reportes de MANTENIMIENTO), agrupadas por tipo: Limpieza, Inspección, Insumos, Mantenimiento, con estado, prioridad, asignados, y si están ligadas a una incidencia (⚠️). Usar ante 'tareas de check-list', 'tareas de hoy', 'tareas de mantenimiento', 'qué hay de insumos', 'tareas de inspección', 'mis tareas'. NO incluye las limpiezas de salida de las reservas (para eso consultar_resumen_dia / consultar_limpiezas_hoy). Sin función avanzada solo verá las tareas asignadas a él.",
+    description: "ADMIN o PERSONAL. Tareas del módulo Check-list de un día (las creadas con «Nueva tarea» y los reportes de MANTENIMIENTO), agrupadas por tipo: Limpieza, Inspección, Insumos, Mantenimiento, con estado, prioridad, asignados, y si están ligadas a una incidencia (⚠️). Usar ante 'tareas de check-list', 'tareas de hoy', 'tareas de mantenimiento', 'qué hay de insumos', 'tareas de inspección', 'mis tareas'. NO incluye las limpiezas de salida de las reservas (para eso consultar_resumen_dia / consultar_limpiezas_hoy). Un empleado solo ve las tareas asignadas a él.",
     input_schema: { type: "object", properties: {
       fecha: { type: "string", description: "Opcional YYYY-MM-DD (por defecto hoy)." },
       tipo: { type: "string", enum: ["todos", "limpieza", "inspeccion", "insumos", "mantenimiento"], description: "Opcional. Filtra por tipo de tarea." },
@@ -1407,7 +1407,7 @@ const BOT_TOOLS = [
   },
   {
     name: "actualizar_tarea_checklist",
-    description: "Cambia el ESTADO de una tarea del Check-list identificada por ALOJAMIENTO y DESCRIPCIÓN (ej. ox5 + 'toallas'), opcionalmente su tipo. Si hay varias que coinciden, devuelve opciones para preguntar cuál. Lo puede hacer quien tenga función avanzada o la persona asignada a la tarea. Antes de llamarla repite en 1 línea el cambio y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
+    description: "Cambia el ESTADO de una tarea del Check-list identificada por ALOJAMIENTO y DESCRIPCIÓN (ej. ox5 + 'toallas'), opcionalmente su tipo. Si hay varias que coinciden, devuelve opciones para preguntar cuál. Lo puede hacer un administrador o la persona asignada a la tarea. Antes de llamarla repite en 1 línea el cambio y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
     input_schema: { type: "object", properties: {
       alojamiento: { type: "string", description: "Alojamiento TAL CUAL (ej. ox5)." },
       descripcion: { type: "string", description: "Palabras de la tarea (ej. 'toallas', 'cambiar focos')." },
@@ -1896,6 +1896,7 @@ async function _botExecTool(toolUse, ctx) {
       };
     }
     if (name === "crear_reporte_mantenimiento") {
+      if (ctx.isStaff && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden levantar tareas de mantenimiento, insumos o inspección. Avísale a un administrador.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       // Modo admin: si viene alojamiento_shortcode, resolvemos el alojamiento
       // vía catálogo Lodgify + hoja Alojamientos (equivalente a crear_incidencia).
       let rProp = propiedad, rDep = depto, rAloj = alojLabel;
@@ -2370,10 +2371,10 @@ async function _botExecTool(toolUse, ctx) {
       }
       if (nsIds.length) _botNsDatos.set(ctx.phone10, { items: nsIds, exp: Date.now() + 30 * 60 * 1000 });
       if (!hechos.length) return { content: JSON.stringify({ ok: false, errores, instruccion: "Explica el problema en 1 línea y pide el alojamiento correcto (ej. CU2)." }), notifyText: null };
-      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ${on ? "🚨 Registrado: NO ha desalojado" : "✅ Registrado: ya desalojó"} ${hechos.join(", ")}${errores.length ? " · ⚠️ " + errores.join(" · ") : ""}.${on ? " Y en una segunda línea pregunta EXACTAMENTE: «¿Quieres los datos del huésped y su reserva?» (si contesta que sí, llama consultar_datos_reserva)." : ""}` }), notifyText: null };
+      return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ${on ? "🚨 Registrado: NO ha desalojado" : "✅ Registrado: ya desalojó"} ${hechos.join(", ")}${errores.length ? " · ⚠️ " + errores.join(" · ") : ""}.${on && (await _aseoPuedeCierre(ctx)) ? " Y en una segunda línea pregunta EXACTAMENTE: «¿Quieres los datos del huésped y su reserva?» (si contesta que sí, llama consultar_datos_reserva)." : ""}` }), notifyText: null };
     }
     if (name === "consultar_resumen_tareas") {
-      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Los resúmenes son una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden consultar resúmenes.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       const dp = _botDiaPedido(ctx); if (dp) args.incluir_cerradas = true; // «tareas programadas de hoy» → todas con su estado
       const f = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? args.fecha : (dp ? _botIsoDe(dp) : _mxHoy());
       return { content: JSON.stringify({ ok: true, formatted_message: await _tarResumenTxt(f, !args.incluir_cerradas), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
@@ -2391,7 +2392,7 @@ async function _botExecTool(toolUse, ctx) {
       return { content: JSON.stringify({ ok: true, formatted_message: _clTareasTxt(L, f, mias ? "Tus tareas" : "Tareas", !args.incluir_cerradas), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "consultar_incidencias") {
-      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Las incidencias son una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden consultar incidencias.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       { const dp = _botDiaPedido(ctx); if (dp && !args.fecha && !args.folio && !args.detalle && !args.estado) args.fecha = dp; } // «incidencias de hoy» → todas las del día
       if (args.folio || args.detalle) {
         const b = await _incBuscar(args);
@@ -2402,7 +2403,7 @@ async function _botExecTool(toolUse, ctx) {
       return { content: JSON.stringify({ ok: true, formatted_message: await _incListaTxt(args), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "consultar_datos_reserva") {
-      if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden consultar los datos del huésped.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       let objetivos = [];
       if (args.alojamiento) {
         const cat = await _aseoCatalogo().catch(() => []), m = _aseoMatchAloj(String(args.alojamiento), cat);
@@ -2428,7 +2429,7 @@ async function _botExecTool(toolUse, ctx) {
       return { content: JSON.stringify({ ok: true, formatted_message: out.join("\n\n"), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "consultar_historial") {
-      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "El historial de cambios es una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden consultar el historial de cambios.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       let keys = [], titulo = "";
       if (args.tipo === "incidencia") {
         const b = await _incBuscar(args);
@@ -2457,7 +2458,7 @@ async function _botExecTool(toolUse, ctx) {
       return { content: JSON.stringify({ ok: true, formatted_message: out.join("\n"), instruccion: "Responde con formatted_message TAL CUAL." }), notifyText: null };
     }
     if (name === "actualizar_incidencia") {
-      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Cambiar incidencias es una función avanzada: solo administración o quien la tenga asignada.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden cambiar incidencias.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       const b = await _incBuscar(args, true);
       if (b.error) return { content: JSON.stringify({ ok: false, error: b.error }), notifyText: null };
       if (b.opciones) return { content: JSON.stringify({ ok: false, opciones: b.opciones.join("\n"), instruccion: "Pregunta a cuál incidencia se refiere, mostrando las opciones TAL CUAL." }), notifyText: null };
@@ -2480,7 +2481,7 @@ async function _botExecTool(toolUse, ctx) {
       if (bt.opciones) return { content: JSON.stringify({ ok: false, opciones: bt.opciones.join("\n"), instruccion: "Pregunta a cuál tarea se refiere, mostrando las opciones TAL CUAL." }), notifyText: null };
       const it = bt.it;
       const yo = ctx.staffNombre || ctx.adminNombre || "";
-      if (!(await _aseoPuedeCierre(ctx)) && !it.asig.some(n => _aseoMismaPersona(n, yo))) return { content: JSON.stringify({ ok: false, error: "Solo puedes cambiar tareas que tienes asignadas (o con función avanzada).", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      if (!(await _aseoPuedeCierre(ctx)) && !it.asig.some(n => _aseoMismaPersona(n, yo))) return { content: JSON.stringify({ ok: false, error: "Solo puedes cambiar el estado de las tareas que tienes asignadas.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       const user = `${yo || ctx.phone10} (WhatsApp)`;
       if (it.k[0] === "T") {
         if (!["pendiente", "en_proceso", "terminado", "inspeccionado"].includes(estado) || (estado === "inspeccionado" && it.tipo !== "limpieza")) return { content: JSON.stringify({ ok: false, error: "Estado no válido para esta tarea (Inspeccionado solo aplica a Limpieza)." }), notifyText: null };
@@ -2494,18 +2495,19 @@ async function _botExecTool(toolUse, ctx) {
       return { content: JSON.stringify({ ok: true, instruccion: `Responde en 1 línea: ✅ ${it.aloj ? it.aloj + " · " : ""}${it.titulo} → ${_CL_EST[estado] || estado}.` }), notifyText: null };
     }
     if (name === "consultar_resumen_dia") {
-      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "El resumen del día solo lo pueden consultar administración y las personas del reenvío automático.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden consultar el resumen del día.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       const extra = await _clAvisosTxt().catch(() => "");
       return { content: JSON.stringify({ ok: true, formatted_message: (await _aseoResumenDiaTxt()) + extra, instruccion: "Responde con formatted_message TAL CUAL, sin resumirlo ni agregar explicaciones." }), notifyText: null };
     }
     if (name === "consultar_limpiezas_hoy") {
       if (!ctx.isAdmin && !ctx.isStaff) return { content: JSON.stringify({ ok: false, error: "Solo personal autorizado" }), notifyText: null };
       let quien = "";
+      if (args.persona && !(await _aseoPuedeCierre(ctx))) args.persona = ""; // empleados no consultan tareas de otros
       if (args.persona) {
         const rp = _botResolverPersonal([String(args.persona)], await _botPersonalActivo().catch(() => []));
         if (!rp.ok.length) return { content: JSON.stringify({ ok: false, error: (rp.amb && Object.keys(rp.amb).length) ? `"${args.persona}" puede ser: ${Object.values(rp.amb)[0].join(", ")}` : `No encontré a "${args.persona}" en Personal` }), notifyText: null };
         quien = rp.ok[0];
-      } else if (args.solo_mias) {
+      } else if (args.solo_mias || !(await _aseoPuedeCierre(ctx))) { // empleados: solo sus tareas
         quien = ctx.staffNombre || ctx.adminNombre || "";
         if (!quien) return { content: JSON.stringify({ ok: false, error: "No identifiqué a quién pertenece este número de WhatsApp en Personal." }), notifyText: null };
       }
@@ -2522,7 +2524,7 @@ async function _botExecTool(toolUse, ctx) {
       if (!estado) return { content: JSON.stringify({ ok: false, error: "No identifiqué el estado (en proceso / terminado / inspeccionado)" }), notifyText: null };
       let qs = (Array.isArray(args.alojamientos) ? args.alojamientos : [args.alojamientos]).map(x => String(x || "").trim()).filter(Boolean).slice(0, 10);
       // "validar todos" / "inspeccionar todos": los terminados de hoy (sin validar o todos).
-      if ((args.grupo === "sin_validar" || args.grupo === "terminados") && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Esa instrucción del resumen del día solo la pueden dar administración y las personas del reenvío automático." }), notifyText: null };
+      if ((args.grupo === "sin_validar" || args.grupo === "terminados") && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden validar estados." }), notifyText: null };
       if (args.grupo === "sin_validar" || args.grupo === "terminados") {
         const rh = await _aseoResumenHoy();
         qs = rh.items.filter(i => !i.fantasma && i.code && i.sel === "terminado" && (args.grupo === "terminados" || /sin validar/.test(i.estado))).map(i => i.code).slice(0, 20);
@@ -2546,8 +2548,15 @@ async function _botExecTool(toolUse, ctx) {
         if (r.ok.length) persona = r.ok[0];
         else personaNota = (r.amb && Object.keys(r.amb).length) ? `"${args.persona}" puede ser: ${Object.values(r.amb)[0].join(", ")}` : `No encontré a "${args.persona}" en Personal`;
       }
+      const esAdm = await _aseoPuedeCierre(ctx);
+      if (!esAdm) {
+        // Empleado: solo sus tareas asignadas, a su nombre y sin validar.
+        persona = ctx.staffNombre || ""; personaNota = "";
+        const rh = await _aseoResumenHoy(), mias = new Set(_aseoMiasDe(rh, persona).map(i => String(i.hid)));
+        for (let k = items.length - 1; k >= 0; k--) if (!mias.has(String(items[k].hid))) { errores.push(`${items[k].code}: no la tienes asignada (solo puedes cambiar el estado de tus tareas)`); items.splice(k, 1); }
+      }
       if (!items.length) return { content: JSON.stringify({ ok: false, errores, instruccion: "Explica el problema en 1-2 líneas y pide el alojamiento correcto (ej. CU2, JC1, OX3)." }), notifyText: null };
-      const validar = estado !== "terminado" || !!args.validado;
+      const validar = esAdm && (estado !== "terminado" || !!args.validado);
       const id = "AS" + Date.now().toString(36);
       const yaConfirmo = _botEsSiAResumen(ctx, /aseo/i);
       const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, estado, validar, persona, items };
@@ -2595,7 +2604,7 @@ async function _botExecTool(toolUse, ctx) {
       if (!items.length) return { content: JSON.stringify({ ok: false, errores, instruccion: "Explica el problema en 1-2 líneas y pide el alojamiento correcto (ej. CU2, JC1, OX3)." }), notifyText: null };
       const quitar = !!args.quitar;
       const aceptada = typeof args.aceptada === "boolean" ? args.aceptada : undefined;
-      if (aceptada !== undefined && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Aceptar entradas tempranas o salidas tardías es una función avanzada: solo administración o quien la tenga asignada." }), notifyText: null };
+      if (aceptada !== undefined && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden aceptar entradas tempranas o salidas tardías." }), notifyText: null };
       const id = "SA" + Date.now().toString(36);
       const persona = ctx.staffNombre || ctx.adminNombre || ctx.phone10;
       const yaConfirmo = _botEsSiAResumen(ctx, /solicitud/i);
@@ -2619,7 +2628,7 @@ async function _botExecTool(toolUse, ctx) {
       return { content: JSON.stringify({ ok: true, draft_id: id, resumen, instruccion: "Envía el campo resumen TAL CUAL y espera la respuesta. NO llames confirmar_solicitud_aseo hasta que conteste 'sí' en un mensaje nuevo. Si corrige algo, vuelve a llamar preparar_solicitud_aseo con todo corregido." }), notifyText: null };
     }
     if (name === "preparar_reprog_aseo") {
-      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Reprogramar desde el resumen del día solo lo pueden hacer administración y las personas del reenvío automático." }), notifyText: null };
+      if (!(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden reprogramar tareas a otras fechas." }), notifyText: null };
       const hoy = _mxHoy(), dm = new Date(hoy + "T12:00:00"); dm.setDate(dm.getDate() + 1);
       const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) ? String(args.fecha) : dm.toISOString().slice(0, 10);
       if (fecha <= hoy) return { content: JSON.stringify({ ok: false, error: "La nueva fecha debe ser posterior a hoy." }), notifyText: null };
@@ -2782,6 +2791,7 @@ async function _botExecTool(toolUse, ctx) {
       return { content: JSON.stringify({ ok: true, id: r.id, nombre: d.nombre, fecha_texto: _botFechaLarga(d.fecha), personal: d.personal }), notifyText: null };
     }
     if (name === "crear_incidencia") {
+      if (ctx.isStaff && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden levantar incidencias. Avísale a un administrador.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
       const shortcode = String(args.alojamiento_shortcode || "").trim();
       const descripcion = String(args.descripcion || "").trim();
       const criticidad = String(args.criticidad || "medio").toLowerCase();
@@ -3681,10 +3691,10 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
 - "tareas de hoy", "tareas de check-list", "tareas de mantenimiento/insumos/inspección/limpieza", "mis tareas" → llama consultar_tareas_checklist (tipo si lo dice, solo_mias si dice "mis") y responde con formatted_message TAL CUAL.
 - "ya quedó la de toallas de ox5", "empecé la inspección de mt7", "terminé la tarea de focos de bc1" → confirma en 1 línea qué cambiarás y, SOLO con un "sí" en un mensaje posterior, llama actualizar_tarea_checklist (alojamiento, descripción y estado).
 - "incidencias del día" / "de hoy" / "de ayer" → consultar_incidencias con fecha "hoy"/"ayer" (todas las de ese día con su estado actual). "incidencias", "hay incidencias?", "incidencias de mt7", "detalle de la incidencia de mt7" → llama consultar_incidencias (detalle=true con alojamiento/descripción para el detalle) y responde con formatted_message TAL CUAL. Para cambiar estado/prioridad/seguimiento de una incidencia: confirma en 1 línea y, con un "sí" posterior, llama actualizar_incidencia (alojamiento y descripción).
-- "historial de …", "quién cambió …", "qué se modificó en …" → llama consultar_historial (tipo incidencia/tarea/limpieza, alojamiento y descripción) y responde con formatted_message TAL CUAL (función avanzada).
+- "historial de …", "quién cambió …", "qué se modificó en …" → llama consultar_historial (tipo incidencia/tarea/limpieza, alojamiento y descripción) y responde con formatted_message TAL CUAL (solo administradores).
 - NUNCA muestres códigos, folios, claves ni IDs. Si una herramienta devuelve opciones, muéstralas TAL CUAL y pregunta cuál.
 - "resumen de todo" / "de todas las secciones": llama consultar_resumen_dia, consultar_tareas_checklist y consultar_resumen_tareas y envía los formatted_message uno tras otro.
-- Si una herramienta responde que no tiene permiso (función avanzada), dilo en 1 línea.
+- Si una herramienta responde que no tiene permiso (solo administradores), dilo en 1 línea.
 - "resumen del día", "cierre del día", "resume las limpiezas", "resumen de limpiezas" → llama consultar_resumen_dia y responde con formatted_message TAL CUAL.
 - "lista actualizada de limpiezas", "estado de las limpiezas", "lista de limpiezas", "limpiezas de hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
 - Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
@@ -9669,7 +9679,7 @@ async function _tarListaEmpleado(nombre) {
   if (!L.length) return null;
   return [`🗓️ *Tus tareas programadas de hoy* (${L.length})`, "", ...L.map((r, i) => `${i + 1}. ${r.Nombre || "Sin nombre"}${_tarEsRec(r) ? " 📌" : ""} · prioridad ${(_TAR_PRIO[r.Prioridad || "Medio"] || "Media").toLowerCase()} · ${_tarEstado(D, r, iso)}`)].join("\n");
 }
-// Perfil de una persona (Notificar actualizaciones): { rol, auto:{checkinn,tareas}, recordatorio, avanzadas } o null.
+// Perfil de una persona (Notificar actualizaciones): { rol, auto:{resumen,alertas,cambios}, recordatorio, canal } o null.
 function _aseoPerfil(nombre) {
   const P = ((_aseo.autoCfg || {}).perfiles) || {};
   const k = Object.keys(P).find(x => _aseoMismaPersona(x, nombre));
@@ -9716,12 +9726,13 @@ app.post("/bot/simular", async (req, res) => {
         txt = [mias.length ? await _aseoListaEmpleado(como, { resumen: r0 }) : "", tl || ""].filter(Boolean).join("\n\n") || "No tiene limpiezas ni tareas asignadas hoy: no recibiría lista.";
       }
     } else if (b.proceso === "auto_2pm") {
-      const pf = _aseoPerfil(como) || {}, a = pf.auto || {}, cfg = _aseo.autoCfg || {};
+      const pf = _aseoPerfil(como) || {}, cfg = _aseo.autoCfg || {};
       const L = [];
-      if (!cfg.on) L.push("⚠️ El reenvío automático está apagado: hoy nadie recibe el resumen de las 2 pm.");
-      if (a.checkinn) L.push(await _aseoResumenDiaTxt());
-      if (a.tareas) L.push(await _tarResumenTxt(_mxHoy()).catch(() => ""));
-      txt = L.filter(Boolean).join("\n\n") || "Esta persona no tiene activadas las secciones de envío automático: a las 2 pm no recibe nada.";
+      if (!cfg.on) L.push("⚠️ Los mensajes automáticos están apagados: hoy nadie recibe el resumen de las 2 pm.");
+      if (pf.rol !== "admin") L.push("Solo los administradores reciben el resumen de las 2 pm: esta persona no recibe nada.");
+      else if (!_aseoAutoDe(pf).resumen) L.push("Tiene desactivado el «Resumen del día»: a las 2 pm no recibe nada.");
+      else L.push(...(await _aseoActividadDiaTxt(_mxHoy())));
+      txt = L.filter(Boolean).join("\n\n");
     }
     const body = `🧪 *Prueba como ${como}* · ${P.t}\n\n${txt}`;
     if (b.enviar !== false) await _aseoEnviarPersona(perfil, yo.tel, body, "prueba").catch(e => { throw new Error("No se pudo enviar: " + e.message); });
@@ -9737,20 +9748,28 @@ async function _aseoPruebaComo(phone10) {
   const pf = _aseoPerfil(yo.nombre);
   return pf && pf.pruebaComo && !_aseoMismaPersona(pf.pruebaComo, yo.nombre) ? String(pf.pruebaComo) : "";
 }
+// Mensajes automáticos (solo administradores): resumen (2 pm) · alertas (incidencias y «no ha desalojado») · cambios.
+// Acepta perfiles guardados con las claves anteriores (checkinn / tareas / incidencias).
+function _aseoAutoDe(p) {
+  const a = (p && p.auto) || {}, v = (k, d) => (typeof a[k] === "boolean" ? a[k] : !!d);
+  return { resumen: v("resumen", a.checkinn || a.tareas), alertas: v("alertas", a.incidencias || a.checkinn), cambios: v("cambios", a.checkinn || a.tareas) };
+}
 function _aseoDestinatarios(sec) {
   const cfg = _aseo.autoCfg || {}; if (!cfg.on) return [];
   const P = cfg.perfiles || {};
-  if (Object.keys(P).length) return Object.keys(P).filter(n => P[n].auto && P[n].auto[sec]);
-  return sec === "checkinn" ? (cfg.personas || []) : [];
+  if (!Object.keys(P).length) return sec === "checkinn" || sec === "resumen" ? (cfg.personas || []) : [];
+  const keys = { checkinn: ["cambios", "alertas"], tareas: ["cambios"], incidencias: ["alertas"], resumen: ["resumen"], cambios: ["cambios"], alertas: ["alertas"] }[sec] || [sec];
+  return Object.keys(P).filter(n => P[n].rol === "admin" && keys.some(k => _aseoAutoDe(P[n])[k]));
 }
-// Funciones avanzadas: administradores del sistema y personas con «Funciones avanzadas» en su perfil.
+// Permisos de administrador: administradores del sistema y personas con rol «Administrador» en su perfil.
+// Los empleados solo consultan lo básico de SUS tareas y cambian su estado.
 async function _aseoPuedeCierre(ctx) {
   if (ctx && ctx.isAdmin) return true;
   await _aseoAutoCfgLoad();
   const yo = (ctx && (ctx.staffNombre || ctx.adminNombre)) || "";
   if (!yo) return false;
   const pf = _aseoPerfil(yo);
-  if (pf) return !!pf.avanzadas;
+  if (pf) return pf.rol === "admin";
   return ((_aseo.autoCfg || {}).personas || []).some(n => _aseoMismaPersona(n, yo));
 }
 // ── "No ha desalojado": alerta por reserva que SALE (aseo/nosale.json → { <bookingId>: { on, hid, by, at } }) ──
@@ -10387,27 +10406,28 @@ app.get("/bot/checklist-preview", async (req, res) => {
 async function _aseoResumen3pm() {
   await _aseoAutoCfgLoad();
   const cfg = _aseo.autoCfg || {};
-  const destTar = _aseoDestinatarios("tareas");
-  if (!cfg.on || (!(cfg.personas || []).length && !destTar.length)) return;
+  const dest = _aseoDestinatarios("resumen");
+  if (!cfg.on || !dest.length) return;
   const hoy = _mxHoy();
   const toca = await _aseoMutate(_ASEO_R3_OBJ, "r3", d => { if (d.fecha === hoy) return false; d.fecha = hoy; d.at = new Date().toISOString(); return true; });
   if (!toca) return;
-  const txtTar = destTar.length ? await _tarResumenTxt(hoy).catch(() => "") : "";
-  const tels0 = destTar.length ? await _aseoTelPersonal().catch(() => []) : [];
-  for (const n of destTar) {
-    const t = tels0.find(x => _aseoMismaPersona(x.nombre, n)); if (!t || !t.tel || !txtTar) continue;
-    try { await _aseoEnviarPersona(n, t.tel, txtTar, "tareas_2pm"); } catch (e) { console.warn(`[tar-2pm] ${n}:`, e.message); }
-  }
-  if (!(cfg.personas || []).length) return;
-  const txt = await _aseoResumenDiaTxt();
+  const msgs = await _aseoActividadDiaTxt(hoy);
   const tels = await _aseoTelPersonal().catch(() => []);
-  for (const n of cfg.personas) {
+  for (const n of dest) {
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n));
     if (!t || !t.tel) continue;
-    try { await _aseoEnviarPersona(n, t.tel, txt, "limpiezas_3pm"); }
-    catch (e) { console.warn(`[aseo-3pm] ${n}:`, e.message); }
+    for (const m of msgs) { try { await _aseoEnviarPersona(n, t.tel, m, "resumen_2pm"); } catch (e) { console.warn(`[aseo-2pm] ${n}:`, e.message); } }
   }
-  console.log(`[aseo-3pm] resumen enviado a ${cfg.personas.length} persona(s)`);
+  console.log(`[aseo-2pm] resumen enviado a ${dest.length} persona(s)`);
+}
+// Resumen de toda la actividad del día (2 pm): limpiezas, tareas de Check-list, tareas programadas e incidencias.
+async function _aseoActividadDiaTxt(dia) {
+  const out = [];
+  out.push(await _aseoResumenDiaTxt().catch(() => ""));
+  out.push(_clTareasTxt(await _clTareas(dia).catch(() => []), dia, "Tareas de Check-list", false));
+  out.push(await _tarResumenTxt(dia, false).catch(() => ""));
+  out.push(await _incListaTxt({ fecha: dia }).catch(() => ""));
+  return out.filter(x => x && String(x).trim());
 }
 async function _aseoAutoReprogTick() {
   const h = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
@@ -10574,7 +10594,7 @@ async function _aseoAutoEnviar(marcas, fueraM) {
   const fuera = [...fueraM.entries()].map(([hid, f]) => { const a = cat.find(c => c.hid === hid); return `${a ? a.code.toUpperCase() : "Alojamiento " + hid} → ${new Date(f + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`; });
   // Solo los alojamientos con cambios, con el detalle de cada cambio.
   const r = await _aseoResumenHoy();
-  const L = ["🔄 *Cambios en las limpiezas de hoy*", ""];
+  const L = ["🔄 *Cambios en las limpiezas de hoy*", ""], LA = ["🚨 *Alerta · No ha desalojado*", ""];
   marcas.forEach((m, hid) => {
     const i = r.items.find(x => String(x.hid) === String(hid));
     if (!i) return; // cambio en una card de otro día
@@ -10582,6 +10602,8 @@ async function _aseoAutoEnviar(marcas, fueraM) {
     L.push(`• *${i.code || i.nombre}*${i.code ? " · " + i.nombre : ""}${tag}`);
     const dets = m.det.map(_aseoDetHumano).filter(Boolean), todo = dets.join(" ");
     dets.forEach(d => L.push(`   ▸ ${d}`));
+    const al = m.det.filter(d => /^Desalojo:/.test(d)).map(_aseoDetHumano).filter(Boolean);
+    if (al.length) { LA.push(`• *${i.code || i.nombre}*${i.code ? " · " + i.nombre : ""}`); al.forEach(d => LA.push(`   ▸ ${d}`)); }
     // Contexto SIN repetir lo que ya dice el cambio (estado / aseo / inspección).
     const ctx = [];
     if (!/Pasó a /.test(todo)) ctx.push(i.estado);
@@ -10591,13 +10613,16 @@ async function _aseoAutoEnviar(marcas, fueraM) {
   });
   if (fuera.length) L.push(`• 📅 Movidas a otro día: ${fuera.join(", ")}`);
   if (L.length <= 2) return;
-  const txt = L.join("\n");
+  const txt = L.join("\n"), txtA = LA.length > 2 ? LA.join("\n") : "";
   const tels = await _aseoTelPersonal().catch(() => []);
+  const conCambios = _aseoDestinatarios("cambios"), conAlertas = _aseoDestinatarios("alertas");
   for (const n of cfg.personas) {
+    const m = conCambios.includes(n) || !Object.keys(cfg.perfiles || {}).length ? txt : conAlertas.includes(n) ? txtA : "";
+    if (!m) continue;
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n));
     if (!t || !t.tel) { console.warn(`[aseo-auto] ${n}: sin celular en Personal`); continue; }
     try {
-      await _aseoEnviarPersona(n, t.tel, txt, "limpiezas_auto");
+      await _aseoEnviarPersona(n, t.tel, m, "limpiezas_auto");
     } catch (e) { console.warn(`[aseo-auto] ${n}:`, e.message); }
   }
   console.log(`[aseo-auto] lista enviada a ${cfg.personas.length} persona(s); ${marcas.size} con cambios`);
@@ -10606,16 +10631,16 @@ app.post("/aseo/autonotif", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const b = req.body || {};
-    // Perfil por persona: rol (admin|empleado), envío automático por sección, recordatorio diario y funciones avanzadas.
+    // Perfil por persona: rol (admin|empleado), envío automático por sección, recordatorio diario; los permisos dependen del rol.
     const perfiles = {};
     Object.entries(b.perfiles && typeof b.perfiles === "object" ? b.perfiles : {}).slice(0, 60).forEach(([n, v]) => {
       const nom = String(n || "").trim().slice(0, 80); if (!nom || !v) return;
-      perfiles[nom] = { rol: v.rol === "admin" ? "admin" : v.rol === "empleado" ? "empleado" : "", auto: { checkinn: !!(v.auto && v.auto.checkinn), tareas: !!(v.auto && v.auto.tareas), incidencias: !!(v.auto && v.auto.incidencias) },
-        recordatorio: v.recordatorio !== false, avanzadas: !!v.avanzadas, canal: v.canal === "sms" || v.canal === "ambos" ? v.canal : "whatsapp",
+      perfiles[nom] = { rol: v.rol === "admin" ? "admin" : v.rol === "empleado" ? "empleado" : "", auto: _aseoAutoDe(v),
+        recordatorio: v.recordatorio !== false, canal: v.canal === "sms" || v.canal === "ambos" ? v.canal : "whatsapp",
         pruebaComo: String(v.pruebaComo || "").trim().slice(0, 80) };
     });
     // Compatibilidad: «personas» = quienes reciben automáticamente Check-inn.
-    const personas = Object.keys(perfiles).length ? Object.keys(perfiles).filter(n => perfiles[n].auto.checkinn)
+    const personas = Object.keys(perfiles).length ? Object.keys(perfiles).filter(n => perfiles[n].rol === "admin" && (perfiles[n].auto.cambios || perfiles[n].auto.alertas))
       : (Array.isArray(b.personas) ? b.personas : []).map(n => String(n || "").trim().slice(0, 80)).filter(Boolean).slice(0, 30);
     const out = await _aseoMutate(_ASEO_AUTO_OBJ, "autoCfg", d => {
       for (const k of Object.keys(d)) delete d[k];
