@@ -10522,9 +10522,27 @@ async function _aseoAutoTick() {
       m.det.push(x.det);
     }
   });
-  if (marcas.size || fueraM.size) await _aseoAutoEnviar(marcas, fueraM);
-  if (tar.size) await _tarAutoEnviar(tar).catch(e => console.warn("[tar-auto]", e.message));
-  if (inc.size) await _incAutoEnviar(inc).catch(e => console.warn("[inc-auto]", e.message));
+  // Sin redundancia: si en la misma tanda hay una incidencia, lo que ella provocó en la card de su
+  // alojamiento (marca «Incidencia: …», tarea correctiva nueva) no se manda aparte: va dentro del aviso de la incidencia.
+  if (inc.size && marcas.size) {
+    const cat = await _aseoCatalogo().catch(() => []);
+    inc.forEach(p => {
+      const m0 = p.info && p.info.aloj ? _aseoMatchAloj(String(p.info.aloj), cat) : null;
+      const hid = m0 && m0.ok && m0.aloj.hid ? String(m0.aloj.hid) : ""; const m = hid && marcas.get(hid); if (!m) return;
+      m.det = m.det.filter(d => {
+        if (/^Incidencia:/.test(d)) return false;
+        const t = String(d).match(/^Nueva tarea: (.*)$/); if (t) { p.det.push(`🛠 Tarea correctiva: ${t[1]}`); return false; }
+        return true;
+      });
+      if (!m.det.length) marcas.delete(hid);
+    });
+  }
+  // Un solo mensaje por persona con todo lo de la tanda (incidencias primero).
+  const col = new Map();
+  if (inc.size) await _incAutoEnviar(inc, col).catch(e => console.warn("[inc-auto]", e.message));
+  if (marcas.size || fueraM.size) await _aseoAutoEnviar(marcas, fueraM, col);
+  if (tar.size) await _tarAutoEnviar(tar, col).catch(e => console.warn("[tar-auto]", e.message));
+  for (const [n, v] of col) { try { await _aseoEnviarPersona(n, v.tel, v.L.join("\n\n"), v.tag); } catch (e) { console.warn(`[aseo-auto] ${n}:`, e.message); } }
   return { ok: true, enviados: regs.length };
 }
 // Incidencias (sección de Check-list): cada alta o cambio se anota y se manda junto 1 min después.
@@ -10534,7 +10552,8 @@ function _incInfo(o) {
   const tit = [g("motivos", "Motivos"), g("clasificaciones", "Clasificacion")].map(v => Array.isArray(v) ? v.join(", ") : v).filter(Boolean).join(" — ");
   return { titulo: tit, aloj: g("alojamiento", "Alojamiento"), estatus: g("estatus", "Estatus"), nivel: g("nivel", "Nivel") };
 }
-async function _incAutoEnviar(inc) {
+function _aseoCol(col, n, tel, txt, tag) { const v = col.get(n) || { tel, L: [], tag }; v.L.push(txt); col.set(n, v); }
+async function _incAutoEnviar(inc, col) {
   const dest = _aseoDestinatarios("incidencias"); if (!dest.length) return;
   const L = ["🚨 *Cambios en Incidencias*", ""];
   inc.forEach((p, id) => {
@@ -10545,11 +10564,12 @@ async function _incAutoEnviar(inc) {
   const txt = L.join("\n"), tels = await _aseoTelPersonal().catch(() => []);
   for (const n of dest) {
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n)); if (!t || !t.tel) continue;
+    if (col) { _aseoCol(col, n, t.tel, txt, "incidencias_auto"); continue; }
     try { await _aseoEnviarPersona(n, t.tel, txt, "incidencias_auto"); }
     catch (e) { console.warn(`[inc-auto] ${n}:`, e.message); }
   }
 }
-async function _tarAutoEnviar(tar) {
+async function _tarAutoEnviar(tar, col) {
   const dest = _aseoDestinatarios("tareas"); if (!dest.length) return;
   const D = await _tarDatos(true), iso = _mxHoy();
   const L = ["🔄 *Cambios en Tareas programadas*", ""];
@@ -10561,6 +10581,7 @@ async function _tarAutoEnviar(tar) {
   const txt = L.join("\n"), tels = await _aseoTelPersonal().catch(() => []);
   for (const n of dest) {
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n)); if (!t || !t.tel) continue;
+    if (col) { _aseoCol(col, n, t.tel, txt, "tareas_auto"); continue; }
     try { await _aseoEnviarPersona(n, t.tel, txt, "tareas_auto"); }
     catch (e) { console.warn(`[tar-auto] ${n}:`, e.message); }
   }
@@ -10586,7 +10607,7 @@ function _aseoDetHumano(d) {
   if ((m = d.match(/^Incidencia:\s*(.+)$/))) return /ya no/i.test(m[1]) ? "Se quitó la marca de incidencia" : "⚠️ Se reportó una incidencia";
   return d;
 }
-async function _aseoAutoEnviar(marcas, fueraM) {
+async function _aseoAutoEnviar(marcas, fueraM, col) {
   await _aseoAutoCfgLoad();
   const cfg = _aseo.autoCfg || {};
   if (!cfg.on || !(cfg.personas || []).length || (!marcas.size && !fueraM.size)) return;
@@ -10621,6 +10642,7 @@ async function _aseoAutoEnviar(marcas, fueraM) {
     if (!m) continue;
     const t = tels.find(x => _aseoMismaPersona(x.nombre, n));
     if (!t || !t.tel) { console.warn(`[aseo-auto] ${n}: sin celular en Personal`); continue; }
+    if (col) { _aseoCol(col, n, t.tel, m, "limpiezas_auto"); continue; }
     try {
       await _aseoEnviarPersona(n, t.tel, m, "limpiezas_auto");
     } catch (e) { console.warn(`[aseo-auto] ${n}:`, e.message); }
