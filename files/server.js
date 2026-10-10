@@ -3079,7 +3079,7 @@ const _asistCierre = new Map(); // phone10 → { nombre, hora, items, draft, ubi
 const _ASIST_CIERRE_TTL = 3 * 3600 * 1000;
 const _cierreSink = new Map(); // phone10 → [textos] mientras el simulador espera la respuesta
 function _cierreEnviar(fromRaw, phone10, body) { const k = _cierreSink.get(phone10); if (k) k.push(body); return _twilioSendMessage({ to: fromRaw, body, skipMirror: true }).catch(() => {}); }
-const _CIERRE_EST = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "🧹 Terminado", inspeccionado: "✅ Inspeccionado" };
+const _CIERRE_EST = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "🧹 Terminado", validado: "🧹 Terminado y validado", inspeccionado: "✅ Inspeccionado" };
 async function _cierrePendientes(nombre) {
   const hoy = _mxHoy(), r = await _aseoResumenHoy(), out = [];
   _aseoMiasDe(r, nombre).filter(i => !i.fantasma).forEach(i => {
@@ -3106,8 +3106,19 @@ async function _cierreIniciar({ nombre, hora, fromRaw, phone10, dry, ubic }) {
     "Respóndeme con el estado de cada una, en uno o varios renglones (ej. «JC3 terminado», «cumbres 4a en proceso», «toallas ox5 listo»).",
     "Si no vas a actualizar nada escribe «salir» y registro tu salida así."].join("\n"));
 }
-async function _cierreParse(items, txt) {
+async function _cierreParse(items, txt, modo) {
   const lista = items.map((x, i) => `${i + 1}. código: ${x.code || "-"} | alojamiento: ${x.nombre || "-"} | tarea: ${x.que} | estado actual: ${x.est}`).join("\n");
+  if (modo === "pend3") {
+    const sys3 = `Interpretas la respuesta de un ADMINISTRADOR sobre limpiezas de hoy que siguen pendientes. Limpiezas:\n${lista}\n\n` +
+      `Puede escribir en uno o varios renglones, con el código corto (jc3, JC-3, cu4a), el nombre largo ("José Cárdenas 3", "cumbres 4 a"), variantes, errores de dedo o el número de la lista. ` +
+      `Estados permitidos: terminado (terminado, listo, hecho — sin validar) · validado (validado, validada, terminado y validado, aprobado) · inspeccionado (inspeccionado, revisado, checado). "todas" aplica a todas.\n` +
+      `Responde SOLO JSON: {"salir": bool, "si": bool, "cambios": [{"n": número, "estado": "terminado|validado|inspeccionado"}], "dudas": "lo que no pudiste identificar, o vacío"}. ` +
+      `salir=true si dice que las deje así ("déjalas", "así", "nada", "que se reprogramen"). si=true si solo confirma ("sí", "ok", "correcto").`;
+    const r3 = await _llmChat({ system: sys3, history: [], userMsg: String(txt || "") });
+    const m3 = String(r3.text || "").match(/\{[\s\S]*\}/); let j3 = {}; try { j3 = JSON.parse(m3 ? m3[0] : "{}"); } catch (_) {}
+    const c3 = (Array.isArray(j3.cambios) ? j3.cambios : []).map(c => ({ n: Number(c.n), estado: String(c.estado || "") })).filter(c => c.n >= 1 && c.n <= items.length && ["terminado", "validado", "inspeccionado"].includes(c.estado));
+    return { salir: !!j3.salir, si: !!j3.si, cambios: c3, dudas: String(j3.dudas || "").trim() };
+  }
   const sys = `Interpretas la respuesta de un empleado de limpieza que, al terminar su jornada, reporta cómo quedaron sus tareas. Sus tareas abiertas:\n${lista}\n\n` +
     `Puede escribir en uno o varios renglones, con el código corto (jc3, JC-3, cu4a, c4a), el nombre largo ("José Cárdenas 3", "cumbres 4 a", "jose cardenas tres"), variantes o errores de dedo, o con la descripción de la tarea. ` +
     `Estados: terminado (listo, lista, terminé, acabé, quedó, ya, hecho) · en_proceso (en proceso, empezado, a medias, a la mitad, me faltó poco) · pendiente (no la hice, no alcancé, no empecé, pendiente) · inspeccionado (inspeccionado, revisado, checado; solo si la tarea es Inspección; si la tarea es Inspección y dice "listo" usa inspeccionado). ` +
@@ -3123,19 +3134,21 @@ async function _cierreParse(items, txt) {
 }
 async function _cierreResponder(ci, txt, fromRaw, phone10) {
   const send = body => _cierreEnviar(fromRaw, phone10, (ci.dry ? `🧪 _Prueba como ${ci.nombre}_\n` : "") + body);
+  const P3 = ci.modo === "pend3", salirTxt = P3 ? "«déjalas» para que pasen al día siguiente a las 9 pm" : "«salir» para registrar tu salida sin cambios";
   const n = _botNorm(txt);
   const esSi = /^(si|ok|okay|correcto|dale|va|sale|confirmo|asi es|esta bien|perfecto)\b/.test(n) && n.split(" ").length <= 4;
   if (ci.draft && esSi) return _cierreAplicar(ci, fromRaw, phone10);
-  if (ci.draft && /^no\b/.test(n) && n.split(" ").length <= 2) { await send("¿Qué corrijo? Envíame otra vez el estado de las tareas, o escribe «salir» para registrar tu salida sin cambios."); return; }
+  if (ci.draft && /^no\b/.test(n) && n.split(" ").length <= 2) { await send(`¿Qué corrijo? Envíame otra vez el estado, o escribe ${salirTxt}.`); return; }
   let p;
-  try { p = await _cierreParse(ci.items, txt); } catch (e) { await send("No pude leer tu mensaje. Inténtalo de nuevo o escribe «salir»."); return; }
+  try { p = await _cierreParse(ci.items, txt, ci.modo); } catch (e) { await send(`No pude leer tu mensaje. Inténtalo de nuevo o escribe ${salirTxt}.`); return; }
   if (p.si && ci.draft) return _cierreAplicar(ci, fromRaw, phone10);
   if (!p.cambios.length) {
     if (p.salir) return _cierreFinal(ci, [], fromRaw, phone10);
-    await send(`No identifiqué a qué tareas te refieres${p.dudas ? ` (${p.dudas})` : ""}. Escríbelo como «JC3 terminado» o el número de la lista (ej. «1 listo, 2 en proceso»), o «salir» para registrar tu salida sin cambios.`); return;
+    if (P3 && !ci.draft) return "pasar"; // el administrador escribió otra cosa: sigue el flujo normal del bot
+    await send(`No identifiqué a qué tareas te refieres${p.dudas ? ` (${p.dudas})` : ""}. Escríbelo como «JC3 terminado» o el número de la lista (ej. ${P3 ? "«1 validado, 2 inspeccionado»" : "«1 listo, 2 en proceso»"}), o ${salirTxt}.`); return;
   }
   const d = new Map((ci.draft || []).map(c => [c.n, c.estado]));
-  p.cambios.forEach(c => { const x = ci.items[c.n - 1]; let e = c.estado; if (e === "terminado" && x.insp && x.t === "aseo") e = "inspeccionado"; if (e === "inspeccionado" && !x.insp) e = "terminado"; d.set(c.n, e); });
+  p.cambios.forEach(c => { const x = ci.items[c.n - 1]; let e = c.estado; if (!P3) { if (e === "terminado" && x.insp && x.t === "aseo") e = "inspeccionado"; if (e === "inspeccionado" && !x.insp) e = "terminado"; } d.set(c.n, e); });
   ci.draft = [...d.entries()].map(([n, estado]) => ({ n, estado })).sort((a, b) => a.n - b.n);
   ci.exp = Date.now() + _ASIST_CIERRE_TTL;
   const sin = ci.items.map((x, i) => i + 1).filter(k => !d.has(k));
@@ -3150,7 +3163,7 @@ async function _cierreAplicar(ci, fromRaw, phone10) {
     if (c.estado === x.est) continue;
     try {
       if (!ci.dry) {
-        if (x.t === "aseo") { const reg = await _aseoGuardarEstado({ id: x.estId, hid: x.hid, estado: c.estado, validar: false, user }); _aseoAutoMarca(x.hid, "modificado", _aseoEstadoDet(reg, c.estado)); }
+        if (x.t === "aseo") { const est = c.estado === "validado" ? "terminado" : c.estado; const reg = await _aseoGuardarEstado({ id: x.estId, hid: x.hid, estado: est, validar: c.estado === "validado" || (ci.modo === "pend3" && est === "inspeccionado"), user }); _aseoAutoMarca(x.hid, "modificado", _aseoEstadoDet(reg, est)); }
         else if (x.it.k[0] === "T") await _aseoGuardarEstado({ id: x.it.key, hid: x.it.hid, estado: c.estado === "inspeccionado" && x.it.tipo !== "limpieza" ? "terminado" : c.estado, validar: false, user });
         else {
           const RT = { pendiente: "nuevo", en_proceso: "en_proceso", terminado: "resuelto", inspeccionado: "resuelto" };
@@ -3165,6 +3178,14 @@ async function _cierreAplicar(ci, fromRaw, phone10) {
 }
 async function _cierreFinal(ci, hechos, fromRaw, phone10) {
   _asistCierre.delete(phone10);
+  if (ci.modo === "pend3") { // limpiezas pendientes de las 3 pm (administradores)
+    const siguen = (ci.items || []).filter(x => x.est === "pendiente");
+    const L3 = [];
+    if (hechos.length) L3.push("✅ *Limpiezas actualizadas*", ...hechos, "");
+    L3.push(siguen.length ? `⏳ Siguen pendientes: ${siguen.map(x => x.code || x.nombre).join(", ")}. Si nadie las actualiza, a las 9 pm pasan al día siguiente.` : "Listo, no queda ninguna pendiente.");
+    await _cierreEnviar(fromRaw, phone10, L3.join("\n"));
+    return;
+  }
   const pila = String(ci.nombre || "").split(" ")[0];
   const abiertas = (ci.items || []).filter(x => x.est === "pendiente" || x.est === "en_proceso" || (x.insp && x.est !== "inspeccionado" && x.t === "aseo"));
   const L = [];
@@ -3708,9 +3729,9 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   const _asistIntent = _detectAsistenciaIntent(bodyMsg);
   const _ci = _asistCierre.get(phone10);
   if (_ci && Date.now() < _ci.exp && _asistIntent !== "entrada") {
-    if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, staff: true }); bodyAlreadyPersisted = true; }
-    await _cierreResponder(_ci, bodyMsg, fromRaw, phone10).catch(e => console.warn("[cierre]", e.message));
-    return;
+    if (_ci.modo !== "pend3" && !bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, staff: true }); bodyAlreadyPersisted = true; }
+    const rr = await _cierreResponder(_ci, bodyMsg, fromRaw, phone10).catch(e => console.warn("[cierre]", e.message));
+    if (rr !== "pasar") return;
   }
   if (_asistIntent === "salida" && _prueba) {
     await _cierreIniciar({ nombre: _prueba, hora: new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" }), fromRaw, phone10, dry: true, ubic: true }).catch(e => console.warn("[cierre]", e.message));
@@ -10688,22 +10709,57 @@ async function _aseoActividadDiaTxt(dia) {
   out.push(await _incListaTxt({ fecha: dia }).catch(() => ""));
   return out.filter(x => x && String(x).trim());
 }
+const _ASEO_P3_OBJ = "aseo/pend3pm.json";
+// Administradores que reciben los avisos de limpiezas pendientes (perfil Administrador con celular).
+async function _aseoAdminsTel() {
+  await _aseoAutoCfgLoad();
+  const P = (_aseo.autoCfg || {}).perfiles || {}, tels = await _aseoTelPersonal().catch(() => []);
+  return Object.keys(P).filter(n => P[n].rol === "admin").map(n => ({ n, t: tels.find(x => _aseoMismaPersona(x.nombre, n)) })).filter(x => x.t && x.t.tel);
+}
+async function _aseoPend3Avisar(pendientes, recordatorio) {
+  const adm = await _aseoAdminsTel(); if (!adm.length) return;
+  const items = pendientes.map(i => ({ t: "aseo", hid: i.hid, estId: i.estId, code: i.code, nombre: i.nombre, que: "Limpieza", est: "pendiente", insp: false, aseo: i.aseo }));
+  const txt = [recordatorio ? "🔔 *Recordatorio · limpiezas aún pendientes*" : "⏳ *Limpiezas de hoy aún pendientes (3 pm)*", "",
+    ...items.map((x, k) => `${k + 1}. ${x.code ? x.code + " · " : ""}${x.nombre}${x.aseo ? ` — 🧹 ${x.aseo.split(", ").map(_aseoCorto).join(", ")}` : " — sin asignar"}`), "",
+    "¿Cómo quedaron? Responde en uno o varios renglones con *Terminado*, *Validado* o *Inspeccionado* (ej. «JC3 validado», «2 inspeccionado», «todas terminadas»).",
+    `Si nadie las actualiza, a las *9 pm* pasan al día siguiente${recordatorio ? "" : " (te recuerdo a las 8 pm)"}. «déjalas» = que se reprogramen.`].join("\n");
+  for (const a of adm) {
+    try {
+      await _aseoEnviarPersona(a.n, a.t.tel, txt, recordatorio ? "pend_8pm" : "pend_3pm");
+      _asistCierre.set(a.t.tel, { modo: "pend3", nombre: a.n, items: JSON.parse(JSON.stringify(items)), draft: null, exp: Date.now() + 7 * 3600 * 1000 });
+    } catch (e) { console.warn(`[aseo-3pm] ${a.n}:`, e.message); }
+  }
+}
+async function _aseoPend3Movidas(mover, man) {
+  const adm = await _aseoAdminsTel(); if (!adm.length) return;
+  const f = new Date(man + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
+  const txt = `📅 *Pasaron al día siguiente* (${f}) porque siguen pendientes a las 9 pm:\n${mover.map(i => `• ${i.code ? i.code + " · " : ""}${i.nombre}`).join("\n")}\n\n🗓️ Recuerda cerrar la fecha en el calendario.`;
+  for (const a of adm) { _asistCierre.delete(a.t.tel); await _aseoEnviarPersona(a.n, a.t.tel, txt, "pend_9pm").catch(() => {}); }
+}
 async function _aseoAutoReprogTick() {
   const h = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
   if (h >= 14 && h < 18) await _aseoResumen3pm().catch(e => console.warn("[aseo-2pm]", e.message)); // resumen del día a las 2 pm (no se manda de noche)
-  if (h < 15) return; // la reprogramación automática sigue a las 3 pm
+  if (h < 15) return;
+  // Limpiezas de salida que siguen «Pendiente» (sin entrada ese día): 3 pm aviso a administradores · 8 pm
+  // recordatorio · 9 pm (sin respuesta) pasan al día siguiente con card de reprogramación automática.
   const hoy = _mxHoy(), d = new Date(hoy + "T12:00:00"); d.setDate(d.getDate() + 1);
   const man = d.toISOString().slice(0, 10);
   const r = await _aseoResumenHoy();
   const RP = _aseo.reprog || {}, E = _aseo.estados || {};
   const pend = id => !E[id] || E[id].estado === "pendiente";
-  const mover = r.items.filter(i => i.estId && !i.fantasma && !i.entra && (i.sale || i.reprog) && i.sel === "pendiente" && !(RP[i.estId] && RP[i.estId].fecha > hoy));
+  const pendientes = r.items.filter(i => i.estId && !i.fantasma && !i.entra && (i.sale || i.reprog) && i.sel === "pendiente" && !(RP[i.estId] && RP[i.estId].fecha > hoy));
+  const etapa = h >= 21 ? "" : h >= 20 ? "20" : "15";
+  if (etapa && pendientes.length) {
+    const toca = await _aseoMutate(_ASEO_P3_OBJ, "p3", D => { if (D.fecha !== hoy) { for (const k of Object.keys(D)) delete D[k]; D.fecha = hoy; } if (D["e" + etapa]) return false; D["e" + etapa] = new Date().toISOString(); return true; });
+    if (toca) await _aseoPend3Avisar(pendientes, etapa === "20").catch(e => console.warn("[aseo-3pm] aviso:", e.message));
+  }
+  const mover = h >= 21 ? pendientes : [];
   const deshacer = Object.entries(RP).filter(([id, x]) => x && x.auto && x.fecha === man && (x.fantasmas || []).slice(-1)[0] === hoy && !pend(id)).map(([id]) => id);
   if (!mover.length && !deshacer.length) return;
   await _aseoMutate(_ASEO_REPROG_OBJ, "reprog", D => {
     mover.forEach(i => {
       const p = D[i.estId];
-      D[i.estId] = { fecha: man, orig: (p && p.orig) || hoy, hid: i.hid, auto: true, fantasmas: [...new Set([...((p && p.fantasmas) || []), hoy])], by: "Automático 3 pm", at: new Date().toISOString() };
+      D[i.estId] = { fecha: man, orig: (p && p.orig) || hoy, hid: i.hid, auto: true, fantasmas: [...new Set([...((p && p.fantasmas) || []), hoy])], by: "Automático 9 pm", at: new Date().toISOString() };
     });
     deshacer.forEach(id => {
       const x = D[id]; if (!x) return;
@@ -10712,7 +10768,8 @@ async function _aseoAutoReprogTick() {
     });
   });
   _aseo.reprogTs = Date.now();
-  console.log(`[aseo] reprogramación 3 pm → ${man}: ${mover.map(i => i.code || i.hid).join(", ") || "—"}${deshacer.length ? ` · deshechas: ${deshacer.join(", ")}` : ""}`);
+  if (mover.length) _aseoPend3Movidas(mover, man).catch(() => {});
+  console.log(`[aseo] reprogramación 9 pm → ${man}: ${mover.map(i => i.code || i.hid).join(", ") || "—"}${deshacer.length ? ` · deshechas: ${deshacer.join(", ")}` : ""}`);
 }
 setInterval(() => { _aseoAutoReprogTick().catch(e => console.warn("[aseo] reprog 3pm:", e.message)); }, 5 * 60_000);
 // ── Reenvío automático de la lista de limpiezas (botón "Notificar actualizaciones") ──
