@@ -9437,7 +9437,7 @@ async function _histDe(keys) { const d = await _rhdGetJson(_HIST_OBJ).catch(() =
 // Sin códigos: tareas correctivas → «tipo · descripción», alojamiento → código corto, reserva → huésped.
 async function _histHumano(L) {
   const need = c => L.some(h => h.campo === c);
-  const TIPO = { limpieza: "🧹 Limpieza", inspeccion: "📋 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
+  const TIPO = { limpieza: "🧹 Limpieza", inspeccion: "🔍 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
   let tareas = null, rts = null, cat = null;
   if (need("Tareas correctivas")) { await _aseoTareasLoad().catch(() => {}); tareas = _aseo.tareas || {}; rts = await _clRtRows().catch(() => []); }
   if (need("Alojamiento")) cat = await _aseoCatalogo().catch(() => []);
@@ -10520,7 +10520,7 @@ function _botDiaPedido(ctx) {
 }
 function _botIsoDe(dp) { const h = _mxHoy(); if (dp !== "ayer") return h; const y = new Date(h + "T12:00:00"); y.setDate(y.getDate() - 1); return y.toISOString().slice(0, 10); }
 // ═══ Bot · Check-list (tareas por tipo), Incidencias y su relación con alojamientos, reservas y tareas ═══
-const _CL_TIPO = { limpieza: "🧹 Limpieza", inspeccion: "📋 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
+const _CL_TIPO = { limpieza: "🧹 Limpieza", inspeccion: "🔍 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
 const _CL_EST = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "✅ Terminado", inspeccionado: "🔍 Inspeccionado", cancelado: "✖️ Cancelado" };
 const _INC_EST_TXT = { "Nuevo": "Pendiente", "En proceso": "En proceso", "Resuelto": "Terminado", "Cancelado": "Cancelado" }; // mismos nombres que el sistema
 const _CL_PRIO_N = { critica: 4, "crítica": 4, alta: 3, alto: 3, media: 2, medio: 2, baja: 1, bajo: 1 };
