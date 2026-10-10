@@ -3072,6 +3072,109 @@ function _detectAsistenciaIntent(text) {
   return null;
 }
 
+// ── Cierre de jornada: al registrar su SALIDA el empleado recibe su lista actualizada y, si tiene tareas
+//    abiertas, se le pide el estado de cada una (respuesta libre, en uno o varios renglones). Al confirmar se
+//    guardan y entonces se manda la confirmación de salida. Actualizar es opcional: «salir» la registra igual.
+const _asistCierre = new Map(); // phone10 → { nombre, hora, items, draft, ubic, dry, exp }
+const _ASIST_CIERRE_TTL = 3 * 3600 * 1000;
+const _cierreSink = new Map(); // phone10 → [textos] mientras el simulador espera la respuesta
+function _cierreEnviar(fromRaw, phone10, body) { const k = _cierreSink.get(phone10); if (k) k.push(body); return _twilioSendMessage({ to: fromRaw, body, skipMirror: true }).catch(() => {}); }
+const _CIERRE_EST = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "🧹 Terminado", inspeccionado: "✅ Inspeccionado" };
+async function _cierrePendientes(nombre) {
+  const hoy = _mxHoy(), r = await _aseoResumenHoy(), out = [];
+  _aseoMiasDe(r, nombre).filter(i => !i.fantasma).forEach(i => {
+    const insp = !i.roles.includes("Aseo");
+    if (insp ? i.sel !== "inspeccionado" : (i.sel === "pendiente" || i.sel === "en_proceso"))
+      out.push({ t: "aseo", hid: i.hid, estId: i.estId, code: i.code, nombre: i.nombre, que: insp ? "Inspección" : "Aseo", est: i.sel, insp });
+  });
+  (await _clTareas(hoy).catch(() => [])).filter(i => (i.est === "pendiente" || i.est === "en_proceso") && i.asig.some(n => _aseoMismaPersona(n, nombre)))
+    .forEach(i => out.push({ t: "cl", it: i, code: i.aloj || "", nombre: "", que: `${i.titulo} (${String(_CL_TIPO[i.tipo] || i.tipo).replace(/^\S+\s/, "")})`, est: i.est, insp: i.tipo === "inspeccion" }));
+  return out;
+}
+const _cierreEtq = x => `${x.code || x.nombre || "Sin alojamiento"}${x.code && x.nombre ? " · " + x.nombre : ""} — ${x.que}`;
+async function _cierreIniciar({ nombre, hora, fromRaw, phone10, dry, ubic }) {
+  const pila = String(nombre || "").split(" ")[0], hoy = _mxHoy();
+  const send = body => _cierreEnviar(fromRaw, phone10, (dry ? `🧪 _Prueba como ${nombre}_\n` : "") + body);
+  const items = await _cierrePendientes(nombre).catch(() => []);
+  const lista = await _aseoListaEmpleado(nombre, { consulta: true }).catch(() => null);
+  const mias = (await _clTareas(hoy).catch(() => [])).filter(i => i.asig.some(n => _aseoMismaPersona(n, nombre)));
+  if (lista) await send(lista);
+  if (mias.length) await send(_clTareasTxt(mias, hoy, "Tus tareas", false));
+  if (!items.length) { await _cierreFinal({ nombre, hora, items: [], ubic, dry }, [], fromRaw, phone10); return; }
+  _asistCierre.set(phone10, { nombre, hora, items, draft: null, ubic: !!ubic, dry: !!dry, exp: Date.now() + _ASIST_CIERRE_TTL });
+  await send([`📝 *Antes de cerrar tu salida, ${pila}:* ¿cómo quedaron estas tareas?`, "", ...items.map((x, i) => `${i + 1}. ${_cierreEtq(x)} · ${_CIERRE_EST[x.est] || x.est}`), "",
+    "Respóndeme con el estado de cada una, en uno o varios renglones (ej. «JC3 terminado», «cumbres 4a en proceso», «toallas ox5 listo»).",
+    "Si no vas a actualizar nada escribe «salir» y registro tu salida así."].join("\n"));
+}
+async function _cierreParse(items, txt) {
+  const lista = items.map((x, i) => `${i + 1}. código: ${x.code || "-"} | alojamiento: ${x.nombre || "-"} | tarea: ${x.que} | estado actual: ${x.est}`).join("\n");
+  const sys = `Interpretas la respuesta de un empleado de limpieza que, al terminar su jornada, reporta cómo quedaron sus tareas. Sus tareas abiertas:\n${lista}\n\n` +
+    `Puede escribir en uno o varios renglones, con el código corto (jc3, JC-3, cu4a, c4a), el nombre largo ("José Cárdenas 3", "cumbres 4 a", "jose cardenas tres"), variantes o errores de dedo, o con la descripción de la tarea. ` +
+    `Estados: terminado (listo, lista, terminé, acabé, quedó, ya, hecho) · en_proceso (en proceso, empezado, a medias, a la mitad, me faltó poco) · pendiente (no la hice, no alcancé, no empecé, pendiente) · inspeccionado (inspeccionado, revisado, checado; solo si la tarea es Inspección; si la tarea es Inspección y dice "listo" usa inspeccionado). ` +
+    `"todas listas" / "todo terminado" aplica a todas. Si un alojamiento tiene varias tareas y no aclara cuál, aplica a todas las de ese alojamiento.\n` +
+    `Responde SOLO JSON: {"salir": bool, "si": bool, "cambios": [{"n": número, "estado": "terminado|en_proceso|pendiente|inspeccionado"}], "dudas": "lo que no pudiste identificar, o vacío"}. ` +
+    `salir=true si solo quiere registrar su salida sin actualizar ("salir", "así déjalo", "nada", "ninguna"). si=true si solo confirma ("sí", "ok", "correcto", "dale").`;
+  const r = await _llmChat({ system: sys, history: [], userMsg: String(txt || "") });
+  const m = String(r.text || "").match(/\{[\s\S]*\}/);
+  let j = {}; try { j = JSON.parse(m ? m[0] : "{}"); } catch (_) {}
+  const cambios = (Array.isArray(j.cambios) ? j.cambios : []).map(c => ({ n: Number(c.n), estado: String(c.estado || "") }))
+    .filter(c => c.n >= 1 && c.n <= items.length && _CIERRE_EST[c.estado]);
+  return { salir: !!j.salir, si: !!j.si, cambios, dudas: String(j.dudas || "").trim() };
+}
+async function _cierreResponder(ci, txt, fromRaw, phone10) {
+  const send = body => _cierreEnviar(fromRaw, phone10, (ci.dry ? `🧪 _Prueba como ${ci.nombre}_\n` : "") + body);
+  const n = _botNorm(txt);
+  const esSi = /^(si|ok|okay|correcto|dale|va|sale|confirmo|asi es|esta bien|perfecto)\b/.test(n) && n.split(" ").length <= 4;
+  if (ci.draft && esSi) return _cierreAplicar(ci, fromRaw, phone10);
+  if (ci.draft && /^no\b/.test(n) && n.split(" ").length <= 2) { await send("¿Qué corrijo? Envíame otra vez el estado de las tareas, o escribe «salir» para registrar tu salida sin cambios."); return; }
+  let p;
+  try { p = await _cierreParse(ci.items, txt); } catch (e) { await send("No pude leer tu mensaje. Inténtalo de nuevo o escribe «salir»."); return; }
+  if (p.si && ci.draft) return _cierreAplicar(ci, fromRaw, phone10);
+  if (!p.cambios.length) {
+    if (p.salir) return _cierreFinal(ci, [], fromRaw, phone10);
+    await send(`No identifiqué a qué tareas te refieres${p.dudas ? ` (${p.dudas})` : ""}. Escríbelo como «JC3 terminado» o el número de la lista (ej. «1 listo, 2 en proceso»), o «salir» para registrar tu salida sin cambios.`); return;
+  }
+  const d = new Map((ci.draft || []).map(c => [c.n, c.estado]));
+  p.cambios.forEach(c => { const x = ci.items[c.n - 1]; let e = c.estado; if (e === "terminado" && x.insp && x.t === "aseo") e = "inspeccionado"; if (e === "inspeccionado" && !x.insp) e = "terminado"; d.set(c.n, e); });
+  ci.draft = [...d.entries()].map(([n, estado]) => ({ n, estado })).sort((a, b) => a.n - b.n);
+  ci.exp = Date.now() + _ASIST_CIERRE_TTL;
+  const sin = ci.items.map((x, i) => i + 1).filter(k => !d.has(k));
+  await send(["Voy a actualizar:", ...ci.draft.map(c => `• ${_cierreEtq(ci.items[c.n - 1])} → ${_CIERRE_EST[c.estado]}`),
+    sin.length ? `\nSin cambio: ${sin.map(k => ci.items[k - 1].code || ci.items[k - 1].que).join(", ")}` : "",
+    p.dudas ? `\n⚠️ No identifiqué: ${p.dudas}` : "", "\n¿Correcto? Responde «sí», o corrige lo que haga falta."].filter(Boolean).join("\n"));
+}
+async function _cierreAplicar(ci, fromRaw, phone10) {
+  const user = `${ci.nombre} (WhatsApp)`, hechos = [];
+  for (const c of ci.draft || []) {
+    const x = ci.items[c.n - 1]; if (!x) continue;
+    if (c.estado === x.est) continue;
+    try {
+      if (!ci.dry) {
+        if (x.t === "aseo") { const reg = await _aseoGuardarEstado({ id: x.estId, hid: x.hid, estado: c.estado, validar: false, user }); _aseoAutoMarca(x.hid, "modificado", _aseoEstadoDet(reg, c.estado)); }
+        else if (x.it.k[0] === "T") await _aseoGuardarEstado({ id: x.it.key, hid: x.it.hid, estado: c.estado === "inspeccionado" && x.it.tipo !== "limpieza" ? "terminado" : c.estado, validar: false, user });
+        else {
+          const RT = { pendiente: "nuevo", en_proceso: "en_proceso", terminado: "resuelto", inspeccionado: "resuelto" };
+          const j = await fetch(`http://127.0.0.1:${PORT}/reportes-tecnicos-upsert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payload: { ID: x.it.id, Estado: RT[c.estado], UpdatedAt: new Date().toISOString(), Updated_by: user } }) }).then(r => r.json());
+          if (!j.ok) throw new Error(j.error || "no se guardó");
+        }
+      }
+      x.est = c.estado; hechos.push(`• ${_cierreEtq(x)} → ${_CIERRE_EST[c.estado]}`);
+    } catch (e) { hechos.push(`• ⚠️ ${_cierreEtq(x)}: no se pudo guardar (${e.message})`); }
+  }
+  return _cierreFinal(ci, hechos, fromRaw, phone10);
+}
+async function _cierreFinal(ci, hechos, fromRaw, phone10) {
+  _asistCierre.delete(phone10);
+  const pila = String(ci.nombre || "").split(" ")[0];
+  const abiertas = (ci.items || []).filter(x => x.est === "pendiente" || x.est === "en_proceso" || (x.insp && x.est !== "inspeccionado" && x.t === "aseo"));
+  const L = [];
+  if (hechos.length) L.push(`✅ *Tareas actualizadas*${ci.dry ? " (prueba: no se guardó nada)" : ""}`, ...hechos, "");
+  if (abiertas.length) L.push(`⏳ Quedaron abiertas: ${abiertas.map(x => x.code || x.que).join(", ")}`, "");
+  L.push(`🕕 Salida registrada · ${ci.hora || ""}`.trim());
+  L.push(ci.ubic ? "📍 Ubicación guardada" : "📍 Ahora comparte tu ubicación (obligatoria) — sin ella el registro queda incompleto.");
+  L.push("", `Gracias, ${pila}!`);
+  await _cierreEnviar(fromRaw, phone10, (ci.dry ? `🧪 _Prueba como ${ci.nombre}: no se registró la salida_\n` : "") + L.join("\n"));
+}
 async function _asistenciaLookupEmpleado(phone10) {
   const cached = _asistenciaEmpCache.get(phone10);
   if (cached && (Date.now() - cached.ts) < _ASIST_EMP_TTL_MS) return cached.data;
@@ -3576,6 +3679,12 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     if (pending && (Date.now() - pending.ts) < _ASIST_PENDING_TTL_MS) {
       _asistenciaPending.delete(phone10);
       const resp = await _asistenciaMarcarEnSheet(phone10, pending.tipo, latRaw, lngRaw, "");
+      const ciU = _asistCierre.get(phone10);
+      if (resp && resp.ok && pending.tipo === "salida" && ciU && Date.now() < ciU.exp) {
+        ciU.ubic = true;
+        await _twilioSendMessage({ to: fromRaw, body: "📍 Ubicación guardada. En cuanto me digas cómo quedaron tus tareas cierro tu salida (o escribe «salir»).", skipMirror: true }).catch(() => {});
+        return;
+      }
       if (resp && resp.ok) {
         const emoji = pending.tipo === "entrada" ? "🕘" : "🕕";
         const verbo = pending.tipo === "entrada" ? "Entrada" : "Salida";
@@ -3597,6 +3706,16 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // ─── Control de asistencia: intent de entrada / salida ──────────────────
   const _prueba = await _aseoPruebaComo(phone10).catch(() => "");
   const _asistIntent = _detectAsistenciaIntent(bodyMsg);
+  const _ci = _asistCierre.get(phone10);
+  if (_ci && Date.now() < _ci.exp && _asistIntent !== "entrada") {
+    if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, staff: true }); bodyAlreadyPersisted = true; }
+    await _cierreResponder(_ci, bodyMsg, fromRaw, phone10).catch(e => console.warn("[cierre]", e.message));
+    return;
+  }
+  if (_asistIntent === "salida" && _prueba) {
+    await _cierreIniciar({ nombre: _prueba, hora: new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" }), fromRaw, phone10, dry: true, ubic: true }).catch(e => console.warn("[cierre]", e.message));
+    return;
+  }
   if (_asistIntent && _prueba) { // prueba: no se registra asistencia; se muestra lo que recibiría la persona
     const r0 = `🧪 Prueba como ${_prueba}: aquí se registraría su ${_asistIntent} (no se guardó nada).`;
     await _twilioSendMessage({ to: fromRaw, body: r0, skipMirror: true }).catch(() => {});
@@ -3613,6 +3732,10 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const emoji = _asistIntent === "entrada" ? "🕘" : "🕕";
         const verbo = _asistIntent === "entrada" ? "Entrada" : "Salida";
         const nombre = String(resp.empleado || "").split(" ")[0];
+        if (_asistIntent === "salida") { // cierre de jornada: lista actualizada + estados pendientes; la confirmación llega al final
+          try { await _cierreIniciar({ nombre: String(resp.empleado || emp.empleado || ""), hora: resp.hora, fromRaw, phone10, dry: false }); return; }
+          catch (e) { console.warn("[cierre] no se pudo iniciar:", e.message); _asistCierre.delete(phone10); }
+        }
         const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n\n📍 Ahora comparte tu ubicación (obligatoria) — sin ella el registro queda incompleto.\n\nGracias, ${nombre}!`;
         await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
 
@@ -9740,7 +9863,21 @@ app.post("/bot/simular", async (req, res) => {
     if (libre) {
       // Mismo camino que un WhatsApp real: administrador del sistema → modo admin; personal → modo personal (si el mensaje es de operación).
       const sctx = Object.assign({}, ctx, { phone10: "sim" + yo.tel, simular: true, userMsg: libre });
-      if (adm.isAdmin) {
+      const ai = _detectAsistenciaIntent(libre), ciS = _asistCierre.get(yo.tel);
+      if (ciS && ciS.dry && Date.now() < ciS.exp && ai !== "entrada") {
+        // Respuesta a un cierre de jornada de prueba en curso: sigue en tu WhatsApp.
+        const sink = []; _cierreSink.set(yo.tel, sink);
+        try { await _cierreResponder(ciS, libre, _waFormatTo(yo.tel), yo.tel); } finally { _cierreSink.delete(yo.tel); }
+        return res.json({ ok: true, texto: `🧪 *Prueba como ${como}* · Mensaje: «${libre}»\n\n${sink.join("\n\n— — —\n\n")}`, enviado: true });
+      }
+      if (ai === "salida" && !mismo) {
+        const sink = []; _cierreSink.set(yo.tel, sink);
+        try { await _cierreIniciar({ nombre: como, hora: new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" }), fromRaw: _waFormatTo(yo.tel), phone10: yo.tel, dry: true, ubic: true }); } finally { _cierreSink.delete(yo.tel); }
+        return res.json({ ok: true, texto: `🧪 *Prueba como ${como}* · Mensaje: «${libre}» → 🕕 *registro de SALIDA* (prueba: no se registra ni se guardan estados; contesta aquí o en WhatsApp)\n\n${sink.join("\n\n— — —\n\n")}`, enviado: true });
+      }
+      if (ai) {
+        txt = ai === "entrada" ? `🕘 Se reconoce como *registro de ENTRADA*: se registra la hora, se pide la ubicación y al compartirla recibe su lista del día.\n\n${(await _aseoListaEmpleado(como, { consulta: true }).catch(() => null)) || "No tiene limpiezas asignadas hoy."}` : "🕕 Se reconoce como *registro de SALIDA* (lista actualizada + estado de sus tareas abiertas).";
+      } else if (adm.isAdmin) {
         const llm = await _botLlmLoop({ system: await _botAdminSys(), history: [], userMsg: libre.replace(/^@\s*/, ""), ctx: Object.assign(sctx, { isStaff: false }), tools: BOT_TOOLS });
         txt = String(llm.text || "").trim() || "OK.";
       } else if (!_BOT_ASEO_KW.test(_botNorm(libre))) {
