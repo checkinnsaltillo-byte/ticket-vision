@@ -299,7 +299,26 @@ function _appsScriptStaleFallback(cacheKey, reason) {
 // Aplica el mismo patrón de reintentos con backoff exponencial que el GET,
 // pero NO usa cache stale (los POST son escrituras — no queremos idempotencia
 // engañosa). Solo maneja el glitch HTML de Apps Script.
+// Copia en memoria de lecturas muy consultadas (solicitudes, pagos manuales, objetos): la campana de
+// notificaciones de cada pestaña abierta las pide cada minuto y saturaba Apps Script (logins y datos del
+// celular tardaban 20–30 s). Fresca 60 s; después se sirve la copia y se refresca en segundo plano.
+// Cualquier escritura de esa familia (callCheckinAppsScriptPost) borra la copia.
+const _lecturaSWR = new Map(); let _lecturaSWRGen = 0;
+async function _lecturaSWRGet(action, params) {
+  const key = _appsScriptCacheKey(action, params), c = _lecturaSWR.get(key), now = Date.now();
+  const gen = _lecturaSWRGen;
+  const cargar = () => callCheckinAppsScript(action, params).then(r => { if (r && r.ok !== false && !r._stale && gen === _lecturaSWRGen) _lecturaSWR.set(key, { ts: Date.now(), r }); return r; });
+  if (c && now - c.ts < 60_000) return c.r;
+  if (c && now - c.ts < 15 * 60_000) { if (!c.cargando) { c.cargando = true; cargar().catch(() => {}).finally(() => { c.cargando = false; }); } return c.r; }
+  return cargar();
+}
+function _lecturaSWRBorrar(action) {
+  const fam = /solicitud/.test(action) ? 'list_solicitudes' : /pago_manual/.test(action) ? 'list_pagos_manuales' : /objeto/.test(action) ? 'list_objetos' : '';
+  if (fam) _lecturaSWRGen++;
+  if (fam) for (const k of [..._lecturaSWR.keys()]) if (k.startsWith(fam)) _lecturaSWR.delete(k);
+}
 async function callCheckinAppsScriptPost(action, dataObj) {
+  _lecturaSWRBorrar(action);
   const body = JSON.stringify(Object.assign({ action }, dataObj || {}));
   const TIMEOUT_MS = 60000;
   async function _postAttempt() {
@@ -5508,7 +5527,7 @@ app.get("/solicitudes", async (req, res) => {
     const params = {};
     if (req.query.phone) params.phone = String(req.query.phone);
     if (req.query.estado) params.estado = String(req.query.estado);
-    const r = await callCheckinAppsScript("list_solicitudes", params);
+    const r = await _lecturaSWRGet("list_solicitudes", params);
     res.json(r);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -5539,7 +5558,7 @@ app.post("/solicitudes/:id/estado", async (req, res) => {
 app.get("/pagos-manuales", async (req, res) => {
   try {
     const reservaId = String(req.query.reservaId || "").trim();
-    const r = await callCheckinAppsScript("list_pagos_manuales", reservaId ? { reservaId } : {});
+    const r = await _lecturaSWRGet("list_pagos_manuales", reservaId ? { reservaId } : {});
     res.json(r);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -5680,7 +5699,7 @@ app.post("/sys/login", async (req, res) => {
 // ─── OBJETOS OLVIDADOS — paralelo a Incidencias ──────────────────────────────
 app.get("/objetos-list", async (req, res) => {
   try {
-    const result = await callCheckinAppsScript("list_objetos");
+    const result = await _lecturaSWRGet("list_objetos");
     res.json(result);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
