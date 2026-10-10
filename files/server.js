@@ -9617,6 +9617,9 @@ async function _aseoResumenHoy(opts) {
     if (new Date(r.at).toLocaleDateString("en-CA", { timeZone: "America/Monterrey" }) !== hoy || casas.has(String(r.hid))) return;
     const c = casa(String(r.hid)); c.estId = id;
   });
+  // Cards archivadas desde el Check-list: fuera de listas, resúmenes y avisos.
+  await _aseoExtraLoad();
+  casas.forEach((c, hid) => { if (((_aseo.extra || {})[c.estId] || {}).archivada) casas.delete(hid); });
   const horaMx = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
   const limpia = n => String(n || "").replace(/\s*\(WhatsApp\)\s*$/, "").trim();
   const items = [...casas.values()].map(c => {
