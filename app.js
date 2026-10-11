@@ -68915,8 +68915,14 @@ function plGuardarLuego_(key0, pid0) {
 }
 // Plantilla por encima del 90 %: la card/tarea pasa sola a «Terminado» (si estaba Pendiente o En proceso). Una sola vez por
 // cruce: si después la regresan a «En proceso» a mano, no se vuelve a forzar hasta que baje del 90 % y vuelva a subir.
+// Entre 0 % y 90 % (sin incluirlos): si seguía «Pendiente» pasa a «En proceso» (una vez; no baja estados más avanzados).
 function plAutoTerminado_(key, pc) {
-  const A = ASEO.pl.autoT = ASEO.pl.autoT || {}, c = (ASEO.pl.ctx || {})[key];
+  const A = ASEO.pl.autoT = ASEO.pl.autoT || {}, B = ASEO.pl.autoP = ASEO.pl.autoP || {}, c = (ASEO.pl.ctx || {})[key];
+  if (pc > 0 && pc < 90 && c && !B[key] && typeof aseoSetEstado_ === 'function') {
+    B[key] = true;
+    if (((aseoEstDe_(c.id) || {}).estado || 'pendiente') === 'pendiente') aseoSetEstado_(c.id, c.hid || '', 'en_proceso', false);
+  }
+  if (pc <= 0) delete B[key];
   if (pc <= 90) { delete A[key]; return; }
   if (A[key] || !c || typeof aseoSetEstado_ !== 'function') return;
   A[key] = true;
