@@ -68937,17 +68937,25 @@ function plSyncIdx_(srv) {
   Object.entries(srv).forEach(([k, v]) => {
     if (pend[k] || !v) return;
     if (!L[k] || L[k].p !== v.p || L[k].at !== v.at) { L[k] = v; cambio = true; }
-    if (v.at && at[k] && v.at > at[k] && k in ASEO.pl.resp) delete ASEO.pl.resp[k]; // respuestas viejas en memoria: se vuelven a pedir
+    if (k in ASEO.pl.resp && v.at && v.at !== at[k]) delete ASEO.pl.resp[k]; // copia en memoria vieja (o sin hora): se vuelve a pedir al abrirla
   });
-  const el = document.getElementById('plf'), k = el && el.dataset.k;
-  if (k && !(k in ASEO.pl.resp) && !pend[k]) {
-    fetch(`${BACKEND}/aseo/plantilla-resp?k=${encodeURIComponent(k)}`, { cache: 'no-store' }).then(r => r.json()).then(j => {
-      if (!j || !j.ok || (ASEO.pl.pend || {})[k]) return;
-      ASEO.pl.resp[k] = (j.resp && j.resp.resp) || {}; if (j.resp && j.resp.at) at[k] = j.resp.at;
-      const D = plCtx_(); if (D && D.key === k) plRepinta_();
-    }).catch(() => {});
-  }
+  plSyncAbierta_();
   return cambio;
+}
+// La plantilla de la ventana abierta se consulta en CADA actualización automática (respuesta chica): si otra pantalla
+// la cambió, se repinta (header con % incluido). No se toca mientras aquí haya cambios sin guardar o se esté escribiendo.
+function plSyncAbierta_() {
+  const el = document.getElementById('plf'), k = el && el.dataset.k; if (!k || (ASEO.pl.pend || {})[k] || ASEO.pl._sync === k) return;
+  ASEO.pl._sync = k;
+  fetch(`${BACKEND}/aseo/plantilla-resp?k=${encodeURIComponent(k)}&_cb=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).then(j => {
+    if (!j || !j.ok || (ASEO.pl.pend || {})[k]) return;
+    const at = ASEO.pl.respAt = ASEO.pl.respAt || {}, nAt = (j.resp && j.resp.at) || '';
+    if (nAt && nAt === at[k] && k in ASEO.pl.resp) return; // sin cambios
+    ASEO.pl.resp[k] = (j.resp && j.resp.resp) || {}; if (nAt) at[k] = nAt;
+    if (j.resp && j.resp.avance) ASEO.pl.idx[k] = Object.assign({}, ASEO.pl.idx[k], j.resp.avance, { at: nAt });
+    const D = plCtx_(), ae = document.activeElement;
+    if (D && D.key === k && !(ae && D.el.contains(ae) && /^(INPUT|TEXTAREA)$/.test(ae.tagName))) plRepinta_();
+  }).catch(() => {}).finally(() => { if (ASEO.pl._sync === k) ASEO.pl._sync = null; });
 }
 // % de la plantilla junto al chip «Tipo › Servicio» de la card. Rojo < 40 % · amarillo 40–89 % · verde ≥ 90 %.
 function plPill_(pid, key) {
