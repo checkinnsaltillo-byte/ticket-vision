@@ -50814,10 +50814,12 @@ function _botcWaHora_(iso) { const d = new Date(iso); if (!iso || isNaN(d)) retu
   if (d.toDateString() === h.toDateString()) return d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
   if (d.toDateString() === ay.toDateString()) return 'Ayer';
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }); }
+// Modo de la conversación como ícono (lista y encabezado del chat).
+const _BOTC_MODO = { bot: { i: '🤖', t: 'Automático', c: '#0e7490' }, supervised: { i: '👁️', t: 'Supervisado', c: '#7c3aed' }, human: { i: '👨‍💻', t: 'Manual', c: '#b45309' } };
 function _botcRowHtml_(c, bk, selected) {
   const phone = String(c.phone), name = String(c.name || (bk && bk.GuestName) || '').trim() || '+' + phone;
   const espera = _botcNeedsReply_(c), pend = _botcIsPending_(c);
-  const ctrl = String(c.control) === 'human' ? ['📝 Manual', '#b45309'] : String(c.control) === 'supervised' ? ['👁 Supervisado', '#7c3aed'] : ['⚙️ Automático', '#0e7490'];
+  const md = _BOTC_MODO[String(c.control)] || _BOTC_MODO.bot;
   const chips = [];
   if (bk) {
     const src = _botcSrcTxt_(bk.Source); if (src) chips.push(`<span class="wa-chip" style="--c:${src[1]}">${_botcEsc(src[0])}</span>`);
@@ -50829,10 +50831,10 @@ function _botcRowHtml_(c, bk, selected) {
   return `<div class="botc-conv-item wa-row ${selected ? 'sel' : ''} ${pend ? 'botc-pending' : ''}" data-botc-phone="${_botcEsc(phone)}" onclick="botcOpenChat('${_botcEsc(phone)}')">
     ${_botcAvHtml_(name)}
     <div class="wa-body">
-      <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span></div>
+      <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span><button type="button" class="wa-modo sm" style="--c:${md.c}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="${md.t} — cambiar modo">${md.i}</button></div>
       ${String(c.razon_social || '').trim() ? `<div class="wa-rs" title="Razón social">🧾 ${_botcEsc(String(c.razon_social).trim())}</div>` : ''}
       <div class="wa-l2"><span class="pv">${espera ? '<b class="wa-wait">⏳</b> ' : ''}${_botcEsc(c.last_msg_preview || '')}</span>${pend ? '<span class="wa-unread">1</span>' : ''}</div>
-      <div class="wa-l3">${chips.join('')}<button type="button" class="wa-ctrl" style="--c:${ctrl[1]}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="Cambiar modo">${ctrl[0]} ▾</button></div>
+      <div class="wa-l3">${chips.join('')}</div>
     </div></div>`;
 }
 function _botcWaCss_() {
@@ -50858,8 +50860,6 @@ function _botcWaCss_() {
   .wa-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .wa-l1{display:flex;align-items:baseline;gap:6px}.wa-l1 b{font-size:15px;font-weight:500;color:var(--wa-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
   .wa-time{font-size:11.5px;color:var(--wa-mu);white-space:nowrap}.wa-time.on{color:var(--wa-g);font-weight:600}
-  .wa-bit-btn{all:unset;cursor:pointer;font-size:12.5px;font-weight:600;color:#0e7490;background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:5px 10px;white-space:nowrap}
-  @media (min-width:1180px){.wa-bit-btn{display:none}} /* en pantallas anchas la bitácora ya está en la 3a columna */
   .wa-rs{font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-l2{display:flex;align-items:center;gap:6px}.wa-l2 .pv{flex:1;min-width:0;font-size:13px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-wait{font-weight:400}
@@ -50867,9 +50867,13 @@ function _botcWaCss_() {
   .wa-l3{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:3px}
   .wa-chip{font-size:10.5px;font-weight:600;color:var(--c);background:color-mix(in srgb,var(--c) 10%,#fff);padding:1px 6px;border-radius:4px;white-space:nowrap}
   .wa-dates{font-size:10.5px;color:var(--wa-mu);white-space:nowrap}
+  .wa-modo{all:unset;box-sizing:border-box;cursor:pointer;flex:none;width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:18px;line-height:1;background:color-mix(in srgb,var(--c) 12%,#fff);border:1px solid color-mix(in srgb,var(--c) 35%,#fff)}
+  .wa-modo:hover{background:color-mix(in srgb,var(--c) 22%,#fff)}
+  .wa-modo.sm{width:24px;height:24px;font-size:13px;align-self:center}
+  .wa-pago{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:3px;height:28px;padding:0 9px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap;color:var(--c);background:color-mix(in srgb,var(--c) 10%,#fff);border:1px solid color-mix(in srgb,var(--c) 30%,#fff)}
   .wa-ctrl{all:unset;cursor:pointer;margin-left:auto;font-size:10.5px;font-weight:600;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 35%,#fff);padding:0 6px;border-radius:999px;line-height:17px;white-space:nowrap}
   .wa-ctrl:hover{background:color-mix(in srgb,var(--c) 10%,#fff)}
-  .wa-chat-h{padding:7px 14px;background:var(--wa-bar);border-bottom:1px solid var(--wa-ln);display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;min-height:52px;box-sizing:border-box}
+  .wa-chat-h{padding:7px 14px;background:var(--wa-bar);border-bottom:1px solid var(--wa-ln);display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:nowrap;min-height:52px;box-sizing:border-box}
   .wa-chat-h .wa-av{width:38px;height:38px;font-size:14px}
   .wa-chat-h .botc-chat-name{font-size:15px!important;font-weight:500!important;color:var(--wa-tx)!important}
   .wa-chat-h .botc-chat-header-actions button,.wa-chat-h .botc-chat-header-actions > div{box-shadow:none!important}
@@ -50895,8 +50899,16 @@ function _botcWaCss_() {
   @media (max-width:768px){#module-bot-chats #botc-sidebar{width:100%!important}.wa-msgs{padding:10px 8px}.wa-b{max-width:85%}}`;
   document.head.appendChild(st);
 }
+// El módulo llena la pantalla desde donde empieza hasta abajo (sin franja vacía bajo la barra de texto).
+function _botcAjustarAlto_() {
+  const mod = document.getElementById('module-bot-chats');
+  if (!mod || mod.classList.contains('hidden')) return;
+  const top = Math.max(0, Math.round(mod.getBoundingClientRect().top + window.scrollY));
+  mod.style.height = mod.style.maxHeight = `calc(100dvh - ${top}px)`;
+}
+window.addEventListener('resize', () => _botcAjustarAlto_());
 function _botcRenderSidebar() {
-  _botcWaCss_();
+  _botcWaCss_(); _botcAjustarAlto_();
   const sidebar = document.getElementById('botc-sidebar');
   if (!sidebar) return;
   // Barra superior: buscador + visualización.
@@ -51298,7 +51310,7 @@ window.botcOpenChat = async function(phone, opts) {
 };
 
 function _botcRenderMain(phone) {
-  _botcWaCss_();
+  _botcWaCss_(); _botcAjustarAlto_();
   const main = document.getElementById('botc-main');
   if (!main) return;
   const state = BOTC_STATE.state || { control: 'bot' };
@@ -51366,13 +51378,8 @@ function _botcRenderMain(phone) {
   // antes de enviar al backend para permitir varios clicks fluidos sin
   // spinner intermedio.
   const cur = isHuman ? 'human' : (isSupervised ? 'supervised' : 'bot');
-  const meta = {
-    bot:        { label: '⚙️ Automático',  bg: '#3b82f6', fg: '#fff' },
-    supervised: { label: '👁 Supervisado', bg: '#7c3aed', fg: '#fff' },
-    human:      { label: '📝 Manual',      bg: '#f59e0b', fg: '#fff' },
-  };
-  const m = meta[cur] || meta.bot;
-  const ctrlBtn = `<button type="button" id="botc-ctrl-cycle-btn" onclick="botcCycleControl_('${_botcEsc(phone)}')" title="Click para ciclar: Automático → Supervisado → Manual" style="padding:6px 12px;font-size:12px;font-weight:800;background:${m.bg};color:${m.fg};border:0;border-radius:7px;cursor:pointer;line-height:1;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.08);min-width:140px;text-align:center">${m.label}</button>`;
+  const m = _BOTC_MODO[cur] || _BOTC_MODO.bot;
+  const ctrlBtn = `<button type="button" id="botc-ctrl-cycle-btn" class="wa-modo" onclick="botcCycleControl_('${_botcEsc(phone)}')" title="${m.t} — toca para cambiar (Automático → Supervisado → Manual)" style="--c:${m.c}">${m.i}</button>`;
 
   // Nombre del perfil desde conversations (si existe); si no, GuestName de
   // la reserva asociada (útil para números asociados manualmente que aún no
@@ -51415,12 +51422,10 @@ function _botcRenderMain(phone) {
         const paidTotal = (Number(mergedH.AmountPaid) || 0) + manualSum;
         const dueNum = Math.max(0, totalNum - paidTotal);
         const cur = mergedH.Currency || 'MXN';
-        const chip = (typeof _pagosStatusChip === 'function') ? _pagosStatusChip(psH) : '';
-        payHeaderHtml = `<div onclick="event.stopPropagation();_botcOpenPaymentDrawer('${_botcEsc(phone)}')" title="Ver desglose de pago" style="display:flex;align-items:center;gap:8px;padding:4px 10px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer">
-          <span style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px">Saldo</span>
-          <span style="font-size:13px;font-weight:800;color:${dueNum>0?'#991b1b':'#166534'}">${_pagosFmt$(dueNum, cur)}</span>
-          ${chip}
-        </div>`;
+        // Sintetizado: pagada = «✅ $»; con saldo = ícono + saldo pendiente.
+        const pagada = dueNum <= 0.01 || psH === 'Pagada';
+        const pc = pagada ? ['✅ $', '#15803d'] : psH === 'Parcial' || paidTotal > 0 ? ['🟡 ' + _pagosFmt$(dueNum, cur), '#b45309'] : ['🔴 ' + _pagosFmt$(dueNum, cur), '#b91c1c'];
+        payHeaderHtml = `<button type="button" class="wa-pago" style="--c:${pc[1]}" onclick="event.stopPropagation();_botcOpenPaymentDrawer('${_botcEsc(phone)}')" title="${_botcEsc(psH)} · saldo ${_pagosFmt$(dueNum, cur)} — ver desglose de pago">${pc[0]}</button>`;
       }
     }
   } catch (_) {}
@@ -51452,10 +51457,9 @@ function _botcRenderMain(phone) {
         ${_botcAvHtml_(name || phone)}
         <div style="min-width:0;flex:1;overflow:hidden">${nameHeader}</div>
       </div>
-      <div class="botc-chat-header-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto">
+      <div class="botc-chat-header-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;margin-left:auto;align-self:flex-start">
         ${payHeaderHtml}
         ${ctrlBtn}
-        <button type="button" class="wa-bit-btn" onclick="botcToggleRightPanel()" title="Bitácora completa de WhatsApp de la reserva">📖 Bitácora</button>
         ${menuBtnHtml}
       </div>
     </div>
@@ -51744,15 +51748,8 @@ window.botcCycleControl_ = function(phone) {
   }
   const btn = document.getElementById('botc-ctrl-cycle-btn');
   if (btn) {
-    const meta = {
-      bot:        { label: '⚙️ Automático',  bg: '#3b82f6' },
-      supervised: { label: '👁 Supervisado', bg: '#7c3aed' },
-      human:      { label: '📝 Manual',      bg: '#f59e0b' },
-    }[next];
-    if (meta) {
-      btn.textContent = meta.label;
-      btn.style.background = meta.bg;
-    }
+    const meta = _BOTC_MODO[next];
+    if (meta) { btn.textContent = meta.i; btn.title = meta.t + ' — toca para cambiar (Automático → Supervisado → Manual)'; btn.style.setProperty('--c', meta.c); }
   }
   // Debounce: cancelar timer previo y programar nuevo.
   if (p.timer) clearTimeout(p.timer);
