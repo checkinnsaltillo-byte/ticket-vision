@@ -44170,6 +44170,14 @@ function _waReportHasSentMsg_(kind, id) {
 // ¿Se está pintando dentro de la «Ficha del huésped» de Chats bot? (ahí las cards usan el diseño del Check-list)
 const _waEnFicha_ = () => { const e = window.__waEmbedEl, m = document.getElementById('module-bot-chats'); return !!(e && document.body.contains(e) && m && !m.classList.contains('hidden')); };
 const _waFichaRep_ = (kind, row) => _waRenderReportTimelineItem_({ row, kindReport: kind, sortKey: String(row['Updated_at'] || row['updated_at'] || row['Timestamp'] || row['Fecha_encontrado'] || row['Fecha'] || '') });
+// Botones de estado siempre visibles (mismo estilo que Pend./Proceso/Term. del Check-list): Nuevo · Proceso · Resuelto · Cancelado.
+const _WA_FX_EST = [{ k: 'nuevo', inc: 'Nuevo', t: 'Nuevo', c: '#94a3b8' }, { k: 'en_proceso', inc: 'En proceso', t: 'Proceso', c: '#ffb300' }, { k: 'resuelto', inc: 'Resuelto', t: 'Resuelto', c: '#00c853' }, { k: 'cancelado', inc: 'Cancelado', t: 'Cancelado', c: '#ef4444' }];
+function _waFxEstBtns_(kind, id, actual) {
+  const act = String(actual || '').toLowerCase().replace(/\s+/g, '_');
+  return `<div class="fx-qs" onclick="event.stopPropagation()">${_WA_FX_EST.map(e => { const on = e.k === act || e.inc.toLowerCase().replace(/\s+/g, '_') === act;
+    const fn = kind === 'inc' ? `waIncPickEst_('${_botcEsc(id)}','${e.inc}')` : `waRtPickEst_('${_botcEsc(id)}','${e.k}')`;
+    return `<button type="button" class="${on ? 'on' : ''}" style="--c:${e.c}" title="${e.inc}" onclick="event.stopPropagation();${on ? '' : fn + ';setTimeout(()=>{try{_waRepaint()}catch(_){}},400)'}">${e.t}</button>`; }).join('')}</div>`;
+}
 function _waRenderReportTimelineItem_(it) {
   const r = it.row || {};
   const kind = it.kindReport; // 'inc' | 'obj'
@@ -44274,8 +44282,9 @@ function _waRenderReportTimelineItem_(it) {
   if (_waEnFicha_()) { // «Ficha del huésped» (Chats bot): misma card que el Check-list — renglones, texto en vez de chips, franja de color
     const rid = String(r['ID'] || ''), sent = _waReportHasSentMsg_(kind, rid), tipoTx = { inc: 'Incidencia', obj: 'Objeto perdido', rt: 'Reporte técnico' }[kind] || cfg.chipLabel;
     return `<div class="fx-c tipo fx-rep" style="--tc:${cfg.headerBg}" ${cfg.dataAttr} role="button" tabindex="0">
-      <div class="r1"><span class="nm">${cfg.checkIcon} ${_botcEsc(cfg.titulo)}</span>${cfg.titleAccent}<span class="mv">${cfg.estadoInteractive || `<span style="color:${cfg.estadoFg}">${_botcEsc(cfg.estadoLabel)}</span>`}</span></div>
+      <div class="r1"><span class="nm">${cfg.checkIcon} ${_botcEsc(cfg.titulo)}</span>${cfg.titleAccent}${kind === 'obj' ? `<span class="mv" style="color:${cfg.estadoFg}">${_botcEsc(cfg.estadoLabel)}</span>` : ''}</div>
       <div class="r2"><span>${_botcEsc(tipoTx)}</span><span class="sep"></span>${timelineText}${isEdited && tsCreadoRaw ? `<span class="sep"></span><span>creado ${_botcEsc(_waFmtDateTimeEs(tsCreadoRaw.replace(' ', 'T')))}</span>` : ''}${sent ? '<span class="sep"></span><span class="ok">✓ Mensaje enviado</span>' : ''}</div>
+      ${kind === 'obj' ? '' : _waFxEstBtns_(kind, rid, kind === 'inc' ? cfg.estadoLabel : cfg.rtEstKey)}
       ${cfg.incId ? _waIncMenusHtml_(cfg.incId, cfg.estadoLabel, incNormalizeNivel(r['Nivel'])) : ''}${cfg.rtId ? _waRtMenusHtml_(cfg.rtId, cfg.rtEstKey, cfg.rtPrioKey) : ''}
       ${desc ? `<div class="fx-desc">${_botcEsc(desc)}</div>` : ''}
       <div class="r3 fila"><button type="button" class="fx-lk" data-wa-report-msg-btn="1" onclick="event.stopPropagation();waReportToggleMsg_('${_botcEsc(kind)}','${_botcEsc(rid)}')">▼ Ver mensaje</button></div>
@@ -51088,6 +51097,10 @@ function _botcWaCss_() {
   .fx-msg .r2 span[style]{font-weight:500!important;font-style:normal!important}.fx-msg .r2 b{font-weight:600}
   .fx-c .fx-lk.ok{color:#16a34a}.fx-c .fx-lk.mal{color:#dc2626}
   .fx-det{margin:8px -11px -9px;border-top:1px solid var(--ad-line2)}.fx-det > div{background:#fafbfc!important;border-top:0!important;border-radius:0 0 9px 9px}
+  .fx-qs{display:flex;gap:3px;margin-top:6px;background:#f3f4f6;border-radius:6px;padding:2px}
+  .fx-qs button{all:unset;cursor:pointer;flex:1;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;padding:3px 1px;border-radius:5px;white-space:nowrap;background:#f1f3f5;color:#6b7280;transition:background .15s,color .15s}
+  .fx-qs button:hover{background:#e5e7eb;color:#111827}
+  .fx-qs button.on{background:var(--c);color:#fff;font-weight:600;box-shadow:0 1px 2px rgba(15,23,42,.15);cursor:default}
   .fx-desc{margin-top:5px;font-size:12px;color:#374151;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .fx-c .r3.fila{flex-direction:row;align-items:center;gap:8px;margin-top:7px;padding-top:6px}.fx-c .r3.fila .fx-lk{margin-top:0}
   .fx-sol{cursor:pointer;display:block}.fx-sol .r2{flex-wrap:nowrap}.fx-sol .r2 > span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
