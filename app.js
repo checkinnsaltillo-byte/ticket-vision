@@ -50834,7 +50834,7 @@ function _botcAbnCargar_(forzar) {
     .catch(() => {}).finally(() => { BOTC_STATE.abnCargando = false; });
 }
 function _botcAbnConvs_() {
-  return (BOTC_STATE.abn || []).map(h => ({ phone: 'abn' + h.bid, canal: 'airbnb', abn: h, name: h.huesped || '', control: 'human',
+  return (BOTC_STATE.abn || []).map(h => ({ phone: 'abn' + h.bid, canal: 'airbnb', abn: h, name: h.huesped || '', control: h.control || 'human', pending_draft_body: h.draft || '',
     last_msg_at: (h.ult && h.ult.fecha) || '', last_msg_preview: h.ult ? (h.ult.de === 'nosotros' ? 'Tú: ' : '') + h.ult.texto : 'Sin mensajes',
     last_msg_role: h.noLeido ? 'user' : (h.ult && h.ult.de === 'huesped' ? 'user_visto' : 'assistant') }));
 }
@@ -50877,7 +50877,7 @@ function _botcRowHtml_(c, bk, selected) {
   return `<div class="botc-conv-item wa-row ${selected ? 'sel' : ''} ${pend ? 'botc-pending' : ''}" data-botc-phone="${_botcEsc(phone)}" onclick="botcOpenChat('${_botcEsc(phone)}')">
     ${_botcCanalLogo_(c)}
     <div class="wa-body">
-      <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span>${c.canal === 'airbnb' ? '' : `<button type="button" class="wa-modo sm" style="--c:${md.c}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="${md.t} — cambiar modo">${md.i}</button>`}</div>
+      <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span><button type="button" class="wa-modo sm" style="--c:${md.c}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="${md.t} — cambiar modo">${md.i}</button></div>
       ${String(c.razon_social || '').trim() ? `<div class="wa-rs" title="Razón social">🧾 ${_botcEsc(String(c.razon_social).trim())}</div>` : ''}
       <div class="wa-l2"><span class="pv">${espera ? '<b class="wa-wait">⏳</b> ' : ''}${_botcEsc(c.last_msg_preview || '')}</span>${pend ? '<span class="wa-unread">1</span>' : ''}</div>
       <div class="wa-l3">${chips.join('')}</div>
@@ -51863,6 +51863,8 @@ window._botcSaveComprobante_ = async function() {
 // debounce de ~1.6s desde el último click, permitiendo click-clicks fluidos.
 window.__botcCtrlPending_ = window.__botcCtrlPending_ || {};   // phone → {timer, target, prev}
 window.botcCycleControl_ = function(phone) {
+  if (_botcEsAbn_(phone)) { const h = (BOTC_STATE.abn || []).find(x => 'abn' + x.bid === String(phone)), o = ['bot', 'supervised', 'human'];
+    return _botcAbnSetModo_(phone, o[(o.indexOf((h && h.control) || 'human') + 1) % 3]); }
   const conv = (BOTC_STATE.conversations || []).find(c => String(c.phone) === String(phone));
   const cur = (BOTC_STATE.state && String(BOTC_STATE.selectedPhone) === String(phone))
     ? String(BOTC_STATE.state.control || 'bot')
@@ -51914,7 +51916,22 @@ window.botcCycleControl_ = function(phone) {
   window.__botcCtrlPending_[phone] = p;
 };
 
+// Modo de una conversación de Airbnb (mismo menú y mismos íconos que WhatsApp).
+window._botcAbnSetModo_ = async function (ph, control) {
+  const bid = String(ph).replace(/^abn/, ''), h = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid), prev = h ? h.control : 'human';
+  if (h) h.control = control; _botcRenderSidebar(); if (String(BOTC_STATE.selectedPhone) === ph) { BOTC_STATE.abnN = ''; _botcAbrirAbn_(ph, { silent: true }); }
+  try { const j = await fetch(`${BACKEND}/airbnb/modo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bid, control, user: (typeof npYo_ === 'function' ? npYo_() : '') }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'error'); }
+  catch (e) { if (h) h.control = prev; _botcRenderSidebar(); alert('No se cambió el modo: ' + e.message); }
+};
+window.botcAbnBorrador_ = async function (ph, accion) { // Supervisado: enviar / descartar el borrador del bot
+  const bid = String(ph).replace(/^abn/, ''), h = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid);
+  if (accion === 'enviar') return abnEnviar_(bid, 'abn-botc-draft', () => { if (h) h.draft = ''; BOTC_STATE.abnN = ''; _botcAbrirAbn_(ph, { silent: true }); _botcRenderSidebar(); });
+  if (h) h.draft = ''; BOTC_STATE.abnN = ''; _botcAbrirAbn_(ph, { silent: true });
+  fetch(`${BACKEND}/airbnb/modo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bid, draft: '' }) }).catch(() => {});
+};
 window.botcSetControl = async function(phone, control) {
+  if (_botcEsAbn_(phone)) return _botcAbnSetModo_(phone, control);
   const reason = control === 'human' ? 'Toma manual del admin' : '';
   // Optimistic UI: cambia el estado local y repinta al instante — sin
   // esperar al fetch. Guardamos el valor previo para revertir si falla.
@@ -52686,9 +52703,15 @@ window._botcAbrirAbn_ = async function (ph, opts) {
           <div style="min-width:0;flex:1;overflow:hidden"><div class="botc-chat-name" style="font-size:15px;font-weight:500;color:var(--wa-tx)">${_botcEsc(nombre)}</div>
             <div style="font-size:12px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${[_botcAlojCorto_(bk), a && d ? `${_waFmtShortDate(a)} → ${_waFmtShortDate(d)}` : '', 'Airbnb · reserva ' + bid].filter(Boolean).map(_botcEsc).join(' · ')}</div></div>
         </div>
-        <div class="botc-chat-header-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;margin-left:auto;align-self:flex-start">${menu}</div>
+        <div class="botc-chat-header-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;margin-left:auto;align-self:flex-start">${(() => { const md = _BOTC_MODO[h.control || 'human'] || _BOTC_MODO.human;
+          return `<button type="button" id="botc-ctrl-cycle-btn" class="wa-modo" onclick="botcCycleControl_('${ph}')" title="${md.t} — toca para cambiar (Automático → Supervisado → Manual)" style="--c:${md.c}">${md.i}</button>`; })()}${menu}</div>
       </div>
       <div id="botc-msgs" class="wa-msgs">${msgs}</div>
+      ${h.draft ? `<div style="border-top:1px solid #ddd6fe;background:#f5f3ff;padding:10px 12px">
+        <div style="font-size:11.5px;font-weight:700;color:#6d28d9;margin-bottom:6px">👁️ Borrador del bot — revísalo antes de enviarlo por Airbnb</div>
+        <textarea id="abn-botc-draft" rows="3" style="width:100%;box-sizing:border-box;border:1px solid #ddd6fe;border-radius:8px;padding:8px 10px;font:inherit;font-size:13.5px;resize:vertical">${_botcEsc(h.draft)}</textarea>
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px"><button type="button" onclick="botcAbnBorrador_('${ph}','descartar')" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer">Descartar</button>
+          <button type="button" onclick="botcAbnBorrador_('${ph}','enviar')" style="border:0;background:#7c3aed;color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Enviar por Airbnb</button></div></div>` : ''}
       <div class="wa-comp" style="display:flex;align-items:flex-end;gap:8px;padding:8px 12px;background:var(--wa-bar);border-top:1px solid var(--wa-ln)">
         <textarea id="abn-botc-txt" rows="1" placeholder="Responder por Airbnb…" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();abnEnviar_('${bid}','abn-botc-txt',()=>{BOTC_STATE.abnN='';_botcAbrirAbn_('${ph}',{silent:true});_botcRenderSidebar();})}"
@@ -52703,7 +52726,8 @@ window._botcAbrirAbn_ = async function (ph, opts) {
   try {
     const j = await fetch(`${BACKEND}/airbnb/hilo?bid=${encodeURIComponent(bid)}`, { cache: 'no-store' }).then(r => r.json());
     if (!j.ok) throw new Error(j.error || 'Error');
-    const n = (j.mensajes || []).length; if (opts.silent && BOTC_STATE.abnN === bid + ':' + n) return; BOTC_STATE.abnN = bid + ':' + n;
+    const n = (j.mensajes || []).length, hh = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid) || {}, firma = [bid, n, hh.control, (hh.draft || '').length].join(':'); // repinta si llega mensaje, cambia el modo o hay borrador
+    if (opts.silent && BOTC_STATE.abnN === firma) return; BOTC_STATE.abnN = firma;
     pintar(j);
     const u = (j.mensajes || [])[n - 1], h = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid);
     if (u && h && h.noLeido) { h.noLeido = false; _botcRenderSidebar(); fetch(`${BACKEND}/airbnb/visto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bid, fecha: u.fecha }) }).catch(() => {}); }

@@ -11138,7 +11138,9 @@ app.get("/airbnb/bandeja", async (req, res) => {
     if (!_abn.band || !Array.isArray(_abn.band.hilos) || req.query.fresh === "1") await _abnBandejaCargar();
     else if (Date.now() - (_abn.band.ts || 0) > 5 * 60_000) _abnBandejaCargar().catch(() => {});
     const visto = await _abnVisto();
-    res.json({ ok: true, ts: _abn.band.ts, hilos: _abn.band.hilos.map(h => Object.assign({}, h, { noLeido: !!(h.ult && h.ult.de === "huesped" && String(h.ult.fecha) > _abnVistoDe(visto, h.bid)) })) });
+    const modos = await _abnModos().catch(() => ({}));
+    res.json({ ok: true, ts: _abn.band.ts, hilos: _abn.band.hilos.map(h => { const m = modos[h.bid] || {};
+      return Object.assign({}, h, { noLeido: !!(h.ult && h.ult.de === "huesped" && String(h.ult.fecha) > _abnVistoDe(visto, h.bid)), control: m.control || "human", draft: m.draft || "", draftAt: m.draftAt || "" }); }) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/airbnb/hilo", async (req, res) => {
@@ -11187,8 +11189,78 @@ app.post("/airbnb/enviar", async (req, res) => {
     if (!cfg.envio && !secretoOk) return res.status(403).json({ ok: false, error: "El envío desde el sistema aún no está activado (falta la prueba)." });
     const b = req.body || {}, bid = String(b.bid || "").replace(/\D/g, ""), texto = String(b.texto || "").trim().slice(0, 4000), user = String(b.user || "").slice(0, 80);
     if (!bid || !texto) return res.status(400).json({ ok: false, error: "Faltan reserva o texto" });
-    res.json(await _abnEnviar(bid, texto, user));
+    const r = await _abnEnviar(bid, texto, user);
+    _abnModosMutar(d => { if (d[bid] && d[bid].draft) { d[bid].draft = ""; d[bid].draftAt = ""; } }).catch(() => {}); // al responder se descarta el borrador del bot
+    res.json(r);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ═══ Bot en conversaciones de Airbnb (2026-10-11) ═══════════════════════════════
+// Cada conversación tiene modo como en WhatsApp: human (Manual, por omisión), supervised (el bot deja borrador) o bot (contesta solo).
+// airbnb/modos.json → { <bid>: { control, desde, procesado, draft, draftAt, by, at } }.
+// Cloud Scheduler llama /airbnb/bot-tick cada 2 min: solo revisa conversaciones en bot/supervisado cuyo último mensaje es del huésped
+// y es posterior a «desde» (el momento en que se activó el modo) y a lo ya procesado → nunca contesta mensajes viejos ni dos veces.
+const _ABN_MODOS_OBJ = "airbnb/modos.json";
+let _abnModosC = { d: null, ts: 0 };
+async function _abnModos() { if (!_abnModosC.d || Date.now() - _abnModosC.ts > 5_000) { _abnModosC = { d: await _rhdGetJson(_ABN_MODOS_OBJ), ts: Date.now() }; } return _abnModosC.d || {}; }
+const _abnModosMutar = fn => _aseoMutate(_ABN_MODOS_OBJ, "abnModos", fn).then(r => { _abnModosC = { d: _aseo.abnModos, ts: Date.now() }; return r; });
+app.post("/airbnb/modo", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, bid = String(b.bid || "").replace(/\D/g, ""); if (!bid) return res.status(400).json({ ok: false, error: "Falta la reserva" });
+    const out = await _abnModosMutar(d => { const m = d[bid] || (d[bid] = { control: "human" });
+      if (b.control !== undefined) { const c = String(b.control); if (!["bot", "supervised", "human"].includes(c)) return { ok: false, error: "Modo inválido" };
+        if (c !== m.control) { m.control = c; m.desde = new Date().toISOString(); } }
+      if (b.draft !== undefined) { m.draft = String(b.draft || "").slice(0, 4000); m.draftAt = m.draft ? new Date().toISOString() : ""; }
+      m.by = String(b.user || "").slice(0, 80); m.at = new Date().toISOString(); return { ok: true, bid, control: m.control, draft: m.draft || "" }; });
+    res.json(out);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+let _abnTickCorriendo = false;
+async function _abnBotResponder(bid, m) {
+  const h = await _abnHilo(bid, (_abn.hilos.get(bid) || {}).thread); const L = h.mensajes || [], u = L[L.length - 1];
+  if (!u || u.de !== "huesped") return "sin mensaje nuevo";
+  const base = String(m.procesado || "") > String(m.desde || "") ? String(m.procesado) : String(m.desde || "");
+  if (!base || String(u.fecha) <= base) return "ya atendido";
+  await _abnModosMutar(d => { if (d[bid]) d[bid].procesado = u.fecha; }); // se marca antes de contestar: nunca dos respuestas
+  let i = L.length; while (i > 0 && L[i - 1].de === "huesped" && String(L[i - 1].fecha) > base) i--;
+  const userMsg = L.slice(i).map(x => x.texto).join("\n"), history = L.slice(Math.max(0, i - 10), i).map(x => ({ role: x.de === "huesped" ? "user" : "assistant", body: x.texto }));
+  const sens = _botDetectSensitive(userMsg.toLowerCase());
+  if (sens && m.control === "bot") { // igual que WhatsApp: aviso corto, pasa a Manual y avisa a los administradores
+    await _abnEnviar(bid, "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏", "bot");
+    await _abnModosMutar(d => { if (d[bid]) { d[bid].control = "human"; d[bid].desde = new Date().toISOString(); } });
+    _botNotifyAdmin(`🚨 Airbnb · ${h.huesped || "Huésped"} (reserva ${bid}): mensaje sensible (${sens}). La conversación pasó a Manual.\n«${userMsg.slice(0, 300)}»`);
+    return "escalado";
+  }
+  let bk = null; try { bk = await _lgApi(`/v2/reservations/bookings/${encodeURIComponent(bid)}`); } catch (_) {}
+  const tel = String((bk && bk.guest && bk.guest.phone) || "").replace(/\D/g, ""), phone10 = tel.length >= 10 ? tel.slice(-10) : "";
+  const ctx = phone10 ? await _botFindActiveBooking(phone10).catch(() => null) : null;
+  if (m.control === "bot") { const hid = (ctx && ctx.booking && ctx.booking.HouseId) || (bk && bk.property_id);
+    if (!(await _botIsAlojamientoEnabled(hid))) return "alojamiento sin bot activado"; } // misma regla que WhatsApp
+  const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Mexico_City" });
+  const context = ctx && ctx.booking ? _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings)
+    : `\n[Reserva ${bid} de Airbnb${bk ? ` · llegada ${String(bk.arrival || "").slice(0, 10)} · salida ${String(bk.departure || "").slice(0, 10)}` : ""}.]`;
+  const system = BOT_SYSTEM_PROMPT_BASE + _botBuildPromptsBlock(await _botGetPrompts()) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${hoy} (America/Mexico_City).` + context +
+    `\n\nCANAL: esta conversación es por la mensajería de AIRBNB (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos (Airbnb los bloquea). Sé breve y cordial.`;
+  const llm = await _botLlmLoop({ system, history, userMsg, ctx: { phone10, fromRaw: phone10 ? `whatsapp:+52${phone10}` : "", booking: (ctx && ctx.booking) || {}, alojRow: (ctx && ctx.alojRow) || {} } });
+  for (const t of (llm.toolsUsed || [])) if (t.notifyText) _botNotifyAdmin(t.notifyText);
+  const reply = String(llm.text || "").trim(); if (!reply) return "respuesta vacía";
+  if (m.control === "supervised") { await _abnModosMutar(d => { if (d[bid]) { d[bid].draft = reply; d[bid].draftAt = new Date().toISOString(); } }); return "borrador"; }
+  await _abnEnviar(bid, reply, "bot");
+  return "contestado";
+}
+app.all("/airbnb/bot-tick", async (req, res) => {
+  if (_abnTickCorriendo) return res.json({ ok: true, ocupado: true });
+  _abnTickCorriendo = true; const out = {};
+  try {
+    const modos = await _rhdGetJson(_ABN_MODOS_OBJ);
+    for (const [bid, m] of Object.entries(modos)) {
+      if (!["bot", "supervised"].includes(m.control)) continue;
+      try { out[bid] = await _abnBotResponder(bid, m); } catch (e) { out[bid] = "error: " + e.message; console.warn("[airbnb-bot]", bid, e.message); }
+    }
+    if (Object.values(out).some(v => /contestado|borrador|escalado/.test(v))) console.log("[airbnb-bot]", JSON.stringify(out));
+    res.json({ ok: true, out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  finally { _abnTickCorriendo = false; }
 });
 // ═══ Check-list › 📋 Plantillas (formularios tipo Breezeway) ═══
 // aseo/plantillas.json → { <id>: { id, titulo, depto, prioridad, descripcion, secciones:[{ id, titulo, items:[{ id, tipo, texto, foto, ref:[], min, max, escala, sub:[] }] }] } }
