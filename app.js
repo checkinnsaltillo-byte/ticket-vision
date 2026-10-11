@@ -67235,7 +67235,7 @@ window.rtFormA_ = function (rtId, pre) {
   const t = row ? rtTarea_(row) : null;
   const P = pre || {};
   ASEO._rf = row ? Object.assign({}, row, { _srv: axSrv_('R' + row.ID, false), _hid: t.hid, _prio: t.prioridad, _asig: t.asignados.slice(), _bloq: t.bloquea, _rein: t.reincidente, _cargar: rtBool_(row.Cargar_a_huesped) })
-    : { ID: '', Estado: 'nuevo', Tipo: 'correctivo', Categoria: 'otros', Responsabilidad: 'indeterminada', Titulo: P.titulo || '', Descripcion: P.desc || '', Fecha: P.fecha || aseoDiaNuevo_(),
+    : { ID: '', Estado: 'nuevo', Tipo: 'correctivo', Categoria: 'otros', Responsabilidad: 'indeterminada', Titulo: P.titulo || '', Descripcion: P.desc || '', Fecha: P.fecha || aseoDiaNuevo_(), Fecha_compromiso: P.fecha || aseoDiaNuevo_(),
         Reservacion_id: P.reserva || '', _deTarea: P.deTarea || '', _srv: P.srv || 'general', _hid: P.hid || '', _prio: prio4Key_(P.prioridad || 'media'), _asig: (P.asignados || []).slice(), _bloq: false, _rein: false, _cargar: false,
         Reportado_por: (typeof currentUser !== 'undefined' && currentUser) || '' };
   ASEO._rfFotos = { antes: [], despues: [] };
@@ -68503,14 +68503,17 @@ window.icLevAsig_ = function (anchor) {
 };
 function icLevHtml_() {
   const F = IC.f, L = F.L;
+  if (!L.fecha) L.fecha = aseoDiaNuevo_(); // la correctiva vence HOY por omisión (no en la fecha de la incidencia)
+  if (L.comp == null || L.comp === '') L.comp = L.fecha;
   if (!L.manual) L.depto = icLevInfer_(F);
   const sw = on => `<span class="ad-sw ${on ? '' : 'off'}"></span>`;
-  const a = F.fecha ? atD_(F.fecha) : new Date();
+  const a = L.fecha ? atD_(L.fecha) : new Date();
   const rOpts = [['diario', 'Diariamente'], ['semanal', `Semanalmente los ${AT_DIAS[a.getDay()]}`], ['mensual', `Mensualmente el ${AT_ORD[Math.ceil(a.getDate() / 7)]} ${AT_DIAS[a.getDay()]}`], ['anual', `Anualmente el ${a.getDate()} de ${a.toLocaleDateString('es-MX', { month: 'long' })}`], ['cada', 'Personalizado…']];
   const mant = L.depto === 'mantenimiento';
   return `${atDeptoSeg_(L.depto, 'icLevDep_')}
     <div class="at-hint">${L.manual ? 'Elegido a mano.' : `Inferido del motivo (${pcEsc(F.mot.join(', ') || 'sin motivo')}).`}${mant ? ' Mantenimiento = reporte técnico.' : ''}</div>
     <label class="at-l">Tipo de servicio</label>${axSrvSeg_(L.srv, 'icLevSrv_')}
+    <div class="at-row"><span class="at-k">Vence el</span><input type="date" class="at-in" value="${pcEsc(L.fecha)}" onchange="IC.f.L.fecha=this.value"></div>
     <label class="at-l">Título de la tarea <i>*</i></label>
     <input class="at-in" placeholder="Introduce un título" value="${pcEsc(L.titulo != null ? L.titulo : icLevTitDef_(F))}" oninput="IC.f.L.titulo=this.value">
     <textarea class="at-in" rows="3" placeholder="Añade una descripción…" oninput="IC.f.L.desc=this.value">${pcEsc(L.desc != null ? L.desc : icLevDescDef_(F, F.id))}</textarea>
@@ -68518,7 +68521,7 @@ function icLevHtml_() {
       <div class="ad-tgl" style="margin-top:8px" onclick="IC.f.L.bloq=!IC.f.L.bloq;icFormPintar_()"><div><b>Bloquea habitabilidad</b><small>El alojamiento queda inhabitable hasta resolverlo</small></div>${sw(L.bloq).replace('ad-sw ', 'ad-sw ' + (L.bloq ? 'red ' : ''))}</div>
       <div class="ad-tgl" style="margin-top:6px" onclick="IC.f.L.rein=!IC.f.L.rein;icFormPintar_()"><div><b>Reincidente</b><small>Falla repetida del mismo activo</small></div>${sw(L.rein)}</div>
       <div class="at-row"><span class="at-k">Compromiso</span><input type="date" class="at-in" value="${pcEsc(L.comp)}" onchange="IC.f.L.comp=this.value"></div>`
-    : `<div class="ad-tgl" style="margin-top:8px" onclick="IC.f.L.repite=IC.f.L.repite?null:{tipo:'diario',n:1,fin:''};icFormPintar_()"><div><b>Hacer que se repita</b><small>A partir de la fecha de la incidencia</small></div>${sw(!!L.repite)}</div>
+    : `<div class="ad-tgl" style="margin-top:8px" onclick="IC.f.L.repite=IC.f.L.repite?null:{tipo:'diario',n:1,fin:''};icFormPintar_()"><div><b>Hacer que se repita</b><small>A partir de la fecha «Vence el»</small></div>${sw(!!L.repite)}</div>
       ${L.repite ? `<div class="at-row"><span class="at-k">Se repite</span><select class="at-in" onchange="IC.f.L.repite.tipo=this.value;icFormPintar_()">${rOpts.map(([k, l]) => `<option value="${k}" ${L.repite.tipo === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <input type="date" class="at-in" title="Fecha de finalización (opcional)" value="${pcEsc(L.repite.fin || '')}" onchange="IC.f.L.repite.fin=this.value"></div>
         ${L.repite.tipo === 'cada' ? `<div class="at-row"><span class="at-k">Cada</span><input type="number" min="1" max="365" class="at-in" style="max-width:80px" value="${L.repite.n || 1}" oninput="IC.f.L.repite.n=Math.max(1,+this.value||1)"><span class="at-k">días</span></div>` : ''}` : ''}
@@ -68551,7 +68554,7 @@ async function icLevantar_(F, incId) {
   let lig;
   if (L.depto === 'mantenimiento') {
     const a = atAloj_(F.hid);
-    const payload = { Fecha: F.fecha, Estado: 'nuevo', Prioridad: F.prio, Tipo: 'correctivo', Categoria: L.cat || 'otros', Propiedad: a.propiedad || '', '# Departamento': a.depto || '',
+    const payload = { Fecha: L.fecha || aseoDiaNuevo_(), Estado: 'nuevo', Prioridad: F.prio, Tipo: 'correctivo', Categoria: L.cat || 'otros', Propiedad: a.propiedad || '', '# Departamento': a.depto || '',
       Alojamiento: a.propiedad ? `${a.propiedad} - #${a.depto}` : (a.nombre || ''), Activo: '', Titulo: titulo, Descripcion: desc, Descripcion_solucion: '', Reportado_por: F.rep || user,
       Asignado_a: L.asig.join(', '), Proveedor: '', Fecha_compromiso: L.comp || '', Bloquea_habitabilidad: !!L.bloq, Reincidente: !!L.rein, Responsabilidad: 'indeterminada', Costo_total: '', Cargar_a_huesped: false,
       Reservacion_id: F.reserva || '', Huesped_nombre: F.reserva ? (F.huesped || '') : '', Notas: '', Fotos_antes_urls: fotos.join(', '), UpdatedAt: new Date().toISOString(), Updated_by: user };
@@ -68570,7 +68573,7 @@ async function icLevantar_(F, incId) {
     }
   } else {
     const adjuntos = fotos.map((u, i) => ({ k: new URL(u).searchParams.get('k'), nombre: `Foto de la incidencia ${i + 1}`, tipo: 'image/jpeg', tam: 0 }));
-    const tarea = { hid: F.hid, depto: L.depto, problema: !!L.problema, prioridad: F.prio, titulo, desc, fecha: F.fecha, hora: '', repite: L.repite, asignados: L.asig, etiquetas: L.etiq, adjuntos, reserva: F.reserva || '' };
+    const tarea = { hid: F.hid, depto: L.depto, problema: !!L.problema, prioridad: F.prio, titulo, desc, fecha: L.fecha || aseoDiaNuevo_(), hora: '', repite: L.repite, asignados: L.asig, etiquetas: L.etiq, adjuntos, reserva: F.reserva || '' };
     const j = await post('/aseo/tarea', { tarea, user });
     if (!j.ok) throw new Error(j.error || 'Error al crear la tarea');
     (ASEO.tareas = ASEO.tareas || {})[j.tarea.id] = j.tarea; lig = 'T' + j.tarea.id;
