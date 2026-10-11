@@ -50615,6 +50615,7 @@ window._botcAttachReservaGo_ = async function(phone, reservaId, guestName, exist
 };
 
 function _botcGetBookingForPhoneSync(phoneRaw) {
+  if (_botcEsAbn_(phoneRaw)) return _botcAbnBk_(phoneRaw); // conversación de Airbnb: su reserva viene con el hilo
   // Sync — solo funciona si HU_STATE o LG_STATE ya están cargados. Si no,
   // retorna undefined (distinto de null) para que el render sepa "aún no
   // sabemos".
@@ -50821,13 +50822,51 @@ const _BOTC_LOGO = {
 };
 const _botcCanalLogo_ = c => { const k = /airbnb/i.test(String((c && (c.canal || c.source)) || '')) ? 'airbnb' : 'whatsapp';
   return `<span class="wa-av wa-logo" title="${k === 'airbnb' ? 'Airbnb (Lodgify)' : 'WhatsApp'}">${_BOTC_LOGO[k]}</span>`; };
+// ═══ Conversaciones de Airbnb (vía Lodgify) dentro de «Chats bot» ═════════════
+// Vienen de /airbnb/bandeja (mismo origen que el módulo «Mensajes Airbnb»). Cada una se identifica como
+// «abn<idReserva>» en lugar de un teléfono; se pintan con el mismo diseño y el logo de Airbnb.
+BOTC_STATE.abn = BOTC_STATE.abn || []; BOTC_STATE.abnTs = BOTC_STATE.abnTs || 0;
+const _botcEsAbn_ = ph => /^abn\d+$/.test(String(ph || ''));
+function _botcAbnCargar_(forzar) {
+  if (BOTC_STATE.abnCargando || (!forzar && Date.now() - BOTC_STATE.abnTs < 60_000)) return;
+  BOTC_STATE.abnCargando = true;
+  fetch(`${BACKEND}/airbnb/bandeja`, { cache: 'no-store' }).then(r => r.json()).then(j => { if (j && j.ok) { BOTC_STATE.abn = j.hilos || []; BOTC_STATE.abnTs = Date.now(); _botcRenderSidebar(); } })
+    .catch(() => {}).finally(() => { BOTC_STATE.abnCargando = false; });
+}
+function _botcAbnConvs_() {
+  return (BOTC_STATE.abn || []).map(h => ({ phone: 'abn' + h.bid, canal: 'airbnb', abn: h, name: h.huesped || '', control: 'human',
+    last_msg_at: (h.ult && h.ult.fecha) || '', last_msg_preview: h.ult ? (h.ult.de === 'nosotros' ? 'Tú: ' : '') + h.ult.texto : 'Sin mensajes',
+    last_msg_role: h.noLeido ? 'user' : (h.ult && h.ult.de === 'huesped' ? 'user_visto' : 'assistant') }));
+}
+function _botcAbnBk_(ph) { // reserva de una conversación de Airbnb (la de Gestión de reservas si ya está cargada)
+  const bid = String(ph).replace(/^abn/, ''), h = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid) || {};
+  const lg = (typeof LG_STATE !== 'undefined' && Array.isArray(LG_STATE.bookings)) ? LG_STATE.bookings.find(b => String(b.Id) === bid) : null;
+  const bk = Object.assign({ Id: bid, LodgifyId: bid, DateArrival: h.llegada || '', DateDeparture: h.salida || '', Source: h.fuente || 'Airbnb', Status: h.estado || 'Booked', HouseId: h.hid || '', GuestName: h.huesped || '' }, lg || {});
+  bk.__alojCorto = h.aloj || ''; if (bk.GuestPhone) bk.__chatPhone10 = String(bk.GuestPhone).replace(/\D/g, '').slice(-10);
+  return bk;
+}
+// Nombre corto del alojamiento (CU8, OX6…) — columna device_name del catálogo.
+function _botcAlojCorto_(bk) {
+  if (!bk) return '';
+  if (bk.__alojCorto) return bk.__alojCorto;
+  if (typeof ALOJ_STATE === 'undefined' || !ALOJ_STATE.loaded) {
+    if (typeof lgLoadAlojamientos === 'function' && !window.__botcAlojPedido) { window.__botcAlojPedido = 1; lgLoadAlojamientos().then(() => _botcRenderSidebar()).catch(() => {}); }
+    return '';
+  }
+  const { prop, dept } = waPropDept_(bk), hid = String(bk.HouseId || bk.house_id || bk.PropertyId || bk.property_id || '').replace(/\D/g, '');
+  let r = hid ? ALOJ_STATE.byHouseId.get(hid) : null;
+  if (!r && prop) { r = lgFindAlojamiento({ houseName: bk.HouseName, propiedad: prop, departamento: dept });
+    if (r && dept && alojNorm(String(r['# Departamento'] || '').replace(/^#\s*/, '')) !== alojNorm(String(dept).replace(/^#\s*/, ''))) r = null; } // solo la propiedad no basta
+  return r ? String(r.device_name || r.Device_name || '').trim().toUpperCase() : '';
+}
 // Modo de la conversación como ícono (lista y encabezado del chat).
 const _BOTC_MODO = { bot: { i: '🤖', t: 'Automático', c: '#0e7490' }, supervised: { i: '👁️', t: 'Supervisado', c: '#7c3aed' }, human: { i: '👨‍💻', t: 'Manual', c: '#b45309' } };
 function _botcRowHtml_(c, bk, selected) {
   const phone = String(c.phone), name = String(c.name || (bk && bk.GuestName) || '').trim() || '+' + phone;
   const espera = _botcNeedsReply_(c), pend = _botcIsPending_(c);
   const md = _BOTC_MODO[String(c.control)] || _BOTC_MODO.bot;
-  const chips = [];
+  const chips = [], corto = _botcAlojCorto_(bk);
+  if (corto) chips.push(`<span class="wa-aloj ${c.canal === 'airbnb' ? 'air' : ''}" title="${_botcEsc(waAlojamientoLabel_(bk))}">${_botcEsc(corto)}</span>`);
   if (bk) {
     const src = _botcSrcTxt_(bk.Source); if (src) chips.push(`<span class="wa-chip" style="--c:${src[1]}">${_botcEsc(src[0])}</span>`);
     try { const m = _botcEnrichPaymentFields(bk) || {}, ps = String(m.PaymentStatus || ''); if (ps && ps !== 'Sin cargo') { const ok = /pagad|paid/i.test(ps), parcial = !ok && Number(m.AmountPaid) > 0; chips.push(`<span class="wa-chip" style="--c:${ok ? '#15803d' : parcial ? '#b45309' : '#dc2626'}">${ok ? 'Pagada' : parcial ? 'Pago parcial' : 'Sin pago'}</span>`); } } catch (_) {}
@@ -50838,7 +50877,7 @@ function _botcRowHtml_(c, bk, selected) {
   return `<div class="botc-conv-item wa-row ${selected ? 'sel' : ''} ${pend ? 'botc-pending' : ''}" data-botc-phone="${_botcEsc(phone)}" onclick="botcOpenChat('${_botcEsc(phone)}')">
     ${_botcCanalLogo_(c)}
     <div class="wa-body">
-      <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span><button type="button" class="wa-modo sm" style="--c:${md.c}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="${md.t} — cambiar modo">${md.i}</button></div>
+      <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span>${c.canal === 'airbnb' ? '' : `<button type="button" class="wa-modo sm" style="--c:${md.c}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="${md.t} — cambiar modo">${md.i}</button>`}</div>
       ${String(c.razon_social || '').trim() ? `<div class="wa-rs" title="Razón social">🧾 ${_botcEsc(String(c.razon_social).trim())}</div>` : ''}
       <div class="wa-l2"><span class="pv">${espera ? '<b class="wa-wait">⏳</b> ' : ''}${_botcEsc(c.last_msg_preview || '')}</span>${pend ? '<span class="wa-unread">1</span>' : ''}</div>
       <div class="wa-l3">${chips.join('')}</div>
@@ -50947,6 +50986,8 @@ function _botcWaCss_() {
   .fx-sol-tx{flex:1;min-width:0;display:flex;flex-direction:column}.fx-sol-tx b{font-size:13px;font-weight:600}.fx-sol-tx small{font-size:11.5px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .fx-sol-der{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:3px}.fx-sol-der small{font-size:10.5px;color:var(--wa-mu)}
   .fx-pill{font-size:10.5px;font-weight:700;color:var(--c);background:color-mix(in srgb,var(--c) 10%,#fff);padding:1px 7px;border-radius:999px}
+  .wa-aloj{font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#0f172a;background:#eef2f6;border:1px solid #d5dde6;padding:0 6px;border-radius:4px;white-space:nowrap;line-height:15px}
+  .wa-aloj.air{color:#be123c;background:#fff1f2;border-color:#fecdd3}
   .wa-rs{font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-l2{display:flex;align-items:center;gap:6px}.wa-l2 .pv{flex:1;min-width:0;font-size:13px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-wait{font-weight:400}
@@ -51018,12 +51059,14 @@ function _botcRenderSidebar() {
     </div>`;
   // Aplica el filtro de búsqueda (case-insensitive) + filtros del panel ☰.
   const qLower = q.toLowerCase();
+  _botcAbnCargar_();
+  const todas = (BOTC_STATE.conversations || []).concat(_botcAbnConvs_()).sort((a, b) => String(b.last_msg_at || '').localeCompare(String(a.last_msg_at || '')));
   let filtered = q
-    ? BOTC_STATE.conversations.filter(c => {
-        const parts = [c.name, c.phone, c.last_msg_preview, c.notes].map(x => String(x||'').toLowerCase());
+    ? todas.filter(c => {
+        const parts = [c.name, c.phone, c.last_msg_preview, c.notes, c.abn && c.abn.aloj].map(x => String(x||'').toLowerCase());
         return parts.some(p => p.indexOf(qLower) >= 0);
       })
-    : BOTC_STATE.conversations;
+    : todas;
   filtered = _botcApplyPanelFilters_(filtered);
   if (!filtered.length) {
     // Distinguir "aún cargando" de "cargó pero está vacío/filtrado".
@@ -51327,6 +51370,7 @@ window.botcOpenChat = async function(phone, opts) {
       if (typeof _botcCloseReservasDrawer_ === 'function') _botcCloseReservasDrawer_();
     }
   } catch(_){}
+  if (_botcEsAbn_(phone)) return _botcAbrirAbn_(phone, opts);
   BOTC_STATE.selectedPhone = phone;
   // Mobile: al elegir conversación, mostrar la vista chat a pantalla completa.
   _botcEnsureMobileCss_();
@@ -52488,7 +52532,7 @@ window.botcBitacoraCol_ = async function (phone, forzar) {
   try {
     const bk0 = (() => { try { return _botcGetBookingForPhoneSync(phone); } catch (_) { return null; } })();
     if (bk0) { // la reserva que ya eligió la lista (al instante; sin esperar al servidor)
-      const bk = Object.assign({}, bk0); try { bk.__chatPhone10 = String(phone).replace(/\D/g, '').slice(-10); } catch (_) {}
+      const bk = Object.assign({}, bk0); try { if (!_botcEsAbn_(phone)) bk.__chatPhone10 = String(phone).replace(/\D/g, '').slice(-10); } catch (_) {}
       window.__waEmbedEl = col3; window.__waModalState = null;
       if (typeof waOpenModal === 'function') await waOpenModal(bk);
       return;
@@ -52513,14 +52557,15 @@ window.botcBitacoraCol_ = async function (phone, forzar) {
 BOTC_STATE.fxPerf = BOTC_STATE.fxPerf || {}; BOTC_STATE.fxSol = BOTC_STATE.fxSol || {};
 function _botcFxCargar_(phone) {
   const p = String(phone || '').replace(/\D/g, '').slice(-10); if (!p) return;
-  const repinta = () => { if (window.__waModalState && String(BOTC_STATE.selectedPhone || '').slice(-10) === p) _waRepaint(); };
+  const repinta = () => { if (window.__waModalState && document.querySelector('#botc-third-col .fx')) _waRepaint(); };
   if (!BOTC_STATE.fxPerf[p]) { BOTC_STATE.fxPerf[p] = { cargando: true };
     fetch(`https://api.check-inn.mx/perfil/by-phone?phone=${p}`).then(r => r.json()).then(j => { BOTC_STATE.fxPerf[p] = { perfil: (j && j.perfil) || null }; repinta(); }).catch(() => { BOTC_STATE.fxPerf[p] = { perfil: null }; }); }
   if (!BOTC_STATE.fxSol[p]) { BOTC_STATE.fxSol[p] = { cargando: true, rows: [] };
     fetch(`https://api.check-inn.mx/solicitudes?phone=${p}`).then(r => r.json()).then(j => { BOTC_STATE.fxSol[p] = { rows: (j && j.rows) || [] }; repinta(); }).catch(() => { BOTC_STATE.fxSol[p] = { rows: [] }; }); }
 }
 window.botcFxRefrescar_ = function (btn) {
-  const p = String(BOTC_STATE.selectedPhone || '').replace(/\D/g, '').slice(-10); delete BOTC_STATE.fxPerf[p]; delete BOTC_STATE.fxSol[p];
+  const st = window.__waModalState, sel = String(BOTC_STATE.selectedPhone || ''), p = (_botcEsAbn_(sel) ? String((st && st.b && st.b.GuestPhone) || '') : sel).replace(/\D/g, '').slice(-10); delete BOTC_STATE.fxPerf[p]; delete BOTC_STATE.fxSol[p];
+  if (_botcEsAbn_(sel)) _botcAbnCargar_(true);
   if (btn) btn.classList.add('gira'); if (typeof waRefreshPanel_ === 'function') waRefreshPanel_(btn); else _waRepaint();
 };
 const _botcFxIso_ = v => { const x = String(v || ''); let m = x.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0]; m = x.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : ''; }; // Lodgify manda M/D/AAAA
@@ -52535,10 +52580,11 @@ function _botcFxSolHtml_(rows) {
 }
 const _botcFxVacio_ = (ic, t) => `<div class="fx-vacio"><span>${ic}</span>${_botcEsc(t)}</div>`;
 function _botcFichaHtml_(st, logs) {
-  const phone = String(BOTC_STATE.selectedPhone || ''), p10 = phone.replace(/\D/g, '').slice(-10);
-  if (BOTC_STATE.fxAnim !== phone) BOTC_STATE.fxMas = false; // «Más información» empieza plegada con cada huésped
-  _botcFxCargar_(phone);
-  const conv = (BOTC_STATE.conversations || []).find(c => String(c.phone) === phone) || {};
+  const sel = String(BOTC_STATE.selectedPhone || ''), esAbn = _botcEsAbn_(sel);
+  const phone = esAbn ? String((st.b && st.b.GuestPhone) || '').replace(/\D/g, '') : sel, p10 = phone.slice(-10); // Airbnb: perfil por el teléfono de la reserva
+  if (BOTC_STATE.fxAnim !== sel) BOTC_STATE.fxMas = false; // «Más información» empieza plegada con cada huésped
+  if (phone) _botcFxCargar_(phone);
+  const conv = (BOTC_STATE.conversations || []).find(c => String(c.phone) === phone) || (esAbn ? { name: (st.b && st.b.GuestName) || '' } : {});
   const pc = BOTC_STATE.fxPerf[p10] || {}, pf = pc.perfil || {};
   const g = k => String(pf[k] == null ? '' : pf[k]).trim();
   const nombre = g('Nombre del huésped') || conv.name || (st.b && st.b.GuestName) || ('+' + phone);
@@ -52554,7 +52600,7 @@ function _botcFichaHtml_(st, logs) {
     </div>`;
   const kpi = (v, et) => `<div class="fx-kpi"><b>${v}</b><small>${et}</small></div>`;
   const perfil = `<section class="fx-card fx-perfil">
-      <div class="fx-perfil-top">${_botcAvHtml_(nombre)}<div class="fx-perfil-id"><b>${_botcEsc(nombre)}</b><small>+${_botcEsc(phone)}</small>
+      <div class="fx-perfil-top">${_botcAvHtml_(nombre)}<div class="fx-perfil-id"><b>${_botcEsc(nombre)}</b><small>${phone ? '+' + _botcEsc(phone) : esAbn ? 'Huésped de Airbnb' : ''}</small>
         ${rs || reg ? `<span class="fx-rs">🧾 ${_botcEsc(rs)}${rs && reg ? ' · ' : ''}${_botcEsc(reg)}</span>` : ''}</div>
         ${tier ? `<span class="fx-tier" style="--c:${tierC}">★ ${_botcEsc(tier)}</span>` : ''}
         <button type="button" class="fx-ico" onclick="_botcOpenPerfilEditor_('${_botcEsc(phone)}')" title="Editar perfil">✏️</button></div>
@@ -52600,7 +52646,7 @@ function _botcFichaHtml_(st, logs) {
           <span class="fx-res-car">${carg ? '<span class="fx-spin"></span>' : '›'}</span>
         </button>${cuerpo}</article>`;
   }).join('');
-  const animar = BOTC_STATE.fxAnim !== phone; BOTC_STATE.fxAnim = phone; // animación de entrada solo al cambiar de huésped
+  const animar = BOTC_STATE.fxAnim !== sel; BOTC_STATE.fxAnim = sel; // animación de entrada solo al cambiar de huésped
   const clave = st.focusedBookingId + '|' + tab, animTab = BOTC_STATE.fxTab !== clave; BOTC_STATE.fxTab = clave;
   return `<div class="fx ${animar ? 'anim' : ''} ${animTab ? 'animtab' : ''}">
       <header class="fx-h"><span class="fx-h-t">Ficha del huésped</span>
@@ -52611,6 +52657,52 @@ function _botcFichaHtml_(st, logs) {
         <div class="fx-sec">Reservas <span>${bks.length}</span></div>${reservas || _botcFxVacio_('🗓️', 'Sin reservas asociadas a este número')}
       </div></div>`;
 }
+// Chat de Airbnb: mismas burbujas y encabezado que WhatsApp; los mensajes salen de Lodgify.
+window._botcAbrirAbn_ = async function (ph, opts) {
+  opts = opts || {}; const bid = String(ph).replace(/^abn/, ''), main = document.getElementById('botc-main'); if (!main) return;
+  BOTC_STATE.selectedPhone = ph; _botcEnsureMobileCss_();
+  try { document.getElementById('module-bot-chats')?.classList.add('botc-has-chat'); } catch (_) {}
+  if (!opts.silent) document.querySelectorAll('#botc-sidebar [data-botc-phone]').forEach(el => el.classList.toggle('sel', el.getAttribute('data-botc-phone') === ph));
+  const pintar = j => {
+    if (String(BOTC_STATE.selectedPhone) !== ph) return;
+    const h = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid) || {}, bk = _botcAbnBk_(ph), nombre = (j && j.huesped) || h.huesped || 'Huésped de Airbnb';
+    const a = _botcFxIso_(bk.DateArrival), d = _botcFxIso_(bk.DateDeparture);
+    let dia = '';
+    const msgs = j ? (j.mensajes || []).map(m => { const f = new Date(m.fecha), dd = isNaN(f) ? '' : f.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+        const sep = dd && dd !== dia ? `<div class="wa-day"><span>${_botcEsc(dd)}</span></div>` : ''; dia = dd || dia; const io = m.de === 'huesped' ? 'in' : 'out';
+        return `${sep}<div class="wa-r ${io}"><div class="wa-b ${io}">${_botcEsc(m.texto).replace(/\n/g, '<br>')}<div style="text-align:right;font-size:11px;color:var(--wa-mu);margin-top:2px">${m.adj ? '📎 ' + m.adj + ' · ' : ''}${isNaN(f) ? '' : f.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}</div></div></div>`; }).join('')
+      : '<div class="wa-bit-load">⏳ Cargando conversación de Airbnb…</div>';
+    const menu = `<div class="botc-chat-header-menuwrap" style="position:relative;display:inline-block;flex:none">
+        <button type="button" onclick="botcToggleHeaderMenu_(event)" title="Opciones" style="width:36px;height:36px;padding:0;font-size:20px;background:#fff;color:#334155;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer;font-weight:900;line-height:1;letter-spacing:2px">⋮</button>
+        <div id="botc-header-menu" style="display:${BOTC_STATE.headerMenuOpen ? 'block' : 'none'};position:absolute;top:100%;right:0;margin-top:6px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.22);z-index:1000;min-width:230px;overflow:hidden;font-size:12px">
+          <div class="botc-hmenu-group"><div class="botc-hmenu-label">Ver</div>
+            <button type="button" class="botc-hmenu-item" onclick="botcToggleRightPanel();botcCloseHeaderMenu_()">📖 Bitácora completa</button>
+            <button type="button" class="botc-hmenu-item" onclick="botcCloseHeaderMenu_();switchModule('mensajes');abnInit_('${bid}')">↗ Abrir en Mensajes Airbnb</button></div></div></div>`;
+    main.innerHTML = `<div class="botc-chat-header wa-chat-h">
+        <div class="botc-chat-header-nameblock" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+          <button id="botc-back-to-list" type="button" onclick="botcBackToList_()" title="Regresar a la lista" style="align-items:center;gap:4px;padding:6px 8px;background:transparent;color:#54656f;border:0;border-radius:6px;cursor:pointer;font-size:16px;font-weight:800;flex:none">←</button>
+          <span class="wa-av wa-logo" style="width:38px;height:38px">${_BOTC_LOGO.airbnb}</span>
+          <div style="min-width:0;flex:1;overflow:hidden"><div class="botc-chat-name" style="font-size:15px;font-weight:500;color:var(--wa-tx)">${_botcEsc(nombre)}</div>
+            <div style="font-size:12px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${[_botcAlojCorto_(bk), a && d ? `${_waFmtShortDate(a)} → ${_waFmtShortDate(d)}` : '', 'Airbnb · reserva ' + bid].filter(Boolean).map(_botcEsc).join(' · ')}</div></div>
+        </div>
+        <div class="botc-chat-header-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;margin-left:auto;align-self:flex-start">${menu}</div>
+      </div>
+      <div id="botc-msgs" class="wa-msgs">${msgs}</div>
+      <div class="wa-comp" style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--wa-bar);border-top:1px solid var(--wa-ln)">
+        <input disabled placeholder="Responder por Airbnb se activa después de confirmar la prueba de envío. Por ahora responde en Airbnb." style="flex:1;min-width:0;border:0;border-radius:8px;padding:10px 12px;font-size:13px;background:#fff;color:var(--wa-mu)">
+      </div>`;
+    const box = document.getElementById('botc-msgs'); if (box) box.scrollTop = box.scrollHeight;
+  };
+  if (!opts.silent) { pintar(null); try { BOTC_STATE.bitLast !== ph && (BOTC_STATE.bitOff = false); BOTC_STATE.bitLast = ph; botcBitacoraCol_(ph); } catch (_) {} }
+  try {
+    const j = await fetch(`${BACKEND}/airbnb/hilo?bid=${encodeURIComponent(bid)}`, { cache: 'no-store' }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error');
+    const n = (j.mensajes || []).length; if (opts.silent && BOTC_STATE.abnN === bid + ':' + n) return; BOTC_STATE.abnN = bid + ':' + n;
+    pintar(j);
+    const u = (j.mensajes || [])[n - 1], h = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid);
+    if (u && h && h.noLeido) { h.noLeido = false; _botcRenderSidebar(); fetch(`${BACKEND}/airbnb/visto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bid, fecha: u.fecha }) }).catch(() => {}); }
+  } catch (e) { if (!opts.silent) { const box = document.getElementById('botc-msgs'); if (box) box.innerHTML = `<div class="wa-bit-load">⚠️ ${_botcEsc(e.message || e)}</div>`; } }
+};
 window.botcToggleRightPanel = async function() {
   // «📖 Bitácora completa» del menú: en pantallas anchas va en la 3a columna; en angostas, la ventana lateral de siempre.
   if (BOTC_STATE.selectedPhone) { BOTC_STATE.bitPhone = ''; return botcBitacoraCol_(BOTC_STATE.selectedPhone, true); } // escritorio: 3a columna · celular: pantalla completa
