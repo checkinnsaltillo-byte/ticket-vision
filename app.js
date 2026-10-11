@@ -51170,7 +51170,7 @@ function _botcWaCss_() {
   #botc-prog-pop .bp-acc{flex:none;display:inline-flex;align-items:center;gap:4px}
   #botc-prog-pop .bp-send{all:unset;cursor:pointer;width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#00a884}
   #botc-prog-pop .bp-send:hover{background:#e7fcef}
-  #botc-prog-pop .bp-det{padding:2px 12px 10px 52px;background:#f0f2f5}
+  #botc-prog-pop .bp-det{padding:2px 12px 10px;background:#f0f2f5} /* sin sangría: el mensaje usa todo el ancho */
   #botc-prog-pop .bp-det > div{padding:6px 0 0!important;background:transparent!important;border:0!important}
   #botc-prog-pop .bp-det label{font-size:10.5px!important}
   #botc-prog-pop .bp-det div[style*="#dcf7c5"]{background:#d9fdd3!important;border-radius:0 8px 8px 8px!important;box-shadow:0 1px .5px rgba(11,20,26,.13);font-size:13px!important;color:#111b21}
@@ -51227,7 +51227,7 @@ function _botcRenderSidebar() {
       <div style="display:flex;gap:6px;align-items:center">
         <button type="button" id="botc-filters-btn" onclick="botcToggleFilters_()" title="Filtros" style="width:32px;height:32px;padding:0;font-size:16px;background:${_botcHasAnyFilter_()?'#0f172a':'#fff'};color:${_botcHasAnyFilter_()?'#fff':'#334155'};border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:900;line-height:1;flex-shrink:0;position:relative">☰${_botcHasAnyFilter_()?`<span style="position:absolute;top:-4px;right:-4px;width:10px;height:10px;background:#f97316;border-radius:50%;border:1.5px solid #fff"></span>`:''}</button>
         <div style="position:relative;flex:1">
-          <input id="botc-search-input" type="search" value="${_botcEsc(q)}"
+          <input id="botc-search-input" type="search" value="${_botcEsc(String(BOTC_STATE.searchQuery || ''))}"
             placeholder="🔍 Buscar un chat o mensaje"
             oninput="botcSetSearchQuery_(this.value)"
             style="width:100%;padding:7px 30px 7px 12px;font-size:13px;border:0;border-radius:8px;box-sizing:border-box;background:#f0f2f5">
