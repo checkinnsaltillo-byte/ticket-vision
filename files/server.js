@@ -6915,6 +6915,7 @@ app.post("/lodgify-sync", async (req, res) => {
     if (changed) {
       _huespedesCacheRefreshInBackground('post-sync');
       _lgSnapRefresh('post-sync');
+      _pfAltasLodgifyRecientes().catch(e => console.warn("[perfiles] altas desde Lodgify:", e.message)); // perfiles de huéspedes nuevos (Cloud Storage)
     }
     res.json(json);
   } catch (err) {
@@ -10692,6 +10693,204 @@ Object.assign(_GCS_ACT, {
   },
 });
 // ═══════════════════════════════════════════════════════════════════════════
+// 🧑 Perfiles y Vehículos de huéspedes en Cloud Storage (2026-10-11). Antes: hojas Perfiles y Vehiculos.
+//   perfiles/perfiles.json  { headers, rows } — una fila por celular (mismas columnas que la hoja: PIN hash, KPIs, INE…)
+//   perfiles/vehiculos.json { headers, rows }
+// Mismas reglas que Apps Script (registro público, PIN, perfil, KPIs). Lo que sigue en Apps Script:
+// Reservaciones (hoja), subir fotos a Drive y enviar el código por correo (send_otp / verify_otp).
+// ═══════════════════════════════════════════════════════════════════════════
+const _PF_OBJ = { pf: "perfiles/perfiles.json", vh: "perfiles/vehiculos.json" };
+const _PF_CEL = "Cel/Whatsapp (principal)";
+const _pfNorm = v => String(v == null ? "" : v).replace(/[\s'‘’“”]/g, "").replace(/^[+]/, "").trim(); // normalizePhone_ de Apps Script
+const _pfSafe = v => v == null ? "" : String(v);
+const _pfSiNo = v => { const x = String(v || "").toLowerCase().trim(); return x === "si" || x === "sí" || x === "yes" ? "Sí" : x === "no" ? "No" : _pfSafe(v); };
+const _pfOtro = (sel, otro) => { const a = _pfSafe(sel).trim(), b = _pfSafe(otro).trim(); if (!a) return b; return ["Otro", "Otra", "Other"].includes(a) ? b : a; };
+const _pfVacio = v => v == null || String(v).trim() === "";
+async function _pfLeer(t) { const d = await _waLeer(_PF_OBJ[t]); if (!Array.isArray(d.rows)) throw new Error("Faltan los datos de " + (t === "pf" ? "Perfiles" : "Vehículos") + " en Cloud Storage"); return d; }
+const _pfMutar = (t, fn) => _waMutar(_PF_OBJ[t], d => { if (!Array.isArray(d.rows)) throw new Error("Faltan los datos en Cloud Storage"); return fn(d); }).then(r => { _pfDespuesCambio(); return r; });
+function _pfDespuesCambio() { try { _perfilesListCacheInvalidate(); } catch (_) {} try { _perfilesKpisCache.refresh().catch(() => {}); } catch (_) {} _waPf.ts = 0; }
+const _pfBuscar = (d, cel) => { const k = _pfNorm(cel); return k ? d.rows.find(r => _pfNorm(r[_PF_CEL]) === k) || null : null; };
+const _pfBuscar10 = (d, cel) => { const k = _waP10(cel); return k ? d.rows.find(r => { const x = String(r[_PF_CEL] || "").replace(/\D/g, ""); return x.length >= 10 && x.slice(-10) === k; }) || null : null; };
+const _pfNueva = d => { const o = {}; d.headers.forEach(h => { if (h) o[h] = ""; }); return o; };
+function _pfDesdeForm(data, cel) { // buildPerfilFromData_
+  const hu = Array.isArray(data.huespedes) ? (data.huespedes.map(x => String(x || "").trim()).find(Boolean) || "") : _pfSafe(data.huespedes).split(",")[0].trim();
+  return { [_PF_CEL]: cel, "Nombre del huésped": hu || _pfSafe(data.nombre_huesped) || _pfSafe(data.nombre), "Cel/Whatsapp (contacto de emergencia)": _pfSafe(data.celular_emergencia),
+    "Tipo de identificación": _pfOtro(data.identificacion_tipo, data.identificacion_otro), "Identificación otro": _pfSafe(data.identificacion_otro), "¿Requiere factura?": _pfSiNo(data.factura),
+    "Razón social": _pfSafe(data.razon_social), "RFC": _pfSafe(data.rfc), "Régimen fiscal": _pfOtro(data.regimen, data.regimen_otro), "Régimen otro": _pfSafe(data.regimen_otro),
+    "Código Postal": _pfSafe(data.codigo_postal), "Correo electrónico para el envío de la factura": _pfSafe(data.correo1) };
+}
+function _vhDesdeForm(data, cel) { // buildVehiculoFromData_
+  return { [_PF_CEL]: cel, "¿Cuenta con vehículo?": _pfSiNo(data.tiene_vehiculo), "Marca vehículo": _pfOtro(data.vehiculo_marca, data.vehiculo_marca_otro), "Marca vehículo otro": _pfSafe(data.vehiculo_marca_otro),
+    "Modelo vehículo": _pfSafe(data.vehiculo_modelo), "Modelo vehículo otro": _pfSafe(data.vehiculo_modelo_otro), "Color vehículo": _pfSafe(data.vehiculo_color), "Placas": _pfSafe(data.vehiculo_placas), "Hora habitual de salida": _pfSafe(data.vehiculo_hora_salida) };
+}
+function _pfUpsertForm(data, cel) { // upsertPerfil_: lo nuevo no vacío gana; si no, se conserva lo anterior
+  const now = _waIso(), nv = _pfDesdeForm(data, cel);
+  return _pfMutar("pf", d => {
+    const ex = _pfBuscar(d, cel);
+    if (ex) { d.headers.forEach(h => { if (!h || h === "Fecha creación" || h === "ID_Perfil") return; if (h === "Fecha actualización") ex[h] = now; else if (!_pfVacio(nv[h])) ex[h] = nv[h]; });
+      if (!ex["Fecha creación"]) ex["Fecha creación"] = now; if (!ex.ID_Perfil) ex.ID_Perfil = crypto.randomUUID(); return { id_perfil: ex.ID_Perfil, created: false }; }
+    const o = Object.assign(_pfNueva(d), nv, { ID_Perfil: crypto.randomUUID(), "Fecha creación": now, "Fecha actualización": now }); d.rows.push(o);
+    return { id_perfil: o.ID_Perfil, created: true };
+  });
+}
+function _vhUpsertForm(data, cel) { // upsertVehiculo_
+  const now = _waIso(), tiene = _pfSiNo(data.tiene_vehiculo), nv = _vhDesdeForm(data, cel);
+  return _pfMutar("vh", d => {
+    const ex = _pfBuscar(d, cel);
+    if (!tiene && !ex) return { id_vehiculo: "", created: false };
+    if (ex) { d.headers.forEach(h => { if (!h || h === "ID_Vehiculo") return; if (h === "Fecha actualización") ex[h] = now; else if (!_pfVacio(nv[h])) ex[h] = nv[h]; }); if (!ex.ID_Vehiculo) ex.ID_Vehiculo = crypto.randomUUID(); return { id_vehiculo: ex.ID_Vehiculo, created: false }; }
+    const o = Object.assign(_pfNueva(d), nv, { ID_Vehiculo: crypto.randomUUID(), "Fecha actualización": now }); d.rows.push(o);
+    return { id_vehiculo: o.ID_Vehiculo, created: true };
+  });
+}
+function _pfArchivo(cel, campo, info) { // updateProfileFile_ / updateVehicleFile_
+  const now = _waIso();
+  if (campo === "vehiculo_foto") return _pfMutar("vh", d => { let r = _pfBuscar(d, cel);
+    if (!r) { r = Object.assign(_pfNueva(d), { ID_Vehiculo: crypto.randomUUID(), [_PF_CEL]: cel, "¿Cuenta con vehículo?": "Sí" }); d.rows.push(r); }
+    Object.assign(r, { "Foto vehículo": info.url, "Link foto vehículo": info.url, "ID archivo foto vehículo": info.id, "Nombre archivo vehículo": info.name, "Fecha actualización": now }); });
+  const main = { ine_frontal: "INE frontal", ine_trasero: "INE trasero", identificacion_unica: "Identificación única" }[campo]; if (!main) return Promise.resolve();
+  return _pfMutar("pf", d => { let r = _pfBuscar(d, cel);
+    if (!r) { r = Object.assign(_pfNueva(d), { ID_Perfil: crypto.randomUUID(), [_PF_CEL]: cel, "Fecha creación": now }); d.rows.push(r); }
+    r[main] = info.url; r["Link " + main] = info.url; if (main === "Identificación única") r["Link identificación"] = info.url;
+    r["ID archivo " + main] = info.id; r[main === "Identificación única" ? "Nombre archivo identificación" : "Nombre archivo " + main] = info.name; r["Fecha actualización"] = now; });
+}
+function _pfMigrarTel(viejo, nuevo) { // migratePhone_ (Perfiles y Vehículos; Reservaciones la cambia Apps Script)
+  const mezcla = (d, idCampo, extra) => { const o = _pfBuscar(d, viejo); if (!o) return; const n = _pfBuscar(d, nuevo), now = _waIso();
+    if (n && n !== o) { d.headers.forEach(h => { if (!h || h === idCampo) return; if (h === _PF_CEL) n[h] = nuevo; else if (h === "Fecha actualización") n[h] = now; else if (h === "Fecha creación") n[h] = n[h] || o[h] || now; else if (_pfVacio(n[h]) && !_pfVacio(o[h])) n[h] = o[h]; }); d.rows.splice(d.rows.indexOf(o), 1); }
+    else { o[_PF_CEL] = nuevo; o["Fecha actualización"] = now; } };
+  if (!viejo || !nuevo || _pfNorm(viejo) === _pfNorm(nuevo)) return Promise.resolve();
+  return _pfMutar("pf", d => mezcla(d, "ID_Perfil")).then(() => _pfMutar("vh", d => mezcla(d, "ID_Vehiculo")));
+}
+const _kpiNum = (v, max) => { if (v == null || v === "") return 0; const n = Number(v); return !isFinite(n) || n < 0 || (max != null && n > max) ? 0 : n; };
+function _pfTier(st) { const sc = Math.round(Math.max(0, Math.min(100, 30 * Math.min(1, (+st.noches || 0) / 30) + 20 * Math.min(1, (+st.visitas || 0) / 12) + 50 * Math.min(1, (+st.monto || 0) / 100000))));
+  return sc >= 70 ? "Oro" : sc >= 45 ? "Plata" : sc >= 25 ? "Bronce" : sc >= 10 ? "Recurrente" : ""; }
+// Perfiles nuevos desde Lodgify (antes propagateLodgifyToCanonical_): un perfil por celular que aún no exista.
+async function _pfAltasLodgify(bookings) {
+  const bk = (bookings || []).filter(b => String(b.status || "").toLowerCase() === "booked" && b.guest && _waP10(b.guest.phone));
+  if (!bk.length) return 0;
+  const ya0 = new Set((await _pfLeer("pf")).rows.map(r => _waP10(r[_PF_CEL])).filter(Boolean));
+  if (bk.every(b => ya0.has(_waP10(b.guest.phone)))) return 0; // nada nuevo: no se reescribe el archivo
+  return _pfMutar("pf", d => { const ya = new Set(d.rows.map(r => _waP10(r[_PF_CEL])).filter(Boolean)), now = _waIso(); let n = 0;
+    bk.forEach(b => { const k = _waP10(b.guest.phone); if (ya.has(k)) return; ya.add(k); n++;
+      d.rows.push(Object.assign(_pfNueva(d), { ID_Perfil: crypto.randomUUID(), [_PF_CEL]: b.guest.phone || "", "Lada celular huésped": b.guest.country_code || "", "Nombre del huésped": String(b.guest.name || "").trim(),
+        "Correo electrónico para el envío de la factura": String(b.guest.email || "").trim(), "Fecha creación": now, "Fecha actualización": now })); });
+    if (n) console.log(`[perfiles] ${n} perfiles nuevos desde Lodgify`); return n; });
+}
+async function _pfAltasLodgifyRecientes() { // reservas en curso y próximas (rápido; se llama tras cada sync de Lodgify)
+  const bk = []; for (const f of ["Current", "Upcoming"]) for (let page = 1; page <= 8; page++) { const d = await _lgApi(`/v2/reservations/bookings?page=${page}&size=50&stayFilter=${f}&includeExternal=true`); bk.push(...(d.items || [])); if ((d.items || []).length < 50) break; }
+  return _pfAltasLodgify(bk);
+}
+// KPIs (antes perfilesRecalcKpis_): mismas reglas y misma fuente (copia completa de reservas de Lodgify, lodgify_list).
+async function _pfRecalcKpis() {
+  const t0 = Date.now(), lg = await callCheckinAppsScript("lodgify_list", null, { directo: true });
+  if (!lg || !Array.isArray(lg.bookings) || lg._stale) return { ok: false, error: "No se pudo leer el historial de Lodgify" + ((lg && lg.error) ? ": " + lg.error : "") };
+  const num = (v, mn, mx) => { if (v == null || v === "") return 0; const n = Number(v); if (!isFinite(n)) return 0; if (mn != null && n < mn) return 0; if (mx != null && n > mx) return 0; return n; };
+  const dstr = v => { const x = String(v || ""); let m = x.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return m[1] + "-" + m[2].padStart(2, "0") + "-" + m[3].padStart(2, "0");
+    m = x.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + m[1].padStart(2, "0") + "-" + m[2].padStart(2, "0") : ""; };
+  const dif = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000), por = {};
+  lg.bookings.forEach(b => { if (String(b.Status || "").toLowerCase() !== "booked") return; const ph = String(b.GuestPhone || "").replace(/\D/g, ""); if (ph.length < 10) return;
+    let n = num(b.Nights, 0, 365); const arr = dstr(b.DateArrival), dep = dstr(b.DateDeparture); if (!n && arr && dep) { const x = dif(arr, dep); if (x > 0 && x <= 365) n = x; }
+    (por[ph.slice(-10)] = por[ph.slice(-10)] || []).push({ n, g: num(b.GrossTotal, 0, 1e6), arr, dep, t: num(b.TotalAmount, 0, 1e6), p: num(b.AmountPaid, 0, 1e6), d: num(b.AmountDue, -1e6, 1e6), src: String(b.Source || "").toLowerCase() }); });
+  const kpis = {};
+  Object.keys(por).forEach(k => { const L = por[k].sort((a, b) => String(a.arr).localeCompare(String(b.arr))); let noches = 0, monto = 0, visitas = 0, prev = "";
+    L.forEach(b => { noches += b.n; const t = b.t || b.g; if (b.src.includes("airbnb") || (t > 0 && b.p > 0 && b.d <= 0.01)) monto += b.p > 0 ? b.p : t; // pagada
+      if (!b.arr || !prev) { visitas++; prev = b.dep; return; } if (dif(prev, b.arr) >= 1) visitas++; if (b.dep && b.dep > prev) prev = b.dep; }); // estancias contiguas = 1 visita
+    kpis[k] = { noches, visitas, monto }; });
+  const nowIso = _waIso();
+  const r = await _pfMutar("pf", d => { let updated = 0; d.rows.forEach(r => { const k = _waP10(r[_PF_CEL]); if (!k) return; const q = kpis[k];
+      r.kpi_noches = q ? q.noches : 0; r.kpi_visitas = q ? q.visitas : 0; r.kpi_monto = q ? q.monto : 0; r.kpi_clasificacion = q ? _pfTier(q) : ""; r.kpi_updated_at = nowIso; if (q) updated++; });
+    return { ok: true, updated, total_perfiles: d.rows.length, reservas: lg.bookings.length, elapsed_ms: Date.now() - t0 }; });
+  console.log("[perfiles] KPIs recalculados", r); return r;
+}
+// Lista de huéspedes y ficha (Apps Script une Reservaciones con su copia vieja de Perfiles): aquí se sobreponen los datos vigentes.
+async function _pfMapas() { const [p, v] = await Promise.all([_pfLeer("pf"), _pfLeer("vh")]); const mp = new Map(), mv = new Map();
+  p.rows.forEach(r => { const k = _pfNorm(r[_PF_CEL]); if (k) mp.set(k, r); }); v.rows.forEach(r => { const k = _pfNorm(r[_PF_CEL]); if (k) mv.set(k, r); }); return { mp, mv }; }
+Object.assign(_GCS_ACT, {
+  check_user_status: async data => { const k = String(data.phoneKey || "").replace(/\D/g, ""); if (!k) return { ok: false, error: "Falta phoneKey." };
+    const r = _pfBuscar(await _pfLeer("pf"), k); return r ? { ok: true, exists: true, hasPin: !!String(r["PIN hash"] || "").trim() } : { ok: true, exists: false, hasPin: false }; },
+  set_pin: data => { const k = String(data.phoneKey || "").replace(/\D/g, ""), h = String(data.pinHash || "").trim();
+    if (!k) return { ok: false, error: "Falta phoneKey." }; if (!h) return { ok: false, error: "Falta pinHash." };
+    return _pfMutar("pf", d => { const now = _waIso(), r = _pfBuscar(d, k);
+      if (!r) { d.rows.push(Object.assign(_pfNueva(d), { ID_Perfil: crypto.randomUUID(), [_PF_CEL]: k, "PIN hash": h, "PIN actualizado": now, "Fecha creación": now, "Fecha actualización": now })); return { ok: true, created: true }; }
+      Object.assign(r, { "PIN hash": h, "PIN actualizado": now, "Fecha actualización": now }); return { ok: true, created: false }; }); },
+  verify_pin: async data => { const k = String(data.phoneKey || "").replace(/\D/g, ""), h = String(data.pinHash || "").trim();
+    if (!k) return { ok: false, error: "Falta phoneKey." }; if (!h) return { ok: false, error: "Falta pinHash." };
+    const r = _pfBuscar(await _pfLeer("pf"), k); if (!r) return { ok: false, error: "Usuario no encontrado." };
+    const s = String(r["PIN hash"] || "").trim(); if (!s) return { ok: false, error: "Sin PIN configurado." }; return s === h ? { ok: true } : { ok: false, error: "PIN incorrecto." }; },
+  get_otp_methods: async data => { const k = String(data.phoneKey || "").replace(/\D/g, ""); if (!k) return { ok: false, error: "Falta phoneKey." };
+    const r = (await _pfLeer("pf")).rows.find(x => String(x[_PF_CEL] || "").replace(/\D/g, "") === k) || {}, em = String(r["Correo electrónico para el envío de la factura"] || "").trim();
+    const mE = e => { const a = e.indexOf("@"); return a < 2 ? e : e.slice(0, 2) + "***" + e.slice(a); };
+    return { ok: true, methods: { email: em ? { available: true, target: em, masked: mE(em) } : { available: false }, sms: { available: true, target: k, masked: k.length < 4 ? k : "*** *** " + k.slice(-4) } }, name: String(r["Nombre del huésped"] || "").trim() }; },
+  get_profile: async data => {
+    const k = String(data.phoneKey || "").replace(/\D/g, ""); if (!k) return { ok: false, error: "Falta phoneKey." };
+    const [P, V] = await Promise.all([_pfLeer("pf"), _pfLeer("vh")]), p = _pfBuscar(P, k); if (!p) return { ok: true, exists: false, profile: null };
+    const g = (o, c) => String(o[c] == null ? "" : o[c]).trim();
+    const ec = String(p["Cel/Whatsapp (contacto de emergencia)"] || "").replace(/\D/g, ""), el = String(p["Lada contacto emergencia"] || "52").replace(/\D/g, "") || "52";
+    const eLocal = ec.length > 10 && ec.startsWith(el) ? ec.slice(el.length) : ec.length > 10 ? ec.slice(-10) : ec;
+    const v = _pfBuscar(V, k), step4 = v ? { tiene_vehiculo: g(v, "¿Cuenta con vehículo?"), marca: g(v, "Marca vehículo"), marca_otro: g(v, "Marca vehículo otro"), modelo: g(v, "Modelo vehículo"), color: g(v, "Color vehículo"), placas: g(v, "Placas"), hora_salida: g(v, "Hora habitual de salida"), foto: g(v, "Link foto vehículo") }
+      : { tiene_vehiculo: "", marca: "", marca_otro: "", modelo: "", color: "", placas: "", hora_salida: "", foto: "" };
+    const t = new Date(p["Fecha actualización"] || p["Fecha creación"] || 0).getTime();
+    return { ok: true, exists: true, profile: { step1: { nombre: g(p, "Nombre del huésped"), emerg_lada: el, emerg_celular: eLocal },
+      step2: { tipo: g(p, "Tipo de identificación"), id_otro: g(p, "Identificación otro"), ine_frontal: g(p, "Link INE frontal"), ine_trasero: g(p, "Link INE trasero"), ident_unica: g(p, "Link identificación única") },
+      step3: { factura: g(p, "¿Requiere factura?"), razon_social: g(p, "Razón social"), rfc: g(p, "RFC"), regimen: g(p, "Régimen fiscal"), regimen_otro: g(p, "Régimen otro"), codigo_postal: g(p, "Código Postal"), correo_factura: g(p, "Correo electrónico para el envío de la factura") },
+      step4, lastStep: 4, updatedAt: isNaN(t) ? 0 : t } };
+  },
+  save_profile_only: async data => { const cel = _pfSafe(data.celular_principal).trim(); if (!cel) return { ok: false, error: "Falta celular_principal." };
+    const a = await _pfUpsertForm(data, cel), b = await _vhUpsertForm(data, cel);
+    return { ok: true, id_perfil: a.id_perfil, id_vehiculo: b.id_vehiculo, perfil_created: a.created, vehiculo_created: b.created, celular: cel }; },
+  perfil_get_by_phone: async data => { const k = _waP10(data.phone); if (!k) return { ok: false, error: "phone requerido (>=10 dígitos)" };
+    const d = await _pfLeer("pf"), r = _pfBuscar10(d, k); return { ok: true, perfil: r ? Object.assign({}, r, { _row: d.rows.indexOf(r) + 2 }) : null, phone: k }; },
+  perfil_upsert_by_phone: data => {
+    const p = (data && data.payload) || data || {}, k = _waP10(p[_PF_CEL] || p.phone || data.phone); if (!k) return { ok: false, error: "phone (o Cel/Whatsapp (principal)) requerido" };
+    return _pfMutar("pf", d => { const now = _waIso(); let r = _pfBuscar10(d, k), created = false;
+      if (!r) { r = Object.assign(_pfNueva(d), { [_PF_CEL]: "+" + k, ID_Perfil: "P" + Date.now() + "_" + Math.floor(Math.random() * 1000), "Fecha creación": now }); d.rows.push(r); created = true; }
+      Object.keys(p).forEach(c => { if (c !== "phone" && d.headers.includes(c) && !(created && c === _PF_CEL)) r[c] = p[c]; });
+      r["Fecha actualización"] = now; return { ok: true, phone: k, created, updated: !created, row: d.rows.indexOf(r) + 2 }; });
+  },
+  perfiles_list_full: async () => {
+    const t0 = Date.now(), [P, V] = await Promise.all([_pfLeer("pf"), _pfLeer("vh")]), veh = {};
+    V.rows.forEach(v => { const k = _waP10(v[_PF_CEL]); if (k) veh[k] = v; });
+    const S = (o, c) => String(o[c] == null ? "" : o[c]);
+    const personas = P.rows.filter(r => String(r[_PF_CEL] || "").replace(/\D/g, "").length >= 10).map(r => { const raw = String(r[_PF_CEL]).replace(/\D/g, ""), k = raw.slice(-10), v = veh[k] || {};
+      return { id_perfil: S(r, "ID_Perfil"), phone10: k, celular: raw, lada: S(r, "Lada celular huésped"), nombre: S(r, "Nombre del huésped"), email: S(r, "Correo electrónico para el envío de la factura"),
+        requiereFactura: S(r, "¿Requiere factura?"), razonSocial: S(r, "Razón social"), rfc: S(r, "RFC"), regimenFiscal: S(r, "Régimen fiscal"), codigoPostal: S(r, "Código Postal"), notas: S(r, "Notas"),
+        vehMarca: S(v, "Marca vehículo"), vehModelo: S(v, "Modelo vehículo"), vehColor: S(v, "Color vehículo"), vehPlacas: S(v, "Placas"),
+        kpi_noches: _kpiNum(r.kpi_noches, 100000), kpi_visitas: _kpiNum(r.kpi_visitas, 10000), kpi_monto: _kpiNum(r.kpi_monto, 1e8), kpi_clasificacion: S(r, "kpi_clasificacion") }; });
+    return { ok: true, personas, total: personas.length, elapsed_ms: Date.now() - t0 };
+  },
+  perfiles_kpis: async () => { const by = {}; (await _pfLeer("pf")).rows.forEach(r => { const raw = String(r[_PF_CEL] || "").replace(/\D/g, ""); if (raw.length < 10) return;
+      by[raw.slice(-10)] = { noches: _kpiNum(r.kpi_noches, 100000), visitas: _kpiNum(r.kpi_visitas, 10000), monto: _kpiNum(r.kpi_monto, 1e8), clasificacion: String(r.kpi_clasificacion || ""), updated_at: r.kpi_updated_at ? new Date(r.kpi_updated_at).toISOString() : "" }; });
+    return { ok: true, by_phone: by, total: Object.keys(by).length }; },
+  perfiles_recalc_kpis: () => _pfRecalcKpis(),
+  perfiles_backfill_from_lodgify: async () => { const n = await _pfAltasLodgifyRecientes(); const k = await _pfRecalcKpis(); return { ok: true, perfiles_inserted: n, kpis: k }; },
+  list_records: async data => {
+    const r = await callCheckinAppsScript("list_records", data, { directo: true }); if (!r || !Array.isArray(r.rows)) return r;
+    const { mp } = await _pfMapas();
+    r.rows.forEach(x => { const p = mp.get(_pfNorm(x[_PF_CEL])); if (!p) return; ["¿Requiere factura?", "Razón social", "Régimen fiscal"].forEach(c => { if (c in x || p[c]) x[c] = p[c] || ""; });
+      if (!x["Correo electrónico"] && p["Correo electrónico para el envío de la factura"]) x["Correo electrónico"] = p["Correo electrónico para el envío de la factura"]; });
+    return r;
+  },
+  get_record_detail: async data => {
+    const r = await callCheckinAppsScript("get_record_detail", data, { directo: true }); if (!r || !r.record) return r;
+    const { mp, mv } = await _pfMapas(), k = _pfNorm(r.record[_PF_CEL]), p = mp.get(k), v = mv.get(k), res = r.record;
+    const out = Object.assign({}, p || {}, v || {}); Object.keys(res).forEach(c => { if (!(p && c in p) && !(v && c in v)) out[c] = res[c]; });
+    out[_PF_CEL] = res[_PF_CEL]; ["ID", "__row_number"].forEach(c => { if (c in res) out[c] = res[c]; });
+    return Object.assign({}, r, { record: out });
+  },
+  list_filter_options: async data => {
+    const r = await callCheckinAppsScript("list_filter_options", data, { directo: true }); if (!r || !r.options) return r;
+    const P = (await _pfLeer("pf")).rows, uniq = a => [...new Set(a.map(x => String(x == null ? "" : x).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+    r.options.celulares_principales = uniq(P.map(p => p[_PF_CEL])); r.options.razones_sociales = uniq(P.map(p => p["Razón social"]));
+    r.options.correos = uniq((r.options.correos || []).concat(P.map(p => p["Correo electrónico para el envío de la factura"])));
+    return r;
+  },
+});
+// Registro público: antes / después de reenviar a Apps Script.
+const _AS_ANTES = {
+  send_otp: async data => { if (String(data.method || "").toLowerCase() === "email" && !String(data.target || "").trim()) { const m = await _GCS_ACT.get_otp_methods({ phoneKey: data.phoneKey }); if (m.ok && m.methods.email.available) data.target = m.methods.email.target; } },
+};
+const _regCelPorReserva = new Map(); // record_id → celular (para las fotos que se suben después del registro)
+// ═══════════════════════════════════════════════════════════════════════════
 // Puente del formulario de registro (/registro) y demás páginas públicas hacia Apps Script.
 // GET/POST /as?action=… : si la acción ya vive en Cloud Storage se responde aquí; si no, se reenvía tal cual a
 // Apps Script. Después de algunas acciones se completa en Cloud Storage lo que Apps Script hacía en sus hojas.
@@ -10699,12 +10898,24 @@ Object.assign(_GCS_ACT, {
 const _AS_DESPUES = {
   // El registro agregaba el «Número adicional WhatsApp» como destinatario de la reserva (waRegistroSyncRecipients_).
   submit_form: async (data, r) => {
+    const cel = _pfSafe(data.celular_principal).trim();
+    if (cel && r && r.ok !== false) { if (r.record_id) _regCelPorReserva.set(String(r.record_id), cel); await _pfUpsertForm(data, cel); await _vhUpsertForm(data, cel); }
     const num = String(data.numero_adicional_wa || "").trim(), wa = _waAWhatsapp(num);
     const bid = String(data.lodgify_id || "").replace(/\D/g, "") || String((r && r.record_id) || "").trim();
     if (!wa || !bid || !r || r.ok === false) return;
     await _wacfgSet({ booking_id: bid, recipients: [wa], updated_by: "registro" });
   },
 };
+Object.assign(_AS_DESPUES, {
+  upload_profile_file: async (data, r) => { if (r && r.ok) await _pfArchivo(_pfSafe(data.celular_principal), String(data.field_name || ""), { url: r.url, id: r.file_id, name: r.file_name }); },
+  upload_file: async (data, r) => {
+    if (!r || !r.ok || !["ine_frontal", "ine_trasero", "identificacion_unica", "vehiculo_foto"].includes(String(data.field_name))) return;
+    let cel = _regCelPorReserva.get(String(data.record_id || ""));
+    if (!cel) { const det = await callCheckinAppsScript("get_record_detail", { record_id: data.record_id }, { directo: true }).catch(() => null); cel = det && det.record && det.record[_PF_CEL]; }
+    if (cel) await _pfArchivo(String(cel), String(data.field_name), { url: r.url, id: r.file_id, name: (data.file && data.file.fileName) || String(data.field_name) });
+  },
+  migrate_phone: async (data, r) => { if (r && r.ok !== false) await _pfMigrarTel(_pfSafe(data.old_phone).trim(), _pfSafe(data.new_phone).trim()); },
+});
 app.all("/as", express.text({ type: "*/*", limit: "32mb" }), async (req, res) => {
   try {
     const post = req.method === "POST";
@@ -10713,11 +10924,12 @@ app.all("/as", express.text({ type: "*/*", limit: "32mb" }), async (req, res) =>
     else data = Object.assign({}, req.query);
     const action = String(data.action || "");
     const fn = action && _GCS_ACT[action];
+    if (_AS_ANTES[action]) await _AS_ANTES[action](data).catch(e => console.warn("[as] antes de", action, e.message));
     let r;
     if (fn) r = await fn(data);
     else {
       const url = post ? CHECKIN_APPS_SCRIPT_URL : CHECKIN_APPS_SCRIPT_URL + "?" + new URLSearchParams(req.query).toString();
-      const rr = await _fetchReal(url, post ? { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: typeof req.body === "string" ? req.body : JSON.stringify(data), redirect: "follow" } : { redirect: "follow" });
+      const rr = await _fetchReal(url, post ? { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: _AS_ANTES[action] || typeof req.body !== "string" ? JSON.stringify(data) : req.body, redirect: "follow" } : { redirect: "follow" });
       const t = await rr.text();
       try { r = JSON.parse(t); } catch (_) { return res.status(rr.status).type(rr.headers.get("content-type") || "text/plain").send(t); }
       if (post) _lecturaSWRBorrar(action);
