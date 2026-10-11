@@ -66201,7 +66201,8 @@ function adCard_(I) {
   if (I.trd) meta.push(`<span>Sale <b>${aseoHoraTxt_(I.trd.hora || '11:00')}</b> <span class="${I.trd.aceptada ? 'ok' : 'pd'}">· ${I.trd.aceptada ? 'tarde aceptada' : 'tarde pendiente'}</span></span>`);
   if (I.temp) meta.push(`<span>Entra <b>${aseoHoraTxt_(I.temp.hora || '12:00')}</b> <span class="${I.temp.aceptada ? 'ok' : 'pd'}">· ${I.temp.aceptada ? 'temprano aceptada' : 'temprano pendiente'}</span></span>`);
   const plP = plPill_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId);
-  meta.unshift(axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0) + plP);
+  const catP = plP ? `<span class="ax-catw">${axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0)}${plP}</span>` : axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0); // el % va pegado al chip (no salta de renglón)
+  meta.unshift(catP);
   // «No ha desalojado»: primer chip de la card de cada alojamiento con salida hoy
   const nsChip = I.xs && I.esHoyC && !I.esCopia ? aseoNoSaleChip_(I.xs.b.Id, I.hid) : ''; // va en el renglón de acciones (r3)
   if (I.prioritaria) meta.splice(1, 0, '<span class="pr">Prioritaria</span>');
@@ -66220,7 +66221,7 @@ function adCard_(I) {
     return `<div class="ad-card tipo est-tint ad-simp ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}')"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span><span class="mv">${mov}</span></div>
-    <div class="r2">${axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0)}${plP}</div>
+    <div class="r2">${catP}</div>
     <div class="r3">${nsChip}<span class="sp"></span>${axIncMini_(I.asigId, I.hid, aseoDia_())}${prio4Html_(I.prio, false, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}
@@ -66800,7 +66801,7 @@ function atCard_(I) {
     <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span><span class="prop">${D.ico} ${pcEsc(t.titulo)}</span></div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
-    <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${plPill_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${t.repite ? '<span class="sep"></span><span>↻ Se repite</span>' : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
+    <div class="r2">${(pp => pp ? `<span class="ax-catw">${axCatHtml_(t.depto, 'T' + t.id, false)}${pp}</span>` : axCatHtml_(t.depto, 'T' + t.id, false))(plPill_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key))}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${t.repite ? '<span class="sep"></span><span>↻ Se repite</span>' : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
     <div class="r3">${(t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}${prio4Html_(t.prioridad, false, `atPrioCiclo_('${pcEsc(t.id)}')`)}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
     ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}
@@ -68633,8 +68634,10 @@ function plCss_() {
   .plf-ref{font-size:10.5px;color:#64748b}
   .pl-cbar{display:flex;align-items:center;gap:6px;margin-top:6px;font:700 10.5px Inter,system-ui,sans-serif;color:#4338ca}.pl-cbar span{flex:1;height:5px;background:#e0e7ff;border-radius:999px;overflow:hidden}.pl-cbar i{display:block;height:100%;background:#4f46e5}
   .pl-cbar.ok{color:#15803d}.pl-cbar.ok i{background:#16a34a}
-  .pl-pill{display:inline-flex;align-items:center;height:18px;padding:0 6px;margin-left:5px;border-radius:999px;font:700 10px Inter,system-ui,sans-serif;white-space:nowrap;vertical-align:middle;flex:none}
-  .pl-pill.r{background:#fee2e2;color:#b91c1c}.pl-pill.a{background:#fef3c7;color:#b45309}.pl-pill.v{background:#dcfce7;color:#15803d}`;
+  .pl-pill{display:inline-block;margin-left:6px;font:800 11px Inter,system-ui,sans-serif;white-space:nowrap;flex:none;cursor:default}
+  .ax-catw{display:inline-flex;flex-wrap:nowrap;align-items:center;max-width:100%;min-width:0}
+  .ax-catw .ax-cat{flex:0 1 auto;min-width:0}.ax-catw .ax-cat .s,.ax-catw .ax-cat .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .pl-pill.r{color:#dc2626}.pl-pill.a{color:#d97706}.pl-pill.v{color:#16a34a}`;
   document.head.appendChild(st);
 }
 async function plCargar_(fuerza) {
@@ -68963,7 +68966,7 @@ function plPill_(pid, key) {
   plCss_();
   const x = (ASEO.pl.idx || {})[key], p = ASEO.pl.lista[pid], pc = x ? x.p : 0;
   const c = pc >= 90 ? 'v' : pc >= 40 ? 'a' : 'r';
-  return `<span class="pl-pill ${c}" title="${pcEsc(p ? p.titulo : 'Plantilla')}: ${pc}%${x ? ` (${x.h} de ${x.t} campos)` : ' · sin capturar'}">📋 ${pc}%</span>`;
+  return `<span class="pl-pill ${c}" title="Avance de la plantilla ${pcEsc(p ? p.titulo : '')}: ${pc}%${x ? ` (${x.h} de ${x.t} campos)` : ' · sin capturar'}">${pc}%</span>`;
 }
 // Barra de avance de la plantilla en la card de la tarea.
 function plCardBar_(t, key) {
