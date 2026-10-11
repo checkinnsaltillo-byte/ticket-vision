@@ -45524,6 +45524,10 @@ function _waRenderTemplateItem_(it, auto) {
     </div>
   ` : '';
 
+  if (window.__waProgPanel) return _waProgFila_({ abierto: expanded, titulo: tpl.label.replace(/[🏠⏰🚪📩]\s*/g, '').trim(), preview: previewText,
+    icono: isSent ? '<span class="ok">✓✓</span>' : eligible ? '🕐' : '⏱', hora: isSent ? _waProgHora_(it.sent.timestamp) : it.schDate ? _waProgHora_(it.schDate) : '',
+    tCls: isSent ? 'ok' : (!eligible ? 'mut' : (auto && !isActive ? 'mal' : (!auto ? 'mut' : ''))), etiqueta: !isSent && it.schDate && eligible && !auto ? 'Auto OFF ·' : (!isSent && auto && !isActive ? 'Omitido ·' : ''),
+    toggle: canToggle ? _waMsgToggleHtml('template', tpl.id, isActive, auto, eligible) : '', onToggle: `waToggleTplExpand_('${tpl.id}')`, onSend: `waSendTplNow_('${tpl.id}')`, detalle: details });
   if (_waEnFicha_()) return `<div class="fx-c tipo fx-msg" style="--tc:#16a34a">
       <div class="r1"><span class="nm">💬 ${esc(tpl.label.replace(/[🏠⏰🚪📩]\s*/g, '').trim())}</span><span class="mv">${canToggle ? _waMsgToggleHtml('template', tpl.id, isActive, auto, eligible) : (isSent ? '<span class="ok">✓ Enviado</span>' : '')}</span></div>
       <div class="r2"><span>Plantilla</span><span class="sep"></span>${timeLine}</div>
@@ -45725,6 +45729,11 @@ function _waRenderCustomItem_(it, auto) {
   ` : '';
 
   const sendBtnLabel = isSent ? '🔄 Re-enviar ahora' : (isFailed ? '🔄 Reintentar' : '📤 Enviar ahora');
+  if (window.__waProgPanel) return _waProgFila_({ abierto: expanded, titulo: cs.asunto || 'Mensaje personalizado', preview: bodyShown, cls: 'cust',
+    icono: isSent ? '<span class="ok">✓✓</span>' : isFailed ? '<span class="mal">✗</span>' : '✉️', hora: _waProgHora_(isSent ? cs.sent_at : cs.scheduled_at),
+    tCls: isSent ? 'ok' : isFailed || isOmitted ? 'mal' : (!eligible || !auto ? 'mut' : ''), etiqueta: isOmitted ? 'Omitido ·' : isFailed ? 'Falló ·' : (!isSent && !auto ? 'Auto OFF ·' : ''),
+    toggle: canToggle ? _waMsgToggleHtml('custom', cs.id, isActive, auto, eligible) : '', onToggle: `waToggleExpand_('${expKey}')`, onSend: !isOmitted ? `waSchedSendNow_('${cs.id}')` : '',
+    detalle: details + (!isSent ? `<div class="bp-mas"><button type="button" onclick="waSchedDelete_('${cs.id}')">🗑 Eliminar</button></div>` : '') });
   if (_waEnFicha_()) return `<div class="fx-c tipo fx-msg" style="--tc:${isFailed ? '#dc2626' : isOmitted ? '#94a3b8' : '#f97316'}">
       <div class="r1"><span class="nm">✉️ ${esc(cs.asunto || 'Sin asunto')}</span><span class="mv">${canToggle ? _waMsgToggleHtml('custom', cs.id, isActive, auto, eligible) : (isSent ? '<span class="ok">✓ Enviado</span>' : isFailed ? '<span style="color:#dc2626">✗ Falló</span>' : '')}</span></div>
       <div class="r2"><span>Personalizado${it && it.isReenvio ? ' · reenvío' : ''}</span><span class="sep"></span>${timeLine}</div>
@@ -51145,10 +51154,30 @@ function _botcWaCss_() {
   .wa-ia{color:#7c3aed;background:#fff}
   .wa-prog{font-size:17px;margin-left:-4px}.wa-prog.on{background:#e0e7ff;box-shadow:0 0 0 2px #c7d2fe}
   #botc-prog-pop{flex:none;max-height:min(55vh,460px);display:flex;flex-direction:column;border-top:1px solid var(--wa-ln);box-shadow:0 -8px 24px rgba(11,20,26,.10);animation:fxSube .22s ease both}
-  #botc-prog-pop .bp{background:#f7f8fa;height:auto;min-height:0;display:flex;flex-direction:column}
+  #botc-prog-pop .bp{background:#fff;height:auto;min-height:0;display:flex;flex-direction:column}
   #botc-prog-pop .bp-h{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 14px;background:#fff;border-bottom:1px solid var(--ad-line,#e8eaee)}
   #botc-prog-pop .bp-h b{font-size:13px;font-weight:600}#botc-prog-pop .bp-h span{flex:1;min-width:0;font-size:11.5px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #botc-prog-pop .bp-cuerpo{overflow-y:auto;padding:8px 10px;min-height:0;max-height:calc(min(55vh,460px) - 44px)}
+  #botc-prog-pop .bp-row{background:#fff;border-bottom:1px solid var(--wa-ln,#e9edef)}
+  #botc-prog-pop .bp-main{display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer}
+  #botc-prog-pop .bp-main:hover{background:#f5f6f6}#botc-prog-pop .bp-row.ab .bp-main{background:#f0f2f5}
+  #botc-prog-pop .bp-ic{flex:none;width:30px;height:30px;border-radius:50%;background:#e7fcef;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+  #botc-prog-pop .bp-row.cust .bp-ic{background:#fff4e5}
+  #botc-prog-pop .bp-ic .ok{color:#53bdeb;font-size:12px;font-weight:700;letter-spacing:-2px}#botc-prog-pop .bp-ic .mal{color:#dc2626;font-weight:700}
+  #botc-prog-pop .bp-tx{flex:1;min-width:0}
+  #botc-prog-pop .bp-l1{display:flex;align-items:baseline;gap:8px}#botc-prog-pop .bp-l1 b{flex:1;min-width:0;font-size:13.5px;font-weight:500;color:#111b21;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #botc-prog-pop .bp-t{flex:none;font-size:11px;color:#111b21}#botc-prog-pop .bp-t.ok{color:#00a884}#botc-prog-pop .bp-t.mut{color:#8696a0}#botc-prog-pop .bp-t.mal{color:#dc2626}
+  #botc-prog-pop .bp-l2{font-size:12.5px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}#botc-prog-pop .bp-l2 em{font-style:normal;color:#b45309}
+  #botc-prog-pop .bp-acc{flex:none;display:inline-flex;align-items:center;gap:4px}
+  #botc-prog-pop .bp-send{all:unset;cursor:pointer;width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#00a884}
+  #botc-prog-pop .bp-send:hover{background:#e7fcef}
+  #botc-prog-pop .bp-det{padding:2px 12px 10px 52px;background:#f0f2f5}
+  #botc-prog-pop .bp-det > div{padding:6px 0 0!important;background:transparent!important;border:0!important}
+  #botc-prog-pop .bp-det label{font-size:10.5px!important}
+  #botc-prog-pop .bp-det div[style*="#dcf7c5"]{background:#d9fdd3!important;border-radius:0 8px 8px 8px!important;box-shadow:0 1px .5px rgba(11,20,26,.13);font-size:13px!important;color:#111b21}
+  #botc-prog-pop .bp-det button{border-radius:999px!important}
+  #botc-prog-pop .bp-mas{padding-top:6px;text-align:right}#botc-prog-pop .bp-mas button{all:unset;cursor:pointer;font-size:11.5px;color:#dc2626}
+  #botc-prog-pop .bp-cuerpo > div > div:has(> button){padding:6px 12px}
+  #botc-prog-pop .bp-cuerpo{overflow-y:auto;padding:0;min-height:0;max-height:calc(min(55vh,460px) - 44px)}
   #botc-third-col #wa-modal [data-wa-panel]{max-width:none!important;height:100%!important;box-shadow:none!important;border-radius:0}
   #botc-third-col #wa-modal [data-wa-panel] > div:first-child{background:var(--wa-bar)!important;color:var(--wa-tx)!important;padding:10px 14px!important;border-bottom:1px solid var(--wa-ln)!important}
   #botc-third-col #wa-modal [data-wa-panel] > div:first-child button{color:var(--wa-mu)!important;background:transparent!important}
@@ -52901,14 +52930,26 @@ window.botcProgToggle_ = async function () {
   } else if (String(st.bookingId) !== id && typeof waSwitchBooking_ === 'function') { st.focusedBookingId = ''; await waSwitchBooking_(id); }
   _botcProgPintar_();
 };
+// Renglón compacto estilo chat de WhatsApp para el panel 📅 (título + hora, vista previa en una línea; al tocar se despliega la burbuja).
+function _waProgFila_(o) {
+  const tx = String(o.preview || '').replace(/\s+/g, ' ').trim();
+  return `<div class="bp-row ${o.abierto ? 'ab' : ''} ${o.cls || ''}">
+    <div class="bp-main" onclick="${o.onToggle}">
+      <span class="bp-ic">${o.icono}</span>
+      <div class="bp-tx"><div class="bp-l1"><b>${esc(o.titulo)}</b><span class="bp-t ${o.tCls || ''}">${esc(o.hora)}</span></div>
+        <div class="bp-l2">${o.etiqueta ? `<em>${esc(o.etiqueta)}</em> ` : ''}${esc(tx.slice(0, 140)) || '<i>Sin texto</i>'}</div></div>
+      <span class="bp-acc" onclick="event.stopPropagation()">${o.toggle || ''}${o.onSend ? `<button type="button" class="bp-send" title="Enviar ahora" onclick="${o.onSend}">➤</button>` : ''}</span>
+    </div>${o.abierto && o.detalle ? `<div class="bp-det">${o.detalle}</div>` : ''}</div>`;
+}
+const _waProgHora_ = d => { try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x)) return ''; return x.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) + ' ' + x.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' }); } catch (_) { return ''; } };
 function _botcProgPintar_() {
   const pop = document.getElementById('botc-prog-pop'), st = window.__waModalState; if (!pop || !st) return;
   const bk = (st.bookings || []).find(b => String(waBookingId_(b)) === pop.dataset.bid) || st.b, logs = (WA_ADMIN.logs[st.bookingId] || []);
   const a = _botcFxIso_(bk && (bk.DateArrival || bk.arrival)), d = _botcFxIso_(bk && (bk.DateDeparture || bk.departure)), corto = _botcAlojCorto_(bk);
   let lista; if (String(st.loadingBookingId || '') === pop.dataset.bid) lista = '<div class="fx-cargando"><span class="fx-spin"></span>Cargando…</div>';
-  else { try { lista = _waRenderUnifiedList_(logs, { scheduleOnly: true, includePagos: false, bookingForPagos: bk }); } catch (e) { lista = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + e.message); } }
+  else { window.__waProgPanel = true; try { lista = _waRenderUnifiedList_(logs, { scheduleOnly: true, includePagos: false, bookingForPagos: bk }); } catch (e) { lista = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + e.message); } finally { window.__waProgPanel = false; } }
   const sc = pop.querySelector('.bp-cuerpo'), top = sc ? sc.scrollTop : 0;
-  pop.innerHTML = `<div class="fx bp"><div class="bp-h"><b>📅 Mensajes programados</b><span>${_botcEsc([corto || (bk ? waAlojamientoLabel_(bk) : ''), a && d ? `${_waFmtShortDate(a)} → ${_waFmtShortDate(d)}` : ''].filter(Boolean).join(' · '))}</span>
+  pop.innerHTML = `<div class="bp"><div class="bp-h"><b>📅 Mensajes programados</b><span>${_botcEsc([corto || (bk ? waAlojamientoLabel_(bk) : ''), a && d ? `${_waFmtShortDate(a)} → ${_waFmtShortDate(d)}` : ''].filter(Boolean).join(' · '))}</span>
       <button type="button" class="fx-ico" onclick="botcProgToggle_()" title="Cerrar">✕</button></div><div class="bp-cuerpo">${lista || _botcFxVacio_('📅', 'Sin mensajes programados en esta reserva')}</div></div>`;
   const sc2 = pop.querySelector('.bp-cuerpo'); if (sc2 && top) sc2.scrollTop = top;
 }
