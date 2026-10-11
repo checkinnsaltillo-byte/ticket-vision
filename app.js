@@ -65182,7 +65182,7 @@ function aseoEnsureCss_() {
   .p4b i:nth-child(1){height:4px}.p4b i:nth-child(2){height:7px}.p4b i:nth-child(3){height:10px}.p4b i:nth-child(4){height:12px}
   .p4b i.on{background:var(--c)}
   .ad-card .r3 .p4{margin-left:4px}
-  .ad-card .r1 .p4{margin:0 2px 0 5px;flex:none;align-self:center}
+  .ad-card .r1 .p4{margin:0 0 0 -3px!important;padding:0 1px!important;flex:none;align-self:center}
   .flag.mute{color:#6b7280}.flag.mute i{background:#9aa1ad;box-shadow:0 0 0 3px #f0f1f4}
   .at-prio button .p4{margin-right:3px}.at-prio button.on .p4b i.on{background:#fff}.at-prio button.on .p4b i{background:rgba(255,255,255,.35)}
   .ad-card.tipo{border-left:4px solid var(--tc)}
@@ -66228,7 +66228,7 @@ function adCard_(I) {
   </div>`;
   return `<div class="ad-card tipo est-tint ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}')"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="prop">${pcEsc(String(I.aloj || '').replace(/^Calle\s+/i, '').replace('#', ''))}</span><span class="mv">${mov}</span></div>
+    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
     ${I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
