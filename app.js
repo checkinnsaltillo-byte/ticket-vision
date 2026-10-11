@@ -66930,7 +66930,7 @@ window.atBorrar_ = async function (id) {
 // ── Formulario "Crea una tarea" ──
 window.atForm_ = function (id, hid, dia) {
   const t = id ? (ASEO.tareas || {})[id] : null;
-  ASEO._tf = t ? Object.assign(JSON.parse(JSON.stringify(t)), { srv: axSrv_('T' + t.id, false) }) : { srv: 'general', hid: hid || '', depto: '', problema: false, prioridad: 'media', titulo: '', desc: '', fecha: dia || aseoDia_(), hora: '', repite: null, asignados: [], etiquetas: [], adjuntos: [], reserva: '' };
+  ASEO._tf = t ? Object.assign(JSON.parse(JSON.stringify(t)), { srv: axSrv_('T' + t.id, false) }) : { srv: 'general', hid: hid || '', depto: '', problema: false, prioridad: 'media', titulo: '', desc: '', fecha: dia || aseoDiaNuevo_(), hora: '', repite: null, asignados: [], etiquetas: [], adjuntos: [], reserva: '' };
   ASEO._dr = { form: true, k: 'form' };
   atFormPintar_();
 };
@@ -67235,7 +67235,7 @@ window.rtFormA_ = function (rtId, pre) {
   const t = row ? rtTarea_(row) : null;
   const P = pre || {};
   ASEO._rf = row ? Object.assign({}, row, { _srv: axSrv_('R' + row.ID, false), _hid: t.hid, _prio: t.prioridad, _asig: t.asignados.slice(), _bloq: t.bloquea, _rein: t.reincidente, _cargar: rtBool_(row.Cargar_a_huesped) })
-    : { ID: '', Estado: 'nuevo', Tipo: 'correctivo', Categoria: 'otros', Responsabilidad: 'indeterminada', Titulo: P.titulo || '', Descripcion: P.desc || '', Fecha: P.fecha || aseoDia_(),
+    : { ID: '', Estado: 'nuevo', Tipo: 'correctivo', Categoria: 'otros', Responsabilidad: 'indeterminada', Titulo: P.titulo || '', Descripcion: P.desc || '', Fecha: P.fecha || aseoDiaNuevo_(),
         Reservacion_id: P.reserva || '', _deTarea: P.deTarea || '', _srv: P.srv || 'general', _hid: P.hid || '', _prio: prio4Key_(P.prioridad || 'media'), _asig: (P.asignados || []).slice(), _bloq: false, _rein: false, _cargar: false,
         Reportado_por: (typeof currentUser !== 'undefined' && currentUser) || '' };
   ASEO._rfFotos = { antes: [], despues: [] };
@@ -67744,6 +67744,8 @@ window.aseoSelect_ = function (id) {
 const ASEO_MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 function aseoHoyIso_() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function aseoDia_() { return ASEO.dia || aseoHoyIso_(); }
+// Fecha propuesta para algo NUEVO (tarea, mantenimiento): hoy; si el tablero muestra un día futuro, ese día (nunca uno pasado).
+function aseoDiaNuevo_() { const h = aseoHoyIso_(), d = aseoDia_(); return d > h ? d : h; }
 function aseoDiaTxt_(iso) { const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${+m[3]}-${ASEO_MES[+m[2] - 1]}-${m[1]}` : iso; }
 function aseoDiaLabel_(iso) {
   const dif = Math.round((new Date(iso + 'T12:00:00') - new Date(aseoHoyIso_() + 'T12:00:00')) / 864e5);
