@@ -54453,7 +54453,7 @@ async function _rtFileToBase64(file) {
 }
 // Fotos ligeras: antes de subir se reducen a máx. 1600 px por lado en JPEG (~0.25 MB en vez de 3–8 MB de la cámara).
 // Respeta la orientación de la foto. Si algo falla (formato no soportado) o no ahorra, se sube la original.
-async function imgLigera_(file, max = 1600, q = 0.72) {
+async function imgLigera_(file, max = 1280, q = 0.6) { // 2026-10-10: más ligeras (datos móviles); la calidad no es prioridad
   try {
     if (!file || !/^image\//.test(file.type || '') || /gif|svg/i.test(file.type)) return file;
     let src, w, h;
@@ -64944,7 +64944,13 @@ function clEmpCss_() {
     #aseo-kpis .ad-kpi.k-ent{background:#e0f2fe;border-color:#7dd3fc}
     #aseo-kpis .ad-kpi.k-al{background:#dc2626;border-color:#dc2626}
     #aseo-kpis .ad-kpi.k-al,#aseo-kpis .ad-kpi.k-al small,#aseo-kpis .ad-kpi.k-al .n,#aseo-kpis .ad-kpi.k-al em{color:#fff!important}
-    #aseo-kpis .ad-kpi.k-al .ad-kc{background:rgba(255,255,255,.22);color:#fff}#aseo-kpis .ad-kpi.k-al .ad-kc:hover{background:rgba(255,255,255,.35)}
+    /* Chips de alojamientos en cada KPI: mismo tono que el fondo del KPI, más saturado */
+    #aseo-kpis .ad-kpi .ad-kc{background:#4f46e5;color:#fff}#aseo-kpis .ad-kpi .ad-kc:hover{background:#4338ca;text-decoration:none}
+    #aseo-kpis .ad-kpi.k-pend .ad-kc{background:#64748b}#aseo-kpis .ad-kpi.k-pend .ad-kc:hover{background:#475569}
+    #aseo-kpis .ad-kpi.k-proc .ad-kc{background:#e08a00}#aseo-kpis .ad-kpi.k-proc .ad-kc:hover{background:#c27400}
+    #aseo-kpis .ad-kpi.k-term .ad-kc{background:#00a845}#aseo-kpis .ad-kpi.k-term .ad-kc:hover{background:#008f3a}
+    #aseo-kpis .ad-kpi.k-al .ad-kc{background:#fff;color:#dc2626}#aseo-kpis .ad-kpi.k-al .ad-kc:hover{background:#fee2e2}
+    #aseo-kpis .ad-kpi .ad-kc.mas{opacity:.8}
     .ad-kc{all:unset;cursor:pointer;font:600 10.5px Inter,system-ui,sans-serif;color:#4f46e5;padding:1px 6px;border-radius:5px;background:#eef2ff}
     .ad-kc:hover{background:#e0e7ff;text-decoration:underline}.ad-kc.mas{color:#475569;background:#f1f5f9}
     .ad-kpop{max-height:320px;overflow:auto;padding:6px}
@@ -65635,7 +65641,7 @@ async function aseoRefresh_(force) {
     // Antigüedad real del dato = reloj del servidor (evita errores por la hora de la PC).
     const edad = j.ts && j.now ? Math.max(0, j.now - j.ts) : 0;
     // ¿Cambió algo? (si no, no se re-dibujan las cards: evita perder clicks y que "se trabe").
-    const sig = JSON.stringify([j.rows, j.cambios, j.asig, j.estados, j.guias, j.temprana, j.tardia, j.reprog, j.sms, j.autonotif, j.nosale, j.tareas, j.prio, j.extra]);
+    const sig = JSON.stringify([j.rows, j.cambios, j.asig, j.estados, j.guias, j.temprana, j.tardia, j.reprog, j.sms, j.autonotif, j.nosale, j.tareas, j.prio, j.extra, j.plidx]);
     ASEO.cambio = sig !== ASEO._sig; ASEO._sig = sig;
     // Cambios guardados hace poco desde esta pantalla: una respuesta vieja (otra copia del
     // servidor o una consulta que salió antes de guardar) no los regresa a como estaban.
@@ -65648,6 +65654,7 @@ async function aseoRefresh_(force) {
       ASEO.cambio = true;
     });
     Object.assign(ASEO, { live: m, cambios: j.cambios || {}, asig: j.asig || {}, estados: j.estados || {}, guias: j.guias || {}, temprana: j.temprana || {}, sms: j.sms || {}, tardia: j.tardia || {}, reprog: j.reprog || {}, autonotif: j.autonotif || {}, nosale: j.nosale || {}, tareas: j.tareas || {}, prio: j.prio || {}, extra: j.extra || {}, ts: j.ts ? Date.now() - edad : 0, err: j.err || '', chk: Date.now(), netErr: '' });
+    if (j.plidx && typeof plSyncIdx_ === 'function' && ASEO.pl && plSyncIdx_(j.plidx)) ASEO.cambio = true;
   } catch (e) { ASEO.netErr = e.message || 'sin conexión'; ASEO.chk = Date.now(); }
   mvSyncTick_();
 }
@@ -68621,7 +68628,7 @@ function plCss_() {
   .plf-num input{width:70px;text-align:center}.plf-warn{font-size:11px;font-weight:600;color:#b45309}
   .plf-stars{display:flex;gap:3px}.plf-stars button{all:unset;cursor:pointer;font-size:20px;color:#cbd5e1;line-height:1}.plf-stars button.on{color:#f59e0b}
   .plf-fotos{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.plf-fotos img{width:58px;height:58px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;cursor:zoom-in;display:block}
-  .plf-fotos span{position:relative}.plf-fotos b{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#0f1729;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .plf-fotos span{position:relative}.plf-fotos span.sub img{opacity:.55}.plf-fotos span i{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:16px}.plf-fotos b{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#0f1729;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .plf-add{display:inline-flex;align-items:center;justify-content:center;width:58px;height:58px;border:1.5px dashed #a5b4fc;border-radius:8px;color:#4f46e5;font-size:11px;font-weight:700;cursor:pointer;text-align:center;line-height:1.2}
   .plf-ref{font-size:10.5px;color:#64748b}
   .pl-cbar{display:flex;align-items:center;gap:6px;margin-top:6px;font:700 10.5px Inter,system-ui,sans-serif;color:#4338ca}.pl-cbar span{flex:1;height:5px;background:#e0e7ff;border-radius:999px;overflow:hidden}.pl-cbar i{display:block;height:100%;background:#4f46e5}
@@ -68745,13 +68752,18 @@ window.plEdSec_ = function () { ASEO.pl.ed.secciones.push({ id: plId_('s'), titu
 window.plEdQuitarSec_ = function (si) { const s = ASEO.pl.ed.secciones[si]; if (s.items.length && !confirm(`¿Quitar la sección «${s.titulo || 'Sección'}» y sus ${s.items.length} campos?`)) return; ASEO.pl.ed.secciones.splice(si, 1); plEdPintar_(); };
 window.plEdMover_ = function (si, ii, d) { const L = ASEO.pl.ed.secciones[si].items, j = ii + d; if (j < 0 || j >= L.length) return; [L[ii], L[j]] = [L[j], L[ii]]; plEdPintar_(); };
 window.plEdMoverSec_ = function (si, d) { const L = ASEO.pl.ed.secciones, j = si + d; if (j < 0 || j >= L.length) return; [L[si], L[j]] = [L[j], L[si]]; plEdPintar_(); };
+// Foto ligera (1024 px) + miniatura (~6 KB, 200 px): las listas muestran la miniatura y la foto completa solo se baja al abrirla.
 async function plSubirFoto_(f0) {
-  const f = await imgLigera_(f0);
-  if (f.size > 15 * 1024 * 1024) throw new Error(`«${f.name}» pesa más de 15 MB`);
-  const data = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(f); });
-  const r = await fetch(`${BACKEND}/aseo/adjunto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: f.name, tipo: f.type, data }) }).then(r => r.json());
-  if (!r.ok) throw new Error(r.error || 'Error');
-  return { k: r.adjunto.k, url: r.adjunto.url, nombre: r.adjunto.nombre };
+  const sube = async (f, nombre) => {
+    if (f.size > 15 * 1024 * 1024) throw new Error(`«${f.name}» pesa más de 15 MB`);
+    const data = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(f); });
+    const r = await fetch(`${BACKEND}/aseo/adjunto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: nombre || f.name, tipo: f.type, data }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error || 'Error');
+    return r.adjunto;
+  };
+  const [f, t] = await Promise.all([imgLigera_(f0, 1024, 0.55), imgLigera_(f0, 200, 0.5)]);
+  const [a, m] = await Promise.all([sube(f), sube(t, 'min-' + (t.name || 'foto.jpg')).catch(() => null)]);
+  return { k: a.k, url: a.url, nombre: a.nombre, ...(m ? { tk: m.k, turl: m.url } : {}) };
 }
 window.plEdRef_ = async function (inp, si, ii) {
   const f = inp.files && inp.files[0]; inp.value = ''; if (!f) return;
@@ -68790,7 +68802,7 @@ window.plTareaElegir_ = function (id) {
 };
 // ── Formulario de la plantilla dentro de la tarea ──
 function plHecho_(it, r) {
-  r = r || {}; const fotos = (r.fotos || []).length;
+  r = r || {}; const fotos = (r.fotos || []).filter(f => !f.subiendo).length;
   let ok;
   if (it.tipo === 'lista') ok = (it.sub || []).length ? (it.sub || []).every((_, i) => r.v && r.v[i]) : r.v === true;
   else if (it.tipo === 'foto') ok = fotos > 0;
@@ -68842,7 +68854,7 @@ function plFillHtml_(p, key) {
 function plFillItem_(it, r, s) {
   const T = PL_TIPOS[it.tipo], id = pcEsc(it.id), q = it.texto || T.t; // sin texto propio: solo el tipo (el nombre del elemento ya es el título de la sección)
   const fotos = r.fotos || [];
-  const fotosHtml = (it.tipo === 'foto' || it.foto) ? `<div class="plf-fotos">${fotos.map((f, i) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="plFotoVer_('${id}',${i})"><b onclick="plQuitarFoto_('${id}',${i})">✕</b></span>`).join('')}<label class="plf-add">📷<br>${it.tipo === 'foto' ? 'Agregar foto' : 'Foto'}<input type="file" accept="image/*" multiple hidden onchange="plFotoSubir_(this,'${id}')"></label></div>` : '';
+  const fotosHtml = (it.tipo === 'foto' || it.foto) ? `<div class="plf-fotos">${fotos.map((f, i) => `<span class="${f.subiendo ? 'sub' : ''}"><img src="${f.loc || BACKEND + (f.turl || f.url)}" alt="" loading="lazy" decoding="async" onclick="plFotoVer_('${id}',${i})">${f.subiendo ? '<i>⏳</i>' : `<b onclick="plQuitarFoto_('${id}',${i})">✕</b>`}</span>`).join('')}<label class="plf-add">📷<br>${it.tipo === 'foto' ? 'Agregar foto' : 'Foto'}<input type="file" accept="image/*" multiple hidden onchange="plFotoSubir_(this,'${id}')"></label></div>` : '';
   let ctl = '';
   if (it.tipo === 'condicion') ctl = `<div class="plf-esc"><div class="bar ${r.v && r.v !== 'na' ? 'sel' : ''}">${PL_COND.map(([k, t, c]) => `<button type="button" class="${r.v === k ? 'on' : ''}" style="--c:${c}" onclick="plSet_('${id}','${k}')">${t}</button>`).join('')}</div><button type="button" class="na ${r.v === 'na' ? 'on' : ''}" title="No aplica" onclick="plSet_('${id}','na')">N/A</button></div>${r.v === 'regular' || r.v === 'malo' ? `<input class="pl-in" placeholder="¿Qué se encontró? (opcional)" value="${pcEsc(r.nota || '')}" oninput="plNota_('${id}',this.value)">` : ''}`;
   else if (it.tipo === 'lista') ctl = (it.sub || []).length ? `<div style="display:grid;gap:6px">${it.sub.map((x, i) => { const on = !!(r.v && r.v[i]); return `<span class="pl-ck ${on ? 'on' : ''}" onclick="plSub_('${id}',${i})"><span class="ck">${on ? '✓' : ''}</span>${pcEsc(x)}</span>`; }).join('')}</div>` : `<span class="pl-ck ${r.v === true ? 'on' : ''}" onclick="plSet_('${id}',${r.v === true ? 'null' : 'true'})"><span class="ck">${r.v === true ? '✓' : ''}</span>Hecho / revisado</span>`;
@@ -68866,18 +68878,23 @@ function plRepinta_(suave) {
   }
   C.el.innerHTML = plFillHtml_(C.p, C.key);
 }
-function plGuardarLuego_() {
-  const C = plCtx_(); if (!C) return;
-  const key = C.key, pid = C.p.id;
-  const A = plAvance_(C.p, C.resp); ASEO.pl.idx[key] = { p: A.p, h: A.h, t: A.t, pl: pid };
+function plRespLimpia_(resp) { // sin vistas previas locales ni fotos que siguen subiendo
+  const o = {}; Object.entries(resp || {}).forEach(([k, r]) => { o[k] = Object.assign({}, r); if (r.fotos) o[k].fotos = r.fotos.filter(f => !f.subiendo).map(f => { const x = Object.assign({}, f); delete x.loc; return x; }); }); return o;
+}
+function plGuardarLuego_(key0, pid0) {
+  const C = key0 ? null : plCtx_(); if (!key0 && !C) return;
+  const key = key0 || C.key, pid = pid0 || C.p.id, P = ASEO.pl.lista[pid]; if (!P) return;
+  (ASEO.pl.pend = ASEO.pl.pend || {})[key] = 1; // con cambios por guardar: la actualización automática no los pisa
+  const A = plAvance_(P, ASEO.pl.resp[key]); ASEO.pl.idx[key] = { p: A.p, h: A.h, t: A.t, pl: pid, at: (ASEO.pl.idx[key] || {}).at };
   const st = document.getElementById('plf-st'); if (st) st.textContent = '✎ Cambios sin guardar…';
   clearTimeout(ASEO.pl._gt);
   ASEO.pl._gt = setTimeout(async () => {
     ASEO.pl._guardando = key; const s2 = document.getElementById('plf-st'); if (s2) s2.textContent = '⏳ Guardando…';
     try {
-      const r = await fetch(`${BACKEND}/aseo/plantilla-resp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ k: key, plantilla: pid, resp: ASEO.pl.resp[key] || {}, avance: plAvance_(ASEO.pl.lista[pid], ASEO.pl.resp[key]), user: plUser_() }) }).then(r => r.json());
+      const r = await fetch(`${BACKEND}/aseo/plantilla-resp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ k: key, plantilla: pid, resp: plRespLimpia_(ASEO.pl.resp[key]), avance: plAvance_(ASEO.pl.lista[pid], ASEO.pl.resp[key]), user: plUser_() }) }).then(r => r.json());
       if (!r.ok) throw new Error(r.error || 'Error');
-      (ASEO.pl.respAt = ASEO.pl.respAt || {})[key] = r.at;
+      (ASEO.pl.respAt = ASEO.pl.respAt || {})[key] = r.at; if (ASEO.pl.idx[key]) ASEO.pl.idx[key].at = r.at;
+      if (!(ASEO.pl.resp[key] && Object.values(ASEO.pl.resp[key]).some(x => (x.fotos || []).some(f => f.subiendo)))) delete ASEO.pl.pend[key];
       const s3 = document.getElementById('plf-st'); if (s3) s3.textContent = `Guardado ${new Date(r.at).toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}`;
       if (typeof aseoRenderSide_ === 'function' && aseoVisible_()) aseoRenderSide_(); // barra de avance en la card
     } catch (e) { const s3 = document.getElementById('plf-st'); if (s3) s3.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
@@ -68895,15 +68912,43 @@ window.plSet_ = function (id, v, suave) {
 window.plNota_ = function (id, v) { const C = plCtx_(); if (!C) return; (C.resp[id] = C.resp[id] || {}).nota = v; plGuardarLuego_(); };
 window.plSub_ = function (id, i) { const C = plCtx_(); if (!C) return; const r = C.resp[id] = C.resp[id] || {}; r.v = r.v && typeof r.v === 'object' ? r.v : {}; r.v[i] = !r.v[i]; plRepinta_(); plGuardarLuego_(); };
 window.plCont_ = function (id, d) { const C = plCtx_(); if (!C) return; const r = C.resp[id] = C.resp[id] || {}; r.v = Math.max(0, (Number(r.v) || 0) + d); plRepinta_(); plGuardarLuego_(); };
-window.plFotoVer_ = function (id, i) { const C = plCtx_(); if (!C) return; fotoVer_(((C.resp[id] || {}).fotos || []).map(f => BACKEND + f.url), i); };
+window.plFotoVer_ = function (id, i) { const C = plCtx_(); if (!C) return; fotoVer_(((C.resp[id] || {}).fotos || []).map(f => f.loc || BACKEND + f.url), i); };
 window.plQuitarFoto_ = function (id, i) { const C = plCtx_(); if (!C) return; const r = C.resp[id] || {}; (r.fotos || []).splice(i, 1); plRepinta_(); plGuardarLuego_(); };
 window.plFotoSubir_ = async function (inp, id) {
   const files = [...(inp.files || [])]; inp.value = ''; if (!files.length) return;
-  const lab = inp.parentNode; lab.firstChild && (lab.innerHTML = '⏳<br>Subiendo' + lab.innerHTML.slice(lab.innerHTML.indexOf('<input')));
-  const subidas = await Promise.all(files.map(f => plSubirFoto_(f).catch(e => { alert('No se pudo subir una foto: ' + (e.message || e)); return null; })));
-  const C = plCtx_(); if (!C) return; const r = C.resp[id] = C.resp[id] || {};
-  r.fotos = (r.fotos || []).concat(subidas.filter(Boolean)); plRepinta_(); plGuardarLuego_();
+  const C = plCtx_(); if (!C) return; const key = C.key, pid = C.p.id, r = C.resp[id] = C.resp[id] || {};
+  (ASEO.pl.pend = ASEO.pl.pend || {})[key] = 1;
+  const nuevas = files.map(f => ({ subiendo: true, loc: URL.createObjectURL(f) }));
+  r.fotos = (r.fotos || []).concat(nuevas); plRepinta_(); // se ve al instante; sube en segundo plano
+  await Promise.all(files.map(async (f, i) => {
+    const x = nuevas[i];
+    try { Object.assign(x, await plSubirFoto_(f)); delete x.subiendo; }
+    catch (e) { r.fotos = (r.fotos || []).filter(y => y !== x); alert('No se pudo subir una foto: ' + (e.message || e)); }
+    const D = plCtx_(); if (D && D.key === key) plRepinta_();
+  }));
+  plGuardarLuego_(key, pid);
 };
+// Avance de plantillas que llega con cada actualización automática (/aseo/live): repinta los % y, si la ventana
+// abierta muestra una plantilla que cambió en otro dispositivo (y aquí no hay cambios pendientes), trae sus respuestas.
+function plSyncIdx_(srv) {
+  if (!srv || typeof srv !== 'object') return false;
+  const L = ASEO.pl.idx = ASEO.pl.idx || {}, pend = ASEO.pl.pend || {}, at = ASEO.pl.respAt = ASEO.pl.respAt || {};
+  let cambio = false;
+  Object.entries(srv).forEach(([k, v]) => {
+    if (pend[k] || !v) return;
+    if (!L[k] || L[k].p !== v.p || L[k].at !== v.at) { L[k] = v; cambio = true; }
+    if (v.at && at[k] && v.at > at[k] && k in ASEO.pl.resp) delete ASEO.pl.resp[k]; // respuestas viejas en memoria: se vuelven a pedir
+  });
+  const el = document.getElementById('plf'), k = el && el.dataset.k;
+  if (k && !(k in ASEO.pl.resp) && !pend[k]) {
+    fetch(`${BACKEND}/aseo/plantilla-resp?k=${encodeURIComponent(k)}`, { cache: 'no-store' }).then(r => r.json()).then(j => {
+      if (!j || !j.ok || (ASEO.pl.pend || {})[k]) return;
+      ASEO.pl.resp[k] = (j.resp && j.resp.resp) || {}; if (j.resp && j.resp.at) at[k] = j.resp.at;
+      const D = plCtx_(); if (D && D.key === k) plRepinta_();
+    }).catch(() => {});
+  }
+  return cambio;
+}
 // % de la plantilla junto al chip «Tipo › Servicio» de la card. Rojo < 40 % · amarillo 40–89 % · verde ≥ 90 %.
 function plPill_(pid, key) {
   if (!pid) return '';

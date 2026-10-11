@@ -9407,10 +9407,12 @@ app.get("/aseo/live", async (req, res) => {
     if (!_aseo.sms || Date.now() - (_aseo.smsTs || 0) > 30_000) { _aseo.sms = await _rhdGetJson(_ASEO_SMS_OBJ).catch(() => _aseo.sms || {}); _aseo.smsTs = Date.now(); }
     if (!_aseo.tardia || Date.now() - (_aseo.tardTs || 0) > 30_000) { _aseo.tardia = await _rhdGetJson(_ASEO_TARD_OBJ).catch(() => _aseo.tardia || {}); _aseo.tardTs = Date.now(); }
     await _aseoReprogLoad(); await _aseoAutoCfgLoad(); await _aseoNoSaleLoad(); await _aseoTareasLoad(); await _aseoPrioLoad(); await _aseoExtraLoad();
+    // Avance de plantillas (índice chico): viaja con cada actualización para que las demás pantallas lo vean sin recargar.
+    if (!_aseo.plidx || Date.now() - (_aseo.plidxTs || 0) > 5_000) { _aseo.plidx = await _rhdGetJson(_ASEO_PLIDX_OBJ).catch(() => _aseo.plidx || {}); _aseo.plidxTs = Date.now(); }
     // Tareas con enlace firmado de cada adjunto.
     const tareas = {};
     Object.values(_aseo.tareas || {}).forEach(t => { tareas[t.id] = Object.assign({}, t, { adjuntos: (t.adjuntos || []).map(a => Object.assign({}, a, { url: `/aseo/adjunto?k=${encodeURIComponent(a.k)}&s=${_aseoAdjSig(a.k)}` })) }); });
-    res.json({ extra: _aseo.extra || {}, prio: _aseo.prio || {}, tareas, nosale: _aseo.nosale || {}, reprog: _aseo.reprog || {}, autonotif: _aseo.autoCfg || {}, tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
+    res.json({ plidx: _aseo.plidx || {}, extra: _aseo.extra || {}, prio: _aseo.prio || {}, tareas, nosale: _aseo.nosale || {}, reprog: _aseo.reprog || {}, autonotif: _aseo.autoCfg || {}, tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
       temprana: _aseo.temprana || {}, sms: _aseo.sms || {} });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -10298,6 +10300,7 @@ app.post("/aseo/plantilla-resp", async (req, res) => {
     const av = b.avance || {}, p = Math.max(0, Math.min(100, Math.round(Number(av.p) || 0)));
     const doc = { plantilla: String(b.plantilla || "").replace(/[^\w-]/g, "").slice(0, 40), resp, avance: { p, h: Number(av.h) || 0, t: Number(av.t) || 0 }, by: user, at: new Date().toISOString() };
     await _rhdPut(`aseo/plresp/${k}.json`, JSON.stringify(doc), "application/json");
+    _aseo.plidxTs = Date.now(); // _aseoMutate deja el índice nuevo en _aseo.plidx
     await _aseoMutate(_ASEO_PLIDX_OBJ, "plidx", d => { d[k] = { p, h: doc.avance.h, t: doc.avance.t, pl: doc.plantilla, at: doc.at, by: user }; });
     res.json({ ok: true, at: doc.at });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
