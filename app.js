@@ -50168,6 +50168,7 @@ window._botcNotifRefreshBadge_ = async function() {
     };
     paint('[data-notif-badge]', nuevos);
     paint('[data-notif-critical-badge]', criticas);
+    document.querySelectorAll('[data-notif-pill]').forEach(el => { el.style.display = (nuevos > 0 || criticas > 0) ? 'inline-flex' : 'none'; }); // un solo recuadro: rojo (críticas) | naranja (nuevas)
   } catch(_) {}
 };
 if (!window.__botcNotifBadgeTimer) {
@@ -50986,6 +50987,12 @@ function _botcWaCss_() {
   .fx-sol-tx{flex:1;min-width:0;display:flex;flex-direction:column}.fx-sol-tx b{font-size:13px;font-weight:600}.fx-sol-tx small{font-size:11.5px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .fx-sol-der{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:3px}.fx-sol-der small{font-size:10.5px;color:var(--wa-mu)}
   .fx-pill{font-size:10.5px;font-weight:700;color:var(--c);background:color-mix(in srgb,var(--c) 10%,#fff);padding:1px 7px;border-radius:999px}
+  .botc-topico{all:unset;box-sizing:border-box;position:relative;cursor:pointer;width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#54656f;transition:background .15s}
+  #module-bot-chats > div:first-child .botc-topico{height:36px!important;border-radius:50%!important}
+  .botc-topico:hover{background:rgba(0,0,0,.07)}.botc-topico[disabled]{cursor:progress}.botc-topico.gira svg{animation:fxGira .8s linear infinite}
+  .botc-npill{position:absolute;top:-3px;left:22px;display:inline-flex;height:17px;border-radius:999px;overflow:hidden;box-shadow:0 0 0 2px #f0f2f5;font-size:10px;font-weight:800;color:#fff;line-height:17px}
+  .botc-npill > span{padding:0 5px;min-width:9px;text-align:center;align-items:center;justify-content:center}
+  .botc-npill .c{background:#dc2626;animation:botcCritPulse 1.6s ease-out infinite}.botc-npill .n{background:#f97316}
   .wa-aloj{font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#0f172a;background:#eef2f6;border:1px solid #d5dde6;padding:0 6px;border-radius:4px;white-space:nowrap;line-height:15px}
   .wa-aloj.air{color:#be123c;background:#fff1f2;border-color:#fecdd3}
   .wa-rs{font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -51035,6 +51042,27 @@ function _botcAjustarAlto_() {
   mod.style.height = mod.style.maxHeight = `calc(100dvh - ${top}px)`;
 }
 window.addEventListener('resize', () => _botcAjustarAlto_());
+// Búsqueda: sin distinguir mayúsculas ni acentos, en todos los datos de la tarjeta y en el texto de las conversaciones (servidor).
+const _botcNorm_ = v => String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+function _botcTextoBusq_(c) {
+  let bk = null; try { bk = _botcGetBookingForPhoneSync(c.phone); } catch (_) {}
+  const tel = String(c.phone || ''), partes = [c.name, tel, tel.replace(/\D/g, '').slice(-10), c.last_msg_preview, c.notes, c.razon_social, c.regimen_fiscal, c.escalated_reason, c.pending_draft_body,
+    (_BOTC_MODO[c.control] || {}).t, c.canal === 'airbnb' ? 'airbnb' : 'whatsapp', c.abn && c.abn.aloj, c.abn && c.abn.huesped];
+  if (bk) { partes.push(bk.GuestName, bk.GuestEmail, bk.Source, bk.Id, bk.ConfirmationCode, _botcAlojCorto_(bk)); try { partes.push(waAlojamientoLabel_(bk)); } catch (_) {}
+    try { const st = _waBookingStatus({ DateArrival: _botcFxIso_(bk.DateArrival), DateDeparture: _botcFxIso_(bk.DateDeparture), Status: bk.Status }); partes.push(st.label); } catch (_) {} }
+  return _botcNorm_(partes.filter(Boolean).join(' | '));
+}
+function _botcBuscarEnMensajes_(q) {
+  const qN = _botcNorm_(q); if (qN.length < 3) return; // en el texto de los mensajes desde 3 letras
+  if (BOTC_STATE.busq && BOTC_STATE.busq.q === qN) return;
+  BOTC_STATE.busq = { q: qN, set: null };
+  clearTimeout(BOTC_STATE.busqT);
+  BOTC_STATE.busqT = setTimeout(() => fetch(`${BACKEND}/chats/buscar?q=${encodeURIComponent(q)}`).then(r => r.json()).then(j => {
+    if (!BOTC_STATE.busq || BOTC_STATE.busq.q !== qN || !j.ok) return;
+    BOTC_STATE.busq.set = new Set(j.ids || []); _botcRenderSidebar();
+    const el = document.getElementById('botc-search-input'); if (el && document.activeElement !== el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch (_) {} }
+  }).catch(() => {}), 350);
+}
 function _botcRenderSidebar() {
   _botcWaCss_(); _botcAjustarAlto_();
   const sidebar = document.getElementById('botc-sidebar');
@@ -51058,15 +51086,12 @@ function _botcRenderSidebar() {
       ${BOTC_STATE.filtersOpen ? _botcRenderFiltersPanel_() : ''}
     </div>`;
   // Aplica el filtro de búsqueda (case-insensitive) + filtros del panel ☰.
-  const qLower = q.toLowerCase();
+  const qN = _botcNorm_(q);
   _botcAbnCargar_();
   const todas = (BOTC_STATE.conversations || []).concat(_botcAbnConvs_()).sort((a, b) => String(b.last_msg_at || '').localeCompare(String(a.last_msg_at || '')));
-  let filtered = q
-    ? todas.filter(c => {
-        const parts = [c.name, c.phone, c.last_msg_preview, c.notes, c.abn && c.abn.aloj].map(x => String(x||'').toLowerCase());
-        return parts.some(p => p.indexOf(qLower) >= 0);
-      })
-    : todas;
+  if (q) _botcBuscarEnMensajes_(q);
+  const enMsgs = (BOTC_STATE.busq && BOTC_STATE.busq.q === qN) ? BOTC_STATE.busq.set : null;
+  let filtered = q ? todas.filter(c => (enMsgs && enMsgs.has(String(c.phone))) || _botcTextoBusq_(c).includes(qN)) : todas;
   filtered = _botcApplyPanelFilters_(filtered);
   if (!filtered.length) {
     // Distinguir "aún cargando" de "cargó pero está vacío/filtrado".
@@ -51253,7 +51278,7 @@ async function _botcEnrichPendingBookings() {
 // (__bookingsByGuestCache) para forzar datos frescos del backend.
 window.botcSyncVisible = async function() {
   const btn = document.getElementById('botc-sync-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '🔄 Sincronizando…'; }
+  if (btn) { btn.disabled = true; btn.classList.add('gira'); }
   const visible = (BOTC_STATE.conversations || []).slice();
   for (const c of visible) {
     delete window.__botcBookingByPhone[c.phone];
@@ -51265,7 +51290,7 @@ window.botcSyncVisible = async function() {
   }
   BOTC_STATE.__enrichGen++; // cancelar enrichment previo
   try { await _botcEnrichPendingBookings(); } catch(_){}
-  if (btn) { btn.disabled = false; btn.textContent = '🔄 Sync'; }
+  if (btn) { btn.disabled = false; btn.classList.remove('gira'); }
 };
 
 // Inyecta la media query mobile solo una vez.

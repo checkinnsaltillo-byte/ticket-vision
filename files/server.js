@@ -11194,6 +11194,28 @@ app.post("/airbnb/enviar", async (req, res) => {
     res.json(r);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ═══ Búsqueda en el texto de las conversaciones (Chats bot) ═══
+// GET /chats/buscar?q= → { ids: [tel10 | "abn<reserva>"] } — sin acentos ni mayúsculas; WhatsApp (whatsapp/chats/*.json) y Airbnb (hilos de Lodgify).
+const _busqNorm = v => String(v == null ? "" : v).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ");
+const _busqWa = { m: new Map(), ts: 0, p: null };
+async function _busqWaTextos() {
+  if (Date.now() - _busqWa.ts < 60_000) return _busqWa.m;
+  if (!_busqWa.p) _busqWa.p = (async () => {
+    const e = await _waLeer(_WA_OBJ.estado), tels = Object.keys(e).filter(p => /^\d{10}$/.test(p)), m = new Map();
+    for (let i = 0; i < tels.length; i += 10) await Promise.all(tels.slice(i, i + 10).map(async p => { const c = await _rhdGetJson(_waChatObj(p)).catch(() => ({})); m.set(p, _busqNorm((c.msgs || []).map(x => x.body).join(" \n "))); }));
+    _busqWa.m = m; _busqWa.ts = Date.now(); return m;
+  })().finally(() => { _busqWa.p = null; });
+  return _busqWa.p;
+}
+app.get("/chats/buscar", async (req, res) => {
+  try {
+    const q = _busqNorm(req.query.q).trim(); if (q.length < 3) return res.json({ ok: true, ids: [] });
+    const ids = [];
+    (await _busqWaTextos()).forEach((t, p) => { if (t.includes(q)) ids.push(p); });
+    _abn.hilos.forEach((h, bid) => { if ((h.mensajes || []).some(m => _busqNorm(m.texto).includes(q))) ids.push("abn" + bid); });
+    res.json({ ok: true, ids });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ═══ Bot en conversaciones de Airbnb (2026-10-11) ═══════════════════════════════
 // Cada conversación tiene modo como en WhatsApp: human (Manual, por omisión), supervised (el bot deja borrador) o bot (contesta solo).
 // airbnb/modos.json → { <bid>: { control, desde, procesado, draft, draftAt, by, at } }.
