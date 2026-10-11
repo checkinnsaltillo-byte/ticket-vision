@@ -50830,6 +50830,7 @@ function _botcRowHtml_(c, bk, selected) {
     ${_botcAvHtml_(name)}
     <div class="wa-body">
       <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span></div>
+      ${String(c.razon_social || '').trim() ? `<div class="wa-rs" title="Razón social">🧾 ${_botcEsc(String(c.razon_social).trim())}</div>` : ''}
       <div class="wa-l2"><span class="pv">${espera ? '<b class="wa-wait">⏳</b> ' : ''}${_botcEsc(c.last_msg_preview || '')}</span>${pend ? '<span class="wa-unread">1</span>' : ''}</div>
       <div class="wa-l3">${chips.join('')}<button type="button" class="wa-ctrl" style="--c:${ctrl[1]}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="Cambiar modo">${ctrl[0]} ▾</button></div>
     </div></div>`;
@@ -50857,6 +50858,7 @@ function _botcWaCss_() {
   .wa-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .wa-l1{display:flex;align-items:baseline;gap:6px}.wa-l1 b{font-size:15px;font-weight:500;color:var(--wa-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
   .wa-time{font-size:11.5px;color:var(--wa-mu);white-space:nowrap}.wa-time.on{color:var(--wa-g);font-weight:600}
+  .wa-rs{font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-l2{display:flex;align-items:center;gap:6px}.wa-l2 .pv{flex:1;min-width:0;font-size:13px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-wait{font-weight:400}
   .wa-unread{flex:none;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--wa-g);color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
