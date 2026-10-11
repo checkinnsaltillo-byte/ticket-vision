@@ -44995,7 +44995,7 @@ function _waRenderModal(replace) {
     let m = embed.querySelector('#wa-modal');
     if (!m) { document.getElementById('wa-modal')?.remove(); m = document.createElement('div'); m.id = 'wa-modal'; m.className = 'wa-embed'; embed.innerHTML = ''; embed.appendChild(m); }
     m.style.cssText = 'height:100%;display:flex;flex-direction:column;min-height:0';
-    m.innerHTML = html.replace('onclick="waCloseModal_()" style="background:transparent;border:0;color:#fff;font-size:22px', 'onclick="botcBitacoraCerrar_()" title="Ocultar bitácora" style="background:transparent;border:0;color:#fff;font-size:22px');
+    m.innerHTML = _botcFichaHtml_(st, logs); // «Chats bot»: ficha del huésped (perfil + reservas con sus pestañas)
     _waPaintAllToggles();
     return;
   }
@@ -50860,6 +50860,76 @@ function _botcWaCss_() {
   .wa-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .wa-l1{display:flex;align-items:baseline;gap:6px}.wa-l1 b{font-size:15px;font-weight:500;color:var(--wa-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
   .wa-time{font-size:11.5px;color:var(--wa-mu);white-space:nowrap}.wa-time.on{color:var(--wa-g);font-weight:600}
+  #module-bot-chats #botc-third-col{background:#fff!important}
+  @media (min-width:901px) and (max-width:1279px){#module-bot-chats #botc-sidebar{width:300px!important}#module-bot-chats #botc-third-col{width:340px!important}}
+  #module-bot-chats #botc-third-col.fx-movil{position:fixed!important;inset:0!important;width:auto!important;z-index:100005;animation:fxEntra .25s cubic-bezier(.2,.8,.3,1)}
+  @keyframes fxEntra{from{transform:translateX(100%)}to{transform:none}}
+  @keyframes fxSube{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes fxGira{to{transform:rotate(360deg)}}
+  .fx{display:flex;flex-direction:column;height:100%;min-height:0;background:#fff;color:var(--wa-tx)}
+  .fx-h{display:flex;align-items:center;gap:6px;padding:0 10px 0 16px;min-height:52px;background:var(--wa-bar);border-bottom:1px solid var(--wa-ln);flex:none}
+  .fx-h-t{flex:1;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .fx-ico{all:unset;cursor:pointer;width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--wa-mu);font-size:16px;transition:background .15s,transform .15s}
+  .fx-ico:hover{background:rgba(0,0,0,.06)}.fx-ico.gira{animation:fxGira .8s linear infinite}
+  .fx-scroll{flex:1;min-height:0;overflow-y:auto;padding-bottom:18px}
+  .fx-sec{display:flex;align-items:center;gap:6px;padding:12px 16px 6px;font-size:11px;font-weight:600;color:var(--ac,#0e7490);text-transform:uppercase;letter-spacing:.06em}
+  .fx-sec span{color:var(--wa-mu);font-weight:500}
+  .fx-card{margin:0 12px;border:1px solid var(--wa-ln);border-radius:14px;background:#fff;box-shadow:0 1px 2px rgba(11,20,26,.05)}
+  .fx.anim .fx-card,.fx.anim .fx-res{animation:fxSube .3s ease both}
+  .fx-perfil{padding:14px;background:linear-gradient(160deg,#f0fdf9 0%,#fff 46%)}
+  .fx-perfil-top{display:flex;align-items:center;gap:11px}.fx-perfil-top .wa-av{width:46px;height:46px;font-size:16px}
+  .fx-perfil-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .fx-perfil-id b{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fx-perfil-id small{font-size:12.5px;color:var(--wa-mu)}
+  .fx-rs{font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fx-tier{flex:none;font-size:11px;font-weight:700;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border:1px solid color-mix(in srgb,var(--c) 35%,#fff);padding:2px 8px;border-radius:999px}
+  .fx-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .fx-kpi{display:flex;flex-direction:column;align-items:center;padding:8px 4px;border-radius:10px;background:#fff;border:1px solid var(--wa-ln);transition:transform .15s,box-shadow .15s}
+  .fx-kpi:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(11,20,26,.08)}
+  .fx-kpi b{font-size:16px;font-weight:700;color:var(--wa-g)}.fx-kpi small{font-size:10.5px;color:var(--wa-mu);text-transform:uppercase;letter-spacing:.04em}
+  .fx-skel{height:52px;margin-top:12px;border-radius:10px;background:linear-gradient(90deg,#f0f2f5 25%,#e9edef 50%,#f0f2f5 75%);background-size:200% 100%;animation:fxBrillo 1.2s linear infinite}
+  @keyframes fxBrillo{to{background-position:-200% 0}}
+  .fx-datos{display:flex;flex-direction:column;margin-top:10px}
+  .fx-dato{display:flex;align-items:flex-start;gap:10px;padding:7px 2px;border-top:1px solid var(--wa-ln)}
+  .fx-dato-ic{flex:none;width:26px;height:26px;border-radius:8px;background:var(--wa-bar);display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+  .fx-dato-tx{min-width:0;display:flex;flex-direction:column;font-size:13px;word-break:break-word}.fx-dato-tx small{font-size:10.5px;color:var(--wa-mu)}
+  .fx-sub{margin:12px 0 6px;font-size:10.5px;font-weight:600;color:var(--wa-mu);text-transform:uppercase;letter-spacing:.05em}
+  .fx-nums{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .fx-num{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 4px 0 10px;border-radius:999px;font-size:12px;font-weight:600;background:#e7fcef;color:#065f46;border:1px solid #b7f0cd}
+  .fx-num.prin{padding-right:10px;background:#eef4ff;color:#1e40af;border-color:#c7d7fe}
+  .fx-num button{all:unset;cursor:pointer;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:14px;line-height:1}
+  .fx-num button:hover{background:rgba(6,95,70,.12)}
+  .fx-num-add{flex:1;min-width:150px;display:flex;align-items:center;height:28px;border:1px dashed #cbd5e1;border-radius:999px;padding:0 3px 0 10px;transition:border-color .15s,box-shadow .15s}
+  .fx-num-add:focus-within{border-color:var(--wa-g);border-style:solid;box-shadow:0 0 0 3px color-mix(in srgb,var(--wa-g) 15%,transparent)}
+  .fx-num-add input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:12.5px}
+  .fx-num-add button{all:unset;cursor:pointer;width:22px;height:22px;border-radius:50%;background:var(--wa-g);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700}
+  .fx-res{margin:0 12px 8px;border:1px solid var(--wa-ln);border-radius:14px;background:#fff;overflow:hidden;transition:box-shadow .2s,border-color .2s}
+  .fx-res:hover{box-shadow:0 4px 14px rgba(11,20,26,.07)}.fx-res.abierta{border-color:color-mix(in srgb,var(--wa-g) 40%,var(--wa-ln));box-shadow:0 6px 20px rgba(11,20,26,.08)}
+  .fx-res-h{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:11px;padding:10px 12px 10px 0}
+  .fx-res-h[disabled]{cursor:progress}
+  .fx-res-barra{flex:none;align-self:stretch;width:4px;border-radius:0 4px 4px 0;background:var(--c)}
+  .fx-res-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .fx-res-tx b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fx-res-tx small{font-size:12px;color:var(--wa-mu)}
+  .fx-res-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+  .fx-res-car{flex:none;font-size:20px;color:var(--wa-mu);transition:transform .2s}.fx-res.abierta .fx-res-car{transform:rotate(90deg)}
+  .fx-res-cuerpo{border-top:1px solid var(--wa-ln);padding:10px;background:#fbfcfc}
+  .fx-auto{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--wa-ln);font-size:12.5px;font-weight:600}
+  .fx-auto small{display:block;font-size:11px;font-weight:400;color:var(--wa-mu)}.fx-auto.on{background:#f0fdf4;border-color:#bbf7d0}
+  .fx-tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:10px 0;padding:3px;border-radius:12px;background:var(--wa-bar)}
+  .fx-tab{all:unset;cursor:pointer;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:5px 2px;border-radius:9px;font-size:10.5px;font-weight:600;color:var(--wa-mu);white-space:nowrap;transition:background .18s,color .18s,box-shadow .18s,transform .12s}
+  .fx-tab span{font-size:15px;line-height:1.1}.fx-tab:active{transform:scale(.96)}
+  .fx-tab:hover{color:var(--wa-tx)}.fx-tab.on{background:#fff;color:var(--wa-tx);box-shadow:0 1px 3px rgba(11,20,26,.12)}
+  .fx-tab i{position:absolute;top:2px;right:4px;font-style:normal;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:#7c3aed;color:#fff;font-size:10px;display:inline-flex;align-items:center;justify-content:center}
+  .fx.animtab .fx-cont,.fx.animtab .fx-sol{animation:fxSube .22s ease both}
+  .fx-vacio{display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 10px;color:var(--wa-mu);font-size:12.5px;border:1px dashed var(--wa-ln);border-radius:12px;background:#fff}
+  .fx-vacio span{font-size:22px;opacity:.6}
+  .fx-cargando{display:flex;align-items:center;justify-content:center;gap:10px;padding:24px;color:var(--wa-mu);font-size:12.5px}
+  .fx-spin{display:inline-block;width:14px;height:14px;border:2px solid #d1d7db;border-top-color:var(--wa-g);border-radius:50%;animation:fxGira .8s linear infinite}
+  .fx-sol{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;margin-bottom:6px;border-radius:12px;background:#fff;border:1px solid var(--wa-ln);border-left:3px solid var(--c);transition:transform .15s,box-shadow .15s}
+  .fx-sol:hover{transform:translateX(2px);box-shadow:0 3px 10px rgba(11,20,26,.07)}
+  .fx-sol-ic{flex:none;width:30px;height:30px;border-radius:9px;background:var(--wa-bar);display:inline-flex;align-items:center;justify-content:center;font-size:15px}
+  .fx-sol-tx{flex:1;min-width:0;display:flex;flex-direction:column}.fx-sol-tx b{font-size:13px;font-weight:600}.fx-sol-tx small{font-size:11.5px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fx-sol-der{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:3px}.fx-sol-der small{font-size:10.5px;color:var(--wa-mu)}
+  .fx-pill{font-size:10.5px;font-weight:700;color:var(--c);background:color-mix(in srgb,var(--c) 10%,#fff);padding:1px 7px;border-radius:999px}
   .wa-rs{font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-l2{display:flex;align-items:center;gap:6px}.wa-l2 .pv{flex:1;min-width:0;font-size:13px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-wait{font-weight:400}
@@ -51282,7 +51352,7 @@ window.botcOpenChat = async function(phone, opts) {
     BOTC_STATE.state = j.state || { control: 'bot' };
     BOTC_STATE.__renderedPhone = String(phone);
     _botcRenderMain(phone);
-    if (!opts.silent) { try { botcBitacoraCol_(phone); } catch (_) {} } // bitácora completa en la 3a columna
+    if (!opts.silent) { try { if (BOTC_STATE.bitLast !== String(phone)) BOTC_STATE.bitOff = false; BOTC_STATE.bitLast = String(phone); botcBitacoraCol_(phone); } catch (_) {} } // ficha del huésped en la 3a columna
     // Reanudar enrichment de cards pendientes (fue abortado al abrir chat).
     if (!opts.silent) setTimeout(() => _botcEnrichPendingBookings(), 300);
     // Cargar phone-extras + PAGOS_STATE.bookings en background para que el
@@ -52382,11 +52452,19 @@ window.botcOpenReportPickerForCurrent = function() {
  *  waOpenModal(booking) — la MISMA función que usa Gestión de reservas, así
  *  el user ve la ventana idéntica con templates, custom, +Nuevo mensaje, etc. */
 // Bitácora completa en la 3a columna, abierta por omisión al abrir un chat (pantallas anchas).
-window.botcBitacoraCerrar_ = function () { BOTC_STATE.bitOff = true; window.__waEmbedEl = null; const c = document.getElementById('botc-third-col'); if (c) { c.style.display = 'none'; c.innerHTML = ''; } window.__waModalState = null; };
+const _botcEsEscritorio_ = () => !!(window.matchMedia && window.matchMedia('(min-width: 901px)').matches);
+window.addEventListener('resize', () => { // al cambiar el tamaño de la ventana aparece/desaparece sola
+  const c = document.getElementById('botc-third-col'); if (!c || !BOTC_STATE.selectedPhone) return;
+  if (_botcEsEscritorio_() && c.style.display === 'none' && !BOTC_STATE.bitOff) { BOTC_STATE.bitPhone = ''; botcBitacoraCol_(BOTC_STATE.selectedPhone); }
+  else if (!_botcEsEscritorio_() && c.style.display !== 'none' && !c.classList.contains('fx-movil')) botcBitacoraCerrar_(true);
+});
+window.botcBitacoraCerrar_ = function (porTamano) { if (!porTamano) BOTC_STATE.bitOff = _botcEsEscritorio_(); // en celular cerrar no apaga la columna del escritorio
+  document.getElementById('botc-third-col')?.classList.remove('fx-movil'); window.__waEmbedEl = null; const c = document.getElementById('botc-third-col'); if (c) { c.style.display = 'none'; c.innerHTML = ''; } window.__waModalState = null; };
 window.botcBitacoraCol_ = async function (phone, forzar) {
   const col3 = document.getElementById('botc-third-col'); if (!col3) return;
-  if (!forzar && (BOTC_STATE.bitOff || !(window.matchMedia && window.matchMedia('(min-width: 1180px)').matches))) return;
+  if (!forzar && (BOTC_STATE.bitOff || !_botcEsEscritorio_())) return;
   if (forzar) BOTC_STATE.bitOff = false;
+  col3.classList.toggle('fx-movil', !_botcEsEscritorio_());
   if (BOTC_STATE.bitPhone === String(phone) && col3.querySelector('#wa-modal')) return;
   BOTC_STATE.bitPhone = String(phone);
   col3.style.display = 'flex'; col3.innerHTML = '<div class="wa-bit-load">⏳ Cargando bitácora…</div>';
@@ -52411,9 +52489,110 @@ window.botcBitacoraCol_ = async function (phone, forzar) {
     if (typeof waOpenModal === 'function') await waOpenModal(bk);
   } catch (e) { col3.innerHTML = `<div class="wa-bit-load">⚠️ No se pudo cargar la bitácora: ${_botcEsc(e.message || e)}</div>`; }
 };
+// ═══ Ficha del huésped (3a columna de «Chats bot») ═══════════════════════════
+// Mismo lenguaje visual que la lista: perfil arriba (con números adicionales) y debajo sus reservas,
+// cada una con pestañas Todos · Programados · Reportes · Pagos · Solicitudes. Usa el estado del panel de WhatsApp
+// (__waModalState) y sus mismas funciones de contenido, así que todo lo que hace la bitácora sigue funcionando.
+BOTC_STATE.fxPerf = BOTC_STATE.fxPerf || {}; BOTC_STATE.fxSol = BOTC_STATE.fxSol || {};
+function _botcFxCargar_(phone) {
+  const p = String(phone || '').replace(/\D/g, '').slice(-10); if (!p) return;
+  const repinta = () => { if (window.__waModalState && String(BOTC_STATE.selectedPhone || '').slice(-10) === p) _waRepaint(); };
+  if (!BOTC_STATE.fxPerf[p]) { BOTC_STATE.fxPerf[p] = { cargando: true };
+    fetch(`https://api.check-inn.mx/perfil/by-phone?phone=${p}`).then(r => r.json()).then(j => { BOTC_STATE.fxPerf[p] = { perfil: (j && j.perfil) || null }; repinta(); }).catch(() => { BOTC_STATE.fxPerf[p] = { perfil: null }; }); }
+  if (!BOTC_STATE.fxSol[p]) { BOTC_STATE.fxSol[p] = { cargando: true, rows: [] };
+    fetch(`https://api.check-inn.mx/solicitudes?phone=${p}`).then(r => r.json()).then(j => { BOTC_STATE.fxSol[p] = { rows: (j && j.rows) || [] }; repinta(); }).catch(() => { BOTC_STATE.fxSol[p] = { rows: [] }; }); }
+}
+window.botcFxRefrescar_ = function (btn) {
+  const p = String(BOTC_STATE.selectedPhone || '').replace(/\D/g, '').slice(-10); delete BOTC_STATE.fxPerf[p]; delete BOTC_STATE.fxSol[p];
+  if (btn) btn.classList.add('gira'); if (typeof waRefreshPanel_ === 'function') waRefreshPanel_(btn); else _waRepaint();
+};
+const _botcFxIso_ = v => { const x = String(v || ''); let m = x.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0]; m = x.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : ''; }; // Lodgify manda M/D/AAAA
+function _botcFxMoney_(n) { const v = Number(n) || 0; return '$' + v.toLocaleString('es-MX', { maximumFractionDigits: 0 }); }
+function _botcFxSolHtml_(rows) {
+  if (!rows.length) return _botcFxVacio_('📄', 'Sin solicitudes en esta reserva');
+  const est = { pendiente: ['#b45309', 'Pendiente'], programado: ['#1d4ed8', 'Programada'], atendido: ['#15803d', 'Atendida'], aprobado: ['#15803d', 'Aprobada'], rechazado: ['#b91c1c', 'Rechazada'], cancelado: ['#64748b', 'Cancelada'] };
+  return rows.map((r, i) => { const m = (window._botcSolTipoMeta_ ? _botcSolTipoMeta_(r.Tipo) : { icon: '📌', label: r.Tipo }), e = est[String(r.Estado || '').toLowerCase()] || ['#64748b', r.Estado || '—'];
+    return `<button type="button" class="fx-sol" style="--c:${e[0]};animation-delay:${i * 40}ms" onclick="_botcOpenSolicitudesDrawer_('${_botcEsc(BOTC_STATE.selectedPhone)}')" title="Abrir solicitudes para atenderla">
+      <span class="fx-sol-ic">${m.icon}</span><span class="fx-sol-tx"><b>${_botcEsc(m.label)}</b><small>${_botcEsc(String(r.Resumen || '').slice(0, 140))}</small></span>
+      <span class="fx-sol-der"><span class="fx-pill" style="--c:${e[0]}">${_botcEsc(e[1])}</span><small>${_botcEsc(_botcWaHora_(r.Timestamp) || '')}</small></span></button>`; }).join('');
+}
+const _botcFxVacio_ = (ic, t) => `<div class="fx-vacio"><span>${ic}</span>${_botcEsc(t)}</div>`;
+function _botcFichaHtml_(st, logs) {
+  const phone = String(BOTC_STATE.selectedPhone || ''), p10 = phone.replace(/\D/g, '').slice(-10);
+  _botcFxCargar_(phone);
+  const conv = (BOTC_STATE.conversations || []).find(c => String(c.phone) === phone) || {};
+  const pc = BOTC_STATE.fxPerf[p10] || {}, pf = pc.perfil || {};
+  const g = k => String(pf[k] == null ? '' : pf[k]).trim();
+  const nombre = g('Nombre del huésped') || conv.name || (st.b && st.b.GuestName) || ('+' + phone);
+  const rs = g('Razón social') || conv.razon_social || '', reg = g('Régimen fiscal') || conv.regimen_fiscal || '';
+  const tier = g('kpi_clasificacion'), tierC = { Oro: '#ca8a04', Plata: '#64748b', Bronce: '#b45309', Recurrente: '#0e7490' }[tier] || '#94a3b8';
+  const dato = (ic, et, v) => v ? `<div class="fx-dato"><span class="fx-dato-ic">${ic}</span><span class="fx-dato-tx"><small>${et}</small>${_botcEsc(v)}</span></div>` : '';
+  // Números adicionales (avisos de WhatsApp de la reserva seleccionada)
+  const prim = st.primaryPhone || '', adic = (st.recipients || []).filter(x => !waPhonesEqual_(x, prim));
+  const nums = `<div class="fx-nums">
+      ${prim ? `<span class="fx-num prin" title="Número de la reserva">🔒 ${_botcEsc(waDisplayPhone_(prim))}</span>` : ''}
+      ${adic.map(n => `<span class="fx-num">${_botcEsc(waDisplayPhone_(n))}<button type="button" onclick="waRemoveRecipient_(${(st.recipients || []).findIndex(x => waPhonesEqual_(x, n))})" title="Quitar">×</button></span>`).join('')}
+      <span class="fx-num-add"><input type="tel" placeholder="Agregar número…" value="${_botcEsc(st.newRecipient || '')}" oninput="__waModalState.newRecipient=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();waAddRecipient_();}"><button type="button" onclick="waAddRecipient_()" title="Agregar">＋</button></span>
+    </div>`;
+  const kpi = (v, et) => `<div class="fx-kpi"><b>${v}</b><small>${et}</small></div>`;
+  const perfil = `<section class="fx-card fx-perfil">
+      <div class="fx-perfil-top">${_botcAvHtml_(nombre)}<div class="fx-perfil-id"><b>${_botcEsc(nombre)}</b><small>+${_botcEsc(phone)}</small>
+        ${rs || reg ? `<span class="fx-rs">🧾 ${_botcEsc(rs)}${rs && reg ? ' · ' : ''}${_botcEsc(reg)}</span>` : ''}</div>
+        ${tier ? `<span class="fx-tier" style="--c:${tierC}">★ ${_botcEsc(tier)}</span>` : ''}
+        <button type="button" class="fx-ico" onclick="_botcOpenPerfilEditor_('${_botcEsc(phone)}')" title="Editar perfil">✏️</button></div>
+      ${pc.perfil ? `<div class="fx-kpis">${kpi(Number(pf.kpi_visitas) || 0, 'visitas')}${kpi(Number(pf.kpi_noches) || 0, 'noches')}${kpi(_botcFxMoney_(pf.kpi_monto), 'pagado')}</div>` : pc.cargando ? '<div class="fx-skel"></div>' : ''}
+      <div class="fx-datos">${dato('🪪', 'RFC', g('RFC'))}${dato('✉️', 'Correo de facturación', g('Correo electrónico para el envío de la factura'))}${dato('📮', 'C.P.', g('Código Postal'))}${dato('🆘', 'Contacto de emergencia', g('Cel/Whatsapp (contacto de emergencia)'))}${dato('📝', 'Notas', g('Notas'))}</div>
+      <div class="fx-sub">Números para avisos de WhatsApp</div>${nums}
+    </section>`;
+  // Reservas (todas las del número, la más reciente arriba)
+  let bks; try { bks = _waFindRelatedBookings(st.b); } catch (_) { bks = null; } if (!bks || !bks.length) bks = st.bookings && st.bookings.length ? st.bookings : [st.b];
+  st.bookings = bks;
+  bks = bks.slice().sort((a, b) => _botcFxIso_(b.DateArrival || b.arrival).localeCompare(_botcFxIso_(a.DateArrival || a.arrival)));
+  const sol = (BOTC_STATE.fxSol[p10] || {}).rows || [], idsBk = new Set(bks.map(b => String(waBookingId_(b))));
+  const solDe = (id, primera) => sol.filter(r => String(r.ReservaId || '') === String(id) || (primera && !idsBk.has(String(r.ReservaId || ''))));
+  const tab = st.currentTab || 'todos';
+  const reservas = bks.map((bk, i) => {
+    const id = String(waBookingId_(bk)), abierta = String(st.focusedBookingId) === id, carg = String(st.loadingBookingId || '') === id;
+    const a = _botcFxIso_(bk.DateArrival || bk.arrival), d = _botcFxIso_(bk.DateDeparture || bk.departure), e = _waBookingStatus(Object.assign({}, bk, { DateArrival: a, DateDeparture: d, arrival: a, departure: d })), src = _botcSrcTxt_(bk.Source);
+    const noches = a && d ? Math.round((new Date(d) - new Date(a)) / 864e5) : 0, sols = solDe(id, i === 0);
+    let cuerpo = '';
+    if (abierta) {
+      const t = (k, ic, et, n) => `<button type="button" class="fx-tab ${tab === k ? 'on' : ''}" onclick="waSetTab_('${k}')"><span>${ic}</span>${et}${n ? `<i>${n}</i>` : ''}</button>`;
+      let cont;
+      if (carg) cont = `<div class="fx-cargando"><span class="fx-spin"></span>Cargando la bitácora de esta reserva…</div>`;
+      else if (tab === 'solicitudes') cont = _botcFxSolHtml_(sols);
+      else { const mode = tab === 'programados' ? 'schedule-only' : tab === 'reportes' ? 'reports-only' : tab === 'pagos' ? 'pagos-only' : 'full';
+        try { cont = mode === 'reports-only' ? (_waRenderReportsForBooking_(bk) || _botcFxVacio_('🚨', 'Sin reportes en esta reserva')) : mode === 'pagos-only' ? (_waRenderPagosForBooking_(bk) || _botcFxVacio_('💳', 'Sin pagos registrados en esta reserva'))
+          : _waRenderUnifiedList_(logs, { scheduleOnly: mode === 'schedule-only', includePagos: mode !== 'schedule-only', bookingForPagos: bk }); } catch (er) { cont = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + er.message); } }
+      const auto = !!(WA_ADMIN.config[id] && WA_ADMIN.config[id].auto_enabled);
+      cuerpo = `<div class="fx-res-cuerpo">
+          <div class="fx-auto ${auto ? 'on' : ''}"><span>📅 Mensajes automáticos <small>${auto ? 'Activos para esta reserva' : 'Apagados para esta reserva'}</small></span>${waAutoToggleHtml(id)}</div>
+          <div class="fx-tabs">${t('todos', '📋', 'Todos')}${t('programados', '📅', 'Programados')}${t('reportes', '🚨', 'Reportes')}${t('pagos', '💳', 'Pagos')}${t('solicitudes', '📄', 'Solicitudes', sols.length)}</div>
+          <div class="fx-cont" key="${tab}">${cont}</div></div>`;
+    }
+    return `<article class="fx-res ${abierta ? 'abierta' : ''}" style="animation-delay:${Math.min(i, 8) * 35}ms">
+        <button type="button" class="fx-res-h" ${st.loadingBookingId ? 'disabled' : ''} onclick="waSwitchBooking_('${_botcEsc(id)}')">
+          <span class="fx-res-barra" style="--c:${e.color}"></span>
+          <span class="fx-res-tx"><b>${_botcEsc(waAlojamientoLabel_(bk))}</b>
+            <small>${a ? _botcEsc(_waFmtShortDate(a)) : '—'} → ${d ? _botcEsc(_waFmtShortDate(d)) : '—'}${noches > 0 ? ` · ${noches} noche${noches === 1 ? '' : 's'}` : ''}</small>
+            <span class="fx-res-chips"><span class="wa-chip" style="--c:${e.color}">${_botcEsc(e.label.charAt(0) + e.label.slice(1).toLowerCase())}</span>${src ? `<span class="wa-chip" style="--c:${src[1]}">${_botcEsc(src[0])}</span>` : ''}${sols.length ? `<span class="wa-chip" style="--c:#7c3aed">📄 ${sols.length}</span>` : ''}</span></span>
+          <span class="fx-res-car">${carg ? '<span class="fx-spin"></span>' : '›'}</span>
+        </button>${cuerpo}</article>`;
+  }).join('');
+  const animar = BOTC_STATE.fxAnim !== phone; BOTC_STATE.fxAnim = phone; // animación de entrada solo al cambiar de huésped
+  const clave = st.focusedBookingId + '|' + tab, animTab = BOTC_STATE.fxTab !== clave; BOTC_STATE.fxTab = clave;
+  return `<div class="fx ${animar ? 'anim' : ''} ${animTab ? 'animtab' : ''}">
+      <header class="fx-h"><span class="fx-h-t">Ficha del huésped</span>
+        <button type="button" class="fx-ico" onclick="botcFxRefrescar_(this)" title="Actualizar">↻</button>
+        <button type="button" class="fx-ico" onclick="botcBitacoraCerrar_()" title="Cerrar">✕</button></header>
+      <div class="fx-scroll">
+        <div class="fx-sec">Datos del perfil</div>${perfil}
+        <div class="fx-sec">Reservas <span>${bks.length}</span></div>${reservas || _botcFxVacio_('🗓️', 'Sin reservas asociadas a este número')}
+      </div></div>`;
+}
 window.botcToggleRightPanel = async function() {
   // «📖 Bitácora completa» del menú: en pantallas anchas va en la 3a columna; en angostas, la ventana lateral de siempre.
-  if (window.matchMedia && window.matchMedia('(min-width: 1180px)').matches && BOTC_STATE.selectedPhone) { BOTC_STATE.bitPhone = ''; return botcBitacoraCol_(BOTC_STATE.selectedPhone, true); }
+  if (BOTC_STATE.selectedPhone) { BOTC_STATE.bitPhone = ''; return botcBitacoraCol_(BOTC_STATE.selectedPhone, true); } // escritorio: 3a columna · celular: pantalla completa
   window.__waEmbedEl = null;
   const phone = BOTC_STATE.selectedPhone;
   if (!phone) return;
