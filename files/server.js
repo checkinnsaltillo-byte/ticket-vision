@@ -10526,6 +10526,82 @@ Object.assign(_GCS_ACT, {
   },
   delete_reserva_phone_extra: data => { const p = _tbPayload(data); return _tbBorrar("rpe", p.id || data.id).then(r => r.ok ? r : { ok: false, error: "ID no encontrado" }); },
 });
+// Configuración de envíos por reserva (antes hoja WA_Config): Auto ON/OFF, plantillas excluidas y destinatarios.
+const _WACFG_OBJ = "whatsapp/config-reservas.json";
+let _wacfgMig = null;
+async function _wacfgDatos(fresco) {
+  let d = fresco ? await _rhdGetJson(_WACFG_OBJ) : await _waLeer(_WACFG_OBJ);
+  if (d && d.map) return d;
+  if (!_wacfgMig) _wacfgMig = (async () => { // primera vez: copia completa desde la hoja
+    const r = await callCheckinAppsScriptPost("wa_config_get_batch", { booking_ids: [] }, { directo: true });
+    if (!r || r.ok === false || !r.config) throw new Error("No se pudo copiar WA_Config: " + ((r && r.error) || "sin datos"));
+    await _waMutar(_WACFG_OBJ, x => { if (!x.map) Object.assign(x, { map: r.config, migrado: _waIso() }); });
+    console.log(`[wa-config] ${Object.keys(r.config).length} reservas copiadas desde Sheets`);
+  })().finally(() => { _wacfgMig = null; });
+  await _wacfgMig;
+  return _rhdGetJson(_WACFG_OBJ);
+}
+const _waAWhatsapp = raw => { const s = String(raw || "").replace(/[^0-9+]/g, ""), d = s.replace(/\D/g, ""); if (!d) return "";
+  if (d.length === 10) return "whatsapp:+521" + d; if (d.length === 12 && d.startsWith("52")) return "whatsapp:+521" + d.slice(2); return "whatsapp:+" + d; };
+function _wacfgSet(data) {
+  const bid = String(data.booking_id || "").trim(); if (!bid) return Promise.resolve({ ok: false, error: "booking_id requerido" });
+  const has = k => Object.prototype.hasOwnProperty.call(data, k), arr = v => { if (typeof v === "string") { try { v = JSON.parse(v); } catch (_) { v = []; } } return Array.isArray(v) ? v : []; };
+  return _wacfgDatos(true).then(() => _waMutar(_WACFG_OBJ, d => {
+    if (!d.map) d.map = {};
+    const c = d.map[bid] || { auto_enabled: false, disabled_templates: [], recipients: [] };
+    if (has("auto_enabled")) c.auto_enabled = !!data.auto_enabled && data.auto_enabled !== "false";
+    if (has("disabled_templates")) c.disabled_templates = arr(data.disabled_templates);
+    if (has("recipients")) c.recipients = arr(data.recipients);
+    c.updated_at = _waIso(); c.updated_by = String(data.updated_by || "admin");
+    d.map[bid] = c;
+    return { ok: true, booking_id: bid, auto_enabled: c.auto_enabled, disabled_templates: JSON.stringify(c.disabled_templates || []), recipients: JSON.stringify(c.recipients || []) };
+  }));
+}
+Object.assign(_GCS_ACT, {
+  wa_config_get_batch: async data => {
+    let ids = data.booking_ids; if (typeof ids === "string") { try { ids = JSON.parse(ids); } catch (_) { ids = []; } } if (!Array.isArray(ids)) ids = [];
+    const m = (await _wacfgDatos()).map || {}, out = {};
+    (ids.length ? ids.map(String) : Object.keys(m)).forEach(id => { const c = m[id]; if (c) out[id] = { auto_enabled: !!c.auto_enabled, updated_at: c.updated_at || "", updated_by: c.updated_by || "",
+      disabled_templates: (c.disabled_templates || []).slice(), recipients: (c.recipients || []).slice() }; });
+    return { ok: true, config: out };
+  },
+  wa_config_set: data => _wacfgSet(data),
+});
+// ═══════════════════════════════════════════════════════════════════════════
+// Puente del formulario de registro (/registro) y demás páginas públicas hacia Apps Script.
+// GET/POST /as?action=… : si la acción ya vive en Cloud Storage se responde aquí; si no, se reenvía tal cual a
+// Apps Script. Después de algunas acciones se completa en Cloud Storage lo que Apps Script hacía en sus hojas.
+// ═══════════════════════════════════════════════════════════════════════════
+const _AS_DESPUES = {
+  // El registro agregaba el «Número adicional WhatsApp» como destinatario de la reserva (waRegistroSyncRecipients_).
+  submit_form: async (data, r) => {
+    const num = String(data.numero_adicional_wa || "").trim(), wa = _waAWhatsapp(num);
+    const bid = String(data.lodgify_id || "").replace(/\D/g, "") || String((r && r.record_id) || "").trim();
+    if (!wa || !bid || !r || r.ok === false) return;
+    await _wacfgSet({ booking_id: bid, recipients: [wa], updated_by: "registro" });
+  },
+};
+app.all("/as", express.text({ type: "*/*", limit: "32mb" }), async (req, res) => {
+  try {
+    const post = req.method === "POST";
+    let data = {};
+    if (post) { try { data = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {}); } catch (_) { data = {}; } }
+    else data = Object.assign({}, req.query);
+    const action = String(data.action || "");
+    const fn = action && _GCS_ACT[action];
+    let r;
+    if (fn) r = await fn(data);
+    else {
+      const url = post ? CHECKIN_APPS_SCRIPT_URL : CHECKIN_APPS_SCRIPT_URL + "?" + new URLSearchParams(req.query).toString();
+      const rr = await _fetchReal(url, post ? { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: typeof req.body === "string" ? req.body : JSON.stringify(data), redirect: "follow" } : { redirect: "follow" });
+      const t = await rr.text();
+      try { r = JSON.parse(t); } catch (_) { return res.status(rr.status).type(rr.headers.get("content-type") || "text/plain").send(t); }
+      if (post) _lecturaSWRBorrar(action);
+    }
+    if (_AS_DESPUES[action]) await _AS_DESPUES[action](data, r).catch(e => console.warn("[as] después de", action, e.message));
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 const _bpBool = v => v === true || String(v).toLowerCase() === "true" || String(v) === "1";
 Object.assign(_GCS_ACT, {
   // ── Conversaciones ──
