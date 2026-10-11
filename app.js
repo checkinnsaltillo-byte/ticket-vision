@@ -66193,7 +66193,8 @@ function adCard_(I) {
   const meta = [];
   if (I.trd) meta.push(`<span>Sale <b>${aseoHoraTxt_(I.trd.hora || '11:00')}</b> <span class="${I.trd.aceptada ? 'ok' : 'pd'}">· ${I.trd.aceptada ? 'tarde aceptada' : 'tarde pendiente'}</span></span>`);
   if (I.temp) meta.push(`<span>Entra <b>${aseoHoraTxt_(I.temp.hora || '12:00')}</b> <span class="${I.temp.aceptada ? 'ok' : 'pd'}">· ${I.temp.aceptada ? 'temprano aceptada' : 'temprano pendiente'}</span></span>`);
-  meta.unshift(axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0));
+  const plP = plPill_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId);
+  meta.unshift(axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0) + plP);
   // «No ha desalojado»: primer chip de la card de cada alojamiento con salida hoy
   const nsChip = I.xs && I.esHoyC && !I.esCopia ? aseoNoSaleChip_(I.xs.b.Id, I.hid) : ''; // va en el renglón de acciones (r3)
   if (I.prioritaria) meta.splice(1, 0, '<span class="pr">Prioritaria</span>');
@@ -66212,7 +66213,7 @@ function adCard_(I) {
     return `<div class="ad-card tipo est-tint ad-simp ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}')"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span><span class="mv">${mov}</span></div>
-    <div class="r2">${axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0)}</div>
+    <div class="r2">${axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0)}${plP}</div>
     <div class="r3">${nsChip}<span class="sp"></span>${axIncMini_(I.asigId, I.hid, aseoDia_())}${prio4Html_(I.prio, false, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}
@@ -66225,7 +66226,6 @@ function adCard_(I) {
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
     ${srcTxt || xR ? `<div class="r2 ad-src"><span>${pcEsc(srcTxt)}</span>${xR ? (n => n ? `<span title="Personas">👥 ${n}</span>` : '')(Number(xR.b.NumberOfGuests) || (Number(xR.b.Adults) || 0) + (Number(xR.b.Children) || 0)) + (xR.noches ? `<span title="Noches">🌙 ${xR.noches}</span>` : '') : ''}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
-    ${(pid => pid && (ASEO.pl.idx || {})[I.asigId] ? plCardBar_({ plantilla: pid }, I.asigId) : '')(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)))}
     <div class="ad-eq">${equipo}</div>
     <div class="r3 ad-r3w">${nsChip}<span class="ad-r3b"><span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? 'Desarchivar' : 'Archivar'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}${guia}${prio4Html_(I.prio, false, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<button type="button" class="ad-det" onclick="event.stopPropagation();adAbrir_('${pcEsc(I.k)}')">Detalles</button></span></div>
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}
@@ -66793,8 +66793,7 @@ function atCard_(I) {
     <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span><span class="prop">${D.ico} ${pcEsc(t.titulo)}</span></div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
-    <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${t.repite ? '<span class="sep"></span><span>↻ Se repite</span>' : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
-    ${plCardBar_(Object.assign({}, t, { plantilla: plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla) }), I.key)}
+    <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${plPill_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${t.repite ? '<span class="sep"></span><span>↻ Se repite</span>' : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
     <div class="r3">${(t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}${prio4Html_(t.prioridad, false, `atPrioCiclo_('${pcEsc(t.id)}')`)}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
     ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}
@@ -68626,7 +68625,9 @@ function plCss_() {
   .plf-add{display:inline-flex;align-items:center;justify-content:center;width:58px;height:58px;border:1.5px dashed #a5b4fc;border-radius:8px;color:#4f46e5;font-size:11px;font-weight:700;cursor:pointer;text-align:center;line-height:1.2}
   .plf-ref{font-size:10.5px;color:#64748b}
   .pl-cbar{display:flex;align-items:center;gap:6px;margin-top:6px;font:700 10.5px Inter,system-ui,sans-serif;color:#4338ca}.pl-cbar span{flex:1;height:5px;background:#e0e7ff;border-radius:999px;overflow:hidden}.pl-cbar i{display:block;height:100%;background:#4f46e5}
-  .pl-cbar.ok{color:#15803d}.pl-cbar.ok i{background:#16a34a}`;
+  .pl-cbar.ok{color:#15803d}.pl-cbar.ok i{background:#16a34a}
+  .pl-pill{display:inline-flex;align-items:center;height:18px;padding:0 6px;margin-left:5px;border-radius:999px;font:700 10px Inter,system-ui,sans-serif;white-space:nowrap;vertical-align:middle;flex:none}
+  .pl-pill.r{background:#fee2e2;color:#b91c1c}.pl-pill.a{background:#fef3c7;color:#b45309}.pl-pill.v{background:#dcfce7;color:#15803d}`;
   document.head.appendChild(st);
 }
 async function plCargar_(fuerza) {
@@ -68903,6 +68904,14 @@ window.plFotoSubir_ = async function (inp, id) {
   const C = plCtx_(); if (!C) return; const r = C.resp[id] = C.resp[id] || {};
   r.fotos = (r.fotos || []).concat(subidas.filter(Boolean)); plRepinta_(); plGuardarLuego_();
 };
+// % de la plantilla junto al chip «Tipo › Servicio» de la card. Rojo < 40 % · amarillo 40–89 % · verde ≥ 90 %.
+function plPill_(pid, key) {
+  if (!pid) return '';
+  plCss_();
+  const x = (ASEO.pl.idx || {})[key], p = ASEO.pl.lista[pid], pc = x ? x.p : 0;
+  const c = pc >= 90 ? 'v' : pc >= 40 ? 'a' : 'r';
+  return `<span class="pl-pill ${c}" title="${pcEsc(p ? p.titulo : 'Plantilla')}: ${pc}%${x ? ` (${x.h} de ${x.t} campos)` : ' · sin capturar'}">📋 ${pc}%</span>`;
+}
 // Barra de avance de la plantilla en la card de la tarea.
 function plCardBar_(t, key) {
   if (!t.plantilla) return '';
