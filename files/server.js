@@ -202,7 +202,8 @@ function _appsScriptCacheKey(action, paramsObj) {
   return parts.length ? `${action}?${parts.join("&")}` : action;
 }
 
-async function callCheckinAppsScript(action, paramsObj) {
+async function callCheckinAppsScript(action, paramsObj, opts) {
+  if (!(opts && opts.directo) && typeof _GCS_ACT !== "undefined" && _GCS_ACT[action]) return _GCS_ACT[action](paramsObj || {}); // Check-list ya vive en Cloud Storage
   const cacheKey = _appsScriptCacheKey(action, paramsObj);
   // Coalescing: si ya hay una llamada en vuelo, reutilizamos su promesa.
   const inflight = _appsScriptInflight.get(cacheKey);
@@ -318,6 +319,7 @@ function _lecturaSWRBorrar(action) {
   if (fam) for (const k of [..._lecturaSWR.keys()]) if (k.startsWith(fam)) _lecturaSWR.delete(k);
 }
 async function callCheckinAppsScriptPost(action, dataObj, opts) {
+  if (!(opts && opts.directo) && typeof _GCS_ACT !== "undefined" && _GCS_ACT[action]) return _GCS_ACT[action](dataObj || {}); // Check-list ya vive en Cloud Storage
   _lecturaSWRBorrar(action);
   const body = JSON.stringify(Object.assign({ action }, dataObj || {}));
   const TIMEOUT_MS = 60000;
@@ -1999,12 +2001,8 @@ async function _botExecTool(toolUse, ctx) {
         Reportado_por: ctx.isAdmin ? `Admin (bot) · ${ctx.phone10}` : `bot · huésped ${ctx.phone10}`,
         Updated_by: "wa-bot",
       };
-      const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload),
-      });
-      const j = await r.json(); if (typeof _rtLista !== "undefined") { _rtLista.payload = null; } // la lista de Mantenimiento trae el reporte nuevo
+      delete payload.action;
+      const j = await callCheckinAppsScriptPost("rt_upsert", payload); if (typeof _rtLista !== "undefined") { _rtLista.payload = null; } // la lista de Mantenimiento trae el reporte nuevo
       if (!j.ok) return { content: `Error al crear reporte: ${j.error || "desconocido"}`, notifyText: null };
       const folio = String(j.folio || j.id || "");
       const nombre = String(bk.GuestName || bk["Nombre reservación"] || "").trim();
@@ -10263,6 +10261,120 @@ app.post("/aseo/tarea/borrar", async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ═══════════════════════════════════════════════════════════════════════════
+// Check-list en Cloud Storage (2026-10-11): Reportes técnicos (Mantenimiento) y Tareas programadas salen de Google
+// Sheets (Apps Script tardaba 15–45 s por escritura y duplicaba altas en los reintentos). Las mismas «acciones»
+// (rt_list, rt_upsert, tareas_save…) se atienden aquí: pantallas, bot y avisos automáticos usan esto sin cambios.
+// Primera lectura de cada tabla: se copia completa desde la hoja (una vez). La hoja queda como archivo histórico.
+// ═══════════════════════════════════════════════════════════════════════════
+const _TB_CFG = {
+  rt:  { obj: "checklist/reportes-tecnicos.json",   src: "rt_list",            post: true },
+  tar: { obj: "checklist/tareas-programadas.json",  src: "tareas_list" },
+  tcf: { obj: "checklist/tareas-config.json",       src: "tareas_config_list" },
+  toc: { obj: "checklist/tareas-ocurrencias.json",  src: "tareas_ocur_list" },
+  thi: { obj: "checklist/tareas-historial.json",    src: "tareas_hist_list" },
+};
+const _TB = {}, _tbMig = {};
+const _mxTs = () => new Date().toLocaleString("sv-SE", { timeZone: "America/Monterrey" }).slice(0, 19);
+const _tbGenId = pre => `${pre}-${_mxTs().replace(/[-:]/g, "").replace(" ", "-")}-${Math.floor(Math.random() * 10000)}`;
+async function _tbMigrar(t) {
+  if (_tbMig[t]) return _tbMig[t];
+  const C = _TB_CFG[t];
+  _tbMig[t] = (async () => {
+    const r = C.post ? await callCheckinAppsScriptPost(C.src, {}, { directo: true }) : await callCheckinAppsScript(C.src, null, { directo: true });
+    if (!r || r.ok === false || !Array.isArray(r.rows)) throw new Error(`No se pudo copiar ${t} desde Google Sheets: ${(r && r.error) || "sin filas"}`);
+    const rows = r.rows.map(x => { const o = Object.assign({}, x); delete o.row_number; return o; });
+    await _aseoMutate(C.obj, "tb_" + t, d => { if (!Array.isArray(d.rows)) Object.assign(d, { rows, headers: r.headers || null, migrado: new Date().toISOString(), origen: C.src }); });
+    console.log(`[checklist-gcs] ${t}: ${rows.length} filas copiadas desde Sheets`);
+    return _aseo["tb_" + t];
+  })().finally(() => { delete _tbMig[t]; });
+  return _tbMig[t];
+}
+async function _tbDatos(t, fresco) {
+  const c = _TB[t];
+  if (!fresco && c && Date.now() - c.ts < 5_000) return c.d; // varias copias del servidor: se relee de Cloud Storage cada 5 s
+  let d = await _rhdGetJson(_TB_CFG[t].obj);
+  if (!d || !Array.isArray(d.rows)) d = await _tbMigrar(t);
+  _TB[t] = { d, ts: Date.now() };
+  return d;
+}
+function _tbMutar(t, fn) {
+  return _tbDatos(t, true).then(() => _aseoMutate(_TB_CFG[t].obj, "tb_" + t, d => { if (!Array.isArray(d.rows)) d.rows = []; return fn(d); }))
+    .then(out => { _TB[t] = { d: _aseo["tb_" + t], ts: Date.now() }; return out; });
+}
+const _tbPayload = data => { const p = data && data.payload !== undefined ? data.payload : data; return typeof p === "string" ? JSON.parse(p) : (p || {}); };
+async function _tbLista(t) { const d = await _tbDatos(t); const rows = (d.rows || []).slice().sort((a, b) => String(b.Timestamp || "").localeCompare(String(a.Timestamp || ""))); return { ok: true, rows, headers: d.headers || (rows[0] ? Object.keys(rows[0]) : []) }; }
+// Igual que rhSaveSimple_ de Apps Script: con ID existente actualiza solo los campos que vienen; sin ID inserta.
+async function _tbGuardar(t, pre, p, dedupe) {
+  return _tbMutar(t, d => {
+    const val = v => v == null ? "" : String(v);
+    let id = String(p.ID || p.id || "").trim(), row = id ? d.rows.find(r => String(r.ID) === id) : null;
+    if (!row && !id && dedupe) row = dedupe(d.rows);
+    if (row) { Object.keys(p).forEach(k => { if (k !== "ID" && k !== "id") row[k] = val(p[k]); }); return { ok: true, id: String(row.ID), mode: "update" }; }
+    const o = {}; Object.keys(p).forEach(k => { if (k !== "id") o[k] = val(p[k]); });
+    o.ID = id || _tbGenId(pre); o.Timestamp = o.Timestamp || _mxTs();
+    d.rows.push(o); return { ok: true, id: o.ID, mode: "insert" };
+  });
+}
+async function _tbBorrar(t, id) {
+  id = String(id || "").trim(); if (!id) return { ok: false, error: "ID requerido" };
+  return _tbMutar(t, d => { const i = d.rows.findIndex(r => String(r.ID) === id); if (i < 0) return { ok: false, error: "no encontrado" }; d.rows.splice(i, 1); return { ok: true, id }; });
+}
+const _RT_BOOL = ["Bloquea_habitabilidad", "Reincidente", "Cargar_a_huesped"];
+const _rtCoerce = (k, v) => _RT_BOOL.includes(k) ? (v === true || String(v).toUpperCase() === "TRUE") : k === "Costo_total" ? (Number(v) || 0) : String(v == null ? "" : v);
+async function _rtUpsertGcs(p) {
+  p = p || {};
+  const id = String(p.ID || p.id || "").trim(), ahora = new Date().toISOString(), by = String(p.Updated_by || p.updated_by || "admin");
+  return _tbMutar("rt", d => {
+    if (id) {
+      const row = d.rows.find(r => String(r.ID) === id); if (!row) return { ok: false, error: "no encontrado" };
+      Object.keys(p).forEach(k => { if (!["ID", "id", "action", "Timestamp"].includes(k)) row[k] = _rtCoerce(k, p[k]); });
+      row.Updated_at = ahora; row.Updated_by = by;
+      return { ok: true, id, updated: true };
+    }
+    const anio = new Date().getFullYear();
+    const maxN = d.rows.reduce((m, r) => { const x = String(r.Folio || "").match(/^RT-(\d{4})-(\d+)$/); return x && +x[1] === anio ? Math.max(m, +x[2]) : m; }, 0);
+    const nid = "RT" + Date.now() + "_" + Math.floor(Math.random() * 10000), folio = p.Folio || `RT-${anio}-${String(maxN + 1).padStart(6, "0")}`;
+    const o = { ID: nid, Folio: folio, Fecha: p.Fecha || "", Timestamp: ahora, Estado: p.Estado || "nuevo", Prioridad: p.Prioridad || "P3", Tipo: p.Tipo || "correctivo", Categoria: p.Categoria || "otros",
+      Propiedad: p.Propiedad || "", "# Departamento": p["# Departamento"] || p.Departamento || "", Alojamiento: p.Alojamiento || "", Activo: p.Activo || "", Titulo: p.Titulo || "(sin título)",
+      Descripcion: p.Descripcion || "", Descripcion_solucion: p.Descripcion_solucion || "", Reportado_por: p.Reportado_por || "", Asignado_a: p.Asignado_a || "", Proveedor: p.Proveedor || "",
+      Fecha_compromiso: p.Fecha_compromiso || "", Bloquea_habitabilidad: _rtCoerce("Bloquea_habitabilidad", p.Bloquea_habitabilidad), Reincidente: _rtCoerce("Reincidente", p.Reincidente),
+      Responsabilidad: p.Responsabilidad || "indeterminada", Costo_total: Number(p.Costo_total || 0), Cargar_a_huesped: _rtCoerce("Cargar_a_huesped", p.Cargar_a_huesped),
+      Motivo_espera: p.Motivo_espera || "", Motivo_cancelacion: p.Motivo_cancelacion || "", Motivo_reapertura: p.Motivo_reapertura || "", Reservacion_id: p.Reservacion_id || "",
+      Huesped_nombre: p.Huesped_nombre || "", Huesped_contacto: p.Huesped_contacto || "", Fotos_antes_urls: p.Fotos_antes_urls != null ? String(p.Fotos_antes_urls) : "",
+      Fotos_despues_urls: p.Fotos_despues_urls != null ? String(p.Fotos_despues_urls) : "", Notas: p.Notas || "", Updated_at: ahora, Updated_by: by };
+    Object.keys(p).forEach(k => { if (!(k in o) && !["id", "action"].includes(k)) o[k] = _rtCoerce(k, p[k]); }); // columnas extra que traiga el sistema
+    d.rows.push(o);
+    return { ok: true, id: nid, folio, created: true };
+  });
+}
+var _GCS_ACT = { // var: se puede consultar aunque se llame antes de esta línea
+  rt_list: async () => { const d = await _tbDatos("rt"); return { ok: true, rows: (d.rows || []).map((r, i) => Object.assign({}, r, { row_number: i + 2 })) }; },
+  rt_upsert: p => _rtUpsertGcs(p),
+  rt_delete: p => _tbBorrar("rt", p.id || p.ID),
+  tareas_list: () => _tbLista("tar"),
+  tareas_save: d => _tbGuardar("tar", "TAR", _tbPayload(d)),
+  tareas_delete: d => _tbBorrar("tar", d.ID || d.id),
+  tareas_config_list: () => _tbLista("tcf"),
+  tareas_config_save: d => _tbGuardar("tcf", "TCF", _tbPayload(d)),
+  tareas_ocur_list: () => _tbLista("toc"),
+  tareas_ocur_save: async d => {
+    const p = Object.assign({}, _tbPayload(d)), hist = Array.isArray(p._hist) ? p._hist : []; delete p._hist;
+    const fecha = String(p.Fecha || "").replace(/^'/, "");
+    if (!p.Tarea_ID || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, error: "Tarea_ID y Fecha (YYYY-MM-DD) requeridos" };
+    p.Fecha = fecha;
+    const r = await _tbGuardar("toc", "TOC", p, rows => rows.find(x => String(x.Tarea_ID) === String(p.Tarea_ID) && String(x.Fecha).replace(/^'/, "") === fecha)); // un registro por tarea y día
+    if (r.ok && hist.length) await _GCS_ACT.tareas_hist_add({ payload: { rows: hist.map(h => ({ Tarea_ID: p.Tarea_ID, Fecha: fecha, Campo: h.Campo, Antes: h.Antes, Despues: h.Despues, Usuario: h.Usuario })) } });
+    return r;
+  },
+  tareas_hist_list: () => _tbLista("thi"),
+  tareas_hist_add: async d => {
+    const rows = (_tbPayload(d).rows || []).filter(Boolean); if (!rows.length) return { ok: true, added: 0 };
+    const ts = _mxTs(), val = v => v == null ? "" : String(v);
+    await _tbMutar("thi", x => { rows.forEach(h => x.rows.push({ ID: _tbGenId("THI"), Timestamp: ts, Tarea_ID: val(h.Tarea_ID), Fecha: val(h.Fecha).replace(/^'/, ""), Campo: val(h.Campo), Antes: val(h.Antes), Despues: val(h.Despues), Usuario: val(h.Usuario) })); });
+    return { ok: true, added: rows.length };
+  },
+};
 // ═══ Check-list › 📋 Plantillas (formularios tipo Breezeway) ═══
 // aseo/plantillas.json → { <id>: { id, titulo, depto, prioridad, descripcion, secciones:[{ id, titulo, items:[{ id, tipo, texto, foto, ref:[], min, max, escala, sub:[] }] }] } }
 // Respuestas por tarea (llave = día de la tarea: "T<id>-<fecha>"): aseo/plresp/<llave>.json; avance en aseo/plresp-idx.json → { <llave>: { p, h, t, at } }.
