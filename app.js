@@ -51081,6 +51081,9 @@ function _botcWaCss_() {
   .fx-res.proxima{background:linear-gradient(180deg,#eff6ff,#fff 70%);border-color:#bfdbfe}
   .fx-res.abierta{border-color:color-mix(in srgb,var(--tc) 55%,#fff);box-shadow:0 0 0 3px color-mix(in srgb,var(--tc) 12%,transparent)}
   .fx-cuerpo{border-top:1px solid var(--ad-line2);padding:8px 10px 10px;cursor:default}
+  .fx .fx-h{gap:4px}.fx .fx-h-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .fx-hauto{flex:none;display:inline-flex;align-items:center;gap:2px;font-size:10.5px;font-weight:600;color:var(--ad-mut,#6b7280);white-space:nowrap}.fx-hauto.on{color:#16a34a}
+  .fx-hauto .wa-auto-label{display:none!important}
   .fx .fx-auto{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;font-weight:600;padding:0;border:0;background:none;border-radius:0}
   .fx-res.encurso .fx-res-h,.fx-res.proxima .fx-res-h{background:none}
   .fx-auto em{font-style:normal;font-weight:400;color:var(--ad-mut)}.fx-auto em.ok{color:#16a34a}
@@ -52786,9 +52789,7 @@ function _botcFichaHtml_(st, logs) {
       else { const mode = tab === 'programados' ? 'schedule-only' : tab === 'reportes' ? 'reports-only' : tab === 'pagos' ? 'pagos-only' : 'full';
         try { cont = mode === 'reports-only' ? (_waRenderReportsForBooking_(bk) || _botcFxVacio_('🚨', 'Sin reportes en esta reserva')) : mode === 'pagos-only' ? (_waRenderPagosForBooking_(bk) || _botcFxVacio_('💳', 'Sin pagos registrados en esta reserva'))
           : _waRenderUnifiedList_(logs, { scheduleOnly: mode === 'schedule-only', includePagos: mode !== 'schedule-only', bookingForPagos: bk }); } catch (er) { cont = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + er.message); } }
-      const auto = !!(WA_ADMIN.config[id] && WA_ADMIN.config[id].auto_enabled);
       cuerpo = `<div class="fx-cuerpo" onclick="event.stopPropagation()">
-          <div class="fx-auto"><span>📅 Mensajes automáticos <em class="${auto ? 'ok' : ''}">· ${auto ? 'activos para esta reserva' : 'apagados para esta reserva'}</em></span>${waAutoToggleHtml(id)}</div>
           <div class="fx-steps">${t('todos', '#475569', '📋', 'Todos')}${t('programados', '#2563eb', '📅', 'Prog.')}${t('reportes', '#dc2626', '🚨', 'Reportes')}${t('pagos', '#16a34a', '💳', 'Pagos')}${t('solicitudes', '#7c3aed', '📄', 'Solic.', sols.length)}</div>
           <div class="fx-cont">${cont}</div></div>`;
     }
@@ -52802,6 +52803,8 @@ function _botcFichaHtml_(st, logs) {
   const clave = st.focusedBookingId + '|' + tab, animTab = BOTC_STATE.fxTab !== clave; BOTC_STATE.fxTab = clave;
   return `<div class="fx ${animar ? 'anim' : ''} ${animTab ? 'animtab' : ''}">
       <header class="fx-h"><span class="fx-h-t">Ficha del huésped</span>
+        ${(() => { const aid = String(st.focusedBookingId || st.bookingId || ''); if (!aid) return ''; const on = !!(WA_ADMIN.config[aid] && WA_ADMIN.config[aid].auto_enabled), bk = (st.bookings || []).find(b => String(waBookingId_(b)) === aid);
+          return `<span class="fx-hauto ${on ? 'on' : ''}" title="Mensajes automáticos de la reserva ${E(bk ? waAlojamientoLabel_(bk) : aid)}: ${on ? 'activos' : 'apagados'}">📅 Mensajes automáticos${waAutoToggleHtml(aid)}</span>`; })()}
         <button type="button" class="fx-ico" onclick="botcFxRefrescar_(this)" title="Actualizar">↻</button>
         <button type="button" class="fx-ico" onclick="botcBitacoraCerrar_()" title="Cerrar">✕</button></header>
       <div class="fx-scroll">
