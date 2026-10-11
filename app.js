@@ -66412,12 +66412,12 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
     return `<div class="ad-kpi ad-ktipo"><small>Avance por tipo</small>${fila('Total', T)}${['limpieza', 'inspeccion', 'mantenimiento'].map(k => fila(AT_DEPTO[k].t, T.filter(I => tipo(I) === k))).join('')}</div>`;
   })();
   const kpis = `<div class="ad-kpis">
-    ${(() => { // Avance del día como dona: total al centro · Terminado / En progreso / No se ha iniciado
-      const tot = vivos.length, te = n('terminado') + n('inspeccionado'), pr = n('en_proceso'), ni = Math.max(0, tot - te - pr);
-      const g1 = tot ? te / tot * 360 : 0, g2 = tot ? g1 + pr / tot * 360 : 0;
+    ${(() => { // Avance del día como dona con los MISMOS estados, colores y nombres que los botones de las cards
+      const tot = vivos.length, E = ['inspeccionado', 'terminado', 'en_proceso', 'pendiente'].map(k => ({ k, t: adEstObj_(k).t, c: adEstC_(k), n: k === 'pendiente' ? Math.max(0, tot - n('inspeccionado') - n('terminado') - n('en_proceso')) : n(k) }));
+      let acc = 0; const arco = E.map(e => { const a = acc, b = acc + (tot ? e.n / tot * 360 : 0); acc = b; return `${e.c} ${a}deg ${b}deg`; }).join(',');
       return `<div class="ad-kpi big ad-kdona"><small>Avance ${esHoy ? 'del día' : aseoDiaTxt_(hoy)} · ${pct}%</small>
-        <div class="ad-kd"><span class="r" style="background:${tot ? `conic-gradient(#065f46 0 ${g1}deg,#34d399 ${g1}deg ${g2}deg,#cbd5e1 ${g2}deg 360deg)` : '#e2e8f0'}"><b>${tot}</b></span>
-        <span class="lg"><span><i style="background:#065f46"></i>Terminado<b>${te}</b></span><span><i style="background:#34d399"></i>En progreso<b>${pr}</b></span><span><i style="background:#cbd5e1"></i>No se ha iniciado<b>${ni}</b></span></span></div></div>`;
+        <div class="ad-kd"><span class="r" style="background:${tot ? `conic-gradient(${arco})` : '#e2e8f0'}"><b>${tot}</b></span>
+        <span class="lg">${E.map(e => `<span><i style="background:${e.c}"></i>${e.t}<b>${e.n}</b></span>`).join('')}</span></div></div>`;
     })()}
     ${donas}
     ${kpi(esHoy ? 'Entran hoy' : 'Entran', ent, temp ? `${temp} temprano` : '', '', 'ent', vivos.filter(I => I.g.ent.length))}
