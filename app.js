@@ -44995,7 +44995,10 @@ function _waRenderModal(replace) {
     let m = embed.querySelector('#wa-modal');
     if (!m) { document.getElementById('wa-modal')?.remove(); m = document.createElement('div'); m.id = 'wa-modal'; m.className = 'wa-embed'; embed.innerHTML = ''; embed.appendChild(m); }
     m.style.cssText = 'height:100%;display:flex;flex-direction:column;min-height:0';
+    const sc = m.querySelector('.fx-scroll'), top = sc ? sc.scrollTop : 0, mismo = m.dataset.fxSel === String(BOTC_STATE.selectedPhone || ''); // repintar sin mover la posición
     m.innerHTML = _botcFichaHtml_(st, logs); // «Chats bot»: ficha del huésped (perfil + reservas con sus pestañas)
+    m.dataset.fxSel = String(BOTC_STATE.selectedPhone || '');
+    if (mismo && top) { const sc2 = m.querySelector('.fx-scroll'); if (sc2) sc2.scrollTop = top; }
     _waPaintAllToggles();
     return;
   }
