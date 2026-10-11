@@ -10425,7 +10425,7 @@ async function _abnBandejaCargar() {
     const reservas = [];
     for (const f of ["Current", "Upcoming"]) for (let page = 1; page <= 6; page++) {
       const d = await _lgApi(`/v2/reservations/bookings?page=${page}&size=50&stayFilter=${f}&includeExternal=true`);
-      (d.items || []).forEach(b => { if (b.thread_uid && !/declined|cancel/i.test(String(b.status || ""))) reservas.push(b); });
+      (d.items || []).forEach(b => { if (b.thread_uid && !/declined|cancel/i.test(String(b.status || "")) && !reservas.some(x => x.id === b.id)) reservas.push(b); }); // en curso y próxima a la vez: una sola vez
       if ((d.items || []).length < 50) break;
     }
     const cat = await _aseoCatalogo().catch(() => []);
@@ -10475,6 +10475,33 @@ app.post("/airbnb/visto", async (req, res) => {
     await _aseoMutate(_ABN_VISTO_OBJ, "abnVisto", d => { if (String(d[bid] || "") < f) d[bid] = f; });
     _abn.visto = _aseo.abnVisto; _abn.vistoTs = Date.now();
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Responder (etapa 2): POST /v1/reservation/booking/{id}/messages con [{ subject, message, type:"Owner", send_notification }].
+// Apagado hasta confirmar con una prueba real que el mensaje llega al huésped en Airbnb (airbnb/config.json → { envio:true }).
+// Mientras, solo se puede usar con la llave interna X-Sync-Secret (prueba controlada).
+const _ABN_CFG_OBJ = "airbnb/config.json";
+async function _abnEnviar(bid, texto, user) {
+  const r = await fetch(`https://api.lodgify.com/v1/reservation/booking/${encodeURIComponent(bid)}/messages`, { method: "POST",
+    headers: { "X-ApiKey": process.env.LODGIFY_API_KEY || "", "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify([{ subject: "Check Inn", message: texto, type: "Owner", send_notification: true }]) });
+  const t = await r.text();
+  if (!r.ok) throw new Error(`Lodgify ${r.status}: ${t.slice(0, 300)}`);
+  await new Promise(x => setTimeout(x, 2500));
+  const h = await _abnHilo(bid, (_abn.hilos.get(bid) || {}).thread).catch(() => null);
+  const aparece = !!(h && h.mensajes.some(m => m.de === "nosotros" && m.texto.replace(/\s+/g, " ").includes(texto.replace(/\s+/g, " ").slice(0, 60))));
+  console.log(`[airbnb] enviado bid=${bid} por ${user} · aparece en hilo: ${aparece} · respuesta: ${t.slice(0, 200)}`);
+  return { ok: true, respuesta: t.slice(0, 500), apareceEnHilo: aparece, mensajes: h ? h.mensajes : null };
+}
+app.post("/airbnb/enviar", async (req, res) => {
+  try {
+    const secretoOk = !!process.env.SYNC_SECRET && req.get("X-Sync-Secret") === process.env.SYNC_SECRET;
+    if (!secretoOk && !_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+    const cfg = await _rhdGetJson(_ABN_CFG_OBJ).catch(() => ({}));
+    if (!cfg.envio && !secretoOk) return res.status(403).json({ ok: false, error: "El envío desde el sistema aún no está activado (falta la prueba)." });
+    const b = req.body || {}, bid = String(b.bid || "").replace(/\D/g, ""), texto = String(b.texto || "").trim().slice(0, 4000), user = String(b.user || "").slice(0, 80);
+    if (!bid || !texto) return res.status(400).json({ ok: false, error: "Faltan reserva o texto" });
+    res.json(await _abnEnviar(bid, texto, user));
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ═══ Check-list › 📋 Plantillas (formularios tipo Breezeway) ═══
