@@ -67817,10 +67817,13 @@ async function aseoTick_() {
   const movs = document.getElementById('pc-sec-movs');
   const verPanel = !!(movs && movs.offsetParent), verAseo = aseoVisible_();
   const mt = document.getElementById('module-tareas'), verTar = !!(mt && !mt.classList.contains('hidden'));
-  if (!verPanel && !verAseo && !verTar) return;
+  const mi = document.getElementById('module-incidencias'), verInc = !!(mi && !mi.classList.contains('hidden'));
+  if (!verPanel && !verAseo && !verTar && !verInc) return;
   ASEO._busy = true;
   try {
-    await aseoRefresh_();
+    const incP = typeof incSync_ === 'function' ? incSync_() : Promise.resolve(false); // incidencias en paralelo
+    if (verPanel || verAseo || verTar) await aseoRefresh_();
+    if (await incP) ASEO.cambio = true;
     if (Date.now() - (ASEO._baseTs || 0) > 5 * 60_000) {
       ASEO._baseTs = Date.now();
       try { if (typeof pagosLoad === 'function') await pagosLoad(); if (typeof _pagosLoadExtensiones_ === 'function') await _pagosLoadExtensiones_(); } catch (_) {}
@@ -69041,3 +69044,25 @@ function keepScroll_(fn) {
   w.__ks = true; return w;
 }
 try { aseoRender_ = keepScroll_(aseoRender_); aseoRenderSide_ = keepScroll_(aseoRenderSide_); icRender_ = keepScroll_(icRender_); tdRender_ = keepScroll_(tdRender_); if (typeof pcRenderMovs_ === 'function') pcRenderMovs_ = keepScroll_(pcRenderMovs_); } catch (_) {}
+// ── Incidencias en tiempo real ──
+// Cada actualización automática (20 s) trae la lista (≈8 KB). Si cambió (otra pantalla agregó fotos, cambió estado…),
+// se redibuja lo que esté a la vista: sección Incidencias, ventana de la incidencia abierta y cards del tablero.
+// No se toca mientras se edita una incidencia (IC.f) para no perder lo capturado.
+let _incSig = '';
+async function incSync_() {
+  if (typeof INC_STATE === 'undefined') return false;
+  try {
+    const d = await fetch(`${BACKEND}/incidencias-list?_cb=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
+    if (!d || !d.ok || !Array.isArray(d.rows)) return false;
+    const sigDe = L => L.map(r => `${r.ID}|${r.UpdatedAt || ''}|${r.Estatus || ''}|${r.Fotos_count || ''}|${r.Archivada || ''}|${r.Tarea_ligada || ''}`).join(';');
+    if (!_incSig) _incSig = sigDe(INC_STATE.list || []); // lo que ya está en pantalla
+    const sig = sigDe(d.rows), cambio = sig !== _incSig; _incSig = sig;
+    INC_STATE.list = d.rows; INC_STATE._ts = Date.now();
+    if (d.catalogo && typeof icSetCatalogo_ === 'function') icSetCatalogo_(d.catalogo);
+    if (!cambio) return false;
+    const mi = document.getElementById('module-incidencias');
+    if (mi && !mi.classList.contains('hidden') && typeof icRender_ === 'function') { try { icRender_(); } catch (_) {} }
+    if (typeof IC !== 'undefined' && IC.dr && !IC.f && typeof icPintar_ === 'function') { try { icPintar_(); } catch (_) {} }
+    return true;
+  } catch (_) { return false; }
+}
