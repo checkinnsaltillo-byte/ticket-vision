@@ -10568,6 +10568,130 @@ Object.assign(_GCS_ACT, {
   wa_config_set: data => _wacfgSet(data),
 });
 // ═══════════════════════════════════════════════════════════════════════════
+// 👥 Personal (RH) y la lista vieja «sys_users» en Cloud Storage (2026-10-11). Antes: hojas Personal y sys_users.
+//   sistema/personal.json  { headers, rows:[{Nombre, Celular, sys_password, sys_modulos, …}] } (texto, como la hoja)
+//   sistema/sys-users.json { headers, rows } — lista anterior; solo respaldo del inicio de sesión, admins del bot,
+//                          contactos de emergencia y asistencia (mismas reglas que Apps Script).
+// La contraseña nunca sale en las listas (solo sys_password_set).
+// ═══════════════════════════════════════════════════════════════════════════
+const _SIS_OBJ = { per: "sistema/personal.json", su: "sistema/sys-users.json" };
+const _RH_PERSONAL_HEADERS = ["ID", "Nombre", "Apellido_paterno", "Apellido_materno", "Fecha_nacimiento", "CURP", "Direccion", "Telefono", "Celular", "Email",
+  "Puesto", "Estado", "Activo", "Fecha_ingreso", "Fecha_retiro", "Tipo_contrato", "Salario_mensual", "Periodicidad_pago", "Hora_entrada", "Hora_salida", "Dias_trabajo",
+  "NSS", "RFC", "Banco", "CLABE", "Tipo_cuenta", "Cuentahabiente", "Contacto_emergencia", "Tel_emergencia", "Tipo", "sys_access", "sys_password", "sys_modulos"];
+async function _sisLeer(t) { const d = await _waLeer(_SIS_OBJ[t]); if (!Array.isArray(d.rows)) throw new Error(`Faltan los datos de ${t === "per" ? "Personal" : "sys_users"} en Cloud Storage`); return d; }
+const _sisSinPw = r => { const o = Object.assign({}, r); o.sys_password_set = String(o.sys_password || "").trim() ? "Sí" : ""; delete o.sys_password; return o; };
+const _sisCel10 = v => { const d = String(v || "").replace(/\D/g, ""); return d.length >= 10 ? d.slice(-10) : ""; };
+const _sisCol = (r, ...ks) => { for (const k of Object.keys(r)) if (ks.includes(k.trim().toLowerCase())) return r[k]; return ""; };
+function _sisNombrePersonal(per, cel) { // nombre completo (Nombre + apellidos sin duplicar) del empleado con ese celular
+  const l10 = _sisCel10(cel); if (!l10) return "";
+  const norm = x => String(x || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+  for (const r of per.rows) {
+    if (!["Celular", "Whatsapp", "WhatsApp", "Telefono", "Teléfono", "cel"].some(k => _sisCel10(r[k]) === l10)) continue;
+    const nom = String(r.Nombre || "").trim(), ap = String(r.Apellido_paterno || "").trim(), am = String(r.Apellido_materno || "").trim();
+    const ya = (!ap || norm(nom).includes(norm(ap))) && (!am || norm(nom).includes(norm(am)));
+    return (ya ? nom : [nom, ap, am].filter(Boolean).join(" ")).replace(/\s+/g, " ").trim();
+  }
+  return "";
+}
+function _sisLookupCel(su, cel) {
+  const l10 = _sisCel10(cel); if (!l10) return null;
+  const r = su.rows.find(x => _sisCel10(x.cel) === l10);
+  return r ? { nombre: String(r.Nombre || "").trim(), puesto: String(r.Puesto || "").trim(), row: su.rows.indexOf(r) + 2 } : null;
+}
+// Asistencia por WhatsApp: la hoja RH_Asistencia sigue en Sheets; la fila del día se recuerda aquí para no releerla (tarda ~2 min).
+const _ASIST_DIA_OBJ = "sistema/asistencia-dia.json";
+Object.assign(_GCS_ACT, {
+  list_personal: async () => { const rows = (await _sisLeer("per")).rows.filter(r => String(r.Nombre || "").trim()).map(_sisSinPw); return { ok: true, rows, total: rows.length }; },
+  rh_list_empleados: async () => {
+    let d = await _sisLeer("per");
+    if (d.rows.some(r => String(r.Nombre || "").trim() && !r.ID)) d = await _waMutar(_SIS_OBJ.per, x => { x.rows.forEach(r => { if (String(r.Nombre || "").trim() && !r.ID) r.ID = _tbGenId("EMP"); }); }).then(() => _sisLeer("per"));
+    return { ok: true, rows: d.rows.filter(r => String(r.Nombre || "").trim()).map(_sisSinPw), headers: _RH_PERSONAL_HEADERS };
+  },
+  rh_save_empleado: async data => {
+    const p = Object.assign({}, _tbPayload(data)); let id = String(p.ID || p.id || "").trim();
+    if (p.sys_password != null) { p.sys_password = String(p.sys_password).trim(); if (!p.sys_password) delete p.sys_password; }
+    if (p.sys_password) {
+      const per = await _sisLeer("per"), su = await _sisLeer("su");
+      if (per.rows.some(r => String(r.sys_password || "").trim() === p.sys_password && String(r.ID || "").trim() !== id)) return { ok: false, error: "Esa sys_password ya la usa otra persona. Usa una distinta." };
+      const nomEmp = String(p.Nombre || "").trim().toLowerCase();
+      if (su.rows.some(r => String(_sisCol(r, "sys_password")).trim() === p.sys_password && !(nomEmp && String(r.Nombre || "").trim().toLowerCase() === nomEmp))) return { ok: false, error: "Esa sys_password ya la usa otro usuario del sistema. Usa una distinta." };
+    }
+    return _waMutar(_SIS_OBJ.per, d => {
+      d.headers = Array.from(new Set([...(d.headers || []), ..._RH_PERSONAL_HEADERS]));
+      const val = v => v == null ? "" : String(v);
+      const row = id ? d.rows.find(r => String(r.ID || "").trim() === id) : null;
+      if (row) { Object.keys(p).forEach(k => { if (d.headers.includes(k)) row[k] = val(p[k]); }); return { ok: true, id, mode: "update" }; }
+      if (!id) id = _tbGenId("EMP"); p.ID = id;
+      const o = {}; d.headers.forEach(h => { if (h) o[h] = val(p[h]); }); d.rows.push(o);
+      return { ok: true, id, mode: "insert" };
+    }).then(r => { _botPersCache = { ts: 0, list: [] }; return r; });
+  },
+  sys_login: async data => {
+    const p = _tbPayload(data), pwd = String(p.password || p.sys_password || "").trim();
+    if (!pwd) return { ok: false, error: "Falta contraseña" };
+    const per = await _sisLeer("per"), r = per.rows.find(x => String(x.sys_password || "").trim() === pwd);
+    if (r) { // 1) Personal (RH › Acceso al sistema): módulos por usuario
+      const acc = String(r.sys_access || "").trim().toLowerCase(); if (acc !== "sí" && acc !== "si") return { ok: false, error: "Este usuario no tiene acceso al sistema (sys_access = No)." };
+      const est = String(r.Estado || "").trim().toLowerCase(); if (est && est !== "activo") return { ok: false, error: "Usuario inactivo" };
+      return { ok: true, user: { Nombre: String(r.Nombre || "").trim(), modulosKeys: String(r.sys_modulos || "").split(",").map(x => x.trim()).filter(Boolean), source: "Personal" } };
+    }
+    const su = await _sisLeer("su"); // 2) lista anterior (grupos por número romano)
+    for (const u of su.rows) {
+      if (String(_sisCol(u, "sys_password", "password", "contraseña")).trim() !== pwd) continue;
+      const st = Object.keys(u).find(k => ["status", "estado", "estatus"].includes(k.trim().toLowerCase()));
+      if (st && String(u[st] || "").trim().toLowerCase() !== "activo") return { ok: false, error: "Usuario inactivo" };
+      const modulos = {}; Object.keys(u).forEach(k => { const m = k.match(/m[oó]dulo\s+(VIII|VII|VI|IV|V|III|II|I)\b/i); if (m) modulos[m[1].toUpperCase()] = String(u[k] || "").trim() === "1"; });
+      return { ok: true, user: { Nombre: String(u.Nombre || "").trim(), modulos } };
+    }
+    return { ok: false, error: "Contraseña incorrecta" };
+  },
+  bot_is_admin_phone: async data => {
+    const p10 = _sisCel10(data.phone10 || data.phone); if (!p10) return { ok: false, isAdmin: false, error: "phone10 requerido" };
+    const u = (await _sisLeer("su")).rows.find(r => /^administraci[oó]n$/i.test(String(r.Puesto || "").trim()) && _sisCel10(_sisCol(r, "cel", "celular", "whatsapp")) === p10);
+    return u ? { ok: true, isAdmin: true, nombre: String(u.Nombre || "").trim() } : { ok: true, isAdmin: false };
+  },
+  emergency_contacts_list: async () => {
+    const contacts = [], phones = [];
+    (await _sisLeer("su")).rows.forEach(r => { const raw = String(r.cel || "").replace(/\D/g, ""); if (raw.length < 10) return;
+      const tel = raw.length === 10 ? "+52" + raw : "+" + raw; contacts.push({ nombre: String(r.Nombre || "").trim(), telefono: tel, puesto: String(r.Puesto || "").trim() }); phones.push(tel); });
+    return { ok: true, phones, contacts, source: "sys_users" };
+  },
+  asistencia_lookup_empleado: async data => {
+    const cel = String(data.cel || data.phone || "").replace(/\D/g, ""); if (cel.length < 10) return { ok: false, error: "cel requerido (min 10 digits)" };
+    return { ok: true, empleado: _sisLookupCel(await _sisLeer("su"), cel) };
+  },
+  asistencia_marcar: async data => {
+    const cel = String(data.cel || data.phone || "").replace(/\D/g, ""), tipo = String(data.tipo || "").toLowerCase().trim();
+    const num = v => v != null && v !== "" ? Number(v) : "", lat = num(data.lat), lng = num(data.lng), acc = num(data.accuracy);
+    if (tipo !== "entrada" && tipo !== "salida") return { ok: false, error: "tipo debe ser 'entrada' o 'salida'" };
+    const emp = _sisLookupCel(await _sisLeer("su"), cel);
+    if (!emp) return { ok: false, error: "celular no está registrado en sys_users", empleado: null };
+    const nombre = _sisNombrePersonal(await _sisLeer("per"), cel) || emp.nombre;
+    const fecha = _mxHoy(), hora = _mxTs().slice(11, 16), clave = fecha + "|" + nombre;
+    // Fila del día: la que ya marcó hoy (recordada aquí) o la de la copia en memoria de RH_Asistencia.
+    const dia = await _rhdGetJson(_ASIST_DIA_OBJ).catch(() => ({}));
+    let id = dia[clave] || "", previa = null;
+    const cache = _rhListCache.get("rh_list_asistencia"), filas = (cache && cache.payload && cache.payload.rows) || [];
+    previa = filas.find(r => id ? String(r.ID) === id : (String(r.Fecha || "").slice(0, 10) === fecha && [nombre, emp.nombre].includes(String(r.Empleado_Nombre || "").trim()))) || null;
+    if (!id && previa) id = String(previa.ID || "");
+    const pl = { Metodo: "WhatsApp" };
+    if (!id) Object.assign(pl, { Timestamp: _mxTs(), Empleado_Nombre: nombre, Fecha: fecha, Concepto: "Asistencia" });
+    else if (previa && !String(previa.Concepto || "").trim()) pl.Concepto = "Asistencia";
+    pl[tipo === "entrada" ? "Entrada" : "Salida"] = hora;
+    if (lat !== "" && lng !== "") { if (tipo === "entrada") { pl.Ubicacion_Lat = lat; pl.Ubicacion_Lng = lng; } else { pl.Ubicacion_Salida_Lat = lat; pl.Ubicacion_Salida_Lng = lng; } if (acc !== "") pl.GPS_Accuracy = acc; }
+    const ent = tipo === "entrada" ? hora : String((previa && previa.Entrada) || dia[clave + "|e"] || ""), sal = tipo === "salida" ? hora : String((previa && previa.Salida) || "");
+    const mins = x => { const m = String(x).match(/^(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; }, em = mins(ent), sm = mins(sal);
+    if (em != null && sm != null && sm >= em) pl.Horas = Math.floor((sm - em) / 60) + "h" + String((sm - em) % 60).padStart(2, "0");
+    if (id) pl.ID = id;
+    const r = await callCheckinAppsScriptPost("rh_save_asistencia", { payload: pl });
+    if (!r || r.ok === false) return { ok: false, error: (r && r.error) || "No se pudo guardar en RH_Asistencia" };
+    const nid = String(r.id || id);
+    await _aseoMutate(_ASIST_DIA_OBJ, "asistDia", d => { Object.keys(d).forEach(k => { if (!k.startsWith(fecha)) delete d[k]; }); d[clave] = nid; if (tipo === "entrada") d[clave + "|e"] = hora; }).catch(() => {});
+    _rhAsistCachePatch(rows => { const v = {}; Object.keys(pl).forEach(k => { v[k] = String(pl[k]); }); v.ID = nid; const x = rows.find(q => String(q.ID) === nid); if (x) Object.assign(x, v); else rows.push(Object.assign({ Empleado_Nombre: nombre, Fecha: fecha }, v)); });
+    return { ok: true, empleado: nombre, puesto: emp.puesto, tipo, fecha, hora, row: 0, action: id ? "updated" : "created", tiene_ubicacion: lat !== "" && lng !== "" };
+  },
+});
+// ═══════════════════════════════════════════════════════════════════════════
 // Puente del formulario de registro (/registro) y demás páginas públicas hacia Apps Script.
 // GET/POST /as?action=… : si la acción ya vive en Cloud Storage se responde aquí; si no, se reenvía tal cual a
 // Apps Script. Después de algunas acciones se completa en Cloud Storage lo que Apps Script hacía en sus hojas.
