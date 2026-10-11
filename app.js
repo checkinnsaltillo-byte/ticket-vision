@@ -68543,7 +68543,7 @@ const PL_TIPOS = {
   sino: { t: 'Sí/No', ico: '❓', ph: 'Escribe una pregunta' },
   calif: { t: 'Calificación', ico: '⭐', ph: '¿Qué se debe calificar?' },
 };
-const PL_COND = [['bueno', 'Bueno', '#16a34a'], ['regular', 'Regular', '#f59e0b'], ['malo', 'Malo', '#dc2626'], ['na', 'No aplica', '#94a3b8']];
+const PL_COND = [['malo', 'Malo', '#dc2626'], ['regular', 'Regular', '#f59e0b'], ['bueno', 'Bueno', '#16a34a']]; // escala de peor a mejor; «N/A» va aparte
 ASEO.pl = ASEO.pl || { lista: {}, cargado: false, idx: {}, resp: {}, q: '' };
 const plUser_ = () => (typeof currentUser !== 'undefined' && currentUser) || '';
 const plId_ = p => (p || 'x') + Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 5);
@@ -68601,7 +68601,18 @@ function plCss_() {
   .plf-sec>summary::-webkit-details-marker{display:none}.plf-sec>summary small{margin-left:auto;font-weight:600;color:#94a3b8}.plf-sec>summary small.ok{color:#16a34a}
   .plf-it{padding:8px 12px 10px;border-top:1px dashed #f1f5f9;display:grid;gap:6px}
   .plf-q{font-size:12.5px;color:#0f1729;font-weight:600;display:flex;gap:6px;align-items:flex-start}.plf-q em{font-style:normal;font-size:10.5px;font-weight:600;color:#94a3b8;margin-left:auto;white-space:nowrap}
-  .plf-q .dn{color:#16a34a}
+  .plf-q .st{flex:none;width:16px;height:16px;margin-top:1px;border-radius:50%;border:1.5px solid #cbd5e1;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;background:#fff}
+  .plf-q .st.on{background:#16a34a;border-color:#16a34a}
+  .plf-bd{padding-left:22px;display:grid;gap:6px}
+  .plf-esc{display:flex;align-items:center;gap:8px}
+  .plf-esc .bar{display:flex;flex:1;max-width:320px;border-radius:9px;overflow:hidden;box-shadow:inset 0 0 0 1px #e2e8f0}
+  .plf-esc .bar button{all:unset;flex:1;text-align:center;padding:6px 0;font:600 12px Inter,system-ui,sans-serif;cursor:pointer;color:var(--c);background:color-mix(in srgb,var(--c) 9%,#fff);transition:background .12s,opacity .12s}
+  .plf-esc .bar button+button{box-shadow:inset 1px 0 0 #fff}
+  .plf-esc .bar button:hover{background:color-mix(in srgb,var(--c) 18%,#fff)}
+  .plf-esc .bar.sel button:not(.on){opacity:.45}
+  .plf-esc .bar button.on{background:var(--c);color:#fff;opacity:1}.plf-esc .bar button.on::before{content:'✓ '}
+  .plf-esc .na{all:unset;cursor:pointer;padding:5px 9px;border-radius:8px;border:1px dashed #cbd5e1;font:600 11.5px Inter,system-ui,sans-serif;color:#64748b}
+  .plf-esc .na.on{background:#64748b;border:1px solid #64748b;color:#fff}
   .plf-seg{display:flex;flex-wrap:wrap;gap:5px}.plf-seg button{all:unset;cursor:pointer;padding:5px 11px;border-radius:7px;border:1px solid #e2e8f0;font-size:12px;font-weight:600;color:#475569;background:#fff}
   .plf-seg button.on{background:var(--c,#4f46e5);border-color:var(--c,#4f46e5);color:#fff}
   .plf-num{display:flex;align-items:center;gap:6px}.plf-num button{all:unset;cursor:pointer;width:30px;height:30px;border-radius:8px;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#334155;background:#fff}
@@ -68820,20 +68831,20 @@ function plFillHtml_(p, key) {
     }).join(''); })()}`;
 }
 function plFillItem_(it, r, s) {
-  const T = PL_TIPOS[it.tipo], id = pcEsc(it.id), q = it.texto || (it.tipo === 'foto' ? 'Foto' : s.titulo);
+  const T = PL_TIPOS[it.tipo], id = pcEsc(it.id), q = it.texto || T.t; // sin texto propio: solo el tipo (el nombre del elemento ya es el título de la sección)
   const fotos = r.fotos || [];
   const fotosHtml = (it.tipo === 'foto' || it.foto) ? `<div class="plf-fotos">${fotos.map((f, i) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="plFotoVer_('${id}',${i})"><b onclick="plQuitarFoto_('${id}',${i})">✕</b></span>`).join('')}<label class="plf-add">📷<br>${it.tipo === 'foto' ? 'Agregar foto' : 'Foto'}<input type="file" accept="image/*" multiple hidden onchange="plFotoSubir_(this,'${id}')"></label></div>` : '';
   let ctl = '';
-  if (it.tipo === 'condicion') ctl = `<div class="plf-seg">${PL_COND.map(([k, t, c]) => `<button type="button" class="${r.v === k ? 'on' : ''}" style="--c:${c}" onclick="plSet_('${id}','${k}')">${t}</button>`).join('')}</div>${r.v === 'regular' || r.v === 'malo' ? `<input class="pl-in" placeholder="¿Qué se encontró? (opcional)" value="${pcEsc(r.nota || '')}" oninput="plNota_('${id}',this.value)">` : ''}`;
+  if (it.tipo === 'condicion') ctl = `<div class="plf-esc"><div class="bar ${r.v && r.v !== 'na' ? 'sel' : ''}">${PL_COND.map(([k, t, c]) => `<button type="button" class="${r.v === k ? 'on' : ''}" style="--c:${c}" onclick="plSet_('${id}','${k}')">${t}</button>`).join('')}</div><button type="button" class="na ${r.v === 'na' ? 'on' : ''}" title="No aplica" onclick="plSet_('${id}','na')">N/A</button></div>${r.v === 'regular' || r.v === 'malo' ? `<input class="pl-in" placeholder="¿Qué se encontró? (opcional)" value="${pcEsc(r.nota || '')}" oninput="plNota_('${id}',this.value)">` : ''}`;
   else if (it.tipo === 'lista') ctl = (it.sub || []).length ? `<div style="display:grid;gap:6px">${it.sub.map((x, i) => { const on = !!(r.v && r.v[i]); return `<span class="pl-ck ${on ? 'on' : ''}" onclick="plSub_('${id}',${i})"><span class="ck">${on ? '✓' : ''}</span>${pcEsc(x)}</span>`; }).join('')}</div>` : `<span class="pl-ck ${r.v === true ? 'on' : ''}" onclick="plSet_('${id}',${r.v === true ? 'null' : 'true'})"><span class="ck">${r.v === true ? '✓' : ''}</span>Hecho / revisado</span>`;
   else if (it.tipo === 'contar') { const v = r.v ?? '', n = v === '' ? null : Number(v); ctl = `<div class="plf-num"><button type="button" onclick="plCont_('${id}',-1)">−</button><input class="pl-in" type="number" min="0" value="${pcEsc(String(v))}" oninput="plSet_('${id}',this.value===''?'':+this.value,true)"><button type="button" onclick="plCont_('${id}',1)">+</button>${it.min != null || it.max != null ? `<span class="plf-ref">${it.min != null ? 'Mín. ' + it.min : ''}${it.min != null && it.max != null ? ' · ' : ''}${it.max != null ? 'Máx. ' + it.max : ''}</span>` : ''}</div>${n != null && it.min != null && n < it.min ? `<div class="plf-warn">⚠️ Por debajo del mínimo (${it.min})</div>` : n != null && it.max != null && n > it.max ? `<div class="plf-warn">⚠️ Arriba del máximo (${it.max})</div>` : ''}`; }
   else if (it.tipo === 'texto') ctl = `<textarea class="pl-in" rows="2" placeholder="Escribe la respuesta" oninput="plSet_('${id}',this.value,true)">${pcEsc(r.v || '')}</textarea>`;
   else if (it.tipo === 'sino') ctl = `<div class="plf-seg"><button type="button" class="${r.v === 'si' ? 'on' : ''}" style="--c:#16a34a" onclick="plSet_('${id}','si')">Sí</button><button type="button" class="${r.v === 'no' ? 'on' : ''}" style="--c:#dc2626" onclick="plSet_('${id}','no')">No</button></div>`;
   else if (it.tipo === 'calif') { const E = Number(it.escala) || 5; ctl = `<div class="plf-stars">${Array.from({ length: E }, (_, i) => `<button type="button" class="${Number(r.v) > i ? 'on' : ''}" title="${i + 1} de ${E}" onclick="plSet_('${id}',${i + 1})">★</button>`).join('')}${r.v ? `<span class="plf-ref" style="align-self:center;margin-left:6px">${r.v} de ${E}</span>` : ''}</div>`; }
   const hecho = plHecho_(it, r);
-  return `<div class="plf-it" data-i="${id}"><div class="plf-q"><span class="${hecho ? 'dn' : ''}">${hecho ? '✓' : T.ico}</span><span>${pcEsc(q)}</span><em>${T.t}${it.foto && it.tipo !== 'foto' ? ' · 📷 obligatoria' : ''}</em></div>
-    ${(it.ref || []).length ? `<div class="plf-fotos"><span class="plf-ref">Referencia:</span>${it.ref.map((f, i) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(${pcEsc(JSON.stringify(it.ref.map(x => BACKEND + x.url)))},${i})"></span>`).join('')}</div>` : ''}
-    ${ctl}${fotosHtml}</div>`;
+  return `<div class="plf-it" data-i="${id}"><div class="plf-q"><span class="st ${hecho ? 'on' : ''}">${hecho ? '✓' : ''}</span><span>${pcEsc(q)}</span><em>${it.texto ? T.t : ''}${it.foto && it.tipo !== 'foto' ? `${it.texto ? ' · ' : ''}📷 obligatoria` : ''}</em></div>
+    <div class="plf-bd">${(it.ref || []).length ? `<div class="plf-fotos"><span class="plf-ref">Referencia:</span>${it.ref.map((f, i) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(${pcEsc(JSON.stringify(it.ref.map(x => BACKEND + x.url)))},${i})"></span>`).join('')}</div>` : ''}
+    ${ctl}${fotosHtml}</div></div>`;
 }
 function plCtx_() { const el = document.getElementById('plf'); if (!el) return null; const p = ASEO.pl.lista[el.dataset.p]; return p ? { el, key: el.dataset.k, p, resp: (ASEO.pl.resp[el.dataset.k] = ASEO.pl.resp[el.dataset.k] || {}) } : null; }
 function plItem_(p, id) { for (const s of p.secciones || []) for (const it of s.items || []) if (it.id === id) return it; return null; }
@@ -68867,7 +68878,7 @@ function plGuardarLuego_() {
 window.plSet_ = function (id, v, suave) {
   const C = plCtx_(); if (!C) return; const r = C.resp[id] = C.resp[id] || {};
   if (v === null || (!suave && r.v === v && typeof v !== 'number')) delete r.v; else r.v = v;
-  if (suave) { const it = plItem_(C.p, id), box = C.el.querySelector(`.plf-it[data-i="${id}"] .plf-q span`); if (box && it) { const h = plHecho_(it, r); box.className = h ? 'dn' : ''; box.textContent = h ? '✓' : PL_TIPOS[it.tipo].ico; } plRepinta_(true); }
+  if (suave) { const it = plItem_(C.p, id), box = C.el.querySelector(`.plf-it[data-i="${id}"] .plf-q .st`); if (box && it) { const h = plHecho_(it, r); box.classList.toggle('on', h); box.textContent = h ? '✓' : ''; } plRepinta_(true); }
   else plRepinta_();
   plGuardarLuego_();
 };
