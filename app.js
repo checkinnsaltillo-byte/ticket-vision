@@ -66177,8 +66177,7 @@ window.icArchivar_ = function (id) {
 };
 // Tarea creada desde una incidencia («Crear tarea correctiva»).
 function axEsDeInc_(k) { return !!axEx_(k).deInc || (typeof INC_STATE !== 'undefined' && (INC_STATE.list || []).some(r => icLigs_(r).includes(String(k)))); }
-function axIncMini_(k, hid, dia) {
-  if (axEx_(k).incidencia) return '';
+function axIncMini_(k, hid, dia) { // siempre visible: una card/tarea puede tener varias incidencias
   return `<button type="button" class="ax-mini" title="Reportar incidencia" onclick="event.stopPropagation();axReportar_('${pcEsc(String(k))}','${pcEsc(String(hid || ''))}','${pcEsc(String(dia || ''))}')">＋⚠</button>`; // siempre el icono pequeño (Simple y Detalles)
 }
 function axFila_(k, autoCO, hid, dia) { // renglón del botón de incidencia (el tipo de servicio va junto al tipo de tarea: axCatHtml_)
