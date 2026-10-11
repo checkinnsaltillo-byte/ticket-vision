@@ -333,8 +333,8 @@ function _lecturaSWRBorrar(action) {
   if (fam) for (const k of [..._lecturaSWR.keys()]) if (k.startsWith(fam)) _lecturaSWR.delete(k);
 }
 async function callCheckinAppsScriptPost(action, dataObj, opts) {
-  if (!(opts && opts.directo) && typeof _GCS_ACT !== "undefined" && _GCS_ACT[action]) return _GCS_ACT[action](dataObj || {}); // Check-list ya vive en Cloud Storage
   _lecturaSWRBorrar(action);
+  if (!(opts && opts.directo) && typeof _GCS_ACT !== "undefined" && _GCS_ACT[action]) return _GCS_ACT[action](dataObj || {}); // ya vive en Cloud Storage
   const body = JSON.stringify(Object.assign({ action }, dataObj || {}));
   const TIMEOUT_MS = 60000;
   async function _postAttempt() {
@@ -10292,6 +10292,9 @@ const _TB_CFG = {
   tcf: { obj: "checklist/tareas-config.json",       src: "tareas_config_list" },
   toc: { obj: "checklist/tareas-ocurrencias.json",  src: "tareas_ocur_list" },
   thi: { obj: "checklist/tareas-historial.json",    src: "tareas_hist_list" },
+  sol: { obj: "whatsapp/solicitudes.json",          src: "list_solicitudes" },
+  pm:  { obj: "whatsapp/pagos-manuales.json",       src: "list_pagos_manuales" },
+  rpe: { obj: "whatsapp/telefonos-extra.json",      src: "list_reserva_phones_extra" },
 };
 const _TB = {}, _tbMig = {};
 const _mxTs = () => new Date().toLocaleString("sv-SE", { timeZone: "America/Monterrey" }).slice(0, 19);
@@ -10458,6 +10461,71 @@ async function _waLogAdd(data) {
   await _waMutar(_WA_OBJ.log, d => { if (!Array.isArray(d.rows)) d.rows = []; d.rows.push(row); if (d.rows.length > 20000) d.rows.splice(0, d.rows.length - 20000); });
   return { ok: true };
 }
+// Solicitudes del bot, pagos manuales y teléfonos extra de reservas (mismas reglas que Apps Script).
+const _solId = pre => `${pre}-${_mxTs().replace(/[-:]/g, "").replace(" ", "-")}-${Math.floor(Math.random() * 9000 + 1000)}`;
+Object.assign(_GCS_ACT, {
+  list_solicitudes: async data => {
+    const p10 = _waP10(data.phone), est = String(data.estado || "").trim().toLowerCase();
+    let rows = ((await _tbDatos("sol")).rows || []).slice();
+    if (p10) rows = rows.filter(r => _waP10(r.Phone) === p10);
+    if (est) rows = rows.filter(r => String(r.Estado || "").toLowerCase() === est);
+    return { ok: true, rows: rows.sort((a, b) => String(b.Timestamp || "").localeCompare(String(a.Timestamp || ""))) };
+  },
+  save_solicitud: data => {
+    const p = _tbPayload(data), p10 = String(p.Phone || "").replace(/\D/g, "").slice(-10), tipo = String(p.Tipo || "").trim();
+    if (p10.length < 10) return { ok: false, error: "Phone inválido" };
+    if (!tipo) return { ok: false, error: "Tipo requerido" };
+    const id = _solId("SOL");
+    return _tbMutar("sol", d => { d.rows.push({ ID: id, Timestamp: _waIso(), Phone: p10, Tipo: tipo, ReservaId: String(p.ReservaId || "").trim(), Resumen: String(p.Resumen || "").trim(),
+      Estado: "pendiente", AtendidoPor: "", AtendidoAt: "", Notas: String(p.Notas || "").trim(), ProgramadaAt: "" }); return { ok: true, id }; });
+  },
+  update_solicitud_estado: data => {
+    const p = _tbPayload(data), id = String(p.id || data.id || "").trim(), est = String(p.estado || "").trim().toLowerCase();
+    if (!id) return { ok: false, error: "id requerido" };
+    if (!["pendiente", "atendido", "cancelado", "aprobado", "rechazado", "programado"].includes(est)) return { ok: false, error: "estado inválido" };
+    return _tbMutar("sol", d => { const r = d.rows.find(x => String(x.ID).trim() === id); if (!r) return { ok: false, error: "no encontrado" };
+      r.Estado = est; r.AtendidoPor = String(p.AtendidoPor || ""); r.AtendidoAt = _waIso(); if (p.Notas) r.Notas = String(p.Notas); if (p.ProgramadaAt) r.ProgramadaAt = String(p.ProgramadaAt); return { ok: true, id }; });
+  },
+  list_pagos_manuales: async data => {
+    const bid = String(data.reservaId || "").trim(), rows = (await _tbDatos("pm")).rows || [];
+    return { ok: true, rows: bid ? rows.filter(r => String(r.ReservaId || "").trim() === bid) : rows.slice() };
+  },
+  save_pago_manual: data => {
+    const p = _tbPayload(data), bid = String(p.ReservaId || "").trim(), monto = Number(p.Monto || 0);
+    if (!bid) return { ok: false, error: "ReservaId requerido" };
+    if (!(monto > 0)) return { ok: false, error: "Monto debe ser > 0" };
+    const fecha = String(p.Fecha || "").trim() || _mxHoy(), metodo = String(p.Metodo || "").trim(), ref = String(p.Referencia || "").trim();
+    let ev = p.Evidencias || p.EvidenciasJSON || [], evStr = "";
+    try { if (typeof ev === "string") { JSON.parse(ev); evStr = ev; } else if (Array.isArray(ev)) evStr = JSON.stringify(ev); } catch (_) { evStr = ""; }
+    return _tbMutar("pm", d => {
+      const dup = d.rows.find(e => String(e.ReservaId || "").trim() === bid && Math.abs((Number(e.Monto) || 0) - monto) <= 0.01 && (!String(e.Fecha || "").slice(0, 10) || String(e.Fecha).slice(0, 10) === fecha.slice(0, 10))
+        && (ref ? String(e.Referencia || "").trim() === ref : !String(e.Referencia || "").trim() && String(e.Metodo || "").trim() === metodo));
+      if (dup) return { ok: true, id: String(dup.ID), deduped: true };
+      const id = _solId("PM");
+      d.rows.push({ ID: id, Timestamp: _waIso(), ReservaId: bid, Monto: monto, Metodo: metodo, Fecha: fecha, Referencia: ref, Notas: String(p.Notas || "").trim(), RegistradoPor: String(p.RegistradoPor || "").trim(), EvidenciasJSON: evStr });
+      return { ok: true, id };
+    });
+  },
+  delete_pago_manual: data => { const p = _tbPayload(data); return _tbBorrar("pm", p.id || data.id).then(r => r.ok ? r : { ok: false, error: "ID no encontrado" }); },
+  list_reserva_phones_extra: async data => {
+    const p10 = String(data.phone || "").replace(/\D/g, "").slice(-10), bid = String(data.reservaId || "").trim();
+    let rows = ((await _tbDatos("rpe")).rows || []).slice();
+    if (p10) rows = rows.filter(r => String(r.Phone || "").replace(/\D/g, "").slice(-10) === p10);
+    if (bid) rows = rows.filter(r => String(r.ReservaId || "").trim() === bid);
+    return { ok: true, rows };
+  },
+  save_reserva_phone_extra: data => {
+    const p = _tbPayload(data), bid = String(p.ReservaId || "").trim(), p10 = String(p.Phone || "").replace(/\D/g, "").slice(-10);
+    if (!bid) return { ok: false, error: "ReservaId requerido" };
+    if (p10.length < 10) return { ok: false, error: "Phone inválido (10+ dígitos)" };
+    return _tbMutar("rpe", d => {
+      const ya = d.rows.find(r => String(r.ReservaId || "").trim() === bid && String(r.Phone || "").replace(/\D/g, "").slice(-10) === p10);
+      if (ya) return { ok: true, id: ya.ID, duplicate: true };
+      const id = _solId("RPE"); d.rows.push({ ID: id, Timestamp: _waIso(), ReservaId: bid, Phone: p10, AddedBy: String(p.AddedBy || "").trim() }); return { ok: true, id };
+    });
+  },
+  delete_reserva_phone_extra: data => { const p = _tbPayload(data); return _tbBorrar("rpe", p.id || data.id).then(r => r.ok ? r : { ok: false, error: "ID no encontrado" }); },
+});
 const _bpBool = v => v === true || String(v).toLowerCase() === "true" || String(v) === "1";
 Object.assign(_GCS_ACT, {
   // ── Conversaciones ──
