@@ -66225,6 +66225,7 @@ function adCard_(I) {
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
     ${srcTxt || xR ? `<div class="r2 ad-src"><span>${pcEsc(srcTxt)}</span>${xR ? (n => n ? `<span title="Personas">👥 ${n}</span>` : '')(Number(xR.b.NumberOfGuests) || (Number(xR.b.Adults) || 0) + (Number(xR.b.Children) || 0)) + (xR.noches ? `<span title="Noches">🌙 ${xR.noches}</span>` : '') : ''}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
+    ${(pid => pid && (ASEO.pl.idx || {})[I.asigId] ? plCardBar_({ plantilla: pid }, I.asigId) : '')(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)))}
     <div class="ad-eq">${equipo}</div>
     <div class="r3 ad-r3w">${nsChip}<span class="ad-r3b"><span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? 'Desarchivar' : 'Archivar'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}${guia}${prio4Html_(I.prio, false, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<button type="button" class="ad-det" onclick="event.stopPropagation();adAbrir_('${pcEsc(I.k)}')">Detalles</button></span></div>
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}
@@ -66694,6 +66695,7 @@ function adPintar_(nuevo) {
       <div class="lab">Estado de aseo</div><div class="ad-steps" style="grid-template-columns:repeat(4,1fr)">${adEstBtns_(I.asigId, I.hid, I.selE, false, false, true)}</div>${guiaBox}
       ${axTipoTareaHtml_(I.depto, null)}${I.soloEnt ? `<div class="ad-hint">Solo entra huésped hoy: no se programa limpieza, se requiere <b>inspección</b> antes de la entrada.${I.ultSal ? ` Última salida: ${aseoDiaTxt_(I.ultSal)} (${I.diasUlt === 0 ? 'hoy' : 'hace ' + I.diasUlt + ' día' + (I.diasUlt === 1 ? '' : 's')}).` : ''}</div>` : ''}
       ${axDetalle_(I.asigId, I.g.sal.length > 0, I.hid, I.hoy || aseoDia_())}
+      ${plBox_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId)}
       ${evs.length ? `<div class="lab">Línea del día</div><div class="ad-tl">${evs.join('')}</div>` : ''}
       <div class="lab">Solicitudes</div><div class="ad-grid2">${sol('tard', I.xs, I.trd)}${sol('temp', I.xe, I.temp)}</div>
       <div class="lab">Equipo</div><div class="ad-ppl">${I.pA.map(n => per(n, 'Aseo')).join('')}${I.pI.map(n => per(n, 'Inspección')).join('')}${!I.pA.length && !I.pI.length ? '<div class="ad-un">Sin asignar</div>' : ''}
@@ -66792,7 +66794,7 @@ function atCard_(I) {
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
     <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${t.repite ? '<span class="sep"></span><span>↻ Se repite</span>' : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
-    ${plCardBar_(t, I.key)}
+    ${plCardBar_(Object.assign({}, t, { plantilla: plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla) }), I.key)}
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
     <div class="r3">${(t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}${prio4Html_(t.prioridad, false, `atPrioCiclo_('${pcEsc(t.id)}')`)}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
     ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}
@@ -66913,11 +66915,11 @@ function atFormPintar_() {
     <div class="ad-ft"><button type="button" class="ad-bt pri" id="at-ok" onclick="atGuardar_()">${F.id ? 'Guardar cambios' : 'Crear tarea'}</button><button type="button" class="ad-bt" onclick="${F.id ? `atAbrir_('${pcEsc(F.id)}','${F.fecha}')` : 'adCerrar_()'}">Cancelar</button></div>`;
 }
 window.atFormPrio_ = function (k) { ASEO._tf.prioridad = k; atFormPintar_(); };
-window.atFormSrv_ = function (v) { ASEO._tf.srv = v; atFormPintar_(); };
+window.atFormSrv_ = function (v) { const F = ASEO._tf; F.srv = v; if (!F.plantilla && F.depto === 'limpieza' && v === 'checkout') F.plantilla = plDefId_(); atFormPintar_(); };
 window.rtFormSrv_ = function (v) { ASEO._rf._srv = v; rtFormPintarA_(); };
 // Mantenimiento = reporte técnico: se cambia al formulario del reporte con los datos ya escritos.
 window.atFormDepto_ = function (v) {
-  if (v !== 'mantenimiento') { const F = ASEO._tf, p = F.plantilla && ASEO.pl && ASEO.pl.lista[F.plantilla]; if (p && p.depto !== v) F.plantilla = ''; F.depto = v; atFormPintar_(); return; } // otra área: se quita la plantilla que no le corresponde
+  if (v !== 'mantenimiento') { const F = ASEO._tf, p = F.plantilla && ASEO.pl && ASEO.pl.lista[F.plantilla]; if (p && p.depto !== v) F.plantilla = ''; F.depto = v; if (!F.plantilla && v === 'limpieza' && F.srv === 'checkout') F.plantilla = plDefId_(); atFormPintar_(); return; } // otra área: se quita la plantilla que no le corresponde
   const F = ASEO._tf;
   rtFormA_(null, { hid: F.hid, titulo: F.titulo, desc: F.desc, fecha: F.fecha, prioridad: F.prioridad, asignados: F.asignados, reserva: F.reserva, deTarea: F.id || '', srv: F.srv });
 };
@@ -68594,7 +68596,8 @@ function plCss_() {
   @media (max-width:760px){.pl-ed{grid-template-columns:1fr}.pl-side{position:static;max-height:none}.pl-it{grid-template-columns:1fr}.pl-it .tp{padding:0}.pl-main{padding:14px}}
   /* Formulario dentro de la tarea */
   .plf{border:1px solid #e0e7ff;border-radius:12px;overflow:hidden;margin:6px 0 4px;background:#fff}
-  .plf-h{padding:10px 12px;background:#eef2ff;display:grid;gap:6px}.plf-h b{font-size:13px;color:#312e81}
+  .plf-h{padding:10px 12px;background:#eef2ff;display:grid;gap:6px;cursor:pointer;user-select:none}.plf-h:hover{background:#e0e7ff}.plf-h b{font-size:13px;color:#312e81}
+  .plf-ht{display:flex;align-items:center;gap:8px}.plf-car{margin-left:auto;font-size:13px;color:#4f46e5;font-weight:700}
   .plf-bar{display:flex;align-items:center;gap:8px;font:700 11.5px Inter,system-ui,sans-serif;color:#312e81}.plf-bar span{flex:1;height:8px;background:#e0e7ff;border-radius:999px;overflow:hidden}.plf-bar i{display:block;height:100%;background:#4f46e5;border-radius:999px;transition:width .2s}
   .plf-bar.ok i{background:#16a34a}.plf-st{font-size:10.5px;color:#6366f1;font-weight:600}
   .plf-sec{border-top:1px solid #eef0f3}.plf-sec>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px;font-weight:700;color:#0f1729}
@@ -68799,31 +68802,36 @@ function plAvance_(p, resp) {
   let h = 0, t = 0; (p.secciones || []).forEach(s => (s.items || []).forEach(it => { t++; if (plHecho_(it, (resp || {})[it.id])) h++; }));
   return { h, t, p: t ? Math.round(h / t * 100) : 0 };
 }
-function plTareaBox_(t, key) {
-  if (!t || !t.plantilla) return '';
+// Plantilla predeterminada: toda tarea/card de Limpieza › Check-out lleva «Limpieza CHECKOUT» (aunque no se haya elegido).
+function plDefId_() { const p = Object.values(ASEO.pl.lista || {}).find(x => /limpieza\s*check-?out/i.test(x.titulo)); return p ? p.id : ''; }
+function plDe_(depto, srv, expl) { if (expl) return expl; if (depto === 'limpieza' && srv === 'checkout') { if (!ASEO.pl.cargado) plCargar_().then(() => { if (typeof aseoVisible_ === 'function' && aseoVisible_()) aseoRenderSide_(); if (ASEO._dr && !ASEO._dr.form && document.getElementById('ad-drawer')) adPintar_(); }); return plDefId_(); } return ''; }
+function plTareaBox_(t, key) { return t ? plBox_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), key) : ''; }
+function plBox_(pid, key) {
+  if (!pid) return '';
   plCss_();
-  const p = ASEO.pl.lista[t.plantilla];
+  const p = ASEO.pl.lista[pid];
   if (!ASEO.pl.cargado || !(key in ASEO.pl.resp)) {
     const CR = ASEO.pl._cr = ASEO.pl._cr || {};
     if (!CR[key]) {
       CR[key] = 1;
       Promise.all([plCargar_(), fetch(`${BACKEND}/aseo/plantilla-resp?k=${encodeURIComponent(key)}`, { cache: 'no-store' }).then(r => r.json()).catch(() => null)]).then(([, j]) => {
         ASEO.pl.resp[key] = (j && j.ok && j.resp && j.resp.resp) || {}; if (j && j.resp && j.resp.at) ASEO.pl.respAt = Object.assign(ASEO.pl.respAt || {}, { [key]: j.resp.at });
-        delete CR[key]; if (ASEO._dr && ASEO._dr.tarea === t.id) adPintar_();
+        delete CR[key]; if (ASEO._dr && !ASEO._dr.form && document.getElementById('ad-drawer')) adPintar_();
       });
     }
     return '<div class="lab">📋 Plantilla</div><div class="ad-hint">⏳ Cargando formulario…</div>';
   }
   if (!p) return '<div class="lab">📋 Plantilla</div><div class="ad-hint">La plantilla asignada ya no existe.</div>';
-  return `<div class="lab">📋 Plantilla</div><div class="plf" id="plf" data-k="${pcEsc(key)}" data-p="${pcEsc(p.id)}">${plFillHtml_(p, key)}</div>`;
+  return `<div class="lab">📋 Plantilla</div><div class="plf ${(ASEO.pl.exp || {})[key] ? 'exp' : ''}" id="plf" data-k="${pcEsc(key)}" data-p="${pcEsc(p.id)}">${plFillHtml_(p, key)}</div>`;
 }
 function plFillHtml_(p, key) {
   const resp = ASEO.pl.resp[key] || {}, A = plAvance_(p, resp);
   const abiertas = ASEO.pl.abiertas = ASEO.pl.abiertas || {};
   const at = (ASEO.pl.respAt || {})[key];
-  return `<div class="plf-h"><b>${pcEsc(p.titulo)}</b><div class="plf-bar ${A.p === 100 ? 'ok' : ''}"><span><i style="width:${A.p}%"></i></span>${A.p}% · ${A.h}/${A.t}</div>
+  const exp = !!(ASEO.pl.exp || {})[key];
+  return `<div class="plf-h" role="button" onclick="plTg_('${pcEsc(key)}')" title="${exp ? 'Contraer' : 'Desplegar'} la plantilla"><div class="plf-ht"><b>📋 ${pcEsc(p.titulo)}</b><span class="plf-car">${exp ? '▾' : '▸'}</span></div><div class="plf-bar ${A.p === 100 ? 'ok' : ''}"><span><i style="width:${A.p}%"></i></span>${A.p}% · ${A.h}/${A.t}</div>
       <div class="plf-st" id="plf-st">${ASEO.pl._guardando === key ? '⏳ Guardando…' : at ? `Guardado ${new Date(at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : 'Se guarda solo al responder'}</div></div>
-    ${(() => { const pend = (p.secciones || []).findIndex(s => s.items.some(it => !plHecho_(it, resp[it.id]))); return (p.secciones || []).map((s, si) => {
+    ${!exp ? '' : (() => { const pend = (p.secciones || []).findIndex(s => s.items.some(it => !plHecho_(it, resp[it.id]))); return (p.secciones || []).map((s, si) => {
       // Abiertas: todas si son pocas secciones; si son muchas, solo la primera con campos pendientes (las demás con un clic).
       const hs = s.items.filter(it => plHecho_(it, resp[it.id])).length, op = abiertas[key + '|' + si] ?? (p.secciones.length <= 3 || si === pend);
       return `<details class="plf-sec" ${op ? 'open' : ''} ontoggle="(ASEO.pl.abiertas||(ASEO.pl.abiertas={}))['${pcEsc(key)}|${si}']=this.open"><summary>${pcEsc(s.titulo)}<small class="${hs === s.items.length ? 'ok' : ''}">${hs === s.items.length ? '✓ ' : ''}${hs}/${s.items.length}</small></summary>
@@ -68875,6 +68883,7 @@ function plGuardarLuego_() {
     ASEO.pl._guardando = null;
   }, 900);
 }
+window.plTg_ = function (key) { const E = ASEO.pl.exp = ASEO.pl.exp || {}; E[key] = !E[key]; const el = document.getElementById('plf'); if (el) el.classList.toggle('exp', E[key]); plRepinta_(); };
 window.plSet_ = function (id, v, suave) {
   const C = plCtx_(); if (!C) return; const r = C.resp[id] = C.resp[id] || {};
   if (v === null || (!suave && r.v === v && typeof v !== 'number')) delete r.v; else r.v = v;
