@@ -68285,9 +68285,17 @@ window.icFormPers_ = function (anchor) {
   const obs = setInterval(() => { const c = document.getElementById('ic-pers'); if (c && IC.f) c.innerHTML = icPersChips_(); if (!document.querySelector('.pz-pop')) { clearInterval(obs); ASEO._tf = save; } }, 250);
 };
 window.icFormFotos_ = function (inp) {
-  const files = [...(inp.files || [])]; inp.value = '';
+  const files = [...(inp.files || [])]; inp.value = ''; if (!files.length) return;
+  const c0 = document.getElementById('ic-fotos'), tmp = document.createElement('span'); tmp.textContent = '⏳ Procesando foto…'; tmp.style.cssText = 'font-size:11px;color:#64748b;align-self:center'; if (c0) c0.appendChild(tmp);
   Promise.all(files.map(f0 => imgLigera_(f0).then(f => _rtFileToBase64(f).then(base64 => ({ name: f.name || `inc_${Date.now()}.jpg`, mimeType: f.type || 'image/jpeg', base64 })))))
-    .then(L => { if (!IC.f) return; IC.f.nuevas.push(...L); const c = document.getElementById('ic-fotos'); if (c) c.innerHTML = icFotosForm_(); });
+    .then(L => {
+      if (!IC.f) return; (IC.f.nuevas = IC.f.nuevas || []).push(...L);
+      const c = document.getElementById('ic-fotos'); if (c) c.innerHTML = icFotosForm_();
+      // Al editar, «Guardar cambios» aparece solo con cambios: la foto se procesa después del clic, así que se revisa aquí
+      // (antes el botón se quedaba oculto y la foto nunca se enviaba).
+      const ok = document.getElementById('ic-ok'); if (ok && IC.f.id) ok.style.display = icFormSucio_() ? '' : 'none';
+    })
+    .catch(e => { tmp.remove(); alert('No se pudo procesar la foto: ' + (e.message || e)); });
 };
 window.icGuardar_ = async function () {
   const F = IC.f; if (!F) return;
@@ -69014,3 +69022,21 @@ function plCardBar_(t, key) {
   const pc = x ? x.p : 0;
   return `<div class="pl-cbar ${pc === 100 ? 'ok' : ''}" title="${pcEsc(p ? p.titulo : 'Plantilla')}${x ? ` · ${x.h} de ${x.t} campos` : ' · sin respuestas'}">📋<span><i style="width:${pc}%"></i></span>${pc}%</div>`;
 }
+// ── Conservar la posición de la pantalla al redibujar ──
+// Safari (iPhone) no recuerda la posición cuando se reemplaza mucho contenido: tras un cambio la pantalla se iba arriba.
+// Se guarda la posición antes de redibujar y se restaura al terminar (y en el siguiente cuadro, por si el navegador la movió).
+function keepScroll_(fn) {
+  if (!fn || fn.__ks) return fn;
+  const w = function (...a) {
+    const se = document.scrollingElement || document.documentElement, y = se.scrollTop;
+    try { return fn.apply(this, a); }
+    finally {
+      if (y > 0) {
+        if (Math.abs(se.scrollTop - y) > 2) se.scrollTop = y;
+        requestAnimationFrame(() => { if (Math.abs(se.scrollTop - y) > 2) se.scrollTop = y; });
+      }
+    }
+  };
+  w.__ks = true; return w;
+}
+try { aseoRender_ = keepScroll_(aseoRender_); aseoRenderSide_ = keepScroll_(aseoRenderSide_); icRender_ = keepScroll_(icRender_); tdRender_ = keepScroll_(tdRender_); if (typeof pcRenderMovs_ === 'function') pcRenderMovs_ = keepScroll_(pcRenderMovs_); } catch (_) {}
