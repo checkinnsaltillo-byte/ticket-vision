@@ -65006,6 +65006,14 @@ function clEmpCss_() {
     #aseo-kpis .ad-kpis{margin:0 0 12px}
     .ad-ktipo{display:flex;flex-direction:column;gap:4px}
     .ad-ktipo{container-type:inline-size}
+    .ad-kdona .ad-kd{display:flex;align-items:center;gap:14px;margin-top:6px}
+    .ad-kdona .ad-kd .r{position:relative;flex:none;width:62px;height:62px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+    .ad-kdona .ad-kd .r::before{content:'';position:absolute;inset:7px;border-radius:50%;background:#fff}
+    .ad-kdona .ad-kd .r b{position:relative;font:600 20px Inter,system-ui,sans-serif;color:#0f1729}
+    .ad-kdona .lg{display:grid;gap:3px;min-width:0;flex:1}
+    .ad-kdona .lg>span{display:flex;align-items:center;gap:6px;font:500 11.5px Inter,system-ui,sans-serif;color:#334155;white-space:nowrap}
+    .ad-kdona .lg i{width:8px;height:8px;border-radius:50%;flex:none}
+    .ad-kdona .lg b{margin-left:auto;padding-left:10px;font:600 11px Inter,system-ui,sans-serif;color:#94a3b8}
     .ad-ktipo .ad-tr{display:grid;grid-template-columns:max-content minmax(40px,1fr) 30px 34px;align-items:center;gap:6px}
     @container (max-width:230px){.ad-ktipo .ad-tr{grid-template-columns:max-content minmax(36px,1fr) 30px}.ad-ktipo .ad-tr em{display:none}}
     @media (min-width:641px) and (max-width:1250px){#module-aseo .ad-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}#module-aseo .ad-kpi.big{grid-column:span 2}#module-aseo .ad-kpi.ad-ktipo{grid-column:span 3}}
@@ -66404,8 +66412,13 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
     return `<div class="ad-kpi ad-ktipo"><small>Avance por tipo</small>${fila('Total', T)}${['limpieza', 'inspeccion', 'mantenimiento'].map(k => fila(AT_DEPTO[k].t, T.filter(I => tipo(I) === k))).join('')}</div>`;
   })();
   const kpis = `<div class="ad-kpis">
-    <div class="ad-kpi big"><small>Avance ${esHoy ? 'del día' : aseoDiaTxt_(hoy)}</small><div class="n">${pct}%<em>${listos} de ${vivos.length} listos</em></div>
-      <div class="ad-prog"><i style="width:${seg('inspeccionado')}%;background:#047857"></i><i style="width:${seg('terminado')}%;background:#10b981"></i><i style="width:${seg('en_proceso')}%;background:#f59e0b"></i></div></div>
+    ${(() => { // Avance del día como dona: total al centro · Terminado / En progreso / No se ha iniciado
+      const tot = vivos.length, te = n('terminado') + n('inspeccionado'), pr = n('en_proceso'), ni = Math.max(0, tot - te - pr);
+      const g1 = tot ? te / tot * 360 : 0, g2 = tot ? g1 + pr / tot * 360 : 0;
+      return `<div class="ad-kpi big ad-kdona"><small>Avance ${esHoy ? 'del día' : aseoDiaTxt_(hoy)} · ${pct}%</small>
+        <div class="ad-kd"><span class="r" style="background:${tot ? `conic-gradient(#065f46 0 ${g1}deg,#34d399 ${g1}deg ${g2}deg,#cbd5e1 ${g2}deg 360deg)` : '#e2e8f0'}"><b>${tot}</b></span>
+        <span class="lg"><span><i style="background:#065f46"></i>Terminado<b>${te}</b></span><span><i style="background:#34d399"></i>En progreso<b>${pr}</b></span><span><i style="background:#cbd5e1"></i>No se ha iniciado<b>${ni}</b></span></span></div></div>`;
+    })()}
     ${donas}
     ${kpi(esHoy ? 'Entran hoy' : 'Entran', ent, temp ? `${temp} temprano` : '', '', 'ent', vivos.filter(I => I.g.ent.length))}
     ${kpi('Pendientes', n('pendiente'), '', 'k-pend', 'pend', vivos.filter(I => I.selE === 'pendiente'))}${kpi('En proceso', n('en_proceso'), '', 'k-proc', 'proc', vivos.filter(I => I.selE === 'en_proceso'))}${kpi('Terminados', n('terminado'), porV ? `${porV} por validar` : '', 'k-term', 'term', vivos.filter(I => I.selE === 'terminado'))}
