@@ -50858,6 +50858,8 @@ function _botcWaCss_() {
   .wa-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .wa-l1{display:flex;align-items:baseline;gap:6px}.wa-l1 b{font-size:15px;font-weight:500;color:var(--wa-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
   .wa-time{font-size:11.5px;color:var(--wa-mu);white-space:nowrap}.wa-time.on{color:var(--wa-g);font-weight:600}
+  .wa-bit-btn{all:unset;cursor:pointer;font-size:12.5px;font-weight:600;color:#0e7490;background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:5px 10px;white-space:nowrap}
+  @media (min-width:1180px){.wa-bit-btn{display:none}} /* en pantallas anchas la bitácora ya está en la 3a columna */
   .wa-rs{font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-l2{display:flex;align-items:center;gap:6px}.wa-l2 .pv{flex:1;min-width:0;font-size:13px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-wait{font-weight:400}
@@ -51453,6 +51455,7 @@ function _botcRenderMain(phone) {
       <div class="botc-chat-header-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto">
         ${payHeaderHtml}
         ${ctrlBtn}
+        <button type="button" class="wa-bit-btn" onclick="botcToggleRightPanel()" title="Bitácora completa de WhatsApp de la reserva">📖 Bitácora</button>
         ${menuBtnHtml}
       </div>
     </div>
@@ -52417,7 +52420,7 @@ window.botcToggleRightPanel = async function() {
   window.__waEmbedEl = null;
   const phone = BOTC_STATE.selectedPhone;
   if (!phone) return;
-  const btn = document.querySelector('[onclick="botcToggleRightPanel()"]');
+  const btn = document.querySelector('[onclick="botcToggleRightPanel()"]'), btnTxt = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Cargando…'; }
   try {
     // Buscar booking por phone: endpoint /bookings-by-guest
@@ -52467,7 +52470,7 @@ window.botcToggleRightPanel = async function() {
   } catch (e) {
     alert('Error al abrir historial WA: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '📱 Ver WA'; }
+    if (btn) { btn.disabled = false; btn.textContent = btnTxt; }
   }
 };
 
