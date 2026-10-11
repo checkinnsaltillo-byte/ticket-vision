@@ -51705,9 +51705,7 @@ function _botcRenderMain(phone) {
   // debajo del nombre. Vienen desde waChatConversationsList_ (hoja Perfiles).
   const rs = (conv && conv.razon_social) ? String(conv.razon_social).trim() : '';
   const reg = (conv && conv.regimen_fiscal) ? String(conv.regimen_fiscal).trim() : '';
-  const fiscalLine = (rs || reg)
-    ? `<div style="font-size:11px;color:#475569;font-weight:600;margin-top:2px">${rs?`<span>🧾 ${_botcEsc(rs)}</span>`:''}${(rs&&reg)?' · ':''}${reg?`<span style="color:#64748b">${_botcEsc(reg)}</span>`:''}</div>`
-    : '';
+  const fiscalLine = rs ? `<div style="font-size:11px;color:#475569;font-weight:600;margin-top:2px">🧾 ${_botcEsc(rs)}</div>` : ''; // solo la razón social (sin régimen)
   const editPerfilBtn = `<button type="button" onclick="_botcOpenPerfilEditor_('${_botcEsc(phone)}')" title="Editar perfil del huésped" style="background:#dbeafe;border:1px solid #93c5fd;cursor:pointer;padding:3px 8px;border-radius:6px;color:#1e40af;font-size:12px;font-weight:800;line-height:1;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.background='#bfdbfe'" onmouseout="this.style.background='#dbeafe'">✏️ Editar</button>`;
   const nameHeader = name
     ? `<div class="botc-chat-name" style="font-size:14px;font-weight:800;color:#0f172a;line-height:1.25;word-break:break-word"><span>${_botcEsc(name)}</span> ${editPerfilBtn} <span style="font-size:12px;color:#64748b;font-weight:600;white-space:nowrap">(+${_botcEsc(phone)})</span>${fiscalLine}</div>`
@@ -51763,7 +51761,6 @@ function _botcRenderMain(phone) {
       <div class="botc-chat-header-nameblock" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
         <button id="botc-back-to-list" type="button" onclick="botcBackToList_()" title="Regresar a la lista"
           style="align-items:center;gap:4px;padding:6px 8px;background:transparent;color:#54656f;border:0;border-radius:6px;cursor:pointer;font-size:16px;font-weight:800;flex:none">←</button>
-        ${_botcAvHtml_(name || phone)}
         <div style="min-width:0;flex:1;overflow:hidden">${nameHeader}</div>
       </div>
       <div class="botc-chat-header-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;margin-left:auto;align-self:flex-start">
