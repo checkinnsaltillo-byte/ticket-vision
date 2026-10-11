@@ -317,7 +317,7 @@ function _lecturaSWRBorrar(action) {
   if (fam) _lecturaSWRGen++;
   if (fam) for (const k of [..._lecturaSWR.keys()]) if (k.startsWith(fam)) _lecturaSWR.delete(k);
 }
-async function callCheckinAppsScriptPost(action, dataObj) {
+async function callCheckinAppsScriptPost(action, dataObj, opts) {
   _lecturaSWRBorrar(action);
   const body = JSON.stringify(Object.assign({ action }, dataObj || {}));
   const TIMEOUT_MS = 60000;
@@ -336,7 +336,7 @@ async function callCheckinAppsScriptPost(action, dataObj) {
     } finally { clearTimeout(timer); }
   }
   let text = "";
-  const MAX = 4;
+  const MAX = (opts && opts.max) || 4; // altas que no son idempotentes (rt_upsert sin ID) usan max 1 y revisan antes de reintentar
   for (let attempt = 0; attempt < MAX; attempt++) {
     try {
       text = await _postAttempt();
@@ -5791,7 +5791,31 @@ app.get("/reportes-tecnicos-list", async (req, res) => {
     res.json(await _rtListaCargar());
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
+// Enlace de un reporte técnico NUEVO con su incidencia (tarea correctiva): tipo de servicio + incidencia en aseo/extra.json
+// y «Tarea_ligada» en la incidencia. Lo hace el servidor para que no dependa de que la pantalla siga abierta.
+async function _rtLigar(id, liga, user) {
+  const k = "R" + id, incId = String(liga.incId || "").replace(/[^\w-]/g, "").slice(0, 60), srv = String(liga.srv || "correctivo");
+  await _aseoMutate(_ASEO_EXTRA_OBJ, "extra", d => {
+    const cur = d[k] || {}; cur.checkout = srv === "checkout"; cur.correctivo = srv === "correctivo"; cur.preventivo = srv === "preventivo";
+    if (incId) { cur.incidencia = true; cur.incId = incId; cur.incIds = [incId]; cur.deInc = true; cur.incBy = user; cur.incAt = new Date().toISOString(); }
+    Object.assign(cur, { by: user, at: new Date().toISOString() }); d[k] = cur;
+  });
+  _aseo.extraTs = Date.now();
+  if (incId) await _incMutar(dd => { const r = (dd.rows || []).find(x => String(x.ID) === incId); if (!r) return; const L = String(r.Tarea_ligada || "").split(/\s*,\s*/).filter(Boolean); if (!L.includes(k)) L.push(k); r.Tarea_ligada = L.join(", "); r.UpdatedAt = new Date().toISOString(); });
+}
 app.post("/reportes-tecnicos-upsert", async (req, res) => {
+  // bg=1 (alta desde «Crear tarea correctiva»): la hoja de Google tarda 15–45 s en guardar el reporte; se responde de
+  // inmediato y el alta + el enlace con la incidencia se terminan en segundo plano (Cloud Run sin límite de CPU).
+  const bg = !!req.body?.bg && !(req.body?.payload || {}).ID, liga = req.body?.liga || null;
+  if (bg) {
+    res.json({ ok: true, pending: true });
+    req.body.bg = false;
+    const fakeRes = { json: o => { if (o && o.ok && o.id && liga) _rtLigar(String(o.id), liga, String((req.body.payload || {}).Updated_by || "")).catch(e => console.warn("[rt] enlace correctiva:", e.message)); if (!o || !o.ok) console.warn("[rt] alta en 2º plano falló:", o && o.error); }, status: () => fakeRes };
+    return _rtUpsertHandler(req, fakeRes);
+  }
+  return _rtUpsertHandler(req, res);
+});
+async function _rtUpsertHandler(req, res) {
   try {
     const payload = req.body?.payload || {};
     const fotosAntes = Array.isArray(req.body?.fotos_antes) ? req.body.fotos_antes : [];
@@ -5841,7 +5865,24 @@ app.post("/reportes-tecnicos-upsert", async (req, res) => {
       finalPayload.Fotos_despues_urls = [...prevDespues, ...despues].join(",");
     }
     const rtPrev = payload.ID ? ((await _clRtRows().catch(() => [])).find(x => String(x.ID) === String(payload.ID)) || null) : null;
-    const r = await callCheckinAppsScriptPost("rt_upsert", finalPayload);
+    let r;
+    if (!payload.ID) {
+      // ALTA: Apps Script a veces responde HTML aunque SÍ guardó la fila → un reintento ciego duplicaba el reporte
+      // (pasó con «fuga de agua» RT-2026-000022/23). Un intento; si falla, se busca la fila antes de reintentar.
+      const t0 = Date.now();
+      const buscar = async () => {
+        const L = await callCheckinAppsScriptPost("rt_list", {}).catch(() => null);
+        const f = ((L && L.rows) || []).find(x => String(x.Titulo || "") === String(finalPayload.Titulo || "") && String(x.Fecha || "").slice(0, 10) === String(finalPayload.Fecha || "").slice(0, 10)
+          && String(x.Reportado_por || "") === String(finalPayload.Reportado_por || "") && Number((String(x.ID || "").match(/^RT(\d+)/) || [])[1] || 0) >= t0 - 120_000); // el ID lleva la hora de alta (ms)
+        return f ? { ok: true, id: f.ID, folio: f.Folio, dedupe: true } : null;
+      };
+      for (let i = 0; i < 3 && !(r && r.ok); i++) {
+        r = await callCheckinAppsScriptPost("rt_upsert", finalPayload, { max: 1 }).catch(e => ({ ok: false, error: e.message }));
+        if (r && r.ok) break;
+        await new Promise(x => setTimeout(x, 2000 * (i + 1)));
+        const f = await buscar(); if (f) { r = f; break; }
+      }
+    } else r = await callCheckinAppsScriptPost("rt_upsert", finalPayload);
     if (!r || !r.ok) throw new Error(r?.error || "upsert failed");
     _rtLista.payload = null; _rtListaCargar().catch(() => {}); // la siguiente lectura trae el cambio
     try { // historial del reporte de Mantenimiento
@@ -5858,7 +5899,7 @@ app.post("/reportes-tecnicos-upsert", async (req, res) => {
     } catch (_) {}
     res.json({ ...r, fotos_antes_uploaded: antes.length, fotos_despues_uploaded: despues.length });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
-});
+}
 app.post("/reportes-tecnicos-delete", async (req, res) => {
   try {
     const id = String(req.body?.id || "").trim();

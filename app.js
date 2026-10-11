@@ -66297,7 +66297,8 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   const puenteSolo = (I, id) => {
     const k = kDe(I), sk = pcEsc(k), sh = pcEsc(String(I.hid || '')), dia = pcEsc(I.tarea ? (I.dia || hoy) : hoy), sid = pcEsc(id);
     const r = axIncRow_(id), conTarea = r ? icLigsVal_(r).length > 0 : false, x = r ? icRow_(r) : null, cerrada = x ? icCerrada_(x) : false;
-    return `<div class="ad-puente" role="button" title="Ver los detalles de la incidencia" onclick="event.stopPropagation();axIncAbrir_('${sk}','${sh}','${dia}','${sid}')"><span class="ar">⇅</span><span class="tx ad-pz"><span class="ax-inc on split"><span class="i1">⚠️ Incidencia${adIncMot_(id)}</span></span>${conTarea ? '<small>🛠 Tarea correctiva creada</small>' : cerrada ? `<small>${pcEsc((IC_EST.find(e => e.k === x.est) || {}).t || x.est)}</small>` : `<button type="button" class="ad-cta" onclick="event.stopPropagation();axIncCorrectiva_('${sk}','${sh}','${dia}','${sid}')">🛠 Crear tarea correctiva</button>`}</span></div>`;
+    const levP = !conTarea && (window.__levPend || {})[String(id)] && Date.now() - window.__levPend[String(id)] < 150_000;
+    return `<div class="ad-puente" role="button" title="Ver los detalles de la incidencia" onclick="event.stopPropagation();axIncAbrir_('${sk}','${sh}','${dia}','${sid}')"><span class="ar">⇅</span><span class="tx ad-pz"><span class="ax-inc on split"><span class="i1">⚠️ Incidencia${adIncMot_(id)}</span></span>${conTarea ? '<small>🛠 Tarea correctiva creada</small>' : levP ? '<small>⏳ Creando tarea correctiva de mantenimiento…</small>' : cerrada ? `<small>${pcEsc((IC_EST.find(e => e.k === x.est) || {}).t || x.est)}</small>` : `<button type="button" class="ad-cta" onclick="event.stopPropagation();axIncCorrectiva_('${sk}','${sh}','${dia}','${sid}')">🛠 Crear tarea correctiva</button>`}</span></div>`;
   };
   const pinta = I => {
     if (ASEO.simple) return pinta0(I); // vista «Simple»: la incidencia va como chip dentro de la card
@@ -68133,7 +68134,8 @@ function icPintar_(nuevo) {
         <span>Fecha</span><b>${x.fecha ? aseoDiaTxt_(x.fecha) : '—'}</b>${r.Reservacion_id ? `<span>Reserva</span><b>${pcEsc(r.Huesped_nombre || '')} · ${pcEsc(r.Reservacion_id)}</b>` : ''}${icLigsVal_(r).length ? `<span>Tarea${icLigsVal_(r).length > 1 ? 's' : ''} correctiva${icLigsVal_(r).length > 1 ? 's' : ''}</span><b>${icLigsVal_(r).map(l => `<a href="#" style="color:#4f46e5;display:block" onclick="event.preventDefault();icVerTarea_('${pcEsc(l)}')">${pcEsc(icLigTxt_(l))} ›</a>`).join('')}</b>` : ''}<span>Reportó</span><b>${pcEsc(x.rep || '—')}</b><span>Folio</span><b>${pcEsc(x.id)}</b></div>
       <div class="lab">Personas involucradas</div><div class="ad-ppl">${x.pers.map(n => `<div class="ad-pp">${adAv_(n)}<span>${pcEsc(n)}</span></div>`).join('') || '<div class="ad-un">Sin personas</div>'}</div>
       ${x.fotos.length ? `<div class="lab">Evidencia fotográfica · ${x.fotos.length}</div><div class="ic-fotos" data-u="${pcEsc(JSON.stringify(x.fotos.map(u => icFoto_(u, 1600))))}">${x.fotos.map((u, i) => `<a href="#" onclick="event.preventDefault();fotoVer_(JSON.parse(this.parentNode.dataset.u),${i})" style="cursor:zoom-in"><img src="${pcEsc(icFoto_(u, 300))}" alt="" loading="lazy"></a>`).join('')}</div>` : ''}
-      ${!x.arch ? (n => `<button type="button" class="ic-levbtn" onclick="icForm_('${id}',null,{soloLev:true})">🛠 ${n ? 'Crear otra tarea correctiva' : 'Crear tarea correctiva'}<small>${n ? `Ya hay ${n} tarea${n > 1 ? 's' : ''} correctiva${n > 1 ? 's' : ''}; crea otra en «Aseo y Mantenimiento»` : 'Crea la tarea en «Aseo y Mantenimiento» con los datos de esta incidencia'}</small></button>`)(icLigsVal_(r).length) : ''}
+      ${!x.arch && (window.__levPend || {})[x.id] && Date.now() - window.__levPend[x.id] < 150_000 && !icLigsVal_(r).length ? '<div class="ad-hint">⏳ Creando la tarea correctiva de mantenimiento… aparecerá en unos segundos.</div>' : ''}
+      ${!x.arch && !((window.__levPend || {})[x.id] && Date.now() - window.__levPend[x.id] < 150_000 && !icLigsVal_(r).length) ? (n => `<button type="button" class="ic-levbtn" onclick="icForm_('${id}',null,{soloLev:true})">🛠 ${n ? 'Crear otra tarea correctiva' : 'Crear tarea correctiva'}<small>${n ? `Ya hay ${n} tarea${n > 1 ? 's' : ''} correctiva${n > 1 ? 's' : ''}; crea otra en «Aseo y Mantenimiento»` : 'Crea la tarea en «Aseo y Mantenimiento» con los datos de esta incidencia'}</small></button>`)(icLigsVal_(r).length) : ''}
       ${histSecHtml_(['I:' + x.id])}
     </div>
     <div class="ad-ft"><button type="button" class="ad-bt" onclick="icForm_('${id}')">Editar</button><button type="button" class="ad-bt" onclick="icImprimir_('${id}')" title="Imprimir">🖨️</button>${x.arch ? `<button type="button" class="ad-bt" onclick="icDesarchivar_('${id}')">Desarchivar</button>` : `<button type="button" class="ad-bt" onclick="icArchivar_('${id}')">🗄 Archivar</button>`}
@@ -68517,11 +68519,19 @@ async function icLevantar_(F, incId) {
       Alojamiento: a.propiedad ? `${a.propiedad} - #${a.depto}` : (a.nombre || ''), Activo: '', Titulo: titulo, Descripcion: desc, Descripcion_solucion: '', Reportado_por: F.rep || user,
       Asignado_a: L.asig.join(', '), Proveedor: '', Fecha_compromiso: L.comp || '', Bloquea_habitabilidad: !!L.bloq, Reincidente: !!L.rein, Responsabilidad: 'indeterminada', Costo_total: '', Cargar_a_huesped: false,
       Reservacion_id: F.reserva || '', Huesped_nombre: F.reserva ? (F.huesped || '') : '', Notas: '', Fotos_antes_urls: fotos.join(', '), UpdatedAt: new Date().toISOString(), Updated_by: user };
-    const j = await post('/reportes-tecnicos-upsert', { payload });
+    // La hoja de Google tarda 15–45 s: el servidor responde al instante y termina el alta y el enlace con la incidencia
+    // en segundo plano. Mientras, el recuadro de la incidencia muestra «⏳ Creando tarea correctiva…».
+    const j = await post('/reportes-tecnicos-upsert', { payload, bg: 1, liga: { incId: String(incId), srv: L.srv || 'correctivo' } });
     if (!j.ok) throw new Error(j.error || 'Error al crear el reporte técnico');
-    const rid = String(j.id); lig = 'R' + rid;
-    ASEO.rt = ASEO.rt || []; ASEO.rt.unshift(Object.assign({ Timestamp: new Date().toISOString() }, payload, { ID: rid, Folio: j.folio || rid }));
-    setTimeout(() => { try { adRtLoad_(true); } catch (_) {} }, 1500);
+    if (!j.pending) { // servidor anterior (sin segundo plano): mismo flujo de antes
+      const rid = String(j.id); lig = 'R' + rid;
+      ASEO.rt = ASEO.rt || []; ASEO.rt.unshift(Object.assign({ Timestamp: new Date().toISOString() }, payload, { ID: rid, Folio: j.folio || rid }));
+      setTimeout(() => { try { adRtLoad_(true); } catch (_) {} }, 1500);
+    } else {
+      (window.__levPend = window.__levPend || {})[String(incId)] = Date.now();
+      [15, 30, 50, 75].forEach(s => setTimeout(() => { try { adRtLoad_(true); } catch (_) {} try { incSync_().then(c => { if (c) { ASEO.calSig = ''; aseoRender_(); } }); } catch (_) {} }, s * 1000));
+      return; // el servidor liga la tarea con la incidencia
+    }
   } else {
     const adjuntos = fotos.map((u, i) => ({ k: new URL(u).searchParams.get('k'), nombre: `Foto de la incidencia ${i + 1}`, tipo: 'image/jpeg', tam: 0 }));
     const tarea = { hid: F.hid, depto: L.depto, problema: !!L.problema, prioridad: F.prio, titulo, desc, fecha: F.fecha, hora: '', repite: L.repite, asignados: L.asig, etiquetas: L.etiq, adjuntos, reserva: F.reserva || '' };
