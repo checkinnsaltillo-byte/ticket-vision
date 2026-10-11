@@ -44988,6 +44988,17 @@ function _waRenderModal(replace) {
       </div>
     </div>
   `;
+  // Embebido: «Chats bot» muestra la bitácora en su 3a columna (sin capa encima de la pantalla).
+  const _mbc = document.getElementById('module-bot-chats');
+  const embed = window.__waEmbedEl && document.body.contains(window.__waEmbedEl) && _mbc && !_mbc.classList.contains('hidden') ? window.__waEmbedEl : null; // solo con «Chats bot» a la vista
+  if (embed) {
+    let m = embed.querySelector('#wa-modal');
+    if (!m) { document.getElementById('wa-modal')?.remove(); m = document.createElement('div'); m.id = 'wa-modal'; m.className = 'wa-embed'; embed.innerHTML = ''; embed.appendChild(m); }
+    m.style.cssText = 'height:100%;display:flex;flex-direction:column;min-height:0';
+    m.innerHTML = html.replace('onclick="waCloseModal_()" style="background:transparent;border:0;color:#fff;font-size:22px', 'onclick="botcBitacoraCerrar_()" title="Ocultar bitácora" style="background:transparent;border:0;color:#fff;font-size:22px');
+    _waPaintAllToggles();
+    return;
+  }
   // Estilo lateral (idéntico en primer render y repaints) para evitar "brinco".
   const outerStyle = 'position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:99999;display:flex;align-items:stretch;justify-content:flex-end';
   const inner = `<div onclick="waCloseModal_()" style="position:absolute;inset:0"></div>${html}`;
@@ -50790,7 +50801,98 @@ window.botcToggleCat_ = function(key) {
   _botcRenderSidebar();
 };
 
+// ── Diseño estilo WhatsApp (2026-10-11): fila compacta de la lista ──
+const _BOTC_PROG = { entrantes: ['Entrante', '#64748b'], cotizacion: ['Cotización', '#b45309'], salida_hoy: ['Salida hoy', '#c2410c'], entrada_hoy: ['Entrada hoy', '#047857'], activa: ['Activa', '#15803d'], proxima: ['Próxima', '#1d4ed8'], concluida: ['Concluida', '#64748b'] };
+const _botcIso_ = v => { const t = String(v || ''); let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`; m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : ''; }; // M/D/AAAA (igual que _botcEnrichPaymentFields)
+const _botcDM_ = v => { const i = _botcIso_(v); if (!i) return ''; const d = new Date(i + 'T12:00:00'); return `${d.getDate()} ${['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][d.getMonth()]}`; };
+const _botcSinNom_ = s => !/[a-záéíóúñ]/i.test(String(s || '')); // solo número: avatar gris de persona (como WhatsApp)
+const _botcAvHtml_ = (s, extra) => _botcSinNom_(s) ? `<span class="wa-av sin" ${extra || ''}><svg viewBox="0 0 24 24" width="60%" height="60%" fill="#fff"><circle cx="12" cy="8" r="4.2"/><path d="M3.5 21c.6-4.4 4.2-7 8.5-7s7.9 2.6 8.5 7z"/></svg></span>` : `<span class="wa-av" style="background:${_botcAvC_(s)}" ${extra || ''}>${_botcEsc(_botcIni_(s))}</span>`;
+const _botcAvC_ = s => { let h = 0; for (const ch of String(s || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return ['#00a884', '#53bdeb', '#ff7a59', '#a78bfa', '#f59e0b', '#ef4444', '#06b6d4', '#84cc16', '#ec4899', '#6366f1'][h % 10]; };
+const _botcIni_ = s => String(s || '').replace(/^\+/, '').split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
+function _botcSrcTxt_(src) { const s = String(src || '').toLowerCase(); return /airbnb/.test(s) ? ['Airbnb', '#e11d48'] : /booking/.test(s) ? ['Booking', '#1d4ed8'] : /expedia/.test(s) ? ['Expedia', '#ca8a04'] : /vrbo|homeaway/.test(s) ? ['Vrbo', '#0e7490'] : s ? [/manual|direct|oh|website/.test(s) ? 'Directo' : String(src), '#475569'] : null; }
+function _botcWaHora_(iso) { const d = new Date(iso); if (!iso || isNaN(d)) return ''; const h = new Date(), ay = new Date(h); ay.setDate(h.getDate() - 1);
+  if (d.toDateString() === h.toDateString()) return d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === ay.toDateString()) return 'Ayer';
+  return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }); }
+function _botcRowHtml_(c, bk, selected) {
+  const phone = String(c.phone), name = String(c.name || (bk && bk.GuestName) || '').trim() || '+' + phone;
+  const espera = _botcNeedsReply_(c), pend = _botcIsPending_(c);
+  const ctrl = String(c.control) === 'human' ? ['📝 Manual', '#b45309'] : String(c.control) === 'supervised' ? ['👁 Supervisado', '#7c3aed'] : ['⚙️ Automático', '#0e7490'];
+  const chips = [];
+  if (bk) {
+    const src = _botcSrcTxt_(bk.Source); if (src) chips.push(`<span class="wa-chip" style="--c:${src[1]}">${_botcEsc(src[0])}</span>`);
+    try { const m = _botcEnrichPaymentFields(bk) || {}, ps = String(m.PaymentStatus || ''); if (ps && ps !== 'Sin cargo') { const ok = /pagad|paid/i.test(ps), parcial = !ok && Number(m.AmountPaid) > 0; chips.push(`<span class="wa-chip" style="--c:${ok ? '#15803d' : parcial ? '#b45309' : '#dc2626'}">${ok ? 'Pagada' : parcial ? 'Pago parcial' : 'Sin pago'}</span>`); } } catch (_) {}
+    const pg = _BOTC_PROG[_botcClassifyConv_(c, bk)]; if (pg) chips.push(`<span class="wa-chip" style="--c:${pg[1]}">${pg[0]}</span>`);
+    const a = _botcDM_(bk.DateArrival), d = _botcDM_(bk.DateDeparture); if (a || d) chips.push(`<span class="wa-dates">${a} → ${d}</span>`);
+  } else { const pg = _BOTC_PROG[_botcClassifyConv_(c, null)]; if (pg) chips.push(`<span class="wa-chip" style="--c:${pg[1]}">${pg[0]}</span>`); }
+  const risk = typeof _hgNotesRiskCount_ === 'function' ? _hgNotesRiskCount_(phone) : 0;
+  return `<div class="botc-conv-item wa-row ${selected ? 'sel' : ''} ${pend ? 'botc-pending' : ''}" data-botc-phone="${_botcEsc(phone)}" onclick="botcOpenChat('${_botcEsc(phone)}')">
+    ${_botcAvHtml_(name)}
+    <div class="wa-body">
+      <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span></div>
+      <div class="wa-l2"><span class="pv">${espera ? '<b class="wa-wait">⏳</b> ' : ''}${_botcEsc(c.last_msg_preview || '')}</span>${pend ? '<span class="wa-unread">1</span>' : ''}</div>
+      <div class="wa-l3">${chips.join('')}<button type="button" class="wa-ctrl" style="--c:${ctrl[1]}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="Cambiar modo">${ctrl[0]} ▾</button></div>
+    </div></div>`;
+}
+function _botcWaCss_() {
+  if (document.getElementById('botc-wa-css')) return;
+  const st = document.createElement('style'); st.id = 'botc-wa-css';
+  st.textContent = `
+  #module-bot-chats{--wa-g:#00a884;--wa-bg:#efeae2;--wa-bar:#f0f2f5;--wa-ln:#e9edef;--wa-tx:#111b21;--wa-mu:#667781;font-family:"Segoe UI",Helvetica,Arial,Inter,system-ui,sans-serif}
+  #module-bot-chats > div:first-child{padding:8px 14px!important;background:var(--wa-bar)!important;border-bottom:1px solid var(--wa-ln)!important}
+  #module-bot-chats > div:first-child button{height:32px!important;border-radius:8px!important}
+  #module-bot-chats #botc-sidebar{width:380px!important;border-right:1px solid var(--wa-ln)!important;background:#fff!important}
+  #module-bot-chats #botc-third-col{width:400px!important;border-left:1px solid var(--wa-ln)!important}
+  .wa-search{padding:7px 10px;background:#fff;border-bottom:1px solid var(--wa-ln);position:sticky;top:0;z-index:5}
+  .wa-search #botc-filters-btn{border:0!important;background:var(--wa-bar)!important;border-radius:8px!important}
+  .wa-cat{display:flex;flex-direction:column}
+  .wa-cat-h{all:unset;box-sizing:border-box;position:sticky;top:47px;z-index:4;display:flex;align-items:center;gap:6px;width:100%;padding:5px 14px;background:#f7f8fa;border-bottom:1px solid var(--wa-ln);cursor:pointer}
+  .wa-cat-h .l{font-size:11px;font-weight:600;color:var(--ac);text-transform:uppercase;letter-spacing:.06em}
+  .wa-cat-h .n{font-size:11px;color:var(--wa-mu)}.wa-cat-h .car{margin-left:auto;font-size:12px;color:var(--wa-mu);transition:transform .15s}
+  .wa-row{display:flex;gap:11px;padding:8px 14px 8px 12px;cursor:pointer;background:#fff;position:relative}
+  .wa-row::after{content:'';position:absolute;left:70px;right:0;bottom:0;border-bottom:1px solid var(--wa-ln)}
+  .wa-row:hover{background:#f5f6f6}.wa-row.sel{background:#f0f2f5}
+  .wa-av{flex:none;width:42px;height:42px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:15px}
+  .wa-av.sin{background:#dfe5e7}
+  .wa-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .wa-l1{display:flex;align-items:baseline;gap:6px}.wa-l1 b{font-size:15px;font-weight:500;color:var(--wa-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+  .wa-time{font-size:11.5px;color:var(--wa-mu);white-space:nowrap}.wa-time.on{color:var(--wa-g);font-weight:600}
+  .wa-l2{display:flex;align-items:center;gap:6px}.wa-l2 .pv{flex:1;min-width:0;font-size:13px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wa-wait{font-weight:400}
+  .wa-unread{flex:none;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--wa-g);color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
+  .wa-l3{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:3px}
+  .wa-chip{font-size:10.5px;font-weight:600;color:var(--c);background:color-mix(in srgb,var(--c) 10%,#fff);padding:1px 6px;border-radius:4px;white-space:nowrap}
+  .wa-dates{font-size:10.5px;color:var(--wa-mu);white-space:nowrap}
+  .wa-ctrl{all:unset;cursor:pointer;margin-left:auto;font-size:10.5px;font-weight:600;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 35%,#fff);padding:0 6px;border-radius:999px;line-height:17px;white-space:nowrap}
+  .wa-ctrl:hover{background:color-mix(in srgb,var(--c) 10%,#fff)}
+  .wa-chat-h{padding:7px 14px;background:var(--wa-bar);border-bottom:1px solid var(--wa-ln);display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;min-height:52px;box-sizing:border-box}
+  .wa-chat-h .wa-av{width:38px;height:38px;font-size:14px}
+  .wa-chat-h .botc-chat-name{font-size:15px!important;font-weight:500!important;color:var(--wa-tx)!important}
+  .wa-chat-h .botc-chat-header-actions button,.wa-chat-h .botc-chat-header-actions > div{box-shadow:none!important}
+  .wa-msgs{flex:1;overflow-y:auto;padding:12px 6% 14px;background:var(--wa-bg);background-image:radial-gradient(rgba(0,0,0,.035) 1px,transparent 1px);background-size:18px 18px}
+  .wa-day{display:flex;justify-content:center;margin:8px 0}.wa-day span{background:#fff;color:var(--wa-mu);font-size:11.5px;padding:4px 10px;border-radius:7px;box-shadow:0 1px .5px rgba(11,20,26,.13);text-transform:capitalize}
+  .wa-r{display:flex;margin:2px 0;align-items:center}.wa-r.in{justify-content:flex-start}.wa-r.out{justify-content:flex-end}
+  .wa-b{position:relative;max-width:65%;padding:6px 9px 8px;border-radius:8px;box-shadow:0 1px .5px rgba(11,20,26,.13);font-size:14px;line-height:1.35;color:var(--wa-tx)}
+  .wa-b.in{background:#fff;border-top-left-radius:0}.wa-b.out{background:#d9fdd3;border-top-right-radius:0}
+  .wa-b.adm{background:#fff3c4}.wa-b.tpl{background:#e3f2fd}
+  .wa-b .who{display:block;font-size:12.5px;font-weight:600;margin-bottom:1px}
+  .wa-b .tx{white-space:pre-wrap;word-break:break-word;padding-right:62px}
+  .wa-b .hr{position:absolute;right:8px;bottom:4px;font-size:11px;color:var(--wa-mu);white-space:nowrap}
+  .wa-comp{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--wa-bar);border-top:1px solid var(--wa-ln)}
+  .wa-comp input{flex:1;border:0;border-radius:8px;padding:10px 14px;font-size:15px;background:#fff;color:var(--wa-tx);outline:none}
+  .wa-comp input:disabled{background:#e9edef;color:var(--wa-mu)}
+  .wa-send,.wa-ia{all:unset;cursor:pointer;width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:18px;flex:none}
+  .wa-send{background:var(--wa-g);color:#fff}.wa-send[disabled]{background:#c4cbd0;cursor:not-allowed}
+  .wa-ia{color:#7c3aed;background:#fff}
+  #botc-third-col #wa-modal [data-wa-panel]{max-width:none!important;height:100%!important;box-shadow:none!important;border-radius:0}
+  #botc-third-col #wa-modal [data-wa-panel] > div:first-child{background:var(--wa-bar)!important;color:var(--wa-tx)!important;padding:10px 14px!important;border-bottom:1px solid var(--wa-ln)!important}
+  #botc-third-col #wa-modal [data-wa-panel] > div:first-child button{color:var(--wa-mu)!important;background:transparent!important}
+  .wa-bit-load{margin:auto;padding:30px;text-align:center;color:var(--wa-mu);font-size:13px}.wa-bit-load button{margin-top:10px;border:1px solid var(--wa-ln);background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer}
+  @media (max-width:768px){#module-bot-chats #botc-sidebar{width:100%!important}.wa-msgs{padding:10px 8px}.wa-b{max-width:85%}}`;
+  document.head.appendChild(st);
+}
 function _botcRenderSidebar() {
+  _botcWaCss_();
   const sidebar = document.getElementById('botc-sidebar');
   if (!sidebar) return;
   // Barra superior: buscador + visualización.
@@ -50798,14 +50900,14 @@ function _botcRenderSidebar() {
   BOTC_STATE.searchQuery = BOTC_STATE.searchQuery || '';
   const q = String(BOTC_STATE.searchQuery || '').trim();
   const tabsHtml = `
-    <div style="padding:10px 10px 4px;background:#f8fafc;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:5">
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+    <div class="wa-search">
+      <div style="display:flex;gap:6px;align-items:center">
         <button type="button" id="botc-filters-btn" onclick="botcToggleFilters_()" title="Filtros" style="width:32px;height:32px;padding:0;font-size:16px;background:${_botcHasAnyFilter_()?'#0f172a':'#fff'};color:${_botcHasAnyFilter_()?'#fff':'#334155'};border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:900;line-height:1;flex-shrink:0;position:relative">☰${_botcHasAnyFilter_()?`<span style="position:absolute;top:-4px;right:-4px;width:10px;height:10px;background:#f97316;border-radius:50%;border:1.5px solid #fff"></span>`:''}</button>
         <div style="position:relative;flex:1">
           <input id="botc-search-input" type="search" value="${_botcEsc(q)}"
-            placeholder="🔍 Buscar por nombre o mensaje…"
+            placeholder="🔍 Buscar un chat o mensaje"
             oninput="botcSetSearchQuery_(this.value)"
-            style="width:100%;padding:7px 30px 7px 10px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;background:#fff">
+            style="width:100%;padding:7px 30px 7px 12px;font-size:13px;border:0;border-radius:8px;box-sizing:border-box;background:#f0f2f5">
           ${q ? `<button type="button" onclick="botcSetSearchQuery_('')" title="Limpiar" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:14px;color:#94a3b8;cursor:pointer;padding:2px 6px;line-height:1">×</button>` : ''}
         </div>
       </div>
@@ -50834,98 +50936,8 @@ function _botcRenderSidebar() {
   }
   const items = filtered.map(c => {
     const selected = String(c.phone) === String(BOTC_STATE.selectedPhone);
-    const isHuman = String(c.control) === 'human';
-    const isSupervised = String(c.control) === 'supervised';
-    // Chip = botón clickeable → dropdown para cambiar modo desde la lista.
-    const chipBg = isHuman ? '#fef3c7' : (isSupervised ? '#ede9fe' : '#dbeafe');
-    const chipFg = isHuman ? '#92400e' : (isSupervised ? '#5b21b6' : '#1e40af');
-    const chipTxt = isHuman ? '👤 HUMANO' : (isSupervised ? '👁 SUPERVISADO' : '⚙️ AUTOMÁTICO');
-    const controlChip = `<button type="button" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(c.phone)}')" title="Cambiar modo" style="font-size:9px;background:${chipBg};color:${chipFg};padding:2px 8px 2px 6px;border-radius:999px;font-weight:800;letter-spacing:.02em;flex:none;border:0;cursor:pointer;line-height:1.4">${chipTxt} ▾</button>`;
-    // Look-up SYNC: si HU_STATE ya está cargado y el booking está cacheado,
-    // pintamos rica de una vez. Si no, mostramos lite y _botcEnrichPendingBookings
-    // lo reemplaza in-place cuando termine el load, SIN bloquear el render.
     const bk = _botcGetBookingForPhoneSync(c.phone);
-    let rich = '';
-    if (bk && typeof lgBuildDetailSidebarItem === 'function') {
-      try {
-        // El nombre canónico viene de Perfiles ("Nombre del huésped"), que
-        // Apps Script ya resuelve en /wa/bot/conversations como c.name.
-        // Sobreescribimos GuestName del booking sintético para asegurar que
-        // la card y el header del chat muestren el MISMO nombre.
-        const bkNamed = c.name ? Object.assign({}, bk, { GuestName: c.name }) : bk;
-        // Si el booking no trae __reservacion (viene de LG raw), inferir el
-        // huésped desde HU_STATE por phone tail para que los KPIs y el chip
-        // de tier (RECURRENTE, BRONCE, etc.) aparezcan en la card.
-        // Prioridad de fuentes para el huesped (mismo orden que Gestión
-        // de reservas): 1) __reservacion embebido en el booking sintético,
-        // 2) LG_STATE.matches (map bookingId→huesped construido cuando
-        // Gestión de reservas cargó), 3) HU_STATE.rows por phone tail.
-        let huespedOverride = bkNamed.__reservacion || null;
-        if (!huespedOverride && typeof LG_STATE !== 'undefined' && LG_STATE?.matches) {
-          huespedOverride = LG_STATE.matches.get(String(bk.Id)) || null;
-        }
-        if (!huespedOverride && typeof huGetGuestRowsByTail_ === 'function' && HU_STATE?.rows?.length) {
-          try {
-            const tail = String(c.phone || '').replace(/\D/g,'').slice(-10);
-            const rows = tail ? (huGetGuestRowsByTail_(null, tail) || []) : [];
-            if (rows.length) huespedOverride = rows[0];
-          } catch(_){}
-        }
-        rich = lgBuildDetailSidebarItem(bkNamed, null, huespedOverride);
-        rich = `<div onclick="event.stopPropagation();botcOpenChat('${_botcEsc(c.phone)}')" style="cursor:pointer">${rich}</div>`;
-      } catch(e) { rich = ''; }
-    }
-    // Header ligero: preview msg + control chip + nombre/tel (si no hay rich)
-    const name = String(c.name || (bk && bk.GuestName) || '').trim();
-    const lite = rich ? '' : `
-      <div data-botc-lite style="padding:12px 14px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">
-          <div style="min-width:0;flex:1">
-            ${name ? `<div style="font-size:13px;font-weight:800;color:#0f172a">${_botcEsc(name)}</div><div style="font-size:11px;color:#64748b">+${_botcEsc(c.phone)}</div>` : `<div style="font-size:13px;font-weight:800;color:#0f172a">+${_botcEsc(c.phone)}</div>`}
-          </div>
-          ${controlChip}
-        </div>
-      </div>`;
-    const riskCount = _hgNotesRiskCount_(c.phone);
-    const riskBtn = `<button type="button" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(c.phone)}')"
-        title="${riskCount ? `${riskCount} nota(s) de riesgo — click para agregar` : 'Marcar riesgo del huésped (nota rápida)'}"
-        style="background:none;border:0;padding:0 2px;cursor:pointer;font-size:12px;line-height:1;color:${riskCount?'#dc2626':'#cbd5e1'};filter:${riskCount?'none':'grayscale(1)'};opacity:${riskCount?1:0.6}">🚩</button>`;
-    // chatMeta integrado como footer de la card (no como bloque separado).
-    // Fondo blanco continuo con la card, sin border-top disruptivo.
-    // Chip "Espera respuesta": último mensaje del huésped Y no es una
-    // despedida corta (gracias/ok/listo/perfecto/etc.). Ayuda al admin a
-    // priorizar visualmente las que dejan asunto pendiente.
-    const isPendingReply = _botcNeedsReply_(c);
-    const waitChip = isPendingReply
-      ? '<span style="display:inline-block;font-size:9px;font-weight:800;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:99px;border:1px solid #fde68a;margin-right:6px;vertical-align:middle;letter-spacing:.03em">⏳ ESPERA RESPUESTA</span>'
-      : '';
-    // Nota: el chip de status de pago vive dentro de lgBuildDetailSidebarItem
-    // (junto al chip de programación en la esquina superior derecha).
-    // Footer gris por default; rojo claro cuando hay "espera respuesta"
-    // para que la conversación pendiente sea imposible de perder de vista.
-    const footerBg = isPendingReply ? '#fee2e2' : '#f1f5f9';
-    const chatMeta = `
-      <div class="botc-card-footer" style="padding:8px 14px 10px;background:${footerBg}">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-          ${controlChip}
-          <div style="display:flex;align-items:center;gap:6px">
-            ${riskBtn}
-            <span style="font-size:10px;color:#94a3b8">💬 ${_botcFmtTime(c.last_msg_at)}</span>
-          </div>
-        </div>
-        <div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${waitChip}${_botcEsc(c.last_msg_preview)}</div>
-      </div>`;
-    // La card rich viene con su propio borde/sombra/radius. Al meterla dentro
-    // del wrapper aplicamos CSS que la aplana para que meta y rich lean como
-    // UNA sola card.
-    _botcEnsureCardFlattenCss_();
-    const pending = _botcIsPending_(c);
-    const bgSel = selected ? '#eff6ff' : (pending ? '#fee2e2' : '#fff');
-    const bordCol = selected ? '#3b82f6' : (pending ? '#fca5a5' : '#e2e8f0');
-    const wrap = `<div class="botc-conv-item ${pending?'botc-pending':''}" data-botc-phone="${_botcEsc(c.phone)}"
-        onclick="botcOpenChat('${_botcEsc(c.phone)}')"
-        style="position:relative;background:${bgSel};border:1px solid ${bordCol};border-left:3px solid ${selected?'#3b82f6':(pending?'#dc2626':'transparent')};border-radius:12px;margin:8px 10px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.06);cursor:pointer">${rich || lite}${chatMeta}</div>`;
-    return { html: wrap, cat: _botcClassifyConv_(c, bk), pending };
+    return { html: _botcRowHtml_(c, bk, selected), cat: _botcClassifyConv_(c, bk), pending: _botcIsPending_(c) };
   });
   let listHtml = '';
   if (BOTC_STATE.viewMode === 'clasificado') {
@@ -50954,16 +50966,10 @@ function _botcRenderSidebar() {
         ? `<span title="${pend} sin responder" style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 7px;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;font-weight:800">${pend}</span>`
         : '';
       return `
-        <div style="display:flex;flex-direction:column;gap:0;margin-top:8px">
-          <button type="button" onclick="botcToggleCat_('${cat.key}')"
-            style="position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;background:#fff;border:0;border-bottom:3px solid ${cat.accent};margin:0;cursor:pointer;text-align:left;font-family:inherit;box-shadow:0 2px 4px -2px rgba(15,23,42,.08)"
-            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
-            <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
-              <span style="font-size:11px;color:${cat.color};font-weight:900;letter-spacing:.06em;text-transform:uppercase">${cat.label}</span>
-              ${pendBadge}
-              <span style="font-size:10px;color:#94a3b8;font-weight:700">de ${arr.length}</span>
-            </div>
-            <span style="font-size:14px;color:${cat.color};transition:transform .2s;transform:rotate(${isCol?'-90':'0'}deg);line-height:1">▾</span>
+        <div class="wa-cat">
+          <button type="button" class="wa-cat-h" onclick="botcToggleCat_('${cat.key}')" style="--ac:${cat.accent}">
+            <span class="l">${cat.label}</span>${pend > 0 ? `<span class="wa-unread">${pend}</span>` : ''}<span class="n">${arr.length}</span>
+            <span class="car" style="transform:rotate(${isCol?'-90':'0'}deg)">▾</span>
           </button>
           <div style="display:${isCol?'none':'block'}">${arr.join('')}</div>
         </div>`;
@@ -51016,9 +51022,10 @@ async function _botcEnrichPendingBookings() {
   //   reservas del huésped estén cacheadas rápido y el pick de "Activa" sea
   //   correcto antes de que el bot procese cualquier mensaje entrante.
   const applyToDom = (c, bk) => {
-    if (!bk || typeof lgBuildDetailSidebarItem !== 'function') return;
-    const wrap = document.querySelector(`[data-botc-phone="${CSS.escape(String(c.phone))}"]`);
+    if (!bk) return;
+    const wrap = document.querySelector(`#botc-sidebar [data-botc-phone="${CSS.escape(String(c.phone))}"]`);
     if (!wrap) return;
+    try { wrap.outerHTML = _botcRowHtml_(c, bk, String(c.phone) === String(BOTC_STATE.selectedPhone)); return; } catch (_) {} // fila compacta estilo WhatsApp
     try {
       const bkNamed = c.name ? Object.assign({}, bk, { GuestName: c.name }) : bk;
       let huespedOverride = bkNamed.__reservacion || null;
@@ -51230,9 +51237,7 @@ window.botcOpenChat = async function(phone, opts) {
     BOTC_STATE.__enrichGen = (BOTC_STATE.__enrichGen || 0) + 1;
     try {
       document.querySelectorAll('#botc-sidebar [data-botc-phone]').forEach(el => {
-        const isSel = el.getAttribute('data-botc-phone') === String(phone);
-        el.style.background = isSel ? '#eff6ff' : '#fff';
-        el.style.borderLeft = `3px solid ${isSel ? '#3b82f6' : 'transparent'}`;
+        el.classList.toggle('sel', el.getAttribute('data-botc-phone') === String(phone));
       });
     } catch(_){}
   }
@@ -51261,6 +51266,7 @@ window.botcOpenChat = async function(phone, opts) {
     BOTC_STATE.state = j.state || { control: 'bot' };
     BOTC_STATE.__renderedPhone = String(phone);
     _botcRenderMain(phone);
+    if (!opts.silent) { try { botcBitacoraCol_(phone); } catch (_) {} } // bitácora completa en la 3a columna
     // Reanudar enrichment de cards pendientes (fue abortado al abrir chat).
     if (!opts.silent) setTimeout(() => _botcEnrichPendingBookings(), 300);
     // Cargar phone-extras + PAGOS_STATE.bookings en background para que el
@@ -51288,6 +51294,7 @@ window.botcOpenChat = async function(phone, opts) {
 };
 
 function _botcRenderMain(phone) {
+  _botcWaCss_();
   const main = document.getElementById('botc-main');
   if (!main) return;
   const state = BOTC_STATE.state || { control: 'bot' };
@@ -51299,7 +51306,10 @@ function _botcRenderMain(phone) {
   BOTC_STATE.selectedMsgIdx = BOTC_STATE.selectedMsgIdx || new Set();
   const selMode = !!BOTC_STATE.selectMode;
   const selSet = BOTC_STATE.selectedMsgIdx;
+  let _waDia = '';
   const msgsHtml = msgs.length ? msgs.map((m, idx) => {
+    const _dd = (() => { const d = new Date(m.timestamp); return isNaN(d) ? '' : d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }); })();
+    const _sep = _dd && _dd !== _waDia ? `<div class="wa-day"><span>${_botcEsc(_dd)}</span></div>` : ''; if (_dd) _waDia = _dd;
     const isUser = m.role === 'user';
     const isAdmin = m.role === 'admin';
     const isTemplate = m.role === 'template';
@@ -51322,12 +51332,10 @@ function _botcRenderMain(phone) {
       const proxied = `${BACKEND}/wa/media?url=${encodeURIComponent(String(meta.media_url))}`;
       mediaHtml = `<div style="margin-top:6px"><img src="${proxied}" onclick="event.stopPropagation();_botcImgZoom_('${_botcEsc(proxied).replace(/'/g,'&#39;')}')" style="max-width:260px;max-height:260px;border-radius:8px;display:block;object-fit:contain;background:#f1f5f9;cursor:zoom-in" loading="lazy"></div>`;
     }
-    const inner = `<div style="max-width:70%;padding:8px 12px;background:${bg};border:1px solid ${border};border-radius:10px;${highlight}">
-          <div style="font-size:10px;color:#64748b;font-weight:700;margin-bottom:3px">${label} · ${_botcFmtDateTime(m.timestamp)}</div>
-          <div style="font-size:13px;color:#0f172a;white-space:pre-wrap;line-height:1.4">${_botcEsc(m.body)}</div>
-          ${mediaHtml}
-        </div>`;
-    return `<div style="${rowStyle}" data-ts="${_botcEsc(m.timestamp||'')}" ${clickAttr}>${isUser ? cbHtml + inner : inner + cbHtml}</div>`;
+    const _hora = (() => { const d = new Date(m.timestamp); return isNaN(d) ? '' : d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' }); })();
+    const _quien = isUser ? '' : isAdmin ? '<span class="who" style="color:#b45309">Admin</span>' : isTemplate ? `<span class="who" style="color:#0369a1">Plantilla${m.meta && m.meta.tipo ? ' · ' + _botcEsc(m.meta.tipo) : ''}</span>` : '<span class="who" style="color:#0e7490">Bot</span>';
+    const inner = `<div class="wa-b ${isUser ? 'in' : 'out'} ${isAdmin ? 'adm' : ''} ${isTemplate ? 'tpl' : ''}" style="${highlight}">${_quien}<div class="tx">${_botcEsc(m.body)}</div>${mediaHtml}<span class="hr">${_hora}${isUser ? '' : ' ✓✓'}</span></div>`;
+    return `${_sep}<div class="wa-r ${isUser ? 'in' : 'out'}" style="${selMode ? 'cursor:pointer' : ''}" data-ts="${_botcEsc(m.timestamp||'')}" ${clickAttr}>${isUser ? cbHtml + inner : inner + cbHtml}</div>`;
   }).join('') : '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:40px">Sin mensajes previos.</div>';
   // Barra superior de selección múltiple (aparece solo con selectMode ON).
   const selCount = selSet.size;
@@ -51433,10 +51441,11 @@ function _botcRenderMain(phone) {
       <div id="botc-header-menu" style="display:${BOTC_STATE.headerMenuOpen?'block':'none'};position:absolute;top:100%;right:0;margin-top:6px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.22);z-index:1000;min-width:240px;overflow:hidden;font-size:12px">${menuItemsHtml}</div>
     </div>`;
   main.innerHTML = `
-    <div class="botc-chat-header" style="padding:10px 20px 12px;border-bottom:1px solid #a7f3d0;background:linear-gradient(180deg,#ecfdf5 0%,#d1fae5 100%);display:flex;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap">
-      <div class="botc-chat-header-nameblock" style="display:flex;align-items:center;gap:12px;min-width:0;flex:1">
+    <div class="botc-chat-header wa-chat-h">
+      <div class="botc-chat-header-nameblock" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
         <button id="botc-back-to-list" type="button" onclick="botcBackToList_()" title="Regresar a la lista"
-          style="align-items:center;gap:4px;padding:6px 10px;background:#f1f5f9;color:#334155;border:0;border-radius:6px;cursor:pointer;font-size:12px;font-weight:800;flex:none">←</button>
+          style="align-items:center;gap:4px;padding:6px 8px;background:transparent;color:#54656f;border:0;border-radius:6px;cursor:pointer;font-size:16px;font-weight:800;flex:none">←</button>
+        ${_botcAvHtml_(name || phone)}
         <div style="min-width:0;flex:1;overflow:hidden">${nameHeader}</div>
       </div>
       <div class="botc-chat-header-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto">
@@ -51446,7 +51455,7 @@ function _botcRenderMain(phone) {
       </div>
     </div>
     ${selBarHtml}
-    <div id="botc-msgs" style="flex:1;overflow-y:auto;padding:16px 20px;background:#f8fafc">${msgsHtml}</div>
+    <div id="botc-msgs" class="wa-msgs">${msgsHtml}</div>
     ${(() => {
       // Caja de comprobante (loading/data/error) — solo si es de este phone.
       const cd = BOTC_STATE.comprobanteDraft;
@@ -51502,14 +51511,12 @@ function _botcRenderMain(phone) {
         <button type="button" onclick="botcSysIaAsk_()" style="padding:8px 14px;background:#7c3aed;color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:12px;font-weight:800;align-self:stretch">Preguntar</button>
       </div>
     </div>
-    <div style="padding:12px 16px;border-top:1px solid #e2e8f0;background:#fff;display:flex;gap:8px">
-      <input type="text" id="botc-input" placeholder="${canType ? 'Escribe un mensaje al huésped…' : 'Toma control primero para enviar manualmente'}"
+    <div class="wa-comp">
+      ${canType ? `<button type="button" class="wa-ia" onclick="botcSysIaToggle_()" title="Pedir sugerencia al asistente IA del sistema">✨</button>` : ''}
+      <input type="text" id="botc-input" placeholder="${canType ? 'Escribe un mensaje' : 'Cambia a Manual o Supervisado para escribir'}"
         ${canType ? '' : 'disabled'}
-        onkeydown="if(event.key==='Enter'){event.preventDefault();botcSendManual()}"
-        style="flex:1;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:${canType?'#fff':'#f1f5f9'};color:#0f172a">
-      ${canType ? `<button type="button" onclick="botcSysIaToggle_()" title="Pedir sugerencia al asistente IA del sistema" style="padding:9px 14px;background:#7c3aed;color:#fff;border:0;border-radius:8px;cursor:pointer;font-weight:800;font-size:13px">🤖 Sys-IA</button>` : ''}
-      <button type="button" onclick="botcSendManual()" ${canType ? '' : 'disabled'}
-        style="padding:9px 18px;background:${canType?'#25d366':'#cbd5e1'};color:#fff;border:0;border-radius:8px;cursor:${canType?'pointer':'not-allowed'};font-weight:800;font-size:13px">Enviar</button>
+        onkeydown="if(event.key==='Enter'){event.preventDefault();botcSendManual()}">
+      <button type="button" class="wa-send" onclick="botcSendManual()" ${canType ? '' : 'disabled'} title="Enviar">➤</button>
     </div>
   `;
   // Scroll: si hay anchors pendientes (desde Notificaciones → Ir a chat),
@@ -52252,6 +52259,7 @@ window.botcOpenSummary = async function() {
     // Desktop: renderizar en la 3ra columna del módulo — empuja la col 2 (chat).
     const col3 = document.getElementById('botc-third-col');
     if (!col3) return;
+    window.__waEmbedEl = null; BOTC_STATE.bitPhone = ''; window.__waModalState = null;
     col3.style.display = 'flex';
     col3.style.animation = 'botcSummarySlideIn .28s cubic-bezier(.2,.7,.3,1)';
     col3.innerHTML = panelHtml;
@@ -52290,6 +52298,7 @@ window.botcCloseSummary = function() {
   document.getElementById('botc-summary-modal')?.remove();
   const col3 = document.getElementById('botc-third-col');
   if (col3) { col3.style.display = 'none'; col3.innerHTML = ''; }
+  if (BOTC_STATE.selectedPhone && !BOTC_STATE.bitOff) { BOTC_STATE.bitPhone = ''; botcBitacoraCol_(BOTC_STATE.selectedPhone); } // vuelve la bitácora
 };
 
 /** Markdown mínimo → HTML: headings ##, **bold**, - bullets, saltos.
@@ -52370,7 +52379,40 @@ window.botcOpenReportPickerForCurrent = function() {
  *  seleccionado. Busca el booking activo/próximo por phone y llama a
  *  waOpenModal(booking) — la MISMA función que usa Gestión de reservas, así
  *  el user ve la ventana idéntica con templates, custom, +Nuevo mensaje, etc. */
+// Bitácora completa en la 3a columna, abierta por omisión al abrir un chat (pantallas anchas).
+window.botcBitacoraCerrar_ = function () { BOTC_STATE.bitOff = true; window.__waEmbedEl = null; const c = document.getElementById('botc-third-col'); if (c) { c.style.display = 'none'; c.innerHTML = ''; } window.__waModalState = null; };
+window.botcBitacoraCol_ = async function (phone, forzar) {
+  const col3 = document.getElementById('botc-third-col'); if (!col3) return;
+  if (!forzar && (BOTC_STATE.bitOff || !(window.matchMedia && window.matchMedia('(min-width: 1180px)').matches))) return;
+  if (forzar) BOTC_STATE.bitOff = false;
+  if (BOTC_STATE.bitPhone === String(phone) && col3.querySelector('#wa-modal')) return;
+  BOTC_STATE.bitPhone = String(phone);
+  col3.style.display = 'flex'; col3.innerHTML = '<div class="wa-bit-load">⏳ Cargando bitácora…</div>';
+  try {
+    const bk0 = (() => { try { return _botcGetBookingForPhoneSync(phone); } catch (_) { return null; } })();
+    if (bk0) { // la reserva que ya eligió la lista (al instante; sin esperar al servidor)
+      const bk = Object.assign({}, bk0); try { bk.__chatPhone10 = String(phone).replace(/\D/g, '').slice(-10); } catch (_) {}
+      window.__waEmbedEl = col3; window.__waModalState = null;
+      if (typeof waOpenModal === 'function') await waOpenModal(bk);
+      return;
+    }
+    const j = await fetch(`https://api.check-inn.mx/bookings-by-guest?phone=${encodeURIComponent(phone)}`, { cache: 'no-store' }).then(r => r.json());
+    if (String(BOTC_STATE.selectedPhone) !== String(phone)) return;
+    const L = (j && j.ok && j.bookings) || [];
+    if (!L.length) { col3.innerHTML = '<div class="wa-bit-load">Este número no tiene reservas asociadas: no hay bitácora.<br><button type="button" onclick="botcBitacoraCerrar_()">Ocultar</button></div>'; return; }
+    const hoy = new Date().toISOString().slice(0, 10);
+    const act = L.find(b => { const a = String(b.DateArrival || '').slice(0, 10), d = String(b.DateDeparture || '').slice(0, 10); return a && d && a <= hoy && hoy <= d; });
+    const prox = L.filter(b => String(b.DateArrival || '').slice(0, 10) >= hoy).sort((a, b) => String(a.DateArrival).localeCompare(String(b.DateArrival)))[0];
+    const bk = act || prox || L[L.length - 1];
+    try { bk.__chatPhone10 = String(phone).replace(/\D/g, '').slice(-10); } catch (_) {}
+    window.__waEmbedEl = col3; window.__waModalState = null;
+    if (typeof waOpenModal === 'function') await waOpenModal(bk);
+  } catch (e) { col3.innerHTML = `<div class="wa-bit-load">⚠️ No se pudo cargar la bitácora: ${_botcEsc(e.message || e)}</div>`; }
+};
 window.botcToggleRightPanel = async function() {
+  // «📖 Bitácora completa» del menú: en pantallas anchas va en la 3a columna; en angostas, la ventana lateral de siempre.
+  if (window.matchMedia && window.matchMedia('(min-width: 1180px)').matches && BOTC_STATE.selectedPhone) { BOTC_STATE.bitPhone = ''; return botcBitacoraCol_(BOTC_STATE.selectedPhone, true); }
+  window.__waEmbedEl = null;
   const phone = BOTC_STATE.selectedPhone;
   if (!phone) return;
   const btn = document.querySelector('[onclick="botcToggleRightPanel()"]');
