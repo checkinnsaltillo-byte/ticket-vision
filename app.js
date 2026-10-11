@@ -50921,6 +50921,8 @@ function _botcWaCss_() {
   .fx-mas-c{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s ease}.fx-mas.ab .fx-mas-c{grid-template-rows:1fr}
   .fx-mas-c > .fx-datos{overflow:hidden;min-height:0;margin-top:0}
   .wa-logo{background:none!important;padding:0;overflow:hidden}
+  .wa-row .wa-logo{width:25px;height:25px;margin-top:2px} /* logo del canal 40% más chico (42 → 25 px) */
+  .wa-row:has(.wa-logo){gap:8px}.wa-row:has(.wa-logo)::after{left:45px}
   .fx-res-barra{flex:none;align-self:stretch;width:4px;border-radius:0 4px 4px 0;background:var(--c)}
   .fx-res-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .fx-res-tx b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fx-res-tx small{font-size:12px;color:var(--wa-mu)}
