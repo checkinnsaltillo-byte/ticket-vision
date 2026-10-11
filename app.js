@@ -66381,6 +66381,10 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
     return `<span class="ad-colprog" title="${term} de ${t} terminadas${proc ? ` · ${proc} en proceso` : ''}"><span class="ad-prog"><i style="width:${(term / t * 100).toFixed(1)}%;background:${adEstC_('terminado')}"></i><i style="width:${(proc / t * 100).toFixed(1)}%;background:${adEstC_('en_proceso')}"></i></span><b>${Math.round(term / t * 100)}%</b></span>`;
   };
   const totV = vivos.length;
+  // Orden por prioridad (Crítica → Baja): de arriba a abajo en cada columna y de izquierda a derecha en cada renglón de «Por usuario».
+  // Empates: se conserva el orden anterior (orden estable).
+  const pN0 = I => (PRIO4[I.tarea ? prio4Key_(I.t.prioridad) : I.prio] || { n: 0 }).n;
+  const porPrio_ = L => L.slice().sort((a, b) => pN0(b) - pN0(a));
   // Vista «Por usuario» (como Breezeway): un renglón por persona con sus cards a lo largo; primero lo sin asignar.
   const filasUsuario = () => {
     const quien = I => [...new Set([...(I.pA || []), ...(I.pI || [])])];
@@ -66397,12 +66401,12 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   const cols = vista === 'usuario' ? filasUsuario() : vista === 'estado'
     ? AD_EST.map(E => {
       const L = ver.filter(I => !I.fantasma && adEstBase_(I.selE) === E.k).concat(E.k === 'pendiente' ? ver.filter(I => I.fantasma) : [], E.k === 'terminado' ? ver.filter(I => I.selE === 'cancelado') : []);
-      return `<div class="ad-col" ondragover="adDragOver_(event,'${E.k}')" ondrop="adDrop_(event,'${E.k}')"><div class="ad-colh">${E.t}<span>${nVis(L)}</span>${(n => totV ? `<span class="ad-colprog" title="${n} de ${totV} (${Math.round(n / totV * 100)}%)"><span class="ad-prog"><i style="width:${(n / totV * 100).toFixed(1)}%;background:${E.c}"></i></span><b>${Math.round(n / totV * 100)}%</b></span>` : '')(L.filter(I => !I.fantasma && !I.tarea).length)}</div>${sinHijos(L).map(pinta).join('') || '<div class="ad-empty">Suelta aquí una card</div>'}</div>`;
+      return `<div class="ad-col" ondragover="adDragOver_(event,'${E.k}')" ondrop="adDrop_(event,'${E.k}')"><div class="ad-colh">${E.t}<span>${nVis(L)}</span>${(n => totV ? `<span class="ad-colprog" title="${n} de ${totV} (${Math.round(n / totV * 100)}%)"><span class="ad-prog"><i style="width:${(n / totV * 100).toFixed(1)}%;background:${E.c}"></i></span><b>${Math.round(n / totV * 100)}%</b></span>` : '')(L.filter(I => !I.fantasma && !I.tarea).length)}</div>${porPrio_(sinHijos(L)).map(pinta).join('') || '<div class="ad-empty">Suelta aquí una card</div>'}</div>`;
     }).join('')
     : props.filter(p => ver.some(I => propDe(I) === p)).map(p => {
       const L = ver.filter(I => propDe(I) === p);
       const pts = AD_EST.map(E => { const c = L.filter(I => !I.fantasma && adEstBase_(I.selE) === E.k).length; return c ? `<i style="background:${E.c}" title="${E.t}: ${c}"></i>` : ''; }).join('');
-      return `<div class="ad-col"><div class="ad-colh">🏘️ ${pcEsc(p)}<span>${nVis(L)}</span>${colProg(L)}</div>${sinHijos(L).map(pinta).join('')}</div>`;
+      return `<div class="ad-col"><div class="ad-colh">🏘️ ${pcEsc(p)}<span>${nVis(L)}</span>${colProg(L)}</div>${porPrio_(sinHijos(L)).map(pinta).join('')}</div>`;
     }).join('');
   const vacio = gs.length || tInfos.length ? 'Ninguna card coincide con los filtros' : `Ningún alojamiento con aseo ${esHoy ? 'hoy' : 'el ' + aseoDiaTxt_(hoy)}`;
   ASEO._kpisHtml = kpis; // se pintan arriba del calendario y de las cards (#aseo-top)
