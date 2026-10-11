@@ -50927,6 +50927,7 @@ function _botcWaCss_() {
   .fx-perfil-top{display:flex;align-items:center;gap:11px}.fx-perfil-top .wa-av{width:46px;height:46px;font-size:16px}
   .fx-perfil-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .fx-perfil-id b{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fx-perfil-id small{font-size:12.5px;color:var(--wa-mu)}
+  .fx-tel{display:inline-flex;align-items:center;gap:4px}.fx-tel svg{color:var(--wa-g);flex:none}
   .fx-rs{font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .fx-tier{flex:none;font-size:11px;font-weight:700;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border:1px solid color-mix(in srgb,var(--c) 35%,#fff);padding:2px 8px;border-radius:999px}
   .fx-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
@@ -50990,7 +50991,8 @@ function _botcWaCss_() {
   .botc-topico{all:unset;box-sizing:border-box;position:relative;cursor:pointer;width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#54656f;transition:background .15s}
   #module-bot-chats > div:first-child .botc-topico{height:36px!important;border-radius:50%!important}
   .botc-topico:hover{background:rgba(0,0,0,.07)}.botc-topico[disabled]{cursor:progress}.botc-topico.gira svg{animation:fxGira .8s linear infinite}
-  .botc-npill{position:absolute;top:-3px;left:22px;display:inline-flex;height:17px;border-radius:999px;overflow:hidden;box-shadow:0 0 0 2px #f0f2f5;font-size:10px;font-weight:800;color:#fff;line-height:17px}
+  .botc-topico:has(.botc-npill){margin-right:12px} /* aire para el contador: no se encima con el botón de sincronizar */
+  .botc-npill{position:absolute;top:-6px;left:50%;transform:translateX(-30%);display:inline-flex;height:17px;border-radius:999px;overflow:hidden;box-shadow:0 0 0 2px #f0f2f5;font-size:10px;font-weight:800;color:#fff;line-height:17px}
   .botc-npill > span{padding:0 5px;min-width:9px;text-align:center;align-items:center;justify-content:center}
   .botc-npill .c{background:#dc2626;animation:botcCritPulse 1.6s ease-out infinite}.botc-npill .n{background:#f97316}
   .wa-aloj{font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#0f172a;background:#eef2f6;border:1px solid #d5dde6;padding:0 6px;border-radius:4px;white-space:nowrap;line-height:15px}
@@ -52642,7 +52644,7 @@ function _botcFichaHtml_(st, logs) {
     </div>`;
   const kpi = (v, et) => `<div class="fx-kpi"><b>${v}</b><small>${et}</small></div>`;
   const perfil = `<section class="fx-card fx-perfil">
-      <div class="fx-perfil-top">${_botcAvHtml_(nombre)}<div class="fx-perfil-id"><b>${_botcEsc(nombre)}</b><small>${phone ? '+' + _botcEsc(phone) : esAbn ? 'Huésped de Airbnb' : ''}</small>
+      <div class="fx-perfil-top">${_botcAvHtml_(nombre)}<div class="fx-perfil-id"><b>${_botcEsc(nombre)}</b><small class="fx-tel">${phone ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z"/></svg>+${_botcEsc(phone)}` : esAbn ? 'Huésped de Airbnb' : ''}</small>
         ${rs || reg ? `<span class="fx-rs">🧾 ${_botcEsc(rs)}${rs && reg ? ' · ' : ''}${_botcEsc(reg)}</span>` : ''}</div>
         ${tier ? `<span class="fx-tier" style="--c:${tierC}">★ ${_botcEsc(tier)}</span>` : ''}
         <button type="button" class="fx-ico" onclick="_botcOpenPerfilEditor_('${_botcEsc(phone)}')" title="Editar perfil">✏️</button></div>
