@@ -66200,8 +66200,8 @@ function adCard_(I) {
   const meta = [];
   if (I.trd) meta.push(`<span>Sale <b>${aseoHoraTxt_(I.trd.hora || '11:00')}</b> <span class="${I.trd.aceptada ? 'ok' : 'pd'}">· ${I.trd.aceptada ? 'tarde aceptada' : 'tarde pendiente'}</span></span>`);
   if (I.temp) meta.push(`<span>Entra <b>${aseoHoraTxt_(I.temp.hora || '12:00')}</b> <span class="${I.temp.aceptada ? 'ok' : 'pd'}">· ${I.temp.aceptada ? 'temprano aceptada' : 'temprano pendiente'}</span></span>`);
-  const plP = plPill_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId);
-  const catP = plP ? `<span class="ax-catw">${axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0)}${plP}</span>` : axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0); // el % va pegado al chip (no salta de renglón)
+  const plB = plBarra_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId); // barra de avance de la plantilla, debajo de los estados
+  const catP = axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0);
   meta.unshift(catP);
   // «No ha desalojado»: primer chip de la card de cada alojamiento con salida hoy
   const nsChip = I.xs && I.esHoyC && !I.esCopia ? aseoNoSaleChip_(I.xs.b.Id, I.hid) : ''; // va en el renglón de acciones (r3)
@@ -66224,7 +66224,7 @@ function adCard_(I) {
     <div class="r2">${catP}</div>
     <div class="r3">${nsChip}<span class="sp"></span>${axIncMini_(I.asigId, I.hid, aseoDia_())}${prio4Html_(I.prio, false, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
-    ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}
+    ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
   </div>`;
   return `<div class="ad-card tipo est-tint ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}')"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
@@ -66236,7 +66236,7 @@ function adCard_(I) {
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
     <div class="ad-eq">${equipo}</div>
     <div class="r3 ad-r3w">${nsChip}<span class="ad-r3b"><span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? 'Desarchivar' : 'Archivar'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}${guia}${prio4Html_(I.prio, false, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<button type="button" class="ad-det" onclick="event.stopPropagation();adAbrir_('${pcEsc(I.k)}')">Detalles</button></span></div>
-    ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}
+    ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
   </div>`;
 }
 // ── Tablero: indicadores + filtro de personal + 4 columnas por estado ──
@@ -66703,7 +66703,7 @@ function adPintar_(nuevo) {
       <div class="lab">Estado de aseo</div><div class="ad-steps" style="grid-template-columns:repeat(4,1fr)">${adEstBtns_(I.asigId, I.hid, I.selE, false, false, true)}</div>${guiaBox}
       ${axTipoTareaHtml_(I.depto, null)}${I.soloEnt ? `<div class="ad-hint">Solo entra huésped hoy: no se programa limpieza, se requiere <b>inspección</b> antes de la entrada.${I.ultSal ? ` Última salida: ${aseoDiaTxt_(I.ultSal)} (${I.diasUlt === 0 ? 'hoy' : 'hace ' + I.diasUlt + ' día' + (I.diasUlt === 1 ? '' : 's')}).` : ''}</div>` : ''}
       ${axDetalle_(I.asigId, I.g.sal.length > 0, I.hid, I.hoy || aseoDia_())}
-      ${plBox_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId)}
+      ${plBox_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId, { id: I.asigId, hid: I.hid })}
       ${evs.length ? `<div class="lab">Línea del día</div><div class="ad-tl">${evs.join('')}</div>` : ''}
       <div class="lab">Solicitudes</div><div class="ad-grid2">${sol('tard', I.xs, I.trd)}${sol('temp', I.xe, I.temp)}</div>
       <div class="lab">Equipo</div><div class="ad-ppl">${I.pA.map(n => per(n, 'Aseo')).join('')}${I.pI.map(n => per(n, 'Inspección')).join('')}${!I.pA.length && !I.pI.length ? '<div class="ad-un">Sin asignar</div>' : ''}
@@ -66801,10 +66801,10 @@ function atCard_(I) {
     <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span><span class="prop">${D.ico} ${pcEsc(t.titulo)}</span></div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
-    <div class="r2">${(pp => pp ? `<span class="ax-catw">${axCatHtml_(t.depto, 'T' + t.id, false)}${pp}</span>` : axCatHtml_(t.depto, 'T' + t.id, false))(plPill_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key))}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${t.repite ? '<span class="sep"></span><span>↻ Se repite</span>' : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
+    <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${t.repite ? '<span class="sep"></span><span>↻ Se repite</span>' : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
     <div class="r3">${(t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}${prio4Html_(t.prioridad, false, `atPrioCiclo_('${pcEsc(t.id)}')`)}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
-    ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}
+    ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}${plBarra_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key)}
   </div>`;
 }
 window.atAbrir_ = function (id, dia, origen) {
@@ -68635,6 +68635,8 @@ function plCss_() {
   .pl-cbar{display:flex;align-items:center;gap:6px;margin-top:6px;font:700 10.5px Inter,system-ui,sans-serif;color:#4338ca}.pl-cbar span{flex:1;height:5px;background:#e0e7ff;border-radius:999px;overflow:hidden}.pl-cbar i{display:block;height:100%;background:#4f46e5}
   .pl-cbar.ok{color:#15803d}.pl-cbar.ok i{background:#16a34a}
   .pl-pill{display:inline-block;margin-left:6px;font:800 11px Inter,system-ui,sans-serif;white-space:nowrap;flex:none;cursor:default}
+  .pl-cb2{display:flex;align-items:center;gap:6px;margin-top:6px}.pl-cb2 span{flex:1;height:4px;border-radius:999px;background:#e5e7eb;overflow:hidden}.pl-cb2 i{display:block;height:100%;border-radius:999px}
+  .pl-cb2 b{font:700 9.5px Inter,system-ui,sans-serif;color:#64748b;min-width:26px;text-align:right}
   .ax-catw{display:inline-flex;flex-wrap:nowrap;align-items:center;max-width:100%;min-width:0}
   .ax-catw .ax-cat{flex:0 1 auto;min-width:0}.ax-catw .ax-cat .s,.ax-catw .ax-cat .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .pl-pill.r{color:#dc2626}.pl-pill.a{color:#d97706}.pl-pill.v{color:#16a34a}`;
@@ -68820,10 +68822,16 @@ function plAvance_(p, resp) {
 }
 // Plantilla predeterminada: toda tarea/card de Limpieza › Check-out lleva «Limpieza CHECKOUT» (aunque no se haya elegido).
 function plDefId_() { const p = Object.values(ASEO.pl.lista || {}).find(x => /limpieza\s*check-?out/i.test(x.titulo)); return p ? p.id : ''; }
-function plDe_(depto, srv, expl) { if (expl) return expl; if (depto === 'limpieza' && srv === 'checkout') { if (!ASEO.pl.cargado) plCargar_().then(() => { if (typeof aseoVisible_ === 'function' && aseoVisible_()) aseoRenderSide_(); if (ASEO._dr && !ASEO._dr.form && document.getElementById('ad-drawer')) adPintar_(); }); return plDefId_(); } return ''; }
-function plTareaBox_(t, key) { return t ? plBox_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), key) : ''; }
-function plBox_(pid, key) {
+function plDe_(depto, srv, expl) { if (expl) return expl; if (depto === 'limpieza' && srv === 'checkout') { if (!ASEO.pl.cargado) plTrasCargar_(); return plDefId_(); } return ''; }
+// Un solo repintado cuando terminan de cargar las plantillas (antes cada card agendaba el suyo → decenas de repintados seguidos).
+function plTrasCargar_() {
+  if (ASEO.pl._tras) return; ASEO.pl._tras = true;
+  plCargar_().then(() => { ASEO.pl._tras = false; if (!ASEO.pl.cargado) return; if (typeof aseoVisible_ === 'function' && aseoVisible_()) aseoRenderSide_(); else if (ASEO._dr && !ASEO._dr.form && document.getElementById('ad-drawer')) adPintar_(); });
+}
+function plTareaBox_(t, key) { return t ? plBox_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), key, { id: key, hid: '' }) : ''; }
+function plBox_(pid, key, ctx) {
   if (!pid) return '';
+  if (ctx) (ASEO.pl.ctx = ASEO.pl.ctx || {})[key] = ctx; // a qué estado de card/tarea corresponde (auto «Terminado» > 90 %)
   plCss_();
   const p = ASEO.pl.lista[pid];
   if (!ASEO.pl.cargado || !(key in ASEO.pl.resp)) {
@@ -68897,12 +68905,23 @@ function plGuardarLuego_(key0, pid0) {
       const r = await fetch(`${BACKEND}/aseo/plantilla-resp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ k: key, plantilla: pid, resp: plRespLimpia_(ASEO.pl.resp[key]), avance: plAvance_(ASEO.pl.lista[pid], ASEO.pl.resp[key]), user: plUser_() }) }).then(r => r.json());
       if (!r.ok) throw new Error(r.error || 'Error');
       (ASEO.pl.respAt = ASEO.pl.respAt || {})[key] = r.at; if (ASEO.pl.idx[key]) ASEO.pl.idx[key].at = r.at;
+      plAutoTerminado_(key, plAvance_(ASEO.pl.lista[pid], ASEO.pl.resp[key]).p);
       if (!(ASEO.pl.resp[key] && Object.values(ASEO.pl.resp[key]).some(x => (x.fotos || []).some(f => f.subiendo)))) delete ASEO.pl.pend[key];
       const s3 = document.getElementById('plf-st'); if (s3) s3.textContent = `Guardado ${new Date(r.at).toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}`;
       if (typeof aseoRenderSide_ === 'function' && aseoVisible_()) aseoRenderSide_(); // barra de avance en la card
     } catch (e) { const s3 = document.getElementById('plf-st'); if (s3) s3.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
     ASEO.pl._guardando = null;
   }, 900);
+}
+// Plantilla por encima del 90 %: la card/tarea pasa sola a «Terminado» (si estaba Pendiente o En proceso). Una sola vez por
+// cruce: si después la regresan a «En proceso» a mano, no se vuelve a forzar hasta que baje del 90 % y vuelva a subir.
+function plAutoTerminado_(key, pc) {
+  const A = ASEO.pl.autoT = ASEO.pl.autoT || {}, c = (ASEO.pl.ctx || {})[key];
+  if (pc <= 90) { delete A[key]; return; }
+  if (A[key] || !c || typeof aseoSetEstado_ !== 'function') return;
+  A[key] = true;
+  const cur = (aseoEstDe_(c.id) || {}).estado || 'pendiente';
+  if (cur === 'pendiente' || cur === 'en_proceso') aseoSetEstado_(c.id, c.hid || '', 'terminado', false);
 }
 window.plTg_ = function (key) { const E = ASEO.pl.exp = ASEO.pl.exp || {}; E[key] = !E[key]; const el = document.getElementById('plf'); if (el) el.classList.toggle('exp', E[key]); plRepinta_(); };
 window.plSet_ = function (id, v, suave) {
@@ -68960,6 +68979,14 @@ function plSyncAbierta_() {
     if (D && D.key === k && !(ae && D.el.contains(ae) && /^(INPUT|TEXTAREA)$/.test(ae.tagName))) plRepinta_();
   }).catch(() => {}).finally(() => { if (ASEO.pl._sync === k) ASEO.pl._sync = null; });
 }
+// Barra de avance de la plantilla debajo de los botones de estado: fondo gris = 100 %, relleno con color continuo
+// rojo (0 %) → amarillo → verde (100 %), y el % al extremo derecho.
+function plBarra_(pid, key) {
+  if (!pid) return '';
+  plCss_();
+  const x = (ASEO.pl.idx || {})[key], p = ASEO.pl.lista[pid], pc = x ? x.p : 0;
+  return `<div class="pl-cb2" title="Avance de la plantilla ${pcEsc(p ? p.titulo : '')}: ${pc}%${x ? ` (${x.h} de ${x.t} campos)` : ' · sin capturar'}"><span><i style="width:${pc}%;background:hsl(${Math.round(pc * 1.2)},78%,44%)"></i></span><b>${pc}%</b></div>`;
+}
 // % de la plantilla junto al chip «Tipo › Servicio» de la card. Rojo < 40 % · amarillo 40–89 % · verde ≥ 90 %.
 function plPill_(pid, key) {
   if (!pid) return '';
@@ -68971,7 +68998,7 @@ function plPill_(pid, key) {
 // Barra de avance de la plantilla en la card de la tarea.
 function plCardBar_(t, key) {
   if (!t.plantilla) return '';
-  if (!ASEO.pl.cargado && !ASEO.pl._p) plCargar_().then(() => { if (typeof aseoRenderSide_ === 'function' && aseoVisible_()) aseoRenderSide_(); });
+  if (!ASEO.pl.cargado) plTrasCargar_();
   const x = (ASEO.pl.idx || {})[key], p = ASEO.pl.lista[t.plantilla];
   if (!x && !p) return '';
   const pc = x ? x.p : 0;
