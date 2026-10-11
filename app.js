@@ -50814,6 +50814,13 @@ function _botcWaHora_(iso) { const d = new Date(iso); if (!iso || isNaN(d)) retu
   if (d.toDateString() === h.toDateString()) return d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
   if (d.toDateString() === ay.toDateString()) return 'Ayer';
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }); }
+// Logo del canal de la conversación (lista izquierda): WhatsApp o Airbnb (mensajes de Airbnb vía Lodgify).
+const _BOTC_LOGO = {
+  whatsapp: '<svg viewBox="0 0 48 48" width="100%" height="100%" aria-label="WhatsApp"><circle cx="24" cy="24" r="24" fill="#29a71a"/><path d="M24 10.6a13.4 13.4 0 0 0-11.5 20.3l-1.9 6.7 6.9-1.8A13.4 13.4 0 1 0 24 10.6z" fill="none" stroke="#fff" stroke-width="2.7" stroke-linejoin="round"/><path d="M19.3 17.2c.4-.4 1.1-.4 1.4.1l1.7 2.3c.3.4.2 1-.2 1.3l-.9.7c.8 1.8 2.2 3.2 4 4l.7-.9c.3-.4.9-.5 1.3-.2l2.3 1.7c.4.3.5 1 .1 1.4l-1.1 1.1c-.6.6-1.5.8-2.3.5-3.6-1.4-6.4-4.2-7.7-7.8-.3-.8-.1-1.7.5-2.3z" fill="#fff"/></svg>',
+  airbnb: '<svg viewBox="0 0 48 48" width="100%" height="100%" aria-label="Airbnb"><circle cx="24" cy="24" r="24" fill="#f44336"/><path d="M24 12.6c-1.3 0-2.2.8-3 2.3l-6.3 12.7c-.6 1.1-.9 1.9-.9 2.8 0 2.4 1.9 4.3 4.3 4.3 1.9 0 3.5-1.2 5.9-3.8 2.4 2.6 4 3.8 5.9 3.8 2.4 0 4.3-1.9 4.3-4.3 0-.9-.3-1.7-.9-2.8L27 14.9c-.8-1.5-1.7-2.3-3-2.3zm0 19.1c-1.9-2.2-3.2-4.1-3.2-5.6 0-1.8 1.4-3.2 3.2-3.2s3.2 1.4 3.2 3.2c0 1.5-1.3 3.4-3.2 5.6z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>',
+};
+const _botcCanalLogo_ = c => { const k = /airbnb/i.test(String((c && (c.canal || c.source)) || '')) ? 'airbnb' : 'whatsapp';
+  return `<span class="wa-av wa-logo" title="${k === 'airbnb' ? 'Airbnb (Lodgify)' : 'WhatsApp'}">${_BOTC_LOGO[k]}</span>`; };
 // Modo de la conversación como ícono (lista y encabezado del chat).
 const _BOTC_MODO = { bot: { i: '🤖', t: 'Automático', c: '#0e7490' }, supervised: { i: '👁️', t: 'Supervisado', c: '#7c3aed' }, human: { i: '👨‍💻', t: 'Manual', c: '#b45309' } };
 function _botcRowHtml_(c, bk, selected) {
@@ -50829,7 +50836,7 @@ function _botcRowHtml_(c, bk, selected) {
   } else { const pg = _BOTC_PROG[_botcClassifyConv_(c, null)]; if (pg) chips.push(`<span class="wa-chip" style="--c:${pg[1]}">${pg[0]}</span>`); }
   const risk = typeof _hgNotesRiskCount_ === 'function' ? _hgNotesRiskCount_(phone) : 0;
   return `<div class="botc-conv-item wa-row ${selected ? 'sel' : ''} ${pend ? 'botc-pending' : ''}" data-botc-phone="${_botcEsc(phone)}" onclick="botcOpenChat('${_botcEsc(phone)}')">
-    ${_botcAvHtml_(name)}
+    ${_botcCanalLogo_(c)}
     <div class="wa-body">
       <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span><button type="button" class="wa-modo sm" style="--c:${md.c}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="${md.t} — cambiar modo">${md.i}</button></div>
       ${String(c.razon_social || '').trim() ? `<div class="wa-rs" title="Razón social">🧾 ${_botcEsc(String(c.razon_social).trim())}</div>` : ''}
@@ -50906,6 +50913,14 @@ function _botcWaCss_() {
   .fx-res:hover{box-shadow:0 4px 14px rgba(11,20,26,.07)}.fx-res.abierta{border-color:color-mix(in srgb,var(--wa-g) 40%,var(--wa-ln));box-shadow:0 6px 20px rgba(11,20,26,.08)}
   .fx-res-h{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:11px;padding:10px 12px 10px 0}
   .fx-res-h[disabled]{cursor:progress}
+  .fx-res.encurso .fx-res-h{background:linear-gradient(90deg,#dcfce7,#f0fdf4)}.fx-res.encurso{border-color:#bbf7d0}
+  .fx-res.proxima .fx-res-h{background:linear-gradient(90deg,#dbeafe,#eff6ff)}.fx-res.proxima{border-color:#bfdbfe}
+  .fx-mas{margin-top:10px;border-top:1px solid var(--wa-ln)}
+  .fx-mas-b{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 2px 2px;font-size:12px;font-weight:600;color:var(--ac,#0e7490)}
+  .fx-mas-car{font-size:17px;line-height:1;transition:transform .2s}.fx-mas.ab .fx-mas-car{transform:rotate(90deg)}
+  .fx-mas-c{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s ease}.fx-mas.ab .fx-mas-c{grid-template-rows:1fr}
+  .fx-mas-c > .fx-datos{overflow:hidden;min-height:0;margin-top:0}
+  .wa-logo{background:none!important;padding:0;overflow:hidden}
   .fx-res-barra{flex:none;align-self:stretch;width:4px;border-radius:0 4px 4px 0;background:var(--c)}
   .fx-res-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .fx-res-tx b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fx-res-tx small{font-size:12px;color:var(--wa-mu)}
@@ -52519,6 +52534,7 @@ function _botcFxSolHtml_(rows) {
 const _botcFxVacio_ = (ic, t) => `<div class="fx-vacio"><span>${ic}</span>${_botcEsc(t)}</div>`;
 function _botcFichaHtml_(st, logs) {
   const phone = String(BOTC_STATE.selectedPhone || ''), p10 = phone.replace(/\D/g, '').slice(-10);
+  if (BOTC_STATE.fxAnim !== phone) BOTC_STATE.fxMas = false; // «Más información» empieza plegada con cada huésped
   _botcFxCargar_(phone);
   const conv = (BOTC_STATE.conversations || []).find(c => String(c.phone) === phone) || {};
   const pc = BOTC_STATE.fxPerf[p10] || {}, pf = pc.perfil || {};
@@ -52541,7 +52557,9 @@ function _botcFichaHtml_(st, logs) {
         ${tier ? `<span class="fx-tier" style="--c:${tierC}">★ ${_botcEsc(tier)}</span>` : ''}
         <button type="button" class="fx-ico" onclick="_botcOpenPerfilEditor_('${_botcEsc(phone)}')" title="Editar perfil">✏️</button></div>
       ${pc.perfil ? `<div class="fx-kpis">${kpi(Number(pf.kpi_visitas) || 0, 'visitas')}${kpi(Number(pf.kpi_noches) || 0, 'noches')}${kpi(_botcFxMoney_(pf.kpi_monto), 'pagado')}</div>` : pc.cargando ? '<div class="fx-skel"></div>' : ''}
-      <div class="fx-datos">${dato('🪪', 'RFC', g('RFC'))}${dato('✉️', 'Correo de facturación', g('Correo electrónico para el envío de la factura'))}${dato('📮', 'C.P.', g('Código Postal'))}${dato('🆘', 'Contacto de emergencia', g('Cel/Whatsapp (contacto de emergencia)'))}${dato('📝', 'Notas', g('Notas'))}</div>
+      ${(() => { const h = dato('🪪', 'RFC', g('RFC')) + dato('✉️', 'Correo de facturación', g('Correo electrónico para el envío de la factura')) + dato('📮', 'C.P.', g('Código Postal')) + dato('🆘', 'Contacto de emergencia', g('Cel/Whatsapp (contacto de emergencia)')) + dato('📝', 'Notas', g('Notas'));
+        if (!h) return ''; const ab = !!BOTC_STATE.fxMas; // plegado hasta que se abra
+        return `<div class="fx-mas ${ab ? 'ab' : ''}"><button type="button" class="fx-mas-b" onclick="BOTC_STATE.fxMas=!BOTC_STATE.fxMas;this.parentNode.classList.toggle('ab')"><span>Más información</span><span class="fx-mas-car">›</span></button><div class="fx-mas-c"><div class="fx-datos">${h}</div></div></div>`; })()}
       <div class="fx-sub">Números para avisos de WhatsApp</div>${nums}
     </section>`;
   // Reservas (todas las del número, la más reciente arriba)
@@ -52570,7 +52588,8 @@ function _botcFichaHtml_(st, logs) {
           <div class="fx-tabs">${t('todos', '📋', 'Todos')}${t('programados', '📅', 'Programados')}${t('reportes', '🚨', 'Reportes')}${t('pagos', '💳', 'Pagos')}${t('solicitudes', '📄', 'Solicitudes', sols.length)}</div>
           <div class="fx-cont" key="${tab}">${cont}</div></div>`;
     }
-    return `<article class="fx-res ${abierta ? 'abierta' : ''}" style="animation-delay:${Math.min(i, 8) * 35}ms">
+    const tono = /^(ACTIVA|ENTRADA HOY|SALIDA HOY)$/.test(e.label) ? 'encurso' : e.label === 'PRÓXIMA' ? 'proxima' : '';
+    return `<article class="fx-res ${abierta ? 'abierta' : ''} ${tono}" style="animation-delay:${Math.min(i, 8) * 35}ms">
         <button type="button" class="fx-res-h" ${st.loadingBookingId ? 'disabled' : ''} onclick="waSwitchBooking_('${_botcEsc(id)}')">
           <span class="fx-res-barra" style="--c:${e.color}"></span>
           <span class="fx-res-tx"><b>${_botcEsc(waAlojamientoLabel_(bk))}</b>
