@@ -44167,6 +44167,9 @@ function _waReportHasSentMsg_(kind, id) {
   return false;
 }
 
+// ¿Se está pintando dentro de la «Ficha del huésped» de Chats bot? (ahí las cards usan el diseño del Check-list)
+const _waEnFicha_ = () => { const e = window.__waEmbedEl, m = document.getElementById('module-bot-chats'); return !!(e && document.body.contains(e) && m && !m.classList.contains('hidden')); };
+const _waFichaRep_ = (kind, row) => _waRenderReportTimelineItem_({ row, kindReport: kind, sortKey: String(row['Updated_at'] || row['updated_at'] || row['Timestamp'] || row['Fecha_encontrado'] || row['Fecha'] || '') });
 function _waRenderReportTimelineItem_(it) {
   const r = it.row || {};
   const kind = it.kindReport; // 'inc' | 'obj'
@@ -44268,6 +44271,17 @@ function _waRenderReportTimelineItem_(it) {
     };
   }
   const desc = String(r['Descripcion'] || '').trim();
+  if (_waEnFicha_()) { // «Ficha del huésped» (Chats bot): misma card que el Check-list — renglones, texto en vez de chips, franja de color
+    const rid = String(r['ID'] || ''), sent = _waReportHasSentMsg_(kind, rid), tipoTx = { inc: 'Incidencia', obj: 'Objeto perdido', rt: 'Reporte técnico' }[kind] || cfg.chipLabel;
+    return `<div class="fx-c tipo fx-rep" style="--tc:${cfg.headerBg}" ${cfg.dataAttr} role="button" tabindex="0">
+      <div class="r1"><span class="nm">${cfg.checkIcon} ${_botcEsc(cfg.titulo)}</span>${cfg.titleAccent}<span class="mv">${cfg.estadoInteractive || `<span style="color:${cfg.estadoFg}">${_botcEsc(cfg.estadoLabel)}</span>`}</span></div>
+      <div class="r2"><span>${_botcEsc(tipoTx)}</span><span class="sep"></span>${timelineText}${isEdited && tsCreadoRaw ? `<span class="sep"></span><span>creado ${_botcEsc(_waFmtDateTimeEs(tsCreadoRaw.replace(' ', 'T')))}</span>` : ''}${sent ? '<span class="sep"></span><span class="ok">✓ Mensaje enviado</span>' : ''}</div>
+      ${cfg.incId ? _waIncMenusHtml_(cfg.incId, cfg.estadoLabel, incNormalizeNivel(r['Nivel'])) : ''}${cfg.rtId ? _waRtMenusHtml_(cfg.rtId, cfg.rtEstKey, cfg.rtPrioKey) : ''}
+      ${desc ? `<div class="fx-desc">${_botcEsc(desc)}</div>` : ''}
+      <div class="r3 fila"><button type="button" class="fx-lk" data-wa-report-msg-btn="1" onclick="event.stopPropagation();waReportToggleMsg_('${_botcEsc(kind)}','${_botcEsc(rid)}')">▼ Ver mensaje</button></div>
+      ${_waBuildReportMsgPanel_(kind, rid, r)}
+    </div>`;
+  }
   return `
     <div style="margin-bottom:6px">
       <div style="font-size:10px;font-weight:700;color:#64748b;padding:0 2px 4px 34px">${timelineText}${isEdited && tsCreadoRaw ? ` <span style="color:#94a3b8;font-weight:600">· creado ${_botcEsc(_waFmtDateTimeEs(tsCreadoRaw.replace(' ','T')))}</span>` : ''}</div>
@@ -44684,6 +44698,7 @@ window._waOpenReportPickerForBooking_ = function(propRaw, deptRaw, arrIso, depIs
 };
 
 function _waRenderIncCard_(row) {
+  if (_waEnFicha_()) return _waFichaRep_('inc', row);
   const id = String(row['ID']||'');
   const titulo = [String(row['Motivos']||''), String(row['Clasificacion']||'')].filter(Boolean).join(' — ') || 'Reporte';
   const propiedad = String(row['Propiedad']||'').trim();
@@ -44738,6 +44753,7 @@ function _waRenderIncCard_(row) {
 }
 
 function _waRenderObjCard_(row) {
+  if (_waEnFicha_()) return _waFichaRep_('obj', row);
   const id = String(row['ID']||'');
   const cat = String(row['Categoria']||'').trim();
   const catOtro = String(row['Categoria_otro']||'').trim();
@@ -44774,6 +44790,7 @@ function _waRenderObjCard_(row) {
   </div>`;
 }
 function _waRenderRtCard_(row) {
+  if (_waEnFicha_()) return _waFichaRep_('rt', row);
   const id = String(row['ID']||'');
   const titulo = String(row.Titulo || row.Folio || 'Reporte técnico');
   const propiedad = String(row['Propiedad']||'').trim();
@@ -45497,6 +45514,11 @@ function _waRenderTemplateItem_(it, auto) {
     </div>
   ` : '';
 
+  if (_waEnFicha_()) return `<div class="fx-c tipo fx-msg" style="--tc:#16a34a">
+      <div class="r1"><span class="nm">💬 ${esc(tpl.label.replace(/[🏠⏰🚪📩]\s*/g, '').trim())}</span><span class="mv">${canToggle ? _waMsgToggleHtml('template', tpl.id, isActive, auto, eligible) : (isSent ? '<span class="ok">✓ Enviado</span>' : '')}</span></div>
+      <div class="r2"><span>Plantilla</span><span class="sep"></span>${timeLine}</div>
+      <div class="r3 fila"><button type="button" class="fx-lk" onclick="waToggleTplExpand_('${tpl.id}')">${expanded ? '▲ Ocultar' : '▼ Ver detalles'}</button><button type="button" class="fx-lk ok" onclick="waSendTplNow_('${tpl.id}')">${isSent ? '🔄 Re-enviar ahora' : '📤 Enviar ahora'}</button></div>
+      ${details ? `<div class="fx-det">${details}</div>` : ''}</div>`;
   return `
     <div style="margin-bottom:6px">
       <div style="font-size:10px;font-weight:700;color:#64748b;padding:0 2px 4px 34px">${timeLine}</div>
@@ -45586,6 +45608,14 @@ function _waRenderReportSentCard_(it) {
       <div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:4px">MENSAJE</div>
       <div style="padding:8px 10px;background:#f8fafc;border-radius:8px;font-size:12px;white-space:pre-wrap;line-height:1.4;color:#0f172a">${esc(body)}</div>
     </div>` : '';
+  if (_waEnFicha_()) { const lab = estadoSlug ? ({ nuevo: 'Nuevo', en_proceso: 'En proceso', resuelto: 'Resuelto', cancelado: 'Cancelado', entregado: 'Entregado', pendiente: 'Pendiente' }[estadoSlug] || estadoSlug) : 'Mensaje enviado';
+    const lc = estadoSlug && kind !== 'obj' ? incEstatusColors(lab).fg : estadoSlug === 'pendiente' ? '#92400e' : '#166534', tipoTx = { inc: 'Incidencia', obj: 'Objeto perdido', rt: 'Reporte técnico' }[kind];
+    return `<div class="fx-c tipo fx-msg" style="--tc:${headerBg}">
+      <div class="r1"><span class="nm">📤 ${esc(titulo)}</span><span class="mv" style="color:${lc}"><i style="background:${lc}"></i>${esc(lab)}</span></div>
+      <div class="r2"><span>Aviso de ${esc(tipoTx.toLowerCase())}</span><span class="sep"></span>${timeLine}</div>
+      ${_waRecipientsSummary_(cs.to) ? `<div class="r2">${_waRecipientsSummary_(cs.to)}</div>` : ''}
+      <div class="r3 fila"><button type="button" class="fx-lk" onclick="waToggleExpand_('${expKey}')">${expanded ? '▲ Ocultar' : '▼ Ver mensaje'}</button></div>
+      ${details ? `<div class="fx-det">${details}</div>` : ''}</div>`; }
   return `
     <div style="margin-bottom:6px">
       <div style="font-size:10px;font-weight:700;color:#64748b;padding:0 2px 4px 34px">${timeLine}</div>
@@ -45685,6 +45715,12 @@ function _waRenderCustomItem_(it, auto) {
   ` : '';
 
   const sendBtnLabel = isSent ? '🔄 Re-enviar ahora' : (isFailed ? '🔄 Reintentar' : '📤 Enviar ahora');
+  if (_waEnFicha_()) return `<div class="fx-c tipo fx-msg" style="--tc:${isFailed ? '#dc2626' : isOmitted ? '#94a3b8' : '#f97316'}">
+      <div class="r1"><span class="nm">✉️ ${esc(cs.asunto || 'Sin asunto')}</span><span class="mv">${canToggle ? _waMsgToggleHtml('custom', cs.id, isActive, auto, eligible) : (isSent ? '<span class="ok">✓ Enviado</span>' : isFailed ? '<span style="color:#dc2626">✗ Falló</span>' : '')}</span></div>
+      <div class="r2"><span>Personalizado${it && it.isReenvio ? ' · reenvío' : ''}</span><span class="sep"></span>${timeLine}</div>
+      ${_waRecipientsSummary_(cs.to) ? `<div class="r2">${_waRecipientsSummary_(cs.to)}</div>` : ''}
+      <div class="r3 fila"><button type="button" class="fx-lk" onclick="waToggleExpand_('${expKey}')">${expanded ? '▲ Ocultar' : '▼ Ver detalles'}</button>${!isOmitted ? `<button type="button" class="fx-lk ok" onclick="waSchedSendNow_('${cs.id}')">${sendBtnLabel}</button>` : ''}${!isSent ? `<button type="button" class="fx-lk mal" onclick="waSchedDelete_('${cs.id}')">🗑 Eliminar</button>` : ''}</div>
+      ${details ? `<div class="fx-det">${details}</div>` : ''}</div>`;
   return `
     <div style="margin-bottom:6px">
       <div style="font-size:10px;font-weight:700;color:#64748b;padding:0 2px 4px 34px">${timeLine}</div>
@@ -51044,6 +51080,16 @@ function _botcWaCss_() {
   .fx-steps button:hover{background:color-mix(in srgb,var(--c) 22%,#fff);color:#0f1729}
   .fx-steps button.on{background:var(--c);color:#fff;font-weight:600;box-shadow:0 1px 2px rgba(15,23,42,.15)}
   .fx-steps button i{font-style:normal;font-size:10px;font-weight:700}
+  .fx-rep{cursor:pointer}.fx-rep .r1 .nm{white-space:normal}
+  .fx-rep .r1 .mv{align-self:flex-start}
+  .fx-rep [data-wa-inc-nivel-chip],.fx-rep [data-wa-rt-prio-chip]{padding:0 0 0 2px!important;border:0!important;background:none!important;margin-left:0!important;flex:none}
+  .fx-rep [data-wa-inc-est-chip],.fx-rep [data-wa-rt-est-chip]{padding:0!important;border:0!important;background:none!important;font-size:10.5px!important;font-weight:600!important}
+  .fx-rep .r2 span[style]{font-weight:500!important}.fx-c .r2 .ok{color:#16a34a}
+  .fx-msg .r2 span[style]{font-weight:500!important;font-style:normal!important}.fx-msg .r2 b{font-weight:600}
+  .fx-c .fx-lk.ok{color:#16a34a}.fx-c .fx-lk.mal{color:#dc2626}
+  .fx-det{margin:8px -11px -9px;border-top:1px solid var(--ad-line2)}.fx-det > div{background:#fafbfc!important;border-top:0!important;border-radius:0 0 9px 9px}
+  .fx-desc{margin-top:5px;font-size:12px;color:#374151;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .fx-c .r3.fila{flex-direction:row;align-items:center;gap:8px;margin-top:7px;padding-top:6px}.fx-c .r3.fila .fx-lk{margin-top:0}
   .fx-sol{cursor:pointer;display:block}.fx-sol .r2{flex-wrap:nowrap}.fx-sol .r2 > span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .fx-skel{display:inline-block;width:160px;height:12px;border-radius:6px;background:linear-gradient(90deg,#f0f2f5 25%,#e9edef 50%,#f0f2f5 75%);background-size:200% 100%;animation:fxBrillo 1.2s linear infinite}
   .fx .fx-vacio{padding:14px 10px;font-size:12px;border-radius:10px}.fx .fx-vacio span{font-size:18px}
