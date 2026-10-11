@@ -51000,6 +51000,54 @@ function _botcWaCss_() {
   .botc-npill .c{background:#dc2626;animation:botcCritPulse 1.6s ease-out infinite}.botc-npill .n{background:#f97316}
   .wa-aloj{font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#0f172a;background:#eef2f6;border:1px solid #d5dde6;padding:0 6px;border-radius:4px;white-space:nowrap;line-height:15px}
   .wa-aloj.air{color:#be123c;background:#fff1f2;border-color:#fecdd3}
+  /* Ficha del huésped con la estética de las cards del Check-list (Aseo / Mantenimiento) */
+  .fx{--ad-line:#e8eaee;--ad-line2:#f0f1f4;--ad-tx:#0f1729;--ad-mut:#6b7280;--ad-mut2:#9aa1ad;font:12.5px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ad-tx);background:#f7f8fa}
+  .fx .fx-h{background:#fff}.fx .fx-scroll{padding:2px 10px 16px}
+  .fx-lab{display:flex;gap:6px;margin:12px 2px 6px;font-size:10.5px;font-weight:600;color:var(--ad-mut2);text-transform:uppercase;letter-spacing:.08em}.fx-lab span{color:var(--ad-mut)}
+  .fx-c{position:relative;display:block;width:100%;box-sizing:border-box;background:#fff;border:1px solid var(--ad-line);border-radius:10px;padding:9px 11px;margin:0 0 7px;box-shadow:0 1px 2px rgba(16,24,40,.04);transition:box-shadow .15s,border-color .15s;text-align:left;font:inherit;color:inherit}
+  .fx-c:hover{box-shadow:0 4px 14px rgba(16,24,40,.09)}
+  .fx-c.tipo{border-left:4px solid var(--tc)}
+  .fx-c .r1{display:flex;align-items:center;gap:7px;min-width:0}
+  .fx-c .r1 .wa-av{width:24px;height:24px;font-size:10px}
+  .fx-c .nm{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .fx-c .code{font:600 12px ui-monospace,"JetBrains Mono",SFMono-Regular,Menlo,monospace;letter-spacing:.02em;flex:none}
+  .fx-c .prop{color:var(--ad-mut);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .fx-c .mv{margin-left:auto;display:inline-flex;align-items:center;gap:5px;flex:none;font-size:10.5px;font-weight:600}
+  .fx-c .mv i{width:6px;height:6px;border-radius:50%}
+  .fx-c .car{flex:none;color:var(--ad-mut2);font-size:15px;transition:transform .2s}.fx-res.abierta .car{transform:rotate(90deg)}
+  .fx-c .r2{display:flex;flex-wrap:wrap;align-items:center;gap:3px 0;margin-top:5px;color:var(--ad-mut);font-size:11.5px}
+  .fx-c .r2 b{color:var(--ad-tx);font-weight:600}.fx-c .r2 .vi{color:#6d28d9}
+  .fx-c .r2 .sep{width:1px;height:10px;background:var(--ad-line);margin:0 8px}
+  .fx-c .r2.kp b{color:#00a884}
+  .fx-c .r3{display:flex;flex-direction:column;gap:5px;margin-top:8px;padding-top:7px;border-top:1px solid var(--ad-line2)}
+  .fx-c .r3 .lab,.fx-c .fx-kv span{font-size:10.5px;font-weight:600;color:var(--ad-mut2);text-transform:uppercase;letter-spacing:.06em}
+  .fx-tel{display:inline-flex;align-items:center;gap:4px}.fx-tel svg{color:#00a884}
+  .fx-ed{all:unset;cursor:pointer;flex:none;font-size:13px;padding:2px 4px;border-radius:5px}.fx-ed:hover{background:#eef2ff}
+  .fx-lk{all:unset;cursor:pointer;font-size:11px;font-weight:600;color:#4f46e5;padding:2px 0;margin-top:5px;display:inline-flex;align-items:center;gap:4px}
+  .fx-lk .car{display:inline-block;transition:transform .2s}.fx-mas.ab .fx-lk .car{transform:rotate(90deg)}
+  .fx-mas-c{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s ease}.fx-mas.ab .fx-mas-c{grid-template-rows:1fr}.fx-mas-c > div{overflow:hidden;min-height:0}
+  .fx-kv{display:flex;flex-direction:column;padding:4px 0;border-top:1px dashed var(--ad-line2)}.fx-kv:first-child{border-top:0}
+  .fx-kv b{font-weight:500;font-size:12px;word-break:break-word}
+  .fx .fx-num{height:22px;font-size:11.5px;padding:0 3px 0 8px}.fx .fx-num.prin{padding-right:8px}
+  .fx .fx-num-add{height:24px;min-width:130px}
+  .fx-res{padding:0;cursor:pointer}
+  .fx-res-h{all:unset;box-sizing:border-box;display:block;width:100%;padding:9px 11px;cursor:pointer}
+  .fx-res.encurso{background:linear-gradient(180deg,#ecfdf3,#fff 70%);border-color:#bbf7d0}
+  .fx-res.proxima{background:linear-gradient(180deg,#eff6ff,#fff 70%);border-color:#bfdbfe}
+  .fx-res.abierta{border-color:color-mix(in srgb,var(--tc) 55%,#fff);box-shadow:0 0 0 3px color-mix(in srgb,var(--tc) 12%,transparent)}
+  .fx-cuerpo{border-top:1px solid var(--ad-line2);padding:8px 10px 10px;cursor:default}
+  .fx .fx-auto{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;font-weight:600;padding:0;border:0;background:none;border-radius:0}
+  .fx-res.encurso .fx-res-h,.fx-res.proxima .fx-res-h{background:none}
+  .fx-auto em{font-style:normal;font-weight:400;color:var(--ad-mut)}.fx-auto em.ok{color:#16a34a}
+  .fx-steps{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:8px 0}
+  .fx-steps button{all:unset;cursor:pointer;text-align:center;padding:6px 2px;border-radius:8px;font-weight:500;font-size:11px;white-space:nowrap;background:color-mix(in srgb,var(--c) 11%,#fff);color:color-mix(in srgb,var(--c) 72%,#1f2937);transition:background .15s}
+  .fx-steps button:hover{background:color-mix(in srgb,var(--c) 22%,#fff);color:#0f1729}
+  .fx-steps button.on{background:var(--c);color:#fff;font-weight:600;box-shadow:0 1px 2px rgba(15,23,42,.15)}
+  .fx-steps button i{font-style:normal;font-size:10px;font-weight:700}
+  .fx-sol{cursor:pointer;display:block}.fx-sol .r2{flex-wrap:nowrap}.fx-sol .r2 > span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fx-skel{display:inline-block;width:160px;height:12px;border-radius:6px;background:linear-gradient(90deg,#f0f2f5 25%,#e9edef 50%,#f0f2f5 75%);background-size:200% 100%;animation:fxBrillo 1.2s linear infinite}
+  .fx .fx-vacio{padding:14px 10px;font-size:12px;border-radius:10px}.fx .fx-vacio span{font-size:18px}
+  .fx.anim .fx-c{animation:fxSube .3s ease both}.fx.animtab .fx-cont{animation:fxSube .22s ease both}
   .wa-rs{font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-l2{display:flex;align-items:center;gap:6px}.wa-l2 .pv{flex:1;min-width:0;font-size:13px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-wait{font-weight:400}
@@ -52620,43 +52668,41 @@ function _botcFxMoney_(n) { const v = Number(n) || 0; return '$' + v.toLocaleStr
 function _botcFxSolHtml_(rows) {
   if (!rows.length) return _botcFxVacio_('📄', 'Sin solicitudes en esta reserva');
   const est = { pendiente: ['#b45309', 'Pendiente'], programado: ['#1d4ed8', 'Programada'], atendido: ['#15803d', 'Atendida'], aprobado: ['#15803d', 'Aprobada'], rechazado: ['#b91c1c', 'Rechazada'], cancelado: ['#64748b', 'Cancelada'] };
-  return rows.map((r, i) => { const m = (window._botcSolTipoMeta_ ? _botcSolTipoMeta_(r.Tipo) : { icon: '📌', label: r.Tipo }), e = est[String(r.Estado || '').toLowerCase()] || ['#64748b', r.Estado || '—'];
-    return `<button type="button" class="fx-sol" style="--c:${e[0]};animation-delay:${i * 40}ms" onclick="_botcOpenSolicitudesDrawer_('${_botcEsc(BOTC_STATE.selectedPhone)}')" title="Abrir solicitudes para atenderla">
-      <span class="fx-sol-ic">${m.icon}</span><span class="fx-sol-tx"><b>${_botcEsc(m.label)}</b><small>${_botcEsc(String(r.Resumen || '').slice(0, 140))}</small></span>
-      <span class="fx-sol-der"><span class="fx-pill" style="--c:${e[0]}">${_botcEsc(e[1])}</span><small>${_botcEsc(_botcWaHora_(r.Timestamp) || '')}</small></span></button>`; }).join('');
+  return rows.map(r => { const m = (window._botcSolTipoMeta_ ? _botcSolTipoMeta_(r.Tipo) : { icon: '📌', label: r.Tipo }), e = est[String(r.Estado || '').toLowerCase()] || ['#64748b', r.Estado || '—'];
+    return `<button type="button" class="fx-c tipo fx-sol" style="--tc:${e[0]}" onclick="_botcOpenSolicitudesDrawer_('${_botcEsc(BOTC_STATE.selectedPhone)}')" title="Abrir solicitudes para atenderla">
+      <div class="r1"><span class="nm">${m.icon} ${_botcEsc(m.label)}</span><span class="mv" style="color:${e[0]}"><i style="background:${e[0]}"></i>${_botcEsc(e[1])}</span></div>
+      <div class="r2"><span>${_botcEsc(String(r.Resumen || '').slice(0, 160) || 'Sin detalle')}</span><span class="sep"></span><span>${_botcEsc(_botcWaHora_(r.Timestamp) || '')}</span></div></button>`; }).join('');
 }
 const _botcFxVacio_ = (ic, t) => `<div class="fx-vacio"><span>${ic}</span>${_botcEsc(t)}</div>`;
 function _botcFichaHtml_(st, logs) {
+  // Misma estética que las cards del Check-list (Aseo / Mantenimiento): renglones r1/r2/r3, texto con separadores en vez de chips.
   const sel = String(BOTC_STATE.selectedPhone || ''), esAbn = _botcEsAbn_(sel);
   const phone = esAbn ? String((st.b && st.b.GuestPhone) || '').replace(/\D/g, '') : sel, p10 = phone.slice(-10); // Airbnb: perfil por el teléfono de la reserva
   if (BOTC_STATE.fxAnim !== sel) BOTC_STATE.fxMas = false; // «Más información» empieza plegada con cada huésped
   if (phone) _botcFxCargar_(phone);
   const conv = (BOTC_STATE.conversations || []).find(c => String(c.phone) === phone) || (esAbn ? { name: (st.b && st.b.GuestName) || '' } : {});
   const pc = BOTC_STATE.fxPerf[p10] || {}, pf = pc.perfil || {};
-  const g = k => String(pf[k] == null ? '' : pf[k]).trim();
+  const g = k => String(pf[k] == null ? '' : pf[k]).trim(), E = _botcEsc, SEP = '<span class="sep"></span>';
   const nombre = g('Nombre del huésped') || conv.name || (st.b && st.b.GuestName) || ('+' + phone);
   const rs = g('Razón social') || conv.razon_social || '', reg = g('Régimen fiscal') || conv.regimen_fiscal || '';
   const tier = g('kpi_clasificacion'), tierC = { Oro: '#ca8a04', Plata: '#64748b', Bronce: '#b45309', Recurrente: '#0e7490' }[tier] || '#94a3b8';
-  const dato = (ic, et, v) => v ? `<div class="fx-dato"><span class="fx-dato-ic">${ic}</span><span class="fx-dato-tx"><small>${et}</small>${_botcEsc(v)}</span></div>` : '';
+  const tel = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z"/></svg>';
+  // Más información (plegada): renglones etiqueta → valor
+  const kv = (et, v) => v ? `<div class="fx-kv"><span>${et}</span><b>${E(v)}</b></div>` : '';
+  const masH = kv('RFC', g('RFC')) + kv('Correo de facturación', g('Correo electrónico para el envío de la factura')) + kv('C.P.', g('Código Postal')) + kv('Contacto de emergencia', g('Cel/Whatsapp (contacto de emergencia)')) + kv('Notas', g('Notas'));
   // Números adicionales (avisos de WhatsApp de la reserva seleccionada)
   const prim = st.primaryPhone || '', adic = (st.recipients || []).filter(x => !waPhonesEqual_(x, prim));
-  const nums = `<div class="fx-nums">
-      ${prim ? `<span class="fx-num prin" title="Número de la reserva">🔒 ${_botcEsc(waDisplayPhone_(prim))}</span>` : ''}
-      ${adic.map(n => `<span class="fx-num">${_botcEsc(waDisplayPhone_(n))}<button type="button" onclick="waRemoveRecipient_(${(st.recipients || []).findIndex(x => waPhonesEqual_(x, n))})" title="Quitar">×</button></span>`).join('')}
-      <span class="fx-num-add"><input type="tel" placeholder="Agregar número…" value="${_botcEsc(st.newRecipient || '')}" oninput="__waModalState.newRecipient=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();waAddRecipient_();}"><button type="button" onclick="waAddRecipient_()" title="Agregar">＋</button></span>
+  const nums = `<div class="fx-nums">${prim ? `<span class="fx-num prin" title="Número de la reserva (no se puede quitar)">🔒 ${E(waDisplayPhone_(prim))}</span>` : ''}${adic.map(n => `<span class="fx-num">${E(waDisplayPhone_(n))}<button type="button" onclick="waRemoveRecipient_(${(st.recipients || []).findIndex(x => waPhonesEqual_(x, n))})" title="Quitar">×</button></span>`).join('')}
+      <span class="fx-num-add"><input type="tel" placeholder="Agregar número…" value="${E(st.newRecipient || '')}" oninput="__waModalState.newRecipient=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();waAddRecipient_();}"><button type="button" onclick="waAddRecipient_()" title="Agregar">＋</button></span></div>`;
+  const ident = [phone ? `<span class="fx-tel">${tel}+${E(phone)}</span>` : (esAbn ? '<span>Huésped de Airbnb</span>' : ''), rs ? `<span>🧾 <b>${E(rs)}</b></span>` : '', reg ? `<span>${E(reg)}</span>` : ''].filter(Boolean).join(SEP);
+  const kpis = pc.perfil ? [`<span><b>${Number(pf.kpi_visitas) || 0}</b> visitas</span>`, `<span><b>${Number(pf.kpi_noches) || 0}</b> noches</span>`, `<span><b>${_botcFxMoney_(pf.kpi_monto)}</b> pagado</span>`].join(SEP) : (pc.cargando ? '<span class="fx-skel"></span>' : '');
+  const perfil = `<div class="fx-c tipo" style="--tc:${tier ? tierC : '#00a884'}">
+      <div class="r1">${_botcAvHtml_(nombre)}<span class="nm">${E(nombre)}</span>${tier ? `<span class="mv" style="color:${tierC}">★ ${E(tier)}</span>` : '<span class="mv"></span>'}<button type="button" class="fx-ed" onclick="_botcOpenPerfilEditor_('${E(phone)}')" title="Editar perfil">✏️</button></div>
+      ${ident ? `<div class="r2">${ident}</div>` : ''}
+      ${kpis ? `<div class="r2 kp">${kpis}</div>` : ''}
+      ${masH ? `<div class="fx-mas ${BOTC_STATE.fxMas ? 'ab' : ''}"><button type="button" class="fx-lk" onclick="BOTC_STATE.fxMas=!BOTC_STATE.fxMas;this.parentNode.classList.toggle('ab')">Más información <span class="car">›</span></button><div class="fx-mas-c"><div>${masH}</div></div></div>` : ''}
+      <div class="r3"><span class="lab">Avisos de WhatsApp</span>${nums}</div>
     </div>`;
-  const kpi = (v, et) => `<div class="fx-kpi"><b>${v}</b><small>${et}</small></div>`;
-  const perfil = `<section class="fx-card fx-perfil">
-      <div class="fx-perfil-top">${_botcAvHtml_(nombre)}<div class="fx-perfil-id"><b>${_botcEsc(nombre)}</b><small class="fx-tel">${phone ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z"/></svg>+${_botcEsc(phone)}` : esAbn ? 'Huésped de Airbnb' : ''}</small>
-        ${rs || reg ? `<span class="fx-rs">🧾 ${_botcEsc(rs)}${rs && reg ? ' · ' : ''}${_botcEsc(reg)}</span>` : ''}</div>
-        ${tier ? `<span class="fx-tier" style="--c:${tierC}">★ ${_botcEsc(tier)}</span>` : ''}
-        <button type="button" class="fx-ico" onclick="_botcOpenPerfilEditor_('${_botcEsc(phone)}')" title="Editar perfil">✏️</button></div>
-      ${pc.perfil ? `<div class="fx-kpis">${kpi(Number(pf.kpi_visitas) || 0, 'visitas')}${kpi(Number(pf.kpi_noches) || 0, 'noches')}${kpi(_botcFxMoney_(pf.kpi_monto), 'pagado')}</div>` : pc.cargando ? '<div class="fx-skel"></div>' : ''}
-      ${(() => { const h = dato('🪪', 'RFC', g('RFC')) + dato('✉️', 'Correo de facturación', g('Correo electrónico para el envío de la factura')) + dato('📮', 'C.P.', g('Código Postal')) + dato('🆘', 'Contacto de emergencia', g('Cel/Whatsapp (contacto de emergencia)')) + dato('📝', 'Notas', g('Notas'));
-        if (!h) return ''; const ab = !!BOTC_STATE.fxMas; // plegado hasta que se abra
-        return `<div class="fx-mas ${ab ? 'ab' : ''}"><button type="button" class="fx-mas-b" onclick="BOTC_STATE.fxMas=!BOTC_STATE.fxMas;this.parentNode.classList.toggle('ab')"><span>Más información</span><span class="fx-mas-car">›</span></button><div class="fx-mas-c"><div class="fx-datos">${h}</div></div></div>`; })()}
-      <div class="fx-sub">Números para avisos de WhatsApp</div>${nums}
-    </section>`;
   // Reservas (todas las del número, la más reciente arriba)
   let bks; try { bks = _waFindRelatedBookings(st.b); } catch (_) { bks = null; } if (!bks || !bks.length) bks = st.bookings && st.bookings.length ? st.bookings : [st.b];
   st.bookings = bks;
@@ -52668,9 +52714,13 @@ function _botcFichaHtml_(st, logs) {
     const id = String(waBookingId_(bk)), abierta = String(st.focusedBookingId) === id, carg = String(st.loadingBookingId || '') === id;
     const a = _botcFxIso_(bk.DateArrival || bk.arrival), d = _botcFxIso_(bk.DateDeparture || bk.departure), e = _waBookingStatus(Object.assign({}, bk, { DateArrival: a, DateDeparture: d, arrival: a, departure: d })), src = _botcSrcTxt_(bk.Source);
     const noches = a && d ? Math.round((new Date(d) - new Date(a)) / 864e5) : 0, sols = solDe(id, i === 0);
+    const tono = /^(ACTIVA|ENTRADA HOY|SALIDA HOY)$/.test(e.label) ? 'encurso' : e.label === 'PRÓXIMA' ? 'proxima' : '';
+    const corto = _botcAlojCorto_(bk), lugar = waAlojamientoLabel_(bk), estTx = e.label.charAt(0) + e.label.slice(1).toLowerCase();
+    const r2 = [`<span><b>${a ? E(_waFmtShortDate(a)) : '—'} → ${d ? E(_waFmtShortDate(d)) : '—'}</b></span>`, noches > 0 ? `<span>${noches} noche${noches === 1 ? '' : 's'}</span>` : '',
+      src ? `<span style="color:${src[1]}">${E(src[0])}</span>` : '', sols.length ? `<span class="vi">📄 ${sols.length} solicitud${sols.length === 1 ? '' : 'es'}</span>` : ''].filter(Boolean).join(SEP);
     let cuerpo = '';
     if (abierta) {
-      const t = (k, ic, et, n) => `<button type="button" class="fx-tab ${tab === k ? 'on' : ''}" onclick="waSetTab_('${k}')"><span>${ic}</span>${et}${n ? `<i>${n}</i>` : ''}</button>`;
+      const t = (k, c, ic, et, n) => `<button type="button" class="${tab === k ? 'on' : ''}" style="--c:${c}" onclick="waSetTab_('${k}')">${ic} ${et}${n ? ` <i>${n}</i>` : ''}</button>`;
       let cont;
       if (carg) cont = `<div class="fx-cargando"><span class="fx-spin"></span>Cargando la bitácora de esta reserva…</div>`;
       else if (tab === 'solicitudes') cont = _botcFxSolHtml_(sols);
@@ -52678,20 +52728,16 @@ function _botcFichaHtml_(st, logs) {
         try { cont = mode === 'reports-only' ? (_waRenderReportsForBooking_(bk) || _botcFxVacio_('🚨', 'Sin reportes en esta reserva')) : mode === 'pagos-only' ? (_waRenderPagosForBooking_(bk) || _botcFxVacio_('💳', 'Sin pagos registrados en esta reserva'))
           : _waRenderUnifiedList_(logs, { scheduleOnly: mode === 'schedule-only', includePagos: mode !== 'schedule-only', bookingForPagos: bk }); } catch (er) { cont = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + er.message); } }
       const auto = !!(WA_ADMIN.config[id] && WA_ADMIN.config[id].auto_enabled);
-      cuerpo = `<div class="fx-res-cuerpo">
-          <div class="fx-auto ${auto ? 'on' : ''}"><span>📅 Mensajes automáticos <small>${auto ? 'Activos para esta reserva' : 'Apagados para esta reserva'}</small></span>${waAutoToggleHtml(id)}</div>
-          <div class="fx-tabs">${t('todos', '📋', 'Todos')}${t('programados', '📅', 'Programados')}${t('reportes', '🚨', 'Reportes')}${t('pagos', '💳', 'Pagos')}${t('solicitudes', '📄', 'Solicitudes', sols.length)}</div>
-          <div class="fx-cont" key="${tab}">${cont}</div></div>`;
+      cuerpo = `<div class="fx-cuerpo" onclick="event.stopPropagation()">
+          <div class="fx-auto"><span>📅 Mensajes automáticos <em class="${auto ? 'ok' : ''}">· ${auto ? 'activos para esta reserva' : 'apagados para esta reserva'}</em></span>${waAutoToggleHtml(id)}</div>
+          <div class="fx-steps">${t('todos', '#475569', '📋', 'Todos')}${t('programados', '#2563eb', '📅', 'Prog.')}${t('reportes', '#dc2626', '🚨', 'Reportes')}${t('pagos', '#16a34a', '💳', 'Pagos')}${t('solicitudes', '#7c3aed', '📄', 'Solic.', sols.length)}</div>
+          <div class="fx-cont">${cont}</div></div>`;
     }
-    const tono = /^(ACTIVA|ENTRADA HOY|SALIDA HOY)$/.test(e.label) ? 'encurso' : e.label === 'PRÓXIMA' ? 'proxima' : '';
-    return `<article class="fx-res ${abierta ? 'abierta' : ''} ${tono}" style="animation-delay:${Math.min(i, 8) * 35}ms">
-        <button type="button" class="fx-res-h" ${st.loadingBookingId ? 'disabled' : ''} onclick="waSwitchBooking_('${_botcEsc(id)}')">
-          <span class="fx-res-barra" style="--c:${e.color}"></span>
-          <span class="fx-res-tx"><b>${_botcEsc(waAlojamientoLabel_(bk))}</b>
-            <small>${a ? _botcEsc(_waFmtShortDate(a)) : '—'} → ${d ? _botcEsc(_waFmtShortDate(d)) : '—'}${noches > 0 ? ` · ${noches} noche${noches === 1 ? '' : 's'}` : ''}</small>
-            <span class="fx-res-chips"><span class="wa-chip" style="--c:${e.color}">${_botcEsc(e.label.charAt(0) + e.label.slice(1).toLowerCase())}</span>${src ? `<span class="wa-chip" style="--c:${src[1]}">${_botcEsc(src[0])}</span>` : ''}${sols.length ? `<span class="wa-chip" style="--c:#7c3aed">📄 ${sols.length}</span>` : ''}</span></span>
-          <span class="fx-res-car">${carg ? '<span class="fx-spin"></span>' : '›'}</span>
-        </button>${cuerpo}</article>`;
+    return `<div class="fx-c tipo fx-res ${abierta ? 'abierta' : ''} ${tono}" style="--tc:${e.color};animation-delay:${Math.min(i, 8) * 35}ms">
+        <button type="button" class="fx-res-h" ${st.loadingBookingId ? 'disabled' : ''} onclick="waSwitchBooking_('${E(id)}')">
+          <div class="r1">${corto ? `<span class="code">${E(corto)}</span>` : ''}<span class="prop">${E(corto ? lugar.replace(/^Calle\s+/i, '') : lugar)}</span><span class="mv" style="color:${e.color}"><i style="background:${e.color}"></i>${E(estTx)}</span><span class="car">${carg ? '<span class="fx-spin"></span>' : '›'}</span></div>
+          <div class="r2">${r2}</div>
+        </button>${cuerpo}</div>`;
   }).join('');
   const animar = BOTC_STATE.fxAnim !== sel; BOTC_STATE.fxAnim = sel; // animación de entrada solo al cambiar de huésped
   const clave = st.focusedBookingId + '|' + tab, animTab = BOTC_STATE.fxTab !== clave; BOTC_STATE.fxTab = clave;
@@ -52700,8 +52746,8 @@ function _botcFichaHtml_(st, logs) {
         <button type="button" class="fx-ico" onclick="botcFxRefrescar_(this)" title="Actualizar">↻</button>
         <button type="button" class="fx-ico" onclick="botcBitacoraCerrar_()" title="Cerrar">✕</button></header>
       <div class="fx-scroll">
-        <div class="fx-sec">Datos del perfil</div>${perfil}
-        <div class="fx-sec">Reservas <span>${bks.length}</span></div>${reservas || _botcFxVacio_('🗓️', 'Sin reservas asociadas a este número')}
+        <div class="fx-lab">Datos del perfil</div>${perfil}
+        <div class="fx-lab">Reservas <span>${bks.length}</span></div>${reservas || _botcFxVacio_('🗓️', 'Sin reservas asociadas a este número')}
       </div></div>`;
 }
 // Chat de Airbnb: mismas burbujas y encabezado que WhatsApp; los mensajes salen de Lodgify.
