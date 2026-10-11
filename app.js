@@ -26449,6 +26449,18 @@ function ocupSourceIcon(src) {
 }
 
 // Construye la lista de alojamientos sortada (Propiedad, #N numérico).
+// Alojamientos para TAREAS (Check-list): los de Lodgify + filas de la hoja «alojamientos» sin id de Lodgify
+// (edificios completos «ED. …», áreas comunes, etc.). Estas reciben un id interno fijo «99NNNNNN» calculado de su
+// nombre corto (device_name); el servidor usa la misma fórmula (_hidSint). No aparecen en Ocupación ni Dashboard.
+function hidSint_(code) { let h = 0; for (const ch of String(code || '').trim().toLowerCase()) h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0; return '99' + String(h % 1000000).padStart(6, '0'); }
+function atAlojs_() {
+  const base = ocupGetAlojamientos();
+  if (typeof ALOJ_STATE === 'undefined' || !ALOJ_STATE.loaded) return base;
+  const extra = (ALOJ_STATE.rows || []).filter(r => !String(r['HouseId'] || r['id_lodgify'] || '').replace(/[^\d]/g, '') && String(r['device_name'] || '').trim())
+    .map(r => { const p = String(r['Propiedad'] || '').trim(), d = String(r['# Departamento'] || '').trim().replace(/^#\s*/, ''), c = String(r['device_name'] || '').trim();
+      return { houseId: hidSint_(c), propiedad: p, depto: d, nombre: p && d ? `${p} - #${d}` : (p || c), tag: c.toUpperCase(), corto: c, raw: r, sinLodgify: true }; });
+  return base.concat(extra);
+}
 function ocupGetAlojamientos() {
   if (typeof ALOJ_STATE === 'undefined' || !ALOJ_STATE.loaded) return [];
   return ALOJ_STATE.rows
@@ -66270,6 +66282,15 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   const MP = clModoPersonal_();
   if (ASEO.simple == null) ASEO.simple = MP; // predeterminada: Simple para empleados, Detalles para administradores
   if (MP) { const mias = tInfos.filter(I => clEsMio_(I.pA)); tInfos.length = 0; mias.forEach(I => tInfos.push(I)); }
+  // Sección «🧽 Aseo»: las tareas de Mantenimiento solo aparecen si están ligadas (por una incidencia) a una limpieza/inspección;
+  // las sueltas viven en «🔧 Mantenimiento».
+  if (ASEO.sec !== 'mant') {
+    const kI = I => I.tarea ? (I.t.rt ? 'R' + I.t.rtId : 'T' + I.t.id) : I.asigId;
+    const esMant = I => I.tarea && (I.t.rt || I.t.depto === 'mantenimiento');
+    const incs = I => { const k = kI(I); return axEx_(k).incidencia ? axIncActivas_(k) : []; };
+    const ids = new Set(); infos.concat(tInfos).filter(I => !esMant(I)).forEach(I => incs(I).forEach(x => ids.add(String(x))));
+    const b = tInfos.filter(I => !esMant(I) || incs(I).some(x => ids.has(String(x)))); tInfos.length = 0; b.forEach(I => tInfos.push(I));
+  }
   // Sección «🔧 Mantenimiento»: solo tareas de Mantenimiento y lo que esté ligado a ellas por una incidencia
   // (p. ej. la limpieza de check-out cuya incidencia generó una correctiva de mantenimiento): se ven igual que en «Aseo».
   if (ASEO.sec === 'mant') {
@@ -66779,7 +66800,7 @@ function atRepTxt_(r, fecha) {
   return txt + (r.fin ? ` · hasta ${aseoDiaTxt_(r.fin)}` : '');
 }
 function atLista_() { return Object.values(ASEO.tareas || {}).filter(t => !axEx_('T' + t.id).archivada).concat(rtTareas_().filter(t => !axEx_('R' + t.rtId).archivada)); } // sin las archivadas (incidencia archivada)
-function atAloj_(hid) { if (!hid) return { houseId: '', nombre: 'Sin alojamiento', corto: '' }; const a = ocupGetAlojamientos().find(x => x.houseId === String(hid)); return a || { houseId: String(hid), nombre: 'Alojamiento ' + hid, corto: '' }; } // el alojamiento es opcional en las tareas
+function atAloj_(hid) { if (!hid) return { houseId: '', nombre: 'Sin alojamiento', corto: '' }; const a = atAlojs_().find(x => x.houseId === String(hid)); return a || { houseId: String(hid), nombre: 'Alojamiento ' + hid, corto: '' }; } // el alojamiento es opcional en las tareas
 // Info de una tarea en un día (para el tablero, la ventana y el calendario).
 function atInfo_(t, dia) {
   if (t.rt) {
@@ -66902,7 +66923,7 @@ window.atForm_ = function (id, hid, dia) {
 };
 function atFormPintar_() {
   const F = ASEO._tf, dr = atShell_();
-  const alojs = ocupGetAlojamientos().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
+  const alojs = atAlojs_().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
   const horas = ['']; for (let m = 6 * 60; m <= 23 * 60 + 30; m += 30) horas.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
   const sw = (on, fn) => `<span class="ad-sw ${on ? '' : 'off'}" onclick="${fn}"></span>`;
   const a = F.fecha ? atD_(F.fecha) : new Date();
@@ -67084,7 +67105,7 @@ function rtHid_(row) {
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/^calle\s+/, '').replace(/#/g, '').trim();
   const p = norm(row.Propiedad), d = norm(row['# Departamento']);
   if (!p && !row.Alojamiento) return '';
-  const a = ocupGetAlojamientos().find(x => (p && d && norm(x.propiedad) === p && norm(x.depto) === d) || (row.Alojamiento && norm(x.nombre).replace(/\s+/g, ' ') === norm(row.Alojamiento).replace(/\s*-\s*/, ' - ').replace(/\s+/g, ' ')));
+  const a = atAlojs_().find(x => (p && (d ? norm(x.depto) === d : !x.depto) && norm(x.propiedad) === p) || (row.Alojamiento && norm(x.nombre).replace(/\s+/g, ' ') === norm(row.Alojamiento).replace(/\s*-\s*/, ' - ').replace(/\s+/g, ' ')));
   return a ? String(a.houseId) : '';
 }
 // Carga (lenta: Apps Script ~5 s) → ASEO.rt; refresco cada 2 min y tras guardar.
@@ -67210,7 +67231,7 @@ window.rtFormA_ = function (rtId, pre) {
 };
 function rtFormPintarA_() {
   const F = ASEO._rf, dr = atShell_();
-  const alojs = ocupGetAlojamientos().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
+  const alojs = atAlojs_().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
   const sw = (on, fn, rojo) => `<span class="ad-sw ${on ? (rojo ? 'red' : '') : 'off'}" onclick="${fn}"></span>`;
   const sel = (k, opts, v) => `<select class="at-in" onchange="ASEO._rf['${k}']=this.value">${opts.map(o => `<option value="${o.key}" ${o.key === v ? 'selected' : ''}>${o.icon ? o.icon + ' ' : ''}${o.label}</option>`).join('')}</select>`;
   const inp = (k, ph, type) => `<input class="at-in" ${type ? `type="${type}"` : ''} placeholder="${ph || ''}" value="${pcEsc(F[k] == null ? '' : String(F[k]).slice(0, type === 'date' ? 10 : 9999))}" oninput="ASEO._rf['${k}']=this.value">`;
@@ -67331,7 +67352,7 @@ window.rtGuardarA_ = async function () {
   window.rtOpenCaptureFor = function (prop, dept, arr) {
     asegurar();
     const norm = x => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/^calle\s+/, '').replace(/#/g, '').trim();
-    const a = ocupGetAlojamientos().find(x => norm(x.propiedad) === norm(prop) && norm(x.depto) === norm(dept));
+    const a = atAlojs_().find(x => norm(x.propiedad) === norm(prop) && norm(x.depto) === norm(dept));
     if (!a && viejoFor) return viejoFor.apply(null, arguments);
     rtFormA_(null, { hid: a ? a.houseId : '', fecha: String(arr || '').slice(0, 10) || aseoHoyIso_() });
   };
@@ -68231,7 +68252,7 @@ function icFormPintar_() {
   icCss_();
   const F = IC.f, dr = icShell_();
   const top = dr.querySelector('.ad-db') ? dr.querySelector('.ad-db').scrollTop : 0;
-  const alojs = ocupGetAlojamientos().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
+  const alojs = atAlojs_().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
   const nombres = (typeof pzNombres_ === 'function' ? pzNombres_() : []).slice(); if (F.rep && !nombres.includes(F.rep)) nombres.unshift(F.rep);
   const mots = F.cls === 'huesped' ? [...new Set(Object.keys(IC_MOT_H).concat(F.mot))] : [...new Set(Object.keys(icCatalogo_()).filter(k => !/^H:/.test(k)).concat(F.mot, ['Otro']))]; // «Otro» siempre al final
   const cancelar = F.id ? `icFormCancelar_()` : 'icCerrar_()';

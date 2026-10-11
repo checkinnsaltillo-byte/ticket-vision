@@ -9631,17 +9631,22 @@ function _aseoLev(a, b) {
   }
   return prev[n];
 }
+// Filas sin id de Lodgify (edificios «ED. …», áreas comunes): id interno fijo «99NNNNNN» desde su nombre corto
+// (misma fórmula que hidSint_ en app.js). Sirven para tareas y plantillas; no son reservables.
+function _hidSint(code) { let h = 0; for (const ch of String(code || "").trim().toLowerCase()) h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0; return "99" + String(h % 1000000).padStart(6, "0"); }
 async function _aseoCatalogo() {
   const pl = await _alojGetPayload().catch(() => null);
   return ((pl && pl.rows) || []).map(r => {
     const prop = String(r.Propiedad || "").trim(), dep = String(r["# Departamento"] || "").trim().replace(/^#\s*/, "");
     const code = String(r.device_name || r.Device_name || "").trim();
-    const hid = String(r.HouseId || r.id_lodgify || "").replace(/\D/g, "");
+    const hid = String(r.HouseId || r.id_lodgify || "").replace(/\D/g, "") || (code ? _hidSint(code) : "");
     const pn = _botNorm(prop).replace(/^(calle|av|avenida|plaza|privada)\s+/, "");
+    const sint = !String(r.HouseId || r.id_lodgify || "").replace(/\D/g, "");
+    if (sint) return { prop, dep: dep.toLowerCase(), code: code.toLowerCase(), hid, nombre: dep ? `${prop} #${dep}` : prop, pref: "", pn: "", words: [], ini: "", sint: true }; // solo por su nombre corto exacto
     return { prop, dep: dep.toLowerCase(), code: code.toLowerCase(), hid, nombre: `${prop} #${dep}`,
       pref: code.toLowerCase().replace(/[0-9].*$/, ""), pn: pn.replace(/\s+/g, ""), words: pn.split(" ").filter(Boolean),
       ini: pn.split(" ").filter(Boolean).map(w => w[0]).join("") };
-  }).filter(x => x.prop && x.dep);
+  }).filter(x => x.prop && (x.dep || (x.sint && x.code)));
 }
 function _aseoMatchAloj(q, cat) {
   let t = _botNorm(q).replace(/\b(calle|plaza|av|avenida|privada|depto|departamento|dpto|numero|num|no|el|la|del|de|alojamiento|depa)\b/g, " ").replace(/\s+/g, " ").trim();
