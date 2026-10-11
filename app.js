@@ -352,7 +352,7 @@ const SYS_MODULE_PERMS = {
   // 'personas' e 'inquilinos' son pestañas del módulo compuesto
   // "Huéspedes/Inquilinos" → cualquier usuario con permiso a alguno de los
   // dos debe ver la entrada. Se listan en ambos grupos.
-  III:  ['huespedes','lodgify','reservas-detalles','pagos','personas','inquilinos','proveedores','dir-inquilinos'],
+  III:  ['huespedes','lodgify','reservas-detalles','pagos','personas','inquilinos','proveedores','dir-inquilinos','mensajes'],
   IV:   ['breezeway','aseo'],
   V:    ['incidencias'],
   VI:   ['objetos'],
@@ -393,7 +393,7 @@ const SYS_MODULE_EXTRAS = {
   aseo:      ['breezeway'],
   'reportes-tecnicos': ['aseo'], // quien tenía Reportes técnicos ve Aseo (ahí vive Mantenimiento)
   breezeway: ['aseo'], // empleados que ya tenían Breezeway ven el módulo Aseo completo
-  lodgify:   ['reservas-detalles'],
+  lodgify:   ['reservas-detalles', 'mensajes'],
   ocupacion: ['dashboard', 'calendario'],
 };
 function sysGetStoredUser() {
@@ -9150,7 +9150,7 @@ const _VALID_MODULES = new Set([
   'home','tickets','registros','huespedes','lodgify','reservas-detalles',
   'breezeway','aseo','incidencias','objetos','reportes-tecnicos','ocupacion',
   'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias',
-  'config-admin','llaves','bot-chats','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','mantenimiento',
+  'config-admin','llaves','bot-chats','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','mantenimiento','mensajes',
 ]);
 function _bootModuleFromHash_() {
   const h = (location.hash || '').replace(/^#/, '').trim();
@@ -9279,7 +9279,7 @@ function switchModule(mod) {
     const greet = document.getElementById('user-greeting');
     if (greet) greet.style.display = '';
   } catch(_){}
-  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas"].forEach(m => {
+  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "mensajes"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== containerMod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === containerMod);
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === containerMod);
@@ -9412,6 +9412,7 @@ function switchModule(mod) {
     if (typeof icInit_ === 'function') icInit_(); // Check-list › Incidencias (nuevo diseño)
   }
   if (mod === "plantillas" && typeof plInit_ === 'function') plInit_(); // Check-list › 📋 Plantillas
+  if (mod === "mensajes" && typeof abnInit_ === 'function') abnInit_(); // 💬 Mensajes Airbnb
   if (mod === "objetos") {
     if (typeof objInit === 'function') objInit();
     if (typeof objLoadObjetos === 'function') objLoadObjetos();
@@ -21805,6 +21806,10 @@ window.bzwOpenReservationDetail = function(lodgifyId) {
     el.dataset.aseoInjected = '1';
     // Tras Tareas relacionadas, inyectamos Dispositivos / Incidencias / Objetos.
     try {
+      if (typeof lgBuildAbnSectionForBooking === 'function') { // 💬 conversación con el huésped (Lodgify)
+        const abnHtml = lgBuildAbnSectionForBooking(arg);
+        if (abnHtml) { const w = document.createElement('div'); w.innerHTML = abnHtml; el.appendChild(w); }
+      }
       if (typeof lgBuildTuyaSectionForBooking === 'function') {
         const tuyaHtml = lgBuildTuyaSectionForBooking(arg);
         if (tuyaHtml) {
@@ -69129,4 +69134,132 @@ async function incSync_() {
     if (typeof IC !== 'undefined' && IC.dr && !IC.f && typeof icPintar_ === 'function') { try { icPintar_(); } catch (_) {} }
     return true;
   } catch (_) { return false; }
+}
+// ═══════════════════════════════════════════════════════════════════════════
+// 💬 Mensajes Airbnb (bandeja de conversaciones de Lodgify) — módulo «mensajes» + hilo en la ficha de la reserva.
+// Servidor: GET /airbnb/bandeja · GET /airbnb/hilo?bid= · POST /airbnb/visto. Responder: etapa 2 (tras prueba de envío).
+// ═══════════════════════════════════════════════════════════════════════════
+const ABN = { hilos: [], sel: '', hilo: null, q: '', filtro: 'todos', cargando: false, t: null };
+function abnCss_() {
+  if (document.getElementById('abn-css')) return;
+  const st = document.createElement('style'); st.id = 'abn-css';
+  st.textContent = `
+  #module-mensajes{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#0f1729}
+  .abn-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}.abn-h h1{margin:0;font-size:18px;font-weight:700}.abn-h .sp{flex:1}
+  .abn-h small{color:#64748b;font-size:11.5px}
+  .abn-wrap{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;height:calc(100dvh - 190px);min-height:420px}
+  .abn-list,.abn-th{background:#fff;border:1px solid #e8eaee;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+  .abn-tools{display:flex;gap:6px;padding:10px;border-bottom:1px solid #eef0f3;flex-wrap:wrap}
+  .abn-tools input{flex:1;min-width:120px;height:32px;border:1px solid #e2e8f0;border-radius:8px;padding:0 10px;font:500 12.5px Inter,system-ui,sans-serif}
+  .abn-seg{display:inline-flex;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}.abn-seg button{all:unset;cursor:pointer;padding:6px 10px;font:600 11.5px Inter,system-ui,sans-serif;color:#475569}.abn-seg button.on{background:#0f1729;color:#fff}
+  .abn-items{overflow:auto;flex:1}
+  .abn-it{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;align-items:center}
+  .abn-it:hover{background:#f8fafc}.abn-it.sel{background:#eef2ff}
+  .abn-av{grid-row:span 2;width:34px;height:34px;border-radius:50%;background:#e0e7ff;color:#3730a3;display:flex;align-items:center;justify-content:center;font:700 12px Inter,system-ui,sans-serif}
+  .abn-it b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.abn-it .f{font-size:10.5px;color:#94a3b8;white-space:nowrap}
+  .abn-it .t{grid-column:2 / 4;font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .abn-it.nl b,.abn-it.nl .t{color:#0f1729;font-weight:700}.abn-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e11d48;margin-left:6px;vertical-align:middle}
+  .abn-tag{display:inline-block;font:700 10px Inter,system-ui,sans-serif;padding:1px 6px;border-radius:5px;background:#f1f5f9;color:#334155;margin-right:4px}
+  .abn-tag.air{background:#ffe4e6;color:#be123c}
+  .abn-thh{padding:12px 14px;border-bottom:1px solid #eef0f3;display:flex;gap:10px;align-items:center;flex-wrap:wrap}.abn-thh b{font-size:14px}.abn-thh small{color:#64748b;font-size:11.5px}
+  .abn-msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:#f8fafc}
+  .abn-m{max-width:78%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.4;white-space:pre-wrap;word-break:break-word}
+  .abn-m.h{align-self:flex-start;background:#fff;border:1px solid #e2e8f0;border-bottom-left-radius:4px}
+  .abn-m.n{align-self:flex-end;background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+  .abn-m small{display:block;margin-top:4px;font-size:10px;opacity:.7}
+  .abn-dia{align-self:center;font:600 10.5px Inter,system-ui,sans-serif;color:#94a3b8;margin:6px 0}
+  .abn-comp{border-top:1px solid #eef0f3;padding:10px;display:flex;gap:8px;align-items:flex-end}
+  .abn-comp textarea{flex:1;resize:none;min-height:38px;max-height:120px;border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;font:500 13px Inter,system-ui,sans-serif}
+  .abn-comp button{all:unset;cursor:pointer;padding:9px 14px;border-radius:10px;background:#4f46e5;color:#fff;font:700 12.5px Inter,system-ui,sans-serif}.abn-comp button[disabled]{opacity:.45;cursor:not-allowed}
+  .abn-vacio{margin:auto;color:#94a3b8;font-size:13px;text-align:center;padding:30px}
+  .abn-back{display:none;border:0;background:none;cursor:pointer;font:700 12.5px Inter,system-ui,sans-serif;color:#4f46e5;padding:0}
+  @media (max-width:760px){.abn-wrap{grid-template-columns:1fr;height:auto}.abn-wrap.th .abn-list{display:none}.abn-wrap:not(.th) .abn-th{display:none}.abn-th{height:calc(100dvh - 170px)}.abn-list{max-height:none}.abn-back{display:inline-flex}}
+  .abn-card .abn-msgs{max-height:340px;background:#f8fafc;border-radius:10px;margin-top:8px}`;
+  document.head.appendChild(st);
+}
+const abnFecha_ = iso => { const d = new Date(iso); if (isNaN(d)) return ''; const hoy = new Date(); const mismo = d.toDateString() === hoy.toDateString(); return mismo ? d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }); };
+const abnIni_ = n => String(n || '?').split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+function abnMsgsHtml_(L) {
+  let dia = '';
+  return (L || []).map(m => {
+    const d = new Date(m.fecha), dd = isNaN(d) ? '' : d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+    const sep = dd && dd !== dia ? `<div class="abn-dia">${pcEsc(dd)}</div>` : ''; dia = dd || dia;
+    return `${sep}<div class="abn-m ${m.de === 'huesped' ? 'h' : 'n'}">${pcEsc(m.texto)}<small>${pcEsc(m.de === 'huesped' ? 'Huésped' : 'Nosotros')} · ${isNaN(d) ? '' : d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}${m.adj ? ` · 📎 ${m.adj}` : ''}</small></div>`;
+  }).join('') || '<div class="abn-vacio">Sin mensajes en esta conversación.</div>';
+}
+window.abnInit_ = async function (abrirBid) {
+  abnCss_();
+  const root = document.getElementById('abn-root'); if (!root) return;
+  if (abrirBid) ABN.sel = String(abrirBid);
+  abnPintar_();
+  await abnCargar_();
+  if (ABN.sel) abnAbrir_(ABN.sel);
+  clearInterval(ABN.t);
+  ABN.t = setInterval(() => { const m = document.getElementById('module-mensajes'); if (!m || m.classList.contains('hidden') || document.hidden) return; abnCargar_(true); if (ABN.sel) abnAbrir_(ABN.sel, true); }, 30_000);
+};
+async function abnCargar_(silencio) {
+  if (ABN.cargando) return; ABN.cargando = true;
+  try { const j = await fetch(`${BACKEND}/airbnb/bandeja`, { cache: 'no-store' }).then(r => r.json()); if (j.ok) { ABN.hilos = j.hilos || []; ABN.ts = j.ts; } else if (!silencio) ABN.err = j.error; }
+  catch (e) { if (!silencio) ABN.err = e.message; }
+  ABN.cargando = false; abnPintarLista_();
+}
+function abnPintar_() {
+  const root = document.getElementById('abn-root'); if (!root) return;
+  root.innerHTML = `<div class="abn-h"><h1>💬 Mensajes Airbnb</h1><small id="abn-ts"></small><span class="sp"></span></div>
+    <div class="abn-wrap ${ABN.sel ? 'th' : ''}" id="abn-wrap"><div class="abn-list"><div class="abn-tools"><input id="abn-q" placeholder="🔎 Huésped o alojamiento…" value="${pcEsc(ABN.q)}" oninput="ABN.q=this.value;abnPintarLista_()">
+      <span class="abn-seg">${[['todos', 'Todos'], ['nl', 'No leídos'], ['curso', 'En curso']].map(([k, t]) => `<button type="button" class="${ABN.filtro === k ? 'on' : ''}" onclick="ABN.filtro='${k}';abnPintar_()">${t}</button>`).join('')}</span></div>
+      <div class="abn-items" id="abn-items"></div></div>
+      <div class="abn-th" id="abn-th"><div class="abn-vacio">Elige una conversación.</div></div></div>`;
+  abnPintarLista_(); if (ABN.sel && ABN.hilo) abnPintarHilo_();
+}
+function abnPintarLista_() {
+  const box = document.getElementById('abn-items'); if (!box) return;
+  const hoy = aseoHoyIso_(), q = ABN.q.trim().toLowerCase();
+  const L = ABN.hilos.filter(h => (!q || `${h.huesped} ${h.aloj}`.toLowerCase().includes(q)) && (ABN.filtro !== 'nl' || h.noLeido) && (ABN.filtro !== 'curso' || (h.llegada <= hoy && h.salida >= hoy)));
+  const ts = document.getElementById('abn-ts'); if (ts) ts.textContent = ABN.ts ? `${ABN.hilos.length} conversaciones · ${ABN.hilos.filter(h => h.noLeido).length} sin leer · actualizado ${abnFecha_(new Date(ABN.ts).toISOString())}` : (ABN.err ? '⚠️ ' + ABN.err : '⏳ Cargando…');
+  box.innerHTML = L.map(h => `<div class="abn-it ${h.noLeido ? 'nl' : ''} ${ABN.sel === h.bid ? 'sel' : ''}" onclick="abnAbrir_('${h.bid}')"><span class="abn-av">${pcEsc(abnIni_(h.huesped))}</span>
+      <b>${pcEsc(h.huesped || 'Sin nombre')}${h.noLeido ? '<span class="abn-dot"></span>' : ''}</b><span class="f">${h.ult ? abnFecha_(h.ult.fecha) : ''}</span>
+      <span class="t"><span class="abn-tag ${/airbnb/i.test(h.fuente) ? 'air' : ''}">${pcEsc(h.aloj || '—')}</span>${h.ult ? (h.ult.de === 'nosotros' ? 'Tú: ' : '') + pcEsc(h.ult.texto) : 'Sin mensajes'}</span></div>`).join('')
+    || `<div class="abn-vacio">${ABN.cargando ? '⏳ Cargando conversaciones…' : 'No hay conversaciones con ese filtro.'}</div>`;
+}
+window.abnAbrir_ = async function (bid, silencio) {
+  ABN.sel = String(bid); const w = document.getElementById('abn-wrap'); if (w) w.classList.add('th');
+  document.querySelectorAll('.abn-it').forEach(e => e.classList.toggle('sel', e.getAttribute('onclick').includes(`'${bid}'`)));
+  if (!silencio) { ABN.hilo = null; const th = document.getElementById('abn-th'); if (th) th.innerHTML = '<div class="abn-vacio">⏳ Cargando conversación…</div>'; }
+  try {
+    const j = await fetch(`${BACKEND}/airbnb/hilo?bid=${encodeURIComponent(bid)}`, { cache: 'no-store' }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error');
+    const cambio = !ABN.hilo || ABN.hilo.mensajes.length !== j.mensajes.length;
+    ABN.hilo = j; if (ABN.sel !== String(bid)) return;
+    if (cambio || !silencio) abnPintarHilo_();
+    const u = j.mensajes[j.mensajes.length - 1], h = ABN.hilos.find(x => x.bid === String(bid));
+    if (u && h && h.noLeido) { h.noLeido = false; abnPintarLista_(); fetch(`${BACKEND}/airbnb/visto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bid, fecha: u.fecha }) }).catch(() => {}); }
+  } catch (e) { if (!silencio) { const th = document.getElementById('abn-th'); if (th) th.innerHTML = `<div class="abn-vacio">⚠️ ${pcEsc(e.message || e)}</div>`; } }
+};
+function abnPintarHilo_() {
+  const th = document.getElementById('abn-th'), j = ABN.hilo; if (!th || !j) return;
+  const h = ABN.hilos.find(x => x.bid === ABN.sel) || {};
+  th.innerHTML = `<div class="abn-thh"><button type="button" class="abn-back" onclick="ABN.sel='';ABN.hilo=null;abnPintar_()">← Volver</button>
+      <span class="abn-av">${pcEsc(abnIni_(j.huesped || h.huesped))}</span><div><b>${pcEsc(j.huesped || h.huesped || 'Huésped')}</b><br><small>${pcEsc([h.aloj, h.fuente, h.llegada && h.salida ? `${h.llegada} → ${h.salida}` : '', `Reserva ${ABN.sel}`].filter(Boolean).join(' · '))}</small></div></div>
+    <div class="abn-msgs" id="abn-msgs">${abnMsgsHtml_(j.mensajes)}</div>
+    <div class="abn-comp"><textarea placeholder="Responder desde el sistema se activa después de la prueba de envío. Por ahora responde en Airbnb / Lodgify." disabled></textarea><button type="button" disabled>Enviar</button></div>`;
+  const m = document.getElementById('abn-msgs'); if (m) m.scrollTop = m.scrollHeight;
+}
+// Hilo dentro de la ficha de la reserva (Gestión de reservas / Huéspedes).
+window.lgBuildAbnSectionForBooking = function (arg) {
+  const bid = typeof arg === 'string' ? arg.replace(/^lg:/, '') : String((arg && (arg.Id || arg['Lodgify Id'] || arg.LodgifyId)) || '');
+  if (!/^\d{6,12}$/.test(bid)) return '';
+  abnCss_();
+  setTimeout(() => abnFicha_(bid), 0);
+  return `<div class="hu-col-card abn-card" data-abn-bid="${pcEsc(bid)}" style="margin-top:12px"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:13px">💬 Conversación con el huésped</b><span style="flex:1"></span>
+    <button type="button" class="pl-bt" style="all:unset;cursor:pointer;font:600 12px Inter,system-ui,sans-serif;color:#4f46e5" onclick="switchModule('mensajes');abnInit_('${pcEsc(bid)}')">Abrir en Mensajes →</button></div>
+    <div class="abn-msgs" data-abn-msgs>⏳ Cargando mensajes…</div></div>`;
+};
+async function abnFicha_(bid) {
+  const boxes = document.querySelectorAll(`.abn-card[data-abn-bid="${CSS.escape(bid)}"] [data-abn-msgs]`); if (!boxes.length) return;
+  try {
+    const j = await fetch(`${BACKEND}/airbnb/hilo?bid=${encodeURIComponent(bid)}`, { cache: 'no-store' }).then(r => r.json());
+    const html = j.ok ? abnMsgsHtml_(j.mensajes) : `<div class="abn-vacio">⚠️ ${pcEsc(j.error || 'Error')}</div>`;
+    boxes.forEach(b => { b.innerHTML = html; b.scrollTop = b.scrollHeight; });
+  } catch (e) { boxes.forEach(b => { b.innerHTML = `<div class="abn-vacio">⚠️ No se pudieron cargar los mensajes</div>`; }); }
 }

@@ -10380,6 +10380,103 @@ var _GCS_ACT = { // var: se puede consultar aunque se llame antes de esta línea
     return { ok: true, added: rows.length };
   },
 };
+// ═══════════════════════════════════════════════════════════════════════════
+// 💬 Mensajes de Airbnb (y demás canales) vía API de Lodgify (2026-10-11).
+// Cada reserva trae thread_uid; GET /v2/messaging/{thread} devuelve los mensajes (Renter = huésped, Owner = nosotros).
+// Lodgify repite cada mensaje (uno «importado»): se depuran por tipo + fecha + texto.
+// Bandeja: reservas en curso y próximas, refrescadas en segundo plano cada 5 min (copia en airbnb/bandeja.json).
+// «Visto» es nuestro (airbnb/visto.json): no leído = último mensaje del huésped más nuevo que lo visto.
+// ═══════════════════════════════════════════════════════════════════════════
+const _ABN_BAND_OBJ = "airbnb/bandeja.json", _ABN_VISTO_OBJ = "airbnb/visto.json";
+const _abn = { band: null, ts: 0, p: null, hilos: new Map(), visto: null, vistoTs: 0 };
+async function _lgApi(path, opt) {
+  const key = process.env.LODGIFY_API_KEY; if (!key) throw new Error("LODGIFY_API_KEY faltante");
+  const r = await fetch("https://api.lodgify.com" + path, Object.assign({ headers: { "X-ApiKey": key, "Accept": "application/json", "Content-Type": "application/json" } }, opt || {}));
+  const t = await r.text();
+  if (!r.ok) throw new Error(`Lodgify ${r.status}: ${t.slice(0, 200)}`);
+  return t ? JSON.parse(t.replace(/[\u0000-\u001f]/g, " ")) : {}; // Lodgify a veces manda saltos de línea crudos dentro del texto
+}
+function _abnTexto(h) { return String(h || "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\n{3,}/g, "\n\n").trim(); }
+function _abnMensajes(raw) {
+  const vistos = new Set(), out = [];
+  (raw.messages || []).slice().sort((a, b) => String(a.date_created).localeCompare(String(b.date_created)) || (a.is_imported - b.is_imported)).forEach(m => {
+    const de = /renter|guest/i.test(m.type) ? "huesped" : "nosotros", texto = _abnTexto(m.message), fecha = String(m.date_created || "").slice(0, 19);
+    const k = de + "|" + fecha.slice(0, 16) + "|" + texto.slice(0, 200); if (!texto || vistos.has(k)) return; vistos.add(k);
+    out.push({ id: String(m.id), de, texto, fecha: fecha ? fecha + "Z" : "", canal: (String(m.subject || "").match(/^([A-Za-z.]+):/) || [])[1] || "", adj: (m.attachments || []).length });
+  });
+  return out;
+}
+async function _abnHilo(bid, thread) {
+  if (!thread) { const b = await _lgApi(`/v2/reservations/bookings/${encodeURIComponent(bid)}`); thread = b.thread_uid; if (!thread) return { mensajes: [], thread: "" }; }
+  const raw = await _lgApi(`/v2/messaging/${encodeURIComponent(thread)}`);
+  const h = { thread, mensajes: _abnMensajes(raw), huesped: raw.guest_name || "", ult: String(raw.last_message_date || "").slice(0, 19), at: Date.now() };
+  _abn.hilos.set(String(bid), h);
+  return h;
+}
+async function _abnVisto() {
+  if (!_abn.visto || Date.now() - _abn.vistoTs > 10_000) { _abn.visto = await _rhdGetJson(_ABN_VISTO_OBJ).catch(() => _abn.visto || {}); _abn.vistoTs = Date.now(); }
+  if (!_abn.visto._base) { const b = new Date().toISOString(); await _aseoMutate(_ABN_VISTO_OBJ, "abnVisto", d => { if (!d._base) d._base = b; }).catch(() => {}); _abn.visto = _aseo.abnVisto || Object.assign(_abn.visto, { _base: b }); } // lo anterior al arranque cuenta como visto
+  return _abn.visto;
+}
+const _abnVistoDe = (v, bid) => { const a = String(v[bid] || ""), b = String(v._base || ""); return a > b ? a : b; };
+async function _abnBandejaCargar() {
+  if (_abn.p) return _abn.p;
+  _abn.p = (async () => {
+    const reservas = [];
+    for (const f of ["Current", "Upcoming"]) for (let page = 1; page <= 6; page++) {
+      const d = await _lgApi(`/v2/reservations/bookings?page=${page}&size=50&stayFilter=${f}&includeExternal=true`);
+      (d.items || []).forEach(b => { if (b.thread_uid && !/declined|cancel/i.test(String(b.status || ""))) reservas.push(b); });
+      if ((d.items || []).length < 50) break;
+    }
+    const cat = await _aseoCatalogo().catch(() => []);
+    const hilos = [];
+    for (let i = 0; i < reservas.length; i += 4) { // de 4 en 4 para no saturar a Lodgify
+      await Promise.all(reservas.slice(i, i + 4).map(async b => {
+        try {
+          const h = await _abnHilo(String(b.id), b.thread_uid), u = h.mensajes[h.mensajes.length - 1] || null, a = cat.find(c => c.hid === String(b.property_id));
+          hilos.push({ bid: String(b.id), thread: b.thread_uid, huesped: (b.guest && b.guest.name) || h.huesped, fuente: String(b.source || "").replace(/Integration$/, ""), estado: b.status,
+            llegada: b.arrival, salida: b.departure, hid: String(b.property_id || ""), aloj: a ? (a.code ? a.code.toUpperCase() : a.nombre) : "", n: h.mensajes.length, ult: u ? { de: u.de, texto: u.texto.slice(0, 160), fecha: u.fecha } : null });
+        } catch (e) { console.warn("[airbnb] hilo", b.id, e.message); }
+      }));
+    }
+    hilos.sort((a, b) => String((b.ult || {}).fecha || "").localeCompare(String((a.ult || {}).fecha || "")));
+    _abn.band = { hilos, ts: Date.now() }; _abn.ts = Date.now();
+    _rhdPut(_ABN_BAND_OBJ, JSON.stringify(_abn.band), "application/json").catch(() => {});
+    return _abn.band;
+  })().finally(() => { _abn.p = null; });
+  return _abn.p;
+}
+setTimeout(() => { _abnBandejaCargar().catch(e => console.warn("[airbnb] bandeja:", e.message)); setInterval(() => _abnBandejaCargar().catch(() => {}), 5 * 60_000); }, 20_000);
+app.get("/airbnb/bandeja", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    if (!_abn.band) _abn.band = await _rhdGetJson(_ABN_BAND_OBJ).catch(() => null);
+    if (!_abn.band || !Array.isArray(_abn.band.hilos) || req.query.fresh === "1") await _abnBandejaCargar();
+    else if (Date.now() - (_abn.band.ts || 0) > 5 * 60_000) _abnBandejaCargar().catch(() => {});
+    const visto = await _abnVisto();
+    res.json({ ok: true, ts: _abn.band.ts, hilos: _abn.band.hilos.map(h => Object.assign({}, h, { noLeido: !!(h.ult && h.ult.de === "huesped" && String(h.ult.fecha) > _abnVistoDe(visto, h.bid)) })) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/airbnb/hilo", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const bid = String(req.query.bid || "").replace(/\D/g, ""); if (!bid) return res.status(400).json({ ok: false, error: "Falta bid" });
+    const c = _abn.hilos.get(bid);
+    const h = c && Date.now() - c.at < 20_000 ? c : await _abnHilo(bid, c && c.thread);
+    const visto = await _abnVisto();
+    res.json({ ok: true, bid, thread: h.thread, huesped: h.huesped, mensajes: h.mensajes, visto: _abnVistoDe(visto, bid) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/airbnb/visto", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const bid = String((req.body || {}).bid || "").replace(/\D/g, ""), f = String((req.body || {}).fecha || new Date().toISOString()).slice(0, 25);
+    if (!bid) return res.status(400).json({ ok: false, error: "Falta bid" });
+    await _aseoMutate(_ABN_VISTO_OBJ, "abnVisto", d => { if (String(d[bid] || "") < f) d[bid] = f; });
+    _abn.visto = _aseo.abnVisto; _abn.vistoTs = Date.now();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ═══ Check-list › 📋 Plantillas (formularios tipo Breezeway) ═══
 // aseo/plantillas.json → { <id>: { id, titulo, depto, prioridad, descripcion, secciones:[{ id, titulo, items:[{ id, tipo, texto, foto, ref:[], min, max, escala, sub:[] }] }] } }
 // Respuestas por tarea (llave = día de la tarea: "T<id>-<fecha>"): aseo/plresp/<llave>.json; avance en aseo/plresp-idx.json → { <llave>: { p, h, t, at } }.
