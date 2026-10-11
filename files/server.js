@@ -165,6 +165,20 @@ app.post("/bn/invalidate", (_req, res) => { _bancosMarkDirty(); res.json({ ok: t
 // de listGuestRecords_, getGuestFilterOptions_ y getGuestRecordDetail_.
 // Lo reutilizamos vía GET en lugar de duplicar la lógica.
 const CHECKIN_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec";
+// Muchas rutas (bot de WhatsApp, Chats bot) llaman a Apps Script con fetch directo. Si la acción ya vive en
+// Cloud Storage (_GCS_ACT) se atiende aquí con la misma respuesta JSON, sin tocar Google Sheets.
+const _fetchReal = globalThis.fetch;
+globalThis.fetch = async function (u, o) {
+  const s = typeof u === "string" ? u : String((u && u.url) || u || "");
+  if (s.startsWith(CHECKIN_APPS_SCRIPT_URL) && typeof _GCS_ACT !== "undefined") {
+    let data = {};
+    if (o && String(o.method || "GET").toUpperCase() === "POST") { try { data = JSON.parse(o.body); } catch (_) { data = {}; } }
+    else new URL(s).searchParams.forEach((v, k) => { data[k] = v; });
+    const fn = data.action && _GCS_ACT[data.action];
+    if (fn) { const r = await fn(data); return new Response(JSON.stringify(r), { status: 200, headers: { "Content-Type": "application/json" } }); }
+  }
+  return _fetchReal(u, o);
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ║  Fix PERMANENTE al glitch "Apps Script devuelve HTML"                    ║
@@ -228,7 +242,7 @@ async function _callCheckinAppsScriptInner(action, paramsObj, cacheKey) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const r = await fetch(url.toString(), {
+      const r = await _fetchReal(url.toString(), { // directo a Apps Script (el atajo a Cloud Storage ya se revisó arriba)
         method: "GET",
         signal: controller.signal,
         redirect: "follow",
@@ -327,7 +341,7 @@ async function callCheckinAppsScriptPost(action, dataObj, opts) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const r = await fetch(CHECKIN_APPS_SCRIPT_URL, {
+      const r = await _fetchReal(CHECKIN_APPS_SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body,
@@ -10380,6 +10394,196 @@ var _GCS_ACT = { // var: se puede consultar aunque se llame antes de esta línea
     return { ok: true, added: rows.length };
   },
 };
+// ═══════════════════════════════════════════════════════════════════════════
+// 🤖 Bot de WhatsApp / Chats bot en Cloud Storage (2026-10-11). Antes vivía en Google Sheets (WA_ChatContext,
+// WA_ChatState, WA_Log, WA_Scheduled, WA_Templates, Bot_Prompts y la columna bot_enabled de «alojamientos»):
+// cada mensaje del huésped esperaba 3–4 escrituras de Apps Script y activar alojamientos fallaba.
+// Mismas acciones y mismas respuestas que Apps Script (las atiende _GCS_ACT y el interceptor de fetch).
+//   whatsapp/chats/<tel10>.json   mensajes de cada conversación
+//   whatsapp/chat-estado.json     control (bot/human/supervised), borrador, último mensaje
+//   whatsapp/log.json · programados.json · plantillas.json · prompts.json · bot-alojamientos.json
+// Siguen en Sheets (los comparte el registro de huéspedes): WA_Config, Perfiles, teléfonos extra, sys_users.
+// ═══════════════════════════════════════════════════════════════════════════
+const _WA_OBJ = { estado: "whatsapp/chat-estado.json", log: "whatsapp/log.json", prog: "whatsapp/programados.json", tpl: "whatsapp/plantillas.json", bp: "whatsapp/prompts.json", aloj: "whatsapp/bot-alojamientos.json" };
+const _waChatObj = p => `whatsapp/chats/${p}.json`;
+const _waP10 = v => { const s = String(v || "").replace(/\D/g, ""); return s.length >= 10 ? s.slice(-10) : ""; };
+const _waC = new Map(); // copia en memoria por objeto (3 s: puede haber varias copias del servidor)
+async function _waLeer(obj) {
+  const c = _waC.get(obj);
+  if (c && Date.now() - c.ts < 3_000) return c.d;
+  const d = await _rhdGetJson(obj);
+  _waC.set(obj, { d, ts: Date.now() });
+  return d;
+}
+function _waMutar(obj, fn) {
+  return _aseoMutate(obj, "wa:" + obj, fn).then(out => { _waC.set(obj, { d: _aseo["wa:" + obj], ts: Date.now() }); delete _aseo["wa:" + obj]; return out; });
+}
+const _waIso = () => new Date().toISOString();
+const _waEstadoDe = (e, p) => e[p] || (e[p] = { control: "bot", last_msg_at: "", last_msg_preview: "", escalated_at: "", escalated_reason: "", notes: "", pending_draft_body: "", pending_draft_at: "", last_msg_role: "" });
+// Nombres de Perfiles para la lista de conversaciones (Perfiles sigue en Sheets): copia de 10 min refrescada en segundo plano.
+const _waPf = { map: null, ts: 0, p: null };
+function _waPerfiles() {
+  if (_waPf.map && Date.now() - _waPf.ts < 10 * 60_000) return Promise.resolve(_waPf.map);
+  if (!_waPf.p) _waPf.p = callCheckinAppsScript("perfiles_list_full").then(r => {
+    if (r && Array.isArray(r.personas)) { const m = {}; r.personas.forEach(x => { if (x.phone10) m[x.phone10] = { nombre: String(x.nombre || "").trim(), razon_social: String(x.razonSocial || "").trim(), regimen_fiscal: String(x.regimenFiscal || "").trim() }; }); _waPf.map = m; _waPf.ts = Date.now(); }
+    return _waPf.map || {};
+  }).catch(() => _waPf.map || {}).finally(() => { _waPf.p = null; });
+  return Promise.resolve(_waPf.map || {}); // nunca espera: mientras carga se usan los nombres guardados con cada conversación
+}
+// Nombre del huésped guardado junto al estado (la lectura completa de Perfiles en Apps Script suele fallar).
+const _waNombreBusy = new Set();
+function _waNombre(p) {
+  if (_waNombreBusy.has(p)) return; _waNombreBusy.add(p);
+  callCheckinAppsScript("perfil_get_by_phone", { phone: p }).then(r => {
+    const f = r && r.perfil; if (!f) return;
+    return _waMutar(_WA_OBJ.estado, e => { const s = e[p]; if (!s) return; s.name = String(f["Nombre del huésped"] || "").trim(); s.razon_social = String(f["Razón social"] || "").trim(); s.regimen_fiscal = String(f["Régimen fiscal"] || "").trim(); });
+  }).catch(() => {}).finally(() => setTimeout(() => _waNombreBusy.delete(p), 30 * 60_000));
+}
+async function _waAlojList() {
+  const d = await _waLeer(_WA_OBJ.aloj), on = new Set((d.on || []).map(String)), out = [], vistos = new Set();
+  (d.cat || []).forEach(a => { vistos.add(String(a.HouseId)); out.push({ HouseId: String(a.HouseId), Propiedad: a.Propiedad || "", Departamento: a.Departamento || "", bot_enabled: on.has(String(a.HouseId)) }); });
+  (await _botGetAlojRows().catch(() => [])).forEach(r => { // alojamientos nuevos que no estaban en la copia inicial
+    const h = String(r.HouseId && r.HouseId !== "None" ? r.HouseId : (r.id_lodgify || "")).trim();
+    if (h && !vistos.has(h)) { vistos.add(h); out.push({ HouseId: h, Propiedad: String(r.Propiedad || ""), Departamento: String(r["# Departamento"] || ""), bot_enabled: on.has(h) }); }
+  });
+  return { ok: true, alojamientos: out };
+}
+const _waProgItem = r => ({ id: r.id, created_at: r.created_at || "", booking_id: r.booking_id || "", tipo: r.tipo || "", scheduled_at: r.scheduled_at || "", body: r.body || "", to: r.to || "", status: r.status || "", sent_at: r.sent_at || "", sid: r.sid || "", created_by: r.created_by || "", asunto: r.asunto || "" });
+function _waProgCambiar(id, fn) {
+  id = String(id || "").trim(); if (!id) return Promise.resolve({ ok: false, error: "id requerido" });
+  return _waMutar(_WA_OBJ.prog, d => { const r = (d.rows || []).find(x => x.id === id); if (!r) return { ok: false, error: "no encontrado" }; return fn(r, d) || { ok: true, id }; });
+}
+async function _waLogAdd(data) {
+  const row = { timestamp: _waIso(), booking_id: String(data.booking_id || ""), tipo: String(data.tipo || ""), origin: String(data.origin || ""), to: String(data.to || ""), from: String(data.from || ""), sid: String(data.sid || ""), status: String(data.status || ""), body_preview: String(data.body_preview || "").slice(0, 300) };
+  await _waMutar(_WA_OBJ.log, d => { if (!Array.isArray(d.rows)) d.rows = []; d.rows.push(row); if (d.rows.length > 20000) d.rows.splice(0, d.rows.length - 20000); });
+  return { ok: true };
+}
+const _bpBool = v => v === true || String(v).toLowerCase() === "true" || String(v) === "1";
+Object.assign(_GCS_ACT, {
+  // ── Conversaciones ──
+  wa_chat_conversations: async data => {
+    const limit = Math.min(parseInt(data.limit || 100, 10) || 100, 500), filter = String(data.filter || "all").toLowerCase();
+    const [e, pf] = await Promise.all([_waLeer(_WA_OBJ.estado), _waPerfiles()]);
+    const convs = Object.keys(e).filter(p => /^\d{10}$/.test(p)).map(p => { const s = e[p], f = pf[p] || {};
+      if (!s.name && !f.nombre) _waNombre(p); // conversación nueva: busca su nombre en Perfiles en segundo plano
+      return { phone: p, name: f.nombre || s.name || "", razon_social: f.razon_social || s.razon_social || "", regimen_fiscal: f.regimen_fiscal || s.regimen_fiscal || "", control: s.control || "bot", last_msg_at: s.last_msg_at || "", last_msg_preview: s.last_msg_preview || "",
+        escalated_at: s.escalated_at || "", escalated_reason: s.escalated_reason || "", notes: s.notes || "", pending_draft_body: s.pending_draft_body || "", pending_draft_at: s.pending_draft_at || "", last_msg_role: s.last_msg_role || "" }; })
+      .filter(c => filter === "bot" ? c.control === "bot" : filter === "human" || filter === "pending" ? c.control === "human" : filter === "supervised" ? c.control === "supervised" : true)
+      .sort((a, b) => String(b.last_msg_at).localeCompare(String(a.last_msg_at)));
+    return { ok: true, conversations: convs.slice(0, limit), total: convs.length };
+  },
+  wa_chat_context_get: async data => {
+    const p = _waP10(data.phone || data.phone10); if (!p) return { ok: false, error: "phone requerido" };
+    const limit = Math.min(parseInt(data.limit || 20, 10) || 20, 200);
+    const [c, e] = await Promise.all([_waLeer(_waChatObj(p)), _waLeer(_WA_OBJ.estado)]);
+    const s = e[p], state = s ? { control: s.control || "bot", last_msg_at: s.last_msg_at || "", escalated_at: s.escalated_at || "", escalated_reason: s.escalated_reason || "", pending_draft_body: s.pending_draft_body || "", pending_draft_at: s.pending_draft_at || "" } : { control: "bot", last_msg_at: "", escalated_reason: "" };
+    return { ok: true, phone: p, messages: (c.msgs || []).slice(-limit).map(m => ({ timestamp: m.ts, role: m.role, body: m.body, meta: m.meta || {} })), state };
+  },
+  wa_chat_context_append: async data => {
+    const p = _waP10(data.phone || data.phone10); if (!p) return { ok: false, error: "phone requerido" };
+    const role = String(data.role || "").toLowerCase(); if (!/^(user|assistant|admin|system|template)$/.test(role)) return { ok: false, error: "role invalido" };
+    let meta = data.meta || {}; if (typeof meta === "string") { try { meta = JSON.parse(meta); } catch (_) { meta = {}; } }
+    const body = String(data.body || "").slice(0, 4000), ts = _waIso();
+    await _waMutar(_waChatObj(p), d => { if (!Array.isArray(d.msgs)) d.msgs = []; d.msgs.push({ ts, role, body, meta }); if (d.msgs.length > 2000) d.msgs.splice(0, d.msgs.length - 2000); });
+    let nueva = false;
+    await _waMutar(_WA_OBJ.estado, e => { nueva = !e[p]; const s = _waEstadoDe(e, p); s.last_msg_at = ts; s.last_msg_preview = body.slice(0, 120); s.last_msg_role = role; });
+    return nueva ? { ok: true, appended: true, phone: p, created_state: true } : { ok: true, appended: true, phone: p };
+  },
+  wa_chat_set_control: async data => {
+    const p = _waP10(data.phone || data.phone10); if (!p) return { ok: false, error: "phone requerido" };
+    const control = String(data.control || "").toLowerCase(); if (!/^(bot|human|supervised)$/.test(control)) return { ok: false, error: "control invalido (bot|human|supervised)" };
+    const reason = String(data.reason || ""), notes = String(data.notes || "");
+    return _waMutar(_WA_OBJ.estado, e => { const nueva = !e[p], s = _waEstadoDe(e, p); s.control = control;
+      if (control === "human") { s.escalated_at = _waIso(); if (reason) s.escalated_reason = reason; }
+      if (notes) s.notes = notes;
+      return nueva ? { ok: true, phone: p, control, created: true } : { ok: true, phone: p, control }; });
+  },
+  wa_chat_set_draft: async data => {
+    const p = _waP10(data.phone || data.phone10); if (!p) return { ok: false, error: "phone requerido" };
+    const body = String(data.body || "");
+    return _waMutar(_WA_OBJ.estado, e => { const nueva = !e[p], s = _waEstadoDe(e, p); if (nueva) s.control = "supervised";
+      s.pending_draft_body = body; s.pending_draft_at = body ? _waIso() : ""; return nueva ? { ok: true, phone: p, created: true } : { ok: true, phone: p }; });
+  },
+  wa_all_messages: async data => {
+    const p = _waP10(data.phone || data.phone10); if (!p) return { ok: false, error: "phone requerido" };
+    const limit = Math.min(parseInt(data.limit || 500, 10) || 500, 2000);
+    const [c, l] = await Promise.all([_waLeer(_waChatObj(p)), _waLeer(_WA_OBJ.log)]);
+    const msgs = (c.msgs || []).map(m => ({ timestamp: m.ts, role: m.role, body: m.body, source: "bot-chat" }))
+      .concat((l.rows || []).filter(r => _waP10(r.to) === p).map(r => ({ timestamp: r.timestamp, role: "outbound", body: r.body_preview || "", source: "wa-log", tipo: r.tipo || "", status: r.status || "" })))
+      .sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
+    return { ok: true, phone: p, messages: msgs.slice(-limit), count: msgs.length };
+  },
+  // ── Alojamientos con bot ──
+  wa_bot_alojamientos: () => _waAlojList(),
+  wa_bot_alojamientos_set: async data => {
+    const wanted = (Array.isArray(data.houseIds) ? data.houseIds : []).map(h => String(h).trim()).filter(Boolean);
+    const updated = await _waMutar(_WA_OBJ.aloj, d => { const antes = new Set((d.on || []).map(String)); d.on = [...new Set(wanted)]; d.updated_at = _waIso();
+      return d.on.filter(h => !antes.has(h)).length + [...antes].filter(h => !d.on.includes(h)).length; });
+    if (typeof _botAlojEnabledCache !== "undefined") { _botAlojEnabledCache.map = null; _botAlojEnabledCache.ts = 0; }
+    return { ok: true, updated, total_enabled: new Set(wanted).size };
+  },
+  // ── Bitácora de envíos ──
+  wa_log_add: d => _waLogAdd(d),
+  wa_inbound_log: d => _waLogAdd({ booking_id: "", tipo: "inbound", origin: "guest", to: d.to, from: d.from, sid: d.sid, status: "received", body_preview: d.body }),
+  wa_log_get_batch: async data => {
+    let ids = data.booking_ids; if (typeof ids === "string") { try { ids = JSON.parse(ids); } catch (_) { ids = []; } } if (!Array.isArray(ids)) ids = [];
+    const set = new Set(ids.map(String)), limit = Number(data.limit_per_booking || 5), map = {}, rows = (await _waLeer(_WA_OBJ.log)).rows || [];
+    for (let i = rows.length - 1; i >= 0; i--) { const r = rows[i], bid = String(r.booking_id || "").trim(); if (!bid || (ids.length && !set.has(bid))) continue;
+      const a = map[bid] || (map[bid] = []); if (a.length >= limit) continue;
+      a.push({ timestamp: r.timestamp, tipo: r.tipo, origin: r.origin, to: r.to, sid: r.sid, status: r.status, body_preview: String(r.body_preview || "").slice(0, 120) }); }
+    return { ok: true, logs: map };
+  },
+  // ── Mensajes programados ──
+  wa_scheduled_list: async data => { const bid = String(data.booking_id || "").trim(); return { ok: true, items: ((await _waLeer(_WA_OBJ.prog)).rows || []).filter(r => !bid || r.booking_id === bid).map(_waProgItem) }; },
+  wa_scheduled_add: async data => {
+    const id = "S" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+    await _waMutar(_WA_OBJ.prog, d => { if (!Array.isArray(d.rows)) d.rows = []; d.rows.push({ id, created_at: _waIso(), booking_id: String(data.booking_id || ""), tipo: String(data.tipo || "custom"), scheduled_at: String(data.scheduled_at || ""),
+      body: String(data.body || "").slice(0, 4000), to: String(data.to || ""), status: "pending", sent_at: "", sid: "", created_by: String(data.created_by || "admin"), asunto: String(data.asunto || "").slice(0, 100) }); });
+    return { ok: true, id };
+  },
+  wa_scheduled_delete: data => _waProgCambiar(data.id, (r, d) => { d.rows.splice(d.rows.indexOf(r), 1); }),
+  wa_scheduled_mark_sent: data => _waProgCambiar(data.id, r => { r.status = String(data.status || "sent"); r.sent_at = _waIso(); r.sid = String(data.sid || ""); }),
+  wa_scheduled_omit: data => _waProgCambiar(data.id, r => { r.status = "omitted"; }),
+  wa_scheduled_update: data => _waProgCambiar(data.id, r => { const u = {}, has = k => Object.prototype.hasOwnProperty.call(data, k);
+    if (has("body")) { r.body = String(data.body || "").slice(0, 4000); u.body = true; }
+    if (has("scheduled_at")) { r.scheduled_at = String(data.scheduled_at || ""); u.scheduled_at = true; }
+    if (has("status")) { r.status = String(data.status || ""); if (r.status === "pending") { r.sent_at = ""; r.sid = ""; } u.status = r.status; }
+    return { ok: true, id: r.id, updated: u }; }),
+  wa_scheduled_pending: async () => { const now = Date.now();
+    return { ok: true, items: ((await _waLeer(_WA_OBJ.prog)).rows || []).filter(r => String(r.status || "").toLowerCase() === "pending" && r.scheduled_at && !isNaN(new Date(r.scheduled_at)) && new Date(r.scheduled_at).getTime() <= now)
+      .map(r => ({ id: r.id, booking_id: r.booking_id, tipo: r.tipo, scheduled_at: r.scheduled_at, body: r.body, to: r.to })) }; },
+  // ── Plantillas de WhatsApp ──
+  wa_templates_list: async () => ({ ok: true, items: ((await _waLeer(_WA_OBJ.tpl)).items || []).map(t => Object.assign({}, t)) }),
+  wa_templates_upsert: async data => {
+    const nombre = String(data.nombre || "").trim(); if (!nombre) return { ok: false, error: "nombre requerido" };
+    let id = String(data.id || "").trim(); const now = _waIso();
+    const t = { nombre, body: String(data.body || "").slice(0, 4000), asunto: String(data.asunto || "").slice(0, 100), schedule_type: String(data.schedule_type || "never"), schedule_time: String(data.schedule_time || ""),
+      alojamientos: String(data.alojamientos || ""), enabled: data.enabled === true, updated_at: now, updated_by: String(data.updated_by || "admin"), schedule_event: String(data.schedule_event || ""),
+      schedule_offset: (data.schedule_offset || data.schedule_offset === 0) ? String(data.schedule_offset) : "", responsivo: data.responsivo === true };
+    const ph = data.placeholders_custom != null ? (typeof data.placeholders_custom === "string" ? data.placeholders_custom : JSON.stringify(data.placeholders_custom)) : null;
+    return _waMutar(_WA_OBJ.tpl, d => { if (!Array.isArray(d.items)) d.items = [];
+      const prev = id ? d.items.find(x => x.id === id) : null;
+      if (prev) { Object.assign(prev, t, { placeholders_custom: ph != null ? ph : (prev.placeholders_custom || "") }); return { ok: true, id, updated: true }; }
+      if (!id) id = "T" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+      d.items.push(Object.assign({ id }, t, { created_at: now, placeholders_custom: ph || "" })); return { ok: true, id, created: true }; })
+      .then(r => { _waTplCache.byName = null; return r; });
+  },
+  wa_templates_delete: data => { const id = String(data.id || "").trim(); if (!id) return { ok: false, error: "id requerido" };
+    return _waMutar(_WA_OBJ.tpl, d => { const i = (d.items || []).findIndex(x => x.id === id); if (i < 0) return { ok: false, error: "no encontrado" }; d.items.splice(i, 1); _waTplCache.byName = null; return { ok: true, id }; }); },
+  // ── Procesos del negocio (prompts del bot) ──
+  bot_prompts_list: async () => ({ ok: true, rows: ((await _waLeer(_WA_OBJ.bp)).rows || []).map((r, i) => Object.assign({}, r, { row_number: i + 2 })) }),
+  bot_prompts_upsert: data => {
+    let id = String(data.ID || data.id || "").trim();
+    const o = { Nombre: String(data.Nombre || "").trim() || "(sin nombre)", Activo: _bpBool(data.Activo) };
+    ["Trigger", "Objetivo", "Datos_obtener", "Datos_compartir", "Reglas", "Flujo", "Herramienta", "Riesgos", "Notificaciones", "Alojamientos_excluidos"].forEach(k => { o[k] = String(data[k] || ""); });
+    o.Updated_at = _waIso(); o.Updated_by = String(data.Updated_by || "admin");
+    return _waMutar(_WA_OBJ.bp, d => { if (!Array.isArray(d.rows)) d.rows = [];
+      if (id) { const r = d.rows.find(x => x.ID === id); if (!r) return { ok: false, error: "no encontrado" }; Object.assign(r, o); return { ok: true, id, updated: true }; }
+      id = "BP" + Date.now() + "_" + Math.floor(Math.random() * 10000); d.rows.push(Object.assign({ ID: id }, o)); return { ok: true, id, created: true }; });
+  },
+  bot_prompts_delete: data => { const id = String(data.ID || data.id || "").trim(); if (!id) return { ok: false, error: "id requerido" };
+    return _waMutar(_WA_OBJ.bp, d => { const i = (d.rows || []).findIndex(x => x.ID === id); if (i < 0) return { ok: false, error: "no encontrado" }; d.rows.splice(i, 1); return { ok: true, id, deleted: true }; }); },
+});
 // ═══════════════════════════════════════════════════════════════════════════
 // 💬 Mensajes de Airbnb (y demás canales) vía API de Lodgify (2026-10-11).
 // Cada reserva trae thread_uid; GET /v2/messaging/{thread} devuelve los mensajes (Renter = huésped, Owner = nosotros).
