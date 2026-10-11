@@ -68149,7 +68149,8 @@ function icClasDe_(mots) {
 function icPersChips_() { return IC.f.pers.map(n => `<span class="at-chip" data-n="${pcEsc(n)}">${adAv_(n)}${pcEsc(n)}<b onclick="IC.f.pers=IC.f.pers.filter(x=>x!==this.parentNode.dataset.n);document.getElementById('ic-pers').innerHTML=icPersChips_()">✕</b></span>`).join('') || '<span class="at-hint">Sin personas</span>'; }
 function icFotosForm_() {
   return IC.f.keep.map((u, i) => `<span><img src="${pcEsc(icFoto_(u, 300))}" alt="" onclick="icFotoVerForm_(${i})" style="cursor:zoom-in"><b onclick="IC.f.keep.splice(${i},1);document.getElementById('ic-fotos').innerHTML=icFotosForm_()">✕</b></span>`).join('')
-    + IC.f.nuevas.map((f, i) => `<span><img src="data:${f.mimeType};base64,${f.base64}" alt="" onclick="icFotoVerForm_(${IC.f.keep.length + i})" style="cursor:zoom-in"><b onclick="IC.f.nuevas.splice(${i},1);document.getElementById('ic-fotos').innerHTML=icFotosForm_()">✕</b></span>`).join('');
+    + IC.f.nuevas.map((f, i) => `<span><img src="data:${f.mimeType};base64,${f.base64}" alt="" onclick="icFotoVerForm_(${IC.f.keep.length + i})" style="cursor:zoom-in"><b onclick="IC.f.nuevas.splice(${i},1);document.getElementById('ic-fotos').innerHTML=icFotosForm_()">✕</b></span>`).join('')
+    + (IC.f.nuevas.length ? `<div style="flex-basis:100%;font-size:11px;font-weight:700;color:#b45309">⬆️ ${IC.f.nuevas.length === 1 ? 'La foto nueva se sube' : 'Las fotos nuevas se suben'} al tocar «${IC.f.id ? 'Guardar cambios' : 'Crear incidencia'}»</div>` : '');
 }
 window.icFotoVerForm_ = function (i) { const F = IC.f; if (!F) return; fotoVer_(F.keep.map(u => icFoto_(u, 1600)).concat(F.nuevas.map(f => `data:${f.mimeType};base64,${f.base64}`)), i); };
 // Visor de fotos: ‹ › entre fotos · zoom con pellizco, doble toque / doble clic o rueda · arrastrar para moverse.
@@ -68255,10 +68256,10 @@ function icFormPintar_() {
       <div class="at-sec"><span>📷 Evidencia fotográfica</span><label class="ad-link">＋ Añadir fotos<input type="file" accept="image/*" multiple hidden onchange="icFormFotos_(this)"></label></div>
       <div class="ic-fotos" id="ic-fotos">${icFotosForm_()}</div>
     </div>
-    <div class="ad-ft"><button type="button" class="ad-bt" onclick="${cancelar}">Cancelar</button><button type="button" class="ad-bt pri" id="ic-ok" onclick="icGuardar_()" ${F.id && !icFormSucio_() ? 'style="display:none"' : ''}>${F.id ? 'Guardar cambios' : 'Crear incidencia'}</button></div>`;
+    <div class="ad-ft"><button type="button" class="ad-bt" onclick="${cancelar}">Cancelar</button><button type="button" class="ad-bt pri" id="ic-ok" onclick="icGuardar_()">${F.id ? 'Guardar cambios' : 'Crear incidencia'}</button></div>`;
   const b = dr.querySelector('.ad-db'); if (b) b.scrollTop = top;
   // Editar: «Guardar cambios» aparece solo si algo cambió.
-  if (F.id) { const upd = () => setTimeout(() => { const ok = document.getElementById('ic-ok'); if (ok && IC.f) ok.style.display = icFormSucio_() ? '' : 'none'; }, 0); dr.oninput = upd; dr.onchange = upd; dr.onclick = upd; }
+  // «Guardar cambios» siempre visible al editar (antes se ocultaba sin cambios y en iPhone la foto nueva no alcanzaba a mostrarlo).
   else { dr.oninput = dr.onchange = dr.onclick = null; }
 }
 function icFormFirma_(F) { const { id, hid, fecha, mot, clas, prio, est, rep, pers, desc, acc, seg, keep, reserva, lev, L, cls } = F; return JSON.stringify({ id, hid, fecha, mot, clas, prio, est, rep, pers, desc, acc, seg, keep, n: (F.nuevas || []).length, reserva, lev, L: lev ? L : null, cls }); }
@@ -68293,7 +68294,7 @@ window.icFormFotos_ = function (inp) {
       const c = document.getElementById('ic-fotos'); if (c) c.innerHTML = icFotosForm_();
       // Al editar, «Guardar cambios» aparece solo con cambios: la foto se procesa después del clic, así que se revisa aquí
       // (antes el botón se quedaba oculto y la foto nunca se enviaba).
-      const ok = document.getElementById('ic-ok'); if (ok && IC.f.id) ok.style.display = icFormSucio_() ? '' : 'none';
+      const ok = document.getElementById('ic-ok'); if (ok) { ok.style.display = ''; ok.classList.add('pulso'); }
     })
     .catch(e => { tmp.remove(); alert('No se pudo procesar la foto: ' + (e.message || e)); });
 };
