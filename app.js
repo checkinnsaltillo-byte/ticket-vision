@@ -52678,6 +52678,7 @@ window._botcAbrirAbn_ = async function (ph, opts) {
           <div class="botc-hmenu-group"><div class="botc-hmenu-label">Ver</div>
             <button type="button" class="botc-hmenu-item" onclick="botcToggleRightPanel();botcCloseHeaderMenu_()">📖 Bitácora completa</button>
             <button type="button" class="botc-hmenu-item" onclick="botcCloseHeaderMenu_();switchModule('mensajes');abnInit_('${bid}')">↗ Abrir en Mensajes Airbnb</button></div></div></div>`;
+    const prev = document.getElementById('abn-botc-txt'), borrador = prev ? prev.value : '', conFoco = prev && document.activeElement === prev; // no perder lo que se está escribiendo
     main.innerHTML = `<div class="botc-chat-header wa-chat-h">
         <div class="botc-chat-header-nameblock" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
           <button id="botc-back-to-list" type="button" onclick="botcBackToList_()" title="Regresar a la lista" style="align-items:center;gap:4px;padding:6px 8px;background:transparent;color:#54656f;border:0;border-radius:6px;cursor:pointer;font-size:16px;font-weight:800;flex:none">←</button>
@@ -52688,10 +52689,15 @@ window._botcAbrirAbn_ = async function (ph, opts) {
         <div class="botc-chat-header-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;margin-left:auto;align-self:flex-start">${menu}</div>
       </div>
       <div id="botc-msgs" class="wa-msgs">${msgs}</div>
-      <div class="wa-comp" style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--wa-bar);border-top:1px solid var(--wa-ln)">
-        <input disabled placeholder="Responder por Airbnb se activa después de confirmar la prueba de envío. Por ahora responde en Airbnb." style="flex:1;min-width:0;border:0;border-radius:8px;padding:10px 12px;font-size:13px;background:#fff;color:var(--wa-mu)">
+      <div class="wa-comp" style="display:flex;align-items:flex-end;gap:8px;padding:8px 12px;background:var(--wa-bar);border-top:1px solid var(--wa-ln)">
+        <textarea id="abn-botc-txt" rows="1" placeholder="Responder por Airbnb…" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();abnEnviar_('${bid}','abn-botc-txt',()=>{BOTC_STATE.abnN='';_botcAbrirAbn_('${ph}',{silent:true});_botcRenderSidebar();})}"
+          style="flex:1;min-width:0;border:0;border-radius:8px;padding:10px 12px;font:inherit;font-size:14px;background:#fff;resize:none;max-height:120px;outline:none"></textarea>
+        <button type="button" title="Enviar por Airbnb" onclick="abnEnviar_('${bid}','abn-botc-txt',()=>{BOTC_STATE.abnN='';_botcAbrirAbn_('${ph}',{silent:true});_botcRenderSidebar();})"
+          style="flex:none;width:42px;height:42px;border:0;border-radius:50%;background:#f44336;color:#fff;font-size:18px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">➤</button>
       </div>`;
     const box = document.getElementById('botc-msgs'); if (box) box.scrollTop = box.scrollHeight;
+    const tx = document.getElementById('abn-botc-txt'); if (tx && borrador) { tx.value = borrador; if (conFoco) tx.focus(); }
   };
   if (!opts.silent) { pintar(null); try { BOTC_STATE.bitLast !== ph && (BOTC_STATE.bitOff = false); BOTC_STATE.bitLast = ph; botcBitacoraCol_(ph); } catch (_) {} }
   try {
@@ -69574,13 +69580,29 @@ window.abnAbrir_ = async function (bid, silencio) {
 };
 function abnPintarHilo_() {
   const th = document.getElementById('abn-th'), j = ABN.hilo; if (!th || !j) return;
+  const prev = document.getElementById('abn-txt'), borrador = prev ? prev.value : '', conFoco = prev && document.activeElement === prev; // no perder lo que se está escribiendo
   const h = ABN.hilos.find(x => x.bid === ABN.sel) || {};
   th.innerHTML = `<div class="abn-thh"><button type="button" class="abn-back" onclick="ABN.sel='';ABN.hilo=null;abnPintar_()">← Volver</button>
       <span class="abn-av">${pcEsc(abnIni_(j.huesped || h.huesped))}</span><div><b>${pcEsc(j.huesped || h.huesped || 'Huésped')}</b><br><small>${pcEsc([h.aloj, h.fuente, h.llegada && h.salida ? `${h.llegada} → ${h.salida}` : '', `Reserva ${ABN.sel}`].filter(Boolean).join(' · '))}</small></div></div>
     <div class="abn-msgs" id="abn-msgs">${abnMsgsHtml_(j.mensajes)}</div>
-    <div class="abn-comp"><textarea placeholder="Responder desde el sistema se activa después de la prueba de envío. Por ahora responde en Airbnb / Lodgify." disabled></textarea><button type="button" disabled>Enviar</button></div>`;
+    <div class="abn-comp"><textarea id="abn-txt" placeholder="Escribe tu respuesta… (Enter envía · Shift+Enter nueva línea)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();abnEnviar_('${pcEsc(ABN.sel)}','abn-txt',()=>abnAbrir_('${pcEsc(ABN.sel)}'))}"></textarea><button type="button" onclick="abnEnviar_('${pcEsc(ABN.sel)}','abn-txt',()=>abnAbrir_('${pcEsc(ABN.sel)}'))">Enviar</button></div>`;
   const m = document.getElementById('abn-msgs'); if (m) m.scrollTop = m.scrollHeight;
+  const tx = document.getElementById('abn-txt'); if (tx && borrador) { tx.value = borrador; if (conFoco) tx.focus(); }
 }
+// Responder al huésped por Airbnb/Lodgify (activado 2026-10-11 tras confirmar que la prueba llegó en Airbnb).
+window.abnEnviar_ = async function (bid, inputId, alTerminar) {
+  const el = document.getElementById(inputId); if (!el) return; const texto = el.value.trim(); if (!texto || el.dataset.enviando) return;
+  el.dataset.enviando = '1'; el.disabled = true; const btn = el.parentNode.querySelector('button'); if (btn) { btn.disabled = true; btn.dataset.txt = btn.innerHTML; btn.innerHTML = '⏳'; }
+  try {
+    const j = await fetch(`${BACKEND}/airbnb/enviar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bid, texto, user: (typeof npYo_ === 'function' ? npYo_() : '') || 'sistema' }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'No se pudo enviar');
+    el.value = '';
+    const h = (BOTC_STATE.abn || []).concat(ABN.hilos || []).filter(x => String(x.bid) === String(bid)); // la vista previa de la lista se actualiza al momento
+    h.forEach(x => { x.ult = { de: 'nosotros', texto: texto.slice(0, 160), fecha: new Date().toISOString() }; x.noLeido = false; });
+    if (typeof alTerminar === 'function') alTerminar(j);
+  } catch (e) { alert('No se envió el mensaje: ' + (e.message || e)); }
+  finally { delete el.dataset.enviando; el.disabled = false; if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.txt || 'Enviar'; } el.focus(); }
+};
 // Hilo dentro de la ficha de la reserva (Gestión de reservas / Huéspedes).
 window.lgBuildAbnSectionForBooking = function (arg) {
   const bid = typeof arg === 'string' ? arg.replace(/^lg:/, '') : String((arg && (arg.Id || arg['Lodgify Id'] || arg.LodgifyId)) || '');

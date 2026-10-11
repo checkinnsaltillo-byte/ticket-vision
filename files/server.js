@@ -11175,6 +11175,8 @@ async function _abnEnviar(bid, texto, user) {
   const h = await _abnHilo(bid, (_abn.hilos.get(bid) || {}).thread).catch(() => null);
   const aparece = !!(h && h.mensajes.some(m => m.de === "nosotros" && m.texto.replace(/\s+/g, " ").includes(texto.replace(/\s+/g, " ").slice(0, 60))));
   console.log(`[airbnb] enviado bid=${bid} por ${user} · aparece en hilo: ${aparece} · respuesta: ${t.slice(0, 200)}`);
+  if (h && _abn.band && Array.isArray(_abn.band.hilos)) { const it = _abn.band.hilos.find(x => x.bid === String(bid)), u = h.mensajes[h.mensajes.length - 1]; // la bandeja ya muestra la respuesta
+    if (it && u) { it.n = h.mensajes.length; it.ult = { de: u.de, texto: u.texto.slice(0, 160), fecha: u.fecha }; } }
   return { ok: true, respuesta: t.slice(0, 500), apareceEnHilo: aparece, mensajes: h ? h.mensajes : null };
 }
 app.post("/airbnb/enviar", async (req, res) => {
