@@ -9150,7 +9150,7 @@ const _VALID_MODULES = new Set([
   'home','tickets','registros','huespedes','lodgify','reservas-detalles',
   'breezeway','aseo','incidencias','objetos','reportes-tecnicos','ocupacion',
   'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias',
-  'config-admin','llaves','bot-chats','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas',
+  'config-admin','llaves','bot-chats','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','mantenimiento',
 ]);
 function _bootModuleFromHash_() {
   const h = (location.hash || '').replace(/^#/, '').trim();
@@ -9174,7 +9174,8 @@ function clPuede_(m) { return !window.SYS_ALLOWED || window.SYS_ALLOWED.has(m); 
 function clNavHtml_(act) {
   const b = (k, l, mod) => `<button type="button" class="cl-b ${act === k ? 'on' : ''}" onclick="switchModule('${mod}')">${l}</button>`;
   const MPn = typeof clModoPersonal_ === 'function' && clModoPersonal_();
-  const op = [clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '🧽 Aseo y Mantenimiento', 'aseo') : '', !MPn && (clPuede_('breezeway') || clPuede_('aseo')) ? (CL_BZW_OFF ? `<button type="button" class="cl-b off" disabled title="Breezeway está desactivado por el momento">🧹 Breezeway</button>` : b('breezeway', '🧹 Breezeway', 'breezeway')) : ''].join('');
+  if (act === 'checkinn' && window.ASEO && ASEO.sec === 'mant') act = 'mant'; // mismo tablero, sección Mantenimiento
+  const op = [clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '🧽 Aseo', 'aseo') + b('mant', '🔧 Mantenimiento', 'mantenimiento') : '', !MPn && (clPuede_('breezeway') || clPuede_('aseo')) ? (CL_BZW_OFF ? `<button type="button" class="cl-b off" disabled title="Breezeway está desactivado por el momento">🧹 Breezeway</button>` : b('breezeway', '🧹 Breezeway', 'breezeway')) : ''].join('');
   const op2 = !MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '';
   const adm = (!MPn && clPuede_('tareas') ? b('tareas', '🗓️ Tareas programadas', 'tareas') : '') + (!MPn && clPuede_('aseo') ? b('plantillas', '📋 Plantillas', 'plantillas') : '');
   // «Check-list Bot» (notificaciones y permisos del bot) vive en Configuración admin › 🤖 Check-list Bot.
@@ -9249,11 +9250,14 @@ function clNavPaint_() {
 }
 function switchModule(mod) {
   setTimeout(() => { try { clNavPaint_(); } catch (_) {} }, 0);
-  // «Reportes técnicos» vive ahora dentro de Aseo (tareas de Mantenimiento).
-  if (mod === 'reportes-tecnicos') { if (typeof ASEO !== 'undefined') { ASEO.fTipo = ['mantenimiento']; ASEO.calSig = ''; } mod = 'aseo'; }
+  // «Reportes técnicos» = sección Mantenimiento. «Mantenimiento» usa el mismo tablero de Aseo filtrado (ASEO.sec = 'mant').
+  if (mod === 'reportes-tecnicos') mod = 'mantenimiento';
+  let hashMod = mod;
+  if (typeof ASEO !== 'undefined' && (mod === 'aseo' || mod === 'mantenimiento')) { const sec = mod === 'mantenimiento' ? 'mant' : 'aseo'; if (ASEO.sec !== sec) { ASEO.sec = sec; ASEO.calSig = ''; } }
+  if (mod === 'mantenimiento') mod = 'aseo';
   // Permisos: un módulo no asignado (p. ej. por enlace #modulo) manda a Inicio.
   if (window.SYS_ALLOWED && mod !== 'home') {
-    const permKey = (mod === 'dashboard' || mod === 'calendario') ? 'ocupacion' : mod === 'plantillas' ? 'aseo' : mod; // Plantillas es parte de Check-list
+    const permKey = (mod === 'dashboard' || mod === 'calendario') ? 'ocupacion' : mod === 'plantillas' ? 'aseo' : mod; // Plantillas y Mantenimiento son parte de Check-list
     if (!window.SYS_ALLOWED.has(permKey) && !window.SYS_ALLOWED.has(mod)) mod = 'home';
   }
   // Legacy: 'ocupacion' como módulo top-level se trata como Dashboard
@@ -9265,7 +9269,7 @@ function switchModule(mod) {
   // Guardia _rtSyncingHash evita loop con el listener 'hashchange'.
   try {
     if (!window._rtSyncingHash) {
-      const target = '#' + mod;
+      const target = '#' + (mod === 'aseo' && hashMod === 'mantenimiento' ? 'mantenimiento' : mod);
       if (location.hash !== target) history.replaceState(null, '', target);
     }
   } catch(_) {}
@@ -62681,7 +62685,8 @@ const NAV_TREE = {
   ],
   aseo: [
     { t: '🧭 Operación', go: () => {}, subs: [
-      { t: '🧽 Aseo y Mantenimiento', go: () => switchModule('aseo') },
+      { t: '🧽 Aseo', go: () => switchModule('aseo') },
+      { t: '🔧 Mantenimiento', go: () => switchModule('mantenimiento') },
       // Breezeway desactivado por el momento (ver CL_BZW_OFF).
     ] },
     { t: '🗂️ Administración', mod: 'tareas', go: () => {}, subs: [
@@ -66265,7 +66270,17 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   const MP = clModoPersonal_();
   if (ASEO.simple == null) ASEO.simple = MP; // predeterminada: Simple para empleados, Detalles para administradores
   if (MP) { const mias = tInfos.filter(I => clEsMio_(I.pA)); tInfos.length = 0; mias.forEach(I => tInfos.push(I)); }
-  if (ASEO.simple && !(!MP && ASEO.vista === 'usuario')) { const sinCorr = tInfos.filter(I => !axEsDeInc_(I.t.rt ? 'R' + I.t.rtId : 'T' + I.t.id)); tInfos.length = 0; sinCorr.forEach(I => tInfos.push(I)); } // «Simple»: sin tareas correctivas de incidencias (salvo «Por usuario»: cada quien ve su renglón con todas sus tareas)
+  // Sección «🔧 Mantenimiento»: solo tareas de Mantenimiento y lo que esté ligado a ellas por una incidencia
+  // (p. ej. la limpieza de check-out cuya incidencia generó una correctiva de mantenimiento): se ven igual que en «Aseo».
+  if (ASEO.sec === 'mant') {
+    const kI = I => I.tarea ? (I.t.rt ? 'R' + I.t.rtId : 'T' + I.t.id) : I.asigId;
+    const esMant = I => I.tarea && (I.t.rt || I.t.depto === 'mantenimiento');
+    const incs = I => { const k = kI(I); return axEx_(k).incidencia ? axIncActivas_(k) : []; };
+    const ids = new Set(); infos.concat(tInfos).filter(esMant).forEach(I => incs(I).forEach(x => ids.add(String(x))));
+    const queda = I => esMant(I) || incs(I).some(x => ids.has(String(x)));
+    const a = infos.filter(queda), b = tInfos.filter(queda); infos.length = 0; a.forEach(I => infos.push(I)); tInfos.length = 0; b.forEach(I => tInfos.push(I));
+  }
+  if (ASEO.simple && ASEO.sec !== 'mant' && !(!MP && ASEO.vista === 'usuario')) { const sinCorr = tInfos.filter(I => !axEsDeInc_(I.t.rt ? 'R' + I.t.rtId : 'T' + I.t.id)); tInfos.length = 0; sinCorr.forEach(I => tInfos.push(I)); } // «Simple»: sin tareas correctivas de incidencias (salvo «Por usuario»: cada quien ve su renglón con todas sus tareas)
   const props = [...new Set(infos.concat(tInfos).map(propDe))].sort((a, b) => (a === 'Otros') - (b === 'Otros') || a.localeCompare(b, 'es'));
   const fP = (ASEO.fProp || []).filter(p => props.includes(p));
   const vis = new Set(gsF.map(g => String(g.hid || g.k)));
