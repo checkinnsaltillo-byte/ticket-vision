@@ -51299,7 +51299,9 @@ function _botcRenderSidebar() {
   } else {
     listHtml = items.map(it => it.html).join('');
   }
+  const _top = sidebar.scrollTop; // repintar la lista sin regresar al inicio (se actualiza sola cada pocos segundos)
   sidebar.innerHTML = tabsHtml + listHtml;
+  if (_top) sidebar.scrollTop = _top;
   // Enrichment async: para conversations sin booking cacheado, buscar
   // y luego re-render solo la sidebar (no todo el módulo).
   _botcEnrichPendingBookings();
