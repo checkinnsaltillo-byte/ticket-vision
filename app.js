@@ -59339,9 +59339,9 @@ function tarCalendarioHtml_() {
     const on = TAR_STATE.calView === k;
     return `<button type="button" onclick="tarSetCalView('${k}')" style="all:unset;cursor:pointer;padding:7px 14px;font-size:12px;font-weight:800;border-radius:8px;background:${on ? '#7c3aed' : '#fff'};color:${on ? '#fff' : '#475569'};border:1.5px solid ${on ? '#7c3aed' : '#e2e8f0'}">${label}</button>`;
   };
-  if (!['dia', 'semana'].includes(TAR_STATE.calView)) TAR_STATE.calView = 'semana'; // el mes lo eligen las flechitas de arriba
+  if (!['dia', 'semana', 'mes'].includes(TAR_STATE.calView)) TAR_STATE.calView = 'semana';
   const tB = (k, l) => `<button type="button" class="${TAR_STATE.calView === k ? 'on' : ''}" onclick="tarSetCalView('${k}')">${l}</button>`;
-  const tabs = `<div class="ad-seg" style="margin-bottom:12px">${tB('dia', 'Por día')}${tB('semana', 'Por semana')}</div>`;
+  const tabs = `<div class="ad-seg" style="margin-bottom:12px">${tB('dia', 'Por día')}${tB('semana', 'Por semana')}${tB('mes', 'Por mes')}</div>`;
   let body = '';
   if (TAR_STATE.calView === 'resumen') body = tarResumenHtml_();
   else if (TAR_STATE.calView === 'dia') body = tarDiaHtml_();
@@ -59351,6 +59351,7 @@ function tarCalendarioHtml_() {
 }
 window.tarSetCalView = function (k) { TAR_STATE.calView = k; const ym = TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7); TAR_STATE.calRef = tarIso_(tarToday_()).slice(0, 7) === ym ? tarToday_() : tarParseIso_(ym + '-01'); tarRender(); };
 window.tarCalNav = function (delta) {
+  if (TAR_STATE.calView === 'mes' && typeof tdMes_ === 'function') return tdMes_(delta); // mismo mes que las flechitas de arriba
   const d = new Date(TAR_STATE.calRef || tarToday_());
   if (TAR_STATE.calView === 'dia') d.setDate(d.getDate() + delta);
   else if (TAR_STATE.calView === 'semana') d.setDate(d.getDate() + 7 * delta);
@@ -59358,7 +59359,7 @@ window.tarCalNav = function (delta) {
   TAR_STATE.calRef = d;
   tarRender();
 };
-window.tarCalHoy = function () { TAR_STATE.calRef = tarToday_(); tarRender(); };
+window.tarCalHoy = function () { if (TAR_STATE.calView === 'mes' && typeof tdMesSet_ === 'function') return tdMesSet_(tarIso_(tarToday_()).slice(0, 7)); TAR_STATE.calRef = tarToday_(); tarRender(); };
 function tarNavBar_(titulo) {
   const b = 'all:unset;cursor:pointer;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;font-size:16px;font-weight:900;color:#334155';
   return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -59498,7 +59499,7 @@ function tarMiniHtml_(r, iso) {
 }
 // 4) Pendientes del mes
 function tarMesHtml_() {
-  const ref = new Date(TAR_STATE.calRef);
+  const ref = TAR_STATE.mes ? tarParseIso_(TAR_STATE.mes + '-01') : new Date(TAR_STATE.calRef); // mes elegido con las flechitas de arriba
   const y = ref.getFullYear(), m = ref.getMonth();
   const primero = new Date(y, m, 1);
   const start = new Date(primero); start.setDate(1 - ((primero.getDay() + 6) % 7));
