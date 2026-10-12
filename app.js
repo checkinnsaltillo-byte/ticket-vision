@@ -59753,7 +59753,10 @@ function tarPanelRender_() {
           ${tarCheck_(d.Fecha_limite === 'Sí')}
           <div><div style="font-size:13px;font-weight:900;color:#0f172a">⏳ Fecha límite</div>
           <div style="font-size:11.5px;color:#64748b;margin-top:2px">La tarea debe quedar resuelta a más tardar en esa fecha${d.Naturaleza === 'Recurrente' ? ' (en cada fecha programada)' : ''}.</div></div>
-        </div>`)}`}
+        </div>
+        ${tdEsIG_(d) && d.Fecha_limite === 'Sí' ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;padding:10px 12px;border-radius:10px;border:1.5px solid #fca5a5;background:#fff">
+          <span style="font-size:12px;font-weight:700;color:#0f172a">⏳ Fecha límite</span><input type="date" value="${esc(d.Limite_IG || tdFinMes_(tarIso_(tarToday_())))}" onchange="tarIGLimite_(this.value)" style="${inp};width:auto">
+          <div style="flex-basis:100%;font-size:11px;color:#94a3b8">Se repite cada mes ese mismo día (si el mes es más corto, su último día). Conforme se acerca, la card muestra el aviso y sube la prioridad: ≤ 7 días Media · ≤ 3 Alta · ≤ 1 Crítica.</div></div>` : ''}`)}`}
       ${field(lbl(`Personal asignado${d._personal.length ? ` · ${d._personal.length}` : ''}`) + personalHtml)}
       ${rec ? '' : `${field(lbl('¿Enviar mensaje por WhatsApp?') + waHtml)}
       ${field(lbl('Vigencia de la tarea') + `<div style="display:flex;gap:6px;flex-wrap:wrap">${TAR_VIGENCIAS.map(e => tarPill_(d.Estado === e.k, e.k, `tarSetField('Estado','${e.k}')`, { fg: e.fg, bg: e.bg, bd: e.bd })).join('')}</div><div style="font-size:11px;color:#94a3b8;margin-top:5px">Pausada o Cancelada: deja de aparecer en fechas futuras. El estado de cada día se marca desde el calendario.</div>`)}
@@ -59774,9 +59777,7 @@ function tarIGCampos_(d, lbl, inp, field) {
   const lista = A.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;max-height:260px;overflow:auto;padding:2px">${A.map(a => { const on = sel.includes(String(a.houseId));
       return `<button type="button" onclick="tarIGAloj_(this.dataset.h)" data-h="${esc(String(a.houseId))}" title="${esc(a.nombre)}" style="all:unset;cursor:pointer;display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:8px;border:1.5px solid ${on ? '#c4b5fd' : '#e2e8f0'};background:${on ? '#f5f3ff' : '#fff'};font-size:11.5px;font-weight:600;color:#0f172a;min-width:0">${tarCheck_(on)}<b style="font:700 11px ui-monospace,Menlo,monospace">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-weight:500">${esc(String(a.nombre).replace(/^Calle\s+/i, ''))}</span></button>`; }).join('')}</div>`
     : '<div style="font-size:12px;color:#94a3b8">⏳ Cargando alojamientos…</div>';
-  const lim = d.Limite_IG || tdFinMes_(tarIso_(tarToday_()));
-  const limF = field(lbl('Fecha límite') + `<input type="date" value="${esc(lim)}" onchange="tarIGLimite_(this.value)" style="${inp};width:auto"><div style="font-size:11px;color:#94a3b8;margin-top:5px">Se repite cada mes ese mismo día (si el mes es más corto, su último día). Conforme se acerca, la card muestra el aviso y sube la prioridad: ≤ 7 días Medio · ≤ 3 Alto · ≤ 1 Crítico.</div>`);
-  return field(lbl('Plantilla') + plSel) + limF + field(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:11.5px;font-weight:600;color:#374151">Alojamiento(s) · ${sel.length}</label><span style="flex:1"></span>${btn('Todos', 'tarIGTodos_(true)')}${btn('Ninguno', 'tarIGTodos_(false)')}</div>${lista}`);
+  return field(lbl('Plantilla') + plSel) + field(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:11.5px;font-weight:600;color:#374151">Alojamiento(s) · ${sel.length}</label><span style="flex:1"></span>${btn('Todos', 'tarIGTodos_(true)')}${btn('Ninguno', 'tarIGTodos_(false)')}</div>${lista}`);
 }
 window.tarIGLimite_ = function (v) { const P = TAR_STATE.panel; if (!P || !v) return; P.d.Limite_IG = v; P.d._prog.dias_mes = [Number(v.slice(8, 10))]; tarPanelRender_(); };
 window.tarIGPlantilla_ = function (id) { const P = TAR_STATE.panel; if (!P) return; const pl = (ASEO.pl.lista || {})[id]; P.d.Plantilla = id || ''; if (pl && !String(P.d.Nombre || '').trim()) P.d.Nombre = 'Inspección general · ' + pl.titulo; tarPanelRender_(); };
@@ -59903,7 +59904,7 @@ window.tarSavePanel = async function () {
     Fecha_limite: d.Fecha_limite === 'Sí' ? 'Sí' : 'No',
     Updated_at: new Date().toISOString(),
   };
-  if (tdEsIG_(d)) Object.assign(payload, { Insp_general: 'Sí', Limite_IG: d.Limite_IG || '', Fecha_limite: 'Sí', Plantilla: d.Plantilla || '', Alojamientos: JSON.stringify((d._alojs || []).map(String)), Clasificacion: d.Clasificacion || 'Inspección' });
+  if (tdEsIG_(d)) Object.assign(payload, { Insp_general: 'Sí', Limite_IG: d.Fecha_limite === 'Sí' ? (d.Limite_IG || tdFinMes_(tarIso_(tarToday_()))) : '', Plantilla: d.Plantilla || '', Alojamientos: JSON.stringify((d._alojs || []).map(String)), Clasificacion: d.Clasificacion || 'Inspección' });
   if (d.Proceso_ID) Object.assign(payload, { Origen: 'Proceso', Proceso_ID: d.Proceso_ID, Proceso_Codigo: d.Proceso_Codigo || '', Proceso_Nombre: d.Proceso_Nombre || '', Proceso_Version: "'" + String(d.Proceso_Version || '').replace(/^'/, '') });
   if (P.id) payload.ID = P.id;
   else payload.Creado_por = tarUser_();
