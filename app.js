@@ -18526,6 +18526,36 @@ function lgBuildObjSectionForBooking(arg) {
   return wrap(header + `<div style="display:flex;flex-direction:column;gap:8px">${cards}</div>`);
 }
 
+// ── «+ Nuevo reporte» desde una reserva: contexto con las reservas del huésped y la elegida ──
+function repBk_(b) {
+  if (!b) return null;
+  const R = b.__reservacion || {}, iso = v => _botcFxIso_(v) || String(v || '').slice(0, 10);
+  const id = String(b.LodgifyId || (/^\d{5,}$/.test(String(b.Id || '')) ? b.Id : '') || (typeof waBookingId_ === 'function' && waBookingId_(b)) || b.Id || '').trim(); if (!id) return null; // id de Lodgify (= Reservacion_id de los reportes)
+  const prop = String(b.PropiedadRaw || R['Propiedad'] || b.PropertyName || '').trim(), dep = String(b.DepartamentoRaw || R['# Departamento'] || '').replace(/^#\s*/, '').trim();
+  let hid = String(b.HouseId || '').replace(/\D/g, ''); if (!hid || !atAlojs_().some(a => a.houseId === hid)) hid = rtHid_({ Propiedad: prop, '# Departamento': dep }) || '';
+  const a = hid ? atAloj_(hid) : null;
+  return { id, hid, arr: iso(b.DateArrival || b.arrival || R['Fecha de ingreso']), dep: iso(b.DateDeparture || b.departure || R['Fecha de salida']), guest: String(b.GuestName || R['Nombre del huésped'] || '').trim(),
+    aloj: a ? ((a.corto ? String(a.corto).toUpperCase() + ' · ' : '') + a.nombre) : (prop ? prop + (dep ? ' - #' + dep : '') : 'Sin alojamiento') };
+}
+function repCtxDe_(sel, lista) {
+  const L = []; [sel].concat(lista || []).forEach(b => { const x = repBk_(b); if (x && !L.some(y => y.id === x.id)) L.push(x); });
+  if (!L.length) return null;
+  L.sort((a, b) => String(b.arr).localeCompare(String(a.arr)));
+  return { bks: L, sel: (repBk_(sel) || L[0]).id };
+}
+function repCtxSel_(C) { return C && (C.bks.find(x => x.id === String(C.sel)) || C.bks[0]); }
+window.repCtxSetId_ = function (id) { // Gestión de reservas
+  const b = ((typeof LG_STATE !== 'undefined' && LG_STATE.bookings) || []).find(x => String(x.Id) === String(id)) || (typeof pcMovBookings_ === 'function' ? pcMovBookings_().find(x => String(x.Id) === String(id)) : null);
+  window.__repCtx = b ? repCtxDe_(b, []) : null; window.__repCtxKeep = !!window.__repCtx;
+};
+// Campo «Reserva» (prellenado) que sustituye a «Alojamiento». fn(id) recibe la reserva elegida.
+function repResHtml_(C, selId, fn) {
+  const B = C.bks.find(x => x.id === String(selId)) || repCtxSel_(C), f = v => v ? pcFmtDiaC_(v) : '—';
+  return `<label class="at-l">Reserva <i>*</i></label>
+    <select class="at-in" onchange="${fn}(this.value)">${C.bks.map(x => `<option value="${pcEsc(x.id)}" ${x.id === B.id ? 'selected' : ''}>${pcEsc(x.aloj.split(' · ')[0])} · ${pcEsc(x.guest || 'Sin nombre')} · ${f(x.arr)} → ${f(x.dep)}</option>`).join('')}</select>
+    <div class="at-hint">🏠 ${pcEsc(B.aloj)}${B.hid ? '' : ' · <b style="color:#b91c1c">sin alojamiento del catálogo: elígelo abajo</b>'}</div>`;
+}
+
 /** Card unificada "+ Generar nuevo reporte" que abre selector de tipo:
  *  1) Incidencia · 2) Objeto olvidado · 3) Reporte técnico (próximamente).
  *  Reemplaza los 2 botones sueltos que había en Inc/Obj sections. */
@@ -18546,7 +18576,7 @@ function lgBuildReportsSectionForBooking(arg) {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <div style="font-size:11px;letter-spacing:.18em;color:#64748b;font-weight:800">📋 REPORTES</div>
         <button type="button"
-                onclick="lgOpenReportPicker('${esc(propRaw)}','${esc(deptRaw)}','${esc(arrIso)}','${esc(depIso)}')"
+                onclick="repCtxSetId_('${esc(String(arg.Id || ''))}');lgOpenReportPicker('${esc(propRaw)}','${esc(deptRaw)}','${esc(arrIso)}','${esc(depIso)}')"
                 style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px solid #0f172a;background:#0f172a;color:#fff;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">
           ＋ Generar nuevo reporte
         </button>
@@ -18564,6 +18594,8 @@ window.lgOpenReportPicker = function(propRaw, deptRaw, arrIso, depIso) {
   // Chats bot lo setea explícitamente en botcOpenReportPickerForCurrent.
   if (!window.__rsvContextPhoneKeep) window.__rsvContextPhone = null;
   window.__rsvContextPhoneKeep = false;
+  if (!window.__repCtxKeep) window.__repCtx = null; // reserva desde la que se abrió «Nuevo reporte»
+  window.__repCtxKeep = false;
   const wrap = document.createElement('div');
   wrap.id = 'lg-report-picker';
   wrap.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;display:flex;justify-content:flex-end';
@@ -18612,6 +18644,13 @@ window.lgOpenReportPicker = function(propRaw, deptRaw, arrIso, depIso) {
 
 window.lgPickReport = function(kind, propRaw, deptRaw, arrIso, depIso) {
   document.getElementById('lg-report-picker')?.remove();
+  const C = window.__repCtx, B = C && repCtxSel_(C);
+  if (B) { // desde una reserva: el formulario muestra «Reserva» (prellenada) en lugar de «Alojamiento»
+    const hoy = aseoHoyIso_(), fecha = B.arr && B.dep && hoy >= B.arr && hoy <= B.dep ? hoy : (B.arr || hoy);
+    if (kind === 'inc') { icForm_(null, { hid: B.hid, fecha }); Object.assign(IC.f, { reserva: B.id, huesped: B.guest, repCtx: C }); IC.f0 = icFormFirma_(IC.f); icFormPintar_(); return; }
+    if (kind === 'obj') { obForm_(null, { hid: B.hid, arr: B.arr, reserva: B.id, huesped: B.guest, repCtx: C }); if (!OBJ_STATE.list || !OBJ_STATE.list.length) obCargar_().catch(() => {}); return; }
+    if (kind === 'rt') { if (!(ASEO.rt && ASEO.rt.length) && typeof RT_STATE !== 'undefined' && (RT_STATE.list || []).length) ASEO.rt = RT_STATE.list.slice(); rtFormA_(null, { hid: B.hid, fecha: hoy, reserva: B.id }); Object.assign(ASEO._rf, { Huesped_nombre: B.guest, _repCtx: C }); rtFormPintarA_(); return; }
+  }
   if (kind === 'inc' && typeof lgOpenIncCaptureFor === 'function') {
     lgOpenIncCaptureFor(propRaw, deptRaw, arrIso);
   } else if (kind === 'obj' && typeof obNuevoDesdeReserva_ === 'function') {
@@ -45432,6 +45471,7 @@ window._waOpenReportPickerForCurrentBooking_ = function() {
   // Contexto phone para filtrar el combobox 'Reserva' del formulario.
   const ph = b.GuestPhone || (b.__reservacion && b.__reservacion['Cel/Whatsapp (principal)']) || '';
   if (ph) { window.__rsvContextPhone = ph; window.__rsvContextPhoneKeep = true; }
+  try { window.__repCtx = repCtxDe_(b, st.bookings || []); window.__repCtxKeep = !!window.__repCtx; } catch (_) {}
   if (typeof lgOpenReportPicker === 'function') lgOpenReportPicker(propRaw, deptRaw, arrIso, depIso);
 };
 
@@ -52746,6 +52786,7 @@ window.botcOpenReportPickerForCurrent = function() {
   };
   const arrIso = toIso(bk.DateArrival);
   const depIso = toIso(bk.DateDeparture);
+  try { window.__repCtx = repCtxDe_(bk, typeof _botcGetAllBookingsForPhone === 'function' ? _botcGetAllBookingsForPhone(phone) : []); window.__repCtxKeep = !!window.__repCtx; } catch (_) {}
   if (typeof lgOpenReportPicker === 'function') {
     lgOpenReportPicker(propRaw, depRaw, arrIso, depIso);
   } else {
@@ -67904,8 +67945,9 @@ function rtFormPintarA_() {
       <div class="at-hint">${F._deTarea ? 'Al guardar, la tarea se convierte en reporte técnico (Mantenimiento).' : 'Mantenimiento = reporte técnico (se guarda en «Reportes técnicos»).'}</div>
       <label class="at-l">Tipo de servicio</label>
       ${axSrvSeg_(F._srv || 'general', 'rtFormSrv_')}
-      <label class="at-l">Alojamiento</label>
-      <select class="at-in" onchange="ASEO._rf._hid=this.value;ASEO._rf.Reservacion_id='';rtFormPintarA_()"><option value="">Selecciona un alojamiento</option>${alojs.map(x => `<option value="${pcEsc(x.houseId)}" ${x.houseId === String(F._hid) ? 'selected' : ''}>${pcEsc((x.corto ? x.corto.toUpperCase() + ' · ' : '') + x.nombre)}</option>`).join('')}</select>
+      ${F._repCtx ? repResHtml_(F._repCtx, F.Reservacion_id, 'rtFormRepRes_') : ''}
+      ${F._repCtx && F._hid ? '' : `<label class="at-l">Alojamiento</label>
+      <select class="at-in" onchange="ASEO._rf._hid=this.value;ASEO._rf.Reservacion_id='';rtFormPintarA_()"><option value="">Selecciona un alojamiento</option>${alojs.map(x => `<option value="${pcEsc(x.houseId)}" ${x.houseId === String(F._hid) ? 'selected' : ''}>${pcEsc((x.corto ? x.corto.toUpperCase() + ' · ' : '') + x.nombre)}</option>`).join('')}</select>`}
       <div class="at-sec"><span>☑ Detalles del reporte</span></div>
       <label class="at-l">Prioridad</label>${prio4Sel_(F._prio, 'rtFormPrio_')}
       <label class="at-l">Categoría</label>${sel('Categoria', RT_CATEGORIAS, F.Categoria || 'otros')}
@@ -67925,8 +67967,8 @@ function rtFormPintarA_() {
       <div class="at-row" style="justify-content:space-between"><span class="at-k" style="width:auto">Fotos después</span><label class="ad-link">＋ Añadir fotos<input type="file" accept="image/*" multiple hidden onchange="rtFormFotos_(this,'despues')"></label></div>
       <div class="ad-adjs">${fotosHtml('despues')}</div>
       <label class="at-l">Descripción de la solución</label><textarea class="at-in" rows="2" oninput="ASEO._rf.Descripcion_solucion=this.value">${pcEsc(F.Descripcion_solucion || '')}</textarea>
-      <div class="at-sec"><span>🛏️ Enlazado reservas</span></div>
-      ${F._hid ? `<select class="at-in" onchange="ASEO._rf.Reservacion_id=this.value"><option value="">Sin reserva enlazada</option>${resL.map(b => `<option value="${pcEsc(String(b.Id))}" ${String(b.Id) === String(F.Reservacion_id) ? 'selected' : ''}>${pcEsc(b.GuestName || 'Sin nombre')} · ${pcFmtDiaC_(_pagosDateIso(b.DateArrival))} → ${pcFmtDiaC_(_pagosDateIso(b.DateDeparture))}</option>`).join('')}</select>` : '<div class="at-hint">Elige primero el alojamiento.</div>'}
+      ${F._repCtx ? '' : `<div class="at-sec"><span>🛏️ Enlazado reservas</span></div>`}
+      ${F._repCtx ? '' : F._hid ? `<select class="at-in" onchange="ASEO._rf.Reservacion_id=this.value"><option value="">Sin reserva enlazada</option>${resL.map(b => `<option value="${pcEsc(String(b.Id))}" ${String(b.Id) === String(F.Reservacion_id) ? 'selected' : ''}>${pcEsc(b.GuestName || 'Sin nombre')} · ${pcFmtDiaC_(_pagosDateIso(b.DateArrival))} → ${pcFmtDiaC_(_pagosDateIso(b.DateDeparture))}</option>`).join('')}</select>` : '<div class="at-hint">Elige primero el alojamiento.</div>'}
       <details class="ad-res" ${F.Proveedor || F.Costo_total ? 'open' : ''}><summary>💰 Costos, responsabilidad y más</summary>
         <label class="at-l">Tipo</label>${sel('Tipo', RT_TIPOS, F.Tipo || 'correctivo')}
         <label class="at-l">Responsabilidad</label>${sel('Responsabilidad', RT_RESPONSABILIDADES, F.Responsabilidad || 'indeterminada')}
@@ -67940,6 +67982,7 @@ function rtFormPintarA_() {
     </div>
     <div class="ad-ft">${F.ID ? `<button type="button" class="ad-bt" style="color:#b91c1c" onclick="rtBorrarA_('${pcEsc(F.ID)}')">Eliminar</button>` : ''}<button type="button" class="ad-bt" onclick="${F.ID ? `rtAbrirA_('${pcEsc(F.ID)}')` : 'adCerrar_()'}">Cancelar</button><button type="button" class="ad-bt pri" id="rt-ok" onclick="rtGuardarA_()">${F.ID ? 'Guardar cambios' : 'Crear tarea'}</button></div>`;
 }
+window.rtFormRepRes_ = function (id) { const F = ASEO._rf, C = F._repCtx; C.sel = id; const B = repCtxSel_(C); F.Reservacion_id = B.id; F.Huesped_nombre = B.guest; if (B.hid) F._hid = B.hid; rtFormPintarA_(); };
 window.rtFormPrio_ = function (k) { ASEO._rf._prio = k; rtFormPintarA_(); };
 function rtAsigChips_() { return (ASEO._rf._asig || []).map(n => `<span class="at-chip" data-n="${pcEsc(n)}">${adAv_(n)}${pcEsc(n)}<b onclick="ASEO._rf._asig=ASEO._rf._asig.filter(x=>x!==this.parentNode.dataset.n);document.getElementById('rt-asig').innerHTML=rtAsigChips_()">✕</b></span>`).join('') || '<span class="at-hint">Sin asignar</span>'; }
 // Lista del personal (marcar no re-dibuja la lista).
@@ -68928,10 +68971,11 @@ function icFormPintar_() {
     <div class="ad-db at-f">
       ${F.emp ? `<div class="ad-hint" style="margin-top:0">${IC_CLS[F.cls].ico} Incidencia ${F.cls === 'huesped' ? 'de <b>huésped</b>' : '<b>operativa</b>'}</div>` : `<label class="at-l">Tipo de incidencia <i>*</i></label>
       <div class="ad-steps" style="grid-template-columns:repeat(2,1fr)">${Object.entries(IC_CLS).map(([k, C]) => `<button type="button" class="${F.cls === k ? 'on' : ''}" style="--c:${C.c}" onclick="icFormCls_('${k}')">${C.ico} ${C.t}</button>`).join('')}</div>`}
-      <label class="at-l">Alojamiento <i>*</i></label>
-      <select class="at-in" onchange="IC.f.hid=this.value;IC.f.reserva='';IC.f.huesped='';icFormPintar_()"><option value="">${F.alojTxt ? pcEsc(F.alojTxt) : 'Selecciona un alojamiento'}</option>${alojs.map(a => `<option value="${pcEsc(a.houseId)}" ${a.houseId === String(F.hid) ? 'selected' : ''}>${pcEsc((a.corto ? a.corto.toUpperCase() + ' · ' : '') + a.nombre)}</option>`).join('')}</select>
-      <div class="at-row"><span class="at-k">Fecha</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" onchange="IC.f.fecha=this.value;IC.f.reserva='';IC.f.huesped='';icFormPintar_()"></div>
-      ${F.emp ? '' : `<label class="at-l">Reserva</label>${icResSelect_()}`}
+      ${F.repCtx ? repResHtml_(F.repCtx, F.reserva, 'icFormRepRes_') : ''}
+      ${F.repCtx && F.hid ? '' : `<label class="at-l">Alojamiento <i>*</i></label>
+      <select class="at-in" onchange="IC.f.hid=this.value;IC.f.reserva='';IC.f.huesped='';icFormPintar_()"><option value="">${F.alojTxt ? pcEsc(F.alojTxt) : 'Selecciona un alojamiento'}</option>${alojs.map(a => `<option value="${pcEsc(a.houseId)}" ${a.houseId === String(F.hid) ? 'selected' : ''}>${pcEsc((a.corto ? a.corto.toUpperCase() + ' · ' : '') + a.nombre)}</option>`).join('')}</select>`}
+      <div class="at-row"><span class="at-k">Fecha</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" onchange="IC.f.fecha=this.value;${F.repCtx ? '' : "IC.f.reserva='';IC.f.huesped='';"}icFormPintar_()"></div>
+      ${F.emp || F.repCtx ? '' : `<label class="at-l">Reserva</label>${icResSelect_()}`}
       <label class="at-l">Motivo <i>*</i></label>
       <div class="ic-mots">${mots.map(m => `<button type="button" class="ic-mot ${F.mot.includes(m) ? 'on' : ''}" style="--c:${icMotC_(m).c}" data-m="${pcEsc(m)}" onclick="icFormTog_('mot',this.dataset.m)">${icMotC_(m).ico} ${pcEsc(m)}</button>`).join('')}</div>
       ${F.emp && !icClasDe_(F.mot).length ? '' : `<label class="at-l">Sub-motivo</label>
@@ -68964,6 +69008,7 @@ function icFormPintar_() {
   else { dr.oninput = dr.onchange = dr.onclick = null; }
 }
 function icFormFirma_(F) { const { id, hid, fecha, mot, clas, prio, est, rep, pers, desc, acc, seg, keep, reserva, lev, L, cls } = F; return JSON.stringify({ id, hid, fecha, mot, clas, prio, est, rep, pers, desc, acc, seg, keep, n: (F.nuevas || []).length, reserva, lev, L: lev ? L : null, cls }); }
+window.icFormRepRes_ = function (id) { const F = IC.f, C = F.repCtx; C.sel = id; const B = repCtxSel_(C); F.reserva = B.id; F.huesped = B.guest; if (B.hid) F.hid = B.hid; icFormPintar_(); };
 window.icFormCls_ = function (k) { if (IC.f.cls === k) return; IC.f.cls = k; IC.f.mot = []; IC.f.clas = []; icFormPintar_(); };
 function icFormSucio_() { return !!IC.f && icFormFirma_(IC.f) !== IC.f0; }
 window.icFormCancelar_ = function () { const F = IC.f; IC.f = null; icAbrir_(F.id, F.ctx || undefined); };
@@ -69295,7 +69340,7 @@ window.obForm_ = function (id, pre) {
   const yo = (typeof currentUser !== 'undefined' && currentUser) || '';
   OB.dr = { id: id ? String(id) : '' };
   OB.f = x ? { id: x.id, hid: x.hid, alojTxt: x.hid ? '' : x.aloj, fecha: x.fEnc, fRep: x.fRep || aseoHoyIso_(), arr: String(r.Fecha_estancia || ''), cat: x.cat, catO: String(r.Categoria_otro || ''), lug: x.lug, lugO: String(r.Lugar_otro || ''), rep: x.rep, desc: x.desc, com: x.com, est: x.est, entA: x.entA, fEnt: x.fEnt, reserva: String(r.Reservacion_id || ''), huesped: String(r.Huesped_nombre || ''), keep: x.fotos.slice(), nuevas: [] }
-    : { id: '', hid: P.hid || '', alojTxt: '', fecha: P.fecha || '', fRep: aseoHoyIso_(), arr: P.arr || '', cat: '', catO: '', lug: '', lugO: '', rep: yo, desc: '', com: '', est: 'Resguardado', entA: '', fEnt: '', reserva: P.reserva || '', huesped: P.huesped || '', keep: [], nuevas: [] };
+    : { id: '', repCtx: P.repCtx || null, hid: P.hid || '', alojTxt: '', fecha: P.fecha || '', fRep: aseoHoyIso_(), arr: P.arr || '', cat: '', catO: '', lug: '', lugO: '', rep: yo, desc: '', com: '', est: 'Resguardado', entA: '', fEnt: '', reserva: P.reserva || '', huesped: P.huesped || '', keep: [], nuevas: [] };
   obFormPintar_();
 };
 // Reservas confirmadas del alojamiento que estaban hospedadas (o salían) en la fecha en que se encontró.
@@ -69321,13 +69366,14 @@ function obFormPintar_() {
   const chips = (L, cur, fn, col) => L.map(v => `<button type="button" class="ic-mot ${cur === v ? 'on' : ''}" style="--c:${col(v)}" data-v="${pcEsc(v)}" onclick="${fn}(this.dataset.v)">${pcEsc(v)}</button>`).join('');
   dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">${F.id ? 'Editar objeto' : 'Reportar objeto olvidado'}</b><button type="button" class="ad-close" onclick="${F.id ? 'obFormCancelar_()' : 'obCerrar_()'}">✕</button></div>${F.id ? `<div class="ob-tag">🧳 Objeto olvidado</div><div class="ad-sub">${pcEsc(F.id)}</div>` : ''}</div>
     <div class="ad-db at-f">
-      <label class="at-l">Alojamiento <i>*</i></label>
-      <select class="at-in" onchange="OB.f.hid=this.value;OB.f.reserva='';OB.f.huesped='';obFormPintar_()"><option value="">${F.alojTxt ? pcEsc(F.alojTxt) : 'Selecciona un alojamiento'}</option>${alojs.map(a => `<option value="${pcEsc(a.houseId)}" ${a.houseId === String(F.hid) ? 'selected' : ''}>${pcEsc((a.corto ? a.corto.toUpperCase() + ' · ' : '') + a.nombre)}</option>`).join('')}</select>
+      ${F.repCtx ? repResHtml_(F.repCtx, F.reserva, 'obFormRepRes_') : ''}
+      ${F.repCtx && F.hid ? '' : `<label class="at-l">Alojamiento <i>*</i></label>
+      <select class="at-in" onchange="OB.f.hid=this.value;OB.f.reserva='';OB.f.huesped='';obFormPintar_()"><option value="">${F.alojTxt ? pcEsc(F.alojTxt) : 'Selecciona un alojamiento'}</option>${alojs.map(a => `<option value="${pcEsc(a.houseId)}" ${a.houseId === String(F.hid) ? 'selected' : ''}>${pcEsc((a.corto ? a.corto.toUpperCase() + ' · ' : '') + a.nombre)}</option>`).join('')}</select>`}
       <div class="at-row"><span class="at-k" style="width:118px">Fecha de reporte</span><input type="date" class="at-in" value="${pcEsc(F.fRep)}" onchange="OB.f.fRep=this.value"></div>
-      <div class="at-row"><span class="at-k" style="width:118px">Fecha encontrado</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" onchange="OB.f.fecha=this.value;OB.f.reserva='';OB.f.huesped='';obFormPintar_()"></div>
+      <div class="at-row"><span class="at-k" style="width:118px">Fecha encontrado</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" onchange="OB.f.fecha=this.value;${F.repCtx ? '' : "OB.f.reserva='';OB.f.huesped='';"}obFormPintar_()"></div>
       ${F.fecha ? '' : '<div class="at-hint">Fecha encontrado: por definir.</div>'}
-      <label class="at-l">Reserva</label>
-      ${F.hid ? `<select class="at-in" onchange="obFormRes_(this.value)"><option value="">Sin reserva enlazada</option>${ya ? `<option value="${pcEsc(F.reserva)}" selected>${pcEsc(F.huesped || 'Reserva ' + F.reserva)}</option>` : ''}${RS.map(b => `<option value="${pcEsc(String(b.Id))}" ${String(b.Id) === String(F.reserva) ? 'selected' : ''}>${pcEsc(b.GuestName || 'Sin nombre')} · ${pcFmtDiaC_(_pagosDateIso(b.DateArrival))} → ${pcFmtDiaC_(_pagosDateIso(b.DateDeparture))}</option>`).join('')}</select>
+      ${F.repCtx ? '' : `<label class="at-l">Reserva</label>`}
+      ${F.repCtx ? '' : F.hid ? `<select class="at-in" onchange="obFormRes_(this.value)"><option value="">Sin reserva enlazada</option>${ya ? `<option value="${pcEsc(F.reserva)}" selected>${pcEsc(F.huesped || 'Reserva ' + F.reserva)}</option>` : ''}${RS.map(b => `<option value="${pcEsc(String(b.Id))}" ${String(b.Id) === String(F.reserva) ? 'selected' : ''}>${pcEsc(b.GuestName || 'Sin nombre')} · ${pcFmtDiaC_(_pagosDateIso(b.DateArrival))} → ${pcFmtDiaC_(_pagosDateIso(b.DateDeparture))}</option>`).join('')}</select>
         <div class="at-hint">${RS.length || ya ? 'Opcional: huésped hospedado en ese alojamiento en la fecha elegida.' : 'Ninguna reserva en ese alojamiento en esa fecha.'}</div>` : '<div class="at-hint">Elige primero el alojamiento.</div>'}
       <label class="at-l">Categoría <i>*</i></label>
       <div class="ic-mots">${Object.keys(OB_CAT).map(c => `<button type="button" class="ic-mot ${F.cat === c ? 'on' : ''}" style="--c:${obCatC_(c).c}" data-v="${pcEsc(c)}" onclick="OB.f.cat=this.dataset.v;obFormPintar_()">${obCatC_(c).ico} ${pcEsc(c)}</button>`).join('')}</div>
@@ -69351,6 +69397,7 @@ function obFormPintar_() {
     <div class="ad-ft"><button type="button" class="ad-bt" onclick="${F.id ? 'obFormCancelar_()' : 'obCerrar_()'}">Cancelar</button><button type="button" class="ad-bt pri" id="ob-ok" onclick="obGuardar_()">${F.id ? 'Guardar cambios' : 'Registrar objeto'}</button></div>`;
   const b = dr.querySelector('.ad-db'); if (b) b.scrollTop = top;
 }
+window.obFormRepRes_ = function (id) { const F = OB.f, C = F.repCtx; C.sel = id; const B = repCtxSel_(C); F.reserva = B.id; F.huesped = B.guest; F.arr = B.arr; if (B.hid) F.hid = B.hid; obFormPintar_(); };
 window.obFormLug_ = function (v) { OB.f.lug = OB.f.lug === v ? '' : v; obFormPintar_(); };
 window.obFormRes_ = function (v) { const F = OB.f; F.reserva = v; const b = v ? pcMovBookings_().find(x => String(x.Id) === String(v)) : null; F.huesped = b ? (b.GuestName || '') : (v ? F.huesped : ''); F.arr = b ? _pagosDateIso(b.DateArrival) : (v ? F.arr : ''); };
 window.obFormCancelar_ = function () { const id = OB.f && OB.f.id; OB.f = null; if (id) obAbrir_(id); else obCerrar_(); };
