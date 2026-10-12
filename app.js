@@ -69235,9 +69235,12 @@ function obEncuadrar_() {
   const mod = document.getElementById('module-bot-chats'), main = document.getElementById('botc-main');
   const enChat = mod && !mod.classList.contains('hidden') && main && main.offsetParent;
   if (!enChat) { dr.style.top = dr.style.bottom = dr.style.height = dr.style.right = dr.style.width = dr.style.borderRadius = ''; if (dim) dim.style.cssText = ''; return; }
-  const r = main.getBoundingClientRect(), vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  // Con la «Ficha del huésped» abierta, la ventana se pone encima de ella (igual que Incidencia / Reporte técnico).
+  const c3 = document.getElementById('botc-third-col'), rc3 = c3 && c3.offsetParent && c3.style.display !== 'none' ? c3.getBoundingClientRect() : null;
+  const rm = main.getBoundingClientRect(), r = rc3 && rc3.width ? { left: rm.left, right: rc3.right, top: rm.top, bottom: rm.bottom, width: rc3.right - rm.left } : rm;
+  const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
   const top = Math.max(0, r.top), alto = Math.max(200, Math.min(r.bottom, vh) - top), der = Math.max(0, window.innerWidth - r.right);
-  Object.assign(dr.style, { top: top + 'px', bottom: 'auto', height: alto + 'px', right: der + 'px', width: Math.min(440, r.width) + 'px', borderRadius: '12px 0 0 12px' });
+  Object.assign(dr.style, { top: top + 'px', bottom: 'auto', height: alto + 'px', right: der + 'px', width: Math.min(Math.max(440, rc3 ? rc3.width : 0), r.width) + 'px', borderRadius: '12px 0 0 12px' });
   if (dim) Object.assign(dim.style, { top: top + 'px', bottom: 'auto', height: alto + 'px', left: r.left + 'px', right: der + 'px' });
   if (!window.__obEncRs) { window.__obEncRs = true; window.addEventListener('resize', () => { if (OB.dr) obEncuadrar_(); }); }
 }
