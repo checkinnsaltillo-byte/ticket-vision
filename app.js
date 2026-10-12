@@ -69197,6 +69197,7 @@ function ckVCss_() {
   .ck-splitcal .ck-calm .g{min-width:0;grid-template-columns:repeat(7,minmax(0,1fr))}
   .ck-splitcal .ck-calm .d{min-height:70px;padding:3px}.ck-splitcal .ck-mcal span{display:none}.ck-splitcal .ck-mcal{justify-content:space-between}
   .ck-splitcal .td-cal{border:0;padding:0;margin:0}
+  .ck-splitcal:has(.ck-ocal){padding:0;overflow:hidden}.ck-ocal{display:block!important;max-height:calc(100vh - 150px);overflow:auto}
   .ck-splitcal .td-cal div[style*="min-width:860px"],.ck-splitcal .td-cal div[style*="min-width:1330px"]{min-width:0!important;grid-template-columns:repeat(7,minmax(0,1fr))!important}.ck-splitcal .td-cal div[style*="min-width:1330px"]{grid-template-columns:1fr!important}
   .ck-splitcal .td-mcal span{display:none}.ck-splitcal .td-mcal{justify-content:space-between}
   @media (max-width:1000px){.ck-split{grid-template-columns:1fr}.ck-splitcal{position:static;max-height:none}}`;
@@ -69223,6 +69224,20 @@ function ckTablaHtml_(cols, grupos, vacio) {
   return `<div class="ad-tbl"><div class="tb-in" style="min-width:${minW}px"><div class="tb-row h" style="grid-template-columns:${gt}">${cols.map(c => `<span>${c[0]}</span>`).join('')}<span></span></div>
     ${grupos.filter(g => g.rows.length).map(g => `<div class="tb-grp">${g.t} <b>${g.rows.length}</b>${g.prog || ''}</div>${g.rows.map(r => `<div class="tb-row ${r.cls || ''}" style="grid-template-columns:${gt}" onclick="${r.onclick}">${r.cells.join('')}<span class="tb-more">›</span></div>`).join('')}`).join('')}</div></div>`;
 }
+// Calendario de Aseo/Mantenimiento (reservas por alojamiento + tarjetas por día) reutilizado en Incidencias y Objetos olvidados.
+// items = [{id, hid, dia, onclick, c (color de estado), titulo, prio, pers}]
+function ckOcupCalHtml_(id) { return `<div id="${id}" class="ocup-cal-container aseo-cal ck-ocal"><div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px">⏳ Cargando calendario…</div></div>`; }
+function ckOcupCal_(id, items) {
+  const cont = document.getElementById(id); if (!cont || typeof ocupRender !== 'function') return;
+  if (typeof ALOJ_STATE !== 'undefined' && !ALOJ_STATE.loaded) { if (!ALOJ_STATE.loading && typeof lgLoadAlojamientos === 'function') lgLoadAlojamientos().then(() => ckOcupCal_(id, items)).catch(() => {}); return; }
+  if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
+  const bks = (typeof pcMovBookings_ === 'function' ? pcMovBookings_() : []).filter(b => /^(booked|tentative)$/i.test(String(b.Status || '').trim()));
+  const m = new Map(); items.forEach(t => { if (!t.hid || !t.dia) return; const k = String(t.hid); if (!m.has(k)) m.set(k, []); m.get(k).push(Object.assign({ noDrag: true, cls: 'ty-limpieza' }, t)); });
+  ocupRender({ cont, bookings: bks, filters: Object.assign({}, (typeof OCUP_STATE !== 'undefined' && OCUP_STATE.calFilters) || {}), before: 1, after: 2, onBar: 'ckBarNada_', center: false, tareas: m, tareaHtml: t => `<div class="t1"><i style="background:${t.c || '#94a3b8'}"></i><b>${pcEsc(t.titulo || '')}</b></div><div class="t2">${t.prio ? prio4Html_(t.prio, true) : ''}${(t.pers || []).length ? `<span class="ad-avs">${t.pers.slice(0, 4).map(n => adAv_(n)).join('')}</span>` : '<span class="un">Sin asignar</span>'}</div>` });
+  const P = window.__ckCalPos = window.__ckCalPos || {}, pos = P[id]; // al repintar (sincronización automática) se conserva la posición
+  requestAnimationFrame(() => { if (pos) { cont.scrollLeft = pos[0]; cont.scrollTop = pos[1]; } else if (typeof ocupCentrarHoy_ === 'function') ocupCentrarHoy_(cont); cont.onscroll = () => { P[id] = [cont.scrollLeft, cont.scrollTop]; }; });
+}
+window.ckBarNada_ = function () {};
 function ckEst_(c, t, extra) { return `<span class="tb-est"><i style="background:${c}"></i>${pcEsc(t)}${extra || ''}</span>`; }
 function ckTx_(v, cls) { return v ? `<span class="${cls || ''}" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${pcEsc(String(v))}">${pcEsc(String(v))}</span>` : '<span class="tb-mu">—</span>'; }
 function ckAloj_(corto, aloj) { return `<span class="tb-a"><b class="code">${pcEsc(corto || '—')}</b><small>${pcEsc(String(aloj || '').replace(/^Calle\s+/i, ''))}</small></span>`; }
@@ -69259,13 +69274,15 @@ function icRender_() {
   const L = todas.filter(x => ckEnMes_(x.fecha, ym, !icCerrada_(x)) && icPasa_(x, true));
   root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${icKpis_(todas)}</div>${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas, true)}</div>` : ''}
-      ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!IC.cal, icCalHtml_(L, ym), icVistaHtml_(L, vista, ym))}</div>`}</div>`;
+      ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!IC.cal, icCalHtml_(), icVistaHtml_(L, vista, ym))}</div>`}</div>`;
+  if (IC.cal && !vacio) ckOcupCal_('ic-ocal', icCalItems_(L));
   try { clNavPaint_(); } catch (_) {}
 }
 window.icSec_ = function (k) { IC.vista = k === 'registro' ? 'tabla' : 'estado'; icRender_(); };
 try { IC.vista = localStorage.getItem('ic-vista') || 'estado'; } catch (_) {}
 window.icVista_ = function (v) { IC.vista = v; try { localStorage.setItem('ic-vista', v); } catch (_) {} icRender_(); };
-function icCalHtml_(L, ym) { return ckCalMesHtml_(ym, L.map(x => ({ iso: x.fecha, code: x.corto, nombre: x.titulo, tc: icMotC_(x.mot[0]).c, sc: (IC_EST.find(e => e.k === x.est) || IC_EST[0]).c, fin: icCerrada_(x), onclick: `icAbrir_('${pcEsc(x.id)}')` }))); }
+function icCalHtml_() { return ckOcupCalHtml_('ic-ocal'); }
+function icCalItems_(L) { return L.map(x => ({ id: x.id, hid: x.hid, dia: x.fecha, c: (IC_EST.find(e => e.k === x.est) || IC_EST[0]).c, titulo: icMotC_(x.mot[0]).ico + ' ' + x.titulo, prio: x.prio, pers: x.pers, onclick: `icAbrir_('${pcEsc(x.id)}')` })); }
 try { IC.cal = localStorage.getItem('ic-cal') === '1'; } catch (_) {}
 window.icCal_ = function () { IC.cal = !IC.cal; try { localStorage.setItem('ic-cal', IC.cal ? '1' : '0'); } catch (_) {} icRender_(); };
 window.icMes_ = function (v) { IC.mes = ckMesMover_(IC.mes, v); icRender_(); };
@@ -69726,12 +69743,14 @@ function obRender_() {
   const L = todos.filter(x => ckEnMes_(x.fecha, ym, !obCerrado_(x)) && obPasa_(x, true));
   root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${obKpis_(todos)}</div>${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos, true)}</div>` : ''}
-      ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!OB.cal, obCalHtml_(L, ym), obVistaHtml_(L, vista, ym))}</div>`}</div>`;
+      ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!OB.cal, obCalHtml_(), obVistaHtml_(L, vista, ym))}</div>`}</div>`;
+  if (OB.cal && !vacio) ckOcupCal_('ob-ocal', obCalItems_(L));
   try { clNavPaint_(); } catch (_) {}
 }
 try { OB.vista = localStorage.getItem('ob-vista') || 'estado'; } catch (_) {}
 window.obVista_ = function (v) { OB.vista = v; try { localStorage.setItem('ob-vista', v); } catch (_) {} obRender_(); };
-function obCalHtml_(L, ym) { return ckCalMesHtml_(ym, L.map(x => ({ iso: x.fecha, code: x.corto, nombre: obTitulo_(x), tc: obCatC_(x.cat).c, sc: (OB_EST.find(e => e.k === x.est) || OB_EST[0]).c, fin: obCerrado_(x), onclick: `obAbrir_('${pcEsc(x.id)}')` }))); }
+function obCalHtml_() { return ckOcupCalHtml_('ob-ocal'); }
+function obCalItems_(L) { return L.map(x => ({ id: x.id, hid: x.hid, dia: x.fecha, c: (OB_EST.find(e => e.k === x.est) || OB_EST[0]).c, titulo: obCatC_(x.cat).ico + ' ' + obTitulo_(x), pers: x.rep ? [x.rep] : [], onclick: `obAbrir_('${pcEsc(x.id)}')` })); }
 try { OB.cal = localStorage.getItem('ob-cal') === '1'; } catch (_) {}
 window.obCal_ = function () { OB.cal = !OB.cal; try { localStorage.setItem('ob-cal', OB.cal ? '1' : '0'); } catch (_) {} obRender_(); };
 window.obMes_ = function (v) { OB.mes = ckMesMover_(OB.mes, v); obRender_(); };
