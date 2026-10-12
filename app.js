@@ -45398,6 +45398,7 @@ function _waRenderUnifiedList_(logs, opts) {
     return '';
   }).join('');
 
+  if (window.__waProgPanel) return html + _waProgNuevo_(st); // panel 📅: «Nuevo mensaje» con el mismo diseño de renglón (sin «Nuevo reporte»)
   const createBtn = st.newSch.open
     ? _waRenderNewSchForm_()
     : `<div style="text-align:center;margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
@@ -45805,6 +45806,23 @@ const WA_ASUNTOS = [
   'Objetos olvidados','Incidencia','Otro'
 ];
 
+// «Nuevo mensaje» del panel 📅: renglón estilo chat; al abrirlo, el formulario va en el mismo bloque desplegado que los mensajes.
+function _waProgNuevo_(st) {
+  const n = st.newSch, prog = n.mode === 'scheduled';
+  if (!n.open) return `<div class="bp-row bp-nuevo"><div class="bp-main" onclick="waSchedOpen_()"><span class="bp-ic">＋</span>
+      <div class="bp-tx"><div class="bp-l1"><b>Nuevo mensaje</b></div><div class="bp-l2">Programado o instantáneo, a los números de esta reserva</div></div></div></div>`;
+  const seg = (v, t) => `<button type="button" class="${n.mode === v ? 'on' : ''}" onclick="__waModalState.newSch.mode='${v}';_waRepaint()">${t}</button>`;
+  return `<div class="bp-row ab bp-nuevo"><div class="bp-main" onclick="waSchedCancel_()"><span class="bp-ic">✏️</span>
+      <div class="bp-tx"><div class="bp-l1"><b>Nuevo mensaje</b><span class="bp-t">${prog ? 'Programado' : 'Instantáneo'}</span></div><div class="bp-l2">Toca aquí para cancelar</div></div></div>
+    <div class="bp-det bp-form" onclick="event.stopPropagation()">
+      <div class="bp-seg">${seg('scheduled', '🗓 Programado')}${seg('instant', '⚡ Instantáneo')}</div>
+      <div class="bp-f"><span>Asunto</span><select onchange="__waModalState.newSch.subject=this.value;_waRepaint()">${WA_ASUNTOS.map(a => `<option value="${esc(a)}"${a === n.subject ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></div>
+      ${n.subject === 'Otro' ? `<div class="bp-f"><span></span><input type="text" value="${esc(n.subjectCustom)}" oninput="__waModalState.newSch.subjectCustom=this.value" placeholder="Escribe el asunto…"></div>` : ''}
+      ${prog ? `<div class="bp-f"><span>Envío</span><input type="date" value="${n.date}" oninput="__waModalState.newSch.date=this.value"><input type="time" value="${n.time}" oninput="__waModalState.newSch.time=this.value"></div>` : ''}
+      <div class="bp-comp"><textarea rows="3" placeholder="Escribe tu mensaje…" oninput="__waModalState.newSch.body=this.value">${esc(n.body)}</textarea>
+        <button type="button" class="bp-go" onclick="waSchedCreate_()" title="${prog ? 'Guardar programación' : 'Enviar ahora'}">${prog ? '💾' : '➤'}</button></div>
+    </div></div>`;
+}
 function _waRenderNewSchForm_() {
   const st = window.__waModalState;
   const isOtro = st.newSch.subject === 'Otro';
@@ -51171,10 +51189,21 @@ function _botcWaCss_() {
   #botc-prog-pop .bp-send{all:unset;cursor:pointer;width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#00a884}
   #botc-prog-pop .bp-send:hover{background:#e7fcef}
   #botc-prog-pop .bp-det{padding:2px 12px 10px;background:#f0f2f5} /* sin sangría: el mensaje usa todo el ancho */
-  #botc-prog-pop .bp-det > div{padding:6px 0 0!important;background:transparent!important;border:0!important}
+  #botc-prog-pop .bp-det:not(.bp-form) > div{padding:6px 0 0!important;background:transparent!important;border:0!important}
   #botc-prog-pop .bp-det label{font-size:10.5px!important}
   #botc-prog-pop .bp-det div[style*="#dcf7c5"]{background:#d9fdd3!important;border-radius:0 8px 8px 8px!important;box-shadow:0 1px .5px rgba(11,20,26,.13);font-size:13px!important;color:#111b21}
   #botc-prog-pop .bp-det button{border-radius:999px!important}
+  #botc-prog-pop .bp-nuevo .bp-ic{background:#f0f2f5;color:#00a884;font-size:18px;font-weight:600}
+  #botc-prog-pop .bp-form{display:flex;flex-direction:column;gap:6px;padding-top:6px}
+  #botc-prog-pop .bp-seg{display:flex;gap:3px;background:#e9edef;border-radius:999px;padding:2px;align-self:flex-start}
+  #botc-prog-pop .bp-seg button{all:unset;cursor:pointer;font-size:12px;padding:4px 12px;border-radius:999px;color:#54656f}
+  #botc-prog-pop .bp-seg button.on{background:#fff;color:#111b21;font-weight:600;box-shadow:0 1px 2px rgba(11,20,26,.15)}
+  #botc-prog-pop .bp-f{display:flex;align-items:center;gap:6px;font-size:12.5px}
+  #botc-prog-pop .bp-f > span{flex:none;width:52px;color:#667781;font-size:12px}
+  #botc-prog-pop .bp-f select,#botc-prog-pop .bp-f input{flex:1;min-width:0;border:0;border-radius:8px;background:#fff;padding:7px 10px;font:inherit;font-size:13px;color:#111b21;outline:none;box-shadow:0 1px .5px rgba(11,20,26,.13)}
+  #botc-prog-pop .bp-comp{display:flex;align-items:flex-end;gap:8px}
+  #botc-prog-pop .bp-comp textarea{flex:1;min-width:0;border:0;border-radius:8px;background:#fff;padding:8px 10px;font:inherit;font-size:13.5px;color:#111b21;resize:vertical;outline:none;box-shadow:0 1px .5px rgba(11,20,26,.13)}
+  #botc-prog-pop .bp-go{all:unset;cursor:pointer;flex:none;width:40px;height:40px;border-radius:50%;background:#00a884;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:16px}
   #botc-prog-pop .bp-mas{padding-top:6px;text-align:right}#botc-prog-pop .bp-mas button{all:unset;cursor:pointer;font-size:11.5px;color:#dc2626}
   #botc-prog-pop .bp-cuerpo > div > div:has(> button){padding:6px 12px}
   #botc-prog-pop .bp-cuerpo{overflow-y:auto;padding:0;min-height:0;max-height:calc(min(55vh,460px) - 44px)}
@@ -51182,6 +51211,8 @@ function _botcWaCss_() {
   #botc-third-col #wa-modal [data-wa-panel] > div:first-child{background:var(--wa-bar)!important;color:var(--wa-tx)!important;padding:10px 14px!important;border-bottom:1px solid var(--wa-ln)!important}
   #botc-third-col #wa-modal [data-wa-panel] > div:first-child button{color:var(--wa-mu)!important;background:transparent!important}
   .wa-bit-load{margin:auto;padding:30px;text-align:center;color:var(--wa-mu);font-size:13px}.wa-bit-load button{margin-top:10px;border:1px solid var(--wa-ln);background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer}
+  @media (max-width:900px){html:has(#module-bot-chats:not(.hidden)),body:has(#module-bot-chats:not(.hidden)){overflow:hidden!important;overscroll-behavior:none;height:100%}
+    #module-bot-chats #botc-main .wa-comp{flex:none}}
   @media (max-width:768px){#module-bot-chats #botc-sidebar{width:100%!important}.wa-msgs{padding:10px 8px}.wa-b{max-width:85%}}`;
   document.head.appendChild(st);
 }
@@ -51189,10 +51220,17 @@ function _botcWaCss_() {
 function _botcAjustarAlto_() {
   const mod = document.getElementById('module-bot-chats');
   if (!mod || mod.classList.contains('hidden')) return;
+  if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) { // celular: la ventana mide exactamente la pantalla visible; la página no se desplaza
+    if (window.scrollY) window.scrollTo(0, 0);
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight, top = Math.max(0, Math.round(mod.getBoundingClientRect().top));
+    mod.style.height = mod.style.maxHeight = Math.max(240, Math.round(vh - top)) + 'px';
+    return;
+  }
   const top = Math.max(0, Math.round(mod.getBoundingClientRect().top + window.scrollY));
   mod.style.height = mod.style.maxHeight = `calc(100dvh - ${top}px)`;
 }
 window.addEventListener('resize', () => _botcAjustarAlto_());
+if (window.visualViewport) window.visualViewport.addEventListener('resize', () => _botcAjustarAlto_()); // barra del navegador / teclado del celular
 // Búsqueda: sin distinguir mayúsculas ni acentos, en todos los datos de la tarjeta y en el texto de las conversaciones (servidor).
 const _botcNorm_ = v => String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 function _botcTextoBusq_(c) {
