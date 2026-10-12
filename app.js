@@ -51023,6 +51023,8 @@ function _botcAlojCorto_(bk) {
     if (r && dept && alojNorm(String(r['# Departamento'] || '').replace(/^#\s*/, '')) !== alojNorm(String(dept).replace(/^#\s*/, ''))) r = null; } // solo la propiedad no basta
   return r ? String(r.device_name || r.Device_name || '').trim().toUpperCase() : '';
 }
+// Glifo de WhatsApp (mismo tamaño que el ícono de teléfono de la Ficha).
+const _BOTC_WA_GLIFO = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 1.9s.8 2.2.9 2.4c.1.1 1.6 2.5 4 3.5 1.5.6 2.1.7 2.8.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z"/></svg>';
 // Modo de la conversación como ícono (lista y encabezado del chat).
 const _BOTC_MODO = { bot: { i: '🤖', t: 'Automático', c: '#0e7490' }, supervised: { i: '👁️', t: 'Supervisado', c: '#7c3aed' }, human: { i: '👨‍💻', t: 'Manual', c: '#b45309' } };
 function _botcRowHtml_(c, bk, selected) {
@@ -51205,6 +51207,8 @@ function _botcWaCss_() {
   .fx-kv{display:flex;flex-direction:column;padding:4px 0;border-top:1px dashed var(--ad-line2)}.fx-kv:first-child{border-top:0}
   .fx-kv b{font-weight:500;font-size:12px;word-break:break-word}
   .fx .fx-num{height:22px;font-size:11.5px;padding:0 3px 0 8px}.fx .fx-num.prin{padding-right:8px}
+  .fx .fx-num.prin{padding-right:4px;gap:5px}.fx-call{display:inline-flex;align-items:center;gap:4px;color:inherit;text-decoration:none}.fx-call:hover{text-decoration:underline}.fx-call svg{color:#00a884;flex:none}
+  .fx-wab{all:unset;cursor:default;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:#25d366}.fx-wab svg{width:11px;height:11px;display:block}
   .fx .fx-num-add{height:24px;min-width:130px}
   .fx-res{padding:0;cursor:pointer}
   .fx-res-h{all:unset;box-sizing:border-box;display:block;width:100%;padding:9px 11px;cursor:pointer}
@@ -52943,7 +52947,8 @@ function _botcFichaHtml_(st, logs) {
   const masH = kv('RFC', g('RFC')) + kv('Correo de facturación', g('Correo electrónico para el envío de la factura')) + kv('C.P.', g('Código Postal')) + kv('Contacto de emergencia', g('Cel/Whatsapp (contacto de emergencia)')) + kv('Notas', g('Notas'));
   // Números adicionales (avisos de WhatsApp de la reserva seleccionada)
   const prim = st.primaryPhone || '', adic = (st.recipients || []).filter(x => !waPhonesEqual_(x, prim));
-  const nums = `<div class="fx-nums">${prim ? `<span class="fx-num prin" title="Número de la reserva (no se puede quitar)">🔒 ${E(waDisplayPhone_(prim))}</span>` : ''}${adic.map(n => `<span class="fx-num">${E(waDisplayPhone_(n))}<button type="button" onclick="waRemoveRecipient_(${(st.recipients || []).findIndex(x => waPhonesEqual_(x, n))})" title="Quitar">×</button></span>`).join('')}
+  const nums = `<div class="fx-nums">${prim ? (() => { const d = String(prim).replace(/\D/g, ''), t = /^(52)?1?\d{10}$/.test(d) ? '52' + d.slice(-10) : d; // México: +52 + 10 dígitos (sin el «1» de WhatsApp)
+        return `<span class="fx-num prin" title="Número de la reserva (no se puede quitar)"><a class="fx-call" href="tel:+${E(t)}" title="Llamar">${tel}${E(waDisplayPhone_(prim))}</a><button type="button" class="fx-wab" title="WhatsApp">${_BOTC_WA_GLIFO}</button></span>`; })() : ''}${adic.map(n => `<span class="fx-num">${E(waDisplayPhone_(n))}<button type="button" onclick="waRemoveRecipient_(${(st.recipients || []).findIndex(x => waPhonesEqual_(x, n))})" title="Quitar">×</button></span>`).join('')}
       <span class="fx-num-add"><input type="tel" placeholder="Agregar número…" value="${E(st.newRecipient || '')}" oninput="__waModalState.newRecipient=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();waAddRecipient_();}"><button type="button" onclick="waAddRecipient_()" title="Agregar">＋</button></span></div>`;
   const ident = [phone ? `<span class="fx-tel">${tel}+${E(phone)}</span>` : (esAbn ? '<span>Huésped de Airbnb</span>' : ''), rs ? `<span>🧾 <b>${E(rs)}</b></span>` : '', reg ? `<span>${E(reg)}</span>` : ''].filter(Boolean).join(SEP);
   const kpis = pc.perfil ? [`<span><b>${Number(pf.kpi_visitas) || 0}</b> visitas</span>`, `<span><b>${Number(pf.kpi_noches) || 0}</b> noches</span>`, `<span><b>${_botcFxMoney_(pf.kpi_monto)}</b> pagado</span>`].join(SEP) : (pc.cargando ? '<span class="fx-skel"></span>' : '');
