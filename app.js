@@ -69173,10 +69173,10 @@ function icRender_() {
   const vacio = !todas.length ? `<div class="pc-mv-empty">${IC.cargado ? 'Aún no hay incidencias registradas.' : '⏳ Cargando incidencias…'}</div>` : '';
   if (sec === 'registro') {
     const L = todas.filter(x => icPasa_(x, true));
-    root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas, true)}</div>` : ''}${vacio || icRegistro_(L)}</div>`;
+    root.innerHTML = `<div>${head}${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas, true)}</div>` : ''}${vacio || icRegistro_(L)}</div>`;
   } else {
     const L = todas.filter(x => icPasa_(x));
-    root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}
+    root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${icKpis_(todas)}</div>${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas)}</div>` : ''}
       ${vacio || `<div class="ad-v2 td-board">${icTablero_(L)}</div>`}</div>`;
   }
@@ -69628,10 +69628,10 @@ function obRender_() {
   const vacio = !todos.length ? `<div class="pc-mv-empty">${OB.cargado ? 'Aún no hay objetos olvidados registrados.' : '⏳ Cargando objetos olvidados…'}</div>` : '';
   if (sec === 'registro') {
     const L = todos.filter(x => obPasa_(x, true));
-    root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos, true)}</div>` : ''}${vacio || obRegistro_(L)}</div>`;
+    root.innerHTML = `<div>${head}${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos, true)}</div>` : ''}${vacio || obRegistro_(L)}</div>`;
   } else {
     const L = todos.filter(x => obPasa_(x));
-    root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}
+    root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${obKpis_(todos)}</div>${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos)}</div>` : ''}
       ${vacio || `<div class="ad-v2 td-board">${obTablero_(L)}</div>`}</div>`;
   }
