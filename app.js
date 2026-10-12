@@ -9176,7 +9176,7 @@ function clNavHtml_(act) {
   const MPn = typeof clModoPersonal_ === 'function' && clModoPersonal_();
   if (act === 'checkinn' && window.ASEO && ASEO.sec === 'mant') act = 'mant'; // mismo tablero, sección Mantenimiento
   const op = [clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '🧽 Aseo', 'aseo') + b('mant', '🔧 Mantenimiento', 'mantenimiento') : '', !MPn && (clPuede_('breezeway') || clPuede_('aseo')) ? (CL_BZW_OFF ? `<button type="button" class="cl-b off" disabled title="Breezeway está desactivado por el momento">🧹 Breezeway</button>` : b('breezeway', '🧹 Breezeway', 'breezeway')) : ''].join('');
-  const op2 = !MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '';
+  const op2 = (!MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (!MPn && clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '');
   const adm = (!MPn && clPuede_('tareas') ? b('tareas', '🗓️ Tareas programadas', 'tareas') : '') + (!MPn && clPuede_('aseo') ? b('plantillas', '📋 Plantillas', 'plantillas') : '');
   // «Check-list Bot» (notificaciones y permisos del bot) vive en Configuración admin › 🤖 Check-list Bot.
   const items = [op.replace(/<button[^>]*class="cl-b off"[\s\S]*?<\/button>/g, ''), op2, adm].join('');
@@ -9245,6 +9245,8 @@ function clNavPaint_() {
   // Igual con «Incidencias».
   const ni = document.getElementById('nav-item-incidencias');
   if (ni && clPuede_('incidencias')) ni.style.display = !clPuede_('aseo') && !clPuede_('breezeway') && !clPuede_('tareas') ? '' : 'none';
+  const no = document.getElementById('nav-item-objetos'); // «Objetos olvidados» también vive en Check-list
+  if (no && clPuede_('objetos')) no.style.display = !clPuede_('aseo') && !clPuede_('breezeway') && !clPuede_('tareas') ? '' : 'none';
   const nt = document.getElementById('nav-item-tareas');
   if (nt && clPuede_('tareas')) { const solo = !clPuede_('aseo') && !clPuede_('breezeway'); nt.style.display = solo ? '' : 'none'; const bx = document.querySelector('.nav-secs[data-for="tareas"]'); if (bx && !solo) bx.style.display = 'none'; }
 }
@@ -9414,8 +9416,8 @@ function switchModule(mod) {
   if (mod === "plantillas" && typeof plInit_ === 'function') plInit_(); // Check-list › 📋 Plantillas
   if (mod === "mensajes" && typeof abnInit_ === 'function') abnInit_(); // 💬 Mensajes Airbnb
   if (mod === "objetos") {
-    if (typeof objInit === 'function') objInit();
-    if (typeof objLoadObjetos === 'function') objLoadObjetos();
+    if (typeof objInit === 'function') objInit(); // formulario anterior (lo sigue usando Gestión de reservas)
+    if (typeof obInit_ === 'function') obInit_(); // Check-list › 🧳 Objetos olvidados
   }
   if (mod === "ocupacion" || mod === "dashboard" || mod === "calendario") {
     if (typeof ocupInit === 'function') ocupInit();
@@ -16385,7 +16387,7 @@ function lgBuildDetailSidebarItem(b, selectedId, huespedOverride) {
           ${(() => {
             const ph = String(b.GuestPhone || '').replace(/\D/g,'').slice(-10);
             if (!ph) return '';
-            return `<button type="button" onclick="event.stopPropagation();_botcOpenPerfilEditor_('${esc(ph)}')" title="Editar perfil del huésped" style="background:#dbeafe;border:1px solid #93c5fd;cursor:pointer;padding:2px 6px;border-radius:5px;color:#1e40af;font-size:10px;font-weight:800;line-height:1;display:inline-flex;align-items:center;gap:3px" onmouseover="this.style.background='#bfdbfe'" onmouseout="this.style.background='#dbeafe'">✏️ Editar</button>`;
+            return `<button type="button" onclick="event.stopPropagation();_botcOpenPerfilEditor_('${esc(ph)}')" title="Editar perfil del huésped" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px">✏️</button>`;
           })()}
           ${guestAvgStarsInline}
           ${tierInlineHtml}
@@ -43768,7 +43770,7 @@ function _waBuildReportMsgPanel_(kind, id, row) {
         <div style="display:flex;gap:6px;align-items:stretch">
           <div style="flex:1;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;min-height:26px;color:${saved ? '#0f172a' : '#94a3b8'};font-style:${saved ? 'normal' : 'italic'}">${saved ? _botcEsc(saved) : '(vacío)'}</div>
           <button type="button" onclick="event.stopPropagation();waReportEditPh_('${_botcEsc(kind)}','${_botcEsc(id)}','${_botcEsc(nm)}')"
-            style="padding:5px 10px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:700">✏️ Editar</button>
+            style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>
         </div>
       </div>`;
     }).join('');
@@ -43793,7 +43795,7 @@ function _waBuildReportMsgPanel_(kind, id, row) {
         <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center">
           <label style="font-size:10px;font-weight:700;color:#475569">Previa</label>
           ${panel.editedBody == null
-            ? `<button onclick="waReportEnterEdit_('${_botcEsc(kind)}','${_botcEsc(id)}')" style="padding:2px 8px;font-size:10px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:700">✏️ Editar libre</button>`
+            ? `<button onclick="waReportEnterEdit_('${_botcEsc(kind)}','${_botcEsc(id)}')" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>`
             : `<button onclick="waReportResetEdit_('${_botcEsc(kind)}','${_botcEsc(id)}')" style="padding:2px 8px;font-size:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;cursor:pointer;font-weight:700">↩ Restaurar</button>`}
         </div>
         <div style="margin-top:4px">${preview}</div>
@@ -44484,7 +44486,7 @@ function _waRenderPagoTimelineItem_(it) {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <label style="font-size:10px;font-weight:700;color:#475569">Mensaje</label>
         ${editedBody == null
-          ? `<button onclick="waPagoEdit_('${esc(m.ID).replace(/'/g,'&#39;')}')" style="padding:2px 8px;font-size:10px;background:#fff;border:1px solid #ddd6fe;border-radius:6px;cursor:pointer;font-weight:700">✏️ Editar</button>`
+          ? `<button onclick="waPagoEdit_('${esc(m.ID).replace(/'/g,'&#39;')}')" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>`
           : `<div style="display:flex;gap:6px">
               <button onclick="waPagoResetEdit_('${esc(m.ID).replace(/'/g,'&#39;')}')" style="padding:2px 8px;font-size:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;cursor:pointer;font-weight:700">↩ Cancelar</button>
             </div>`}
@@ -45511,7 +45513,7 @@ function _waRenderTemplateItem_(it, auto) {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <label style="font-size:10px;font-weight:700;color:#475569">Previa</label>
           ${editedBody == null
-            ? `<button onclick="waEditPreview_('${tpl.id}')" style="padding:2px 8px;font-size:10px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:700">✏️ Editar libre</button>`
+            ? `<button onclick="waEditPreview_('${tpl.id}')" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>`
             : `<div style="display:flex;gap:6px">
                 <button onclick="waResetPreview_('${tpl.id}')" style="padding:2px 8px;font-size:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;cursor:pointer;font-weight:700">↩ Restaurar</button>
                 <button onclick="waSaveEditedTpl_('${tpl.id}')" style="padding:2px 8px;font-size:10px;background:#16a34a;color:#fff;border:0;border-radius:6px;cursor:pointer;font-weight:800">💾 Guardar</button>
@@ -45716,7 +45718,7 @@ function _waRenderCustomItem_(it, auto) {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <label style="font-size:10px;font-weight:700;color:#475569">Mensaje</label>
         ${editedBody == null
-          ? `<button onclick="waEditCustom_('${cs.id}')" style="padding:2px 8px;font-size:10px;background:#fff;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-weight:700">✏️ Editar</button>`
+          ? `<button onclick="waEditCustom_('${cs.id}')" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>`
           : `<div style="display:flex;gap:6px">
               <button onclick="waResetCustom_('${cs.id}')" style="padding:2px 8px;font-size:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;cursor:pointer;font-weight:700">↩ Cancelar</button>
               <button onclick="waSaveCustom_('${cs.id}')" style="padding:2px 8px;font-size:10px;background:#16a34a;color:#fff;border:0;border-radius:6px;cursor:pointer;font-weight:800">💾 Guardar</button>
@@ -46014,7 +46016,7 @@ function _waRenderTemplatesTab_(logs) {
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
             <label style="font-size:10px;font-weight:700;color:#475569">Previa</label>
             ${editedBody == null
-              ? `<button onclick="waEditPreview_('${tpl.id}')" style="padding:2px 8px;font-size:10px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:700">✏️ Editar libre</button>`
+              ? `<button onclick="waEditPreview_('${tpl.id}')" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>`
               : `<button onclick="waResetPreview_('${tpl.id}')" style="padding:2px 8px;font-size:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;cursor:pointer;font-weight:700">↩ Restaurar plantilla</button>`}
           </div>
           ${editedBody == null
@@ -47772,7 +47774,7 @@ function _llavesNotasBlockHtml_(propiedad) {
     ? `<div id="${propId}-view" style="display:flex;flex-direction:column;gap:6px">
         <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">📝 Notas</div>
         <div id="${propId}-text" style="font-size:12px;color:#0f172a;white-space:pre-wrap;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px">${_llavesEsc(noteText)}</div>
-        <button type="button" onclick="llavesNotasEdit_('${attr}')" style="align-self:flex-start;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;font-size:11px;font-weight:800;cursor:pointer;padding:5px 12px;border-radius:6px">✏️ Editar</button>
+        <button type="button" onclick="llavesNotasEdit_('${attr}')" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>
       </div>`
     : `<button type="button" id="${propId}-add" onclick="llavesNotasEdit_('${attr}')" style="background:#eff6ff;border:1px dashed #93c5fd;color:#1e40af;font-size:11px;font-weight:800;cursor:pointer;padding:6px 12px;border-radius:6px">+ Agregar nota</button>`;
   const editor = `
@@ -51750,7 +51752,7 @@ function _botcRenderMain(phone) {
   const rs = (conv && conv.razon_social) ? String(conv.razon_social).trim() : '';
   const reg = (conv && conv.regimen_fiscal) ? String(conv.regimen_fiscal).trim() : '';
   const fiscalLine = rs ? `<div style="font-size:11px;color:#475569;font-weight:600;margin-top:2px">🧾 ${_botcEsc(rs)}</div>` : ''; // solo la razón social (sin régimen)
-  const editPerfilBtn = `<button type="button" onclick="_botcOpenPerfilEditor_('${_botcEsc(phone)}')" title="Editar perfil del huésped" style="background:#dbeafe;border:1px solid #93c5fd;cursor:pointer;padding:3px 8px;border-radius:6px;color:#1e40af;font-size:12px;font-weight:800;line-height:1;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.background='#bfdbfe'" onmouseout="this.style.background='#dbeafe'">✏️ Editar</button>`;
+  const editPerfilBtn = `<button type="button" onclick="_botcOpenPerfilEditor_('${_botcEsc(phone)}')" title="Editar perfil del huésped" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px">✏️</button>`;
   const nameHeader = name
     ? `<div class="botc-chat-name" style="font-size:14px;font-weight:800;color:#0f172a;line-height:1.25;word-break:break-word"><span>${_botcEsc(name)}</span> ${editPerfilBtn} <span style="font-size:12px;color:#64748b;font-weight:600;white-space:nowrap">(+${_botcEsc(phone)})</span>${fiscalLine}</div>`
     : `<div class="botc-chat-name" style="font-size:14px;font-weight:800;color:#0f172a">+${_botcEsc(phone)} ${editPerfilBtn}${fiscalLine}</div>`;
@@ -52246,7 +52248,7 @@ window.botcSysIaAsk_ = async function() {
       <div id="${rid}-text" style="font-size:13px;color:#0f172a;white-space:pre-wrap;line-height:1.4">${_botcEsc(replyText)}</div>
       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
         <button onclick="botcSysIaSend_('${rid}')" style="padding:6px 12px;background:#16a34a;color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:11px;font-weight:800">📤 Enviar</button>
-        <button onclick="botcSysIaEdit_('${rid}')" style="padding:6px 12px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700">✏️ Editar</button>
+        <button onclick="botcSysIaEdit_('${rid}')" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>
       </div>
     </div>`;
     msgs.insertAdjacentHTML('beforeend', html);
@@ -52273,7 +52275,7 @@ window.botcSysIaCancelEdit_ = function(rid, original) {
     <div id="${rid}-text" style="font-size:13px;color:#0f172a;white-space:pre-wrap;line-height:1.4">${_botcEsc(original)}</div>
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
       <button onclick="botcSysIaSend_('${rid}')" style="padding:6px 12px;background:#16a34a;color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:11px;font-weight:800">📤 Enviar</button>
-      <button onclick="botcSysIaEdit_('${rid}')" style="padding:6px 12px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700">✏️ Editar</button>
+      <button onclick="botcSysIaEdit_('${rid}')" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>
     </div>`;
 };
 window.botcSysIaSend_ = async function(rid) {
@@ -52503,7 +52505,7 @@ function _hgNotesRender_() {
          </div>`
       : `<div style="font-size:13px;color:#0f172a;white-space:pre-wrap;line-height:1.4">${_botcEsc(n.text)}</div>
          <div style="display:flex;gap:6px;margin-top:8px">
-           <button onclick="hgNoteEdit_('${_botcEsc(n.id)}')" style="padding:4px 8px;font-size:10px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:700">✏️ Editar</button>
+           <button onclick="hgNoteEdit_('${_botcEsc(n.id)}')" style="all:unset;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px" title="Editar">✏️</button>
            <button onclick="hgNoteDelete_('${_botcEsc(n.id)}')" style="padding:4px 8px;font-size:10px;background:#fff;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-weight:700">🗑 Eliminar</button>
          </div>`;
     const ts = n.updated && n.updated !== n.created
@@ -69046,6 +69048,323 @@ window.lgOpenIncCaptureFor = function (propRaw, deptRaw, fechaIso) {
   if (typeof incInit === 'function') { try { incInit(); } catch (_) {} }
   const hid = rtHid_({ Propiedad: propRaw, '# Departamento': String(deptRaw || '').replace(/^#/, '') });
   icForm_(null, { hid, fecha: fechaIso ? String(fechaIso).slice(0, 10) : '' });
+};
+// ═══════════════════════════════════════════════════════════════════════
+// Check-list › 🧳 Objetos olvidados (mismo diseño que Incidencias). Datos en Google Cloud (objetos/objetos.json)
+// vía /objetos-list, /save-objeto, /update-objeto; la lista vive en OBJ_STATE.list (la usan Gestión de reservas y el Chats bot).
+// ═══════════════════════════════════════════════════════════════════════
+const OB_EST = [{ k: 'Resguardado', t: 'En resguardo', c: '#94a3b8', s: 'Resg.' }, { k: 'En proceso', t: 'Contactando', c: '#f59e0b', s: 'Contac.' }, { k: 'Entregado', t: 'Entregado', c: '#10b981', s: 'Entreg.' }, { k: 'Desechado', t: 'Desechado / donado', c: '#64748b', s: 'Desech.' }];
+const OB_CAT = { 'Electrónico': { c: '#2563eb', ico: '📱' }, Vestimenta: { c: '#db2777', ico: '👕' }, 'Joyería/accesorios': { c: '#ca8a04', ico: '💍' }, Documentos: { c: '#0d9488', ico: '📄' }, Otro: { c: '#64748b', ico: '🧳' } };
+const OB = { fx: { cat: new Set(), lug: new Set(), per: '30' }, dr: null, f: null, sec: 'tablero', q: '', cargando: false, cargado: false };
+function obCatC_(c) { return OB_CAT[c] || OB_CAT.Otro; }
+function obEstK_(r) { const s = String(r.Estatus || '').trim(); return /entreg/i.test(s) ? 'Entregado' : /desech|don/i.test(s) ? 'Desechado' : /proceso|contact/i.test(s) ? 'En proceso' : s ? 'Resguardado' : (String(r.Fecha_entregado || '').trim() ? 'Entregado' : 'Resguardado'); }
+function obCerrado_(x) { return x.est === 'Entregado' || x.est === 'Desechado'; }
+function obRow_(row) {
+  const hid = rtHid_(row), a = hid ? atAloj_(hid) : null, cat = String(row.Categoria || '').trim() || 'Otro';
+  const lug = String(row.Lugar_resguardo || '').trim();
+  return { id: String(row.ID || ''), row, hid, corto: a && a.corto ? String(a.corto).toUpperCase() : '', aloj: (a && a.nombre) || String(row.Alojamiento || row.Propiedad || 'Sin alojamiento'),
+    fecha: String(row.Fecha_encontrado || row.Timestamp || '').slice(0, 10), fEnt: String(row.Fecha_entregado || '').slice(0, 10), entA: String(row.Entregado_a || ''),
+    est: obEstK_(row), cat, catTxt: cat === 'Otro' && row.Categoria_otro ? String(row.Categoria_otro) : cat,
+    lug, lugTxt: lug === 'Otro' && row.Lugar_otro ? String(row.Lugar_otro) : lug, rep: String(row.Reportante || ''), desc: String(row.Descripcion || ''), com: String(row.Comentarios || ''),
+    fotos: icSplit_(row.Fotos_URLs), upd: String(row.UpdatedAt || row.Updated_at || ''), arch: /^s[ií]/i.test(String(row.Archivada || '')) };
+}
+function obTodos_() { return (OBJ_STATE.list || []).filter(r => r && r.ID).map(obRow_).sort((a, b) => b.fecha.localeCompare(a.fecha)); }
+function obTitulo_(x) { return x.desc ? x.desc.split('\n')[0].slice(0, 70) : x.catTxt; }
+function obPasa_(x, sinPer) {
+  const fx = OB.fx;
+  if (!sinPer && obCerrado_(x) && fx.per !== 'todo' && (x.fEnt || x.fecha) < icHaceDias_(+fx.per)) return false;
+  if (fx.cat.size && !fx.cat.has(x.cat)) return false;
+  if (fx.lug.size && !fx.lug.has(x.lug || '—')) return false;
+  if (OB.q) { const q = OB.q.toLowerCase(); if (![x.catTxt, x.aloj, x.corto, x.desc, x.com, x.rep, x.entA, x.lugTxt, x.id].join(' ').toLowerCase().includes(q)) return false; }
+  return true;
+}
+function obCss_() {
+  icCss_();
+  if (document.getElementById('ob-css')) return;
+  const st = document.createElement('style'); st.id = 'ob-css';
+  st.textContent = `
+  #module-objetos{--ad-line:#e8eaee;--ad-line2:#f0f1f4;--ad-tx:#0f1729;--ad-mut:#6b7280;--ad-mut2:#9aa1ad;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#0f1729}
+  #module-objetos .ic-tb{width:100%;border-collapse:collapse;background:#fff;font-size:12.5px}
+  #module-objetos .ic-tbw{overflow:auto;border:1px solid var(--ad-line);border-radius:12px;max-height:72vh}
+  #module-objetos .ic-tb th{position:sticky;top:0;background:#f8fafc;color:var(--ad-mut2);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;text-align:left;padding:9px 12px;border-bottom:1px solid var(--ad-line);white-space:nowrap}
+  #module-objetos .ic-tb td{padding:9px 12px;border-bottom:1px solid var(--ad-line2);vertical-align:top}
+  #module-objetos .ic-tb tr{cursor:pointer}#module-objetos .ic-tb tbody tr:hover{background:#f8fafc}
+  #module-objetos .ic-tb .est i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
+  .ob-card .r1 .prop{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .ob-card .ob-lug{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:#475569;background:#f1f5f9;border-radius:6px;padding:2px 7px;white-space:nowrap}
+  #ad-drawer .ob-tag{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:#0d9488;border-radius:6px;padding:2px 8px;margin:8px 0 2px}
+  #ad-drawer .ob-ent{border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;padding:10px 12px;margin-top:6px}
+  #ad-drawer .ob-ent .at-row{margin:6px 0 0}
+  `;
+  document.head.appendChild(st);
+}
+window.obInit_ = async function () {
+  obRender_();
+  if (typeof aseoRefresh_ === 'function' && !(typeof ASEO !== 'undefined' && ASEO.ts)) aseoRefresh_().then(() => { try { clNavPaint_(); obRender_(); } catch (_) {} }).catch(() => {});
+  if (typeof ALOJ_STATE !== 'undefined' && !ALOJ_STATE.loaded && !ALOJ_STATE.loading && typeof lgLoadAlojamientos === 'function') lgLoadAlojamientos().then(() => obRender_()).catch(() => {});
+  if (OB.cargando) return;
+  OB.cargando = true; obRender_();
+  try { await obCargar_(); } finally { OB.cargando = false; OB.cargado = true; obRender_(); if (OB.dr && !OB.f) obPintar_(); }
+};
+async function obCargar_(fresco) {
+  const j = await fetch(`${BACKEND}/objetos-list${fresco ? '?fresh=1' : ''}`, { cache: 'no-store' }).then(r => r.json());
+  if (!j.ok) throw new Error(j.error || 'No se pudieron cargar');
+  OBJ_STATE.list = j.rows || [];
+  try { if (typeof lgReinjectRelatedSections === 'function') lgReinjectRelatedSections('obj'); } catch (_) {}
+}
+function obRender_() {
+  const root = document.getElementById('ob-root'); if (!root) return;
+  obCss_();
+  const sec = OB.sec === 'registro' ? 'registro' : 'tablero';
+  const todos = obTodos_();
+  const nFx = ckFxN_(OB.fx, { per: '30' });
+  const head = `<div class="cl-title">✅ Check-list</div>`;
+  const nav = `<div class="cl-nav-slot" data-act="objetos">${clNavHtml_('objetos')}</div>`;
+  const bar = `<div class="ck-bar">${ckHam_(OB.filAb, nFx, 'OB.filAb=!OB.filAb;obRender_()')}
+      <input class="ck-q ob-q" type="search" placeholder="🔎 Buscar alojamiento, objeto, persona…" value="${pcEsc(OB.q)}" oninput="OB.q=this.value;clearTimeout(OB._qt);OB._qt=setTimeout(()=>{obRender_();const i=document.querySelector('#ob-root .ob-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
+      <div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="OB.sec='tablero';obRender_()">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="OB.sec='registro';obRender_()">Registro</button></div>
+      <span class="ck-sp"></span>
+      ${OB.cargando ? '<span class="ck-hint">⏳</span>' : '<button type="button" class="aseo-btn ck-ib" onclick="obInit_()" title="Volver a cargar los objetos" aria-label="Actualizar"><svg class="ck-rf" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>'}
+      <button type="button" class="aseo-btn ck-pri" onclick="obForm_(null)">＋ Nuevo objeto</button></div>`;
+  const vacio = !todos.length ? `<div class="pc-mv-empty">${OB.cargado ? 'Aún no hay objetos olvidados registrados.' : '⏳ Cargando objetos olvidados…'}</div>` : '';
+  if (sec === 'registro') {
+    const L = todos.filter(x => obPasa_(x, true));
+    root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos, true)}</div>` : ''}${vacio || obRegistro_(L)}</div>`;
+  } else {
+    const L = todos.filter(x => obPasa_(x));
+    root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}
+      <div class="ad-v2 ck-kpis">${obKpis_(todos)}</div>${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos)}</div>` : ''}
+      ${vacio || `<div class="ad-v2 td-board">${obTablero_(L)}</div>`}</div>`;
+  }
+  try { clNavPaint_(); } catch (_) {}
+}
+function obKpis_(T) {
+  const mes = aseoHoyIso_().slice(0, 7), M = T.filter(x => x.fecha.slice(0, 7) === mes);
+  const ab = T.filter(x => !obCerrado_(x)), n = k => T.filter(x => x.est === k).length;
+  const entM = T.filter(x => x.est === 'Entregado' && (x.fEnt || x.fecha).slice(0, 7) === mes).length;
+  const viejos = ab.filter(x => x.fecha && x.fecha < icHaceDias_(30)).length;
+  const cerr = T.filter(x => obCerrado_(x)).length, pct = T.length ? Math.round(n('Entregado') / T.length * 100) : 0;
+  const kpi = (t, v, s, cls) => `<div class="ad-kpi ${cls || ''}"><small>${t}</small><div class="n">${v}${s ? `<em>${s}</em>` : ''}</div></div>`;
+  const seg = k => T.length ? (n(k) / T.length * 100).toFixed(1) : 0;
+  return `<div class="ad-kpis">
+    <div class="ad-kpi big"><small>Devueltos a su dueño</small><div class="n">${pct}%<em>${n('Entregado')} de ${T.length} objetos · ${cerr} cerrados</em></div>
+      <div class="ad-prog"><i style="width:${seg('Entregado')}%;background:#10b981"></i><i style="width:${seg('En proceso')}%;background:#f59e0b"></i></div></div>
+    ${kpi('En resguardo', ab.length)}${kpi('Contactando', n('En proceso'))}${kpi('Entregados', entM, 'este mes')}${kpi('Este mes', M.length, 'encontrados')}
+    ${kpi('Alertas', viejos, viejos ? `${viejos} con más de 30 días en resguardo` : '', viejos ? 'al' : '')}
+  </div>`;
+}
+function obFiltros_(base, sinPer) {
+  const fx = OB.fx;
+  const cuenta = f => base.filter(x => (sinPer || !obCerrado_(x) || fx.per === 'todo' || (x.fEnt || x.fecha) >= icHaceDias_(+fx.per)) && f(x)).length;
+  const fila = (ico, t, chips, k) => chips ? `<div class="mv-pf ad-prf"><small>${ico} ${t}:</small>${chips}${k ? `<button type="button" class="mv-pf-x" onclick="${k}">Quitar filtro</button>` : ''}</div>` : '';
+  const cats = [...new Set(Object.keys(OB_CAT).concat(base.map(x => x.cat)))];
+  const lugs = [...new Set(OBJ_LUGARES.concat(base.map(x => x.lug || '—')))];
+  const cChips = cats.map(c => `<button type="button" class="mv-pf-c ad-pr ad-ty ${fx.cat.has(c) ? 'on' : ''}" style="--tc:${obCatC_(c).c}" data-v="${pcEsc(c)}" onclick="obFx_('cat',this.dataset.v)"><i></i>${pcEsc(c)}<b>${cuenta(x => x.cat === c)}</b></button>`).join('');
+  const lChips = lugs.map(l => `<button type="button" class="mv-pf-c ad-pr ${fx.lug.has(l) ? 'on' : ''}" data-v="${pcEsc(l)}" onclick="obFx_('lug',this.dataset.v)">${l === '—' ? 'Sin lugar' : pcEsc(l)}<b>${cuenta(x => (x.lug || '—') === l)}</b></button>`).join('');
+  const perChips = sinPer ? '' : IC_PER.map(([k, t]) => `<button type="button" class="mv-pf-c ad-pr ${fx.per === k ? 'on' : ''}" onclick="OB.fx.per='${k}';obRender_()">${t}</button>`).join('');
+  return `<div class="ad-gfil" style="display:flex;flex-direction:column;gap:6px;margin:12px 0 14px">
+    ${fila('🏷️', 'Categoría', cChips, fx.cat.size ? "OB.fx.cat.clear();obRender_()" : '')}
+    ${fila('📍', 'Lugar de resguardo', lChips, fx.lug.size ? "OB.fx.lug.clear();obRender_()" : '')}
+    ${perChips ? fila('📅', 'Entregados y desechados de los últimos', perChips, '') : ''}</div>`;
+}
+window.obFx_ = function (k, v) { const S = OB.fx[k]; if (S.has(v)) S.delete(v); else S.add(v); obRender_(); };
+function obCard_(x) {
+  const C = obCatC_(x.cat), sel = OB.dr && OB.dr.id === x.id, id = pcEsc(x.id), E = OB_EST.find(e => e.k === x.est) || OB_EST[0];
+  const flag = !obCerrado_(x) && x.fecha && x.fecha < icHaceDias_(30) ? `<div class="flag orange"><i></i>En resguardo desde ${aseoDiaTxt_(x.fecha)}</div>` : '';
+  const meta = [`<span class="ty" style="color:${C.c}">${pcEsc(x.catTxt)}</span>`, `<span>${x.fecha ? aseoDiaTxt_(x.fecha) : 'Sin fecha'}</span>`];
+  if (x.est === 'Entregado' && x.entA) meta.push(`<span>Entregado a ${pcEsc(x.entA)}</span>`); else if (x.rep) meta.push(`<span>Encontró ${pcEsc(aseoNombreCorto_(x.rep))}</span>`);
+  const qs = `<div class="ad-qs" onclick="event.stopPropagation()">${OB_EST.map(e => `<button type="button" class="${e.k === x.est ? 'on' : ''}" style="--c:${e.c}" title="${e.t}" onclick="event.stopPropagation();${e.k === x.est ? '' : `obSetEst_('${id}','${e.k}')`}"><i></i>${e.s}</button>`).join('')}</div>`;
+  return `<div class="ad-card tipo est-tint ob-card ${sel ? 'sel' : ''} ${x.est === 'Desechado' ? 'ghost' : ''}" data-k="${id}" style="--tc:${C.c};--sc:${E.c}" onclick="obAbrir_('${id}')"
+      draggable="true" ondragstart="obDragStart_(event,'${id}')" ondragend="adDragEnd_(event)">
+    <div class="r1"><span class="code">${pcEsc(x.corto || '—')}</span><span class="prop">${C.ico} ${pcEsc(obTitulo_(x))}</span></div>
+    ${flag}
+    <div class="r2">${meta.join('<span class="sep"></span>')}</div>
+    <div class="r3">${x.lugTxt ? `<span class="ob-lug">📍 ${pcEsc(x.lugTxt)}</span>` : '<span class="ad-un">Sin lugar de resguardo</span>'}<span class="sp"></span>${x.fotos.length ? `<span class="ad-gd" title="Fotos">📷 ${x.fotos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();obAbrir_('${id}')">Detalles</button></div>
+    ${qs}
+  </div>`;
+}
+function obTablero_(L) {
+  const cols = OB_EST.map(e => {
+    const X = L.filter(x => x.est === e.k).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    return `<div class="ad-col" ondragover="obDragOver_(event)" ondrop="obDrop_(event,'${e.k}')"><div class="ad-colh"><i style="background:${e.c}"></i>${e.t}<span>${X.length}</span></div>${X.map(obCard_).join('') || '<div class="ad-empty">Suelta aquí una card</div>'}</div>`;
+  }).join('');
+  return L.length ? `<div class="ad-board est">${cols}</div>` : '<div class="pc-mv-empty">Ningún objeto coincide con los filtros</div>';
+}
+function obRegistro_(L) {
+  if (!L.length) return '<div class="pc-mv-empty">Ningún objeto coincide con los filtros</div>';
+  return `<div class="ad-hint" style="margin:0 0 8px">${L.length} objeto${L.length === 1 ? '' : 's'}</div><div class="ic-tbw"><table class="ic-tb"><thead><tr>${['Encontrado', 'Alojamiento', 'Categoría', 'Descripción', 'Resguardo', 'Estado', 'Entregado', 'Encontró', 'Folio'].map(h => `<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${L.map(x => { const E = OB_EST.find(e => e.k === x.est); return `<tr onclick="obAbrir_('${pcEsc(x.id)}')"><td style="white-space:nowrap">${x.fecha ? aseoDiaTxt_(x.fecha) : '—'}</td><td><b>${pcEsc(x.corto || '')}</b> ${pcEsc(x.aloj)}</td><td style="color:${obCatC_(x.cat).c};font-weight:600">${pcEsc(x.catTxt)}</td><td>${pcEsc(x.desc || '—')}</td><td>${pcEsc(x.lugTxt || '—')}</td><td class="est" style="white-space:nowrap"><i style="background:${E.c}"></i>${E.t}</td><td style="white-space:nowrap">${x.fEnt ? aseoDiaTxt_(x.fEnt) : '—'}${x.entA ? ' · ' + pcEsc(x.entA) : ''}</td><td>${pcEsc(x.rep || '—')}</td><td style="color:#9aa1ad;white-space:nowrap">${pcEsc(x.id)}</td></tr>`; }).join('')}</tbody></table></div>`;
+}
+// ── Guardado optimista por /update-objeto ──
+async function obPatch_(id, fields, local) {
+  const r = (OBJ_STATE.list || []).find(x => String(x.ID) === String(id)); if (!r) return;
+  const prev = {}; Object.keys(local).forEach(k => { prev[k] = r[k]; r[k] = local[k]; });
+  obRender_(); if (OB.dr && !OB.f) obPintar_();
+  try {
+    const out = await fetch(`${BACKEND}/update-objeto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, user: (typeof currentUser !== 'undefined' && currentUser) || '', fields }) }).then(r => r.json());
+    if (!out.ok) throw new Error(out.error || 'Error');
+    r.UpdatedAt = new Date().toISOString();
+    try { if (typeof lgReinjectRelatedSections === 'function') lgReinjectRelatedSections('obj'); } catch (_) {}
+  } catch (e) { Object.assign(r, prev); obRender_(); if (OB.dr && !OB.f) obPintar_(); alert('No se pudo guardar: ' + (e.message || e)); }
+}
+window.obSetEst_ = function (id, k) {
+  const r = (OBJ_STATE.list || []).find(x => String(x.ID) === String(id)); if (!r) return;
+  const f = { estatus: k }, l = { Estatus: k };
+  if (k === 'Entregado' && !r.Fecha_entregado) { f.fecha_entregado = l.Fecha_entregado = aseoHoyIso_(); }
+  if (k !== 'Entregado' && r.Fecha_entregado && k !== 'Desechado') { f.fecha_entregado = l.Fecha_entregado = ''; }
+  obPatch_(id, f, l);
+  if (k === 'Entregado' && !r.Entregado_a) { obAbrir_(id); setTimeout(() => { const i = document.getElementById('ob-enta'); if (i) i.focus(); }, 60); }
+};
+window.obCampo_ = function (id, k, col, v) { obPatch_(id, { [k]: v }, { [col]: v }); };
+window.obDragStart_ = function (ev, id) { OB._drag = id; try { ev.dataTransfer.setData('text/plain', id); ev.dataTransfer.effectAllowed = 'move'; } catch (_) {} const c = ev.currentTarget; setTimeout(() => c.classList.add('dragging'), 0); };
+window.obDragOver_ = function (ev) { if (!OB._drag) return; ev.preventDefault(); document.querySelectorAll('.ad-col.drop').forEach(c => { if (c !== ev.currentTarget) c.classList.remove('drop'); }); ev.currentTarget.classList.add('drop'); };
+window.obDrop_ = function (ev, k) { ev.preventDefault(); const id = OB._drag; OB._drag = null; document.querySelectorAll('.ad-col.drop').forEach(c => c.classList.remove('drop')); const r = (OBJ_STATE.list || []).find(x => String(x.ID) === String(id)); if (r && obEstK_(r) !== k) obSetEst_(id, k); };
+// ── Ventana lateral de detalle ──
+window.obAbrir_ = function (id) {
+  OB.dr = { id: String(id) }; OB.f = null;
+  document.querySelectorAll('#ob-root .ad-card').forEach(c => c.classList.toggle('sel', c.dataset.k === String(id)));
+  obPintar_(true);
+};
+window.obCerrar_ = function () { OB.dr = null; OB.f = null; document.getElementById('ad-drawer')?.remove(); document.getElementById('ad-dim')?.remove(); document.querySelectorAll('#ob-root .ad-card.sel').forEach(c => c.classList.remove('sel')); };
+function obShell_() { if (typeof ASEO !== 'undefined') ASEO._dr = null; if (typeof IC !== 'undefined') IC.dr = null; obCss_(); const dr = atShell_(); const dim = document.getElementById('ad-dim'); if (dim) dim.onclick = obCerrar_; return dr; }
+function obPintar_(nuevo) {
+  if (!OB.dr || OB.f) return;
+  const r = (OBJ_STATE.list || []).find(x => String(x.ID) === OB.dr.id); if (!r) { obCerrar_(); return; }
+  const x = obRow_(r), dr = obShell_(), id = pcEsc(x.id), C = obCatC_(x.cat), E = OB_EST.find(e => e.k === x.est) || OB_EST[0];
+  const top = dr.querySelector('.ad-db') ? dr.querySelector('.ad-db').scrollTop : 0;
+  const txt = v => pcEsc(v).replace(/\n/g, '<br>');
+  const sig = x.est === 'Resguardado' ? OB_EST[1] : OB_EST[2];
+  dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="code">${pcEsc(x.corto || '—')}</span><span class="t">${pcEsc(x.aloj)}</span><button type="button" class="ad-close" style="margin-left:auto" onclick="obCerrar_()">✕</button></div>
+      <div class="ob-tag">🧳 Objeto olvidado</div>
+      <div class="ad-tt">${C.ico} ${pcEsc(obTitulo_(x))}</div>
+      <div class="ad-sub">${x.fecha ? 'Encontrado ' + aseoDiaTxt_(x.fecha) : 'Sin fecha'} · <i style="background:${E.c}"></i>${E.t} · ${pcEsc(x.id)}</div>
+      ${!obCerrado_(x) && x.fecha && x.fecha < icHaceDias_(30) ? `<div class="ad-badge"><i style="background:#f97316"></i>Más de 30 días en resguardo</div>` : ''}</div>
+    <div class="ad-db">
+      <div class="lab">Estado</div><div class="ad-steps">${OB_EST.map(e => `<button type="button" class="${e.k === x.est ? 'on' : ''}" style="--c:${e.c}" onclick="obSetEst_('${id}','${e.k}')">${e.t}</button>`).join('')}</div>
+      ${x.upd ? `<div class="ad-hint">Actualizado ${pcEsc(x.upd.replace('T', ' ').slice(0, 16))}</div>` : ''}
+      ${x.est === 'Entregado' ? `<div class="lab">Entrega</div><div class="ob-ent">
+        <div class="at-row"><span class="at-k">Entregado a</span><input id="ob-enta" class="at-in" value="${pcEsc(x.entA)}" placeholder="¿Quién lo recibió?" onchange="obCampo_('${id}','entregado_a','Entregado_a',this.value.trim())"></div>
+        <div class="at-row"><span class="at-k">Fecha</span><input type="date" class="at-in" value="${pcEsc(x.fEnt)}" onchange="obCampo_('${id}','fecha_entregado','Fecha_entregado',this.value)"></div></div>` : ''}
+      <div class="lab">Descripción</div><div class="ad-desc">${x.desc ? txt(x.desc) : '<span style="color:#9aa1ad">Sin descripción</span>'}</div>
+      ${x.com ? `<div class="lab">Comentarios</div><div class="ad-desc">${txt(x.com)}</div>` : ''}
+      <div class="lab">Detalles</div>
+      <div class="ad-kv"><span>Categoría</span><b style="color:${C.c}">${pcEsc(x.catTxt)}</b><span>Encontrado</span><b>${x.fecha ? aseoDiaTxt_(x.fecha) : '—'}</b>
+        <span>Resguardo</span><b>${pcEsc(x.lugTxt || '—')}</b>${r.Reservacion_id ? `<span>Reserva</span><b>${pcEsc(r.Huesped_nombre || '')} · ${pcEsc(r.Reservacion_id)}</b>` : ''}
+        <span>Encontró</span><b>${pcEsc(x.rep || '—')}</b>${x.est === 'Entregado' ? `<span>Entregado</span><b>${x.fEnt ? aseoDiaTxt_(x.fEnt) : '—'}${x.entA ? ' · ' + pcEsc(x.entA) : ''}</b>` : ''}<span>Folio</span><b>${pcEsc(x.id)}</b></div>
+      ${x.fotos.length ? `<div class="lab">Fotos · ${x.fotos.length}</div><div class="ic-fotos" data-u="${pcEsc(JSON.stringify(x.fotos.map(u => icFoto_(u, 1600))))}">${x.fotos.map((u, i) => `<a href="#" onclick="event.preventDefault();fotoVer_(JSON.parse(this.parentNode.dataset.u),${i})" style="cursor:zoom-in"><img src="${pcEsc(icFoto_(u, 300))}" alt="" loading="lazy"></a>`).join('')}</div>` : ''}
+      ${histSecHtml_(['O:' + x.id])}
+    </div>
+    <div class="ad-ft"><button type="button" class="ad-bt" onclick="obForm_('${id}')">Editar</button><button type="button" class="ad-bt" onclick="obImprimir_('${id}')" title="Imprimir">🖨️</button>
+      ${obCerrado_(x) ? `<button type="button" class="ad-bt ok" disabled>✓ ${E.t}</button>` : `<button type="button" class="ad-bt pri" onclick="obSetEst_('${id}','${sig.k}')">Marcar ${sig.t.toLowerCase()}</button>`}</div>`;
+  if (!nuevo) { const b = dr.querySelector('.ad-db'); if (b) b.scrollTop = top; }
+}
+window.obImprimir_ = function (id) {
+  const r = (OBJ_STATE.list || []).find(x => String(x.ID) === String(id)); if (!r || typeof objRowToReportData !== 'function') return;
+  const d = objRowToReportData(r), w = window.open('', '_blank'); if (!w) return;
+  w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Objeto olvidado ${pcEsc(id)}</title><style>body{font-family:-apple-system,'Segoe UI',sans-serif;color:#0f172a;margin:16px;font-size:12px}img{max-width:100%}.inc-report-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 14px}.inc-report-field{display:grid;grid-template-columns:90px 1fr;gap:4px;padding:4px 0;border-bottom:1px dashed #f1f5f9}.inc-report-field-label{color:#64748b;font-weight:700;text-transform:uppercase;font-size:9px}</style></head><body>${objBuildReporteHtml(d)}</body></html>`);
+  w.document.close(); setTimeout(() => { try { w.focus(); w.print(); } catch (_) {} }, 600);
+};
+// ── Formulario «Nuevo objeto» / «Editar objeto» ──
+window.obForm_ = function (id, pre) {
+  const r = id ? (OBJ_STATE.list || []).find(x => String(x.ID) === String(id)) : null, x = r ? obRow_(r) : null, P = pre || {};
+  const yo = (typeof currentUser !== 'undefined' && currentUser) || '';
+  OB.dr = { id: id ? String(id) : '' };
+  OB.f = x ? { id: x.id, hid: x.hid, alojTxt: x.hid ? '' : x.aloj, fecha: x.fecha || aseoHoyIso_(), cat: x.cat, catO: String(r.Categoria_otro || ''), lug: x.lug, lugO: String(r.Lugar_otro || ''), rep: x.rep, desc: x.desc, com: x.com, est: x.est, entA: x.entA, fEnt: x.fEnt, reserva: String(r.Reservacion_id || ''), huesped: String(r.Huesped_nombre || ''), keep: x.fotos.slice(), nuevas: [] }
+    : { id: '', hid: P.hid || '', alojTxt: '', fecha: P.fecha || aseoHoyIso_(), cat: '', catO: '', lug: '', lugO: '', rep: yo, desc: '', com: '', est: 'Resguardado', entA: '', fEnt: '', reserva: P.reserva || '', huesped: P.huesped || '', keep: [], nuevas: [] };
+  obFormPintar_();
+};
+// Reservas confirmadas del alojamiento que estaban hospedadas (o salían) en la fecha en que se encontró.
+function obReservas_(hid, fecha) {
+  if (!hid || !fecha || typeof pcMovBookings_ !== 'function') return [];
+  return pcMovBookings_().filter(b => String(b.HouseId) === String(hid) && /^booked$/i.test(String(b.Status || '').trim()) && _pagosDateIso(b.DateArrival) <= fecha && _pagosDateIso(b.DateDeparture) >= fecha)
+    .sort((a, b) => _pagosDateIso(b.DateDeparture).localeCompare(_pagosDateIso(a.DateDeparture)));
+}
+function obFotosForm_() {
+  const F = OB.f;
+  return F.keep.map((u, i) => `<span><img src="${pcEsc(icFoto_(u, 300))}" alt="" onclick="obFotoVerForm_(${i})" style="cursor:zoom-in"><b onclick="OB.f.keep.splice(${i},1);document.getElementById('ob-fotos').innerHTML=obFotosForm_()">✕</b></span>`).join('')
+    + F.nuevas.map((f, i) => `<span><img src="data:${f.mimeType};base64,${f.base64}" alt="" onclick="obFotoVerForm_(${F.keep.length + i})" style="cursor:zoom-in"><b onclick="OB.f.nuevas.splice(${i},1);document.getElementById('ob-fotos').innerHTML=obFotosForm_()">✕</b></span>`).join('')
+    + (F.nuevas.length ? `<div style="flex-basis:100%;font-size:11px;font-weight:700;color:#b45309">⬆️ ${F.nuevas.length === 1 ? 'La foto nueva se sube' : 'Las fotos nuevas se suben'} al tocar «${F.id ? 'Guardar cambios' : 'Registrar objeto'}»</div>` : '');
+}
+window.obFotoVerForm_ = function (i) { const F = OB.f; if (!F) return; fotoVer_(F.keep.map(u => icFoto_(u, 1600)).concat(F.nuevas.map(f => `data:${f.mimeType};base64,${f.base64}`)), i); };
+function obFormPintar_() {
+  obCss_();
+  const F = OB.f, dr = obShell_();
+  const top = dr.querySelector('.ad-db') ? dr.querySelector('.ad-db').scrollTop : 0;
+  const alojs = atAlojs_().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
+  const nombres = (typeof pzNombres_ === 'function' ? pzNombres_() : []).slice(); if (F.rep && !nombres.includes(F.rep)) nombres.unshift(F.rep);
+  const RS = obReservas_(F.hid, F.fecha), ya = F.reserva && !RS.some(b => String(b.Id) === String(F.reserva));
+  const chips = (L, cur, fn, col) => L.map(v => `<button type="button" class="ic-mot ${cur === v ? 'on' : ''}" style="--c:${col(v)}" data-v="${pcEsc(v)}" onclick="${fn}(this.dataset.v)">${pcEsc(v)}</button>`).join('');
+  dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">${F.id ? 'Editar objeto' : 'Nuevo objeto olvidado'}</b><button type="button" class="ad-close" onclick="${F.id ? 'obFormCancelar_()' : 'obCerrar_()'}">✕</button></div>${F.id ? `<div class="ob-tag">🧳 Objeto olvidado</div><div class="ad-sub">${pcEsc(F.id)}</div>` : ''}</div>
+    <div class="ad-db at-f">
+      <label class="at-l">Alojamiento <i>*</i></label>
+      <select class="at-in" onchange="OB.f.hid=this.value;OB.f.reserva='';OB.f.huesped='';obFormPintar_()"><option value="">${F.alojTxt ? pcEsc(F.alojTxt) : 'Selecciona un alojamiento'}</option>${alojs.map(a => `<option value="${pcEsc(a.houseId)}" ${a.houseId === String(F.hid) ? 'selected' : ''}>${pcEsc((a.corto ? a.corto.toUpperCase() + ' · ' : '') + a.nombre)}</option>`).join('')}</select>
+      <div class="at-row"><span class="at-k">Encontrado</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" onchange="OB.f.fecha=this.value;OB.f.reserva='';OB.f.huesped='';obFormPintar_()"></div>
+      <label class="at-l">Reserva</label>
+      ${F.hid ? `<select class="at-in" onchange="obFormRes_(this.value)"><option value="">Sin reserva enlazada</option>${ya ? `<option value="${pcEsc(F.reserva)}" selected>${pcEsc(F.huesped || 'Reserva ' + F.reserva)}</option>` : ''}${RS.map(b => `<option value="${pcEsc(String(b.Id))}" ${String(b.Id) === String(F.reserva) ? 'selected' : ''}>${pcEsc(b.GuestName || 'Sin nombre')} · ${pcFmtDiaC_(_pagosDateIso(b.DateArrival))} → ${pcFmtDiaC_(_pagosDateIso(b.DateDeparture))}</option>`).join('')}</select>
+        <div class="at-hint">${RS.length || ya ? 'Opcional: huésped hospedado en ese alojamiento en la fecha elegida.' : 'Ninguna reserva en ese alojamiento en esa fecha.'}</div>` : '<div class="at-hint">Elige primero el alojamiento.</div>'}
+      <label class="at-l">Categoría <i>*</i></label>
+      <div class="ic-mots">${Object.keys(OB_CAT).map(c => `<button type="button" class="ic-mot ${F.cat === c ? 'on' : ''}" style="--c:${obCatC_(c).c}" data-v="${pcEsc(c)}" onclick="OB.f.cat=this.dataset.v;obFormPintar_()">${obCatC_(c).ico} ${pcEsc(c)}</button>`).join('')}</div>
+      ${F.cat === 'Otro' ? `<input class="at-in" style="margin-top:6px" placeholder="¿Qué tipo de objeto?" value="${pcEsc(F.catO)}" oninput="OB.f.catO=this.value">` : ''}
+      <label class="at-l">Descripción</label><textarea class="at-in" rows="3" placeholder="¿Qué es y dónde se encontró? (color, marca, habitación…)" oninput="OB.f.desc=this.value">${pcEsc(F.desc)}</textarea>
+      <div class="at-sec"><span>📍 Resguardo</span></div>
+      <label class="at-l">Lugar de resguardo</label>
+      <div class="ic-mots">${chips(OBJ_LUGARES, F.lug, 'obFormLug_', () => '#0d9488')}</div>
+      ${F.lug === 'Otro' ? `<input class="at-in" style="margin-top:6px" placeholder="¿Dónde se guardó?" value="${pcEsc(F.lugO)}" oninput="OB.f.lugO=this.value">` : ''}
+      <label class="at-l">Estado</label>
+      <div class="ad-steps">${OB_EST.map(e => `<button type="button" class="${e.k === F.est ? 'on' : ''}" style="--c:${e.c}" onclick="OB.f.est='${e.k}';if(OB.f.est==='Entregado'&&!OB.f.fEnt)OB.f.fEnt=aseoHoyIso_();obFormPintar_()">${e.t}</button>`).join('')}</div>
+      ${F.est === 'Entregado' ? `<div class="at-row"><span class="at-k">Entregado a</span><input class="at-in" value="${pcEsc(F.entA)}" placeholder="¿Quién lo recibió?" oninput="OB.f.entA=this.value"></div>
+        <div class="at-row"><span class="at-k">Fecha</span><input type="date" class="at-in" value="${pcEsc(F.fEnt)}" onchange="OB.f.fEnt=this.value"></div>` : ''}
+      <div class="at-sec"><span>👤 Personas</span></div>
+      <label class="at-l">Encontró</label>
+      <select class="at-in" onchange="OB.f.rep=this.value"><option value="">Sin especificar</option>${nombres.map(n => `<option ${n === F.rep ? 'selected' : ''}>${pcEsc(n)}</option>`).join('')}</select>
+      <label class="at-l">Comentarios</label><textarea class="at-in" rows="2" oninput="OB.f.com=this.value">${pcEsc(F.com)}</textarea>
+      <div class="at-sec"><span>📷 Fotos</span><label class="ad-link">＋ Añadir fotos<input type="file" accept="image/*" multiple hidden onchange="obFormFotos_(this)"></label></div>
+      <div class="ic-fotos" id="ob-fotos">${obFotosForm_()}</div>
+    </div>
+    <div class="ad-ft"><button type="button" class="ad-bt" onclick="${F.id ? 'obFormCancelar_()' : 'obCerrar_()'}">Cancelar</button><button type="button" class="ad-bt pri" id="ob-ok" onclick="obGuardar_()">${F.id ? 'Guardar cambios' : 'Registrar objeto'}</button></div>`;
+  const b = dr.querySelector('.ad-db'); if (b) b.scrollTop = top;
+}
+window.obFormLug_ = function (v) { OB.f.lug = OB.f.lug === v ? '' : v; obFormPintar_(); };
+window.obFormRes_ = function (v) { const F = OB.f; F.reserva = v; const b = v ? pcMovBookings_().find(x => String(x.Id) === String(v)) : null; F.huesped = b ? (b.GuestName || '') : (v ? F.huesped : ''); };
+window.obFormCancelar_ = function () { const id = OB.f && OB.f.id; OB.f = null; if (id) obAbrir_(id); else obCerrar_(); };
+window.obFormFotos_ = function (inp) {
+  const files = [...(inp.files || [])]; inp.value = ''; if (!files.length) return;
+  const c0 = document.getElementById('ob-fotos'), tmp = document.createElement('span'); tmp.textContent = '⏳ Procesando foto…'; tmp.style.cssText = 'font-size:11px;color:#64748b;align-self:center'; if (c0) c0.appendChild(tmp);
+  Promise.all(files.map(f0 => imgLigera_(f0).then(f => _rtFileToBase64(f).then(base64 => ({ name: f.name || `obj_${Date.now()}.jpg`, mimeType: f.type || 'image/jpeg', base64 })))))
+    .then(L => { if (!OB.f) return; OB.f.nuevas.push(...L); const c = document.getElementById('ob-fotos'); if (c) c.innerHTML = obFotosForm_(); })
+    .catch(e => { tmp.remove(); alert('No se pudo procesar la foto: ' + (e.message || e)); });
+};
+window.obGuardar_ = async function () {
+  const F = OB.f; if (!F) return;
+  if (!F.hid && !F.alojTxt) return alert('Elige el alojamiento.');
+  if (!F.cat) return alert('Elige la categoría del objeto.');
+  const a = F.hid ? atAloj_(F.hid) : null, old = F.id ? (OBJ_STATE.list || []).find(x => String(x.ID) === F.id) : null;
+  const propiedad = a ? (a.propiedad || '') : String((old && old.Propiedad) || ''), depto = a ? String(a.depto || '') : String((old && old['# Departamento']) || '');
+  const ent = F.est === 'Entregado';
+  const datos = { fecha_encontrado: F.fecha, propiedad, depto, alojamiento: propiedad && depto ? `${propiedad} - #${depto}` : (propiedad || (a && a.nombre) || F.alojTxt || ''),
+    reportante: F.rep, categoria: F.cat, categoria_otro: F.cat === 'Otro' ? String(F.catO || '').trim() : '', descripcion: String(F.desc || '').trim(),
+    lugar_resguardo: F.lug, lugar_otro: F.lug === 'Otro' ? String(F.lugO || '').trim() : '', comentarios: String(F.com || '').trim(), estatus: F.est,
+    fecha_entregado: ent ? (F.fEnt || aseoHoyIso_()) : (F.est === 'Desechado' ? F.fEnt : ''), entregado_a: ent ? String(F.entA || '').trim() : '', reserva: F.reserva || '', huesped: F.reserva ? (F.huesped || '') : '' };
+  const btn = document.getElementById('ob-ok'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando…'; }
+  const user = (typeof currentUser !== 'undefined' && currentUser) || '';
+  try {
+    let id = F.id;
+    if (F.id) {
+      const out = await fetch(`${BACKEND}/update-objeto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: F.id, user, fields: datos, fotos: F.nuevas, keepUrls: F.keep }) }).then(r => r.json());
+      if (!out.ok) throw new Error(out.error || 'Error');
+      const C = { fecha_encontrado: 'Fecha_encontrado', propiedad: 'Propiedad', depto: '# Departamento', alojamiento: 'Alojamiento', reportante: 'Reportante', categoria: 'Categoria', categoria_otro: 'Categoria_otro', descripcion: 'Descripcion', lugar_resguardo: 'Lugar_resguardo', lugar_otro: 'Lugar_otro', comentarios: 'Comentarios', estatus: 'Estatus', fecha_entregado: 'Fecha_entregado', entregado_a: 'Entregado_a', reserva: 'Reservacion_id', huesped: 'Huesped_nombre' };
+      if (old) { Object.keys(C).forEach(k => { old[C[k]] = datos[k]; }); if (typeof out.fotos_urls === 'string') { old.Fotos_URLs = out.fotos_urls; old.Fotos_count = String(out.fotos_count); } old.UpdatedAt = new Date().toISOString(); }
+    } else {
+      const out = await fetch(`${BACKEND}/save-objeto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: datos, fotos: F.nuevas, user }) }).then(r => r.json());
+      if (!out.ok) throw new Error(out.error || 'Error');
+      id = String(out.id || '');
+      OBJ_STATE.list = OBJ_STATE.list || [];
+      OBJ_STATE.list.unshift(out.row || { ID: id, Timestamp: new Date().toISOString(), Fecha_encontrado: datos.fecha_encontrado, Propiedad: propiedad, '# Departamento': depto, Alojamiento: datos.alojamiento, Reportante: datos.reportante, Categoria: datos.categoria, Categoria_otro: datos.categoria_otro, Descripcion: datos.descripcion, Lugar_resguardo: datos.lugar_resguardo, Lugar_otro: datos.lugar_otro, Comentarios: datos.comentarios, Estatus: datos.estatus, Fecha_entregado: datos.fecha_entregado, Entregado_a: datos.entregado_a, Reservacion_id: datos.reserva, Huesped_nombre: datos.huesped, Fotos_URLs: '' });
+    }
+    OB.f = null; obRender_();
+    if (id) obAbrir_(id); else obCerrar_();
+    try { if (typeof lgReinjectRelatedSections === 'function') lgReinjectRelatedSections('obj'); } catch (_) {}
+  } catch (e) { alert('No se pudo guardar el objeto: ' + (e.message || e)); if (btn) { btn.disabled = false; btn.textContent = F.id ? 'Guardar cambios' : 'Registrar objeto'; } }
 };
 // ── «⚙️ Clasificaciones» de Incidencias: Motivos (clasificación) › Sub-motivos (sub-clasificación).
 // Mismo formato que la ventana de Tareas programadas. También lo usa el bot para clasificar lo que llega por WhatsApp.

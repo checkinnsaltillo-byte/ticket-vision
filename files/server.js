@@ -5713,72 +5713,133 @@ app.post("/sys/login", async (req, res) => {
 // Si vienen fotos nuevas: las sube a Drive vía Apps Script y compone el CSV
 // final Fotos_URLs = keepUrls + nuevas URLs subidas, que se inyecta en fields.
 
-// ─── OBJETOS OLVIDADOS — paralelo a Incidencias ──────────────────────────────
+// ─── OBJETOS OLVIDADOS — Google Cloud Storage (objetos/objetos.json) ─────────
+// { rows: [{ID, Timestamp, Fecha_encontrado, Fecha_entregado, Entregado_a, Propiedad, '# Departamento', Alojamiento,
+//           Reportante, Categoria, Categoria_otro, Descripcion, Lugar_resguardo, Lugar_otro, Comentarios,
+//           Fotos_count, Fotos_URLs, Estatus, Reservacion_id, Huesped_nombre, Archivada, Updated_at, UpdatedAt}], migrado }
+// Fotos privadas en objetos/fotos/<ID>/… (enlace firmado por /incidencias/foto). La primera lectura copia la hoja «Objetos_Olvidados».
+const _OBJ_OBJ = "objetos/objetos.json";
+const _OBJ_COLS = { fecha_encontrado: "Fecha_encontrado", fecha_entregado: "Fecha_entregado", entregado_a: "Entregado_a", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", reportante: "Reportante", categoria: "Categoria", categoria_otro: "Categoria_otro", descripcion: "Descripcion", lugar_resguardo: "Lugar_resguardo", lugar_otro: "Lugar_otro", comentarios: "Comentarios", estatus: "Estatus", reserva: "Reservacion_id", huesped: "Huesped_nombre", archivada: "Archivada" };
+const _objSt = { d: null, ts: 0, mig: null };
+function _objEst(v, entregado) { const s = String(v || "").trim(); return /entreg/i.test(s) ? "Entregado" : /desech|don/i.test(s) ? "Desechado" : /proceso|contact|env/i.test(s) ? "En proceso" : s ? "Resguardado" : (String(entregado || "").trim() ? "Entregado" : "Resguardado"); }
+async function _objGuardarFoto(id, buf, ct, nombre) {
+  const ext = (String(ct).split("/")[1] || "jpg").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "jpg";
+  const nom = String(nombre || `foto.${ext}`).replace(/[^\w.\- ()áéíóúñÁÉÍÓÚÑ]/g, "_").slice(0, 80);
+  const k = `objetos/fotos/${String(id).replace(/[^\w-]/g, "")}/${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}-${nom}`;
+  await _rhdPut(k, buf, ct || "image/jpeg");
+  return _incFotoUrl(k);
+}
+async function _objSubirFotos(id, fotos) {
+  const L = await Promise.all((fotos || []).map(async f => {
+    if (!f || !f.base64) return null;
+    try { const buf = Buffer.from(String(f.base64).replace(/^data:[^,]*,/, ""), "base64"); if (!buf.length || buf.length > 20 * 1024 * 1024) return null; return await _objGuardarFoto(id, buf, f.mimeType || "image/jpeg", f.name); }
+    catch (e) { console.warn("[obj] foto no subida:", e.message); return null; }
+  }));
+  return L.filter(Boolean);
+}
+// Migración única desde la hoja (si ya hay datos en Cloud Storage no hace nada, salvo force).
+function _objMigrar(force) {
+  if (_objSt.mig) return _objSt.mig;
+  _objSt.mig = (async () => {
+    const actual = await _rhdGetJson(_OBJ_OBJ);
+    if (Array.isArray(actual.rows) && !force) return actual;
+    const src = await callCheckinAppsScript("list_objetos");
+    if (!src || src.ok === false || !Array.isArray(src.rows)) throw new Error("No se pudo leer la hoja Objetos_Olvidados: " + ((src && src.error) || "sin datos"));
+    let fotos = 0, fallidas = 0; const rows = [];
+    for (const r0 of src.rows) {
+      const r = Object.assign({}, r0); if (!String(r.ID || "").trim()) continue;
+      const urls = String(r.Fotos_URLs || "").split(",").map(x => x.trim()).filter(Boolean), nuevas = [];
+      for (const u of urls) {
+        const img = await _incBajarImagen(u);
+        if (img) { try { nuevas.push(await _objGuardarFoto(r.ID, img.buf, img.ct)); fotos++; continue; } catch (_) {} }
+        fallidas++; nuevas.push(u); // si Drive no la entrega se conserva el enlace original
+      }
+      if (urls.length) { r.Fotos_URLs_drive = urls.join(", "); r.Fotos_URLs = nuevas.join(", "); r.Fotos_count = String(nuevas.length); }
+      r.Estatus = _objEst(r.Estatus, r.Fecha_entregado);
+      rows.push(r);
+    }
+    rows.sort((a, b) => String(b.Timestamp || "").localeCompare(String(a.Timestamp || "")));
+    const d = { rows, migrado: { at: new Date().toISOString(), desde: "Hoja «Objetos_Olvidados» (Apps Script)", n: rows.length, fotos, fallidas } };
+    await _aseoMutate(_OBJ_OBJ, "objData", x => { for (const k of Object.keys(x)) delete x[k]; Object.assign(x, d); });
+    console.log(`[obj] migración: ${rows.length} objetos, ${fotos} fotos copiadas, ${fallidas} sin copiar`);
+    return d;
+  })().finally(() => { _objSt.mig = null; });
+  return _objSt.mig;
+}
+async function _objDatos(fresco) {
+  if (!fresco && _objSt.d && Date.now() - _objSt.ts < 5_000) return _objSt.d;
+  let d = await _rhdGetJson(_OBJ_OBJ);
+  if (!Array.isArray(d.rows)) d = await _objMigrar();
+  _objSt.d = d; _objSt.ts = Date.now();
+  return d;
+}
+function _objMutar(fn) {
+  return _objDatos(true).then(() => _aseoMutate(_OBJ_OBJ, "objData", d => { if (!Array.isArray(d.rows)) d.rows = []; return fn(d); }))
+    .then(out => { _objSt.d = _aseo.objData; _objSt.ts = Date.now(); return out; });
+}
 app.get("/objetos-list", async (req, res) => {
   try {
-    const result = await _lecturaSWRGet("list_objetos");
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
+    const d = await _objDatos(req.query.fresh === "1");
+    const rows = (d.rows || []).map(r => Object.assign({}, r, { Estatus: _objEst(r.Estatus, r.Fecha_entregado) })).sort((a, b) => String(b.Timestamp || "").localeCompare(String(a.Timestamp || "")));
+    res.json({ ok: true, rows, total: rows.length, origen: "gcs", migrado: d.migrado || null });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
-
+app.post("/objetos/migrar", async (req, res) => {
+  if (!process.env.SYNC_SECRET || (req.get("X-Sync-Secret") || "") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
+  try { const d = await _objMigrar(req.query.force === "1"); _objSt.d = null; res.json({ ok: true, migrado: d.migrado || null, total: (d.rows || []).length }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/save-objeto", async (req, res) => {
   try {
-    const payload = req.body?.payload || {};
-    const fotos = Array.isArray(req.body?.fotos) ? req.body.fotos : [];
-    const fotosUrls = [];
-    for (const f of fotos) {
-      if (!f || !f.base64) continue;
-      const up = await callCheckinAppsScriptPost("upload_objeto_image", {
-        fecha: payload.fecha_encontrado || '',
-        alojamiento: payload.alojamiento || '',
-        file: { fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 },
-      });
-      if (up && up.ok && up.url) fotosUrls.push(up.url);
-      else console.warn("save_objeto: foto fallida", JSON.stringify(up).slice(0, 300));
-    }
-    const saveResult = await callCheckinAppsScriptPost("save_objeto", {
-      payload: { ...payload, fotos_urls: fotosUrls },
-    });
-    if (!saveResult || !saveResult.ok) throw new Error(saveResult?.error || 'Apps Script save error');
-    res.json({ ok: true, id: saveResult.id, timestamp: saveResult.timestamp, fotos_uploaded: fotosUrls.length });
+    const p = req.body?.payload || {};
+    const now = _incMxNow();
+    const id = `OBJ-${now.slice(0, 10).replace(/-/g, "")}-${now.slice(11).replace(/:/g, "")}-${Math.floor(Math.random() * 10000)}`;
+    const fotos = await _objSubirFotos(id, Array.isArray(req.body?.fotos) ? req.body.fotos : []);
+    const row = { ID: id, Timestamp: now };
+    Object.keys(_OBJ_COLS).forEach(k => { row[_OBJ_COLS[k]] = _incCsv(p[k] != null ? p[k] : p[_OBJ_COLS[k]]); });
+    if (!row.Alojamiento) row.Alojamiento = row.Propiedad && row["# Departamento"] ? `${row.Propiedad} - #${row["# Departamento"]}` : row.Propiedad;
+    row.Estatus = _objEst(row.Estatus, row.Fecha_entregado);
+    row.Fotos_count = String(fotos.length); row.Fotos_URLs = fotos.join(", "); row.Updated_at = ""; row.UpdatedAt = new Date().toISOString();
+    await _objMutar(d => { d.rows.unshift(row); });
+    try { _histAdd("O:" + id, [["Registrado", "", row.Categoria || "Objeto"]], String(req.body?.user || row.Reportante || "")); } catch (_) {}
+    res.json({ ok: true, id, timestamp: now, fotos_uploaded: fotos.length, row });
   } catch (err) {
     console.error("save_objeto_error", err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
-
+// Edición: solo cambia los campos recibidos (claves en minúsculas o encabezados). Fotos: keepUrls + nuevas.
 app.post("/update-objeto", async (req, res) => {
   try {
-    const id = String(req.body?.id || '').trim();
+    const id = String(req.body?.id || "").trim();
     const fields = Object.assign({}, req.body?.fields || {});
     const newFotos = Array.isArray(req.body?.fotos) ? req.body.fotos : null;
     const keepUrls = Array.isArray(req.body?.keepUrls) ? req.body.keepUrls : null;
-    if (!id) return res.status(400).json({ ok: false, error: 'Falta id' });
-    let finalUrls = null;
-    if (newFotos !== null || keepUrls !== null) {
-      const uploaded = [];
-      for (const f of (newFotos || [])) {
-        if (!f || !f.base64) continue;
-        const up = await callCheckinAppsScriptPost("upload_objeto_image", {
-          fecha: fields.fecha_encontrado || '',
-          alojamiento: fields.alojamiento || '',
-          file: { fileName: f.name || 'foto.jpg', mimeType: f.mimeType || 'image/jpeg', base64: f.base64 },
-        });
-        if (up && up.ok && up.url) uploaded.push(up.url);
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    const subidas = newFotos ? await _objSubirFotos(id, newFotos) : [];
+    let final = null, cambios = [];
+    const NOM = { Fecha_encontrado: "Fecha encontrado", Fecha_entregado: "Fecha entregado", Entregado_a: "Entregado a", Alojamiento: "Alojamiento", Reportante: "Reportó", Categoria: "Categoría", Descripcion: "Descripción", Lugar_resguardo: "Lugar de resguardo", Comentarios: "Comentarios", Estatus: "Estado", Archivada: "Archivada" };
+    const ok = await _objMutar(d => {
+      const r = d.rows.find(x => String(x.ID) === id); if (!r) return false;
+      Object.keys(fields).forEach(k => {
+        const col = _OBJ_COLS[k] || (Object.values(_OBJ_COLS).includes(k) ? k : null); if (!col) return;
+        const v = col === "Estatus" ? _objEst(fields[k]) : _incCsv(fields[k]);
+        if (String(r[col] || "") !== v && NOM[col]) cambios.push([NOM[col], r[col] || "", v]);
+        r[col] = v;
+      });
+      if (newFotos !== null || keepUrls !== null) {
+        final = (keepUrls || String(r.Fotos_URLs || "").split(",").map(x => x.trim()).filter(Boolean)).concat(subidas);
+        if (String(final.length) !== String(r.Fotos_count || "0")) cambios.push(["Fotos", r.Fotos_count || "0", String(final.length)]);
+        r.Fotos_URLs = final.join(", "); r.Fotos_count = String(final.length);
       }
-      finalUrls = (keepUrls || []).concat(uploaded);
-      fields.fotos_urls = finalUrls.join(', ');
-      fields.fotos_count = finalUrls.length;
-    }
-    const result = await callCheckinAppsScriptPost("update_objeto", { payload: { id, fields } });
-    if (!result || !result.ok) throw new Error(result?.error || 'Apps Script update error');
-    if (finalUrls !== null) {
-      result.fotos_urls = fields.fotos_urls;
-      result.fotos_count = fields.fotos_count;
-    }
-    res.json(result);
+      r.Updated_at = _incMxNow(); r.UpdatedAt = new Date().toISOString();
+      return true;
+    });
+    if (!ok) return res.status(404).json({ ok: false, error: "ID no encontrado: " + id });
+    try { if (cambios.length) _histAdd("O:" + id, cambios, String(req.body?.user || "")); } catch (_) {}
+    const out = { ok: true, id };
+    if (final) { out.fotos_urls = final.join(", "); out.fotos_count = final.length; }
+    res.json(out);
   } catch (err) {
     console.error("update_objeto_error", err.message);
     res.status(500).json({ ok: false, error: err.message });
@@ -9557,7 +9618,7 @@ async function _histHumano(L) {
 }
 app.get("/historial", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-  try { const keys = String(req.query.k || "").split(",").map(x => x.trim()).filter(x => /^[ATRI]:[\w-]+$/.test(x)).slice(0, 20); res.json({ ok: true, items: (await _histDe(keys)).slice(0, 300) }); }
+  try { const keys = String(req.query.k || "").split(",").map(x => x.trim()).filter(x => /^[ATRIO]:[\w-]+$/.test(x)).slice(0, 20); res.json({ ok: true, items: (await _histDe(keys)).slice(0, 300) }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 async function _aseoGuardarEstado({ id, hid, estado, validar, user, desvalidar }) {
@@ -11499,7 +11560,7 @@ app.get("/incidencias-list", async (req, res) => {
 app.get("/incidencias/foto", async (req, res) => {
   try {
     const k = String(req.query.k || "");
-    if (!/^incidencias\/fotos\//.test(k) || req.query.s !== _incFotoSig(k)) return res.status(403).send("Enlace no válido");
+    if (!/^(incidencias|objetos)\/fotos\//.test(k) || req.query.s !== _incFotoSig(k)) return res.status(403).send("Enlace no válido");
     const tok = await _vGcsToken();
     const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(k)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
     if (!r.ok) return res.status(r.status).send("No encontrado");
