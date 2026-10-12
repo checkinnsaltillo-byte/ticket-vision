@@ -51627,6 +51627,10 @@ window.botcOpenChat = async function(phone, opts) {
     if (!r.ok || !/json/i.test(ct)) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'error');
+    // Sondeo cada 10 s: si no llegó nada nuevo NO se redibuja (redibujar hacía parpadear el chat y cerraba listas abiertas).
+    const firma = JSON.stringify([String(phone), (j.messages || []).length, ((j.messages || []).slice(-1)[0] || {}).timestamp || '', j.state || {}]);
+    if (opts.silent && BOTC_STATE.__chatFirma === firma && BOTC_STATE.__renderedPhone === String(phone) && document.querySelector('#botc-main .wa-comp')) return;
+    BOTC_STATE.__chatFirma = firma;
     BOTC_STATE.messages = j.messages || [];
     BOTC_STATE.state = j.state || { control: 'bot' };
     BOTC_STATE.__renderedPhone = String(phone);
