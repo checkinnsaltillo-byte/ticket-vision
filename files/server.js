@@ -5719,7 +5719,7 @@ app.post("/sys/login", async (req, res) => {
 //           Fotos_count, Fotos_URLs, Estatus, Reservacion_id, Huesped_nombre, Archivada, Updated_at, UpdatedAt}], migrado }
 // Fotos privadas en objetos/fotos/<ID>/… (enlace firmado por /incidencias/foto). La primera lectura copia la hoja «Objetos_Olvidados».
 const _OBJ_OBJ = "objetos/objetos.json";
-const _OBJ_COLS = { fecha_encontrado: "Fecha_encontrado", fecha_entregado: "Fecha_entregado", entregado_a: "Entregado_a", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", reportante: "Reportante", categoria: "Categoria", categoria_otro: "Categoria_otro", descripcion: "Descripcion", lugar_resguardo: "Lugar_resguardo", lugar_otro: "Lugar_otro", comentarios: "Comentarios", estatus: "Estatus", reserva: "Reservacion_id", huesped: "Huesped_nombre", archivada: "Archivada" };
+const _OBJ_COLS = { fecha_encontrado: "Fecha_encontrado", fecha_entregado: "Fecha_entregado", entregado_a: "Entregado_a", propiedad: "Propiedad", depto: "# Departamento", alojamiento: "Alojamiento", reportante: "Reportante", categoria: "Categoria", categoria_otro: "Categoria_otro", descripcion: "Descripcion", lugar_resguardo: "Lugar_resguardo", lugar_otro: "Lugar_otro", comentarios: "Comentarios", estatus: "Estatus", reserva: "Reservacion_id", huesped: "Huesped_nombre", archivada: "Archivada", fecha_reporte: "Fecha_reporte", fecha_estancia: "Fecha_estancia" };
 const _objSt = { d: null, ts: 0, mig: null };
 function _objEst(v, entregado) { const s = String(v || "").trim(); return /entreg/i.test(s) ? "Entregado" : /desech|don/i.test(s) ? "Desechado" : /proceso|contact|env/i.test(s) ? "En proceso" : s ? "Resguardado" : (String(entregado || "").trim() ? "Entregado" : "Resguardado"); }
 async function _objGuardarFoto(id, buf, ct, nombre) {
@@ -5818,7 +5818,7 @@ app.post("/update-objeto", async (req, res) => {
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
     const subidas = newFotos ? await _objSubirFotos(id, newFotos) : [];
     let final = null, cambios = [];
-    const NOM = { Fecha_encontrado: "Fecha encontrado", Fecha_entregado: "Fecha entregado", Entregado_a: "Entregado a", Alojamiento: "Alojamiento", Reportante: "Reportó", Categoria: "Categoría", Descripcion: "Descripción", Lugar_resguardo: "Lugar de resguardo", Comentarios: "Comentarios", Estatus: "Estado", Archivada: "Archivada" };
+    const NOM = { Fecha_reporte: "Fecha de reporte", Fecha_encontrado: "Fecha encontrado", Fecha_entregado: "Fecha entregado", Entregado_a: "Entregado a", Alojamiento: "Alojamiento", Reportante: "Reportó", Categoria: "Categoría", Descripcion: "Descripción", Lugar_resguardo: "Lugar de resguardo", Comentarios: "Comentarios", Estatus: "Estado", Archivada: "Archivada" };
     const ok = await _objMutar(d => {
       const r = d.rows.find(x => String(x.ID) === id); if (!r) return false;
       Object.keys(fields).forEach(k => {

@@ -18469,7 +18469,7 @@ function lgBuildObjSectionForBooking(arg) {
   const matches = OBJ_STATE.list.filter(r => {
     if (alojNorm(r['Propiedad']) !== propN) return false;
     if (alojNorm(r['# Departamento']) !== deptN) return false;
-    const f = String(r['Fecha_encontrado'] || '').slice(0,10);
+    const f = objFechaRef_(r);
     return f && f >= arrIso && f <= depIso;
   });
   // Debug: si NO hubo matches pero la reservación tiene prop/depto, listar a consola
@@ -18479,7 +18479,7 @@ function lgBuildObjSectionForBooking(arg) {
     for (const r of OBJ_STATE.list) {
       const rp = alojNorm(r['Propiedad']);
       const rd = alojNorm(r['# Departamento']);
-      const f = String(r['Fecha_encontrado'] || '').slice(0,10);
+      const f = objFechaRef_(r);
       let why = '';
       if (rp !== propN) why = `propiedad: "${r['Propiedad']}"(${rp}) ≠ "${propRaw}"(${propN})`;
       else if (rd !== deptN) why = `depto: "${r['# Departamento']}"(${rd}) ≠ "${deptRaw}"(${deptN})`;
@@ -25171,6 +25171,8 @@ const OBJ_CATEGORIAS = ['Electrónico', 'Vestimenta', 'Joyería/accesorios', 'Do
 const OBJ_ESTADOS = ['encontrado', 'entregado', 'no localizado'];
 const OBJ_LUGARES = ['Gabinete', 'Oficina', 'Otro'];
 
+// Fecha con la que un objeto se cruza con una reserva: encontrado → inicio de la reserva enlazada → fecha de reporte.
+function objFechaRef_(r) { return String((r && (r.Fecha_encontrado || r.Fecha_estancia || r.Fecha_reporte)) || '').slice(0, 10); }
 const OBJ_STATE = {
   initialized: false,
   list: [],
@@ -43526,7 +43528,7 @@ function _waRenderReportsList_(st) {
     objList.forEach(r => {
       if (alojNormFn(r['Propiedad']) !== propN) return;
       if (alojNormFn(r['# Departamento']) !== deptN) return;
-      const f = String(r['Fecha_encontrado'] || '').slice(0,10);
+      const f = objFechaRef_(r);
       if (!f || f < arrIso || f > depIso) return;
       cards.push({ kind:'obj', row:r, sortKey:f });
     });
@@ -43632,7 +43634,7 @@ function _waGetReportsForBooking_(bk) {
   objList.forEach(r => {
     if (alojNormFn(r['Propiedad']) !== propN) return;
     if (alojNormFn(r['# Departamento']) !== deptN) return;
-    const f = String(r['Fecha_encontrado'] || '').slice(0,10);
+    const f = objFechaRef_(r);
     if (!f || f < arrIso || f > depIso) return;
     out.push({ kind:'report', id: r['ID']||'', row: r, kindReport: 'obj', sortKey: activityMs(r) });
   });
@@ -44660,7 +44662,7 @@ function _waRenderReportsForBooking_(bk) {
   objList.forEach(r => {
     if (alojNormFn(r['Propiedad']) !== propN) return;
     if (alojNormFn(r['# Departamento']) !== deptN) return;
-    const f = String(r['Fecha_encontrado'] || '').slice(0,10);
+    const f = objFechaRef_(r);
     if (!f || f < arrIso || f > depIso) return;
     cards.push({ kind:'obj', row:r, sortKey: activityKey(r) });
   });
@@ -69063,7 +69065,7 @@ function obRow_(row) {
   const hid = rtHid_(row), a = hid ? atAloj_(hid) : null, cat = String(row.Categoria || '').trim() || 'Otro';
   const lug = String(row.Lugar_resguardo || '').trim();
   return { id: String(row.ID || ''), row, hid, corto: a && a.corto ? String(a.corto).toUpperCase() : '', aloj: (a && a.nombre) || String(row.Alojamiento || row.Propiedad || 'Sin alojamiento'),
-    fecha: String(row.Fecha_encontrado || row.Timestamp || '').slice(0, 10), fEnt: String(row.Fecha_entregado || '').slice(0, 10), entA: String(row.Entregado_a || ''),
+    fecha: String(objFechaRef_(row) || row.Timestamp || '').slice(0, 10), fEnc: String(row.Fecha_encontrado || '').slice(0, 10), fRep: String(row.Fecha_reporte || row.Timestamp || '').slice(0, 10), fEnt: String(row.Fecha_entregado || '').slice(0, 10), entA: String(row.Entregado_a || ''),
     est: obEstK_(row), cat, catTxt: cat === 'Otro' && row.Categoria_otro ? String(row.Categoria_otro) : cat,
     lug, lugTxt: lug === 'Otro' && row.Lugar_otro ? String(row.Lugar_otro) : lug, rep: String(row.Reportante || ''), desc: String(row.Descripcion || ''), com: String(row.Comentarios || ''),
     fotos: icSplit_(row.Fotos_URLs), upd: String(row.UpdatedAt || row.Updated_at || ''), arch: /^s[ií]/i.test(String(row.Archivada || '')) };
@@ -69171,7 +69173,7 @@ window.obFx_ = function (k, v) { const S = OB.fx[k]; if (S.has(v)) S.delete(v); 
 function obCard_(x) {
   const C = obCatC_(x.cat), sel = OB.dr && OB.dr.id === x.id, id = pcEsc(x.id), E = OB_EST.find(e => e.k === x.est) || OB_EST[0];
   const flag = !obCerrado_(x) && x.fecha && x.fecha < icHaceDias_(30) ? `<div class="flag orange"><i></i>En resguardo desde ${aseoDiaTxt_(x.fecha)}</div>` : '';
-  const meta = [`<span class="ty" style="color:${C.c}">${pcEsc(x.catTxt)}</span>`, `<span>${x.fecha ? aseoDiaTxt_(x.fecha) : 'Sin fecha'}</span>`];
+  const meta = [`<span class="ty" style="color:${C.c}">${pcEsc(x.catTxt)}</span>`, `<span>${x.fEnc ? aseoDiaTxt_(x.fEnc) : x.fRep ? 'Reportado ' + aseoDiaTxt_(x.fRep) : 'Sin fecha'}</span>`];
   if (x.est === 'Entregado' && x.entA) meta.push(`<span>Entregado a ${pcEsc(x.entA)}</span>`); else if (x.rep) meta.push(`<span>Encontró ${pcEsc(aseoNombreCorto_(x.rep))}</span>`);
   const qs = `<div class="ad-qs" onclick="event.stopPropagation()">${OB_EST.map(e => `<button type="button" class="${e.k === x.est ? 'on' : ''}" style="--c:${e.c}" title="${e.t}" onclick="event.stopPropagation();${e.k === x.est ? '' : `obSetEst_('${id}','${e.k}')`}"><i></i>${e.s}</button>`).join('')}</div>`;
   return `<div class="ad-card tipo est-tint ob-card ${sel ? 'sel' : ''} ${x.est === 'Desechado' ? 'ghost' : ''}" data-k="${id}" style="--tc:${C.c};--sc:${E.c}" onclick="obAbrir_('${id}')"
@@ -69226,7 +69228,19 @@ window.obAbrir_ = function (id) {
   obPintar_(true);
 };
 window.obCerrar_ = function () { OB.dr = null; OB.f = null; document.getElementById('ad-drawer')?.remove(); document.getElementById('ad-dim')?.remove(); document.querySelectorAll('#ob-root .ad-card.sel').forEach(c => c.classList.remove('sel')); };
-function obShell_() { if (typeof ASEO !== 'undefined') ASEO._dr = null; if (typeof IC !== 'undefined') IC.dr = null; obCss_(); const dr = atShell_(); const dim = document.getElementById('ad-dim'); if (dim) dim.onclick = obCerrar_; return dr; }
+function obShell_() { if (typeof ASEO !== 'undefined') ASEO._dr = null; if (typeof IC !== 'undefined') IC.dr = null; obCss_(); const dr = atShell_(); const dim = document.getElementById('ad-dim'); if (dim) dim.onclick = obCerrar_; obEncuadrar_(); return dr; }
+// Desde Chats bot la ventana lateral queda dentro del recuadro de la conversación (no cubre toda la pantalla).
+function obEncuadrar_() {
+  const dr = document.getElementById('ad-drawer'), dim = document.getElementById('ad-dim'); if (!dr) return;
+  const mod = document.getElementById('module-bot-chats'), main = document.getElementById('botc-main');
+  const enChat = mod && !mod.classList.contains('hidden') && main && main.offsetParent;
+  if (!enChat) { dr.style.top = dr.style.bottom = dr.style.height = dr.style.right = dr.style.width = dr.style.borderRadius = ''; if (dim) dim.style.cssText = ''; return; }
+  const r = main.getBoundingClientRect(), vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const top = Math.max(0, r.top), alto = Math.max(200, Math.min(r.bottom, vh) - top), der = Math.max(0, window.innerWidth - r.right);
+  Object.assign(dr.style, { top: top + 'px', bottom: 'auto', height: alto + 'px', right: der + 'px', width: Math.min(440, r.width) + 'px', borderRadius: '12px 0 0 12px' });
+  if (dim) Object.assign(dim.style, { top: top + 'px', bottom: 'auto', height: alto + 'px', left: r.left + 'px', right: der + 'px' });
+  if (!window.__obEncRs) { window.__obEncRs = true; window.addEventListener('resize', () => { if (OB.dr) obEncuadrar_(); }); }
+}
 function obPintar_(nuevo) {
   if (!OB.dr || OB.f) return;
   const r = (OBJ_STATE.list || []).find(x => String(x.ID) === OB.dr.id); if (!r) { obCerrar_(); return; }
@@ -69237,7 +69251,7 @@ function obPintar_(nuevo) {
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="code">${pcEsc(x.corto || '—')}</span><span class="t">${pcEsc(x.aloj)}</span><button type="button" class="ad-close" style="margin-left:auto" onclick="obCerrar_()">✕</button></div>
       <div class="ob-tag">🧳 Objeto olvidado</div>
       <div class="ad-tt">${C.ico} ${pcEsc(obTitulo_(x))}</div>
-      <div class="ad-sub">${x.fecha ? 'Encontrado ' + aseoDiaTxt_(x.fecha) : 'Sin fecha'} · <i style="background:${E.c}"></i>${E.t} · ${pcEsc(x.id)}</div>
+      <div class="ad-sub">${x.fEnc ? 'Encontrado ' + aseoDiaTxt_(x.fEnc) : 'Reportado ' + (x.fRep ? aseoDiaTxt_(x.fRep) : '—')} · <i style="background:${E.c}"></i>${E.t} · ${pcEsc(x.id)}</div>
       ${!obCerrado_(x) && x.fecha && x.fecha < icHaceDias_(30) ? `<div class="ad-badge"><i style="background:#f97316"></i>Más de 30 días en resguardo</div>` : ''}</div>
     <div class="ad-db">
       <div class="lab">Estado</div><div class="ad-steps">${OB_EST.map(e => `<button type="button" class="${e.k === x.est ? 'on' : ''}" style="--c:${e.c}" onclick="obSetEst_('${id}','${e.k}')">${e.t}</button>`).join('')}</div>
@@ -69248,7 +69262,7 @@ function obPintar_(nuevo) {
       <div class="lab">Descripción</div><div class="ad-desc">${x.desc ? txt(x.desc) : '<span style="color:#9aa1ad">Sin descripción</span>'}</div>
       ${x.com ? `<div class="lab">Comentarios</div><div class="ad-desc">${txt(x.com)}</div>` : ''}
       <div class="lab">Detalles</div>
-      <div class="ad-kv"><span>Categoría</span><b style="color:${C.c}">${pcEsc(x.catTxt)}</b><span>Encontrado</span><b>${x.fecha ? aseoDiaTxt_(x.fecha) : '—'}</b>
+      <div class="ad-kv"><span>Categoría</span><b style="color:${C.c}">${pcEsc(x.catTxt)}</b><span>Fecha de reporte</span><b>${x.fRep ? aseoDiaTxt_(x.fRep) : '—'}</b><span>Fecha encontrado</span><b>${x.fEnc ? aseoDiaTxt_(x.fEnc) : '<span style="color:#9aa1ad">Por definir</span>'}</b>
         <span>Resguardo</span><b>${pcEsc(x.lugTxt || '—')}</b>${r.Reservacion_id ? `<span>Reserva</span><b>${pcEsc(r.Huesped_nombre || '')} · ${pcEsc(r.Reservacion_id)}</b>` : ''}
         <span>Encontró</span><b>${pcEsc(x.rep || '—')}</b>${x.est === 'Entregado' ? `<span>Entregado</span><b>${x.fEnt ? aseoDiaTxt_(x.fEnt) : '—'}${x.entA ? ' · ' + pcEsc(x.entA) : ''}</b>` : ''}<span>Folio</span><b>${pcEsc(x.id)}</b></div>
       ${x.fotos.length ? `<div class="lab">Fotos · ${x.fotos.length}</div><div class="ic-fotos" data-u="${pcEsc(JSON.stringify(x.fotos.map(u => icFoto_(u, 1600))))}">${x.fotos.map((u, i) => `<a href="#" onclick="event.preventDefault();fotoVer_(JSON.parse(this.parentNode.dataset.u),${i})" style="cursor:zoom-in"><img src="${pcEsc(icFoto_(u, 300))}" alt="" loading="lazy"></a>`).join('')}</div>` : ''}
@@ -69267,10 +69281,9 @@ window.obImprimir_ = function (id) {
 // «Objeto olvidado» desde «Nuevo reporte» (Chats bot / Gestión de reservas): mismo formulario, con alojamiento, fecha y reserva ya puestos.
 window.obNuevoDesdeReserva_ = function (propRaw, deptRaw, arrIso, depIso) {
   const hid = rtHid_({ Propiedad: propRaw, '# Departamento': String(deptRaw || '').replace(/^#/, '') });
-  const a = String(arrIso || '').slice(0, 10), d = String(depIso || '').slice(0, 10), hoy = aseoHoyIso_();
-  const fecha = a && d && hoy >= a && hoy <= d ? hoy : (d || hoy);
+  const a = String(arrIso || '').slice(0, 10), d = String(depIso || '').slice(0, 10);
   const b = hid && typeof pcMovBookings_ === 'function' ? pcMovBookings_().find(x => String(x.HouseId) === String(hid) && _pagosDateIso(x.DateArrival) === a && _pagosDateIso(x.DateDeparture) === d) : null;
-  obForm_(null, { hid, fecha, reserva: b ? String(b.Id) : '', huesped: b ? (b.GuestName || '') : '' });
+  obForm_(null, { hid, arr: a, reserva: b ? String(b.Id) : '', huesped: b ? (b.GuestName || '') : '' });
   if (!OBJ_STATE.list || !OBJ_STATE.list.length) obCargar_().catch(() => {});
 };
 // ── Formulario «Nuevo objeto» / «Editar objeto» ──
@@ -69278,8 +69291,8 @@ window.obForm_ = function (id, pre) {
   const r = id ? (OBJ_STATE.list || []).find(x => String(x.ID) === String(id)) : null, x = r ? obRow_(r) : null, P = pre || {};
   const yo = (typeof currentUser !== 'undefined' && currentUser) || '';
   OB.dr = { id: id ? String(id) : '' };
-  OB.f = x ? { id: x.id, hid: x.hid, alojTxt: x.hid ? '' : x.aloj, fecha: x.fecha || aseoHoyIso_(), cat: x.cat, catO: String(r.Categoria_otro || ''), lug: x.lug, lugO: String(r.Lugar_otro || ''), rep: x.rep, desc: x.desc, com: x.com, est: x.est, entA: x.entA, fEnt: x.fEnt, reserva: String(r.Reservacion_id || ''), huesped: String(r.Huesped_nombre || ''), keep: x.fotos.slice(), nuevas: [] }
-    : { id: '', hid: P.hid || '', alojTxt: '', fecha: P.fecha || aseoHoyIso_(), cat: '', catO: '', lug: '', lugO: '', rep: yo, desc: '', com: '', est: 'Resguardado', entA: '', fEnt: '', reserva: P.reserva || '', huesped: P.huesped || '', keep: [], nuevas: [] };
+  OB.f = x ? { id: x.id, hid: x.hid, alojTxt: x.hid ? '' : x.aloj, fecha: x.fEnc, fRep: x.fRep || aseoHoyIso_(), arr: String(r.Fecha_estancia || ''), cat: x.cat, catO: String(r.Categoria_otro || ''), lug: x.lug, lugO: String(r.Lugar_otro || ''), rep: x.rep, desc: x.desc, com: x.com, est: x.est, entA: x.entA, fEnt: x.fEnt, reserva: String(r.Reservacion_id || ''), huesped: String(r.Huesped_nombre || ''), keep: x.fotos.slice(), nuevas: [] }
+    : { id: '', hid: P.hid || '', alojTxt: '', fecha: P.fecha || '', fRep: aseoHoyIso_(), arr: P.arr || '', cat: '', catO: '', lug: '', lugO: '', rep: yo, desc: '', com: '', est: 'Resguardado', entA: '', fEnt: '', reserva: P.reserva || '', huesped: P.huesped || '', keep: [], nuevas: [] };
   obFormPintar_();
 };
 // Reservas confirmadas del alojamiento que estaban hospedadas (o salían) en la fecha en que se encontró.
@@ -69301,13 +69314,15 @@ function obFormPintar_() {
   const top = dr.querySelector('.ad-db') ? dr.querySelector('.ad-db').scrollTop : 0;
   const alojs = atAlojs_().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
   const nombres = (typeof pzNombres_ === 'function' ? pzNombres_() : []).slice(); if (F.rep && !nombres.includes(F.rep)) nombres.unshift(F.rep);
-  const RS = obReservas_(F.hid, F.fecha), ya = F.reserva && !RS.some(b => String(b.Id) === String(F.reserva));
+  const RS = obReservas_(F.hid, F.fecha || F.fRep), ya = F.reserva && !RS.some(b => String(b.Id) === String(F.reserva));
   const chips = (L, cur, fn, col) => L.map(v => `<button type="button" class="ic-mot ${cur === v ? 'on' : ''}" style="--c:${col(v)}" data-v="${pcEsc(v)}" onclick="${fn}(this.dataset.v)">${pcEsc(v)}</button>`).join('');
-  dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">${F.id ? 'Editar objeto' : 'Nuevo objeto olvidado'}</b><button type="button" class="ad-close" onclick="${F.id ? 'obFormCancelar_()' : 'obCerrar_()'}">✕</button></div>${F.id ? `<div class="ob-tag">🧳 Objeto olvidado</div><div class="ad-sub">${pcEsc(F.id)}</div>` : ''}</div>
+  dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">${F.id ? 'Editar objeto' : 'Reportar objeto olvidado'}</b><button type="button" class="ad-close" onclick="${F.id ? 'obFormCancelar_()' : 'obCerrar_()'}">✕</button></div>${F.id ? `<div class="ob-tag">🧳 Objeto olvidado</div><div class="ad-sub">${pcEsc(F.id)}</div>` : ''}</div>
     <div class="ad-db at-f">
       <label class="at-l">Alojamiento <i>*</i></label>
       <select class="at-in" onchange="OB.f.hid=this.value;OB.f.reserva='';OB.f.huesped='';obFormPintar_()"><option value="">${F.alojTxt ? pcEsc(F.alojTxt) : 'Selecciona un alojamiento'}</option>${alojs.map(a => `<option value="${pcEsc(a.houseId)}" ${a.houseId === String(F.hid) ? 'selected' : ''}>${pcEsc((a.corto ? a.corto.toUpperCase() + ' · ' : '') + a.nombre)}</option>`).join('')}</select>
-      <div class="at-row"><span class="at-k">Encontrado</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" onchange="OB.f.fecha=this.value;OB.f.reserva='';OB.f.huesped='';obFormPintar_()"></div>
+      <div class="at-row"><span class="at-k" style="width:118px">Fecha de reporte</span><input type="date" class="at-in" value="${pcEsc(F.fRep)}" onchange="OB.f.fRep=this.value"></div>
+      <div class="at-row"><span class="at-k" style="width:118px">Fecha encontrado</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" onchange="OB.f.fecha=this.value;OB.f.reserva='';OB.f.huesped='';obFormPintar_()"></div>
+      ${F.fecha ? '' : '<div class="at-hint">Fecha encontrado: por definir.</div>'}
       <label class="at-l">Reserva</label>
       ${F.hid ? `<select class="at-in" onchange="obFormRes_(this.value)"><option value="">Sin reserva enlazada</option>${ya ? `<option value="${pcEsc(F.reserva)}" selected>${pcEsc(F.huesped || 'Reserva ' + F.reserva)}</option>` : ''}${RS.map(b => `<option value="${pcEsc(String(b.Id))}" ${String(b.Id) === String(F.reserva) ? 'selected' : ''}>${pcEsc(b.GuestName || 'Sin nombre')} · ${pcFmtDiaC_(_pagosDateIso(b.DateArrival))} → ${pcFmtDiaC_(_pagosDateIso(b.DateDeparture))}</option>`).join('')}</select>
         <div class="at-hint">${RS.length || ya ? 'Opcional: huésped hospedado en ese alojamiento en la fecha elegida.' : 'Ninguna reserva en ese alojamiento en esa fecha.'}</div>` : '<div class="at-hint">Elige primero el alojamiento.</div>'}
@@ -69334,7 +69349,7 @@ function obFormPintar_() {
   const b = dr.querySelector('.ad-db'); if (b) b.scrollTop = top;
 }
 window.obFormLug_ = function (v) { OB.f.lug = OB.f.lug === v ? '' : v; obFormPintar_(); };
-window.obFormRes_ = function (v) { const F = OB.f; F.reserva = v; const b = v ? pcMovBookings_().find(x => String(x.Id) === String(v)) : null; F.huesped = b ? (b.GuestName || '') : (v ? F.huesped : ''); };
+window.obFormRes_ = function (v) { const F = OB.f; F.reserva = v; const b = v ? pcMovBookings_().find(x => String(x.Id) === String(v)) : null; F.huesped = b ? (b.GuestName || '') : (v ? F.huesped : ''); F.arr = b ? _pagosDateIso(b.DateArrival) : (v ? F.arr : ''); };
 window.obFormCancelar_ = function () { const id = OB.f && OB.f.id; OB.f = null; if (id) obAbrir_(id); else obCerrar_(); };
 window.obFormFotos_ = function (inp) {
   const files = [...(inp.files || [])]; inp.value = ''; if (!files.length) return;
@@ -69353,7 +69368,7 @@ window.obGuardar_ = async function () {
   const datos = { fecha_encontrado: F.fecha, propiedad, depto, alojamiento: propiedad && depto ? `${propiedad} - #${depto}` : (propiedad || (a && a.nombre) || F.alojTxt || ''),
     reportante: F.rep, categoria: F.cat, categoria_otro: F.cat === 'Otro' ? String(F.catO || '').trim() : '', descripcion: String(F.desc || '').trim(),
     lugar_resguardo: F.lug, lugar_otro: F.lug === 'Otro' ? String(F.lugO || '').trim() : '', comentarios: String(F.com || '').trim(), estatus: F.est,
-    fecha_entregado: ent ? (F.fEnt || aseoHoyIso_()) : (F.est === 'Desechado' ? F.fEnt : ''), entregado_a: ent ? String(F.entA || '').trim() : '', reserva: F.reserva || '', huesped: F.reserva ? (F.huesped || '') : '' };
+    fecha_entregado: ent ? (F.fEnt || aseoHoyIso_()) : (F.est === 'Desechado' ? F.fEnt : ''), entregado_a: ent ? String(F.entA || '').trim() : '', reserva: F.reserva || '', huesped: F.reserva ? (F.huesped || '') : '', fecha_reporte: F.fRep || aseoHoyIso_(), fecha_estancia: F.reserva ? (F.arr || '') : '' };
   const btn = document.getElementById('ob-ok'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando…'; }
   const user = (typeof currentUser !== 'undefined' && currentUser) || '';
   try {
@@ -69361,14 +69376,14 @@ window.obGuardar_ = async function () {
     if (F.id) {
       const out = await fetch(`${BACKEND}/update-objeto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: F.id, user, fields: datos, fotos: F.nuevas, keepUrls: F.keep }) }).then(r => r.json());
       if (!out.ok) throw new Error(out.error || 'Error');
-      const C = { fecha_encontrado: 'Fecha_encontrado', propiedad: 'Propiedad', depto: '# Departamento', alojamiento: 'Alojamiento', reportante: 'Reportante', categoria: 'Categoria', categoria_otro: 'Categoria_otro', descripcion: 'Descripcion', lugar_resguardo: 'Lugar_resguardo', lugar_otro: 'Lugar_otro', comentarios: 'Comentarios', estatus: 'Estatus', fecha_entregado: 'Fecha_entregado', entregado_a: 'Entregado_a', reserva: 'Reservacion_id', huesped: 'Huesped_nombre' };
+      const C = { fecha_encontrado: 'Fecha_encontrado', propiedad: 'Propiedad', depto: '# Departamento', alojamiento: 'Alojamiento', reportante: 'Reportante', categoria: 'Categoria', categoria_otro: 'Categoria_otro', descripcion: 'Descripcion', lugar_resguardo: 'Lugar_resguardo', lugar_otro: 'Lugar_otro', comentarios: 'Comentarios', estatus: 'Estatus', fecha_entregado: 'Fecha_entregado', entregado_a: 'Entregado_a', reserva: 'Reservacion_id', huesped: 'Huesped_nombre', fecha_reporte: 'Fecha_reporte', fecha_estancia: 'Fecha_estancia' };
       if (old) { Object.keys(C).forEach(k => { old[C[k]] = datos[k]; }); if (typeof out.fotos_urls === 'string') { old.Fotos_URLs = out.fotos_urls; old.Fotos_count = String(out.fotos_count); } old.UpdatedAt = new Date().toISOString(); }
     } else {
       const out = await fetch(`${BACKEND}/save-objeto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: datos, fotos: F.nuevas, user }) }).then(r => r.json());
       if (!out.ok) throw new Error(out.error || 'Error');
       id = String(out.id || '');
       OBJ_STATE.list = OBJ_STATE.list || [];
-      OBJ_STATE.list.unshift(out.row || { ID: id, Timestamp: new Date().toISOString(), Fecha_encontrado: datos.fecha_encontrado, Propiedad: propiedad, '# Departamento': depto, Alojamiento: datos.alojamiento, Reportante: datos.reportante, Categoria: datos.categoria, Categoria_otro: datos.categoria_otro, Descripcion: datos.descripcion, Lugar_resguardo: datos.lugar_resguardo, Lugar_otro: datos.lugar_otro, Comentarios: datos.comentarios, Estatus: datos.estatus, Fecha_entregado: datos.fecha_entregado, Entregado_a: datos.entregado_a, Reservacion_id: datos.reserva, Huesped_nombre: datos.huesped, Fotos_URLs: '' });
+      OBJ_STATE.list.unshift(out.row || { ID: id, Timestamp: new Date().toISOString(), Fecha_encontrado: datos.fecha_encontrado, Propiedad: propiedad, '# Departamento': depto, Alojamiento: datos.alojamiento, Reportante: datos.reportante, Categoria: datos.categoria, Categoria_otro: datos.categoria_otro, Descripcion: datos.descripcion, Lugar_resguardo: datos.lugar_resguardo, Lugar_otro: datos.lugar_otro, Comentarios: datos.comentarios, Estatus: datos.estatus, Fecha_entregado: datos.fecha_entregado, Entregado_a: datos.entregado_a, Reservacion_id: datos.reserva, Huesped_nombre: datos.huesped, Fecha_reporte: datos.fecha_reporte, Fecha_estancia: datos.fecha_estancia, Fotos_URLs: '' });
     }
     OB.f = null; obRender_();
     if (id) obAbrir_(id); else obCerrar_();
