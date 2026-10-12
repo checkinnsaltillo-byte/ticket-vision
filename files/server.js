@@ -11180,7 +11180,7 @@ async function _abnBandejaCargar() {
         try {
           const h = await _abnHilo(String(b.id), b.thread_uid), u = h.mensajes[h.mensajes.length - 1] || null, a = cat.find(c => c.hid === String(b.property_id));
           hilos.push({ bid: String(b.id), thread: b.thread_uid, huesped: (b.guest && b.guest.name) || h.huesped, fuente: String(b.source || "").replace(/Integration$/, ""), estado: b.status,
-            llegada: b.arrival, salida: b.departure, hid: String(b.property_id || ""), aloj: a ? (a.code ? a.code.toUpperCase() : a.nombre) : "", n: h.mensajes.length, ult: u ? { de: u.de, texto: u.texto.slice(0, 160), fecha: u.fecha } : null });
+            llegada: b.arrival, salida: b.departure, hid: String(b.property_id || ""), tel: String((b.guest && b.guest.phone) || "").replace(/\D/g, "").slice(-10), aloj: a ? (a.code ? a.code.toUpperCase() : a.nombre) : "", n: h.mensajes.length, ult: u ? { de: u.de, texto: u.texto.slice(0, 160), fecha: u.fecha } : null });
         } catch (e) { console.warn("[airbnb] hilo", b.id, e.message); }
       }));
     }

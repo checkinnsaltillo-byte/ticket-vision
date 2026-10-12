@@ -50942,8 +50942,25 @@ const _BOTC_LOGO = {
   whatsapp: '<svg viewBox="0 0 48 48" width="100%" height="100%" aria-label="WhatsApp"><circle cx="24" cy="24" r="24" fill="#29a71a"/><path d="M24 10.6a13.4 13.4 0 0 0-11.5 20.3l-1.9 6.7 6.9-1.8A13.4 13.4 0 1 0 24 10.6z" fill="none" stroke="#fff" stroke-width="2.7" stroke-linejoin="round"/><path d="M19.3 17.2c.4-.4 1.1-.4 1.4.1l1.7 2.3c.3.4.2 1-.2 1.3l-.9.7c.8 1.8 2.2 3.2 4 4l.7-.9c.3-.4.9-.5 1.3-.2l2.3 1.7c.4.3.5 1 .1 1.4l-1.1 1.1c-.6.6-1.5.8-2.3.5-3.6-1.4-6.4-4.2-7.7-7.8-.3-.8-.1-1.7.5-2.3z" fill="#fff"/></svg>',
   airbnb: '<svg viewBox="0 0 48 48" width="100%" height="100%" aria-label="Airbnb"><circle cx="24" cy="24" r="24" fill="#f44336"/><path d="M24 12.6c-1.3 0-2.2.8-3 2.3l-6.3 12.7c-.6 1.1-.9 1.9-.9 2.8 0 2.4 1.9 4.3 4.3 4.3 1.9 0 3.5-1.2 5.9-3.8 2.4 2.6 4 3.8 5.9 3.8 2.4 0 4.3-1.9 4.3-4.3 0-.9-.3-1.7-.9-2.8L27 14.9c-.8-1.5-1.7-2.3-3-2.3zm0 19.1c-1.9-2.2-3.2-4.1-3.2-5.6 0-1.8 1.4-3.2 3.2-3.2s3.2 1.4 3.2 3.2c0 1.5-1.3 3.4-3.2 5.6z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>',
 };
-const _botcCanalLogo_ = c => { const k = /airbnb/i.test(String((c && (c.canal || c.source)) || '')) ? 'airbnb' : 'whatsapp';
+const _botcCanalLogo_ = (c, bk) => { const k = /airbnb/i.test(String((c && (c.canal || c.source)) || '')) ? 'airbnb' : 'whatsapp';
+  if (c && _botcDosCanales_(c, bk)) return `<span class="wa-av wa-logo2" title="Este huésped tiene conversación por WhatsApp y por Airbnb (Lodgify)"><i class="w">${_BOTC_LOGO.whatsapp}</i><i class="a">${_BOTC_LOGO.airbnb}</i></span>`;
   return `<span class="wa-av wa-logo" title="${k === 'airbnb' ? 'Airbnb (Lodgify)' : 'WhatsApp'}">${_BOTC_LOGO[k]}</span>`; };
+// ¿El huésped tiene conversación por los dos canales? (mismo teléfono, o la reserva del chat de WhatsApp es la del hilo de Airbnb)
+const _botcP10_ = v => String(v || '').replace(/\D/g, '').slice(-10);
+function _botcCanalIx_() {
+  const t = Date.now(); if (BOTC_STATE.__cix && t - BOTC_STATE.__cix.t < 2000) return BOTC_STATE.__cix;
+  const abnPh = new Set(), abnBid = new Set(), wa = new Set();
+  (BOTC_STATE.abn || []).forEach(h => { abnBid.add(String(h.bid)); const p = _botcP10_(h.tel || _botcAbnBk_('abn' + h.bid).GuestPhone); if (p.length === 10) abnPh.add(p); });
+  (BOTC_STATE.conversations || []).forEach(c => { if (c.canal !== 'airbnb') { const p = _botcP10_(c.phone); if (p.length === 10) wa.add(p); } });
+  return (BOTC_STATE.__cix = { t, abnPh, abnBid, wa, waBid: BOTC_STATE.__waBids || (BOTC_STATE.__waBids = new Set()) });
+}
+function _botcDosCanales_(c, bk) {
+  const ix = _botcCanalIx_();
+  if (c.canal === 'airbnb') { const h = c.abn || {}, bid = String(h.bid || String(c.phone).replace(/^abn/, '')), p = _botcP10_(h.tel || _botcAbnBk_(c.phone).GuestPhone); return (p.length === 10 && ix.wa.has(p)) || ix.waBid.has(bid); }
+  const ids = bk ? [bk.LodgifyId, bk.Id].map(x => String(x || '')).filter(x => /^\d+$/.test(x)) : [];
+  ids.forEach(x => ix.waBid.add(x));
+  return ix.abnPh.has(_botcP10_(c.phone)) || ids.some(x => ix.abnBid.has(x));
+}
 // ═══ Conversaciones de Airbnb (vía Lodgify) dentro de «Chats bot» ═════════════
 // Vienen de /airbnb/bandeja (mismo origen que el módulo «Mensajes Airbnb»). Cada una se identifica como
 // «abn<idReserva>» en lugar de un teléfono; se pintan con el mismo diseño y el logo de Airbnb.
@@ -50997,7 +51014,7 @@ function _botcRowHtml_(c, bk, selected) {
   } else { const pg = _BOTC_PROG[_botcClassifyConv_(c, null)]; if (pg) chips.push(`<span class="wa-chip" style="--c:${pg[1]}">${pg[0]}</span>`); }
   const risk = typeof _hgNotesRiskCount_ === 'function' ? _hgNotesRiskCount_(phone) : 0;
   return `<div class="botc-conv-item wa-row ${selected ? 'sel' : ''} ${pend ? 'botc-pending' : ''}" data-botc-phone="${_botcEsc(phone)}" onclick="botcOpenChat('${_botcEsc(phone)}')">
-    ${_botcCanalLogo_(c)}
+    ${_botcCanalLogo_(c, bk)}
     <div class="wa-body">
       <div class="wa-l1"><b>${_botcEsc(name)}</b>${risk ? `<span title="${risk} nota(s) de riesgo" onclick="event.stopPropagation();hgNoteQuickRisk_('${_botcEsc(phone)}')">🚩</span>` : ''}<span class="wa-time ${pend ? 'on' : ''}">${_botcWaHora_(c.last_msg_at)}</span><button type="button" class="wa-modo sm" style="--c:${md.c}" onclick="event.stopPropagation();botcOpenModeDropdown_(event,'${_botcEsc(phone)}')" title="${md.t} — cambiar modo">${md.i}</button></div>
       ${String(c.razon_social || '').trim() ? `<div class="wa-rs" title="Razón social">🧾 ${_botcEsc(String(c.razon_social).trim())}</div>` : ''}
@@ -51085,6 +51102,10 @@ function _botcWaCss_() {
   .wa-logo{background:none!important;padding:0;overflow:hidden}
   .wa-row .wa-logo{width:25px;height:25px;margin-top:2px} /* logo del canal 40% más chico (42 → 25 px) */
   .wa-row:has(.wa-logo){gap:8px}.wa-row:has(.wa-logo)::after{left:45px}
+  .wa-logo2{position:relative;background:none!important;overflow:visible}.wa-row .wa-logo2{width:31px;height:31px;margin:0 -6px 0 -2px}
+  .wa-logo2 i{position:absolute;width:21px;height:21px;border-radius:50%;box-shadow:0 0 0 2px #fff;display:block;line-height:0}
+  .wa-logo2 i.w{left:0;top:0;z-index:1}.wa-logo2 i.a{right:0;bottom:0;z-index:2}
+  .wa-row:has(.wa-logo2){gap:8px}
   .fx-res-barra{flex:none;align-self:stretch;width:4px;border-radius:0 4px 4px 0;background:var(--c)}
   .fx-res-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .fx-res-tx b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fx-res-tx small{font-size:12px;color:var(--wa-mu)}
