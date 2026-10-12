@@ -50943,7 +50943,7 @@ const _BOTC_LOGO = {
   airbnb: '<svg viewBox="0 0 48 48" width="100%" height="100%" aria-label="Airbnb"><circle cx="24" cy="24" r="24" fill="#f44336"/><path d="M24 12.6c-1.3 0-2.2.8-3 2.3l-6.3 12.7c-.6 1.1-.9 1.9-.9 2.8 0 2.4 1.9 4.3 4.3 4.3 1.9 0 3.5-1.2 5.9-3.8 2.4 2.6 4 3.8 5.9 3.8 2.4 0 4.3-1.9 4.3-4.3 0-.9-.3-1.7-.9-2.8L27 14.9c-.8-1.5-1.7-2.3-3-2.3zm0 19.1c-1.9-2.2-3.2-4.1-3.2-5.6 0-1.8 1.4-3.2 3.2-3.2s3.2 1.4 3.2 3.2c0 1.5-1.3 3.4-3.2 5.6z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>',
 };
 const _botcCanalLogo_ = (c, bk) => { const k = /airbnb/i.test(String((c && (c.canal || c.source)) || '')) ? 'airbnb' : 'whatsapp';
-  if (c && _botcDosCanales_(c, bk)) return `<span class="wa-av wa-logo2" title="Este huésped tiene conversación por WhatsApp y por Airbnb (Lodgify)"><i class="w">${_BOTC_LOGO.whatsapp}</i><i class="a">${_BOTC_LOGO.airbnb}</i></span>`;
+  if (c && _botcDosCanales_(c, bk)) return `<span class="wa-av wa-logo2" title="WhatsApp y Airbnb — toca los logos para abrir la conversación del otro canal" onclick="event.stopPropagation();botcOtroCanal_('${_botcEsc(String(c.phone))}')"><i class="w">${_BOTC_LOGO.whatsapp}</i><i class="a">${_BOTC_LOGO.airbnb}</i></span>`;
   return `<span class="wa-av wa-logo" title="${k === 'airbnb' ? 'Airbnb (Lodgify)' : 'WhatsApp'}">${_BOTC_LOGO[k]}</span>`; };
 // ¿El huésped tiene conversación por los dos canales? (mismo teléfono, o la reserva del chat de WhatsApp es la del hilo de Airbnb)
 const _botcP10_ = v => String(v || '').replace(/\D/g, '').slice(-10);
@@ -50954,11 +50954,36 @@ function _botcCanalIx_() {
   (BOTC_STATE.conversations || []).forEach(c => { if (c.canal !== 'airbnb') { const p = _botcP10_(c.phone); if (p.length === 10) wa.add(p); } });
   return (BOTC_STATE.__cix = { t, abnPh, abnBid, wa, waBid: BOTC_STATE.__waBids || (BOTC_STATE.__waBids = new Set()) });
 }
+// Conversación del otro canal de la misma persona ('' si no tiene).
+function _botcOtroDe_(phone) {
+  phone = String(phone || '');
+  const wa = (BOTC_STATE.conversations || []).filter(c => c.canal !== 'airbnb');
+  if (_botcEsAbn_(phone)) {
+    const bid = phone.slice(3), h = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid) || {}, p = _botcP10_(h.tel || _botcAbnBk_(phone).GuestPhone);
+    let c = p.length === 10 ? wa.find(x => _botcP10_(x.phone) === p) : null;
+    if (!c) { const ph = (BOTC_STATE.__waBidPh || {})[bid]; if (ph) c = wa.find(x => String(x.phone) === ph); }
+    return c ? String(c.phone) : '';
+  }
+  const p = _botcP10_(phone), H = BOTC_STATE.abn || [];
+  let L = p.length === 10 ? H.filter(h => _botcP10_(h.tel) === p) : [];
+  if (!L.length) { let ids = []; try { ids = (_botcGetAllBookingsForPhone(phone) || []).flatMap(b => [b.LodgifyId, b.Id]).map(x => String(x || '')).filter(Boolean); } catch (_) {} L = H.filter(h => ids.includes(String(h.bid))); }
+  L.sort((a, b) => String((b.ult || {}).fecha || '').localeCompare(String((a.ult || {}).fecha || '')));
+  return L[0] ? 'abn' + L[0].bid : '';
+}
+window.botcOtroCanal_ = function (phone) { const o = _botcOtroDe_(phone); if (o) botcOpenChat(o); };
+// Selector WhatsApp | Airbnb en el encabezado del chat (solo si la persona tiene ambos canales).
+function _botcSwitchHtml_(phone) {
+  const otro = _botcOtroDe_(phone); if (!otro) return '';
+  const esAbn = _botcEsAbn_(phone);
+  const sinLeer = _botcEsAbn_(otro) ? !!((BOTC_STATE.abn || []).find(h => 'abn' + h.bid === otro) || {}).noLeido : (c => !!(c && _botcIsPending_(c)))((BOTC_STATE.conversations || []).find(x => String(x.phone) === otro));
+  const b = (k, lbl, act, dest) => `<button type="button" class="${k} ${act ? 'on' : ''}" ${act ? '' : `onclick="event.stopPropagation();botcOpenChat('${_botcEsc(dest)}')"`} title="${act ? 'Conversación abierta: ' + lbl : 'Cambiar a la conversación de ' + lbl}"><i>${_BOTC_LOGO[k]}</i><span>${lbl}</span>${!act && sinLeer ? '<b title="Mensajes sin leer"></b>' : ''}</button>`;
+  return `<div class="wa-canal-sw">${b('whatsapp', 'WhatsApp', !esAbn, otro)}${b('airbnb', 'Airbnb', esAbn, otro)}</div>`;
+}
 function _botcDosCanales_(c, bk) {
   const ix = _botcCanalIx_();
   if (c.canal === 'airbnb') { const h = c.abn || {}, bid = String(h.bid || String(c.phone).replace(/^abn/, '')), p = _botcP10_(h.tel || _botcAbnBk_(c.phone).GuestPhone); return (p.length === 10 && ix.wa.has(p)) || ix.waBid.has(bid); }
   const ids = bk ? [bk.LodgifyId, bk.Id].map(x => String(x || '')).filter(x => /^\d+$/.test(x)) : [];
-  ids.forEach(x => ix.waBid.add(x));
+  ids.forEach(x => { ix.waBid.add(x); (BOTC_STATE.__waBidPh = BOTC_STATE.__waBidPh || {})[x] = String(c.phone); });
   return ix.abnPh.has(_botcP10_(c.phone)) || ids.some(x => ix.abnBid.has(x));
 }
 // ═══ Conversaciones de Airbnb (vía Lodgify) dentro de «Chats bot» ═════════════
@@ -51105,7 +51130,17 @@ function _botcWaCss_() {
   .wa-logo2{position:relative;background:none!important;overflow:visible}.wa-row .wa-logo2{width:31px;height:31px;margin:0 -6px 0 -2px}
   .wa-logo2 i{position:absolute;width:21px;height:21px;border-radius:50%;box-shadow:0 0 0 2px #fff;display:block;line-height:0}
   .wa-logo2 i.w{left:0;top:0;z-index:1}.wa-logo2 i.a{right:0;bottom:0;z-index:2}
-  .wa-row:has(.wa-logo2){gap:8px}
+  .wa-row:has(.wa-logo2){gap:8px}.wa-logo2{cursor:pointer}.wa-logo2:hover i{box-shadow:0 0 0 2px #fff,0 0 0 3.5px #cbd5e1}
+  .wa-canal-sw{display:inline-flex;flex:none;align-self:center;background:#fff;border:1px solid var(--wa-ln);border-radius:999px;padding:2px;gap:2px}
+  .wa-canal-sw button{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px 0 5px;border-radius:999px;font-size:12px;font-weight:600;color:#667781;white-space:nowrap}
+  .wa-canal-sw button:hover{background:#f5f6f6}
+  .wa-canal-sw i{width:18px;height:18px;display:block;line-height:0;filter:grayscale(1);opacity:.5}
+  .wa-canal-sw button.on{cursor:default}.wa-canal-sw button.on i{filter:none;opacity:1}
+  .wa-canal-sw button.whatsapp.on{background:#e7f8ef;color:#0b7a3e}.wa-canal-sw button.airbnb.on{background:#fdecec;color:#c62828}
+  .wa-canal-sw b{position:absolute;top:2px;right:4px;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 2px #fff}
+  #module-bot-chats #botc-main{container-type:inline-size}
+  @container (max-width:620px){.wa-canal-sw span{display:none}.wa-canal-sw button{padding:0 5px}} /* conversación angosta: solo logos */
+  @media (max-width:640px){.wa-canal-sw span{display:none}.wa-canal-sw button{padding:0 5px}}
   .fx-res-barra{flex:none;align-self:stretch;width:4px;border-radius:0 4px 4px 0;background:var(--c)}
   .fx-res-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .fx-res-tx b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fx-res-tx small{font-size:12px;color:var(--wa-mu)}
@@ -51872,6 +51907,7 @@ function _botcRenderMain(phone) {
         <button id="botc-back-to-list" type="button" onclick="botcBackToList_()" title="Regresar a la lista"
           style="align-items:center;gap:4px;padding:6px 8px;background:transparent;color:#54656f;border:0;border-radius:6px;cursor:pointer;font-size:16px;font-weight:800;flex:none">←</button>
         <div style="min-width:0;flex:1;overflow:hidden">${nameHeader}</div>
+        ${_botcSwitchHtml_(phone)}
       </div>
       <div class="botc-chat-header-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;margin-left:auto;align-self:flex-start">
         ${payHeaderHtml}
@@ -52989,6 +53025,7 @@ window._botcAbrirAbn_ = async function (ph, opts) {
           <span class="wa-av wa-logo" style="width:38px;height:38px">${_BOTC_LOGO.airbnb}</span>
           <div style="min-width:0;flex:1;overflow:hidden"><div class="botc-chat-name" style="font-size:15px;font-weight:500;color:var(--wa-tx)">${_botcEsc(nombre)}</div>
             <div style="font-size:12px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${[_botcAlojCorto_(bk), a && d ? `${_waFmtShortDate(a)} → ${_waFmtShortDate(d)}` : '', 'Airbnb · reserva ' + bid].filter(Boolean).map(_botcEsc).join(' · ')}</div></div>
+          ${_botcSwitchHtml_(ph)}
         </div>
         <div class="botc-chat-header-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;margin-left:auto;align-self:flex-start">${(() => { const md = _BOTC_MODO[h.control || 'human'] || _BOTC_MODO.human;
           return `<button type="button" id="botc-ctrl-cycle-btn" class="wa-modo" onclick="botcCycleControl_('${ph}')" title="${md.t} — toca para cambiar (Automático → Supervisado → Manual)" style="--c:${md.c}">${md.i}</button>`; })()}${menu}</div>
