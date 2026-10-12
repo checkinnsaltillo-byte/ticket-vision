@@ -18527,7 +18527,7 @@ function lgBuildObjSectionForBooking(arg) {
 }
 
 /** Card unificada "+ Generar nuevo reporte" que abre selector de tipo:
- *  1) Incidencia · 2) Objeto perdido · 3) Reporte técnico (próximamente).
+ *  1) Incidencia · 2) Objeto olvidado · 3) Reporte técnico (próximamente).
  *  Reemplaza los 2 botones sueltos que había en Inc/Obj sections. */
 function lgBuildReportsSectionForBooking(arg) {
   if (typeof arg === 'string') {
@@ -18600,7 +18600,7 @@ window.lgOpenReportPicker = function(propRaw, deptRaw, arrIso, depIso) {
                 style="text-align:left;padding:16px 18px;border:1.5px solid #a7f3d0;background:#fff;border-radius:12px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:transform .1s,box-shadow .1s">
           <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#d1fae5,#a7f3d0);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🎒</div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:800;color:#0f172a">Objeto perdido</div>
+            <div style="font-size:14px;font-weight:800;color:#0f172a">Objeto olvidado</div>
             <div style="font-size:12px;color:#64748b;margin-top:2px">Registrar un objeto encontrado / olvidado por el huésped.</div>
           </div>
           <div style="color:#059669;font-weight:800">▸</div>
@@ -18614,8 +18614,8 @@ window.lgPickReport = function(kind, propRaw, deptRaw, arrIso, depIso) {
   document.getElementById('lg-report-picker')?.remove();
   if (kind === 'inc' && typeof lgOpenIncCaptureFor === 'function') {
     lgOpenIncCaptureFor(propRaw, deptRaw, arrIso);
-  } else if (kind === 'obj' && typeof lgOpenObjCaptureFor === 'function') {
-    lgOpenObjCaptureFor(propRaw, deptRaw, depIso);
+  } else if (kind === 'obj' && typeof obNuevoDesdeReserva_ === 'function') {
+    obNuevoDesdeReserva_(propRaw, deptRaw, arrIso, depIso); // ventana lateral nueva (Check-list › Objetos olvidados)
   } else if (kind === 'rt' && typeof rtOpenCaptureFor === 'function') {
     rtOpenCaptureFor(propRaw, deptRaw, arrIso, depIso);
   }
@@ -44282,7 +44282,7 @@ function _waRenderReportTimelineItem_(it) {
   }
   const desc = String(r['Descripcion'] || '').trim();
   if (_waEnFicha_()) { // «Ficha del huésped» (Chats bot): misma card que el Check-list — renglones, texto en vez de chips, franja de color
-    const rid = String(r['ID'] || ''), sent = _waReportHasSentMsg_(kind, rid), tipoTx = { inc: 'Incidencia', obj: 'Objeto perdido', rt: 'Reporte técnico' }[kind] || cfg.chipLabel;
+    const rid = String(r['ID'] || ''), sent = _waReportHasSentMsg_(kind, rid), tipoTx = { inc: 'Incidencia', obj: 'Objeto olvidado', rt: 'Reporte técnico' }[kind] || cfg.chipLabel;
     return `<div class="fx-c tipo fx-rep" style="--tc:${cfg.headerBg}" ${cfg.dataAttr} role="button" tabindex="0">
       <div class="r1"><span class="nm">${cfg.checkIcon} ${_botcEsc(cfg.titulo)}</span>${cfg.titleAccent}${kind === 'obj' ? `<span class="mv" style="color:${cfg.estadoFg}">${_botcEsc(cfg.estadoLabel)}</span>` : ''}</div>
       <div class="r2"><span>${_botcEsc(tipoTx)}</span><span class="sep"></span>${timelineText}${isEdited && tsCreadoRaw ? `<span class="sep"></span><span>creado ${_botcEsc(_waFmtDateTimeEs(tsCreadoRaw.replace(' ', 'T')))}</span>` : ''}${sent ? '<span class="sep"></span><span class="ok">✓ Mensaje enviado</span>' : ''}</div>
@@ -45628,7 +45628,7 @@ function _waRenderReportSentCard_(it) {
       <div style="padding:8px 10px;background:#f8fafc;border-radius:8px;font-size:12px;white-space:pre-wrap;line-height:1.4;color:#0f172a">${esc(body)}</div>
     </div>` : '';
   if (_waEnFicha_()) { const lab = estadoSlug ? ({ nuevo: 'Nuevo', en_proceso: 'En proceso', resuelto: 'Resuelto', cancelado: 'Cancelado', entregado: 'Entregado', pendiente: 'Pendiente' }[estadoSlug] || estadoSlug) : 'Mensaje enviado';
-    const lc = estadoSlug && kind !== 'obj' ? incEstatusColors(lab).fg : estadoSlug === 'pendiente' ? '#92400e' : '#166534', tipoTx = { inc: 'Incidencia', obj: 'Objeto perdido', rt: 'Reporte técnico' }[kind];
+    const lc = estadoSlug && kind !== 'obj' ? incEstatusColors(lab).fg : estadoSlug === 'pendiente' ? '#92400e' : '#166534', tipoTx = { inc: 'Incidencia', obj: 'Objeto olvidado', rt: 'Reporte técnico' }[kind];
     return `<div class="fx-c tipo fx-msg" style="--tc:${headerBg}">
       <div class="r1"><span class="nm">📤 ${esc(titulo)}</span><span class="mv" style="color:${lc}"><i style="background:${lc}"></i>${esc(lab)}</span></div>
       <div class="r2"><span>Aviso de ${esc(tipoTx.toLowerCase())}</span><span class="sep"></span>${timeLine}</div>
@@ -69263,6 +69263,15 @@ window.obImprimir_ = function (id) {
   const d = objRowToReportData(r), w = window.open('', '_blank'); if (!w) return;
   w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Objeto olvidado ${pcEsc(id)}</title><style>body{font-family:-apple-system,'Segoe UI',sans-serif;color:#0f172a;margin:16px;font-size:12px}img{max-width:100%}.inc-report-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 14px}.inc-report-field{display:grid;grid-template-columns:90px 1fr;gap:4px;padding:4px 0;border-bottom:1px dashed #f1f5f9}.inc-report-field-label{color:#64748b;font-weight:700;text-transform:uppercase;font-size:9px}</style></head><body>${objBuildReporteHtml(d)}</body></html>`);
   w.document.close(); setTimeout(() => { try { w.focus(); w.print(); } catch (_) {} }, 600);
+};
+// «Objeto olvidado» desde «Nuevo reporte» (Chats bot / Gestión de reservas): mismo formulario, con alojamiento, fecha y reserva ya puestos.
+window.obNuevoDesdeReserva_ = function (propRaw, deptRaw, arrIso, depIso) {
+  const hid = rtHid_({ Propiedad: propRaw, '# Departamento': String(deptRaw || '').replace(/^#/, '') });
+  const a = String(arrIso || '').slice(0, 10), d = String(depIso || '').slice(0, 10), hoy = aseoHoyIso_();
+  const fecha = a && d && hoy >= a && hoy <= d ? hoy : (d || hoy);
+  const b = hid && typeof pcMovBookings_ === 'function' ? pcMovBookings_().find(x => String(x.HouseId) === String(hid) && _pagosDateIso(x.DateArrival) === a && _pagosDateIso(x.DateDeparture) === d) : null;
+  obForm_(null, { hid, fecha, reserva: b ? String(b.Id) : '', huesped: b ? (b.GuestName || '') : '' });
+  if (!OBJ_STATE.list || !OBJ_STATE.list.length) obCargar_().catch(() => {});
 };
 // ── Formulario «Nuevo objeto» / «Editar objeto» ──
 window.obForm_ = function (id, pre) {
