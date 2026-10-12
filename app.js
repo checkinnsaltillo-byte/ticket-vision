@@ -58669,6 +58669,9 @@ function tdRender_() {
 // Mes elegido (flechitas del tablero): aplica a Por estado, Por clasificación y Por fecha. Predeterminado: mes en curso.
 // Cada card del tablero es una ocurrencia (tarea + fecha) del mes; los recordatorios cuentan una vez (su último día en el mes)
 // y la inspección general solo en su fecha límite.
+// Las tareas con fecha límite van ancladas al final de cualquier lista (tablero y calendario).
+function tdLimAbajo_(r) { return r && r.Fecha_limite === 'Sí' ? 1 : 0; }
+function tdOrdLim_(L) { return L.map((r, i) => [r, i]).sort((a, b) => tdLimAbajo_(a[0]) - tdLimAbajo_(b[0]) || a[1] - b[1]).map(x => x[0]); }
 function tdOcMes_(ym, filtrar) {
   const [y, m] = ym.split('-').map(Number), dim = new Date(y, m, 0).getDate(), out = [], rec = new Map();
   for (let d = 1; d <= dim; d++) {
@@ -58847,7 +58850,7 @@ function tdTablero_(O, dia) {
   TAR_STATE._segV = segV; // va en la barra de arriba (tdRender_)
   if (vista === 'fecha') return `<div class="td-cal">${tarCalendarioHtml_()}</div>`; // «Por fecha» = calendario por día / semana del mes elegido
   const PW = { 'Crítico': 4, 'Alto': 3, 'Medio': 2, 'Bajo': 1 };
-  const ord = L => L.slice().sort((a, b) => a.iso.localeCompare(b.iso) || (PW[tdPrioEf_(b.r, b.iso)] || 0) - (PW[tdPrioEf_(a.r, a.iso)] || 0));
+  const ord = L => L.slice().sort((a, b) => tdLimAbajo_(a.r) - tdLimAbajo_(b.r) || a.iso.localeCompare(b.iso) || (PW[tdPrioEf_(b.r, b.iso)] || 0) - (PW[tdPrioEf_(a.r, a.iso)] || 0)); // con fecha límite: hasta abajo
   const card = x => tdCard_(x.r, x.iso, { cal: true, fecha: true });
   let cols;
   if (vista === 'estado') cols = TAR_ESTADOS.map(e => {
@@ -59453,7 +59456,7 @@ function tarDiaHtml_() {
   const iso = tarIso_(TAR_STATE.calRef);
   const d = TAR_STATE.calRef;
   const dowName = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];
-  const items = tarDelDiaF_(iso);
+  const items = tdOrdLim_(tarDelDiaF_(iso));
   return tarNavBar_(`${dowName} ${d.getDate()} de ${TAR_MESES_L[d.getMonth()].toLowerCase()} ${d.getFullYear()}`) +
     (items.length
       ? `<div style="display:flex;flex-direction:column;gap:10px;max-width:760px">${items.map(r => tdCard_(r, iso, { cal: true })).join('')}</div>`
@@ -59469,7 +59472,7 @@ function tarSemanaHtml_() {
   const titulo = `${lunes.getDate()} ${TAR_MESES[lunes.getMonth()]} – ${fin.getDate()} ${TAR_MESES[fin.getMonth()]} ${fin.getFullYear()}`;
   return tarNavBar_(titulo) + `<div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(190px,1fr));gap:8px;min-width:1330px">${dias.map(d => {
     const iso = tarIso_(d);
-    const items = tarDelDiaF_(iso, true);
+    const items = tdOrdLim_(tarDelDiaF_(iso, true));
     const isHoy = iso === hoy;
     return `<div style="background:${isHoy ? '#faf5ff' : '#f8fafc'};border:1.5px solid ${isHoy ? '#a78bfa' : '#e2e8f0'};border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;min-height:160px">
       <div style="display:flex;align-items:baseline;justify-content:space-between">
