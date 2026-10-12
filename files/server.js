@@ -217,7 +217,7 @@ function _appsScriptCacheKey(action, paramsObj) {
 }
 
 async function callCheckinAppsScript(action, paramsObj, opts) {
-  if (!(opts && opts.directo) && typeof _GCS_ACT !== "undefined" && _GCS_ACT[action]) return _GCS_ACT[action](paramsObj || {}); // CheckFlow ya vive en Cloud Storage
+  if (!(opts && opts.directo) && typeof _GCS_ACT !== "undefined" && _GCS_ACT[action]) return _GCS_ACT[action](paramsObj || {}); // Check-Flow ya vive en Cloud Storage
   const cacheKey = _appsScriptCacheKey(action, paramsObj);
   // Coalescing: si ya hay una llamada en vuelo, reutilizamos su promesa.
   const inflight = _appsScriptInflight.get(cacheKey);
@@ -1396,7 +1396,7 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_tareas_checklist",
-    description: "ADMIN o PERSONAL. Tareas del módulo CheckFlow de un día (las creadas con «Nueva tarea» y los reportes de MANTENIMIENTO), agrupadas por tipo: Limpieza, Inspección, Insumos, Mantenimiento, con estado, prioridad, asignados, y si están ligadas a una incidencia (⚠️). Usar ante 'tareas de check-list', 'tareas de hoy', 'tareas de mantenimiento', 'qué hay de insumos', 'tareas de inspección', 'mis tareas'. NO incluye las limpiezas de salida de las reservas (para eso consultar_resumen_dia / consultar_limpiezas_hoy). Un empleado solo ve las tareas asignadas a él.",
+    description: "ADMIN o PERSONAL. Tareas del módulo Check-Flow de un día (las creadas con «Nueva tarea» y los reportes de MANTENIMIENTO), agrupadas por tipo: Limpieza, Inspección, Insumos, Mantenimiento, con estado, prioridad, asignados, y si están ligadas a una incidencia (⚠️). Usar ante 'tareas de check-list', 'tareas de hoy', 'tareas de mantenimiento', 'qué hay de insumos', 'tareas de inspección', 'mis tareas'. NO incluye las limpiezas de salida de las reservas (para eso consultar_resumen_dia / consultar_limpiezas_hoy). Un empleado solo ve las tareas asignadas a él.",
     input_schema: { type: "object", properties: {
       fecha: { type: "string", description: "Opcional YYYY-MM-DD (por defecto hoy)." },
       tipo: { type: "string", enum: ["todos", "limpieza", "inspeccion", "insumos", "mantenimiento"], description: "Opcional. Filtra por tipo de tarea." },
@@ -1406,7 +1406,7 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_incidencias",
-    description: "FUNCIÓN AVANZADA. INCIDENCIAS del módulo CheckFlow: lista con el ESTADO ACTUAL de cada una: 'incidencias del día' / 'de hoy' / 'de ayer' → fecha (YYYY-MM-DD) = TODAS las reportadas ese día con su estado actual; sin fecha ('incidencias', 'resumen de incidencias', 'incidencias abiertas') → solo las abiertas (pendientes y en proceso); estado 'todas', 'terminado' o 'cancelado' solo si pide explícitamente terminadas/canceladas/historial con alojamiento, motivo, estado, prioridad, fecha y cuántas tareas correctivas tienen; o el DETALLE de una (detalle=true + alojamiento y/o descripción) con descripción, seguimiento, personas, reserva/huésped ligado y sus tareas correctivas con su estado. Usar ante 'incidencias', 'hay incidencias?', 'incidencias abiertas', 'incidencias de cu2', 'detalle de la incidencia de mt7', 'qué pasó en ox5'. Nunca muestres folios ni códigos.",
+    description: "FUNCIÓN AVANZADA. INCIDENCIAS del módulo Check-Flow: lista con el ESTADO ACTUAL de cada una: 'incidencias del día' / 'de hoy' / 'de ayer' → fecha (YYYY-MM-DD) = TODAS las reportadas ese día con su estado actual; sin fecha ('incidencias', 'resumen de incidencias', 'incidencias abiertas') → solo las abiertas (pendientes y en proceso); estado 'todas', 'terminado' o 'cancelado' solo si pide explícitamente terminadas/canceladas/historial con alojamiento, motivo, estado, prioridad, fecha y cuántas tareas correctivas tienen; o el DETALLE de una (detalle=true + alojamiento y/o descripción) con descripción, seguimiento, personas, reserva/huésped ligado y sus tareas correctivas con su estado. Usar ante 'incidencias', 'hay incidencias?', 'incidencias abiertas', 'incidencias de cu2', 'detalle de la incidencia de mt7', 'qué pasó en ox5'. Nunca muestres folios ni códigos.",
     input_schema: { type: "object", properties: {
       estado: { type: "string", enum: ["abiertas", "pendiente", "en_proceso", "terminado", "cancelado", "todas"], description: "Opcional. Por defecto 'abiertas' (estado actual). 'todas'/'terminado'/'cancelado' solo si lo pide explícitamente." },
       alojamiento: { type: "string", description: "Opcional. Alojamiento TAL CUAL (ej. mt7)." },
@@ -1423,7 +1423,7 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_historial",
-    description: "FUNCIÓN AVANZADA. HISTORIAL DE CAMBIOS (quién cambió qué y cuándo) de una INCIDENCIA, de una TAREA de CheckFlow (Limpieza, Inspección, Insumos, Mantenimiento) o de la LIMPIEZA de un alojamiento hoy. Se identifica por alojamiento y descripción, sin códigos. Usar ante 'historial de la incidencia de mt7', 'quién cambió la tarea de toallas de ox5', 'cambios de la limpieza de bc1', 'qué se modificó en…'.",
+    description: "FUNCIÓN AVANZADA. HISTORIAL DE CAMBIOS (quién cambió qué y cuándo) de una INCIDENCIA, de una TAREA de Check-Flow (Limpieza, Inspección, Insumos, Mantenimiento) o de la LIMPIEZA de un alojamiento hoy. Se identifica por alojamiento y descripción, sin códigos. Usar ante 'historial de la incidencia de mt7', 'quién cambió la tarea de toallas de ox5', 'cambios de la limpieza de bc1', 'qué se modificó en…'.",
     input_schema: { type: "object", properties: {
       tipo: { type: "string", enum: ["incidencia", "tarea", "limpieza"] },
       alojamiento: { type: "string", description: "Alojamiento TAL CUAL (ej. mt7)." },
@@ -1442,7 +1442,7 @@ const BOT_TOOLS = [
   },
   {
     name: "actualizar_tarea_checklist",
-    description: "Cambia el ESTADO de una tarea del CheckFlow identificada por ALOJAMIENTO y DESCRIPCIÓN (ej. ox5 + 'toallas'), opcionalmente su tipo. Si hay varias que coinciden, devuelve opciones para preguntar cuál. Lo puede hacer un administrador o la persona asignada a la tarea. Antes de llamarla repite en 1 línea el cambio y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
+    description: "Cambia el ESTADO de una tarea del Check-Flow identificada por ALOJAMIENTO y DESCRIPCIÓN (ej. ox5 + 'toallas'), opcionalmente su tipo. Si hay varias que coinciden, devuelve opciones para preguntar cuál. Lo puede hacer un administrador o la persona asignada a la tarea. Antes de llamarla repite en 1 línea el cambio y espera un 'sí' en un mensaje posterior (en modo admin '@' ejecuta directo).",
     input_schema: { type: "object", properties: {
       alojamiento: { type: "string", description: "Alojamiento TAL CUAL (ej. ox5)." },
       descripcion: { type: "string", description: "Palabras de la tarea (ej. 'toallas', 'cambiar focos')." },
@@ -1822,7 +1822,7 @@ async function _botTarClasificar(desc, cat) {
     return { clasificacion: cl, subclasificacion: sub };
   } catch (e) { console.warn("[bot-tarea] clasificar:", e.message); return { clasificacion: "", subclasificacion: "" }; }
 }
-// Conversación del PERSONAL por WhatsApp (estado de aseo, CheckFlow…): palabras que la activan, prompt y herramientas.
+// Conversación del PERSONAL por WhatsApp (estado de aseo, Check-Flow…): palabras que la activan, prompt y herramientas.
 const _BOT_ASEO_KW = /\b(me toca\w*|que me toca|asignad\w*|pendientes?|listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,}|historial|modific\w*|cambi\w*|huesped\w*|celular|datos)\b/;
 function _botStaffSys(nombre) {
   const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -1850,7 +1850,7 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
 - NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
 - El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
 - Si no reconoces el alojamiento, pide que lo escriba como CU2, JC1, OX3, BC7, MT4.
-- Si el mensaje no es sobre la operación, responde en 1 línea que por este medio registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida, y das información de limpiezas, tareas de CheckFlow, incidencias y tareas programadas.
+- Si el mensaje no es sobre la operación, responde en 1 línea que por este medio registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida, y das información de limpiezas, tareas de Check-Flow, incidencias y tareas programadas.
 - Si pide LEVANTAR una incidencia, crear una tarea nueva, reprogramar, cambiar prioridad o asignar responsables y no tienes herramienta para eso, responde en 1 línea: «Solo los administradores pueden hacerlo; avísale a un administrador.»
 - Sé breve, sin cortesías ni emojis extra.`;
 }
@@ -2955,7 +2955,7 @@ const _BOT_INC_ENUM = {
   Mantenimiento:["Fuga de agua","Falla eléctrica","Falla de electrodomésticos","Ausencia de controles"],
 };
 async function _botAutoClasificarIncidencia(descripcion) {
-  const ENUM = await _incCatalogo().catch(() => _BOT_INC_ENUM); // Motivos › Sub-motivos editables (CheckFlow › Incidencias › Clasificaciones)
+  const ENUM = await _incCatalogo().catch(() => _BOT_INC_ENUM); // Motivos › Sub-motivos editables (Check-Flow › Incidencias › Clasificaciones)
   const enumTxt = Object.entries(ENUM)
     .map(([m, list]) => `${m}: ${list.join(" | ")}`).join("\n");
   const system = `Eres un clasificador. Recibes la descripción de una incidencia y devuelves JSON estricto con los motivos y clasificaciones aplicables del enum. Sin texto extra.
@@ -9576,8 +9576,8 @@ function _aseoPub(reg) {
 }
 // Guarda el estado de aseo de una salida. Solo "terminado" requiere validación;
 // "en_proceso", "inspeccionado" y "pendiente" se publican directo.
-// ═══ HISTORIAL DE CAMBIOS (CheckFlow): gs://…/historial/checklist.json → { "<A|T|R|I>:<id>": [ {at, by, campo, antes, despues} ] } ═══
-// A = card de aseo (reserva) · T = tarea de CheckFlow · R = reporte de Mantenimiento · I = incidencia.
+// ═══ HISTORIAL DE CAMBIOS (Check-Flow): gs://…/historial/checklist.json → { "<A|T|R|I>:<id>": [ {at, by, campo, antes, despues} ] } ═══
+// A = card de aseo (reserva) · T = tarea de Check-Flow · R = reporte de Mantenimiento · I = incidencia.
 const _HIST_OBJ = "historial/checklist.json", _HIST_EST = { pendiente: "Pendiente", en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado", cancelado: "Cancelado" };
 let _histQ = Promise.resolve();
 function _histV(v) { if (v === true) return "Sí"; if (v === false) return "No"; if (Array.isArray(v)) return v.join(", "); if (v && typeof v === "object") return JSON.stringify(v).slice(0, 200); return String(v == null ? "" : v).slice(0, 300); }
@@ -9795,7 +9795,7 @@ async function _aseoResumenHoy(opts) {
     if (new Date(r.at).toLocaleDateString("en-CA", { timeZone: "America/Monterrey" }) !== hoy || casas.has(String(r.hid))) return;
     const c = casa(String(r.hid)); c.estId = id;
   });
-  // Cards archivadas desde el CheckFlow: fuera de listas, resúmenes y avisos.
+  // Cards archivadas desde el Check-Flow: fuera de listas, resúmenes y avisos.
   await _aseoExtraLoad();
   casas.forEach((c, hid) => { if (((_aseo.extra || {})[c.estId] || {}).archivada) casas.delete(hid); });
   const horaMx = Number(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false })) % 24;
@@ -10050,8 +10050,8 @@ const _BOT_SIM = {
   limpiezas_hoy: { t: "Lista de limpiezas de hoy", tool: "consultar_limpiezas_hoy", args: {}, msg: "limpiezas de hoy" },
   mis_limpiezas: { t: "Mis limpiezas de hoy", tool: "consultar_limpiezas_hoy", args: { solo_mias: true }, msg: "mis limpiezas" },
   resumen_dia: { t: "Resumen del día (limpiezas)", tool: "consultar_resumen_dia", args: {}, msg: "resumen del día" },
-  tareas_hoy: { t: "Tareas de CheckFlow de hoy", tool: "consultar_tareas_checklist", args: {}, msg: "tareas de hoy" },
-  mis_tareas: { t: "Mis tareas de CheckFlow", tool: "consultar_tareas_checklist", args: { solo_mias: true }, msg: "mis tareas" },
+  tareas_hoy: { t: "Tareas de Check-Flow de hoy", tool: "consultar_tareas_checklist", args: {}, msg: "tareas de hoy" },
+  mis_tareas: { t: "Mis tareas de Check-Flow", tool: "consultar_tareas_checklist", args: { solo_mias: true }, msg: "mis tareas" },
   incidencias: { t: "Incidencias abiertas", tool: "consultar_incidencias", args: {}, msg: "incidencias abiertas" },
   incidencias_dia: { t: "Incidencias del día", tool: "consultar_incidencias", args: { fecha: "hoy" }, msg: "incidencias de hoy" },
   programadas: { t: "Tareas programadas", tool: "consultar_resumen_tareas", args: {}, msg: "tareas programadas" },
@@ -10343,7 +10343,7 @@ app.post("/aseo/tarea/borrar", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ═══════════════════════════════════════════════════════════════════════════
-// CheckFlow en Cloud Storage (2026-10-11): Reportes técnicos (Mantenimiento) y Tareas programadas salen de Google
+// Check-Flow en Cloud Storage (2026-10-11): Reportes técnicos (Mantenimiento) y Tareas programadas salen de Google
 // Sheets (Apps Script tardaba 15–45 s por escritura y duplicaba altas en los reintentos). Las mismas «acciones»
 // (rt_list, rt_upsert, tareas_save…) se atienden aquí: pantallas, bot y avisos automáticos usan esto sin cambios.
 // Primera lectura de cada tabla: se copia completa desde la hoja (una vez). La hoja queda como archivo histórico.
@@ -11345,7 +11345,7 @@ app.all("/airbnb/bot-tick", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   finally { _abnTickCorriendo = false; }
 });
-// ═══ CheckFlow › 📋 Plantillas (formularios tipo Breezeway) ═══
+// ═══ Check-Flow › 📋 Plantillas (formularios tipo Breezeway) ═══
 // aseo/plantillas.json → { <id>: { id, titulo, depto, prioridad, descripcion, secciones:[{ id, titulo, items:[{ id, tipo, texto, foto, ref:[], min, max, escala, sub:[] }] }] } }
 // Respuestas por tarea (llave = día de la tarea: "T<id>-<fecha>"): aseo/plresp/<llave>.json; avance en aseo/plresp-idx.json → { <llave>: { p, h, t, at } }.
 const _ASEO_PLANT_OBJ = "aseo/plantillas.json", _ASEO_PLIDX_OBJ = "aseo/plresp-idx.json";
@@ -11676,7 +11676,7 @@ app.post("/aseo/extra", async (req, res) => {
       if (typeof b.preventivo === "boolean") cur.preventivo = b.preventivo;
       if (typeof b.archivada === "boolean") { if (b.archivada) { cur.archivada = true; cur.archAt = new Date().toISOString(); cur.archBy = user; } else delete cur.archivada; } // tarea archivada con su incidencia
       if (typeof b.incidencia === "boolean") { cur.incidencia = b.incidencia; cur.incBy = user; cur.incAt = new Date().toISOString(); if (!b.incidencia) delete cur.incId; }
-      if (typeof b.incId === "string" && b.incId) cur.incId = b.incId.replace(/[^\w-]/g, "").slice(0, 60); // incidencia ligada (CheckFlow › Incidencias)
+      if (typeof b.incId === "string" && b.incId) cur.incId = b.incId.replace(/[^\w-]/g, "").slice(0, 60); // incidencia ligada (Check-Flow › Incidencias)
       if (Array.isArray(b.incIds)) { // varias incidencias por card
         const L = [...new Set(b.incIds.map(x => String(x || "").replace(/[^\w-]/g, "").slice(0, 60)).filter(Boolean))].slice(-30);
         if (L.length) { cur.incIds = L; cur.incId = L[L.length - 1]; } else { delete cur.incIds; delete cur.incId; }
@@ -11786,7 +11786,7 @@ function _botDiaPedido(ctx) {
   return "";
 }
 function _botIsoDe(dp) { const h = _mxHoy(); if (dp !== "ayer") return h; const y = new Date(h + "T12:00:00"); y.setDate(y.getDate() - 1); return y.toISOString().slice(0, 10); }
-// ═══ Bot · CheckFlow (tareas por tipo), Incidencias y su relación con alojamientos, reservas y tareas ═══
+// ═══ Bot · Check-Flow (tareas por tipo), Incidencias y su relación con alojamientos, reservas y tareas ═══
 const _CL_TIPO = { limpieza: "🧹 Limpieza", inspeccion: "🔍 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
 const _CL_EST = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "✅ Terminado", inspeccionado: "🔍 Inspeccionado", cancelado: "✖️ Cancelado" };
 const _INC_EST_TXT = { "Nuevo": "Pendiente", "En proceso": "En proceso", "Resuelto": "Terminado", "Cancelado": "Cancelado" }; // mismos nombres que el sistema
@@ -11847,7 +11847,7 @@ async function _clTareas(dia) {
 function _clTareasTxt(L0, dia, titulo, actual) { // actual=true: solo pendientes/en proceso + conteo de las cerradas
   const ord = ["pendiente", "en_proceso", "terminado", "inspeccionado", "cancelado"];
   const abierta = i => i.est === "pendiente" || i.est === "en_proceso", L = actual ? L0.filter(abierta) : L0;
-  const out = [`🔄 *CheckFlow · ${titulo}${actual ? " (estado actual)" : " del día"}* — ${_clFecha(dia)}`, `${L.length} tarea${L.length === 1 ? "" : "s"}${actual ? " abierta" + (L.length === 1 ? "" : "s") : ""} · ⚠️ = ligada a una incidencia`];
+  const out = [`🛠️ *Check-Flow · ${titulo}${actual ? " (estado actual)" : " del día"}* — ${_clFecha(dia)}`, `${L.length} tarea${L.length === 1 ? "" : "s"}${actual ? " abierta" + (L.length === 1 ? "" : "s") : ""} · ⚠️ = ligada a una incidencia`];
   if (!actual && L.length) { const n = k => L.filter(i => i.est === k).length, ab = L.filter(abierta).length; out[1] = `${L.length} tarea${L.length === 1 ? "" : "s"} · ${ab} abierta${ab === 1 ? "" : "s"} · ${n("terminado") + n("inspeccionado")} terminada${n("terminado") + n("inspeccionado") === 1 ? "" : "s"} · ${n("cancelado")} cancelada${n("cancelado") === 1 ? "" : "s"} · ⚠️ = ligada a una incidencia`; }
   if (actual) { const c = L0.filter(i => !abierta(i)), n = k => c.filter(i => i.est === k).length; if (c.length) out.push(`Cerradas hoy: ${n("terminado") + n("inspeccionado")} terminada${n("terminado") + n("inspeccionado") === 1 ? "" : "s"} · ${n("cancelado")} cancelada${n("cancelado") === 1 ? "" : "s"} (pide «incluye las terminadas» para verlas)`); }
   Object.keys(_CL_TIPO).forEach(tp => {
@@ -11856,7 +11856,7 @@ function _clTareasTxt(L0, dia, titulo, actual) { // actual=true: solo pendientes
     out.push("", `*${_CL_TIPO[tp]} (${X.length})*`);
     X.forEach(i => out.push(`• ${i.aloj} · ${i.titulo} — ${_CL_EST[i.est] || i.est}${i.atrasado ? ` (desde ${_clDiaCorto(i.fecha)})` : ""} · ${i.prio}${i.asig.length ? " · " + _clNombres(i.asig) : " · sin asignar"}${i.inc.length ? " ⚠️" : ""}`));
   });
-  if (!L.length) out.push("", actual && L0.length ? "✅ No hay tareas de CheckFlow abiertas." : "No hay tareas de CheckFlow para este día.");
+  if (!L.length) out.push("", actual && L0.length ? "✅ No hay tareas de Check-Flow abiertas." : "No hay tareas de Check-Flow para este día.");
   return out.join("\n");
 }
 // «Incidencias del día»: TODAS las reportadas ese día con su estado actual (primero las abiertas).
@@ -11963,17 +11963,17 @@ async function _incBuscar(args, fresco) {
   if (!X.length) return { error: "No encontré esa incidencia. Pide «incidencias» para ver la lista." };
   return { opciones: X.slice(0, 8).map((r, n) => `${n + 1}) ${nom(r)} — ${_INC_EST_TXT[_incEstBot(r.Estatus)]} · ${_clDiaCorto(String(r.Fecha || "").slice(0, 10))}`) };
 }
-// Avisos al final del resumen del día: tareas de CheckFlow pendientes e incidencias abiertas.
+// Avisos al final del resumen del día: tareas de Check-Flow pendientes e incidencias abiertas.
 async function _clAvisosTxt() {
   const hoy = _mxHoy(), T = await _clTareas(hoy), d = await _incDatos();
   const pend = T.filter(i => i.est === "pendiente" || i.est === "en_proceso");
   const inc = (d.rows || []).filter(_incAbiertaBot);
   const L = [];
-  if (pend.length) L.push(`✅ *Tareas de CheckFlow sin terminar (${pend.length}):* ${Object.keys(_CL_TIPO).map(tp => { const n = pend.filter(i => i.tipo === tp).length; return n ? `${_CL_TIPO[tp]} ${n}` : ""; }).filter(Boolean).join(" · ")} — pide «tareas de hoy»`);
+  if (pend.length) L.push(`✅ *Tareas de Check-Flow sin terminar (${pend.length}):* ${Object.keys(_CL_TIPO).map(tp => { const n = pend.filter(i => i.tipo === tp).length; return n ? `${_CL_TIPO[tp]} ${n}` : ""; }).filter(Boolean).join(" · ")} — pide «tareas de hoy»`);
   if (inc.length) { const urg = inc.filter(r => /cr[ií]tica|alta/i.test(String(r.Nivel || ""))).length; L.push(`⚠️ *Incidencias abiertas (${inc.length})*${urg ? `, ${urg} alta/crítica` : ""} — pide «incidencias»`); }
   return L.length ? "\n\n" + L.join("\n") : "";
 }
-// Vista previa (sistema): los mismos textos que el bot envía para CheckFlow e Incidencias.
+// Vista previa (sistema): los mismos textos que el bot envía para Check-Flow e Incidencias.
 app.get("/bot/checklist-preview", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
@@ -12000,11 +12000,11 @@ async function _aseoResumen3pm() {
   }
   console.log(`[aseo-2pm] resumen enviado a ${dest.length} persona(s)`);
 }
-// Resumen de toda la actividad del día (2 pm): limpiezas, tareas de CheckFlow, tareas programadas e incidencias.
+// Resumen de toda la actividad del día (2 pm): limpiezas, tareas de Check-Flow, tareas programadas e incidencias.
 async function _aseoActividadDiaTxt(dia) {
   const out = [];
   out.push(await _aseoResumenDiaTxt().catch(() => ""));
-  out.push(_clTareasTxt(await _clTareas(dia).catch(() => []), dia, "Tareas de CheckFlow", false));
+  out.push(_clTareasTxt(await _clTareas(dia).catch(() => []), dia, "Tareas de Check-Flow", false));
   out.push(await _tarResumenTxt(dia, false).catch(() => ""));
   out.push(await _incListaTxt({ fecha: dia }).catch(() => ""));
   return out.filter(x => x && String(x).trim());
@@ -12167,7 +12167,7 @@ async function _aseoAutoTick() {
   for (const [n, v] of col) { try { await _aseoEnviarPersona(n, v.tel, v.L.join("\n\n"), v.tag); } catch (e) { console.warn(`[aseo-auto] ${n}:`, e.message); } }
   return { ok: true, enviados: regs.length };
 }
-// Incidencias (sección de CheckFlow): cada alta o cambio se anota y se manda junto 1 min después.
+// Incidencias (sección de Check-Flow): cada alta o cambio se anota y se manda junto 1 min después.
 function _incAutoMarca(id, det, info) { if (id) _aseoAutoGuardar({ sec: "incidencias", id: String(id), det: String(det || "✏️ Editada"), info: info || {} }); }
 function _incInfo(o) {
   o = o || {}; const g = (...k) => { for (const x of k) if (o[x] != null && String(o[x]).trim()) return String(o[x]).trim(); return ""; };
