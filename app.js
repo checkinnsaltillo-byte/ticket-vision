@@ -58525,7 +58525,25 @@ function tdEsIG_(r) { return !!r && r.Insp_general === 'Sí'; }
 function tdFinMes_(iso) { const d = tarParseIso_(iso); return tarIso_(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
 function tdIsoDe_(r, iso) { return tdEsIG_(r) ? tdFinMes_(iso) : iso; }
 function tdIsoId_(id, iso) { id = String(id); return id.includes('~') || tdEsIG_(TAR_STATE.list.find(x => x.ID === id)) ? tdFinMes_(iso) : iso; }
-function tdIGOcurre_(r, iso) { const p = tarProg_(r); return tarOccursOn_(r, tdFinMes_(iso)) && (!p.fin || iso <= p.fin); }
+// Fecha límite de la inspección dentro del mes (campo «Fecha límite»: se toma su día; sin él, el último día del mes).
+function tdLimIG_(r, iso) { const fin = tdFinMes_(iso), dd = Number(String(r.Limite_IG || '').slice(8, 10)) || 31; return fin.slice(0, 8) + String(Math.min(dd, Number(fin.slice(8)))).padStart(2, '0'); }
+// Fecha límite de una tarea (para avisos y prioridad automática). '' si no tiene.
+function tdLimite_(r, dia) { if (r.Fecha_limite !== 'Sí') return ''; if (tdEsIG_(r)) return tdLimIG_(r, dia); const p = tarProg_(r); return p.tipo === 'unica' ? (p.fechas.slice().sort().filter(x => x >= tarIso_(tarToday_()))[0] || p.fechas.slice().sort().pop() || '') : (tarNextDate_(r) || ''); }
+// Prioridad automática conforme se acerca la fecha límite: > 7 días la elegida · ≤ 7 Medio · ≤ 3 Alto · ≤ 1 o vencida Crítico (nunca baja la elegida).
+function tdPrioEf_(r, dia) {
+  const base = r.Prioridad || 'Medio', est = tdEst_(r, dia), f = tdLimite_(r, dia);
+  if (!f || ['Resuelto', 'Cancelado'].includes(est)) return base;
+  const n = Math.round((tarParseIso_(f) - tarParseIso_(tarIso_(tarToday_()))) / 864e5), ORD = ['Bajo', 'Medio', 'Alto', 'Crítico'];
+  const regla = n <= 1 ? 'Crítico' : n <= 3 ? 'Alto' : n <= 7 ? 'Medio' : 'Bajo';
+  return ORD[Math.max(ORD.indexOf(base), ORD.indexOf(regla))];
+}
+function tdAvisoLim_(r, dia) {
+  const f = tdLimite_(r, dia), est = tdEst_(r, dia); if (!f || ['Resuelto', 'Cancelado'].includes(est)) return '';
+  const n = Math.round((tarParseIso_(f) - tarParseIso_(tarIso_(tarToday_()))) / 864e5);
+  const c = n <= 1 ? 'red' : n <= 3 ? 'orange' : n <= 7 ? 'amber' : 'gray';
+  return `<div class="flag ${c}"><i></i>⏳ Límite ${esc(tarFmtFecha_(f))} · ${n < 0 ? `vencida hace ${-n} día${n === -1 ? '' : 's'}` : n === 0 ? 'vence hoy' : n === 1 ? 'vence mañana' : `faltan ${n} días`}</div>`;
+}
+function tdIGOcurre_(r, iso) { const p = tarProg_(r); return tarOccursOn_(r, tdLimIG_(r, iso)) && (!p.fin || iso <= p.fin); }
 function tdIGAlojs_(r) { try { return (JSON.parse(r.Alojamientos || '[]') || []).map(String); } catch (_) { return []; } }
 function tdIGHijo_(r, hid) { return `${r.ID}~${hid}`; }
 function tdIGKey_(r, hid, iso) { return `TI:${r.ID}:${hid}:${tdFinMes_(iso)}`; }
@@ -58562,8 +58580,31 @@ function tdCss_() {
   .td-card .pl-cb2{margin-top:6px}
   .td-igtg{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;width:100%;margin-top:8px;padding:5px 8px;border-top:1px dashed #e2e8f0;color:#6d28d9;font-size:11.5px;font-weight:600;cursor:pointer;border-radius:0 0 8px 8px}
   .td-igtg:hover{background:#f5f3ff}.td-igtg.ab{color:#475569}
-  .td-hijos{display:flex;flex-direction:column;gap:6px;margin-top:6px;padding:6px;background:#f8f7ff;border-radius:10px}
-  .td-hijos .ad-card{margin:0;box-shadow:none}
+  .td-hijos{display:flex;flex-direction:column;margin:6px -10px -8px;border-top:1px solid rgba(255,255,255,.35)}
+  .td-hf{border-bottom:1px solid rgba(255,255,255,.25)}.td-hf:last-child{border-bottom:0}
+  .td-hfh{display:flex;align-items:center;gap:6px;padding:6px 10px;cursor:pointer;font-size:11.5px;min-width:0}
+  .td-hfh:hover{background:rgba(255,255,255,.12)}
+  .td-hfh .car{width:10px;flex:none;opacity:.8}.td-hfh b{font:700 11px ui-monospace,Menlo,monospace;flex:none}
+  .td-hfh .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.9}
+  .td-hfh .es{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;flex:none;background:#fff;color:#0f1729;border-radius:999px;padding:1px 7px}
+  .td-hfh .es i{width:7px;height:7px;border-radius:50%;background:var(--c)}
+  .td-hfh .pc{width:38px;height:5px;border-radius:3px;background:rgba(255,255,255,.35);overflow:hidden;flex:none}.td-hfh .pc i{display:block;height:100%}
+  .td-hfh em{font-style:normal;font-size:10.5px;font-weight:700;width:30px;text-align:right;flex:none}
+  .td-hfb{display:flex;flex-direction:column;gap:6px;padding:0 10px 8px 26px}
+  .td-hfo{all:unset;cursor:pointer;align-self:flex-start;font-size:11.5px;font-weight:700;color:#fff;text-decoration:underline;text-underline-offset:2px}
+  /* Inspección general: card con fondo vibrante para distinguirla de las tareas comunes */
+  html body .ad-card.td-ig,html body .ad-card.est-tint.td-ig[style]{background:linear-gradient(135deg,#6d28d9 0%,#9333ea 55%,#c026d3 100%)!important;border-color:#6d28d9!important;color:#fff;box-shadow:0 6px 18px -8px rgba(109,40,217,.7)!important}
+  html body .ad-card.td-ig .r1 .prop,html body .ad-card.td-ig .r1 .code,html body .ad-card.td-ig .r2,html body .ad-card.td-ig .r2 span,html body .ad-card.td-ig .ad-gd{color:#fff}
+  html body .ad-card.td-ig .ax-cat{background:rgba(255,255,255,.95)}html body .ad-card.td-ig .r2 .ax-cat .t{color:var(--cc)}html body .ad-card.td-ig .r2 .ax-cat .s{color:#4b5563}html body .ad-card.td-ig .r2 .ax-cat .a{color:#b8bec8}html body .ad-card.td-ig .flag{color:#b91c1c}html body .ad-card.td-ig .flag.amber{color:#92400e}html body .ad-card.td-ig .flag.gray{color:#475569}
+  html body .ad-card.td-ig .flag{background:rgba(255,255,255,.95)}
+  html body .ad-card.td-ig .ad-un{color:#ede9fe}
+  html body .ad-card.td-ig .ad-det{color:#fff;border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.12)}
+  html body .ad-card.td-ig .ad-qs button{background:rgba(255,255,255,.18);color:#fff}
+  html body .ad-card.td-ig .ad-qs button.on{background:#fff;color:#4c1d95}
+  html body .ad-card.td-ig .pl-cb2 span{background:rgba(255,255,255,.3)}html body .ad-card.td-ig .pl-cb2 b{color:#fff}
+  html body .ad-card.td-ig .td-igtg{color:#fff;border-top-color:rgba(255,255,255,.35)}html body .ad-card.td-ig .td-igtg:hover{background:rgba(255,255,255,.12)}
+  html body .ad-card.td-ig .td-hfb .ad-qs button{background:rgba(255,255,255,.18);color:#fff}html body .ad-card.td-ig .td-hfb .ad-qs button.on{background:#fff;color:#4c1d95}
+  .ad-card .flag.amber{color:#92400e}.ad-card .flag.amber i{background:#f59e0b}.ad-card .flag.gray{color:#475569}.ad-card .flag.gray i{background:#94a3b8}
   `;
   document.head.appendChild(st);
 }
@@ -58672,9 +58713,9 @@ function tdCard_(r, dia) {
   const est = tdEst_(r, dia), T = TD_TIPO[tdTipoK_(r)], ig = tdEsIG_(r);
   const pers = tarPersonalList_(r), sel = TAR_STATE.dr && TAR_STATE.dr.id === r.ID && !TAR_STATE.dr.hijo;
   const oc = tarOcur_(r.ID, tdIsoDe_(r, dia)), tc = ig ? AT_DEPTO.inspeccion.c : T.c;
-  let flag = '';
-  if (r.Fecha_limite === 'Sí' && !['Resuelto', 'Cancelado'].includes(est)) { const t = ig ? (d => { const n = Math.round((tarParseIso_(d) - tarParseIso_(tarIso_(tarToday_()))) / 864e5); return `Límite ${tarFmtFecha_(d)} · ${n < 0 ? 'vencida' : n === 0 ? 'hoy' : n === 1 ? 'mañana' : 'en ' + n + ' días'}`; })(tdFinMes_(dia)) : tarLimiteTxt_(r, est).replace(/^⏳\s*/, ''); flag = `<div class="flag ${/vencida|hoy/.test(t) ? 'red' : 'orange'}"><i></i>${esc(t)}</div>`; }
-  else if (r.Prioridad === 'Crítico' && !['Resuelto', 'Cancelado'].includes(est)) flag = '<div class="flag red"><i></i>Prioridad crítica</div>';
+  let flag = tdAvisoLim_(r, dia);
+  const prioEf = tdPrioEf_(r, dia);
+  if (!flag && prioEf === 'Crítico' && !['Resuelto', 'Cancelado'].includes(est)) flag = '<div class="flag red"><i></i>Prioridad crítica</div>';
   const meta = [tdChip_(r, T)];
   if (tarEsRec_(r)) { const ini = typeof tarRecInicio_ === 'function' ? tarRecInicio_(r) : ''; meta.push(`<span>${ini ? 'Desde ' + esc(tarFmtFecha_(ini).replace(/ \d{4}$/, '')) : 'Hasta resolverse'}</span>`); } else if ((r.Naturaleza || '') === 'Recurrente') meta.push('<span>↻ Recurrente</span>');
   if (r.Origen === 'Bot WhatsApp') meta.push('<span>🤖 Bot</span>');
@@ -58683,15 +58724,27 @@ function tdCard_(r, dia) {
   const ico = ig ? '🔍' : tarEsRec_(r) ? '📌' : '📋';
   return `<div class="ad-card tipo est-tint td-card ${ig ? 'td-ig' : ''} ${sel ? 'sel' : ''} ${est === 'Cancelado' ? 'ghost' : ''}" data-k="${esc(r.ID)}" style="--tc:${tc};--sc:${TD_EST[est] || '#94a3b8'}" onclick="tdAbrir_('${esc(r.ID)}')"
       draggable="true" ondragstart="tdDragStart_(event,'${esc(r.ID)}')" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${esc(tdCodigo_(r))}</span>${prio4Html_(r.Prioridad || 'Medio', true, `tdPrioCiclo_('${esc(r.ID)}')`)}<span class="prop">${ico} ${esc(r.Nombre || 'Sin nombre')}</span></div>
+    <div class="r1"><span class="code">${esc(tdCodigo_(r))}</span><span title="${prioEf !== (r.Prioridad || 'Medio') ? 'Prioridad subida automáticamente por la fecha límite (elegida: ' + esc(r.Prioridad || 'Medio') + ')' : ''}">${prio4Html_(prioEf, true, `tdPrioCiclo_('${esc(r.ID)}')`)}</span><span class="prop">${ico} ${esc(r.Nombre || 'Sin nombre')}</span></div>
     ${flag}
     <div class="r2">${meta.join('<span class="sep"></span>')}</div>
     <div class="r3">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${ig ? `<span class="ad-gd" title="Alojamientos">🏠 ${hijos.length}</span>` : ''}${r.WhatsApp === 'Sí' ? '<span class="ad-gd" title="Envía WhatsApp">💬</span>' : ''}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();tdAbrir_('${esc(r.ID)}')">Detalles</button></div>
     ${tdQs_(r.ID, est, dia)}${av != null ? tdBarra_(av, 'Avance de los alojamientos') : ''}
     ${ig && hijos.length ? `<button type="button" class="td-igtg ${ab ? 'ab' : ''}" onclick="event.stopPropagation();tdIGToggle_('${esc(r.ID)}')" title="${ab ? 'Ocultar' : 'Ver'} los alojamientos">${ab ? '▴ Ocultar' : '▾ Ver'} ${hijos.length} alojamiento${hijos.length === 1 ? '' : 's'}</button>` : ''}
-    ${ab ? `<div class="td-hijos" onclick="event.stopPropagation()">${hijos.map(h => tdHijoCard_(r, h, dia)).join('')}</div>` : ''}
+    ${ab ? `<div class="td-hijos" onclick="event.stopPropagation()">${hijos.map(h => tdHijoFila_(r, h, dia)).join('')}</div>` : ''}
   </div>`;
 }
+// Renglón desplegable de un alojamiento dentro de la inspección general (sin cards anidadas: aprovecha todo el ancho).
+//   Encabezado: ▸ código · nombre · estado · % de plantilla. Desplegado: estados rápidos y «Abrir formulario».
+function tdHijoFila_(r, hid, dia) {
+  const id = tdIGHijo_(r, hid), iso = tdFinMes_(dia), est = tarOcurEstado_(id, iso), a = typeof atAloj_ === 'function' ? atAloj_(hid) : { nombre: hid, corto: '' };
+  const x = r.Plantilla ? (ASEO.pl.idx || {})[tdIGKey_(r, hid, dia)] : null, pc = est === 'Resuelto' ? 100 : x ? x.p : 0, ab = (TAR_STATE.igRowAb || new Set()).has(id);
+  return `<div class="td-hf ${ab ? 'ab' : ''}">
+    <div class="td-hfh" onclick="tdIGRow_('${esc(id)}')"><span class="car">${ab ? '▾' : '▸'}</span><b>${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span class="nm">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span>
+      <span class="es" style="--c:${TD_EST[est] || '#94a3b8'}"><i></i>${est}</span>${r.Plantilla ? `<span class="pc"><i style="width:${pc}%;background:hsl(${Math.round(pc * 1.2)},78%,44%)"></i></span><em>${pc}%</em>` : ''}</div>
+    ${ab ? `<div class="td-hfb">${tdQs_(id, est, dia)}<button type="button" class="td-hfo" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')">${r.Plantilla ? '📋 Abrir formulario' : 'Abrir detalles'} ›</button></div>` : ''}
+  </div>`;
+}
+window.tdIGRow_ = function (id) { const S = TAR_STATE.igRowAb = TAR_STATE.igRowAb || new Set(); if (S.has(id)) S.delete(id); else S.add(id); tarRender(); };
 // Sub-card de un alojamiento dentro de la inspección general (mismo formato de card de tarea).
 function tdHijoCard_(r, hid, dia) {
   const id = tdIGHijo_(r, hid), iso = tdFinMes_(dia), est = tarOcurEstado_(id, iso), a = typeof atAloj_ === 'function' ? atAloj_(hid) : { nombre: hid, corto: '' };
@@ -58775,7 +58828,7 @@ function tdPintar_(nuevo) {
   const id = esc(r.ID);
   const igHtml = tdEsIG_(r) ? (() => { const L = tdIGAlojs_(r), av = tdIGAvance_(r, dia), p = r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
     return `<div class="lab">Avance de la inspección${av != null ? ` · ${av}%` : ''}</div>${av != null ? tdBarra_(av, 'Avance de los alojamientos') : ''}
-      <div class="ad-kv" style="margin-top:8px"><span>Plantilla</span><b>${esc(p ? p.titulo : 'Sin plantilla')}</b><span>Fecha límite</span><b>${aseoDiaTxt_(tdFinMes_(dia))}</b></div>
+      <div class="ad-kv" style="margin-top:8px"><span>Plantilla</span><b>${esc(p ? p.titulo : 'Sin plantilla')}</b><span>Fecha límite</span><b>${aseoDiaTxt_(tdLimIG_(r, dia))}</b></div>
       <div class="lab">Alojamientos · ${L.length}</div><div class="ad-ppl">${L.map(h => { const a = atAloj_(h), e = tarOcurEstado_(tdIGHijo_(r, h), tdFinMes_(dia)), x = (ASEO.pl.idx || {})[tdIGKey_(r, h, dia)];
         return `<div class="ad-pp" style="cursor:pointer" onclick="tdAbrirHijo_('${id}','${esc(h)}')"><span class="code" style="font:700 11px ui-monospace,Menlo,monospace;min-width:34px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span><span>${esc(String(a.nombre || h).replace(/^Calle\s+/i, ''))}</span><em style="color:${TD_EST[e]}">${e}${x ? ' · ' + x.p + '%' : ''}</em></div>`; }).join('') || '<div class="ad-un">Sin alojamientos</div>'}</div>`; })() : '';
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="ty" style="font-weight:600;color:${T.c}">${T.t}</span><button type="button" class="ad-close" onclick="tdCerrar_()">✕</button></div>
@@ -58815,7 +58868,7 @@ function tdPintarHijo_(r, D, nuevo) {
   const sig = TAR_ESTADOS[Math.min(2, TAR_ESTADOS.findIndex(e => e.k === est) + 1)], key = tdIGKey_(r, D.hid, dia);
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span><span class="t">${esc(a.nombre || D.hid)}</span><button type="button" class="ad-close" onclick="tdCerrar_()">✕</button></div>
       <div class="ad-tt">🔍 ${esc(r.Nombre || 'Inspección general')}</div>
-      <div class="ad-sub">Límite ${aseoDiaTxt_(iso)} · <i style="background:${TD_EST[est]}"></i>${est} · ${prio4Html_(r.Prioridad || 'Medio')}</div>
+      <div class="ad-sub">Límite ${aseoDiaTxt_(tdLimIG_(r, dia))} · <i style="background:${TD_EST[est]}"></i>${est} · ${prio4Html_(tdPrioEf_(r, dia))}</div>
       <div class="ad-hint" style="margin-top:6px"><a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrir_('${esc(r.ID)}')">‹ Inspección general · ${tdIGAlojs_(r).length} alojamientos</a></div></div>
     <div class="ad-db">
       <div class="lab">Estado de este alojamiento</div>
@@ -59479,7 +59532,7 @@ function tarPanelEls_() {
 function tarPanelSnapshot_(d) {
   return JSON.stringify({
     ti: d.Tipo || '', n: d.Nombre || '', c: d.Clasificacion || '', s: d.Subclasificacion || '', p: d.Prioridad || '',
-    na: d.Naturaleza || '', pr: d._prog, pe: (d._personal || []).slice().sort(), ig: d.Insp_general === 'Sí' ? [d.Plantilla || '', (d._alojs || []).slice().sort()] : '',
+    na: d.Naturaleza || '', pr: d._prog, pe: (d._personal || []).slice().sort(), ig: d.Insp_general === 'Sí' ? [d.Plantilla || '', (d._alojs || []).slice().sort(), d.Limite_IG || ''] : '',
     w: d.WhatsApp || 'No', m: d.Mensaje || '', t: d.Template_ID || '', e: d.Estado || '', co: d.Comentarios || '', fl: d.Fecha_limite === 'Sí' ? 'Sí' : 'No',
   });
 }
@@ -59493,7 +59546,7 @@ window.tarOpenPanel = function (id, fecha, tipoNuevo) {
   d.Tipo = tarEsRec_(d) || tipoNuevo === 'Recordatorio' ? 'Recordatorio' : 'Tarea programada';
   d.Estado = tarVigencia_(d);
   d._prog = JSON.parse(JSON.stringify(row ? tarProg_(row) : tarEmptyProg_(d.Naturaleza)));
-  if (!row && tipoNuevo === 'IG') Object.assign(d._prog, { tipo: 'mensual', dias_mes: [31], inicio: d._prog.inicio || tarIso_(tarToday_()) }); // fecha límite: último día del mes
+  if (!row && tipoNuevo === 'IG') { d.Limite_IG = tdFinMes_(tarIso_(tarToday_())); Object.assign(d._prog, { tipo: 'mensual', dias_mes: [31], inicio: d._prog.inicio || tarIso_(tarToday_()) }); } // fecha límite: por omisión el último día del mes
   d._alojs = tdEsIG_(d) ? (row ? tdIGAlojs_(row) : []) : [];
   if (tdEsIG_(d) && typeof ASEO !== 'undefined' && !ASEO.pl.cargado) plCargar_().then(() => { if (TAR_STATE.panel) tarPanelRender_(); });
   if (tdEsIG_(d) && typeof ALOJ_STATE !== 'undefined' && !ALOJ_STATE.loaded && typeof lgLoadAlojamientos === 'function') lgLoadAlojamientos().then(() => { if (TAR_STATE.panel) tarPanelRender_(); }).catch(() => {});
@@ -59649,8 +59702,11 @@ function tarIGCampos_(d, lbl, inp, field) {
   const lista = A.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;max-height:260px;overflow:auto;padding:2px">${A.map(a => { const on = sel.includes(String(a.houseId));
       return `<button type="button" onclick="tarIGAloj_(this.dataset.h)" data-h="${esc(String(a.houseId))}" title="${esc(a.nombre)}" style="all:unset;cursor:pointer;display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:8px;border:1.5px solid ${on ? '#c4b5fd' : '#e2e8f0'};background:${on ? '#f5f3ff' : '#fff'};font-size:11.5px;font-weight:600;color:#0f172a;min-width:0">${tarCheck_(on)}<b style="font:700 11px ui-monospace,Menlo,monospace">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-weight:500">${esc(String(a.nombre).replace(/^Calle\s+/i, ''))}</span></button>`; }).join('')}</div>`
     : '<div style="font-size:12px;color:#94a3b8">⏳ Cargando alojamientos…</div>';
-  return field(lbl('Plantilla') + plSel) + field(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:11.5px;font-weight:600;color:#374151">Alojamiento(s) · ${sel.length}</label><span style="flex:1"></span>${btn('Todos', 'tarIGTodos_(true)')}${btn('Ninguno', 'tarIGTodos_(false)')}</div>${lista}`);
+  const lim = d.Limite_IG || tdFinMes_(tarIso_(tarToday_()));
+  const limF = field(lbl('Fecha límite') + `<input type="date" value="${esc(lim)}" onchange="tarIGLimite_(this.value)" style="${inp};width:auto"><div style="font-size:11px;color:#94a3b8;margin-top:5px">Se repite cada mes ese mismo día (si el mes es más corto, su último día). Conforme se acerca, la card muestra el aviso y sube la prioridad: ≤ 7 días Medio · ≤ 3 Alto · ≤ 1 Crítico.</div>`);
+  return field(lbl('Plantilla') + plSel) + limF + field(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:11.5px;font-weight:600;color:#374151">Alojamiento(s) · ${sel.length}</label><span style="flex:1"></span>${btn('Todos', 'tarIGTodos_(true)')}${btn('Ninguno', 'tarIGTodos_(false)')}</div>${lista}`);
 }
+window.tarIGLimite_ = function (v) { const P = TAR_STATE.panel; if (!P || !v) return; P.d.Limite_IG = v; P.d._prog.dias_mes = [Number(v.slice(8, 10))]; tarPanelRender_(); };
 window.tarIGPlantilla_ = function (id) { const P = TAR_STATE.panel; if (!P) return; const pl = (ASEO.pl.lista || {})[id]; P.d.Plantilla = id || ''; if (pl && !String(P.d.Nombre || '').trim()) P.d.Nombre = 'Inspección general · ' + pl.titulo; tarPanelRender_(); };
 window.tarIGAloj_ = function (h) { const P = TAR_STATE.panel; if (!P) return; const a = P.d._alojs = P.d._alojs || [], i = a.indexOf(String(h)); if (i >= 0) a.splice(i, 1); else a.push(String(h)); const sc = document.querySelector('#tar-panel [style*="max-height:260px"]'), t = sc ? sc.scrollTop : 0; tarPanelRender_(); const sc2 = document.querySelector('#tar-panel [style*="max-height:260px"]'); if (sc2) sc2.scrollTop = t; };
 window.tarIGTodos_ = function (on) { const P = TAR_STATE.panel; if (!P) return; P.d._alojs = on ? (atAlojs_() || []).map(a => String(a.houseId)) : []; tarPanelRender_(); };
@@ -59775,7 +59831,7 @@ window.tarSavePanel = async function () {
     Fecha_limite: d.Fecha_limite === 'Sí' ? 'Sí' : 'No',
     Updated_at: new Date().toISOString(),
   };
-  if (tdEsIG_(d)) Object.assign(payload, { Insp_general: 'Sí', Plantilla: d.Plantilla || '', Alojamientos: JSON.stringify((d._alojs || []).map(String)), Clasificacion: d.Clasificacion || 'Inspección' });
+  if (tdEsIG_(d)) Object.assign(payload, { Insp_general: 'Sí', Limite_IG: d.Limite_IG || '', Fecha_limite: 'Sí', Plantilla: d.Plantilla || '', Alojamientos: JSON.stringify((d._alojs || []).map(String)), Clasificacion: d.Clasificacion || 'Inspección' });
   if (d.Proceso_ID) Object.assign(payload, { Origen: 'Proceso', Proceso_ID: d.Proceso_ID, Proceso_Codigo: d.Proceso_Codigo || '', Proceso_Nombre: d.Proceso_Nombre || '', Proceso_Version: "'" + String(d.Proceso_Version || '').replace(/^'/, '') });
   if (P.id) payload.ID = P.id;
   else payload.Creado_por = tarUser_();
