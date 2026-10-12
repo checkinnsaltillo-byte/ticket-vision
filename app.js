@@ -58643,8 +58643,7 @@ function tdRender_() {
   const nFx = ckFxN_(TAR_STATE.fx, { tipo: '', prio: '' });
   const seg = `<div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="tarSetSection('tablero')">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="tarSetSection('registro')">Registro</button></div>`;
   const bar = `<div class="ck-bar">${ckHam_(TAR_STATE.filAb, nFx, 'TAR_STATE.filAb=!TAR_STATE.filAb;tdRender_()')}
-      ${sec === 'tablero' ? `<div class="ck-dnav"><button type="button" onclick="tdSetDia_(-1)" title="Día anterior">‹</button><button type="button" class="lb ${dia !== hoy ? 'otro' : ''}" onclick="tdSetDia_(0)" title="${dia !== hoy ? 'Volver a hoy' : lbl}">${ckDia_(dia, hoy)}</button><button type="button" onclick="tdSetDia_(1)" title="Día siguiente">›</button></div>
-      <button type="button" class="aseo-btn ck-ib ${TAR_STATE.cal ? 'on' : ''}" onclick="tdToggleCal_()" title="${TAR_STATE.cal ? 'Ocultar calendario' : 'Mostrar calendario'}">📅</button>` : ''}
+      ${sec === 'tablero' && TAR_STATE.vista !== 'fecha' ? `<div class="ck-dnav"><button type="button" onclick="tdSetDia_(-1)" title="Día anterior">‹</button><button type="button" class="lb ${dia !== hoy ? 'otro' : ''}" onclick="tdSetDia_(0)" title="${dia !== hoy ? 'Volver a hoy' : lbl}">${ckDia_(dia, hoy)}</button><button type="button" onclick="tdSetDia_(1)" title="Día siguiente">›</button></div>` : ''}
       ${seg}<span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','Recordatorio')" title="Nuevo recordatorio">＋ Recordatorio</button>
@@ -58658,7 +58657,6 @@ function tdRender_() {
     const todos = tarDelDia_(dia), L = tdLista_(dia), board = tdTablero_(L, dia);
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}
       <div class="ad-v2 ck-kpis">${tdKpis_(todos, dia)}</div>${nav}${bar.replace('__SEGV__', TAR_STATE._segV || '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(todos)}</div>` : ''}
-      ${TAR_STATE.cal ? `<div class="td-cal">${tarCalendarioHtml_()}</div>` : ''}
       <div class="ad-v2 td-board">${board}</div></div>`;
   }
   if (typeof pzRender_ === 'function') pzRender_();
@@ -58805,8 +58803,9 @@ window.tdIGPlantillaHecha_ = function (key, pc) {
   if (nuevo) Promise.resolve(tarSaveOcur_(id, iso, { Estado: nuevo })).then(fin).catch(() => {}); else fin();
 };
 function tdTablero_(L, dia) {
-  const vista = TAR_STATE.vista === 'clas' ? 'clas' : 'estado';
-  const segV = `<div class="ad-seg"><span>Vista</span><button type="button" class="${vista === 'estado' ? 'on' : ''}" onclick="tdVista_('estado')">Por estado</button><button type="button" class="${vista === 'clas' ? 'on' : ''}" onclick="tdVista_('clas')">Por clasificación</button></div>`;
+  const vista = TAR_STATE.vista === 'clas' || TAR_STATE.vista === 'fecha' ? TAR_STATE.vista : 'estado';
+  const segV = `<div class="ad-seg"><span>Vista</span><button type="button" class="${vista === 'estado' ? 'on' : ''}" onclick="tdVista_('estado')">Por estado</button><button type="button" class="${vista === 'clas' ? 'on' : ''}" onclick="tdVista_('clas')">Por clasificación</button><button type="button" class="${vista === 'fecha' ? 'on' : ''}" onclick="tdVista_('fecha')">Por fecha</button></div>`;
+  if (vista === 'fecha') { TAR_STATE._segV = segV; return `<div class="td-cal">${tarCalendarioHtml_()}</div>`; } // «Por fecha» = el calendario (por día / semana / mes)
   let cols;
   if (vista === 'estado') cols = TAR_ESTADOS.map(e => {
     const X = L.filter(r => tdEst_(r, dia) === e.k);
@@ -58924,7 +58923,7 @@ window.tdComentario_ = function (id, iso, v) {
 };
 
 // «Calendario» (menú lateral) = tablero con el calendario visible.
-window.tarSetSection = function (k) { if (k === 'calendario') { TAR_STATE.cal = true; k = 'tablero'; } TAR_STATE.section = k; tarRender(); };
+window.tarSetSection = function (k) { if (k === 'calendario') { TAR_STATE.vista = 'fecha'; k = 'tablero'; } TAR_STATE.section = k; tarRender(); };
 
 // ── Filtros globales (Calendario y Registro) ───────────────────────────
 // Tipo: botones (ambos activos por defecto). Clasificación / Sub-clasificación
@@ -59294,8 +59293,9 @@ function tarCalendarioHtml_() {
     const on = TAR_STATE.calView === k;
     return `<button type="button" onclick="tarSetCalView('${k}')" style="all:unset;cursor:pointer;padding:7px 14px;font-size:12px;font-weight:800;border-radius:8px;background:${on ? '#7c3aed' : '#fff'};color:${on ? '#fff' : '#475569'};border:1.5px solid ${on ? '#7c3aed' : '#e2e8f0'}">${label}</button>`;
   };
-  const tabs = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-    ${vBtn('resumen', '🗂️ Resumen de tareas')}${vBtn('dia', '📌 Pendientes del día')}${vBtn('semana', '🗓️ Pendientes de la semana')}${vBtn('mes', '📆 Pendientes del mes')}</div>`;
+  if (!['dia', 'semana', 'mes'].includes(TAR_STATE.calView)) TAR_STATE.calView = 'semana';
+  const tB = (k, l) => `<button type="button" class="${TAR_STATE.calView === k ? 'on' : ''}" onclick="tarSetCalView('${k}')">${l}</button>`;
+  const tabs = `<div class="ad-seg" style="margin-bottom:12px">${tB('dia', 'Por día')}${tB('semana', 'Por semana')}${tB('mes', 'Por mes')}</div>`;
   let body = '';
   if (TAR_STATE.calView === 'resumen') body = tarResumenHtml_();
   else if (TAR_STATE.calView === 'dia') body = tarDiaHtml_();
@@ -63680,7 +63680,7 @@ function navAfter_(ms, fn) { return () => setTimeout(() => { try { fn(); } catch
 const NAV_TREE = {
   tareas: [
     { t: '📅 Calendario', go: () => tarSetSection('calendario'), subs: [
-      { t: '🗂️ Resumen de tareas', go: () => { tarSetSection('calendario'); tarSetCalView('resumen'); } },
+      { t: '🗂️ Resumen de tareas', go: () => { tarSetSection('tablero'); tdVista_('estado'); } },
       { t: '📌 Pendientes del día', go: () => { tarSetSection('calendario'); tarSetCalView('dia'); } },
       { t: '🗓️ Pendientes de la semana', go: () => { tarSetSection('calendario'); tarSetCalView('semana'); } },
       { t: '📆 Pendientes del mes', go: () => { tarSetSection('calendario'); tarSetCalView('mes'); } },
