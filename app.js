@@ -58646,7 +58646,7 @@ function tdRender_() {
   const nFx = ckFxN_(TAR_STATE.fx, { tipo: '', prio: '' });
   const seg = `<div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="tarSetSection('tablero')">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="tarSetSection('registro')">Registro</button></div>`;
   const bar = `<div class="ck-bar">${ckHam_(TAR_STATE.filAb, nFx, 'TAR_STATE.filAb=!TAR_STATE.filAb;tdRender_()')}
-      ${ckMesNavHtml_(ym, 'tdMesV_')}
+      ${ckMesNavHtml_(ym, 'tdMesV_')}${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()')}
       <span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','Recordatorio')" title="Nuevo recordatorio">＋ Recordatorio</button>
@@ -58661,7 +58661,7 @@ function tdRender_() {
     const filasMes = [...new Map(oc0.map(x => [x.r.ID, x.r])).values()];
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}
       <div class="ad-v2 ck-kpis">${tdKpisOc_(oc0, ym)}</div>${nav}${bar.replace('__SEGV__', TAR_STATE._segV || '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(filasMes)}</div>` : ''}
-      <div class="ad-v2 td-board">${board}</div></div>`;
+      <div class="ad-v2 td-board">${ckSplitHtml_(!!TAR_STATE.cal, `<div class="td-cal">${tarCalendarioHtml_()}</div>`, board)}</div></div>`;
   }
   if (typeof pzRender_ === 'function') pzRender_();
   if (TAR_STATE.dr && !TAR_STATE._sinDr) tdPintar_();
@@ -58753,7 +58753,8 @@ window.tdSetDia_ = function (delta) {
   TAR_STATE.calRef = tarParseIso_(tdDia_());
   tarRender();
 };
-window.tdToggleCal_ = function () { TAR_STATE.cal = !TAR_STATE.cal; if (TAR_STATE.cal && TAR_STATE.calView === 'resumen') TAR_STATE.calView = 'mes'; tarRender(); };
+window.tdToggleCal_ = function () { TAR_STATE.cal = !TAR_STATE.cal; if (TAR_STATE.cal && !['dia', 'semana', 'mes'].includes(TAR_STATE.calView)) TAR_STATE.calView = 'mes'; try { localStorage.setItem('tar-cal', TAR_STATE.cal ? '1' : '0'); } catch (_) {} tarRender(); };
+try { TAR_STATE.cal = localStorage.getItem('tar-cal') === '1'; } catch (_) {}
 window.tdVista_ = function (v) { TAR_STATE.vista = v; try { localStorage.setItem('tar-vista', v); } catch (_) {} tarRender(); };
 try { TAR_STATE.vista = localStorage.getItem('tar-vista') || 'estado'; } catch (_) {}
 // ── Card compacta: misma distribución que las cards de Aseo / Mantenimiento ──
@@ -58849,7 +58850,6 @@ function tdTablero_(O, dia) {
   ckVCss_();
   const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista, vista = CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado';
   TAR_STATE._segV = ckVistasHtml_(vista, 'tdVista_'); // va en la barra de arriba (tdRender_)
-  if (vista === 'fecha') return `<div class="td-cal">${tarCalendarioHtml_()}</div>`; // «Por fecha» = calendario por día / semana / mes del mes elegido
   const PW = { 'Crítico': 4, 'Alto': 3, 'Medio': 2, 'Bajo': 1 };
   const ord = L => L.slice().sort((a, b) => tdLimAbajo_(a.r) - tdLimAbajo_(b.r) || a.iso.localeCompare(b.iso) || (PW[tdPrioEf_(b.r, b.iso)] || 0) - (PW[tdPrioEf_(a.r, a.iso)] || 0)); // con fecha límite: hasta abajo
   const card = x => tdCard_(x.r, x.iso, { cal: true, fecha: true });
@@ -58981,7 +58981,7 @@ window.tdComentario_ = function (id, iso, v) {
 };
 
 // «Calendario» (menú lateral) = tablero con el calendario visible.
-window.tarSetSection = function (k) { if (k === 'calendario') { TAR_STATE.vista = 'fecha'; k = 'tablero'; } if (k === 'registro') { TAR_STATE.vista = 'tabla'; k = 'tablero'; } TAR_STATE.section = k; tarRender(); };
+window.tarSetSection = function (k) { if (k === 'calendario') { TAR_STATE.cal = true; k = 'tablero'; } if (k === 'registro') { TAR_STATE.vista = 'tabla'; k = 'tablero'; } TAR_STATE.section = k; tarRender(); };
 
 // ── Filtros globales (Calendario y Registro) ───────────────────────────
 // Tipo: botones (ambos activos por defecto). Clasificación / Sub-clasificación
@@ -66967,9 +66967,8 @@ function aseoRender_() {
   if (st) st.innerHTML = `<span class="mv-live">● En vivo</span> · consulta a Lodgify cada ${ASEO_POLL_S} s · la hora exacta de la última actualización está arriba de las cards`;
   // Calendario: oculto por defecto; se despliega a la izquierda con el botón.
   const grid = document.getElementById('aseo-grid');
-  if (ASEO.vista === 'fecha') ASEO.cal = true; // «Por fecha»: calendario a todo lo ancho (sin el botón 📅)
-  if (grid) { grid.classList.toggle('con-cal', !!ASEO.cal && ASEO.vista !== 'fecha'); grid.classList.toggle('solo-cal', ASEO.vista === 'fecha'); }
-  const cb = document.getElementById('aseo-cal-btn'); if (cb) cb.style.display = 'none';
+  if (grid) { grid.classList.toggle('con-cal', !!ASEO.cal); grid.classList.remove('solo-cal'); }
+  const cb = document.getElementById('aseo-cal-btn'); if (cb) { cb.style.display = ''; cb.classList.toggle('on', !!ASEO.cal); cb.title = ASEO.cal ? 'Ocultar calendario' : 'Mostrar calendario'; }
   const tb = document.getElementById('aseo-todas-btn'); if (tb) tb.textContent = ASEO.todas ? '▾ Contraer todas' : '▸ Expandir todas las cards';
   // Solo se re-pinta si cambió algo (conserva el scroll del usuario).
   const cal = ASEO.cal ? document.getElementById('aseo-cal') : null;
@@ -67433,7 +67432,7 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
       const p = L.find(I => !I.tarea) || L.find(I => !['correctivo', 'preventivo'].includes(axSrv_(kDe(I)))) || L[0], pi = idsDe(p), hs = L.filter(I => I !== p);
       hijosDe.set(p, hs); hs.forEach(h => { padreDe.set(h, p); const hi = idsDe(h); puenteDe.set(h, hi.find(x => pi.includes(x)) || hi[0]); });
     }); }
-  const vista = !MP && ['estado', 'usuario', 'tabla', 'fecha'].includes(ASEO.vista) ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados solo «por propiedad»
+  const vista = !MP && ['estado', 'usuario', 'tabla'].includes(ASEO.vista) ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados solo «por propiedad»
   const propHtml = props.length > 1 ? `<div class="mv-pf ad-prf"><small>🏘️ Propiedad:</small>${props.map(p => `<button type="button" class="mv-pf-c ad-pr ${fP.includes(p) ? 'on' : ''}" data-p="${pcEsc(p)}" onclick="adPropToggle_(this.dataset.p)">${pcEsc(p)}<b>${infos.concat(tInfos).filter(I => propDe(I) === p).length}</b></button>`).join('')}${fP.length ? '<button type="button" class="mv-pf-x" onclick="ASEO.fProp=[];aseoRender_()">Quitar filtro</button>' : ''}</div>` : '';
   const segV = `${MP ? '' : ckVistasHtml_(vista, 'adVista_')}<div class="ad-seg ad-seg2"><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
   ASEO._pubKeys = infos.filter(I => I.esHoyC && I.G).map(I => ({ key: I.pubKey, on: !I.noPub }));
@@ -67623,7 +67622,7 @@ function adTblCss_() {
 try { ASEO.vista = localStorage.getItem('aseo-vista2') || 'propiedad'; } catch (_) { ASEO.vista = 'propiedad'; }
 try { const v = localStorage.getItem('aseo-simple2'); if (v != null) ASEO.simple = v === '1'; } catch (_) {} // sin elección: según el rol (adTablero_)
 window.adSimple_ = function (on) { ASEO.simple = !!on; try { localStorage.setItem('aseo-simple2', on ? '1' : '0'); } catch (_) {} aseoRenderSide_(); };
-window.adVista_ = function (v) { const antes = ASEO.vista; ASEO.vista = v; try { localStorage.setItem('aseo-vista2', v); } catch (_) {} if (v === 'fecha' || antes === 'fecha') { ASEO.cal = v === 'fecha'; ASEO.calSig = ''; ASEO._centrar = true; aseoRender_(); } else aseoRenderSide_(); }; // «Por fecha» = el calendario a todo lo ancho
+window.adVista_ = function (v) { ASEO.vista = v; try { localStorage.setItem('aseo-vista2', v); } catch (_) {} aseoRenderSide_(); };
 window.adPrioFiltro_ = function (k) { const s = ASEO.fPrio = ASEO.fPrio || []; const i = s.indexOf(k); if (i >= 0) s.splice(i, 1); else s.push(k); aseoRender_(); };
 window.adTipoToggle_ = function (k) { const s = ASEO.fTipo = ASEO.fTipo || []; const i = s.indexOf(k); if (i >= 0) s.splice(i, 1); else s.push(k); aseoRender_(); };
 window.adPropToggle_ = function (p) { const s = ASEO.fProp = ASEO.fProp || []; const i = s.indexOf(p); if (i >= 0) s.splice(i, 1); else s.push(p); aseoRender_(); };
@@ -69158,7 +69157,10 @@ function icCss_() {
 }
 // ═══ Check-Flow · vistas homologadas (Aseo, Mantenimiento, Incidencias, Objetos olvidados, Tareas programadas) ═══
 // Mismo selector en todas: Por estado · Por propiedad · Por usuario · Por fecha · Tabla, y el mismo selector de mes ‹ Mes ›.
-const CK_VISTAS = [['estado', 'Por estado'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['fecha', 'Por fecha'], ['tabla', 'Tabla']];
+const CK_VISTAS = [['estado', 'Por estado'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['tabla', 'Tabla']];
+// 📅 Calendario: botón que se activa/desactiva y se muestra a la izquierda, compartido con cualquier vista (como en Aseo).
+function ckCalBtnHtml_(on, fn) { return `<button type="button" class="aseo-btn ck-ib ${on ? 'on' : ''}" onclick="${fn}" title="${on ? 'Ocultar calendario' : 'Mostrar calendario'}">📅</button>`; }
+function ckSplitHtml_(on, calHtml, mainHtml) { return on ? `<div class="ck-split"><div class="ck-splitcal">${calHtml}</div><div class="ck-splitmain">${mainHtml}</div></div>` : mainHtml; }
 function ckVistasHtml_(cur, fn) { return `<div class="ad-seg"><span>Vista</span>${CK_VISTAS.map(([k, t]) => `<button type="button" class="${cur === k ? 'on' : ''}" onclick="${fn}('${k}')">${t}</button>`).join('')}</div>`; }
 function ckMesHoy_() { return aseoHoyIso_().slice(0, 7); }
 function ckMesMover_(ym, v) { if (typeof v === 'string') return v; if (!v) return ckMesHoy_(); const [y, m] = (ym || ckMesHoy_()).split('-').map(Number), d = new Date(y, m - 1 + v, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
@@ -69186,7 +69188,15 @@ function ckVCss_() {
   .ck-calm .d.fuera{opacity:.4;background:#fafafa}.ck-calm .d.hoy{border-color:#a5b4fc;background:#f5f5ff}
   .ck-calm .d>small{font-size:12px;font-weight:700;color:#334155}.ck-calm .d.hoy>small{color:#4f46e5}
   .ck-calm .mas{font-size:10px;font-weight:700;color:#4f46e5;cursor:pointer}
-  .ad-col .ad-colh .ck-sub{font-weight:500;color:#9aa1ad;font-size:11px;margin-left:4px}`;
+  .ad-col .ad-colh .ck-sub{font-weight:500;color:#9aa1ad;font-size:11px;margin-left:4px}
+  .ck-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:14px;align-items:start}
+  .ck-splitcal{position:sticky;top:120px;background:#fff;border:1px solid #e8eaee;border-radius:12px;padding:10px;max-height:calc(100vh - 140px);overflow:auto}
+  .ck-splitcal .ck-calm .g{min-width:0;grid-template-columns:repeat(7,minmax(0,1fr))}
+  .ck-splitcal .ck-calm .d{min-height:70px;padding:3px}.ck-splitcal .ck-mcal span{display:none}.ck-splitcal .ck-mcal{justify-content:space-between}
+  .ck-splitcal .td-cal{border:0;padding:0;margin:0}
+  .ck-splitcal .td-cal div[style*="min-width:860px"],.ck-splitcal .td-cal div[style*="min-width:1330px"]{min-width:0!important;grid-template-columns:repeat(7,minmax(0,1fr))!important}.ck-splitcal .td-cal div[style*="min-width:1330px"]{grid-template-columns:1fr!important}
+  .ck-splitcal .td-mcal span{display:none}.ck-splitcal .td-mcal{justify-content:space-between}
+  @media (max-width:1000px){.ck-split{grid-template-columns:1fr}.ck-splitcal{position:static;max-height:none}}`;
   document.head.appendChild(st);
 }
 // Columnas genéricas: [{t: html del encabezado, n, cards: html}]
@@ -69237,7 +69247,7 @@ function icRender_() {
   const nav = `<div class="cl-nav-slot" data-act="incidencias">${typeof clNavHtml_ === 'function' ? clNavHtml_('incidencias') : ''}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(IC.filAb, nFx, 'IC.filAb=!IC.filAb;icRender_()')}
       <input class="ck-q ic-q" type="search" placeholder="🔎 Buscar alojamiento, motivo, persona…" value="${pcEsc(IC.q)}" oninput="IC.q=this.value;clearTimeout(IC._qt);IC._qt=setTimeout(()=>{icRender_();const i=document.querySelector('#ic-root .ic-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
-      ${ckMesNavHtml_(ym, 'icMes_')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'icVista_')}
+      ${ckMesNavHtml_(ym, 'icMes_')}${ckCalBtnHtml_(!!IC.cal, 'icCal_()')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'icVista_')}
       ${nArch || IC.fx.arch ? `<button type="button" class="aseo-btn ${IC.fx.arch ? 'ck-b on' : ''}" onclick="IC.fx.arch=!IC.fx.arch;icRender_()" title="Ver incidencias archivadas">🗄 ${nArch}</button>` : ''}
       ${IC.cargando ? '<span class="ck-hint">⏳</span>' : '<button type="button" class="aseo-btn ck-ib" onclick="icInit_()" title="Volver a cargar las incidencias" aria-label="Actualizar"><svg class="ck-rf" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>'}
       <button type="button" class="aseo-btn ck-ib" onclick="icClasif_()" title="Clasificaciones">⚙️</button>
@@ -69246,12 +69256,15 @@ function icRender_() {
   const L = todas.filter(x => ckEnMes_(x.fecha, ym, !icCerrada_(x)) && icPasa_(x, true));
   root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${icKpis_(todas)}</div>${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas, true)}</div>` : ''}
-      ${vacio || `<div class="ad-v2 td-board">${icVistaHtml_(L, vista, ym)}</div>`}</div>`;
+      ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!IC.cal, icCalHtml_(L, ym), icVistaHtml_(L, vista, ym))}</div>`}</div>`;
   try { clNavPaint_(); } catch (_) {}
 }
 window.icSec_ = function (k) { IC.vista = k === 'registro' ? 'tabla' : 'estado'; icRender_(); };
 try { IC.vista = localStorage.getItem('ic-vista') || 'estado'; } catch (_) {}
 window.icVista_ = function (v) { IC.vista = v; try { localStorage.setItem('ic-vista', v); } catch (_) {} icRender_(); };
+function icCalHtml_(L, ym) { return ckCalMesHtml_(ym, L.map(x => ({ iso: x.fecha, code: x.corto, nombre: x.titulo, tc: icMotC_(x.mot[0]).c, sc: (IC_EST.find(e => e.k === x.est) || IC_EST[0]).c, fin: icCerrada_(x), onclick: `icAbrir_('${pcEsc(x.id)}')` }))); }
+try { IC.cal = localStorage.getItem('ic-cal') === '1'; } catch (_) {}
+window.icCal_ = function () { IC.cal = !IC.cal; try { localStorage.setItem('ic-cal', IC.cal ? '1' : '0'); } catch (_) {} icRender_(); };
 window.icMes_ = function (v) { IC.mes = ckMesMover_(IC.mes, v); icRender_(); };
 function icVistaHtml_(L, vista, ym) {
   ckVCss_();
@@ -69260,7 +69273,6 @@ function icVistaHtml_(L, vista, ym) {
   if (vista === 'propiedad') { const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es')); return ckColsHtml_(P.map(p => { const X = ordP(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)); return { t: `🏘️ ${pcEsc(p)}`, n: X.length, cards: X.map(icCard_).join('') }; }), vac); }
   if (vista === 'usuario') { const N = [...new Set(L.flatMap(x => x.pers))].sort((a, b) => a.localeCompare(b, 'es')), sin = L.filter(x => !x.pers.length);
     return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', n: sin.length, cards: ordP(sin).map(icCard_).join('') }] : []).concat(N.map(n => { const X = ordP(L.filter(x => x.pers.includes(n))); return { t: `${adAv_(n)} ${pcEsc(aseoNombreCorto_(n))}`, n: X.length, cards: X.map(icCard_).join('') }; })), vac); }
-  if (vista === 'fecha') return ckCalMesHtml_(ym, L.map(x => ({ iso: x.fecha, code: x.corto, nombre: x.titulo, tc: icMotC_(x.mot[0]).c, sc: (IC_EST.find(e => e.k === x.est) || IC_EST[0]).c, fin: icCerrada_(x), onclick: `icAbrir_('${pcEsc(x.id)}')` })));
   const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es'));
   return ckTablaHtml_([['Fecha', '95px'], ['Alojamiento', '130px'], ['Clase', '90px'], ['Motivo', '130px'], ['Sub-motivo', 'minmax(140px,1fr)'], ['Prioridad', '90px'], ['Estado', '110px'], ['Personas', '110px'], ['Reportó', '120px'], ['Folio', '150px']],
     P.map(p => ({ t: '🏘️ ' + pcEsc(p), rows: ordP(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)).map(x => { const E = IC_EST.find(e => e.k === x.est) || IC_EST[0], M = icMotC_(x.mot[0]);
@@ -69704,18 +69716,21 @@ function obRender_() {
   const nav = `<div class="cl-nav-slot" data-act="objetos">${clNavHtml_('objetos')}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(OB.filAb, nFx, 'OB.filAb=!OB.filAb;obRender_()')}
       <input class="ck-q ob-q" type="search" placeholder="🔎 Buscar alojamiento, objeto, persona…" value="${pcEsc(OB.q)}" oninput="OB.q=this.value;clearTimeout(OB._qt);OB._qt=setTimeout(()=>{obRender_();const i=document.querySelector('#ob-root .ob-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
-      ${ckMesNavHtml_(ym, 'obMes_')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'obVista_')}
+      ${ckMesNavHtml_(ym, 'obMes_')}${ckCalBtnHtml_(!!OB.cal, 'obCal_()')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'obVista_')}
       ${OB.cargando ? '<span class="ck-hint">⏳</span>' : '<button type="button" class="aseo-btn ck-ib" onclick="obInit_()" title="Volver a cargar los objetos" aria-label="Actualizar"><svg class="ck-rf" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>'}
       <button type="button" class="aseo-btn ck-pri" onclick="obForm_(null)">＋ Nuevo objeto</button></div>`;
   const vacio = !todos.length ? `<div class="pc-mv-empty">${OB.cargado ? 'Aún no hay objetos olvidados registrados.' : '⏳ Cargando objetos olvidados…'}</div>` : '';
   const L = todos.filter(x => ckEnMes_(x.fecha, ym, !obCerrado_(x)) && obPasa_(x, true));
   root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${obKpis_(todos)}</div>${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos, true)}</div>` : ''}
-      ${vacio || `<div class="ad-v2 td-board">${obVistaHtml_(L, vista, ym)}</div>`}</div>`;
+      ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!OB.cal, obCalHtml_(L, ym), obVistaHtml_(L, vista, ym))}</div>`}</div>`;
   try { clNavPaint_(); } catch (_) {}
 }
 try { OB.vista = localStorage.getItem('ob-vista') || 'estado'; } catch (_) {}
 window.obVista_ = function (v) { OB.vista = v; try { localStorage.setItem('ob-vista', v); } catch (_) {} obRender_(); };
+function obCalHtml_(L, ym) { return ckCalMesHtml_(ym, L.map(x => ({ iso: x.fecha, code: x.corto, nombre: obTitulo_(x), tc: obCatC_(x.cat).c, sc: (OB_EST.find(e => e.k === x.est) || OB_EST[0]).c, fin: obCerrado_(x), onclick: `obAbrir_('${pcEsc(x.id)}')` }))); }
+try { OB.cal = localStorage.getItem('ob-cal') === '1'; } catch (_) {}
+window.obCal_ = function () { OB.cal = !OB.cal; try { localStorage.setItem('ob-cal', OB.cal ? '1' : '0'); } catch (_) {} obRender_(); };
 window.obMes_ = function (v) { OB.mes = ckMesMover_(OB.mes, v); obRender_(); };
 function obVistaHtml_(L, vista, ym) {
   ckVCss_();
@@ -69724,7 +69739,6 @@ function obVistaHtml_(L, vista, ym) {
   if (vista === 'propiedad') { const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es')); return ckColsHtml_(P.map(p => { const X = ord(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)); return { t: `🏘️ ${pcEsc(p)}`, n: X.length, cards: X.map(obCard_).join('') }; }), vac); }
   if (vista === 'usuario') { const N = [...new Set(L.map(x => x.rep).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), sin = L.filter(x => !x.rep);
     return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin especificar', n: sin.length, cards: ord(sin).map(obCard_).join('') }] : []).concat(N.map(n => { const X = ord(L.filter(x => x.rep === n)); return { t: `${adAv_(n)} ${pcEsc(aseoNombreCorto_(n))} <span class="ck-sub">encontró</span>`, n: X.length, cards: X.map(obCard_).join('') }; })), vac); }
-  if (vista === 'fecha') return ckCalMesHtml_(ym, L.map(x => ({ iso: x.fecha, code: x.corto, nombre: obTitulo_(x), tc: obCatC_(x.cat).c, sc: (OB_EST.find(e => e.k === x.est) || OB_EST[0]).c, fin: obCerrado_(x), onclick: `obAbrir_('${pcEsc(x.id)}')` })));
   const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es'));
   return ckTablaHtml_([['Encontrado', '95px'], ['Reporte', '95px'], ['Alojamiento', '130px'], ['Categoría', '140px'], ['Descripción', 'minmax(180px,1fr)'], ['Resguardo', '110px'], ['Estado', '120px'], ['Entregado', '150px'], ['Encontró', '120px'], ['Folio', '170px']],
     P.map(p => ({ t: '🏘️ ' + pcEsc(p), rows: ord(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)).map(x => { const E = OB_EST.find(e => e.k === x.est) || OB_EST[0], C = obCatC_(x.cat);
