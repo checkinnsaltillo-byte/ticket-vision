@@ -45400,6 +45400,7 @@ function _waRenderUnifiedList_(logs, opts) {
   }).join('');
 
   if (window.__waProgPanel) return html + _waProgNuevo_(st); // panel 📅: «Nuevo mensaje» con el mismo diseño de renglón (sin «Nuevo reporte»)
+  if (sinProg) return html + `<button type="button" class="fx-c fx-nrep" onclick="_waOpenReportPickerForCurrentBooking_()">＋ Nuevo reporte</button>`; // Ficha: los mensajes nuevos se crean desde el panel 📅
   const createBtn = st.newSch.open
     ? _waRenderNewSchForm_()
     : `<div style="text-align:center;margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
@@ -45809,14 +45810,13 @@ const WA_ASUNTOS = [
 
 // «Nuevo mensaje» del panel 📅: renglón estilo chat; al abrirlo, el formulario va en el mismo bloque desplegado que los mensajes.
 function _waProgNuevo_(st) {
-  const n = st.newSch, prog = n.mode === 'scheduled';
+  const n = st.newSch; n.mode = 'scheduled'; const prog = true; // solo programado (el envío inmediato ya no aplica aquí)
   if (!n.open) return `<div class="bp-row bp-nuevo"><div class="bp-main" onclick="waSchedOpen_()"><span class="bp-ic">＋</span>
-      <div class="bp-tx"><div class="bp-l1"><b>Nuevo mensaje</b></div><div class="bp-l2">Programado o instantáneo, a los números de esta reserva</div></div></div></div>`;
+      <div class="bp-tx"><div class="bp-l1"><b>Nuevo mensaje</b></div><div class="bp-l2">Se programa para la fecha y hora que elijas</div></div></div></div>`;
   const seg = (v, t) => `<button type="button" class="${n.mode === v ? 'on' : ''}" onclick="__waModalState.newSch.mode='${v}';_waRepaint()">${t}</button>`;
   return `<div class="bp-row ab bp-nuevo"><div class="bp-main" onclick="waSchedCancel_()"><span class="bp-ic">✏️</span>
-      <div class="bp-tx"><div class="bp-l1"><b>Nuevo mensaje</b><span class="bp-t">${prog ? 'Programado' : 'Instantáneo'}</span></div><div class="bp-l2">Toca aquí para cancelar</div></div></div>
+      <div class="bp-tx"><div class="bp-l1"><b>Nuevo mensaje</b></div><div class="bp-l2">Toca aquí para cancelar</div></div></div>
     <div class="bp-det bp-form" onclick="event.stopPropagation()">
-      <div class="bp-seg">${seg('scheduled', '🗓 Programado')}${seg('instant', '⚡ Instantáneo')}</div>
       <div class="bp-f"><span>Asunto</span><select onchange="__waModalState.newSch.subject=this.value;_waRepaint()">${WA_ASUNTOS.map(a => `<option value="${esc(a)}"${a === n.subject ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></div>
       ${n.subject === 'Otro' ? `<div class="bp-f"><span></span><input type="text" value="${esc(n.subjectCustom)}" oninput="__waModalState.newSch.subjectCustom=this.value" placeholder="Escribe el asunto…"></div>` : ''}
       ${prog ? `<div class="bp-f"><span>Envío</span><input type="date" value="${n.date}" oninput="__waModalState.newSch.date=this.value"><input type="time" value="${n.time}" oninput="__waModalState.newSch.time=this.value"></div>` : ''}
@@ -51133,6 +51133,7 @@ function _botcWaCss_() {
   .fx-qs button{all:unset;cursor:pointer;flex:1;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;padding:3px 1px;border-radius:5px;white-space:nowrap;background:#f1f3f5;color:#6b7280;transition:background .15s,color .15s}
   .fx-qs button:hover{background:#e5e7eb;color:#111827}
   .fx-qs button.on{background:var(--c);color:#fff;font-weight:600;box-shadow:0 1px 2px rgba(15,23,42,.15);cursor:default}
+  .fx-nrep{cursor:pointer;text-align:center;color:#4f46e5;font-weight:600;font-size:12px;border-style:dashed}
   .fx-desc{margin-top:5px;font-size:12px;color:#374151;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .fx-c .r3.fila{flex-direction:row;align-items:center;gap:8px;margin-top:7px;padding-top:6px}.fx-c .r3.fila .fx-lk{margin-top:0}
   .fx-sol{cursor:pointer;display:block}.fx-sol .r2{flex-wrap:nowrap}.fx-sol .r2 > span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -51175,7 +51176,7 @@ function _botcWaCss_() {
   #botc-prog-pop{flex:none;max-height:min(55vh,460px);display:flex;flex-direction:column;border-top:1px solid var(--wa-ln);box-shadow:0 -8px 24px rgba(11,20,26,.10);animation:fxSube .22s ease both}
   #botc-prog-pop .bp{background:#fff;height:auto;min-height:0;display:flex;flex-direction:column}
   #botc-prog-pop .bp-h{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 14px;background:#fff;border-bottom:1px solid var(--ad-line,#e8eaee)}
-  #botc-prog-pop .bp-h b{font-size:13px;font-weight:600}#botc-prog-pop .bp-h span{flex:1;min-width:0;font-size:11.5px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #botc-prog-pop .bp-h b{font-size:13px;font-weight:600}#botc-prog-pop .bp-h .bp-sub{flex:1;min-width:0;font-size:11.5px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #botc-prog-pop .bp-row{background:#fff;border-bottom:1px solid var(--wa-ln,#e9edef)}
   #botc-prog-pop .bp-main{display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer}
   #botc-prog-pop .bp-main:hover{background:#f5f6f6}#botc-prog-pop .bp-row.ab .bp-main{background:#f0f2f5}
@@ -51795,6 +51796,7 @@ function _botcRenderMain(phone) {
       <button type="button" onclick="botcToggleHeaderMenu_(event)" title="Opciones" style="width:36px;height:36px;padding:0;font-size:20px;background:#fff;color:#334155;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer;font-weight:900;line-height:1;letter-spacing:2px">⋮</button>
       <div id="botc-header-menu" style="display:${BOTC_STATE.headerMenuOpen?'block':'none'};position:absolute;top:100%;right:0;margin-top:6px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.22);z-index:1000;min-width:240px;overflow:hidden;font-size:12px">${menuItemsHtml}</div>
     </div>`;
+  { const pp = document.getElementById('botc-prog-pop'); if (pp) { window.__botcProgGuardado = pp; pp.dataset.top = (pp.querySelector('.bp-cuerpo') || {}).scrollTop || 0; pp.remove(); } } // se reinserta tal cual (sin parpadeo ni perder lo escrito)
   main.innerHTML = `
     <div class="botc-chat-header wa-chat-h">
       <div class="botc-chat-header-nameblock" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
@@ -51874,6 +51876,8 @@ function _botcRenderMain(phone) {
       <button type="button" class="wa-send" onclick="botcSendManual()" ${canType ? '' : 'disabled'} title="Enviar">➤</button>
     </div>
   `;
+  if (window.__botcProgGuardado && BOTC_STATE.progAbierto === String(phone)) { const g = window.__botcProgGuardado, c = main.querySelector('.wa-comp'); if (c) { c.parentNode.insertBefore(g, c); const b = g.querySelector('.bp-cuerpo'); if (b) b.scrollTop = +g.dataset.top || 0; } document.querySelector('#botc-main .wa-prog')?.classList.add('on'); }
+  window.__botcProgGuardado = null;
   if (BOTC_STATE.progAbierto === String(phone)) setTimeout(() => { if (!document.getElementById('botc-prog-pop')) botcProgToggle_(); }, 0); // el panel de programados sigue abierto tras repintar
   // Scroll: si hay anchors pendientes (desde Notificaciones → Ir a chat),
   // ir al primer mensaje relevante en lugar de al final del chat.
@@ -52908,6 +52912,7 @@ window._botcAbrirAbn_ = async function (ph, opts) {
             <button type="button" class="botc-hmenu-item" onclick="botcToggleRightPanel();botcCloseHeaderMenu_()">📖 Bitácora completa</button>
             <button type="button" class="botc-hmenu-item" onclick="botcCloseHeaderMenu_();switchModule('mensajes');abnInit_('${bid}')">↗ Abrir en Mensajes Airbnb</button></div></div></div>`;
     const prev = document.getElementById('abn-botc-txt'), borrador = prev ? prev.value : '', conFoco = prev && document.activeElement === prev; // no perder lo que se está escribiendo
+    const pp = document.getElementById('botc-prog-pop'), ppTop = pp ? ((pp.querySelector('.bp-cuerpo') || {}).scrollTop || 0) : 0; if (pp) pp.remove();
     main.innerHTML = `<div class="botc-chat-header wa-chat-h">
         <div class="botc-chat-header-nameblock" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
           <button id="botc-back-to-list" type="button" onclick="botcBackToList_()" title="Regresar a la lista" style="align-items:center;gap:4px;padding:6px 8px;background:transparent;color:#54656f;border:0;border-radius:6px;cursor:pointer;font-size:16px;font-weight:800;flex:none">←</button>
@@ -52934,7 +52939,8 @@ window._botcAbrirAbn_ = async function (ph, opts) {
       </div>`;
     const box = document.getElementById('botc-msgs'); if (box) box.scrollTop = box.scrollHeight;
     const tx = document.getElementById('abn-botc-txt'); if (tx && borrador) { tx.value = borrador; if (conFoco) tx.focus(); }
-    if (BOTC_STATE.progAbierto === ph && !document.getElementById('botc-prog-pop')) setTimeout(() => { if (!document.getElementById('botc-prog-pop')) botcProgToggle_(); }, 0);
+    if (pp && BOTC_STATE.progAbierto === ph) { const c = main.querySelector('.wa-comp'); if (c) { c.parentNode.insertBefore(pp, c); const b = pp.querySelector('.bp-cuerpo'); if (b) b.scrollTop = ppTop; } main.querySelector('.wa-prog')?.classList.add('on'); }
+    else if (BOTC_STATE.progAbierto === ph && !document.getElementById('botc-prog-pop')) setTimeout(() => { if (!document.getElementById('botc-prog-pop')) botcProgToggle_(); }, 0);
   };
   if (!opts.silent) { pintar(null); try { BOTC_STATE.bitLast !== ph && (BOTC_STATE.bitOff = false); BOTC_STATE.bitLast = ph; botcBitacoraCol_(ph); } catch (_) {} }
   try {
@@ -52954,7 +52960,8 @@ window.botcProgToggle_ = async function () {
   const ya = document.getElementById('botc-prog-pop'); if (ya) { ya.remove(); BOTC_STATE.progAbierto = null; document.querySelector('.wa-prog')?.classList.remove('on'); return; }
   const bk = _botcProgReserva_(); if (!bk) { alert('Esta conversación no tiene una reserva asociada.'); return; }
   const id = String(waBookingId_(bk)), comp = document.querySelector('#botc-main .wa-comp'); if (!comp) return;
-  const pop = document.createElement('div'); pop.id = 'botc-prog-pop'; pop.dataset.bid = id; BOTC_STATE.progAbierto = String(BOTC_STATE.selectedPhone);
+  const pop = document.createElement('div'); pop.id = 'botc-prog-pop'; pop.dataset.bid = id;
+  pop.addEventListener('focusout', () => setTimeout(() => { if (pop.dataset.pend && !pop.contains(document.activeElement)) { delete pop.dataset.pend; _botcProgPintar_(); } }, 0)); BOTC_STATE.progAbierto = String(BOTC_STATE.selectedPhone);
   comp.parentNode.insertBefore(pop, comp); document.querySelector('.wa-prog')?.classList.add('on');
   pop.innerHTML = '<div class="fx-cargando"><span class="fx-spin"></span>Cargando mensajes programados…</div>';
   const st = window.__waModalState, phone = String(BOTC_STATE.selectedPhone);
@@ -52980,12 +52987,13 @@ function _waProgFila_(o) {
 const _waProgHora_ = d => { try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x)) return ''; return x.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) + ' ' + x.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' }); } catch (_) { return ''; } };
 function _botcProgPintar_() {
   const pop = document.getElementById('botc-prog-pop'), st = window.__waModalState; if (!pop || !st) return;
+  const ae = document.activeElement; if (ae && pop.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { pop.dataset.pend = '1'; return; } // escribiendo: se actualiza al salir del campo
   const bk = (st.bookings || []).find(b => String(waBookingId_(b)) === pop.dataset.bid) || st.b, logs = (WA_ADMIN.logs[st.bookingId] || []);
   const a = _botcFxIso_(bk && (bk.DateArrival || bk.arrival)), d = _botcFxIso_(bk && (bk.DateDeparture || bk.departure)), corto = _botcAlojCorto_(bk);
   let lista; if (String(st.loadingBookingId || '') === pop.dataset.bid) lista = '<div class="fx-cargando"><span class="fx-spin"></span>Cargando…</div>';
   else { window.__waProgPanel = true; try { lista = _waRenderUnifiedList_(logs, { scheduleOnly: true, includePagos: false, bookingForPagos: bk }); } catch (e) { lista = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + e.message); } finally { window.__waProgPanel = false; } }
   const sc = pop.querySelector('.bp-cuerpo'), top = sc ? sc.scrollTop : 0;
-  pop.innerHTML = `<div class="bp"><div class="bp-h"><b>📅 Mensajes programados</b><span>${_botcEsc([corto || (bk ? waAlojamientoLabel_(bk) : ''), a && d ? `${_waFmtShortDate(a)} → ${_waFmtShortDate(d)}` : ''].filter(Boolean).join(' · '))}</span>
+  pop.innerHTML = `<div class="bp"><div class="bp-h"><b>📅 Mensajes programados</b><span class="bp-sub">${_botcEsc([corto || (bk ? waAlojamientoLabel_(bk) : ''), a && d ? `${_waFmtShortDate(a)} → ${_waFmtShortDate(d)}` : ''].filter(Boolean).join(' · '))}</span>
       ${(() => { const aid = pop.dataset.bid, on = !!(WA_ADMIN.config[aid] && WA_ADMIN.config[aid].auto_enabled);
         return `<span class="fx-hauto ${on ? 'on' : ''}" title="Mensajes automáticos de esta reserva: ${on ? 'activos' : 'apagados'}">📅 Auto${waAutoToggleHtml(aid)}</span>`; })()}
       <button type="button" class="fx-ico" onclick="botcProgToggle_()" title="Cerrar">✕</button></div><div class="bp-cuerpo">${lista || _botcFxVacio_('📅', 'Sin mensajes programados en esta reserva')}</div></div>`;
