@@ -58593,6 +58593,8 @@ function tdCss_() {
   .td-card .wa{color:#16a34a;font-size:11px;font-weight:600}
   #ad-drawer .td-com{width:100%;box-sizing:border-box;margin-top:8px}
   .td-cal .ad-card{margin:0}
+  .td-card .td-fe{font-weight:700;color:#334155}.td-card .td-fe.hoy{color:#4f46e5}.td-card .td-fe.tarde{color:#dc2626}
+  html body .ad-card.td-ig .td-fe{color:#fff}
   .td-mcal{display:flex;align-items:center;gap:4px;min-width:0;padding:2px 5px 2px 4px;border-radius:5px;border-left:3px solid var(--tc);background:color-mix(in srgb,var(--sc) 14%,#fff);font-size:10px;cursor:pointer}
   .td-mcal:hover{background:color-mix(in srgb,var(--sc) 26%,#fff)}
   .td-mcal b{font:700 9.5px ui-monospace,Menlo,monospace;flex:none;color:#0f1729}
@@ -58638,12 +58640,13 @@ function tdRender_() {
   if (typeof ASEO !== 'undefined' && !ASEO.pl.cargado && !TAR_STATE._plPed && typeof plCargar_ === 'function') { TAR_STATE._plPed = 1; plCargar_().then(() => tdRender_()).catch(() => {}); }
   if (typeof ALOJ_STATE !== 'undefined' && !ALOJ_STATE.loaded && !ALOJ_STATE.loading && typeof lgLoadAlojamientos === 'function' && TAR_STATE.list.some(tdEsIG_)) lgLoadAlojamientos().then(() => tdRender_()).catch(() => {});
   const dia = tdDia_(), hoy = tarIso_(tarToday_());
+  const ym = TAR_STATE.mes || hoy.slice(0, 7);
   const sec = TAR_STATE.section === 'registro' ? 'registro' : 'tablero';
   const lbl = typeof aseoDiaLabel_ === 'function' ? aseoDiaLabel_(dia) : tarFmtFecha_(dia);
   const nFx = ckFxN_(TAR_STATE.fx, { tipo: '', prio: '' });
   const seg = `<div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="tarSetSection('tablero')">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="tarSetSection('registro')">Registro</button></div>`;
   const bar = `<div class="ck-bar">${ckHam_(TAR_STATE.filAb, nFx, 'TAR_STATE.filAb=!TAR_STATE.filAb;tdRender_()')}
-      ${sec === 'tablero' && TAR_STATE.vista !== 'fecha' ? `<div class="ck-dnav"><button type="button" onclick="tdSetDia_(-1)" title="Día anterior">‹</button><button type="button" class="lb ${dia !== hoy ? 'otro' : ''}" onclick="tdSetDia_(0)" title="${dia !== hoy ? 'Volver a hoy' : lbl}">${ckDia_(dia, hoy)}</button><button type="button" onclick="tdSetDia_(1)" title="Día siguiente">›</button></div>` : ''}
+      ${sec === 'tablero' ? `<div class="ck-dnav"><button type="button" onclick="tdMes_(-1)" title="Mes anterior">‹</button><button type="button" class="lb ${ym !== hoy.slice(0, 7) ? 'otro' : ''}" onclick="tdMesPick_(this)" title="Elegir mes">${esc(bnEfeMesLabel_(ym))}</button><button type="button" onclick="tdMes_(1)" title="Mes siguiente">›</button></div>${ym !== hoy.slice(0, 7) ? `<button type="button" class="aseo-btn" onclick="tdMesSet_('${hoy.slice(0, 7)}')" title="Volver al mes en curso">Mes actual</button>` : ''}` : ''}
       ${seg}<span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','Recordatorio')" title="Nuevo recordatorio">＋ Recordatorio</button>
@@ -58654,14 +58657,49 @@ function tdRender_() {
   if (sec === 'registro') {
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}${nav}${bar.replace('__SEGV__', '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(TAR_STATE.list.slice())}</div>` : ''}<div id="tar-content">${tarRegistroHtml_()}</div></div>`;
   } else {
-    const todos = tarDelDia_(dia), L = tdLista_(dia), board = tdTablero_(L, dia);
+    const oc0 = tdOcMes_(ym, false), oc = oc0.filter(x => tarPasaFiltro_(x.r)), board = tdTablero_(oc, dia);
+    const filasMes = [...new Map(oc0.map(x => [x.r.ID, x.r])).values()];
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}
-      <div class="ad-v2 ck-kpis">${tdKpis_(todos, dia)}</div>${nav}${bar.replace('__SEGV__', TAR_STATE._segV || '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(todos)}</div>` : ''}
+      <div class="ad-v2 ck-kpis">${tdKpisOc_(oc0, ym)}</div>${nav}${bar.replace('__SEGV__', TAR_STATE._segV || '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(filasMes)}</div>` : ''}
       <div class="ad-v2 td-board">${board}</div></div>`;
   }
   if (typeof pzRender_ === 'function') pzRender_();
   if (TAR_STATE.dr && !TAR_STATE._sinDr) tdPintar_();
 }
+// Mes elegido (flechitas del tablero): aplica a Por estado, Por clasificación y Por fecha. Predeterminado: mes en curso.
+// Cada card del tablero es una ocurrencia (tarea + fecha) del mes; los recordatorios cuentan una vez (su último día en el mes)
+// y la inspección general solo en su fecha límite.
+function tdOcMes_(ym, filtrar) {
+  const [y, m] = ym.split('-').map(Number), dim = new Date(y, m, 0).getDate(), out = [], rec = new Map();
+  for (let d = 1; d <= dim; d++) {
+    const iso = `${ym}-${String(d).padStart(2, '0')}`;
+    tarDelDia_(iso).forEach(r => { if (filtrar && !tarPasaFiltro_(r)) return; if (tdEsIG_(r) && iso !== tdLimIG_(r, iso)) return; if (tarEsRec_(r)) { rec.set(r.ID, { r, iso }); return; } out.push({ r, iso }); });
+  }
+  rec.forEach(x => { const hoy = tarIso_(tarToday_()); if (hoy.slice(0, 7) === ym && x.iso > hoy) x.iso = hoy; out.push(x); });
+  return out;
+}
+function tdKpisOc_(O, ym) {
+  const est = x => tdEst_(x.r, x.iso), vivos = O.filter(x => est(x) !== 'Cancelado'), n = k => O.filter(x => est(x) === k).length;
+  const res = n('Resuelto'), pct = vivos.length ? Math.round(res / vivos.length * 100) : 0, abierta = x => !['Resuelto', 'Cancelado'].includes(est(x));
+  const recs = O.filter(x => tarEsRec_(x.r) && abierta(x)).length, urg = O.filter(x => ['Crítico', 'Alto'].includes(tdPrioEf_(x.r, x.iso)) && abierta(x)).length;
+  const hoy = tarIso_(tarToday_()), venc = O.filter(x => abierta(x) && x.iso < hoy && !tarEsRec_(x.r)).length;
+  const seg = k => vivos.length ? (n(k) / vivos.length * 100).toFixed(1) : 0;
+  const kpi = (t, v, s, cls) => `<div class="ad-kpi ${cls || ''}"><small>${t}</small><div class="n">${v}${s ? `<em>${s}</em>` : ''}</div></div>`;
+  return `<div class="ad-kpis">
+    <div class="ad-kpi big"><small>Avance de ${esc(bnEfeMesLabel_(ym).toLowerCase())}</small><div class="n">${pct}%<em>${res} de ${vivos.length} resueltas</em></div>
+      <div class="ad-prog"><i style="width:${seg('Resuelto')}%;background:#10b981"></i><i style="width:${seg('En proceso')}%;background:#f59e0b"></i></div></div>
+    ${kpi('Pendientes', n('Pendiente'))}${kpi('En proceso', n('En proceso'))}${kpi('Resueltas', res)}${kpi('Recordatorios', recs, 'abiertos')}
+    ${kpi('Alertas', urg + venc, [urg ? `${urg} alta/crítica` : '', venc ? `${venc} atrasada${venc === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · '), urg + venc ? 'al' : '')}
+  </div>`;
+}
+window.tdMesSet_ = function (ym) {
+  if (!ym) return; TAR_STATE.mes = ym; const hoy = tarIso_(tarToday_());
+  TAR_STATE.calRef = hoy.slice(0, 7) === ym ? tarToday_() : tarParseIso_(ym + '-01'); // «Por fecha» arranca en el mes elegido
+  TAR_STATE.dia = hoy.slice(0, 7) === ym ? null : ym + '-01';
+  tarRender();
+};
+window.tdMes_ = function (delta) { const [y, m] = (TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7)).split('-').map(Number), d = new Date(y, m - 1 + delta, 1); tdMesSet_(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); };
+window.tdMesPick_ = function (btn) { if (typeof mesPickerOpen_ === 'function') mesPickerOpen_(btn, () => TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7), ym => tdMesSet_(ym)); };
 function tdKpis_(L, dia) {
   const vivos = L.filter(r => tdEst_(r, dia) !== 'Cancelado');
   const n = k => L.filter(r => tdEst_(r, dia) === k).length;
@@ -58737,7 +58775,8 @@ function tdCard_(r, dia, o) {
   const prioEf = tdPrioEf_(r, dia);
   if (!flag && prioEf === 'Crítico' && !['Resuelto', 'Cancelado'].includes(est)) flag = '<div class="flag red"><i></i>Prioridad crítica</div>';
   const meta = [tdChip_(r, T)];
-  if (!tarEsRec_(r)) { const pg = tdProgCorto_(r); if (pg) meta.push(`<span>${esc(pg)}</span>`); }
+  if (o.fecha) { const d0 = tarParseIso_(dia); meta.unshift(`<span class="td-fe ${dia < tarIso_(tarToday_()) && !['Resuelto', 'Cancelado'].includes(est) ? 'tarde' : dia === tarIso_(tarToday_()) ? 'hoy' : ''}">🗓 ${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d0.getDay()]} ${d0.getDate()} ${TAR_MESES[d0.getMonth()]}</span>`); }
+  if (!tarEsRec_(r) && !(o.fecha && tarProg_(r).tipo === 'unica')) { const pg = tdProgCorto_(r); if (pg) meta.push(`<span>${esc(pg)}</span>`); } // única con fecha visible: no se repite
   { const fl = tdLimite_(r, dia); if (fl) meta.push(`<span>⏳ Límite ${esc(tarFmtFecha_(fl).replace(/ \d{4}$/, ''))}</span>`); }
   if (tarEsRec_(r)) { const ini = typeof tarRecInicio_ === 'function' ? tarRecInicio_(r) : ''; meta.push(`<span>${ini ? 'Desde ' + esc(tarFmtFecha_(ini).replace(/ \d{4}$/, '')) : 'Hasta resolverse'}</span>`); } else if ((r.Naturaleza || '') === 'Recurrente') meta.push('<span>↻ Recurrente</span>');
   if (r.Origen === 'Bot WhatsApp') meta.push('<span>🤖 Bot</span>');
@@ -58802,26 +58841,30 @@ window.tdIGPlantillaHecha_ = function (key, pc) {
   const fin = () => { TAR_STATE._sinDr = true; try { tarRender(); } finally { TAR_STATE._sinDr = false; } };
   if (nuevo) Promise.resolve(tarSaveOcur_(id, iso, { Estado: nuevo })).then(fin).catch(() => {}); else fin();
 };
-function tdTablero_(L, dia) {
+function tdTablero_(O, dia) {
   const vista = TAR_STATE.vista === 'clas' || TAR_STATE.vista === 'fecha' ? TAR_STATE.vista : 'estado';
   const segV = `<div class="ad-seg"><span>Vista</span><button type="button" class="${vista === 'estado' ? 'on' : ''}" onclick="tdVista_('estado')">Por estado</button><button type="button" class="${vista === 'clas' ? 'on' : ''}" onclick="tdVista_('clas')">Por clasificación</button><button type="button" class="${vista === 'fecha' ? 'on' : ''}" onclick="tdVista_('fecha')">Por fecha</button></div>`;
-  if (vista === 'fecha') { TAR_STATE._segV = segV; return `<div class="td-cal">${tarCalendarioHtml_()}</div>`; } // «Por fecha» = el calendario (por día / semana / mes)
+  TAR_STATE._segV = segV; // va en la barra de arriba (tdRender_)
+  if (vista === 'fecha') return `<div class="td-cal">${tarCalendarioHtml_()}</div>`; // «Por fecha» = calendario por día / semana del mes elegido
+  const PW = { 'Crítico': 4, 'Alto': 3, 'Medio': 2, 'Bajo': 1 };
+  const ord = L => L.slice().sort((a, b) => a.iso.localeCompare(b.iso) || (PW[tdPrioEf_(b.r, b.iso)] || 0) - (PW[tdPrioEf_(a.r, a.iso)] || 0));
+  const card = x => tdCard_(x.r, x.iso, { cal: true, fecha: true });
   let cols;
   if (vista === 'estado') cols = TAR_ESTADOS.map(e => {
-    const X = L.filter(r => tdEst_(r, dia) === e.k);
-    return `<div class="ad-col" ondragover="tdDragOver_(event)" ondrop="tdDrop_(event,'${e.k}')"><div class="ad-colh"><i style="background:${TD_EST[e.k]}"></i>${e.k}<span>${X.length}</span></div>${X.map(r => tdCard_(r, dia)).join('') || '<div class="ad-empty">Suelta aquí una card</div>'}</div>`;
+    const X = ord(O.filter(x => tdEst_(x.r, x.iso) === e.k));
+    return `<div class="ad-col" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="this.classList.remove('drop');tarDrop(event,'${e.k}')"><div class="ad-colh"><i style="background:${TD_EST[e.k]}"></i>${e.k}<span>${X.length}</span></div>${X.map(card).join('') || '<div class="ad-empty">Suelta aquí una card</div>'}</div>`;
   }).join('');
   else {
-    const cl = [...new Set(L.map(r => r.Clasificacion || TAR_SIN))].sort((a, b) => a === TAR_SIN ? 1 : b === TAR_SIN ? -1 : a.localeCompare(b, 'es'));
+    const cl = [...new Set(O.map(x => x.r.Clasificacion || TAR_SIN))].sort((a, b) => a === TAR_SIN ? 1 : b === TAR_SIN ? -1 : a.localeCompare(b, 'es'));
     cols = cl.map(c => {
-      const X = L.filter(r => (r.Clasificacion || TAR_SIN) === c);
-      const pts = TAR_ESTADOS.map(e => { const k = X.filter(r => tdEst_(r, dia) === e.k).length; return k ? `<i style="background:${TD_EST[e.k]}" title="${e.k}: ${k}"></i>` : ''; }).join('');
-      return `<div class="ad-col"><div class="ad-colh">🗂️ ${esc(c)}<span>${X.length}</span><em class="ad-pts">${pts}</em></div>${X.map(r => tdCard_(r, dia)).join('')}</div>`;
+      const X = ord(O.filter(x => (x.r.Clasificacion || TAR_SIN) === c));
+      const pts = TAR_ESTADOS.map(e => { const k = X.filter(x => tdEst_(x.r, x.iso) === e.k).length; return k ? `<i style="background:${TD_EST[e.k]}" title="${e.k}: ${k}"></i>` : ''; }).join('');
+      return `<div class="ad-col"><div class="ad-colh">🗂️ ${esc(c)}<span>${X.length}</span><em class="ad-pts">${pts}</em></div>${X.map(card).join('')}</div>`;
     }).join('');
   }
-  const vacio = tarDelDia_(dia).length ? 'Ninguna tarea coincide con los filtros' : `No hay tareas ni recordatorios ${dia === tarIso_(tarToday_()) ? 'hoy' : 'el ' + aseoDiaTxt_(dia)}`;
-  TAR_STATE._segV = segV; // va en la barra de arriba (tdRender_)
-  return `${L.length ? `<div class="ad-board ${vista === 'estado' ? 'est' : ''}">${cols}</div>` : `<div class="pc-mv-empty">${vacio}</div>`}`;
+  const ym = TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7);
+  const vacio = tdOcMes_(ym, false).length ? 'Ninguna tarea coincide con los filtros' : `No hay tareas ni recordatorios en ${bnEfeMesLabel_(ym).toLowerCase()}`;
+  return `${O.length ? `<div class="ad-board ${vista === 'estado' ? 'est' : ''}">${cols}</div>` : `<div class="pc-mv-empty">${vacio}</div>`}`;
 }
 window.tdSetEst_ = function (id, iso, k) {
   iso = tdIsoId_(id, iso);
@@ -59293,9 +59336,9 @@ function tarCalendarioHtml_() {
     const on = TAR_STATE.calView === k;
     return `<button type="button" onclick="tarSetCalView('${k}')" style="all:unset;cursor:pointer;padding:7px 14px;font-size:12px;font-weight:800;border-radius:8px;background:${on ? '#7c3aed' : '#fff'};color:${on ? '#fff' : '#475569'};border:1.5px solid ${on ? '#7c3aed' : '#e2e8f0'}">${label}</button>`;
   };
-  if (!['dia', 'semana', 'mes'].includes(TAR_STATE.calView)) TAR_STATE.calView = 'semana';
+  if (!['dia', 'semana'].includes(TAR_STATE.calView)) TAR_STATE.calView = 'semana'; // el mes lo eligen las flechitas de arriba
   const tB = (k, l) => `<button type="button" class="${TAR_STATE.calView === k ? 'on' : ''}" onclick="tarSetCalView('${k}')">${l}</button>`;
-  const tabs = `<div class="ad-seg" style="margin-bottom:12px">${tB('dia', 'Por día')}${tB('semana', 'Por semana')}${tB('mes', 'Por mes')}</div>`;
+  const tabs = `<div class="ad-seg" style="margin-bottom:12px">${tB('dia', 'Por día')}${tB('semana', 'Por semana')}</div>`;
   let body = '';
   if (TAR_STATE.calView === 'resumen') body = tarResumenHtml_();
   else if (TAR_STATE.calView === 'dia') body = tarDiaHtml_();
@@ -59303,7 +59346,7 @@ function tarCalendarioHtml_() {
   else body = tarMesHtml_();
   return tabs + body;
 }
-window.tarSetCalView = function (k) { TAR_STATE.calView = k; TAR_STATE.calRef = tarToday_(); tarRender(); };
+window.tarSetCalView = function (k) { TAR_STATE.calView = k; const ym = TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7); TAR_STATE.calRef = tarIso_(tarToday_()).slice(0, 7) === ym ? tarToday_() : tarParseIso_(ym + '-01'); tarRender(); };
 window.tarCalNav = function (delta) {
   const d = new Date(TAR_STATE.calRef || tarToday_());
   if (TAR_STATE.calView === 'dia') d.setDate(d.getDate() + delta);
@@ -63683,7 +63726,7 @@ const NAV_TREE = {
       { t: '🗂️ Resumen de tareas', go: () => { tarSetSection('tablero'); tdVista_('estado'); } },
       { t: '📌 Pendientes del día', go: () => { tarSetSection('calendario'); tarSetCalView('dia'); } },
       { t: '🗓️ Pendientes de la semana', go: () => { tarSetSection('calendario'); tarSetCalView('semana'); } },
-      { t: '📆 Pendientes del mes', go: () => { tarSetSection('calendario'); tarSetCalView('mes'); } },
+      { t: '📆 Pendientes del mes', go: () => { tarSetSection('tablero'); tdVista_('estado'); } },
     ] },
     { t: '📝 Registro de tareas', go: () => tarSetSection('registro'), subs: [
       { t: '▦ Cards', go: () => { tarSetSection('registro'); tarSetView('cards'); } },
