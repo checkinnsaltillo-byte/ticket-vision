@@ -58651,7 +58651,7 @@ function tdRender_() {
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','Recordatorio')" title="Nuevo recordatorio">＋ Recordatorio</button>
       <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','IG')" title="Inspección general de varios alojamientos con una plantilla">＋ Inspección general</button>
-      <button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null)">＋ Nueva tarea</button></div>`;
+      <button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null)">＋ Tarea programada</button></div>`;
   const nav = `<div class="cl-nav-slot" data-act="tareas">${typeof clNavHtml_ === 'function' ? clNavHtml_('tareas') : ''}</div>`;
   const head = `<div class="cl-title">🛠️ Check-Flow</div>`;
   if (sec === 'registro') {
