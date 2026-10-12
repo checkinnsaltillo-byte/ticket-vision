@@ -45443,6 +45443,7 @@ function _waRenderUnifiedList_(logs, opts) {
   }).join('');
 
   if (window.__waProgPanel) return html + _waProgNuevo_(st); // panel 📅: «Nuevo mensaje» con el mismo diseño de renglón (sin «Nuevo reporte»)
+  if (opts.sinNuevo) return html;
   if (sinProg) return html + `<button type="button" class="fx-c fx-nrep" onclick="_waOpenReportPickerForCurrentBooking_()">＋ Nuevo reporte</button>`; // Ficha: los mensajes nuevos se crean desde el panel 📅
   const createBtn = st.newSch.open
     ? _waRenderNewSchForm_()
@@ -51239,6 +51240,7 @@ function _botcWaCss_() {
   .fx-qs button{all:unset;cursor:pointer;flex:1;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;padding:3px 1px;border-radius:5px;white-space:nowrap;background:#f1f3f5;color:#6b7280;transition:background .15s,color .15s}
   .fx-qs button:hover{background:#e5e7eb;color:#111827}
   .fx-qs button.on{background:var(--c);color:#fff;font-weight:600;box-shadow:0 1px 2px rgba(15,23,42,.15);cursor:default}
+  .fx .fx-lab{font-size:10.5px;font-weight:600;color:#9aa1ad;text-transform:uppercase;letter-spacing:.08em;margin:14px 0 7px}.fx .fx-cuerpo .ad-tgl{background:#fff}
   .fx-nrep{cursor:pointer;text-align:center;color:#4f46e5;font-weight:600;font-size:12px;border-style:dashed}
   .fx-desc{margin-top:5px;font-size:12px;color:#374151;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .fx-c .r3.fila{flex-direction:row;align-items:center;gap:8px;margin-top:7px;padding-top:6px}.fx-c .r3.fila .fx-lk{margin-top:0}
@@ -52918,6 +52920,37 @@ window.botcFxRefrescar_ = function (btn) {
   if (_botcEsAbn_(sel)) _botcAbnCargar_(true);
   if (btn) btn.classList.add('gira'); if (typeof waRefreshPanel_ === 'function') waRefreshPanel_(btn); else _waRepaint();
 };
+// Ficha › reserva desplegada: «Reportar incidencia», «Solicitudes» y «Desalojo» con el mismo diseño que la ventana de la tarea de Check-Flow.
+function _botcFxAseoHtml_(bk, a, d, nInc) {
+  if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
+  if (typeof ASEO !== 'undefined' && !ASEO.ts && !BOTC_STATE.fxAseoPedido && typeof aseoRefresh_ === 'function') { BOTC_STATE.fxAseoPedido = 1; aseoRefresh_().then(() => { try { _waRenderModal(true); } catch (_) {} }).catch(() => {}); }
+  const R = repBk_(bk) || {}, bid = String(bk.LodgifyId || (/^\d+$/.test(String(bk.Id || '')) ? bk.Id : '') || ''), hid = R.hid || '', hoy = aseoHoyIso_();
+  const E = pcEsc, eb = E(bid), id = E(String(waBookingId_(bk)));
+  const inc = `<div class="fx-lab">Reportar incidencia</div><div class="ad-tgl" onclick="${nInc ? `waSetTab_('reportes')` : `botcFxReportar_('${id}')`}"><div><b>${nInc ? `⚠️ ${nInc} incidencia${nInc === 1 ? '' : 's'}` : 'Reportar incidencia'}</b><small>${nInc ? 'Ver los reportes de esta reserva' : 'Abre el formulario de incidencia con esta reserva'}</small></div><span class="ad-sw ${nInc ? 'red' : 'off'}"></span></div>
+    ${nInc ? `<div class="ad-addrow"><button type="button" class="ad-link" onclick="botcFxReportar_('${id}')">＋ Reportar otra incidencia</button></div>` : ''}`;
+  if (!bid || typeof ASEO === 'undefined') return inc;
+  const sol = (tipo, aplica, rec) => {
+    const k = tipo === 'tard' ? 'Salida tardía' : 'Entrada temprana';
+    if (!aplica) return `<div class="ad-box mute"><div class="k">${k}</div><div class="v">—</div></div>`;
+    if (!rec) return `<div class="ad-box"><div class="k">${k}</div><button type="button" class="ad-link" onclick="botcFxAseo_(()=>${tipo === 'tard' ? `aseoTardPost_('${eb}',{on:true})` : `aseoTemprana_('${eb}')`})">＋ Registrar solicitud</button></div>`;
+    const acc = tipo === 'tard' ? `aseoTardAceptar_('${eb}',${!rec.aceptada})` : `aseoTempAceptar_('${eb}',${!rec.aceptada})`;
+    const quitar = tipo === 'tard' ? `aseoTardPost_('${eb}',{on:false})` : `aseoTemprana_('${eb}')`;
+    return `<div class="ad-box"><div class="k">${k}<button type="button" class="ad-x" title="Quitar solicitud" onclick="botcFxAseo_(()=>${quitar})">✕</button></div>
+      <div class="v">${aseoHoraInput_(bid, rec.hora, tipo === 'tard' ? 'tard' : 'temp', true)}<button type="button" class="ad-st ${rec.aceptada ? 'ok' : ''}" onclick="botcFxAseo_(()=>${acc})" title="${rec.aceptada ? 'Clic para retirar la aceptación' : 'Clic para aceptar'}">${rec.aceptada ? 'Aceptada' : 'Pendiente · aceptar'}</button></div></div>`;
+  };
+  const tmp = (ASEO.temprana || {})[bid], recTemp = tmp && tmp.on ? tmp : null;
+  const sols = `<div class="fx-lab">Solicitudes</div><div class="ad-grid2">${sol('tard', d && d >= hoy, aseoTardRec_(bid))}${sol('temp', a && a >= hoy, recTemp)}</div>`;
+  const noSale = !!(ASEO.nosale || {})[bid];
+  const des = d === hoy ? `<div class="fx-lab">Desalojo</div><div class="ad-tgl" onclick="botcFxAseo_(()=>aseoNoSale_('${eb}','${E(hid)}',${!noSale}))"><div><b>${noSale ? 'El huésped NO ha desalojado' : '¿No ha desalojado?'}</b><small>${noSale ? 'Clic cuando ya haya salido' : 'Activa la alerta si el huésped sigue adentro'}</small></div><span class="ad-sw ${noSale ? 'red' : 'off'}"></span></div>` : '';
+  return inc + sols + des;
+}
+window.botcFxAseo_ = async function (fn) { try { await fn(); } catch (_) {} [80, 1500].forEach(t => setTimeout(() => { try { _waRenderModal(true); } catch (_) {} }, t)); };
+// «Reportar incidencia» desde una reserva de la Ficha: formulario de incidencia con esa reserva (campo «Reserva» prellenado).
+window.botcFxReportar_ = function (id) {
+  const st = window.__waModalState || {}, L = st.bookings || [], bk = L.find(b => String(waBookingId_(b)) === String(id)) || st.b;
+  window.__repCtx = repCtxDe_(bk, L); window.__repCtxKeep = !!window.__repCtx;
+  lgPickReport('inc');
+};
 const _botcFxIso_ = v => { const x = String(v || ''); let m = x.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0]; m = x.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : ''; }; // Lodgify manda M/D/AAAA
 function _botcFxMoney_(n) { const v = Number(n) || 0; return '$' + v.toLocaleString('es-MX', { maximumFractionDigits: 0 }); }
 function _botcFxSolHtml_(rows) {
@@ -52976,16 +53009,23 @@ function _botcFichaHtml_(st, logs) {
       src ? `<span style="color:${src[1]}">${E(src[0])}</span>` : '', sols.length ? `<span class="vi">📄 ${sols.length} solicitud${sols.length === 1 ? '' : 'es'}</span>` : ''].filter(Boolean).join(SEP);
     let cuerpo = '';
     if (abierta) {
-      const t = (k, c, ic, et, n) => `<button type="button" class="${tab === k ? 'on' : ''}" style="--c:${c}" onclick="waSetTab_('${k}')">${ic} ${et}${n ? ` <i>${n}</i>` : ''}</button>`;
-      let cont;
+      // Pestañas: solo las que tienen algo (si no hay nada, no se muestran).
+      const nItems = f => { try { return (f(bk) || []).length; } catch (_) { return 0; } };
+      const repL = (() => { try { return _waGetReportsForBooking_(bk) || []; } catch (_) { return []; } })();
+      const nRep = repL.length, nPag = nItems(_waGetPagosForBooking_), nSol = sols.length, hay = { todos: nRep + nPag + nSol > 0, reportes: nRep > 0, pagos: nPag > 0, solicitudes: nSol > 0 };
+      const tabE = hay[tab] ? tab : hay.todos ? 'todos' : '';
+      const t = (k, c, ic, et, n) => hay[k] ? `<button type="button" class="${tabE === k ? 'on' : ''}" style="--c:${c}" onclick="waSetTab_('${k}')">${ic} ${et}${n ? ` <i>${n}</i>` : ''}</button>` : '';
+      let cont = '';
       if (carg) cont = `<div class="fx-cargando"><span class="fx-spin"></span>Cargando la bitácora de esta reserva…</div>`;
-      else if (tab === 'solicitudes') cont = _botcFxSolHtml_(sols);
-      else { const mode = tab === 'programados' ? 'schedule-only' : tab === 'reportes' ? 'reports-only' : tab === 'pagos' ? 'pagos-only' : 'full';
-        try { cont = mode === 'reports-only' ? (_waRenderReportsForBooking_(bk) || _botcFxVacio_('🚨', 'Sin reportes en esta reserva')) : mode === 'pagos-only' ? (_waRenderPagosForBooking_(bk) || _botcFxVacio_('💳', 'Sin pagos registrados en esta reserva'))
-          : _waRenderUnifiedList_(logs, { scheduleOnly: mode === 'schedule-only', includePagos: mode !== 'schedule-only', bookingForPagos: bk, sinProgramados: true }); } catch (er) { cont = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + er.message); } }
+      else if (tabE === 'solicitudes') cont = _botcFxSolHtml_(sols);
+      else if (tabE) { const mode = tabE === 'reportes' ? 'reports-only' : tabE === 'pagos' ? 'pagos-only' : 'full';
+        try { cont = mode === 'reports-only' ? (_waRenderReportsForBooking_(bk) || '') : mode === 'pagos-only' ? (_waRenderPagosForBooking_(bk) || '')
+          : _waRenderUnifiedList_(logs, { includePagos: true, bookingForPagos: bk, sinProgramados: true, sinNuevo: true }); } catch (er) { cont = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + er.message); } }
+      const nTabs = ['todos', 'reportes', 'pagos', 'solicitudes'].filter(k => hay[k]).length;
       cuerpo = `<div class="fx-cuerpo" onclick="event.stopPropagation()">
-          <div class="fx-steps">${t('todos', '#475569', '📋', 'Todos')}${t('reportes', '#dc2626', '🚨', 'Reportes')}${t('pagos', '#16a34a', '💳', 'Pagos')}${t('solicitudes', '#7c3aed', '📄', 'Solic.', sols.length)}</div>
-          <div class="fx-cont">${cont}</div></div>`;
+          ${nTabs ? `<div class="fx-steps" style="grid-template-columns:repeat(${nTabs},1fr)">${t('todos', '#475569', '📋', 'Todos')}${t('reportes', '#dc2626', '🚨', 'Reportes')}${t('pagos', '#16a34a', '💳', 'Pagos')}${t('solicitudes', '#7c3aed', '📄', 'Solic.', sols.length)}</div>` : ''}
+          ${cont ? `<div class="fx-cont">${cont}</div>` : ''}
+          ${_botcFxAseoHtml_(bk, a, d, repL.filter(x => x.kindReport === 'inc').length)}</div>`;
     }
     return `<div class="fx-c tipo fx-res ${abierta ? 'abierta' : ''} ${tono}" style="--tc:${e.color};animation-delay:${Math.min(i, 8) * 35}ms">
         <button type="button" class="fx-res-h" ${st.loadingBookingId ? 'disabled' : ''} onclick="waSwitchBooking_('${E(id)}')">
