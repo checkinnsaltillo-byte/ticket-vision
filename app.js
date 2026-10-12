@@ -51906,6 +51906,7 @@ function _botcRenderMain(phone) {
       <div class="botc-chat-header-nameblock" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
         <button id="botc-back-to-list" type="button" onclick="botcBackToList_()" title="Regresar a la lista"
           style="align-items:center;gap:4px;padding:6px 8px;background:transparent;color:#54656f;border:0;border-radius:6px;cursor:pointer;font-size:16px;font-weight:800;flex:none">←</button>
+        <span class="wa-av wa-logo" style="width:38px;height:38px" title="WhatsApp">${_BOTC_LOGO.whatsapp}</span>
         <div style="min-width:0;flex:1;overflow:hidden">${nameHeader}</div>
         ${_botcSwitchHtml_(phone)}
       </div>
