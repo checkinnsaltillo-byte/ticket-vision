@@ -371,7 +371,7 @@ const SYS_MODULE_LIST = [
   ['personas',         '📇 Directorio'],
   ['inquilinos',       '📑 Contratos de Larga estancia'],
   ['pagos',            '💰 Pagos'],
-  ['aseo',             '✅ Check-list (limpieza, inspección, mantenimiento + Breezeway)'],
+  ['aseo',             '🔄 CheckFlow (limpieza, inspección, mantenimiento + Breezeway)'],
   ['incidencias',      '🚨 Incidencias'],
   ['reportes-tecnicos','🛠 Reportes técnicos'],
   ['tareas',           '🗓️ Tareas programadas'],
@@ -420,7 +420,7 @@ function sysApplyPermissions(user) {
   }
   window.SYS_ALLOWED = allowed;
   window.SYS_USER = user || null; // usuario de la sesión (para saber si es administrativo)
-  // Check-list «modo personal» desde el primer instante: usuarios de Personal, salvo que la última vez resultaran administrativos.
+  // CheckFlow «modo personal» desde el primer instante: usuarios de Personal, salvo que la última vez resultaran administrativos.
   try { const c = JSON.parse(localStorage.getItem('cl-admin') || 'null'); document.body.classList.toggle('cl-emp-u', !!(user && Array.isArray(user.modulosKeys)) && !(c && c.n === user.Nombre && c.a)); } catch (_) {}
   document.querySelectorAll('[id^="nav-item-"]').forEach(el => {
     const key = el.id.replace('nav-item-', '');
@@ -437,7 +437,7 @@ function sysApplyPermissions(user) {
     }
   });
   // Accesos directos del Inicio + ocultar grupos (A–E) sin módulos visibles.
-  document.querySelectorAll('.hm-q[data-mod]').forEach(b => { if (!allowed.has(b.dataset.mod)) b.style.display = 'none'; });
+  document.querySelectorAll('.hm-q[data-mod], .hm-q-r[data-mod]').forEach(b => { if (!allowed.has(b.dataset.mod)) b.style.display = 'none'; });
   sysRefreshMenuGroups_();
   const pcBtn = document.getElementById('ug-panel-btn');
   if (pcBtn) pcBtn.style.display = allowed.has('panel-control') ? '' : 'none';
@@ -9168,7 +9168,7 @@ if (!window._rtHashListener) {
     try { _bootModuleFromHash_(); } finally { window._rtSyncingHash = false; }
   });
 }
-// Check-list: A) Operación (Check-inn, Breezeway) · B) Administración (Tareas programadas).
+// CheckFlow: A) Operación (Check-inn, Breezeway) · B) Administración (Tareas programadas).
 const CL_BZW_OFF = true; // Breezeway desactivado por el momento (botón gris, sin acción)
 function clPuede_(m) { return !window.SYS_ALLOWED || window.SYS_ALLOWED.has(m); }
 function clNavHtml_(act) {
@@ -9178,11 +9178,11 @@ function clNavHtml_(act) {
   const op = [clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '🧽 Aseo', 'aseo') + b('mant', '🔧 Mantenimiento', 'mantenimiento') : '', !MPn && (clPuede_('breezeway') || clPuede_('aseo')) ? (CL_BZW_OFF ? `<button type="button" class="cl-b off" disabled title="Breezeway está desactivado por el momento">🧹 Breezeway</button>` : b('breezeway', '🧹 Breezeway', 'breezeway')) : ''].join('');
   const op2 = (!MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (!MPn && clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '');
   const adm = (!MPn && clPuede_('tareas') ? b('tareas', '🗓️ Tareas programadas', 'tareas') : '') + (!MPn && clPuede_('aseo') ? b('plantillas', '📋 Plantillas', 'plantillas') : '');
-  // «Check-list Bot» (notificaciones y permisos del bot) vive en Configuración admin › 🤖 Check-list Bot.
+  // «CheckFlow Bot» (notificaciones y permisos del bot) vive en Configuración admin › 🤖 CheckFlow Bot.
   const items = [op.replace(/<button[^>]*class="cl-b off"[\s\S]*?<\/button>/g, ''), op2, adm].join('');
   return items.trim() ? `<div class="cl-nav"><div class="cl-g">${items}</div></div>` : '';
 }
-// Barra compacta del Check-list (misma en Aseo, Incidencias y Tareas): ☰ filtros con contador de filtros activos.
+// Barra compacta del CheckFlow (misma en Aseo, Incidencias y Tareas): ☰ filtros con contador de filtros activos.
 function ckFxN_(fx, def) { def = def || {}; return Object.entries(fx || {}).filter(([k, v]) => !(k in def && def[k] === v) && (v instanceof Set ? v.size : Array.isArray(v) ? v.length : !!v)).length; }
 function ckHam_(on, n, fn) { return `<button type="button" class="ad-ham ${on ? 'on' : ''}" onclick="${fn}" title="${on ? 'Ocultar filtros' : 'Mostrar filtros'}${n ? ` (${n} activo${n === 1 ? '' : 's'})` : ''}">☰${n ? `<b>${n}</b>` : ''}</button>`; }
 function ckDia_(iso, hoy) { const dif = Math.round((new Date(iso + 'T12:00:00') - new Date(hoy + 'T12:00:00')) / 864e5), d = new Date(iso + 'T12:00:00'), f = `${d.getDate()} ${ASEO_MES[d.getMonth()]}`; return dif === 0 ? `Hoy · ${f}` : dif === -1 ? `Ayer · ${f}` : dif === 1 ? `Mañana · ${f}` : `${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()]} ${f}`; }
@@ -9241,11 +9241,11 @@ function clNavPaint_() {
     document.head.appendChild(st);
   }
   document.querySelectorAll('.cl-nav-slot').forEach(el => { el.innerHTML = clNavHtml_(el.dataset.act); });
-  // «Tareas programadas» ahora vive dentro de Check-list; su entrada propia del menú solo queda para quien no ve Check-list.
+  // «Tareas programadas» ahora vive dentro de CheckFlow; su entrada propia del menú solo queda para quien no ve CheckFlow.
   // Igual con «Incidencias».
   const ni = document.getElementById('nav-item-incidencias');
   if (ni && clPuede_('incidencias')) ni.style.display = !clPuede_('aseo') && !clPuede_('breezeway') && !clPuede_('tareas') ? '' : 'none';
-  const no = document.getElementById('nav-item-objetos'); // «Objetos olvidados» también vive en Check-list
+  const no = document.getElementById('nav-item-objetos'); // «Objetos olvidados» también vive en CheckFlow
   if (no && clPuede_('objetos')) no.style.display = !clPuede_('aseo') && !clPuede_('breezeway') && !clPuede_('tareas') ? '' : 'none';
   const nt = document.getElementById('nav-item-tareas');
   if (nt && clPuede_('tareas')) { const solo = !clPuede_('aseo') && !clPuede_('breezeway'); nt.style.display = solo ? '' : 'none'; const bx = document.querySelector('.nav-secs[data-for="tareas"]'); if (bx && !solo) bx.style.display = 'none'; }
@@ -9259,7 +9259,7 @@ function switchModule(mod) {
   if (mod === 'mantenimiento') mod = 'aseo';
   // Permisos: un módulo no asignado (p. ej. por enlace #modulo) manda a Inicio.
   if (window.SYS_ALLOWED && mod !== 'home') {
-    const permKey = (mod === 'dashboard' || mod === 'calendario') ? 'ocupacion' : mod === 'plantillas' ? 'aseo' : mod; // Plantillas y Mantenimiento son parte de Check-list
+    const permKey = (mod === 'dashboard' || mod === 'calendario') ? 'ocupacion' : mod === 'plantillas' ? 'aseo' : mod; // Plantillas y Mantenimiento son parte de CheckFlow
     if (!window.SYS_ALLOWED.has(permKey) && !window.SYS_ALLOWED.has(mod)) mod = 'home';
   }
   // Legacy: 'ocupacion' como módulo top-level se trata como Dashboard
@@ -9411,13 +9411,13 @@ function switchModule(mod) {
     }
   }
   if (mod === "incidencias") {
-    if (typeof icInit_ === 'function') icInit_(); // Check-list › Incidencias (nuevo diseño)
+    if (typeof icInit_ === 'function') icInit_(); // CheckFlow › Incidencias (nuevo diseño)
   }
-  if (mod === "plantillas" && typeof plInit_ === 'function') plInit_(); // Check-list › 📋 Plantillas
+  if (mod === "plantillas" && typeof plInit_ === 'function') plInit_(); // CheckFlow › 📋 Plantillas
   if (mod === "mensajes" && typeof abnInit_ === 'function') abnInit_(); // 💬 Mensajes Airbnb
   if (mod === "objetos") {
     if (typeof objInit === 'function') objInit(); // formulario anterior (lo sigue usando Gestión de reservas)
-    if (typeof obInit_ === 'function') obInit_(); // Check-list › 🧳 Objetos olvidados
+    if (typeof obInit_ === 'function') obInit_(); // CheckFlow › 🧳 Objetos olvidados
   }
   if (mod === "ocupacion" || mod === "dashboard" || mod === "calendario") {
     if (typeof ocupInit === 'function') ocupInit();
@@ -18654,7 +18654,7 @@ window.lgPickReport = function(kind, propRaw, deptRaw, arrIso, depIso) {
   if (kind === 'inc' && typeof lgOpenIncCaptureFor === 'function') {
     lgOpenIncCaptureFor(propRaw, deptRaw, arrIso);
   } else if (kind === 'obj' && typeof obNuevoDesdeReserva_ === 'function') {
-    obNuevoDesdeReserva_(propRaw, deptRaw, arrIso, depIso); // ventana lateral nueva (Check-list › Objetos olvidados)
+    obNuevoDesdeReserva_(propRaw, deptRaw, arrIso, depIso); // ventana lateral nueva (CheckFlow › Objetos olvidados)
   } else if (kind === 'rt' && typeof rtOpenCaptureFor === 'function') {
     rtOpenCaptureFor(propRaw, deptRaw, arrIso, depIso);
   }
@@ -24079,7 +24079,7 @@ window.incGuardarSalir = async function() {
     });
     const out = await res.json();
     if (!out.ok) throw new Error(out.error || 'Error al guardar');
-    alert(`✓ Reporte guardado.\n\nID: ${out.id}\nFotos subidas: ${out.fotos_uploaded}/${fotos.length}\n\nGuardado en Google Cloud (Check-list › Incidencias)`);
+    alert(`✓ Reporte guardado.\n\nID: ${out.id}\nFotos subidas: ${out.fotos_uploaded}/${fotos.length}\n\nGuardado en Google Cloud (CheckFlow › Incidencias)`);
     incSalir();
     incLimpiar();
     // Cierra el slide-in panel y refresca la lista de cards
@@ -26497,7 +26497,7 @@ function ocupSourceIcon(src) {
 }
 
 // Construye la lista de alojamientos sortada (Propiedad, #N numérico).
-// Alojamientos para TAREAS (Check-list): los de Lodgify + filas de la hoja «alojamientos» sin id de Lodgify
+// Alojamientos para TAREAS (CheckFlow): los de Lodgify + filas de la hoja «alojamientos» sin id de Lodgify
 // (edificios completos «ED. …», áreas comunes, etc.). Estas reciben un id interno fijo «99NNNNNN» calculado de su
 // nombre corto (device_name); el servidor usa la misma fórmula (_hidSint). No aparecen en Ocupación ni Dashboard.
 function hidSint_(code) { let h = 0; for (const ch of String(code || '').trim().toLowerCase()) h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0; return '99' + String(h % 1000000).padStart(6, '0'); }
@@ -44210,10 +44210,10 @@ function _waReportHasSentMsg_(kind, id) {
   return false;
 }
 
-// ¿Se está pintando dentro de la «Ficha del huésped» de Chats bot? (ahí las cards usan el diseño del Check-list)
+// ¿Se está pintando dentro de la «Ficha del huésped» de Chats bot? (ahí las cards usan el diseño del CheckFlow)
 const _waEnFicha_ = () => { const e = window.__waEmbedEl, m = document.getElementById('module-bot-chats'); return !!(e && document.body.contains(e) && m && !m.classList.contains('hidden')); };
 const _waFichaRep_ = (kind, row) => _waRenderReportTimelineItem_({ row, kindReport: kind, sortKey: String(row['Updated_at'] || row['updated_at'] || row['Timestamp'] || row['Fecha_encontrado'] || row['Fecha'] || '') });
-// Botones de estado siempre visibles (mismo estilo que Pend./Proceso/Term. del Check-list): Nuevo · Proceso · Resuelto · Cancelado.
+// Botones de estado siempre visibles (mismo estilo que Pend./Proceso/Term. del CheckFlow): Nuevo · Proceso · Resuelto · Cancelado.
 const _WA_FX_EST = [{ k: 'nuevo', inc: 'Nuevo', t: 'Nuevo', c: '#94a3b8' }, { k: 'en_proceso', inc: 'En proceso', t: 'Proceso', c: '#ffb300' }, { k: 'resuelto', inc: 'Resuelto', t: 'Resuelto', c: '#00c853' }, { k: 'cancelado', inc: 'Cancelado', t: 'Cancelado', c: '#ef4444' }];
 function _waFxEstBtns_(kind, id, actual) {
   const act = String(actual || '').toLowerCase().replace(/\s+/g, '_');
@@ -44322,7 +44322,7 @@ function _waRenderReportTimelineItem_(it) {
     };
   }
   const desc = String(r['Descripcion'] || '').trim();
-  if (_waEnFicha_()) { // «Ficha del huésped» (Chats bot): misma card que el Check-list — renglones, texto en vez de chips, franja de color
+  if (_waEnFicha_()) { // «Ficha del huésped» (Chats bot): misma card que el CheckFlow — renglones, texto en vez de chips, franja de color
     const rid = String(r['ID'] || ''), sent = _waReportHasSentMsg_(kind, rid), tipoTx = { inc: 'Incidencia', obj: 'Objeto olvidado', rt: 'Reporte técnico' }[kind] || cfg.chipLabel;
     return `<div class="fx-c tipo fx-rep" style="--tc:${cfg.headerBg}" ${cfg.dataAttr} role="button" tabindex="0">
       <div class="r1"><span class="nm">${cfg.checkIcon} ${_botcEsc(cfg.titulo)}</span>${cfg.titleAccent}${kind === 'obj' ? `<span class="mv" style="color:${cfg.estadoFg}">${_botcEsc(cfg.estadoLabel)}</span>` : ''}</div>
@@ -49935,7 +49935,7 @@ window._botcNotifBuildLink_ = function(kind, id, extra) {
               () => typeof INC_STATE === 'object' && Array.isArray(INC_STATE.list) && INC_STATE.list.some(r => String(r.ID) === String(id)),
               () => {
                 try {
-                  if (typeof icAbrir_ === 'function') { icRender_(); icAbrir_(String(id)); return; } // Check-list › Incidencias
+                  if (typeof icAbrir_ === 'function') { icRender_(); icAbrir_(String(id)); return; } // CheckFlow › Incidencias
                   INC_STATE.expanded.add(id);
                   if (typeof incRenderCards === 'function') incRenderCards();
                   requestAnimationFrame(() => {
@@ -51178,7 +51178,7 @@ function _botcWaCss_() {
   .botc-npill .c{background:#dc2626;animation:botcCritPulse 1.6s ease-out infinite}.botc-npill .n{background:#f97316}
   .wa-aloj{font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#0f172a;background:#eef2f6;border:1px solid #d5dde6;padding:0 6px;border-radius:4px;white-space:nowrap;line-height:15px}
   .wa-aloj.air{color:#be123c;background:#fff1f2;border-color:#fecdd3}
-  /* Ficha del huésped con la estética de las cards del Check-list (Aseo / Mantenimiento) */
+  /* Ficha del huésped con la estética de las cards del CheckFlow (Aseo / Mantenimiento) */
   .fx{--ad-line:#e8eaee;--ad-line2:#f0f1f4;--ad-tx:#0f1729;--ad-mut:#6b7280;--ad-mut2:#9aa1ad;font:12.5px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ad-tx);background:#f7f8fa}
   .fx .fx-h{background:#fff}.fx .fx-scroll{padding:2px 10px 16px}
   .fx-lab{display:flex;gap:6px;margin:12px 2px 6px;font-size:10.5px;font-weight:600;color:var(--ad-mut2);text-transform:uppercase;letter-spacing:.08em}.fx-lab span{color:var(--ad-mut)}
@@ -52930,7 +52930,7 @@ function _botcFxSolHtml_(rows) {
 }
 const _botcFxVacio_ = (ic, t) => `<div class="fx-vacio"><span>${ic}</span>${_botcEsc(t)}</div>`;
 function _botcFichaHtml_(st, logs) {
-  // Misma estética que las cards del Check-list (Aseo / Mantenimiento): renglones r1/r2/r3, texto con separadores en vez de chips.
+  // Misma estética que las cards del CheckFlow (Aseo / Mantenimiento): renglones r1/r2/r3, texto con separadores en vez de chips.
   const sel = String(BOTC_STATE.selectedPhone || ''), esAbn = _botcEsAbn_(sel);
   const phone = esAbn ? String((st.b && st.b.GuestPhone) || '').replace(/\D/g, '') : sel, p10 = phone.slice(-10); // Airbnb: perfil por el teléfono de la reserva
   if (BOTC_STATE.fxAnim !== sel) BOTC_STATE.fxMas = false; // «Más información» empieza plegada con cada huésped
@@ -58524,7 +58524,7 @@ function tdRender_() {
       <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','Recordatorio')" title="Nuevo recordatorio">＋ Recordatorio</button>
       <button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null)">＋ Nueva tarea</button></div>`;
   const nav = `<div class="cl-nav-slot" data-act="tareas">${typeof clNavHtml_ === 'function' ? clNavHtml_('tareas') : ''}</div>`;
-  const head = `<div class="cl-title">✅ Check-list</div>`;
+  const head = `<div class="cl-title">🔄 CheckFlow</div>`;
   if (sec === 'registro') {
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}${nav}${bar.replace('__SEGV__', '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(TAR_STATE.list.slice())}</div>` : ''}<div id="tar-content">${tarRegistroHtml_()}</div></div>`;
   } else {
@@ -61301,7 +61301,7 @@ function pcRenderMovs_() {
   aseoEnsureCss_();
   // Dos secciones: Movimientos del día (por reserva) y Aseo por alojamiento.
   const head = (sub) => `<div class="pc-card-h"><div class="pc-card-t">🛎️ Movimientos del día <small>· ${sub}</small></div><button class="pc-link" onclick="pcGo('lodgify')">Gestión de reservas →</button></div>` + mvSyncBar_();
-  const headA = (sub) => `<div class="pc-card-h"><div class="pc-card-t">✅ Check-list por alojamiento <small>· ${sub}</small></div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${mvAcTodasBtn_()}<button class="pc-link" onclick="pcGo('aseo')">Control de aseo →</button></div></div>` + mvSyncBar_();
+  const headA = (sub) => `<div class="pc-card-h"><div class="pc-card-t">🔄 CheckFlow por alojamiento <small>· ${sub}</small></div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${mvAcTodasBtn_()}<button class="pc-link" onclick="pcGo('aseo')">Control de aseo →</button></div></div>` + mvSyncBar_();
   const cobOk = typeof PAGOS_STATE !== 'undefined' && PAGOS_STATE.loaded && !PC.loading.cob;
   if (PC.err.cob) { el.innerHTML = head('reservas') + pcErr_(PC.err.cob); if (elA) elA.innerHTML = headA('reservas') + pcErr_(PC.err.cob); return; }
   if (!cobOk) { el.innerHTML = head('cargando…') + pcSkel_(180); if (elA) elA.innerHTML = headA('cargando…') + pcSkel_(180); return; }
@@ -66608,13 +66608,13 @@ window.aseoFiltroToggle_ = function (n) {
   const i = sel.indexOf(n); if (i >= 0) sel.splice(i, 1); else sel.push(n);
   aseoRender_();
 };
-// ── Check-list para personal NO administrativo («modo personal») ──
+// ── CheckFlow para personal NO administrativo («modo personal») ──
 // Administrativo = usuario del sistema anterior (sys_users), o Puesto «Administración» en Personal, o rol
-// Administrador en Check-list Bot. Los demás solo ven SUS asignaciones, sin botones de arriba (salvo Actualizar)
+// Administrador en CheckFlow Bot. Los demás solo ven SUS asignaciones, sin botones de arriba (salvo Actualizar)
 // y con las cards en solo lectura.
 function clNorm_(v) { return String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\(whatsapp\)/, '').replace(/[^a-zñ ]/g, ' ').split(/\s+/).filter(t => t.length > 1); }
 function clMisma_(a, b) { const A = clNorm_(a), B = clNorm_(b); if (!A.length || !B.length) return false; const [c, l] = A.length <= B.length ? [A, B] : [B, A]; return c.every(t => l.includes(t)); }
-// «🧪 Prueba · Ver como»: un administrador ve el Check-list como lo vería otra persona (sus permisos y asignaciones).
+// «🧪 Prueba · Ver como»: un administrador ve el CheckFlow como lo vería otra persona (sus permisos y asignaciones).
 function clVerComo_() { return (typeof ASEO !== 'undefined' && ASEO.verComo) || ''; }
 function clEsAdminNombre_(yo) {
   const P = ((typeof ASEO !== 'undefined' && ASEO.autonotif) || {}).perfiles || {};
@@ -66640,7 +66640,7 @@ function ckVerComoHtml_() {
   if (!clEsAdminReal_()) return '';
   const on = !!ASEO.pruebaOn, v = clVerComo_();
   const L = typeof pzNombres_ === 'function' ? pzNombres_() : [];
-  return `<button type="button" class="ck-pb ${on ? 'on' : ''}" onclick="ckPrueba_()" title="Ver el Check-list como lo vería otra persona">🧪 Prueba</button>${on ? `<label class="ck-vc-l">Ver como:<select class="ck-vc-s" onchange="ckVerComo_(this.value)"><option value="">— Elige a alguien —</option>${L.map(n => `<option ${n === v ? 'selected' : ''}>${pcEsc(n)}</option>`).join('')}</select></label>${v ? `<span class="ck-vc-tag">${clEsAdminNombre_(v) ? 'Administrador' : 'Empleado'}</span>` : ''}` : ''}`;
+  return `<button type="button" class="ck-pb ${on ? 'on' : ''}" onclick="ckPrueba_()" title="Ver el CheckFlow como lo vería otra persona">🧪 Prueba</button>${on ? `<label class="ck-vc-l">Ver como:<select class="ck-vc-s" onchange="ckVerComo_(this.value)"><option value="">— Elige a alguien —</option>${L.map(n => `<option ${n === v ? 'selected' : ''}>${pcEsc(n)}</option>`).join('')}</select></label>${v ? `<span class="ck-vc-tag">${clEsAdminNombre_(v) ? 'Administrador' : 'Empleado'}</span>` : ''}` : ''}`;
 }
 function ckVerComoPaint_() { const el = document.getElementById('aseo-vercomo'); if (el) el.innerHTML = ckVerComoHtml_(); }
 window.ckPrueba_ = function () { ASEO.pruebaOn = !ASEO.pruebaOn; if (!ASEO.pruebaOn) ASEO.verComo = ''; ASEO.fPers = []; ASEO._mpNav = null; aseoRender_(); ckVerComoPaint_(); };
@@ -66814,7 +66814,7 @@ window.adDropUser_ = async function (ev, dest) {
       const j = await fetch(`${BACKEND}/reportes-tecnicos-upsert`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: { ID: rid, Asignado_a: nuevo.join(', '), UpdatedAt: new Date().toISOString(), Updated_by: user } }) }).then(r => r.json());
       if (!j.ok) throw new Error(j.error || 'Error');
       t.asignados = nuevo; (ASEO.rt || []).forEach(r => { if (String(r.ID) === rid) r.Asignado_a = nuevo.join(', '); });
-    } else { // tarea del Check-list
+    } else { // tarea del CheckFlow
       const m = String(D.id).match(/^T([a-z0-9]+)/i), t = m && (ASEO.tareas || {})[m[1]]; if (!t) return;
       const j = await fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea: Object.assign({}, t, { asignados: mover(t.asignados) }), user }) }).then(r => r.json());
       if (!j.ok) throw new Error(j.error || 'Error');
@@ -68125,7 +68125,7 @@ window.rtGuardarA_ = async function () {
   };
 })();
 // ═══════════════════════════════════════════════════════════════════════════
-// «📣 Notificar actualizaciones» del Check-list: perfil del bot por persona.
+// «📣 Notificar actualizaciones» del CheckFlow: perfil del bot por persona.
 //  · Rol: Administrador / Empleado / Desactivado → define TODO lo que puede hacer con el bot (NP_PUEDE)
 //  · Mensajes automáticos (solo administradores): resumen 2 pm · alertas · cada cambio
 //  · Recordatorio diario de sus tareas asignadas (al registrar su entrada)
@@ -68245,11 +68245,11 @@ const NP_REGLAS = [
     '<b>Nunca muestra códigos, folios ni claves:</b> identifica por alojamiento y descripción.',
     'Si alguien pide algo que su rol no permite, responde en una línea: «Solo los administradores pueden…».']],
   ['🧽', 'Tareas y cards', '', [
-    '<b>Check-list para personal no administrativo</b> (sin Puesto «Administración» ni rol Administrador): solo ve sus asignaciones; los KPIs y filtros cuentan solo lo suyo; arriba solo tiene «Actualizar»; no ve Incidencias ni Tareas programadas; en sus cards solo puede cambiar el <b>estado</b> (sin validar: «Terminado» queda por validar) y marcar <b>«¿No ha desalojado?»</b>; lo demás es de solo lectura (sin detalles).',
+    '<b>CheckFlow para personal no administrativo</b> (sin Puesto «Administración» ni rol Administrador): solo ve sus asignaciones; los KPIs y filtros cuentan solo lo suyo; arriba solo tiene «Actualizar»; no ve Incidencias ni Tareas programadas; en sus cards solo puede cambiar el <b>estado</b> (sin validar: «Terminado» queda por validar) y marcar <b>«¿No ha desalojado?»</b>; lo demás es de solo lectura (sin detalles).',
     '<b>Estados de la card:</b> Pendiente · En proceso · Terminado · Inspeccionado. «Terminado» va en dos pasos con el mismo botón: 1er clic = terminado (por validar), 2º clic = validado (✓ Term.), otro clic quita la validación. Los demás no requieren validación. «Inspeccionado» pide confirmación.',
     '<b>Incidencia en una card:</b> aparece debajo de la card en un recuadro rojo; si sigue abierta y no tiene tarea correctiva, el enlace «🛠 Crear tarea correctiva» abre directo esa sección.',
     '<b>Archivar una card:</b> sale del tablero, de los KPIs y de las listas, resúmenes y avisos del bot. Se ven en ☰ › «Ver archivadas», donde se pueden desarchivar.',
-    '<b>🧪 Prueba · Ver como:</b> junto al título del Check-list, un administrador puede ver la pantalla como la vería cualquier persona del personal (sus permisos y asignaciones). El borde punteado ámbar indica que estás en prueba; lo que hagas se guarda a tu nombre.',
+    '<b>🧪 Prueba · Ver como:</b> junto al título del CheckFlow, un administrador puede ver la pantalla como la vería cualquier persona del personal (sus permisos y asignaciones). El borde punteado ámbar indica que estás en prueba; lo que hagas se guarda a tu nombre.',
     '<b>Marcas en las listas:</b> ✱ = entra huésped hoy (prioridad) · ✱✱ = además la reserva pide entrada temprana.',
     '<b>Orden de las listas del bot:</b> agrupadas por propiedad, sin intercalar (todas las de José Cárdenas juntas, luego las de Cumbres…). Va primero la propiedad con la tarea más urgente. Dentro de cada propiedad, primero la <b>entrada más temprana</b> (hora de la entrada temprana o 3:00 p.m.) y al final la <b>salida más tardía</b> (hora de la salida tardía o 10:00 a.m.). Las que no tienen entrada ese día van después.',
     'Si en un alojamiento sale una reserva confirmada y otra cancelada, la card (estado, asignación, prioridad) usa la confirmada.',
@@ -68272,20 +68272,20 @@ window.npAyuda_ = function () {
     <div class="ad-ft"><span></span><button type="button" class="ad-bt pri" onclick="npPintar_()">← Volver</button></div>`;
   dr.querySelector('.ad-db').scrollTop = 0;
 };
-// Configuración admin › 🤖 Check-list Bot: resumen del estado y acceso a la ventana.
+// Configuración admin › 🤖 CheckFlow Bot: resumen del estado y acceso a la ventana.
 async function npCfgRender_(host) {
   const A0 = ASEO.autonotif || {};
   const pinta = A => {
     const P = Object.entries(A.perfiles || {}), adm = P.filter(([, p]) => p.rol === 'admin').length, emp = P.filter(([, p]) => p.rol === 'empleado').length;
     host.innerHTML = `<div style="max-width:720px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px 22px;font-family:Inter,system-ui,sans-serif">
-      <div style="display:flex;align-items:center;gap:12px"><div style="font-size:28px">🤖</div><div><div style="font-size:17px;font-weight:800;color:#0f172a">Check-list Bot</div>
+      <div style="display:flex;align-items:center;gap:12px"><div style="font-size:28px">🤖</div><div><div style="font-size:17px;font-weight:800;color:#0f172a">CheckFlow Bot</div>
         <div style="font-size:12.5px;color:#64748b">Mensajes automáticos por WhatsApp, permisos del bot por persona y pruebas del bot.</div></div></div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin:16px 0">
         <span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;background:${A.on ? '#dcfce7' : '#f1f5f9'};color:${A.on ? '#15803d' : '#64748b'}">${A.on ? '🟢 Mensajes automáticos activos' : '⚪ Mensajes automáticos apagados'}</span>
         <span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;background:#eef2ff;color:#4338ca">${adm} administrador${adm === 1 ? '' : 'es'}</span>
         <span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;background:#e0f2fe;color:#0369a1">${emp} empleado${emp === 1 ? '' : 's'}</span>
       </div>
-      <button type="button" onclick="npAbrir_()" style="padding:10px 18px;font-size:13.5px;font-weight:700;background:#111827;color:#fff;border:0;border-radius:10px;cursor:pointer">🤖 Abrir Check-list Bot</button>
+      <button type="button" onclick="npAbrir_()" style="padding:10px 18px;font-size:13.5px;font-weight:700;background:#111827;color:#fff;border:0;border-radius:10px;cursor:pointer">🤖 Abrir CheckFlow Bot</button>
     </div>`;
   };
   pinta(A0);
@@ -68341,7 +68341,7 @@ function npPintar_() {
   const L = nombres.filter(n => !q || n.toLowerCase().includes(q))
     .sort((a, b) => (N.perfiles[b] ? 1 : 0) - (N.perfiles[a] ? 1 : 0) || a.localeCompare(b, 'es'));
   const conPerfil = Object.values(N.perfiles).filter(p => p.rol).length;
-  dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">🤖 Check-list Bot</b><span style="display:flex;gap:6px"><button type="button" class="ad-close np-ayuda-bt" title="Reglas del bot" onclick="npAyuda_()">?</button><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></span></div>
+  dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">🤖 CheckFlow Bot</b><span style="display:flex;gap:6px"><button type="button" class="ad-close np-ayuda-bt" title="Reglas del bot" onclick="npAyuda_()">?</button><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></span></div>
       <div class="ad-sub">Notificaciones y permisos del bot · ${conPerfil} persona${conPerfil === 1 ? '' : 's'} con funciones asignadas</div></div>
     <div class="ad-db">
       <div class="ad-tgl" onclick="npOn_()"><div><b>Mensajes automáticos</b><small>${N.on ? 'Activos: resumen de las 2 pm, alertas y avisos a los administradores' : 'Apagados: el bot no envía nada por su cuenta'}</small></div><span class="ad-sw ${N.on ? '' : 'off'}"></span></div>
@@ -68663,7 +68663,7 @@ if (!window.__aseoTimer) {
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Check-list › 🚨 Incidencias (v1600) — mismo diseño que Aseo y Mantenimiento / Tareas programadas:
+// CheckFlow › 🚨 Incidencias (v1600) — mismo diseño que Aseo y Mantenimiento / Tareas programadas:
 // KPIs, filtros de chip, tablero por estado (arrastre + selector rápido), ventana lateral y formulario.
 // Datos en Google Cloud Storage (incidencias/incidencias.json + incidencias/fotos/), migrados de la hoja
 // «Incidencias» en v1601. Mismos endpoints para todos (sistema, bot, Gestión de reservas):
@@ -68774,7 +68774,7 @@ function icRender_() {
   const T0 = icTodas_(), nArch = T0.filter(x => x.arch).length;
   const todas = T0.filter(x => IC.fx.arch ? x.arch : !x.arch); // archivadas: solo con «🗄 Archivadas»
   const nFx = ckFxN_(IC.fx, { per: '30', arch: IC.fx.arch, prio: '' });
-  const head = `<div class="cl-title">✅ Check-list</div>`;
+  const head = `<div class="cl-title">🔄 CheckFlow</div>`;
   const nav = `<div class="cl-nav-slot" data-act="incidencias">${typeof clNavHtml_ === 'function' ? clNavHtml_('incidencias') : ''}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(IC.filAb, nFx, 'IC.filAb=!IC.filAb;icRender_()')}
       <input class="ck-q ic-q" type="search" placeholder="🔎 Buscar alojamiento, motivo, persona…" value="${pcEsc(IC.q)}" oninput="IC.q=this.value;clearTimeout(IC._qt);IC._qt=setTimeout(()=>{icRender_();const i=document.querySelector('#ic-root .ic-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
@@ -69163,7 +69163,7 @@ window.lgOpenIncCaptureFor = function (propRaw, deptRaw, fechaIso) {
   icForm_(null, { hid, fecha: fechaIso ? String(fechaIso).slice(0, 10) : '' });
 };
 // ═══════════════════════════════════════════════════════════════════════
-// Check-list › 🧳 Objetos olvidados (mismo diseño que Incidencias). Datos en Google Cloud (objetos/objetos.json)
+// CheckFlow › 🧳 Objetos olvidados (mismo diseño que Incidencias). Datos en Google Cloud (objetos/objetos.json)
 // vía /objetos-list, /save-objeto, /update-objeto; la lista vive en OBJ_STATE.list (la usan Gestión de reservas y el Chats bot).
 // ═══════════════════════════════════════════════════════════════════════
 const OB_EST = [{ k: 'Resguardado', t: 'En resguardo', c: '#94a3b8', s: 'Resg.' }, { k: 'En proceso', t: 'Contactando', c: '#f59e0b', s: 'Contac.' }, { k: 'Entregado', t: 'Entregado', c: '#10b981', s: 'Entreg.' }, { k: 'Desechado', t: 'Desechado / donado', c: '#64748b', s: 'Desech.' }];
@@ -69231,7 +69231,7 @@ function obRender_() {
   const sec = OB.sec === 'registro' ? 'registro' : 'tablero';
   const todos = obTodos_();
   const nFx = ckFxN_(OB.fx, { per: '30' });
-  const head = `<div class="cl-title">✅ Check-list</div>`;
+  const head = `<div class="cl-title">🔄 CheckFlow</div>`;
   const nav = `<div class="cl-nav-slot" data-act="objetos">${clNavHtml_('objetos')}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(OB.filAb, nFx, 'OB.filAb=!OB.filAb;obRender_()')}
       <input class="ck-q ob-q" type="search" placeholder="🔎 Buscar alojamiento, objeto, persona…" value="${pcEsc(OB.q)}" oninput="OB.q=this.value;clearTimeout(OB._qt);OB._qt=setTimeout(()=>{obRender_();const i=document.querySelector('#ob-root .ob-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
@@ -69719,7 +69719,7 @@ function histListaHtml_(L) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Check-list › 📋 Plantillas (formularios tipo Breezeway). Se crean y editan en la sección «Plantillas»;
+// CheckFlow › 📋 Plantillas (formularios tipo Breezeway). Se crean y editan en la sección «Plantillas»;
 // una tarea puede llevar una plantilla (campo en el formulario de la tarea) y al abrirla se llena ese formulario.
 // Datos: GET/POST /aseo/plantillas · /aseo/plantilla(/borrar) · respuestas por día de tarea /aseo/plantilla-resp.
 // ═══════════════════════════════════════════════════════════════════════════
