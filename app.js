@@ -67243,17 +67243,21 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
     adTblCss_();
     const hm = x => { const m = String(x || '').match(/^(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; };
     const pos = min => Math.max(0, Math.min(100, (min - 360) / (1320 - 360) * 100)); // eje 6:00 → 22:00
-    const linea = I => {
-      if (I.tarea) { const t = I.t || {}; return `<span class="tb-tt">${t.rt ? '🔧' : (AT_DEPTO[t.depto] || {}).ico || '📋'} ${pcEsc(t.titulo || 'Tarea')}</span>`; }
-      const segs = [], lbs = [];
-      if (I.xs) { const hs = hm(I.trd ? I.trd.hora : '11:00') || 660, x = pos(hs); segs.push(`<i class="sg sal" style="left:0;width:${x.toFixed(1)}%"></i>`); lbs.push(`<span class="lb" style="left:${Math.max(0, x / 2 - 6).toFixed(1)}%">${I.noSale ? 'No ha salido' : 'Sale ' + (I.trd ? I.trd.hora || '11:00' : '11:00')}${I.trd && I.trd.aceptada ? ' ✓' : ''}</span>`); }
-      if (I.xe) { const he = hm(I.temp ? (I.temp.hora || '12:00') : '15:00') || 900, x = pos(he); segs.push(`<i class="sg ent" style="left:${x.toFixed(1)}%;right:0"></i>`); lbs.push(`<span class="lb" style="left:${x.toFixed(1)}%">Entra ${I.temp ? (I.temp.hora || '12:00') : '15:00'}${I.temp ? ' · temprano' + (I.temp.aceptada ? ' ✓' : '') : ''}</span>`); }
-      if (!I.xs && !I.xe) { segs.push('<i class="sg cur" style="left:0;right:0"></i>'); lbs.push(`<span class="lb" style="left:2%">${I.g.cur && I.g.cur.length ? 'Hospedado' : 'Sin movimiento'}</span>`); }
-      return `<div class="tb-tl"><i class="rail"></i>${segs.join('')}${lbs.join('')}</div>`;
+    const linea = I => { // mismas flechitas que la parte superior de las cards
+      if (I.tarea) { const t = I.t || {}; return `<span class="tb-tt" title="${pcEsc(t.titulo || '')}">${pcEsc(t.titulo || 'Tarea')}</span>`; }
+      const ult = !I.g.sal.length && !I.esCopia ? (I.diasUlt == null ? 'Sin salida previa' : I.diasUlt === 0 ? 'Salida hoy' : `Salida hace ${I.diasUlt} día${I.diasUlt === 1 ? '' : 's'}`) : '';
+      const h = I.esCopia && I.xs ? `<span class="s">Salida hace ${I.diasSal} día${I.diasSal === 1 ? '' : 's'}</span>${I.g.ent.length ? '<span class="e">↘ Entra</span>' : ''}`
+        : `${I.g.sal.length ? '<span class="s">↗ Sale</span>' : ''}${ult ? `<span class="u">${ult}</span>` : ''}${I.g.ent.length ? '<span class="e">↘ Entra</span>' : ''}`;
+      return `<span class="tb-mv">${h || '<span class="u">Sin movimiento</span>'}</span>`;
     };
+    const tipoT = I => { const k = I.tarea ? (I.t && I.t.rt ? 'mantenimiento' : (I.t && I.t.depto) || 'limpieza') : (I.depto || 'limpieza'), D = AT_DEPTO[k] || AT_DEPTO.limpieza; return `<span class="tb-ch" style="--c:${D.c}">${D.ico} ${D.t}</span>`; };
+    const tipoS = I => { const S = AX_SRV.find(x => x[0] === axSrv_(kDe(I), !I.tarea && I.g.sal.length > 0)) || AX_SRV[3]; return `<span class="tb-ch" style="--c:${S[2] === '#9aa1ad' ? '#6b7280' : S[2]}">${pcEsc(S[1])}</span>`; };
+    const medio = I => { const x = I.xe || I.xs; if (I.tarea || !x) return '<span class="tb-mu">—</span>'; const s0 = typeof _botcSrcTxt_ === 'function' ? _botcSrcTxt_(x.b.Source) : [x.b.Source, '#475569']; return s0 ? `<span class="tb-src" style="--c:${s0[1]}">${pcEsc(s0[0])}</span>` : '<span class="tb-mu">—</span>'; };
+    const solic = (rec, x, def) => !x ? '<span class="tb-mu">—</span>' : rec ? `<span class="tb-sol ${rec.aceptada ? 'ok' : ''}">${pcEsc(rec.hora || def)} · ${rec.aceptada ? 'Aceptada' : 'Pendiente'}</span>` : '<span class="tb-mu">No</span>';
+    const noSal = I => !I.xs || !I.esHoyC || I.esCopia ? '<span class="tb-mu">—</span>' : `<span class="tb-ns ${I.noSale ? 'on' : ''}" onclick="event.stopPropagation();aseoNoSale_('${pcEsc(String(I.xs.b.Id))}','${pcEsc(String(I.hid || ''))}',${!I.noSale})" title="${I.noSale ? 'Clic cuando ya haya salido' : 'Activa la alerta si el huésped sigue adentro'}"><span class="ad-sw ${I.noSale ? 'red' : 'off'}"></span>${I.noSale ? 'Sí' : 'No'}</span>`;
+    const vence = I => { const f = String((I.tarea && I.t && (I.t.fecha || I.t.Fecha)) || I.dia || hoy).slice(0, 10); return `<span class="tb-fe ${f < aseoHoyIso_() ? 'tarde' : ''}">${f ? aseoDiaTxt_(f) : '—'}</span>`; };
     const aten = I => {
       const L = [];
-      if (I.noSale) L.push(['red', 'No ha desalojado']);
       if (!I.tarea && incAb(I)) L.push(['red', '⚠️ Incidencia abierta']);
       if (I.aviso && !I.noSale) L.push([I.aviso.c === 'violet' ? 'v' : I.aviso.c === 'orange' ? 'w' : 'red', I.aviso.t.replace(' · cerrar fecha en calendario', '').replace(' antes de la entrada', '')]);
       if (I.tarea && I.t && I.t.rt && I.t.bloquea && rtAbierto_(I.t)) L.push(['red', '🚫 Inhabitable']);
@@ -67274,10 +67278,10 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
         <span class="tb-a"><b class="code">${pcEsc(it.code)}</b><small>${pcEsc(I.tarea ? String(I.aloj || '').replace(/^Calle\s+/i, '') : String(I.aloj || '').replace(/^Calle\s+/i, ''))}</small></span>
         ${linea(I)}
         <span class="tb-est"><i style="background:${c}"></i>${pcEsc(est)}${I.selE === 'terminado' && !I.validado && !I.tarea ? ' <em>validar</em>' : ''}</span>
-        ${equipo(I)}${aten(I)}${guia(I)}<span class="tb-more">›</span></div>`;
+        ${equipo(I)}${tipoT(I)}${tipoS(I)}${medio(I)}${solic(I.temp, I.xe, '12:00')}${solic(I.trd, I.xs, '11:00')}${noSal(I)}${aten(I)}${guia(I)}${vence(I)}<span class="tb-more">›</span></div>`;
     };
     const grupos = props.filter(p => ver.some(I => propDe(I) === p)).map(p => { const L = porPrio_(ver.filter(I => propDe(I) === p)); return `<div class="tb-grp">🏘️ ${pcEsc(p)} <b>${L.length}</b>${colProg(L)}</div>${L.map(fila).join('')}`; }).join('');
-    return `<div class="ad-tbl"><div class="tb-in"><div class="tb-row h"><span>Alojamiento</span><span>Movimiento del día</span><span>Estado</span><span>Equipo</span><span>Atención</span><span>Guía</span><span></span></div>${grupos}</div></div>`;
+    return `<div class="ad-tbl"><div class="tb-in"><div class="tb-row h"><span>Alojamiento</span><span>Movimiento del día</span><span>Estado</span><span>Equipo</span><span>Tipo de tarea</span><span>Tipo de servicio</span><span>Medio de reserva</span><span>Solicitud de entrada</span><span>Solicitud de salida</span><span>No ha salido</span><span>Atención</span><span>Guía</span><span>Vence el</span><span></span></div>${grupos}</div></div>`;
   };
   const cols = vista === 'tabla' ? '' : vista === 'usuario' ? filasUsuario() : vista === 'estado'
     ? AD_EST.map(E => {
@@ -67304,8 +67308,8 @@ function adTblCss_() {
   const st = document.createElement('style'); st.id = 'ad-tbl-css';
   st.textContent = `
   .ad-tbl{background:#fff;border:1px solid #e8eaee;border-radius:12px;overflow-x:auto;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-  .ad-tbl .tb-in{min-width:980px}
-  .ad-tbl .tb-row{display:grid;grid-template-columns:150px minmax(200px,1.4fr) 140px 120px minmax(170px,1fr) 150px 22px;align-items:center;gap:12px;padding:0 16px;min-height:46px;border-bottom:1px solid #f0f1f4;cursor:pointer;font-size:12.5px;color:#0f1729}
+  .ad-tbl .tb-in{min-width:1720px}
+  .ad-tbl .tb-row{display:grid;grid-template-columns:130px 170px 120px 100px 120px 120px 95px 130px 130px 90px minmax(160px,1fr) 150px 95px 18px;align-items:center;gap:12px;padding:0 16px;min-height:46px;border-bottom:1px solid #f0f1f4;cursor:pointer;font-size:12.5px;color:#0f1729}
   .ad-tbl .tb-row:hover{background:#f8fafc}
   .ad-tbl .tb-row.h{min-height:34px;cursor:default;background:#f8fafc;color:#9aa1ad;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #e8eaee;position:sticky;top:0;z-index:1}
   .ad-tbl .tb-row.al{background:linear-gradient(90deg,rgba(220,38,38,.07),transparent 45%)}
@@ -67319,6 +67323,13 @@ function adTblCss_() {
   .ad-tbl .tb-tl .sg{position:absolute;top:15px;height:6px;border-radius:3px}
   .ad-tbl .tb-tl .sg.sal{background:linear-gradient(90deg,#fda4af,#f43f5e)}.ad-tbl .tb-tl .sg.ent{background:linear-gradient(90deg,#10b981,#6ee7b7)}.ad-tbl .tb-tl .sg.cur{background:#e2e8f0}
   .ad-tbl .tb-tl .lb{position:absolute;top:0;font-size:10px;color:#6b7280;white-space:nowrap}
+  .ad-tbl .tb-mv{display:flex;gap:4px;flex-wrap:wrap}.ad-tbl .tb-mv>span{font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:5px;line-height:1.4;white-space:nowrap}
+  .ad-tbl .tb-mv .s{color:#ef4444;background:#fef2f2}.ad-tbl .tb-mv .e{color:#16a34a;background:#f0fdf4}.ad-tbl .tb-mv .u{color:#6b7280;background:#f3f4f6}
+  .ad-tbl .tb-ch{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--c);background:color-mix(in srgb,var(--c) 9%,#fff);border:1px solid color-mix(in srgb,var(--c) 22%,#fff);padding:2px 7px;border-radius:6px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .ad-tbl .tb-src{font-size:11.5px;font-weight:600;color:var(--c);white-space:nowrap}
+  .ad-tbl .tb-sol{font-size:11.5px;font-weight:600;color:#b45309;white-space:nowrap}.ad-tbl .tb-sol.ok{color:#047857}
+  .ad-tbl .tb-ns{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:#6b7280;cursor:pointer}.ad-tbl .tb-ns.on{color:#dc2626;font-weight:700}
+  .ad-tbl .tb-fe{font-size:11.5px;color:#374151;white-space:nowrap}.ad-tbl .tb-fe.tarde{color:#dc2626;font-weight:600}
   .ad-tbl .tb-tt{color:#374151;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ad-tbl .tb-est{display:inline-flex;align-items:center;gap:7px;font-weight:600;white-space:nowrap}.ad-tbl .tb-est i{width:8px;height:8px;border-radius:50%;flex:none}
   .ad-tbl .tb-est em{font-style:normal;font-size:10.5px;color:#b45309;font-weight:700}
