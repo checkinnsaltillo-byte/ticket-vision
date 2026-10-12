@@ -51827,7 +51827,7 @@ function _botcRenderMain(phone) {
       </div>
     </div>
     <div class="wa-comp">
-      ${canType ? `<button type="button" class="wa-ia" onclick="botcSysIaToggle_()" title="Pedir sugerencia al asistente IA del sistema">✨</button>` : ''}
+      <button type="button" class="wa-ia" onclick="botcSysIaToggle_()" title="Pedir sugerencia al asistente IA del sistema">✨</button>
       <button type="button" class="wa-ia wa-prog ${document.getElementById('botc-prog-pop') ? 'on' : ''}" onclick="botcProgToggle_()" title="Mensajes programados de la reserva activa">📅</button>
       <input type="text" id="botc-input" placeholder="${canType ? 'Escribe un mensaje' : 'Cambia a Manual o Supervisado para escribir'}"
         ${canType ? '' : 'disabled'}
