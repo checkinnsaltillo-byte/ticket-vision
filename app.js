@@ -58592,6 +58592,14 @@ function tdCss_() {
   .td-card .r2 .ty{font-weight:600}
   .td-card .wa{color:#16a34a;font-size:11px;font-weight:600}
   #ad-drawer .td-com{width:100%;box-sizing:border-box;margin-top:8px}
+  .td-cal .ad-card{margin:0}
+  .td-mcal{display:flex;align-items:center;gap:4px;min-width:0;padding:2px 5px 2px 4px;border-radius:5px;border-left:3px solid var(--tc);background:color-mix(in srgb,var(--sc) 14%,#fff);font-size:10px;cursor:pointer}
+  .td-mcal:hover{background:color-mix(in srgb,var(--sc) 26%,#fff)}
+  .td-mcal b{font:700 9.5px ui-monospace,Menlo,monospace;flex:none;color:#0f1729}
+  .td-mcal span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#0f1729}
+  .td-mcal>i{width:7px;height:7px;border-radius:50%;background:var(--sc);flex:none}
+  .td-mcal.fin span{text-decoration:line-through;opacity:.6}
+  .td-mcal.ig{background:linear-gradient(135deg,#6d28d9,#c026d3);border-left-color:#4c1d95}.td-mcal.ig b,.td-mcal.ig span{color:#fff}
   .td-card .r1 .prop{font-weight:600;color:#0f1729;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .td-card .pl-cb2{margin-top:6px}
   .td-igtg{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;width:100%;margin-top:8px;padding:5px 8px;border-top:1px dashed #e2e8f0;color:#6d28d9;font-size:11.5px;font-weight:600;cursor:pointer;border-radius:0 0 8px 8px}
@@ -58722,7 +58730,8 @@ function tdChip_(r, T) {
 }
 function tdQs_(id, est, dia) { return `<div class="ad-qs" onclick="event.stopPropagation()">${TAR_ESTADOS.map(e => `<button type="button" class="${e.k === est ? 'on' : ''}" style="--c:${TD_EST[e.k]}" title="${e.k}" onclick="event.stopPropagation();${e.k === est ? '' : `tdSetEst_('${esc(id)}','${dia}','${e.k}')`}"><i></i>${TD_CORTO[e.k]}</button>`).join('')}</div>`; }
 function tdBarra_(pc, titulo) { if (typeof plCss_ === 'function') plCss_(); return `<div class="pl-cb2" title="${pcEsc(titulo)}: ${pc}%"><span><i style="width:${pc}%;background:hsl(${Math.round(pc * 1.2)},78%,44%)"></i></span><b>${pc}%</b></div>`; }
-function tdCard_(r, dia) {
+function tdCard_(r, dia, o) {
+  o = o || {};
   const est = tdEst_(r, dia), T = TD_TIPO[tdTipoK_(r)], ig = tdEsIG_(r);
   const pers = tarPersonalList_(r), sel = TAR_STATE.dr && TAR_STATE.dr.id === r.ID && !TAR_STATE.dr.hijo;
   const oc = tarOcur_(r.ID, tdIsoDe_(r, dia)), tc = ig ? AT_DEPTO.inspeccion.c : T.c;
@@ -58737,12 +58746,13 @@ function tdCard_(r, dia) {
   if (r.Proceso_Codigo) meta.push(`<span>📘 ${esc(r.Proceso_Codigo)}</span>`);
   const hijos = ig ? tdIGAlojs_(r) : [], ab = ig && (TAR_STATE.igAb || new Set()).has(r.ID), av = ig ? tdIGAvance_(r, dia) : null;
   const ico = ig ? '🔍' : tarEsRec_(r) ? '📌' : '📋';
-  return `<div class="ad-card tipo est-tint td-card ${ig ? 'td-ig' : ''} ${sel ? 'sel' : ''} ${est === 'Cancelado' ? 'ghost' : ''}" data-k="${esc(r.ID)}" style="--tc:${tc};--sc:${TD_EST[est] || '#94a3b8'}" onclick="tdAbrir_('${esc(r.ID)}')"
-      draggable="true" ondragstart="tdDragStart_(event,'${esc(r.ID)}')" ondragend="adDragEnd_(event)">
+  const abrir = o.cal ? `tdAbrirEn_('${esc(r.ID)}','${dia}')` : `tdAbrir_('${esc(r.ID)}')`;
+  return `<div class="ad-card tipo est-tint td-card ${ig ? 'td-ig' : ''} ${sel ? 'sel' : ''} ${est === 'Cancelado' ? 'ghost' : ''}" data-k="${esc(r.ID)}" style="--tc:${tc};--sc:${TD_EST[est] || '#94a3b8'}" onclick="${abrir}"
+      draggable="true" ondragstart="${o.cal ? `tarDragStart(event,'${esc(r.ID)}','${tdIsoDe_(r, dia)}')` : `tdDragStart_(event,'${esc(r.ID)}')`}" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${esc(tdCodigo_(r))}</span><span title="${prioEf !== (r.Prioridad || 'Medio') ? 'Prioridad subida automáticamente por la fecha límite (elegida: ' + esc(r.Prioridad || 'Medio') + ')' : ''}">${prio4Html_(prioEf, true, `tdPrioCiclo_('${esc(r.ID)}')`)}</span><span class="prop">${ico} ${esc(r.Nombre || 'Sin nombre')}</span></div>
     ${flag}
     <div class="r2">${meta.join('<span class="sep"></span>')}</div>
-    <div class="r3">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${ig ? `<span class="ad-gd" title="Alojamientos">🏠 ${hijos.length}</span>` : ''}${r.WhatsApp === 'Sí' ? '<span class="ad-gd" title="Envía WhatsApp">💬</span>' : ''}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();tdAbrir_('${esc(r.ID)}')">Detalles</button></div>
+    <div class="r3">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${ig ? `<span class="ad-gd" title="Alojamientos">🏠 ${hijos.length}</span>` : ''}${r.WhatsApp === 'Sí' ? '<span class="ad-gd" title="Envía WhatsApp">💬</span>' : ''}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();${abrir}">Detalles</button></div>
     ${tdQs_(r.ID, est, dia)}${av != null ? tdBarra_(av, 'Avance de los alojamientos') : ''}
     ${ig && hijos.length ? `<button type="button" class="td-igtg ${ab ? 'ab' : ''}" onclick="event.stopPropagation();tdIGToggle_('${esc(r.ID)}')" title="${ab ? 'Ocultar' : 'Ver'} los alojamientos">${ab ? '▴ Ocultar' : '▾ Ver'} ${hijos.length} alojamiento${hijos.length === 1 ? '' : 's'}</button>` : ''}
     ${ab ? `<div class="td-hijos" onclick="event.stopPropagation()">${hijos.map(h => tdHijoFila_(r, h, dia)).join('')}</div>` : ''}
@@ -58771,6 +58781,8 @@ function tdHijoCard_(r, hid, dia) {
     ${tdQs_(id, est, dia)}${p ? tdBarra_(x ? x.p : (est === 'Resuelto' ? 100 : 0), 'Avance de la plantilla ' + p.titulo) : ''}
   </div>`;
 }
+// Calendario (día/semana/mes/resumen): abre la ventana de detalle en la fecha de esa card.
+window.tdAbrirEn_ = function (id, iso) { TAR_STATE.dia = iso === tarIso_(tarToday_()) ? null : iso; tdAbrir_(id); };
 window.tdIGToggle_ = function (id) { const S = TAR_STATE.igAb = TAR_STATE.igAb || new Set(); if (S.has(id)) S.delete(id); else S.add(id); tarRender(); };
 window.tdAbrirHijo_ = function (pid, hid) {
   const r = TAR_STATE.list.find(x => x.ID === pid); if (!r) return;
@@ -58934,7 +58946,7 @@ function tarPasaFiltro_(r) {
   if (fx.pers.size) { const p = tarPersonalList_(r); if (!(p.length ? p.some(n => fx.pers.has(n)) : fx.pers.has(TAR_SIN_PERS))) return false; }
   return true;
 }
-function tarDelDiaF_(iso) { return tarDelDia_(iso).filter(tarPasaFiltro_); }
+function tarDelDiaF_(iso, soloLim) { return tarDelDia_(iso).filter(r => tarPasaFiltro_(r) && !(soloLim && tdEsIG_(r) && iso !== tdLimIG_(r, iso))); } // soloLim: semana/mes/resumen muestran la inspección general solo en su fecha límite
 function tarFxActivos_() { const fx = TAR_STATE.fx; return (fx.tipo ? 1 : 0) + (fx.prio ? 1 : 0) + fx.clas.size + fx.sub.size + fx.pers.size; }
 // Registros del periodo que se ve en pantalla (sin aplicar filtros): de aquí salen las opciones.
 function tarFxBase_() {
@@ -59333,9 +59345,9 @@ function tarResumenHtml_() {
   const recUlt = new Map();
   for (let day = 1; day <= dim; day++) {
     const iso = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    tarDelDiaF_(iso).forEach(r => {
+    tarDelDiaF_(iso, true).forEach(r => {
       if (tarEsRec_(r)) { recUlt.set(r.ID, { r, iso }); return; }
-      const est = tarOcurEstado_(r.ID, iso);
+      const est = tdEst_(r, iso);
       (buckets[est] || buckets['Pendiente']).push({ r, iso });
     });
   }
@@ -59366,7 +59378,7 @@ function tarResumenHtml_() {
       </div>
       <div ondragover="event.preventDefault();this.style.background='#f1f5f9'" ondragleave="this.style.background=''" ondrop="tarDrop(event,'${col.key}');this.style.background=''"
            style="display:flex;flex-direction:column;gap:10px;min-height:60px;padding:4px;border-radius:10px">
-        ${items.length ? items.map(it => tarCardHtml_(it.r, { fecha: it.iso, draggable: true, compact: true })).join('') : '<div style="text-align:center;padding:18px 8px;color:#94a3b8;font-size:11px;font-style:italic;border:1px dashed #e2e8f0;border-radius:8px">Sin tareas</div>'}
+        ${items.length ? items.map(it => tdCard_(it.r, it.iso, { cal: true })).join('') : '<div style="text-align:center;padding:18px 8px;color:#94a3b8;font-size:11px;font-style:italic;border:1px dashed #e2e8f0;border-radius:8px">Sin tareas</div>'}
       </div>
     </div>`;
   }).join('')}</div>`;
@@ -59401,7 +59413,7 @@ function tarDiaHtml_() {
   const items = tarDelDiaF_(iso);
   return tarNavBar_(`${dowName} ${d.getDate()} de ${TAR_MESES_L[d.getMonth()].toLowerCase()} ${d.getFullYear()}`) +
     (items.length
-      ? `<div style="display:flex;flex-direction:column;gap:10px;max-width:760px">${items.map(r => tarCardHtml_(r, { fecha: iso })).join('')}</div>`
+      ? `<div style="display:flex;flex-direction:column;gap:10px;max-width:760px">${items.map(r => tdCard_(r, iso, { cal: true })).join('')}</div>`
       : `<div style="text-align:center;padding:40px 20px;color:#94a3b8;border:1px dashed #cbd5e1;border-radius:12px;max-width:760px">Sin tareas programadas este día.</div>`);
 }
 // 3) Pendientes de la semana
@@ -59412,16 +59424,16 @@ function tarSemanaHtml_() {
   const hoy = tarIso_(tarToday_());
   const fin = dias[6];
   const titulo = `${lunes.getDate()} ${TAR_MESES[lunes.getMonth()]} – ${fin.getDate()} ${TAR_MESES[fin.getMonth()]} ${fin.getFullYear()}`;
-  return tarNavBar_(titulo) + `<div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:8px;min-width:1050px">${dias.map(d => {
+  return tarNavBar_(titulo) + `<div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(190px,1fr));gap:8px;min-width:1330px">${dias.map(d => {
     const iso = tarIso_(d);
-    const items = tarDelDiaF_(iso);
+    const items = tarDelDiaF_(iso, true);
     const isHoy = iso === hoy;
     return `<div style="background:${isHoy ? '#faf5ff' : '#f8fafc'};border:1.5px solid ${isHoy ? '#a78bfa' : '#e2e8f0'};border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;min-height:160px">
       <div style="display:flex;align-items:baseline;justify-content:space-between">
         <span style="font-size:11px;font-weight:900;color:${isHoy ? '#6d28d9' : '#475569'};text-transform:uppercase">${TAR_DOW.find(([v]) => v === d.getDay())[1]}</span>
         <span style="font-size:16px;font-weight:900;color:${isHoy ? '#6d28d9' : '#0f172a'}">${d.getDate()}</span>
       </div>
-      ${items.map(r => tarMiniHtml_(r, iso)).join('') || '<div style="font-size:10.5px;color:#cbd5e1;text-align:center;padding-top:20px">—</div>'}
+      ${items.map(r => tdCard_(r, iso, { cal: true })).join('') || '<div style="font-size:10.5px;color:#cbd5e1;text-align:center;padding-top:20px">—</div>'}
     </div>`;
   }).join('')}</div></div>`;
 }
@@ -59452,21 +59464,21 @@ function tarMesHtml_() {
   return tarNavBar_(`${TAR_MESES_L[m]} ${y}`) + `<div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:4px;min-width:860px">${head}${celdas.map(d => {
     const iso = tarIso_(d);
     const inMonth = d.getMonth() === m;
-    const items = inMonth ? tarDelDiaF_(iso) : [];
+    const items = inMonth ? tarDelDiaF_(iso, true) : [];
     const isHoy = iso === hoy;
     const shown = items.slice(0, 3);
     return `<div onclick="tarIrADia('${iso}')" style="cursor:pointer;min-height:96px;background:${!inMonth ? '#fafafa' : isHoy ? '#faf5ff' : '#fff'};border:1.5px solid ${isHoy ? '#a78bfa' : '#e2e8f0'};border-radius:8px;padding:5px;display:flex;flex-direction:column;gap:3px;opacity:${inMonth ? 1 : .45}">
       <div style="font-size:12px;font-weight:900;color:${isHoy ? '#6d28d9' : '#334155'}">${d.getDate()}</div>
-      ${shown.map(r => {
-        const pri = TAR_PRIORIDADES.find(p => p.k === r.Prioridad);
-        const bg = pri ? pri.bg : '#f1f5f9', fg = pri ? pri.fg : '#334155';
-        const est = tarOcurEstado_(r.ID, iso);
-        const mark = est === 'Resuelto' ? '✓ ' : est === 'En proceso' ? '⏳ ' : est === 'Cancelado' ? '✕ ' : '';
-        return `<div onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}','${iso}')" title="${esc(r.Nombre)} · ${esc(est)}" style="font-size:10px;font-weight:800;background:${bg};color:${fg};border-radius:5px;padding:2px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${est === 'Resuelto' || est === 'Cancelado' ? 'opacity:.55;text-decoration:line-through' : ''}">${mark}${tarEsRec_(r) ? '📌 ' : ''}${esc(r.Nombre || '')}</div>`;
-      }).join('')}
+      ${shown.map(r => tdMiniCal_(r, iso)).join('')}
       ${items.length > 3 ? `<div style="font-size:10px;font-weight:800;color:#7c3aed">+${items.length - 3} más</div>` : ''}
     </div>`;
   }).join('')}</div></div>`;
+}
+// Mes: mini card con los mismos elementos que las cards (franja de tipo, color de estado, prioridad, código y nombre).
+function tdMiniCal_(r, iso) {
+  const est = tdEst_(r, iso), T = TD_TIPO[tdTipoK_(r)], ig = tdEsIG_(r), tc = ig ? AT_DEPTO.inspeccion.c : T.c;
+  return `<div class="td-mcal ${ig ? 'ig' : ''} ${est === 'Resuelto' || est === 'Cancelado' ? 'fin' : ''}" style="--tc:${tc};--sc:${TD_EST[est] || '#94a3b8'}" onclick="event.stopPropagation();tdAbrirEn_('${esc(r.ID)}','${iso}')" title="${esc(r.Nombre || '')} · ${esc(est)}">
+    <b>${esc(tdCodigo_(r))}</b>${prio4Html_(tdPrioEf_(r, iso), true)}<span>${esc(r.Nombre || '')}</span><i></i></div>`;
 }
 window.tarIrADia = function (iso) { TAR_STATE.calView = 'dia'; TAR_STATE.calRef = tarParseIso_(iso); TAR_STATE.dia = iso === tarIso_(tarToday_()) ? null : iso; tarRender(); };
 
