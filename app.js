@@ -45390,9 +45390,10 @@ function _waRenderUnifiedList_(logs, opts) {
   }
   items.sort((a,b) => a.sortKey - b.sortKey);
 
+  const sinProg = !!opts.sinProgramados; // Ficha › Todos: los programados viven en el panel 📅 (se dejan los avisos de reportes)
   const html = items.map(it => {
-    if (it.kind === 'template') return _waRenderTemplateItem_(it, auto);
-    if (it.kind === 'custom')   return _waRenderCustomItem_(it, auto);
+    if (it.kind === 'template') return sinProg ? '' : _waRenderTemplateItem_(it, auto);
+    if (it.kind === 'custom')   return sinProg && !_waIsReportTriggeredCustom_(it.cs) ? '' : _waRenderCustomItem_(it, auto);
     if (it.kind === 'report')   return _waRenderReportTimelineItem_(it);
     if (it.kind === 'pago')     return _waRenderPagoTimelineItem_(it);
     return '';
@@ -52863,7 +52864,7 @@ function _botcFichaHtml_(st, logs) {
       else if (tab === 'solicitudes') cont = _botcFxSolHtml_(sols);
       else { const mode = tab === 'programados' ? 'schedule-only' : tab === 'reportes' ? 'reports-only' : tab === 'pagos' ? 'pagos-only' : 'full';
         try { cont = mode === 'reports-only' ? (_waRenderReportsForBooking_(bk) || _botcFxVacio_('🚨', 'Sin reportes en esta reserva')) : mode === 'pagos-only' ? (_waRenderPagosForBooking_(bk) || _botcFxVacio_('💳', 'Sin pagos registrados en esta reserva'))
-          : _waRenderUnifiedList_(logs, { scheduleOnly: mode === 'schedule-only', includePagos: mode !== 'schedule-only', bookingForPagos: bk }); } catch (er) { cont = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + er.message); } }
+          : _waRenderUnifiedList_(logs, { scheduleOnly: mode === 'schedule-only', includePagos: mode !== 'schedule-only', bookingForPagos: bk, sinProgramados: true }); } catch (er) { cont = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + er.message); } }
       cuerpo = `<div class="fx-cuerpo" onclick="event.stopPropagation()">
           <div class="fx-steps">${t('todos', '#475569', '📋', 'Todos')}${t('reportes', '#dc2626', '🚨', 'Reportes')}${t('pagos', '#16a34a', '💳', 'Pagos')}${t('solicitudes', '#7c3aed', '📄', 'Solic.', sols.length)}</div>
           <div class="fx-cont">${cont}</div></div>`;
@@ -52878,8 +52879,6 @@ function _botcFichaHtml_(st, logs) {
   const clave = st.focusedBookingId + '|' + tab, animTab = BOTC_STATE.fxTab !== clave; BOTC_STATE.fxTab = clave;
   return `<div class="fx ${animar ? 'anim' : ''} ${animTab ? 'animtab' : ''}">
       <header class="fx-h"><span class="fx-h-t">Ficha del huésped</span>
-        ${(() => { const aid = String(st.focusedBookingId || st.bookingId || ''); if (!aid) return ''; const on = !!(WA_ADMIN.config[aid] && WA_ADMIN.config[aid].auto_enabled), bk = (st.bookings || []).find(b => String(waBookingId_(b)) === aid);
-          return `<span class="fx-hauto ${on ? 'on' : ''}" title="Mensajes automáticos de la reserva ${E(bk ? waAlojamientoLabel_(bk) : aid)}: ${on ? 'activos' : 'apagados'}">📅 Mensajes automáticos${waAutoToggleHtml(aid)}</span>`; })()}
         <button type="button" class="fx-ico" onclick="botcFxRefrescar_(this)" title="Actualizar">↻</button>
         <button type="button" class="fx-ico" onclick="botcBitacoraCerrar_()" title="Cerrar">✕</button></header>
       <div class="fx-scroll">
@@ -52987,6 +52986,8 @@ function _botcProgPintar_() {
   else { window.__waProgPanel = true; try { lista = _waRenderUnifiedList_(logs, { scheduleOnly: true, includePagos: false, bookingForPagos: bk }); } catch (e) { lista = _botcFxVacio_('⚠️', 'No se pudo mostrar: ' + e.message); } finally { window.__waProgPanel = false; } }
   const sc = pop.querySelector('.bp-cuerpo'), top = sc ? sc.scrollTop : 0;
   pop.innerHTML = `<div class="bp"><div class="bp-h"><b>📅 Mensajes programados</b><span>${_botcEsc([corto || (bk ? waAlojamientoLabel_(bk) : ''), a && d ? `${_waFmtShortDate(a)} → ${_waFmtShortDate(d)}` : ''].filter(Boolean).join(' · '))}</span>
+      ${(() => { const aid = pop.dataset.bid, on = !!(WA_ADMIN.config[aid] && WA_ADMIN.config[aid].auto_enabled);
+        return `<span class="fx-hauto ${on ? 'on' : ''}" title="Mensajes automáticos de esta reserva: ${on ? 'activos' : 'apagados'}">📅 Auto${waAutoToggleHtml(aid)}</span>`; })()}
       <button type="button" class="fx-ico" onclick="botcProgToggle_()" title="Cerrar">✕</button></div><div class="bp-cuerpo">${lista || _botcFxVacio_('📅', 'Sin mensajes programados en esta reserva')}</div></div>`;
   const sc2 = pop.querySelector('.bp-cuerpo'); if (sc2 && top) sc2.scrollTop = top;
 }
