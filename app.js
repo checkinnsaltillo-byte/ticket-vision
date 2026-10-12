@@ -58641,13 +58641,13 @@ function tdRender_() {
   if (typeof ALOJ_STATE !== 'undefined' && !ALOJ_STATE.loaded && !ALOJ_STATE.loading && typeof lgLoadAlojamientos === 'function' && TAR_STATE.list.some(tdEsIG_)) lgLoadAlojamientos().then(() => tdRender_()).catch(() => {});
   const dia = tdDia_(), hoy = tarIso_(tarToday_());
   const ym = TAR_STATE.mes || hoy.slice(0, 7);
-  const sec = TAR_STATE.section === 'registro' ? 'registro' : 'tablero';
+  const sec = 'tablero'; // «Registro» ahora es la vista «Tabla»
   const lbl = typeof aseoDiaLabel_ === 'function' ? aseoDiaLabel_(dia) : tarFmtFecha_(dia);
   const nFx = ckFxN_(TAR_STATE.fx, { tipo: '', prio: '' });
   const seg = `<div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="tarSetSection('tablero')">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="tarSetSection('registro')">Registro</button></div>`;
   const bar = `<div class="ck-bar">${ckHam_(TAR_STATE.filAb, nFx, 'TAR_STATE.filAb=!TAR_STATE.filAb;tdRender_()')}
-      ${sec === 'tablero' ? `<div class="ck-dnav"><button type="button" onclick="tdMes_(-1)" title="Mes anterior">‹</button><button type="button" class="lb ${ym !== hoy.slice(0, 7) ? 'otro' : ''}" onclick="tdMesPick_(this)" title="Elegir mes">${esc(bnEfeMesLabel_(ym))}</button><button type="button" onclick="tdMes_(1)" title="Mes siguiente">›</button></div>${ym !== hoy.slice(0, 7) ? `<button type="button" class="aseo-btn" onclick="tdMesSet_('${hoy.slice(0, 7)}')" title="Volver al mes en curso">Mes actual</button>` : ''}` : ''}
-      ${seg}<span class="ck-sp"></span>__SEGV__
+      ${ckMesNavHtml_(ym, 'tdMesV_')}
+      <span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','Recordatorio')" title="Nuevo recordatorio">＋ Recordatorio</button>
       <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','IG')" title="Inspección general de varios alojamientos con una plantilla">＋ Inspección general</button>
@@ -58701,6 +58701,7 @@ window.tdMesSet_ = function (ym) {
   TAR_STATE.dia = hoy.slice(0, 7) === ym ? null : ym + '-01';
   tarRender();
 };
+window.tdMesV_ = function (v) { tdMesSet_(ckMesMover_(TAR_STATE.mes, v)); };
 window.tdMes_ = function (delta) { const [y, m] = (TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7)).split('-').map(Number), d = new Date(y, m - 1 + delta, 1); tdMesSet_(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); };
 window.tdMesPick_ = function (btn) { if (typeof mesPickerOpen_ === 'function') mesPickerOpen_(btn, () => TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7), ym => tdMesSet_(ym)); };
 function tdKpis_(L, dia) {
@@ -58845,14 +58846,25 @@ window.tdIGPlantillaHecha_ = function (key, pc) {
   if (nuevo) Promise.resolve(tarSaveOcur_(id, iso, { Estado: nuevo })).then(fin).catch(() => {}); else fin();
 };
 function tdTablero_(O, dia) {
-  const vista = TAR_STATE.vista === 'clas' || TAR_STATE.vista === 'fecha' ? TAR_STATE.vista : 'estado';
-  const segV = `<div class="ad-seg"><span>Vista</span><button type="button" class="${vista === 'estado' ? 'on' : ''}" onclick="tdVista_('estado')">Por estado</button><button type="button" class="${vista === 'clas' ? 'on' : ''}" onclick="tdVista_('clas')">Por clasificación</button><button type="button" class="${vista === 'fecha' ? 'on' : ''}" onclick="tdVista_('fecha')">Por fecha</button></div>`;
-  TAR_STATE._segV = segV; // va en la barra de arriba (tdRender_)
-  if (vista === 'fecha') return `<div class="td-cal">${tarCalendarioHtml_()}</div>`; // «Por fecha» = calendario por día / semana del mes elegido
+  ckVCss_();
+  const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista, vista = CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado';
+  TAR_STATE._segV = ckVistasHtml_(vista, 'tdVista_'); // va en la barra de arriba (tdRender_)
+  if (vista === 'fecha') return `<div class="td-cal">${tarCalendarioHtml_()}</div>`; // «Por fecha» = calendario por día / semana / mes del mes elegido
   const PW = { 'Crítico': 4, 'Alto': 3, 'Medio': 2, 'Bajo': 1 };
   const ord = L => L.slice().sort((a, b) => tdLimAbajo_(a.r) - tdLimAbajo_(b.r) || a.iso.localeCompare(b.iso) || (PW[tdPrioEf_(b.r, b.iso)] || 0) - (PW[tdPrioEf_(a.r, a.iso)] || 0)); // con fecha límite: hasta abajo
   const card = x => tdCard_(x.r, x.iso, { cal: true, fecha: true });
   let cols;
+  const ymV = TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7), vac = `No hay tareas ni recordatorios en ${bnEfeMesLabel_(ymV).toLowerCase()}`;
+  if (vista === 'usuario') {
+    const N = [...new Set(O.flatMap(x => tarPersonalList_(x.r)))].sort((a, b) => a.localeCompare(b, 'es')), sin = O.filter(x => !tarPersonalList_(x.r).length);
+    return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', n: sin.length, cards: ord(sin).map(card).join('') }] : []).concat(N.map(n => { const X = ord(O.filter(x => tarPersonalList_(x.r).includes(n))); return { t: `${adAv_(n)} ${esc(aseoNombreCorto_(n))}`, n: X.length, cards: X.map(card).join('') }; })), vac);
+  }
+  if (vista === 'tabla') {
+    const cl = [...new Set(O.map(x => x.r.Clasificacion || TAR_SIN))].sort((a, b) => a === TAR_SIN ? 1 : b === TAR_SIN ? -1 : a.localeCompare(b, 'es'));
+    return ckTablaHtml_([['Fecha', '95px'], ['Tarea', 'minmax(200px,1.4fr)'], ['Tipo', '140px'], ['Clasificación', '150px'], ['Programación', '150px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Personal', '110px'], ['Fecha límite', '150px']],
+      cl.map(c => ({ t: '🗂️ ' + esc(c), rows: ord(O.filter(x => (x.r.Clasificacion || TAR_SIN) === c)).map(x => { const r = x.r, e = tdEst_(r, x.iso), T = TD_TIPO[tdTipoK_(r)], ig = tdEsIG_(r), fl = tdLimite_(r, x.iso), av = tdAvisoLim_(r, x.iso).replace(/<[^>]+>/g, '').replace('⏳ ', '');
+        return { onclick: `tdAbrirEn_('${esc(r.ID)}','${x.iso}')`, cls: /vencida|hoy/.test(av) ? 'al' : e === 'Cancelado' ? 'gh' : '', cells: [ckTx_(aseoDiaTxt_(x.iso)), `<span class="tb-a"><b class="code" style="font-size:11px">${esc(tdCodigo_(r))}</b><small style="color:#0f1729;font-weight:600">${esc(r.Nombre || '')}</small></span>`, `<span class="tb-ch" style="--c:${ig ? AT_DEPTO.inspeccion.c : T.c}">${ig ? '🔍 Inspección general' : (tarEsRec_(r) ? '📌 ' : '📋 ') + T.t}</span>`, ckTx_(r.Clasificacion ? r.Clasificacion + (r.Subclasificacion ? ' › ' + r.Subclasificacion : '') : ''), ckTx_(tdProgCorto_(r).replace('📅 ', '')), prio4Html_(tdPrioEf_(r, x.iso)), ckEst_(TD_EST[e] || '#94a3b8', e), ckPers_(tarPersonalList_(r)), fl ? `<span class="tb-fe ${/vencida|hoy/.test(av) ? 'tarde' : ''}" title="${esc(av)}">${esc(tarFmtFecha_(fl))}</span>` : '<span class="tb-mu">—</span>'] }; }) })), vac);
+  }
   if (vista === 'estado') cols = TAR_ESTADOS.map(e => {
     const X = ord(O.filter(x => tdEst_(x.r, x.iso) === e.k));
     return `<div class="ad-col" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="this.classList.remove('drop');tarDrop(event,'${e.k}')"><div class="ad-colh"><i style="background:${TD_EST[e.k]}"></i>${e.k}<span>${X.length}</span></div>${X.map(card).join('') || '<div class="ad-empty">Suelta aquí una card</div>'}</div>`;
@@ -58969,7 +58981,7 @@ window.tdComentario_ = function (id, iso, v) {
 };
 
 // «Calendario» (menú lateral) = tablero con el calendario visible.
-window.tarSetSection = function (k) { if (k === 'calendario') { TAR_STATE.vista = 'fecha'; k = 'tablero'; } TAR_STATE.section = k; tarRender(); };
+window.tarSetSection = function (k) { if (k === 'calendario') { TAR_STATE.vista = 'fecha'; k = 'tablero'; } if (k === 'registro') { TAR_STATE.vista = 'tabla'; k = 'tablero'; } TAR_STATE.section = k; tarRender(); };
 
 // ── Filtros globales (Calendario y Registro) ───────────────────────────
 // Tipo: botones (ambos activos por defecto). Clasificación / Sub-clasificación
@@ -66615,6 +66627,7 @@ function aseoEnsureCss_() {
   .aseo-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
   .aseo-grid #aseo-cal{display:none}
   .aseo-grid.con-cal{grid-template-columns:minmax(0,var(--cal-w,33.333%)) 12px minmax(0,1fr);gap:0 6px}
+  .aseo-grid.solo-cal{grid-template-columns:minmax(0,1fr)!important}.aseo-grid.solo-cal #aseo-side,.aseo-grid.solo-cal #aseo-split{display:none!important}.aseo-grid.solo-cal #aseo-cal{display:block!important}
   .aseo-split{display:none}
   .aseo-grid.con-cal .aseo-split{display:flex;align-self:stretch;align-items:center;justify-content:center;cursor:col-resize;border-radius:8px;touch-action:none;user-select:none}
   .aseo-split span{width:4px;height:56px;border-radius:999px;background:#cbd5e1;transition:background .15s,height .15s}
@@ -66954,8 +66967,9 @@ function aseoRender_() {
   if (st) st.innerHTML = `<span class="mv-live">● En vivo</span> · consulta a Lodgify cada ${ASEO_POLL_S} s · la hora exacta de la última actualización está arriba de las cards`;
   // Calendario: oculto por defecto; se despliega a la izquierda con el botón.
   const grid = document.getElementById('aseo-grid');
-  if (grid) grid.classList.toggle('con-cal', !!ASEO.cal);
-  const cb = document.getElementById('aseo-cal-btn'); if (cb) { cb.classList.toggle('on', !!ASEO.cal); cb.title = ASEO.cal ? 'Ocultar calendario' : 'Mostrar calendario'; }
+  if (ASEO.vista === 'fecha') ASEO.cal = true; // «Por fecha»: calendario a todo lo ancho (sin el botón 📅)
+  if (grid) { grid.classList.toggle('con-cal', !!ASEO.cal && ASEO.vista !== 'fecha'); grid.classList.toggle('solo-cal', ASEO.vista === 'fecha'); }
+  const cb = document.getElementById('aseo-cal-btn'); if (cb) cb.style.display = 'none';
   const tb = document.getElementById('aseo-todas-btn'); if (tb) tb.textContent = ASEO.todas ? '▾ Contraer todas' : '▸ Expandir todas las cards';
   // Solo se re-pinta si cambió algo (conserva el scroll del usuario).
   const cal = ASEO.cal ? document.getElementById('aseo-cal') : null;
@@ -67419,9 +67433,9 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
       const p = L.find(I => !I.tarea) || L.find(I => !['correctivo', 'preventivo'].includes(axSrv_(kDe(I)))) || L[0], pi = idsDe(p), hs = L.filter(I => I !== p);
       hijosDe.set(p, hs); hs.forEach(h => { padreDe.set(h, p); const hi = idsDe(h); puenteDe.set(h, hi.find(x => pi.includes(x)) || hi[0]); });
     }); }
-  const vista = !MP && (ASEO.vista === 'estado' || ASEO.vista === 'usuario' || ASEO.vista === 'tabla') ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados solo «por propiedad»
+  const vista = !MP && ['estado', 'usuario', 'tabla', 'fecha'].includes(ASEO.vista) ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados solo «por propiedad»
   const propHtml = props.length > 1 ? `<div class="mv-pf ad-prf"><small>🏘️ Propiedad:</small>${props.map(p => `<button type="button" class="mv-pf-c ad-pr ${fP.includes(p) ? 'on' : ''}" data-p="${pcEsc(p)}" onclick="adPropToggle_(this.dataset.p)">${pcEsc(p)}<b>${infos.concat(tInfos).filter(I => propDe(I) === p).length}</b></button>`).join('')}${fP.length ? '<button type="button" class="mv-pf-x" onclick="ASEO.fProp=[];aseoRender_()">Quitar filtro</button>' : ''}</div>` : '';
-  const segV = `${MP ? '' : `<div class="ad-seg"><span>Vista</span><button type="button" class="${vista === 'estado' ? 'on' : ''}" onclick="adVista_('estado')">Por estado</button><button type="button" class="${vista === 'propiedad' ? 'on' : ''}" onclick="adVista_('propiedad')">Por propiedad</button><button type="button" class="${vista === 'usuario' ? 'on' : ''}" onclick="adVista_('usuario')">Por usuario</button><button type="button" class="${vista === 'tabla' ? 'on' : ''}" onclick="adVista_('tabla')">Tabla</button></div>`}<div class="ad-seg ad-seg2"><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
+  const segV = `${MP ? '' : ckVistasHtml_(vista, 'adVista_')}<div class="ad-seg ad-seg2"><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
   ASEO._pubKeys = infos.filter(I => I.esHoyC && I.G).map(I => ({ key: I.pubKey, on: !I.noPub }));
   const vivos = infos.filter(I => !I.fantasma);
   const n = k => vivos.filter(I => I.selE === k).length;
@@ -67609,7 +67623,7 @@ function adTblCss_() {
 try { ASEO.vista = localStorage.getItem('aseo-vista2') || 'propiedad'; } catch (_) { ASEO.vista = 'propiedad'; }
 try { const v = localStorage.getItem('aseo-simple2'); if (v != null) ASEO.simple = v === '1'; } catch (_) {} // sin elección: según el rol (adTablero_)
 window.adSimple_ = function (on) { ASEO.simple = !!on; try { localStorage.setItem('aseo-simple2', on ? '1' : '0'); } catch (_) {} aseoRenderSide_(); };
-window.adVista_ = function (v) { ASEO.vista = v; try { localStorage.setItem('aseo-vista2', v); } catch (_) {} aseoRenderSide_(); };
+window.adVista_ = function (v) { const antes = ASEO.vista; ASEO.vista = v; try { localStorage.setItem('aseo-vista2', v); } catch (_) {} if (v === 'fecha' || antes === 'fecha') { ASEO.cal = v === 'fecha'; ASEO.calSig = ''; ASEO._centrar = true; aseoRender_(); } else aseoRenderSide_(); }; // «Por fecha» = el calendario a todo lo ancho
 window.adPrioFiltro_ = function (k) { const s = ASEO.fPrio = ASEO.fPrio || []; const i = s.indexOf(k); if (i >= 0) s.splice(i, 1); else s.push(k); aseoRender_(); };
 window.adTipoToggle_ = function (k) { const s = ASEO.fTipo = ASEO.fTipo || []; const i = s.indexOf(k); if (i >= 0) s.splice(i, 1); else s.push(k); aseoRender_(); };
 window.adPropToggle_ = function (p) { const s = ASEO.fProp = ASEO.fProp || []; const i = s.indexOf(p); if (i >= 0) s.splice(i, 1); else s.push(p); aseoRender_(); };
@@ -69142,6 +69156,65 @@ function icCss_() {
   `;
   document.head.appendChild(st);
 }
+// ═══ Check-Flow · vistas homologadas (Aseo, Mantenimiento, Incidencias, Objetos olvidados, Tareas programadas) ═══
+// Mismo selector en todas: Por estado · Por propiedad · Por usuario · Por fecha · Tabla, y el mismo selector de mes ‹ Mes ›.
+const CK_VISTAS = [['estado', 'Por estado'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['fecha', 'Por fecha'], ['tabla', 'Tabla']];
+function ckVistasHtml_(cur, fn) { return `<div class="ad-seg"><span>Vista</span>${CK_VISTAS.map(([k, t]) => `<button type="button" class="${cur === k ? 'on' : ''}" onclick="${fn}('${k}')">${t}</button>`).join('')}</div>`; }
+function ckMesHoy_() { return aseoHoyIso_().slice(0, 7); }
+function ckMesMover_(ym, v) { if (typeof v === 'string') return v; if (!v) return ckMesHoy_(); const [y, m] = (ym || ckMesHoy_()).split('-').map(Number), d = new Date(y, m - 1 + v, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+function ckMesNavHtml_(ym, fn) {
+  const hoy = ckMesHoy_();
+  return `<div class="ck-dnav"><button type="button" onclick="${fn}(-1)" title="Mes anterior">‹</button><button type="button" class="lb ${ym !== hoy ? 'otro' : ''}" onclick="ckMesPick_(this,'${fn}','${ym}')" title="Elegir mes">${pcEsc(bnEfeMesLabel_(ym))}</button><button type="button" onclick="${fn}(1)" title="Mes siguiente">›</button></div>${ym !== hoy ? `<button type="button" class="aseo-btn" onclick="${fn}(0)" title="Volver al mes en curso">Mes actual</button>` : ''}`;
+}
+window.ckMesPick_ = function (btn, fn, ym) { if (typeof mesPickerOpen_ === 'function') mesPickerOpen_(btn, () => ym, v => window[fn](v)); };
+// ¿El registro va en el mes elegido? Su fecha cae en el mes, o sigue abierto de meses anteriores (solo viendo el mes en curso).
+function ckEnMes_(fecha, ym, abierto) { const f = String(fecha || '').slice(0, 10); return f.slice(0, 7) === ym || (abierto && ym === ckMesHoy_() && (!f || f < ym + '-01')); }
+function ckVCss_() {
+  if (typeof adTblCss_ === 'function') adTblCss_();
+  if (document.getElementById('ck-v-css')) return;
+  const st = document.createElement('style'); st.id = 'ck-v-css';
+  st.textContent = `
+  .ck-mcal{display:flex;align-items:center;gap:4px;min-width:0;padding:2px 5px 2px 4px;border-radius:5px;border-left:3px solid var(--tc);background:color-mix(in srgb,var(--sc) 14%,#fff);font-size:10px;cursor:pointer}
+  .ck-mcal:hover{background:color-mix(in srgb,var(--sc) 26%,#fff)}
+  .ck-mcal b{font:700 9.5px ui-monospace,Menlo,monospace;flex:none;color:#0f1729}
+  .ck-mcal span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#0f1729}
+  .ck-mcal>i{width:7px;height:7px;border-radius:50%;background:var(--sc);flex:none}
+  .ck-mcal.fin span{text-decoration:line-through;opacity:.6}
+  .ck-calm{overflow-x:auto}.ck-calm .g{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:4px;min-width:860px}
+  .ck-calm .h{font-size:10.5px;font-weight:700;color:#9aa1ad;text-transform:uppercase;text-align:center;padding:4px;letter-spacing:.06em}
+  .ck-calm .d{min-height:96px;background:#fff;border:1px solid #e8eaee;border-radius:9px;padding:5px;display:flex;flex-direction:column;gap:3px}
+  .ck-calm .d.fuera{opacity:.4;background:#fafafa}.ck-calm .d.hoy{border-color:#a5b4fc;background:#f5f5ff}
+  .ck-calm .d>small{font-size:12px;font-weight:700;color:#334155}.ck-calm .d.hoy>small{color:#4f46e5}
+  .ck-calm .mas{font-size:10px;font-weight:700;color:#4f46e5;cursor:pointer}
+  .ad-col .ad-colh .ck-sub{font-weight:500;color:#9aa1ad;font-size:11px;margin-left:4px}`;
+  document.head.appendChild(st);
+}
+// Columnas genéricas: [{t: html del encabezado, n, cards: html}]
+function ckColsHtml_(G, vacio) { return G.length ? `<div class="ad-board">${G.map(g => `<div class="ad-col"><div class="ad-colh">${g.t}<span>${g.n}</span></div>${g.cards || '<div class="ad-empty">Sin registros</div>'}</div>`).join('')}</div>` : `<div class="pc-mv-empty">${vacio || 'Sin registros'}</div>`; }
+// Calendario del mes con mini cards: items = [{iso, code, nombre, tc, sc, fin, onclick}]
+function ckCalMesHtml_(ym, items) {
+  ckVCss_();
+  const [y, m] = ym.split('-').map(Number), prim = new Date(y, m - 1, 1), off = (prim.getDay() + 6) % 7, dim = new Date(y, m, 0).getDate(), hoy = aseoHoyIso_();
+  const celdas = Array.from({ length: Math.ceil((off + dim) / 7) * 7 }, (_, i) => new Date(y, m - 1, 1 - off + i));
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `<div class="ck-calm"><div class="g">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(t => `<div class="h">${t}</div>`).join('')}${celdas.map(d => {
+    const k = iso(d), dentro = d.getMonth() === m - 1, L = dentro ? items.filter(x => x.iso === k) : [];
+    return `<div class="d ${dentro ? '' : 'fuera'} ${k === hoy ? 'hoy' : ''}"><small>${d.getDate()}</small>${L.slice(0, 4).map(x => `<div class="ck-mcal ${x.fin ? 'fin' : ''}" style="--tc:${x.tc};--sc:${x.sc}" onclick="${x.onclick}" title="${pcEsc(x.nombre)}"><b>${pcEsc(x.code || '—')}</b><span>${pcEsc(x.nombre)}</span><i></i></div>`).join('')}${L.length > 4 ? `<div class="mas" title="${pcEsc(L.slice(4).map(x => x.nombre).join(' · '))}">+${L.length - 4} más</div>` : ''}</div>`;
+  }).join('')}</div></div>`;
+}
+// Tabla genérica con el diseño de la tabla de Aseo: cols = [[encabezado, ancho css]], grupos = [{t, n, prog, rows: [{cells: [html], onclick, cls}]}]
+function ckTablaHtml_(cols, grupos, vacio) {
+  ckVCss_();
+  if (!grupos.some(g => g.rows.length)) return `<div class="pc-mv-empty">${vacio || 'Sin registros'}</div>`;
+  const gt = cols.map(c => c[1]).join(' ') + ' 18px', minW = cols.reduce((a, c) => a + (parseInt(c[1].replace(/minmax\(|,.*$/g, '')) || 120), 0) + 80;
+  return `<div class="ad-tbl"><div class="tb-in" style="min-width:${minW}px"><div class="tb-row h" style="grid-template-columns:${gt}">${cols.map(c => `<span>${c[0]}</span>`).join('')}<span></span></div>
+    ${grupos.filter(g => g.rows.length).map(g => `<div class="tb-grp">${g.t} <b>${g.rows.length}</b>${g.prog || ''}</div>${g.rows.map(r => `<div class="tb-row ${r.cls || ''}" style="grid-template-columns:${gt}" onclick="${r.onclick}">${r.cells.join('')}<span class="tb-more">›</span></div>`).join('')}`).join('')}</div></div>`;
+}
+function ckEst_(c, t, extra) { return `<span class="tb-est"><i style="background:${c}"></i>${pcEsc(t)}${extra || ''}</span>`; }
+function ckTx_(v, cls) { return v ? `<span class="${cls || ''}" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${pcEsc(String(v))}">${pcEsc(String(v))}</span>` : '<span class="tb-mu">—</span>'; }
+function ckAloj_(corto, aloj) { return `<span class="tb-a"><b class="code">${pcEsc(corto || '—')}</b><small>${pcEsc(String(aloj || '').replace(/^Calle\s+/i, ''))}</small></span>`; }
+function ckPers_(L) { L = [...new Set((L || []).filter(Boolean))]; return L.length ? `<span class="tb-avs">${L.slice(0, 4).map(n => adAv_(n)).join('')}${L.length > 4 ? `<em>+${L.length - 4}</em>` : ''}</span>` : '<span class="tb-none">Sin asignar</span>'; }
+function ckPropDe_(hid, aloj) { const a = hid && typeof atAloj_ === 'function' ? atAloj_(hid) : null; return (a && a.propiedad) || String(aloj || '').split(/\s+-\s+#?/)[0].replace(/^Calle\s+/i, '').trim() || 'Sin propiedad'; }
 // Fotos ya migradas a Cloud Storage (/incidencias/foto) se ven directo; las de Drive pasan por el proxy.
 function icFoto_(u, w) { return /\/incidencias\/foto\?/.test(u) ? u : `${BACKEND}/huespedes-image-proxy?url=${encodeURIComponent(u)}&size=w${w || 400}`; }
 // ── Entrada al módulo ──
@@ -69156,7 +69229,7 @@ window.icInit_ = async function () {
 function icRender_() {
   const root = document.getElementById('ic-root'); if (!root) return;
   icCss_();
-  const sec = IC.sec === 'registro' ? 'registro' : 'tablero';
+  const ym = IC.mes || ckMesHoy_(), vista = CK_VISTAS.some(v => v[0] === IC.vista) ? IC.vista : 'estado';
   const T0 = icTodas_(), nArch = T0.filter(x => x.arch).length;
   const todas = T0.filter(x => IC.fx.arch ? x.arch : !x.arch); // archivadas: solo con «🗄 Archivadas»
   const nFx = ckFxN_(IC.fx, { per: '30', arch: IC.fx.arch, prio: '' });
@@ -69164,27 +69237,37 @@ function icRender_() {
   const nav = `<div class="cl-nav-slot" data-act="incidencias">${typeof clNavHtml_ === 'function' ? clNavHtml_('incidencias') : ''}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(IC.filAb, nFx, 'IC.filAb=!IC.filAb;icRender_()')}
       <input class="ck-q ic-q" type="search" placeholder="🔎 Buscar alojamiento, motivo, persona…" value="${pcEsc(IC.q)}" oninput="IC.q=this.value;clearTimeout(IC._qt);IC._qt=setTimeout(()=>{icRender_();const i=document.querySelector('#ic-root .ic-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
-      <div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="icSec_('tablero')">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="icSec_('registro')">Registro</button></div>
-      <span class="ck-sp"></span>
+      ${ckMesNavHtml_(ym, 'icMes_')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'icVista_')}
       ${nArch || IC.fx.arch ? `<button type="button" class="aseo-btn ${IC.fx.arch ? 'ck-b on' : ''}" onclick="IC.fx.arch=!IC.fx.arch;icRender_()" title="Ver incidencias archivadas">🗄 ${nArch}</button>` : ''}
       ${IC.cargando ? '<span class="ck-hint">⏳</span>' : '<button type="button" class="aseo-btn ck-ib" onclick="icInit_()" title="Volver a cargar las incidencias" aria-label="Actualizar"><svg class="ck-rf" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>'}
       <button type="button" class="aseo-btn ck-ib" onclick="icClasif_()" title="Clasificaciones">⚙️</button>
       <button type="button" class="aseo-btn ck-pri" onclick="icForm_(null)">＋ Nueva incidencia</button></div>`;
   const vacio = !todas.length ? `<div class="pc-mv-empty">${IC.cargado ? 'Aún no hay incidencias registradas.' : '⏳ Cargando incidencias…'}</div>` : '';
-  if (sec === 'registro') {
-    const L = todas.filter(x => icPasa_(x, true));
-    root.innerHTML = `<div>${head}${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas, true)}</div>` : ''}${vacio || icRegistro_(L)}</div>`;
-  } else {
-    const L = todas.filter(x => icPasa_(x));
-    root.innerHTML = `<div>${head}
-      <div class="ad-v2 ck-kpis">${icKpis_(todas)}</div>${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas)}</div>` : ''}
-      ${vacio || `<div class="ad-v2 td-board">${icTablero_(L)}</div>`}</div>`;
-  }
+  const L = todas.filter(x => ckEnMes_(x.fecha, ym, !icCerrada_(x)) && icPasa_(x, true));
+  root.innerHTML = `<div>${head}
+      <div class="ad-v2 ck-kpis">${icKpis_(todas)}</div>${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas, true)}</div>` : ''}
+      ${vacio || `<div class="ad-v2 td-board">${icVistaHtml_(L, vista, ym)}</div>`}</div>`;
   try { clNavPaint_(); } catch (_) {}
 }
-window.icSec_ = function (k) { IC.sec = k; icRender_(); };
+window.icSec_ = function (k) { IC.vista = k === 'registro' ? 'tabla' : 'estado'; icRender_(); };
+try { IC.vista = localStorage.getItem('ic-vista') || 'estado'; } catch (_) {}
+window.icVista_ = function (v) { IC.vista = v; try { localStorage.setItem('ic-vista', v); } catch (_) {} icRender_(); };
+window.icMes_ = function (v) { IC.mes = ckMesMover_(IC.mes, v); icRender_(); };
+function icVistaHtml_(L, vista, ym) {
+  ckVCss_();
+  const vac = 'Ninguna incidencia en ' + bnEfeMesLabel_(ym).toLowerCase(), ordP = A => A.slice().sort((a, b) => PRIO4[b.prio].n - PRIO4[a.prio].n || b.fecha.localeCompare(a.fecha));
+  if (vista === 'estado') return icTablero_(L);
+  if (vista === 'propiedad') { const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es')); return ckColsHtml_(P.map(p => { const X = ordP(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)); return { t: `🏘️ ${pcEsc(p)}`, n: X.length, cards: X.map(icCard_).join('') }; }), vac); }
+  if (vista === 'usuario') { const N = [...new Set(L.flatMap(x => x.pers))].sort((a, b) => a.localeCompare(b, 'es')), sin = L.filter(x => !x.pers.length);
+    return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', n: sin.length, cards: ordP(sin).map(icCard_).join('') }] : []).concat(N.map(n => { const X = ordP(L.filter(x => x.pers.includes(n))); return { t: `${adAv_(n)} ${pcEsc(aseoNombreCorto_(n))}`, n: X.length, cards: X.map(icCard_).join('') }; })), vac); }
+  if (vista === 'fecha') return ckCalMesHtml_(ym, L.map(x => ({ iso: x.fecha, code: x.corto, nombre: x.titulo, tc: icMotC_(x.mot[0]).c, sc: (IC_EST.find(e => e.k === x.est) || IC_EST[0]).c, fin: icCerrada_(x), onclick: `icAbrir_('${pcEsc(x.id)}')` })));
+  const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es'));
+  return ckTablaHtml_([['Fecha', '95px'], ['Alojamiento', '130px'], ['Clase', '90px'], ['Motivo', '130px'], ['Sub-motivo', 'minmax(140px,1fr)'], ['Prioridad', '90px'], ['Estado', '110px'], ['Personas', '110px'], ['Reportó', '120px'], ['Folio', '150px']],
+    P.map(p => ({ t: '🏘️ ' + pcEsc(p), rows: ordP(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)).map(x => { const E = IC_EST.find(e => e.k === x.est) || IC_EST[0], M = icMotC_(x.mot[0]);
+      return { onclick: `icAbrir_('${pcEsc(x.id)}')`, cls: !icCerrada_(x) && x.prio === 'critica' ? 'al' : x.est === 'Cancelado' ? 'gh' : '', cells: [ckTx_(x.fecha ? aseoDiaTxt_(x.fecha) : ''), ckAloj_(x.corto, x.aloj), ckTx_((IC_CLS[x.cls] || {}).t), `<span class="tb-ch" style="--c:${M.c}">${M.ico} ${pcEsc(x.mot.join(', ') || 'Sin motivo')}</span>`, ckTx_(x.clas.join(', ')), prio4Html_(x.prio), ckEst_(E.c, E.t), ckPers_(x.pers), ckTx_(x.rep), ckTx_(x.id, 'tb-mu')] }; }) })), vac);
+}
 function icKpis_(T) {
-  const mes = aseoHoyIso_().slice(0, 7), M = T.filter(x => x.fecha.slice(0, 7) === mes);
+  const mes = IC.mes || aseoHoyIso_().slice(0, 7), M = T.filter(x => x.fecha.slice(0, 7) === mes);
   const ab = T.filter(x => !icCerrada_(x)), n = k => T.filter(x => x.est === k).length;
   const resM = M.filter(x => x.est === 'Resuelto').length, vivosM = M.filter(x => x.est !== 'Cancelado').length;
   const pct = vivosM ? Math.round(resM / vivosM * 100) : 0;
@@ -69614,31 +69697,41 @@ async function obCargar_(fresco) {
 function obRender_() {
   const root = document.getElementById('ob-root'); if (!root) return;
   obCss_();
-  const sec = OB.sec === 'registro' ? 'registro' : 'tablero';
+  const ym = OB.mes || ckMesHoy_(), vista = CK_VISTAS.some(v => v[0] === OB.vista) ? OB.vista : 'estado';
   const todos = obTodos_();
   const nFx = ckFxN_(OB.fx, { per: '30' });
   const head = `<div class="cl-title">🛠️ Check-Flow</div>`;
   const nav = `<div class="cl-nav-slot" data-act="objetos">${clNavHtml_('objetos')}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(OB.filAb, nFx, 'OB.filAb=!OB.filAb;obRender_()')}
       <input class="ck-q ob-q" type="search" placeholder="🔎 Buscar alojamiento, objeto, persona…" value="${pcEsc(OB.q)}" oninput="OB.q=this.value;clearTimeout(OB._qt);OB._qt=setTimeout(()=>{obRender_();const i=document.querySelector('#ob-root .ob-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
-      <div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="OB.sec='tablero';obRender_()">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="OB.sec='registro';obRender_()">Registro</button></div>
-      <span class="ck-sp"></span>
+      ${ckMesNavHtml_(ym, 'obMes_')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'obVista_')}
       ${OB.cargando ? '<span class="ck-hint">⏳</span>' : '<button type="button" class="aseo-btn ck-ib" onclick="obInit_()" title="Volver a cargar los objetos" aria-label="Actualizar"><svg class="ck-rf" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>'}
       <button type="button" class="aseo-btn ck-pri" onclick="obForm_(null)">＋ Nuevo objeto</button></div>`;
   const vacio = !todos.length ? `<div class="pc-mv-empty">${OB.cargado ? 'Aún no hay objetos olvidados registrados.' : '⏳ Cargando objetos olvidados…'}</div>` : '';
-  if (sec === 'registro') {
-    const L = todos.filter(x => obPasa_(x, true));
-    root.innerHTML = `<div>${head}${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos, true)}</div>` : ''}${vacio || obRegistro_(L)}</div>`;
-  } else {
-    const L = todos.filter(x => obPasa_(x));
-    root.innerHTML = `<div>${head}
-      <div class="ad-v2 ck-kpis">${obKpis_(todos)}</div>${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos)}</div>` : ''}
-      ${vacio || `<div class="ad-v2 td-board">${obTablero_(L)}</div>`}</div>`;
-  }
+  const L = todos.filter(x => ckEnMes_(x.fecha, ym, !obCerrado_(x)) && obPasa_(x, true));
+  root.innerHTML = `<div>${head}
+      <div class="ad-v2 ck-kpis">${obKpis_(todos)}</div>${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos, true)}</div>` : ''}
+      ${vacio || `<div class="ad-v2 td-board">${obVistaHtml_(L, vista, ym)}</div>`}</div>`;
   try { clNavPaint_(); } catch (_) {}
 }
+try { OB.vista = localStorage.getItem('ob-vista') || 'estado'; } catch (_) {}
+window.obVista_ = function (v) { OB.vista = v; try { localStorage.setItem('ob-vista', v); } catch (_) {} obRender_(); };
+window.obMes_ = function (v) { OB.mes = ckMesMover_(OB.mes, v); obRender_(); };
+function obVistaHtml_(L, vista, ym) {
+  ckVCss_();
+  const vac = 'Ningún objeto en ' + bnEfeMesLabel_(ym).toLowerCase(), ord = A => A.slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
+  if (vista === 'estado') return obTablero_(L);
+  if (vista === 'propiedad') { const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es')); return ckColsHtml_(P.map(p => { const X = ord(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)); return { t: `🏘️ ${pcEsc(p)}`, n: X.length, cards: X.map(obCard_).join('') }; }), vac); }
+  if (vista === 'usuario') { const N = [...new Set(L.map(x => x.rep).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), sin = L.filter(x => !x.rep);
+    return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin especificar', n: sin.length, cards: ord(sin).map(obCard_).join('') }] : []).concat(N.map(n => { const X = ord(L.filter(x => x.rep === n)); return { t: `${adAv_(n)} ${pcEsc(aseoNombreCorto_(n))} <span class="ck-sub">encontró</span>`, n: X.length, cards: X.map(obCard_).join('') }; })), vac); }
+  if (vista === 'fecha') return ckCalMesHtml_(ym, L.map(x => ({ iso: x.fecha, code: x.corto, nombre: obTitulo_(x), tc: obCatC_(x.cat).c, sc: (OB_EST.find(e => e.k === x.est) || OB_EST[0]).c, fin: obCerrado_(x), onclick: `obAbrir_('${pcEsc(x.id)}')` })));
+  const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es'));
+  return ckTablaHtml_([['Encontrado', '95px'], ['Reporte', '95px'], ['Alojamiento', '130px'], ['Categoría', '140px'], ['Descripción', 'minmax(180px,1fr)'], ['Resguardo', '110px'], ['Estado', '120px'], ['Entregado', '150px'], ['Encontró', '120px'], ['Folio', '170px']],
+    P.map(p => ({ t: '🏘️ ' + pcEsc(p), rows: ord(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)).map(x => { const E = OB_EST.find(e => e.k === x.est) || OB_EST[0], C = obCatC_(x.cat);
+      return { onclick: `obAbrir_('${pcEsc(x.id)}')`, cls: x.est === 'Desechado' ? 'gh' : !obCerrado_(x) && x.fecha && x.fecha < icHaceDias_(30) ? 'al' : '', cells: [ckTx_(x.fEnc ? aseoDiaTxt_(x.fEnc) : 'Por definir', x.fEnc ? '' : 'tb-mu'), ckTx_(x.fRep ? aseoDiaTxt_(x.fRep) : ''), ckAloj_(x.corto, x.aloj), `<span class="tb-ch" style="--c:${C.c}">${C.ico} ${pcEsc(x.catTxt)}</span>`, ckTx_(x.desc), ckTx_(x.lugTxt), ckEst_(E.c, E.t), ckTx_([x.fEnt ? aseoDiaTxt_(x.fEnt) : '', x.entA].filter(Boolean).join(' · ')), ckTx_(x.rep), ckTx_(x.id, 'tb-mu')] }; }) })), vac);
+}
 function obKpis_(T) {
-  const mes = aseoHoyIso_().slice(0, 7), M = T.filter(x => x.fecha.slice(0, 7) === mes);
+  const mes = OB.mes || aseoHoyIso_().slice(0, 7), M = T.filter(x => x.fecha.slice(0, 7) === mes);
   const ab = T.filter(x => !obCerrado_(x)), n = k => T.filter(x => x.est === k).length;
   const entM = T.filter(x => x.est === 'Entregado' && (x.fEnt || x.fecha).slice(0, 7) === mes).length;
   const viejos = ab.filter(x => x.fecha && x.fecha < icHaceDias_(30)).length;
