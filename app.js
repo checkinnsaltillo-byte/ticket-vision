@@ -67157,9 +67157,9 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
       const p = L.find(I => !I.tarea) || L.find(I => !['correctivo', 'preventivo'].includes(axSrv_(kDe(I)))) || L[0], pi = idsDe(p), hs = L.filter(I => I !== p);
       hijosDe.set(p, hs); hs.forEach(h => { padreDe.set(h, p); const hi = idsDe(h); puenteDe.set(h, hi.find(x => pi.includes(x)) || hi[0]); });
     }); }
-  const vista = !MP && (ASEO.vista === 'estado' || ASEO.vista === 'usuario') ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados solo «por propiedad»
+  const vista = !MP && (ASEO.vista === 'estado' || ASEO.vista === 'usuario' || ASEO.vista === 'tabla') ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados solo «por propiedad»
   const propHtml = props.length > 1 ? `<div class="mv-pf ad-prf"><small>🏘️ Propiedad:</small>${props.map(p => `<button type="button" class="mv-pf-c ad-pr ${fP.includes(p) ? 'on' : ''}" data-p="${pcEsc(p)}" onclick="adPropToggle_(this.dataset.p)">${pcEsc(p)}<b>${infos.concat(tInfos).filter(I => propDe(I) === p).length}</b></button>`).join('')}${fP.length ? '<button type="button" class="mv-pf-x" onclick="ASEO.fProp=[];aseoRender_()">Quitar filtro</button>' : ''}</div>` : '';
-  const segV = `${MP ? '' : `<div class="ad-seg"><span>Vista</span><button type="button" class="${vista === 'estado' ? 'on' : ''}" onclick="adVista_('estado')">Por estado</button><button type="button" class="${vista === 'propiedad' ? 'on' : ''}" onclick="adVista_('propiedad')">Por propiedad</button><button type="button" class="${vista === 'usuario' ? 'on' : ''}" onclick="adVista_('usuario')">Por usuario</button></div>`}<div class="ad-seg ad-seg2"><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
+  const segV = `${MP ? '' : `<div class="ad-seg"><span>Vista</span><button type="button" class="${vista === 'estado' ? 'on' : ''}" onclick="adVista_('estado')">Por estado</button><button type="button" class="${vista === 'propiedad' ? 'on' : ''}" onclick="adVista_('propiedad')">Por propiedad</button><button type="button" class="${vista === 'usuario' ? 'on' : ''}" onclick="adVista_('usuario')">Por usuario</button><button type="button" class="${vista === 'tabla' ? 'on' : ''}" onclick="adVista_('tabla')">Tabla</button></div>`}<div class="ad-seg ad-seg2"><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
   ASEO._pubKeys = infos.filter(I => I.esHoyC && I.G).map(I => ({ key: I.pubKey, on: !I.noPub }));
   const vivos = infos.filter(I => !I.fantasma);
   const n = k => vivos.filter(I => I.selE === k).length;
@@ -67238,7 +67238,48 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
     const fila = (n, L, sin) => `<div class="ad-urow ${sin ? 'sin' : ''}" data-n="${pcEsc(sin ? '' : n)}" ondragover="adDragOverU_(event)" ondragleave="if(!this.contains(event.relatedTarget))this.classList.remove('drop')" ondrop="adDropUser_(event,this.dataset.n)"><div class="ad-uh">${sin ? '<span class="ad-uav sin">?</span>' : `<span class="ad-uav" style="background:${aseoPersonaColor_(n)}">${pcEsc(adIni_(n))}</span>`}<div class="ad-un2"><b title="${pcEsc(n)}">${sin ? 'Sin asignación' : pcEsc(String(n).split(/\s+/)[0])}</b>${sin ? '' : (p => p ? `<small class="pu">${pcEsc(p)}</small>` : '')(adPuesto_(n))}<small>${L.length} tarea${L.length === 1 ? '' : 's'}</small>${colProg(L)}</div></div><div class="ad-ucards">${L.map(I => ASEO.simple ? pinta0(I) : padreDe.has(I) ? (L.includes(padreDe.get(I)) ? '' : pinta0(I)) : pinta(I)).join('') || '<div class="ad-empty">Sin tareas</div>'}</div></div>`;
     return (sinA.length ? fila('', sinA, true) : '') + [...nombres.entries()].sort(ord).map(([n, L]) => fila(n, L)).join('');
   };
-  const cols = vista === 'usuario' ? filasUsuario() : vista === 'estado'
+  // Vista «Tabla» (prototipo B en tonos claros): un renglón por card, agrupado por propiedad, con la línea del día (salida/entrada).
+  const tablaHtml = () => {
+    adTblCss_();
+    const hm = x => { const m = String(x || '').match(/^(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; };
+    const pos = min => Math.max(0, Math.min(100, (min - 360) / (1320 - 360) * 100)); // eje 6:00 → 22:00
+    const linea = I => {
+      if (I.tarea) { const t = I.t || {}; return `<span class="tb-tt">${t.rt ? '🔧' : (AT_DEPTO[t.depto] || {}).ico || '📋'} ${pcEsc(t.titulo || 'Tarea')}</span>`; }
+      const segs = [], lbs = [];
+      if (I.xs) { const hs = hm(I.trd ? I.trd.hora : '11:00') || 660, x = pos(hs); segs.push(`<i class="sg sal" style="left:0;width:${x.toFixed(1)}%"></i>`); lbs.push(`<span class="lb" style="left:${Math.max(0, x / 2 - 6).toFixed(1)}%">${I.noSale ? 'No ha salido' : 'Sale ' + (I.trd ? I.trd.hora || '11:00' : '11:00')}${I.trd && I.trd.aceptada ? ' ✓' : ''}</span>`); }
+      if (I.xe) { const he = hm(I.temp ? (I.temp.hora || '12:00') : '15:00') || 900, x = pos(he); segs.push(`<i class="sg ent" style="left:${x.toFixed(1)}%;right:0"></i>`); lbs.push(`<span class="lb" style="left:${x.toFixed(1)}%">Entra ${I.temp ? (I.temp.hora || '12:00') : '15:00'}${I.temp ? ' · temprano' + (I.temp.aceptada ? ' ✓' : '') : ''}</span>`); }
+      if (!I.xs && !I.xe) { segs.push('<i class="sg cur" style="left:0;right:0"></i>'); lbs.push(`<span class="lb" style="left:2%">${I.g.cur && I.g.cur.length ? 'Hospedado' : 'Sin movimiento'}</span>`); }
+      return `<div class="tb-tl"><i class="rail"></i>${segs.join('')}${lbs.join('')}</div>`;
+    };
+    const aten = I => {
+      const L = [];
+      if (I.noSale) L.push(['red', 'No ha desalojado']);
+      if (!I.tarea && incAb(I)) L.push(['red', '⚠️ Incidencia abierta']);
+      if (I.aviso && !I.noSale) L.push([I.aviso.c === 'violet' ? 'v' : I.aviso.c === 'orange' ? 'w' : 'red', I.aviso.t.replace(' · cerrar fecha en calendario', '').replace(' antes de la entrada', '')]);
+      if (I.tarea && I.t && I.t.rt && I.t.bloquea && rtAbierto_(I.t)) L.push(['red', '🚫 Inhabitable']);
+      if (!L.length) return I.selE === 'inspeccionado' ? '<span class="tb-ok">✓ Listo para recibir</span>' : '<span class="tb-mu">—</span>';
+      return `<span class="tb-al ${L[0][0]}"><i></i>${pcEsc(L[0][1])}${L.length > 1 ? ` <em>+${L.length - 1}</em>` : ''}</span>`;
+    };
+    const guia = I => {
+      if (I.tarea || !I.esHoyC || !I.G) return '<span class="tb-mu">—</span>';
+      const tx = I.noPub ? 'No publicado' : (I.G.texto ? String(I.G.texto).replace(/^El alojamiento\s*/i, '').slice(0, 26) : 'Publicado');
+      return `<span class="tb-gd" onclick="event.stopPropagation();aseoGuiaPublicar_('${pcEsc(I.pubKey)}',${I.noPub})" title="${I.noPub ? 'Clic para publicar en la guía' : 'Clic para dejar de publicar'}${I.G.texto ? ' · «' + pcEsc(I.G.texto) + '»' : ''}"><span class="ad-sw ${I.noPub ? 'off' : ''}"></span>${pcEsc(tx)}</span>`;
+    };
+    const equipo = I => { const L = [...new Set([...(I.pA || []), ...(I.pI || [])])]; return L.length ? `<span class="tb-avs">${L.slice(0, 4).map(n => adAv_(n)).join('')}${L.length > 4 ? `<em>+${L.length - 4}</em>` : ''}</span>` : '<span class="tb-none">Sin asignar</span>'; };
+    const fila = I => {
+      const it = kItem(I), E0 = adEstObj_(I.selE), c = I.tarea && I.t && I.t.rt ? '#f97316' : adEstC_(I.selE);
+      const est = I.tarea && I.t && I.t.rt ? (rtAbierto_(I.t) ? 'Abierto' : 'Cerrado') : (I.selE === 'cancelado' ? 'Cancelado' : E0.t);
+      const al = I.noSale || (I.aviso && I.aviso.c === 'red') || (!I.tarea && incAb(I));
+      return `<div class="tb-row ${al ? 'al' : ''} ${I.fantasma || I.selE === 'cancelado' ? 'gh' : ''}" onclick="${it.open}">
+        <span class="tb-a"><b class="code">${pcEsc(it.code)}</b><small>${pcEsc(I.tarea ? String(I.aloj || '').replace(/^Calle\s+/i, '') : String(I.aloj || '').replace(/^Calle\s+/i, ''))}</small></span>
+        ${linea(I)}
+        <span class="tb-est"><i style="background:${c}"></i>${pcEsc(est)}${I.selE === 'terminado' && !I.validado && !I.tarea ? ' <em>validar</em>' : ''}</span>
+        ${equipo(I)}${aten(I)}${guia(I)}<span class="tb-more">›</span></div>`;
+    };
+    const grupos = props.filter(p => ver.some(I => propDe(I) === p)).map(p => { const L = porPrio_(ver.filter(I => propDe(I) === p)); return `<div class="tb-grp">🏘️ ${pcEsc(p)} <b>${L.length}</b>${colProg(L)}</div>${L.map(fila).join('')}`; }).join('');
+    return `<div class="ad-tbl"><div class="tb-in"><div class="tb-row h"><span>Alojamiento</span><span>Movimiento del día</span><span>Estado</span><span>Equipo</span><span>Atención</span><span>Guía</span><span></span></div>${grupos}</div></div>`;
+  };
+  const cols = vista === 'tabla' ? '' : vista === 'usuario' ? filasUsuario() : vista === 'estado'
     ? AD_EST.map(E => {
       const L = ver.filter(I => !I.fantasma && adEstBase_(I.selE) === E.k).concat(E.k === 'pendiente' ? ver.filter(I => I.fantasma) : [], E.k === 'terminado' ? ver.filter(I => I.selE === 'cancelado') : []);
       return `<div class="ad-col" ondragover="adDragOver_(event,'${E.k}')" ondrop="adDrop_(event,'${E.k}')"><div class="ad-colh">${E.t}<span>${nVis(L)}</span>${(n => totV ? `<span class="ad-colprog" title="${n} de ${totV} (${Math.round(n / totV * 100)}%)"><span class="ad-prog"><i style="width:${(n / totV * 100).toFixed(1)}%;background:${E.c}"></i></span><b>${Math.round(n / totV * 100)}%</b></span>` : '')(L.filter(I => !I.fantasma && !I.tarea).length)}</div>${porPrio_(sinHijos(L)).map(pinta).join('') || '<div class="ad-empty">Suelta aquí una card</div>'}</div>`;
@@ -67256,7 +67297,41 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   ASEO._hamHtml = `<button type="button" class="ad-ham ${ASEO.filtrosAb ? 'on' : ''}" onclick="adFiltrosToggle_()" title="${ASEO.filtrosAb ? 'Ocultar filtros' : 'Mostrar filtros'}${nFil ? ` (${nFil} activo${nFil === 1 ? '' : 's'})` : ''}">☰${nFil ? `<b>${nFil}</b>` : ''}</button>`;
   ASEO._filtrosHtml = ASEO.filtrosAb ? `<div class="ad-gfil">${filtroHtml}${propHtml}${tipoHtml}${prioHtml}${archHtml}</div>` : '';
   ASEO._segVHtml = segV;
-  return `${ver.length ? (vista === 'usuario' ? `<div class="ad-urows">${cols}</div>` : `<div class="ad-board ${vista === 'estado' ? 'est' : ''}">${cols}</div>`) : `<div class="pc-mv-empty">${vacio}</div>`}`;
+  return `${ver.length ? (vista === 'tabla' ? tablaHtml() : vista === 'usuario' ? `<div class="ad-urows">${cols}</div>` : `<div class="ad-board ${vista === 'estado' ? 'est' : ''}">${cols}</div>`) : `<div class="pc-mv-empty">${vacio}</div>`}`;
+}
+function adTblCss_() {
+  if (document.getElementById('ad-tbl-css')) return;
+  const st = document.createElement('style'); st.id = 'ad-tbl-css';
+  st.textContent = `
+  .ad-tbl{background:#fff;border:1px solid #e8eaee;border-radius:12px;overflow-x:auto;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .ad-tbl .tb-in{min-width:980px}
+  .ad-tbl .tb-row{display:grid;grid-template-columns:150px minmax(200px,1.4fr) 140px 120px minmax(170px,1fr) 150px 22px;align-items:center;gap:12px;padding:0 16px;min-height:46px;border-bottom:1px solid #f0f1f4;cursor:pointer;font-size:12.5px;color:#0f1729}
+  .ad-tbl .tb-row:hover{background:#f8fafc}
+  .ad-tbl .tb-row.h{min-height:34px;cursor:default;background:#f8fafc;color:#9aa1ad;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #e8eaee;position:sticky;top:0;z-index:1}
+  .ad-tbl .tb-row.al{background:linear-gradient(90deg,rgba(220,38,38,.07),transparent 45%)}
+  .ad-tbl .tb-row.gh{opacity:.55}
+  .ad-tbl .tb-grp{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#fafbfc;border-bottom:1px solid #f0f1f4;color:#6b7280;font-weight:600;font-size:11.5px}
+  .ad-tbl .tb-grp b{color:#0f1729}.ad-tbl .tb-grp .ad-colprog{margin-left:auto}
+  .ad-tbl .tb-a{display:flex;flex-direction:column;min-width:0}.ad-tbl .tb-a .code{font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#0f1729}
+  .ad-tbl .tb-a small{color:#6b7280;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ad-tbl .tb-tl{position:relative;height:28px}
+  .ad-tbl .tb-tl .rail{position:absolute;left:0;right:0;top:17px;height:2px;border-radius:2px;background:#eef0f3}
+  .ad-tbl .tb-tl .sg{position:absolute;top:15px;height:6px;border-radius:3px}
+  .ad-tbl .tb-tl .sg.sal{background:linear-gradient(90deg,#fda4af,#f43f5e)}.ad-tbl .tb-tl .sg.ent{background:linear-gradient(90deg,#10b981,#6ee7b7)}.ad-tbl .tb-tl .sg.cur{background:#e2e8f0}
+  .ad-tbl .tb-tl .lb{position:absolute;top:0;font-size:10px;color:#6b7280;white-space:nowrap}
+  .ad-tbl .tb-tt{color:#374151;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ad-tbl .tb-est{display:inline-flex;align-items:center;gap:7px;font-weight:600;white-space:nowrap}.ad-tbl .tb-est i{width:8px;height:8px;border-radius:50%;flex:none}
+  .ad-tbl .tb-est em{font-style:normal;font-size:10.5px;color:#b45309;font-weight:700}
+  .ad-tbl .tb-avs{display:flex;align-items:center}.ad-tbl .tb-avs .ad-av{margin-left:-5px;box-shadow:0 0 0 2px #fff}.ad-tbl .tb-avs .ad-av:first-child{margin-left:0}.ad-tbl .tb-avs em{font-style:normal;font-size:10.5px;color:#6b7280;margin-left:4px}
+  .ad-tbl .tb-none{color:#dc2626;font-size:11.5px;font-weight:600}
+  .ad-tbl .tb-mu{color:#c0c6d0}.ad-tbl .tb-ok{color:#047857;font-weight:600;font-size:11.5px}
+  .ad-tbl .tb-al{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:11.5px;color:#dc2626;min-width:0}
+  .ad-tbl .tb-al i{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 18%,transparent);flex:none}
+  .ad-tbl .tb-al.w{color:#ea580c}.ad-tbl .tb-al.v{color:#7c3aed}.ad-tbl .tb-al em{font-style:normal;color:#9aa1ad;font-weight:600}
+  .ad-tbl .tb-gd{display:inline-flex;align-items:center;gap:7px;color:#6b7280;font-size:11px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ad-tbl .tb-gd .ad-sw{flex:none;cursor:pointer}
+  .ad-tbl .tb-more{color:#c0c6d0;font-size:16px;text-align:center}
+  `;
+  document.head.appendChild(st);
 }
 try { ASEO.vista = localStorage.getItem('aseo-vista2') || 'propiedad'; } catch (_) { ASEO.vista = 'propiedad'; }
 try { const v = localStorage.getItem('aseo-simple2'); if (v != null) ASEO.simple = v === '1'; } catch (_) {} // sin elección: según el rol (adTablero_)
