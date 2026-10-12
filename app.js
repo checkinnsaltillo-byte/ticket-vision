@@ -1,24 +1,22 @@
 const BACKEND = "https://api.check-inn.mx";
 
-// ─── Indicador global de "ocupado" via favicon ──────────────────────────────
-// Alterna el favicon de 🏨 (idle) a ⏳ (ocupado). Usa ref counter para soportar
-// múltiples operaciones concurrentes. Llamar setSystemBusy(true,'label') al
-// iniciar, setSystemBusy(false) al terminar.
+// ─── Indicador global de "ocupado" ──────────────────────────────────────────
+// El favicon es SIEMPRE el pin de Check-inn (gb-pin.png). Mientras hay operaciones en curso
+// solo cambia el texto del título («Cargando… · …»), sin emojis. Ref counter para operaciones concurrentes.
 (function(){
-  const ICON_IDLE = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='52' font-size='52'>🏨</text></svg>";
-  const ICON_BUSY = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='52' font-size='52'>⏳</text></svg>";
+  const ICON = "gb-pin.png?v=1";
   let busyCount = 0;
   let busyLabel = '';
   const apply = () => {
     const link = document.getElementById('app-favicon') || (function(){
       const l = document.createElement('link');
-      l.rel = 'icon'; l.id = 'app-favicon'; l.type = 'image/svg+xml';
+      l.rel = 'icon'; l.id = 'app-favicon';
       document.head.appendChild(l);
       return l;
     })();
-    link.href = busyCount > 0 ? ICON_BUSY : ICON_IDLE;
+    if (link.getAttribute('href') !== ICON) { link.type = 'image/png'; link.href = ICON; }
     const baseTitle = 'Sistema de gestión de Corta estancia | Check Inn Saltillo';
-    document.title = busyCount > 0 ? `⏳ ${busyLabel || 'Procesando…'} · ${baseTitle}` : baseTitle;
+    document.title = busyCount > 0 ? `${String(busyLabel || 'Procesando…').replace(/^[⏳⌛]\s*/, '')} · ${baseTitle}` : baseTitle;
   };
   window.setSystemBusy = function(active, label) {
     if (active) { busyCount++; busyLabel = label || busyLabel; }
