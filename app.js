@@ -58861,9 +58861,9 @@ function tdTablero_(O, dia) {
   }
   if (vista === 'tabla') {
     const cl = [...new Set(O.map(x => x.r.Clasificacion || TAR_SIN))].sort((a, b) => a === TAR_SIN ? 1 : b === TAR_SIN ? -1 : a.localeCompare(b, 'es'));
-    return ckTablaHtml_([['Fecha', '95px'], ['Tarea', 'minmax(200px,1.4fr)'], ['Tipo', '140px'], ['Clasificación', '150px'], ['Programación', '150px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Personal', '110px'], ['Fecha límite', '150px']],
+    return ckTablaHtml_([['Tipo', '150px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Tarea / nombre', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '150px'], ['Fecha', '95px'], ['Clasificación', '150px']],
       cl.map(c => ({ t: '🗂️ ' + esc(c), rows: ord(O.filter(x => (x.r.Clasificacion || TAR_SIN) === c)).map(x => { const r = x.r, e = tdEst_(r, x.iso), T = TD_TIPO[tdTipoK_(r)], ig = tdEsIG_(r), fl = tdLimite_(r, x.iso), av = tdAvisoLim_(r, x.iso).replace(/<[^>]+>/g, '').replace('⏳ ', '');
-        return { onclick: `tdAbrirEn_('${esc(r.ID)}','${x.iso}')`, cls: /vencida|hoy/.test(av) ? 'al' : e === 'Cancelado' ? 'gh' : '', cells: [ckTx_(aseoDiaTxt_(x.iso)), `<span class="tb-a"><b class="code" style="font-size:11px">${esc(tdCodigo_(r))}</b><small style="color:#0f1729;font-weight:600">${esc(r.Nombre || '')}</small></span>`, `<span class="tb-ch" style="--c:${ig ? AT_DEPTO.inspeccion.c : T.c}">${ig ? '🔍 Inspección general' : (tarEsRec_(r) ? '📌 ' : '📋 ') + T.t}</span>`, ckTx_(r.Clasificacion ? r.Clasificacion + (r.Subclasificacion ? ' › ' + r.Subclasificacion : '') : ''), ckTx_(tdProgCorto_(r).replace('📅 ', '')), prio4Html_(tdPrioEf_(r, x.iso)), ckEst_(TD_EST[e] || '#94a3b8', e), ckPers_(tarPersonalList_(r)), fl ? `<span class="tb-fe ${/vencida|hoy/.test(av) ? 'tarde' : ''}" title="${esc(av)}">${esc(tarFmtFecha_(fl))}</span>` : '<span class="tb-mu">—</span>'] }; }) })), vac);
+        return { onclick: `tdAbrirEn_('${esc(r.ID)}','${x.iso}')`, cls: /vencida|hoy/.test(av) ? 'al' : e === 'Cancelado' ? 'gh' : '', cells: [`<span class="tb-ch" style="--c:${ig ? AT_DEPTO.inspeccion.c : T.c}">${ig ? '🔍 Inspección general' : (tarEsRec_(r) ? '📌 ' : '📋 ') + T.t}</span>`, prio4Html_(tdPrioEf_(r, x.iso)), ckEst_(TD_EST[e] || '#94a3b8', e), `<span class="tb-a"><b class="code" style="font-size:11px">${esc(tdCodigo_(r))}</b><small style="color:#0f1729;font-weight:600">${esc(r.Nombre || '')}</small></span>`, ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')), fl ? `<span class="tb-fe ${/vencida|hoy/.test(av) ? 'tarde' : ''}" title="${esc(av)}">${esc(tarFmtFecha_(fl))}</span>` : '<span class="tb-mu">—</span>', ckTx_(aseoDiaTxt_(x.iso)), ckTx_(r.Clasificacion ? r.Clasificacion + (r.Subclasificacion ? ' › ' + r.Subclasificacion : '') : '')] }; }) })), vac);
   }
   if (vista === 'estado') cols = TAR_ESTADOS.map(e => {
     const X = ord(O.filter(x => tdEst_(x.r, x.iso) === e.k));
@@ -67545,18 +67545,21 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
       return `<span class="tb-gd" onclick="event.stopPropagation();aseoGuiaPublicar_('${pcEsc(I.pubKey)}',${I.noPub})" title="${I.noPub ? 'Clic para publicar en la guía' : 'Clic para dejar de publicar'}${I.G.texto ? ' · «' + pcEsc(I.G.texto) + '»' : ''}"><span class="ad-sw ${I.noPub ? 'off' : ''}"></span>${pcEsc(tx)}</span>`;
     };
     const equipo = I => { const L = [...new Set([...(I.pA || []), ...(I.pI || [])])]; return L.length ? `<span class="tb-avs">${L.slice(0, 4).map(n => adAv_(n)).join('')}${L.length > 4 ? `<em>+${L.length - 4}</em>` : ''}</span>` : '<span class="tb-none">Sin asignar</span>'; };
+    // Columnas comunes a todas las tablas: Tipo · Prioridad · Estado · Tarea/nombre · Personal · Programación · Vence el; luego las propias de la sección.
+    const mant = ASEO.sec === 'mant';
+    const C = [['Tipo', '125px'], ['Prioridad', '90px'], ['Estado', '120px'], ['Tarea / nombre', 'minmax(180px,1.3fr)'], ['Personal', '100px'], ['Programación', '150px'], ['Vence el', '95px'], ['Tipo de servicio', '125px'], ['Medio de reserva', '95px']]
+      .concat(mant ? [] : [['Solicitud de entrada', '130px'], ['Solicitud de salida', '130px'], ['No ha salido', '90px'], ['Atención', 'minmax(170px,1fr)'], ['Guía', '150px']]);
+    const prog = I => { if (!I.tarea) return linea(I); const t = I.t || {}; return t.rt ? '<span class="tb-mu">Reporte técnico</span>' : `<span class="tb-tt">${t.repite ? '↻ Se repite' : 'Única'}${t.hora ? ' · ' + aseoHoraTxt_(t.hora) : ''}</span>`; };
+    const nombre = I => { const it = kItem(I); return `<span class="tb-a"><b class="code">${pcEsc(it.code)}</b><small style="color:#0f1729;font-weight:600">${pcEsc(I.tarea ? (I.t && I.t.titulo) || 'Tarea' : String(I.aloj || '').replace(/^Calle\s+/i, ''))}</small></span>`; };
     const fila = I => {
       const it = kItem(I), E0 = adEstObj_(I.selE), c = I.tarea && I.t && I.t.rt ? '#f97316' : adEstC_(I.selE);
       const est = I.tarea && I.t && I.t.rt ? (rtAbierto_(I.t) ? 'Abierto' : 'Cerrado') : (I.selE === 'cancelado' ? 'Cancelado' : E0.t);
       const al = I.noSale || (I.aviso && I.aviso.c === 'red') || (!I.tarea && incAb(I));
-      return `<div class="tb-row ${al ? 'al' : ''} ${I.fantasma || I.selE === 'cancelado' ? 'gh' : ''}" onclick="${it.open}">
-        <span class="tb-a"><b class="code">${pcEsc(it.code)}</b><small>${pcEsc(I.tarea ? String(I.aloj || '').replace(/^Calle\s+/i, '') : String(I.aloj || '').replace(/^Calle\s+/i, ''))}</small></span>
-        ${linea(I)}
-        <span class="tb-est"><i style="background:${c}"></i>${pcEsc(est)}${I.selE === 'terminado' && !I.validado && !I.tarea ? ' <em>validar</em>' : ''}</span>
-        ${equipo(I)}${tipoT(I)}${tipoS(I)}${medio(I)}${solic(I.temp, I.xe, '12:00')}${solic(I.trd, I.xs, '11:00')}${noSal(I)}${aten(I)}${guia(I)}${vence(I)}<span class="tb-more">›</span></div>`;
+      const cells = [tipoT(I), prio4Html_(I.tarea ? prio4Key_((I.t && I.t.prioridad) || 'media') : I.prio), `<span class="tb-est"><i style="background:${c}"></i>${pcEsc(est)}${I.selE === 'terminado' && !I.validado && !I.tarea ? ' <em>validar</em>' : ''}</span>`, nombre(I), equipo(I), prog(I), vence(I), tipoS(I), medio(I)]
+        .concat(mant ? [] : [solic(I.temp, I.xe, '12:00'), solic(I.trd, I.xs, '11:00'), noSal(I), aten(I), guia(I)]);
+      return { onclick: it.open, cls: `${al ? 'al' : ''} ${I.fantasma || I.selE === 'cancelado' ? 'gh' : ''}`, cells };
     };
-    const grupos = props.filter(p => ver.some(I => propDe(I) === p)).map(p => { const L = porPrio_(ver.filter(I => propDe(I) === p)); return `<div class="tb-grp">🏘️ ${pcEsc(p)} <b>${L.length}</b>${colProg(L)}</div>${L.map(fila).join('')}`; }).join('');
-    return `<div class="ad-tbl"><div class="tb-in"><div class="tb-row h"><span>Alojamiento</span><span>Movimiento del día</span><span>Estado</span><span>Equipo</span><span>Tipo de tarea</span><span>Tipo de servicio</span><span>Medio de reserva</span><span>Solicitud de entrada</span><span>Solicitud de salida</span><span>No ha salido</span><span>Atención</span><span>Guía</span><span>Vence el</span><span></span></div>${grupos}</div></div>`;
+    return ckTablaHtml_(C, props.filter(p => ver.some(I => propDe(I) === p)).map(p => { const L = porPrio_(ver.filter(I => propDe(I) === p)); return { t: '🏘️ ' + pcEsc(p), prog: colProg(L), rows: L.map(fila) }; }), 'Sin registros');
   };
   const cols = vista === 'tabla' ? '' : vista === 'usuario' ? filasUsuario() : vista === 'estado'
     ? AD_EST.map(E => {
@@ -69274,9 +69277,9 @@ function icVistaHtml_(L, vista, ym) {
   if (vista === 'usuario') { const N = [...new Set(L.flatMap(x => x.pers))].sort((a, b) => a.localeCompare(b, 'es')), sin = L.filter(x => !x.pers.length);
     return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', n: sin.length, cards: ordP(sin).map(icCard_).join('') }] : []).concat(N.map(n => { const X = ordP(L.filter(x => x.pers.includes(n))); return { t: `${adAv_(n)} ${pcEsc(aseoNombreCorto_(n))}`, n: X.length, cards: X.map(icCard_).join('') }; })), vac); }
   const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es'));
-  return ckTablaHtml_([['Fecha', '95px'], ['Alojamiento', '130px'], ['Clase', '90px'], ['Motivo', '130px'], ['Sub-motivo', 'minmax(140px,1fr)'], ['Prioridad', '90px'], ['Estado', '110px'], ['Personas', '110px'], ['Reportó', '120px'], ['Folio', '150px']],
+  return ckTablaHtml_([['Tipo', '140px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Tarea / nombre', 'minmax(170px,1.3fr)'], ['Personal', '100px'], ['Programación', '130px'], ['Vence el', '80px'], ['Alojamiento', '130px'], ['Clase', '90px'], ['Sub-motivo', 'minmax(130px,1fr)'], ['Reportó', '120px']],
     P.map(p => ({ t: '🏘️ ' + pcEsc(p), rows: ordP(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)).map(x => { const E = IC_EST.find(e => e.k === x.est) || IC_EST[0], M = icMotC_(x.mot[0]);
-      return { onclick: `icAbrir_('${pcEsc(x.id)}')`, cls: !icCerrada_(x) && x.prio === 'critica' ? 'al' : x.est === 'Cancelado' ? 'gh' : '', cells: [ckTx_(x.fecha ? aseoDiaTxt_(x.fecha) : ''), ckAloj_(x.corto, x.aloj), ckTx_((IC_CLS[x.cls] || {}).t), `<span class="tb-ch" style="--c:${M.c}">${M.ico} ${pcEsc(x.mot.join(', ') || 'Sin motivo')}</span>`, ckTx_(x.clas.join(', ')), prio4Html_(x.prio), ckEst_(E.c, E.t), ckPers_(x.pers), ckTx_(x.rep), ckTx_(x.id, 'tb-mu')] }; }) })), vac);
+      return { onclick: `icAbrir_('${pcEsc(x.id)}')`, cls: !icCerrada_(x) && x.prio === 'critica' ? 'al' : x.est === 'Cancelado' ? 'gh' : '', cells: [`<span class="tb-ch" style="--c:${M.c}">${M.ico} ${pcEsc(x.mot.join(', ') || 'Sin motivo')}</span>`, prio4Html_(x.prio), ckEst_(E.c, E.t), ckTx_(x.titulo), ckPers_(x.pers), ckTx_(x.fecha ? 'Reportada ' + aseoDiaTxt_(x.fecha) : ''), '<span class="tb-mu">—</span>', ckAloj_(x.corto, x.aloj), ckTx_((IC_CLS[x.cls] || {}).t), ckTx_(x.clas.join(', ')), ckTx_(x.rep)] }; }) })), vac);
 }
 function icKpis_(T) {
   const mes = IC.mes || aseoHoyIso_().slice(0, 7), M = T.filter(x => x.fecha.slice(0, 7) === mes);
@@ -69740,9 +69743,9 @@ function obVistaHtml_(L, vista, ym) {
   if (vista === 'usuario') { const N = [...new Set(L.map(x => x.rep).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), sin = L.filter(x => !x.rep);
     return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin especificar', n: sin.length, cards: ord(sin).map(obCard_).join('') }] : []).concat(N.map(n => { const X = ord(L.filter(x => x.rep === n)); return { t: `${adAv_(n)} ${pcEsc(aseoNombreCorto_(n))} <span class="ck-sub">encontró</span>`, n: X.length, cards: X.map(obCard_).join('') }; })), vac); }
   const P = [...new Set(L.map(x => ckPropDe_(x.hid, x.aloj)))].sort((a, b) => a.localeCompare(b, 'es'));
-  return ckTablaHtml_([['Encontrado', '95px'], ['Reporte', '95px'], ['Alojamiento', '130px'], ['Categoría', '140px'], ['Descripción', 'minmax(180px,1fr)'], ['Resguardo', '110px'], ['Estado', '120px'], ['Entregado', '150px'], ['Encontró', '120px'], ['Folio', '170px']],
+  return ckTablaHtml_([['Tipo', '140px'], ['Prioridad', '80px'], ['Estado', '120px'], ['Tarea / nombre', 'minmax(170px,1.3fr)'], ['Personal', '100px'], ['Programación', '150px'], ['Vence el', '80px'], ['Alojamiento', '130px'], ['Resguardo', '110px'], ['Entregado', '150px'], ['Folio', '170px']],
     P.map(p => ({ t: '🏘️ ' + pcEsc(p), rows: ord(L.filter(x => ckPropDe_(x.hid, x.aloj) === p)).map(x => { const E = OB_EST.find(e => e.k === x.est) || OB_EST[0], C = obCatC_(x.cat);
-      return { onclick: `obAbrir_('${pcEsc(x.id)}')`, cls: x.est === 'Desechado' ? 'gh' : !obCerrado_(x) && x.fecha && x.fecha < icHaceDias_(30) ? 'al' : '', cells: [ckTx_(x.fEnc ? aseoDiaTxt_(x.fEnc) : 'Por definir', x.fEnc ? '' : 'tb-mu'), ckTx_(x.fRep ? aseoDiaTxt_(x.fRep) : ''), ckAloj_(x.corto, x.aloj), `<span class="tb-ch" style="--c:${C.c}">${C.ico} ${pcEsc(x.catTxt)}</span>`, ckTx_(x.desc), ckTx_(x.lugTxt), ckEst_(E.c, E.t), ckTx_([x.fEnt ? aseoDiaTxt_(x.fEnt) : '', x.entA].filter(Boolean).join(' · ')), ckTx_(x.rep), ckTx_(x.id, 'tb-mu')] }; }) })), vac);
+      return { onclick: `obAbrir_('${pcEsc(x.id)}')`, cls: x.est === 'Desechado' ? 'gh' : !obCerrado_(x) && x.fecha && x.fecha < icHaceDias_(30) ? 'al' : '', cells: [`<span class="tb-ch" style="--c:${C.c}">${C.ico} ${pcEsc(x.catTxt)}</span>`, '<span class="tb-mu">—</span>', ckEst_(E.c, E.t), ckTx_(obTitulo_(x)), ckPers_(x.rep ? [x.rep] : []), ckTx_(x.fEnc ? 'Encontrado ' + aseoDiaTxt_(x.fEnc) : x.fRep ? 'Reportado ' + aseoDiaTxt_(x.fRep) : ''), '<span class="tb-mu">—</span>', ckAloj_(x.corto, x.aloj), ckTx_(x.lugTxt), ckTx_([x.fEnt ? aseoDiaTxt_(x.fEnt) : '', x.entA].filter(Boolean).join(' · ')), ckTx_(x.id, 'tb-mu')] }; }) })), vac);
 }
 function obKpis_(T) {
   const mes = OB.mes || aseoHoyIso_().slice(0, 7), M = T.filter(x => x.fecha.slice(0, 7) === mes);
