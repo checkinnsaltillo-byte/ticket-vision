@@ -58947,11 +58947,13 @@ function tdTablaLv_(O, vac) {
     return { t: `📝 ${esc(r.Nombre || 'Levantamiento')}`, rows, cerrado: !C.has(k), toggle: `tdTbTg_('${esc(k)}')`,
       prog: `<span class="tb-gp"><span class="tk"><i style="width:${prom}%"></i></span><em>${prT}%</em>${nP ? `<span style="color:${TD_EST['En proceso']}">● ${nP} en proceso</span>` : ''}${nR ? `<span style="color:${TD_EST['Resuelto']}">● ${nR} terminado${nR === 1 ? '' : 's'}</span>` : ''}${fl ? `<span>⏳ ${esc(tarFmtFecha_(fl))}</span>` : ''}</span>` };
   });
-  if (!document.getElementById('tdlv-css')) { const st = document.createElement('style'); st.id = 'tdlv-css'; st.textContent = `.ad-tbl .tb-grp.tg{cursor:pointer;user-select:none}.ad-tbl .tb-grp.tg:hover{background:#eef2ff}.ad-tbl .tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
+  if (!document.getElementById('tdlv-css')) { const st = document.createElement('style'); st.id = 'tdlv-css'; st.textContent = `.ad-tbl.tb-pg{max-height:calc(100vh - 240px);overflow:auto}.ad-tbl.tb-pg .tb-gw{position:relative}
+    .ad-tbl.tb-pg .tb-grp{position:sticky;top:0;z-index:3;height:38px;box-sizing:border-box;padding-top:0;padding-bottom:0}.ad-tbl.tb-pg .tb-row.h{top:38px;z-index:2}
+    .ad-tbl .tb-grp.tg{cursor:pointer;user-select:none}.ad-tbl .tb-grp.tg:hover{background:#eef2ff}.ad-tbl .tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
     .ad-tbl .tb-gp{display:inline-flex;align-items:center;gap:6px;margin-left:12px;font-size:11px;font-weight:600;color:#6b7280}.ad-tbl .tb-gp .tk,.ad-tbl .tb-pc .tk{width:70px;height:5px;border-radius:3px;background:rgba(15,23,42,.1);overflow:hidden;display:inline-block}
     .ad-tbl .tb-gp .tk i{display:block;height:100%;background:#7c3aed}.ad-tbl .tb-pc{display:inline-flex;align-items:center;gap:6px}.ad-tbl .tb-pc .tk i{display:block;height:100%}.ad-tbl .tb-pc em,.ad-tbl .tb-gp em{font-style:normal;font-size:11px;font-weight:700;color:#334155}
     .ad-tbl .tb-ret{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}`; document.head.appendChild(st); }
-  return ckTablaHtml_([['Tipo', '140px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Avance', '120px'], ['Alojamiento', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '110px'], ['Último registro', '110px'], ['Último levantamiento', '170px'], ['Retraso', '170px']], grupos, vac);
+  return ckTablaHtml_([['Tipo', '140px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Avance', '120px'], ['Alojamiento', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '110px'], ['Último registro', '110px'], ['Último levantamiento', '170px'], ['Retraso', '170px']], grupos, vac, { headPorGrupo: true });
 }
 window.tdTbTg_ = function (k) { const C = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(); if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 window.tdAbrirHijoEn_ = function (pid, hid, P) { if (tdFinMes_(tdDia_()) !== P) TAR_STATE.dia = P; tdAbrirHijo_(pid, hid); };
@@ -69436,11 +69438,17 @@ function ckCalMesHtml_(ym, items) {
   }).join('')}</div></div>`;
 }
 // Tabla genérica con el diseño de la tabla de Aseo: cols = [[encabezado, ancho css]], grupos = [{t, n, prog, rows: [{cells: [html], onclick, cls}]}]
-function ckTablaHtml_(cols, grupos, vacio) {
+// o.headPorGrupo: los nombres de las columnas van dentro de cada grupo desplegado (debajo de su separador) y quedan
+// congelados al hacer scroll (la tabla se desplaza dentro de su propio marco).
+function ckTablaHtml_(cols, grupos, vacio, o) {
   ckVCss_();
   if (!grupos.some(g => g.rows.length)) return `<div class="pc-mv-empty">${vacio || 'Sin registros'}</div>`;
   const gt = cols.map(c => c[1]).join(' ') + ' 18px', minW = cols.reduce((a, c) => a + (parseInt(c[1].replace(/minmax\(|,.*$/g, '')) || 120), 0) + 80;
-  return `<div class="ad-tbl"><div class="tb-in" style="min-width:${minW}px"><div class="tb-row h" style="grid-template-columns:${gt}">${cols.map(c => `<span>${c[0]}</span>`).join('')}<span></span></div>
+  const head = `<div class="tb-row h" style="grid-template-columns:${gt}">${cols.map(c => `<span>${c[0]}</span>`).join('')}<span></span></div>`;
+  if (o && o.headPorGrupo) return `<div class="ad-tbl tb-pg"><div class="tb-in" style="min-width:${minW}px">${grupos.filter(g => g.rows.length).map(g => `<div class="tb-gw">
+    <div class="tb-grp ${g.toggle ? 'tg' : ''}" ${g.toggle ? `onclick="${g.toggle}" title="${g.cerrado ? 'Mostrar' : 'Ocultar'} los alojamientos"` : ''}>${g.toggle ? `<i class="tb-car">${g.cerrado ? '▸' : '▾'}</i>` : ''}${g.t} <b>${g.rows.length}</b>${g.prog || ''}</div>
+    ${g.cerrado ? '' : head + g.rows.map(r => `<div class="tb-row ${r.cls || ''}" style="grid-template-columns:${gt}" onclick="${r.onclick}">${r.cells.join('')}<span class="tb-more">›</span></div>`).join('')}</div>`).join('')}</div></div>`;
+  return `<div class="ad-tbl"><div class="tb-in" style="min-width:${minW}px">${head}
     ${grupos.filter(g => g.rows.length).map(g => `<div class="tb-grp ${g.toggle ? 'tg' : ''}" ${g.toggle ? `onclick="${g.toggle}" title="${g.cerrado ? 'Mostrar' : 'Ocultar'} los alojamientos"` : ''}>${g.toggle ? `<i class="tb-car">${g.cerrado ? '▸' : '▾'}</i>` : ''}${g.t} <b>${g.rows.length}</b>${g.prog || ''}</div>${(g.cerrado ? [] : g.rows).map(r => `<div class="tb-row ${r.cls || ''}" style="grid-template-columns:${gt}" onclick="${r.onclick}">${r.cells.join('')}<span class="tb-more">›</span></div>`).join('')}`).join('')}</div></div>`;
 }
 // Calendario de Aseo/Mantenimiento (reservas por alojamiento + tarjetas por día) reutilizado en Incidencias y Objetos olvidados.
