@@ -67359,6 +67359,7 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   infos0.forEach(I => { I.arch = !!axEx_(I.asigId).archivada; });
   const nArch = infos0.filter(I => I.arch).length; if (!nArch) ASEO.verArch = false;
   const infos = infos0.filter(I => ASEO.verArch ? I.arch : !I.arch); // archivadas: solo con «🗄 Ver archivadas»
+  ASEO._cardsHid = new Map(); infos0.forEach(I => { const k = String(I.hid || ''); if (k && !ASEO._cardsHid.has(k)) ASEO._cardsHid.set(k, I); }); // para los avisos de las tareas con reserva
   // Filtro de propiedad (varias a la vez; sin selección = todas) + vista por estado o por propiedad.
   const propDe = I => mvPropiedadDe_(I.g).replace(/^Calle\s+/i, '');
   // Tareas manuales del día (filtro de personal = sus asignados).
@@ -68030,31 +68031,63 @@ function rtCardA_(I) {
   if (t.bloquea && !cerrado) flags.push('<div class="flag red"><i></i>Alojamiento inhabitable</div>');
   if (!cerrado && t.fecha < hoy) flags.push(`<div class="flag orange"><i></i>Atrasado · programado el ${aseoDiaTxt_(t.fecha)}</div>`);
   if (t.reincidente && !cerrado) flags.push('<div class="flag mute"><i></i>Reincidente</div>');
+  const RC = atResCtx_(t.hid, row.Reservacion_id); if (RC.flags) flags.push(RC.flags);
   const nF = rtFotos_(row.Fotos_antes_urls).length + rtFotos_(row.Fotos_despues_urls).length;
   const pasos = [['pendiente', 'Pend.', '#94a3b8'], ['en_proceso', 'Proceso', '#f59e0b'], ['terminado', 'Term.', '#10b981'], ['cancelado', 'Cancel.', '#64748b']];
   return `<div class="ad-card tipo est-tint tarea ${t.bloquea && !cerrado ? 'alert' : ''} ${t.estado === 'cancelado' ? 'ghost' : ''} ${axEsDeInc_('R' + t.rtId) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="R${pcEsc(t.rtId)}" style="--tc:${D.c};--sc:${adEstC_(t.estado)}" onclick="rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'R:${pcEsc(t.rtId)}','',true,true)" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span></div>
     ${flags.join('')}
-    <div class="r2">${axCatHtml_('mantenimiento', 'R' + t.rtId, false)}<span class="sep"></span><span>${cat.icon} ${pcEsc(cat.label)}</span><span class="sep"></span><span>${pcEsc(row.Folio || row.ID)}</span></div>
+    <div class="r2">${axCatHtml_('mantenimiento', 'R' + t.rtId, false)}<span class="sep"></span><span>${cat.icon} ${pcEsc(cat.label)}</span><span class="sep"></span><span>${pcEsc(row.Folio || row.ID)}</span>${RC.meta}</div>
     ${axFila_('R' + t.rtId, false, t.hid, I.dia || t.fecha)}
-    <div class="r3">${t.asignados.length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${axIncMini_('R' + t.rtId, t.hid, I.dia || t.fecha)}${nF ? `<span class="ad-gd">📷 ${nF}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')">Detalles</button></div>
+    <div class="r3">${RC.ns}${atEquipo_('R', t)}<span class="sp"></span>${axIncMini_('R' + t.rtId, t.hid, I.dia || t.fecha)}${nF ? `<span class="ad-gd">📷 ${nF}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')">Detalles</button></div>
     <div class="ad-qs" onclick="event.stopPropagation()">${pasos.map(p => `<button type="button" class="${p[0] === t.estado ? 'on' : ''}" style="--c:${p[2]}" onclick="event.stopPropagation();adRtEst_('${pcEsc(t.rtId)}','${p[0]}')"><i></i>${p[1]}</button>`).join('')}</div>
   </div>`;
 }
+// Tareas con reserva relacionada: mismos avisos que la card de aseo de ese alojamiento y día (si la reserva es la que sale o entra).
+function atResCtx_(hid, reserva) {
+  const C = reserva && ASEO._cardsHid ? ASEO._cardsHid.get(String(hid || '')) : null, id = String(reserva || '');
+  if (!C || !((C.xs && String(C.xs.b.Id) === id) || (C.xe && String(C.xe.b.Id) === id))) return { flags: '', meta: '', ns: '' };
+  return {
+    flags: C.aviso && !(C.noSale && /desaloj/i.test(C.aviso.t)) ? `<div class="flag ${C.aviso.c}"><i></i>${pcEsc(C.aviso.t)}</div>` : '',
+    meta: (C.esCopia ? '<span class="sep"></span><span class="vi">Reprogramado para este día</span>' : '') + (C.selE === 'inspeccionado' ? '<span class="sep"></span><span class="ok">✓ Listo para recibir</span>' : ''),
+    ns: C.xs && C.esHoyC && !C.esCopia && String(C.xs.b.Id) === id ? aseoNoSaleChip_(C.xs.b.Id, C.hid) : '' };
+}
+// Personal de una tarea (manual «T» o reporte técnico «R») directo desde la card, con el mismo selector que las cards de aseo.
+function atEquipo_(tipo, t) {
+  const fn = `atAsigCard_('${tipo}','${pcEsc(tipo === 'R' ? t.rtId : t.id)}',this)`;
+  return (t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n, 'Asignado', fn)).join('')}</span>`
+    : `<button type="button" class="ad-asg" title="Asignar personal sin abrir los detalles" onclick="event.stopPropagation();${fn}">Sin asignar</button>`;
+}
+window.atAsigCard_ = function (tipo, id, anchor) {
+  const t = tipo === 'R' ? rtTareas_().find(x => x.rtId === String(id)) : (ASEO.tareas || {})[id]; if (!t) return;
+  aseoAsignar_('__tarea', anchor, t.depto === 'inspeccion' ? 'inspeccion' : 'aseo');
+  const cur = (t.asignados || []).slice();
+  Object.assign(ASEO._pop, { sel: new Set(cur), orig: cur.join('|'), save: arr => tipo === 'R' ? rtPatch_(id, { Asignado_a: arr.join(', ') }) : atGuardarAsig_(id, arr) });
+  aseoPopFill_();
+};
+async function atGuardarAsig_(id, arr) {
+  const t = (ASEO.tareas || {})[id]; if (!t) return;
+  const prev = t.asignados; t.asignados = arr; aseoRender_();
+  try {
+    const r = await fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea: Object.assign({}, t, { asignados: arr }), user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error || 'Error');
+    ASEO.tareas[id] = Object.assign(r.tarea, { adjuntos: t.adjuntos }); aseoRender_();
+  } catch (e) { t.asignados = prev; aseoRender_(); alert('No se pudo guardar el personal asignado: ' + (e.message || e)); }
+}
 function atCard_(I) {
   if (I.t.rt) return rtCardA_(I);
-  const t = I.t, D = AT_DEPTO[t.depto] || AT_DEPTO.limpieza;
+  const t = I.t, D = AT_DEPTO[t.depto] || AT_DEPTO.limpieza, RC = atResCtx_(t.hid, t.reserva);
   const sel = ASEO._dr && ASEO._dr.tarea === t.id;
   return `<div class="ad-card tipo est-tint tarea ${t.problema ? 'alert' : ''} ${axEsDeInc_('T' + t.id) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="T${pcEsc(t.id)}" style="--tc:${D.c};--sc:${adEstC_(I.selE)}" onclick="atAbrir_('${pcEsc(t.id)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'${I.key}','',true,${t.depto !== 'limpieza'})" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${t.repite ? atRecChip_() : ''}</div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
-    ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}
-    <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
+    ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}${RC.flags}
+    <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${RC.meta}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
-    <div class="r3">${(t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
+    <div class="r3">${RC.ns}${atEquipo_('T', t)}<span class="sp"></span>${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
     ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}${plBarra_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key)}
   </div>`;
 }
@@ -69073,6 +69106,7 @@ window.aseoPopOk_ = async function () {
   if (!st) return; ASEO._pop = null;
   const arr = Array.from(st.sel);
   if (arr.join('|') === st.orig) return;
+  if (st.save) return st.save(arr); // personal de una tarea (no de un aseo)
   const prev = ASEO.asig[st.id];
   const nuevo = Object.assign({}, prev || {}); if (nuevo.personal && !nuevo.aseo) nuevo.aseo = nuevo.personal; delete nuevo.personal;
   nuevo[st.rol] = arr;
