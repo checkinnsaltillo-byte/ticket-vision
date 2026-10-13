@@ -1396,10 +1396,10 @@ const BOT_TOOLS = [
   },
   {
     name: "consultar_tareas_checklist",
-    description: "ADMIN o PERSONAL. Tareas del módulo Check-Flow de un día (las creadas con «Nueva tarea» y los reportes de MANTENIMIENTO), agrupadas por tipo: Limpieza, Inspección, Insumos, Mantenimiento, con estado, prioridad, asignados, y si están ligadas a una incidencia (⚠️). Usar ante 'tareas de check-list', 'tareas de hoy', 'tareas de mantenimiento', 'qué hay de insumos', 'tareas de inspección', 'mis tareas'. NO incluye las limpiezas de salida de las reservas (para eso consultar_resumen_dia / consultar_limpiezas_hoy). Un empleado solo ve las tareas asignadas a él.",
+    description: "ADMIN o PERSONAL. Tareas del módulo Check-Flow de un día (las creadas con «Nueva tarea» y los reportes de MANTENIMIENTO), agrupadas por tipo: Limpieza, Inspección, Insumos, Mantenimiento, Administrativo, con estado, prioridad, asignados, y si están ligadas a una incidencia (⚠️). Usar ante 'tareas de check-list', 'tareas de hoy', 'tareas de mantenimiento', 'qué hay de insumos', 'tareas de inspección', 'mis tareas'. NO incluye las limpiezas de salida de las reservas (para eso consultar_resumen_dia / consultar_limpiezas_hoy). Un empleado solo ve las tareas asignadas a él.",
     input_schema: { type: "object", properties: {
       fecha: { type: "string", description: "Opcional YYYY-MM-DD (por defecto hoy)." },
-      tipo: { type: "string", enum: ["todos", "limpieza", "inspeccion", "insumos", "mantenimiento"], description: "Opcional. Filtra por tipo de tarea." },
+      tipo: { type: "string", enum: ["todos", "limpieza", "inspeccion", "insumos", "mantenimiento", "administrativo"], description: "Opcional. Filtra por tipo de tarea." },
       alojamiento: { type: "string", description: "Opcional. Alojamiento TAL CUAL (ej. cu2, ox5)." },
       solo_mias: { type: "boolean", description: "true si pide SUS tareas ('mis tareas', 'qué me toca')." },
       incluir_cerradas: { type: "boolean", description: "true SOLO si pide explícitamente ver también las terminadas/canceladas. Por defecto: estado actual (solo pendientes y en proceso)." } }, required: [] },
@@ -1446,7 +1446,7 @@ const BOT_TOOLS = [
     input_schema: { type: "object", properties: {
       alojamiento: { type: "string", description: "Alojamiento TAL CUAL (ej. ox5)." },
       descripcion: { type: "string", description: "Palabras de la tarea (ej. 'toallas', 'cambiar focos')." },
-      tipo: { type: "string", enum: ["limpieza", "inspeccion", "insumos", "mantenimiento"] },
+      tipo: { type: "string", enum: ["limpieza", "inspeccion", "insumos", "mantenimiento", "administrativo"] },
       ref: { type: "string", description: "Uso interno; no lo pidas al usuario." },
       estado: { type: "string", enum: ["pendiente", "en_proceso", "terminado", "inspeccionado", "cancelado"] } }, required: ["estado"] },
   },
@@ -9596,7 +9596,7 @@ async function _histDe(keys) { const d = await _rhdGetJson(_HIST_OBJ).catch(() =
 // Sin códigos: tareas correctivas → «tipo · descripción», alojamiento → código corto, reserva → huésped.
 async function _histHumano(L) {
   const need = c => L.some(h => h.campo === c);
-  const TIPO = { limpieza: "🧹 Limpieza", inspeccion: "🔍 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
+  const TIPO = { limpieza: "🧹 Limpieza", inspeccion: "🔍 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento", administrativo: "🗂️ Administrativo" };
   let tareas = null, rts = null, cat = null;
   if (need("Tareas correctivas")) { await _aseoTareasLoad().catch(() => {}); tareas = _aseo.tareas || {}; rts = await _clRtRows().catch(() => []); }
   if (need("Alojamiento")) cat = await _aseoCatalogo().catch(() => []);
@@ -10304,7 +10304,7 @@ app.post("/aseo/tarea", async (req, res) => {
     const hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
     const titulo = txt(b.titulo, 140);
     if (!titulo || !iso.test(String(b.fecha || ""))) return res.status(400).json({ ok: false, error: "Faltan título o fecha" }); // alojamiento opcional
-    const depto = ["limpieza", "inspeccion", "insumos", "mantenimiento"].includes(b.depto) ? b.depto : "limpieza";
+    const depto = ["limpieza", "inspeccion", "insumos", "mantenimiento", "administrativo"].includes(b.depto) ? b.depto : "limpieza";
     const R = b.repite, ints = (L, a, z) => [...new Set((Array.isArray(L) ? L : []).map(Number).filter(n => Number.isInteger(n) && n >= a && n <= z))];
     const rp = R && Array.isArray(R.dias_semana) && ["semanal", "mensual", "bimestral"].includes(R.tipo) // «Recurrente» (mismo modelo que Pendientes)
       ? { tipo: R.tipo, dias_semana: ints(R.dias_semana, 0, 6), dias_mes: ints(R.dias_mes, 1, 31), fin: iso.test(String(R.fin || "")) ? R.fin : "", limite: !!R.limite, vigencia: ["Activa", "Pausada", "Cancelada"].includes(R.vigencia) ? R.vigencia : "Activa" }
@@ -10327,7 +10327,7 @@ app.post("/aseo/tarea", async (req, res) => {
       return d[id];
     });
     _aseo.tareasTs = Date.now();
-    { const TIPO = { limpieza: "Limpieza", inspeccion: "Inspección", insumos: "Insumos", mantenimiento: "Mantenimiento" }, rep = r => r ? `${r.tipo}${r.tipo === "cada" ? " " + r.n + " días" : ""}${Array.isArray(r.dias_semana) ? " " + (r.tipo === "semanal" ? r.dias_semana : r.dias_mes).join(",") + (r.limite ? " (fecha límite)" : "") + " " + r.vigencia : ""}${r.fin ? " hasta " + r.fin : ""}` : "No";
+    { const TIPO = { limpieza: "Limpieza", inspeccion: "Inspección", insumos: "Insumos", mantenimiento: "Mantenimiento", administrativo: "Administrativo" }, rep = r => r ? `${r.tipo}${r.tipo === "cada" ? " " + r.n + " días" : ""}${Array.isArray(r.dias_semana) ? " " + (r.tipo === "semanal" ? r.dias_semana : r.dias_mes).join(",") + (r.limite ? " (fecha límite)" : "") + " " + r.vigencia : ""}${r.fin ? " hasta " + r.fin : ""}` : "No";
       if (nueva) _histAdd("T:" + id, [["Creada", "", titulo]], user);
       else _histAdd("T:" + id, [["Título", tPrev.titulo, out.titulo], ["Descripción", tPrev.desc, out.desc], ["Tipo de tarea", TIPO[tPrev.depto] || tPrev.depto, TIPO[out.depto] || out.depto],
         ["Fecha", tPrev.fecha, out.fecha], ["Hora", tPrev.hora || "Sin hora", out.hora || "Sin hora"], ["Prioridad", tPrev.prioridad, out.prioridad], ["Asignados", (tPrev.asignados || []).join(", ") || "Sin asignar", (out.asignados || []).join(", ") || "Sin asignar"],
@@ -11371,7 +11371,7 @@ function _plLimpia(b, user, prev) {
   const num = v => v === "" || v == null || isNaN(Number(v)) ? undefined : Number(v);
   const refs = L => (Array.isArray(L) ? L : []).filter(a => a && /^aseo\/adjuntos\//.test(a.k)).slice(0, 6).map(a => ({ k: a.k, url: txt(a.url, 400), nombre: txt(a.nombre, 120) }));
   return { id: prev ? prev.id : sid(b.id), titulo: txt(b.titulo, 140) || "Sin título",
-    depto: ["limpieza", "inspeccion", "insumos", "mantenimiento"].includes(b.depto) ? b.depto : "inspeccion",
+    depto: ["limpieza", "inspeccion", "insumos", "mantenimiento", "administrativo"].includes(b.depto) ? b.depto : "inspeccion",
     prioridad: ["baja", "media", "alta", "critica"].includes(b.prioridad) ? b.prioridad : "media", descripcion: txt(b.descripcion, 2000),
     secciones: (Array.isArray(b.secciones) ? b.secciones : []).slice(0, 120).map(sx => ({ id: sid(sx.id), titulo: txt(sx.titulo, 160) || "Sección",
       items: (Array.isArray(sx.items) ? sx.items : []).slice(0, 150).filter(it => _PL_TIPOS.includes(it && it.tipo)).map(it => {
@@ -11790,7 +11790,7 @@ function _botDiaPedido(ctx) {
 }
 function _botIsoDe(dp) { const h = _mxHoy(); if (dp !== "ayer") return h; const y = new Date(h + "T12:00:00"); y.setDate(y.getDate() - 1); return y.toISOString().slice(0, 10); }
 // ═══ Bot · Check-Flow (tareas por tipo), Incidencias y su relación con alojamientos, reservas y tareas ═══
-const _CL_TIPO = { limpieza: "🧹 Limpieza", inspeccion: "🔍 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento" };
+const _CL_TIPO = { limpieza: "🧹 Limpieza", inspeccion: "🔍 Inspección", insumos: "📦 Insumos", mantenimiento: "🔧 Mantenimiento", administrativo: "🗂️ Administrativo" };
 const _CL_EST = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "✅ Terminado", inspeccionado: "🔍 Inspeccionado", cancelado: "✖️ Cancelado" };
 const _INC_EST_TXT = { "Nuevo": "Pendiente", "En proceso": "En proceso", "Resuelto": "Terminado", "Cancelado": "Cancelado" }; // mismos nombres que el sistema
 const _CL_PRIO_N = { critica: 4, "crítica": 4, alta: 3, alto: 3, media: 2, medio: 2, baja: 1, bajo: 1 };
