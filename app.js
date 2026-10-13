@@ -58360,6 +58360,7 @@ function tarProgTexto_(p) {
     if (!f.length) return 'Sin fecha';
     return (f.length === 1 ? 'Única · ' : 'Fechas · ') + f.map(tarFmtFecha_).join(', ');
   }
+  if (p.tipo === 'periodo') { const P = TAR_LV_PER.find(x => x[0] === p.periodo); return `${P ? P[1] : 'Periódico'}${rango() ? ' · ' + rango() : ''}`; }
   if (p.tipo === 'semanal') {
     const dias = TAR_DOW.filter(([v]) => p.dias_semana.includes(v)).map(([, l]) => l);
     return `Semanal · ${dias.length === 7 ? 'Todos los días' : (dias.join(', ') || 'sin días')}${rango() ? ' · ' + rango() : ''}`;
@@ -58380,6 +58381,7 @@ function tarOccursOn_(row, iso) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(inicio) && iso < inicio) return false;
   if (p.fin && iso > p.fin) return false;
   if (p.tipo === 'semanal') return p.dias_semana.includes(d.getDay());
+  if (p.tipo === 'periodo') return true; // levantamiento por periodo: vigente todo el rango (su límite es dinámico por alojamiento)
   const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   const day = d.getDate();
   // Días 29-31 en meses más cortos caen en el último día del mes.
@@ -58589,6 +58591,7 @@ function tdIGEstH_(r, hid, iso) {
 }
 function tdProgCorto_(r) {
   const p = tarProg_(r); if (!p) return '';
+  if (p.tipo === 'periodo') { const P = TAR_LV_PER.find(x => x[0] === p.periodo); return '📅 ' + (P ? P[1] : 'Periódico'); }
   const dm = (p.dias_mes || []).slice().sort((a, b) => a - b), dl = n => n >= 31 ? 'último día' : 'día ' + n;
   if (p.tipo === 'unica') return p.fechas.length ? '📅 ' + p.fechas.slice().sort().map(f => tarFmtFecha_(f).replace(/ \d{4}$/, '')).join(', ') : '';
   if (p.tipo === 'semanal') return '📅 Semanal · ' + (p.dias_semana || []).slice().sort().map(v => ((TAR_DOW.find(x => x[0] === v) || [])[1] || v)).join(', ');
@@ -58915,6 +58918,7 @@ function tdIGChips_(iso, grande) {
 const TD_LV_SEM = { baja: ['#15803d', '#dcfce7', 'Al día'], media: ['#a16207', '#fef9c3', ''], alta: ['#c2410c', '#ffedd5', ''], critica: ['#b91c1c', '#fee2e2', ''] };
 function tdLvSigLim_(r, base) {
   const p = tarProg_(r) || {}, d = tarParseIso_(base); if (!d) return base;
+  if (p.tipo === 'periodo') return tarLvMas_(base, p.periodo);
   const n = p.tipo === 'semanal' ? (p.dias_semana || []).length : (p.dias_mes || []).length;
   if (p.tipo === 'semanal') d.setDate(d.getDate() + Math.max(1, Math.round(7 / Math.max(1, n))));
   else if (n > 1) d.setDate(d.getDate() + Math.max(1, Math.round((p.tipo === 'bimestral' ? 61 : 30.4) / n)));
@@ -59829,7 +59833,9 @@ function tarPanelRender_() {
   const subs = clasif[d.Clasificacion] || [];
   // Fechas
   let fechasHtml = '';
-  if (d.Naturaleza === 'Único') {
+  const lvRec = tdEsIG_(d) && d.Naturaleza === 'Recurrente';
+  if (lvRec) fechasHtml = tarLvProgHtml_(prog, inp);
+  else if (d.Naturaleza === 'Único') {
     // Una sola fecha: se ve dentro del mismo campo. (Tareas antiguas con varias fechas conservan sus chips.)
     const varias = prog.fechas.length > 1;
     fechasHtml = varias ? `
@@ -59914,11 +59920,11 @@ function tarPanelRender_() {
       </div>`}
       ${field(lbl('Nivel de prioridad') + `<div style="display:flex;gap:6px;flex-wrap:wrap">${TAR_PRIORIDADES.map(p => tarPill_(d.Prioridad === p.k, p.k, `tarSetField('Prioridad','${p.k}')`, { fg: p.k === 'Crítico' ? '#fff' : p.fg, bg: p.bg, bd: p.bd })).join('')}</div>`)}
       ${rec ? recFecha : `${field(lbl('Naturaleza') + `<div style="display:flex;gap:6px">${tarPill_(d.Naturaleza === 'Único', 'Único', "tarSetNaturaleza('Único')")}${tarPill_(d.Naturaleza === 'Recurrente', 'Recurrente', "tarSetNaturaleza('Recurrente')")}</div>`)}
-      ${field(lbl('Fecha(s)') + fechasHtml + `
+      ${field(lbl(lvRec ? 'Programación' : 'Fecha(s)') + fechasHtml + `
         <div onclick="tarSetField('Fecha_limite', TAR_STATE.panel.d.Fecha_limite === 'Sí' ? 'No' : 'Sí')" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px;padding:10px 12px;border-radius:10px;border:1.5px solid ${d.Fecha_limite === 'Sí' ? '#fca5a5' : '#e2e8f0'};background:${d.Fecha_limite === 'Sí' ? '#fef2f2' : '#fff'}">
           ${tarCheck_(d.Fecha_limite === 'Sí')}
           <div><div style="font-size:13px;font-weight:900;color:#0f172a">⏳ Fecha límite</div>
-          <div style="font-size:11.5px;color:#64748b;margin-top:2px">La tarea debe quedar resuelta a más tardar en esa fecha${d.Naturaleza === 'Recurrente' ? ' (en cada fecha programada)' : ''}.</div></div>
+          <div style="font-size:11.5px;color:#64748b;margin-top:2px">${lvRec ? 'Activa el aviso de días de retraso: cada alojamiento debe levantarse dentro del periodo de la programación, contado desde su último levantamiento (o desde «Desde»).' : `La tarea debe quedar resuelta a más tardar en esa fecha${d.Naturaleza === 'Recurrente' ? ' (en cada fecha programada)' : ''}.`}</div></div>
         </div>
       `)}`}
       ${field(lbl(`Personal asignado${d._personal.length ? ` · ${d._personal.length}` : ''}`) + personalHtml)}
@@ -59943,6 +59949,41 @@ function tarIGCampos_(d, lbl, inp, field) {
     : '<div style="font-size:12px;color:#94a3b8">⏳ Cargando alojamientos…</div>';
   return field(lbl('Plantilla') + plSel) + field(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:11.5px;font-weight:600;color:#374151">Alojamiento(s) · ${sel.length}</label><span style="flex:1"></span>${btn('Todos', 'tarIGTodos_(true)')}${btn('Ninguno', 'tarIGTodos_(false)')}</div>${lista}`);
 }
+// Levantamiento recurrente: «Programación» por periodo (sin días de la semana ni del mes). _prog = { tipo: 'periodo', periodo, inicio, fin }.
+const TAR_LV_PER = [['semanal', 'Semanal', 0, 7], ['mensual', 'Mensual', 1], ['bimestral', 'Bimestral', 2], ['trimestral', 'Trimestral', 3], ['semestral', 'Semestral', 6], ['anual', 'Anual', 12]];
+function tarLvMas_(iso, per) { // fecha + un periodo (o + n meses/días)
+  const d = tarParseIso_(iso); if (!d) return iso; const P = TAR_LV_PER.find(x => x[0] === per) || TAR_LV_PER[1];
+  if (P[3]) { d.setDate(d.getDate() + P[3]); return tarIso_(d); }
+  const dia = d.getDate(), x = new Date(d.getFullYear(), d.getMonth() + P[2], 1); x.setDate(Math.min(dia, new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate())); return tarIso_(x);
+}
+function tarUnAnio_(iso) { const d = tarParseIso_(iso); if (!d) return ''; const x = new Date(d.getFullYear() + 1, d.getMonth(), 1); x.setDate(Math.min(d.getDate(), new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate())); return tarIso_(x); }
+function tarLvProgHtml_(prog, inp) {
+  if (prog.tipo !== 'periodo') { // levantamientos anteriores: se convierten al editar
+    const per = !(TAR_STATE.panel && TAR_STATE.panel.id) ? 'mensual' : prog.tipo === 'semanal' ? 'semanal' : prog.tipo === 'bimestral' ? 'bimestral' : 'mensual'; // nuevo: mensual
+    Object.assign(prog, { tipo: 'periodo', periodo: per, dias_semana: [], dias_mes: [], fechas: [] });
+  }
+  if (!prog.inicio) prog.inicio = tarIso_(tarToday_());
+  if (!prog.fin) prog.fin = tarUnAnio_(prog.inicio);
+  const P = TAR_STATE.panel, ym = (P && P.lvYm) || prog.inicio.slice(0, 7), y = +ym.slice(0, 4), m = +ym.slice(5, 7), off = (new Date(y, m - 1, 1).getDay() + 6) % 7, dim = new Date(y, m, 0).getDate(), hoy = tarIso_(tarToday_());
+  const cel = []; for (let i = 0; i < Math.ceil((off + dim) / 7) * 7; i++) { const dd = i - off + 1; if (dd < 1 || dd > dim) { cel.push('<span></span>'); continue; }
+    const iso = `${ym}-${String(dd).padStart(2, '0')}`, on = iso === prog.inicio;
+    cel.push(`<button type="button" onclick="tarLvDesde_('${iso}')" style="all:unset;cursor:pointer;text-align:center;padding:6px 0;border-radius:7px;font-size:12px;font-weight:${on || iso === hoy ? 800 : 600};border:1.5px solid ${on ? '#7c3aed' : iso === hoy ? '#c4b5fd' : '#e2e8f0'};background:${on ? '#7c3aed' : '#fff'};color:${on ? '#fff' : '#334155'}">${dd}</button>`); }
+  const nb = 'all:unset;cursor:pointer;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;border:1px solid #e2e8f0;background:#fff;font-weight:800;color:#334155';
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${TAR_LV_PER.map(([k, l]) => tarPill_(prog.periodo === k, l, `tarLvPer_('${k}')`)).join(' ')}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div><div style="font-size:11px;color:#64748b;font-weight:700;margin-bottom:3px">Desde</div><input type="date" value="${esc(prog.inicio)}" onchange="if(this.value)tarLvDesde_(this.value)" style="${inp};width:auto"></div>
+      <div><div style="font-size:11px;color:#64748b;font-weight:700;margin-bottom:3px">Hasta (opcional)</div><input type="date" value="${esc(prog.fin || '')}" onchange="tarSetProgField('fin',this.value)" style="${inp};width:auto"></div>
+    </div>
+    <div style="margin-top:8px;max-width:300px;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fff">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><button type="button" style="${nb}" onclick="tarLvMes_(-1)">‹</button><b style="font-size:12.5px;color:#0f1729">${TAR_MESES_L[m - 1]} ${y}</b><button type="button" style="${nb}" onclick="tarLvMes_(1)">›</button></div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:10px;font-weight:700;color:#94a3b8;text-align:center;margin-bottom:3px">${TAR_DOW.map(x => `<span>${x[1]}</span>`).join('')}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">${cel.join('')}</div>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin-top:6px">El periodo se cuenta para cada alojamiento desde su último levantamiento (la primera vez, desde «Desde»).</div>`;
+}
+window.tarLvPer_ = function (k) { const P = TAR_STATE.panel; if (!P) return; P.d._prog.periodo = k; tarPanelRender_(); };
+window.tarLvDesde_ = function (iso) { const P = TAR_STATE.panel; if (!P) return; P.d._prog.inicio = iso; P.d._prog.fin = tarUnAnio_(iso); P.lvYm = iso.slice(0, 7); tarPanelRender_(); };
+window.tarLvMes_ = function (dl) { const P = TAR_STATE.panel; if (!P) return; P.lvYm = ckMesMover_(P.lvYm || (P.d._prog.inicio || tarIso_(tarToday_())).slice(0, 7), dl); tarPanelRender_(); };
 window.tarIGLimite_ = function (v) { const P = TAR_STATE.panel; if (!P || !v) return; P.d.Limite_IG = v; P.d._prog.dias_mes = [Number(v.slice(8, 10))]; tarPanelRender_(); };
 window.tarIGPlantilla_ = function (id) { const P = TAR_STATE.panel; if (!P) return; const pl = (ASEO.pl.lista || {})[id]; P.d.Plantilla = id || ''; if (pl) P.d.Nombre = pl.titulo; /* la plantilla es el nombre de la inspección */ tarPanelRender_(); };
 window.tarIGAloj_ = function (h) { const P = TAR_STATE.panel; if (!P) return; const a = P.d._alojs = P.d._alojs || [], i = a.indexOf(String(h)); if (i >= 0) a.splice(i, 1); else a.push(String(h)); const sc = document.querySelector('#tar-panel [style*="max-height:260px"]'), t = sc ? sc.scrollTop : 0; tarPanelRender_(); const sc2 = document.querySelector('#tar-panel [style*="max-height:260px"]'); if (sc2) sc2.scrollTop = t; };
