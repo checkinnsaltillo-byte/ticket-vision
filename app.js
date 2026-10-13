@@ -372,7 +372,7 @@ const SYS_MODULE_LIST = [
   ['aseo',             '🛠️ Check-Flow (limpieza, inspección, mantenimiento + Breezeway)'],
   ['incidencias',      '🚨 Incidencias'],
   ['reportes-tecnicos','🛠 Reportes técnicos'],
-  ['tareas',           '🔍 Inspecciones generales'],
+  ['tareas',           '🔍 Inspecciones'],
   ['objetos',          '🧳 Objetos olvidados'],
   ['ocupacion',        '📊 Dashboard (Ocupación)'],
   ['rh',               '👥 Recursos Humanos'],
@@ -9177,7 +9177,7 @@ function clNavHtml_(act) {
   const enTareas = act === 'checkinn' || act === 'mant';
   const items = (clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '✅ Tareas', 'aseo', enTareas) : '')
     + (!MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (!MPn && clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '')
-    + (!MPn && clPuede_('tareas') ? b('tareas', '🔍 Inspecciones generales', 'tareas') : '');
+    + (!MPn && clPuede_('tareas') ? b('tareas', '🔍 Inspecciones', 'tareas') : '');
   const pl = !MPn && clPuede_('aseo') ? `<div class="cl-g cl-der">${b('plantillas', '📋 Plantillas', 'plantillas')}</div>` : '';
   const sub = enTareas && window.ASEO ? `<div class="cl-sub">${CL_SUBS.map(([k, ico, t]) => { const D = AT_DEPTO[k] || {}; return `<button type="button" class="cl-sb ${(ASEO.sub || 'todos') === k ? 'on' : ''}" style="--c:${D.c || '#0f1729'}" onclick="clSub_('${k}')">${ico || D.ico} ${t || D.t}</button>`; }).join('')}</div>` : '';
   return items.trim() || pl ? `<div class="cl-nav">${items.trim() ? `<div class="cl-g">${items}</div>` : ''}${pl}</div>${sub}` : '';
@@ -58623,9 +58623,16 @@ function tdCss_() {
   .td-mcal span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#0f1729}
   .td-mcal>i{width:7px;height:7px;border-radius:50%;background:var(--sc);flex:none}
   .td-mcal.fin span{text-decoration:line-through;opacity:.6}
-  .td-igcs{display:flex;flex-wrap:wrap;gap:3px}.td-igcs.g{flex-direction:column;gap:6px}
-  .td-igc{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:999px;background:var(--sc);color:#fff;font:700 10px/1.4 ui-monospace,Menlo,monospace;cursor:pointer;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-  .td-igc:hover{filter:brightness(.92)}.td-igcs.g .td-igc{font-size:12px;padding:6px 12px;border-radius:9px}.td-igc em{font:600 11.5px Inter,system-ui,sans-serif;opacity:.95}
+  .td-igcs{display:flex;flex-direction:column;gap:3px;min-width:0}.td-igcs.g{gap:6px}
+  .td-igc{display:flex;flex-direction:column;gap:2px;min-width:0;padding:3px 5px 4px;border-radius:6px;border-left:3px solid var(--sc);background:color-mix(in srgb,var(--sc) 16%,#fff);cursor:pointer;font-family:Inter,system-ui,sans-serif}
+  .td-igc:hover{background:color-mix(in srgb,var(--sc) 28%,#fff)}
+  .td-igc>b{font-size:10.5px;font-weight:700;color:#0f1729;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .td-igc .l2{display:flex;align-items:center;gap:4px;min-width:0;white-space:nowrap;overflow:hidden}
+  .td-igc .d{font-size:9.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis}.td-igc .d.v{color:#15803d}.td-igc .d.a{color:#b45309}.td-igc .d.r{color:#b91c1c}.td-igc .d.gr{color:#64748b}
+  .td-igc .rt{flex:none;font-size:9px;font-weight:700;color:#fff;background:#dc2626;border-radius:999px;padding:0 5px}
+  .td-igc .br{display:flex;align-items:center;gap:4px}.td-igc .br .tk{flex:1;height:4px;border-radius:2px;background:rgba(15,23,42,.1);overflow:hidden}
+  .td-igc .br .tk i{display:block;height:100%;background:var(--sc)}.td-igc .br em{flex:none;font-style:normal;font-size:9px;font-weight:700;color:#334155}
+  .td-igcs.g .td-igc{padding:7px 10px}.td-igcs.g .td-igc>b{font-size:12.5px}.td-igcs.g .td-igc .d{font-size:11px}.td-igcs.g .td-igc .rt{font-size:10.5px;padding:1px 7px}
   .td-mcal.ig{background:linear-gradient(135deg,var(--ig1,#6d28d9),var(--ig2,#c026d3));border-left-color:var(--ig3,#4c1d95)}.td-mcal.ig b,.td-mcal.ig span{color:#fff}
   .td-card .r1 .prop{font-weight:600;color:#0f1729;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .td-card .pl-cb2{margin-top:6px}
@@ -58687,7 +58694,7 @@ function tdRender_() {
     const filasMes = [...new Map(oc0.map(x => [x.r.ID, x.r])).values()];
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}
       <div class="ad-v2 ck-kpis">${tdKpisOc_(oc0, ym)}</div>${nav}${bar.replace('__SEGV__', TAR_STATE._segV || '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(filasMes)}</div>` : ''}
-      <div class="ad-v2 td-board">${ckSplitHtml_(!!TAR_STATE.cal, `<div class="td-cal">${tarCalendarioHtml_()}</div>`, board)}</div></div>`;
+      <div class="ad-v2 td-board">${ckSplitHtml_(!!TAR_STATE.cal, `<div class="td-cal">${tarCalendarioHtml_()}</div>`, board, TAR_STATE.sub === 'rec' ? '' : 'ig')}</div></div>`;
   }
   if (typeof pzRender_ === 'function') pzRender_();
   if (TAR_STATE.dr && !TAR_STATE._sinDr) tdPintar_();
@@ -58852,7 +58859,7 @@ function tdHijoCard_(r, hid, dia) {
 // Calendario (día/semana/mes/resumen): abre la ventana de detalle en la fecha de esa card.
 window.tdAbrirEn_ = function (id, iso) { TAR_STATE.dia = iso === tarIso_(tarToday_()) ? null : iso; tdAbrir_(id); };
 window.tdIGToggle_ = function (id) { const S = TAR_STATE.igAb = TAR_STATE.igAb || new Set(); if (S.has(id)) S.delete(id); else S.add(id); tarRender(); };
-// Calendario de Inspecciones generales: un chip por alojamiento en el día en que se guardó por última vez su estado
+// Calendario de Inspecciones: un chip por alojamiento en el día en que se guardó por última vez su estado
 // (estado de la sub-card o avance de su plantilla), con el nombre corto y el color del estado.
 function tdIGMapa_() {
   const M = new Map(), loc = at => { const d = new Date(at); return isNaN(d) ? '' : d.toLocaleDateString('en-CA', { timeZone: 'America/Monterrey' }); };
@@ -58866,10 +58873,29 @@ function tdIGMapa_() {
   }));
   return M;
 }
+// Abreviatura de la plantilla: «Inventario Gabinetes» → «Inv. Gabinetes» (todas las palabras menos la última; sin «de», «la»…).
+function tdAbrev_(t) {
+  const W = String(t || '').split(/\s+/).filter(w => w && !/^(de|del|la|las|el|los|y|e|a|en|para|por)$/i.test(w));
+  return W.map((w, i) => i < W.length - 1 && w.length > 5 ? w.slice(0, 3) + '.' : w).join(' ');
+}
 function tdIGChips_(iso, grande) {
-  const L = (TAR_STATE._igMapa || (TAR_STATE._igMapa = tdIGMapa_())).get(iso) || [];
-  return L.length ? `<div class="td-igcs ${grande ? 'g' : ''}">${L.map(x => { const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid }, txt = x.est === 'Resuelto' ? 'Terminado' : x.est, p = x.r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[x.r.Plantilla] : null;
-    return `<span class="td-igc" style="--sc:${TD_EST[x.est] || '#94a3b8'}" onclick="event.stopPropagation();tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')" title="${esc(String(a.nombre || x.hid))} · ${esc(p ? p.titulo : x.r.Nombre || '')} · ${txt}">${esc(a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid))}${grande ? ` <em>${esc(p ? p.titulo : x.r.Nombre || '')} · ${txt}</em>` : ''}</span>`; }).join('')}</div>` : '';
+  const M = TAR_STATE._igMapa || (TAR_STATE._igMapa = tdIGMapa_()), L = M.get(iso) || [];
+  if (!L.length) return '';
+  // Última inspección terminada de cada alojamiento con esa plantilla (para los días transcurridos).
+  if (!TAR_STATE._igUlt) { const U = TAR_STATE._igUlt = new Map(); M.forEach((A, d) => A.forEach(x => { if (x.est !== 'Resuelto') return; const k = x.hid + '|' + (x.r.Plantilla || x.r.ID); if (!U.has(k) || d > U.get(k)) U.set(k, d); })); }
+  const hoy = tarIso_(tarToday_()), dias = (a, b) => Math.round((Date.parse(b + 'T12:00:00') - Date.parse(a + 'T12:00:00')) / 864e5);
+  return `<div class="td-igcs ${grande ? 'g' : ''}">${L.map(x => {
+    const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid }, txt = x.est === 'Resuelto' ? 'Terminado' : x.est;
+    const p = x.r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[x.r.Plantilla] : null, pt = p ? p.titulo : String(x.r.Nombre || '').replace(/^Inspección general\s*·\s*/i, '');
+    const cod = a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid);
+    const k = x.hid + '|' + (x.r.Plantilla || x.r.ID), ult = TAR_STATE._igUlt.get(k), n = ult ? dias(ult, hoy) : null;
+    const pi = x.r.Plantilla ? ((ASEO.pl.idx || {})[tdIGKey_(x.r, x.hid, x.P)] || {}).p : null, pc = x.est === 'Resuelto' && pi == null ? 100 : pi || 0;
+    const dTxt = n == null ? 'Sin inspección previa' : n === 0 ? 'Inspeccionado hoy' : `Hace ${n} día${n === 1 ? '' : 's'}`;
+    const sem = n == null ? 'gr' : n > 30 ? 'r' : n > 20 ? 'a' : 'v';
+    return `<div class="td-igc" style="--sc:${TD_EST[x.est] || '#94a3b8'}" onclick="event.stopPropagation();tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')" title="${esc(String(a.nombre || x.hid))} · ${esc(pt)} · ${txt} · ${pc}%">
+      <b>${esc(cod)}-${esc(tdAbrev_(pt))}</b>
+      <span class="l2"><span class="d ${sem}">${dTxt}</span>${n != null && n > 30 ? `<span class="rt">+${n - 30} días retraso</span>` : ''}</span>
+      <span class="br"><span class="tk"><i style="width:${pc}%"></i></span><em>${pc}%</em></span></div>`; }).join('')}</div>`;
 }
 window.tdAbrirHijoEn_ = function (pid, hid, P) { if (tdFinMes_(tdDia_()) !== P) TAR_STATE.dia = P; tdAbrirHijo_(pid, hid); };
 window.tdAbrirHijo_ = function (pid, hid) {
@@ -59394,7 +59420,7 @@ window.tarSetView = function (v) { TAR_STATE.view = v; tarRender(); };
 // ── Sección 2: Calendario ──────────────────────────────────────────────
 function tarCalendarioHtml_() {
   if (!TAR_STATE.calRef) TAR_STATE.calRef = tarToday_();
-  TAR_STATE._igMapa = null; // se recalcula en cada pintada
+  TAR_STATE._igMapa = null; TAR_STATE._igUlt = null; // se recalculan en cada pintada
   const vBtn = (k, label) => {
     const on = TAR_STATE.calView === k;
     return `<button type="button" onclick="tarSetCalView('${k}')" style="all:unset;cursor:pointer;padding:7px 14px;font-size:12px;font-weight:800;border-radius:8px;background:${on ? '#7c3aed' : '#fff'};color:${on ? '#fff' : '#475569'};border:1.5px solid ${on ? '#7c3aed' : '#e2e8f0'}">${label}</button>`;
@@ -63814,7 +63840,7 @@ const NAV_TREE = {
       // Breezeway desactivado por el momento (ver CL_BZW_OFF).
     ] },
     { t: '🗂️ Administración', mod: 'tareas', go: () => {}, subs: [
-      { t: '🔍 Inspecciones generales', mod: 'tareas', go: () => {} },
+      { t: '🔍 Inspecciones', mod: 'tareas', go: () => {} },
     ] },
   ],
   'reportes-tecnicos': [
@@ -69298,7 +69324,7 @@ function icCss_() {
 const CK_VISTAS = [['estado', 'Por estado'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['tabla', 'Tabla']];
 // 📅 Calendario: botón que se activa/desactiva y se muestra a la izquierda, compartido con cualquier vista (como en Aseo).
 function ckCalBtnHtml_(on, fn) { return `<button type="button" class="aseo-btn ck-ib ${on ? 'on' : ''}" onclick="${fn}" title="${on ? 'Ocultar calendario' : 'Mostrar calendario'}">📅</button>`; }
-function ckSplitHtml_(on, calHtml, mainHtml) { return on ? `<div class="ck-split"><div class="ck-splitcal">${calHtml}</div><div class="ck-splitmain">${mainHtml}</div></div>` : mainHtml; }
+function ckSplitHtml_(on, calHtml, mainHtml, cls) { return on ? `<div class="ck-split ${cls || ''}"><div class="ck-splitcal">${calHtml}</div><div class="ck-splitmain">${mainHtml}</div></div>` : mainHtml; }
 function ckVistasHtml_(cur, fn) { return `<div class="ad-seg"><span>Vista</span>${CK_VISTAS.map(([k, t]) => `<button type="button" class="${cur === k ? 'on' : ''}" onclick="${fn}('${k}')">${t}</button>`).join('')}</div>`; }
 function ckMesHoy_() { return aseoHoyIso_().slice(0, 7); }
 function ckMesMover_(ym, v) { if (typeof v === 'string') return v; if (!v) return ckMesHoy_(); const [y, m] = (ym || ckMesHoy_()).split('-').map(Number), d = new Date(y, m - 1 + v, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
@@ -69328,6 +69354,7 @@ function ckVCss_() {
   .ck-calm .mas{font-size:10px;font-weight:700;color:#4f46e5;cursor:pointer}
   .ad-col .ad-colh .ck-sub{font-weight:500;color:#9aa1ad;font-size:11px;margin-left:4px}
   .ck-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:14px;align-items:start}
+  .ck-split.ig{grid-template-columns:minmax(0,3fr) minmax(0,2fr)} /* Inspecciones: el calendario con los chips por alojamiento es lo principal */
   .ck-splitcal{position:sticky;top:120px;background:#fff;border:1px solid #e8eaee;border-radius:12px;padding:10px;max-height:calc(100vh - 140px);overflow:auto}
   .ck-splitcal .ck-calm .g{min-width:0;grid-template-columns:repeat(7,minmax(0,1fr))}
   .ck-splitcal .ck-calm .d{min-height:70px;padding:3px}.ck-splitcal .ck-mcal span{display:none}.ck-splitcal .ck-mcal{justify-content:space-between}
