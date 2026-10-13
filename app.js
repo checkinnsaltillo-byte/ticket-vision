@@ -67001,7 +67001,7 @@ function aseoRender_() {
   const bks = pcMovBookings_().filter(b => /^(booked|tentative)$/i.test(String(b.Status || '').trim()));
   const fCal = Object.assign({}, OCUP_STATE.calFilters || {});
   const sig = JSON.stringify(fCal) + JSON.stringify(OCUP_STATE.colorModes || {}) + bks.map(b => `${b.Id}:${b.HouseId}:${_pagosDateIso(b.DateArrival)}:${_pagosDateIso(b.DateDeparture)}:${b.Source || ''}:${b.GuestName || ''}`).join(',')
-    + JSON.stringify([ASEO.estados, ASEO.asig, ASEO.reprog, ASEO.nosale, ASEO.tareas, ASEO.fPers, ASEO.fProp, ASEO.fTipo, ASEO.fPrio]);
+    + JSON.stringify([ASEO.estados, ASEO.asig, ASEO.reprog, ASEO.nosale, ASEO.tareas, ASEO.fPers, ASEO.fProp, ASEO.fTipo, ASEO.fPrio, ASEO.sub]);
   if (cal && sig !== ASEO.calSig) {
     const sl = cal.scrollLeft, stp = cal.scrollTop, first = !ASEO.calSig;
     ASEO.calSig = sig;
@@ -67694,14 +67694,15 @@ function aseoCalFiltrar_(m) {
   const fPers = ASEO.fPers || [], fProp = ASEO.fProp || [], fTipo = ASEO.fTipo || [], fPrio = ASEO.fPrio || [];
   const prio = t => t.tarea ? prio4Key_(t.tarea.prioridad) : ((ASEO.prio || {})[String(t.id)] || 'media');
   const pers = t => { if (t.tarea) return t.tarea.asignados || []; const a = (ASEO.asig || {})[String(t.id)] || {}; return [...(a.aseo || a.personal || []), ...(a.inspeccion || [])]; };
-  const tipo = t => t.tarea ? (t.tarea.depto || 'limpieza') : 'limpieza';
+  const tipo = t => t.tarea ? (t.tarea.rt ? 'mantenimiento' : t.tarea.depto || 'limpieza') : 'limpieza';
+  const fSub = ASEO.sub && ASEO.sub !== 'todos' ? ASEO.sub : ''; // submenú de Tareas (Limpieza, Mantenimiento…)
   const out = new Map();
   m.forEach((L, hid) => {
-    const F = L.filter(t => (!fPers.length || pers(t).some(n => fPers.includes(n))) && (!fTipo.length || fTipo.includes(tipo(t))) && (!fPrio.length || fPrio.includes(prio(t))));
+    const F = L.filter(t => (!fSub || tipo(t) === fSub) && (!fPers.length || pers(t).some(n => fPers.includes(n))) && (!fTipo.length || fTipo.includes(tipo(t))) && (!fPrio.length || fPrio.includes(prio(t))));
     if (F.length) out.set(hid, F);
   });
   const propDe = a => String(a.propiedad || '').replace(/^Calle\s+/i, '') || 'Otros';
-  const conTareas = fPers.length || fTipo.length || fPrio.length;
+  const conTareas = fPers.length || fTipo.length || fPrio.length || fSub;
   const alojFilter = fProp.length || conTareas ? a => (!fProp.length || fProp.includes(propDe(a))) && (!conTareas || out.has(String(a.houseId))) : null;
   return { tareas: out, alojFilter };
 }
