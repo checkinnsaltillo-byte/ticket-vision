@@ -372,7 +372,7 @@ const SYS_MODULE_LIST = [
   ['aseo',             '🛠️ Check-Flow (limpieza, inspección, mantenimiento + Breezeway)'],
   ['incidencias',      '🚨 Incidencias'],
   ['reportes-tecnicos','🛠 Reportes técnicos'],
-  ['tareas',           '🗓️ Pendientes'],
+  ['tareas',           '🔍 Inspecciones generales'],
   ['objetos',          '🧳 Objetos olvidados'],
   ['ocupacion',        '📊 Dashboard (Ocupación)'],
   ['rh',               '👥 Recursos Humanos'],
@@ -9177,7 +9177,7 @@ function clNavHtml_(act) {
   const enTareas = act === 'checkinn' || act === 'mant';
   const items = (clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '✅ Tareas', 'aseo', enTareas) : '')
     + (!MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (!MPn && clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '')
-    + (!MPn && clPuede_('tareas') ? b('tareas', '🗓️ Pendientes', 'tareas') : '');
+    + (!MPn && clPuede_('tareas') ? b('tareas', '🔍 Inspecciones generales', 'tareas') : '');
   const pl = !MPn && clPuede_('aseo') ? `<div class="cl-g cl-der">${b('plantillas', '📋 Plantillas', 'plantillas')}</div>` : '';
   const sub = enTareas && window.ASEO ? `<div class="cl-sub">${CL_SUBS.map(([k, ico, t]) => { const D = AT_DEPTO[k] || {}; return `<button type="button" class="cl-sb ${(ASEO.sub || 'todos') === k ? 'on' : ''}" style="--c:${D.c || '#0f1729'}" onclick="clSub_('${k}')">${ico || D.ico} ${t || D.t}</button>`; }).join('')}</div>` : '';
   return items.trim() || pl ? `<div class="cl-nav">${items.trim() ? `<div class="cl-g">${items}</div>` : ''}${pl}</div>${sub}` : '';
@@ -58623,6 +58623,9 @@ function tdCss_() {
   .td-mcal span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#0f1729}
   .td-mcal>i{width:7px;height:7px;border-radius:50%;background:var(--sc);flex:none}
   .td-mcal.fin span{text-decoration:line-through;opacity:.6}
+  .td-igcs{display:flex;flex-wrap:wrap;gap:3px}.td-igcs.g{flex-direction:column;gap:6px}
+  .td-igc{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:999px;background:var(--sc);color:#fff;font:700 10px/1.4 ui-monospace,Menlo,monospace;cursor:pointer;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .td-igc:hover{filter:brightness(.92)}.td-igcs.g .td-igc{font-size:12px;padding:6px 12px;border-radius:9px}.td-igc em{font:600 11.5px Inter,system-ui,sans-serif;opacity:.95}
   .td-mcal.ig{background:linear-gradient(135deg,var(--ig1,#6d28d9),var(--ig2,#c026d3));border-left-color:var(--ig3,#4c1d95)}.td-mcal.ig b,.td-mcal.ig span{color:#fff}
   .td-card .r1 .prop{font-weight:600;color:#0f1729;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .td-card .pl-cb2{margin-top:6px}
@@ -58849,6 +58852,26 @@ function tdHijoCard_(r, hid, dia) {
 // Calendario (día/semana/mes/resumen): abre la ventana de detalle en la fecha de esa card.
 window.tdAbrirEn_ = function (id, iso) { TAR_STATE.dia = iso === tarIso_(tarToday_()) ? null : iso; tdAbrir_(id); };
 window.tdIGToggle_ = function (id) { const S = TAR_STATE.igAb = TAR_STATE.igAb || new Set(); if (S.has(id)) S.delete(id); else S.add(id); tarRender(); };
+// Calendario de Inspecciones generales: un chip por alojamiento en el día en que se guardó por última vez su estado
+// (estado de la sub-card o avance de su plantilla), con el nombre corto y el color del estado.
+function tdIGMapa_() {
+  const M = new Map(), loc = at => { const d = new Date(at); return isNaN(d) ? '' : d.toLocaleDateString('en-CA', { timeZone: 'America/Monterrey' }); };
+  const idx = (typeof ASEO !== 'undefined' && ASEO.pl && ASEO.pl.idx) || {};
+  TAR_STATE.list.filter(r => tdEsIG_(r) && tarPasaFiltro_(r)).forEach(r => tdIGAlojs_(r).forEach(hid => {
+    const per = new Map(); // fin de mes del periodo → última fecha guardada
+    const upd = (P, at) => { if (!P || !at) return; if (!per.has(P) || String(at) > per.get(P)) per.set(P, String(at)); };
+    (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => upd(String(o.Fecha || '').slice(0, 10), o.Updated_at || o.Timestamp));
+    const pre = `TI:${r.ID}:${hid}:`; Object.keys(idx).forEach(k => { if (k.startsWith(pre)) upd(k.slice(pre.length), idx[k].at); });
+    per.forEach((at, P) => { const iso = loc(at); if (!iso) return; if (!M.has(iso)) M.set(iso, []); M.get(iso).push({ r, hid, P, est: tdIGEstH_(r, hid, P) }); });
+  }));
+  return M;
+}
+function tdIGChips_(iso, grande) {
+  const L = (TAR_STATE._igMapa || (TAR_STATE._igMapa = tdIGMapa_())).get(iso) || [];
+  return L.length ? `<div class="td-igcs ${grande ? 'g' : ''}">${L.map(x => { const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid }, txt = x.est === 'Resuelto' ? 'Terminado' : x.est, p = x.r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[x.r.Plantilla] : null;
+    return `<span class="td-igc" style="--sc:${TD_EST[x.est] || '#94a3b8'}" onclick="event.stopPropagation();tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')" title="${esc(String(a.nombre || x.hid))} · ${esc(p ? p.titulo : x.r.Nombre || '')} · ${txt}">${esc(a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid))}${grande ? ` <em>${esc(p ? p.titulo : x.r.Nombre || '')} · ${txt}</em>` : ''}</span>`; }).join('')}</div>` : '';
+}
+window.tdAbrirHijoEn_ = function (pid, hid, P) { if (tdFinMes_(tdDia_()) !== P) TAR_STATE.dia = P; tdAbrirHijo_(pid, hid); };
 window.tdAbrirHijo_ = function (pid, hid) {
   const r = TAR_STATE.list.find(x => x.ID === pid); if (!r) return;
   TAR_STATE.dr = { id: pid, hijo: tdIGHijo_(r, hid), hid: String(hid) };
@@ -59371,6 +59394,7 @@ window.tarSetView = function (v) { TAR_STATE.view = v; tarRender(); };
 // ── Sección 2: Calendario ──────────────────────────────────────────────
 function tarCalendarioHtml_() {
   if (!TAR_STATE.calRef) TAR_STATE.calRef = tarToday_();
+  TAR_STATE._igMapa = null; // se recalcula en cada pintada
   const vBtn = (k, label) => {
     const on = TAR_STATE.calView === k;
     return `<button type="button" onclick="tarSetCalView('${k}')" style="all:unset;cursor:pointer;padding:7px 14px;font-size:12px;font-weight:800;border-radius:8px;background:${on ? '#7c3aed' : '#fff'};color:${on ? '#fff' : '#475569'};border:1.5px solid ${on ? '#7c3aed' : '#e2e8f0'}">${label}</button>`;
@@ -59493,10 +59517,10 @@ function tarDiaHtml_() {
   const iso = tarIso_(TAR_STATE.calRef);
   const d = TAR_STATE.calRef;
   const dowName = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];
-  const items = tdOrdLim_(tarDelDiaF_(iso));
+  const items = tdOrdLim_(tarDelDiaF_(iso)).filter(r => !tdEsIG_(r)), chips = tdIGChips_(iso, true);
   return tarNavBar_(`${dowName} ${d.getDate()} de ${TAR_MESES_L[d.getMonth()].toLowerCase()} ${d.getFullYear()}`) +
-    (items.length
-      ? `<div style="display:flex;flex-direction:column;gap:10px;max-width:760px">${items.map(r => tdCard_(r, iso, { cal: true })).join('')}</div>`
+    (items.length || chips
+      ? `<div style="display:flex;flex-direction:column;gap:10px;max-width:760px">${chips}${items.map(r => tdCard_(r, iso, { cal: true })).join('')}</div>`
       : `<div style="text-align:center;padding:40px 20px;color:#94a3b8;border:1px dashed #cbd5e1;border-radius:12px;max-width:760px">Sin tareas programadas este día.</div>`);
 }
 // 3) Pendientes de la semana
@@ -59509,14 +59533,14 @@ function tarSemanaHtml_() {
   const titulo = `${lunes.getDate()} ${TAR_MESES[lunes.getMonth()]} – ${fin.getDate()} ${TAR_MESES[fin.getMonth()]} ${fin.getFullYear()}`;
   return tarNavBar_(titulo) + `<div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(190px,1fr));gap:8px;min-width:1330px">${dias.map(d => {
     const iso = tarIso_(d);
-    const items = tdOrdLim_(tarDelDiaF_(iso, true));
+    const items = tdOrdLim_(tarDelDiaF_(iso, true)).filter(r => !tdEsIG_(r)), chips = tdIGChips_(iso);
     const isHoy = iso === hoy;
     return `<div style="background:${isHoy ? '#faf5ff' : '#f8fafc'};border:1.5px solid ${isHoy ? '#a78bfa' : '#e2e8f0'};border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;min-height:160px">
       <div style="display:flex;align-items:baseline;justify-content:space-between">
         <span style="font-size:11px;font-weight:900;color:${isHoy ? '#6d28d9' : '#475569'};text-transform:uppercase">${TAR_DOW.find(([v]) => v === d.getDay())[1]}</span>
         <span style="font-size:16px;font-weight:900;color:${isHoy ? '#6d28d9' : '#0f172a'}">${d.getDate()}</span>
       </div>
-      ${items.map(r => tdCard_(r, iso, { cal: true })).join('') || '<div style="font-size:10.5px;color:#cbd5e1;text-align:center;padding-top:20px">—</div>'}
+      ${chips}${items.map(r => tdCard_(r, iso, { cal: true })).join('') || (chips ? '' : '<div style="font-size:10.5px;color:#cbd5e1;text-align:center;padding-top:20px">—</div>')}
     </div>`;
   }).join('')}</div></div>`;
 }
@@ -59547,12 +59571,12 @@ function tarMesHtml_() {
   return tarNavBar_(`${TAR_MESES_L[m]} ${y}`) + `<div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:4px;min-width:860px">${head}${celdas.map(d => {
     const iso = tarIso_(d);
     const inMonth = d.getMonth() === m;
-    const items = inMonth ? tarDelDiaF_(iso, true) : [];
+    const items = inMonth ? tarDelDiaF_(iso, true).filter(r => !tdEsIG_(r)) : [], chips = inMonth ? tdIGChips_(iso) : '';
     const isHoy = iso === hoy;
     const shown = items.slice(0, 3);
     return `<div onclick="tarIrADia('${iso}')" style="cursor:pointer;min-height:96px;background:${!inMonth ? '#fafafa' : isHoy ? '#faf5ff' : '#fff'};border:1.5px solid ${isHoy ? '#a78bfa' : '#e2e8f0'};border-radius:8px;padding:5px;display:flex;flex-direction:column;gap:3px;opacity:${inMonth ? 1 : .45}">
       <div style="font-size:12px;font-weight:900;color:${isHoy ? '#6d28d9' : '#334155'}">${d.getDate()}</div>
-      ${shown.map(r => tdMiniCal_(r, iso)).join('')}
+      ${chips}${shown.map(r => tdMiniCal_(r, iso)).join('')}
       ${items.length > 3 ? `<div style="font-size:10px;font-weight:800;color:#7c3aed">+${items.length - 3} más</div>` : ''}
     </div>`;
   }).join('')}</div></div>`;
@@ -63790,7 +63814,7 @@ const NAV_TREE = {
       // Breezeway desactivado por el momento (ver CL_BZW_OFF).
     ] },
     { t: '🗂️ Administración', mod: 'tareas', go: () => {}, subs: [
-      { t: '🗓️ Pendientes', mod: 'tareas', go: () => {} },
+      { t: '🔍 Inspecciones generales', mod: 'tareas', go: () => {} },
     ] },
   ],
   'reportes-tecnicos': [
