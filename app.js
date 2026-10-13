@@ -58950,21 +58950,21 @@ function tdTablaLv_(O, vac) {
     const rows = tdIGAlojs_(r).map(hid => {
       const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, e = tdIGEstH_(r, hid, P), ult = tdIGUltFecha_(r, hid, P), R = tdIGRetraso_(r, hid);
       const pi = r.Plantilla ? (plIdxGet_(tdIGKey_(r, hid, P)) || {}).p : null, pc = e === 'Resuelto' && pi == null ? 100 : pi || 0;
-      return { a, e, pc, cls: e === 'Cancelado' ? 'gh' : '', onclick: `tdAbrirHijoEn_('${esc(r.ID)}','${esc(hid)}','${P}')`, cells: [
+      return { a, e, pc, lim: R.lim, cls: e === 'Cancelado' ? 'gh' : '', onclick: `tdAbrirHijoEn_('${esc(r.ID)}','${esc(hid)}','${P}')`, cells: [
         `<span class="tb-ch" style="--c:${AT_DEPTO.inspeccion.c}">📝 Levantamiento</span>`, `<span title="Prioridad según los días de retraso">${prio4Html_(R.prio)}</span>`, ckEst_(TD_EST[e] || '#94a3b8', e === 'Resuelto' ? 'Terminado' : e),
         `<span class="tb-pc"><span class="tk"><i style="width:${pc}%;background:${TD_EST[e] || '#94a3b8'}"></i></span><em>${pc}%</em></span>`,
         `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</small></span>`,
         ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')),
-        fl ? `<span class="tb-fe ${/vencida|hoy/.test(av) && e !== 'Resuelto' ? 'tarde' : ''}" title="${esc(av)}">${esc(tarFmtFecha_(fl))}</span>` : '<span class="tb-mu">—</span>',
+        `<span class="tb-fe ${R.ret >= 0 ? 'tarde' : ''}" title="Dinámica: ${R.ult ? 'último levantamiento' : '«Desde»'} (${esc(aseoDiaTxt_(R.base))}) + el periodo de Fecha(s)">${esc(tarFmtFecha_(R.lim))}</span>`,
         ult ? ckTx_(aseoDiaTxt_(ult)) : '<span class="tb-mu">—</span>',
         R.ult ? `<span title="Siguiente fecha límite: ${esc(aseoDiaTxt_(R.lim))}">${ckTx_(`${aseoDiaTxt_(R.ult)} · hace ${R.dias} día${R.dias === 1 ? '' : 's'}`)}</span>` : `<span class="tb-mu" title="Se cuenta desde «Desde» de Fecha(s); siguiente fecha límite: ${esc(aseoDiaTxt_(R.lim))}">Sin previo · desde ${esc(aseoDiaTxt_(R.base))}</span>`,
         tdIGRetHtml_(R)] };
     }).sort((a, b) => String(a.a.corto || a.a.nombre).localeCompare(String(b.a.corto || b.a.nombre), 'es', { numeric: true }));
     // Avance del levantamiento = promedio de sus alojamientos (con un decimal para que se note desde el primer avance) + conteo por estado.
     const prs = rows.map(x => x.pc), prom = prs.length ? prs.reduce((a, b) => a + b, 0) / prs.length : 0, prT = prom > 0 && prom < 10 ? prom.toFixed(1).replace(/\.0$/, '') : String(Math.round(prom));
-    const cnt = e => rows.filter(x => x.e === e).length, nP = cnt('En proceso'), nR = cnt('Resuelto');
+    const cnt = e => rows.filter(x => x.e === e).length, nP = cnt('En proceso'), nR = cnt('Resuelto'), limP = rows.map(x => x.lim).sort()[0] || fl;
     return { t: `📝 ${esc(r.Nombre || 'Levantamiento')}`, rows, cerrado: !C.has(k), toggle: `tdTbTg_('${esc(k)}')`, extra: `<button type="button" class="tb-ed" title="Editar el levantamiento" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button>`,
-      prog: `<span class="tb-gp"><span class="tk"><i style="width:${prom}%"></i></span><em>${prT}%</em>${nP ? `<span style="color:${TD_EST['En proceso']}">● ${nP} en proceso</span>` : ''}${nR ? `<span style="color:${TD_EST['Resuelto']}">● ${nR} terminado${nR === 1 ? '' : 's'}</span>` : ''}${fl ? `<span>⏳ ${esc(tarFmtFecha_(fl))}</span>` : ''}</span>` };
+      prog: `<span class="tb-gp"><span class="tk"><i style="width:${prom}%"></i></span><em>${prT}%</em>${nP ? `<span style="color:${TD_EST['En proceso']}">● ${nP} en proceso</span>` : ''}${nR ? `<span style="color:${TD_EST['Resuelto']}">● ${nR} terminado${nR === 1 ? '' : 's'}</span>` : ''}${limP ? `<span title="Fecha límite más próxima de sus alojamientos">⏳ ${esc(tarFmtFecha_(limP))}</span>` : ''}</span>` };
   });
   if (!document.getElementById('tdlv-css')) { const st = document.createElement('style'); st.id = 'tdlv-css'; st.textContent = `.ad-tbl.tb-pg{max-height:calc(100vh - 240px);overflow:auto}.ad-tbl.tb-pg .tb-gw{position:relative}
     .ad-tbl.tb-pg .tb-grp{position:sticky;top:0;z-index:3;height:38px;box-sizing:border-box;padding-top:0;padding-bottom:0}.ad-tbl.tb-pg .tb-row.h{top:38px;z-index:2}
@@ -59102,7 +59102,7 @@ function tdPintarHijo_(r, D, nuevo) {
   const sig = TAR_ESTADOS[Math.min(2, TAR_ESTADOS.findIndex(e => e.k === est) + 1)], key = tdIGKey_(r, D.hid, dia);
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span><span class="t">${esc(a.nombre || D.hid)}</span><button type="button" class="ad-close" onclick="tdCerrar_()">✕</button></div>
       <div class="ad-tt">📝 ${esc(r.Nombre || 'Levantamiento')}</div>
-      <div class="ad-sub">Límite ${aseoDiaTxt_(tdLimIG_(r, dia))} · <i style="background:${TD_EST[est]}"></i>${est} · ${(R => prio4Html_(R.prio) + ' ' + tdIGRetHtml_(R))(tdIGRetraso_(r, D.hid))}</div>
+      ${(R => `<div class="ad-sub">Límite ${aseoDiaTxt_(R.lim)} · <i style="background:${TD_EST[est]}"></i>${est} · ${prio4Html_(R.prio)} ${tdIGRetHtml_(R)}</div>`)(tdIGRetraso_(r, D.hid))}
       <div class="ad-hint" style="margin-top:6px"><a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrir_('${esc(r.ID)}')">‹ Levantamiento · ${tdIGAlojs_(r).length} alojamientos</a></div></div>
     <div class="ad-db">
       <div class="lab">Estado de este alojamiento</div>
