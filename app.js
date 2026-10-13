@@ -67548,7 +67548,7 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
     const mant = ASEO.sec === 'mant';
     const C = [['Tipo', '125px'], ['Prioridad', '90px'], ['Estado', '120px'], ['Tarea / nombre', 'minmax(180px,1.3fr)'], ['Personal', '100px'], ['Programación', '150px'], ['Vence el', '95px'], ['Tipo de servicio', '125px'], ['Medio de reserva', '95px']]
       .concat(mant ? [] : [['Solicitud de entrada', '130px'], ['Solicitud de salida', '130px'], ['No ha salido', '90px'], ['Atención', 'minmax(170px,1fr)'], ['Guía', '150px']]);
-    const prog = I => { if (!I.tarea) return linea(I); const t = I.t || {}; return t.rt ? '<span class="tb-mu">Reporte técnico</span>' : `<span class="tb-tt">${t.repite ? '↻ Se repite' : 'Única'}${t.hora ? ' · ' + aseoHoraTxt_(t.hora) : ''}</span>`; };
+    const prog = I => { if (!I.tarea) return linea(I); const t = I.t || {}; return t.rt ? '<span class="tb-mu">Reporte técnico</span>' : `<span class="tb-tt">${t.repite ? atRecChip_() : 'Única'}${t.hora ? ' · ' + aseoHoraTxt_(t.hora) : ''}</span>`; };
     const nombre = I => { const it = kItem(I); return `<span class="tb-a"><b class="code">${pcEsc(it.code)}</b><small style="color:#0f1729;font-weight:600">${pcEsc(I.tarea ? (I.t && I.t.titulo) || 'Tarea' : String(I.aloj || '').replace(/^Calle\s+/i, ''))}</small></span>`; };
     const fila = I => {
       const it = kItem(I), E0 = adEstObj_(I.selE), c = I.tarea && I.t && I.t.rt ? '#f97316' : adEstC_(I.selE);
@@ -67682,7 +67682,7 @@ function aseoCalTareaHtml_(t) {
     const tk = t.tarea, reg = aseoEstDe_(`T${tk.id}-${t.dia}`), E = adEstObj_((reg || {}).estado || 'pendiente');
     const D = AT_DEPTO[tk.depto] || AT_DEPTO.limpieza;
     const Ec = tk.rt ? ({ pendiente: '#94a3b8', en_proceso: '#f59e0b', terminado: '#10b981', cancelado: '#64748b' }[tk.estado]) : E.c;
-    return `<div class="t1"><i style="background:${Ec}"></i><b>${D.ico} ${pcEsc(tk.titulo)}</b>${tk.repite ? '<span class="rp" title="Se repite">↻</span>' : ''}${tk.bloquea && rtAbierto_(tk) ? '<span class="al" title="Inhabitable">🚫</span>' : ''}</div>
+    return `<div class="t1"><i style="background:${Ec}"></i><b>${D.ico} ${pcEsc(tk.titulo)}</b>${tk.repite ? '<span class="rp" title="Recurrente">↻</span>' : ''}${tk.bloquea && rtAbierto_(tk) ? '<span class="al" title="Inhabitable">🚫</span>' : ''}</div>
       <div class="t2">${prio4Html_(tk.prioridad, true)}${(tk.asignados || []).length ? `<span class="ad-avs">${tk.asignados.slice(0, 4).map(n => adAv_(n)).join('')}</span>` : '<span class="un">Sin asignar</span>'}</div>`;
   }
   const reg = aseoEstDe_(t.id), k = (reg || {}).estado || 'pendiente';
@@ -67965,6 +67965,8 @@ function atToca_(t, dia) {
   if (r.tipo === 'anual') return a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   return false;
 }
+// Etiqueta que distingue las tareas recurrentes de las únicas.
+function atRecChip_() { return '<span class="at-rec" title="Tarea recurrente" style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ede9fe;border:1px solid #c4b5fd;color:#6d28d9;font-size:10.5px;font-weight:800;white-space:nowrap">↻ Recurrente</span>'; }
 function atRepTxt_(r, fecha) {
   if (!r) return '';
   const a = atD_(fecha);
@@ -68017,10 +68019,10 @@ function atCard_(I) {
   const sel = ASEO._dr && ASEO._dr.tarea === t.id;
   return `<div class="ad-card tipo est-tint tarea ${t.problema ? 'alert' : ''} ${axEsDeInc_('T' + t.id) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="T${pcEsc(t.id)}" style="--tc:${D.c};--sc:${adEstC_(I.selE)}" onclick="atAbrir_('${pcEsc(t.id)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'${I.key}','',true,${t.depto !== 'limpieza'})" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span></div>
+    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${t.repite ? atRecChip_() : ''}</div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
-    <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${t.repite ? '<span class="sep"></span><span>↻ Se repite</span>' : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
+    <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
     <div class="r3">${(t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
     ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}${plBarra_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key)}
@@ -68061,7 +68063,7 @@ function atPintar_(nuevo) {
       ${plTareaBox_(t, I.key)}
       <div class="lab">Detalles</div>
       <div class="ad-kv"><span>Programada</span><b>${aseoDiaTxt_(t.fecha)}${t.hora ? ' · ' + aseoHoraTxt_(t.hora) : ''}</b>
-        ${t.repite ? `<span>Se repite</span><b>${pcEsc(atRepTxt_(t.repite, t.fecha))}</b>` : ''}
+        ${t.repite ? `<span>Recurrente</span><b>${atRecChip_()} ${pcEsc(atRepTxt_(t.repite, t.fecha))}</b>` : ''}
         ${res ? `<span>Reserva</span><b>${pcEsc(res.GuestName || '')} · ${pcFmtDiaC_(_pagosDateIso(res.DateArrival))} → ${pcFmtDiaC_(_pagosDateIso(res.DateDeparture))}</b>` : ''}
         ${(t.etiquetas || []).length ? `<span>Etiquetas</span><b>${t.etiquetas.map(x => `<em class="ad-tag">${pcEsc(x)}</em>`).join(' ')}</b>` : ''}
         <span>Creada</span><b>${t.at ? new Date(t.at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : ''}${t.by ? ' · ' + pcEsc(t.by) : ''}</b></div>
