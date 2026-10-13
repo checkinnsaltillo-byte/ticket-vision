@@ -58884,13 +58884,13 @@ function tdIGChips_(iso, grande) {
   const M = TAR_STATE._igMapa || (TAR_STATE._igMapa = tdIGMapa_()), L = M.get(iso) || [];
   if (!L.length) return '';
   // Última inspección terminada de cada alojamiento con esa plantilla (para los días transcurridos).
-  if (!TAR_STATE._igUlt) { const U = TAR_STATE._igUlt = new Map(); M.forEach((A, d) => A.forEach(x => { if (x.est !== 'Resuelto') return; const k = x.hid + '|' + (x.r.Plantilla || x.r.ID); if (!U.has(k) || d > U.get(k)) U.set(k, d); })); }
+  const ULT = tdIGUltMap_();
   const hoy = tarIso_(tarToday_()), dias = (a, b) => Math.round((Date.parse(b + 'T12:00:00') - Date.parse(a + 'T12:00:00')) / 864e5);
   return `<div class="td-igcs ${grande ? 'g' : ''}">${L.map(x => {
     const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid }, txt = x.est === 'Resuelto' ? 'Terminado' : x.est;
     const p = x.r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[x.r.Plantilla] : null, pt = p ? p.titulo : String(x.r.Nombre || '').replace(/^Inspección general\s*·\s*/i, '');
     const cod = a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid);
-    const k = x.hid + '|' + (x.r.Plantilla || x.r.ID), ult = TAR_STATE._igUlt.get(k), n = ult ? dias(ult, hoy) : null;
+    const k = x.hid + '|' + (x.r.Plantilla || x.r.ID), ult = ULT.get(k), n = ult ? dias(ult, hoy) : null;
     const pi = x.r.Plantilla ? (plIdxGet_(tdIGKey_(x.r, x.hid, x.P)) || {}).p : null, pc = x.est === 'Resuelto' && pi == null ? 100 : pi || 0;
     const dTxt = n == null ? 'Sin levantamiento previo' : n === 0 ? 'Levantado hoy' : `Hace ${n} día${n === 1 ? '' : 's'}`;
     const sem = n == null ? 'gr' : n > 30 ? 'r' : n > 20 ? 'a' : 'v';
@@ -58898,6 +58898,24 @@ function tdIGChips_(iso, grande) {
       <b>${esc(cod)}-${esc(tdAbrev_(pt))}</b>
       <span class="l2"><span class="d ${sem}">${dTxt}</span>${n != null && n > 30 ? `<span class="rt">+${n - 30} días retraso</span>` : ''}</span>
       <span class="br"><span class="tk"><i style="width:${pc}%"></i></span><em>${pc}%</em></span></div>`; }).join('')}</div>`;
+}
+// Prioridad dinámica de un alojamiento en un levantamiento: días desde su último levantamiento terminado (o, si nunca se ha
+// hecho, desde que se creó el levantamiento) menos la frecuencia de 30 días = días de retraso.
+// Semáforo: al día → Baja (verde) · 1–10 días → Media (amarillo) · 11–20 → Alta (naranja) · más de 20 → Crítica (rojo).
+const TD_LV_FREC = 30, TD_LV_SEM = { baja: ['#15803d', '#dcfce7', 'Al día'], media: ['#a16207', '#fef9c3', ''], alta: ['#c2410c', '#ffedd5', ''], critica: ['#b91c1c', '#fee2e2', ''] };
+function tdIGUltMap_() {
+  if (TAR_STATE._igUlt && Date.now() - (TAR_STATE._igUltTs || 0) < 1500) return TAR_STATE._igUlt;
+  const U = new Map(); tdIGMapa_().forEach((A, d) => A.forEach(x => { if (x.est !== 'Resuelto') return; const k = x.hid + '|' + (x.r.Plantilla || x.r.ID); if (!U.has(k) || d > U.get(k)) U.set(k, d); }));
+  TAR_STATE._igUltTs = Date.now(); return (TAR_STATE._igUlt = U);
+}
+function tdIGRetraso_(r, hid) {
+  const hoy = tarIso_(tarToday_()), ult = tdIGUltMap_().get(hid + '|' + (r.Plantilla || r.ID)) || '';
+  const base = ult || String(r.Timestamp || '').slice(0, 10) || hoy, dias = Math.max(0, Math.round((Date.parse(hoy + 'T12:00:00') - Date.parse(base + 'T12:00:00')) / 864e5)), ret = dias - TD_LV_FREC;
+  return { ult, dias, ret, prio: ret > 20 ? 'critica' : ret > 10 ? 'alta' : ret > 0 ? 'media' : 'baja' };
+}
+function tdIGRetHtml_(R) {
+  const c = TD_LV_SEM[R.prio];
+  return `<span class="tb-ret" style="display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:${c[0]};background:${c[1]}">${R.ret > 0 ? `+${R.ret} día${R.ret === 1 ? '' : 's'} de retraso` : `Al día · faltan ${-R.ret} día${R.ret === -1 ? '' : 's'}`}</span>`;
 }
 // Fecha (local) del último guardado del estado o de la plantilla de un alojamiento en el periodo P (fin de mes).
 function tdIGUltFecha_(r, hid, P) {
@@ -58911,15 +58929,17 @@ function tdTablaLv_(O, vac) {
   const grupos = O.filter(x => tdEsIG_(x.r)).sort((a, b) => String(a.r.Nombre || '').localeCompare(String(b.r.Nombre || ''), 'es')).map(x => {
     const r = x.r, P = tdFinMes_(x.iso), fl = tdLimite_(r, x.iso), av = tdAvisoLim_(r, x.iso).replace(/<[^>]+>/g, '').replace('⏳ ', ''), pr = tdIGAvance_(r, x.iso), k = r.ID + '|' + P;
     const rows = tdIGAlojs_(r).map(hid => {
-      const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, e = tdIGEstH_(r, hid, P), ult = tdIGUltFecha_(r, hid, P);
+      const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, e = tdIGEstH_(r, hid, P), ult = tdIGUltFecha_(r, hid, P), R = tdIGRetraso_(r, hid);
       const pi = r.Plantilla ? (plIdxGet_(tdIGKey_(r, hid, P)) || {}).p : null, pc = e === 'Resuelto' && pi == null ? 100 : pi || 0;
       return { a, e, pc, cls: e === 'Cancelado' ? 'gh' : '', onclick: `tdAbrirHijoEn_('${esc(r.ID)}','${esc(hid)}','${P}')`, cells: [
-        `<span class="tb-ch" style="--c:${AT_DEPTO.inspeccion.c}">📝 Levantamiento</span>`, prio4Html_(tdPrioEf_(r, x.iso)), ckEst_(TD_EST[e] || '#94a3b8', e === 'Resuelto' ? 'Terminado' : e),
+        `<span class="tb-ch" style="--c:${AT_DEPTO.inspeccion.c}">📝 Levantamiento</span>`, `<span title="Prioridad según los días de retraso">${prio4Html_(R.prio)}</span>`, ckEst_(TD_EST[e] || '#94a3b8', e === 'Resuelto' ? 'Terminado' : e),
+        `<span class="tb-pc"><span class="tk"><i style="width:${pc}%;background:${TD_EST[e] || '#94a3b8'}"></i></span><em>${pc}%</em></span>`,
         `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</small></span>`,
         ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')),
         fl ? `<span class="tb-fe ${/vencida|hoy/.test(av) && e !== 'Resuelto' ? 'tarde' : ''}" title="${esc(av)}">${esc(tarFmtFecha_(fl))}</span>` : '<span class="tb-mu">—</span>',
         ult ? ckTx_(aseoDiaTxt_(ult)) : '<span class="tb-mu">—</span>',
-        `<span class="tb-pc"><span class="tk"><i style="width:${pc}%;background:${TD_EST[e] || '#94a3b8'}"></i></span><em>${pc}%</em></span>`] };
+        R.ult ? ckTx_(`${aseoDiaTxt_(R.ult)} · hace ${R.dias} día${R.dias === 1 ? '' : 's'}`) : `<span class="tb-mu" title="Se cuenta desde que se creó el levantamiento">Sin previo · ${R.dias} día${R.dias === 1 ? '' : 's'}</span>`,
+        tdIGRetHtml_(R)] };
     }).sort((a, b) => String(a.a.corto || a.a.nombre).localeCompare(String(b.a.corto || b.a.nombre), 'es', { numeric: true }));
     // Avance del levantamiento = promedio de sus alojamientos (con un decimal para que se note desde el primer avance) + conteo por estado.
     const prs = rows.map(x => x.pc), prom = prs.length ? prs.reduce((a, b) => a + b, 0) / prs.length : 0, prT = prom > 0 && prom < 10 ? prom.toFixed(1).replace(/\.0$/, '') : String(Math.round(prom));
@@ -58929,8 +58949,9 @@ function tdTablaLv_(O, vac) {
   });
   if (!document.getElementById('tdlv-css')) { const st = document.createElement('style'); st.id = 'tdlv-css'; st.textContent = `.ad-tbl .tb-grp.tg{cursor:pointer;user-select:none}.ad-tbl .tb-grp.tg:hover{background:#eef2ff}.ad-tbl .tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
     .ad-tbl .tb-gp{display:inline-flex;align-items:center;gap:6px;margin-left:12px;font-size:11px;font-weight:600;color:#6b7280}.ad-tbl .tb-gp .tk,.ad-tbl .tb-pc .tk{width:70px;height:5px;border-radius:3px;background:rgba(15,23,42,.1);overflow:hidden;display:inline-block}
-    .ad-tbl .tb-gp .tk i{display:block;height:100%;background:#7c3aed}.ad-tbl .tb-pc{display:inline-flex;align-items:center;gap:6px}.ad-tbl .tb-pc .tk i{display:block;height:100%}.ad-tbl .tb-pc em,.ad-tbl .tb-gp em{font-style:normal;font-size:11px;font-weight:700;color:#334155}`; document.head.appendChild(st); }
-  return ckTablaHtml_([['Tipo', '140px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Alojamiento', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '120px'], ['Último registro', '120px'], ['Avance', '120px']], grupos, vac);
+    .ad-tbl .tb-gp .tk i{display:block;height:100%;background:#7c3aed}.ad-tbl .tb-pc{display:inline-flex;align-items:center;gap:6px}.ad-tbl .tb-pc .tk i{display:block;height:100%}.ad-tbl .tb-pc em,.ad-tbl .tb-gp em{font-style:normal;font-size:11px;font-weight:700;color:#334155}
+    .ad-tbl .tb-ret{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}`; document.head.appendChild(st); }
+  return ckTablaHtml_([['Tipo', '140px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Avance', '120px'], ['Alojamiento', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '110px'], ['Último registro', '110px'], ['Último levantamiento', '170px'], ['Retraso', '170px']], grupos, vac);
 }
 window.tdTbTg_ = function (k) { const C = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(); if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 window.tdAbrirHijoEn_ = function (pid, hid, P) { if (tdFinMes_(tdDia_()) !== P) TAR_STATE.dia = P; tdAbrirHijo_(pid, hid); };
@@ -59060,7 +59081,7 @@ function tdPintarHijo_(r, D, nuevo) {
   const sig = TAR_ESTADOS[Math.min(2, TAR_ESTADOS.findIndex(e => e.k === est) + 1)], key = tdIGKey_(r, D.hid, dia);
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span><span class="t">${esc(a.nombre || D.hid)}</span><button type="button" class="ad-close" onclick="tdCerrar_()">✕</button></div>
       <div class="ad-tt">📝 ${esc(r.Nombre || 'Levantamiento')}</div>
-      <div class="ad-sub">Límite ${aseoDiaTxt_(tdLimIG_(r, dia))} · <i style="background:${TD_EST[est]}"></i>${est} · ${prio4Html_(tdPrioEf_(r, dia))}</div>
+      <div class="ad-sub">Límite ${aseoDiaTxt_(tdLimIG_(r, dia))} · <i style="background:${TD_EST[est]}"></i>${est} · ${(R => prio4Html_(R.prio) + ' ' + tdIGRetHtml_(R))(tdIGRetraso_(r, D.hid))}</div>
       <div class="ad-hint" style="margin-top:6px"><a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrir_('${esc(r.ID)}')">‹ Levantamiento · ${tdIGAlojs_(r).length} alojamientos</a></div></div>
     <div class="ad-db">
       <div class="lab">Estado de este alojamiento</div>
@@ -59457,7 +59478,7 @@ window.tarSetView = function (v) { TAR_STATE.view = v; tarRender(); };
 // ── Sección 2: Calendario ──────────────────────────────────────────────
 function tarCalendarioHtml_() {
   if (!TAR_STATE.calRef) TAR_STATE.calRef = tarToday_();
-  TAR_STATE._igMapa = null; TAR_STATE._igUlt = null; // se recalculan en cada pintada
+  TAR_STATE._igMapa = null; TAR_STATE._igUlt = null; TAR_STATE._igUltTs = 0; // se recalculan en cada pintada
   const vBtn = (k, label) => {
     const on = TAR_STATE.calView === k;
     return `<button type="button" onclick="tarSetCalView('${k}')" style="all:unset;cursor:pointer;padding:7px 14px;font-size:12px;font-weight:800;border-radius:8px;background:${on ? '#7c3aed' : '#fff'};color:${on ? '#fff' : '#475569'};border:1.5px solid ${on ? '#7c3aed' : '#e2e8f0'}">${label}</button>`;
