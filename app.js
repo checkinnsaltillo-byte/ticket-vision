@@ -67951,6 +67951,13 @@ function atToca_(t, dia) {
   if (!r) return dia === t.fecha;
   if (r.fin && dia > r.fin) return false;
   const a = atD_(t.fecha), b = atD_(dia), dd = Math.round((b - a) / 864e5);
+  if (r.vigencia && r.vigencia !== 'Activa' && dia >= aseoHoyIso_()) return false; // pausada/cancelada: sin fechas futuras
+  if (Array.isArray(r.dias_semana) && r.tipo === 'semanal') return r.dias_semana.includes(b.getDay());
+  if (Array.isArray(r.dias_mes) && (r.tipo === 'mensual' || r.tipo === 'bimestral')) { // «Recurrente» (igual que Pendientes)
+    if (r.tipo === 'bimestral' && ((b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth()) % 2) return false;
+    const d = b.getDate(), ult = new Date(b.getFullYear(), b.getMonth() + 1, 0).getDate();
+    return r.dias_mes.some(n => n === d || (n > ult && d === ult));
+  }
   if (r.tipo === 'diario') return true;
   if (r.tipo === 'cada') return dd % (r.n || 1) === 0;
   if (r.tipo === 'semanal') return a.getDay() === b.getDay();
@@ -67961,6 +67968,11 @@ function atToca_(t, dia) {
 function atRepTxt_(r, fecha) {
   if (!r) return '';
   const a = atD_(fecha);
+  if (Array.isArray(r.dias_semana) || Array.isArray(r.dias_mes)) {
+    const dow = TAR_DOW.filter(([v]) => (r.dias_semana || []).includes(v)).map(x => x[1]).join(', '), dm = (r.dias_mes || []).slice().sort((x, y) => x - y).join(', ');
+    const t = r.tipo === 'semanal' ? `Cada semana: ${dow || '—'}` : `${r.tipo === 'bimestral' ? 'Cada 2 meses' : 'Cada mes'}, día${(r.dias_mes || []).length === 1 ? '' : 's'} ${dm || '—'}`;
+    return t + ` · desde ${aseoDiaTxt_(fecha)}` + (r.fin ? ` · hasta ${aseoDiaTxt_(r.fin)}` : '') + (r.limite ? ' · ⏳ con fecha límite' : '') + (r.vigencia && r.vigencia !== 'Activa' ? ` · ${r.vigencia}` : '');
+  }
   const txt = { diario: 'Diariamente', semanal: `Semanalmente los ${AT_DIAS[a.getDay()]}`, mensual: `Mensualmente el ${AT_ORD[Math.ceil(a.getDate() / 7)]} ${AT_DIAS[a.getDay()]}`,
     anual: `Anualmente el ${a.getDate()} de ${a.toLocaleDateString('es-MX', { month: 'long' })}`, cada: `Cada ${r.n || 1} día${(r.n || 1) === 1 ? '' : 's'}` }[r.tipo] || '';
   return txt + (r.fin ? ` · hasta ${aseoDiaTxt_(r.fin)}` : '');
@@ -68092,8 +68104,6 @@ function atFormPintar_() {
   const alojs = atAlojs_().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
   const horas = ['']; for (let m = 6 * 60; m <= 23 * 60 + 30; m += 30) horas.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
   const sw = (on, fn) => `<span class="ad-sw ${on ? '' : 'off'}" onclick="${fn}"></span>`;
-  const a = F.fecha ? atD_(F.fecha) : new Date();
-  const rOpts = [['diario', 'Diariamente'], ['semanal', `Semanalmente los ${AT_DIAS[a.getDay()]}`], ['mensual', `Mensualmente el ${AT_ORD[Math.ceil(a.getDate() / 7)]} ${AT_DIAS[a.getDay()]}`], ['anual', `Anualmente el ${a.getDate()} de ${a.toLocaleDateString('es-MX', { month: 'long' })}`], ['cada', 'Personalizado…']];
   dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">${F.id ? 'Editar tarea' : 'Crea una tarea'}</b><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></div></div>
     <div class="ad-db at-f">
       ${atDeptoSeg_(F.depto, 'atFormDepto_')}
@@ -68109,12 +68119,10 @@ function atFormPintar_() {
       <label class="at-l">Título de la tarea <i>*</i></label>
       <input class="at-in" placeholder="Introduce un título" value="${pcEsc(F.titulo)}" oninput="ASEO._tf.titulo=this.value">
       <textarea class="at-in" rows="4" placeholder="Añade una descripción…" oninput="ASEO._tf.desc=this.value">${pcEsc(F.desc)}</textarea>
-      <div class="at-sec"><span>📅 Programar</span><label class="at-tg">Hacer que se repita ${sw(!!F.repite, "ASEO._tf.repite=ASEO._tf.repite?null:{tipo:'diario',n:1,fin:''};atFormPintar_()")}</label></div>
-      <div class="at-row"><span class="at-k">Vence el</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" ${atResRango_()} onchange="ASEO._tf.fecha=this.value;atFormPintar_()">
-        <select class="at-in" onchange="ASEO._tf.hora=this.value">${horas.map(h => `<option value="${h}" ${h === (F.hora || '') ? 'selected' : ''}>${h ? aseoHoraTxt_(h) : 'Sin hora'}</option>`).join('')}</select></div>
-      ${F.repite ? `<div class="at-row"><span class="at-k">Se repite</span><select class="at-in" onchange="ASEO._tf.repite.tipo=this.value;atFormPintar_()">${rOpts.map(([k, l]) => `<option value="${k}" ${F.repite.tipo === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        <input type="date" class="at-in" title="Fecha de finalización (opcional)" value="${pcEsc(F.repite.fin || '')}" onchange="ASEO._tf.repite.fin=this.value"></div>
-        ${F.repite.tipo === 'cada' ? `<div class="at-row"><span class="at-k">Cada</span><input type="number" min="1" max="365" class="at-in" style="max-width:80px" value="${F.repite.n || 1}" oninput="ASEO._tf.repite.n=Math.max(1,+this.value||1)"><span class="at-k">días</span></div>` : ''}
+      <div class="at-sec"><span>📅 Programar</span><label class="at-tg">Recurrente ${sw(!!F.repite, "atRecTog_()")}</label></div>
+      ${F.repite ? atRecHtml_(F) : `<div class="at-row"><span class="at-k">Vence el</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" ${atResRango_()} onchange="ASEO._tf.fecha=this.value;atFormPintar_()">
+        <select class="at-in" onchange="ASEO._tf.hora=this.value">${horas.map(h => `<option value="${h}" ${h === (F.hora || '') ? 'selected' : ''}>${h ? aseoHoraTxt_(h) : 'Sin hora'}</option>`).join('')}</select></div>`}
+      ${F.repite ? `<div class="at-row"><span class="at-k">Hora</span><select class="at-in" onchange="ASEO._tf.hora=this.value">${horas.map(h => `<option value="${h}" ${h === (F.hora || '') ? 'selected' : ''}>${h ? aseoHoraTxt_(h) : 'Sin hora'}</option>`).join('')}</select></div>
         <div class="at-hint">Nota: las personas asignadas lo estarán en todas las repeticiones.</div>` : ''}
       <div class="at-sec"><span>👤 Asignados</span><button type="button" class="ad-link" onclick="atAsignar_(this)">＋ Añadir asignado</button></div>
       <div class="at-chips" id="at-asig">${atAsigChips_()}</div>
@@ -68128,6 +68136,41 @@ function atFormPintar_() {
     </div>
     <div class="ad-ft"><button type="button" class="ad-bt pri" id="at-ok" onclick="atGuardar_()">${F.id ? 'Guardar cambios' : 'Crear tarea'}</button><button type="button" class="ad-bt" onclick="${F.id ? `atAbrir_('${pcEsc(F.id)}','${F.fecha}')` : 'adCerrar_()'}">Cancelar</button></div>`;
 }
+// «Recurrente»: mismos campos que «Crear una tarea» de Pendientes (Fecha(s), Desde, Hasta, Fecha límite, Vigencia).
+function atRecHtml_(F) {
+  const R = F.repite, lb = t => `<label class="at-l">${t}</label>`;
+  const tipos = [['semanal', 'Días de la semana'], ['mensual', 'Días del mes'], ['bimestral', 'Bimestral']].map(([k, l]) => tarPill_(R.tipo === k, l, `atRec_('tipo','${k}')`)).join(' ');
+  const sel = R.tipo === 'semanal'
+    ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${TAR_DOW.map(([v, l]) => tarPill_((R.dias_semana || []).includes(v), l, `atRec_('dow',${v})`)).join('')}</div>`
+    : `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;max-width:340px">${Array.from({ length: 31 }, (_, i) => i + 1).map(n => { const on = (R.dias_mes || []).includes(n);
+        return `<button type="button" onclick="atRec_('dm',${n})" style="all:unset;cursor:pointer;text-align:center;padding:7px 0;border-radius:7px;font-size:12px;font-weight:800;border:1.5px solid ${on ? '#7c3aed' : '#e2e8f0'};background:${on ? '#7c3aed' : '#fff'};color:${on ? '#fff' : '#334155'}">${n}</button>`; }).join('')}</div>
+      <div class="at-hint">${R.tipo === 'bimestral' ? 'Se repite cada 2 meses a partir del mes de inicio. ' : ''}Si el mes no tiene el día 29–31, se usa su último día.</div>`;
+  return `${lb('Fecha(s)')}<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${tipos}</div>${sel}
+    <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+      <div><div class="at-k" style="margin-bottom:3px">Desde${R.tipo === 'bimestral' ? ' (mes de inicio)' : ''}</div><input type="date" class="at-in" style="width:auto" value="${pcEsc(F.fecha || '')}" onchange="if(this.value){ASEO._tf.fecha=this.value;atFormPintar_()}"></div>
+      <div><div class="at-k" style="margin-bottom:3px">Hasta (opcional)</div><input type="date" class="at-in" style="width:auto" value="${pcEsc(R.fin || '')}" onchange="ASEO._tf.repite.fin=this.value"></div>
+    </div>
+    <div onclick="atRec_('limite')" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px;padding:10px 12px;border-radius:10px;border:1.5px solid ${R.limite ? '#fca5a5' : '#e2e8f0'};background:${R.limite ? '#fef2f2' : '#fff'}">
+      ${tarCheck_(!!R.limite)}<div><div style="font-size:13px;font-weight:900;color:#0f172a">⏳ Fecha límite</div>
+      <div style="font-size:11.5px;color:#64748b;margin-top:2px">La tarea debe quedar resuelta a más tardar en esa fecha (en cada fecha programada).</div></div></div>
+    ${lb('Vigencia de la tarea')}<div style="display:flex;gap:6px;flex-wrap:wrap">${TAR_VIGENCIAS.map(e => tarPill_((R.vigencia || 'Activa') === e.k, e.k, `atRec_('vigencia','${e.k}')`, { fg: e.fg, bg: e.bg, bd: e.bd })).join('')}</div>
+    <div class="at-hint">Pausada o Cancelada: deja de aparecer en fechas futuras.</div>`;
+}
+window.atRecTog_ = function () {
+  const F = ASEO._tf, d = atD_(F.fecha || aseoHoyIso_());
+  F.repite = F.repite ? null : { tipo: 'semanal', dias_semana: [d.getDay()], dias_mes: [d.getDate()], fin: '', limite: false, vigencia: 'Activa' };
+  atFormPintar_();
+};
+window.atRec_ = function (k, v) {
+  const R = ASEO._tf.repite; if (!R) return;
+  const tg = (L, x) => { const i = L.indexOf(x); i < 0 ? L.push(x) : L.splice(i, 1); };
+  if (k === 'tipo') R.tipo = v;
+  else if (k === 'dow') tg(R.dias_semana = R.dias_semana || [], v);
+  else if (k === 'dm') tg(R.dias_mes = R.dias_mes || [], v);
+  else if (k === 'limite') R.limite = !R.limite;
+  else if (k === 'vigencia') R.vigencia = v;
+  atFormPintar_();
+};
 window.atFormPrio_ = function (k) { ASEO._tf.prioridad = k; atFormPintar_(); };
 window.atFormSrv_ = function (v) { const F = ASEO._tf; F.srv = v; if (!F.plantilla && F.depto === 'limpieza' && v === 'checkout') F.plantilla = plDefId_(); atFormPintar_(); };
 window.rtFormSrv_ = function (v) { ASEO._rf._srv = v; rtFormPintarA_(); };
@@ -68206,6 +68249,9 @@ window.atGuardar_ = async function () {
   if (!F.depto) return alert('Elige el tipo de tarea: Aseo, Inspección o Mantenimiento.');
   if (!String(F.titulo || '').trim()) return alert('Escribe el título de la tarea.');
   if (!F.fecha) return alert('Elige la fecha.');
+  const R = F.repite;
+  if (R && Array.isArray(R.dias_semana) && !(R.tipo === 'semanal' ? R.dias_semana : R.dias_mes || []).length) return alert(R.tipo === 'semanal' ? 'Elige al menos un día de la semana.' : 'Elige al menos un día del mes.');
+  if (R && R.fin && R.fin < F.fecha) return alert('«Hasta» debe ser posterior a «Desde».');
   if (F.reserva) { const b = pcMovBookings_().find(x => String(x.Id) === String(F.reserva)); if (b && !(F.fecha >= _pagosDateIso(b.DateArrival) && F.fecha <= _pagosDateIso(b.DateDeparture))) return alert('La fecha debe quedar dentro de la estancia de la reserva enlazada.'); }
   const btn = document.getElementById('at-ok'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando…'; }
   try {

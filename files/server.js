@@ -10305,8 +10305,11 @@ app.post("/aseo/tarea", async (req, res) => {
     const titulo = txt(b.titulo, 140);
     if (!titulo || !iso.test(String(b.fecha || ""))) return res.status(400).json({ ok: false, error: "Faltan título o fecha" }); // alojamiento opcional
     const depto = ["limpieza", "inspeccion", "insumos", "mantenimiento"].includes(b.depto) ? b.depto : "limpieza";
-    const rp = b.repite && ["diario", "semanal", "mensual", "anual", "cada"].includes(b.repite.tipo)
-      ? { tipo: b.repite.tipo, n: Math.max(1, Math.min(365, Number(b.repite.n) || 1)), fin: iso.test(String(b.repite.fin || "")) ? b.repite.fin : "" } : null;
+    const R = b.repite, ints = (L, a, z) => [...new Set((Array.isArray(L) ? L : []).map(Number).filter(n => Number.isInteger(n) && n >= a && n <= z))];
+    const rp = R && Array.isArray(R.dias_semana) && ["semanal", "mensual", "bimestral"].includes(R.tipo) // «Recurrente» (mismo modelo que Pendientes)
+      ? { tipo: R.tipo, dias_semana: ints(R.dias_semana, 0, 6), dias_mes: ints(R.dias_mes, 1, 31), fin: iso.test(String(R.fin || "")) ? R.fin : "", limite: !!R.limite, vigencia: ["Activa", "Pausada", "Cancelada"].includes(R.vigencia) ? R.vigencia : "Activa" }
+      : R && ["diario", "semanal", "mensual", "anual", "cada"].includes(R.tipo)
+      ? { tipo: R.tipo, n: Math.max(1, Math.min(365, Number(R.n) || 1)), fin: iso.test(String(R.fin || "")) ? R.fin : "" } : null;
     const id = /^[a-z0-9]{6,20}$/.test(String(b.id || "")) ? String(b.id) : Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
     let nueva = false, tPrev = null;
     const out = await _aseoMutate(_ASEO_TAREAS_OBJ, "tareas", d => {
@@ -10324,7 +10327,7 @@ app.post("/aseo/tarea", async (req, res) => {
       return d[id];
     });
     _aseo.tareasTs = Date.now();
-    { const TIPO = { limpieza: "Limpieza", inspeccion: "Inspección", insumos: "Insumos", mantenimiento: "Mantenimiento" }, rep = r => r ? `${r.tipo}${r.tipo === "cada" ? " " + r.n + " días" : ""}${r.fin ? " hasta " + r.fin : ""}` : "No";
+    { const TIPO = { limpieza: "Limpieza", inspeccion: "Inspección", insumos: "Insumos", mantenimiento: "Mantenimiento" }, rep = r => r ? `${r.tipo}${r.tipo === "cada" ? " " + r.n + " días" : ""}${Array.isArray(r.dias_semana) ? " " + (r.tipo === "semanal" ? r.dias_semana : r.dias_mes).join(",") + (r.limite ? " (fecha límite)" : "") + " " + r.vigencia : ""}${r.fin ? " hasta " + r.fin : ""}` : "No";
       if (nueva) _histAdd("T:" + id, [["Creada", "", titulo]], user);
       else _histAdd("T:" + id, [["Título", tPrev.titulo, out.titulo], ["Descripción", tPrev.desc, out.desc], ["Tipo de tarea", TIPO[tPrev.depto] || tPrev.depto, TIPO[out.depto] || out.depto],
         ["Fecha", tPrev.fecha, out.fecha], ["Hora", tPrev.hora || "Sin hora", out.hora || "Sin hora"], ["Prioridad", tPrev.prioridad, out.prioridad], ["Asignados", (tPrev.asignados || []).join(", ") || "Sin asignar", (out.asignados || []).join(", ") || "Sin asignar"],
@@ -11803,6 +11806,13 @@ function _clToca(t, dia) {
   const r = t.repite; if (!r) return dia === t.fecha;
   if (r.fin && dia > r.fin) return false;
   const a = new Date(t.fecha + "T12:00:00"), b = new Date(dia + "T12:00:00"), dd = Math.round((b - a) / 864e5);
+  if (r.vigencia && r.vigencia !== "Activa" && dia >= _mxHoy()) return false;
+  if (Array.isArray(r.dias_semana) && r.tipo === "semanal") return r.dias_semana.includes(b.getDay());
+  if (Array.isArray(r.dias_mes) && (r.tipo === "mensual" || r.tipo === "bimestral")) {
+    if (r.tipo === "bimestral" && ((b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth()) % 2) return false;
+    const d = b.getDate(), ult = new Date(b.getFullYear(), b.getMonth() + 1, 0).getDate();
+    return r.dias_mes.some(n => n === d || (n > ult && d === ult));
+  }
   if (r.tipo === "diario") return true;
   if (r.tipo === "cada") return dd % (r.n || 1) === 0;
   if (r.tipo === "semanal") return a.getDay() === b.getDay();
