@@ -58571,10 +58571,12 @@ function tdIGHijo_(r, hid) { return `${r.ID}~${hid}`; }
 function tdIGKey_(r, hid, iso) { return `TI:${r.ID}:${hid}:${tdFinMes_(iso)}`; }
 // Estado informativo de un alojamiento según su plantilla (mismos criterios que Aseo/Mantenimiento):
 // 0 % Pendiente · > 0 % En proceso · ≥ 90 % Terminado. Si no hay plantilla (o se canceló/resolvió a mano) manda el estado guardado.
+// Regla de avance de plantilla (todas las tareas y levantamientos): > 10 % En proceso · ≥ 90 % Terminado/Resuelto.
+const PL_U_PROC = 10, PL_U_FIN = 90;
 function tdIGEstH_(r, hid, iso) {
   const e = tarOcurEstado_(tdIGHijo_(r, hid), tdFinMes_(iso)); if (e === 'Cancelado' || !r.Plantilla) return e;
   const x = (ASEO.pl.idx || {})[tdIGKey_(r, hid, iso)], pc = x ? x.p : 0;
-  return pc >= 90 || e === 'Resuelto' ? 'Resuelto' : pc > 0 ? 'En proceso' : 'Pendiente';
+  return pc >= PL_U_FIN || e === 'Resuelto' ? 'Resuelto' : pc > PL_U_PROC ? 'En proceso' : 'Pendiente';
 }
 function tdProgCorto_(r) {
   const p = tarProg_(r); if (!p) return '';
@@ -58945,7 +58947,7 @@ window.tdAbrirHijo_ = function (pid, hid) {
 window.tdIGPlantillaHecha_ = function (key, pc) {
   const m = String(key).match(/^TI:(.+):([^:]+):(\d{4}-\d{2}-\d{2})$/); if (!m) return;
   const id = `${m[1]}~${m[2]}`, iso = m[3], e = tarOcurEstado_(id, iso);
-  const nuevo = pc > 90 && (e === 'Pendiente' || e === 'En proceso') ? 'Resuelto' : pc > 0 && e === 'Pendiente' ? 'En proceso' : '';
+  const nuevo = pc >= PL_U_FIN && (e === 'Pendiente' || e === 'En proceso') ? 'Resuelto' : pc > PL_U_PROC && e === 'Pendiente' ? 'En proceso' : '';
   const fin = () => { TAR_STATE._sinDr = true; try { tarRender(); } finally { TAR_STATE._sinDr = false; } };
   if (nuevo) Promise.resolve(tarSaveOcur_(id, iso, { Estado: nuevo })).then(fin).catch(() => {}); else fin();
 };
@@ -67447,6 +67449,7 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   const tInfos = atLista_().filter(t => atToca_(t, hoy)).map(t => atInfo_(t, hoy));
   // Administrativas únicas sin resolver de días pasados: siguen apareciendo hoy (como los antiguos Pendientes).
   if (hoy === aseoHoyIso_()) { const ya = new Set(tInfos.map(I => I.k)); atLista_().forEach(t => { if (t.rt || t.repite || t.depto !== 'administrativo' || !(t.fecha < hoy) || ya.has('T' + t.id)) return; const I = atInfo_(t, t.fecha); if (['terminado', 'inspeccionado', 'cancelado'].includes(I.selE)) return; I.atrasada = true; tInfos.push(I); }); }
+  plReconciliar_();
   // Card reprogramada a este día: sus tareas ligadas por incidencia (de cualquier tipo) que sigan sin resolver la acompañan.
   { const ya = new Set(tInfos.map(I => I.k));
     infos.filter(I => I.esCopia).forEach(C => {
@@ -70801,17 +70804,37 @@ function plGuardarLuego_(key0, pid0) {
     ASEO.pl._guardando = null;
   }, 900);
 }
-// Plantilla por encima del 90 %: la card/tarea pasa sola a «Terminado» (si estaba Pendiente o En proceso). Una sola vez por
+// Plantilla al 90 % o más: la card/tarea pasa sola a «Terminado» (si estaba Pendiente o En proceso). Una sola vez por
 // cruce: si después la regresan a «En proceso» a mano, no se vuelve a forzar hasta que baje del 90 % y vuelva a subir.
-// Entre 0 % y 90 % (sin incluirlos): si seguía «Pendiente» pasa a «En proceso» (una vez; no baja estados más avanzados).
+// Más de 10 % y menos de 90 %: si seguía «Pendiente» pasa a «En proceso» (una vez; no baja estados más avanzados).
+// Registros que ya tenían avance (capturado antes o desde otro lado): se ponen al día con la misma regla al pintar el tablero.
+function plReconciliar_() {
+  if (!ASEO.pl || !ASEO.pl.idx || !ASEO.estados || typeof aseoSetEstado_ !== 'function') return;
+  const idx = ASEO.pl.idx || {}, A = ASEO.pl.autoT = ASEO.pl.autoT || {}, H = ASEO.pl._rec = ASEO.pl._rec || {}, cambios = [];
+  const bks = typeof pcMovBookings_ === 'function' ? pcMovBookings_() : [];
+  // Todas las respuestas guardadas: tareas «T<id>-<fecha>» y cards de aseo «<reserva>» (los levantamientos «TI:» tienen su propia regla).
+  const L = Object.keys(idx).map(key => {
+    const m = key.match(/^T([a-z0-9]+)-\d{4}-\d{2}-\d{2}$/);
+    if (m) return (ASEO.tareas || {})[m[1]] ? { key, hid: '' } : null;
+    if (!/^\d+$/.test(key)) return null;
+    const b = bks.find(x => String(x.Id) === key), e = (ASEO.estados || {})[key];
+    return { key, hid: String((b && b.HouseId) || (e && e.hid) || '') };
+  }).filter(Boolean).map(x => Object.assign(x, { est: ((aseoEstDe_(x.key) || {}).estado) || 'pendiente' }));
+  L.forEach(x => {
+    const v = idx[x.key]; if (!v || H[x.key + '|' + x.est]) return;
+    const pc = v.p || 0, nuevo = pc >= PL_U_FIN ? (x.est === 'pendiente' || (x.est === 'en_proceso' && !A[x.key]) ? 'terminado' : '') : pc > PL_U_PROC && x.est === 'pendiente' ? 'en_proceso' : '';
+    if (!nuevo) return; H[x.key + '|' + x.est] = 1; if (nuevo === 'terminado') A[x.key] = true; cambios.push([x.key, x.hid || '', nuevo]);
+  });
+  if (cambios.length) setTimeout(() => cambios.forEach(c => aseoSetEstado_(c[0], c[1], c[2], false)), 0);
+}
 function plAutoTerminado_(key, pc) {
   const A = ASEO.pl.autoT = ASEO.pl.autoT || {}, B = ASEO.pl.autoP = ASEO.pl.autoP || {}, c = (ASEO.pl.ctx || {})[key];
-  if (pc > 0 && pc < 90 && c && !B[key] && typeof aseoSetEstado_ === 'function') {
+  if (pc > PL_U_PROC && pc < PL_U_FIN && c && !B[key] && typeof aseoSetEstado_ === 'function') {
     B[key] = true;
     if (((aseoEstDe_(c.id) || {}).estado || 'pendiente') === 'pendiente') aseoSetEstado_(c.id, c.hid || '', 'en_proceso', false);
   }
-  if (pc <= 0) delete B[key];
-  if (pc <= 90) { delete A[key]; return; }
+  if (pc <= PL_U_PROC) delete B[key];
+  if (pc < PL_U_FIN) { delete A[key]; return; }
   if (A[key] || !c || typeof aseoSetEstado_ !== 'function') return;
   A[key] = true;
   const cur = (aseoEstDe_(c.id) || {}).estado || 'pendiente';
