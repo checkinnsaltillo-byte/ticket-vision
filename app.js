@@ -9169,17 +9169,26 @@ if (!window._rtHashListener) {
 // Check-Flow: A) Operación (Check-inn, Breezeway) · B) Administración (Pendientes).
 const CL_BZW_OFF = true; // Breezeway desactivado por el momento (botón gris, sin acción)
 function clPuede_(m) { return !window.SYS_ALLOWED || window.SYS_ALLOWED.has(m); }
+// Secciones: ✅ Tareas (submenú por tipo) · 🚨 Incidencias · 🧳 Objetos olvidados · 🗓️ Pendientes; 📋 Plantillas aparte a la derecha.
+const CL_SUBS = [['todos', '📋', 'Todos'], ['limpieza'], ['mantenimiento'], ['inspeccion'], ['administrativo'], ['insumos']];
 function clNavHtml_(act) {
-  const b = (k, l, mod) => `<button type="button" class="cl-b ${act === k ? 'on' : ''}" onclick="switchModule('${mod}')">${l}</button>`;
+  const b = (k, l, mod, on) => `<button type="button" class="cl-b ${(on != null ? on : act === k) ? 'on' : ''}" onclick="switchModule('${mod}')">${l}</button>`;
   const MPn = typeof clModoPersonal_ === 'function' && clModoPersonal_();
-  if (act === 'checkinn' && window.ASEO && ASEO.sec === 'mant') act = 'mant'; // mismo tablero, sección Mantenimiento
-  const op = [clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '🧽 Aseo', 'aseo') + b('mant', '🔧 Mantenimiento', 'mantenimiento') : '', !MPn && (clPuede_('breezeway') || clPuede_('aseo')) ? (CL_BZW_OFF ? `<button type="button" class="cl-b off" disabled title="Breezeway está desactivado por el momento">🧹 Breezeway</button>` : b('breezeway', '🧹 Breezeway', 'breezeway')) : ''].join('');
-  const op2 = (!MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (!MPn && clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '');
-  const adm = (!MPn && clPuede_('tareas') ? b('tareas', '🗓️ Pendientes', 'tareas') : '') + (!MPn && clPuede_('aseo') ? b('plantillas', '📋 Plantillas', 'plantillas') : '');
-  // «Check-Flow Bot» (notificaciones y permisos del bot) vive en Configuración admin › 🤖 Check-Flow Bot.
-  const items = [op.replace(/<button[^>]*class="cl-b off"[\s\S]*?<\/button>/g, ''), op2, adm].join('');
-  return items.trim() ? `<div class="cl-nav"><div class="cl-g">${items}</div></div>` : '';
+  const enTareas = act === 'checkinn' || act === 'mant';
+  const items = (clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '✅ Tareas', 'aseo', enTareas) : '')
+    + (!MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (!MPn && clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '')
+    + (!MPn && clPuede_('tareas') ? b('tareas', '🗓️ Pendientes', 'tareas') : '');
+  const pl = !MPn && clPuede_('aseo') ? `<div class="cl-g cl-der">${b('plantillas', '📋 Plantillas', 'plantillas')}</div>` : '';
+  const sub = enTareas && window.ASEO ? `<div class="cl-sub">${CL_SUBS.map(([k, ico, t]) => { const D = AT_DEPTO[k] || {}; return `<button type="button" class="cl-sb ${(ASEO.sub || 'todos') === k ? 'on' : ''}" style="--c:${D.c || '#0f1729'}" onclick="clSub_('${k}')">${ico || D.ico} ${t || D.t}</button>`; }).join('')}</div>` : '';
+  return items.trim() || pl ? `<div class="cl-nav">${items.trim() ? `<div class="cl-g">${items}</div>` : ''}${pl}</div>${sub}` : '';
 }
+// Submenú de Tareas: «Todos» = todos los tipos; los demás, solo su tipo. Mantenimiento usa su sección (reportes técnicos).
+window.clSub_ = function (k) {
+  ASEO.sub = k; ASEO.calSig = '';
+  const quiere = k === 'mantenimiento' ? 'mant' : k === 'todos' ? 'todos' : 'aseo';
+  if ((quiere === 'mant') !== (ASEO.sec === 'mant')) return switchModule(quiere === 'mant' ? 'mantenimiento' : 'aseo');
+  ASEO.sec = quiere; aseoRender_(); clNavPaint_();
+};
 // Barra compacta del Check-Flow (misma en Aseo, Incidencias y Tareas): ☰ filtros con contador de filtros activos.
 function ckFxN_(fx, def) { def = def || {}; return Object.entries(fx || {}).filter(([k, v]) => !(k in def && def[k] === v) && (v instanceof Set ? v.size : Array.isArray(v) ? v.length : !!v)).length; }
 function ckHam_(on, n, fn) { return `<button type="button" class="ad-ham ${on ? 'on' : ''}" onclick="${fn}" title="${on ? 'Ocultar filtros' : 'Mostrar filtros'}${n ? ` (${n} activo${n === 1 ? '' : 's'})` : ''}">☰${n ? `<b>${n}</b>` : ''}</button>`; }
@@ -9192,6 +9201,10 @@ function clNavPaint_() {
       .cl-l{font-size:10.5px;font-weight:600;color:#9aa1ad;text-transform:uppercase;letter-spacing:.08em;padding:0 8px 0 6px}
       .cl-b{all:unset;cursor:pointer;padding:6px 12px;border-radius:7px;font-size:12.5px;font-weight:600;color:#6b7280;white-space:nowrap}
       .cl-b:hover{color:#0f1729;background:#f3f4f6}.cl-b.on{background:#0f1729;color:#fff}
+      .cl-der{margin-left:auto}
+      .cl-sub{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px;font-family:Inter,system-ui,sans-serif}
+      .cl-sb{all:unset;cursor:pointer;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;color:#4b5563;background:#fff;border:1px solid #e3e6eb;white-space:nowrap}
+      .cl-sb:hover{border-color:var(--c);color:#0f1729}.cl-sb.on{background:var(--c);border-color:var(--c);color:#fff}
       .cl-notif{all:unset;cursor:pointer;margin-left:auto;align-self:center;padding:8px 14px;border-radius:9px;background:#0f1729;color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap}
       .cl-notif:hover{background:#1e293b}
       @media (max-width:640px){.cl-notif{margin-left:0}}
@@ -9253,7 +9266,8 @@ function switchModule(mod) {
   // «Reportes técnicos» = sección Mantenimiento. «Mantenimiento» usa el mismo tablero de Aseo filtrado (ASEO.sec = 'mant').
   if (mod === 'reportes-tecnicos') mod = 'mantenimiento';
   let hashMod = mod;
-  if (typeof ASEO !== 'undefined' && (mod === 'aseo' || mod === 'mantenimiento')) { const sec = mod === 'mantenimiento' ? 'mant' : 'aseo'; if (ASEO.sec !== sec) { ASEO.sec = sec; ASEO.calSig = ''; } }
+  if (typeof ASEO !== 'undefined' && (mod === 'aseo' || mod === 'mantenimiento')) { if (mod === 'mantenimiento') ASEO.sub = 'mantenimiento'; else if (!ASEO.sub || ASEO.sub === 'mantenimiento') ASEO.sub = 'todos';
+    const sec = mod === 'mantenimiento' ? 'mant' : ASEO.sub === 'todos' ? 'todos' : 'aseo'; if (ASEO.sec !== sec) { ASEO.sec = sec; ASEO.calSig = ''; } }
   if (mod === 'mantenimiento') mod = 'aseo';
   // Permisos: un módulo no asignado (p. ej. por enlace #modulo) manda a Inicio.
   if (window.SYS_ALLOWED && mod !== 'home') {
@@ -67356,7 +67370,7 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   if (MP) { const mias = tInfos.filter(I => clEsMio_(I.pA)); tInfos.length = 0; mias.forEach(I => tInfos.push(I)); }
   // Sección «🧽 Aseo»: las tareas de Mantenimiento solo aparecen si están ligadas (por una incidencia) a una limpieza/inspección;
   // las sueltas viven en «🔧 Mantenimiento».
-  if (ASEO.sec !== 'mant') {
+  if (ASEO.sec === 'aseo') {
     const kI = I => I.tarea ? (I.t.rt ? 'R' + I.t.rtId : 'T' + I.t.id) : I.asigId;
     const esMant = I => I.tarea && (I.t.rt || I.t.depto === 'mantenimiento');
     const incs = I => { const k = kI(I); return axEx_(k).incidencia ? axIncActivas_(k) : []; };
@@ -67416,7 +67430,8 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   const tipoDe = I => I.tarea ? (I.t.depto || 'limpieza') : (I.depto || 'limpieza');
   const fT = ASEO.fTipo || [];
   const todos = infos.concat(tInfos);
-  const verT = ver.filter(I => (!fT.length || fT.includes(tipoDe(I))) && (!(ASEO.fPrio || []).length || ASEO.fPrio.includes(I.tarea ? prio4Key_(I.t.prioridad) : I.prio)));
+  const fSub = ASEO.sec === 'aseo' && ASEO.sub && ASEO.sub !== 'todos' ? ASEO.sub : ''; // submenú: solo ese tipo
+  const verT = ver.filter(I => (!fSub || tipoDe(I) === fSub) && (!fT.length || fT.includes(tipoDe(I))) && (!(ASEO.fPrio || []).length || ASEO.fPrio.includes(I.tarea ? prio4Key_(I.t.prioridad) : I.prio)));
   const prioDe = I => I.tarea ? prio4Key_(I.t.prioridad) : I.prio;
   const fPr = ASEO.fPrio || [];
   const prioHtml = `<div class="mv-pf ad-prf"><small>⚑ Prioridad:</small>${PRIO4_ORD.map(k => `<button type="button" class="mv-pf-c ad-pr ${fPr.includes(k) ? 'on' : ''}" onclick="adPrioFiltro_('${k}')">${prio4Html_(k, true)} ${PRIO4[k].t}<b>${todos.filter(I => prioDe(I) === k).length}</b></button>`).join('')}${fPr.length ? '<button type="button" class="mv-pf-x" onclick="ASEO.fPrio=[];aseoRender_()">Quitar filtro</button>' : ''}</div>`;
@@ -67576,7 +67591,7 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   const nFil = (MP ? 0 : (ASEO.fPers || []).length) + fP.length + fT.length + fPr.length + (ASEO.verArch ? 1 : 0);
   const archHtml = nArch && !MP ? `<div class="mv-pf ad-prf"><small>🗄 Archivadas:</small><button type="button" class="mv-pf-c ad-pr ${ASEO.verArch ? 'on' : ''}" onclick="ASEO.verArch=!ASEO.verArch;aseoRender_()">Ver archivadas<b>${nArch}</b></button></div>` : '';
   ASEO._hamHtml = `<button type="button" class="ad-ham ${ASEO.filtrosAb ? 'on' : ''}" onclick="adFiltrosToggle_()" title="${ASEO.filtrosAb ? 'Ocultar filtros' : 'Mostrar filtros'}${nFil ? ` (${nFil} activo${nFil === 1 ? '' : 's'})` : ''}">☰${nFil ? `<b>${nFil}</b>` : ''}</button>`;
-  ASEO._filtrosHtml = ASEO.filtrosAb ? `<div class="ad-gfil">${filtroHtml}${propHtml}${tipoHtml}${prioHtml}${archHtml}</div>` : '';
+  ASEO._filtrosHtml = ASEO.filtrosAb ? `<div class="ad-gfil">${filtroHtml}${propHtml}${ASEO.sec === 'aseo' ? '' : tipoHtml}${prioHtml}${archHtml}</div>` : '';
   ASEO._segVHtml = segV;
   return `${ver.length ? (vista === 'tabla' ? tablaHtml() : vista === 'usuario' ? `<div class="ad-urows">${cols}</div>` : `<div class="ad-board ${vista === 'estado' ? 'est' : ''}">${cols}</div>`) : `<div class="pc-mv-empty">${vacio}</div>`}`;
 }
