@@ -1259,7 +1259,7 @@ REGLAS:
   · FECHA en lenguaje natural → conviértela tú a YYYY-MM-DD con el CONTEXTO TEMPORAL: "hoy", "mañana", "pasado mañana", "el viernes" (= el próximo viernes), "el lunes que viene", "en 3 días", "15/10", "15-oct", "15 de octubre", "el 3", "fin de mes". Si NO hay fecha, pregúntala en UNA línea. Nunca inventes fecha.
   · NO pidas clasificación ni subclasificación: el sistema las asigna solo.
   · SIEMPRE llama preparar_tarea_programada ANTES de escribir el resumen (nunca lo redactes sin la herramienta: sin borrador no se puede guardar). Con su resultado envía este resumen y pregunta:
-    "📋 Tarea programada (por confirmar)
+    "📋 Pendiente programado (por confirmar)
     • Tarea: <nombre>
     • Fecha: <fecha_texto>
     • Clasificación: <clasificacion> › <subclasificacion>
@@ -10017,7 +10017,7 @@ async function _tarResumenTxt(iso, actual) { // actual=true (bot a petición): s
   const fecha = new Date(iso + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
   const hora = new Date().toLocaleTimeString("es-MX", { timeZone: "America/Monterrey", hour: "numeric", minute: "2-digit" });
   const lin = r => `• ${r.Nombre || "Sin nombre"}${_tarEsRec(r) ? " 📌" : ""} · ${_TAR_PRIO[r.Prioridad || "Medio"] || r.Prioridad}${_tarPers(r).length ? " · " + _tarPers(r).map(_aseoCorto).join(", ") : " · sin asignar"}`;
-  const out = [`🗓️ *Tareas programadas · ${hora}* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${L.length} tarea${L.length === 1 ? "" : "s"} · 📌 = recordatorio`];
+  const out = [`🗓️ *Pendientes · ${hora}* — ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`, `${L.length} tarea${L.length === 1 ? "" : "s"} · 📌 = recordatorio`];
   const G = [["⏳", "Pendientes", "Pendiente"], ["🧽", "En proceso", "En proceso"], ["✅", "Resueltas", "Resuelto"], ["✖️", "Canceladas", "Cancelado"]];
   (actual ? G.slice(0, 2) : G).forEach(([ico, t, k]) => {
     const X = L.filter(r => _tarEstado(D, r, iso) === k); if (X.length) out.push("", `${ico} *${t} (${X.length}):*`, ...X.map(lin));
@@ -10054,8 +10054,8 @@ const _BOT_SIM = {
   mis_tareas: { t: "Mis tareas de Check-Flow", tool: "consultar_tareas_checklist", args: { solo_mias: true }, msg: "mis tareas" },
   incidencias: { t: "Incidencias abiertas", tool: "consultar_incidencias", args: {}, msg: "incidencias abiertas" },
   incidencias_dia: { t: "Incidencias del día", tool: "consultar_incidencias", args: { fecha: "hoy" }, msg: "incidencias de hoy" },
-  programadas: { t: "Tareas programadas", tool: "consultar_resumen_tareas", args: {}, msg: "tareas programadas" },
-  programadas_dia: { t: "Tareas programadas del día (todas)", tool: "consultar_resumen_tareas", args: { incluir_cerradas: true }, msg: "tareas programadas de hoy" },
+  programadas: { t: "Pendientes", tool: "consultar_resumen_tareas", args: {}, msg: "tareas programadas" },
+  programadas_dia: { t: "Pendientes del día (todos)", tool: "consultar_resumen_tareas", args: { incluir_cerradas: true }, msg: "tareas programadas de hoy" },
   recordatorio: { t: "Recordatorio diario (al registrar su entrada)" },
   auto_2pm: { t: "Resumen automático de las 2 pm" },
 };
@@ -12222,7 +12222,7 @@ async function _incAutoEnviar(inc, col, forzar) {
 async function _tarAutoEnviar(tar, col) {
   const dest = _aseoDestinatarios("tareas"); if (!dest.length) return;
   const D = await _tarDatos(true), iso = _mxHoy();
-  const L = ["🔄 *Cambios en Tareas programadas*", ""];
+  const L = ["🔄 *Cambios en Pendientes*", ""];
   tar.forEach((dets, id) => {
     const r = D.rows.find(x => String(x.ID) === String(id));
     L.push(`• *${r ? (r.Nombre || "Sin nombre") : "Tarea eliminada"}*`); dets.forEach(d => L.push(`   ${d}`));

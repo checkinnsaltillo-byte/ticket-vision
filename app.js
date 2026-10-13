@@ -372,7 +372,7 @@ const SYS_MODULE_LIST = [
   ['aseo',             '🛠️ Check-Flow (limpieza, inspección, mantenimiento + Breezeway)'],
   ['incidencias',      '🚨 Incidencias'],
   ['reportes-tecnicos','🛠 Reportes técnicos'],
-  ['tareas',           '🗓️ Tareas programadas'],
+  ['tareas',           '🗓️ Pendientes'],
   ['objetos',          '🧳 Objetos olvidados'],
   ['ocupacion',        '📊 Dashboard (Ocupación)'],
   ['rh',               '👥 Recursos Humanos'],
@@ -9166,7 +9166,7 @@ if (!window._rtHashListener) {
     try { _bootModuleFromHash_(); } finally { window._rtSyncingHash = false; }
   });
 }
-// Check-Flow: A) Operación (Check-inn, Breezeway) · B) Administración (Tareas programadas).
+// Check-Flow: A) Operación (Check-inn, Breezeway) · B) Administración (Pendientes).
 const CL_BZW_OFF = true; // Breezeway desactivado por el momento (botón gris, sin acción)
 function clPuede_(m) { return !window.SYS_ALLOWED || window.SYS_ALLOWED.has(m); }
 function clNavHtml_(act) {
@@ -9175,7 +9175,7 @@ function clNavHtml_(act) {
   if (act === 'checkinn' && window.ASEO && ASEO.sec === 'mant') act = 'mant'; // mismo tablero, sección Mantenimiento
   const op = [clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '🧽 Aseo', 'aseo') + b('mant', '🔧 Mantenimiento', 'mantenimiento') : '', !MPn && (clPuede_('breezeway') || clPuede_('aseo')) ? (CL_BZW_OFF ? `<button type="button" class="cl-b off" disabled title="Breezeway está desactivado por el momento">🧹 Breezeway</button>` : b('breezeway', '🧹 Breezeway', 'breezeway')) : ''].join('');
   const op2 = (!MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (!MPn && clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '');
-  const adm = (!MPn && clPuede_('tareas') ? b('tareas', '🗓️ Tareas programadas', 'tareas') : '') + (!MPn && clPuede_('aseo') ? b('plantillas', '📋 Plantillas', 'plantillas') : '');
+  const adm = (!MPn && clPuede_('tareas') ? b('tareas', '🗓️ Pendientes', 'tareas') : '') + (!MPn && clPuede_('aseo') ? b('plantillas', '📋 Plantillas', 'plantillas') : '');
   // «Check-Flow Bot» (notificaciones y permisos del bot) vive en Configuración admin › 🤖 Check-Flow Bot.
   const items = [op.replace(/<button[^>]*class="cl-b off"[\s\S]*?<\/button>/g, ''), op2, adm].join('');
   return items.trim() ? `<div class="cl-nav"><div class="cl-g">${items}</div></div>` : '';
@@ -9239,7 +9239,7 @@ function clNavPaint_() {
     document.head.appendChild(st);
   }
   document.querySelectorAll('.cl-nav-slot').forEach(el => { el.innerHTML = clNavHtml_(el.dataset.act); });
-  // «Tareas programadas» ahora vive dentro de Check-Flow; su entrada propia del menú solo queda para quien no ve Check-Flow.
+  // «Pendientes» ahora vive dentro de Check-Flow; su entrada propia del menú solo queda para quien no ve Check-Flow.
   // Igual con «Incidencias».
   const ni = document.getElementById('nav-item-incidencias');
   if (ni && clPuede_('incidencias')) ni.style.display = !clPuede_('aseo') && !clPuede_('breezeway') && !clPuede_('tareas') ? '' : 'none';
@@ -58203,7 +58203,7 @@ const TAR_DEFAULT_CLASIF = {
   'Mantenimiento': [], 'Inventarios': [], 'Proveedores': [],
 };
 // ── Medidor de prioridad (barra segmentada con aguja) ─────────────────
-// Se usa en las cards de Tareas programadas y de Pendientes del día.
+// Se usa en las cards de Pendientes y de Pendientes del día.
 // pick: plantilla de onclick con %K → nivel (ej. "pzSetPrio_('ID',%K)"); sin pick es solo lectura.
 const PRIO_METER = [['Bajo', '#2563eb'], ['Medio', '#eab308'], ['Alto', '#ea580c'], ['Crítico', '#dc2626']];
 (function () {
@@ -58405,7 +58405,7 @@ function tarChipsHtml_(r, estadoOcur, sinPrio) {
     : TAR_VIGENCIAS.find(v => v.k === tarVigencia_(r));
   const pri = TAR_PRIORIDADES.find(p => p.k === r.Prioridad);
   return [
-    tarEsRec_(r) ? tarChip_('📌 Recordatorio', '#92400e', '#fef3c7', '#fde68a') : tarChip_('📋 Tarea programada', '#5b21b6', '#ede9fe', '#ddd6fe'),
+    tarEsRec_(r) ? tarChip_('📌 Recordatorio', '#92400e', '#fef3c7', '#fde68a') : tarChip_('📋 Pendiente programado', '#5b21b6', '#ede9fe', '#ddd6fe'),
     tarChip_(est.k, est.fg, est.bg, est.bd),
     pri && !sinPrio ? tarChip_((pri.k === 'Crítico' ? '🔥 ' : '') + pri.k, pri.fg, pri.bg, pri.bd) : '',
     r.Clasificacion ? tarChip_(r.Clasificacion, '#5b21b6', '#ede9fe', '#c4b5fd') : '',
@@ -58507,14 +58507,14 @@ window.tareasInit = async function () {
 
 function tarRender() { tdRender_(); }
 // ═══════════════════════════════════════════════════════════════════════════
-// Tareas programadas · diseño homologado con Control de aseo (v1586):
+// Pendientes · diseño homologado con Control de aseo (v1586):
 // selector de día, KPIs, filtros de chip, tablero por estado (o por clasificación),
 // cards compactas con selector rápido de estado, arrastre entre columnas y ventana lateral.
 // Los datos NO cambian: Tareas / Tareas_Ocurrencias / Tareas_Historial.
 // ═══════════════════════════════════════════════════════════════════════════
 const TD_EST = { 'Pendiente': '#94a3b8', 'En proceso': '#f59e0b', 'Resuelto': '#10b981', 'Cancelado': '#64748b' };
 const TD_CORTO = { 'Pendiente': 'Pend.', 'En proceso': 'Proceso', 'Resuelto': 'Resuelto', 'Cancelado': 'Cancel.' };
-const TD_TIPO = { tar: { t: 'Tarea programada', c: '#7c3aed' }, rec: { t: 'Recordatorio', c: '#f59e0b' } };
+const TD_TIPO = { tar: { t: 'Pendiente programado', c: '#7c3aed' }, rec: { t: 'Recordatorio', c: '#f59e0b' } };
 const TD_PRIO = { 'Bajo': { ico: '↓', c: '#2563eb' }, 'Medio': { ico: '◇', c: '#ca8a04' }, 'Alto': { ico: '↑', c: '#ea580c' }, 'Crítico': { ico: '‼', c: '#dc2626' } };
 function tdDia_() { return TAR_STATE.dia || tarIso_(tarToday_()); }
 function tdEst_(r, iso) { return tarOcurEstado_(r.ID, tdIsoDe_(r, iso)); }
@@ -58649,9 +58649,8 @@ function tdRender_() {
       ${ckMesNavHtml_(ym, 'tdMesV_')}${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()')}
       <span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
-      <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','Recordatorio')" title="Nuevo recordatorio">＋ Recordatorio</button>
-      <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','IG')" title="Inspección general de varios alojamientos con una plantilla">＋ Inspección general</button>
-      <button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null)">＋ Tarea programada</button></div>`;
+            <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','IG')" title="Inspección general de varios alojamientos con una plantilla">＋ Inspección general</button>
+      <button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null)">＋ Pendiente</button></div>`;
   const nav = `<div class="cl-nav-slot" data-act="tareas">${typeof clNavHtml_ === 'function' ? clNavHtml_('tareas') : ''}</div>`;
   const head = `<div class="cl-title">🛠️ Check-Flow</div>`;
   if (sec === 'registro') {
@@ -58965,7 +58964,7 @@ function tdPintarHijo_(r, D, nuevo) {
       ${est === 'Resuelto' || est === 'Cancelado' ? `<button type="button" class="ad-bt ok" disabled>✓ ${est}</button>` : `<button type="button" class="ad-bt pri" onclick="tdSetEst_('${esc(id)}','${dia}','${sig.k}')">Marcar ${sig.k.toLowerCase()}</button>`}</div>`;
   if (!nuevo) { const b = dr.querySelector('.ad-db'); if (b) b.scrollTop = top; }
 }
-// Tareas programadas: clic en la prioridad = siguiente nivel (se guarda en la hoja Tareas).
+// Pendientes: clic en la prioridad = siguiente nivel (se guarda en la hoja Tareas).
 window.tdPrioCiclo_ = function (id) {
   const r = TAR_STATE.list.find(x => x.ID === id); if (!r) return;
   const M = { baja: 'Bajo', media: 'Medio', alta: 'Alto', critica: 'Crítico' };
@@ -58990,7 +58989,7 @@ TAR_STATE.fx = TAR_STATE.fx || { tipo: '', clas: new Set(), sub: new Set(), prio
 const TAR_SIN = '(Sin clasificación)', TAR_SIN_PERS = '(Sin asignar)';
 function tarPasaFiltro_(r) {
   const fx = TAR_STATE.fx;
-  if (fx.tipo && (tarEsRec_(r) ? 'Recordatorio' : 'Tarea programada') !== fx.tipo) return false;
+  if (fx.tipo && (tarEsRec_(r) ? 'Recordatorio' : 'Pendiente programado') !== fx.tipo) return false;
   const c = r.Clasificacion || TAR_SIN;
   if (fx.clas.size && !fx.clas.has(c)) return false;
   if (fx.sub.size) {
@@ -59053,7 +59052,7 @@ function tarFiltrosHtml_() {
   const fx = TAR_STATE.fx, base = TAR_STATE._fxBase = tarFxBase_();
   const hayRec = base.some(tarEsRec_), hayTar = base.some(r => !tarEsRec_(r));
   const tipo = (k, ico, l) => { const on = fx.tipo === k; return `<button type="button" class="tfx-tipo ${on ? 'on' : ''} ${k === 'Recordatorio' ? 'rec' : 'tar'}" data-tipo="${k}" onclick="tarFxTipo_('${k}')" title="${on ? 'Quitar filtro (mostrar todo)' : 'Mostrar solo ' + l.toLowerCase() + 's'}">${ico} ${l}</button>`; };
-  const tipos = [(hayRec || fx.tipo === 'Recordatorio') ? tipo('Recordatorio', '📌', 'Recordatorio') : '', (hayTar || fx.tipo === 'Tarea programada') ? tipo('Tarea programada', '📋', 'Tarea') : ''].join('');
+  const tipos = [(hayRec || fx.tipo === 'Recordatorio') ? tipo('Recordatorio', '📌', 'Recordatorio') : '', (hayTar || fx.tipo === 'Pendiente programado') ? tipo('Pendiente programado', '📋', 'Tarea') : ''].join('');
   const prios = PRIO_METER.filter(([k]) => fx.prio === k || base.some(r => (r.Prioridad || 'Medio') === k))
     .map(([k, c]) => { const on = fx.prio === k; return `<button type="button" class="tfx-tipo prio ${on ? 'on' : ''}" data-prio="${k}" style="--c:${c}" onclick="tarFxPrio_('${k}')" title="${on ? 'Quitar filtro (mostrar todo)' : 'Mostrar solo prioridad ' + k}"><i></i>${k}</button>`; }).join('');
   const dd = k => tarFxOpts_(k).length || TAR_STATE.fx[k].size ? `<button type="button" class="tfx-dd ${fx[k].size ? 'on' : ''}" data-k="${k}" onclick="tarFxOpen_('${k}', this)"><span>${esc(tarFxBtnLbl_(k))}</span><b>▾</b></button>` : '';
@@ -59628,7 +59627,7 @@ window.tarOpenPanel = function (id, fecha, tipoNuevo) {
     WhatsApp: 'No', Mensaje: '', Template_ID: '', Estado: 'Activa', Comentarios: '', Fecha_limite: 'No',
   };
   if (!row && tipoNuevo === 'IG') Object.assign(d, { Insp_general: 'Sí', Clasificacion: 'Inspección', Prioridad: 'Bajo', Naturaleza: 'Recurrente', Fecha_limite: 'Sí', Plantilla: '' }); // «＋ Inspección general»
-  d.Tipo = tarEsRec_(d) || tipoNuevo === 'Recordatorio' ? 'Recordatorio' : 'Tarea programada';
+  d.Tipo = tarEsRec_(d) || tipoNuevo === 'Recordatorio' ? 'Recordatorio' : 'Pendiente programado';
   d.Estado = tarVigencia_(d);
   d._prog = JSON.parse(JSON.stringify(row ? tarProg_(row) : tarEmptyProg_(d.Naturaleza)));
   if (!row && tipoNuevo === 'IG') { d.Limite_IG = tdFinMes_(tarIso_(tarToday_())); Object.assign(d._prog, { tipo: 'mensual', dias_mes: [31], inicio: d._prog.inicio || tarIso_(tarToday_()) }); } // fecha límite: por omisión el último día del mes
@@ -59730,7 +59729,7 @@ function tarPanelRender_() {
       </div>` : ''}`;
   const dirty = tarPanelDirty_(P);
   const rec = d.Tipo === 'Recordatorio';
-  const tipoHtml = field(lbl('Tipo') + `<div style="display:flex;gap:6px;flex-wrap:wrap">${tarPill_(!rec, '📋 Tarea programada', "tarSetTipoReg('Tarea programada')")}${tarPill_(rec, '📌 Recordatorio', "tarSetTipoReg('Recordatorio')", { fg: '#92400e', bg: '#fef3c7', bd: '#f59e0b' })}</div>
+  const tipoHtml = field(lbl('Tipo') + `<div style="display:flex;gap:6px;flex-wrap:wrap">${tarPill_(!rec, '📋 Pendiente programado', "tarSetTipoReg('Pendiente programado')")}${tarPill_(rec, '📌 Recordatorio', "tarSetTipoReg('Recordatorio')", { fg: '#92400e', bg: '#fef3c7', bd: '#f59e0b' })}</div>
     ${rec ? '<div style="font-size:11px;color:#94a3b8;margin-top:5px">Recordatorio: siempre es <b>Único</b> y aparece cada día, a partir de su fecha, hasta que se marque Resuelto o Cancelado.</div>' : ''}`);
   const recFecha = rec ? field(lbl('Fecha') + `<div style="font-size:12.5px;color:#334155;padding:9px 11px;border:1.5px dashed #fcd34d;border-radius:8px;background:#fffbeb">📅 ${P.id ? esc(tarRecTexto_(Object.assign({}, d, { ID: P.id }))) : `Desde hoy (${esc(tarFmtFecha_(tarIso_(tarToday_())))}) · aparece cada día hasta resolverse`}</div>`) : '';
   pn.innerHTML = `
@@ -59904,7 +59903,7 @@ window.tarSavePanel = async function () {
   if (d.WhatsApp === 'Sí' && !String(d.Mensaje || '').trim()) { alert('Escribe el mensaje de WhatsApp (o elige un template).'); return; }
   if (prog.tipo === 'bimestral' && !prog.inicio) prog.inicio = tarIso_(tarToday_());
   const payload = {
-    Tipo: rec ? 'Recordatorio' : 'Tarea programada',
+    Tipo: rec ? 'Recordatorio' : 'Pendiente programado',
     Nombre: String(d.Nombre).trim(),
     Clasificacion: d.Clasificacion || '', Subclasificacion: d.Subclasificacion || '',
     Prioridad: d.Prioridad || '', Naturaleza: d.Naturaleza || '',
@@ -59936,7 +59935,7 @@ window.tarSavePanel = async function () {
     const id = P.id || j.id;
     if (prevRow) {
       CAMPOS.forEach(([k, label]) => {
-        const a = k === 'Estado' ? tarVigencia_(prevRow) : k === 'Tipo' ? (tarEsRec_(prevRow) ? 'Recordatorio' : 'Tarea programada') : String(prevRow[k] || '');
+        const a = k === 'Estado' ? tarVigencia_(prevRow) : k === 'Tipo' ? (tarEsRec_(prevRow) ? 'Recordatorio' : 'Pendiente programado') : String(prevRow[k] || '');
         const b = String(payload[k] || '');
         if (a !== b) histRows.push({ Tarea_ID: id, Fecha: '', Campo: label, Antes: a, Despues: b, Usuario: user });
       });
@@ -59963,7 +59962,7 @@ window.tarDelete = async function () {
   const P = TAR_STATE.panel; if (!P || !P.id) return;
   if (!confirm(`¿Eliminar ${P.d.Tipo === 'Recordatorio' ? 'el recordatorio' : 'la tarea'} "${P.d.Nombre}"?\n\nQueda una copia en la hoja Tareas_Papelera.`)) return;
   try {
-    const r = await fetch(`${BACKEND}/tareas/${encodeURIComponent(P.id)}?reason=${encodeURIComponent('eliminada desde Tareas programadas')}`, { method: 'DELETE' });
+    const r = await fetch(`${BACKEND}/tareas/${encodeURIComponent(P.id)}?reason=${encodeURIComponent('eliminada desde Pendientes')}`, { method: 'DELETE' });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'No se pudo eliminar');
     TAR_STATE.list = TAR_STATE.list.filter(x => x.ID !== P.id);
@@ -60632,7 +60631,7 @@ function pcRentasYear_(ym) {
   return { rows, pag, venc, activos: pag + venc, esperado, cobrado, vencidos, m0, y };
 }
 
-// 5) OPERACIÓN — Incidencias, Reportes técnicos y Tareas programadas.
+// 5) OPERACIÓN — Incidencias, Reportes técnicos y Pendientes.
 let _pcRT = null;
 async function pcLoadOp_(force) {
   const tasks = [];
@@ -61674,7 +61673,7 @@ function pcRenderOpHoy_() {
     : '<div style="margin-top:12px;font-size:12px;color:#16a34a;font-weight:800">✅ Sin pendientes de prioridad alta o crítica</div>'}`;
 }
 // HOY · PENDIENTES DEL DÍA — tareas programadas y recordatorios de hoy.
-// Todo vive en Tareas programadas (hoja Tareas): Tipo = 'Tarea programada' | 'Recordatorio'.
+// Todo vive en Pendientes (hoja Tareas): Tipo = 'Pendiente programado' | 'Recordatorio'.
 window.PZ = window.PZ || {};
 if (!PZ.draft) PZ.draft = { texto: '', prioridad: 'media', asignados: [] };
 const PZ_PRIO = { critica: { l: 'Crítico', c: '#dc2626', o: 0 }, alta: { l: 'Alto', c: '#ea580c', o: 1 }, media: { l: 'Medio', c: '#eab308', o: 2 }, baja: { l: 'Bajo', c: '#2563eb', o: 3 } };
@@ -61735,7 +61734,7 @@ function pzRender_() {
       String(r.Fecha_limite || '') === 'Sí' ? '<span class="pz-old">⏳ Fecha límite</span>' : '',
       r.Origen === 'Bot WhatsApp' ? '<span class="pz-old" style="color:#5b21b6;background:#ede9fe" title="Agregado por WhatsApp">🤖 Bot</span>' : ''].join('');
     const clas = r.Clasificacion ? `${r.Clasificacion}${r.Subclasificacion ? ' › ' + r.Subclasificacion : ''}` : 'sin clasificación';
-    const by = e === 'pendiente' ? `${rec ? 'Recordatorio' : 'Tarea programada'} · ${clas}` : `${PZ_COLS.find(c => c.k === e).l} · ${x.por || '—'}${x.at ? ' · ' + pzHora_(x.at) : ''}`;
+    const by = e === 'pendiente' ? `${rec ? 'Recordatorio' : 'Pendiente programado'} · ${clas}` : `${PZ_COLS.find(c => c.k === e).l} · ${x.por || '—'}${x.at ? ' · ' + pzHora_(x.at) : ''}`;
     return `<div class="pz-it pz-st-${e}" style="--pz:${p.c}" draggable="${tmp ? 'false' : 'true'}" data-id="${id}" ondragstart="pzDragStart_(event)" ondragend="pzDragEnd_(event)">
       <div class="pz-tx"><div class="pz-top">${rec ? '<span class="pz-kind rec">📌 Recordatorio</span>' : '<span class="pz-kind tar">📋 Tarea</span>'}<span style="flex:1"></span>${prioMeter_(PZ_PRIO_TAR[x.prio], rec && !tmp ? { pick: `pzSetPrio_('${id}',%K)`, w: 132 } : { w: 132 })}</div>
         <div class="pz-t" title="Abrir ${rec ? 'el recordatorio' : 'la tarea'}" onclick="pzAbrirTarea_('${id}')">${pcEsc(r.Nombre || '')}</div>
@@ -61759,7 +61758,7 @@ function pzRender_() {
   pzAjustarAlto_(el);
   if (foc) { const i = document.getElementById('pz-new'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 }
-// Abre la ficha (misma ventana de Tareas programadas) sin salir del panel.
+// Abre la ficha (misma ventana de Pendientes) sin salir del panel.
 window.pzAbrirTarea_ = function (id) { if (!/^tmp/.test(id) && typeof tarOpenPanel === 'function') tarOpenPanel(id, pzHoy_()); };
 // Cada columna muestra máximo 4 tarjetas; el resto con scroll (las tarjetas miden distinto).
 function pzAjustarAlto_(el) {
@@ -61786,7 +61785,7 @@ window.pzDraftPrio_ = function (btn) {
   PZ.draft.prioridad = PZ_CICLO[PZ.draft.prioridad] || 'media';
   const p = PZ_PRIO[PZ.draft.prioridad]; btn.style.setProperty('--pz', p.c); btn.title = `Prioridad: ${p.l} · clic para cambiar (Bajo → Medio → Alto → Crítico)`;
 };
-// Cambio parcial de un recordatorio (mismo guardado que Tareas programadas + bitácora).
+// Cambio parcial de un recordatorio (mismo guardado que Pendientes + bitácora).
 async function pzRowSave_(id, patch, campos) {
   const r = tarRowById_(id); if (!r) return;
   const prev = {}; Object.keys(patch).forEach(k => { prev[k] = r[k]; });
@@ -62933,7 +62932,7 @@ function dpRenderFicha_(root) {
       <button class="dp-btn ok" onclick="dpGuardar_()" ${DP.saving ? 'disabled' : ''}>${DP.saving ? '⏳ Guardando…' : '💾 Guardar'}</button>
       <button class="dp-btn" onclick="dpCancelar_()">Cancelar</button>` : `
       <button class="dp-btn pri" onclick="dpEditar_()">✏️ Editar</button>
-      <button class="dp-btn" onclick="dpCrearTarea_()" title="Crear una tarea en Tareas programadas a partir de este proceso">🗓️ Crear tarea programada</button>
+      <button class="dp-btn" onclick="dpCrearTarea_()" title="Crear una tarea en Pendientes a partir de este proceso">🗓️ Crear tarea programada</button>
       ${p.Estatus === 'Borrador' ? `<button class="dp-btn" onclick="dpCambiarEstatus_('En revisión')">📤 Enviar a revisión</button>` : ''}
       ${p.Estatus === 'En revisión' || p.Estatus === 'Borrador' ? `<button class="dp-btn ok" onclick="dpAprobar_()">✅ Aprobar versión ${dpEsc_(p.Version)}</button>` : ''}
       ${p.Estatus === 'Activo' ? `<button class="dp-btn" onclick="dpCambiarEstatus_('En revisión')">🔍 Poner en revisión</button>` : ''}
@@ -63255,7 +63254,7 @@ window.dpArrMove_ = function (path, i, dir) {
   const j = i + dir; if (j < 0 || j >= A.length) return; [A[i], A[j]] = [A[j], A[i]]; dpRefreshSec_();
 };
 
-// Tareas de "Tareas programadas" generadas desde este proceso.
+// Tareas de "Pendientes" generadas desde este proceso.
 function dpTareasVinc_(p) {
   if (!p.ID || typeof TAR_STATE === 'undefined') return '';
   if (!TAR_STATE.loaded && !DP._tarLoading) {
@@ -63267,7 +63266,7 @@ function dpTareasVinc_(p) {
     : T.length ? `<div style="display:flex;flex-direction:column;gap:6px">${T.map(r => `<button type="button" class="dp-doc" style="cursor:pointer;text-align:left;font-family:inherit;width:100%" onclick="dpIrTarea_('${dpEsc_(r.ID)}')"><span class="i">🗓️</span><div style="min-width:0;flex:1"><div class="n">${dpEsc_(r.Nombre)}</div><div class="dp-mut" style="font-size:11px">${dpEsc_(r.Programacion_texto || '')}${r.Personal ? ' · 👥 ' + dpEsc_(r.Personal) : ''} · ${dpEsc_(tarVigencia_(r))}</div></div><span class="dp-mut">→</span></button>`).join('')}</div>`
     : '<div class="dp-mut" style="font-size:12px">Aún no hay tareas generadas desde este proceso.</div>';
   return `<div style="margin-top:16px;padding-top:12px;border-top:1px dashed #e2e8f0">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><div class="dp-lbl" style="margin:0">🗓️ Tareas programadas de este proceso (${T.length})</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><div class="dp-lbl" style="margin:0">🗓️ Pendientes de este proceso (${T.length})</div>
     <span style="margin-left:auto"><button class="dp-btn sm pri" onclick="dpCrearTarea_()">＋ Crear tarea programada</button></span></div>${body}</div>`;
 }
 window.dpIrTarea_ = function (id) {
@@ -63766,7 +63765,7 @@ const NAV_TREE = {
       // Breezeway desactivado por el momento (ver CL_BZW_OFF).
     ] },
     { t: '🗂️ Administración', mod: 'tareas', go: () => {}, subs: [
-      { t: '🗓️ Tareas programadas', mod: 'tareas', go: () => {} },
+      { t: '🗓️ Pendientes', mod: 'tareas', go: () => {} },
     ] },
   ],
   'reportes-tecnicos': [
@@ -68647,7 +68646,7 @@ const NP_REGLAS = [
     '<b>Nunca muestra códigos, folios ni claves:</b> identifica por alojamiento y descripción.',
     'Si alguien pide algo que su rol no permite, responde en una línea: «Solo los administradores pueden…».']],
   ['🧽', 'Tareas y cards', '', [
-    '<b>Check-Flow para personal no administrativo</b> (sin Puesto «Administración» ni rol Administrador): solo ve sus asignaciones; los KPIs y filtros cuentan solo lo suyo; arriba solo tiene «Actualizar»; no ve Incidencias ni Tareas programadas; en sus cards solo puede cambiar el <b>estado</b> (sin validar: «Terminado» queda por validar) y marcar <b>«¿No ha desalojado?»</b>; lo demás es de solo lectura (sin detalles).',
+    '<b>Check-Flow para personal no administrativo</b> (sin Puesto «Administración» ni rol Administrador): solo ve sus asignaciones; los KPIs y filtros cuentan solo lo suyo; arriba solo tiene «Actualizar»; no ve Incidencias ni Pendientes; en sus cards solo puede cambiar el <b>estado</b> (sin validar: «Terminado» queda por validar) y marcar <b>«¿No ha desalojado?»</b>; lo demás es de solo lectura (sin detalles).',
     '<b>Estados de la card:</b> Pendiente · En proceso · Terminado · Inspeccionado. «Terminado» va en dos pasos con el mismo botón: 1er clic = terminado (por validar), 2º clic = validado (✓ Term.), otro clic quita la validación. Los demás no requieren validación. «Inspeccionado» pide confirmación.',
     '<b>Incidencia en una card:</b> aparece debajo de la card en un recuadro rojo; si sigue abierta y no tiene tarea correctiva, el enlace «🛠 Crear tarea correctiva» abre directo esa sección.',
     '<b>Archivar una card:</b> sale del tablero, de los KPIs y de las listas, resúmenes y avisos del bot. Se ven en ☰ › «Ver archivadas», donde se pueden desarchivar.',
@@ -69065,7 +69064,7 @@ if (!window.__aseoTimer) {
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Check-Flow › 🚨 Incidencias (v1600) — mismo diseño que Aseo y Mantenimiento / Tareas programadas:
+// Check-Flow › 🚨 Incidencias (v1600) — mismo diseño que Aseo y Mantenimiento / Pendientes:
 // KPIs, filtros de chip, tablero por estado (arrastre + selector rápido), ventana lateral y formulario.
 // Datos en Google Cloud Storage (incidencias/incidencias.json + incidencias/fotos/), migrados de la hoja
 // «Incidencias» en v1601. Mismos endpoints para todos (sistema, bot, Gestión de reservas):
@@ -69158,7 +69157,7 @@ function icCss_() {
   `;
   document.head.appendChild(st);
 }
-// ═══ Check-Flow · vistas homologadas (Aseo, Mantenimiento, Incidencias, Objetos olvidados, Tareas programadas) ═══
+// ═══ Check-Flow · vistas homologadas (Aseo, Mantenimiento, Incidencias, Objetos olvidados, Pendientes) ═══
 // Mismo selector en todas: Por estado · Por propiedad · Por usuario · Por fecha · Tabla, y el mismo selector de mes ‹ Mes ›.
 const CK_VISTAS = [['estado', 'Por estado'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['tabla', 'Tabla']];
 // 📅 Calendario: botón que se activa/desactiva y se muestra a la izquierda, compartido con cualquier vista (como en Aseo).
@@ -70022,7 +70021,7 @@ window.obGuardar_ = async function () {
   } catch (e) { alert('No se pudo guardar el objeto: ' + (e.message || e)); if (btn) { btn.disabled = false; btn.textContent = F.id ? 'Guardar cambios' : 'Registrar objeto'; } }
 };
 // ── «⚙️ Clasificaciones» de Incidencias: Motivos (clasificación) › Sub-motivos (sub-clasificación).
-// Mismo formato que la ventana de Tareas programadas. También lo usa el bot para clasificar lo que llega por WhatsApp.
+// Mismo formato que la ventana de Pendientes. También lo usa el bot para clasificar lo que llega por WhatsApp.
 window.icClasif_ = function () {
   IC._cat = JSON.parse(JSON.stringify(icCatalogo_()));
   let m = document.getElementById('ic-clasif-modal');
