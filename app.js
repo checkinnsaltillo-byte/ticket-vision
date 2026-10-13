@@ -69443,7 +69443,7 @@ function ckCalMesHtml_(ym, items) {
 function ckTablaHtml_(cols, grupos, vacio, o) {
   ckVCss_();
   if (!grupos.some(g => g.rows.length)) return `<div class="pc-mv-empty">${vacio || 'Sin registros'}</div>`;
-  const gt = cols.map(c => c[1]).join(' ') + ' 18px', minW = cols.reduce((a, c) => a + (parseInt(c[1].replace(/minmax\(|,.*$/g, '')) || 120), 0) + 80;
+  const gt = cols.map(c => c[1]).join(' ') + ' 18px', minW = cols.reduce((a, c) => a + (parseInt(c[1].replace(/minmax\(|,.*$/g, '')) || 120), 0) + cols.length * 12 + 18 + 32 + 8; // columnas + huecos (12px) + flecha + márgenes: el fondo de encabezados y separadores llega hasta la última columna
   const head = `<div class="tb-row h" style="grid-template-columns:${gt}">${cols.map(c => `<span>${c[0]}</span>`).join('')}<span></span></div>`;
   if (o && o.headPorGrupo) return `<div class="ad-tbl tb-pg"><div class="tb-in" style="min-width:${minW}px">${grupos.filter(g => g.rows.length).map(g => `<div class="tb-gw">
     <div class="tb-grp ${g.toggle ? 'tg' : ''}" ${g.toggle ? `onclick="${g.toggle}" title="${g.cerrado ? 'Mostrar' : 'Ocultar'} los alojamientos"` : ''}>${g.toggle ? `<i class="tb-car">${g.cerrado ? '▸' : '▾'}</i>` : ''}${g.t} <b>${g.rows.length}</b>${g.prog || ''}</div>
