@@ -58548,7 +58548,7 @@ function tdFinMes_(iso) { const d = tarParseIso_(iso); return tarIso_(new Date(d
 function tdIsoDe_(r, iso) { return tdEsIG_(r) ? tdFinMes_(iso) : iso; }
 function tdIsoId_(id, iso) { id = String(id); return id.includes('~') || tdEsIG_(TAR_STATE.list.find(x => x.ID === id)) ? tdFinMes_(iso) : iso; }
 // Fecha límite de la inspección dentro del mes (campo «Fecha límite»: se toma su día; sin él, el último día del mes).
-function tdLimIG_(r, iso) { const fin = tdFinMes_(iso), dd = Number(String(r.Limite_IG || '').slice(8, 10)) || 31; return fin.slice(0, 8) + String(Math.min(dd, Number(fin.slice(8)))).padStart(2, '0'); }
+function tdLimIG_(r, iso) { const fin = tdFinMes_(iso), dm = ((tarProg_(r) || {}).dias_mes || []).map(Number).filter(Boolean), dd = (dm.length ? Math.max(...dm) : 0) || Number(String(r.Limite_IG || '').slice(8, 10)) || 31; /* día de «Fecha(s)» */ return fin.slice(0, 8) + String(Math.min(dd, Number(fin.slice(8)))).padStart(2, '0'); }
 // Fecha límite de una tarea (para avisos y prioridad automática). '' si no tiene.
 function tdLimite_(r, dia) { if (r.Fecha_limite !== 'Sí') return ''; if (tdEsIG_(r)) return tdLimIG_(r, dia); const p = tarProg_(r); return p.tipo === 'unica' ? (p.fechas.slice().sort().filter(x => x >= tarIso_(tarToday_()))[0] || p.fechas.slice().sort().pop() || '') : (tarNextDate_(r) || ''); }
 // Prioridad automática conforme se acerca la fecha límite: > 7 días la elegida · ≤ 7 Medio · ≤ 3 Alto · ≤ 1 o vencida Crítico (nunca baja la elegida).
@@ -59828,7 +59828,7 @@ function tarPanelRender_() {
         <div style="font-size:13px;font-weight:800;color:#1e1b4b">${esc(d.Proceso_Codigo || '')} · ${esc(d.Proceso_Nombre || '')}${d.Proceso_Version ? ` <span style="color:#6366f1;font-weight:700">v${esc(d.Proceso_Version)}</span>` : ''}</div></div>
         ${P.id ? `<button type="button" onclick="tarAbrirProceso('${esc(d.Proceso_ID)}')" style="all:unset;cursor:pointer;padding:6px 10px;border-radius:8px;background:#4f46e5;color:#fff;font-size:12px;font-weight:800">Ver proceso →</button>` : ''}
       </div>` : ''}
-      ${field(lbl('Nombre') + `<input type="text" value="${esc(d.Nombre || '')}" oninput="tarSetText('Nombre',this.value)" placeholder="Ej. Revisar cisterna" style="${inp}">`)}
+      ${tdEsIG_(d) ? '' : field(lbl('Nombre') + `<input type="text" value="${esc(d.Nombre || '')}" oninput="tarSetText('Nombre',this.value)" placeholder="Ej. Revisar cisterna" style="${inp}">`)}
       ${tdEsIG_(d) ? tarIGCampos_(d, lbl, inp, field) : `      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         ${field(lbl('Clasificación de tarea') + `<select onchange="tarSetField('Clasificacion',this.value)" style="${inp}"><option value=""></option>${Object.keys(clasif).map(c => `<option value="${esc(c)}"${c === d.Clasificacion ? ' selected' : ''}>${esc(c)}</option>`).join('')}${d.Clasificacion && !clasif[d.Clasificacion] ? `<option selected>${esc(d.Clasificacion)}</option>` : ''}</select>`)}
         ${field(lbl('Sub-clasificación') + `<select onchange="tarSetField('Subclasificacion',this.value)" style="${inp}" ${d.Clasificacion ? '' : 'disabled'}><option value=""></option>${subs.map(c => `<option value="${esc(c)}"${c === d.Subclasificacion ? ' selected' : ''}>${esc(c)}</option>`).join('')}${d.Subclasificacion && !subs.includes(d.Subclasificacion) ? `<option selected>${esc(d.Subclasificacion)}</option>` : ''}</select>`)}
@@ -59841,9 +59841,7 @@ function tarPanelRender_() {
           <div><div style="font-size:13px;font-weight:900;color:#0f172a">⏳ Fecha límite</div>
           <div style="font-size:11.5px;color:#64748b;margin-top:2px">La tarea debe quedar resuelta a más tardar en esa fecha${d.Naturaleza === 'Recurrente' ? ' (en cada fecha programada)' : ''}.</div></div>
         </div>
-        ${tdEsIG_(d) && d.Fecha_limite === 'Sí' ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;padding:10px 12px;border-radius:10px;border:1.5px solid #fca5a5;background:#fff">
-          <span style="font-size:12px;font-weight:700;color:#0f172a">⏳ Fecha límite</span><input type="date" value="${esc(d.Limite_IG || tdFinMes_(tarIso_(tarToday_())))}" onchange="tarIGLimite_(this.value)" style="${inp};width:auto">
-          <div style="flex-basis:100%;font-size:11px;color:#94a3b8">Se repite cada mes ese mismo día (si el mes es más corto, su último día). Conforme se acerca, la card muestra el aviso y sube la prioridad: ≤ 7 días Media · ≤ 3 Alta · ≤ 1 Crítica.</div></div>` : ''}`)}`}
+      `)}`}
       ${field(lbl(`Personal asignado${d._personal.length ? ` · ${d._personal.length}` : ''}`) + personalHtml)}
       ${rec ? '' : `${field(lbl('¿Enviar mensaje por WhatsApp?') + waHtml)}
       ${field(lbl('Vigencia de la tarea') + `<div style="display:flex;gap:6px;flex-wrap:wrap">${TAR_VIGENCIAS.map(e => tarPill_(d.Estado === e.k, e.k, `tarSetField('Estado','${e.k}')`, { fg: e.fg, bg: e.bg, bd: e.bd })).join('')}</div><div style="font-size:11px;color:#94a3b8;margin-top:5px">Pausada o Cancelada: deja de aparecer en fechas futuras. El estado de cada día se marca desde el calendario.</div>`)}
@@ -59867,7 +59865,7 @@ function tarIGCampos_(d, lbl, inp, field) {
   return field(lbl('Plantilla') + plSel) + field(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:11.5px;font-weight:600;color:#374151">Alojamiento(s) · ${sel.length}</label><span style="flex:1"></span>${btn('Todos', 'tarIGTodos_(true)')}${btn('Ninguno', 'tarIGTodos_(false)')}</div>${lista}`);
 }
 window.tarIGLimite_ = function (v) { const P = TAR_STATE.panel; if (!P || !v) return; P.d.Limite_IG = v; P.d._prog.dias_mes = [Number(v.slice(8, 10))]; tarPanelRender_(); };
-window.tarIGPlantilla_ = function (id) { const P = TAR_STATE.panel; if (!P) return; const pl = (ASEO.pl.lista || {})[id]; P.d.Plantilla = id || ''; if (pl && !String(P.d.Nombre || '').trim()) P.d.Nombre = 'Inspección general · ' + pl.titulo; tarPanelRender_(); };
+window.tarIGPlantilla_ = function (id) { const P = TAR_STATE.panel; if (!P) return; const pl = (ASEO.pl.lista || {})[id]; P.d.Plantilla = id || ''; if (pl) P.d.Nombre = pl.titulo; /* la plantilla es el nombre de la inspección */ tarPanelRender_(); };
 window.tarIGAloj_ = function (h) { const P = TAR_STATE.panel; if (!P) return; const a = P.d._alojs = P.d._alojs || [], i = a.indexOf(String(h)); if (i >= 0) a.splice(i, 1); else a.push(String(h)); const sc = document.querySelector('#tar-panel [style*="max-height:260px"]'), t = sc ? sc.scrollTop : 0; tarPanelRender_(); const sc2 = document.querySelector('#tar-panel [style*="max-height:260px"]'); if (sc2) sc2.scrollTop = t; };
 window.tarIGTodos_ = function (on) { const P = TAR_STATE.panel; if (!P) return; P.d._alojs = on ? (atAlojs_() || []).map(a => String(a.houseId)) : []; tarPanelRender_(); };
 function tarHistHtml_(id) {
@@ -59970,7 +59968,7 @@ window.tarSavePanel = async function () {
     d.WhatsApp = 'No'; d.Mensaje = ''; d.Template_ID = ''; d.Fecha_limite = 'No'; d.Estado = 'Activa';
   }
   const prog = d._prog;
-  if (tdEsIG_(d) && !String(d.Nombre || '').trim()) { const pl = (ASEO.pl.lista || {})[d.Plantilla]; d.Nombre = 'Inspección general' + (pl ? ' · ' + pl.titulo : ''); }
+  if (tdEsIG_(d)) { const pl = (ASEO.pl.lista || {})[d.Plantilla]; if (!pl) { alert('Elige la plantilla.'); return; } d.Nombre = pl.titulo; } /* nombre = plantilla */
   if (!String(d.Nombre || '').trim()) { alert(rec ? 'Escribe el recordatorio.' : 'Escribe el nombre de la tarea.'); return; }
   if (prog.tipo === 'unica' && !prog.fechas.length) { alert('Agrega al menos una fecha.'); return; }
   if (prog.tipo === 'semanal' && !prog.dias_semana.length) { alert('Elige al menos un día de la semana.'); return; }
