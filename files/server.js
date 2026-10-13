@@ -1508,7 +1508,7 @@ const BOT_TOOLS = [
   },
   {
     name: "preparar_tarea_programada",
-    description: "SOLO modo ADMIN. Prepara (NO guarda) una tarea programada de naturaleza 'Único' para el módulo Tareas programadas. El backend asigna clasificación y subclasificación del catálogo a partir de la descripción y resuelve el personal contra la hoja Personal (acepta nombres cortos o incompletos). Devuelve draft_id + resumen para que se lo muestres al admin y le pidas confirmación.",
+    description: "SOLO modo ADMIN. Prepara (NO guarda) una tarea única del Check-Flow (Tareas › 🗂️ Administrativo). El backend asigna clasificación y subclasificación del catálogo a partir de la descripción y resuelve el personal contra la hoja Personal (acepta nombres cortos o incompletos). Devuelve draft_id + resumen para que se lo muestres al admin y le pidas confirmación.",
     input_schema: {
       type: "object",
       properties: {
@@ -2854,22 +2854,18 @@ async function _botExecTool(toolUse, ctx) {
       if (Date.now() > d.exp) { _botTarDrafts.delete(ctx.phone10); return { content: JSON.stringify({ ok: false, error: "El borrador venció (30 min). Vuelve a preparar la tarea." }), notifyText: null }; }
       // Candado: la confirmación debe venir en un mensaje POSTERIOR al del resumen.
       if (!(ctx.msgTs > d.msgTs)) return { content: JSON.stringify({ ok: false, error: "Aún no hay confirmación del admin. Muestra el resumen y espera su respuesta." }), notifyText: null };
-      const MES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
-      const dd = new Date(d.fecha + "T12:00:00");
-      const prog = { tipo: "unica", fechas: [d.fecha], dias_semana: [], dias_mes: [], inicio: "", fin: "" };
-      const payload = {
-        Nombre: d.nombre, Clasificacion: d.clasificacion || "", Subclasificacion: d.subclasificacion || "",
-        Prioridad: "Medio", Naturaleza: "Único",
-        Programacion: JSON.stringify(prog), Programacion_texto: `Única · ${dd.getDate()} ${MES[dd.getMonth()]} ${dd.getFullYear()}`,
-        Personal: d.personal.join(", "), WhatsApp: "No", Mensaje: "", Template_ID: "", Estado: "Activa",
-        Comentarios: `Creada por WhatsApp (bot) · ${ctx.adminNombre || ctx.phone10}`,
-        Creado_por: ctx.adminNombre || `Bot · ${ctx.phone10}`, Origen: "Bot WhatsApp", Fecha_limite: d.limite ? "Sí" : "No", Updated_at: new Date().toISOString(),
-      };
-      const r = await callCheckinAppsScriptPost("tareas_save", { payload });
-      if (!r || !r.ok) return { content: JSON.stringify({ ok: false, error: (r && r.error) || "No se pudo guardar en Tareas" }), notifyText: null };
+      // Se guarda como tarea «🗂️ Administrativo» del Check-Flow (aseo/tareas.json), ya no en Pendientes.
+      const id = Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
+      const etq = [d.clasificacion, d.subclasificacion].map(x => String(x || "").trim().slice(0, 40)).filter(Boolean);
+      const r = await _aseoMutate(_ASEO_TAREAS_OBJ, "tareas", T => {
+        T[id] = { id, hid: "", depto: "administrativo", problema: false, prioridad: "media", titulo: String(d.nombre || "").slice(0, 140),
+          desc: `Creada por WhatsApp (bot) · ${ctx.adminNombre || ctx.phone10}`, fecha: d.fecha, hora: "", repite: null,
+          asignados: (d.personal || []).slice(0, 20), etiquetas: etq, adjuntos: [], reserva: "", by: ctx.adminNombre || `Bot · ${ctx.phone10}`, at: new Date().toISOString(), origen: "Bot WhatsApp", limite: !!d.limite };
+        return T[id];
+      }).then(() => ({ ok: true, id })).catch(e => ({ ok: false, error: e.message }));
+      if (!r || !r.ok) return { content: JSON.stringify({ ok: false, error: (r && r.error) || "No se pudo guardar la tarea" }), notifyText: null };
       _botTarDrafts.delete(ctx.phone10);
-      for (const k of Array.from(_rhListCache.keys())) if (k.startsWith("tareas_")) _rhListCache.delete(k);
-      callCheckinAppsScriptPost("tareas_hist_add", { payload: { rows: [{ Tarea_ID: r.id, Fecha: "", Campo: "Creación", Antes: "", Despues: `${d.nombre} (vía bot WhatsApp)`, Usuario: ctx.adminNombre || ctx.phone10 }] } }).catch(() => {});
+      _aseo.tareasTs = 0;
       return { content: JSON.stringify({ ok: true, id: r.id, nombre: d.nombre, fecha_texto: _botFechaLarga(d.fecha), personal: d.personal }), notifyText: null };
     }
     if (name === "crear_incidencia") {

@@ -58536,6 +58536,14 @@ function tdEst_(r, iso) { return tarOcurEstado_(r.ID, tdIsoDe_(r, iso)); }
 //    Fila de Tareas con Insp_general:'Sí', Plantilla (id) y Alojamientos (JSON de HouseIds). Cada sub-card usa el ID
 //    «<tarea>~<HouseId>» para su estado (Tareas_Ocurrencias) y «TI:<tarea>:<HouseId>:<fin de mes>» para su plantilla.
 function tdEsIG_(r) { return !!r && r.Insp_general === 'Sí'; }
+// Inspección general: un color por plantilla (orden de las plantillas de Inspección) para distinguir los registros.
+const TD_IG_PAL = [['#6d28d9', '#c026d3', '#4c1d95'], ['#0f766e', '#0891b2', '#134e4a'], ['#c2410c', '#e11d48', '#7c2d12'], ['#1d4ed8', '#4f46e5', '#1e3a8a'], ['#15803d', '#65a30d', '#14532d'], ['#be185d', '#db2777', '#831843'], ['#a16207', '#ea580c', '#713f12']];
+function tdIGVars_(r) {
+  if (!tdEsIG_(r)) return '';
+  const L = typeof ASEO !== 'undefined' && ASEO.pl ? Object.keys(ASEO.pl.lista || {}).filter(k => (ASEO.pl.lista[k] || {}).depto === 'inspeccion').sort((a, b) => (parseInt(a.replace(/\D/g, '')) || 0) - (parseInt(b.replace(/\D/g, '')) || 0)) : [];
+  const i = L.indexOf(r.Plantilla), c = TD_IG_PAL[(i < 0 ? 0 : i) % TD_IG_PAL.length];
+  return `;--ig1:${c[0]};--ig2:${c[1]};--ig3:${c[2]}`;
+}
 function tdFinMes_(iso) { const d = tarParseIso_(iso); return tarIso_(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
 function tdIsoDe_(r, iso) { return tdEsIG_(r) ? tdFinMes_(iso) : iso; }
 function tdIsoId_(id, iso) { id = String(id); return id.includes('~') || tdEsIG_(TAR_STATE.list.find(x => x.ID === id)) ? tdFinMes_(iso) : iso; }
@@ -58615,7 +58623,7 @@ function tdCss_() {
   .td-mcal span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#0f1729}
   .td-mcal>i{width:7px;height:7px;border-radius:50%;background:var(--sc);flex:none}
   .td-mcal.fin span{text-decoration:line-through;opacity:.6}
-  .td-mcal.ig{background:linear-gradient(135deg,#6d28d9,#c026d3);border-left-color:#4c1d95}.td-mcal.ig b,.td-mcal.ig span{color:#fff}
+  .td-mcal.ig{background:linear-gradient(135deg,var(--ig1,#6d28d9),var(--ig2,#c026d3));border-left-color:var(--ig3,#4c1d95)}.td-mcal.ig b,.td-mcal.ig span{color:#fff}
   .td-card .r1 .prop{font-weight:600;color:#0f1729;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .td-card .pl-cb2{margin-top:6px}
   .td-igtg{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;width:100%;margin-top:8px;padding:5px 8px;border-top:1px dashed #e2e8f0;color:#6d28d9;font-size:11.5px;font-weight:600;cursor:pointer;border-radius:0 0 8px 8px}
@@ -58630,17 +58638,17 @@ function tdCss_() {
   .td-hf .pc{width:34px;height:5px;border-radius:3px;background:rgba(15,23,42,.1);overflow:hidden;flex:none}.td-hf .pc i{display:block;height:100%;background:var(--c)}
   .td-hf em{font-style:normal;font-size:10.5px;font-weight:700;width:28px;text-align:right;flex:none;color:#334155}
   /* Inspección general: card con fondo vibrante para distinguirla de las tareas comunes */
-  html body .ad-card.td-ig,html body .ad-card.est-tint.td-ig[style]{background:linear-gradient(135deg,#6d28d9 0%,#9333ea 55%,#c026d3 100%)!important;border-color:#6d28d9!important;color:#fff;box-shadow:0 6px 18px -8px rgba(109,40,217,.7)!important}
+  html body .ad-card.td-ig,html body .ad-card.est-tint.td-ig[style]{background:linear-gradient(135deg,var(--ig1,#6d28d9) 0%,var(--ig2,#c026d3) 100%)!important;border-color:var(--ig1,#6d28d9)!important;color:#fff;box-shadow:0 6px 18px -8px color-mix(in srgb,var(--ig1,#6d28d9) 70%,transparent)!important}
   html body .ad-card.td-ig .r1 .prop,html body .ad-card.td-ig .r1 .code,html body .ad-card.td-ig .r2,html body .ad-card.td-ig .r2 span,html body .ad-card.td-ig .ad-gd{color:#fff}
   html body .ad-card.td-ig .ax-cat{background:rgba(255,255,255,.95)}html body .ad-card.td-ig .r2 .ax-cat .t{color:var(--cc)}html body .ad-card.td-ig .r2 .ax-cat .s{color:#4b5563}html body .ad-card.td-ig .r2 .ax-cat .a{color:#b8bec8}html body .ad-card.td-ig .flag{color:#b91c1c}html body .ad-card.td-ig .flag.amber{color:#92400e}html body .ad-card.td-ig .flag.gray{color:#475569}
   html body .ad-card.td-ig .flag{background:rgba(255,255,255,.95)}
   html body .ad-card.td-ig .ad-un{color:#ede9fe}
   html body .ad-card.td-ig .ad-det{color:#fff;border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.12)}
   html body .ad-card.td-ig .ad-qs button{background:rgba(255,255,255,.18);color:#fff}
-  html body .ad-card.td-ig .ad-qs button.on{background:#fff;color:#4c1d95}
+  html body .ad-card.td-ig .ad-qs button.on{background:#fff;color:var(--ig3,#4c1d95)}
   html body .ad-card.td-ig .pl-cb2 span{background:rgba(255,255,255,.3)}html body .ad-card.td-ig .pl-cb2 b{color:#fff}
   html body .ad-card.td-ig .td-igtg{color:#fff;border-top-color:rgba(255,255,255,.35)}html body .ad-card.td-ig .td-igtg:hover{background:rgba(255,255,255,.12)}
-  html body .ad-card.td-ig .td-hfb .ad-qs button{background:rgba(255,255,255,.18);color:#fff}html body .ad-card.td-ig .td-hfb .ad-qs button.on{background:#fff;color:#4c1d95}
+  html body .ad-card.td-ig .td-hfb .ad-qs button{background:rgba(255,255,255,.18);color:#fff}html body .ad-card.td-ig .td-hfb .ad-qs button.on{background:#fff;color:var(--ig3,#4c1d95)}
   .ad-card .flag.amber{color:#92400e}.ad-card .flag.amber i{background:#f59e0b}.ad-card .flag.gray{color:#475569}.ad-card .flag.gray i{background:#94a3b8}
   `;
   document.head.appendChild(st);
@@ -58663,9 +58671,11 @@ function tdRender_() {
       ${ckMesNavHtml_(ym, 'tdMesV_')}${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()')}
       <span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
-            <button type="button" class="aseo-btn" onclick="tarOpenPanel(null,'','IG')" title="Inspección general de varios alojamientos con una plantilla">＋ Inspección general</button>
-      <button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null)">＋ Pendiente</button></div>`;
-  const nav = `<div class="cl-nav-slot" data-act="tareas">${typeof clNavHtml_ === 'function' ? clNavHtml_('tareas') : ''}</div>`;
+      ${TAR_STATE.sub === 'rec' ? `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','Recordatorio')">＋ Recordatorio</button>`
+        : `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','IG')" title="Inspección general de varios alojamientos con una plantilla">＋ Inspección general</button>`}</div>`;
+  const nRec = TAR_STATE.list.filter(tarEsRec_).length, nIG = TAR_STATE.list.filter(tdEsIG_).length;
+  const nav = `<div class="cl-nav-slot" data-act="tareas">${typeof clNavHtml_ === 'function' ? clNavHtml_('tareas') : ''}</div>
+    <div class="cl-sub">${[['ig', '🔍 Inspección general', nIG, AT_DEPTO.inspeccion.c], ['rec', '📌 Recordatorios', nRec, '#d97706']].map(([k, t, n, c]) => `<button type="button" class="cl-sb ${(TAR_STATE.sub || 'ig') === k ? 'on' : ''}" style="--c:${c}" onclick="TAR_STATE.sub='${k}';tdRender_()">${t} · ${n}</button>`).join('')}</div>`;
   const head = `<div class="cl-title">🛠️ Check-Flow</div>`;
   if (sec === 'registro') {
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}${nav}${bar.replace('__SEGV__', '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(TAR_STATE.list.slice())}</div>` : ''}<div id="tar-content">${tarRegistroHtml_()}</div></div>`;
@@ -58802,7 +58812,7 @@ function tdCard_(r, dia, o) {
   const hijos = ig ? tdIGAlojs_(r) : [], ab = ig && (TAR_STATE.igAb || new Set()).has(r.ID), av = ig ? tdIGAvance_(r, dia) : null;
   const ico = ig ? '🔍' : tarEsRec_(r) ? '📌' : '📋';
   const abrir = o.cal ? `tdAbrirEn_('${esc(r.ID)}','${dia}')` : `tdAbrir_('${esc(r.ID)}')`;
-  return `<div class="ad-card tipo est-tint td-card ${ig ? 'td-ig' : ''} ${sel ? 'sel' : ''} ${est === 'Cancelado' ? 'ghost' : ''}" data-k="${esc(r.ID)}" style="--tc:${tc};--sc:${TD_EST[est] || '#94a3b8'}" onclick="${abrir}"
+  return `<div class="ad-card tipo est-tint td-card ${ig ? 'td-ig' : ''} ${sel ? 'sel' : ''} ${est === 'Cancelado' ? 'ghost' : ''}" data-k="${esc(r.ID)}" style="--tc:${tc};--sc:${TD_EST[est] || '#94a3b8'}${tdIGVars_(r)}" onclick="${abrir}"
       draggable="true" ondragstart="${o.cal ? `tarDragStart(event,'${esc(r.ID)}','${tdIsoDe_(r, dia)}')` : `tdDragStart_(event,'${esc(r.ID)}')`}" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${esc(tdCodigo_(r))}</span><span title="${prioEf !== (r.Prioridad || 'Medio') ? 'Prioridad subida automáticamente por la fecha límite (elegida: ' + esc(r.Prioridad || 'Medio') + ')' : ''}">${prio4Html_(prioEf, true, `tdPrioCiclo_('${esc(r.ID)}')`)}</span><span class="prop">${ico} ${esc(r.Nombre || 'Sin nombre')}</span></div>
     ${flag}
@@ -59003,6 +59013,7 @@ TAR_STATE.fx = TAR_STATE.fx || { tipo: '', clas: new Set(), sub: new Set(), prio
 const TAR_SIN = '(Sin clasificación)', TAR_SIN_PERS = '(Sin asignar)';
 function tarPasaFiltro_(r) {
   const fx = TAR_STATE.fx;
+  if (TAR_STATE.sub === 'rec' ? !tarEsRec_(r) : !tdEsIG_(r)) return false; // subsección: 🔍 Inspección general | 📌 Recordatorios
   if (fx.tipo && (tarEsRec_(r) ? 'Recordatorio' : 'Pendiente programado') !== fx.tipo) return false;
   const c = r.Clasificacion || TAR_SIN;
   if (fx.clas.size && !fx.clas.has(c)) return false;
@@ -59549,7 +59560,7 @@ function tarMesHtml_() {
 // Mes: mini card con los mismos elementos que las cards (franja de tipo, color de estado, prioridad, código y nombre).
 function tdMiniCal_(r, iso) {
   const est = tdEst_(r, iso), T = TD_TIPO[tdTipoK_(r)], ig = tdEsIG_(r), tc = ig ? AT_DEPTO.inspeccion.c : T.c;
-  return `<div class="td-mcal ${ig ? 'ig' : ''} ${est === 'Resuelto' || est === 'Cancelado' ? 'fin' : ''}" style="--tc:${tc};--sc:${TD_EST[est] || '#94a3b8'}" onclick="event.stopPropagation();tdAbrirEn_('${esc(r.ID)}','${iso}')" title="${esc(r.Nombre || '')} · ${esc(est)}">
+  return `<div class="td-mcal ${ig ? 'ig' : ''} ${est === 'Resuelto' || est === 'Cancelado' ? 'fin' : ''}" style="--tc:${tc};--sc:${TD_EST[est] || '#94a3b8'}${tdIGVars_(r)}" onclick="event.stopPropagation();tdAbrirEn_('${esc(r.ID)}','${iso}')" title="${esc(r.Nombre || '')} · ${esc(est)}">
     <b>${esc(tdCodigo_(r))}</b>${prio4Html_(tdPrioEf_(r, iso), true)}<span>${esc(r.Nombre || '')}</span><i></i></div>`;
 }
 window.tarIrADia = function (iso) { TAR_STATE.calView = 'dia'; TAR_STATE.calRef = tarParseIso_(iso); TAR_STATE.dia = iso === tarIso_(tarToday_()) ? null : iso; tarRender(); };
@@ -67353,6 +67364,8 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   // Tareas manuales del día (filtro de personal = sus asignados).
   const fPers = ASEO.fPers || [];
   const tInfos = atLista_().filter(t => atToca_(t, hoy)).map(t => atInfo_(t, hoy));
+  // Administrativas únicas sin resolver de días pasados: siguen apareciendo hoy (como los antiguos Pendientes).
+  if (hoy === aseoHoyIso_()) { const ya = new Set(tInfos.map(I => I.k)); atLista_().forEach(t => { if (t.rt || t.repite || t.depto !== 'administrativo' || !(t.fecha < hoy) || ya.has('T' + t.id)) return; const I = atInfo_(t, t.fecha); if (['terminado', 'inspeccionado', 'cancelado'].includes(I.selE)) return; I.atrasada = true; tInfos.push(I); }); }
   // Card reprogramada a este día: sus tareas ligadas por incidencia (de cualquier tipo) que sigan sin resolver la acompañan.
   { const ya = new Set(tInfos.map(I => I.k));
     infos.filter(I => I.esCopia).forEach(C => {
@@ -68037,6 +68050,7 @@ function atCard_(I) {
     <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${t.repite ? atRecChip_() : ''}</div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
+    ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}
     <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
     <div class="r3">${(t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
