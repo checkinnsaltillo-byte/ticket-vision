@@ -58838,7 +58838,7 @@ function tdCard_(r, dia, o) {
     <div class="r1"><span class="code">${esc(tdCodigo_(r))}</span><span title="${prioEf !== (r.Prioridad || 'Medio') ? 'Prioridad subida automáticamente por la fecha límite (elegida: ' + esc(r.Prioridad || 'Medio') + ')' : ''}">${prio4Html_(prioEf, true, `tdPrioCiclo_('${esc(r.ID)}')`)}</span><span class="prop">${ico} ${esc(r.Nombre || 'Sin nombre')}</span></div>
     ${flag}
     <div class="r2">${meta.join('<span class="sep"></span>')}</div>
-    <div class="r3">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${ig ? `<span class="ad-gd" title="Alojamientos">🏠 ${hijos.length}</span>` : ''}${r.WhatsApp === 'Sí' ? '<span class="ad-gd" title="Envía WhatsApp">💬</span>' : ''}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();${abrir}">Detalles</button></div>
+    <div class="r3">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${ig ? `<span class="ad-gd" title="Alojamientos">🏠 ${hijos.length}</span>` : ''}${r.WhatsApp === 'Sí' ? '<span class="ad-gd" title="Envía WhatsApp">💬</span>' : ''}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();${abrir}">Detalles</button>${ig ? `<button type="button" class="ad-det" title="Editar el levantamiento" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button>` : ''}</div>
     ${tdQs_(r.ID, est, dia)}${av != null ? tdBarra_(av, 'Avance de los alojamientos') : ''}
     ${ig && hijos.length ? `<button type="button" class="td-igtg ${ab ? 'ab' : ''}" onclick="event.stopPropagation();tdIGToggle_('${esc(r.ID)}')" title="${ab ? 'Ocultar' : 'Ver'} los alojamientos">${ab ? '▴ Ocultar' : '▾ Ver'} ${hijos.length} alojamiento${hijos.length === 1 ? '' : 's'}</button>` : ''}
     ${ab ? `<div class="td-hijos" onclick="event.stopPropagation()">${hijos.map(h => tdHijoFila_(r, h, dia)).join('')}</div>` : ''}
@@ -58902,29 +58902,39 @@ function tdIGChips_(iso, grande) {
     const k = x.hid + '|' + (x.r.Plantilla || x.r.ID), ult = ULT.get(k), n = ult ? dias(ult, hoy) : null;
     const pi = x.r.Plantilla ? (plIdxGet_(tdIGKey_(x.r, x.hid, x.P)) || {}).p : null, pc = x.est === 'Resuelto' && pi == null ? 100 : pi || 0;
     const dTxt = n == null ? 'Sin levantamiento previo' : n === 0 ? 'Levantado hoy' : `Hace ${n} día${n === 1 ? '' : 's'}`;
-    const sem = n == null ? 'gr' : n > 30 ? 'r' : n > 20 ? 'a' : 'v';
+    const R = tdIGRetraso_(x.r, x.hid), sem = { baja: 'v', media: 'a', alta: 'r', critica: 'r' }[R.prio];
     return `<div class="td-igc" style="--sc:${TD_EST[x.est] || '#94a3b8'}" onclick="event.stopPropagation();tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')" title="${esc(String(a.nombre || x.hid))} · ${esc(pt)} · ${txt} · ${pc}%">
       <b>${esc(cod)}-${esc(tdAbrev_(pt))}</b>
-      <span class="l2"><span class="d ${sem}">${dTxt}</span>${n != null && n > 30 ? `<span class="rt">+${n - 30} días retraso</span>` : ''}</span>
+      <span class="l2"><span class="d ${sem}">${dTxt}</span>${R.ret > 0 ? `<span class="rt">+${R.ret} días retraso</span>` : ''}</span>
       <span class="br"><span class="tk"><i style="width:${pc}%"></i></span><em>${pc}%</em></span></div>`; }).join('')}</div>`;
 }
-// Prioridad dinámica de un alojamiento en un levantamiento: días desde su último levantamiento terminado (o, si nunca se ha
-// hecho, desde que se creó el levantamiento) menos la frecuencia de 30 días = días de retraso.
-// Semáforo: al día → Baja (verde) · 1–10 días → Media (amarillo) · 11–20 → Alta (naranja) · más de 20 → Crítica (rojo).
-const TD_LV_FREC = 30, TD_LV_SEM = { baja: ['#15803d', '#dcfce7', 'Al día'], media: ['#a16207', '#fef9c3', ''], alta: ['#c2410c', '#ffedd5', ''], critica: ['#b91c1c', '#fee2e2', ''] };
+// Prioridad dinámica de un alojamiento en un levantamiento. Referencia = su último levantamiento terminado (o, si nunca se ha
+// hecho, el «Desde» de Fecha(s)); siguiente fecha límite = referencia + el periodo de Fecha(s) (semanal 7 días, mensual 1 mes,
+// bimestral 2 meses; con varios días elegidos se reparte el periodo). Cada levantamiento terminado reinicia la cuenta desde ese día.
+// Semáforo por días de retraso: al día → Baja (verde) · 1–10 → Media (amarillo) · 11–20 → Alta (naranja) · más de 20 → Crítica (rojo).
+const TD_LV_SEM = { baja: ['#15803d', '#dcfce7', 'Al día'], media: ['#a16207', '#fef9c3', ''], alta: ['#c2410c', '#ffedd5', ''], critica: ['#b91c1c', '#fee2e2', ''] };
+function tdLvSigLim_(r, base) {
+  const p = tarProg_(r) || {}, d = tarParseIso_(base); if (!d) return base;
+  const n = p.tipo === 'semanal' ? (p.dias_semana || []).length : (p.dias_mes || []).length;
+  if (p.tipo === 'semanal') d.setDate(d.getDate() + Math.max(1, Math.round(7 / Math.max(1, n))));
+  else if (n > 1) d.setDate(d.getDate() + Math.max(1, Math.round((p.tipo === 'bimestral' ? 61 : 30.4) / n)));
+  else { const dia = d.getDate(), m = d.getMonth() + (p.tipo === 'bimestral' ? 2 : 1); const x = new Date(d.getFullYear(), m, 1); x.setDate(Math.min(dia, new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate())); return tarIso_(x); }
+  return tarIso_(d);
+}
 function tdIGUltMap_() {
   if (TAR_STATE._igUlt && Date.now() - (TAR_STATE._igUltTs || 0) < 1500) return TAR_STATE._igUlt;
   const U = new Map(); tdIGMapa_().forEach((A, d) => A.forEach(x => { if (x.est !== 'Resuelto') return; const k = x.hid + '|' + (x.r.Plantilla || x.r.ID); if (!U.has(k) || d > U.get(k)) U.set(k, d); }));
   TAR_STATE._igUltTs = Date.now(); return (TAR_STATE._igUlt = U);
 }
 function tdIGRetraso_(r, hid) {
-  const hoy = tarIso_(tarToday_()), ult = tdIGUltMap_().get(hid + '|' + (r.Plantilla || r.ID)) || '';
-  const base = ult || String(r.Timestamp || '').slice(0, 10) || hoy, dias = Math.max(0, Math.round((Date.parse(hoy + 'T12:00:00') - Date.parse(base + 'T12:00:00')) / 864e5)), ret = dias - TD_LV_FREC;
-  return { ult, dias, ret, prio: ret > 20 ? 'critica' : ret > 10 ? 'alta' : ret > 0 ? 'media' : 'baja' };
+  const hoy = tarIso_(tarToday_()), ult = tdIGUltMap_().get(hid + '|' + (r.Plantilla || r.ID)) || '', dd = (a, b) => Math.round((Date.parse(b + 'T12:00:00') - Date.parse(a + 'T12:00:00')) / 864e5);
+  const base = ult || (tarProg_(r) || {}).inicio || String(r.Timestamp || '').slice(0, 10) || hoy, lim = tdLvSigLim_(r, base);
+  const dias = Math.max(0, dd(base, hoy)), ret = dd(lim, hoy);
+  return { ult, base, lim, dias, ret, prio: ret > 20 ? 'critica' : ret > 10 ? 'alta' : ret > 0 ? 'media' : 'baja' };
 }
 function tdIGRetHtml_(R) {
   const c = TD_LV_SEM[R.prio];
-  return `<span class="tb-ret" style="display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:${c[0]};background:${c[1]}">${R.ret > 0 ? `+${R.ret} día${R.ret === 1 ? '' : 's'} de retraso` : `Al día · faltan ${-R.ret} día${R.ret === -1 ? '' : 's'}`}</span>`;
+  return `<span class="tb-ret" style="display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:${c[0]};background:${c[1]}">${R.ret > 0 ? `+${R.ret} día${R.ret === 1 ? '' : 's'} de retraso` : R.ret === 0 ? 'Vence hoy' : `Al día · faltan ${-R.ret} día${R.ret === -1 ? '' : 's'}`}</span>`;
 }
 // Fecha (local) del último guardado del estado o de la plantilla de un alojamiento en el periodo P (fin de mes).
 function tdIGUltFecha_(r, hid, P) {
@@ -58947,18 +58957,18 @@ function tdTablaLv_(O, vac) {
         ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')),
         fl ? `<span class="tb-fe ${/vencida|hoy/.test(av) && e !== 'Resuelto' ? 'tarde' : ''}" title="${esc(av)}">${esc(tarFmtFecha_(fl))}</span>` : '<span class="tb-mu">—</span>',
         ult ? ckTx_(aseoDiaTxt_(ult)) : '<span class="tb-mu">—</span>',
-        R.ult ? ckTx_(`${aseoDiaTxt_(R.ult)} · hace ${R.dias} día${R.dias === 1 ? '' : 's'}`) : `<span class="tb-mu" title="Se cuenta desde que se creó el levantamiento">Sin previo · ${R.dias} día${R.dias === 1 ? '' : 's'}</span>`,
+        R.ult ? `<span title="Siguiente fecha límite: ${esc(aseoDiaTxt_(R.lim))}">${ckTx_(`${aseoDiaTxt_(R.ult)} · hace ${R.dias} día${R.dias === 1 ? '' : 's'}`)}</span>` : `<span class="tb-mu" title="Se cuenta desde «Desde» de Fecha(s); siguiente fecha límite: ${esc(aseoDiaTxt_(R.lim))}">Sin previo · desde ${esc(aseoDiaTxt_(R.base))}</span>`,
         tdIGRetHtml_(R)] };
     }).sort((a, b) => String(a.a.corto || a.a.nombre).localeCompare(String(b.a.corto || b.a.nombre), 'es', { numeric: true }));
     // Avance del levantamiento = promedio de sus alojamientos (con un decimal para que se note desde el primer avance) + conteo por estado.
     const prs = rows.map(x => x.pc), prom = prs.length ? prs.reduce((a, b) => a + b, 0) / prs.length : 0, prT = prom > 0 && prom < 10 ? prom.toFixed(1).replace(/\.0$/, '') : String(Math.round(prom));
     const cnt = e => rows.filter(x => x.e === e).length, nP = cnt('En proceso'), nR = cnt('Resuelto');
-    return { t: `📝 ${esc(r.Nombre || 'Levantamiento')}`, rows, cerrado: !C.has(k), toggle: `tdTbTg_('${esc(k)}')`,
+    return { t: `📝 ${esc(r.Nombre || 'Levantamiento')}`, rows, cerrado: !C.has(k), toggle: `tdTbTg_('${esc(k)}')`, extra: `<button type="button" class="tb-ed" title="Editar el levantamiento" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button>`,
       prog: `<span class="tb-gp"><span class="tk"><i style="width:${prom}%"></i></span><em>${prT}%</em>${nP ? `<span style="color:${TD_EST['En proceso']}">● ${nP} en proceso</span>` : ''}${nR ? `<span style="color:${TD_EST['Resuelto']}">● ${nR} terminado${nR === 1 ? '' : 's'}</span>` : ''}${fl ? `<span>⏳ ${esc(tarFmtFecha_(fl))}</span>` : ''}</span>` };
   });
   if (!document.getElementById('tdlv-css')) { const st = document.createElement('style'); st.id = 'tdlv-css'; st.textContent = `.ad-tbl.tb-pg{max-height:calc(100vh - 240px);overflow:auto}.ad-tbl.tb-pg .tb-gw{position:relative}
     .ad-tbl.tb-pg .tb-grp{position:sticky;top:0;z-index:3;height:38px;box-sizing:border-box;padding-top:0;padding-bottom:0}.ad-tbl.tb-pg .tb-row.h{top:38px;z-index:2}
-    .ad-tbl .tb-grp.tg{cursor:pointer;user-select:none}.ad-tbl .tb-grp.tg:hover{background:#eef2ff}.ad-tbl .tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
+    .ad-tbl .tb-grp.tg{cursor:pointer;user-select:none}.ad-tbl .tb-ed{all:unset;cursor:pointer;margin-left:10px;padding:3px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;color:#334155;font-size:11.5px;font-weight:600}.ad-tbl .tb-ed:hover{background:#eef2ff;border-color:#c7d2fe;color:#4338ca}.ad-tbl .tb-grp.tg:hover{background:#eef2ff}.ad-tbl .tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
     .ad-tbl .tb-gp{display:inline-flex;align-items:center;gap:6px;margin-left:12px;font-size:11px;font-weight:600;color:#6b7280}.ad-tbl .tb-gp .tk,.ad-tbl .tb-pc .tk{width:70px;height:5px;border-radius:3px;background:rgba(15,23,42,.1);overflow:hidden;display:inline-block}
     .ad-tbl .tb-gp .tk i{display:block;height:100%;background:#7c3aed}.ad-tbl .tb-pc{display:inline-flex;align-items:center;gap:6px}.ad-tbl .tb-pc .tk i{display:block;height:100%}.ad-tbl .tb-pc em,.ad-tbl .tb-gp em{font-style:normal;font-size:11px;font-weight:700;color:#334155}
     .ad-tbl .tb-ret{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}`; document.head.appendChild(st); }
@@ -69455,7 +69465,7 @@ function ckTablaHtml_(cols, grupos, vacio, o) {
   const gt = cols.map(c => c[1]).join(' ') + ' 18px', minW = cols.reduce((a, c) => a + (parseInt(c[1].replace(/minmax\(|,.*$/g, '')) || 120), 0) + cols.length * 12 + 18 + 32 + 8; // columnas + huecos (12px) + flecha + márgenes: el fondo de encabezados y separadores llega hasta la última columna
   const head = `<div class="tb-row h" style="grid-template-columns:${gt}">${cols.map(c => `<span>${c[0]}</span>`).join('')}<span></span></div>`;
   if (o && o.headPorGrupo) return `<div class="ad-tbl tb-pg"><div class="tb-in" style="min-width:${minW}px">${grupos.filter(g => g.rows.length).map(g => `<div class="tb-gw">
-    <div class="tb-grp ${g.toggle ? 'tg' : ''}" ${g.toggle ? `onclick="${g.toggle}" title="${g.cerrado ? 'Mostrar' : 'Ocultar'} los alojamientos"` : ''}>${g.toggle ? `<i class="tb-car">${g.cerrado ? '▸' : '▾'}</i>` : ''}${g.t} <b>${g.rows.length}</b>${g.prog || ''}</div>
+    <div class="tb-grp ${g.toggle ? 'tg' : ''}" ${g.toggle ? `onclick="${g.toggle}" title="${g.cerrado ? 'Mostrar' : 'Ocultar'} los alojamientos"` : ''}>${g.toggle ? `<i class="tb-car">${g.cerrado ? '▸' : '▾'}</i>` : ''}${g.t} <b>${g.rows.length}</b>${g.prog || ''}${g.extra || ''}</div>
     ${g.cerrado ? '' : head + g.rows.map(r => `<div class="tb-row ${r.cls || ''}" style="grid-template-columns:${gt}" onclick="${r.onclick}">${r.cells.join('')}<span class="tb-more">›</span></div>`).join('')}</div>`).join('')}</div></div>`;
   return `<div class="ad-tbl"><div class="tb-in" style="min-width:${minW}px">${head}
     ${grupos.filter(g => g.rows.length).map(g => `<div class="tb-grp ${g.toggle ? 'tg' : ''}" ${g.toggle ? `onclick="${g.toggle}" title="${g.cerrado ? 'Mostrar' : 'Ocultar'} los alojamientos"` : ''}>${g.toggle ? `<i class="tb-car">${g.cerrado ? '▸' : '▾'}</i>` : ''}${g.t} <b>${g.rows.length}</b>${g.prog || ''}</div>${(g.cerrado ? [] : g.rows).map(r => `<div class="tb-row ${r.cls || ''}" style="grid-template-columns:${gt}" onclick="${r.onclick}">${r.cells.join('')}<span class="tb-more">›</span></div>`).join('')}`).join('')}</div></div>`;
