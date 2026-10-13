@@ -58548,7 +58548,16 @@ function tdFinMes_(iso) { const d = tarParseIso_(iso); return tarIso_(new Date(d
 function tdIsoDe_(r, iso) { return tdEsIG_(r) ? tdFinMes_(iso) : iso; }
 function tdIsoId_(id, iso) { id = String(id); return id.includes('~') || tdEsIG_(TAR_STATE.list.find(x => x.ID === id)) ? tdFinMes_(iso) : iso; }
 // Fecha límite de la inspección dentro del mes (campo «Fecha límite»: se toma su día; sin él, el último día del mes).
-function tdLimIG_(r, iso) { const fin = tdFinMes_(iso), dm = ((tarProg_(r) || {}).dias_mes || []).map(Number).filter(Boolean), dd = (dm.length ? Math.max(...dm) : 0) || Number(String(r.Limite_IG || '').slice(8, 10)) || 31; /* día de «Fecha(s)» */ return fin.slice(0, 8) + String(Math.min(dd, Number(fin.slice(8)))).padStart(2, '0'); }
+// Fecha límite del levantamiento en el mes de «iso»: mensual/bimestral → el día elegido (si el mes es más corto, su último día);
+// por días de la semana (u otra) → el último día programado del mes (p. ej. el último viernes).
+const _tdLimC = new Map();
+function tdLimIG_(r, iso) {
+  const fin = tdFinMes_(iso), p = tarProg_(r) || {};
+  if (p.tipo === 'mensual' || p.tipo === 'bimestral' || !p.tipo) { const dm = (p.dias_mes || []).map(Number).filter(Boolean), dd = (dm.length ? Math.max(...dm) : 0) || Number(String(r.Limite_IG || '').slice(8, 10)) || 31; return fin.slice(0, 8) + String(Math.min(dd, Number(fin.slice(8)))).padStart(2, '0'); }
+  const k = r.ID + '|' + fin + '|' + (r.Programacion || ''); if (_tdLimC.has(k)) return _tdLimC.get(k);
+  let lim = fin; for (let d = Number(fin.slice(8)); d >= 1; d--) { const x = fin.slice(0, 8) + String(d).padStart(2, '0'); if (tarOccursOn_(r, x)) { lim = x; break; } }
+  _tdLimC.set(k, lim); return lim;
+}
 // Fecha límite de una tarea (para avisos y prioridad automática). '' si no tiene.
 function tdLimite_(r, dia) { if (r.Fecha_limite !== 'Sí') return ''; if (tdEsIG_(r)) return tdLimIG_(r, dia); const p = tarProg_(r); return p.tipo === 'unica' ? (p.fechas.slice().sort().filter(x => x >= tarIso_(tarToday_()))[0] || p.fechas.slice().sort().pop() || '') : (tarNextDate_(r) || ''); }
 // Prioridad automática conforme se acerca la fecha límite: > 7 días la elegida · ≤ 7 Medio · ≤ 3 Alto · ≤ 1 o vencida Crítico (nunca baja la elegida).
