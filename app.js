@@ -58575,7 +58575,7 @@ function tdIGKey_(r, hid, iso) { return `TI:${r.ID}:${hid}:${tdFinMes_(iso)}`; }
 const PL_U_PROC = 10, PL_U_FIN = 90;
 function tdIGEstH_(r, hid, iso) {
   const e = tarOcurEstado_(tdIGHijo_(r, hid), tdFinMes_(iso)); if (e === 'Cancelado' || !r.Plantilla) return e;
-  const x = (ASEO.pl.idx || {})[tdIGKey_(r, hid, iso)], pc = x ? x.p : 0;
+  const x = plIdxGet_(tdIGKey_(r, hid, iso)), pc = x ? x.p : 0;
   return pc >= PL_U_FIN || e === 'Resuelto' ? 'Resuelto' : pc > PL_U_PROC ? 'En proceso' : 'Pendiente';
 }
 function tdProgCorto_(r) {
@@ -58591,8 +58591,8 @@ function tdIGAvance_(r, iso) {
   const L = tdIGAlojs_(r); if (!L.length) return null;
   let s = 0, n = 0;
   L.forEach(h => { const e = tdIGEstH_(r, h, iso); if (e === 'Cancelado') return; n++;
-    if (e === 'Resuelto') { s += 100; return; } const x = r.Plantilla && (ASEO.pl.idx || {})[tdIGKey_(r, h, iso)]; s += x ? x.p : e === 'En proceso' ? 50 : 0; });
-  return n ? Math.round(s / n) : 0;
+    if (e === 'Resuelto') { s += 100; return; } const x = r.Plantilla && plIdxGet_(tdIGKey_(r, h, iso)); s += x ? x.p : e === 'En proceso' ? 50 : 0; });
+  const v = n ? s / n : 0; return v > 0 && v < 10 ? Math.round(v * 10) / 10 : Math.round(v); // un decimal abajo de 10 % (para que se note el primer avance)
 }
 function tdTipoK_(r) { return tarEsRec_(r) ? 'rec' : 'tar'; }
 function tdCss_() {
@@ -58839,7 +58839,7 @@ function tdCard_(r, dia, o) {
 //   Encabezado: ▸ código · nombre · estado · % de plantilla. Desplegado: estados rápidos y «Abrir formulario».
 function tdHijoFila_(r, hid, dia) {
   const est = tdIGEstH_(r, hid, dia), a = typeof atAloj_ === 'function' ? atAloj_(hid) : { nombre: hid, corto: '' };
-  const x = r.Plantilla ? (ASEO.pl.idx || {})[tdIGKey_(r, hid, dia)] : null, pc = est === 'Resuelto' && !x ? 100 : x ? x.p : 0, c = TD_EST[est] || '#94a3b8';
+  const x = r.Plantilla ? plIdxGet_(tdIGKey_(r, hid, dia)) : null, pc = est === 'Resuelto' && !x ? 100 : x ? x.p : 0, c = TD_EST[est] || '#94a3b8';
   const txt = est === 'Resuelto' ? 'Terminado' : est;
   return `<div class="td-hf" style="--c:${c}" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')" title="${esc(a.nombre || hid)} · ${txt}${x ? ` · ${x.h} de ${x.t} campos` : ''} — clic para abrir el formulario">
     <b>${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span class="nm">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span>
@@ -58849,7 +58849,7 @@ window.tdIGRow_ = function (id) { const S = TAR_STATE.igRowAb = TAR_STATE.igRowA
 // Sub-card de un alojamiento dentro de la inspección general (mismo formato de card de tarea).
 function tdHijoCard_(r, hid, dia) {
   const id = tdIGHijo_(r, hid), iso = tdFinMes_(dia), est = tarOcurEstado_(id, iso), a = typeof atAloj_ === 'function' ? atAloj_(hid) : { nombre: hid, corto: '' };
-  const p = r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null, x = (ASEO.pl.idx || {})[tdIGKey_(r, hid, dia)], oc = tarOcur_(id, iso);
+  const p = r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null, x = plIdxGet_(tdIGKey_(r, hid, dia)), oc = tarOcur_(id, iso);
   const sel = TAR_STATE.dr && TAR_STATE.dr.hijo === id;
   return `<div class="ad-card tipo est-tint td-card td-hijo ${sel ? 'sel' : ''} ${est === 'Cancelado' ? 'ghost' : ''}" style="--tc:${AT_DEPTO.inspeccion.c};--sc:${TD_EST[est] || '#94a3b8'}" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')">
     <div class="r1"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span>${prio4Html_(r.Prioridad || 'Medio', true)}<span class="prop">🔍 ${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span></div>
@@ -58870,7 +58870,7 @@ function tdIGMapa_() {
     const per = new Map(); // fin de mes del periodo → última fecha guardada
     const upd = (P, at) => { if (!P || !at) return; if (!per.has(P) || String(at) > per.get(P)) per.set(P, String(at)); };
     (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => upd(String(o.Fecha || '').slice(0, 10), o.Updated_at || o.Timestamp));
-    const pre = `TI:${r.ID}:${hid}:`; Object.keys(idx).forEach(k => { if (k.startsWith(pre)) upd(k.slice(pre.length), idx[k].at); });
+    const pre = `TI:${r.ID}:${hid}:`, preS = plKeyS_(pre); Object.keys(idx).forEach(k => { if (k.startsWith(pre)) upd(k.slice(pre.length), idx[k].at); else if (k.length === preS.length + 10 && k.startsWith(preS) && /\d{4}-\d{2}-\d{2}$/.test(k)) upd(k.slice(-10), idx[k].at); }); // también la llave como la guarda el servidor (sin «:»)
     per.forEach((at, P) => { const iso = loc(at); if (!iso) return; if (!M.has(iso)) M.set(iso, []); M.get(iso).push({ r, hid, P, est: tdIGEstH_(r, hid, P) }); });
   }));
   return M;
@@ -58891,7 +58891,7 @@ function tdIGChips_(iso, grande) {
     const p = x.r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[x.r.Plantilla] : null, pt = p ? p.titulo : String(x.r.Nombre || '').replace(/^Inspección general\s*·\s*/i, '');
     const cod = a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid);
     const k = x.hid + '|' + (x.r.Plantilla || x.r.ID), ult = TAR_STATE._igUlt.get(k), n = ult ? dias(ult, hoy) : null;
-    const pi = x.r.Plantilla ? ((ASEO.pl.idx || {})[tdIGKey_(x.r, x.hid, x.P)] || {}).p : null, pc = x.est === 'Resuelto' && pi == null ? 100 : pi || 0;
+    const pi = x.r.Plantilla ? (plIdxGet_(tdIGKey_(x.r, x.hid, x.P)) || {}).p : null, pc = x.est === 'Resuelto' && pi == null ? 100 : pi || 0;
     const dTxt = n == null ? 'Sin levantamiento previo' : n === 0 ? 'Levantado hoy' : `Hace ${n} día${n === 1 ? '' : 's'}`;
     const sem = n == null ? 'gr' : n > 30 ? 'r' : n > 20 ? 'a' : 'v';
     return `<div class="td-igc" style="--sc:${TD_EST[x.est] || '#94a3b8'}" onclick="event.stopPropagation();tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')" title="${esc(String(a.nombre || x.hid))} · ${esc(pt)} · ${txt} · ${pc}%">
@@ -58902,7 +58902,7 @@ function tdIGChips_(iso, grande) {
 // Fecha (local) del último guardado del estado o de la plantilla de un alojamiento en el periodo P (fin de mes).
 function tdIGUltFecha_(r, hid, P) {
   let at = ''; (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => { if (String(o.Fecha || '').slice(0, 10) === P && String(o.Updated_at || o.Timestamp || '') > at) at = String(o.Updated_at || o.Timestamp); });
-  const x = ((typeof ASEO !== 'undefined' && ASEO.pl && ASEO.pl.idx) || {})[`TI:${r.ID}:${hid}:${P}`]; if (x && x.at && String(x.at) > at) at = String(x.at);
+  const x = plIdxGet_(`TI:${r.ID}:${hid}:${P}`); if (x && x.at && String(x.at) > at) at = String(x.at);
   const d = at ? new Date(at) : null; return d && !isNaN(d) ? d.toLocaleDateString('en-CA', { timeZone: 'America/Monterrey' }) : '';
 }
 // Tabla de Levantamientos: un separador desplegable por levantamiento (plantilla) y un renglón por alojamiento.
@@ -58912,8 +58912,8 @@ function tdTablaLv_(O, vac) {
     const r = x.r, P = tdFinMes_(x.iso), fl = tdLimite_(r, x.iso), av = tdAvisoLim_(r, x.iso).replace(/<[^>]+>/g, '').replace('⏳ ', ''), pr = tdIGAvance_(r, x.iso), k = r.ID + '|' + P;
     const rows = tdIGAlojs_(r).map(hid => {
       const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, e = tdIGEstH_(r, hid, P), ult = tdIGUltFecha_(r, hid, P);
-      const pi = r.Plantilla ? ((ASEO.pl.idx || {})[tdIGKey_(r, hid, P)] || {}).p : null, pc = e === 'Resuelto' && pi == null ? 100 : pi || 0;
-      return { a, e, cls: e === 'Cancelado' ? 'gh' : '', onclick: `tdAbrirHijoEn_('${esc(r.ID)}','${esc(hid)}','${P}')`, cells: [
+      const pi = r.Plantilla ? (plIdxGet_(tdIGKey_(r, hid, P)) || {}).p : null, pc = e === 'Resuelto' && pi == null ? 100 : pi || 0;
+      return { a, e, pc, cls: e === 'Cancelado' ? 'gh' : '', onclick: `tdAbrirHijoEn_('${esc(r.ID)}','${esc(hid)}','${P}')`, cells: [
         `<span class="tb-ch" style="--c:${AT_DEPTO.inspeccion.c}">📝 Levantamiento</span>`, prio4Html_(tdPrioEf_(r, x.iso)), ckEst_(TD_EST[e] || '#94a3b8', e === 'Resuelto' ? 'Terminado' : e),
         `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</small></span>`,
         ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')),
@@ -58921,8 +58921,11 @@ function tdTablaLv_(O, vac) {
         ult ? ckTx_(aseoDiaTxt_(ult)) : '<span class="tb-mu">—</span>',
         `<span class="tb-pc"><span class="tk"><i style="width:${pc}%;background:${TD_EST[e] || '#94a3b8'}"></i></span><em>${pc}%</em></span>`] };
     }).sort((a, b) => String(a.a.corto || a.a.nombre).localeCompare(String(b.a.corto || b.a.nombre), 'es', { numeric: true }));
+    // Avance del levantamiento = promedio de sus alojamientos (con un decimal para que se note desde el primer avance) + conteo por estado.
+    const prs = rows.map(x => x.pc), prom = prs.length ? prs.reduce((a, b) => a + b, 0) / prs.length : 0, prT = prom > 0 && prom < 10 ? prom.toFixed(1).replace(/\.0$/, '') : String(Math.round(prom));
+    const cnt = e => rows.filter(x => x.e === e).length, nP = cnt('En proceso'), nR = cnt('Resuelto');
     return { t: `📝 ${esc(r.Nombre || 'Levantamiento')}`, rows, cerrado: !C.has(k), toggle: `tdTbTg_('${esc(k)}')`,
-      prog: `<span class="tb-gp"><span class="tk"><i style="width:${pr || 0}%"></i></span><em>${pr || 0}%</em>${fl ? `<span>⏳ ${esc(tarFmtFecha_(fl))}</span>` : ''}</span>` };
+      prog: `<span class="tb-gp"><span class="tk"><i style="width:${prom}%"></i></span><em>${prT}%</em>${nP ? `<span style="color:${TD_EST['En proceso']}">● ${nP} en proceso</span>` : ''}${nR ? `<span style="color:${TD_EST['Resuelto']}">● ${nR} terminado${nR === 1 ? '' : 's'}</span>` : ''}${fl ? `<span>⏳ ${esc(tarFmtFecha_(fl))}</span>` : ''}</span>` };
   });
   if (!document.getElementById('tdlv-css')) { const st = document.createElement('style'); st.id = 'tdlv-css'; st.textContent = `.ad-tbl .tb-grp.tg{cursor:pointer;user-select:none}.ad-tbl .tb-grp.tg:hover{background:#eef2ff}.ad-tbl .tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
     .ad-tbl .tb-gp{display:inline-flex;align-items:center;gap:6px;margin-left:12px;font-size:11px;font-weight:600;color:#6b7280}.ad-tbl .tb-gp .tk,.ad-tbl .tb-pc .tk{width:70px;height:5px;border-radius:3px;background:rgba(15,23,42,.1);overflow:hidden;display:inline-block}
@@ -59018,7 +59021,7 @@ function tdPintar_(nuevo) {
   const igHtml = tdEsIG_(r) ? (() => { const L = tdIGAlojs_(r), av = tdIGAvance_(r, dia), p = r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
     return `<div class="lab">Avance de la inspección${av != null ? ` · ${av}%` : ''}</div>${av != null ? tdBarra_(av, 'Avance de los alojamientos') : ''}
       <div class="ad-kv" style="margin-top:8px"><span>Plantilla</span><b>${esc(p ? p.titulo : 'Sin plantilla')}</b><span>Fecha límite</span><b>${aseoDiaTxt_(tdLimIG_(r, dia))}</b></div>
-      <div class="lab">Alojamientos · ${L.length}</div><div class="ad-ppl">${L.map(h => { const a = atAloj_(h), e = tdIGEstH_(r, h, dia), x = (ASEO.pl.idx || {})[tdIGKey_(r, h, dia)];
+      <div class="lab">Alojamientos · ${L.length}</div><div class="ad-ppl">${L.map(h => { const a = atAloj_(h), e = tdIGEstH_(r, h, dia), x = plIdxGet_(tdIGKey_(r, h, dia));
         return `<div class="ad-pp" style="cursor:pointer" onclick="tdAbrirHijo_('${id}','${esc(h)}')"><span class="code" style="font:700 11px ui-monospace,Menlo,monospace;min-width:34px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span><span>${esc(String(a.nombre || h).replace(/^Calle\s+/i, ''))}</span><em style="color:${TD_EST[e]}">${e === 'Resuelto' ? 'Terminado' : e}${x ? ' · ' + x.p + '%' : ''}</em></div>`; }).join('') || '<div class="ad-un">Sin alojamientos</div>'}</div>`; })() : '';
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="ty" style="font-weight:600;color:${T.c}">${T.t}</span><button type="button" class="ad-close" onclick="tdCerrar_()">✕</button></div>
       <div class="ad-tt">${esc(r.Nombre || 'Sin nombre')}</div>
@@ -70898,17 +70901,20 @@ function plSyncAbierta_() {
 }
 // Barra de avance de la plantilla debajo de los botones de estado: fondo gris = 100 %, relleno con color continuo
 // rojo (0 %) → amarillo → verde (100 %), y el % al extremo derecho.
+// El servidor guarda las respuestas con la llave sin «:» ni otros signos (TI:TAR-…:hid:fecha → TITAR-…hidfecha).
+function plKeyS_(k) { return String(k || '').replace(/[^\w-]/g, '').slice(0, 60); }
+function plIdxGet_(k) { const I = (typeof ASEO !== 'undefined' && ASEO.pl && ASEO.pl.idx) || {}; return I[k] || I[plKeyS_(k)] || null; }
 function plBarra_(pid, key) {
   if (!pid) return '';
   plCss_();
-  const x = (ASEO.pl.idx || {})[key], p = ASEO.pl.lista[pid], pc = x ? x.p : 0;
+  const x = plIdxGet_(key), p = ASEO.pl.lista[pid], pc = x ? x.p : 0;
   return `<div class="pl-cb2" title="Avance de la plantilla ${pcEsc(p ? p.titulo : '')}: ${pc}%${x ? ` (${x.h} de ${x.t} campos)` : ' · sin capturar'}"><span><i style="width:${pc}%;background:hsl(${Math.round(pc * 1.2)},78%,44%)"></i></span><b>${pc}%</b></div>`;
 }
 // % de la plantilla junto al chip «Tipo › Servicio» de la card. Rojo < 40 % · amarillo 40–89 % · verde ≥ 90 %.
 function plPill_(pid, key) {
   if (!pid) return '';
   plCss_();
-  const x = (ASEO.pl.idx || {})[key], p = ASEO.pl.lista[pid], pc = x ? x.p : 0;
+  const x = plIdxGet_(key), p = ASEO.pl.lista[pid], pc = x ? x.p : 0;
   const c = pc >= 90 ? 'v' : pc >= 40 ? 'a' : 'r';
   return `<span class="pl-pill ${c}" title="Avance de la plantilla ${pcEsc(p ? p.titulo : '')}: ${pc}%${x ? ` (${x.h} de ${x.t} campos)` : ' · sin capturar'}">${pc}%</span>`;
 }
@@ -70916,7 +70922,7 @@ function plPill_(pid, key) {
 function plCardBar_(t, key) {
   if (!t.plantilla) return '';
   if (!ASEO.pl.cargado) plTrasCargar_();
-  const x = (ASEO.pl.idx || {})[key], p = ASEO.pl.lista[t.plantilla];
+  const x = plIdxGet_(key), p = ASEO.pl.lista[t.plantilla];
   if (!x && !p) return '';
   const pc = x ? x.p : 0;
   return `<div class="pl-cbar ${pc === 100 ? 'ok' : ''}" title="${pcEsc(p ? p.titulo : 'Plantilla')}${x ? ` · ${x.h} de ${x.t} campos` : ' · sin respuestas'}">📋<span><i style="width:${pc}%"></i></span>${pc}%</div>`;
