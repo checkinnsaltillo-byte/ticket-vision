@@ -58897,6 +58897,37 @@ function tdIGChips_(iso, grande) {
       <span class="l2"><span class="d ${sem}">${dTxt}</span>${n != null && n > 30 ? `<span class="rt">+${n - 30} días retraso</span>` : ''}</span>
       <span class="br"><span class="tk"><i style="width:${pc}%"></i></span><em>${pc}%</em></span></div>`; }).join('')}</div>`;
 }
+// Fecha (local) del último guardado del estado o de la plantilla de un alojamiento en el periodo P (fin de mes).
+function tdIGUltFecha_(r, hid, P) {
+  let at = ''; (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => { if (String(o.Fecha || '').slice(0, 10) === P && String(o.Updated_at || o.Timestamp || '') > at) at = String(o.Updated_at || o.Timestamp); });
+  const x = ((typeof ASEO !== 'undefined' && ASEO.pl && ASEO.pl.idx) || {})[`TI:${r.ID}:${hid}:${P}`]; if (x && x.at && String(x.at) > at) at = String(x.at);
+  const d = at ? new Date(at) : null; return d && !isNaN(d) ? d.toLocaleDateString('en-CA', { timeZone: 'America/Monterrey' }) : '';
+}
+// Tabla de Levantamientos: un separador desplegable por levantamiento (plantilla) y un renglón por alojamiento.
+function tdTablaLv_(O, vac) {
+  const C = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(); // abiertos (por omisión cerrados)
+  const grupos = O.filter(x => tdEsIG_(x.r)).sort((a, b) => String(a.r.Nombre || '').localeCompare(String(b.r.Nombre || ''), 'es')).map(x => {
+    const r = x.r, P = tdFinMes_(x.iso), fl = tdLimite_(r, x.iso), av = tdAvisoLim_(r, x.iso).replace(/<[^>]+>/g, '').replace('⏳ ', ''), pr = tdIGAvance_(r, x.iso), k = r.ID + '|' + P;
+    const rows = tdIGAlojs_(r).map(hid => {
+      const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, e = tdIGEstH_(r, hid, P), ult = tdIGUltFecha_(r, hid, P);
+      const pi = r.Plantilla ? ((ASEO.pl.idx || {})[tdIGKey_(r, hid, P)] || {}).p : null, pc = e === 'Resuelto' && pi == null ? 100 : pi || 0;
+      return { a, e, cls: e === 'Cancelado' ? 'gh' : '', onclick: `tdAbrirHijoEn_('${esc(r.ID)}','${esc(hid)}','${P}')`, cells: [
+        `<span class="tb-ch" style="--c:${AT_DEPTO.inspeccion.c}">📝 Levantamiento</span>`, prio4Html_(tdPrioEf_(r, x.iso)), ckEst_(TD_EST[e] || '#94a3b8', e === 'Resuelto' ? 'Terminado' : e),
+        `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</small></span>`,
+        ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')),
+        fl ? `<span class="tb-fe ${/vencida|hoy/.test(av) && e !== 'Resuelto' ? 'tarde' : ''}" title="${esc(av)}">${esc(tarFmtFecha_(fl))}</span>` : '<span class="tb-mu">—</span>',
+        ult ? ckTx_(aseoDiaTxt_(ult)) : '<span class="tb-mu">—</span>',
+        `<span class="tb-pc"><span class="tk"><i style="width:${pc}%;background:${TD_EST[e] || '#94a3b8'}"></i></span><em>${pc}%</em></span>`] };
+    }).sort((a, b) => String(a.a.corto || a.a.nombre).localeCompare(String(b.a.corto || b.a.nombre), 'es', { numeric: true }));
+    return { t: `📝 ${esc(r.Nombre || 'Levantamiento')}`, rows, cerrado: !C.has(k), toggle: `tdTbTg_('${esc(k)}')`,
+      prog: `<span class="tb-gp"><span class="tk"><i style="width:${pr || 0}%"></i></span><em>${pr || 0}%</em>${fl ? `<span>⏳ ${esc(tarFmtFecha_(fl))}</span>` : ''}</span>` };
+  });
+  if (!document.getElementById('tdlv-css')) { const st = document.createElement('style'); st.id = 'tdlv-css'; st.textContent = `.ad-tbl .tb-grp.tg{cursor:pointer;user-select:none}.ad-tbl .tb-grp.tg:hover{background:#eef2ff}.ad-tbl .tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
+    .ad-tbl .tb-gp{display:inline-flex;align-items:center;gap:6px;margin-left:12px;font-size:11px;font-weight:600;color:#6b7280}.ad-tbl .tb-gp .tk,.ad-tbl .tb-pc .tk{width:70px;height:5px;border-radius:3px;background:rgba(15,23,42,.1);overflow:hidden;display:inline-block}
+    .ad-tbl .tb-gp .tk i{display:block;height:100%;background:#7c3aed}.ad-tbl .tb-pc{display:inline-flex;align-items:center;gap:6px}.ad-tbl .tb-pc .tk i{display:block;height:100%}.ad-tbl .tb-pc em,.ad-tbl .tb-gp em{font-style:normal;font-size:11px;font-weight:700;color:#334155}`; document.head.appendChild(st); }
+  return ckTablaHtml_([['Tipo', '140px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Alojamiento', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '120px'], ['Último registro', '120px'], ['Avance', '120px']], grupos, vac);
+}
+window.tdTbTg_ = function (k) { const C = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(); if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 window.tdAbrirHijoEn_ = function (pid, hid, P) { if (tdFinMes_(tdDia_()) !== P) TAR_STATE.dia = P; tdAbrirHijo_(pid, hid); };
 window.tdAbrirHijo_ = function (pid, hid) {
   const r = TAR_STATE.list.find(x => x.ID === pid); if (!r) return;
@@ -58931,6 +58962,7 @@ function tdTablero_(O, dia) {
     const N = [...new Set(O.flatMap(x => tarPersonalList_(x.r)))].sort((a, b) => a.localeCompare(b, 'es')), sin = O.filter(x => !tarPersonalList_(x.r).length);
     return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', n: sin.length, cards: ord(sin).map(card).join('') }] : []).concat(N.map(n => { const X = ord(O.filter(x => tarPersonalList_(x.r).includes(n))); return { t: `${adAv_(n)} ${esc(aseoNombreCorto_(n))}`, n: X.length, cards: X.map(card).join('') }; })), vac);
   }
+  if (vista === 'tabla' && TAR_STATE.sub !== 'rec') return tdTablaLv_(O, vac);
   if (vista === 'tabla') {
     const cl = [...new Set(O.map(x => x.r.Clasificacion || TAR_SIN))].sort((a, b) => a === TAR_SIN ? 1 : b === TAR_SIN ? -1 : a.localeCompare(b, 'es'));
     return ckTablaHtml_([['Tipo', '150px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Tarea / nombre', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '150px'], ['Fecha', '95px'], ['Clasificación', '150px']],
@@ -69382,7 +69414,7 @@ function ckTablaHtml_(cols, grupos, vacio) {
   if (!grupos.some(g => g.rows.length)) return `<div class="pc-mv-empty">${vacio || 'Sin registros'}</div>`;
   const gt = cols.map(c => c[1]).join(' ') + ' 18px', minW = cols.reduce((a, c) => a + (parseInt(c[1].replace(/minmax\(|,.*$/g, '')) || 120), 0) + 80;
   return `<div class="ad-tbl"><div class="tb-in" style="min-width:${minW}px"><div class="tb-row h" style="grid-template-columns:${gt}">${cols.map(c => `<span>${c[0]}</span>`).join('')}<span></span></div>
-    ${grupos.filter(g => g.rows.length).map(g => `<div class="tb-grp">${g.t} <b>${g.rows.length}</b>${g.prog || ''}</div>${g.rows.map(r => `<div class="tb-row ${r.cls || ''}" style="grid-template-columns:${gt}" onclick="${r.onclick}">${r.cells.join('')}<span class="tb-more">›</span></div>`).join('')}`).join('')}</div></div>`;
+    ${grupos.filter(g => g.rows.length).map(g => `<div class="tb-grp ${g.toggle ? 'tg' : ''}" ${g.toggle ? `onclick="${g.toggle}" title="${g.cerrado ? 'Mostrar' : 'Ocultar'} los alojamientos"` : ''}>${g.toggle ? `<i class="tb-car">${g.cerrado ? '▸' : '▾'}</i>` : ''}${g.t} <b>${g.rows.length}</b>${g.prog || ''}</div>${(g.cerrado ? [] : g.rows).map(r => `<div class="tb-row ${r.cls || ''}" style="grid-template-columns:${gt}" onclick="${r.onclick}">${r.cells.join('')}<span class="tb-more">›</span></div>`).join('')}`).join('')}</div></div>`;
 }
 // Calendario de Aseo/Mantenimiento (reservas por alojamiento + tarjetas por día) reutilizado en Incidencias y Objetos olvidados.
 // items = [{id, hid, dia, onclick, c (color de estado), titulo, prio, pers}]
