@@ -71043,6 +71043,8 @@ function rbHorDur_(H) { const m = t => { const [a, b] = t.split(':').map(Number)
 // Restricciones: personal de limpieza que labora ese día (Confirmado/Tentativo), edificio prioritario y segundo prioritario,
 // duración por tipo de alojamiento, tiempos de traslado entre propiedades y horario laboral. Primero todas las limpiezas, después las inspecciones; las que reciben huésped van primero.
 const RB_COLS = [['#1d4ed8', '#dbeafe'], ['#be185d', '#fce7f3'], ['#047857', '#d1fae5'], ['#b45309', '#fef3c7'], ['#7c3aed', '#ede9fe'], ['#0e7490', '#cffafe'], ['#b91c1c', '#fee2e2'], ['#4d7c0f', '#ecfccb'], ['#c2410c', '#ffedd5'], ['#4338ca', '#e0e7ff']]; // color por persona (texto, fondo)
+const RB_MARGEN_ALOJ = 10; // margen entre un alojamiento y otro dentro de la misma propiedad
+const RB_MAX_TRAS = 2; // máximo de traslados entre edificios por persona al día
 const RB_INSP_MIN = 20, RB_TRAS_DEF = 15, RB_MARGEN = 15; // margen entre edificio y edificio (se suma al traslado)
 function rbMin_(h) { const m = String(h || '').trim().match(/^(\d{1,2}):(\d{2})\s*([ap])?/i); if (!m) return null; let a = +m[1]; if (m[3]) { const pm = /p/i.test(m[3]); if (pm && a < 12) a += 12; if (!pm && a === 12) a = 0; } return a * 60 + +m[2]; }
 function rbHHMM_(m) { m = Math.round(m); const h = Math.floor(m / 60), n = m % 60; return rbHoraTxt_(`${String(h).padStart(2, '0')}:${String(n).padStart(2, '0')}`); }
@@ -71083,22 +71085,37 @@ window.rbProgramar_ = async function () {
   const fase = t => t.tipoT === 'Inspección' ? 1 : 0, uk = t => fase(t) + '|' + t.prop;
   const urg = new Map(); T.forEach(t => { const u = t.lim == null ? 9e9 : t.lim, k = uk(t); urg.set(k, Math.min(urg.has(k) ? urg.get(k) : 9e9, u)); });
   T.sort((a, b) => fase(a) - fase(b) || urg.get(uk(a)) - urg.get(uk(b)) || a.prop.localeCompare(b.prop, 'es') || (a.lim == null) - (b.lim == null) || (a.lim || 0) - (b.lim || 0) || a.cod.localeCompare(b.cod, 'es', { numeric: true }));
-  const sinAsig = [];
-  let faseAct = 0;
-  T.forEach(t => {
-    if (fase(t) !== faseAct) { faseAct = fase(t); disp.forEach(x => { x.vis = []; }); } // inspecciones: pueden volver a un edificio
-    let best = null;
-    disp.forEach(x => { if (x.prop !== t.prop && (x.vis || []).includes(t.prop)) return; // no regresa a un edificio que ya dejó
-      const tr = rbTras_(x.prop, t.prop), llega = x.t + tr.m, termina = llega + t.dur;
-      const pen = x.ed1 === t.prop ? 0 : x.ed2 === t.prop ? 25 : 60; // preferencia: edificio prioritario › segundo › otro
-      const tarde = t.lim != null && termina > t.lim ? 200 : 0, extra = termina > fin ? 120 : 0;
-      const costo = termina + pen + tarde + extra; if (!best || costo < best.costo) best = { x, tr, llega, termina, costo }; });
-    if (!best) { sinAsig.push(t); return; }
-    const x = best.x;
-    if (best.tr.m) x.pasos.push({ k: 'tras', de: x.prop, a: t.prop, ini: x.t, fin: best.llega, m: best.tr.m, base: best.tr.base, est: best.tr.est });
-    x.pasos.push({ k: 'tarea', t, ini: best.llega, fin: best.termina, pri: x.ed1 === t.prop ? 1 : x.ed2 === t.prop ? 2 : 0, tarde: t.lim != null && best.termina > t.lim });
-    x.trabajo += t.dur; x.tras += best.tr.m; x.t = best.termina; if (x.prop !== t.prop) (x.vis = x.vis || []).push(t.prop); x.prop = t.prop; t.quien = x.corto; t.col = x.col; t.ini = best.llega; t.fin = best.termina;
-  });
+  // 4) Reparto: se prueban cientos de variantes (con algo de azar) y se queda la mejor:
+  //    nadie se traslada más de RB_MAX_TRAS veces, sin tareas tarde ni fuera de horario y con cargas de trabajo parejas.
+  const corre = rnd => {
+    const W = disp.map(x => ({ x, t: ini, prop: '', vis: [], nT: 0, pasos: [], trabajo: 0, tras: 0 })), A = new Map(), sin = [];
+    let fa = 0, pref = 0, tardes = 0;
+    T.forEach(t => {
+      if (fase(t) !== fa) { fa = fase(t); W.forEach(w => { w.vis = []; }); } // inspecciones: pueden volver a un edificio
+      let best = null;
+      W.forEach(w => { const mueve = !!w.prop && w.prop !== t.prop;
+        if (mueve && (w.vis.includes(t.prop) || w.nT >= RB_MAX_TRAS)) return; // no regresa a un edificio que ya dejó · máx. traslados
+        const tr = !mueve && w.hid && w.hid !== t.hid ? { m: RB_MARGEN_ALOJ, base: 0, est: false, mismo: true } : rbTras_(w.prop, t.prop), llega = w.t + tr.m, termina = llega + t.dur;
+        const pen = w.x.ed1 === t.prop ? 0 : w.x.ed2 === t.prop ? 25 : 60; // preferencia: edificio prioritario › segundo › otro
+        const tarde = t.lim != null && termina > t.lim ? 200 : 0, extra = termina > fin ? 120 : 0;
+        const costo = termina + pen + tarde + extra + (rnd ? Math.random() * rnd : 0); if (!best || costo < best.costo) best = { w, tr, llega, termina, costo, mueve, pen }; });
+      if (!best) { sin.push(t); return; }
+      const w = best.w, late = t.lim != null && best.termina > t.lim;
+      if (best.tr.m) w.pasos.push({ k: 'tras', de: w.prop, a: t.prop, ini: w.t, fin: best.llega, m: best.tr.m, base: best.tr.base, est: best.tr.est, mismo: !!best.tr.mismo });
+      w.pasos.push({ k: 'tarea', t, ini: best.llega, fin: best.termina, pri: w.x.ed1 === t.prop ? 1 : w.x.ed2 === t.prop ? 2 : 0, tarde: late });
+      if (best.mueve) { w.nT++; w.vis.push(w.prop); }
+      w.trabajo += t.dur; w.tras += best.tr.m; w.t = best.termina; w.prop = t.prop; w.hid = t.hid; pref += best.pen; if (late) tardes++;
+      A.set(t, { w, ini: best.llega, fin: best.termina });
+    });
+    const c = W.map(w => w.trabajo + w.tras), prom = c.reduce((a, v) => a + v, 0) / (c.length || 1);
+    const score = sin.length * 5000 + tardes * 300 + W.reduce((a, w) => a + Math.max(0, w.t - fin), 0) * 3
+      + c.reduce((a, v) => a + Math.abs(v - prom), 0) * 2 + (c.length ? Math.max(...c) - Math.min(...c) : 0) + W.reduce((a, w) => a + w.tras, 0) * 0.5 + pref * 0.5;
+    return { W, A, sin, score };
+  };
+  let mejor = corre(0); for (let i = 0; i < 600; i++) { const r = corre(20 + (i % 6) * 25); if (r.score < mejor.score) mejor = r; }
+  const sinAsig = mejor.sin;
+  mejor.W.forEach(w => Object.assign(w.x, { pasos: w.pasos, trabajo: w.trabajo, tras: w.tras, t: w.t, prop: w.prop, nT: w.nT }));
+  T.forEach(t => { const a = mejor.A.get(t); if (a) Object.assign(t, { quien: a.w.x.corto, col: a.w.x.col, ini: a.ini, fin: a.fin }); });
   const req = T.reduce((a, t) => a + t.dur, 0), cap = disp.length * Math.max(0, fin - ini), usado = disp.reduce((a, x) => a + x.trabajo + x.tras, 0);
   RB.prog = { dia, H, ini, fin, T, S: disp, fuera, sinAsig, hechas, req, cap, usado, vista: (RB.prog && RB.prog.vista) || 'personal' };
   if (btn) { btn.disabled = false; btn.textContent = '🧹 Programar limpiezas del día:'; }
@@ -71115,16 +71132,17 @@ function rbProgHtml_() {
   const tCard = (t, conQuien) => `<div class="rbp-t ${t.tipoT === 'Inspección' ? 'ins' : 'lim'}"><b>${pcEsc(t.cod || '—')}</b><span>${t.tipoT === 'Inspección' ? '🔍' : '🧹'} ${pcEsc(t.titulo || t.tipoT)} · ${pcEsc(t.tipoA)} · ${dur(t.dur)}${t.durEst ? '*' : ''}</span>${t.prioritaria ? chip('★ Prioritaria', '#a16207', '#fef9c3') : ''}${t.entra ? chip(t.temp ? '⏰ entrada temprana' : '↘ entra hoy', '#15803d', '#dcfce7') : ''}${t.lim != null ? chip('antes de ' + rbHHMM_(t.lim), t.tarde ? '#b91c1c' : '#475569', t.tarde ? '#fee2e2' : '#f1f5f9') : ''}${conQuien ? (t.quien ? chip('👤 ' + pcEsc(t.quien) + ' · ' + rbHHMM_(t.ini), (t.col || [])[0] || '#4338ca', (t.col || [])[1] || '#eef2ff') : chip('Sin asignar', '#b91c1c', '#fee2e2')) : ''}</div>`;
   const resumen = `<div class="rbp-kpis">
     <div><small>Tareas</small><b>${nT}</b><em>${R.T.filter(t => t.tipoT === 'Limpieza').length} limpiezas · ${R.T.filter(t => t.tipoT === 'Inspección').length} inspecciones${R.hechas ? ` · ${R.hechas} ya terminadas` : ''}</em></div>
-    <div><small>Tiempo requerido</small><b>${hm(R.req)}</b><em>+ ${hm(R.S.reduce((a, x) => a + x.tras, 0))} de traslados (con ${RB_MARGEN} min de margen entre edificios)</em></div>
+    <div><small>Tiempo requerido</small><b>${hm(R.req)}</b><em>+ ${hm(R.S.reduce((a, x) => a + x.tras, 0))} de traslados (${RB_MARGEN} min de margen entre edificios · ${RB_MARGEN_ALOJ} min entre alojamientos)</em></div>
     <div><small>Capacidad del equipo</small><b>${hm(R.cap)}</b><em>${R.S.length} persona${R.S.length === 1 ? '' : 's'} × ${hm(R.fin - R.ini)} (${rbHHMM_(R.ini)} a ${rbHHMM_(R.fin)})</em></div>
+    <div><small>Reparto por persona</small><b>${R.S.length ? `${hm(Math.min(...R.S.map(x => x.trabajo + x.tras)))} – ${hm(Math.max(...R.S.map(x => x.trabajo + x.tras)))}` : '—'}</b><em>Carga más baja y más alta (trabajo + traslados) · máx. ${RB_MAX_TRAS} traslados por persona</em></div>
     <div class="${ok ? 'ok' : 'bad'}"><small>Resultado</small><b>${exc > 0 ? `Se excede ${hm(exc)}` : `Sobran ${hm(-exc)}`}</b><em>Termina a las ${rbHHMM_(ult)}${R.sinAsig.length ? ` · ${R.sinAsig.length} sin asignar` : ''}${R.T.some(t => t.tarde) ? ` · ${R.T.filter(t => t.tarde).length} después de la hora de entrada` : ''}</em></div></div>
     ${R.fuera.length ? `<div class="rb-s">No disponibles ese día: ${R.fuera.map(x => `${pcEsc(x.corto)} (${RB_EST[x.e].t.toLowerCase()})`).join(', ')}.</div>` : ''}
     ${R.T.some(t => t.durEst) ? '<div class="rb-s">* Duración estimada (60 min): ese tipo de alojamiento no tiene duración en el inciso b).</div>' : ''}`;
   const tab = (k, t) => `<button type="button" class="${R.vista === k ? 'on' : ''}" onclick="rbProgVista_('${k}')">${t}</button>`;
   let cuerpo = '';
   if (R.vista === 'personal') cuerpo = R.S.map(x => { const exc2 = x.t - R.fin;
-    return `<div class="rbp-p" style="border-left:4px solid ${(x.col || [])[0] || '#e8eaee'}"><div class="rbp-ph">${typeof adAv_ === 'function' ? adAv_(x.n) : ''}${chip('👤 ' + pcEsc(x.corto), (x.col || [])[0] || '#0f172a', (x.col || [])[1] || '#f1f5f9').replace('font-size:11px', 'font-size:13px')}${chip(RB_EST[x.e].t, x.e === 'confirmado' ? '#fff' : '#15803d', x.e === 'confirmado' ? '#16a34a' : '#f0fdf4')}<span class="sp"></span><span class="rbp-m">${x.pasos.filter(p => p.k === 'tarea').length} tareas · ${hm(x.trabajo)} + ${hm(x.tras)} traslado = <b style="color:#0f172a">${hm(x.trabajo + x.tras)} total</b> · ${exc2 > 0 ? `<b style="color:#b91c1c">se pasa ${hm(exc2)}</b>` : x.pasos.length ? `termina ${rbHHMM_(x.t)}` : 'sin tareas'}</span></div>
-      <ol class="rbp-it">${x.pasos.length ? x.pasos.map(p => p.k === 'tras' ? `<li class="tr"><span class="h">${rbHHMM_(p.ini)}</span><span>🚗 Traslado ${pcEsc(p.de)} → ${pcEsc(p.a)} · ${p.base} min${p.est ? ' (estimado)' : ''} + ${RB_MARGEN} min de margen = ${p.m} min</span></li>`
+    return `<div class="rbp-p" style="border-left:4px solid ${(x.col || [])[0] || '#e8eaee'}"><div class="rbp-ph">${typeof adAv_ === 'function' ? adAv_(x.n) : ''}${chip('👤 ' + pcEsc(x.corto), (x.col || [])[0] || '#0f172a', (x.col || [])[1] || '#f1f5f9').replace('font-size:11px', 'font-size:13px')}${chip(RB_EST[x.e].t, x.e === 'confirmado' ? '#fff' : '#15803d', x.e === 'confirmado' ? '#16a34a' : '#f0fdf4')}<span class="sp"></span><span class="rbp-m">${x.pasos.filter(p => p.k === 'tarea').length} tareas · ${x.nT || 0}/${RB_MAX_TRAS} traslados · ${hm(x.trabajo)} + ${hm(x.tras)} traslado = <b style="color:#0f172a">${hm(x.trabajo + x.tras)} total</b> · ${exc2 > 0 ? `<b style="color:#b91c1c">se pasa ${hm(exc2)}</b>` : x.pasos.length ? `termina ${rbHHMM_(x.t)}` : 'sin tareas'}</span></div>
+      <ol class="rbp-it">${x.pasos.length ? x.pasos.map(p => p.k === 'tras' ? `<li class="tr"><span class="h">${rbHHMM_(p.ini)}</span><span>${p.mismo ? `⏱ Margen entre alojamientos · ${p.m} min` : `🚗 Traslado ${pcEsc(p.de)} → ${pcEsc(p.a)} · ${p.base} min${p.est ? ' (estimado)' : ''} + ${RB_MARGEN} min de margen = ${p.m} min`}</span></li>`
         : `<li class="${p.tarde ? 'late' : ''}"><span class="h">${rbHHMM_(p.ini)}–${rbHHMM_(p.fin)}</span>${tCard(p.t)}${p.pri === 1 ? chip('1a Asignación', '#1d4ed8', '#dbeafe') : p.pri === 2 ? chip('2a Asignación', '#6d28d9', '#ede9fe') : chip('3a Asignación', '#475569', '#f1f5f9')}</li>`).join('') : '<li class="tr"><span>Sin tareas asignadas</span></li>'}
         ${x.pasos.length ? `<li class="fin"><span class="h">${rbHHMM_(x.t)}</span><span>🏁 Fin de su itinerario${exc2 > 0 ? ` · ${hm(exc2)} después de la salida (${rbHHMM_(R.fin)})` : ` · le quedan ${hm(-exc2)} de jornada`}</span></li>` : ''}</ol></div>`; }).join('') + (R.sinAsig.length ? `<div class="rbp-p"><div class="rbp-ph"><b style="color:#b91c1c">Sin asignar</b></div>${R.sinAsig.map(t => tCard(t)).join('')}</div>` : '');
   else { const key = R.vista === 'propiedad' ? (t => t.prop) : (t => t.tipoT), G = new Map(); R.T.forEach(t => { const k = key(t); if (!G.has(k)) G.set(k, []); G.get(k).push(t); });
