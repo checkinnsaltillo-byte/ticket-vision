@@ -59936,12 +59936,15 @@ function tarPanelRender_() {
   const tipoHtml = field(lbl('Tipo') + `<div style="display:flex;gap:6px;flex-wrap:wrap">${tarPill_(!rec, '📋 Pendiente programado', "tarSetTipoReg('Pendiente programado')")}${tarPill_(rec, '📌 Recordatorio', "tarSetTipoReg('Recordatorio')", { fg: '#92400e', bg: '#fef3c7', bd: '#f59e0b' })}</div>
     ${rec ? '<div style="font-size:11px;color:#94a3b8;margin-top:5px">Recordatorio: siempre es <b>Único</b> y aparece cada día, a partir de su fecha, hasta que se marque Resuelto o Cancelado.</div>' : ''}`);
   const recFecha = rec ? field(lbl('Fecha') + `<div style="font-size:12.5px;color:#334155;padding:9px 11px;border:1.5px dashed #fcd34d;border-radius:8px;background:#fffbeb">📅 ${P.id ? esc(tarRecTexto_(Object.assign({}, d, { ID: P.id }))) : `Desde hoy (${esc(tarFmtFecha_(tarIso_(tarToday_())))}) · aparece cada día hasta resolverse`}</div>`) : '';
+  // Al re-pintar (cada clic) se conserva dónde estaba el scroll del panel y de la lista de alojamientos.
+  const sc0 = pn.querySelector('.tar-pb'), al0 = pn.querySelector('.tar-al'), pos = [sc0 ? sc0.scrollTop : 0, al0 ? al0.scrollTop : 0];
+  Promise.resolve().then(() => { const a = pn.querySelector('.tar-pb'), b = pn.querySelector('.tar-al'); if (a) a.scrollTop = pos[0]; if (b) b.scrollTop = pos[1]; }); // justo después de pintar (antes de que se vea)
   pn.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid #e8eaee">
       <div style="font-size:16px;font-weight:600;color:#0f1729">${tdEsIG_(d) ? (P.id ? 'Editar levantamiento' : 'Nuevo levantamiento') : rec ? (P.id ? 'Editar recordatorio' : 'Crea un recordatorio') : (P.id ? 'Editar tarea' : 'Crea una tarea')}</div>
       <button type="button" onclick="tarClosePanel()" style="all:unset;cursor:pointer;color:#9aa1ad;font-size:15px;padding:2px 6px;border-radius:6px">✕</button>
     </div>
-    <div style="flex:1;overflow:auto;padding:14px 20px 18px">
+    <div class="tar-pb" style="flex:1;overflow:auto;padding:14px 20px 18px">
       ${P.fecha ? `
       <div style="margin-bottom:16px;padding:12px;border:1px solid #e8eaee;border-radius:10px;background:#fafafa">
         <div style="font-size:12.5px;font-weight:600;color:#0f1729;margin-bottom:9px">📅 ${esc(['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][tarParseIso_(P.fecha).getDay()])} ${esc(tarFmtFecha_(P.fecha))} — estado de este día</div>
@@ -59988,7 +59991,7 @@ function tarIGCampos_(d, lbl, inp, field) {
   const A = (typeof atAlojs_ === 'function' ? atAlojs_() : []).slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
   const sel = d._alojs || [];
   const btn = (t, f) => `<button type="button" onclick="${f}" style="all:unset;cursor:pointer;font-size:11.5px;font-weight:600;color:#4f46e5;padding:2px 4px">${t}</button>`;
-  const lista = A.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;max-height:260px;overflow:auto;padding:2px">${A.map(a => { const on = sel.includes(String(a.houseId));
+  const lista = A.length ? `<div class="tar-al" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;max-height:260px;overflow:auto;padding:2px">${A.map(a => { const on = sel.includes(String(a.houseId));
       return `<button type="button" onclick="tarIGAloj_(this.dataset.h)" data-h="${esc(String(a.houseId))}" title="${esc(a.nombre)}" style="all:unset;cursor:pointer;display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:8px;border:1.5px solid ${on ? '#c4b5fd' : '#e2e8f0'};background:${on ? '#f5f3ff' : '#fff'};font-size:11.5px;font-weight:600;color:#0f172a;min-width:0">${tarCheck_(on)}<b style="font:700 11px ui-monospace,Menlo,monospace">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-weight:500">${esc(String(a.nombre).replace(/^Calle\s+/i, ''))}</span></button>`; }).join('')}</div>`
     : '<div style="font-size:12px;color:#94a3b8">⏳ Cargando alojamientos…</div>';
   return field(lbl('Plantilla') + plSel) + field(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:11.5px;font-weight:600;color:#374151">Alojamiento(s) · ${sel.length}</label><span style="flex:1"></span>${btn('Todos', 'tarIGTodos_(true)')}${btn('Ninguno', 'tarIGTodos_(false)')}</div>${lista}`);
