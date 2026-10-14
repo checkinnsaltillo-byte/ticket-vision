@@ -71162,6 +71162,27 @@ function rbProgHtml_() {
     <div class="rb-s">Propuesta automática para revisar; no asigna nada en el sistema. Considera las reservas registradas hasta ahora, quién labora ese día, sus edificios asignados, la duración por tipo, los traslados y el horario laboral.</div>
     ${resumen}<div class="np-tabs" style="margin:12px 0">${tab('personal', '👤 Por personal (itinerario)')}${tab('propiedad', '🏢 Por propiedad')}${tab('tipo', '🧹 Por tipo de tarea')}</div>${cuerpo || '<div class="rb-s">No hay limpiezas ni inspecciones pendientes para ese día.</div>'}</div>`;
 }
+// «?»: todas las reglas de la programación automática (además de los incisos a–d de esta sección).
+window.rbAyuda_ = function () {
+  document.getElementById('rb-ayuda')?.remove();
+  const H = rbHorario_(), li = a => `<ul>${a.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  const ov = document.createElement('div'); ov.id = 'rb-ayuda'; ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = `<style>#rb-ayuda{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;font-family:Inter,system-ui,sans-serif}
+    #rb-ayuda .bx{background:#fff;border-radius:14px;max-width:720px;width:100%;max-height:88vh;overflow:auto;padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.25)}#rb-ayuda h3{margin:0 0 4px;font-size:17px;color:#0f172a}#rb-ayuda h4{margin:14px 0 4px;font-size:12px;color:#4f46e5;text-transform:uppercase;letter-spacing:.05em}
+    #rb-ayuda ul{margin:0;padding-left:18px}#rb-ayuda li{font-size:12.8px;color:#334155;line-height:1.5;margin:2px 0}#rb-ayuda .x{all:unset;cursor:pointer;float:right;font-size:18px;color:#64748b;padding:2px 6px}</style>
+    <div class="bx"><button type="button" class="x" onclick="document.getElementById('rb-ayuda').remove()">✕</button><h3>❓ Reglas de la programación automática</h3>
+    <div style="font-size:12px;color:#64748b">Además de lo que configuras en los incisos a) a d) de esta sección.</div>
+    <h4>1. Qué se programa</h4>${li(['Una <b>limpieza de salida</b> por cada alojamiento con salida ese día (cards de Tareas).', `Una <b>inspección</b> de ${RB_INSP_MIN} min en los alojamientos donde solo entra un huésped (no hay salida ese día).`, 'Las <b>tareas manuales</b> de Limpieza o Inspección de ese día que tienen alojamiento.', 'No se programan las ya terminadas, inspeccionadas o canceladas.'])}
+    <h4>2. Quién participa</h4>${li(['Solo personal con puesto de <b>Limpieza</b>, activo y sin fecha de retiro.', 'Solo quien ese día está <b>Confirmado</b> o <b>Tentativo</b> (inciso a). «Falta» o «Sin asignar» no recibe tareas.'])}
+    <h4>3. Orden de las tareas</h4>${li(['<b>Primero todas las limpiezas y después las inspecciones.</b>', 'Se trabaja por <b>edificio (bloques)</b>: primero el edificio con la entrada de huésped más temprana; dentro del edificio, por hora límite.', 'Hora límite de cada alojamiento: la hora de <b>entrada temprana</b> si hay solicitud; si no, la hora de llegada del alojamiento; si no tiene, las 3:00 p.m.', '<b>★ Prioritaria</b> = entrada temprana aceptada (igual que en la card).'])}
+    <h4>4. Restricciones por persona</h4>${li([`<b>Máximo ${RB_MAX_TRAS} traslados</b> entre edificios al día (llegar al primer edificio no cuenta).`, '<b>No regresa a un edificio que ya dejó</b> durante las limpiezas (en las inspecciones sí puede volver).', `Horario laboral: de ${rbHoraTxt_(H.entrada)} a ${rbHoraTxt_(H.salida)} (inciso d); todos empiezan a la hora de entrada.`])}
+    <h4>5. Tiempos</h4>${li(['Duración de la limpieza según el <b>tipo de alojamiento</b> (inciso b); si el tipo no tiene duración, 60 min (marcado con *).', `Inspección: ${RB_INSP_MIN} min.`, `Traslado entre edificios = tiempo de la matriz (inciso c; ${RB_TRAS_DEF} min si no está capturado) <b>+ ${RB_MARGEN} min de margen</b>.`, `<b>${RB_MARGEN_ALOJ} min de margen</b> entre un alojamiento y otro dentro de la misma propiedad (no cuenta como traslado).`])}
+    <h4>6. Preferencias al repartir</h4>${li(['<b>1a Asignación</b>: su Edificio asignado · <b>2a Asignación</b>: su Otro edificio asignado · <b>3a Asignación</b>: cualquier otro edificio.', 'Se prueban cientos de repartos y se elige el mejor, en este orden de importancia: (1) que nada quede sin asignar; (2) que nada termine después de la hora límite; (3) que nadie se pase de su hora de salida; (4) <b>cargas de trabajo parejas</b> entre todo el personal; (5) menos minutos de traslado; (6) respetar los edificios asignados.'])}
+    <h4>7. Resultado y asignación</h4>${li(['Es una <b>propuesta</b>: no cambia nada en el sistema.', 'Desde Tareas › 🪄 (Programar limpiezas del día) el botón <b>✅ Asignar</b> pone al personal en las cards de reservas (aseo o inspección) y en las tareas manuales de ese día, <b>reemplazando</b> a quien estuviera asignado.', 'Considera las reservas registradas al momento de programar; si entran o cambian reservas, vuelve a programar.'])}
+    <h4>8. Tabla (historial)</h4>${li(['Por persona y por mes: cards de reservas asignadas y tareas manuales con personal (las recurrentes en cada fecha).', '«Laborado» suma lo terminado y «Programado» todo lo del mes, con los tiempos de arriba; si una tarea tiene varias personas, el tiempo se reparte entre ellas.'])}
+    </div>`;
+  document.body.appendChild(ov);
+};
 window.rbSec_ = function (k) { RB.sec = k; rbRender_(); };
 // Carga reglas, asistencia y personal (para usar la programación fuera del módulo, p. ej. desde Tareas).
 async function rbCargar_() {
@@ -71239,7 +71260,7 @@ window.rbDrAbrir_ = async function () {
 };
 window.rbDrCerrar_ = function () { RB.dr = false; if (typeof adCerrar_ === 'function') adCerrar_(); };
 window.rbDrDia_ = function (v) { if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; RB.pdia = v; RB.prog = null; RB.asignado = ''; rbDrPintar_(); };
-const RB_CSS2 = `<style>.np-tabs{display:inline-flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px}.np-tabs button{all:unset;cursor:pointer;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;color:#475569}.np-tabs button:hover{background:#e2e8f0}.np-tabs button.on{background:#0f1729;color:#fff}.np-tabs.sm button{font-size:12.5px;padding:6px 12px}</style>`; // estilos de la propuesta (módulo y ventana lateral de Tareas)
+const RB_CSS2 = `<style>.rb-q{all:unset;box-sizing:border-box;cursor:pointer;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #a5b4fc;color:#4f46e5;font-weight:800;font-size:15px;margin-left:auto;flex:none}.rb-q:hover{background:#eef2ff}</style><style>.np-tabs{display:inline-flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px}.np-tabs button{all:unset;cursor:pointer;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;color:#475569}.np-tabs button:hover{background:#e2e8f0}.np-tabs button.on{background:#0f1729;color:#fff}.np-tabs.sm button{font-size:12.5px;padding:6px 12px}</style>`; // estilos de la propuesta (módulo y ventana lateral de Tareas)
 function rbDrPintar_() {
   const dr = document.getElementById('ad-drawer'); if (!dr || !RB.dr) { RB.dr = false; return; }
   const dia = RB.pdia || aseoHoyIso_(), dk = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'][tarParseIso_(dia).getDay()], L = (RB.reglas || {}).limpieza || {};
@@ -71262,7 +71283,7 @@ function rbDrPintar_() {
       <div class="rb-s">En verde quien le toca trabajar ese día. Clic en el estado para cambiarlo (Tentativo → Confirmado → Falta → Sin asignar).</div>
       <table class="rb-t"><tbody>${filas || '<tr><td style="color:#94a3b8">⏳ Cargando personal…</td></tr>'}</tbody></table>
       <div class="rb-s" id="rb-save" style="margin-top:6px"></div>
-      <div style="margin:12px 0"><button type="button" class="rbp-go ad-bt pri" style="width:100%;justify-content:center;text-align:center;box-sizing:border-box" onclick="rbProgramar_()">🪄 Programar</button></div>
+      <div style="margin:12px 0;display:flex;gap:8px;align-items:center"><button type="button" class="rbp-go ad-bt pri" style="flex:1;justify-content:center;text-align:center;box-sizing:border-box" onclick="rbProgramar_()">🪄 Programar</button><button type="button" class="rb-q" onclick="rbAyuda_()" title="Todas las reglas de la programación automática">?</button></div>
       ${R ? `${rbProgHtml_()}
         <div style="position:sticky;bottom:0;background:#fff;padding:10px 0;border-top:1px solid #e2e8f0">
           ${RB.asignado ? `<div class="rb-s" style="margin:0 0 8px;color:${/^⚠️/.test(RB.asignado) ? '#b91c1c' : '#15803d'};font-weight:700">${pcEsc(RB.asignado)}</div>` : ''}
@@ -71345,7 +71366,7 @@ function rbRender_() {
     <div class="np-tabs" style="margin:0 0 12px"><button type="button" class="${RB.sec !== 'tabla' ? 'on' : ''}" onclick="rbSec_('prog')">🗓️ Programación</button><button type="button" class="${RB.sec === 'tabla' ? 'on' : ''}" onclick="rbSec_('tabla')">📊 Tabla</button></div>
     ${RB.sec === 'tabla' ? `<div class="rb-w" style="max-width:none">${rbTablaHtml_()}</div>` : `
     <div class="rb-w"><div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">🧹 Programar limpiezas del día:</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}">
-      <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span></div>
+      <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span><button type="button" class="rb-q" onclick="rbAyuda_()" title="Todas las reglas de la programación automática">?</button></div>
       ${rbProgHtml_()}
       <div class="rb-h">a) Programación de limpiezas</div>
       <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios asignados y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
