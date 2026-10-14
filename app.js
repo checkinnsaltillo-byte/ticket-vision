@@ -58813,7 +58813,7 @@ window.tdSetDia_ = function (delta) {
   TAR_STATE.calRef = tarParseIso_(tdDia_());
   tarRender();
 };
-window.tdToggleCal_ = function () { TAR_STATE.cal = !TAR_STATE.cal; if (TAR_STATE.cal && !['dia', 'semana', 'mes'].includes(TAR_STATE.calView)) TAR_STATE.calView = 'mes'; try { localStorage.setItem('tar-cal', TAR_STATE.cal ? '1' : '0'); } catch (_) {} tarRender(); };
+window.tdToggleCal_ = function () { TAR_STATE.cal = !TAR_STATE.cal; if (TAR_STATE.cal) TAR_STATE.calView = 'mes'; /* predeterminada: Por mes */ try { localStorage.setItem('tar-cal', TAR_STATE.cal ? '1' : '0'); } catch (_) {} tarRender(); };
 try { TAR_STATE.cal = localStorage.getItem('tar-cal') === '1'; } catch (_) {}
 window.tdVista_ = function (v) { TAR_STATE.vista = v; try { localStorage.setItem('tar-vista', v); } catch (_) {} tarRender(); };
 try { TAR_STATE.vista = localStorage.getItem('tar-vista') || 'estado'; } catch (_) {}
@@ -59556,7 +59556,7 @@ function tarCalendarioHtml_() {
     const on = TAR_STATE.calView === k;
     return `<button type="button" onclick="tarSetCalView('${k}')" style="all:unset;cursor:pointer;padding:7px 14px;font-size:12px;font-weight:800;border-radius:8px;background:${on ? '#7c3aed' : '#fff'};color:${on ? '#fff' : '#475569'};border:1.5px solid ${on ? '#7c3aed' : '#e2e8f0'}">${label}</button>`;
   };
-  if (!['dia', 'semana', 'mes'].includes(TAR_STATE.calView)) TAR_STATE.calView = 'semana';
+  if (!['dia', 'semana', 'mes'].includes(TAR_STATE.calView)) TAR_STATE.calView = 'mes';
   const tB = (k, l) => `<button type="button" class="${TAR_STATE.calView === k ? 'on' : ''}" onclick="tarSetCalView('${k}')">${l}</button>`;
   const tabs = `<div class="ad-seg" style="margin-bottom:12px">${tB('dia', 'Por día')}${tB('semana', 'Por semana')}${tB('mes', 'Por mes')}</div>`;
   let body = '';
@@ -69283,7 +69283,7 @@ window.aseoSplitIni_ = function (ev) {
   h.addEventListener('pointermove', mover); h.addEventListener('pointerup', fin); h.addEventListener('pointercancel', fin);
 };
 window.aseoToggleCal_ = function () {
-  ASEO.cal = !ASEO.cal;
+  ASEO.cal = !ASEO.cal; if (ASEO.cal) CKCAL.v.aseo = 'aloj'; // predeterminada: Por alojamiento
   if (ASEO.cal) aseoSplitSet_(100 / 3); // por defecto: calendario 1/3, cards 2/3
   if (ASEO.cal) { ASEO.calSig = ''; ASEO._centrar = true; }
   aseoRender_();
@@ -69581,6 +69581,14 @@ function ckTablaHtml_(cols, grupos, vacio, o) {
 function ckOcupCalHtml_(id) { return `<div id="${id}" class="ocup-cal-container aseo-cal ck-ocal"><div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px">⏳ Cargando calendario…</div></div>`; }
 function ckOcupCal_(id, items) {
   const cont = document.getElementById(id); if (!cont || typeof ocupRender !== 'function') return;
+  const sc = id === 'ic-ocal' ? 'ic' : id === 'ob-ocal' ? 'ob' : '', vw = sc ? ckCalV_0_(sc) : 'aloj';
+  if (vw !== 'aloj') { // «Por semana» / «Por mes»: chips por día con el nombre corto del alojamiento
+    const L = items.filter(t => t.dia).map(t => { const a = t.hid && typeof atAloj_ === 'function' ? atAloj_(t.hid) : null; return Object.assign({}, t, { cod: a ? String(a.corto || a.nombre || '').toUpperCase() : '—' }); });
+    cont.classList.add('ckm-on', 'aseo-cal');
+    cont.innerHTML = ckCalHdHtml_(sc, true) + (vw === 'sem' ? ckSemGridHtml_(ckCalW_0_(sc), L) : ckMesGridHtml_(ckCalM_0_(sc), L));
+    return;
+  }
+  cont.classList.remove('ckm-on');
   if (typeof ALOJ_STATE !== 'undefined' && !ALOJ_STATE.loaded) { if (!ALOJ_STATE.loading && typeof lgLoadAlojamientos === 'function') lgLoadAlojamientos().then(() => ckOcupCal_(id, items)).catch(() => {}); return; }
   if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
   const bks = (typeof pcMovBookings_ === 'function' ? pcMovBookings_() : []).filter(b => /^(booked|tentative)$/i.test(String(b.Status || '').trim()));
@@ -69591,15 +69599,21 @@ function ckOcupCal_(id, items) {
 }
 window.ckBarNada_ = function () {};
 // ── Calendario: vista «Por alojamiento» (renglones = alojamientos) o «Por mes» (celdas = días, como en Levantamientos) ──
-window.CKCAL = window.CKCAL || (() => { let v = {}; try { v = JSON.parse(localStorage.getItem('ckcal-v') || '{}') || {}; } catch (_) {} return { v, m: {} }; })();
+window.CKCAL = window.CKCAL || { v: {}, m: {}, w: {} }; // vista del calendario: al abrirlo vuelve a la predeterminada (Por alojamiento)
 function ckCalV_0_(s) { return CKCAL.v[s] === 'mes' || CKCAL.v[s] === 'sem' ? CKCAL.v[s] : 'aloj'; }
 function ckLunes_(iso) { const d = tarParseIso_(iso); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return tarIso_(d); }
 function ckCalW_0_(s) { CKCAL.w = CKCAL.w || {}; return CKCAL.w[s] || ckLunes_(aseoHoyIso_()); }
-window.ckCalW_ = function (s, d) { const x = tarParseIso_(ckCalW_0_(s)); x.setDate(x.getDate() + 7 * d); CKCAL.w[s] = tarIso_(x); ckCalRe_(s); };
+window.ckCalW_ = function (s, d) { const x = tarParseIso_(ckCalW_0_(s)); x.setDate(x.getDate() + 7 * d); CKCAL.w[s] = tarIso_(x); const st = ckCalSt_(s); if (st) st.mes = CKCAL.w[s].slice(0, 7); ckCalRe_(s); };
 function ckCalM_0_(s) { return CKCAL.m[s] || aseoHoyIso_().slice(0, 7); }
-function ckCalRe_(s) { if (s === 'aseo') { ASEO.calSig = ''; aseoRender_(); } }
-window.ckCalV_ = function (s, v) { CKCAL.v[s] = v; try { localStorage.setItem('ckcal-v', JSON.stringify(CKCAL.v)); } catch (_) {} ckCalRe_(s); };
-window.ckCalM_ = function (s, d) { CKCAL.m[s] = ckMesMover_(ckCalM_0_(s), d); ckCalRe_(s); };
+// Incidencias y Objetos: el tablero sigue al mes del calendario (por mes o por semana).
+function ckCalSt_(s) { return s === 'ic' && typeof IC !== 'undefined' ? IC : s === 'ob' && typeof OB !== 'undefined' ? OB : null; }
+function ckCalRe_(s) { if (s === 'aseo') { ASEO.calSig = ''; aseoRender_(); } else if (s === 'ic') icRender_(); else if (s === 'ob') obRender_(); }
+window.ckCalV_ = function (s, v) {
+  CKCAL.v[s] = v; const st = ckCalSt_(s);
+  if (st) { const ym = st.mes || ckMesHoy_(); if (v === 'mes') CKCAL.m[s] = ym; if (v === 'sem') (CKCAL.w = CKCAL.w || {})[s] = ckLunes_(ym === ckMesHoy_() ? aseoHoyIso_() : ym + '-01'); }
+  ckCalRe_(s);
+};
+window.ckCalM_ = function (s, d) { CKCAL.m[s] = ckMesMover_(ckCalM_0_(s), d); const st = ckCalSt_(s); if (st) st.mes = CKCAL.m[s]; ckCalRe_(s); };
 function ckCalSegHtml_(s) { const v = ckCalV_0_(s); return `<div class="ad-seg ckcal-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">🏠 Por alojamiento</button><button type="button" class="${v === 'sem' ? 'on' : ''}" onclick="ckCalV_('${s}','sem')">📆 Por semana</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>`; }
 function ckCalHdHtml_(s, sinSeg) {
   const v = ckCalV_0_(s), ym = ckCalM_0_(s), lbl = TAR_MESES_L[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4);
@@ -69682,7 +69696,7 @@ function icRender_() {
   const nav = `<div class="cl-nav-slot" data-act="incidencias">${typeof clNavHtml_ === 'function' ? clNavHtml_('incidencias') : ''}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(IC.filAb, nFx, 'IC.filAb=!IC.filAb;icRender_()')}
       <input class="ck-q ic-q" type="search" placeholder="🔎 Buscar alojamiento, motivo, persona…" value="${pcEsc(IC.q)}" oninput="IC.q=this.value;clearTimeout(IC._qt);IC._qt=setTimeout(()=>{icRender_();const i=document.querySelector('#ic-root .ic-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
-      ${ckMesNavHtml_(ym, 'icMes_')}${ckCalBtnHtml_(!!IC.cal, 'icCal_()')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'icVista_')}
+      ${IC.cal && ckCalV_0_('ic') !== 'aloj' ? '' : ckMesNavHtml_(ym, 'icMes_')}${ckCalBtnHtml_(!!IC.cal, 'icCal_()')}${IC.cal ? ckCalSegHtml_('ic') : ''}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'icVista_')}
       ${nArch || IC.fx.arch ? `<button type="button" class="aseo-btn ${IC.fx.arch ? 'ck-b on' : ''}" onclick="IC.fx.arch=!IC.fx.arch;icRender_()" title="Ver incidencias archivadas">🗄 ${nArch}</button>` : ''}
       ${IC.cargando ? '<span class="ck-hint">⏳</span>' : '<button type="button" class="aseo-btn ck-ib" onclick="icInit_()" title="Volver a cargar las incidencias" aria-label="Actualizar"><svg class="ck-rf" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>'}
       <button type="button" class="aseo-btn ck-ib" onclick="icClasif_()" title="Clasificaciones">⚙️</button>
@@ -69692,7 +69706,7 @@ function icRender_() {
   root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${icKpis_(todas)}</div>${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas, true)}</div>` : ''}
       ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!IC.cal, icCalHtml_(), icVistaHtml_(L, vista, ym))}</div>`}</div>`;
-  if (IC.cal && !vacio) ckOcupCal_('ic-ocal', icCalItems_(L));
+  if (IC.cal && !vacio) ckOcupCal_('ic-ocal', icCalItems_(ckCalV_0_('ic') === 'aloj' ? L : todas.filter(x => icPasa_(x, true))));
   try { clNavPaint_(); } catch (_) {}
 }
 window.icSec_ = function (k) { IC.vista = k === 'registro' ? 'tabla' : 'estado'; icRender_(); };
@@ -69701,7 +69715,7 @@ window.icVista_ = function (v) { IC.vista = v; try { localStorage.setItem('ic-vi
 function icCalHtml_() { return ckOcupCalHtml_('ic-ocal'); }
 function icCalItems_(L) { return L.map(x => ({ id: x.id, hid: x.hid, dia: x.fecha, c: (IC_EST.find(e => e.k === x.est) || IC_EST[0]).c, titulo: icMotC_(x.mot[0]).ico + ' ' + x.titulo, prio: x.prio, pers: x.pers, onclick: `icAbrir_('${pcEsc(x.id)}')` })); }
 try { IC.cal = localStorage.getItem('ic-cal') === '1'; } catch (_) {}
-window.icCal_ = function () { IC.cal = !IC.cal; try { localStorage.setItem('ic-cal', IC.cal ? '1' : '0'); } catch (_) {} icRender_(); };
+window.icCal_ = function () { IC.cal = !IC.cal; if (IC.cal) CKCAL.v.ic = 'aloj'; try { localStorage.setItem('ic-cal', IC.cal ? '1' : '0'); } catch (_) {} icRender_(); };
 window.icMes_ = function (v) { IC.mes = ckMesMover_(IC.mes, v); icRender_(); };
 function icVistaHtml_(L, vista, ym) {
   ckVCss_();
@@ -70153,7 +70167,7 @@ function obRender_() {
   const nav = `<div class="cl-nav-slot" data-act="objetos">${clNavHtml_('objetos')}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(OB.filAb, nFx, 'OB.filAb=!OB.filAb;obRender_()')}
       <input class="ck-q ob-q" type="search" placeholder="🔎 Buscar alojamiento, objeto, persona…" value="${pcEsc(OB.q)}" oninput="OB.q=this.value;clearTimeout(OB._qt);OB._qt=setTimeout(()=>{obRender_();const i=document.querySelector('#ob-root .ob-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
-      ${ckMesNavHtml_(ym, 'obMes_')}${ckCalBtnHtml_(!!OB.cal, 'obCal_()')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'obVista_')}
+      ${OB.cal && ckCalV_0_('ob') !== 'aloj' ? '' : ckMesNavHtml_(ym, 'obMes_')}${ckCalBtnHtml_(!!OB.cal, 'obCal_()')}${OB.cal ? ckCalSegHtml_('ob') : ''}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'obVista_')}
       ${OB.cargando ? '<span class="ck-hint">⏳</span>' : '<button type="button" class="aseo-btn ck-ib" onclick="obInit_()" title="Volver a cargar los objetos" aria-label="Actualizar"><svg class="ck-rf" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>'}
       <button type="button" class="aseo-btn ck-pri" onclick="obForm_(null)">＋ Nuevo objeto</button></div>`;
   const vacio = !todos.length ? `<div class="pc-mv-empty">${OB.cargado ? 'Aún no hay objetos olvidados registrados.' : '⏳ Cargando objetos olvidados…'}</div>` : '';
@@ -70161,7 +70175,7 @@ function obRender_() {
   root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${obKpis_(todos)}</div>${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos, true)}</div>` : ''}
       ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!OB.cal, obCalHtml_(), obVistaHtml_(L, vista, ym))}</div>`}</div>`;
-  if (OB.cal && !vacio) ckOcupCal_('ob-ocal', obCalItems_(L));
+  if (OB.cal && !vacio) ckOcupCal_('ob-ocal', obCalItems_(ckCalV_0_('ob') === 'aloj' ? L : todos.filter(x => obPasa_(x, true))));
   try { clNavPaint_(); } catch (_) {}
 }
 try { OB.vista = localStorage.getItem('ob-vista') || 'estado'; } catch (_) {}
@@ -70169,7 +70183,7 @@ window.obVista_ = function (v) { OB.vista = v; try { localStorage.setItem('ob-vi
 function obCalHtml_() { return ckOcupCalHtml_('ob-ocal'); }
 function obCalItems_(L) { return L.map(x => ({ id: x.id, hid: x.hid, dia: x.fecha, c: (OB_EST.find(e => e.k === x.est) || OB_EST[0]).c, titulo: obCatC_(x.cat).ico + ' ' + obTitulo_(x), pers: x.rep ? [x.rep] : [], onclick: `obAbrir_('${pcEsc(x.id)}')` })); }
 try { OB.cal = localStorage.getItem('ob-cal') === '1'; } catch (_) {}
-window.obCal_ = function () { OB.cal = !OB.cal; try { localStorage.setItem('ob-cal', OB.cal ? '1' : '0'); } catch (_) {} obRender_(); };
+window.obCal_ = function () { OB.cal = !OB.cal; if (OB.cal) CKCAL.v.ob = 'aloj'; try { localStorage.setItem('ob-cal', OB.cal ? '1' : '0'); } catch (_) {} obRender_(); };
 window.obMes_ = function (v) { OB.mes = ckMesMover_(OB.mes, v); obRender_(); };
 function obVistaHtml_(L, vista, ym) {
   ckVCss_();
