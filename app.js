@@ -67571,7 +67571,7 @@ function adCard_(I) {
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
     <div class="r2">${catP}</div>
-    <div class="r3">${nsChip}<span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
+    <div class="r3">${nsChip}${equipo}<span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
   </div>`;
