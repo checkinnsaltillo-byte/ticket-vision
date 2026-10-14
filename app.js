@@ -71024,6 +71024,20 @@ function rbTrasladosHtml_() {
       return `<td><input type="number" min="0" max="600" step="1" class="rb-in" value="${T[k] != null ? T[k] : ''}" placeholder="min" title="${pcEsc(a)} ↔ ${pcEsc(b)} (minutos)" onchange="rbTr_(${pcEsc(JSON.stringify(k))},this.value)"></td>`; }).join('')}</tr>`).join('')}
   </tbody></table></div>`;
 }
+// d) Horario laboral general (predeterminado 8:30 a 13:30).
+const RB_HORARIO = { entrada: '08:30', salida: '13:30' };
+function rbHorario_() { return Object.assign({}, RB_HORARIO, (RB.reglas && RB.reglas.horario) || {}); }
+function rbHoraTxt_(h) { const [a, b] = String(h || '').split(':').map(Number); if (isNaN(a)) return ''; return `${a % 12 || 12}:${String(b || 0).padStart(2, '0')} ${a < 12 ? 'a.m.' : 'p.m.'}`; }
+window.rbHor_ = async function (k, v) {
+  if (!RB.reglas || !/^\d{2}:\d{2}$/.test(v)) return; RB.reglas.horario = Object.assign(rbHorario_(), { [k]: v });
+  const H = RB.reglas.horario, el = document.getElementById('rb-save'), d = document.getElementById('rb-hdur');
+  if (d) d.textContent = rbHorDur_(H);
+  if (el) el.textContent = '⏳ Guardando…';
+  try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horario: H, user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error'); RB.reglas = j.reglas; if (el) el.textContent = '✓ Guardado'; }
+  catch (e) { if (el) el.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
+};
+function rbHorDur_(H) { const m = t => { const [a, b] = t.split(':').map(Number); return a * 60 + b; }, d = m(H.salida) - m(H.entrada); return d > 0 ? `Jornada de ${Math.floor(d / 60)} h${d % 60 ? ' ' + (d % 60) + ' min' : ''} · ${rbHoraTxt_(H.entrada)} a ${rbHoraTxt_(H.salida)}` : '⚠️ La salida debe ser después de la entrada'; }
 window.rbSem_ = function (d) { const l = tarParseIso_(RB.lunes || ckLunes_(aseoHoyIso_())); l.setDate(l.getDate() + 7 * d); RB.lunes = d ? tarIso_(l) : ckLunes_(aseoHoyIso_()); rbRender_(); };
 const RB_DIAS = [['L', 'Lun'], ['M', 'Mar'], ['Mi', 'Mié'], ['J', 'Jue'], ['V', 'Vie'], ['S', 'Sáb'], ['D', 'Dom']];
 function rbDias_(v) { const t = String(v || '').split(/[,\s/]+/).map(x => x.trim().toLowerCase()).filter(Boolean); return new Set(t.map(x => ({ l: 'L', lu: 'L', lun: 'L', m: 'M', ma: 'M', mar: 'M', mi: 'Mi', mie: 'Mi', 'mié': 'Mi', x: 'Mi', j: 'J', ju: 'J', jue: 'J', v: 'V', vi: 'V', vie: 'V', s: 'S', sa: 'S', sab: 'S', 'sáb': 'S', d: 'D', do: 'D', dom: 'D' })[x] || x)); }
@@ -71078,6 +71092,11 @@ function rbRender_() {
       <div class="rb-h" style="margin-top:22px">c) Tiempo de traslado entre propiedades</div>
       <div class="rb-s">Minutos que toma ir de una propiedad a otra (el mismo tiempo en ambos sentidos). Solo propiedades con «Status» = Activo en la hoja de alojamientos. La diagonal queda vacía porque es la misma propiedad. Se guarda solo.</div>
       ${rbTrasladosHtml_()}
+      <div class="rb-h" style="margin-top:22px">d) Horario laboral</div>
+      <div class="rb-s">Hora de entrada y de salida de la jornada normal. Predeterminado: 8:30 a.m. a 1:30 p.m. Se guarda solo.</div>
+      ${(H => `<div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"><label style="font-size:11.5px;font-weight:700;color:#475569">Entrada<br><input type="time" class="rb-sel" style="min-width:0;width:130px;margin-top:4px" value="${H.entrada}" onchange="rbHor_('entrada',this.value)"></label>
+        <label style="font-size:11.5px;font-weight:700;color:#475569">Salida<br><input type="time" class="rb-sel" style="min-width:0;width:130px;margin-top:4px" value="${H.salida}" onchange="rbHor_('salida',this.value)"></label>
+        <span id="rb-hdur" style="font-size:12px;font-weight:700;color:#4f46e5;padding-bottom:7px">${rbHorDur_(H)}</span></div>`)(rbHorario_())}
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
     </div>`;
   try { clNavPaint_(); } catch (_) {}

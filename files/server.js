@@ -9402,6 +9402,8 @@ app.post("/config/reglas-bot", async (req, res) => {
     const A = (req.body || {}).asist || {}, ES = ["tentativo", "confirmado", "falta", "sin", ""];
     const out = await _aseoMutate(_RB_OBJ, "reglasBot", d => {
       d.limpieza = Object.assign({}, d.limpieza, lim); d.asist = d.asist || {};
+      const H = (req.body || {}).horario; // d) horario laboral { entrada: "HH:MM", salida: "HH:MM" }
+      if (H && typeof H === "object") { d.horario = d.horario || {}; ["entrada", "salida"].forEach(k => { if (/^\d{2}:\d{2}$/.test(String(H[k] || ""))) d.horario[k] = H[k]; }); }
       const TR = (req.body || {}).traslados || {}; d.traslados = d.traslados || {}; // c) minutos de traslado entre propiedades: { "A|B": min } (par ordenado)
       Object.keys(TR).slice(0, 200).forEach(k => { const kk = String(k).slice(0, 120), v = Number(TR[k]); if (TR[k] === "" || TR[k] == null) delete d.traslados[kk]; else if (isFinite(v) && v >= 0 && v <= 600) d.traslados[kk] = Math.round(v); });
       const DU = (req.body || {}).duraciones || {}; d.duraciones = d.duraciones || {}; // b) duración estimada de limpieza (minutos) por tipo de alojamiento
