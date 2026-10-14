@@ -58680,6 +58680,7 @@ function tdCss_() {
   .td-igtg{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;width:100%;margin-top:8px;padding:5px 8px;border-top:1px dashed #e2e8f0;color:#6d28d9;font-size:11.5px;font-weight:600;cursor:pointer;border-radius:0 0 8px 8px}
   .td-igtg:hover{background:#f5f3ff}.td-igtg.ab{color:#475569}
   .td-hijos{display:flex;flex-direction:column;gap:2px;margin:6px -6px -4px;padding:3px;background:#fff;border-radius:8px}
+  .td-hsec{font-size:10.5px;font-weight:800;color:#4338ca;text-transform:uppercase;letter-spacing:.05em;padding:6px 6px 2px;border-top:1px solid #eef0f3}.td-hsec:first-child{border-top:0}.td-hsec b{color:#94a3b8;font-weight:700;margin-left:4px}
   .td-hf{display:flex;align-items:center;gap:5px;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:11.5px;min-width:0;color:#0f1729;background:color-mix(in srgb,var(--c) 16%,#fff);border-left:3px solid var(--c)}
   .td-hf:hover{background:color-mix(in srgb,var(--c) 26%,#fff)}
   .td-hist{display:flex;flex-direction:column;gap:3px}.td-hist .td-hf{text-decoration:none}.td-hist .td-hf.on{outline:2px solid #6366f1;outline-offset:-1px}
@@ -58897,11 +58898,17 @@ function tdCard_(r, dia, o) {
     <div class="r3">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${ig ? `<span class="ad-gd" title="Alojamientos">🏠 ${hijos.length}</span>` : ''}${r.WhatsApp === 'Sí' ? '<span class="ad-gd" title="Envía WhatsApp">💬</span>' : ''}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();${abrir}">Detalles</button>${ig ? `<button type="button" class="ad-det" title="Editar el levantamiento" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button>` : ''}</div>
     ${ig ? '' : tdQs_(r.ID, est, dia)}${av != null ? tdBarra_(av, 'Avance de los alojamientos') : ''}
     ${ig && hijos.length ? `<button type="button" class="td-igtg ${ab ? 'ab' : ''}" onclick="event.stopPropagation();tdIGToggle_('${esc(r.ID)}')" title="${ab ? 'Ocultar' : 'Ver'} los alojamientos">${ab ? '▴ Ocultar' : '▾ Ver'} ${hijos.length} alojamiento${hijos.length === 1 ? '' : 's'}</button>` : ''}
-    ${ab ? `<div class="td-hijos" onclick="event.stopPropagation()">${hijos.map(h => tdHijoFila_(r, h, dia)).join('')}</div>` : ''}
+    ${ab ? `<div class="td-hijos" onclick="event.stopPropagation()">${tdHijosPorEd_(r, hijos, dia)}</div>` : ''}
   </div>`;
 }
 // Renglón desplegable de un alojamiento dentro de la inspección general (sin cards anidadas: aprovecha todo el ancho).
 //   Encabezado: ▸ código · nombre · estado · % de plantilla. Desplegado: estados rápidos y «Abrir formulario».
+// Alojamientos del levantamiento agrupados por edificio (orden A–G: Cumbres, Baja California, Oaxaca, José Cárdenas, Matamoros, Sevilla, Versalles; luego el resto).
+function tdHijosPorEd_(r, hijos, dia) {
+  const G = new Map(); hijos.forEach(h => { const E = alojEdif_(h), k = E ? E.k : '~' + ckPropDe_(h, ''), t = E ? E.nom : ckPropDe_(h, '').replace(/^Calle\s+/i, ''); if (!G.has(k)) G.set(k, { k, t, L: [] }); G.get(k).L.push(h); });
+  const ord = k => { const i = ED_ORDEN.indexOf(k); return i < 0 ? 99 : i; };
+  return [...G.values()].sort((a, b) => ord(a.k) - ord(b.k) || a.t.localeCompare(b.t, 'es')).map(g => `<div class="td-hsec">🏢 ${esc(g.t)} <b>${g.L.length}</b></div>${g.L.map(h => tdHijoFila_(r, h, dia)).join('')}`).join('');
+}
 function tdHijoFila_(r, hid, dia) {
   const est = tdIGEstH_(r, hid, dia), a = typeof atAloj_ === 'function' ? atAloj_(hid) : { nombre: hid, corto: '' };
   const x = r.Plantilla ? plIdxGet_(tdIGKey_(r, hid, dia)) : null, pc = est === 'Resuelto' && !x ? 100 : x ? x.p : 0, c = TD_EST[est] || '#94a3b8';
@@ -61779,6 +61786,7 @@ function mvAcTodasBtn_() { return `<button type="button" class="mv-ac-todas" onc
 // Cards agrupadas en columnas por PROPIEDAD. Dentro de cada columna se respeta el orden
 // por prioridad (gs ya viene ordenado); las columnas con lo más prioritario van primero.
 function mvPropiedadDe_(g) {
+  { const E = g.hid && typeof alojEdif_ === 'function' ? alojEdif_(g.hid) : null; if (E) return E.prop; } // «ED. CUMBRES» → Cumbres
   const r = g.hid && typeof ALOJ_STATE !== 'undefined' && ALOJ_STATE.byHouseId ? ALOJ_STATE.byHouseId.get(String(g.hid)) : null;
   const p = r ? String(r.Propiedad || '').trim() : '';
   if (p) return p;
@@ -68353,7 +68361,7 @@ function rtCardA_(I) {
   const pasos = [['pendiente', 'Pend.', '#94a3b8'], ['en_proceso', 'Proceso', '#f59e0b'], ['terminado', 'Term.', '#10b981'], ['cancelado', 'Cancel.', '#64748b']];
   return `<div class="ad-card tipo est-tint tarea ${t.bloquea && !cerrado ? 'alert' : ''} ${t.estado === 'cancelado' ? 'ghost' : ''} ${axEsDeInc_('R' + t.rtId) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="R${pcEsc(t.rtId)}" style="--tc:${D.c};--sc:${adEstC_(t.estado)}" onclick="rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'R:${pcEsc(t.rtId)}','',true,true)" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span>${atNuevoChip_(row.Timestamp)}</div>
+    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span>${atNuevoChip_(row.Timestamp)}</div>
     ${flags.join('')}
     <div class="r2">${axCatHtml_('mantenimiento', 'R' + t.rtId, false)}<span class="sep"></span><span>${cat.icon} ${pcEsc(cat.label)}</span><span class="sep"></span><span>${pcEsc(row.Folio || row.ID)}</span>${RC.meta}</div>
     ${axFila_('R' + t.rtId, false, t.hid, I.dia || t.fecha)}
@@ -68398,7 +68406,7 @@ function atCard_(I) {
   const sel = ASEO._dr && ASEO._dr.tarea === t.id;
   return `<div class="ad-card tipo est-tint tarea ${t.problema ? 'alert' : ''} ${axEsDeInc_('T' + t.id) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="T${pcEsc(t.id)}" style="--tc:${D.c};--sc:${adEstC_(I.selE)}" onclick="atAbrir_('${pcEsc(t.id)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'${I.key}','',true,${t.depto !== 'limpieza'})" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
+    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
     ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}${RC.flags}
@@ -69865,7 +69873,19 @@ function ckEst_(c, t, extra) { return `<span class="tb-est"><i style="background
 function ckTx_(v, cls) { return v ? `<span class="${cls || ''}" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${pcEsc(String(v))}">${pcEsc(String(v))}</span>` : '<span class="tb-mu">—</span>'; }
 function ckAloj_(corto, aloj) { return `<span class="tb-a"><b class="code">${pcEsc(corto || '—')}</b><small>${pcEsc(String(aloj || '').replace(/^Calle\s+/i, ''))}</small></span>`; }
 function ckPers_(L) { L = [...new Set((L || []).filter(Boolean))]; return L.length ? `<span class="tb-avs">${L.slice(0, 4).map(n => adAv_(n)).join('')}${L.length > 4 ? `<em>+${L.length - 4}</em>` : ''}</span>` : '<span class="tb-none">Sin asignar</span>'; }
-function ckPropDe_(hid, aloj) { const a = hid && typeof atAloj_ === 'function' ? atAloj_(hid) : null; return (a && a.propiedad) || String(aloj || '').split(/\s+-\s+#?/)[0].replace(/^Calle\s+/i, '').trim() || 'Sin propiedad'; }
+// Estructura funcional de edificios: el edificio sale del prefijo del código corto (CU1…CU14 → Cumbres, BC → Baja California,
+// OX → Oaxaca, JC → José Cárdenas, MT → Matamoros, SE → Sevilla, VS → Versalles…). El registro «ED. CUMBRES» (código CU, sin número)
+// es el edificio mismo: va en la propiedad Cumbres como edificio, sin departamento.
+const ED_ORDEN = ['CU', 'BC', 'OX', 'JC', 'MT', 'SE', 'VS'];
+function alojEdif_(hid) {
+  const L = typeof atAlojs_ === 'function' ? atAlojs_() : [], sig = L.length + '|' + ((L[0] || {}).houseId || '');
+  let M = alojEdif_._m; if (!M || M.sig !== sig) { const P = {}; L.forEach(a => { const m = String(a.corto || '').match(/^([a-z]+)\d/i); if (m && !P[m[1].toUpperCase()]) P[m[1].toUpperCase()] = String(a.propiedad || '').trim(); }); M = alojEdif_._m = { sig, P }; }
+  const a = hid && typeof atAloj_ === 'function' ? atAloj_(hid) : null; if (!a || !a.corto) return null;
+  const c = String(a.corto).trim(), pre = c.replace(/\d.*$/, '').toUpperCase(), prop = M.P[pre];
+  return prop ? { k: pre, prop, nom: prop.replace(/^(Calle|Plaza)\s+/i, '').trim(), ed: !/\d/.test(c) } : null;
+}
+function ckCodEd_(hid, corto) { const E = alojEdif_(hid); return E && E.ed ? `🏢 Ed. ${pcEsc(E.nom)}` : pcEsc(corto || '—'); }
+function ckPropDe_(hid, aloj) { const E = alojEdif_(hid); if (E) return E.prop; const a = hid && typeof atAloj_ === 'function' ? atAloj_(hid) : null; return (a && a.propiedad) || String(aloj || '').split(/\s+-\s+#?/)[0].replace(/^Calle\s+/i, '').trim() || 'Sin propiedad'; }
 // Fotos ya migradas a Cloud Storage (/incidencias/foto) se ven directo; las de Drive pasan por el proxy.
 function icFoto_(u, w) { return /\/incidencias\/foto\?/.test(u) ? u : `${BACKEND}/huespedes-image-proxy?url=${encodeURIComponent(u)}&size=w${w || 400}`; }
 // ── Entrada al módulo ──
@@ -69969,7 +69989,7 @@ function icCard_(x) {
   const qs = `<div class="ad-qs" onclick="event.stopPropagation()">${IC_EST.map(e => `<button type="button" class="${e.k === x.est ? 'on' : ''}" style="--c:${e.c}" title="${e.t}" onclick="event.stopPropagation();${e.k === x.est ? '' : `icSetEst_('${id}','${e.k}')`}"><i></i>${e.s}</button>`).join('')}</div>`;
   return `<div class="ad-card tipo est-tint ic-card ${sel ? 'sel' : ''} ${x.est === 'Cancelado' ? 'ghost' : ''} ${!icCerrada_(x) && x.prio === 'critica' ? 'alert' : ''}" data-k="${id}" style="--tc:${M.c};--sc:${(IC_EST.find(e => e.k === x.est) || IC_EST[0]).c}" onclick="icAbrir_('${id}')"
       draggable="true" ondragstart="icDragStart_(event,'${id}')" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(x.corto || '—')}</span><span class="prop">${M.ico} ${pcEsc(x.titulo)}</span></div>
+    <div class="r1"><span class="code">${ckCodEd_(x.hid, x.corto)}</span><span class="prop">${M.ico} ${pcEsc(x.titulo)}</span></div>
     ${flag}
     <div class="r2">${meta.join('<span class="sep"></span>')}</div>
     <div class="r4"><span class="sp"></span><span class="ax-inc on split" style="cursor:default" title="Incidencia"><span class="i1">⚠️ Incidencia</span><span class="i2" style="--ec:${(IC_EST.find(e => e.k === x.est) || IC_EST[0]).c}">${icEstT_(x.est)}</span></span></div>
@@ -70429,7 +70449,7 @@ function obCard_(x) {
   const qs = `<div class="ad-qs" onclick="event.stopPropagation()">${OB_EST.map(e => `<button type="button" class="${e.k === x.est ? 'on' : ''}" style="--c:${e.c}" title="${e.t}" onclick="event.stopPropagation();${e.k === x.est ? '' : `obSetEst_('${id}','${e.k}')`}"><i></i>${e.s}</button>`).join('')}</div>`;
   return `<div class="ad-card tipo est-tint ob-card ${sel ? 'sel' : ''} ${x.est === 'Desechado' ? 'ghost' : ''}" data-k="${id}" style="--tc:${C.c};--sc:${E.c}" onclick="obAbrir_('${id}')"
       draggable="true" ondragstart="obDragStart_(event,'${id}')" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(x.corto || '—')}</span><span class="prop">${C.ico} ${pcEsc(obTitulo_(x))}</span></div>
+    <div class="r1"><span class="code">${ckCodEd_(x.hid, x.corto)}</span><span class="prop">${C.ico} ${pcEsc(obTitulo_(x))}</span></div>
     ${flag}
     <div class="r2">${meta.join('<span class="sep"></span>')}</div>
     <div class="r3">${x.lugTxt ? `<span class="ob-lug">📍 ${pcEsc(x.lugTxt)}</span>` : '<span class="ad-un">Sin lugar de resguardo</span>'}<span class="sp"></span>${x.fotos.length ? `<span class="ad-gd" title="Fotos">📷 ${x.fotos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();obAbrir_('${id}')">Detalles</button></div>
@@ -71066,7 +71086,7 @@ function rbMgA_() { return rbMg_('aloj', RB_MGA_DEF); }
 function rbMgT_() { return rbMg_('tras', RB_MGT_DEF); }
 function rbMin_(h) { const m = String(h || '').trim().match(/^(\d{1,2}):(\d{2})\s*([ap])?/i); if (!m) return null; let a = +m[1]; if (m[3]) { const pm = /p/i.test(m[3]); if (pm && a < 12) a += 12; if (!pm && a === 12) a = 0; } return a * 60 + +m[2]; }
 function rbHHMM_(m) { m = Math.round(m); const h = Math.floor(m / 60), n = m % 60; return rbHoraTxt_(`${String(h).padStart(2, '0')}:${String(n).padStart(2, '0')}`); }
-function rbProp_(hid) { const a = typeof atAloj_ === 'function' ? atAloj_(hid) : null; return String((a && a.propiedad) || '').replace(/^Calle\s+/i, '').trim() || 'Sin propiedad'; }
+function rbProp_(hid) { const E = alojEdif_(hid); if (E) return E.prop.replace(/^Calle\s+/i, '').trim(); const a = typeof atAloj_ === 'function' ? atAloj_(hid) : null; return String((a && a.propiedad) || '').replace(/^Calle\s+/i, '').trim() || 'Sin propiedad'; }
 function rbTras_(a, b) { if (!a || a === b) return { m: 0, base: 0, est: false }; const v = ((RB.reglas || {}).traslados || {})[rbTrK_(a, b)], base = v != null ? Number(v) : RB_TRAS_DEF; return { m: base + rbMgT_(), base, est: v == null }; }
 window.rbProgramar_ = async function (diaArg, opts) {
   const auto = !!(opts && opts.headless); // «Automática»: calcula sin pintar nada
