@@ -69597,6 +69597,11 @@ function ckMesNavHtml_(ym, fn) {
 window.ckMesPick_ = function (btn, fn, ym) { if (typeof mesPickerOpen_ === 'function') mesPickerOpen_(btn, () => ym, v => window[fn](v)); };
 // ¿El registro va en el mes elegido? Su fecha cae en el mes, o sigue abierto de meses anteriores (solo viendo el mes en curso).
 // Semana (lunes l): fecha en la semana, o sigue abierto de antes (solo viendo la semana en curso).
+// «Por día» en Incidencias/Objetos: lo de ese día, o lo que sigue abierto (solo viendo hoy).
+function ckCalD_0_(s) { CKCAL.d = CKCAL.d || {}; return CKCAL.d[s] || aseoHoyIso_(); }
+function ckEnDia_(fecha, d, abierto) { const f = String(fecha || '').slice(0, 10); return f === d || (abierto && d === aseoHoyIso_() && (!f || f < d)); }
+window.ckCalD_ = function (s, dl) { const x = tarParseIso_(ckCalD_0_(s)); x.setDate(x.getDate() + dl); CKCAL.d[s] = tarIso_(x); const st = ckCalSt_(s); if (st) st.mes = CKCAL.d[s].slice(0, 7); ckCalRe_(s); };
+function ckDiaNavHtml_(s) { const d = ckCalD_0_(s), x = tarParseIso_(d), h = d === aseoHoyIso_(); return `<div class="ck-dnav"><button type="button" onclick="ckCalD_('${s}',-1)" title="Día anterior">‹</button><button type="button" class="lb ${h ? '' : 'otro'}" onclick="CKCAL.d['${s}']=aseoHoyIso_();ckCalRe_('${s}')" title="Volver a hoy">${h ? 'Hoy · ' : ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][x.getDay()] + ' '}${x.getDate()} ${TAR_MESES[x.getMonth()]}</button><button type="button" onclick="ckCalD_('${s}',1)" title="Día siguiente">›</button></div>`; }
 function ckEnSem_(fecha, l, abierto) { const f = String(fecha || '').slice(0, 10), fin = (d => { d.setDate(d.getDate() + 6); return tarIso_(d); })(tarParseIso_(l)), hoy = aseoHoyIso_(); return (f >= l && f <= fin) || (abierto && hoy >= l && hoy <= fin && (!f || f < l)); }
 function ckSemNavHtml_(s) { const l = tarParseIso_(ckCalW_0_(s)), f = new Date(l); f.setDate(f.getDate() + 6); return `<div class="ck-dnav"><button type="button" onclick="ckCalW_('${s}',-1)" title="Semana anterior">‹</button><button type="button" class="lb" onclick="CKCAL.w['${s}']=ckLunes_(aseoHoyIso_());ckCalRe_('${s}')" title="Volver a esta semana">${l.getDate()} ${TAR_MESES[l.getMonth()]} – ${f.getDate()} ${TAR_MESES[f.getMonth()]}</button><button type="button" onclick="ckCalW_('${s}',1)" title="Semana siguiente">›</button></div>`; }
 function ckEnMes_(fecha, ym, abierto) { const f = String(fecha || '').slice(0, 10); return f.slice(0, 7) === ym || (abierto && ym === ckMesHoy_() && (!f || f < ym + '-01')); }
@@ -69691,17 +69696,17 @@ function ckCalSt_(s) { return s === 'ic' && typeof IC !== 'undefined' ? IC : s =
 function ckCalRe_(s) { if (s === 'aseo') { ASEO.calSig = ''; aseoRender_(); } else if (s === 'ic') icRender_(); else if (s === 'ob') obRender_(); }
 window.ckCalV_ = function (s, v) {
   CKCAL.v[s] = v; const st = ckCalSt_(s);
-  if (st) { const ym = st.mes || ckMesHoy_(); if (v === 'mes') CKCAL.m[s] = ym; if (v === 'sem') (CKCAL.w = CKCAL.w || {})[s] = ckLunes_(ym === ckMesHoy_() ? aseoHoyIso_() : ym + '-01'); }
+  if (st) { const ym = st.mes || ckMesHoy_(); if (v === 'aloj') (CKCAL.d = CKCAL.d || {})[s] = ym === ckMesHoy_() ? aseoHoyIso_() : ym + '-01'; if (v === 'mes') CKCAL.m[s] = ym; if (v === 'sem') (CKCAL.w = CKCAL.w || {})[s] = ckLunes_(ym === ckMesHoy_() ? aseoHoyIso_() : ym + '-01'); }
   ckCalRe_(s);
 };
 window.ckCalM_ = function (s, d) { CKCAL.m[s] = ckMesMover_(ckCalM_0_(s), d); const st = ckCalSt_(s); if (st) st.mes = CKCAL.m[s]; ckCalRe_(s); };
-function ckCalSegHtml_(s) { const v = ckCalV_0_(s); return `<div class="ad-seg ckcal-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">🏠 Por alojamiento</button><button type="button" class="${v === 'sem' ? 'on' : ''}" onclick="ckCalV_('${s}','sem')">📆 Por semana</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>`; }
+function ckCalSegHtml_(s) { const v = ckCalV_0_(s); return `<div class="ad-seg ckcal-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">📅 Por día</button><button type="button" class="${v === 'sem' ? 'on' : ''}" onclick="ckCalV_('${s}','sem')">📆 Por semana</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>`; }
 function ckCalHdHtml_(s, sinSeg) {
   const v = ckCalV_0_(s), ym = ckCalM_0_(s), lbl = TAR_MESES_L[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4);
   if (sinSeg && v === 'sem') { const l = tarParseIso_(ckCalW_0_(s)), f = new Date(l); f.setDate(f.getDate() + 6);
     return `<div class="ckcal-hd"><div class="ckcal-mn"><button type="button" onclick="ckCalW_('${s}',-1)" title="Semana anterior">‹</button><b>${l.getDate()} ${TAR_MESES[l.getMonth()]} – ${f.getDate()} ${TAR_MESES[f.getMonth()]} ${f.getFullYear()}</b><button type="button" onclick="ckCalW_('${s}',1)" title="Semana siguiente">›</button></div></div>`; }
   if (sinSeg) return v === 'mes' ? `<div class="ckcal-hd"><div class="ckcal-mn"><button type="button" onclick="ckCalM_('${s}',-1)" title="Mes anterior">‹</button><b>${lbl}</b><button type="button" onclick="ckCalM_('${s}',1)" title="Mes siguiente">›</button></div></div>` : '';
-  return `<div class="ckcal-hd"><div class="ad-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">🏠 Por alojamiento</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>
+  return `<div class="ckcal-hd"><div class="ad-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">📅 Por día</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>
     ${v === 'mes' ? `<div class="ckcal-mn"><button type="button" onclick="ckCalM_('${s}',-1)" title="Mes anterior">‹</button><b>${lbl}</b><button type="button" onclick="ckCalM_('${s}',1)" title="Mes siguiente">›</button></div>` : ''}</div>`;
 }
 // items = [{ dia, cod, titulo, c (color del estado), onclick }]
@@ -69778,14 +69783,14 @@ function icRender_() {
   const nav = `<div class="cl-nav-slot" data-act="incidencias">${typeof clNavHtml_ === 'function' ? clNavHtml_('incidencias') : ''}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(IC.filAb, nFx, 'IC.filAb=!IC.filAb;icRender_()')}
       <input class="ck-q ic-q" type="search" placeholder="🔎 Buscar alojamiento, motivo, persona…" value="${pcEsc(IC.q)}" oninput="IC.q=this.value;clearTimeout(IC._qt);IC._qt=setTimeout(()=>{icRender_();const i=document.querySelector('#ic-root .ic-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
-      ${ckCalV_0_('ic') === 'sem' ? ckSemNavHtml_('ic') : ckMesNavHtml_(ym, 'icMes_')}${ckCalSegHtml_('ic')}${ckCalBtnHtml_(!!IC.cal, 'icCal_()')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'icVista_')}
+      ${ckCalV_0_('ic') === 'sem' ? ckSemNavHtml_('ic') : ckCalV_0_('ic') === 'aloj' ? ckDiaNavHtml_('ic') : ckMesNavHtml_(ym, 'icMes_')}${ckCalSegHtml_('ic')}${ckCalBtnHtml_(!!IC.cal, 'icCal_()')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'icVista_')}
       ${nArch || IC.fx.arch ? `<button type="button" class="aseo-btn ${IC.fx.arch ? 'ck-b on' : ''}" onclick="IC.fx.arch=!IC.fx.arch;icRender_()" title="Ver incidencias archivadas">🗄 ${nArch}</button>` : ''}
       ${IC.cargando ? '<span class="ck-hint">⏳</span>' : '<button type="button" class="aseo-btn ck-ib" onclick="icInit_()" title="Volver a cargar las incidencias" aria-label="Actualizar"><svg class="ck-rf" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>'}
       <button type="button" class="aseo-btn ck-ib" onclick="icClasif_()" title="Clasificaciones">⚙️</button>
       <button type="button" class="aseo-btn ck-pri" onclick="icForm_(null)">＋ Nueva incidencia</button></div>`;
   const vacio = !todas.length ? `<div class="pc-mv-empty">${IC.cargado ? 'Aún no hay incidencias registradas.' : '⏳ Cargando incidencias…'}</div>` : '';
   CKCAL.m.ic = ym; // el calendario por mes sigue al mes de la barra
-  const L = todas.filter(x => (ckCalV_0_('ic') === 'sem' ? ckEnSem_(x.fecha, ckCalW_0_('ic'), !icCerrada_(x)) : ckEnMes_(x.fecha, ym, !icCerrada_(x))) && icPasa_(x, true)); // la vista filtra cards, tabla y calendario
+  const vIc = ckCalV_0_('ic'), L = todas.filter(x => (vIc === 'sem' ? ckEnSem_(x.fecha, ckCalW_0_('ic'), !icCerrada_(x)) : vIc === 'aloj' ? ckEnDia_(x.fecha, ckCalD_0_('ic'), !icCerrada_(x)) : ckEnMes_(x.fecha, ym, !icCerrada_(x))) && icPasa_(x, true)); // la vista filtra cards, tabla y calendario
   root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${icKpis_(todas)}</div>${nav}${bar}${IC.filAb ? `<div class="ad-v2">${icFiltros_(todas, true)}</div>` : ''}
       ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!IC.cal, icCalHtml_(), icVistaHtml_(L, vista, ym))}</div>`}</div>`;
@@ -70250,12 +70255,12 @@ function obRender_() {
   const nav = `<div class="cl-nav-slot" data-act="objetos">${clNavHtml_('objetos')}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(OB.filAb, nFx, 'OB.filAb=!OB.filAb;obRender_()')}
       <input class="ck-q ob-q" type="search" placeholder="🔎 Buscar alojamiento, objeto, persona…" value="${pcEsc(OB.q)}" oninput="OB.q=this.value;clearTimeout(OB._qt);OB._qt=setTimeout(()=>{obRender_();const i=document.querySelector('#ob-root .ob-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
-      ${ckCalV_0_('ob') === 'sem' ? ckSemNavHtml_('ob') : ckMesNavHtml_(ym, 'obMes_')}${ckCalSegHtml_('ob')}${ckCalBtnHtml_(!!OB.cal, 'obCal_()')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'obVista_')}
+      ${ckCalV_0_('ob') === 'sem' ? ckSemNavHtml_('ob') : ckCalV_0_('ob') === 'aloj' ? ckDiaNavHtml_('ob') : ckMesNavHtml_(ym, 'obMes_')}${ckCalSegHtml_('ob')}${ckCalBtnHtml_(!!OB.cal, 'obCal_()')}<span class="ck-sp"></span>${ckVistasHtml_(vista, 'obVista_')}
       ${OB.cargando ? '<span class="ck-hint">⏳</span>' : '<button type="button" class="aseo-btn ck-ib" onclick="obInit_()" title="Volver a cargar los objetos" aria-label="Actualizar"><svg class="ck-rf" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>'}
       <button type="button" class="aseo-btn ck-pri" onclick="obForm_(null)">＋ Nuevo objeto</button></div>`;
   const vacio = !todos.length ? `<div class="pc-mv-empty">${OB.cargado ? 'Aún no hay objetos olvidados registrados.' : '⏳ Cargando objetos olvidados…'}</div>` : '';
   CKCAL.m.ob = ym;
-  const L = todos.filter(x => (ckCalV_0_('ob') === 'sem' ? ckEnSem_(x.fecha, ckCalW_0_('ob'), !obCerrado_(x)) : ckEnMes_(x.fecha, ym, !obCerrado_(x))) && obPasa_(x, true));
+  const vOb = ckCalV_0_('ob'), L = todos.filter(x => (vOb === 'sem' ? ckEnSem_(x.fecha, ckCalW_0_('ob'), !obCerrado_(x)) : vOb === 'aloj' ? ckEnDia_(x.fecha, ckCalD_0_('ob'), !obCerrado_(x)) : ckEnMes_(x.fecha, ym, !obCerrado_(x))) && obPasa_(x, true));
   root.innerHTML = `<div>${head}
       <div class="ad-v2 ck-kpis">${obKpis_(todos)}</div>${nav}${bar}${OB.filAb ? `<div class="ad-v2">${obFiltros_(todos, true)}</div>` : ''}
       ${vacio || `<div class="ad-v2 td-board">${ckSplitHtml_(!!OB.cal, obCalHtml_(), obVistaHtml_(L, vista, ym))}</div>`}</div>`;
