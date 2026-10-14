@@ -59972,7 +59972,7 @@ function tarPanelRender_() {
         </div>
       `)}`}
       ${field(lbl(`Personal asignado${d._personal.length ? ` · ${d._personal.length}` : ''}`) + personalHtml)}
-      ${rec ? '' : `${field(lbl('¿Enviar mensaje por WhatsApp?') + waHtml)}
+      ${rec ? '' : `
       ${field(lbl('Vigencia de la tarea') + `<div style="display:flex;gap:6px;flex-wrap:wrap">${TAR_VIGENCIAS.map(e => tarPill_(d.Estado === e.k, e.k, `tarSetField('Estado','${e.k}')`, { fg: e.fg, bg: e.bg, bd: e.bd })).join('')}</div><div style="font-size:11px;color:#94a3b8;margin-top:5px">Pausada o Cancelada: deja de aparecer en fechas futuras. El estado de cada día se marca desde el calendario.</div>`)}
       ${field(lbl('Comentarios') + `<textarea rows="3" oninput="tarSetText('Comentarios',this.value)" style="${inp};resize:vertical">${esc(d.Comentarios || '')}</textarea>`)}`}
       ${P.id ? field(lbl('Historial') + tarHistHtml_(P.id)) : ''}
