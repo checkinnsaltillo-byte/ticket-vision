@@ -71074,12 +71074,15 @@ window.rbProgramar_ = async function () {
   const dk = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'][tarParseIso_(dia).getDay()];
   const S = P.map(r => { const n = nom(r), e = rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk)); return { n, corto: aseoNombreCorto_(n), e, ed1: (L[n] || {}).ed1 || '', ed2: (L[n] || {}).ed2 || '', t: ini, prop: '', pasos: [], trabajo: 0, tras: 0 }; });
   const disp = S.filter(x => x.e === 'confirmado' || x.e === 'tentativo'), fuera = S.filter(x => !(x.e === 'confirmado' || x.e === 'tentativo'));
-  // 3) Orden: primero las que reciben huésped (por hora límite), luego por propiedad
-  T.sort((a, b) => (a.lim == null) - (b.lim == null) || (a.lim || 0) - (b.lim || 0) || a.prop.localeCompare(b.prop, 'es') || a.cod.localeCompare(b.cod, 'es', { numeric: true }));
+  // 3) Orden por EDIFICIO (bloques): todo lo de una propiedad se reparte junto, así nadie regresa a un edificio que ya dejó.
+  //    Primero el edificio con la entrada de huésped más temprana; dentro del edificio, por hora límite.
+  const urg = new Map(); T.forEach(t => { const u = t.lim == null ? 9e9 : t.lim; urg.set(t.prop, Math.min(urg.has(t.prop) ? urg.get(t.prop) : 9e9, u)); });
+  T.sort((a, b) => urg.get(a.prop) - urg.get(b.prop) || a.prop.localeCompare(b.prop, 'es') || (a.lim == null) - (b.lim == null) || (a.lim || 0) - (b.lim || 0) || a.cod.localeCompare(b.cod, 'es', { numeric: true }));
   const sinAsig = [];
   T.forEach(t => {
     let best = null;
-    disp.forEach(x => { const tr = rbTras_(x.prop, t.prop), llega = x.t + tr.m, termina = llega + t.dur;
+    disp.forEach(x => { if (x.prop !== t.prop && (x.vis || []).includes(t.prop)) return; // no regresa a un edificio que ya dejó
+      const tr = rbTras_(x.prop, t.prop), llega = x.t + tr.m, termina = llega + t.dur;
       const pen = x.ed1 === t.prop ? 0 : x.ed2 === t.prop ? 25 : 60; // preferencia: edificio prioritario › segundo › otro
       const tarde = t.lim != null && termina > t.lim ? 200 : 0, extra = termina > fin ? 120 : 0;
       const costo = termina + pen + tarde + extra; if (!best || costo < best.costo) best = { x, tr, llega, termina, costo }; });
@@ -71087,7 +71090,7 @@ window.rbProgramar_ = async function () {
     const x = best.x;
     if (best.tr.m) x.pasos.push({ k: 'tras', de: x.prop, a: t.prop, ini: x.t, fin: best.llega, m: best.tr.m, base: best.tr.base, est: best.tr.est });
     x.pasos.push({ k: 'tarea', t, ini: best.llega, fin: best.termina, pri: x.ed1 === t.prop ? 1 : x.ed2 === t.prop ? 2 : 0, tarde: t.lim != null && best.termina > t.lim });
-    x.trabajo += t.dur; x.tras += best.tr.m; x.t = best.termina; x.prop = t.prop; t.quien = x.corto; t.ini = best.llega; t.fin = best.termina;
+    x.trabajo += t.dur; x.tras += best.tr.m; x.t = best.termina; if (x.prop !== t.prop) (x.vis = x.vis || []).push(t.prop); x.prop = t.prop; t.quien = x.corto; t.ini = best.llega; t.fin = best.termina;
   });
   const req = T.reduce((a, t) => a + t.dur, 0), cap = disp.length * Math.max(0, fin - ini), usado = disp.reduce((a, x) => a + x.trabajo + x.tras, 0);
   RB.prog = { dia, H, ini, fin, T, S: disp, fuera, sinAsig, hechas, req, cap, usado, vista: (RB.prog && RB.prog.vista) || 'personal' };
