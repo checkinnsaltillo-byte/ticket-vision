@@ -58563,7 +58563,7 @@ function tdLimIG_(r, iso) {
   _tdLimC.set(k, lim); return lim;
 }
 // Fecha límite de una tarea (para avisos y prioridad automática). '' si no tiene.
-function tdLimite_(r, dia) { if (r.Fecha_limite !== 'Sí') return ''; if (tdEsIG_(r)) return tdLimIG_(r, dia); const p = tarProg_(r); return p.tipo === 'unica' ? (p.fechas.slice().sort().filter(x => x >= tarIso_(tarToday_()))[0] || p.fechas.slice().sort().pop() || '') : (tarNextDate_(r) || ''); }
+function tdLimite_(r, dia) { if (r.Fecha_limite !== 'Sí') return ''; if (tdEsIG_(r)) { const L = tdIGAlojs_(r).map(h => tdIGRetraso_(r, h).lim).sort(); return L[0] || tdLimIG_(r, dia); } /* levantamiento: la fecha límite más próxima de sus alojamientos */ const p = tarProg_(r); return p.tipo === 'unica' ? (p.fechas.slice().sort().filter(x => x >= tarIso_(tarToday_()))[0] || p.fechas.slice().sort().pop() || '') : (tarNextDate_(r) || ''); }
 // Prioridad automática conforme se acerca la fecha límite: > 7 días la elegida · ≤ 7 Medio · ≤ 3 Alto · ≤ 1 o vencida Crítico (nunca baja la elegida).
 function tdPrioEf_(r, dia) {
   const base = r.Prioridad || 'Medio', est = tdEst_(r, dia), f = tdLimite_(r, dia);
@@ -58665,6 +58665,8 @@ function tdCss_() {
   .td-hist{display:flex;flex-direction:column;gap:3px}.td-hist .td-hf{text-decoration:none}.td-hist .td-hf.on{outline:2px solid #6366f1;outline-offset:-1px}
   .td-hf b{font:700 11px ui-monospace,Menlo,monospace;flex:none;color:#0f1729}
   .td-hf .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#475569}
+  .td-hijos .td-hf{flex-wrap:wrap;row-gap:2px}.td-hijos .td-hf .nm{flex:1 1 90px}
+  .td-hf .dt{flex:none;font-size:10.5px;font-weight:600;color:#475569;white-space:nowrap}.td-hf .tb-ret{flex:none;font-size:10px!important;padding:1px 7px!important}
   .td-hf .es{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;flex:none;color:color-mix(in srgb,var(--c) 70%,#000)}
   .td-hf .es i{width:7px;height:7px;border-radius:50%;background:var(--c)}
   .td-hf .pc{width:34px;height:5px;border-radius:3px;background:rgba(15,23,42,.1);overflow:hidden;flex:none}.td-hf .pc i{display:block;height:100%;background:var(--c)}
@@ -58860,9 +58862,10 @@ function tdCard_(r, dia, o) {
 function tdHijoFila_(r, hid, dia) {
   const est = tdIGEstH_(r, hid, dia), a = typeof atAloj_ === 'function' ? atAloj_(hid) : { nombre: hid, corto: '' };
   const x = r.Plantilla ? plIdxGet_(tdIGKey_(r, hid, dia)) : null, pc = est === 'Resuelto' && !x ? 100 : x ? x.p : 0, c = TD_EST[est] || '#94a3b8';
-  const txt = est === 'Resuelto' ? 'Terminado' : est;
+  const txt = est === 'Resuelto' ? 'Terminado' : est, R = tdIGRetraso_(r, hid);
   return `<div class="td-hf" style="--c:${c}" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')" title="${esc(a.nombre || hid)} · ${txt}${x ? ` · ${x.h} de ${x.t} campos` : ''} — clic para abrir el formulario">
     <b>${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span class="nm">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span>
+    <span class="dt" title="Último levantamiento">🕘 ${R.ult ? esc(aseoDiaTxt_(R.ult)) : 'Sin previo'}</span><span class="dt" title="Fecha límite">⏳ ${esc(aseoDiaTxt_(R.lim))}</span>${tdIGRetHtml_(R)}
     <span class="es"><i></i>${txt}</span>${r.Plantilla ? `<span class="pc"><i style="width:${pc}%"></i></span><em>${pc}%</em>` : ''}</div>`;
 }
 window.tdIGRow_ = function (id) { const S = TAR_STATE.igRowAb = TAR_STATE.igRowAb || new Set(); if (S.has(id)) S.delete(id); else S.add(id); tarRender(); };
