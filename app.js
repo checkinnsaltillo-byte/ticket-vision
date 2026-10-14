@@ -68463,7 +68463,7 @@ function atRecHtml_(F) {
       <div class="at-hint">${R.tipo === 'bimestral' ? 'Se repite cada 2 meses a partir del mes de inicio. ' : ''}Si el mes no tiene el día 29–31, se usa su último día.</div>`;
   return `${lb('Fecha(s)')}<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${tipos}</div>${sel}
     <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
-      <div><div class="at-k" style="margin-bottom:3px">Desde${R.tipo === 'bimestral' ? ' (mes de inicio)' : ''}</div><input type="date" class="at-in" style="width:auto" value="${pcEsc(F.fecha || '')}" onchange="if(this.value){ASEO._tf.fecha=this.value;atFormPintar_()}"></div>
+      <div><div class="at-k" style="margin-bottom:3px">Desde${R.tipo === 'bimestral' ? ' (mes de inicio)' : ''}</div><input type="date" class="at-in" style="width:auto" value="${pcEsc(F.fecha || '')}" onchange="if(this.value){ASEO._tf.fecha=this.value;ASEO._tf.repite.fin=tarUnAnio_(this.value);atFormPintar_()}"></div>
       <div><div class="at-k" style="margin-bottom:3px">Hasta (opcional)</div><input type="date" class="at-in" style="width:auto" value="${pcEsc(R.fin || '')}" onchange="ASEO._tf.repite.fin=this.value"></div>
     </div>
     <div onclick="atRec_('limite')" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px;padding:10px 12px;border-radius:10px;border:1.5px solid ${R.limite ? '#fca5a5' : '#e2e8f0'};background:${R.limite ? '#fef2f2' : '#fff'}">
@@ -68474,7 +68474,7 @@ function atRecHtml_(F) {
 }
 window.atRecTog_ = function () {
   const F = ASEO._tf, d = atD_(F.fecha || aseoHoyIso_());
-  F.repite = F.repite ? null : { tipo: 'semanal', dias_semana: [d.getDay()], dias_mes: [d.getDate()], fin: '', limite: false, vigencia: 'Activa' };
+  F.repite = F.repite ? null : { tipo: 'semanal', dias_semana: [d.getDay()], dias_mes: [d.getDate()], fin: tarUnAnio_(F.fecha || aseoHoyIso_()), limite: false, vigencia: 'Activa' }; // «Hasta»: misma fecha el año siguiente
   atFormPintar_();
 };
 window.atRec_ = function (k, v) {
