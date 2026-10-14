@@ -9405,7 +9405,7 @@ app.post("/config/reglas-bot", async (req, res) => {
       const B = req.body || {};
       if (typeof B.auto === "boolean") d.auto = B.auto;
       if (B.tras_pref != null && isFinite(Number(B.tras_pref))) d.tras_pref = Math.max(0, Math.min(10, Math.round(Number(B.tras_pref)))); // e) traslados preferidos por persona
-      if (B.margenes && typeof B.margenes === "object") { d.margenes = d.margenes || {}; ["aloj", "tras"].forEach(k => { const v = Number(B.margenes[k]); if (B.margenes[k] != null && isFinite(v) && v >= 0 && v <= 240) d.margenes[k] = Math.round(v); }); } // f) tolerancia entre alojamientos · g) tolerancia en traslados
+      if (B.margenes && typeof B.margenes === "object") { d.margenes = d.margenes || {}; ["aloj", "tras", "pie"].forEach(k => { const v = Number(B.margenes[k]); if (B.margenes[k] != null && isFinite(v) && v >= 0 && v <= 240) d.margenes[k] = Math.round(v); }); } // f) tolerancia entre alojamientos · g) tolerancia en traslados
       if (B.chofer && typeof B.chofer === "object") { d.chofer = d.chofer || {}; [["n", 1, 20], ["cap", 1, 20], ["espera", 0, 120]].forEach(([k, lo, hi]) => { const v = Number(B.chofer[k]); if (B.chofer[k] != null && isFinite(v) && v >= lo && v <= hi) d.chofer[k] = Math.round(v); }); } // h) transporte
       if (B.polos && typeof B.polos === "object") { d.polos = d.polos || {}; Object.keys(B.polos).slice(0, 60).forEach(k => { const v = String(B.polos[k] || "").toUpperCase().slice(0, 2); d.polos[txt(k)] = /^[A-Z]?$/.test(v) ? v : ""; }); } // i) polos // «Automática»: programar sola las limpiezas del día siguiente
       // Asignaciones automáticas por confirmar: { pend: { "<asigId>|<rol>|<persona>" | "T<id>|<persona>": "YYYY-MM-DD" | null } }
