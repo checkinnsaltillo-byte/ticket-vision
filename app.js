@@ -70972,7 +70972,29 @@ window.plInit_ = async function () {
 // ═══ Check-Flow › 🤖 Reglas bot: reglas y condiciones con las que el bot organiza el trabajo ═══
 // a) Programación de limpiezas: personal de limpieza · 2 edificios prioritarios (se guardan en config/reglas-bot.json) ·
 //    días que labora (de su expediente en Personal: «Dias_trabajo», p. ej. «L,M,Mi,J,V»).
-const RB = { reglas: null, cargando: false };
+const RB = { reglas: null, cargando: false, asis: null, lunes: null };
+// Asistencia por día: registro real (RH › Asistencia) o lo marcado aquí. Futuro = «Tentativo» si le toca trabajar.
+const RB_EST = { tentativo: { t: 'Tentativo', sig: 'confirmado' }, confirmado: { t: 'Confirmado', sig: 'falta' }, falta: { t: 'Falta', sig: 'sin' }, sin: { t: 'Sin asignar', sig: 'tentativo' } };
+function rbAsisDe_(n, iso) {
+  const A = RB.asis; if (!A) return null; const nn = ckNorm_(n), ps = nn.split(' ').filter(Boolean);
+  const L = A.filter(x => x.f === iso && (x.n === nn || (ps.length >= 2 && x.n.includes(ps[0]) && x.n.includes(ps[ps.length > 2 ? ps.length - 2 : 1])) || (ps.length >= 2 && nn.startsWith(x.n))));
+  return L.length ? (L.some(x => /falt/.test(x.c)) && !L.some(x => /asist/.test(x.c)) ? 'falta' : 'confirmado') : null;
+}
+function rbEstado_(n, iso, labora) {
+  const o = (((RB.reglas || {}).asist || {})[n] || {})[iso]; if (o) return o;
+  const a = rbAsisDe_(n, iso); if (a) return a;
+  const hoy = aseoHoyIso_(); if (iso >= hoy) return labora ? 'tentativo' : 'sin';
+  return labora ? (RB.asis ? 'falta' : 'tentativo') : 'sin';
+}
+window.rbClic_ = async function (n, iso, est) {
+  if (!RB.reglas) return; const sig = RB_EST[est] ? RB_EST[est].sig : 'tentativo';
+  const A = RB.reglas.asist = RB.reglas.asist || {}; (A[n] = A[n] || {})[iso] = sig; rbRender_();
+  const el = document.getElementById('rb-save'); if (el) el.textContent = '⏳ Guardando…';
+  try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asist: { [n]: { [iso]: sig } }, user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error'); RB.reglas = j.reglas; rbRender_(); const e2 = document.getElementById('rb-save'); if (e2) e2.textContent = '✓ Guardado'; }
+  catch (e) { const e2 = document.getElementById('rb-save'); if (e2) e2.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
+};
+window.rbSem_ = function (d) { const l = tarParseIso_(RB.lunes || ckLunes_(aseoHoyIso_())); l.setDate(l.getDate() + 7 * d); RB.lunes = d ? tarIso_(l) : ckLunes_(aseoHoyIso_()); rbRender_(); };
 const RB_DIAS = [['L', 'Lun'], ['M', 'Mar'], ['Mi', 'Mié'], ['J', 'Jue'], ['V', 'Vie'], ['S', 'Sáb'], ['D', 'Dom']];
 function rbDias_(v) { const t = String(v || '').split(/[,\s/]+/).map(x => x.trim().toLowerCase()).filter(Boolean); return new Set(t.map(x => ({ l: 'L', lu: 'L', lun: 'L', m: 'M', ma: 'M', mar: 'M', mi: 'Mi', mie: 'Mi', 'mié': 'Mi', x: 'Mi', j: 'J', ju: 'J', jue: 'J', v: 'V', vi: 'V', vie: 'V', s: 'S', sa: 'S', sab: 'S', 'sáb': 'S', d: 'D', do: 'D', dom: 'D' })[x] || x)); }
 function rbEdificios_() { const S = new Set(); (typeof atAlojs_ === 'function' ? atAlojs_() : []).forEach(a => { const p = String(a.propiedad || '').replace(/^Calle\s+/i, '').trim(); if (p && !/^ED\.\s/i.test(p)) S.add(p); /* «ED. …» = registro del edificio, no una propiedad */ }); return [...S].sort((a, b) => a.localeCompare(b, 'es')); }
@@ -70981,6 +71003,7 @@ window.rbInit_ = async function () {
   if (typeof INC_STATE !== 'undefined' && !(INC_STATE.personalRows || []).length && typeof incLoadPersonal === 'function') incLoadPersonal().then(rbRender_).catch(() => {});
   if (typeof ALOJ_STATE !== 'undefined' && !ALOJ_STATE.loaded && typeof lgLoadAlojamientos === 'function') lgLoadAlojamientos().then(rbRender_).catch(() => {});
   rbRender_();
+  if (!RB.asis && !RB.asisPed) { RB.asisPed = 1; fetch(`${BACKEND}/rh/asistencia?_cb=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).then(j => { RB.asis = (j.rows || j.data || []).map(x => ({ n: ckNorm_(x.Empleado_Nombre || ''), f: String(x.Fecha || '').slice(0, 10), c: ckNorm_(x.Concepto || 'asistencia') })); rbRender_(); }).catch(() => { RB.asisPed = 0; }); }
   if (!RB.cargando) { RB.cargando = true; try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { cache: 'no-store' }).then(r => r.json()); RB.reglas = (j && j.reglas) || {}; } catch (_) { RB.reglas = RB.reglas || {}; } RB.cargando = false; rbRender_(); }
 };
 function rbRender_() {
@@ -70989,23 +71012,29 @@ function rbRender_() {
   const P = ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => /limpieza/i.test(String(r.Puesto || '')) && !/inactiv|baja/i.test(String(r.Estado || '')) && !r.Fecha_retiro);
   const nom = r => (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : [r.Nombre, r.Apellido_paterno, r.Apellido_materno].filter(Boolean).join(' ')) || r.Nombre;
   const L = (RB.reglas && RB.reglas.limpieza) || {}, eds = rbEdificios_(), opt = (v) => `<option value="">—</option>${eds.map(e => `<option ${e === v ? 'selected' : ''}>${pcEsc(e)}</option>`).join('')}`;
+  const lun = RB.lunes || ckLunes_(aseoHoyIso_()), fechas = Array.from({ length: 7 }, (_, i) => { const d = tarParseIso_(lun); d.setDate(d.getDate() + i); return tarIso_(d); }), hoy = aseoHoyIso_();
   const filas = P.map(r => { const n = nom(r), D = rbDias_(r.Dias_trabajo), x = L[n] || {};
     return `<tr><td class="rb-n"><b>${pcEsc(n)}</b><small>${pcEsc(r.Puesto || '')}</small></td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed1',this.value)">${opt(x.ed1)}</select></td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed2',this.value)">${opt(x.ed2)}</select></td>
-      ${RB_DIAS.map(([k, t]) => `<td class="rb-d"><span class="${D.has(k) ? 'on' : ''}" title="${D.has(k) ? 'Labora' : 'Descansa'}">${t}</span></td>`).join('')}</tr>`; }).join('');
+      ${RB_DIAS.map(([k, t], i) => { const f = fechas[i], e = rbEstado_(n, f, D.has(k)), man = !!(((RB.reglas || {}).asist || {})[n] || {})[f];
+        return `<td class="rb-d"><button type="button" class="rb-c ${e}" onclick="rbClic_(${pcEsc(JSON.stringify(n))},'${f}','${e}')" title="${RB_EST[e].t}${man ? ' (marcado a mano)' : rbAsisDe_(n, f) ? ' (registro de asistencia)' : D.has(k) ? ' (le toca trabajar)' : ' (descansa)'} — clic: ${RB_EST[RB_EST[e].sig].t}">${t}</button></td>`; }).join('')}</tr>`; }).join('');
   root.innerHTML = `<div class="cl-title">🛠️ Check-Flow</div><div class="cl-nav-slot" data-act="reglasbot">${clNavHtml_('reglasbot')}</div>
     <style>.rb-w{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;font-family:Inter,system-ui,sans-serif;max-width:1100px}
       .rb-h{font-size:15px;font-weight:800;color:#0f172a;margin:0 0 4px}.rb-s{font-size:12px;color:#64748b;margin:0 0 12px}
       .rb-t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}.rb-t th{font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:8px;border-bottom:1px solid #e8eaee;background:#f8fafc}
       .rb-t td{padding:7px 8px;border-bottom:1px solid #f0f1f4;vertical-align:middle}.rb-n b{display:block;color:#0f172a}.rb-n small{color:#94a3b8;font-size:11px}
       .rb-sel{all:unset;box-sizing:border-box;min-width:140px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12px;cursor:pointer}
-      .rb-d{text-align:center;width:52px}.rb-d span{display:inline-block;min-width:38px;padding:4px 0;border-radius:7px;font-size:11px;font-weight:700;background:#e5e7eb;color:#9aa1ad}.rb-d span.on{background:#16a34a;color:#fff}
+      .rb-d{text-align:center;width:56px}.rb-c{all:unset;box-sizing:border-box;cursor:pointer;display:inline-block;min-width:42px;padding:3px 0;border-radius:7px;font-size:11px;font-weight:700;border:1.5px solid transparent;text-align:center}
+      .rb-c.sin{background:#e5e7eb;color:#9aa1ad}.rb-c.tentativo{background:#f1f5f9;color:#64748b;border:1.5px dashed #16a34a}.rb-c.confirmado{background:#16a34a;color:#fff}.rb-c.falta{background:#dc2626;color:#fff}.rb-c:hover{filter:brightness(.95);outline:2px solid #c7d2fe}
+      .rb-ley{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11.5px;color:#64748b;margin:0 0 10px}.rb-ley .rb-c{cursor:default;min-width:0;padding:2px 8px}.rb-nav{display:inline-flex;align-items:center;gap:6px;margin-left:auto}.rb-nav button{all:unset;cursor:pointer;padding:4px 10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12px;font-weight:700;color:#334155}
       .rb-sec{font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.06em;margin:4px 0 6px}</style>
     <div class="rb-w"><div class="rb-sec">Reglas y condiciones del bot</div>
       <div class="rb-h">a) Programación de limpiezas</div>
-      <div class="rb-s">Personal de limpieza con sus edificios prioritarios y los días que labora (tomados de su expediente en Personal › «Días de trabajo»). <span style="color:#16a34a;font-weight:700">Verde</span> = labora · <span style="color:#9aa1ad;font-weight:700">gris</span> = descansa. Los edificios se guardan solos.</div>
-      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal de limpieza</th><th>Edificio prioritario</th><th>Otro edificio prioritario</th>${RB_DIAS.map(([, t]) => `<th style="text-align:center">${t}</th>`).join('')}</tr></thead>
+      <div class="rb-s">Personal de limpieza con sus edificios prioritarios y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
+      <div class="rb-ley"><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
+        <span class="rb-nav"><button type="button" onclick="rbSem_(-1)">‹</button><button type="button" onclick="rbSem_(0)" title="Semana actual">${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[0]))} – ${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[6]))}</button><button type="button" onclick="rbSem_(1)">›</button></span></div>
+      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal de limpieza</th><th>Edificio prioritario</th><th>Otro edificio prioritario</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
       <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
     </div>`;

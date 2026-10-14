@@ -9398,7 +9398,12 @@ app.post("/config/reglas-bot", async (req, res) => {
   try {
     const b = (req.body || {}).limpieza || {}, txt = v => String(v || "").trim().slice(0, 80), lim = {};
     Object.keys(b).slice(0, 100).forEach(n => { const x = b[n] || {}; lim[txt(n)] = { ed1: txt(x.ed1), ed2: txt(x.ed2) }; });
-    const out = await _aseoMutate(_RB_OBJ, "reglasBot", d => { d.limpieza = Object.assign({}, d.limpieza, lim); d.updated_at = new Date().toISOString(); d.updated_by = txt((req.body || {}).user); return d; });
+    // Asistencia por día marcada a mano (tentativo · confirmado · falta · sin): { asist: { <persona>: { <YYYY-MM-DD>: estado } } }
+    const A = (req.body || {}).asist || {}, ES = ["tentativo", "confirmado", "falta", "sin", ""];
+    const out = await _aseoMutate(_RB_OBJ, "reglasBot", d => {
+      d.limpieza = Object.assign({}, d.limpieza, lim); d.asist = d.asist || {};
+      Object.keys(A).slice(0, 100).forEach(n => { const k = txt(n), m = d.asist[k] = d.asist[k] || {}; Object.entries(A[n] || {}).forEach(([f, e]) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || !ES.includes(e)) return; if (e) m[f] = e; else delete m[f]; }); });
+      d.updated_at = new Date().toISOString(); d.updated_by = txt((req.body || {}).user); return d; });
     res.json({ ok: true, reglas: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
