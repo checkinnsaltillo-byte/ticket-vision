@@ -66211,10 +66211,9 @@ function clEmpCss_() {
     .ad-card .r2 .ad-val{background:none!important;border:0!important;box-shadow:none!important;padding:0!important;height:auto!important}
     .ad-colprog b{font-size:10.5px;font-weight:700;color:#475569;min-width:28px;text-align:right}
     .ad-card .r3 .mv-ns{height:18px!important;padding:0 6px!important;font-size:9.5px;font-weight:800;border-width:1px;flex:none}
-    .ad-arch{all:unset;cursor:pointer;font-size:10px;font-weight:600;color:#a3aab5;padding:2px 4px;border-radius:5px;white-space:nowrap;flex:none}
+    .ad-arch{all:unset;cursor:pointer;font-size:12px;font-weight:600;color:#a3aab5;padding:2px 4px;border-radius:5px;white-space:nowrap;flex:none;opacity:.7}.ad-arch:hover{opacity:1;background:#fee2e2}
     .ad-arch:hover{color:#475569;background:#f1f5f9}
     @container (max-width:330px){
-      .ad-card .ad-arch{font-size:0}.ad-card .ad-arch::before{content:"🗑";font-size:11px}
       .ad-card .r3 .ax-mini{font-size:0;padding:1px 3px}.ad-card .r3 .ax-mini::before{content:"＋⚠";font-size:11px}
       .ad-card .r3 .ad-gd{font-size:0}.ad-card .r3 .ad-gd::before{content:"◉";font-size:11px}
       .ad-card .r3 .p4e b,.ad-card .r3 .p4 b{display:none}
@@ -67572,7 +67571,7 @@ function adCard_(I) {
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
     <div class="r2">${catP}</div>
-    <div class="r3">${nsChip}<span class="sp"></span>${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
+    <div class="r3">${nsChip}<span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
   </div>`;
@@ -67585,7 +67584,7 @@ function adCard_(I) {
     ${srcTxt || xR ? `<div class="r2 ad-src"><span>${pcEsc(srcTxt)}</span>${xR ? (n => n ? `<span title="Personas">👥 ${n}</span>` : '')(Number(xR.b.NumberOfGuests) || (Number(xR.b.Adults) || 0) + (Number(xR.b.Children) || 0)) + (xR.noches ? `<span title="Noches">🌙 ${xR.noches}</span>` : '') : ''}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
     <div class="ad-eq">${equipo}</div>
-    <div class="r3 ad-r3w">${nsChip}<span class="ad-r3b"><span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? 'Desarchivar' : 'Archivar'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}${guia}<button type="button" class="ad-det" onclick="event.stopPropagation();adAbrir_('${pcEsc(I.k)}')">Detalles</button></span></div>
+    <div class="r3 ad-r3w">${nsChip}<span class="ad-r3b"><span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}${guia}<button type="button" class="ad-det" onclick="event.stopPropagation();adAbrir_('${pcEsc(I.k)}')">Detalles</button></span></div>
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
   </div>`;
 }
