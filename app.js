@@ -67220,8 +67220,13 @@ function aseoRender_() {
   const bks = pcMovBookings_().filter(b => /^(booked|tentative)$/i.test(String(b.Status || '').trim()));
   const fCal = Object.assign({}, OCUP_STATE.calFilters || {});
   const sig = JSON.stringify(fCal) + JSON.stringify(OCUP_STATE.colorModes || {}) + bks.map(b => `${b.Id}:${b.HouseId}:${_pagosDateIso(b.DateArrival)}:${_pagosDateIso(b.DateDeparture)}:${b.Source || ''}:${b.GuestName || ''}`).join(',')
-    + JSON.stringify([ASEO.estados, ASEO.asig, ASEO.reprog, ASEO.nosale, ASEO.tareas, ASEO.fPers, ASEO.fProp, ASEO.fTipo, ASEO.fPrio, ASEO.sub, window.CKCAL, ckCalV_0_('aseo') === 'mes' ? aseoDia_() : '']);
-  if (cal && sig !== ASEO.calSig && ckCalV_0_('aseo') === 'mes') { // «Por mes»: celdas por día
+    + JSON.stringify([ASEO.estados, ASEO.asig, ASEO.reprog, ASEO.nosale, ASEO.tareas, ASEO.fPers, ASEO.fProp, ASEO.fTipo, ASEO.fPrio, ASEO.sub, window.CKCAL, ckCalV_0_('aseo') !== 'aloj' ? aseoDia_() : '']);
+  if (cal && sig !== ASEO.calSig && ckCalV_0_('aseo') === 'sem') { // «Por semana»: 7 columnas
+    ASEO.calSig = sig;
+    const l = ckCalW_0_('aseo'), f = tarParseIso_(l); f.setDate(f.getDate() + 6);
+    const fil = aseoCalFiltrar_(aseoCalTareas_(l, tarIso_(f)));
+    cal.classList.add('ckm-on'); cal.innerHTML = ckCalHdHtml_('aseo', true) + ckSemGridHtml_(l, aseoCalMesItems_(fil.tareas), 'aseoIrDia_', aseoDia_());
+  } else if (cal && sig !== ASEO.calSig && ckCalV_0_('aseo') === 'mes') { // «Por mes»: celdas por día
     ASEO.calSig = sig;
     const ym = ckCalM_0_('aseo'), dim = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate();
     const fil = aseoCalFiltrar_(aseoCalTareas_(ym + '-01', ym + '-' + String(dim).padStart(2, '0')));
@@ -69259,7 +69264,7 @@ window.aseoSetDia_ = function (delta) {
   if (!delta) ASEO.dia = null;
   else { const d = new Date(aseoDia_() + 'T12:00:00'); d.setDate(d.getDate() + delta); const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; ASEO.dia = iso === aseoHoyIso_() ? null : iso; }
   ASEO.sel = null;
-  if (ASEO.cal && ckCalV_0_('aseo') === 'mes') { CKCAL.m.aseo = aseoDia_().slice(0, 7); aseoDnavPaint_(); aseoRender_(); return; } // el calendario por mes sigue al día elegido
+  if (ASEO.cal && ckCalV_0_('aseo') !== 'aloj') { CKCAL.m.aseo = aseoDia_().slice(0, 7); (CKCAL.w = CKCAL.w || {}).aseo = ckLunes_(aseoDia_()); aseoDnavPaint_(); aseoRender_(); return; } // el calendario por mes/semana sigue al día elegido
   aseoDnavPaint_(); aseoRenderSide_();
 };
 // Divisor arrastrable entre calendario y cards (ancho del calendario en %).
@@ -69290,7 +69295,7 @@ window.aseoHoy_ = function () {
   // Regresa el selector de día a HOY y, si el calendario está abierto, lo centra en hoy.
   aseoSetDia_(0);
   const cal = document.getElementById('aseo-cal');
-  if (ASEO.cal && cal && ckCalV_0_('aseo') === 'mes') { CKCAL.m.aseo = aseoHoyIso_().slice(0, 7); ASEO.calSig = ''; aseoRender_(); return; }
+  if (ASEO.cal && cal && ckCalV_0_('aseo') !== 'aloj') { CKCAL.m.aseo = aseoHoyIso_().slice(0, 7); (CKCAL.w = CKCAL.w || {}).aseo = ckLunes_(aseoHoyIso_()); ASEO.calSig = ''; aseoRender_(); return; }
   if (ASEO.cal && cal) ocupCentrarHoy_(cal, true);
 };
 window.aseoRecargar_ = async function () { const b = document.getElementById('aseo-upd-btn'); if (b) b.classList.add('girando'); try { await aseoRefresh_(true); } finally { if (b) b.classList.remove('girando'); } ASEO.calSig = ''; aseoRender_(); if (document.getElementById('pc-sec-movs')) pcRenderMovs_(); };
@@ -69588,14 +69593,19 @@ function ckOcupCal_(id, items) {
 window.ckBarNada_ = function () {};
 // ── Calendario: vista «Por alojamiento» (renglones = alojamientos) o «Por mes» (celdas = días, como en Levantamientos) ──
 window.CKCAL = window.CKCAL || (() => { let v = {}; try { v = JSON.parse(localStorage.getItem('ckcal-v') || '{}') || {}; } catch (_) {} return { v, m: {} }; })();
-function ckCalV_0_(s) { return CKCAL.v[s] === 'mes' ? 'mes' : 'aloj'; }
+function ckCalV_0_(s) { return CKCAL.v[s] === 'mes' || CKCAL.v[s] === 'sem' ? CKCAL.v[s] : 'aloj'; }
+function ckLunes_(iso) { const d = tarParseIso_(iso); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return tarIso_(d); }
+function ckCalW_0_(s) { CKCAL.w = CKCAL.w || {}; return CKCAL.w[s] || ckLunes_(aseoHoyIso_()); }
+window.ckCalW_ = function (s, d) { const x = tarParseIso_(ckCalW_0_(s)); x.setDate(x.getDate() + 7 * d); CKCAL.w[s] = tarIso_(x); ckCalRe_(s); };
 function ckCalM_0_(s) { return CKCAL.m[s] || aseoHoyIso_().slice(0, 7); }
 function ckCalRe_(s) { if (s === 'aseo') { ASEO.calSig = ''; aseoRender_(); } }
 window.ckCalV_ = function (s, v) { CKCAL.v[s] = v; try { localStorage.setItem('ckcal-v', JSON.stringify(CKCAL.v)); } catch (_) {} ckCalRe_(s); };
 window.ckCalM_ = function (s, d) { CKCAL.m[s] = ckMesMover_(ckCalM_0_(s), d); ckCalRe_(s); };
-function ckCalSegHtml_(s) { const v = ckCalV_0_(s); return `<div class="ad-seg ckcal-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">🏠 Por alojamiento</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>`; }
+function ckCalSegHtml_(s) { const v = ckCalV_0_(s); return `<div class="ad-seg ckcal-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">🏠 Por alojamiento</button><button type="button" class="${v === 'sem' ? 'on' : ''}" onclick="ckCalV_('${s}','sem')">📆 Por semana</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>`; }
 function ckCalHdHtml_(s, sinSeg) {
   const v = ckCalV_0_(s), ym = ckCalM_0_(s), lbl = TAR_MESES_L[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4);
+  if (sinSeg && v === 'sem') { const l = tarParseIso_(ckCalW_0_(s)), f = new Date(l); f.setDate(f.getDate() + 6);
+    return `<div class="ckcal-hd"><div class="ckcal-mn"><button type="button" onclick="ckCalW_('${s}',-1)" title="Semana anterior">‹</button><b>${l.getDate()} ${TAR_MESES[l.getMonth()]} – ${f.getDate()} ${TAR_MESES[f.getMonth()]} ${f.getFullYear()}</b><button type="button" onclick="ckCalW_('${s}',1)" title="Semana siguiente">›</button></div></div>`; }
   if (sinSeg) return v === 'mes' ? `<div class="ckcal-hd"><div class="ckcal-mn"><button type="button" onclick="ckCalM_('${s}',-1)" title="Mes anterior">‹</button><b>${lbl}</b><button type="button" onclick="ckCalM_('${s}',1)" title="Mes siguiente">›</button></div></div>` : '';
   return `<div class="ckcal-hd"><div class="ad-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">🏠 Por alojamiento</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>
     ${v === 'mes' ? `<div class="ckcal-mn"><button type="button" onclick="ckCalM_('${s}',-1)" title="Mes anterior">‹</button><b>${lbl}</b><button type="button" onclick="ckCalM_('${s}',1)" title="Mes siguiente">›</button></div>` : ''}</div>`;
@@ -69621,11 +69631,19 @@ function ckMesCss_() {
     .ckcal-mn button{all:unset;cursor:pointer;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:16px;font-weight:700;color:#334155}.ckcal-mn button:hover{background:#f8fafc}
     .aseo-cal.ckm-on{overflow:auto}.ckm{padding:8px;font-family:Inter,system-ui,sans-serif}
     .ckm-w,.ckm-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.ckm-w span{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;text-align:center;padding:2px 0}
-    .ckm-d{min-height:84px;min-width:0;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:4px;display:flex;flex-direction:column;gap:3px}.ckm-d.fu{background:#fafafa;border-color:#f1f5f9}
+    .ckw .ckm-d{min-height:260px}.ckm-d{min-height:84px;min-width:0;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:4px;display:flex;flex-direction:column;gap:3px}.ckm-d.fu{background:#fafafa;border-color:#f1f5f9}
     .ckm-d.hoy{border-color:#a78bfa;background:#faf5ff}.ckm-d.lk{cursor:pointer}.ckm-d.lk:hover{border-color:#c7d2fe}.ckm-d.sel{border-color:#4f46e5;box-shadow:0 0 0 2px #c7d2fe}.ckm-d .n{font-size:12px;font-weight:800;color:#334155}.ckm-d.hoy .n{color:#6d28d9}
     .ckm-c{display:flex;align-items:center;gap:4px;min-width:0;padding:2px 5px;border-radius:5px;border-left:3px solid var(--sc);background:color-mix(in srgb,var(--sc) 16%,#fff);font-size:10px;cursor:pointer}
     .ckm-c:hover{background:color-mix(in srgb,var(--sc) 28%,#fff)}.ckm-c b{font:700 9.5px ui-monospace,Menlo,monospace;flex:none;color:#0f1729}.ckm-c span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#0f1729}`;
   document.head.appendChild(st);
+}
+// Calendario «Por semana»: 7 columnas (lunes a domingo) con los chips de cada día.
+function ckSemGridHtml_(lunes, items, onDia, sel) {
+  ckMesCss_();
+  const hoy = aseoHoyIso_(), dias = Array.from({ length: 7 }, (_, i) => { const d = tarParseIso_(lunes); d.setDate(d.getDate() + i); return tarIso_(d); });
+  const by = new Map(); items.forEach(t => { if (!dias.includes(t.dia)) return; if (!by.has(t.dia)) by.set(t.dia, []); by.get(t.dia).push(t); });
+  return `<div class="ckm ckw"><div class="ckm-g">${dias.map((iso, i) => { const L = (by.get(iso) || []).sort((a, b) => String(a.cod).localeCompare(String(b.cod), 'es', { numeric: true }));
+    return `<div class="ckm-d ${iso === hoy ? 'hoy' : ''} ${iso === sel ? 'sel' : ''} ${onDia ? 'lk' : ''}" ${onDia ? `onclick="${onDia}('${iso}')"` : ''}><span class="n">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][i]} ${+iso.slice(8)}</span>${L.map(t => `<div class="ckm-c" style="--sc:${t.c || '#94a3b8'}" onclick="event.stopPropagation();${t.onclick || ''}" title="${pcEsc((t.cod ? t.cod + ' · ' : '') + (t.titulo || ''))}"><b>${pcEsc(t.cod || '—')}</b><span>${pcEsc(t.titulo || '')}</span></div>`).join('')}</div>`; }).join('')}</div></div>`;
 }
 // Tarjetas del calendario de Aseo/Mantenimiento convertidas a chips del calendario por mes.
 function aseoCalMesItems_(m) {
