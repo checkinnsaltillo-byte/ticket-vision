@@ -68986,6 +68986,13 @@ const NP_REGLAS = [
     '<b>Empleado:</b> solo consulta lo básico de <i>sus</i> tareas, cambia su estado (queda «sin validar»), puede avisar que un huésped no ha desalojado y, desde el sistema, reportar incidencias de <b>huésped</b> en sus cards (formulario simplificado: alojamiento, fecha, motivo, estado, descripción y fotos).',
     '<b>Desactivado:</b> sin avisos automáticos. Si está en Personal con celular, igual puede registrar entrada/salida y consultar sus tareas como empleado.',
     'Los administradores del sistema (Puesto «Administración») siempre tienen todos los permisos desde su número. Con «@» al inicio el bot ejecuta directo.']],
+  ['📋', 'Tareas e incidencias por WhatsApp (administradores)', 'El bot clasifica solo el tipo de tarea por la descripción y las palabras que uses; siempre muestra un resumen y guarda hasta que respondes «sí».', [
+    '<b>Tarea:</b> «tarea: limpiar ventanas de cu2 el viernes», «programa revisar el boiler de mt10 mañana con Paco», «compra de papel para jc3 hoy urgente», «pagar CFE el 16 fecha límite». Tipo automático: 🧹 Limpieza · 🔧 Mantenimiento · 🔍 Inspección · 🗂️ Administrativo · 📦 Insumos (puedes decirlo explícito: «tarea de inspección …»).',
+    'Datos que entiende: qué hay que hacer, fecha («hoy», «mañana», «el viernes», «15/10»), alojamiento opcional («en cu2», «Cumbres 12»), persona(s) y urgencia. Por WhatsApp solo se crean tareas de una fecha; las recurrentes se dan de alta en Check-Flow › Tareas.',
+    '<b>Incidencia:</b> «incidencia, mt7, sábanas manchadas, urgente». Al registrarla pregunta «¿Creo una tarea correctiva de …?»; responde «sí», «sí, mantenimiento para mañana con Paco» o «no». La tarea queda ligada a la incidencia como Correctivo.',
+    '<b>Falla:</b> «reporte de fuga en cu13» crea un reporte de Mantenimiento (no una tarea programada).',
+    '<b>Recordatorio:</b> «recordatorio: hablar a Rita» va a Pendientes del día.',
+    'El bot <b>no consulta</b> Levantamientos ni Objetos olvidados.']],
   ['📬', 'Mensajes automáticos', 'Se controlan con el interruptor de arriba. Si está apagado, el bot no manda nada por su cuenta.', [
     '<b>Solo a administradores</b>, según lo que tengan marcado: 📋 <b>Resumen del día a las 2 pm</b> (limpiezas, tareas, tareas programadas e incidencias) · 🚨 <b>Alertas</b> (incidencias y «no ha desalojado») · 🔄 <b>Cada cambio</b> en las tareas de hoy (opcional).',
     '<b>A empleados</b> (con «🔔 Sus tareas del día»): su lista al registrar entrada y su lista actualizada cuando un cambio toca <i>sus</i> tareas (asignación, solicitudes, no ha desalojado, reserva nueva, reprogramación). Los cambios de estado no la disparan.',

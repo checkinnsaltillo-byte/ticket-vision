@@ -1246,6 +1246,7 @@ REGLAS:
   · alojamiento_shortcode: el segundo campo (ej. "jc2", "mt10", "cu4b"), tal cual el admin lo escribió.
   · descripcion: el texto del problema.
   · criticidad: "critico" | "alto" | "medio" | "bajo" según el último campo o el tono ("crítico", "urgente" → critico; sin adjetivo → medio).
+  · Al registrarla pregunta en la MISMA respuesta: "¿Creo una tarea correctiva de <tipo sugerido> para atenderla?". Si en un mensaje POSTERIOR dice que sí (o da otro tipo, fecha o persona: "sí, mantenimiento para mañana con Paco") → llama crear_tarea_correctiva. Si dice que no → "Listo, solo quedó la incidencia.".
 - Si el admin escribe "reporte de <problema> en <shortcode>" o similar (falla, se rompió, no funciona, fuga, luz, agua, cerradura, aire) → invoca crear_reporte_mantenimiento con:
   · titulo: 3-6 palabras que describan el problema (ej. "Falla de luz").
   · descripcion: texto original del admin.
@@ -1253,25 +1254,32 @@ REGLAS:
   · categoria: INFIERE — luz/foco/enchufe→eléctrico; agua/fuga/tubería→plomería; aire/AC→aire; wifi/internet→wifi; puerta/cerradura→cerradura; sucio/plaga→limpieza; otro→otros.
   · alojamiento_shortcode: OBLIGATORIO. Extrae el código corto que sigue a "en" o "cu"/"mt"/"jc"/"ox"/"bc" (ej. "cu13", "mt10"). Case-insensitive.
 - REGLA DE ORO ADMIN: ejecuta directo. NUNCA preguntes por prioridad, categoría, ni confirmación. Si el admin no dio criticidad, DECIDE tú y crea. (ÚNICAS EXCEPCIONES: tareas programadas y recordatorios de la pizarra, abajo.)
-- ¿TAREA o RECORDATORIO? Si dice "tarea", "programa", "agenda", "asigna la tarea" → TAREA PROGRAMADA. Si dice "recordatorio", "recuérdame/recuérdale", "anota", "apunta", "pizarra", "pendiente de hoy" → RECORDATORIO DE PIZARRA. Si no queda claro, pregunta en UNA línea: "¿Lo registro como tarea programada o como recordatorio en la pizarra?".
-- TAREAS PROGRAMADAS — si el admin pide programar/agendar/asignar una tarea ("tarea: …", "programa que …", "agenda para el viernes …", "que Juana revise … mañana"):
+- ¿TAREA o RECORDATORIO? Si dice "tarea", "programa", "agenda", "asigna la tarea" → TAREA (Check-Flow › Tareas). Si dice "recordatorio", "recuérdame/recuérdale", "anota", "apunta", "pizarra", "pendiente de hoy" → RECORDATORIO DE PIZARRA. Si no queda claro, pregunta en UNA línea: "¿Lo registro como tarea programada o como recordatorio en la pizarra?".
+- TAREAS (Check-Flow › Tareas) — si el admin pide programar/agendar/asignar una tarea ("tarea: …", "programa que …", "agenda para el viernes …", "que Juana revise … mañana", "tarea de limpieza en cu2 …"):
+  · TIPO: clasifícalo TÚ por la descripción y las palabras usadas (NO preguntes): 🧹 limpieza (limpiar, aseo, lavar, sábanas) · 🔧 mantenimiento (reparar, arreglar, fuga, foco, pintar, instalar, clima) · 🔍 inspeccion (revisar, inspeccionar, verificar, checar) · 📦 insumos (comprar, surtir, reponer papel/jabón/garrafón) · 🗂️ administrativo (pagos, facturas, contabilidad, papeleo, precios, llamadas, coordinar personal). Si el admin dice el tipo explícito, respétalo.
+  · ALOJAMIENTO (opcional): si menciona uno ("en cu2", "de Cumbres 12"), pásalo en alojamiento tal cual.
+  · PRIORIDAD: infiérela del tono, no preguntes.
+  · Una FALLA reportada ("se rompió", "no funciona", "fuga en …") sigue siendo REPORTE DE MANTENIMIENTO (crear_reporte_mantenimiento); una TAREA es algo que hay que hacer en una fecha.
   · Extrae: descripcion (OBLIGATORIA: qué hay que hacer, redactada clara y breve), fecha (OBLIGATORIA, una sola fecha — la naturaleza siempre es "Único"), personal (OPCIONAL: nombres tal cual los escribió, aunque sean cortos o incompletos: "Juani", "Paco", "la de limpieza Alma").
   · FECHA en lenguaje natural → conviértela tú a YYYY-MM-DD con el CONTEXTO TEMPORAL: "hoy", "mañana", "pasado mañana", "el viernes" (= el próximo viernes), "el lunes que viene", "en 3 días", "15/10", "15-oct", "15 de octubre", "el 3", "fin de mes". Si NO hay fecha, pregúntala en UNA línea. Nunca inventes fecha.
   · NO pidas clasificación ni subclasificación: el sistema las asigna solo.
   · SIEMPRE llama preparar_tarea_programada ANTES de escribir el resumen (nunca lo redactes sin la herramienta: sin borrador no se puede guardar). Con su resultado envía este resumen y pregunta:
-    "📋 Pendiente programado (por confirmar)
+    "📋 Tarea (por confirmar)
     • Tarea: <nombre>
+    • Tipo: <tipo>
+    • Alojamiento: <alojamiento>
     • Fecha: <fecha_texto>
-    • Clasificación: <clasificacion> › <subclasificacion>
+    • Prioridad: <prioridad>
     • Personal: <personal o 'Sin asignar'>
     • Fecha límite: <Sí/No>
     ¿Confirmas para guardarla? (sí / no / cambios)"
   · Si el admin dice "fecha límite", "a más tardar", "antes del", "tiene hasta el" → fecha_limite=true.
-  · Si pide una tarea RECURRENTE ("cada viernes", "semanal", "diario", "cada mes"): por WhatsApp solo se registran tareas de una sola fecha. Dile en una línea que la recurrente se da de alta en el módulo Tareas programadas, y ofrece registrar la próxima fecha como tarea única.
+  · Si pide una tarea RECURRENTE ("cada viernes", "semanal", "diario", "cada mes"): por WhatsApp solo se registran tareas de una sola fecha. Dile en una línea que la recurrente se da de alta en Check-Flow › Tareas (+ Nueva tarea › Recurrente), y ofrece registrar la próxima fecha como tarea única.
     Si hay no_encontrados o ambiguos, dilo en una línea (ej. "No encontré a 'Paco' en Personal" o "'Ana' puede ser: Ana López, Ana Ruiz — ¿cuál?").
   · AQUÍ SÍ debes esperar confirmación: SOLO cuando el admin responda afirmativamente en un mensaje POSTERIOR ("sí", "ok", "dale", "confirmo", "guárdala") llama confirmar_tarea_programada con el draft_id. Si pide cambios, vuelve a llamar preparar_tarea_programada con todo corregido y muestra el resumen nuevo. Si dice "no"/"cancela", no guardes y responde "Cancelada.".
   · Tras confirmar, responde en 1 línea: "✅ Tarea guardada para <fecha_texto>."
-- PENDIENTES DEL DÍA — si el admin pide sus pendientes, las tareas o recordatorios de hoy (o de otro día), "¿qué hay que hacer hoy?", "pendientes de mañana", "mis pendientes", "pendientes de Paco":
+- NO CONSULTES las secciones «Levantamientos» ni «Objetos olvidados»: si te preguntan por ellas, responde en 1 línea que se consultan en el sistema (Check-Flow).
+- PENDIENTES DEL DÍA (recordatorios y tareas de la pizarra; no incluye levantamientos) — si el admin pide sus pendientes, las tareas o recordatorios de hoy (o de otro día), "¿qué hay que hacer hoy?", "pendientes de mañana", "mis pendientes", "pendientes de Paco":
   · Llama consultar_pendientes_del_dia (fecha YYYY-MM-DD si menciona otro día, por defecto hoy; solo_mios=true si dice "mis/míos"; personal si nombra a alguien; incluir_resueltos=true solo si pide también lo ya hecho).
   · Responde con el campo formatted_message TAL CUAL (sin resumirlo ni reordenarlo). Si no hay pendientes, dilo en 1 línea.
 - RECORDATORIOS (se guardan en Tareas programadas con tipo "Recordatorio": siempre únicos, aparecen cada día en "Pendientes del día" hasta resolverse; NO llevan programación ni recurrencia) — "recordatorio: …", "anota en la pizarra …", "recuérdale a Paco que …", "apunta que hay que …":
@@ -1296,7 +1304,7 @@ REGLAS:
   · Llama preparar_solicitud_aseo (alojamientos TAL CUAL, tipo entrada/salida, hora HH:MM 24 h si la dice, aceptada si lo dice, quitar si pide quitarla). Envía el campo resumen TAL CUAL.
   · SOLO cuando responda "sí" en un mensaje POSTERIOR llama confirmar_solicitud_aseo. Si corrige algo, vuelve a preparar con todo corregido. Si dice "no", responde "Cancelado.".
 - VALIDAR / INSPECCIONAR / REPROGRAMAR (respuestas al resumen del día): "validar todos" → preparar_estado_aseo con grupo="sin_validar", estado="terminado", validado=true · "validar cu2" → preparar_estado_aseo alojamientos=["cu2"], estado="terminado", validado=true · "inspeccionar todos" → preparar_estado_aseo grupo="terminados", estado="inspeccionado" · "reprogramar pendientes" → preparar_reprog_aseo grupo="pendientes" · "reprogramar cu8 para mañana / al 9 oct" → preparar_reprog_aseo alojamientos=["cu8"], fecha. Envía el resumen TAL CUAL y SOLO tras un "sí" en un mensaje POSTERIOR llama confirmar_estado_aseo / confirmar_reprog_aseo.
-- CHECK-LIST · TAREAS (Limpieza, Inspección, Insumos, Mantenimiento) — "tareas de hoy", "tareas de check-list", "tareas de mantenimiento", "qué hay de insumos", "tareas de inspección", "tareas de cu2": llama consultar_tareas_checklist (tipo/alojamiento/fecha si los dice) y responde con formatted_message TAL CUAL. Para cambiar el estado de una tarea llama actualizar_tarea_checklist con el alojamiento y la descripción que use el usuario (ej. "la de sábanas sucias de mt7 ya quedó") (directo en modo admin).
+- CHECK-FLOW · TAREAS (Limpieza, Mantenimiento, Inspección, Administrativo, Insumos) — "tareas de hoy", "tareas de check-list", "tareas de mantenimiento", "qué hay de insumos", "tareas de inspección", "tareas de cu2": llama consultar_tareas_checklist (tipo/alojamiento/fecha si los dice) y responde con formatted_message TAL CUAL. Para cambiar el estado de una tarea llama actualizar_tarea_checklist con el alojamiento y la descripción que use el usuario (ej. "la de sábanas sucias de mt7 ya quedó") (directo en modo admin).
 - INCIDENCIAS — "incidencias", "hay incidencias?", "incidencias abiertas/terminadas", "incidencias de mt7", "detalle de la incidencia de mt7", "qué pasó en ox5": llama consultar_incidencias ("del día"/"de hoy"/"de ayer" → fecha = todas las de ese día con su estado actual; sin fecha = solo abiertas; terminadas/canceladas/historial solo si lo pide explícitamente; detalle=true con alojamiento y/o descripción para ver reserva/huésped, personas, seguimiento y sus tareas correctivas) y responde con formatted_message TAL CUAL. "pasa la incidencia de mt7 a en proceso", "marca terminada la de toallas de ox5", "sube a crítica la de cu5", "seguimiento de la de mt8: …" → actualizar_incidencia con alojamiento y descripción (directo en modo admin).
 - HISTORIAL — "historial de la incidencia de mt7", "quién cambió la tarea de toallas de ox5", "cambios de la limpieza de bc1": llama consultar_historial (tipo incidencia/tarea/limpieza, alojamiento y descripción) y responde con formatted_message TAL CUAL.
 - NUNCA muestres códigos, folios, claves ni IDs (INC-…, RT-…, T…, folio X). Identifica todo por alojamiento y descripción. Si una herramienta devuelve opciones, muéstralas TAL CUAL y pregunta cuál.
@@ -1508,7 +1516,7 @@ const BOT_TOOLS = [
   },
   {
     name: "preparar_tarea_programada",
-    description: "SOLO modo ADMIN. Prepara (NO guarda) una tarea única del Check-Flow (Tareas › 🗂️ Administrativo). El backend asigna clasificación y subclasificación del catálogo a partir de la descripción y resuelve el personal contra la hoja Personal (acepta nombres cortos o incompletos). Devuelve draft_id + resumen para que se lo muestres al admin y le pidas confirmación.",
+    description: "SOLO modo ADMIN. Prepara (NO guarda) una TAREA única del Check-Flow › Tareas, con su TIPO (limpieza, mantenimiento, inspeccion, administrativo, insumos) clasificado automáticamente por la descripción. El backend asigna clasificación y subclasificación del catálogo a partir de la descripción y resuelve el personal contra la hoja Personal (acepta nombres cortos o incompletos). Devuelve draft_id + resumen para que se lo muestres al admin y le pidas confirmación.",
     input_schema: {
       type: "object",
       properties: {
@@ -1516,6 +1524,9 @@ const BOT_TOOLS = [
         fecha:       { type: "string", description: "Fecha única YYYY-MM-DD ya convertida desde el lenguaje natural del admin." },
         personal:    { type: "array", items: { type: "string" }, description: "Opcional. Nombres tal como los escribió el admin (pueden ser cortos/incompletos)." },
         fecha_limite: { type: "boolean", description: "true si la fecha es un LÍMITE para tenerla resuelta ('fecha límite', 'a más tardar', 'antes del', 'tiene hasta el', 'para el … sin falta')." },
+        tipo: { type: "string", enum: ["limpieza", "mantenimiento", "inspeccion", "administrativo", "insumos"], description: "Tipo de tarea INFERIDO de la descripción (no preguntes): limpiar/aseo/lavar/sábanas → limpieza; reparar/arreglar/fuga/foco/pintar/instalar/clima → mantenimiento; revisar/inspeccionar/verificar/checar → inspeccion; comprar/surtir/reponer papel, jabón, garrafón → insumos; pagos, facturas, contabilidad, papeleo, precios, llamar, coordinar, personal → administrativo." },
+        alojamiento: { type: "string", description: "Opcional. Alojamiento al que aplica, tal cual lo escribió el admin (ej. 'cu13', 'mt10', 'Cumbres 12')." },
+        prioridad: { type: "string", enum: ["critica", "alta", "media", "baja"], description: "Inferida del tono (emergencia → critica; urgente/hoy sin falta → alta; sin prisa → baja; resto → media)." },
       },
       required: ["descripcion", "fecha"],
     },
@@ -1563,6 +1574,19 @@ const BOT_TOOLS = [
     input_schema: {
       type: "object",
       properties: { draft_id: { type: "string", description: "Opcional: draft_id devuelto por preparar_tarea_programada (si no lo tienes, se usa la tarea pendiente del admin)." } },
+      required: [],
+    },
+  },
+  {
+    name: "crear_tarea_correctiva",
+    description: "SOLO modo ADMIN. Crea la TAREA CORRECTIVA de la incidencia que se acaba de registrar con crear_incidencia (queda ligada a la incidencia, tipo de servicio Correctivo). Llamar ÚNICAMENTE si el admin respondió que SÍ quiere la tarea correctiva, en un mensaje posterior a la pregunta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tipo: { type: "string", enum: ["limpieza", "mantenimiento", "inspeccion", "administrativo", "insumos"], description: "Opcional: si el admin lo cambia; por defecto el sugerido." },
+        fecha: { type: "string", description: "Opcional. YYYY-MM-DD; por defecto hoy." },
+        personal: { type: "array", items: { type: "string" }, description: "Opcional. Nombres tal cual los escribió el admin." },
+      },
       required: [],
     },
   },
@@ -1693,6 +1717,7 @@ function _botTarProg(r) {
   return p;
 }
 function _botTarDelDia(rows, ocur, iso, hoy) {
+  rows = rows.filter(r => String(r.Insp_general || "") !== "Sí"); // Levantamientos: el bot no los consulta
   const byTar = new Map();
   ocur.forEach(o => { if (!byTar.has(o.Tarea_ID)) byTar.set(o.Tarea_ID, []); byTar.get(o.Tarea_ID).push(o); });
   byTar.forEach(a => a.sort((x, y) => _botIsoDay(x.Fecha).localeCompare(_botIsoDay(y.Fecha))));
@@ -1732,7 +1757,7 @@ function _botTarDelDia(rows, ocur, iso, hoy) {
 }
 const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
-const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_datos_reserva", "consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
+const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_datos_reserva", "consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "crear_tarea_correctiva", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
 const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
 const _botNsDatos = new Map(); // phone10 → reservas reportadas «no ha desalojado» (para «¿Quieres los datos del huésped…?»)
@@ -1747,6 +1772,24 @@ function _botEsSiAResumen(ctx, marca) {
   return si && /por confirmar/i.test(ctx.lastAssistant || "") && marca.test(ctx.lastAssistant || "");
 }
 const _botTarDrafts = new Map(); // phone10 → borrador pendiente de confirmar
+const _botCorrDrafts = new Map(); // phone10 → incidencia recién creada a la que se le ofrece tarea correctiva
+// Tipos de tarea del Check-Flow y clasificación automática por palabras (respaldo si el modelo no manda «tipo»).
+const _BOT_TIPOS = { limpieza: "🧹 Limpieza", mantenimiento: "🔧 Mantenimiento", inspeccion: "🔍 Inspección", administrativo: "🗂️ Administrativo", insumos: "📦 Insumos" };
+function _botTipoTarea(txt) {
+  const t = _botNorm(txt);
+  if (/\b(compr|surt|repon|insumo|papel|jabon|shampoo|garrafon|cafe|azucar|despensa)/.test(t)) return "insumos";
+  if (/\b(repar|arregl|fuga|gote|foco|luz|enchuf|pint|instal|clima|aire|minisplit|plomer|electric|cerradur|chapa|puerta|tuberi|calentador|boiler|sell)/.test(t)) return "mantenimiento";
+  if (/\b(limpi|asea|aseo|lav|sabana|tender|barr|trapear|sacudir|desinfect|basura)/.test(t)) return "limpieza";
+  if (/\b(revis|inspecc|verific|checa|supervis|inventari)/.test(t)) return "inspeccion";
+  return "administrativo";
+}
+async function _botHidDe(q) {
+  const cat = await _aseoCatalogo().catch(() => []), k = String(q || "").toLowerCase().replace(/\s+/g, "");
+  const c = cat.find(x => x.code && x.code === k);
+  if (c) return { ok: true, hid: c.hid, nombre: `${c.code.toUpperCase()} · ${c.nombre}` };
+  const m = _aseoMatchAloj(q, cat);
+  return m.ok ? { ok: true, hid: m.aloj.hid, nombre: `${String(m.aloj.code || "").toUpperCase()} · ${m.aloj.nombre}` } : { ok: false, error: m.error || `No reconozco el alojamiento "${q}"` };
+}
 const _BOT_TAR_DEFAULT_CLASIF = { "Recursos humanos": [], "Servicios": [], "Limpieza": [], "Mantenimiento": [], "Inventarios": [], "Proveedores": [] };
 function _botNorm(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim(); }
 function _botFechaLarga(iso) {
@@ -1862,8 +1905,8 @@ async function _botAdminSys() {
   return BOT_SYSTEM_PROMPT_ADMIN + _botBuildPromptsBlock(await _botGetPrompts()) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${today} (${hoyLargo}, América/Mexico_City).\n- AÑO ACTUAL: ${nowYear}. Úsalo por defecto cuando no se mencione año.`;
 }
 // Simulación («🧪 Prueba del bot»): las herramientas que guardan o avisan NO se ejecutan.
-const _BOT_SIM_ESCRIBE = new Set(["reportar_no_desalojo", "actualizar_incidencia", "actualizar_tarea_checklist", "confirmar_estado_aseo", "confirmar_solicitud_aseo", "confirmar_reprog_aseo", "confirmar_recordatorio_pizarra", "confirmar_tarea_programada", "crear_incidencia", "crear_reporte_mantenimiento", "agendar_late_checkout", "solicitar_late_checkout", "solicitar_extension", "solicitar_early_checkin", "solicitar_insumos", "solicitar_metodo_pago", "solicitar_accion_admin", "solicitar_ticket_admin"]);
-const _BOT_SIM_SOLO_ADMIN = { actualizar_incidencia: "cambiar o validar incidencias", crear_incidencia: "levantar incidencias", crear_reporte_mantenimiento: "levantar tareas de mantenimiento, insumos o inspección", confirmar_reprog_aseo: "reprogramar tareas a otras fechas" };
+const _BOT_SIM_ESCRIBE = new Set(["reportar_no_desalojo", "actualizar_incidencia", "actualizar_tarea_checklist", "confirmar_estado_aseo", "confirmar_solicitud_aseo", "confirmar_reprog_aseo", "confirmar_recordatorio_pizarra", "confirmar_tarea_programada", "crear_tarea_correctiva", "crear_incidencia", "crear_reporte_mantenimiento", "agendar_late_checkout", "solicitar_late_checkout", "solicitar_extension", "solicitar_early_checkin", "solicitar_insumos", "solicitar_metodo_pago", "solicitar_accion_admin", "solicitar_ticket_admin"]);
+const _BOT_SIM_SOLO_ADMIN = { actualizar_incidencia: "cambiar o validar incidencias", crear_incidencia: "levantar incidencias", crear_tarea_correctiva: "crear tareas correctivas", crear_reporte_mantenimiento: "levantar tareas de mantenimiento, insumos o inspección", confirmar_reprog_aseo: "reprogramar tareas a otras fechas" };
 async function _botExecTool(toolUse, ctx) {
   const name = String(toolUse.name || "");
   const args = toolUse.input || {};
@@ -2380,11 +2423,15 @@ async function _botExecTool(toolUse, ctx) {
       if (fecha < hoy) return { content: JSON.stringify({ ok: false, error: `La fecha ${fecha} ya pasó (hoy es ${hoy}). Pide otra fecha.` }), notifyText: null };
       const [cat, nombres] = await Promise.all([_botTarCatalogo(), _botPersonalActivo().catch(() => [])]);
       const per = _botResolverPersonal(Array.isArray(args.personal) ? args.personal : (args.personal ? [String(args.personal)] : []), nombres);
-      const clas = await _botTarClasificar(desc, cat);
+      const tipo = _BOT_TIPOS[args.tipo] ? args.tipo : _botTipoTarea(desc);
+      const clas = tipo === "administrativo" ? await _botTarClasificar(desc, cat) : {};
+      let hid = "", alojTxt = "";
+      if (args.alojamiento) { const A = await _botHidDe(String(args.alojamiento)); if (!A.ok) return { content: JSON.stringify({ ok: false, error: A.error }), notifyText: null }; hid = A.hid; alojTxt = A.nombre; }
+      const prioridad = ["critica", "alta", "media", "baja"].includes(args.prioridad) ? args.prioridad : "media";
       const nombre = desc.charAt(0).toUpperCase() + desc.slice(1);
       const id = "TD" + Date.now().toString(36);
-      const yaConfirmo = _botEsSiAResumen(ctx, /tarea programada/i);
-      const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, nombre, fecha, clasificacion: clas.clasificacion, subclasificacion: clas.subclasificacion, personal: per.ok, limite: args.fecha_limite === true };
+      const yaConfirmo = _botEsSiAResumen(ctx, /tarea/i);
+      const draft = { id, msgTs: yaConfirmo ? 0 : (ctx.msgTs || Date.now()), exp: Date.now() + 30 * 60 * 1000, nombre, fecha, tipo, hid, alojTxt, prioridad, clasificacion: clas.clasificacion, subclasificacion: clas.subclasificacion, personal: per.ok, limite: args.fecha_limite === true };
       _botTarDrafts.set(ctx.phone10, draft);
       // El "sí" ya llegó: se guarda aquí mismo (no dependemos de que el modelo llame confirmar).
       if (yaConfirmo) {
@@ -2393,7 +2440,8 @@ async function _botExecTool(toolUse, ctx) {
         return { content: JSON.stringify(Object.assign(jr, { instruccion: jr.ok ? "Tarea GUARDADA. Responde en 1 línea: ✅ Tarea guardada para <fecha_texto>. Sin folio. No vuelvas a mostrar el resumen." : "No se pudo guardar: explica el error en 1 línea." })), notifyText: null };
       }
       return { content: JSON.stringify({ ok: true, draft_id: id, nombre, fecha_iso: fecha, fecha_texto: _botFechaLarga(fecha),
-        clasificacion: clas.clasificacion || "Sin clasificación", subclasificacion: clas.subclasificacion || "—",
+        tipo: _BOT_TIPOS[tipo], alojamiento: alojTxt || "Sin alojamiento", prioridad: { critica: "Crítica", alta: "Alta", media: "Media", baja: "Baja" }[prioridad],
+        clasificacion: clas.clasificacion || "—", subclasificacion: clas.subclasificacion || "—",
         personal_asignado: per.ok, no_encontrados: per.no, ambiguos: per.amb, fecha_limite: draft.limite ? "Sí — debe quedar resuelta a más tardar en esa fecha" : "No",
         instruccion: yaConfirmo ? "El admin YA confirmó el resumen anterior con este mensaje: llama confirmar_tarea_programada ahora, sin volver a mostrar el resumen." : "Muestra el resumen al admin y pregunta si confirma. NO llames confirmar_tarea_programada hasta que responda en un mensaje nuevo." }), notifyText: null };
     }
@@ -2858,7 +2906,7 @@ async function _botExecTool(toolUse, ctx) {
       const id = Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
       const etq = [d.clasificacion, d.subclasificacion].map(x => String(x || "").trim().slice(0, 40)).filter(Boolean);
       const r = await _aseoMutate(_ASEO_TAREAS_OBJ, "tareas", T => {
-        T[id] = { id, hid: "", depto: "administrativo", problema: false, prioridad: "media", titulo: String(d.nombre || "").slice(0, 140),
+        T[id] = { id, hid: d.hid || "", depto: d.tipo || "administrativo", problema: false, prioridad: d.prioridad || "media", titulo: String(d.nombre || "").slice(0, 140),
           desc: `Creada por WhatsApp (bot) · ${ctx.adminNombre || ctx.phone10}`, fecha: d.fecha, hora: "", repite: null,
           asignados: (d.personal || []).slice(0, 20), etiquetas: etq, adjuntos: [], reserva: "", by: ctx.adminNombre || `Bot · ${ctx.phone10}`, at: new Date().toISOString(), origen: "Bot WhatsApp", limite: !!d.limite };
         return T[id];
@@ -2867,6 +2915,27 @@ async function _botExecTool(toolUse, ctx) {
       _botTarDrafts.delete(ctx.phone10);
       _aseo.tareasTs = 0;
       return { content: JSON.stringify({ ok: true, id: r.id, nombre: d.nombre, fecha_texto: _botFechaLarga(d.fecha), personal: d.personal }), notifyText: null };
+    }
+    if (name === "crear_tarea_correctiva") {
+      if (!ctx.isAdmin) return { content: JSON.stringify({ ok: false, error: "Solo administradores" }), notifyText: null };
+      const d = _botCorrDrafts.get(ctx.phone10);
+      if (!d || Date.now() > d.exp) return { content: JSON.stringify({ ok: false, error: "No hay una incidencia reciente para ligar la tarea. Créala desde Check-Flow › Incidencias." }), notifyText: null };
+      if (!(ctx.msgTs > d.msgTs)) return { content: JSON.stringify({ ok: false, error: "Aún no hay respuesta del admin. Pregunta primero si quiere la tarea correctiva." }), notifyText: null };
+      const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Mexico_City" });
+      const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(args.fecha || "")) && args.fecha >= hoy ? args.fecha : hoy;
+      const tipo = _BOT_TIPOS[args.tipo] ? args.tipo : d.tipo;
+      const per = _botResolverPersonal(Array.isArray(args.personal) ? args.personal : [], await _botPersonalActivo().catch(() => []));
+      const prio = { "Crítica": "critica", "Alta": "alta", "Media": "media", "Baja": "baja" }[d.nivel] || "media";
+      const tid = Date.now().toString(36) + crypto.randomBytes(2).toString("hex"), quien = ctx.adminNombre || `Bot · ${ctx.phone10}`;
+      const titulo = ("Correctiva: " + d.desc).slice(0, 140);
+      await _aseoMutate(_ASEO_TAREAS_OBJ, "tareas", T => { T[tid] = { id: tid, hid: d.hid || "", depto: tipo, problema: true, prioridad: prio, titulo, desc: `Incidencia reportada por WhatsApp (bot) · ${quien}\n${d.desc}`, fecha, hora: "", repite: null, asignados: per.ok.slice(0, 20), etiquetas: [], adjuntos: [], reserva: "", by: quien, at: new Date().toISOString(), origen: "Bot WhatsApp" }; return T[tid]; });
+      _aseo.tareasTs = 0;
+      await _aseoMutate(_ASEO_EXTRA_OBJ, "extra", X => { X["T" + tid] = Object.assign({}, X["T" + tid], { correctivo: true, checkout: false, preventivo: false, incidencia: true, incId: d.incId, incIds: [d.incId], deInc: true, by: quien, at: new Date().toISOString() }); return X["T" + tid]; });
+      _aseo.extraTs = 0;
+      await _incMutar(D => { const r = (D.rows || []).find(x => String(x.ID) === d.incId); if (!r) return false; r.Tarea_ligada = String(r.Tarea_ligada || "").split(",").map(x => x.trim()).filter(Boolean).concat("T" + tid).join(", "); r.UpdatedAt = new Date().toISOString(); return true; }).catch(() => {});
+      try { _histAdd("T:" + tid, [["Creada", "", titulo + " (correctiva vía bot)"]], quien); } catch (_) {}
+      _botCorrDrafts.delete(ctx.phone10);
+      return { content: JSON.stringify({ ok: true, tipo: _BOT_TIPOS[tipo], fecha_texto: _botFechaLarga(fecha), personal: per.ok, no_encontrados: per.no, instruccion: "Responde en 1 línea: ✅ Tarea correctiva de <tipo> creada para <fecha_texto> (y a quién, si se asignó)." }), notifyText: null };
     }
     if (name === "crear_incidencia") {
       if (ctx.isStaff && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: "Solo los administradores pueden levantar incidencias. Avísale a un administrador.", instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
@@ -2926,11 +2995,14 @@ async function _botExecTool(toolUse, ctx) {
       const j = await r.json();
       if (!j.ok) return { content: JSON.stringify({ ok:false, error: j.error || "Error backend" }), notifyText: null };
       const id = j.id || "";
+      const mt = (clas.motivos || []).join(" ").toLowerCase(), tipoSug = /manten|daño/.test(mt) ? "mantenimiento" : /inspec|reglamento/.test(mt) ? "inspeccion" : /insumo|faltante/.test(mt) ? "insumos" : "limpieza";
+      _botCorrDrafts.set(ctx.phone10, { incId: String(id), hid: houseId, desc: descripcion, nivel, tipo: tipoSug, msgTs: ctx.msgTs || Date.now(), exp: Date.now() + 30 * 60 * 1000 });
       return {
         content: JSON.stringify({
           ok: true, id, alojamiento: alojLabel, nivel,
-          motivos: clas.motivos, clasificaciones: clas.clasificaciones,
-          mensaje: `Incidencia registrada en ${alojLabel}.`, instruccion: "Responde en 1 línea sin folio ni código.",
+          motivos: clas.motivos, clasificaciones: clas.clasificaciones, tarea_correctiva_sugerida: _BOT_TIPOS[tipoSug],
+          mensaje: `Incidencia registrada en ${alojLabel}.`,
+          instruccion: `Responde en 2 líneas sin folio ni código: 1) «✅ Incidencia registrada en ${alojLabel}.» 2) «¿Creo una tarea correctiva de ${_BOT_TIPOS[tipoSug]} para atenderla? (sí / no / otro tipo)». Si en un mensaje POSTERIOR responde que sí (o da tipo, fecha o persona), llama crear_tarea_correctiva.`,
         }),
         notifyText: `📋 Incidencia via bot admin\n${alojLabel} · ${nivel}\n${(clas.motivos||[]).join(", ")} · ${(clas.clasificaciones||[]).join(", ")}\n${descripcion.slice(0,140)}`,
       };
