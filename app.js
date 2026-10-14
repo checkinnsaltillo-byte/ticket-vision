@@ -58714,7 +58714,10 @@ function tdRender_() {
   if (sec === 'registro') {
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}${nav}${bar.replace('__SEGV__', '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(TAR_STATE.list.slice())}</div>` : ''}<div id="tar-content">${tarRegistroHtml_()}</div></div>`;
   } else {
-    const oc0 = tdOcMes_(ym, false), oc = oc0.filter(x => tarPasaFiltro_(x.r)), board = tdTablero_(oc, dia);
+    // Levantamientos: sus cards se ven siempre (cualquier mes elegido), con el estado actual de sus alojamientos;
+    // el mes solo cambia el calendario (chips por alojamiento).
+    const hoyLv = tarIso_(tarToday_()), lvs = TAR_STATE.list.filter(r => tdEsIG_(r) && tarVigencia_(r) !== 'Cancelada').map(r => ({ r, iso: hoyLv }));
+    const oc0 = tdOcMes_(ym, false).filter(x => !tdEsIG_(x.r)).concat(lvs), oc = oc0.filter(x => tarPasaFiltro_(x.r)), board = tdTablero_(oc, dia);
     const filasMes = [...new Map(oc0.map(x => [x.r.ID, x.r])).values()];
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}
       <div class="ad-v2 ck-kpis">${tdKpisOc_(oc0, ym)}</div>${nav}${bar.replace('__SEGV__', TAR_STATE._segV || '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(filasMes)}</div>` : ''}
