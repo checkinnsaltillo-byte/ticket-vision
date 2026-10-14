@@ -71057,7 +71057,8 @@ function rbHorDur_(H) { const m = t => { const [a, b] = t.split(':').map(Number)
 // duración por tipo de alojamiento, tiempos de traslado entre propiedades y horario laboral. Primero todas las limpiezas, después las inspecciones; las que reciben huésped van primero.
 const RB_COLS = [['#1d4ed8', '#dbeafe'], ['#be185d', '#fce7f3'], ['#047857', '#d1fae5'], ['#b45309', '#fef3c7'], ['#7c3aed', '#ede9fe'], ['#0e7490', '#cffafe'], ['#b91c1c', '#fee2e2'], ['#4d7c0f', '#ecfccb'], ['#c2410c', '#ffedd5'], ['#4338ca', '#e0e7ff']]; // color por persona (texto, fondo)
 const RB_MARGEN_ALOJ = 10; // margen entre un alojamiento y otro dentro de la misma propiedad
-const RB_MAX_TRAS = 2; // máximo de traslados entre edificios por persona al día
+const RB_MAX_TRAS = 2; // e) traslados entre edificios por persona al día (preferido); se permite 1 más solo si hace falta
+function rbTrasPref_() { const v = Number((RB.reglas || {}).tras_pref); return v >= 0 && v <= 10 && (RB.reglas || {}).tras_pref != null ? v : RB_MAX_TRAS; }
 const RB_INSP_MIN = 20, RB_TRAS_DEF = 15, RB_MARGEN = 15; // margen entre edificio y edificio (se suma al traslado)
 function rbMin_(h) { const m = String(h || '').trim().match(/^(\d{1,2}):(\d{2})\s*([ap])?/i); if (!m) return null; let a = +m[1]; if (m[3]) { const pm = /p/i.test(m[3]); if (pm && a < 12) a += 12; if (!pm && a === 12) a = 0; } return a * 60 + +m[2]; }
 function rbHHMM_(m) { m = Math.round(m); const h = Math.floor(m / 60), n = m % 60; return rbHoraTxt_(`${String(h).padStart(2, '0')}:${String(n).padStart(2, '0')}`); }
@@ -71102,7 +71103,8 @@ window.rbProgramar_ = async function (diaArg, opts) {
   const urg = new Map(); T.forEach(t => { const u = t.lim == null ? 9e9 : t.lim, k = uk(t); urg.set(k, Math.min(urg.has(k) ? urg.get(k) : 9e9, u)); });
   T.sort((a, b) => fase(a) - fase(b) || urg.get(uk(a)) - urg.get(uk(b)) || a.prop.localeCompare(b.prop, 'es') || (a.lim == null) - (b.lim == null) || (a.lim || 0) - (b.lim || 0) || a.cod.localeCompare(b.cod, 'es', { numeric: true }));
   // 4) Reparto: se prueban cientos de variantes (con algo de azar) y se queda la mejor:
-  //    nadie se traslada más de RB_MAX_TRAS veces, sin tareas tarde ni fuera de horario y con cargas de trabajo parejas.
+  //    traslados preferidos rbTrasPref_() (uno más solo si hace falta), sin tareas tarde ni fuera de horario y con cargas de trabajo parejas.
+  const tPref = rbTrasPref_(), tMax = tPref + 1;
   const corre = rnd => {
     const W = disp.map(x => ({ x, t: ini, prop: '', vis: [], nT: 0, pasos: [], trabajo: 0, tras: 0 })), A = new Map(), sin = [];
     let fa = 0, pref = 0, tardes = 0;
@@ -71110,11 +71112,12 @@ window.rbProgramar_ = async function (diaArg, opts) {
       if (fase(t) !== fa) { fa = fase(t); W.forEach(w => { w.vis = []; }); } // inspecciones: pueden volver a un edificio
       let best = null;
       W.forEach(w => { const mueve = !!w.prop && w.prop !== t.prop;
-        if (mueve && (w.vis.includes(t.prop) || w.nT >= RB_MAX_TRAS)) return; // no regresa a un edificio que ya dejó · máx. traslados
+        if (mueve && (w.vis.includes(t.prop) || w.nT >= tMax)) return; // no regresa a un edificio que ya dejó · tope: preferidos + 1
         const tr = !mueve && w.hid && w.hid !== t.hid ? { m: RB_MARGEN_ALOJ, base: 0, est: false, mismo: true } : rbTras_(w.prop, t.prop), llega = w.t + tr.m, termina = llega + t.dur;
         const pen = w.x.ed1 === t.prop ? 0 : w.x.ed2 === t.prop ? 25 : 60; // preferencia: edificio prioritario › segundo › otro
         const tarde = t.lim != null && termina > t.lim ? 200 : 0, extra = termina > fin ? 120 : 0;
-        const costo = termina + pen + tarde + extra + (rnd ? Math.random() * rnd : 0); if (!best || costo < best.costo) best = { w, tr, llega, termina, costo, mueve, pen }; });
+        const masT = mueve && w.nT >= tPref ? 150 : 0; // traslado de más: se evita si se puede
+        const costo = termina + pen + tarde + extra + masT + (rnd ? Math.random() * rnd : 0); if (!best || costo < best.costo) best = { w, tr, llega, termina, costo, mueve, pen }; });
       if (!best) { sin.push(t); return; }
       const w = best.w, late = t.lim != null && best.termina > t.lim;
       if (best.tr.m) w.pasos.push({ k: 'tras', de: w.prop, a: t.prop, ini: w.t, fin: best.llega, m: best.tr.m, base: best.tr.base, est: best.tr.est, mismo: !!best.tr.mismo });
@@ -71125,7 +71128,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
     });
     const c = W.map(w => w.trabajo + w.tras), prom = c.reduce((a, v) => a + v, 0) / (c.length || 1);
     const score = sin.length * 5000 + tardes * 300 + W.reduce((a, w) => a + Math.max(0, w.t - fin), 0) * 3
-      + c.reduce((a, v) => a + Math.abs(v - prom), 0) * 2 + (c.length ? Math.max(...c) - Math.min(...c) : 0) + W.reduce((a, w) => a + w.tras, 0) * 0.5 + pref * 0.5;
+      + c.reduce((a, v) => a + Math.abs(v - prom), 0) * 2 + (c.length ? Math.max(...c) - Math.min(...c) : 0) + W.reduce((a, w) => a + w.tras, 0) * 0.5 + pref * 0.5 + W.reduce((a, w) => a + Math.max(0, w.nT - tPref), 0) * 250;
     return { W, A, sin, score };
   };
   let mejor = corre(0); for (let i = 0; i < 600; i++) { const r = corre(20 + (i % 6) * 25); if (r.score < mejor.score) mejor = r; }
@@ -71152,14 +71155,14 @@ function rbProgHtml_() {
     <div><small>Tareas</small><b>${nT}</b><em>${R.T.filter(t => t.tipoT === 'Limpieza').length} limpiezas · ${R.T.filter(t => t.tipoT === 'Inspección').length} inspecciones${R.hechas ? ` · ${R.hechas} ya terminadas` : ''}</em></div>
     <div><small>Tiempo requerido</small><b>${hm(R.req)}</b><em>+ ${hm(R.S.reduce((a, x) => a + x.tras, 0))} de traslados (${RB_MARGEN} min de margen entre edificios · ${RB_MARGEN_ALOJ} min entre alojamientos)</em></div>
     <div><small>Capacidad del equipo</small><b>${hm(R.cap)}</b><em>${R.S.length} persona${R.S.length === 1 ? '' : 's'} × ${hm(R.fin - R.ini)} (${rbHHMM_(R.ini)} a ${rbHHMM_(R.fin)})</em></div>
-    <div><small>Reparto por persona</small><b>${R.S.length ? `${hm(Math.min(...R.S.map(x => x.trabajo + x.tras)))} – ${hm(Math.max(...R.S.map(x => x.trabajo + x.tras)))}` : '—'}</b><em>Carga más baja y más alta (trabajo + traslados) · máx. ${RB_MAX_TRAS} traslados por persona</em></div>
+    <div><small>Reparto por persona</small><b>${R.S.length ? `${hm(Math.min(...R.S.map(x => x.trabajo + x.tras)))} – ${hm(Math.max(...R.S.map(x => x.trabajo + x.tras)))}` : '—'}</b><em>Carga más baja y más alta (trabajo + traslados) · ${rbTrasPref_()} traslados preferidos por persona</em></div>
     <div class="${ok ? 'ok' : 'bad'}"><small>Resultado</small><b>${exc > 0 ? `Se excede ${hm(exc)}` : `Sobran ${hm(-exc)}`}</b><em>Termina a las ${rbHHMM_(ult)}${R.sinAsig.length ? ` · ${R.sinAsig.length} sin asignar` : ''}${R.T.some(t => t.tarde) ? ` · ${R.T.filter(t => t.tarde).length} después de la hora de entrada` : ''}</em></div></div>
     ${R.fuera.length ? `<div class="rb-s">No disponibles ese día: ${R.fuera.map(x => `${pcEsc(x.corto)} (${RB_EST[x.e].t.toLowerCase()})`).join(', ')}.</div>` : ''}
     ${R.T.some(t => t.durEst) ? '<div class="rb-s">* Duración estimada (60 min): ese tipo de alojamiento no tiene duración en el inciso b).</div>' : ''}`;
   const tab = (k, t) => `<button type="button" class="${R.vista === k ? 'on' : ''}" onclick="rbProgVista_('${k}')">${t}</button>`;
   let cuerpo = '';
   if (R.vista === 'personal') cuerpo = R.S.map(x => { const exc2 = x.t - R.fin;
-    return `<div class="rbp-p" style="border-left:4px solid ${(x.col || [])[0] || '#e8eaee'}"><div class="rbp-ph">${typeof adAv_ === 'function' ? adAv_(x.n) : ''}${chip('👤 ' + pcEsc(x.corto), (x.col || [])[0] || '#0f172a', (x.col || [])[1] || '#f1f5f9').replace('font-size:11px', 'font-size:13px')}${chip(RB_EST[x.e].t, x.e === 'confirmado' ? '#fff' : '#15803d', x.e === 'confirmado' ? '#16a34a' : '#f0fdf4')}<span class="sp"></span><span class="rbp-m">${x.pasos.filter(p => p.k === 'tarea').length} tareas · ${x.nT || 0}/${RB_MAX_TRAS} traslados · ${hm(x.trabajo)} + ${hm(x.tras)} traslado = <b style="color:#0f172a">${hm(x.trabajo + x.tras)} total</b> · ${exc2 > 0 ? `<b style="color:#b91c1c">se pasa ${hm(exc2)}</b>` : x.pasos.length ? `termina ${rbHHMM_(x.t)}` : 'sin tareas'}</span></div>
+    return `<div class="rbp-p" style="border-left:4px solid ${(x.col || [])[0] || '#e8eaee'}"><div class="rbp-ph">${typeof adAv_ === 'function' ? adAv_(x.n) : ''}${chip('👤 ' + pcEsc(x.corto), (x.col || [])[0] || '#0f172a', (x.col || [])[1] || '#f1f5f9').replace('font-size:11px', 'font-size:13px')}${chip(RB_EST[x.e].t, x.e === 'confirmado' ? '#fff' : '#15803d', x.e === 'confirmado' ? '#16a34a' : '#f0fdf4')}<span class="sp"></span><span class="rbp-m">${x.pasos.filter(p => p.k === 'tarea').length} tareas · <span style="${(x.nT || 0) > rbTrasPref_() ? 'color:#b91c1c;font-weight:700' : ''}">${x.nT || 0} traslado${x.nT === 1 ? '' : 's'}${(x.nT || 0) > rbTrasPref_() ? ' (uno más de lo preferido)' : ''}</span> · ${hm(x.trabajo)} + ${hm(x.tras)} traslado = <b style="color:#0f172a">${hm(x.trabajo + x.tras)} total</b> · ${exc2 > 0 ? `<b style="color:#b91c1c">se pasa ${hm(exc2)}</b>` : x.pasos.length ? `termina ${rbHHMM_(x.t)}` : 'sin tareas'}</span></div>
       <ol class="rbp-it">${x.pasos.length ? x.pasos.map(p => p.k === 'tras' ? `<li class="tr"><span class="h">${rbHHMM_(p.ini)}</span><span>${p.mismo ? `⏱ Margen entre alojamientos · ${p.m} min` : `🚗 Traslado ${pcEsc(p.de)} → ${pcEsc(p.a)} · ${p.base} min${p.est ? ' (estimado)' : ''} + ${RB_MARGEN} min de margen = ${p.m} min`}</span></li>`
         : `<li class="${p.tarde ? 'late' : ''}"><span class="h">${rbHHMM_(p.ini)}–${rbHHMM_(p.fin)}</span>${tCard(p.t)}${p.pri === 1 ? chip('1a Asignación', '#1d4ed8', '#dbeafe') : p.pri === 2 ? chip('2a Asignación', '#6d28d9', '#ede9fe') : chip('3a Asignación', '#475569', '#f1f5f9')}</li>`).join('') : '<li class="tr"><span>Sin tareas asignadas</span></li>'}
         ${x.pasos.length ? `<li class="fin"><span class="h">${rbHHMM_(x.t)}</span><span>🏁 Fin de su itinerario${exc2 > 0 ? ` · ${hm(exc2)} después de la salida (${rbHHMM_(R.fin)})` : ` · le quedan ${hm(-exc2)} de jornada`}</span></li>` : ''}</ol></div>`; }).join('') + (R.sinAsig.length ? `<div class="rbp-p"><div class="rbp-ph"><b style="color:#b91c1c">Sin asignar</b></div>${R.sinAsig.map(t => tCard(t)).join('')}</div>` : '');
@@ -71182,13 +71185,18 @@ window.rbAyuda_ = function () {
     <h4>1. Qué se programa</h4>${li(['Una <b>limpieza de salida</b> por cada alojamiento con salida ese día (cards de Tareas).', `Una <b>inspección</b> de ${RB_INSP_MIN} min en los alojamientos donde solo entra un huésped (no hay salida ese día).`, 'Las <b>tareas manuales</b> de Limpieza o Inspección de ese día que tienen alojamiento.', 'No se programan las ya terminadas, inspeccionadas o canceladas.'])}
     <h4>2. Quién participa</h4>${li(['Solo personal con puesto de <b>Limpieza</b>, activo y sin fecha de retiro.', 'Solo quien ese día está <b>Confirmado</b> o <b>Tentativo</b> (inciso a). «Falta» o «Sin asignar» no recibe tareas.'])}
     <h4>3. Orden de las tareas</h4>${li(['<b>Primero todas las limpiezas y después las inspecciones.</b>', 'Se trabaja por <b>edificio (bloques)</b>: primero el edificio con la entrada de huésped más temprana; dentro del edificio, por hora límite.', 'Hora límite de cada alojamiento: la hora de <b>entrada temprana</b> si hay solicitud; si no, la hora de llegada del alojamiento; si no tiene, las 3:00 p.m.', '<b>★ Prioritaria</b> = entrada temprana aceptada (igual que en la card).'])}
-    <h4>4. Restricciones por persona</h4>${li([`<b>Máximo ${RB_MAX_TRAS} traslados</b> entre edificios al día (llegar al primer edificio no cuenta).`, '<b>No regresa a un edificio que ya dejó</b> durante las limpiezas (en las inspecciones sí puede volver).', `Horario laboral: de ${rbHoraTxt_(H.entrada)} a ${rbHoraTxt_(H.salida)} (inciso d); todos empiezan a la hora de entrada.`])}
+    <h4>4. Restricciones por persona</h4>${li([`<b>${rbTrasPref_()} traslados</b> entre edificios al día como preferencia (inciso e; llegar al primer edificio no cuenta). Solo si hace falta para no dejar tareas sin asignar o tarde se permite <b>1 traslado más</b>.`, '<b>No regresa a un edificio que ya dejó</b> durante las limpiezas (en las inspecciones sí puede volver).', `Horario laboral: de ${rbHoraTxt_(H.entrada)} a ${rbHoraTxt_(H.salida)} (inciso d); todos empiezan a la hora de entrada.`])}
     <h4>5. Tiempos</h4>${li(['Duración de la limpieza según el <b>tipo de alojamiento</b> (inciso b); si el tipo no tiene duración, 60 min (marcado con *).', `Inspección: ${RB_INSP_MIN} min.`, `Traslado entre edificios = tiempo de la matriz (inciso c; ${RB_TRAS_DEF} min si no está capturado) <b>+ ${RB_MARGEN} min de margen</b>.`, `<b>${RB_MARGEN_ALOJ} min de margen</b> entre un alojamiento y otro dentro de la misma propiedad (no cuenta como traslado).`])}
     <h4>6. Preferencias al repartir</h4>${li(['<b>1a Asignación</b>: su Edificio asignado · <b>2a Asignación</b>: su Otro edificio asignado · <b>3a Asignación</b>: cualquier otro edificio.', 'Se prueban cientos de repartos y se elige el mejor, en este orden de importancia: (1) que nada quede sin asignar; (2) que nada termine después de la hora límite; (3) que nadie se pase de su hora de salida; (4) <b>cargas de trabajo parejas</b> entre todo el personal; (5) menos minutos de traslado; (6) respetar los edificios asignados.'])}
     <h4>7. Resultado y asignación</h4>${li(['Es una <b>propuesta</b>: no cambia nada en el sistema.', 'Desde Tareas › 🪄 (Programar limpiezas del día) el botón <b>✅ Asignar</b> pone al personal en las cards de reservas (aseo o inspección) y en las tareas manuales de ese día, <b>reemplazando</b> a quien estuviera asignado.', 'Considera las reservas registradas al momento de programar; si entran o cambian reservas, vuelve a programar.'])}
     <h4>8. Tabla (historial)</h4>${li(['Por persona y por mes: cards de reservas asignadas y tareas manuales con personal (las recurrentes en cada fecha).', '«Laborado» suma lo terminado y «Programado» todo lo del mes, con los tiempos de arriba; si una tarea tiene varias personas, el tiempo se reparte entre ellas.'])}
     </div>`;
   document.body.appendChild(ov);
+};
+window.rbTrasSet_ = async function (v) {
+  const n = Math.max(0, Math.min(10, Math.round(Number(v)))); if (!isFinite(n) || !RB.reglas) return; RB.reglas.tras_pref = n;
+  const el = document.getElementById('rb-save'); if (el) el.textContent = '⏳ Guardando…';
+  try { await rbPost_({ tras_pref: n }); if (el) el.textContent = '✓ Guardado'; } catch (e) { if (el) el.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
 };
 window.rbSec_ = function (k) { RB.sec = k; rbRender_(); };
 // Carga reglas, asistencia y personal (para usar la programación fuera del módulo, p. ej. desde Tareas).
@@ -71268,7 +71276,7 @@ window.rbDrAbrir_ = async function () {
 window.rbDrCerrar_ = function () { RB.dr = false; if (typeof adCerrar_ === 'function') adCerrar_(); };
 window.rbDrDia_ = function (v) { if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; RB.pdia = v; RB.prog = null; RB.asignado = ''; rbDrPintar_(); };
 const RB_CSS2 = `<style>.rb-auto{display:inline-flex;align-items:center;gap:8px;margin-left:auto;padding:5px 10px;border:1px solid #c7d2fe;border-radius:999px;background:#fff;font-size:12.5px;color:#312e81}.rb-auto small{color:#64748b;font-size:11px}.rb-auto .ad-sw{cursor:pointer}.rb-auto+.rb-q{margin-left:0}
-  #ad-drawer .rb-t{width:100%!important;display:table!important;table-layout:auto}#ad-drawer .rb-t{box-sizing:border-box;min-width:0!important}#ad-drawer .rb-t td:last-child{width:1%;white-space:nowrap}.rb-q{all:unset;box-sizing:border-box;cursor:pointer;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #a5b4fc;color:#4f46e5;font-weight:800;font-size:15px;margin-left:auto;flex:none}.rb-q:hover{background:#eef2ff}</style><style>.np-tabs{display:inline-flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px}.np-tabs button{all:unset;cursor:pointer;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;color:#475569}.np-tabs button:hover{background:#e2e8f0}.np-tabs button.on{background:#0f1729;color:#fff}.np-tabs.sm button{font-size:12.5px;padding:6px 12px}</style>`; // estilos de la propuesta (módulo y ventana lateral de Tareas)
+  #ad-drawer .rb-t{width:100%!important;display:table!important;table-layout:auto}#ad-drawer .rb-t{box-sizing:border-box;min-width:0!important}#ad-drawer .rb-t td:last-child{width:1%;white-space:nowrap}#ad-drawer .rbd-lb{font-size:11px;font-weight:700;color:#64748b;margin-right:6px}.rb-q{all:unset;box-sizing:border-box;cursor:pointer;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #a5b4fc;color:#4f46e5;font-weight:800;font-size:15px;margin-left:auto;flex:none}.rb-q:hover{background:#eef2ff}</style><style>.np-tabs{display:inline-flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px}.np-tabs button{all:unset;cursor:pointer;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;color:#475569}.np-tabs button:hover{background:#e2e8f0}.np-tabs button.on{background:#0f1729;color:#fff}.np-tabs.sm button{font-size:12.5px;padding:6px 12px}</style>`; // estilos de la propuesta (módulo y ventana lateral de Tareas)
 function rbDrPintar_() {
   const dr = document.getElementById('ad-drawer'); if (!dr || !RB.dr) { RB.dr = false; return; }
   const dia = RB.pdia || aseoHoyIso_(), dk = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'][tarParseIso_(dia).getDay()], L = (RB.reglas || {}).limpieza || {};
@@ -71276,7 +71284,7 @@ function rbDrPintar_() {
   const nom = r => (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : '') || r.Nombre;
   const filas = P.map(r => { const n = nom(r), e = rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk)), x = L[n] || {};
     return `<tr><td class="rb-n"><b>${pcEsc(aseoNombreCorto_(n))}</b><small>${pcEsc([x.ed1, x.ed2].filter(Boolean).join(' · ') || 'Sin edificio asignado')}</small></td>
-      <td style="text-align:right"><button type="button" class="rb-c rbd-${e}" onclick="rbClic_(${pcEsc(JSON.stringify(n))},'${dia}','${e}')" title="Clic: ${RB_EST[RB_EST[e].sig].t}">${RB_EST[e].t}</button></td></tr>`; }).join('');
+      <td style="text-align:right"><span class="rbd-lb">Asistencia</span><button type="button" class="rb-c rbd-${e}" onclick="rbClic_(${pcEsc(JSON.stringify(n))},'${dia}','${e}')" title="Clic: ${RB_EST[RB_EST[e].sig].t}">${RB_EST[e].t}</button></td></tr>`; }).join('');
   const R = RB.prog && RB.prog.dia === dia ? RB.prog : null, nA = R ? R.T.filter(t => t.quienN).length : 0;
   const top = dr.querySelector('.ad-db') ? dr.querySelector('.ad-db').scrollTop : 0;
   dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">🪄 Programar limpiezas del día</b><button type="button" class="ad-close" onclick="rbDrCerrar_()">✕</button></div></div>
@@ -71425,11 +71433,11 @@ function rbRender_() {
       ${rbProgHtml_()}
       <div class="rb-h">a) Programación de limpiezas</div>
       <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios asignados y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
-      <div class="rb-ley"><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
+      <div class="rb-ley"><b style="color:#334155">Asistencia:</b><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
         <span class="rb-nav"><button type="button" onclick="rbSem_(-1)">‹</button><button type="button" onclick="rbSem_(0)" title="Semana actual">${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[0]))} – ${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[6]))}</button><button type="button" onclick="rbSem_(1)">›</button></span></div>
       <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal</th><th>Edificio asignado</th><th>Otro edificio asignado</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
       <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
-      <details class="rb-det" ${RB.detAb ? 'open' : ''} ontoggle="RB.detAb=this.open"><summary>⚙️ Reglas y condiciones del bot <span>b) Duración por tipo · c) Traslados · d) Horario laboral</span></summary>
+      <details class="rb-det" ${RB.detAb ? 'open' : ''} ontoggle="RB.detAb=this.open"><summary>⚙️ Reglas y condiciones del bot <span>b) Duración por tipo · c) Traslados · d) Horario laboral · e) Número de traslados</span></summary>
       <div class="rb-h" style="margin-top:14px">b) Duración estimada de limpieza por tipo de alojamiento</div>
       <div class="rb-s">Un renglón por cada «tipo» del catálogo de alojamientos. Escribe los minutos que toma una limpieza de salida; se guarda solo.</div>
       <div style="overflow-x:auto"><table class="rb-t" style="max-width:760px"><thead><tr><th>Tipo</th><th>Alojamientos</th><th style="width:150px">Duración (minutos)</th><th style="width:110px"></th></tr></thead>
@@ -71443,6 +71451,9 @@ function rbRender_() {
       ${(H => `<div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"><label style="font-size:11.5px;font-weight:700;color:#475569">Entrada<br><input type="time" class="rb-sel" style="min-width:0;width:130px;margin-top:4px" value="${H.entrada}" onchange="rbHor_('entrada',this.value)"></label>
         <label style="font-size:11.5px;font-weight:700;color:#475569">Salida<br><input type="time" class="rb-sel" style="min-width:0;width:130px;margin-top:4px" value="${H.salida}" onchange="rbHor_('salida',this.value)"></label>
         <span id="rb-hdur" style="font-size:12px;font-weight:700;color:#4f46e5;padding-bottom:7px">${rbHorDur_(H)}</span></div>`)(rbHorario_())}
+      <div class="rb-h" style="margin-top:22px">e) Número de traslados por persona</div>
+      <div class="rb-s">Traslados entre edificios al día que se prefieren (predeterminado ${RB_MAX_TRAS}). No es estricto: si hace falta para no dejar tareas sin asignar o fuera de hora, se permite 1 más. Llegar al primer edificio no cuenta. Se guarda solo.</div>
+      <label style="font-size:11.5px;font-weight:700;color:#475569">Traslados preferidos<br><input type="number" min="0" max="10" step="1" class="rb-sel" style="min-width:0;width:110px;margin-top:4px" value="${rbTrasPref_()}" onchange="rbTrasSet_(this.value)"></label>
       </details>
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
     </div>`}`;
