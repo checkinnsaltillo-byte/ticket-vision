@@ -71266,11 +71266,35 @@ function rbTablaHtml_() {
   return `<style>.rbt-p{border:1px solid #e8eaee;border-radius:10px;margin-bottom:8px;background:#fff}.rbt-p>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px}.rbt-p>summary::-webkit-details-marker{display:none}
       .rbt-p>summary::after{content:'▸';margin-left:auto;color:#94a3b8}.rbt-p[open]>summary::after{content:'▾'}.rbt-p>div{padding:0 12px 12px}.rbt-ks{display:flex;flex-wrap:wrap;gap:6px}.rbt-k{font-size:11.5px;color:#475569;background:#f8fafc;border:1px solid #eef0f3;border-radius:7px;padding:2px 8px}.rbt-k b{color:#0f172a}
       .rbt-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}.rbt-bar .aseo-btn{all:unset;cursor:pointer;height:32px;display:inline-flex;align-items:center;padding:0 11px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12.5px;font-weight:600;color:#374151}</style>
-    <div class="rbt-bar"><div class="rb-h" style="margin:0">📊 Historial por persona</div><span style="flex:1"></span>${ckMesNavHtml_(ym, 'rbTabMes_')}</div>
+    <div class="rbt-bar"><div class="np-tabs"><button type="button" class="${RB.bv !== 'heat' ? 'on' : ''}" onclick="RB.bv='tabla';rbRender_()">📋 Tabla</button><button type="button" class="${RB.bv === 'heat' ? 'on' : ''}" onclick="RB.bv='heat';rbRender_()">🔥 Mapa de calor</button></div><span style="flex:1"></span>${ckMesNavHtml_(ym, 'rbTabMes_')}</div>
     <div class="rbt-ks" style="margin:0 0 12px">${kpi(tot, true)}</div>
     ${!(window.ASEO && ASEO.ts) || (typeof PAGOS_STATE !== 'undefined' && !PAGOS_STATE.loaded) ? '<div class="rb-s">⏳ Cargando reservas y tareas…</div>' : ''}
-    ${cuerpo || '<div class="rb-s">Sin personal ni tareas asignadas en este mes.</div>'}
+    ${RB.bv === 'heat' ? rbHeatHtml_(pers, ym, hm) : (cuerpo || '<div class="rb-s">Sin personal ni tareas asignadas en este mes.</div>')}
     <div class="rb-s" style="margin-top:10px">Incluye las cards de reservas (limpieza de salida e inspección) y las tareas manuales con personal asignado. «Laborado» suma solo lo terminado; «Programado» suma todo lo del mes. Tiempos según la Programación: limpieza por tipo de alojamiento (inciso b), inspección ${RB_INSP_MIN} min; si se asignó a varias personas se reparte entre ellas. * Duración estimada (60 min). — = tarea sin duración definida (p. ej. mantenimiento).</div>`;
+}
+// Bitácora › 🔥 Mapa de calor: renglones = personal, columnas = días del mes; cada celda = limpiezas/inspecciones y su duración,
+// el color sube con la duración (respecto al día más cargado del mes). Días sin tareas quedan vacíos.
+function rbHeatHtml_(pers, ym, hm) {
+  const [y, m] = ym.split('-').map(Number), nd = new Date(y, m, 0).getDate(), hoy = aseoHoyIso_(), dias = Array.from({ length: nd }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
+  const mes = TAR_MESES[m - 1], dl = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+  const filas = pers.map(([n, L]) => { const by = {}; L.forEach(x => { if (x.sinT) return; (by[x.f] = by[x.f] || []).push(x); }); return { n, by }; });
+  let max = 0; filas.forEach(F => Object.values(F.by).forEach(L => { max = Math.max(max, L.reduce((a, x) => a + x.min, 0)); }));
+  const col = v => { const t = max ? Math.min(1, v / max) : 0; return `hsl(${Math.round(140 - 140 * t)},${Math.round(55 + 25 * t)}%,${Math.round(90 - 42 * t)}%)`; }; // verde claro → amarillo → rojo
+  const head = dias.map(f => { const d = tarParseIso_(f), we = d.getDay() === 0 || d.getDay() === 6; return `<th class="${f === hoy ? 'hoy' : ''} ${we ? 'we' : ''}"><small>${dl[d.getDay()]}</small>${d.getDate()}-${mes}</th>`; }).join('');
+  const body = filas.map(({ n, by }, i) => { let tN = 0, tM = 0;
+    const cells = dias.map(f => { const L = by[f]; if (!L || !L.length) return '<td class="vac"></td>'; const mi = L.reduce((a, x) => a + x.min, 0), li = L.filter(x => x.tipoT === 'Limpieza').length, ins = L.length - li; tN += L.length; tM += mi;
+      const tip = `${n} · ${aseoDiaTxt_(f)}\n` + L.map(x => `${x.ico} ${x.cod || '—'} · ${x.tipoT} · ${hm(x.min)}${x.hecho ? ' ✓' : ''}`).join('\n');
+      return `<td style="background:${col(mi)};color:${mi / (max || 1) > .6 ? '#fff' : '#0f172a'}" title="${pcEsc(tip)}"><b>${li ? '🧹' + li : ''}${ins ? (li ? ' ' : '') + '🔍' + ins : ''}</b><span>${hm(mi)}</span></td>`; }).join('');
+    const c = RB_COLS[i % RB_COLS.length];
+    return `<tr><th class="nm"><span style="color:${c[0]}">●</span> ${pcEsc(aseoNombreCorto_(n))}</th>${cells}<td class="tot"><b>${tN}</b><span>${tN ? hm(tM) : '—'}</span></td></tr>`; }).join('');
+  const pasos = [0, .25, .5, .75, 1].map(t => `<span style="background:${col(t * max)}"></span>`).join('');
+  return `<style>.rbh-w{overflow:auto;max-height:70vh;border:1px solid #e8eaee;border-radius:10px}.rbh{border-collapse:separate;border-spacing:2px;font-size:11px;min-width:0!important;width:auto!important}
+      .rbh thead th{position:sticky;top:0;z-index:2}.rbh th{background:#f8fafc;font-size:10.5px;font-weight:700;color:#475569;padding:4px 2px;min-width:52px;text-align:center;white-space:nowrap}.rbh th small{display:block;color:#94a3b8;font-weight:600}.rbh th.hoy{color:#4f46e5}.rbh th.we{background:#f1f5f9}
+      .rbh th.nm{position:sticky;left:0;z-index:3;text-align:left;background:#fff;min-width:130px;padding:4px 8px;font-size:12px;color:#0f172a}.rbh thead th.nm{z-index:4;background:#f8fafc}
+      .rbh td{min-width:52px;height:40px;border-radius:6px;text-align:center;vertical-align:middle;padding:2px;cursor:default}.rbh td b{display:block;font-size:10.5px;white-space:nowrap}.rbh td span{display:block;font-size:10px;opacity:.9;white-space:nowrap}.rbh td.vac{background:#f8fafc}.rbh td.tot{background:#eef2ff;color:#312e81;min-width:64px}
+      .rbh-ley{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#64748b;margin:0 0 8px}.rbh-ley i{display:inline-flex;gap:2px}.rbh-ley i span{width:22px;height:12px;border-radius:3px;display:inline-block}</style>
+    <div class="rbh-ley">Duración por día:<span>0</span><i>${pasos}</i><span>${hm(max)}</span><span style="margin-left:10px">🧹 limpiezas · 🔍 inspecciones · vacío = sin tareas (no laboró)</span></div>
+    <div class="rbh-w"><table class="rbh"><thead><tr><th class="nm">Personal</th>${head}<th>Total</th></tr></thead><tbody>${body || `<tr><td colspan="${nd + 2}" style="color:#94a3b8">Sin personal</td></tr>`}</tbody></table></div>`;
 }
 // ── Atajo en Tareas: «🪄 Programar limpiezas del día» en ventana lateral (asistencia del día → Programar → Asignar) ──
 window.rbDrAbrir_ = async function () {
@@ -71434,7 +71458,7 @@ function rbRender_() {
       .rbp-it{list-style:none;margin:0;padding:0 0 0 6px;border-left:2px solid #e2e8f0}.rbp-it li{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0 4px 10px;position:relative;font-size:12px}.rbp-it li::before{content:'';position:absolute;left:-6px;top:11px;width:8px;height:8px;border-radius:50%;background:#4f46e5}
       .rbp-it li.tr{color:#64748b}.rbp-it li.tr::before{background:#cbd5e1}.rbp-it li.fin::before{background:#16a34a}.rbp-it li.late::before{background:#dc2626}.rbp-it .h{font-weight:700;color:#334155;min-width:118px;font-size:11.5px}
       .rbp-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 0}.rbp-t>b{font:700 11px ui-monospace,Menlo,monospace;background:#f1f5f9;padding:1px 6px;border-radius:5px}.rbp-t>span{font-size:12px;color:#0f172a}</style>
-    <div class="np-tabs" style="margin:0 0 12px"><button type="button" class="${RB.sec !== 'tabla' ? 'on' : ''}" onclick="rbSec_('prog')">🗓️ Programación</button><button type="button" class="${RB.sec === 'tabla' ? 'on' : ''}" onclick="rbSec_('tabla')">📊 Tabla</button></div>
+    <div class="np-tabs" style="margin:0 0 12px"><button type="button" class="${RB.sec !== 'tabla' ? 'on' : ''}" onclick="rbSec_('prog')">🗓️ Programación</button><button type="button" class="${RB.sec === 'tabla' ? 'on' : ''}" onclick="rbSec_('tabla')">📒 Bitácora</button></div>
     ${RB.sec === 'tabla' ? `<div class="rb-w" style="max-width:none">${rbTablaHtml_()}</div>` : `
     <div class="rb-w"><div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">🧹 Programar limpiezas del día:</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}">
       <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span>${rbAutoHtml_()}<button type="button" class="rb-q" onclick="rbAyuda_()" title="Todas las reglas de la programación automática">?</button></div>
