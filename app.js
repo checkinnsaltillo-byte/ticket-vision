@@ -66518,6 +66518,7 @@ function aseoEnsureCss_() {
   .mv-pubt:disabled{opacity:.5;cursor:default}
   /* ── Control de aseo · tablero (v1568) ── */
   #module-aseo{--ad-line:#e8eaee;--ad-line2:#f0f1f4;--ad-tx:#0f1729;--ad-mut:#6b7280;--ad-mut2:#9aa1ad;font-feature-settings:"cv11","ss01"}
+  #module-reglasbot,#ad-drawer{--ad-line:#e8eaee;--ad-line2:#f0f1f4;--ad-tx:#0f1729;--ad-mut:#6b7280;--ad-mut2:#9aa1ad}
   #module-aseo .aseo-head .st{font-size:11.5px;color:var(--ad-mut)}
   #module-aseo .aseo-btn{font-weight:600;font-size:12px;border-radius:8px;padding:6px 11px;border-color:var(--ad-line)}
   .ad-v2{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:12.5px;color:var(--ad-tx);background:transparent;border:0;padding:0}
@@ -71288,6 +71289,24 @@ function rbTablaDatos_(ym) {
   P.forEach(L => L.sort((a, b) => a.f.localeCompare(b.f) || a.cod.localeCompare(b.cod, 'es', { numeric: true })));
   return P;
 }
+// KPIs del mes en la Bitácora (mismas tarjetas que Tareas: dona de avance por estado, avance por tipo y totales).
+function rbBitKpis_(pers, tot, hm) {
+  const T = [].concat(...pers.map(p => p[1])), n = k => T.filter(x => x.est === k).length;
+  const E = ['inspeccionado', 'terminado', 'en_proceso', 'pendiente'].map(k => ({ k, t: adEstObj_(k).t, c: adEstC_(k), n: n(k) }));
+  const nT = T.length, pc = nT ? Math.round(tot.h / nT * 100) : 0;
+  let acc = 0; const arco = E.map(e => { const a = acc, b = acc + (nT ? e.n / nT * 360 : 0); acc = b; return `${e.c} ${a}deg ${b}deg`; }).join(',');
+  const fila = (t, Lx) => { const tt = Lx.length, te = Lx.filter(x => x.hecho).length, pr = Lx.filter(x => !x.hecho && x.est === 'en_proceso').length, p = tt ? Math.round(te / tt * 100) : 0;
+    return `<div class="ad-tr"><small>${t}</small><span class="ad-prog"><i style="width:${tt ? (te / tt * 100).toFixed(1) : 0}%;background:#047857"></i><i style="width:${tt ? (pr / tt * 100).toFixed(1) : 0}%;background:#f59e0b"></i></span><b>${p}%</b><em>${te}/${tt}</em></div>`; };
+  const act = pers.filter(p => p[1].length).length, kpi = (t, v, sub, cls) => `<div class="ad-kpi ${cls || ''}"><small>${t}</small><div class="n">${v}${sub ? `<em>${sub}</em>` : ''}</div></div>`;
+  return `<div class="ad-kpis rbt-kpis" style="margin:0 0 14px"><style>@media (min-width:901px){.rbt-kpis{grid-template-columns:1.4fr 1.7fr repeat(4,1fr)!important}}</style>
+    <div class="ad-kpi big ad-kdona"><small>Avance del mes · ${pc}%</small><div class="ad-kd"><span class="r" style="background:${nT ? `conic-gradient(${arco})` : '#e2e8f0'}"><b>${nT}</b></span><span class="lg">${E.map(e => `<span><i style="background:${e.c}"></i>${e.t}<b>${e.n}</b></span>`).join('')}</span></div></div>
+    <div class="ad-kpi ad-ktipo"><small>Avance por tipo</small>${fila('Total', T)}${fila('Limpieza', T.filter(x => x.tipoT === 'Limpieza'))}${fila('Inspección', T.filter(x => x.tipoT === 'Inspección'))}${fila('Otras', T.filter(x => x.tipoT !== 'Limpieza' && x.tipoT !== 'Inspección'))}</div>
+    ${kpi('Tareas', nT, `🧹 ${tot.lim} · 🔍 ${tot.ins}${tot.otr ? ` · 🔧 ${tot.otr}` : ''}`)}
+    ${kpi('Tiempo laborado', hm(tot.lab), `de ${hm(tot.prog)} programado`, 'k-term')}
+    ${kpi('Personal con tareas', act, `de ${pers.length} · ${tot.dias} día${tot.dias === 1 ? '' : 's'} con tareas`)}
+    ${kpi('Promedio por persona', act ? hm(tot.lab / act) : '—', act ? `${Math.round(nT / act)} tareas c/u` : '', 'k-proc')}
+  </div>`;
+}
 function rbTablaHtml_() {
   const ym = RB.ym || aseoHoyIso_().slice(0, 7), P = rbTablaDatos_(ym), ab = RB.tabAb = RB.tabAb || {};
   const hm = m => { m = Math.round(m); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}`; };
@@ -71309,8 +71328,9 @@ function rbTablaHtml_() {
   return `<style>.rbt-p{border:1px solid #e8eaee;border-radius:10px;margin-bottom:8px;background:#fff}.rbt-p>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px}.rbt-p>summary::-webkit-details-marker{display:none}
       .rbt-p>summary::after{content:'▸';margin-left:auto;color:#94a3b8}.rbt-p[open]>summary::after{content:'▾'}.rbt-p>div{padding:0 12px 12px}.rbt-ks{display:flex;flex-wrap:wrap;gap:6px}.rbt-k{font-size:11.5px;color:#475569;background:#f8fafc;border:1px solid #eef0f3;border-radius:7px;padding:2px 8px}.rbt-k b{color:#0f172a}
       .rbt-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}.rbt-bar .aseo-btn{all:unset;cursor:pointer;height:32px;display:inline-flex;align-items:center;padding:0 11px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12.5px;font-weight:600;color:#374151}</style>
-    <div class="rbt-bar"><div class="np-tabs"><button type="button" class="${RB.bv !== 'heat' ? 'on' : ''}" onclick="RB.bv='tabla';rbRender_()">📋 Tabla</button><button type="button" class="${RB.bv === 'heat' ? 'on' : ''}" onclick="RB.bv='heat';rbRender_()">🔥 Mapa de calor</button></div><span style="flex:1"></span>${ckMesNavHtml_(ym, 'rbTabMes_')}</div>
-    <div class="rbt-ks" style="margin:0 0 12px">${kpi(tot, true)}</div>
+    <div class="ad-v2"><div class="ck-bar rbt-ckbar"><div class="ck-dnav"><button type="button" onclick="rbTabMes_(-1)" title="Mes anterior">‹</button><button type="button" class="lb ${ym !== aseoHoyIso_().slice(0, 7) ? 'otro' : ''}" onclick="rbTabMes_(0)" title="Volver al mes actual">${pcEsc(TAR_MESES_L[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4))}</button><button type="button" onclick="rbTabMes_(1)" title="Mes siguiente">›</button></div>
+      <div class="ad-seg"><button type="button" class="${RB.bv !== 'heat' ? 'on' : ''}" onclick="RB.bv='tabla';rbRender_()">📋 Tabla</button><button type="button" class="${RB.bv === 'heat' ? 'on' : ''}" onclick="RB.bv='heat';rbRender_()">🔥 Mapa de calor</button></div></div>
+    ${rbBitKpis_(pers, tot, hm)}</div>
     ${!(window.ASEO && ASEO.ts) || (typeof PAGOS_STATE !== 'undefined' && !PAGOS_STATE.loaded) ? '<div class="rb-s">⏳ Cargando reservas y tareas…</div>' : ''}
     ${RB.bv === 'heat' ? rbHeatHtml_(pers, ym, hm) : (cuerpo || '<div class="rb-s">Sin personal ni tareas asignadas en este mes.</div>')}
     <div class="rb-s" style="margin-top:10px">Incluye las cards de reservas (limpieza de salida e inspección) y las tareas manuales con personal asignado. «Laborado» suma solo lo terminado; «Programado» suma todo lo del mes. Tiempos según la Programación: limpieza por tipo de alojamiento (inciso b), inspección ${RB_INSP_MIN} min; si se asignó a varias personas se reparte entre ellas. * Duración estimada (60 min). — = tarea sin duración definida (p. ej. mantenimiento).</div>`;
