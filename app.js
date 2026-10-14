@@ -66737,6 +66737,7 @@ function aseoEnsureCss_() {
   .flag.violet,.ad-badge.violet{color:#6d28d9}.flag.violet i,.ad-badge.violet i{background:#8b5cf6;box-shadow:0 0 0 3px #ede9fe}
   .ad-card.alert .flag.red i{animation:mvPulse 1.2s ease-in-out infinite;--ac:#dc2626}
   .ad-card .r2{display:flex;flex-wrap:wrap;align-items:center;gap:3px 0;margin-top:6px;color:var(--ad-mut);font-size:11.5px}
+  .ad-card .ad-solr{gap:5px!important}.ad-sol{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ad-sol.pd{background:#fff7ed;color:#c2410c;border:1px dashed #fdba74}.ad-sol.acc{cursor:pointer;background:#16a34a;color:#fff}.ad-sol.acc:hover{background:#15803d}.ad-sol.ok{cursor:pointer;background:#dcfce7;color:#15803d;border:1px solid #86efac}
   .ad-card .r2 b{color:var(--ad-tx);font-weight:600}
   .ad-card .r2 .sep{width:1px;height:10px;background:var(--ad-line);margin:0 8px}
   .ad-card .ok{color:#16a34a}.ad-card .pd{color:#b45309}.ad-card .vi{color:#6d28d9}
@@ -67592,13 +67593,19 @@ function adCamasHtml_(hid) {
   return `<span class="ad-camas" title="Camas del alojamiento">🛏 ${pcEsc(n || '?')}${t ? ` (${pcEsc(t)})` : ''}</span>`;
 }
 function adExtraInsumos_(I) { const x = I.xe || I.xs, n = x ? Number(x.noches) || 0 : 0; return n > 7 ? `<div class="flag orange" title="Estancia de ${n} noches: preparar insumos extra"><i></i>📦 Extra insumos · ${n} noches</div>` : ''; }
+// Solicitudes en la card: pendiente = botón «✓ Aceptar»; aceptada = chip verde (clic para retirar la aceptación).
+function adSolBtns_(I) {
+  const b = (tipo, x, rec, def) => { if (!x || !rec) return ''; const id = pcEsc(String(x.b.Id)), fn = tipo === 'tard' ? 'aseoTardAceptar_' : 'aseoTempAceptar_', h = aseoHoraTxt_(rec.hora || def), q = tipo === 'tard' ? `Salida tardía ${h}` : `Entrada temprana ${h}`;
+    return rec.aceptada ? `<button type="button" class="ad-sol ok" title="Aceptada${rec.aceptadaPor ? ' por ' + pcEsc(rec.aceptadaPor) : ''} · clic para retirar la aceptación" onclick="event.stopPropagation();${fn}('${id}',false)">✓ ${q} · aceptada</button>`
+      : `<span class="ad-sol pd">${tipo === 'tard' ? '🕚' : '⏰'} Solicitud: ${q}</span><button type="button" class="ad-sol acc" title="Aceptar la solicitud" onclick="event.stopPropagation();${fn}('${id}',true)">✓ Aceptar</button>`; };
+  return b('tard', I.xs, I.trd, '11:00') + b('temp', I.xe, I.temp, '12:00');
+}
 // ── Card compacta del tablero ──
 function adCard_(I) {
   const ultTxt = !I.g.sal.length && !I.esCopia ? (I.diasUlt == null ? 'Sin salida previa' : I.diasUlt === 0 ? 'Salida hoy' : `Salida hace ${I.diasUlt} día${I.diasUlt === 1 ? '' : 's'}`) : '';
   const mov = I.esCopia && I.xs ? `<span class="s">Salida hace ${I.diasSal} día${I.diasSal === 1 ? '' : 's'}</span>${I.g.ent.length ? `<span class="e">↘ Entra</span>` : ''}` : `${I.g.sal.length ? `<span class="s">↗ Sale</span>` : ''}${ultTxt ? `<span class="u" title="${I.ultSal ? 'Última salida: ' + aseoDiaTxt_(I.ultSal) : ''}">${ultTxt}</span>` : ''}${I.g.ent.length ? `<span class="e">↘ Entra</span>` : ''}`;
   const meta = [];
-  if (I.trd) meta.push(`<span>Sale <b>${aseoHoraTxt_(I.trd.hora || '11:00')}</b> <span class="${I.trd.aceptada ? 'ok' : 'pd'}">· ${I.trd.aceptada ? 'tarde aceptada' : 'tarde pendiente'}</span></span>`);
-  if (I.temp) meta.push(`<span>Entra <b>${aseoHoraTxt_(I.temp.hora || '12:00')}</b> <span class="${I.temp.aceptada ? 'ok' : 'pd'}">· ${I.temp.aceptada ? 'temprano aceptada' : 'temprano pendiente'}</span></span>`);
+  const solB = adSolBtns_(I); // solicitudes de salida tardía / entrada temprana: se aceptan directo en la card
   const plB = plBarra_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId); // barra de avance de la plantilla, debajo de los estados
   const catP = axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0);
   meta.unshift(catP); { const cm = adCamasHtml_(I.hid); if (cm) meta.splice(1, 0, cm); }
@@ -67621,6 +67628,7 @@ function adCard_(I) {
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
     <div class="r2">${catP}${adCamasHtml_(I.hid)}</div>
+    ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${adExtraInsumos_(I)}
     <div class="r3">${nsChip}${equipo}<span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
@@ -67633,6 +67641,7 @@ function adCard_(I) {
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${adExtraInsumos_(I)}
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
+    ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${srcTxt || xR ? `<div class="r2 ad-src"><span>${pcEsc(srcTxt)}</span>${xR ? (n => n ? `<span title="Personas">👥 ${n}</span>` : '')(Number(xR.b.NumberOfGuests) || (Number(xR.b.Adults) || 0) + (Number(xR.b.Children) || 0)) + (xR.noches ? `<span title="Noches">🌙 ${xR.noches}</span>` : '') : ''}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
     <div class="ad-eq">${equipo}</div>
