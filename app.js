@@ -71041,7 +71041,7 @@ window.rbInit_ = async function () {
 function rbRender_() {
   const root = document.getElementById('rb-root'); if (!root) return;
   if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
-  const P = ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => /limpieza/i.test(String(r.Puesto || '')) && !/inactiv|baja/i.test(String(r.Estado || '')) && !r.Fecha_retiro);
+  const P = ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => /limpieza|mantenimiento/i.test(String(r.Puesto || '')) && !/inactiv|baja/i.test(String(r.Estado || '')) && !r.Fecha_retiro);
   const nom = r => (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : [r.Nombre, r.Apellido_paterno, r.Apellido_materno].filter(Boolean).join(' ')) || r.Nombre;
   const L = (RB.reglas && RB.reglas.limpieza) || {}, eds = rbEdificios_(), opt = (v) => `<option value="">—</option>${eds.map(e => `<option ${e === v ? 'selected' : ''}>${pcEsc(e)}</option>`).join('')}`;
   const lun = RB.lunes || ckLunes_(aseoHoyIso_()), fechas = Array.from({ length: 7 }, (_, i) => { const d = tarParseIso_(lun); d.setDate(d.getDate() + i); return tarIso_(d); }), hoy = aseoHoyIso_();
@@ -71065,10 +71065,10 @@ function rbRender_() {
       .rb-sec{font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.06em;margin:4px 0 6px}</style>
     <div class="rb-w"><div class="rb-sec">Reglas y condiciones del bot</div>
       <div class="rb-h">a) Programación de limpiezas</div>
-      <div class="rb-s">Personal de limpieza con sus edificios prioritarios y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
+      <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios prioritarios y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
       <div class="rb-ley"><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
         <span class="rb-nav"><button type="button" onclick="rbSem_(-1)">‹</button><button type="button" onclick="rbSem_(0)" title="Semana actual">${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[0]))} – ${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[6]))}</button><button type="button" onclick="rbSem_(1)">›</button></span></div>
-      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal de limpieza</th><th>Edificio prioritario</th><th>Otro edificio prioritario</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
+      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal de limpieza y mantenimiento</th><th>Edificio prioritario</th><th>Otro edificio prioritario</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
       <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
       <div class="rb-h" style="margin-top:22px">b) Duración estimada de limpieza por tipo de alojamiento</div>
       <div class="rb-s">Un renglón por cada «tipo» del catálogo de alojamientos. Escribe los minutos que toma una limpieza de salida; se guarda solo.</div>
