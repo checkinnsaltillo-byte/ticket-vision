@@ -71024,8 +71024,8 @@ function rbTrasladosHtml_() {
       return `<td><input type="number" min="0" max="600" step="1" class="rb-in" value="${T[k] != null ? T[k] : ''}" placeholder="min" title="${pcEsc(a)} ↔ ${pcEsc(b)} (minutos)" onchange="rbTr_(${pcEsc(JSON.stringify(k))},this.value)"></td>`; }).join('')}</tr>`).join('')}
   </tbody></table></div>`;
 }
-// d) Horario laboral general (predeterminado 8:30 a 13:30).
-const RB_HORARIO = { entrada: '08:30', salida: '13:30' };
+// d) Horario laboral general (predeterminado 9:00 a 13:30).
+const RB_HORARIO = { entrada: '09:00', salida: '13:30' };
 function rbHorario_() { return Object.assign({}, RB_HORARIO, (RB.reglas && RB.reglas.horario) || {}); }
 function rbHoraTxt_(h) { const [a, b] = String(h || '').split(':').map(Number); if (isNaN(a)) return ''; return `${a % 12 || 12}:${String(b || 0).padStart(2, '0')} ${a < 12 ? 'a.m.' : 'p.m.'}`; }
 window.rbHor_ = async function (k, v) {
@@ -71167,6 +71167,7 @@ function rbRender_() {
       .rb-ley{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11.5px;color:#64748b;margin:0 0 10px}.rb-ley .rb-c{cursor:default;min-width:0;padding:2px 8px}.rb-nav{display:inline-flex;align-items:center;gap:6px;margin-left:auto}.rb-nav button{all:unset;cursor:pointer;padding:4px 10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12px;font-weight:700;color:#334155}
       .rb-sec{font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.06em;margin:4px 0 6px}</style>
     <style>.np-tabs{display:inline-flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px}.np-tabs button{all:unset;cursor:pointer;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;color:#475569}.np-tabs button.on{background:#0f1729;color:#fff}
+      .rb-det{margin-top:22px;border:1px solid #e2e8f0;border-radius:12px;padding:0 14px 14px;background:#fff}.rb-det>summary{cursor:pointer;list-style:none;padding:12px 0;font-size:13.5px;font-weight:800;color:#4f46e5}.rb-det>summary::-webkit-details-marker{display:none}.rb-det>summary::before{content:'▸ ';color:#94a3b8}.rb-det[open]>summary::before{content:'▾ '}.rb-det>summary span{font-weight:600;color:#94a3b8;font-size:11.5px;margin-left:8px}
       .rbp-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:12px 14px;border-radius:12px;background:#eef2ff;border:1px solid #c7d2fe}
       .rbp-go{all:unset;cursor:pointer;padding:10px 16px;border-radius:10px;background:#4f46e5;color:#fff;font-size:13.5px;font-weight:800}.rbp-go:hover{background:#4338ca}
       .rbp{margin:0 0 18px;padding:14px;border:1px solid #e2e8f0;border-radius:12px;background:#fcfcff}
@@ -71179,14 +71180,14 @@ function rbRender_() {
     <div class="rb-w"><div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">🧹 Programar limpiezas del día:</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}">
       <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span></div>
       ${rbProgHtml_()}
-      <div class="rb-sec">Reglas y condiciones del bot</div>
       <div class="rb-h">a) Programación de limpiezas</div>
       <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios asignados y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
       <div class="rb-ley"><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
         <span class="rb-nav"><button type="button" onclick="rbSem_(-1)">‹</button><button type="button" onclick="rbSem_(0)" title="Semana actual">${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[0]))} – ${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[6]))}</button><button type="button" onclick="rbSem_(1)">›</button></span></div>
       <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal</th><th>Edificio asignado</th><th>Otro edificio asignado</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
       <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
-      <div class="rb-h" style="margin-top:22px">b) Duración estimada de limpieza por tipo de alojamiento</div>
+      <details class="rb-det" ${RB.detAb ? 'open' : ''} ontoggle="RB.detAb=this.open"><summary>⚙️ Reglas y condiciones del bot <span>b) Duración por tipo · c) Traslados · d) Horario laboral</span></summary>
+      <div class="rb-h" style="margin-top:14px">b) Duración estimada de limpieza por tipo de alojamiento</div>
       <div class="rb-s">Un renglón por cada «tipo» del catálogo de alojamientos. Escribe los minutos que toma una limpieza de salida; se guarda solo.</div>
       <div style="overflow-x:auto"><table class="rb-t" style="max-width:760px"><thead><tr><th>Tipo</th><th>Alojamientos</th><th style="width:150px">Duración (minutos)</th><th style="width:110px"></th></tr></thead>
       <tbody>${(() => { const T = rbTipos_(), D = (RB.reglas && RB.reglas.duraciones) || {}; return T.length ? T.map(([t, L]) => `<tr><td><b>${pcEsc(t)}</b></td><td style="color:#64748b;font-size:11.5px;white-space:normal;line-height:1.5"><b style="color:#0f172a">${L.length}</b> · ${pcEsc(L.filter(Boolean).sort((x, y) => x.localeCompare(y, 'es', { numeric: true })).join(', '))}</td>
@@ -71195,10 +71196,11 @@ function rbRender_() {
       <div class="rb-s">Minutos que toma ir de una propiedad a otra (el mismo tiempo en ambos sentidos). Solo propiedades con «Status» = Activo en la hoja de alojamientos. La diagonal queda vacía porque es la misma propiedad. Se guarda solo.</div>
       ${rbTrasladosHtml_()}
       <div class="rb-h" style="margin-top:22px">d) Horario laboral</div>
-      <div class="rb-s">Hora de entrada y de salida de la jornada normal. Predeterminado: 8:30 a.m. a 1:30 p.m. Se guarda solo.</div>
+      <div class="rb-s">Hora de entrada y de salida de la jornada normal. Predeterminado: 9:00 a.m. a 1:30 p.m. Se guarda solo.</div>
       ${(H => `<div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"><label style="font-size:11.5px;font-weight:700;color:#475569">Entrada<br><input type="time" class="rb-sel" style="min-width:0;width:130px;margin-top:4px" value="${H.entrada}" onchange="rbHor_('entrada',this.value)"></label>
         <label style="font-size:11.5px;font-weight:700;color:#475569">Salida<br><input type="time" class="rb-sel" style="min-width:0;width:130px;margin-top:4px" value="${H.salida}" onchange="rbHor_('salida',this.value)"></label>
         <span id="rb-hdur" style="font-size:12px;font-weight:700;color:#4f46e5;padding-bottom:7px">${rbHorDur_(H)}</span></div>`)(rbHorario_())}
+      </details>
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
     </div>`;
   try { clNavPaint_(); } catch (_) {}
