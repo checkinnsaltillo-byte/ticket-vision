@@ -9402,6 +9402,8 @@ app.post("/config/reglas-bot", async (req, res) => {
     const A = (req.body || {}).asist || {}, ES = ["tentativo", "confirmado", "falta", "sin", ""];
     const out = await _aseoMutate(_RB_OBJ, "reglasBot", d => {
       d.limpieza = Object.assign({}, d.limpieza, lim); d.asist = d.asist || {};
+      const DU = (req.body || {}).duraciones || {}; d.duraciones = d.duraciones || {}; // b) duración estimada de limpieza (minutos) por tipo de alojamiento
+      Object.keys(DU).slice(0, 50).forEach(t => { const v = Number(DU[t]); if (DU[t] === "" || DU[t] == null) delete d.duraciones[txt(t)]; else if (isFinite(v) && v >= 0 && v <= 1440) d.duraciones[txt(t)] = Math.round(v); });
       Object.keys(A).slice(0, 100).forEach(n => { const k = txt(n), m = d.asist[k] = d.asist[k] || {}; Object.entries(A[n] || {}).forEach(([f, e]) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || !ES.includes(e)) return; if (e) m[f] = e; else delete m[f]; }); });
       d.updated_at = new Date().toISOString(); d.updated_by = txt((req.body || {}).user); return d; });
     res.json({ ok: true, reglas: out });

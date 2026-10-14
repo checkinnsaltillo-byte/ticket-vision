@@ -70994,6 +70994,18 @@ window.rbClic_ = async function (n, iso, est) {
     if (!j.ok) throw new Error(j.error || 'Error'); RB.reglas = j.reglas; rbRender_(); const e2 = document.getElementById('rb-save'); if (e2) e2.textContent = '✓ Guardado'; }
   catch (e) { const e2 = document.getElementById('rb-save'); if (e2) e2.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
 };
+// b) Duración estimada de limpieza por tipo de alojamiento (columna «tipo» del catálogo), en minutos.
+function rbTipos_() { const c = new Map(); (typeof ALOJ_STATE !== 'undefined' && ALOJ_STATE.byHouseId ? [...ALOJ_STATE.byHouseId.values()] : []).forEach(r => { const t = String(r.tipo || '').trim(); if (!t) return; const a = c.get(t) || []; a.push(String(r.device_name || r.Device_name || '').toUpperCase()); c.set(t, a); }); return [...c.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es')); }
+function rbDurTxt_(m) { m = Number(m) || 0; if (!m) return ''; const h = Math.floor(m / 60), n = m % 60; return h ? `${h} h${n ? ' ' + n + ' min' : ''}` : `${n} min`; }
+window.rbDur_ = async function (t, v, inp) {
+  if (!RB.reglas) return; const D = RB.reglas.duraciones = RB.reglas.duraciones || {}; const m = v === '' ? '' : Math.max(0, Math.min(1440, Math.round(Number(v) || 0)));
+  if (m === '') delete D[t]; else D[t] = m;
+  const tx = inp && inp.closest('tr') && inp.closest('tr').querySelector('.rb-dt'); if (tx) tx.textContent = rbDurTxt_(m);
+  const el = document.getElementById('rb-save'); if (el) el.textContent = '⏳ Guardando…';
+  try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ duraciones: { [t]: m }, user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error'); RB.reglas = j.reglas; if (el) el.textContent = '✓ Guardado'; }
+  catch (e) { if (el) el.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
+};
 window.rbSem_ = function (d) { const l = tarParseIso_(RB.lunes || ckLunes_(aseoHoyIso_())); l.setDate(l.getDate() + 7 * d); RB.lunes = d ? tarIso_(l) : ckLunes_(aseoHoyIso_()); rbRender_(); };
 const RB_DIAS = [['L', 'Lun'], ['M', 'Mar'], ['Mi', 'Mié'], ['J', 'Jue'], ['V', 'Vie'], ['S', 'Sáb'], ['D', 'Dom']];
 function rbDias_(v) { const t = String(v || '').split(/[,\s/]+/).map(x => x.trim().toLowerCase()).filter(Boolean); return new Set(t.map(x => ({ l: 'L', lu: 'L', lun: 'L', m: 'M', ma: 'M', mar: 'M', mi: 'Mi', mie: 'Mi', 'mié': 'Mi', x: 'Mi', j: 'J', ju: 'J', jue: 'J', v: 'V', vi: 'V', vie: 'V', s: 'S', sa: 'S', sab: 'S', 'sáb': 'S', d: 'D', do: 'D', dom: 'D' })[x] || x)); }
@@ -71036,6 +71048,11 @@ function rbRender_() {
         <span class="rb-nav"><button type="button" onclick="rbSem_(-1)">‹</button><button type="button" onclick="rbSem_(0)" title="Semana actual">${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[0]))} – ${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[6]))}</button><button type="button" onclick="rbSem_(1)">›</button></span></div>
       <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal de limpieza</th><th>Edificio prioritario</th><th>Otro edificio prioritario</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
       <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
+      <div class="rb-h" style="margin-top:22px">b) Duración estimada de limpieza por tipo de alojamiento</div>
+      <div class="rb-s">Un renglón por cada «tipo» del catálogo de alojamientos. Escribe los minutos que toma una limpieza de salida; se guarda solo.</div>
+      <div style="overflow-x:auto"><table class="rb-t" style="max-width:760px"><thead><tr><th>Tipo</th><th>Alojamientos</th><th style="width:150px">Duración (minutos)</th><th style="width:110px"></th></tr></thead>
+      <tbody>${(() => { const T = rbTipos_(), D = (RB.reglas && RB.reglas.duraciones) || {}; return T.length ? T.map(([t, L]) => `<tr><td><b>${pcEsc(t)}</b></td><td style="color:#64748b;font-size:11.5px">${L.length} · ${pcEsc(L.filter(Boolean).slice(0, 12).join(', '))}${L.length > 12 ? '…' : ''}</td>
+        <td><input type="number" min="0" max="1440" step="5" class="rb-sel" style="min-width:0;width:110px" value="${D[t] != null ? D[t] : ''}" placeholder="min" onchange="rbDur_(${pcEsc(JSON.stringify(t))},this.value,this)"></td><td class="rb-dt" style="color:#4f46e5;font-weight:700;font-size:12px">${rbDurTxt_(D[t])}</td></tr>`).join('') : `<tr><td colspan="4" style="color:#94a3b8;padding:20px">⏳ Cargando alojamientos…</td></tr>`; })()}</tbody></table></div>
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
     </div>`;
   try { clNavPaint_(); } catch (_) {}
