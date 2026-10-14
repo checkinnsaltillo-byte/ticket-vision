@@ -58702,7 +58702,7 @@ function tdRender_() {
   const nFx = ckFxN_(TAR_STATE.fx, { tipo: '', prio: '' });
   const seg = `<div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="tarSetSection('tablero')">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="tarSetSection('registro')">Registro</button></div>`;
   const bar = `<div class="ck-bar">${ckHam_(TAR_STATE.filAb, nFx, 'TAR_STATE.filAb=!TAR_STATE.filAb;tdRender_()')}
-      ${TAR_STATE.cal ? '' : ckMesNavHtml_(ym, 'tdMesV_')}${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()')}
+      ${TAR_STATE.cal ? '' : ckMesNavHtml_(ym, 'tdMesV_')}${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()')}${TAR_STATE.cal ? tarCalSegHtml_() : ''}
       <span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       ${TAR_STATE.sub === 'rec' ? `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','Recordatorio')">＋ Recordatorio</button>`
@@ -59564,8 +59564,9 @@ function tarCalendarioHtml_() {
   else if (TAR_STATE.calView === 'dia') body = tarDiaHtml_();
   else if (TAR_STATE.calView === 'semana') body = tarSemanaHtml_();
   else body = tarMesHtml_();
-  return tabs + body;
+  return body; // la vista (día/semana/mes) se elige en la barra, junto al 📅 (igual que en Tareas)
 }
+function tarCalSegHtml_() { const v = TAR_STATE.calView, b = (k, l) => `<button type="button" class="${v === k ? 'on' : ''}" onclick="tarSetCalView('${k}')">${l}</button>`; return `<div class="ad-seg ckcal-seg">${b('dia', '📅 Por día')}${b('semana', '📆 Por semana')}${b('mes', '🗓️ Por mes')}</div>`; }
 window.tarSetCalView = function (k) { TAR_STATE.calView = k; const ym = TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7); TAR_STATE.calRef = tarIso_(tarToday_()).slice(0, 7) === ym ? tarToday_() : tarParseIso_(ym + '-01'); tarRender(); };
 window.tarCalNav = function (delta) {
   if (TAR_STATE.calView === 'mes' && typeof tdMes_ === 'function') return tdMes_(delta); // mismo mes que las flechitas de arriba
@@ -59579,11 +59580,8 @@ window.tarCalNav = function (delta) {
 window.tarCalHoy = function () { if (TAR_STATE.calView === 'mes' && typeof tdMesSet_ === 'function') return tdMesSet_(tarIso_(tarToday_()).slice(0, 7)); TAR_STATE.calRef = tarToday_(); tarRender(); };
 function tarNavBar_(titulo) {
   const b = 'all:unset;cursor:pointer;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;font-size:16px;font-weight:900;color:#334155';
-  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-    <button type="button" onclick="tarCalNav(-1)" style="${b}" title="Anterior">‹</button>
-    <button type="button" onclick="tarCalHoy()" title="Volver a hoy" style="all:unset;cursor:pointer;padding:6px 14px;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;font-size:13px;font-weight:800;color:#0f172a;min-width:150px;text-align:center">${titulo}</button>
-    <button type="button" onclick="tarCalNav(1)" style="${b}" title="Siguiente">›</button>
-  </div>`; // el periodo (día, semana o mes) va entre las flechitas; clic en él = volver a hoy
+  if (typeof ckMesCss_ === 'function') ckMesCss_(); // mismo controlador que el calendario de Tareas
+  return `<div class="ckcal-hd" style="margin:-12px -12px 10px;border-radius:12px 12px 0 0"><div class="ckcal-mn"><button type="button" onclick="tarCalNav(-1)" title="Anterior">‹</button><b onclick="tarCalHoy()" title="Volver a hoy" style="cursor:pointer">${titulo}</b><button type="button" onclick="tarCalNav(1)" title="Siguiente">›</button></div></div>`; // el periodo (día, semana o mes) va entre las flechitas; clic en él = volver a hoy
 }
 // Tareas que tocan en `iso`: vigentes (Activa) o con registro de ese día.
 function tarDelDia_(iso) {
