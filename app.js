@@ -71006,6 +71006,24 @@ window.rbDur_ = async function (t, v, inp) {
     if (!j.ok) throw new Error(j.error || 'Error'); RB.reglas = j.reglas; if (el) el.textContent = '✓ Guardado'; }
   catch (e) { if (el) el.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
 };
+// c) Tiempo de traslado entre propiedades (matriz triangular inferior; la llave es el par en orden alfabético).
+function rbTrK_(a, b) { return [a, b].sort((x, y) => x.localeCompare(y, 'es')).join('|'); }
+window.rbTr_ = async function (k, v) {
+  if (!RB.reglas) return; const T = RB.reglas.traslados = RB.reglas.traslados || {}; const m = v === '' ? '' : Math.max(0, Math.min(600, Math.round(Number(v) || 0)));
+  if (m === '') delete T[k]; else T[k] = m;
+  const el = document.getElementById('rb-save'); if (el) el.textContent = '⏳ Guardando…';
+  try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ traslados: { [k]: m }, user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error'); RB.reglas = j.reglas; if (el) el.textContent = '✓ Guardado'; }
+  catch (e) { if (el) el.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
+};
+function rbTrasladosHtml_() {
+  const E = rbEdificios_(), T = (RB.reglas && RB.reglas.traslados) || {};
+  if (!E.length) return '<div class="rb-s">⏳ Cargando propiedades…</div>';
+  return `<div style="overflow-x:auto"><table class="rb-t rb-tri"><thead><tr><th>Desde \\ hasta</th>${E.map(e => `<th class="rb-th-v"><span>${pcEsc(e)}</span></th>`).join('')}</tr></thead><tbody>
+    ${E.map((a, i) => `<tr><td class="rb-n"><b>${pcEsc(a)}</b></td>${E.map((b, j) => { if (j === i) return '<td class="rb-dg"></td>'; if (j > i) return '<td class="rb-up"></td>'; const k = rbTrK_(a, b);
+      return `<td><input type="number" min="0" max="600" step="1" class="rb-in" value="${T[k] != null ? T[k] : ''}" placeholder="min" title="${pcEsc(a)} ↔ ${pcEsc(b)} (minutos)" onchange="rbTr_(${pcEsc(JSON.stringify(k))},this.value)"></td>`; }).join('')}</tr>`).join('')}
+  </tbody></table></div>`;
+}
 window.rbSem_ = function (d) { const l = tarParseIso_(RB.lunes || ckLunes_(aseoHoyIso_())); l.setDate(l.getDate() + 7 * d); RB.lunes = d ? tarIso_(l) : ckLunes_(aseoHoyIso_()); rbRender_(); };
 const RB_DIAS = [['L', 'Lun'], ['M', 'Mar'], ['Mi', 'Mié'], ['J', 'Jue'], ['V', 'Vie'], ['S', 'Sáb'], ['D', 'Dom']];
 function rbDias_(v) { const t = String(v || '').split(/[,\s/]+/).map(x => x.trim().toLowerCase()).filter(Boolean); return new Set(t.map(x => ({ l: 'L', lu: 'L', lun: 'L', m: 'M', ma: 'M', mar: 'M', mi: 'Mi', mie: 'Mi', 'mié': 'Mi', x: 'Mi', j: 'J', ju: 'J', jue: 'J', v: 'V', vi: 'V', vie: 'V', s: 'S', sa: 'S', sab: 'S', 'sáb': 'S', d: 'D', do: 'D', dom: 'D' })[x] || x)); }
@@ -71039,6 +71057,8 @@ function rbRender_() {
       .rb-sel{all:unset;box-sizing:border-box;min-width:140px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12px;cursor:pointer}
       .rb-d{text-align:center;width:56px}.rb-c{all:unset;box-sizing:border-box;cursor:pointer;display:inline-block;min-width:42px;padding:3px 0;border-radius:7px;font-size:11px;font-weight:700;border:1.5px solid transparent;text-align:center}
       .rb-c.sin{background:#e5e7eb;color:#9aa1ad}.rb-c.tentativo{background:#f1f5f9;color:#64748b;border:1.5px dashed #16a34a}.rb-c.confirmado{background:#16a34a;color:#fff}.rb-c.falta{background:#dc2626;color:#fff}.rb-c:hover{filter:brightness(.95);outline:2px solid #c7d2fe}
+      .rb-tri td{padding:4px;text-align:center}.rb-tri .rb-n{text-align:left;white-space:nowrap}.rb-in{all:unset;box-sizing:border-box;width:58px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;font-size:12px;text-align:center}.rb-in:focus{border-color:#818cf8}
+      .rb-dg{background:repeating-linear-gradient(45deg,#f1f5f9,#f1f5f9 4px,#e2e8f0 4px,#e2e8f0 8px)}.rb-up{background:#fafafa}.rb-th-v{text-align:center!important;font-size:10px!important;max-width:70px;white-space:normal}
       .rb-ley{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11.5px;color:#64748b;margin:0 0 10px}.rb-ley .rb-c{cursor:default;min-width:0;padding:2px 8px}.rb-nav{display:inline-flex;align-items:center;gap:6px;margin-left:auto}.rb-nav button{all:unset;cursor:pointer;padding:4px 10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12px;font-weight:700;color:#334155}
       .rb-sec{font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.06em;margin:4px 0 6px}</style>
     <div class="rb-w"><div class="rb-sec">Reglas y condiciones del bot</div>
@@ -71053,6 +71073,9 @@ function rbRender_() {
       <div style="overflow-x:auto"><table class="rb-t" style="max-width:760px"><thead><tr><th>Tipo</th><th>Alojamientos</th><th style="width:150px">Duración (minutos)</th><th style="width:110px"></th></tr></thead>
       <tbody>${(() => { const T = rbTipos_(), D = (RB.reglas && RB.reglas.duraciones) || {}; return T.length ? T.map(([t, L]) => `<tr><td><b>${pcEsc(t)}</b></td><td style="color:#64748b;font-size:11.5px">${L.length} · ${pcEsc(L.filter(Boolean).slice(0, 12).join(', '))}${L.length > 12 ? '…' : ''}</td>
         <td><input type="number" min="0" max="1440" step="5" class="rb-sel" style="min-width:0;width:110px" value="${D[t] != null ? D[t] : ''}" placeholder="min" onchange="rbDur_(${pcEsc(JSON.stringify(t))},this.value,this)"></td><td class="rb-dt" style="color:#4f46e5;font-weight:700;font-size:12px">${rbDurTxt_(D[t])}</td></tr>`).join('') : `<tr><td colspan="4" style="color:#94a3b8;padding:20px">⏳ Cargando alojamientos…</td></tr>`; })()}</tbody></table></div>
+      <div class="rb-h" style="margin-top:22px">c) Tiempo de traslado entre propiedades</div>
+      <div class="rb-s">Minutos que toma ir de una propiedad a otra (el mismo tiempo en ambos sentidos). La diagonal queda vacía porque es la misma propiedad. Se guarda solo.</div>
+      ${rbTrasladosHtml_()}
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
     </div>`;
   try { clNavPaint_(); } catch (_) {}
