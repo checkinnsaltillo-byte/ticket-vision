@@ -71017,7 +71017,7 @@ window.rbTr_ = async function (k, v) {
   catch (e) { if (el) el.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
 };
 function rbTrasladosHtml_() {
-  const E = rbEdificios_(), T = (RB.reglas && RB.reglas.traslados) || {};
+  const E = rbEdificios_(true), T = (RB.reglas && RB.reglas.traslados) || {};
   if (!E.length) return '<div class="rb-s">⏳ Cargando propiedades…</div>';
   return `<div style="overflow-x:auto"><table class="rb-t rb-tri"><thead><tr><th>Desde \\ hasta</th>${E.map(e => `<th class="rb-th-v"><span>${pcEsc(e)}</span></th>`).join('')}</tr></thead><tbody>
     ${E.map((a, i) => `<tr><td class="rb-n"><b>${pcEsc(a)}</b></td>${E.map((b, j) => { if (j === i) return '<td class="rb-dg"></td>'; if (j > i) return '<td class="rb-up"></td>'; const k = rbTrK_(a, b);
@@ -71027,11 +71027,13 @@ function rbTrasladosHtml_() {
 window.rbSem_ = function (d) { const l = tarParseIso_(RB.lunes || ckLunes_(aseoHoyIso_())); l.setDate(l.getDate() + 7 * d); RB.lunes = d ? tarIso_(l) : ckLunes_(aseoHoyIso_()); rbRender_(); };
 const RB_DIAS = [['L', 'Lun'], ['M', 'Mar'], ['Mi', 'Mié'], ['J', 'Jue'], ['V', 'Vie'], ['S', 'Sáb'], ['D', 'Dom']];
 function rbDias_(v) { const t = String(v || '').split(/[,\s/]+/).map(x => x.trim().toLowerCase()).filter(Boolean); return new Set(t.map(x => ({ l: 'L', lu: 'L', lun: 'L', m: 'M', ma: 'M', mar: 'M', mi: 'Mi', mie: 'Mi', 'mié': 'Mi', x: 'Mi', j: 'J', ju: 'J', jue: 'J', v: 'V', vi: 'V', vie: 'V', s: 'S', sa: 'S', sab: 'S', 'sáb': 'S', d: 'D', do: 'D', dom: 'D' })[x] || x)); }
-function rbEdificios_() { const S = new Set(); (typeof atAlojs_ === 'function' ? atAlojs_() : []).forEach(a => { const p = String(a.propiedad || '').replace(/^Calle\s+/i, '').trim(); if (p && !/^ED\.\s/i.test(p)) S.add(p); /* «ED. …» = registro del edificio, no una propiedad */ }); return [...S].sort((a, b) => a.localeCompare(b, 'es')); }
+function rbEdificios_(soloActivas) {
+  if (soloActivas && typeof ALOJ_STATE !== 'undefined' && (ALOJ_STATE.rows || []).length) { const S = new Set(); ALOJ_STATE.rows.forEach(r => { if (!/^activ/i.test(String(r.Status || r.status || '').trim())) return; const p = String(r.Propiedad || '').replace(/^Calle\s+/i, '').trim(); if (p && !/^ED\.\s/i.test(p)) S.add(p); }); return [...S].sort((a, b) => a.localeCompare(b, 'es')); } // columna «Status» = Activo
+  const S = new Set(); (typeof atAlojs_ === 'function' ? atAlojs_() : []).forEach(a => { const p = String(a.propiedad || '').replace(/^Calle\s+/i, '').trim(); if (p && !/^ED\.\s/i.test(p)) S.add(p); /* «ED. …» = registro del edificio, no una propiedad */ }); return [...S].sort((a, b) => a.localeCompare(b, 'es')); }
 window.rbInit_ = async function () {
   const root = document.getElementById('rb-root'); if (!root) return;
   if (typeof INC_STATE !== 'undefined' && !(INC_STATE.personalRows || []).length && typeof incLoadPersonal === 'function') incLoadPersonal().then(rbRender_).catch(() => {});
-  if (typeof ALOJ_STATE !== 'undefined' && !ALOJ_STATE.loaded && typeof lgLoadAlojamientos === 'function') lgLoadAlojamientos().then(rbRender_).catch(() => {});
+  if (typeof _alojFetchAndIndex === 'function') _alojFetchAndIndex().then(rbRender_).catch(() => {}); // catálogo fresco (tipos y propiedades recién cambiados en la hoja)
   rbRender_();
   if (!RB.asis && !RB.asisPed) { RB.asisPed = 1; fetch(`${BACKEND}/rh/asistencia?_cb=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).then(j => { RB.asis = (j.rows || j.data || []).map(x => ({ n: ckNorm_(x.Empleado_Nombre || ''), f: String(x.Fecha || '').slice(0, 10), c: ckNorm_(x.Concepto || 'asistencia') })); rbRender_(); }).catch(() => { RB.asisPed = 0; }); }
   if (!RB.cargando) { RB.cargando = true; try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { cache: 'no-store' }).then(r => r.json()); RB.reglas = (j && j.reglas) || {}; } catch (_) { RB.reglas = RB.reglas || {}; } RB.cargando = false; rbRender_(); }
@@ -71044,7 +71046,7 @@ function rbRender_() {
   const L = (RB.reglas && RB.reglas.limpieza) || {}, eds = rbEdificios_(), opt = (v) => `<option value="">—</option>${eds.map(e => `<option ${e === v ? 'selected' : ''}>${pcEsc(e)}</option>`).join('')}`;
   const lun = RB.lunes || ckLunes_(aseoHoyIso_()), fechas = Array.from({ length: 7 }, (_, i) => { const d = tarParseIso_(lun); d.setDate(d.getDate() + i); return tarIso_(d); }), hoy = aseoHoyIso_();
   const filas = P.map(r => { const n = nom(r), D = rbDias_(r.Dias_trabajo), x = L[n] || {};
-    return `<tr><td class="rb-n"><b>${pcEsc(n)}</b><small>${pcEsc(r.Puesto || '')}</small></td>
+    return `<tr><td class="rb-n" title="${pcEsc(n)}"><b>${pcEsc(typeof aseoNombreCorto_ === 'function' ? aseoNombreCorto_(n) : n)}</b><small>${pcEsc(r.Puesto || '')}</small></td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed1',this.value)">${opt(x.ed1)}</select></td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed2',this.value)">${opt(x.ed2)}</select></td>
       ${RB_DIAS.map(([k, t], i) => { const f = fechas[i], e = rbEstado_(n, f, D.has(k)), man = !!(((RB.reglas || {}).asist || {})[n] || {})[f];
@@ -71074,7 +71076,7 @@ function rbRender_() {
       <tbody>${(() => { const T = rbTipos_(), D = (RB.reglas && RB.reglas.duraciones) || {}; return T.length ? T.map(([t, L]) => `<tr><td><b>${pcEsc(t)}</b></td><td style="color:#64748b;font-size:11.5px">${L.length} · ${pcEsc(L.filter(Boolean).slice(0, 12).join(', '))}${L.length > 12 ? '…' : ''}</td>
         <td><input type="number" min="0" max="1440" step="5" class="rb-sel" style="min-width:0;width:110px" value="${D[t] != null ? D[t] : ''}" placeholder="min" onchange="rbDur_(${pcEsc(JSON.stringify(t))},this.value,this)"></td><td class="rb-dt" style="color:#4f46e5;font-weight:700;font-size:12px">${rbDurTxt_(D[t])}</td></tr>`).join('') : `<tr><td colspan="4" style="color:#94a3b8;padding:20px">⏳ Cargando alojamientos…</td></tr>`; })()}</tbody></table></div>
       <div class="rb-h" style="margin-top:22px">c) Tiempo de traslado entre propiedades</div>
-      <div class="rb-s">Minutos que toma ir de una propiedad a otra (el mismo tiempo en ambos sentidos). La diagonal queda vacía porque es la misma propiedad. Se guarda solo.</div>
+      <div class="rb-s">Minutos que toma ir de una propiedad a otra (el mismo tiempo en ambos sentidos). Solo propiedades con «Status» = Activo en la hoja de alojamientos. La diagonal queda vacía porque es la misma propiedad. Se guarda solo.</div>
       ${rbTrasladosHtml_()}
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
     </div>`;
