@@ -52940,25 +52940,34 @@ window.botcFxRefrescar_ = function (btn) {
 function _botcFxAseoHtml_(bk, a, d, nInc) {
   if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
   if (typeof ASEO !== 'undefined' && !ASEO.ts && !BOTC_STATE.fxAseoPedido && typeof aseoRefresh_ === 'function') { BOTC_STATE.fxAseoPedido = 1; aseoRefresh_().then(() => { try { _waRenderModal(true); } catch (_) {} }).catch(() => {}); }
+  if (!document.getElementById('fxc-css')) { const st = document.createElement('style'); st.id = 'fxc-css'; st.textContent = `.fxc{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-family:Inter,system-ui,sans-serif}
+    .fxc-r{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+    .fxc-b{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:6px;min-width:0;padding:5px 8px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-size:11.5px;font-weight:600;color:#334155;white-space:nowrap}
+    .fxc-b:hover{border-color:#c7d2fe;background:#f8faff}.fxc-b .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+    .fxc-b.red{border-color:#fca5a5;background:#fef2f2;color:#b91c1c}.fxc-b.mute{cursor:default;color:#9aa1ad;background:#f8fafc}.fxc-b.mute:hover{border-color:#e5e7eb;background:#f8fafc}
+    .fxc-sw{flex:none;width:22px;height:12px;border-radius:999px;background:#cbd5e1;position:relative}.fxc-sw::after{content:'';position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:#fff;transition:left .15s}.fxc-sw.on{background:#dc2626}.fxc-sw.on::after{left:12px}
+    .fxc-s{display:flex;align-items:center;gap:4px;min-width:0;padding:4px 6px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-size:11px;color:#334155}
+    .fxc-s .k{font-weight:700;white-space:nowrap}.fxc-s .ad-link{font-size:11px;padding:0;margin-left:auto}.fxc-s .ad-st{font-size:10px;padding:1px 6px}.fxc-s .ad-x{margin-left:auto}.fxc-s input{max-width:86px;font-size:11px;padding:1px 4px}
+    .fxc-s.mute{background:#f8fafc;color:#9aa1ad}`; document.head.appendChild(st); }
   const R = repBk_(bk) || {}, bid = String(bk.LodgifyId || (/^\d+$/.test(String(bk.Id || '')) ? bk.Id : '') || ''), hid = R.hid || '', hoy = aseoHoyIso_();
   const E = pcEsc, eb = E(bid), id = E(String(waBookingId_(bk)));
-  const inc = `<div class="fx-lab">Reportar incidencia</div><div class="ad-tgl" onclick="${nInc ? `waSetTab_('reportes')` : `botcFxReportar_('${id}')`}"><div><b>${nInc ? `⚠️ ${nInc} incidencia${nInc === 1 ? '' : 's'}` : 'Reportar incidencia'}</b><small>${nInc ? 'Ver los reportes de esta reserva' : 'Abre el formulario de incidencia con esta reserva'}</small></div><span class="ad-sw ${nInc ? 'red' : 'off'}"></span></div>
-    ${nInc ? `<div class="ad-addrow"><button type="button" class="ad-link" onclick="botcFxReportar_('${id}')">＋ Reportar otra incidencia</button></div>` : ''}`;
-  if (!bid || typeof ASEO === 'undefined') return inc;
+  // Renglón 1: incidencia (reportar / ver las que hay + «＋») · desalojo (solo el día de salida)
+  const inc = nInc ? `<button type="button" class="fxc-b red" onclick="waSetTab_('reportes')" title="Ver los reportes de esta reserva"><span class="t">⚠️ ${nInc} incidencia${nInc === 1 ? '' : 's'}</span><span onclick="event.stopPropagation();botcFxReportar_('${id}')" title="Reportar otra incidencia" style="font-weight:800">＋</span></button>`
+    : `<button type="button" class="fxc-b" onclick="botcFxReportar_('${id}')" title="Abre el formulario de incidencia con esta reserva"><span class="t">⚠️ Incidencia</span><span style="margin-left:auto;font-weight:800;color:#4f46e5">＋</span></button>`;
+  if (!bid || typeof ASEO === 'undefined') return `<div class="fxc"><div class="fxc-r">${inc}</div></div>`;
+  const noSale = !!(ASEO.nosale || {})[bid];
+  const des = d === hoy ? `<button type="button" class="fxc-b ${noSale ? 'red' : ''}" onclick="botcFxAseo_(()=>aseoNoSale_('${eb}','${E(hid)}',${!noSale}))" title="${noSale ? 'Clic cuando ya haya salido' : 'Activa la alerta si el huésped sigue adentro'}"><span class="t">🚪 ${noSale ? 'No ha salido' : '¿No ha salido?'}</span><span class="fxc-sw ${noSale ? 'on' : ''}"></span></button>`
+    : `<span class="fxc-b mute" title="«¿No ha desalojado?» se activa el día de salida"><span class="t">🚪 ${d && d > hoy ? 'Sale ' + (x => `${x.getDate()} ${TAR_MESES[x.getMonth()]}`)(tarParseIso_(d)) : 'Ya salió'}</span></span>`;
+  // Renglón 2: solicitudes (salida tardía · entrada temprana) con hora, aceptación y quitar
   const sol = (tipo, aplica, rec) => {
-    const k = tipo === 'tard' ? 'Salida tardía' : 'Entrada temprana';
-    if (!aplica) return `<div class="ad-box mute"><div class="k">${k}</div><div class="v">—</div></div>`;
-    if (!rec) return `<div class="ad-box"><div class="k">${k}</div><button type="button" class="ad-link" onclick="botcFxAseo_(()=>${tipo === 'tard' ? `aseoTardPost_('${eb}',{on:true})` : `aseoTemprana_('${eb}')`})">＋ Registrar solicitud</button></div>`;
-    const acc = tipo === 'tard' ? `aseoTardAceptar_('${eb}',${!rec.aceptada})` : `aseoTempAceptar_('${eb}',${!rec.aceptada})`;
-    const quitar = tipo === 'tard' ? `aseoTardPost_('${eb}',{on:false})` : `aseoTemprana_('${eb}')`;
-    return `<div class="ad-box"><div class="k">${k}<button type="button" class="ad-x" title="Quitar solicitud" onclick="botcFxAseo_(()=>${quitar})">✕</button></div>
-      <div class="v">${aseoHoraInput_(bid, rec.hora, tipo === 'tard' ? 'tard' : 'temp', true)}<button type="button" class="ad-st ${rec.aceptada ? 'ok' : ''}" onclick="botcFxAseo_(()=>${acc})" title="${rec.aceptada ? 'Clic para retirar la aceptación' : 'Clic para aceptar'}">${rec.aceptada ? 'Aceptada' : 'Pendiente · aceptar'}</button></div></div>`;
+    const k = tipo === 'tard' ? '🕚 Salida tardía' : '⏰ Entrada temprana', kc = tipo === 'tard' ? '🕚 Tardía' : '⏰ Temprana';
+    if (!aplica) return `<div class="fxc-s mute" title="${k}: ya no aplica"><span class="k">${kc}</span><span style="margin-left:auto">—</span></div>`;
+    if (!rec) return `<div class="fxc-s" title="${k}: sin solicitud"><span class="k">${kc}</span><button type="button" class="ad-link" style="font-weight:800" onclick="botcFxAseo_(()=>${tipo === 'tard' ? `aseoTardPost_('${eb}',{on:true})` : `aseoTemprana_('${eb}')`})" title="Registrar solicitud de ${k.slice(3).toLowerCase()}">＋</button></div>`;
+    const acc = tipo === 'tard' ? `aseoTardAceptar_('${eb}',${!rec.aceptada})` : `aseoTempAceptar_('${eb}',${!rec.aceptada})`, quitar = tipo === 'tard' ? `aseoTardPost_('${eb}',{on:false})` : `aseoTemprana_('${eb}')`;
+    return `<div class="fxc-s" style="flex-wrap:wrap" title="${k}"><span class="k">${kc}</span>${aseoHoraInput_(bid, rec.hora, tipo === 'tard' ? 'tard' : 'temp', true)}<button type="button" class="ad-st ${rec.aceptada ? 'ok' : ''}" onclick="botcFxAseo_(()=>${acc})" title="${rec.aceptada ? 'Clic para retirar la aceptación' : 'Clic para aceptar'}">${rec.aceptada ? '✓ Aceptada' : 'Aceptar'}</button><button type="button" class="ad-x" title="Quitar solicitud" onclick="botcFxAseo_(()=>${quitar})">✕</button></div>`;
   };
   const tmp = (ASEO.temprana || {})[bid], recTemp = tmp && tmp.on ? tmp : null;
-  const sols = `<div class="fx-lab">Solicitudes</div><div class="ad-grid2">${sol('tard', d && d >= hoy, aseoTardRec_(bid))}${sol('temp', a && a >= hoy, recTemp)}</div>`;
-  const noSale = !!(ASEO.nosale || {})[bid];
-  const des = d === hoy ? `<div class="fx-lab">Desalojo</div><div class="ad-tgl" onclick="botcFxAseo_(()=>aseoNoSale_('${eb}','${E(hid)}',${!noSale}))"><div><b>${noSale ? 'El huésped NO ha desalojado' : '¿No ha desalojado?'}</b><small>${noSale ? 'Clic cuando ya haya salido' : 'Activa la alerta si el huésped sigue adentro'}</small></div><span class="ad-sw ${noSale ? 'red' : 'off'}"></span></div>` : '';
-  return inc + sols + des;
+  return `<div class="fxc"><div class="fxc-r">${inc}${des}</div><div class="fxc-r">${sol('tard', d && d >= hoy, aseoTardRec_(bid))}${sol('temp', a && a >= hoy, recTemp)}</div></div>`;
 }
 window.botcFxAseo_ = async function (fn) { try { await fn(); } catch (_) {} [80, 1500].forEach(t => setTimeout(() => { try { _waRenderModal(true); } catch (_) {} }, t)); };
 // «Reportar incidencia» desde una reserva de la Ficha: formulario de incidencia con esa reserva (campo «Reserva» prellenado).
