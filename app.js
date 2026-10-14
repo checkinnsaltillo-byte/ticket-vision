@@ -9148,7 +9148,7 @@ const _VALID_MODULES = new Set([
   'home','tickets','registros','huespedes','lodgify','reservas-detalles',
   'breezeway','aseo','incidencias','objetos','reportes-tecnicos','ocupacion',
   'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias',
-  'config-admin','llaves','bot-chats','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','mantenimiento','mensajes',
+  'config-admin','llaves','bot-chats','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','reglasbot','mantenimiento','mensajes',
 ]);
 function _bootModuleFromHash_() {
   const h = (location.hash || '').replace(/^#/, '').trim();
@@ -9178,7 +9178,7 @@ function clNavHtml_(act) {
   const items = (clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '✅ Tareas', 'aseo', enTareas) : '')
     + (!MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (!MPn && clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '')
     + (!MPn && clPuede_('tareas') ? b('tareas', '📝 Levantamientos', 'tareas') : '');
-  const pl = !MPn && clPuede_('aseo') ? `<div class="cl-g cl-der">${b('plantillas', '📋 Plantillas', 'plantillas')}</div>` : '';
+  const pl = !MPn && clPuede_('aseo') ? `<div class="cl-g cl-der">${b('plantillas', '📋 Plantillas', 'plantillas')}${b('reglasbot', '🤖 Reglas bot', 'reglasbot')}</div>` : '';
   const sub = enTareas && window.ASEO ? `<div class="cl-sub">${CL_SUBS.map(([k, ico, t]) => { const D = AT_DEPTO[k] || {}; return `<button type="button" class="cl-sb ${(ASEO.sub || 'todos') === k ? 'on' : ''}" style="--c:${D.c || '#0f1729'}" onclick="clSub_('${k}')">${ico || D.ico} ${t || D.t}</button>`; }).join('')}</div>` : '';
   return items.trim() || pl ? `<div class="cl-nav">${items.trim() ? `<div class="cl-g">${items}</div>` : ''}${pl}</div>${sub}` : '';
 }
@@ -9275,7 +9275,7 @@ function switchModule(mod) {
   if (mod === 'mantenimiento') mod = 'aseo';
   // Permisos: un módulo no asignado (p. ej. por enlace #modulo) manda a Inicio.
   if (window.SYS_ALLOWED && mod !== 'home') {
-    const permKey = (mod === 'dashboard' || mod === 'calendario') ? 'ocupacion' : mod === 'plantillas' ? 'aseo' : mod; // Plantillas y Mantenimiento son parte de Check-Flow
+    const permKey = (mod === 'dashboard' || mod === 'calendario') ? 'ocupacion' : mod === 'plantillas' || mod === 'reglasbot' ? 'aseo' : mod; // Plantillas, Reglas bot y Mantenimiento son parte de Check-Flow
     if (!window.SYS_ALLOWED.has(permKey) && !window.SYS_ALLOWED.has(mod)) mod = 'home';
   }
   // Legacy: 'ocupacion' como módulo top-level se trata como Dashboard
@@ -9297,7 +9297,7 @@ function switchModule(mod) {
     const greet = document.getElementById('user-greeting');
     if (greet) greet.style.display = '';
   } catch(_){}
-  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "mensajes"].forEach(m => {
+  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "reglasbot", "mensajes"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== containerMod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === containerMod);
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === containerMod);
@@ -9430,6 +9430,7 @@ function switchModule(mod) {
     if (typeof icInit_ === 'function') icInit_(); // Check-Flow › Incidencias (nuevo diseño)
   }
   if (mod === "plantillas" && typeof plInit_ === 'function') plInit_(); // Check-Flow › 📋 Plantillas
+  if (mod === "reglasbot" && typeof rbInit_ === 'function') rbInit_(); // Check-Flow › 🤖 Reglas bot
   if (mod === "mensajes" && typeof abnInit_ === 'function') abnInit_(); // 💬 Mensajes Airbnb
   if (mod === "objetos") {
     if (typeof objInit === 'function') objInit(); // formulario anterior (lo sigue usando Gestión de reservas)
@@ -66567,7 +66568,7 @@ function aseoEnsureCss_() {
   .ad-qs button.on{background:#fff;color:#0f1729;font-weight:600;box-shadow:0 1px 2px rgba(16,24,40,.12);cursor:default}.ad-qs button.on i{opacity:1}
   .ad-card.tipo.ghost{border-left:4px solid var(--tc)}
   .ad-card.tipo.alert,.ad-card.tipo.sel{border-left-color:var(--tc)}
-  .ad-card .r2 .ty{font-weight:600}.ad-card .r2 .pr{color:#4f46e5;font-weight:600}
+  .ad-card .r2 .ty{font-weight:600}.ad-card .r2 .pr{color:#4f46e5;font-weight:600}.ad-card .ad-camas{font-size:11px;font-weight:600;color:#475569;white-space:nowrap;margin-left:6px}.ad-card .r2 .ad-camas{margin-left:0}
   .oc-task.ty-limpieza{border-left:3px solid #0ea5e9}.oc-task.ty-inspeccion{border-left:3px solid #8b5cf6}.oc-task.ty-mantenimiento{border-left:3px solid #f97316}.oc-task.ty-administrativo{border-left:3px solid #0f766e}
   .ad-v2 .mv-pf-c.ad-ty i{width:9px;height:9px;border-radius:3px;background:var(--tc)}
   .ad-tt{font-size:14px;font-weight:600;margin-top:6px}
@@ -67584,6 +67585,13 @@ function axDetalle_(k, autoCO, hid, dia) {
     ${autoCO ? '<div class="ad-hint">Asignado automáticamente: la card se generó en la fecha de salida de la reserva.</div>' : ''}
     <div class="ad-tgl" style="margin-top:10px" onclick="${axIncClick_(k, inc, hid, dia)}"><div><b>${inc ? axIncTxt_(k) : 'Reportar incidencia'}</b><small>${inc ? 'Ver los detalles de la incidencia' : 'Abre el formulario de incidencia con este alojamiento y fecha'}</small></div><span class="ad-sw ${inc ? 'red' : 'off'}"></span></div>`;
 }
+// Camas del alojamiento («2 (Matrimonial)») y alerta de insumos extra si la estancia es de más de 7 noches.
+function adCamasHtml_(hid) {
+  const r = hid && typeof ALOJ_STATE !== 'undefined' && ALOJ_STATE.byHouseId ? ALOJ_STATE.byHouseId.get(String(hid)) : null; if (!r) return '';
+  const n = String(r.camas || '').trim(), t = String(r['Tamaño Cama'] || r.cama_tipo || '').trim(); if (!n && !t) return '';
+  return `<span class="ad-camas" title="Camas del alojamiento">🛏 ${pcEsc(n || '?')}${t ? ` (${pcEsc(t)})` : ''}</span>`;
+}
+function adExtraInsumos_(I) { const x = I.xe || I.xs, n = x ? Number(x.noches) || 0 : 0; return n > 7 ? `<div class="flag orange" title="Estancia de ${n} noches: preparar insumos extra"><i></i>📦 Extra insumos · ${n} noches</div>` : ''; }
 // ── Card compacta del tablero ──
 function adCard_(I) {
   const ultTxt = !I.g.sal.length && !I.esCopia ? (I.diasUlt == null ? 'Sin salida previa' : I.diasUlt === 0 ? 'Salida hoy' : `Salida hace ${I.diasUlt} día${I.diasUlt === 1 ? '' : 's'}`) : '';
@@ -67593,7 +67601,7 @@ function adCard_(I) {
   if (I.temp) meta.push(`<span>Entra <b>${aseoHoraTxt_(I.temp.hora || '12:00')}</b> <span class="${I.temp.aceptada ? 'ok' : 'pd'}">· ${I.temp.aceptada ? 'temprano aceptada' : 'temprano pendiente'}</span></span>`);
   const plB = plBarra_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId); // barra de avance de la plantilla, debajo de los estados
   const catP = axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0);
-  meta.unshift(catP);
+  meta.unshift(catP); { const cm = adCamasHtml_(I.hid); if (cm) meta.splice(1, 0, cm); }
   // «No ha desalojado»: primer chip de la card de cada alojamiento con salida hoy
   const nsChip = I.xs && I.esHoyC && !I.esCopia ? aseoNoSaleChip_(I.xs.b.Id, I.hid) : ''; // va en el renglón de acciones (r3)
   if (I.prioritaria) meta.splice(1, 0, '<span class="pr">Prioritaria</span>');
@@ -67612,7 +67620,8 @@ function adCard_(I) {
     return `<div class="ad-card tipo est-tint ad-simp ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
-    <div class="r2">${catP}</div>
+    <div class="r2">${catP}${adCamasHtml_(I.hid)}</div>
+    ${adExtraInsumos_(I)}
     <div class="r3">${nsChip}${equipo}<span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
@@ -67622,6 +67631,7 @@ function adCard_(I) {
     <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
     ${I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
+    ${adExtraInsumos_(I)}
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
     ${srcTxt || xR ? `<div class="r2 ad-src"><span>${pcEsc(srcTxt)}</span>${xR ? (n => n ? `<span title="Personas">👥 ${n}</span>` : '')(Number(xR.b.NumberOfGuests) || (Number(xR.b.Adults) || 0) + (Number(xR.b.Children) || 0)) + (xR.noches ? `<span title="Noches">🌙 ${xR.noches}</span>` : '') : ''}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
@@ -70958,6 +70968,55 @@ window.plInit_ = async function () {
   const root = document.getElementById('pl-root'); if (!root) return;
   if (!ASEO.pl.cargado) { root.innerHTML = plHead_() + '<div class="pl-hint">⏳ Cargando plantillas…</div>'; await plCargar_(); }
   plPintar_();
+};
+// ═══ Check-Flow › 🤖 Reglas bot: reglas y condiciones con las que el bot organiza el trabajo ═══
+// a) Programación de limpiezas: personal de limpieza · 2 edificios prioritarios (se guardan en config/reglas-bot.json) ·
+//    días que labora (de su expediente en Personal: «Dias_trabajo», p. ej. «L,M,Mi,J,V»).
+const RB = { reglas: null, cargando: false };
+const RB_DIAS = [['L', 'Lun'], ['M', 'Mar'], ['Mi', 'Mié'], ['J', 'Jue'], ['V', 'Vie'], ['S', 'Sáb'], ['D', 'Dom']];
+function rbDias_(v) { const t = String(v || '').split(/[,\s/]+/).map(x => x.trim().toLowerCase()).filter(Boolean); return new Set(t.map(x => ({ l: 'L', lu: 'L', lun: 'L', m: 'M', ma: 'M', mar: 'M', mi: 'Mi', mie: 'Mi', 'mié': 'Mi', x: 'Mi', j: 'J', ju: 'J', jue: 'J', v: 'V', vi: 'V', vie: 'V', s: 'S', sa: 'S', sab: 'S', 'sáb': 'S', d: 'D', do: 'D', dom: 'D' })[x] || x)); }
+function rbEdificios_() { const S = new Set(); (typeof atAlojs_ === 'function' ? atAlojs_() : []).forEach(a => { const p = String(a.propiedad || '').replace(/^Calle\s+/i, '').trim(); if (p && !/^ED\.\s/i.test(p)) S.add(p); /* «ED. …» = registro del edificio, no una propiedad */ }); return [...S].sort((a, b) => a.localeCompare(b, 'es')); }
+window.rbInit_ = async function () {
+  const root = document.getElementById('rb-root'); if (!root) return;
+  if (typeof INC_STATE !== 'undefined' && !(INC_STATE.personalRows || []).length && typeof incLoadPersonal === 'function') incLoadPersonal().then(rbRender_).catch(() => {});
+  if (typeof ALOJ_STATE !== 'undefined' && !ALOJ_STATE.loaded && typeof lgLoadAlojamientos === 'function') lgLoadAlojamientos().then(rbRender_).catch(() => {});
+  rbRender_();
+  if (!RB.cargando) { RB.cargando = true; try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { cache: 'no-store' }).then(r => r.json()); RB.reglas = (j && j.reglas) || {}; } catch (_) { RB.reglas = RB.reglas || {}; } RB.cargando = false; rbRender_(); }
+};
+function rbRender_() {
+  const root = document.getElementById('rb-root'); if (!root) return;
+  if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
+  const P = ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => /limpieza/i.test(String(r.Puesto || '')) && !/inactiv|baja/i.test(String(r.Estado || '')) && !r.Fecha_retiro);
+  const nom = r => (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : [r.Nombre, r.Apellido_paterno, r.Apellido_materno].filter(Boolean).join(' ')) || r.Nombre;
+  const L = (RB.reglas && RB.reglas.limpieza) || {}, eds = rbEdificios_(), opt = (v) => `<option value="">—</option>${eds.map(e => `<option ${e === v ? 'selected' : ''}>${pcEsc(e)}</option>`).join('')}`;
+  const filas = P.map(r => { const n = nom(r), D = rbDias_(r.Dias_trabajo), x = L[n] || {};
+    return `<tr><td class="rb-n"><b>${pcEsc(n)}</b><small>${pcEsc(r.Puesto || '')}</small></td>
+      <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed1',this.value)">${opt(x.ed1)}</select></td>
+      <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed2',this.value)">${opt(x.ed2)}</select></td>
+      ${RB_DIAS.map(([k, t]) => `<td class="rb-d"><span class="${D.has(k) ? 'on' : ''}" title="${D.has(k) ? 'Labora' : 'Descansa'}">${t}</span></td>`).join('')}</tr>`; }).join('');
+  root.innerHTML = `<div class="cl-title">🛠️ Check-Flow</div><div class="cl-nav-slot" data-act="reglasbot">${clNavHtml_('reglasbot')}</div>
+    <style>.rb-w{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;font-family:Inter,system-ui,sans-serif;max-width:1100px}
+      .rb-h{font-size:15px;font-weight:800;color:#0f172a;margin:0 0 4px}.rb-s{font-size:12px;color:#64748b;margin:0 0 12px}
+      .rb-t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}.rb-t th{font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:8px;border-bottom:1px solid #e8eaee;background:#f8fafc}
+      .rb-t td{padding:7px 8px;border-bottom:1px solid #f0f1f4;vertical-align:middle}.rb-n b{display:block;color:#0f172a}.rb-n small{color:#94a3b8;font-size:11px}
+      .rb-sel{all:unset;box-sizing:border-box;min-width:140px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12px;cursor:pointer}
+      .rb-d{text-align:center;width:52px}.rb-d span{display:inline-block;min-width:38px;padding:4px 0;border-radius:7px;font-size:11px;font-weight:700;background:#e5e7eb;color:#9aa1ad}.rb-d span.on{background:#16a34a;color:#fff}
+      .rb-sec{font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.06em;margin:4px 0 6px}</style>
+    <div class="rb-w"><div class="rb-sec">Reglas y condiciones del bot</div>
+      <div class="rb-h">a) Programación de limpiezas</div>
+      <div class="rb-s">Personal de limpieza con sus edificios prioritarios y los días que labora (tomados de su expediente en Personal › «Días de trabajo»). <span style="color:#16a34a;font-weight:700">Verde</span> = labora · <span style="color:#9aa1ad;font-weight:700">gris</span> = descansa. Los edificios se guardan solos.</div>
+      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal de limpieza</th><th>Edificio prioritario</th><th>Otro edificio prioritario</th>${RB_DIAS.map(([, t]) => `<th style="text-align:center">${t}</th>`).join('')}</tr></thead>
+      <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
+      <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
+    </div>`;
+  try { clNavPaint_(); } catch (_) {}
+}
+window.rbSet_ = async function (n, k, v) {
+  if (!RB.reglas) return; const L = RB.reglas.limpieza = RB.reglas.limpieza || {}; L[n] = Object.assign({ ed1: '', ed2: '' }, L[n], { [k]: v });
+  const el = document.getElementById('rb-save'); if (el) el.textContent = '⏳ Guardando…';
+  try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limpieza: { [n]: L[n] }, user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error'); RB.reglas = j.reglas; if (el) el.textContent = '✓ Guardado'; }
+  catch (e) { if (el) el.textContent = '⚠️ No se pudo guardar: ' + (e.message || e); }
 };
 function plHead_() { return `<div class="cl-nav-slot" data-act="plantillas">${typeof clNavHtml_ === 'function' ? clNavHtml_('plantillas') : ''}</div>`; }
 function plPintar_() {
