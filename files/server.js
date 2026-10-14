@@ -9379,6 +9379,14 @@ app.get("/config/hu-reglas", async (req, res) => {
 });
 app.post("/config/hu-reglas", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = (req.body || {}).reglas || {}, out = {};
+    for (const k of _HUR_KEYS) { const v = Number(b[k]); if (isFinite(v) && v >= 0) out[k] = v; }
+    out.updated_at = new Date().toISOString(); out.updated_by = String((req.body || {}).user || "").slice(0, 80);
+    await _rhdPut(_HUR_OBJ, JSON.stringify(out), "application/json");
+    res.json({ ok: true, reglas: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // Check-Flow › 🤖 Reglas bot: gs://…/config/reglas-bot.json → { limpieza: { <persona>: { ed1, ed2 } }, updated_at, updated_by }
 const _RB_OBJ = "config/reglas-bot.json";
 app.get("/config/reglas-bot", async (req, res) => {
@@ -9391,14 +9399,6 @@ app.post("/config/reglas-bot", async (req, res) => {
     const b = (req.body || {}).limpieza || {}, txt = v => String(v || "").trim().slice(0, 80), lim = {};
     Object.keys(b).slice(0, 100).forEach(n => { const x = b[n] || {}; lim[txt(n)] = { ed1: txt(x.ed1), ed2: txt(x.ed2) }; });
     const out = await _aseoMutate(_RB_OBJ, "reglasBot", d => { d.limpieza = Object.assign({}, d.limpieza, lim); d.updated_at = new Date().toISOString(); d.updated_by = txt((req.body || {}).user); return d; });
-    res.json({ ok: true, reglas: out });
-  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
-});
-  try {
-    const b = (req.body || {}).reglas || {}, out = {};
-    for (const k of _HUR_KEYS) { const v = Number(b[k]); if (isFinite(v) && v >= 0) out[k] = v; }
-    out.updated_at = new Date().toISOString(); out.updated_by = String((req.body || {}).user || "").slice(0, 80);
-    await _rhdPut(_HUR_OBJ, JSON.stringify(out), "application/json");
     res.json({ ok: true, reglas: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
