@@ -69072,28 +69072,71 @@ window.npAyuda_ = function () {
   dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">❓ Reglas del bot</b><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></div>
       <div class="ad-sub">Resumen de cómo funciona el bot con el personal</div></div>
     <div class="ad-db">${NP_REGLAS.map(([ico, tit, sub, L]) => `<div class="np-rg"><div class="np-rg-h"><span>${ico}</span><b>${tit}</b></div>${sub ? `<div class="np-rg-s">${sub}</div>` : ''}<ul>${L.map(x => `<li>${x}</li>`).join('')}</ul></div>`).join('')}</div>
-    <div class="ad-ft"><span></span><button type="button" class="ad-bt pri" onclick="npPintar_()">← Volver</button></div>`;
+    <div class="ad-ft"><span></span><button type="button" class="ad-bt pri" onclick="${ASEO._np && ASEO._np.host ? 'adCerrar_()' : 'npPintar_()'}">${ASEO._np && ASEO._np.host ? 'Cerrar' : '← Volver'}</button></div>`;
   dr.querySelector('.ad-db').scrollTop = 0;
 };
-// Configuración admin › 🤖 Check-Flow Bot: resumen del estado y acceso a la ventana.
+// Configuración admin › 🤖 Check-Flow Bot: página completa (ya no ventana lateral): 👥 Personal · 🧪 Simulador.
 async function npCfgRender_(host) {
-  const A0 = ASEO.autonotif || {};
-  const pinta = A => {
-    const P = Object.entries(A.perfiles || {}), adm = P.filter(([, p]) => p.rol === 'admin').length, emp = P.filter(([, p]) => p.rol === 'empleado').length;
-    host.innerHTML = `<div style="max-width:720px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px 22px;font-family:Inter,system-ui,sans-serif">
-      <div style="display:flex;align-items:center;gap:12px"><div style="font-size:28px">🤖</div><div><div style="font-size:17px;font-weight:800;color:#0f172a">Check-Flow Bot</div>
-        <div style="font-size:12.5px;color:#64748b">Mensajes automáticos por WhatsApp, permisos del bot por persona y pruebas del bot.</div></div></div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:16px 0">
-        <span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;background:${A.on ? '#dcfce7' : '#f1f5f9'};color:${A.on ? '#15803d' : '#64748b'}">${A.on ? '🟢 Mensajes automáticos activos' : '⚪ Mensajes automáticos apagados'}</span>
-        <span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;background:#eef2ff;color:#4338ca">${adm} administrador${adm === 1 ? '' : 'es'}</span>
-        <span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;background:#e0f2fe;color:#0369a1">${emp} empleado${emp === 1 ? '' : 's'}</span>
-      </div>
-      <button type="button" onclick="npAbrir_()" style="padding:10px 18px;font-size:13.5px;font-weight:700;background:#111827;color:#fff;border:0;border-radius:10px;cursor:pointer">🤖 Abrir Check-Flow Bot</button>
-    </div>`;
-  };
-  pinta(A0);
-  try { const j = await fetch(`${BACKEND}/aseo/autonotif`).then(r => r.json()); if (j.ok) { ASEO.autonotif = j.autonotif || {}; if (CFG_ADMIN.tab === 'clbot') pinta(ASEO.autonotif); } } catch (_) {}
+  if (typeof pcEnsureStyles_ === 'function') pcEnsureStyles_();
+  if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
+  const prev = ASEO._np || {};
+  ASEO._np = { on: !!(ASEO.autonotif || {}).on, perfiles: npPerfiles_(), abierto: '', q: '', listo: false, host, tab: prev.tab || 'personal', sim: prev.sim || 'emp' };
+  npPintar_();
+  const pers = (typeof INC_STATE !== 'undefined' && (INC_STATE.personalRows || []).length) || typeof incLoadPersonal !== 'function' ? null : incLoadPersonal().catch(() => null);
+  try { const j = await fetch(`${BACKEND}/aseo/autonotif`).then(r => r.json()); if (j.ok) ASEO.autonotif = j.autonotif || {}; } catch (_) {}
+  await pers;
+  if (!ASEO._np || ASEO._np.host !== host) return;
+  Object.assign(ASEO._np, { on: !!(ASEO.autonotif || {}).on, perfiles: npPerfiles_(), listo: true });
+  npPintar_();
 }
+window.npTab_ = function (t) { ASEO._np.tab = t; npPintar_(); };
+window.npSimTab_ = function (t) { ASEO._np.sim = t; npPintar_(); };
+// ── Simular huésped: reserva (hoy ± 3 días), fecha, proceso o mensaje libre ──
+let NP_PROCS_HU = null;
+function npProcsHu_() {
+  if (NP_PROCS_HU) return NP_PROCS_HU;
+  if (!npProcsHu_.c) { npProcsHu_.c = 1; fetch(`${BACKEND}/bot/simular-huesped/procesos`).then(r => r.json()).then(j => { NP_PROCS_HU = j.procesos || []; npPintar_(); }).catch(() => { npProcsHu_.c = 0; }); }
+  return [];
+}
+function npResHu_() { // reservas que tocan hoy, los 3 días anteriores o los 3 siguientes
+  if (typeof PAGOS_STATE !== 'undefined' && !PAGOS_STATE.loaded && !npResHu_.c && typeof pagosLoad === 'function') { npResHu_.c = 1; pagosLoad().then(() => { if (ASEO._np && ASEO._np.host) npPintar_(); }).catch(() => { npResHu_.c = 0; }); }
+  const hoy = aseoHoyIso_(), d = n => { const x = tarParseIso_(hoy); x.setDate(x.getDate() + n); return tarIso_(x); }, a = d(-3), z = d(3);
+  return (typeof pcMovBookings_ === 'function' ? pcMovBookings_() : []).filter(b => /^(booked|tentative)$/i.test(String(b.Status || '').trim())).filter(b => { const i = _pagosDateIso(b.DateArrival), o = _pagosDateIso(b.DateDeparture); return i && o && i <= z && o >= a; })
+    .map(b => { const al = typeof atAloj_ === 'function' ? atAloj_(b.HouseId) : { corto: '' }; return { b, cod: String(al.corto || '').toUpperCase(), i: _pagosDateIso(b.DateArrival), o: _pagosDateIso(b.DateDeparture) }; })
+    .sort((x, y) => x.cod.localeCompare(y.cod, 'es', { numeric: true }) || x.i.localeCompare(y.i));
+}
+function npSimHuHtml_() {
+  const L = npResHu_(), S = ASEO._np.hu = ASEO._np.hu || { fecha: aseoHoyIso_(), res: '', canal: 'whatsapp' };
+  return `<div class="np-prueba" style="background:#f0f9ff;border-color:#bae6fd">
+    <div class="np-lab" style="margin-top:0">Reserva <span style="font-weight:400;color:#64748b">· hoy, 3 días antes y 3 después</span></div>
+    <select class="at-in np-hu-res" onchange="ASEO._np.hu.res=this.value">${L.length ? '<option value="">Elige la reserva…</option>' + L.map(x => `<option value="${pcEsc(String(x.b.Id))}" ${S.res === String(x.b.Id) ? 'selected' : ''}>${pcEsc(x.cod || '—')} · ${pcEsc(x.b.GuestName || 'Huésped')} · ${pcEsc(aseoDiaTxt_(x.i))} → ${pcEsc(aseoDiaTxt_(x.o))} · ${pcEsc(x.b.Source || '')}</option>`).join('') : '<option value="">⏳ Cargando reservas…</option>'}</select>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div><div class="np-lab">Fecha</div><input type="date" class="at-in" style="width:auto" value="${S.fecha}" onchange="ASEO._np.hu.fecha=this.value||aseoHoyIso_()"></div>
+      <div><div class="np-lab">Canal</div><div class="ad-steps" style="grid-template-columns:repeat(2,1fr);min-width:220px">${[['whatsapp', '🟢 WhatsApp'], ['airbnb', '🔴 Airbnb']].map(([k, t]) => `<button type="button" class="${S.canal === k ? 'on' : ''}" style="--c:${k === 'airbnb' ? '#e11d48' : '#16a34a'}" onclick="ASEO._np.hu.canal='${k}';npPintar_()">${t}</button>`).join('')}</div></div>
+    </div>
+    <div class="np-lab">Proceso a simular</div>
+    <select class="at-in np-hu-proc">${npProcsHu_().map(x => `<option value="${x.k}" title="${pcEsc(x.msg)}">${pcEsc(x.t)} — «${pcEsc(x.msg)}»</option>`).join('') || '<option value="">⏳ Cargando procesos…</option>'}</select>
+    <div class="np-lab">O escribe un mensaje</div>
+    <textarea class="at-in np-hu-msg" rows="2" style="width:100%;box-sizing:border-box;resize:vertical" placeholder="Lo que escribe el huésped por WhatsApp o Airbnb: «¿a qué hora es el check-out?», «no hay agua caliente»…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();npSimHu_(this.closest('.np-prueba').querySelector('.np-go'))}"></textarea>
+    <button type="button" class="ad-bt pri np-go" style="display:block;width:100%;margin-top:8px" onclick="npSimHu_(this)">▶ Simular mensaje del huésped</button>
+    <div class="np-hint">Se usa el mismo bot que atiende a los huéspedes, con los datos de esa reserva y la fecha elegida como «hoy». Si escribes un mensaje se simula ese mensaje; si no, el proceso elegido. No se envía nada al huésped ni se guarda nada.</div>
+    <pre class="np-sim" style="display:none"></pre>
+  </div>`;
+}
+window.npSimHu_ = async function (btn) {
+  const box = btn.closest('.np-prueba'), out = box.querySelector('.np-sim'), S = ASEO._np.hu, mensaje = box.querySelector('.np-hu-msg').value.trim(), proc = box.querySelector('.np-hu-proc').value;
+  const x = npResHu_().find(y => String(y.b.Id) === String(S.res));
+  if (!x) { out.style.display = ''; out.textContent = 'Elige la reserva.'; return; }
+  if (!mensaje && !proc) return;
+  btn.disabled = true; const t0 = btn.textContent; btn.textContent = '⏳ Simulando…';
+  try {
+    const b = x.b, reserva = { Id: b.Id, HouseId: b.HouseId, GuestName: b.GuestName, DateArrival: x.i, DateDeparture: x.o, NumberOfGuests: b.NumberOfGuests || (Number(b.Adults) || 0) + (Number(b.Children) || 0), Source: b.Source, Status: b.Status, RoomTypeName: (typeof atAloj_ === 'function' ? atAloj_(b.HouseId).nombre : '') || b.RoomTypeName || '' };
+    const j = await fetch(`${BACKEND}/bot/simular-huesped`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reserva, fecha: S.fecha, proceso: mensaje ? '' : proc, mensaje, canal: S.canal }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error');
+    out.style.display = ''; out.textContent = j.texto;
+  } catch (e) { out.style.display = ''; out.textContent = '⚠️ ' + (e.message || e); }
+  finally { btn.disabled = false; btn.textContent = t0; }
+};
 window.npAbrir_ = async function () {
   if (typeof pcEnsureStyles_ === 'function') pcEnsureStyles_();
   ASEO._np = { on: !!(ASEO.autonotif || {}).on, perfiles: npPerfiles_(), abierto: '', q: '', listo: false };
@@ -69137,7 +69180,9 @@ function npFila_(n) {
   </div>`;
 }
 function npPintar_() {
-  const N = ASEO._np, dr = atShell_();
+  const N = ASEO._np;
+  if (N.host && document.body.contains(N.host)) return npPintarPagina_();
+  const dr = atShell_();
   const nombres = (typeof pzNombres_ === 'function' ? pzNombres_() : []).slice();
   Object.keys(N.perfiles).forEach(n => { if (!nombres.includes(n)) nombres.unshift(n); });
   const q = N.q.toLowerCase();
@@ -69156,6 +69201,33 @@ function npPintar_() {
     </div>
     <div class="ad-ft"><span class="np-save" id="np-save">Los cambios se guardan solos</span><button type="button" class="ad-bt pri" onclick="adCerrar_()">Listo</button></div>`;
   if (!(typeof pzNombres_ === 'function' ? pzNombres_() : []).length) setTimeout(() => { if (ASEO._dr && ASEO._dr.k === 'np') { const ab = ASEO._np.abierto; npPintar_(); ASEO._np.abierto = ab; } }, 900);
+}
+function npPintarPagina_() {
+  const N = ASEO._np, host = N.host;
+  const nombres = (typeof pzNombres_ === 'function' ? pzNombres_() : []).slice();
+  Object.keys(N.perfiles).forEach(n => { if (!nombres.includes(n)) nombres.unshift(n); });
+  const q = N.q.toLowerCase(), L = nombres.filter(n => !q || n.toLowerCase().includes(q)).sort((a, b) => (N.perfiles[b] ? 1 : 0) - (N.perfiles[a] ? 1 : 0) || a.localeCompare(b, 'es'));
+  const conPerfil = Object.values(N.perfiles).filter(p => p.rol).length;
+  const tab = (k, t) => `<button type="button" class="${N.tab === k ? 'on' : ''}" onclick="npTab_('${k}')">${t}</button>`, sub = (k, t) => `<button type="button" class="${N.sim === k ? 'on' : ''}" onclick="npSimTab_('${k}')">${t}</button>`;
+  const y = window.scrollY;
+  host.innerHTML = `<div class="np-page" style="max-width:860px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 22px;font-family:Inter,system-ui,sans-serif">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="font-size:26px">🤖</div><div style="flex:1;min-width:200px"><div style="font-size:17px;font-weight:800;color:#0f172a">Check-Flow Bot</div>
+      <div style="font-size:12.5px;color:#64748b">Permisos y mensajes del bot por persona · ${conPerfil} persona${conPerfil === 1 ? '' : 's'} con funciones asignadas</div></div>
+      <span class="np-save" id="np-save">${N.listo ? 'Los cambios se guardan solos' : '⏳ Cargando…'}</span><button type="button" class="ad-bt" onclick="npAyuda_()" title="Reglas del bot">❓ Reglas del bot</button></div>
+    <style>.np-tabs{display:inline-flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px}.np-tabs button{all:unset;cursor:pointer;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;color:#475569}.np-tabs button:hover{background:#e2e8f0}.np-tabs button.on{background:#0f1729;color:#fff}.np-tabs.sm button{font-size:12.5px;padding:6px 12px}</style>
+    <div class="np-tabs" style="margin:16px 0 4px">${tab('personal', '👥 Personal')}${tab('sim', '🧪 Simulador')}</div>
+    <div class="ad-db np-inline" style="overflow:visible;padding:0;flex:none">
+    ${N.tab === 'personal' ? `<div class="lab">Personal · permisos y mensajes que recibe</div>
+      <input class="at-in" placeholder="🔎 Buscar persona…" value="${pcEsc(N.q)}" oninput="ASEO._np.q=this.value;npPintarLista_()">
+      <div class="np-list" id="np-list">${L.map(npFila_).join('') || '<div class="at-hint">⏳ Cargando personal…</div>'}</div>`
+    : `<div class="np-tabs sm" style="margin:12px 0">${sub('emp', '👷 a) Simular empleado')}${sub('hu', '🧳 b) Simular huésped')}</div>
+      ${N.sim === 'emp' ? `<div class="lab">Mensajes automáticos</div>
+        <div class="ad-tgl" onclick="npOn_()"><div><b>Mensajes automáticos</b><small>${N.on ? 'Activos: resumen de las 2 pm, alertas y avisos a los administradores' : 'Apagados: el bot no envía nada por su cuenta'}</small></div><span class="ad-sw ${N.on ? '' : 'off'}"></span></div>
+        <button type="button" class="ad-bt" style="display:block;width:100%;margin-top:8px;box-sizing:border-box" onclick="mvNotificar_(null)">📣 Enviar ahora la lista actualizada de Aseo y Mantenimiento</button>
+        ${npPruebaHtml_()}` : `<div class="lab">🧳 Prueba del bot con huéspedes</div>${npSimHuHtml_()}`}`}
+    </div></div>`;
+  window.scrollTo(0, y);
+  if (!(typeof pzNombres_ === 'function' ? pzNombres_() : []).length) setTimeout(() => { if (ASEO._np && ASEO._np.host === host && document.body.contains(host)) npPintar_(); }, 900);
 }
 function npPintarLista_() {
   const box = document.getElementById('np-list'); if (!box) return;

@@ -1911,7 +1911,7 @@ async function _botExecTool(toolUse, ctx) {
   const name = String(toolUse.name || "");
   const args = toolUse.input || {};
   if (ctx && ctx.simular && _BOT_SIM_ESCRIBE.has(name)) {
-    if (_BOT_SIM_SOLO_ADMIN[name] && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: `Solo los administradores pueden ${_BOT_SIM_SOLO_ADMIN[name]}.`, instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
+    if (_BOT_SIM_SOLO_ADMIN[name] && !ctx.simHuesped && !(await _aseoPuedeCierre(ctx))) return { content: JSON.stringify({ ok: false, error: `Solo los administradores pueden ${_BOT_SIM_SOLO_ADMIN[name]}.`, instruccion: "Responde exactamente el error en 1 línea." }), notifyText: null };
     return { content: JSON.stringify({ ok: true, simulacion: true, instruccion: `SIMULACIÓN: no se guardó ni se avisó nada. Responde exactamente como lo harías si ${name} se hubiera realizado con éxito con estos datos: ${JSON.stringify(args).slice(0, 400)}.${(await _aseoPuedeCierre(ctx)) ? "" : " Esta persona NO es administradora: no le ofrezcas datos del huésped ni funciones de administrador."}` }), notifyText: null };
   }
   const bk = ctx.booking || {};
@@ -10127,6 +10127,48 @@ const _BOT_SIM = {
   recordatorio: { t: "Recordatorio diario (al registrar su entrada)" },
   auto_2pm: { t: "Resumen automático de las 2 pm" },
 };
+// ── Simulador de HUÉSPED: el mismo prompt, contexto de la reserva y herramientas que una conversación real
+// (WhatsApp/Airbnb), sin enviar ni guardar nada. «fecha» simula el día en que escribe el huésped.
+const _BOT_SIM_HU = {
+  llegada: { t: "Llegada / instrucciones de acceso", msg: "Hola, ya voy llegando, ¿cómo entro al departamento?" },
+  wifi: { t: "Clave del WiFi", msg: "¿Cuál es la clave del wifi?" },
+  temprana: { t: "Entrada temprana", msg: "¿Puedo hacer check-in a las 11 am?" },
+  tardia: { t: "Salida tardía", msg: "¿Me puedo quedar hasta la 1 pm el día de salida?" },
+  extension: { t: "Extender la estancia", msg: "Quisiera quedarme una noche más, ¿hay disponibilidad y cuánto cuesta?" },
+  falla: { t: "Reportar una falla", msg: "No funciona el aire acondicionado de la recámara" },
+  insumos: { t: "Faltan insumos", msg: "Ya no hay papel de baño ni jabón" },
+  limpieza: { t: "Problema de limpieza", msg: "Las sábanas están manchadas" },
+  objeto: { t: "Objeto olvidado", msg: "Creo que dejé mi cargador en el departamento" },
+  factura: { t: "Factura / ticket", msg: "Necesito factura de mi estancia" },
+  pago: { t: "Método de pago", msg: "¿Puedo pagar con transferencia?" },
+  estacionamiento: { t: "Estacionamiento", msg: "¿Dónde me puedo estacionar?" },
+  reglamento: { t: "Reglamento (mascotas, visitas, ruido)", msg: "¿Puedo llevar a mi perro?" },
+  recomendaciones: { t: "Recomendaciones de la zona", msg: "¿Qué lugares para comer me recomiendan cerca?" },
+  checkout: { t: "Instrucciones de salida", msg: "¿Qué tengo que hacer al salir? ¿Dónde dejo las llaves?" },
+};
+app.get("/bot/simular-huesped/procesos", (req, res) => res.json({ ok: true, procesos: Object.entries(_BOT_SIM_HU).map(([k, v]) => ({ k, t: v.t, msg: v.msg })) }));
+app.post("/bot/simular-huesped", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, bk = b.reserva || {}, libre = String(b.mensaje || "").trim().slice(0, 1000);
+    const P = libre ? { msg: libre } : _BOT_SIM_HU[String(b.proceso || "")];
+    if (!P || !bk.Id) return res.status(400).json({ ok: false, error: "Elige una reserva y un proceso o escribe un mensaje" });
+    const hoy = /^\d{4}-\d{2}-\d{2}$/.test(String(b.fecha || "")) ? String(b.fecha) : new Date().toLocaleDateString("sv-SE", { timeZone: "America/Mexico_City" });
+    const rows = await _botGetAlojRows().catch(() => []), hid = String(bk.HouseId || "");
+    const alojRow = rows.find(r => String(r.HouseId || "").trim() === hid || String(r.id_lodgify || "").trim() === hid) || {};
+    const booking = { Id: String(bk.Id), HouseId: hid, GuestName: String(bk.GuestName || ""), DateArrival: String(bk.DateArrival || "").slice(0, 10), DateDeparture: String(bk.DateDeparture || "").slice(0, 10),
+      NumberOfGuests: Number(bk.NumberOfGuests) || 0, Source: String(bk.Source || ""), Status: String(bk.Status || "Booked"), RoomTypeName: String(bk.RoomTypeName || bk.PropertyName || ""), PropertyName: String(bk.PropertyName || "") };
+    const sens = _botDetectSensitive(P.msg.toLowerCase());
+    if (sens) return res.json({ ok: true, texto: `🧪 Huésped: ${booking.GuestName || "—"}\n💬 «${P.msg}»\n\n🚨 Mensaje sensible (${sens}): el bot contestaría «Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏», pasaría la conversación a Manual y avisaría a los administradores.\n\n_(Simulación: no se envió ni se guardó nada)_` });
+    const context = _botBuildAlojamientoContext(alojRow, booking, [booking]);
+    const yr = hoy.slice(0, 4);
+    const system = BOT_SYSTEM_PROMPT_BASE + _botBuildPromptsBlock(await _botGetPrompts()) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${hoy} (America/Mexico_City).\n- AÑO ACTUAL: ${yr}. Úsalo por default si el huésped no menciona año; si esa fecha ya pasó, salta al año siguiente.` + context
+      + (String(b.canal || "") === "airbnb" ? `\n\nCANAL: esta conversación es por la mensajería de AIRBNB (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos.` : "");
+    const llm = await _botLlmLoop({ system, history: [], userMsg: P.msg, ctx: { phone10: "simhu", fromRaw: "", booking, alojRow, simular: true, simHuesped: true, msgTs: Date.now(), userMsg: P.msg } });
+    const tools = (llm.toolsUsed || []).map(t => t.name || t.tool).filter(Boolean);
+    res.json({ ok: true, texto: `🧪 Huésped: ${booking.GuestName || "—"} · ${booking.RoomTypeName || hid} · ${booking.DateArrival} → ${booking.DateDeparture} · día simulado ${hoy}\n💬 «${P.msg}»\n\n🤖 ${String(llm.text || "").trim() || "(sin respuesta)"}${tools.length ? `\n\n🛠 Acciones que haría: ${tools.join(", ")}` : ""}\n\n_(Simulación: no se envió ni se guardó nada)_` });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/bot/simular/procesos", (req, res) => res.json({ ok: true, procesos: Object.entries(_BOT_SIM).map(([k, v]) => ({ k, t: v.t })) }));
 // Simula un proceso como si lo pidiera «como» y envía la respuesta al WhatsApp de «perfil» (quien prueba).
 app.post("/bot/simular", async (req, res) => {
