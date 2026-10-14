@@ -58702,7 +58702,7 @@ function tdRender_() {
   const nFx = ckFxN_(TAR_STATE.fx, { tipo: '', prio: '' });
   const seg = `<div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="tarSetSection('tablero')">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="tarSetSection('registro')">Registro</button></div>`;
   const bar = `<div class="ck-bar">${ckHam_(TAR_STATE.filAb, nFx, 'TAR_STATE.filAb=!TAR_STATE.filAb;tdRender_()')}
-      ${ckMesNavHtml_(ym, 'tdMesV_')}${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()')}
+      ${TAR_STATE.cal ? '' : ckMesNavHtml_(ym, 'tdMesV_')}${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()')}
       <span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       ${TAR_STATE.sub === 'rec' ? `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','Recordatorio')">＋ Recordatorio</button>`
@@ -67211,6 +67211,7 @@ function aseoRender_() {
   const grid = document.getElementById('aseo-grid');
   if (grid) { grid.classList.toggle('con-cal', !!ASEO.cal); grid.classList.remove('solo-cal'); }
   const cb = document.getElementById('aseo-cal-btn'); if (cb) { cb.style.display = ''; cb.classList.toggle('on', !!ASEO.cal); cb.title = ASEO.cal ? 'Ocultar calendario' : 'Mostrar calendario'; }
+  { const dn = document.getElementById('aseo-dnav'); if (dn) dn.style.display = ASEO.cal && ckCalV_0_('aseo') !== 'aloj' ? 'none' : ''; } // con el calendario por semana/mes, su propio controlador manda
   if (cb) { let sl = document.getElementById('aseo-calv-slot'); if (!sl) { sl = document.createElement('span'); sl.id = 'aseo-calv-slot'; cb.after(sl); } sl.innerHTML = ASEO.cal ? ckCalSegHtml_('aseo') : ''; } // vista del calendario: siempre visible en la barra
   const tb = document.getElementById('aseo-todas-btn'); if (tb) tb.textContent = ASEO.todas ? '▾ Contraer todas' : '▸ Expandir todas las cards';
   // Solo se re-pinta si cambió algo (conserva el scroll del usuario).
