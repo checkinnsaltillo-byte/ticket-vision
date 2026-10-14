@@ -9400,7 +9400,18 @@ app.post("/config/reglas-bot", async (req, res) => {
     Object.keys(b).slice(0, 100).forEach(n => { const x = b[n] || {}; lim[txt(n)] = { ed1: txt(x.ed1), ed2: txt(x.ed2) }; });
     // Asistencia por día marcada a mano (tentativo · confirmado · falta · sin): { asist: { <persona>: { <YYYY-MM-DD>: estado } } }
     const A = (req.body || {}).asist || {}, ES = ["tentativo", "confirmado", "falta", "sin", ""];
+    let claimed = null;
     const out = await _aseoMutate(_RB_OBJ, "reglasBot", d => {
+      const B = req.body || {};
+      if (typeof B.auto === "boolean") d.auto = B.auto; // «Automática»: programar sola las limpiezas del día siguiente
+      // Asignaciones automáticas por confirmar: { pend: { "<asigId>|<rol>|<persona>" | "T<id>|<persona>": "YYYY-MM-DD" | null } }
+      if (B.pend && typeof B.pend === "object") { d.pend = d.pend || {}; Object.keys(B.pend).slice(0, 400).forEach(k => { const kk = String(k).slice(0, 200); if (B.pend[k]) d.pend[kk] = String(B.pend[k]).slice(0, 10); else delete d.pend[kk]; }); }
+      if (d.pend) Object.keys(d.pend).forEach(k => { if (String(d.pend[k]) < new Date(Date.now() - 20 * 864e5).toISOString().slice(0, 10)) delete d.pend[k]; }); // limpieza: > 20 días
+      // Candado del día programado en automático (solo una pestaña lo hace): { autoClaim: "YYYY-MM-DD" } · resultado: { autoRes: { fecha, n, err } }
+      d.autoHecho = d.autoHecho || {};
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(B.autoClaim || ""))) { if (d.autoHecho[B.autoClaim]) claimed = false; else { d.autoHecho[B.autoClaim] = { at: new Date().toISOString(), by: txt(B.user) }; claimed = true; } }
+      if (B.autoRes && /^\d{4}-\d{2}-\d{2}$/.test(String(B.autoRes.fecha || "")) && d.autoHecho[B.autoRes.fecha]) Object.assign(d.autoHecho[B.autoRes.fecha], { n: Number(B.autoRes.n) || 0, err: Number(B.autoRes.err) || 0, fin: new Date().toISOString() });
+      Object.keys(d.autoHecho).forEach(f => { if (f < new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10)) delete d.autoHecho[f]; });
       d.limpieza = Object.assign({}, d.limpieza, lim); d.asist = d.asist || {};
       const H = (req.body || {}).horario; // d) horario laboral { entrada: "HH:MM", salida: "HH:MM" }
       if (H && typeof H === "object") { d.horario = d.horario || {}; ["entrada", "salida"].forEach(k => { if (/^\d{2}:\d{2}$/.test(String(H[k] || ""))) d.horario[k] = H[k]; }); }
@@ -9410,7 +9421,7 @@ app.post("/config/reglas-bot", async (req, res) => {
       Object.keys(DU).slice(0, 50).forEach(t => { const v = Number(DU[t]); if (DU[t] === "" || DU[t] == null) delete d.duraciones[txt(t)]; else if (isFinite(v) && v >= 0 && v <= 1440) d.duraciones[txt(t)] = Math.round(v); });
       Object.keys(A).slice(0, 100).forEach(n => { const k = txt(n), m = d.asist[k] = d.asist[k] || {}; Object.entries(A[n] || {}).forEach(([f, e]) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || !ES.includes(e)) return; if (e) m[f] = e; else delete m[f]; }); });
       d.updated_at = new Date().toISOString(); d.updated_by = txt((req.body || {}).user); return d; });
-    res.json({ ok: true, reglas: out });
+    res.json({ ok: true, reglas: out, claimed });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

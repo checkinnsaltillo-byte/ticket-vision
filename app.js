@@ -66737,7 +66737,7 @@ function aseoEnsureCss_() {
   .flag.violet,.ad-badge.violet{color:#6d28d9}.flag.violet i,.ad-badge.violet i{background:#8b5cf6;box-shadow:0 0 0 3px #ede9fe}
   .ad-card.alert .flag.red i{animation:mvPulse 1.2s ease-in-out infinite;--ac:#dc2626}
   .ad-card .r2{display:flex;flex-wrap:wrap;align-items:center;gap:3px 0;margin-top:6px;color:var(--ad-mut);font-size:11.5px}
-  .ad-card .ad-solr{gap:5px!important}.ad-sol{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ad-sol.pd{background:#fff7ed;color:#c2410c;border:1px dashed #fdba74}.ad-sol.acc{cursor:pointer;background:#16a34a;color:#fff}.ad-sol.acc:hover{background:#15803d}.ad-sol.ok{cursor:pointer;background:#dcfce7;color:#15803d;border:1px solid #86efac}
+  .ad-nm.pend{border:1.5px dashed color-mix(in srgb,var(--pc) 75%,#111)!important;background:#fff!important}.ad-card .ad-solr{gap:5px!important}.ad-sol{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ad-sol.pd{background:#fff7ed;color:#c2410c;border:1px dashed #fdba74}.ad-sol.acc{cursor:pointer;background:#16a34a;color:#fff}.ad-sol.acc:hover{background:#15803d}.ad-sol.ok{cursor:pointer;background:#dcfce7;color:#15803d;border:1px solid #86efac}
   .ad-card .r2 b{color:var(--ad-tx);font-weight:600}
   .ad-card .r2 .sep{width:1px;height:10px;background:var(--ad-line);margin:0 8px}
   .ad-card .ok{color:#16a34a}.ad-card .pd{color:#b45309}.ad-card .vi{color:#6d28d9}
@@ -67033,6 +67033,7 @@ async function aseoRefresh_(force) {
     if (j.plidx && typeof plSyncIdx_ === 'function' && ASEO.pl && plSyncIdx_(j.plidx)) ASEO.cambio = true;
   } catch (e) { ASEO.netErr = e.message || 'sin conexión'; ASEO.chk = Date.now(); }
   mvSyncTick_();
+  if (typeof rbAutoTick_ === 'function') rbAutoTick_(); // pendientes por confirmar + «Automática»
 }
 // Barra "Última actualización" (Panel › Movimientos del día y Control de aseo).
 // Verde ≤ 75 s · ámbar ≤ 3 min · rojo si es más viejo o hubo error. El reloj avanza cada segundo.
@@ -67316,7 +67317,10 @@ function adPuesto_(n) { // puesto en Personal (por nombre completo)
   const pr = rows.find(r => _rhPersonalFullName_(r).toLowerCase() === q || String(r.Nombre || '').trim().toLowerCase() === q);
   return pr ? String(pr.Puesto || '').trim() : '';
 }
-function adNom_(n, rol, onclick) { const t = String(n || '').replace(/\s*\(WhatsApp\)\s*$/, '').trim(); return `<span class="ad-nm ${onclick ? 'lk' : ''}" style="--pc:${aseoPersonaColor_(n)}" title="${pcEsc((rol ? rol + ': ' : '') + t)}${onclick ? ' · clic para cambiar' : ''}"${onclick ? ` onclick="event.stopPropagation();${onclick}"` : ''}>${pcEsc(t.split(/\s+/)[0] || '?')}</span>`; }
+function adNom_(n, rol, onclick, pk) { const t = String(n || '').replace(/\s*\(WhatsApp\)\s*$/, '').trim();
+  if (pk && typeof rbPendDe_ === 'function' && rbPendDe_(pk + '|' + n)) { const k = pcEsc(JSON.stringify(pk + '|' + n)), nn = pcEsc(JSON.stringify(t)); // asignación automática por confirmar
+    return `<span class="ad-nm lk pend" style="--pc:${aseoPersonaColor_(n)}" title="${pcEsc((rol ? rol + ': ' : '') + t)} · asignación automática: clic para confirmar" onclick="event.stopPropagation();rbConfPend_(${k},${nn})">${pcEsc(t.split(/\s+/)[0] || '?')}?</span>`; }
+  return `<span class="ad-nm ${onclick ? 'lk' : ''}" style="--pc:${aseoPersonaColor_(n)}" title="${pcEsc((rol ? rol + ': ' : '') + t)}${onclick ? ' · clic para cambiar' : ''}"${onclick ? ` onclick="event.stopPropagation();${onclick}"` : ''}>${pcEsc(t.split(/\s+/)[0] || '?')}</span>`; }
 function adAv_(n, rol) { return `<span class="ad-av" style="background:${aseoPersonaColor_(n)}" title="${pcEsc((rol ? rol + ': ' : '') + n)}">${pcEsc(adIni_(n))}</span>`; }
 // Todo lo que se necesita de una card (mismas reglas que pcAlojCard_ y que el bot).
 // Salidas (Booked) por alojamiento, calculadas una vez por copia de reservas (antes se recorrían todas por card).
@@ -67619,7 +67623,7 @@ function adCard_(I) {
   const srcTxt = xR ? [xR.b.Source ? String(xR.b.Source) : '', xR.tier ? xR.tier.label : (xR.stats && xR.stats.visitas <= (HU_REGLAS.primera_max_visitas ?? 1) ? '1ª visita' : '')].filter(Boolean).join(' · ') : '';
   // Asignar directo en la card: «＋ Asignar» o clic en el nombre para cambiarlo (sin abrir los detalles).
   const asg = rol => `aseoAsignar_('${pcEsc(I.asigId)}',this,'${rol}')`;
-  const equipo = I.pA.length || I.pI.length ? `<span class="ad-avs">${I.pA.map(n => adNom_(n, 'Aseo', asg('aseo'))).join('')}${I.pI.map(n => adNom_(n, 'Inspección', asg('inspeccion'))).join('')}</span>`
+  const equipo = I.pA.length || I.pI.length ? `<span class="ad-avs">${I.pA.map(n => adNom_(n, 'Aseo', asg('aseo'), I.asigId + '|aseo')).join('')}${I.pI.map(n => adNom_(n, 'Inspección', asg('inspeccion'), I.asigId + '|inspeccion')).join('')}</span>`
     : `<button type="button" class="ad-asg" title="Asignar personal sin abrir los detalles" onclick="event.stopPropagation();${asg(I.depto === 'inspeccion' ? 'inspeccion' : 'aseo')}">＋ Asignar</button>`;
   const guia = !I.esHoyC ? '' : `<span class="ad-gd ${I.G && I.G.texto && !I.noPub ? 'on' : ''}" title="${I.noPub ? 'No publicado en la guía' : I.G && I.G.texto ? 'La guía muestra: ' + pcEsc(I.G.texto) : 'La guía no muestra aviso'}">◉ Guía</span>`;
   const sel = ASEO._dr && ASEO._dr.k === I.k;
@@ -68368,7 +68372,7 @@ function atResCtx_(hid, reserva) {
 // Personal de una tarea (manual «T» o reporte técnico «R») directo desde la card, con el mismo selector que las cards de aseo.
 function atEquipo_(tipo, t) {
   const fn = `atAsigCard_('${tipo}','${pcEsc(tipo === 'R' ? t.rtId : t.id)}',this)`;
-  return (t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n, 'Asignado', fn)).join('')}</span>`
+  return (t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n, 'Asignado', fn, tipo === 'T' ? 'T' + t.id : '')).join('')}</span>`
     : `<button type="button" class="ad-asg" title="Asignar personal sin abrir los detalles" onclick="event.stopPropagation();${fn}">Sin asignar</button>`;
 }
 window.atAsigCard_ = function (tipo, id, anchor) {
@@ -71059,9 +71063,10 @@ function rbMin_(h) { const m = String(h || '').trim().match(/^(\d{1,2}):(\d{2})\
 function rbHHMM_(m) { m = Math.round(m); const h = Math.floor(m / 60), n = m % 60; return rbHoraTxt_(`${String(h).padStart(2, '0')}:${String(n).padStart(2, '0')}`); }
 function rbProp_(hid) { const a = typeof atAloj_ === 'function' ? atAloj_(hid) : null; return String((a && a.propiedad) || '').replace(/^Calle\s+/i, '').trim() || 'Sin propiedad'; }
 function rbTras_(a, b) { if (!a || a === b) return { m: 0, base: 0, est: false }; const v = ((RB.reglas || {}).traslados || {})[rbTrK_(a, b)], base = v != null ? Number(v) : RB_TRAS_DEF; return { m: base + RB_MARGEN, base, est: v == null }; }
-window.rbProgramar_ = async function () {
-  const dia = (document.getElementById('rb-pdia') || {}).value || aseoHoyIso_(); RB.pdia = dia;
-  const btn = document.querySelector('.rbp-go');
+window.rbProgramar_ = async function (diaArg, opts) {
+  const auto = !!(opts && opts.headless); // «Automática»: calcula sin pintar nada
+  const dia = diaArg || (RB.dr ? RB.pdia : (document.getElementById('rb-pdia') || {}).value) || aseoHoyIso_(); if (!auto) RB.pdia = dia;
+  const btn = auto ? null : document.querySelector(RB.dr ? '#ad-drawer .rbp-go' : '#rb-root .rbp-go');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando…'; }
   if (!RB.reglas) await rbCargar_();
   try { // datos necesarios: reservas, estados de aseo, catálogo y personal
@@ -71128,7 +71133,9 @@ window.rbProgramar_ = async function () {
   mejor.W.forEach(w => Object.assign(w.x, { pasos: w.pasos, trabajo: w.trabajo, tras: w.tras, t: w.t, prop: w.prop, nT: w.nT }));
   T.forEach(t => { const a = mejor.A.get(t); if (a) Object.assign(t, { quien: a.w.x.corto, quienN: a.w.x.n, col: a.w.x.col, ini: a.ini, fin: a.fin }); });
   const req = T.reduce((a, t) => a + t.dur, 0), cap = disp.length * Math.max(0, fin - ini), usado = disp.reduce((a, x) => a + x.trabajo + x.tras, 0);
-  RB.prog = { dia, H, ini, fin, T, S: disp, fuera, sinAsig, hechas, req, cap, usado, vista: (RB.prog && RB.prog.vista) || 'personal' };
+  const R0 = { dia, H, ini, fin, T, S: disp, fuera, sinAsig, hechas, req, cap, usado, vista: (RB.prog && RB.prog.vista) || 'personal' };
+  if (auto) return R0;
+  RB.prog = R0;
   RB.asignado = '';
   rbRender_();
   if (!RB.dr) setTimeout(() => { const el = document.getElementById('rb-prog'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
@@ -71260,7 +71267,8 @@ window.rbDrAbrir_ = async function () {
 };
 window.rbDrCerrar_ = function () { RB.dr = false; if (typeof adCerrar_ === 'function') adCerrar_(); };
 window.rbDrDia_ = function (v) { if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; RB.pdia = v; RB.prog = null; RB.asignado = ''; rbDrPintar_(); };
-const RB_CSS2 = `<style>.rb-q{all:unset;box-sizing:border-box;cursor:pointer;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #a5b4fc;color:#4f46e5;font-weight:800;font-size:15px;margin-left:auto;flex:none}.rb-q:hover{background:#eef2ff}</style><style>.np-tabs{display:inline-flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px}.np-tabs button{all:unset;cursor:pointer;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;color:#475569}.np-tabs button:hover{background:#e2e8f0}.np-tabs button.on{background:#0f1729;color:#fff}.np-tabs.sm button{font-size:12.5px;padding:6px 12px}</style>`; // estilos de la propuesta (módulo y ventana lateral de Tareas)
+const RB_CSS2 = `<style>.rb-auto{display:inline-flex;align-items:center;gap:8px;margin-left:auto;padding:5px 10px;border:1px solid #c7d2fe;border-radius:999px;background:#fff;font-size:12.5px;color:#312e81}.rb-auto small{color:#64748b;font-size:11px}.rb-auto .ad-sw{cursor:pointer}.rb-auto+.rb-q{margin-left:0}
+  #ad-drawer .rb-t{width:100%!important;display:table!important;table-layout:auto}#ad-drawer .rb-t{box-sizing:border-box;min-width:0!important}#ad-drawer .rb-t td:last-child{width:1%;white-space:nowrap}.rb-q{all:unset;box-sizing:border-box;cursor:pointer;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #a5b4fc;color:#4f46e5;font-weight:800;font-size:15px;margin-left:auto;flex:none}.rb-q:hover{background:#eef2ff}</style><style>.np-tabs{display:inline-flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px}.np-tabs button{all:unset;cursor:pointer;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;color:#475569}.np-tabs button:hover{background:#e2e8f0}.np-tabs button.on{background:#0f1729;color:#fff}.np-tabs.sm button{font-size:12.5px;padding:6px 12px}</style>`; // estilos de la propuesta (módulo y ventana lateral de Tareas)
 function rbDrPintar_() {
   const dr = document.getElementById('ad-drawer'); if (!dr || !RB.dr) { RB.dr = false; return; }
   const dia = RB.pdia || aseoHoyIso_(), dk = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'][tarParseIso_(dia).getDay()], L = (RB.reglas || {}).limpieza || {};
@@ -71277,6 +71285,7 @@ function rbDrPintar_() {
         #ad-drawer .rbd-tentativo{background:#dcfce7;color:#15803d;border:1.5px solid #86efac}#ad-drawer .rbd-confirmado{background:#16a34a;color:#fff}#ad-drawer .rbd-falta{background:#dc2626;color:#fff}#ad-drawer .rbd-sin{background:#e5e7eb;color:#6b7280}
         #ad-drawer .rb-t{width:100%;border-collapse:collapse;font-size:12.5px}#ad-drawer .rb-t td{padding:7px 4px;border-bottom:1px solid #f0f1f4}#ad-drawer .rb-n b{display:block}#ad-drawer .rb-n small{color:#94a3b8;font-size:11px}
         #ad-drawer .rbp-it .h{min-width:96px}#ad-drawer .rbp-kpis{grid-template-columns:1fr 1fr}#ad-drawer .rb-sec2{font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px}</style>
+      <div style="display:flex;justify-content:flex-end;margin:0 0 6px">${rbAutoHtml_()}</div>
       <div class="rb-sec2" style="margin-top:0">1) Fecha a programar</div>
       <input type="date" class="rb-sel" style="min-width:0;width:170px;padding:7px 10px;border:1px solid #e2e8f0;border-radius:8px" value="${dia}" onchange="rbDrDia_(this.value)">
       <div class="rb-sec2">2) Asistencia del personal de limpieza · ${pcEsc(aseoDiaTxt_(dia))}</div>
@@ -71292,24 +71301,70 @@ function rbDrPintar_() {
   const b = dr.querySelector('.ad-db'); if (b) b.scrollTop = top;
 }
 // Asigna a las cards de reservas (personal de aseo o de inspección) y a las tareas manuales lo que propuso la programación.
-window.rbAsignar_ = async function () {
-  const R = RB.prog; if (!R) return;
+// Asigna lo que propuso la programación. pend = asignación automática (queda «por confirmar» con «?» y contorno punteado);
+// soloVacias = no toca tareas que ya tienen personal en ese rol.
+async function rbAsignarR_(R, pend, soloVacias) {
   const M = new Map(), TM = new Map();
   R.T.forEach(t => { if (!t.quienN) return;
-    if (t.tid) { const k = String(t.tid); TM.set(k, [...new Set([...(TM.get(k) || []), t.quienN])]); return; }
-    if (!t.asigId) return; const k = t.asigId + '|' + (t.tipoT === 'Inspección' ? 'inspeccion' : 'aseo'); M.set(k, [...new Set([...(M.get(k) || []), t.quienN])]); });
-  const n = M.size + TM.size; if (!n) return;
+    if (t.tid) { const k = String(t.tid), tt = (ASEO.tareas || {})[k]; if (soloVacias && tt && (tt.asignados || []).length) return; TM.set(k, [...new Set([...(TM.get(k) || []), t.quienN])]); return; }
+    if (!t.asigId) return; const rol = t.tipoT === 'Inspección' ? 'inspeccion' : 'aseo', a = (ASEO.asig || {})[t.asigId] || {};
+    if (soloVacias && ((rol === 'aseo' ? (a.aseo || a.personal) : a.inspeccion) || []).length) return;
+    const k = t.asigId + '|' + rol; M.set(k, [...new Set([...(M.get(k) || []), t.quienN])]); });
+  const user = (typeof currentUser !== 'undefined' && currentUser) || (pend ? 'Programación automática' : ''), P = {}; let ok = 0, err = 0;
+  await Promise.all([...[...M.entries()].map(([k, per]) => { const [id, rol] = k.split('|');
+      return fetch(`${BACKEND}/aseo/asignar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, rol, personal: per, user }) }).then(r => r.json()).then(j => { if (j.ok) { ok++; per.forEach(n => { P[`${id}|${rol}|${n}`] = pend ? R.dia : null; }); } else err++; }).catch(() => { err++; }); }),
+    ...[...TM.entries()].map(([id, per]) => { const t = (ASEO.tareas || {})[id]; if (!t) { err++; return null; }
+      return fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea: Object.assign({}, t, { asignados: per }), user }) }).then(r => r.json()).then(j => { if (j.ok) { ok++; t.asignados = per; per.forEach(n => { P[`T${id}|${n}`] = pend ? R.dia : null; }); } else err++; }).catch(() => { err++; }); })]);
+  if (Object.keys(P).length) await rbPost_({ pend: P }).catch(() => {});
+  return { ok, err, n: M.size + TM.size };
+}
+async function rbPost_(body) {
+  const j = await fetch(`${BACKEND}/config/reglas-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ user: (typeof currentUser !== 'undefined' && currentUser) || '' }, body)) }).then(r => r.json());
+  if (!j.ok) throw new Error(j.error || 'Error'); RB.reglas = j.reglas; return j;
+}
+window.rbAsignar_ = async function () {
+  const R = RB.prog; if (!R) return;
+  const n = new Set(R.T.filter(t => t.quienN).map(t => t.tid ? 'T' + t.tid : t.asigId + (t.tipoT === 'Inspección' ? 'i' : 'a'))).size; if (!n) return;
   if (!confirm(`¿Asignar el personal propuesto a ${n} tarea${n === 1 ? '' : 's'} del ${aseoDiaTxt_(R.dia)}?\nReemplaza a quien esté asignado en esas tareas.`)) return;
   const btn = document.getElementById('rbd-asig'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Asignando…'; }
-  const user = (typeof currentUser !== 'undefined' && currentUser) || ''; let ok = 0, err = 0;
-  await Promise.all([...[...M.entries()].map(([k, per]) => { const [id, rol] = k.split('|');
-      return fetch(`${BACKEND}/aseo/asignar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, rol, personal: per, user }) }).then(r => r.json()).then(j => { if (j.ok) ok++; else err++; }).catch(() => { err++; }); }),
-    ...[...TM.entries()].map(([id, per]) => { const t = (ASEO.tareas || {})[id]; if (!t) { err++; return null; }
-      return fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea: Object.assign({}, t, { asignados: per }), user }) }).then(r => r.json()).then(j => { if (j.ok) { ok++; t.asignados = per; } else err++; }).catch(() => { err++; }); })]);
-  RB.asignado = err ? `⚠️ Se asignaron ${ok}; ${err} no se pudieron guardar.` : `✓ Listo: se asignaron ${ok} tarea${ok === 1 ? '' : 's'}.`;
+  const x = await rbAsignarR_(R, false, false);
+  RB.asignado = x.err ? `⚠️ Se asignaron ${x.ok}; ${x.err} no se pudieron guardar.` : `✓ Listo: se asignaron ${x.ok} tarea${x.ok === 1 ? '' : 's'}.`;
   try { if (typeof aseoRefresh_ === 'function') await aseoRefresh_(true); ASEO.calSig = ''; if (typeof aseoRender_ === 'function') aseoRender_(); } catch (_) {}
   rbDrPintar_();
 };
+// ── «Automática»: con el sistema abierto, a partir de RB_AUTO_HORA programa y asigna las limpiezas del día siguiente ──
+const RB_AUTO_HORA = 18; // 6:00 p.m.
+function rbManana_() { const d = tarParseIso_(aseoHoyIso_()); d.setDate(d.getDate() + 1); return tarIso_(d); }
+function rbAutoHtml_() {
+  const on = !!(RB.reglas && RB.reglas.auto), m = rbManana_(), h = ((RB.reglas || {}).autoHecho || {})[m];
+  return `<span class="rb-auto" title="Programa y asigna sola las limpiezas del día siguiente a partir de las ${RB_AUTO_HORA - 12}:00 p.m. (con el sistema abierto). Las asignaciones quedan con «?» hasta que alguien las confirme."><span class="ad-sw ${on ? '' : 'off'}" onclick="rbAutoSet_(${!on})"></span><b>Automática</b>${on ? `<small>${h ? `mañana ya programado${h.n != null ? ` (${h.n})` : ''}` : `programa mañana desde las ${RB_AUTO_HORA - 12}:00 p.m.`}</small>` : ''}</span>`;
+}
+window.rbAutoSet_ = async function (on) {
+  if (!RB.reglas) await rbCargar_(); RB.reglas.auto = !!on; rbRender_();
+  try { await rbPost_({ auto: !!on }); } catch (e) { alert('No se pudo guardar: ' + (e.message || e)); }
+  rbRender_(); if (on) rbAutoTick_(true);
+};
+// Se llama en cada refresco de Tareas (cada ~20 s): recarga las reglas (pendientes por confirmar) y, si toca, programa mañana.
+async function rbAutoTick_(ya) {
+  if (RB._autoT && !ya && Date.now() - RB._autoT < 60000) return; RB._autoT = Date.now();
+  if (typeof clModoPersonal_ === 'function' && clModoPersonal_()) return;
+  try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { cache: 'no-store' }).then(r => r.json()); const prev = JSON.stringify((RB.reglas || {}).pend || {});
+    RB.reglas = (j && j.reglas) || RB.reglas || {}; if (JSON.stringify(RB.reglas.pend || {}) !== prev && window.ASEO) { ASEO.calSig = ''; try { aseoRender_(); } catch (_) {} } } catch (_) { return; }
+  const m = rbManana_(); if (!RB.reglas.auto || new Date().getHours() < RB_AUTO_HORA || (RB.reglas.autoHecho || {})[m] || RB._autoCorre) return;
+  RB._autoCorre = true;
+  try { const c = await rbPost_({ autoClaim: m }); if (!c.claimed) return; // otra pestaña ya lo está haciendo
+    await rbCargar_(); const R = await rbProgramar_(m, { headless: true }); const x = await rbAsignarR_(R, true, true);
+    await rbPost_({ autoRes: { fecha: m, n: x.ok, err: x.err } }).catch(() => {});
+    if (window.ASEO) { await aseoRefresh_(true).catch(() => {}); ASEO.calSig = ''; aseoRender_(); }
+  } catch (_) {} finally { RB._autoCorre = false; }
+}
+// Clic en un nombre «por confirmar» (asignación automática): confirma y queda con contorno continuo.
+window.rbConfPend_ = async function (k, n) {
+  if (!confirm(`¿Confirmar la asignación automática de ${n}?`)) return;
+  if (RB.reglas && RB.reglas.pend) delete RB.reglas.pend[k]; if (window.ASEO) { ASEO.calSig = ''; try { aseoRender_(); } catch (_) {} }
+  try { await rbPost_({ pend: { [k]: null } }); } catch (e) { alert('No se pudo confirmar: ' + (e.message || e)); }
+};
+function rbPendDe_(k) { return !!(k && RB.reglas && RB.reglas.pend && RB.reglas.pend[k]); }
 window.rbSem_ = function (d) { const l = tarParseIso_(RB.lunes || ckLunes_(aseoHoyIso_())); l.setDate(l.getDate() + 7 * d); RB.lunes = d ? tarIso_(l) : ckLunes_(aseoHoyIso_()); rbRender_(); };
 const RB_DIAS = [['L', 'Lun'], ['M', 'Mar'], ['Mi', 'Mié'], ['J', 'Jue'], ['V', 'Vie'], ['S', 'Sáb'], ['D', 'Dom']];
 function rbDias_(v) { const t = String(v || '').split(/[,\s/]+/).map(x => x.trim().toLowerCase()).filter(Boolean); return new Set(t.map(x => ({ l: 'L', lu: 'L', lun: 'L', m: 'M', ma: 'M', mar: 'M', mi: 'Mi', mie: 'Mi', 'mié': 'Mi', x: 'Mi', j: 'J', ju: 'J', jue: 'J', v: 'V', vi: 'V', vie: 'V', s: 'S', sa: 'S', sab: 'S', 'sáb': 'S', d: 'D', do: 'D', dom: 'D' })[x] || x)); }
@@ -71366,7 +71421,7 @@ function rbRender_() {
     <div class="np-tabs" style="margin:0 0 12px"><button type="button" class="${RB.sec !== 'tabla' ? 'on' : ''}" onclick="rbSec_('prog')">🗓️ Programación</button><button type="button" class="${RB.sec === 'tabla' ? 'on' : ''}" onclick="rbSec_('tabla')">📊 Tabla</button></div>
     ${RB.sec === 'tabla' ? `<div class="rb-w" style="max-width:none">${rbTablaHtml_()}</div>` : `
     <div class="rb-w"><div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">🧹 Programar limpiezas del día:</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}">
-      <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span><button type="button" class="rb-q" onclick="rbAyuda_()" title="Todas las reglas de la programación automática">?</button></div>
+      <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span>${rbAutoHtml_()}<button type="button" class="rb-q" onclick="rbAyuda_()" title="Todas las reglas de la programación automática">?</button></div>
       ${rbProgHtml_()}
       <div class="rb-h">a) Programación de limpiezas</div>
       <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios asignados y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
