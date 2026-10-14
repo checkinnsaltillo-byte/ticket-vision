@@ -9189,6 +9189,10 @@ window.clSub_ = function (k) {
   if ((quiere === 'mant') !== (ASEO.sec === 'mant')) return switchModule(quiere === 'mant' ? 'mantenimiento' : 'aseo');
   ASEO.sec = quiere; aseoRender_(); clNavPaint_();
 };
+// Buscador del Check-Flow (texto libre, sin acentos ni mayúsculas): todas las palabras deben aparecer en alguno de los campos.
+function ckNorm_(v) { return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+function ckBusca_(q, campos) { const t = ckNorm_(q).trim().split(/\s+/).filter(Boolean); if (!t.length) return true; const h = ckNorm_(campos.flat(3).filter(Boolean).join(' · ')); return t.every(w => h.includes(w)); }
+function ckAlojTxt_(hid) { const a = hid && typeof atAloj_ === 'function' ? atAloj_(hid) : null; return a ? [a.corto, String(a.corto || '').toUpperCase(), a.nombre, a.propiedad] : []; }
 // Barra compacta del Check-Flow (misma en Aseo, Incidencias y Tareas): ☰ filtros con contador de filtros activos.
 function ckFxN_(fx, def) { def = def || {}; return Object.entries(fx || {}).filter(([k, v]) => !(k in def && def[k] === v) && (v instanceof Set ? v.size : Array.isArray(v) ? v.length : !!v)).length; }
 function ckHam_(on, n, fn) { return `<button type="button" class="ad-ham ${on ? 'on' : ''}" onclick="${fn}" title="${on ? 'Ocultar filtros' : 'Mostrar filtros'}${n ? ` (${n} activo${n === 1 ? '' : 's'})` : ''}">☰${n ? `<b>${n}</b>` : ''}</button>`; }
@@ -58702,6 +58706,7 @@ function tdRender_() {
   const nFx = ckFxN_(TAR_STATE.fx, { tipo: '', prio: '' });
   const seg = `<div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="tarSetSection('tablero')">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="tarSetSection('registro')">Registro</button></div>`;
   const bar = `<div class="ck-bar">${ckHam_(TAR_STATE.filAb, nFx, 'TAR_STATE.filAb=!TAR_STATE.filAb;tdRender_()')}
+      <input class="ck-q td-q" type="search" placeholder="🔎 Buscar alojamiento, plantilla, persona…" value="${esc(TAR_STATE.q || '')}" oninput="TAR_STATE.q=this.value;clearTimeout(TAR_STATE._qt);TAR_STATE._qt=setTimeout(()=>{tdRender_();const i=document.querySelector('#module-tareas .td-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
       ${TAR_STATE.cal ? '' : ckMesNavHtml_(ym, 'tdMesV_')}${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()')}${TAR_STATE.cal ? tarCalSegHtml_() : ''}
       <span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
@@ -59193,7 +59198,9 @@ TAR_STATE.fx = TAR_STATE.fx || { tipo: '', clas: new Set(), sub: new Set(), prio
 const TAR_SIN = '(Sin clasificación)', TAR_SIN_PERS = '(Sin asignar)';
 function tarPasaFiltro_(r) {
   const fx = TAR_STATE.fx;
-  if (TAR_STATE.sub === 'rec' ? !tarEsRec_(r) : !tdEsIG_(r)) return false; // subsección: 🔍 Inspección general | 📌 Recordatorios
+  if (TAR_STATE.sub === 'rec' ? !tarEsRec_(r) : !tdEsIG_(r)) return false; // subsección: 📝 Levantamientos | 📌 Recordatorios
+  if (TAR_STATE.q) { const pl = r.Plantilla && typeof ASEO !== 'undefined' && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
+    if (!ckBusca_(TAR_STATE.q, [r.Nombre, r.Clasificacion, r.Subclasificacion, r.Personal, r.Comentarios, r.Mensaje, r.Programacion_texto, pl && pl.titulo, tdEsIG_(r) ? tdIGAlojs_(r).map(ckAlojTxt_) : '', r.Prioridad, r.Tipo])) return false; }
   if (fx.tipo && (tarEsRec_(r) ? 'Recordatorio' : 'Pendiente programado') !== fx.tipo) return false;
   const c = r.Clasificacion || TAR_SIN;
   if (fx.clas.size && !fx.clas.has(c)) return false;
@@ -67632,6 +67639,13 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
     const a = infos.filter(queda), b = tInfos.filter(queda); infos.length = 0; a.forEach(I => infos.push(I)); tInfos.length = 0; b.forEach(I => tInfos.push(I));
   }
   if (ASEO.simple && ASEO.sec !== 'mant' && !(!MP && ASEO.vista === 'usuario')) { const sinCorr = tInfos.filter(I => !axEsDeInc_(I.t.rt ? 'R' + I.t.rtId : 'T' + I.t.id)); tInfos.length = 0; sinCorr.forEach(I => tInfos.push(I)); } // «Simple»: sin tareas correctivas de incidencias (salvo «Por usuario»: cada quien ve su renglón con todas sus tareas)
+  if (ASEO.q) { // buscador: alojamiento (corto/largo), tipo de tarea y de servicio, asignados, título, descripción, huésped…
+    const srvT = k => ((AX_SRV.find(x => x[0] === k) || [])[1] || '').replace(/^\W+\s*/, '');
+    const campos = I => I.tarea ? [ckAlojTxt_(I.t.hid), I.aloj, I.corto, (AT_DEPTO[I.t.rt ? 'mantenimiento' : I.t.depto] || {}).t, srvT(axSrv_(I.t.rt ? 'R' + I.t.rtId : 'T' + I.t.id, false)), I.t.titulo, I.t.desc, I.t.etiquetas, I.t.asignados, I.t.rt ? [I.t.rt.Categoria, I.t.rt.Folio, I.t.rt.Descripcion] : '', I.selE]
+      : [ckAlojTxt_(I.hid), I.aloj, I.corto, propDe(I), (AT_DEPTO[I.depto] || {}).t, srvT(axSrv_(I.asigId, I.g.sal.length > 0)), I.pA, I.pI, I.aviso && I.aviso.t, I.selE, [I.xs, I.xe].map(x => x && x.b ? [x.b.GuestName, x.b.Source, x.b.Id] : '')];
+    const fa = infos.filter(I => ckBusca_(ASEO.q, campos(I))), fb = tInfos.filter(I => ckBusca_(ASEO.q, campos(I)));
+    infos.length = 0; fa.forEach(I => infos.push(I)); tInfos.length = 0; fb.forEach(I => tInfos.push(I));
+  }
   const props = [...new Set(infos.concat(tInfos).map(propDe))].sort((a, b) => (a === 'Otros') - (b === 'Otros') || a.localeCompare(b, 'es'));
   const fP = (ASEO.fProp || []).filter(p => props.includes(p));
   const vis = new Set(gsF.map(g => String(g.hid || g.k)));
@@ -68225,6 +68239,13 @@ function atToca_(t, dia) {
   if (r.tipo === 'anual') return a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   return false;
 }
+// Chip «Nuevo» (pulsante) durante las primeras 24 h de una tarea o reporte.
+function atNuevoChip_(at) {
+  const t = Date.parse(String(at || '').replace(' ', 'T')); if (!t || Date.now() - t > 864e5 || Date.now() < t - 6e4) return '';
+  if (!document.getElementById('at-nuevo-css')) { const st = document.createElement('style'); st.id = 'at-nuevo-css'; st.textContent = `.at-nuevo{display:inline-flex;align-items:center;flex-shrink:0;margin-left:6px;padding:1px 7px;border-radius:999px;background:#16a34a;color:#fff;font-size:10px;font-weight:800;letter-spacing:.02em;white-space:nowrap;animation:atNuevoP 1.6s ease-in-out infinite}
+    @keyframes atNuevoP{0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.55);transform:scale(1)}50%{box-shadow:0 0 0 5px rgba(22,163,74,0);transform:scale(1.06)}}`; document.head.appendChild(st); }
+  return `<span class="at-nuevo" title="Creada ${new Date(t).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}">Nuevo</span>`;
+}
 // Etiqueta que distingue las tareas recurrentes de las únicas.
 function atRecChip_() { return '<span class="at-rec" title="Tarea recurrente" style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ede9fe;border:1px solid #c4b5fd;color:#6d28d9;font-size:10.5px;font-weight:800;white-space:nowrap">↻ Recurrente</span>'; }
 function atRepTxt_(r, fecha) {
@@ -68266,7 +68287,7 @@ function rtCardA_(I) {
   const pasos = [['pendiente', 'Pend.', '#94a3b8'], ['en_proceso', 'Proceso', '#f59e0b'], ['terminado', 'Term.', '#10b981'], ['cancelado', 'Cancel.', '#64748b']];
   return `<div class="ad-card tipo est-tint tarea ${t.bloquea && !cerrado ? 'alert' : ''} ${t.estado === 'cancelado' ? 'ghost' : ''} ${axEsDeInc_('R' + t.rtId) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="R${pcEsc(t.rtId)}" style="--tc:${D.c};--sc:${adEstC_(t.estado)}" onclick="rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'R:${pcEsc(t.rtId)}','',true,true)" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span></div>
+    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span>${atNuevoChip_(row.Timestamp)}</div>
     ${flags.join('')}
     <div class="r2">${axCatHtml_('mantenimiento', 'R' + t.rtId, false)}<span class="sep"></span><span>${cat.icon} ${pcEsc(cat.label)}</span><span class="sep"></span><span>${pcEsc(row.Folio || row.ID)}</span>${RC.meta}</div>
     ${axFila_('R' + t.rtId, false, t.hid, I.dia || t.fecha)}
@@ -68311,7 +68332,7 @@ function atCard_(I) {
   const sel = ASEO._dr && ASEO._dr.tarea === t.id;
   return `<div class="ad-card tipo est-tint tarea ${t.problema ? 'alert' : ''} ${axEsDeInc_('T' + t.id) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="T${pcEsc(t.id)}" style="--tc:${D.c};--sc:${adEstC_(I.selE)}" onclick="atAbrir_('${pcEsc(t.id)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'${I.key}','',true,${t.depto !== 'limpieza'})" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${t.repite ? atRecChip_() : ''}</div>
+    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
     ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}${RC.flags}
@@ -69454,7 +69475,7 @@ function icPasa_(x, sinPer) {
   if (fx.mot.size && !x.mot.some(m => fx.mot.has(m))) return false;
   if (fx.prio && x.prio !== fx.prio) return false;
   if (fx.pers.size && !(x.pers.length ? x.pers.some(n => fx.pers.has(n)) : fx.pers.has(TAR_SIN_PERS))) return false;
-  if (IC.q) { const q = IC.q.toLowerCase(); if (![x.titulo, x.aloj, x.corto, x.desc, x.rep, x.pers.join(' '), x.id].join(' ').toLowerCase().includes(q)) return false; }
+  if (IC.q && !ckBusca_(IC.q, [x.titulo, x.aloj, x.corto, ckAlojTxt_(x.hid), x.mot, x.clas, x.desc, x.acc, x.seg, x.rep, x.pers, x.id, x.est, (PRIO4[x.prio] || {}).t])) return false;
   return true;
 }
 function icCss_() {
@@ -70120,7 +70141,7 @@ function obPasa_(x, sinPer) {
   if (!sinPer && obCerrado_(x) && fx.per !== 'todo' && (x.fEnt || x.fecha) < icHaceDias_(+fx.per)) return false;
   if (fx.cat.size && !fx.cat.has(x.cat)) return false;
   if (fx.lug.size && !fx.lug.has(x.lug || '—')) return false;
-  if (OB.q) { const q = OB.q.toLowerCase(); if (![x.catTxt, x.aloj, x.corto, x.desc, x.com, x.rep, x.entA, x.lugTxt, x.id].join(' ').toLowerCase().includes(q)) return false; }
+  if (OB.q && !ckBusca_(OB.q, [x.catTxt, x.aloj, x.corto, ckAlojTxt_(x.hid), x.desc, x.com, x.rep, x.entA, x.lugTxt, x.id, x.est])) return false;
   return true;
 }
 function obCss_() {
