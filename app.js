@@ -58288,10 +58288,12 @@ const TAR_STATE = {
   ocur: [], ocurIdx: new Map(), hist: null,
 };
 function tarOcurKey_(id, iso) { return `${id}|${iso}`; }
+// Llave de fecha de una ocurrencia: «YYYY-MM-DD»; los ciclos de un levantamiento renovado el mismo día llevan sufijo («YYYY-MM-DD-2»).
+function tarFechaK_(v) { return (String(v || '').match(/^\d{4}-\d{2}-\d{2}(?:-\d+)?/) || [''])[0]; }
 function tarIndexOcur_() {
   TAR_STATE.ocurIdx = new Map(); TAR_STATE.ocurByTar = new Map();
   TAR_STATE.ocur.forEach(o => {
-    const f = String(o.Fecha || '').slice(0, 10);
+    const f = tarFechaK_(o.Fecha);
     TAR_STATE.ocurIdx.set(tarOcurKey_(o.Tarea_ID, f), o);
     if (!TAR_STATE.ocurByTar.has(o.Tarea_ID)) TAR_STATE.ocurByTar.set(o.Tarea_ID, []);
     TAR_STATE.ocurByTar.get(o.Tarea_ID).push(o);
@@ -58583,7 +58585,7 @@ function tdIGHijo_(r, hid) { return `${r.ID}~${hid}`; }
 // fecha de inicio (Ciclos_IG = { hid: [fechas] }): estado Pendiente, plantilla vacía y fecha límite = inicio + periodo.
 // Sin ciclos (o antes del primero) el periodo es el mes (llave = fin de mes), como antes. ex = la fecha ya es la llave del periodo.
 function tdIGCiclos_(r, hid) { try { return (((JSON.parse(r.Ciclos_IG || '{}') || {})[hid]) || []).slice().sort(); } catch (_) { return []; } }
-function tdIGPerDe_(r, hid, iso, ex) { if (ex) return iso; const C = tdIGCiclos_(r, hid); if (C.includes(iso)) return iso; return C.filter(x => x <= iso).pop() || tdFinMes_(iso); }
+function tdIGPerDe_(r, hid, iso, ex) { if (ex) return iso; const C = tdIGCiclos_(r, hid); iso = String(iso).slice(0, 10); return C.filter(x => x <= iso + '~').pop() || tdFinMes_(iso); } // «~» > «-»: incluye los ciclos del mismo día con sufijo
 function tdIGKey_(r, hid, iso, ex) { return `TI:${r.ID}:${hid}:${tdIGPerDe_(r, hid, iso, ex)}`; }
 // Estado informativo de un alojamiento según su plantilla (mismos criterios que Aseo/Mantenimiento):
 // 0 % Pendiente · > 0 % En proceso · ≥ 90 % Terminado. Si no hay plantilla (o se canceló/resolvió a mano) manda el estado guardado.
@@ -58887,8 +58889,8 @@ function tdIGMapa_() {
   TAR_STATE.list.filter(r => tdEsIG_(r) && tarPasaFiltro_(r)).forEach(r => tdIGAlojs_(r).forEach(hid => {
     const per = new Map(); // fin de mes del periodo → última fecha guardada
     const upd = (P, at) => { if (!P || !at) return; if (!per.has(P) || String(at) > per.get(P)) per.set(P, String(at)); };
-    (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => upd(String(o.Fecha || '').slice(0, 10), o.Updated_at || o.Timestamp));
-    const pre = `TI:${r.ID}:${hid}:`, preS = plKeyS_(pre); Object.keys(idx).forEach(k => { if (k.startsWith(pre)) upd(k.slice(pre.length), idx[k].at); else if (k.length === preS.length + 10 && k.startsWith(preS) && /\d{4}-\d{2}-\d{2}$/.test(k)) upd(k.slice(-10), idx[k].at); }); // también la llave como la guarda el servidor (sin «:»)
+    (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => upd(tarFechaK_(o.Fecha), o.Updated_at || o.Timestamp));
+    const pre = `TI:${r.ID}:${hid}:`, preS = plKeyS_(pre); Object.keys(idx).forEach(k => { if (k.startsWith(pre)) upd(k.slice(pre.length), idx[k].at); else if (k.startsWith(preS) && /^\d{4}-\d{2}-\d{2}(-\d+)?$/.test(k.slice(preS.length))) upd(k.slice(preS.length), idx[k].at); }); // también la llave como la guarda el servidor (sin «:»)
     per.forEach((at, P) => { const iso = loc(at); if (!iso) return; if (!M.has(iso)) M.set(iso, []); M.get(iso).push({ r, hid, P, est: tdIGEstH_(r, hid, P, true) }); });
   }));
   return M;
@@ -58951,7 +58953,7 @@ function tdIGRetHtml_(R) {
 }
 // Fecha (local) del último guardado del estado o de la plantilla de un alojamiento en el periodo P (fin de mes).
 function tdIGUltFecha_(r, hid, P) {
-  let at = ''; (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => { if (String(o.Fecha || '').slice(0, 10) === P && String(o.Updated_at || o.Timestamp || '') > at) at = String(o.Updated_at || o.Timestamp); });
+  let at = ''; (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => { if (tarFechaK_(o.Fecha) === P && String(o.Updated_at || o.Timestamp || '') > at) at = String(o.Updated_at || o.Timestamp); });
   const x = plIdxGet_(`TI:${r.ID}:${hid}:${P}`); if (x && x.at && String(x.at) > at) at = String(x.at);
   const d = at ? new Date(at) : null; return d && !isNaN(d) ? d.toLocaleDateString('en-CA', { timeZone: 'America/Monterrey' }) : '';
 }
@@ -59002,7 +59004,7 @@ window.tdAbrirHijo_ = function (pid, hid, per) { // per: llave de un periodo/cic
 };
 // Plantilla de una sub-card: al avanzar, la sub-card pasa sola a «En proceso» y, arriba del 90 %, a «Resuelto».
 window.tdIGPlantillaHecha_ = function (key, pc) {
-  const m = String(key).match(/^TI:(.+):([^:]+):(\d{4}-\d{2}-\d{2})$/); if (!m) return;
+  const m = String(key).match(/^TI:(.+):([^:]+):(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/); if (!m) return;
   const id = `${m[1]}~${m[2]}`, iso = m[3], e = tarOcurEstado_(id, iso);
   const nuevo = pc >= PL_U_FIN && (e === 'Pendiente' || e === 'En proceso') ? 'Resuelto' : pc > PL_U_PROC && e === 'Pendiente' ? 'En proceso' : '';
   const fin = () => { TAR_STATE._sinDr = true; try { tarRender(); } finally { TAR_STATE._sinDr = false; } };
@@ -59055,25 +59057,27 @@ window.tdSetEst_ = function (id, iso, k, ex) { // ex: iso ya es la llave del per
 // Historial de levantamientos de un alojamiento: cada periodo/ciclo con su estado, avance y fecha de su último registro.
 function tdIGHistHtml_(r, hid, sel, actual) {
   const P = new Set(tdIGCiclos_(r, hid)); P.add(actual);
-  (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => { const f = String(o.Fecha || '').slice(0, 10); if (f) P.add(f); });
+  (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => { const f = tarFechaK_(o.Fecha); if (f) P.add(f); });
   const idx = (ASEO.pl && ASEO.pl.idx) || {}, pre = `TI:${r.ID}:${hid}:`, preS = plKeyS_(pre);
-  Object.keys(idx).forEach(k => { if (k.startsWith(pre)) P.add(k.slice(pre.length)); else if (k.length === preS.length + 10 && k.startsWith(preS)) P.add(k.slice(-10)); });
-  const L = [...P].filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x)).sort().reverse();
+  Object.keys(idx).forEach(k => { if (k.startsWith(pre)) P.add(k.slice(pre.length)); else if (k.startsWith(preS) && /^\d{4}-\d{2}-\d{2}(-\d+)?$/.test(k.slice(preS.length))) P.add(k.slice(preS.length)); });
+  const F = new Map([...P].map(x => [x, tdIGUltFecha_(r, hid, x)]));
+  const L = [...P].filter(x => /^\d{4}-\d{2}-\d{2}(-\d+)?$/.test(x)).sort((a, b) => (b === actual) - (a === actual) || String(F.get(b) || '').localeCompare(String(F.get(a) || '')) || b.localeCompare(a)); // actual primero, luego del más reciente al más antiguo
   return `<div class="lab">🕘 Historial de levantamientos</div><div class="td-hist">${L.map(x => {
     const e = tdIGEstH_(r, hid, x, true), f = tdIGUltFecha_(r, hid, x), pi = r.Plantilla ? (plIdxGet_(tdIGKey_(r, hid, x, true)) || {}).p : null, pc = e === 'Resuelto' && pi == null ? 100 : pi || 0;
     return `<a href="#" class="td-hf ${x === sel ? 'on' : ''}" style="--c:${TD_EST[e] || '#94a3b8'}" onclick="event.preventDefault();tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}','${x === actual ? '' : x}')">
-      <b>${f ? esc(aseoDiaTxt_(f)) : 'Sin registro'}</b><span class="nm">${x === actual ? 'Actual' : 'Periodo ' + esc(aseoDiaTxt_(x))}</span><span class="es"><i></i>${e === 'Resuelto' ? 'Terminado' : e}</span>${r.Plantilla ? `<span class="pc"><i style="width:${pc}%"></i></span><em>${pc}%</em>` : ''}</a>`; }).join('')}</div>`;
+      <b>${f ? esc(aseoDiaTxt_(f)) : 'Sin registro'}</b><span class="nm">${x === actual ? 'Actual' : 'Anterior'}</span><span class="es"><i></i>${e === 'Resuelto' ? 'Terminado' : e}</span>${r.Plantilla ? `<span class="pc"><i style="width:${pc}%"></i></span><em>${pc}%</em>` : ''}</a>`; }).join('')}</div>`;
 }
 // Alojamiento terminado → ¿programar el siguiente levantamiento? Sí: ciclo nuevo desde hoy (Pendiente, límite = hoy + periodo).
 window.tdIGPreguntaSig_ = function (hijo) {
   const [pid, hid] = String(hijo).split('~'), r = TAR_STATE.list.find(x => x.ID === pid); if (!r || !hid) return;
-  const hoy = tarIso_(tarToday_()), C = tdIGCiclos_(r, hid); if (C.includes(hoy)) return; // ya se programó hoy
+  const hoy = tarIso_(tarToday_()), C = tdIGCiclos_(r, hid);
+  let nueva = hoy; for (let i = 2; C.includes(nueva); i++) nueva = `${hoy}-${i}`; // otro ciclo el mismo día: llave con sufijo
   const p = tarProg_(r) || {}, a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, cod = String(a.corto || a.nombre || hid).toUpperCase();
   const per = p.tipo === 'periodo' ? ((TAR_LV_PER.find(x => x[0] === p.periodo) || [])[1] || '') : tdProgCorto_(r).replace('📅 ', '');
   setTimeout(() => {
     if (!confirm(`${cod} · ${r.Nombre || 'Levantamiento'} quedó Terminado.\n\n¿Programar el siguiente levantamiento (${per})?\nQuedará Pendiente con fecha límite ${aseoDiaTxt_(tdLvSigLim_(r, hoy))}.`)) return;
     let all = {}; try { all = JSON.parse(r.Ciclos_IG || '{}') || {}; } catch (_) {}
-    all[hid] = [...new Set([...(all[hid] || []), hoy])].sort(); r.Ciclos_IG = JSON.stringify(all);
+    all[hid] = [...new Set([...(all[hid] || []), nueva])].sort(); r.Ciclos_IG = JSON.stringify(all);
     tarRender();
     tarSaveRow_({ ID: r.ID, Ciclos_IG: r.Ciclos_IG, Updated_at: new Date().toISOString() }).then(() => tarRender()).catch(e => alert('No se pudo programar el siguiente levantamiento: ' + (e.message || e)));
   }, 50);
