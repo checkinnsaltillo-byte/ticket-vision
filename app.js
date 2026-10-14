@@ -58855,7 +58855,7 @@ function tdCard_(r, dia, o) {
     ${flag}
     <div class="r2">${meta.join('<span class="sep"></span>')}</div>
     <div class="r3">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${ig ? `<span class="ad-gd" title="Alojamientos">🏠 ${hijos.length}</span>` : ''}${r.WhatsApp === 'Sí' ? '<span class="ad-gd" title="Envía WhatsApp">💬</span>' : ''}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();${abrir}">Detalles</button>${ig ? `<button type="button" class="ad-det" title="Editar el levantamiento" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button>` : ''}</div>
-    ${tdQs_(r.ID, est, dia)}${av != null ? tdBarra_(av, 'Avance de los alojamientos') : ''}
+    ${ig ? '' : tdQs_(r.ID, est, dia)}${av != null ? tdBarra_(av, 'Avance de los alojamientos') : ''}
     ${ig && hijos.length ? `<button type="button" class="td-igtg ${ab ? 'ab' : ''}" onclick="event.stopPropagation();tdIGToggle_('${esc(r.ID)}')" title="${ab ? 'Ocultar' : 'Ver'} los alojamientos">${ab ? '▴ Ocultar' : '▾ Ver'} ${hijos.length} alojamiento${hijos.length === 1 ? '' : 's'}</button>` : ''}
     ${ab ? `<div class="td-hijos" onclick="event.stopPropagation()">${hijos.map(h => tdHijoFila_(r, h, dia)).join('')}</div>` : ''}
   </div>`;
@@ -58972,13 +58972,14 @@ function tdTablaLv_(O, vac) {
       const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, e = tdIGEstH_(r, hid, P), ult = tdIGUltFecha_(r, hid, tdIGPerDe_(r, hid, P)), R = tdIGRetraso_(r, hid);
       const pi = r.Plantilla ? (plIdxGet_(tdIGKey_(r, hid, P)) || {}).p : null, pc = e === 'Resuelto' && pi == null ? 100 : pi || 0;
       return { a, e, pc, lim: R.lim, ret: R.ret, cls: e === 'Cancelado' ? 'gh' : '', onclick: `tdAbrirHijoEn_('${esc(r.ID)}','${esc(hid)}','${P}')`, cells: [
+        tdIGRetHtml_(R),
         `<span class="tb-ch" style="--c:${AT_DEPTO.inspeccion.c}">📝 Levantamiento</span>`, `<span title="Prioridad según los días de retraso">${prio4Html_(R.prio)}</span>`, ckEst_(TD_EST[e] || '#94a3b8', e === 'Resuelto' ? 'Terminado' : e),
         `<span class="tb-pc"><span class="tk"><i style="width:${pc}%;background:${TD_EST[e] || '#94a3b8'}"></i></span><em>${pc}%</em></span>`,
         `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</small></span>`,
         ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')),
         `<span class="tb-fe ${R.ret >= 0 ? 'tarde' : ''}" title="Dinámica: ${R.ult ? 'último levantamiento' : '«Desde»'} (${esc(aseoDiaTxt_(R.base))}) + el periodo de la programación">${esc(tarFmtFecha_(R.lim))}</span>`,
         R.ult ? `<span title="Siguiente fecha límite: ${esc(aseoDiaTxt_(R.lim))}">${ckTx_(`${aseoDiaTxt_(R.ult)} · hace ${R.dias} día${R.dias === 1 ? '' : 's'}`)}</span>` : `<span class="tb-mu" title="Se cuenta desde «Desde» de Fecha(s); siguiente fecha límite: ${esc(aseoDiaTxt_(R.lim))}">Sin previo · desde ${esc(aseoDiaTxt_(R.base))}</span>`,
-        tdIGRetHtml_(R)] };
+        ] };
     }).sort((a, b) => b.ret - a.ret || String(a.a.corto || a.a.nombre).localeCompare(String(b.a.corto || b.a.nombre), 'es', { numeric: true })); // más críticos arriba
     // Avance del levantamiento = promedio de sus alojamientos (con un decimal para que se note desde el primer avance) + conteo por estado.
     const prs = rows.map(x => x.pc), prom = prs.length ? prs.reduce((a, b) => a + b, 0) / prs.length : 0, prT = prom > 0 && prom < 10 ? prom.toFixed(1).replace(/\.0$/, '') : String(Math.round(prom));
@@ -58992,7 +58993,7 @@ function tdTablaLv_(O, vac) {
     .ad-tbl .tb-gp{display:inline-flex;align-items:center;gap:6px;margin-left:12px;font-size:11px;font-weight:600;color:#6b7280}.ad-tbl .tb-gp .tk,.ad-tbl .tb-pc .tk{width:70px;height:5px;border-radius:3px;background:rgba(15,23,42,.1);overflow:hidden;display:inline-block}
     .ad-tbl .tb-gp .tk i{display:block;height:100%;background:#7c3aed}.ad-tbl .tb-pc{display:inline-flex;align-items:center;gap:6px}.ad-tbl .tb-pc .tk i{display:block;height:100%}.ad-tbl .tb-pc em,.ad-tbl .tb-gp em{font-style:normal;font-size:11px;font-weight:700;color:#334155}
     .ad-tbl .tb-ret{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}`; document.head.appendChild(st); }
-  return ckTablaHtml_([['Tipo', '140px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Avance', '120px'], ['Alojamiento', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '110px'], ['Último levantamiento', '170px'], ['Aviso', '170px']], grupos.sort((a, b) => Math.max(...b.rows.map(x => x.ret), -1e9) - Math.max(...a.rows.map(x => x.ret), -1e9)), vac, { headPorGrupo: true });
+  return ckTablaHtml_([['Aviso', '170px'], ['Tipo', '140px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Avance', '120px'], ['Alojamiento', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '110px'], ['Último levantamiento', '170px']], grupos.sort((a, b) => Math.max(...b.rows.map(x => x.ret), -1e9) - Math.max(...a.rows.map(x => x.ret), -1e9)), vac, { headPorGrupo: true });
 }
 window.tdTbTg_ = function (k) { const C = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(); if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 window.tdAbrirHijoEn_ = function (pid, hid, P) { if (tdFinMes_(tdDia_()) !== tdFinMes_(P)) TAR_STATE.dia = P; tdAbrirHijo_(pid, hid); };
@@ -67210,6 +67211,7 @@ function aseoRender_() {
   const grid = document.getElementById('aseo-grid');
   if (grid) { grid.classList.toggle('con-cal', !!ASEO.cal); grid.classList.remove('solo-cal'); }
   const cb = document.getElementById('aseo-cal-btn'); if (cb) { cb.style.display = ''; cb.classList.toggle('on', !!ASEO.cal); cb.title = ASEO.cal ? 'Ocultar calendario' : 'Mostrar calendario'; }
+  if (cb) { let sl = document.getElementById('aseo-calv-slot'); if (!sl) { sl = document.createElement('span'); sl.id = 'aseo-calv-slot'; cb.after(sl); } sl.innerHTML = ASEO.cal ? ckCalSegHtml_('aseo') : ''; } // vista del calendario: siempre visible en la barra
   const tb = document.getElementById('aseo-todas-btn'); if (tb) tb.textContent = ASEO.todas ? '▾ Contraer todas' : '▸ Expandir todas las cards';
   // Solo se re-pinta si cambió algo (conserva el scroll del usuario).
   const cal = ASEO.cal ? document.getElementById('aseo-cal') : null;
@@ -67223,14 +67225,13 @@ function aseoRender_() {
     ASEO.calSig = sig;
     const ym = ckCalM_0_('aseo'), dim = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate();
     const fil = aseoCalFiltrar_(aseoCalTareas_(ym + '-01', ym + '-' + String(dim).padStart(2, '0')));
-    cal.classList.add('ckm-on'); cal.innerHTML = ckCalHdHtml_('aseo') + ckMesGridHtml_(ym, aseoCalMesItems_(fil.tareas), 'aseoIrDia_', aseoDia_());
+    cal.classList.add('ckm-on'); cal.innerHTML = ckCalHdHtml_('aseo', true) + ckMesGridHtml_(ym, aseoCalMesItems_(fil.tareas), 'aseoIrDia_', aseoDia_());
   } else if (cal && sig !== ASEO.calSig) {
     const sl = cal.scrollLeft, stp = cal.scrollTop, first = !ASEO.calSig || cal.classList.contains('ckm-on');
     cal.classList.remove('ckm-on');
     ASEO.calSig = sig;
     const fil = aseoCalFiltrar_(aseoCalTareas_());
     ocupRender({ cont: cal, bookings: bks, filters: fCal, before: 1, after: 2, onBar: 'aseoSelect_', center: false, tareas: fil.tareas, tareaHtml: aseoCalTareaHtml_, alojFilter: fil.alojFilter });
-    cal.insertAdjacentHTML('afterbegin', ckCalHdHtml_('aseo'));
     aseoCalDnD_(cal);
     adMarcarCal_(false);
     if (first || ASEO._centrar) { ASEO._centrar = false; requestAnimationFrame(() => ocupCentrarHoy_(cal)); }
@@ -69592,8 +69593,10 @@ function ckCalM_0_(s) { return CKCAL.m[s] || aseoHoyIso_().slice(0, 7); }
 function ckCalRe_(s) { if (s === 'aseo') { ASEO.calSig = ''; aseoRender_(); } }
 window.ckCalV_ = function (s, v) { CKCAL.v[s] = v; try { localStorage.setItem('ckcal-v', JSON.stringify(CKCAL.v)); } catch (_) {} ckCalRe_(s); };
 window.ckCalM_ = function (s, d) { CKCAL.m[s] = ckMesMover_(ckCalM_0_(s), d); ckCalRe_(s); };
-function ckCalHdHtml_(s) {
+function ckCalSegHtml_(s) { const v = ckCalV_0_(s); return `<div class="ad-seg ckcal-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">🏠 Por alojamiento</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>`; }
+function ckCalHdHtml_(s, sinSeg) {
   const v = ckCalV_0_(s), ym = ckCalM_0_(s), lbl = TAR_MESES_L[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4);
+  if (sinSeg) return v === 'mes' ? `<div class="ckcal-hd"><div class="ckcal-mn"><button type="button" onclick="ckCalM_('${s}',-1)" title="Mes anterior">‹</button><b>${lbl}</b><button type="button" onclick="ckCalM_('${s}',1)" title="Mes siguiente">›</button></div></div>` : '';
   return `<div class="ckcal-hd"><div class="ad-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">🏠 Por alojamiento</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>
     ${v === 'mes' ? `<div class="ckcal-mn"><button type="button" onclick="ckCalM_('${s}',-1)" title="Mes anterior">‹</button><b>${lbl}</b><button type="button" onclick="ckCalM_('${s}',1)" title="Mes siguiente">›</button></div>` : ''}</div>`;
 }
@@ -69614,7 +69617,7 @@ function ckMesCss_() {
   if (document.getElementById('ckm-css')) return;
   const st = document.createElement('style'); st.id = 'ckm-css';
   st.textContent = `.ckcal-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#fff;border-bottom:1px solid #eef0f3;font-family:Inter,system-ui,sans-serif}
-    .ckcal-mn{display:inline-flex;align-items:center;gap:6px}.ckcal-mn b{font-size:13px;font-weight:700;color:#0f1729;min-width:120px;text-align:center}
+    .ckcal-mn{display:inline-flex;align-items:center;gap:6px;margin:0 auto}.ckcal-seg{margin:0}.ckcal-mn b{font-size:13px;font-weight:700;color:#0f1729;min-width:120px;text-align:center}
     .ckcal-mn button{all:unset;cursor:pointer;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:16px;font-weight:700;color:#334155}.ckcal-mn button:hover{background:#f8fafc}
     .aseo-cal.ckm-on{overflow:auto}.ckm{padding:8px;font-family:Inter,system-ui,sans-serif}
     .ckm-w,.ckm-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.ckm-w span{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;text-align:center;padding:2px 0}
