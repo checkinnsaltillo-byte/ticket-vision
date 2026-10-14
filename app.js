@@ -59576,11 +59576,10 @@ window.tarCalHoy = function () { if (TAR_STATE.calView === 'mes' && typeof tdMes
 function tarNavBar_(titulo) {
   const b = 'all:unset;cursor:pointer;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;font-size:16px;font-weight:900;color:#334155';
   return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-    <button type="button" onclick="tarCalNav(-1)" style="${b}">‹</button>
-    <button type="button" onclick="tarCalHoy()" style="all:unset;cursor:pointer;padding:6px 12px;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;font-size:12px;font-weight:800;color:#334155">Hoy</button>
-    <button type="button" onclick="tarCalNav(1)" style="${b}">›</button>
-    <div style="font-size:16px;font-weight:900;color:#0f172a;margin-left:6px">${titulo}</div>
-  </div>`;
+    <button type="button" onclick="tarCalNav(-1)" style="${b}" title="Anterior">‹</button>
+    <button type="button" onclick="tarCalHoy()" title="Volver a hoy" style="all:unset;cursor:pointer;padding:6px 14px;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;font-size:13px;font-weight:800;color:#0f172a;min-width:150px;text-align:center">${titulo}</button>
+    <button type="button" onclick="tarCalNav(1)" style="${b}" title="Siguiente">›</button>
+  </div>`; // el periodo (día, semana o mes) va entre las flechitas; clic en él = volver a hoy
 }
 // Tareas que tocan en `iso`: vigentes (Activa) o con registro de ese día.
 function tarDelDia_(iso) {
