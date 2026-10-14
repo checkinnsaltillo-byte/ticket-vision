@@ -71042,11 +71042,11 @@ function rbHorDur_(H) { const m = t => { const [a, b] = t.split(':').map(Number)
 // Tareas = cards de aseo del día (limpieza de salida · inspección si solo entra) + tareas manuales de limpieza/inspección con alojamiento.
 // Restricciones: personal de limpieza que labora ese día (Confirmado/Tentativo), edificio prioritario y segundo prioritario,
 // duración por tipo de alojamiento, tiempos de traslado entre propiedades y horario laboral. Las que reciben huésped van primero.
-const RB_INSP_MIN = 20, RB_TRAS_DEF = 15;
+const RB_INSP_MIN = 20, RB_TRAS_DEF = 15, RB_MARGEN = 15; // margen entre edificio y edificio (se suma al traslado)
 function rbMin_(h) { const m = String(h || '').trim().match(/^(\d{1,2}):(\d{2})\s*([ap])?/i); if (!m) return null; let a = +m[1]; if (m[3]) { const pm = /p/i.test(m[3]); if (pm && a < 12) a += 12; if (!pm && a === 12) a = 0; } return a * 60 + +m[2]; }
 function rbHHMM_(m) { m = Math.round(m); const h = Math.floor(m / 60), n = m % 60; return rbHoraTxt_(`${String(h).padStart(2, '0')}:${String(n).padStart(2, '0')}`); }
 function rbProp_(hid) { const a = typeof atAloj_ === 'function' ? atAloj_(hid) : null; return String((a && a.propiedad) || '').replace(/^Calle\s+/i, '').trim() || 'Sin propiedad'; }
-function rbTras_(a, b) { if (!a || a === b) return { m: 0, est: false }; const v = ((RB.reglas || {}).traslados || {})[rbTrK_(a, b)]; return v != null ? { m: Number(v), est: false } : { m: RB_TRAS_DEF, est: true }; }
+function rbTras_(a, b) { if (!a || a === b) return { m: 0, base: 0, est: false }; const v = ((RB.reglas || {}).traslados || {})[rbTrK_(a, b)], base = v != null ? Number(v) : RB_TRAS_DEF; return { m: base + RB_MARGEN, base, est: v == null }; }
 window.rbProgramar_ = async function () {
   const dia = (document.getElementById('rb-pdia') || {}).value || aseoHoyIso_(); RB.pdia = dia;
   const btn = document.querySelector('.rbp-go'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando…'; }
@@ -71085,7 +71085,7 @@ window.rbProgramar_ = async function () {
       const costo = termina + pen + tarde + extra; if (!best || costo < best.costo) best = { x, tr, llega, termina, costo }; });
     if (!best) { sinAsig.push(t); return; }
     const x = best.x;
-    if (best.tr.m) x.pasos.push({ k: 'tras', de: x.prop, a: t.prop, ini: x.t, fin: best.llega, m: best.tr.m, est: best.tr.est });
+    if (best.tr.m) x.pasos.push({ k: 'tras', de: x.prop, a: t.prop, ini: x.t, fin: best.llega, m: best.tr.m, base: best.tr.base, est: best.tr.est });
     x.pasos.push({ k: 'tarea', t, ini: best.llega, fin: best.termina, pri: x.ed1 === t.prop ? 1 : x.ed2 === t.prop ? 2 : 0, tarde: t.lim != null && best.termina > t.lim });
     x.trabajo += t.dur; x.tras += best.tr.m; x.t = best.termina; x.prop = t.prop; t.quien = x.corto; t.ini = best.llega; t.fin = best.termina;
   });
@@ -71105,7 +71105,7 @@ function rbProgHtml_() {
   const tCard = (t, conQuien) => `<div class="rbp-t ${t.tipoT === 'Inspección' ? 'ins' : 'lim'}"><b>${pcEsc(t.cod || '—')}</b><span>${t.tipoT === 'Inspección' ? '🔍' : '🧹'} ${pcEsc(t.titulo || t.tipoT)} · ${pcEsc(t.tipoA)} · ${dur(t.dur)}${t.durEst ? '*' : ''}</span>${t.entra ? chip(t.temp ? '⏰ entrada temprana' : '↘ entra hoy', '#15803d', '#dcfce7') : ''}${t.lim != null ? chip('antes de ' + rbHHMM_(t.lim), t.tarde ? '#b91c1c' : '#475569', t.tarde ? '#fee2e2' : '#f1f5f9') : ''}${conQuien ? (t.quien ? chip('👤 ' + pcEsc(t.quien) + ' · ' + rbHHMM_(t.ini), '#4338ca', '#eef2ff') : chip('Sin asignar', '#b91c1c', '#fee2e2')) : ''}</div>`;
   const resumen = `<div class="rbp-kpis">
     <div><small>Tareas</small><b>${nT}</b><em>${R.T.filter(t => t.tipoT === 'Limpieza').length} limpiezas · ${R.T.filter(t => t.tipoT === 'Inspección').length} inspecciones${R.hechas ? ` · ${R.hechas} ya terminadas` : ''}</em></div>
-    <div><small>Tiempo requerido</small><b>${hm(R.req)}</b><em>+ ${hm(R.S.reduce((a, x) => a + x.tras, 0))} de traslados</em></div>
+    <div><small>Tiempo requerido</small><b>${hm(R.req)}</b><em>+ ${hm(R.S.reduce((a, x) => a + x.tras, 0))} de traslados (con ${RB_MARGEN} min de margen entre edificios)</em></div>
     <div><small>Capacidad del equipo</small><b>${hm(R.cap)}</b><em>${R.S.length} persona${R.S.length === 1 ? '' : 's'} × ${hm(R.fin - R.ini)} (${rbHHMM_(R.ini)} a ${rbHHMM_(R.fin)})</em></div>
     <div class="${ok ? 'ok' : 'bad'}"><small>Resultado</small><b>${exc > 0 ? `Se excede ${hm(exc)}` : `Sobran ${hm(-exc)}`}</b><em>Termina a las ${rbHHMM_(ult)}${R.sinAsig.length ? ` · ${R.sinAsig.length} sin asignar` : ''}${R.T.some(t => t.tarde) ? ` · ${R.T.filter(t => t.tarde).length} después de la hora de entrada` : ''}</em></div></div>
     ${R.fuera.length ? `<div class="rb-s">No disponibles ese día: ${R.fuera.map(x => `${pcEsc(x.corto)} (${RB_EST[x.e].t.toLowerCase()})`).join(', ')}.</div>` : ''}
@@ -71113,8 +71113,8 @@ function rbProgHtml_() {
   const tab = (k, t) => `<button type="button" class="${R.vista === k ? 'on' : ''}" onclick="rbProgVista_('${k}')">${t}</button>`;
   let cuerpo = '';
   if (R.vista === 'personal') cuerpo = R.S.map(x => { const exc2 = x.t - R.fin;
-    return `<div class="rbp-p"><div class="rbp-ph">${typeof adAv_ === 'function' ? adAv_(x.n) : ''}<b>${pcEsc(x.corto)}</b>${chip(RB_EST[x.e].t, x.e === 'confirmado' ? '#fff' : '#15803d', x.e === 'confirmado' ? '#16a34a' : '#f0fdf4')}<span class="sp"></span><span class="rbp-m">${x.pasos.filter(p => p.k === 'tarea').length} tareas · ${hm(x.trabajo)} + ${hm(x.tras)} traslado · ${exc2 > 0 ? `<b style="color:#b91c1c">se pasa ${hm(exc2)}</b>` : x.pasos.length ? `termina ${rbHHMM_(x.t)}` : 'sin tareas'}</span></div>
-      <ol class="rbp-it">${x.pasos.length ? x.pasos.map(p => p.k === 'tras' ? `<li class="tr"><span class="h">${rbHHMM_(p.ini)}</span><span>🚗 Traslado ${pcEsc(p.de)} → ${pcEsc(p.a)} · ${p.m} min${p.est ? ' (estimado)' : ''}</span></li>`
+    return `<div class="rbp-p"><div class="rbp-ph">${typeof adAv_ === 'function' ? adAv_(x.n) : ''}<b>${pcEsc(x.corto)}</b>${chip(RB_EST[x.e].t, x.e === 'confirmado' ? '#fff' : '#15803d', x.e === 'confirmado' ? '#16a34a' : '#f0fdf4')}<span class="sp"></span><span class="rbp-m">${x.pasos.filter(p => p.k === 'tarea').length} tareas · ${hm(x.trabajo)} + ${hm(x.tras)} traslado = <b style="color:#0f172a">${hm(x.trabajo + x.tras)} total</b> · ${exc2 > 0 ? `<b style="color:#b91c1c">se pasa ${hm(exc2)}</b>` : x.pasos.length ? `termina ${rbHHMM_(x.t)}` : 'sin tareas'}</span></div>
+      <ol class="rbp-it">${x.pasos.length ? x.pasos.map(p => p.k === 'tras' ? `<li class="tr"><span class="h">${rbHHMM_(p.ini)}</span><span>🚗 Traslado ${pcEsc(p.de)} → ${pcEsc(p.a)} · ${p.base} min${p.est ? ' (estimado)' : ''} + ${RB_MARGEN} min de margen = ${p.m} min</span></li>`
         : `<li class="${p.tarde ? 'late' : ''}"><span class="h">${rbHHMM_(p.ini)}–${rbHHMM_(p.fin)}</span>${tCard(p.t)}${p.pri === 1 ? chip('★ prioritario', '#a16207', '#fef9c3') : p.pri === 2 ? chip('☆ 2º prioritario', '#a16207', '#fefce8') : ''}</li>`).join('') : '<li class="tr"><span>Sin tareas asignadas</span></li>'}
         ${x.pasos.length ? `<li class="fin"><span class="h">${rbHHMM_(x.t)}</span><span>🏁 Fin de su itinerario${exc2 > 0 ? ` · ${hm(exc2)} después de la salida (${rbHHMM_(R.fin)})` : ` · le quedan ${hm(-exc2)} de jornada`}</span></li>` : ''}</ol></div>`; }).join('') + (R.sinAsig.length ? `<div class="rbp-p"><div class="rbp-ph"><b style="color:#b91c1c">Sin asignar</b></div>${R.sinAsig.map(t => tCard(t)).join('')}</div>` : '');
   else { const key = R.vista === 'propiedad' ? (t => t.prop) : (t => t.tipoT), G = new Map(); R.T.forEach(t => { const k = key(t); if (!G.has(k)) G.set(k, []); G.get(k).push(t); });
