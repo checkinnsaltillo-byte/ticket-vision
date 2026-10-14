@@ -71268,7 +71268,7 @@ function rbTablaDatos_(ym) {
   ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => /limpieza|mantenimiento/i.test(String(r.Puesto || '')) && !/inactiv|baja/i.test(String(r.Estado || '')) && !r.Fecha_retiro)
     .forEach(r => { const n = (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : '') || r.Nombre; if (n && !P.has(n)) P.set(n, []); });
   const BK = new Map(); (typeof pcMovBookings_ === 'function' ? pcMovBookings_() : []).forEach(b => BK.set(String(b.Id), b));
-  const al_ = hid => { const a = atAloj_(hid); return { cod: String(a.corto || '').toUpperCase(), aloj: a.nombre || '', tipo: String(((a && a.raw) || {}).tipo || '').trim() }; };
+  const al_ = hid => { const a = atAloj_(hid); return { hid: String(hid || ''), cod: String(a.corto || '').toUpperCase(), aloj: a.nombre || '', tipo: String(((a && a.raw) || {}).tipo || '').trim() }; };
   const finDe = e => { const h = (e && e.hist) || {}, x = h.inspeccionado || h.terminado; return x ? { at: x.at, by: x.by } : null; };
   Object.entries((window.ASEO && ASEO.asig) || {}).forEach(([id, a]) => { // cards de reservas (la llave es la reserva que sale)
     const b = BK.get(id), hid = b ? String(b.HouseId || '') : (/^H\d/.test(id) ? id.slice(1) : ''), f = b ? _pagosDateIso(b.DateDeparture) : String(a.at || '').slice(0, 10);
@@ -71339,24 +71339,46 @@ function rbTablaHtml_() {
 // el color sube con la duración (respecto al día más cargado del mes). Días sin tareas quedan vacíos.
 function rbHeatHtml_(pers, ym, hm) { // mismo diseño que el calendario «Por día» de Tareas (ocup-cal); color = duración del día
   const [y, m] = ym.split('-').map(Number), nd = new Date(y, m, 0).getDate(), hoy = aseoHoyIso_(), dias = Array.from({ length: nd }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
-  const mes = TAR_MESES[m - 1], DOW = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-  const filas = pers.map(([n, L]) => { const by = {}; L.forEach(x => { if (x.sinT) return; (by[x.f] = by[x.f] || []).push(x); }); return { n, by }; });
-  let max = 0; filas.forEach(F => Object.values(F.by).forEach(L => { max = Math.max(max, L.reduce((a, x) => a + x.min, 0)); }));
+  const mes = TAR_MESES[m - 1], DOW = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], porAloj = RB.hv === 'aloj';
+  // Renglones: a) por usuario (persona) · b) por propiedad/departamento (edificio con su total + sus departamentos)
+  let filas = [];
+  if (!porAloj) filas = pers.map(([n, L], i) => { const by = {}; L.forEach(x => { if (x.sinT) return; (by[x.f] = by[x.f] || []).push(x); }); const c = RB_COLS[i % RB_COLS.length];
+    return { by, ini: typeof adIni_ === 'function' ? adIni_(n) : n.slice(0, 2), c, nom: aseoNombreCorto_(n), tit: n, tip: n }; });
+  else {
+    const U = new Map(); // la misma tarea asignada a varias personas cuenta una vez (se suman sus partes del tiempo)
+    pers.forEach(([n, L]) => L.forEach(x => { if (x.sinT || !x.hid) return; const k = [x.f, x.hid, x.tipoT, x.titulo].join('|'), u = U.get(k);
+      if (u) { u.min += x.min; u.quien.push(aseoNombreCorto_(n)); } else U.set(k, Object.assign({}, x, { quien: [aseoNombreCorto_(n)] })); }));
+    const G = new Map(); [...U.values()].forEach(x => { const E = alojEdif_(x.hid), gk = E ? E.k : '~' + ckPropDe_(x.hid, ''), gt = E ? E.nom : ckPropDe_(x.hid, '').replace(/^(Calle|Plaza)\s+/i, '');
+      if (!G.has(gk)) G.set(gk, { k: gk, t: gt, A: new Map() }); const g = G.get(gk); if (!g.A.has(x.hid)) g.A.set(x.hid, []); g.A.get(x.hid).push(x); });
+    const ord = k => { const i = ED_ORDEN.indexOf(k); return i < 0 ? 99 : i; };
+    [...G.values()].sort((a, b) => ord(a.k) - ord(b.k) || a.t.localeCompare(b.t, 'es')).forEach(g => {
+      const all = [].concat(...g.A.values()), byG = {}; all.forEach(x => { (byG[x.f] = byG[x.f] || []).push(x); });
+      filas.push({ by: byG, ini: '🏢', c: ['#4338ca', '#e0e7ff'], nom: `${g.t} (${g.A.size})`, tit: `Edificio ${g.t}: total del día`, sec: true });
+      [...g.A.entries()].sort((a, b) => { const ea = alojEdif_(a[0]), eb = alojEdif_(b[0]); return (eb && eb.ed) - (ea && ea.ed) || String(a[1][0].cod).localeCompare(String(b[1][0].cod), 'es', { numeric: true }); })
+        .forEach(([hid, L]) => { const by = {}; L.forEach(x => { (by[x.f] = by[x.f] || []).push(x); }); const E = alojEdif_(hid);
+          filas.push({ by, ini: E && E.ed ? '🏢' : L[0].cod || '—', c: ['#475569', '#f1f5f9'], nom: E && E.ed ? 'Edificio' : `${L[0].cod}${L[0].tipo ? ' · ' + L[0].tipo : ''}`, tit: L[0].aloj || L[0].cod }); });
+    });
+  }
+  let max = 0; filas.filter(F => !F.sec).forEach(F => Object.values(F.by).forEach(L => { max = Math.max(max, L.reduce((a, x) => a + x.min, 0)); }));
   const col = v => { const t = max ? Math.min(1, v / max) : 0; return `hsl(${Math.round(140 - 140 * t)},${Math.round(55 + 25 * t)}%,${Math.round(90 - 42 * t)}%)`; }; // verde claro → amarillo → rojo
   const cls = f => { const d = tarParseIso_(f); return `${f === hoy ? 'is-today' : ''} ${d.getDay() === 0 || d.getDay() === 6 ? 'is-weekend' : ''}`; };
   const head = dias.map(f => { const d = tarParseIso_(f); return `<div class="ocup-head-cell ${cls(f)}"><div class="ocup-head-dow">${DOW[d.getDay()]}</div><div class="ocup-head-day">${d.getDate()}-${mes}</div></div>`; }).join('') + '<div class="ocup-head-cell"><div class="ocup-head-dow">mes</div><div class="ocup-head-day">Total</div></div>';
-  const rows = filas.map(({ n, by }, i) => { let tN = 0, tM = 0; const c = RB_COLS[i % RB_COLS.length];
-    const cells = dias.map(f => { const L = by[f]; if (!L || !L.length) return `<div class="ocup-day-cell ${cls(f)}"></div>`;
+  const rows = filas.map(F => { let tN = 0, tM = 0;
+    const cells = dias.map(f => { const L = F.by[f]; if (!L || !L.length) return `<div class="ocup-day-cell ${cls(f)}"></div>`;
       const mi = L.reduce((a, x) => a + x.min, 0), li = L.filter(x => x.tipoT === 'Limpieza').length, ins = L.length - li; tN += L.length; tM += mi;
-      const tip = `${n} · ${aseoDiaTxt_(f)}\n` + L.map(x => `${x.ico} ${x.cod || '—'} · ${x.tipoT} · ${hm(x.min)}${x.hecho ? ' ✓' : ''}`).join('\n');
-      return `<div class="ocup-day-cell rbh-c ${cls(f)}" style="background:${col(mi)};color:${mi / (max || 1) > .6 ? '#fff' : '#0f172a'}" title="${pcEsc(tip)}"><b>${li ? '🧹' + li : ''}${ins ? (li ? ' ' : '') + '🔍' + ins : ''}</b><span>${hm(mi)}</span></div>`; }).join('');
-    return `<div class="ocup-cal-row"><div class="ocup-aloj-cell"><div class="ocup-aloj-img" style="background:${c[1]};color:${c[0]};font-size:13px;font-weight:800">${pcEsc(typeof adIni_ === 'function' ? adIni_(n) : n.slice(0, 2))}</div><div class="ocup-aloj-info" title="${pcEsc(n)}"><div class="ocup-aloj-name">${pcEsc(aseoNombreCorto_(n))}</div><div class="ocup-aloj-id">${tN} tarea${tN === 1 ? '' : 's'}</div></div></div>${cells}<div class="ocup-day-cell rbh-c rbh-tot"><b>${tN}</b><span>${tN ? hm(tM) : '—'}</span></div></div>`; }).join('');
+      const tip = `${F.tit} · ${aseoDiaTxt_(f)}\n` + L.map(x => `${x.ico} ${x.cod || '—'} · ${x.tipoT} · ${hm(x.min)}${x.quien ? ' · ' + x.quien.join(', ') : ''}${x.hecho ? ' ✓' : ''}`).join('\n');
+      const bg = F.sec ? '#eef2ff' : col(mi), fg = F.sec ? '#312e81' : mi / (max || 1) > .6 ? '#fff' : '#0f172a';
+      return `<div class="ocup-day-cell rbh-c ${cls(f)}" style="background:${bg};color:${fg}" title="${pcEsc(tip)}"><b>${li ? '🧹' + li : ''}${ins ? (li ? ' ' : '') + '🔍' + ins : ''}</b><span>${hm(mi)}</span></div>`; }).join('');
+    return `<div class="ocup-cal-row ${F.sec ? 'rbh-sec' : ''}"><div class="ocup-aloj-cell"><div class="ocup-aloj-img" style="background:${F.c[1]};color:${F.c[0]};font-size:${String(F.ini).length > 3 ? 10 : 13}px;font-weight:800">${pcEsc(F.ini)}</div><div class="ocup-aloj-info" title="${pcEsc(F.tit)}"><div class="ocup-aloj-name">${pcEsc(F.nom)}</div><div class="ocup-aloj-id">${tN} tarea${tN === 1 ? '' : 's'}</div></div></div>${cells}<div class="ocup-day-cell rbh-c rbh-tot"><b>${tN}</b><span>${tN ? hm(tM) : '—'}</span></div></div>`; }).join('');
   const pasos = [0, .25, .5, .75, 1].map(t => `<span style="background:${col(t * max)}"></span>`).join('');
+  const nR = porAloj ? filas.filter(F => !F.sec).length : filas.length;
   return `<style>.rbh-cont .ocup-cal{--ocup-aloj-w:178px;--ocup-day-w:60px;--ocup-row-h:52px}.rbh-cont .ocup-head-day{font-size:12px}
       .rbh-c{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:6px;margin:3px 2px;min-height:auto!important;cursor:default;border-right:0!important}.rbh-c b{font-size:10.5px;white-space:nowrap}.rbh-c span{font-size:10px;white-space:nowrap;opacity:.9}
-      .rbh-tot{background:#eef2ff;color:#312e81}.rbh-ley{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:#64748b;margin:0 0 8px}.rbh-ley i{display:inline-flex;gap:2px}.rbh-ley i span{width:22px;height:12px;border-radius:3px;display:inline-block}</style>
-    <div class="rbh-ley">Duración por día:<span>0</span><i>${pasos}</i><span>${hm(max)}</span><span style="margin-left:10px">🧹 limpiezas · 🔍 inspecciones · vacío = sin tareas (no laboró)</span></div>
-    <div class="ocup-cal-container rbh-cont"><div class="ocup-cal" data-ocup-cal="continuous" style="--ocup-days:${nd + 1}"><div class="ocup-cal-head"><div class="ocup-head-aloj">👤 Personal · ${filas.length}</div>${head}</div>${rows || '<div class="rb-s" style="padding:20px">Sin personal</div>'}</div></div>`;
+      .rbh-tot{background:#eef2ff;color:#312e81}.rbh-sec{background:#f8faff}.rbh-sec .ocup-aloj-cell{background:#eef2ff}.rbh-sec .ocup-aloj-name{color:#3730a3}
+      .rbh-ley{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:#64748b;margin:0 0 8px}.rbh-ley i{display:inline-flex;gap:2px}.rbh-ley i span{width:22px;height:12px;border-radius:3px;display:inline-block}</style>
+    <div class="rbh-ley"><div class="ad-seg" style="margin-right:6px"><button type="button" class="${porAloj ? '' : 'on'}" onclick="RB.hv='usuario';rbRender_()">👤 Por usuario</button><button type="button" class="${porAloj ? 'on' : ''}" onclick="RB.hv='aloj';rbRender_()">🏢 Por propiedad/departamento</button></div>
+      Duración por día:<span>0</span><i>${pasos}</i><span>${hm(max)}</span><span style="margin-left:10px">🧹 limpiezas · 🔍 inspecciones · vacío = sin tareas${porAloj ? ' · renglón azul = total del edificio' : ' (no laboró)'}</span></div>
+    <div class="ocup-cal-container rbh-cont"><div class="ocup-cal" data-ocup-cal="continuous" style="--ocup-days:${nd + 1}"><div class="ocup-cal-head"><div class="ocup-head-aloj">${porAloj ? `🏢 Alojamientos (${nR})` : `👤 Personal (${nR})`}</div>${head}</div>${rows || `<div class="rb-s" style="padding:20px">${porAloj ? 'Sin tareas en alojamientos este mes' : 'Sin personal'}</div>`}</div></div>`;
 }
 // ── Atajo en Tareas: «🪄 Programar limpiezas del día» en ventana lateral (asistencia del día → Programar → Asignar) ──
 window.rbDrAbrir_ = async function () {
