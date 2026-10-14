@@ -71084,7 +71084,7 @@ const RB_MAX_TRAS = 2; // e) traslados entre edificios por persona al día (pref
 const RB_CHOFER_DEF = { n: 1, cap: 3, espera: 15 };
 function rbChofer_() { const C = Object.assign({}, RB_CHOFER_DEF, (RB.reglas || {}).chofer || {}); return { n: Math.max(1, Number(C.n) || 1), cap: Math.max(1, Number(C.cap) || 3), espera: Math.max(0, Number(C.espera) || 0) }; }
 // i) Polos: propiedades cercanas entre sí (se va a pie, sin chofer). Predeterminado según lo indicado por Check Inn.
-const RB_POLOS_DEF = { 'Baja California': 'A', 'Torreón': 'B', 'Matamoros': 'C', 'José Cárdenas': 'C', 'Oaxaca': 'C', 'Cumbres': 'D', 'Sevilla': 'E' };
+const RB_POLOS_DEF = { 'Baja California': 'A', 'Torreón': 'B', 'Matamoros': 'C', 'José Cárdenas': 'C', 'Oaxaca': 'C', 'Cumbres': 'D', 'Sevilla': 'E', 'Plaza Versalles': 'F' };
 const RB_POLO_LET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 function rbPolo_(prop) { const P = (RB.reglas || {}).polos || {}; const v = Object.prototype.hasOwnProperty.call(P, prop) ? P[prop] : RB_POLOS_DEF[prop]; return v || ''; }
 window.rbPoloSet_ = async function (prop, v) {
