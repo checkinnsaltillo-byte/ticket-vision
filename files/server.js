@@ -9404,7 +9404,8 @@ app.post("/config/reglas-bot", async (req, res) => {
     const out = await _aseoMutate(_RB_OBJ, "reglasBot", d => {
       const B = req.body || {};
       if (typeof B.auto === "boolean") d.auto = B.auto;
-      if (B.tras_pref != null && isFinite(Number(B.tras_pref))) d.tras_pref = Math.max(0, Math.min(10, Math.round(Number(B.tras_pref)))); // e) traslados preferidos por persona // «Automática»: programar sola las limpiezas del día siguiente
+      if (B.tras_pref != null && isFinite(Number(B.tras_pref))) d.tras_pref = Math.max(0, Math.min(10, Math.round(Number(B.tras_pref)))); // e) traslados preferidos por persona
+      if (B.margenes && typeof B.margenes === "object") { d.margenes = d.margenes || {}; ["aloj", "tras"].forEach(k => { const v = Number(B.margenes[k]); if (B.margenes[k] != null && isFinite(v) && v >= 0 && v <= 240) d.margenes[k] = Math.round(v); }); } // f) tolerancia entre alojamientos · g) tolerancia en traslados // «Automática»: programar sola las limpiezas del día siguiente
       // Asignaciones automáticas por confirmar: { pend: { "<asigId>|<rol>|<persona>" | "T<id>|<persona>": "YYYY-MM-DD" | null } }
       if (B.pend && typeof B.pend === "object") { d.pend = d.pend || {}; Object.keys(B.pend).slice(0, 400).forEach(k => { const kk = String(k).slice(0, 200); if (B.pend[k]) d.pend[kk] = String(B.pend[k]).slice(0, 10); else delete d.pend[kk]; }); }
       if (d.pend) Object.keys(d.pend).forEach(k => { if (String(d.pend[k]) < new Date(Date.now() - 20 * 864e5).toISOString().slice(0, 10)) delete d.pend[k]; }); // limpieza: > 20 días
