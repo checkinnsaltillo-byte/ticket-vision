@@ -71828,15 +71828,15 @@ const RB_PESOS = [
   { k: 'tarde', t: 'Entradas de huésped a tiempo', d: 'La limpieza termina antes de la hora de entrada (o de la entrada temprana).', def: 1, f: 1 },
   { k: 'vueltas', t: 'Menos vueltas de vehículo', d: 'Cada vuelta del chofer o de quien conduce.', def: 2, f: 1 },
   { k: 'emerg', t: 'Evitar el apoyo de emergencia', d: 'Vuelta extra de otro chofer solo para regresar a alguien.', def: 2, f: 3 },
-  { k: 'jornada', t: 'Respetar la hora de salida', d: 'Minutos trabajados o de regreso después de la salida.', def: 2, f: 0.05 },
+  { k: 'jornada', t: 'Respetar la hora de salida', d: 'Minutos dentro del margen después de la salida (costo bajo).', def: 2, f: 0.05, oculta: true, de: 'regreso' }, // sin control propio: sigue la fuerza de «Hora de salida del personal»
   { k: 'trasP', t: 'Menos traslados de personas', d: 'Cada vez que una persona sube a un vehículo.', def: 2, f: 0.1 },
   { k: 'trasPolo', t: 'Traslados preferidos por persona', d: 'Cada traslado arriba del número preferido (inciso e).', def: 3, f: 3 },
-  { k: 'regreso', t: 'Hora de salida del personal (+ margen)', d: 'Nadie termina ni llega a Ed. Torreón más de 20 min (margen) después de su hora de salida; quien conduce cede su última tarea a otra persona para alcanzar a regresar a la gente.', def: 2, f: 1 },
+  { k: 'regreso', t: 'Hora de salida del personal (+ margen)', d: 'Hasta 20 min (margen) después de su hora de salida se tolera con un costo bajo; más allá, nadie termina ni llega a Ed. Torreón; quien conduce cede su última tarea a otra persona para alcanzar a regresar a la gente.', def: 2, f: 1 },
   { k: 'edif', t: 'Edificio asignado', d: 'Preferir 1a › 2a › 3a asignación de cada persona.', def: 3, f: 0.02 },
   { k: 'muerto', t: 'Menos tiempo muerto', d: 'Minutos de espera (al chofer o a una salida tardía).', def: 4, f: 0.2 },
   { k: 'parejo', t: 'Cargas parejas', d: 'Que todo el personal trabaje tiempos similares.', def: 5, f: 0.2 },
 ];
-function rbNivDe_(k) { const r = RB_PESOS.find(x => x.k === k), v = ((RB.reglas || {}).pesos || {})[k]; return v != null && RB_NIV[v] != null ? Number(v) : r.def; }
+function rbNivDe_(k) { const r0 = RB_PESOS.find(x => x.k === k); if (r0 && r0.de) return rbNivDe_(r0.de); const r = r0, v = ((RB.reglas || {}).pesos || {})[k]; return v != null && RB_NIV[v] != null ? Number(v) : r.def; }
 function rbW_(k) { const r = RB_PESOS.find(x => x.k === k); return RB_NIV[rbNivDe_(k)] * r.f; }
 // Enfoques de optimización (se eligen al programar; se guardan con la programación aceptada).
 const RB_ENF = [['param', '⚖️ Según Parámetros', 'Usa las fuerzas definidas en ⚙️ Parámetros'], ['edif', '🏢 Edificio asignado', 'Respeta el edificio asignado de cada persona aunque cueste más traslados'], ['personal', '⏱ Tiempo del personal', 'Menos espera y horas extra aunque haya más vueltas del vehículo (1 vuelta = 30 min de espera)'], ['parejo', '👥 Cargas parejas', 'Reparte el trabajo parejo entre el personal aunque cueste más traslados']];
@@ -71952,7 +71952,7 @@ window.rbAyuda_ = function (mantener) {
     <div style="font-size:11.5px;color:#64748b;margin:0 0 6px">Una prioridad <b>1 · Máxima</b> nunca se sacrifica por una de nivel 2; una de nivel 2 nunca por una de nivel 3, y así. Por encima de todo: <b>hacer la mayor cantidad de limpiezas</b> (fija).</div>
     <table class="rq-t"><tbody>
       <tr><td><b>Máxima cantidad de limpiezas</b><small>No dejar tareas sin asignar.</small></td><td style="width:170px"><b class="rq-n1">Por encima de todo</b></td></tr>
-      ${RB_PESOS.slice().sort((a, b) => (rbNivDe_(a.k) || 9) - (rbNivDe_(b.k) || 9)).map(r => { const n = rbNivDe_(r.k); return `<tr><td><b>${r.t}</b><small>${r.d}${n !== r.def ? ` · predeterminado: ${RB_NIV_T[r.def]}` : ''}</small></td>
+      ${RB_PESOS.filter(r => !r.oculta).sort((a, b) => (rbNivDe_(a.k) || 9) - (rbNivDe_(b.k) || 9)).map(r => { const n = rbNivDe_(r.k); return `<tr><td><b>${r.t}</b><small>${r.d}${n !== r.def ? ` · predeterminado: ${RB_NIV_T[r.def]}` : ''}</small></td>
         <td><select class="rq-n${n}" onchange="rbPesoSet_('${r.k}',this.value)">${[1, 2, 3, 4, 5, 0].map(v => `<option value="${v}" ${v === n ? 'selected' : ''}>${RB_NIV_T[v]}</option>`).join('')}</select></td></tr>`; }).join('')}
     </tbody></table>
     <div style="text-align:right;margin-top:6px"><button type="button" class="rb-tlbtn" style="margin:0;font-size:12px;padding:5px 10px" onclick="rbPesosReset_()">↺ Valores predeterminados</button></div>
