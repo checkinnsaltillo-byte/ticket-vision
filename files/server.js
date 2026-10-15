@@ -9406,7 +9406,7 @@ app.post("/config/reglas-bot", async (req, res) => {
       if (typeof B.auto === "boolean") d.auto = B.auto;
       if (B.tras_pref != null && isFinite(Number(B.tras_pref))) d.tras_pref = Math.max(0, Math.min(10, Math.round(Number(B.tras_pref)))); // e) traslados preferidos por persona
       // Plan asignado (copia al oprimir «Asignar»): { prog: { dia, tareas: [...] } } · limpiar avisos: { progCambiosClear: dia }
-      if (B.prog && /^\d{4}-\d{2}-\d{2}$/.test(String(B.prog.dia || "")) && Array.isArray(B.prog.tareas)) { d.prog = d.prog || {}; d.prog[B.prog.dia] = { at: new Date().toISOString(), by: txt(B.user), tareas: B.prog.tareas.slice(0, 200).map(x => ({ id: String(x.id || "").slice(0, 40), asigId: String(x.asigId || "").slice(0, 40), tid: String(x.tid || "").slice(0, 40), hid: String(x.hid || "").slice(0, 20), cod: String(x.cod || "").slice(0, 20), quienN: String(x.quienN || "").slice(0, 80), rol: x.rol === "inspeccion" ? "inspeccion" : "aseo", ini: Number(x.ini) || 0, fin: Number(x.fin) || 0, tipoT: String(x.tipoT || "").slice(0, 20), prop: String(x.prop || "").slice(0, 60) })) }; if (d.progCambios) delete d.progCambios[B.prog.dia]; }
+      if (B.prog && /^\d{4}-\d{2}-\d{2}$/.test(String(B.prog.dia || "")) && Array.isArray(B.prog.tareas)) { d.prog = d.prog || {}; const prevP = (d.prog || {})[B.prog.dia] || {}, ahoraP = new Date().toISOString(); d.prog[B.prog.dia] = { at: ahoraP, by: txt(B.user), acept: String(B.prog.acept || prevP.acept || ahoraP).slice(0, 30), retrasos: (B.prog.retrasos && typeof B.prog.retrasos === "object") ? Object.fromEntries(Object.entries(B.prog.retrasos).slice(0, 60).map(([k, v]) => [String(k).slice(0, 40), { min: Number(v && v.min) || 0, extra: v && v.extra != null ? Number(v.extra) : undefined, desde: v && v.desde != null ? Number(v.desde) : undefined, motivo: String((v && v.motivo) || "").slice(0, 60), at: String((v && v.at) || ahoraP).slice(0, 30) }])) : (prevP.retrasos || {}), tareas: B.prog.tareas.slice(0, 200).map(x => ({ id: String(x.id || "").slice(0, 40), asigId: String(x.asigId || "").slice(0, 40), tid: String(x.tid || "").slice(0, 40), hid: String(x.hid || "").slice(0, 20), cod: String(x.cod || "").slice(0, 20), quienN: String(x.quienN || "").slice(0, 80), rol: x.rol === "inspeccion" ? "inspeccion" : "aseo", ini: Number(x.ini) || 0, fin: Number(x.fin) || 0, tipoT: String(x.tipoT || "").slice(0, 20), prop: String(x.prop || "").slice(0, 60) })) }; if (d.progCambios) delete d.progCambios[B.prog.dia]; }
       if (/^\d{4}-\d{2}-\d{2}$/.test(String(B.progCambiosClear || "")) && d.progCambios) delete d.progCambios[B.progCambiosClear];
       { const lim = new Date(Date.now() - 4 * 864e5).toISOString().slice(0, 10); ["prog", "progCambios"].forEach(k => { if (d[k]) Object.keys(d[k]).forEach(f => { if (f < lim) delete d[k][f]; }); }); }
       if (B.insp_min != null && isFinite(Number(B.insp_min)) && Number(B.insp_min) > 0) d.insp_min = Math.min(240, Math.round(Number(B.insp_min))); // b.1) duración de inspección
@@ -9437,6 +9437,19 @@ app.post("/config/reglas-bot", async (req, res) => {
       d.updated_at = new Date().toISOString(); d.updated_by = txt((req.body || {}).user); return d; });
     res.json({ ok: true, reglas: out, claimed });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Programación aceptada completa (para mostrarla tal cual al volver a entrar): gs://…/aseo/prog/<YYYY-MM-DD>.json
+app.get("/aseo/prog-full", async (req, res) => {
+  const dia = String(req.query.dia || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return res.status(400).json({ ok: false, error: "dia" });
+  try { res.set("Cache-Control", "no-store"); const data = await _rhdGetJson(`aseo/prog/${dia}.json`).catch(() => null); res.json({ ok: true, data: data && Object.keys(data).length ? data : null }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/aseo/prog-full", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  const dia = String((req.body || {}).dia || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || !req.body.data) return res.status(400).json({ ok: false, error: "Faltan datos" });
+  try { const s = JSON.stringify(req.body.data); if (s.length > 3e6) return res.status(413).json({ ok: false, error: "Demasiado grande" }); await _rhdPut(`aseo/prog/${dia}.json`, s, "application/json"); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // Revisión de la programación asignada (Cloud Scheduler cada 10 min y 7:00 a.m.): si una limpieza programada ya no

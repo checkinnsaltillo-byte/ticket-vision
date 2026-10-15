@@ -66747,7 +66747,9 @@ function aseoEnsureCss_() {
   .flag.violet,.ad-badge.violet{color:#6d28d9}.flag.violet i,.ad-badge.violet i{background:#8b5cf6;box-shadow:0 0 0 3px #ede9fe}
   .ad-card.alert .flag.red i{animation:mvPulse 1.2s ease-in-out infinite;--ac:#dc2626}
   .ad-card .r2{display:flex;flex-wrap:wrap;align-items:center;gap:3px 0;margin-top:6px;color:var(--ad-mut);font-size:11.5px}
-  .ad-nm.pend{border:1.5px dashed color-mix(in srgb,var(--pc) 75%,#111)!important;background:#fff!important}.ad-card .ad-solr{gap:5px!important}.ad-sol{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ad-sol.pd{background:#fff7ed;color:#c2410c;border:1px dashed #fdba74}.ad-sol.acc{cursor:pointer;background:#16a34a;color:#fff}.ad-sol.acc:hover{background:#15803d}.ad-sol.ok{cursor:pointer;background:#dcfce7;color:#15803d;border:1px solid #86efac}
+  .ad-nm.pend{border:1.5px dashed color-mix(in srgb,var(--pc) 75%,#111)!important;background:#fff!important}.ad-card .ad-solr{gap:5px!important}.rb-retcard{all:unset;cursor:pointer;font-size:12px;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fef3c7;border:1.5px solid #f59e0b;margin-left:4px;animation:rbPulse 1.6s ease-in-out infinite}.rb-retcard:hover{background:#fde68a}
+  @keyframes rbPulse{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.55);transform:scale(1)}50%{box-shadow:0 0 0 6px rgba(245,158,11,0);transform:scale(1.08)}}.rb-retb{animation:rbPulse 1.6s ease-in-out infinite;border-radius:50%}
+  .rb-cprog{font-size:10.5px;font-weight:700;color:#3730a3;background:#eef2ff;border-radius:999px;padding:1px 6px;margin-left:4px;white-space:nowrap}.rb-cret{font-size:10.5px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:999px;padding:1px 6px;margin-left:4px;white-space:nowrap}.ad-sol{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ad-sol.pd{background:#fff7ed;color:#c2410c;border:1px dashed #fdba74}.ad-sol.acc{cursor:pointer;background:#16a34a;color:#fff}.ad-sol.acc:hover{background:#15803d}.ad-sol.ok{cursor:pointer;background:#dcfce7;color:#15803d;border:1px solid #86efac}
   .ad-card .r2 b{color:var(--ad-tx);font-weight:600}
   .ad-card .r2 .sep{width:1px;height:10px;background:var(--ad-line);margin:0 8px}
   .ad-card .ok{color:#16a34a}.ad-card .pd{color:#b45309}.ad-card .vi{color:#6d28d9}
@@ -67640,7 +67642,7 @@ function adCard_(I) {
   if (ASEO.simple) // Vista «Simple»: nombre corto · Sale/Entra · tipo y servicio · no ha desalojado · ＋⚠ · prioridad · estados
     return `<div class="ad-card tipo est-tint ad-simp ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
+    <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
     <div class="r2">${catP}${adCamasHtml_(I.hid)}</div>
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${adExtraInsumos_(I)}
@@ -67650,7 +67652,7 @@ function adCard_(I) {
   </div>`;
   return `<div class="ad-card tipo est-tint ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
+    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
     ${I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${adExtraInsumos_(I)}
@@ -68407,7 +68409,7 @@ function atCard_(I) {
   const sel = ASEO._dr && ASEO._dr.tarea === t.id;
   return `<div class="ad-card tipo est-tint tarea ${t.problema ? 'alert' : ''} ${axEsDeInc_('T' + t.id) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="T${pcEsc(t.id)}" style="--tc:${D.c};--sc:${adEstC_(I.selE)}" onclick="atAbrir_('${pcEsc(t.id)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'${I.key}','',true,${t.depto !== 'limpieza'})" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
+    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${t.depto === 'limpieza' ? rbCardRetHtml_('T' + t.id, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
     ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}${RC.flags}
@@ -71189,7 +71191,8 @@ window.rbProgramar_ = async function (diaArg, opts) {
   (typeof atLista_ === 'function' ? atLista_() : []).forEach(t => { if (t.rt || !t.hid || !['limpieza', 'inspeccion'].includes(t.depto) || !atToca_(t, dia)) return; const reg = aseoEstDe_(`T${t.id}-${dia}`); if (reg && ['terminado', 'inspeccionado', 'cancelado'].includes(reg.estado)) return;
     const a = atAloj_(t.hid), tipo = String(((a && a.raw) || {}).tipo || '').trim();
     T.push({ id: 'T' + t.id, tid: t.id, hid: t.hid, cod: String(a.corto || '').toUpperCase(), prop: rbProp_(t.hid), tipoT: t.depto === 'inspeccion' ? 'Inspección' : 'Limpieza', tipoA: tipo || 'Sin tipo', titulo: t.titulo, dur: t.depto === 'inspeccion' ? rbInspMin_() : Number(D[tipo]) || 60, durEst: t.depto !== 'inspeccion' && D[tipo] == null, lim: rbMin_(t.hora), entra: false, camas: t.depto === 'inspeccion' ? 0 : rbCamas_(t.hid), camaT: rbCamaT_(t.hid) }); });
-  if (fijo) T.forEach(t => { const a = fijo.ajustes && fijo.ajustes.get(t.id); if (!a) return; if (a.extra) { t.dur += a.extra; t.retraso = a; } if (a.desde != null) { t.desde = Math.max(t.desde || 0, a.desde); t.retraso = a; } });
+  const AJ = (fijo && fijo.ajustes) || (opts && opts.ajustes); // retrasos registrados (reprogramación)
+  if (AJ) T.forEach(t => { const a = AJ.get(t.id); if (!a) return; if (a.extra) { t.dur += a.extra; t.retraso = a; } if (a.desde != null) { t.desde = Math.max(t.desde || 0, a.desde); t.retraso = a; } });
   // 2) Personal disponible ese día
   const P = rbPersonal_().filter(r => rbRoles_(rbNomP_(r), r).includes('limpieza')); // personal con rol «Limpieza»
   const nom = rbNomP_;
@@ -71523,8 +71526,8 @@ function rbDgP_(p, hm) { const d = rbDgPaso_(p); if (!d.neto && !d.tol && !d.esp
 // Nivel 1 «Absorber»: misma persona y mismo orden; solo se recorren los tiempos (y vueltas del chofer).
 // Nivel 2 «Reordenar»: la persona hace antes otra de sus tareas pendientes del mismo edificio o polo mientras se resuelve.
 const RB_RET_MOT = [['no_sale', '🧳 El huésped no ha salido', 'bloqueo', 45], ['dano', '🔧 Daño o incidencia', 'extra', 30], ['insumos', '📦 Faltan insumos', 'extra', 20], ['pesada', '🧹 Limpieza más pesada', 'extra', 20], ['otro', '✏️ Otro', 'extra', 15]];
-window.rbRetraso_ = function (i) {
-  const R = RB.prog, t = R && R.T[i]; if (!t || !t.quienN) return;
+window.rbRetraso_ = function (i, deCard) {
+  if (!deCard) RB.retB = null; const R = RB.retB || RB.prog, t = R && R.T[i]; if (!t || !t.quienN) return;
   document.getElementById('rb-ret')?.remove();
   const ov = document.createElement('div'); ov.id = 'rb-ret'; ov.onclick = e => { if (e.target === ov) ov.remove(); };
   ov.innerHTML = `<style>#rb-ret{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;font-family:Inter,system-ui,sans-serif}
@@ -71536,33 +71539,71 @@ window.rbRetraso_ = function (i) {
     <div class="bt"><button onclick="document.getElementById('rb-ret').remove()" style="background:#f1f5f9;color:#475569">Cancelar</button><button id="rb-ret-go" onclick="rbReprog_(${i})" style="background:#4f46e5;color:#fff">Calcular reprogramación</button></div></div>`;
   document.body.appendChild(ov);
 };
+// Recorre el retraso sobre una copia de la programación: solo la persona afectada, hasta que el retraso se consume.
+function rbPropaga_(B, id, aj) {
+  const R = rbDeserializa_(JSON.parse(JSON.stringify(rbSerializa_(B)))); R.aceptada = B.aceptada; R.retrasos = B.retrasos;
+  const t = R.T.find(x => x.id === id), x = t && R.S.find(s => s.pasos.some(p => p.k === 'tarea' && p.t === t)); if (!x) return { R, conflicto: false };
+  const ip = x.pasos.findIndex(p => p.k === 'tarea' && p.t === t), p0 = x.pasos[ip];
+  let ini = p0.ini; if (aj.desde != null && aj.desde > ini) ini = aj.desde; const fin = ini + (p0.fin - p0.ini) + (aj.extra || 0);
+  p0.ini = ini; p0.fin = fin; t.ini = ini; t.fin = fin; t.retraso = aj; p0.tarde = t.lim != null && fin > t.lim;
+  if (ini > (B.T.find(z => z.id === id) || {}).ini) { const prev = x.pasos[ip - 1]; if (prev) x.pasos.splice(ip, 0, { k: 'esp', ini: prev.fin, fin: ini, t }); }
+  // Recorre el itinerario de una persona desde el paso i. Si llega tarde a su vuelta y la diferencia cabe en la espera máxima,
+  // el vehículo la espera: la vuelta se recorre y también los itinerarios de quienes van en ella. Si no cabe, pierde su transporte.
+  const CHx = R.CH || rbChofer_(), vistos = new Set(); let conflicto = false;
+  const recorre = (y, i0, listo) => { for (let i = i0; i < y.pasos.length; i++) { const p = y.pasos[i];
+      if (p.k === 'tras' && p.veh && p.sale != null) { if (listo <= p.sale) { p.ini = Math.min(p.ini, listo); return; } const d = listo - p.sale;
+        if (d > CHx.espera) conflicto = true;
+        if (p.v && !vistos.has(p.v)) { vistos.add(p.v); p.v.sale += d; p.v.llega += d; (p.v.drops || []).forEach(dd => { dd.pick += d; dd.llega += d; });
+          R.S.forEach(z => { if (z === y) return; const k = z.pasos.findIndex(q => q.v === p.v); if (k >= 0) { const q = z.pasos[k]; q.sale += d; q.fin += d; recorre(z, k + 1, q.fin); } }); }
+        p.ini = Math.min(p.ini, p.sale); p.sale += d; p.fin += d; listo = p.fin; continue; }
+      const dur = p.fin - p.ini, n = Math.max(p.ini, listo); if (n === p.ini) return; p.ini = n; p.fin = n + dur; if (p.k === 'tarea' && p.t) { p.t.ini = p.ini; p.t.fin = p.fin; p.tarde = p.t.lim != null && p.fin > p.t.lim; } listo = p.fin; }
+    y.t = Math.max(...y.pasos.map(q => q.fin || 0)); };
+  recorre(x, x.pasos.indexOf(p0) + 1, fin);
+  x.t = Math.max(...x.pasos.map(p => p.fin || 0)); x.trabajo += aj.extra || 0;
+  return { R, conflicto };
+}
 function rbMetricas_(R) {
   const D = R.S.reduce((A, x) => { const d = rbDesg_(x.pasos); A.esp += d.esp; return A; }, { esp: 0 });
   return { vueltas: (R.viajes || []).filter(v => !v.propio).length, esp: D.esp, tarde: R.T.filter(t => t.quien && t.lim != null && t.fin > t.lim).length, sin: R.sinAsig.length, pasan: R.S.reduce((a, x) => a + Math.max(0, x.t - R.fin), 0), fin: Math.max(...R.S.map(x => x.t)) };
 }
 window.rbReprog_ = async function (i) {
-  const B = RB.prog, t = B && B.T[i]; if (!t) return;
+  const B = RB.retB || RB.prog, t = B && B.T[i]; if (!t) return;
   const mot = (document.getElementById('rb-ret-m') || {}).value || 'otro', min = Math.max(5, Math.min(300, Number((document.getElementById('rb-ret-n') || {}).value) || 15)), M = RB_RET_MOT.find(x => x[0] === mot) || RB_RET_MOT[4];
   const btn = document.getElementById('rb-ret-go'); if (btn) { btn.textContent = '⏳ Calculando…'; btn.style.pointerEvents = 'none'; }
   const ahora = (() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); })(), tRep = B.dia === aseoHoyIso_() && ahora >= B.ini && ahora < B.fin ? Math.max(ahora, t.ini) : t.ini; // fuera del horario (o para otro día): desde la hora programada de la tarea
-  const aj = M[2] === 'bloqueo' ? { desde: Math.max(tRep, t.ini) + min, motivo: M[1], min } : { extra: min, motivo: M[1], min };
+  const aj = M[2] === 'bloqueo' ? { desde: Math.max(tRep, t.ini) + min, motivo: M[1], min, at: new Date().toISOString() } : { extra: min, motivo: M[1], min, at: new Date().toISOString() };
   const asig = new Map(B.T.filter(x => x.quienN).map(x => [x.id, x.quienN])), orden0 = new Map(B.T.filter(x => x.quienN).map(x => [x.id, x.ini]));
-  const corre = async (orden, nivel, desc) => { const R = await rbProgramar_(B.dia, { headless: true, fijo: { asig, orden, ajustes: new Map([[t.id, aj]]) } }); R.vista = B.vista; return { R, nivel, desc, m: rbMetricas_(R) }; };
-  const ops = [await corre(orden0, 1, 'Absorber: misma persona y mismo orden, solo se recorren sus tiempos')];
-  // Nivel 2: hacer antes otra tarea pendiente de la misma persona en el mismo edificio o polo
-  const pol = p => rbPolo_(p) || p;
-  const cands = B.T.filter(x => x !== t && x.quienN === t.quienN && x.ini >= t.ini && x.ini >= tRep && pol(x.prop) === pol(t.prop));
-  for (const c of cands.slice(0, 4)) { const o = new Map(orden0); o.set(t.id, c.ini + 0.5); ops.push(await corre(o, 2, `Reordenar: ${t.quien.split(' ')[0]} hace primero ${c.cod} y después ${t.cod}`)); }
-  const PW = rbPesos_(), pts = o => o.m.sin * 1e9 + o.m.tarde * PW.tarde + o.m.vueltas * PW.vueltas + o.m.pasan * PW.jornada + o.m.esp * PW.muerto + o.nivel * 5; // mismas prioridades que la programación // mismas prioridades que la programación
+  // Nivel 1 «Absorber»: sobre la programación guardada se recorre solo el itinerario de esa persona hasta donde el retraso se consume.
+  const prev = Object.fromEntries(Object.entries(B.retrasos || {}).filter(([k]) => k !== t.id));
+  const p1 = rbPropaga_(B, t.id, aj), m1 = rbMetricas_(p1.R); p1.R.vista = B.vista;
+  const ops = [{ R: p1.R, nivel: 1, desc: p1.conflicto ? `Absorber: ${t.quien.split(' ')[0]} pierde su transporte (habría que esperar o mover vueltas)` : `Absorber: solo se recorren los tiempos de ${t.quien.split(' ')[0]}; nadie más cambia`, m: m1, conflicto: p1.conflicto }];
+  // Si afecta: reprogramación completa con el retraso incluido (mismas reglas y ponderación), y se propone la de menor impacto.
+  const mb0 = rbMetricas_(B), afecta1 = p1.conflicto || m1.tarde > mb0.tarde || m1.pasan > mb0.pasan + 5;
+  if (afecta1) { const R2 = await rbProgramar_(B.dia, { headless: true, ajustes: new Map([...Object.entries(prev), [t.id, aj]]) }); R2.vista = B.vista; ops.push({ R: R2, nivel: 2, desc: 'Reprogramar el día con el retraso incluido (mismas reglas y ponderación)', m: rbMetricas_(R2) }); }
+  const PW = rbPesos_(), base0 = new Map(B.T.map(x => [x.id, x])), cambios = R => R.T.filter(x => { const b = base0.get(x.id); return b && b.quien && x.id !== t.id && b.quienN !== t.quienN && (x.quien !== b.quien || Math.abs((x.ini || 0) - (b.ini || 0)) >= 5); }).length;
+  const pts = o => o.m.sin * 1e9 + (o.conflicto ? 5e8 : 0) + o.m.tarde * PW.tarde + o.m.vueltas * PW.vueltas + o.m.pasan * PW.jornada + o.m.esp * PW.muerto + cambios(o.R) * 500; // mismas prioridades + estabilidad (menos cambios)
   ops.sort((a, b) => pts(a) - pts(b));
-  { const vis = new Set(); for (let k = ops.length - 1; k >= 0; k--) { } const U = []; ops.forEach(o => { const key = JSON.stringify(o.m); if (!vis.has(key)) { vis.add(key); U.push(o); } }); ops.length = 0; U.forEach(o => ops.push(o)); } // sin opciones repetidas
-  RB.reprog = { base: B, ops, sel: 0, t: { id: t.id, cod: t.cod, quien: t.quien }, aj, mb: rbMetricas_(B) };
-  document.getElementById('rb-ret')?.remove(); rbRender_();
+  RB.reprog = { base: B, ops, sel: 0, t: { id: t.id, cod: t.cod, quien: t.quien }, aj, mb: rbMetricas_(B), card: !!RB.retB };
+  { const P = RB.reprog, o = ops[0], m = o.m, mb = P.mb, base = new Map(B.T.map(x => [x.id, x])); // ¿afecta al resto de la programación?
+    const otros = o.R.T.filter(x => { const b = base.get(x.id); return b && b.quien && x.id !== t.id && b.quienN !== t.quienN && (x.quien !== b.quien || Math.abs((x.ini || 0) - (b.ini || 0)) >= 5); }).length; // solo tareas de otras personas
+    P.afecta = !!o.conflicto || otros > 0 || m.tarde > mb.tarde || m.pasan > mb.pasan + 5 || m.vueltas !== mb.vueltas || m.sin > mb.sin; P.otros = otros; }
+  document.getElementById('rb-ret')?.remove();
+  if (RB.reprog.card) { rbRetPanel_(); return; }
+  rbRender_();
   setTimeout(() => { const el = document.getElementById('rb-rep'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
 };
 window.rbRepSel_ = function (k) { if (RB.reprog) { RB.reprog.sel = k; rbRender_(); } };
-window.rbRepAplicar_ = function () { const P = RB.reprog; if (!P) return; const o = P.ops[P.sel]; RB.prog = o.R; RB.prog.reprogDe = { motivo: P.aj.motivo, cod: P.t.cod, min: P.aj.min, nivel: o.nivel }; RB.reprog = null; rbRender_(); };
-window.rbRepDescartar_ = function () { RB.reprog = null; rbRender_(); };
+window.rbRepAplicar_ = async function () {
+  const P = RB.reprog; if (!P) return; const o = P.ops[P.sel], R = o.R;
+  R.aceptada = P.base.aceptada || null; R.retrasos = Object.assign({}, P.base.retrasos || {}, { [P.t.id]: P.aj }); R.rank = 1; R.reprogDe = { motivo: P.aj.motivo, cod: P.t.cod, min: P.aj.min, nivel: o.nivel };
+  const btn = document.querySelector('#rb-rep .rbp-go'); if (btn) btn.textContent = '⏳ Guardando…';
+  if (R.aceptada) await rbGuardarPlan_(R, P.base); // queda en la programación aceptada (cards e itinerario sincronizados)
+  if (!RB.prog || RB.prog === P.base || RB.prog.dia === R.dia) { RB.prog = R; RB.prog2 = null; }
+  RB.reprog = null; RB.retB = null; document.getElementById('rb-retp')?.remove();
+  try { if (typeof aseoRefresh_ === 'function') await aseoRefresh_(true); ASEO.calSig = ''; if (typeof aseoRender_ === 'function') aseoRender_(); } catch (_) {}
+  rbRender_();
+};
+window.rbRepDescartar_ = function () { RB.reprog = null; RB.retB = null; document.getElementById('rb-retp')?.remove(); rbRender_(); };
 function rbReprogHtml_(hm) {
   const P = RB.reprog; if (!P) return '';
   const o = P.ops[P.sel], A = P.mb, Bm = o.m, d = (a, b, f) => { const x = b - a; return x === 0 ? '<span style="color:#64748b">=</span>' : `<b style="color:${x > 0 ? '#b91c1c' : '#15803d'}">${x > 0 ? '+' : '−'}${f ? f(Math.abs(x)) : Math.abs(x)}</b>`; };
@@ -71570,14 +71611,75 @@ function rbReprogHtml_(hm) {
   const pers = o.R.S.map(x => { const b = P.base.S.find(y => y.n === x.n); return `<tr><td>${pcEsc(x.corto)}</td><td>${b ? rbHHMM_(b.t) : '—'}</td><td><b>${rbHHMM_(x.t)}</b></td><td>${b ? d(b.t, x.t, hm) : ''}</td></tr>`; }).join('');
   return `<div id="rb-rep" style="margin:0 0 14px;padding:14px;border:2px solid #f59e0b;border-radius:12px;background:#fffbeb">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14.5px">⚠️ Reprogramación propuesta · ${pcEsc(P.t.cod)}</b><span style="font-size:12px;color:#92400e">${pcEsc(P.aj.motivo)} · ${P.aj.min} min ${P.aj.desde != null ? `(no empieza antes de ${rbHHMM_(P.aj.desde)})` : 'de más'}</span></div>
-    ${P.ops.length > 1 ? `<div class="ad-seg" style="margin:10px 0">${P.ops.map((x, k) => `<button type="button" class="${k === P.sel ? 'on' : ''}" onclick="rbRepSel_(${k})">${k === 0 ? '⭐ ' : ''}Nivel ${x.nivel}${x.nivel === 2 ? ' · ' + pcEsc(x.desc.split(' hace primero ')[1].split(' ')[0]) + ' antes' : ''}</button>`).join('')}</div>` : ''}
+    ${P.ops.length > 1 ? `<div class="ad-seg" style="margin:10px 0">${P.ops.map((x, k) => `<button type="button" class="${k === P.sel ? 'on' : ''}" onclick="rbRepSel_(${k})">${k === 0 ? '⭐ ' : ''}${x.nivel === 1 ? 'Absorber' : 'Reprogramar el día'}</button>`).join('')}</div>` : ''}
+    ${P.afecta === false ? `<div style="font-size:13px;margin:8px 0;padding:8px 10px;border-radius:8px;background:#dcfce7;color:#166534;font-weight:700">✅ El retraso no afecta al resto de la programación: solo se recorren los tiempos de ${pcEsc(P.t.quien)}${P.ops[P.sel] && P.ops[P.sel].R ? ` (ahora termina a las ${rbHHMM_((P.ops[P.sel].R.S.find(z => z.corto === P.t.quien) || {}).t || 0)})` : ''}.</div>` : `<div style="font-size:13px;margin:8px 0;padding:8px 10px;border-radius:8px;background:#fee2e2;color:#991b1b;font-weight:700">⚠️ El retraso sí afecta la programación del día${P.otros ? ` (${P.otros} tarea${P.otros === 1 ? '' : 's'} de otras personas cambian)` : ''}. ¿Deseas aplicar la reprogramación sugerida?</div>`}
     <div style="font-size:12.5px;margin:8px 0">${pcEsc(o.desc)}${P.sel === 0 ? ' <b style="color:#15803d">(menor impacto)</b>' : ''}</div>
     <div class="rbp-kpis" style="margin:8px 0"><div><small>Vueltas del chofer</small><b>${Bm.vueltas}</b><em>antes ${A.vueltas} · ${d(A.vueltas, Bm.vueltas)}</em></div><div><small>Espera total</small><b>${hm(Bm.esp)}</b><em>antes ${hm(A.esp)} · ${d(A.esp, Bm.esp, hm)}</em></div>
       <div><small>Después de la hora límite</small><b>${Bm.tarde}</b><em>antes ${A.tarde} · ${d(A.tarde, Bm.tarde)}</em></div><div><small>Último regreso</small><b>${rbHHMM_(Bm.fin)}</b><em>antes ${rbHHMM_(A.fin)} · ${d(A.fin, Bm.fin, hm)}</em></div><div><small>Tareas que cambian</small><b>${cambios.length}</b><em>de hora o de persona</em></div></div>
     <table class="rb-t" style="max-width:520px;margin:6px 0"><thead><tr><th>Persona</th><th>Termina antes</th><th>Termina ahora</th><th>Cambio</th></tr></thead><tbody>${pers}</tbody></table>
     ${cambios.length ? `<div style="font-size:11.5px;color:#475569;margin:6px 0">${cambios.slice(0, 12).map(t => { const b = base.get(t.id); return `${pcEsc(t.cod)} ${rbHHMM_(b.ini)} → <b>${rbHHMM_(t.ini)}</b>`; }).join(' · ')}</div>` : ''}
     ${Bm.tarde > A.tarde ? '<div style="font-size:12px;color:#b91c1c;font-weight:700;margin:6px 0">⚠️ Alguna entrada de huésped queda después de su hora límite: considera avisar al huésped o pasar a la Fase 2 (intercambio con otra persona).</div>' : ''}
-    <div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="rbp-go" style="background:#16a34a" onclick="rbRepAplicar_()">✅ Aplicar</button><button type="button" class="rbp-go" style="background:#94a3b8" onclick="rbRepDescartar_()">Descartar</button></div></div>`;
+    <div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="rbp-go" style="background:#16a34a" onclick="rbRepAplicar_()">${P.afecta === false ? '✅ Registrar retraso' : '✅ Sí, aplicar los cambios'}</button><button type="button" class="rbp-go" style="background:#94a3b8" onclick="rbRepDescartar_()">${P.afecta === false ? 'Cancelar' : 'No, descartar'}</button></div></div>`;
+}
+// ═══ Programación aceptada (guardada al «Asignar»): se reconstruye con la misma persona y orden + retrasos registrados ═══
+// Serializa la programación completa (sin referencias circulares) para guardarla tal cual se aceptó.
+function rbSerializa_(R) {
+  const T = R.T, S = R.S, V = R.viajes || [], iT = t => T.indexOf(t), iS = x => S.indexOf(x), iV = v => V.indexOf(v);
+  return { v: 1, dia: R.dia, H: R.H, ini: R.ini, fin: R.fin, CH: R.CH, hechas: R.hechas, req: R.req, cap: R.cap, usado: R.usado, retrasos: R.retrasos || {}, aceptada: R.aceptada || null, reprogDe: R.reprogDe || null,
+    T: T.map(t => Object.assign({}, t)), sinAsig: (R.sinAsig || []).map(iT), fuera: (R.fuera || []).map(x => ({ n: x.n, corto: x.corto, e: x.e })),
+    S: S.map(x => Object.assign({}, x, { pasos: x.pasos.map(p => Object.assign({}, p, { t: p.t ? iT(p.t) : -1, v: p.v ? iV(p.v) : -1 })) })),
+    viajes: V.map(v => Object.assign({}, v, { pax: v.pax.map(iS), drops: (v.drops || []).map(d => Object.assign({}, d, { x: iS(d.x) })) })) };
+}
+function rbDeserializa_(D) {
+  const T = D.T, S = D.S, V = D.viajes;
+  V.forEach(v => { v.pax = v.pax.map(i => S[i]).filter(Boolean); v.drops = v.drops.map(d => Object.assign(d, { x: S[d.x] })); });
+  S.forEach(x => { x.pasos = x.pasos.map(p => Object.assign(p, { t: p.t >= 0 ? T[p.t] : undefined, v: p.v >= 0 ? V[p.v] : undefined })); });
+  return Object.assign({}, D, { T, S, viajes: V, sinAsig: D.sinAsig.map(i => T[i]).filter(Boolean), rank: 1, vista: (RB.prog && RB.prog.vista) || 'personal' });
+}
+async function rbGuardarFull_(R) { try { await fetch(`${BACKEND}/aseo/prog-full`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dia: R.dia, data: rbSerializa_(R) }) }); } catch (_) {} }
+async function rbPlanAceptado_(dia) {
+  const P = ((RB.reglas || {}).prog || {})[dia]; if (!P || !(P.tareas || []).length) return null;
+  try { const j = await fetch(`${BACKEND}/aseo/prog-full?dia=${dia}&_cb=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()); // tal cual se aceptó
+    if (j && j.data && j.data.v === 1) { const R = rbDeserializa_(j.data); R.aceptada = R.aceptada || { at: P.acept || P.at, by: P.by }; R.retrasos = P.retrasos || R.retrasos || {}; return R; } } catch (_) {}
+  const asig = new Map(P.tareas.map(x => [x.id, x.quienN])), orden = new Map(P.tareas.map(x => [x.id, x.ini])), ajustes = new Map(Object.entries(P.retrasos || {}));
+  const R = await rbProgramar_(dia, { headless: true, fijo: { asig, orden, ajustes, libres: false } });
+  Object.assign(R, { aceptada: { at: P.acept || P.at, by: P.by }, retrasos: P.retrasos || {}, rank: 1, vista: (RB.prog && RB.prog.vista) || 'personal' });
+  return R;
+}
+window.rbDiaSel_ = async function (v) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; RB.pdia = v; RB.prog = null; RB.prog2 = null; RB.reprog = null; rbRender_();
+  if (((RB.reglas || {}).prog || {})[v]) { const R = await rbPlanAceptado_(v); if (R && RB.pdia === v) { RB.prog = R; rbRender_(); } }
+};
+function rbAceptTxt_(a) { if (!a || !a.at) return ''; const d = new Date(a.at); return `${d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })} ${d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}${a.by ? ' · ' + a.by : ''}`; }
+// ═══ Retraso desde la card de Tareas: mismo análisis y mismos datos que el ⚠️ del itinerario ═══
+window.rbRetCard_ = async function (id, dia) {
+  if (!RB.reglas) await rbCargar_();
+  if (!((RB.reglas || {}).prog || {})[dia]) { alert('No hay una programación aceptada para ese día.\nPrograma y asigna el día en Check-Flow › 🧹 Programación para poder analizar retrasos.'); return; }
+  const msg = document.createElement('div'); msg.id = 'rb-ret-wait'; msg.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:100000;display:flex;align-items:center;justify-content:center;font:700 14px Inter,system-ui,sans-serif;color:#fff'; msg.textContent = '⏳ Cargando la programación del día…'; document.body.appendChild(msg);
+  let B = null; try { B = RB.prog && RB.prog.dia === dia && RB.prog.aceptada ? RB.prog : await rbPlanAceptado_(dia); } catch (_) {} msg.remove();
+  const i = B ? B.T.findIndex(x => x.id === id) : -1;
+  if (!B || i < 0 || !B.T[i].quienN) { alert('Esta tarea no está en la programación aceptada de ese día.'); return; }
+  RB.retB = B; rbRetraso_(i, true);
+};
+function rbRetPanel_() { // propuesta en ventana (cuando se reporta desde la card)
+  document.getElementById('rb-retp')?.remove(); const P = RB.reprog; if (!P) return;
+  const hm = m => { m = Math.round(m); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}`; };
+  const ov = document.createElement('div'); ov.id = 'rb-retp'; ov.onclick = e => { if (e.target === ov) rbRepDescartar_(); };
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;font-family:Inter,system-ui,sans-serif';
+  ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:880px;width:100%;max-height:90vh;overflow:auto;padding:16px 18px">${rbReprogHtml_(hm)}</div>`;
+  document.body.appendChild(ov);
+}
+// Guarda la programación con el retraso (y reasigna si alguna tarea cambió de persona); se refleja en las cards.
+async function rbGuardarPlan_(R, B) {
+  const antes = new Map((B ? B.T : []).filter(t => t.quienN).map(t => [t.id, t.quienN]));
+  if (R.T.some(t => t.quienN && antes.get(t.id) !== t.quienN)) await rbAsignarR_(R, false, false);
+  await rbGuardarFull_(R);
+  await rbPost_({ prog: { dia: R.dia, acept: (R.aceptada && R.aceptada.at) || new Date().toISOString(), retrasos: R.retrasos || {}, tareas: R.T.filter(t => t.quienN).map(t => ({ id: t.id, asigId: t.asigId || '', tid: t.tid || '', hid: t.hid, cod: t.cod, quienN: t.quienN, rol: t.tipoT === 'Inspección' ? 'inspeccion' : 'aseo', ini: t.ini, fin: t.fin, tipoT: t.tipoT, prop: t.prop })) } }).catch(e => alert('No se pudo guardar: ' + (e.message || e)));
+}
+// Card de Tareas: botón «⏱ Retraso» (pulsante) + chips de hora programada y retraso registrado.
+function rbCardRetHtml_(id, dia) {
+  const P = ((RB.reglas || {}).prog || {})[dia], x = P && (P.tareas || []).find(t => t.id === id), r = P && (P.retrasos || {})[id];
+  return `${x ? `<span class="rb-cprog" title="Hora programada (programación aceptada)">🕘 ${rbHHMM_(x.ini)}</span>` : ''}${r ? `<span class="rb-cret" title="${pcEsc(r.motivo || '')}">⏱ +${r.min} min</span>` : ''}<button type="button" class="rb-retcard" title="Reportar un retraso en esta limpieza" onclick="event.stopPropagation();rbRetCard_('${id}','${dia}')">⏱</button>`;
 }
 window.rbProgVista_ = function (v) { if (RB.prog) { RB.prog.vista = v; if (RB.prog2) RB.prog2.vista = v; rbRender_(); if (RB.tlSel) setTimeout(() => rbTlSel_(RB.tlSel[0], RB.tlSel[1], true), 30); } };
 function rbProgHtml_(Rx, partes) {
@@ -71655,7 +71757,8 @@ function rbProgDualHtml_() {
   const tab = (k, t) => `<button type="button" class="${A.vista === k ? 'on' : ''}" onclick="rbProgVista_('${k}')">${t}</button>`;
   const barra = `<div class="rbv-bar"><div class="np-tabs">${tab('personal', '👤 Por personal (itinerario)')}${tab('propiedad', '🏢 Por propiedad')}${tab('tipo', '🧹 Por tipo de tarea')}${tab('transporte', '🚗 Transporte')}<button type="button" class="${RB.tl ? 'on' : ''}" onclick="RB.tl=!RB.tl;RB.tlSel=null;rbRender_()" title="Mostrar u ocultar el timeline del día">📊 Timeline</button></div>
     ${B ? `<button type="button" class="rb-tlbtn ${cmpOn ? 'on' : ''}" onclick="RB.cmp=!RB.cmp;rbRender_()" title="Mostrar a la derecha la segunda mejor programación, alineada para comparar">${cmpOn ? '◀ Ocultar escenario 2' : '▶ Comparar con escenario 2'}</button>` : ''}</div>`;
-  const top = `<div class="rb-h">🗓️ Programación propuesta · ${pcEsc(aseoDiaTxt_(A.dia))}${A.reprogDe ? ` <span style="font-size:11.5px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px">${A.reprogDe.txt ? pcEsc(A.reprogDe.txt) : `reprogramada · ${pcEsc(A.reprogDe.cod)} ${A.reprogDe.min} min (nivel ${A.reprogDe.nivel})`}</span>` : ''}</div>
+  const top = A.aceptada ? `<div class="rb-h">✅ Programación aceptada · ${pcEsc(aseoDiaTxt_(A.dia))} <span style="font-size:11.5px;font-weight:700;color:#166534;background:#dcfce7;border-radius:999px;padding:2px 8px">aceptada ${pcEsc(rbAceptTxt_(A.aceptada))}</span>${Object.keys(A.retrasos || {}).length ? ` <span style="font-size:11.5px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px">⏱ ${Object.keys(A.retrasos).length} retraso${Object.keys(A.retrasos).length === 1 ? '' : 's'} registrado${Object.keys(A.retrasos).length === 1 ? '' : 's'}</span>` : ''}</div>
+    <div class="rb-s">Programación guardada al oprimir «Asignar». Los retrasos reportados (desde el itinerario o desde las cards de Tareas) ya están incluidos.</div>${barra}${rbReprogHtml_(hm)}` : `<div class="rb-h">🗓️ Programación propuesta · ${pcEsc(aseoDiaTxt_(A.dia))}${A.reprogDe ? ` <span style="font-size:11.5px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px">${A.reprogDe.txt ? pcEsc(A.reprogDe.txt) : `reprogramada · ${pcEsc(A.reprogDe.cod)} ${A.reprogDe.min} min (nivel ${A.reprogDe.nivel})`}</span>` : ''}</div>
     <div class="rb-s">Propuesta automática para revisar; no asigna nada hasta oprimir «Asignar». Considera las reservas registradas, quién labora ese día, edificios asignados, duraciones, traslados, transporte y horario laboral.</div>${barra}${rbReprogHtml_(hm)}`;
   const PA = rbProgHtml_(A, true);
   const CSS = `<style>.rbv-bar{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin:10px 0 12px}.rbv-bar .np-tabs button{display:inline-flex;align-items:center}.rbv-bar .rb-tlbtn{margin:0;display:inline-flex;align-items:center}
@@ -71690,6 +71793,7 @@ window.rbAsignarEsc_ = async function (k) {
   const el = document.getElementById('rbp-asg-' + k); if (el) el.textContent = '⏳ Asignando…';
   const x = await rbAsignarR_(R, false, false);
   try { if (typeof aseoRefresh_ === 'function') await aseoRefresh_(true); ASEO.calSig = ''; if (typeof aseoRender_ === 'function' && document.getElementById('module-aseo') && !document.getElementById('module-aseo').classList.contains('hidden')) aseoRender_(); } catch (_) {}
+  if (x.ok) { R.aceptada = R.aceptada || { at: new Date().toISOString(), by: (typeof currentUser !== 'undefined' && currentUser) || '' }; if (k === 2) { const a = RB.prog; RB.prog = R; RB.prog2 = a; R.rank = 1; } RB.prog2 = null; RB.cmp = false; rbRender_(); }
   const e2 = document.getElementById('rbp-asg-' + k); if (e2) { e2.textContent = x.err ? `⚠️ Se asignaron ${x.ok}; ${x.err} no se pudieron guardar.` : `✓ Listo: se asignaron ${x.ok} tarea${x.ok === 1 ? '' : 's'}.`; e2.style.color = x.err ? '#b91c1c' : '#15803d'; }
 };
 // «?»: todas las reglas de la programación automática (además de los incisos a–d de esta sección).
@@ -71964,9 +72068,10 @@ window.rbDrAbrir_ = async function () {
   const dr = atShell_(); dr.innerHTML = '<div class="ad-dh"><div class="r"><b class="ad-ftit">🪄 Programar limpiezas del día</b><button type="button" class="ad-close" onclick="rbDrCerrar_()">✕</button></div></div><div class="ad-db"><div class="rb-s" style="padding:20px">⏳ Cargando personal y asistencia…</div></div>';
   const dim = document.getElementById('ad-dim'); if (dim) dim.onclick = rbDrCerrar_;
   await rbCargar_(); rbDrPintar_();
+  if (((RB.reglas || {}).prog || {})[RB.pdia]) { try { const R = await rbPlanAceptado_(RB.pdia); if (R && RB.dr) { RB.prog = R; rbDrPintar_(); } } catch (_) {} } // muestra la programación aceptada
 };
 window.rbDrCerrar_ = function () { RB.dr = false; if (typeof adCerrar_ === 'function') adCerrar_(); };
-window.rbDrDia_ = function (v) { if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; RB.pdia = v; RB.prog = null; RB.asignado = ''; rbDrPintar_(); };
+window.rbDrDia_ = async function (v) { if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; RB.pdia = v; RB.prog = null; RB.asignado = ''; rbDrPintar_(); if (((RB.reglas || {}).prog || {})[v]) { try { const R = await rbPlanAceptado_(v); if (R && RB.dr && RB.pdia === v) { RB.prog = R; rbDrPintar_(); } } catch (_) {} } };
 const RB_CSS2 = `<style>.rb-auto{display:inline-flex;align-items:center;gap:8px;margin-left:auto;padding:5px 10px;border:1px solid #c7d2fe;border-radius:999px;background:#fff;font-size:12.5px;color:#312e81}.rb-auto small{color:#64748b;font-size:11px}.rb-auto .ad-sw{cursor:pointer;display:inline-block}.rb-auto+.rb-q{margin-left:0}
   #ad-drawer .rb-t{width:100%!important;display:table!important;table-layout:auto}#ad-drawer .rb-t{box-sizing:border-box;min-width:0!important}#ad-drawer .rb-t td:last-child{width:1%;white-space:nowrap}#ad-drawer .rbd-lb{font-size:11px;font-weight:700;color:#64748b;margin-right:6px}.rb-param{all:unset;cursor:pointer;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:10px;background:#fff;border:1.5px solid #a5b4fc;color:#4338ca;font-weight:800;font-size:13px;flex:none}.rb-param:hover{background:#eef2ff}.rb-auto+.rb-param{margin-left:0}
   .rb-q{all:unset;box-sizing:border-box;cursor:pointer;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #a5b4fc;color:#4f46e5;font-weight:800;font-size:15px;margin-left:auto;flex:none}.rb-q:hover{background:#eef2ff}</style><style>.np-tabs{display:inline-flex;gap:0;padding:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}.np-tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:0;font-size:13px;font-weight:700;color:#475569;border-left:1px solid #e2e8f0}.np-tabs button:first-child{border-left:0}.np-tabs button:hover{background:#e2e8f0}.np-tabs button.on{background:#0f1729;color:#fff}.np-tabs.sm button{font-size:12.5px;padding:6px 12px}</style>`; // estilos de la propuesta (módulo y ventana lateral de Tareas)
@@ -71993,11 +72098,12 @@ function rbDrPintar_() {
       <div class="rb-s">En verde quien le toca trabajar ese día. Clic en el estado para cambiarlo (Tentativo → Confirmado → Falta → Sin asignar).</div>
       <table class="rb-t"><tbody>${filas || '<tr><td style="color:#94a3b8">⏳ Cargando personal…</td></tr>'}</tbody></table>
       <div class="rb-s" id="rb-save" style="margin-top:6px"></div>
-      <div style="margin:12px 0;display:flex;gap:8px;align-items:center"><button type="button" class="rbp-go ad-bt pri" style="flex:1;justify-content:center;text-align:center;box-sizing:border-box" onclick="rbProgramar_()">🪄 Programar</button><button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>
-      ${R ? `${rbProgHtml_()}
-        <div style="position:sticky;bottom:0;background:#fff;padding:10px 0;border-top:1px solid #e2e8f0">
+      ${(() => { const ac = R && R.aceptada, btnP = `<div style="margin:12px 0;display:flex;gap:8px;align-items:center"><button type="button" class="rbp-go ad-bt pri" style="flex:1;justify-content:center;text-align:center;box-sizing:border-box" onclick="rbProgramar_()">${ac ? '🔄 Re-programar limpiezas del día' : '🪄 Programar'}</button><button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`;
+        const res = R ? `${ac ? `<div style="margin:6px 0 10px;padding:8px 10px;border-radius:10px;background:#dcfce7;color:#166534;font-size:12.5px;font-weight:700">✅ Programación aceptada · ${pcEsc(rbAceptTxt_(R.aceptada))}${Object.keys(R.retrasos || {}).length ? ` · ⏱ ${Object.keys(R.retrasos).length} retraso(s) registrado(s)` : ''}</div>` : ''}${rbProgHtml_()}
+          ${ac ? '' : `<div style="position:sticky;bottom:0;background:#fff;padding:10px 0;border-top:1px solid #e2e8f0">
           ${RB.asignado ? `<div class="rb-s" style="margin:0 0 8px;color:${/^⚠️/.test(RB.asignado) ? '#b91c1c' : '#15803d'};font-weight:700">${pcEsc(RB.asignado)}</div>` : ''}
-          <button type="button" class="ad-bt pri" id="rbd-asig" style="width:100%;background:#16a34a;border-color:#16a34a" ${nA ? '' : 'disabled'} onclick="rbAsignar_()">✅ Asignar (${nA} tarea${nA === 1 ? '' : 's'})</button></div>` : ''}
+          <button type="button" class="ad-bt pri" id="rbd-asig" style="width:100%;background:#16a34a;border-color:#16a34a" ${nA ? '' : 'disabled'} onclick="rbAsignar_()">✅ Asignar (${nA} tarea${nA === 1 ? '' : 's'})</button></div>`}` : '';
+        return ac ? res + btnP : btnP + res; })()}
     </div>`;
   const b = dr.querySelector('.ad-db'); if (b) b.scrollTop = top;
 }
@@ -72017,7 +72123,8 @@ async function rbAsignarR_(R, pend, soloVacias) {
     ...[...TM.entries()].map(([id, per]) => { const t = (ASEO.tareas || {})[id]; if (!t) { err++; return null; }
       return fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea: Object.assign({}, t, { asignados: per }), user }) }).then(r => r.json()).then(j => { if (j.ok) { ok++; t.asignados = per; per.forEach(n => { P[`T${id}|${n}`] = pend ? R.dia : null; }); } else err++; }).catch(() => { err++; }); })]);
   if (Object.keys(P).length) await rbPost_({ pend: P }).catch(() => {});
-  if (ok) await rbPost_({ prog: { dia: R.dia, tareas: R.T.filter(t => t.quienN).map(t => ({ id: t.id, asigId: t.asigId || '', tid: t.tid || '', hid: t.hid, cod: t.cod, quienN: t.quienN, rol: t.tipoT === 'Inspección' ? 'inspeccion' : 'aseo', ini: t.ini, fin: t.fin, tipoT: t.tipoT, prop: t.prop })) } }).catch(() => {}); // copia del plan: se vigila contra extensiones/cancelaciones
+  if (ok && !pend) { if (!R.aceptada) R.aceptada = { at: new Date().toISOString(), by: (typeof currentUser !== 'undefined' && currentUser) || '' }; await rbGuardarFull_(R); }
+  if (ok) await rbPost_({ prog: { dia: R.dia, acept: (R.aceptada && R.aceptada.at) || new Date().toISOString(), retrasos: R.retrasos || {}, tareas: R.T.filter(t => t.quienN).map(t => ({ id: t.id, asigId: t.asigId || '', tid: t.tid || '', hid: t.hid, cod: t.cod, quienN: t.quienN, rol: t.tipoT === 'Inspección' ? 'inspeccion' : 'aseo', ini: t.ini, fin: t.fin, tipoT: t.tipoT, prop: t.prop })) } }).catch(() => {}); // copia del plan: se vigila contra extensiones/cancelaciones
   return { ok, err, n: M.size + TM.size };
 }
 async function rbPost_(body) {
@@ -72029,7 +72136,7 @@ window.rbAsignar_ = async function () {
   const n = new Set(R.T.filter(t => t.quienN).map(t => t.tid ? 'T' + t.tid : t.asigId + (t.tipoT === 'Inspección' ? 'i' : 'a'))).size; if (!n) return;
   if (!confirm(`¿Asignar el personal propuesto a ${n} tarea${n === 1 ? '' : 's'} del ${aseoDiaTxt_(R.dia)}?\nReemplaza a quien esté asignado en esas tareas.`)) return;
   const btn = document.getElementById('rbd-asig'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Asignando…'; }
-  const x = await rbAsignarR_(R, false, false);
+  const x = await rbAsignarR_(R, false, false); // guarda la programación como aceptada (fecha y hora)
   RB.asignado = x.err ? `⚠️ Se asignaron ${x.ok}; ${x.err} no se pudieron guardar.` : `✓ Listo: se asignaron ${x.ok} tarea${x.ok === 1 ? '' : 's'}.`;
   try { if (typeof aseoRefresh_ === 'function') await aseoRefresh_(true); ASEO.calSig = ''; if (typeof aseoRender_ === 'function') aseoRender_(); } catch (_) {}
   rbDrPintar_();
@@ -72083,6 +72190,7 @@ window.rbInit_ = async function () {
   rbRender_();
   if (!RB.asis && !RB.asisPed) { RB.asisPed = 1; fetch(`${BACKEND}/rh/asistencia?_cb=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).then(j => { RB.asis = (j.rows || j.data || []).map(x => ({ n: ckNorm_(x.Empleado_Nombre || ''), f: String(x.Fecha || '').slice(0, 10), c: ckNorm_(x.Concepto || 'asistencia') })); rbRender_(); }).catch(() => { RB.asisPed = 0; }); }
   if (!RB.cargando) { RB.cargando = true; try { const j = await fetch(`${BACKEND}/config/reglas-bot`, { cache: 'no-store' }).then(r => r.json()); RB.reglas = (j && j.reglas) || {}; } catch (_) { RB.reglas = RB.reglas || {}; } RB.cargando = false; rbRender_(); }
+  { const d = RB.pdia || aseoHoyIso_(); if (!RB.prog && ((RB.reglas || {}).prog || {})[d]) { try { const R = await rbPlanAceptado_(d); if (R && !RB.prog) { RB.prog = R; RB.pdia = d; rbRender_(); } } catch (_) {} } } // muestra la programación aceptada al entrar
 };
 function rbRender_() {
   if (RB.dr) { try { rbDrPintar_(); } catch (_) {} }
@@ -72132,9 +72240,8 @@ function rbRender_() {
       .rbp-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 0}.rbp-t>b{font:700 11px ui-monospace,Menlo,monospace;background:#f1f5f9;padding:1px 6px;border-radius:5px}.rbp-t>span{font-size:12px;color:#0f172a}</style>
     <div class="np-tabs" style="margin:0 0 12px"><button type="button" class="${RB.sec !== 'tabla' ? 'on' : ''}" onclick="rbSec_('prog')">🗓️ Programación</button><button type="button" class="${RB.sec === 'tabla' ? 'on' : ''}" onclick="rbSec_('tabla')">📒 Bitácora</button></div>
     ${RB.sec === 'tabla' ? `<div class="rb-w" style="max-width:none">${rbTablaHtml_()}</div>` : `
-    <div class="rb-w"><div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">🧹 Programar limpiezas del día:</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}">
-      <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span>${rbAutoHtml_()}<button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>
-      ${rbCambiosHtml_()}${rbProgDualHtml_()}
+    <div class="rb-w">${(bar => RB.prog && RB.prog.aceptada ? rbCambiosHtml_() + rbProgDualHtml_() + bar : bar + rbCambiosHtml_() + rbProgDualHtml_())(`<div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">${RB.prog && RB.prog.aceptada ? '🔄 Re-programar limpiezas del día:' : '🧹 Programar limpiezas del día:'}</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}" onchange="rbDiaSel_(this.value)">
+      <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span>${rbAutoHtml_()}<button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`)}
       <div class="rb-h">a) Programación de limpiezas</div>
       <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios asignados y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
       <div class="rb-ley"><b style="color:#334155">Asistencia:</b><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
