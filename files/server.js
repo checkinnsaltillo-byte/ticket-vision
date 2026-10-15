@@ -9416,6 +9416,8 @@ app.post("/config/reglas-bot", async (req, res) => {
       if (typeof B.sug_auto === "boolean") d.sug_auto = B.sug_auto; // aceptar sugerencias de Limpieza-General al asignar
       if (typeof B.emerg_on === "boolean") d.emerg_on = B.emerg_on; // apoyo de chofer de emergencia
       if (typeof B.reduc_on === "boolean") d.reduc_on = B.reduc_on; // modo reducción de tiempos
+      if (B.emerg && typeof B.emerg === "object") { const E = B.emerg, o = { on: !!E.on }; ["entrada", "salida"].forEach(k => { if (/^\d{2}:\d{2}$/.test(String(E[k] || ""))) o[k] = E[k]; }); if (Number(E.maxV) > 0) o.maxV = Math.min(30, Math.round(Number(E.maxV))); d.emerg = o; } // chofer de emergencia
+      if (typeof B.chofer_principal === "string") d.chofer_principal = txt(B.chofer_principal); // chofer principal
       if (B.emerg_hor && typeof B.emerg_hor === "object") { const o = {}; ["desde", "hasta"].forEach(k => { if (/^\d{2}:\d{2}$/.test(String(B.emerg_hor[k] || ""))) o[k] = B.emerg_hor[k]; }); d.emerg_hor = Object.assign({}, d.emerg_hor, o); } // horario del chofer de apoyo
       if (B.margenes && typeof B.margenes === "object") { d.margenes = d.margenes || {}; ["aloj", "tras", "pie"].forEach(k => { const v = Number(B.margenes[k]); if (B.margenes[k] != null && isFinite(v) && v >= 0 && v <= 240) d.margenes[k] = Math.round(v); }); } // f) tolerancia entre alojamientos · g) tolerancia en traslados
       if (B.chofer && typeof B.chofer === "object") { d.chofer = d.chofer || {}; [["n", 1, 20], ["cap", 1, 20], ["espera", 0, 120]].forEach(([k, lo, hi]) => { const v = Number(B.chofer[k]); if (B.chofer[k] != null && isFinite(v) && v >= lo && v <= hi) d.chofer[k] = Math.round(v); }); if (B.chofer.base != null) d.chofer.base = txt(B.chofer.base); } // h) transporte
