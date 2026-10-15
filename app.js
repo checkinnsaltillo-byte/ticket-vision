@@ -71081,6 +71081,17 @@ const RB_COLS = [['#1d4ed8', '#dbeafe'], ['#be185d', '#fce7f3'], ['#047857', '#d
 const RB_MGA_DEF = 10; // f) tolerancia entre un alojamiento y otro dentro del mismo edificio (predeterminado)
 const RB_MAX_TRAS = 2; // e) traslados entre edificios por persona al día (preferido); se permite 1 más solo si hace falta
 // h) Transporte: un chofer por día (mismo horario laboral), capacidad del vehículo y espera máxima a demanda.
+// Roles por persona (a): «chofer» y/o «limpieza». Sin guardar: limpieza si su puesto es de limpieza.
+const RB_ROLES = [['limpieza', '🧹 Limpieza'], ['chofer', '🚗 Chofer']];
+function rbNomP_(r) { return (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : [r.Nombre, r.Apellido_paterno, r.Apellido_materno].filter(Boolean).join(' ')) || r.Nombre; }
+function rbRoles_(n, r) { const x = ((RB.reglas || {}).limpieza || {})[n]; if (x && Array.isArray(x.roles)) return x.roles; return /limpieza/i.test(String((r && r.Puesto) || '')) ? ['limpieza'] : []; }
+// Personal de la tabla a): limpieza y mantenimiento, quien ya tenga un rol y Adán Ramos (chofer/apoyo).
+function rbPersonal_() {
+  return ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => { if (/inactiv|baja/i.test(String(r.Estado || '')) || r.Fecha_retiro) return false; const n = rbNomP_(r), k = ckNorm_(n);
+    return /limpieza|mantenimiento/i.test(String(r.Puesto || '')) || rbRoles_(n, r).length || (k.includes('adan') && k.includes('ramos')); });
+}
+function rbChNom_(CH, k) { return (CH.nombres || [])[k] || (CH.n > 1 ? `Chofer ${k + 1}` : 'Chofer'); }
+window.rbRol_ = function (n, rol, puesto) { const cur = rbRoles_(n, { Puesto: puesto }), nx = cur.includes(rol) ? cur.filter(x => x !== rol) : cur.concat(rol); rbSet_(n, 'roles', nx); rbRender_(); };
 const RB_CHOFER_DEF = { n: 1, cap: 3, espera: 15, base: 'Torreón' }; // base = punto de partida: de ahí sale el personal a la hora de entrada
 function rbChofer_() { const C = Object.assign({}, RB_CHOFER_DEF, (RB.reglas || {}).chofer || {}); return { n: Math.max(1, Number(C.n) || 1), cap: Math.max(1, Number(C.cap) || 3), espera: Math.max(0, Number(C.espera) || 0), base: String(C.base || RB_CHOFER_DEF.base) }; }
 // i) Polos: propiedades cercanas entre sí (se va a pie, sin chofer). Predeterminado según lo indicado por Check Inn.
@@ -71162,9 +71173,11 @@ window.rbProgramar_ = async function (diaArg, opts) {
     const a = atAloj_(t.hid), tipo = String(((a && a.raw) || {}).tipo || '').trim();
     T.push({ id: 'T' + t.id, tid: t.id, hid: t.hid, cod: String(a.corto || '').toUpperCase(), prop: rbProp_(t.hid), tipoT: t.depto === 'inspeccion' ? 'Inspección' : 'Limpieza', tipoA: tipo || 'Sin tipo', titulo: t.titulo, dur: t.depto === 'inspeccion' ? RB_INSP_MIN : Number(D[tipo]) || 60, durEst: t.depto !== 'inspeccion' && D[tipo] == null, lim: rbMin_(t.hora), entra: false, camas: t.depto === 'inspeccion' ? 0 : rbCamas_(t.hid), camaT: rbCamaT_(t.hid) }); });
   // 2) Personal disponible ese día
-  const P = ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => /limpieza/i.test(String(r.Puesto || '')) && !/inactiv|baja/i.test(String(r.Estado || '')) && !r.Fecha_retiro);
-  const nom = r => (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : [r.Nombre, r.Apellido_paterno, r.Apellido_materno].filter(Boolean).join(' ')) || r.Nombre;
+  const P = rbPersonal_().filter(r => rbRoles_(rbNomP_(r), r).includes('limpieza')); // personal con rol «Limpieza»
+  const nom = rbNomP_;
   const dk = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'][tarParseIso_(dia).getDay()];
+  // Choferes del día: quien tiene rol «Chofer» (y no «Limpieza») y labora ese día; si no hay, se usa el número del inciso h).
+  const CHD = rbPersonal_().filter(r => { const n = rbNomP_(r), R2 = rbRoles_(n, r); return R2.includes('chofer') && !R2.includes('limpieza') && ['confirmado', 'tentativo'].includes(rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk))); }).map(r => aseoNombreCorto_(rbNomP_(r)));
   const S = P.map(r => { const n = nom(r), e = rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk)); return { n, corto: aseoNombreCorto_(n), e, ed1: (L[n] || {}).ed1 || '', ed2: (L[n] || {}).ed2 || '', t: ini, prop: '', pasos: [], trabajo: 0, tras: 0 }; });
   const disp = S.filter(x => x.e === 'confirmado' || x.e === 'tentativo'); disp.forEach((x, i) => { x.col = RB_COLS[i % RB_COLS.length]; });
   const fuera = S.filter(x => !(x.e === 'confirmado' || x.e === 'tentativo'));
@@ -71177,6 +71190,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
   // 4) Reparto: se prueban cientos de variantes (con algo de azar) y se queda la mejor:
   //    traslados preferidos rbTrasPref_() (uno más solo si hace falta), sin tareas tarde ni fuera de horario y con cargas de trabajo parejas.
   const tPref = rbTrasPref_(), tMax = tPref + 1, CH = rbChofer_(), BASE = CH.base;
+  if (CHD.length) { CH.n = CHD.length; CH.nombres = CHD; }
   // ¿Necesita vehículo? Cambiar de edificio dentro del mismo polo (inciso i) se hace a pie; entre polos, con el chofer.
   const enVeh = (de, a) => !!de && de !== a && !(rbPolo_(de) && rbPolo_(de) === rbPolo_(a));
   const corre = rnd => {
@@ -71198,14 +71212,18 @@ window.rbProgramar_ = async function (diaArg, opts) {
       // b) sumarse a una vuelta ya programada (hay lugar y la recoge dentro de la espera máxima, o antes de lo que saldría una vuelta nueva)
       const tope = Math.max(t0 + CH.espera, nueva ? nueva.sale : t0 + CH.espera);
       let j = null; const pd = rbCirc_(de), pa = rbCirc_(a);
-      V.forEach(v => { if (v.pax.length >= CH.cap) return; let pick = null, llega = null, ext = false;
+      V.forEach(v => { if (v.pax.length >= CH.cap) return; let pick = null, llega = null, ext = false, nuevoFin = null;
         if (v.de === de && v.a === a) { pick = v.sale; llega = v.llega; }
         else { const p0 = rbCirc_(v.de), p1 = rbCirc_(v.a); if (p0 < 0 || p1 < 0 || pd < 0 || pa < 0 || p0 === p1) return; const dir = Math.sign(p1 - p0);
           if (dir * (pd - p0) < 0 || dir * (p1 - pd) < 0 || dir * (pa - pd) <= 0) return; // su edificio no está en el camino o su destino va en sentido contrario
-          pick = de === v.de ? v.sale : v.sale + rbTras_(v.de, de).m;
-          if (dir * (pa - p1) <= 0) llega = a === v.a ? v.llega : pick + rbTras_(de, a).m; else { llega = v.llega + rbTras_(v.a, a).m; ext = true; if (!sigDe(v, llega, a)) return; } }
+          const bs = (x, y) => rbTras_(x, y).base, tol = rbMgT_(); // tramos con tiempo base; la tolerancia se cuenta una vez por vuelta
+          pick = de === v.de ? v.sale : v.sale + bs(v.de, de);
+          const finRuta = de === v.de ? v.llega : Math.max(v.llega, pick + bs(de, v.a) + tol), delay = finRuta - v.llega; // el rodeo para recogerla
+          if (delay > 0 && (!v.reg || delay > CH.espera)) return; // solo en regresos y si no retrasa más que la espera máxima
+          if (dir * (pa - p1) <= 0) { llega = a === v.a ? finRuta : pick + bs(de, a) + tol; nuevoFin = finRuta; }
+          else { llega = finRuta + bs(v.a, a); ext = true; nuevoFin = llega; if (!sigDe(v, llega, a)) return; } }
         if (pick < t0 || pick > tope) return;
-        if (!j || llega < j.llega) j = { join: v, sale: pick, llega, ext }; });
+        if (!j || llega < j.llega) j = { join: v, sale: pick, llega, ext, nuevoFin }; });
       if (j && (!nueva || j.llega <= nueva.llega + CH.espera)) return j; // se prefiere compartir la vuelta
       return nueva;
     };
@@ -71235,6 +71253,17 @@ window.rbProgramar_ = async function (diaArg, opts) {
       w.base = false; w.trabajo += t.dur; w.t = best.termina; w.prop = t.prop; w.hid = t.hid; pref += best.pen; if (late) tardes++;
       A.set(t, { w, ini: best.llega, fin: best.termina });
     });
+    // Regreso final al lugar de partida: al terminar, cada persona vuelve (con el chofer o a pie si es del mismo polo).
+    W.filter(w => w.pasos.length && w.prop && w.prop !== BASE).sort((a, b) => a.t - b.t).forEach(w => {
+      w.ultProp = w.prop; w.tFin = w.t;
+      if (enVeh(w.prop, BASE)) { const pv = planViaje(w.t, w.prop, BASE); if (!pv) return; let v = pv.join;
+        if (!v) { v = { de: w.prop, a: BASE, sale: pv.sale, llega: pv.llega, pax: [], drops: [], ch: pv.ch, reg: true }; V.push(v); }
+        else { if (pv.nuevoFin && pv.nuevoFin > v.llega) { const nf = pv.nuevoFin; v.drops.forEach(d => { if (d.a === v.a) { d.llega = nf; const w2 = W.find(o => o.x === d.x), pp = w2 && [...w2.pasos].reverse().find(q => q.k === 'tras' && q.v === v); if (pp) { w2.tras += nf - pp.fin; pp.fin = nf; pp.m = nf - pp.ini; w2.t = nf; } } }); v.llega = nf; } if (pv.ext) { v.llega = pv.llega; v.a = BASE; } }
+        v.pax.push(w.x); v.drops.push({ de: w.prop, pick: pv.sale, a: BASE, llega: pv.llega, x: w.x });
+        w.pasos.push({ k: 'tras', veh: true, reg: true, v, de: w.prop, a: BASE, ini: w.t, sale: pv.sale, fin: pv.llega, m: pv.llega - w.t, base: rbTras_(w.prop, BASE).base }); w.tras += pv.llega - w.t; w.t = pv.llega; }
+      else { const tr = rbTras_(w.prop, BASE, true); w.pasos.push({ k: 'tras', pie: true, reg: true, de: w.prop, a: BASE, ini: w.t, fin: w.t + tr.m, m: tr.m, base: tr.base, est: tr.est }); w.tras += tr.m; w.t += tr.m; }
+      w.prop = BASE;
+    });
     const c = W.map(w => w.trabajo + w.tras), prom = c.reduce((a, v) => a + v, 0) / (c.length || 1);
     const score = sin.length * 5000 + tardes * 300 + W.reduce((a, w) => a + Math.max(0, w.t - fin), 0) * 3
       + c.reduce((a, v) => a + Math.abs(v - prom), 0) * 2 + (c.length ? Math.max(...c) - Math.min(...c) : 0) + W.reduce((a, w) => a + w.tras, 0) * 0.5 + pref * 0.5 + W.reduce((a, w) => a + Math.max(0, w.nT - tPref), 0) * 250
@@ -71244,7 +71273,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
   let mejor = corre(0); for (let i = 0; i < 600; i++) { const r = corre(20 + (i % 6) * 25); if (r.score < mejor.score) mejor = r; }
   { const CHf = rbChofer_(); for (let k = 0; k < CHf.n; k++) { let loc = CHf.base; mejor.V.filter(v => v.ch === k).sort((x, y) => x.sale - y.sale).forEach(v => { v.desdeCh = loc; v.rep = loc && loc !== v.de ? rbTras_(loc, v.de).base : 0; loc = v.a; }); } } // línea de tiempo del chofer, en orden de hora
   const sinAsig = mejor.sin;
-  mejor.W.forEach(w => Object.assign(w.x, { pasos: w.pasos, trabajo: w.trabajo, tras: w.tras, t: w.t, prop: w.prop, nT: w.nT }));
+  mejor.W.forEach(w => Object.assign(w.x, { ultProp: w.ultProp || w.prop, tFin: w.tFin || w.t, pasos: w.pasos, trabajo: w.trabajo, tras: w.tras, t: w.t, prop: w.prop, nT: w.nT }));
   T.forEach(t => { const a = mejor.A.get(t); if (a) Object.assign(t, { quien: a.w.x.corto, quienN: a.w.x.n, col: a.w.x.col, ini: a.ini, fin: a.fin }); });
   const req = T.reduce((a, t) => a + t.dur, 0), cap = disp.length * Math.max(0, fin - ini), usado = disp.reduce((a, x) => a + x.trabajo + x.tras, 0);
   const R0 = { dia, H, ini, fin, T, S: disp, fuera, sinAsig, viajes: mejor.V.slice().sort((a, b) => a.sale - b.sale), CH, hechas, req, cap, usado, vista: (RB.prog && RB.prog.vista) || 'personal' };
@@ -71276,7 +71305,7 @@ function rbTimelineHtml_(R, hm) {
   // Transporte: un renglón por chofer
   const CH = R.CH || rbChofer_(), VV = R.viajes || [];
   const trans = [...Array(CH.n).keys()].map(k => { const L = VV.filter(v => v.ch === k);
-    return `<div class="rtl-r rtl-tr"><div class="rtl-l">🚗 ${CH.n > 1 ? `Chofer ${k + 1}` : 'Transporte'}<small>${L.length} vuelta${L.length === 1 ? '' : 's'}</small></div><div class="rtl-t">${grid}${L.map(v => `${v.rep ? `<div class="rtl-v rep" style="left:${X(v.sale - v.rep)};width:${Wd(v.sale - v.rep, v.sale)}" title="${pcEsc(`Chofer va de ${v.desdeCh} a ${v.de} por el personal (${v.rep} min)`)}"></div>` : ''}<div class="rtl-v" data-tlv="${VV.indexOf(v)}" onclick="rbTlSel_('v',${VV.indexOf(v)})" ondblclick="rbTlViaje_(${VV.indexOf(v)})" style="left:${X(v.sale)};width:${Wd(v.sale, v.llega)}" title="${pcEsc(`${v.de} → ${(v.drops || []).map(d => d.a).join(' → ')}\n${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)} · ${v.pax.map(p => p.corto).join(', ')}`)}">🚗 ${v.pax.length}</div>`).join('')}</div></div>`; }).join('');
+    return `<div class="rtl-r rtl-tr"><div class="rtl-l">🚗 ${pcEsc((CH.nombres || [])[k] || (CH.n > 1 ? `Chofer ${k + 1}` : 'Transporte'))}<small>${L.length} vuelta${L.length === 1 ? '' : 's'}</small></div><div class="rtl-t">${grid}${L.map(v => `${v.rep ? `<div class="rtl-v rep" style="left:${X(v.sale - v.rep)};width:${Wd(v.sale - v.rep, v.sale)}" title="${pcEsc(`Chofer va de ${v.desdeCh} a ${v.de} por el personal (${v.rep} min)`)}"></div>` : ''}<div class="rtl-v" data-tlv="${VV.indexOf(v)}" onclick="rbTlSel_('v',${VV.indexOf(v)})" ondblclick="rbTlViaje_(${VV.indexOf(v)})" style="left:${X(v.sale)};width:${Wd(v.sale, v.llega)}" title="${pcEsc(`${v.de} → ${(v.drops || []).map(d => d.a).join(' → ')}\n${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)} · ${v.pax.map(p => p.corto).join(', ')}`)}">🚗 ${v.pax.length}</div>`).join('')}</div></div>`; }).join('');
   return `<style>.rtl{border:1px solid #e8eaee;border-radius:10px;background:#fff;overflow-x:auto}.rtl-in{min-width:760px}.rtl-r{display:grid;grid-template-columns:150px 1fr;border-bottom:1px solid #f1f5f9;min-height:30px}.rtl-l{padding:5px 8px;font-size:11.5px;font-weight:700;color:#0f172a;border-right:1px solid #e8eaee;position:sticky;left:0;background:#fff;z-index:2;display:flex;flex-direction:column;justify-content:center}.rtl-l small{font-weight:500;color:#94a3b8;font-size:10px}
       .rtl-dep{padding-left:20px;font-family:ui-monospace,Menlo,monospace}.rtl-t{position:relative;min-height:30px}.rtl-g{position:absolute;top:0;bottom:0;border-left:1px dashed #eef0f3}.rtl-fin{position:absolute;top:0;bottom:0;border-left:2px dashed #fca5a5;z-index:1}
       .rtl-h{background:#f8fafc;min-height:26px;position:sticky;top:0;z-index:3}.rtl-h .rtl-l{background:#f8fafc;color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}.rtl-h .rtl-t span:first-child{transform:none}.rtl-h .rtl-t span{position:absolute;top:6px;transform:translateX(-50%);font-size:10.5px;font-weight:700;color:#64748b;white-space:nowrap}.rtl-h .rtl-t .rtl-sal{color:#dc2626;top:6px}
@@ -71307,7 +71336,7 @@ window.rbTlViaje_ = function (i) {
   const CH = R.CH || rbChofer_(); if (window.ASEO) ASEO._dr = { form: true, k: 'rbv' };
   const dr = atShell_(), D = (v.drops || []).slice().sort((a, b) => a.llega - b.llega), hm = m => { m = Math.round(m); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}`; };
   const row = (k, val) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px"><span style="color:#64748b">${k}</span><b style="text-align:right">${val}</b></div>`;
-  dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">🚗 Vuelta #${i + 1}${CH.n > 1 ? ` · Chofer ${v.ch + 1}` : ''}</b><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></div></div>
+  dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">🚗 Vuelta #${i + 1}${CH.n > 1 || (CH.nombres || []).length ? ` · ${pcEsc(rbChNom_(CH, v.ch))}` : ''}</b><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></div></div>
     <div class="ad-db" style="font-family:Inter,system-ui,sans-serif">
       ${row('Ruta', `${pcEsc(v.de)} → ${[...new Set(D.map(d => d.a))].map(pcEsc).join(' → ')}`)}
       ${row('Sale', rbHHMM_(v.sale))}${row('Termina', rbHHMM_(v.llega))}${row('Duración', hm(v.llega - v.sale))}
@@ -71344,23 +71373,25 @@ function rbTransHtml_(R, hm, chip) {
   const fila = (h, ico, txt, xs, extra, at) => `<li ${at || ''}><span class="h">${h}</span><span style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">${ico} ${txt} ${xs.map(nom).join('')}${extra || ''}</span></li>`;
   const sec = (t, sub, L) => `<div class="rbp-p"><div class="rbp-ph"><b>${t}</b><span class="sp"></span><span class="rbp-m">${sub}</span></div><ol class="rbp-it">${L || '<li class="tr"><span>—</span></li>'}</ol></div>`;
   const CH = R.CH || rbChofer_(), pax = VV.reduce((a, v) => a + v.pax.length, 0);
-  return `<div class="rbp-kpis" style="margin-bottom:10px"><div><small>Vueltas del chofer</small><b>${VV.length}</b><em>${CH.n} chofer${CH.n === 1 ? '' : 'es'}${CH.n > 1 ? ` (${[...Array(CH.n).keys()].map(k => `#${k + 1}: ${VV.filter(v => v.ch === k).length}`).join(' · ')})` : ''} · ${pax} persona${pax === 1 ? '' : 's'} · cupo ${CH.cap} · espera máx. ${CH.espera} min</em></div><div><small>A pie (mismo polo)</small><b>${PIE.length}</b><em>sin usar al chofer</em></div><div><small>Llegadas</small><b>${ini.size}</b><em>${P.length} persona${P.length === 1 ? '' : 's'} a su primer edificio</em></div><div><small>Última recogida</small><b>${fin.length ? rbHHMM_(fin[fin.length - 1].t) : '—'}</b><em>${fin.length ? pcEsc(fin[fin.length - 1].prop) : ''}</em></div></div>
-    ${sec(`🌅 Reparto inicial desde ${pcEsc(CH.base)}`, `Hora de entrada ${rbHHMM_(R.ini)}`, VV.map((v, i) => [v, i]).filter(([v]) => v.base).map(([v, i]) => `${v.rep ? `<li class="tr"><span class="h">${rbHHMM_(v.sale - v.rep)}</span><span>🚗 ${CH.n > 1 ? `Chofer ${v.ch + 1}` : 'Chofer'} regresa de ${pcEsc(v.desdeCh)} a ${pcEsc(v.de)} (${v.rep} min)</span></li>` : ''}`
-      + fila(`${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)}`, `<b>#${i + 1}</b> 🚗${CH.n > 1 ? ` <b style="color:#4f46e5">Chofer ${v.ch + 1}</b>` : ''}`, rbParadas_(v), v.pax, `<span class="rbp-m">${v.pax.length}/${CH.cap} lugares</span>`, `data-rbv="${(R.viajes || []).indexOf(v)}"`)).join('')
+  return `<div class="rbp-kpis" style="margin-bottom:10px"><div><small>Vueltas del chofer</small><b>${VV.length}</b><em>${CH.n} chofer${CH.n === 1 ? '' : 'es'}${CH.n > 1 ? ` (${[...Array(CH.n).keys()].map(k => `#${k + 1}: ${VV.filter(v => v.ch === k).length}`).join(' · ')})` : ''} · ${pax} persona${pax === 1 ? '' : 's'} · cupo ${CH.cap} · espera máx. ${CH.espera} min</em></div><div><small>A pie (mismo polo)</small><b>${PIE.length}</b><em>sin usar al chofer</em></div><div><small>Llegadas</small><b>${ini.size}</b><em>${P.length} persona${P.length === 1 ? '' : 's'} a su primer edificio</em></div><div><small>Último regreso</small><b>${fin.length ? rbHHMM_(fin[fin.length - 1].t) : '—'}</b><em>llegada a Ed. ${pcEsc(CH.base)}</em></div></div>
+    ${sec(`🌅 Reparto inicial desde Ed. ${pcEsc(CH.base)}`, `Hora de entrada ${rbHHMM_(R.ini)}`, VV.map((v, i) => [v, i]).filter(([v]) => v.base).map(([v, i]) => `${v.rep ? `<li class="tr"><span class="h">${rbHHMM_(v.sale - v.rep)}</span><span>🚗 ${pcEsc(rbChNom_(CH, v.ch))} regresa de ${pcEsc(v.desdeCh)} a ${pcEsc(v.de)} (${v.rep} min)</span></li>` : ''}`
+      + fila(`${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)}`, `<b>#${i + 1}</b> 🚗${CH.n > 1 || (CH.nombres || []).length ? ` <b style="color:#4f46e5">${pcEsc(rbChNom_(CH, v.ch))}</b>` : ''}`, rbParadas_(v), v.pax, `<span class="rbp-m">${v.pax.length}/${CH.cap} lugares</span>`, `data-rbv="${(R.viajes || []).indexOf(v)}"`)).join('')
       + P.filter(x => { const p0 = x.pasos[0]; return p0 && !(p0.k === 'tras' && p0.veh); }).map(x => { const p0 = x.pasos[0], pie = p0.k === 'tras' && p0.pie; return fila(rbHHMM_(R.ini), pie ? '🚶' : '📍', pie ? `${pcEsc(CH.base)} → <b>${pcEsc(p0.a)}</b> a pie` : `Empieza en <b>${pcEsc(CH.base)}</b>`, [x]); }).join(''))}
-    ${sec('🚗 Vueltas del chofer', 'En orden de hora', VV.map((v, i) => [v, i]).filter(([v]) => !v.base).map(([v, i]) => `${v.rep ? `<li class="tr"><span class="h">${rbHHMM_(v.sale - v.rep)}</span><span>🚗 ${CH.n > 1 ? `Chofer ${v.ch + 1}` : 'Chofer'} va de ${pcEsc(v.desdeCh)} a ${pcEsc(v.de)} por el personal (${v.rep} min)</span></li>` : ''}` + fila(`${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)}`, `<b>#${i + 1}</b> 🚗${CH.n > 1 ? ` <b style="color:#4f46e5">Chofer ${v.ch + 1}</b>` : ''}`, rbParadas_(v), v.pax, `<span class="rbp-m">${v.pax.length}/${CH.cap} lugares</span>`, `data-rbv="${(R.viajes || []).indexOf(v)}"`)).join(''))}
+    ${sec('🚗 Vueltas del chofer', 'En orden de hora', VV.map((v, i) => [v, i]).filter(([v]) => !v.base && !v.reg).map(([v, i]) => `${v.rep ? `<li class="tr"><span class="h">${rbHHMM_(v.sale - v.rep)}</span><span>🚗 ${pcEsc(rbChNom_(CH, v.ch))} va de ${pcEsc(v.desdeCh)} a ${pcEsc(v.de)} por el personal (${v.rep} min)</span></li>` : ''}` + fila(`${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)}`, `<b>#${i + 1}</b> 🚗${CH.n > 1 || (CH.nombres || []).length ? ` <b style="color:#4f46e5">${pcEsc(rbChNom_(CH, v.ch))}</b>` : ''}`, rbParadas_(v), v.pax, `<span class="rbp-m">${v.pax.length}/${CH.cap} lugares</span>`, `data-rbv="${(R.viajes || []).indexOf(v)}"`)).join(''))}
     ${PIE.length ? sec('🚶 Cambios a pie (mismo polo)', 'No usan al chofer', PIE.map(v => fila(`${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)}`, '🚶', `<b>${pcEsc(v.de)}</b> → <b>${pcEsc(v.a)}</b> <span class="rbp-m">(polo ${rbPolo_(v.de)})</span>`, [v.x])).join('')) : ''}
     ${T.length ? sec('🚗 Otros traslados', 'En orden de hora', V.map(v => fila(`${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)}`, '🚗', `<b>${pcEsc(v.de)}</b> → <b>${pcEsc(v.a)}</b>`, v.xs, `<span class="rbp-m">${v.base} min${v.est ? ' (estimado)' : ''} + ${rbMgT_()} tolerancia${v.xs.length > 1 ? ` · ${v.xs.length} personas juntas` : ''}</span>`)).join('')) : ''}
-    ${sec('🏁 Recogida al terminar', 'Fin del itinerario', fin.map(x => fila(rbHHMM_(x.t), '📍', `<b>${pcEsc(x.prop)}</b>`, [x], x.t > R.fin ? `<span class="rbp-m" style="color:#b91c1c;font-weight:700">después de la salida (${rbHHMM_(R.fin)})</span>` : '')).join(''))}
+    ${sec(`🏠 Regreso a Ed. ${pcEsc(CH.base)}`, 'Al terminar', VV.map((v, i) => [v, i]).filter(([v]) => v.reg).map(([v, i]) => `${v.rep ? `<li class="tr"><span class="h">${rbHHMM_(v.sale - v.rep)}</span><span>🚗 ${pcEsc(rbChNom_(CH, v.ch))} va de ${pcEsc(v.desdeCh)} a ${pcEsc(v.de)} por el personal (${v.rep} min)</span></li>` : ''}`
+      + fila(`${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)}`, `<b>#${i + 1}</b> 🚗${CH.n > 1 || (CH.nombres || []).length ? ` <b style="color:#4f46e5">${pcEsc(rbChNom_(CH, v.ch))}</b>` : ''}`, rbParadas_(v), v.pax, `<span class="rbp-m">${v.pax.length}/${CH.cap} lugares${v.llega > R.fin ? ` · <b style="color:#b91c1c">llega después de la salida (${rbHHMM_(R.fin)})</b>` : ''}</span>`, `data-rbv="${(R.viajes || []).indexOf(v)}"`)).join('')
+      + fin.map(x => { const p = [...x.pasos].reverse().find(q => q.k === 'tras' && q.reg); return p && p.pie ? fila(`${rbHHMM_(p.ini)}–${rbHHMM_(p.fin)}`, '🚶', `${pcEsc(p.de)} → <b>Ed. ${pcEsc(CH.base)}</b> a pie`, [x]) : !p ? fila(rbHHMM_(x.t), '📍', `Termina en <b>Ed. ${pcEsc(CH.base)}</b>`, [x]) : ''; }).join(''))}
     <div class="rb-s">${CH.n} chofer${CH.n === 1 ? '' : 'es'} (inciso h): cada vuelta lleva hasta ${CH.cap} personas; quien está en el camino del circuito natural (inciso j) y va en la misma dirección, o sale del mismo edificio al mismo destino, se suma a la vuelta si el chofer pasa por él dentro de ${CH.espera} min. El chofer lleva su propia línea de tiempo: los renglones «Chofer va de… por el personal» son su traslado para llegar a recoger (no se suman al tiempo del personal, salvo la espera si aún no llega). Entre propiedades del mismo polo (inciso i) se va a pie. Las horas incluyen la tolerancia del inciso g).</div>`;
 }
 // Sugerencia «Limpieza general» (> 30 min disponibles): crea la tarea para esa persona, en su último edificio, ese día.
 function rbEdHid_(prop) { const a = (typeof atAlojs_ === 'function' ? atAlojs_() : []).find(a => { const E = alojEdif_(a.houseId); return E && E.ed && E.prop.replace(/^Calle\s+/i, '').trim() === prop; }); return a ? a.houseId : ''; }
 window.rbSugLG_ = async function (i) {
   const R = RB.prog, x = R && R.S[i]; if (!x) return;
-  const ult = [...x.pasos].reverse().find(p => p.k === 'tarea'), hid = rbEdHid_(x.prop) || (ult ? ult.t.hid : '');
-  const hh = `${String(Math.floor(x.t / 60)).padStart(2, '0')}:${String(Math.round(x.t % 60)).padStart(2, '0')}`;
-  const tarea = { hid, depto: 'limpieza', problema: false, prioridad: 'baja', titulo: 'Limpieza general', desc: `Sugerida por la programación: ${x.corto} tiene ${Math.round(R.fin - x.t)} min disponibles al terminar su itinerario en ${x.prop}.`, fecha: R.dia, hora: hh, repite: null, asignados: [x.n], etiquetas: [], adjuntos: [], reserva: '' };
+  const ult = [...x.pasos].reverse().find(p => p.k === 'tarea'), hid = rbEdHid_(x.ultProp || x.prop) || (ult ? ult.t.hid : '');
+  const tt = x.tFin || x.t, hh = `${String(Math.floor(tt / 60)).padStart(2, '0')}:${String(Math.round(tt % 60)).padStart(2, '0')}`;
+  const tarea = { hid, depto: 'limpieza', problema: false, prioridad: 'baja', titulo: 'Limpieza general', desc: `Sugerida por la programación: ${x.corto} tiene ${Math.round(R.fin - x.t)} min disponibles al terminar su itinerario en ${x.ultProp || x.prop}.`, fecha: R.dia, hora: hh, repite: null, asignados: [x.n], etiquetas: [], adjuntos: [], reserva: '' };
   try { const j = await fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea, user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
     if (!j.ok) throw new Error(j.error || 'Error'); (ASEO.tareas = ASEO.tareas || {})[j.tarea.id] = j.tarea;
     (R.sugOk = R.sugOk || {})[x.n] = j.tarea.id; try { ASEO.calSig = ''; if (typeof aseoRender_ === 'function') aseoRender_(); } catch (_) {} rbRender_();
@@ -71392,8 +71423,8 @@ function rbProgHtml_() {
       <ol class="rbp-it">${x.pasos.length ? x.pasos.map(p => p.k === 'esp' ? `<li class="tr"><span class="h">${rbHHMM_(p.ini)}</span><span>⏳ Espera ${hm(p.fin - p.ini)}: salida tardía en ${pcEsc(p.t.cod || '')} (después de ${rbHHMM_(p.t.desde)})</span></li>` : p.k === 'tras' ? `<li class="tr" ${p.veh ? `data-rbv="${(R.viajes || []).indexOf(p.v)}"` : ''}><span class="h">${rbHHMM_(p.ini)}</span><span>${p.mismo ? `⏱ Margen entre alojamientos · ${p.m} min` : p.veh ? `🚗 Chofer ${pcEsc(p.de)} → ${pcEsc(p.a)} · sale ${rbHHMM_(p.sale)}${p.sale > p.ini ? ` (espera ${Math.round(p.sale - p.ini)} min al chofer)` : ''} · llega ${rbHHMM_(p.fin)}${p.v && p.v.pax.length > 1 ? ` · viaja con ${p.v.pax.filter(o => o !== x).map(o => pcEsc(o.corto.split(' ')[0])).join(', ')}` : ''}` : p.pie ? `🚶 A pie ${pcEsc(p.de)} → ${pcEsc(p.a)} (polo ${rbPolo_(p.de)}) · ${p.base} min${p.est ? ' (estimado)' : ''} + ${rbMgP_()} min de tolerancia a pie = ${p.m} min` : `🚗 Traslado ${pcEsc(p.de)} → ${pcEsc(p.a)} · ${p.base} min${p.est ? ' (estimado)' : ''} + ${rbMgT_()} min de margen = ${p.m} min`}</span></li>`
         : `<li class="${p.tarde ? 'late' : ''}"><span class="h">${rbHHMM_(p.ini)}–${rbHHMM_(p.fin)}</span>${tCard(p.t)}${p.pri === 1 ? chip('1a Asignación', '#1d4ed8', '#dbeafe') : p.pri === 2 ? chip('2a Asignación', '#6d28d9', '#ede9fe') : chip('3a Asignación', '#475569', '#f1f5f9')}</li>`).join('') : '<li class="tr"><span>Sin tareas asignadas</span></li>'}
         ${x.pasos.length ? `<li class="fin"><span class="h">${rbHHMM_(x.t)}</span><span>🏁 Fin de su itinerario${exc2 > 0 ? ` · ${hm(exc2)} después de la salida (${rbHHMM_(R.fin)})` : ` · le quedan ${hm(-exc2)} de jornada`}</span></li>` : ''}
-        ${x.pasos.length && R.fin - x.t > 30 ? ((R.sugOk || {})[x.n] ? `<li class="fin"><span class="h"></span><span style="color:#15803d;font-weight:700">✓ Limpieza general creada en ${pcEsc(x.prop)} para ${pcEsc(x.corto)}</span></li>`
-          : `<li class="sug"><span class="h">${rbHHMM_(x.t)}</span><span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">💡 Le quedan ${hm(R.fin - x.t)}: ¿agregar una <b>Limpieza general</b> en ${pcEsc(x.prop)}?<button type="button" class="rb-sugok" onclick="rbSugLG_(${R.S.indexOf(x)})">✅ Aceptar</button></span></li>`) : ''}</ol></div>`; }).join('') + (R.sinAsig.length ? `<div class="rbp-p"><div class="rbp-ph"><b style="color:#b91c1c">Sin asignar</b></div>${R.sinAsig.map(t => tCard(t)).join('')}</div>` : '');
+        ${x.pasos.length && R.fin - x.t > 30 ? ((R.sugOk || {})[x.n] ? `<li class="fin"><span class="h"></span><span style="color:#15803d;font-weight:700">✓ Limpieza general creada en ${pcEsc(x.ultProp || x.prop)} para ${pcEsc(x.corto)}</span></li>`
+          : `<li class="sug"><span class="h">${rbHHMM_(x.t)}</span><span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">💡 Le quedan ${hm(R.fin - x.t)}: ¿agregar una <b>Limpieza general</b> en ${pcEsc(x.ultProp || x.prop)}?<button type="button" class="rb-sugok" onclick="rbSugLG_(${R.S.indexOf(x)})">✅ Aceptar</button></span></li>`) : ''}</ol></div>`; }).join('') + (R.sinAsig.length ? `<div class="rbp-p"><div class="rbp-ph"><b style="color:#b91c1c">Sin asignar</b></div>${R.sinAsig.map(t => tCard(t)).join('')}</div>` : '');
   else if (R.vista === 'transporte') cuerpo = rbTransHtml_(R, hm, chip);
   else { const key = R.vista === 'propiedad' ? (t => t.prop) : (t => t.tipoT), G = new Map(); R.T.forEach(t => { const k = key(t); if (!G.has(k)) G.set(k, []); G.get(k).push(t); });
     cuerpo = [...G.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es')).map(([k, L2]) => `<div class="rbp-p"><div class="rbp-ph"><b>${R.vista === 'propiedad' ? '🏢' : k === 'Inspección' ? '🔍' : '🧹'} ${pcEsc(k)}</b><span class="sp"></span><span class="rbp-m">${L2.length} · ${hm(L2.reduce((a, t) => a + t.dur, 0))} · 🛏 <b style="color:#0f172a">${rbCamTxt_(rbCamS_(L2))}${rbCamS_(L2) ? ` (${rbCamDesg_(L2)})` : ''}</b>${R.vista === 'propiedad' ? (() => { const Q = new Map(); L2.forEach(t => { if (t.quien && t.camas) Q.set(t.quien, (Q.get(t.quien) || 0) + t.camas); }); return Q.size ? ' · ' + [...Q.entries()].map(([q, n]) => `${pcEsc(q)} ${n}`).join(', ') : ''; })() : ''}</span></div>${L2.sort((a, b) => (a.ini || 9e9) - (b.ini || 9e9)).map(t => tCard(t, true)).join('')}</div>`).join(''); }
@@ -71580,7 +71611,7 @@ const RB_CSS2 = `<style>.rb-auto{display:inline-flex;align-items:center;gap:8px;
 function rbDrPintar_() {
   const dr = document.getElementById('ad-drawer'); if (!dr || !RB.dr) { RB.dr = false; return; }
   const dia = RB.pdia || aseoHoyIso_(), dk = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'][tarParseIso_(dia).getDay()], L = (RB.reglas || {}).limpieza || {};
-  const P = ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => /limpieza/i.test(String(r.Puesto || '')) && !/inactiv|baja/i.test(String(r.Estado || '')) && !r.Fecha_retiro);
+  const P = rbPersonal_().filter(r => rbRoles_(rbNomP_(r), r).length); // personal con rol (limpieza y/o chofer)
   const nom = r => (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : '') || r.Nombre;
   const filas = P.map(r => { const n = nom(r), e = rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk)), x = L[n] || {};
     return `<tr><td class="rb-n"><b>${pcEsc(aseoNombreCorto_(n))}</b><small>${pcEsc([x.ed1, x.ed2].filter(Boolean).join(' · ') || 'Sin edificio asignado')}</small></td>
@@ -71693,12 +71724,13 @@ function rbRender_() {
   if (RB.dr) { try { rbDrPintar_(); } catch (_) {} }
   const root = document.getElementById('rb-root'); if (!root) return;
   if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
-  const P = ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => /limpieza|mantenimiento/i.test(String(r.Puesto || '')) && !/inactiv|baja/i.test(String(r.Estado || '')) && !r.Fecha_retiro);
-  const nom = r => (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : [r.Nombre, r.Apellido_paterno, r.Apellido_materno].filter(Boolean).join(' ')) || r.Nombre;
+  const P = rbPersonal_();
+  const nom = rbNomP_;
   const L = (RB.reglas && RB.reglas.limpieza) || {}, eds = rbEdificios_(), opt = (v) => `<option value="">—</option>${eds.map(e => `<option ${e === v ? 'selected' : ''}>${pcEsc(e)}</option>`).join('')}`;
   const lun = RB.lunes || ckLunes_(aseoHoyIso_()), fechas = Array.from({ length: 7 }, (_, i) => { const d = tarParseIso_(lun); d.setDate(d.getDate() + i); return tarIso_(d); }), hoy = aseoHoyIso_();
   const filas = P.map(r => { const n = nom(r), D = rbDias_(r.Dias_trabajo), x = L[n] || {};
     return `<tr><td class="rb-n" title="${pcEsc(n)}"><b>${pcEsc(typeof aseoNombreCorto_ === 'function' ? aseoNombreCorto_(n) : n)}</b><small>${pcEsc(r.Puesto || '')}</small></td>
+      <td class="rb-roles">${(R0 => RB_ROLES.map(([k, t]) => `<span class="rb-rol ${R0.includes(k) ? 'on' : ''}" onclick="rbRol_(${pcEsc(JSON.stringify(n))},'${k}',${pcEsc(JSON.stringify(String(r.Puesto || '')))})"><i>${R0.includes(k) ? '✓' : ''}</i>${t}</span>`).join(''))(rbRoles_(n, r))}</td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed1',this.value)">${opt(x.ed1)}</select></td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed2',this.value)">${opt(x.ed2)}</select></td>
       ${RB_DIAS.map(([k, t], i) => { const f = fechas[i], e = rbEstado_(n, f, D.has(k)), man = !!(((RB.reglas || {}).asist || {})[n] || {})[f];
@@ -71714,6 +71746,7 @@ function rbRender_() {
       .rb-tri td{padding:4px;text-align:center}.rb-tri .rb-n{text-align:left;white-space:nowrap}.rb-in{all:unset;box-sizing:border-box;width:58px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;font-size:12px;text-align:center}.rb-in:focus{border-color:#818cf8}
       .rb-dg{background:repeating-linear-gradient(45deg,#f1f5f9,#f1f5f9 4px,#e2e8f0 4px,#e2e8f0 8px)}.rb-up{background:#fafafa}.rb-th-v{text-align:center!important;font-size:10px!important;max-width:70px;white-space:normal}
       .rb-ley{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11.5px;color:#64748b;margin:0 0 10px}.rb-ley .rb-c{cursor:default;min-width:0;padding:2px 8px}.rb-nav{display:inline-flex;align-items:center;gap:6px;margin-left:auto}.rb-nav button{all:unset;cursor:pointer;padding:4px 10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12px;font-weight:700;color:#334155}
+      .rb-roles{white-space:nowrap}.rb-rol{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11.5px;font-weight:600;color:#475569;margin-right:8px;user-select:none}.rb-rol i{width:18px;height:18px;border:1.5px solid #cbd5e1;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px;font-weight:800;color:#fff;background:#fff;box-sizing:border-box}.rb-rol.on i{background:#4f46e5;border-color:#4f46e5}.rb-rol.on{color:#0f172a}
       .rb-sec{font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.06em;margin:4px 0 6px}</style>
     ${RB_CSS2}<style>.np-tabs{display:inline-flex;gap:0;padding:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}.np-tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:0;font-size:13px;font-weight:700;color:#475569;border-left:1px solid #e2e8f0}.np-tabs button:first-child{border-left:0}.np-tabs button.on{background:#0f1729;color:#fff}
       .rb-det{margin-top:22px;border:1px solid #e2e8f0;border-radius:12px;padding:0 14px 14px;background:#fff}.rb-det>summary{cursor:pointer;list-style:none;padding:12px 0;font-size:13.5px;font-weight:800;color:#4f46e5}.rb-det>summary::-webkit-details-marker{display:none}.rb-det>summary::before{content:'▸ ';color:#94a3b8}.rb-det[open]>summary::before{content:'▾ '}.rb-det>summary span{font-weight:600;color:#94a3b8;font-size:11.5px;margin-left:8px}
@@ -71740,7 +71773,7 @@ function rbRender_() {
       <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios asignados y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
       <div class="rb-ley"><b style="color:#334155">Asistencia:</b><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
         <span class="rb-nav"><button type="button" onclick="rbSem_(-1)">‹</button><button type="button" onclick="rbSem_(0)" title="Semana actual">${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[0]))} – ${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[6]))}</button><button type="button" onclick="rbSem_(1)">›</button></span></div>
-      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal</th><th>Edificio asignado</th><th>Otro edificio asignado</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
+      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal</th><th>Roles</th><th>Edificio asignado</th><th>Otro edificio asignado</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
       <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
       <details class="rb-det" ${RB.detAb ? 'open' : ''} ontoggle="RB.detAb=this.open"><summary>⚙️ Reglas y condiciones del bot <span>b) Duración por tipo · c) Traslados · d) Horario laboral · e) Número de traslados · f–g) Tolerancias · h) Chofer · i) Polos · j) Circuito</span></summary>
       <div class="rb-h" style="margin-top:14px">b) Duración estimada de limpieza por tipo de alojamiento</div>
@@ -71767,10 +71800,10 @@ function rbRender_() {
       <div style="display:flex;gap:14px;flex-wrap:wrap"><label style="font-size:11.5px;font-weight:700;color:#475569">🚗 En vehículo (min)<br><input type="number" min="0" max="240" step="1" class="rb-sel" style="min-width:0;width:110px;margin-top:4px" value="${rbMgT_()}" onchange="rbMgSet_('tras',this.value)"></label>
         <label style="font-size:11.5px;font-weight:700;color:#475569">🚶 A pie (min)<br><input type="number" min="0" max="240" step="1" class="rb-sel" style="min-width:0;width:110px;margin-top:4px" value="${rbMgP_()}" onchange="rbMgSet_('pie',this.value)"></label></div>
       <div class="rb-h" style="margin-top:22px">h) Transporte (chofer)</div>
-      <div class="rb-s">A la hora de entrada todo el personal está en el <b>punto de partida</b> y el chofer lo reparte a su primer edificio (varias vueltas si hace falta, regresando al punto de partida). Choferes por día con el mismo horario laboral; cada vuelta la toma el chofer que puede llegar primero. Traslados a demanda: si otra persona sale del mismo edificio al mismo destino dentro de la espera máxima y hay lugar, viajan juntas en la misma vuelta. Se guarda solo.</div>
+      <div class="rb-s">A la hora de entrada todo el personal está en el <b>lugar de partida</b> y el chofer lo reparte a su primer edificio (varias vueltas si hace falta); al terminar, cada quien regresa al lugar de partida. Choferes por día con el mismo horario laboral; cada vuelta la toma el chofer que puede llegar primero. Traslados a demanda: si otra persona sale del mismo edificio al mismo destino dentro de la espera máxima y hay lugar, viajan juntas en la misma vuelta. Se guarda solo.</div>
       ${(C => `<div style="display:flex;gap:14px;flex-wrap:wrap"><label style="font-size:11.5px;font-weight:700;color:#475569">Choferes por día<br><input type="number" min="1" max="20" class="rb-sel" style="min-width:0;width:110px;margin-top:4px" value="${C.n}" onchange="rbChoferSet_('n',this.value)"></label>
         <label style="font-size:11.5px;font-weight:700;color:#475569">Capacidad (personas)<br><input type="number" min="1" max="20" class="rb-sel" style="min-width:0;width:110px;margin-top:4px" value="${C.cap}" onchange="rbChoferSet_('cap',this.value)"></label>
-        <label style="font-size:11.5px;font-weight:700;color:#475569">Punto de partida<br><select class="rb-sel" style="min-width:0;width:170px;margin-top:4px" onchange="rbChoferSet_('base',this.value)">${rbEdificios_(true).map(p => `<option ${p === C.base ? 'selected' : ''}>${pcEsc(p)}</option>`).join('')}</select></label>
+        <label style="font-size:11.5px;font-weight:700;color:#475569">Lugar de partida<br><select class="rb-sel" style="min-width:0;width:170px;margin-top:4px" onchange="rbChoferSet_('base',this.value)">${rbEdificios_(true).map(p => `<option value="${pcEsc(p)}" ${p === C.base ? 'selected' : ''}>Ed. ${pcEsc(p.replace(/^Plaza\s+/i, ''))}</option>`).join('')}</select></label>
         <label style="font-size:11.5px;font-weight:700;color:#475569">Espera máxima (min)<br><input type="number" min="0" max="120" class="rb-sel" style="min-width:0;width:110px;margin-top:4px" value="${C.espera}" onchange="rbChoferSet_('espera',this.value)"></label></div>`)(rbChofer_())}
       <div class="rb-h" style="margin-top:22px">i) Polos (propiedades cercanas, sin transporte)</div>
       <div class="rb-s">Propiedades del mismo polo están juntas: el cambio entre ellas se hace a pie (no usa al chofer ni cuenta en el inciso e). Se guarda solo.</div>
