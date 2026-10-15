@@ -71083,7 +71083,7 @@ const RB_COLS = [['#1d4ed8', '#dbeafe'], ['#be185d', '#fce7f3'], ['#047857', '#d
 const RB_MGA_DEF = 10; // f) tolerancia entre un alojamiento y otro dentro del mismo edificio (predeterminado)
 // Pesos de la optimización: vuelta nueva del chofer y minuto de espera (al elegir) y en la calificación del reparto.
 const RB_W_VUELTA = 120, RB_W_ESPERA = 2, RB_W_VUELTA_S = 1e4, RB_W_ESPERA_S = 10; // objetivo: más limpiezas (sin asignar ×5000) › menos vueltas › menos espera › cargas parejas
-const RB_MAX_TRAS = 2; // e) traslados entre edificios por persona al día (preferido); se permite 1 más solo si hace falta
+const RB_MAX_TRAS = 0; // e) traslados entre edificios por persona al día (preferido); se permite 1 más solo si hace falta
 // h) Transporte: un chofer por día (mismo horario laboral), capacidad del vehículo y espera máxima a demanda.
 // Roles por persona (a): «chofer» y/o «limpieza». Sin guardar: limpieza si su puesto es de limpieza.
 const RB_ROLES = [['limpieza', '🧹 Limpieza'], ['chofer', '🚗 Chofer']];
@@ -71135,7 +71135,7 @@ function rbPolosHtml_() {
     <div style="overflow-x:auto"><table class="rb-t" style="max-width:520px"><thead><tr><th>Propiedad</th><th style="width:160px">Polo</th></tr></thead><tbody>${E.map(p => `<tr><td><b>${pcEsc(p)}</b></td><td><select class="rb-sel" style="min-width:0;width:140px" onchange="rbPoloSet_(${pcEsc(JSON.stringify(p))},this.value)"><option value="">— Sin polo</option>${RB_POLO_LET.map(l => `<option ${rbPolo_(p) === l ? 'selected' : ''}>${l}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>`;
 }
 // e) por polo: traslados preferidos según el polo del edificio asignado de la persona (vacío = el general). Condición débil.
-function rbTrasPrefDe_(x) { const P = (RB.reglas || {}).tras_polo || {}, pl = rbPolo_((x && x.ed1) || ''); return pl && P[pl] != null && P[pl] !== '' ? Number(P[pl]) : rbTrasPref_(); }
+function rbTrasPrefDe_(x) { return rbTrasPref_(); } // un solo número general (condición de fuerza Media)
 window.rbTrasPoloSet_ = async function (pl, v) {
   if (!RB.reglas) return; const n = v === '' ? '' : Math.max(0, Math.min(10, Math.round(Number(v)))); RB.reglas.tras_polo = Object.assign({}, RB.reglas.tras_polo, { [pl]: n });
   const el = rbSaveEl_(); if (el) el.textContent = '⏳ Guardando…';
@@ -71810,7 +71810,7 @@ const RB_PESOS = [
   { k: 'emerg', t: 'Evitar el apoyo de emergencia', d: 'Vuelta extra de otro chofer solo para regresar a alguien.', def: 2, f: 3 },
   { k: 'jornada', t: 'Respetar la hora de salida', d: 'Minutos trabajados o de regreso después de la salida.', def: 2, f: 0.05 },
   { k: 'trasP', t: 'Menos traslados de personas', d: 'Cada vez que una persona sube a un vehículo.', def: 2, f: 0.1 },
-  { k: 'trasPolo', t: 'Traslados preferidos por persona', d: 'Cada traslado arriba del número preferido (inciso e, por polo).', def: 3, f: 3 },
+  { k: 'trasPolo', t: 'Traslados preferidos por persona', d: 'Cada traslado arriba del número preferido (inciso e).', def: 3, f: 3 },
   { k: 'edif', t: 'Edificio asignado', d: 'Preferir 1a › 2a › 3a asignación de cada persona.', def: 3, f: 0.02 },
   { k: 'muerto', t: 'Menos tiempo muerto', d: 'Minutos de espera (al chofer o a una salida tardía).', def: 4, f: 0.2 },
   { k: 'parejo', t: 'Cargas parejas', d: 'Que todo el personal trabaje tiempos similares.', def: 5, f: 0.2 },
@@ -71841,11 +71841,9 @@ function rbReglasHtml_() { return `
         <label style="font-size:11.5px;font-weight:700;color:#475569">Salida<br><input type="time" class="rb-sel" style="min-width:0;width:130px;margin-top:4px" value="${H.salida}" onchange="rbHor_('salida',this.value)"></label>
         <span id="rb-hdur" style="font-size:12px;font-weight:700;color:#4f46e5;padding-bottom:7px">${rbHorDur_(H)}</span></div>`)(rbHorario_())}
       <div class="rb-h" style="margin-top:22px">e) Número de traslados por persona</div>
-      <div class="rb-s">Traslados en vehículo al día que se prefieren por persona (predeterminado ${RB_MAX_TRAS}). Condición débil: se permiten más si así se hacen más limpiezas. Objetivo: la mayor cantidad de limpiezas con el mínimo de vueltas. Salir del lugar de partida y regresar no cuentan. Se guarda solo.</div>
+      <div class="rb-s">Traslados en vehículo al día que se prefieren por persona (predeterminado ${RB_MAX_TRAS}). Es preferencia de fuerza Media (ver Ponderación): se permiten más si así se hacen más limpiezas. Objetivo: la mayor cantidad de limpiezas con el mínimo de vueltas. Salir del lugar de partida y regresar no cuentan. Se guarda solo.</div>
       <label style="font-size:11.5px;font-weight:700;color:#475569">Traslados preferidos<br><input type="number" min="0" max="10" step="1" class="rb-sel" style="min-width:0;width:110px;margin-top:4px" value="${rbTrasPref_()}" onchange="rbTrasSet_(this.value)"></label>
-      ${(() => { const E = rbEdificios_(true), G = {}; E.forEach(p => { const l = rbPolo_(p); if (l) (G[l] = G[l] || []).push(p); }); const TP = (RB.reglas || {}).tras_polo || {};
-        return `<div class="rb-s" style="margin:12px 0 6px">Por polo (según el edificio asignado de cada persona; vacío = el general). Es preferencia: si hace falta para hacer más limpiezas, se permiten más traslados.</div>
-        <div style="overflow-x:auto"><table class="rb-t" style="max-width:520px"><thead><tr><th>Polo</th><th>Propiedades</th><th style="width:150px">Traslados preferidos</th></tr></thead><tbody>${Object.keys(G).sort().map(l => `<tr><td><b>${l}</b></td><td style="font-size:11.5px;color:#475569">${G[l].map(pcEsc).join(' / ')}</td><td><input type="number" min="0" max="10" class="rb-sel" style="min-width:0;width:90px" placeholder="${rbTrasPref_()}" value="${TP[l] != null ? TP[l] : ''}" onchange="rbTrasPoloSet_('${l}',this.value)"></td></tr>`).join('')}</tbody></table></div>`; })()}
+      
       <div class="rb-h" style="margin-top:22px">f) Tiempo de tolerancia entre alojamientos del mismo edificio</div>
       <div class="rb-s">Minutos que se agregan al pasar de un alojamiento a otro dentro del mismo edificio (predeterminado ${RB_MGA_DEF}). No cuenta como traslado. Se guarda solo.</div>
       <label style="font-size:11.5px;font-weight:700;color:#475569">Minutos<br><input type="number" min="0" max="240" step="1" class="rb-sel" style="min-width:0;width:110px;margin-top:4px" value="${rbMgA_()}" onchange="rbMgSet_('aloj',this.value)"></label>
@@ -71892,8 +71890,7 @@ window.rbAyuda_ = function (mantener) {
     .rq-ps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px}.rq-p{display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;background:#f8fafc;border-radius:8px;padding:6px 8px}.rq-p span{flex:1}.rq-p input{width:76px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:7px;font-size:12px}.rq-p em{font-style:normal;color:#94a3b8;font-size:11px;width:26px}</style>
     <div class="bx"><button type="button" class="x" onclick="document.getElementById('rb-ayuda').remove()">✕</button><h3>⚙️ Parámetros de la programación</h3>
     <div style="font-size:12px;color:#64748b">Los cambios se guardan solos y aplican al oprimir «Programar». Personal, roles y edificios asignados están en la tabla «a) Programación de limpiezas».</div>
-    <div class="np-tabs" style="margin:12px 0 4px"><button type="button" class="${RB.ptab !== 'pond' ? 'on' : ''}" onclick="RB.ptab='reglas';rbAyuda_(true)">📋 a) Reglas y condiciones</button><button type="button" class="${RB.ptab === 'pond' ? 'on' : ''}" onclick="RB.ptab='pond';rbAyuda_(true)">⚖️ b) Ponderación</button></div>
-    ${RB.ptab !== 'pond' ? `<div class="rb-w rq-reglas" style="border:0;padding:6px 0 0">${rbReglasHtml_()}<div class="rb-s" id="rb-save2" style="margin-top:10px;color:#15803d"></div></div>` : `
+    
     <h4>🔒 Obligatorias (siempre se cumplen)</h4>${obl.map(([i, t]) => `<div class="rq-o"><b>${i}</b><span>${t}</span></div>`).join('')}
     <h4>⚖️ Prioridades (elige su fuerza)</h4>
     <div style="font-size:11.5px;color:#64748b;margin:0 0 6px">Una prioridad <b>1 · Máxima</b> nunca se sacrifica por una de nivel 2; una de nivel 2 nunca por una de nivel 3, y así. Por encima de todo: <b>hacer la mayor cantidad de limpiezas</b> (fija).</div>
@@ -71903,22 +71900,13 @@ window.rbAyuda_ = function (mantener) {
         <td><select class="rq-n${n}" onchange="rbPesoSet_('${r.k}',this.value)">${[1, 2, 3, 4, 5, 0].map(v => `<option value="${v}" ${v === n ? 'selected' : ''}>${RB_NIV_T[v]}</option>`).join('')}</select></td></tr>`; }).join('')}
     </tbody></table>
     <div style="text-align:right;margin-top:6px"><button type="button" class="rb-tlbtn" style="margin:0;font-size:12px;padding:5px 10px" onclick="rbPesosReset_()">↺ Valores predeterminados</button></div>
-    <h4>🔧 Parámetros</h4>
-    <div class="rq-ps">
-      ${hor('Hora de entrada', 'entrada')}${hor('Hora de salida', 'salida')}
-      ${num('Duración de inspección', rbInspMin_(), 'rbInspSet_(this.value)', 1, 240)}
-      ${num('Tolerancia entre alojamientos', rbMgA_(), "rbMgSet_('aloj',this.value)", 0, 240)}
-      ${num('Tolerancia en vehículo', rbMgT_(), "rbMgSet_('tras',this.value)", 0, 240)}
-      ${num('Tolerancia a pie', rbMgP_(), "rbMgSet_('pie',this.value)", 0, 240)}
-      ${num('Traslados preferidos por persona', rbTrasPref_(), 'rbTrasSet_(this.value)', 0, 10, '')}
-      ${num('Cupo del vehículo', C.cap, "rbChoferSet_('cap',this.value)", 1, 20, 'pers.')}
-      ${num('Espera máxima (vehículo / juntar)', C.espera, "rbChoferSet_('espera',this.value)", 0, 120)}
-      ${num('Sugerir Limpieza-General con espera de', rbSugMin_(), 'rbSugSet_(this.value)', 5, 240)}
-    </div>
     <h4>💡 Sugerencias y resultados</h4>
-    <div class="rq-o"><b>💡</b><span>Esperas largas durante el día o tiempo libre al final: se sugiere «Limpieza-General» (tarea de Limpieza · General) (botón Aceptar).</span></div>
+    <div class="rq-o"><b>💡</b><span>Esperas largas durante el día o tiempo libre al final: se sugiere «Limpieza-General» (tarea de Limpieza · General, botón Aceptar).</span></div>
+    <div class="rq-ps" style="margin:4px 0 6px">${num('Sugerir Limpieza-General con espera de', rbSugMin_(), 'rbSugSet_(this.value)', 5, 240)}</div>
     <div class="rq-o"><b>⚖️</b><span>Se calculan la mejor y la segunda mejor programación; puedes compararlas y asignar cualquiera.</span></div>
-    <div class="rq-o"><b>⚠️</b><span>Retrasos: el botón ⚠️ de cada tarea reprograma con el menor impacto. Extensiones o cancelaciones de madrugada: el sistema libera la asignación y avisa (revisión cada 10 min y a las 7:00 a.m.).</span></div>`}
+    <div class="rq-o"><b>⚠️</b><span>Retrasos: el botón ⚠️ de cada tarea reprograma con el menor impacto. Extensiones o cancelaciones de madrugada: el sistema libera la asignación y avisa (revisión cada 10 min y a las 7:00 a.m.).</span></div>
+    <h4 style="margin-top:22px;padding-top:14px;border-top:2px solid #e0e7ff">📋 Reglas y condiciones</h4>
+    <div class="rb-w rq-reglas" style="border:0;padding:0">${rbReglasHtml_()}<div class="rb-s" id="rb-save2" style="margin-top:10px;color:#15803d"></div></div>
     </div>`;
   document.body.appendChild(ov);
   if (mantener) { const b = ov.querySelector('.bx'); if (b) b.scrollTop = top0; }
@@ -72255,7 +72243,7 @@ function rbRender_() {
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
     </div>`}`;
   try { clNavPaint_(); } catch (_) {}
-  if (document.getElementById('rb-ayuda') && RB.ptab !== 'pond' && !RB._ayR) { RB._ayR = 1; try { rbAyuda_(true); } finally { RB._ayR = 0; } } // la ventana de Parámetros refleja los cambios
+  if (document.getElementById('rb-ayuda') && !RB._ayR) { RB._ayR = 1; try { rbAyuda_(true); } finally { RB._ayR = 0; } } // la ventana de Parámetros refleja los cambios
 }
 window.rbSet_ = async function (n, k, v) {
   if (!RB.reglas) return; const L = RB.reglas.limpieza = RB.reglas.limpieza || {}; L[n] = Object.assign({ ed1: '', ed2: '' }, L[n], { [k]: v });
