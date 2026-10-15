@@ -71815,6 +71815,46 @@ window.rbRevalidar_ = async function (f) {
   RB.prog = R; RB.prog2 = null; RB.pdia = f; RB.sec = 'prog'; rbRender_();
   setTimeout(() => { const el = document.getElementById('rb-prog'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
 };
+// ═══ ✨ Asistente: explica por qué el escenario 1 es el óptimo (datos calculados aquí + redacción con IA en el servidor) ═══
+function rbExplicaDatos_(R) {
+  const hm = m => Math.round(m), per = R.S.map(x => { const tz = x.pasos.filter(p => p.k === 'tarea'), D = rbDesg_(x.pasos), wf = x.fin != null ? x.fin : R.fin;
+    return { nombre: x.corto, asistencia: x.e, horario: `${rbHHMM_(x.ini != null ? x.ini : R.ini)}–${rbHHMM_(wf)}`, tareas: tz.length, max_tareas: x.maxT, en_su_maximo: tz.length >= x.maxT,
+      edificio_asignado: { primera: tz.filter(p => p.pri === 1).length, segunda: tz.filter(p => p.pri === 2).length, otro: tz.filter(p => !p.pri).length },
+      traslados_en_vehiculo: x.pasos.filter(p => p.k === 'tras' && p.veh).length, traslados_a_pie: x.pasos.filter(p => p.k === 'tras' && p.pie).length,
+      min_trabajo: hm(D.tarea), min_traslado: hm(D.neto + D.tol), min_espera: hm(D.esp), termina: rbHHMM_(x.t), min_despues_de_salida: Math.max(0, hm(x.t - wf)), conduce: !!x.conduce, sin_regreso: !!x.sinRegreso }; });
+  const V = R.viajes || [], T = R.T, ent = T.filter(t => t.entra && t.quien);
+  const M = R2 => { const m = rbEscM_(R2); return { tareas_asignadas: m.limp, sin_asignar: m.sin, vueltas_chofer_y_emergencia: m.vueltas, vueltas_quien_conduce: (R2.viajes || []).filter(v => v.propio).length, traslados_personas: m.tras, min_espera_total: hm(m.esp), ultimo_regreso: rbHHMM_(m.fin), viajes_emergencia: (R2.viajes || []).filter(v => v.emerg).length }; };
+  return { dia: R.dia, enfoque: rbEnfTxt_(R.enfoque || 'param'), modo_reduccion: !!R.reduc, variantes_evaluadas: 900,
+    tareas: { total: T.length, asignadas: T.filter(t => t.quien).length, sin_asignar: R.sinAsig.map(t => `${t.cod} (${t.tipoT})`), limpiezas: T.filter(t => t.tipoT === 'Limpieza').length, inspecciones: T.filter(t => t.tipoT === 'Inspección').length,
+      con_entrada_hoy: ent.length, entradas_a_tiempo: ent.filter(t => !t.tarde).length, tarde: T.filter(t => t.tarde).map(t => t.cod), prioritarias: T.filter(t => t.prioritaria).map(t => t.cod),
+      salidas_tardias: T.filter(t => t.desde != null).map(t => t.cod), tiempo_reducido: T.filter(t => t.redu).map(t => `${t.cod} ${t.redu.de}→${t.redu.a} min`) },
+    transporte: { choferes: (R.CH && R.CH.nombres) || [], cupo: R.CH && R.CH.cap, espera_maxima: R.CH && R.CH.espera, vueltas_chofer: V.filter(v => !v.propio && !v.emerg).length, vueltas_quien_conduce: V.filter(v => v.propio).length, viajes_chofer_emergencia: V.filter(v => v.emerg).length,
+      emergencia: V.filter(v => v.emerg).map(v => `${rbHHMM_(v.sale)} ${v.de}→${v.a} (${v.pax.map(p => p.corto).join(', ')})`) },
+    horario_general: `${rbHHMM_(R.ini)}–${rbHHMM_(R.fin)}`, margen_salida_min: rbRegMargen_(), no_disponibles: (R.fuera || []).map(x => `${x.corto} (${x.e})`),
+    prioridades: RB_PESOS.filter(p => !p.oculta).map(p => `${p.t}: ${RB_NIV_T[rbNivDe_(p.k)]}`), personal: per,
+    escenario_1: M(R), escenario_2: RB.prog2 && RB.prog2.dia === R.dia ? M(RB.prog2) : null };
+}
+function rbMd_(t) { return pcEsc(String(t || '')).replace(/^### (.*)$/gm, '<h4>$1</h4>').replace(/^## (.*)$/gm, '<h3>$1</h3>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/^[-•] (.*)$/gm, '<li>$1</li>').replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`).replace(/\n{2,}/g, '<br>').replace(/\n/g, ' '); }
+window.rbExplica_ = async function () {
+  const R = RB.prog; if (!R) return; document.getElementById('rb-asis-p')?.remove();
+  const m = rbEscM_(R), m2 = RB.prog2 && RB.prog2.dia === R.dia ? rbEscM_(RB.prog2) : null, hm = x => { x = Math.round(x); return x < 60 ? `${x} min` : `${Math.floor(x / 60)} h${x % 60 ? ' ' + (x % 60) + ' min' : ''}`; };
+  const k = (l, v, d) => `<div class="k"><small>${l}</small><b>${v}</b>${d ? `<em>${d}</em>` : ''}</div>`, dif = (a, b, f) => b == null ? '' : a === b ? 'igual que el escenario 2' : `${a < b ? '−' : '+'}${f ? f(Math.abs(a - b)) : Math.abs(a - b)} vs escenario 2`;
+  const ov = document.createElement('div'); ov.id = 'rb-asis-p';
+  ov.innerHTML = `<style>#rb-asis-p{position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.35);display:flex;justify-content:flex-end;font-family:Inter,system-ui,sans-serif}
+    #rb-asis-p .pn{width:min(560px,100vw);height:100%;background:#fff;box-shadow:-10px 0 30px rgba(0,0,0,.2);display:flex;flex-direction:column}
+    #rb-asis-p .hd{display:flex;align-items:center;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff}#rb-asis-p .hd b{font-size:15px}#rb-asis-p .hd small{display:block;font-size:11.5px;opacity:.85;font-weight:500}
+    #rb-asis-p .x{all:unset;cursor:pointer;margin-left:auto;font-size:18px;padding:2px 8px}#rb-asis-p .bd{padding:14px 16px;overflow:auto;flex:1;font-size:13px;color:#1e293b;line-height:1.55}
+    #rb-asis-p .ks{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 14px}#rb-asis-p .k{background:#f5f3ff;border:1px solid #ddd6fe;border-radius:9px;padding:7px 9px}#rb-asis-p .k small{display:block;font-size:10px;font-weight:700;color:#6d28d9;text-transform:uppercase}#rb-asis-p .k b{font-size:15px}#rb-asis-p .k em{display:block;font-style:normal;font-size:11px;color:#64748b}
+    #rb-asis-p h3{font-size:14px;color:#4c1d95;margin:14px 0 4px}#rb-asis-p h4{font-size:13px;margin:10px 0 2px}#rb-asis-p ul{margin:4px 0 8px;padding-left:18px}#rb-asis-p li{margin:2px 0}#rb-asis-p .ld{color:#7c3aed;font-weight:700}</style>
+    <div class="pn"><div class="hd"><span style="font-size:22px">✨</span><div><b>Asistente · ¿por qué es el mejor escenario?</b><small>${pcEsc(aseoDiaTxt_(R.dia))} · enfoque ${pcEsc(rbEnfTxt_(R.enfoque || 'param'))}</small></div><button type="button" class="x" onclick="document.getElementById('rb-asis-p').remove()">✕</button></div>
+    <div class="bd"><div class="ks">${k('Tareas asignadas', `${m.limp} de ${R.T.length}`, m.sin ? `${m.sin} sin asignar` : 'ninguna sin asignar')}${k('Vueltas de vehículo', m.vueltas, m2 && dif(m.vueltas, m2.vueltas))}${k('Traslados de personas', m.tras, m2 && dif(m.tras, m2.tras))}${k('Espera total', hm(m.esp), m2 && dif(m.esp, m2.esp, hm))}${k('Último regreso', rbHHMM_(m.fin), m2 && dif(m.fin, m2.fin, hm))}${k('Entradas a tiempo', `${R.T.filter(t => t.entra && t.quien && !t.tarde).length} de ${R.T.filter(t => t.entra).length}`)}</div>
+    <div id="rb-asis-t"><span class="ld">⏳ El asistente está analizando la programación…</span></div></div></div>`;
+  ov.onclick = e => { if (e.target === ov) ov.remove(); }; document.body.appendChild(ov);
+  const el = () => document.getElementById('rb-asis-t');
+  try { if (!R._expl) { const j = await fetch(`${BACKEND}/aseo/prog-explica`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ datos: rbExplicaDatos_(R), user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); R._expl = j.texto; }
+    if (el()) el().innerHTML = rbMd_(R._expl); }
+  catch (e) { if (el()) el().innerHTML = `<span style="color:#b91c1c">No se pudo consultar al asistente: ${pcEsc(e.message || e)}</span>`; }
+};
 // Dos escenarios: la mejor y la segunda mejor programación lado a lado, con las diferencias arriba y «Asignar» en cada una.
 function rbEscM_(R) { const esp = R.S.reduce((a, x) => a + rbDesg_(x.pasos).esp, 0);
   return { limp: R.T.filter(t => t.quien).length, sin: R.sinAsig.length, vueltas: (R.viajes || []).filter(v => !v.propio).length, tras: R.S.reduce((a, x) => a + x.pasos.filter(p => p.k === 'tras' && !p.mismo).length, 0), esp, disp: R.S.reduce((a, x) => a + Math.max(0, R.fin - x.t), 0), fin: Math.max(...R.S.map(x => x.t)) }; }
@@ -71824,7 +71864,7 @@ function rbProgDualHtml_() {
   if (B) B.vista = A.vista; // mismas vistas en los dos escenarios
   const nAs = R => new Set(R.T.filter(t => t.quienN).map(t => t.tid ? 'T' + t.tid : t.asigId + (t.tipoT === 'Inspección' ? 'i' : 'a'))).size;
   const asg = (R, k) => `<div class="rbp-asg">${rbSugAutoHtml_()}<button type="button" class="rbp-go" style="background:#16a34a" onclick="rbAsignarEsc_(${k})">✅ Asignar (${nAs(R)} tarea${nAs(R) === 1 ? '' : 's'})</button><span id="rbp-asg-${k}" style="font-size:12px;font-weight:700"></span></div>`;
-  const tit = R => R.rank === 1 ? '⭐ Escenario 1 · mejor' : 'Escenario 2 · segunda mejor';
+  const tit = R => R.rank === 1 ? `<span style="display:flex;align-items:center;gap:8px">⭐ Escenario 1 · mejor<button type="button" class="rb-asis" onclick="rbExplica_()" title="El asistente explica por qué este escenario es el óptimo">✨ Asistente</button></span>` : 'Escenario 2 · segunda mejor';
   const tab = (k, t) => `<button type="button" class="${A.vista === k ? 'on' : ''}" onclick="rbProgVista_('${k}')">${t}</button>`;
   const barra = `<div class="rbv-bar"><div class="np-tabs">${tab('personal', '👤 Por personal (itinerario)')}${tab('propiedad', '🏢 Por propiedad')}${tab('tipo', '🧹 Por tipo de tarea')}${tab('transporte', '🚗 Transporte')}<button type="button" class="${RB.tl ? 'on' : ''}" onclick="RB.tl=!RB.tl;RB.tlSel=null;rbRender_()" title="Mostrar u ocultar el timeline del día">📊 Timeline</button></div>
     ${B ? `<button type="button" class="rb-tlbtn ${cmpOn ? 'on' : ''}" onclick="RB.cmp=!RB.cmp;rbRender_()" title="Mostrar a la derecha la segunda mejor programación, alineada para comparar">${cmpOn ? '◀ Ocultar escenario 2' : '▶ Comparar con escenario 2'}</button>` : ''}</div>`;
@@ -71835,7 +71875,7 @@ function rbProgDualHtml_() {
   const CSS = `<style>.rb-chk{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;font-weight:600;color:#334155;user-select:none}.rb-chk i{width:18px;height:18px;border:1.5px solid #cbd5e1;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px;font-weight:800;color:#fff;background:#fff;box-sizing:border-box}.rb-chk.on i{background:#16a34a;border-color:#16a34a}
     .rb-enf{flex-wrap:wrap}.rb-enf button{font-size:11.5px!important}
     .rbv-bar{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin:10px 0 12px}.rbv-bar .np-tabs button{display:inline-flex;align-items:center}.rbv-bar .rb-tlbtn{margin:0;display:inline-flex;align-items:center}
-    .rbe-box{border:2px solid #c7d2fe;border-radius:12px;padding:10px 12px;background:#fff}.rbe-tit{font-size:13.5px;font-weight:800;color:#3730a3;margin:0 0 8px}
+    .rbe-box{border:2px solid #c7d2fe;border-radius:12px;padding:10px 12px;background:#fff}.rb-asis{all:unset;cursor:pointer;margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;font-size:12px;font-weight:800;box-shadow:0 2px 8px rgba(79,70,229,.3)}.rb-asis:hover{filter:brightness(1.08)}.rbe-tit{font-size:13.5px;font-weight:800;color:#3730a3;margin:0 0 8px}
     .rbc-head{border:1px solid #c7d2fe;background:#eef2ff;border-radius:12px;padding:10px 12px;margin:0 0 12px}.rbc-ks{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px}.rbc-k{background:#fff;border:1px solid #e0e7ff;border-radius:9px;padding:6px 8px}.rbc-k small{display:block;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase}.rbc-k div{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800;color:#334155}.rbc-k i{font-style:normal;font-size:10px;color:#94a3b8;font-weight:600}.rbc-k .win{color:#15803d;background:#dcfce7;border-radius:6px;padding:0 5px}
     .rbc-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:14px;row-gap:8px;align-items:stretch}.rbc-grid>.c{min-width:0;display:flex;flex-direction:column}.rbc-grid>.c>.rbp-p,.rbc-grid>.c>.rbp-kpis{flex:1}.rbc-grid>.c.r{background:#fafaff;border-radius:10px}.rbc-grid .rbp-kpis{height:100%}.rbc-grid>.c.vac{border:1px dashed #e2e8f0;border-radius:10px;align-items:center;justify-content:center;color:#cbd5e1;font-size:11px}
     .rbp-asg{display:flex;align-items:center;gap:10px;margin:10px 0 18px}@media (max-width:900px){.rbc-grid{grid-template-columns:minmax(0,1fr)}}</style>`;

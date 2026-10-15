@@ -9454,6 +9454,20 @@ app.get("/aseo/prog-full", async (req, res) => {
   try { res.set("Cache-Control", "no-store"); const data = await _rhdGetJson(`aseo/prog/${dia}.json`).catch(() => null); res.json({ ok: true, data: data && Object.keys(data).length ? data : null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ✨ Asistente de la programación: redacta por qué el escenario 1 es el óptimo, solo con los datos calculados que manda el sistema.
+app.post("/aseo/prog-explica", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const datos = (req.body || {}).datos; if (!datos || typeof datos !== "object") return res.status(400).json({ ok: false, error: "Sin datos" });
+    const system = `Eres el asistente de operaciones de Check Inn Saltillo (rentas de corta estancia). Explicas a la gerencia, que no es técnica, por qué la programación de limpiezas propuesta (escenario 1) es la óptima.
+Reglas: usa SOLO los datos del JSON; no inventes cifras ni nombres. Español de México, claro y concreto, con números. Formato: secciones con "## " y viñetas con "- ", negritas con **. Máximo ~350 palabras.
+Secciones: ## En resumen · ## Maximización de tareas · ## Traslados y transporte · ## Ahorro de tiempo (compara con el escenario 2 si existe) · ## Prioridades de limpieza (entradas de hoy, entradas tempranas, salidas tardías, prioritarias) · ## Restricciones del personal (asistencia, horarios, máximo de tareas, edificio asignado, quien conduce, chofer de emergencia) · ## Qué vigilar (solo si hay algo: sin asignar, tarde, después de la salida, sin regreso, asistencias tentativas).
+Explica que el sistema evaluó muchas variantes y eligió la de mejor puntuación según las prioridades indicadas (en ese orden de importancia).`;
+    const msg = await anthropic.messages.create({ model: BOT_ANTHROPIC_MODEL, max_tokens: 1500, system, messages: [{ role: "user", content: "Datos de la programación:\n" + JSON.stringify(datos).slice(0, 60000) }] });
+    const texto = (msg.content || []).filter(p => p.type === "text").map(p => p.text).join("\n").trim();
+    res.json({ ok: true, texto });
+  } catch (e) { console.error("prog-explica", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/aseo/prog-full", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   const dia = String((req.body || {}).dia || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || !req.body.data) return res.status(400).json({ ok: false, error: "Faltan datos" });
