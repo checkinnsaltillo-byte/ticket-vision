@@ -68387,11 +68387,12 @@ function atEquipo_(tipo, t) {
   return (t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n, 'Asignado', fn, tipo === 'T' ? 'T' + t.id : '')).join('')}</span>`
     : `<button type="button" class="ad-asg" title="Asignar personal sin abrir los detalles" onclick="event.stopPropagation();${fn}">Sin asignar</button>`;
 }
-window.atAsigCard_ = function (tipo, id, anchor) {
+window.atAsigCard_ = async function (tipo, id, anchor) {
   const t = tipo === 'R' ? rtTareas_().find(x => x.rtId === String(id)) : (ASEO.tareas || {})[id]; if (!t) return;
+  if (tipo !== 'R' && await rbCandado_({ tid: String(id) })) return; // Modo Automático: bloqueado
   aseoAsignar_('__tarea', anchor, t.depto === 'inspeccion' ? 'inspeccion' : 'aseo');
   const cur = (t.asignados || []).slice();
-  Object.assign(ASEO._pop, { sel: new Set(cur), orig: cur.join('|'), save: arr => tipo === 'R' ? rtPatch_(id, { Asignado_a: arr.join(', ') }) : atGuardarAsig_(id, arr) });
+  Object.assign(ASEO._pop, { tid: tipo === 'R' ? '' : String(id), sel: new Set(cur), orig: cur.join('|'), save: arr => tipo === 'R' ? rtPatch_(id, { Asignado_a: arr.join(', ') }) : atGuardarAsig_(id, arr) });
   aseoPopFill_();
 };
 async function atGuardarAsig_(id, arr) {
@@ -69368,7 +69369,7 @@ function aseoRenderSide_() {
   const hs = document.getElementById('aseo-ham-slot'), vs = document.getElementById('aseo-vista-slot');
   if (hs) hs.innerHTML = ASEO._hamHtml || ''; if (vs) vs.innerHTML = ASEO._segVHtml || '';
   document.querySelectorAll('[data-sync-mini]').forEach(e => { e.innerHTML = mvSyncMini_(); });
-  if (top) { top.innerHTML = `${hs ? '' : `<div class="ad-syncrow">${ASEO._hamHtml || ''}${mvSyncBar_('aseo')}${ASEO._segVHtml || ''}</div>`}${kp ? '' : ASEO._kpisHtml || ''}${ASEO._filtrosHtml || ''}`; side.innerHTML = `${selBlock}${cuerpo}`; }
+  if (top) { top.innerHTML = `${hs ? '' : `<div class="ad-syncrow">${ASEO._hamHtml || ''}${mvSyncBar_('aseo')}${ASEO._segVHtml || ''}</div>`}${kp ? '' : ASEO._kpisHtml || ''}${rbModo_(aseoDia_()) ? RB_MODO_CSS + rbModoBarHtml_(aseoDia_()) : ''}${ASEO._filtrosHtml || ''}`; side.innerHTML = `${selBlock}${cuerpo}`; }
   else side.innerHTML = `${mvSyncBar_()}${selBlock}${cuerpo}`;
   side.classList.add('ad-v2');
   aseoPubTodasPaint_();
@@ -69497,6 +69498,7 @@ window.aseoRecargar_ = async function () { const b = document.getElementById('as
 window.aseoAsignar_ = function (id, anchor, rol) {
   aseoEnsureCss_();
   rol = rol === 'inspeccion' ? 'inspeccion' : 'aseo';
+  if (id !== '__tarea' && !ASEO._sinCandado) { rbCandado_({ asigId: String(id), rol }).then(b => { if (!b) { ASEO._sinCandado = true; try { aseoAsignar_(id, anchor, rol); } finally { ASEO._sinCandado = false; } } }); return; } // Modo Automático: bloqueado
   document.querySelectorAll('.pz-pop').forEach(p => p.remove());
   const cur = aseoAsigDe_(id, rol);
   ASEO._pop = { id, rol, sel: new Set(cur), orig: cur.join('|') };
@@ -69534,6 +69536,7 @@ window.aseoPopOk_ = async function () {
   if (!st) return; ASEO._pop = null;
   const arr = Array.from(st.sel);
   if (arr.join('|') === st.orig) return;
+  if (!(await rbImpactoAsig_(st.save ? { tid: st.tid } : { asigId: String(st.id), rol: st.rol }, arr))) return; // impacto en la programación (modo Manual)
   if (st.save) return st.save(arr); // personal de una tarea (no de un aseo)
   const prev = ASEO.asig[st.id];
   const nuevo = Object.assign({}, prev || {}); if (nuevo.personal && !nuevo.aseo) nuevo.aseo = nuevo.personal; delete nuevo.personal;
@@ -71702,7 +71705,7 @@ window.rbTTodas_ = function (on) { const dia = RB.pdia || aseoHoyIso_(), E = RB.
 function rbDiaCtlHtml_() { const dia = RB.pdia || aseoHoyIso_(), b = 'all:unset;cursor:pointer;padding:6px 11px;border:1px solid #c7d2fe;border-radius:9px;background:#fff;font-weight:800;color:#4338ca;font-size:13px';
   return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px"><b style="font-size:13px;color:#3730a3">📅 Día de interés</b>
     <button type="button" style="${b}" onclick="rbDiaPaso_(-1)" title="Día anterior">‹</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${dia}" onchange="rbDiaSel_(this.value)"><button type="button" style="${b}" onclick="rbDiaPaso_(1)" title="Día siguiente">›</button>
-    ${dia !== aseoHoyIso_() ? `<button type="button" style="${b}" onclick="rbDiaPaso_(0)">Hoy</button>` : ''}<span style="font-size:11.5px;color:#64748b">Filtra las tareas, centra el calendario de asistencias y es el día que se programa.</span></div>`; }
+    ${dia !== aseoHoyIso_() ? `<button type="button" style="${b}" onclick="rbDiaPaso_(0)">Hoy</button>` : ''}<span style="font-size:11.5px;color:#64748b">Filtra las tareas, centra el calendario de asistencias y es el día que se programa.</span></div>${rbModo_(dia) ? RB_MODO_CSS + rbModoBarHtml_(dia) : ''}`; }
 // Filtros rápidos, grupos plegables y selección por propiedad de la lista del día.
 // Activar desde la tabla: solicitudes de entrada temprana / salida tardía y «¿No ha salido?» (mismos guardados que las cards).
 window.rbTAct_ = async function (fn) { const p = (async () => fn())(); setTimeout(() => rbRender_(), 30); try { await p; } catch (_) {} rbRender_(); };
@@ -72338,6 +72341,53 @@ async function rbAsignarR_(R, pend, soloVacias) {
   if (ok) await rbPost_({ prog: { dia: R.dia, enfoque: R.enfoque || 'param', acept: (R.aceptada && R.aceptada.at) || new Date().toISOString(), retrasos: R.retrasos || {}, tareas: R.T.filter(t => t.quienN).map(t => ({ id: t.id, asigId: t.asigId || '', tid: t.tid || '', hid: t.hid, cod: t.cod, quienN: t.quienN, rol: t.tipoT === 'Inspección' ? 'inspeccion' : 'aseo', ini: t.ini, fin: t.fin, tipoT: t.tipoT, prop: t.prop })) } }).catch(() => {}); // copia del plan: se vigila contra extensiones/cancelaciones
   return { ok, err, n: M.size + TM.size };
 }
+// ═══ Modo Automático / Manual de la programación aceptada ═══
+// Automático (por omisión): las asignaciones de las tareas programadas quedan bloqueadas. Manual: se pueden cambiar; si el cambio
+// afecta a otras personas o al transporte, se muestra el impacto con «Realizar cambios» / «Cancelar».
+function rbModo_(dia) { const P = ((RB.reglas || {}).prog || {})[dia]; if (!P || !(P.tareas || []).length) return ''; return ((RB.reglas || {}).modo || {})[dia] === 'manual' ? 'manual' : 'auto'; }
+function rbRepintaModo_() { try { if (document.getElementById('rb-root') && document.getElementById('rb-root').offsetParent) rbRender_(); } catch (_) {} try { if (typeof aseoVisible_ === 'function' && aseoVisible_()) aseoRender_(); } catch (_) {} }
+window.rbModoSet_ = async function (dia, m) { if (!RB.reglas) await rbCargar_(); RB.reglas.modo = Object.assign({}, RB.reglas.modo, { [dia]: m }); document.getElementById('rb-lock')?.remove(); rbRepintaModo_(); try { await rbPost_({ modo: { dia, m } }); } catch (e) { alert('No se pudo cambiar el modo: ' + (e.message || e)); } rbRepintaModo_(); };
+function rbModoBarHtml_(dia) { const m = rbModo_(dia); if (!m) return ''; const P = RB.reglas.prog[dia], cu = rbAceptTxt_({ at: P.at, by: P.by });
+  return m === 'auto' ? `<div class="rb-modo auto"><b>🤖 Modo Automático</b><span>Programación del ${pcEsc(aseoDiaTxt_(dia))} · última actualización <b>${pcEsc(cu)}</b> · 🔒 asignaciones bloqueadas</span><button type="button" onclick="rbModoSet_('${dia}','manual')">✋ Cambiar a Manual</button></div>`
+    : `<div class="rb-modo man"><b>✋ Modo Manual</b><span>Programación del ${pcEsc(aseoDiaTxt_(dia))} · última actualización <b>${pcEsc(cu)}</b> · puedes cambiar asignaciones; si afectan a otras personas o al transporte se te avisa antes</span><button type="button" onclick="rbModoSet_('${dia}','auto')">🤖 Volver a Automático</button></div>`; }
+const RB_MODO_CSS = `<style>.rb-modo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 12px;border-radius:12px;margin:0 0 12px;font:500 12.5px Inter,system-ui,sans-serif}.rb-modo.auto{background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3}.rb-modo.man{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}.rb-modo>b{font-size:13px}.rb-modo span{flex:1;min-width:200px}.rb-modo button{all:unset;cursor:pointer;padding:6px 12px;border-radius:9px;font-weight:800;font-size:12px;background:#fff;border:1.5px solid currentColor}</style>`;
+// ¿La tarea está en una programación aceptada? → { dia, P, x }
+function rbPlanDe_(q) { const PG = (RB.reglas || {}).prog || {}, dias = Object.keys(PG).sort((a, b) => (b === aseoDia_()) - (a === aseoDia_()) || b.localeCompare(a));
+  for (const dia of dias) { const x = (PG[dia].tareas || []).find(t => q.tid ? String(t.tid) === String(q.tid) : (t.asigId === q.asigId && t.rol === q.rol)); if (x) return { dia, P: PG[dia], x }; } return null; }
+function rbLockModal_(h) { document.getElementById('rb-lock')?.remove(); const d = document.createElement('div'); d.id = 'rb-lock'; d.style.cssText = 'position:fixed;inset:0;z-index:100002;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px;font-family:Inter,system-ui,sans-serif';
+  d.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:620px;width:100%;max-height:88vh;overflow:auto;padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.25)">${h}</div>`; d.onclick = e => { if (e.target === d) d.remove(); }; document.body.appendChild(d); return d; }
+// Candado: en modo Automático no se abre el selector de personal.
+async function rbCandado_(q) { if (!RB.reglas) { try { await rbCargar_(); } catch (_) {} } const M = rbPlanDe_(q); if (!M || rbModo_(M.dia) !== 'auto') return false;
+  rbLockModal_(`<div style="font-size:16px;font-weight:800;color:#3730a3">🔒 Asignación bloqueada · Modo Automático</div><div style="font-size:13px;color:#334155;margin:10px 0">Esta tarea (<b>${pcEsc(M.x.cod || '')}</b>, asignada a <b>${pcEsc(aseoNombreCorto_(M.x.quienN || ''))}</b>) es parte de la programación automática del <b>${pcEsc(aseoDiaTxt_(M.dia))}</b>.<br>Última actualización: <b>${pcEsc(rbAceptTxt_({ at: M.P.at, by: M.P.by }))}</b>.</div><div style="font-size:12.5px;color:#64748b">Para cambiar asignaciones a mano, cambia ese día a <b>Modo Manual</b>. Los cambios que afecten a otras personas o al transporte te mostrarán su impacto antes de aplicarse.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><button type="button" class="rbp-go" style="background:#94a3b8" onclick="document.getElementById('rb-lock').remove()">Cancelar</button><button type="button" class="rbp-go" style="background:#ea580c" onclick="rbModoSet_('${M.dia}','manual')">✋ Cambiar a Manual</button></div>`);
+  return true; }
+// Impacto de un cambio manual sobre la programación aceptada (modo Manual). Devuelve true para continuar con el guardado.
+async function rbImpactoAsig_(q, arr) { const M = rbPlanDe_(q); if (!M) return true; if (rbModo_(M.dia) === 'auto') { await rbCandado_(q); return false; }
+  const nuevo = arr[0] || ''; if (nuevo === M.x.quienN) return true;
+  const w = rbLockModal_('<div style="font-size:14px;font-weight:700;color:#4338ca">⏳ Calculando el impacto del cambio en la programación…</div>');
+  let B = null, R2 = null; try { B = RB.prog && RB.prog.dia === M.dia && RB.prog.aceptada ? RB.prog : await rbPlanAceptado_(M.dia);
+    const asig = new Map(B.T.filter(t => t.quienN).map(t => [t.id, t.quienN])), orden = new Map(B.T.filter(t => t.quienN).map(t => [t.id, t.ini]));
+    if (nuevo) asig.set(M.x.id, nuevo); else asig.delete(M.x.id);
+    R2 = await rbProgramar_(M.dia, { headless: true, fijo: { asig, orden, ajustes: new Map(Object.entries(M.P.retrasos || {})), libres: true } }); /* libres: si alguien ya no puede, se reparte con el menor impacto */ } catch (e) { w.remove(); return confirm('No se pudo calcular el impacto (' + (e.message || e) + '). ¿Guardar el cambio de todos modos?'); }
+  const hm = m => { m = Math.round(Math.abs(m)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}`; }, A = rbMetricas_(B), N = rbMetricas_(R2), base = new Map(B.T.map(t => [t.id, t]));
+  const otras = R2.T.filter(t => t.id !== M.x.id && base.get(t.id) && base.get(t.id).quien && (Math.abs((t.ini || 0) - (base.get(t.id).ini || 0)) >= 5 || t.quien !== base.get(t.id).quien));
+  const pers = R2.S.map(x => { const b = B.S.find(y => y.n === x.n); return b && Math.abs(x.t - b.t) >= 5 ? `<li><b>${pcEsc(x.corto)}</b> termina ${rbHHMM_(b.t)} → <b>${rbHHMM_(x.t)}</b> (${x.t > b.t ? '+' : '−'}${hm(x.t - b.t)})</li>` : ''; }).join('');
+  const em = v => (v.viajes || []).filter(x => x.emerg).length, li = [];
+  if (N.vueltas !== A.vueltas) li.push(`🚗 Vueltas de vehículo: ${A.vueltas} → <b>${N.vueltas}</b>`); if (em(R2) !== em(B)) li.push(`🚨 Viajes del chofer de emergencia: ${em(B)} → <b>${em(R2)}</b>`);
+  if (N.tarde !== A.tarde) li.push(`⏰ Entradas de huésped tarde: ${A.tarde} → <b>${N.tarde}</b>`); if (N.sin !== A.sin) li.push(`❌ Tareas sin poder programarse: ${A.sin} → <b>${N.sin}</b>${!R2.T.find(t => t.id === M.x.id && t.quien) ? ` (${pcEsc(M.x.cod)}: la persona elegida no está disponible ese día)` : ''}`);
+  if (Math.abs(N.esp - A.esp) >= 5) li.push(`⏳ Espera total: ${hm(A.esp)} → <b>${hm(N.esp)}</b>`); if (Math.abs(N.fin - A.fin) >= 5) li.push(`🏁 Último regreso: ${rbHHMM_(A.fin)} → <b>${rbHHMM_(N.fin)}</b>`);
+  const afecta = li.length || otras.length || pers;
+  const aplicar = async () => { R2.aceptada = B.aceptada || { at: new Date().toISOString() }; R2.retrasos = B.retrasos || M.P.retrasos || {}; R2.enfoque = B.enfoque || M.P.enfoque; R2.rank = 1; R2.vista = B.vista || 'personal';
+    if (RB.prog && RB.prog.dia === M.dia) RB.prog = R2; await rbGuardarFull_(R2);
+    await rbPost_({ prog: { dia: R2.dia, enfoque: R2.enfoque || 'param', acept: R2.aceptada.at, retrasos: R2.retrasos, tareas: R2.T.filter(t => t.quienN).map(t => ({ id: t.id, asigId: t.asigId || '', tid: t.tid || '', hid: t.hid, cod: t.cod, quienN: t.quienN, rol: t.tipoT === 'Inspección' ? 'inspeccion' : 'aseo', ini: t.ini, fin: t.fin, tipoT: t.tipoT, prop: t.prop })) } }).catch(() => {}); rbRepintaModo_(); };
+  if (!afecta) { w.remove(); aplicar(); return true; }
+  return new Promise(res => { RB._impRes = ok => { document.getElementById('rb-lock')?.remove(); if (ok) aplicar(); res(ok); };
+    rbLockModal_(`<div style="font-size:16px;font-weight:800;color:#b45309">⚠️ Este cambio afecta la programación</div><div style="font-size:13px;color:#334155;margin:8px 0 10px"><b>${pcEsc(M.x.cod)}</b>: ${pcEsc(aseoNombreCorto_(M.x.quienN))} → <b>${pcEsc(nuevo ? aseoNombreCorto_(nuevo) : 'sin asignar')}</b> · programación del ${pcEsc(aseoDiaTxt_(M.dia))}</div>
+      ${li.length ? `<div style="font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;margin:10px 0 4px">General y transporte</div><ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6">${li.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+      ${pers ? `<div style="font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;margin:12px 0 4px">Personas afectadas</div><ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6">${pers}</ul>` : ''}
+      ${otras.length ? `<div style="font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;margin:12px 0 4px">Otras tareas que cambian (${otras.length})</div><div style="font-size:12.5px;color:#475569;line-height:1.7">${otras.slice(0, 20).map(t => { const b = base.get(t.id); return !t.quien ? `${pcEsc(t.cod)} <b style="color:#b91c1c">queda sin asignar</b>` : `${pcEsc(t.cod)} ${t.quien !== b.quien ? `${pcEsc(String(b.quien).split(' ')[0])} → <b>${pcEsc(String(t.quien).split(' ')[0])}</b> ` : ''}${rbHHMM_(b.ini)} → <b>${rbHHMM_(t.ini)}</b>`; }).join(' · ')}</div>` : ''}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><button type="button" class="rbp-go" style="background:#94a3b8" onclick="RB._impRes(false)">Cancelar</button><button type="button" class="rbp-go" style="background:#16a34a" onclick="RB._impRes(true)">✅ Realizar cambios</button></div>`);
+    document.getElementById('rb-lock').onclick = e => { if (e.target.id === 'rb-lock') RB._impRes(false); }; }); }
 async function rbPost_(body) {
   const j = await fetch(`${BACKEND}/config/reglas-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ user: (typeof currentUser !== 'undefined' && currentUser) || '' }, body)) }).then(r => r.json());
   if (!j.ok) throw new Error(j.error || 'Error'); RB.reglas = j.reglas; return j;
