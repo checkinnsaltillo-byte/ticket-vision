@@ -66747,7 +66747,7 @@ function aseoEnsureCss_() {
   .flag.violet,.ad-badge.violet{color:#6d28d9}.flag.violet i,.ad-badge.violet i{background:#8b5cf6;box-shadow:0 0 0 3px #ede9fe}
   .ad-card.alert .flag.red i{animation:mvPulse 1.2s ease-in-out infinite;--ac:#dc2626}
   .ad-card .r2{display:flex;flex-wrap:wrap;align-items:center;gap:3px 0;margin-top:6px;color:var(--ad-mut);font-size:11.5px}
-  .ad-nm.pend{border:1.5px dashed color-mix(in srgb,var(--pc) 75%,#111)!important;background:#fff!important}.ad-card .ad-solr{gap:5px!important}.rb-retcard{all:unset;cursor:pointer;font-size:12px;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fef3c7;border:1.5px solid #f59e0b;margin-left:4px;animation:rbPulse 1.6s ease-in-out infinite}.rb-retcard:hover{background:#fde68a}
+  .ad-nm.pend{border:1.5px dashed color-mix(in srgb,var(--pc) 75%,#111)!important;background:#fff!important}.ad-card .ad-solr{gap:5px!important}.ax-mini.rb-retcard{font-size:0!important;margin-right:2px}.ax-mini.rb-retcard::before,.ad-card .ax-mini.rb-retcard::before,.ad-card.ad-simp .ax-mini.rb-retcard::before{content:'⏱';font-size:11px}.ax-mini.rb-retcard:hover{color:#b45309;background:#fef3c7}
   @keyframes rbPulse{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.55);transform:scale(1)}50%{box-shadow:0 0 0 6px rgba(245,158,11,0);transform:scale(1.08)}}.rb-retb{animation:rbPulse 1.6s ease-in-out infinite;border-radius:50%}
   .rb-cprog{font-size:10.5px;font-weight:700;color:#3730a3;background:#eef2ff;border-radius:999px;padding:1px 6px;margin-left:4px;white-space:nowrap}.rb-cret{font-size:10.5px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:999px;padding:1px 6px;margin-left:4px;white-space:nowrap}.ad-sol{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ad-sol.pd{background:#fff7ed;color:#c2410c;border:1px dashed #fdba74}.ad-sol.acc{cursor:pointer;background:#16a34a;color:#fff}.ad-sol.acc:hover{background:#15803d}.ad-sol.ok{cursor:pointer;background:#dcfce7;color:#15803d;border:1px solid #86efac}
   .ad-card .r2 b{color:var(--ad-tx);font-weight:600}
@@ -67646,7 +67646,7 @@ function adCard_(I) {
     <div class="r2">${catP}${adCamasHtml_(I.hid)}</div>
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${adExtraInsumos_(I)}
-    <div class="r3">${nsChip}${equipo}<span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
+    <div class="r3">${nsChip}${equipo}<span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${I.depto === 'limpieza' && I.hid ? rbCardRetBtn_('A' + I.hid, I._dia || aseoDia_()) : ''}${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
   </div>`;
@@ -67661,7 +67661,7 @@ function adCard_(I) {
     ${srcTxt || xR ? `<div class="r2 ad-src"><span>${pcEsc(srcTxt)}</span>${xR ? (n => n ? `<span title="Personas">👥 ${n}</span>` : '')(Number(xR.b.NumberOfGuests) || (Number(xR.b.Adults) || 0) + (Number(xR.b.Children) || 0)) + (xR.noches ? `<span title="Noches">🌙 ${xR.noches}</span>` : '') : ''}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
     <div class="ad-eq">${equipo}</div>
-    <div class="r3 ad-r3w">${nsChip}<span class="ad-r3b"><span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${axIncMini_(I.asigId, I.hid, aseoDia_())}${guia}<button type="button" class="ad-det" onclick="event.stopPropagation();adAbrir_('${pcEsc(I.k)}')">Detalles</button></span></div>
+    <div class="r3 ad-r3w">${nsChip}<span class="ad-r3b"><span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${I.depto === 'limpieza' && I.hid ? rbCardRetBtn_('A' + I.hid, I._dia || aseoDia_()) : ''}${axIncMini_(I.asigId, I.hid, aseoDia_())}${guia}<button type="button" class="ad-det" onclick="event.stopPropagation();adAbrir_('${pcEsc(I.k)}')">Detalles</button></span></div>
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
   </div>`;
 }
@@ -68415,7 +68415,7 @@ function atCard_(I) {
     ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}${RC.flags}
     <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${RC.meta}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
-    <div class="r3">${RC.ns}${atEquipo_('T', t)}<span class="sp"></span>${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
+    <div class="r3">${RC.ns}${atEquipo_('T', t)}<span class="sp"></span>${t.depto === 'limpieza' ? rbCardRetBtn_('T' + t.id, I._dia || aseoDia_()) : ''}${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
     ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}${plBarra_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key)}
   </div>`;
 }
@@ -71679,8 +71679,9 @@ async function rbGuardarPlan_(R, B) {
 // Card de Tareas: botón «⏱ Retraso» (pulsante) + chips de hora programada y retraso registrado.
 function rbCardRetHtml_(id, dia) {
   const P = ((RB.reglas || {}).prog || {})[dia], x = P && (P.tareas || []).find(t => t.id === id), r = P && (P.retrasos || {})[id];
-  return `${x ? `<span class="rb-cprog" title="Hora programada (programación aceptada)">🕘 ${rbHHMM_(x.ini)}</span>` : ''}${r ? `<span class="rb-cret" title="${pcEsc(r.motivo || '')}">⏱ +${r.min} min</span>` : ''}<button type="button" class="rb-retcard" title="Reportar un retraso en esta limpieza" onclick="event.stopPropagation();rbRetCard_('${id}','${dia}')">⏱</button>`;
+  return `${x ? `<span class="rb-cprog" title="Hora programada (programación aceptada)">🕘 ${rbHHMM_(x.ini)}</span>` : ''}${r ? `<span class="rb-cret" title="${pcEsc(r.motivo || '')}">⏱ +${r.min} min</span>` : ''}`;
 }
+function rbCardRetBtn_(id, dia) { return `<button type="button" class="ax-mini rb-retcard" title="Reportar un retraso en esta limpieza" onclick="event.stopPropagation();rbRetCard_('${id}','${dia}')">⏱</button>`; } // junto a «Reportar incidencia» (＋⚠)
 window.rbProgVista_ = function (v) { if (RB.prog) { RB.prog.vista = v; if (RB.prog2) RB.prog2.vista = v; rbRender_(); if (RB.tlSel) setTimeout(() => rbTlSel_(RB.tlSel[0], RB.tlSel[1], true), 30); } };
 function rbProgHtml_(Rx, partes) {
   const R = Rx || RB.prog, ro = R !== RB.prog; if (!R) return partes ? null : '';
