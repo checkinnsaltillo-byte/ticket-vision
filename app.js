@@ -71291,7 +71291,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
         const tarde = t.lim != null && termina > t.lim ? 200 : 0, extra = termina > fin ? 120 + (termina - fin) * 4 : 0; // pasarse de la salida pesa por minuto
         const masT = cuenta && w.nT >= rbTrasPrefDe_(w.x) ? 150 * PW.trasPolo / 3e3 : 0, vNueva = pv && !pv.join && !pv.propio ? RB_W_VUELTA * PW.vueltas / 1e5 : 0; // traslado de más · vuelta nueva del chofer (se prefiere compartir)
         const espM = (pv ? Math.max(0, pv.sale - w.t) : 0) + Math.max(0, llega - lleg0); // tiempo muerto: esperar al chofer o a una salida tardía
-        const ceder = w.x.conduce && CH.n === 0 && PW.regreso ? Math.max(0, termina + rbTras_(t.prop, BASE).m + 15 - (fin + rbRegMargen_())) * 20 * PW.regreso / 1e3 : 0; // quien conduce debe alcanzar a regresar a la gente
+        const ceder = PW.regreso ? Math.max(0, termina + rbTras_(t.prop, BASE).m + (w.x.conduce && CH.n === 0 ? 15 : 0) - (fin + rbRegMargen_())) * 20 * Math.min(3, PW.regreso / 1e3) : 0; // nadie pasa de la salida + margen (quien conduce además debe regresar a la gente)
         const costo = termina + ceder + pen * 3 * PW.edif / 20 + tarde * Math.min(1, PW.tarde / 1e7) + extra * Math.min(1, PW.jornada / 5e3) + masT + vNueva + espM * RB_W_ESPERA * Math.min(PW.muerto / 2, 3) + (rnd ? rng() * rnd : 0); if (!best || costo < best.costo) best = { w, tr, pv, veh, cuenta, lleg0, llega, termina, costo, mueve, pen, espM }; });
       prueba(false); if (!best && fijo && fijo.libres) prueba(true); // menor impacto: solo si su persona ya no puede, se pasa a otra
       if (!best) { sin.push(t); return; }
@@ -71821,7 +71821,7 @@ const RB_PESOS = [
   { k: 'jornada', t: 'Respetar la hora de salida', d: 'Minutos trabajados o de regreso después de la salida.', def: 2, f: 0.05 },
   { k: 'trasP', t: 'Menos traslados de personas', d: 'Cada vez que una persona sube a un vehículo.', def: 2, f: 0.1 },
   { k: 'trasPolo', t: 'Traslados preferidos por persona', d: 'Cada traslado arriba del número preferido (inciso e).', def: 3, f: 3 },
-  { k: 'regreso', t: 'Regreso a Ed. Torreón a tiempo', d: 'Todos llegan al lugar de partida a más tardar el margen de regreso después de la salida (20 min); quien conduce cede su última tarea a otra persona para alcanzar a regresar a la gente.', def: 3, f: 1 },
+  { k: 'regreso', t: 'Hora de salida del personal (+ margen)', d: 'Nadie termina ni llega a Ed. Torreón más de 20 min (margen) después de su hora de salida; quien conduce cede su última tarea a otra persona para alcanzar a regresar a la gente.', def: 2, f: 1 },
   { k: 'edif', t: 'Edificio asignado', d: 'Preferir 1a › 2a › 3a asignación de cada persona.', def: 3, f: 0.02 },
   { k: 'muerto', t: 'Menos tiempo muerto', d: 'Minutos de espera (al chofer o a una salida tardía).', def: 4, f: 0.2 },
   { k: 'parejo', t: 'Cargas parejas', d: 'Que todo el personal trabaje tiempos similares.', def: 5, f: 0.2 },
@@ -71830,7 +71830,7 @@ const RB_PESOS = [
 const RB_GRUPOS = [
   { k: 'tarde', t: 'Entradas de huésped a tiempo', d: 'La limpieza termina antes de la hora de entrada (o de la entrada temprana).', def: 1, keys: ['tarde'] },
   { k: 'traslados', t: 'Menos traslados', d: 'Vueltas del vehículo y traslados de personas (incluye el número preferido del inciso e).', def: 2, keys: ['vueltas', 'trasP', 'trasPolo'], alias: 'vueltas' },
-  { k: 'jornada', t: 'Jornada y regreso', d: 'Respetar la hora de salida, regresar a Ed. Torreón dentro del margen y evitar el apoyo de emergencia.', def: 2, keys: ['jornada', 'emerg', 'regreso'] },
+  { k: 'jornada', t: 'Jornada y regreso', d: 'Respetar la hora de salida del personal (máximo 20 min extra de margen), regresar a Ed. Torreón y evitar el apoyo de emergencia.', def: 2, keys: ['jornada', 'emerg', 'regreso'] },
   { k: 'edif', t: 'Edificio asignado', d: 'Preferir 1a › 2a › 3a asignación de cada persona.', def: 3, keys: ['edif'] },
   { k: 'muerto', t: 'Menos tiempo muerto', d: 'Minutos de espera (al chofer o a una salida tardía).', def: 4, keys: ['muerto'] },
   { k: 'parejo', t: 'Cargas parejas', d: 'Que todo el personal trabaje tiempos similares.', def: 5, keys: ['parejo'] },
@@ -71953,7 +71953,7 @@ window.rbAyuda_ = function (mantener) {
     <div style="text-align:right;margin-top:6px"><button type="button" class="rb-tlbtn" style="margin:0;font-size:12px;padding:5px 10px" onclick="rbPesosReset_()">↺ Valores predeterminados</button></div>
     <h4>💡 Sugerencias y resultados</h4>
     <div class="rq-o"><b>💡</b><span>Esperas largas durante el día o tiempo libre al final: se sugiere «Limpieza-General» (tarea de Limpieza · General, botón Aceptar).</span></div>
-    <div class="rq-ps" style="margin:4px 0 6px">${num('Sugerir Limpieza-General con espera de', rbSugMin_(), 'rbSugSet_(this.value)', 5, 240)}${num('Margen de regreso a Ed. Torreón después de la salida', rbRegMargen_(), 'rbRegSet_(this.value)', 0, 180)}</div>
+    <div class="rq-ps" style="margin:4px 0 6px">${num('Sugerir Limpieza-General con espera de', rbSugMin_(), 'rbSugSet_(this.value)', 5, 240)}${num('Margen máximo después de la hora de salida del personal', rbRegMargen_(), 'rbRegSet_(this.value)', 0, 180)}</div>
     <div class="rq-o"><b>⚖️</b><span>Se calculan la mejor y la segunda mejor programación; puedes compararlas y asignar cualquiera.</span></div>
     <div class="rq-o"><b>⚠️</b><span>Retrasos: el botón ⚠️ de cada tarea reprograma con el menor impacto. Extensiones o cancelaciones de madrugada: el sistema libera la asignación y avisa (revisión cada 10 min y a las 7:00 a.m.).</span></div>
     <h4 style="margin-top:22px;padding-top:14px;border-top:2px solid #e0e7ff">📋 Reglas y condiciones</h4>
