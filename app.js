@@ -71333,10 +71333,12 @@ window.rbProgramar_ = async function (diaArg, opts) {
     // Apoyo de emergencia (otro chofer) solo para regresar a quien nadie más puede llevar; se juntan quienes salen del mismo edificio dentro de la espera máxima.
     // Apoyo de emergencia en cadena: un vehículo recoge a varias personas por el camino (sin esperar con gente a bordo más que la espera máxima).
     if (!rbEmergOn_()) emerg.forEach(w => { w.sinRegreso = true; }); // sin apoyo de emergencia: queda marcado sin regreso
+    const EH = (o => ({ desde: rbMin_(o.desde), hasta: rbMin_(o.hasta) }))(rbEmergHor_());
     const EV = []; (rbEmergOn_() ? emerg : []).sort((a, b) => a.t - b.t).forEach(w => { let best = null;
       const e0 = EV[EV.length - 1]; // un solo chofer de apoyo: solo se puede sumar a su vuelta en curso
-      if (e0 && e0.pax.length < CH.cap) { const arr = e0.t + (e0.loc === w.prop ? 0 : rbTras_(e0.loc, w.prop).base); if (w.t - arr <= CH.espera) best = { e: e0, pick: Math.max(w.t, arr) }; }
-      if (!best) { const libre = e0 ? e0.t + rbTras_(e0.loc, BASE).m + rbTras_(BASE, w.prop).base : w.t, pick = Math.max(w.t, libre); // deja a la gente en Torreón y regresa por la siguiente
+      if (e0 && e0.pax.length < CH.cap) { const arr = e0.t + (e0.loc === w.prop ? 0 : rbTras_(e0.loc, w.prop).base); if (w.t - arr <= CH.espera && Math.max(w.t, arr) <= EH.hasta) best = { e: e0, pick: Math.max(w.t, arr) }; }
+      if (!best) { const libre = e0 ? e0.t + rbTras_(e0.loc, BASE).m + rbTras_(BASE, w.prop).base : EH.desde + rbTras_(BASE, w.prop).base, pick = Math.max(w.t, libre); // deja a la gente en Torreón y regresa por la siguiente
+        if (pick > EH.hasta) { w.sinRegreso = true; return; } // fuera del horario del chofer de apoyo
         const e = { ch: 'E', t: pick, loc: w.prop, de: w.prop, ini: pick, pax: [] }; EV.push(e); best = { e, pick }; }
       best.e.pax.push({ w, pick: best.pick, de: w.prop }); best.e.t = best.pick; best.e.loc = w.prop; });
     EV.forEach(e => { const llega = e.t + rbTras_(e.loc, BASE).m;
@@ -71855,7 +71857,12 @@ function rbPesos_() { const o = {}; RB_PESOS.forEach(r => { o[r.k] = rbW_(r.k); 
 // «Cuenta con apoyo de chofer de emergencia» (activo por omisión): al final del día regresa a quien nadie más puede llevar.
 function rbEmergOn_() { const v = (RB.reglas || {}).emerg_on; return v == null ? true : !!v; }
 window.rbEmergSet_ = async function () { if (!RB.reglas) return; RB.reglas.emerg_on = !rbEmergOn_(); if (RB.dr) rbDrPintar_(); else rbRender_(); try { await rbPost_({ emerg_on: RB.reglas.emerg_on }); } catch (_) {} };
-function rbEmergHtml_() { const on = rbEmergOn_(); return `<span class="rb-chk ${on ? 'on' : ''}" onclick="rbEmergSet_()" title="Si está activo, al final del día un chofer de apoyo regresa a Ed. Torreón a quien nadie más puede llevar. Aplica al programar."><i>${on ? '✓' : ''}</i>Cuenta con apoyo de chofer de emergencia</span>`; }
+// Horario del chofer de apoyo (por omisión: 1 h antes de la salida hasta 2 h después).
+function rbEmergHor_() { const H = rbHorario_(), s = rbMin_(H.salida) || 17 * 60, hh = m => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`, E = (RB.reglas || {}).emerg_hor || {};
+  return { desde: E.desde || hh(s - 60), hasta: E.hasta || hh(s + 120) }; }
+window.rbEmergHorSet_ = async function (k, v) { if (!RB.reglas || !/^\d{2}:\d{2}$/.test(v)) return; RB.reglas.emerg_hor = Object.assign(rbEmergHor_(), { [k]: v }); try { await rbPost_({ emerg_hor: RB.reglas.emerg_hor }); } catch (_) {} };
+function rbEmergHtml_() { const on = rbEmergOn_(), E = rbEmergHor_(), inp = k => `<input type="time" value="${E[k]}" onchange="rbEmergHorSet_('${k}',this.value)" style="padding:3px 6px;border:1px solid #e2e8f0;border-radius:7px;font-size:12px">`;
+  return `<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="rb-chk ${on ? 'on' : ''}" onclick="rbEmergSet_()" title="Si está activo, al final del día un chofer de apoyo regresa a Ed. Torreón a quien nadie más puede llevar. Aplica al programar."><i>${on ? '✓' : ''}</i>Cuenta con apoyo de chofer de emergencia</span>${on ? `<span style="font-size:12px;color:#475569;font-weight:600" title="Horario en que el chofer de apoyo está disponible">de ${inp('desde')} a ${inp('hasta')}</span>` : ''}</span>`; }
 function rbSugAuto_() { const v = (RB.reglas || {}).sug_auto; return v == null ? true : !!v; }
 window.rbSugAutoSet_ = async function () { if (!RB.reglas) return; RB.reglas.sug_auto = !rbSugAuto_(); if (RB.dr) rbDrPintar_(); else rbRender_(); try { await rbPost_({ sug_auto: RB.reglas.sug_auto }); } catch (_) {} };
 function rbSugAutoHtml_() { const on = rbSugAuto_(); return `<span class="rb-chk ${on ? 'on' : ''}" onclick="rbSugAutoSet_()" title="Al oprimir «Asignar» se agregan también todas las tareas de Limpieza-General sugeridas en los tiempos muertos"><i>${on ? '✓' : ''}</i>Aceptar sugerencias de limpiezas en áreas comunes</span>`; }
