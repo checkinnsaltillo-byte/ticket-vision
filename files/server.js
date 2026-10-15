@@ -5107,7 +5107,7 @@ app.post("/internal/sync-guias-to-github", async (req, res) => {
       const id = String(row.HouseId || row.HouseID || row.id_lodgify || row.ID || "").trim(); // HouseId viene vacío en el catálogo: usar id_lodgify
       if (!id) continue;
       const photos = await fetchLodgifyPhotos(id);
-      const rowWithPhotos = Object.assign({}, row, { photos });
+      const rowWithPhotos = Object.assign({}, row, { photos, HouseId: id }); // la guía pública busca por HouseId
       files.push({
         path: `${baseDir}/${id}.json`,
         content: JSON.stringify({ ok: true, generatedAt, rows: [rowWithPhotos] }),
