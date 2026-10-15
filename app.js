@@ -71038,7 +71038,9 @@ function rbDurTxt_(m) { m = Number(m) || 0; if (!m) return ''; const h = Math.fl
 function rbReduc_() { return !!(RB.reglas || {}).reduc_on; }
 window.rbReducSet_ = async function () { if (!RB.reglas) return; RB.reglas.reduc_on = !rbReduc_(); if (RB.dr) rbDrPintar_(); else rbRender_(); try { await rbPost_({ reduc_on: RB.reglas.reduc_on }); } catch (_) {} };
 function rbReducHtml_() { const on = rbReduc_(); return `<span class="rb-chk ${on ? 'on' : ''}" onclick="rbReducSet_()" title="Activo: programa con la duración mínima de cada tipo de alojamiento (inciso b). Apagado: usa la duración normal."><i>${on ? '✓' : ''}</i>Modo reducción de tiempos</span>`; }
-function rbDurDe_(tipo, D) { const mn = ((RB.reglas || {}).duraciones_min || {})[tipo]; if (rbReduc_() && mn != null && Number(mn) > 0) return Number(mn); return Number((D || {})[tipo]) || 60; }
+// Duración por tipo: «Máxima duración» (la columna anterior «Duración» queda solo como respaldo si la máxima está vacía).
+function rbDurMap_() { const G = RB.reglas || {}; return Object.assign({}, G.duraciones || {}, G.duraciones_max || {}); }
+function rbDurDe_(tipo, D) { const mn = ((RB.reglas || {}).duraciones_min || {})[tipo]; if (rbReduc_() && mn != null && Number(mn) > 0) return Number(mn); return Number((D || rbDurMap_())[tipo]) || 60; }
 window.rbDur_ = async function (t, v, inp, campo) {
   campo = campo || 'duraciones'; if (!RB.reglas) return; const D = RB.reglas[campo] = RB.reglas[campo] || {}; const m = v === '' ? '' : Math.max(0, Math.min(1440, Math.round(Number(v) || 0)));
   if (m === '') delete D[t]; else D[t] = m;
@@ -71187,7 +71189,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
     if (typeof ASEO !== 'undefined' && !ASEO.ts && typeof aseoRefresh_ === 'function') await Promise.race([aseoRefresh_().catch(() => {}), new Promise(r => setTimeout(r, 8000))]); // estados de aseo (máx. 8 s)
     if (typeof INC_STATE !== 'undefined' && !(INC_STATE.personalRows || []).length && typeof incLoadPersonal === 'function') await incLoadPersonal();
   } catch (_) {}
-  const H = rbHorario_(), ini = rbMin_(H.entrada), fin = rbMin_(H.salida), D = (RB.reglas || {}).duraciones || {}, L = (RB.reglas || {}).limpieza || {};
+  const H = rbHorario_(), ini = rbMin_(H.entrada), fin = rbMin_(H.salida), D = rbDurMap_(), L = (RB.reglas || {}).limpieza || {};
   // 1) Tareas
   const T = [];
   let gs = []; try { gs = aseoAplicarReprog_(pcMovAlojGrupos_(pcMovCols_(dia).cols, dia), dia); } catch (_) {}
@@ -71890,11 +71892,10 @@ window.rbSugSet_ = async function (v) { const n = Math.max(5, Math.min(240, Math
 function rbSaveEl_() { return document.getElementById('rb-save2') || document.getElementById('rb-save'); } // estado «Guardando…» en la ventana de Parámetros si está abierta
 function rbReglasHtml_() { return `
       <div class="rb-h" style="margin-top:14px">b) Duración estimada de limpieza por tipo de alojamiento</div>
-      <div class="rb-s">Un renglón por cada «tipo» del catálogo de alojamientos. Escribe los minutos que toma una limpieza de salida; se guarda solo. La mínima se usa con «Modo reducción de tiempos» activo (junto a «Programar limpiezas del día»).</div>
-      <div style="overflow-x:auto"><table class="rb-t" style="max-width:1100px;table-layout:fixed"><colgroup><col style="width:130px"><col><col style="width:110px"><col style="width:70px"><col style="width:110px"><col style="width:110px"></colgroup><thead><tr><th>Tipo</th><th>Alojamientos</th><th>Duración (min)</th><th></th><th>Mínima (min)</th><th>Máxima (min)</th></tr></thead>
-      <tbody>${(() => { const T = rbTipos_(), D = (RB.reglas && RB.reglas.duraciones) || {}, Dn = (RB.reglas && RB.reglas.duraciones_min) || {}, Dx = (RB.reglas && RB.reglas.duraciones_max) || {}; return T.length ? T.map(([t, L]) => `<tr><td><b>${pcEsc(t)}</b></td><td style="color:#64748b;font-size:11.5px;white-space:normal;line-height:1.5"><b style="color:#0f172a">${L.length}</b> · ${pcEsc(L.filter(Boolean).sort((x, y) => x.localeCompare(y, 'es', { numeric: true })).join(', '))}</td>
-        <td><input type="number" min="0" max="1440" step="5" class="rb-sel" style="min-width:0;width:84px" value="${D[t] != null ? D[t] : ''}" placeholder="min" onchange="rbDur_(${pcEsc(JSON.stringify(t))},this.value,this)"></td><td class="rb-dt" style="color:#4f46e5;font-weight:700;font-size:12px">${rbDurTxt_(D[t])}</td>
-        ${[['duraciones_min', Dn], ['duraciones_max', Dx]].map(([c, M]) => `<td><input type="number" min="0" max="1440" step="5" class="rb-sel" style="min-width:0;width:84px" value="${M[t] != null ? M[t] : ''}" placeholder="min" onchange="rbDur_(${pcEsc(JSON.stringify(t))},this.value,this,'${c}')"></td>`).join('')}</tr>`).join('') : `<tr><td colspan="6" style="color:#94a3b8;padding:20px">⏳ Cargando alojamientos…</td></tr>`; })()}</tbody></table></div>
+      <div class="rb-s">Un renglón por cada «tipo» del catálogo de alojamientos. Minutos que toma una limpieza de salida; se guarda solo. La programación usa siempre la <b>máxima</b>; con «Modo reducción de tiempos» activo (junto a «Programar limpiezas del día») usa la <b>mínima</b>.</div>
+      <div style="overflow-x:auto"><table class="rb-t" style="max-width:1100px;table-layout:fixed"><colgroup><col style="width:130px"><col><col style="width:150px"><col style="width:150px"></colgroup><thead><tr><th>Tipo</th><th>Alojamientos</th><th>Mínima duración (min)</th><th>Máxima duración (min)</th></tr></thead>
+      <tbody>${(() => { const T = rbTipos_(), D = (RB.reglas && RB.reglas.duraciones) || {}, Dn = (RB.reglas && RB.reglas.duraciones_min) || {}, Dx = rbDurMap_(); return T.length ? T.map(([t, L]) => `<tr><td><b>${pcEsc(t)}</b></td><td style="color:#64748b;font-size:11.5px;white-space:normal;line-height:1.5"><b style="color:#0f172a">${L.length}</b> · ${pcEsc(L.filter(Boolean).sort((x, y) => x.localeCompare(y, 'es', { numeric: true })).join(', '))}</td>
+        ${[['duraciones_min', Dn], ['duraciones_max', Dx]].map(([c, M]) => `<td><input type="number" min="0" max="1440" step="5" class="rb-sel" style="min-width:0;width:84px" value="${M[t] != null ? M[t] : ''}" placeholder="min" onchange="rbDur_(${pcEsc(JSON.stringify(t))},this.value,this,'${c}')"></td>`).join('')}</tr>`).join('') : `<tr><td colspan="4" style="color:#94a3b8;padding:20px">⏳ Cargando alojamientos…</td></tr>`; })()}</tbody></table></div>
       <div class="rb-h" style="margin-top:22px">b.1) Duración estimada de inspección</div>
       <div class="rb-s">Minutos que toma una inspección (alojamientos donde solo entra un huésped y tareas de inspección). Predeterminado ${RB_INSP_DEF}. Se guarda solo.</div>
       <label style="font-size:11.5px;font-weight:700;color:#475569">Minutos<br><input type="number" min="1" max="240" step="1" class="rb-sel" style="min-width:0;width:110px;margin-top:4px" value="${rbInspMin_()}" onchange="rbInspSet_(this.value)"></label>
@@ -72002,7 +72003,7 @@ async function rbCargar_() {
 window.rbTabMes_ = function (v) { if (typeof v === 'string') RB.ym = v; else if (!v) RB.ym = null; else { const [y, m] = (RB.ym || aseoHoyIso_().slice(0, 7)).split('-').map(Number), d = new Date(y, m - 1 + v, 1); RB.ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; } rbRender_(); };
 const RB_TEST = { pendiente: ['Pendiente', '#64748b', '#f1f5f9'], en_proceso: ['En proceso', '#b45309', '#fef3c7'], terminado: ['Terminado', '#15803d', '#dcfce7'], inspeccionado: ['Inspeccionado', '#1d4ed8', '#dbeafe'], cancelado: ['Cancelado', '#b91c1c', '#fee2e2'] };
 function rbTablaDatos_(ym) {
-  const D = (RB.reglas || {}).duraciones || {}, P = new Map(), add = (n, f) => { if (!n) return; if (!P.has(n)) P.set(n, []); P.get(n).push(f); };
+  const D = rbDurMap_(), P = new Map(), add = (n, f) => { if (!n) return; if (!P.has(n)) P.set(n, []); P.get(n).push(f); };
   ((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).filter(r => /limpieza|mantenimiento/i.test(String(r.Puesto || '')) && !/inactiv|baja/i.test(String(r.Estado || '')) && !r.Fecha_retiro)
     .forEach(r => { const n = (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : '') || r.Nombre; if (n && !P.has(n)) P.set(n, []); });
   const BK = new Map(); (typeof pcMovBookings_ === 'function' ? pcMovBookings_() : []).forEach(b => BK.set(String(b.Id), b));
