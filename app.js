@@ -71264,7 +71264,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
       const cap = Math.max(60, fin - ini - 60), elegir = w => { let best = null; dem.forEach((m, p) => { if (m <= 0) return; const sc = (p === w.x.ed1 ? 0 : p === w.x.ed2 ? 60 : 120) - Math.min(m, cap) / 6 + (rnd ? rng() * Math.min(rnd, 50) * 0.3 : 0); if (!best || sc < best.sc) best = { p, sc }; }); return best ? best.p : BASE; };
       const otros = W.filter(w => !w.x.conduce), drv = conds[0], ini2 = {};
       [...otros, ...conds].forEach(w => { const p = elegir(w); ini2[w.x.n] = p; dem.set(p, (dem.get(p) || 0) - cap); });
-      const pos = p => rbCirc_(p), pb = pos(BASE), van = otros.filter(w => enVeh(BASE, ini2[w.x.n])); // quienes necesitan vehículo
+      const pos = p => rbCirc_(p), pb = pos(BASE), van = otros.filter(w => w.t <= ini && enVeh(BASE, ini2[w.x.n])); // quienes necesitan vehículo (quien entra más tarde se programa con su propio horario)
       const grupos = {}; van.forEach(w => { const p = ini2[w.x.n], k = pos(p) < 0 || pb < 0 ? 'x' : Math.sign(pos(p) - pb); (grupos[k] = grupos[k] || []).push(w); });
       let t = ini, loc = BASE; const asientos = Math.max(1, CH.cap - 1), vueltas = [];
       Object.values(grupos).forEach(L => { L.sort((a, b) => Math.abs(pos(ini2[a.x.n]) - pb) - Math.abs(pos(ini2[b.x.n]) - pb)); for (let i = 0; i < L.length; i += asientos) vueltas.push(L.slice(i, i + asientos)); });
@@ -71944,7 +71944,7 @@ window.rbAyuda_ = function (mantener) {
     .rq-t select{padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;background:#fff}.rq-n1{color:#b91c1c}.rq-n2{color:#c2410c}.rq-n3{color:#a16207}.rq-n4{color:#15803d}.rq-n5{color:#64748b}.rq-n0{color:#94a3b8}
     .rq-ps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px}.rq-p{display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;background:#f8fafc;border-radius:8px;padding:6px 8px}.rq-p span{flex:1}.rq-p input{width:76px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:7px;font-size:12px}.rq-p em{font-style:normal;color:#94a3b8;font-size:11px;width:26px}</style>
     <div class="bx"><button type="button" class="x" onclick="document.getElementById('rb-ayuda').remove()">✕</button><h3>⚙️ Parámetros de la programación</h3>
-    <div style="font-size:12px;color:#64748b">Los cambios se guardan solos y aplican al oprimir «Programar». Personal, roles y edificios asignados están en la tabla «a) Programación de limpiezas».</div>
+    <div style="font-size:12px;color:#64748b">Los cambios se guardan solos y aplican al oprimir «Programar». Personal, roles y edificios asignados están en la tabla «a) Confirmación de asistencias».</div>
     
     <h4>🔒 Obligatorias (siempre se cumplen)</h4>${obl.map(([i, t]) => `<div class="rq-o"><b>${i}</b><span>${t}</span></div>`).join('')}
     <h4>⚖️ Prioridades (elige su fuerza)</h4>
@@ -72127,7 +72127,7 @@ function rbDrPintar_() {
   const P = rbPersonal_().filter(r => rbRoles_(rbNomP_(r), r).length); // personal con rol (limpieza y/o chofer)
   const nom = r => (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : '') || r.Nombre;
   const filas = P.map(r => { const n = nom(r), e = rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk)), x = L[n] || {};
-    return `<tr><td class="rb-n"><b>${pcEsc(aseoNombreCorto_(n))}</b><small>${pcEsc([x.ed1, x.ed2].filter(Boolean).join(' · ') || 'Sin edificio asignado')}</small></td>
+    return `<tr><td class="rb-n"><b>${pcEsc(aseoNombreCorto_(n))}</b><small>${(h => `🕘 ${rbHoraTxt_(h.entrada)}–${rbHoraTxt_(h.salida)}`)(rbHorP_(n))} · ${pcEsc([x.ed1, x.ed2].filter(Boolean).join(' · ') || 'Sin edificio asignado')}</small></td>
       <td style="text-align:right"><span class="rbd-lb">Asistencia</span><button type="button" class="rb-c rbd-${e}" onclick="rbClic_(${pcEsc(JSON.stringify(n))},'${dia}','${e}')" title="Clic: ${RB_EST[RB_EST[e].sig].t}">${RB_EST[e].t}</button></td></tr>`; }).join('');
   const R = RB.prog && RB.prog.dia === dia ? RB.prog : null, nA = R ? R.T.filter(t => t.quienN).length : 0;
   const top = dr.querySelector('.ad-db') ? dr.querySelector('.ad-db').scrollTop : 0;
@@ -72289,16 +72289,17 @@ function rbRender_() {
       .rbp-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 0}.rbp-t>b{font:700 11px ui-monospace,Menlo,monospace;background:#f1f5f9;padding:1px 6px;border-radius:5px}.rbp-t>span{font-size:12px;color:#0f172a}</style>
     <div class="np-tabs" style="margin:0 0 12px"><button type="button" class="${RB.sec !== 'tabla' ? 'on' : ''}" onclick="rbSec_('prog')">🗓️ Programación</button><button type="button" class="${RB.sec === 'tabla' ? 'on' : ''}" onclick="rbSec_('tabla')">📒 Bitácora</button></div>
     ${RB.sec === 'tabla' ? `<div class="rb-w" style="max-width:none">${rbTablaHtml_()}</div>` : `
-    <div class="rb-w">${(bar => RB.prog && RB.prog.aceptada ? rbCambiosHtml_() + rbProgDualHtml_() + bar : bar + rbCambiosHtml_() + rbProgDualHtml_())(`<div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">${RB.prog && RB.prog.aceptada ? '🔄 Re-programar limpiezas del día:' : '🧹 Programar limpiezas del día:'}</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}" onchange="rbDiaSel_(this.value)">${rbEnfHtml_()}
-      <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span>${rbAutoHtml_()}<button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`)}
-      <div class="rb-h">a) Programación de limpiezas</div>
-      <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios asignados y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
+    <div class="rb-w"><div class="rb-h">a) Confirmación de asistencias</div>
+      <div class="rb-s">Personal de limpieza y de mantenimiento con sus roles, horario laboral, edificios asignados y su asistencia por día (es lo que usa «Programar limpiezas del día»): los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
       <div class="rb-ley"><b style="color:#334155">Asistencia:</b><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
         <span class="rb-nav"><button type="button" onclick="rbSem_(-1)">‹</button><button type="button" onclick="rbSem_(0)" title="Semana actual">${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[0]))} – ${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[6]))}</button><button type="button" onclick="rbSem_(1)">›</button></span></div>
       <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal</th><th>Roles</th><th>Horario laboral</th><th>Edificio asignado</th><th>Otro edificio asignado</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
       <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
       
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
+      <div style="border-top:1px solid #e2e8f0;margin:18px 0 14px"></div>${(bar => RB.prog && RB.prog.aceptada ? rbCambiosHtml_() + rbProgDualHtml_() + bar : bar + rbCambiosHtml_() + rbProgDualHtml_())(`<div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">${RB.prog && RB.prog.aceptada ? '🔄 Re-programar limpiezas del día:' : '🧹 Programar limpiezas del día:'}</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}" onchange="rbDiaSel_(this.value)">${rbEnfHtml_()}
+      <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span>${rbAutoHtml_()}<button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`)}
+
     </div>`}`;
   try { clNavPaint_(); } catch (_) {}
   if (document.getElementById('rb-ayuda') && !RB._ayR) { RB._ayR = 1; try { rbAyuda_(true); } finally { RB._ayR = 0; } } // la ventana de Parámetros refleja los cambios
