@@ -71823,8 +71823,18 @@ const RB_PESOS = [
   { k: 'muerto', t: 'Menos tiempo muerto', d: 'Minutos de espera (al chofer o a una salida tardía).', def: 4, f: 0.2 },
   { k: 'parejo', t: 'Cargas parejas', d: 'Que todo el personal trabaje tiempos similares.', def: 5, f: 0.2 },
 ];
-function rbNivDe_(k) { const r = RB_PESOS.find(x => x.k === k), v = ((RB.reglas || {}).pesos || {})[k]; return v != null && RB_NIV[v] != null ? Number(v) : r.def; }
-function rbW_(k) { const r = RB_PESOS.find(x => x.k === k); return RB_NIV[rbNivDe_(k)] * r.f; }
+// 6 prioridades visibles (cada una agrupa reglas internas que conservan su peso relativo; por omisión dan lo mismo que antes).
+const RB_GRUPOS = [
+  { k: 'tarde', t: 'Entradas de huésped a tiempo', d: 'La limpieza termina antes de la hora de entrada (o de la entrada temprana).', def: 1, keys: ['tarde'] },
+  { k: 'traslados', t: 'Menos traslados', d: 'Vueltas del vehículo y traslados de personas (incluye el número preferido del inciso e).', def: 2, keys: ['vueltas', 'trasP', 'trasPolo'], alias: 'vueltas' },
+  { k: 'jornada', t: 'Jornada y regreso', d: 'Respetar la hora de salida, regresar a Ed. Torreón dentro del margen y evitar el apoyo de emergencia.', def: 2, keys: ['jornada', 'emerg', 'regreso'] },
+  { k: 'edif', t: 'Edificio asignado', d: 'Preferir 1a › 2a › 3a asignación de cada persona.', def: 3, keys: ['edif'] },
+  { k: 'muerto', t: 'Menos tiempo muerto', d: 'Minutos de espera (al chofer o a una salida tardía).', def: 4, keys: ['muerto'] },
+  { k: 'parejo', t: 'Cargas parejas', d: 'Que todo el personal trabaje tiempos similares.', def: 5, keys: ['parejo'] },
+];
+function rbNivG_(g) { const P = (RB.reglas || {}).pesos || {}, v = P[g.k] != null ? P[g.k] : (g.alias ? P[g.alias] : undefined); return v != null && RB_NIV[v] != null ? Number(v) : g.def; }
+function rbNivDe_(k) { const g = RB_GRUPOS.find(x => x.k === k); return g ? rbNivG_(g) : 0; }
+function rbW_(k) { const r = RB_PESOS.find(x => x.k === k), g = RB_GRUPOS.find(x => x.keys.includes(k)), lv = rbNivG_(g); if (!lv) return 0; const l2 = Math.max(1, Math.min(5, lv + (r.def - g.def))); return RB_NIV[l2] * r.f; }
 // Enfoques de optimización (se eligen al programar; se guardan con la programación aceptada).
 const RB_ENF = [['param', '⚖️ Según Parámetros', 'Usa las fuerzas definidas en ⚙️ Parámetros'], ['edif', '🏢 Edificio asignado', 'Respeta el edificio asignado de cada persona aunque cueste más traslados'], ['personal', '⏱ Tiempo del personal', 'Menos espera y horas extra aunque haya más vueltas del vehículo (1 vuelta = 30 min de espera)'], ['parejo', '👥 Cargas parejas', 'Reparte el trabajo parejo entre el personal aunque cueste más traslados']];
 function rbEnfTxt_(k) { return ((RB_ENF.find(e => e[0] === k) || RB_ENF[0])[1]); }
@@ -71840,7 +71850,7 @@ const RB_REG_DEF = 20; function rbRegMargen_() { const v = Number((RB.reglas || 
 window.rbRegSet_ = async function (v) { const n = Math.max(0, Math.min(180, Math.round(Number(v)))); if (!isFinite(n) || !RB.reglas) return; RB.reglas.reg_margen = n; try { await rbPost_({ reg_margen: n }); } catch (_) {} };
 const RB_SUG_DEF = 30; function rbSugMin_() { const v = Number((RB.reglas || {}).sug_min); return v > 0 ? v : RB_SUG_DEF; }
 window.rbPesoSet_ = async function (k, v) { if (!RB.reglas) return; RB.reglas.pesos = Object.assign({}, RB.reglas.pesos, { [k]: Number(v) }); try { await rbPost_({ pesos: { [k]: Number(v) } }); } catch (e) { alert('No se pudo guardar: ' + (e.message || e)); } rbAyuda_(true); };
-window.rbPesosReset_ = async function () { if (!RB.reglas || !confirm('¿Regresar todas las fuerzas a su valor predeterminado?')) return; const o = {}; RB_PESOS.forEach(r => { o[r.k] = r.def; }); RB.reglas.pesos = o; try { await rbPost_({ pesos: o }); } catch (_) {} rbAyuda_(true); };
+window.rbPesosReset_ = async function () { if (!RB.reglas || !confirm('¿Regresar todas las fuerzas a su valor predeterminado?')) return; const o = {}; RB_GRUPOS.forEach(g => { o[g.k] = g.def; }); RB.reglas.pesos = o; try { await rbPost_({ pesos: o }); } catch (_) {} rbAyuda_(true); };
 window.rbSugSet_ = async function (v) { const n = Math.max(5, Math.min(240, Math.round(Number(v)))); if (!isFinite(n) || !RB.reglas) return; RB.reglas.sug_min = n; try { await rbPost_({ sug_min: n }); } catch (_) {} };
 function rbSaveEl_() { return document.getElementById('rb-save2') || document.getElementById('rb-save'); } // estado «Guardando…» en la ventana de Parámetros si está abierta
 function rbReglasHtml_() { return `
@@ -71916,7 +71926,7 @@ window.rbAyuda_ = function (mantener) {
     <div style="font-size:11.5px;color:#64748b;margin:0 0 6px">Una prioridad <b>1 · Máxima</b> nunca se sacrifica por una de nivel 2; una de nivel 2 nunca por una de nivel 3, y así. Por encima de todo: <b>hacer la mayor cantidad de limpiezas</b> (fija).</div>
     <table class="rq-t"><tbody>
       <tr><td><b>Máxima cantidad de limpiezas</b><small>No dejar tareas sin asignar.</small></td><td style="width:170px"><b class="rq-n1">Por encima de todo</b></td></tr>
-      ${RB_PESOS.slice().sort((a, b) => (rbNivDe_(a.k) || 9) - (rbNivDe_(b.k) || 9)).map(r => { const n = rbNivDe_(r.k); return `<tr><td><b>${r.t}</b><small>${r.d}${n !== r.def ? ` · predeterminado: ${RB_NIV_T[r.def]}` : ''}</small></td>
+      ${RB_GRUPOS.slice().sort((a, b) => (rbNivDe_(a.k) || 9) - (rbNivDe_(b.k) || 9)).map(r => { const n = rbNivDe_(r.k); return `<tr><td><b>${r.t}</b><small>${r.d}${n !== r.def ? ` · predeterminado: ${RB_NIV_T[r.def]}` : ''}</small></td>
         <td><select class="rq-n${n}" onchange="rbPesoSet_('${r.k}',this.value)">${[1, 2, 3, 4, 5, 0].map(v => `<option value="${v}" ${v === n ? 'selected' : ''}>${RB_NIV_T[v]}</option>`).join('')}</select></td></tr>`; }).join('')}
     </tbody></table>
     <div style="text-align:right;margin-top:6px"><button type="button" class="rb-tlbtn" style="margin:0;font-size:12px;padding:5px 10px" onclick="rbPesosReset_()">↺ Valores predeterminados</button></div>
