@@ -71088,6 +71088,9 @@ const RB_MAX_TRAS = 0; // e) traslados entre edificios por persona al día (pref
 // Roles por persona (a): «chofer» y/o «limpieza». Sin guardar: limpieza si su puesto es de limpieza.
 const RB_ROLES = [['limpieza', '🧹 Limpieza'], ['chofer', '🚗 Chofer']];
 function rbNomP_(r) { return (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : [r.Nombre, r.Apellido_paterno, r.Apellido_materno].filter(Boolean).join(' ')) || r.Nombre; }
+// Horario laboral por persona (tabla a): { entrada, salida } «HH:MM»; por omisión el horario general (inciso d).
+function rbHorP_(n) { const H = rbHorario_(), x = ((((RB.reglas || {}).limpieza || {})[n]) || {}).hor || {}; return { entrada: x.entrada || H.entrada, salida: x.salida || H.salida, propio: !!(x.entrada || x.salida) }; }
+window.rbHorPSet_ = function (n, k, v) { if (!/^\d{2}:\d{2}$/.test(v)) return; const L = (RB.reglas || {}).limpieza || {}, cur = Object.assign({}, (L[n] || {}).hor || {}, { [k]: v }); rbSet_(n, 'hor', cur); };
 function rbRoles_(n, r) { const x = ((RB.reglas || {}).limpieza || {})[n]; if (x && Array.isArray(x.roles)) return x.roles; return /limpieza/i.test(String((r && r.Puesto) || '')) ? ['limpieza'] : []; }
 // Personal de la tabla a): limpieza y mantenimiento, quien ya tenga un rol y Adán Ramos (chofer/apoyo).
 function rbPersonal_() {
@@ -71198,8 +71201,9 @@ window.rbProgramar_ = async function (diaArg, opts) {
   const nom = rbNomP_;
   const dk = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'][tarParseIso_(dia).getDay()];
   // Choferes del día: quien tiene rol «Chofer» (y no «Limpieza») y labora ese día. Quien tiene ambos roles maneja su propio vehículo.
-  const CHD = rbPersonal_().filter(r => { const n = rbNomP_(r), R2 = rbRoles_(n, r); return R2.includes('chofer') && !R2.includes('limpieza') && ['confirmado', 'tentativo'].includes(rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk))); }).map(r => aseoNombreCorto_(rbNomP_(r)));
-  const S = P.map(r => { const n = nom(r), e = rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk)); return { n, corto: aseoNombreCorto_(n), e, ed1: (L[n] || {}).ed1 || '', ed2: (L[n] || {}).ed2 || '', t: ini, prop: '', pasos: [], trabajo: 0, tras: 0, conduce: rbRoles_(n, r).includes('chofer') }; }); // conduce: limpieza + chofer (maneja su propio vehículo)
+  const CHR = rbPersonal_().filter(r => { const n = rbNomP_(r), R2 = rbRoles_(n, r); return R2.includes('chofer') && !R2.includes('limpieza') && ['confirmado', 'tentativo'].includes(rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk))); });
+  const CHD = CHR.map(r => aseoNombreCorto_(rbNomP_(r))), CHW = CHR.map(r => { const h = rbHorP_(rbNomP_(r)); return { ini: rbMin_(h.entrada), fin: rbMin_(h.salida) }; }); // cada chofer solo maneja dentro de su horario
+  const S = P.map(r => { const n = nom(r), e = rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk)); return { n, corto: aseoNombreCorto_(n), e, ed1: (L[n] || {}).ed1 || '', ed2: (L[n] || {}).ed2 || '', t: ini, prop: '', pasos: [], trabajo: 0, tras: 0, conduce: rbRoles_(n, r).includes('chofer'), ini: rbMin_(rbHorP_(n).entrada), fin: rbMin_(rbHorP_(n).salida) }; }); // conduce: limpieza + chofer (maneja su propio vehículo)
   const disp = S.filter(x => x.e === 'confirmado' || x.e === 'tentativo'); disp.forEach((x, i) => { x.col = RB_COLS[i % RB_COLS.length]; });
   const fuera = S.filter(x => !(x.e === 'confirmado' || x.e === 'tentativo'));
   // 3) Primero TODAS las limpiezas y después las inspecciones. Dentro de cada fase, orden por EDIFICIO (bloques):
@@ -71212,12 +71216,12 @@ window.rbProgramar_ = async function (diaArg, opts) {
   // 4) Reparto: se prueban cientos de variantes (con algo de azar) y se queda la mejor:
   //    traslados preferidos rbTrasPref_() (uno más solo si hace falta), sin tareas tarde ni fuera de horario y con cargas de trabajo parejas.
   const enfoque = (opts && opts.enfoque) || RB.enfoque || 'param', tPref = rbTrasPref_(), tMax = tPref + 1, CH = rbChofer_(), BASE = CH.base, PW = rbPesosEnf_(enfoque); // pesos (Parámetros + enfoque elegido)
-  CH.n = CHD.length; CH.nombres = CHD; // el transporte es solo el personal con rol «Chofer» (sin chofer genérico)
+  CH.n = CHD.length; CH.nombres = CHD; CH.win = CHW; // el transporte es solo el personal con rol «Chofer» (sin chofer genérico)
   // ¿Necesita vehículo? Cambiar de edificio dentro del mismo polo (inciso i) se hace a pie; entre polos, con el chofer.
   const enVeh = (de, a) => !!de && de !== a && !(rbPolo_(de) && rbPolo_(de) === rbPolo_(a));
   const corre = (rnd, seed) => { const rng = seed ? rbRng_(seed) : Math.random;
     // Todos empiezan a la hora de entrada en el punto de partida (inciso h); de ahí el chofer los reparte a su primer edificio.
-    const W = disp.map(x => ({ x, t: ini, prop: BASE, base: true, vis: [], nT: 0, pasos: [], trabajo: 0, tras: 0 })), A = new Map(), sin = [], V = []; // V = vueltas del chofer
+    const W = disp.map(x => ({ x, t: x.ini != null ? x.ini : ini, prop: BASE, base: true, vis: [], nT: 0, pasos: [], trabajo: 0, tras: 0 })), A = new Map(), sin = [], V = []; // V = vueltas del chofer
     const sigDe = (v, fin2, a) => { const nx = V.filter(o => o.ch === v.ch && o.sale > v.sale).sort((x, y) => x.sale - y.sale)[0]; return !nx || fin2 + (nx.de === a ? 0 : rbTras_(a, nx.de).base) <= nx.sale; };
     // Vuelta del chofer para ir de «de» a «a» saliendo desde t0. El chofer lleva su propia línea de tiempo (paralela a las limpiezas):
     // para una vuelta nueva primero tiene que llegar a donde está la persona; ella solo espera si el chofer aún no llega. Se puede sumar a una vuelta ya programada si hay lugar y la recoge dentro de la espera máxima:
@@ -71228,8 +71232,9 @@ window.rbProgramar_ = async function (diaArg, opts) {
       // a) vuelta nueva: primer hueco en la agenda de cada chofer; gana el que deja a la persona más temprano
       const dur = rbTras_(de, a).m; let nueva = null;
       for (let k = 0; k < CH.n; k++) {
-        const L = V.filter(v => v.ch === k).sort((x, y) => x.sale - y.sale); let libre = ini, loc = BASE;
+        const L = V.filter(v => v.ch === k).sort((x, y) => x.sale - y.sale), Wk = (CH.win || [])[k] || { ini, fin: 1e9 }; let libre = Wk.ini, loc = BASE;
         for (let i = 0; i <= L.length; i++) { const nx = L[i], rep = loc && loc !== de ? rbTras_(loc, de).base : 0, sale = Math.max(t0, libre + rep), llega = sale + dur;
+          if (llega > Wk.fin + rbRegMargen_()) break; // fuera de su horario (con el margen de salida)
           if (!nx || llega + (nx.de === a ? 0 : rbTras_(a, nx.de).base) <= nx.sale) { if (!nueva || llega < nueva.llega) nueva = { sale, llega, ch: k, rep, desdeCh: loc }; break; } libre = Math.max(libre, nx.llega); loc = nx.a; } }
       // Quien conduce (limpieza + chofer) y aún está en el lugar de partida puede repartir a otra persona antes de empezar sus tareas (se queda en ese edificio).
       if (de === BASE) W.forEach(cw => { if (!cw.x.conduce || !cw.base || cw.prop !== BASE) return; const sale = Math.max(t0, cw.t), llega = sale + dur; if (!nueva || llega < nueva.llega) nueva = { sale, llega, chW: cw }; });
@@ -71288,10 +71293,10 @@ window.rbProgramar_ = async function (diaArg, opts) {
         if (veh && !pv) return;
         const lleg0 = pv ? pv.llega : w.t + tr.m, llega = Math.max(lleg0, t.desde || 0), termina = llega + t.dur; // con salida tardía espera a que salga el huésped
         const pen = w.x.ed1 === t.prop ? 0 : w.x.ed2 === t.prop ? 25 : 60; // preferencia: edificio prioritario › segundo › otro
-        const tarde = t.lim != null && termina > t.lim ? 200 : 0, extra = termina > fin ? 120 + (termina - fin) * 4 : 0; // pasarse de la salida pesa por minuto
+        const tarde = t.lim != null && termina > t.lim ? 200 : 0, wf = w.x.fin != null ? w.x.fin : fin, extra = termina > wf ? 120 + (termina - wf) * 4 : 0; // pasarse de la salida pesa por minuto
         const masT = cuenta && w.nT >= rbTrasPrefDe_(w.x) ? 150 * PW.trasPolo / 3e3 : 0, vNueva = pv && !pv.join && !pv.propio ? RB_W_VUELTA * PW.vueltas / 1e5 : 0; // traslado de más · vuelta nueva del chofer (se prefiere compartir)
         const espM = (pv ? Math.max(0, pv.sale - w.t) : 0) + Math.max(0, llega - lleg0); // tiempo muerto: esperar al chofer o a una salida tardía
-        const ceder = PW.regreso ? Math.max(0, termina + rbTras_(t.prop, BASE).m + (w.x.conduce && CH.n === 0 ? 15 : 0) - (fin + rbRegMargen_())) * 20 * Math.min(3, PW.regreso / 1e3) : 0; // nadie pasa de la salida + margen (quien conduce además debe regresar a la gente)
+        const ceder = PW.regreso ? Math.max(0, termina + rbTras_(t.prop, BASE).m + (w.x.conduce && CH.n === 0 ? 15 : 0) - (wf + rbRegMargen_())) * 20 * Math.min(3, PW.regreso / 1e3) : 0; // nadie pasa de la salida + margen (quien conduce además debe regresar a la gente)
         const costo = termina + ceder + pen * 3 * PW.edif / 20 + tarde * Math.min(1, PW.tarde / 1e7) + extra * Math.min(1, PW.jornada / 5e3) + masT + vNueva + espM * RB_W_ESPERA * Math.min(PW.muerto / 2, 3) + (rnd ? rng() * rnd : 0); if (!best || costo < best.costo) best = { w, tr, pv, veh, cuenta, lleg0, llega, termina, costo, mueve, pen, espM }; });
       prueba(false); if (!best && fijo && fijo.libres) prueba(true); // menor impacto: solo si su persona ya no puede, se pasa a otra
       if (!best) { sin.push(t); return; }
@@ -71333,7 +71338,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
     // Apoyo de emergencia (otro chofer) solo para regresar a quien nadie más puede llevar; se juntan quienes salen del mismo edificio dentro de la espera máxima.
     // Apoyo de emergencia en cadena: un vehículo recoge a varias personas por el camino (sin esperar con gente a bordo más que la espera máxima).
     if (!rbEmergOn_()) emerg.forEach(w => { w.sinRegreso = true; }); // sin apoyo de emergencia: queda marcado sin regreso
-    const EH = (o => ({ desde: rbMin_(o.desde), hasta: rbMin_(o.hasta) }))(rbEmergHor_());
+    const EH = { desde: -1e9, hasta: 1e9 }; // sin horario propio: el apoyo entra cuando haga falta
     const EV = []; (rbEmergOn_() ? emerg : []).sort((a, b) => a.t - b.t).forEach(w => { let best = null;
       const e0 = EV[EV.length - 1]; // un solo chofer de apoyo: solo se puede sumar a su vuelta en curso
       if (e0 && e0.pax.length < CH.cap) { const arr = e0.t + (e0.loc === w.prop ? 0 : rbTras_(e0.loc, w.prop).base); if (w.t - arr <= CH.espera && Math.max(w.t, arr) <= EH.hasta) best = { e: e0, pick: Math.max(w.t, arr) }; }
@@ -71355,11 +71360,11 @@ window.rbProgramar_ = async function (diaArg, opts) {
     // 3) edificio asignado (1a › 2a › 3a asignación)
     // 4) mínimo tiempo muerto / espera (y minutos después de la salida)
     // desempates: cargas parejas, minutos de traslado
-    const nVueltas = V.length, nTrasP = W.reduce((a, w) => a + w.pasos.filter(p => p.k === 'tras' && p.veh).length, 0), muerto = W.reduce((a, w) => a + (w.esp || 0), 0), pasan = W.reduce((a, w) => a + Math.max(0, w.t - fin), 0);
+    const nVueltas = V.length, nTrasP = W.reduce((a, w) => a + w.pasos.filter(p => p.k === 'tras' && p.veh).length, 0), muerto = W.reduce((a, w) => a + (w.esp || 0), 0), pasan = W.reduce((a, w) => a + Math.max(0, w.t - (w.x.fin != null ? w.x.fin : fin)), 0);
     const score = sin.length * 1e9 + W.filter(w => w.sinRegreso).length * 5e8 + tardes * PW.tarde + V.filter(v => v.emerg).length * PW.emerg
       + nVueltas * PW.vueltas + nTrasP * PW.trasP + W.reduce((a, w) => a + Math.max(0, w.nT - rbTrasPrefDe_(w.x)), 0) * PW.trasPolo
       + pref * PW.edif + pasan * PW.jornada + muerto * PW.muerto
-      + W.reduce((a, w) => a + Math.max(0, w.t - (fin + rbRegMargen_())), 0) * PW.regreso // regreso a Ed. Torreón después de la salida + margen
+      + W.reduce((a, w) => a + Math.max(0, w.t - ((w.x.fin != null ? w.x.fin : fin) + rbRegMargen_())), 0) * PW.regreso // regreso a Ed. Torreón después de la salida + margen
       + (c.reduce((a, v) => a + Math.abs(v - prom), 0) + (c.length ? Math.max(...c) - Math.min(...c) : 0)) * PW.parejo + W.reduce((a, w) => a + w.tras, 0) * 0.001;
     return { W, A, sin, score, V };
   };
@@ -71830,8 +71835,18 @@ const RB_PESOS = [
   { k: 'muerto', t: 'Menos tiempo muerto', d: 'Minutos de espera (al chofer o a una salida tardía).', def: 4, f: 0.2 },
   { k: 'parejo', t: 'Cargas parejas', d: 'Que todo el personal trabaje tiempos similares.', def: 5, f: 0.2 },
 ];
-function rbNivDe_(k) { const r = RB_PESOS.find(x => x.k === k), v = ((RB.reglas || {}).pesos || {})[k]; return v != null && RB_NIV[v] != null ? Number(v) : r.def; }
-function rbW_(k) { const r = RB_PESOS.find(x => x.k === k); return RB_NIV[rbNivDe_(k)] * r.f; }
+// 6 prioridades visibles (cada una agrupa reglas internas que conservan su peso relativo; por omisión dan lo mismo que antes).
+const RB_GRUPOS = [
+  { k: 'tarde', t: 'Entradas de huésped a tiempo', d: 'La limpieza termina antes de la hora de entrada (o de la entrada temprana).', def: 1, keys: ['tarde'] },
+  { k: 'traslados', t: 'Menos traslados', d: 'Vueltas del vehículo y traslados de personas (incluye el número preferido del inciso e).', def: 2, keys: ['vueltas', 'trasP', 'trasPolo'], alias: 'vueltas' },
+  { k: 'jornada', t: 'Jornada y regreso', d: 'Respetar la hora de salida del personal (máximo 20 min extra de margen), regresar a Ed. Torreón y evitar el apoyo de emergencia.', def: 2, keys: ['jornada', 'emerg', 'regreso'] },
+  { k: 'edif', t: 'Edificio asignado', d: 'Preferir 1a › 2a › 3a asignación de cada persona.', def: 3, keys: ['edif'] },
+  { k: 'muerto', t: 'Menos tiempo muerto', d: 'Minutos de espera (al chofer o a una salida tardía).', def: 4, keys: ['muerto'] },
+  { k: 'parejo', t: 'Cargas parejas', d: 'Que todo el personal trabaje tiempos similares.', def: 5, keys: ['parejo'] },
+];
+function rbNivG_(g) { const P = (RB.reglas || {}).pesos || {}, v = P[g.k] != null ? P[g.k] : (g.alias ? P[g.alias] : undefined); return v != null && RB_NIV[v] != null ? Number(v) : g.def; }
+function rbNivDe_(k) { const g = RB_GRUPOS.find(x => x.k === k); return g ? rbNivG_(g) : 0; }
+function rbW_(k) { const r = RB_PESOS.find(x => x.k === k), g = RB_GRUPOS.find(x => x.keys.includes(k)), lv = rbNivG_(g); if (!lv) return 0; const l2 = Math.max(1, Math.min(5, lv + (r.def - g.def))); return RB_NIV[l2] * r.f; }
 // Enfoques de optimización (se eligen al programar; se guardan con la programación aceptada).
 const RB_ENF = [['param', '⚖️ Según Parámetros', 'Usa las fuerzas definidas en ⚙️ Parámetros'], ['edif', '🏢 Edificio asignado', 'Respeta el edificio asignado de cada persona aunque cueste más traslados'], ['personal', '⏱ Tiempo del personal', 'Menos espera y horas extra aunque haya más vueltas del vehículo (1 vuelta = 30 min de espera)'], ['parejo', '👥 Cargas parejas', 'Reparte el trabajo parejo entre el personal aunque cueste más traslados']];
 function rbEnfTxt_(k) { return ((RB_ENF.find(e => e[0] === k) || RB_ENF[0])[1]); }
@@ -71845,7 +71860,7 @@ function rbEnfHtml_() { const cur = RB.enfoque || 'param'; return `<div class="a
 function rbPesos_() { const o = {}; RB_PESOS.forEach(r => { o[r.k] = rbW_(r.k); }); return o; }
 // «Aceptar sugerencias de limpiezas en áreas comunes» (activo por omisión): al Asignar se crean todas las Limpieza-General sugeridas.
 // «Cuenta con apoyo de chofer de emergencia» (activo por omisión): al final del día regresa a quien nadie más puede llevar.
-function rbEmergOn_() { const v = (RB.reglas || {}).emerg_on; return v == null ? true : !!v; }
+function rbEmergOn_() { return true; } // apoyo de emergencia automático (sin casilla)
 window.rbEmergSet_ = async function () { if (!RB.reglas) return; RB.reglas.emerg_on = !rbEmergOn_(); if (RB.dr) rbDrPintar_(); else rbRender_(); try { await rbPost_({ emerg_on: RB.reglas.emerg_on }); } catch (_) {} };
 // Horario del chofer de apoyo (por omisión: 1 h antes de la salida hasta 2 h después).
 function rbEmergHor_() { const H = rbHorario_(), s = rbMin_(H.salida) || 17 * 60, hh = m => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`, E = (RB.reglas || {}).emerg_hor || {};
@@ -71870,7 +71885,7 @@ const RB_REG_DEF = 20; function rbRegMargen_() { const v = Number((RB.reglas || 
 window.rbRegSet_ = async function (v) { const n = Math.max(0, Math.min(180, Math.round(Number(v)))); if (!isFinite(n) || !RB.reglas) return; RB.reglas.reg_margen = n; try { await rbPost_({ reg_margen: n }); } catch (_) {} };
 const RB_SUG_DEF = 30; function rbSugMin_() { const v = Number((RB.reglas || {}).sug_min); return v > 0 ? v : RB_SUG_DEF; }
 window.rbPesoSet_ = async function (k, v) { if (!RB.reglas) return; RB.reglas.pesos = Object.assign({}, RB.reglas.pesos, { [k]: Number(v) }); try { await rbPost_({ pesos: { [k]: Number(v) } }); } catch (e) { alert('No se pudo guardar: ' + (e.message || e)); } rbAyuda_(true); };
-window.rbPesosReset_ = async function () { if (!RB.reglas || !confirm('¿Regresar todas las fuerzas a su valor predeterminado?')) return; const o = {}; RB_PESOS.forEach(r => { o[r.k] = r.def; }); RB.reglas.pesos = o; try { await rbPost_({ pesos: o }); } catch (_) {} rbAyuda_(true); };
+window.rbPesosReset_ = async function () { if (!RB.reglas || !confirm('¿Regresar todas las fuerzas a su valor predeterminado?')) return; const o = {}; RB_GRUPOS.forEach(g => { o[g.k] = g.def; }); RB.reglas.pesos = o; try { await rbPost_({ pesos: o }); } catch (_) {} rbAyuda_(true); };
 window.rbSugSet_ = async function (v) { const n = Math.max(5, Math.min(240, Math.round(Number(v)))); if (!isFinite(n) || !RB.reglas) return; RB.reglas.sug_min = n; try { await rbPost_({ sug_min: n }); } catch (_) {} };
 function rbSaveEl_() { return document.getElementById('rb-save2') || document.getElementById('rb-save'); } // estado «Guardando…» en la ventana de Parámetros si está abierta
 function rbReglasHtml_() { return `
@@ -71946,7 +71961,7 @@ window.rbAyuda_ = function (mantener) {
     <div style="font-size:11.5px;color:#64748b;margin:0 0 6px">Una prioridad <b>1 · Máxima</b> nunca se sacrifica por una de nivel 2; una de nivel 2 nunca por una de nivel 3, y así. Por encima de todo: <b>hacer la mayor cantidad de limpiezas</b> (fija).</div>
     <table class="rq-t"><tbody>
       <tr><td><b>Máxima cantidad de limpiezas</b><small>No dejar tareas sin asignar.</small></td><td style="width:170px"><b class="rq-n1">Por encima de todo</b></td></tr>
-      ${RB_PESOS.slice().sort((a, b) => (rbNivDe_(a.k) || 9) - (rbNivDe_(b.k) || 9)).map(r => { const n = rbNivDe_(r.k); return `<tr><td><b>${r.t}</b><small>${r.d}${n !== r.def ? ` · predeterminado: ${RB_NIV_T[r.def]}` : ''}</small></td>
+      ${RB_GRUPOS.slice().sort((a, b) => (rbNivDe_(a.k) || 9) - (rbNivDe_(b.k) || 9)).map(r => { const n = rbNivDe_(r.k); return `<tr><td><b>${r.t}</b><small>${r.d}${n !== r.def ? ` · predeterminado: ${RB_NIV_T[r.def]}` : ''}</small></td>
         <td><select class="rq-n${n}" onchange="rbPesoSet_('${r.k}',this.value)">${[1, 2, 3, 4, 5, 0].map(v => `<option value="${v}" ${v === n ? 'selected' : ''}>${RB_NIV_T[v]}</option>`).join('')}</select></td></tr>`; }).join('')}
     </tbody></table>
     <div style="text-align:right;margin-top:6px"><button type="button" class="rb-tlbtn" style="margin:0;font-size:12px;padding:5px 10px" onclick="rbPesosReset_()">↺ Valores predeterminados</button></div>
@@ -72139,7 +72154,7 @@ function rbDrPintar_() {
       <div class="rb-s">En verde quien le toca trabajar ese día. Clic en el estado para cambiarlo (Tentativo → Confirmado → Falta → Sin asignar).</div>
       <table class="rb-t"><tbody>${filas || '<tr><td style="color:#94a3b8">⏳ Cargando personal…</td></tr>'}</tbody></table>
       <div class="rb-s" id="rb-save" style="margin-top:6px"></div>
-      ${(() => { const ac = R && R.aceptada, btnP = `<div style="margin:12px 0 4px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">${rbEnfHtml_()}${rbEmergHtml_()}</div><div style="margin:4px 0 12px;display:flex;gap:8px;align-items:center"><button type="button" class="rbp-go ad-bt pri" style="flex:1;justify-content:center;text-align:center;box-sizing:border-box" onclick="rbProgramar_()">${ac ? '🔄 Re-programar limpiezas del día' : '🪄 Programar'}</button><button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`;
+      ${(() => { const ac = R && R.aceptada, btnP = `<div style="margin:12px 0 4px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">${rbEnfHtml_()}</div><div style="margin:4px 0 12px;display:flex;gap:8px;align-items:center"><button type="button" class="rbp-go ad-bt pri" style="flex:1;justify-content:center;text-align:center;box-sizing:border-box" onclick="rbProgramar_()">${ac ? '🔄 Re-programar limpiezas del día' : '🪄 Programar'}</button><button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`;
         const res = R ? `${ac ? `<div style="margin:6px 0 10px;padding:8px 10px;border-radius:10px;background:#dcfce7;color:#166534;font-size:12.5px;font-weight:700">✅ Programación aceptada · ${pcEsc(rbAceptTxt_(R.aceptada))} · enfoque: ${pcEsc(rbEnfTxt_(R.enfoque))}${Object.keys(R.retrasos || {}).length ? ` · ⏱ ${Object.keys(R.retrasos).length} retraso(s) registrado(s)` : ''}</div>` : ''}${rbProgHtml_()}
           ${ac ? '' : `<div style="position:sticky;bottom:0;background:#fff;padding:10px 0;border-top:1px solid #e2e8f0">
           ${RB.asignado ? `<div class="rb-s" style="margin:0 0 8px;color:${/^⚠️/.test(RB.asignado) ? '#b91c1c' : '#15803d'};font-weight:700">${pcEsc(RB.asignado)}</div>` : ''}
@@ -72246,6 +72261,7 @@ function rbRender_() {
   const filas = P.map(r => { const n = nom(r), D = rbDias_(r.Dias_trabajo), x = L[n] || {};
     return `<tr><td class="rb-n" title="${pcEsc(n)}"><b>${pcEsc(typeof aseoNombreCorto_ === 'function' ? aseoNombreCorto_(n) : n)}</b><small>${pcEsc(r.Puesto || '')}</small></td>
       <td class="rb-roles">${(R0 => RB_ROLES.map(([k, t]) => `<span class="rb-rol ${R0.includes(k) ? 'on' : ''}" onclick="rbRol_(${pcEsc(JSON.stringify(n))},'${k}',${pcEsc(JSON.stringify(String(r.Puesto || '')))})"><i>${R0.includes(k) ? '✓' : ''}</i>${t}</span>`).join(''))(rbRoles_(n, r))}</td>
+      <td style="white-space:nowrap">${(Hp => ['entrada', 'salida'].map(k => `<input type="time" class="rb-in" style="width:92px${Hp.propio ? ';border-color:#818cf8' : ''}" value="${Hp[k]}" title="${k === 'entrada' ? 'Hora de entrada' : 'Hora de salida'}" onchange="rbHorPSet_(${pcEsc(JSON.stringify(n))},'${k}',this.value)">`).join(' – '))(rbHorP_(n))}</td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed1',this.value)">${opt(x.ed1)}</select></td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed2',this.value)">${opt(x.ed2)}</select></td>
       ${RB_DIAS.map(([k, t], i) => { const f = fechas[i], e = rbEstado_(n, f, D.has(k)), man = !!(((RB.reglas || {}).asist || {})[n] || {})[f];
@@ -72283,13 +72299,13 @@ function rbRender_() {
       .rbp-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 0}.rbp-t>b{font:700 11px ui-monospace,Menlo,monospace;background:#f1f5f9;padding:1px 6px;border-radius:5px}.rbp-t>span{font-size:12px;color:#0f172a}</style>
     <div class="np-tabs" style="margin:0 0 12px"><button type="button" class="${RB.sec !== 'tabla' ? 'on' : ''}" onclick="rbSec_('prog')">🗓️ Programación</button><button type="button" class="${RB.sec === 'tabla' ? 'on' : ''}" onclick="rbSec_('tabla')">📒 Bitácora</button></div>
     ${RB.sec === 'tabla' ? `<div class="rb-w" style="max-width:none">${rbTablaHtml_()}</div>` : `
-    <div class="rb-w">${(bar => RB.prog && RB.prog.aceptada ? rbCambiosHtml_() + rbProgDualHtml_() + bar : bar + rbCambiosHtml_() + rbProgDualHtml_())(`<div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">${RB.prog && RB.prog.aceptada ? '🔄 Re-programar limpiezas del día:' : '🧹 Programar limpiezas del día:'}</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}" onchange="rbDiaSel_(this.value)">${rbEnfHtml_()}${rbEmergHtml_()}
+    <div class="rb-w">${(bar => RB.prog && RB.prog.aceptada ? rbCambiosHtml_() + rbProgDualHtml_() + bar : bar + rbCambiosHtml_() + rbProgDualHtml_())(`<div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">${RB.prog && RB.prog.aceptada ? '🔄 Re-programar limpiezas del día:' : '🧹 Programar limpiezas del día:'}</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}" onchange="rbDiaSel_(this.value)">${rbEnfHtml_()}
       <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span>${rbAutoHtml_()}<button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`)}
       <div class="rb-h">a) Programación de limpiezas</div>
       <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios asignados y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
       <div class="rb-ley"><b style="color:#334155">Asistencia:</b><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
         <span class="rb-nav"><button type="button" onclick="rbSem_(-1)">‹</button><button type="button" onclick="rbSem_(0)" title="Semana actual">${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[0]))} – ${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[6]))}</button><button type="button" onclick="rbSem_(1)">›</button></span></div>
-      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal</th><th>Roles</th><th>Edificio asignado</th><th>Otro edificio asignado</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
+      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal</th><th>Roles</th><th>Horario laboral</th><th>Edificio asignado</th><th>Otro edificio asignado</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
       <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
       
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>

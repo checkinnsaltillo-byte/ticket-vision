@@ -9397,7 +9397,7 @@ app.post("/config/reglas-bot", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const b = (req.body || {}).limpieza || {}, txt = v => String(v || "").trim().slice(0, 80), lim = {};
-    Object.keys(b).slice(0, 100).forEach(n => { const x = b[n] || {}; lim[txt(n)] = { ed1: txt(x.ed1), ed2: txt(x.ed2) }; if (Array.isArray(x.roles)) lim[txt(n)].roles = x.roles.map(String).filter(v => ["chofer", "limpieza"].includes(v)); /* roles: chofer / limpieza */ });
+    Object.keys(b).slice(0, 100).forEach(n => { const x = b[n] || {}; lim[txt(n)] = { ed1: txt(x.ed1), ed2: txt(x.ed2) }; if (Array.isArray(x.roles)) lim[txt(n)].roles = x.roles.map(String).filter(v => ["chofer", "limpieza"].includes(v)); /* roles: chofer / limpieza */ if (x.hor && typeof x.hor === "object") { const h = {}; ["entrada", "salida"].forEach(k => { if (/^\d{2}:\d{2}$/.test(String(x.hor[k] || ""))) h[k] = x.hor[k]; }); lim[txt(n)].hor = h; } /* horario laboral por persona */ });
     // Asistencia por día marcada a mano (tentativo · confirmado · falta · sin): { asist: { <persona>: { <YYYY-MM-DD>: estado } } }
     const A = (req.body || {}).asist || {}, ES = ["tentativo", "confirmado", "falta", "sin", ""];
     let claimed = null;
@@ -9429,7 +9429,7 @@ app.post("/config/reglas-bot", async (req, res) => {
       if (/^\d{4}-\d{2}-\d{2}$/.test(String(B.autoClaim || ""))) { if (d.autoHecho[B.autoClaim]) claimed = false; else { d.autoHecho[B.autoClaim] = { at: new Date().toISOString(), by: txt(B.user) }; claimed = true; } }
       if (B.autoRes && /^\d{4}-\d{2}-\d{2}$/.test(String(B.autoRes.fecha || "")) && d.autoHecho[B.autoRes.fecha]) Object.assign(d.autoHecho[B.autoRes.fecha], { n: Number(B.autoRes.n) || 0, err: Number(B.autoRes.err) || 0, fin: new Date().toISOString() });
       Object.keys(d.autoHecho).forEach(f => { if (f < new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10)) delete d.autoHecho[f]; });
-      Object.keys(lim).forEach(n => { if (!lim[n].roles && d.limpieza && d.limpieza[n] && d.limpieza[n].roles) lim[n].roles = d.limpieza[n].roles; }); // conserva los roles si no vienen
+      Object.keys(lim).forEach(n => { if (!lim[n].roles && d.limpieza && d.limpieza[n] && d.limpieza[n].roles) lim[n].roles = d.limpieza[n].roles; }); Object.keys(lim).forEach(n => { if (!lim[n].hor && d.limpieza && d.limpieza[n] && d.limpieza[n].hor) lim[n].hor = d.limpieza[n].hor; }); // conserva el horario si no viene // conserva los roles si no vienen
       d.limpieza = Object.assign({}, d.limpieza, lim); d.asist = d.asist || {};
       const H = (req.body || {}).horario; // d) horario laboral { entrada: "HH:MM", salida: "HH:MM" }
       if (H && typeof H === "object") { d.horario = d.horario || {}; ["entrada", "salida"].forEach(k => { if (/^\d{2}:\d{2}$/.test(String(H[k] || ""))) d.horario[k] = H[k]; }); }
