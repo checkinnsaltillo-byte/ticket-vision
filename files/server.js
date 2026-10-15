@@ -9405,6 +9405,10 @@ app.post("/config/reglas-bot", async (req, res) => {
       const B = req.body || {};
       if (typeof B.auto === "boolean") d.auto = B.auto;
       if (B.tras_pref != null && isFinite(Number(B.tras_pref))) d.tras_pref = Math.max(0, Math.min(10, Math.round(Number(B.tras_pref)))); // e) traslados preferidos por persona
+      // Plan asignado (copia al oprimir «Asignar»): { prog: { dia, tareas: [...] } } · limpiar avisos: { progCambiosClear: dia }
+      if (B.prog && /^\d{4}-\d{2}-\d{2}$/.test(String(B.prog.dia || "")) && Array.isArray(B.prog.tareas)) { d.prog = d.prog || {}; d.prog[B.prog.dia] = { at: new Date().toISOString(), by: txt(B.user), tareas: B.prog.tareas.slice(0, 200).map(x => ({ id: String(x.id || "").slice(0, 40), asigId: String(x.asigId || "").slice(0, 40), tid: String(x.tid || "").slice(0, 40), hid: String(x.hid || "").slice(0, 20), cod: String(x.cod || "").slice(0, 20), quienN: String(x.quienN || "").slice(0, 80), rol: x.rol === "inspeccion" ? "inspeccion" : "aseo", ini: Number(x.ini) || 0, fin: Number(x.fin) || 0, tipoT: String(x.tipoT || "").slice(0, 20), prop: String(x.prop || "").slice(0, 60) })) }; if (d.progCambios) delete d.progCambios[B.prog.dia]; }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(B.progCambiosClear || "")) && d.progCambios) delete d.progCambios[B.progCambiosClear];
+      { const lim = new Date(Date.now() - 4 * 864e5).toISOString().slice(0, 10); ["prog", "progCambios"].forEach(k => { if (d[k]) Object.keys(d[k]).forEach(f => { if (f < lim) delete d[k][f]; }); }); }
       if (B.insp_min != null && isFinite(Number(B.insp_min)) && Number(B.insp_min) > 0) d.insp_min = Math.min(240, Math.round(Number(B.insp_min))); // b.1) duración de inspección
       if (B.margenes && typeof B.margenes === "object") { d.margenes = d.margenes || {}; ["aloj", "tras", "pie"].forEach(k => { const v = Number(B.margenes[k]); if (B.margenes[k] != null && isFinite(v) && v >= 0 && v <= 240) d.margenes[k] = Math.round(v); }); } // f) tolerancia entre alojamientos · g) tolerancia en traslados
       if (B.chofer && typeof B.chofer === "object") { d.chofer = d.chofer || {}; [["n", 1, 20], ["cap", 1, 20], ["espera", 0, 120]].forEach(([k, lo, hi]) => { const v = Number(B.chofer[k]); if (B.chofer[k] != null && isFinite(v) && v >= lo && v <= hi) d.chofer[k] = Math.round(v); }); if (B.chofer.base != null) d.chofer.base = txt(B.chofer.base); } // h) transporte
@@ -9430,6 +9434,32 @@ app.post("/config/reglas-bot", async (req, res) => {
       Object.keys(A).slice(0, 100).forEach(n => { const k = txt(n), m = d.asist[k] = d.asist[k] || {}; Object.entries(A[n] || {}).forEach(([f, e]) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || !ES.includes(e)) return; if (e) m[f] = e; else delete m[f]; }); });
       d.updated_at = new Date().toISOString(); d.updated_by = txt((req.body || {}).user); return d; });
     res.json({ ok: true, reglas: out, claimed });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Revisión de la programación asignada (Cloud Scheduler cada 10 min y 7:00 a.m.): si una limpieza programada ya no
+// tiene salida ese día (el huésped extendió su estancia o se canceló), libera la asignación y deja el aviso para reprogramar.
+app.all("/aseo/prog-check", async (req, res) => {
+  try {
+    const R = await _rhdGetJson(_RB_OBJ).catch(() => ({})), hoy = _mxHoy(), man = new Date(new Date(hoy + "T12:00:00Z").getTime() + 864e5).toISOString().slice(0, 10);
+    const dias = [hoy, man].filter(f => R.prog && R.prog[f]); if (!dias.length) return res.json({ ok: true, dias: [], cambios: 0 });
+    if (!_aseo.rows || Date.now() - _aseo.ts > 60_000) await _aseoLiveLoad().catch(() => {});
+    const BK = new Map(); (_aseo.rows || []).forEach(b => BK.set(String(b.Id), b));
+    const nuevos = [];
+    dias.forEach(dia => (R.prog[dia].tareas || []).forEach(x => {
+      if (!x.asigId || x.tid || x.rol !== "aseo") return; const b = BK.get(String(x.asigId)); if (!b) return; // sin datos recientes de esa reserva: no se toca
+      const canc = !_aseoViva(b.Status) || b.Deleted, sale = String(b.DateDeparture || "").slice(0, 10);
+      if (!canc && sale === dia) return;
+      const prev = ((R.progCambios || {})[dia] || {})[x.id]; if (prev) return;
+      nuevos.push({ dia, x, motivo: canc ? "reserva cancelada" : `el huésped extendió su estancia (ahora sale ${sale})` });
+    }));
+    let liberadas = 0;
+    if (nuevos.length) {
+      await _aseoMutate(_ASEO_ASIG_OBJ, "asig", d => { nuevos.forEach(n => { const cur = d[n.x.asigId]; if (!cur) return; const L = (cur.aseo || cur.personal || []), L2 = L.filter(p => p !== n.x.quienN); if (L2.length !== L.length) { cur.aseo = L2; delete cur.personal; n.liberada = true; liberadas++; if (!L2.length && !(cur.inspeccion || []).length) delete d[n.x.asigId]; } }); return d; });
+      _aseo.asigTs = 0;
+      await _aseoMutate(_RB_OBJ, "reglasBot", d => { d.progCambios = d.progCambios || {}; nuevos.forEach(n => { const m = d.progCambios[n.dia] = d.progCambios[n.dia] || {}; m[n.x.id] = { cod: n.x.cod, quien: n.x.quienN, ini: n.x.ini, motivo: n.motivo, liberada: !!n.liberada, at: new Date().toISOString() }; }); if (req.query.revalidar === "1") dias.forEach(f => { if (d.prog && d.prog[f]) d.prog[f].revalidar = new Date().toISOString(); }); return d; });
+    } else if (req.query.revalidar === "1") await _aseoMutate(_RB_OBJ, "reglasBot", d => { dias.forEach(f => { if (d.prog && d.prog[f] && d.progCambios && d.progCambios[f] && Object.keys(d.progCambios[f]).length) d.prog[f].revalidar = new Date().toISOString(); }); return d; });
+    res.json({ ok: true, dias, cambios: nuevos.length, liberadas });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
