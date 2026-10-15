@@ -71334,8 +71334,10 @@ window.rbProgramar_ = async function (diaArg, opts) {
     // Apoyo de emergencia en cadena: un vehículo recoge a varias personas por el camino (sin esperar con gente a bordo más que la espera máxima).
     if (!rbEmergOn_()) emerg.forEach(w => { w.sinRegreso = true; }); // sin apoyo de emergencia: queda marcado sin regreso
     const EV = []; (rbEmergOn_() ? emerg : []).sort((a, b) => a.t - b.t).forEach(w => { let best = null;
-      EV.forEach(e => { if (e.pax.length >= CH.cap) return; const arr = e.t + (e.loc === w.prop ? 0 : rbTras_(e.loc, w.prop).base); if (w.t - arr > CH.espera) return; const pick = Math.max(w.t, arr); if (!best || pick < best.pick) best = { e, pick }; });
-      if (!best) { const e = { ch: EV.length ? 'E' + (EV.length + 1) : 'E', t: w.t, loc: w.prop, de: w.prop, ini: w.t, pax: [] }; EV.push(e); best = { e, pick: w.t }; }
+      const e0 = EV[EV.length - 1]; // un solo chofer de apoyo: solo se puede sumar a su vuelta en curso
+      if (e0 && e0.pax.length < CH.cap) { const arr = e0.t + (e0.loc === w.prop ? 0 : rbTras_(e0.loc, w.prop).base); if (w.t - arr <= CH.espera) best = { e: e0, pick: Math.max(w.t, arr) }; }
+      if (!best) { const libre = e0 ? e0.t + rbTras_(e0.loc, BASE).m + rbTras_(BASE, w.prop).base : w.t, pick = Math.max(w.t, libre); // deja a la gente en Torreón y regresa por la siguiente
+        const e = { ch: 'E', t: pick, loc: w.prop, de: w.prop, ini: pick, pax: [] }; EV.push(e); best = { e, pick }; }
       best.e.pax.push({ w, pick: best.pick, de: w.prop }); best.e.t = best.pick; best.e.loc = w.prop; });
     EV.forEach(e => { const llega = e.t + rbTras_(e.loc, BASE).m;
       const v = { de: e.de, a: BASE, sale: e.ini, llega, pax: e.pax.map(p => p.w.x), drops: e.pax.map(p => ({ de: p.de, pick: p.pick, a: BASE, llega, x: p.w.x })), ch: e.ch, emerg: true, reg: true }; V.push(v);
