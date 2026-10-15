@@ -71182,9 +71182,9 @@ window.rbProgramar_ = async function (diaArg, opts) {
   const corre = rnd => {
     // Todos empiezan a la hora de entrada en el punto de partida (inciso h); de ahí el chofer los reparte a su primer edificio.
     const W = disp.map(x => ({ x, t: ini, prop: BASE, base: true, vis: [], nT: 0, pasos: [], trabajo: 0, tras: 0 })), A = new Map(), sin = [], V = []; // V = vueltas del chofer
-    const sigDe = (v, fin2) => { const nx = V.filter(o => o.ch === v.ch && o.sale > v.sale).sort((x, y) => x.sale - y.sale)[0]; return !nx || fin2 <= nx.sale; };
-    // Vuelta del chofer para ir de «de» a «a» saliendo desde t0. Se supone que el chofer llega a tiempo por la persona (no se suma
-    // su ida). Se puede sumar a una vuelta ya programada si hay lugar y la recoge dentro de la espera máxima:
+    const sigDe = (v, fin2, a) => { const nx = V.filter(o => o.ch === v.ch && o.sale > v.sale).sort((x, y) => x.sale - y.sale)[0]; return !nx || fin2 + (nx.de === a ? 0 : rbTras_(a, nx.de).base) <= nx.sale; };
+    // Vuelta del chofer para ir de «de» a «a» saliendo desde t0. El chofer lleva su propia línea de tiempo (paralela a las limpiezas):
+    // para una vuelta nueva primero tiene que llegar a donde está la persona; ella solo espera si el chofer aún no llega. Se puede sumar a una vuelta ya programada si hay lugar y la recoge dentro de la espera máxima:
     //  · mismo origen y destino, o
     //  · por el circuito natural (inciso j): la vuelta pasa por su edificio y sigue en la misma dirección hacia su destino
     //    (se puede alargar la vuelta si su destino está más adelante y el chofer no tiene otra vuelta antes).
@@ -71192,9 +71192,9 @@ window.rbProgramar_ = async function (diaArg, opts) {
       // a) vuelta nueva: primer hueco en la agenda de cada chofer; gana el que deja a la persona más temprano
       const dur = rbTras_(de, a).m; let nueva = null;
       for (let k = 0; k < CH.n; k++) {
-        const L = V.filter(v => v.ch === k).sort((x, y) => x.sale - y.sale); let libre = ini;
-        for (let i = 0; i <= L.length; i++) { const nx = L[i], sale = Math.max(t0, libre), llega = sale + dur;
-          if (!nx || llega <= nx.sale) { if (!nueva || llega < nueva.llega) nueva = { sale, llega, ch: k }; break; } libre = Math.max(libre, nx.llega); } }
+        const L = V.filter(v => v.ch === k).sort((x, y) => x.sale - y.sale); let libre = ini, loc = BASE;
+        for (let i = 0; i <= L.length; i++) { const nx = L[i], rep = loc && loc !== de ? rbTras_(loc, de).base : 0, sale = Math.max(t0, libre + rep), llega = sale + dur;
+          if (!nx || llega + (nx.de === a ? 0 : rbTras_(a, nx.de).base) <= nx.sale) { if (!nueva || llega < nueva.llega) nueva = { sale, llega, ch: k, rep, desdeCh: loc }; break; } libre = Math.max(libre, nx.llega); loc = nx.a; } }
       // b) sumarse a una vuelta ya programada (hay lugar y la recoge dentro de la espera máxima, o antes de lo que saldría una vuelta nueva)
       const tope = Math.max(t0 + CH.espera, nueva ? nueva.sale : t0 + CH.espera);
       let j = null; const pd = rbCirc_(de), pa = rbCirc_(a);
@@ -71203,7 +71203,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
         else { const p0 = rbCirc_(v.de), p1 = rbCirc_(v.a); if (p0 < 0 || p1 < 0 || pd < 0 || pa < 0 || p0 === p1) return; const dir = Math.sign(p1 - p0);
           if (dir * (pd - p0) < 0 || dir * (p1 - pd) < 0 || dir * (pa - pd) <= 0) return; // su edificio no está en el camino o su destino va en sentido contrario
           pick = de === v.de ? v.sale : v.sale + rbTras_(v.de, de).m;
-          if (dir * (pa - p1) <= 0) llega = a === v.a ? v.llega : pick + rbTras_(de, a).m; else { llega = v.llega + rbTras_(v.a, a).m; ext = true; if (!sigDe(v, llega)) return; } }
+          if (dir * (pa - p1) <= 0) llega = a === v.a ? v.llega : pick + rbTras_(de, a).m; else { llega = v.llega + rbTras_(v.a, a).m; ext = true; if (!sigDe(v, llega, a)) return; } }
         if (pick < t0 || pick > tope) return;
         if (!j || llega < j.llega) j = { join: v, sale: pick, llega, ext }; });
       if (j && (!nueva || j.llega <= nueva.llega + CH.espera)) return j; // se prefiere compartir la vuelta
@@ -71224,7 +71224,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
         const costo = termina + pen + tarde + extra + masT + vNueva + (rnd ? Math.random() * rnd : 0); if (!best || costo < best.costo) best = { w, tr, pv, veh, cuenta, lleg0, llega, termina, costo, mueve, pen }; });
       if (!best) { sin.push(t); return; }
       const w = best.w, late = t.lim != null && best.termina > t.lim;
-      if (best.pv) { let v = best.pv.join; if (!v) { v = { de: w.prop, a: t.prop, sale: best.pv.sale, llega: best.pv.llega, pax: [], drops: [], ch: best.pv.ch, base: w.prop === BASE && w.base }; V.push(v); }
+      if (best.pv) { let v = best.pv.join; if (!v) { v = { de: w.prop, a: t.prop, sale: best.pv.sale, llega: best.pv.llega, pax: [], drops: [], ch: best.pv.ch, rep: best.pv.rep, desdeCh: best.pv.desdeCh, base: w.prop === BASE && w.base }; V.push(v); }
         else if (best.pv.ext) { v.llega = best.pv.llega; v.a = t.prop; } // la vuelta sigue por el circuito hasta su destino
         v.pax.push(w.x); v.drops.push({ de: w.prop, pick: best.pv.sale, a: t.prop, llega: best.pv.llega, x: w.x });
         w.pasos.push({ k: 'tras', veh: true, v, de: w.prop, a: t.prop, ini: w.t, sale: best.pv.sale, fin: best.pv.llega, m: best.pv.llega - w.t, base: best.tr.base, est: best.tr.est, inicio: w.base }); w.tras += best.pv.llega - w.t; }
@@ -71242,6 +71242,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
     return { W, A, sin, score, V };
   };
   let mejor = corre(0); for (let i = 0; i < 600; i++) { const r = corre(20 + (i % 6) * 25); if (r.score < mejor.score) mejor = r; }
+  { const CHf = rbChofer_(); for (let k = 0; k < CHf.n; k++) { let loc = CHf.base; mejor.V.filter(v => v.ch === k).sort((x, y) => x.sale - y.sale).forEach(v => { v.desdeCh = loc; v.rep = loc && loc !== v.de ? rbTras_(loc, v.de).base : 0; loc = v.a; }); } } // línea de tiempo del chofer, en orden de hora
   const sinAsig = mejor.sin;
   mejor.W.forEach(w => Object.assign(w.x, { pasos: w.pasos, trabajo: w.trabajo, tras: w.tras, t: w.t, prop: w.prop, nT: w.nT }));
   T.forEach(t => { const a = mejor.A.get(t); if (a) Object.assign(t, { quien: a.w.x.corto, quienN: a.w.x.n, col: a.w.x.col, ini: a.ini, fin: a.fin }); });
@@ -71255,6 +71256,36 @@ window.rbProgramar_ = async function (diaArg, opts) {
 };
 // Vista «🚗 Transporte»: para quien traslada al personal. Llegadas al inicio, traslados en orden de hora
 // (los que salen del mismo edificio al mismo destino con ≤ 15 min de diferencia se juntan en un viaje) y recogidas al final.
+// Vista «📊 Timeline» (Gantt): eje X = hora; renglones = edificios desglosados por departamento + renglón de transporte por chofer.
+// Barras = duración de cada tarea (color de la persona) y de cada vuelta del chofer (sólida) o su ida por el personal (punteada).
+function rbTimelineHtml_(R, hm) {
+  const fins = [R.fin]; R.T.forEach(t => { if (t.fin) fins.push(t.fin); }); (R.viajes || []).forEach(v => fins.push(v.llega));
+  const t0 = Math.floor(R.ini / 60) * 60, t1 = Math.ceil(Math.max(...fins) / 60) * 60, span = Math.max(60, t1 - t0), X = m => ((m - t0) / span * 100).toFixed(2) + '%', Wd = (a, b) => (Math.max(0.6, (b - a) / span * 100)).toFixed(2) + '%';
+  const horas = []; for (let h = t0; h <= t1; h += 60) horas.push(h);
+  const grid = horas.map(h => `<i class="rtl-g" style="left:${X(h)}"></i>`).join('') + `<i class="rtl-fin" style="left:${X(R.fin)}" title="Salida ${rbHHMM_(R.fin)}"></i>`;
+  const head = `<div class="rtl-r rtl-h"><div class="rtl-l">Hora</div><div class="rtl-t">${horas.map(h => `<span style="left:${X(h)}">${rbHHMM_(h).replace(':00', '')}</span>`).join('')}<span class="rtl-sal" style="left:${X(R.fin)}">Salida</span></div></div>`;
+  // Renglones por edificio → departamento
+  const G = new Map(); R.T.filter(t => t.quien && t.ini != null).forEach(t => { const E = alojEdif_(t.hid), gk = E ? E.k : '~' + t.prop, gt = E ? E.nom : t.prop; if (!G.has(gk)) G.set(gk, { k: gk, t: gt, A: new Map() }); const g = G.get(gk), dk = E && E.ed ? '🏢 Edificio' : (t.cod || '—'); if (!g.A.has(dk)) g.A.set(dk, []); g.A.get(dk).push(t); });
+  const ord = k => { const i = ED_ORDEN.indexOf(k); return i < 0 ? 99 : i; };
+  const bar = t => { const c = t.col || ['#4338ca', '#e0e7ff']; return `<div class="rtl-b ${t.tarde ? 'late' : ''}" style="left:${X(t.ini)};width:${Wd(t.ini, t.fin)};background:${c[1]};border-color:${c[0]};color:${c[0]}" title="${pcEsc(`${t.cod} · ${t.tipoT} · ${t.quien}\n${rbHHMM_(t.ini)}–${rbHHMM_(t.fin)} (${hm(t.dur)})${t.tarde ? '\n⚠️ después de la hora límite' : ''}`)}">${t.tipoT === 'Inspección' ? '🔍' : '🧹'} ${pcEsc(String(t.quien).split(' ')[0])}</div>`; };
+  const filas = [...G.values()].sort((a, b) => ord(a.k) - ord(b.k) || a.t.localeCompare(b.t, 'es')).map(g => {
+    const all = [].concat(...g.A.values());
+    return `<div class="rtl-r rtl-ed"><div class="rtl-l">🏢 ${pcEsc(g.t)} (${g.A.size})</div><div class="rtl-t">${grid}${all.map(t => `<div class="rtl-sum" style="left:${X(t.ini)};width:${Wd(t.ini, t.fin)}"></div>`).join('')}</div></div>`
+      + [...g.A.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'es', { numeric: true })).map(([dk, L]) => `<div class="rtl-r"><div class="rtl-l rtl-dep">${pcEsc(dk)}<small>${pcEsc(L[0].tipoA || '')}</small></div><div class="rtl-t">${grid}${L.map(bar).join('')}</div></div>`).join('');
+  }).join('');
+  // Transporte: un renglón por chofer
+  const CH = R.CH || rbChofer_(), VV = R.viajes || [];
+  const trans = [...Array(CH.n).keys()].map(k => { const L = VV.filter(v => v.ch === k);
+    return `<div class="rtl-r rtl-tr"><div class="rtl-l">🚗 ${CH.n > 1 ? `Chofer ${k + 1}` : 'Transporte'}<small>${L.length} vuelta${L.length === 1 ? '' : 's'}</small></div><div class="rtl-t">${grid}${L.map(v => `${v.rep ? `<div class="rtl-v rep" style="left:${X(v.sale - v.rep)};width:${Wd(v.sale - v.rep, v.sale)}" title="${pcEsc(`Chofer va de ${v.desdeCh} a ${v.de} por el personal (${v.rep} min)`)}"></div>` : ''}<div class="rtl-v" style="left:${X(v.sale)};width:${Wd(v.sale, v.llega)}" title="${pcEsc(`${v.de} → ${(v.drops || []).map(d => d.a).join(' → ')}\n${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)} · ${v.pax.map(p => p.corto).join(', ')}`)}">🚗 ${v.pax.length}</div>`).join('')}</div></div>`; }).join('');
+  return `<style>.rtl{border:1px solid #e8eaee;border-radius:10px;background:#fff;overflow-x:auto}.rtl-in{min-width:760px}.rtl-r{display:grid;grid-template-columns:150px 1fr;border-bottom:1px solid #f1f5f9;min-height:30px}.rtl-l{padding:5px 8px;font-size:11.5px;font-weight:700;color:#0f172a;border-right:1px solid #e8eaee;position:sticky;left:0;background:#fff;z-index:2;display:flex;flex-direction:column;justify-content:center}.rtl-l small{font-weight:500;color:#94a3b8;font-size:10px}
+      .rtl-dep{padding-left:20px;font-family:ui-monospace,Menlo,monospace}.rtl-t{position:relative;min-height:30px}.rtl-g{position:absolute;top:0;bottom:0;border-left:1px dashed #eef0f3}.rtl-fin{position:absolute;top:0;bottom:0;border-left:2px dashed #fca5a5;z-index:1}
+      .rtl-h{background:#f8fafc;min-height:26px;position:sticky;top:0;z-index:3}.rtl-h .rtl-l{background:#f8fafc;color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}.rtl-h .rtl-t span:first-child{transform:none}.rtl-h .rtl-t span{position:absolute;top:6px;transform:translateX(-50%);font-size:10.5px;font-weight:700;color:#64748b;white-space:nowrap}.rtl-h .rtl-t .rtl-sal{color:#dc2626;top:6px}
+      .rtl-ed{background:#f8faff}.rtl-ed .rtl-l{background:#eef2ff;color:#3730a3}.rtl-sum{position:absolute;top:11px;height:8px;border-radius:4px;background:#c7d2fe}
+      .rtl-b{position:absolute;top:4px;bottom:4px;border-radius:6px;border:1.5px solid;font-size:10.5px;font-weight:700;display:flex;align-items:center;padding:0 5px;overflow:hidden;white-space:nowrap;box-sizing:border-box;z-index:2}.rtl-b.late{outline:2px solid #dc2626}
+      .rtl-tr{background:#fff7f7}.rtl-tr .rtl-l{background:#fef2f2;color:#b91c1c}.rtl-v{position:absolute;top:5px;bottom:5px;border-radius:6px;background:#dc2626;color:#fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;padding:0 4px;overflow:hidden;white-space:nowrap;box-sizing:border-box;z-index:2}.rtl-v.rep{background:repeating-linear-gradient(45deg,#fecaca,#fecaca 4px,#fff 4px,#fff 8px);border:1px dashed #f87171}</style>
+    <div class="rtl"><div class="rtl-in">${head}${filas || '<div class="rb-s" style="padding:14px">Sin tareas programadas</div>'}${trans}</div></div>
+    <div class="rb-s" style="margin-top:8px">Barras de color = tarea (color de la persona; contorno rojo = después de la hora límite). Renglón azul = resumen del edificio. 🚗 Rojo = vuelta del chofer (número de personas); punteado = el chofer va por el personal. Línea roja punteada = hora de salida (${rbHHMM_(R.fin)}). Pasa el cursor sobre una barra para ver el detalle.</div>`;
+}
 // Ruta de una vuelta: origen → paradas en orden (sube ↑ / baja ↓ con nombre y hora).
 function rbParadas_(v) {
   const E = []; (v.drops || []).forEach(d => { const n = pcEsc(d.x.corto.split(' ')[0]); if (d.de !== v.de) E.push({ h: d.pick, p: d.de, t: `↑ ${n}` }); E.push({ h: d.llega, p: d.a, t: `↓ ${n}` }); });
@@ -71284,7 +71315,7 @@ function rbTransHtml_(R, hm, chip) {
     ${PIE.length ? sec('🚶 Cambios a pie (mismo polo)', 'No usan al chofer', PIE.map(v => fila(`${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)}`, '🚶', `<b>${pcEsc(v.de)}</b> → <b>${pcEsc(v.a)}</b> <span class="rbp-m">(polo ${rbPolo_(v.de)})</span>`, [v.x])).join('')) : ''}
     ${T.length ? sec('🚗 Otros traslados', 'En orden de hora', V.map(v => fila(`${rbHHMM_(v.sale)}–${rbHHMM_(v.llega)}`, '🚗', `<b>${pcEsc(v.de)}</b> → <b>${pcEsc(v.a)}</b>`, v.xs, `<span class="rbp-m">${v.base} min${v.est ? ' (estimado)' : ''} + ${rbMgT_()} tolerancia${v.xs.length > 1 ? ` · ${v.xs.length} personas juntas` : ''}</span>`)).join('')) : ''}
     ${sec('🏁 Recogida al terminar', 'Fin del itinerario', fin.map(x => fila(rbHHMM_(x.t), '📍', `<b>${pcEsc(x.prop)}</b>`, [x], x.t > R.fin ? `<span class="rbp-m" style="color:#b91c1c;font-weight:700">después de la salida (${rbHHMM_(R.fin)})</span>` : '')).join(''))}
-    <div class="rb-s">${CH.n} chofer${CH.n === 1 ? '' : 'es'} (inciso h): cada vuelta lleva hasta ${CH.cap} personas; quien está en el camino del circuito natural (inciso j) y va en la misma dirección, o sale del mismo edificio al mismo destino, se suma a la vuelta si el chofer pasa por él dentro de ${CH.espera} min. Se supone que el chofer llega a tiempo por el personal. Entre propiedades del mismo polo (inciso i) se va a pie. Las horas incluyen la tolerancia del inciso g).</div>`;
+    <div class="rb-s">${CH.n} chofer${CH.n === 1 ? '' : 'es'} (inciso h): cada vuelta lleva hasta ${CH.cap} personas; quien está en el camino del circuito natural (inciso j) y va en la misma dirección, o sale del mismo edificio al mismo destino, se suma a la vuelta si el chofer pasa por él dentro de ${CH.espera} min. El chofer lleva su propia línea de tiempo: los renglones «Chofer va de… por el personal» son su traslado para llegar a recoger (no se suman al tiempo del personal, salvo la espera si aún no llega). Entre propiedades del mismo polo (inciso i) se va a pie. Las horas incluyen la tolerancia del inciso g).</div>`;
 }
 // Sugerencia «Limpieza general» (> 30 min disponibles): crea la tarea para esa persona, en su último edificio, ese día.
 function rbEdHid_(prop) { const a = (typeof atAlojs_ === 'function' ? atAlojs_() : []).find(a => { const E = alojEdif_(a.houseId); return E && E.ed && E.prop.replace(/^Calle\s+/i, '').trim() === prop; }); return a ? a.houseId : ''; }
@@ -71326,11 +71357,12 @@ function rbProgHtml_() {
         ${x.pasos.length && R.fin - x.t > 30 ? ((R.sugOk || {})[x.n] ? `<li class="fin"><span class="h"></span><span style="color:#15803d;font-weight:700">✓ Limpieza general creada en ${pcEsc(x.prop)} para ${pcEsc(x.corto)}</span></li>`
           : `<li class="sug"><span class="h">${rbHHMM_(x.t)}</span><span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">💡 Le quedan ${hm(R.fin - x.t)}: ¿agregar una <b>Limpieza general</b> en ${pcEsc(x.prop)}?<button type="button" class="rb-sugok" onclick="rbSugLG_(${R.S.indexOf(x)})">✅ Aceptar</button></span></li>`) : ''}</ol></div>`; }).join('') + (R.sinAsig.length ? `<div class="rbp-p"><div class="rbp-ph"><b style="color:#b91c1c">Sin asignar</b></div>${R.sinAsig.map(t => tCard(t)).join('')}</div>` : '');
   else if (R.vista === 'transporte') cuerpo = rbTransHtml_(R, hm, chip);
+  else if (R.vista === 'timeline') cuerpo = rbTimelineHtml_(R, hm);
   else { const key = R.vista === 'propiedad' ? (t => t.prop) : (t => t.tipoT), G = new Map(); R.T.forEach(t => { const k = key(t); if (!G.has(k)) G.set(k, []); G.get(k).push(t); });
     cuerpo = [...G.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es')).map(([k, L2]) => `<div class="rbp-p"><div class="rbp-ph"><b>${R.vista === 'propiedad' ? '🏢' : k === 'Inspección' ? '🔍' : '🧹'} ${pcEsc(k)}</b><span class="sp"></span><span class="rbp-m">${L2.length} · ${hm(L2.reduce((a, t) => a + t.dur, 0))} · 🛏 <b style="color:#0f172a">${rbCamTxt_(rbCamS_(L2))}${rbCamS_(L2) ? ` (${rbCamDesg_(L2)})` : ''}</b>${R.vista === 'propiedad' ? (() => { const Q = new Map(); L2.forEach(t => { if (t.quien && t.camas) Q.set(t.quien, (Q.get(t.quien) || 0) + t.camas); }); return Q.size ? ' · ' + [...Q.entries()].map(([q, n]) => `${pcEsc(q)} ${n}`).join(', ') : ''; })() : ''}</span></div>${L2.sort((a, b) => (a.ini || 9e9) - (b.ini || 9e9)).map(t => tCard(t, true)).join('')}</div>`).join(''); }
   return `<div id="rb-prog" class="rbp"><div class="rb-h">🗓️ Programación propuesta · ${pcEsc(aseoDiaTxt_(R.dia))}</div>
     <div class="rb-s">Propuesta automática para revisar; no asigna nada en el sistema. Considera las reservas registradas hasta ahora, quién labora ese día, sus edificios asignados, la duración por tipo, los traslados y el horario laboral.</div>
-    ${resumen}<div class="np-tabs" style="margin:12px 0">${tab('personal', '👤 Por personal (itinerario)')}${tab('propiedad', '🏢 Por propiedad')}${tab('tipo', '🧹 Por tipo de tarea')}${tab('transporte', '🚗 Transporte')}</div>${cuerpo || '<div class="rb-s">No hay limpiezas ni inspecciones pendientes para ese día.</div>'}</div>`;
+    ${resumen}<div class="np-tabs" style="margin:12px 0">${tab('personal', '👤 Por personal (itinerario)')}${tab('propiedad', '🏢 Por propiedad')}${tab('tipo', '🧹 Por tipo de tarea')}${tab('transporte', '🚗 Transporte')}${tab('timeline', '📊 Timeline')}</div>${cuerpo || '<div class="rb-s">No hay limpiezas ni inspecciones pendientes para ese día.</div>'}</div>`;
 }
 // «?»: todas las reglas de la programación automática (además de los incisos a–d de esta sección).
 window.rbAyuda_ = function () {
@@ -71505,7 +71537,7 @@ window.rbDrAbrir_ = async function () {
 };
 window.rbDrCerrar_ = function () { RB.dr = false; if (typeof adCerrar_ === 'function') adCerrar_(); };
 window.rbDrDia_ = function (v) { if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; RB.pdia = v; RB.prog = null; RB.asignado = ''; rbDrPintar_(); };
-const RB_CSS2 = `<style>.rb-auto{display:inline-flex;align-items:center;gap:8px;margin-left:auto;padding:5px 10px;border:1px solid #c7d2fe;border-radius:999px;background:#fff;font-size:12.5px;color:#312e81}.rb-auto small{color:#64748b;font-size:11px}.rb-auto .ad-sw{cursor:pointer}.rb-auto+.rb-q{margin-left:0}
+const RB_CSS2 = `<style>.rb-auto{display:inline-flex;align-items:center;gap:8px;margin-left:auto;padding:5px 10px;border:1px solid #c7d2fe;border-radius:999px;background:#fff;font-size:12.5px;color:#312e81}.rb-auto small{color:#64748b;font-size:11px}.rb-auto .ad-sw{cursor:pointer;display:inline-block}.rb-auto+.rb-q{margin-left:0}
   #ad-drawer .rb-t{width:100%!important;display:table!important;table-layout:auto}#ad-drawer .rb-t{box-sizing:border-box;min-width:0!important}#ad-drawer .rb-t td:last-child{width:1%;white-space:nowrap}#ad-drawer .rbd-lb{font-size:11px;font-weight:700;color:#64748b;margin-right:6px}.rb-q{all:unset;box-sizing:border-box;cursor:pointer;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #a5b4fc;color:#4f46e5;font-weight:800;font-size:15px;margin-left:auto;flex:none}.rb-q:hover{background:#eef2ff}</style><style>.np-tabs{display:inline-flex;gap:0;padding:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}.np-tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:0;font-size:13px;font-weight:700;color:#475569;border-left:1px solid #e2e8f0}.np-tabs button:first-child{border-left:0}.np-tabs button:hover{background:#e2e8f0}.np-tabs button.on{background:#0f1729;color:#fff}.np-tabs.sm button{font-size:12.5px;padding:6px 12px}</style>`; // estilos de la propuesta (módulo y ventana lateral de Tareas)
 function rbDrPintar_() {
   const dr = document.getElementById('ad-drawer'); if (!dr || !RB.dr) { RB.dr = false; return; }
@@ -71645,7 +71677,7 @@ function rbRender_() {
       .rb-dg{background:repeating-linear-gradient(45deg,#f1f5f9,#f1f5f9 4px,#e2e8f0 4px,#e2e8f0 8px)}.rb-up{background:#fafafa}.rb-th-v{text-align:center!important;font-size:10px!important;max-width:70px;white-space:normal}
       .rb-ley{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11.5px;color:#64748b;margin:0 0 10px}.rb-ley .rb-c{cursor:default;min-width:0;padding:2px 8px}.rb-nav{display:inline-flex;align-items:center;gap:6px;margin-left:auto}.rb-nav button{all:unset;cursor:pointer;padding:4px 10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12px;font-weight:700;color:#334155}
       .rb-sec{font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.06em;margin:4px 0 6px}</style>
-    <style>.np-tabs{display:inline-flex;gap:0;padding:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}.np-tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:0;font-size:13px;font-weight:700;color:#475569;border-left:1px solid #e2e8f0}.np-tabs button:first-child{border-left:0}.np-tabs button.on{background:#0f1729;color:#fff}
+    ${RB_CSS2}<style>.np-tabs{display:inline-flex;gap:0;padding:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}.np-tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:0;font-size:13px;font-weight:700;color:#475569;border-left:1px solid #e2e8f0}.np-tabs button:first-child{border-left:0}.np-tabs button.on{background:#0f1729;color:#fff}
       .rb-det{margin-top:22px;border:1px solid #e2e8f0;border-radius:12px;padding:0 14px 14px;background:#fff}.rb-det>summary{cursor:pointer;list-style:none;padding:12px 0;font-size:13.5px;font-weight:800;color:#4f46e5}.rb-det>summary::-webkit-details-marker{display:none}.rb-det>summary::before{content:'▸ ';color:#94a3b8}.rb-det[open]>summary::before{content:'▾ '}.rb-det>summary span{font-weight:600;color:#94a3b8;font-size:11.5px;margin-left:8px}
       .rbp-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:12px 14px;border-radius:12px;background:#eef2ff;border:1px solid #c7d2fe}
       .rbp-go{all:unset;cursor:pointer;padding:10px 16px;border-radius:10px;background:#4f46e5;color:#fff;font-size:13.5px;font-weight:800}.rbp-go:hover{background:#4338ca}
