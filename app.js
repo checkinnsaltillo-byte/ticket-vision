@@ -71090,6 +71090,9 @@ const RB_ROLES = [['limpieza', '🧹 Limpieza'], ['chofer', '🚗 Chofer']];
 function rbNomP_(r) { return (typeof _rhPersonalFullName_ === 'function' ? _rhPersonalFullName_(r) : [r.Nombre, r.Apellido_paterno, r.Apellido_materno].filter(Boolean).join(' ')) || r.Nombre; }
 // Horario laboral por persona (tabla a): { entrada, salida } «HH:MM»; por omisión el horario general (inciso d).
 function rbHorP_(n) { const H = rbHorario_(), x = ((((RB.reglas || {}).limpieza || {})[n]) || {}).hor || {}; return { entrada: x.entrada || H.entrada, salida: x.salida || H.salida, propio: !!(x.entrada || x.salida) }; }
+// Máximo de tareas por persona al día (tabla a); predeterminado 5.
+const RB_MAXT_DEF = 5; function rbMaxT_(n) { const v = Number(((((RB.reglas || {}).limpieza || {})[n]) || {}).maxT); return v > 0 ? v : RB_MAXT_DEF; }
+window.rbMaxTSet_ = function (n, v) { const k = Math.max(1, Math.min(30, Math.round(Number(v)))); if (!isFinite(k)) return; rbSet_(n, 'maxT', k); };
 window.rbHorPSet_ = function (n, k, v) { if (!/^\d{2}:\d{2}$/.test(v)) return; const L = (RB.reglas || {}).limpieza || {}, cur = Object.assign({}, (L[n] || {}).hor || {}, { [k]: v }); rbSet_(n, 'hor', cur); };
 function rbRoles_(n, r) { const x = ((RB.reglas || {}).limpieza || {})[n]; if (x && Array.isArray(x.roles)) return x.roles; return /limpieza/i.test(String((r && r.Puesto) || '')) ? ['limpieza'] : []; }
 // Personal de la tabla a): limpieza y mantenimiento, quien ya tenga un rol y Adán Ramos (chofer/apoyo).
@@ -71203,7 +71206,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
   // Choferes del día: quien tiene rol «Chofer» (y no «Limpieza») y labora ese día. Quien tiene ambos roles maneja su propio vehículo.
   const CHR = rbPersonal_().filter(r => { const n = rbNomP_(r), R2 = rbRoles_(n, r); return R2.includes('chofer') && !R2.includes('limpieza') && ['confirmado', 'tentativo'].includes(rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk))); });
   const CHT = CHR.filter(r => rbEstado_(rbNomP_(r), dia, rbDias_(r.Dias_trabajo).has(dk)) === 'tentativo').map(r => aseoNombreCorto_(rbNomP_(r))), CHD = CHR.map(r => aseoNombreCorto_(rbNomP_(r))), CHW = CHR.map(r => { const h = rbHorP_(rbNomP_(r)); return { ini: rbMin_(h.entrada), fin: rbMin_(h.salida) }; }); // cada chofer solo maneja dentro de su horario
-  const S = P.map(r => { const n = nom(r), e = rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk)); return { n, corto: aseoNombreCorto_(n), e, ed1: (L[n] || {}).ed1 || '', ed2: (L[n] || {}).ed2 || '', t: ini, prop: '', pasos: [], trabajo: 0, tras: 0, conduce: rbRoles_(n, r).includes('chofer'), ini: rbMin_(rbHorP_(n).entrada), fin: rbMin_(rbHorP_(n).salida) }; }); // conduce: limpieza + chofer (maneja su propio vehículo)
+  const S = P.map(r => { const n = nom(r), e = rbEstado_(n, dia, rbDias_(r.Dias_trabajo).has(dk)); return { n, corto: aseoNombreCorto_(n), e, ed1: (L[n] || {}).ed1 || '', ed2: (L[n] || {}).ed2 || '', t: ini, prop: '', pasos: [], trabajo: 0, tras: 0, conduce: rbRoles_(n, r).includes('chofer'), ini: rbMin_(rbHorP_(n).entrada), fin: rbMin_(rbHorP_(n).salida), maxT: rbMaxT_(n) }; }); // conduce: limpieza + chofer (maneja su propio vehículo)
   const disp = S.filter(x => x.e === 'confirmado' || x.e === 'tentativo'); disp.forEach((x, i) => { x.col = RB_COLS[i % RB_COLS.length]; });
   const fuera = S.filter(x => !(x.e === 'confirmado' || x.e === 'tentativo'));
   // 3) Primero TODAS las limpiezas y después las inspecciones. Dentro de cada fase, orden por EDIFICIO (bloques):
@@ -71288,6 +71291,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
       if (fase(t) !== fa) { fa = fase(t); W.forEach(w => { w.vis = []; }); } // inspecciones: pueden volver a un edificio
       let best = null;
       const prueba = libre => W.forEach(w => { if (!libre && fijo && (fijo.asig.has(t.id) || !fijo.libres) && fijo.asig.get(t.id) !== w.x.n) return; const mueve = !!w.prop && w.prop !== t.prop, veh = enVeh(w.prop, t.prop), cuenta = veh && !w.base; // salir del punto de partida no cuenta como traslado (inciso e)
+        if (!fijo && (w.nTar || 0) >= w.x.maxT) return; // no hacer más de X tareas (tabla a)
         if (!fijo && mueve && w.vis.includes(t.prop)) return; // no regresa a un edificio que ya dejó (el número de traslados es preferencia, no tope) // no regresa a un edificio que ya dejó · tope de traslados en vehículo: preferidos + 1
         const tr = !mueve && w.hid && w.hid !== t.hid ? { m: rbMgA_(), base: 0, est: false, mismo: true } : rbTras_(w.prop, t.prop, !veh), pv = veh ? (w.x.conduce ? { sale: w.t, llega: w.t + rbTras_(w.prop, t.prop).m, propio: true } : planViaje(w.t, w.prop, t.prop)) : null; // quien conduce: sale cuando termina, sin esperar
         if (veh && !pv) return;
@@ -71313,7 +71317,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
       w.pasos.push({ k: 'tarea', t, ini: best.llega, fin: best.termina, pri: w.x.ed1 === t.prop ? 1 : w.x.ed2 === t.prop ? 2 : 0, tarde: late });
       if (best.mueve && !w.base) { if (best.cuenta) w.nT++; w.vis.push(w.prop); }
       w.esp = (w.esp || 0) + best.espM; w.base = false; w.trabajo += t.dur; w.t = best.termina; w.prop = t.prop; w.hid = t.hid; pref += best.pen; if (late) tardes++;
-      A.set(t, { w, ini: best.llega, fin: best.termina });
+      A.set(t, { w, ini: best.llega, fin: best.termina }); w.nTar = (w.nTar || 0) + 1;
     });
     // Regreso final al lugar de partida: TODOS regresan. A pie si es del mismo polo; si no, con el chofer; y si ningún chofer
     // puede, quien conduce (limpieza + chofer) pasa por la persona al terminar sus tareas y regresan juntas (aunque no esté en el circuito).
@@ -71931,6 +71935,7 @@ window.rbAyuda_ = function (mantener) {
     ['🧹', 'Primero todas las limpiezas, después las inspecciones; las que reciben huésped van primero.'],
     ['🕚', 'Con salida tardía, la limpieza nunca empieza antes de que salga el huésped.'],
     ['🏢', 'Durante las limpiezas nadie regresa a un edificio que ya dejó.'],
+    ['🔢', `Nadie hace más tareas al día que su máximo (columna «Máx. tareas» de la tabla a; predeterminado ${RB_MAXT_DEF}).`],
     ['🚗', `Transporte: solo el personal con rol «Chofer»; quien también limpia maneja su vehículo y lleva a otros. Cupo: ${C.cap} personas.`],
     ['⏱', `El vehículo no espera con gente a bordo más de ${C.espera} min (espera máxima).`],
     ['🌅', `A las ${rbHoraTxt_(H.entrada)} todo el personal está en Ed. ${pcEsc(C.base)} y se reparte desde ahí.`],
@@ -72253,6 +72258,7 @@ function rbRender_() {
     return `<tr><td class="rb-n" title="${pcEsc(n)}"><b>${pcEsc(typeof aseoNombreCorto_ === 'function' ? aseoNombreCorto_(n) : n)}</b><small>${pcEsc(r.Puesto || '')}</small></td>
       <td class="rb-roles">${(R0 => RB_ROLES.map(([k, t]) => `<span class="rb-rol ${R0.includes(k) ? 'on' : ''}" onclick="rbRol_(${pcEsc(JSON.stringify(n))},'${k}',${pcEsc(JSON.stringify(String(r.Puesto || '')))})"><i>${R0.includes(k) ? '✓' : ''}</i>${t}</span>`).join(''))(rbRoles_(n, r))}</td>
       <td style="white-space:nowrap">${(Hp => ['entrada', 'salida'].map(k => `<input type="time" class="rb-in" style="width:92px${Hp.propio ? ';border-color:#818cf8' : ''}" value="${Hp[k]}" title="${k === 'entrada' ? 'Hora de entrada' : 'Hora de salida'}" onchange="rbHorPSet_(${pcEsc(JSON.stringify(n))},'${k}',this.value)">`).join(' – '))(rbHorP_(n))}</td>
+      <td><input type="number" min="1" max="30" class="rb-in" style="width:52px" value="${rbMaxT_(n)}" title="No hacer más de X tareas al día (predeterminado ${RB_MAXT_DEF})" onchange="rbMaxTSet_(${pcEsc(JSON.stringify(n))},this.value)"></td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed1',this.value)">${opt(x.ed1)}</select></td>
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed2',this.value)">${opt(x.ed2)}</select></td>
       ${RB_DIAS.map(([k, t], i) => { const f = fechas[i], e = rbEstado_(n, f, D.has(k)), man = !!(((RB.reglas || {}).asist || {})[n] || {})[f];
@@ -72294,8 +72300,8 @@ function rbRender_() {
       <div class="rb-s">Personal de limpieza y de mantenimiento con sus roles, horario laboral, edificios asignados y su asistencia por día (es lo que usa «Programar limpiezas del día»): los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
       <div class="rb-ley"><b style="color:#334155">Asistencia:</b><span class="rb-c tentativo">Tentativo</span><span class="rb-c confirmado">Confirmado</span><span class="rb-c falta">Falta</span><span class="rb-c sin">Sin asignar</span><span>· Clic en un día para cambiarlo</span>${RB.asis ? '' : '<span>· ⏳ cargando asistencia…</span>'}
         <span class="rb-nav"><button type="button" onclick="rbSem_(-1)">‹</button><button type="button" onclick="rbSem_(0)" title="Semana actual">${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[0]))} – ${(d => `${d.getDate()} ${TAR_MESES[d.getMonth()]}`)(tarParseIso_(fechas[6]))}</button><button type="button" onclick="rbSem_(1)">›</button></span></div>
-      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal</th><th>Roles</th><th>Horario laboral</th><th>Edificio asignado</th><th>Otro edificio asignado</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
-      <tbody>${filas || `<tr><td colspan="10" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
+      <div style="overflow-x:auto"><table class="rb-t"><thead><tr><th>Personal</th><th>Roles</th><th>Horario laboral</th><th title="No hacer más de X tareas al día">Máx. tareas</th><th>Edificio asignado</th><th>Otro edificio asignado</th>${RB_DIAS.map(([, t], i) => `<th style="text-align:center;${fechas[i] === hoy ? 'color:#4f46e5' : ''}">${t} ${+fechas[i].slice(8)}</th>`).join('')}</tr></thead>
+      <tbody>${filas || `<tr><td colspan="12" style="color:#94a3b8;padding:20px">⏳ Cargando personal…</td></tr>`}</tbody></table></div>
       
       <div class="rb-s" id="rb-save" style="margin-top:8px">${RB.reglas ? (RB.reglas.updated_at ? `Último cambio: ${pcEsc(RB.reglas.updated_by || '')} · ${new Date(RB.reglas.updated_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : '') : '⏳ Cargando reglas…'}</div>
       <div style="border-top:1px solid #e2e8f0;margin:18px 0 14px"></div>${(bar => RB.prog && RB.prog.aceptada ? rbCambiosHtml_() + rbProgDualHtml_() + bar : bar + rbCambiosHtml_() + rbProgDualHtml_())(`<div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">${RB.prog && RB.prog.aceptada ? '🔄 Re-programar limpiezas del día:' : '🧹 Programar limpiezas del día:'}</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}" onchange="rbDiaSel_(this.value)">${rbEnfHtml_()}
