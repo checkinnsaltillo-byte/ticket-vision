@@ -71736,7 +71736,7 @@ function rbRender_() {
       ${RB_DIAS.map(([k, t], i) => { const f = fechas[i], e = rbEstado_(n, f, D.has(k)), man = !!(((RB.reglas || {}).asist || {})[n] || {})[f];
         return `<td class="rb-d"><button type="button" class="rb-c ${e}" onclick="rbClic_(${pcEsc(JSON.stringify(n))},'${f}','${e}')" title="${RB_EST[e].t}${man ? ' (marcado a mano)' : rbAsisDe_(n, f) ? ' (registro de asistencia)' : D.has(k) ? ' (le toca trabajar)' : ' (descansa)'} — clic: ${RB_EST[RB_EST[e].sig].t}">${t}</button></td>`; }).join('')}</tr>`; }).join('');
   root.innerHTML = `<div class="cl-title">🛠️ Check-Flow</div><div class="cl-nav-slot" data-act="reglasbot">${clNavHtml_('reglasbot')}</div>
-    <style>.rb-w{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;font-family:Inter,system-ui,sans-serif;max-width:1100px}
+    <style>.rb-w{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;font-family:Inter,system-ui,sans-serif;max-width:none;box-sizing:border-box;width:100%}
       .rb-h{font-size:15px;font-weight:800;color:#0f172a;margin:0 0 4px}.rb-s{font-size:12px;color:#64748b;margin:0 0 12px}
       .rb-t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}.rb-t th{font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:8px;border-bottom:1px solid #e8eaee;background:#f8fafc}
       .rb-t td{padding:7px 8px;border-bottom:1px solid #f0f1f4;vertical-align:middle}.rb-n b{display:block;color:#0f172a}.rb-n small{color:#94a3b8;font-size:11px}
