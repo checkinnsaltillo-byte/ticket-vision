@@ -369,7 +369,7 @@ const SYS_MODULE_LIST = [
   ['personas',         '📇 Directorio'],
   ['inquilinos',       '📑 Contratos de Larga estancia'],
   ['pagos',            '💰 Pagos'],
-  ['aseo',             '🛠️ Check-Flow (limpieza, inspección, mantenimiento + Breezeway)'],
+  ['aseo',             '🛠️ Operaciones (limpieza, inspección, mantenimiento + Breezeway)'],
   ['incidencias',      '🚨 Incidencias'],
   ['reportes-tecnicos','🛠 Reportes técnicos'],
   ['tareas',           '📝 Levantamientos'],
@@ -418,7 +418,7 @@ function sysApplyPermissions(user) {
   }
   window.SYS_ALLOWED = allowed;
   window.SYS_USER = user || null; // usuario de la sesión (para saber si es administrativo)
-  // Check-Flow «modo personal» desde el primer instante: usuarios de Personal, salvo que la última vez resultaran administrativos.
+  // Operaciones «modo personal» desde el primer instante: usuarios de Personal, salvo que la última vez resultaran administrativos.
   try { const c = JSON.parse(localStorage.getItem('cl-admin') || 'null'); document.body.classList.toggle('cl-emp-u', !!(user && Array.isArray(user.modulosKeys)) && !(c && c.n === user.Nombre && c.a)); } catch (_) {}
   document.querySelectorAll('[id^="nav-item-"]').forEach(el => {
     const key = el.id.replace('nav-item-', '');
@@ -9166,7 +9166,7 @@ if (!window._rtHashListener) {
     try { _bootModuleFromHash_(); } finally { window._rtSyncingHash = false; }
   });
 }
-// Check-Flow: A) Operación (Check-inn, Breezeway) · B) Administración (Pendientes).
+// Operaciones: A) Operación (Check-inn, Breezeway) · B) Administración (Pendientes).
 const CL_BZW_OFF = true; // Breezeway desactivado por el momento (botón gris, sin acción)
 function clPuede_(m) { return !window.SYS_ALLOWED || window.SYS_ALLOWED.has(m); }
 // Secciones: ✅ Tareas (submenú por tipo) · 🚨 Incidencias · 🧳 Objetos olvidados · 🗓️ Pendientes; 📋 Plantillas aparte a la derecha.
@@ -9189,11 +9189,11 @@ window.clSub_ = function (k) {
   if ((quiere === 'mant') !== (ASEO.sec === 'mant')) return switchModule(quiere === 'mant' ? 'mantenimiento' : 'aseo');
   ASEO.sec = quiere; aseoRender_(); clNavPaint_();
 };
-// Buscador del Check-Flow (texto libre, sin acentos ni mayúsculas): todas las palabras deben aparecer en alguno de los campos.
+// Buscador del Operaciones (texto libre, sin acentos ni mayúsculas): todas las palabras deben aparecer en alguno de los campos.
 function ckNorm_(v) { return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 function ckBusca_(q, campos) { const t = ckNorm_(q).trim().split(/\s+/).filter(Boolean); if (!t.length) return true; const h = ckNorm_(campos.flat(3).filter(Boolean).join(' · ')); return t.every(w => h.includes(w)); }
 function ckAlojTxt_(hid) { const a = hid && typeof atAloj_ === 'function' ? atAloj_(hid) : null; return a ? [a.corto, String(a.corto || '').toUpperCase(), a.nombre, a.propiedad] : []; }
-// Barra compacta del Check-Flow (misma en Aseo, Incidencias y Tareas): ☰ filtros con contador de filtros activos.
+// Barra compacta del Operaciones (misma en Aseo, Incidencias y Tareas): ☰ filtros con contador de filtros activos.
 function ckFxN_(fx, def) { def = def || {}; return Object.entries(fx || {}).filter(([k, v]) => !(k in def && def[k] === v) && (v instanceof Set ? v.size : Array.isArray(v) ? v.length : !!v)).length; }
 function ckHam_(on, n, fn) { return `<button type="button" class="ad-ham ${on ? 'on' : ''}" onclick="${fn}" title="${on ? 'Ocultar filtros' : 'Mostrar filtros'}${n ? ` (${n} activo${n === 1 ? '' : 's'})` : ''}">☰${n ? `<b>${n}</b>` : ''}</button>`; }
 function ckDia_(iso, hoy) { const dif = Math.round((new Date(iso + 'T12:00:00') - new Date(hoy + 'T12:00:00')) / 864e5), d = new Date(iso + 'T12:00:00'), f = `${d.getDate()} ${ASEO_MES[d.getMonth()]}`; return dif === 0 ? `Hoy · ${f}` : dif === -1 ? `Ayer · ${f}` : dif === 1 ? `Mañana · ${f}` : `${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()]} ${f}`; }
@@ -9256,11 +9256,11 @@ function clNavPaint_() {
     document.head.appendChild(st);
   }
   document.querySelectorAll('.cl-nav-slot').forEach(el => { el.innerHTML = clNavHtml_(el.dataset.act); });
-  // «Pendientes» ahora vive dentro de Check-Flow; su entrada propia del menú solo queda para quien no ve Check-Flow.
+  // «Pendientes» ahora vive dentro de Operaciones; su entrada propia del menú solo queda para quien no ve Operaciones.
   // Igual con «Incidencias».
   const ni = document.getElementById('nav-item-incidencias');
   if (ni && clPuede_('incidencias')) ni.style.display = !clPuede_('aseo') && !clPuede_('breezeway') && !clPuede_('tareas') ? '' : 'none';
-  const no = document.getElementById('nav-item-objetos'); // «Objetos olvidados» también vive en Check-Flow
+  const no = document.getElementById('nav-item-objetos'); // «Objetos olvidados» también vive en Operaciones
   if (no && clPuede_('objetos')) no.style.display = !clPuede_('aseo') && !clPuede_('breezeway') && !clPuede_('tareas') ? '' : 'none';
   const nt = document.getElementById('nav-item-tareas');
   if (nt && clPuede_('tareas')) { const solo = !clPuede_('aseo') && !clPuede_('breezeway'); nt.style.display = solo ? '' : 'none'; const bx = document.querySelector('.nav-secs[data-for="tareas"]'); if (bx && !solo) bx.style.display = 'none'; }
@@ -9275,7 +9275,7 @@ function switchModule(mod) {
   if (mod === 'mantenimiento') mod = 'aseo';
   // Permisos: un módulo no asignado (p. ej. por enlace #modulo) manda a Inicio.
   if (window.SYS_ALLOWED && mod !== 'home') {
-    const permKey = (mod === 'dashboard' || mod === 'calendario') ? 'ocupacion' : mod === 'plantillas' || mod === 'reglasbot' ? 'aseo' : mod; // Plantillas, Reglas bot y Mantenimiento son parte de Check-Flow
+    const permKey = (mod === 'dashboard' || mod === 'calendario') ? 'ocupacion' : mod === 'plantillas' || mod === 'reglasbot' ? 'aseo' : mod; // Plantillas, Reglas bot y Mantenimiento son parte de Operaciones
     if (!window.SYS_ALLOWED.has(permKey) && !window.SYS_ALLOWED.has(mod)) mod = 'home';
   }
   // Legacy: 'ocupacion' como módulo top-level se trata como Dashboard
@@ -9427,14 +9427,14 @@ function switchModule(mod) {
     }
   }
   if (mod === "incidencias") {
-    if (typeof icInit_ === 'function') icInit_(); // Check-Flow › Incidencias (nuevo diseño)
+    if (typeof icInit_ === 'function') icInit_(); // Operaciones › Incidencias (nuevo diseño)
   }
-  if (mod === "plantillas" && typeof plInit_ === 'function') plInit_(); // Check-Flow › 📋 Plantillas
-  if (mod === "reglasbot" && typeof rbInit_ === 'function') rbInit_(); // Check-Flow › 🤖 Reglas bot
+  if (mod === "plantillas" && typeof plInit_ === 'function') plInit_(); // Operaciones › 📋 Plantillas
+  if (mod === "reglasbot" && typeof rbInit_ === 'function') rbInit_(); // Operaciones › 🤖 Reglas bot
   if (mod === "mensajes" && typeof abnInit_ === 'function') abnInit_(); // 💬 Mensajes Airbnb
   if (mod === "objetos") {
     if (typeof objInit === 'function') objInit(); // formulario anterior (lo sigue usando Gestión de reservas)
-    if (typeof obInit_ === 'function') obInit_(); // Check-Flow › 🧳 Objetos olvidados
+    if (typeof obInit_ === 'function') obInit_(); // Operaciones › 🧳 Objetos olvidados
   }
   if (mod === "ocupacion" || mod === "dashboard" || mod === "calendario") {
     if (typeof ocupInit === 'function') ocupInit();
@@ -18671,7 +18671,7 @@ window.lgPickReport = function(kind, propRaw, deptRaw, arrIso, depIso) {
   if (kind === 'inc' && typeof lgOpenIncCaptureFor === 'function') {
     lgOpenIncCaptureFor(propRaw, deptRaw, arrIso);
   } else if (kind === 'obj' && typeof obNuevoDesdeReserva_ === 'function') {
-    obNuevoDesdeReserva_(propRaw, deptRaw, arrIso, depIso); // ventana lateral nueva (Check-Flow › Objetos olvidados)
+    obNuevoDesdeReserva_(propRaw, deptRaw, arrIso, depIso); // ventana lateral nueva (Operaciones › Objetos olvidados)
   } else if (kind === 'rt' && typeof rtOpenCaptureFor === 'function') {
     rtOpenCaptureFor(propRaw, deptRaw, arrIso, depIso);
   }
@@ -24096,7 +24096,7 @@ window.incGuardarSalir = async function() {
     });
     const out = await res.json();
     if (!out.ok) throw new Error(out.error || 'Error al guardar');
-    alert(`✓ Reporte guardado.\n\nID: ${out.id}\nFotos subidas: ${out.fotos_uploaded}/${fotos.length}\n\nGuardado en Google Cloud (Check-Flow › Incidencias)`);
+    alert(`✓ Reporte guardado.\n\nID: ${out.id}\nFotos subidas: ${out.fotos_uploaded}/${fotos.length}\n\nGuardado en Google Cloud (Operaciones › Incidencias)`);
     incSalir();
     incLimpiar();
     // Cierra el slide-in panel y refresca la lista de cards
@@ -26514,7 +26514,7 @@ function ocupSourceIcon(src) {
 }
 
 // Construye la lista de alojamientos sortada (Propiedad, #N numérico).
-// Alojamientos para TAREAS (Check-Flow): los de Lodgify + filas de la hoja «alojamientos» sin id de Lodgify
+// Alojamientos para TAREAS (Operaciones): los de Lodgify + filas de la hoja «alojamientos» sin id de Lodgify
 // (edificios completos «ED. …», áreas comunes, etc.). Estas reciben un id interno fijo «99NNNNNN» calculado de su
 // nombre corto (device_name); el servidor usa la misma fórmula (_hidSint). No aparecen en Ocupación ni Dashboard.
 function hidSint_(code) { let h = 0; for (const ch of String(code || '').trim().toLowerCase()) h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0; return '99' + String(h % 1000000).padStart(6, '0'); }
@@ -44227,10 +44227,10 @@ function _waReportHasSentMsg_(kind, id) {
   return false;
 }
 
-// ¿Se está pintando dentro de la «Ficha del huésped» de Chats bot? (ahí las cards usan el diseño del Check-Flow)
+// ¿Se está pintando dentro de la «Ficha del huésped» de Chats bot? (ahí las cards usan el diseño del Operaciones)
 const _waEnFicha_ = () => { const e = window.__waEmbedEl, m = document.getElementById('module-bot-chats'); return !!(e && document.body.contains(e) && m && !m.classList.contains('hidden')); };
 const _waFichaRep_ = (kind, row) => _waRenderReportTimelineItem_({ row, kindReport: kind, sortKey: String(row['Updated_at'] || row['updated_at'] || row['Timestamp'] || row['Fecha_encontrado'] || row['Fecha'] || '') });
-// Botones de estado siempre visibles (mismo estilo que Pend./Proceso/Term. del Check-Flow): Nuevo · Proceso · Resuelto · Cancelado.
+// Botones de estado siempre visibles (mismo estilo que Pend./Proceso/Term. del Operaciones): Nuevo · Proceso · Resuelto · Cancelado.
 const _WA_FX_EST = [{ k: 'nuevo', inc: 'Nuevo', t: 'Nuevo', c: '#94a3b8' }, { k: 'en_proceso', inc: 'En proceso', t: 'Proceso', c: '#ffb300' }, { k: 'resuelto', inc: 'Resuelto', t: 'Resuelto', c: '#00c853' }, { k: 'cancelado', inc: 'Cancelado', t: 'Cancelado', c: '#ef4444' }];
 function _waFxEstBtns_(kind, id, actual) {
   const act = String(actual || '').toLowerCase().replace(/\s+/g, '_');
@@ -44339,7 +44339,7 @@ function _waRenderReportTimelineItem_(it) {
     };
   }
   const desc = String(r['Descripcion'] || '').trim();
-  if (_waEnFicha_()) { // «Ficha del huésped» (Chats bot): misma card que el Check-Flow — renglones, texto en vez de chips, franja de color
+  if (_waEnFicha_()) { // «Ficha del huésped» (Chats bot): misma card que el Operaciones — renglones, texto en vez de chips, franja de color
     const rid = String(r['ID'] || ''), sent = _waReportHasSentMsg_(kind, rid), tipoTx = { inc: 'Incidencia', obj: 'Objeto olvidado', rt: 'Reporte técnico' }[kind] || cfg.chipLabel;
     return `<div class="fx-c tipo fx-rep" style="--tc:${cfg.headerBg}" ${cfg.dataAttr} role="button" tabindex="0">
       <div class="r1"><span class="nm">${cfg.checkIcon} ${_botcEsc(cfg.titulo)}</span>${cfg.titleAccent}${kind === 'obj' ? `<span class="mv" style="color:${cfg.estadoFg}">${_botcEsc(cfg.estadoLabel)}</span>` : ''}</div>
@@ -49953,7 +49953,7 @@ window._botcNotifBuildLink_ = function(kind, id, extra) {
               () => typeof INC_STATE === 'object' && Array.isArray(INC_STATE.list) && INC_STATE.list.some(r => String(r.ID) === String(id)),
               () => {
                 try {
-                  if (typeof icAbrir_ === 'function') { icRender_(); icAbrir_(String(id)); return; } // Check-Flow › Incidencias
+                  if (typeof icAbrir_ === 'function') { icRender_(); icAbrir_(String(id)); return; } // Operaciones › Incidencias
                   INC_STATE.expanded.add(id);
                   if (typeof incRenderCards === 'function') incRenderCards();
                   requestAnimationFrame(() => {
@@ -51196,7 +51196,7 @@ function _botcWaCss_() {
   .botc-npill .c{background:#dc2626;animation:botcCritPulse 1.6s ease-out infinite}.botc-npill .n{background:#f97316}
   .wa-aloj{font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#0f172a;background:#eef2f6;border:1px solid #d5dde6;padding:0 6px;border-radius:4px;white-space:nowrap;line-height:15px}
   .wa-aloj.air{color:#be123c;background:#fff1f2;border-color:#fecdd3}
-  /* Ficha del huésped con la estética de las cards del Check-Flow (Aseo / Mantenimiento) */
+  /* Ficha del huésped con la estética de las cards del Operaciones (Aseo / Mantenimiento) */
   .fx{--ad-line:#e8eaee;--ad-line2:#f0f1f4;--ad-tx:#0f1729;--ad-mut:#6b7280;--ad-mut2:#9aa1ad;font:12.5px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ad-tx);background:#f7f8fa}
   .fx .fx-h{background:#fff}.fx .fx-scroll{padding:2px 10px 16px}
   .fx-lab{display:flex;gap:6px;margin:12px 2px 6px;font-size:10.5px;font-weight:600;color:var(--ad-mut2);text-transform:uppercase;letter-spacing:.08em}.fx-lab span{color:var(--ad-mut)}
@@ -52937,7 +52937,7 @@ window.botcFxRefrescar_ = function (btn) {
   if (_botcEsAbn_(sel)) _botcAbnCargar_(true);
   if (btn) btn.classList.add('gira'); if (typeof waRefreshPanel_ === 'function') waRefreshPanel_(btn); else _waRepaint();
 };
-// Ficha › reserva desplegada: «Reportar incidencia», «Solicitudes» y «Desalojo» con el mismo diseño que la ventana de la tarea de Check-Flow.
+// Ficha › reserva desplegada: «Reportar incidencia», «Solicitudes» y «Desalojo» con el mismo diseño que la ventana de la tarea de Operaciones.
 function _botcFxAseoHtml_(bk, a, d, nInc) {
   if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
   if (typeof ASEO !== 'undefined' && !ASEO.ts && !BOTC_STATE.fxAseoPedido && typeof aseoRefresh_ === 'function') { BOTC_STATE.fxAseoPedido = 1; aseoRefresh_().then(() => { try { _waRenderModal(true); } catch (_) {} }).catch(() => {}); }
@@ -52989,7 +52989,7 @@ function _botcFxSolHtml_(rows) {
 }
 const _botcFxVacio_ = (ic, t) => `<div class="fx-vacio"><span>${ic}</span>${_botcEsc(t)}</div>`;
 function _botcFichaHtml_(st, logs) {
-  // Misma estética que las cards del Check-Flow (Aseo / Mantenimiento): renglones r1/r2/r3, texto con separadores en vez de chips.
+  // Misma estética que las cards del Operaciones (Aseo / Mantenimiento): renglones r1/r2/r3, texto con separadores en vez de chips.
   const sel = String(BOTC_STATE.selectedPhone || ''), esAbn = _botcEsAbn_(sel);
   const phone = esAbn ? String((st.b && st.b.GuestPhone) || '').replace(/\D/g, '') : sel, p10 = phone.slice(-10); // Airbnb: perfil por el teléfono de la reserva
   if (BOTC_STATE.fxAnim !== sel) BOTC_STATE.fxMas = false; // «Más información» empieza plegada con cada huésped
@@ -58732,7 +58732,7 @@ function tdRender_() {
   const nRec = TAR_STATE.list.filter(tarEsRec_).length, nIG = TAR_STATE.list.filter(tdEsIG_).length;
   const nav = `<div class="cl-nav-slot" data-act="tareas">${typeof clNavHtml_ === 'function' ? clNavHtml_('tareas') : ''}</div>
     <div class="cl-sub">${[['ig', '📝 Levantamientos', nIG, AT_DEPTO.inspeccion.c], ['rec', '📌 Recordatorios', nRec, '#d97706']].map(([k, t, n, c]) => `<button type="button" class="cl-sb ${(TAR_STATE.sub || 'ig') === k ? 'on' : ''}" style="--c:${c}" onclick="TAR_STATE.sub='${k}';tdRender_()">${t} · ${n}</button>`).join('')}</div>`;
-  const head = `<div class="cl-title">🛠️ Check-Flow</div>`;
+  const head = `<div class="cl-title">🛠️ Operaciones</div>`;
   if (sec === 'registro') {
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}${nav}${bar.replace('__SEGV__', '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(TAR_STATE.list.slice())}</div>` : ''}<div id="tar-content">${tarRegistroHtml_()}</div></div>`;
   } else {
@@ -61906,7 +61906,7 @@ function pcRenderMovs_() {
   aseoEnsureCss_();
   // Dos secciones: Movimientos del día (por reserva) y Aseo por alojamiento.
   const head = (sub) => `<div class="pc-card-h"><div class="pc-card-t">🛎️ Movimientos del día <small>· ${sub}</small></div><button class="pc-link" onclick="pcGo('lodgify')">Gestión de reservas →</button></div>` + mvSyncBar_();
-  const headA = (sub) => `<div class="pc-card-h"><div class="pc-card-t">🛠️ Check-Flow por alojamiento <small>· ${sub}</small></div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${mvAcTodasBtn_()}<button class="pc-link" onclick="pcGo('aseo')">Control de aseo →</button></div></div>` + mvSyncBar_();
+  const headA = (sub) => `<div class="pc-card-h"><div class="pc-card-t">🛠️ Operaciones por alojamiento <small>· ${sub}</small></div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${mvAcTodasBtn_()}<button class="pc-link" onclick="pcGo('aseo')">Control de aseo →</button></div></div>` + mvSyncBar_();
   const cobOk = typeof PAGOS_STATE !== 'undefined' && PAGOS_STATE.loaded && !PC.loading.cob;
   if (PC.err.cob) { el.innerHTML = head('reservas') + pcErr_(PC.err.cob); if (elA) elA.innerHTML = headA('reservas') + pcErr_(PC.err.cob); return; }
   if (!cobOk) { el.innerHTML = head('cargando…') + pcSkel_(180); if (elA) elA.innerHTML = headA('cargando…') + pcSkel_(180); return; }
@@ -67219,13 +67219,13 @@ window.aseoFiltroToggle_ = function (n) {
   const i = sel.indexOf(n); if (i >= 0) sel.splice(i, 1); else sel.push(n);
   aseoRender_();
 };
-// ── Check-Flow para personal NO administrativo («modo personal») ──
+// ── Operaciones para personal NO administrativo («modo personal») ──
 // Administrativo = usuario del sistema anterior (sys_users), o Puesto «Administración» en Personal, o rol
-// Administrador en Check-Flow Bot. Los demás solo ven SUS asignaciones, sin botones de arriba (salvo Actualizar)
+// Administrador en Bot de Operaciones. Los demás solo ven SUS asignaciones, sin botones de arriba (salvo Actualizar)
 // y con las cards en solo lectura.
 function clNorm_(v) { return String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\(whatsapp\)/, '').replace(/[^a-zñ ]/g, ' ').split(/\s+/).filter(t => t.length > 1); }
 function clMisma_(a, b) { const A = clNorm_(a), B = clNorm_(b); if (!A.length || !B.length) return false; const [c, l] = A.length <= B.length ? [A, B] : [B, A]; return c.every(t => l.includes(t)); }
-// «🧪 Prueba · Ver como»: un administrador ve el Check-Flow como lo vería otra persona (sus permisos y asignaciones).
+// «🧪 Prueba · Ver como»: un administrador ve el Operaciones como lo vería otra persona (sus permisos y asignaciones).
 function clVerComo_() { return (typeof ASEO !== 'undefined' && ASEO.verComo) || ''; }
 function clEsAdminNombre_(yo) {
   const P = ((typeof ASEO !== 'undefined' && ASEO.autonotif) || {}).perfiles || {};
@@ -67251,7 +67251,7 @@ function ckVerComoHtml_() {
   if (!clEsAdminReal_()) return '';
   const on = !!ASEO.pruebaOn, v = clVerComo_();
   const L = typeof pzNombres_ === 'function' ? pzNombres_() : [];
-  return `<button type="button" class="ck-pb ${on ? 'on' : ''}" onclick="ckPrueba_()" title="Ver el Check-Flow como lo vería otra persona">🧪 Prueba</button>${on ? `<label class="ck-vc-l">Ver como:<select class="ck-vc-s" onchange="ckVerComo_(this.value)"><option value="">— Elige a alguien —</option>${L.map(n => `<option ${n === v ? 'selected' : ''}>${pcEsc(n)}</option>`).join('')}</select></label>${v ? `<span class="ck-vc-tag">${clEsAdminNombre_(v) ? 'Administrador' : 'Empleado'}</span>` : ''}` : ''}`;
+  return `<button type="button" class="ck-pb ${on ? 'on' : ''}" onclick="ckPrueba_()" title="Ver el Operaciones como lo vería otra persona">🧪 Prueba</button>${on ? `<label class="ck-vc-l">Ver como:<select class="ck-vc-s" onchange="ckVerComo_(this.value)"><option value="">— Elige a alguien —</option>${L.map(n => `<option ${n === v ? 'selected' : ''}>${pcEsc(n)}</option>`).join('')}</select></label>${v ? `<span class="ck-vc-tag">${clEsAdminNombre_(v) ? 'Administrador' : 'Empleado'}</span>` : ''}` : ''}`;
 }
 function ckVerComoPaint_() { const el = document.getElementById('aseo-vercomo'); if (el) el.innerHTML = ckVerComoHtml_(); }
 window.ckPrueba_ = function () { ASEO.pruebaOn = !ASEO.pruebaOn; if (!ASEO.pruebaOn) ASEO.verComo = ''; ASEO.fPers = []; ASEO._mpNav = null; aseoRender_(); ckVerComoPaint_(); };
@@ -67446,7 +67446,7 @@ window.adDropUser_ = async function (ev, dest) {
       const j = await fetch(`${BACKEND}/reportes-tecnicos-upsert`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: { ID: rid, Asignado_a: nuevo.join(', '), UpdatedAt: new Date().toISOString(), Updated_by: user } }) }).then(r => r.json());
       if (!j.ok) throw new Error(j.error || 'Error');
       t.asignados = nuevo; (ASEO.rt || []).forEach(r => { if (String(r.ID) === rid) r.Asignado_a = nuevo.join(', '); });
-    } else { // tarea del Check-Flow
+    } else { // tarea del Operaciones
       const m = String(D.id).match(/^T([a-z0-9]+)/i), t = m && (ASEO.tareas || {})[m[1]]; if (!t) return;
       const j = await fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea: Object.assign({}, t, { asignados: mover(t.asignados) }), user }) }).then(r => r.json());
       if (!j.ok) throw new Error(j.error || 'Error');
@@ -68965,7 +68965,7 @@ window.rtGuardarA_ = async function () {
   };
 })();
 // ═══════════════════════════════════════════════════════════════════════════
-// «📣 Notificar actualizaciones» del Check-Flow: perfil del bot por persona.
+// «📣 Notificar actualizaciones» del Operaciones: perfil del bot por persona.
 //  · Rol: Administrador / Empleado / Desactivado → define TODO lo que puede hacer con el bot (NP_PUEDE)
 //  · Mensajes automáticos (solo administradores): resumen 2 pm · alertas · cada cambio
 //  · Recordatorio diario de sus tareas asignadas (al registrar su entrada)
@@ -69066,7 +69066,7 @@ const NP_REGLAS = [
     'Los administradores del sistema (Puesto «Administración») siempre tienen todos los permisos desde su número. Con «@» al inicio el bot ejecuta directo.']],
   ['📋', 'Tareas e incidencias por WhatsApp (administradores)', 'El bot clasifica solo el tipo de tarea por la descripción y las palabras que uses; siempre muestra un resumen y guarda hasta que respondes «sí».', [
     '<b>Tarea:</b> «tarea: limpiar ventanas de cu2 el viernes», «programa revisar el boiler de mt10 mañana con Paco», «compra de papel para jc3 hoy urgente», «pagar CFE el 16 fecha límite». Tipo automático: 🧹 Limpieza · 🔧 Mantenimiento · 🔍 Inspección · 🗂️ Administrativo · 📦 Insumos (puedes decirlo explícito: «tarea de inspección …»).',
-    'Datos que entiende: qué hay que hacer, fecha («hoy», «mañana», «el viernes», «15/10»), alojamiento opcional («en cu2», «Cumbres 12»), persona(s) y urgencia. Por WhatsApp solo se crean tareas de una fecha; las recurrentes se dan de alta en Check-Flow › Tareas.',
+    'Datos que entiende: qué hay que hacer, fecha («hoy», «mañana», «el viernes», «15/10»), alojamiento opcional («en cu2», «Cumbres 12»), persona(s) y urgencia. Por WhatsApp solo se crean tareas de una fecha; las recurrentes se dan de alta en Operaciones › Tareas.',
     '<b>Incidencia:</b> «incidencia, mt7, sábanas manchadas, urgente». Al registrarla pregunta «¿Creo una tarea correctiva de …?»; responde «sí», «sí, mantenimiento para mañana con Paco» o «no». La tarea queda ligada a la incidencia como Correctivo.',
     '<b>Falla:</b> «reporte de fuga en cu13» crea un reporte de Mantenimiento (no una tarea programada).',
     '<b>Recordatorio:</b> «recordatorio: hablar a Rita» va a Pendientes del día.',
@@ -69092,11 +69092,11 @@ const NP_REGLAS = [
     '<b>Nunca muestra códigos, folios ni claves:</b> identifica por alojamiento y descripción.',
     'Si alguien pide algo que su rol no permite, responde en una línea: «Solo los administradores pueden…».']],
   ['🧽', 'Tareas y cards', '', [
-    '<b>Check-Flow para personal no administrativo</b> (sin Puesto «Administración» ni rol Administrador): solo ve sus asignaciones; los KPIs y filtros cuentan solo lo suyo; arriba solo tiene «Actualizar»; no ve Incidencias ni Pendientes; en sus cards solo puede cambiar el <b>estado</b> (sin validar: «Terminado» queda por validar) y marcar <b>«¿No ha desalojado?»</b>; lo demás es de solo lectura (sin detalles).',
+    '<b>Operaciones para personal no administrativo</b> (sin Puesto «Administración» ni rol Administrador): solo ve sus asignaciones; los KPIs y filtros cuentan solo lo suyo; arriba solo tiene «Actualizar»; no ve Incidencias ni Pendientes; en sus cards solo puede cambiar el <b>estado</b> (sin validar: «Terminado» queda por validar) y marcar <b>«¿No ha desalojado?»</b>; lo demás es de solo lectura (sin detalles).',
     '<b>Estados de la card:</b> Pendiente · En proceso · Terminado · Inspeccionado. «Terminado» va en dos pasos con el mismo botón: 1er clic = terminado (por validar), 2º clic = validado (✓ Term.), otro clic quita la validación. Los demás no requieren validación. «Inspeccionado» pide confirmación.',
     '<b>Incidencia en una card:</b> aparece debajo de la card en un recuadro rojo; si sigue abierta y no tiene tarea correctiva, el enlace «🛠 Crear tarea correctiva» abre directo esa sección.',
     '<b>Archivar una card:</b> sale del tablero, de los KPIs y de las listas, resúmenes y avisos del bot. Se ven en ☰ › «Ver archivadas», donde se pueden desarchivar.',
-    '<b>🧪 Prueba · Ver como:</b> junto al título del Check-Flow, un administrador puede ver la pantalla como la vería cualquier persona del personal (sus permisos y asignaciones). El borde punteado ámbar indica que estás en prueba; lo que hagas se guarda a tu nombre.',
+    '<b>🧪 Prueba · Ver como:</b> junto al título del Operaciones, un administrador puede ver la pantalla como la vería cualquier persona del personal (sus permisos y asignaciones). El borde punteado ámbar indica que estás en prueba; lo que hagas se guarda a tu nombre.',
     '<b>Marcas en las listas:</b> ✱ = entra huésped hoy (prioridad) · ✱✱ = además la reserva pide entrada temprana.',
     '<b>Orden de las listas del bot:</b> agrupadas por propiedad, sin intercalar (todas las de José Cárdenas juntas, luego las de Cumbres…). Va primero la propiedad con la tarea más urgente. Dentro de cada propiedad, primero la <b>entrada más temprana</b> (hora de la entrada temprana o 3:00 p.m.) y al final la <b>salida más tardía</b> (hora de la salida tardía o 10:00 a.m.). Las que no tienen entrada ese día van después.',
     'Si en un alojamiento sale una reserva confirmada y otra cancelada, la card (estado, asignación, prioridad) usa la confirmada.',
@@ -69119,7 +69119,7 @@ window.npAyuda_ = function () {
     <div class="ad-ft"><span></span><button type="button" class="ad-bt pri" onclick="${ASEO._np && ASEO._np.host ? 'adCerrar_()' : 'npPintar_()'}">${ASEO._np && ASEO._np.host ? 'Cerrar' : '← Volver'}</button></div>`;
   dr.querySelector('.ad-db').scrollTop = 0;
 };
-// Configuración admin › 🤖 Check-Flow Bot: página completa (ya no ventana lateral): 👥 Personal · 🧪 Simulador.
+// Configuración admin › 🤖 Bot de Operaciones: página completa (ya no ventana lateral): 👥 Personal · 🧪 Simulador.
 async function npCfgRender_(host) {
   if (typeof pcEnsureStyles_ === 'function') pcEnsureStyles_();
   if (typeof aseoEnsureCss_ === 'function') aseoEnsureCss_();
@@ -69233,7 +69233,7 @@ function npPintar_() {
   const L = nombres.filter(n => !q || n.toLowerCase().includes(q))
     .sort((a, b) => (N.perfiles[b] ? 1 : 0) - (N.perfiles[a] ? 1 : 0) || a.localeCompare(b, 'es'));
   const conPerfil = Object.values(N.perfiles).filter(p => p.rol).length;
-  dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">🤖 Check-Flow Bot</b><span style="display:flex;gap:6px"><button type="button" class="ad-close np-ayuda-bt" title="Reglas del bot" onclick="npAyuda_()">?</button><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></span></div>
+  dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">🤖 Bot de Operaciones</b><span style="display:flex;gap:6px"><button type="button" class="ad-close np-ayuda-bt" title="Reglas del bot" onclick="npAyuda_()">?</button><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></span></div>
       <div class="ad-sub">Notificaciones y permisos del bot · ${conPerfil} persona${conPerfil === 1 ? '' : 's'} con funciones asignadas</div></div>
     <div class="ad-db">
       <div class="ad-tgl" onclick="npOn_()"><div><b>Mensajes automáticos</b><small>${N.on ? 'Activos: resumen de las 2 pm, alertas y avisos a los administradores' : 'Apagados: el bot no envía nada por su cuenta'}</small></div><span class="ad-sw ${N.on ? '' : 'off'}"></span></div>
@@ -69255,7 +69255,7 @@ function npPintarPagina_() {
   const tab = (k, t) => `<button type="button" class="${N.tab === k ? 'on' : ''}" onclick="npTab_('${k}')">${t}</button>`, sub = (k, t) => `<button type="button" class="${N.sim === k ? 'on' : ''}" onclick="npSimTab_('${k}')">${t}</button>`;
   const y = window.scrollY;
   host.innerHTML = `<div class="np-page" style="max-width:860px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 22px;font-family:Inter,system-ui,sans-serif">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="font-size:26px">🤖</div><div style="flex:1;min-width:200px"><div style="font-size:17px;font-weight:800;color:#0f172a">Check-Flow Bot</div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="font-size:26px">🤖</div><div style="flex:1;min-width:200px"><div style="font-size:17px;font-weight:800;color:#0f172a">Bot de Operaciones</div>
       <div style="font-size:12.5px;color:#64748b">Permisos y mensajes del bot por persona · ${conPerfil} persona${conPerfil === 1 ? '' : 's'} con funciones asignadas</div></div>
       <span class="np-save" id="np-save">${N.listo ? 'Los cambios se guardan solos' : '⏳ Cargando…'}</span><button type="button" class="ad-bt" onclick="npAyuda_()" title="Reglas del bot">❓ Reglas del bot</button></div>
     ${RB_CSS2}
@@ -69604,7 +69604,7 @@ if (!window.__aseoTimer) {
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Check-Flow › 🚨 Incidencias (v1600) — mismo diseño que Aseo y Mantenimiento / Pendientes:
+// Operaciones › 🚨 Incidencias (v1600) — mismo diseño que Aseo y Mantenimiento / Pendientes:
 // KPIs, filtros de chip, tablero por estado (arrastre + selector rápido), ventana lateral y formulario.
 // Datos en Google Cloud Storage (incidencias/incidencias.json + incidencias/fotos/), migrados de la hoja
 // «Incidencias» en v1601. Mismos endpoints para todos (sistema, bot, Gestión de reservas):
@@ -69697,7 +69697,7 @@ function icCss_() {
   `;
   document.head.appendChild(st);
 }
-// ═══ Check-Flow · vistas homologadas (Aseo, Mantenimiento, Incidencias, Objetos olvidados, Pendientes) ═══
+// ═══ Operaciones · vistas homologadas (Aseo, Mantenimiento, Incidencias, Objetos olvidados, Pendientes) ═══
 // Mismo selector en todas: Por estado · Por propiedad · Por usuario · Por fecha · Tabla, y el mismo selector de mes ‹ Mes ›.
 const CK_VISTAS = [['estado', 'Por estado'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['tabla', 'Tabla']];
 // 📅 Calendario: botón que se activa/desactiva y se muestra a la izquierda, compartido con cualquier vista (como en Aseo).
@@ -69907,7 +69907,7 @@ function icRender_() {
   const T0 = icTodas_(), nArch = T0.filter(x => x.arch).length;
   const todas = T0.filter(x => IC.fx.arch ? x.arch : !x.arch); // archivadas: solo con «🗄 Archivadas»
   const nFx = ckFxN_(IC.fx, { per: '30', arch: IC.fx.arch, prio: '' });
-  const head = `<div class="cl-title">🛠️ Check-Flow</div>`;
+  const head = `<div class="cl-title">🛠️ Operaciones</div>`;
   const nav = `<div class="cl-nav-slot" data-act="incidencias">${typeof clNavHtml_ === 'function' ? clNavHtml_('incidencias') : ''}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(IC.filAb, nFx, 'IC.filAb=!IC.filAb;icRender_()')}
       <input class="ck-q ic-q" type="search" placeholder="🔎 Buscar alojamiento, motivo, persona…" value="${pcEsc(IC.q)}" oninput="IC.q=this.value;clearTimeout(IC._qt);IC._qt=setTimeout(()=>{icRender_();const i=document.querySelector('#ic-root .ic-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
@@ -70311,7 +70311,7 @@ window.lgOpenIncCaptureFor = function (propRaw, deptRaw, fechaIso) {
   icForm_(null, { hid, fecha: fechaIso ? String(fechaIso).slice(0, 10) : '' });
 };
 // ═══════════════════════════════════════════════════════════════════════
-// Check-Flow › 🧳 Objetos olvidados (mismo diseño que Incidencias). Datos en Google Cloud (objetos/objetos.json)
+// Operaciones › 🧳 Objetos olvidados (mismo diseño que Incidencias). Datos en Google Cloud (objetos/objetos.json)
 // vía /objetos-list, /save-objeto, /update-objeto; la lista vive en OBJ_STATE.list (la usan Gestión de reservas y el Chats bot).
 // ═══════════════════════════════════════════════════════════════════════
 const OB_EST = [{ k: 'Resguardado', t: 'En resguardo', c: '#94a3b8', s: 'Resg.' }, { k: 'En proceso', t: 'Contactando', c: '#f59e0b', s: 'Contac.' }, { k: 'Entregado', t: 'Entregado', c: '#10b981', s: 'Entreg.' }, { k: 'Desechado', t: 'Desechado / donado', c: '#64748b', s: 'Desech.' }];
@@ -70379,7 +70379,7 @@ function obRender_() {
   const ym = OB.mes || ckMesHoy_(), vista = CK_VISTAS.some(v => v[0] === OB.vista) ? OB.vista : 'estado';
   const todos = obTodos_();
   const nFx = ckFxN_(OB.fx, { per: '30' });
-  const head = `<div class="cl-title">🛠️ Check-Flow</div>`;
+  const head = `<div class="cl-title">🛠️ Operaciones</div>`;
   const nav = `<div class="cl-nav-slot" data-act="objetos">${clNavHtml_('objetos')}</div>`;
   const bar = `<div class="ck-bar">${ckHam_(OB.filAb, nFx, 'OB.filAb=!OB.filAb;obRender_()')}
       <input class="ck-q ob-q" type="search" placeholder="🔎 Buscar alojamiento, objeto, persona…" value="${pcEsc(OB.q)}" oninput="OB.q=this.value;clearTimeout(OB._qt);OB._qt=setTimeout(()=>{obRender_();const i=document.querySelector('#ob-root .ob-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
@@ -70882,7 +70882,7 @@ function histListaHtml_(L) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Check-Flow › 📋 Plantillas (formularios tipo Breezeway). Se crean y editan en la sección «Plantillas»;
+// Operaciones › 📋 Plantillas (formularios tipo Breezeway). Se crean y editan en la sección «Plantillas»;
 // una tarea puede llevar una plantilla (campo en el formulario de la tarea) y al abrirla se llena ese formulario.
 // Datos: GET/POST /aseo/plantillas · /aseo/plantilla(/borrar) · respuestas por día de tarea /aseo/plantilla-resp.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -71006,7 +71006,7 @@ window.plInit_ = async function () {
   if (!ASEO.pl.cargado) { root.innerHTML = plHead_() + '<div class="pl-hint">⏳ Cargando plantillas…</div>'; await plCargar_(); }
   plPintar_();
 };
-// ═══ Check-Flow › 🧹 Programación (antes «Reglas bot»): subsecciones Programación (reglas + propuesta del día) y Tabla (historial por persona) ═══
+// ═══ Operaciones › 🧹 Programación (antes «Reglas bot»): subsecciones Programación (reglas + propuesta del día) y Tabla (historial por persona) ═══
 // a) Programación de limpiezas: personal de limpieza · 2 edificios prioritarios (se guardan en config/reglas-bot.json) ·
 //    días que labora (de su expediente en Personal: «Dias_trabajo», p. ej. «L,M,Mi,J,V»).
 const RB = { reglas: null, cargando: false, asis: null, lunes: null };
@@ -71332,7 +71332,8 @@ window.rbProgramar_ = async function (diaArg, opts) {
       if (!best) { emerg.push(w); return; } best.c.pax.push({ w, pick: best.pick, de: w.prop }); best.c.t = best.pick; best.c.loc = w.prop; });
     // Apoyo de emergencia (otro chofer) solo para regresar a quien nadie más puede llevar; se juntan quienes salen del mismo edificio dentro de la espera máxima.
     // Apoyo de emergencia en cadena: un vehículo recoge a varias personas por el camino (sin esperar con gente a bordo más que la espera máxima).
-    const EV = []; emerg.sort((a, b) => a.t - b.t).forEach(w => { let best = null;
+    if (!rbEmergOn_()) emerg.forEach(w => { w.sinRegreso = true; }); // sin apoyo de emergencia: queda marcado sin regreso
+    const EV = []; (rbEmergOn_() ? emerg : []).sort((a, b) => a.t - b.t).forEach(w => { let best = null;
       EV.forEach(e => { if (e.pax.length >= CH.cap) return; const arr = e.t + (e.loc === w.prop ? 0 : rbTras_(e.loc, w.prop).base); if (w.t - arr > CH.espera) return; const pick = Math.max(w.t, arr); if (!best || pick < best.pick) best = { e, pick }; });
       if (!best) { const e = { ch: EV.length ? 'E' + (EV.length + 1) : 'E', t: w.t, loc: w.prop, de: w.prop, ini: w.t, pax: [] }; EV.push(e); best = { e, pick: w.t }; }
       best.e.pax.push({ w, pick: best.pick, de: w.prop }); best.e.t = best.pick; best.e.loc = w.prop; });
@@ -71662,7 +71663,7 @@ function rbAceptTxt_(a) { if (!a || !a.at) return ''; const d = new Date(a.at); 
 // ═══ Retraso desde la card de Tareas: mismo análisis y mismos datos que el ⚠️ del itinerario ═══
 window.rbRetCard_ = async function (id, dia) {
   if (!RB.reglas) await rbCargar_();
-  if (!((RB.reglas || {}).prog || {})[dia]) { alert('No hay una programación aceptada para ese día.\nPrograma y asigna el día en Check-Flow › 🧹 Programación para poder analizar retrasos.'); return; }
+  if (!((RB.reglas || {}).prog || {})[dia]) { alert('No hay una programación aceptada para ese día.\nPrograma y asigna el día en Operaciones › 🧹 Programación para poder analizar retrasos.'); return; }
   const msg = document.createElement('div'); msg.id = 'rb-ret-wait'; msg.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:100000;display:flex;align-items:center;justify-content:center;font:700 14px Inter,system-ui,sans-serif;color:#fff'; msg.textContent = '⏳ Cargando la programación del día…'; document.body.appendChild(msg);
   let B = null; try { B = RB.prog && RB.prog.dia === dia && RB.prog.aceptada ? RB.prog : await rbPlanAceptado_(dia); } catch (_) {} msg.remove();
   const i = B ? B.T.findIndex(x => x.id === id) : -1;
@@ -71761,7 +71762,7 @@ function rbProgDualHtml_() {
   if (A.vista === 'timeline') { A.vista = 'personal'; RB.tl = true; }
   if (B) B.vista = A.vista; // mismas vistas en los dos escenarios
   const nAs = R => new Set(R.T.filter(t => t.quienN).map(t => t.tid ? 'T' + t.tid : t.asigId + (t.tipoT === 'Inspección' ? 'i' : 'a'))).size;
-  const asg = (R, k) => `<div class="rbp-asg"><button type="button" class="rbp-go" style="background:#16a34a" onclick="rbAsignarEsc_(${k})">✅ Asignar (${nAs(R)} tarea${nAs(R) === 1 ? '' : 's'})</button><span id="rbp-asg-${k}" style="font-size:12px;font-weight:700"></span></div>`;
+  const asg = (R, k) => `<div class="rbp-asg">${rbSugAutoHtml_()}<button type="button" class="rbp-go" style="background:#16a34a" onclick="rbAsignarEsc_(${k})">✅ Asignar (${nAs(R)} tarea${nAs(R) === 1 ? '' : 's'})</button><span id="rbp-asg-${k}" style="font-size:12px;font-weight:700"></span></div>`;
   const tit = R => R.rank === 1 ? '⭐ Escenario 1 · mejor' : 'Escenario 2 · segunda mejor';
   const tab = (k, t) => `<button type="button" class="${A.vista === k ? 'on' : ''}" onclick="rbProgVista_('${k}')">${t}</button>`;
   const barra = `<div class="rbv-bar"><div class="np-tabs">${tab('personal', '👤 Por personal (itinerario)')}${tab('propiedad', '🏢 Por propiedad')}${tab('tipo', '🧹 Por tipo de tarea')}${tab('transporte', '🚗 Transporte')}<button type="button" class="${RB.tl ? 'on' : ''}" onclick="RB.tl=!RB.tl;RB.tlSel=null;rbRender_()" title="Mostrar u ocultar el timeline del día">📊 Timeline</button></div>
@@ -71770,7 +71771,8 @@ function rbProgDualHtml_() {
     <div class="rb-s">Programación guardada al oprimir «Asignar». Los retrasos reportados (desde el itinerario o desde las cards de Tareas) ya están incluidos.</div>${barra}${rbReprogHtml_(hm)}` : `<div class="rb-h">🗓️ Programación propuesta · ${pcEsc(aseoDiaTxt_(A.dia))} <span style="font-size:11.5px;font-weight:700;color:#3730a3;background:#e0e7ff;border-radius:999px;padding:2px 8px">enfoque: ${pcEsc(rbEnfTxt_(A.enfoque))}</span>${A.reprogDe ? ` <span style="font-size:11.5px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px">${A.reprogDe.txt ? pcEsc(A.reprogDe.txt) : `reprogramada · ${pcEsc(A.reprogDe.cod)} ${A.reprogDe.min} min (nivel ${A.reprogDe.nivel})`}</span>` : ''}</div>
     <div class="rb-s">Propuesta automática para revisar; no asigna nada hasta oprimir «Asignar». Considera las reservas registradas, quién labora ese día, edificios asignados, duraciones, traslados, transporte y horario laboral.</div>${barra}${rbReprogHtml_(hm)}`;
   const PA = rbProgHtml_(A, true);
-  const CSS = `<style>.rb-enf{flex-wrap:wrap}.rb-enf button{font-size:11.5px!important}
+  const CSS = `<style>.rb-chk{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;font-weight:600;color:#334155;user-select:none}.rb-chk i{width:18px;height:18px;border:1.5px solid #cbd5e1;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px;font-weight:800;color:#fff;background:#fff;box-sizing:border-box}.rb-chk.on i{background:#16a34a;border-color:#16a34a}
+    .rb-enf{flex-wrap:wrap}.rb-enf button{font-size:11.5px!important}
     .rbv-bar{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin:10px 0 12px}.rbv-bar .np-tabs button{display:inline-flex;align-items:center}.rbv-bar .rb-tlbtn{margin:0;display:inline-flex;align-items:center}
     .rbe-box{border:2px solid #c7d2fe;border-radius:12px;padding:10px 12px;background:#fff}.rbe-tit{font-size:13.5px;font-weight:800;color:#3730a3;margin:0 0 8px}
     .rbc-head{border:1px solid #c7d2fe;background:#eef2ff;border-radius:12px;padding:10px 12px;margin:0 0 12px}.rbc-ks{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px}.rbc-k{background:#fff;border:1px solid #e0e7ff;border-radius:9px;padding:6px 8px}.rbc-k small{display:block;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase}.rbc-k div{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800;color:#334155}.rbc-k i{font-style:normal;font-size:10px;color:#94a3b8;font-weight:600}.rbc-k .win{color:#15803d;background:#dcfce7;border-radius:6px;padding:0 5px}
@@ -71803,8 +71805,9 @@ window.rbAsignarEsc_ = async function (k) {
   const el = document.getElementById('rbp-asg-' + k); if (el) el.textContent = '⏳ Asignando…';
   const x = await rbAsignarR_(R, false, false);
   try { if (typeof aseoRefresh_ === 'function') await aseoRefresh_(true); ASEO.calSig = ''; if (typeof aseoRender_ === 'function' && document.getElementById('module-aseo') && !document.getElementById('module-aseo').classList.contains('hidden')) aseoRender_(); } catch (_) {}
+  if (x.ok && rbSugAuto_()) { const e3 = document.getElementById('rbp-asg-' + k); if (e3) e3.textContent = '⏳ Agregando Limpieza-General sugeridas…'; x.sug = await rbSugTodas_(R); }
   if (x.ok) { R.aceptada = R.aceptada || { at: new Date().toISOString(), by: (typeof currentUser !== 'undefined' && currentUser) || '' }; if (k === 2) { const a = RB.prog; RB.prog = R; RB.prog2 = a; R.rank = 1; } RB.prog2 = null; RB.cmp = false; rbRender_(); }
-  const e2 = document.getElementById('rbp-asg-' + k); if (e2) { e2.textContent = x.err ? `⚠️ Se asignaron ${x.ok}; ${x.err} no se pudieron guardar.` : `✓ Listo: se asignaron ${x.ok} tarea${x.ok === 1 ? '' : 's'}.`; e2.style.color = x.err ? '#b91c1c' : '#15803d'; }
+  const e2 = document.getElementById('rbp-asg-' + k); if (e2) { e2.textContent = (x.err ? `⚠️ Se asignaron ${x.ok}; ${x.err} no se pudieron guardar.` : `✓ Listo: se asignaron ${x.ok} tarea${x.ok === 1 ? '' : 's'}.`) + (x.sug ? ` · ${x.sug} Limpieza-General agregada${x.sug === 1 ? '' : 's'}.` : ''); e2.style.color = x.err ? '#b91c1c' : '#15803d'; }
 };
 // «?»: todas las reglas de la programación automática (además de los incisos a–d de esta sección).
 // ═══ Reglas de la programación («?»): obligatorias, prioridades con fuerza editable y parámetros simples ═══
@@ -71846,6 +71849,24 @@ function rbPesosEnf_(k) { const P = rbPesos_();
 window.rbEnfSet_ = function (k) { RB.enfoque = k; if (RB.dr) rbDrPintar_(); else rbRender_(); };
 function rbEnfHtml_() { const cur = RB.enfoque || 'param'; return `<div class="ad-seg rb-enf" title="Enfoque de la optimización">${RB_ENF.map(([k, t, d]) => `<button type="button" class="${cur === k ? 'on' : ''}" title="${pcEsc(d)}" onclick="rbEnfSet_('${k}')">${t}</button>`).join('')}</div>`; }
 function rbPesos_() { const o = {}; RB_PESOS.forEach(r => { o[r.k] = rbW_(r.k); }); return o; }
+// «Aceptar sugerencias de limpiezas en áreas comunes» (activo por omisión): al Asignar se crean todas las Limpieza-General sugeridas.
+// «Cuenta con apoyo de chofer de emergencia» (activo por omisión): al final del día regresa a quien nadie más puede llevar.
+function rbEmergOn_() { const v = (RB.reglas || {}).emerg_on; return v == null ? true : !!v; }
+window.rbEmergSet_ = async function () { if (!RB.reglas) return; RB.reglas.emerg_on = !rbEmergOn_(); if (RB.dr) rbDrPintar_(); else rbRender_(); try { await rbPost_({ emerg_on: RB.reglas.emerg_on }); } catch (_) {} };
+function rbEmergHtml_() { const on = rbEmergOn_(); return `<span class="rb-chk ${on ? 'on' : ''}" onclick="rbEmergSet_()" title="Si está activo, al final del día un chofer de apoyo regresa a Ed. Torreón a quien nadie más puede llevar. Aplica al programar."><i>${on ? '✓' : ''}</i>Cuenta con apoyo de chofer de emergencia</span>`; }
+function rbSugAuto_() { const v = (RB.reglas || {}).sug_auto; return v == null ? true : !!v; }
+window.rbSugAutoSet_ = async function () { if (!RB.reglas) return; RB.reglas.sug_auto = !rbSugAuto_(); if (RB.dr) rbDrPintar_(); else rbRender_(); try { await rbPost_({ sug_auto: RB.reglas.sug_auto }); } catch (_) {} };
+function rbSugAutoHtml_() { const on = rbSugAuto_(); return `<span class="rb-chk ${on ? 'on' : ''}" onclick="rbSugAutoSet_()" title="Al oprimir «Asignar» se agregan también todas las tareas de Limpieza-General sugeridas en los tiempos muertos"><i>${on ? '✓' : ''}</i>Aceptar sugerencias de limpiezas en áreas comunes</span>`; }
+// Lista de sugerencias de una programación: esperas largas (≥ umbral) y tiempo libre al final (> 30 min).
+function rbSugLista_(R) { const L = [];
+  R.S.forEach((x, i) => { x.pasos.forEach(p => { const d = rbDgPaso_(p); if (d.esp < rbSugMin_()) return; const prop = p.k === 'esp' ? p.t.prop : p.de; if (prop) L.push({ i, x, prop, h: Math.round(p.ini), min: Math.round(d.esp), key: `${x.n}|${Math.round(p.ini)}` }); });
+    if (x.pasos.length && R.fin - x.t > 30) L.push({ i, x, prop: x.ultProp || x.prop, h: Math.round(x.tFin || x.t), min: Math.round(R.fin - x.t), key: x.n, fin: true }); });
+  return L.filter(s => !(R.sugOk || {})[s.key]); }
+async function rbSugTodas_(R) { // crea todas las Limpieza-General sugeridas
+  let n = 0; for (const sg of rbSugLista_(R)) { const hid = rbEdHid_(sg.prop) || ''; const hh = `${String(Math.floor(sg.h / 60)).padStart(2, '0')}:${String(sg.h % 60).padStart(2, '0')}`;
+    const tarea = { hid, depto: 'limpieza', problema: false, prioridad: 'baja', titulo: 'Limpieza-General', desc: `Sugerida por la programación (aceptada automáticamente): ${sg.x.corto} tiene ${sg.min} min ${sg.fin ? 'libres al terminar' : 'de espera'} en ${sg.prop}.`, fecha: R.dia, hora: hh, repite: null, asignados: [sg.x.n], etiquetas: [], adjuntos: [], reserva: '' };
+    try { const j = await fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea, user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json()); if (j.ok) { (ASEO.tareas = ASEO.tareas || {})[j.tarea.id] = j.tarea; (R.sugOk = R.sugOk || {})[sg.key] = j.tarea.id; n++; } } catch (_) {} }
+  return n; }
 const RB_REG_DEF = 20; function rbRegMargen_() { const v = Number((RB.reglas || {}).reg_margen); return (RB.reglas || {}).reg_margen != null && v >= 0 ? v : RB_REG_DEF; } // margen de regreso después de la salida
 window.rbRegSet_ = async function (v) { const n = Math.max(0, Math.min(180, Math.round(Number(v)))); if (!isFinite(n) || !RB.reglas) return; RB.reglas.reg_margen = n; try { await rbPost_({ reg_margen: n }); } catch (_) {} };
 const RB_SUG_DEF = 30; function rbSugMin_() { const v = Number((RB.reglas || {}).sug_min); return v > 0 ? v : RB_SUG_DEF; }
@@ -72119,10 +72140,11 @@ function rbDrPintar_() {
       <div class="rb-s">En verde quien le toca trabajar ese día. Clic en el estado para cambiarlo (Tentativo → Confirmado → Falta → Sin asignar).</div>
       <table class="rb-t"><tbody>${filas || '<tr><td style="color:#94a3b8">⏳ Cargando personal…</td></tr>'}</tbody></table>
       <div class="rb-s" id="rb-save" style="margin-top:6px"></div>
-      ${(() => { const ac = R && R.aceptada, btnP = `<div style="margin:12px 0 4px">${rbEnfHtml_()}</div><div style="margin:4px 0 12px;display:flex;gap:8px;align-items:center"><button type="button" class="rbp-go ad-bt pri" style="flex:1;justify-content:center;text-align:center;box-sizing:border-box" onclick="rbProgramar_()">${ac ? '🔄 Re-programar limpiezas del día' : '🪄 Programar'}</button><button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`;
+      ${(() => { const ac = R && R.aceptada, btnP = `<div style="margin:12px 0 4px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">${rbEnfHtml_()}${rbEmergHtml_()}</div><div style="margin:4px 0 12px;display:flex;gap:8px;align-items:center"><button type="button" class="rbp-go ad-bt pri" style="flex:1;justify-content:center;text-align:center;box-sizing:border-box" onclick="rbProgramar_()">${ac ? '🔄 Re-programar limpiezas del día' : '🪄 Programar'}</button><button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`;
         const res = R ? `${ac ? `<div style="margin:6px 0 10px;padding:8px 10px;border-radius:10px;background:#dcfce7;color:#166534;font-size:12.5px;font-weight:700">✅ Programación aceptada · ${pcEsc(rbAceptTxt_(R.aceptada))} · enfoque: ${pcEsc(rbEnfTxt_(R.enfoque))}${Object.keys(R.retrasos || {}).length ? ` · ⏱ ${Object.keys(R.retrasos).length} retraso(s) registrado(s)` : ''}</div>` : ''}${rbProgHtml_()}
           ${ac ? '' : `<div style="position:sticky;bottom:0;background:#fff;padding:10px 0;border-top:1px solid #e2e8f0">
           ${RB.asignado ? `<div class="rb-s" style="margin:0 0 8px;color:${/^⚠️/.test(RB.asignado) ? '#b91c1c' : '#15803d'};font-weight:700">${pcEsc(RB.asignado)}</div>` : ''}
+          <div style="margin:0 0 8px">${rbSugAutoHtml_()}</div>
           <button type="button" class="ad-bt pri" id="rbd-asig" style="width:100%;background:#16a34a;border-color:#16a34a" ${nA ? '' : 'disabled'} onclick="rbAsignar_()">✅ Asignar (${nA} tarea${nA === 1 ? '' : 's'})</button></div>`}` : '';
         return ac ? res + btnP : btnP + res; })()}
     </div>`;
@@ -72158,7 +72180,8 @@ window.rbAsignar_ = async function () {
   if (!confirm(`¿Asignar el personal propuesto a ${n} tarea${n === 1 ? '' : 's'} del ${aseoDiaTxt_(R.dia)}?\nReemplaza a quien esté asignado en esas tareas.`)) return;
   const btn = document.getElementById('rbd-asig'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Asignando…'; }
   const x = await rbAsignarR_(R, false, false); // guarda la programación como aceptada (fecha y hora)
-  RB.asignado = x.err ? `⚠️ Se asignaron ${x.ok}; ${x.err} no se pudieron guardar.` : `✓ Listo: se asignaron ${x.ok} tarea${x.ok === 1 ? '' : 's'}.`;
+  if (x.ok && rbSugAuto_()) { x.sug = await rbSugTodas_(R); if (x.sug) await rbGuardarFull_(R); }
+  RB.asignado = (x.err ? `⚠️ Se asignaron ${x.ok}; ${x.err} no se pudieron guardar.` : `✓ Listo: se asignaron ${x.ok} tarea${x.ok === 1 ? '' : 's'}.`) + (x.sug ? ` · ${x.sug} Limpieza-General agregada${x.sug === 1 ? '' : 's'}.` : '');
   try { if (typeof aseoRefresh_ === 'function') await aseoRefresh_(true); ASEO.calSig = ''; if (typeof aseoRender_ === 'function') aseoRender_(); } catch (_) {}
   rbDrPintar_();
 };
@@ -72228,7 +72251,7 @@ function rbRender_() {
       <td><select class="rb-sel" onchange="rbSet_(${pcEsc(JSON.stringify(n))},'ed2',this.value)">${opt(x.ed2)}</select></td>
       ${RB_DIAS.map(([k, t], i) => { const f = fechas[i], e = rbEstado_(n, f, D.has(k)), man = !!(((RB.reglas || {}).asist || {})[n] || {})[f];
         return `<td class="rb-d"><button type="button" class="rb-c ${e}" onclick="rbClic_(${pcEsc(JSON.stringify(n))},'${f}','${e}')" title="${RB_EST[e].t}${man ? ' (marcado a mano)' : rbAsisDe_(n, f) ? ' (registro de asistencia)' : D.has(k) ? ' (le toca trabajar)' : ' (descansa)'} — clic: ${RB_EST[RB_EST[e].sig].t}">${t}</button></td>`; }).join('')}</tr>`; }).join('');
-  root.innerHTML = `<div class="cl-title">🛠️ Check-Flow</div><div class="cl-nav-slot" data-act="reglasbot">${clNavHtml_('reglasbot')}</div>
+  root.innerHTML = `<div class="cl-title">🛠️ Operaciones</div><div class="cl-nav-slot" data-act="reglasbot">${clNavHtml_('reglasbot')}</div>
     <style>.rb-w{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;font-family:Inter,system-ui,sans-serif;max-width:none;box-sizing:border-box;width:100%}
       .rb-h{font-size:15px;font-weight:800;color:#0f172a;margin:0 0 4px}.rb-s{font-size:12px;color:#64748b;margin:0 0 12px}
       .rb-t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}.rb-t th{font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:8px;border-bottom:1px solid #e8eaee;background:#f8fafc}
@@ -72261,7 +72284,7 @@ function rbRender_() {
       .rbp-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 0}.rbp-t>b{font:700 11px ui-monospace,Menlo,monospace;background:#f1f5f9;padding:1px 6px;border-radius:5px}.rbp-t>span{font-size:12px;color:#0f172a}</style>
     <div class="np-tabs" style="margin:0 0 12px"><button type="button" class="${RB.sec !== 'tabla' ? 'on' : ''}" onclick="rbSec_('prog')">🗓️ Programación</button><button type="button" class="${RB.sec === 'tabla' ? 'on' : ''}" onclick="rbSec_('tabla')">📒 Bitácora</button></div>
     ${RB.sec === 'tabla' ? `<div class="rb-w" style="max-width:none">${rbTablaHtml_()}</div>` : `
-    <div class="rb-w">${(bar => RB.prog && RB.prog.aceptada ? rbCambiosHtml_() + rbProgDualHtml_() + bar : bar + rbCambiosHtml_() + rbProgDualHtml_())(`<div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">${RB.prog && RB.prog.aceptada ? '🔄 Re-programar limpiezas del día:' : '🧹 Programar limpiezas del día:'}</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}" onchange="rbDiaSel_(this.value)">${rbEnfHtml_()}
+    <div class="rb-w">${(bar => RB.prog && RB.prog.aceptada ? rbCambiosHtml_() + rbProgDualHtml_() + bar : bar + rbCambiosHtml_() + rbProgDualHtml_())(`<div class="rbp-bar"><button type="button" class="rbp-go" onclick="rbProgramar_()">${RB.prog && RB.prog.aceptada ? '🔄 Re-programar limpiezas del día:' : '🧹 Programar limpiezas del día:'}</button><input type="date" id="rb-pdia" class="rb-sel" style="min-width:0;width:150px" value="${RB.pdia || aseoHoyIso_()}" onchange="rbDiaSel_(this.value)">${rbEnfHtml_()}${rbEmergHtml_()}
       <span style="font-size:11.5px;color:#475569">Propone quién hace cada limpieza e inspección, en qué orden y a qué hora.</span>${rbAutoHtml_()}<button type="button" class="rb-param" onclick="rbAyuda_()" title="Reglas, condiciones y ponderación de la programación">⚙️ Parámetros</button></div>`)}
       <div class="rb-h">a) Programación de limpiezas</div>
       <div class="rb-s">Personal de limpieza y de mantenimiento con sus edificios asignados y su asistencia por día: los días pasados toman el registro de asistencia; los futuros quedan «Tentativo» si le toca trabajar (según su expediente en Personal › «Días de trabajo»). Todo se guarda solo.</div>
