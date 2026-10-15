@@ -5104,7 +5104,7 @@ app.post("/internal/sync-guias-to-github", async (req, res) => {
     }
 
     for (const row of rows) {
-      const id = String(row.HouseId || row.HouseID || row.ID || "").trim();
+      const id = String(row.HouseId || row.HouseID || row.id_lodgify || row.ID || "").trim(); // HouseId viene vacío en el catálogo: usar id_lodgify
       if (!id) continue;
       const photos = await fetchLodgifyPhotos(id);
       const rowWithPhotos = Object.assign({}, row, { photos });
@@ -5116,7 +5116,7 @@ app.post("/internal/sync-guias-to-github", async (req, res) => {
     }
     files.push({
       path: `${baseDir}/index.json`,
-      content: JSON.stringify({ ok: true, generatedAt, count: files.length, items: summary }, null, 2),
+      content: JSON.stringify({ ok: true, generatedAt, count: summary.length, items: summary }, null, 2),
     });
 
     // 2) Git Data API — 1 commit atómico con todos los archivos.
