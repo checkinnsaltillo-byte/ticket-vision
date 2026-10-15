@@ -71079,6 +71079,8 @@ function rbHorDur_(H) { const m = t => { const [a, b] = t.split(':').map(Number)
 // duración por tipo de alojamiento, tiempos de traslado entre propiedades y horario laboral. Primero todas las limpiezas, después las inspecciones; las que reciben huésped van primero.
 const RB_COLS = [['#1d4ed8', '#dbeafe'], ['#be185d', '#fce7f3'], ['#047857', '#d1fae5'], ['#b45309', '#fef3c7'], ['#7c3aed', '#ede9fe'], ['#0e7490', '#cffafe'], ['#b91c1c', '#fee2e2'], ['#4d7c0f', '#ecfccb'], ['#c2410c', '#ffedd5'], ['#4338ca', '#e0e7ff']]; // color por persona (texto, fondo)
 const RB_MGA_DEF = 10; // f) tolerancia entre un alojamiento y otro dentro del mismo edificio (predeterminado)
+// Pesos de la optimización: vuelta nueva del chofer y minuto de espera (al elegir) y en la calificación del reparto.
+const RB_W_VUELTA = 45, RB_W_ESPERA = 1.5, RB_W_VUELTA_S = 70, RB_W_ESPERA_S = 3;
 const RB_MAX_TRAS = 2; // e) traslados entre edificios por persona al día (preferido); se permite 1 más solo si hace falta
 // h) Transporte: un chofer por día (mismo horario laboral), capacidad del vehículo y espera máxima a demanda.
 // Roles por persona (a): «chofer» y/o «limpieza». Sin guardar: limpieza si su puesto es de limpieza.
@@ -71238,8 +71240,9 @@ window.rbProgramar_ = async function (diaArg, opts) {
         const lleg0 = pv ? pv.llega : w.t + tr.m, llega = Math.max(lleg0, t.desde || 0), termina = llega + t.dur; // con salida tardía espera a que salga el huésped
         const pen = w.x.ed1 === t.prop ? 0 : w.x.ed2 === t.prop ? 25 : 60; // preferencia: edificio prioritario › segundo › otro
         const tarde = t.lim != null && termina > t.lim ? 200 : 0, extra = termina > fin ? 120 : 0;
-        const masT = cuenta && w.nT >= tPref ? 150 : 0, vNueva = pv && !pv.join ? 25 : 0; // traslado de más · vuelta nueva del chofer (se prefiere compartir)
-        const costo = termina + pen + tarde + extra + masT + vNueva + (rnd ? Math.random() * rnd : 0); if (!best || costo < best.costo) best = { w, tr, pv, veh, cuenta, lleg0, llega, termina, costo, mueve, pen }; });
+        const masT = cuenta && w.nT >= tPref ? 150 : 0, vNueva = pv && !pv.join ? RB_W_VUELTA : 0; // traslado de más · vuelta nueva del chofer (se prefiere compartir)
+        const espM = (pv ? Math.max(0, pv.sale - w.t) : 0) + Math.max(0, llega - lleg0); // tiempo muerto: esperar al chofer o a una salida tardía
+        const costo = termina + pen + tarde + extra + masT + vNueva + espM * RB_W_ESPERA + (rnd ? Math.random() * rnd : 0); if (!best || costo < best.costo) best = { w, tr, pv, veh, cuenta, lleg0, llega, termina, costo, mueve, pen, espM }; });
       if (!best) { sin.push(t); return; }
       const w = best.w, late = t.lim != null && best.termina > t.lim;
       if (best.pv) { let v = best.pv.join; if (!v) { v = { de: w.prop, a: t.prop, sale: best.pv.sale, llega: best.pv.llega, pax: [], drops: [], ch: best.pv.ch, rep: best.pv.rep, desdeCh: best.pv.desdeCh, base: w.prop === BASE && w.base }; V.push(v); }
@@ -71250,7 +71253,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
       if (best.llega > best.lleg0) w.pasos.push({ k: 'esp', ini: best.lleg0, fin: best.llega, t });
       w.pasos.push({ k: 'tarea', t, ini: best.llega, fin: best.termina, pri: w.x.ed1 === t.prop ? 1 : w.x.ed2 === t.prop ? 2 : 0, tarde: late });
       if (best.mueve && !w.base) { if (best.cuenta) w.nT++; w.vis.push(w.prop); }
-      w.base = false; w.trabajo += t.dur; w.t = best.termina; w.prop = t.prop; w.hid = t.hid; pref += best.pen; if (late) tardes++;
+      w.esp = (w.esp || 0) + best.espM; w.base = false; w.trabajo += t.dur; w.t = best.termina; w.prop = t.prop; w.hid = t.hid; pref += best.pen; if (late) tardes++;
       A.set(t, { w, ini: best.llega, fin: best.termina });
     });
     // Regreso final al lugar de partida: al terminar, cada persona vuelve (con el chofer o a pie si es del mismo polo).
@@ -71260,6 +71263,7 @@ window.rbProgramar_ = async function (diaArg, opts) {
         if (!v) { v = { de: w.prop, a: BASE, sale: pv.sale, llega: pv.llega, pax: [], drops: [], ch: pv.ch, reg: true }; V.push(v); }
         else { if (pv.nuevoFin && pv.nuevoFin > v.llega) { const nf = pv.nuevoFin; v.drops.forEach(d => { if (d.a === v.a) { d.llega = nf; const w2 = W.find(o => o.x === d.x), pp = w2 && [...w2.pasos].reverse().find(q => q.k === 'tras' && q.v === v); if (pp) { w2.tras += nf - pp.fin; pp.fin = nf; pp.m = nf - pp.ini; w2.t = nf; } } }); v.llega = nf; } if (pv.ext) { v.llega = pv.llega; v.a = BASE; } }
         v.pax.push(w.x); v.drops.push({ de: w.prop, pick: pv.sale, a: BASE, llega: pv.llega, x: w.x });
+        w.esp = (w.esp || 0) + Math.max(0, pv.sale - w.t);
         w.pasos.push({ k: 'tras', veh: true, reg: true, v, de: w.prop, a: BASE, ini: w.t, sale: pv.sale, fin: pv.llega, m: pv.llega - w.t, base: rbTras_(w.prop, BASE).base }); w.tras += pv.llega - w.t; w.t = pv.llega; }
       else { const tr = rbTras_(w.prop, BASE, true); w.pasos.push({ k: 'tras', pie: true, reg: true, de: w.prop, a: BASE, ini: w.t, fin: w.t + tr.m, m: tr.m, base: tr.base, est: tr.est }); w.tras += tr.m; w.t += tr.m; }
       w.prop = BASE;
@@ -71267,10 +71271,11 @@ window.rbProgramar_ = async function (diaArg, opts) {
     const c = W.map(w => w.trabajo + w.tras), prom = c.reduce((a, v) => a + v, 0) / (c.length || 1);
     const score = sin.length * 5000 + tardes * 300 + W.reduce((a, w) => a + Math.max(0, w.t - fin), 0) * 3
       + c.reduce((a, v) => a + Math.abs(v - prom), 0) * 2 + (c.length ? Math.max(...c) - Math.min(...c) : 0) + W.reduce((a, w) => a + w.tras, 0) * 0.5 + pref * 0.5 + W.reduce((a, w) => a + Math.max(0, w.nT - tPref), 0) * 250
-      + V.length * 40; // menos vueltas del chofer
+      + V.length * RB_W_VUELTA_S // menos vueltas del chofer (aprovechar cada vuelta con varias personas por el circuito)
+      + W.reduce((a, w) => a + (w.esp || 0), 0) * RB_W_ESPERA_S; // menos tiempo muerto
     return { W, A, sin, score, V };
   };
-  let mejor = corre(0); for (let i = 0; i < 600; i++) { const r = corre(20 + (i % 6) * 25); if (r.score < mejor.score) mejor = r; }
+  let mejor = corre(0); for (let i = 0; i < 900; i++) { const r = corre(20 + (i % 6) * 25); if (r.score < mejor.score) mejor = r; }
   { const CHf = rbChofer_(); for (let k = 0; k < CHf.n; k++) { let loc = CHf.base; mejor.V.filter(v => v.ch === k).sort((x, y) => x.sale - y.sale).forEach(v => { v.desdeCh = loc; v.rep = loc && loc !== v.de ? rbTras_(loc, v.de).base : 0; loc = v.a; }); } } // línea de tiempo del chofer, en orden de hora
   const sinAsig = mejor.sin;
   mejor.W.forEach(w => Object.assign(w.x, { ultProp: w.ultProp || w.prop, tFin: w.tFin || w.t, pasos: w.pasos, trabajo: w.trabajo, tras: w.tras, t: w.t, prop: w.prop, nT: w.nT }));
@@ -71319,6 +71324,7 @@ function rbTimelineHtml_(R, hm) {
 // Clic en una barra: resalta la barra y su registro en la vista de la derecha (y lo trae a la vista). Doble clic: detalles en la ventana lateral.
 window.rbTlSel_ = function (k, i, sinScroll) {
   RB.tlSel = [k, i];
+  if (k === 'v' && !sinScroll && RB.prog && RB.prog.vista !== 'transporte') { RB.prog.vista = 'transporte'; rbRender_(); setTimeout(() => rbTlSel_('v', i), 40); return; } // barra de transporte → pestaña Transporte
   document.querySelectorAll('.rbsel').forEach(e => e.classList.remove('rbsel'));
   document.querySelectorAll(`[data-tl${k}="${i}"]`).forEach(e => e.classList.add('rbsel'));
   const L = document.querySelectorAll(`#rbp-rec [data-rb${k}="${i}"]`); L.forEach(e => e.classList.add('rbsel'));
@@ -71397,6 +71403,19 @@ window.rbSugLG_ = async function (i) {
     (R.sugOk = R.sugOk || {})[x.n] = j.tarea.id; try { ASEO.calSig = ''; if (typeof aseoRender_ === 'function') aseoRender_(); } catch (_) {} rbRender_();
   } catch (e) { alert('No se pudo crear la tarea: ' + (e.message || e)); }
 };
+// Desglose del tiempo de una persona: tarea · traslado neto (tiempo base del trayecto) · tolerancias (vehículo, a pie y entre
+// alojamientos) · espera / tiempo muerto (esperar al chofer o a una salida tardía).
+function rbDgPaso_(p) {
+  if (p.k === 'tarea') return { tarea: p.t.dur, neto: 0, tol: 0, esp: 0 };
+  if (p.k === 'esp') return { tarea: 0, neto: 0, tol: 0, esp: p.fin - p.ini };
+  if (p.k !== 'tras') return { tarea: 0, neto: 0, tol: 0, esp: 0 };
+  if (p.mismo) return { tarea: 0, neto: 0, tol: p.m, esp: 0 };
+  if (p.veh) { const sale = p.sale != null ? p.sale : p.ini, esp = Math.max(0, sale - p.ini), viaje = Math.max(0, p.fin - sale), neto = Math.min(p.base || 0, viaje); return { tarea: 0, neto, tol: viaje - neto, esp }; }
+  const neto = Math.min(p.base || 0, p.m); return { tarea: 0, neto, tol: p.m - neto, esp: 0 };
+}
+function rbDesg_(pasos) { const D = { tarea: 0, neto: 0, tol: 0, esp: 0 }; (pasos || []).forEach(p => { const d = rbDgPaso_(p); Object.keys(D).forEach(k => { D[k] += d[k]; }); }); D.total = D.tarea + D.neto + D.tol + D.esp; return D; }
+function rbDgHtml_(D, hm) { return `<span class="rbp-dg"><span title="Limpieza / inspección">🧹 ${hm(D.tarea)}</span><span title="Traslado neto (tiempo base del trayecto)">🚗 ${hm(D.neto)}</span><span title="Tolerancias: vehículo, a pie y entre alojamientos">⏱ ${hm(D.tol)}</span><span title="Espera o tiempo muerto" class="${D.esp ? 'esp' : ''}">⏳ ${hm(D.esp)}</span><b>= ${hm(D.total)} total</b></span>`; }
+function rbDgP_(p, hm) { const d = rbDgPaso_(p); if (!d.neto && !d.tol && !d.esp) return ''; return `<span class="rbp-dgp">${d.neto ? `neto ${hm(d.neto)}` : ''}${d.tol ? `${d.neto ? ' + ' : ''}tolerancia ${hm(d.tol)}` : ''}${d.esp ? ` + <b style="color:#b45309">espera ${hm(d.esp)}</b>` : ''}</span>`; }
 window.rbProgVista_ = function (v) { if (RB.prog) { RB.prog.vista = v; rbRender_(); if (RB.tlSel) setTimeout(() => rbTlSel_(RB.tlSel[0], RB.tlSel[1], true), 30); } };
 function rbProgHtml_() {
   const R = RB.prog; if (!R) return '';
@@ -71409,7 +71428,7 @@ function rbProgHtml_() {
   const resumen = `<div class="rbp-kpis">
     <div><small>Tareas</small><b>${nT}</b><em>${R.T.filter(t => t.tipoT === 'Limpieza').length} limpiezas · ${R.T.filter(t => t.tipoT === 'Inspección').length} inspecciones${R.hechas ? ` · ${R.hechas} ya terminadas` : ''}</em></div>
     <div><small>Camas</small><b>🛏 ${rbCamS_(R.T)}</b><em><b style="display:inline;font-size:11.5px;color:#0f766e">${rbCamDesg_(R.T) || '—'}</b><br>${(() => { const P = new Map(); R.T.forEach(t => { if (t.camas) P.set(t.prop, (P.get(t.prop) || 0) + t.camas); }); return [...P.entries()].sort((a, b) => b[1] - a[1]).map(([p, n]) => `${pcEsc(p)} ${n}`).join(' · ') || 'Sin camas por tender'; })()}</em></div>
-    <div><small>Tiempo requerido</small><b>${hm(R.req)}</b><em>+ ${hm(R.S.reduce((a, x) => a + x.tras, 0))} de traslados (${rbMgT_()} min de margen entre edificios · ${rbMgA_()} min entre alojamientos)</em></div>
+    <div><small>Tiempo requerido</small><b>${hm(R.req)}</b><em>${(D => `+ traslado neto ${hm(D.neto)} · tolerancias ${hm(D.tol)} · espera ${hm(D.esp)} = <b style="display:inline;font-size:11px;color:#0f172a">${hm(D.total)}</b>`)(R.S.reduce((A, x) => { const d = rbDesg_(x.pasos); ['tarea', 'neto', 'tol', 'esp', 'total'].forEach(k => { A[k] += d[k]; }); return A; }, { tarea: 0, neto: 0, tol: 0, esp: 0, total: 0 }))}</em></div>
     <div><small>Capacidad del equipo</small><b>${hm(R.cap)}</b><em>${R.S.length} persona${R.S.length === 1 ? '' : 's'} × ${hm(R.fin - R.ini)} (${rbHHMM_(R.ini)} a ${rbHHMM_(R.fin)})</em></div>
     <div><small>Reparto por persona</small><b>${R.S.length ? `${hm(Math.min(...R.S.map(x => x.trabajo + x.tras)))} – ${hm(Math.max(...R.S.map(x => x.trabajo + x.tras)))}` : '—'}</b><em>Carga más baja y más alta (trabajo + traslados) · ${rbTrasPref_()} traslados preferidos por persona</em></div>
     <div><small>Tiempo disponible</small><b>${hm(R.S.reduce((a, x) => a + Math.max(0, R.fin - x.t), 0))}</b><em>Sobrante del equipo hasta la salida (${rbHHMM_(R.fin)}): ${R.S.map(x => `${pcEsc(x.corto.split(' ')[0])} ${x.t > R.fin ? '<b style="display:inline;font-size:11px;color:#b91c1c">−' + hm(x.t - R.fin) + '</b>' : hm(R.fin - x.t)}`).join(' · ') || '—'}</em></div>
@@ -71419,8 +71438,8 @@ function rbProgHtml_() {
   const tab = (k, t) => `<button type="button" class="${R.vista === k ? 'on' : ''}" onclick="rbProgVista_('${k}')">${t}</button>`;
   let cuerpo = '';
   if (R.vista === 'personal') cuerpo = R.S.map(x => { const exc2 = x.t - R.fin;
-    return `<div class="rbp-p" style="border-left:4px solid ${(x.col || [])[0] || '#e8eaee'}"><div class="rbp-ph">${typeof adAv_ === 'function' ? adAv_(x.n) : ''}${chip('👤 ' + pcEsc(x.corto), (x.col || [])[0] || '#0f172a', (x.col || [])[1] || '#f1f5f9').replace('font-size:11px', 'font-size:13px')}${chip(RB_EST[x.e].t, x.e === 'confirmado' ? '#fff' : '#15803d', x.e === 'confirmado' ? '#16a34a' : '#f0fdf4')}<span class="sp"></span><span class="rbp-m">${x.pasos.filter(p => p.k === 'tarea').length} tareas · 🛏 <b style="color:#0f172a">${(L => rbCamTxt_(rbCamS_(L)) + (rbCamS_(L) ? ` (${rbCamDesg_(L)})` : ''))(x.pasos.filter(p => p.k === 'tarea').map(p => p.t))}</b> · <span style="${(x.nT || 0) > rbTrasPref_() ? 'color:#b91c1c;font-weight:700' : ''}">${x.nT || 0} traslado${x.nT === 1 ? '' : 's'} en chofer${(x.nT || 0) > rbTrasPref_() ? ' (uno más de lo preferido)' : ''}</span> · ${hm(x.trabajo)} + ${hm(x.tras)} traslado = <b style="color:#0f172a">${hm(x.trabajo + x.tras)} total</b> · ${exc2 > 0 ? `<b style="color:#b91c1c">se pasa ${hm(exc2)}</b>` : x.pasos.length ? `termina ${rbHHMM_(x.t)}` : 'sin tareas'}</span></div>
-      <ol class="rbp-it">${x.pasos.length ? x.pasos.map(p => p.k === 'esp' ? `<li class="tr"><span class="h">${rbHHMM_(p.ini)}</span><span>⏳ Espera ${hm(p.fin - p.ini)}: salida tardía en ${pcEsc(p.t.cod || '')} (después de ${rbHHMM_(p.t.desde)})</span></li>` : p.k === 'tras' ? `<li class="tr" ${p.veh ? `data-rbv="${(R.viajes || []).indexOf(p.v)}"` : ''}><span class="h">${rbHHMM_(p.ini)}</span><span>${p.mismo ? `⏱ Margen entre alojamientos · ${p.m} min` : p.veh ? `🚗 Chofer ${pcEsc(p.de)} → ${pcEsc(p.a)} · sale ${rbHHMM_(p.sale)}${p.sale > p.ini ? ` (espera ${Math.round(p.sale - p.ini)} min al chofer)` : ''} · llega ${rbHHMM_(p.fin)}${p.v && p.v.pax.length > 1 ? ` · viaja con ${p.v.pax.filter(o => o !== x).map(o => pcEsc(o.corto.split(' ')[0])).join(', ')}` : ''}` : p.pie ? `🚶 A pie ${pcEsc(p.de)} → ${pcEsc(p.a)} (polo ${rbPolo_(p.de)}) · ${p.base} min${p.est ? ' (estimado)' : ''} + ${rbMgP_()} min de tolerancia a pie = ${p.m} min` : `🚗 Traslado ${pcEsc(p.de)} → ${pcEsc(p.a)} · ${p.base} min${p.est ? ' (estimado)' : ''} + ${rbMgT_()} min de margen = ${p.m} min`}</span></li>`
+    return `<div class="rbp-p" style="border-left:4px solid ${(x.col || [])[0] || '#e8eaee'}"><div class="rbp-ph">${typeof adAv_ === 'function' ? adAv_(x.n) : ''}${chip('👤 ' + pcEsc(x.corto), (x.col || [])[0] || '#0f172a', (x.col || [])[1] || '#f1f5f9').replace('font-size:11px', 'font-size:13px')}${chip(RB_EST[x.e].t, x.e === 'confirmado' ? '#fff' : '#15803d', x.e === 'confirmado' ? '#16a34a' : '#f0fdf4')}<span class="sp"></span><span class="rbp-m">${x.pasos.filter(p => p.k === 'tarea').length} tareas · 🛏 <b style="color:#0f172a">${(L => rbCamTxt_(rbCamS_(L)) + (rbCamS_(L) ? ` (${rbCamDesg_(L)})` : ''))(x.pasos.filter(p => p.k === 'tarea').map(p => p.t))}</b> · <span style="${(x.nT || 0) > rbTrasPref_() ? 'color:#b91c1c;font-weight:700' : ''}">${x.nT || 0} traslado${x.nT === 1 ? '' : 's'} en chofer${(x.nT || 0) > rbTrasPref_() ? ' (uno más de lo preferido)' : ''}</span> · ${rbDgHtml_(rbDesg_(x.pasos), hm)} · ${exc2 > 0 ? `<b style="color:#b91c1c">se pasa ${hm(exc2)}</b>` : x.pasos.length ? `termina ${rbHHMM_(x.t)}` : 'sin tareas'}</span></div>
+      <ol class="rbp-it">${x.pasos.length ? x.pasos.map(p => p.k === 'esp' ? `<li class="tr"><span class="h">${rbHHMM_(p.ini)}</span><span>⏳ Espera ${hm(p.fin - p.ini)}: salida tardía en ${pcEsc(p.t.cod || '')} (después de ${rbHHMM_(p.t.desde)})</span></li>` : p.k === 'tras' ? `<li class="tr" ${p.veh ? `data-rbv="${(R.viajes || []).indexOf(p.v)}"` : ''}><span class="h">${rbHHMM_(p.ini)}</span><span>${p.mismo ? `⏱ Margen entre alojamientos · ${p.m} min` : p.veh ? `🚗 Chofer ${pcEsc(p.de)} → ${pcEsc(p.a)} · sale ${rbHHMM_(p.sale)}${p.sale > p.ini ? ` (espera ${Math.round(p.sale - p.ini)} min al chofer)` : ''} · llega ${rbHHMM_(p.fin)}${p.v && p.v.pax.length > 1 ? ` · viaja con ${p.v.pax.filter(o => o !== x).map(o => pcEsc(o.corto.split(' ')[0])).join(', ')}` : ''}` : p.pie ? `🚶 A pie ${pcEsc(p.de)} → ${pcEsc(p.a)} (polo ${rbPolo_(p.de)}) · ${p.base} min${p.est ? ' (estimado)' : ''} + ${rbMgP_()} min de tolerancia a pie = ${p.m} min` : `🚗 Traslado ${pcEsc(p.de)} → ${pcEsc(p.a)} · ${p.base} min${p.est ? ' (estimado)' : ''} + ${rbMgT_()} min de margen = ${p.m} min`}</span>${rbDgP_(p, hm)}</li>`
         : `<li class="${p.tarde ? 'late' : ''}"><span class="h">${rbHHMM_(p.ini)}–${rbHHMM_(p.fin)}</span>${tCard(p.t)}${p.pri === 1 ? chip('1a Asignación', '#1d4ed8', '#dbeafe') : p.pri === 2 ? chip('2a Asignación', '#6d28d9', '#ede9fe') : chip('3a Asignación', '#475569', '#f1f5f9')}</li>`).join('') : '<li class="tr"><span>Sin tareas asignadas</span></li>'}
         ${x.pasos.length ? `<li class="fin"><span class="h">${rbHHMM_(x.t)}</span><span>🏁 Fin de su itinerario${exc2 > 0 ? ` · ${hm(exc2)} después de la salida (${rbHHMM_(R.fin)})` : ` · le quedan ${hm(-exc2)} de jornada`}</span></li>` : ''}
         ${x.pasos.length && R.fin - x.t > 30 ? ((R.sugOk || {})[x.n] ? `<li class="fin"><span class="h"></span><span style="color:#15803d;font-weight:700">✓ Limpieza general creada en ${pcEsc(x.ultProp || x.prop)} para ${pcEsc(x.corto)}</span></li>`
@@ -71761,6 +71780,7 @@ function rbRender_() {
       .rb-tlbtn{all:unset;cursor:pointer;margin-left:8px;padding:8px 14px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;font-size:13px;font-weight:700;color:#475569;vertical-align:top}.rb-tlbtn.on{background:#0f1729;color:#fff;border-color:#0f1729}
       .rbp-split{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px;align-items:start}.rbp-tlc{position:sticky;top:8px;max-height:78vh;overflow:auto}.rbp-tlc .rtl-in{min-width:520px}.rbp-rec{max-height:78vh;overflow:auto;padding-right:4px}
       @media (max-width:760px){.rbp-split{grid-template-columns:minmax(0,1fr)}.rbp-tlc{position:static}}
+      .rbp-dg{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center}.rbp-dg span{background:#f1f5f9;border-radius:6px;padding:1px 6px;font-size:11px;color:#334155}.rbp-dg span.esp{background:#fef3c7;color:#92400e;font-weight:700}.rbp-dg b{color:#0f172a;font-size:11.5px}.rbp-dgp{font-size:10.5px;color:#94a3b8;margin-left:6px}
       .rbp-it li.sug{background:#fffbeb;border-radius:8px;margin:2px 0}.rbp-it li.sug::before{background:#f59e0b}.rb-sugok{all:unset;cursor:pointer;padding:4px 10px;border-radius:7px;background:#16a34a;color:#fff;font-size:11.5px;font-weight:700}.rb-sugok:hover{background:#15803d}
       .rbp-it li.tr{color:#64748b}.rbp-it li.tr::before{background:#cbd5e1}.rbp-it li.fin::before{background:#16a34a}.rbp-it li.late::before{background:#dc2626}.rbp-it .h{font-weight:700;color:#334155;min-width:118px;font-size:11.5px}
       .rbp-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 0}.rbp-t>b{font:700 11px ui-monospace,Menlo,monospace;background:#f1f5f9;padding:1px 6px;border-radius:5px}.rbp-t>span{font-size:12px;color:#0f172a}</style>
