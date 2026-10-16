@@ -9457,6 +9457,77 @@ app.get("/aseo/prog-full", async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ✨ Asistente de la programación: redacta por qué el escenario 1 es el óptimo, solo con los datos calculados que manda el sistema.
+// ═══ 📁 Carpeta compartida (Configuración admin): explorador de SOLO LECTURA de la carpeta de Drive «Check Inn - Sistemas» ═══
+// La cuenta de servicio de Cloud Run solo ve lo que se le compartió (esa carpeta). No se descarga contenido por aquí:
+// «Abrir» usa el enlace de Google Drive, que pide la sesión de Google del usuario.
+const _CC_ROOT = process.env.CARPETA_ROOT_ID || "1pWfUTO6DFXaOqOPn9ISHmFeXiZO1ciGp";
+let _ccTok = { t: "", exp: 0 };
+async function _ccToken() {
+  if (_ccTok.t && Date.now() < _ccTok.exp) return _ccTok.t;
+  const r = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token?scopes=https://www.googleapis.com/auth/drive.readonly", { headers: { "Metadata-Flavor": "Google" } });
+  const j = await r.json(); if (!j.access_token) throw new Error("sin token de Drive"); _ccTok = { t: j.access_token, exp: Date.now() + ((j.expires_in || 3600) - 120) * 1000 }; return _ccTok.t;
+}
+async function _ccDrive(path, params) { const tok = await _ccToken(), u = new URL("https://www.googleapis.com/drive/v3/" + path); Object.entries(Object.assign({ supportsAllDrives: "true" }, params || {})).forEach(([k, v]) => u.searchParams.set(k, v));
+  const r = await fetch(u, { headers: { Authorization: `Bearer ${tok}` } }), j = await r.json(); if (!r.ok) { const e = new Error((j.error && j.error.message) || ("Drive " + r.status)); e.status = r.status; throw e; } return j; }
+// Árbol de carpetas (solo carpetas) recorrido desde la raíz: la cuenta de servicio no recibe «parents» en files.get
+// ni encuentra por búsqueda lo compartido vía la carpeta, así que la pertenencia y la ruta se sacan de aquí.
+const _CC_SKIP = /^(node_modules|\.git|\.claude|__pycache__|\.cache)$/i;
+let _ccArbol = null, _ccArbolT = 0, _ccArbolP = null;
+// Hijos de UNA carpeta (Drive no responde a varias carpetas con «or» para la cuenta de servicio).
+async function _ccHijos(id, soloCarpetas, fields) { const L = []; let pt = "";
+  do { const j = await _ccDrive("files", { q: `'${id}' in parents and trashed=false${soloCarpetas ? " and mimeType='application/vnd.google-apps.folder'" : ""}`, fields: fields || "nextPageToken,files(id,name)", pageSize: "1000", includeItemsFromAllDrives: "true", ...(pt ? { pageToken: pt } : {}) }); L.push(...(j.files || [])); pt = j.nextPageToken; } while (pt); return L; }
+const _ccHC = new Map(); async function _ccHijosC(id) { const c = _ccHC.get(id); if (c && Date.now() - c.t < 2 * 60e3) return c.v; const v = await _ccHijos(id, true); _ccHC.set(id, { v, t: Date.now() }); return v; }
+async function _ccPool(arr, n, fn) { let i = 0; await Promise.all(Array.from({ length: Math.min(n, arr.length) }, async () => { while (i < arr.length) { const k = i++; await fn(arr[k]); } })); }
+async function _ccArbolGet(forzar) {
+  if (_ccArbol && !forzar && Date.now() - _ccArbolT < 10 * 60e3) return _ccArbol;
+  if (_ccArbolP) return _ccArbolP;
+  _ccArbolP = (async () => { const A = new Map([[_CC_ROOT, { name: "Check Inn - Sistemas", parent: null }]]); let nivel = [_CC_ROOT];
+    for (let d = 0; d < 20 && nivel.length && A.size < 4000; d++) { const sig = [];
+      await _ccPool(nivel, 8, async p => { for (const f of await _ccHijos(p, true)) { if (A.has(f.id) || _CC_SKIP.test(f.name)) continue; A.set(f.id, { name: f.name, parent: p }); sig.push(f.id); } });
+      nivel = sig; }
+    _ccArbol = A; _ccArbolT = Date.now(); return A; })().finally(() => { _ccArbolP = null; });
+  return _ccArbolP;
+}
+async function _ccRuta(id) { let A = await _ccArbolGet(); if (!A.has(id)) A = await _ccArbolGet(true); if (!A.has(id)) return null; const ruta = []; let cur = id;
+  for (let i = 0; i < 30 && cur; i++) { const n = A.get(cur); if (!n) return null; ruta.unshift({ id: cur, name: n.name }); if (cur === _CC_ROOT) return ruta; cur = n.parent; } return null; }
+const _CC_FIELDS = "nextPageToken,files(id,name,mimeType,size,modifiedTime,webViewLink,iconLink,thumbnailLink,parents,lastModifyingUser(displayName),shortcutDetails(targetId,targetMimeType))";
+app.get("/carpeta/list", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const id = String(req.query.id || _CC_ROOT).replace(/[^\w-]/g, ""), cad = String(req.query.r || "").split(",").map(s => s.replace(/[^\w-]/g, "")).filter(Boolean);
+    let ruta = null;
+    if (id === _CC_ROOT) ruta = [{ id: _CC_ROOT, name: "Check Inn - Sistemas" }];
+    else if (cad.length && cad[cad.length - 1] === id) { // cadena desde la raíz: cada carpeta debe ser hija de la anterior (sin recorrer todo el árbol)
+      ruta = [{ id: _CC_ROOT, name: "Check Inn - Sistemas" }]; for (const c of cad) { const h = (await _ccHijosC(ruta[ruta.length - 1].id)).find(f => f.id === c); if (!h) { ruta = null; break; } ruta.push({ id: h.id, name: h.name }); } }
+    if (!ruta) ruta = await _ccRuta(id);
+    if (!ruta) return res.status(403).json({ ok: false, error: "Esa carpeta no está dentro de la carpeta compartida" });
+    const items = []; let pt = "";
+    for (let i = 0; i < 10; i++) { const j = await _ccDrive("files", { q: `'${id}' in parents and trashed=false`, fields: _CC_FIELDS, orderBy: "folder,name_natural", pageSize: "1000", includeItemsFromAllDrives: "true", ...(pt ? { pageToken: pt } : {}) }); items.push(...(j.files || [])); pt = j.nextPageToken; if (!pt) break; }
+    _ccIndice().catch(() => {}); // prepara el índice de búsqueda en segundo plano
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, ruta, items });
+  } catch (e) { res.status(e.status === 404 ? 404 : 500).json({ ok: false, error: e.message, sinAcceso: e.status === 404 || e.status === 403 }); }
+});
+// Índice de archivos (todas las carpetas del árbol) para buscar por nombre en memoria; se arma bajo demanda y dura 10 min.
+let _ccIdx = null, _ccIdxT = 0, _ccIdxP = null;
+async function _ccIndice() {
+  if (_ccIdx && Date.now() - _ccIdxT < 10 * 60e3) return _ccIdx; if (_ccIdxP) return _ccIdxP;
+  _ccIdxP = (async () => { const A = await _ccArbolGet(), L = [];
+    await _ccPool([...A.keys()], 8, async p => { if (L.length < 30000) L.push(...(await _ccHijos(p, false, "nextPageToken," + _CC_FIELDS.replace(/^nextPageToken,/, "")))); });
+    _ccIdx = L; _ccIdxT = Date.now(); return L; })().finally(() => { _ccIdxP = null; });
+  return _ccIdxP;
+}
+app.get("/carpeta/buscar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const nrm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""), q = nrm(String(req.query.q || "").trim().slice(0, 80)); if (q.length < 2) return res.json({ ok: true, items: [] });
+    const A = await _ccArbolGet(), L = await _ccIndice(), items = [];
+    for (const f of L) { if (!nrm(f.name).includes(q)) continue; const pid = (f.parents || []).find(x => A.has(x)); if (!pid) continue; const ruta = await _ccRuta(pid); if (ruta) items.push(Object.assign({}, f, { ruta: ruta.map(x => x.name).join(" / "), carpetaId: pid })); if (items.length >= 200) break; }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, items, ...(req.query.dbg ? { carpetas: A.size, archivos: L.length, muestra: L.slice(0, 3).map(f => f.name) } : {}) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+
+
 app.post("/aseo/prog-explica", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
