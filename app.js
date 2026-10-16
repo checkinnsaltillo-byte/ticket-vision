@@ -28638,7 +28638,7 @@ function _rhComputeGruposSemanaImss_() {
   };
   const grupos = new Map();
   for (const r of (ASIST_STATE?.rows || [])) {
-    if (asistEsSinSalario_(r.Empleado_Nombre)) continue; // salario = "No": no se paga
+    if (asistOculto_(r.Empleado_Nombre)) continue; // salario = "No" o personal inactivo: no se paga
     const nombre = _canonRes(String(r.Empleado_Nombre||'').trim());
     const fecha  = String(r.Fecha||'').slice(0,10);
     if (!nombre || !fecha) continue;
@@ -29488,6 +29488,11 @@ function rhRenderCompensaciones() {
 }
 
 // ── Form (slide-in panel) ──
+// Toggle Activo/Inactivo del expediente: cambia el campo «Estado» del formulario (se guarda con «💾 Guardar»).
+window.rhActivoTg_ = function () { const el = document.getElementById('rh-act-tg'), sel = document.querySelector('#rh-form-panel select[data-rh-field="Estado"]') || document.querySelector('select[data-rh-field="Estado"]'); if (!el) return;
+  const on = !el.classList.contains('on'); el.classList.toggle('on', on); el.querySelector('b').textContent = on ? 'Activo' : 'Inactivo';
+  el.querySelector('small').textContent = (on ? 'Aparece en Asistencias, Nómina y Pago de obligaciones.' : 'Oculto en Asistencias, Nómina y Pago de obligaciones (sus registros se conservan).') + ' Se guarda con «💾 Guardar».';
+  if (sel) sel.value = on ? 'Activo' : 'Inactivo'; };
 window.rhOpenForm = function (kind, id) {
   // Reset footer buttons al estado por defecto (por si el form de nómina los cambió)
   const _btnPri = document.querySelector('#rh-form-panel .inc-btn-pri');
@@ -29506,7 +29511,11 @@ window.rhOpenForm = function (kind, id) {
     const noEmp = editing?.ID || '(se asignará al guardar)';
     const antig = rhCalcAntiguedad(editing?.Fecha_ingreso, editing?.Fecha_retiro);
     const diasDef = String(editing?.Dias_trabajo || '').split(',').map(s => s.trim()).filter(Boolean);
+    const activoIni = !editing || !editing.Estado || String(editing.Estado).toLowerCase() === 'activo';
     bodyHtml = `
+      ${editing ? `<div id="rh-act-tg" class="rh-act ${activoIni ? 'on' : ''}" onclick="rhActivoTg_()" title="Inactivo: sus registros no se muestran en Asistencias, Nómina ni Pago de obligaciones (no se borran)">
+        <span class="sw"><i></i></span><b>${activoIni ? 'Activo' : 'Inactivo'}</b><small>${activoIni ? 'Aparece en Asistencias, Nómina y Pago de obligaciones.' : 'Oculto en Asistencias, Nómina y Pago de obligaciones (sus registros se conservan).'} Se guarda con «💾 Guardar».</small></div>
+      <style>.rh-act{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin:0 0 12px;border-radius:12px;cursor:pointer;user-select:none;background:#fef2f2;border:1px solid #fecaca;color:#991b1b}.rh-act.on{background:#f0fdf4;border-color:#bbf7d0;color:#166534}.rh-act b{font-size:14px}.rh-act small{font-size:11.5px;opacity:.85;flex:1;min-width:200px}.rh-act .sw{width:40px;height:22px;border-radius:999px;background:#ef4444;position:relative;flex:none;transition:background .15s}.rh-act.on .sw{background:#16a34a}.rh-act .sw i{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}.rh-act.on .sw i{left:21px}</style>` : ''}
       <div class="rh-section">
         <div class="rh-section-title">👤 Datos generales</div>
         <div class="rh-grid-2">
@@ -30197,6 +30206,7 @@ function nomPagoSemBuildRows_(semanaVal, fechaPagoDefault) {
   const grupos = new Map();
   for (const r of (ASIST_STATE?.rows || [])) {
     const nombre = String(r.Empleado_Nombre||'').trim();
+    if (asistEsInactivo_(nombre)) continue; // personal inactivo: no se muestra (sus registros no se borran)
     const fecha  = String(r.Fecha||'').slice(0,10);
     if (!nombre || !fecha) continue;
     // Filtra por la semana pedida.
@@ -35472,6 +35482,20 @@ function asistEsAdministrativo(puesto) {
  *  Administración según la columna Puesto de la hoja Personal. */
 /** ¿La persona tiene "No" en la columna salario de la hoja Personal? Acepta
  *  nombre completo o corto ("Andrés" → canonical) para registros viejos. */
+// Personal INACTIVO (toggle «Activo/Inactivo» del expediente): sus registros no se muestran en Asistencias, Nómina ni
+// Pago de obligaciones, pero NO se borran. Acepta nombre completo o corto (alias) como en asistEsSinSalario_.
+let _asistInaMemo = { ref: null, sig: '', set: null, alias: null };
+function asistEsInactivo_(nombre) {
+  const rows = (INC_STATE?.personalRows || []).length ? INC_STATE.personalRows : (typeof RH_STATE !== 'undefined' && RH_STATE.empleados) || [];
+  const sig = rows.length + '|' + rows.map(r => String(r['Estado'] || '')).join(',');
+  if (_asistInaMemo.ref !== rows || _asistInaMemo.sig !== sig) { // memo: se recalcula solo si cambia el personal o su Estado
+    const set = new Set(); rows.forEach(r => { const e = String(r['Estado'] || '').trim().toLowerCase(); if (e && e !== 'activo') [_rhPersonalFullName_(r), r['Nombre']].forEach(n => { if (n) set.add(_normNombre_(String(n).trim())); }); });
+    _asistInaMemo = { ref: rows, sig, set, alias: set.size ? _asistBuildAliasMap_(rows.map(r => ({ nombre: _rhPersonalFullName_(r) || String(r['Nombre'] || '').trim() })).filter(x => x.nombre)) : null }; }
+  const M = _asistInaMemo; if (!M.set.size) return false;
+  const t = _normNombre_(String(nombre || '').trim()); if (!t) return false; if (M.set.has(t)) return true;
+  const canon = M.alias && M.alias.get(t); return !!(canon && M.set.has(_normNombre_(canon)));
+}
+function asistOculto_(nombre) { return asistEsSinSalario_(nombre) || asistEsInactivo_(nombre); }
 function asistEsSinSalario_(nombre) {
   const rows = INC_STATE?.personalRows || [];
   if (!rows.length) return false;
@@ -35763,7 +35787,7 @@ function asistRenderResumen(targetId) {
   // Quien tiene salario = "No" en Personal no se calcula ni en Control de
   // asistencias ni en Nómina (p. ej. Dirección que marca por WhatsApp).
   for (const r of ASIST_STATE.rows) {
-    if (asistEsSinSalario_(r.Empleado_Nombre)) continue;
+    if (asistOculto_(r.Empleado_Nombre)) continue;
     const nombre = _canonRes(String(r.Empleado_Nombre||'').trim());
     const fecha  = String(r.Fecha||'').slice(0,10);
     if (!nombre || !fecha) continue;
@@ -36414,7 +36438,7 @@ function asistRenderFiltersBar_() {
   const nombres = Array.from(new Set(
     _personal.map(x => x.nombre)
       .concat((ASIST_STATE.rows||[]).map(r => _toCanon(String(r.Empleado_Nombre||'').trim())))
-      .filter(n => n && !asistEsSinSalario_(n))
+      .filter(n => n && !asistOculto_(n))
   )).sort((a,b)=>a.localeCompare(b,'es'));
   // Meses: derivados de las fechas presentes en los registros + 6 meses
   // hacia atrás/adelante desde hoy.
@@ -36491,7 +36515,7 @@ function asistStatusTabla(html, kind) {
 function asistSortedRows() {
   // Aplica filtros globales de Control de asistencias (nombre / mes / concepto).
   const F = asistFilters_();
-  let rows = (ASIST_STATE.rows || []).slice().filter(r => !asistEsSinSalario_(r.Empleado_Nombre));
+  let rows = (ASIST_STATE.rows || []).slice().filter(r => !asistOculto_(r.Empleado_Nombre));
   if (F.nombre) {
     // Reconciliamos nombres cortos (p.ej. "Adán") al canonical del Personal
     // (p.ej. "Adán Ramos") para que el filtro atrape ambas variantes.
