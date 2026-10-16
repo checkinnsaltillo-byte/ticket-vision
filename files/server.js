@@ -8501,7 +8501,7 @@ app.get("/reservas/search", async (req, res) => {
     // HouseId (Lodgify id) → fila del catálogo.
     const alojById = {};
     for (const a of (alojRows || [])) {
-      const id = String(a.HouseId || "").trim();
+      const id = String(a.HouseId || a.id_lodgify || "").trim(); // HouseId viene vacío en el catálogo: usar id_lodgify
       if (id) alojById[id] = a;
     }
     // 2) Filtro suave por ubicación (nombre / ciudad / dirección).
@@ -8614,6 +8614,8 @@ app.get("/reservas/search", async (req, res) => {
         ],
       });
     }
+    const minRec = Math.max(0, parseInt(req.query.bedrooms || "0", 10) || 0); // recámaras mínimas (buscador de la landing)
+    if (minRec) { const okR = x => (Number(x.bedrooms) || 0) >= minRec; const R2 = results.filter(okR); res.json({ ok: true, count: R2.length, results: R2, splitStays: splitStays.filter(s => (s.legs || []).every(st => okR(st.alojamiento || {}))) }); return; }
     res.json({ ok: true, count: results.length, results, splitStays });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
