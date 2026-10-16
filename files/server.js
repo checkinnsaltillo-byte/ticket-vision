@@ -9516,6 +9516,44 @@ async function _ccIndice() {
     _ccIdx = L; _ccIdxT = Date.now(); return L; })().finally(() => { _ccIdxP = null; });
   return _ccIdxP;
 }
+// ⬇ Descargar carpeta completa (.zip): requiere sesión de la bóveda (código por WhatsApp/SMS) porque el contenido sale con
+// la cuenta del sistema, no con la de Google del usuario. 1) /carpeta/zip-token (con X-Vault-Token) → enlace firmado de 2 min;
+// 2) /carpeta/zip?t=… arma el zip al vuelo (máx. 3,000 archivos / 1.5 GB). Cada descarga queda en la bitácora de la bóveda.
+const _CC_EXPORT = { "application/vnd.google-apps.spreadsheet": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"], "application/vnd.google-apps.document": ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"], "application/vnd.google-apps.presentation": ["application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx"], "application/vnd.google-apps.drawing": ["image/png", ".png"] };
+async function _ccValida(id, cad) { if (id === _CC_ROOT) return [{ id: _CC_ROOT, name: "Check Inn - Sistemas" }];
+  if (cad.length && cad[cad.length - 1] === id) { const ruta = [{ id: _CC_ROOT, name: "Check Inn - Sistemas" }]; for (const c of cad) { const h = (await _ccHijosC(ruta[ruta.length - 1].id)).find(f => f.id === c); if (!h) return null; ruta.push({ id: h.id, name: h.name }); } return ruta; }
+  return _ccRuta(id); }
+app.post("/carpeta/zip-token", async (req, res) => {
+  const s = _vGuard(req, res); if (!s) return;
+  try { const B = req.body || {}, id = String(B.id || "").replace(/[^\w-]/g, ""), cad = (Array.isArray(B.r) ? B.r : []).map(x => String(x).replace(/[^\w-]/g, "")).filter(Boolean);
+    const ruta = await _ccValida(id, cad); if (!ruta) return res.status(403).json({ ok: false, error: "Esa carpeta no está dentro de la carpeta compartida" });
+    const nom = ruta[ruta.length - 1].name; _vMutate(d => { d.log.push({ ts: new Date().toISOString(), u: s.u, a: `Descargó la carpeta «${ruta.map(x => x.name).join(" / ")}» (.zip)` }); }).catch(() => {});
+    res.json({ ok: true, url: `/carpeta/zip?t=${encodeURIComponent(_vSign({ t: "z", id, nom, exp: Date.now() + 120e3 }))}` });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/carpeta/zip", async (req, res) => {
+  const z = _vUnsign(String(req.query.t || "")); if (!z || z.t !== "z" || Date.now() > z.exp) return res.status(401).send("El enlace de descarga venció. Vuelve a oprimir «Descargar».");
+  try {
+    const L = []; let total = 0; // recorre la carpeta completa (incluye subcarpetas)
+    const rec = async (fid, pre, d) => { if (d > 15 || L.length >= 3000) return; for (const f of await _ccHijos(fid, false, "nextPageToken,files(id,name,mimeType,size)")) {
+      const n = String(f.name || "sin nombre").replace(/[\\/:*?"<>|]/g, "_");
+      if (f.mimeType === "application/vnd.google-apps.folder") { if (!_CC_SKIP.test(f.name)) await rec(f.id, pre + n + "/", d + 1); }
+      else if (!f.mimeType.startsWith("application/vnd.google-apps.") || _CC_EXPORT[f.mimeType]) { total += Number(f.size) || 0; L.push({ f, p: pre + n + (_CC_EXPORT[f.mimeType] ? _CC_EXPORT[f.mimeType][1] : "") }); } } };
+    await rec(z.id, "", 0);
+    if (total > 1.5 * 1024 ** 3) return res.status(413).send("La carpeta pesa más de 1.5 GB; descárgala desde Google Drive.");
+    const archiver = require("archiver"), zip = archiver("zip", { zlib: { level: 6 } }), nom = String(z.nom || "carpeta").replace(/[^\w .()-]/g, "_");
+    res.setHeader("Content-Type", "application/zip"); res.setHeader("Content-Disposition", `attachment; filename="${nom}.zip"; filename*=UTF-8''${encodeURIComponent(z.nom || "carpeta")}.zip`);
+    zip.on("error", e => { console.warn("[carpeta] zip:", e.message); try { res.end(); } catch (_) {} }); zip.pipe(res);
+    if (!L.length) zip.append("Esta carpeta no tiene archivos descargables.\n", { name: "LEEME.txt" });
+    const { Readable } = require("stream");
+    for (const { f, p } of L) { const tok = await _ccToken(), ex = _CC_EXPORT[f.mimeType];
+      const u = ex ? `https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=${encodeURIComponent(ex[0])}` : `https://www.googleapis.com/drive/v3/files/${f.id}?alt=media&supportsAllDrives=true`;
+      const r = await fetch(u, { headers: { Authorization: `Bearer ${tok}` } });
+      if (!r.ok || !r.body) { zip.append(`No se pudo descargar: ${p} (${r.status})\n`, { name: p + ".ERROR.txt" }); continue; }
+      await new Promise((ok, ko) => { const st = Readable.fromWeb(r.body); st.on("end", ok); st.on("error", ko); zip.append(st, { name: p }); }).catch(e => zip.append(`Error: ${e.message}\n`, { name: p + ".ERROR.txt" })); }
+    await zip.finalize();
+  } catch (e) { console.warn("[carpeta] zip:", e.message); if (!res.headersSent) res.status(500).send("No se pudo armar el zip: " + e.message); else try { res.end(); } catch (_) {} }
+});
 app.get("/carpeta/buscar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
