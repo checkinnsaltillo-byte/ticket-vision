@@ -9458,6 +9458,37 @@ app.get("/aseo/prog-full", async (req, res) => {
   try { res.set("Cache-Control", "no-store"); const data = await _rhdGetJson(`aseo/prog/${dia}.json`).catch(() => null); res.json({ ok: true, data: data && Object.keys(data).length ? data : null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// 🌐 Traducción de la guía pública (5 idiomas). El navegador manda los textos visibles en español y recibe la traducción;
+// copia en memoria por idioma+texto (el navegador también guarda la suya). Solo textos cortos y en lotes acotados.
+const _GT_LANGS = { en: "English", zh: "Simplified Chinese", hi: "Hindi", fr: "French" };
+const _gtCache = new Map(); // `${lang}|${texto}` → traducción
+// Copia permanente por idioma en gs://…/guia-trad/<lang>.json: la traducción de un texto se paga una sola vez para todos los huéspedes.
+const _gtLoaded = {}, _gtDirty = {}; let _gtSaveT = null;
+async function _gtLoad(lang) { if (_gtLoaded[lang]) return _gtLoaded[lang]; _gtLoaded[lang] = _rhdGetJson(`guia-trad/${lang}.json`).then(m => { Object.entries(m || {}).forEach(([k, v]) => { if (!_gtCache.has(`${lang}|${k}`)) _gtCache.set(`${lang}|${k}`, v); }); }).catch(() => { _gtLoaded[lang] = null; }); return _gtLoaded[lang]; }
+function _gtSave() { clearTimeout(_gtSaveT); _gtSaveT = setTimeout(async () => { for (const lang of Object.keys(_gtDirty)) { const nuevos = _gtDirty[lang]; delete _gtDirty[lang];
+  try { const m = await _rhdGetJson(`guia-trad/${lang}.json`); Object.assign(m, nuevos); await _rhdPut(`guia-trad/${lang}.json`, JSON.stringify(m), "application/json"); } catch (e) { console.warn("[guia] guardar traducciones:", e.message); } } }, 8000); }
+app.post("/guia/traducir", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const lang = String((req.body || {}).lang || ""), nombre = _GT_LANGS[lang];
+    if (!nombre) return res.status(400).json({ ok: false, error: "Idioma no soportado" });
+    await _gtLoad(lang);
+    const texts = (Array.isArray((req.body || {}).texts) ? req.body.texts : []).slice(0, 150).map(s => String(s || "").slice(0, 800));
+    const out = texts.map(s => _gtCache.get(`${lang}|${s}`)), falta = [...new Set(texts.filter((s, i) => out[i] == null && s.trim()))];
+    for (let i = 0; i < falta.length; i += 60) {
+      const lote = falta.slice(i, i + 60);
+      const msg = await anthropic.messages.create({ model: BOT_ANTHROPIC_MODEL, max_tokens: 8000,
+        system: `You translate a vacation-rental welcome guide from Spanish to ${nombre}. Return ONLY a JSON array of strings with exactly the same length and order as the input. Keep numbers, prices, times, phone numbers, codes, emojis, URLs and proper names (street names like "Calle Oaxaca", "Check-inn", "Check-in", "Check-out", "Wi-Fi", "Google Maps", "WhatsApp", "Airbnb") unchanged. Keep it short and natural, same tone. If a string is already in the target language or has no words, return it unchanged.`,
+        messages: [{ role: "user", content: JSON.stringify(lote) }] });
+      const txt = (msg.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim();
+      let arr = null; try { arr = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1)); } catch (_) {}
+      if (!Array.isArray(arr) || arr.length !== lote.length) continue; // si falla, esos textos se quedan en español
+      lote.forEach((s, k) => { if (typeof arr[k] === "string") { if (_gtCache.size > 50000) _gtCache.clear(); _gtCache.set(`${lang}|${s}`, arr[k]); (_gtDirty[lang] = _gtDirty[lang] || {})[s] = arr[k]; } });
+      _gtSave();
+    }
+    res.json({ ok: true, lang, texts: texts.map(s => _gtCache.get(`${lang}|${s}`) ?? s) });
+  } catch (e) { console.warn("[guia] traducir:", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
 // ✨ Asistente de la programación: redacta por qué el escenario 1 es el óptimo, solo con los datos calculados que manda el sistema.
 // ═══ 📁 Carpeta compartida (Configuración admin): explorador de SOLO LECTURA de la carpeta de Drive «Check Inn - Sistemas» ═══
 // La cuenta de servicio de Cloud Run solo ve lo que se le compartió (esa carpeta). No se descarga contenido por aquí:
