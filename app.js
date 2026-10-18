@@ -73730,7 +73730,7 @@ function bkFlujoHtml1_(f, conNombre) {
   const L = f.pasos.map(bkTpl_).filter(Boolean);
   const ord = f.ordenado !== false;
   const pasos = L.map((t, i) => bkPasoBtn_(t, i, !t.enabled || (t.schedule_type !== 'never' && !t.alojamientos), !ord)).join(ord ? '<span style="color:#a78bfa;font-weight:800">→</span>' : '');
-  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${conNombre ? `<span style="font-size:11px;font-weight:800;color:#6d28d9;margin-right:2px">${ord ? '🔀' : '🗂️'} ${esc(f.nombre)}</span>` : ''}${pasos || `<span class="bk-mut" style="font-size:11.5px">${ord ? 'Flujo sin pasos' : 'Sin plantillas'}</span>`}
+  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${conNombre ? `<span style="font-size:11px;font-weight:800;color:#6d28d9;margin-right:2px">${ord ? '🔀' : '🗂️'} ${esc(f.nombre)}</span>` : ''}${bkCanalChip_(f)}${pasos || `<span class="bk-mut" style="font-size:11.5px">${ord ? 'Flujo sin pasos' : 'Sin plantillas'}</span>`}
     <button type="button" class="bk-btn sm" style="padding:4px 8px" onclick="event.stopPropagation();bkFlEditar_('${esc(f.id)}')" title="Agregar, quitar u ordenar plantillas">✏️ Editar flujo</button></div>`;
 }
 function bkPmChip_(clave) { const F = bkFlujosDe_(clave); if (!F.length) return '';
@@ -73754,7 +73754,7 @@ function bkPmHtml_() {
   const fecha = iso => iso ? new Date(iso).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
   const chip = e => { const x = BK_PM_EST[e] || [e, '#111', '#f3f4f6']; return `<span class="bk-chip" style="color:${x[1]};background:${x[2]}">${x[0]}</span>`; };
   const card = x => `<div class="bk-card" style="padding:10px 12px;margin-bottom:8px"><div class="bk-row" style="justify-content:space-between"><div class="bk-row">${chip(x.estado)}<b style="font-size:13.5px">${esc(x.huesped || 'Huésped')}</b><span class="bk-chip" style="background:#f3f4f6">${esc(x.canal || '')}</span><span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">${esc(nm(x.proc))}</span></div><span class="bk-mut" style="font-size:12px">${fecha(x.programado)} · reserva ${esc(x.bid)}</span></div>
-    <div class="bk-why">Para: ${esc((x.to || []).join(', '))} · ${esc(x.tplNombre || '')}${x.motivo ? ` · ${esc(x.motivo)}` : ''}</div>
+    <div class="bk-why">${x.via === 'airbnb' ? '✈️ Por la mensajería de Airbnb' : `💬 WhatsApp: ${esc((x.to || []).join(', '))}`} · ${esc(x.tplNombre || '')}${x.motivo ? ` · ${esc(x.motivo)}` : ''}</div>
     <textarea class="bk-ta" style="margin-top:6px;min-height:90px" id="bk-pm-${esc(x.key)}">${esc(x.body || '')}</textarea>
     <div class="bk-row" style="justify-content:flex-end;margin-top:6px">${x.estado === 'sin_ventana' ? '<span class="bk-mut" style="font-size:11.5px;flex:1">El huésped no escribió en las últimas 24 h: WhatsApp probablemente no lo entregue (necesita plantilla aprobada por Meta).</span>' : ''}<button class="bk-btn sm" onclick="bkPmAccion_('${esc(x.key)}','omitir')">Omitir</button><button class="bk-btn sm ok" onclick="bkPmAccion_('${esc(x.key)}','enviar')">Aprobar y enviar</button></div></div>`;
   const B = Object.entries((BK.pm || {}).bajas || {});
@@ -73887,6 +73887,8 @@ function bkFlPintar_() {
       <div class="bk-sub" style="margin-top:4px">Las plantillas programadas se envían según el modo de este proceso.</div>
       <label class="bk-lb" style="margin-top:16px">Tipo</label><div class="bk-seg">${[[true, '🔀 Pasos en orden'], [false, '🗂️ Listado sin orden']].map(([v, t]) => `<button type="button" class="${ord === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.flEd.ordenado=${v};bkFlPintar_()">${t}</button>`).join('')}</div>
       <div class="bk-sub" style="margin-top:4px">${ord ? 'Las plantillas se muestran numeradas en el orden en que ocurren.' : 'Solo agrupa las plantillas del proceso, sin secuencia.'}</div>
+      ${bkEsProactivo_(e.proceso) ? `<label class="bk-lb" style="margin-top:16px">Canal de envío automático</label><div class="bk-seg" style="flex-wrap:wrap">${BK_CANALES.map(([v, t]) => `<button type="button" class="${bkCanalDe_(e) === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.flEd.canal='${v}';bkFlPintar_()">${t}</button>`).join('')}</div>
+      <div class="bk-sub" style="margin-top:4px">${{ airbnb: 'Solo reservas de Airbnb, por la mensajería de Airbnb (vía Lodgify). No tiene la restricción de 24 h de WhatsApp.', whatsapp: 'Todas las reservas confirmadas y en curso, por WhatsApp. WhatsApp solo entrega si el huésped escribió en las últimas 24 h.', ambos: 'Reservas de Airbnb por su mensajería; el resto (directas, Booking) por WhatsApp.' }[bkCanalDe_(e)]}</div>` : ''}
       <label class="bk-lb" style="margin-top:16px">${ord ? 'Pasos' : 'Plantillas'} (${e.pasos.length})</label>${pasos || '<div class="bk-mut" style="font-size:12px;margin-bottom:8px">Aún no hay pasos.</div>'}
       <select class="bk-sel" onchange="if(this.value){BK.flEd.pasos.push(this.value);bkFlPintar_()}">${addOpts}</select>
     </div>
@@ -73899,7 +73901,7 @@ async function bkFlGuardar_() {
   const movidas = e.pasos.filter(id => bkFlujos_().some(f => f.id !== e.id && f.pasos.includes(id)));
   if (movidas.length && !confirm(`${movidas.length} plantilla(s) se moverán desde otro flujo a este. ¿Continuar?`)) return;
   const F = bkFlujos_().map(f => f.id === e.id ? null : Object.assign({}, f, { pasos: f.pasos.filter(id => !e.pasos.includes(id)) })).filter(Boolean);
-  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, ordenado: e.ordenado !== false, pasos: e.pasos.slice() };
+  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, ordenado: e.ordenado !== false, canal: bkEsProactivo_(e.proceso) ? bkCanalDe_(e) : undefined, pasos: e.pasos.slice() };
   const idx = bkFlujos_().findIndex(f => f.id === e.id); if (idx >= 0) F.splice(idx, 0, nuevo); else F.push(nuevo);
   if (await bkGuardar_('flujos', F, '✓ Flujo guardado')) { bkFlCerrar_(); bkRender_(); }
 }
@@ -73945,3 +73947,10 @@ function bkFiltrosHtml_() {
     ${sel('modo', [['', 'Modo: todos'], ['off', 'Apagado'], ['der', 'Derivar'], ['sup', 'Supervisado'], ['auto', 'Automático']], 'Modo actual del proceso')}
     ${hay ? `<button class="bk-btn sm" onclick="BK.f={};BK.fTipo='';bkRender_()">✕ Limpiar</button>` : ''}</div>`;
 }
+
+// ── Canal de envío de los flujos de mensajes programados ──
+const BK_CANALES = [['airbnb', '✈️ Mensajería de Airbnb'], ['whatsapp', '💬 WhatsApp / Lodgify'], ['ambos', '🔁 Ambos']];
+function bkEsProactivo_(k) { const c = BK.d.catalogo.find(x => x.clave === k); return !!(c && c.grupo === 'proactivos'); }
+function bkCanalDe_(f) { return f.canal || 'airbnb'; }
+function bkCanalChip_(f) { if (!bkEsProactivo_(f.proceso)) return ''; const t = (BK_CANALES.find(x => x[0] === bkCanalDe_(f)) || [])[1] || '';
+  return `<span class="bk-chip" style="background:#fff1f2;color:#be123c;margin-right:2px" title="Canal de envío automático">${t}</span>`; }

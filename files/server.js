@@ -13278,7 +13278,7 @@ function _bcCatalogo(cfg) {
 function _bcMapaDeFlujos(flujos) { const m = {}; (flujos || []).forEach(f => (f.pasos || []).forEach(t => { if (t && f.proceso) m[t] = f.proceso; })); return m; }
 function _bcFlujosLimpios(L) {
   const vistos = new Set();
-  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, // false = listado de plantillas sin orden de pasos
+  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, canal: ["whatsapp", "airbnb", "ambos"].includes(f.canal) ? f.canal : undefined, // canal de envío de los mensajes programados // false = listado de plantillas sin orden de pasos
     pasos: (Array.isArray(f.pasos) ? f.pasos : []).map(String).filter(t => t && !vistos.has(t) && vistos.add(t)) })); // una plantilla vive en un solo flujo
 }
 // Modo efectivo de un proceso para esta conversación: override más específico (RF-03) → canal (RF-15) → verificación (RF-06/17) → disyuntor (RF-10) → fuera de oficina (RF-14).
@@ -13764,6 +13764,7 @@ function _pmHuIdx() { // reservaciones (hoja) por Id de Lodgify → fila (ID par
   const m = new Map(); (best || []).forEach(r => { const k = String(r["Lodgify Id"] || "").trim(); if (k) m.set(k, r); }); return m;
 }
 async function _pmEnviar(it) {
+  if (it.via === "airbnb") { const r = await _abnEnviar(it.bid, it.body, "bot-proactivo"); _bcLog({ tipo: "proactivo", proceso: it.proc, plantilla: it.tplNombre, reserva: it.bid, resultado: r.apareceEnHilo ? "en hilo de Airbnb" : "enviado (sin confirmar en hilo)" }); return ["airbnb"]; }
   const to = it.to.map(t => _waFormatTo(t)).filter(Boolean); if (!to.length) throw new Error("sin teléfono");
   const sids = [];
   for (const x of to) { const m = await _twilioSendMessage({ to: x, body: it.body, tipo: it.tpl }); sids.push(m.sid);
@@ -13791,8 +13792,11 @@ async function _pmTick(opts) {
     const maxAtraso = Math.max(1, Number(P.atrasoMaxH || 3)) * 3600e3, vIni = _bcMinDe((P.ventana || {}).ini || "08:00"), vFin = _bcMinDe((P.ventana || {}).fin || "21:30");
     const enHorario = ahora.min >= vIni && ahora.min <= vFin; // RF-16: horario permitido de envío
     const nuevos = [];
+    const flujoDe = tid => (cfg.flujos || []).find(f => (f.pasos || []).includes(tid));
+    const abnEnvio = !!((await _rhdGetJson(_ABN_CFG_OBJ).catch(() => ({}))) || {}).envio;
     for (const [proc, tid] of links) {
       const t = tplDe(tid); if (!t || !t.enabled) continue;
+      const fl = flujoDe(tid), canalEnvio = (fl && fl.canal) || "airbnb"; // por omisión los proactivos salen por la mensajería de Airbnb
       const alojs = String(t.alojamientos || "").split(",").map(x => x.trim()).filter(Boolean);
       const modo = (cfg.procesos[proc] || {}).modo || "sup";
       for (const b of reservas) {
@@ -13802,15 +13806,19 @@ async function _pmTick(opts) {
         const base = { key, proc, tpl: tid, tplNombre: t.nombre, bid: String(b.id), hid, huesped: (b.guest && b.guest.name) || "", canal: _bcCanalDe(b.source), programado: cuando.toISOString(), at: new Date().toISOString() };
         if (now - cuando.getTime() > maxAtraso) { nuevos.push(Object.assign(base, { estado: "vencido", motivo: "ya había pasado la hora cuando se revisó" })); continue; }
         if (!enHorario) continue; // fuera del horario de envío: se reintenta en la siguiente vuelta
+        const esAbn = base.canal === "airbnb", via = canalEnvio === "whatsapp" ? "whatsapp" : esAbn ? "airbnb" : canalEnvio === "ambos" ? "whatsapp" : null;
+        if (!via) continue; // flujo solo para Airbnb y la reserva no es de Airbnb: no le aplica
+        base.via = via;
         const hu = huIdx.get(String(b.id)) || null, huId = hu ? String(hu.ID || hu.row_number || "") : "", c = (huId && wacfg.map && wacfg.map[huId]) || null;
         if (c && Array.isArray(c.disabled_templates) && c.disabled_templates.includes(tid)) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "plantilla desactivada en la reserva" })); continue; }
         if (c && c.auto_enabled === false && c.updated_at) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "envíos automáticos apagados en la reserva" })); continue; }
         const tel = _sisCel10((hu && (hu["Cel/Whatsapp (principal)"] || hu.Celular)) || (b.guest && b.guest.phone) || "");
-        const to = (c && Array.isArray(c.recipients) && c.recipients.length ? c.recipients : [tel]).map(x => _sisCel10(x)).filter(Boolean);
-        if (!to.length) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "sin teléfono" })); continue; }
-        if (to.every(x => bajas[x])) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "el huésped pidió no recibir mensajes" })); continue; }
+        const to = via === "airbnb" ? [tel].filter(Boolean) : (c && Array.isArray(c.recipients) && c.recipients.length ? c.recipients : [tel]).map(x => _sisCel10(x)).filter(Boolean);
+        if (via === "whatsapp" && !to.length) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "sin teléfono" })); continue; }
+        if (to.length && to.every(x => bajas[x])) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "el huésped pidió no recibir mensajes" })); continue; }
+        if (via === "airbnb" && !abnEnvio) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "el envío por la mensajería de Airbnb está desactivado" })); continue; }
         const r = _pmRender(t, b, alojIdx.get(hid), hu);
-        const ult = await _pmUltimoHuesped(to[0]), ventana = ult && now - ult < 23.5 * 3600e3;
+        const ult = via === "airbnb" ? now : await _pmUltimoHuesped(to[0]), ventana = ult && now - ult < 23.5 * 3600e3; // Airbnb no tiene ventana de 24 h
         const it = Object.assign(base, { to: to.filter(x => !bajas[x]), huId, body: r.body, faltan: r.faltan, ventana: !!ventana, modo });
         if (modo === "auto" && !r.faltan.length && ventana) {
           if (dry) { it.estado = "se_enviaria"; nuevos.push(it); continue; }
