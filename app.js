@@ -53128,7 +53128,7 @@ function _botcArchListaHtml_(q) {
       <div class="wa-body"><div class="wa-l1"><b>${_botcEsc(x.huesped || 'Huésped')}</b><span class="wa-time">${dm((x.ult || {}).fecha || x.salida)}</span></div>
         <div class="wa-l2"><span class="pv">${x.ult ? (x.ult.de === 'nosotros' ? 'Tú: ' : '') + _botcEsc(x.ult.texto) : 'Sin mensajes'}</span></div>
         <div class="wa-l3">${x.aloj ? `<span class="wa-aloj ${k === 'airbnb' ? 'air' : ''}">${_botcEsc(x.aloj)}</span>` : ''}<span class="wa-chip" style="--c:#64748b">${x.n} mensaje${x.n === 1 ? '' : 's'}</span><span class="wa-dates">${dm(x.llegada)} → ${dm(x.salida)}</span></div></div></div>`; }).join('');
-  return nota + `<div style="padding:6px 14px;font-size:11px;color:var(--wa-mu);border-bottom:1px solid var(--wa-ln)">${BOTC_STATE.archTotal} conversación${BOTC_STATE.archTotal === 1 ? '' : 'es'} archivada${BOTC_STATE.archTotal === 1 ? '' : 's'}${BOTC_STATE.archTotal > L.length ? ` · se muestran las ${L.length} más recientes; usa el buscador` : ''}</div>`
+  return nota + `<div style="padding:6px 14px;font-size:11px;color:var(--wa-mu);border-bottom:1px solid var(--wa-ln)">${BOTC_STATE.archTotal} ${BOTC_STATE.archTotal === 1 ? 'conversación' : 'conversaciones'} archivada${BOTC_STATE.archTotal === 1 ? '' : 's'}${BOTC_STATE.archTotal > L.length ? ` · se muestran las ${L.length} más recientes; usa el buscador` : ''}</div>`
     + (filas || `<div style="padding:24px;text-align:center;color:#94a3b8;font-size:12px">${q ? 'Sin resultados para «' + _botcEsc(q) + '».' : 'Aún no hay conversaciones archivadas.'}</div>`);
 }
 window.botcOpenArch_ = async function (bid) {
