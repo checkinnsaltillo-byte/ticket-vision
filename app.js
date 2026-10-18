@@ -73467,13 +73467,14 @@ async function bkPrioridad_(conv, actual) {
 
 // ── ⚙️ Procesos ──
 function bkProcesos_() {
-  const { cfg, catalogo, grupos, metricas } = BK.d;
+  const { cfg, grupos, metricas } = BK.d, ft = BK.fTipo || '';
+  const catalogo = BK.d.catalogo.filter(c => !ft || c.tipo === ft);
   const byG = {}; catalogo.forEach(c => (byG[c.grupo] = byG[c.grupo] || []).push(c));
   const html = Object.keys(grupos).concat(Object.keys(byG).filter(g => !grupos[g])).filter(g => byG[g]).map(g => {
     const L = byG[g], cnt = { off: 0, der: 0, sup: 0, auto: 0 }; L.forEach(c => cnt[(cfg.procesos[c.clave] || {}).modo || c.modoIni]++);
     const rows = L.map(c => { const pc = cfg.procesos[c.clave] || {}, modo = pc.modo || c.modoIni, m = metricas[c.clave] || {}, ov = (pc.overrides || []).length, dy = pc.disyuntor && pc.disyuntor.at;
       const seg = c.admin ? '<span class="bk-chip" style="background:#e0e7ff;color:#3730a3">👤 Solo en modo administrador</span>' : `<div class="bk-seg">${['off', 'der', 'sup', 'auto'].map(k => `<button type="button" class="${modo === k ? 'on' : ''}" style="--c:${BK_MODO[k][1]};--b:${BK_MODO[k][2]}" ${c.forzado ? 'disabled title="Modo forzado por seguridad"' : ''} onclick="bkModo_('${c.clave}','${k}')">${BK_MODO[k][0]}</button>`).join('')}</div>`;
-      return `<div class="bk-pr"><div><div class="nm">${esc(c.nombre)} ${c.origen === 'Original' ? '<span class="bk-chip" style="background:#ede9fe;color:#6d28d9">Original</span>' : c.extra ? '<span class="bk-chip" style="background:#e0f2fe;color:#0369a1">Agregado</span>' : ''}
+      return `<div class="bk-pr"><div><div class="nm">${esc(c.nombre)} ${bkTipoChip_(c.tipo)} ${c.origen === 'Original' ? '<span class="bk-chip" style="background:#ede9fe;color:#6d28d9">Original</span>' : c.extra ? '<span class="bk-chip" style="background:#e0f2fe;color:#0369a1">Agregado</span>' : ''}
         ${c.forzado ? '<span class="bk-chip" style="background:#fee2e2;color:#b91c1c">🔒 forzado</span>' : ''}${c.solo_directo ? '<span class="bk-chip" style="background:#fff7ed;color:#c2410c">Solo directas</span>' : ''}${c.verif ? '<span class="bk-chip" style="background:#ecfeff;color:#0e7490">Requiere verificación</span>' : ''}
         ${bkPrioChipMini_(pc.prioridad || c.pbIni)}${ov ? `<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">↳ ${ov} regla${ov > 1 ? 's' : ''} específica${ov > 1 ? 's' : ''}</span>` : ''}${dy ? `<span class="bk-chip" style="background:#fee2e2;color:#b91c1c" title="${esc(pc.disyuntor.motivo || '')}">⚡ disyuntor</span>` : ''}</div>
         <div class="ds">${esc(c.desc)}</div>${bkFichaResumen_(pc)}${bkPmChip_(c.clave)}<div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
@@ -73487,7 +73488,7 @@ function bkProcesos_() {
     ${(BK.d.eliminados || []).length ? `<details style="margin-top:8px"><summary class="bk-mut" style="cursor:pointer;font-size:12.5px">🗑 Procesos eliminados (${BK.d.eliminados.length})</summary>${BK.d.eliminados.map(e => `<div class="bk-row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px"><span>${esc(e.nombre)} <span class="bk-mut">· ${esc(BK.d.grupos[e.grupo] || e.grupo)}</span></span><button class="bk-btn sm" onclick="bkProcRestaurar_('${esc(e.clave)}')">Restaurar</button></div>`).join('')}</details>` : ''}
     <div class="bk-grid2" style="margin-top:10px"><div><label class="bk-lb">Mensaje de respaldo general (proceso Apagado sin mensaje propio)</label><textarea class="bk-ta" id="bk-rg">${esc(BK.d.cfg.respaldoGeneral)}</textarea></div>
     <div><label class="bk-lb">Mensaje cuando el canal lo bloquea (Airbnb / Booking)</label><textarea class="bk-ta" id="bk-rc">${esc(BK.d.cfg.respaldoCanal)}</textarea></div></div>
-    <div class="bk-row" style="justify-content:flex-end;margin-top:8px"><button class="bk-btn sm pri" onclick="bkGuardarRespaldos_()">Guardar mensajes</button></div></div>${bkPmCfgHtml_()}${html}`;
+    <div class="bk-row" style="justify-content:flex-end;margin-top:8px"><button class="bk-btn sm pri" onclick="bkGuardarRespaldos_()">Guardar mensajes</button></div></div>${bkPmCfgHtml_()}${bkTipoFiltro_()}${html}`;
 }
 const bkPrioChipMini_ = p => { const x = BK_PRIO[p] || BK_PRIO.P4; return `<span class="bk-chip" style="color:${x[2]};background:${x[3]}">${p || 'P4'} base</span>`; };
 async function bkGuardarRespaldos_() { const a = document.getElementById('bk-rg').value, b = document.getElementById('bk-rc').value; if (await bkGuardar_('respaldoGeneral', a, false) && await bkGuardar_('respaldoCanal', b)) bkRender_(); }
@@ -73526,6 +73527,8 @@ function bkDrawerHtml_() {
       ${pc.disyuntor && pc.disyuntor.at ? `<div class="bk-obs err" style="margin-top:12px">⚡ Disyuntor activo desde ${new Date(pc.disyuntor.at).toLocaleString('es-MX')}: ${esc(pc.disyuntor.motivo || '')}. <button class="bk-btn sm" onclick="bkResetDy_('${clave}')">Restablecer</button></div>` : ''}
       <label class="bk-lb">🔀 Flujos de plantillas</label>${bkFlujosDe_(clave).map(f => `<div style="border:1px solid #ede9fe;background:#faf5ff;border-radius:10px;padding:6px 10px;margin-bottom:6px">${bkFlujoHtml1_(f, true)}</div>`).join('') || '<div class="bk-mut" style="font-size:12px">Este proceso no tiene flujos.</div>'}
       <button class="bk-btn sm" onclick="bkFlNuevo_('${esc(clave)}')">＋ Nuevo flujo</button>
+      <label class="bk-lb">Tipo de proceso</label><div class="bk-seg">${[['huesped', '💬 Interacción con el huésped'], ['sistema', '⚙️ Interno del sistema']].map(([v, t]) => `<button type="button" class="${(pc.tipo || c.tipo) === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.drawer.pc.tipo='${v}';bkRender_()">${t}</button>`).join('')}</div>
+      <div class="bk-sub" style="margin-top:4px">${(pc.tipo || c.tipo) === 'sistema' ? 'Lo resuelve el sistema con sus datos o por programación/eventos; no depende de una conversación con el huésped.' : 'Se activa por lo que el huésped escribe en la conversación.'}</div>
       ${bkFichaHtml_(pc, c)}
       ${c.admin ? '' : `<label class="bk-lb">Palabras clave que activan el proceso <span class="bk-mut">(separa con |)</span></label>`}${c.admin ? '' : `<textarea class="bk-ta" style="min-height:52px" onchange="BK.drawer.pc.kw=this.value">${esc(pc.kw || '')}</textarea>`}
       <div class="bk-grid2"><div><label class="bk-lb">Prioridad base</label><select class="bk-sel" onchange="BK.drawer.pc.prioridad=this.value">${['P1', 'P2', 'P3', 'P4'].map(p => `<option ${(pc.prioridad || 'P4') === p ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
@@ -73540,7 +73543,7 @@ function bkDrawerHtml_() {
 function bkOvDia_(i, k) { const o = BK.drawer.pc.overrides[i]; o.dias = o.dias || []; const j = o.dias.indexOf(k); if (j >= 0) o.dias.splice(j, 1); else o.dias.push(k); bkRender_(); }
 function bkDrawerCerrar_() { BK.drawer = null; bkRender_(); }
 async function bkDrawerGuardar_() { const { clave, pc } = BK.drawer;
-  const v = { ficha: pc.ficha || {}, kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
+  const v = { ficha: pc.ficha || {}, tipo: pc.tipo || undefined, kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
   if (await bkGuardar_('proceso', { clave, valores: v })) { BK.drawer = null; bkRender_(); } }
 async function bkResetDy_(k) { if (await bkGuardar_('reset_disyuntor', k, '✓ Disyuntor restablecido')) { BK.drawer.pc.disyuntor = null; bkRender_(); } }
 
@@ -73907,3 +73910,9 @@ async function bkProcEliminar_(clave) {
   if (await bkGuardar_('eliminar_proceso', clave, '✓ Proceso eliminado')) { BK.drawer = null; bkCargar_(); }
 }
 async function bkProcRestaurar_(clave) { if (await bkGuardar_('restaurar_proceso', clave, '✓ Proceso restaurado')) bkCargar_(); }
+
+// ── Tipo de proceso: interacción con el huésped vs interno del sistema ──
+function bkTipoChip_(t) { return t === 'sistema' ? '<span class="bk-chip" style="background:#f1f5f9;color:#334155">⚙️ Sistema</span>' : '<span class="bk-chip" style="background:#ecfdf5;color:#047857">💬 Huésped</span>'; }
+function bkTipoFiltro_() { const C = BK.d.catalogo, n = t => C.filter(c => c.tipo === t).length, ft = BK.fTipo || '';
+  const b = (v, t) => `<button type="button" class="bk-tab ${ft === v ? 'on' : ''}" onclick="BK.fTipo='${v}';bkRender_()">${t}</button>`;
+  return `<div class="bk-row" style="margin:0 0 10px">${b('', `Todos (${C.length})`)}${b('huesped', `💬 Interacción con el huésped (${n('huesped')})`)}${b('sistema', `⚙️ Internos del sistema (${n('sistema')})`)}</div>`; }
