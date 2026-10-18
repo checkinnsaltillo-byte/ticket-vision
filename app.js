@@ -73284,6 +73284,7 @@ function bkCss_() {
   const st = document.createElement('style'); st.id = 'bk-css';
   st.textContent = `
 #module-bot-control{--bk-line:#e5e7eb;--bk-tx:#111827;--bk-mut:#6b7280;--bk-bg:#f8fafc;--bk-card:#fff;--bk-ac:#7c3aed;padding:18px 22px 70px;color:var(--bk-tx);max-width:1180px;margin:0 auto}
+#bk-fl-ov,#bk-tpl-ov{--bk-line:#e5e7eb;--bk-tx:#111827;--bk-mut:#6b7280;--bk-bg:#f8fafc;--bk-card:#fff;--bk-ac:#7c3aed;color:var(--bk-tx)}
 .bk-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .bk-h h2{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px}
 .bk-sub{color:var(--bk-mut);font-size:12.5px}
@@ -73370,6 +73371,7 @@ async function bkCargar_(silencioso) {
       fetch(`${BACKEND}/bot/control/proactivos`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({ items: [], plantillas: [], bajas: {} }))]);
     if (!a.ok) throw new Error(a.error || 'Error');
     BK.d = a; BK.bandeja = b.items || []; BK.pm = c.ok ? c : { items: [], plantillas: [], bajas: {} };
+    if (!Array.isArray(a.cfg.flujos)) setTimeout(bkFlujosInit_, 0);
     bkRender_();
   } catch (e) { if (!silencioso) { const root = document.getElementById('module-bot-control'); if (root && !BK.d) root.innerHTML = `<div class="bk-card">⚠️ No se pudo cargar: ${esc(e.message || e)} <button class="bk-btn sm" onclick="bkInit_()">Reintentar</button></div>`; } }
   finally { BK.cargando = false; }
@@ -73481,7 +73483,8 @@ function bkProcesos_() {
       ${['auto', 'sup', 'der', 'off'].filter(k => cnt[k]).map(k => `<span class="bk-chip" style="color:${BK_MODO[k][1]};background:${BK_MODO[k][2]}">${cnt[k]} ${BK_MODO[k][0]}</span>`).join(' ')}</summary>${rows}</details>`;
   }).join('');
   return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><div><h3>Catálogo de procesos</h3><div class="bk-sub">${catalogo.length} procesos. Colores: gris Apagado · ámbar Derivar · azul Supervisado · verde Automático. Pasar a Automático pide confirmación.</div></div>
-    <div class="bk-row"><button class="bk-btn sm" onclick="bkLote_('sup')">Todo a Supervisado</button><button class="bk-btn sm" onclick="bkNuevoProceso_()">＋ Agregar proceso</button></div></div>
+    <div class="bk-row"><button class="bk-btn sm" onclick="bkLote_('sup')">Todo a Supervisado</button><button class="bk-btn sm" onclick="bkFlNuevo_('')">＋ Nuevo flujo</button><button class="bk-btn sm" onclick="bkNuevoProceso_()">＋ Agregar proceso</button></div></div>
+    ${(BK.d.eliminados || []).length ? `<details style="margin-top:8px"><summary class="bk-mut" style="cursor:pointer;font-size:12.5px">🗑 Procesos eliminados (${BK.d.eliminados.length})</summary>${BK.d.eliminados.map(e => `<div class="bk-row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px"><span>${esc(e.nombre)} <span class="bk-mut">· ${esc(BK.d.grupos[e.grupo] || e.grupo)}</span></span><button class="bk-btn sm" onclick="bkProcRestaurar_('${esc(e.clave)}')">Restaurar</button></div>`).join('')}</details>` : ''}
     <div class="bk-grid2" style="margin-top:10px"><div><label class="bk-lb">Mensaje de respaldo general (proceso Apagado sin mensaje propio)</label><textarea class="bk-ta" id="bk-rg">${esc(BK.d.cfg.respaldoGeneral)}</textarea></div>
     <div><label class="bk-lb">Mensaje cuando el canal lo bloquea (Airbnb / Booking)</label><textarea class="bk-ta" id="bk-rc">${esc(BK.d.cfg.respaldoCanal)}</textarea></div></div>
     <div class="bk-row" style="justify-content:flex-end;margin-top:8px"><button class="bk-btn sm pri" onclick="bkGuardarRespaldos_()">Guardar mensajes</button></div></div>${bkPmCfgHtml_()}${html}`;
@@ -73521,7 +73524,8 @@ function bkDrawerHtml_() {
   return `<div class="bk-drw-bg" onclick="bkDrawerCerrar_()"></div><div class="bk-drw"><div class="bk-drw-h"><div style="flex:1"><b style="font-size:15px">${esc(c.nombre)}</b><div class="bk-sub">${esc(c.desc || '')}</div></div><button class="bk-btn sm" onclick="bkDrawerCerrar_()">✕</button></div>
     <div class="bk-drw-b">
       ${pc.disyuntor && pc.disyuntor.at ? `<div class="bk-obs err" style="margin-top:12px">⚡ Disyuntor activo desde ${new Date(pc.disyuntor.at).toLocaleString('es-MX')}: ${esc(pc.disyuntor.motivo || '')}. <button class="bk-btn sm" onclick="bkResetDy_('${clave}')">Restablecer</button></div>` : ''}
-      ${bkTplsDe_(clave).length ? `<label class="bk-lb">Flujo de plantillas de WhatsApp</label>${bkTplsOrden_(clave).map((t, i) => `<div class="bk-row" style="padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px"><span style="width:20px;height:20px;border-radius:50%;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800">${i + 1}</span><b>${esc(t.nombre)}</b><span class="bk-mut">${esc(bkPmProg_(t))}</span><button class="bk-btn sm" onclick="bkTplAbrir_('${esc(t.id)}')">Abrir</button></div>`).join('')}` : ''}
+      <label class="bk-lb">🔀 Flujos de plantillas</label>${bkFlujosDe_(clave).map(f => `<div style="border:1px solid #ede9fe;background:#faf5ff;border-radius:10px;padding:6px 10px;margin-bottom:6px">${bkFlujoHtml1_(f, true)}</div>`).join('') || '<div class="bk-mut" style="font-size:12px">Este proceso no tiene flujos.</div>'}
+      <button class="bk-btn sm" onclick="bkFlNuevo_('${esc(clave)}')">＋ Nuevo flujo</button>
       ${bkFichaHtml_(pc, c)}
       ${c.admin ? '' : `<label class="bk-lb">Palabras clave que activan el proceso <span class="bk-mut">(separa con |)</span></label>`}${c.admin ? '' : `<textarea class="bk-ta" style="min-height:52px" onchange="BK.drawer.pc.kw=this.value">${esc(pc.kw || '')}</textarea>`}
       <div class="bk-grid2"><div><label class="bk-lb">Prioridad base</label><select class="bk-sel" onchange="BK.drawer.pc.prioridad=this.value">${['P1', 'P2', 'P3', 'P4'].map(p => `<option ${(pc.prioridad || 'P4') === p ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
@@ -73531,7 +73535,7 @@ function bkDrawerHtml_() {
       <div><label class="bk-lb">Límites duros</label><input class="bk-in" value="${esc(pc.limites || '')}" placeholder="Ej. monto máximo $5,000; sin descuentos" onchange="BK.drawer.pc.limites=this.value"></div></div>
       <label class="bk-lb" style="margin-top:16px">Reglas específicas (propiedad, canal u horario) <span class="bk-mut">— la más específica manda</span></label>${ov || '<div class="bk-mut" style="font-size:12px">Sin reglas específicas.</div>'}
       <button class="bk-btn sm" onclick="BK.drawer.pc.overrides.push({prop:'',canal:'',dias:[],ini:'',fin:'',modo:'sup'});bkRender_()">＋ Agregar regla</button>
-    </div><div class="bk-drw-f"><button class="bk-btn" onclick="bkDrawerCerrar_()">Cancelar</button><button class="bk-btn pri" onclick="bkDrawerGuardar_()">Guardar</button></div></div>`;
+    </div><div class="bk-drw-f">${c.forzado ? '<span class="bk-mut" style="font-size:11.5px;margin-right:auto">🔒 Obligatorio por seguridad: no se puede eliminar</span>' : `<button class="bk-btn red" style="margin-right:auto" onclick="bkProcEliminar_('${esc(clave)}')" title="Eliminar proceso">🗑 Eliminar</button>`}<button class="bk-btn" onclick="bkDrawerCerrar_()">Cancelar</button><button class="bk-btn pri" onclick="bkDrawerGuardar_()">Guardar</button></div></div>`;
 }
 function bkOvDia_(i, k) { const o = BK.drawer.pc.overrides[i]; o.dias = o.dias || []; const j = o.dias.indexOf(k); if (j >= 0) o.dias.splice(j, 1); else o.dias.push(k); bkRender_(); }
 function bkDrawerCerrar_() { BK.drawer = null; bkRender_(); }
@@ -73698,15 +73702,36 @@ const BK_PM_EST = { por_aprobar: ['⏳ Por aprobar', '#1d4ed8', '#dbeafe'], sin_
 function bkPmProg_(t) { const ty = t.schedule_type; if (ty === 'on_booking_5min') return '5 min después de reservar'; if (ty === 'before_arrival') return 'día anterior a la llegada, 10:00'; if (ty === 'before_checkout') return 'día anterior a la salida, 18:00';
   if (ty === 'never' || !ty) return t.responsivo ? 'por evento' : 'por evento o manual';
   if (ty === 'custom') { const off = parseInt(t.schedule_offset || '0', 10) || 0, ev = t.schedule_event === 'checkout' ? 'salida' : 'llegada'; return `${off === 0 ? `día de ${ev}` : off < 0 ? `${-off} día${off < -1 ? 's' : ''} antes de la ${ev}` : `${off} día${off > 1 ? 's' : ''} después de la ${ev}`}, ${t.schedule_time || '09:00'}`; } return 'sin programación'; }
-function bkTplsDe_(clave) { const M = BK.d.cfg.plantillasProceso || {}, T = (BK.pm || {}).todas || []; return T.filter(t => M[t.id] === clave); }
-// Plantillas de un proceso en el mismo orden que la vista de Flujo: programadas por momento, por evento por fase.
-function bkTplsOrden_(clave) { return bkTplsDe_(clave).map(t => ({ t, m: bkTplMomento_(t) })).sort((a, b) => (a.m ? 0 : 1) - (b.m ? 0 : 1) || (a.m && b.m ? a.m[0] - b.m[0] || a.m[1] - b.m[1] || a.m[2] - b.m[2] : bkTplFase_(a.t.nombre) - bkTplFase_(b.t.nombre) || String(a.t.nombre).localeCompare(String(b.t.nombre)))).map(x => x.t); }
-function bkPmChip_(clave) { const L = bkTplsOrden_(clave); if (!L.length) return '';
-  const paso = (t, i) => { const inert = !t.enabled || (t.schedule_type !== 'never' && !t.alojamientos);
-    return `<button type="button" onclick="event.stopPropagation();bkTplAbrir_('${esc(t.id)}')" title="${esc(t.preview || '')}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:7px 11px 7px 8px;border-radius:10px;background:#fff;border:1px solid ${inert ? '#e5e7eb' : '#ddd6fe'};box-shadow:0 1px 2px rgba(0,0,0,.04);${inert ? 'opacity:.6' : ''}" onmouseover="this.style.borderColor='#7c3aed';this.style.background='#faf5ff'" onmouseout="this.style.borderColor='${inert ? '#e5e7eb' : '#ddd6fe'}';this.style.background='#fff'">
+// ── 🔀 Flujos: cada flujo = proceso + pasos ordenados (plantillas). Son la fuente de la asociación plantilla → proceso. ──
+const bkTodas_ = () => (BK.pm || {}).todas || [];
+const bkTpl_ = id => bkTodas_().find(t => t.id === id);
+function bkFlujos_() { return Array.isArray(BK.d.cfg.flujos) ? BK.d.cfg.flujos : []; }
+function bkFlujosDe_(clave) { return bkFlujos_().filter(f => f.proceso === clave); }
+function bkTplsDe_(clave) { return bkFlujosDe_(clave).flatMap(f => f.pasos).map(bkTpl_).filter(Boolean); }
+function bkTplsOrden_(clave) { return bkTplsDe_(clave); }
+function bkOrdenAuto_(L) { return L.map(t => ({ t, m: bkTplMomento_(t) })).sort((a, b) => (a.m ? 0 : 1) - (b.m ? 0 : 1) || (a.m && b.m ? a.m[0] - b.m[0] || a.m[1] - b.m[1] || a.m[2] - b.m[2] : bkTplFase_(a.t.nombre) - bkTplFase_(b.t.nombre) || String(a.t.nombre).localeCompare(String(b.t.nombre)))).map(x => x.t); }
+// Primera vez: arma un flujo por proceso con las asociaciones actuales y lo guarda.
+async function bkFlujosInit_() {
+  if (Array.isArray(BK.d.cfg.flujos) || !bkTodas_().length || BK._flInit) return; BK._flInit = true;
+  const M = BK.d.cfg.plantillasProceso || {}, por = {};
+  bkTodas_().forEach(t => { const k = M[t.id]; if (k && BK.d.catalogo.some(c => c.clave === k)) (por[k] = por[k] || []).push(t); });
+  const F = Object.keys(por).map(k => ({ id: 'f' + k, nombre: (BK.d.catalogo.find(c => c.clave === k) || {}).nombre || k, proceso: k, pasos: bkOrdenAuto_(por[k]).map(t => t.id) }));
+  if (await bkGuardar_('flujos', F, false)) bkRender_();
+}
+function bkPasoBtn_(t, i, inert) {
+  return `<button type="button" onclick="event.stopPropagation();bkTplAbrir_('${esc(t.id)}')" title="${esc(t.preview || '')}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:7px 11px 7px 8px;border-radius:10px;background:#fff;border:1px solid ${inert ? '#e5e7eb' : '#ddd6fe'};box-shadow:0 1px 2px rgba(0,0,0,.04);${inert ? 'opacity:.6' : ''}" onmouseover="this.style.borderColor='#7c3aed';this.style.background='#faf5ff'" onmouseout="this.style.borderColor='${inert ? '#e5e7eb' : '#ddd6fe'}';this.style.background='#fff'">
       <span style="width:20px;height:20px;border-radius:50%;background:${inert ? '#e5e7eb' : '#111827'};color:${inert ? '#6b7280' : '#fff'};display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex-shrink:0">${i + 1}</span>
-      <span style="font-size:11.5px;line-height:1.25"><b>${esc(t.nombre)}</b><br><span class="bk-mut">${esc(bkPmProg_(t))}${t.schedule_type !== 'never' && !t.alojamientos ? ' · sin alojamientos' : ''}${t.enabled ? '' : ' · desactivada'}</span></span></button>`; };
-  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${L.map((t, i) => paso(t, i)).join('<span style="color:#a78bfa;font-weight:800">→</span>')}</div>`; }
+      <span style="font-size:11.5px;line-height:1.25"><b>${esc(t.nombre)}</b><br><span class="bk-mut">${esc(bkPmProg_(t))}${t.schedule_type !== 'never' && !t.alojamientos ? ' · sin alojamientos' : ''}${t.enabled ? '' : ' · desactivada'}</span></span></button>`;
+}
+function bkFlujoHtml1_(f, conNombre) {
+  const L = f.pasos.map(bkTpl_).filter(Boolean);
+  const pasos = L.map((t, i) => bkPasoBtn_(t, i, !t.enabled || (t.schedule_type !== 'never' && !t.alojamientos))).join('<span style="color:#a78bfa;font-weight:800">→</span>');
+  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${conNombre ? `<span style="font-size:11px;font-weight:800;color:#6d28d9;margin-right:2px">🔀 ${esc(f.nombre)}</span>` : ''}${pasos || '<span class="bk-mut" style="font-size:11.5px">Flujo sin pasos</span>'}
+    <button type="button" class="bk-btn sm" style="padding:4px 8px" onclick="event.stopPropagation();bkFlEditar_('${esc(f.id)}')" title="Agregar, quitar u ordenar plantillas">✏️ Editar flujo</button></div>`;
+}
+function bkPmChip_(clave) { const F = bkFlujosDe_(clave); if (!F.length) return '';
+  const c = BK.d.catalogo.find(x => x.clave === clave) || {};
+  return F.map(f => bkFlujoHtml1_(f, F.length > 1 || f.nombre !== c.nombre)).join(''); }
 function bkPmCfgHtml_() { const P = BK.d.cfg.proactivos || {}, V = P.ventana || {};
   return `<div class="bk-card"><h3>📨 Mensajes programados</h3><div class="bk-sub">Cada plantilla programada (pestaña 📨 Plantillas) se envía según el modo de su proceso asociado. Apagado = no se manda · Supervisado o Derivar = queda por aprobar en la Bandeja · Automático = se envía solo. Funciona aunque el gate esté en observación.</div>
     <div class="bk-row" style="margin-top:10px;font-size:12.5px"><span>Horario permitido de envío</span><input class="bk-in" type="time" style="width:110px" value="${esc(V.ini || '08:00')}" id="bk-pm-ini"><span>a</span><input class="bk-in" type="time" style="width:110px" value="${esc(V.fin || '21:30')}" id="bk-pm-fin">
@@ -73778,14 +73803,14 @@ function bkFlujoHtml_() {
   const prog = T.filter(t => bkTplMomento_(t)).map(t => ({ t, m: bkTplMomento_(t) })).sort((a, b) => a.m[0] - b.m[0] || a.m[1] - b.m[1] || a.m[2] - b.m[2]);
   let n = 0, etapa = '', html = '';
   prog.forEach(({ t, m }) => { const e = bkTplEtapa_(m); if (e[1] !== etapa) { etapa = e[1]; html += `<div style="margin:${n ? 6 : 0}px 0 8px 46px;font-size:12px;font-weight:800;color:#6b7280;letter-spacing:.4px;text-transform:uppercase">${e[0]} ${esc(e[1])}</div>`; } html += paso(++n, t); });
-  // 2) Mensajes por evento o manuales: un flujo numerado por proceso
-  const ev = T.filter(t => !bkTplMomento_(t)), porProc = {};
-  ev.forEach(t => (porProc[M[t.id] || ''] = porProc[M[t.id] || ''] || []).push(t));
-  const orden = BK.d.catalogo.map(c => c.clave).concat(['']);
-  const evHtml = orden.filter(k => porProc[k]).map(k => { const L = porProc[k].sort((a, b) => bkTplFase_(a.nombre) - bkTplFase_(b.nombre) || String(a.nombre).localeCompare(String(b.nombre))), c = cat(k);
-    return `<details class="bk-grp" ${BK.abiertos['ev_' + k] ? 'open' : ''} ontoggle="BK.abiertos['ev_${esc(k)}']=this.open"><summary>${c ? esc(c.nombre) : 'Sin proceso'} <span class="bk-sub">${L.length} paso${L.length > 1 ? 's' : ''}</span><span style="flex:1"></span>${c ? bkModoChip_(modoDe(k)) : ''}</summary><div style="padding:6px 16px 4px">${L.map((t, i) => paso(i + 1, t, t.responsivo ? 'por evento' : 'por evento o manual')).join('')}</div></details>`; }).join('');
+  // 2) Flujos armados (por proceso)
+  const F = bkFlujos_(), procs = BK.d.catalogo.map(c => c.clave).filter(k => F.some(f => f.proceso === k));
+  const sinFlujo = T.filter(t => !F.some(f => f.pasos.includes(t.id)));
+  const evHtml = procs.map(k => { const c = cat(k), Fs = F.filter(f => f.proceso === k);
+    return `<details class="bk-grp" ${BK.abiertos['ev_' + k] ? 'open' : ''} ontoggle="BK.abiertos['ev_${esc(k)}']=this.open"><summary>${esc(c.nombre)} <span class="bk-sub">${Fs.length} flujo${Fs.length > 1 ? 's' : ''} · ${Fs.reduce((n, f) => n + f.pasos.length, 0)} pasos</span><span style="flex:1"></span>${c.admin ? '' : bkModoChip_(modoDe(k))}</summary><div style="padding:4px 16px 12px">${Fs.map(f => bkFlujoHtml1_(f, true)).join('')}<div style="margin-top:8px"><button class="bk-btn sm" onclick="bkFlNuevo_('${esc(k)}')">＋ Nuevo flujo en este proceso</button></div></div></details>`; }).join('')
+    + (sinFlujo.length ? `<details class="bk-grp"><summary>Plantillas sin flujo <span class="bk-sub">${sinFlujo.length} — no pertenecen a ningún proceso</span></summary><div style="padding:6px 16px 12px;display:flex;gap:6px;flex-wrap:wrap">${sinFlujo.map((t, i) => bkPasoBtn_(t, i, true)).join('')}</div></details>` : '');
   return `<div class="bk-card"><h3>🧭 Viaje del huésped — mensajes programados</h3><div class="bk-sub" style="margin-bottom:12px">${prog.length} pasos en orden cronológico. Los pasos en gris no se envían (plantilla desactivada o sin alojamientos asignados).</div>${html || '<div class="bk-mut">Sin plantillas programadas.</div>'}</div>
-    <div class="bk-card" style="padding:12px 16px"><h3>⚡ Mensajes por evento o manuales</h3><div class="bk-sub">Agrupados por proceso, en el orden en que suelen ocurrir (registro → programación → decisión → atención).</div></div>${evHtml}`;
+    <div class="bk-card" style="padding:12px 16px"><div class="bk-row" style="justify-content:space-between"><div><h3>🔀 Flujos por proceso</h3><div class="bk-sub">Arma cada flujo con las plantillas que quieras, en el orden que quieras. Un flujo pertenece a un proceso; una plantilla vive en un solo flujo.</div></div><button class="bk-btn sm pri" onclick="bkFlNuevo_('')">＋ Nuevo flujo</button></div></div>${evHtml}`;
 }
 function bkPlantillasMontar_() { if (typeof CFG_ADMIN === 'undefined' || (BK.tplVista || 'flujo') !== 'editor') return; CFG_ADMIN.hostId = 'bk-tpl-host'; CFG_ADMIN.tab = 'templates';
   if (typeof cfgAdminInit === 'function') cfgAdminInit(); }
@@ -73795,7 +73820,7 @@ async function bkTplAbrir_(id) {
   bkTplCerrar_(true);
   const t = ((BK.pm || {}).todas || []).find(x => x.id === id) || {};
   const ov = document.createElement('div'); ov.id = 'bk-tpl-ov';
-  ov.innerHTML = `<div class="bk-drw-bg" style="z-index:9100" onclick="bkTplCerrar_()"></div><div class="bk-drw" style="z-index:9101;width:min(720px,100vw)"><div class="bk-drw-h"><div style="flex:1"><b style="font-size:15px">📨 ${esc(t.nombre || 'Plantilla')}</b><div class="bk-sub">${esc(t.schedule_type ? bkPmProg_(t) : '')}</div></div><button class="bk-btn sm" onclick="bkTplCerrar_()">✕</button></div><div id="bk-tpl-drw" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0"></div></div>`;
+  ov.innerHTML = `<div class="bk-drw-bg" style="z-index:9200" onclick="bkTplCerrar_()"></div><div class="bk-drw" style="z-index:9201;width:min(720px,100vw)"><div class="bk-drw-h"><div style="flex:1"><b style="font-size:15px">📨 ${esc(t.nombre || 'Plantilla')}</b><div class="bk-sub">${esc(t.schedule_type ? bkPmProg_(t) : '')}</div></div><button class="bk-btn sm" onclick="bkTplCerrar_()">✕</button></div><div id="bk-tpl-drw" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0"></div></div>`;
   document.body.appendChild(ov);
   BK.tplPrevHost = CFG_ADMIN.hostId; CFG_ADMIN.hostId = 'bk-tpl-drw'; CFG_ADMIN.soloEditor = true;
   try { if (!CFG_ADMIN.loaded) await cfgAdminInit(); cfgSelectTemplate(id); } catch (e) { console.warn('[bk] plantilla:', e.message); }
@@ -73831,3 +73856,54 @@ function bkFichaHtml_(pc, c) {
 function bkFichaResumen_(pc) { const f = pc.ficha || {}, n = k => String(f[k] || '').split(/\n|\|/).filter(x => x.trim()).length;
   if (!Object.values(f).some(v => String(v || '').trim())) return '<div class="mt" style="color:#b45309">📋 Sin ficha: el bot no recibe instrucciones específicas</div>';
   return `<div class="mt">📋 ${n('reglas')} regla${n('reglas') === 1 ? '' : 's'} · ${n('obtener')} dato${n('obtener') === 1 ? '' : 's'} a obtener · ${n('compartir')} a compartir · ${n('riesgos')} riesgo${n('riesgos') === 1 ? '' : 's'}</div>`; }
+
+// ── Editor de flujos (ventana lateral) ──
+function bkFlNuevo_(proceso) { BK.flEd = { id: '', nombre: '', proceso: proceso || '', pasos: [] }; bkFlPintar_(); }
+function bkFlEditar_(id) { const f = bkFlujos_().find(x => x.id === id); if (!f) return; BK.flEd = JSON.parse(JSON.stringify(f)); bkFlPintar_(); }
+function bkFlCerrar_() { BK.flEd = null; const ov = document.getElementById('bk-fl-ov'); if (ov) ov.remove(); }
+function bkFlPintar_() {
+  let ov = document.getElementById('bk-fl-ov'); if (!ov) { ov = document.createElement('div'); ov.id = 'bk-fl-ov'; document.body.appendChild(ov); }
+  const e = BK.flEd, F = bkFlujos_(), G = BK.d.grupos, byG = {}; BK.d.catalogo.forEach(c => (byG[c.grupo] = byG[c.grupo] || []).push(c));
+  const procOpts = Object.keys(G).filter(g => byG[g]).map(g => `<optgroup label="${esc(G[g])}">${byG[g].map(c => `<option value="${esc(c.clave)}" ${e.proceso === c.clave ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</optgroup>`).join('');
+  const dondeEsta = id => F.find(f => f.id !== e.id && f.pasos.includes(id));
+  const libres = bkTodas_().filter(t => !e.pasos.includes(t.id));
+  const sinF = libres.filter(t => !dondeEsta(t.id)), conF = libres.filter(t => dondeEsta(t.id));
+  const addOpts = `<option value="">＋ Agregar plantilla…</option>${sinF.length ? `<optgroup label="Sin flujo">${sinF.map(t => `<option value="${esc(t.id)}">${esc(t.nombre)}</option>`).join('')}</optgroup>` : ''}${conF.length ? `<optgroup label="En otro flujo (se moverá aquí)">${conF.map(t => `<option value="${esc(t.id)}">${esc(t.nombre)} — ${esc(dondeEsta(t.id).nombre)}</option>`).join('')}</optgroup>` : ''}`;
+  const pasos = e.pasos.map((id, i) => { const t = bkTpl_(id) || { nombre: id };
+    return `<div class="bk-row" style="padding:8px 10px;border:1px solid #ddd6fe;border-radius:10px;margin-bottom:6px;background:#fff;flex-wrap:nowrap">
+      <span style="width:22px;height:22px;border-radius:50%;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">${i + 1}</span>
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="bkTplAbrir_('${esc(id)}')"><b style="font-size:12.5px">${esc(t.nombre)}</b><div class="bk-mut" style="font-size:11px">${esc(t.schedule_type ? bkPmProg_(t) : '')}</div></div>
+      <button class="bk-btn sm" ${i ? '' : 'disabled style="opacity:.35"'} onclick="bkFlMover_(${i},-1)" title="Subir">↑</button><button class="bk-btn sm" ${i < e.pasos.length - 1 ? '' : 'disabled style="opacity:.35"'} onclick="bkFlMover_(${i},1)" title="Bajar">↓</button><button class="bk-btn sm red" onclick="BK.flEd.pasos.splice(${i},1);bkFlPintar_()" title="Quitar del flujo">✕</button></div>`; }).join('');
+  ov.innerHTML = `<div class="bk-drw-bg" style="z-index:9150" onclick="bkFlCerrar_()"></div><div class="bk-drw" style="z-index:9151;width:min(560px,100vw)">
+    <div class="bk-drw-h"><div style="flex:1"><b style="font-size:15px">🔀 ${e.id ? 'Editar flujo' : 'Nuevo flujo'}</b><div class="bk-sub">Plantillas en el orden en que se envían. Toca un paso para editar la plantilla.</div></div><button class="bk-btn sm" onclick="bkFlCerrar_()">✕</button></div>
+    <div class="bk-drw-b">
+      <label class="bk-lb">Nombre del flujo</label><input class="bk-in" value="${esc(e.nombre)}" placeholder="Ej. Seguimiento de solicitudes de limpieza" oninput="BK.flEd.nombre=this.value">
+      <label class="bk-lb">Proceso al que pertenece</label><select class="bk-sel" onchange="BK.flEd.proceso=this.value;bkFlPintar_()"><option value="">— Elige un proceso —</option>${procOpts}</select>
+      <div class="bk-sub" style="margin-top:4px">Las plantillas programadas se envían según el modo de este proceso.</div>
+      <label class="bk-lb" style="margin-top:16px">Pasos (${e.pasos.length})</label>${pasos || '<div class="bk-mut" style="font-size:12px;margin-bottom:8px">Aún no hay pasos.</div>'}
+      <select class="bk-sel" onchange="if(this.value){BK.flEd.pasos.push(this.value);bkFlPintar_()}">${addOpts}</select>
+    </div>
+    <div class="bk-drw-f">${e.id ? '<button class="bk-btn red" style="margin-right:auto" onclick="bkFlEliminar_()">🗑 Eliminar flujo</button>' : ''}<button class="bk-btn" onclick="bkFlCerrar_()">Cancelar</button><button class="bk-btn pri" onclick="bkFlGuardar_()">Guardar flujo</button></div></div>`;
+}
+function bkFlMover_(i, d) { const P = BK.flEd.pasos, j = i + d; if (j < 0 || j >= P.length) return; [P[i], P[j]] = [P[j], P[i]]; bkFlPintar_(); }
+async function bkFlGuardar_() {
+  const e = BK.flEd; if (!e.proceso) return alert('Elige el proceso al que pertenece el flujo.');
+  const nombre = String(e.nombre || '').trim() || ((BK.d.catalogo.find(c => c.clave === e.proceso) || {}).nombre || 'Flujo');
+  const movidas = e.pasos.filter(id => bkFlujos_().some(f => f.id !== e.id && f.pasos.includes(id)));
+  if (movidas.length && !confirm(`${movidas.length} plantilla(s) se moverán desde otro flujo a este. ¿Continuar?`)) return;
+  const F = bkFlujos_().map(f => f.id === e.id ? null : Object.assign({}, f, { pasos: f.pasos.filter(id => !e.pasos.includes(id)) })).filter(Boolean);
+  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, pasos: e.pasos.slice() };
+  const idx = bkFlujos_().findIndex(f => f.id === e.id); if (idx >= 0) F.splice(idx, 0, nuevo); else F.push(nuevo);
+  if (await bkGuardar_('flujos', F, '✓ Flujo guardado')) { bkFlCerrar_(); bkRender_(); }
+}
+async function bkFlEliminar_() {
+  const e = BK.flEd; if (!confirm(`¿Eliminar el flujo «${e.nombre}»? Sus ${e.pasos.length} plantilla(s) quedarán sin proceso (no se borran).`)) return;
+  if (await bkGuardar_('flujos', bkFlujos_().filter(f => f.id !== e.id), '✓ Flujo eliminado')) { bkFlCerrar_(); bkRender_(); }
+}
+async function bkProcEliminar_(clave) {
+  const c = BK.d.catalogo.find(x => x.clave === clave); if (!c) return;
+  const F = bkFlujosDe_(clave), n = F.reduce((a, f) => a + f.pasos.length, 0);
+  if (!confirm(`¿Eliminar el proceso «${c.nombre}»?\n\nEl bot dejará de detectarlo y de usar su ficha.${F.length ? `\nSus ${F.length} flujo(s) se eliminan y ${n} plantilla(s) quedan sin proceso (no se borran).` : ''}\n\nPodrás restaurarlo desde «Procesos eliminados».`)) return;
+  if (await bkGuardar_('eliminar_proceso', clave, '✓ Proceso eliminado')) { BK.drawer = null; bkCargar_(); }
+}
+async function bkProcRestaurar_(clave) { if (await bkGuardar_('restaurar_proceso', clave, '✓ Proceso restaurado')) bkCargar_(); }

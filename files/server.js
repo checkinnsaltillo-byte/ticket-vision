@@ -13266,7 +13266,15 @@ async function _bcLogFlush() { if (!_bcLogBuf.length) return; const L = _bcLogBu
 function _bcCatalogo(cfg) {
   const L = _BC_CAT.map(([clave, grupo, nombre, desc, modoIni, origen, pb, kw, tools, fl]) => ({ clave, grupo, nombre, desc, modoIni, origen, pbIni: pb, tools, solo_directo: fl.includes("d"), verif: fl.includes("v"), forzado: fl.includes("f"), admin: fl.includes("a") }));
   (cfg.extras || []).forEach(x => { if (x && x.clave && !L.some(y => y.clave === x.clave)) L.push({ clave: x.clave, grupo: x.grupo || "transversales", nombre: x.nombre || x.clave, desc: x.desc || "", modoIni: "sup", origen: "Panel", pbIni: "P4", tools: [], solo_directo: false, verif: false, forzado: false, extra: true }); });
-  return L;
+  const fuera = new Set(cfg.eliminados || []); // procesos eliminados desde el panel
+  return L.filter(c => !fuera.has(c.clave));
+}
+// Flujos (cfg.flujos = [{ id, nombre, proceso, pasos:[idPlantilla…] }]) → proceso de cada plantilla. Los flujos son la fuente de la asociación.
+function _bcMapaDeFlujos(flujos) { const m = {}; (flujos || []).forEach(f => (f.pasos || []).forEach(t => { if (t && f.proceso) m[t] = f.proceso; })); return m; }
+function _bcFlujosLimpios(L) {
+  const vistos = new Set();
+  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso),
+    pasos: (Array.isArray(f.pasos) ? f.pasos : []).map(String).filter(t => t && !vistos.has(t) && vistos.add(t)) })); // una plantilla vive en un solo flujo
 }
 // Modo efectivo de un proceso para esta conversación: override más específico (RF-03) → canal (RF-15) → verificación (RF-06/17) → disyuntor (RF-10) → fuera de oficina (RF-14).
 function _bcModoProceso(cfg, cat, c, now) {
@@ -13561,7 +13569,8 @@ app.get("/bot/control", async (req, res) => {
     logs.forEach(l => (l.items || []).forEach(e => { if (e.tipo === "gate") (e.procesos || []).forEach(k => { const m = met[k] = met[k] || { usos: 0, errores: 0, rechazos: 0, escalados: 0 }; m.usos++; if (["derivar", "personal", "emergencia"].includes(e.accion)) m.escalados++; });
       if (e.tipo === "error" && e.proceso) { const m = met[e.proceso] = met[e.proceso] || { usos: 0, errores: 0, rechazos: 0, escalados: 0 }; m.errores++; }
       if (e.tipo === "rechazo" && e.proceso) { const m = met[e.proceso] = met[e.proceso] || { usos: 0, errores: 0, rechazos: 0, escalados: 0 }; m.rechazos++; } }));
-    res.json({ ok: true, cfg, catalogo: catL, grupos: _BC_GRUPOS, metricas: met, personas, alojamientos: (catA || []).map(a => ({ hid: String(a.hid), code: String(a.code || "").toUpperCase(), nombre: a.nombre || "" })).filter(a => a.hid),
+    const elim = (cfg.eliminados || []).map(k => { const b = _BC_CAT.find(x => x[0] === k); return { clave: k, nombre: b ? b[2] : k, grupo: b ? b[1] : "" }; });
+    res.json({ ok: true, cfg, catalogo: catL, eliminados: elim, grupos: _BC_GRUPOS, metricas: met, personas, alojamientos: (catA || []).map(a => ({ hid: String(a.hid), code: String(a.code || "").toUpperCase(), nombre: a.nombre || "" })).filter(a => a.hid),
       ahora: { nivel: hor.nivel, nivelTxt: _BC_NIV_TXT[hor.nivel], franja: hor.franja, conPersonal: hor.conPersonal, noDisp: !!hor.noDisp, titular: cfg.horario.titular, respaldo: cfg.horario.respaldo },
       contadores: { automaticos: catL.filter(c => (cfg.procesos[c.clave] || {}).modo === "auto").length, prioritarias: C.filter(c => ["P1", "P2"].includes(c.prioridad) && c.estado !== "resuelta" && Date.now() - Date.parse(c.at) < 48 * 3600e3).length,
         supervision: C.filter(c => c.estado === "esperando_autorizacion" && Date.now() - Date.parse(c.at) < 48 * 3600e3).length, disyuntores: catL.filter(c => ((cfg.procesos[c.clave] || {}).disyuntor || {}).at).length, alertas: abiertas.length },
@@ -13573,7 +13582,7 @@ app.post("/bot/control", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const { seccion, data, usuario } = req.body || {}, por = String(usuario || "").slice(0, 60);
-    const OK = ["plantillaProceso", "proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
+    const OK = ["flujos", "eliminar_proceso", "restaurar_proceso", "plantillaProceso", "proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
     if (!OK.includes(seccion)) return res.status(400).json({ ok: false, error: "Sección inválida" });
     let antes, despues;
     await _bcMut(_BC.OBJ, d => {
@@ -13585,7 +13594,22 @@ app.post("/bot/control", async (req, res) => {
       else if (seccion === "respaldoGeneral" || seccion === "respaldoCanal") set(seccion, String(data || ""));
       else if (seccion === "proceso") { const k = String(data && data.clave || ""); if (!k) throw new Error("Falta la clave"); d.procesos = d.procesos || {}; antes = cur.procesos[k]; const v = Object.assign({}, cur.procesos[k] || {}, data.valores || {}); if (v.modo && !_BC_MODOS.includes(v.modo)) throw new Error("Modo inválido"); d.procesos[k] = v; despues = v; }
       else if (seccion === "procesos_lote") { d.procesos = d.procesos || {}; antes = {}; despues = {}; Object.entries(data || {}).forEach(([k, modo]) => { if (!_BC_MODOS.includes(modo)) return; antes[k] = (cur.procesos[k] || {}).modo; d.procesos[k] = Object.assign({}, cur.procesos[k] || {}, { modo }); despues[k] = modo; }); }
-      else if (seccion === "plantillaProceso") { const tid = String(data && data.tid || ""); if (!tid) throw new Error("Falta la plantilla"); antes = (cur.plantillasProceso || {})[tid] || ""; d.plantillasProceso = Object.assign({}, cur.plantillasProceso || {}, { [tid]: String(data.proc || "") }); despues = String(data.proc || ""); }
+      else if (seccion === "plantillaProceso") { const tid = String(data && data.tid || ""), proc = String(data && data.proc || ""); if (!tid) throw new Error("Falta la plantilla"); antes = (cur.plantillasProceso || {})[tid] || "";
+        if (Array.isArray(cur.flujos)) { // mueve la plantilla al primer flujo del proceso (lo crea si no hay)
+          const F = JSON.parse(JSON.stringify(cur.flujos)); F.forEach(f => { f.pasos = (f.pasos || []).filter(t => t !== tid); });
+          if (proc) { let f = F.find(x => x.proceso === proc); if (!f) { const c = _bcCatalogo(cur).find(x => x.clave === proc); f = { id: _bcId(), nombre: c ? c.nombre : proc, proceso: proc, pasos: [] }; F.push(f); } f.pasos.push(tid); }
+          d.flujos = _bcFlujosLimpios(F); d.plantillasProceso = _bcMapaDeFlujos(d.flujos);
+        } else d.plantillasProceso = Object.assign({}, cur.plantillasProceso || {}, { [tid]: proc });
+        despues = proc; }
+      else if (seccion === "flujos") { antes = cur.flujos || null; d.flujos = _bcFlujosLimpios(data); d.plantillasProceso = _bcMapaDeFlujos(d.flujos); despues = d.flujos; }
+      else if (seccion === "eliminar_proceso") { const k = String(data || ""), c = _bcCatalogo(cur).find(x => x.clave === k);
+        if (!c) throw new Error("Proceso no encontrado"); if (c.forzado) throw new Error("Este proceso es obligatorio por seguridad y no se puede eliminar");
+        antes = { proceso: k, flujos: (cur.flujos || []).filter(f => f.proceso === k) };
+        if (c.extra) d.extras = (cur.extras || []).filter(x => x.clave !== k); else d.eliminados = [...new Set((cur.eliminados || []).concat(k))];
+        if (Array.isArray(cur.flujos)) { d.flujos = cur.flujos.filter(f => f.proceso !== k); d.plantillasProceso = _bcMapaDeFlujos(d.flujos); }
+        else d.plantillasProceso = Object.fromEntries(Object.entries(cur.plantillasProceso || {}).filter(([, p]) => p !== k));
+        despues = null; }
+      else if (seccion === "restaurar_proceso") { const k = String(data || ""); antes = cur.eliminados || []; d.eliminados = (cur.eliminados || []).filter(x => x !== k); despues = d.eliminados; }
       else if (seccion === "reset_disyuntor") { const k = String(data || ""); d.procesos = d.procesos || {}; antes = (cur.procesos[k] || {}).disyuntor; d.procesos[k] = Object.assign({}, cur.procesos[k] || {}, { disyuntor: null }); despues = null; _bcErrs.delete(k); }
       else if (seccion === "disponible") { const H = Object.assign({}, cur.horario, { disponible: !!data, dispAt: new Date().toISOString(), dispPor: por }); antes = cur.horario.disponible; d.horario = H; despues = !!data; }
       else if (seccion === "perfil") { antes = cur.perfil; const v = Object.assign({}, cur.perfil, data || {}); d.perfil = v; despues = v;
@@ -13745,7 +13769,7 @@ async function _pmTick(opts) {
   const dry = !!(opts && opts.dry), out = { revisadas: 0, nuevos: [], errores: [] };
   try {
     const cfg = await _bcCfg(true), P = cfg.proactivos || {}, now = Date.now(), ahora = _bcAhora();
-    const links = Object.entries(cfg.plantillasProceso || {}).map(([tid, k]) => [k, tid]).filter(([k, tid]) => k && cfg.procesos[k] && (cfg.procesos[k] || {}).modo !== "off" && (_BC_CAT.find(c => c[0] === k) || [])[1] === "proactivos"); // solo los mensajes proactivos se programan aquí (el ticket y los avisos salen por sus eventos)
+    const links = Object.entries(cfg.plantillasProceso || {}).map(([tid, k]) => [k, tid]).filter(([k, tid]) => k && cfg.procesos[k] && !(cfg.eliminados || []).includes(k) && (cfg.procesos[k] || {}).modo !== "off" && (_BC_CAT.find(c => c[0] === k) || [])[1] === "proactivos"); // solo los mensajes proactivos se programan aquí (el ticket y los avisos salen por sus eventos)
     if (!links.length) return Object.assign({ ok: true }, out);
     const tpls = ((await _waLeer(_WA_OBJ.tpl)).items || []), tplDe = id => tpls.find(t => t.id === id);
     // Reservas de Lodgify: próximas y en curso (incluye las que salen hoy).
