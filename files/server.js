@@ -13278,7 +13278,8 @@ function _bcCatalogo(cfg) {
 function _bcMapaDeFlujos(flujos) { const m = {}; (flujos || []).forEach(f => (f.pasos || []).forEach(t => { if (t && f.proceso) m[t] = f.proceso; })); return m; }
 function _bcFlujosLimpios(L) {
   const vistos = new Set();
-  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, canal: ["whatsapp", "airbnb", "ambos", "ninguno"].includes(f.canal) ? f.canal : undefined, // canal de envío de los mensajes programados // false = listado de plantillas sin orden de pasos
+  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, canal: ["whatsapp", "airbnb", "ambos", "ninguno"].includes(f.canal) ? f.canal : undefined, // canal de envío de los mensajes programados
+    alojamientos: Array.isArray(f.alojamientos) ? [...new Set(f.alojamientos.map(String).filter(Boolean))] : undefined, // alojamientos a los que aplica el flujo // false = listado de plantillas sin orden de pasos
     pasos: (Array.isArray(f.pasos) ? f.pasos : []).map(String).filter(t => t && !vistos.has(t) && vistos.add(t)) })); // una plantilla vive en un solo flujo
 }
 // Modo efectivo de un proceso para esta conversación: override más específico (RF-03) → canal (RF-15) → verificación (RF-06/17) → disyuntor (RF-10) → fuera de oficina (RF-14).
@@ -13577,7 +13578,7 @@ app.get("/bot/control", async (req, res) => {
       if (e.tipo === "error" && e.proceso) { const m = met[e.proceso] = met[e.proceso] || { usos: 0, errores: 0, rechazos: 0, escalados: 0 }; m.errores++; }
       if (e.tipo === "rechazo" && e.proceso) { const m = met[e.proceso] = met[e.proceso] || { usos: 0, errores: 0, rechazos: 0, escalados: 0 }; m.rechazos++; } }));
     const elim = (cfg.eliminados || []).map(k => { const b = _BC_CAT.find(x => x[0] === k); return { clave: k, nombre: b ? b[2] : k, grupo: b ? b[1] : "" }; });
-    res.json({ ok: true, cfg, catalogo: catL, eliminados: elim, grupos: _BC_GRUPOS, metricas: met, personas, alojamientos: (catA || []).map(a => ({ hid: String(a.hid), code: String(a.code || "").toUpperCase(), nombre: a.nombre || "" })).filter(a => a.hid),
+    res.json({ ok: true, cfg, catalogo: catL, eliminados: elim, grupos: _BC_GRUPOS, metricas: met, personas, alojamientos: (catA || []).map(a => ({ hid: String(a.hid), code: String(a.code || "").toUpperCase(), nombre: a.nombre || "", prop: a.prop || "", sint: !!a.sint })).filter(a => a.hid),
       ahora: { nivel: hor.nivel, nivelTxt: _BC_NIV_TXT[hor.nivel], franja: hor.franja, conPersonal: hor.conPersonal, noDisp: !!hor.noDisp, titular: cfg.horario.titular, respaldo: cfg.horario.respaldo },
       contadores: { automaticos: catL.filter(c => (cfg.procesos[c.clave] || {}).modo === "auto").length, prioritarias: C.filter(c => ["P1", "P2"].includes(c.prioridad) && c.estado !== "resuelta" && Date.now() - Date.parse(c.at) < 48 * 3600e3).length,
         supervision: C.filter(c => c.estado === "esperando_autorizacion" && Date.now() - Date.parse(c.at) < 48 * 3600e3).length, disyuntores: catL.filter(c => ((cfg.procesos[c.clave] || {}).disyuntor || {}).at).length, alertas: abiertas.length },
@@ -13591,7 +13592,7 @@ app.post("/bot/control", async (req, res) => {
     const { seccion, data, usuario } = req.body || {}, por = String(usuario || "").slice(0, 60);
     const OK = ["flujos", "eliminar_proceso", "restaurar_proceso", "plantillaProceso", "proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
     if (!OK.includes(seccion)) return res.status(400).json({ ok: false, error: "Sección inválida" });
-    let antes, despues;
+    let antes, despues, sincronizarAloj = null;
     await _bcMut(_BC.OBJ, d => {
       const cur = _bcMerge(_bcDefaults(), d);
       const set = (k, v) => { antes = cur[k]; d[k] = v; despues = v; };
@@ -13608,7 +13609,7 @@ app.post("/bot/control", async (req, res) => {
           d.flujos = _bcFlujosLimpios(F); d.plantillasProceso = _bcMapaDeFlujos(d.flujos);
         } else d.plantillasProceso = Object.assign({}, cur.plantillasProceso || {}, { [tid]: proc });
         despues = proc; }
-      else if (seccion === "flujos") { antes = cur.flujos || null; d.flujos = _bcFlujosLimpios(data); d.plantillasProceso = _bcMapaDeFlujos(d.flujos); despues = d.flujos; }
+      else if (seccion === "flujos") { antes = cur.flujos || null; d.flujos = _bcFlujosLimpios(data); d.plantillasProceso = _bcMapaDeFlujos(d.flujos); despues = d.flujos; sincronizarAloj = d.flujos; }
       else if (seccion === "eliminar_proceso") { const k = String(data || ""), c = _bcCatalogo(cur).find(x => x.clave === k);
         if (!c) throw new Error("Proceso no encontrado"); if (c.forzado) throw new Error("Este proceso es obligatorio por seguridad y no se puede eliminar");
         antes = { proceso: k, flujos: (cur.flujos || []).filter(f => f.proceso === k) };
@@ -13626,6 +13627,9 @@ app.post("/bot/control", async (req, res) => {
       else set(seccion, data);
     });
     _bcCfgTs = 0;
+    // Los alojamientos viven en el flujo: se copian a sus plantillas para que el resto del sistema (ficha de la reserva) los respete.
+    if (sincronizarAloj) { const M = {}; sincronizarAloj.forEach(f => { if (Array.isArray(f.alojamientos)) (f.pasos || []).forEach(t => { M[t] = f.alojamientos.join(","); }); });
+      if (Object.keys(M).length) await _waMutar(_WA_OBJ.tpl, d => { (d.items || []).forEach(t => { if (M[t.id] != null && t.alojamientos !== M[t.id]) { t.alojamientos = M[t.id]; t.updated_at = _waIso(); } }); }).then(() => { _waTplCache.byName = null; }).catch(e => console.warn("[bot-control] alojamientos→plantillas:", e.message)); }
     _bcLog({ tipo: "config", seccion, clave: seccion === "proceso" ? data && data.clave : "", usuario: por, antes: JSON.stringify(antes === undefined ? null : antes).slice(0, 1500), despues: JSON.stringify(despues === undefined ? null : despues).slice(0, 1500) });
     await _bcLogFlush();
     res.json({ ok: true, cfg: await _bcCfg(true) });
@@ -13797,7 +13801,7 @@ async function _pmTick(opts) {
     for (const [proc, tid] of links) {
       const t = tplDe(tid); if (!t || !t.enabled) continue;
       const fl = flujoDe(tid), canalEnvio = (fl && fl.canal) || "airbnb"; // por omisión los proactivos salen por la mensajería de Airbnb
-      const alojs = String(t.alojamientos || "").split(",").map(x => x.trim()).filter(Boolean);
+      const alojs = fl && Array.isArray(fl.alojamientos) ? fl.alojamientos.slice() : String(t.alojamientos || "").split(",").map(x => x.trim()).filter(Boolean); // los alojamientos se asignan al flujo
       const modo = (cfg.procesos[proc] || {}).modo || "sup";
       for (const b of reservas) {
         const hid = String(b.property_id || ""), key = `${b.id}|${tid}`;

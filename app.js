@@ -47025,10 +47025,10 @@ function cfgRenderEditor() {
         oninput="cfgUpdateDraft('body', this.value)"
         style="width:100%;min-height:220px;padding:11px 13px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;box-sizing:border-box;font-family:inherit;resize:vertical;line-height:1.5">${_cfgEsc(d.body)}</textarea>
 
-      <div style="margin-top:22px">
+      ${['bk-tpl-host', 'bk-tpl-drw'].includes(CFG_ADMIN.hostId) && typeof bkTplAlojNota_ === 'function' ? bkTplAlojNota_(d) : `<div style="margin-top:22px">
         <div style="font-weight:800;color:#0f172a;font-size:13px;margin-bottom:8px">Selecciona los alojamientos</div>
         <div id="cfg-inline-aloj"></div>
-      </div>
+      </div>`}
 
       <div style="margin-top:22px">
         <div style="font-weight:800;color:#0f172a;font-size:13px;margin-bottom:4px">Programa un mensaje</div>
@@ -73740,9 +73740,9 @@ function bkPasoBtn_(t, i, inert, sinNum) {
 }
 function bkFlujoHtml1_(f, conNombre) {
   const L = f.pasos.map(bkTpl_).filter(Boolean);
-  const ord = f.ordenado !== false;
-  const pasos = L.map((t, i) => bkPasoBtn_(t, i, !t.enabled || (t.schedule_type !== 'never' && !t.alojamientos), !ord)).join(ord ? '<span style="color:#a78bfa;font-weight:800">→</span>' : '');
-  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${conNombre ? `<span style="font-size:11px;font-weight:800;color:#6d28d9;margin-right:2px">${ord ? '🔀' : '🗂️'} ${esc(f.nombre)}</span>` : ''}${bkCanalChip_(f)}${pasos || `<span class="bk-mut" style="font-size:11.5px">${ord ? 'Flujo sin pasos' : 'Sin plantillas'}</span>`}
+  const ord = f.ordenado !== false, alojF = Array.isArray(f.alojamientos) ? f.alojamientos.length : null;
+  const pasos = L.map((t, i) => bkPasoBtn_(t, i, !t.enabled || (t.schedule_type !== 'never' && (alojF != null ? !alojF : !t.alojamientos)), !ord)).join(ord ? '<span style="color:#a78bfa;font-weight:800">→</span>' : '');
+  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${conNombre ? `<span style="font-size:11px;font-weight:800;color:#6d28d9;margin-right:2px">${ord ? '🔀' : '🗂️'} ${esc(f.nombre)}</span>` : ''}${bkCanalChip_(f)}${bkFlAlojChip_(f)}${pasos || `<span class="bk-mut" style="font-size:11.5px">${ord ? 'Flujo sin pasos' : 'Sin plantillas'}</span>`}
     <button type="button" class="bk-btn sm" style="padding:4px 8px" onclick="event.stopPropagation();bkFlEditar_('${esc(f.id)}')" title="Agregar, quitar u ordenar plantillas">✏️ Editar flujo</button></div>`;
 }
 function bkPmChip_(clave) { const F = bkFlujosDe_(clave); if (!F.length) return '';
@@ -73874,11 +73874,12 @@ function bkFichaResumen_(pc) { const f = pc.ficha || {}, n = k => String(f[k] ||
   return `<div class="mt">📋 ${n('reglas')} regla${n('reglas') === 1 ? '' : 's'} · ${n('obtener')} dato${n('obtener') === 1 ? '' : 's'} a obtener · ${n('compartir')} a compartir · ${n('riesgos')} riesgo${n('riesgos') === 1 ? '' : 's'}</div>`; }
 
 // ── Editor de flujos (ventana lateral) ──
-function bkFlNuevo_(proceso) { BK.flEd = { id: '', nombre: '', proceso: proceso || '', ordenado: true, pasos: [] }; bkFlPintar_(); }
+function bkFlNuevo_(proceso) { BK.flEd = { id: '', nombre: '', proceso: proceso || '', ordenado: true, alojamientos: [], pasos: [] }; bkFlPintar_(); }
 function bkFlEditar_(id) { const f = bkFlujos_().find(x => x.id === id); if (!f) return; BK.flEd = JSON.parse(JSON.stringify(f)); bkFlPintar_(); }
 function bkFlCerrar_() { BK.flEd = null; const ov = document.getElementById('bk-fl-ov'); if (ov) ov.remove(); }
 function bkFlPintar_() {
   let ov = document.getElementById('bk-fl-ov'); if (!ov) { ov = document.createElement('div'); ov.id = 'bk-fl-ov'; document.body.appendChild(ov); }
+  const _sc = (ov.querySelector('.bk-drw-b') || {}).scrollTop || 0; setTimeout(() => { const b = ov.querySelector('.bk-drw-b'); if (b) b.scrollTop = _sc; }, 0);
   const e = BK.flEd, F = bkFlujos_(), G = BK.d.grupos, byG = {}; BK.d.catalogo.forEach(c => (byG[c.grupo] = byG[c.grupo] || []).push(c));
   const procOpts = Object.keys(G).filter(g => byG[g]).map(g => `<optgroup label="${esc(G[g])}">${byG[g].map(c => `<option value="${esc(c.clave)}" ${e.proceso === c.clave ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</optgroup>`).join('');
   const dondeEsta = id => F.find(f => f.id !== e.id && f.pasos.includes(id));
@@ -73904,6 +73905,7 @@ function bkFlPintar_() {
           ${bkLogo_(logo, 24)}<span style="line-height:1.25"><b style="font-size:13px">${txt}</b><br><span class="bk-mut" style="font-size:11.5px">${sub}</span></span></div>`;
         return `<label class="bk-lb" style="margin-top:16px">Envío automático por</label><div class="bk-row" style="gap:8px;align-items:stretch">${ck('a', 'airbnb', 'Airbnb', 'Solo reservas de Airbnb, por su mensajería (vía Lodgify). Sin restricción de 24 h.')}${ck('w', 'whatsapp', 'WhatsApp / Lodgify', 'Todas las reservas confirmadas y en curso. WhatsApp solo entrega si el huésped escribió en 24 h.')}</div>
         ${!C.a && !C.w ? '<div class="bk-sub" style="margin-top:4px;color:#b45309">Sin canal marcado: este flujo no se envía automáticamente.</div>' : C.a && C.w ? '<div class="bk-sub" style="margin-top:4px">Reservas de Airbnb por su mensajería; el resto (directas, Booking) por WhatsApp.</div>' : ''}`; })() : ''}
+      ${bkFlAlojHtml_(e)}
       <label class="bk-lb" style="margin-top:16px">${ord ? 'Pasos' : 'Plantillas'} (${e.pasos.length})</label>${pasos || '<div class="bk-mut" style="font-size:12px;margin-bottom:8px">Aún no hay pasos.</div>'}
       <select class="bk-sel" onchange="if(this.value){BK.flEd.pasos.push(this.value);bkFlPintar_()}">${addOpts}</select>
     </div>
@@ -73916,7 +73918,7 @@ async function bkFlGuardar_() {
   const movidas = e.pasos.filter(id => bkFlujos_().some(f => f.id !== e.id && f.pasos.includes(id)));
   if (movidas.length && !confirm(`${movidas.length} plantilla(s) se moverán desde otro flujo a este. ¿Continuar?`)) return;
   const F = bkFlujos_().map(f => f.id === e.id ? null : Object.assign({}, f, { pasos: f.pasos.filter(id => !e.pasos.includes(id)) })).filter(Boolean);
-  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, ordenado: e.ordenado !== false, canal: bkEsProactivo_(e.proceso) ? bkCanalDe_(e) : undefined, pasos: e.pasos.slice() };
+  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, ordenado: e.ordenado !== false, canal: bkEsProactivo_(e.proceso) ? bkCanalDe_(e) : undefined, alojamientos: (e.alojamientos || []).slice(), pasos: e.pasos.slice() };
   const idx = bkFlujos_().findIndex(f => f.id === e.id); if (idx >= 0) F.splice(idx, 0, nuevo); else F.push(nuevo);
   if (await bkGuardar_('flujos', F, '✓ Flujo guardado')) { bkFlCerrar_(); bkRender_(); }
 }
@@ -74096,3 +74098,33 @@ async function bkCasoSimular_(id) {
 function bkCasoComparar_() { const S = BK.sim; if (!S || !S.caso) return ''; const r = S.caso;
   return `<div class="bk-grid2"><div class="bk-card"><h3>🤖 Respuesta del bot hoy</h3><div class="bk-sub">Simulado al ${esc(r.fecha)} ${esc(r.hora)} · ${esc(BK_ACC[r.decision.accion] || r.decision.accion)}${r.herramientas && r.herramientas.length ? ` · herramientas: ${esc(r.herramientas.join(', '))}` : ''}</div><div class="bk-ex" style="margin-top:6px">${esc(r.decision.activo === false && r.decision.msg && r.decision.accion !== 'auto' && r.decision.accion !== 'supervisado' ? `(Con controles aplicando, el gate enviaría: «${r.decision.msg}»)\n\n` : '')}${esc(r.respuesta || '(sin respuesta)')}</div></div>
     <div class="bk-card"><h3>💬 Respuesta real en la conversación</h3>${r.real && r.real.length ? `<div class="bk-ex" style="margin-top:6px">${esc(r.real.map(m => m.texto).join('\n\n'))}</div>` : '<div class="bk-sub" style="margin-top:6px">El extracto termina con el mensaje del huésped (no incluye la respuesta que se dio).</div>'}</div></div>`; }
+
+// ── Alojamientos del flujo, agrupados por edificio (CU, BC, OX, JC, MT, SE, VS, TR…) ──
+function bkEdificios_() {
+  const L = (BK.d.alojamientos || []).filter(a => !/^ED\./i.test(String(a.nombre || ''))), G = {}; // los registros «ED. X» son el edificio mismo
+  L.forEach(a => { const conNum = /\d/.test(a.code || ''), k = conNum ? String(a.code).replace(/\d.*$/, '').toUpperCase() : 'CASAS';
+    (G[k] = G[k] || { k, nombre: k === 'CASAS' ? 'Casas' : '', items: [] }).items.push(a); if (!G[k].nombre) G[k].nombre = String(a.prop || a.nombre || k).replace(/\s*#.*$/, ''); });
+  const ord = typeof ED_ORDEN !== 'undefined' ? ED_ORDEN : ['CU', 'BC', 'OX', 'JC', 'MT', 'SE', 'VS'], num = c => parseFloat(String(c).replace(/^\D+/, '')) || 0;
+  return Object.values(G).map(g => (g.items.sort((a, b) => num(a.code) - num(b.code) || String(a.code).localeCompare(String(b.code))), g))
+    .sort((a, b) => (ord.indexOf(a.k) < 0 ? 99 : ord.indexOf(a.k)) - (ord.indexOf(b.k) < 0 ? 99 : ord.indexOf(b.k)) || a.nombre.localeCompare(b.nombre));
+}
+function bkCk18_(estado) { // 'on' | 'mix' | ''
+  return `<span style="width:18px;height:18px;border-radius:5px;border:1.5px solid ${estado ? '#111827' : '#9ca3af'};background:${estado === 'on' ? '#111827' : '#fff'};color:${estado === 'on' ? '#fff' : '#111827'};display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0">${estado === 'on' ? '✓' : estado === 'mix' ? '–' : ''}</span>`; }
+function bkFlAlojHtml_(e) {
+  const S = new Set(e.alojamientos || []), E = bkEdificios_(), ab = e._ab = e._ab || {}, tot = E.reduce((n, g) => n + g.items.length, 0);
+  const filas = E.map(g => { const n = g.items.filter(a => S.has(a.hid)).length, est = n === g.items.length ? 'on' : n ? 'mix' : '';
+    return `<div style="border:1px solid #e5e7eb;border-radius:10px;margin-bottom:6px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="BK.flEd._ab['${g.k}']=!BK.flEd._ab['${g.k}'];bkFlPintar_()">
+        <span onclick="event.stopPropagation();bkFlAlojEd_('${g.k}')">${bkCk18_(est)}</span><b style="font-size:13px;flex:1">🏢 ${esc(g.nombre)}</b><span class="bk-mut" style="font-size:11.5px">${n}/${g.items.length}</span><span style="font-size:11px;color:#6b7280">${ab[g.k] ? '▲' : '▼'}</span></div>
+      ${ab[g.k] ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px;padding:8px 10px">${g.items.map(a => `<div onclick="bkFlAlojTog_('${esc(a.hid)}')" style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:4px 2px;font-size:12.5px">${bkCk18_(S.has(a.hid) ? 'on' : '')}<b>${esc(a.code)}</b><span class="bk-mut" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${a.sint ? 'Sin reservas de Lodgify: los mensajes programados no le aplican' : ''}">${esc(String(a.nombre).replace(/^(Calle|Plaza)\s+/i, ''))}${a.sint ? ' · sin Lodgify' : ''}</span></div>`).join('')}</div>` : ''}</div>`; }).join('');
+  return `<label class="bk-lb" style="margin-top:16px">Alojamientos (${S.size} de ${tot})</label>
+    <div class="bk-row" style="margin-bottom:6px;gap:6px"><button class="bk-btn sm" onclick="BK.flEd.alojamientos=bkEdificios_().flatMap(g=>g.items.map(a=>a.hid));bkFlPintar_()">Todos</button><button class="bk-btn sm" onclick="BK.flEd.alojamientos=[];bkFlPintar_()">Ninguno</button><span class="bk-mut" style="font-size:11.5px">Las plantillas programadas de este flujo solo se envían a reservas de estos alojamientos.</span></div>${filas}`;
+}
+function bkFlAlojTog_(hid) { const e = BK.flEd, S = new Set(e.alojamientos || []); if (S.has(hid)) S.delete(hid); else S.add(hid); e.alojamientos = [...S]; bkFlPintar_(); }
+function bkFlAlojEd_(k) { const e = BK.flEd, g = bkEdificios_().find(x => x.k === k); if (!g) return; const S = new Set(e.alojamientos || []), todos = g.items.every(a => S.has(a.hid));
+  g.items.forEach(a => todos ? S.delete(a.hid) : S.add(a.hid)); e.alojamientos = [...S]; bkFlPintar_(); }
+function bkFlAlojChip_(f) { if (!Array.isArray(f.alojamientos)) return ''; const n = f.alojamientos.length, E = bkEdificios_();
+  const eds = E.filter(g => g.items.some(a => f.alojamientos.includes(g.items.length && a.hid))).map(g => { const k = g.items.filter(a => f.alojamientos.includes(a.hid)).length; return `${g.nombre}: ${k}/${g.items.length}`; });
+  return `<span class="bk-chip" style="background:${n ? '#f3f4f6' : '#fef3c7'};color:${n ? '#374151' : '#92400e'};margin-right:2px" title="${esc(eds.join(' · ') || 'Sin alojamientos')}">🏠 ${n ? `${n} alojamiento${n === 1 ? '' : 's'}` : 'sin alojamientos'}</span>`; }
+function bkTplAlojNota_(d) { const f = d && d._id ? bkFlujos_().find(x => x.pasos.includes(d._id)) : null;
+  return `<div style="margin-top:22px;padding:10px 12px;border:1px solid #ede9fe;background:#faf5ff;border-radius:10px;font-size:12.5px;color:#4c1d95">🏠 Los alojamientos se asignan en el <b>flujo</b>, no en la plantilla.${f ? ` Esta plantilla está en «${esc(f.nombre)}» (${Array.isArray(f.alojamientos) ? f.alojamientos.length : 0} alojamientos). <a href="#" onclick="event.preventDefault();bkTplCerrar_&&bkTplCerrar_();bkFlEditar_('${esc(f.id)}')" style="color:#6d28d9;font-weight:700">Editar flujo</a>` : ' Agrega esta plantilla a un flujo para asignarle alojamientos.'}</div>`; }
