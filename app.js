@@ -73887,8 +73887,11 @@ function bkFlPintar_() {
       <div class="bk-sub" style="margin-top:4px">Las plantillas programadas se envían según el modo de este proceso.</div>
       <label class="bk-lb" style="margin-top:16px">Tipo</label><div class="bk-seg">${[[true, '🔀 Pasos en orden'], [false, '🗂️ Listado sin orden']].map(([v, t]) => `<button type="button" class="${ord === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.flEd.ordenado=${v};bkFlPintar_()">${t}</button>`).join('')}</div>
       <div class="bk-sub" style="margin-top:4px">${ord ? 'Las plantillas se muestran numeradas en el orden en que ocurren.' : 'Solo agrupa las plantillas del proceso, sin secuencia.'}</div>
-      ${bkEsProactivo_(e.proceso) ? `<label class="bk-lb" style="margin-top:16px">Canal de envío automático</label><div class="bk-seg" style="flex-wrap:wrap">${BK_CANALES.map(([v, t]) => `<button type="button" class="${bkCanalDe_(e) === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.flEd.canal='${v}';bkFlPintar_()">${t}</button>`).join('')}</div>
-      <div class="bk-sub" style="margin-top:4px">${{ airbnb: 'Solo reservas de Airbnb, por la mensajería de Airbnb (vía Lodgify). No tiene la restricción de 24 h de WhatsApp.', whatsapp: 'Todas las reservas confirmadas y en curso, por WhatsApp. WhatsApp solo entrega si el huésped escribió en las últimas 24 h.', ambos: 'Reservas de Airbnb por su mensajería; el resto (directas, Booking) por WhatsApp.' }[bkCanalDe_(e)]}</div>` : ''}
+      ${bkEsProactivo_(e.proceso) ? (() => { const C = bkCanalSet_(bkCanalDe_(e)), ck = (k, logo, txt, sub) => `<div onclick="bkCanalToggle_('${k}')" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 11px;border:1.5px solid ${C[k] ? '#111827' : '#e5e7eb'};border-radius:12px;background:${C[k] ? '#f8fafc' : '#fff'};flex:1;min-width:200px">
+          <span style="width:18px;height:18px;border-radius:5px;border:1.5px solid ${C[k] ? '#111827' : '#9ca3af'};background:${C[k] ? '#111827' : '#fff'};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0">${C[k] ? '✓' : ''}</span>
+          ${bkLogo_(logo, 24)}<span style="line-height:1.25"><b style="font-size:13px">${txt}</b><br><span class="bk-mut" style="font-size:11.5px">${sub}</span></span></div>`;
+        return `<label class="bk-lb" style="margin-top:16px">Envío automático por</label><div class="bk-row" style="gap:8px;align-items:stretch">${ck('a', 'airbnb', 'Airbnb', 'Solo reservas de Airbnb, por su mensajería (vía Lodgify). Sin restricción de 24 h.')}${ck('w', 'whatsapp', 'WhatsApp / Lodgify', 'Todas las reservas confirmadas y en curso. WhatsApp solo entrega si el huésped escribió en 24 h.')}</div>
+        ${!C.a && !C.w ? '<div class="bk-sub" style="margin-top:4px;color:#b45309">Sin canal marcado: este flujo no se envía automáticamente.</div>' : C.a && C.w ? '<div class="bk-sub" style="margin-top:4px">Reservas de Airbnb por su mensajería; el resto (directas, Booking) por WhatsApp.</div>' : ''}`; })() : ''}
       <label class="bk-lb" style="margin-top:16px">${ord ? 'Pasos' : 'Plantillas'} (${e.pasos.length})</label>${pasos || '<div class="bk-mut" style="font-size:12px;margin-bottom:8px">Aún no hay pasos.</div>'}
       <select class="bk-sel" onchange="if(this.value){BK.flEd.pasos.push(this.value);bkFlPintar_()}">${addOpts}</select>
     </div>
@@ -73949,8 +73952,14 @@ function bkFiltrosHtml_() {
 }
 
 // ── Canal de envío de los flujos de mensajes programados ──
-const BK_CANALES = [['airbnb', '✈️ Mensajería de Airbnb'], ['whatsapp', '💬 WhatsApp / Lodgify'], ['ambos', '🔁 Ambos']];
 function bkEsProactivo_(k) { const c = BK.d.catalogo.find(x => x.clave === k); return !!(c && c.grupo === 'proactivos'); }
 function bkCanalDe_(f) { return f.canal || 'airbnb'; }
-function bkCanalChip_(f) { if (!bkEsProactivo_(f.proceso)) return ''; const t = (BK_CANALES.find(x => x[0] === bkCanalDe_(f)) || [])[1] || '';
-  return `<span class="bk-chip" style="background:#fff1f2;color:#be123c;margin-right:2px" title="Canal de envío automático">${t}</span>`; }
+function bkCanalSet_(c) { return { a: c === 'airbnb' || c === 'ambos', w: c === 'whatsapp' || c === 'ambos' }; }
+function bkCanalToggle_(k) { const C = bkCanalSet_(bkCanalDe_(BK.flEd)); C[k] = !C[k]; BK.flEd.canal = C.a && C.w ? 'ambos' : C.a ? 'airbnb' : C.w ? 'whatsapp' : 'ninguno'; bkFlPintar_(); }
+// Logos redondos de canal, los mismos de la lista de Chats bot.
+function bkLogo_(k, px) { return `<span style="display:inline-block;width:${px}px;height:${px}px;border-radius:50%;overflow:hidden;line-height:0;flex-shrink:0">${(typeof _BOTC_LOGO !== 'undefined' && _BOTC_LOGO[k]) || ''}</span>`; }
+function bkCanalChip_(f) { if (!bkEsProactivo_(f.proceso)) return ''; const C = bkCanalSet_(bkCanalDe_(f));
+  const tit = C.a && C.w ? 'Se envía por Airbnb y WhatsApp/Lodgify' : C.a ? 'Se envía por la mensajería de Airbnb' : C.w ? 'Se envía por WhatsApp/Lodgify' : 'Sin canal de envío automático';
+  if (C.a && C.w) return `<span title="${tit}" style="position:relative;display:inline-block;width:30px;height:24px;flex-shrink:0;margin-right:2px"><span style="position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;overflow:hidden;line-height:0;box-shadow:0 0 0 2px #fff;z-index:1">${_BOTC_LOGO.whatsapp}</span><span style="position:absolute;right:0;bottom:0;width:20px;height:20px;border-radius:50%;overflow:hidden;line-height:0;box-shadow:0 0 0 2px #fff;z-index:2">${_BOTC_LOGO.airbnb}</span></span>`;
+  if (!C.a && !C.w) return `<span class="bk-chip" style="background:#fef3c7;color:#92400e" title="${tit}">sin envío</span>`;
+  return `<span title="${tit}" style="margin-right:2px;display:inline-flex">${bkLogo_(C.a ? 'airbnb' : 'whatsapp', 22)}</span>`; }

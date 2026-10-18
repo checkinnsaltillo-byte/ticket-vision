@@ -13278,7 +13278,7 @@ function _bcCatalogo(cfg) {
 function _bcMapaDeFlujos(flujos) { const m = {}; (flujos || []).forEach(f => (f.pasos || []).forEach(t => { if (t && f.proceso) m[t] = f.proceso; })); return m; }
 function _bcFlujosLimpios(L) {
   const vistos = new Set();
-  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, canal: ["whatsapp", "airbnb", "ambos"].includes(f.canal) ? f.canal : undefined, // canal de envío de los mensajes programados // false = listado de plantillas sin orden de pasos
+  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, canal: ["whatsapp", "airbnb", "ambos", "ninguno"].includes(f.canal) ? f.canal : undefined, // canal de envío de los mensajes programados // false = listado de plantillas sin orden de pasos
     pasos: (Array.isArray(f.pasos) ? f.pasos : []).map(String).filter(t => t && !vistos.has(t) && vistos.add(t)) })); // una plantilla vive en un solo flujo
 }
 // Modo efectivo de un proceso para esta conversación: override más específico (RF-03) → canal (RF-15) → verificación (RF-06/17) → disyuntor (RF-10) → fuera de oficina (RF-14).
@@ -13807,7 +13807,7 @@ async function _pmTick(opts) {
         if (now - cuando.getTime() > maxAtraso) { nuevos.push(Object.assign(base, { estado: "vencido", motivo: "ya había pasado la hora cuando se revisó" })); continue; }
         if (!enHorario) continue; // fuera del horario de envío: se reintenta en la siguiente vuelta
         const esAbn = base.canal === "airbnb", via = canalEnvio === "whatsapp" ? "whatsapp" : esAbn ? "airbnb" : canalEnvio === "ambos" ? "whatsapp" : null;
-        if (!via) continue; // flujo solo para Airbnb y la reserva no es de Airbnb: no le aplica
+        if (!via || canalEnvio === "ninguno") continue; // el flujo no tiene canal de envío o la reserva no le aplica
         base.via = via;
         const hu = huIdx.get(String(b.id)) || null, huId = hu ? String(hu.ID || hu.row_number || "") : "", c = (huId && wacfg.map && wacfg.map[huId]) || null;
         if (c && Array.isArray(c.disabled_templates) && c.disabled_templates.includes(tid)) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "plantilla desactivada en la reserva" })); continue; }
