@@ -51111,6 +51111,7 @@ function _botcWaCss_() {
   #module-bot-chats > div:first-child button{height:32px!important;border-radius:8px!important}
   #module-bot-chats #botc-sidebar{width:380px!important;border-right:1px solid var(--wa-ln)!important;background:#fff!important}
   #module-bot-chats #botc-third-col{width:400px!important;border-left:1px solid var(--wa-ln)!important}
+  .wa-archsw{display:flex;gap:4px;margin-top:7px;background:var(--wa-bar);border-radius:9px;padding:3px}.wa-archsw button{all:unset;cursor:pointer;flex:1;text-align:center;padding:5px 8px;border-radius:7px;font-size:12px;font-weight:600;color:var(--wa-mu)}.wa-archsw button.on{background:#fff;color:var(--wa-tx);box-shadow:0 1px 2px rgba(0,0,0,.12)}
   .wa-search{padding:7px 10px;background:#fff;border-bottom:1px solid var(--wa-ln);position:sticky;top:0;z-index:5}
   .wa-search #botc-filters-btn{border:0!important;background:var(--wa-bar)!important;border-radius:8px!important}
   .wa-cat{display:flex;flex-direction:column}
@@ -51432,8 +51433,10 @@ function _botcRenderSidebar() {
           ${q ? `<button type="button" onclick="botcSetSearchQuery_('')" title="Limpiar" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:14px;color:#94a3b8;cursor:pointer;padding:2px 6px;line-height:1">×</button>` : ''}
         </div>
       </div>
-      ${BOTC_STATE.filtersOpen ? _botcRenderFiltersPanel_() : ''}
+      <div class="wa-archsw"><button type="button" class="${BOTC_STATE.arch ? '' : 'on'}" onclick="botcArch_(false)">💬 Activas</button><button type="button" class="${BOTC_STATE.arch ? 'on' : ''}" onclick="botcArch_(true)" title="Conversaciones de Lodgify de estancias que ya terminaron (archivo desde 2024)">🗄 Pasadas</button></div>
+      ${BOTC_STATE.filtersOpen && !BOTC_STATE.arch ? _botcRenderFiltersPanel_() : ''}
     </div>`;
+  if (BOTC_STATE.arch) { sidebar.innerHTML = tabsHtml + _botcArchListaHtml_(q); return; }
   // Aplica el filtro de búsqueda (case-insensitive) + filtros del panel ☰.
   const qN = _botcNorm_(q);
   _botcAbnCargar_();
@@ -53103,6 +53106,54 @@ function _botcFichaHtml_(st, logs) {
         <div class="fx-lab">Reservas <span>${bks.length}</span></div>${reservas || _botcFxVacio_('🗓️', 'Sin reservas asociadas a este número')}
       </div></div>`;
 }
+
+// ═══ 🗄 Pasadas: archivo de conversaciones de Lodgify (Airbnb, Booking, directas) de estancias que ya terminaron ═══
+window.botcArch_ = function (on) { BOTC_STATE.arch = !!on; BOTC_STATE.archQ = null; _botcRenderSidebar(); };
+function _botcArchCargar_(q) {
+  if (BOTC_STATE.archQ === q && (BOTC_STATE.archItems || BOTC_STATE.archCargando)) return; BOTC_STATE.archQ = q; BOTC_STATE.archCargando = true;
+  clearTimeout(BOTC_STATE.archT);
+  BOTC_STATE.archT = setTimeout(() => Promise.all([fetch(`${BACKEND}/airbnb/historial?limit=300&q=${encodeURIComponent(q || '')}`, { cache: 'no-store' }).then(r => r.json()), fetch(`${BACKEND}/airbnb/archivo/estado`, { cache: 'no-store' }).then(r => r.json()).catch(() => null)])
+    .then(([j, e]) => { if (BOTC_STATE.archQ !== q) return; BOTC_STATE.archItems = (j && j.items) || []; BOTC_STATE.archTotal = (j && j.total) || 0; BOTC_STATE.archEst = e; })
+    .catch(() => { BOTC_STATE.archItems = []; }).finally(() => { BOTC_STATE.archCargando = false; if (BOTC_STATE.arch) _botcRenderSidebar(); }), q ? 350 : 0);
+}
+function _botcArchListaHtml_(q) {
+  if (BOTC_STATE.archQ !== q || !BOTC_STATE.archItems) { _botcArchCargar_(q); return '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:12px">⏳ Cargando archivo…</div>'; }
+  const e = BOTC_STATE.archEst, est = e && e.est || {}, nota = est.fase && est.fase !== 'al_dia'
+    ? `<div style="padding:8px 14px;font-size:11.5px;color:#92400e;background:#fffbeb;border-bottom:1px solid var(--wa-ln)">⏳ Descargando el historial desde Lodgify: ${est.fase === 'lista' ? `listando reservas (${est.listadas || 0})…` : `${est.hechos || 0} de ${est.total || '…'} conversaciones`}. Aparecen aquí conforme se archivan.</div>` : '';
+  const L = BOTC_STATE.archItems;
+  const dm = s => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00'); return isNaN(d) ? '' : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' }); };
+  const filas = L.map(x => { const k = _botcAbnK_(x), sel = BOTC_STATE.selectedPhone === 'arch' + x.bid;
+    return `<div class="botc-conv-item wa-row ${sel ? 'sel' : ''}" data-botc-phone="arch${_botcEsc(x.bid)}" onclick="botcOpenArch_('${_botcEsc(x.bid)}')">
+      <span class="wa-av wa-logo" title="${_BOTC_ABN_LBL[k]} (archivo)">${_BOTC_LOGO[k]}</span>
+      <div class="wa-body"><div class="wa-l1"><b>${_botcEsc(x.huesped || 'Huésped')}</b><span class="wa-time">${dm((x.ult || {}).fecha || x.salida)}</span></div>
+        <div class="wa-l2"><span class="pv">${x.ult ? (x.ult.de === 'nosotros' ? 'Tú: ' : '') + _botcEsc(x.ult.texto) : 'Sin mensajes'}</span></div>
+        <div class="wa-l3">${x.aloj ? `<span class="wa-aloj ${k === 'airbnb' ? 'air' : ''}">${_botcEsc(x.aloj)}</span>` : ''}<span class="wa-chip" style="--c:#64748b">${x.n} mensaje${x.n === 1 ? '' : 's'}</span><span class="wa-dates">${dm(x.llegada)} → ${dm(x.salida)}</span></div></div></div>`; }).join('');
+  return nota + `<div style="padding:6px 14px;font-size:11px;color:var(--wa-mu);border-bottom:1px solid var(--wa-ln)">${BOTC_STATE.archTotal} conversación${BOTC_STATE.archTotal === 1 ? '' : 'es'} archivada${BOTC_STATE.archTotal === 1 ? '' : 's'}${BOTC_STATE.archTotal > L.length ? ` · se muestran las ${L.length} más recientes; usa el buscador` : ''}</div>`
+    + (filas || `<div style="padding:24px;text-align:center;color:#94a3b8;font-size:12px">${q ? 'Sin resultados para «' + _botcEsc(q) + '».' : 'Aún no hay conversaciones archivadas.'}</div>`);
+}
+window.botcOpenArch_ = async function (bid) {
+  const main = document.getElementById('botc-main'); if (!main) return; const ph = 'arch' + bid; BOTC_STATE.selectedPhone = ph;
+  try { _botcEnsureMobileCss_(); document.getElementById('module-bot-chats')?.classList.add('botc-has-chat'); } catch (_) {}
+  document.querySelectorAll('#botc-sidebar [data-botc-phone]').forEach(el => el.classList.toggle('sel', el.getAttribute('data-botc-phone') === ph));
+  const x = (BOTC_STATE.archItems || []).find(i => String(i.bid) === String(bid)) || { bid }, k = _botcAbnK_(x);
+  const head = j => { const h = j || x, dm = s => s ? _waFmtShortDate(String(s).slice(0, 10)) : '';
+    return `<div class="botc-chat-header wa-chat-h"><div class="botc-chat-header-nameblock" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+      <button id="botc-back-to-list" type="button" onclick="botcBackToList_()" title="Regresar a la lista" style="align-items:center;gap:4px;padding:6px 8px;background:transparent;color:#54656f;border:0;border-radius:6px;cursor:pointer;font-size:16px;font-weight:800;flex:none">←</button>
+      <span class="wa-av wa-logo" style="width:38px;height:38px">${_BOTC_LOGO[k]}</span>
+      <div style="min-width:0;flex:1;overflow:hidden"><div class="botc-chat-name" style="font-size:15px;font-weight:500;color:var(--wa-tx)">${_botcEsc(h.huesped || 'Huésped')}</div>
+        <div style="font-size:12px;color:var(--wa-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${[h.aloj, h.llegada && h.salida ? `${dm(h.llegada)} → ${dm(h.salida)}` : '', _BOTC_ABN_LBL[k] + ' · reserva ' + bid, '🗄 Archivo'].filter(Boolean).map(_botcEsc).join(' · ')}</div></div></div></div>`; };
+  main.innerHTML = head() + '<div id="botc-msgs" class="wa-msgs"><div class="wa-bit-load">⏳ Cargando conversación archivada…</div></div>';
+  try {
+    const j = await fetch(`${BACKEND}/airbnb/historial/hilo?bid=${encodeURIComponent(bid)}`, { cache: 'no-store' }).then(r => r.json());
+    if (BOTC_STATE.selectedPhone !== ph) return; if (!j.ok) throw new Error(j.error || 'Error');
+    let dia = '';
+    const msgs = (j.mensajes || []).map(m => { const f = new Date(m.fecha), dd = isNaN(f) ? '' : f.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const sep = dd && dd !== dia ? `<div class="wa-day"><span>${_botcEsc(dd)}</span></div>` : ''; dia = dd || dia; const io = m.de === 'huesped' ? 'in' : 'out';
+      return `${sep}<div class="wa-r ${io}"><div class="wa-b ${io}">${_botcEsc(m.texto).replace(/\n/g, '<br>')}<div style="text-align:right;font-size:11px;color:var(--wa-mu);margin-top:2px">${m.adj ? '📎 ' + m.adj + ' · ' : ''}${isNaN(f) ? '' : f.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}</div></div></div>`; }).join('');
+    main.innerHTML = head(j) + `<div id="botc-msgs" class="wa-msgs">${msgs || '<div class="wa-bit-load">Sin mensajes.</div>'}</div><div style="padding:10px 14px;background:var(--wa-bar);border-top:1px solid var(--wa-ln);font-size:12px;color:var(--wa-mu);text-align:center">🗄 Conversación archivada (solo lectura) · estancia terminada · guardada el ${_botcEsc(new Date(j.at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }))}</div>`;
+    const box = document.getElementById('botc-msgs'); if (box) box.scrollTop = box.scrollHeight;
+  } catch (e) { const box = document.getElementById('botc-msgs'); if (box) box.innerHTML = `<div class="wa-bit-load">No se pudo abrir: ${_botcEsc(e.message || e)}</div>`; }
+};
 // Chat de Airbnb: mismas burbujas y encabezado que WhatsApp; los mensajes salen de Lodgify.
 window._botcAbrirAbn_ = async function (ph, opts) {
   opts = opts || {}; const bid = String(ph).replace(/^abn/, ''), main = document.getElementById('botc-main'); if (!main) return;
@@ -53123,7 +53174,7 @@ window._botcAbrirAbn_ = async function (ph, opts) {
         <div id="botc-header-menu" style="display:${BOTC_STATE.headerMenuOpen ? 'block' : 'none'};position:absolute;top:100%;right:0;margin-top:6px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.22);z-index:1000;min-width:230px;overflow:hidden;font-size:12px">
           <div class="botc-hmenu-group"><div class="botc-hmenu-label">Ver</div>
             <button type="button" class="botc-hmenu-item" onclick="botcToggleRightPanel();botcCloseHeaderMenu_()">📖 Bitácora completa</button>
-            <button type="button" class="botc-hmenu-item" onclick="botcCloseHeaderMenu_();switchModule('mensajes');abnInit_('${bid}')">↗ Abrir en Mensajes Airbnb</button></div></div></div>`;
+            <button type="button" class="botc-hmenu-item" onclick="botcCloseHeaderMenu_();switchModule('mensajes');abnInit_('${bid}')">↗ Abrir en Mensajes de Lodgify</button></div></div></div>`;
     const prev = document.getElementById('abn-botc-txt'), borrador = prev ? prev.value : '', conFoco = prev && document.activeElement === prev; // no perder lo que se está escribiendo
     const pp = document.getElementById('botc-prog-pop'), ppTop = pp ? ((pp.querySelector('.bp-cuerpo') || {}).scrollTop || 0) : 0; if (pp) pp.remove();
     main.innerHTML = `<div class="botc-chat-header wa-chat-h">
@@ -53142,10 +53193,10 @@ window._botcAbrirAbn_ = async function (ph, opts) {
         <div style="font-size:11.5px;font-weight:700;color:#6d28d9;margin-bottom:6px">👁️ Borrador del bot — revísalo antes de enviarlo por Airbnb</div>
         <textarea id="abn-botc-draft" rows="3" style="width:100%;box-sizing:border-box;border:1px solid #ddd6fe;border-radius:8px;padding:8px 10px;font:inherit;font-size:13.5px;resize:vertical">${_botcEsc(h.draft)}</textarea>
         <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px"><button type="button" onclick="botcAbnBorrador_('${ph}','descartar')" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer">Descartar</button>
-          <button type="button" onclick="botcAbnBorrador_('${ph}','enviar')" style="border:0;background:#7c3aed;color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Enviar por Airbnb</button></div></div>` : ''}
+          <button type="button" onclick="botcAbnBorrador_('${ph}','enviar')" style="border:0;background:#7c3aed;color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Enviar por ${_BOTC_ABN_LBL[_botcAbnK_(h)]}</button></div></div>` : ''}
       <div class="wa-comp" style="display:flex;align-items:flex-end;gap:8px;padding:8px 12px;background:var(--wa-bar);border-top:1px solid var(--wa-ln)">
         <button type="button" class="wa-ia wa-prog ${document.getElementById('botc-prog-pop') ? 'on' : ''}" onclick="botcProgToggle_()" title="Mensajes programados de la reserva activa" style="align-self:center">📅</button>
-        <textarea id="abn-botc-txt" rows="1" placeholder="Responder por Airbnb…" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
+        <textarea id="abn-botc-txt" rows="1" placeholder="Responder por ${_BOTC_ABN_LBL[_botcAbnK_(h)]}…" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();abnEnviar_('${bid}','abn-botc-txt',()=>{BOTC_STATE.abnN='';_botcAbrirAbn_('${ph}',{silent:true});_botcRenderSidebar();})}"
           style="flex:1;min-width:0;border:0;border-radius:8px;padding:10px 12px;font:inherit;font-size:14px;background:#fff;resize:none;max-height:120px;outline:none"></textarea>
         <button type="button" title="Enviar por Airbnb" onclick="abnEnviar_('${bid}','abn-botc-txt',()=>{BOTC_STATE.abnN='';_botcAbrirAbn_('${ph}',{silent:true});_botcRenderSidebar();})"
