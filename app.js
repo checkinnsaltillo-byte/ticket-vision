@@ -73936,18 +73936,18 @@ function bkFiltra_(c) { const f = BK.f || {}, pc = BK.d.cfg.procesos[c.clave] ||
   if (f.restr && !BK_RESTR[f.restr][2](c)) return false;
   if (f.prio && (pc.prioridad || c.pbIni) !== f.prio) return false;
   if (f.origen && (c.extra ? 'Agregado' : c.origen) !== f.origen) return false;
-  if (f.modo && (pc.modo || c.modoIni) !== f.modo) return false;
+  if (Array.isArray(f.modos) && !f.modos.includes(pc.modo || c.modoIni)) return false;
   return true; }
 function bkFiltrosHtml_() {
   const f = BK.f = BK.f || {}, C = BK.d.catalogo, ft = BK.fTipo || '';
   const sel = (k, opts, ayuda) => `<select class="bk-sel" style="width:auto;min-width:150px;padding:6px 9px;font-size:12.5px;border-radius:999px;${f[k] ? 'border-color:#111827;font-weight:700' : ''}" title="${esc(ayuda)}" onchange="BK.f['${k}']=this.value;bkRender_()">${opts.map(([v, t]) => `<option value="${esc(v)}" ${String(f[k] || '') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
-  const n = fn => C.filter(fn).length, hay = ft || Object.values(f).some(Boolean);
-  const tipo = [['', 'Todos'], ['huesped', '💬 Huésped'], ['sistema', '⚙️ Sistema']].map(([v, t]) => `<button type="button" class="bk-tab ${ft === v ? 'on' : ''}" style="padding:6px 11px;font-size:12px" onclick="BK.fTipo='${v}';bkRender_()">${t} (${v ? n(c => c.tipo === v) : C.length})</button>`).join('');
+  const n = fn => C.filter(fn).length, hay = ft || Object.values(f).some(v => Array.isArray(v) ? v.length < 4 : Boolean(v));
+  const tipo = `<select class="bk-sel" style="width:auto;min-width:150px;padding:6px 9px;font-size:12.5px;border-radius:999px;${ft ? 'border-color:#111827;font-weight:700' : ''}" title="Procesos de conversación con el huésped o internos del sistema" onchange="BK.fTipo=this.value;bkRender_()">${[['', `Tipo: todos (${C.length})`], ['huesped', `💬 Huésped (${n(c => c.tipo === 'huesped')})`], ['sistema', `⚙️ Sistema (${n(c => c.tipo === 'sistema')})`]].map(([v, t]) => `<option value="${v}" ${ft === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
   return `<div class="bk-row" style="margin:-4px 0 12px;gap:8px;align-items:center">${tipo}
     ${sel('restr', [['', 'Canal y restricciones: todas']].concat(Object.entries(BK_RESTR).map(([k, x]) => [k, `${x[0]} (${n(x[2])})`])), 'Filtra por restricciones de canal o de verificación')}
     ${sel('prio', [['', 'Prioridad: todas'], ['P1', '🔴 P1 Crítica'], ['P2', '🟠 P2 Alta'], ['P3', '🟡 P3 Media'], ['P4', '⚪ P4 Normal']], 'Prioridad base del proceso (alimenta el puntaje de urgencia)')}
     ${sel('origen', [['', 'Origen: todos'], ['Original', 'Original (ya existía en el bot)'], ['Propuesto', 'Propuesto (documento de requerimientos)'], ['Agregado', 'Agregado desde el panel']], 'De dónde viene el proceso')}
-    ${sel('modo', [['', 'Modo: todos'], ['off', 'Apagado'], ['der', 'Derivar'], ['sup', 'Supervisado'], ['auto', 'Automático']], 'Modo actual del proceso')}
+    ${bkModoMultiHtml_()}
     ${hay ? `<button class="bk-btn sm" onclick="BK.f={};BK.fTipo='';bkRender_()">✕ Limpiar</button>` : ''}</div>`;
 }
 
@@ -73963,3 +73963,24 @@ function bkCanalChip_(f) { if (!bkEsProactivo_(f.proceso)) return ''; const C = 
   if (C.a && C.w) return `<span title="${tit}" style="position:relative;display:inline-block;width:30px;height:24px;flex-shrink:0;margin-right:2px"><span style="position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;overflow:hidden;line-height:0;box-shadow:0 0 0 2px #fff;z-index:1">${_BOTC_LOGO.whatsapp}</span><span style="position:absolute;right:0;bottom:0;width:20px;height:20px;border-radius:50%;overflow:hidden;line-height:0;box-shadow:0 0 0 2px #fff;z-index:2">${_BOTC_LOGO.airbnb}</span></span>`;
   if (!C.a && !C.w) return `<span class="bk-chip" style="background:#fef3c7;color:#92400e" title="${tit}">sin envío</span>`;
   return `<span title="${tit}" style="margin-right:2px;display:inline-flex">${bkLogo_(C.a ? 'airbnb' : 'whatsapp', 22)}</span>`; }
+
+// Filtro «Modo» de opción múltiple: marcar/desmarcar NO cierra el menú; solo se actualizan la etiqueta y la lista de procesos.
+const BK_MODOS4 = ['off', 'der', 'sup', 'auto'];
+function bkModoSel_() { const m = (BK.f || {}).modos; return Array.isArray(m) ? m : BK_MODOS4.slice(); }
+function bkModoLbl_() { const m = bkModoSel_(); return m.length === 4 ? 'Modo: todos' : !m.length ? 'Modo: ninguno' : 'Modo: ' + m.map(k => BK_MODO[k][0]).join(', '); }
+function bkModoMultiHtml_() {
+  const m = bkModoSel_(), ck = k => `<div onclick="event.stopPropagation();bkModoTog_('${k}')" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:12.5px" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''"><span id="bk-mck-${k}" style="width:18px;height:18px;border-radius:5px;border:1.5px solid ${m.includes(k) ? '#111827' : '#9ca3af'};background:${m.includes(k) ? '#111827' : '#fff'};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:900">${m.includes(k) ? '✓' : ''}</span><span class="bk-chip" style="color:${BK_MODO[k][1]};background:${BK_MODO[k][2]}">${BK_MODO[k][0]}</span></div>`;
+  return `<div style="position:relative" id="bk-mmulti"><button type="button" id="bk-mmulti-btn" onclick="event.stopPropagation();document.getElementById('bk-mmulti-p').style.display=document.getElementById('bk-mmulti-p').style.display==='block'?'none':'block'" style="all:unset;cursor:pointer;box-sizing:border-box;min-width:150px;padding:6px 28px 6px 11px;border:1px solid ${m.length < 4 ? '#111827' : '#d1d5db'};border-radius:999px;font-size:12.5px;background:#fff;position:relative;${m.length < 4 ? 'font-weight:700' : ''}">${esc(bkModoLbl_())}<span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px">▾</span></button>
+    <div id="bk-mmulti-p" onclick="event.stopPropagation()" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:50;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.14);padding:6px;min-width:210px">
+      <div class="bk-row" style="padding:4px 6px 6px;gap:6px"><button class="bk-btn sm" onclick="bkModoTodos_(true)">Todos</button><button class="bk-btn sm" onclick="bkModoTodos_(false)">Ninguno</button></div>
+      ${BK_MODOS4.map(ck).join('')}</div></div>`;
+}
+function bkModoAplicar_() { // refresca solo checks, etiqueta y lista (el menú queda abierto)
+  const m = bkModoSel_();
+  BK_MODOS4.forEach(k => { const e = document.getElementById('bk-mck-' + k); if (e) { const on = m.includes(k); e.style.background = on ? '#111827' : '#fff'; e.style.borderColor = on ? '#111827' : '#9ca3af'; e.textContent = on ? '✓' : ''; } });
+  const b = document.getElementById('bk-mmulti-btn'); if (b) { b.firstChild.textContent = bkModoLbl_(); b.style.fontWeight = m.length < 4 ? '700' : ''; b.style.borderColor = m.length < 4 ? '#111827' : '#d1d5db'; }
+  const body = document.getElementById('bk-body'); if (body && BK.tab === 'procesos') body.innerHTML = bkProcesos_();
+}
+function bkModoTog_(k) { const m = bkModoSel_().slice(), i = m.indexOf(k); if (i >= 0) m.splice(i, 1); else m.push(k); BK.f = BK.f || {}; BK.f.modos = m.length === 4 ? undefined : m; bkModoAplicar_(); }
+function bkModoTodos_(on) { BK.f = BK.f || {}; BK.f.modos = on ? undefined : []; bkModoAplicar_(); }
+document.addEventListener('click', () => { const p = document.getElementById('bk-mmulti-p'); if (p) p.style.display = 'none'; });
