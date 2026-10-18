@@ -73721,15 +73721,16 @@ async function bkFlujosInit_() {
   const F = Object.keys(por).map(k => ({ id: 'f' + k, nombre: (BK.d.catalogo.find(c => c.clave === k) || {}).nombre || k, proceso: k, pasos: bkOrdenAuto_(por[k]).map(t => t.id) }));
   if (await bkGuardar_('flujos', F, false)) bkRender_();
 }
-function bkPasoBtn_(t, i, inert) {
+function bkPasoBtn_(t, i, inert, sinNum) {
   return `<button type="button" onclick="event.stopPropagation();bkTplAbrir_('${esc(t.id)}')" title="${esc(t.preview || '')}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:7px 11px 7px 8px;border-radius:10px;background:#fff;border:1px solid ${inert ? '#e5e7eb' : '#ddd6fe'};box-shadow:0 1px 2px rgba(0,0,0,.04);${inert ? 'opacity:.6' : ''}" onmouseover="this.style.borderColor='#7c3aed';this.style.background='#faf5ff'" onmouseout="this.style.borderColor='${inert ? '#e5e7eb' : '#ddd6fe'}';this.style.background='#fff'">
-      <span style="width:20px;height:20px;border-radius:50%;background:${inert ? '#e5e7eb' : '#111827'};color:${inert ? '#6b7280' : '#fff'};display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex-shrink:0">${i + 1}</span>
+      ${sinNum ? '<span style="font-size:13px;flex-shrink:0">📨</span>' : `<span style="width:20px;height:20px;border-radius:50%;background:${inert ? '#e5e7eb' : '#111827'};color:${inert ? '#6b7280' : '#fff'};display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex-shrink:0">${i + 1}</span>`}
       <span style="font-size:11.5px;line-height:1.25"><b>${esc(t.nombre)}</b><br><span class="bk-mut">${esc(bkPmProg_(t))}${t.schedule_type !== 'never' && !t.alojamientos ? ' · sin alojamientos' : ''}${t.enabled ? '' : ' · desactivada'}</span></span></button>`;
 }
 function bkFlujoHtml1_(f, conNombre) {
   const L = f.pasos.map(bkTpl_).filter(Boolean);
-  const pasos = L.map((t, i) => bkPasoBtn_(t, i, !t.enabled || (t.schedule_type !== 'never' && !t.alojamientos))).join('<span style="color:#a78bfa;font-weight:800">→</span>');
-  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${conNombre ? `<span style="font-size:11px;font-weight:800;color:#6d28d9;margin-right:2px">🔀 ${esc(f.nombre)}</span>` : ''}${pasos || '<span class="bk-mut" style="font-size:11.5px">Flujo sin pasos</span>'}
+  const ord = f.ordenado !== false;
+  const pasos = L.map((t, i) => bkPasoBtn_(t, i, !t.enabled || (t.schedule_type !== 'never' && !t.alojamientos), !ord)).join(ord ? '<span style="color:#a78bfa;font-weight:800">→</span>' : '');
+  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${conNombre ? `<span style="font-size:11px;font-weight:800;color:#6d28d9;margin-right:2px">${ord ? '🔀' : '🗂️'} ${esc(f.nombre)}</span>` : ''}${pasos || `<span class="bk-mut" style="font-size:11.5px">${ord ? 'Flujo sin pasos' : 'Sin plantillas'}</span>`}
     <button type="button" class="bk-btn sm" style="padding:4px 8px" onclick="event.stopPropagation();bkFlEditar_('${esc(f.id)}')" title="Agregar, quitar u ordenar plantillas">✏️ Editar flujo</button></div>`;
 }
 function bkPmChip_(clave) { const F = bkFlujosDe_(clave); if (!F.length) return '';
@@ -73861,7 +73862,7 @@ function bkFichaResumen_(pc) { const f = pc.ficha || {}, n = k => String(f[k] ||
   return `<div class="mt">📋 ${n('reglas')} regla${n('reglas') === 1 ? '' : 's'} · ${n('obtener')} dato${n('obtener') === 1 ? '' : 's'} a obtener · ${n('compartir')} a compartir · ${n('riesgos')} riesgo${n('riesgos') === 1 ? '' : 's'}</div>`; }
 
 // ── Editor de flujos (ventana lateral) ──
-function bkFlNuevo_(proceso) { BK.flEd = { id: '', nombre: '', proceso: proceso || '', pasos: [] }; bkFlPintar_(); }
+function bkFlNuevo_(proceso) { BK.flEd = { id: '', nombre: '', proceso: proceso || '', ordenado: true, pasos: [] }; bkFlPintar_(); }
 function bkFlEditar_(id) { const f = bkFlujos_().find(x => x.id === id); if (!f) return; BK.flEd = JSON.parse(JSON.stringify(f)); bkFlPintar_(); }
 function bkFlCerrar_() { BK.flEd = null; const ov = document.getElementById('bk-fl-ov'); if (ov) ov.remove(); }
 function bkFlPintar_() {
@@ -73872,18 +73873,21 @@ function bkFlPintar_() {
   const libres = bkTodas_().filter(t => !e.pasos.includes(t.id));
   const sinF = libres.filter(t => !dondeEsta(t.id)), conF = libres.filter(t => dondeEsta(t.id));
   const addOpts = `<option value="">＋ Agregar plantilla…</option>${sinF.length ? `<optgroup label="Sin flujo">${sinF.map(t => `<option value="${esc(t.id)}">${esc(t.nombre)}</option>`).join('')}</optgroup>` : ''}${conF.length ? `<optgroup label="En otro flujo (se moverá aquí)">${conF.map(t => `<option value="${esc(t.id)}">${esc(t.nombre)} — ${esc(dondeEsta(t.id).nombre)}</option>`).join('')}</optgroup>` : ''}`;
+  const ord = e.ordenado !== false;
   const pasos = e.pasos.map((id, i) => { const t = bkTpl_(id) || { nombre: id };
     return `<div class="bk-row" style="padding:8px 10px;border:1px solid #ddd6fe;border-radius:10px;margin-bottom:6px;background:#fff;flex-wrap:nowrap">
-      <span style="width:22px;height:22px;border-radius:50%;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">${i + 1}</span>
+      ${ord ? `<span style="width:22px;height:22px;border-radius:50%;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">${i + 1}</span>` : '<span style="font-size:15px">📨</span>'}
       <div style="flex:1;min-width:0;cursor:pointer" onclick="bkTplAbrir_('${esc(id)}')"><b style="font-size:12.5px">${esc(t.nombre)}</b><div class="bk-mut" style="font-size:11px">${esc(t.schedule_type ? bkPmProg_(t) : '')}</div></div>
-      <button class="bk-btn sm" ${i ? '' : 'disabled style="opacity:.35"'} onclick="bkFlMover_(${i},-1)" title="Subir">↑</button><button class="bk-btn sm" ${i < e.pasos.length - 1 ? '' : 'disabled style="opacity:.35"'} onclick="bkFlMover_(${i},1)" title="Bajar">↓</button><button class="bk-btn sm red" onclick="BK.flEd.pasos.splice(${i},1);bkFlPintar_()" title="Quitar del flujo">✕</button></div>`; }).join('');
+      ${ord ? `<button class="bk-btn sm" ${i ? '' : 'disabled style="opacity:.35"'} onclick="bkFlMover_(${i},-1)" title="Subir">↑</button><button class="bk-btn sm" ${i < e.pasos.length - 1 ? '' : 'disabled style="opacity:.35"'} onclick="bkFlMover_(${i},1)" title="Bajar">↓</button>` : ''}<button class="bk-btn sm red" onclick="BK.flEd.pasos.splice(${i},1);bkFlPintar_()" title="Quitar del flujo">✕</button></div>`; }).join('');
   ov.innerHTML = `<div class="bk-drw-bg" style="z-index:9150" onclick="bkFlCerrar_()"></div><div class="bk-drw" style="z-index:9151;width:min(560px,100vw)">
-    <div class="bk-drw-h"><div style="flex:1"><b style="font-size:15px">🔀 ${e.id ? 'Editar flujo' : 'Nuevo flujo'}</b><div class="bk-sub">Plantillas en el orden en que se envían. Toca un paso para editar la plantilla.</div></div><button class="bk-btn sm" onclick="bkFlCerrar_()">✕</button></div>
+    <div class="bk-drw-h"><div style="flex:1"><b style="font-size:15px">${ord ? '🔀' : '🗂️'} ${e.id ? 'Editar flujo' : 'Nuevo flujo'}</b><div class="bk-sub">Toca una plantilla para editarla.</div></div><button class="bk-btn sm" onclick="bkFlCerrar_()">✕</button></div>
     <div class="bk-drw-b">
       <label class="bk-lb">Nombre del flujo</label><input class="bk-in" value="${esc(e.nombre)}" placeholder="Ej. Seguimiento de solicitudes de limpieza" oninput="BK.flEd.nombre=this.value">
       <label class="bk-lb">Proceso al que pertenece</label><select class="bk-sel" onchange="BK.flEd.proceso=this.value;bkFlPintar_()"><option value="">— Elige un proceso —</option>${procOpts}</select>
       <div class="bk-sub" style="margin-top:4px">Las plantillas programadas se envían según el modo de este proceso.</div>
-      <label class="bk-lb" style="margin-top:16px">Pasos (${e.pasos.length})</label>${pasos || '<div class="bk-mut" style="font-size:12px;margin-bottom:8px">Aún no hay pasos.</div>'}
+      <label class="bk-lb" style="margin-top:16px">Tipo</label><div class="bk-seg">${[[true, '🔀 Pasos en orden'], [false, '🗂️ Listado sin orden']].map(([v, t]) => `<button type="button" class="${ord === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.flEd.ordenado=${v};bkFlPintar_()">${t}</button>`).join('')}</div>
+      <div class="bk-sub" style="margin-top:4px">${ord ? 'Las plantillas se muestran numeradas en el orden en que ocurren.' : 'Solo agrupa las plantillas del proceso, sin secuencia.'}</div>
+      <label class="bk-lb" style="margin-top:16px">${ord ? 'Pasos' : 'Plantillas'} (${e.pasos.length})</label>${pasos || '<div class="bk-mut" style="font-size:12px;margin-bottom:8px">Aún no hay pasos.</div>'}
       <select class="bk-sel" onchange="if(this.value){BK.flEd.pasos.push(this.value);bkFlPintar_()}">${addOpts}</select>
     </div>
     <div class="bk-drw-f">${e.id ? '<button class="bk-btn red" style="margin-right:auto" onclick="bkFlEliminar_()">🗑 Eliminar flujo</button>' : ''}<button class="bk-btn" onclick="bkFlCerrar_()">Cancelar</button><button class="bk-btn pri" onclick="bkFlGuardar_()">Guardar flujo</button></div></div>`;
@@ -73895,7 +73899,7 @@ async function bkFlGuardar_() {
   const movidas = e.pasos.filter(id => bkFlujos_().some(f => f.id !== e.id && f.pasos.includes(id)));
   if (movidas.length && !confirm(`${movidas.length} plantilla(s) se moverán desde otro flujo a este. ¿Continuar?`)) return;
   const F = bkFlujos_().map(f => f.id === e.id ? null : Object.assign({}, f, { pasos: f.pasos.filter(id => !e.pasos.includes(id)) })).filter(Boolean);
-  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, pasos: e.pasos.slice() };
+  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, ordenado: e.ordenado !== false, pasos: e.pasos.slice() };
   const idx = bkFlujos_().findIndex(f => f.id === e.id); if (idx >= 0) F.splice(idx, 0, nuevo); else F.push(nuevo);
   if (await bkGuardar_('flujos', F, '✓ Flujo guardado')) { bkFlCerrar_(); bkRender_(); }
 }

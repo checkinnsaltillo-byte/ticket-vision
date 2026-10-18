@@ -13272,7 +13272,7 @@ function _bcCatalogo(cfg) {
 function _bcMapaDeFlujos(flujos) { const m = {}; (flujos || []).forEach(f => (f.pasos || []).forEach(t => { if (t && f.proceso) m[t] = f.proceso; })); return m; }
 function _bcFlujosLimpios(L) {
   const vistos = new Set();
-  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso),
+  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, // false = listado de plantillas sin orden de pasos
     pasos: (Array.isArray(f.pasos) ? f.pasos : []).map(String).filter(t => t && !vistos.has(t) && vistos.add(t)) })); // una plantilla vive en un solo flujo
 }
 // Modo efectivo de un proceso para esta conversación: override más específico (RF-03) → canal (RF-15) → verificación (RF-06/17) → disyuntor (RF-10) → fuera de oficina (RF-14).
