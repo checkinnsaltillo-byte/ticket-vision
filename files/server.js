@@ -11556,6 +11556,7 @@ async function _abnBandejaCargar() {
     }
     hilos.sort((a, b) => String((b.ult || {}).fecha || "").localeCompare(String((a.ult || {}).fecha || "")));
     _abn.band = { hilos, ts: Date.now() }; _abn.ts = Date.now();
+    (async () => { for (const hb of hilos) { const c = _abn.hilos.get(hb.bid); if (c && c.mensajes) await _abaGuardar({ bid: hb.bid, thread: hb.thread, huesped: hb.huesped, fuente: hb.fuente, estado: hb.estado, llegada: hb.llegada, salida: hb.salida, hid: hb.hid, aloj: hb.aloj, tel: hb.tel }, c.mensajes).catch(() => {}); } await _abaIdxSave(); })().catch(e => console.warn("[archivo] bandeja:", e.message)); // archivo siempre al día
     _rhdPut(_ABN_BAND_OBJ, JSON.stringify(_abn.band), "application/json").catch(() => {});
     return _abn.band;
   })().finally(() => { _abn.p = null; });
@@ -11701,6 +11702,89 @@ async function _abnBotResponder(bid, m) {
   await _abnEnviar(bid, reply, "bot");
   return "contestado";
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// 🗄 Archivo histórico de conversaciones de Lodgify (Airbnb, Booking y directas) desde 2024.
+// gs://…/airbnb/hilos/<bid>.json = conversación completa · airbnb/historial.json = índice (resumen por reserva).
+// Carga inicial por pasos (Cloud Scheduler → /airbnb/archivo/tick cada 2 min, con candado para una sola copia del
+// servidor): 1) lista de reservas de Lodgify (stayFilter=All, 40 páginas por paso) 2) descarga de hilos (150 por paso).
+// Después se mantiene al día solo: la bandeja (reservas en curso y próximas, cada 5 min) archiva lo que cambió.
+// ═══════════════════════════════════════════════════════════════════════════
+const _ABA = { IDX: "airbnb/historial.json", EST: "airbnb/archivo-estado.json", PEND: "airbnb/archivo-pend.json", HILO: bid => `airbnb/hilos/${bid}.json` };
+let _abaIdx = null, _abaIdxTs = 0, _abaIdxDirty = false;
+async function _abaIdxGet() { if (!_abaIdx || (!_abaIdxDirty && Date.now() - _abaIdxTs > 5 * 60e3)) { _abaIdx = await _rhdGetJson(_ABA.IDX).catch(() => _abaIdx || {}); _abaIdxTs = Date.now(); } if (!_abaIdx.items) _abaIdx.items = {}; return _abaIdx; }
+async function _abaIdxSave() { if (!_abaIdxDirty || !_abaIdx) return; _abaIdxDirty = false;
+  // Varias copias del servidor escriben el índice: antes de guardar se combina con lo que ya hay (gana el resumen más reciente).
+  const rem = await _rhdGetJson(_ABA.IDX).catch(() => ({})), R = (rem && rem.items) || {}, f = x => String(((x || {}).ult || {}).fecha || "") + "|" + String((x || {}).n || 0).padStart(5, "0");
+  Object.entries(R).forEach(([k, v]) => { const l = _abaIdx.items[k]; if (!l || f(v) > f(l)) _abaIdx.items[k] = v; });
+  _abaIdx.ts = Date.now(); _abaIdxTs = Date.now(); await _rhdPut(_ABA.IDX, JSON.stringify(_abaIdx), "application/json"); }
+function _abaFuente(s) { return String(s || "").replace(/Integration$/, ""); }
+// Guarda una conversación completa + su resumen en el índice. meta = { bid, thread, huesped, fuente, estado, llegada, salida, hid, aloj, tel }
+async function _abaGuardar(meta, mensajes) {
+  const idx = await _abaIdxGet(), u = mensajes[mensajes.length - 1] || null, prev = idx.items[meta.bid];
+  if (prev && prev.n === mensajes.length && prev.estado === meta.estado && (prev.ult || {}).fecha === (u || {}).fecha) return false; // sin cambios
+  await _rhdPut(_ABA.HILO(meta.bid), JSON.stringify(Object.assign({}, meta, { mensajes, at: new Date().toISOString() })), "application/json");
+  idx.items[meta.bid] = Object.assign({}, meta, { n: mensajes.length, ult: u ? { de: u.de, texto: String(u.texto).slice(0, 160), fecha: u.fecha } : null }); _abaIdxDirty = true;
+  return true;
+}
+let _abaCorriendo = false;
+async function _abaTick() {
+  if (_abaCorriendo) return { ok: true, ocupado: true }; _abaCorriendo = true;
+  try {
+    const est = await _rhdGetJson(_ABA.EST).catch(() => ({}));
+    if (est.lease && est.lease > Date.now()) return { ok: true, ocupado: true, est }; // otra copia del servidor está trabajando
+    est.lease = Date.now() + 115e3; est.fase = est.fase || "lista"; est.pagina = est.pagina || 1; est.inicio = est.inicio || new Date().toISOString();
+    await _rhdPut(_ABA.EST, JSON.stringify(est), "application/json");
+    const t0 = Date.now(), cat = await _aseoCatalogo().catch(() => []), alojDe = hid => { const a = cat.find(c => c.hid === String(hid)); return a ? (a.code ? a.code.toUpperCase() : a.nombre) : ""; };
+    if (est.fase === "lista") {
+      const pend = await _rhdGetJson(_ABA.PEND).catch(() => ({})); pend.items = pend.items || [];
+      const ya = new Set(pend.items.map(x => x.bid));
+      for (let k = 0; k < 40 && Date.now() - t0 < 80e3; k++) {
+        const d = await _lgApi(`/v2/reservations/bookings?page=${est.pagina}&size=50&stayFilter=All&includeExternal=true`);
+        (d.items || []).forEach(b => { const bid = String(b.id); if (!b.thread_uid || ya.has(bid) || String(b.departure || "") < "2024-01-01") return; ya.add(bid);
+          pend.items.push({ bid, thread: b.thread_uid, huesped: (b.guest && b.guest.name) || "", fuente: _abaFuente(b.source), estado: b.status || "", llegada: b.arrival || "", salida: b.departure || "", hid: String(b.property_id || ""), aloj: alojDe(b.property_id), tel: String((b.guest && b.guest.phone) || "").replace(/\D/g, "").slice(-10) }); });
+        if ((d.items || []).length < 50) { est.fase = "hilos"; est.total = pend.items.length; est.hechos = 0; break; }
+        est.pagina++;
+      }
+      est.listadas = pend.items.length;
+      await _rhdPut(_ABA.PEND, JSON.stringify(pend), "application/json");
+    } else if (est.fase === "hilos") {
+      const pend = await _rhdGetJson(_ABA.PEND).catch(() => ({ items: [] })); const L = pend.items || [];
+      let i = 0, err = 0;
+      const lote = L.splice(0, 150);
+      await Promise.all(Array.from({ length: 4 }, async () => { while (i < lote.length && Date.now() - t0 < 95e3) { const m = lote[i++];
+        try { const raw = await _lgApi(`/v2/messaging/${encodeURIComponent(m.thread)}`); await _abaGuardar(m, _abnMensajes(raw)); m.ok = 1; est.hechos = (est.hechos || 0) + 1; }
+        catch (e) { err++; m.err = (m.err || 0) + 1; } } }));
+      lote.forEach(m => { if (!m.ok && (m.err || 0) < 3) { delete m.ok; L.push(m); } }); // lo no procesado o con error vuelve a la fila (máx. 3 intentos)
+      est.errores = (est.errores || 0) + err; est.pendientes = L.length;
+      await _abaIdxSave();
+      await _rhdPut(_ABA.PEND, JSON.stringify({ items: L }), "application/json");
+      if (!L.length) { est.fase = "al_dia"; est.fin = new Date().toISOString(); }
+    }
+    est.lease = 0; est.ultimo = new Date().toISOString();
+    await _rhdPut(_ABA.EST, JSON.stringify(est), "application/json");
+    return { ok: true, est };
+  } finally { _abaCorriendo = false; }
+}
+app.all("/airbnb/archivo/tick", async (req, res) => { try { res.json(await _abaTick()); } catch (e) { console.warn("[archivo] tick:", e.message); res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/airbnb/archivo/estado", async (req, res) => { try { const e = await _rhdGetJson(_ABA.EST).catch(() => ({})); const idx = await _abaIdxGet(); res.json({ ok: true, est: e, archivadas: Object.keys(idx.items).length }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+// Lista del archivo (por omisión solo estancias que ya terminaron), con búsqueda por huésped, alojamiento, reserva o último mensaje.
+app.get("/airbnb/historial", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const idx = await _abaIdxGet(), hoy = new Date().toISOString().slice(0, 10), nrm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const q = nrm(req.query.q || "").trim(), todas = req.query.todas === "1", fu = String(req.query.fuente || ""), lim = Math.min(500, Number(req.query.limit) || 200);
+    let L = Object.values(idx.items).filter(x => (todas || String(x.salida) < hoy) && (!fu || x.fuente === fu) && x.n > 0);
+    if (q) L = L.filter(x => nrm([x.huesped, x.aloj, x.bid, x.tel, (x.ult || {}).texto].join(" ")).includes(q));
+    L.sort((a, b) => String((b.ult || {}).fecha || b.salida).localeCompare(String((a.ult || {}).fecha || a.salida)));
+    res.json({ ok: true, total: L.length, items: L.slice(0, lim) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/airbnb/historial/hilo", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { const bid = String(req.query.bid || "").replace(/\D/g, ""); if (!bid) return res.status(400).json({ ok: false, error: "Falta bid" });
+    const h = await _rhdGetJson(_ABA.HILO(bid)); if (!h || !h.bid) return res.status(404).json({ ok: false, error: "Sin archivo" }); res.json(Object.assign({ ok: true }, h)); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.all("/airbnb/bot-tick", async (req, res) => {
   if (_abnTickCorriendo) return res.json({ ok: true, ocupado: true });
   _abnTickCorriendo = true; const out = {};
