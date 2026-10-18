@@ -3470,7 +3470,9 @@ async function _botLlmLoop({ system, history, userMsg, ctx, tools }) {
     const toolResults = [];
     for (const p of parts) {
       if (p.type !== "tool_use") continue;
-      const exec = await _botExecTool(p, ctx);
+      let exec;
+      try { exec = await _botExecTool(p, ctx); } catch (e) { _bcToolResultado(p.name, null, e); throw e; }
+      _bcToolResultado(p.name, exec);
       toolsUsed.push({ name: p.name, args: p.input, notifyText: exec.notifyText });
       toolResults.push({
         type: "tool_result",
@@ -4030,13 +4032,23 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     console.info(`[bot-in] ${phone10}: fetches paralelos en ${Date.now()-t0}ms`);
     const state = ctxResp.state || { control: "bot" };
     console.info(`[bot-in] ${phone10}: state.control="${state.control}" msgs=${(ctxResp.messages||[]).length}`);
+    // 🎛️ Gate del Control del bot: decide en código antes de llamar al modelo (en observación solo registra).
+    const _bk = (ctx && ctx.booking) || null;
+    const _g = await _bcGate({ texto: bodyMsg, canal: "whatsapp", conv: phone10, booking: _bk, control: String(state.control), mensajes: ctxResp.messages || [], nombre: (_bk && _bk.GuestName) || state.name || "", aloj: (_bk && (_bk.RoomTypeName || _bk.PropertyName)) || "" }).catch(e => { console.warn("[bot-control] gate:", e.message); return null; });
     if (String(state.control) === "human") {
+      // Aun con una persona a cargo, una emergencia se identifica y escala (el horario no oculta lo crítico).
+      if (_g) { _bcRegistrar(_g, { texto: bodyMsg }); if (_g.activo && _g.emergencia) {
+        await _twilioSendMessage({ to: fromRaw, body: _g.msg, skipMirror: true }).catch(() => {}); _botAppendMessage(phone10, "assistant", _g.msg, { gate: "emergencia" });
+        _botNotifyEmergency(`🚨 EMERGENCIA · ${_g.nombre || phone10}${_g.aloj ? ` · ${_g.aloj}` : ""}\n«${String(bodyMsg).slice(0, 300)}»\nEl bot envió las instrucciones de seguridad. Atiende de inmediato.`); } }
       console.info(`[bot-in] ${phone10}: skip (human control)`);
       return;
     }
+    if (_g && await _bcAplicarWa(_g, { phone10, fromRaw, texto: bodyMsg })) { console.info(`[bot-in] ${phone10}: gate → ${_g.accion} (${_g.motivo})`); return; }
+    const _gOn = !!(_g && _g.activo), _gTools = _gOn ? _g.tools : undefined, _gPrompt = _gOn ? _g.prompt : "";
+    let _forzarSup = _gOn && _g.accion === "supervisado";
     // Sensitive + modo bot → auto-escala. En supervised/manual dejamos que
     // el admin lo revise y decida (el mensaje ya está en el panel).
-    if (sensitive && String(state.control) === "bot") {
+    if (sensitive && String(state.control) === "bot" && !_gOn) {
       console.info(`[bot-in] ${phone10}: escalar por sensitive: ${sensitive}`);
       _botEscalate(phone10, `Sensitive intent: ${sensitive}`);
       const msg = "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏";
@@ -4056,7 +4068,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       const _todayL = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
       const _yearL  = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
       const _tempoL = `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${_todayL} (América/Mexico_City).\n- AÑO ACTUAL: ${_yearL}. Úsalo por default si no se menciona año.`;
-      const leadSystem = BOT_SYSTEM_PROMPT_BASE + leadPromptsBlock + _tempoL + `
+      const leadSystem = BOT_SYSTEM_PROMPT_BASE + leadPromptsBlock + _tempoL + _gPrompt + `
 
 CONTEXTO ESPECIAL — LEAD ENTRANTE SIN RESERVA
 No tenemos una reserva asociada a este número. Tu objetivo es SOLO capturar los datos mínimos para poder cotizar y armar la reserva:
@@ -4079,13 +4091,14 @@ REGLAS ESTRICTAS
         // Usa loop de tools también en lead — cotizar_disponibilidad
         // funciona sin reserva (solo requiere fechas + huéspedes). Si NO se
         // pasa el loop, el modelo alucina la llamada como texto JSON.
-        const llm = await _botLlmLoop({ system: leadSystem, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: {}, alojRow: {} } });
+        const llm = await _botLlmLoop({ system: leadSystem, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: {}, alojRow: {} }, tools: _gTools });
+        if (await _bcExigeSup(_g, llm.toolsUsed)) _forzarSup = true;
         console.info(`[bot-in] ${phone10}: LLM lead+tools en ${Date.now()-tLlm}ms (${(llm.toolsUsed||[]).length} tools)`);
         for (const t of (llm.toolsUsed || [])) { if (t.notifyText) _botNotifyAdmin(t.notifyText); }
         const replyText = String(llm.text || "").trim() ||
           "¡Hola! Gracias por contactar Check-inn Saltillo. Para poder ayudarte, ¿me compartes tu nombre, el alojamiento o zona que te interesa, fechas tentativas y número de huéspedes? 🏠";
         // Modo SUPERVISED: guardar como draft para revisión humana.
-        if (String(state.control) === "supervised") {
+        if (String(state.control) === "supervised" || _forzarSup) {
           try {
             await fetch(CHECKIN_APPS_SCRIPT_URL, {
               method: "POST",
@@ -4112,7 +4125,7 @@ REGLAS ESTRICTAS
     // En Supervisado el admin aprueba cada respuesta manualmente — no hay
     // riesgo de mandar algo indebido, entonces generamos draft sin importar
     // si el alojamiento está en el piloto.
-    if (String(state.control) === "bot") {
+    if (String(state.control) === "bot" && !_forzarSup) {
       const enabled = await _botIsAlojamientoEnabled(ctx.booking.HouseId);
       console.info(`[bot-in] ${phone10}: enabled=${enabled}`);
       if (!enabled) {
@@ -4130,7 +4143,7 @@ REGLAS ESTRICTAS
     const _today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
     const _year  = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
     const _tempo = `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${_today} (América/Mexico_City).\n- AÑO ACTUAL: ${_year}. Úsalo por default si el huésped no menciona año; si esa fecha ya pasó, salta al año siguiente.`;
-    const system = BOT_SYSTEM_PROMPT_BASE + promptsBlock + _tempo + context;
+    const system = BOT_SYSTEM_PROMPT_BASE + promptsBlock + _tempo + context + _gPrompt;
     const history = (ctxResp.messages || []).slice(-10, -1); // excluir el user actual (ya guardado)
     // Anthropic solo acepta roles 'user' | 'assistant'. Nuestros roles
     // internos incluyen 'admin' (envío manual del panel), 'template'
@@ -4143,7 +4156,8 @@ REGLAS ESTRICTAS
     const tLlm = Date.now();
     // Loop de tools: cotizar / crear reporte / late checkout. Cada tool
     // resuelta se aplica antes de que Claude emita el texto final.
-    const llm = await _botLlmLoop({ system, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: ctx.booking, alojRow: ctx.alojRow } });
+    const llm = await _botLlmLoop({ system, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: ctx.booking, alojRow: ctx.alojRow }, tools: _gTools });
+    if (await _bcExigeSup(_g, llm.toolsUsed)) _forzarSup = true;
     console.info(`[bot-in] ${phone10}: LLM+tools en ${Date.now()-tLlm}ms (${llm.toolsUsed.length} tool${llm.toolsUsed.length===1?'':'s'})`);
     // Notifica al admin por cada tool ejecutada que dejó un resumen.
     for (const t of (llm.toolsUsed || [])) {
@@ -4158,7 +4172,7 @@ REGLAS ESTRICTAS
     }
     // Modo SUPERVISED: no enviar. Guardar como pending draft para que el
     // admin lo revise en el panel bot-chats y decida (send/edit/skip).
-    if (String(state.control) === "supervised") {
+    if (String(state.control) === "supervised" || _forzarSup) {
       try {
         await fetch(CHECKIN_APPS_SCRIPT_URL, {
           method: "POST",
@@ -4357,6 +4371,7 @@ app.post("/wa/bot/draft-action", async (req, res) => {
     if (!phone || !/^(send|edit|skip)$/.test(action)) {
       return res.status(400).json({ ok: false, error: "phone + action (send|edit|skip) requeridos" });
     }
+    _bcDraftEvento(phone, action, p.usuario || p.user || "");
     if (action === "skip") {
       await fetch(CHECKIN_APPS_SCRIPT_URL, {
         method: "POST",
@@ -11678,14 +11693,18 @@ async function _abnBotResponder(bid, m) {
   await _abnModosMutar(d => { if (d[bid]) d[bid].procesado = u.fecha; }); // se marca antes de contestar: nunca dos respuestas
   let i = L.length; while (i > 0 && L[i - 1].de === "huesped" && String(L[i - 1].fecha) > base) i--;
   const userMsg = L.slice(i).map(x => x.texto).join("\n"), history = L.slice(Math.max(0, i - 10), i).map(x => ({ role: x.de === "huesped" ? "user" : "assistant", body: x.texto }));
+  let bk = null; try { bk = await _lgApi(`/v2/reservations/bookings/${encodeURIComponent(bid)}`); } catch (_) {}
+  const _canal = _bcCanalDe(bk && bk.source), _bkG = bk ? { DateArrival: bk.arrival, DateDeparture: bk.departure, HouseId: String(bk.property_id || "") } : null;
+  const _g = await _bcGate({ texto: userMsg, canal: _canal, conv: "abn" + bid, booking: _bkG, control: m.control, mensajes: L.slice(Math.max(0, L.length - 12)), nombre: h.huesped || (bk && bk.guest && bk.guest.name) || "", aloj: "", hid: _bkG && _bkG.HouseId }).catch(e => { console.warn("[bot-control] gate abn:", e.message); return null; });
+  if (_g && await _bcAplicarAbn(_g, { bid, texto: userMsg })) return "gate: " + _g.accion;
+  const _gOn = !!(_g && _g.activo);
   const sens = _botDetectSensitive(userMsg.toLowerCase());
-  if (sens && m.control === "bot") { // igual que WhatsApp: aviso corto, pasa a Manual y avisa a los administradores
+  if (sens && m.control === "bot" && !_gOn) { // igual que WhatsApp: aviso corto, pasa a Manual y avisa a los administradores
     await _abnEnviar(bid, "Recibimos tu mensaje. En un momento te contactamos personalmente. 🙏", "bot");
     await _abnModosMutar(d => { if (d[bid]) { d[bid].control = "human"; d[bid].desde = new Date().toISOString(); } });
     _botNotifyAdmin(`🚨 Airbnb · ${h.huesped || "Huésped"} (reserva ${bid}): mensaje sensible (${sens}). La conversación pasó a Manual.\n«${userMsg.slice(0, 300)}»`);
     return "escalado";
   }
-  let bk = null; try { bk = await _lgApi(`/v2/reservations/bookings/${encodeURIComponent(bid)}`); } catch (_) {}
   const tel = String((bk && bk.guest && bk.guest.phone) || "").replace(/\D/g, ""), phone10 = tel.length >= 10 ? tel.slice(-10) : "";
   const ctx = phone10 ? await _botFindActiveBooking(phone10).catch(() => null) : null;
   if (m.control === "bot") { const hid = (ctx && ctx.booking && ctx.booking.HouseId) || (bk && bk.property_id);
@@ -11694,11 +11713,11 @@ async function _abnBotResponder(bid, m) {
   const context = ctx && ctx.booking ? _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings)
     : `\n[Reserva ${bid} de Airbnb${bk ? ` · llegada ${String(bk.arrival || "").slice(0, 10)} · salida ${String(bk.departure || "").slice(0, 10)}` : ""}.]`;
   const system = BOT_SYSTEM_PROMPT_BASE + _botBuildPromptsBlock(await _botGetPrompts()) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${hoy} (America/Mexico_City).` + context +
-    `\n\nCANAL: esta conversación es por la mensajería de AIRBNB (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos (Airbnb los bloquea). Sé breve y cordial.`;
-  const llm = await _botLlmLoop({ system, history, userMsg, ctx: { phone10, fromRaw: phone10 ? `whatsapp:+52${phone10}` : "", booking: (ctx && ctx.booking) || {}, alojRow: (ctx && ctx.alojRow) || {} } });
+    `\n\nCANAL: esta conversación es por la mensajería de AIRBNB (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos (Airbnb los bloquea). Sé breve y cordial.` + (_gOn ? _g.prompt : "");
+  const llm = await _botLlmLoop({ system, history, userMsg, ctx: { phone10, fromRaw: phone10 ? `whatsapp:+52${phone10}` : "", booking: (ctx && ctx.booking) || {}, alojRow: (ctx && ctx.alojRow) || {} }, tools: _gOn ? _g.tools : undefined });
   for (const t of (llm.toolsUsed || [])) if (t.notifyText) _botNotifyAdmin(t.notifyText);
   const reply = String(llm.text || "").trim(); if (!reply) return "respuesta vacía";
-  if (m.control === "supervised") { await _abnModosMutar(d => { if (d[bid]) { d[bid].draft = reply; d[bid].draftAt = new Date().toISOString(); } }); return "borrador"; }
+  if (m.control === "supervised" || (_gOn && (_g.accion === "supervisado" || await _bcExigeSup(_g, llm.toolsUsed)))) { await _abnModosMutar(d => { if (d[bid]) { d[bid].draft = reply; d[bid].draftAt = new Date().toISOString(); } }); return "borrador"; }
   await _abnEnviar(bid, reply, "bot");
   return "contestado";
 }
@@ -13043,6 +13062,577 @@ app.get("/aseo/estado-aloj", async (req, res) => {
     res.json({ ok: true, hid, modo: g.modo, estado: g.estado, texto: g.texto, label: g.estado ? _ASEO_ETQ[g.estado] : "", listo: g.estado === "terminado" || g.estado === "inspeccionado",
       at: g.modo === "aseo" && g.pub ? g.pub.at : "", salida: g.ult ? g.ult.dep : "", entradaHoy: !!g.entHoy, salidaHoy: !!g.salHoy, hist: g.reg ? g.reg.hist : {}, ts: _aseo.okTs, now: Date.now() });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🎛️ Control del bot (Requerimientos «Módulo de Control Operativo del Chatbot» v1.0)
+// gs://…/bot/control.json      configuración (procesos, horarios, urgencia, perfil, derivación, versiones)
+// gs://…/bot/conv-estado.json  urgencia por conversación (IPO, prioridad, señales, nivel, estado)
+// gs://…/bot/alertas.json      alertas con cadena de escalamiento (Cloud Scheduler → /bot/control/tick cada minuto)
+// gs://…/bot/bitacora/<día>.json  decisiones del gate, cambios de configuración, prioridad y escalamientos
+// El gate decide en código, no en el prompt: oculta al modelo las herramientas de procesos Apagados/Derivados,
+// y el nivel de atención final = el más alto entre (proceso, horario, mínimo por prioridad). La urgencia nunca lo baja.
+// Con «activo» apagado el gate solo observa: calcula y registra lo que haría, sin cambiar al bot.
+// ═══════════════════════════════════════════════════════════════════════════
+const _BC = { OBJ: "bot/control.json", CONV: "bot/conv-estado.json", AL: "bot/alertas.json", LOG: d => `bot/bitacora/${d}.json` };
+const _BC_TZ = "America/Monterrey";
+// [clave, grupo, nombre, descripción, modo inicial, origen, prioridad base, palabras clave (regex sin acentos), herramientas, banderas]
+// banderas: d = solo reservas directas (Airbnb/Booking bloqueado) · v = requiere huésped verificado con estancia activa · f = modo forzado
+const _BC_CAT = [
+  ["disponibilidad", "reservas", "Consulta de disponibilidad", "Consulta en tiempo real el calendario de Lodgify por fechas, huéspedes y propiedad.", "auto", "Original", "P4", "disponib|hay lugar|tienen (lugar|cuarto|depa)|libre (para|el|del)|fechas", ["cotizar_disponibilidad"], "d"],
+  ["cotizacion", "reservas", "Cotización de tarifa", "Calcula el total con noches, limpieza, impuestos y extras según tarifa vigente.", "sup", "Propuesto", "P4", "cuanto (cuesta|sale|cobran|seria)|precio|tarifa|cotiza|costo", ["cotizar_disponibilidad"], "d"],
+  ["link_pago", "reservas", "Envío de link de pago", "Genera y envía el link de Stripe para reservas directas.", "sup", "Original", "P4", "link de pago|liga de pago|como (pago|le pago|deposito)|pagar con tarjeta|transferencia|forma de pago|metodo de pago", ["solicitar_metodo_pago"], "d"],
+  ["estado_pagos", "reservas", "Información de estado de pagos", "Informa pagos recibidos, saldos pendientes y fechas límite.", "sup", "Original", "P4", "saldo|ya (pague|quedo el pago)|pendiente de pago|anticipo|cuanto (debo|falta)|recibieron (mi|el) pago", [], "v"],
+  ["confirmacion", "reservas", "Confirmación de reserva", "Envía la confirmación con resumen de la reserva tras el pago.", "auto", "Propuesto", "P4", "confirma(r|cion)? (mi|la) reserva|quedo (confirmada|reservad)", [], ""],
+  ["modificacion", "reservas", "Modificación de reserva", "Cambio de fechas, número de huéspedes o propiedad.", "der", "Propuesto", "P3", "cambiar (la|mi|las) (fecha|reserva)|mover (la|mi) reserva|modificar|agregar (una )?persona|cambio de fecha", [], ""],
+  ["cancelacion", "reservas", "Cancelación y política de reembolso", "Explica la política aplicable; la cancelación y el reembolso los ejecuta una persona.", "der", "Propuesto", "P3", "cancel|reembols|devolu", [], ""],
+  ["estancia_larga", "reservas", "Estancias largas y mensuales", "Cotiza estancias de 7 o más noches con su tarifa especial.", "sup", "Propuesto", "P4", "por mes|mensual|semanas|un mes|largo plazo|renta mensual", ["cotizar_disponibilidad"], "d"],
+  ["grupo", "reservas", "Reservas de grupo o varias unidades", "Coordina disponibilidad de más de una propiedad para un mismo grupo.", "der", "Propuesto", "P4", "varios (depas|departamentos|cuartos)|grupo de|somos \\d{2}|dos departamentos|2 departamentos", [], ""],
+  ["descuentos", "reservas", "Códigos de descuento y promociones", "Valida códigos vigentes; nunca inventa descuentos.", "sup", "Propuesto", "P4", "descuento|promo|cupon|rebaja", [], "d"],
+  ["deposito", "reservas", "Depósito de garantía", "Explica el monto, forma de cobro y devolución del depósito.", "sup", "Propuesto", "P4", "deposito (de garantia|en garantia)|garantia", [], ""],
+  ["seguimiento_cot", "reservas", "Seguimiento de cotizaciones abandonadas", "Recuerda una cotización no pagada tras X horas (mensaje proactivo).", "off", "Propuesto", "P4", "", [], ""],
+  ["verificacion", "prellegada", "Verificación de identidad", "Vincula el número de WhatsApp con una reserva; requisito para procesos sensibles.", "auto", "Propuesto", "P4", "", [], ""],
+  ["registro", "prellegada", "Registro de huéspedes", "Recaba nombre, identificación, número de huéspedes, placas y hora estimada de llegada.", "sup", "Propuesto", "P4", "registro|placas|identificacion|ine\\b|hora (de|estimada de) llegada", [], ""],
+  ["instrucciones_llegada", "prellegada", "Instrucciones de llegada y ubicación", "Envía ubicación, cómo llegar y referencias del acceso.", "auto", "Propuesto", "P4", "ubicacion|direccion|como llego|como llegar|donde (esta|queda)|maps", [], ""],
+  ["codigos_acceso", "prellegada", "Envío de códigos de acceso", "Envía el código de cerradura solo a huéspedes verificados y dentro de la ventana previa a la llegada.", "sup", "Propuesto", "P4", "codigo (de )?(acceso|la puerta|cerradura|chapa)|clave de (la puerta|acceso)|como (entro|abro)|no (puedo|podemos) entrar|el codigo no", [], "v"],
+  ["solicitudes_especiales", "prellegada", "Solicitudes especiales", "Cuna, cama extra, decoración, llegada con mascota u otros requerimientos.", "der", "Propuesto", "P4", "cuna|cama extra|decora|sorpresa|aniversario|cumpleanos", [], ""],
+  ["mascotas", "prellegada", "Política de mascotas y visitas", "Informa reglas de mascotas, visitas y huéspedes adicionales.", "auto", "Propuesto", "P4", "mascota|perro|gato|visita", [], ""],
+  ["entrada_temprana", "estancia", "Entrada temprana", "Valida contra Lodgify si la unidad está libre y limpia; cotiza el cargo si aplica.", "sup", "Original", "P4", "entrada temprana|early|llegar (mas )?temprano|entrar (mas )?temprano|antes de (las )?(2|14|dos)", ["solicitar_early_checkin"], ""],
+  ["salida_tardia", "estancia", "Salida tardía", "Valida contra Lodgify si no hay entrada ese día; cotiza el cargo si aplica.", "sup", "Original", "P4", "salida tardia|late|salir (mas )?tarde|quedarme (mas tarde|hasta)", ["solicitar_late_checkout", "agendar_late_checkout"], ""],
+  ["mantenimiento", "estancia", "Reporte de mantenimiento", "Levanta el ticket en el módulo de Reportes Técnicos con evidencia (foto o video).", "auto", "Original", "P3", "no (sirve|funciona|prende|enciende|enfria|calienta|jala)|descompuest|fuga|gotea|se rompio|roto|tapad|falla", ["crear_reporte_mantenimiento", "consultar_reportes_reserva"], ""],
+  ["equipos", "estancia", "Uso de equipos", "Instrucciones de TV, clima, boiler, cocina, cerradura y otros equipos.", "auto", "Propuesto", "P4", "como (se )?(usa|prende|enciendo|funciona)|control (de la tele|del clima|remoto)|tele|television|minisplit|boiler|estufa|microondas", [], ""],
+  ["limpieza_extra", "estancia", "Limpieza adicional y cambio de blancos", "Agenda una limpieza o cambio de toallas y sábanas durante la estancia.", "sup", "Propuesto", "P4", "limpieza|cambio de (toallas|sabanas|blancos)|que limpien|aseo", [], ""],
+  ["insumos", "estancia", "Reposición de insumos", "Papel, toallas, gas, agua u otros consumibles agotados.", "sup", "Propuesto", "P4", "papel|jabon|shampoo|se acabo|no hay (papel|agua purificada|garrafon)|garrafon|toallas", ["solicitar_insumos"], ""],
+  ["extension", "estancia", "Extensión de estancia", "Noches adicionales: consulta disponibilidad y cotiza.", "sup", "Propuesto", "P4", "(una|otra|mas) noche|extender|quedarme (otro|un dia mas|mas dias)|alargar", ["solicitar_extension"], ""],
+  ["ruido", "estancia", "Quejas de ruido o vecinos", "Registra la queja, aplica protocolo y deriva si persiste.", "der", "Propuesto", "P3", "ruido|vecino|escandalo|fiesta|musica (muy )?alta", [], ""],
+  ["recomendaciones", "estancia", "Recomendaciones locales", "Restaurantes, farmacias, supermercados, hospitales y transporte cercanos (lista curada).", "auto", "Propuesto", "P4", "recomienda|restaurante|donde comer|farmacia|super(mercado)?|oxxo|hospital|uber|taxi", [], ""],
+  ["emergencias", "estancia", "Emergencias", "Protocolo de seguridad predefinido y escalamiento P1 inmediato.", "der", "Propuesto", "P1", "emergencia|auxilio|ayuda urgente", [], "f"],
+  ["instrucciones_salida", "salida", "Instrucciones de salida", "Hora de salida, qué hacer con llaves, basura y equipos.", "auto", "Propuesto", "P4", "hora de salida|check ?out|a que hora (salgo|hay que salir|es la salida)|donde dejo (las llaves|la llave)", [], ""],
+  ["confirmacion_salida", "salida", "Confirmación de salida", "Confirma que el huésped dejó la unidad para liberar a limpieza.", "auto", "Propuesto", "P4", "ya (sali|salimos|nos fuimos|desocupamos|entregamos)", [], ""],
+  ["objetos", "salida", "Objetos olvidados", "Registra el objeto y coordina la devolución con el sistema de objetos perdidos.", "sup", "Propuesto", "P4", "olvide|se me quedo|deje (mi|mis|un|una)|objeto", [], ""],
+  ["danos", "salida", "Reporte de daños", "Daños causados o detectados al salir; siempre lo atiende una persona.", "der", "Propuesto", "P3", "dano|se (nos )?rompio|rompimos|quebr|mancha", [], ""],
+  ["resena", "salida", "Solicitud de reseña", "Pide la reseña tras la salida si la estancia no tuvo incidencias abiertas.", "sup", "Propuesto", "P4", "", [], ""],
+  ["ticket_factura", "facturacion", "Ticket de autofacturación", "Envía el ticket y las instrucciones para autofacturar.", "sup", "Original", "P4", "factura|ticket|facturar", ["solicitar_ticket_admin"], ""],
+  ["cfdi", "facturacion", "Solicitud de CFDI con datos fiscales", "Recaba RFC, régimen, uso de CFDI y código postal, y valida el formato antes de emitir.", "sup", "Propuesto", "P4", "cfdi|rfc|regimen|uso de cfdi|constancia", [], ""],
+  ["comprobantes", "facturacion", "Comprobantes y recibos", "Reenvía recibos de pago o comprobantes de la reserva.", "auto", "Propuesto", "P4", "comprobante|recibo", [], "v"],
+  ["wifi", "informacion", "Contraseña de wifi", "Solo para huéspedes verificados con estancia activa.", "auto", "Original", "P4", "wifi|wi-fi|internet|contrasena|password|red\\b", [], "v"],
+  ["lavanderia", "informacion", "Lavandería", "Uso, horarios e instrucciones.", "auto", "Original", "P4", "lavanderia|lavadora|secadora|lavar ropa", [], ""],
+  ["estacionamiento", "informacion", "Estacionamiento", "Ubicación, tipo y reglas.", "auto", "Original", "P4", "estaciona|cochera|cajon|parking|donde (dejo|meto) el (carro|coche|auto)", [], ""],
+  ["amenidades", "informacion", "Amenidades y servicios", "Qué incluye cada propiedad.", "auto", "Original", "P4", "amenidad|incluye|tiene (alberca|gym|cocina|lavadora)|cuenta con", [], ""],
+  ["reglas", "informacion", "Reglas de la casa", "Horarios de silencio, fumar, fiestas, capacidad máxima.", "auto", "Propuesto", "P4", "reglas|reglamento|se puede fumar|fumar|capacidad maxima", [], ""],
+  ["basura", "informacion", "Basura y reciclaje", "Dónde y cuándo sacar la basura.", "auto", "Propuesto", "P4", "basura|reciclaje|desechos", [], ""],
+  ["recordatorio_llegada", "proactivos", "Recordatorio previo a la llegada", "Mensaje automático 24 o 48 horas antes con instrucciones.", "sup", "Propuesto", "P4", "", [], ""],
+  ["bienvenida", "proactivos", "Bienvenida el día de llegada", "Mensaje de bienvenida y verificación de que todo está bien.", "sup", "Propuesto", "P4", "", [], ""],
+  ["recordatorio_salida", "proactivos", "Recordatorio de salida", "Mensaje la noche previa con la hora y las instrucciones de salida.", "sup", "Propuesto", "P4", "", [], ""],
+  ["encuesta", "proactivos", "Encuesta de satisfacción", "Encuesta corta tras la salida; resultados al panel.", "off", "Propuesto", "P4", "", [], ""],
+  ["ingles", "transversales", "Atención en inglés", "Detecta el idioma y responde en inglés con el mismo estilo.", "sup", "Propuesto", "P4", "\\b(hello|hi|please|thanks|thank you|check in|how|where|what|when)\\b", [], ""],
+  ["multimedia", "transversales", "Mensajes con foto, audio o ubicación", "Interpreta imágenes y notas de voz (por ejemplo, foto de una falla).", "sup", "Propuesto", "P4", "", [], ""],
+  ["humano", "transversales", "Solicitud de atención humana", "El huésped pide hablar con una persona.", "der", "Propuesto", "P3", "(hablar|comunicar(me)?|contactar) (con )?(una |alguna )?(persona|humano|alguien|gerente|encargad|dueno|administrador)|no quiero (hablar con un )?(bot|robot)|eres (un )?(bot|robot)", [], "f"],
+  ["baja", "transversales", "Baja de mensajes", "El huésped pide no recibir mensajes proactivos.", "auto", "Propuesto", "P4", "no me (manden|envien) (mas )?mensajes|dejen de (mandar|enviar)|\\bbaja\\b|\\bstop\\b", [], ""],
+  ["dudas", "transversales", "Dudas generales", "Respuesta abierta del modelo cuando no aplica ningún otro proceso.", "sup", "Original", "P4", "", [], ""],
+];
+const _BC_GRUPOS = { reservas: "Reservas y cobro", prellegada: "Pre-llegada", estancia: "Estancia", salida: "Salida", facturacion: "Facturación", informacion: "Información", proactivos: "Mensajes proactivos", transversales: "Transversales" };
+const _BC_MODOS = ["off", "der", "sup", "auto"], _BC_MODO_TXT = { off: "Apagado", der: "Derivar", sup: "Supervisado", auto: "Automático" };
+const _BC_NIV = { AUT: 0, SUP: 1, PER: 2 }, _BC_NIV_TXT = { AUT: "Automático", SUP: "Supervisado", PER: "Personal" };
+const _BC_DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const _bcNrm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+// Fechas de llegada/salida de una reserva en ISO (acepta ISO, MM/DD/YYYY y los nombres de campo de Lodgify o de la hoja).
+function _bcFechas(b) {
+  const iso = v => { const s = String(v || ""); let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0]; m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`; const d = s ? new Date(s) : null; return d && !isNaN(d) ? d.toISOString().slice(0, 10) : ""; };
+  if (!b) return { arr: "", dep: "" };
+  return { arr: iso(b.DateArrival || b.Arrival || b.arrival || b["Fecha de ingreso"]), dep: iso(b.DateDeparture || b.Departure || b.departure || b["Fecha de salida"]) };
+}
+const _bcId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function _bcDefaults() {
+  const procesos = {};
+  _BC_CAT.forEach(([k, g, n, d, modo, origen, pb, kw, tools, fl]) => { procesos[k] = { modo, prioridad: pb, kw, respaldo: "", umbral: 0.6, rol: "", limites: "", overrides: [] }; });
+  const fr = [{ ini: "07:00", fin: "09:00" }, { ini: "09:00", fin: "14:00" }, { ini: "14:00", fin: "21:00" }, { ini: "21:00", fin: "07:00" }];
+  const fila = (a, b, c, d) => [a, b, c, d];
+  return {
+    activo: false, // false = solo observa y registra (no cambia al bot)
+    master: { on: true, msg: "Hola, en este momento te atenderá una persona de nuestro equipo. Gracias por tu paciencia. 🙏" },
+    fueraOficina: false,
+    respaldoGeneral: "Por ahora no puedo ayudarte con eso por este medio. Una persona del equipo te contactará en cuanto esté disponible.",
+    respaldoCanal: "El pago y los cambios de esta reserva se gestionan directamente en la plataforma donde reservaste. Ahí mismo te podemos ayudar.",
+    procesos,
+    extras: [], // procesos agregados desde el panel (RF-19): { clave, grupo, nombre, desc }
+    horario: { franjas: fr, grid: [fila("AUT", "SUP", "SUP", "AUT"), fila("SUP", "PER", "SUP", "AUT"), fila("SUP", "PER", "SUP", "AUT"), fila("SUP", "PER", "SUP", "AUT"), fila("SUP", "PER", "SUP", "AUT"), fila("SUP", "PER", "SUP", "AUT"), fila("AUT", "SUP", "SUP", "AUT")],
+      excepciones: [], disponible: true, dispAt: "", dispPor: "", titular: "", respaldo: "", politica: "guardia" },
+    urgencia: {
+      reglas: [
+        { id: "e1", patron: "gas|huele a gas|olor a gas|fuga de gas", factor: "gravedad", puntos: 40, emergencia: true, activo: true },
+        { id: "e2", patron: "humo|fuego|incendio|se quema|olor a quemado|chispa|explot", factor: "gravedad", puntos: 40, emergencia: true, activo: true },
+        { id: "e3", patron: "herid|sangr|desmay|inconsciente|no respira|accidente", factor: "gravedad", puntos: 40, emergencia: true, activo: true },
+        { id: "e4", patron: "intruso|se metieron|alguien (entro|esta) (en|dentro)|robo|me robaron|asalt", factor: "gravedad", puntos: 40, emergencia: true, activo: true },
+        { id: "g1", patron: "sin luz|no hay luz|se fue la luz|sin agua|no hay agua|inund|se (esta )?(saliendo|tirando) el agua", factor: "gravedad", puntos: 25, emergencia: false, activo: true },
+        { id: "g2", patron: "(clima|aire|minisplit|calefaccion|calentador) no (sirve|funciona|enfria|calienta|prende)|no (sirve|funciona|enfria|calienta|prende) el (clima|aire|minisplit|calentador)", factor: "gravedad", puntos: 12, emergencia: false, activo: true },
+        { id: "g3", patron: "no (puedo|podemos) entrar|nos quedamos afuera|no (nos )?abre la puerta", factor: "gravedad", puntos: 30, emergencia: false, activo: true },
+        { id: "i1", patron: "no (puedo|podemos) entrar|no abre|codigo (no|incorrecto|equivocado)|(chapa|cerradura) (no|marca)|nos quedamos afuera", factor: "impacto", puntos: 20, emergencia: false, activo: true },
+        { id: "i2", patron: "agua caliente|boiler|no calienta el agua", factor: "impacto", puntos: 10, emergencia: false, activo: true },
+        { id: "i3", patron: "pago (fallido|rechazad)|cobro doble|me cobraron (dos|doble|de mas)|cargo (doble|duplicado)", factor: "impacto", puntos: 15, emergencia: false, activo: true },
+        { id: "u1", patron: "pesimo|horrible|molest|enojad|nadie (me )?(contesta|responde)|urgente|ya (van|llevo|tengo)|inaceptable", factor: "incertidumbre", puntos: 6, emergencia: false, activo: true },
+        { id: "u2", patron: "resena|review|calificac|estrellas|denuncia|profeco", factor: "incertidumbre", puntos: 6, emergencia: false, activo: true },
+      ],
+      ctx: { en_inmueble: 10, llega_hoy: 8, nocturno: 7, sin_respuesta: 8, plataforma: 2 },
+      maximos: { gravedad: 40, urgencia: 25, impacto: 20, incertidumbre: 15 },
+      umbrales: { P1: 80, P2: 60, P3: 30 },
+      minimo: { P1: "PER", P2: "PER", P3: "SUP", P4: "" },
+      objetivo: { P1: 5, P2: 20, P3: 60 },
+      subePorEspera: { puntos: 5, cadaMin: 10 }, // RF-35: las conversaciones sin atender suben de puntaje
+      cadenas: {
+        P1: [{ min: 0, a: "titular" }, { min: 5, a: "respaldo" }, { min: 10, a: "admins" }],
+        P2: [{ min: 0, a: "panel" }, { min: 20, a: "titular" }, { min: 40, a: "respaldo" }],
+        P3: [{ min: 0, a: "panel" }, { min: 60, a: "titular" }],
+      },
+      seguridad: "⚠️ Por tu seguridad: si hay olor a gas, humo o fuego, sal del departamento de inmediato con todas las personas, no enciendas ni apagues aparatos eléctricos y llama al 911. Ya avisamos a nuestro equipo y te contactamos en este momento.",
+      acuse: "Recibimos tu mensaje. Una persona de nuestro equipo te atiende en aproximadamente {tiempo}. 🙏",
+      sinCobertura: "Recibimos tu mensaje. En este horario no tenemos personal en línea; lo atenderemos a primera hora. Si es una emergencia llama al 911.",
+    },
+    perfil: { personalidad: "amigable", rol: "soporte", roles: {}, empatia: "medio", reconocimiento: ["Entiendo lo incómodo que es llegar y no poder entrar.", "Lamento mucho la molestia."], preferidas: [], prohibidas: [], firma: "" },
+    versiones: [], // RF-24: historial del perfil { v, at, por, data }
+    derivacion: [
+      { id: "d1", disparador: "humano", umbral: 1, lista: "", accion: "derivar", mensaje: "Claro, te comunico con una persona de nuestro equipo. En cuanto esté disponible te responde por aquí.", activo: true },
+      { id: "d2", disparador: "emocion", umbral: 2, lista: "", accion: "subir", mensaje: "", activo: true },
+      { id: "d3", disparador: "intentos", umbral: 3, lista: "", accion: "derivar", mensaje: "Para resolverlo mejor, una persona del equipo continuará la conversación contigo.", activo: true },
+      { id: "d4", disparador: "tema", umbral: 1, lista: "reembolso, queja formal, profeco, abogado, demanda, legal", accion: "derivar", mensaje: "Ese tema lo atiende directamente nuestro equipo; en breve te contactan.", activo: true },
+      { id: "d5", disparador: "palabra", umbral: 1, lista: "", accion: "derivar", mensaje: "", activo: false },
+    ],
+    disyuntor: { on: true, n: 3, ventanaMin: 60, bajaA: "sup" },
+  };
+}
+// Une la configuración guardada con los valores por omisión (las claves nuevas aparecen sin perder lo guardado).
+function _bcMerge(d, s) {
+  if (Array.isArray(d)) return Array.isArray(s) ? s : d;
+  if (d && typeof d === "object") { const o = Object.assign({}, d); if (s && typeof s === "object" && !Array.isArray(s)) Object.keys(s).forEach(k => { o[k] = k in d ? _bcMerge(d[k], s[k]) : s[k]; }); return o; }
+  return s === undefined ? d : s;
+}
+let _bcCfgC = null, _bcCfgTs = 0;
+async function _bcCfg(fresh) {
+  if (!fresh && _bcCfgC && Date.now() - _bcCfgTs < 8000) return _bcCfgC; // RNF-01: los cambios aplican en ≤ 10 s
+  try { const s = await _rhdGetJson(_BC.OBJ); _bcCfgC = _bcMerge(_bcDefaults(), s || {}); _bcCfgTs = Date.now(); }
+  catch (e) { console.warn("[bot-control] cfg:", e.message); if (!_bcCfgC) { const d = _bcDefaults(); d._error = true; return d; } } // RNF-03: sin lectura → la última copia o defaults (observación)
+  return _bcCfgC;
+}
+const _bcQ = {};
+function _bcMut(obj, fn) { const run = (_bcQ[obj] || Promise.resolve()).then(async () => { const d = (await _rhdGetJson(obj)) || {}; const out = await fn(d); await _rhdPut(obj, JSON.stringify(d), "application/json"); return out; }); _bcQ[obj] = run.catch(() => {}); return run; }
+function _bcHoy() { return new Date().toLocaleDateString("sv-SE", { timeZone: _BC_TZ }); }
+function _bcAhora() { const p = new Intl.DateTimeFormat("en-US", { timeZone: _BC_TZ, hour12: false, weekday: "short", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date()); const g = t => (p.find(x => x.type === t) || {}).value;
+  return { dia: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(g("weekday")), min: (Number(g("hour")) % 24) * 60 + Number(g("minute")), fecha: _bcHoy() }; }
+const _bcMinDe = hhmm => { const [h, m] = String(hhmm || "0:0").split(":").map(Number); return (h || 0) * 60 + (m || 0); };
+const _bcEnFranja = (min, ini, fin) => { const a = _bcMinDe(ini), b = _bcMinDe(fin); return a <= b ? min >= a && min < b : min >= a || min < b; }; // cruza medianoche
+// Bitácora del día (RF-37, RNF-04). Se escribe en segundo plano por lotes para no frenar la respuesta (RNF-02).
+const _bcLogBuf = [];
+let _bcLogT = null;
+function _bcLog(ev) { _bcLogBuf.push(Object.assign({ at: new Date().toISOString() }, ev)); clearTimeout(_bcLogT); _bcLogT = setTimeout(_bcLogFlush, 1500); }
+async function _bcLogFlush() { if (!_bcLogBuf.length) return; const L = _bcLogBuf.splice(0); const d = _bcHoy();
+  try { await _bcMut(_BC.LOG(d), x => { x.items = (x.items || []).concat(L).slice(-5000); }); } catch (e) { console.warn("[bot-control] bitácora:", e.message); } }
+
+// Catálogo efectivo = fijo + agregados desde el panel.
+function _bcCatalogo(cfg) {
+  const L = _BC_CAT.map(([clave, grupo, nombre, desc, modoIni, origen, pb, kw, tools, fl]) => ({ clave, grupo, nombre, desc, modoIni, origen, pbIni: pb, tools, solo_directo: fl.includes("d"), verif: fl.includes("v"), forzado: fl.includes("f") }));
+  (cfg.extras || []).forEach(x => { if (x && x.clave && !L.some(y => y.clave === x.clave)) L.push({ clave: x.clave, grupo: x.grupo || "transversales", nombre: x.nombre || x.clave, desc: x.desc || "", modoIni: "sup", origen: "Panel", pbIni: "P4", tools: [], solo_directo: false, verif: false, forzado: false, extra: true }); });
+  return L;
+}
+// Modo efectivo de un proceso para esta conversación: override más específico (RF-03) → canal (RF-15) → verificación (RF-06/17) → disyuntor (RF-10) → fuera de oficina (RF-14).
+function _bcModoProceso(cfg, cat, c, now) {
+  const pc = cfg.procesos[c.clave] || { modo: c.modoIni, overrides: [] };
+  let modo = pc.modo || c.modoIni, porque = "configuración";
+  let mejor = null, mejorPeso = -1;
+  (pc.overrides || []).forEach(o => {
+    if (o.prop && String(o.prop) !== String(cat.hid || "")) return;
+    if (o.canal && o.canal !== cat.canal) return;
+    if (Array.isArray(o.dias) && o.dias.length && !o.dias.includes(now.dia)) return;
+    if (o.ini && o.fin && !_bcEnFranja(now.min, o.ini, o.fin)) return;
+    const peso = (o.prop ? 4 : 0) + (o.canal ? 2 : 0) + ((o.ini && o.fin) || (o.dias && o.dias.length) ? 1 : 0);
+    if (peso > mejorPeso) { mejor = o; mejorPeso = peso; }
+  });
+  if (mejor && _BC_MODOS.includes(mejor.modo)) { modo = mejor.modo; porque = "regla específica"; }
+  if (c.forzado) { modo = "der"; porque = "forzado"; }
+  if (c.solo_directo && cat.canal && cat.canal !== "directo" && cat.canal !== "whatsapp") return { modo: "off", porque: `bloqueado en ${cat.canal}`, canal: true };
+  if (c.verif && !cat.estanciaActiva && modo !== "off") return { modo: "der", porque: "requiere huésped verificado con estancia activa", verif: true };
+  if (pc.disyuntor && pc.disyuntor.at && modo === "auto") { modo = cfg.disyuntor.bajaA || "sup"; porque = "disyuntor activo"; }
+  if (cfg.fueraOficina && modo === "sup") { modo = "der"; porque = "fuera de oficina"; }
+  return { modo, porque };
+}
+// Nivel base del horario (RF-27…31). Excepciones por fecha mandan; «No disponible» lleva los bloques Personales a Supervisado.
+function _bcNivelHorario(cfg, now) {
+  const H = cfg.horario || {};
+  const ex = (H.excepciones || []).find(e => e.desde && now.fecha >= e.desde && now.fecha <= (e.hasta || e.desde));
+  if (ex && _BC_NIV[ex.nivel] !== undefined) return { nivel: ex.nivel, franja: `Excepción: ${ex.motivo || ex.desde}`, conPersonal: ex.nivel !== "AUT" };
+  const fr = H.franjas || [];
+  let idx = fr.findIndex(f => _bcEnFranja(now.min, f.ini, f.fin));
+  // Una franja que cruza medianoche pertenece al día en que empezó.
+  let dia = now.dia; if (idx >= 0 && _bcMinDe(fr[idx].ini) > _bcMinDe(fr[idx].fin) && now.min < _bcMinDe(fr[idx].fin)) dia = (dia + 6) % 7;
+  let nivel = idx >= 0 ? (((H.grid || [])[dia] || [])[idx] || "AUT") : "AUT";
+  const franja = idx >= 0 ? `${_BC_DIAS[dia]} ${fr[idx].ini}–${fr[idx].fin}` : "sin franja";
+  if (H.disponible === false && nivel === "PER") return { nivel: "SUP", franja, conPersonal: false, noDisp: true };
+  return { nivel, franja, conPersonal: nivel !== "AUT" && H.disponible !== false };
+}
+// IPO de 0 a 100 en cuatro factores (RF-34…39). Las reglas solo suman; la regla de emergencia lleva directo a 100 / P1.
+function _bcIpo(cfg, { texto, canal, booking, mensajes, now, procesos, extraPts }) {
+  const U = cfg.urgencia, t = _bcNrm(texto), F = { gravedad: 0, urgencia: 0, impacto: 0, incertidumbre: 0 }, senales = [];
+  let emergencia = false;
+  (U.reglas || []).forEach(r => { if (!r.activo || !r.patron) return; let re; try { re = new RegExp(_bcNrm(r.patron), "i"); } catch (_) { return; }
+    const m = t.match(re); if (!m) return; F[r.factor] = (F[r.factor] || 0) + Number(r.puntos || 0); senales.push({ regla: r.id, factor: r.factor, puntos: Number(r.puntos || 0), texto: m[0], emergencia: !!r.emergencia }); if (r.emergencia) emergencia = true; });
+  const C = U.ctx || {}, hoy = now.fecha;
+  const { arr, dep } = _bcFechas(booking);
+  if (arr && dep && arr <= hoy && hoy <= dep) { F.urgencia += C.en_inmueble || 0; senales.push({ factor: "urgencia", puntos: C.en_inmueble || 0, texto: "huésped hospedado hoy" }); }
+  if (arr === hoy) { F.urgencia += C.llega_hoy || 0; senales.push({ factor: "urgencia", puntos: C.llega_hoy || 0, texto: "llega hoy" }); }
+  if (now.min >= 22 * 60 || now.min < 7 * 60) { F.urgencia += C.nocturno || 0; senales.push({ factor: "urgencia", puntos: C.nocturno || 0, texto: "hora nocturna" }); }
+  let seguidos = 0; for (let i = (mensajes || []).length - 1; i >= 0; i--) { const r = mensajes[i].role || mensajes[i].de; if (r === "user" || r === "huesped") seguidos++; else break; }
+  if (seguidos >= 3) { F.incertidumbre += C.sin_respuesta || 0; senales.push({ factor: "incertidumbre", puntos: C.sin_respuesta || 0, texto: `${seguidos} mensajes seguidos sin respuesta` }); }
+  if (canal === "airbnb" || canal === "booking") { F.incertidumbre += C.plataforma || 0; senales.push({ factor: "incertidumbre", puntos: C.plataforma || 0, texto: `huésped de ${canal}` }); }
+  if (extraPts) { F.incertidumbre += extraPts.puntos; senales.push({ factor: "incertidumbre", puntos: extraPts.puntos, texto: extraPts.texto }); }
+  const MX = U.maximos || {}; Object.keys(F).forEach(k => { F[k] = Math.min(F[k], MX[k] != null ? MX[k] : 100); });
+  let ipo = Math.min(100, F.gravedad + F.urgencia + F.impacto + F.incertidumbre);
+  const base = (procesos || []).reduce((mx, p) => { const pb = (cfg.procesos[p] || {}).prioridad || "P4"; const v = pb === "P1" ? U.umbrales.P1 : pb === "P2" ? U.umbrales.P2 : pb === "P3" ? U.umbrales.P3 : 0; return Math.max(mx, v); }, 0); // RF-39
+  if (base > ipo) { senales.push({ factor: "proceso", puntos: base - ipo, texto: "prioridad base del proceso" }); ipo = base; }
+  if (emergencia) ipo = 100;
+  return { ipo, prioridad: _bcPrio(cfg, ipo), factores: F, senales, emergencia };
+}
+function _bcPrio(cfg, ipo) { const u = cfg.urgencia.umbrales; return ipo >= u.P1 ? "P1" : ipo >= u.P2 ? "P2" : ipo >= u.P3 ? "P3" : "P4"; }
+// Prompt de personalidad, rol, empatía y estilo (sección 5). Nunca concede permisos: los límites los pone el gate.
+const _BC_PERS = { formal: "Trata al huésped de usted, con frases completas y sin emojis.", casual: "Trata al huésped de tú, con frases cortas y directas y emojis moderados.", amigable: "Trata al huésped de tú, con calidez y cercanía; reconoce su situación antes de resolver." };
+const _BC_ROL = { vendedor: "Enfoque vendedor: resalta beneficios, resuelve objeciones y conduce a la reserva directa, sin presionar.", soporte: "Enfoque de soporte: guía paso a paso para que el huésped lo resuelva por su cuenta.", tecnico: "Enfoque técnico: diagnostica la falla, pide evidencia (foto o video) y levanta el reporte con datos completos." };
+const _BC_EMP = { bajo: "Empatía baja: resuelve directo, sin frases de reconocimiento.", medio: "Empatía media: reconoce el problema en una sola frase y luego resuelve.", alto: "Empatía alta: reconoce, valida cómo se siente el huésped y da seguimiento." };
+function _bcPerfilPrompt(perfil, procesos) {
+  const P = perfil || {}, roles = P.roles || {};
+  const rolProc = (procesos || []).map(k => roles[k]).find(Boolean);
+  const rol = rolProc || P.rol;
+  const L = ["", "", "ESTILO DE RESPUESTA (configurado en el panel; no cambia permisos ni límites):", `- ${_BC_PERS[P.personalidad] || _BC_PERS.amigable}`];
+  if (_BC_ROL[rol]) L.push(`- ${_BC_ROL[rol]}`);
+  if (_BC_EMP[P.empatia]) L.push(`- ${_BC_EMP[P.empatia]}`);
+  if ((P.reconocimiento || []).length && P.empatia !== "bajo") L.push(`- Frases de reconocimiento que puedes usar: ${P.reconocimiento.map(x => `«${x}»`).join(" · ")}`);
+  if ((P.preferidas || []).length) L.push(`- Expresiones preferidas: ${P.preferidas.join(" · ")}`);
+  if ((P.prohibidas || []).length) L.push(`- NUNCA uses estas palabras o frases: ${P.prohibidas.join(" · ")}`);
+  if (P.firma) L.push(`- Firma tus mensajes como: ${P.firma}`);
+  if (P.estilo) L.push(`- Perfil de estilo del anfitrión: ${P.estilo}`);
+  L.push("- La empatía nunca promete compensaciones, descuentos ni reembolsos; eso solo lo decide una persona.", "- No prometas tiempos de atención que el equipo no pueda cumplir.", "- Recomendaciones locales: usa solo los lugares que aparecen en la información del alojamiento; no inventes lugares ni horarios.");
+  return L.join("\n");
+}
+// Detección de procesos por palabras clave (clasificador determinista, rápido y editable desde el panel).
+function _bcDetectar(cfg, catL, texto) {
+  const t = _bcNrm(texto), out = [];
+  catL.forEach(c => { const kw = (cfg.procesos[c.clave] || {}).kw; if (!kw) return; let re; try { re = new RegExp(_bcNrm(kw), "i"); } catch (_) { return; } if (re.test(t)) out.push(c.clave); });
+  return out;
+}
+// Reglas de derivación (5.4 / RF-23).
+function _bcDerivacion(cfg, texto, mensajes) {
+  const t = _bcNrm(texto), out = { derivar: null, subir: 0, motivos: [] };
+  (cfg.derivacion || []).forEach(r => {
+    if (!r.activo) return;
+    let hit = false, why = "";
+    if (r.disparador === "humano") { hit = /(hablar|comunicar(me)?|contactar) (con )?(una |alguna )?(persona|humano|alguien|gerente|encargad|dueno|administrador)|no quiero (hablar con un )?(bot|robot)|quiero hablar con alguien/.test(t); why = "pide hablar con una persona"; }
+    else if (r.disparador === "emocion") { const n = (t.match(/pesimo|horrible|molest|enojad|frustrad|harto|inaceptable|nadie (me )?(contesta|responde)|ya (van|llevo)|!!+|\?\?+/g) || []).length; hit = n >= Number(r.umbral || 1); why = `frustración detectada (${n})`; }
+    else if (r.disparador === "intentos") { const ult = (mensajes || []).slice(-8).filter(m => (m.role || m.de) === "user" || (m.role || m.de) === "huesped").map(m => _bcNrm(m.body || m.texto)); const n = ult.filter(x => /sigue|todavia|aun no|no (sirve|funciona|me ayuda|entiendes|resuelve)|otra vez|de nuevo/.test(x)).length + (/sigue|todavia|aun no|otra vez|de nuevo/.test(t) ? 1 : 0); hit = n >= Number(r.umbral || 3); why = `${n} intentos sin resolver`; }
+    else if (r.disparador === "tema" || r.disparador === "palabra") { const L = String(r.lista || "").split(",").map(x => _bcNrm(x).trim()).filter(Boolean); const w = L.find(x => t.includes(x)); hit = !!w; why = `${r.disparador === "tema" ? "tema prohibido" : "palabra clave"}: «${w}»`; }
+    if (!hit) return;
+    out.motivos.push(why);
+    if (r.accion === "subir") out.subir += 15; else if (!out.derivar) out.derivar = { regla: r.id, mensaje: r.mensaje, motivo: why };
+  });
+  return out;
+}
+/** Gate (sección 9). Devuelve la decisión sin efectos secundarios (los aplica quien llama).
+ *  accion: 'off_master' | 'emergencia' | 'derivar' | 'personal' | 'respaldo' | 'supervisado' | 'auto' */
+async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre, aloj, hid, simular, cfgAlt }) {
+  const t0 = Date.now(), cfg = cfgAlt || await _bcCfg(), now = simular && simular.now ? simular.now : _bcAhora();
+  const catL = _bcCatalogo(cfg);
+  const hoy = now.fecha, { arr, dep } = _bcFechas(booking);
+  const estanciaActiva = simular && simular.estanciaActiva != null ? !!simular.estanciaActiva : !!(arr && dep && arr <= hoy && hoy <= dep);
+  const cat = { canal: canal || "whatsapp", hid: hid || (booking && booking.HouseId) || "", estanciaActiva };
+  const detect = _bcDetectar(cfg, catL, texto);
+  const procs = detect.length ? detect : ["dudas"];
+  const modos = {}; procs.forEach(k => { const c = catL.find(x => x.clave === k); if (c) modos[k] = _bcModoProceso(cfg, cat, c, now); });
+  const der = _bcDerivacion(cfg, texto, mensajes);
+  const ip = _bcIpo(cfg, { texto, canal: cat.canal, booking, mensajes, now, procesos: procs, extraPts: der.subir ? { puntos: der.subir, texto: "regla de derivación: subir prioridad" } : null });
+  const hor = _bcNivelHorario(cfg, now);
+  // Herramientas que se exponen al modelo (RF-09): fuera las de procesos Apagados o Derivados en este contexto.
+  const bloq = new Set();
+  catL.forEach(c => { if (!c.tools || !c.tools.length) return; const m = (modos[c.clave] || _bcModoProceso(cfg, cat, c, now)).modo; if (m === "off" || m === "der") c.tools.forEach(x => bloq.add(x)); });
+  // Una herramienta compartida (p. ej. cotizar) sigue disponible si otro proceso que la usa está permitido.
+  catL.forEach(c => { if (!c.tools) return; const m = (modos[c.clave] || _bcModoProceso(cfg, cat, c, now)).modo; if (m === "auto" || m === "sup") c.tools.forEach(x => { if (detect.includes(c.clave)) bloq.delete(x); }); });
+  const tools = BOT_TOOLS.filter(x => !_BOT_ADMIN_ONLY_TOOLS.has(x.name) && !bloq.has(x.name));
+  // Nivel final = max(proceso, horario, mínimo por prioridad) (8.1)
+  const nivProc = Math.max(...procs.map(k => { const m = (modos[k] || {}).modo; return m === "der" ? 2 : m === "sup" ? 1 : 0; }));
+  const nivCtl = control === "supervised" ? 1 : 0;
+  const nivPrio = _BC_NIV[cfg.urgencia.minimo[ip.prioridad]] || 0;
+  const nivel = Math.max(nivProc, _BC_NIV[hor.nivel] || 0, nivPrio, nivCtl);
+  const nivelTxt = ["AUT", "SUP", "PER"][nivel];
+  const todosOff = procs.every(k => (modos[k] || {}).modo === "off");
+  let accion, msg = "", motivo = "";
+  const objetivo = cfg.urgencia.objetivo[ip.prioridad];
+  const acuse = () => hor.conPersonal || ip.prioridad === "P1" || ip.prioridad === "P2" ? String(cfg.urgencia.acuse || "").replace("{tiempo}", objetivo ? `${objetivo} minutos` : "un momento") : cfg.urgencia.sinCobertura;
+  if (cfg.master && cfg.master.on === false) { accion = "off_master"; msg = cfg.master.msg; motivo = "interruptor maestro apagado"; }
+  else if (ip.emergencia) { accion = "emergencia"; msg = cfg.urgencia.seguridad; motivo = "regla de emergencia"; }
+  else if (der.derivar) { accion = "derivar"; msg = der.derivar.mensaje || acuse(); motivo = der.derivar.motivo; }
+  else if (todosOff) { const k = procs[0], c = catL.find(x => x.clave === k), m = modos[k] || {}; accion = "respaldo"; msg = (cfg.procesos[k] || {}).respaldo || (m.canal ? cfg.respaldoCanal : cfg.respaldoGeneral); motivo = `${c ? c.nombre : k}: ${_BC_MODO_TXT.off} (${m.porque || ""})`; }
+  else if (nivel === 2) { const kd = procs.find(k => (modos[k] || {}).modo === "der"); accion = kd ? "derivar" : "personal"; msg = (kd && (cfg.procesos[kd] || {}).respaldo) || acuse(); motivo = kd ? `${(catL.find(x => x.clave === kd) || {}).nombre}: Derivar (${modos[kd].porque})` : nivPrio === 2 ? `prioridad ${ip.prioridad}` : `horario ${hor.franja}: Personal`; }
+  else if (nivel === 1) { accion = "supervisado"; motivo = nivCtl ? "conversación en Supervisado" : nivPrio === 1 ? `prioridad ${ip.prioridad}` : nivProc === 1 ? "proceso en Supervisado" : `horario ${hor.franja}: Supervisado`; }
+  else { accion = "auto"; motivo = "todo en Automático"; }
+  // Procesos apagados que conviven con otros temas: el modelo debe contestar ese tema con el respaldo.
+  const offTxt = procs.filter(k => (modos[k] || {}).modo === "off").map(k => { const c = catL.find(x => x.clave === k); const m = modos[k]; return `- ${c ? c.nombre : k}: no lo atiendas; responde solo: «${(cfg.procesos[k] || {}).respaldo || (m.canal ? cfg.respaldoCanal : cfg.respaldoGeneral)}»`; });
+  const prompt = _bcPerfilPrompt(cfg.perfil, procs) + (offTxt.length ? `\n\nTEMAS DESACTIVADOS EN ESTE MOMENTO:\n${offTxt.join("\n")}` : "");
+  return { activo: !!cfg.activo && !simular, observar: !cfg.activo, accion, msg, motivo, tools, bloqueadas: [...bloq], prompt, procesos: procs, detectados: detect, modos, ipo: ip.ipo, prioridad: ip.prioridad, factores: ip.factores, senales: ip.senales, emergencia: ip.emergencia,
+    horario: hor, nivel: nivelTxt, derivacion: der.motivos, conv, hid: cat.hid, estanciaActiva, canal: cat.canal, nombre, aloj, ms: Date.now() - t0, objetivo };
+}
+// Registra la decisión (bitácora + estado de la conversación) y, si el gate está activo, crea la alerta que corresponda.
+async function _bcRegistrar(g, extra) {
+  try {
+    _bcLog({ tipo: "gate", conv: g.conv, canal: g.canal, nombre: g.nombre || "", aloj: g.aloj || "", procesos: g.procesos, modos: Object.fromEntries(Object.entries(g.modos).map(([k, v]) => [k, v.modo])), ipo: g.ipo, prioridad: g.prioridad, nivel: g.nivel, accion: g.accion, motivo: g.motivo, observacion: !g.activo, ms: g.ms, resultado: (extra && extra.resultado) || "", error: (extra && extra.error) || "" });
+    const cfg = await _bcCfg();
+    await _bcMut(_BC.CONV, d => {
+      const p = d[g.conv] || {}, man = p.manual && p.manualAt > Date.now() - 6 * 3600e3;
+      const abierta = p.at && p.estado !== "resuelta" && Date.now() - Date.parse(p.at) < 12 * 3600e3;
+      const ipo = Math.max(g.ipo, abierta ? Number(p.ipo || 0) : 0); // RF-35: con la conversación abierta el IPO no baja solo
+      const prio = man ? p.prioridad : _bcPrio(cfg, ipo), esc = ["derivar", "personal", "emergencia"].includes(g.accion);
+      if (p.prioridad && prio < p.prioridad) _bcLog({ tipo: "prioridad", conv: g.conv, de: p.prioridad, a: prio, origen: "regla" });
+      d[g.conv] = Object.assign(p, { canal: g.canal, nombre: g.nombre || p.nombre || "", aloj: g.aloj || p.aloj || "", ipo: man ? p.ipo : ipo, ipoBase: g.ipo, prioridad: prio, factores: g.factores, senales: g.senales.slice(0, 12),
+        procesos: g.procesos, nivel: g.nivel, accion: g.accion, motivo: g.motivo, at: new Date().toISOString(), observacion: !g.activo,
+        estado: g.accion === "auto" ? "en_atencion" : g.accion === "supervisado" ? "esperando_autorizacion" : esc ? "escalada" : (p.estado === "resuelta" ? "nueva" : p.estado || "nueva"),
+        asignado: esc ? (p.asignado && p.asignado !== "bot" ? p.asignado : "equipo") : (p.asignado || "bot"), ult: String((extra && extra.texto) || "").slice(0, 200) });
+      const ks = Object.keys(d); if (ks.length > 1500) ks.sort((a, b) => String(d[a].at).localeCompare(String(d[b].at))).slice(0, ks.length - 1500).forEach(k => delete d[k]);
+    });
+    if (g.activo && ["P1", "P2", "P3"].includes(g.prioridad) && g.accion !== "auto") await _bcAlerta({ conv: g.conv, canal: g.canal, nombre: g.nombre, aloj: g.aloj, prioridad: g.prioridad, motivo: g.motivo, texto: extra && extra.texto, fueraHorario: !g.horario.conPersonal });
+    else if (g.activo && ["derivar", "personal"].includes(g.accion)) await _bcAlerta({ conv: g.conv, canal: g.canal, nombre: g.nombre, aloj: g.aloj, prioridad: g.prioridad, motivo: g.motivo, texto: extra && extra.texto, fueraHorario: !g.horario.conPersonal });
+  } catch (e) { console.warn("[bot-control] registrar:", e.message); }
+}
+// ── Alertas y cadenas de escalamiento (8.4 · RF-40…43) ──
+async function _bcPersonas() { try { const per = await _sisLeer("per"); return per.rows.filter(r => !/inactiv|baja/i.test(String(r.Estado || r.Activo || ""))).map(r => ({ n: [r.Nombre, r.Apellido_paterno, r.Apellido_materno].map(x => String(x || "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " "), tel: _sisCel10(r.Celular || r.Whatsapp || r.WhatsApp || r.Telefono), puesto: String(r.Puesto || "") })).filter(p => p.n && p.tel); } catch (_) { return []; } }
+async function _bcTelDe(nombre) { if (!nombre) return ""; const n = _bcNrm(nombre); const p = (await _bcPersonas()).find(x => _bcNrm(x.n) === n || _bcNrm(x.n).startsWith(n)); return p ? p.tel : ""; }
+async function _bcEnviarPaso(a, paso) {
+  const cfg = await _bcCfg(), H = cfg.horario || {};
+  const txt = `${a.prioridad === "P1" ? "🚨 ESCALAR AHORA" : a.prioridad === "P2" ? "🟠 PRIORITARIA" : "🟡 SEGUIMIENTO"} · ${a.prioridad}\n${a.nombre || "Huésped"}${a.aloj ? ` · ${a.aloj}` : ""} (${a.canal})\nMotivo: ${a.motivo}${a.texto ? `\n«${String(a.texto).slice(0, 240)}»` : ""}\n\nAcepta la alerta en el panel: Control del bot › Resumen.`;
+  let dest = [];
+  if (paso.a === "titular") dest = [await _bcTelDe(H.titular)];
+  else if (paso.a === "respaldo") dest = [await _bcTelDe(H.respaldo)];
+  else if (paso.a === "admins") { await _botNotifyEmergency(txt); return "admins (lista de emergencia)"; }
+  else return "panel";
+  dest = dest.filter(Boolean);
+  if (!dest.length) { await _botNotifyAdmin(txt); return `${paso.a} sin teléfono → administrador`; }
+  for (const tel of dest) await _twilioSendMessage({ to: `whatsapp:+52${tel}`, body: txt, skipMirror: true }).catch(e => console.warn("[bot-control] alerta:", e.message));
+  return `${paso.a} (${dest.join(", ")})`;
+}
+async function _bcAlerta(a) {
+  const cfg = await _bcCfg();
+  const al = await _bcMut(_BC.AL, async d => {
+    d.items = d.items || [];
+    const abierta = d.items.find(x => x.conv === a.conv && !["resuelta"].includes(x.estado));
+    if (abierta) { // misma conversación: solo sube la prioridad si empeoró
+      if (a.prioridad < abierta.prioridad) { abierta.historial.push({ at: new Date().toISOString(), ev: `prioridad ${abierta.prioridad} → ${a.prioridad}` }); abierta.prioridad = a.prioridad; abierta.paso = -1; abierta.creada = new Date().toISOString(); }
+      return null;
+    }
+    const x = Object.assign({ id: _bcId(), estado: "notificada", creada: new Date().toISOString(), paso: -1, historial: [] }, a, { texto: String(a.texto || "").slice(0, 400) });
+    d.items.push(x); d.items = d.items.filter(y => y.estado !== "resuelta" || Date.now() - Date.parse(y.resueltaAt || y.creada) < 7 * 864e5).slice(-400);
+    return x;
+  });
+  if (al) { _bcLog({ tipo: "alerta", conv: a.conv, prioridad: a.prioridad, motivo: a.motivo, ev: "creada" }); _bcTick().catch(() => {}); }
+}
+let _bcTickOn = false;
+async function _bcTick() {
+  if (_bcTickOn) return { ok: true, ocupado: true }; _bcTickOn = true;
+  try {
+    const cfg = await _bcCfg(), C = cfg.urgencia.cadenas || {}, envios = [];
+    await _bcMut(_BC.AL, async d => {
+      for (const x of (d.items || [])) {
+        if (x.estado === "aceptada" || x.estado === "resuelta") continue; // RF-41: notificar no es atender
+        const cad = C[x.prioridad] || [], mins = (Date.now() - Date.parse(x.creada)) / 60e3;
+        while (x.paso + 1 < cad.length && mins >= Number(cad[x.paso + 1].min || 0)) { x.paso++; envios.push({ x, paso: cad[x.paso] }); }
+      }
+    });
+    for (const { x, paso } of envios) { const a = await _bcEnviarPaso(x, paso).catch(e => "error: " + e.message);
+      await _bcMut(_BC.AL, d => { const y = (d.items || []).find(z => z.id === x.id); if (y) { y.historial.push({ at: new Date().toISOString(), ev: `paso ${y.paso + 1}: ${a}` }); if (y.estado === "notificada" && a !== "panel") y.estado = "notificada"; } });
+      _bcLog({ tipo: "escalamiento", conv: x.conv, prioridad: x.prioridad, paso: paso.a, resultado: a }); }
+    // RF-35: el IPO de conversaciones abiertas sin atender sube con el tiempo (nunca baja solo).
+    const S = cfg.urgencia.subePorEspera || {};
+    if (S.puntos && S.cadaMin) await _bcMut(_BC.CONV, d => { Object.values(d).forEach(c => { if (!c || c.observacion || ["resuelta", "en_atencion"].includes(c.estado) || !["P1", "P2", "P3"].includes(c.prioridad)) return;
+      const m = (Date.now() - Date.parse(c.at)) / 60e3, extra = Math.floor(m / S.cadaMin) * S.puntos; const nuevo = Math.min(100, Number(c.ipoBase || 0) + extra);
+      if (nuevo > (c.ipo || 0)) { c.ipo = nuevo; const p = _bcPrio(cfg, nuevo); if (p < c.prioridad) { _bcLog({ tipo: "prioridad", conv: c.conv, de: c.prioridad, a: p, origen: "espera" }); c.prioridad = p; } } }); });
+    return { ok: true, envios: envios.length };
+  } finally { _bcTickOn = false; }
+}
+// Disyuntor (RF-10): N errores de una herramienta en la ventana → el proceso baja de nivel y se avisa.
+const _bcErrs = new Map();
+function _bcToolResultado(nombre, exec, err) {
+  const malo = !!err || /^\s*(error|⚠️|no se pudo)|"ok"\s*:\s*false/i.test(String((exec && exec.content) || ""));
+  if (!malo) return;
+  const c = _BC_CAT.find(x => x[8].includes(nombre)); if (!c) return;
+  _bcLog({ tipo: "error", proceso: c[0], herramienta: nombre, error: String(err ? err.message : (exec && exec.content) || "").slice(0, 200) });
+  _bcFallo(c[0], `errores de ${nombre}`);
+}
+function _bcFallo(k, que) {
+  const L = (_bcErrs.get(k) || []).filter(t => Date.now() - t < 6 * 3600e3); L.push(Date.now()); _bcErrs.set(k, L);
+  _bcCfg().then(async cfg => { const D = cfg.disyuntor || {}; if (!D.on) return; const n = L.filter(t => Date.now() - t < (D.ventanaMin || 60) * 60e3).length; if (n < (D.n || 3)) return;
+    const pc = cfg.procesos[k] || {}; if ((pc.disyuntor && pc.disyuntor.at) || pc.modo !== "auto") return;
+    const nom = (_bcCatalogo(cfg).find(x => x.clave === k) || {}).nombre || k;
+    await _bcMut(_BC.OBJ, d => { d.procesos = d.procesos || {}; d.procesos[k] = Object.assign(d.procesos[k] || {}, { disyuntor: { at: new Date().toISOString(), motivo: `${n} ${que} en ${D.ventanaMin || 60} min` } }); }); _bcCfgTs = 0;
+    _bcLog({ tipo: "disyuntor", proceso: k, motivo: `${n} ${que}` });
+    _botNotifyAdmin(`⚡ Disyuntor: el proceso «${nom}» acumuló ${n} ${que} y bajó a ${_BC_MODO_TXT[D.bajaA || "sup"]}. Revísalo en Control del bot › Procesos.`); }).catch(() => {});
+}
+// Aplica la decisión del gate en un chat de WhatsApp. Devuelve true si ya respondió (no hay que llamar al modelo).
+async function _bcAplicarWa(g, { phone10, fromRaw, texto }) {
+  _bcRegistrar(g, { texto });
+  if (!g.activo) return false;
+  if (["off_master", "emergencia", "derivar", "personal", "respaldo"].includes(g.accion)) {
+    const msg = String(g.msg || "").trim();
+    if (msg) { await _twilioSendMessage({ to: fromRaw, body: msg, skipMirror: true }).catch(() => {}); await _botAppendMessage(phone10, "assistant", msg, { gate: g.accion, prioridad: g.prioridad }); }
+    if (g.accion !== "respaldo" || ["P1", "P2"].includes(g.prioridad)) await _botEscalate(phone10, `Gate: ${g.motivo}`);
+    if (g.accion === "emergencia") _botNotifyEmergency(`🚨 EMERGENCIA · ${g.nombre || phone10}${g.aloj ? ` · ${g.aloj}` : ""}\n«${String(texto).slice(0, 300)}»\nEl bot envió las instrucciones de seguridad. Atiende de inmediato.`);
+    return true;
+  }
+  return false;
+}
+// Igual para Airbnb/Booking/directas por la mensajería de Lodgify.
+async function _bcAplicarAbn(g, { bid, texto }) {
+  _bcRegistrar(g, { texto });
+  if (!g.activo) return false;
+  if (["off_master", "emergencia", "derivar", "personal", "respaldo"].includes(g.accion)) {
+    const msg = String(g.msg || "").trim(); if (msg) await _abnEnviar(bid, msg, "bot").catch(() => {});
+    if (g.accion !== "respaldo" || ["P1", "P2"].includes(g.prioridad)) await _abnModosMutar(d => { if (d[bid]) { d[bid].control = "human"; d[bid].desde = new Date().toISOString(); } });
+    if (g.accion === "emergencia") _botNotifyEmergency(`🚨 EMERGENCIA (${g.canal}) · ${g.nombre || bid}${g.aloj ? ` · ${g.aloj}` : ""}\n«${String(texto).slice(0, 300)}»`);
+    return true;
+  }
+  return false;
+}
+// Cola de aprobación (bandeja de Chats bot): aprobar, editar o rechazar un borrador cuenta para métricas y disyuntor.
+async function _bcDraftEvento(conv, action, usuario) {
+  try { let procs = [];
+    await _bcMut(_BC.CONV, d => { const c = d[conv]; if (!c) return; procs = c.procesos || []; c.estado = action === "skip" ? "esperando_huesped" : "en_atencion"; c.asignado = usuario || c.asignado || "equipo"; });
+    procs.forEach(k => { _bcLog({ tipo: action === "skip" ? "rechazo" : action === "edit" ? "edicion" : "aprobacion", conv, proceso: k, usuario: usuario || "" }); if (action === "skip") _bcFallo(k, "rechazos en la cola"); });
+  } catch (_) {}
+}
+// ¿Alguna herramienta usada pertenece solo a procesos que no están en Automático? → la respuesta pasa a la cola de aprobación.
+async function _bcExigeSup(g, toolsUsed) {
+  if (!g || !g.activo) return false;
+  const cfg = await _bcCfg(), catL = _bcCatalogo(cfg), now = _bcAhora(), cat = { canal: g.canal, hid: g.hid, estanciaActiva: g.estanciaActiva };
+  return (toolsUsed || []).some(t => { const ps = catL.filter(c => (c.tools || []).includes(t.name)); return ps.length && ps.every(c => _bcModoProceso(cfg, cat, c, now).modo !== "auto"); });
+}
+function _bcCanalDe(src) { const s = _bcNrm(src); return /airbnb/.test(s) ? "airbnb" : /booking/.test(s) ? "booking" : "directo"; }
+
+// ── API del panel ──
+app.get("/bot/control", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const cfg = await _bcCfg(true), now = _bcAhora(), hor = _bcNivelHorario(cfg, now), catL = _bcCatalogo(cfg);
+    const [al, conv, personas, catA] = await Promise.all([_rhdGetJson(_BC.AL).catch(() => ({})), _rhdGetJson(_BC.CONV).catch(() => ({})), _bcPersonas(), _aseoCatalogo().catch(() => [])]);
+    const abiertas = (al.items || []).filter(x => x.estado !== "resuelta");
+    const C = Object.values(conv || {});
+    // Métricas de 7 días por proceso (sección 14) a partir de la bitácora.
+    const met = {}, dias = []; for (let i = 0; i < 7; i++) { const d = new Date(Date.now() - i * 864e5).toLocaleDateString("sv-SE", { timeZone: _BC_TZ }); dias.push(d); }
+    const logs = await Promise.all(dias.map(d => _rhdGetJson(_BC.LOG(d)).catch(() => ({}))));
+    logs.forEach(l => (l.items || []).forEach(e => { if (e.tipo === "gate") (e.procesos || []).forEach(k => { const m = met[k] = met[k] || { usos: 0, errores: 0, rechazos: 0, escalados: 0 }; m.usos++; if (["derivar", "personal", "emergencia"].includes(e.accion)) m.escalados++; });
+      if (e.tipo === "error" && e.proceso) { const m = met[e.proceso] = met[e.proceso] || { usos: 0, errores: 0, rechazos: 0, escalados: 0 }; m.errores++; }
+      if (e.tipo === "rechazo" && e.proceso) { const m = met[e.proceso] = met[e.proceso] || { usos: 0, errores: 0, rechazos: 0, escalados: 0 }; m.rechazos++; } }));
+    res.json({ ok: true, cfg, catalogo: catL, grupos: _BC_GRUPOS, metricas: met, personas, alojamientos: (catA || []).map(a => ({ hid: String(a.hid), code: String(a.code || "").toUpperCase(), nombre: a.nombre || "" })).filter(a => a.hid),
+      ahora: { nivel: hor.nivel, nivelTxt: _BC_NIV_TXT[hor.nivel], franja: hor.franja, conPersonal: hor.conPersonal, noDisp: !!hor.noDisp, titular: cfg.horario.titular, respaldo: cfg.horario.respaldo },
+      contadores: { automaticos: catL.filter(c => (cfg.procesos[c.clave] || {}).modo === "auto").length, prioritarias: C.filter(c => ["P1", "P2"].includes(c.prioridad) && c.estado !== "resuelta" && Date.now() - Date.parse(c.at) < 48 * 3600e3).length,
+        supervision: C.filter(c => c.estado === "esperando_autorizacion" && Date.now() - Date.parse(c.at) < 48 * 3600e3).length, disyuntores: catL.filter(c => ((cfg.procesos[c.clave] || {}).disyuntor || {}).at).length, alertas: abiertas.length },
+      alertas: abiertas.sort((a, b) => a.prioridad.localeCompare(b.prioridad) || String(a.creada).localeCompare(String(b.creada))) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Guarda una sección de la configuración. Cada cambio queda en la bitácora (cambios_config) y el perfil se versiona (RF-24).
+app.post("/bot/control", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const { seccion, data, usuario } = req.body || {}, por = String(usuario || "").slice(0, 60);
+    const OK = ["activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
+    if (!OK.includes(seccion)) return res.status(400).json({ ok: false, error: "Sección inválida" });
+    let antes, despues;
+    await _bcMut(_BC.OBJ, d => {
+      const cur = _bcMerge(_bcDefaults(), d);
+      const set = (k, v) => { antes = cur[k]; d[k] = v; despues = v; };
+      if (seccion === "activo") set("activo", !!data);
+      else if (seccion === "master") set("master", { on: !!(data && data.on), msg: String((data && data.msg) || cur.master.msg) });
+      else if (seccion === "fueraOficina") set("fueraOficina", !!data);
+      else if (seccion === "respaldoGeneral" || seccion === "respaldoCanal") set(seccion, String(data || ""));
+      else if (seccion === "proceso") { const k = String(data && data.clave || ""); if (!k) throw new Error("Falta la clave"); d.procesos = d.procesos || {}; antes = cur.procesos[k]; const v = Object.assign({}, cur.procesos[k] || {}, data.valores || {}); if (v.modo && !_BC_MODOS.includes(v.modo)) throw new Error("Modo inválido"); d.procesos[k] = v; despues = v; }
+      else if (seccion === "procesos_lote") { d.procesos = d.procesos || {}; antes = {}; despues = {}; Object.entries(data || {}).forEach(([k, modo]) => { if (!_BC_MODOS.includes(modo)) return; antes[k] = (cur.procesos[k] || {}).modo; d.procesos[k] = Object.assign({}, cur.procesos[k] || {}, { modo }); despues[k] = modo; }); }
+      else if (seccion === "reset_disyuntor") { const k = String(data || ""); d.procesos = d.procesos || {}; antes = (cur.procesos[k] || {}).disyuntor; d.procesos[k] = Object.assign({}, cur.procesos[k] || {}, { disyuntor: null }); despues = null; _bcErrs.delete(k); }
+      else if (seccion === "disponible") { const H = Object.assign({}, cur.horario, { disponible: !!data, dispAt: new Date().toISOString(), dispPor: por }); antes = cur.horario.disponible; d.horario = H; despues = !!data; }
+      else if (seccion === "perfil") { antes = cur.perfil; const v = Object.assign({}, cur.perfil, data || {}); d.perfil = v; despues = v;
+        const vs = cur.versiones || []; vs.push({ v: (vs.length ? vs[vs.length - 1].v : 0) + 1, at: new Date().toISOString(), por, data: v }); d.versiones = vs.slice(-40); }
+      else if (seccion === "revertir") { const v = (cur.versiones || []).find(x => x.v === Number(data)); if (!v) throw new Error("Versión no encontrada"); antes = cur.perfil; d.perfil = v.data; despues = v.data;
+        const vs = cur.versiones || []; vs.push({ v: vs[vs.length - 1].v + 1, at: new Date().toISOString(), por, data: v.data, de: v.v }); d.versiones = vs.slice(-40); }
+      else set(seccion, data);
+    });
+    _bcCfgTs = 0;
+    _bcLog({ tipo: "config", seccion, clave: seccion === "proceso" ? data && data.clave : "", usuario: por, antes: JSON.stringify(antes === undefined ? null : antes).slice(0, 1500), despues: JSON.stringify(despues === undefined ? null : despues).slice(0, 1500) });
+    await _bcLogFlush();
+    res.json({ ok: true, cfg: await _bcCfg(true) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/bot/control/bitacora", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { await _bcLogFlush(); const dia = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.dia || "")) ? req.query.dia : _bcHoy(); const l = await _rhdGetJson(_BC.LOG(dia)).catch(() => ({}));
+    res.json({ ok: true, dia, items: (l.items || []).slice().reverse() }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Bandeja ordenada por IPO (11.2): las P1 siempre arriba.
+app.get("/bot/control/bandeja", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { const d = await _rhdGetJson(_BC.CONV).catch(() => ({})), horas = Math.min(24 * 14, Number(req.query.horas) || 72);
+    const L = Object.entries(d || {}).map(([conv, c]) => Object.assign({ conv }, c)).filter(c => Date.now() - Date.parse(c.at || 0) < horas * 3600e3);
+    L.sort((a, b) => (a.prioridad === "P1" ? 0 : 1) - (b.prioridad === "P1" ? 0 : 1) || (b.ipo || 0) - (a.ipo || 0) || String(b.at).localeCompare(String(a.at)));
+    res.json({ ok: true, items: L.slice(0, 300) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/bot/control/alerta", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const { id, accion, usuario } = req.body || {}; if (!["aceptar", "resolver"].includes(accion)) return res.status(400).json({ ok: false, error: "Acción inválida" });
+    let conv = null;
+    await _bcMut(_BC.AL, d => { const x = (d.items || []).find(y => y.id === id); if (!x) throw new Error("Alerta no encontrada"); conv = x.conv;
+      if (accion === "aceptar") { x.estado = "aceptada"; x.aceptadaPor = usuario || ""; x.aceptadaAt = new Date().toISOString(); } else { x.estado = "resuelta"; x.resueltaPor = usuario || ""; x.resueltaAt = new Date().toISOString(); }
+      x.historial.push({ at: new Date().toISOString(), ev: `${accion === "aceptar" ? "aceptada" : "resuelta"} por ${usuario || "?"}` }); });
+    await _bcMut(_BC.CONV, d => { if (d[conv]) { if (accion === "aceptar") { d[conv].estado = "en_atencion"; d[conv].asignado = usuario || "equipo"; } else d[conv].estado = "resuelta"; } });
+    _bcLog({ tipo: "alerta", conv, ev: accion, usuario });
+    res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Cambio manual de prioridad con motivo obligatorio (RF-38).
+app.post("/bot/control/prioridad", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const { conv, prioridad, motivo, usuario } = req.body || {}; if (!["P1", "P2", "P3", "P4"].includes(prioridad)) return res.status(400).json({ ok: false, error: "Prioridad inválida" });
+    if (!String(motivo || "").trim()) return res.status(400).json({ ok: false, error: "El motivo es obligatorio" });
+    const cfg = await _bcCfg(); let de = "";
+    await _bcMut(_BC.CONV, d => { const c = d[conv]; if (!c) throw new Error("Conversación no encontrada"); de = c.prioridad; c.prioridad = prioridad; c.manual = true; c.manualAt = Date.now(); c.ipo = prioridad === "P1" ? cfg.urgencia.umbrales.P1 : prioridad === "P2" ? cfg.urgencia.umbrales.P2 : prioridad === "P3" ? cfg.urgencia.umbrales.P3 : Math.min(c.ipo || 0, cfg.urgencia.umbrales.P3 - 1); });
+    _bcLog({ tipo: "prioridad", conv, de, a: prioridad, origen: "manual", usuario, motivo: String(motivo).slice(0, 300) });
+    res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Simulador (11.2 · RF-25): decisión del gate sin tocar huéspedes; opcionalmente una respuesta de ejemplo con el perfil actual y otra versión.
+app.post("/bot/control/simular", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const { texto, canal, estanciaActiva, hora, dia, respuesta, version, aloj } = req.body || {};
+    if (!String(texto || "").trim()) return res.status(400).json({ ok: false, error: "Escribe un mensaje" });
+    const real = _bcAhora(), now = Object.assign({}, real); if (/^\d{1,2}:\d{2}$/.test(String(hora || ""))) now.min = _bcMinDe(hora); if (dia !== undefined && dia !== "" && !isNaN(Number(dia))) now.dia = Number(dia);
+    const booking = estanciaActiva ? { Arrival: real.fecha, Departure: real.fecha } : null;
+    const cfg = await _bcCfg(true);
+    const g = await _bcGate({ texto, canal: canal || "whatsapp", conv: "simulador", booking, control: "bot", mensajes: [], simular: { now, estanciaActiva: !!estanciaActiva }, aloj });
+    const out = { ok: true, decision: Object.assign({}, g, { tools: g.tools.map(t => t.name) }) };
+    if (respuesta) {
+      const gen = async perfil => {
+        const sys = BOT_SYSTEM_PROMPT_BASE + _bcPerfilPrompt(perfil, g.procesos) + `\n\nSIMULACIÓN: es una prueba desde el panel. No llames herramientas; responde como lo harías al huésped${aloj ? ` del alojamiento ${aloj}` : ""}. Si necesitas un dato que no tienes (código, contraseña, precio), usa un marcador entre llaves, por ejemplo {codigo_acceso}.`;
+        const r = await anthropic.messages.create({ model: BOT_ANTHROPIC_MODEL, max_tokens: 600, system: sys, messages: [{ role: "user", content: String(texto) }] });
+        return (r.content || []).filter(p => p.type === "text").map(p => p.text).join("\n").trim();
+      };
+      const alt = version ? (cfg.versiones || []).find(v => v.v === Number(version)) : null;
+      const [a, b] = await Promise.all([gen(cfg.perfil), alt ? gen(alt.data) : Promise.resolve("")]);
+      out.respuesta = a; if (alt) { out.respuestaAlt = b; out.versionAlt = alt.v; }
+    }
+    res.json(out);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Vista previa de la personalidad (RF-20): ejemplos de saludo con la opción elegida antes de guardar.
+app.post("/bot/control/preview-perfil", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const perfil = (req.body || {}).perfil || {};
+    const sys = BOT_SYSTEM_PROMPT_BASE + _bcPerfilPrompt(perfil, []) + "\n\nSIMULACIÓN desde el panel: no llames herramientas. Responde SOLO con un JSON {\"a\":\"…\",\"b\":\"…\",\"c\":\"…\"} con tus respuestas a tres mensajes de huésped: a) «Hola, ¿tienen disponible para este fin de semana?» b) «Ya llegué y el código no abre la puerta» c) «¿Cuál es la contraseña del wifi?» (usa {wifi} como marcador).";
+    const r = await anthropic.messages.create({ model: BOT_ANTHROPIC_MODEL, max_tokens: 700, system: sys, messages: [{ role: "user", content: "Genera los tres ejemplos." }] });
+    const txt = (r.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim(); const m = txt.match(/\{[\s\S]*\}/);
+    let j = {}; try { j = JSON.parse(m ? m[0] : txt); } catch (_) { j = { a: txt }; }
+    res.json({ ok: true, ejemplos: j }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Cloud Scheduler cada minuto (RF-42, RNF-07): avanza cadenas de escalamiento aunque el huésped no vuelva a escribir.
+app.all("/bot/control/tick", async (req, res) => {
+  if (!process.env.SYNC_SECRET || req.get("X-Sync-Secret") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false });
+  try { res.json(await _bcTick()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 const PORT = process.env.PORT || 8080;

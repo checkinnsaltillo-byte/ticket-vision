@@ -382,6 +382,7 @@ const SYS_MODULE_LIST = [
   ['llaves',           '🔑 Llaves'],
   ['config-admin',     '⚙️ Configuración Admin'],
   ['bot-chats',        '🤖 Chats bot'],
+  ['bot-control',      '🎛️ Control del bot'],
   ['reservas-nueva',   '🏨 Reservas'],
 ];
 // Submódulos/alias que acompañan a un módulo elegido.
@@ -393,6 +394,7 @@ const SYS_MODULE_EXTRAS = {
   breezeway: ['aseo'], // empleados que ya tenían Breezeway ven el módulo Aseo completo
   lodgify:   ['reservas-detalles', 'mensajes'],
   ocupacion: ['dashboard', 'calendario'],
+  'bot-chats': ['bot-control'], // quien atiende Chats bot ve también su centro de mando
 };
 function sysGetStoredUser() {
   try { return JSON.parse(localStorage.getItem('sys_user') || 'null'); } catch (_) { return null; }
@@ -409,7 +411,7 @@ function sysApplyPermissions(user) {
     });
   } else {
     // Usuario legado de sys_users (grupos por número romano).
-    allowed = new Set(['home', 'tuya', 'guias', 'config-admin', 'llaves', 'bot-chats', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
+    allowed = new Set(['home', 'tuya', 'guias', 'config-admin', 'llaves', 'bot-chats', 'bot-control', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
     if (user && user.modulos) {
       for (const k in SYS_MODULE_PERMS) {
         if (user.modulos[k]) SYS_MODULE_PERMS[k].forEach(m => allowed.add(m));
@@ -9148,7 +9150,7 @@ const _VALID_MODULES = new Set([
   'home','tickets','registros','huespedes','lodgify','reservas-detalles',
   'breezeway','aseo','incidencias','objetos','reportes-tecnicos','ocupacion',
   'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias',
-  'config-admin','llaves','bot-chats','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','reglasbot','mantenimiento','mensajes',
+  'config-admin','llaves','bot-chats','bot-control','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','reglasbot','mantenimiento','mensajes',
 ]);
 function _bootModuleFromHash_() {
   const h = (location.hash || '').replace(/^#/, '').trim();
@@ -9297,7 +9299,7 @@ function switchModule(mod) {
     const greet = document.getElementById('user-greeting');
     if (greet) greet.style.display = '';
   } catch(_){}
-  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "reglasbot", "mensajes"].forEach(m => {
+  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "bot-control", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "reglasbot", "mensajes"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== containerMod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === containerMod);
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === containerMod);
@@ -9463,6 +9465,7 @@ function switchModule(mod) {
   if (mod === "bot-chats") {
     if (typeof botcInit === 'function') botcInit();
   }
+  if (mod === "bot-control" && typeof bkInit_ === 'function') bkInit_(); // 🎛️ Control del bot
   if (mod === "reportes-tecnicos") {
     if (typeof rtInit === 'function') rtInit();
   }
@@ -73253,4 +73256,428 @@ async function abnFicha_(bid) {
     const html = j.ok ? abnMsgsHtml_(j.mensajes) : `<div class="abn-vacio">⚠️ ${pcEsc(j.error || 'Error')}</div>`;
     boxes.forEach(b => { b.innerHTML = html; b.scrollTop = b.scrollHeight; });
   } catch (e) { boxes.forEach(b => { b.innerHTML = `<div class="abn-vacio">⚠️ No se pudieron cargar los mensajes</div>`; }); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🎛️ Control del bot — centro de mando (Requerimientos «Módulo de Control Operativo del Chatbot» v1.0)
+// Backend: /bot/control (config), /bot/control/bandeja, /bot/control/alerta, /bot/control/prioridad,
+// /bot/control/bitacora, /bot/control/simular, /bot/control/preview-perfil. El gate vive en server.js (_bcGate).
+// ═══════════════════════════════════════════════════════════════════════════
+const BK = { tab: 'resumen', d: null, bandeja: [], bit: { dia: '', items: [], f: '' }, sim: null, simCargando: false, abiertos: {}, drawer: null, fPrio: '', fMios: false, cargando: false, prev: null };
+const BK_TABS = [['resumen', '📥 Bandeja'], ['procesos', '⚙️ Procesos'], ['horarios', '🕐 Horarios'], ['urgencia', '🚨 Urgencia'], ['perfil', '🎭 Personalidad'], ['bitacora', '📜 Bitácora'], ['pruebas', '🧪 Pruebas']];
+const BK_MODO = { off: ['Apagado', '#6b7280', '#f3f4f6'], der: ['Derivar', '#b45309', '#fef3c7'], sup: ['Supervisado', '#1d4ed8', '#dbeafe'], auto: ['Automático', '#15803d', '#dcfce7'] };
+const BK_NIV = { AUT: ['Automático', '#15803d', '#dcfce7'], SUP: ['Supervisado', '#1d4ed8', '#dbeafe'], PER: ['Personal', '#b45309', '#fef3c7'] };
+const BK_PRIO = { P1: ['P1 Crítica', 'ESCALAR AHORA', '#b91c1c', '#fee2e2', '🔴'], P2: ['P2 Alta', 'PRIORITARIA', '#c2410c', '#ffedd5', '🟠'], P3: ['P3 Media', 'SEGUIMIENTO', '#a16207', '#fef9c3', '🟡'], P4: ['P4 Normal', 'AUTOMÁTICA', '#4b5563', '#f3f4f6', '⚪'] };
+const BK_ACC = { off_master: 'Bot apagado (mensaje fijo)', emergencia: 'Emergencia: instrucciones + escalar', derivar: 'Derivar a una persona', personal: 'Atención personal (acuse + alerta)', respaldo: 'Mensaje de respaldo', supervisado: 'Borrador a la cola de aprobación', auto: 'El bot responde solo' };
+const BK_EST = { nueva: 'Nueva', en_atencion: 'En atención', esperando_huesped: 'Esperando huésped', esperando_autorizacion: 'Esperando autorización', escalada: 'Escalada', resuelta: 'Resuelta' };
+const BK_FACT = { gravedad: 'Gravedad', urgencia: 'Urgencia temporal', impacto: 'Impacto en la estancia', incertidumbre: 'Incertidumbre y recurrencia', proceso: 'Prioridad base del proceso' };
+const BK_DISP = { humano: 'El huésped pide hablar con una persona', emocion: 'Frustración o enojo detectado', intentos: 'Intentos fallidos del bot', tema: 'Temas prohibidos para el bot', palabra: 'Palabras clave' };
+const bkUsr_ = () => (typeof currentUser !== 'undefined' && currentUser) || '';
+function bkCss_() {
+  if (document.getElementById('bk-css')) return;
+  const st = document.createElement('style'); st.id = 'bk-css';
+  st.textContent = `
+#module-bot-control{--bk-line:#e5e7eb;--bk-tx:#111827;--bk-mut:#6b7280;--bk-bg:#f8fafc;--bk-card:#fff;--bk-ac:#7c3aed;padding:18px 22px 70px;color:var(--bk-tx);max-width:1180px;margin:0 auto}
+.bk-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.bk-h h2{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px}
+.bk-sub{color:var(--bk-mut);font-size:12.5px}
+.bk-hero{background:linear-gradient(135deg,#1e1b4b,#4c1d95);color:#fff;border-radius:18px;padding:16px 18px;display:grid;grid-template-columns:1fr auto;gap:14px;margin-bottom:12px}
+.bk-hero .bk-sub{color:#c4b5fd}
+.bk-ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bk-sw{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:7px 12px 7px 8px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12.5px;font-weight:700;white-space:nowrap}
+.bk-sw i{width:30px;height:18px;border-radius:999px;background:rgba(255,255,255,.3);position:relative;flex-shrink:0;transition:background .15s}
+.bk-sw i:after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
+.bk-sw.on i{background:#22c55e}.bk-sw.on i:after{left:14px}
+.bk-sw.warn.on i{background:#f59e0b}
+.bk-sw.lt{background:#f3f4f6;color:var(--bk-tx)}
+.bk-sw.lt i{background:#d1d5db}.bk-sw.lt.on i{background:#22c55e}
+.bk-now{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:13px}
+.bk-now b{font-weight:800}
+.bk-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.bk-kpi{background:var(--bk-card);border:1px solid var(--bk-line);border-radius:14px;padding:10px 12px}
+.bk-kpi b{display:block;font-size:22px;font-weight:800}
+.bk-kpi span{font-size:11.5px;color:var(--bk-mut)}
+.bk-obs{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:12px;padding:10px 12px;font-size:12.5px;margin-bottom:12px;display:flex;gap:10px;align-items:center}
+.bk-obs.err{background:#fef2f2;border-color:#fca5a5;color:#991b1b}
+.bk-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;scrollbar-width:none}
+.bk-tab{all:unset;cursor:pointer;padding:8px 13px;border-radius:999px;font-size:13px;font-weight:700;background:#f3f4f6;color:#374151;white-space:nowrap}
+.bk-tab.on{background:var(--bk-tx);color:#fff}
+.bk-card{background:var(--bk-card);border:1px solid var(--bk-line);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+.bk-card h3{margin:0 0 4px;font-size:15px;font-weight:800}
+.bk-btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;font-size:12.5px;font-weight:700;background:#f3f4f6;color:#111827;white-space:nowrap}
+.bk-btn:hover{background:#e5e7eb}
+.bk-btn.pri{background:var(--bk-tx);color:#fff}.bk-btn.pri:hover{background:#000}
+.bk-btn.ok{background:#16a34a;color:#fff}.bk-btn.red{background:#fee2e2;color:#b91c1c}
+.bk-btn.sm{padding:5px 9px;font-size:11.5px;border-radius:8px}
+.bk-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.bk-seg{display:inline-flex;background:#f3f4f6;border-radius:10px;padding:3px;gap:2px}
+.bk-seg button{all:unset;cursor:pointer;padding:5px 9px;border-radius:8px;font-size:11.5px;font-weight:700;color:#6b7280;white-space:nowrap}
+.bk-seg button.on{color:var(--c);background:var(--b);box-shadow:inset 0 0 0 1.5px var(--c)}
+.bk-grp{border:1px solid var(--bk-line);border-radius:16px;margin-bottom:10px;background:#fff;overflow:hidden}
+.bk-grp>summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;font-weight:800;font-size:14px}
+.bk-grp>summary::-webkit-details-marker{display:none}
+.bk-grp>summary .bk-sub{font-weight:600}
+.bk-pr{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:10px 16px;border-top:1px solid #f1f2f4}
+.bk-pr .nm{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bk-pr .ds{font-size:12px;color:var(--bk-mut);margin-top:2px}
+.bk-pr .mt{font-size:11px;color:var(--bk-mut);margin-top:3px}
+.bk-in,.bk-ta,.bk-sel{box-sizing:border-box;width:100%;border:1px solid #d1d5db;border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;background:#fff;color:inherit}
+.bk-ta{min-height:64px;resize:vertical}
+.bk-lb{display:block;font-size:11.5px;font-weight:700;color:#374151;margin:10px 0 4px}
+.bk-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bk-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.bk-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+.bk-tbl th{text-align:left;font-size:11px;color:var(--bk-mut);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--bk-line)}
+.bk-tbl td{padding:7px 8px;border-bottom:1px solid #f3f4f6;vertical-align:top}
+.bk-cell{all:unset;cursor:pointer;display:block;text-align:center;padding:9px 4px;border-radius:9px;font-size:11.5px;font-weight:800}
+.bk-al{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-radius:12px;margin-bottom:8px;border:1px solid}
+.bk-cv{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;padding:11px 12px;border-bottom:1px solid #f1f2f4;align-items:start}
+.bk-cv:last-child{border-bottom:0}
+.bk-ipo{width:46px;height:46px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:800;font-size:16px;line-height:1}
+.bk-ipo small{font-size:9px;font-weight:700;margin-top:3px}
+.bk-why{font-size:11.5px;color:var(--bk-mut);margin-top:4px}
+.bk-drw-bg{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:9000}
+.bk-drw{position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);background:#fff;z-index:9001;box-shadow:-20px 0 50px rgba(0,0,0,.18);display:flex;flex-direction:column}
+.bk-drw-h{padding:16px 18px;border-bottom:1px solid var(--bk-line);display:flex;align-items:center;gap:10px}
+.bk-drw-b{padding:4px 18px 18px;overflow:auto;flex:1}
+.bk-drw-f{padding:12px 18px;border-top:1px solid var(--bk-line);display:flex;gap:8px;justify-content:flex-end}
+.bk-ck{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;font-weight:600;user-select:none}
+.bk-ck>span{width:18px;height:18px;border:1.5px solid #9ca3af;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:#fff;flex-shrink:0}
+.bk-ck.on>span{background:#111827;border-color:#111827}
+.bk-ex{background:#f8fafc;border:1px solid var(--bk-line);border-radius:12px;padding:10px 12px;font-size:12.5px;white-space:pre-wrap;line-height:1.5}
+.bk-ev{display:grid;grid-template-columns:62px auto minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px;align-items:start}
+.bk-mut{color:var(--bk-mut)}
+@media (max-width:760px){#module-bot-control{padding:12px 12px 80px}.bk-hero{grid-template-columns:1fr}.bk-hero .bk-ctl{justify-content:flex-start!important}.bk-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.bk-pr{grid-template-columns:1fr}.bk-grid2{grid-template-columns:1fr}.bk-cv{grid-template-columns:auto minmax(0,1fr)}.bk-cv>.bk-row:last-child{grid-column:1/-1}}
+`;
+  document.head.appendChild(st);
+}
+async function bkInit_() {
+  bkCss_();
+  const root = document.getElementById('module-bot-control'); if (!root) return;
+  if (!BK.d) root.innerHTML = '<div class="bk-card bk-mut">⏳ Cargando el centro de mando del bot…</div>';
+  await bkCargar_();
+}
+async function bkCargar_(silencioso) {
+  if (BK.cargando) return; BK.cargando = true;
+  try {
+    const [a, b] = await Promise.all([fetch(`${BACKEND}/bot/control`, { cache: 'no-store' }).then(r => r.json()), fetch(`${BACKEND}/bot/control/bandeja?horas=72`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({ items: [] }))]);
+    if (!a.ok) throw new Error(a.error || 'Error');
+    BK.d = a; BK.bandeja = b.items || [];
+    bkRender_();
+  } catch (e) { if (!silencioso) { const root = document.getElementById('module-bot-control'); if (root && !BK.d) root.innerHTML = `<div class="bk-card">⚠️ No se pudo cargar: ${esc(e.message || e)} <button class="bk-btn sm" onclick="bkInit_()">Reintentar</button></div>`; } }
+  finally { BK.cargando = false; }
+  clearTimeout(BK._t); BK._t = setTimeout(() => { const m = document.getElementById('module-bot-control'); if (m && !m.classList.contains('hidden') && !BK.drawer && ['resumen'].includes(BK.tab)) bkCargar_(true); }, 30000);
+}
+async function bkGuardar_(seccion, data, ok) {
+  try {
+    const r = await fetch(`${BACKEND}/bot/control`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seccion, data, usuario: bkUsr_() }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error || 'Error');
+    BK.d.cfg = r.cfg; if (ok !== false) bkToast_(typeof ok === 'string' ? ok : '✓ Guardado · aplica en menos de 10 s');
+    return true;
+  } catch (e) { alert('No se pudo guardar: ' + (e.message || e)); return false; }
+}
+function bkToast_(t) { let el = document.getElementById('bk-toast'); if (!el) { el = document.createElement('div'); el.id = 'bk-toast'; el.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 10px 30px rgba(0,0,0,.25);transition:opacity .2s'; document.body.appendChild(el); }
+  el.textContent = t; el.style.opacity = '1'; clearTimeout(el._t); el._t = setTimeout(() => { el.style.opacity = '0'; }, 2200); }
+function bkTab_(t) { BK.tab = t; bkRender_(); if (t === 'bitacora' && !BK.bit.dia) bkBitCargar_(); }
+const bkSw_ = (on, txt, fn, cls) => `<button type="button" class="bk-sw ${cls || ''} ${on ? 'on' : ''}" onclick="${fn}"><i></i>${txt}</button>`;
+const bkCk_ = (on, txt, fn) => `<span class="bk-ck ${on ? 'on' : ''}" onclick="${fn}"><span>${on ? '✓' : ''}</span>${txt}</span>`;
+const bkModoChip_ = m => { const x = BK_MODO[m] || BK_MODO.off; return `<span class="bk-chip" style="color:${x[1]};background:${x[2]}">${x[0]}</span>`; };
+const bkPrioChip_ = p => { const x = BK_PRIO[p] || BK_PRIO.P4; return `<span class="bk-chip" style="color:${x[2]};background:${x[3]}">${x[4]} ${x[0]} · ${x[1]}</span>`; };
+const bkHace_ = iso => { if (!iso) return ''; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'ahora' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} d`; };
+function bkRender_() {
+  const root = document.getElementById('module-bot-control'); if (!root || !BK.d) return;
+  const { cfg, ahora, contadores } = BK.d;
+  const hero = `<div class="bk-hero"><div><div class="bk-h" style="margin:0"><h2>🎛️ Control del bot</h2><span class="bk-sub">Procesos, horarios, urgencia y escalamiento del chatbot</span></div>
+    <div class="bk-now"><span>Ahora: <b>${esc(ahora.nivelTxt)}</b> · ${esc(ahora.franja)}</span><span>Guardia: <b>${esc(ahora.titular || 'sin asignar')}</b>${ahora.respaldo ? ` · respaldo ${esc(ahora.respaldo)}` : ''}</span>${ahora.noDisp ? '<span>⛔ Equipo no disponible</span>' : ''}</div></div>
+    <div class="bk-ctl" style="align-content:flex-start;justify-content:flex-end">
+      ${bkSw_(cfg.master.on !== false, cfg.master.on !== false ? 'Bot encendido' : 'Bot apagado', 'bkMaster_()')}
+      ${bkSw_(!!cfg.activo, cfg.activo ? 'Controles aplicando' : 'Solo observando', 'bkActivo_()')}
+      ${bkSw_(cfg.horario.disponible !== false, cfg.horario.disponible !== false ? 'Disponible' : 'No disponible', 'bkDisp_()')}
+      ${bkSw_(!!cfg.fueraOficina, 'Fuera de oficina', 'bkFuera_()', 'warn')}
+    </div></div>`;
+  const obs = cfg._error ? `<div class="bk-obs err">⚠️ No se pudo leer la configuración guardada; se muestran valores por omisión.</div>`
+    : !cfg.activo ? `<div class="bk-obs">👁️ <div><b>Modo observación.</b> El gate calcula y registra en la bitácora lo que haría con cada mensaje (proceso, urgencia, nivel), pero el bot sigue funcionando como hoy. Revisa la Bandeja y la Bitácora unos días y, cuando estés conforme, activa <b>Controles aplicando</b>.</div></div>`
+    : cfg.master.on === false ? `<div class="bk-obs err">⛔ <div><b>Bot apagado.</b> Todo mensaje recibe: «${esc(cfg.master.msg)}»</div></div>` : '';
+  const kpi = (n, t) => `<div class="bk-kpi"><b>${n}</b><span>${t}</span></div>`;
+  const kpis = `<div class="bk-kpis">${kpi(contadores.automaticos, 'Procesos en Automático')}${kpi(contadores.prioritarias, 'Conversaciones P1/P2 abiertas')}${kpi(contadores.supervision, 'Pendientes de supervisión')}${kpi(contadores.alertas, 'Alertas sin resolver')}${kpi(contadores.disyuntores, 'Disyuntores activos')}</div>`;
+  const tabs = `<div class="bk-tabs">${BK_TABS.map(([k, t]) => `<button type="button" class="bk-tab ${BK.tab === k ? 'on' : ''}" onclick="bkTab_('${k}')">${t}</button>`).join('')}</div>`;
+  const body = { resumen: bkResumen_, procesos: bkProcesos_, horarios: bkHorarios_, urgencia: bkUrgencia_, perfil: bkPerfil_, bitacora: bkBitacora_, pruebas: bkPruebas_ }[BK.tab]();
+  root.innerHTML = hero + obs + kpis + tabs + `<div id="bk-body">${body}</div>` + (BK.drawer ? bkDrawerHtml_() : '');
+}
+async function bkMaster_() { const c = BK.d.cfg, on = c.master.on === false;
+  if (!on && !confirm('¿Apagar el bot? Todos los huéspedes recibirán el mensaje fijo de atención humana.')) return;
+  if (await bkGuardar_('master', { on, msg: c.master.msg })) bkRender_(); }
+async function bkActivo_() { const on = !BK.d.cfg.activo;
+  if (on && !confirm('¿Aplicar los controles? A partir de ahora el gate decide qué responde el bot según procesos, horario y urgencia.')) return;
+  if (await bkGuardar_('activo', on)) bkCargar_(); }
+async function bkDisp_() { if (await bkGuardar_('disponible', BK.d.cfg.horario.disponible === false)) bkCargar_(); }
+async function bkFuera_() { if (await bkGuardar_('fueraOficina', !BK.d.cfg.fueraOficina)) bkRender_(); }
+
+// ── 📥 Bandeja: alertas + conversaciones ordenadas por IPO ──
+function bkResumen_() {
+  const al = BK.d.alertas || [];
+  const alH = al.length ? al.map(a => { const p = BK_PRIO[a.prioridad] || BK_PRIO.P4, obj = (BK.d.cfg.urgencia.objetivo || {})[a.prioridad], min = Math.round((Date.now() - Date.parse(a.creada)) / 60000);
+    const cad = (BK.d.cfg.urgencia.cadenas || {})[a.prioridad] || [], sig = cad[a.paso + 1], falta = sig ? Math.max(0, sig.min - min) : null;
+    return `<div class="bk-al" style="border-color:${p[3]};background:${a.estado === 'aceptada' ? '#fff' : p[3] + '55'}"><span style="font-size:22px">${p[4]}</span>
+      <div><div class="bk-row">${bkPrioChip_(a.prioridad)}<b style="font-size:13.5px">${esc(a.nombre || a.conv)}</b>${a.aloj ? `<span class="bk-chip" style="background:#f3f4f6">${esc(a.aloj)}</span>` : ''}<span class="bk-chip" style="background:#f3f4f6">${esc(a.canal || '')}</span></div>
+      <div class="bk-why">${esc(a.motivo || '')}${a.texto ? ` · «${esc(String(a.texto).slice(0, 140))}»` : ''}</div>
+      <div class="bk-why">${a.estado === 'aceptada' ? `✅ Aceptada por ${esc(a.aceptadaPor || '')}` : '🔔 Notificada, sin aceptar'} · ${min} min${obj ? ` de ${obj} objetivo` : ''}${falta != null && a.estado !== 'aceptada' ? ` · siguiente escalamiento (${esc(sig.a)}) en ${falta} min` : ''}</div></div>
+      <div class="bk-row">${a.estado !== 'aceptada' ? `<button class="bk-btn sm ok" onclick="bkAlerta_('${a.id}','aceptar')">Tomar</button>` : ''}<button class="bk-btn sm" onclick="bkAlerta_('${a.id}','resolver')">Resolver</button>${bkAbrirChatBtn_(a.conv)}</div></div>`; }).join('')
+    : '<div class="bk-mut" style="font-size:12.5px">Sin alertas abiertas. ✨</div>';
+  let L = BK.bandeja.slice();
+  if (BK.fPrio) L = L.filter(c => c.prioridad === BK.fPrio || c.prioridad === 'P1'); // las P1 siempre arriba aunque haya filtro
+  if (BK.fMios) L = L.filter(c => String(c.asignado || '').toLowerCase() === String(bkUsr_()).toLowerCase() || c.prioridad === 'P1');
+  const pill = (v, t) => `<button type="button" class="bk-tab ${BK.fPrio === v ? 'on' : ''}" style="padding:6px 11px;font-size:12px" onclick="BK.fPrio='${v}';bkRender_()">${t}</button>`;
+  const cv = L.length ? L.map(c => { const p = BK_PRIO[c.prioridad] || BK_PRIO.P4, sen = (c.senales || []).slice(0, 4).map(s => `${esc(s.texto)} (+${s.puntos})`).join(' · ');
+    return `<div class="bk-cv"><div class="bk-ipo" style="background:${p[3]};color:${p[2]}">${c.ipo || 0}<small>${c.prioridad || 'P4'}</small></div>
+      <div><div class="bk-row"><b style="font-size:13.5px">${esc(c.nombre || c.conv)}</b>${c.aloj ? `<span class="bk-chip" style="background:#f3f4f6">${esc(c.aloj)}</span>` : ''}<span class="bk-chip" style="background:#f3f4f6">${esc(c.canal || '')}</span><span class="bk-chip" style="background:#eef2ff;color:#3730a3">${esc(BK_EST[c.estado] || c.estado || '')}</span>${c.observacion ? '<span class="bk-chip" style="background:#fffbeb;color:#92400e">👁️ observación</span>' : ''}${c.manual ? '<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">✋ manual</span>' : ''}</div>
+      ${c.ult ? `<div style="font-size:12.5px;margin-top:4px">«${esc(c.ult)}»</div>` : ''}
+      <div class="bk-why"><b>${esc(BK_ACC[c.accion] || c.accion || '')}</b> · ${esc(c.motivo || '')} · ${bkHace_(c.at)} · Responsable: ${esc(c.asignado || 'bot')}</div>
+      ${sen ? `<div class="bk-why">Por qué: ${sen}</div>` : ''}</div>
+      <div class="bk-row" style="justify-content:flex-end">${bkAbrirChatBtn_(c.conv)}<button class="bk-btn sm" onclick="bkPrioridad_('${esc(c.conv)}','${c.prioridad || 'P4'}')">Prioridad</button></div></div>`; }).join('')
+    : '<div class="bk-mut" style="font-size:12.5px;padding:8px 0">Aún no hay conversaciones evaluadas por el gate en las últimas 72 h.</div>';
+  return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><h3>🔔 Alertas y escalamientos</h3><button class="bk-btn sm" onclick="bkCargar_()">↻ Actualizar</button></div><div style="margin-top:8px">${alH}</div></div>
+    <div class="bk-card"><div class="bk-row" style="justify-content:space-between;margin-bottom:6px"><h3>📥 Conversaciones por urgencia (IPO)</h3>
+      <div class="bk-row">${pill('', 'Todas')}${pill('P1', '🔴 P1')}${pill('P2', '🟠 P2')}${pill('P3', '🟡 P3')}${pill('P4', '⚪ P4')}${bkCk_(BK.fMios, 'Míos', 'BK.fMios=!BK.fMios;bkRender_()')}</div></div>
+      <div class="bk-sub" style="margin-bottom:6px">Ordenadas por puntaje, no por hora. La cola de aprobación (respuestas en Supervisado) se atiende en Chats bot: «Esperando autorización».</div>${cv}</div>`;
+}
+function bkAbrirChatBtn_(conv) { return `<button class="bk-btn sm" onclick="bkAbrirChat_('${esc(conv)}')">💬 Abrir</button>`; }
+function bkAbrirChat_(conv) { try { switchModule('bot-chats'); setTimeout(() => { try { if (String(conv).startsWith('abn')) { if (typeof botcOpenChat === 'function') botcOpenChat(conv); } else if (typeof botcOpenChat === 'function') botcOpenChat(conv); } catch (_) {} }, 700); } catch (_) {} }
+async function bkAlerta_(id, accion) {
+  try { const r = await fetch(`${BACKEND}/bot/control/alerta`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, accion, usuario: bkUsr_() }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error); bkToast_(accion === 'aceptar' ? '✓ Tomaste la alerta' : '✓ Resuelta'); bkCargar_(); } catch (e) { alert('No se pudo: ' + (e.message || e)); }
+}
+async function bkPrioridad_(conv, actual) {
+  const p = prompt(`Nueva prioridad para esta conversación (actual ${actual}).\nEscribe P1, P2, P3 o P4:`, actual); if (!p) return;
+  const np = p.trim().toUpperCase(); if (!/^P[1-4]$/.test(np)) return alert('Escribe P1, P2, P3 o P4');
+  const motivo = prompt('Motivo del cambio (obligatorio; sirve para calibrar las reglas):'); if (!motivo || !motivo.trim()) return alert('El motivo es obligatorio.');
+  try { const r = await fetch(`${BACKEND}/bot/control/prioridad`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conv, prioridad: np, motivo, usuario: bkUsr_() }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error); bkToast_('✓ Prioridad actualizada'); bkCargar_(); } catch (e) { alert('No se pudo: ' + (e.message || e)); }
+}
+
+// ── ⚙️ Procesos ──
+function bkProcesos_() {
+  const { cfg, catalogo, grupos, metricas } = BK.d;
+  const byG = {}; catalogo.forEach(c => (byG[c.grupo] = byG[c.grupo] || []).push(c));
+  const html = Object.keys(grupos).concat(Object.keys(byG).filter(g => !grupos[g])).filter(g => byG[g]).map(g => {
+    const L = byG[g], cnt = { off: 0, der: 0, sup: 0, auto: 0 }; L.forEach(c => cnt[(cfg.procesos[c.clave] || {}).modo || c.modoIni]++);
+    const rows = L.map(c => { const pc = cfg.procesos[c.clave] || {}, modo = pc.modo || c.modoIni, m = metricas[c.clave] || {}, ov = (pc.overrides || []).length, dy = pc.disyuntor && pc.disyuntor.at;
+      const seg = `<div class="bk-seg">${['off', 'der', 'sup', 'auto'].map(k => `<button type="button" class="${modo === k ? 'on' : ''}" style="--c:${BK_MODO[k][1]};--b:${BK_MODO[k][2]}" ${c.forzado ? 'disabled title="Modo forzado por seguridad"' : ''} onclick="bkModo_('${c.clave}','${k}')">${BK_MODO[k][0]}</button>`).join('')}</div>`;
+      return `<div class="bk-pr"><div><div class="nm">${esc(c.nombre)} ${c.origen === 'Original' ? '<span class="bk-chip" style="background:#ede9fe;color:#6d28d9">Original</span>' : c.extra ? '<span class="bk-chip" style="background:#e0f2fe;color:#0369a1">Agregado</span>' : ''}
+        ${c.forzado ? '<span class="bk-chip" style="background:#fee2e2;color:#b91c1c">🔒 forzado</span>' : ''}${c.solo_directo ? '<span class="bk-chip" style="background:#fff7ed;color:#c2410c">Solo directas</span>' : ''}${c.verif ? '<span class="bk-chip" style="background:#ecfeff;color:#0e7490">Requiere verificación</span>' : ''}
+        ${bkPrioChipMini_(pc.prioridad || c.pbIni)}${ov ? `<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">↳ ${ov} regla${ov > 1 ? 's' : ''} específica${ov > 1 ? 's' : ''}</span>` : ''}${dy ? `<span class="bk-chip" style="background:#fee2e2;color:#b91c1c" title="${esc(pc.disyuntor.motivo || '')}">⚡ disyuntor</span>` : ''}</div>
+        <div class="ds">${esc(c.desc)}</div><div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
+        ${seg}<button class="bk-btn sm" onclick="bkConfigurar_('${c.clave}')">Configurar</button></div>`; }).join('');
+    const ab = BK.abiertos[g] !== false;
+    return `<details class="bk-grp" ${ab ? 'open' : ''} ontoggle="BK.abiertos['${g}']=this.open"><summary>${esc(grupos[g] || g)} <span class="bk-sub">${L.length} procesos</span><span style="flex:1"></span>
+      ${['auto', 'sup', 'der', 'off'].filter(k => cnt[k]).map(k => `<span class="bk-chip" style="color:${BK_MODO[k][1]};background:${BK_MODO[k][2]}">${cnt[k]} ${BK_MODO[k][0]}</span>`).join(' ')}</summary>${rows}</details>`;
+  }).join('');
+  return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><div><h3>Catálogo de procesos</h3><div class="bk-sub">${catalogo.length} procesos. Colores: gris Apagado · ámbar Derivar · azul Supervisado · verde Automático. Pasar a Automático pide confirmación.</div></div>
+    <div class="bk-row"><button class="bk-btn sm" onclick="bkLote_('sup')">Todo a Supervisado</button><button class="bk-btn sm" onclick="bkNuevoProceso_()">＋ Agregar proceso</button></div></div>
+    <div class="bk-grid2" style="margin-top:10px"><div><label class="bk-lb">Mensaje de respaldo general (proceso Apagado sin mensaje propio)</label><textarea class="bk-ta" id="bk-rg">${esc(BK.d.cfg.respaldoGeneral)}</textarea></div>
+    <div><label class="bk-lb">Mensaje cuando el canal lo bloquea (Airbnb / Booking)</label><textarea class="bk-ta" id="bk-rc">${esc(BK.d.cfg.respaldoCanal)}</textarea></div></div>
+    <div class="bk-row" style="justify-content:flex-end;margin-top:8px"><button class="bk-btn sm pri" onclick="bkGuardarRespaldos_()">Guardar mensajes</button></div></div>${html}`;
+}
+const bkPrioChipMini_ = p => { const x = BK_PRIO[p] || BK_PRIO.P4; return `<span class="bk-chip" style="color:${x[2]};background:${x[3]}">${p || 'P4'} base</span>`; };
+async function bkGuardarRespaldos_() { const a = document.getElementById('bk-rg').value, b = document.getElementById('bk-rc').value; if (await bkGuardar_('respaldoGeneral', a, false) && await bkGuardar_('respaldoCanal', b)) bkRender_(); }
+async function bkModo_(clave, modo) {
+  const c = BK.d.catalogo.find(x => x.clave === clave); if (!c || c.forzado) return;
+  if (modo === 'auto' && !confirm(`¿Pasar «${c.nombre}» a Automático?\nEl bot lo ejecutará y responderá solo, dentro de los límites configurados.`)) return;
+  if (await bkGuardar_('proceso', { clave, valores: { modo } }, `✓ ${c.nombre}: ${BK_MODO[modo][0]}`)) bkRender_();
+}
+async function bkLote_(modo) {
+  if (!confirm(`¿Pasar TODOS los procesos que hoy están en Automático a ${BK_MODO[modo][0]}? (Etapa 2 del lanzamiento: todo supervisado salvo información estática.)`)) return;
+  const est = new Set(['informacion']), L = {}; BK.d.catalogo.forEach(c => { const m = (BK.d.cfg.procesos[c.clave] || {}).modo || c.modoIni; if (m === 'auto' && !est.has(c.grupo)) L[c.clave] = modo; });
+  if (await bkGuardar_('procesos_lote', L)) bkRender_();
+}
+async function bkNuevoProceso_() {
+  const nombre = prompt('Nombre del proceso nuevo (por ejemplo, «Renta de bicicletas»):'); if (!nombre) return;
+  const grupos = BK.d.grupos, g = prompt(`Grupo (${Object.keys(grupos).join(', ')}):`, 'transversales'); if (!g) return;
+  const clave = 'x_' + nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30);
+  const extras = (BK.d.cfg.extras || []).concat([{ clave, grupo: grupos[g] ? g : 'transversales', nombre, desc: '' }]);
+  if (await bkGuardar_('extras', extras, false) && await bkGuardar_('proceso', { clave, valores: { modo: 'sup', prioridad: 'P4', kw: '', respaldo: '', overrides: [] } })) { await bkCargar_(); bkConfigurar_(clave); }
+}
+// Panel lateral «Configurar»: alcance, horario, límites, respaldo, escalamiento y umbral.
+function bkConfigurar_(clave) { const pc = JSON.parse(JSON.stringify(BK.d.cfg.procesos[clave] || {})); pc.overrides = pc.overrides || []; BK.drawer = { clave, pc }; bkRender_(); }
+function bkDrawerHtml_() {
+  const { clave, pc } = BK.drawer, c = BK.d.catalogo.find(x => x.clave === clave) || { nombre: clave, desc: '' }, A = BK.d.alojamientos || [];
+  const ov = pc.overrides.map((o, i) => `<div class="bk-card" style="padding:10px 12px;margin-bottom:8px"><div class="bk-grid2">
+      <div><label class="bk-lb" style="margin-top:0">Propiedad</label><select class="bk-sel" onchange="BK.drawer.pc.overrides[${i}].prop=this.value"><option value="">Todas</option>${A.map(a => `<option value="${esc(a.hid)}" ${String(o.prop) === a.hid ? 'selected' : ''}>${esc(a.code || a.nombre)}</option>`).join('')}</select></div>
+      <div><label class="bk-lb" style="margin-top:0">Canal</label><select class="bk-sel" onchange="BK.drawer.pc.overrides[${i}].canal=this.value">${[['', 'Todos'], ['whatsapp', 'WhatsApp directo'], ['airbnb', 'Airbnb'], ['booking', 'Booking'], ['directo', 'Directo (Lodgify)']].map(([v, t]) => `<option value="${v}" ${o.canal === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div><label class="bk-lb">Desde</label><input class="bk-in" type="time" value="${esc(o.ini || '')}" onchange="BK.drawer.pc.overrides[${i}].ini=this.value"></div>
+      <div><label class="bk-lb">Hasta</label><input class="bk-in" type="time" value="${esc(o.fin || '')}" onchange="BK.drawer.pc.overrides[${i}].fin=this.value"></div></div>
+      <label class="bk-lb">Días</label><div class="bk-row">${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((d, k) => bkCk_((o.dias || []).includes(k), d, `bkOvDia_(${i},${k})`)).join('')}</div>
+      <label class="bk-lb">Modo en ese caso</label><div class="bk-row" style="justify-content:space-between"><div class="bk-seg">${['off', 'der', 'sup', 'auto'].map(k => `<button type="button" class="${o.modo === k ? 'on' : ''}" style="--c:${BK_MODO[k][1]};--b:${BK_MODO[k][2]}" onclick="BK.drawer.pc.overrides[${i}].modo='${k}';bkRender_()">${BK_MODO[k][0]}</button>`).join('')}</div>
+      <button class="bk-btn sm red" onclick="BK.drawer.pc.overrides.splice(${i},1);bkRender_()">Quitar</button></div></div>`).join('');
+  const roles = [['', 'El rol por defecto'], ['vendedor', 'Vendedor'], ['soporte', 'Soporte técnico'], ['tecnico', 'Técnico']];
+  return `<div class="bk-drw-bg" onclick="bkDrawerCerrar_()"></div><div class="bk-drw"><div class="bk-drw-h"><div style="flex:1"><b style="font-size:15px">${esc(c.nombre)}</b><div class="bk-sub">${esc(c.desc || '')}</div></div><button class="bk-btn sm" onclick="bkDrawerCerrar_()">✕</button></div>
+    <div class="bk-drw-b">
+      ${pc.disyuntor && pc.disyuntor.at ? `<div class="bk-obs err" style="margin-top:12px">⚡ Disyuntor activo desde ${new Date(pc.disyuntor.at).toLocaleString('es-MX')}: ${esc(pc.disyuntor.motivo || '')}. <button class="bk-btn sm" onclick="bkResetDy_('${clave}')">Restablecer</button></div>` : ''}
+      <label class="bk-lb">Palabras clave que activan el proceso <span class="bk-mut">(separa con |)</span></label><textarea class="bk-ta" style="min-height:52px" onchange="BK.drawer.pc.kw=this.value">${esc(pc.kw || '')}</textarea>
+      <div class="bk-grid2"><div><label class="bk-lb">Prioridad base</label><select class="bk-sel" onchange="BK.drawer.pc.prioridad=this.value">${['P1', 'P2', 'P3', 'P4'].map(p => `<option ${(pc.prioridad || 'P4') === p ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
+      <div><label class="bk-lb">Rol del bot en este proceso</label><select class="bk-sel" onchange="BK.drawer.pc.rol=this.value">${roles.map(([v, t]) => `<option value="${v}" ${(pc.rol || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>
+      <label class="bk-lb">Mensaje de respaldo (cuando está Apagado o en Derivar)</label><textarea class="bk-ta" onchange="BK.drawer.pc.respaldo=this.value" placeholder="${esc(BK.d.cfg.respaldoGeneral)}">${esc(pc.respaldo || '')}</textarea>
+      <div class="bk-grid2"><div><label class="bk-lb">Umbral mínimo de confianza</label><input class="bk-in" type="number" min="0" max="1" step="0.05" value="${pc.umbral != null ? pc.umbral : 0.6}" onchange="BK.drawer.pc.umbral=Number(this.value)"></div>
+      <div><label class="bk-lb">Límites duros</label><input class="bk-in" value="${esc(pc.limites || '')}" placeholder="Ej. monto máximo $5,000; sin descuentos" onchange="BK.drawer.pc.limites=this.value"></div></div>
+      <label class="bk-lb" style="margin-top:16px">Reglas específicas (propiedad, canal u horario) <span class="bk-mut">— la más específica manda</span></label>${ov || '<div class="bk-mut" style="font-size:12px">Sin reglas específicas.</div>'}
+      <button class="bk-btn sm" onclick="BK.drawer.pc.overrides.push({prop:'',canal:'',dias:[],ini:'',fin:'',modo:'sup'});bkRender_()">＋ Agregar regla</button>
+    </div><div class="bk-drw-f"><button class="bk-btn" onclick="bkDrawerCerrar_()">Cancelar</button><button class="bk-btn pri" onclick="bkDrawerGuardar_()">Guardar</button></div></div>`;
+}
+function bkOvDia_(i, k) { const o = BK.drawer.pc.overrides[i]; o.dias = o.dias || []; const j = o.dias.indexOf(k); if (j >= 0) o.dias.splice(j, 1); else o.dias.push(k); bkRender_(); }
+function bkDrawerCerrar_() { BK.drawer = null; bkRender_(); }
+async function bkDrawerGuardar_() { const { clave, pc } = BK.drawer; const v = { kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
+  if (await bkGuardar_('proceso', { clave, valores: v })) { BK.drawer = null; bkRender_(); } }
+async function bkResetDy_(k) { if (await bkGuardar_('reset_disyuntor', k, '✓ Disyuntor restablecido')) { BK.drawer.pc.disyuntor = null; bkRender_(); } }
+
+// ── 🕐 Horarios ──
+function bkHorarios_() {
+  const H = BK.d.cfg.horario, P = BK.d.personas || [];
+  const cell = (d, i) => { const v = ((H.grid || [])[d] || [])[i] || 'AUT', x = BK_NIV[v]; return `<button type="button" class="bk-cell" style="color:${x[1]};background:${x[2]}" onclick="bkCelda_(${d},${i})">${v === 'AUT' ? 'AUT' : v === 'SUP' ? 'SUP' : 'PER'}</button>`; };
+  const orden = [1, 2, 3, 4, 5, 6, 0], dn = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const grid = `<table class="bk-tbl"><thead><tr><th>Franja</th>${orden.map(d => `<th style="text-align:center">${dn[d]}</th>`).join('')}<th></th></tr></thead><tbody>${(H.franjas || []).map((f, i) => `<tr><td style="white-space:nowrap"><input class="bk-in" type="time" style="width:96px;display:inline-block;padding:5px 6px" value="${esc(f.ini)}" onchange="BK.d.cfg.horario.franjas[${i}].ini=this.value"> – <input class="bk-in" type="time" style="width:96px;display:inline-block;padding:5px 6px" value="${esc(f.fin)}" onchange="BK.d.cfg.horario.franjas[${i}].fin=this.value"></td>${orden.map(d => `<td>${cell(d, i)}</td>`).join('')}<td><button class="bk-btn sm red" onclick="bkFranjaQuitar_(${i})">✕</button></td></tr>`).join('')}</tbody></table>`;
+  const ex = (H.excepciones || []).map((e, i) => `<div class="bk-row" style="margin-bottom:6px"><input class="bk-in" type="date" style="width:150px" value="${esc(e.desde || '')}" onchange="BK.d.cfg.horario.excepciones[${i}].desde=this.value"><span>a</span><input class="bk-in" type="date" style="width:150px" value="${esc(e.hasta || '')}" onchange="BK.d.cfg.horario.excepciones[${i}].hasta=this.value">
+    <select class="bk-sel" style="width:140px" onchange="BK.d.cfg.horario.excepciones[${i}].nivel=this.value">${Object.keys(BK_NIV).map(k => `<option value="${k}" ${e.nivel === k ? 'selected' : ''}>${BK_NIV[k][0]}</option>`).join('')}</select>
+    <input class="bk-in" style="flex:1;min-width:140px" placeholder="Motivo (festivo, viaje, temporada alta)" value="${esc(e.motivo || '')}" onchange="BK.d.cfg.horario.excepciones[${i}].motivo=this.value"><button class="bk-btn sm red" onclick="BK.d.cfg.horario.excepciones.splice(${i},1);bkRender_()">✕</button></div>`).join('');
+  const sel = (k) => `<select class="bk-sel" onchange="BK.d.cfg.horario.${k}=this.value"><option value="">— Sin asignar —</option>${P.map(p => `<option ${H[k] === p.n ? 'selected' : ''}>${esc(p.n)}</option>`).join('')}${H[k] && !P.some(p => p.n === H[k]) ? `<option selected>${esc(H[k])}</option>` : ''}</select>`;
+  return `<div class="bk-card"><h3>Calendario semanal de atención</h3><div class="bk-sub">Nivel base en cada momento (zona horaria America/Monterrey). Toca una celda para cambiarla: <b style="color:#15803d">AUT</b> el bot resuelve · <b style="color:#1d4ed8">SUP</b> el bot redacta y una persona aprueba · <b style="color:#b45309">PER</b> una persona atiende. La urgencia puede subir el nivel, nunca bajarlo. Las franjas pueden cruzar medianoche.</div>
+    <div style="overflow-x:auto;margin-top:10px">${grid}</div><div class="bk-row" style="justify-content:space-between;margin-top:8px"><button class="bk-btn sm" onclick="BK.d.cfg.horario.franjas.push({ini:'08:00',fin:'12:00'});BK.d.cfg.horario.grid.forEach(r=>r.push('AUT'));bkRender_()">＋ Franja</button></div></div>
+    <div class="bk-card"><h3>Excepciones por fecha</h3><div class="bk-sub">Días festivos, viajes o temporada alta: sustituyen al calendario en esas fechas.</div><div style="margin-top:10px">${ex || '<div class="bk-mut" style="font-size:12px">Sin excepciones.</div>'}</div>
+    <button class="bk-btn sm" onclick="BK.d.cfg.horario.excepciones.push({desde:'',hasta:'',nivel:'SUP',motivo:''});bkRender_()">＋ Excepción</button></div>
+    <div class="bk-card"><h3>Responsables y guardia</h3><div class="bk-sub">Reciben por WhatsApp los escalamientos (P1 de inmediato, P2/P3 según la cadena de Urgencia).</div>
+    <div class="bk-grid2"><div><label class="bk-lb">Responsable de guardia (titular)</label>${sel('titular')}</div><div><label class="bk-lb">Contacto de respaldo</label>${sel('respaldo')}</div></div>
+    <label class="bk-lb">Política fuera de horario</label><div class="bk-seg">${[['guardia', 'Escalar al responsable de guardia'], ['equipo', 'Escalar al equipo (lista de emergencia)'], ['contingencia', 'Sin cobertura: protocolo de contingencia']].map(([v, t]) => `<button type="button" class="${H.politica === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.d.cfg.horario.politica='${v}';bkRender_()">${t}</button>`).join('')}</div>
+    <div class="bk-mut" style="font-size:12px;margin-top:8px">Estado actual: ${H.disponible !== false ? '🟢 Disponible' : '⛔ No disponible'}${H.dispAt ? ` · cambiado ${bkHace_(H.dispAt)}${H.dispPor ? ` por ${esc(H.dispPor)}` : ''}` : ''}. Con «No disponible» los bloques Personales bajan a Supervisado y las alertas van a la guardia.</div></div>
+    <div class="bk-row" style="justify-content:flex-end"><button class="bk-btn pri" onclick="bkGuardarHorario_()">Guardar horarios</button></div>`;
+}
+function bkCelda_(d, i) { const G = BK.d.cfg.horario.grid; G[d] = G[d] || []; const v = G[d][i] || 'AUT'; G[d][i] = v === 'AUT' ? 'SUP' : v === 'SUP' ? 'PER' : 'AUT'; bkRender_(); }
+function bkFranjaQuitar_(i) { if (!confirm('¿Quitar esta franja?')) return; BK.d.cfg.horario.franjas.splice(i, 1); BK.d.cfg.horario.grid.forEach(r => r.splice(i, 1)); bkRender_(); }
+async function bkGuardarHorario_() { const H = Object.assign({}, BK.d.cfg.horario); delete H.disponible; delete H.dispAt; delete H.dispPor;
+  const cur = BK.d.cfg.horario; if (await bkGuardar_('horario', Object.assign(H, { disponible: cur.disponible, dispAt: cur.dispAt, dispPor: cur.dispPor }))) bkCargar_(); }
+
+// ── 🚨 Urgencia (IPO) ──
+function bkUrgencia_() {
+  const U = BK.d.cfg.urgencia, R = U.reglas || [];
+  const reglas = R.map((r, i) => `<tr><td>${bkCk_(r.activo, '', `BK.d.cfg.urgencia.reglas[${i}].activo=!BK.d.cfg.urgencia.reglas[${i}].activo;bkRender_()`)}</td>
+    <td><input class="bk-in" value="${esc(r.patron)}" onchange="BK.d.cfg.urgencia.reglas[${i}].patron=this.value"></td>
+    <td><select class="bk-sel" onchange="BK.d.cfg.urgencia.reglas[${i}].factor=this.value">${['gravedad', 'urgencia', 'impacto', 'incertidumbre'].map(f => `<option value="${f}" ${r.factor === f ? 'selected' : ''}>${BK_FACT[f]}</option>`).join('')}</select></td>
+    <td style="width:70px"><input class="bk-in" type="number" value="${r.puntos}" onchange="BK.d.cfg.urgencia.reglas[${i}].puntos=Number(this.value)"></td>
+    <td>${bkCk_(r.emergencia, '🚨', `BK.d.cfg.urgencia.reglas[${i}].emergencia=!BK.d.cfg.urgencia.reglas[${i}].emergencia;bkRender_()`)}</td>
+    <td><button class="bk-btn sm red" onclick="BK.d.cfg.urgencia.reglas.splice(${i},1);bkRender_()">✕</button></td></tr>`).join('');
+  const num = (path, v, w) => `<input class="bk-in" type="number" style="width:${w || 80}px" value="${v}" onchange="bkSetPath_('${path}',Number(this.value))">`;
+  const C = U.ctx || {}, cad = U.cadenas || {};
+  const destTxt = { panel: 'Panel', titular: 'WhatsApp al titular', respaldo: 'WhatsApp al respaldo', admins: 'Lista de emergencia' };
+  const cadH = ['P1', 'P2', 'P3'].map(p => `<div style="margin-bottom:10px"><div class="bk-row">${bkPrioChip_(p)}<span class="bk-mut" style="font-size:12px">Tiempo objetivo ${num(`urgencia.objetivo.${p}`, U.objetivo[p], 70)} min</span></div>
+    <div class="bk-row" style="margin-top:6px">${(cad[p] || []).map((s, i) => `<div class="bk-row" style="background:#f8fafc;border:1px solid var(--bk-line);border-radius:10px;padding:6px 8px">Paso ${i + 1}: a los ${num(`urgencia.cadenas.${p}.${i}.min`, s.min, 64)} min →
+      <select class="bk-sel" style="width:170px" onchange="BK.d.cfg.urgencia.cadenas.${p}[${i}].a=this.value">${Object.keys(destTxt).map(k => `<option value="${k}" ${s.a === k ? 'selected' : ''}>${destTxt[k]}</option>`).join('')}</select>
+      <button class="bk-btn sm red" onclick="BK.d.cfg.urgencia.cadenas.${p}.splice(${i},1);bkRender_()">✕</button></div>`).join('')}
+      <button class="bk-btn sm" onclick="(BK.d.cfg.urgencia.cadenas.${p}=BK.d.cfg.urgencia.cadenas.${p}||[]).push({min:30,a:'titular'});bkRender_()">＋ Paso</button></div></div>`).join('');
+  return `<div class="bk-card"><h3>Índice de Prioridad Operativa (IPO 0–100)</h3><div class="bk-sub">Cuatro factores: Gravedad (máx ${U.maximos.gravedad}) · Urgencia temporal (máx ${U.maximos.urgencia}) · Impacto (máx ${U.maximos.impacto}) · Incertidumbre (máx ${U.maximos.incertidumbre}). Las reglas solo suman. Una regla 🚨 de emergencia asigna IPO 100 y P1 sin esperar al clasificador.</div>
+    <div style="overflow-x:auto;margin-top:10px"><table class="bk-tbl"><thead><tr><th></th><th>Palabras o frases (separa con |)</th><th>Factor</th><th>Puntos</th><th>Emergencia</th><th></th></tr></thead><tbody>${reglas}</tbody></table></div>
+    <button class="bk-btn sm" style="margin-top:8px" onclick="BK.d.cfg.urgencia.reglas.push({id:'r'+Date.now().toString(36),patron:'',factor:'impacto',puntos:10,emergencia:false,activo:true});bkRender_()">＋ Regla</button></div>
+    <div class="bk-card"><h3>Señales de contexto</h3><div class="bk-row" style="gap:16px;margin-top:6px;font-size:12.5px">
+      <span>Huésped hospedado hoy ${num('urgencia.ctx.en_inmueble', C.en_inmueble, 64)}</span><span>Llega hoy ${num('urgencia.ctx.llega_hoy', C.llega_hoy, 64)}</span><span>Hora nocturna (22–07) ${num('urgencia.ctx.nocturno', C.nocturno, 64)}</span><span>3+ mensajes sin respuesta ${num('urgencia.ctx.sin_respuesta', C.sin_respuesta, 64)}</span><span>Huésped de plataforma ${num('urgencia.ctx.plataforma', C.plataforma, 64)}</span></div>
+      <div class="bk-row" style="gap:16px;margin-top:10px;font-size:12.5px"><span>Sin atender: +${num('urgencia.subePorEspera.puntos', U.subePorEspera.puntos, 60)} puntos cada ${num('urgencia.subePorEspera.cadaMin', U.subePorEspera.cadaMin, 60)} min (P3 o superior)</span></div></div>
+    <div class="bk-card"><h3>Umbrales y nivel mínimo</h3><table class="bk-tbl" style="margin-top:6px"><thead><tr><th>Prioridad</th><th>IPO desde</th><th>Nivel mínimo forzado</th></tr></thead><tbody>
+      ${['P1', 'P2', 'P3'].map(p => `<tr><td>${bkPrioChip_(p)}</td><td>${num(`urgencia.umbrales.${p}`, U.umbrales[p], 70)}</td><td><select class="bk-sel" style="width:170px" onchange="BK.d.cfg.urgencia.minimo.${p}=this.value">${[['', 'Según horario y proceso'], ['SUP', 'Supervisado'], ['PER', 'Personal']].map(([v, t]) => `<option value="${v}" ${(U.minimo[p] || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></td></tr>`).join('')}
+      <tr><td>${bkPrioChip_('P4')}</td><td class="bk-mut">0 – ${U.umbrales.P3 - 1}</td><td class="bk-mut">Según horario y proceso</td></tr></tbody></table></div>
+    <div class="bk-card"><h3>Cadenas de escalamiento</h3><div class="bk-sub">Notificar no es atender: la alerta sigue escalando hasta que alguien la toma en la Bandeja. Corre cada minuto aunque el huésped no vuelva a escribir.</div><div style="margin-top:10px">${cadH}</div></div>
+    <div class="bk-card"><h3>Mensajes fijos (el modelo no los redacta)</h3>
+      <label class="bk-lb">Instrucciones de seguridad (P1 / emergencia)</label><textarea class="bk-ta" onchange="BK.d.cfg.urgencia.seguridad=this.value">${esc(U.seguridad)}</textarea>
+      <label class="bk-lb">Acuse con tiempo estimado (Supervisado / Personal) — usa {tiempo}</label><textarea class="bk-ta" onchange="BK.d.cfg.urgencia.acuse=this.value">${esc(U.acuse)}</textarea>
+      <label class="bk-lb">Sin cobertura personal</label><textarea class="bk-ta" onchange="BK.d.cfg.urgencia.sinCobertura=this.value">${esc(U.sinCobertura)}</textarea>
+      <label class="bk-lb">Bot apagado (interruptor maestro)</label><textarea class="bk-ta" onchange="BK.d.cfg.master.msg=this.value">${esc(BK.d.cfg.master.msg)}</textarea></div>
+    <div class="bk-card"><h3>⚡ Disyuntor</h3><div class="bk-row" style="font-size:12.5px;margin-top:6px">${bkCk_(BK.d.cfg.disyuntor.on, 'Activo', 'BK.d.cfg.disyuntor.on=!BK.d.cfg.disyuntor.on;bkRender_()')}
+      <span>Con ${num('disyuntor.n', BK.d.cfg.disyuntor.n, 60)} errores o rechazos en ${num('disyuntor.ventanaMin', BK.d.cfg.disyuntor.ventanaMin, 70)} min, un proceso Automático baja a</span>
+      <select class="bk-sel" style="width:140px" onchange="BK.d.cfg.disyuntor.bajaA=this.value"><option value="sup" ${BK.d.cfg.disyuntor.bajaA === 'sup' ? 'selected' : ''}>Supervisado</option><option value="der" ${BK.d.cfg.disyuntor.bajaA === 'der' ? 'selected' : ''}>Derivar</option></select><span>y se avisa al administrador.</span></div></div>
+    <div class="bk-row" style="justify-content:flex-end"><button class="bk-btn pri" onclick="bkGuardarUrgencia_()">Guardar urgencia y escalamiento</button></div>`;
+}
+function bkSetPath_(path, v) { const ks = path.split('.'); let o = BK.d.cfg; for (let i = 0; i < ks.length - 1; i++) o = o[ks[i]]; o[ks[ks.length - 1]] = v; }
+async function bkGuardarUrgencia_() { const c = BK.d.cfg; if (await bkGuardar_('urgencia', c.urgencia, false) && await bkGuardar_('master', c.master, false) && await bkGuardar_('disyuntor', c.disyuntor)) bkRender_(); }
+
+// ── 🎭 Personalidad, rol, empatía y derivación (Configuración admin del bot) ──
+function bkPerfil_() {
+  const P = BK.d.cfg.perfil, D = BK.d.cfg.derivacion || [], V = (BK.d.cfg.versiones || []).slice().reverse();
+  const opt = (k, v, t, d) => `<button type="button" class="bk-card" style="all:unset;cursor:pointer;flex:1;min-width:150px;border:1.5px solid ${P[k] === v ? '#111827' : 'var(--bk-line)'};border-radius:14px;padding:10px 12px;background:${P[k] === v ? '#f8fafc' : '#fff'}" onclick="BK.d.cfg.perfil.${k}='${v}';bkRender_()"><b style="font-size:13px">${t}</b><div class="bk-sub" style="margin-top:3px">${d}</div></button>`;
+  const lista = (k, ph) => `<textarea class="bk-ta" placeholder="${ph}" onchange="BK.d.cfg.perfil.${k}=this.value.split('\\n').map(x=>x.trim()).filter(Boolean)">${esc((P[k] || []).join('\n'))}</textarea>`;
+  const der = D.map((r, i) => `<div class="bk-card" style="padding:10px 12px"><div class="bk-row" style="justify-content:space-between">${bkCk_(r.activo, `<b>${esc(BK_DISP[r.disparador] || r.disparador)}</b>`, `BK.d.cfg.derivacion[${i}].activo=!BK.d.cfg.derivacion[${i}].activo;bkRender_()`)}
+      <div class="bk-row"><span class="bk-mut" style="font-size:12px">Acción</span><select class="bk-sel" style="width:150px" onchange="BK.d.cfg.derivacion[${i}].accion=this.value"><option value="derivar" ${r.accion === 'derivar' ? 'selected' : ''}>Derivar</option><option value="subir" ${r.accion === 'subir' ? 'selected' : ''}>Subir prioridad</option></select></div></div>
+    ${['emocion', 'intentos'].includes(r.disparador) ? `<label class="bk-lb">${r.disparador === 'emocion' ? 'Intensidad mínima (señales de frustración en el mensaje)' : 'Respuestas sin resolver'}</label><input class="bk-in" type="number" style="width:90px" value="${r.umbral}" onchange="BK.d.cfg.derivacion[${i}].umbral=Number(this.value)">` : ''}
+    ${['tema', 'palabra'].includes(r.disparador) ? `<label class="bk-lb">Lista (separa con comas)</label><input class="bk-in" value="${esc(r.lista || '')}" onchange="BK.d.cfg.derivacion[${i}].lista=this.value">` : ''}
+    ${r.accion === 'derivar' ? `<label class="bk-lb">Mensaje de transición</label><input class="bk-in" value="${esc(r.mensaje || '')}" placeholder="Si lo dejas vacío se usa el acuse con tiempo estimado" onchange="BK.d.cfg.derivacion[${i}].mensaje=this.value">` : ''}</div>`).join('');
+  const prev = BK.prev ? `<div class="bk-grid2" style="margin-top:10px">${[['a', '«¿Tienen disponible este fin?»'], ['b', '«El código no abre la puerta»'], ['c', '«¿Contraseña del wifi?»']].map(([k, t]) => `<div><div class="bk-sub" style="margin-bottom:4px">${t}</div><div class="bk-ex">${esc(BK.prev[k] || '')}</div></div>`).join('')}</div>` : '';
+  return `<div class="bk-card"><h3>Personalidad</h3><div class="bk-sub">Cambia el tono y la forma de responder; nunca los permisos, los límites ni el escalamiento.</div>
+    <div class="bk-row" style="margin-top:10px;align-items:stretch">${opt('personalidad', 'formal', 'Formal', 'De usted, frases completas, sin emojis. «Buenas tardes, con gusto le ayudo con su reservación.»')}${opt('personalidad', 'casual', 'Casual', 'De tú, frases cortas, emojis moderados. «¡Hola! Claro, te paso la info.»')}${opt('personalidad', 'amigable', 'Amigable', 'De tú, cálido y cercano. «¡Hola, qué gusto saludarte! Cuéntame en qué te ayudo.»')}</div>
+    <div class="bk-row" style="margin-top:10px"><button class="bk-btn sm" id="bk-prev-btn" onclick="bkPreview_()">👁️ Vista previa de respuestas</button><span class="bk-mut" style="font-size:12px">Genera tres respuestas de ejemplo con la configuración en pantalla (sin guardar).</span></div>${prev}</div>
+    <div class="bk-card"><h3>Rol por defecto</h3><div class="bk-sub">Cada proceso puede tener su propio rol (Procesos › Configurar).</div><div class="bk-row" style="margin-top:10px;align-items:stretch">${opt('rol', 'vendedor', 'Vendedor', 'Resalta beneficios y conduce a la reserva directa.')}${opt('rol', 'soporte', 'Soporte técnico', 'Guía paso a paso para resolver por su cuenta.')}${opt('rol', 'tecnico', 'Técnico', 'Diagnostica, pide evidencia y levanta el reporte.')}</div></div>
+    <div class="bk-card"><h3>Empatía</h3><div class="bk-row" style="margin-top:10px;align-items:stretch">${opt('empatia', 'bajo', 'Baja', 'Solo resuelve.')}${opt('empatia', 'medio', 'Media', 'Reconoce el problema en una frase.')}${opt('empatia', 'alto', 'Alta', 'Reconoce, valida y da seguimiento.')}</div>
+      <div class="bk-grid2"><div><label class="bk-lb">Frases de reconocimiento (una por línea)</label>${lista('reconocimiento', 'Entiendo lo incómodo que es…')}</div><div><label class="bk-lb">Expresiones preferidas (una por línea)</label>${lista('preferidas', '¡Con gusto!')}</div></div>
+      <div class="bk-grid2"><div><label class="bk-lb">Palabras o frases prohibidas (una por línea)</label>${lista('prohibidas', 'Estimado cliente')}</div><div><label class="bk-lb">Firma</label><input class="bk-in" value="${esc(P.firma || '')}" placeholder="Ej. — Equipo Check-inn" onchange="BK.d.cfg.perfil.firma=this.value"></div></div>
+      <div class="bk-row" style="justify-content:flex-end;margin-top:10px"><button class="bk-btn pri" onclick="bkGuardarPerfil_()">Guardar como nueva versión</button></div></div>
+    <div class="bk-card"><h3>Reglas de derivación</h3><div class="bk-sub">Cuándo el bot pasa la conversación a una persona. El mensaje de transición no promete tiempos que no se puedan cumplir.</div><div style="margin-top:10px">${der}</div>
+      <div class="bk-row" style="justify-content:flex-end"><button class="bk-btn pri" onclick="bkGuardar_('derivacion',BK.d.cfg.derivacion).then(ok=>ok&&bkRender_())">Guardar reglas</button></div></div>
+    <div class="bk-card"><h3>Versiones</h3><div class="bk-sub">Cada guardado crea una versión; puedes compararla en Pruebas o volver a ella.</div>
+      ${V.length ? `<table class="bk-tbl" style="margin-top:8px"><thead><tr><th>Versión</th><th>Fecha</th><th>Por</th><th>Resumen</th><th></th></tr></thead><tbody>${V.map((v, i) => `<tr><td><b>v${v.v}</b>${i === 0 ? ' <span class="bk-chip" style="background:#dcfce7;color:#15803d">vigente</span>' : ''}${v.de ? ` <span class="bk-mut">(de v${v.de})</span>` : ''}</td><td>${new Date(v.at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(v.por || '')}</td><td class="bk-mut">${esc([v.data.personalidad, v.data.rol, 'empatía ' + v.data.empatia].join(' · '))}</td><td>${i ? `<button class="bk-btn sm" onclick="bkRevertir_(${v.v})">Volver a esta</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="bk-mut" style="font-size:12px;margin-top:6px">Aún no hay versiones guardadas.</div>'}</div>`;
+}
+async function bkPreview_() { const b = document.getElementById('bk-prev-btn'); if (b) b.textContent = '⏳ Generando…';
+  try { const r = await fetch(`${BACKEND}/bot/control/preview-perfil`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: BK.d.cfg.perfil }) }).then(r => r.json()); if (!r.ok) throw new Error(r.error); BK.prev = r.ejemplos; bkRender_(); }
+  catch (e) { alert('No se pudo generar: ' + (e.message || e)); if (b) b.textContent = '👁️ Vista previa de respuestas'; } }
+async function bkGuardarPerfil_() { if (await bkGuardar_('perfil', BK.d.cfg.perfil, '✓ Nueva versión guardada')) bkRender_(); }
+async function bkRevertir_(v) { if (!confirm(`¿Volver a la versión v${v}? Se guarda como una versión nueva.`)) return; if (await bkGuardar_('revertir', v, `✓ Restaurada v${v}`)) bkRender_(); }
+
+// ── 📜 Bitácora ──
+async function bkBitCargar_(dia) {
+  BK.bit.dia = dia || BK.bit.dia || new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Monterrey' }); BK.bit.cargando = true; if (BK.tab === 'bitacora') bkRender_();
+  try { const r = await fetch(`${BACKEND}/bot/control/bitacora?dia=${BK.bit.dia}`, { cache: 'no-store' }).then(r => r.json()); BK.bit.items = r.items || []; } catch (_) { BK.bit.items = []; }
+  BK.bit.cargando = false; if (BK.tab === 'bitacora') bkRender_();
+}
+function bkBitacora_() {
+  const T = { gate: ['🧭', 'Decisión'], config: ['⚙️', 'Configuración'], prioridad: ['🎚️', 'Prioridad'], alerta: ['🔔', 'Alerta'], escalamiento: ['📣', 'Escalamiento'], error: ['❗', 'Error'], disyuntor: ['⚡', 'Disyuntor'], rechazo: ['👎', 'Rechazo'], edicion: ['✏️', 'Edición'], aprobacion: ['👍', 'Aprobación'] };
+  const nm = k => (BK.d.catalogo.find(c => c.clave === k) || {}).nombre || k;
+  let L = BK.bit.items || []; if (BK.bit.f) L = L.filter(e => e.tipo === BK.bit.f || (e.procesos || []).includes(BK.bit.f) || e.proceso === BK.bit.f);
+  const fila = e => { const t = T[e.tipo] || ['•', e.tipo]; let d = '';
+    if (e.tipo === 'gate') d = `<b>${esc(e.nombre || e.conv)}</b> ${e.aloj ? `· ${esc(e.aloj)} ` : ''}· ${esc(e.canal)} → ${esc((e.procesos || []).map(nm).join(', '))} · IPO ${e.ipo} ${e.prioridad} · nivel ${esc(e.nivel)} → <b>${esc(BK_ACC[e.accion] || e.accion)}</b> <span class="bk-mut">(${esc(e.motivo || '')}${e.observacion ? ' · observación' : ''} · ${e.ms} ms)</span>`;
+    else if (e.tipo === 'config') d = `<b>${esc(e.seccion)}</b>${e.clave ? ` · ${esc(nm(e.clave))}` : ''} por ${esc(e.usuario || '?')} <details style="display:inline"><summary class="bk-mut" style="display:inline;cursor:pointer">ver cambio</summary><div class="bk-ex" style="margin-top:4px">Antes: ${esc(e.antes)}\nDespués: ${esc(e.despues)}</div></details>`;
+    else if (e.tipo === 'prioridad') d = `${esc(e.conv)}: ${esc(e.de || '—')} → <b>${esc(e.a)}</b> (${esc(e.origen)}${e.usuario ? ` · ${esc(e.usuario)}` : ''})${e.motivo ? ` · «${esc(e.motivo)}»` : ''}`;
+    else d = esc([e.conv, e.proceso && nm(e.proceso), e.prioridad, e.ev, e.paso, e.resultado, e.motivo, e.herramienta, e.error, e.usuario].filter(Boolean).join(' · '));
+    return `<div class="bk-ev"><span class="bk-mut">${new Date(e.at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span><span class="bk-chip" style="background:#f3f4f6">${t[0]} ${t[1]}</span><div>${d}</div></div>`; };
+  return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><h3>Bitácora</h3><div class="bk-row"><input type="date" class="bk-in" style="width:160px" value="${esc(BK.bit.dia)}" onchange="bkBitCargar_(this.value)">
+    <select class="bk-sel" style="width:220px" onchange="BK.bit.f=this.value;bkRender_()"><option value="">Todo</option>${Object.keys(T).map(k => `<option value="${k}" ${BK.bit.f === k ? 'selected' : ''}>${T[k][0]} ${T[k][1]}</option>`).join('')}<optgroup label="Proceso">${BK.d.catalogo.map(c => `<option value="${c.clave}" ${BK.bit.f === c.clave ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</optgroup></select>
+    <button class="bk-btn sm" onclick="bkBitCargar_()">↻</button></div></div>
+    <div class="bk-sub">Decisiones del gate, cambios de configuración, de prioridad y escalamientos. ${L.length} eventos.</div>
+    <div style="margin-top:8px">${BK.bit.cargando ? '<div class="bk-mut">⏳ Cargando…</div>' : L.length ? L.slice(0, 600).map(fila).join('') : '<div class="bk-mut" style="font-size:12.5px">Sin eventos ese día.</div>'}</div></div>`;
+}
+
+// ── 🧪 Pruebas: simulador del gate + comparación de versiones ──
+function bkPruebas_() {
+  const S = BK.sim, V = (BK.d.cfg.versiones || []).slice().reverse();
+  const res = S && S.decision ? (() => { const g = S.decision, p = BK_PRIO[g.prioridad] || BK_PRIO.P4, nm = k => (BK.d.catalogo.find(c => c.clave === k) || {}).nombre || k;
+    return `<div class="bk-card"><h3>Resultado</h3><div class="bk-row" style="margin-top:8px"><div class="bk-ipo" style="background:${p[3]};color:${p[2]}">${g.ipo}<small>${g.prioridad}</small></div>
+      <div><div style="font-size:15px;font-weight:800">${esc(BK_ACC[g.accion] || g.accion)}</div><div class="bk-why">${esc(g.motivo)} · nivel final <b>${esc((BK_NIV[g.nivel] || [g.nivel])[0])}</b> · horario ${esc(g.horario.franja)} (${esc((BK_NIV[g.horario.nivel] || [g.horario.nivel])[0])}) · ${g.ms} ms</div></div></div>
+      <table class="bk-tbl" style="margin-top:10px"><tbody>
+      <tr><td class="bk-mut" style="width:170px">Procesos detectados</td><td>${g.procesos.map(k => `${esc(nm(k))} ${bkModoChip_((g.modos[k] || {}).modo)} <span class="bk-mut">${esc((g.modos[k] || {}).porque || '')}</span>`).join('<br>')}</td></tr>
+      <tr><td class="bk-mut">Señales</td><td>${g.senales.length ? g.senales.map(s => `${esc(BK_FACT[s.factor] || s.factor)}: «${esc(s.texto)}» +${s.puntos}${s.emergencia ? ' 🚨' : ''}`).join('<br>') : '—'}</td></tr>
+      <tr><td class="bk-mut">Factores</td><td>${Object.entries(g.factores).map(([k, v]) => `${BK_FACT[k]} ${v}`).join(' · ')}</td></tr>
+      ${g.derivacion.length ? `<tr><td class="bk-mut">Derivación</td><td>${esc(g.derivacion.join(' · '))}</td></tr>` : ''}
+      <tr><td class="bk-mut">Herramientas ocultas</td><td>${g.bloqueadas.length ? esc(g.bloqueadas.join(', ')) : 'ninguna'}</td></tr>
+      ${g.msg ? `<tr><td class="bk-mut">Mensaje al huésped</td><td><div class="bk-ex">${esc(g.msg)}</div></td></tr>` : ''}</tbody></table></div>
+      ${S.respuesta ? `<div class="bk-grid2">${`<div class="bk-card"><h3>Respuesta con la configuración vigente</h3><div class="bk-ex" style="margin-top:6px">${esc(S.respuesta)}</div></div>`}${S.respuestaAlt ? `<div class="bk-card"><h3>Con la versión v${S.versionAlt}</h3><div class="bk-ex" style="margin-top:6px">${esc(S.respuestaAlt)}</div></div>` : ''}</div>` : ''}`; })() : '';
+  const f = BK.simF || (BK.simF = { texto: '', canal: 'whatsapp', estancia: true, hora: '', dia: '', respuesta: false, version: '' });
+  return `<div class="bk-card"><h3>Simulador</h3><div class="bk-sub">Escribe un mensaje como si viniera de un huésped y mira qué haría el gate: proceso, señales, IPO, nivel final y acción. No afecta a huéspedes reales.</div>
+    <label class="bk-lb">Mensaje del huésped</label><textarea class="bk-ta" id="bk-sim-t" placeholder="Ej. Ya llegué y el código no abre la puerta" oninput="BK.simF.texto=this.value">${esc(f.texto)}</textarea>
+    <div class="bk-row" style="margin-top:8px">
+      <select class="bk-sel" style="width:170px" onchange="BK.simF.canal=this.value">${[['whatsapp', 'WhatsApp directo'], ['airbnb', 'Airbnb'], ['booking', 'Booking'], ['directo', 'Directo (Lodgify)']].map(([v, t]) => `<option value="${v}" ${f.canal === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      ${bkCk_(f.estancia, 'Huésped con estancia activa', 'BK.simF.estancia=!BK.simF.estancia;bkRender_()')}
+      <span class="bk-mut" style="font-size:12px">Hora</span><input class="bk-in" type="time" style="width:110px" value="${esc(f.hora)}" onchange="BK.simF.hora=this.value">
+      <select class="bk-sel" style="width:120px" onchange="BK.simF.dia=this.value"><option value="">Hoy</option>${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((d, i) => `<option value="${i}" ${String(f.dia) === String(i) ? 'selected' : ''}>${d}</option>`).join('')}</select></div>
+    <div class="bk-row" style="margin-top:8px">${bkCk_(f.respuesta, 'Generar también la respuesta de ejemplo', 'BK.simF.respuesta=!BK.simF.respuesta;bkRender_()')}
+      ${f.respuesta && V.length > 1 ? `<span class="bk-mut" style="font-size:12px">Comparar con</span><select class="bk-sel" style="width:150px" onchange="BK.simF.version=this.value"><option value="">—</option>${V.slice(1).map(v => `<option value="${v.v}" ${String(f.version) === String(v.v) ? 'selected' : ''}>v${v.v}</option>`).join('')}</select>` : ''}
+      <span style="flex:1"></span><button class="bk-btn pri" onclick="bkSimular_()">${BK.simCargando ? '⏳ Evaluando…' : '▶ Simular'}</button></div>
+    <div class="bk-row" style="margin-top:10px">${['Huele a gas en la cocina', 'Ya llegué y no puedo entrar, el código no abre', '¿Cuál es la contraseña del wifi?', 'Quiero hablar con una persona', '¿Me mandas el link de pago?', 'Quiero un reembolso'].map(t => `<button class="bk-btn sm" onclick="BK.simF.texto=${esc(JSON.stringify(t))};bkSimular_()">${esc(t)}</button>`).join('')}</div></div>${res}`;
+}
+async function bkSimular_() {
+  const f = BK.simF; if (!String(f.texto || '').trim()) return alert('Escribe un mensaje');
+  BK.simCargando = true; bkRender_();
+  try { const r = await fetch(`${BACKEND}/bot/control/simular`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: f.texto, canal: f.canal, estanciaActiva: f.estancia, hora: f.hora, dia: f.dia, respuesta: f.respuesta, version: f.version }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error); BK.sim = r; } catch (e) { alert('No se pudo simular: ' + (e.message || e)); }
+  BK.simCargando = false; bkRender_();
 }
