@@ -51433,8 +51433,7 @@ function _botcRenderSidebar() {
           ${q ? `<button type="button" onclick="botcSetSearchQuery_('')" title="Limpiar" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:14px;color:#94a3b8;cursor:pointer;padding:2px 6px;line-height:1">×</button>` : ''}
         </div>
       </div>
-      <div class="wa-archsw"><button type="button" class="${BOTC_STATE.arch ? '' : 'on'}" onclick="botcArch_(false)">💬 Activas</button><button type="button" class="${BOTC_STATE.arch ? 'on' : ''}" onclick="botcArch_(true)" title="Conversaciones de Lodgify de estancias que ya terminaron (archivo desde 2024)">🗄 Pasadas</button></div>
-      ${BOTC_STATE.filtersOpen && !BOTC_STATE.arch ? _botcRenderFiltersPanel_() : ''}
+      ${BOTC_STATE.filtersOpen ? _botcRenderFiltersPanel_() : ''}
     </div>`;
   if (BOTC_STATE.arch) { sidebar.innerHTML = tabsHtml + _botcArchListaHtml_(q); return; }
   // Aplica el filtro de búsqueda (case-insensitive) + filtros del panel ☰.
@@ -56355,7 +56354,7 @@ try {
 } catch(_){}
 function _botcHasAnyFilter_() {
   const p = BOTC_STATE.pf || {};
-  return (p.control||[]).length + (p.estado||[]).length + (p.factura||[]).length + (p.medio||[]).length + (p.aloj||[]).length > 0;
+  return !!BOTC_STATE.arch || (p.control||[]).length + (p.estado||[]).length + (p.factura||[]).length + (p.medio||[]).length + (p.aloj||[]).length > 0;
 }
 window.botcToggleFilters_ = function() { BOTC_STATE.filtersOpen = !BOTC_STATE.filtersOpen; _botcRenderSidebar(); };
 window.botcTogglePf_ = function(cat, val) {
@@ -56366,7 +56365,7 @@ window.botcTogglePf_ = function(cat, val) {
   _botcRenderSidebar();
 };
 window.botcClearPf_ = function() {
-  BOTC_STATE.pf = { control:[], estado:[], factura:[], medio:[], aloj:[] };
+  BOTC_STATE.pf = { control:[], estado:[], factura:[], medio:[], aloj:[] }; BOTC_STATE.arch = false;
   try { localStorage.setItem('botc_pf', JSON.stringify(BOTC_STATE.pf)); } catch(_){}
   _botcRenderSidebar();
 };
@@ -56434,8 +56433,17 @@ function _botcRenderFiltersPanel_() {
       <div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Visualización</div>
       <div style="display:flex;gap:6px">${viewPills}</div>
     </div>`;
+  const archPills = [[false, '💬 Activas'], [true, '🗄 Pasadas']].map(([v, t]) => { const on = !!BOTC_STATE.arch === v;
+    return `<button type="button" onclick="botcArch_(${v})" title="${v ? 'Conversaciones de Lodgify de estancias que ya terminaron (archivo desde 2024)' : 'Conversaciones en curso'}" style="flex:1;padding:6px 10px;font-size:11px;font-weight:800;background:${on?'#0f172a':'#fff'};color:${on?'#fff':'#475569'};border:1.5px solid ${on?'#0f172a':'#cbd5e1'};border-radius:6px;cursor:pointer">${t}</button>`; }).join('');
+  const archSec = `
+    <div style="margin-bottom:8px">
+      <div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Conversaciones</div>
+      <div style="display:flex;gap:6px">${archPills}</div>
+    </div>`;
+  if (BOTC_STATE.arch) return `<div id="botc-filters-panel" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:6px">${archSec}</div>`;
   return `
     <div id="botc-filters-panel" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:6px">
+      ${archSec}
       ${viewSec}
       ${sec('Control', 'control', controlOpts)}
       ${uniq.estado.size ? sec('Estado', 'estado', Array.from(uniq.estado).map(v => ({ v, label: estadoLabels[v]||v }))) : ''}
