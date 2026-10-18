@@ -13424,7 +13424,7 @@ async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre,
   else { accion = "auto"; motivo = "todo en Automático"; }
   // Procesos apagados que conviven con otros temas: el modelo debe contestar ese tema con el respaldo.
   const offTxt = procs.filter(k => (modos[k] || {}).modo === "off").map(k => { const c = catL.find(x => x.clave === k); const m = modos[k]; return `- ${c ? c.nombre : k}: no lo atiendas; responde solo: «${(cfg.procesos[k] || {}).respaldo || (m.canal ? cfg.respaldoCanal : cfg.respaldoGeneral)}»`; });
-  const prompt = _bcPerfilPrompt(cfg.perfil, procs) + (offTxt.length ? `\n\nTEMAS DESACTIVADOS EN ESTE MOMENTO:\n${offTxt.join("\n")}` : "");
+  const prompt = _bcPerfilPrompt(cfg.perfil, procs) + (offTxt.length ? `\n\nTEMAS DESACTIVADOS EN ESTE MOMENTO:\n${offTxt.join("\n")}` : "") + await _enPromptAprobadas(procs).catch(() => "");
   return { activo: !!cfg.activo && !simular, observar: !cfg.activo, accion, msg, motivo, tools, bloqueadas: [...bloq], prompt, procesos: procs, detectados: detect, modos, ipo: ip.ipo, prioridad: ip.prioridad, factores: ip.factores, senales: ip.senales, emergencia: ip.emergencia,
     horario: hor, nivel: nivelTxt, derivacion: der.motivos, conv, hid: cat.hid, estanciaActiva, linkModo, sinLink: linkModo === "off" || linkModo === "der", canal: cat.canal, nombre, aloj, ms: Date.now() - t0, objetivo };
 }
@@ -13957,6 +13957,198 @@ app.post("/bot/control/casos/simular", async (req, res) => {
       + (c.perfil ? `\n\nPERFIL DEL HUÉSPED (guardado con el caso): ${JSON.stringify(c.perfil).slice(0, 1500)}` : "");
     const llm = await _botLlmLoop({ system, history, userMsg, tools: g.tools, ctx: { phone10: "caso", fromRaw: "", booking: c.booking || {}, alojRow: c.alojRow || {}, simular: true, simHuesped: true, msgTs: isNaN(t) ? Date.now() : t.getTime(), userMsg } });
     res.json({ ok: true, decision: Object.assign({}, g, { tools: g.tools.map(x => x.name) }), respuesta: String(llm.text || "").trim(), herramientas: (llm.toolsUsed || []).map(x => x.name), real, userMsg, fecha, hora });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── 🧠 Entrenamiento del LLM: análisis de las conversaciones históricas de Lodgify (Airbnb, Booking, directas) ──
+// 1) Separa plantillas (textos largos que se repiten) de lo que el personal escribió a mano. 2) Anonimiza. 3) Arma «situaciones»
+// (mensaje del huésped → respuesta del anfitrión). 4) La IA clasifica una muestra, agrupa categorías, redacta el perfil de estilo
+// y una respuesta sugerida por categoría con su evidencia. Resultado en bot/entrenamiento.json; progreso en bot/entrenamiento-estado.json.
+const _EN = { OBJ: "bot/entrenamiento.json", EST: "bot/entrenamiento-estado.json", SIT: "bot/entrenamiento-situaciones.json", CLA: "bot/entrenamiento-clasif.json" };
+let _enCorriendo = false;
+async function _enEstado(p) { const e = Object.assign({ at: new Date().toISOString() }, p); await _rhdPut(_EN.EST, JSON.stringify(e), "application/json").catch(() => {}); return e; }
+function _enNorm(t) { return String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/https?:\S+/g, "").replace(/\d+/g, "#").replace(/[^a-z#\s]/g, " ").replace(/\s+/g, " ").trim(); }
+function _enAnon(t, nombre) {
+  let s = String(t || "");
+  const n = String(nombre || "").trim().split(/\s+/).filter(x => x.length > 2);
+  n.forEach(w => { try { s = s.replace(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"), "{nombre}"); } catch (_) {} });
+  return s.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "{correo}").replace(/https?:\/\/\S+/g, "{link}").replace(/\+?\d[\d\s().-]{8,}\d/g, "{telefono}")
+    .replace(/\b(clave|c[oó]digo|contrase[ñn]a|password|pin)(\s*(de\s+\w+\s*)?[:es]*\s*)([A-Za-z0-9#*-]{3,})/gi, "$1$2{codigo}").replace(/\b\d{4,6}\b/g, "{codigo}");
+}
+const _enEmo = t => (String(t).match(/\p{Extended_Pictographic}/gu) || []);
+async function _enLlm(system, user, max, effort) {
+  const req = { model: BOT_ANTHROPIC_MODEL, max_tokens: max || 4000, system, messages: [{ role: "user", content: user }] };
+  if (effort) req.output_config = { effort }; // limita cuánto «piensa» antes de responder (las listas largas agotaban el límite)
+  const r = req.max_tokens > 8000 ? await anthropic.messages.stream(req).finalMessage() : await anthropic.messages.create(req); // respuestas largas: streaming
+  const txt = (r.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim();
+  const m = txt.match(/[\[{][\s\S]*[\]}]/); if (!m) throw new Error(`La IA no devolvió JSON (${r.stop_reason || ""}): ${txt.slice(0, 160)}`);
+  try { return JSON.parse(m[0]); } catch (e) { throw new Error(`JSON inválido de la IA (${r.stop_reason || ""}): ${e.message}`); }
+}
+async function _enPool(items, n, fn) { let i = 0; const out = []; await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const k = i++; try { out[k] = await fn(items[k], k); } catch (e) { out[k] = { error: e.message }; } } })); return out; }
+async function _enAnalizar(opts) {
+  if (_enCorriendo) return; _enCorriendo = true;
+  const t0 = Date.now(), muestraN = Math.min(2400, Number((opts || {}).muestra) || 1500);
+  try {
+    // 1) Leer el archivo completo
+    await _enEstado({ fase: "leyendo", pct: 2, msg: "Leyendo conversaciones del archivo…" });
+    const idx = await _rhdGetJson(_ABA.IDX), metas = Object.values(idx.items || {}).filter(x => x.n > 0);
+    const hilos = [];
+    await _enPool(metas, 24, async (m, k) => { const h = await _rhdGetJson(_ABA.HILO(m.bid)).catch(() => null); if (h && Array.isArray(h.mensajes)) hilos.push(h);
+      if (k % 400 === 0) await _enEstado({ fase: "leyendo", pct: 2 + Math.round(28 * k / metas.length), msg: `Leyendo conversaciones… ${k} de ${metas.length}` }); });
+    // 2) Plantillas: textos del anfitrión que se repiten (largos 3+ veces o medianos 25+ veces)
+    await _enEstado({ fase: "plantillas", pct: 32, msg: "Detectando plantillas…" });
+    const cuenta = new Map(), ejemplo = new Map();
+    hilos.forEach(h => h.mensajes.forEach(m => { if (m.de !== "nosotros") return; const k = _enNorm(m.texto).slice(0, 140); if (k.length < 20) return; cuenta.set(k, (cuenta.get(k) || 0) + 1); if (!ejemplo.has(k)) ejemplo.set(k, m.texto); }));
+    const esPlantilla = t => { const k = _enNorm(t).slice(0, 140), c = cuenta.get(k) || 0, L = String(t).length; return (L >= 160 && c >= 3) || (L >= 60 && c >= 25); };
+    const plantillas = [...cuenta.entries()].filter(([k, c]) => { const t = ejemplo.get(k); return esPlantilla(t); }).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([k, c]) => ({ veces: c, texto: String(ejemplo.get(k)).slice(0, 300) }));
+    // 3) Situaciones: mensajes del huésped → respuesta escrita a mano por el anfitrión
+    const sit = []; let totH = 0, totN = 0, totPl = 0, emo = {}, aperturas = {}, cierres = {}, largos = [], tiempos = [], usted = 0, tu = 0;
+    hilos.forEach(h => {
+      let pend = [];
+      h.mensajes.forEach(m => {
+        if (m.de === "huesped") { totH++; pend.push(m); if (pend.length > 3) pend.shift(); return; }
+        if (m.de !== "nosotros") return; totN++;
+        if (esPlantilla(m.texto)) { totPl++; pend = []; return; }
+        const tx = String(m.texto || "").trim(); if (tx.length < 2) return;
+        _enEmo(tx).forEach(e => { emo[e] = (emo[e] || 0) + 1; }); largos.push(tx.length);
+        const ap = _enNorm(tx).split(" ").slice(0, 2).join(" "), ci = _enNorm(tx).split(" ").slice(-2).join(" ");
+        if (ap) aperturas[ap] = (aperturas[ap] || 0) + 1; if (ci) cierres[ci] = (cierres[ci] || 0) + 1;
+        if (/\b(usted|le\s+(comento|informo|envio|confirmo)|su\s+(reserva|estancia|llegada))\b/i.test(tx)) usted++; if (/\b(te|tu|tienes|puedes|avisame|cuentame)\b/i.test(_enNorm(tx))) tu++;
+        if (pend.length) { const g = pend[pend.length - 1], dt = (Date.parse(m.fecha) - Date.parse(g.fecha)) / 60e3; if (dt >= 0 && dt < 24 * 60) tiempos.push(dt);
+          sit.push({ bid: h.bid, fecha: m.fecha, aloj: h.aloj || "", fuente: h.fuente || "", huesped: _enAnon(pend.map(x => x.texto).join("\n"), h.huesped).slice(0, 700), anfitrion: _enAnon(tx, h.huesped).slice(0, 900) }); }
+        pend = [];
+      });
+    });
+    const med = a => { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y); return Math.round(s[Math.floor(s.length / 2)]); };
+    const top = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ k, v }));
+    const stats = { conversaciones: hilos.length, mensajesHuesped: totH, mensajesAnfitrion: totN, plantillasEnviadas: totPl, escritosAMano: totN - totPl, situaciones: sit.length,
+      largoMediano: med(largos), respuestaMedianaMin: med(tiempos), emojis: top(emo, 15), aperturas: top(aperturas, 15), cierres: top(cierres, 15), usted, tu, plantillas, periodo: [metas.map(m => m.llegada).sort()[0], metas.map(m => m.salida).sort().slice(-1)[0]] };
+    await _rhdPut(_EN.SIT, JSON.stringify({ at: new Date().toISOString(), items: sit }), "application/json");
+    // 4) Muestra: más peso a lo reciente; descarta respuestas de una palabra
+    const utiles = sit.filter(s => s.anfitrion.length >= 15 && s.huesped.length >= 6).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+    const muestra = []; const vistos = new Set(); for (const s of utiles) { const k = _enNorm(s.huesped).slice(0, 60); if (vistos.has(k)) continue; vistos.add(k); muestra.push(s); if (muestra.length >= muestraN) break; }
+    const procs = _BC_CAT.map(c => `${c[0]} (${c[2]})`).join(", ");
+    const SYS = `Eres analista de atención a huéspedes de Check-inn Saltillo (departamentos y casas de renta corta en Saltillo, México). Analizas conversaciones reales entre huéspedes y el anfitrión (nuestro personal). Responde SOLO con JSON válido, sin texto extra.`;
+    const lotes = []; for (let i = 0; i < muestra.length; i += 60) lotes.push(muestra.slice(i, i + 60));
+    let hechos = 0;
+    const previa = (opts || {}).reusar === false ? null : await _rhdGetJson(_EN.CLA).catch(() => null); // reusa la clasificación reciente (ahorra consultas a la IA)
+    const reusar = previa && Array.isArray(previa.items) && previa.items.length && Date.now() - Date.parse(previa.at) < 24 * 3600e3;
+    const clasif = reusar ? [previa.items] : await _enPool(lotes, 4, async (L, k) => {
+      const r = await _enLlm(SYS, `Clasifica cada situación (lo que pidió o dijo el huésped y cómo respondió el anfitrión). Para cada una devuelve {"i":número,"categoria":"nombre corto y específico de la situación en español (ej. 'Código de la puerta no funciona', 'Pide factura', 'Avisa llegada tarde')","resolucion":"en una frase, cómo la resolvió el anfitrión"}.
+Devuelve un arreglo JSON con ${L.length} elementos.
+
+${L.map((s, i) => `#${i}\nHUÉSPED: ${s.huesped}\nANFITRIÓN: ${s.anfitrion}`).join("\n\n")}`, 6000);
+      hechos++; await _enEstado({ fase: "clasificando", pct: 35 + Math.round(35 * hechos / lotes.length), msg: `Clasificando situaciones con IA… lote ${hechos} de ${lotes.length}` });
+      return (Array.isArray(r) ? r : []).map(x => Object.assign({}, x, { s: L[Number(x.i)] })).filter(x => x.s);
+    });
+    const todas = clasif.flat().filter(x => x && x.categoria && x.s);
+    if (!reusar) await _rhdPut(_EN.CLA, JSON.stringify({ at: new Date().toISOString(), items: todas.map(x => ({ categoria: x.categoria, resolucion: x.resolucion, s: x.s })) }), "application/json").catch(() => {});
+    // 5) Consolidar categorías
+    await _enEstado({ fase: "agrupando", pct: 72, msg: "Agrupando categorías…" });
+    const cnt = {}; todas.forEach(x => { cnt[x.categoria] = (cnt[x.categoria] || 0) + 1; });
+    const nombres = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 500);
+    const cons = await _enLlm(SYS, `Estas son categorías de situaciones (número · casos · nombre) detectadas en conversaciones con huéspedes. Agrúpalas en 25 a 40 categorías canónicas, claras y no redundantes.
+Para cada categoría canónica devuelve {"id":"slug_corto","nombre":"…","descripcion":"una frase","grupo":"reserva|pre-llegada|estancia|salida|pagos|facturacion|informacion|otro","proceso":"clave del proceso del bot que mejor corresponde o '' si ninguno","prioridad":"P1|P2|P3|P4","incluye":[números de la lista]}.
+Cada número debe ir en una sola categoría. Procesos del bot disponibles: ${procs}.
+Devuelve SOLO el arreglo JSON, compacto.
+
+${nombres.map(([n, c], i) => `${i} · ${c} · ${n}`).join("\n")}`, 32000, "low");
+    const canon = (Array.isArray(cons) ? cons : []).filter(c => c && c.id && Array.isArray(c.incluye));
+    const de = {}; canon.forEach(c => c.incluye.forEach(i => { const n = nombres[Number(i)]; if (n) de[n[0]] = c.id; }));
+    const porCat = {}; todas.forEach(x => { const id = de[x.categoria]; if (!id) return; (porCat[id] = porCat[id] || []).push(x); });
+    // 6) Ficha de cada categoría: patrón de resolución + respuesta sugerida en el estilo del negocio
+    await _enEstado({ fase: "redactando", pct: 76, msg: "Redactando patrones y respuestas sugeridas…" });
+    const grupos = []; const lista = canon.filter(c => porCat[c.id] && porCat[c.id].length); for (let i = 0; i < lista.length; i += 6) grupos.push(lista.slice(i, i + 6));
+    let gh = 0;
+    const fichas = (await _enPool(grupos, 3, async G => {
+      const r = await _enLlm(SYS, `Para cada categoría, con base en los ejemplos reales, describe cómo la resuelve nuestro personal y redacta una respuesta rápida para el bot con el MISMO estilo, tono y vocabulario del anfitrión.
+Reglas de la respuesta: no copies datos que cambian (precios, códigos, contraseñas, horarios específicos de un alojamiento): usa variables como {nombre}, {alojamiento}, {hora_checkin}, {hora_checkout}, {codigo_acceso}, {wifi_red}, {wifi_password}, {url_guia}, {link_reserva}. No prometas compensaciones ni reembolsos.
+Devuelve un arreglo JSON de {"id":"…","patron":"cómo lo resuelve el anfitrión (2-4 frases)","respuesta":"respuesta sugerida","variables":["…"],"notas":"matices o cuándo derivar a una persona"}.
+
+${G.map(c => `### ${c.id} — ${c.nombre}: ${c.descripcion}\n${porCat[c.id].slice(0, 8).map(x => `HUÉSPED: ${x.s.huesped}\nANFITRIÓN: ${x.s.anfitrion}`).join("\n---\n")}`).join("\n\n")}`, 16000, "medium");
+      gh++; await _enEstado({ fase: "redactando", pct: 76 + Math.round(16 * gh / grupos.length), msg: `Redactando respuestas sugeridas… ${gh} de ${grupos.length}` });
+      return Array.isArray(r) ? r : [];
+    })).flat();
+    const total = todas.length || 1;
+    const categorias = lista.map(c => { const f = fichas.find(x => x && x.id === c.id) || {}, L = porCat[c.id];
+      return { id: c.id, nombre: c.nombre, descripcion: c.descripcion, grupo: c.grupo, proceso: _BC_CAT.some(x => x[0] === c.proceso) ? c.proceso : "", prioridad: /^P[1-4]$/.test(c.prioridad) ? c.prioridad : "P4",
+        frecuencia: L.length, pct: Math.round(1000 * L.length / total) / 10, patron: f.patron || "", respuesta: f.respuesta || "", variables: f.variables || [], notas: f.notas || "",
+        evidencia: L.slice(0, 12).map(x => ({ bid: x.s.bid, fecha: x.s.fecha, aloj: x.s.aloj, fuente: x.s.fuente, huesped: x.s.huesped, anfitrion: x.s.anfitrion, resolucion: x.resolucion || "" })),
+        estado: "sugerida", retro: "", ajustada: "", historial: [] }; }).sort((a, b) => b.frecuencia - a.frecuencia);
+    // 7) Perfil de estilo del anfitrión
+    await _enEstado({ fase: "estilo", pct: 93, msg: "Construyendo el perfil de estilo…" });
+    const ej = utiles.filter((s, i) => i % Math.max(1, Math.floor(utiles.length / 220)) === 0).slice(0, 220);
+    const estilo = await _enLlm(SYS, `Construye el PERFIL DE ESTILO del anfitrión a partir de sus respuestas reales (no plantillas) y estas estadísticas: ${JSON.stringify({ largoMediano: stats.largoMediano, respuestaMedianaMin: stats.respuestaMedianaMin, emojis: stats.emojis, aperturas: stats.aperturas, cierres: stats.cierres, usted: stats.usted, tu: stats.tu })}.
+Devuelve {"resumen":"párrafo de 4-6 líneas que describa cómo escribe y atiende","tono":"…","trato":"tú|usted|mixto (explica)","saludos":["…"],"despedidas":["…"],"expresiones":["frases y muletillas frecuentes"],"emojis":["…"],"longitud":"…","disculpas":"cómo se disculpa","resolucion":"cómo resuelve problemas (pasos típicos)","evitar":["cosas que el anfitrión no hace"],"reglas_para_el_bot":["instrucciones concretas para imitar el estilo"],"ejemplos":[{"huesped":"…","anfitrion":"…"}]}.
+
+${ej.map(s => `HUÉSPED: ${s.huesped}\nANFITRIÓN: ${s.anfitrion}`).join("\n---\n")}`, 16000, "medium");
+    const prev = await _rhdGetJson(_EN.OBJ).catch(() => ({})); // conserva revisiones de categorías con el mismo id
+    (prev.categorias || []).forEach(p => { const c = categorias.find(x => x.id === p.id); if (c && p.estado !== "sugerida") Object.assign(c, { estado: p.estado, retro: p.retro, ajustada: p.ajustada, historial: p.historial || [], proceso: p.proceso || c.proceso }); });
+    const out = { generado: new Date().toISOString(), segundos: Math.round((Date.now() - t0) / 1000), muestra: muestra.length, clasificadas: todas.length, stats, estilo: Object.assign({ estado: prev.estilo && prev.estilo.estado === "aprobado" ? "revisar" : "sugerido" }, estilo), categorias };
+    await _rhdPut(_EN.OBJ, JSON.stringify(out), "application/json"); _enCache = null;
+    await _enEstado({ fase: "listo", pct: 100, msg: `Listo: ${categorias.length} categorías a partir de ${todas.length} situaciones (${hilos.length} conversaciones).`, fin: new Date().toISOString() });
+  } catch (e) { console.warn("[entrenamiento]", e.message); await _enEstado({ fase: "error", pct: 0, msg: e.message }); }
+  finally { _enCorriendo = false; }
+}
+let _enCache = null, _enCacheTs = 0;
+async function _enDatos() { if (!_enCache || Date.now() - _enCacheTs > 5 * 60e3) { _enCache = await _rhdGetJson(_EN.OBJ).catch(() => ({})); _enCacheTs = Date.now(); } return _enCache; }
+// Respuestas aprobadas de las categorías de estos procesos → bloque para el prompt (RF-56/59: solo aprobadas; no conceden permisos).
+async function _enPromptAprobadas(procesos) {
+  const d = await _enDatos(), S = new Set(procesos || []);
+  const L = (d.categorias || []).filter(c => c.estado === "aprobada" && (!c.proceso || S.has(c.proceso)) && (c.ajustada || c.respuesta)).slice(0, 8);
+  if (!L.length) return "";
+  return `\n\nRESPUESTAS APROBADAS DEL NEGOCIO (úsalas como base si la situación coincide; rellena las variables {…} con datos reales y nunca inventes los que no tengas; no conceden permisos ni procesos apagados):\n${L.map(c => `- ${c.nombre}: «${c.ajustada || c.respuesta}»${c.notas ? ` (nota: ${c.notas})` : ""}`).join("\n")}`;
+}
+app.post("/bot/control/entrenamiento/iniciar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  if (_enCorriendo) return res.json({ ok: true, yaCorriendo: true });
+  const e = await _rhdGetJson(_EN.EST).catch(() => ({})); if (e.fase && !["listo", "error"].includes(e.fase) && Date.now() - Date.parse(e.at) < 10 * 60e3) return res.json({ ok: true, yaCorriendo: true, estado: e });
+  _enAnalizar((req.body || {})).catch(() => {}); res.json({ ok: true, iniciado: true });
+});
+app.get("/bot/control/entrenamiento", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { const [d, e] = await Promise.all([_rhdGetJson(_EN.OBJ).catch(() => ({})), _rhdGetJson(_EN.EST).catch(() => ({}))]); res.json({ ok: true, datos: d, estado: e, corriendo: _enCorriendo }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Revisión de una categoría (RF-54/55): guardar retro/ajustada, aprobar, descartar, regenerar con la retroalimentación.
+app.post("/bot/control/entrenamiento/categoria", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const { id, accion, retro, ajustada, proceso, nombre, usuario } = req.body || {};
+    const d = await _rhdGetJson(_EN.OBJ); const c = (d.categorias || []).find(x => x.id === id); if (!c) return res.status(404).json({ ok: false, error: "Categoría no encontrada" });
+    const ver = () => c.historial.push({ at: new Date().toISOString(), respuesta: c.respuesta, ajustada: c.ajustada, retro: c.retro, estado: c.estado, por: usuario || "" });
+    c.historial = c.historial || [];
+    if (retro != null) c.retro = String(retro).slice(0, 1500); if (ajustada != null) c.ajustada = String(ajustada).slice(0, 2500);
+    if (proceso != null) c.proceso = String(proceso); if (nombre) c.nombre = String(nombre).slice(0, 120);
+    if (accion === "aprobar") { ver(); c.estado = "aprobada"; c.aprobadaPor = usuario || ""; c.aprobadaAt = new Date().toISOString(); }
+    else if (accion === "descartar") { ver(); c.estado = "descartada"; }
+    else if (accion === "revisar") c.estado = "en_revision";
+    else if (accion === "regenerar") {
+      ver(); const est = d.estilo || {};
+      const r = await _enLlm(`Redactas respuestas rápidas para el bot de Check-inn Saltillo con el estilo del anfitrión. Responde SOLO JSON.`, `Estilo del anfitrión: ${est.resumen || ""}\nReglas de estilo: ${(est.reglas_para_el_bot || []).join(" · ")}
+Categoría: ${c.nombre} — ${c.descripcion}\nCómo la resuelve el anfitrión: ${c.patron}\nRespuesta actual: ${c.ajustada || c.respuesta}\nRetroalimentación del administrador: ${c.retro || "(sin comentarios)"}
+Ejemplos reales:\n${(c.evidencia || []).slice(0, 5).map(x => `HUÉSPED: ${x.huesped}\nANFITRIÓN: ${x.anfitrion}`).join("\n---\n")}
+Reescribe la respuesta aplicando la retroalimentación. Usa variables {…} para datos que cambian; no prometas compensaciones. Devuelve {"respuesta":"…","variables":["…"]}.`, 1500);
+      c.respuesta = String(r.respuesta || c.respuesta); c.variables = r.variables || c.variables; c.ajustada = ""; c.estado = "en_revision";
+    }
+    await _rhdPut(_EN.OBJ, JSON.stringify(d), "application/json"); _enCache = null;
+    _bcLog({ tipo: accion === "aprobar" ? "aprobacion" : accion === "descartar" ? "rechazo" : "edicion", proceso: c.proceso, conv: "entrenamiento", usuario: usuario || "", resultado: `${c.nombre}: ${c.estado}` });
+    res.json({ ok: true, categoria: c });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Perfil de estilo: aprobarlo lo copia a Personalidad (perfil.estilo) como nueva versión (RF-57).
+app.post("/bot/control/entrenamiento/estilo", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const { accion, texto, usuario } = req.body || {}, d = await _rhdGetJson(_EN.OBJ); if (!d.estilo) return res.status(404).json({ ok: false, error: "Aún no hay perfil de estilo" });
+    if (texto != null) d.estilo.textoBot = String(texto).slice(0, 4000);
+    if (accion === "aprobar") {
+      const E = d.estilo, txt = E.textoBot || [E.resumen, E.trato && `Trato: ${E.trato}`, (E.saludos || []).length && `Saludos típicos: ${E.saludos.join(" · ")}`, (E.despedidas || []).length && `Despedidas: ${E.despedidas.join(" · ")}`, (E.expresiones || []).length && `Expresiones: ${E.expresiones.join(" · ")}`, (E.emojis || []).length && `Emojis: ${E.emojis.join(" ")}`, E.longitud && `Longitud: ${E.longitud}`, E.disculpas && `Disculpas: ${E.disculpas}`, E.resolucion && `Cómo resuelve: ${E.resolucion}`, (E.reglas_para_el_bot || []).length && `Reglas: ${E.reglas_para_el_bot.join(" · ")}`, (E.evitar || []).length && `Evitar: ${E.evitar.join(" · ")}`].filter(Boolean).join("\n");
+      E.estado = "aprobado"; E.aprobadoAt = new Date().toISOString(); E.aprobadoPor = usuario || "";
+      await _bcMut(_BC.OBJ, c => { const cur = _bcMerge(_bcDefaults(), c); const v = Object.assign({}, cur.perfil, { estilo: txt }); c.perfil = v; const vs = cur.versiones || []; vs.push({ v: (vs.length ? vs[vs.length - 1].v : 0) + 1, at: new Date().toISOString(), por: usuario || "", data: v, de: "entrenamiento" }); c.versiones = vs.slice(-40); }); _bcCfgTs = 0;
+    }
+    await _rhdPut(_EN.OBJ, JSON.stringify(d), "application/json"); _enCache = null;
+    res.json({ ok: true, estilo: d.estilo });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

@@ -73272,7 +73272,7 @@ async function abnFicha_(bid) {
 // /bot/control/bitacora, /bot/control/simular, /bot/control/preview-perfil. El gate vive en server.js (_bcGate).
 // ═══════════════════════════════════════════════════════════════════════════
 const BK = { tab: 'resumen', d: null, bandeja: [], bit: { dia: '', items: [], f: '' }, sim: null, simCargando: false, abiertos: {}, drawer: null, fPrio: '', fMios: false, cargando: false, prev: null };
-const BK_TABS = [['resumen', '📥 Bandeja'], ['procesos', '⚙️ Procesos'], ['plantillas', '📨 Plantillas'], ['horarios', '🕐 Horarios'], ['urgencia', '🚨 Urgencia'], ['perfil', '🎭 Personalidad'], ['bitacora', '📜 Bitácora'], ['pruebas', '🧪 Pruebas']];
+const BK_TABS = [['resumen', '📥 Bandeja'], ['procesos', '⚙️ Procesos'], ['plantillas', '📨 Plantillas'], ['horarios', '🕐 Horarios'], ['urgencia', '🚨 Urgencia'], ['perfil', '🎭 Personalidad'], ['bitacora', '📜 Bitácora'], ['pruebas', '🧪 Pruebas'], ['entrenamiento', '🧠 Entrenamiento del LLM']];
 const BK_MODO = { off: ['Apagado', '#b91c1c', '#fee2e2'], der: ['Derivar', '#b45309', '#fef3c7'], sup: ['Supervisado', '#1d4ed8', '#dbeafe'], auto: ['Automático', '#15803d', '#dcfce7'] };
 const BK_NIV = { AUT: ['Automático', '#15803d', '#dcfce7'], SUP: ['Supervisado', '#1d4ed8', '#dbeafe'], PER: ['Personal', '#b45309', '#fef3c7'] };
 const BK_PRIO = { P1: ['P1 Crítica', 'ESCALAR AHORA', '#b91c1c', '#fee2e2', '🔴'], P2: ['P2 Alta', 'PRIORITARIA', '#c2410c', '#ffedd5', '🟠'], P3: ['P3 Media', 'SEGUIMIENTO', '#a16207', '#fef9c3', '🟡'], P4: ['P4 Normal', 'AUTOMÁTICA', '#4b5563', '#f3f4f6', '⚪'] };
@@ -73412,7 +73412,7 @@ function bkRender_() {
   const kpi = (n, t) => `<div class="bk-kpi"><b>${n}</b><span>${t}</span></div>`;
   const kpis = `<div class="bk-kpis">${kpi(contadores.automaticos, 'Procesos en Automático')}${kpi(contadores.prioritarias, 'Conversaciones P1/P2 abiertas')}${kpi(contadores.supervision, 'Pendientes de supervisión')}${kpi(contadores.alertas, 'Alertas sin resolver')}${kpi(contadores.disyuntores, 'Disyuntores activos')}</div>`;
   const tabs = `<div class="bk-tabs">${BK_TABS.map(([k, t]) => `<button type="button" class="bk-tab ${BK.tab === k ? 'on' : ''}" onclick="bkTab_('${k}')">${t}</button>`).join('')}</div>`;
-  const body = { resumen: bkResumen_, procesos: bkProcesos_, plantillas: bkPlantillas_, horarios: bkHorarios_, urgencia: bkUrgencia_, perfil: bkPerfil_, bitacora: bkBitacora_, pruebas: bkPruebas_ }[BK.tab]();
+  const body = { entrenamiento: bkEntr_, resumen: bkResumen_, procesos: bkProcesos_, plantillas: bkPlantillas_, horarios: bkHorarios_, urgencia: bkUrgencia_, perfil: bkPerfil_, bitacora: bkBitacora_, pruebas: bkPruebas_ }[BK.tab]();
   root.innerHTML = hero + obs + kpis + tabs + (BK.tab === 'procesos' ? bkFiltrosHtml_() : '') + `<div id="bk-body">${body}</div>` + (BK.drawer ? bkDrawerHtml_() : '');
   if (BK.tab === 'plantillas') bkPlantillasMontar_();
 }
@@ -74128,3 +74128,78 @@ function bkFlAlojChip_(f) { if (!Array.isArray(f.alojamientos)) return ''; const
   return `<span class="bk-chip" style="background:${n ? '#f3f4f6' : '#fef3c7'};color:${n ? '#374151' : '#92400e'};margin-right:2px" title="${esc(eds.join(' · ') || 'Sin alojamientos')}">🏠 ${n ? `${n} alojamiento${n === 1 ? '' : 's'}` : 'sin alojamientos'}</span>`; }
 function bkTplAlojNota_(d) { const f = d && d._id ? bkFlujos_().find(x => x.pasos.includes(d._id)) : null;
   return `<div style="margin-top:22px;padding:10px 12px;border:1px solid #ede9fe;background:#faf5ff;border-radius:10px;font-size:12.5px;color:#4c1d95">🏠 Los alojamientos se asignan en el <b>flujo</b>, no en la plantilla.${f ? ` Esta plantilla está en «${esc(f.nombre)}» (${Array.isArray(f.alojamientos) ? f.alojamientos.length : 0} alojamientos). <a href="#" onclick="event.preventDefault();bkTplCerrar_&&bkTplCerrar_();bkFlEditar_('${esc(f.id)}')" style="color:#6d28d9;font-weight:700">Editar flujo</a>` : ' Agrega esta plantilla a un flujo para asignarle alojamientos.'}</div>`; }
+
+// ═══ 🧠 Entrenamiento del LLM: lo aprendido de las conversaciones históricas de Lodgify ═══
+const BK_EN_EST = { sugerida: ['Sugerida', '#6b7280', '#f3f4f6'], en_revision: ['En revisión', '#1d4ed8', '#dbeafe'], aprobada: ['Aprobada', '#15803d', '#dcfce7'], descartada: ['Descartada', '#b91c1c', '#fee2e2'] };
+async function bkEntrCargar_() { BK._enCarg = true;
+  try { const r = await fetch(`${BACKEND}/bot/control/entrenamiento`, { cache: 'no-store' }).then(r => r.json()); if (r.ok) BK.en = r; } catch (_) {}
+  BK._enCarg = false; if (BK.tab === 'entrenamiento') bkRender_();
+  clearTimeout(BK._enT); const e = (BK.en || {}).estado || {}; if (BK.tab === 'entrenamiento' && (BK.en || {}).corriendo || (e.fase && !['listo', 'error'].includes(e.fase))) BK._enT = setTimeout(bkEntrCargar_, 5000); }
+function bkEntr_() {
+  if (!BK.en && !BK._enCarg) bkEntrCargar_();
+  if (!BK.en) return '<div class="bk-card bk-mut">⏳ Cargando…</div>';
+  const D = BK.en.datos || {}, E = BK.en.estado || {}, S = D.stats || {}, corre = BK.en.corriendo || (E.fase && !['listo', 'error'].includes(E.fase));
+  const kpi = (n, t) => `<div class="bk-kpi"><b>${n == null ? '—' : Number(n).toLocaleString('es-MX')}</b><span>${t}</span></div>`;
+  const head = `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><div><h3>🧠 Entrenamiento del LLM</h3><div class="bk-sub">Lo que el bot aprende de ${S.conversaciones ? Number(S.conversaciones).toLocaleString('es-MX') : 'las'} conversaciones históricas de Lodgify (Airbnb, Booking y directas): estilo, tono, vocabulario y cómo resuelve el personal cada situación. Las plantillas se separan; lo valioso es lo que el equipo escribió a mano.</div></div>
+      <button class="bk-btn sm ${D.generado ? '' : 'pri'}" ${corre ? 'disabled style="opacity:.5"' : ''} onclick="bkEntrIniciar_()">${D.generado ? '🔄 Volver a analizar' : '▶ Analizar conversaciones'}</button></div>
+    ${corre ? `<div style="margin-top:10px"><div class="bk-sub" style="margin-bottom:4px">⏳ ${esc(E.msg || 'Analizando…')}</div><div style="height:8px;background:#f3f4f6;border-radius:6px;overflow:hidden"><div style="height:100%;width:${E.pct || 3}%;background:#7c3aed;transition:width .4s"></div></div></div>` : E.fase === 'error' ? `<div class="bk-obs err" style="margin-top:10px">⚠️ ${esc(E.msg)}</div>` : ''}
+    ${D.generado ? `<div class="bk-sub" style="margin-top:8px">Último análisis: ${new Date(D.generado).toLocaleString('es-MX')} · ${D.clasificadas} situaciones clasificadas por IA (muestra de ${D.muestra}) · ${D.segundos}s</div>` : ''}</div>`;
+  if (!D.generado) return head;
+  const kp = `<div class="bk-kpis">${kpi(S.conversaciones, 'Conversaciones')}${kpi(S.mensajesHuesped, 'Mensajes de huéspedes')}${kpi(S.escritosAMano, `Respuestas escritas a mano (${Math.round(100 * S.escritosAMano / Math.max(1, S.mensajesAnfitrion))}%)`)}${kpi(S.plantillasEnviadas, 'Envíos de plantillas (separados)')}${kpi(S.respuestaMedianaMin, 'Minutos para responder (mediana)')}</div>`;
+  return head + kp + bkEntrEstilo_(D) + bkEntrCats_(D) + bkEntrPlantillas_(S);
+}
+async function bkEntrIniciar_() {
+  if (!confirm('¿Analizar las conversaciones históricas?\n\nTarda unos minutos y usa la IA (≈30 consultas). Las categorías que ya revisaste (aprobadas o descartadas) se conservan.')) return;
+  try { await fetch(`${BACKEND}/bot/control/entrenamiento/iniciar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ muestra: 1500 }) }); } catch (_) {}
+  setTimeout(bkEntrCargar_, 1500);
+}
+function bkEntrEstilo_(D) {
+  const E = D.estilo || {}, st = E.estado === 'aprobado' ? ['✅ Aprobado · se usa en Personalidad', '#15803d', '#dcfce7'] : E.estado === 'revisar' ? ['Nuevo análisis: revisa y vuelve a aprobar', '#b45309', '#fef3c7'] : ['Sugerido · aún no lo usa el bot', '#6b7280', '#f3f4f6'];
+  const chips = L => (L || []).map(x => `<span class="bk-chip" style="background:#f5f3ff;color:#4c1d95;font-weight:600">${esc(x)}</span>`).join(' ');
+  const li = L => (L || []).length ? `<ul style="margin:4px 0 0 18px;padding:0;font-size:12.5px">${L.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+  const txt = E.textoBot || [E.resumen, E.trato && `Trato: ${E.trato}`, (E.saludos || []).length && `Saludos típicos: ${E.saludos.join(' · ')}`, (E.despedidas || []).length && `Despedidas: ${E.despedidas.join(' · ')}`, (E.expresiones || []).length && `Expresiones: ${E.expresiones.join(' · ')}`, (E.emojis || []).length && `Emojis: ${E.emojis.join(' ')}`, E.longitud && `Longitud: ${E.longitud}`, E.disculpas && `Disculpas: ${E.disculpas}`, E.resolucion && `Cómo resuelve: ${E.resolucion}`, (E.reglas_para_el_bot || []).length && `Reglas: ${E.reglas_para_el_bot.join(' · ')}`, (E.evitar || []).length && `Evitar: ${E.evitar.join(' · ')}`].filter(Boolean).join('\n');
+  return `<details class="bk-grp" ${BK.abiertos.enEst !== false ? 'open' : ''} ontoggle="BK.abiertos.enEst=this.open"><summary>✍️ Perfil de estilo del anfitrión <span class="bk-chip" style="color:${st[1]};background:${st[2]}">${st[0]}</span></summary><div style="padding:0 16px 14px">
+    <div class="bk-ex" style="white-space:normal">${esc(E.resumen || '')}</div>
+    <div class="bk-grid2" style="margin-top:10px"><div><label class="bk-lb">Tono</label><div style="font-size:12.5px">${esc(E.tono || '')}</div><label class="bk-lb">Trato</label><div style="font-size:12.5px">${esc(E.trato || '')}</div><label class="bk-lb">Longitud</label><div style="font-size:12.5px">${esc(E.longitud || '')}</div><label class="bk-lb">Cómo se disculpa</label><div style="font-size:12.5px">${esc(E.disculpas || '')}</div></div>
+      <div><label class="bk-lb">Saludos</label>${chips(E.saludos)}<label class="bk-lb">Despedidas</label>${chips(E.despedidas)}<label class="bk-lb">Expresiones frecuentes</label>${chips(E.expresiones)}<label class="bk-lb">Emojis</label><div style="font-size:18px">${esc((E.emojis || []).join(' '))}</div></div></div>
+    <label class="bk-lb">Cómo resuelve los problemas</label><div style="font-size:12.5px">${esc(E.resolucion || '')}</div>
+    <div class="bk-grid2"><div><label class="bk-lb">Reglas para el bot</label>${li(E.reglas_para_el_bot)}</div><div><label class="bk-lb">Lo que el anfitrión no hace</label>${li(E.evitar)}</div></div>
+    ${(E.ejemplos || []).length ? `<label class="bk-lb">Ejemplos reales</label>${bkCasoMsgs_((E.ejemplos || []).slice(0, 6).flatMap(x => [{ rol: 'huesped', texto: x.huesped }, { rol: 'anfitrion', texto: x.anfitrion }]))}` : ''}
+    <label class="bk-lb" style="margin-top:12px">Texto que recibirá el bot (puedes editarlo antes de aprobar)</label><textarea class="bk-ta" id="bk-en-est" style="min-height:150px">${esc(txt)}</textarea>
+    <div class="bk-row" style="justify-content:flex-end;margin-top:8px"><button class="bk-btn pri" onclick="bkEntrEstiloAprobar_()">✅ Aprobar y usar en Personalidad</button></div></div></details>`;
+}
+async function bkEntrEstiloAprobar_() { const t = document.getElementById('bk-en-est').value;
+  if (!confirm('¿Usar este perfil de estilo? Se guarda como nueva versión de la Personalidad del bot (podrás volver a una versión anterior).')) return;
+  try { const r = await fetch(`${BACKEND}/bot/control/entrenamiento/estilo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accion: 'aprobar', texto: t, usuario: bkUsr_() }) }).then(r => r.json()); if (!r.ok) throw new Error(r.error);
+    BK.en.datos.estilo = r.estilo; bkToast_('✓ Perfil de estilo aprobado · nueva versión de Personalidad'); bkCargar_(true); bkRender_(); } catch (e) { alert('No se pudo: ' + (e.message || e)); } }
+function bkEntrCats_(D) {
+  const C = D.categorias || [], f = BK.enF || '', nm = k => (BK.d.catalogo.find(c => c.clave === k) || {}).nombre || '';
+  const L = C.filter(c => !f || c.estado === f), cnt = k => C.filter(c => c.estado === k).length;
+  const procOpts = cur => `<option value="">— Sin proceso —</option>` + BK.d.catalogo.filter(c => !c.admin).map(c => `<option value="${esc(c.clave)}" ${cur === c.clave ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
+  const card = c => { const st = BK_EN_EST[c.estado] || BK_EN_EST.sugerida;
+    return `<details class="bk-grp" ${BK.abiertos['en_' + c.id] ? 'open' : ''} ontoggle="BK.abiertos['en_${esc(c.id)}']=this.open"><summary>${esc(c.nombre)} <span class="bk-sub">${c.frecuencia} casos · ${c.pct}%</span><span style="flex:1"></span>${bkPrioChipMini_(c.prioridad).replace(' base', '')}${c.proceso ? `<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">${esc(nm(c.proceso))}</span>` : ''}<span class="bk-chip" style="color:${st[1]};background:${st[2]}">${st[0]}</span></summary>
+      <div style="padding:0 16px 14px"><div class="bk-sub">${esc(c.descripcion || '')}</div>
+        <div class="bk-grid2"><div><label class="bk-lb">Proceso del bot relacionado</label><select class="bk-sel" onchange="bkEntrCat_('${esc(c.id)}',null,{proceso:this.value})">${procOpts(c.proceso)}</select></div><div><label class="bk-lb">Grupo · prioridad sugerida</label><div style="font-size:12.5px;padding-top:8px">${esc(c.grupo || '')} · ${esc(c.prioridad || '')}</div></div></div>
+        <label class="bk-lb">Cómo lo resuelve el anfitrión</label><div class="bk-ex" style="white-space:normal">${esc(c.patron || '')}</div>
+        <label class="bk-lb">Mensajes que la sustentan (${(c.evidencia || []).length} de ${c.frecuencia})</label>
+        <div style="max-height:340px;overflow:auto;display:grid;gap:8px">${(c.evidencia || []).map(x => `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:12.5px"><div class="bk-row" style="justify-content:space-between"><span class="bk-mut" style="font-size:11px">${esc(new Date(x.fecha).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }))} · ${esc(x.aloj || '')} · ${esc(x.fuente || '')}</span><button class="bk-btn sm" onclick="bkEntrAbrir_('${esc(x.bid)}')">Ver conversación</button></div>
+          <div style="margin-top:4px"><b>👤</b> ${esc(x.huesped)}</div><div style="margin-top:4px;background:#f0fdf4;border-radius:8px;padding:5px 8px"><b>🏠</b> ${esc(x.anfitrion)}</div></div>`).join('')}</div>
+        <label class="bk-lb">Respuesta rápida sugerida</label><div class="bk-ex">${esc(c.respuesta || '')}</div>${(c.variables || []).length ? `<div class="bk-sub" style="margin-top:4px">Variables: ${esc(c.variables.join(', '))}</div>` : ''}${c.notas ? `<div class="bk-sub" style="margin-top:4px">📝 ${esc(c.notas)}</div>` : ''}
+        <div class="bk-grid2"><div><label class="bk-lb">Retroalimentación</label><textarea class="bk-ta" id="bk-en-r-${esc(c.id)}" placeholder="Ej. más corto; agregar que el estacionamiento es techado">${esc(c.retro || '')}</textarea></div>
+          <div><label class="bk-lb">Respuesta ajustada (opcional)</label><textarea class="bk-ta" id="bk-en-a-${esc(c.id)}" placeholder="Si la escribes, el bot usará esta en lugar de la sugerida">${esc(c.ajustada || '')}</textarea></div></div>
+        <div class="bk-row" style="justify-content:space-between;margin-top:8px"><span class="bk-mut" style="font-size:11.5px">${(c.historial || []).length ? `${c.historial.length} versión(es) anterior(es)` : ''}</span>
+          <div class="bk-row"><button class="bk-btn sm" onclick="bkEntrCat_('${esc(c.id)}','guardar')">Guardar</button><button class="bk-btn sm" onclick="bkEntrCat_('${esc(c.id)}','regenerar')">✨ Regenerar con retroalimentación</button><button class="bk-btn sm red" onclick="bkEntrCat_('${esc(c.id)}','descartar')">Descartar</button><button class="bk-btn sm ok" onclick="bkEntrCat_('${esc(c.id)}','aprobar')">✅ Aprobar</button></div></div></div></details>`; };
+  return `<div class="bk-card" style="padding:12px 16px"><div class="bk-row" style="justify-content:space-between"><div><h3>📚 Catálogo de situaciones y respuestas</h3><div class="bk-sub">${C.length} categorías detectadas. Solo las <b>aprobadas</b> las usa el bot (como base de respuesta en su proceso; no le dan permisos nuevos).</div></div>
+    <div class="bk-row">${[['', `Todas (${C.length})`], ['sugerida', `Sugeridas (${cnt('sugerida')})`], ['en_revision', `En revisión (${cnt('en_revision')})`], ['aprobada', `Aprobadas (${cnt('aprobada')})`], ['descartada', `Descartadas (${cnt('descartada')})`]].map(([v, t]) => `<button type="button" class="bk-tab ${f === v ? 'on' : ''}" style="padding:6px 10px;font-size:12px" onclick="BK.enF='${v}';bkRender_()">${t}</button>`).join('')}</div></div></div>` + L.map(card).join('');
+}
+function bkEntrPlantillas_(S) { const P = S.plantillas || []; if (!P.length) return '';
+  return `<details class="bk-grp"><summary>🧾 Plantillas detectadas (separadas del análisis) <span class="bk-sub">${P.length} textos repetidos</span></summary><div style="padding:0 16px 14px">${P.map(p => `<div style="border-bottom:1px solid #f3f4f6;padding:6px 0;font-size:12px"><b>${p.veces}×</b> ${esc(p.texto)}…</div>`).join('')}</div></details>`; }
+async function bkEntrCat_(id, accion, extra) {
+  const body = Object.assign({ id, accion, usuario: bkUsr_() }, extra || {});
+  const r1 = document.getElementById('bk-en-r-' + id), a1 = document.getElementById('bk-en-a-' + id); if (accion) { if (r1) body.retro = r1.value; if (a1) body.ajustada = a1.value; }
+  if (accion === 'regenerar') bkToast_('✨ Regenerando…');
+  try { const r = await fetch(`${BACKEND}/bot/control/entrenamiento/categoria`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()); if (!r.ok) throw new Error(r.error);
+    const C = BK.en.datos.categorias, i = C.findIndex(x => x.id === id); if (i >= 0) C[i] = r.categoria; BK.abiertos['en_' + id] = true;
+    bkToast_(accion === 'aprobar' ? '✅ Aprobada: el bot la usará' : accion === 'descartar' ? 'Descartada' : accion === 'regenerar' ? '✓ Nueva versión generada' : '✓ Guardado'); bkRender_(); }
+  catch (e) { alert('No se pudo: ' + (e.message || e)); } }
+function bkEntrAbrir_(bid) { try { switchModule('bot-chats'); setTimeout(() => { try { if (typeof botcOpenArch_ === 'function') botcOpenArch_(bid); else botcOpenChat('abn' + bid); } catch (_) {} }, 800); } catch (_) {} }
