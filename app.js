@@ -73271,7 +73271,7 @@ async function abnFicha_(bid) {
 // ═══════════════════════════════════════════════════════════════════════════
 const BK = { tab: 'resumen', d: null, bandeja: [], bit: { dia: '', items: [], f: '' }, sim: null, simCargando: false, abiertos: {}, drawer: null, fPrio: '', fMios: false, cargando: false, prev: null };
 const BK_TABS = [['resumen', '📥 Bandeja'], ['procesos', '⚙️ Procesos'], ['plantillas', '📨 Plantillas'], ['horarios', '🕐 Horarios'], ['urgencia', '🚨 Urgencia'], ['perfil', '🎭 Personalidad'], ['bitacora', '📜 Bitácora'], ['pruebas', '🧪 Pruebas']];
-const BK_MODO = { off: ['Apagado', '#6b7280', '#f3f4f6'], der: ['Derivar', '#b45309', '#fef3c7'], sup: ['Supervisado', '#1d4ed8', '#dbeafe'], auto: ['Automático', '#15803d', '#dcfce7'] };
+const BK_MODO = { off: ['Apagado', '#b91c1c', '#fee2e2'], der: ['Derivar', '#b45309', '#fef3c7'], sup: ['Supervisado', '#1d4ed8', '#dbeafe'], auto: ['Automático', '#15803d', '#dcfce7'] };
 const BK_NIV = { AUT: ['Automático', '#15803d', '#dcfce7'], SUP: ['Supervisado', '#1d4ed8', '#dbeafe'], PER: ['Personal', '#b45309', '#fef3c7'] };
 const BK_PRIO = { P1: ['P1 Crítica', 'ESCALAR AHORA', '#b91c1c', '#fee2e2', '🔴'], P2: ['P2 Alta', 'PRIORITARIA', '#c2410c', '#ffedd5', '🟠'], P3: ['P3 Media', 'SEGUIMIENTO', '#a16207', '#fef9c3', '🟡'], P4: ['P4 Normal', 'AUTOMÁTICA', '#4b5563', '#f3f4f6', '⚪'] };
 const BK_ACC = { off_master: 'Bot apagado (mensaje fijo)', emergencia: 'Emergencia: instrucciones + escalar', derivar: 'Derivar a una persona', personal: 'Atención personal (acuse + alerta)', respaldo: 'Mensaje de respaldo', supervisado: 'Borrador a la cola de aprobación', auto: 'El bot responde solo' };
@@ -73411,7 +73411,7 @@ function bkRender_() {
   const kpis = `<div class="bk-kpis">${kpi(contadores.automaticos, 'Procesos en Automático')}${kpi(contadores.prioritarias, 'Conversaciones P1/P2 abiertas')}${kpi(contadores.supervision, 'Pendientes de supervisión')}${kpi(contadores.alertas, 'Alertas sin resolver')}${kpi(contadores.disyuntores, 'Disyuntores activos')}</div>`;
   const tabs = `<div class="bk-tabs">${BK_TABS.map(([k, t]) => `<button type="button" class="bk-tab ${BK.tab === k ? 'on' : ''}" onclick="bkTab_('${k}')">${t}</button>`).join('')}</div>`;
   const body = { resumen: bkResumen_, procesos: bkProcesos_, plantillas: bkPlantillas_, horarios: bkHorarios_, urgencia: bkUrgencia_, perfil: bkPerfil_, bitacora: bkBitacora_, pruebas: bkPruebas_ }[BK.tab]();
-  root.innerHTML = hero + obs + kpis + tabs + `<div id="bk-body">${body}</div>` + (BK.drawer ? bkDrawerHtml_() : '');
+  root.innerHTML = hero + obs + kpis + tabs + (BK.tab === 'procesos' ? bkFiltrosHtml_() : '') + `<div id="bk-body">${body}</div>` + (BK.drawer ? bkDrawerHtml_() : '');
   if (BK.tab === 'plantillas') bkPlantillasMontar_();
 }
 async function bkMaster_() { const c = BK.d.cfg, on = c.master.on === false;
@@ -73468,13 +73468,13 @@ async function bkPrioridad_(conv, actual) {
 // ── ⚙️ Procesos ──
 function bkProcesos_() {
   const { cfg, grupos, metricas } = BK.d, ft = BK.fTipo || '';
-  const catalogo = BK.d.catalogo.filter(c => !ft || c.tipo === ft);
+  const catalogo = BK.d.catalogo.filter(c => (!ft || c.tipo === ft) && bkFiltra_(c));
   const byG = {}; catalogo.forEach(c => (byG[c.grupo] = byG[c.grupo] || []).push(c));
   const html = Object.keys(grupos).concat(Object.keys(byG).filter(g => !grupos[g])).filter(g => byG[g]).map(g => {
     const L = byG[g], cnt = { off: 0, der: 0, sup: 0, auto: 0 }; L.forEach(c => cnt[(cfg.procesos[c.clave] || {}).modo || c.modoIni]++);
     const rows = L.map(c => { const pc = cfg.procesos[c.clave] || {}, modo = pc.modo || c.modoIni, m = metricas[c.clave] || {}, ov = (pc.overrides || []).length, dy = pc.disyuntor && pc.disyuntor.at;
-      const seg = c.admin ? '<span class="bk-chip" style="background:#e0e7ff;color:#3730a3">👤 Solo en modo administrador</span>' : `<div class="bk-seg">${['off', 'der', 'sup', 'auto'].map(k => `<button type="button" class="${modo === k ? 'on' : ''}" style="--c:${BK_MODO[k][1]};--b:${BK_MODO[k][2]}" ${c.forzado ? 'disabled title="Modo forzado por seguridad"' : ''} onclick="bkModo_('${c.clave}','${k}')">${BK_MODO[k][0]}</button>`).join('')}</div>`;
-      return `<div class="bk-pr"><div><div class="nm">${esc(c.nombre)} ${bkTipoChip_(c.tipo)} ${c.origen === 'Original' ? '<span class="bk-chip" style="background:#ede9fe;color:#6d28d9">Original</span>' : c.extra ? '<span class="bk-chip" style="background:#e0f2fe;color:#0369a1">Agregado</span>' : ''}
+      const seg = c.admin ? '<span class="bk-chip" style="background:#e0e7ff;color:#3730a3">👤 Solo en modo administrador</span>' : `<div class="bk-seg">${['off', 'der', 'sup', 'auto'].map(k => `<button type="button" class="${modo === k ? 'on' : ''}" title="${esc(BK_MODO_AYUDA[k])}" style="--c:${BK_MODO[k][1]};--b:${BK_MODO[k][2]}" ${c.forzado ? 'disabled title="Modo forzado por seguridad"' : ''} onclick="bkModo_('${c.clave}','${k}')">${BK_MODO[k][0]}</button>`).join('')}</div>`;
+      return `<div class="bk-pr"><div><div class="nm">${esc(c.nombre)} ${bkTipoChip_(c.tipo)} ${c.origen === 'Original' ? '<span class="bk-chip" style="background:#ede9fe;color:#6d28d9" title="Proceso que el bot ya tenía antes del documento de requerimientos">Original</span>' : c.extra ? '<span class="bk-chip" style="background:#e0f2fe;color:#0369a1" title="Proceso creado desde el panel">Agregado</span>' : ''}
         ${c.forzado ? '<span class="bk-chip" style="background:#fee2e2;color:#b91c1c">🔒 forzado</span>' : ''}${c.solo_directo ? '<span class="bk-chip" style="background:#fff7ed;color:#c2410c">Solo directas</span>' : ''}${c.verif ? '<span class="bk-chip" style="background:#ecfeff;color:#0e7490">Requiere verificación</span>' : ''}
         ${bkPrioChipMini_(pc.prioridad || c.pbIni)}${ov ? `<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">↳ ${ov} regla${ov > 1 ? 's' : ''} específica${ov > 1 ? 's' : ''}</span>` : ''}${dy ? `<span class="bk-chip" style="background:#fee2e2;color:#b91c1c" title="${esc(pc.disyuntor.motivo || '')}">⚡ disyuntor</span>` : ''}</div>
         <div class="ds">${esc(c.desc)}</div>${bkFichaResumen_(pc)}${bkPmChip_(c.clave)}<div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
@@ -73483,12 +73483,12 @@ function bkProcesos_() {
     return `<details class="bk-grp" ${ab ? 'open' : ''} ontoggle="BK.abiertos['${g}']=this.open"><summary>${esc(grupos[g] || g)} <span class="bk-sub">${L.length} procesos</span><span style="flex:1"></span>
       ${['auto', 'sup', 'der', 'off'].filter(k => cnt[k]).map(k => `<span class="bk-chip" style="color:${BK_MODO[k][1]};background:${BK_MODO[k][2]}">${cnt[k]} ${BK_MODO[k][0]}</span>`).join(' ')}</summary>${rows}</details>`;
   }).join('');
-  return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><div><h3>Catálogo de procesos</h3><div class="bk-sub">${catalogo.length} procesos. Colores: gris Apagado · ámbar Derivar · azul Supervisado · verde Automático. Pasar a Automático pide confirmación.</div></div>
+  return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><div><h3>Catálogo de procesos</h3><div class="bk-sub">${catalogo.length} de ${BK.d.catalogo.length} procesos. Pasar a Automático pide confirmación.</div></div>
     <div class="bk-row"><button class="bk-btn sm" onclick="bkLote_('sup')">Todo a Supervisado</button><button class="bk-btn sm" onclick="bkFlNuevo_('')">＋ Nuevo flujo</button><button class="bk-btn sm" onclick="bkNuevoProceso_()">＋ Agregar proceso</button></div></div>
     ${(BK.d.eliminados || []).length ? `<details style="margin-top:8px"><summary class="bk-mut" style="cursor:pointer;font-size:12.5px">🗑 Procesos eliminados (${BK.d.eliminados.length})</summary>${BK.d.eliminados.map(e => `<div class="bk-row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px"><span>${esc(e.nombre)} <span class="bk-mut">· ${esc(BK.d.grupos[e.grupo] || e.grupo)}</span></span><button class="bk-btn sm" onclick="bkProcRestaurar_('${esc(e.clave)}')">Restaurar</button></div>`).join('')}</details>` : ''}
     <div class="bk-grid2" style="margin-top:10px"><div><label class="bk-lb">Mensaje de respaldo general (proceso Apagado sin mensaje propio)</label><textarea class="bk-ta" id="bk-rg">${esc(BK.d.cfg.respaldoGeneral)}</textarea></div>
     <div><label class="bk-lb">Mensaje cuando el canal lo bloquea (Airbnb / Booking)</label><textarea class="bk-ta" id="bk-rc">${esc(BK.d.cfg.respaldoCanal)}</textarea></div></div>
-    <div class="bk-row" style="justify-content:flex-end;margin-top:8px"><button class="bk-btn sm pri" onclick="bkGuardarRespaldos_()">Guardar mensajes</button></div></div>${bkPmCfgHtml_()}${bkTipoFiltro_()}${html}`;
+    <div class="bk-row" style="justify-content:flex-end;margin-top:8px"><button class="bk-btn sm pri" onclick="bkGuardarRespaldos_()">Guardar mensajes</button></div></div>${bkPmCfgHtml_()}${bkModosLeyenda_()}${html || '<div class="bk-card bk-mut">Ningún proceso coincide con los filtros.</div>'}`;
 }
 const bkPrioChipMini_ = p => { const x = BK_PRIO[p] || BK_PRIO.P4; return `<span class="bk-chip" style="color:${x[2]};background:${x[3]}">${p || 'P4'} base</span>`; };
 async function bkGuardarRespaldos_() { const a = document.getElementById('bk-rg').value, b = document.getElementById('bk-rc').value; if (await bkGuardar_('respaldoGeneral', a, false) && await bkGuardar_('respaldoCanal', b)) bkRender_(); }
@@ -73920,3 +73920,28 @@ function bkTipoChip_(t) { return t === 'sistema' ? '<span class="bk-chip" style=
 function bkTipoFiltro_() { const C = BK.d.catalogo, n = t => C.filter(c => c.tipo === t).length, ft = BK.fTipo || '';
   const b = (v, t) => `<button type="button" class="bk-tab ${ft === v ? 'on' : ''}" onclick="BK.fTipo='${v}';bkRender_()">${t}</button>`;
   return `<div class="bk-row" style="margin:0 0 10px">${b('', `Todos (${C.length})`)}${b('huesped', `💬 Interacción con el huésped (${n('huesped')})`)}${b('sistema', `⚙️ Internos del sistema (${n('sistema')})`)}</div>`; }
+
+// ── Modos explicados + filtros de procesos ──
+const BK_MODO_AYUDA = { off: 'El bot no atiende el tema: responde solo con el mensaje de respaldo fijo y no avisa a nadie.', der: 'El bot no atiende el tema: manda un acuse al huésped («una persona te atiende en breve»), pasa la conversación a atención humana y crea una alerta para el equipo.', sup: 'El bot redacta la respuesta o acción, pero no sale hasta que una persona la aprueba (cola de aprobación).', auto: 'El bot resuelve y responde solo, dentro de las reglas y límites del proceso.' };
+function bkModosLeyenda_() {
+  return `<div class="bk-card" style="padding:12px 16px"><h3 style="margin-bottom:6px">¿Qué hace cada modo?</h3><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">${['off', 'der', 'sup', 'auto'].map(k => `<div style="border:1.5px solid ${BK_MODO[k][1]}33;background:${BK_MODO[k][2]}66;border-radius:12px;padding:8px 10px"><span class="bk-chip" style="color:${BK_MODO[k][1]};background:${BK_MODO[k][2]}">${BK_MODO[k][0]}</span><div style="font-size:12px;margin-top:5px;line-height:1.4">${BK_MODO_AYUDA[k]}</div></div>`).join('')}</div></div>`;
+}
+const BK_RESTR = { directas: ['Solo reservas directas', 'Bloqueado en Airbnb/Booking (no cobrar ni cotizar fuera de la plataforma)', c => c.solo_directo], verif: ['Requiere verificación', 'Solo si el número tiene reserva con estancia activa', c => c.verif], reserva: ['Requiere reserva vinculada', 'Solo si la conversación tiene una reserva asociada', c => c.reserva], forzado: ['Forzado por seguridad', 'Siempre deriva; no se puede apagar ni eliminar', c => c.forzado], admin: ['Solo administradores', 'Se usa cuando escribe un administrador', c => c.admin], ninguna: ['Sin restricciones', 'Aplica en cualquier canal y conversación', c => !c.solo_directo && !c.verif && !c.reserva && !c.forzado && !c.admin] };
+function bkFiltra_(c) { const f = BK.f || {}, pc = BK.d.cfg.procesos[c.clave] || {};
+  if (f.restr && !BK_RESTR[f.restr][2](c)) return false;
+  if (f.prio && (pc.prioridad || c.pbIni) !== f.prio) return false;
+  if (f.origen && (c.extra ? 'Agregado' : c.origen) !== f.origen) return false;
+  if (f.modo && (pc.modo || c.modoIni) !== f.modo) return false;
+  return true; }
+function bkFiltrosHtml_() {
+  const f = BK.f = BK.f || {}, C = BK.d.catalogo, ft = BK.fTipo || '';
+  const sel = (k, opts, ayuda) => `<select class="bk-sel" style="width:auto;min-width:150px;padding:6px 9px;font-size:12.5px;border-radius:999px;${f[k] ? 'border-color:#111827;font-weight:700' : ''}" title="${esc(ayuda)}" onchange="BK.f['${k}']=this.value;bkRender_()">${opts.map(([v, t]) => `<option value="${esc(v)}" ${String(f[k] || '') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  const n = fn => C.filter(fn).length, hay = ft || Object.values(f).some(Boolean);
+  const tipo = [['', 'Todos'], ['huesped', '💬 Huésped'], ['sistema', '⚙️ Sistema']].map(([v, t]) => `<button type="button" class="bk-tab ${ft === v ? 'on' : ''}" style="padding:6px 11px;font-size:12px" onclick="BK.fTipo='${v}';bkRender_()">${t} (${v ? n(c => c.tipo === v) : C.length})</button>`).join('');
+  return `<div class="bk-row" style="margin:-4px 0 12px;gap:8px;align-items:center">${tipo}
+    ${sel('restr', [['', 'Canal y restricciones: todas']].concat(Object.entries(BK_RESTR).map(([k, x]) => [k, `${x[0]} (${n(x[2])})`])), 'Filtra por restricciones de canal o de verificación')}
+    ${sel('prio', [['', 'Prioridad: todas'], ['P1', '🔴 P1 Crítica'], ['P2', '🟠 P2 Alta'], ['P3', '🟡 P3 Media'], ['P4', '⚪ P4 Normal']], 'Prioridad base del proceso (alimenta el puntaje de urgencia)')}
+    ${sel('origen', [['', 'Origen: todos'], ['Original', 'Original (ya existía en el bot)'], ['Propuesto', 'Propuesto (documento de requerimientos)'], ['Agregado', 'Agregado desde el panel']], 'De dónde viene el proceso')}
+    ${sel('modo', [['', 'Modo: todos'], ['off', 'Apagado'], ['der', 'Derivar'], ['sup', 'Supervisado'], ['auto', 'Automático']], 'Modo actual del proceso')}
+    ${hay ? `<button class="bk-btn sm" onclick="BK.f={};BK.fTipo='';bkRender_()">✕ Limpiar</button>` : ''}</div>`;
+}
