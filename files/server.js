@@ -13800,7 +13800,7 @@ async function _pmTick(opts) {
     const abnEnvio = !!((await _rhdGetJson(_ABN_CFG_OBJ).catch(() => ({}))) || {}).envio;
     for (const [proc, tid] of links) {
       const t = tplDe(tid); if (!t || !t.enabled) continue;
-      const fl = flujoDe(tid), canalEnvio = (fl && fl.canal) || "airbnb"; // por omisión los proactivos salen por la mensajería de Airbnb
+      const fl = flujoDe(tid), canalEnvio = (fl && fl.canal) || "whatsapp"; // por omisión: solo reservas que no son de Airbnb (Airbnb manda sus propias plantillas)
       const alojs = fl && Array.isArray(fl.alojamientos) ? fl.alojamientos.slice() : String(t.alojamientos || "").split(",").map(x => x.trim()).filter(Boolean); // los alojamientos se asignan al flujo
       const modo = (cfg.procesos[proc] || {}).modo || "sup";
       for (const b of reservas) {
@@ -13810,7 +13810,8 @@ async function _pmTick(opts) {
         const base = { key, proc, tpl: tid, tplNombre: t.nombre, bid: String(b.id), hid, huesped: (b.guest && b.guest.name) || "", canal: _bcCanalDe(b.source), programado: cuando.toISOString(), at: new Date().toISOString() };
         if (now - cuando.getTime() > maxAtraso) { nuevos.push(Object.assign(base, { estado: "vencido", motivo: "ya había pasado la hora cuando se revisó" })); continue; }
         if (!enHorario) continue; // fuera del horario de envío: se reintenta en la siguiente vuelta
-        const esAbn = base.canal === "airbnb", via = canalEnvio === "whatsapp" ? "whatsapp" : esAbn ? "airbnb" : canalEnvio === "ambos" ? "whatsapp" : null;
+        // WhatsApp/Lodgify = reservas directas y de Booking (nunca Airbnb, que ya tiene sus mensajes programados) · Airbnb = por su mensajería.
+        const esAbn = base.canal === "airbnb", via = esAbn ? (canalEnvio === "airbnb" || canalEnvio === "ambos" ? "airbnb" : null) : (canalEnvio === "whatsapp" || canalEnvio === "ambos" ? "whatsapp" : null);
         if (!via || canalEnvio === "ninguno") continue; // el flujo no tiene canal de envío o la reserva no le aplica
         base.via = via;
         const hu = huIdx.get(String(b.id)) || null, huId = hu ? String(hu.ID || hu.row_number || "") : "", c = (huId && wacfg.map && wacfg.map[huId]) || null;
