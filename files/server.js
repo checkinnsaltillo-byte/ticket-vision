@@ -13084,7 +13084,6 @@ const _BC_CAT = [
   ["link_pago", "reservas", "Envío de link de reserva", "Comparte el link de la página de reservas (check-inn.mx/reservas) con fechas y huéspedes; ahí el huésped reserva y paga. El bot no genera cobros.", "sup", "Original", "P4", "link|liga|como (reservo|pago|le pago)|donde (reservo|pago)|pagar con tarjeta|quiero reservar|apartar", [], "d"],
   ["metodo_pago", "reservas", "Método de pago alternativo", "Registra la solicitud de pagar distinto (efectivo, transferencia SPEI, parcialidades); una persona la coordina.", "sup", "Propuesto", "P4", "efectivo|transferencia|spei|parcialidades|deposito bancario|forma de pago|metodo de pago", ["solicitar_metodo_pago"], "d"],
   ["estado_pagos", "reservas", "Información de estado de pagos", "Informa pagos recibidos, saldos pendientes y fechas límite.", "sup", "Original", "P4", "saldo|ya (pague|quedo el pago)|pendiente de pago|anticipo|cuanto (debo|falta)|recibieron (mi|el) pago", [], "v"],
-  ["confirmacion", "reservas", "Confirmación de reserva", "Envía la confirmación con resumen de la reserva tras el pago.", "auto", "Propuesto", "P4", "confirma(r|cion)? (mi|la) reserva|quedo (confirmada|reservad)", [], ""],
   ["modificacion", "reservas", "Modificación de reserva", "Cambio de fechas, número de huéspedes o propiedad.", "der", "Propuesto", "P3", "cambiar (la|mi|las) (fecha|reserva)|mover (la|mi) reserva|modificar|agregar (una )?persona|cambio de fecha", [], ""],
   ["cancelacion", "reservas", "Cancelación y política de reembolso", "Explica la política aplicable; la cancelación y el reembolso los ejecuta una persona.", "der", "Propuesto", "P3", "cancel|reembols|devolu", [], ""],
   ["estancia_larga", "reservas", "Estancias largas y mensuales", "Cotiza estancias de 7 o más noches con su tarifa especial.", "sup", "Propuesto", "P4", "por mes|mensual|semanas|un mes|largo plazo|renta mensual", ["cotizar_disponibilidad"], "d"],
@@ -13122,9 +13121,12 @@ const _BC_CAT = [
   ["amenidades", "informacion", "Amenidades y servicios", "Qué incluye cada propiedad.", "auto", "Original", "P4", "amenidad|incluye|tiene (alberca|gym|cocina|lavadora)|cuenta con", [], ""],
   ["reglas", "informacion", "Reglas de la casa", "Horarios de silencio, fumar, fiestas, capacidad máxima.", "auto", "Propuesto", "P4", "reglas|reglamento|se puede fumar|fumar|capacidad maxima", [], ""],
   ["basura", "informacion", "Basura y reciclaje", "Dónde y cuándo sacar la basura.", "auto", "Propuesto", "P4", "basura|reciclaje|desechos", [], ""],
+  ["confirmacion", "proactivos", "Confirmación de reserva", "Mensaje programado tras reservar (plantilla «1. Confirmación de reserva»).", "sup", "Propuesto", "P4", "confirma(r|cion)? (mi|la) reserva|quedo (confirmada|reservad)", [], ""],
   ["recordatorio_llegada", "proactivos", "Recordatorio previo a la llegada", "Mensaje automático 24 o 48 horas antes con instrucciones.", "sup", "Propuesto", "P4", "", [], ""],
-  ["bienvenida", "proactivos", "Bienvenida el día de llegada", "Mensaje de bienvenida y verificación de que todo está bien.", "sup", "Propuesto", "P4", "", [], ""],
-  ["recordatorio_salida", "proactivos", "Recordatorio de salida", "Mensaje la noche previa con la hora y las instrucciones de salida.", "sup", "Propuesto", "P4", "", [], ""],
+  ["bienvenida", "proactivos", "Bienvenida el día de llegada", "Mensaje de bienvenida con la guía (plantilla «2. Bienvenida (llegada hoy)»).", "sup", "Propuesto", "P4", "", [], ""],
+  ["satisfaccion", "proactivos", "Confirmación de satisfacción", "Pregunta durante la estancia si todo está bien (plantilla «3. Confirmación de satisfacción»).", "sup", "Propuesto", "P4", "", [], ""],
+  ["recordatorio_salida", "proactivos", "Recordatorio de salida", "Mensaje la noche previa con la hora y las instrucciones de salida (plantilla «4. Recordatorio de check-out»).", "sup", "Propuesto", "P4", "", [], ""],
+  ["despedida", "proactivos", "Despedida", "Agradecimiento el día de salida (plantilla «5. Despedida»).", "sup", "Propuesto", "P4", "", [], ""],
   ["encuesta", "proactivos", "Encuesta de satisfacción", "Encuesta corta tras la salida; resultados al panel.", "off", "Propuesto", "P4", "", [], ""],
   ["ingles", "transversales", "Atención en inglés", "Detecta el idioma y responde en inglés con el mismo estilo.", "sup", "Propuesto", "P4", "\\b(hello|hi|please|thanks|thank you|check in|how|where|what|when)\\b", [], ""],
   ["multimedia", "transversales", "Mensajes con foto, audio o ubicación", "Interpreta imágenes y notas de voz (por ejemplo, foto de una falla).", "sup", "Propuesto", "P4", "", [], ""],
@@ -13200,6 +13202,9 @@ function _bcDefaults() {
       { id: "d5", disparador: "palabra", umbral: 1, lista: "", accion: "derivar", mensaje: "", activo: false },
     ],
     disyuntor: { on: true, n: 3, ventanaMin: 60, bajaA: "sup" },
+    // Mensajes programados: plantilla vinculada a cada proceso proactivo, horario permitido y atraso máximo.
+    proactivos: { plantillas: { confirmacion: "T1787016359403_5024", bienvenida: "T1788039188769_6214", satisfaccion: "T1787017616978_1854", recordatorio_salida: "T1788039290084_7647", despedida: "T1786834157496_978" },
+      ventana: { ini: "08:00", fin: "21:30" }, atrasoMaxH: 3 },
   };
 }
 // Une la configuración guardada con los valores por omisión (las claves nuevas aparecen sin perder lo guardado).
@@ -13475,6 +13480,7 @@ function _bcFallo(k, que) {
 // Aplica la decisión del gate en un chat de WhatsApp. Devuelve true si ya respondió (no hay que llamar al modelo).
 async function _bcAplicarWa(g, { phone10, fromRaw, texto }) {
   _bcRegistrar(g, { texto });
+  if ((g.detectados || []).includes("baja")) _pmBaja(phone10, String(texto).slice(0, 200)).catch(() => {}); // RF-16: la baja se respeta siempre
   if (!g.activo) return false;
   if (["off_master", "emergencia", "derivar", "personal", "respaldo"].includes(g.accion)) {
     const msg = String(g.msg || "").trim();
@@ -13539,7 +13545,7 @@ app.post("/bot/control", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const { seccion, data, usuario } = req.body || {}, por = String(usuario || "").slice(0, 60);
-    const OK = ["activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
+    const OK = ["proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
     if (!OK.includes(seccion)) return res.status(400).json({ ok: false, error: "Sección inválida" });
     let antes, despues;
     await _bcMut(_BC.OBJ, d => {
@@ -13637,6 +13643,171 @@ app.post("/bot/control/preview-perfil", async (req, res) => {
 app.all("/bot/control/tick", async (req, res) => {
   if (!process.env.SYNC_SECRET || req.get("X-Sync-Secret") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false });
   try { res.json(await _bcTick()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── 📨 Mensajes programados (procesos proactivos ↔ plantillas de WhatsApp) ──
+// Cada proceso proactivo tiene una plantilla vinculada (whatsapp/plantillas.json). Cloud Scheduler → /bot/control/proactivos/tick
+// cada 10 min calcula qué mensajes tocan según la programación de la plantilla y los trata según el modo del proceso:
+// Apagado = no se manda · Supervisado/Derivar = queda «por aprobar» en el panel · Automático = se envía.
+// WhatsApp solo entrega texto libre si el huésped escribió en las últimas 24 h (error 63016 fuera de esa ventana): sin ventana,
+// un mensaje Automático queda «sin ventana» para que una persona decida. Registro y no-duplicados en bot/proactivos.json.
+const _PM = { OBJ: "bot/proactivos.json", BAJAS: "bot/bajas.json" };
+const _PM_PROC = ["confirmacion", "bienvenida", "satisfaccion", "recordatorio_salida", "despedida", "recordatorio_llegada", "encuesta", "resena"];
+function _pmLocal(fecha, hhmm) { // fecha YYYY-MM-DD + HH:MM en America/Monterrey → Date (UTC)
+  const [y, m, d] = String(fecha).split("-").map(Number), [h, mi] = String(hhmm || "09:00").split(":").map(Number);
+  const guess = Date.UTC(y, m - 1, d, h || 0, mi || 0);
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: _BC_TZ, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(guess));
+  const g = t => Number((p.find(x => x.type === t) || {}).value);
+  const asLocal = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour") % 24, g("minute"));
+  return new Date(guess - (asLocal - guess));
+}
+const _pmAddDias = (iso, n) => { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+// Momento programado de una plantilla para una reserva de Lodgify (misma regla que la ficha de la reserva).
+function _pmCuando(t, b) {
+  const type = String(t.schedule_type || "never");
+  const arr = String(b.arrival || "").slice(0, 10), dep = String(b.departure || "").slice(0, 10);
+  if (type === "on_booking_5min") { const c = String(b.created_at || ""); if (!c) return null; return new Date(Date.parse(/Z|[+-]\d\d:?\d\d$/.test(c) ? c : c + "Z") + 5 * 60e3); }
+  if (type === "before_arrival") return arr ? _pmLocal(_pmAddDias(arr, -1), "10:00") : null;
+  if (type === "before_checkout") return dep ? _pmLocal(_pmAddDias(dep, -1), "18:00") : null;
+  if (type === "custom") { const base = String(t.schedule_event || "arrival") === "checkout" ? dep : arr; if (!base) return null;
+    const off = parseInt(t.schedule_offset === "" || t.schedule_offset == null ? "0" : t.schedule_offset, 10) || 0; return _pmLocal(_pmAddDias(base, off), t.schedule_time || "09:00"); }
+  return null;
+}
+const _pmFecha = iso => { if (!iso) return ""; const d = new Date(iso + "T12:00:00Z"); return `${d.getUTCDate()} de ${["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][d.getUTCMonth()]}`; };
+// Variables {{nombre}}, {{url_guia}}, {{hora_llegada_alojamiento}}… con los datos de la reserva y del alojamiento.
+function _pmRender(t, b, al, hu) {
+  let s = String(t.body || "");
+  let custom = []; try { custom = Array.isArray(t.placeholders_custom) ? t.placeholders_custom : JSON.parse(String(t.placeholders_custom || "[]")); } catch (_) {}
+  (custom || []).forEach(p => { const n = String((p && p.name) || "").trim(); if (n) s = s.replace(new RegExp(`\\{\\{\\s*${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`, "gi"), String(p.value || "")); });
+  al = al || {}; hu = hu || {};
+  const full = String((b.guest && b.guest.name) || hu["Nombre reservación"] || hu["Nombre completo"] || "").trim(), primero = full.split(/\s+/)[0] || "Huésped";
+  const prop = String(al.Propiedad || "").trim(), dep = String(al["# Departamento"] || "").trim(), hid = String(b.property_id || "");
+  const M = { nombre: primero, nombre_completo: full || "Huésped", apellido: full.split(/\s+/).slice(1).join(" "), personas: String((b.rooms && b.rooms[0] && b.rooms[0].people) || hu.Personas || ""),
+    booking_id: String(b.id || ""), fecha_llegada: _pmFecha(String(b.arrival || "").slice(0, 10)), fecha_salida: _pmFecha(String(b.departure || "").slice(0, 10)),
+    alojamiento: prop && dep ? `${prop} #${dep}` : String(al.HouseName || prop || "tu alojamiento"), propiedad: prop, departamento: dep, house_id: hid,
+    direccion: String(al.direccion || al.Direccion || ""), ciudad: String(al.ciudad || al.Ciudad || "Saltillo"), wifi_nombre: String(al.wifi_name_1 || al.wifi_ssid || al.wifi_nombre || ""), wifi_password: String(al.wifi_contrasena || al.wifi_password || ""),
+    metodo_llegada: String(al.metodo_llegada || al.metodo_acceso || ""), ubicacion_txt: String(al.ubicacion_txt || al.ubicacion || ""),
+    url_guia: String(al.url_guia || "").trim() || (hid ? `https://www.check-inn.mx/public/guia/?id=${encodeURIComponent(hid)}` : "https://www.check-inn.mx"),
+    hora_llegada_alojamiento: String(al.hora_llegada || "").trim(), hora_salida_alojamiento: String(al.hora_salida || "").trim(), canal: String(b.source || "").replace(/Integration$/, "") };
+  s = s.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, k) => { const v = M[k.toLowerCase()]; return v ? v : m; });
+  const faltan = [...new Set((s.match(/\{\{\s*[a-z_][a-z0-9_]*\s*\}\}/gi) || []).map(x => x.replace(/[{}\s]/g, "")))];
+  return { body: s.trim(), faltan };
+}
+async function _pmUltimoHuesped(tel10) { // última vez que el huésped escribió por WhatsApp (ventana de 24 h)
+  try { const d = await _rhdGetJson(_waChatObj(tel10)); const L = d.msgs || []; for (let i = L.length - 1; i >= 0; i--) if (L[i].role === "user") return Date.parse(L[i].ts) || 0; } catch (_) {}
+  return 0;
+}
+async function _pmBajas() { const d = await _rhdGetJson(_PM.BAJAS).catch(() => ({})); return d.tels || {}; }
+async function _pmBaja(tel10, motivo) { if (!tel10) return; await _bcMut(_PM.BAJAS, d => { d.tels = d.tels || {}; if (!d.tels[tel10]) d.tels[tel10] = { at: new Date().toISOString(), motivo: String(motivo || "").slice(0, 200) }; }); _bcLog({ tipo: "baja", conv: tel10, motivo }); }
+function _pmHuIdx() { // reservaciones (hoja) por Id de Lodgify → fila (ID para la config de envíos, celular principal)
+  let best = null; for (const [, e] of _huespedesCache) { const rows = e && e.payload && (e.payload.rows || e.payload.items); if (Array.isArray(rows) && (!best || rows.length > best.length)) best = rows; }
+  const m = new Map(); (best || []).forEach(r => { const k = String(r["Lodgify Id"] || "").trim(); if (k) m.set(k, r); }); return m;
+}
+async function _pmEnviar(it) {
+  const to = it.to.map(t => _waFormatTo(t)).filter(Boolean); if (!to.length) throw new Error("sin teléfono");
+  const sids = [];
+  for (const x of to) { const m = await _twilioSendMessage({ to: x, body: it.body, tipo: it.tpl }); sids.push(m.sid);
+    _waLog({ booking_id: String(it.huId || it.bid), tipo: it.tpl, origin: "auto-proactivo", to: x, sid: m.sid, status: m.status || "queued", body_preview: it.body.slice(0, 200) }); }
+  return sids;
+}
+let _pmTickOn = false;
+async function _pmTick(opts) {
+  if (_pmTickOn) return { ok: true, ocupado: true }; _pmTickOn = true;
+  const dry = !!(opts && opts.dry), out = { revisadas: 0, nuevos: [], errores: [] };
+  try {
+    const cfg = await _bcCfg(true), P = cfg.proactivos || {}, now = Date.now(), ahora = _bcAhora();
+    const links = Object.entries(P.plantillas || {}).filter(([k, tid]) => tid && (cfg.procesos[k] || {}).modo !== "off");
+    if (!links.length) return Object.assign({ ok: true }, out);
+    const tpls = ((await _waLeer(_WA_OBJ.tpl)).items || []), tplDe = id => tpls.find(t => t.id === id);
+    // Reservas de Lodgify: próximas y en curso (incluye las que salen hoy).
+    const bks = [];
+    for (const f of ["Upcoming", "Current"]) for (let pg = 1; pg <= 5; pg++) { const d = await _lgApi(`/v2/reservations/bookings?stayFilter=${f}&page=${pg}&size=100`); const L = d.items || []; bks.push(...L); if (L.length < 100) break; }
+    const vistos = new Set(), reservas = bks.filter(b => { const k = String(b.id); if (vistos.has(k) || b.is_deleted || String(b.status) !== "Booked") return false; vistos.add(k); return true; });
+    out.revisadas = reservas.length;
+    await _alojGetPayload().catch(() => {});
+    const alojIdx = new Map(); (((_alojCache.payload || {}).rows) || []).forEach(r => { const id = String(r.id_lodgify || r.HouseId || "").trim(); if (id) alojIdx.set(id, r); });
+    const huIdx = _pmHuIdx(), wacfg = await _wacfgDatos().catch(() => ({})), bajas = await _pmBajas();
+    const reg = await _rhdGetJson(_PM.OBJ).catch(() => ({})), ya = (reg && reg.items) || {};
+    const maxAtraso = Math.max(1, Number(P.atrasoMaxH || 3)) * 3600e3, vIni = _bcMinDe((P.ventana || {}).ini || "08:00"), vFin = _bcMinDe((P.ventana || {}).fin || "21:30");
+    const enHorario = ahora.min >= vIni && ahora.min <= vFin; // RF-16: horario permitido de envío
+    const nuevos = [];
+    for (const [proc, tid] of links) {
+      const t = tplDe(tid); if (!t || !t.enabled) continue;
+      const alojs = String(t.alojamientos || "").split(",").map(x => x.trim()).filter(Boolean);
+      const modo = (cfg.procesos[proc] || {}).modo || "sup";
+      for (const b of reservas) {
+        const hid = String(b.property_id || ""), key = `${b.id}|${tid}`;
+        if (ya[key] || !alojs.includes(hid)) continue;
+        const cuando = _pmCuando(t, b); if (!cuando || cuando.getTime() > now) continue;
+        const base = { key, proc, tpl: tid, tplNombre: t.nombre, bid: String(b.id), hid, huesped: (b.guest && b.guest.name) || "", canal: _bcCanalDe(b.source), programado: cuando.toISOString(), at: new Date().toISOString() };
+        if (now - cuando.getTime() > maxAtraso) { nuevos.push(Object.assign(base, { estado: "vencido", motivo: "ya había pasado la hora cuando se revisó" })); continue; }
+        if (!enHorario) continue; // fuera del horario de envío: se reintenta en la siguiente vuelta
+        const hu = huIdx.get(String(b.id)) || null, huId = hu ? String(hu.ID || hu.row_number || "") : "", c = (huId && wacfg.map && wacfg.map[huId]) || null;
+        if (c && Array.isArray(c.disabled_templates) && c.disabled_templates.includes(tid)) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "plantilla desactivada en la reserva" })); continue; }
+        if (c && c.auto_enabled === false && c.updated_at) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "envíos automáticos apagados en la reserva" })); continue; }
+        const tel = _sisCel10((hu && (hu["Cel/Whatsapp (principal)"] || hu.Celular)) || (b.guest && b.guest.phone) || "");
+        const to = (c && Array.isArray(c.recipients) && c.recipients.length ? c.recipients : [tel]).map(x => _sisCel10(x)).filter(Boolean);
+        if (!to.length) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "sin teléfono" })); continue; }
+        if (to.every(x => bajas[x])) { nuevos.push(Object.assign(base, { estado: "omitido", motivo: "el huésped pidió no recibir mensajes" })); continue; }
+        const r = _pmRender(t, b, alojIdx.get(hid), hu);
+        const ult = await _pmUltimoHuesped(to[0]), ventana = ult && now - ult < 23.5 * 3600e3;
+        const it = Object.assign(base, { to: to.filter(x => !bajas[x]), huId, body: r.body, faltan: r.faltan, ventana: !!ventana, modo });
+        if (modo === "auto" && !r.faltan.length && ventana) {
+          if (dry) { it.estado = "se_enviaria"; nuevos.push(it); continue; }
+          try { it.sids = await _pmEnviar(it); it.estado = "enviado"; it.enviadoAt = new Date().toISOString(); it.por = "bot"; }
+          catch (e) { it.estado = "fallido"; it.motivo = e.message; out.errores.push(e.message); }
+        } else {
+          it.estado = modo === "auto" ? "sin_ventana" : "por_aprobar";
+          it.motivo = r.faltan.length ? `faltan datos: ${r.faltan.join(", ")}` : modo === "auto" ? "el huésped no ha escrito en 24 h: WhatsApp no entrega texto libre" : `proceso en ${_BC_MODO_TXT[modo]}`;
+        }
+        nuevos.push(it);
+      }
+    }
+    if (nuevos.length && !dry) {
+      await _bcMut(_PM.OBJ, d => { d.items = d.items || {}; nuevos.forEach(x => { if (!d.items[x.key]) d.items[x.key] = x; });
+        const ks = Object.keys(d.items); if (ks.length > 3000) ks.sort((a, b) => String(d.items[a].at).localeCompare(String(d.items[b].at))).slice(0, ks.length - 3000).forEach(k => delete d.items[k]); });
+      nuevos.forEach(x => _bcLog({ tipo: "proactivo", conv: x.to && x.to[0], proceso: x.proc, plantilla: x.tplNombre, estado: x.estado, motivo: x.motivo || "", reserva: x.bid }));
+      const pend = nuevos.filter(x => x.estado === "por_aprobar" || x.estado === "sin_ventana").length;
+      if (pend) _bcLog({ tipo: "alerta", ev: `${pend} mensaje(s) programado(s) por aprobar` });
+    }
+    out.nuevos = nuevos.map(x => ({ proc: x.proc, bid: x.bid, huesped: x.huesped, estado: x.estado, motivo: x.motivo || "" }));
+    return Object.assign({ ok: true }, out);
+  } finally { _pmTickOn = false; }
+}
+app.all("/bot/control/proactivos/tick", async (req, res) => {
+  if (!process.env.SYNC_SECRET || req.get("X-Sync-Secret") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false });
+  try { res.json(await _pmTick({ dry: req.query.dry === "1" })); } catch (e) { console.warn("[proactivos]", e.message); res.status(500).json({ ok: false, error: e.message }); }
+});
+// Vista previa sin enviar nada (para el panel): qué tocaría ahora mismo.
+app.get("/bot/control/proactivos/simular", async (req, res) => { try { res.json(await _pmTick({ dry: true })); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/bot/control/proactivos", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const [reg, tpl, bajas] = await Promise.all([_rhdGetJson(_PM.OBJ).catch(() => ({})), _waLeer(_WA_OBJ.tpl).catch(() => ({})), _pmBajas()]);
+    const dias = Math.min(30, Number(req.query.dias) || 7);
+    const items = Object.values((reg && reg.items) || {}).filter(x => ["por_aprobar", "sin_ventana"].includes(x.estado) || Date.now() - Date.parse(x.at) < dias * 864e5)
+      .sort((a, b) => String(b.programado).localeCompare(String(a.programado)));
+    res.json({ ok: true, items, bajas, plantillas: (tpl.items || []).filter(t => t.schedule_type && t.schedule_type !== "never").map(t => ({ id: t.id, nombre: t.nombre, enabled: !!t.enabled, schedule_type: t.schedule_type, schedule_event: t.schedule_event || "", schedule_offset: t.schedule_offset || "", schedule_time: t.schedule_time || "", alojamientos: t.alojamientos || "" })) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Aprobar (enviar), editar u omitir un mensaje programado pendiente.
+app.post("/bot/control/proactivos/accion", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const { key, accion, body, usuario } = req.body || {};
+    if (!["enviar", "omitir", "editar", "baja_quitar"].includes(accion)) return res.status(400).json({ ok: false, error: "Acción inválida" });
+    if (accion === "baja_quitar") { await _bcMut(_PM.BAJAS, d => { if (d.tels) delete d.tels[String(key)]; }); _bcLog({ tipo: "baja", conv: key, motivo: `quitada por ${usuario || "?"}` }); return res.json({ ok: true }); }
+    const reg = await _rhdGetJson(_PM.OBJ).catch(() => ({})), it = reg.items && reg.items[key];
+    if (!it) return res.status(404).json({ ok: false, error: "No encontrado" });
+    if (!["por_aprobar", "sin_ventana", "fallido"].includes(it.estado)) return res.status(409).json({ ok: false, error: `Ya está ${it.estado}` });
+    const upd = { por: String(usuario || "").slice(0, 60), revisadoAt: new Date().toISOString() };
+    if (accion === "editar") upd.body = String(body || "").slice(0, 4000);
+    else if (accion === "omitir") upd.estado = "omitido";
+    else { const x = Object.assign({}, it, { body: String(body || it.body) }); try { upd.sids = await _pmEnviar(x); upd.estado = "enviado"; upd.body = x.body; upd.enviadoAt = new Date().toISOString(); } catch (e) { upd.estado = "fallido"; upd.motivo = e.message; } }
+    await _bcMut(_PM.OBJ, d => { if (d.items && d.items[key]) Object.assign(d.items[key], upd); });
+    _bcLog({ tipo: accion === "enviar" ? "aprobacion" : accion === "omitir" ? "rechazo" : "edicion", proceso: it.proc, conv: (it.to || [])[0], plantilla: it.tplNombre, usuario, resultado: upd.estado || "" });
+    res.json({ ok: upd.estado !== "fallido", estado: upd.estado, error: upd.motivo });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 const PORT = process.env.PORT || 8080;

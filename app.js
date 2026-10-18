@@ -73360,9 +73360,10 @@ async function bkInit_() {
 async function bkCargar_(silencioso) {
   if (BK.cargando) return; BK.cargando = true;
   try {
-    const [a, b] = await Promise.all([fetch(`${BACKEND}/bot/control`, { cache: 'no-store' }).then(r => r.json()), fetch(`${BACKEND}/bot/control/bandeja?horas=72`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({ items: [] }))]);
+    const [a, b, c] = await Promise.all([fetch(`${BACKEND}/bot/control`, { cache: 'no-store' }).then(r => r.json()), fetch(`${BACKEND}/bot/control/bandeja?horas=72`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({ items: [] })),
+      fetch(`${BACKEND}/bot/control/proactivos`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({ items: [], plantillas: [], bajas: {} }))]);
     if (!a.ok) throw new Error(a.error || 'Error');
-    BK.d = a; BK.bandeja = b.items || [];
+    BK.d = a; BK.bandeja = b.items || []; BK.pm = c.ok ? c : { items: [], plantillas: [], bajas: {} };
     bkRender_();
   } catch (e) { if (!silencioso) { const root = document.getElementById('module-bot-control'); if (root && !BK.d) root.innerHTML = `<div class="bk-card">⚠️ No se pudo cargar: ${esc(e.message || e)} <button class="bk-btn sm" onclick="bkInit_()">Reintentar</button></div>`; } }
   finally { BK.cargando = false; }
@@ -73436,7 +73437,7 @@ function bkResumen_() {
       ${sen ? `<div class="bk-why">Por qué: ${sen}</div>` : ''}</div>
       <div class="bk-row" style="justify-content:flex-end">${bkAbrirChatBtn_(c.conv)}<button class="bk-btn sm" onclick="bkPrioridad_('${esc(c.conv)}','${c.prioridad || 'P4'}')">Prioridad</button></div></div>`; }).join('')
     : '<div class="bk-mut" style="font-size:12.5px;padding:8px 0">Aún no hay conversaciones evaluadas por el gate en las últimas 72 h.</div>';
-  return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><h3>🔔 Alertas y escalamientos</h3><button class="bk-btn sm" onclick="bkCargar_()">↻ Actualizar</button></div><div style="margin-top:8px">${alH}</div></div>
+  return bkPmHtml_() + `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><h3>🔔 Alertas y escalamientos</h3><button class="bk-btn sm" onclick="bkCargar_()">↻ Actualizar</button></div><div style="margin-top:8px">${alH}</div></div>
     <div class="bk-card"><div class="bk-row" style="justify-content:space-between;margin-bottom:6px"><h3>📥 Conversaciones por urgencia (IPO)</h3>
       <div class="bk-row">${pill('', 'Todas')}${pill('P1', '🔴 P1')}${pill('P2', '🟠 P2')}${pill('P3', '🟡 P3')}${pill('P4', '⚪ P4')}${bkCk_(BK.fMios, 'Míos', 'BK.fMios=!BK.fMios;bkRender_()')}</div></div>
       <div class="bk-sub" style="margin-bottom:6px">Ordenadas por puntaje, no por hora. La cola de aprobación (respuestas en Supervisado) se atiende en Chats bot: «Esperando autorización».</div>${cv}</div>`;
@@ -73466,7 +73467,7 @@ function bkProcesos_() {
       return `<div class="bk-pr"><div><div class="nm">${esc(c.nombre)} ${c.origen === 'Original' ? '<span class="bk-chip" style="background:#ede9fe;color:#6d28d9">Original</span>' : c.extra ? '<span class="bk-chip" style="background:#e0f2fe;color:#0369a1">Agregado</span>' : ''}
         ${c.forzado ? '<span class="bk-chip" style="background:#fee2e2;color:#b91c1c">🔒 forzado</span>' : ''}${c.solo_directo ? '<span class="bk-chip" style="background:#fff7ed;color:#c2410c">Solo directas</span>' : ''}${c.verif ? '<span class="bk-chip" style="background:#ecfeff;color:#0e7490">Requiere verificación</span>' : ''}
         ${bkPrioChipMini_(pc.prioridad || c.pbIni)}${ov ? `<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">↳ ${ov} regla${ov > 1 ? 's' : ''} específica${ov > 1 ? 's' : ''}</span>` : ''}${dy ? `<span class="bk-chip" style="background:#fee2e2;color:#b91c1c" title="${esc(pc.disyuntor.motivo || '')}">⚡ disyuntor</span>` : ''}</div>
-        <div class="ds">${esc(c.desc)}</div><div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
+        <div class="ds">${esc(c.desc)}</div>${bkPmChip_(c.clave)}<div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
         ${seg}<button class="bk-btn sm" onclick="bkConfigurar_('${c.clave}')">Configurar</button></div>`; }).join('');
     const ab = BK.abiertos[g] !== false;
     return `<details class="bk-grp" ${ab ? 'open' : ''} ontoggle="BK.abiertos['${g}']=this.open"><summary>${esc(grupos[g] || g)} <span class="bk-sub">${L.length} procesos</span><span style="flex:1"></span>
@@ -73476,7 +73477,7 @@ function bkProcesos_() {
     <div class="bk-row"><button class="bk-btn sm" onclick="bkLote_('sup')">Todo a Supervisado</button><button class="bk-btn sm" onclick="bkNuevoProceso_()">＋ Agregar proceso</button></div></div>
     <div class="bk-grid2" style="margin-top:10px"><div><label class="bk-lb">Mensaje de respaldo general (proceso Apagado sin mensaje propio)</label><textarea class="bk-ta" id="bk-rg">${esc(BK.d.cfg.respaldoGeneral)}</textarea></div>
     <div><label class="bk-lb">Mensaje cuando el canal lo bloquea (Airbnb / Booking)</label><textarea class="bk-ta" id="bk-rc">${esc(BK.d.cfg.respaldoCanal)}</textarea></div></div>
-    <div class="bk-row" style="justify-content:flex-end;margin-top:8px"><button class="bk-btn sm pri" onclick="bkGuardarRespaldos_()">Guardar mensajes</button></div></div>${html}`;
+    <div class="bk-row" style="justify-content:flex-end;margin-top:8px"><button class="bk-btn sm pri" onclick="bkGuardarRespaldos_()">Guardar mensajes</button></div></div>${bkPmCfgHtml_()}${html}`;
 }
 const bkPrioChipMini_ = p => { const x = BK_PRIO[p] || BK_PRIO.P4; return `<span class="bk-chip" style="color:${x[2]};background:${x[3]}">${p || 'P4'} base</span>`; };
 async function bkGuardarRespaldos_() { const a = document.getElementById('bk-rg').value, b = document.getElementById('bk-rc').value; if (await bkGuardar_('respaldoGeneral', a, false) && await bkGuardar_('respaldoCanal', b)) bkRender_(); }
@@ -73513,6 +73514,8 @@ function bkDrawerHtml_() {
   return `<div class="bk-drw-bg" onclick="bkDrawerCerrar_()"></div><div class="bk-drw"><div class="bk-drw-h"><div style="flex:1"><b style="font-size:15px">${esc(c.nombre)}</b><div class="bk-sub">${esc(c.desc || '')}</div></div><button class="bk-btn sm" onclick="bkDrawerCerrar_()">✕</button></div>
     <div class="bk-drw-b">
       ${pc.disyuntor && pc.disyuntor.at ? `<div class="bk-obs err" style="margin-top:12px">⚡ Disyuntor activo desde ${new Date(pc.disyuntor.at).toLocaleString('es-MX')}: ${esc(pc.disyuntor.motivo || '')}. <button class="bk-btn sm" onclick="bkResetDy_('${clave}')">Restablecer</button></div>` : ''}
+      ${c.grupo === 'proactivos' ? `<label class="bk-lb">Plantilla de WhatsApp vinculada</label><select class="bk-sel" onchange="BK.drawer.tpl=this.value"><option value="">— Sin plantilla (no se envía nada) —</option>${((BK.pm || {}).plantillas || []).map(t => `<option value="${esc(t.id)}" ${(BK.drawer.tpl != null ? BK.drawer.tpl : ((BK.d.cfg.proactivos || {}).plantillas || {})[clave]) === t.id ? 'selected' : ''}>${esc(t.nombre)} · ${esc(bkPmProg_(t))}${t.enabled ? '' : ' (desactivada)'}</option>`).join('')}</select>
+      <div class="bk-sub" style="margin-top:4px">La programación, el texto y los alojamientos se editan en Configuración admin › Plantillas.</div>` : ''}
       <label class="bk-lb">Palabras clave que activan el proceso <span class="bk-mut">(separa con |)</span></label><textarea class="bk-ta" style="min-height:52px" onchange="BK.drawer.pc.kw=this.value">${esc(pc.kw || '')}</textarea>
       <div class="bk-grid2"><div><label class="bk-lb">Prioridad base</label><select class="bk-sel" onchange="BK.drawer.pc.prioridad=this.value">${['P1', 'P2', 'P3', 'P4'].map(p => `<option ${(pc.prioridad || 'P4') === p ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
       <div><label class="bk-lb">Rol del bot en este proceso</label><select class="bk-sel" onchange="BK.drawer.pc.rol=this.value">${roles.map(([v, t]) => `<option value="${v}" ${(pc.rol || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>
@@ -73525,7 +73528,8 @@ function bkDrawerHtml_() {
 }
 function bkOvDia_(i, k) { const o = BK.drawer.pc.overrides[i]; o.dias = o.dias || []; const j = o.dias.indexOf(k); if (j >= 0) o.dias.splice(j, 1); else o.dias.push(k); bkRender_(); }
 function bkDrawerCerrar_() { BK.drawer = null; bkRender_(); }
-async function bkDrawerGuardar_() { const { clave, pc } = BK.drawer; const v = { kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
+async function bkDrawerGuardar_() { const { clave, pc } = BK.drawer;
+  if (BK.drawer.tpl != null) { const P = JSON.parse(JSON.stringify(BK.d.cfg.proactivos || {})); P.plantillas = P.plantillas || {}; P.plantillas[clave] = BK.drawer.tpl; if (!await bkGuardar_('proactivos', P, false)) return; } const v = { kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
   if (await bkGuardar_('proceso', { clave, valores: v })) { BK.drawer = null; bkRender_(); } }
 async function bkResetDy_(k) { if (await bkGuardar_('reset_disyuntor', k, '✓ Disyuntor restablecido')) { BK.drawer.pc.disyuntor = null; bkRender_(); } }
 
@@ -73680,4 +73684,45 @@ async function bkSimular_() {
   try { const r = await fetch(`${BACKEND}/bot/control/simular`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: f.texto, canal: f.canal, estanciaActiva: f.estancia, hora: f.hora, dia: f.dia, respuesta: f.respuesta, version: f.version }) }).then(r => r.json());
     if (!r.ok) throw new Error(r.error); BK.sim = r; } catch (e) { alert('No se pudo simular: ' + (e.message || e)); }
   BK.simCargando = false; bkRender_();
+}
+
+// ── 📨 Mensajes programados (procesos proactivos ↔ plantillas) ──
+const BK_PM_EST = { por_aprobar: ['⏳ Por aprobar', '#1d4ed8', '#dbeafe'], sin_ventana: ['⚠️ Sin ventana de 24 h', '#b45309', '#fef3c7'], enviado: ['✅ Enviado', '#15803d', '#dcfce7'], omitido: ['⏭️ Omitido', '#4b5563', '#f3f4f6'], vencido: ['⌛ Vencido', '#4b5563', '#f3f4f6'], fallido: ['❗ Falló', '#b91c1c', '#fee2e2'], se_enviaria: ['Se enviaría', '#15803d', '#dcfce7'] };
+function bkPmProg_(t) { const ty = t.schedule_type; if (ty === 'on_booking_5min') return '5 min después de reservar'; if (ty === 'before_arrival') return 'día anterior a la llegada, 10:00'; if (ty === 'before_checkout') return 'día anterior a la salida, 18:00';
+  if (ty === 'custom') { const off = parseInt(t.schedule_offset || '0', 10) || 0, ev = t.schedule_event === 'checkout' ? 'salida' : 'llegada'; return `${off === 0 ? `día de ${ev}` : off < 0 ? `${-off} día${off < -1 ? 's' : ''} antes de la ${ev}` : `${off} día${off > 1 ? 's' : ''} después de la ${ev}`}, ${t.schedule_time || '09:00'}`; } return 'sin programación'; }
+function bkPmChip_(clave) { const tid = ((BK.d.cfg.proactivos || {}).plantillas || {})[clave]; if (!tid) return ''; const t = ((BK.pm || {}).plantillas || []).find(x => x.id === tid);
+  return `<div class="mt" style="color:#6d28d9;font-weight:700">📨 ${t ? `${esc(t.nombre)} · ${esc(bkPmProg_(t))}${t.alojamientos ? ` · ${t.alojamientos.split(',').filter(Boolean).length} alojamiento(s)` : ' · sin alojamientos asignados'}${t.enabled ? '' : ' · ⚠️ plantilla desactivada'}` : 'Plantilla no encontrada'}</div>`; }
+function bkPmCfgHtml_() { const P = BK.d.cfg.proactivos || {}, V = P.ventana || {};
+  return `<div class="bk-card"><h3>📨 Mensajes programados</h3><div class="bk-sub">Los procesos del grupo «Mensajes proactivos» envían su plantilla vinculada según su programación. Apagado = no se manda · Supervisado o Derivar = queda por aprobar en la Bandeja · Automático = se envía solo. Funciona aunque el gate esté en observación.</div>
+    <div class="bk-row" style="margin-top:10px;font-size:12.5px"><span>Horario permitido de envío</span><input class="bk-in" type="time" style="width:110px" value="${esc(V.ini || '08:00')}" id="bk-pm-ini"><span>a</span><input class="bk-in" type="time" style="width:110px" value="${esc(V.fin || '21:30')}" id="bk-pm-fin">
+    <span>· no enviar si ya pasaron más de</span><input class="bk-in" type="number" min="1" max="24" style="width:70px" value="${P.atrasoMaxH || 3}" id="bk-pm-atr"><span>h de la hora programada</span>
+    <button class="bk-btn sm pri" onclick="bkPmCfgGuardar_()">Guardar</button><button class="bk-btn sm" onclick="bkPmSimular_()">👁️ ¿Qué tocaría ahora?</button></div><div id="bk-pm-sim"></div></div>`; }
+async function bkPmCfgGuardar_() { const P = JSON.parse(JSON.stringify(BK.d.cfg.proactivos || {})); P.ventana = { ini: document.getElementById('bk-pm-ini').value || '08:00', fin: document.getElementById('bk-pm-fin').value || '21:30' }; P.atrasoMaxH = Number(document.getElementById('bk-pm-atr').value) || 3;
+  if (await bkGuardar_('proactivos', P)) bkRender_(); }
+async function bkPmSimular_() { const el = document.getElementById('bk-pm-sim'); if (el) el.innerHTML = '<div class="bk-mut" style="margin-top:8px">⏳ Revisando reservas…</div>';
+  try { const r = await fetch(`${BACKEND}/bot/control/proactivos/simular`, { cache: 'no-store' }).then(r => r.json()); if (!r.ok) throw new Error(r.error);
+    const nm = k => (BK.d.catalogo.find(c => c.clave === k) || {}).nombre || k;
+    el.innerHTML = `<div class="bk-sub" style="margin-top:8px">${r.revisadas} reservas revisadas. ${r.nuevos.length ? 'Ahora mismo tocaría:' : 'Nada pendiente en este momento.'}</div>` + r.nuevos.map(x => `<div class="bk-ev" style="grid-template-columns:auto minmax(0,1fr)"><span class="bk-chip" style="background:${(BK_PM_EST[x.estado] || [0, 0, '#f3f4f6'])[2]};color:${(BK_PM_EST[x.estado] || [0, '#111'])[1]}">${(BK_PM_EST[x.estado] || [x.estado])[0]}</span><div><b>${esc(nm(x.proc))}</b> · ${esc(x.huesped)} · reserva ${esc(x.bid)}${x.motivo ? ` <span class="bk-mut">(${esc(x.motivo)})</span>` : ''}</div></div>`).join(''); }
+  catch (e) { if (el) el.innerHTML = `<div class="bk-obs err" style="margin-top:8px">⚠️ ${esc(e.message || e)}</div>`; } }
+function bkPmHtml_() {
+  const L = (BK.pm || {}).items || [], nm = k => (BK.d.catalogo.find(c => c.clave === k) || {}).nombre || k;
+  const pend = L.filter(x => x.estado === 'por_aprobar' || x.estado === 'sin_ventana' || x.estado === 'fallido'), rec = L.filter(x => !pend.includes(x)).slice(0, 30);
+  const fecha = iso => iso ? new Date(iso).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  const chip = e => { const x = BK_PM_EST[e] || [e, '#111', '#f3f4f6']; return `<span class="bk-chip" style="color:${x[1]};background:${x[2]}">${x[0]}</span>`; };
+  const card = x => `<div class="bk-card" style="padding:10px 12px;margin-bottom:8px"><div class="bk-row" style="justify-content:space-between"><div class="bk-row">${chip(x.estado)}<b style="font-size:13.5px">${esc(x.huesped || 'Huésped')}</b><span class="bk-chip" style="background:#f3f4f6">${esc(x.canal || '')}</span><span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">${esc(nm(x.proc))}</span></div><span class="bk-mut" style="font-size:12px">${fecha(x.programado)} · reserva ${esc(x.bid)}</span></div>
+    <div class="bk-why">Para: ${esc((x.to || []).join(', '))} · ${esc(x.tplNombre || '')}${x.motivo ? ` · ${esc(x.motivo)}` : ''}</div>
+    <textarea class="bk-ta" style="margin-top:6px;min-height:90px" id="bk-pm-${esc(x.key)}">${esc(x.body || '')}</textarea>
+    <div class="bk-row" style="justify-content:flex-end;margin-top:6px">${x.estado === 'sin_ventana' ? '<span class="bk-mut" style="font-size:11.5px;flex:1">El huésped no escribió en las últimas 24 h: WhatsApp probablemente no lo entregue (necesita plantilla aprobada por Meta).</span>' : ''}<button class="bk-btn sm" onclick="bkPmAccion_('${esc(x.key)}','omitir')">Omitir</button><button class="bk-btn sm ok" onclick="bkPmAccion_('${esc(x.key)}','enviar')">Aprobar y enviar</button></div></div>`;
+  const B = Object.entries((BK.pm || {}).bajas || {});
+  return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><h3>📨 Mensajes programados por aprobar ${pend.length ? `<span class="bk-chip" style="background:#dbeafe;color:#1d4ed8">${pend.length}</span>` : ''}</h3><button class="bk-btn sm" onclick="bkCargar_()">↻ Actualizar</button></div>
+    <div style="margin-top:8px">${pend.length ? pend.map(card).join('') : '<div class="bk-mut" style="font-size:12.5px">Nada por aprobar. ✨</div>'}</div>
+    ${rec.length ? `<details style="margin-top:6px"><summary class="bk-mut" style="cursor:pointer;font-size:12.5px">Últimos 7 días (${rec.length})</summary>${rec.map(x => `<div class="bk-ev" style="grid-template-columns:auto auto minmax(0,1fr)"><span class="bk-mut">${fecha(x.programado)}</span>${chip(x.estado)}<div><b>${esc(nm(x.proc))}</b> · ${esc(x.huesped || '')}${x.por ? ` · ${esc(x.por)}` : ''}${x.motivo ? ` <span class="bk-mut">(${esc(x.motivo)})</span>` : ''}</div></div>`).join('')}</details>` : ''}
+    ${B.length ? `<details style="margin-top:6px"><summary class="bk-mut" style="cursor:pointer;font-size:12.5px">🚫 Huéspedes que pidieron no recibir mensajes (${B.length})</summary>${B.map(([t, v]) => `<div class="bk-row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px"><span>${esc(t)} · ${fecha(v.at)} · «${esc(v.motivo || '')}»</span><button class="bk-btn sm" onclick="bkPmAccion_('${esc(t)}','baja_quitar')">Quitar</button></div>`).join('')}</details>` : ''}</div>`;
+}
+async function bkPmAccion_(key, accion) {
+  if (accion === 'enviar' && !confirm('¿Enviar este mensaje al huésped por WhatsApp?')) return;
+  const ta = document.getElementById('bk-pm-' + key), body = ta ? ta.value : '';
+  try { const r = await fetch(`${BACKEND}/bot/control/proactivos/accion`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, accion, body, usuario: bkUsr_() }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error || 'Error'); bkToast_(accion === 'enviar' ? '✓ Enviado' : accion === 'omitir' ? '✓ Omitido' : '✓ Listo'); bkCargar_(); }
+  catch (e) { alert('No se pudo: ' + (e.message || e)); bkCargar_(); }
 }
