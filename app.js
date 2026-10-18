@@ -51874,7 +51874,7 @@ function _botcRenderMain(phone) {
     }
     const _hora = (() => { const d = new Date(m.timestamp); return isNaN(d) ? '' : d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' }); })();
     const _quien = isUser ? '' : isAdmin ? '<span class="who" style="color:#b45309">Admin</span>' : isTemplate ? `<span class="who" style="color:#0369a1">Plantilla${m.meta && m.meta.tipo ? ' · ' + _botcEsc(m.meta.tipo) : ''}</span>` : '<span class="who" style="color:#0e7490">Bot</span>';
-    const inner = `<div class="wa-b ${isUser ? 'in' : 'out'} ${isAdmin ? 'adm' : ''} ${isTemplate ? 'tpl' : ''}" style="${highlight}">${_quien}<div class="tx">${_botcEsc(m.body)}</div>${mediaHtml}<span class="hr">${_hora}${isUser ? '' : ' ✓✓'}</span></div>`;
+    const inner = `<div class="wa-b ${isUser ? 'in' : 'out'} ${isAdmin ? 'adm' : ''} ${isTemplate ? 'tpl' : ''}" style="${highlight}">${selMode ? '' : bkLibChev_('wa', idx)}${_quien}<div class="tx">${_botcEsc(m.body)}</div>${mediaHtml}<span class="hr">${_hora}${isUser ? '' : ' ✓✓'}</span></div>`;
     return `${_sep}<div class="wa-r ${isUser ? 'in' : 'out'}" style="${selMode ? 'cursor:pointer' : ''}" data-ts="${_botcEsc(m.timestamp||'')}" ${clickAttr}>${isUser ? cbHtml + inner : inner + cbHtml}</div>`;
   }).join('') : '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:40px">Sin mensajes previos.</div>';
   // Barra superior de selección múltiple (aparece solo con selectMode ON).
@@ -53157,9 +53157,10 @@ window.botcOpenArch_ = async function (bid) {
     const j = await fetch(`${BACKEND}/airbnb/historial/hilo?bid=${encodeURIComponent(bid)}`, { cache: 'no-store' }).then(r => r.json());
     if (BOTC_STATE.selectedPhone !== ph) return; if (!j.ok) throw new Error(j.error || 'Error');
     let dia = '';
-    const msgs = (j.mensajes || []).map(m => { const f = new Date(m.fecha), dd = isNaN(f) ? '' : f.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    BOTC_STATE.libHilo = { conv: ph, nombre: j.huesped || '', mensajes: j.mensajes || [] };
+    const msgs = (j.mensajes || []).map((m, i) => { const f = new Date(m.fecha), dd = isNaN(f) ? '' : f.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       const sep = dd && dd !== dia ? `<div class="wa-day"><span>${_botcEsc(dd)}</span></div>` : ''; dia = dd || dia; const io = m.de === 'huesped' ? 'in' : 'out';
-      return `${sep}<div class="wa-r ${io}"><div class="wa-b ${io}">${_botcEsc(m.texto).replace(/\n/g, '<br>')}<div style="text-align:right;font-size:11px;color:var(--wa-mu);margin-top:2px">${m.adj ? '📎 ' + m.adj + ' · ' : ''}${isNaN(f) ? '' : f.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}</div></div></div>`; }).join('');
+      return `${sep}<div class="wa-r ${io}"><div class="wa-b ${io}">${bkLibChev_('abn', i)}${_botcEsc(m.texto).replace(/\n/g, '<br>')}<div style="text-align:right;font-size:11px;color:var(--wa-mu);margin-top:2px">${m.adj ? '📎 ' + m.adj + ' · ' : ''}${isNaN(f) ? '' : f.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}</div></div></div>`; }).join('');
     main.innerHTML = head(j) + `<div id="botc-msgs" class="wa-msgs">${msgs || '<div class="wa-bit-load">Sin mensajes.</div>'}</div><div style="padding:10px 14px;background:var(--wa-bar);border-top:1px solid var(--wa-ln);font-size:12px;color:var(--wa-mu);text-align:center">🗄 Conversación archivada (solo lectura) · estancia terminada · guardada el ${_botcEsc(new Date(j.at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }))}</div>`;
     const box = document.getElementById('botc-msgs'); if (box) box.scrollTop = box.scrollHeight;
   } catch (e) { const box = document.getElementById('botc-msgs'); if (box) box.innerHTML = `<div class="wa-bit-load">No se pudo abrir: ${_botcEsc(e.message || e)}</div>`; }
@@ -53175,9 +53176,10 @@ window._botcAbrirAbn_ = async function (ph, opts) {
     const h = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid) || {}, bk = _botcAbnBk_(ph), nombre = (j && j.huesped) || h.huesped || 'Huésped de Airbnb';
     const a = _botcFxIso_(bk.DateArrival), d = _botcFxIso_(bk.DateDeparture);
     let dia = '';
-    const msgs = j ? (j.mensajes || []).map(m => { const f = new Date(m.fecha), dd = isNaN(f) ? '' : f.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (j) BOTC_STATE.libHilo = { conv: ph, nombre, mensajes: j.mensajes || [] };
+    const msgs = j ? (j.mensajes || []).map((m, i) => { const f = new Date(m.fecha), dd = isNaN(f) ? '' : f.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
         const sep = dd && dd !== dia ? `<div class="wa-day"><span>${_botcEsc(dd)}</span></div>` : ''; dia = dd || dia; const io = m.de === 'huesped' ? 'in' : 'out';
-        return `${sep}<div class="wa-r ${io}"><div class="wa-b ${io}">${_botcEsc(m.texto).replace(/\n/g, '<br>')}<div style="text-align:right;font-size:11px;color:var(--wa-mu);margin-top:2px">${m.adj ? '📎 ' + m.adj + ' · ' : ''}${isNaN(f) ? '' : f.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}</div></div></div>`; }).join('')
+        return `${sep}<div class="wa-r ${io}"><div class="wa-b ${io}">${bkLibChev_('abn', i)}${_botcEsc(m.texto).replace(/\n/g, '<br>')}<div style="text-align:right;font-size:11px;color:var(--wa-mu);margin-top:2px">${m.adj ? '📎 ' + m.adj + ' · ' : ''}${isNaN(f) ? '' : f.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}</div></div></div>`; }).join('')
       : `<div class="wa-bit-load">⏳ Cargando conversación de ${_BOTC_ABN_LBL[_botcAbnK_(h)]}…</div>`;
     const menu = `<div class="botc-chat-header-menuwrap" style="position:relative;display:inline-block;flex:none">
         <button type="button" onclick="botcToggleHeaderMenu_(event)" title="Opciones" style="width:36px;height:36px;padding:0;font-size:20px;background:#fff;color:#334155;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer;font-weight:900;line-height:1;letter-spacing:2px">⋮</button>
@@ -73667,6 +73669,12 @@ function bkBitacora_() {
 
 // ── 🧪 Pruebas: simulador del gate + comparación de versiones ──
 function bkPruebas_() {
+  const sub = BK.prSub || 'sim';
+  if (BK.casos == null && !BK._casosCargando) bkCasosCargar_();
+  const tabs = `<div class="bk-row" style="margin-bottom:10px">${[['sim', '🧪 Simulador'], ['casos', `📚 Casos de entrenamiento${BK.casos ? ` (${BK.casos.length})` : ''}`]].map(([k, t]) => `<button type="button" class="bk-tab ${sub === k ? 'on' : ''}" onclick="BK.prSub='${k}';bkRender_()">${t}</button>`).join('')}</div>`;
+  return tabs + (sub === 'casos' ? bkCasosHtml_() : bkSimuladorHtml_());
+}
+function bkSimuladorHtml_() {
   const S = BK.sim, V = (BK.d.cfg.versiones || []).slice().reverse();
   const res = S && S.decision ? (() => { const g = S.decision, p = BK_PRIO[g.prioridad] || BK_PRIO.P4, nm = k => (BK.d.catalogo.find(c => c.clave === k) || {}).nombre || k;
     return `<div class="bk-card"><h3>Resultado</h3><div class="bk-row" style="margin-top:8px"><div class="bk-ipo" style="background:${p[3]};color:${p[2]}">${g.ipo}<small>${g.prioridad}</small></div>
@@ -73680,7 +73688,11 @@ function bkPruebas_() {
       ${g.msg ? `<tr><td class="bk-mut">Mensaje al huésped</td><td><div class="bk-ex">${esc(g.msg)}</div></td></tr>` : ''}</tbody></table></div>
       ${S.respuesta ? `<div class="bk-grid2">${`<div class="bk-card"><h3>Respuesta con la configuración vigente</h3><div class="bk-ex" style="margin-top:6px">${esc(S.respuesta)}</div></div>`}${S.respuestaAlt ? `<div class="bk-card"><h3>Con la versión v${S.versionAlt}</h3><div class="bk-ex" style="margin-top:6px">${esc(S.respuestaAlt)}</div></div>` : ''}</div>` : ''}`; })() : '';
   const f = BK.simF || (BK.simF = { texto: '', canal: 'whatsapp', estancia: true, hora: '', dia: '', respuesta: false, version: '' });
-  return `<div class="bk-card"><h3>Simulador</h3><div class="bk-sub">Escribe un mensaje como si viniera de un huésped y mira qué haría el gate: proceso, señales, IPO, nivel final y acción. No afecta a huéspedes reales.</div>
+  const C = BK.casos || [], cs = BK.simCaso ? C.find(x => x.id === BK.simCaso) : null;
+  const casoSel = `<label class="bk-lb" style="margin-top:4px">Caso de la biblioteca (opcional)</label><select class="bk-sel" onchange="BK.simCaso=this.value;BK.sim=null;bkRender_()"><option value="">— Escribir un mensaje —</option>${C.map(c => `<option value="${esc(c.id)}" ${BK.simCaso === c.id ? 'selected' : ''}>${esc(c.titulo)}${c.huesped ? ' · ' + esc(c.huesped) : ''}${c.aloj ? ' · ' + esc(c.aloj) : ''}</option>`).join('')}</select>`;
+  if (cs) return `<div class="bk-card"><h3>Simulador</h3><div class="bk-sub">Simula un caso de la biblioteca con el bot de hoy: mismo contexto que tuvo la conversación (reserva, alojamiento, fecha y hora). No afecta a huéspedes reales.</div>${casoSel}
+    ${bkCasoResumen_(cs)}<div class="bk-row" style="justify-content:flex-end;margin-top:10px"><button class="bk-btn pri" onclick="bkCasoSimular_('${esc(cs.id)}')">${BK.simCargando ? '⏳ Simulando…' : '▶ Simular caso'}</button></div></div>${res}${bkCasoComparar_()}`;
+  return `<div class="bk-card"><h3>Simulador</h3><div class="bk-sub">Escribe un mensaje como si viniera de un huésped o elige un caso de la biblioteca, y mira qué haría el bot: proceso, señales, IPO, nivel final y acción. No afecta a huéspedes reales.</div>${casoSel}
     <label class="bk-lb">Mensaje del huésped</label><textarea class="bk-ta" id="bk-sim-t" placeholder="Ej. Ya llegué y el código no abre la puerta" oninput="BK.simF.texto=this.value">${esc(f.texto)}</textarea>
     <div class="bk-row" style="margin-top:8px">
       <select class="bk-sel" style="width:170px" onchange="BK.simF.canal=this.value">${[['whatsapp', 'WhatsApp directo'], ['airbnb', 'Airbnb'], ['booking', 'Booking'], ['directo', 'Directo (Lodgify)']].map(([v, t]) => `<option value="${v}" ${f.canal === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
@@ -73984,3 +73996,103 @@ function bkModoAplicar_() { // refresca solo checks, etiqueta y lista (el menú 
 function bkModoTog_(k) { const m = bkModoSel_().slice(), i = m.indexOf(k); if (i >= 0) m.splice(i, 1); else m.push(k); BK.f = BK.f || {}; BK.f.modos = m.length === 4 ? undefined : m; bkModoAplicar_(); }
 function bkModoTodos_(on) { BK.f = BK.f || {}; BK.f.modos = on ? undefined : []; bkModoAplicar_(); }
 document.addEventListener('click', () => { const p = document.getElementById('bk-mmulti-p'); if (p) p.style.display = 'none'; });
+
+// ═══ 📚 Biblioteca de casos de entrenamiento: «▾ › Enviar a biblioteca» en cada mensaje de Chats bot ═══
+function bkLibCss_() { if (document.getElementById('bklib-css')) return; const st = document.createElement('style'); st.id = 'bklib-css';
+  st.textContent = `.wa-b{position:relative}.bklib-chev{all:unset;cursor:pointer;position:absolute;top:3px;right:4px;width:20px;height:18px;border-radius:9px;display:none;align-items:center;justify-content:center;font-size:11px;color:#54656f;background:rgba(255,255,255,.92);box-shadow:0 1px 3px rgba(0,0,0,.18);z-index:3}
+  .wa-b:hover .bklib-chev,.bklib-chev.on{display:inline-flex}.bklib-chev:hover{background:#fff;color:#111}
+  #bklib-menu{position:fixed;z-index:100060;background:#fff;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:6px 0;min-width:200px;font-size:14px}
+  #bklib-menu button{all:unset;display:block;width:100%;box-sizing:border-box;padding:9px 16px;cursor:pointer}#bklib-menu button:hover{background:#f3f4f6}
+  #bklib-ov{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px}
+  #bklib-ov .bx{background:#fff;border-radius:16px;width:min(640px,100%);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.3);color:#111827}
+  #bklib-ov .ms{overflow:auto;padding:8px 14px;background:#efeae2;flex:1;min-height:160px}
+  #bklib-ov .m{display:flex;gap:10px;align-items:center;margin:6px 0;cursor:pointer}#bklib-ov .m.out{flex-direction:row-reverse}
+  #bklib-ov .m .t{max-width:78%;padding:7px 10px;border-radius:9px;font-size:13px;white-space:pre-wrap;box-shadow:0 1px .5px rgba(0,0,0,.13)}
+  #bklib-ov .m.in .t{background:#fff}#bklib-ov .m.out .t{background:#d9fdd3}
+  #bklib-ov .ck{width:20px;height:20px;border-radius:50%;border:2px solid #9ca3af;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:900;background:#fff}
+  #bklib-ov .m.sel .ck{background:#22c55e;border-color:#22c55e}`;
+  document.head.appendChild(st); }
+function bkLibChev_(tipo, i) { bkLibCss_(); return `<button type="button" class="bklib-chev" title="Opciones" onclick="event.stopPropagation();bkLibMenu_(event,'${tipo}',${i})">⌄</button>`; }
+function bkLibMenu_(ev, tipo, i) {
+  const old = document.getElementById('bklib-menu'); if (old) old.remove();
+  const m = document.createElement('div'); m.id = 'bklib-menu';
+  m.innerHTML = `<button type="button" onclick="bkLibAbrir_('${tipo}',${i})">📚 Enviar a biblioteca</button>`;
+  document.body.appendChild(m); const r = ev.currentTarget.getBoundingClientRect();
+  m.style.top = Math.min(r.bottom + 4, innerHeight - 60) + 'px'; m.style.left = Math.max(8, Math.min(r.right - 200, innerWidth - 210)) + 'px';
+  setTimeout(() => document.addEventListener('click', function f() { m.remove(); document.removeEventListener('click', f); }), 0);
+}
+// Mensajes de la conversación abierta, normalizados {rol, texto, ts}.
+function bkLibMsgs_(tipo) {
+  if (tipo === 'wa') return (BOTC_STATE.messages || []).map(m => ({ rol: m.role === 'user' ? 'huesped' : m.role === 'admin' ? 'admin' : m.role === 'template' ? 'plantilla' : 'bot', texto: String(m.body || ''), ts: m.timestamp || '' }));
+  const h = BOTC_STATE.libHilo || {}; return (h.mensajes || []).map(m => ({ rol: m.de === 'huesped' ? 'huesped' : 'anfitrion', texto: String(m.texto || ''), ts: m.fecha || '' }));
+}
+function bkLibAbrir_(tipo, i) {
+  const old = document.getElementById('bklib-menu'); if (old) old.remove();
+  const conv = tipo === 'wa' ? String(BOTC_STATE.selectedPhone || '') : String((BOTC_STATE.libHilo || {}).conv || BOTC_STATE.selectedPhone || '');
+  const M = bkLibMsgs_(tipo); if (!M.length || !conv) return alert('No hay mensajes en esta conversación.');
+  const sel = new Set(); for (let k = Math.max(0, i - 3); k <= i; k++) sel.add(k); // por omisión: el mensaje elegido y los 3 anteriores como contexto
+  window._BKLIB = { tipo, conv, M, sel, nombre: tipo === 'wa' ? ((BOTC_STATE.state || {}).name || '') : (BOTC_STATE.libHilo || {}).nombre || '' };
+  bkLibPintar_(i);
+}
+function bkLibPintar_(foco) {
+  const L = window._BKLIB; let ov = document.getElementById('bklib-ov'); if (!ov) { ov = document.createElement('div'); ov.id = 'bklib-ov'; ov.onclick = e => { if (e.target === ov) bkLibCerrar_(); }; document.body.appendChild(ov); }
+  const lbl = { huesped: '', bot: 'Bot', admin: 'Admin', plantilla: 'Plantilla', anfitrion: 'Anfitrión' };
+  const hora = ts => { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); };
+  const titulo = (document.getElementById('bklib-tit') || {}).value, notas = (document.getElementById('bklib-not') || {}).value;
+  ov.innerHTML = `<div class="bx"><div style="padding:14px 16px;border-bottom:1px solid #e5e7eb"><b style="font-size:16px">📚 Nuevo caso de entrenamiento</b>
+      <div style="font-size:12.5px;color:#6b7280;margin-top:3px">Marca los mensajes del extracto. Se guardan junto con la reserva, el alojamiento y su guía, los tickets, el perfil del huésped y la fecha y hora, para simularlo después.</div></div>
+    <div class="ms" id="bklib-ms">${L.M.map((m, k) => `<div class="m ${m.rol === 'huesped' ? 'in' : 'out'} ${L.sel.has(k) ? 'sel' : ''}" id="bklib-m${k}" onclick="bkLibTog_(${k})"><span class="ck">${L.sel.has(k) ? '✓' : ''}</span><div class="t">${lbl[m.rol] ? `<div style="font-size:11px;font-weight:700;color:#0e7490">${lbl[m.rol]}</div>` : ''}${esc(m.texto)}<div style="font-size:10.5px;color:#667781;text-align:right;margin-top:2px">${esc(hora(m.ts))}</div></div></div>`).join('')}</div>
+    <div style="padding:12px 16px;border-top:1px solid #e5e7eb;display:grid;gap:8px">
+      <input id="bklib-tit" class="bk-in" style="box-sizing:border-box;width:100%;border:1px solid #d1d5db;border-radius:10px;padding:8px 10px;font:inherit;font-size:13px" placeholder="Título del caso (ej. Huésped avisa llegada tarde)" value="${esc(titulo || '')}">
+      <textarea id="bklib-not" style="box-sizing:border-box;width:100%;border:1px solid #d1d5db;border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;min-height:52px;resize:vertical" placeholder="Notas: qué debería hacer el bot en este caso (opcional)">${esc(notas || '')}</textarea>
+      <div style="display:flex;gap:8px;align-items:center"><span id="bklib-n" style="font-size:12.5px;color:#6b7280;flex:1">${L.sel.size} mensaje(s) seleccionado(s)</span>
+        <button type="button" onclick="bkLibCerrar_()" style="all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;background:#f3f4f6;font-size:13px;font-weight:700">Cancelar</button>
+        <button type="button" id="bklib-go" onclick="bkLibGuardar_()" style="all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700">Guardar en biblioteca</button></div></div></div>`;
+  if (foco != null) { const e = document.getElementById('bklib-m' + foco); if (e) e.scrollIntoView({ block: 'center' }); }
+}
+function bkLibTog_(k) { const L = window._BKLIB; if (L.sel.has(k)) L.sel.delete(k); else L.sel.add(k);
+  const e = document.getElementById('bklib-m' + k); if (e) { e.classList.toggle('sel', L.sel.has(k)); e.querySelector('.ck').textContent = L.sel.has(k) ? '✓' : ''; }
+  const n = document.getElementById('bklib-n'); if (n) n.textContent = `${L.sel.size} mensaje(s) seleccionado(s)`; }
+function bkLibCerrar_() { const ov = document.getElementById('bklib-ov'); if (ov) ov.remove(); }
+async function bkLibGuardar_() {
+  const L = window._BKLIB, mensajes = [...L.sel].sort((a, b) => a - b).map(k => L.M[k]);
+  if (!mensajes.some(m => m.rol === 'huesped')) return alert('Incluye al menos un mensaje del huésped.');
+  const b = document.getElementById('bklib-go'); if (b) b.textContent = '⏳ Guardando…';
+  try { const r = await fetch(`${BACKEND}/bot/control/casos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conv: L.conv, mensajes, nombre: L.nombre, titulo: document.getElementById('bklib-tit').value, notas: document.getElementById('bklib-not').value, usuario: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error || 'Error');
+    bkLibCerrar_(); (typeof bkToast_ === 'function' ? bkToast_ : alert)(`📚 Caso guardado${r.caso.reserva ? ` · reserva ${r.caso.reserva}` : ''}${r.caso.aloj ? ` · ${r.caso.aloj}` : ''}`);
+    if (typeof BK !== 'undefined') BK.casos = null;
+  } catch (e) { alert('No se pudo guardar: ' + (e.message || e)); if (b) b.textContent = 'Guardar en biblioteca'; }
+}
+
+// ── 📚 Casos de entrenamiento ──
+async function bkCasosCargar_() { BK._casosCargando = true;
+  try { const r = await fetch(`${BACKEND}/bot/control/casos`, { cache: 'no-store' }).then(r => r.json()); BK.casos = r.ok ? r.items : []; } catch (_) { BK.casos = []; }
+  BK._casosCargando = false; if (BK.tab === 'pruebas') bkRender_(); }
+const BK_ROL = { huesped: ['👤 Huésped', '#fff'], bot: ['🤖 Bot', '#dcf7c5'], admin: ['👨‍💼 Admin', '#fef3c7'], plantilla: ['📩 Plantilla', '#e0f2fe'], anfitrion: ['🏠 Anfitrión', '#d9fdd3'] };
+function bkCasoMsgs_(M) { return `<div style="background:#efeae2;border-radius:12px;padding:8px 10px;max-height:320px;overflow:auto">${M.map(m => `<div style="display:flex;justify-content:${m.rol === 'huesped' ? 'flex-start' : 'flex-end'};margin:4px 0"><div style="max-width:80%;background:${(BK_ROL[m.rol] || BK_ROL.bot)[1]};border-radius:9px;padding:6px 9px;font-size:12.5px;white-space:pre-wrap;box-shadow:0 1px .5px rgba(0,0,0,.13)"><div style="font-size:10.5px;font-weight:700;color:#0e7490">${(BK_ROL[m.rol] || BK_ROL.bot)[0]}</div>${esc(m.texto)}<div style="font-size:10px;color:#667781;text-align:right">${m.ts ? new Date(m.ts).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''}</div></div></div>`).join('')}</div>`; }
+function bkCasoResumen_(c) { const b = c.booking || {}, f = d => String(d || '').slice(0, 10), tk = (c.allBookings || []).filter(x => x.FolioFacturapi || x.TicketUrl).length;
+  return `<div class="bk-row" style="margin:10px 0 8px;gap:6px">${bkLogo_(c.canal === 'whatsapp' ? 'whatsapp' : c.canal === 'booking' ? 'booking' : c.canal === 'directo' ? 'lodgify' : 'airbnb', 22)}
+    <span class="bk-chip" style="background:#f3f4f6">👤 ${esc(c.huesped || 'Huésped')}</span>${c.aloj ? `<span class="bk-chip" style="background:#f3f4f6">🏠 ${esc(c.aloj)}</span>` : ''}${b.Id ? `<span class="bk-chip" style="background:#f3f4f6">Reserva ${esc(b.Id)} · ${esc(f(b.DateArrival))} → ${esc(f(b.DateDeparture))}</span>` : '<span class="bk-chip" style="background:#fef3c7;color:#92400e">sin reserva</span>'}
+    <span class="bk-chip" style="background:#f3f4f6">🕐 ${esc(new Date(c.ahora).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))}</span>${tk ? `<span class="bk-chip" style="background:#f3f4f6">🧾 ${tk} ticket(s)</span>` : ''}${c.perfil ? '<span class="bk-chip" style="background:#f3f4f6">📇 perfil</span>' : ''}</div>
+    ${c.notas ? `<div class="bk-why" style="margin-bottom:6px">📝 ${esc(c.notas)}</div>` : ''}${bkCasoMsgs_(c.mensajes || [])}`; }
+function bkCasosHtml_() {
+  if (BK.casos == null) return '<div class="bk-card bk-mut">⏳ Cargando casos…</div>';
+  if (!BK.casos.length) return `<div class="bk-card"><h3>📚 Casos de entrenamiento</h3><div class="bk-sub" style="margin-top:6px">Aún no hay casos. En Chats bot, pasa el cursor sobre cualquier mensaje, toca la flecha ⌄ y elige «Enviar a biblioteca».</div></div>`;
+  return `<div class="bk-card" style="padding:12px 16px"><h3>📚 Casos de entrenamiento</h3><div class="bk-sub">Extractos de conversaciones reales guardados con su reserva, alojamiento, guía, tickets, perfil y fecha y hora. Se agregan desde Chats bot (⌄ › Enviar a biblioteca).</div></div>`
+    + BK.casos.map(c => `<details class="bk-grp" ${BK.abiertos['caso_' + c.id] ? 'open' : ''} ontoggle="BK.abiertos['caso_${esc(c.id)}']=this.open"><summary>${esc(c.titulo)} <span class="bk-sub">${(c.mensajes || []).length} mensajes · guardado ${new Date(c.creado).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}${c.por ? ' por ' + esc(c.por) : ''}</span><span style="flex:1"></span>
+      <button class="bk-btn sm pri" onclick="event.preventDefault();BK.prSub='sim';BK.simCaso='${esc(c.id)}';BK.sim=null;bkRender_();bkCasoSimular_('${esc(c.id)}')">▶ Simular</button>
+      <button class="bk-btn sm red" onclick="event.preventDefault();bkCasoBorrar_('${esc(c.id)}')">🗑</button></summary><div style="padding:0 16px 14px">${bkCasoResumen_(c)}</div></details>`).join('');
+}
+async function bkCasoBorrar_(id) { if (!confirm('¿Eliminar este caso de la biblioteca?')) return;
+  try { await fetch(`${BACKEND}/bot/control/casos/borrar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); BK.casos = (BK.casos || []).filter(x => x.id !== id); bkRender_(); } catch (e) { alert('No se pudo: ' + (e.message || e)); } }
+async function bkCasoSimular_(id) {
+  BK.simCargando = true; BK.sim = null; bkRender_();
+  try { const r = await fetch(`${BACKEND}/bot/control/casos/simular`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error || 'Error'); BK.sim = { decision: r.decision, caso: r }; }
+  catch (e) { alert('No se pudo simular: ' + (e.message || e)); }
+  BK.simCargando = false; bkRender_();
+}
+function bkCasoComparar_() { const S = BK.sim; if (!S || !S.caso) return ''; const r = S.caso;
+  return `<div class="bk-grid2"><div class="bk-card"><h3>🤖 Respuesta del bot hoy</h3><div class="bk-sub">Simulado al ${esc(r.fecha)} ${esc(r.hora)} · ${esc(BK_ACC[r.decision.accion] || r.decision.accion)}${r.herramientas && r.herramientas.length ? ` · herramientas: ${esc(r.herramientas.join(', '))}` : ''}</div><div class="bk-ex" style="margin-top:6px">${esc(r.decision.activo === false && r.decision.msg && r.decision.accion !== 'auto' && r.decision.accion !== 'supervisado' ? `(Con controles aplicando, el gate enviaría: «${r.decision.msg}»)\n\n` : '')}${esc(r.respuesta || '(sin respuesta)')}</div></div>
+    <div class="bk-card"><h3>💬 Respuesta real en la conversación</h3>${r.real && r.real.length ? `<div class="bk-ex" style="margin-top:6px">${esc(r.real.map(m => m.texto).join('\n\n'))}</div>` : '<div class="bk-sub" style="margin-top:6px">El extracto termina con el mensaje del huésped (no incluye la respuesta que se dio).</div>'}</div></div>`; }

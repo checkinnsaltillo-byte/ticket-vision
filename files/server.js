@@ -13879,6 +13879,83 @@ app.post("/bot/control/proactivos/accion", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ── 📚 Casos de entrenamiento (Control del bot › Pruebas) ──
+// Extractos de conversaciones reales (WhatsApp o Lodgify/Airbnb) guardados con todo su contexto (reserva, alojamiento y su guía,
+// historial de reservas con tickets, perfil del huésped, fecha y hora) para volver a simularlos con el bot cuando se quiera.
+const _CASOS_OBJ = "bot/casos.json";
+function _casoRol(r) { r = String(r || "").toLowerCase(); return r === "user" || r === "huesped" ? "huesped" : r === "admin" ? "admin" : r === "template" ? "plantilla" : r === "nosotros" ? "anfitrion" : "bot"; }
+async function _casoContexto(conv, fechaIso) {
+  const out = { canal: "whatsapp", tel: "", booking: null, alojRow: null, allBookings: [], perfil: null };
+  let bkL = null;
+  if (/^abn/.test(conv)) {
+    const bid = conv.slice(3); bkL = await _lgApi(`/v2/reservations/bookings/${encodeURIComponent(bid)}`).catch(() => null);
+    out.canal = _bcCanalDe(bkL && bkL.source); out.tel = _sisCel10((bkL && bkL.guest && bkL.guest.phone) || "");
+  } else out.tel = _sisCel10(conv);
+  const ctx = out.tel ? await _botFindActiveBooking(out.tel).catch(() => null) : null;
+  out.allBookings = (ctx && ctx.allBookings) || [];
+  const dia = String(fechaIso || "").slice(0, 10);
+  if (bkL) out.booking = { Id: String(bkL.id), HouseId: String(bkL.property_id || ""), GuestName: (bkL.guest && bkL.guest.name) || "", DateArrival: String(bkL.arrival || "").slice(0, 10), DateDeparture: String(bkL.departure || "").slice(0, 10), NumberOfGuests: (bkL.rooms && bkL.rooms[0] && bkL.rooms[0].people) || "", Source: _abaFuente(bkL.source), Status: bkL.status || "" };
+  else if (out.allBookings.length) { // la reserva vigente EN LA FECHA del extracto (no la de hoy)
+    const L = out.allBookings.map(b => Object.assign({ _f: _bcFechas(b) }, b));
+    out.booking = (L.find(b => b._f.arr <= dia && dia <= b._f.dep) || L.filter(b => b._f.arr > dia).sort((a, b) => a._f.arr.localeCompare(b._f.arr))[0] || (ctx && ctx.booking) || null);
+    if (out.booking) delete out.booking._f;
+  } else if (ctx && ctx.booking) out.booking = ctx.booking;
+  const hid = String((out.booking && out.booking.HouseId) || "");
+  if (hid) { const rows = await _botGetAlojRows().catch(() => []); out.alojRow = rows.find(r => String(r.HouseId || "").trim() === hid || String(r.id_lodgify || "").trim() === hid) || (ctx && ctx.alojRow) || null; }
+  if (out.tel) { const p = await callCheckinAppsScriptPost("perfil_get_by_phone", { phone: out.tel }).catch(() => null); out.perfil = p && p.ok ? (p.perfil || p.row || p.data || null) : null; }
+  return out;
+}
+app.get("/bot/control/casos", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { const d = await _rhdGetJson(_CASOS_OBJ).catch(() => ({})); res.json({ ok: true, items: (d.items || []).slice().sort((a, b) => String(b.creado).localeCompare(String(a.creado))) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/bot/control/casos", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, conv = String(b.conv || "").trim();
+    const M = (Array.isArray(b.mensajes) ? b.mensajes : []).map(m => ({ rol: _casoRol(m.rol || m.role || m.de), texto: String(m.texto || m.body || "").slice(0, 4000), ts: String(m.ts || m.timestamp || m.fecha || "") })).filter(m => m.texto.trim());
+    if (!conv || !M.length) return res.status(400).json({ ok: false, error: "Selecciona al menos un mensaje" });
+    if (!M.some(m => m.rol === "huesped")) return res.status(400).json({ ok: false, error: "El caso necesita al menos un mensaje del huésped" });
+    const ultH = [...M].reverse().find(m => m.rol === "huesped"), ahora = ultH.ts || new Date().toISOString();
+    const ctx = await _casoContexto(conv, new Date(ahora).toLocaleDateString("sv-SE", { timeZone: _BC_TZ }));
+    const caso = Object.assign({ id: _bcId(), titulo: String(b.titulo || "").slice(0, 120) || ultH.texto.slice(0, 60), notas: String(b.notas || "").slice(0, 1000), conv, mensajes: M, ahora, creado: new Date().toISOString(), por: String(b.usuario || "").slice(0, 60),
+      huesped: (ctx.booking && ctx.booking.GuestName) || String(b.nombre || ""), aloj: ctx.alojRow ? `${ctx.alojRow.Propiedad || ""}${ctx.alojRow["# Departamento"] ? " #" + ctx.alojRow["# Departamento"] : ""}`.trim() : "" }, ctx);
+    await _bcMut(_CASOS_OBJ, d => { d.items = (d.items || []).concat(caso).slice(-500); });
+    _bcLog({ tipo: "config", seccion: "caso_entrenamiento", clave: caso.id, usuario: caso.por, despues: caso.titulo });
+    res.json({ ok: true, caso: { id: caso.id, titulo: caso.titulo, huesped: caso.huesped, aloj: caso.aloj, reserva: caso.booking && caso.booking.Id } });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/bot/control/casos/borrar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).id || ""); await _bcMut(_CASOS_OBJ, d => { d.items = (d.items || []).filter(x => x.id !== id); }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Simula el caso con el bot de hoy: mismo prompt que un mensaje real (gate, fichas, guía del alojamiento, reserva, fecha y hora del caso),
+// con el historial previo del extracto. Las herramientas que guardan o avisan no se ejecutan.
+app.post("/bot/control/casos/simular", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const d = await _rhdGetJson(_CASOS_OBJ).catch(() => ({})), c = (d.items || []).find(x => x.id === String((req.body || {}).id || ""));
+    if (!c) return res.status(404).json({ ok: false, error: "Caso no encontrado" });
+    const M = c.mensajes; let fin = M.length - 1; while (fin >= 0 && M[fin].rol !== "huesped") fin--;
+    let ini = fin; while (ini > 0 && M[ini - 1].rol === "huesped") ini--;
+    const userMsg = M.slice(ini, fin + 1).map(m => m.texto).join("\n"), history = M.slice(0, ini).map(m => ({ role: m.rol === "huesped" ? "user" : "assistant", body: m.texto })), real = M.slice(fin + 1).filter(m => m.rol !== "huesped");
+    const t = new Date(c.ahora), fecha = isNaN(t) ? _bcHoy() : t.toLocaleDateString("sv-SE", { timeZone: _BC_TZ });
+    const p = new Intl.DateTimeFormat("en-US", { timeZone: _BC_TZ, hour12: false, weekday: "short", hour: "2-digit", minute: "2-digit" }).formatToParts(isNaN(t) ? new Date() : t), gp = k => (p.find(x => x.type === k) || {}).value;
+    const now = { dia: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(gp("weekday")), min: (Number(gp("hour")) % 24) * 60 + Number(gp("minute")), fecha };
+    const { arr, dep } = _bcFechas(c.booking), estancia = !!(arr && dep && arr <= fecha && fecha <= dep);
+    const g = await _bcGate({ texto: userMsg, canal: c.canal, conv: "caso", booking: c.booking, control: "bot", mensajes: M.slice(0, fin + 1).map(m => ({ role: m.rol === "huesped" ? "user" : "assistant", body: m.texto })), nombre: c.huesped, aloj: c.aloj, simular: { now, estanciaActiva: estancia } });
+    const context = c.booking ? _botBuildAlojamientoContext(c.alojRow, c.booking, c.allBookings) : "";
+    const hora = `${String(Math.floor(now.min / 60)).padStart(2, "0")}:${String(now.min % 60).padStart(2, "0")}`;
+    const system = BOT_SYSTEM_PROMPT_BASE + _botBuildPromptsBlock(await _botGetPrompts({ claves: g.detectados })) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${fecha}, ${hora} h (America/Monterrey).\n- AÑO ACTUAL: ${fecha.slice(0, 4)}.` + context + g.prompt
+      + (c.canal !== "whatsapp" ? `\n\nCANAL: esta conversación es por la mensajería de ${c.canal === "booking" ? "BOOKING" : "AIRBNB"} (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos.` : "")
+      + (c.perfil ? `\n\nPERFIL DEL HUÉSPED (guardado con el caso): ${JSON.stringify(c.perfil).slice(0, 1500)}` : "");
+    const llm = await _botLlmLoop({ system, history, userMsg, tools: g.tools, ctx: { phone10: "caso", fromRaw: "", booking: c.booking || {}, alojRow: c.alojRow || {}, simular: true, simHuesped: true, msgTs: isNaN(t) ? Date.now() : t.getTime(), userMsg } });
+    res.json({ ok: true, decision: Object.assign({}, g, { tools: g.tools.map(x => x.name) }), respuesta: String(llm.text || "").trim(), herramientas: (llm.toolsUsed || []).map(x => x.name), real, userMsg, fecha, hora });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 const PORT = process.env.PORT || 8080;
 // Cloud Run no manda tráfico a la instancia hasta que abre el puerto. Esperamos
 // a tener el snapshot de reservas (máx 220 s) para que ningún usuario pague la
