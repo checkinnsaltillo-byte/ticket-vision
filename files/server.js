@@ -13128,13 +13128,17 @@ const _BC_CAT = [
   ["recordatorio_salida", "proactivos", "Recordatorio de salida", "Mensaje la noche previa con la hora y las instrucciones de salida (plantilla «4. Recordatorio de check-out»).", "sup", "Propuesto", "P4", "", [], ""],
   ["despedida", "proactivos", "Despedida", "Agradecimiento el día de salida (plantilla «5. Despedida»).", "sup", "Propuesto", "P4", "", [], ""],
   ["encuesta", "proactivos", "Encuesta de satisfacción", "Encuesta corta tras la salida; resultados al panel.", "off", "Propuesto", "P4", "", [], ""],
+  ["avisos_servicio", "avisos", "Avisos de servicio", "Falla de internet, suspensión y restablecimiento de servicios del alojamiento.", "auto", "Propuesto", "P4", "", [], ""],
+  ["estado_reportes", "avisos", "Avisos de reportes de mantenimiento", "Alta, avance, programación, cancelación y resolución de un reporte técnico.", "auto", "Propuesto", "P4", "", [], ""],
+  ["estado_solicitudes", "avisos", "Avisos de solicitudes", "Registro, programación, aprobación, rechazo y atención de solicitudes generales del huésped.", "auto", "Propuesto", "P4", "", [], ""],
+  ["incidencias", "avisos", "Avisos de incidencias", "Registro, programación, atención y cancelación de incidencias.", "auto", "Propuesto", "P4", "", [], ""],
   ["ingles", "transversales", "Atención en inglés", "Detecta el idioma y responde en inglés con el mismo estilo.", "sup", "Propuesto", "P4", "\\b(hello|hi|please|thanks|thank you|check in|how|where|what|when)\\b", [], ""],
   ["multimedia", "transversales", "Mensajes con foto, audio o ubicación", "Interpreta imágenes y notas de voz (por ejemplo, foto de una falla).", "sup", "Propuesto", "P4", "", [], ""],
   ["humano", "transversales", "Solicitud de atención humana", "El huésped pide hablar con una persona.", "der", "Propuesto", "P3", "(hablar|comunicar(me)?|contactar) (con )?(una |alguna )?(persona|humano|alguien|gerente|encargad|dueno|administrador)|no quiero (hablar con un )?(bot|robot)|eres (un )?(bot|robot)", [], "f"],
   ["baja", "transversales", "Baja de mensajes", "El huésped pide no recibir mensajes proactivos.", "auto", "Propuesto", "P4", "no me (manden|envien) (mas )?mensajes|dejen de (mandar|enviar)|\\bbaja\\b|\\bstop\\b", [], ""],
   ["dudas", "transversales", "Dudas generales", "Respuesta abierta del modelo cuando no aplica ningún otro proceso.", "sup", "Original", "P4", "", [], ""],
 ];
-const _BC_GRUPOS = { reservas: "Reservas y cobro", prellegada: "Pre-llegada", estancia: "Estancia", salida: "Salida", facturacion: "Facturación", informacion: "Información", proactivos: "Mensajes proactivos", transversales: "Transversales" };
+const _BC_GRUPOS = { reservas: "Reservas y cobro", prellegada: "Pre-llegada", estancia: "Estancia", salida: "Salida", facturacion: "Facturación", informacion: "Información", proactivos: "Mensajes proactivos", avisos: "Avisos al huésped", transversales: "Transversales" };
 const _BC_MODOS = ["off", "der", "sup", "auto"], _BC_MODO_TXT = { off: "Apagado", der: "Derivar", sup: "Supervisado", auto: "Automático" };
 const _BC_NIV = { AUT: 0, SUP: 1, PER: 2 }, _BC_NIV_TXT = { AUT: "Automático", SUP: "Supervisado", PER: "Personal" };
 const _BC_DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -13203,8 +13207,22 @@ function _bcDefaults() {
     ],
     disyuntor: { on: true, n: 3, ventanaMin: 60, bajaA: "sup" },
     // Mensajes programados: plantilla vinculada a cada proceso proactivo, horario permitido y atraso máximo.
-    proactivos: { plantillas: { confirmacion: "T1787016359403_5024", bienvenida: "T1788039188769_6214", satisfaccion: "T1787017616978_1854", recordatorio_salida: "T1788039290084_7647", despedida: "T1786834157496_978" },
-      ventana: { ini: "08:00", fin: "21:30" }, atrasoMaxH: 3 },
+    proactivos: { ventana: { ini: "08:00", fin: "21:30" }, atrasoMaxH: 3 },
+    // Cada plantilla de WhatsApp pertenece a un proceso: las programadas se envían según el modo de ese proceso.
+    plantillasProceso: {
+      T1787016359403_5024: "confirmacion", bienvenida_reserva: "bienvenida", T1788039188769_6214: "bienvenida", T1787017616978_1854: "satisfaccion",
+      T1788039290084_7647: "recordatorio_salida", recordatorio_checkout: "instrucciones_salida", T1786834157496_978: "despedida", recordatorio_checkin_24h: "recordatorio_llegada",
+      T1787082899673_7310: "ticket_factura", T1787516256746_2919: "ticket_factura", T1788151743249_8332: "ticket_factura", T1788151756102_4852: "ticket_factura", T1788198590731_2018: "ticket_factura",
+      T1787510110821_5836: "avisos_servicio", T1787513378125_9578: "avisos_servicio", T1787513492769_9897: "avisos_servicio", T1787609519744_9171: "emergencias",
+      T1787555280673_2551: "estado_reportes", T1787515482522_1045: "estado_reportes", T1788216526944_582: "estado_reportes", T1788216529618_2573: "estado_reportes", T1788216532147_2645: "estado_reportes",
+      T1787560466772_5334: "objetos", T1788216546058_6406: "objetos", T1788216549131_8916: "objetos", T1788216552301_2070: "objetos",
+      T1788016100207_26: "estado_pagos", T1788151740965_3953: "metodo_pago", T1788151753946_1120: "metodo_pago",
+      T1788146418684_1450: "estado_solicitudes", T1788146421768_1448: "estado_solicitudes", T1788146425225_1476: "estado_solicitudes", T1788151719291_6098: "estado_solicitudes", T1788151721842_5825: "estado_solicitudes",
+      T1788147912391_2812: "extension", T1788147915846_2680: "extension", T1788151749255_180: "extension", T1788151760744_2517: "extension",
+      T1788151724428_4356: "salida_tardia", T1788151727521_9390: "salida_tardia", T1788151731015_8974: "entrada_temprana", T1788151734715_1533: "entrada_temprana",
+      T1788151737931_4131: "insumos", T1788151751301_1832: "insumos", T1788151746171_1301: "limpieza_extra", T1788151757990_9156: "limpieza_extra",
+      T1788216534876_9450: "incidencias", T1788216537537_3969: "incidencias", T1788216540482_9654: "incidencias", T1788216543397_5718: "incidencias",
+    },
   };
 }
 // Une la configuración guardada con los valores por omisión (las claves nuevas aparecen sin perder lo guardado).
@@ -13545,7 +13563,7 @@ app.post("/bot/control", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const { seccion, data, usuario } = req.body || {}, por = String(usuario || "").slice(0, 60);
-    const OK = ["proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
+    const OK = ["plantillaProceso", "proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
     if (!OK.includes(seccion)) return res.status(400).json({ ok: false, error: "Sección inválida" });
     let antes, despues;
     await _bcMut(_BC.OBJ, d => {
@@ -13557,6 +13575,7 @@ app.post("/bot/control", async (req, res) => {
       else if (seccion === "respaldoGeneral" || seccion === "respaldoCanal") set(seccion, String(data || ""));
       else if (seccion === "proceso") { const k = String(data && data.clave || ""); if (!k) throw new Error("Falta la clave"); d.procesos = d.procesos || {}; antes = cur.procesos[k]; const v = Object.assign({}, cur.procesos[k] || {}, data.valores || {}); if (v.modo && !_BC_MODOS.includes(v.modo)) throw new Error("Modo inválido"); d.procesos[k] = v; despues = v; }
       else if (seccion === "procesos_lote") { d.procesos = d.procesos || {}; antes = {}; despues = {}; Object.entries(data || {}).forEach(([k, modo]) => { if (!_BC_MODOS.includes(modo)) return; antes[k] = (cur.procesos[k] || {}).modo; d.procesos[k] = Object.assign({}, cur.procesos[k] || {}, { modo }); despues[k] = modo; }); }
+      else if (seccion === "plantillaProceso") { const tid = String(data && data.tid || ""); if (!tid) throw new Error("Falta la plantilla"); antes = (cur.plantillasProceso || {})[tid] || ""; d.plantillasProceso = Object.assign({}, cur.plantillasProceso || {}, { [tid]: String(data.proc || "") }); despues = String(data.proc || ""); }
       else if (seccion === "reset_disyuntor") { const k = String(data || ""); d.procesos = d.procesos || {}; antes = (cur.procesos[k] || {}).disyuntor; d.procesos[k] = Object.assign({}, cur.procesos[k] || {}, { disyuntor: null }); despues = null; _bcErrs.delete(k); }
       else if (seccion === "disponible") { const H = Object.assign({}, cur.horario, { disponible: !!data, dispAt: new Date().toISOString(), dispPor: por }); antes = cur.horario.disponible; d.horario = H; despues = !!data; }
       else if (seccion === "perfil") { antes = cur.perfil; const v = Object.assign({}, cur.perfil, data || {}); d.perfil = v; despues = v;
@@ -13716,7 +13735,7 @@ async function _pmTick(opts) {
   const dry = !!(opts && opts.dry), out = { revisadas: 0, nuevos: [], errores: [] };
   try {
     const cfg = await _bcCfg(true), P = cfg.proactivos || {}, now = Date.now(), ahora = _bcAhora();
-    const links = Object.entries(P.plantillas || {}).filter(([k, tid]) => tid && (cfg.procesos[k] || {}).modo !== "off");
+    const links = Object.entries(cfg.plantillasProceso || {}).map(([tid, k]) => [k, tid]).filter(([k, tid]) => k && cfg.procesos[k] && (cfg.procesos[k] || {}).modo !== "off" && (_BC_CAT.find(c => c[0] === k) || [])[1] === "proactivos"); // solo los mensajes proactivos se programan aquí (el ticket y los avisos salen por sus eventos)
     if (!links.length) return Object.assign({ ok: true }, out);
     const tpls = ((await _waLeer(_WA_OBJ.tpl)).items || []), tplDe = id => tpls.find(t => t.id === id);
     // Reservas de Lodgify: próximas y en curso (incluye las que salen hoy).
@@ -13787,7 +13806,8 @@ app.get("/bot/control/proactivos", async (req, res) => {
     const dias = Math.min(30, Number(req.query.dias) || 7);
     const items = Object.values((reg && reg.items) || {}).filter(x => ["por_aprobar", "sin_ventana"].includes(x.estado) || Date.now() - Date.parse(x.at) < dias * 864e5)
       .sort((a, b) => String(b.programado).localeCompare(String(a.programado)));
-    res.json({ ok: true, items, bajas, plantillas: (tpl.items || []).filter(t => t.schedule_type && t.schedule_type !== "never").map(t => ({ id: t.id, nombre: t.nombre, enabled: !!t.enabled, schedule_type: t.schedule_type, schedule_event: t.schedule_event || "", schedule_offset: t.schedule_offset || "", schedule_time: t.schedule_time || "", alojamientos: t.alojamientos || "" })) });
+    const mini = t => ({ id: t.id, nombre: t.nombre, enabled: !!t.enabled, responsivo: !!t.responsivo, schedule_type: t.schedule_type || "never", schedule_event: t.schedule_event || "", schedule_offset: t.schedule_offset || "", schedule_time: t.schedule_time || "", alojamientos: t.alojamientos || "" });
+    res.json({ ok: true, items, bajas, todas: (tpl.items || []).map(mini), plantillas: (tpl.items || []).filter(t => t.schedule_type && t.schedule_type !== "never").map(t => ({ id: t.id, nombre: t.nombre, enabled: !!t.enabled, schedule_type: t.schedule_type, schedule_event: t.schedule_event || "", schedule_offset: t.schedule_offset || "", schedule_time: t.schedule_time || "", alojamientos: t.alojamientos || "" })) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // Aprobar (enviar), editar u omitir un mensaje programado pendiente.

@@ -9457,6 +9457,7 @@ function switchModule(mod) {
     if (typeof invInit === 'function') invInit();
   }
   if (mod === "config-admin") {
+    if (typeof CFG_ADMIN !== 'undefined') { CFG_ADMIN.hostId = 'cfg-view'; if (CFG_ADMIN.tab === 'templates') CFG_ADMIN.tab = 'prompts'; document.querySelectorAll('[data-cfg-tab]').forEach(el => el.classList.toggle('active', el.getAttribute('data-cfg-tab') === CFG_ADMIN.tab)); }
     if (typeof cfgAdminInit === 'function') cfgAdminInit();
   }
   if (mod === "llaves") {
@@ -46721,7 +46722,8 @@ window.waPreloadConfigForVisibleCards = function() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const CFG_ADMIN = {
-  tab: 'templates',
+  tab: 'prompts', // las plantillas de mensajes se movieron a Control del bot › 📨 Plantillas
+  hostId: 'cfg-view',
   loaded: false,
   loading: false,
   templates: [],
@@ -46883,7 +46885,7 @@ async function cfgAdminInit() {
 }
 
 function cfgAdminRender() {
-  const host = document.getElementById('cfg-view');
+  const host = document.getElementById(CFG_ADMIN.hostId || 'cfg-view');
   if (!host) return;
   if (CFG_ADMIN.tab === 'boveda') return vaRenderModule_(host);
   if (CFG_ADMIN.tab === 'carpeta') return ccRender_(host);
@@ -47000,6 +47002,7 @@ function cfgRenderEditor() {
         oninput="cfgUpdateDraft('asunto', this.value)"
         style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;box-sizing:border-box;margin-bottom:14px">
 
+      ${typeof bkTplProcHtml_ === 'function' ? bkTplProcHtml_(d) : ''}
       ${_cfgRenderCustomPhBox(d.placeholders_custom || [])}
 
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;flex-wrap:wrap">
@@ -64242,7 +64245,6 @@ const NAV_TREE = {
     { t: '📆 Calendario de reservas', mod: 'calendario', go: () => {} },
   ],
   'config-admin': [
-    { t: '💬 Templates de mensajes', go: () => cfgSetTab('templates') },
     { t: '📋 Prompts (procesos)', go: () => cfgSetTab('prompts') },
   ],
 };
@@ -73264,7 +73266,7 @@ async function abnFicha_(bid) {
 // /bot/control/bitacora, /bot/control/simular, /bot/control/preview-perfil. El gate vive en server.js (_bcGate).
 // ═══════════════════════════════════════════════════════════════════════════
 const BK = { tab: 'resumen', d: null, bandeja: [], bit: { dia: '', items: [], f: '' }, sim: null, simCargando: false, abiertos: {}, drawer: null, fPrio: '', fMios: false, cargando: false, prev: null };
-const BK_TABS = [['resumen', '📥 Bandeja'], ['procesos', '⚙️ Procesos'], ['horarios', '🕐 Horarios'], ['urgencia', '🚨 Urgencia'], ['perfil', '🎭 Personalidad'], ['bitacora', '📜 Bitácora'], ['pruebas', '🧪 Pruebas']];
+const BK_TABS = [['resumen', '📥 Bandeja'], ['procesos', '⚙️ Procesos'], ['plantillas', '📨 Plantillas'], ['horarios', '🕐 Horarios'], ['urgencia', '🚨 Urgencia'], ['perfil', '🎭 Personalidad'], ['bitacora', '📜 Bitácora'], ['pruebas', '🧪 Pruebas']];
 const BK_MODO = { off: ['Apagado', '#6b7280', '#f3f4f6'], der: ['Derivar', '#b45309', '#fef3c7'], sup: ['Supervisado', '#1d4ed8', '#dbeafe'], auto: ['Automático', '#15803d', '#dcfce7'] };
 const BK_NIV = { AUT: ['Automático', '#15803d', '#dcfce7'], SUP: ['Supervisado', '#1d4ed8', '#dbeafe'], PER: ['Personal', '#b45309', '#fef3c7'] };
 const BK_PRIO = { P1: ['P1 Crítica', 'ESCALAR AHORA', '#b91c1c', '#fee2e2', '🔴'], P2: ['P2 Alta', 'PRIORITARIA', '#c2410c', '#ffedd5', '🟠'], P3: ['P3 Media', 'SEGUIMIENTO', '#a16207', '#fef9c3', '🟡'], P4: ['P4 Normal', 'AUTOMÁTICA', '#4b5563', '#f3f4f6', '⚪'] };
@@ -73379,7 +73381,7 @@ async function bkGuardar_(seccion, data, ok) {
 }
 function bkToast_(t) { let el = document.getElementById('bk-toast'); if (!el) { el = document.createElement('div'); el.id = 'bk-toast'; el.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 10px 30px rgba(0,0,0,.25);transition:opacity .2s'; document.body.appendChild(el); }
   el.textContent = t; el.style.opacity = '1'; clearTimeout(el._t); el._t = setTimeout(() => { el.style.opacity = '0'; }, 2200); }
-function bkTab_(t) { BK.tab = t; bkRender_(); if (t === 'bitacora' && !BK.bit.dia) bkBitCargar_(); }
+function bkTab_(t) { const de = BK.tab; BK.tab = t; bkRender_(); if (de === 'plantillas' && t !== 'plantillas') bkCargar_(true); if (t === 'bitacora' && !BK.bit.dia) bkBitCargar_(); }
 const bkSw_ = (on, txt, fn, cls) => `<button type="button" class="bk-sw ${cls || ''} ${on ? 'on' : ''}" onclick="${fn}"><i></i>${txt}</button>`;
 const bkCk_ = (on, txt, fn) => `<span class="bk-ck ${on ? 'on' : ''}" onclick="${fn}"><span>${on ? '✓' : ''}</span>${txt}</span>`;
 const bkModoChip_ = m => { const x = BK_MODO[m] || BK_MODO.off; return `<span class="bk-chip" style="color:${x[1]};background:${x[2]}">${x[0]}</span>`; };
@@ -73402,8 +73404,9 @@ function bkRender_() {
   const kpi = (n, t) => `<div class="bk-kpi"><b>${n}</b><span>${t}</span></div>`;
   const kpis = `<div class="bk-kpis">${kpi(contadores.automaticos, 'Procesos en Automático')}${kpi(contadores.prioritarias, 'Conversaciones P1/P2 abiertas')}${kpi(contadores.supervision, 'Pendientes de supervisión')}${kpi(contadores.alertas, 'Alertas sin resolver')}${kpi(contadores.disyuntores, 'Disyuntores activos')}</div>`;
   const tabs = `<div class="bk-tabs">${BK_TABS.map(([k, t]) => `<button type="button" class="bk-tab ${BK.tab === k ? 'on' : ''}" onclick="bkTab_('${k}')">${t}</button>`).join('')}</div>`;
-  const body = { resumen: bkResumen_, procesos: bkProcesos_, horarios: bkHorarios_, urgencia: bkUrgencia_, perfil: bkPerfil_, bitacora: bkBitacora_, pruebas: bkPruebas_ }[BK.tab]();
+  const body = { resumen: bkResumen_, procesos: bkProcesos_, plantillas: bkPlantillas_, horarios: bkHorarios_, urgencia: bkUrgencia_, perfil: bkPerfil_, bitacora: bkBitacora_, pruebas: bkPruebas_ }[BK.tab]();
   root.innerHTML = hero + obs + kpis + tabs + `<div id="bk-body">${body}</div>` + (BK.drawer ? bkDrawerHtml_() : '');
+  if (BK.tab === 'plantillas') bkPlantillasMontar_();
 }
 async function bkMaster_() { const c = BK.d.cfg, on = c.master.on === false;
   if (!on && !confirm('¿Apagar el bot? Todos los huéspedes recibirán el mensaje fijo de atención humana.')) return;
@@ -73514,8 +73517,7 @@ function bkDrawerHtml_() {
   return `<div class="bk-drw-bg" onclick="bkDrawerCerrar_()"></div><div class="bk-drw"><div class="bk-drw-h"><div style="flex:1"><b style="font-size:15px">${esc(c.nombre)}</b><div class="bk-sub">${esc(c.desc || '')}</div></div><button class="bk-btn sm" onclick="bkDrawerCerrar_()">✕</button></div>
     <div class="bk-drw-b">
       ${pc.disyuntor && pc.disyuntor.at ? `<div class="bk-obs err" style="margin-top:12px">⚡ Disyuntor activo desde ${new Date(pc.disyuntor.at).toLocaleString('es-MX')}: ${esc(pc.disyuntor.motivo || '')}. <button class="bk-btn sm" onclick="bkResetDy_('${clave}')">Restablecer</button></div>` : ''}
-      ${c.grupo === 'proactivos' ? `<label class="bk-lb">Plantilla de WhatsApp vinculada</label><select class="bk-sel" onchange="BK.drawer.tpl=this.value"><option value="">— Sin plantilla (no se envía nada) —</option>${((BK.pm || {}).plantillas || []).map(t => `<option value="${esc(t.id)}" ${(BK.drawer.tpl != null ? BK.drawer.tpl : ((BK.d.cfg.proactivos || {}).plantillas || {})[clave]) === t.id ? 'selected' : ''}>${esc(t.nombre)} · ${esc(bkPmProg_(t))}${t.enabled ? '' : ' (desactivada)'}</option>`).join('')}</select>
-      <div class="bk-sub" style="margin-top:4px">La programación, el texto y los alojamientos se editan en Configuración admin › Plantillas.</div>` : ''}
+      ${bkTplsDe_(clave).length ? `<label class="bk-lb">Plantillas de WhatsApp asociadas</label>${bkTplsDe_(clave).map(t => `<div class="bk-row" style="padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px"><b>${esc(t.nombre)}</b><span class="bk-mut">${esc(bkPmProg_(t))}</span><button class="bk-btn sm" onclick="bkDrawerCerrar_();bkTplAbrir_('${esc(t.id)}')">Abrir</button></div>`).join('')}` : ''}
       <label class="bk-lb">Palabras clave que activan el proceso <span class="bk-mut">(separa con |)</span></label><textarea class="bk-ta" style="min-height:52px" onchange="BK.drawer.pc.kw=this.value">${esc(pc.kw || '')}</textarea>
       <div class="bk-grid2"><div><label class="bk-lb">Prioridad base</label><select class="bk-sel" onchange="BK.drawer.pc.prioridad=this.value">${['P1', 'P2', 'P3', 'P4'].map(p => `<option ${(pc.prioridad || 'P4') === p ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
       <div><label class="bk-lb">Rol del bot en este proceso</label><select class="bk-sel" onchange="BK.drawer.pc.rol=this.value">${roles.map(([v, t]) => `<option value="${v}" ${(pc.rol || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>
@@ -73529,7 +73531,7 @@ function bkDrawerHtml_() {
 function bkOvDia_(i, k) { const o = BK.drawer.pc.overrides[i]; o.dias = o.dias || []; const j = o.dias.indexOf(k); if (j >= 0) o.dias.splice(j, 1); else o.dias.push(k); bkRender_(); }
 function bkDrawerCerrar_() { BK.drawer = null; bkRender_(); }
 async function bkDrawerGuardar_() { const { clave, pc } = BK.drawer;
-  if (BK.drawer.tpl != null) { const P = JSON.parse(JSON.stringify(BK.d.cfg.proactivos || {})); P.plantillas = P.plantillas || {}; P.plantillas[clave] = BK.drawer.tpl; if (!await bkGuardar_('proactivos', P, false)) return; } const v = { kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
+  const v = { kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
   if (await bkGuardar_('proceso', { clave, valores: v })) { BK.drawer = null; bkRender_(); } }
 async function bkResetDy_(k) { if (await bkGuardar_('reset_disyuntor', k, '✓ Disyuntor restablecido')) { BK.drawer.pc.disyuntor = null; bkRender_(); } }
 
@@ -73689,11 +73691,13 @@ async function bkSimular_() {
 // ── 📨 Mensajes programados (procesos proactivos ↔ plantillas) ──
 const BK_PM_EST = { por_aprobar: ['⏳ Por aprobar', '#1d4ed8', '#dbeafe'], sin_ventana: ['⚠️ Sin ventana de 24 h', '#b45309', '#fef3c7'], enviado: ['✅ Enviado', '#15803d', '#dcfce7'], omitido: ['⏭️ Omitido', '#4b5563', '#f3f4f6'], vencido: ['⌛ Vencido', '#4b5563', '#f3f4f6'], fallido: ['❗ Falló', '#b91c1c', '#fee2e2'], se_enviaria: ['Se enviaría', '#15803d', '#dcfce7'] };
 function bkPmProg_(t) { const ty = t.schedule_type; if (ty === 'on_booking_5min') return '5 min después de reservar'; if (ty === 'before_arrival') return 'día anterior a la llegada, 10:00'; if (ty === 'before_checkout') return 'día anterior a la salida, 18:00';
+  if (ty === 'never' || !ty) return t.responsivo ? 'por evento' : 'envío manual';
   if (ty === 'custom') { const off = parseInt(t.schedule_offset || '0', 10) || 0, ev = t.schedule_event === 'checkout' ? 'salida' : 'llegada'; return `${off === 0 ? `día de ${ev}` : off < 0 ? `${-off} día${off < -1 ? 's' : ''} antes de la ${ev}` : `${off} día${off > 1 ? 's' : ''} después de la ${ev}`}, ${t.schedule_time || '09:00'}`; } return 'sin programación'; }
-function bkPmChip_(clave) { const tid = ((BK.d.cfg.proactivos || {}).plantillas || {})[clave]; if (!tid) return ''; const t = ((BK.pm || {}).plantillas || []).find(x => x.id === tid);
-  return `<div class="mt" style="color:#6d28d9;font-weight:700">📨 ${t ? `${esc(t.nombre)} · ${esc(bkPmProg_(t))}${t.alojamientos ? ` · ${t.alojamientos.split(',').filter(Boolean).length} alojamiento(s)` : ' · sin alojamientos asignados'}${t.enabled ? '' : ' · ⚠️ plantilla desactivada'}` : 'Plantilla no encontrada'}</div>`; }
+function bkTplsDe_(clave) { const M = BK.d.cfg.plantillasProceso || {}, T = (BK.pm || {}).todas || []; return T.filter(t => M[t.id] === clave); }
+function bkPmChip_(clave) { const L = bkTplsDe_(clave); if (!L.length) return '';
+  return L.map(t => `<div class="mt" style="color:#6d28d9;font-weight:700;cursor:pointer" onclick="bkTplAbrir_('${esc(t.id)}')">📨 ${esc(t.nombre)} · ${esc(bkPmProg_(t))}${t.schedule_type !== 'never' ? (t.alojamientos ? ` · ${t.alojamientos.split(',').filter(Boolean).length} alojamiento(s)` : ' · sin alojamientos asignados') : ''}${t.enabled ? '' : ' · ⚠️ desactivada'}</div>`).join(''); }
 function bkPmCfgHtml_() { const P = BK.d.cfg.proactivos || {}, V = P.ventana || {};
-  return `<div class="bk-card"><h3>📨 Mensajes programados</h3><div class="bk-sub">Los procesos del grupo «Mensajes proactivos» envían su plantilla vinculada según su programación. Apagado = no se manda · Supervisado o Derivar = queda por aprobar en la Bandeja · Automático = se envía solo. Funciona aunque el gate esté en observación.</div>
+  return `<div class="bk-card"><h3>📨 Mensajes programados</h3><div class="bk-sub">Cada plantilla programada (pestaña 📨 Plantillas) se envía según el modo de su proceso asociado. Apagado = no se manda · Supervisado o Derivar = queda por aprobar en la Bandeja · Automático = se envía solo. Funciona aunque el gate esté en observación.</div>
     <div class="bk-row" style="margin-top:10px;font-size:12.5px"><span>Horario permitido de envío</span><input class="bk-in" type="time" style="width:110px" value="${esc(V.ini || '08:00')}" id="bk-pm-ini"><span>a</span><input class="bk-in" type="time" style="width:110px" value="${esc(V.fin || '21:30')}" id="bk-pm-fin">
     <span>· no enviar si ya pasaron más de</span><input class="bk-in" type="number" min="1" max="24" style="width:70px" value="${P.atrasoMaxH || 3}" id="bk-pm-atr"><span>h de la hora programada</span>
     <button class="bk-btn sm pri" onclick="bkPmCfgGuardar_()">Guardar</button><button class="bk-btn sm" onclick="bkPmSimular_()">👁️ ¿Qué tocaría ahora?</button></div><div id="bk-pm-sim"></div></div>`; }
@@ -73725,4 +73729,25 @@ async function bkPmAccion_(key, accion) {
   try { const r = await fetch(`${BACKEND}/bot/control/proactivos/accion`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, accion, body, usuario: bkUsr_() }) }).then(r => r.json());
     if (!r.ok) throw new Error(r.error || 'Error'); bkToast_(accion === 'enviar' ? '✓ Enviado' : accion === 'omitir' ? '✓ Omitido' : '✓ Listo'); bkCargar_(); }
   catch (e) { alert('No se pudo: ' + (e.message || e)); bkCargar_(); }
+}
+
+// ── 📨 Plantillas de mensajes (migradas desde Configuración admin) ──
+function bkPlantillas_() {
+  return `<div class="bk-card" style="padding:12px 16px"><div class="bk-sub">Plantillas de WhatsApp. Cada una pertenece a un proceso del bot: las programadas se envían según el modo de ese proceso (Apagado, Supervisado, Automático); las de envío manual o por evento quedan clasificadas en él.</div></div><div id="bk-tpl-host"><div class="bk-card bk-mut">⏳ Cargando plantillas…</div></div>`;
+}
+function bkPlantillasMontar_() { if (typeof CFG_ADMIN === 'undefined') return; CFG_ADMIN.hostId = 'bk-tpl-host'; CFG_ADMIN.tab = 'templates';
+  if (typeof cfgAdminInit === 'function') cfgAdminInit(); }
+function bkTplAbrir_(id) { BK.tab = 'plantillas'; bkRender_(); setTimeout(() => { try { if (typeof cfgSelectTemplate === 'function') cfgSelectTemplate(id); } catch (_) {} }, 400); }
+function bkTplProcHtml_(d) {
+  if (typeof BK === 'undefined' || !BK.d || CFG_ADMIN.hostId !== 'bk-tpl-host') return '';
+  const M = BK.d.cfg.plantillasProceso || {}, cur = d._id ? (M[d._id] || '') : '', G = BK.d.grupos, byG = {};
+  BK.d.catalogo.forEach(c => (byG[c.grupo] = byG[c.grupo] || []).push(c));
+  const opts = Object.keys(G).filter(g => byG[g]).map(g => `<optgroup label="${esc(G[g])}">${byG[g].map(c => `<option value="${esc(c.clave)}" ${cur === c.clave ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</optgroup>`).join('');
+  const c = BK.d.catalogo.find(x => x.clave === cur), modo = c ? ((BK.d.cfg.procesos[cur] || {}).modo || c.modoIni) : '';
+  return `<label style="display:block;font-size:12px;color:#475569;font-weight:700;margin-bottom:4px">Proceso del bot</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px"><select ${d._id ? `onchange="bkTplProcSet_('${esc(d._id)}',this.value)"` : 'disabled'} style="flex:1;min-width:220px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"><option value="">— Sin proceso —</option>${opts}</select>
+    ${c ? `${bkModoChip_(modo)}<button type="button" class="bk-btn sm" onclick="bkTab_('procesos');setTimeout(()=>bkConfigurar_('${esc(cur)}'),50)">Ver proceso</button>` : d._id ? '<span class="bk-mut" style="font-size:12px">Sin proceso: si está programada, no se envía.</span>' : '<span class="bk-mut" style="font-size:12px">Guarda la plantilla para asignarle un proceso.</span>'}</div>`;
+}
+async function bkTplProcSet_(id, proc) {
+  if (await bkGuardar_('plantillaProceso', { tid: id, proc }, '✓ Proceso asignado')) { if (typeof cfgRenderEditor === 'function') cfgRenderEditor(); }
 }
