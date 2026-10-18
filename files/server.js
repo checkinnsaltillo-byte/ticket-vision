@@ -1959,8 +1959,8 @@ async function _botExecTool(toolUse, ctx) {
           hay_mas: allResults.length > top.length,
           fechas: `${args.arrival} → ${args.departure}`,
           huespedes: args.adults,
-          alojamientos_top: top,
-          link_ver_resultados: publicUrl.toString(),
+          alojamientos_top: ctx && ctx.sinLink ? top.map(x => Object.assign({}, x, { link_reservar: undefined })) : top,
+          ...(ctx && ctx.sinLink ? { envio_de_link: "desactivado en el panel: NO compartas links; ofrece que una persona del equipo le ayude a completar la reserva" } : { link_ver_resultados: publicUrl.toString() }),
         }),
         notifyText: null, // cotizar no notifica
       };
@@ -4091,7 +4091,7 @@ REGLAS ESTRICTAS
         // Usa loop de tools también en lead — cotizar_disponibilidad
         // funciona sin reserva (solo requiere fechas + huéspedes). Si NO se
         // pasa el loop, el modelo alucina la llamada como texto JSON.
-        const llm = await _botLlmLoop({ system: leadSystem, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: {}, alojRow: {} }, tools: _gTools });
+        const llm = await _botLlmLoop({ system: leadSystem, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: {}, alojRow: {}, sinLink: _gOn && _g.sinLink }, tools: _gTools });
         if (await _bcExigeSup(_g, llm.toolsUsed)) _forzarSup = true;
         console.info(`[bot-in] ${phone10}: LLM lead+tools en ${Date.now()-tLlm}ms (${(llm.toolsUsed||[]).length} tools)`);
         for (const t of (llm.toolsUsed || [])) { if (t.notifyText) _botNotifyAdmin(t.notifyText); }
@@ -4156,7 +4156,7 @@ REGLAS ESTRICTAS
     const tLlm = Date.now();
     // Loop de tools: cotizar / crear reporte / late checkout. Cada tool
     // resuelta se aplica antes de que Claude emita el texto final.
-    const llm = await _botLlmLoop({ system, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: ctx.booking, alojRow: ctx.alojRow }, tools: _gTools });
+    const llm = await _botLlmLoop({ system, history: historyForLlm, userMsg: bodyMsg, ctx: { phone10, fromRaw, booking: ctx.booking, alojRow: ctx.alojRow, sinLink: _gOn && _g.sinLink }, tools: _gTools });
     if (await _bcExigeSup(_g, llm.toolsUsed)) _forzarSup = true;
     console.info(`[bot-in] ${phone10}: LLM+tools en ${Date.now()-tLlm}ms (${llm.toolsUsed.length} tool${llm.toolsUsed.length===1?'':'s'})`);
     // Notifica al admin por cada tool ejecutada que dejó un resumen.
@@ -11714,7 +11714,7 @@ async function _abnBotResponder(bid, m) {
     : `\n[Reserva ${bid} de Airbnb${bk ? ` · llegada ${String(bk.arrival || "").slice(0, 10)} · salida ${String(bk.departure || "").slice(0, 10)}` : ""}.]`;
   const system = BOT_SYSTEM_PROMPT_BASE + _botBuildPromptsBlock(await _botGetPrompts()) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${hoy} (America/Mexico_City).` + context +
     `\n\nCANAL: esta conversación es por la mensajería de AIRBNB (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos (Airbnb los bloquea). Sé breve y cordial.` + (_gOn ? _g.prompt : "");
-  const llm = await _botLlmLoop({ system, history, userMsg, ctx: { phone10, fromRaw: phone10 ? `whatsapp:+52${phone10}` : "", booking: (ctx && ctx.booking) || {}, alojRow: (ctx && ctx.alojRow) || {} }, tools: _gOn ? _g.tools : undefined });
+  const llm = await _botLlmLoop({ system, history, userMsg, ctx: { phone10, fromRaw: phone10 ? `whatsapp:+52${phone10}` : "", booking: (ctx && ctx.booking) || {}, alojRow: (ctx && ctx.alojRow) || {}, sinLink: _gOn && _g.sinLink }, tools: _gOn ? _g.tools : undefined });
   for (const t of (llm.toolsUsed || [])) if (t.notifyText) _botNotifyAdmin(t.notifyText);
   const reply = String(llm.text || "").trim(); if (!reply) return "respuesta vacía";
   if (m.control === "supervised" || (_gOn && (_g.accion === "supervisado" || await _bcExigeSup(_g, llm.toolsUsed)))) { await _abnModosMutar(d => { if (d[bid]) { d[bid].draft = reply; d[bid].draftAt = new Date().toISOString(); } }); return "borrador"; }
@@ -13081,7 +13081,8 @@ const _BC_TZ = "America/Monterrey";
 const _BC_CAT = [
   ["disponibilidad", "reservas", "Consulta de disponibilidad", "Consulta en tiempo real el calendario de Lodgify por fechas, huéspedes y propiedad.", "auto", "Original", "P4", "disponib|hay lugar|tienen (lugar|cuarto|depa)|libre (para|el|del)|fechas", ["cotizar_disponibilidad"], "d"],
   ["cotizacion", "reservas", "Cotización de tarifa", "Calcula el total con noches, limpieza, impuestos y extras según tarifa vigente.", "sup", "Propuesto", "P4", "cuanto (cuesta|sale|cobran|seria)|precio|tarifa|cotiza|costo", ["cotizar_disponibilidad"], "d"],
-  ["link_pago", "reservas", "Envío de link de pago", "Genera y envía el link de Stripe para reservas directas.", "sup", "Original", "P4", "link de pago|liga de pago|como (pago|le pago|deposito)|pagar con tarjeta|transferencia|forma de pago|metodo de pago", ["solicitar_metodo_pago"], "d"],
+  ["link_pago", "reservas", "Envío de link de reserva", "Comparte el link de la página de reservas (check-inn.mx/reservas) con fechas y huéspedes; ahí el huésped reserva y paga. El bot no genera cobros.", "sup", "Original", "P4", "link|liga|como (reservo|pago|le pago)|donde (reservo|pago)|pagar con tarjeta|quiero reservar|apartar", [], "d"],
+  ["metodo_pago", "reservas", "Método de pago alternativo", "Registra la solicitud de pagar distinto (efectivo, transferencia SPEI, parcialidades); una persona la coordina.", "sup", "Propuesto", "P4", "efectivo|transferencia|spei|parcialidades|deposito bancario|forma de pago|metodo de pago", ["solicitar_metodo_pago"], "d"],
   ["estado_pagos", "reservas", "Información de estado de pagos", "Informa pagos recibidos, saldos pendientes y fechas límite.", "sup", "Original", "P4", "saldo|ya (pague|quedo el pago)|pendiente de pago|anticipo|cuanto (debo|falta)|recibieron (mi|el) pago", [], "v"],
   ["confirmacion", "reservas", "Confirmación de reserva", "Envía la confirmación con resumen de la reserva tras el pago.", "auto", "Propuesto", "P4", "confirma(r|cion)? (mi|la) reserva|quedo (confirmada|reservad)", [], ""],
   ["modificacion", "reservas", "Modificación de reserva", "Cambio de fechas, número de huéspedes o propiedad.", "der", "Propuesto", "P3", "cambiar (la|mi|las) (fecha|reserva)|mover (la|mi) reserva|modificar|agregar (una )?persona|cambio de fecha", [], ""],
@@ -13353,6 +13354,8 @@ async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre,
   // Una herramienta compartida (p. ej. cotizar) sigue disponible si otro proceso que la usa está permitido.
   catL.forEach(c => { if (!c.tools) return; const m = (modos[c.clave] || _bcModoProceso(cfg, cat, c, now)).modo; if (m === "auto" || m === "sup") c.tools.forEach(x => { if (detect.includes(c.clave)) bloq.delete(x); }); });
   const tools = BOT_TOOLS.filter(x => !_BOT_ADMIN_ONLY_TOOLS.has(x.name) && !bloq.has(x.name));
+  // El link de reserva sale de cotizar_disponibilidad: si «Envío de link de reserva» no está permitido aquí, la cotización va sin links.
+  const cLink = catL.find(x => x.clave === "link_pago"), linkModo = cLink ? (modos.link_pago || _bcModoProceso(cfg, cat, cLink, now)).modo : "auto";
   // Nivel final = max(proceso, horario, mínimo por prioridad) (8.1)
   const nivProc = Math.max(...procs.map(k => { const m = (modos[k] || {}).modo; return m === "der" ? 2 : m === "sup" ? 1 : 0; }));
   const nivCtl = control === "supervised" ? 1 : 0;
@@ -13374,7 +13377,7 @@ async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre,
   const offTxt = procs.filter(k => (modos[k] || {}).modo === "off").map(k => { const c = catL.find(x => x.clave === k); const m = modos[k]; return `- ${c ? c.nombre : k}: no lo atiendas; responde solo: «${(cfg.procesos[k] || {}).respaldo || (m.canal ? cfg.respaldoCanal : cfg.respaldoGeneral)}»`; });
   const prompt = _bcPerfilPrompt(cfg.perfil, procs) + (offTxt.length ? `\n\nTEMAS DESACTIVADOS EN ESTE MOMENTO:\n${offTxt.join("\n")}` : "");
   return { activo: !!cfg.activo && !simular, observar: !cfg.activo, accion, msg, motivo, tools, bloqueadas: [...bloq], prompt, procesos: procs, detectados: detect, modos, ipo: ip.ipo, prioridad: ip.prioridad, factores: ip.factores, senales: ip.senales, emergencia: ip.emergencia,
-    horario: hor, nivel: nivelTxt, derivacion: der.motivos, conv, hid: cat.hid, estanciaActiva, canal: cat.canal, nombre, aloj, ms: Date.now() - t0, objetivo };
+    horario: hor, nivel: nivelTxt, derivacion: der.motivos, conv, hid: cat.hid, estanciaActiva, linkModo, sinLink: linkModo === "off" || linkModo === "der", canal: cat.canal, nombre, aloj, ms: Date.now() - t0, objetivo };
 }
 // Registra la decisión (bitácora + estado de la conversación) y, si el gate está activo, crea la alerta que corresponda.
 async function _bcRegistrar(g, extra) {
@@ -13505,6 +13508,7 @@ async function _bcDraftEvento(conv, action, usuario) {
 async function _bcExigeSup(g, toolsUsed) {
   if (!g || !g.activo) return false;
   const cfg = await _bcCfg(), catL = _bcCatalogo(cfg), now = _bcAhora(), cat = { canal: g.canal, hid: g.hid, estanciaActiva: g.estanciaActiva };
+  if (g.linkModo === "sup" && (toolsUsed || []).some(t => t.name === "cotizar_disponibilidad")) return true; // el link se revisa antes de enviarse
   return (toolsUsed || []).some(t => { const ps = catL.filter(c => (c.tools || []).includes(t.name)); return ps.length && ps.every(c => _bcModoProceso(cfg, cat, c, now).modo !== "auto"); });
 }
 function _bcCanalDe(src) { const s = _bcNrm(src); return /airbnb/.test(s) ? "airbnb" : /booking/.test(s) ? "booking" : "directo"; }
