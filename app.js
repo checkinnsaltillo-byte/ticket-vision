@@ -9457,7 +9457,7 @@ function switchModule(mod) {
     if (typeof invInit === 'function') invInit();
   }
   if (mod === "config-admin") {
-    if (typeof CFG_ADMIN !== 'undefined') { CFG_ADMIN.hostId = 'cfg-view'; if (CFG_ADMIN.tab === 'templates') CFG_ADMIN.tab = 'prompts'; document.querySelectorAll('[data-cfg-tab]').forEach(el => el.classList.toggle('active', el.getAttribute('data-cfg-tab') === CFG_ADMIN.tab)); }
+    if (typeof CFG_ADMIN !== 'undefined') { CFG_ADMIN.hostId = 'cfg-view'; if (CFG_ADMIN.tab === 'templates' || CFG_ADMIN.tab === 'prompts') CFG_ADMIN.tab = 'boveda'; document.querySelectorAll('[data-cfg-tab]').forEach(el => el.classList.toggle('active', el.getAttribute('data-cfg-tab') === CFG_ADMIN.tab)); }
     if (typeof cfgAdminInit === 'function') cfgAdminInit();
   }
   if (mod === "llaves") {
@@ -46722,7 +46722,7 @@ window.waPreloadConfigForVisibleCards = function() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const CFG_ADMIN = {
-  tab: 'prompts', // las plantillas de mensajes se movieron a Control del bot › 📨 Plantillas
+  tab: 'boveda', // plantillas de mensajes y prompts (procesos) se movieron a Control del bot
   hostId: 'cfg-view',
   loaded: false,
   loading: false,
@@ -64245,7 +64245,6 @@ const NAV_TREE = {
     { t: '📆 Calendario de reservas', mod: 'calendario', go: () => {} },
   ],
   'config-admin': [
-    { t: '📋 Prompts (procesos)', go: () => cfgSetTab('prompts') },
   ],
 };
 
@@ -73466,11 +73465,11 @@ function bkProcesos_() {
   const html = Object.keys(grupos).concat(Object.keys(byG).filter(g => !grupos[g])).filter(g => byG[g]).map(g => {
     const L = byG[g], cnt = { off: 0, der: 0, sup: 0, auto: 0 }; L.forEach(c => cnt[(cfg.procesos[c.clave] || {}).modo || c.modoIni]++);
     const rows = L.map(c => { const pc = cfg.procesos[c.clave] || {}, modo = pc.modo || c.modoIni, m = metricas[c.clave] || {}, ov = (pc.overrides || []).length, dy = pc.disyuntor && pc.disyuntor.at;
-      const seg = `<div class="bk-seg">${['off', 'der', 'sup', 'auto'].map(k => `<button type="button" class="${modo === k ? 'on' : ''}" style="--c:${BK_MODO[k][1]};--b:${BK_MODO[k][2]}" ${c.forzado ? 'disabled title="Modo forzado por seguridad"' : ''} onclick="bkModo_('${c.clave}','${k}')">${BK_MODO[k][0]}</button>`).join('')}</div>`;
+      const seg = c.admin ? '<span class="bk-chip" style="background:#e0e7ff;color:#3730a3">👤 Solo en modo administrador</span>' : `<div class="bk-seg">${['off', 'der', 'sup', 'auto'].map(k => `<button type="button" class="${modo === k ? 'on' : ''}" style="--c:${BK_MODO[k][1]};--b:${BK_MODO[k][2]}" ${c.forzado ? 'disabled title="Modo forzado por seguridad"' : ''} onclick="bkModo_('${c.clave}','${k}')">${BK_MODO[k][0]}</button>`).join('')}</div>`;
       return `<div class="bk-pr"><div><div class="nm">${esc(c.nombre)} ${c.origen === 'Original' ? '<span class="bk-chip" style="background:#ede9fe;color:#6d28d9">Original</span>' : c.extra ? '<span class="bk-chip" style="background:#e0f2fe;color:#0369a1">Agregado</span>' : ''}
         ${c.forzado ? '<span class="bk-chip" style="background:#fee2e2;color:#b91c1c">🔒 forzado</span>' : ''}${c.solo_directo ? '<span class="bk-chip" style="background:#fff7ed;color:#c2410c">Solo directas</span>' : ''}${c.verif ? '<span class="bk-chip" style="background:#ecfeff;color:#0e7490">Requiere verificación</span>' : ''}
         ${bkPrioChipMini_(pc.prioridad || c.pbIni)}${ov ? `<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">↳ ${ov} regla${ov > 1 ? 's' : ''} específica${ov > 1 ? 's' : ''}</span>` : ''}${dy ? `<span class="bk-chip" style="background:#fee2e2;color:#b91c1c" title="${esc(pc.disyuntor.motivo || '')}">⚡ disyuntor</span>` : ''}</div>
-        <div class="ds">${esc(c.desc)}</div>${bkPmChip_(c.clave)}<div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
+        <div class="ds">${esc(c.desc)}</div>${bkFichaResumen_(pc)}${bkPmChip_(c.clave)}<div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
         ${seg}<button class="bk-btn sm" onclick="bkConfigurar_('${c.clave}')">Configurar</button></div>`; }).join('');
     const ab = BK.abiertos[g] !== false;
     return `<details class="bk-grp" ${ab ? 'open' : ''} ontoggle="BK.abiertos['${g}']=this.open"><summary>${esc(grupos[g] || g)} <span class="bk-sub">${L.length} procesos</span><span style="flex:1"></span>
@@ -73518,7 +73517,8 @@ function bkDrawerHtml_() {
     <div class="bk-drw-b">
       ${pc.disyuntor && pc.disyuntor.at ? `<div class="bk-obs err" style="margin-top:12px">⚡ Disyuntor activo desde ${new Date(pc.disyuntor.at).toLocaleString('es-MX')}: ${esc(pc.disyuntor.motivo || '')}. <button class="bk-btn sm" onclick="bkResetDy_('${clave}')">Restablecer</button></div>` : ''}
       ${bkTplsDe_(clave).length ? `<label class="bk-lb">Flujo de plantillas de WhatsApp</label>${bkTplsOrden_(clave).map((t, i) => `<div class="bk-row" style="padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px"><span style="width:20px;height:20px;border-radius:50%;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800">${i + 1}</span><b>${esc(t.nombre)}</b><span class="bk-mut">${esc(bkPmProg_(t))}</span><button class="bk-btn sm" onclick="bkDrawerCerrar_();bkTplAbrir_('${esc(t.id)}')">Abrir</button></div>`).join('')}` : ''}
-      <label class="bk-lb">Palabras clave que activan el proceso <span class="bk-mut">(separa con |)</span></label><textarea class="bk-ta" style="min-height:52px" onchange="BK.drawer.pc.kw=this.value">${esc(pc.kw || '')}</textarea>
+      ${bkFichaHtml_(pc, c)}
+      ${c.admin ? '' : `<label class="bk-lb">Palabras clave que activan el proceso <span class="bk-mut">(separa con |)</span></label>`}${c.admin ? '' : `<textarea class="bk-ta" style="min-height:52px" onchange="BK.drawer.pc.kw=this.value">${esc(pc.kw || '')}</textarea>`}
       <div class="bk-grid2"><div><label class="bk-lb">Prioridad base</label><select class="bk-sel" onchange="BK.drawer.pc.prioridad=this.value">${['P1', 'P2', 'P3', 'P4'].map(p => `<option ${(pc.prioridad || 'P4') === p ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
       <div><label class="bk-lb">Rol del bot en este proceso</label><select class="bk-sel" onchange="BK.drawer.pc.rol=this.value">${roles.map(([v, t]) => `<option value="${v}" ${(pc.rol || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>
       <label class="bk-lb">Mensaje de respaldo (cuando está Apagado o en Derivar)</label><textarea class="bk-ta" onchange="BK.drawer.pc.respaldo=this.value" placeholder="${esc(BK.d.cfg.respaldoGeneral)}">${esc(pc.respaldo || '')}</textarea>
@@ -73531,7 +73531,7 @@ function bkDrawerHtml_() {
 function bkOvDia_(i, k) { const o = BK.drawer.pc.overrides[i]; o.dias = o.dias || []; const j = o.dias.indexOf(k); if (j >= 0) o.dias.splice(j, 1); else o.dias.push(k); bkRender_(); }
 function bkDrawerCerrar_() { BK.drawer = null; bkRender_(); }
 async function bkDrawerGuardar_() { const { clave, pc } = BK.drawer;
-  const v = { kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
+  const v = { ficha: pc.ficha || {}, kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
   if (await bkGuardar_('proceso', { clave, valores: v })) { BK.drawer = null; bkRender_(); } }
 async function bkResetDy_(k) { if (await bkGuardar_('reset_disyuntor', k, '✓ Disyuntor restablecido')) { BK.drawer.pc.disyuntor = null; bkRender_(); } }
 
@@ -73798,3 +73798,15 @@ function bkTplProcHtml_(d) {
 async function bkTplProcSet_(id, proc) {
   if (await bkGuardar_('plantillaProceso', { tid: id, proc }, '✓ Proceso asignado')) { if (typeof cfgRenderEditor === 'function') cfgRenderEditor(); }
 }
+
+// ── 📋 Ficha del proceso (antes «Prompts (procesos)» de Configuración admin): lo que el bot recibe como instrucciones ──
+const BK_FICHA = [['objetivo', 'Objetivo', 'Qué debe lograr el bot en este proceso.', 1], ['obtener', 'Datos a obtener del huésped', 'Uno por línea.'], ['compartir', 'Datos que el bot puede compartir', 'Uno por línea. Lo que no esté aquí no lo comparte.'],
+  ['reglas', 'Reglas del negocio (líneas duras)', 'Una por línea. No negociables.'], ['flujo', 'Flujo esperado', 'Un paso por línea.'], ['riesgos', 'Riesgos / prohibiciones', 'Uno por línea.'], ['notificar', 'Avisar a', 'Quién debe enterarse (admin, operaciones, guardia…).', 1]];
+function bkFichaHtml_(pc, c) {
+  pc.ficha = pc.ficha || {};
+  return `<div style="margin-top:14px;padding:12px;border:1px solid #ede9fe;background:#faf5ff;border-radius:12px"><b style="font-size:13px">📋 Ficha del proceso</b><div class="bk-sub">Instrucciones que recibe el bot${c.admin ? ' cuando atiende a un administrador' : ''}. ${c.tools && c.tools.length ? `Herramientas: ${esc(c.tools.join(', '))}.` : ''}</div>
+    ${BK_FICHA.map(([k, t, ayuda, corto]) => `<label class="bk-lb">${t} <span class="bk-mut" style="font-weight:500">${ayuda}</span></label><textarea class="bk-ta" style="min-height:${corto ? 44 : 70}px;background:#fff" onchange="BK.drawer.pc.ficha['${k}']=this.value">${esc(pc.ficha[k] || '')}</textarea>`).join('')}</div>`;
+}
+function bkFichaResumen_(pc) { const f = pc.ficha || {}, n = k => String(f[k] || '').split(/\n|\|/).filter(x => x.trim()).length;
+  if (!Object.values(f).some(v => String(v || '').trim())) return '<div class="mt" style="color:#b45309">📋 Sin ficha: el bot no recibe instrucciones específicas</div>';
+  return `<div class="mt">📋 ${n('reglas')} regla${n('reglas') === 1 ? '' : 's'} · ${n('obtener')} dato${n('obtener') === 1 ? '' : 's'} a obtener · ${n('compartir')} a compartir · ${n('riesgos')} riesgo${n('riesgos') === 1 ? '' : 's'}</div>`; }
