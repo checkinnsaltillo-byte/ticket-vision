@@ -13806,7 +13806,7 @@ app.get("/bot/control/proactivos", async (req, res) => {
     const dias = Math.min(30, Number(req.query.dias) || 7);
     const items = Object.values((reg && reg.items) || {}).filter(x => ["por_aprobar", "sin_ventana"].includes(x.estado) || Date.now() - Date.parse(x.at) < dias * 864e5)
       .sort((a, b) => String(b.programado).localeCompare(String(a.programado)));
-    const mini = t => ({ id: t.id, nombre: t.nombre, enabled: !!t.enabled, responsivo: !!t.responsivo, schedule_type: t.schedule_type || "never", schedule_event: t.schedule_event || "", schedule_offset: t.schedule_offset || "", schedule_time: t.schedule_time || "", alojamientos: t.alojamientos || "" });
+    const mini = t => ({ id: t.id, nombre: t.nombre, enabled: !!t.enabled, responsivo: !!t.responsivo, schedule_type: t.schedule_type || "never", schedule_event: t.schedule_event || "", schedule_offset: t.schedule_offset || "", schedule_time: t.schedule_time || "", alojamientos: t.alojamientos || "", preview: String(t.body || "").replace(/\s+/g, " ").trim().slice(0, 160) });
     res.json({ ok: true, items, bajas, todas: (tpl.items || []).map(mini), plantillas: (tpl.items || []).filter(t => t.schedule_type && t.schedule_type !== "never").map(t => ({ id: t.id, nombre: t.nombre, enabled: !!t.enabled, schedule_type: t.schedule_type, schedule_event: t.schedule_event || "", schedule_offset: t.schedule_offset || "", schedule_time: t.schedule_time || "", alojamientos: t.alojamientos || "" })) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });

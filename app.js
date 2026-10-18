@@ -73733,11 +73733,52 @@ async function bkPmAccion_(key, accion) {
 
 // ── 📨 Plantillas de mensajes (migradas desde Configuración admin) ──
 function bkPlantillas_() {
-  return `<div class="bk-card" style="padding:12px 16px"><div class="bk-sub">Plantillas de WhatsApp. Cada una pertenece a un proceso del bot: las programadas se envían según el modo de ese proceso (Apagado, Supervisado, Automático); las de envío manual o por evento quedan clasificadas en él.</div></div><div id="bk-tpl-host"><div class="bk-card bk-mut">⏳ Cargando plantillas…</div></div>`;
+  const v = BK.tplVista || 'flujo';
+  const sw = `<div class="bk-row" style="margin-bottom:10px">${[['flujo', '🔀 Flujo'], ['editor', '✏️ Editor']].map(([k, t]) => `<button type="button" class="bk-tab ${v === k ? 'on' : ''}" onclick="BK.tplVista='${k}';bkRender_()">${t}</button>`).join('')}<span class="bk-sub" style="margin-left:6px">${v === 'flujo' ? 'Orden en que el huésped recibe cada mensaje. Toca un paso para editarlo.' : 'Cada plantilla pertenece a un proceso del bot; las programadas se envían según el modo de ese proceso.'}</span></div>`;
+  return sw + (v === 'flujo' ? bkFlujoHtml_() : `<div id="bk-tpl-host"><div class="bk-card bk-mut">⏳ Cargando plantillas…</div></div>`);
 }
-function bkPlantillasMontar_() { if (typeof CFG_ADMIN === 'undefined') return; CFG_ADMIN.hostId = 'bk-tpl-host'; CFG_ADMIN.tab = 'templates';
+// Momento relativo de una plantilla programada: [ancla (0 reserva · 1 llegada · 2 salida), días, minutos]
+function bkTplMomento_(t) {
+  const ty = t.schedule_type, hm = x => { const [h, m] = String(x || '09:00').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+  if (ty === 'on_booking_5min') return [0, 0, 5];
+  if (ty === 'before_arrival') return [1, -1, 600];
+  if (ty === 'before_checkout') return [2, -1, 1080];
+  if (ty === 'custom') return [t.schedule_event === 'checkout' ? 2 : 1, parseInt(t.schedule_offset || '0', 10) || 0, hm(t.schedule_time)];
+  return null;
+}
+function bkTplEtapa_(m) { if (m[0] === 0) return ['🛎️', 'Al reservar']; if (m[0] === 1) return m[1] < 0 ? ['🗓️', 'Antes de la llegada'] : m[1] === 0 ? ['🔑', 'Día de llegada'] : ['🏠', 'Durante la estancia'];
+  return m[1] < 0 ? ['🌙', 'Antes de la salida'] : m[1] === 0 ? ['🚪', 'Día de salida'] : ['💌', 'Después de la salida']; }
+// Orden del ciclo de vida para las plantillas por evento (registro → programada → en proceso → decisión → cierre).
+function bkTplFase_(n) { const t = String(n || '').toLowerCase();
+  if (/registr|alta|nuevo|aviso de falla|suspensi|duda|emergencia|no_iniciado|olvidado/.test(t)) return 0; if (/programad/.test(t)) return 1; if (/en proceso/.test(t)) return 2;
+  if (/aprobad|rechazad/.test(t)) return 3; if (/atendid|resuel|restablec|encontrad|entregad/.test(t)) return 4; return 5; }
+function bkFlujoHtml_() {
+  const T = (BK.pm || {}).todas || [], M = BK.d.cfg.plantillasProceso || {}, cat = k => BK.d.catalogo.find(c => c.clave === k);
+  const modoDe = k => { const c = cat(k); return c ? ((BK.d.cfg.procesos[k] || {}).modo || c.modoIni) : ''; };
+  const paso = (n, t, extra) => { const k = M[t.id], c = cat(k), inert = !t.enabled || (t.schedule_type !== 'never' && !t.alojamientos);
+    return `<div style="display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;position:relative">
+      <div style="display:flex;flex-direction:column;align-items:center"><span style="width:30px;height:30px;border-radius:50%;background:${inert ? '#e5e7eb' : '#111827'};color:${inert ? '#6b7280' : '#fff'};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0">${n}</span><span style="flex:1;width:2px;background:#e5e7eb;margin-top:4px"></span></div>
+      <div class="bk-card" style="padding:10px 12px;margin-bottom:10px;cursor:pointer;${inert ? 'opacity:.6' : ''}" onclick="bkTplAbrir_('${esc(t.id)}')">
+        <div class="bk-row" style="justify-content:space-between"><b style="font-size:13.5px">${esc(t.nombre)}</b><span class="bk-mut" style="font-size:12px">${esc(extra || bkPmProg_(t))}</span></div>
+        <div class="bk-row" style="margin-top:4px">${c ? `<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">${esc(c.nombre)}</span>${bkModoChip_(modoDe(k))}` : '<span class="bk-chip" style="background:#fee2e2;color:#b91c1c">Sin proceso</span>'}
+          ${!t.enabled ? '<span class="bk-chip" style="background:#f3f4f6">desactivada</span>' : ''}${t.schedule_type !== 'never' ? (t.alojamientos ? `<span class="bk-chip" style="background:#f3f4f6">${t.alojamientos.split(',').filter(Boolean).length} alojamiento(s)</span>` : '<span class="bk-chip" style="background:#fef3c7;color:#92400e">sin alojamientos: no se envía</span>') : ''}${t.responsivo ? '<span class="bk-chip" style="background:#ede9fe;color:#5b21b6">⚡ por evento</span>' : ''}</div>
+        ${t.preview ? `<div class="bk-why" style="margin-top:6px">${esc(t.preview)}${t.preview.length >= 160 ? '…' : ''}</div>` : ''}</div></div>`; };
+  // 1) Mensajes programados en orden cronológico del viaje del huésped
+  const prog = T.filter(t => bkTplMomento_(t)).map(t => ({ t, m: bkTplMomento_(t) })).sort((a, b) => a.m[0] - b.m[0] || a.m[1] - b.m[1] || a.m[2] - b.m[2]);
+  let n = 0, etapa = '', html = '';
+  prog.forEach(({ t, m }) => { const e = bkTplEtapa_(m); if (e[1] !== etapa) { etapa = e[1]; html += `<div style="margin:${n ? 6 : 0}px 0 8px 46px;font-size:12px;font-weight:800;color:#6b7280;letter-spacing:.4px;text-transform:uppercase">${e[0]} ${esc(e[1])}</div>`; } html += paso(++n, t); });
+  // 2) Mensajes por evento o manuales: un flujo numerado por proceso
+  const ev = T.filter(t => !bkTplMomento_(t)), porProc = {};
+  ev.forEach(t => (porProc[M[t.id] || ''] = porProc[M[t.id] || ''] || []).push(t));
+  const orden = BK.d.catalogo.map(c => c.clave).concat(['']);
+  const evHtml = orden.filter(k => porProc[k]).map(k => { const L = porProc[k].sort((a, b) => bkTplFase_(a.nombre) - bkTplFase_(b.nombre) || String(a.nombre).localeCompare(String(b.nombre))), c = cat(k);
+    return `<details class="bk-grp" ${BK.abiertos['ev_' + k] ? 'open' : ''} ontoggle="BK.abiertos['ev_${esc(k)}']=this.open"><summary>${c ? esc(c.nombre) : 'Sin proceso'} <span class="bk-sub">${L.length} paso${L.length > 1 ? 's' : ''}</span><span style="flex:1"></span>${c ? bkModoChip_(modoDe(k)) : ''}</summary><div style="padding:6px 16px 4px">${L.map((t, i) => paso(i + 1, t, t.responsivo ? 'por evento' : 'por evento o manual')).join('')}</div></details>`; }).join('');
+  return `<div class="bk-card"><h3>🧭 Viaje del huésped — mensajes programados</h3><div class="bk-sub" style="margin-bottom:12px">${prog.length} pasos en orden cronológico. Los pasos en gris no se envían (plantilla desactivada o sin alojamientos asignados).</div>${html || '<div class="bk-mut">Sin plantillas programadas.</div>'}</div>
+    <div class="bk-card" style="padding:12px 16px"><h3>⚡ Mensajes por evento o manuales</h3><div class="bk-sub">Agrupados por proceso, en el orden en que suelen ocurrir (registro → programación → decisión → atención).</div></div>${evHtml}`;
+}
+function bkPlantillasMontar_() { if (typeof CFG_ADMIN === 'undefined' || (BK.tplVista || 'flujo') !== 'editor') return; CFG_ADMIN.hostId = 'bk-tpl-host'; CFG_ADMIN.tab = 'templates';
   if (typeof cfgAdminInit === 'function') cfgAdminInit(); }
-function bkTplAbrir_(id) { BK.tab = 'plantillas'; bkRender_(); setTimeout(() => { try { if (typeof cfgSelectTemplate === 'function') cfgSelectTemplate(id); } catch (_) {} }, 400); }
+function bkTplAbrir_(id) { BK.tab = 'plantillas'; BK.tplVista = 'editor'; bkRender_(); setTimeout(() => { try { if (typeof cfgSelectTemplate === 'function') cfgSelectTemplate(id); } catch (_) {} }, 400); }
 function bkTplProcHtml_(d) {
   if (typeof BK === 'undefined' || !BK.d || CFG_ADMIN.hostId !== 'bk-tpl-host') return '';
   const M = BK.d.cfg.plantillasProceso || {}, cur = d._id ? (M[d._id] || '') : '', G = BK.d.grupos, byG = {};
