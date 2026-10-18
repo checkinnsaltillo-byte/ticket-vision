@@ -51418,7 +51418,7 @@ function _botcRenderSidebar() {
   const sidebar = document.getElementById('botc-sidebar');
   if (!sidebar) return;
   // Barra superior: buscador + visualización.
-  BOTC_STATE.viewMode = BOTC_STATE.viewMode || 'clasificado';
+  BOTC_STATE.viewMode = BOTC_STATE.viewMode || 'cronologico';
   BOTC_STATE.searchQuery = BOTC_STATE.searchQuery || '';
   const q = String(BOTC_STATE.searchQuery || '').trim();
   const tabsHtml = `
