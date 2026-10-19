@@ -13279,7 +13279,7 @@ function _bcMapaDeFlujos(flujos) { const m = {}; (flujos || []).forEach(f => (f.
 function _bcFlujosLimpios(L) {
   const vistos = new Set();
   return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, canal: ["whatsapp", "airbnb", "ambos", "ninguno"].includes(f.canal) ? f.canal : undefined, // canal de envío de los mensajes programados
-    alojamientos: Array.isArray(f.alojamientos) ? [...new Set(f.alojamientos.map(String).filter(Boolean))] : undefined, // alojamientos a los que aplica el flujo // false = listado de plantillas sin orden de pasos
+    // (los alojamientos se asignan al proceso: cfg.procesos[k].alojamientos) // false = listado de plantillas sin orden de pasos
     pasos: (Array.isArray(f.pasos) ? f.pasos : []).map(String).filter(t => t && !vistos.has(t) && vistos.add(t)) })); // una plantilla vive en un solo flujo
 }
 // Modo efectivo de un proceso para esta conversación: override más específico (RF-03) → canal (RF-15) → verificación (RF-06/17) → disyuntor (RF-10) → fuera de oficina (RF-14).
@@ -13600,7 +13600,9 @@ app.post("/bot/control", async (req, res) => {
       else if (seccion === "master") set("master", { on: !!(data && data.on), msg: String((data && data.msg) || cur.master.msg) });
       else if (seccion === "fueraOficina") set("fueraOficina", !!data);
       else if (seccion === "respaldoGeneral" || seccion === "respaldoCanal") set(seccion, String(data || ""));
-      else if (seccion === "proceso") { const k = String(data && data.clave || ""); if (!k) throw new Error("Falta la clave"); d.procesos = d.procesos || {}; antes = cur.procesos[k]; const v = Object.assign({}, cur.procesos[k] || {}, data.valores || {}); if (v.modo && !_BC_MODOS.includes(v.modo)) throw new Error("Modo inválido"); d.procesos[k] = v; despues = v; }
+      else if (seccion === "proceso") { const k = String(data && data.clave || ""); if (!k) throw new Error("Falta la clave"); d.procesos = d.procesos || {}; antes = cur.procesos[k]; const v = Object.assign({}, cur.procesos[k] || {}, data.valores || {}); if (v.modo && !_BC_MODOS.includes(v.modo)) throw new Error("Modo inválido");
+        if (Array.isArray(v.alojamientos)) { v.alojamientos = [...new Set(v.alojamientos.map(String).filter(Boolean))]; sincronizarAloj = { flujos: cur.flujos || [], procesos: Object.assign({}, cur.procesos, { [k]: v }) }; }
+        d.procesos[k] = v; despues = v; }
       else if (seccion === "procesos_lote") { d.procesos = d.procesos || {}; antes = {}; despues = {}; Object.entries(data || {}).forEach(([k, modo]) => { if (!_BC_MODOS.includes(modo)) return; antes[k] = (cur.procesos[k] || {}).modo; d.procesos[k] = Object.assign({}, cur.procesos[k] || {}, { modo }); despues[k] = modo; }); }
       else if (seccion === "plantillaProceso") { const tid = String(data && data.tid || ""), proc = String(data && data.proc || ""); if (!tid) throw new Error("Falta la plantilla"); antes = (cur.plantillasProceso || {})[tid] || "";
         if (Array.isArray(cur.flujos)) { // mueve la plantilla al primer flujo del proceso (lo crea si no hay)
@@ -13609,7 +13611,7 @@ app.post("/bot/control", async (req, res) => {
           d.flujos = _bcFlujosLimpios(F); d.plantillasProceso = _bcMapaDeFlujos(d.flujos);
         } else d.plantillasProceso = Object.assign({}, cur.plantillasProceso || {}, { [tid]: proc });
         despues = proc; }
-      else if (seccion === "flujos") { antes = cur.flujos || null; d.flujos = _bcFlujosLimpios(data); d.plantillasProceso = _bcMapaDeFlujos(d.flujos); despues = d.flujos; sincronizarAloj = d.flujos; }
+      else if (seccion === "flujos") { antes = cur.flujos || null; d.flujos = _bcFlujosLimpios(data); d.plantillasProceso = _bcMapaDeFlujos(d.flujos); despues = d.flujos; sincronizarAloj = { flujos: d.flujos, procesos: cur.procesos }; }
       else if (seccion === "eliminar_proceso") { const k = String(data || ""), c = _bcCatalogo(cur).find(x => x.clave === k);
         if (!c) throw new Error("Proceso no encontrado"); if (c.forzado) throw new Error("Este proceso es obligatorio por seguridad y no se puede eliminar");
         antes = { proceso: k, flujos: (cur.flujos || []).filter(f => f.proceso === k) };
@@ -13627,8 +13629,8 @@ app.post("/bot/control", async (req, res) => {
       else set(seccion, data);
     });
     _bcCfgTs = 0;
-    // Los alojamientos viven en el flujo: se copian a sus plantillas para que el resto del sistema (ficha de la reserva) los respete.
-    if (sincronizarAloj) { const M = {}; sincronizarAloj.forEach(f => { if (Array.isArray(f.alojamientos)) (f.pasos || []).forEach(t => { M[t] = f.alojamientos.join(","); }); });
+    // Los alojamientos viven en el proceso: se copian a las plantillas de sus flujos para que el resto del sistema (ficha de la reserva) los respete.
+    if (sincronizarAloj) { const M = {}; (sincronizarAloj.flujos || []).forEach(f => { const pa = ((sincronizarAloj.procesos || {})[f.proceso] || {}).alojamientos; if (Array.isArray(pa)) (f.pasos || []).forEach(t => { M[t] = pa.join(","); }); });
       if (Object.keys(M).length) await _waMutar(_WA_OBJ.tpl, d => { (d.items || []).forEach(t => { if (M[t.id] != null && t.alojamientos !== M[t.id]) { t.alojamientos = M[t.id]; t.updated_at = _waIso(); } }); }).then(() => { _waTplCache.byName = null; }).catch(e => console.warn("[bot-control] alojamientos→plantillas:", e.message)); }
     _bcLog({ tipo: "config", seccion, clave: seccion === "proceso" ? data && data.clave : "", usuario: por, antes: JSON.stringify(antes === undefined ? null : antes).slice(0, 1500), despues: JSON.stringify(despues === undefined ? null : despues).slice(0, 1500) });
     await _bcLogFlush();
@@ -13801,7 +13803,8 @@ async function _pmTick(opts) {
     for (const [proc, tid] of links) {
       const t = tplDe(tid); if (!t || !t.enabled) continue;
       const fl = flujoDe(tid), canalEnvio = (fl && fl.canal) || "whatsapp"; // por omisión: solo reservas que no son de Airbnb (Airbnb manda sus propias plantillas)
-      const alojs = fl && Array.isArray(fl.alojamientos) ? fl.alojamientos.slice() : String(t.alojamientos || "").split(",").map(x => x.trim()).filter(Boolean); // los alojamientos se asignan al flujo
+      const pa = (cfg.procesos[proc] || {}).alojamientos; // los alojamientos se asignan al proceso
+      const alojs = Array.isArray(pa) ? pa.slice() : String(t.alojamientos || "").split(",").map(x => x.trim()).filter(Boolean);
       const modo = (cfg.procesos[proc] || {}).modo || "sup";
       for (const b of reservas) {
         const hid = String(b.property_id || ""), key = `${b.id}|${tid}`;

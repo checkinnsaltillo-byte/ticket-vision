@@ -73413,7 +73413,9 @@ function bkRender_() {
   const kpis = `<div class="bk-kpis">${kpi(contadores.automaticos, 'Procesos en Automático')}${kpi(contadores.prioritarias, 'Conversaciones P1/P2 abiertas')}${kpi(contadores.supervision, 'Pendientes de supervisión')}${kpi(contadores.alertas, 'Alertas sin resolver')}${kpi(contadores.disyuntores, 'Disyuntores activos')}</div>`;
   const tabs = `<div class="bk-tabs">${BK_TABS.map(([k, t]) => `<button type="button" class="bk-tab ${BK.tab === k ? 'on' : ''}" onclick="bkTab_('${k}')">${t}</button>`).join('')}</div>`;
   const body = { entrenamiento: bkEntr_, resumen: bkResumen_, procesos: bkProcesos_, plantillas: bkPlantillas_, horarios: bkHorarios_, urgencia: bkUrgencia_, perfil: bkPerfil_, bitacora: bkBitacora_, pruebas: bkPruebas_ }[BK.tab]();
+  const _dsc = (root.querySelector('.bk-drw-b') || {}).scrollTop || 0;
   root.innerHTML = hero + obs + kpis + tabs + (BK.tab === 'procesos' ? bkFiltrosHtml_() : '') + `<div id="bk-body">${body}</div>` + (BK.drawer ? bkDrawerHtml_() : '');
+  if (BK.drawer && _dsc) { const b = root.querySelector('.bk-drw-b'); if (b) b.scrollTop = _dsc; }
   if (BK.tab === 'plantillas') bkPlantillasMontar_();
 }
 async function bkMaster_() { const c = BK.d.cfg, on = c.master.on === false;
@@ -73479,7 +73481,7 @@ function bkProcesos_() {
       return `<div class="bk-pr"><div><div class="nm">${esc(c.nombre)} ${bkTipoChip_(c.tipo)} ${c.origen === 'Original' ? '<span class="bk-chip" style="background:#ede9fe;color:#6d28d9" title="Proceso que el bot ya tenía antes del documento de requerimientos">Original</span>' : c.extra ? '<span class="bk-chip" style="background:#e0f2fe;color:#0369a1" title="Proceso creado desde el panel">Agregado</span>' : ''}
         ${c.forzado ? '<span class="bk-chip" style="background:#fee2e2;color:#b91c1c">🔒 forzado</span>' : ''}${c.solo_directo ? '<span class="bk-chip" style="background:#fff7ed;color:#c2410c">Solo directas</span>' : ''}${c.verif ? '<span class="bk-chip" style="background:#ecfeff;color:#0e7490">Requiere verificación</span>' : ''}
         ${bkPrioChipMini_(pc.prioridad || c.pbIni)}${ov ? `<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">↳ ${ov} regla${ov > 1 ? 's' : ''} específica${ov > 1 ? 's' : ''}</span>` : ''}${dy ? `<span class="bk-chip" style="background:#fee2e2;color:#b91c1c" title="${esc(pc.disyuntor.motivo || '')}">⚡ disyuntor</span>` : ''}</div>
-        <div class="ds">${esc(c.desc)}</div>${bkFichaResumen_(pc)}${bkPmChip_(c.clave)}<div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
+        <div class="ds">${esc(c.desc)}</div>${bkFichaResumen_(pc)}${bkProcAlojChip_(pc)}${bkPmChip_(c.clave)}<div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
         ${seg}<button class="bk-btn sm" onclick="bkConfigurar_('${c.clave}')">Configurar</button></div>`; }).join('');
     const ab = BK.abiertos[g] !== false;
     return `<details class="bk-grp" ${ab ? 'open' : ''} ontoggle="BK.abiertos['${g}']=this.open"><summary>${esc(grupos[g] || g)} <span class="bk-sub">${L.length} procesos</span><span style="flex:1"></span>
@@ -73529,6 +73531,7 @@ function bkDrawerHtml_() {
       ${pc.disyuntor && pc.disyuntor.at ? `<div class="bk-obs err" style="margin-top:12px">⚡ Disyuntor activo desde ${new Date(pc.disyuntor.at).toLocaleString('es-MX')}: ${esc(pc.disyuntor.motivo || '')}. <button class="bk-btn sm" onclick="bkResetDy_('${clave}')">Restablecer</button></div>` : ''}
       <label class="bk-lb">🔀 Flujos de plantillas</label>${bkFlujosDe_(clave).map(f => `<div style="border:1px solid #ede9fe;background:#faf5ff;border-radius:10px;padding:6px 10px;margin-bottom:6px">${bkFlujoHtml1_(f, true)}</div>`).join('') || '<div class="bk-mut" style="font-size:12px">Este proceso no tiene flujos.</div>'}
       <button class="bk-btn sm" onclick="bkFlNuevo_('${esc(clave)}')">＋ Nuevo flujo</button>
+      ${bkPcAlojHtml_(pc)}
       <label class="bk-lb">Tipo de proceso</label><div class="bk-seg">${[['huesped', '💬 Interacción con el huésped'], ['sistema', '⚙️ Interno del sistema']].map(([v, t]) => `<button type="button" class="${(pc.tipo || c.tipo) === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.drawer.pc.tipo='${v}';bkRender_()">${t}</button>`).join('')}</div>
       <div class="bk-sub" style="margin-top:4px">${(pc.tipo || c.tipo) === 'sistema' ? 'Lo resuelve el sistema con sus datos o por programación/eventos; no depende de una conversación con el huésped.' : 'Se activa por lo que el huésped escribe en la conversación.'}</div>
       ${bkFichaHtml_(pc, c)}
@@ -73545,7 +73548,7 @@ function bkDrawerHtml_() {
 function bkOvDia_(i, k) { const o = BK.drawer.pc.overrides[i]; o.dias = o.dias || []; const j = o.dias.indexOf(k); if (j >= 0) o.dias.splice(j, 1); else o.dias.push(k); bkRender_(); }
 function bkDrawerCerrar_() { BK.drawer = null; bkRender_(); }
 async function bkDrawerGuardar_() { const { clave, pc } = BK.drawer;
-  const v = { ficha: pc.ficha || {}, tipo: pc.tipo || undefined, kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
+  const v = { alojamientos: Array.isArray(pc.alojamientos) ? pc.alojamientos : undefined, ficha: pc.ficha || {}, tipo: pc.tipo || undefined, kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
   if (await bkGuardar_('proceso', { clave, valores: v })) { BK.drawer = null; bkRender_(); } }
 async function bkResetDy_(k) { if (await bkGuardar_('reset_disyuntor', k, '✓ Disyuntor restablecido')) { BK.drawer.pc.disyuntor = null; bkRender_(); } }
 
@@ -73740,9 +73743,9 @@ function bkPasoBtn_(t, i, inert, sinNum) {
 }
 function bkFlujoHtml1_(f, conNombre) {
   const L = f.pasos.map(bkTpl_).filter(Boolean);
-  const ord = f.ordenado !== false, alojF = Array.isArray(f.alojamientos) ? f.alojamientos.length : null;
+  const pa = (BK.d.cfg.procesos[f.proceso] || {}).alojamientos, ord = f.ordenado !== false, alojF = Array.isArray(pa) ? pa.length : null;
   const pasos = L.map((t, i) => bkPasoBtn_(t, i, !t.enabled || (t.schedule_type !== 'never' && (alojF != null ? !alojF : !t.alojamientos)), !ord)).join(ord ? '<span style="color:#a78bfa;font-weight:800">→</span>' : '');
-  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${conNombre ? `<span style="font-size:11px;font-weight:800;color:#6d28d9;margin-right:2px">${ord ? '🔀' : '🗂️'} ${esc(f.nombre)}</span>` : ''}${bkCanalChip_(f)}${bkFlAlojChip_(f)}${pasos || `<span class="bk-mut" style="font-size:11.5px">${ord ? 'Flujo sin pasos' : 'Sin plantillas'}</span>`}
+  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">${conNombre ? `<span style="font-size:11px;font-weight:800;color:#6d28d9;margin-right:2px">${ord ? '🔀' : '🗂️'} ${esc(f.nombre)}</span>` : ''}${bkCanalChip_(f)}${pasos || `<span class="bk-mut" style="font-size:11.5px">${ord ? 'Flujo sin pasos' : 'Sin plantillas'}</span>`}
     <button type="button" class="bk-btn sm" style="padding:4px 8px" onclick="event.stopPropagation();bkFlEditar_('${esc(f.id)}')" title="Agregar, quitar u ordenar plantillas">✏️ Editar flujo</button></div>`;
 }
 function bkPmChip_(clave) { const F = bkFlujosDe_(clave); if (!F.length) return '';
@@ -73905,7 +73908,6 @@ function bkFlPintar_() {
           ${bkLogo_(logo, 24)}<span style="line-height:1.25"><b style="font-size:13px">${txt}</b><br><span class="bk-mut" style="font-size:11.5px">${sub}</span></span></div>`;
         return `<label class="bk-lb" style="margin-top:16px">Envío automático por</label><div class="bk-row" style="gap:8px;align-items:stretch">${ck('a', 'airbnb', 'Airbnb', 'Reservas de Airbnb, por su mensajería (vía Lodgify). Ojo: Airbnb ya puede tener sus propios mensajes programados.')}${ck('w', 'whatsapp', 'WhatsApp / Lodgify', 'Reservas directas y de Booking (nunca Airbnb). WhatsApp solo entrega si el huésped escribió en 24 h.')}</div>
         ${!C.a && !C.w ? '<div class="bk-sub" style="margin-top:4px;color:#b45309">Sin canal marcado: este flujo no se envía automáticamente.</div>' : C.a && C.w ? '<div class="bk-sub" style="margin-top:4px">Reservas de Airbnb por su mensajería; directas y Booking por WhatsApp.</div>' : ''}`; })() : ''}
-      ${bkFlAlojHtml_(e)}
       <label class="bk-lb" style="margin-top:16px">${ord ? 'Pasos' : 'Plantillas'} (${e.pasos.length})</label>${pasos || '<div class="bk-mut" style="font-size:12px;margin-bottom:8px">Aún no hay pasos.</div>'}
       <select class="bk-sel" onchange="if(this.value){BK.flEd.pasos.push(this.value);bkFlPintar_()}">${addOpts}</select>
     </div>
@@ -73918,7 +73920,7 @@ async function bkFlGuardar_() {
   const movidas = e.pasos.filter(id => bkFlujos_().some(f => f.id !== e.id && f.pasos.includes(id)));
   if (movidas.length && !confirm(`${movidas.length} plantilla(s) se moverán desde otro flujo a este. ¿Continuar?`)) return;
   const F = bkFlujos_().map(f => f.id === e.id ? null : Object.assign({}, f, { pasos: f.pasos.filter(id => !e.pasos.includes(id)) })).filter(Boolean);
-  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, ordenado: e.ordenado !== false, canal: bkEsProactivo_(e.proceso) ? bkCanalDe_(e) : undefined, alojamientos: (e.alojamientos || []).slice(), pasos: e.pasos.slice() };
+  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, ordenado: e.ordenado !== false, canal: bkEsProactivo_(e.proceso) ? bkCanalDe_(e) : undefined, pasos: e.pasos.slice() };
   const idx = bkFlujos_().findIndex(f => f.id === e.id); if (idx >= 0) F.splice(idx, 0, nuevo); else F.push(nuevo);
   if (await bkGuardar_('flujos', F, '✓ Flujo guardado')) { bkFlCerrar_(); bkRender_(); }
 }
@@ -74110,24 +74112,26 @@ function bkEdificios_() {
 }
 function bkCk18_(estado) { // 'on' | 'mix' | ''
   return `<span style="width:18px;height:18px;border-radius:5px;border:1.5px solid ${estado ? '#111827' : '#9ca3af'};background:${estado === 'on' ? '#111827' : '#fff'};color:${estado === 'on' ? '#fff' : '#111827'};display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0">${estado === 'on' ? '✓' : estado === 'mix' ? '–' : ''}</span>`; }
-function bkFlAlojHtml_(e) {
-  const S = new Set(e.alojamientos || []), E = bkEdificios_(), ab = e._ab = e._ab || {}, tot = E.reduce((n, g) => n + g.items.length, 0);
+// Árbol de alojamientos por edificio, en «Configurar» del proceso (aplica a todos sus flujos y plantillas).
+function bkPcAlojHtml_(pc) {
+  const def = !Array.isArray(pc.alojamientos), S = new Set(pc.alojamientos || []), E = bkEdificios_(), ab = BK.drawer._ab = BK.drawer._ab || {}, tot = E.reduce((n, g) => n + g.items.length, 0);
   const filas = E.map(g => { const n = g.items.filter(a => S.has(a.hid)).length, est = n === g.items.length ? 'on' : n ? 'mix' : '';
     return `<div style="border:1px solid #e5e7eb;border-radius:10px;margin-bottom:6px;overflow:hidden">
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="BK.flEd._ab['${g.k}']=!BK.flEd._ab['${g.k}'];bkFlPintar_()">
-        <span onclick="event.stopPropagation();bkFlAlojEd_('${g.k}')">${bkCk18_(est)}</span><b style="font-size:13px;flex:1">🏢 ${esc(g.nombre)}</b><span class="bk-mut" style="font-size:11.5px">${n}/${g.items.length}</span><span style="font-size:11px;color:#6b7280">${ab[g.k] ? '▲' : '▼'}</span></div>
-      ${ab[g.k] ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px;padding:8px 10px">${g.items.map(a => `<div onclick="bkFlAlojTog_('${esc(a.hid)}')" style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:4px 2px;font-size:12.5px">${bkCk18_(S.has(a.hid) ? 'on' : '')}<b>${esc(a.code)}</b><span class="bk-mut" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${a.sint ? 'Sin reservas de Lodgify: los mensajes programados no le aplican' : ''}">${esc(String(a.nombre).replace(/^(Calle|Plaza)\s+/i, ''))}${a.sint ? ' · sin Lodgify' : ''}</span></div>`).join('')}</div>` : ''}</div>`; }).join('');
-  return `<label class="bk-lb" style="margin-top:16px">Alojamientos (${S.size} de ${tot})</label>
-    <div class="bk-row" style="margin-bottom:6px;gap:6px"><button class="bk-btn sm" onclick="BK.flEd.alojamientos=bkEdificios_().flatMap(g=>g.items.map(a=>a.hid));bkFlPintar_()">Todos</button><button class="bk-btn sm" onclick="BK.flEd.alojamientos=[];bkFlPintar_()">Ninguno</button><span class="bk-mut" style="font-size:11.5px">Las plantillas programadas de este flujo solo se envían a reservas de estos alojamientos.</span></div>${filas}`;
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="BK.drawer._ab['${g.k}']=!BK.drawer._ab['${g.k}'];bkRender_()">
+        <span onclick="event.stopPropagation();bkPcAlojEd_('${g.k}')">${bkCk18_(est)}</span><b style="font-size:13px;flex:1">🏢 ${esc(g.nombre)}</b><span class="bk-mut" style="font-size:11.5px">${n}/${g.items.length}</span><span style="font-size:11px;color:#6b7280">${ab[g.k] ? '▲' : '▼'}</span></div>
+      ${ab[g.k] ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px;padding:8px 10px">${g.items.map(a => `<div onclick="bkPcAlojTog_('${esc(a.hid)}')" style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:4px 2px;font-size:12.5px">${bkCk18_(S.has(a.hid) ? 'on' : '')}<b>${esc(a.code)}</b><span class="bk-mut" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${a.sint ? 'Sin reservas de Lodgify: los mensajes programados no le aplican' : ''}">${esc(String(a.nombre).replace(/^(Calle|Plaza)\s+/i, ''))}${a.sint ? ' · sin Lodgify' : ''}</span></div>`).join('')}</div>` : ''}</div>`; }).join('');
+  return `<label class="bk-lb" style="margin-top:16px">🏠 Alojamientos del proceso (${S.size} de ${tot})</label>
+    <div class="bk-row" style="margin-bottom:6px;gap:6px"><button class="bk-btn sm" onclick="BK.drawer.pc.alojamientos=bkEdificios_().flatMap(g=>g.items.map(a=>a.hid));bkRender_()">Todos</button><button class="bk-btn sm" onclick="BK.drawer.pc.alojamientos=[];bkRender_()">Ninguno</button>
+      <span class="bk-mut" style="font-size:11.5px">${def ? 'Aún sin asignar: cada plantilla usa los alojamientos que tenía. ' : ''}Aplica a todos los flujos y plantillas de este proceso.</span></div>${filas}`;
 }
-function bkFlAlojTog_(hid) { const e = BK.flEd, S = new Set(e.alojamientos || []); if (S.has(hid)) S.delete(hid); else S.add(hid); e.alojamientos = [...S]; bkFlPintar_(); }
-function bkFlAlojEd_(k) { const e = BK.flEd, g = bkEdificios_().find(x => x.k === k); if (!g) return; const S = new Set(e.alojamientos || []), todos = g.items.every(a => S.has(a.hid));
-  g.items.forEach(a => todos ? S.delete(a.hid) : S.add(a.hid)); e.alojamientos = [...S]; bkFlPintar_(); }
-function bkFlAlojChip_(f) { if (!Array.isArray(f.alojamientos)) return ''; const n = f.alojamientos.length, E = bkEdificios_();
-  const eds = E.filter(g => g.items.some(a => f.alojamientos.includes(g.items.length && a.hid))).map(g => { const k = g.items.filter(a => f.alojamientos.includes(a.hid)).length; return `${g.nombre}: ${k}/${g.items.length}`; });
-  return `<span class="bk-chip" style="background:${n ? '#f3f4f6' : '#fef3c7'};color:${n ? '#374151' : '#92400e'};margin-right:2px" title="${esc(eds.join(' · ') || 'Sin alojamientos')}">🏠 ${n ? `${n} alojamiento${n === 1 ? '' : 's'}` : 'sin alojamientos'}</span>`; }
-function bkTplAlojNota_(d) { const f = d && d._id ? bkFlujos_().find(x => x.pasos.includes(d._id)) : null;
-  return `<div style="margin-top:22px;padding:10px 12px;border:1px solid #ede9fe;background:#faf5ff;border-radius:10px;font-size:12.5px;color:#4c1d95">🏠 Los alojamientos se asignan en el <b>flujo</b>, no en la plantilla.${f ? ` Esta plantilla está en «${esc(f.nombre)}» (${Array.isArray(f.alojamientos) ? f.alojamientos.length : 0} alojamientos). <a href="#" onclick="event.preventDefault();bkTplCerrar_&&bkTplCerrar_();bkFlEditar_('${esc(f.id)}')" style="color:#6d28d9;font-weight:700">Editar flujo</a>` : ' Agrega esta plantilla a un flujo para asignarle alojamientos.'}</div>`; }
+function bkPcAlojTog_(hid) { const pc = BK.drawer.pc, S = new Set(pc.alojamientos || []); if (S.has(hid)) S.delete(hid); else S.add(hid); pc.alojamientos = [...S]; bkRender_(); }
+function bkPcAlojEd_(k) { const pc = BK.drawer.pc, g = bkEdificios_().find(x => x.k === k); if (!g) return; const S = new Set(pc.alojamientos || []), todos = g.items.every(a => S.has(a.hid));
+  g.items.forEach(a => todos ? S.delete(a.hid) : S.add(a.hid)); pc.alojamientos = [...S]; bkRender_(); }
+function bkProcAlojChip_(pc) { if (!Array.isArray(pc.alojamientos)) return ''; const L = pc.alojamientos, n = L.length;
+  const eds = bkEdificios_().map(g => { const k = g.items.filter(a => L.includes(a.hid)).length; return k ? `${g.nombre}: ${k}/${g.items.length}` : ''; }).filter(Boolean);
+  return `<div class="mt" title="${esc(eds.join(' · ') || 'Sin alojamientos')}" style="${n ? '' : 'color:#b45309'}">🏠 ${n ? `${n} alojamiento${n === 1 ? '' : 's'}${eds.length ? ` · ${esc(eds.slice(0, 3).join(' · '))}${eds.length > 3 ? '…' : ''}` : ''}` : 'Sin alojamientos asignados'}</div>`; }
+function bkTplAlojNota_(d) { const f = d && d._id ? bkFlujos_().find(x => x.pasos.includes(d._id)) : null, c = f ? BK.d.catalogo.find(x => x.clave === f.proceso) : null, pa = c ? (BK.d.cfg.procesos[c.clave] || {}).alojamientos : null;
+  return `<div style="margin-top:22px;padding:10px 12px;border:1px solid #ede9fe;background:#faf5ff;border-radius:10px;font-size:12.5px;color:#4c1d95">🏠 Los alojamientos se asignan en el <b>proceso</b>, no en la plantilla.${c ? ` Esta plantilla pertenece a «${esc(c.nombre)}» (${Array.isArray(pa) ? pa.length + ' alojamientos' : 'sin asignar aún'}). <a href="#" onclick="event.preventDefault();bkTplCerrar_&&bkTplCerrar_();if(BK.tab!=='procesos')bkTab_('procesos');setTimeout(()=>bkConfigurar_('${esc(c.clave)}'),50)" style="color:#6d28d9;font-weight:700">Configurar proceso</a>` : ' Agrega esta plantilla a un flujo de un proceso para asignarle alojamientos.'}</div>`; }
 
 // ═══ 🧠 Entrenamiento del LLM: lo aprendido de las conversaciones históricas de Lodgify ═══
 const BK_EN_EST = { sugerida: ['Sugerida', '#6b7280', '#f3f4f6'], en_revision: ['En revisión', '#1d4ed8', '#dbeafe'], aprobada: ['Aprobada', '#15803d', '#dcfce7'], descartada: ['Descartada', '#b91c1c', '#fee2e2'] };
