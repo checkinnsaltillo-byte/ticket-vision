@@ -5720,6 +5720,39 @@ Si un dato NO se ve claro devuélvelo vacío ("" o 0). Si la imagen o texto NO e
   }
 });
 
+// Transcribir a demanda una nota de voz (desde el menú ⌄ de la burbuja en Chats bot).
+app.post("/wa/transcribir", async (req, res) => {
+  try { const url = String((req.body || {}).media_url || ""), mt = String((req.body || {}).media_type || "audio/ogg"); if (!url) return res.status(400).json({ ok: false, error: "Falta media_url" });
+    const texto = await _transcribeTwilioAudio(url, mt); res.json({ ok: true, texto: String(texto || "").trim() }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Análisis general de fotos del chat: qué es la imagen y qué conviene hacer (comprobante → pago; daño → reporte; identificación; etc.).
+app.post("/wa/analizar-imagen", async (req, res) => {
+  try {
+    const media = Array.isArray(req.body?.media) ? req.body.media : [], texts = Array.isArray(req.body?.texts) ? req.body.texts : [];
+    const keySid = process.env.TWILIO_API_KEY_SID, keySec = process.env.TWILIO_API_KEY_SECRET, acctSid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN;
+    const user = (keySid && keySec) ? keySid : acctSid, pass = (keySid && keySec) ? keySec : token, authTw = user && pass ? "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") : null;
+    const blocks = [];
+    for (const m of media) { const mt = String(m.type || "").toLowerCase(), url = String(m.url || ""); if (!/image/.test(mt) || !url) continue;
+      try { const rr = await fetch(url, authTw ? { headers: { Authorization: authTw }, redirect: "follow" } : {}); if (!rr.ok) continue;
+        blocks.push({ type: "image", source: { type: "base64", media_type: mt, data: Buffer.from(await rr.arrayBuffer()).toString("base64") } }); } catch (_) {} }
+    if (!blocks.length) return res.status(400).json({ ok: false, error: "No se pudo leer la imagen" });
+    const tx = texts.filter(Boolean).join("\n").slice(0, 1500); if (tx) blocks.push({ type: "text", text: `Texto que acompaña a la imagen:\n${tx}` });
+    const sys = `Analizas fotos que envían huéspedes de rentas de corta estancia (Check Inn Saltillo) por WhatsApp. Devuelve SOLO JSON:
+{"tipo":"comprobante"|"identificacion"|"dano"|"limpieza"|"alojamiento"|"documento"|"captura"|"otro",
+ "titulo":"máximo 6 palabras","descripcion":"2-3 oraciones: qué se ve y lo relevante para el anfitrión",
+ "datos":{...},  // datos útiles legibles: montos, fechas, nombres, folios, lugar del daño, objeto, etc. (strings cortos; omite lo que no se vea)
+ "sugerencia":"qué conviene hacer en una frase"}
+Tipos: comprobante = pago/transferencia/depósito; identificacion = INE/pasaporte/licencia; dano = algo roto, fuga, falla; limpieza = suciedad o desorden; alojamiento = foto del lugar sin problema; documento = contrato/factura/otro papel; captura = pantalla de celular o app.`;
+    const call = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-5", max_tokens: 700, system: sys, messages: [{ role: "user", content: blocks }] }) });
+    const j = await call.json(); if (!call.ok) return res.status(502).json({ ok: false, error: `Claude ${call.status}: ${(j.error && j.error.message) || ""}` });
+    const raw = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("\n").trim(), m = raw.match(/\{[\s\S]*\}/);
+    let data = null; try { data = JSON.parse(m ? m[0] : raw); } catch (_) { data = { tipo: "otro", titulo: "Imagen", descripcion: raw.slice(0, 600), datos: {}, sugerencia: "" }; }
+    res.json({ ok: true, data });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ─── Reservas · phones extra ────────────────────────────────────────────────
 app.get("/reservas/phone-extras", async (req, res) => {
   try {

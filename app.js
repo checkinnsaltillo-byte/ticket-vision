@@ -51898,6 +51898,9 @@ function _botcRenderMain(phone) {
     // image), pintamos <img> con proxy backend (Twilio requiere basic auth).
     let mediaHtml = '';
     const meta = m.meta || {};
+    if (meta.media_url && /audio/.test(String(meta.media_type || ''))) { // nota de voz: reproductor (la transcripción ya va en el texto 🎙)
+      mediaHtml = `<div style="margin-top:6px"><audio controls preload="none" src="${BACKEND}/wa/media?url=${encodeURIComponent(String(meta.media_url))}" style="width:240px;max-width:100%;height:36px" onclick="event.stopPropagation()"></audio></div>`;
+    }
     if (meta.media_url && /image/.test(String(meta.media_type || ''))) {
       const proxied = `${BACKEND}/wa/media?url=${encodeURIComponent(String(meta.media_url))}`;
       mediaHtml = `<div style="margin-top:6px"><img src="${proxied}" onclick="event.stopPropagation();_botcImgZoom_('${_botcEsc(proxied).replace(/'/g,'&#39;')}')" style="max-width:260px;max-height:260px;border-radius:8px;display:block;object-fit:contain;background:#f1f5f9;cursor:zoom-in" loading="lazy"></div>`;
@@ -51910,13 +51913,11 @@ function _botcRenderMain(phone) {
   // Barra superior de selección múltiple (aparece solo con selectMode ON).
   const selCount = selSet.size;
   const selBarHtml = selMode ? `
-    <div id="botc-msel-bar" style="position:sticky;top:0;z-index:15;background:#0f172a;color:#fff;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(15,23,42,.2)">
-      <span style="font-weight:800;font-size:12px">${selCount} seleccionado${selCount===1?'':'s'}</span>
+    <div id="botc-msel-bar" style="position:sticky;top:0;z-index:15;background:#fff;color:#111827;padding:8px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-bottom:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(15,23,42,.08)">
+      <span style="font-weight:800;font-size:12.5px">${selCount} seleccionado${selCount===1?'':'s'}</span>
       <span style="flex:1"></span>
-      <button type="button" onclick="botcMsgComprobante_()" ${selCount?'':'disabled'} style="padding:6px 10px;background:${selCount?'#7c3aed':'#334155'};color:#fff;border:0;border-radius:6px;cursor:${selCount?'pointer':'not-allowed'};font-weight:700;font-size:11px">💳 Comprobante</button>
-      <button type="button" onclick="botcMsgCopy_()" ${selCount?'':'disabled'} style="padding:6px 10px;background:${selCount?'#3b82f6':'#334155'};color:#fff;border:0;border-radius:6px;cursor:${selCount?'pointer':'not-allowed'};font-weight:700;font-size:11px">📋 Copiar</button>
-      <button type="button" onclick="botcMsgForward_()" ${selCount?'':'disabled'} style="padding:6px 10px;background:${selCount?'#25d366':'#334155'};color:#fff;border:0;border-radius:6px;cursor:${selCount?'pointer':'not-allowed'};font-weight:700;font-size:11px">📤 Reenviar</button>
-      <button type="button" onclick="botcMsgSelToggle_()" style="padding:6px 10px;background:transparent;color:#fff;border:1px solid #475569;border-radius:6px;cursor:pointer;font-weight:700;font-size:11px">✕ Cancelar</button>
+      ${[['botcMsgComprobante_()', '💳 Registrar como pago', '#111827', '#fff'], ['botcMsgCopy_()', '📋 Copiar', '#f3f4f6', '#111827'], ['botcMsgForward_()', '📤 Reenviar', '#f3f4f6', '#111827']].map(([fn, t, bg, c]) => `<button type="button" onclick="${fn}" ${selCount ? '' : 'disabled'} style="all:unset;cursor:${selCount ? 'pointer' : 'default'};padding:7px 12px;border-radius:10px;background:${selCount ? bg : '#e5e7eb'};color:${selCount ? c : '#9ca3af'};font-weight:700;font-size:12px">${t}</button>`).join('')}
+      <button type="button" onclick="botcMsgSelToggle_()" style="all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;border:1px solid #e5e7eb;font-weight:700;font-size:12px">✕ Cancelar</button>
     </div>` : '';
 
   const ctrlChip = isHuman
@@ -74078,7 +74079,10 @@ function bkLibChev_(tipo, i) { bkLibCss_(); return `<button type="button" class=
 function bkLibMenu_(ev, tipo, i) {
   const old = document.getElementById('bklib-menu'); if (old) old.remove();
   const m = document.createElement('div'); m.id = 'bklib-menu';
-  m.innerHTML = `<button type="button" onclick="bkLibAbrir_('${tipo}',${i})">📚 Enviar a biblioteca</button>`;
+  const msg = tipo === 'wa' ? ((BOTC_STATE.messages || [])[i] || {}) : null, mt = String((msg && msg.meta && msg.meta.media_type) || ''), hasImg = !!(msg && msg.meta && msg.meta.media_url && /image/.test(mt)), hasAud = !!(msg && msg.meta && msg.meta.media_url && /audio/.test(mt));
+  const sep = '<div style="height:1px;background:#f3f4f6;margin:4px 0"></div>';
+  m.innerHTML = (tipo === 'wa' ? `${hasImg ? `<button type="button" onclick="_botcAnalizarImagen_(${i})">🔍 Analizar imagen</button><button type="button" onclick="_botcChevComprobante_(${i})">💳 Registrar como pago</button>${sep}` : ''}${hasAud ? `<button type="button" onclick="_botcTranscribir_(${i})">🎙 Transcribir de nuevo</button>${sep}` : ''}
+    <button type="button" onclick="_botcChevSel_(${i})">☑ Seleccionar varios</button><button type="button" onclick="_botcChevCopiar_(${i})">📋 Copiar</button><button type="button" onclick="_botcChevReenviar_(${i})">📤 Reenviar</button>${sep}` : '') + `<button type="button" onclick="bkLibAbrir_('${tipo}',${i})">📚 Enviar a biblioteca</button>`;
   document.body.appendChild(m); const r = ev.currentTarget.getBoundingClientRect();
   m.style.top = Math.min(r.bottom + 4, innerHeight - 60) + 'px'; m.style.left = Math.max(8, Math.min(r.right - 200, innerWidth - 210)) + 'px';
   setTimeout(() => document.addEventListener('click', function f() { m.remove(); document.removeEventListener('click', f); }), 0);
@@ -74589,3 +74593,42 @@ window._bknGuardar_ = async function () {
 async function bkSupUsar_(id) { const x = (BK.sup || []).find(y => y.id === id); if (!x) return; const usar = x.usar === false; x.usar = usar; bkRender_();
   try { const j = await fetch(`${BACKEND}/bot/control/supervisados/usar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, usar }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); }
   catch (e) { x.usar = !usar; bkRender_(); alert('No se pudo: ' + (e.message || e)); } }
+
+// ═══ Acciones por mensaje desde el menú ⌄ de la burbuja (Chats bot · WhatsApp) ═══
+function _botcSoloEste_(i) { BOTC_STATE.selectedMsgIdx = new Set([i]); }
+window._botcChevSel_ = i => { BOTC_STATE.selectMode = true; BOTC_STATE.selectedMsgIdx = new Set([i]); _botcRenderMain(BOTC_STATE.selectedPhone); };
+window._botcChevCopiar_ = i => { _botcSoloEste_(i); botcMsgCopy_(); };
+window._botcChevReenviar_ = i => { _botcSoloEste_(i); botcMsgForward_(); };
+window._botcChevComprobante_ = i => { _botcSoloEste_(i); botcMsgComprobante_(); };
+// Caja de resultado arriba de la barra de escritura (misma posición que la del comprobante).
+function _botcResultBox_(html) {
+  const inputBar = document.querySelector('#botc-main input#botc-input')?.parentElement; if (!inputBar) return null;
+  document.getElementById('botc-result-box')?.remove(); const box = document.createElement('div'); box.id = 'botc-result-box';
+  box.style.cssText = 'border-top:1px solid #e5e7eb;background:#f5f3ff;padding:12px 16px;font-size:12.5px;color:#111827';
+  box.innerHTML = `<div style="display:flex;justify-content:flex-end"><button type="button" onclick="document.getElementById('botc-result-box').remove()" style="all:unset;cursor:pointer;width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#ede9fe;font-size:13px;margin:-4px -6px 0 0">✕</button></div><div style="margin-top:-18px">${html}</div>`;
+  inputBar.parentElement.insertBefore(box, inputBar); return box;
+}
+const _BOTC_IMG_TIPO = { comprobante: ['💳', 'Comprobante de pago'], identificacion: ['🪪', 'Identificación'], dano: ['🔧', 'Daño o falla'], limpieza: ['🧹', 'Limpieza'], alojamiento: ['🏠', 'Foto del alojamiento'], documento: ['📄', 'Documento'], captura: ['📱', 'Captura de pantalla'], otro: ['🖼️', 'Imagen'] };
+window._botcAnalizarImagen_ = async function (i) {
+  const m = (BOTC_STATE.messages || [])[i]; if (!m || !m.meta || !m.meta.media_url) return;
+  _botcResultBox_('<div style="font-weight:700">🔍 Analizando la imagen…</div>');
+  try { const j = await fetch(`${BACKEND}/wa/analizar-imagen`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media: [{ url: m.meta.media_url, type: m.meta.media_type || 'image/jpeg' }], texts: [String(m.body || '')].filter(t => t && !/^\[/.test(t)) }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error'); const d = j.data || {}, T = _BOTC_IMG_TIPO[d.tipo] || _BOTC_IMG_TIPO.otro, datos = Object.entries(d.datos || {}).filter(([, v]) => v && String(v).trim());
+    _botcResultBox_(`<div style="font-weight:800;font-size:13.5px">${T[0]} ${_botcEsc(d.titulo || T[1])} <span style="font-weight:600;color:#6d28d9;font-size:11.5px">· ${T[1]}</span></div>
+      <div style="margin-top:4px;white-space:pre-wrap">${_botcEsc(d.descripcion || '')}</div>
+      ${datos.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 12px;margin-top:8px">${datos.map(([k, v]) => `<div><span style="color:#6b7280;font-size:11px">${_botcEsc(k.replace(/_/g, ' '))}</span><br><b>${_botcEsc(String(v))}</b></div>`).join('')}</div>` : ''}
+      ${d.sugerencia ? `<div style="margin-top:8px;color:#4c1d95">💡 ${_botcEsc(d.sugerencia)}</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${d.tipo === 'comprobante' ? `<button type="button" onclick="_botcChevComprobante_(${i})" style="all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;background:#111827;color:#fff;font-weight:700;font-size:12px">💳 Registrar como pago</button>` : ''}
+        ${d.tipo === 'dano' || d.tipo === 'limpieza' ? `<button type="button" onclick="document.getElementById('botc-result-box').remove();_botcNewMenuPick_('reporte')" style="all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;background:#111827;color:#fff;font-weight:700;font-size:12px">🚨 Crear reporte</button>` : ''}
+        <button type="button" onclick="navigator.clipboard.writeText(${JSON.stringify(String(d.descripcion || '')).replace(/"/g, '&quot;')}).then(()=>bkToast_('✓ Copiado'))" style="all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;background:#f3f4f6;font-weight:700;font-size:12px">📋 Copiar descripción</button></div>`); }
+  catch (e) { _botcResultBox_(`<div style="color:#b91c1c">No se pudo analizar: ${_botcEsc(e.message || e)}</div>`); }
+};
+window._botcTranscribir_ = async function (i) {
+  const m = (BOTC_STATE.messages || [])[i]; if (!m || !m.meta || !m.meta.media_url) return;
+  _botcResultBox_('<div style="font-weight:700">🎙 Transcribiendo la nota de voz…</div>');
+  try { const j = await fetch(`${BACKEND}/wa/transcribir`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media_url: m.meta.media_url, media_type: m.meta.media_type || 'audio/ogg' }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error'); const t = j.texto || '';
+    _botcResultBox_(`<div style="font-weight:800;font-size:13.5px">🎙 Transcripción</div><div style="margin-top:4px;white-space:pre-wrap">${t ? _botcEsc(t) : '<i style="color:#6b7280">No se reconoció voz en el audio.</i>'}</div>
+      ${t ? `<div style="display:flex;gap:6px;margin-top:10px"><button type="button" onclick="navigator.clipboard.writeText(${JSON.stringify(t).replace(/"/g, '&quot;')}).then(()=>bkToast_('✓ Copiado'))" style="all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;background:#f3f4f6;font-weight:700;font-size:12px">📋 Copiar</button></div>` : ''}`); }
+  catch (e) { _botcResultBox_(`<div style="color:#b91c1c">No se pudo transcribir: ${_botcEsc(e.message || e)}</div>`); }
+};
