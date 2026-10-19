@@ -1963,7 +1963,8 @@ async function _botExecTool(toolUse, ctx) {
       const r = await fetch(url.toString(), { cache: "no-store" });
       const j = await r.json();
       if (!j.ok) return { content: `Error consultando disponibilidad: ${j.error || "desconocido"}`, notifyText: null };
-      const allResults = (j.results || []).slice().sort((a, b) => (Number(a.total) || Infinity) - (Number(b.total) || Infinity)); // de menor a mayor precio
+      const _ad = Number(args.adults) || 1; // solo los que caben: la búsqueda devuelve también alojamientos de menor capacidad
+      const allResults = (j.results || []).filter(x => !(Number(x.max_people) > 0) || Number(x.max_people) >= _ad).sort((a, b) => (Number(a.total) || Infinity) - (Number(b.total) || Infinity)); // de menor a mayor precio
       const top = allResults.slice(0, 5).map(x => ({
         alojamiento: x.name,
         tipo: x.type || "",
