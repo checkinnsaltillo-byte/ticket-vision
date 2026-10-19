@@ -53505,7 +53505,7 @@ async function _botcEmergFetch_() {
   } catch(_) { return { phones: [] }; }
 }
 async function _botcEmergSave_(phones) {
-  try {
+  try { if (typeof BK !== 'undefined') BK.emerg = null; // Control del bot › Horarios la vuelve a leer
     await fetch('https://api.check-inn.mx/wa/bot/emergency-phones', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phones }),
@@ -56552,7 +56552,7 @@ window.botcOpenTestModal_ = async function() {
   _currentModalOpts = {
     icon: '🧪', title: 'Modo Prueba', subtitle: 'Números en lista blanca para pruebas',
     color: '#f59e0b', kind: 'test',
-    enabledToggleHtml: toggleHtml,
+    enabledToggleHtml: '<div id="botc-ctl4" style="margin-top:12px"><div style="font-size:11px;color:#64748b">⏳ Cargando interruptores de Control del bot…</div></div>' + toggleHtml,
     getPhones: () => window.__botcTestPhones || [],
     onAdd: async (val) => {
       if (!val) return;
@@ -56566,6 +56566,7 @@ window.botcOpenTestModal_ = async function() {
   };
   window.__botcTestPhones = phones;
   _botcOpenPhoneModal_(_currentModalOpts);
+  bkCtl4Pintar_();
 };
 window._botcModalToggleTestEnabled_ = async function(on) {
   const list = window.__botcTestPhones || [];
@@ -73575,6 +73576,7 @@ function bkHorarios_() {
     <div class="bk-grid2"><div><label class="bk-lb">Responsable de guardia (titular)</label>${sel('titular')}</div><div><label class="bk-lb">Contacto de respaldo</label>${sel('respaldo')}</div></div>
     <label class="bk-lb">Política fuera de horario</label><div class="bk-seg">${[['guardia', 'Escalar al responsable de guardia'], ['equipo', 'Escalar al equipo (lista de emergencia)'], ['contingencia', 'Sin cobertura: protocolo de contingencia']].map(([v, t]) => `<button type="button" class="${H.politica === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.d.cfg.horario.politica='${v}';bkRender_()">${t}</button>`).join('')}</div>
     <div class="bk-mut" style="font-size:12px;margin-top:8px">Estado actual: ${H.disponible !== false ? '🟢 Disponible' : '⛔ No disponible'}${H.dispAt ? ` · cambiado ${bkHace_(H.dispAt)}${H.dispPor ? ` por ${esc(H.dispPor)}` : ''}` : ''}. Con «No disponible» los bloques Personales bajan a Supervisado y las alertas van a la guardia.</div></div>
+    ${bkEmergHtml_()}
     <div class="bk-row" style="justify-content:flex-end"><button class="bk-btn pri" onclick="bkGuardarHorario_()">Guardar horarios</button></div>`;
 }
 function bkCelda_(d, i) { const G = BK.d.cfg.horario.grid; G[d] = G[d] || []; const v = G[d][i] || 'AUT'; G[d][i] = v === 'AUT' ? 'SUP' : v === 'SUP' ? 'PER' : 'AUT'; bkRender_(); }
@@ -74232,3 +74234,65 @@ async function bkPrioSet_(conv, np, el) {
   try { const r = await fetch(`${BACKEND}/bot/control/prioridad`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conv, prioridad: np, motivo: 'Cambio manual desde la Bandeja', usuario: bkUsr_() }) }).then(r => r.json());
     if (!r.ok) throw new Error(r.error); const c = (BK.bandeja || []).find(x => x.conv === conv); if (c) { c.prioridad = np; c.manual = true; } bkToast_(`✓ Prioridad ${np}`); bkRender_(); }
   catch (e) { alert('No se pudo: ' + (e.message || e)); if (el) el.disabled = false; } }
+
+// ═══ Sincronía Control del bot ↔ Chats bot: lista de emergencia, responsables y guardia, y los 4 interruptores ═══
+async function bkEmergCargar_() { BK._emCarg = true;
+  try { const r = await fetch(`${BACKEND}/wa/bot/emergency-phones`, { cache: 'no-store' }).then(r => r.json()); BK.emerg = r.ok ? (r.contacts || []) : []; } catch (_) { BK.emerg = []; }
+  BK._emCarg = false; if (BK.tab === 'horarios') bkRender_(); }
+async function bkEmergGuardar_(contacts) {
+  try { const r = await fetch(`${BACKEND}/wa/bot/emergency-phones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contacts, updated_by: bkUsr_() }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error); BK.emerg = r.contacts || contacts; window.__botcEmergPhones = r.phones || []; bkToast_('✓ Lista de emergencia guardada'); if (BK.tab === 'horarios') bkRender_(); }
+  catch (e) { alert('No se pudo guardar: ' + (e.message || e)); } }
+function bkEmergHtml_() {
+  if (BK.emerg == null && !BK._emCarg) bkEmergCargar_();
+  const L = BK.emerg || [], P = (BK.d.personas || []).filter(p => !L.some(c => String(c.telefono).replace(/\D/g, '').slice(-10) === String(p.tel).slice(-10)));
+  return `<div class="bk-card"><h3>🚨 Lista de emergencia</h3><div class="bk-sub">Reciben por WhatsApp las emergencias (gas, humo, fuego…) al instante y el 3er paso de las alertas P1. Es la misma lista de Chats bot › 🚨 Emergencia.</div>
+    <div style="margin-top:10px">${BK.emerg == null ? '<div class="bk-mut">⏳ Cargando…</div>' : L.length ? L.map((c, i) => `<div class="bk-row" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid #f3f4f6;font-size:13px"><span><b>${esc(c.nombre || 'Sin nombre')}</b> <span class="bk-mut">· ${esc(c.telefono)}${c.puesto ? ' · ' + esc(c.puesto) : ''}</span></span><button class="bk-btn sm red" onclick="bkEmergQuitar_(${i})">✕</button></div>`).join('') : '<div class="bk-obs err">Lista vacía: nadie recibiría los avisos de emergencia.</div>'}</div>
+    <div class="bk-row" style="margin-top:10px;gap:6px"><select class="bk-sel" id="bk-em-per" style="flex:1;min-width:200px"><option value="">— Agregar del Personal —</option>${P.map(p => `<option value="${esc(p.tel)}" data-n="${esc(p.n)}" data-p="${esc(p.puesto || '')}">${esc(p.n)} · ${esc(p.tel)}</option>`).join('')}</select><button class="bk-btn sm" onclick="bkEmergAgregarPer_()">Agregar</button></div>
+    <div class="bk-row" style="margin-top:6px;gap:6px"><input class="bk-in" id="bk-em-n" placeholder="Nombre (otro número)" style="flex:1;min-width:150px"><input class="bk-in" id="bk-em-t" placeholder="Teléfono (10 dígitos)" style="width:170px"><button class="bk-btn sm" onclick="bkEmergAgregarMan_()">Agregar</button></div></div>`;
+}
+function bkEmergQuitar_(i) { const L = (BK.emerg || []).slice(), c = L[i]; if (!c || !confirm(`¿Quitar a ${c.nombre || c.telefono} de la lista de emergencia?`)) return; L.splice(i, 1); bkEmergGuardar_(L); }
+function bkEmergAgregarPer_() { const s = document.getElementById('bk-em-per'), o = s && s.selectedOptions[0]; if (!o || !o.value) return; bkEmergGuardar_((BK.emerg || []).concat({ nombre: o.dataset.n, telefono: o.value, puesto: o.dataset.p })); }
+function bkEmergAgregarMan_() { const n = document.getElementById('bk-em-n').value.trim(), t = document.getElementById('bk-em-t').value.replace(/\D/g, ''); if (t.length < 10) return alert('Escribe un teléfono de 10 dígitos'); bkEmergGuardar_((BK.emerg || []).concat({ nombre: n, telefono: t, puesto: '' })); }
+// Responsables y guardia desde Chats bot (mismo dato que Control del bot › Horarios).
+async function bkCtlDatos_() { const r = await fetch(`${BACKEND}/bot/control`, { cache: 'no-store' }).then(r => r.json()); if (!r.ok) throw new Error(r.error || 'Error'); if (typeof BK !== 'undefined') { if (BK.d) BK.d = r; } return r; }
+async function bkCtlGuardar_(seccion, data) { const r = await fetch(`${BACKEND}/bot/control`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seccion, data, usuario: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json()); if (!r.ok) throw new Error(r.error || 'Error'); if (typeof BK !== 'undefined' && BK.d) BK.d.cfg = r.cfg; return r.cfg; }
+window.botcOpenGuardia_ = async function () {
+  document.getElementById('bkg-ov')?.remove();
+  const ov = document.createElement('div'); ov.id = 'bkg-ov'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;width:min(460px,100%);padding:18px;color:#111827">⏳ Cargando…</div>'; document.body.appendChild(ov);
+  try { const d = await bkCtlDatos_(), H = d.cfg.horario || {}, P = d.personas || [];
+    const sel = (id, v) => `<select id="${id}" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:9px 10px;font:inherit;font-size:14px;background:#fff"><option value="">— Sin asignar —</option>${P.map(p => `<option ${v === p.n ? 'selected' : ''}>${_botcEsc(p.n)}</option>`).join('')}${v && !P.some(p => p.n === v) ? `<option selected>${_botcEsc(v)}</option>` : ''}</select>`;
+    ov.firstChild.innerHTML = `<div style="font-size:16px;font-weight:800">👥 Responsables y guardia</div><div style="font-size:12.5px;color:#6b7280;margin:4px 0 12px">Reciben por WhatsApp los escalamientos de las alertas (P1 de inmediato; P2/P3 según la cadena). Es el mismo dato de Control del bot › Horarios.</div>
+      <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px">Responsable de guardia (titular)</label>${sel('bkg-t', H.titular || '')}
+      <label style="display:block;font-size:12px;font-weight:700;margin:12px 0 4px">Contacto de respaldo</label>${sel('bkg-r', H.respaldo || '')}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><button type="button" onclick="document.getElementById('bkg-ov').remove()" style="all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;background:#f3f4f6;font-size:13px;font-weight:700">Cancelar</button>
+        <button type="button" onclick="botcGuardiaGuardar_()" style="all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700">Guardar</button></div>`; }
+  catch (e) { ov.firstChild.innerHTML = `⚠️ No se pudo cargar: ${_botcEsc(e.message || e)}`; }
+};
+window.botcGuardiaGuardar_ = async function () {
+  try { await bkCtlGuardar_('guardia', { titular: document.getElementById('bkg-t').value, respaldo: document.getElementById('bkg-r').value }); document.getElementById('bkg-ov')?.remove(); (typeof bkToast_ === 'function' ? bkToast_ : alert)('✓ Responsables y guardia guardados'); }
+  catch (e) { alert('No se pudo guardar: ' + (e.message || e)); }
+};
+// Los 4 interruptores de Control del bot dentro de Chats bot › Modo prueba (misma configuración).
+async function bkCtl4Pintar_() {
+  const box = document.getElementById('botc-ctl4'); if (!box) return;
+  try { const d = await bkCtlDatos_(), c = d.cfg;
+    const sw = (on, txt, sub, fn, warn) => `<div onclick="${fn}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:10px;cursor:pointer;background:#fff"><span style="width:34px;height:20px;border-radius:999px;background:${on ? (warn ? '#f59e0b' : '#22c55e') : '#d1d5db'};position:relative;flex-shrink:0"><span style="position:absolute;top:2px;left:${on ? 16 : 2}px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s"></span></span><span style="line-height:1.25"><b style="font-size:12.5px">${txt}</b><br><span style="font-size:11px;color:#6b7280">${sub}</span></span></div>`;
+    box.innerHTML = `<div style="font-size:11px;font-weight:800;color:#5b21b6;letter-spacing:.04em;margin-bottom:6px">🎛️ CONTROL DEL BOT</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      ${sw(c.master.on !== false, c.master.on !== false ? 'Bot encendido' : 'Bot apagado', 'Apagado: solo el aviso fijo', `bkCtl4Tog_('master')`)}
+      ${sw(!!c.activo, c.activo ? 'Controles aplicando' : 'Aplicar controles', c.activo ? 'Procesos, horarios y urgencia activos' : 'Hoy solo observa', `bkCtl4Tog_('activo')`)}
+      ${sw(c.horario.disponible !== false, c.horario.disponible !== false ? 'Disponible' : 'No disponible', 'Equipo atendiendo', `bkCtl4Tog_('disponible')`)}
+      ${sw(!!c.fueraOficina, 'Fuera de oficina', 'Supervisado pasa a Derivar', `bkCtl4Tog_('fueraOficina')`, true)}</div>`; }
+  catch (e) { box.innerHTML = `<div style="font-size:11px;color:#b91c1c">No se pudieron cargar los interruptores: ${_botcEsc(e.message || e)}</div>`; }
+}
+window.bkCtl4Tog_ = async function (k) {
+  try { const c = (await bkCtlDatos_()).cfg;
+    if (k === 'master') { const on = c.master.on === false; if (!on && !confirm('¿Apagar el bot? Los huéspedes solo recibirán el mensaje fijo de atención humana.')) return; await bkCtlGuardar_('master', { on, msg: c.master.msg }); }
+    else if (k === 'activo') { if (!c.activo && !confirm('¿Aplicar los controles? El gate decidirá qué responde el bot según procesos, horario y urgencia.')) return; await bkCtlGuardar_('activo', !c.activo); }
+    else if (k === 'disponible') await bkCtlGuardar_('disponible', c.horario.disponible === false);
+    else if (k === 'fueraOficina') await bkCtlGuardar_('fueraOficina', !c.fueraOficina);
+    bkCtl4Pintar_(); }
+  catch (e) { alert('No se pudo: ' + (e.message || e)); }
+};

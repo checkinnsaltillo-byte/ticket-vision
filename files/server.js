@@ -3701,18 +3701,22 @@ app.get("/wa/bot/emergency-phones", async (req, res) => {
   if (stale) await _emergencyLoadFromSheet();
   res.json({ ok: true, phones: (_BOT_EMERGENCY.phones || []).slice(), contacts: (_BOT_EMERGENCY.contacts || []).slice() });
 });
+const _EMERG_OBJ = "whatsapp/emergencia.json";
+const _emergTel = v => { const d = String(v || "").replace(/\D/g, ""); return d.length < 10 ? "" : d.length === 10 ? "+52" + d : "+" + d; };
 app.post("/wa/bot/emergency-phones", async (req, res) => {
   try {
     const b = req.body || {};
-    const payload = {};
-    if (Array.isArray(b.phones))   payload.phones = b.phones.map(p => String(p||'').trim()).filter(Boolean);
-    if (Array.isArray(b.contacts)) payload.contacts = b.contacts;
-    if (b.updated_by) payload.updated_by = String(b.updated_by);
-    const r = await callCheckinAppsScriptPost("emergency_contacts_set", { payload });
-    if (!r || !r.ok) throw new Error((r && r.error) || "Apps Script fallo");
-    _BOT_EMERGENCY = { phones: r.phones || [], contacts: [], ts: 0 }; // invalida cache; próximo GET recarga contactos
-    console.info(`[bot-emergency] phones=${JSON.stringify(_BOT_EMERGENCY.phones)}`);
-    res.json({ ok: true, phones: _BOT_EMERGENCY.phones });
+    // Guarda la lista en Cloud Storage (antes iba a una hoja que ya no se leía). Acepta contactos completos o solo teléfonos.
+    if (!_BOT_EMERGENCY.ts) await _emergencyLoadFromSheet();
+    const prev = (_BOT_EMERGENCY.contacts || []).slice(), deTel = t => prev.find(c => _emergTel(c.telefono) === t);
+    let contacts = Array.isArray(b.contacts) ? b.contacts.map(c => ({ nombre: String(c.nombre || "").trim(), telefono: _emergTel(c.telefono), puesto: String(c.puesto || "").trim() }))
+      : Array.isArray(b.phones) ? b.phones.map(p => { const t = _emergTel(p); return Object.assign({ nombre: "", puesto: "" }, deTel(t) || {}, { telefono: t }); }) : null;
+    if (!contacts) return res.status(400).json({ ok: false, error: "Falta la lista" });
+    const vistos = new Set(); contacts = contacts.filter(c => c.telefono && !vistos.has(c.telefono) && vistos.add(c.telefono));
+    await _rhdPut(_EMERG_OBJ, JSON.stringify({ contacts, updated_at: new Date().toISOString(), updated_by: String(b.updated_by || "") }), "application/json");
+    _BOT_EMERGENCY = { phones: contacts.map(c => c.telefono), contacts, ts: Date.now() };
+    console.info(`[bot-emergency] ${contacts.length} contactos`);
+    res.json({ ok: true, phones: _BOT_EMERGENCY.phones, contacts });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 /** Reenvía un texto a TODOS los números de la lista de emergencia. */
@@ -11125,6 +11129,9 @@ Object.assign(_GCS_ACT, {
     return u ? { ok: true, isAdmin: true, nombre: String(u.Nombre || "").trim() } : { ok: true, isAdmin: false };
   },
   emergency_contacts_list: async () => {
+    // Lista propia editable (Control del bot › Horarios y Chats bot › Emergencia). Si aún no existe, se arma con los usuarios del sistema.
+    const propia = await _rhdGetJson(_EMERG_OBJ).catch(() => null);
+    if (propia && Array.isArray(propia.contacts)) return { ok: true, phones: propia.contacts.map(c => c.telefono), contacts: propia.contacts, source: "lista" };
     const contacts = [], phones = [];
     (await _sisLeer("su")).rows.forEach(r => { const raw = String(r.cel || "").replace(/\D/g, ""); if (raw.length < 10) return;
       const tel = raw.length === 10 ? "+52" + raw : "+" + raw; contacts.push({ nombre: String(r.Nombre || "").trim(), telefono: tel, puesto: String(r.Puesto || "").trim() }); phones.push(tel); });
@@ -13624,7 +13631,7 @@ app.post("/bot/control", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const { seccion, data, usuario } = req.body || {}, por = String(usuario || "").slice(0, 60);
-    const OK = ["sinRespuesta", "flujos", "eliminar_proceso", "restaurar_proceso", "plantillaProceso", "proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
+    const OK = ["guardia", "sinRespuesta", "flujos", "eliminar_proceso", "restaurar_proceso", "plantillaProceso", "proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
     if (!OK.includes(seccion)) return res.status(400).json({ ok: false, error: "Sección inválida" });
     let antes, despues, sincronizarAloj = null;
     await _bcMut(_BC.OBJ, d => {
@@ -13655,6 +13662,7 @@ app.post("/bot/control", async (req, res) => {
         despues = null; }
       else if (seccion === "restaurar_proceso") { const k = String(data || ""); antes = cur.eliminados || []; d.eliminados = (cur.eliminados || []).filter(x => x !== k); despues = d.eliminados; }
       else if (seccion === "reset_disyuntor") { const k = String(data || ""); d.procesos = d.procesos || {}; antes = (cur.procesos[k] || {}).disyuntor; d.procesos[k] = Object.assign({}, cur.procesos[k] || {}, { disyuntor: null }); despues = null; _bcErrs.delete(k); }
+      else if (seccion === "guardia") { antes = { titular: cur.horario.titular, respaldo: cur.horario.respaldo }; d.horario = Object.assign({}, cur.horario, { titular: String((data || {}).titular || ""), respaldo: String((data || {}).respaldo || "") }); despues = { titular: d.horario.titular, respaldo: d.horario.respaldo }; }
       else if (seccion === "disponible") { const H = Object.assign({}, cur.horario, { disponible: !!data, dispAt: new Date().toISOString(), dispPor: por }); antes = cur.horario.disponible; d.horario = H; despues = !!data; }
       else if (seccion === "perfil") { antes = cur.perfil; const v = Object.assign({}, cur.perfil, data || {}); d.perfil = v; despues = v;
         const vs = cur.versiones || []; vs.push({ v: (vs.length ? vs[vs.length - 1].v : 0) + 1, at: new Date().toISOString(), por, data: v }); d.versiones = vs.slice(-40); }
