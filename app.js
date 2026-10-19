@@ -74081,7 +74081,7 @@ function bkLibMenu_(ev, tipo, i) {
   const m = document.createElement('div'); m.id = 'bklib-menu';
   const msg = tipo === 'wa' ? ((BOTC_STATE.messages || [])[i] || {}) : null, mt = String((msg && msg.meta && msg.meta.media_type) || ''), hasImg = !!(msg && msg.meta && msg.meta.media_url && /image/.test(mt)), hasAud = !!(msg && msg.meta && msg.meta.media_url && /audio/.test(mt));
   const sep = '<div style="height:1px;background:#f3f4f6;margin:4px 0"></div>';
-  m.innerHTML = (tipo === 'wa' ? `${hasImg ? `<button type="button" onclick="_botcAnalizarImagen_(${i})">🔍 Analizar imagen</button><button type="button" onclick="_botcChevComprobante_(${i})">💳 Registrar como pago</button>${sep}` : ''}${hasAud ? `<button type="button" onclick="_botcTranscribir_(${i})">🎙 Transcribir de nuevo</button>${sep}` : ''}
+  m.innerHTML = (tipo === 'wa' ? `${hasImg ? `<button type="button" onclick="_botcAnalizarImagen_(${i})">🔍 Analizar imagen</button>` : ''}<button type="button" onclick="_botcChevComprobante_(${i})">💳 Registrar como pago</button>${sep}${hasAud ? `<button type="button" onclick="_botcTranscribir_(${i})">🎙 Transcribir de nuevo</button>${sep}` : ''}
     <button type="button" onclick="_botcChevSel_(${i})">☑ Seleccionar varios</button><button type="button" onclick="_botcChevCopiar_(${i})">📋 Copiar</button><button type="button" onclick="_botcChevReenviar_(${i})">📤 Reenviar</button>${sep}` : '') + `<button type="button" onclick="bkLibAbrir_('${tipo}',${i})">📚 Enviar a biblioteca</button>`;
   document.body.appendChild(m); const r = ev.currentTarget.getBoundingClientRect();
   m.style.top = Math.min(r.bottom + 4, innerHeight - 60) + 'px'; m.style.left = Math.max(8, Math.min(r.right - 200, innerWidth - 210)) + 'px';
