@@ -73402,12 +73402,12 @@ function bkRender_() {
     <div class="bk-now"><span>Ahora: <b>${esc(ahora.nivelTxt)}</b> · ${esc(ahora.franja)}</span><span>Guardia: <b>${esc(ahora.titular || 'sin asignar')}</b>${ahora.respaldo ? ` · respaldo ${esc(ahora.respaldo)}` : ''}</span>${ahora.noDisp ? '<span>⛔ Equipo no disponible</span>' : ''}</div></div>
     <div class="bk-ctl" style="align-content:flex-start;justify-content:flex-end">
       ${bkSw_(cfg.master.on !== false, cfg.master.on !== false ? 'Bot encendido' : 'Bot apagado', 'bkMaster_()')}
-      ${bkSw_(!!cfg.activo, cfg.activo ? 'Controles aplicando' : 'Solo observando', 'bkActivo_()')}
+      ${bkSw_(!!cfg.activo, cfg.activo ? 'Controles aplicando' : 'Aplicar controles', 'bkActivo_()')}
       ${bkSw_(cfg.horario.disponible !== false, cfg.horario.disponible !== false ? 'Disponible' : 'No disponible', 'bkDisp_()')}
       ${bkSw_(!!cfg.fueraOficina, 'Fuera de oficina', 'bkFuera_()', 'warn')}
     </div></div>`;
   const obs = cfg._error ? `<div class="bk-obs err">⚠️ No se pudo leer la configuración guardada; se muestran valores por omisión.</div>`
-    : !cfg.activo ? `<div class="bk-obs">👁️ <div><b>Modo observación.</b> El gate calcula y registra en la bitácora lo que haría con cada mensaje (proceso, urgencia, nivel), pero el bot sigue funcionando como hoy. Revisa la Bandeja y la Bitácora unos días y, cuando estés conforme, activa <b>Controles aplicando</b>.</div></div>`
+    : !cfg.activo ? `<div class="bk-obs">👁️ <div><b>Modo observación.</b> El gate calcula y registra en la bitácora lo que haría con cada mensaje (proceso, urgencia, nivel), pero el bot sigue funcionando como hoy. Revisa la Bandeja y la Bitácora unos días y, cuando estés conforme, enciende el interruptor <b>Aplicar controles</b> (arriba a la derecha).</div><button class="bk-btn sm pri" style="margin-left:auto;flex-shrink:0" onclick="bkActivo_()">Aplicar controles</button></div>`
     : cfg.master.on === false ? `<div class="bk-obs err">⛔ <div><b>Bot apagado.</b> Todo mensaje recibe: «${esc(cfg.master.msg)}»</div></div>` : '';
   const kpi = (n, t) => `<div class="bk-kpi"><b>${n}</b><span>${t}</span></div>`;
   const kpis = `<div class="bk-kpis">${kpi(contadores.automaticos, 'Procesos en Automático')}${kpi(contadores.prioritarias, 'Conversaciones P1/P2 abiertas')}${kpi(contadores.supervision, 'Pendientes de supervisión')}${kpi(contadores.alertas, 'Alertas sin resolver')}${kpi(contadores.disyuntores, 'Disyuntores activos')}</div>`;
