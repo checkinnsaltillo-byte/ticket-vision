@@ -11637,6 +11637,22 @@ async function _abnBandejaCargar() {
   return _abn.p;
 }
 setTimeout(() => { _abnBandejaCargar().catch(e => console.warn("[airbnb] bandeja:", e.message)); setInterval(() => _abnBandejaCargar().catch(() => {}), 5 * 60_000); }, 20_000);
+// Revisión rápida (cada minuto) solo de las conversaciones urgentes: huéspedes hospedados ahora o que llegan en los próximos 2 días.
+// El resto sigue en la vuelta completa de 5 min. Así el bot ve esos mensajes en 1–2 min sin saturar a Lodgify.
+let _abnUrgCorriendo = false;
+async function _abnRevisarUrgentes() {
+  if (_abnUrgCorriendo || _abn.p || !_abn.band || !Array.isArray(_abn.band.hilos)) return; _abnUrgCorriendo = true;
+  try {
+    const hoy = _mxHoy(), lim = new Date(Date.parse(hoy + "T12:00:00Z") + 2 * 86400e3).toISOString().slice(0, 10);
+    const L = _abn.band.hilos.filter(h => h.thread && String(h.salida || "").slice(0, 10) >= hoy && String(h.llegada || "").slice(0, 10) <= lim);
+    for (let i = 0; i < L.length; i += 4) await Promise.all(L.slice(i, i + 4).map(async hb => {
+      try { const h = await _abnHilo(hb.bid, hb.thread), u = h.mensajes[h.mensajes.length - 1] || null; hb.n = h.mensajes.length;
+        if (u) hb.ult = { de: u.de, texto: u.texto.slice(0, 160), fecha: u.fecha }; } catch (_) {}
+    }));
+    _abn.band.hilos.sort((a, b) => String((b.ult || {}).fecha || "").localeCompare(String((a.ult || {}).fecha || "")));
+  } finally { _abnUrgCorriendo = false; }
+}
+setTimeout(() => setInterval(() => _abnRevisarUrgentes().catch(e => console.warn("[airbnb] urgentes:", e.message)), 60_000), 45_000);
 app.get("/airbnb/bandeja", async (req, res) => {
   res.set("Cache-Control", "no-store");
   try {
