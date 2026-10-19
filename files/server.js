@@ -10863,6 +10863,7 @@ app.post("/aseo/tarea", async (req, res) => {
         adjuntos: (Array.isArray(b.adjuntos) ? b.adjuntos : []).filter(a => a && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.k)).slice(0, 20).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80), tam: Number(a.tam) || 0 })),
         reserva: String(b.reserva || "").replace(/\D/g, "").slice(0, 20),
         plantilla: String(b.plantilla || "").replace(/[^\w-]/g, "").slice(0, 40), // Plantilla (formulario) asignada a la tarea
+        lv: b.lv && typeof b.lv === "object" && b.lv.key ? { id: txt(b.lv.id, 60), hid: String(b.lv.hid || "").replace(/\D/g, "").slice(0, 20), item: txt(b.lv.item, 40), key: txt(b.lv.key, 80), campo: txt(b.lv.campo, 160) } : (prev && prev.lv) || undefined, // hallazgo de levantamiento que la originó
         by: prev ? prev.by : user, at: prev ? prev.at : new Date().toISOString(), editBy: prev ? user : "", editAt: prev ? new Date().toISOString() : "" };
       return d[id];
     });

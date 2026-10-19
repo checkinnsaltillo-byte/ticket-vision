@@ -68720,7 +68720,7 @@ function atFormPintar_() {
   dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">${F.id ? 'Editar tarea' : 'Crea una tarea'}</b><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></div></div>
     <div class="ad-db at-f">
       ${atDeptoSeg_(F.depto, 'atFormDepto_')}
-      ${F._deRt ? '<div class="at-hint">Al guardar, el reporte técnico se convierte en esta tarea y sale de «Reportes técnicos».</div>' : ''}
+      ${F._deRt ? '<div class="at-hint">Al guardar, el reporte técnico se convierte en esta tarea y sale de «Reportes técnicos».</div>' : ''}${F.lv ? `<div class="at-hint">📝 Ligada al hallazgo «${pcEsc(F.lv.campo || '')}» del levantamiento.</div>` : ''}
       <label class="at-l">Tipo de servicio</label>
       ${axSrvSeg_(F.srv || 'general', 'atFormSrv_')}
       <label class="at-l">Alojamiento</label>
@@ -74687,7 +74687,7 @@ function tdTablaUrg_(O, vac) {
     .then(j => { (j.items || []).forEach(x => { U.docs[x.k] = x.doc || {}; }); faltan.forEach(k => { if (U.docs[k] === undefined) U.docs[k] = {}; }); U.pend = null; tdRender_(); }).catch(() => { U.pend = null; }); }
   items.sort((a, b) => b.u.n - a.u.n || String(b.at).localeCompare(String(a.at)));
   TAR_STATE._urgItems = items;
-  const tareaDe = x => TAR_STATE.list.find(t => t.Origen === 'Levantamiento' && t.LV_Key === x.key && t.LV_Item === x.it.id && t.Estado !== 'Cancelada');
+  const tareaDe = x => Object.values(ASEO.tareas || {}).find(t => t && t.lv && t.lv.key === x.key && t.lv.item === x.it.id);
   const rows = items.map((x, i) => { const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid }, fotos = (x.rr.fotos || []).filter(f => !f.subiendo).length, T = tareaDe(x);
     return { onclick: `tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')`, cells: [
       `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || x.hid).replace(/^Calle\s+/i, ''))}</small></span>`,
@@ -74698,7 +74698,7 @@ function tdTablaUrg_(O, vac) {
       `<span class="tb-mu" style="white-space:normal;font-size:11.5px">${esc(String(x.rr.nota || '').slice(0, 140))}</span>`,
       fotos ? `<button type="button" class="tb-foto" title="Ver ${fotos === 1 ? 'la foto' : fotos + ' fotos'}" onclick="event.stopPropagation();tdUrgFotos_(${i})"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${fotos > 1 ? `<i>${fotos}</i>` : ''}</button>` : '<span class="tb-mu">—</span>',
       ckTx_(`📝 ${x.r.Nombre || x.p.titulo}`),
-      T ? `<button type="button" class="tb-ed" style="margin-left:0;color:#15803d;border-color:#bbf7d0" onclick="event.stopPropagation();tarOpenPanel('${esc(T.ID)}')" title="Abrir la tarea creada">✓ Tarea</button>` : `<button type="button" class="tb-ed" style="margin-left:0" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`,
+      T ? `<button type="button" class="tb-ed" style="margin-left:0;color:#15803d;border-color:#bbf7d0" onclick="event.stopPropagation();atAbrir_('${esc(T.id)}','${esc(T.fecha || '')}')" title="Abrir la tarea creada">✓ Tarea</button>` : `<button type="button" class="tb-ed" style="margin-left:0" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`,
     ] }; });
   const vacio = faltan.length ? '⏳ Cargando las respuestas de los levantamientos…' : 'Sin hallazgos en los levantamientos del periodo (Malo, No, calificación baja, fuera de rango o con nota).';
   if (!document.getElementById('tdurg-css')) { const st = document.createElement('style'); st.id = 'tdurg-css'; st.textContent = `.ad-tbl .tb-foto{all:unset;position:relative;cursor:pointer;width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:#4f46e5}.ad-tbl .tb-foto:hover{background:#eef2ff}
@@ -74710,11 +74710,12 @@ window.tdUrgFotos_ = function (i) { const x = (TAR_STATE._urgItems || [])[i]; if
 // «＋ Crear tarea» desde un hallazgo: abre «Nueva tarea» ya llenada y ligada al registro del levantamiento (Origen/LV_*).
 window.tdCrearTareaLv_ = function (i) {
   const x = (TAR_STATE._urgItems || [])[i]; if (!x) return;
-  tarOpenPanel(null); const P = TAR_STATE.panel; if (!P) return; const d = P.d, a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid };
-  const campo = x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t, cod = a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid);
-  const C = tarClasif_(), cl = Object.keys(C || {}).find(k => /manten/i.test(k)) || Object.keys(C || {})[0] || '';
-  Object.assign(d, { Nombre: `${campo} · ${cod}`, Clasificacion: cl, Subclasificacion: '', Prioridad: x.u.n >= 4 ? 'Crítico' : x.u.n >= 3 ? 'Alto' : 'Medio', Naturaleza: 'Único', Fecha_limite: 'No',
-    Comentarios: `Detectado en el levantamiento «${x.r.Nombre || x.p.titulo}» · ${cod} ${String(a.nombre || '').replace(/^Calle\s+/i, '')}\n${x.s.titulo && x.it.texto ? x.s.titulo + ' › ' : ''}${campo}: ${tdRespTxt_(x.it, x.rr)}${x.rr.nota ? `\nNota: ${x.rr.nota}` : ''}`,
-    Origen: 'Levantamiento', LV_ID: x.r.ID, LV_HouseId: String(x.hid), LV_Item: x.it.id, LV_Key: x.key, LV_Campo: `${x.s.titulo && x.it.texto ? x.s.titulo + ' › ' : ''}${campo}` });
-  d._prog = tarEmptyProg_('Único'); tarPanelRender_();
+  // Abre el formulario de Operaciones › Tareas (tarea manual por alojamiento) ya llenado y ligado al hallazgo (tarea.lv).
+  const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid };
+  const campo = x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t, cod = a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid), campoFull = `${x.s.titulo && x.it.texto ? x.s.titulo + ' › ' : ''}${campo}`;
+  atForm_(null, String(x.hid), typeof aseoDiaNuevo_ === 'function' ? aseoDiaNuevo_() : tarIso_(tarToday_()));
+  Object.assign(ASEO._tf, { depto: 'mantenimiento', srv: 'general', prioridad: x.u.n >= 4 ? 'critica' : x.u.n >= 3 ? 'alta' : 'media', titulo: `${campo} · ${cod}`,
+    desc: `Detectado en el levantamiento «${x.r.Nombre || x.p.titulo}» · ${cod} ${String(a.nombre || '').replace(/^Calle\s+/i, '')}\n${campoFull}: ${tdRespTxt_(x.it, x.rr)}${x.rr.nota ? `\nNota: ${x.rr.nota}` : ''}`,
+    lv: { id: x.r.ID, hid: String(x.hid), item: x.it.id, key: x.key, campo: campoFull } });
+  atFormPintar_();
 };
