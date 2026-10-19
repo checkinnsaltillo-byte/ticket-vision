@@ -73451,7 +73451,7 @@ function bkResumen_() {
       ${c.ult ? `<div style="font-size:12.5px;margin-top:4px">«${esc(c.ult)}»</div>` : ''}
       <div class="bk-why">${c.observacion ? 'Habría hecho: ' : ''}<b>${esc(BK_ACC[c.accion] || c.accion || '')}</b> · ${esc(c.motivo || '')} · ${bkHace_(c.at)} · Responsable: ${esc(c.asignado || 'bot')}</div>
       ${sen ? `<div class="bk-why">Por qué: ${sen}</div>` : ''}</div>
-      <div class="bk-row" style="justify-content:flex-end">${bkAbrirChatBtn_(c.conv)}<button class="bk-btn sm" onclick="bkPrioridad_('${esc(c.conv)}','${c.prioridad || 'P4'}')">Prioridad</button></div></div>`; }).join('')
+      <div class="bk-row" style="justify-content:flex-end">${bkAbrirChatBtn_(c.conv)}${bkPrioSel_(c.conv, c.prioridad || 'P4')}</div></div>`; }).join('')
     : '<div class="bk-mut" style="font-size:12.5px;padding:8px 0">Aún no hay conversaciones evaluadas por el gate en las últimas 72 h.</div>';
   return bkPmHtml_() + `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><h3>🔔 Alertas y escalamientos</h3><button class="bk-btn sm" onclick="bkCargar_()">↻ Actualizar</button></div><div style="margin-top:8px">${alH}</div></div>
     <div class="bk-card"><div class="bk-row" style="justify-content:space-between;margin-bottom:6px"><h3>📥 Conversaciones por urgencia (IPO)</h3>
@@ -74223,3 +74223,12 @@ function bkEntrAbrir_(bid) { try { switchModule('bot-chats'); setTimeout(() => {
 async function bkSimResCargar_() { BK._simResCarg = true;
   try { const r = await fetch(`${BACKEND}/bot/control/simular/reservas`, { cache: 'no-store' }).then(r => r.json()); BK.simRes = r.ok ? r.items : []; } catch (_) { BK.simRes = []; }
   BK._simResCarg = false; if (BK.tab === 'pruebas') bkRender_(); }
+
+// Prioridad editable en un clic: muestra la actual y se cambia desde la misma lista (queda en la bitácora como cambio manual).
+function bkPrioSel_(conv, p) { const x = BK_PRIO[p] || BK_PRIO.P4;
+  return `<select title="Prioridad: cámbiala aquí mismo" onchange="bkPrioSet_('${esc(conv)}',this.value,this)" style="border:1.5px solid ${x[2]};background:${x[3]};color:${x[2]};font-weight:800;font-size:12px;border-radius:999px;padding:5px 8px;cursor:pointer">${['P1', 'P2', 'P3', 'P4'].map(k => `<option value="${k}" ${k === p ? 'selected' : ''}>${BK_PRIO[k][4]} ${BK_PRIO[k][0]}</option>`).join('')}</select>`; }
+async function bkPrioSet_(conv, np, el) {
+  if (el) el.disabled = true;
+  try { const r = await fetch(`${BACKEND}/bot/control/prioridad`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conv, prioridad: np, motivo: 'Cambio manual desde la Bandeja', usuario: bkUsr_() }) }).then(r => r.json());
+    if (!r.ok) throw new Error(r.error); const c = (BK.bandeja || []).find(x => x.conv === conv); if (c) { c.prioridad = np; c.manual = true; } bkToast_(`✓ Prioridad ${np}`); bkRender_(); }
+  catch (e) { alert('No se pudo: ' + (e.message || e)); if (el) el.disabled = false; } }
