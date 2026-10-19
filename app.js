@@ -74412,3 +74412,44 @@ window._bkaGuardar_ = async function () {
     const s = document.getElementById('bka-save'); if (s) { s.textContent = '✓ Guardado'; s.style.background = '#16a34a'; } setTimeout(() => document.getElementById('bka-ov')?.remove(), 900); }
   catch (e) { alert('No se pudo guardar: ' + (e.message || e)); _bkaPintar_(); }
 };
+
+// ═══ 🎚️ Modo general: un solo interruptor para poner TODOS los chats (WhatsApp y Airbnb con bot) en Automático, Supervisado o Manual ═══
+const BOTC_MG = { '': ['Por chat', 'Cada conversación usa su propio modo', '#6b7280', '#f3f4f6', '💬'], bot: ['Automático', 'El bot responde y envía solo', '#15803d', '#dcfce7', '🤖'],
+  supervised: ['Supervisado', 'El bot deja borrador; tú apruebas', '#b45309', '#fef3c7', '👀'], human: ['Manual', 'El bot no responde (solo emergencias)', '#b91c1c', '#fee2e2', '🙋'] };
+window.__botcMG = '';
+async function _botcMgCargar_() { try { const d = await bkCtlDatos_(); window.__botcMG = d.cfg.modoGeneral || ''; } catch (_) {} _botcMgBarra_(); return window.__botcMG; }
+function _botcMgBarra_() {
+  const sb = document.getElementById('botc-sidebar'); if (!sb) return; let b = document.getElementById('botc-mg-bar'); const k = window.__botcMG;
+  if (!k) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('div'); b.id = 'botc-mg-bar'; sb.insertBefore(b, sb.firstChild); }
+  const [t, , c, bg, ic] = BOTC_MG[k];
+  b.style.cssText = `position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:8px 12px;background:${bg};color:${c};font-size:12.5px;font-weight:700;border-bottom:1px solid #e5e7eb;cursor:pointer`;
+  b.onclick = () => botcOpenModoGeneral_(); b.innerHTML = `${ic} Modo general: ${t} · todos los chats<span style="margin-left:auto;font-weight:600;text-decoration:underline">Cambiar</span>`;
+}
+window.botcOpenModoGeneral_ = async function () {
+  document.getElementById('bkm-ov')?.remove();
+  const ov = document.createElement('div'); ov.id = 'bkm-ov'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = '<div id="bkm-box" style="background:#fff;border-radius:16px;width:min(460px,100%);max-height:90vh;overflow:auto;padding:18px;color:#111827">⏳ Cargando…</div>'; document.body.appendChild(ov);
+  await _botcMgCargar_(); _botcMgPintar_();
+};
+function _botcMgPintar_() {
+  const box = document.getElementById('bkm-box'); if (!box) return; const cur = window.__botcMG;
+  box.innerHTML = `<div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1"><div style="font-size:16px;font-weight:800">🎚️ Modo general</div><div style="font-size:12.5px;color:#6b7280;margin-top:3px">Pon <b>todos</b> los chats en el mismo modo con un clic. Mientras esté activo, manda sobre el modo de cada chat; al regresar a «Por chat», cada uno vuelve al suyo.</div></div>
+      <button type="button" onclick="document.getElementById('bkm-ov').remove()" style="all:unset;cursor:pointer;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:14px">✕</button></div>
+    <div style="display:grid;gap:8px;margin-top:14px">${Object.entries(BOTC_MG).map(([k, [t, sub, c, bg, ic]]) => { const on = cur === k;
+      return `<div onclick="_botcMgSet_('${k}')" style="display:flex;align-items:center;gap:12px;padding:11px 12px;border:1.5px solid ${on ? c : '#e5e7eb'};border-radius:12px;cursor:pointer;background:${on ? bg : '#fff'}">
+        <span style="font-size:20px">${ic}</span><span style="flex:1;line-height:1.25"><b style="font-size:13.5px;color:${on ? c : '#111827'}">${t}</b><br><span style="font-size:11.5px;color:#6b7280">${sub}</span></span>
+        <span style="width:18px;height:18px;border-radius:50%;border:1.5px solid ${on ? c : '#9ca3af'};display:inline-flex;align-items:center;justify-content:center">${on ? `<span style="width:10px;height:10px;border-radius:50%;background:${c}"></span>` : ''}</span></div>`; }).join('')}</div>
+    <div style="font-size:11.5px;color:#6b7280;margin-top:12px">El horario y los procesos del Control del bot siguen aplicando: en Automático, un proceso en Supervisado o una franja en «SUP» aún dejan borrador. En Airbnb aplica a las conversaciones con el bot activado.</div>`;
+}
+window._botcMgSet_ = async function (k) {
+  if (k === window.__botcMG) return;
+  if (k === 'bot' && !confirm('¿Poner TODOS los chats en Automático? El bot enviará respuestas sin revisión (respetando horario y procesos).')) return;
+  if (k === 'human' && !confirm('¿Poner TODOS los chats en Manual? El bot dejará de responder (solo atenderá emergencias).')) return;
+  const prev = window.__botcMG; window.__botcMG = k; _botcMgPintar_();
+  try { await bkCtlGuardar_('modoGeneral', k); _botcMgBarra_(); } catch (e) { window.__botcMG = prev; _botcMgPintar_(); alert('No se pudo guardar: ' + (e.message || e)); }
+};
+setInterval(() => { const m = document.getElementById('module-bot-chats'); if (m && !m.classList.contains('hidden')) _botcMgCargar_(); }, 60000);
+setTimeout(() => { const m = document.getElementById('module-bot-chats'); if (m && !m.classList.contains('hidden')) _botcMgCargar_(); }, 3000);
+setTimeout(() => { const m = document.getElementById('module-bot-chats'); if (m && window.MutationObserver) new MutationObserver(() => { if (!m.classList.contains('hidden')) _botcMgCargar_(); }).observe(m, { attributes: true, attributeFilter: ['class'] }); }, 0);

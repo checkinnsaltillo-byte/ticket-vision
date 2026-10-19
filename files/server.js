@@ -4066,7 +4066,8 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       _botFindActiveBooking(phone10),
     ]);
     console.info(`[bot-in] ${phone10}: fetches paralelos en ${Date.now()-t0}ms`);
-    const state = ctxResp.state || { control: "bot" };
+    const state = Object.assign({ control: "bot" }, ctxResp.state || {});
+    { const _mg = await _bcModoGeneral(); if (_mg) state.control = _mg; } // modo general de todos los chats (Chats bot › 🎚️) manda sobre el de cada chat
     console.info(`[bot-in] ${phone10}: state.control="${state.control}" msgs=${(ctxResp.messages||[]).length}`);
     // 🎛️ Gate del Control del bot: decide en código antes de llamar al modelo (en observación solo registra).
     const _bk = (ctx && ctx.booking) || null;
@@ -11852,8 +11853,9 @@ app.all("/airbnb/bot-tick", async (req, res) => {
   try {
     const modos = await _rhdGetJson(_ABN_MODOS_OBJ);
     for (const [bid, m] of Object.entries(modos)) {
-      if (!["bot", "supervised"].includes(m.control)) continue;
-      try { out[bid] = await _abnBotResponder(bid, m); } catch (e) { out[bid] = "error: " + e.message; console.warn("[airbnb-bot]", bid, e.message); }
+      const _mg = await _bcModoGeneral(), mm = _mg ? Object.assign({}, m, { control: _mg }) : m; // modo general manda sobre el de cada conversación
+      if (!["bot", "supervised"].includes(mm.control)) continue;
+      try { out[bid] = await _abnBotResponder(bid, mm); } catch (e) { out[bid] = "error: " + e.message; console.warn("[airbnb-bot]", bid, e.message); }
     }
     if (Object.values(out).some(v => /contestado|borrador|escalado/.test(v))) console.log("[airbnb-bot]", JSON.stringify(out));
     res.json({ ok: true, out });
@@ -13275,6 +13277,8 @@ function _bcMerge(d, s) {
   return s === undefined ? d : s;
 }
 let _bcCfgC = null, _bcCfgTs = 0;
+// Modo general (Chats bot › 🎚️ Modo general): "" = cada chat con su modo; "bot" | "supervised" | "human" = todos así.
+async function _bcModoGeneral() { const c = await _bcCfg().catch(() => ({})); return ["bot", "supervised", "human"].includes(c.modoGeneral) ? c.modoGeneral : ""; }
 async function _bcCfg(fresh) {
   if (!fresh && _bcCfgC && Date.now() - _bcCfgTs < 8000) return _bcCfgC; // RNF-01: los cambios aplican en ≤ 10 s
   try { const s = await _rhdGetJson(_BC.OBJ); _bcCfgC = _bcMerge(_bcDefaults(), s || {}); _bcCfgC.activo = true; _bcCfgTs = Date.now(); }
@@ -13638,13 +13642,14 @@ app.post("/bot/control", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const { seccion, data, usuario } = req.body || {}, por = String(usuario || "").slice(0, 60);
-    const OK = ["guardia", "sinRespuesta", "flujos", "eliminar_proceso", "restaurar_proceso", "plantillaProceso", "proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
+    const OK = ["guardia", "sinRespuesta", "flujos", "eliminar_proceso", "restaurar_proceso", "plantillaProceso", "proactivos", "activo", "modoGeneral", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
     if (!OK.includes(seccion)) return res.status(400).json({ ok: false, error: "Sección inválida" });
     let antes, despues, sincronizarAloj = null;
     await _bcMut(_BC.OBJ, d => {
       const cur = _bcMerge(_bcDefaults(), d);
       const set = (k, v) => { antes = cur[k]; d[k] = v; despues = v; };
       if (seccion === "activo") set("activo", !!data);
+      else if (seccion === "modoGeneral") set("modoGeneral", ["bot", "supervised", "human"].includes(data) ? data : "");
       else if (seccion === "master") set("master", { on: !!(data && data.on), msg: String((data && data.msg) || cur.master.msg) });
       else if (seccion === "fueraOficina") set("fueraOficina", !!data);
       else if (seccion === "respaldoGeneral" || seccion === "respaldoCanal") set(seccion, String(data || ""));
