@@ -74317,3 +74317,32 @@ window.bkCtl4Tog_ = async function (k) {
     bkCtl4Pintar_(); }
   catch (e) { alert('No se pudo: ' + (e.message || e)); }
 };
+
+// ═══ 🧪 Modo prueba — ventana con el mismo diseño del módulo (reemplaza la anterior) ═══
+window.botcOpenTestModal_ = async function () {
+  document.getElementById('bkt-ov')?.remove();
+  const ov = document.createElement('div'); ov.id = 'bkt-ov'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = '<div id="bkt-box" style="background:#fff;border-radius:16px;width:min(480px,100%);max-height:90vh;overflow:auto;padding:18px;color:#111827">⏳ Cargando…</div>'; document.body.appendChild(ov);
+  const cur = await _botcTestFetch_(); window.__botcTestPhones = cur.phones || []; window.__botcTestOn = !!cur.enabled;
+  _botcTestPintar_();
+};
+function _botcTestPintar_() {
+  const box = document.getElementById('bkt-box'); if (!box) return;
+  const on = !!window.__botcTestOn, L = window.__botcTestPhones || [];
+  box.innerHTML = `<div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1"><div style="font-size:16px;font-weight:800">🧪 Modo prueba</div><div style="font-size:12.5px;color:#6b7280;margin-top:3px">Con el modo prueba encendido, el bot <b>solo</b> responde a los números de la lista. Los demás mensajes se guardan pero no se contestan.</div></div>
+      <button type="button" onclick="document.getElementById('bkt-ov').remove()" style="all:unset;cursor:pointer;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:14px">✕</button></div>
+    <div onclick="_botcTestTog_()" style="margin-top:14px;display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid ${on ? '#f59e0b' : '#e5e7eb'};border-radius:12px;cursor:pointer;background:${on ? '#fffbeb' : '#fff'}">
+      <span style="width:38px;height:22px;border-radius:999px;background:${on ? '#f59e0b' : '#d1d5db'};position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:${on ? 19 : 3}px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s"></span></span>
+      <span style="line-height:1.25"><b style="font-size:13.5px">${on ? 'Modo prueba encendido' : 'Modo prueba apagado'}</b><br><span style="font-size:11.5px;color:#6b7280">${on ? `El bot solo atiende a ${L.length} número${L.length === 1 ? '' : 's'}` : 'El bot atiende a todos los huéspedes'}</span></span></div>
+    <div style="font-size:11px;font-weight:800;color:#5b21b6;letter-spacing:.04em;margin:16px 0 8px">📱 NÚMEROS AUTORIZADOS</div>
+    <div style="display:grid;gap:6px">${L.length ? L.map((t, i) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #e5e7eb;border-radius:10px;font-size:13px"><span style="font-family:ui-monospace,monospace">${_botcEsc(t)}</span><button type="button" onclick="_botcTestQuitar_(${i})" style="all:unset;cursor:pointer;padding:4px 9px;border-radius:8px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700">✕</button></div>`).join('') : '<div style="font-size:12.5px;color:#b45309;padding:8px 10px;border:1px dashed #fcd34d;border-radius:10px;background:#fffbeb">Sin números: con el modo prueba encendido el bot no respondería a nadie.</div>'}</div>
+    <div style="display:flex;gap:6px;margin-top:10px"><input id="bkt-new" placeholder="Teléfono (10 dígitos)" inputmode="tel" onkeydown="if(event.key==='Enter')_botcTestAgregar_()" style="flex:1;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:9px 10px;font:inherit;font-size:14px">
+      <button type="button" onclick="_botcTestAgregar_()" style="all:unset;cursor:pointer;padding:9px 14px;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700">＋ Agregar</button></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px"><button type="button" onclick="document.getElementById('bkt-ov').remove()" style="all:unset;cursor:pointer;padding:8px 16px;border-radius:10px;background:#f3f4f6;font-size:13px;font-weight:700">Cerrar</button></div>`;
+}
+async function _botcTestGuardarYPintar_() { const cfg = { enabled: !!window.__botcTestOn, phones: window.__botcTestPhones || [] }; _botcTestPintar_(); await _botcTestSave_(cfg); try { _botcTestApplyUi_(cfg); } catch (_) {} }
+window._botcTestTog_ = function () { window.__botcTestOn = !window.__botcTestOn; _botcTestGuardarYPintar_(); };
+window._botcTestQuitar_ = function (i) { const L = (window.__botcTestPhones || []).slice(); L.splice(i, 1); window.__botcTestPhones = L; _botcTestGuardarYPintar_(); };
+window._botcTestAgregar_ = function () { const d = String((document.getElementById('bkt-new') || {}).value || '').replace(/\D/g, ''); if (d.length < 10) return alert('Escribe un teléfono de 10 dígitos');
+  const t = d.length === 10 ? '+52' + d : '+' + d; const L = (window.__botcTestPhones || []).slice(); if (L.includes(t)) return alert('Ese número ya está'); L.push(t); window.__botcTestPhones = L; _botcTestGuardarYPintar_(); };
