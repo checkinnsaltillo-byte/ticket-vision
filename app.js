@@ -68877,6 +68877,7 @@ window.atGuardar_ = async function () {
       ASEO.rt = (ASEO.rt || []).filter(x => String(x.ID) !== String(F._deRt));
     }
     ASEO._tf = null; ASEO.calSig = ''; aseoRender_();
+    if (F.lv && typeof tdRender_ === 'function' && document.getElementById('module-tareas') && !document.getElementById('module-tareas').classList.contains('hidden')) tdRender_(); // la fila de «Por urgencia» pasa a «Ver tarea»
     atAbrir_(r.tarea.id, r.tarea.fecha);
   } catch (e) { alert('No se pudo guardar la tarea: ' + (e.message || e)); if (btn) { btn.disabled = false; btn.textContent = F.id ? 'Guardar cambios' : 'Crear tarea'; } }
 };
@@ -74677,6 +74678,7 @@ function tdRespTxt_(it, rr) { const v = rr.v; if (it.tipo === 'condicion') retur
 function tdTablaUrg_(O, vac) {
   const U = ASEO.pl.urg = ASEO.pl.urg || { docs: {} };
   if (!ASEO.pl.cargado) { plCargar_().then(() => tdRender_()); return '<div class="pc-mv-empty">⏳ Cargando plantillas…</div>'; }
+  if (!ASEO.tareas && !U.cargandoT) { U.cargandoT = true; aseoRefresh_().catch(() => {}).then(() => { U.cargandoT = false; tdRender_(); }); } // tareas manuales (para marcar las ya ligadas)
   const items = [], faltan = [];
   O.filter(x => tdEsIG_(x.r)).forEach(x => { const r = x.r, P = tdFinMes_(x.iso), p = r.Plantilla ? ASEO.pl.lista[r.Plantilla] : null; if (!p) return;
     tdIGAlojs_(r).forEach(hid => {
@@ -74707,10 +74709,11 @@ function tdTablaUrg_(O, vac) {
       `<span class="tb-mu" style="white-space:normal;font-size:11.5px">${esc(String(x.rr.nota || '').slice(0, 140))}</span>`,
       fotos ? `<button type="button" class="tb-foto" title="Ver ${fotos === 1 ? 'la foto' : fotos + ' fotos'}" onclick="event.stopPropagation();tdUrgFotos_(${i})"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${fotos > 1 ? `<i>${fotos}</i>` : ''}</button>` : '<span class="tb-mu">—</span>',
       ckTx_(`📝 ${x.r.Nombre || x.p.titulo}`),
-      T ? `<button type="button" class="tb-ed" style="margin-left:0;color:#15803d;border-color:#bbf7d0" onclick="event.stopPropagation();atAbrir_('${esc(T.id)}','${esc(T.fecha || '')}')" title="Abrir la tarea creada">✓ Tarea</button>` : `<button type="button" class="tb-ed" style="margin-left:0" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`,
+      T ? `<a href="#" class="tb-lnk" onclick="event.preventDefault();event.stopPropagation();atAbrir_('${esc(T.id)}','${esc(T.fecha || '')}')" title="${esc(T.titulo || 'Abrir la tarea')}">🔗 Ver tarea</a>` : `<button type="button" class="tb-ed" style="margin-left:0" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`,
     ] }; });
   const vacio = faltan.length ? '⏳ Cargando las respuestas de los levantamientos…' : 'Sin hallazgos en los levantamientos del periodo (Malo, No, calificación baja, fuera de rango o con nota).';
-  if (!document.getElementById('tdurg-css')) { const st = document.createElement('style'); st.id = 'tdurg-css'; st.textContent = `.ad-tbl .tb-foto{all:unset;position:relative;cursor:pointer;width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:#4f46e5}.ad-tbl .tb-foto:hover{background:#eef2ff}
+  if (!document.getElementById('tdurg-css')) { const st = document.createElement('style'); st.id = 'tdurg-css'; st.textContent = `.ad-tbl .tb-lnk{color:#15803d;font-weight:700;font-size:12px;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}.ad-tbl .tb-lnk:hover{color:#166534}
+    .ad-tbl .tb-foto{all:unset;position:relative;cursor:pointer;width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:#4f46e5}.ad-tbl .tb-foto:hover{background:#eef2ff}
     .ad-tbl .tb-foto i{position:absolute;top:-2px;right:-4px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:#4f46e5;color:#fff;font:700 9px/14px Inter,system-ui,sans-serif;font-style:normal;text-align:center}`; document.head.appendChild(st); }
   return ckTablaHtml_([['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantado', '110px'], ['Urgencia', '100px'], ['Campo', 'minmax(220px,1.5fr)'], ['Respuesta', '110px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '60px'], ['Levantamiento', '160px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
 }
