@@ -74226,7 +74226,7 @@ async function bkSimResCargar_() { BK._simResCarg = true;
 
 // Prioridad editable en un clic: muestra la actual y se cambia desde la misma lista (queda en la bitácora como cambio manual).
 function bkPrioSel_(conv, p) { const x = BK_PRIO[p] || BK_PRIO.P4;
-  return `<select title="Prioridad: cámbiala aquí mismo" onchange="bkPrioSet_('${esc(conv)}',this.value,this)" style="border:1.5px solid ${x[2]};background:${x[3]};color:${x[2]};font-weight:800;font-size:12px;border-radius:999px;padding:5px 8px;cursor:pointer">${['P1', 'P2', 'P3', 'P4'].map(k => `<option value="${k}" ${k === p ? 'selected' : ''}>${BK_PRIO[k][4]} ${BK_PRIO[k][0]}</option>`).join('')}</select>`; }
+  return `<select title="Prioridad: cámbiala aquí mismo" onchange="bkPrioSet_('${esc(conv)}',this.value,this)" style="border:1.5px solid ${x[2]};background:${x[3]};color:${x[2]};font-weight:800;font-size:12px;border-radius:999px;padding:5px 8px;cursor:pointer;width:auto;flex:0 0 auto;max-width:140px">${['P1', 'P2', 'P3', 'P4'].map(k => `<option value="${k}" ${k === p ? 'selected' : ''}>${BK_PRIO[k][4]} ${BK_PRIO[k][0]}</option>`).join('')}</select>`; }
 async function bkPrioSet_(conv, np, el) {
   if (el) el.disabled = true;
   try { const r = await fetch(`${BACKEND}/bot/control/prioridad`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conv, prioridad: np, motivo: 'Cambio manual desde la Bandeja', usuario: bkUsr_() }) }).then(r => r.json());
