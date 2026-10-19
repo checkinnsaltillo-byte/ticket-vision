@@ -11524,6 +11524,20 @@ Object.assign(_AS_DESPUES, {
   },
   migrate_phone: async (data, r) => { if (r && r.ok !== false) await _pfMigrarTel(_pfSafe(data.old_phone).trim(), _pfSafe(data.new_phone).trim()); },
 });
+// Proxy hacia checkin-app (Facturapi y Breezeway): los celulares con datos (Telcel/AT&T) bloquean *.run.app; api.check-inn.mx sí pasa.
+const _CKAPP = "https://checkin-app-957627511957.us-central1.run.app";
+async function _ckappProxy(req, res) {
+  try {
+    const url = _CKAPP + req.originalUrl, h = { "Accept": req.headers.accept || "*/*" };
+    if (req.headers.authorization) h.Authorization = req.headers.authorization;
+    const conBody = !["GET", "HEAD"].includes(req.method), body = conBody ? (typeof req.body === "string" ? req.body : JSON.stringify(req.body || {})) : undefined;
+    if (conBody) h["Content-Type"] = req.headers["content-type"] || "application/json";
+    const r = await fetch(url, { method: req.method, headers: h, body, redirect: "follow" });
+    const buf = Buffer.from(await r.arrayBuffer()); res.status(r.status); const ct = r.headers.get("content-type"); if (ct) res.type(ct); res.send(buf);
+  } catch (e) { res.status(502).json({ ok: false, error: "checkin-app: " + e.message }); }
+}
+app.all(["/facturapi", "/facturapi/*"], _ckappProxy);
+app.all("/api/breezeway/*", _ckappProxy);
 app.all("/as", express.text({ type: "*/*", limit: "32mb" }), async (req, res) => {
   try {
     const post = req.method === "POST";

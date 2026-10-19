@@ -13417,7 +13417,7 @@ function huBuildRecordCard(r) {
 // ─── Integración Facturapi ──────────────────────────────────────────────────
 // URL base del facturapi del check-in (Cloud Run us-central1).
 // Se puede sobreescribir guardando otra en localStorage.HU_FACTURAPI_URL.
-const HU_FACTURAPI_DEFAULT = 'https://checkin-app-957627511957.us-central1.run.app/facturapi';
+const HU_FACTURAPI_DEFAULT = 'https://api.check-inn.mx/facturapi'; // vía proxy (los celulares con datos bloquean *.run.app)
 function huGetFacturapiUrl() {
   try {
     const override = localStorage.getItem('HU_FACTURAPI_URL');
@@ -13479,7 +13479,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 1500); // pequeño delay para no competir con el fetch inicial de conversations/tickets
 });
 
-const HU_CHECKIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec';
+const HU_CHECKIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec'; // solo como parámetro para el servidor
+const HU_CHECKIN_WEBAPP_PROXY = 'https://api.check-inn.mx/as'; // las llamadas del navegador van por el proxy (datos celulares bloquean script.google.com a veces)
 
 function huNormalizeCurrencyFromSheet(v) {
   const raw = String(v||'').trim().toUpperCase();
@@ -13669,7 +13670,7 @@ window.huespedesReemitirTicket = async function(recordId) {
   // 1) Archivar el folio actual en el sheet
   try {
     if (typeof showLoading === 'function') showLoading('Archivando folio actual…', 'Sheets');
-    const res = await fetch(HU_CHECKIN_WEBAPP_URL, {
+    const res = await fetch(HU_CHECKIN_WEBAPP_PROXY, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
@@ -20272,7 +20273,7 @@ function rdBuildRightbarHtml(b, huesped) {
 
 // URL base del backend de Breezeway. Comparte host con Facturapi (mismo
 // Cloud Run de checkin-app). Override via localStorage.BZW_API_BASE.
-const BZW_API_DEFAULT = 'https://checkin-app-957627511957.us-central1.run.app';
+const BZW_API_DEFAULT = 'https://api.check-inn.mx'; // vía proxy (/api/breezeway/*)
 function bzwApiBase() {
   try {
     const o = localStorage.getItem('BZW_API_BASE');
@@ -22359,7 +22360,7 @@ window.bzwSubscribeAll = async function() {
 // acciones de Carga de datos bancarios (bn_cuentas_bancarias_list,
 // bn_bancos_dedupe_index, bn_bancos_insert_bulk).
 // Se llama directamente con text/plain para evitar preflight CORS.
-const BN_TV_APPSSCRIPT_URL = HU_CHECKIN_WEBAPP_URL;
+const BN_TV_APPSSCRIPT_URL = HU_CHECKIN_WEBAPP_PROXY;
 
 const BN_UPLOAD_STATE = {
   cuentasMap: null,      // [{cuenta_nombre, cuenta_numero, cuenta_tag, cuenta_tag_original, cuenta_tipo}]
@@ -40849,7 +40850,7 @@ function inqBuildFacturapiUrl_(pago, perfil) {
   if (typeof huGetFacturapiOrg === 'function') p.set('org', huGetFacturapiOrg());
   // Inquilinos: siempre facturación desde el sistema (admin).
   p.set('medio_emision', 'facturación sistema');
-  const base = (typeof huGetFacturapiUrl === 'function') ? huGetFacturapiUrl() : 'https://checkin-app-957627511957.us-central1.run.app/facturapi';
+  const base = (typeof huGetFacturapiUrl === 'function') ? huGetFacturapiUrl() : 'https://api.check-inn.mx/facturapi';
   return `${base}?${p.toString()}`;
 }
 
