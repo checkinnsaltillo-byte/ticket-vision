@@ -51117,6 +51117,8 @@ function _botcWaCss_() {
   if (document.getElementById('botc-wa-css')) return;
   const st = document.createElement('style'); st.id = 'botc-wa-css';
   st.textContent = `
+  /* Celular: iOS hace zoom al enfocar campos con letra < 16 px y descuadra la pantalla. Con 16 px no hay zoom (el pellizco sigue funcionando). */
+  @media (hover:none) and (pointer:coarse){#module-bot-chats input,#module-bot-chats textarea,#module-bot-chats select,#bklib-ov input,#bklib-ov textarea{font-size:16px!important}}
   #module-bot-chats{--wa-g:#00a884;--wa-bg:#efeae2;--wa-bar:#f0f2f5;--wa-ln:#e9edef;--wa-tx:#111b21;--wa-mu:#667781;font-family:"Segoe UI",Helvetica,Arial,Inter,system-ui,sans-serif}
   #module-bot-chats > div:first-child{padding:8px 14px!important;background:var(--wa-bar)!important;border-bottom:1px solid var(--wa-ln)!important}
   #module-bot-chats > div:first-child button{height:32px!important;border-radius:8px!important}
@@ -73356,6 +73358,7 @@ function bkCss_() {
 .bk-ex{background:#f8fafc;border:1px solid var(--bk-line);border-radius:12px;padding:10px 12px;font-size:12.5px;white-space:pre-wrap;line-height:1.5}
 .bk-ev{display:grid;grid-template-columns:62px auto minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px;align-items:start}
 .bk-mut{color:var(--bk-mut)}
+@media (hover:none) and (pointer:coarse){#module-bot-control input,#module-bot-control textarea,#module-bot-control select,#bk-fl-ov input,#bk-fl-ov textarea,#bk-fl-ov select{font-size:16px!important}}
 @media (max-width:760px){#module-bot-control{padding:12px 12px 80px}.bk-hero{grid-template-columns:1fr}.bk-hero .bk-ctl{justify-content:flex-start!important}.bk-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.bk-pr{grid-template-columns:1fr}.bk-grid2{grid-template-columns:1fr}.bk-cv{grid-template-columns:auto minmax(0,1fr)}.bk-cv>.bk-row:last-child{grid-column:1/-1}}
 `;
   document.head.appendChild(st);
