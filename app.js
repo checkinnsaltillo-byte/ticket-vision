@@ -59161,37 +59161,6 @@ function tdIGUltFecha_(r, hid, P) {
   const d = at ? new Date(at) : null; return d && !isNaN(d) ? d.toLocaleDateString('en-CA', { timeZone: 'America/Monterrey' }) : '';
 }
 // Tabla de Levantamientos: un separador desplegable por levantamiento (plantilla) y un renglón por alojamiento.
-function tdTablaLv_(O, vac) {
-  const C = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(); // abiertos (por omisión cerrados)
-  const grupos = O.filter(x => tdEsIG_(x.r)).sort((a, b) => String(a.r.Nombre || '').localeCompare(String(b.r.Nombre || ''), 'es')).map(x => {
-    const r = x.r, P = tdFinMes_(x.iso), fl = tdLimite_(r, x.iso), av = tdAvisoLim_(r, x.iso).replace(/<[^>]+>/g, '').replace('⏳ ', ''), pr = tdIGAvance_(r, x.iso), k = r.ID + '|' + P;
-    const rows = tdIGAlojs_(r).map(hid => {
-      const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, e = tdIGEstH_(r, hid, P), ult = tdIGUltFecha_(r, hid, tdIGPerDe_(r, hid, P)), R = tdIGRetraso_(r, hid);
-      const pi = r.Plantilla ? (plIdxGet_(tdIGKey_(r, hid, P)) || {}).p : null, pc = e === 'Resuelto' && pi == null ? 100 : pi || 0;
-      return { a, e, pc, lim: R.lim, ret: R.ret, cls: e === 'Cancelado' ? 'gh' : '', onclick: `tdAbrirHijoEn_('${esc(r.ID)}','${esc(hid)}','${P}')`, cells: [
-        tdIGRetHtml_(R),
-        `<span class="tb-ch" style="--c:${AT_DEPTO.inspeccion.c}">📝 Levantamiento</span>`, `<span title="Prioridad según los días de retraso">${prio4Html_(R.prio)}</span>`, ckEst_(TD_EST[e] || '#94a3b8', e === 'Resuelto' ? 'Terminado' : e),
-        `<span class="tb-pc"><span class="tk"><i style="width:${pc}%;background:${TD_EST[e] || '#94a3b8'}"></i></span><em>${pc}%</em></span>`,
-        `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</small></span>`,
-        ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')),
-        `<span class="tb-fe ${R.ret >= 0 ? 'tarde' : ''}" title="Dinámica: ${R.ult ? 'último levantamiento' : '«Desde»'} (${esc(aseoDiaTxt_(R.base))}) + el periodo de la programación">${esc(tarFmtFecha_(R.lim))}</span>`,
-        R.ult ? `<span title="Siguiente fecha límite: ${esc(aseoDiaTxt_(R.lim))}">${ckTx_(`${aseoDiaTxt_(R.ult)} · hace ${R.dias} día${R.dias === 1 ? '' : 's'}`)}</span>` : `<span class="tb-mu" title="Se cuenta desde «Desde» de Fecha(s); siguiente fecha límite: ${esc(aseoDiaTxt_(R.lim))}">Sin previo · desde ${esc(aseoDiaTxt_(R.base))}</span>`,
-        ] };
-    }).sort((a, b) => b.ret - a.ret || String(a.a.corto || a.a.nombre).localeCompare(String(b.a.corto || b.a.nombre), 'es', { numeric: true })); // más críticos arriba
-    // Avance del levantamiento = promedio de sus alojamientos (con un decimal para que se note desde el primer avance) + conteo por estado.
-    const prs = rows.map(x => x.pc), prom = prs.length ? prs.reduce((a, b) => a + b, 0) / prs.length : 0, prT = prom > 0 && prom < 10 ? prom.toFixed(1).replace(/\.0$/, '') : String(Math.round(prom));
-    const cnt = e => rows.filter(x => x.e === e).length, nP = cnt('En proceso'), nR = cnt('Resuelto'), limP = rows.map(x => x.lim).sort()[0] || fl;
-    return { t: `📝 ${esc(r.Nombre || 'Levantamiento')}`, rows, cerrado: !C.has(k), toggle: `tdTbTg_('${esc(k)}')`, extra: `<button type="button" class="tb-ed" title="Editar el levantamiento" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button>`,
-      prog: `<span class="tb-gp"><span class="tk"><i style="width:${prom}%"></i></span><em>${prT}%</em>${nP ? `<span style="color:${TD_EST['En proceso']}">● ${nP} en proceso</span>` : ''}${nR ? `<span style="color:${TD_EST['Resuelto']}">● ${nR} terminado${nR === 1 ? '' : 's'}</span>` : ''}${limP ? `<span title="Fecha límite más próxima de sus alojamientos">⏳ ${esc(tarFmtFecha_(limP))}</span>` : ''}</span>` };
-  });
-  if (!document.getElementById('tdlv-css')) { const st = document.createElement('style'); st.id = 'tdlv-css'; st.textContent = `.ad-tbl.tb-pg{max-height:calc(100vh - 240px);overflow:auto}.ad-tbl.tb-pg .tb-gw{position:relative}
-    .ad-tbl.tb-pg .tb-grp{position:sticky;top:0;z-index:3;height:38px;box-sizing:border-box;padding-top:0;padding-bottom:0}.ad-tbl.tb-pg .tb-row.h{top:38px;z-index:2}
-    .ad-tbl .tb-grp.tg{cursor:pointer;user-select:none}.ad-tbl .tb-ed{all:unset;cursor:pointer;margin-left:10px;padding:3px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;color:#334155;font-size:11.5px;font-weight:600}.ad-tbl .tb-ed:hover{background:#eef2ff;border-color:#c7d2fe;color:#4338ca}.ad-tbl .tb-grp.tg:hover{background:#eef2ff}.ad-tbl .tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
-    .ad-tbl .tb-gp{display:inline-flex;align-items:center;gap:6px;margin-left:12px;font-size:11px;font-weight:600;color:#6b7280}.ad-tbl .tb-gp .tk,.ad-tbl .tb-pc .tk{width:70px;height:5px;border-radius:3px;background:rgba(15,23,42,.1);overflow:hidden;display:inline-block}
-    .ad-tbl .tb-gp .tk i{display:block;height:100%;background:#7c3aed}.ad-tbl .tb-pc{display:inline-flex;align-items:center;gap:6px}.ad-tbl .tb-pc .tk i{display:block;height:100%}.ad-tbl .tb-pc em,.ad-tbl .tb-gp em{font-style:normal;font-size:11px;font-weight:700;color:#334155}
-    .ad-tbl .tb-ret{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}`; document.head.appendChild(st); }
-  return ckTablaHtml_([['Aviso', '170px'], ['Tipo', '140px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Avance', '120px'], ['Alojamiento', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '110px'], ['Último levantamiento', '170px']], grupos.sort((a, b) => Math.max(...b.rows.map(x => x.ret), -1e9) - Math.max(...a.rows.map(x => x.ret), -1e9)), vac, { headPorGrupo: true });
-}
 window.tdTbTg_ = function (k) { const C = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(); if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 window.tdAbrirHijoEn_ = function (pid, hid, P) { if (tdFinMes_(tdDia_()) !== tdFinMes_(P)) TAR_STATE.dia = P; tdAbrirHijo_(pid, hid); };
 window.tdAbrirHijo_ = function (pid, hid, per) { // per: llave de un periodo/ciclo anterior (Historial)
@@ -74675,11 +74644,12 @@ function tdUrgDe_(it, rr) {
 }
 function tdRespTxt_(it, rr) { const v = rr.v; if (it.tipo === 'condicion') return v === 'na' ? 'N/A' : (PL_COND.find(x => x[0] === v) || [])[1] || '—'; if (it.tipo === 'sino') return v === 'si' ? 'Sí' : v === 'no' ? 'No' : '—';
   if (it.tipo === 'calif') return v ? `${v} de ${Number(it.escala) || 5}` : '—'; if (it.tipo === 'lista') return (it.sub || []).length ? `${Object.values(v || {}).filter(Boolean).length}/${it.sub.length}` : v === true ? 'Hecho' : '—'; return v == null || v === '' ? '—' : String(v).slice(0, 60); }
-function tdTablaUrg_(O, vac) {
+// Hallazgos de todos los levantamientos del periodo: {items, faltan (llaves aún no cargadas), hids (por alojamiento: doc elegido)}.
+function tdUrgDatos_(O) {
   const U = ASEO.pl.urg = ASEO.pl.urg || { docs: {} };
-  if (!ASEO.pl.cargado) { plCargar_().then(() => tdRender_()); return '<div class="pc-mv-empty">⏳ Cargando plantillas…</div>'; }
+  if (!ASEO.pl.cargado) { plCargar_().then(() => tdRender_()); return null; }
   if (!ASEO.tareas && !U.cargandoT) { U.cargandoT = true; aseoRefresh_().catch(() => {}).then(() => { U.cargandoT = false; tdRender_(); }); } // tareas manuales (para marcar las ya ligadas)
-  const items = [], faltan = [];
+  const items = [], faltan = [], hids = {};
   O.filter(x => tdEsIG_(x.r)).forEach(x => { const r = x.r, P = tdFinMes_(x.iso), p = r.Plantilla ? ASEO.pl.lista[r.Plantilla] : null; if (!p) return;
     tdIGAlojs_(r).forEach(hid => {
       // Un alojamiento terminado arranca un ciclo nuevo (llave con sufijo) que aún no tiene respuestas: se toma el ciclo más reciente
@@ -74692,11 +74662,17 @@ function tdTablaUrg_(O, vac) {
       let mejor = null, mejorKey = '';
       for (const key of cands) { const doc = docDe(key); if (doc === undefined) { faltan.push(key); continue; }
         if (doc && doc.resp && Object.keys(doc.resp).length && (!mejor || String(doc.at || '') > String(mejor.at || ''))) { mejor = doc; mejorKey = key; } }
-      if (!mejor) return; const key = mejorKey, resp = mejor.resp, per = (key.match(/:(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/) || [])[1] || P;
+      if (!mejor) { hids[r.ID + '|' + hid] = null; return; } const key = mejorKey, resp = mejor.resp, per = (key.match(/:(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/) || [])[1] || P;
+      hids[r.ID + '|' + hid] = { key, per, at: mejor.at || '', n: Object.keys(resp).length };
       (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (u) items.push({ r, hid, P, per, key, p, s, it, rr, u, at: mejor.at || '' }); })); }); });
   if (faltan.length && !U.pend) { U.pend = fetch(`${BACKEND}/aseo/plantilla-resp/lote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ks: faltan }) }).then(r => r.json())
     .then(j => { (j.items || []).forEach(x => { U.docs[x.k] = x.doc || {}; }); faltan.forEach(k => { if (U.docs[k] === undefined) U.docs[k] = {}; }); U.pend = null; tdRender_(); }).catch(() => { U.pend = null; }); }
   items.sort((a, b) => b.u.n - a.u.n || String(b.at).localeCompare(String(a.at)));
+  return { items, faltan, hids };
+}
+function tdTablaUrg_(O, vac) {
+  const D = tdUrgDatos_(O); if (!D) return '<div class="pc-mv-empty">⏳ Cargando plantillas…</div>';
+  const fh = TAR_STATE.urgHid || '', items = fh ? D.items.filter(x => String(x.hid) === fh) : D.items, faltan = D.faltan;
   TAR_STATE._urgItems = items;
   const tareaDe = x => Object.values(ASEO.tareas || {}).find(t => t && t.lv && t.lv.key === x.key && t.lv.item === x.it.id);
   const rows = items.map((x, i) => { const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid }, fotos = (x.rr.fotos || []).filter(f => !f.subiendo).length, T = tareaDe(x);
@@ -74712,11 +74688,66 @@ function tdTablaUrg_(O, vac) {
       T ? `<a href="#" class="tb-lnk" onclick="event.preventDefault();event.stopPropagation();atAbrir_('${esc(T.id)}','${esc(T.fecha || '')}')" title="${esc(T.titulo || 'Abrir la tarea')}">🔗 Ver tarea</a>` : `<button type="button" class="tb-ed" style="margin-left:0" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`,
     ] }; });
   const vacio = faltan.length ? '⏳ Cargando las respuestas de los levantamientos…' : 'Sin hallazgos en los levantamientos del periodo (Malo, No, calificación baja, fuera de rango o con nota).';
-  if (!document.getElementById('tdurg-css')) { const st = document.createElement('style'); st.id = 'tdurg-css'; st.textContent = `.ad-tbl .tb-lnk{color:#15803d;font-weight:700;font-size:12px;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}.ad-tbl .tb-lnk:hover{color:#166534}
+  const fa = fh && typeof atAloj_ === 'function' ? atAloj_(fh) : null, chip = fh ? `<div style="display:inline-flex;align-items:center;gap:8px;margin:0 0 10px 10px;padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:999px;font-size:12px;font-weight:700;color:#3730a3">🏠 ${esc(fa && fa.corto ? String(fa.corto).toUpperCase() : fh)}${fa && fa.nombre ? ` · ${esc(String(fa.nombre).replace(/^Calle\s+/i, ''))}` : ''}<button type="button" onclick="TAR_STATE.urgHid='';tdRender_()" style="all:unset;cursor:pointer;font-weight:900">✕</button></div>` : '';
+  if (!document.getElementById('tdurg-css')) { const st = document.createElement('style'); st.id = 'tdurg-css'; st.textContent = `.tb-ed{all:unset;cursor:pointer;padding:3px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;color:#334155;font-size:11.5px;font-weight:600;white-space:nowrap}.tb-ed:hover{background:#eef2ff;border-color:#c7d2fe;color:#4338ca}.tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
+    .ad-tbl .tb-ret{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ad-tbl .tb-pg{max-height:calc(100vh - 240px);overflow:auto}
+    .ad-tbl .tb-lnk{color:#15803d;font-weight:700;font-size:12px;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}.ad-tbl .tb-lnk:hover{color:#166534}
     .ad-tbl .tb-foto{all:unset;position:relative;cursor:pointer;width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:#4f46e5}.ad-tbl .tb-foto:hover{background:#eef2ff}
     .ad-tbl .tb-foto i{position:absolute;top:-2px;right:-4px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:#4f46e5;color:#fff;font:700 9px/14px Inter,system-ui,sans-serif;font-style:normal;text-align:center}`; document.head.appendChild(st); }
-  return ckTablaHtml_([['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantado', '110px'], ['Urgencia', '100px'], ['Campo', 'minmax(220px,1.5fr)'], ['Respuesta', '110px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '60px'], ['Levantamiento', '160px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
+  return chip + ckTablaHtml_([['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantado', '110px'], ['Urgencia', '100px'], ['Campo', 'minmax(220px,1.5fr)'], ['Respuesta', '110px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '60px'], ['Levantamiento', '160px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
 }
+// ═══ Dashboard de riesgos («Por tipo»): levantamiento › edificio › alojamiento con el conteo de alertas (no barras de avance) ═══
+function tdEdifDe_(hid) { const E = typeof alojEdif_ === 'function' ? alojEdif_(hid) : null; if (E) return { k: E.k, nom: E.nom }; const a = typeof atAloj_ === 'function' ? atAloj_(hid) : null, c = String((a && a.corto) || '').toUpperCase(), m = c.match(/^([A-Z]+)\d/); return m ? { k: m[1], nom: m[1] } : { k: 'OTROS', nom: 'Otros' }; }
+function tdRiesgoDe_(c) { return c.crit ? ['Alto', '#dc2626', '#fee2e2'] : c.warn ? ['Medio', '#ea580c', '#ffedd5'] : c.info ? ['Bajo', '#2563eb', '#dbeafe'] : c.doc ? ['Sin alertas', '#15803d', '#dcfce7'] : ['Sin levantar', '#6b7280', '#f3f4f6']; }
+function tdBarra_(c, h) { const t = c.crit + c.warn + c.info; if (!t) return `<span class="rk-bar"><i style="width:100%;background:${c.doc ? '#bbf7d0' : '#e5e7eb'}"></i></span>`;
+  return `<span class="rk-bar">${c.crit ? `<i style="width:${100 * c.crit / t}%;background:#dc2626" title="${c.crit} críticas"></i>` : ''}${c.warn ? `<i style="width:${100 * c.warn / t}%;background:#f97316" title="${c.warn} con atención"></i>` : ''}${c.info ? `<i style="width:${100 * c.info / t}%;background:#60a5fa" title="${c.info} con nota"></i>` : ''}</span>`; }
+function tdCnt_(c, hid) { const b = (n, cls, t) => `<button type="button" class="rk-n ${cls} ${n ? '' : 'z'}" title="${t}" onclick="event.stopPropagation();tdUrgIr_('${esc(hid || '')}')">${n}</button>`;
+  return `<span class="rk-cnts">${b(c.crit, 'c', 'Malo / No (críticas)')}${b(c.warn, 'w', 'Regular / fuera de rango / calificación baja')}${b(c.info, 'i', 'Solo con nota')}</span>`; }
+window.tdUrgIr_ = function (hid) { TAR_STATE.urgHid = hid || ''; TAR_STATE.tbModo = 'urg'; tdRender_(); };
+function tdTablaLv_(O, vac) {
+  const D = tdUrgDatos_(O); if (!D) return '<div class="pc-mv-empty">⏳ Cargando plantillas…</div>';
+  const Cab = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(), Eab = TAR_STATE.tbEd = TAR_STATE.tbEd || new Set();
+  const nuevo = () => ({ crit: 0, warn: 0, info: 0, doc: 0, alojs: 0, conAl: 0 });
+  const suma = (a, b) => { a.crit += b.crit; a.warn += b.warn; a.info += b.info; a.doc += b.doc; a.alojs += b.alojs; a.conAl += b.conAl; };
+  const porHid = {}; D.items.forEach(x => { const k = x.r.ID + '|' + x.hid, c = porHid[k] = porHid[k] || nuevo(); if (x.u.n >= 3) c.crit++; else if (x.u.n === 2) c.warn++; else c.info++; });
+  const TOT = nuevo(), grupos = O.filter(x => tdEsIG_(x.r)).map(x => {
+    const r = x.r, P = tdFinMes_(x.iso), kG = r.ID + '|' + P, G = nuevo(), eds = {};
+    tdIGAlojs_(r).forEach(hid => { const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, e = tdEdifDe_(hid), info = D.hids[r.ID + '|' + hid];
+      if (a && a.corto && !/\d/.test(String(a.corto)) && /^ED\.?\s/i.test(String(a.nombre || ''))) return; // el registro del edificio mismo no es un alojamiento
+      const c = Object.assign(nuevo(), porHid[r.ID + '|' + hid] || {}); c.doc = info ? 1 : 0; c.alojs = 1; c.conAl = c.crit || c.warn ? 1 : 0;
+      const est = info && info.per && info.per !== tdIGPerDe_(r, hid, P) ? tdIGEstH_(r, hid, info.per, true) : tdIGEstH_(r, hid, P); // estado del ciclo al que pertenecen las respuestas
+      (eds[e.k] = eds[e.k] || { k: e.k, nom: e.nom, c: nuevo(), rows: [] }).rows.push({ hid, a, c, est, info }); suma(eds[e.k].c, c); });
+    Object.values(eds).forEach(ed => suma(G, ed.c)); suma(TOT, G);
+    const ord = (A, B) => B.c.crit - A.c.crit || B.c.warn - A.c.warn || B.c.info - A.c.info;
+    const edsL = Object.values(eds).sort((A, B) => ord(A, B) || A.nom.localeCompare(B.nom, 'es'));
+    const [rt, rc, rb] = tdRiesgoDe_(G), ab = Cab.has(kG);
+    const edHtml = ed => { const kE = kG + '|' + ed.k, eab = Eab.has(kE) || (ed.c.crit > 0 && !TAR_STATE.tbEdTocado), [et, ec, eb] = tdRiesgoDe_(ed.c);
+      return `<div class="rk-ed"><div class="rk-edh" onclick="tdTbEdTg_('${esc(kE)}')"><i class="tb-car">${eab ? '▾' : '▸'}</i><b>🏢 ${esc(ed.nom)}</b><span class="rk-mu">${ed.c.alojs} aloj. · ${ed.c.conAl} con alertas${ed.c.alojs - ed.c.doc ? ` · ${ed.c.alojs - ed.c.doc} sin levantar` : ''}</span>${tdBarra_(ed.c)}${tdCnt_(ed.c, '')}<span class="rk-chip" style="color:${ec};background:${eb}">${et}</span></div>
+        ${eab ? `<div class="rk-rows">${ed.rows.sort((A, B) => ord(A, B) || String(A.a.corto || A.a.nombre).localeCompare(String(B.a.corto || B.a.nombre), 'es', { numeric: true })).map(w => { const [t, c, b] = tdRiesgoDe_(w.c), per = w.info ? w.info.per : '';
+          return `<div class="rk-row" onclick="${per && per !== tdIGPerDe_(r, w.hid, P) ? `tdAbrirHijo_('${esc(r.ID)}','${esc(w.hid)}','${esc(per)}')` : `tdAbrirHijoEn_('${esc(r.ID)}','${esc(w.hid)}','${P}')`}">
+            <span class="rk-al"><b>${esc(w.a.corto ? String(w.a.corto).toUpperCase() : '—')}</b><small>${esc(String(w.a.nombre || w.hid).replace(/^Calle\s+/i, ''))}</small></span>
+            <span class="rk-chip" style="color:${c};background:${b}">${t}</span>${tdBarra_(w.c)}${tdCnt_(w.c, w.hid)}
+            <span class="rk-mu">${w.info ? `${esc(aseoDiaTxt_(String(w.info.at).slice(0, 10)))} · ${esc(w.est === 'Resuelto' ? 'Terminado' : w.est)}` : 'Sin levantar'}</span><span class="tb-more">›</span></div>`; }).join('')}</div>` : ''}</div>`; };
+    return { kG, G, html: `<div class="rk-card"><div class="rk-h" onclick="tdTbTg_('${esc(kG)}')"><i class="tb-car">${ab ? '▾' : '▸'}</i><b>📝 ${esc(r.Nombre || 'Levantamiento')}</b><span class="rk-mu">${G.alojs} alojamientos · ${G.conAl} con alertas${G.alojs - G.doc ? ` · ${G.alojs - G.doc} sin levantar` : ''}</span>${tdBarra_(G)}${tdCnt_(G, '')}<span class="rk-chip" style="color:${rc};background:${rb}">${rt}</span><button type="button" class="tb-ed" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button></div>${ab ? edsL.map(edHtml).join('') : ''}</div>` };
+  }).sort((A, B) => B.G.crit - A.G.crit || B.G.warn - A.G.warn);
+  if (!grupos.length) return `<div class="pc-mv-empty">${vac || 'Sin levantamientos en el periodo'}</div>`;
+  if (!document.getElementById('tdrk-css')) { const st = document.createElement('style'); st.id = 'tdrk-css'; st.textContent = `
+    .rk-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 12px}.rk-kpi{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;position:relative;overflow:hidden}
+    .rk-kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c,#e5e7eb)}.rk-kpi b{font-size:22px;font-weight:800;color:#0f172a;line-height:1.1}.rk-kpi span{font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em}
+    .rk-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;margin-bottom:12px;overflow:hidden}.rk-h,.rk-edh,.rk-row{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer}
+    .rk-h{background:#f8fafc;border-bottom:1px solid #eef2f7;font-size:13.5px}.rk-h:hover,.rk-edh:hover,.rk-row:hover{background:#f1f5f9}.rk-h b{font-size:14px}
+    .rk-ed{border-top:1px solid #f1f5f9}.rk-edh{font-size:13px;padding-left:28px}.rk-rows{background:#fcfcfd}.rk-row{padding:8px 14px 8px 52px;font-size:12.5px;border-top:1px solid #f1f5f9}
+    .rk-mu{font-size:11.5px;color:#6b7280;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rk-al{display:flex;flex-direction:column;min-width:170px}.rk-al b{font-size:12px}.rk-al small{color:#334155;font-weight:600;font-size:11px}
+    .rk-bar{display:inline-flex;width:120px;height:8px;border-radius:999px;background:#f1f5f9;overflow:hidden;flex-shrink:0}.rk-bar i{display:block;height:100%}
+    .rk-cnts{display:inline-flex;gap:4px;flex-shrink:0}.rk-n{all:unset;cursor:pointer;min-width:26px;height:24px;padding:0 7px;border-radius:8px;font-size:12px;font-weight:800;text-align:center;line-height:24px;box-sizing:border-box}
+    .rk-n.c{background:#fee2e2;color:#b91c1c}.rk-n.w{background:#ffedd5;color:#c2410c}.rk-n.i{background:#dbeafe;color:#1d4ed8}.rk-n.z{background:#f3f4f6;color:#9ca3af;font-weight:600}.rk-n:hover{filter:brightness(.95)}
+    .rk-chip{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap;flex-shrink:0;min-width:74px;text-align:center}
+    @media (max-width:760px){.rk-bar,.rk-mu{display:none}.rk-row{padding-left:24px}.rk-edh{padding-left:18px}.rk-al{min-width:0;flex:1}}`; document.head.appendChild(st); }
+  const kp = (n, t, c) => `<div class="rk-kpi" style="--c:${c}"><b>${n}</b><span>${t}</span></div>`;
+  const kpis = `<div class="rk-kpis">${kp(TOT.crit, 'Alertas críticas · Malo / No', '#dc2626')}${kp(TOT.warn, 'Requieren atención · Regular', '#f97316')}${kp(TOT.info, 'Solo con nota', '#3b82f6')}${kp(`${TOT.conAl}<small style="font-size:13px;color:#94a3b8"> / ${TOT.alojs}</small>`, 'Alojamientos con alertas', '#0f172a')}${kp(TOT.alojs - TOT.doc, 'Sin levantar', '#9ca3af')}</div>`;
+  return kpis + (D.faltan.length ? '<div class="pc-mv-empty" style="margin-bottom:10px">⏳ Cargando las respuestas de los levantamientos…</div>' : '') + grupos.map(g => g.html).join('');
+}
+window.tdTbEdTg_ = function (k) { const C = TAR_STATE.tbEd = TAR_STATE.tbEd || new Set(); TAR_STATE.tbEdTocado = true; if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 // Fotos de un hallazgo en el visor (con flechas si hay varias), sin abrir la sub-card.
 window.tdUrgFotos_ = function (i) { const x = (TAR_STATE._urgItems || [])[i]; if (!x) return; fotoVer_(((x.rr || {}).fotos || []).filter(f => !f.subiendo).map(f => f.loc || BACKEND + (f.url || f.turl)), 0); };
 // «＋ Crear tarea» desde un hallazgo: abre «Nueva tarea» ya llenada y ligada al registro del levantamiento (Origen/LV_*).
