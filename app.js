@@ -51116,11 +51116,13 @@ function _botcRowHtml_(c, bk, selected) {
 }
 // Prioridad (P1–P4) de cada conversación según la Bandeja de Control del bot. Se refresca cada minuto.
 function _botcPrioDe_(phone) {
-  const M = BOTC_STATE.prio; if (!M || Date.now() - (BOTC_STATE.prioTs || 0) > 60e3) _botcPrioCargar_();
+  const M = BOTC_STATE.prio; if (!M || Date.now() - (BOTC_STATE.prioTs || 0) > 15e3) _botcPrioCargar_();
   const x = M && M[String(phone)]; if (!x || !x.p) return '';
   const C = { P1: ['🔴', '#b91c1c'], P2: ['🟠', '#c2410c'], P3: ['🟡', '#a16207'], P4: ['⚪', '#6b7280'] }[x.p] || ['⚪', '#6b7280'];
   return `<span class="wa-chip" style="--c:${C[1]};font-weight:800" title="Prioridad en la Bandeja de Control del bot · puntaje ${x.ipo}${x.manual ? ' · cambiada a mano' : ''}">${C[0]} ${x.p}</span>`;
 }
+// Consulta ligera cada 15 s mientras Chats bot está visible (la lista completa se recarga cada 60 s).
+if (!window.__botcPrioTimer) window.__botcPrioTimer = setInterval(() => { const m = document.getElementById('module-bot-chats'); if (document.hidden || !m || m.classList.contains('hidden')) return; _botcPrioCargar_(); }, 15000);
 async function _botcPrioCargar_() {
   if (BOTC_STATE._prioCarg) return; BOTC_STATE._prioCarg = true; BOTC_STATE.prioTs = Date.now();
   try { const r = await fetch(`${BACKEND}/bot/control/bandeja?horas=168`, { cache: 'no-store' }).then(r => r.json()); const M = {};
@@ -74247,7 +74249,9 @@ function bkPrioSel_(conv, p) { const x = BK_PRIO[p] || BK_PRIO.P4;
 async function bkPrioSet_(conv, np, el) {
   if (el) el.disabled = true;
   try { const r = await fetch(`${BACKEND}/bot/control/prioridad`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conv, prioridad: np, motivo: 'Cambio manual desde la Bandeja', usuario: bkUsr_() }) }).then(r => r.json());
-    if (!r.ok) throw new Error(r.error); const c = (BK.bandeja || []).find(x => x.conv === conv); if (c) { c.prioridad = np; c.manual = true; } bkToast_(`✓ Prioridad ${np}`); bkRender_(); }
+    if (!r.ok) throw new Error(r.error); const c = (BK.bandeja || []).find(x => x.conv === conv); if (c) { c.prioridad = np; c.manual = true; } bkToast_(`✓ Prioridad ${np}`); bkRender_();
+    // Chats bot: el chip cambia al instante (sin esperar la siguiente consulta)
+    if (typeof BOTC_STATE !== 'undefined') { BOTC_STATE.prio = BOTC_STATE.prio || {}; BOTC_STATE.prio[String(conv)] = Object.assign({}, BOTC_STATE.prio[String(conv)] || { ipo: c ? c.ipo : 0 }, { p: np, manual: true }); if (document.getElementById('botc-sidebar') && typeof _botcRenderSidebar === 'function') _botcRenderSidebar(); } }
   catch (e) { alert('No se pudo: ' + (e.message || e)); if (el) el.disabled = false; } }
 
 // ═══ Sincronía Control del bot ↔ Chats bot: lista de emergencia, responsables y guardia, y los 4 interruptores ═══
