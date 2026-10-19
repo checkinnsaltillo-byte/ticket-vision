@@ -13199,7 +13199,7 @@ function _bcDefaults() {
   const fr = [{ ini: "07:00", fin: "09:00" }, { ini: "09:00", fin: "14:00" }, { ini: "14:00", fin: "21:00" }, { ini: "21:00", fin: "07:00" }];
   const fila = (a, b, c, d) => [a, b, c, d];
   return {
-    activo: false, // false = solo observa y registra (no cambia al bot)
+    activo: true, // siempre aplicando: el modo «solo observa» se retiró (v2051, pedido del usuario)
     master: { on: true, msg: "Hola, en este momento te atenderá una persona de nuestro equipo. Gracias por tu paciencia. 🙏" },
     fueraOficina: false,
     respaldoGeneral: "Por ahora no puedo ayudarte con eso por este medio. Una persona del equipo te contactará en cuanto esté disponible.",
@@ -13277,7 +13277,7 @@ function _bcMerge(d, s) {
 let _bcCfgC = null, _bcCfgTs = 0;
 async function _bcCfg(fresh) {
   if (!fresh && _bcCfgC && Date.now() - _bcCfgTs < 8000) return _bcCfgC; // RNF-01: los cambios aplican en ≤ 10 s
-  try { const s = await _rhdGetJson(_BC.OBJ); _bcCfgC = _bcMerge(_bcDefaults(), s || {}); _bcCfgTs = Date.now(); }
+  try { const s = await _rhdGetJson(_BC.OBJ); _bcCfgC = _bcMerge(_bcDefaults(), s || {}); _bcCfgC.activo = true; _bcCfgTs = Date.now(); }
   catch (e) { console.warn("[bot-control] cfg:", e.message); if (!_bcCfgC) { const d = _bcDefaults(); d._error = true; return d; } } // RNF-03: sin lectura → la última copia o defaults (observación)
   return _bcCfgC;
 }

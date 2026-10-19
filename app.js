@@ -73433,7 +73433,6 @@ function bkRender_() {
     <div class="bk-now"><span>Ahora: <b>${esc(ahora.nivelTxt)}</b> · ${esc(ahora.franja)}</span><span>Guardia: <b>${esc(ahora.titular || 'sin asignar')}</b>${ahora.respaldo ? ` · respaldo ${esc(ahora.respaldo)}` : ''}</span>${ahora.noDisp ? '<span>⛔ Equipo no disponible</span>' : ''}</div></div>
     <div class="bk-ctl" style="align-content:flex-start;justify-content:flex-end">
       ${bkSw_(cfg.master.on !== false, cfg.master.on !== false ? 'Bot encendido' : 'Bot apagado', 'bkMaster_()')}
-      ${bkSw_(!!cfg.activo, cfg.activo ? 'Controles aplicando' : 'Aplicar controles', 'bkActivo_()')}
       ${bkSw_(cfg.horario.disponible !== false, cfg.horario.disponible !== false ? 'Disponible' : 'No disponible', 'bkDisp_()')}
       ${bkSw_(!!cfg.fueraOficina, 'Fuera de oficina', 'bkFuera_()', 'warn')}
     </div></div>`;
@@ -74313,7 +74312,6 @@ async function bkCtl4Pintar_() {
     const sw = (on, txt, sub, fn, warn) => `<div onclick="${fn}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:10px;cursor:pointer;background:#fff"><span style="width:34px;height:20px;border-radius:999px;background:${on ? (warn ? '#f59e0b' : '#22c55e') : '#d1d5db'};position:relative;flex-shrink:0"><span style="position:absolute;top:2px;left:${on ? 16 : 2}px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s"></span></span><span style="line-height:1.25"><b style="font-size:12.5px">${txt}</b><br><span style="font-size:11px;color:#6b7280">${sub}</span></span></div>`;
     box.innerHTML = `<div style="font-size:11px;font-weight:800;color:#5b21b6;letter-spacing:.04em;margin-bottom:6px">🎛️ INTERRUPTORES</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
       ${sw(c.master.on !== false, c.master.on !== false ? 'Bot encendido' : 'Bot apagado', 'Apagado: solo el aviso fijo', `bkCtl4Tog_('master')`)}
-      ${sw(!!c.activo, c.activo ? 'Controles aplicando' : 'Aplicar controles', c.activo ? 'Procesos, horarios y urgencia activos' : 'Hoy solo observa', `bkCtl4Tog_('activo')`)}
       ${sw(c.horario.disponible !== false, c.horario.disponible !== false ? 'Disponible' : 'No disponible', 'Equipo atendiendo', `bkCtl4Tog_('disponible')`)}
       ${sw(!!c.fueraOficina, 'Fuera de oficina', 'Supervisado pasa a Derivar', `bkCtl4Tog_('fueraOficina')`, true)}</div>`; }
   catch (e) { box.innerHTML = `<div style="font-size:11px;color:#b91c1c">No se pudieron cargar los interruptores: ${_botcEsc(e.message || e)}</div>`; }
