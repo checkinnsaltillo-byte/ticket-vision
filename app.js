@@ -51418,16 +51418,21 @@ function _botcAjustarAlto_() {
     // justo donde empieza el teclado (offsetTop + alto visible), si no queda un hueco enorme bajo la barra de texto.
     const vv = window.visualViewport, vh = vv ? vv.height : window.innerHeight, off = vv ? Math.max(0, vv.offsetTop) : 0;
     const top = Math.max(0, Math.round(mod.getBoundingClientRect().top));
-    mod.style.height = mod.style.maxHeight = Math.max(240, Math.round(vh + off - top)) + 'px';
+    const h = Math.max(240, Math.round(vh + off - top));
+    if (Math.abs((parseFloat(mod.style.height) || 0) - h) > 2) mod.style.height = mod.style.maxHeight = h + 'px'; // sin cambios de 1-2 px que hagan temblar
     return;
   }
   const top = Math.max(0, Math.round(mod.getBoundingClientRect().top + window.scrollY));
   mod.style.height = mod.style.maxHeight = `calc(100dvh - ${top}px)`;
 }
 window.addEventListener('resize', () => _botcAjustarAlto_());
-if (window.visualViewport) { window.visualViewport.addEventListener('resize', () => _botcAjustarAlto_()); window.visualViewport.addEventListener('scroll', () => _botcAjustarAlto_()); } // barra del navegador / teclado del celular
-document.addEventListener('focusin', e => { if (e.target && e.target.closest && e.target.closest('#module-bot-chats')) [120, 350, 700].forEach(t => setTimeout(_botcAjustarAlto_, t)); });
-document.addEventListener('focusout', e => { if (e.target && e.target.closest && e.target.closest('#module-bot-chats')) [120, 400].forEach(t => setTimeout(_botcAjustarAlto_, t)); });
+// Teclado del celular: mientras se anima, iOS manda muchos eventos; ajustar en cada uno hacía temblar la barra.
+// Se espera a que la vista deje de moverse (150 ms sin eventos) y se ajusta una sola vez.
+let _botcAltoT_ = 0;
+const _botcAjustarLuego_ = () => { clearTimeout(_botcAltoT_); _botcAltoT_ = setTimeout(_botcAjustarAlto_, 150); };
+if (window.visualViewport) { window.visualViewport.addEventListener('resize', _botcAjustarLuego_); window.visualViewport.addEventListener('scroll', _botcAjustarLuego_); }
+document.addEventListener('focusin', e => { if (e.target && e.target.closest && e.target.closest('#module-bot-chats')) _botcAjustarLuego_(); });
+document.addEventListener('focusout', e => { if (e.target && e.target.closest && e.target.closest('#module-bot-chats')) _botcAjustarLuego_(); });
 // Búsqueda: sin distinguir mayúsculas ni acentos, en todos los datos de la tarjeta y en el texto de las conversaciones (servidor).
 const _botcNorm_ = v => String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 function _botcTextoBusq_(c) {
