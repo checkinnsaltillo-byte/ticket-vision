@@ -56568,7 +56568,7 @@ window.botcOpenTestModal_ = async function() {
   _currentModalOpts = {
     icon: '🧪', title: 'Modo Prueba', subtitle: 'Números en lista blanca para pruebas',
     color: '#f59e0b', kind: 'test',
-    enabledToggleHtml: '<div id="botc-ctl4" style="margin-top:12px"><div style="font-size:11px;color:#64748b">⏳ Cargando interruptores de Control del bot…</div></div>' + toggleHtml,
+    enabledToggleHtml: toggleHtml,
     getPhones: () => window.__botcTestPhones || [],
     onAdd: async (val) => {
       if (!val) return;
@@ -56582,7 +56582,6 @@ window.botcOpenTestModal_ = async function() {
   };
   window.__botcTestPhones = phones;
   _botcOpenPhoneModal_(_currentModalOpts);
-  bkCtl4Pintar_();
 };
 window._botcModalToggleTestEnabled_ = async function(on) {
   const list = window.__botcTestPhones || [];
@@ -74277,14 +74276,16 @@ window.botcOpenGuardia_ = async function () {
   document.getElementById('bkg-ov')?.remove();
   const ov = document.createElement('div'); ov.id = 'bkg-ov'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px';
   ov.onclick = e => { if (e.target === ov) ov.remove(); };
-  ov.innerHTML = '<div style="background:#fff;border-radius:16px;width:min(460px,100%);padding:18px;color:#111827">⏳ Cargando…</div>'; document.body.appendChild(ov);
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;width:min(520px,100%);max-height:90vh;overflow:auto;padding:18px;color:#111827">⏳ Cargando…</div>'; document.body.appendChild(ov);
   try { const d = await bkCtlDatos_(), H = d.cfg.horario || {}, P = d.personas || [];
     const sel = (id, v) => `<select id="${id}" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:9px 10px;font:inherit;font-size:14px;background:#fff"><option value="">— Sin asignar —</option>${P.map(p => `<option ${v === p.n ? 'selected' : ''}>${_botcEsc(p.n)}</option>`).join('')}${v && !P.some(p => p.n === v) ? `<option selected>${_botcEsc(v)}</option>` : ''}</select>`;
-    ov.firstChild.innerHTML = `<div style="font-size:16px;font-weight:800">👥 Responsables y guardia</div><div style="font-size:12.5px;color:#6b7280;margin:4px 0 12px">Reciben por WhatsApp los escalamientos de las alertas (P1 de inmediato; P2/P3 según la cadena). Es el mismo dato de Control del bot › Horarios.</div>
+    ov.firstChild.innerHTML = `<div style="font-size:16px;font-weight:800">🎛️ Mando de control</div><div style="font-size:12.5px;color:#6b7280;margin:4px 0 12px">Los mismos interruptores y responsables de Control del bot.</div>
+      <div id="botc-ctl4" style="margin-bottom:14px"><div style="font-size:11px;color:#64748b">⏳ Cargando interruptores…</div></div>
+      <div style="font-size:11px;font-weight:800;color:#5b21b6;letter-spacing:.04em;margin-bottom:6px">👥 RESPONSABLES Y GUARDIA</div><div style="font-size:12px;color:#6b7280;margin-bottom:8px">Reciben por WhatsApp los escalamientos de las alertas (P1 de inmediato; P2/P3 según la cadena). Mismo dato de Control del bot › Horarios.</div>
       <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px">Responsable de guardia (titular)</label>${sel('bkg-t', H.titular || '')}
       <label style="display:block;font-size:12px;font-weight:700;margin:12px 0 4px">Contacto de respaldo</label>${sel('bkg-r', H.respaldo || '')}
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><button type="button" onclick="document.getElementById('bkg-ov').remove()" style="all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;background:#f3f4f6;font-size:13px;font-weight:700">Cancelar</button>
-        <button type="button" onclick="botcGuardiaGuardar_()" style="all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700">Guardar</button></div>`; }
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><button type="button" onclick="document.getElementById('bkg-ov').remove()" style="all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;background:#f3f4f6;font-size:13px;font-weight:700">Cerrar</button>
+        <button type="button" onclick="botcGuardiaGuardar_()" style="all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700">Guardar responsables</button></div>`; bkCtl4Pintar_(); }
   catch (e) { ov.firstChild.innerHTML = `⚠️ No se pudo cargar: ${_botcEsc(e.message || e)}`; }
 };
 window.botcGuardiaGuardar_ = async function () {
@@ -74296,7 +74297,7 @@ async function bkCtl4Pintar_() {
   const box = document.getElementById('botc-ctl4'); if (!box) return;
   try { const d = await bkCtlDatos_(), c = d.cfg;
     const sw = (on, txt, sub, fn, warn) => `<div onclick="${fn}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:10px;cursor:pointer;background:#fff"><span style="width:34px;height:20px;border-radius:999px;background:${on ? (warn ? '#f59e0b' : '#22c55e') : '#d1d5db'};position:relative;flex-shrink:0"><span style="position:absolute;top:2px;left:${on ? 16 : 2}px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s"></span></span><span style="line-height:1.25"><b style="font-size:12.5px">${txt}</b><br><span style="font-size:11px;color:#6b7280">${sub}</span></span></div>`;
-    box.innerHTML = `<div style="font-size:11px;font-weight:800;color:#5b21b6;letter-spacing:.04em;margin-bottom:6px">🎛️ CONTROL DEL BOT</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+    box.innerHTML = `<div style="font-size:11px;font-weight:800;color:#5b21b6;letter-spacing:.04em;margin-bottom:6px">🎛️ INTERRUPTORES</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
       ${sw(c.master.on !== false, c.master.on !== false ? 'Bot encendido' : 'Bot apagado', 'Apagado: solo el aviso fijo', `bkCtl4Tog_('master')`)}
       ${sw(!!c.activo, c.activo ? 'Controles aplicando' : 'Aplicar controles', c.activo ? 'Procesos, horarios y urgencia activos' : 'Hoy solo observa', `bkCtl4Tog_('activo')`)}
       ${sw(c.horario.disponible !== false, c.horario.disponible !== false ? 'Disponible' : 'No disponible', 'Equipo atendiendo', `bkCtl4Tog_('disponible')`)}
