@@ -74542,3 +74542,46 @@ function bkEntrSup_() {
 async function bkSupBorrar_(id) { if (!confirm('¿Quitar este ejemplo?')) return;
   try { await fetch(`${BACKEND}/bot/control/supervisados/borrar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); } catch (_) {}
   BK.sup = (BK.sup || []).filter(x => x.id !== id); bkRender_(); }
+
+// ═══ 📱 Números de WhatsApp: el principal (pruebas) y los adicionales (p. ej. el del negocio) con módulos por número ═══
+const BOTC_NUM_MOD = { bot: ['🤖 Bot de huéspedes', 'Respuestas automáticas y borradores a huéspedes'], personal: ['👷 Personal', 'Asistencia, cierre de jornada y bot del personal/admin'],
+  programados: ['📨 Mensajes programados', 'Confirmación, bienvenida, recordatorios, despedida'], avisos: ['🔔 Avisos', 'Avisos al administrador y emergencias'] };
+window.botcOpenNumeros_ = async function () {
+  document.getElementById('bkn-ov')?.remove();
+  const ov = document.createElement('div'); ov.id = 'bkn-ov'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = '<div id="bkn-box" style="background:#fff;border-radius:16px;width:min(560px,100%);max-height:90vh;overflow:auto;padding:18px;color:#111827">⏳ Cargando…</div>'; document.body.appendChild(ov);
+  try { const j = await fetch(`${BACKEND}/wa/numeros`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); window.BKN = { principal: j.principal, L: JSON.parse(JSON.stringify(j.numeros || [])), ini: JSON.stringify(j.numeros || []) }; _bknPintar_(); }
+  catch (e) { document.getElementById('bkn-box').innerHTML = `<div style="color:#b91c1c">No se pudo cargar: ${_botcEsc(e.message || e)}</div>`; }
+};
+const _bknTel_ = f => String(f || '').replace(/^whatsapp:/, '');
+function _bknSw_(on, fn, c) { return `<span onclick="${fn}" style="width:38px;height:22px;border-radius:999px;background:${on ? (c || '#16a34a') : '#d1d5db'};position:relative;flex-shrink:0;cursor:pointer;display:inline-block"><span style="position:absolute;top:3px;left:${on ? 19 : 3}px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s"></span></span>`; }
+function _bknPintar_() {
+  const box = document.getElementById('bkn-box'); if (!box || !window.BKN) return; const cambio = JSON.stringify(BKN.L) !== BKN.ini;
+  const fila = (n, i) => `<div style="border:1.5px solid ${n.activo ? '#86efac' : '#e5e7eb'};border-radius:12px;padding:12px;margin-top:10px">
+      <div style="display:flex;align-items:center;gap:10px">${_bknSw_(n.activo, `BKN.L[${i}].activo=!BKN.L[${i}].activo;_bknPintar_()`)}
+        <div style="flex:1;min-width:0"><input value="${_botcEsc(n.nombre || '')}" placeholder="Nombre" oninput="BKN.L[${i}].nombre=this.value" style="border:0;font:inherit;font-weight:800;font-size:14px;width:100%;outline:none;padding:0">
+          <div style="font-size:12px;color:#6b7280;font-family:ui-monospace,monospace">${_botcEsc(_bknTel_(n.from))} · ${n.activo ? '<b style="color:#15803d">Activo</b>' : 'Apagado: los mensajes que lleguen solo se guardan'}</div></div>
+        <button type="button" onclick="if(confirm('¿Quitar este número?')){BKN.L.splice(${i},1);_bknPintar_()}" style="all:unset;cursor:pointer;padding:4px 9px;border-radius:8px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700">✕</button></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px;${n.activo ? '' : 'opacity:.55'}">${Object.entries(BOTC_NUM_MOD).map(([k, [t, sub]]) => { const on = !!(n.modulos || {})[k];
+        return `<div onclick="BKN.L[${i}].modulos=Object.assign({},BKN.L[${i}].modulos);BKN.L[${i}].modulos['${k}']=!BKN.L[${i}].modulos['${k}'];_bknPintar_()" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid ${on ? '#111827' : '#e5e7eb'};border-radius:10px;cursor:pointer">${bkCk18_(on ? 'on' : '')}<span style="line-height:1.2"><b style="font-size:12.5px">${t}</b><br><span style="font-size:11px;color:#6b7280">${sub}</span></span></div>`; }).join('')}</div></div>`;
+  box.innerHTML = `<div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1"><div style="font-size:16px;font-weight:800">📱 Números de WhatsApp</div><div style="font-size:12.5px;color:#6b7280;margin-top:3px">Cada mensaje se contesta desde el número que lo recibió. En los números adicionales, solo funcionan los módulos que enciendas; lo demás queda guardado en el panel para contestar a mano.</div></div>
+      <button type="button" onclick="_bknCerrar_()" style="all:unset;cursor:pointer;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:14px">✕</button></div>
+    <div style="border:1.5px solid #e5e7eb;border-radius:12px;padding:12px;margin-top:14px;background:#f9fafb"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">🧪</span><div style="flex:1"><b style="font-size:14px">Principal · pruebas</b><div style="font-size:12px;color:#6b7280;font-family:ui-monospace,monospace">${_botcEsc(_bknTel_(BKN.principal))} · todos los módulos</div></div></div></div>
+    ${BKN.L.map(fila).join('')}
+    <div style="display:flex;gap:6px;margin-top:12px"><input id="bkn-new" placeholder="Agregar número (+52 10 dígitos)" inputmode="tel" style="flex:1;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:9px 10px;font:inherit;font-size:14px">
+      <button type="button" onclick="_bknAgregar_()" style="all:unset;cursor:pointer;padding:9px 14px;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700">＋ Agregar</button></div>
+    <div style="font-size:11.5px;color:#b45309;margin-top:10px">El número debe estar registrado como remitente de WhatsApp en Twilio y apuntar al mismo webhook antes de activarlo; si no, Twilio rechaza los envíos.</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button type="button" onclick="_bknCerrar_()" style="all:unset;cursor:pointer;padding:9px 16px;border-radius:10px;background:#f3f4f6;font-size:13px;font-weight:700">Cancelar</button>
+      <button type="button" id="bkn-save" onclick="_bknGuardar_()" ${cambio ? '' : 'disabled'} style="all:unset;cursor:${cambio ? 'pointer' : 'default'};padding:9px 16px;border-radius:10px;background:${cambio ? '#111827' : '#d1d5db'};color:#fff;font-size:13px;font-weight:700">Guardar</button></div>`;
+}
+window._bknAgregar_ = function () { const d = String((document.getElementById('bkn-new') || {}).value || '').replace(/\D/g, ''); if (d.length < 10) return alert('Escribe un número de 10 dígitos');
+  const f = 'whatsapp:+' + (d.length === 10 ? '52' + d : d); if (BKN.L.some(n => n.from === f) || f === BKN.principal) return alert('Ese número ya está');
+  BKN.L.push({ from: f, nombre: '', activo: false, modulos: {} }); _bknPintar_(); };
+window._bknCerrar_ = () => { if (window.BKN && JSON.stringify(BKN.L) !== BKN.ini && !confirm('¿Salir sin guardar?')) return; document.getElementById('bkn-ov')?.remove(); };
+window._bknGuardar_ = async function () {
+  if (BKN.L.some(n => n.activo) && !confirm('¿Guardar? Los números activos empezarán a contestar con los módulos encendidos.')) return;
+  try { const j = await fetch(`${BACKEND}/wa/numeros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numeros: BKN.L, usuario: (typeof npYo_ === 'function' ? npYo_() : '') }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error'); BKN.L = j.numeros; BKN.ini = JSON.stringify(j.numeros); _bknPintar_(); (typeof bkToast_ === 'function' ? bkToast_ : alert)('✓ Números guardados'); }
+  catch (e) { alert('No se pudo guardar: ' + (e.message || e)); }
+};

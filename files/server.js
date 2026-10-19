@@ -693,6 +693,60 @@ function _splitForTwilio(text, max) {
 function _twilioLogChat(params, body, j) {
   try { const p10 = String(params.to || "").replace(/\D/g, "").slice(-10); if (p10.length === 10 && body) _botAppendMessage(p10, "assistant", String(body), Object.assign({ sid: j && j.sid, staff: true }, params.logMeta || {})).catch(() => {}); } catch (_) {}
 }
+// ═══ Varios números de WhatsApp (2026-10-19) ═══════════════════════════════════════════════════════════════
+// TWILIO_WA_FROM = número principal (pruebas, EE.UU.): todos los módulos. whatsapp/numeros.json = números adicionales
+// (p. ej. el del negocio en México) con interruptor general y por módulo: bot (respuestas a huéspedes), personal
+// (asistencia y bot del personal/admin), programados (mensajes automáticos a huéspedes), avisos (al personal/admin/emergencias).
+// Se contesta desde el número que recibió el mensaje; las respuestas del panel salen por el último número que usó ese contacto.
+const { AsyncLocalStorage } = require("async_hooks");
+const _WA_ALS = new AsyncLocalStorage();
+const _WA_NUM_OBJ = "whatsapp/numeros.json", _WA_NUMTEL_OBJ = "whatsapp/numero-por-tel.json";
+const _WA_MODULOS = ["bot", "personal", "programados", "avisos"];
+let _waNumC = { d: null, ts: 0 }, _waNumTel = null, _waPersC = { s: null, ts: 0 };
+const _waNorm = v => { const d = String(v || "").replace(/\D/g, ""); return d ? "whatsapp:+" + d : ""; };
+const _waPrincipal = () => String(process.env.TWILIO_WA_FROM || "");
+async function _waNumeros(fresh) {
+  if (!fresh && _waNumC.d && Date.now() - _waNumC.ts < 15e3) return _waNumC.d;
+  const d = await _rhdGetJson(_WA_NUM_OBJ).catch(() => ({}));
+  const L = Array.isArray(d.numeros) ? d.numeros : [{ from: "whatsapp:+528444443922", nombre: "Negocio México", activo: false, modulos: {} }];
+  _waNumC = { d: L, ts: Date.now() }; return L;
+}
+async function _waNumCtx(to) {
+  const t = _waNorm(to); if (!t || t === _waNorm(_waPrincipal())) return { from: _waPrincipal(), principal: true };
+  const n = (await _waNumeros().catch(() => [])).find(x => _waNorm(x.from) === t);
+  return { from: t, principal: false, activo: !!(n && n.activo), modulos: (n && n.modulos) || {}, nombre: (n && n.nombre) || t };
+}
+async function _waNumTelMapa() { if (!_waNumTel) _waNumTel = (await _rhdGetJson(_WA_NUMTEL_OBJ).catch(() => ({}))) || {}; return _waNumTel; }
+async function _waNumTelSet(p10, from) { const M = await _waNumTelMapa(); if ((M[p10] || "") === (from || "")) return; if (from) M[p10] = from; else delete M[p10]; _rhdPut(_WA_NUMTEL_OBJ, JSON.stringify(M), "application/json").catch(() => {}); }
+async function _waEsPersonal(p10) {
+  if (!_waPersC.s || Date.now() - _waPersC.ts > 10 * 60e3) { const S = new Set(), add = v => { const x = _sisCel10(v); if (x) S.add(x); };
+    (await _sisLeer("per").catch(() => ({ rows: [] }))).rows.forEach(r => { add(r.Celular); add(r.Telefono); });
+    (await _sisLeer("su").catch(() => ({ rows: [] }))).rows.forEach(r => add(_sisCol(r, "cel", "celular", "whatsapp")));
+    _waPersC = { s: S, ts: Date.now() }; }
+  return _waPersC.s.has(String(p10));
+}
+// Remitente: con módulo → el número activo que tenga ese módulo (o el principal); sin módulo → el número del mensaje que se está
+// contestando, o el último que usó ese contacto, o el principal.
+async function _waFromPara(to, modulo) {
+  const L = (await _waNumeros().catch(() => [])).filter(n => n.activo);
+  if (modulo) { const n = L.find(x => (x.modulos || {})[modulo]); return n ? _waNorm(n.from) : _waPrincipal(); }
+  const st = _WA_ALS.getStore(); if (st && st.from) return st.from;
+  const p10 = String(to || "").replace(/\D/g, "").slice(-10), f = (await _waNumTelMapa().catch(() => ({})))[p10];
+  return f && L.some(n => _waNorm(n.from) === f) ? f : _waPrincipal();
+}
+app.get("/wa/numeros", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { res.json({ ok: true, principal: _waPrincipal(), modulos: _WA_MODULOS, numeros: await _waNumeros(true) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/wa/numeros", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const L = (Array.isArray((req.body || {}).numeros) ? req.body.numeros : []).map(n => ({ from: _waNorm(n.from), nombre: String(n.nombre || "").slice(0, 60), activo: !!n.activo,
+      modulos: Object.fromEntries(_WA_MODULOS.map(k => [k, !!(n.modulos || {})[k]])) })).filter(n => n.from && n.from !== _waNorm(_waPrincipal()));
+    await _rhdPut(_WA_NUM_OBJ, JSON.stringify({ numeros: L, at: new Date().toISOString(), por: String((req.body || {}).usuario || "").slice(0, 60) }), "application/json");
+    _waNumC = { d: L, ts: Date.now() }; res.json({ ok: true, numeros: L });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 async function _twilioSendMessage(params) {
   // Si el body supera el límite Twilio, dividir y enviar en secuencia.
   // Cada chunk como mensaje WA independiente; en WA_ChatContext registramos
@@ -732,7 +786,7 @@ async function _twilioSendMessage(params) {
   const keySid = process.env.TWILIO_API_KEY_SID;
   const keySec = process.env.TWILIO_API_KEY_SECRET;
   const token  = process.env.TWILIO_AUTH_TOKEN; // fallback si aún no hay API Key
-  const from   = process.env.TWILIO_WA_FROM;
+  const from   = params.from || await _waFromPara(params.to, params.modulo).catch(() => process.env.TWILIO_WA_FROM);
   const user = keySid || sid;
   const pass = keySec || token;
   if (!sid || !user || !pass || !from) {
@@ -3456,7 +3510,7 @@ async function _botNotifyAdmin(text) {
   const to = String(process.env.ADMIN_NOTIFY_PHONE || "").trim();
   if (!to) { console.info("[bot-notify] ADMIN_NOTIFY_PHONE no configurado — solo log:", text); return; }
   try {
-    await _twilioSendMessage({ to: `whatsapp:${to}`, body: text, skipMirror: true, logChat: true, logMeta: { aviso: true } });
+    await _twilioSendMessage({ to: `whatsapp:${to}`, body: text, skipMirror: true, logChat: true, logMeta: { aviso: true }, modulo: "avisos" });
   } catch (e) { console.warn("[bot-notify] falló:", e.message); }
 }
 
@@ -3741,7 +3795,7 @@ async function _botNotifyEmergency(text) {
   const list = (_BOT_EMERGENCY.phones || []).filter(Boolean);
   if (!list.length) { console.info("[bot-emergency] lista vacía — skip"); return; }
   for (const p of list) {
-    try { await _twilioSendMessage({ to: `whatsapp:${p}`, body: text, skipMirror: true, logChat: true, logMeta: { aviso: "emergencia" } }); }
+    try { await _twilioSendMessage({ to: `whatsapp:${p}`, body: text, skipMirror: true, logChat: true, logMeta: { aviso: "emergencia" }, modulo: "avisos" }); }
     catch (e) { console.warn(`[bot-emergency] falló ${p}:`, e.message); }
   }
 }
@@ -3793,7 +3847,17 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // Serializar por teléfono: garantiza que mensajes del mismo huésped se
   // procesen en orden estricto (crítico para que el bot vea el historial
   // completo antes de responder al siguiente turno).
-  await _botLockPhone(phone10, async () => {
+  const _numCtx = await _waNumCtx(b.To).catch(() => ({ from: _waPrincipal(), principal: true }));
+  await _WA_ALS.run(_numCtx, () => _botLockPhone(phone10, async () => {
+  _waNumTelSet(phone10, _numCtx.principal ? "" : _numCtx.from).catch(() => {});
+  // Número adicional (p. ej. el del negocio): solo responde con los módulos encendidos; si no, el mensaje queda en el panel.
+  if (!_numCtx.principal) {
+    const _esP = await _waEsPersonal(phone10).catch(() => false), _mod = _esP ? "personal" : "bot";
+    if (!_numCtx.activo || !_numCtx.modulos[_mod]) {
+      _botAppendMessage(phone10, "user", bodyMsg || (parseInt(String(b.NumMedia || "0"), 10) ? "[archivo adjunto]" : "📍 Ubicación compartida"), { from: fromRaw, numero: _numCtx.from, sin_bot: _mod });
+      console.info(`[bot-in] ${phone10} → ${_numCtx.from}: módulo «${_mod}» apagado en ese número — solo se guarda`); return;
+    }
+  }
   // Multimedia: si Twilio manda audio, lo transcribimos y usamos el
   // texto como si el usuario lo hubiera escrito. Para imagen/video
   // dejamos aviso (aún sin procesar) para no perder el mensaje.
@@ -4245,7 +4309,7 @@ REGLAS ESTRICTAS
     // Error interno: NO cambiar modo. El admin ya eligió su modo — si algo
     // falla, el mensaje del huésped queda en el panel y el admin decide.
   }
-  }); // fin _botLockPhone
+  })); // fin _botLockPhone
 });
 
 /** GET /wa/webhook-inbound — solo para verificación de Twilio (echo simple). */
@@ -10313,7 +10377,7 @@ async function _aseoEnviarPersona(nombre, tel10, body, auto, waTo) {
   const pf = _aseoPerfil(nombre) || {}, canal = pf.canal === "sms" || pf.canal === "ambos" ? pf.canal : "whatsapp";
   let ok = false, err = null;
   if (canal !== "sms") {
-    try { await _twilioSendMessage({ to: waTo || _waFormatTo(tel10), body, skipMirror: true }); _botAppendMessage(tel10, "assistant", body, { staff: true, auto }); ok = true; } catch (e) { err = e; }
+    try { await _twilioSendMessage({ to: waTo || _waFormatTo(tel10), body, skipMirror: true, modulo: waTo ? undefined : "personal" }); _botAppendMessage(tel10, "assistant", body, { staff: true, auto }); ok = true; } catch (e) { err = e; }
   }
   if (canal !== "whatsapp") {
     try { await _vSendSms("+52" + String(tel10).replace(/\D/g, "").slice(-10), String(body).replace(/\*/g, "")); ok = true; } catch (e) { err = err || e; }
@@ -13924,7 +13988,7 @@ async function _pmEnviar(it) {
   if (it.via === "airbnb") { const r = await _abnEnviar(it.bid, it.body, "bot-proactivo"); _bcLog({ tipo: "proactivo", proceso: it.proc, plantilla: it.tplNombre, reserva: it.bid, resultado: r.apareceEnHilo ? "en hilo de Airbnb" : "enviado (sin confirmar en hilo)" }); return ["airbnb"]; }
   const to = it.to.map(t => _waFormatTo(t)).filter(Boolean); if (!to.length) throw new Error("sin teléfono");
   const sids = [];
-  for (const x of to) { const m = await _twilioSendMessage({ to: x, body: it.body, tipo: it.tpl }); sids.push(m.sid);
+  for (const x of to) { const m = await _twilioSendMessage({ to: x, body: it.body, tipo: it.tpl, modulo: "programados" }); sids.push(m.sid);
     _waLog({ booking_id: String(it.huId || it.bid), tipo: it.tpl, origin: "auto-proactivo", to: x, sid: m.sid, status: m.status || "queued", body_preview: it.body.slice(0, 200) }); }
   return sids;
 }
