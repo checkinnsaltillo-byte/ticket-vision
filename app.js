@@ -59228,7 +59228,10 @@ function tdTablero_(O, dia) {
     const N = [...new Set(O.flatMap(x => tarPersonalList_(x.r)))].sort((a, b) => a.localeCompare(b, 'es')), sin = O.filter(x => !tarPersonalList_(x.r).length);
     return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', n: sin.length, cards: ord(sin).map(card).join('') }] : []).concat(N.map(n => { const X = ord(O.filter(x => tarPersonalList_(x.r).includes(n))); return { t: `${adAv_(n)} ${esc(aseoNombreCorto_(n))}`, n: X.length, cards: X.map(card).join('') }; })), vac);
   }
-  if (vista === 'tabla' && TAR_STATE.sub !== 'rec') return tdTablaLv_(O, vac);
+  if (vista === 'tabla' && TAR_STATE.sub !== 'rec') { // Tabla de levantamientos: «Por tipo» (agrupada por levantamiento) o «Por urgencia» (todos los campos con hallazgos, sin agrupar)
+    const m = TAR_STATE.tbModo === 'urg' ? 'urg' : 'tipo';
+    const tog = `<div class="ad-seg" style="display:inline-flex;margin:0 0 10px">${[['tipo', '📝 Por tipo'], ['urg', '🚨 Por urgencia']].map(([k, t]) => `<button type="button" class="${m === k ? 'on' : ''}" onclick="TAR_STATE.tbModo='${k}';tdRender_()">${t}</button>`).join('')}</div>`;
+    return tog + (m === 'urg' ? tdTablaUrg_(O, vac) : tdTablaLv_(O, vac)); }
   if (vista === 'tabla') {
     const cl = [...new Set(O.map(x => x.r.Clasificacion || TAR_SIN))].sort((a, b) => a === TAR_SIN ? 1 : b === TAR_SIN ? -1 : a.localeCompare(b, 'es'));
     return ckTablaHtml_([['Tipo', '150px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Tarea / nombre', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '150px'], ['Fecha', '95px'], ['Clasificación', '150px']],
@@ -60356,6 +60359,7 @@ window.tarSavePanel = async function () {
     Updated_at: new Date().toISOString(),
   };
   if (tdEsIG_(d)) Object.assign(payload, { Insp_general: 'Sí', Limite_IG: d.Fecha_limite === 'Sí' ? (d.Limite_IG || tdFinMes_(tarIso_(tarToday_()))) : '', Plantilla: d.Plantilla || '', Alojamientos: JSON.stringify((d._alojs || []).map(String)), Clasificacion: d.Clasificacion || 'Inspección' });
+  if (d.Origen === 'Levantamiento') Object.assign(payload, { Origen: 'Levantamiento', LV_ID: d.LV_ID || '', LV_HouseId: d.LV_HouseId || '', LV_Item: d.LV_Item || '', LV_Key: d.LV_Key || '', LV_Campo: d.LV_Campo || '' });
   if (d.Proceso_ID) Object.assign(payload, { Origen: 'Proceso', Proceso_ID: d.Proceso_ID, Proceso_Codigo: d.Proceso_Codigo || '', Proceso_Nombre: d.Proceso_Nombre || '', Proceso_Version: "'" + String(d.Proceso_Version || '').replace(/^'/, '') });
   if (P.id) payload.ID = P.id;
   else payload.Creado_por = tarUser_();
@@ -74656,3 +74660,57 @@ window._botcTranscribir_ = async function (i) {
   new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType !== 1) return; if (n.matches && n.matches('input[type="file"]')) fix(n.parentNode || document); else fix(n); })))
     .observe(document.documentElement, { childList: true, subtree: true });
 })();
+
+// ═══ Levantamientos › Tabla › «Por urgencia»: cada campo con hallazgo de todos los alojamientos, sin agrupar (los más graves arriba) ═══
+// Urgencia de una respuesta: Malo > No > calificación baja > Regular / fuera de rango > solo con nota.
+function tdUrgDe_(it, rr) {
+  const nota = String((rr || {}).nota || '').trim();
+  if (it.tipo === 'condicion') { if (rr.v === 'malo') return { n: 4, t: 'Malo', c: '#dc2626' }; if (rr.v === 'regular') return { n: 2, t: 'Regular', c: '#f59e0b' }; }
+  else if (it.tipo === 'sino') { if (rr.v === 'no') return { n: 3, t: 'No', c: '#dc2626' }; }
+  else if (it.tipo === 'calif') { const E = Number(it.escala) || 5, v = Number(rr.v); if (v > 0 && v / E <= 0.4) return { n: 3, t: `${v} de ${E}`, c: '#f59e0b' }; }
+  else if (it.tipo === 'contar') { const v = rr.v === '' || rr.v == null ? null : Number(rr.v); if (v != null && ((it.min != null && v < it.min) || (it.max != null && v > it.max))) return { n: 2, t: `${v} (${it.min != null ? 'mín. ' + it.min : ''}${it.min != null && it.max != null ? ' · ' : ''}${it.max != null ? 'máx. ' + it.max : ''})`, c: '#f59e0b' }; }
+  if (nota) return { n: 1, t: 'Con nota', c: '#6366f1' };
+  return null;
+}
+function tdRespTxt_(it, rr) { const v = rr.v; if (it.tipo === 'condicion') return v === 'na' ? 'N/A' : (PL_COND.find(x => x[0] === v) || [])[1] || '—'; if (it.tipo === 'sino') return v === 'si' ? 'Sí' : v === 'no' ? 'No' : '—';
+  if (it.tipo === 'calif') return v ? `${v} de ${Number(it.escala) || 5}` : '—'; if (it.tipo === 'lista') return (it.sub || []).length ? `${Object.values(v || {}).filter(Boolean).length}/${it.sub.length}` : v === true ? 'Hecho' : '—'; return v == null || v === '' ? '—' : String(v).slice(0, 60); }
+function tdTablaUrg_(O, vac) {
+  const U = ASEO.pl.urg = ASEO.pl.urg || { docs: {} };
+  if (!ASEO.pl.cargado) { plCargar_().then(() => tdRender_()); return '<div class="pc-mv-empty">⏳ Cargando plantillas…</div>'; }
+  const items = [], faltan = [];
+  O.filter(x => tdEsIG_(x.r)).forEach(x => { const r = x.r, P = tdFinMes_(x.iso), p = r.Plantilla ? ASEO.pl.lista[r.Plantilla] : null; if (!p) return;
+    tdIGAlojs_(r).forEach(hid => { const key = tdIGKey_(r, hid, P);
+      const doc = key in (ASEO.pl.resp || {}) ? { resp: ASEO.pl.resp[key], at: (ASEO.pl.respAt || {})[key] } : U.docs[key];
+      if (doc === undefined) { faltan.push(key); return; } const resp = (doc && doc.resp) || {};
+      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (u) items.push({ r, hid, P, key, p, s, it, rr, u, at: doc.at || '' }); })); }); });
+  if (faltan.length && !U.pend) { U.pend = fetch(`${BACKEND}/aseo/plantilla-resp/lote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ks: faltan }) }).then(r => r.json())
+    .then(j => { (j.items || []).forEach(x => { U.docs[x.k] = x.doc || {}; }); faltan.forEach(k => { if (U.docs[k] === undefined) U.docs[k] = {}; }); U.pend = null; tdRender_(); }).catch(() => { U.pend = null; }); }
+  items.sort((a, b) => b.u.n - a.u.n || String(b.at).localeCompare(String(a.at)));
+  TAR_STATE._urgItems = items;
+  const tareaDe = x => TAR_STATE.list.find(t => t.Origen === 'Levantamiento' && t.LV_Key === x.key && t.LV_Item === x.it.id && t.Estado !== 'Cancelada');
+  const rows = items.map((x, i) => { const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid }, fotos = (x.rr.fotos || []).filter(f => !f.subiendo).length, T = tareaDe(x);
+    return { onclick: `tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')`, cells: [
+      `<span class="tb-ret" style="background:${x.u.c}1a;color:${x.u.c}">${esc(x.u.t)}</span>`,
+      `<span class="tb-a"><b style="font-size:12px">${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</b><small>${esc(x.it.texto ? (x.s.titulo || '') : PL_TIPOS[x.it.tipo].t)}</small></span>`,
+      ckTx_(tdRespTxt_(x.it, x.rr)),
+      `<span class="tb-mu" style="white-space:normal;font-size:11.5px">${esc(String(x.rr.nota || '').slice(0, 140))}</span>`,
+      fotos ? `<span class="tb-ch" style="--c:#4f46e5">📷 ${fotos}</span>` : '<span class="tb-mu">—</span>',
+      `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || x.hid).replace(/^Calle\s+/i, ''))}</small></span>`,
+      ckTx_(`📝 ${x.r.Nombre || x.p.titulo}`),
+      ckTx_(x.at ? aseoDiaTxt_(String(x.at).slice(0, 10)) : '—'),
+      T ? `<button type="button" class="tb-ed" style="margin-left:0;color:#15803d;border-color:#bbf7d0" onclick="event.stopPropagation();tarOpenPanel('${esc(T.ID)}')" title="Abrir la tarea creada">✓ Tarea</button>` : `<button type="button" class="tb-ed" style="margin-left:0" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`,
+    ] }; });
+  const vacio = faltan.length ? '⏳ Cargando las respuestas de los levantamientos…' : 'Sin hallazgos en los levantamientos del periodo (Malo, No, calificación baja, fuera de rango o con nota).';
+  return ckTablaHtml_([['Urgencia', '100px'], ['Campo', 'minmax(220px,1.5fr)'], ['Respuesta', '110px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '70px'], ['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantamiento', '160px'], ['Levantado', '110px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
+}
+// «＋ Crear tarea» desde un hallazgo: abre «Nueva tarea» ya llenada y ligada al registro del levantamiento (Origen/LV_*).
+window.tdCrearTareaLv_ = function (i) {
+  const x = (TAR_STATE._urgItems || [])[i]; if (!x) return;
+  tarOpenPanel(null); const P = TAR_STATE.panel; if (!P) return; const d = P.d, a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid };
+  const campo = x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t, cod = a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid);
+  const C = tarClasif_(), cl = Object.keys(C || {}).find(k => /manten/i.test(k)) || Object.keys(C || {})[0] || '';
+  Object.assign(d, { Nombre: `${campo} · ${cod}`, Clasificacion: cl, Subclasificacion: '', Prioridad: x.u.n >= 4 ? 'Crítico' : x.u.n >= 3 ? 'Alto' : 'Medio', Naturaleza: 'Único', Fecha_limite: 'No',
+    Comentarios: `Detectado en el levantamiento «${x.r.Nombre || x.p.titulo}» · ${cod} ${String(a.nombre || '').replace(/^Calle\s+/i, '')}\n${x.s.titulo && x.it.texto ? x.s.titulo + ' › ' : ''}${campo}: ${tdRespTxt_(x.it, x.rr)}${x.rr.nota ? `\nNota: ${x.rr.nota}` : ''}`,
+    Origen: 'Levantamiento', LV_ID: x.r.ID, LV_HouseId: String(x.hid), LV_Item: x.it.id, LV_Key: x.key, LV_Campo: `${x.s.titulo && x.it.texto ? x.s.titulo + ' › ' : ''}${campo}` });
+  d._prog = tarEmptyProg_('Único'); tarPanelRender_();
+};

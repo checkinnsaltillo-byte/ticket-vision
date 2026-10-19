@@ -12078,6 +12078,13 @@ app.get("/aseo/plantilla-resp", async (req, res) => {
     res.json({ ok: true, resp: await _rhdGetJson(`aseo/plresp/${k}.json`).catch(() => ({})) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// Varias respuestas de plantilla de una vez (tabla «Por urgencia» de Levantamientos). ks = llaves tal como las usa el panel.
+app.post("/aseo/plantilla-resp/lote", async (req, res) => {
+  try { const ks = [...new Set((Array.isArray((req.body || {}).ks) ? req.body.ks : []).map(String).filter(Boolean))].slice(0, 500), out = [];
+    let i = 0; await Promise.all(Array.from({ length: 12 }, async () => { while (i < ks.length) { const k = ks[i++], f = _plKey(k); out.push({ k, doc: f ? await _rhdGetJson(`aseo/plresp/${f}.json`).catch(() => ({})) : {} }); } }));
+    res.json({ ok: true, items: out }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/aseo/plantilla-resp", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
