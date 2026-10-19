@@ -14249,6 +14249,53 @@ app.post("/bot/control/entrenamiento/iniciar", async (req, res) => {
   const e = await _rhdGetJson(_EN.EST).catch(() => ({})); if (e.fase && !["listo", "error"].includes(e.fase) && Date.now() - Date.parse(e.at) < 10 * 60e3) return res.json({ ok: true, yaCorriendo: true, estado: e });
   _enAnalizar((req.body || {})).catch(() => {}); res.json({ ok: true, iniciado: true });
 });
+// ═══ ✍️ Respuestas supervisadas (2026-10-18): al aprobar un borrador del bot (con o sin cambios) se guarda como caso de entrenamiento.
+// La IA elige qué mensajes del huésped originaron la respuesta y lo clasifica en una categoría del Entrenamiento del LLM y un proceso.
+const _SUP_OBJ = "bot/supervisados.json";
+async function _supMut(fn) { return _bcMut(_SUP_OBJ, d => { d.items = Array.isArray(d.items) ? d.items : []; fn(d); }); }
+async function _supContexto(conv) {
+  if (String(conv).startsWith("abn")) { const bid = String(conv).slice(3), h = await _abnHilo(bid, (_abn.hilos.get(bid) || {}).thread).catch(() => ({ mensajes: [] }));
+    return (h.mensajes || []).slice(-14).map(m => ({ de: m.de === "huesped" ? "huesped" : "nosotros", texto: String(m.texto || "").slice(0, 1200), fecha: m.fecha || "" })); }
+  const c = await _botFetchConversation(String(conv).replace(/\D/g, "").slice(-10), 14).catch(() => ({ messages: [] }));
+  return (c.messages || []).filter(m => m.role !== "system").slice(-14).map(m => ({ de: m.role === "user" ? "huesped" : "nosotros", texto: String(m.body || "").slice(0, 1200), fecha: m.timestamp || "" }));
+}
+async function _supClasificar(id) {
+  try {
+    const d = await _rhdGetJson(_SUP_OBJ).catch(() => ({})), it = (d.items || []).find(x => x.id === id); if (!it) return;
+    const en = await _rhdGetJson(_EN.OBJ).catch(() => ({})), cats = (en.categorias || []).map(c => `${c.id}: ${c.nombre}`).join("\n");
+    const cfg = await _bcCfg(), procs = _bcCatalogo(cfg).filter(c => (c.tipo || "huesped") === "huesped").map(c => `${c.clave}: ${c.nombre}`).join("\n");
+    const conv = (it.contexto || []).map((m, i) => `[${i}] ${m.de === "huesped" ? "HUÉSPED" : "NOSOTROS"}: ${m.texto}`).join("\n");
+    const r = await _enLlm("Eres analista de atención a huéspedes de rentas de corta estancia. Respondes SOLO JSON.",
+      `Conversación reciente (índices entre corchetes):\n${conv}\n\nRespuesta que el equipo aprobó y envió:\n«${it.final}»\n\nTareas:\n1) "idx": índices de los mensajes del HUÉSPED que originaron esta respuesta (los que contienen la pregunta o situación que se responde; omite saludos sueltos, agradecimientos o temas ya resueltos).\n2) "categoria": id de la categoría que mejor corresponde, de esta lista:\n${cats}\nSi ninguna aplica usa "otra" y propone "categoria_nueva" (nombre corto).\n3) "proceso": clave del proceso del bot que corresponde, de esta lista:\n${procs}\n4) "resumen": la situación en una frase corta.\nFormato: {"idx":[..],"categoria":"..","categoria_nueva":"","proceso":"..","resumen":".."}`, 1200, "low");
+    const idx = (Array.isArray(r.idx) ? r.idx : []).map(Number).filter(i => it.contexto[i] && it.contexto[i].de === "huesped");
+    const cat = (en.categorias || []).find(c => c.id === r.categoria);
+    await _supMut(dd => { const x = dd.items.find(y => y.id === id); if (!x) return;
+      x.mensajes = (idx.length ? idx : [it.contexto.map(m => m.de).lastIndexOf("huesped")].filter(i => i >= 0)).map(i => it.contexto[i]);
+      x.categoria = cat ? { id: cat.id, nombre: cat.nombre } : { id: "otra", nombre: String(r.categoria_nueva || "Otra").slice(0, 80) };
+      x.proceso = String(r.proceso || ""); x.resumen = String(r.resumen || "").slice(0, 200); x.estado = "clasificado"; });
+  } catch (e) { console.warn("[supervisados] clasificar:", e.message); await _supMut(dd => { const x = dd.items.find(y => y.id === id); if (x) { x.estado = "error"; x.error = e.message; } }).catch(() => {}); }
+}
+app.get("/bot/control/supervisados", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { const d = await _rhdGetJson(_SUP_OBJ).catch(() => ({})); res.json({ ok: true, items: (d.items || []).slice().reverse() }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/bot/control/supervisados", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, conv = String(b.conv || "").trim(), final = String(b.final || "").trim(); if (!conv || !final) return res.status(400).json({ ok: false, error: "Faltan datos" });
+    const contexto = await _supContexto(conv), borrador = String(b.borrador || "").trim();
+    const it = { id: _bcId(), at: new Date().toISOString(), por: String(b.usuario || "").slice(0, 60), conv, canal: String(b.canal || (conv.startsWith("abn") ? "airbnb" : "whatsapp")),
+      huesped: String(b.huesped || "").slice(0, 120), aloj: String(b.aloj || "").slice(0, 60), borrador, final, editado: !!borrador && borrador !== final, contexto, mensajes: [], estado: "clasificando" };
+    await _supMut(d => { d.items.push(it); if (d.items.length > 2000) d.items = d.items.slice(-2000); });
+    _supClasificar(it.id); res.json({ ok: true, id: it.id });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/bot/control/supervisados/borrar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).id || ""); await _supMut(d => { d.items = d.items.filter(x => x.id !== id); }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/bot/control/entrenamiento", async (req, res) => {
   res.set("Cache-Control", "no-store");
   try { const [d, e] = await Promise.all([_rhdGetJson(_EN.OBJ).catch(() => ({})), _rhdGetJson(_EN.EST).catch(() => ({}))]); res.json({ ok: true, datos: d, estado: e, corriendo: _enCorriendo }); }

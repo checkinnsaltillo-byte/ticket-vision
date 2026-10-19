@@ -52057,7 +52057,8 @@ function _botcRenderMain(phone) {
           <span style="font-size:11px;font-weight:800;color:#5b21b6;letter-spacing:.04em">🤖 SUGERENCIA DEL BOT</span>
           ${state.pending_draft_at ? `<span style="font-size:10px;color:#94a3b8">${_botcFmtDateTime(state.pending_draft_at)}</span>` : ''}
         </div>
-        <textarea id="botc-draft-text" style="width:100%;min-height:80px;padding:8px 10px;border:1px solid #c4b5fd;border-radius:8px;font-size:13px;font-family:inherit;line-height:1.4;box-sizing:border-box;background:#fff;color:#0f172a">${_botcEsc(draftBody)}</textarea>
+        <textarea id="botc-draft-text" oninput="_botcSupEdit_('${_botcEsc(phone)}', this.value)" style="width:100%;min-height:80px;padding:8px 10px;border:1px solid #c4b5fd;border-radius:8px;font-size:13px;font-family:inherit;line-height:1.4;box-sizing:border-box;background:#fff;color:#0f172a">${_botcEsc(draftBody)}</textarea>
+        ${_botcSupCkHtml_(phone, draftBody)}
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
           <button type="button" onclick="botcDraftAccept('${_botcEsc(phone)}', this)" style="padding:7px 14px;background:#16a34a;color:#fff;border:0;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px">✓ Enviar</button>
           <button type="button" onclick="botcDraftSkip('${_botcEsc(phone)}')" style="padding:7px 14px;background:#e2e8f0;color:#475569;border:0;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px">✕ Omitir</button>
@@ -52353,7 +52354,8 @@ window._botcAbnSetModo_ = async function (ph, control) {
 };
 window.botcAbnBorrador_ = async function (ph, accion) { // Supervisado: enviar / descartar el borrador del bot
   const bid = String(ph).replace(/^abn/, ''), h = (BOTC_STATE.abn || []).find(x => String(x.bid) === bid);
-  if (accion === 'enviar') return abnEnviar_(bid, 'abn-botc-draft', () => { if (h) h.draft = ''; BOTC_STATE.abnN = ''; _botcAbrirAbn_(ph, { silent: true }); _botcRenderSidebar(); });
+  if (accion === 'enviar') { const _txt = String((document.getElementById('abn-botc-draft') || {}).value || '').trim();
+    return abnEnviar_(bid, 'abn-botc-draft', () => { _botcSupGuardar_(ph, _txt); if (h) h.draft = ''; BOTC_STATE.abnN = ''; _botcAbrirAbn_(ph, { silent: true }); _botcRenderSidebar(); }); }
   if (h) h.draft = ''; BOTC_STATE.abnN = ''; _botcAbrirAbn_(ph, { silent: true });
   fetch(`${BACKEND}/airbnb/modo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bid, draft: '' }) }).catch(() => {});
 };
@@ -52589,6 +52591,7 @@ window.botcDraftAccept = function(phone) {
   const ta = document.getElementById('botc-draft-text');
   const body = String((ta && ta.value) || '').trim();
   if (!body) return; // textarea vacío, no hay nada que enviar
+  _botcSupGuardar_(phone, body);
   _botcDraftAction(phone, 'send', body);
 };
 window.botcDraftSkip = function(phone) {
@@ -53233,7 +53236,8 @@ window._botcAbrirAbn_ = async function (ph, opts) {
       <div id="botc-msgs" class="wa-msgs">${msgs}</div>
       ${h.draft ? `<div style="border-top:1px solid #ddd6fe;background:#f5f3ff;padding:10px 12px">
         <div style="font-size:11.5px;font-weight:700;color:#6d28d9;margin-bottom:6px">👁️ Borrador del bot — revísalo antes de enviarlo por Airbnb</div>
-        <textarea id="abn-botc-draft" rows="3" style="width:100%;box-sizing:border-box;border:1px solid #ddd6fe;border-radius:8px;padding:8px 10px;font:inherit;font-size:13.5px;resize:vertical">${_botcEsc(h.draft)}</textarea>
+        <textarea id="abn-botc-draft" rows="3" oninput="_botcSupEdit_('${ph}', this.value)" style="width:100%;box-sizing:border-box;border:1px solid #ddd6fe;border-radius:8px;padding:8px 10px;font:inherit;font-size:13.5px;resize:vertical">${_botcEsc(h.draft)}</textarea>
+        ${_botcSupCkHtml_(ph, h.draft)}
         <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px"><button type="button" onclick="botcAbnBorrador_('${ph}','descartar')" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer">Descartar</button>
           <button type="button" onclick="botcAbnBorrador_('${ph}','enviar')" style="border:0;background:#7c3aed;color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Enviar por ${_BOTC_ABN_LBL[_botcAbnK_(h)]}</button></div></div>` : ''}
       <div class="wa-comp" style="display:flex;align-items:flex-end;gap:8px;padding:8px 12px;background:var(--wa-bar);border-top:1px solid var(--wa-ln)">
@@ -74201,9 +74205,9 @@ function bkEntr_() {
       <button class="bk-btn sm ${D.generado ? '' : 'pri'}" ${corre ? 'disabled style="opacity:.5"' : ''} onclick="bkEntrIniciar_()">${D.generado ? '🔄 Volver a analizar' : '▶ Analizar conversaciones'}</button></div>
     ${corre ? `<div style="margin-top:10px"><div class="bk-sub" style="margin-bottom:4px">⏳ ${esc(E.msg || 'Analizando…')}</div><div style="height:8px;background:#f3f4f6;border-radius:6px;overflow:hidden"><div style="height:100%;width:${E.pct || 3}%;background:#7c3aed;transition:width .4s"></div></div></div>` : E.fase === 'error' ? `<div class="bk-obs err" style="margin-top:10px">⚠️ ${esc(E.msg)}</div>` : ''}
     ${D.generado ? `<div class="bk-sub" style="margin-top:8px">Último análisis: ${new Date(D.generado).toLocaleString('es-MX')} · ${D.clasificadas} situaciones clasificadas por IA (muestra de ${D.muestra}) · ${D.segundos}s</div>` : ''}</div>`;
-  if (!D.generado) return head;
+  if (!D.generado) return head + bkEntrSup_();
   const kp = `<div class="bk-kpis">${kpi(S.conversaciones, 'Conversaciones')}${kpi(S.mensajesHuesped, 'Mensajes de huéspedes')}${kpi(S.escritosAMano, `Respuestas escritas a mano (${Math.round(100 * S.escritosAMano / Math.max(1, S.mensajesAnfitrion))}%)`)}${kpi(S.plantillasEnviadas, 'Envíos de plantillas (separados)')}${kpi(S.respuestaMedianaMin, 'Minutos para responder (mediana)')}</div>`;
-  return head + kp + bkEntrEstilo_(D) + bkEntrCats_(D) + bkEntrPlantillas_(S);
+  return head + kp + bkEntrSup_() + bkEntrEstilo_(D) + bkEntrCats_(D) + bkEntrPlantillas_(S);
 }
 async function bkEntrIniciar_() {
   if (!confirm('¿Analizar las conversaciones históricas?\n\nTarda unos minutos y usa la IA (≈30 consultas). Las categorías que ya revisaste (aprobadas o descartadas) se conservan.')) return;
@@ -74488,3 +74492,52 @@ function _botcTipoTabs_() {
 window.botcSetTipo_ = function (k) { BOTC_STATE.tipo = k; _botcRenderSidebar(); };
 // La barra del Modo general se vuelve a poner después de cada repintado de la lista (el repintado reemplaza todo el contenido).
 { const _orig = _botcRenderSidebar; _botcRenderSidebar = function () { const r = _orig.apply(this, arguments); try { _botcMgBarra_(); } catch (_) {} return r; }; }
+
+// ═══ 💾 Guardar respuesta supervisada como ejemplo de entrenamiento (se clasifica sola en el servidor) ═══
+window.__botcSup = window.__botcSup || {};
+function _botcSupCkHtml_(key, orig) {
+  const S = window.__botcSup, cur = S[key]; if (!cur || cur.orig !== orig) S[key] = { on: false, manual: false, orig: String(orig || '') };
+  return `<div id="botc-sup-${_botcEsc(key)}">${_botcSupInner_(key)}</div>`;
+}
+function _botcSupInner_(key) { const on = !!(window.__botcSup[key] || {}).on;
+  return `<div onclick="_botcSupTog_('${_botcEsc(key)}')" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;font-size:12px;color:#4c1d95;user-select:none">${bkCk18_(on ? 'on' : '')}<span><b>💾 Guardar como ejemplo de entrenamiento</b> <span style="color:#94a3b8">· se guarda con los mensajes del huésped y se clasifica solo</span></span></div>`; }
+function _botcSupPintar_(key) { const el = document.getElementById('botc-sup-' + key); if (el) el.innerHTML = _botcSupInner_(key); }
+window._botcSupTog_ = key => { const x = window.__botcSup[key]; if (!x) return; x.on = !x.on; x.manual = true; _botcSupPintar_(key); };
+// Al modificar el texto a mano se marca sola (salvo que la hayas desmarcado tú).
+window._botcSupEdit_ = (key, val) => { const x = window.__botcSup[key]; if (!x || x.manual) return; const on = String(val).trim() !== x.orig.trim(); if (on !== x.on) { x.on = on; _botcSupPintar_(key); } };
+function _botcSupGuardar_(key, final) {
+  const x = window.__botcSup[key]; if (!x || !x.on || !final) return; delete window.__botcSup[key];
+  const c = (BOTC_STATE.conversations || []).concat(typeof _botcAbnConvs_ === 'function' ? _botcAbnConvs_() : []).find(y => String(y.phone) === String(key)) || {};
+  let aloj = ''; try { aloj = c.abn ? (c.abn.aloj || '') : _botcAlojCorto_(_botcGetBookingForPhoneSync(c.phone)) || ''; } catch (_) {}
+  fetch(`${BACKEND}/bot/control/supervisados`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conv: String(key), borrador: x.orig, final, huesped: c.name || '', aloj, canal: c.canal === 'airbnb' ? 'airbnb' : 'whatsapp', usuario: (typeof npYo_ === 'function' ? npYo_() : '') || (typeof currentUser !== 'undefined' ? currentUser : '') }) })
+    .then(r => r.json()).then(j => { if (j.ok && typeof bkToast_ === 'function') bkToast_('💾 Guardado como ejemplo de entrenamiento'); }).catch(() => {});
+}
+// Sección «✍️ Respuestas supervisadas» en Control del bot › Entrenamiento del LLM.
+async function bkSupCargar_() { BK._supCarg = true; try { const r = await fetch(`${BACKEND}/bot/control/supervisados`, { cache: 'no-store' }).then(r => r.json()); if (r.ok) BK.sup = r.items; } catch (_) {}
+  BK._supCarg = false; if (BK.tab === 'entrenamiento') bkRender_();
+  clearTimeout(BK._supT); if (BK.tab === 'entrenamiento' && (BK.sup || []).some(x => x.estado === 'clasificando')) BK._supT = setTimeout(bkSupCargar_, 6000); }
+function bkEntrSup_() {
+  if (!BK.sup && !BK._supCarg) bkSupCargar_();
+  const L = BK.sup || [], f = BK.supF || '', cats = [...new Set(L.map(x => (x.categoria || {}).nombre).filter(Boolean))].sort();
+  const V = f ? L.filter(x => (x.categoria || {}).nombre === f) : L, nm = k => ((BK.d.catalogo || []).find(c => c.clave === k) || {}).nombre || k;
+  const card = x => `<div class="bk-card" style="padding:12px 14px;margin-bottom:8px">
+      <div class="bk-row" style="justify-content:space-between;gap:6px"><div class="bk-row" style="gap:6px;flex-wrap:wrap">
+        ${x.estado === 'clasificando' ? '<span class="bk-chip" style="background:#f3f4f6;color:#6b7280">⏳ Clasificando…</span>' : x.estado === 'error' ? '<span class="bk-chip" style="background:#fee2e2;color:#b91c1c">⚠️ Sin clasificar</span>' : `<span class="bk-chip" style="background:#ede9fe;color:#5b21b6">🏷️ ${esc((x.categoria || {}).nombre || '')}</span>`}
+        ${x.proceso ? `<span class="bk-chip" style="background:#f3f4f6">${esc(nm(x.proceso))}</span>` : ''}
+        <span class="bk-chip" style="background:${x.canal === 'airbnb' ? '#fee2e2;color:#b91c1c' : '#dcfce7;color:#15803d'}">${x.canal === 'airbnb' ? 'Airbnb' : 'WhatsApp'}</span>
+        <span class="bk-chip" style="background:${x.editado ? '#fef3c7;color:#b45309' : '#f3f4f6;color:#6b7280'}">${x.editado ? '✏️ Editada a mano' : 'Sin cambios'}</span></div>
+        <span class="bk-mut" style="font-size:11px;white-space:nowrap">${new Date(x.at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${x.por ? ' · ' + esc(x.por) : ''}</span></div>
+      <div class="bk-sub" style="margin-top:6px">${esc([x.huesped, x.aloj].filter(Boolean).join(' · '))}${x.resumen ? ` — ${esc(x.resumen)}` : ''}</div>
+      <div style="margin-top:8px;display:grid;gap:6px">${(x.mensajes || []).map(m => `<div style="justify-self:start;max-width:85%;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:6px 10px;font-size:12.5px;white-space:pre-wrap">👤 ${esc(m.texto)}</div>`).join('')}
+        <div style="justify-self:end;max-width:85%;background:#dcfce7;border:1px solid #bbf7d0;border-radius:10px;padding:6px 10px;font-size:12.5px;white-space:pre-wrap">✅ ${esc(x.final)}</div></div>
+      ${x.editado ? `<details style="margin-top:6px"><summary class="bk-mut" style="cursor:pointer;font-size:11.5px">Sugerencia original del bot</summary><div class="bk-ex" style="margin-top:4px">${esc(x.borrador)}</div></details>` : ''}
+      <div class="bk-row" style="justify-content:flex-end;margin-top:6px"><button class="bk-btn sm red" onclick="bkSupBorrar_('${esc(x.id)}')">🗑 Quitar</button></div></div>`;
+  return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><div><h3>✍️ Respuestas supervisadas <span class="bk-chip" style="background:#ede9fe;color:#5b21b6">${L.length}</span></h3>
+      <div class="bk-sub">Borradores del bot que el equipo aprobó (tal cual o corregidos) y guardó desde Chats bot con «💾 Guardar como ejemplo». La IA eligió los mensajes del huésped que originaron cada respuesta y la clasificó.</div></div>
+      <div class="bk-row" style="gap:6px"><select class="bk-sel" style="width:auto" onchange="BK.supF=this.value;bkRender_()"><option value="">Todas las categorías</option>${cats.map(c => `<option ${c === f ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><button class="bk-btn sm" onclick="bkSupCargar_()">↻</button></div></div>
+    <div style="margin-top:10px">${!BK.sup ? '<div class="bk-mut">⏳ Cargando…</div>' : V.length ? V.slice(0, 60).map(card).join('') + (V.length > 60 ? `<div class="bk-mut" style="font-size:12px">Mostrando 60 de ${V.length}.</div>` : '') : '<div class="bk-mut" style="font-size:12.5px">Aún no hay respuestas guardadas. En Chats bot, al enviar una sugerencia del bot marca «💾 Guardar como ejemplo de entrenamiento» (se marca sola si editas el texto).</div>'}</div></div>`;
+}
+async function bkSupBorrar_(id) { if (!confirm('¿Quitar este ejemplo?')) return;
+  try { await fetch(`${BACKEND}/bot/control/supervisados/borrar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); } catch (_) {}
+  BK.sup = (BK.sup || []).filter(x => x.id !== id); bkRender_(); }
