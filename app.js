@@ -74710,6 +74710,7 @@ function tdTablaLv_(O, vac) {
   const nuevo = () => ({ crit: 0, warn: 0, info: 0, doc: 0, alojs: 0, conAl: 0 });
   const suma = (a, b) => { a.crit += b.crit; a.warn += b.warn; a.info += b.info; a.doc += b.doc; a.alojs += b.alojs; a.conAl += b.conAl; };
   const porHid = {}; D.items.forEach(x => { const k = x.r.ID + '|' + x.hid, c = porHid[k] = porHid[k] || nuevo(); if (x.u.n >= 3) c.crit++; else if (x.u.n === 2) c.warn++; else c.info++; });
+  TAR_STATE._urgItems = D.items; const Aab = TAR_STATE.tbAl = TAR_STATE.tbAl || new Set();
   const TOT = nuevo(), grupos = O.filter(x => tdEsIG_(x.r)).map(x => {
     const r = x.r, P = tdFinMes_(x.iso), kG = r.ID + '|' + P, G = nuevo(), eds = {};
     tdIGAlojs_(r).forEach(hid => { const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, e = tdEdifDe_(hid), info = D.hids[r.ID + '|' + hid];
@@ -74724,10 +74725,11 @@ function tdTablaLv_(O, vac) {
     const edHtml = ed => { const kE = kG + '|' + ed.k, eab = Eab.has(kE) || (ed.c.crit > 0 && !TAR_STATE.tbEdTocado), [et, ec, eb] = tdRiesgoDe_(ed.c);
       return `<div class="rk-ed"><div class="rk-edh" onclick="tdTbEdTg_('${esc(kE)}')"><i class="tb-car">${eab ? '▾' : '▸'}</i><b>🏢 ${esc(ed.nom)}</b><span class="rk-mu">${ed.c.alojs} aloj. · ${ed.c.conAl} con alertas${ed.c.alojs - ed.c.doc ? ` · ${ed.c.alojs - ed.c.doc} sin levantar` : ''}</span>${tdBarra_(ed.c)}${tdCnt_(ed.c, '')}<span class="rk-chip" style="color:${ec};background:${eb}">${et}</span></div>
         ${eab ? `<div class="rk-rows">${ed.rows.sort((A, B) => ord(A, B) || String(A.a.corto || A.a.nombre).localeCompare(String(B.a.corto || B.a.nombre), 'es', { numeric: true })).map(w => { const [t, c, b] = tdRiesgoDe_(w.c), per = w.info ? w.info.per : '';
-          return `<div class="rk-row" onclick="${per && per !== tdIGPerDe_(r, w.hid, P) ? `tdAbrirHijo_('${esc(r.ID)}','${esc(w.hid)}','${esc(per)}')` : `tdAbrirHijoEn_('${esc(r.ID)}','${esc(w.hid)}','${P}')`}">
+          const kA = r.ID + '|' + w.hid, abA = Aab.has(kA), abrir = per && per !== tdIGPerDe_(r, w.hid, P) ? `tdAbrirHijo_('${esc(r.ID)}','${esc(w.hid)}','${esc(per)}')` : `tdAbrirHijoEn_('${esc(r.ID)}','${esc(w.hid)}','${P}')`;
+          return `<div class="rk-row ${abA ? 'ab' : ''}" onclick="tdTbAlTg_('${esc(kA)}')">
             <span class="rk-al"><b>${esc(w.a.corto ? String(w.a.corto).toUpperCase() : '—')}</b><small>${esc(String(w.a.nombre || w.hid).replace(/^Calle\s+/i, ''))}</small></span>
             <span class="rk-chip" style="color:${c};background:${b}">${t}</span>${tdBarra_(w.c)}${tdCnt_(w.c, w.hid)}
-            <span class="rk-mu">${w.info ? `${esc(aseoDiaTxt_(String(w.info.at).slice(0, 10)))} · ${esc(w.est === 'Resuelto' ? 'Terminado' : w.est)}` : 'Sin levantar'}</span><span class="tb-more">›</span></div>`; }).join('')}</div>` : ''}</div>`; };
+            <span class="rk-mu">${w.info ? `${esc(aseoDiaTxt_(String(w.info.at).slice(0, 10)))} · ${esc(w.est === 'Resuelto' ? 'Terminado' : w.est)}` : 'Sin levantar'}</span><i class="tb-car">${abA ? '▾' : '▸'}</i></div>${abA ? tdAlDetalle_(r, w, D.items.filter(x => x.r.ID === r.ID && String(x.hid) === String(w.hid)), abrir) : ''}`; }).join('')}</div>` : ''}</div>`; };
     return { kG, G, html: `<div class="rk-card"><div class="rk-h" onclick="tdTbTg_('${esc(kG)}')"><i class="tb-car">${ab ? '▾' : '▸'}</i><b>📝 ${esc(r.Nombre || 'Levantamiento')}</b><span class="rk-mu">${G.alojs} alojamientos · ${G.conAl} con alertas${G.alojs - G.doc ? ` · ${G.alojs - G.doc} sin levantar` : ''}</span>${tdBarra_(G)}${tdCnt_(G, '')}<span class="rk-chip" style="color:${rc};background:${rb}">${rt}</span><button type="button" class="tb-ed" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button></div>${ab ? edsL.map(edHtml).join('') : ''}</div>` };
   }).sort((A, B) => B.G.crit - A.G.crit || B.G.warn - A.G.warn);
   if (!grupos.length) return `<div class="pc-mv-empty">${vac || 'Sin levantamientos en el periodo'}</div>`;
@@ -74742,10 +74744,38 @@ function tdTablaLv_(O, vac) {
     .rk-cnts{display:inline-flex;gap:4px;flex-shrink:0}.rk-n{all:unset;cursor:pointer;min-width:26px;height:24px;padding:0 7px;border-radius:8px;font-size:12px;font-weight:800;text-align:center;line-height:24px;box-sizing:border-box}
     .rk-n.c{background:#fee2e2;color:#b91c1c}.rk-n.w{background:#ffedd5;color:#c2410c}.rk-n.i{background:#dbeafe;color:#1d4ed8}.rk-n.z{background:#f3f4f6;color:#9ca3af;font-weight:600}.rk-n:hover{filter:brightness(.95)}
     .rk-chip{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap;flex-shrink:0;min-width:74px;text-align:center}
-    @media (max-width:760px){.rk-bar,.rk-mu{display:none}.rk-row{padding-left:24px}.rk-edh{padding-left:18px}.rk-al{min-width:0;flex:1}}`; document.head.appendChild(st); }
+    .rk-row.ab{background:#eef2ff}.rk-det{padding:12px 16px 14px 52px;background:#fafbff;border-top:1px solid #e0e7ff;border-bottom:1px solid #e0e7ff;cursor:default}
+    .rk-dsum{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px}.rk-dk{display:flex;flex-direction:column;min-width:64px;padding:6px 10px;border-left:3px solid var(--c);background:#fff;border-radius:8px}.rk-dk b{font-size:18px;line-height:1.1;color:#0f172a}.rk-dk span{font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em}
+    .rk-dg{position:relative;width:64px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}.rk-dg svg{position:absolute;inset:0;width:64px;height:64px}.rk-dg b{font-size:13px;color:#0f172a;line-height:1}.rk-dg span{font-size:7.5px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.03em;text-align:center;line-height:1.1;max-width:48px}
+    .rk-dsec{display:flex;flex-direction:column;gap:3px;min-width:220px;flex:1}.rk-ds{display:flex;align-items:center;gap:8px;font-size:11.5px}.rk-ds .t{width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#334155;font-weight:600}.rk-ds b{font-size:11px;color:#0f172a;min-width:16px}
+    .rk-fcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}.rk-fc{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e7eb;border-left:3px solid var(--c);border-radius:10px;padding:8px 10px}
+    .rk-ft{flex:1;min-width:0;display:flex;flex-direction:column}.rk-ft b{font-size:12.5px;color:#0f172a}.rk-ft small{font-size:11px;color:#6b7280}.rk-ft em{font-style:normal;font-size:11.5px;color:#4338ca;margin-top:2px}
+    .rk-fph{display:inline-flex;align-items:center;gap:2px;cursor:zoom-in;flex-shrink:0}.rk-fph img{width:32px;height:32px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0}.rk-fph b{font-size:10px;color:#4f46e5;margin-left:2px}
+    @media (max-width:760px){.rk-bar,.rk-mu{display:none}.rk-row{padding-left:24px}.rk-edh{padding-left:18px}.rk-al{min-width:0;flex:1}.rk-det{padding:10px}.rk-fcs{grid-template-columns:1fr}.rk-dsec{min-width:0;width:100%}}`; document.head.appendChild(st); }
   const kp = (n, t, c) => `<div class="rk-kpi" style="--c:${c}"><b>${n}</b><span>${t}</span></div>`;
   const kpis = `<div class="rk-kpis">${kp(TOT.crit, 'Alertas críticas · Malo / No', '#dc2626')}${kp(TOT.warn, 'Requieren atención · Regular', '#f97316')}${kp(TOT.info, 'Solo con nota', '#3b82f6')}${kp(`${TOT.conAl}<small style="font-size:13px;color:#94a3b8"> / ${TOT.alojs}</small>`, 'Alojamientos con alertas', '#0f172a')}${kp(TOT.alojs - TOT.doc, 'Sin levantar', '#9ca3af')}</div>`;
   return kpis + (D.faltan.length ? '<div class="pc-mv-empty" style="margin-bottom:10px">⏳ Cargando las respuestas de los levantamientos…</div>' : '') + grupos.map(g => g.html).join('');
+}
+window.tdTbAlTg_ = function (k) { const C = TAR_STATE.tbAl = TAR_STATE.tbAl || new Set(); if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
+// Detalle ejecutivo de un alojamiento dentro del dashboard: resumen por sección + hallazgos (mismos criterios que «Por urgencia»).
+function tdAlDetalle_(r, w, L, abrir) {
+  const tot = w.c.crit + w.c.warn + w.c.info, p = r.Plantilla ? ASEO.pl.lista[r.Plantilla] : null, nCampos = p ? (p.secciones || []).reduce((n, s) => n + (s.items || []).length, 0) : 0;
+  const secs = {}; L.forEach(x => { const k = x.s.titulo || '—', c = secs[k] = secs[k] || { t: k, crit: 0, warn: 0, info: 0, n: 0 }; c.n++; if (x.u.n >= 3) c.crit++; else if (x.u.n === 2) c.warn++; else c.info++; });
+  const S = Object.values(secs).sort((a, b) => b.crit - a.crit || b.warn - a.warn || b.n - a.n), maxN = Math.max(1, ...S.map(x => x.n));
+  const tareaDe = x => Object.values(ASEO.tareas || {}).find(t => t && t.lv && t.lv.key === x.key && t.lv.item === x.it.id);
+  const gauge = tot ? Math.round(100 * (w.c.crit * 3 + w.c.warn * 2 + w.c.info) / (3 * Math.max(1, nCampos || tot))) : 0;
+  const resumen = `<div class="rk-dsum">
+      <div class="rk-dk" style="--c:#dc2626"><b>${w.c.crit}</b><span>Críticas</span></div><div class="rk-dk" style="--c:#f97316"><b>${w.c.warn}</b><span>Atención</span></div><div class="rk-dk" style="--c:#3b82f6"><b>${w.c.info}</b><span>Con nota</span></div>
+      <div class="rk-dk" style="--c:#0f172a"><b>${tot}<small> / ${nCampos || '—'}</small></b><span>Campos con alerta</span></div>
+      <div class="rk-dg"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5" fill="none" stroke="#eef2f7" stroke-width="4"/><circle cx="18" cy="18" r="15.5" fill="none" stroke="${gauge >= 25 ? '#dc2626' : gauge >= 10 ? '#f97316' : '#16a34a'}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${(97.4 * Math.min(100, gauge) / 100).toFixed(1)} 97.4" transform="rotate(-90 18 18)"/></svg><b>${gauge}%</b><span>índice de riesgo</span></div>
+      <div class="rk-dsec">${S.length ? S.slice(0, 6).map(x => `<div class="rk-ds"><span class="t">${esc(x.t)}</span><span class="rk-bar" style="width:90px">${x.crit ? `<i style="width:${100 * x.crit / x.n}%;background:#dc2626"></i>` : ''}${x.warn ? `<i style="width:${100 * x.warn / x.n}%;background:#f97316"></i>` : ''}${x.info ? `<i style="width:${100 * x.info / x.n}%;background:#60a5fa"></i>` : ''}</span><b>${x.n}</b></div>`).join('') + (S.length > 6 ? `<span class="rk-mu" style="font-size:11px">+${S.length - 6} secciones más (ver tarjetas abajo)</span>` : '') : '<span class="rk-mu">Sin hallazgos</span>'}</div>
+      <button type="button" class="tb-ed" onclick="event.stopPropagation();${abrir}">📋 Abrir levantamiento</button></div>`;
+  const cards = L.map(x => { const i = TAR_STATE._urgItems.indexOf(x), fotos = (x.rr.fotos || []).filter(f => !f.subiendo), T = tareaDe(x);
+    return `<div class="rk-fc" style="--c:${x.u.c}"><span class="rk-chip" style="color:${x.u.c};background:${x.u.c}1a">${esc(x.u.t)}</span>
+      <div class="rk-ft"><b>${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</b><small>${esc(x.it.texto ? (x.s.titulo || '') : PL_TIPOS[x.it.tipo].t)} · ${esc(tdRespTxt_(x.it, x.rr))}</small>${x.rr.nota ? `<em>${esc(String(x.rr.nota).slice(0, 200))}</em>` : ''}</div>
+      ${fotos.length ? `<span class="rk-fph" onclick="event.stopPropagation();tdUrgFotos_(${i})" title="${fotos.length} foto${fotos.length === 1 ? '' : 's'}">${fotos.slice(0, 3).map(f => `<img src="${BACKEND}${f.turl || f.url}" alt="" loading="lazy">`).join('')}${fotos.length > 3 ? `<b>+${fotos.length - 3}</b>` : ''}</span>` : ''}
+      ${T ? `<a href="#" class="tb-lnk" onclick="event.preventDefault();event.stopPropagation();atAbrir_('${esc(T.id)}','${esc(T.fecha || '')}')">🔗 Ver tarea</a>` : `<button type="button" class="tb-ed" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`}</div>`; }).join('');
+  return `<div class="rk-det" onclick="event.stopPropagation()">${resumen}${cards ? `<div class="rk-fcs">${cards}</div>` : ''}</div>`;
 }
 window.tdTbEdTg_ = function (k) { const C = TAR_STATE.tbEd = TAR_STATE.tbEd || new Set(); TAR_STATE.tbEdTocado = true; if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 // Fotos de un hallazgo en el visor (con flechas si hay varias), sin abrir la sub-card.
