@@ -74143,8 +74143,8 @@ function bkCasoComparar_() { const S = BK.sim; if (!S || !S.caso) return ''; con
     <div class="bk-card"><h3>💬 Respuesta real en la conversación</h3>${r.real && r.real.length ? `<div class="bk-ex" style="margin-top:6px">${esc(r.real.map(m => m.texto).join('\n\n'))}</div>` : '<div class="bk-sub" style="margin-top:6px">El extracto termina con el mensaje del huésped (no incluye la respuesta que se dio).</div>'}</div></div>`; }
 
 // ── Alojamientos del flujo, agrupados por edificio (CU, BC, OX, JC, MT, SE, VS, TR…) ──
-function bkEdificios_() {
-  const L = (BK.d.alojamientos || []).filter(a => !/^ED\./i.test(String(a.nombre || ''))), G = {}; // los registros «ED. X» son el edificio mismo
+function bkEdificios_(lista) {
+  const L = (lista || BK.d.alojamientos || []).filter(a => !/^ED\./i.test(String(a.nombre || ''))), G = {}; // los registros «ED. X» son el edificio mismo
   L.forEach(a => { const conNum = /\d/.test(a.code || ''), k = conNum ? String(a.code).replace(/\d.*$/, '').toUpperCase() : 'CASAS';
     (G[k] = G[k] || { k, nombre: k === 'CASAS' ? 'Casas' : '', items: [] }).items.push(a); if (!G[k].nombre) G[k].nombre = String(a.prop || a.nombre || k).replace(/\s*#.*$/, ''); });
   const ord = typeof ED_ORDEN !== 'undefined' ? ED_ORDEN : ['CU', 'BC', 'OX', 'JC', 'MT', 'SE', 'VS'], num = c => parseFloat(String(c).replace(/^\D+/, '')) || 0;
@@ -74356,3 +74356,61 @@ window._botcTestTog_ = function () { window.__botcTestOn = !window.__botcTestOn;
 window._botcTestQuitar_ = function (i) { const L = (window.__botcTestPhones || []).slice(); L.splice(i, 1); window.__botcTestPhones = L; _botcTestGuardarYPintar_(); };
 window._botcTestAgregar_ = function () { const d = String((document.getElementById('bkt-new') || {}).value || '').replace(/\D/g, ''); if (d.length < 10) return alert('Escribe un teléfono de 10 dígitos');
   const t = d.length === 10 ? '+52' + d : '+' + d; const L = (window.__botcTestPhones || []).slice(); if (L.includes(t)) return alert('Ese número ya está'); L.push(t); window.__botcTestPhones = L; _botcTestGuardarYPintar_(); };
+
+// ═══ ⚡ Alojamientos habilitados — diseño del módulo + estructura por edificio (reemplaza la ventana anterior) ═══
+window.botcOpenAlojConfig = async function () {
+  document.getElementById('bka-ov')?.remove();
+  const ov = document.createElement('div'); ov.id = 'bka-ov'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = '<div id="bka-box" style="background:#fff;border-radius:16px;width:min(620px,100%);max-height:90vh;display:flex;flex-direction:column;color:#111827;overflow:hidden"><div style="padding:18px">⏳ Cargando…</div></div>'; document.body.appendChild(ov);
+  try {
+    const [a, c] = await Promise.all([fetch(`${BACKEND}/wa/bot/alojamientos`, { cache: 'no-store' }).then(r => r.json()), fetch(`${BACKEND}/bot/control`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({}))]);
+    const rows = (a && a.alojamientos) || [], cat = (c && c.alojamientos) || [], porHid = {}; cat.forEach(x => porHid[x.hid] = x);
+    // Cada alojamiento habilitable con su código corto (para agruparlo por edificio); los que no están en el catálogo van a «Otros».
+    const L = rows.map(r => { const h = String(r.HouseId), x = porHid[h]; return x ? Object.assign({}, x) : { hid: h, code: '', nombre: `${r.Propiedad || ''} #${r.Departamento || ''}`, prop: r.Propiedad || '' }; });
+    const E = bkEdificios_(L.filter(x => x.code)), sinCod = L.filter(x => !x.code); if (sinCod.length) E.push({ k: 'OTROS', nombre: 'Otros', items: sinCod });
+    window.BKA = { E, total: L.length, sel: new Set(rows.filter(r => r.bot_enabled).map(r => String(r.HouseId))), ini: '', ab: {}, q: '' };
+    BKA.ini = [...BKA.sel].sort().join(',');
+    _bkaPintar_();
+  } catch (e) { const b = document.getElementById('bka-box'); if (b) b.innerHTML = `<div style="padding:18px;color:#b91c1c">No se pudo cargar: ${_botcEsc(e.message || e)}</div>`; }
+};
+function _bkaPintar_() {
+  const box = document.getElementById('bka-box'); if (!box || !window.BKA) return;
+  const S = BKA.sel, q = _botcNorm_(BKA.q), cambio = [...S].sort().join(',') !== BKA.ini;
+  const coincide = a => !q || _botcNorm_(`${a.code} ${a.nombre} ${a.prop}`).includes(q);
+  const eds = BKA.E.map(g => { const vis = g.items.filter(coincide); if (!vis.length) return '';
+    const n = g.items.filter(a => S.has(a.hid)).length, est = n === g.items.length ? 'on' : n ? 'mix' : '', ab = q || BKA.ab[g.k];
+    return `<div style="border:1px solid ${n ? '#c7d2fe' : '#e5e7eb'};border-radius:12px;margin-bottom:8px;overflow:hidden">
+      <div onclick="BKA.ab['${g.k}']=!BKA.ab['${g.k}'];_bkaPintar_()" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${n ? '#f5f7ff' : '#f9fafb'};cursor:pointer">
+        <span onclick="event.stopPropagation();_bkaEd_('${g.k}')" title="Seleccionar todo el edificio">${bkCk18_(est)}</span>
+        <b style="font-size:13.5px;flex:1">🏢 ${_botcEsc(g.nombre)}</b>
+        <span style="font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:${n ? '#e0e7ff' : '#f3f4f6'};color:${n ? '#3730a3' : '#6b7280'}">${n}/${g.items.length}</span>
+        <span style="font-size:11px;color:#6b7280;width:12px;text-align:center">${ab ? '▲' : '▼'}</span></div>
+      ${ab ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px;padding:8px 12px 10px">${vis.map(a => { const on = S.has(a.hid);
+        return `<div onclick="_bkaTog_('${_botcEsc(a.hid)}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:6px 6px;border-radius:8px;background:${on ? '#f5f7ff' : 'transparent'};font-size:12.5px;min-width:0">${bkCk18_(on ? 'on' : '')}<b>${_botcEsc(a.code || '—')}</b><span style="color:#6b7280;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_botcEsc(String(a.nombre || '').replace(/^(Calle|Plaza)\s+/i, ''))}</span></div>`; }).join('')}</div>` : ''}</div>`; }).join('');
+  box.innerHTML = `<div style="padding:18px 18px 10px;flex-shrink:0">
+      <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1"><div style="font-size:16px;font-weight:800">⚡ Alojamientos habilitados</div>
+        <div style="font-size:12.5px;color:#6b7280;margin-top:3px">En los chats en modo <b>Bot</b>, el bot solo contesta a huéspedes de los alojamientos marcados. En <b>Supervisado</b> siempre deja borrador.</div></div>
+        <button type="button" onclick="_bkaCerrar_()" style="all:unset;cursor:pointer;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:14px">✕</button></div>
+      <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
+        <input type="search" value="${_botcEsc(BKA.q)}" placeholder="🔍 Buscar código o alojamiento…" oninput="BKA.q=this.value;_bkaPintar_();const i=document.getElementById('bka-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}" id="bka-q" style="flex:1;min-width:180px;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:8px 10px;font:inherit;font-size:14px">
+        <button type="button" onclick="_bkaTodos_(true)" style="all:unset;cursor:pointer;padding:8px 12px;border-radius:10px;border:1px solid #e5e7eb;font-size:12.5px;font-weight:700">Todos</button>
+        <button type="button" onclick="_bkaTodos_(false)" style="all:unset;cursor:pointer;padding:8px 12px;border-radius:10px;border:1px solid #e5e7eb;font-size:12.5px;font-weight:700">Ninguno</button>
+        <button type="button" onclick="const t=BKA.E.some(g=>!BKA.ab[g.k]);BKA.E.forEach(g=>BKA.ab[g.k]=t);_bkaPintar_()" style="all:unset;cursor:pointer;padding:8px 12px;border-radius:10px;border:1px solid #e5e7eb;font-size:12.5px;font-weight:700">${BKA.E.some(g => !BKA.ab[g.k]) ? 'Expandir' : 'Contraer'}</button></div></div>
+    <div style="flex:1;overflow:auto;padding:0 18px">${eds || '<div style="text-align:center;color:#9ca3af;padding:24px;font-size:13px">Sin resultados</div>'}</div>
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid #f1f5f9;flex-shrink:0">
+      <span style="flex:1;font-size:12.5px;color:#6b7280"><b style="color:#111827">${S.size}</b> de ${BKA.total} habilitados${cambio ? ' · <span style="color:#b45309">sin guardar</span>' : ''}</span>
+      <button type="button" onclick="_bkaCerrar_()" style="all:unset;cursor:pointer;padding:9px 16px;border-radius:10px;background:#f3f4f6;font-size:13px;font-weight:700">Cancelar</button>
+      <button type="button" id="bka-save" onclick="_bkaGuardar_()" ${cambio ? '' : 'disabled'} style="all:unset;cursor:${cambio ? 'pointer' : 'default'};padding:9px 16px;border-radius:10px;background:${cambio ? '#111827' : '#d1d5db'};color:#fff;font-size:13px;font-weight:700">Guardar</button></div>`;
+}
+window._bkaTog_ = hid => { const S = BKA.sel; S.has(hid) ? S.delete(hid) : S.add(hid); _bkaPintar_(); };
+window._bkaEd_ = k => { const g = BKA.E.find(x => x.k === k); if (!g) return; const todos = g.items.every(a => BKA.sel.has(a.hid)); g.items.forEach(a => todos ? BKA.sel.delete(a.hid) : BKA.sel.add(a.hid)); _bkaPintar_(); };
+window._bkaTodos_ = on => { BKA.E.forEach(g => g.items.forEach(a => on ? BKA.sel.add(a.hid) : BKA.sel.delete(a.hid))); _bkaPintar_(); };
+window._bkaCerrar_ = () => { if ([...BKA.sel].sort().join(',') !== BKA.ini && !confirm('¿Salir sin guardar los cambios?')) return; document.getElementById('bka-ov')?.remove(); };
+window._bkaGuardar_ = async function () {
+  const b = document.getElementById('bka-save'); if (b) { b.textContent = '⏳ Guardando…'; b.style.pointerEvents = 'none'; }
+  try { const j = await fetch(`${BACKEND}/wa/bot/alojamientos-set`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ houseIds: [...BKA.sel] }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'error'); BKA.ini = [...BKA.sel].sort().join(','); _bkaPintar_();
+    const s = document.getElementById('bka-save'); if (s) { s.textContent = '✓ Guardado'; s.style.background = '#16a34a'; } setTimeout(() => document.getElementById('bka-ov')?.remove(), 900); }
+  catch (e) { alert('No se pudo guardar: ' + (e.message || e)); _bkaPintar_(); }
+};
