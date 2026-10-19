@@ -3973,7 +3973,8 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const emoji = _asistIntent === "entrada" ? "🕘" : "🕕";
         const verbo = _asistIntent === "entrada" ? "Entrada" : "Salida";
         const nombre = String(resp.empleado || "").split(" ")[0];
-        if (_asistIntent === "salida") { // cierre de jornada: lista actualizada + estados pendientes; la confirmación llega al final
+        await _aseoAutoCfgLoad().catch(() => {}); const _pfS = _aseoPerfil(String(resp.empleado || emp.empleado || ""));
+        if (_asistIntent === "salida" && !(_pfS && _pfS.cierre === false)) { // cierre de jornada (salvo que el perfil lo tenga apagado): lista + estados pendientes; la confirmación llega al final
           try { await _cierreIniciar({ nombre: String(resp.empleado || emp.empleado || ""), hora: resp.hora, fromRaw, phone10, dry: false }); return; }
           catch (e) { console.warn("[cierre] no se pudo iniciar:", e.message); _asistCierre.delete(phone10); }
         }
@@ -13005,7 +13006,7 @@ app.post("/aseo/autonotif", async (req, res) => {
     Object.entries(b.perfiles && typeof b.perfiles === "object" ? b.perfiles : {}).slice(0, 60).forEach(([n, v]) => {
       const nom = String(n || "").trim().slice(0, 80); if (!nom || !v) return;
       perfiles[nom] = { rol: v.rol === "admin" ? "admin" : v.rol === "empleado" ? "empleado" : "", auto: _aseoAutoDe(v),
-        recordatorio: v.recordatorio !== false, canal: v.canal === "sms" || v.canal === "ambos" ? v.canal : "whatsapp",
+        recordatorio: v.recordatorio !== false, cierre: v.cierre !== false, canal: v.canal === "sms" || v.canal === "ambos" ? v.canal : "whatsapp",
         pruebaComo: String(v.pruebaComo || "").trim().slice(0, 80) };
     });
     // Protección: los perfiles que NO vienen en la petición se conservan (una ventana que abrió
