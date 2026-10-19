@@ -67001,7 +67001,7 @@ function aseoEnsureCss_() {
   .ad-steps button.on:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--c);margin-right:6px;vertical-align:1px}
   /* Mismo estilo que los botones de estado de las cards: el elegido sólido con su color, los demás en tono suave */
   .ad-steps{background:transparent;padding:0;gap:4px}
-  .ad-steps button{background:color-mix(in srgb,var(--c) 11%,#fff);color:color-mix(in srgb,var(--c) 72%,#1f2937)}
+  .ad-steps button{background:#f3f4f6;color:#6b7280}.ad-steps button:hover{background:#e5e7eb;color:#374151}
   .ad-steps button:hover{background:color-mix(in srgb,var(--c) 22%,#fff);color:#0f1729}
   .ad-steps button.on{background:var(--c);color:#fff;box-shadow:0 1px 2px rgba(15,23,42,.15)}
   .ad-steps button.on:before{background:#fff}
