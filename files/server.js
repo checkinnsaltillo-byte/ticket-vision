@@ -1963,7 +1963,7 @@ async function _botExecTool(toolUse, ctx) {
       const r = await fetch(url.toString(), { cache: "no-store" });
       const j = await r.json();
       if (!j.ok) return { content: `Error consultando disponibilidad: ${j.error || "desconocido"}`, notifyText: null };
-      const allResults = j.results || [];
+      const allResults = (j.results || []).slice().sort((a, b) => (Number(a.total) || Infinity) - (Number(b.total) || Infinity)); // de menor a mayor precio
       const top = allResults.slice(0, 5).map(x => ({
         alojamiento: x.name,
         tipo: x.type || "",
@@ -13480,7 +13480,13 @@ async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre,
   const estanciaActiva = simular && simular.estanciaActiva != null ? !!simular.estanciaActiva : !!(arr && dep && arr <= hoy && hoy <= dep);
   const reservaVinculada = simular && simular.estanciaActiva != null ? !!simular.estanciaActiva : !!(dep && dep >= hoy);
   const cat = { canal: canal || "whatsapp", hid: hid || (booking && booking.HouseId) || "", estanciaActiva, reservaVinculada };
-  const detect = _bcDetectar(cfg, catL, texto);
+  let detect = _bcDetectar(cfg, catL, texto), seguimiento = false;
+  // Seguimiento: si el mensaje no menciona ningún tema («del 20 al 22», «somos 3», «sí»), sigue el proceso que el huésped
+  // venía tratando en sus mensajes recientes (últimas 3 h). Así la conversación no cae en «Dudas generales» a medio flujo.
+  if (!detect.length) { const lim = Date.now() - 3 * 3600e3;
+    const prev = (mensajes || []).map(m => ({ t: m.role === "user" ? m.body : m.de === "huesped" ? m.texto : null, f: Date.parse(m.timestamp || m.fecha || "") }))
+      .filter(x => x.t && String(x.t).trim() !== String(texto).trim() && (!x.f || x.f >= lim)).slice(-6).reverse();
+    for (const x of prev) { const d = _bcDetectar(cfg, catL, String(x.t)); if (d.length) { detect = d; seguimiento = true; break; } } }
   const procs = detect.length ? detect : ["dudas"];
   const modos = {}; procs.forEach(k => { const c = catL.find(x => x.clave === k); if (c) modos[k] = _bcModoProceso(cfg, cat, c, now); });
   const der = _bcDerivacion(cfg, texto, mensajes);
@@ -13517,7 +13523,7 @@ async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre,
   // Procesos apagados que conviven con otros temas: el modelo debe contestar ese tema con el respaldo.
   const offTxt = procs.filter(k => (modos[k] || {}).modo === "off").map(k => { const c = catL.find(x => x.clave === k); const m = modos[k]; return `- ${c ? c.nombre : k}: no lo atiendas; responde solo: «${(cfg.procesos[k] || {}).respaldo || (m.canal ? cfg.respaldoCanal : cfg.respaldoGeneral)}»`; });
   const prompt = _bcPerfilPrompt(cfg.perfil, procs) + (offTxt.length ? `\n\nTEMAS DESACTIVADOS EN ESTE MOMENTO:\n${offTxt.join("\n")}` : "") + await _enPromptAprobadas(procs).catch(() => "");
-  return { masterOff, activo: !!cfg.activo && !simular, observar: !cfg.activo, accion, msg, motivo, tools, bloqueadas: [...bloq], prompt, procesos: procs, detectados: detect, modos, ipo: ip.ipo, prioridad: ip.prioridad, factores: ip.factores, senales: ip.senales, emergencia: ip.emergencia,
+  return { masterOff, activo: !!cfg.activo && !simular, observar: !cfg.activo, accion, msg, motivo, tools, bloqueadas: [...bloq], prompt, procesos: procs, seguimiento, detectados: detect, modos, ipo: ip.ipo, prioridad: ip.prioridad, factores: ip.factores, senales: ip.senales, emergencia: ip.emergencia,
     horario: hor, nivel: nivelTxt, derivacion: der.motivos, conv, hid: cat.hid, estanciaActiva, linkModo, sinLink: linkModo === "off" || linkModo === "der", canal: cat.canal, nombre, aloj, ms: Date.now() - t0, objetivo };
 }
 // Registra la decisión (bitácora + estado de la conversación) y, si el gate está activo, crea la alerta que corresponda.
