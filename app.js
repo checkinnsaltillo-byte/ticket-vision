@@ -51474,7 +51474,6 @@ function _botcRenderSidebar() {
           ${q ? `<button type="button" onclick="botcSetSearchQuery_('')" title="Limpiar" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:14px;color:#94a3b8;cursor:pointer;padding:2px 6px;line-height:1">×</button>` : ''}
         </div>
       </div>
-      ${_botcTipoTabs_()}
       ${BOTC_STATE.filtersOpen ? _botcRenderFiltersPanel_() : ''}
     </div>`;
   if (BOTC_STATE.arch) { sidebar.innerHTML = tabsHtml + _botcArchListaHtml_(q); return; }
@@ -56398,7 +56397,7 @@ try {
 } catch(_){}
 function _botcHasAnyFilter_() {
   const p = BOTC_STATE.pf || {};
-  return !!BOTC_STATE.arch || (p.control||[]).length + (p.estado||[]).length + (p.factura||[]).length + (p.medio||[]).length + (p.aloj||[]).length > 0;
+  return !!BOTC_STATE.arch || BOTC_STATE.tipo === 'personal' || (p.control||[]).length + (p.estado||[]).length + (p.factura||[]).length + (p.medio||[]).length + (p.aloj||[]).length > 0;
 }
 window.botcToggleFilters_ = function() { BOTC_STATE.filtersOpen = !BOTC_STATE.filtersOpen; _botcRenderSidebar(); };
 window.botcTogglePf_ = function(cat, val) {
@@ -56409,7 +56408,7 @@ window.botcTogglePf_ = function(cat, val) {
   _botcRenderSidebar();
 };
 window.botcClearPf_ = function() {
-  BOTC_STATE.pf = { control:[], estado:[], factura:[], medio:[], aloj:[] }; BOTC_STATE.arch = false;
+  BOTC_STATE.pf = { control:[], estado:[], factura:[], medio:[], aloj:[] }; BOTC_STATE.arch = false; BOTC_STATE.tipo = 'huespedes';
   try { localStorage.setItem('botc_pf', JSON.stringify(BOTC_STATE.pf)); } catch(_){}
   _botcRenderSidebar();
 };
@@ -56485,9 +56484,18 @@ function _botcRenderFiltersPanel_() {
       <div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Conversaciones</div>
       <div style="display:flex;gap:6px">${archPills}</div>
     </div>`;
+  const nP = window.__botcPersonal ? (BOTC_STATE.conversations || []).filter(_botcEsPersonal_).length : null;
+  const tipoPills = [['huespedes', '🧳 Huéspedes'], ['personal', `👷 Personal${nP != null ? ` (${nP})` : ''}`]].map(([v, t]) => { const on = BOTC_STATE.tipo === v;
+    return `<button type="button" onclick="botcSetTipo_('${v}')" style="flex:1;padding:6px 10px;font-size:11px;font-weight:800;background:${on?'#0f172a':'#fff'};color:${on?'#fff':'#475569'};border:1.5px solid ${on?'#0f172a':'#cbd5e1'};border-radius:6px;cursor:pointer">${t}</button>`; }).join('');
+  const tipoSec = `
+    <div style="margin-bottom:8px">
+      <div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Contacto</div>
+      <div style="display:flex;gap:6px">${tipoPills}</div>
+    </div>`;
   if (BOTC_STATE.arch) return `<div id="botc-filters-panel" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:6px">${archSec}</div>`;
   return `
     <div id="botc-filters-panel" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:6px">
+      ${tipoSec}
       ${archSec}
       ${viewSec}
       ${sec('Control', 'control', controlOpts)}
@@ -74463,7 +74471,10 @@ async function _botcPersonalCargar_() {
   try { const j = await fetch(`${BACKEND}/wa/bot/personal-tels`, { cache: 'no-store' }).then(r => r.json()); if (j.ok) { window.__botcPersonal = j.tels || {}; _botcRenderSidebar(); } } catch (_) { window.__botcPersonalT = 0; }
 }
 function _botcEsPersonal_(c) { if (!c || c.canal === 'airbnb' || String(c.phone || '').startsWith('abn')) return false; const P = window.__botcPersonal || {}, t = String(c.phone || '').replace(/\D/g, '').slice(-10); return !!(t && P[t]); }
-function _botcFiltrarTipo_(list) { if (!window.__botcPersonal) { _botcPersonalCargar_(); return BOTC_STATE.tipo === 'personal' ? [] : list; }
+function _botcFiltrarTipo_(list) {
+  // Chats del personal: se muestra el nombre del empleado (Personal / usuarios del sistema) en lugar del número.
+  if (window.__botcPersonal) list.forEach(c => { if (_botcEsPersonal_(c)) { const e = window.__botcPersonal[String(c.phone || '').replace(/\D/g, '').slice(-10)]; if (e && e.nombre) c.name = e.nombre; } });
+  if (!window.__botcPersonal) { _botcPersonalCargar_(); return BOTC_STATE.tipo === 'personal' ? [] : list; }
   return list.filter(c => BOTC_STATE.tipo === 'personal' ? _botcEsPersonal_(c) : !_botcEsPersonal_(c)); }
 function _botcTipoTabs_() {
   if (!window.__botcPersonal) _botcPersonalCargar_();
