@@ -73325,7 +73325,7 @@ function bkCss_() {
   if (document.getElementById('bk-css')) return;
   const st = document.createElement('style'); st.id = 'bk-css';
   st.textContent = `
-#module-bot-control{--bk-line:#e5e7eb;--bk-tx:#111827;--bk-mut:#6b7280;--bk-bg:#f8fafc;--bk-card:#fff;--bk-ac:#7c3aed;padding:18px 22px 70px;color:var(--bk-tx);max-width:1180px;margin:0 auto}
+#module-bot-control{--bk-line:#e5e7eb;--bk-tx:#111827;--bk-mut:#6b7280;--bk-bg:#f8fafc;--bk-card:#fff;--bk-ac:#7c3aed;padding:18px 22px 70px;color:var(--bk-tx)}
 #bk-fl-ov,#bk-tpl-ov{--bk-line:#e5e7eb;--bk-tx:#111827;--bk-mut:#6b7280;--bk-bg:#f8fafc;--bk-card:#fff;--bk-ac:#7c3aed;color:var(--bk-tx)}
 .bk-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .bk-h h2{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px}
