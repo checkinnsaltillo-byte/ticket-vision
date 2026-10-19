@@ -51474,6 +51474,7 @@ function _botcRenderSidebar() {
           ${q ? `<button type="button" onclick="botcSetSearchQuery_('')" title="Limpiar" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:14px;color:#94a3b8;cursor:pointer;padding:2px 6px;line-height:1">×</button>` : ''}
         </div>
       </div>
+      ${_botcTipoTabs_()}
       ${BOTC_STATE.filtersOpen ? _botcRenderFiltersPanel_() : ''}
     </div>`;
   if (BOTC_STATE.arch) { sidebar.innerHTML = tabsHtml + _botcArchListaHtml_(q); return; }
@@ -56425,6 +56426,7 @@ function _botcConvMeta_(c) {
   return { control: String(c.control||'bot'), estado, factura, medio, aloj };
 }
 function _botcApplyPanelFilters_(list) {
+  list = _botcFiltrarTipo_(list);
   const p = BOTC_STATE.pf || {};
   if (!_botcHasAnyFilter_()) return list;
   return list.filter(c => {
@@ -74453,3 +74455,22 @@ window._botcMgSet_ = async function (k) {
 setInterval(() => { const m = document.getElementById('module-bot-chats'); if (m && !m.classList.contains('hidden')) _botcMgCargar_(); }, 60000);
 setTimeout(() => { const m = document.getElementById('module-bot-chats'); if (m && !m.classList.contains('hidden')) _botcMgCargar_(); }, 3000);
 setTimeout(() => { const m = document.getElementById('module-bot-chats'); if (m && window.MutationObserver) new MutationObserver(() => { if (!m.classList.contains('hidden')) _botcMgCargar_(); }).observe(m, { attributes: true, attributeFilter: ['class'] }); }, 0);
+
+// ═══ Huéspedes / Personal: separa las conversaciones del personal del negocio (Personal + usuarios del sistema). Siempre abre en «Huéspedes». ═══
+BOTC_STATE.tipo = 'huespedes'; window.__botcPersonal = null;
+async function _botcPersonalCargar_() {
+  if (window.__botcPersonalT && Date.now() - window.__botcPersonalT < 10 * 60e3) return; window.__botcPersonalT = Date.now();
+  try { const j = await fetch(`${BACKEND}/wa/bot/personal-tels`, { cache: 'no-store' }).then(r => r.json()); if (j.ok) { window.__botcPersonal = j.tels || {}; _botcRenderSidebar(); } } catch (_) { window.__botcPersonalT = 0; }
+}
+function _botcEsPersonal_(c) { if (!c || c.canal === 'airbnb' || String(c.phone || '').startsWith('abn')) return false; const P = window.__botcPersonal || {}, t = String(c.phone || '').replace(/\D/g, '').slice(-10); return !!(t && P[t]); }
+function _botcFiltrarTipo_(list) { if (!window.__botcPersonal) { _botcPersonalCargar_(); return BOTC_STATE.tipo === 'personal' ? [] : list; }
+  return list.filter(c => BOTC_STATE.tipo === 'personal' ? _botcEsPersonal_(c) : !_botcEsPersonal_(c)); }
+function _botcTipoTabs_() {
+  if (!window.__botcPersonal) _botcPersonalCargar_();
+  const todas = (BOTC_STATE.conversations || []), nP = window.__botcPersonal ? todas.filter(_botcEsPersonal_).length : null;
+  const b = (k, t, n) => { const on = BOTC_STATE.tipo === k; return `<button type="button" onclick="botcSetTipo_('${k}')" style="flex:1;padding:6px 8px;font-size:12.5px;font-weight:700;border:0;border-radius:8px;cursor:pointer;background:${on ? '#fff' : 'transparent'};color:${on ? '#111827' : '#6b7280'};box-shadow:${on ? '0 1px 2px rgba(0,0,0,.12)' : 'none'}">${t}${n != null ? ` <span style="font-weight:600;color:#9ca3af">${n}</span>` : ''}</button>`; };
+  return `<div style="display:flex;gap:2px;margin-top:8px;padding:3px;background:#f0f2f5;border-radius:10px">${b('huespedes', '🧳 Huéspedes', null)}${b('personal', '👷 Personal', nP)}</div>`;
+}
+window.botcSetTipo_ = function (k) { BOTC_STATE.tipo = k; _botcRenderSidebar(); };
+// La barra del Modo general se vuelve a poner después de cada repintado de la lista (el repintado reemplaza todo el contenido).
+{ const _orig = _botcRenderSidebar; _botcRenderSidebar = function () { const r = _orig.apply(this, arguments); try { _botcMgBarra_(); } catch (_) {} return r; }; }

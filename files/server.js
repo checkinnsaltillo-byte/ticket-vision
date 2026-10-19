@@ -4249,6 +4249,14 @@ const _wa_cache = { convs: new Map(), context: new Map() };
 const _CONVS_TTL = 20_000, _CONTEXT_TTL = 8_000;
 
 /** GET /wa/bot/conversations — lista conversaciones activas del bot. */
+// Teléfonos del personal (Personal + sys_users) → Chats bot separa «Huéspedes» de «Personal».
+app.get("/wa/bot/personal-tels", async (req, res) => {
+  try { const out = {}; const add = (cel, nombre, puesto) => { const p = _sisCel10(cel); if (p && !out[p]) out[p] = { nombre: String(nombre || "").trim(), puesto: String(puesto || "").trim() }; };
+    const per = await _sisLeer("per").catch(() => ({ rows: [] })); per.rows.forEach(r => { const n = [r.Nombre, r.Apellido_paterno, r.Apellido_materno].filter(Boolean).join(" "); add(r.Celular, n, r.Puesto); add(r.Telefono, n, r.Puesto); });
+    const su = await _sisLeer("su").catch(() => ({ rows: [] })); su.rows.forEach(r => add(_sisCol(r, "cel", "celular", "whatsapp"), r.Nombre, r.Puesto));
+    res.json({ ok: true, tels: out }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/wa/bot/conversations", async (req, res) => {
   try {
     const filter = String(req.query.filter || "all");
