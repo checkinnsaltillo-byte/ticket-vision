@@ -74679,17 +74679,26 @@ function tdTablaUrg_(O, vac) {
   if (!ASEO.pl.cargado) { plCargar_().then(() => tdRender_()); return '<div class="pc-mv-empty">⏳ Cargando plantillas…</div>'; }
   const items = [], faltan = [];
   O.filter(x => tdEsIG_(x.r)).forEach(x => { const r = x.r, P = tdFinMes_(x.iso), p = r.Plantilla ? ASEO.pl.lista[r.Plantilla] : null; if (!p) return;
-    tdIGAlojs_(r).forEach(hid => { const key = tdIGKey_(r, hid, P);
-      const doc = key in (ASEO.pl.resp || {}) ? { resp: ASEO.pl.resp[key], at: (ASEO.pl.respAt || {})[key] } : U.docs[key];
-      if (doc === undefined) { faltan.push(key); return; } const resp = (doc && doc.resp) || {};
-      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (u) items.push({ r, hid, P, key, p, s, it, rr, u, at: doc.at || '' }); })); }); });
+    tdIGAlojs_(r).forEach(hid => {
+      // Un alojamiento terminado arranca un ciclo nuevo (llave con sufijo) que aún no tiene respuestas: se toma el ciclo más reciente
+      // que sí tenga respuestas (el levantamiento actual o el último terminado), no solo la llave del periodo en curso.
+      // Candidatos: llave del periodo en curso, ciclos registrados y las llaves "fin de mes" de este mes y del anterior (las respuestas
+      // se guardan con el periodo vigente al contestar; al terminar, el ciclo nuevo cambia la llave aunque las respuestas sigan en la anterior).
+      const mesAnt = tdFinMes_(new Date(Date.parse(P.slice(0, 7) + '-01T12:00:00Z') - 86400e3).toISOString().slice(0, 10));
+      const cands = [...new Set([tdIGKey_(r, hid, P), tdIGKey_(r, hid, P, true), tdIGKey_(r, hid, mesAnt, true)].concat(tdIGCiclos_(r, hid).slice(-4).map(c => tdIGKey_(r, hid, c, true))))];
+      const docDe = key => key in (ASEO.pl.resp || {}) ? { resp: ASEO.pl.resp[key], at: (ASEO.pl.respAt || {})[key] } : U.docs[key];
+      let mejor = null, mejorKey = '';
+      for (const key of cands) { const doc = docDe(key); if (doc === undefined) { faltan.push(key); continue; }
+        if (doc && doc.resp && Object.keys(doc.resp).length && (!mejor || String(doc.at || '') > String(mejor.at || ''))) { mejor = doc; mejorKey = key; } }
+      if (!mejor) return; const key = mejorKey, resp = mejor.resp, per = (key.match(/:(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/) || [])[1] || P;
+      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (u) items.push({ r, hid, P, per, key, p, s, it, rr, u, at: mejor.at || '' }); })); }); });
   if (faltan.length && !U.pend) { U.pend = fetch(`${BACKEND}/aseo/plantilla-resp/lote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ks: faltan }) }).then(r => r.json())
     .then(j => { (j.items || []).forEach(x => { U.docs[x.k] = x.doc || {}; }); faltan.forEach(k => { if (U.docs[k] === undefined) U.docs[k] = {}; }); U.pend = null; tdRender_(); }).catch(() => { U.pend = null; }); }
   items.sort((a, b) => b.u.n - a.u.n || String(b.at).localeCompare(String(a.at)));
   TAR_STATE._urgItems = items;
   const tareaDe = x => Object.values(ASEO.tareas || {}).find(t => t && t.lv && t.lv.key === x.key && t.lv.item === x.it.id);
   const rows = items.map((x, i) => { const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid }, fotos = (x.rr.fotos || []).filter(f => !f.subiendo).length, T = tareaDe(x);
-    return { onclick: `tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')`, cells: [
+    return { onclick: x.per && x.per !== tdIGPerDe_(x.r, x.hid, x.P) ? `tdAbrirHijo_('${esc(x.r.ID)}','${esc(x.hid)}','${esc(x.per)}')` : `tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')`, cells: [
       `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || x.hid).replace(/^Calle\s+/i, ''))}</small></span>`,
       ckTx_(x.at ? aseoDiaTxt_(String(x.at).slice(0, 10)) : '—'),
       `<span class="tb-ret" style="background:${x.u.c}1a;color:${x.u.c}">${esc(x.u.t)}</span>`,
