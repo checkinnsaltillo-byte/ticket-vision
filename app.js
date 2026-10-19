@@ -379,7 +379,7 @@ const SYS_MODULE_LIST = [
   ['inventarios',      '📦 Inventarios'],
   ['tuya',             '🛰️ Dispositivos'],
   ['guias',            '📖 Guías de Bienvenida'],
-  ['llaves',           '🔑 Llaves'],
+  ['llaves',           '🔑 Llavero'],
   ['config-admin',     '⚙️ Configuración Admin'],
   ['bot-chats',        '🤖 Chats bot'],
   ['bot-control',      '🎛️ Control del bot'],
