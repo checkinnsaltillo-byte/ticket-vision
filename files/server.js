@@ -4083,7 +4083,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       const _todayL = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
       const _yearL  = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
       const _tempoL = `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${_todayL} (América/Mexico_City).\n- AÑO ACTUAL: ${_yearL}. Úsalo por default si no se menciona año.`;
-      const leadSystem = BOT_SYSTEM_PROMPT_BASE + leadPromptsBlock + _tempoL + _gPrompt + `
+      const leadSystem = BOT_SYSTEM_PROMPT_BASE + leadPromptsBlock + _tempoL + _gPrompt + await _bcSinRespPrompt() + `
 
 CONTEXTO ESPECIAL — LEAD ENTRANTE SIN RESERVA
 No tenemos una reserva asociada a este número. Tu objetivo es SOLO capturar los datos mínimos para poder cotizar y armar la reserva:
@@ -4110,6 +4110,7 @@ REGLAS ESTRICTAS
         if (await _bcExigeSup(_g, llm.toolsUsed)) _forzarSup = true;
         console.info(`[bot-in] ${phone10}: LLM lead+tools en ${Date.now()-tLlm}ms (${(llm.toolsUsed||[]).length} tools)`);
         for (const t of (llm.toolsUsed || [])) { if (t.notifyText) _botNotifyAdmin(t.notifyText); }
+        if (_bcEsSinResp(llm.text)) { _bcSinRespRegistrar(phone10, "whatsapp", bodyMsg); console.info(`[bot-in] ${phone10}: sin respuesta (lead) — espera atención manual`); return; }
         const replyText = String(llm.text || "").trim() ||
           "¡Hola! Gracias por contactar Check-inn Saltillo. Para poder ayudarte, ¿me compartes tu nombre, el alojamiento o zona que te interesa, fechas tentativas y número de huéspedes? 🏠";
         // Modo SUPERVISED: guardar como draft para revisión humana.
@@ -4158,7 +4159,7 @@ REGLAS ESTRICTAS
     const _today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
     const _year  = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
     const _tempo = `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${_today} (América/Mexico_City).\n- AÑO ACTUAL: ${_year}. Úsalo por default si el huésped no menciona año; si esa fecha ya pasó, salta al año siguiente.`;
-    const system = BOT_SYSTEM_PROMPT_BASE + promptsBlock + _tempo + context + _gPrompt;
+    const system = BOT_SYSTEM_PROMPT_BASE + promptsBlock + _tempo + context + _gPrompt + await _bcSinRespPrompt();
     const history = (ctxResp.messages || []).slice(-10, -1); // excluir el user actual (ya guardado)
     // Anthropic solo acepta roles 'user' | 'assistant'. Nuestros roles
     // internos incluyen 'admin' (envío manual del panel), 'template'
@@ -4178,6 +4179,7 @@ REGLAS ESTRICTAS
     for (const t of (llm.toolsUsed || [])) {
       if (t.notifyText) _botNotifyAdmin(t.notifyText);
     }
+    if (_bcEsSinResp(llm.text)) { _bcSinRespRegistrar(phone10, "whatsapp", bodyMsg); console.info(`[bot-in] ${phone10}: sin respuesta — espera atención manual`); return; }
     const replyText = String(llm.text || "").trim();
     if (!replyText) {
       console.warn(`[bot-in] ${phone10}: respuesta vacía del LLM (modo=${state.control}) — no cambia modo`);
@@ -11728,9 +11730,10 @@ async function _abnBotResponder(bid, m) {
   const context = ctx && ctx.booking ? _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings)
     : `\n[Reserva ${bid} de Airbnb${bk ? ` · llegada ${String(bk.arrival || "").slice(0, 10)} · salida ${String(bk.departure || "").slice(0, 10)}` : ""}.]`;
   const system = BOT_SYSTEM_PROMPT_BASE + _botBuildPromptsBlock(await _botGetPrompts({ claves: _g && _g.detectados })) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${hoy} (America/Mexico_City).` + context +
-    `\n\nCANAL: esta conversación es por la mensajería de AIRBNB (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos (Airbnb los bloquea). Sé breve y cordial.` + (_gOn ? _g.prompt : "");
+    `\n\nCANAL: esta conversación es por la mensajería de AIRBNB (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos (Airbnb los bloquea). Sé breve y cordial.` + (_gOn ? _g.prompt : "") + await _bcSinRespPrompt();
   const llm = await _botLlmLoop({ system, history, userMsg, ctx: { phone10, fromRaw: phone10 ? `whatsapp:+52${phone10}` : "", booking: (ctx && ctx.booking) || {}, alojRow: (ctx && ctx.alojRow) || {}, sinLink: _gOn && _g.sinLink }, tools: _gOn ? _g.tools : undefined });
   for (const t of (llm.toolsUsed || [])) if (t.notifyText) _botNotifyAdmin(t.notifyText);
+  if (_bcEsSinResp(llm.text)) { _bcSinRespRegistrar("abn" + bid, _bcCanalDe(bk && bk.source), userMsg); return "sin respuesta: espera atención manual"; }
   const reply = String(llm.text || "").trim(); if (!reply) return "respuesta vacía";
   if (m.control === "supervised" || (_gOn && (_g.accion === "supervisado" || await _bcExigeSup(_g, llm.toolsUsed)))) { await _abnModosMutar(d => { if (d[bid]) { d[bid].draft = reply; d[bid].draftAt = new Date().toISOString(); } }); return "borrador"; }
   await _abnEnviar(bid, reply, "bot");
@@ -13221,6 +13224,7 @@ function _bcDefaults() {
       { id: "d5", disparador: "palabra", umbral: 1, lista: "", accion: "derivar", mensaje: "", activo: false },
     ],
     disyuntor: { on: true, n: 3, ventanaMin: 60, bajaA: "sup" },
+    sinRespuesta: "callar", // cuando el bot no tiene la respuesta: "callar" (no contesta; espera a una persona) | "avisar" (dice que el equipo confirma)
     // Mensajes programados: plantilla vinculada a cada proceso proactivo, horario permitido y atraso máximo.
     proactivos: { ventana: { ini: "08:00", fin: "21:30" }, atrasoMaxH: 3 },
     // Cada plantilla de WhatsApp pertenece a un proceso: las programadas se envían según el modo de ese proceso.
@@ -13253,6 +13257,13 @@ async function _bcCfg(fresh) {
   catch (e) { console.warn("[bot-control] cfg:", e.message); if (!_bcCfgC) { const d = _bcDefaults(); d._error = true; return d; } } // RNF-03: sin lectura → la última copia o defaults (observación)
   return _bcCfgC;
 }
+// «Sin respuesta»: si el modelo no puede contestar con certeza, devuelve esta marca y el sistema no envía nada.
+const _BOT_SIN_RESP = "[SIN_RESPUESTA]";
+async function _bcSinRespPrompt() { const cfg = await _bcCfg().catch(() => ({})); if ((cfg.sinRespuesta || "callar") !== "callar") return "";
+  return `\n\nSI NO TIENES LA RESPUESTA (REGLA PRIORITARIA): si con la información disponible (guía del alojamiento, reserva, fichas de proceso y herramientas) no puedes responder con certeza, o la petición necesita a una persona y no tienes una herramienta para registrarla, responde EXACTAMENTE ${_BOT_SIN_RESP} y nada más. Una persona del equipo contestará manualmente. Si el mensaje tiene varias preguntas y alguna importante no la puedes responder con certeza, NO contestes a medias: responde solo ${_BOT_SIN_RESP} para que la persona conteste todo. Nunca digas «no tengo esa información», «lo confirmo con el equipo» ni similares: en esos casos usa la marca. Esta regla tiene prioridad sobre cualquier otra instrucción. No uses la marca si sí sabes la respuesta completa o si registraste la solicitud con una herramienta.`; }
+const _bcEsSinResp = t => String(t || "").includes(_BOT_SIN_RESP);
+function _bcSinRespRegistrar(conv, canal, texto) { _bcLog({ tipo: "sin_respuesta", conv, canal, resultado: "el bot no tenía la respuesta: no contestó; espera atención manual", motivo: String(texto || "").slice(0, 160) });
+  _bcMut(_BC.CONV, d => { const c = d[conv] = d[conv] || {}; Object.assign(c, { canal, at: new Date().toISOString(), estado: "nueva", asignado: "equipo", accion: "sin_respuesta", motivo: "El bot no tenía la respuesta: espera atención manual", ult: String(texto || "").slice(0, 200) }); }).catch(() => {}); }
 const _bcQ = {};
 function _bcMut(obj, fn) { const run = (_bcQ[obj] || Promise.resolve()).then(async () => { const d = (await _rhdGetJson(obj)) || {}; const out = await fn(d); await _rhdPut(obj, JSON.stringify(d), "application/json"); return out; }); _bcQ[obj] = run.catch(() => {}); return run; }
 function _bcHoy() { return new Date().toLocaleDateString("sv-SE", { timeZone: _BC_TZ }); }
@@ -13603,7 +13614,7 @@ app.post("/bot/control", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const { seccion, data, usuario } = req.body || {}, por = String(usuario || "").slice(0, 60);
-    const OK = ["flujos", "eliminar_proceso", "restaurar_proceso", "plantillaProceso", "proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
+    const OK = ["sinRespuesta", "flujos", "eliminar_proceso", "restaurar_proceso", "plantillaProceso", "proactivos", "activo", "master", "fueraOficina", "respaldoGeneral", "respaldoCanal", "proceso", "procesos_lote", "extras", "horario", "disponible", "urgencia", "perfil", "revertir", "derivacion", "disyuntor", "reset_disyuntor"];
     if (!OK.includes(seccion)) return res.status(400).json({ ok: false, error: "Sección inválida" });
     let antes, despues, sincronizarAloj = null;
     await _bcMut(_BC.OBJ, d => {
@@ -13971,7 +13982,7 @@ app.post("/bot/control/casos/simular", async (req, res) => {
     const hora = `${String(Math.floor(now.min / 60)).padStart(2, "0")}:${String(now.min % 60).padStart(2, "0")}`;
     const system = BOT_SYSTEM_PROMPT_BASE + _botBuildPromptsBlock(await _botGetPrompts({ claves: g.detectados })) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${fecha}, ${hora} h (America/Monterrey).\n- AÑO ACTUAL: ${fecha.slice(0, 4)}.` + context + g.prompt
       + (c.canal !== "whatsapp" ? `\n\nCANAL: esta conversación es por la mensajería de ${c.canal === "booking" ? "BOOKING" : "AIRBNB"} (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos.` : "")
-      + (c.perfil ? `\n\nPERFIL DEL HUÉSPED (guardado con el caso): ${JSON.stringify(c.perfil).slice(0, 1500)}` : "");
+      + (c.perfil ? `\n\nPERFIL DEL HUÉSPED (guardado con el caso): ${JSON.stringify(c.perfil).slice(0, 1500)}` : "") + await _bcSinRespPrompt();
     const llm = await _botLlmLoop({ system, history, userMsg, tools: g.tools, ctx: { phone10: "caso", fromRaw: "", booking: c.booking || {}, alojRow: c.alojRow || {}, simular: true, simHuesped: true, msgTs: isNaN(t) ? Date.now() : t.getTime(), userMsg } });
     res.json({ ok: true, decision: Object.assign({}, g, { tools: g.tools.map(x => x.name) }), respuesta: String(llm.text || "").trim(), herramientas: (llm.toolsUsed || []).map(x => x.name), real, userMsg, fecha, hora });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
