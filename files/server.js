@@ -13415,8 +13415,9 @@ async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre,
   let accion, msg = "", motivo = "";
   const objetivo = cfg.urgencia.objetivo[ip.prioridad];
   const acuse = () => hor.conPersonal || ip.prioridad === "P1" || ip.prioridad === "P2" ? String(cfg.urgencia.acuse || "").replace("{tiempo}", objetivo ? `${objetivo} minutos` : "un momento") : cfg.urgencia.sinCobertura;
-  if (cfg.master && cfg.master.on === false) { accion = "off_master"; msg = cfg.master.msg; motivo = "interruptor maestro apagado"; }
-  else if (ip.emergencia) { accion = "emergencia"; msg = cfg.urgencia.seguridad; motivo = "regla de emergencia"; }
+  const masterOff = !!(cfg.master && cfg.master.on === false);
+  if (ip.emergencia) { accion = "emergencia"; msg = cfg.urgencia.seguridad; motivo = "regla de emergencia"; } // lo crítico va primero, aun con el bot apagado
+  else if (masterOff) { accion = "off_master"; msg = cfg.master.msg; motivo = "interruptor maestro apagado"; }
   else if (der.derivar) { accion = "derivar"; msg = der.derivar.mensaje || acuse(); motivo = der.derivar.motivo; }
   else if (todosOff) { const k = procs[0], c = catL.find(x => x.clave === k), m = modos[k] || {}; accion = "respaldo"; msg = (cfg.procesos[k] || {}).respaldo || (m.canal ? cfg.respaldoCanal : cfg.respaldoGeneral); motivo = `${c ? c.nombre : k}: ${_BC_MODO_TXT.off} (${m.porque || ""})`; }
   else if (nivel === 2) { const kd = procs.find(k => (modos[k] || {}).modo === "der"); accion = kd ? "derivar" : "personal"; msg = (kd && (cfg.procesos[kd] || {}).respaldo) || acuse(); motivo = kd ? `${(catL.find(x => x.clave === kd) || {}).nombre}: Derivar (${modos[kd].porque})` : nivPrio === 2 ? `prioridad ${ip.prioridad}` : `horario ${hor.franja}: Personal`; }
@@ -13425,7 +13426,7 @@ async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre,
   // Procesos apagados que conviven con otros temas: el modelo debe contestar ese tema con el respaldo.
   const offTxt = procs.filter(k => (modos[k] || {}).modo === "off").map(k => { const c = catL.find(x => x.clave === k); const m = modos[k]; return `- ${c ? c.nombre : k}: no lo atiendas; responde solo: «${(cfg.procesos[k] || {}).respaldo || (m.canal ? cfg.respaldoCanal : cfg.respaldoGeneral)}»`; });
   const prompt = _bcPerfilPrompt(cfg.perfil, procs) + (offTxt.length ? `\n\nTEMAS DESACTIVADOS EN ESTE MOMENTO:\n${offTxt.join("\n")}` : "") + await _enPromptAprobadas(procs).catch(() => "");
-  return { activo: !!cfg.activo && !simular, observar: !cfg.activo, accion, msg, motivo, tools, bloqueadas: [...bloq], prompt, procesos: procs, detectados: detect, modos, ipo: ip.ipo, prioridad: ip.prioridad, factores: ip.factores, senales: ip.senales, emergencia: ip.emergencia,
+  return { masterOff, activo: !!cfg.activo && !simular, observar: !cfg.activo, accion, msg, motivo, tools, bloqueadas: [...bloq], prompt, procesos: procs, detectados: detect, modos, ipo: ip.ipo, prioridad: ip.prioridad, factores: ip.factores, senales: ip.senales, emergencia: ip.emergencia,
     horario: hor, nivel: nivelTxt, derivacion: der.motivos, conv, hid: cat.hid, estanciaActiva, linkModo, sinLink: linkModo === "off" || linkModo === "der", canal: cat.canal, nombre, aloj, ms: Date.now() - t0, objetivo };
 }
 // Registra la decisión (bitácora + estado de la conversación) y, si el gate está activo, crea la alerta que corresponda.
@@ -13522,8 +13523,18 @@ function _bcFallo(k, que) {
     _botNotifyAdmin(`⚡ Disyuntor: el proceso «${nom}» acumuló ${n} ${que} y bajó a ${_BC_MODO_TXT[D.bajaA || "sup"]}. Revísalo en Control del bot › Procesos.`); }).catch(() => {});
 }
 // Aplica la decisión del gate en un chat de WhatsApp. Devuelve true si ya respondió (no hay que llamar al modelo).
+// Interruptor maestro: funciona SIEMPRE (aunque los controles estén en observación). Manda el aviso fijo una vez cada 6 h por
+// conversación y no cambia el modo del chat, para que al volver a encender el bot todo siga igual.
+const _bcMasterAvisado = new Map();
+async function _bcMasterOff(g, conv, enviar) {
+  const t = _bcMasterAvisado.get(conv) || 0; if (Date.now() - t < 6 * 3600e3) return true;
+  _bcMasterAvisado.set(conv, Date.now()); const msg = String(g.msg || "").trim(); if (msg) await enviar(msg).catch(() => {});
+  return true;
+}
 async function _bcAplicarWa(g, { phone10, fromRaw, texto }) {
   _bcRegistrar(g, { texto });
+  if (g.accion === "off_master") return _bcMasterOff(g, phone10, async msg => { await _twilioSendMessage({ to: fromRaw, body: msg, skipMirror: true }); await _botAppendMessage(phone10, "assistant", msg, { gate: "off_master" }); });
+  if (g.masterOff && g.accion === "emergencia" && !g.activo) g = Object.assign({}, g, { activo: true }); // con el bot apagado, una emergencia igual se atiende
   if ((g.detectados || []).includes("baja")) _pmBaja(phone10, String(texto).slice(0, 200)).catch(() => {}); // RF-16: la baja se respeta siempre
   if (!g.activo) return false;
   if (["off_master", "emergencia", "derivar", "personal", "respaldo"].includes(g.accion)) {
@@ -13538,6 +13549,8 @@ async function _bcAplicarWa(g, { phone10, fromRaw, texto }) {
 // Igual para Airbnb/Booking/directas por la mensajería de Lodgify.
 async function _bcAplicarAbn(g, { bid, texto }) {
   _bcRegistrar(g, { texto });
+  if (g.accion === "off_master") return _bcMasterOff(g, "abn" + bid, msg => _abnEnviar(bid, msg, "bot"));
+  if (g.masterOff && g.accion === "emergencia" && !g.activo) g = Object.assign({}, g, { activo: true });
   if (!g.activo) return false;
   if (["off_master", "emergencia", "derivar", "personal", "respaldo"].includes(g.accion)) {
     const msg = String(g.msg || "").trim(); if (msg) await _abnEnviar(bid, msg, "bot").catch(() => {});
