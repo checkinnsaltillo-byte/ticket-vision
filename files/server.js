@@ -3678,6 +3678,10 @@ async function _botIsAlojamientoEnabled(houseId) {
 // servicio (memoria in-memory). Editable desde la UI "Modo prueba" y esos
 // cambios sobreviven hasta el próximo redeploy de Cloud Run.
 let _BOT_TEST_MODE = { enabled: true, phones: ["+528444443922", "+528115569120", "+528110208743", "+528442798802"] };
+// Se guarda en Cloud Storage: antes vivía en memoria y cada reinicio lo regresaba a «encendido» con estos 4 números.
+const _BOT_TEST_OBJ = "whatsapp/test-mode.json"; let _botTestTs = 0;
+async function _botTestCargar(forzar) { if (!forzar && Date.now() - _botTestTs < 20e3) return _BOT_TEST_MODE; _botTestTs = Date.now();
+  const d = await _rhdGetJson(_BOT_TEST_OBJ).catch(() => null); if (d && typeof d.enabled === "boolean") _BOT_TEST_MODE = { enabled: d.enabled, phones: Array.isArray(d.phones) ? d.phones : [] }; return _BOT_TEST_MODE; }
 // Lista in-memory de números que reciben notificación EXTRA cuando un
 // proceso crítico se ejecuta (por ahora: reporte P1). Se administra
 // desde la UI del módulo Chats bot (barra "Emergencia").
@@ -3740,7 +3744,8 @@ function _botTestGetAllowedSet() {
   }
   return set;
 }
-app.get("/wa/bot/test-mode", (req, res) => {
+app.get("/wa/bot/test-mode", async (req, res) => {
+  await _botTestCargar(true).catch(() => {});
   res.json({
     ok: true,
     enabled: !!_BOT_TEST_MODE.enabled,
@@ -3759,6 +3764,7 @@ app.post("/wa/bot/test-mode", (req, res) => {
     _BOT_TEST_MODE.phones = [b.phone.trim()].filter(Boolean);
   }
   console.info(`[bot-test] enabled=${_BOT_TEST_MODE.enabled} phones=${JSON.stringify(_BOT_TEST_MODE.phones)}`);
+  _botTestTs = Date.now(); _rhdPut(_BOT_TEST_OBJ, JSON.stringify(Object.assign({ at: new Date().toISOString() }, _BOT_TEST_MODE)), "application/json").catch(e => console.warn("[bot-test] guardar:", e.message));
   res.json({ ok: true, ..._BOT_TEST_MODE });
 });
 
@@ -4033,6 +4039,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   }
   // Modo Prueba: si activo, ignorar mensajes de números no incluidos en la
   // lista whitelisted. Aún guardamos el user msg para verlo en el panel.
+  await _botTestCargar().catch(() => {});
   if (_BOT_TEST_MODE.enabled) {
     const allowed = _botTestGetAllowedSet();
     if (!allowed.has(phone10)) {
