@@ -74660,7 +74660,9 @@ function tdUrgDatos_(O) {
       const cands = [...new Set([tdIGKey_(r, hid, P), tdIGKey_(r, hid, P, true), tdIGKey_(r, hid, mesAnt, true)].concat(tdIGCiclos_(r, hid).slice(-4).map(c => tdIGKey_(r, hid, c, true))))];
       const docDe = key => key in (ASEO.pl.resp || {}) ? { resp: ASEO.pl.resp[key], at: (ASEO.pl.respAt || {})[key] } : U.docs[key];
       let mejor = null, mejorKey = '';
-      for (const key of cands) { const doc = docDe(key); if (doc === undefined) { faltan.push(key); continue; }
+      for (const key of cands) { let doc = docDe(key);
+        if (doc === undefined && !plIdxGet_(key)) { U.docs[key] = {}; doc = U.docs[key]; } // sin registro en el índice de respuestas → no existe: no se consulta (evita cientos de lecturas en celular)
+        if (doc === undefined) { faltan.push(key); continue; }
         if (doc && doc.resp && Object.keys(doc.resp).length && (!mejor || String(doc.at || '') > String(mejor.at || ''))) { mejor = doc; mejorKey = key; } }
       if (!mejor) { hids[r.ID + '|' + hid] = null; return; } const key = mejorKey, resp = mejor.resp, per = (key.match(/:(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/) || [])[1] || P;
       hids[r.ID + '|' + hid] = { key, per, at: mejor.at || '', n: Object.keys(resp).length };
@@ -74749,7 +74751,8 @@ function tdTablaLv_(O, vac) {
     .rk-tb{width:100%;border-collapse:collapse;font-size:12.5px}.rk-tb th{text-align:left;font-size:10.5px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e5e7eb;white-space:nowrap}
     .rk-tb td{padding:8px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle;color:#0f172a}.rk-tb tr:last-child td{border-bottom:0}.rk-tb tbody tr:hover td{background:#fafafa}
     .rk-tb td b{display:block;font-size:12.5px}.rk-tb td small{display:block;font-size:11px;color:#6b7280}.rk-tb td.nt{color:#4338ca;font-size:11.5px;max-width:320px}.rk-tb td.ac{text-align:right;white-space:nowrap}
-    @media (max-width:760px){.rk-bar,.rk-mu{display:none}.rk-row{padding-left:24px}.rk-edh{padding-left:18px}.rk-al{min-width:0;flex:1}.rk-det{padding:10px}}`; document.head.appendChild(st); }
+    @media (max-width:760px){.rk-bar,.rk-mu{display:none}.rk-row{padding-left:24px}.rk-edh{padding-left:18px}.rk-al{min-width:0;flex:1}.rk-det{padding:10px}
+      .rk-h,.rk-edh{gap:8px;padding:10px}.rk-h b,.rk-edh b{flex:1;min-width:0;font-size:13px}.rk-h .tb-ed{font-size:0;padding:4px 8px}.rk-h .tb-ed:before{content:"✎";font-size:13px}.rk-chip{min-width:0;padding:3px 7px;font-size:10.5px}.rk-n{min-width:22px;padding:0 5px}}`; document.head.appendChild(st); }
   const kp = (n, t, c) => `<div class="rk-kpi" style="--c:${c}"><b>${n}</b><span>${t}</span></div>`;
   const kpis = `<div class="rk-kpis">${kp(TOT.crit, 'Alertas críticas · Malo / No', '#dc2626')}${kp(TOT.warn, 'Requieren atención · Regular', '#f97316')}${kp(TOT.info, 'Solo con nota', '#3b82f6')}${kp(`${TOT.conAl}<small style="font-size:13px;color:#94a3b8"> / ${TOT.alojs}</small>`, 'Alojamientos con alertas', '#0f172a')}${kp(TOT.alojs - TOT.doc, 'Sin levantar', '#9ca3af')}</div>`;
   return kpis + (D.faltan.length ? '<div class="pc-mv-empty" style="margin-bottom:10px">⏳ Cargando las respuestas de los levantamientos…</div>' : '') + grupos.map(g => g.html).join('');
