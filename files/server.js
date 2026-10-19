@@ -13456,7 +13456,9 @@ async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre,
   const nivProc = Math.max(...procs.map(k => { const m = (modos[k] || {}).modo; return m === "der" ? 2 : m === "sup" ? 1 : 0; }));
   const nivCtl = control === "supervised" ? 1 : 0;
   const nivPrio = _BC_NIV[cfg.urgencia.minimo[ip.prioridad]] || 0;
-  const nivel = Math.max(nivProc, _BC_NIV[hor.nivel] || 0, nivPrio, nivCtl);
+  // «Ignorar horario» (por proceso): si TODOS los procesos del mensaje lo tienen, el horario no sube el nivel; manda el modo del proceso.
+  const sinHor = procs.length > 0 && procs.every(k => (cfg.procesos[k] || {}).ignorarHorario === true);
+  const nivel = Math.max(nivProc, sinHor ? 0 : (_BC_NIV[hor.nivel] || 0), nivPrio, nivCtl);
   const nivelTxt = ["AUT", "SUP", "PER"][nivel];
   const todosOff = procs.every(k => (modos[k] || {}).modo === "off");
   let accion, msg = "", motivo = "";

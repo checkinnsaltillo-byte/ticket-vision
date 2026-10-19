@@ -73521,7 +73521,7 @@ function bkProcesos_() {
       return `<div class="bk-pr"><div><div class="nm">${esc(c.nombre)} ${bkTipoChip_(c.tipo)} ${c.origen === 'Original' ? '<span class="bk-chip" style="background:#ede9fe;color:#6d28d9" title="Proceso que el bot ya tenía antes del documento de requerimientos">Original</span>' : c.extra ? '<span class="bk-chip" style="background:#e0f2fe;color:#0369a1" title="Proceso creado desde el panel">Agregado</span>' : ''}
         ${c.forzado ? '<span class="bk-chip" style="background:#fee2e2;color:#b91c1c">🔒 forzado</span>' : ''}${c.solo_directo ? '<span class="bk-chip" style="background:#fff7ed;color:#c2410c">Solo directas</span>' : ''}${c.verif ? '<span class="bk-chip" style="background:#ecfeff;color:#0e7490">Requiere verificación</span>' : ''}
         ${bkPrioChipMini_(pc.prioridad || c.pbIni)}${ov ? `<span class="bk-chip" style="background:#f5f3ff;color:#6d28d9">↳ ${ov} regla${ov > 1 ? 's' : ''} específica${ov > 1 ? 's' : ''}</span>` : ''}${dy ? `<span class="bk-chip" style="background:#fee2e2;color:#b91c1c" title="${esc(pc.disyuntor.motivo || '')}">⚡ disyuntor</span>` : ''}</div>
-        <div class="ds">${esc(c.desc)}</div>${bkFichaResumen_(pc)}${bkProcAlojChip_(pc)}${bkPmChip_(c.clave)}<div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
+        <div class="ds">${esc(c.desc)}</div>${bkFichaResumen_(pc)}${bkProcAlojChip_(pc)}${pc.ignorarHorario ? '<div class="mt" style="color:#1d4ed8">🕐 Ignora el horario</div>' : ''}${bkPmChip_(c.clave)}<div class="mt">7 días: ${m.usos || 0} usos · ${m.errores || 0} errores · ${m.rechazos || 0} rechazos · ${m.escalados || 0} escalados</div></div>
         ${seg}<button class="bk-btn sm" onclick="bkConfigurar_('${c.clave}')">Configurar</button></div>`; }).join('');
     const ab = BK.abiertos[g] !== false;
     return `<details class="bk-grp" ${ab ? 'open' : ''} ontoggle="BK.abiertos['${g}']=this.open"><summary>${esc(grupos[g] || g)} <span class="bk-sub">${L.length} procesos</span><span style="flex:1"></span>
@@ -73574,6 +73574,9 @@ function bkDrawerHtml_() {
       <label class="bk-lb">🔀 Flujos de plantillas</label>${bkFlujosDe_(clave).map(f => `<div style="border:1px solid #ede9fe;background:#faf5ff;border-radius:10px;padding:6px 10px;margin-bottom:6px">${bkFlujoHtml1_(f, true)}</div>`).join('') || '<div class="bk-mut" style="font-size:12px">Este proceso no tiene flujos.</div>'}
       <button class="bk-btn sm" onclick="bkFlNuevo_('${esc(clave)}')">＋ Nuevo flujo</button>
       ${bkPcAlojHtml_(pc)}
+      <label class="bk-lb" style="margin-top:16px">🕐 Horario</label>
+      <div class="bk-row" style="gap:10px;align-items:center">${bkSw_(!!pc.ignorarHorario, 'Ignorar horario', 'BK.drawer.pc.ignorarHorario=!BK.drawer.pc.ignorarHorario;bkRender_()')}
+        <span class="bk-mut" style="font-size:11.5px;flex:1">${pc.ignorarHorario ? 'Este proceso usa siempre su propio modo, a cualquier hora. La prioridad alta y el modo de cada chat siguen aplicando.' : 'Sigue el horario: en franjas SUP o PER puede dejar borrador o esperar a una persona aunque el proceso esté en Automático.'}</span></div>
       <label class="bk-lb">Tipo de proceso</label><div class="bk-seg">${[['huesped', '💬 Interacción con el huésped'], ['sistema', '⚙️ Interno del sistema']].map(([v, t]) => `<button type="button" class="${(pc.tipo || c.tipo) === v ? 'on' : ''}" style="--c:#111827;--b:#fff" onclick="BK.drawer.pc.tipo='${v}';bkRender_()">${t}</button>`).join('')}</div>
       <div class="bk-sub" style="margin-top:4px">${(pc.tipo || c.tipo) === 'sistema' ? 'Lo resuelve el sistema con sus datos o por programación/eventos; no depende de una conversación con el huésped.' : 'Se activa por lo que el huésped escribe en la conversación.'}</div>
       ${bkFichaHtml_(pc, c)}
@@ -73590,7 +73593,7 @@ function bkDrawerHtml_() {
 function bkOvDia_(i, k) { const o = BK.drawer.pc.overrides[i]; o.dias = o.dias || []; const j = o.dias.indexOf(k); if (j >= 0) o.dias.splice(j, 1); else o.dias.push(k); bkRender_(); }
 function bkDrawerCerrar_() { BK.drawer = null; bkRender_(); }
 async function bkDrawerGuardar_() { const { clave, pc } = BK.drawer;
-  const v = { alojamientos: Array.isArray(pc.alojamientos) ? pc.alojamientos : undefined, ficha: pc.ficha || {}, tipo: pc.tipo || undefined, kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides };
+  const v = { alojamientos: Array.isArray(pc.alojamientos) ? pc.alojamientos : undefined, ficha: pc.ficha || {}, tipo: pc.tipo || undefined, kw: pc.kw || '', prioridad: pc.prioridad || 'P4', rol: pc.rol || '', respaldo: pc.respaldo || '', umbral: pc.umbral, limites: pc.limites || '', overrides: pc.overrides, ignorarHorario: !!pc.ignorarHorario };
   if (await bkGuardar_('proceso', { clave, valores: v })) { BK.drawer = null; bkRender_(); } }
 async function bkResetDy_(k) { if (await bkGuardar_('reset_disyuntor', k, '✓ Disyuntor restablecido')) { BK.drawer.pc.disyuntor = null; bkRender_(); } }
 
