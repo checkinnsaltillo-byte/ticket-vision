@@ -73965,6 +73965,7 @@ function bkFlPintar_() {
           ${bkLogo_(logo, 24)}<span style="line-height:1.25"><b style="font-size:13px">${txt}</b><br><span class="bk-mut" style="font-size:11.5px">${sub}</span></span></div>`;
         return `<label class="bk-lb" style="margin-top:16px">Envío automático por</label><div class="bk-row" style="gap:8px;align-items:stretch">${ck('a', 'airbnb', 'Airbnb', 'Reservas de Airbnb, por su mensajería (vía Lodgify). Ojo: Airbnb ya puede tener sus propios mensajes programados.')}${ck('w', 'whatsapp', 'WhatsApp / Lodgify', 'Reservas directas y de Booking (nunca Airbnb). WhatsApp solo entrega si el huésped escribió en 24 h.')}</div>
         ${!C.a && !C.w ? '<div class="bk-sub" style="margin-top:4px;color:#b45309">Sin canal marcado: este flujo no se envía automáticamente.</div>' : C.a && C.w ? '<div class="bk-sub" style="margin-top:4px">Reservas de Airbnb por su mensajería; directas y Booking por WhatsApp.</div>' : ''}`; })() : ''}
+      ${bkEsProactivo_(e.proceso) ? '' : `<label class="bk-lb" style="margin-top:16px">Respuestas del bot</label><div class="bk-row" style="gap:10px;align-items:center">${bkSw_(!!e.respuesta, '🤖 El bot responde con estas plantillas', 'BK.flEd.respuesta=!BK.flEd.respuesta;bkFlPintar_()')}<span class="bk-mut" style="font-size:11.5px;flex:1">${e.respuesta ? 'Cuando el huésped toca este proceso, el bot usa la redacción y el formato de estas plantillas (cambia solo los datos entre {{ }}).' : 'Las plantillas solo se envían por evento o a mano; el bot redacta libremente según la ficha.'}</span></div>`}
       <label class="bk-lb" style="margin-top:16px">${ord ? 'Pasos' : 'Plantillas'} (${e.pasos.length})</label>${pasos || '<div class="bk-mut" style="font-size:12px;margin-bottom:8px">Aún no hay pasos.</div>'}
       <select class="bk-sel" onchange="if(this.value){BK.flEd.pasos.push(this.value);bkFlPintar_()}">${addOpts}</select>
     </div>
@@ -73977,7 +73978,7 @@ async function bkFlGuardar_() {
   const movidas = e.pasos.filter(id => bkFlujos_().some(f => f.id !== e.id && f.pasos.includes(id)));
   if (movidas.length && !confirm(`${movidas.length} plantilla(s) se moverán desde otro flujo a este. ¿Continuar?`)) return;
   const F = bkFlujos_().map(f => f.id === e.id ? null : Object.assign({}, f, { pasos: f.pasos.filter(id => !e.pasos.includes(id)) })).filter(Boolean);
-  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, ordenado: e.ordenado !== false, canal: bkEsProactivo_(e.proceso) ? bkCanalDe_(e) : undefined, pasos: e.pasos.slice() };
+  const nuevo = { id: e.id || ('f' + Date.now().toString(36)), nombre, proceso: e.proceso, ordenado: e.ordenado !== false, canal: bkEsProactivo_(e.proceso) ? bkCanalDe_(e) : undefined, respuesta: !bkEsProactivo_(e.proceso) && !!e.respuesta ? true : undefined, pasos: e.pasos.slice() };
   const idx = bkFlujos_().findIndex(f => f.id === e.id); if (idx >= 0) F.splice(idx, 0, nuevo); else F.push(nuevo);
   if (await bkGuardar_('flujos', F, '✓ Flujo guardado')) { bkFlCerrar_(); bkRender_(); }
 }

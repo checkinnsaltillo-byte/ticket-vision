@@ -808,6 +808,9 @@ async function _botGetPrompts(opts) {
   opts = opts || {};
   try {
     const cfg = await _bcCfg(), catL = _bcCatalogo(cfg), quiero = new Set(_BC_CORE.concat(opts.claves || []));
+    // Flujos marcados «El bot responde con estas plantillas»: sus plantillas entran al prompt como formato de respuesta del proceso.
+    const FR = (cfg.flujos || []).filter(f => f.respuesta && (f.pasos || []).length), TP = FR.length ? ((await _waLeer(_WA_OBJ.tpl).catch(() => ({}))).items || []) : [];
+    const plantDe = k => FR.filter(f => f.proceso === k).flatMap(f => f.pasos.map((id, i) => { const t = TP.find(x => x.id === id); return t && t.body ? { paso: f.ordenado !== false ? i + 1 : 0, nombre: t.nombre, body: String(t.body).replace(/\u000b/g, "\n") } : null; })).filter(Boolean);
     return catL.filter(c => {
       const pc = cfg.procesos[c.clave] || {}, f = pc.ficha || {};
       if (!Object.values(f).some(v => String(v || "").trim())) return false;
@@ -815,7 +818,7 @@ async function _botGetPrompts(opts) {
       if (cfg.activo && (pc.modo || c.modoIni) === "off") return false;
       return opts.todos || quiero.has(c.clave);
     }).map(c => { const f = (cfg.procesos[c.clave] || {}).ficha || {};
-      return { Nombre: c.nombre, Activo: true, Objetivo: f.objetivo || c.desc, Datos_obtener: f.obtener || "", Datos_compartir: f.compartir || "", Reglas: f.reglas || "", Flujo: f.flujo || "", Riesgos: f.riesgos || "", Herramienta: (c.tools || []).join(", ") || f.herramienta || "" }; });
+      return { Plantillas: plantDe(c.clave), Nombre: c.nombre, Activo: true, Objetivo: f.objetivo || c.desc, Datos_obtener: f.obtener || "", Datos_compartir: f.compartir || "", Reglas: f.reglas || "", Flujo: f.flujo || "", Riesgos: f.riesgos || "", Herramienta: (c.tools || []).join(", ") || f.herramienta || "" }; });
   } catch (e) { console.warn("[bot-prompts] fichas:", e.message); return []; }
 }
 function _botBuildPromptsBlock(prompts) {
@@ -831,6 +834,7 @@ function _botBuildPromptsBlock(prompts) {
     if (p.Flujo)           parts.push(`   Flujo esperado:\n${bullets(p.Flujo)}`);
     if (p.Riesgos)         parts.push(`   Riesgos / prohibiciones:\n${bullets(p.Riesgos)}`);
     if (p.Herramienta)     parts.push(`   Herramienta vinculada: ${p.Herramienta}`);
+    if (p.Plantillas && p.Plantillas.length) parts.push(`   PLANTILLAS DE RESPUESTA (usa esta redacción y formato; cambia solo los datos entre {{ }} por los reales y el saludo/nombre según la conversación; envía la que corresponda al paso en que va la conversación, no todas):\n${p.Plantillas.map(t => `     ${t.paso ? `Paso ${t.paso} · ` : ""}«${t.nombre}»:\n${String(t.body).split("\n").map(l => "        " + l).join("\n")}`).join("\n")}`);
     return parts.join("\n");
   }).join("\n\n");
   return `
@@ -13363,7 +13367,7 @@ function _bcCatalogo(cfg) {
 function _bcMapaDeFlujos(flujos) { const m = {}; (flujos || []).forEach(f => (f.pasos || []).forEach(t => { if (t && f.proceso) m[t] = f.proceso; })); return m; }
 function _bcFlujosLimpios(L) {
   const vistos = new Set();
-  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, canal: ["whatsapp", "airbnb", "ambos", "ninguno"].includes(f.canal) ? f.canal : undefined, // canal de envío de los mensajes programados
+  return (Array.isArray(L) ? L : []).filter(f => f && f.proceso).map(f => ({ id: String(f.id || _bcId()), nombre: String(f.nombre || "").slice(0, 80), proceso: String(f.proceso), ordenado: f.ordenado !== false, respuesta: f.respuesta === true ? true : undefined, canal: ["whatsapp", "airbnb", "ambos", "ninguno"].includes(f.canal) ? f.canal : undefined, // canal de envío de los mensajes programados
     // (los alojamientos se asignan al proceso: cfg.procesos[k].alojamientos) // false = listado de plantillas sin orden de pasos
     pasos: (Array.isArray(f.pasos) ? f.pasos : []).map(String).filter(t => t && !vistos.has(t) && vistos.add(t)) })); // una plantilla vive en un solo flujo
 }
