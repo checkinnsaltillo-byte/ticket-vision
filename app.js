@@ -74690,19 +74690,23 @@ function tdTablaUrg_(O, vac) {
   const tareaDe = x => TAR_STATE.list.find(t => t.Origen === 'Levantamiento' && t.LV_Key === x.key && t.LV_Item === x.it.id && t.Estado !== 'Cancelada');
   const rows = items.map((x, i) => { const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid }, fotos = (x.rr.fotos || []).filter(f => !f.subiendo).length, T = tareaDe(x);
     return { onclick: `tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')`, cells: [
+      `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || x.hid).replace(/^Calle\s+/i, ''))}</small></span>`,
+      ckTx_(x.at ? aseoDiaTxt_(String(x.at).slice(0, 10)) : '—'),
       `<span class="tb-ret" style="background:${x.u.c}1a;color:${x.u.c}">${esc(x.u.t)}</span>`,
       `<span class="tb-a"><b style="font-size:12px">${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</b><small>${esc(x.it.texto ? (x.s.titulo || '') : PL_TIPOS[x.it.tipo].t)}</small></span>`,
       ckTx_(tdRespTxt_(x.it, x.rr)),
       `<span class="tb-mu" style="white-space:normal;font-size:11.5px">${esc(String(x.rr.nota || '').slice(0, 140))}</span>`,
-      fotos ? `<span class="tb-ch" style="--c:#4f46e5">📷 ${fotos}</span>` : '<span class="tb-mu">—</span>',
-      `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || x.hid).replace(/^Calle\s+/i, ''))}</small></span>`,
+      fotos ? `<button type="button" class="tb-foto" title="Ver ${fotos === 1 ? 'la foto' : fotos + ' fotos'}" onclick="event.stopPropagation();tdUrgFotos_(${i})"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${fotos > 1 ? `<i>${fotos}</i>` : ''}</button>` : '<span class="tb-mu">—</span>',
       ckTx_(`📝 ${x.r.Nombre || x.p.titulo}`),
-      ckTx_(x.at ? aseoDiaTxt_(String(x.at).slice(0, 10)) : '—'),
       T ? `<button type="button" class="tb-ed" style="margin-left:0;color:#15803d;border-color:#bbf7d0" onclick="event.stopPropagation();tarOpenPanel('${esc(T.ID)}')" title="Abrir la tarea creada">✓ Tarea</button>` : `<button type="button" class="tb-ed" style="margin-left:0" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`,
     ] }; });
   const vacio = faltan.length ? '⏳ Cargando las respuestas de los levantamientos…' : 'Sin hallazgos en los levantamientos del periodo (Malo, No, calificación baja, fuera de rango o con nota).';
-  return ckTablaHtml_([['Urgencia', '100px'], ['Campo', 'minmax(220px,1.5fr)'], ['Respuesta', '110px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '70px'], ['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantamiento', '160px'], ['Levantado', '110px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
+  if (!document.getElementById('tdurg-css')) { const st = document.createElement('style'); st.id = 'tdurg-css'; st.textContent = `.ad-tbl .tb-foto{all:unset;position:relative;cursor:pointer;width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:#4f46e5}.ad-tbl .tb-foto:hover{background:#eef2ff}
+    .ad-tbl .tb-foto i{position:absolute;top:-2px;right:-4px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:#4f46e5;color:#fff;font:700 9px/14px Inter,system-ui,sans-serif;font-style:normal;text-align:center}`; document.head.appendChild(st); }
+  return ckTablaHtml_([['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantado', '110px'], ['Urgencia', '100px'], ['Campo', 'minmax(220px,1.5fr)'], ['Respuesta', '110px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '60px'], ['Levantamiento', '160px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
 }
+// Fotos de un hallazgo en el visor (con flechas si hay varias), sin abrir la sub-card.
+window.tdUrgFotos_ = function (i) { const x = (TAR_STATE._urgItems || [])[i]; if (!x) return; fotoVer_(((x.rr || {}).fotos || []).filter(f => !f.subiendo).map(f => f.loc || BACKEND + (f.url || f.turl)), 0); };
 // «＋ Crear tarea» desde un hallazgo: abre «Nueva tarea» ya llenada y ligada al registro del levantamiento (Origen/LV_*).
 window.tdCrearTareaLv_ = function (i) {
   const x = (TAR_STATE._urgItems || [])[i]; if (!x) return;
