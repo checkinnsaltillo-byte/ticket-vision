@@ -51094,6 +51094,7 @@ function _botcRowHtml_(c, bk, selected) {
   const espera = _botcNeedsReply_(c), pend = _botcIsPending_(c);
   const md = _BOTC_MODO[String(c.control)] || _BOTC_MODO.bot;
   const chips = [], corto = _botcAlojCorto_(bk);
+  { const pr = _botcPrioDe_(phone); if (pr) chips.push(pr); } // prioridad de la Bandeja (Control del bot)
   if (corto) chips.push(`<span class="wa-aloj ${c.canal === 'airbnb' ? 'air' : ''}" title="${_botcEsc(waAlojamientoLabel_(bk))}">${_botcEsc(corto)}</span>`);
   if (bk) {
     const src = _botcSrcTxt_(bk.Source); if (src) chips.push(`<span class="wa-chip" style="--c:${src[1]}">${_botcEsc(src[0])}</span>`);
@@ -51112,6 +51113,21 @@ function _botcRowHtml_(c, bk, selected) {
       <div class="wa-l2"><span class="pv">${espera ? '<b class="wa-wait">⏳</b> ' : ''}${_botcEsc(c.last_msg_preview || '')}</span>${pend ? '<span class="wa-unread">1</span>' : ''}</div>
       <div class="wa-l3">${chips.join('')}</div>
     </div></div>`;
+}
+// Prioridad (P1–P4) de cada conversación según la Bandeja de Control del bot. Se refresca cada minuto.
+function _botcPrioDe_(phone) {
+  const M = BOTC_STATE.prio; if (!M || Date.now() - (BOTC_STATE.prioTs || 0) > 60e3) _botcPrioCargar_();
+  const x = M && M[String(phone)]; if (!x || !x.p) return '';
+  const C = { P1: ['🔴', '#b91c1c'], P2: ['🟠', '#c2410c'], P3: ['🟡', '#a16207'], P4: ['⚪', '#6b7280'] }[x.p] || ['⚪', '#6b7280'];
+  return `<span class="wa-chip" style="--c:${C[1]};font-weight:800" title="Prioridad en la Bandeja de Control del bot · puntaje ${x.ipo}${x.manual ? ' · cambiada a mano' : ''}">${C[0]} ${x.p}</span>`;
+}
+async function _botcPrioCargar_() {
+  if (BOTC_STATE._prioCarg) return; BOTC_STATE._prioCarg = true; BOTC_STATE.prioTs = Date.now();
+  try { const r = await fetch(`${BACKEND}/bot/control/bandeja?horas=168`, { cache: 'no-store' }).then(r => r.json()); const M = {};
+    (r.items || []).forEach(c => { M[String(c.conv)] = { p: c.prioridad, ipo: c.ipo || 0, manual: !!c.manual }; });
+    const antes = JSON.stringify(BOTC_STATE.prio || {}); BOTC_STATE.prio = M;
+    if (antes !== JSON.stringify(M) && document.getElementById('botc-sidebar')) _botcRenderSidebar(); }
+  catch (_) {} finally { BOTC_STATE._prioCarg = false; }
 }
 function _botcWaCss_() {
   if (document.getElementById('botc-wa-css')) return;
