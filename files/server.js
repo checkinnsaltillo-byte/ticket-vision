@@ -3154,6 +3154,15 @@ async function _botLockPhone(phone10, fn) {
 // propio número). "modo admin" lo restaura. Estado en memoria — se
 // pierde en restart del container y vuelve a admin (default).
 const _bot_admin_guest_mode = new Map(); // phone10 → boolean
+// El modo «@huesped» de los administradores se guarda en Cloud Storage: antes vivía solo en memoria y cada reinicio
+// o publicación del servidor lo regresaba a modo admin sin avisar (las pruebas dejaban de pasar por el flujo huésped).
+const _BOT_ADMMODO_OBJ = "whatsapp/admin-modo.json"; let _botAdmModoCargado = false;
+async function _botGuestModoDe(phone10) {
+  if (!_botAdmModoCargado) { const d = await _rhdGetJson(_BOT_ADMMODO_OBJ).catch(() => null); if (d) { Object.entries(d).forEach(([k, v]) => { if (!_bot_admin_guest_mode.has(k)) _bot_admin_guest_mode.set(k, !!v); }); _botAdmModoCargado = true; } }
+  return _bot_admin_guest_mode.get(phone10) === true;
+}
+function _botGuestModoSet(phone10, on) { _bot_admin_guest_mode.set(phone10, !!on);
+  (async () => { const d = (await _rhdGetJson(_BOT_ADMMODO_OBJ).catch(() => ({}))) || {}; d[phone10] = !!on; await _rhdPut(_BOT_ADMMODO_OBJ, JSON.stringify(d), "application/json"); })().catch(e => console.warn("[bot] modo admin/huésped:", e.message)); }
 
 // ═══ Control de Asistencia por WhatsApp ═══
 // Map phone10 → { tipo: 'entrada'|'salida', ts: Date.now() }
@@ -3900,7 +3909,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // Modo ADMIN: DEFAULT para números admin. Cualquier mensaje del admin
   // se procesa en modo admin (con o sin "@").
   // Toggle "modo prueba" → el admin se trata como huésped hasta que diga
-  // "modo admin". Estado en memoria (Map global) — se resetea en restart.
+  // "modo admin". Estado guardado en Cloud Storage (sobrevive reinicios).
   const admCheck = _prueba ? { isAdmin: false } : await _botIsAdminPhone(phone10); // en «Prueba como» se responde como el empleado
   if (admCheck.isAdmin) {
     const low = bodyMsg.toLowerCase().trim();
@@ -3908,7 +3917,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     //   Ir a huésped: "@huesped" / "@huésped" / "modo prueba" / "modo test" / "modo huésped" / "modo guest"
     //   Volver a admin: "@admin"   / "modo admin"  / "modo prod" / "modo real" / "modo producción"
     if (/^@?\s*hu[eé]sped$/i.test(low) || /^@?\s*guest$/i.test(low) || /^modo\s+(prueba|test|hu[eé]sped|guest)$/i.test(low)) {
-      _bot_admin_guest_mode.set(phone10, true);
+      _botGuestModoSet(phone10, true);
       const reply = `OK — ahora te trato como HUÉSPED. Envía "@admin" para volver.`;
       await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
       if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true }); bodyAlreadyPersisted = true; }
@@ -3916,14 +3925,14 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       return;
     }
     if (/^@?\s*admin$/i.test(low) || /^modo\s+(admin|prod|real|producci[oó]n)$/i.test(low)) {
-      _bot_admin_guest_mode.set(phone10, false);
+      _botGuestModoSet(phone10, false);
       const reply = `OK — ahora te trato como ADMIN. Envía "@huesped" para probar el flujo huésped.`;
       await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
       if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, admin: true }); bodyAlreadyPersisted = true; }
       _botAppendMessage(phone10, "assistant", reply, { admin: true, mode_toggle: "admin" });
       return;
     }
-    const isGuestMode = _bot_admin_guest_mode.get(phone10) === true;
+    const isGuestMode = await _botGuestModoDe(phone10);
     if (!isGuestMode) {
       const adm = admCheck;
       {
@@ -13700,11 +13709,35 @@ app.post("/bot/control/prioridad", async (req, res) => {
 app.post("/bot/control/simular", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
-    const { texto, canal, estanciaActiva, hora, dia, respuesta, version, aloj } = req.body || {};
+    const { texto, canal, estanciaActiva, hora, dia, respuesta, version, aloj, reservaId } = req.body || {};
     if (!String(texto || "").trim()) return res.status(400).json({ ok: false, error: "Escribe un mensaje" });
     const real = _bcAhora(), now = Object.assign({}, real); if (/^\d{1,2}:\d{2}$/.test(String(hora || ""))) now.min = _bcMinDe(hora); if (dia !== undefined && dia !== "" && !isNaN(Number(dia))) now.dia = Number(dia);
-    const booking = estanciaActiva ? { Arrival: real.fecha, Departure: real.fecha } : null;
     const cfg = await _bcCfg(true);
+    // Con una reserva real: sus datos (fechas, canal, alojamiento con su guía, historial con tickets, perfil) y el prompt completo del bot.
+    if (reservaId) {
+      const ctx = await _casoContexto("abn" + String(reservaId).replace(/\D/g, ""), now.fecha);
+      if (!ctx.booking) return res.status(404).json({ ok: false, error: "No encontré esa reserva en Lodgify" });
+      const { arr, dep } = _bcFechas(ctx.booking), estancia = !!(arr && dep && arr <= now.fecha && now.fecha <= dep);
+      const canalR = canal && canal !== "auto" ? canal : (ctx.canal === "directo" ? "whatsapp" : ctx.canal), nombre = ctx.booking.GuestName || "";
+      const alojTxt = ctx.alojRow ? `${ctx.alojRow.Propiedad || ""}${ctx.alojRow["# Departamento"] ? " #" + ctx.alojRow["# Departamento"] : ""}`.trim() : "";
+      const g = await _bcGate({ texto, canal: canalR, conv: "simulador", booking: ctx.booking, control: "bot", mensajes: [], nombre, aloj: alojTxt, simular: { now, estanciaActiva: estancia } });
+      const out = { ok: true, decision: Object.assign({}, g, { tools: g.tools.map(t => t.name) }), reserva: { id: ctx.booking.Id, huesped: nombre, aloj: alojTxt, llegada: arr, salida: dep, canal: canalR, guia: !!ctx.alojRow, tickets: (ctx.allBookings || []).filter(x => x.FolioFacturapi || x.TicketUrl).length, perfil: !!ctx.perfil } };
+      if (respuesta) {
+        const hora = `${String(Math.floor(now.min / 60)).padStart(2, "0")}:${String(now.min % 60).padStart(2, "0")}`;
+        const prompts = _botBuildPromptsBlock(await _botGetPrompts({ claves: g.detectados })), sinResp = await _bcSinRespPrompt(), resto = g.prompt.slice(_bcPerfilPrompt(cfg.perfil, g.procesos).length);
+        const sysDe = perfil => BOT_SYSTEM_PROMPT_BASE + prompts + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${now.fecha}, ${hora} h (America/Monterrey).\n- AÑO ACTUAL: ${now.fecha.slice(0, 4)}.` + _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings)
+          + _bcPerfilPrompt(perfil, g.procesos) + resto
+          + (canalR !== "whatsapp" ? `\n\nCANAL: esta conversación es por la mensajería de ${canalR === "booking" ? "BOOKING" : "AIRBNB"} (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos.` : "")
+          + (ctx.perfil ? `\n\nPERFIL DEL HUÉSPED: ${JSON.stringify(ctx.perfil).slice(0, 1500)}` : "") + sinResp;
+        const gen = async perfil => { const llm = await _botLlmLoop({ system: sysDe(perfil), history: [], userMsg: texto, tools: g.tools, ctx: { phone10: "simulador", fromRaw: "", booking: ctx.booking, alojRow: ctx.alojRow || {}, simular: true, simHuesped: true, msgTs: Date.now(), userMsg: texto } });
+          return { t: String(llm.text || "").trim(), h: (llm.toolsUsed || []).map(x => x.name) }; };
+        const alt = version ? (cfg.versiones || []).find(v => v.v === Number(version)) : null;
+        const [a, b] = await Promise.all([gen(cfg.perfil), alt ? gen(alt.data) : Promise.resolve(null)]);
+        out.respuesta = a.t; out.herramientas = a.h; if (alt) { out.respuestaAlt = b.t; out.versionAlt = alt.v; }
+      }
+      return res.json(out);
+    }
+    const booking = estanciaActiva ? { Arrival: real.fecha, Departure: real.fecha } : null;
     const g = await _bcGate({ texto, canal: canal || "whatsapp", conv: "simulador", booking, control: "bot", mensajes: [], simular: { now, estanciaActiva: !!estanciaActiva }, aloj });
     const out = { ok: true, decision: Object.assign({}, g, { tools: g.tools.map(t => t.name) }) };
     if (respuesta) {
@@ -13718,6 +13751,20 @@ app.post("/bot/control/simular", async (req, res) => {
       out.respuesta = a; if (alt) { out.respuestaAlt = b; out.versionAlt = alt.v; }
     }
     res.json(out);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Reservas activas (en curso y próximas 30 días) para simular con datos reales.
+app.get("/bot/control/simular/reservas", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const hoy = _bcHoy(), lim = _pmAddDias(hoy, 30), out = [], vistos = new Set();
+    for (const f of ["Current", "Upcoming"]) for (let pg = 1; pg <= 4; pg++) { const d = await _lgApi(`/v2/reservations/bookings?stayFilter=${f}&page=${pg}&size=100`); const L = d.items || [];
+      L.forEach(b => { const id = String(b.id); if (vistos.has(id) || b.is_deleted || String(b.status) !== "Booked" || String(b.arrival || "").slice(0, 10) > lim) return; vistos.add(id);
+        out.push({ id, huesped: (b.guest && b.guest.name) || "", hid: String(b.property_id || ""), llegada: String(b.arrival || "").slice(0, 10), salida: String(b.departure || "").slice(0, 10), fuente: _abaFuente(b.source), enCurso: String(b.arrival).slice(0, 10) <= hoy }); });
+      if (L.length < 100) break; }
+    const cat = await _aseoCatalogo().catch(() => []); out.forEach(r => { const a = cat.find(c => String(c.hid) === r.hid); r.aloj = a ? (a.code ? a.code.toUpperCase() : a.nombre) : r.hid; });
+    out.sort((a, b) => (b.enCurso - a.enCurso) || a.llegada.localeCompare(b.llegada));
+    res.json({ ok: true, items: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // Vista previa de la personalidad (RF-20): ejemplos de saludo con la opción elegida antes de guardar.

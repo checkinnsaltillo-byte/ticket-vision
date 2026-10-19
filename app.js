@@ -73694,17 +73694,24 @@ function bkSimuladorHtml_() {
       ${g.derivacion.length ? `<tr><td class="bk-mut">Derivación</td><td>${esc(g.derivacion.join(' · '))}</td></tr>` : ''}
       <tr><td class="bk-mut">Herramientas ocultas</td><td>${g.bloqueadas.length ? esc(g.bloqueadas.join(', ')) : 'ninguna'}</td></tr>
       ${g.msg ? `<tr><td class="bk-mut">Mensaje al huésped</td><td><div class="bk-ex">${esc(g.msg)}</div></td></tr>` : ''}</tbody></table></div>
-      ${S.respuesta ? `<div class="bk-grid2">${`<div class="bk-card"><h3>Respuesta con la configuración vigente</h3><div class="bk-ex" style="margin-top:6px">${esc(S.respuesta)}</div></div>`}${S.respuestaAlt ? `<div class="bk-card"><h3>Con la versión v${S.versionAlt}</h3><div class="bk-ex" style="margin-top:6px">${esc(S.respuestaAlt)}</div></div>` : ''}</div>` : ''}`; })() : '';
-  const f = BK.simF || (BK.simF = { texto: '', canal: 'whatsapp', estancia: true, hora: '', dia: '', respuesta: false, version: '' });
+      ${S.respuesta != null ? `<div class="bk-grid2">${`<div class="bk-card"><h3>Respuesta con la configuración vigente</h3>${S.reserva ? `<div class="bk-sub">Reserva ${esc(S.reserva.id)} · ${esc(S.reserva.huesped)} · ${esc(S.reserva.aloj)} · ${esc(S.reserva.llegada)} → ${esc(S.reserva.salida)} · ${esc(S.reserva.canal)}${S.reserva.guia ? ' · con guía' : ''}${S.reserva.tickets ? ` · ${S.reserva.tickets} ticket(s)` : ''}${(S.herramientas || []).length ? ` · herramientas: ${esc(S.herramientas.join(', '))}` : ''}</div>` : ''}<div class="bk-ex" style="margin-top:6px">${String(S.respuesta).includes('[SIN_RESPUESTA]') ? '🤐 El bot no contestaría: no tiene la respuesta con la información disponible; queda para una persona.' : S.respuesta ? esc(S.respuesta) : '🤐 Sin respuesta (el tema está apagado o se derivó; el mensaje de respaldo está vacío).'}</div></div>`}${S.respuestaAlt ? `<div class="bk-card"><h3>Con la versión v${S.versionAlt}</h3><div class="bk-ex" style="margin-top:6px">${esc(S.respuestaAlt)}</div></div>` : ''}</div>` : ''}`; })() : '';
+  const f = BK.simF || (BK.simF = { texto: '', canal: 'whatsapp', estancia: true, hora: '', dia: '', respuesta: true, version: '', reserva: '' });
+  if (BK.simRes == null && !BK._simResCarg) bkSimResCargar_();
+  const R = BK.simRes || [], rs = f.reserva ? R.find(x => x.id === f.reserva) : null;
+  const resSel = `<label class="bk-lb">Reserva (opcional)</label><select class="bk-sel" onchange="BK.simF.reserva=this.value;BK.sim=null;bkRender_()"><option value="">— Sin reserva: datos genéricos —</option>${BK.simRes == null ? '<option disabled>⏳ Cargando reservas…</option>' : ''}
+      ${R.filter(x => x.enCurso).length ? `<optgroup label="🟢 En curso">${R.filter(x => x.enCurso).map(x => `<option value="${esc(x.id)}" ${f.reserva === x.id ? 'selected' : ''}>${esc(x.aloj)} · ${esc(x.huesped)} · ${esc(x.llegada.slice(5))} → ${esc(x.salida.slice(5))} · ${esc(x.fuente)}</option>`).join('')}</optgroup>` : ''}
+      ${R.filter(x => !x.enCurso).length ? `<optgroup label="🗓️ Próximas (30 días)">${R.filter(x => !x.enCurso).map(x => `<option value="${esc(x.id)}" ${f.reserva === x.id ? 'selected' : ''}>${esc(x.aloj)} · ${esc(x.huesped)} · ${esc(x.llegada.slice(5))} → ${esc(x.salida.slice(5))} · ${esc(x.fuente)}</option>`).join('')}</optgroup>` : ''}</select>
+    ${rs ? `<div class="bk-sub" style="margin-top:4px">Se usan los datos reales de la reserva: canal (${esc(rs.fuente)}), fechas, alojamiento con su guía de bienvenida, historial con tickets y perfil del huésped. La respuesta usa el prompt completo del bot (las herramientas se simulan, no guardan nada).</div>` : ''}`;
   const C = BK.casos || [], cs = BK.simCaso ? C.find(x => x.id === BK.simCaso) : null;
   const casoSel = `<label class="bk-lb" style="margin-top:4px">Caso de la biblioteca (opcional)</label><select class="bk-sel" onchange="BK.simCaso=this.value;BK.sim=null;bkRender_()"><option value="">— Escribir un mensaje —</option>${C.map(c => `<option value="${esc(c.id)}" ${BK.simCaso === c.id ? 'selected' : ''}>${esc(c.titulo)}${c.huesped ? ' · ' + esc(c.huesped) : ''}${c.aloj ? ' · ' + esc(c.aloj) : ''}</option>`).join('')}</select>`;
   if (cs) return `<div class="bk-card"><h3>Simulador</h3><div class="bk-sub">Simula un caso de la biblioteca con el bot de hoy: mismo contexto que tuvo la conversación (reserva, alojamiento, fecha y hora). No afecta a huéspedes reales.</div>${casoSel}
     ${bkCasoResumen_(cs)}<div class="bk-row" style="justify-content:flex-end;margin-top:10px"><button class="bk-btn pri" onclick="bkCasoSimular_('${esc(cs.id)}')">${BK.simCargando ? '⏳ Simulando…' : '▶ Simular caso'}</button></div></div>${res}${bkCasoComparar_()}`;
   return `<div class="bk-card"><h3>Simulador</h3><div class="bk-sub">Escribe un mensaje como si viniera de un huésped o elige un caso de la biblioteca, y mira qué haría el bot: proceso, señales, IPO, nivel final y acción. No afecta a huéspedes reales.</div>${casoSel}
+    ${resSel}
     <label class="bk-lb">Mensaje del huésped</label><textarea class="bk-ta" id="bk-sim-t" placeholder="Ej. Ya llegué y el código no abre la puerta" oninput="BK.simF.texto=this.value">${esc(f.texto)}</textarea>
     <div class="bk-row" style="margin-top:8px">
-      <select class="bk-sel" style="width:170px" onchange="BK.simF.canal=this.value">${[['whatsapp', 'WhatsApp directo'], ['airbnb', 'Airbnb'], ['booking', 'Booking'], ['directo', 'Directo (Lodgify)']].map(([v, t]) => `<option value="${v}" ${f.canal === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
-      ${bkCk_(f.estancia, 'Huésped con estancia activa', 'BK.simF.estancia=!BK.simF.estancia;bkRender_()')}
+      <select class="bk-sel" style="width:170px;${rs ? 'display:none' : ''}" onchange="BK.simF.canal=this.value">${[['whatsapp', 'WhatsApp directo'], ['airbnb', 'Airbnb'], ['booking', 'Booking'], ['directo', 'Directo (Lodgify)']].map(([v, t]) => `<option value="${v}" ${f.canal === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      ${rs ? '' : bkCk_(f.estancia, 'Huésped con estancia activa', 'BK.simF.estancia=!BK.simF.estancia;bkRender_()')}
       <span class="bk-mut" style="font-size:12px">Hora</span><input class="bk-in" type="time" style="width:110px" value="${esc(f.hora)}" onchange="BK.simF.hora=this.value">
       <select class="bk-sel" style="width:120px" onchange="BK.simF.dia=this.value"><option value="">Hoy</option>${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((d, i) => `<option value="${i}" ${String(f.dia) === String(i) ? 'selected' : ''}>${d}</option>`).join('')}</select></div>
     <div class="bk-row" style="margin-top:8px">${bkCk_(f.respuesta, 'Generar también la respuesta de ejemplo', 'BK.simF.respuesta=!BK.simF.respuesta;bkRender_()')}
@@ -73715,7 +73722,7 @@ function bkSimuladorHtml_() {
 async function bkSimular_() {
   const f = BK.simF; if (!String(f.texto || '').trim()) return alert('Escribe un mensaje');
   BK.simCargando = true; bkRender_();
-  try { const r = await fetch(`${BACKEND}/bot/control/simular`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: f.texto, canal: f.canal, estanciaActiva: f.estancia, hora: f.hora, dia: f.dia, respuesta: f.respuesta, version: f.version }) }).then(r => r.json());
+  try { const r = await fetch(`${BACKEND}/bot/control/simular`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: f.texto, canal: f.reserva ? 'auto' : f.canal, estanciaActiva: f.estancia, hora: f.hora, dia: f.dia, respuesta: f.respuesta, version: f.version, reservaId: f.reserva || undefined }) }).then(r => r.json());
     if (!r.ok) throw new Error(r.error); BK.sim = r; } catch (e) { alert('No se pudo simular: ' + (e.message || e)); }
   BK.simCargando = false; bkRender_();
 }
@@ -74212,3 +74219,7 @@ async function bkEntrCat_(id, accion, extra) {
     bkToast_(accion === 'aprobar' ? '✅ Aprobada: el bot la usará' : accion === 'descartar' ? 'Descartada' : accion === 'regenerar' ? '✓ Nueva versión generada' : '✓ Guardado'); bkRender_(); }
   catch (e) { alert('No se pudo: ' + (e.message || e)); } }
 function bkEntrAbrir_(bid) { try { switchModule('bot-chats'); setTimeout(() => { try { if (typeof botcOpenArch_ === 'function') botcOpenArch_(bid); else botcOpenChat('abn' + bid); } catch (_) {} }, 800); } catch (_) {} }
+
+async function bkSimResCargar_() { BK._simResCarg = true;
+  try { const r = await fetch(`${BACKEND}/bot/control/simular/reservas`, { cache: 'no-store' }).then(r => r.json()); BK.simRes = r.ok ? r.items : []; } catch (_) { BK.simRes = []; }
+  BK._simResCarg = false; if (BK.tab === 'pruebas') bkRender_(); }
