@@ -688,6 +688,11 @@ function _splitForTwilio(text, max) {
   if (cur) chunks.push(cur);
   return chunks;
 }
+// logChat: true → el mensaje enviado queda en el hilo del panel (Chats bot). Para avisos al personal que antes
+// se mandaban con skipMirror y no se guardaban (asistencia, cierre de jornada, emergencias, avisos al admin).
+function _twilioLogChat(params, body, j) {
+  try { const p10 = String(params.to || "").replace(/\D/g, "").slice(-10); if (p10.length === 10 && body) _botAppendMessage(p10, "assistant", String(body), Object.assign({ sid: j && j.sid, staff: true }, params.logMeta || {})).catch(() => {}); } catch (_) {}
+}
 async function _twilioSendMessage(params) {
   // Si el body supera el límite Twilio, dividir y enviar en secuencia.
   // Cada chunk como mensaje WA independiente; en WA_ChatContext registramos
@@ -698,9 +703,10 @@ async function _twilioSendMessage(params) {
     const chunks = _splitForTwilio(originalBody, TWILIO_WA_MAX_CHARS);
     let last = null;
     for (let i = 0; i < chunks.length; i++) {
-      const p = { ...params, body: chunks[i], skipMirror: true };
+      const p = { ...params, body: chunks[i], skipMirror: true, logChat: false };
       last = await _twilioSendMessage(p);
     }
+    if (params.logChat && last) _twilioLogChat(params, originalBody, last);
     // Mirror único con el body completo, si el caller no pidió skipMirror.
     if (!params.skipMirror && last) {
       try {
@@ -746,6 +752,7 @@ async function _twilioSendMessage(params) {
   });
   const j = await r.json();
   if (!r.ok) throw new Error(`Twilio ${r.status}: ${j.message || JSON.stringify(j).slice(0,200)}`);
+  if (params.logChat) _twilioLogChat(params, params.body, j);
   // MIRROR a WA_ChatContext (fire-and-forget) — así los envíos outbound
   // (templates, cron, /wa/send manual) también aparecen en el hilo del
   // panel bot-chats. Skip si el destino no tiene formato válido o si el
@@ -3207,7 +3214,7 @@ function _detectAsistenciaIntent(text) {
 const _asistCierre = new Map(); // phone10 → { nombre, hora, items, draft, ubic, dry, exp }
 const _ASIST_CIERRE_TTL = 3 * 3600 * 1000;
 const _cierreSink = new Map(); // phone10 → [textos] mientras el simulador espera la respuesta
-function _cierreEnviar(fromRaw, phone10, body) { const k = _cierreSink.get(phone10); if (k) k.push(body); return _twilioSendMessage({ to: fromRaw, body, skipMirror: true }).catch(() => {}); }
+function _cierreEnviar(fromRaw, phone10, body) { const k = _cierreSink.get(phone10); if (k) k.push(body); return _twilioSendMessage({ to: fromRaw, body, skipMirror: true, logChat: !k }).catch(() => {}); }
 const _CIERRE_EST = { pendiente: "⏳ Pendiente", en_proceso: "🧽 En proceso", terminado: "🧹 Terminado", validado: "🧹 Terminado y validado", inspeccionado: "✅ Inspeccionado" };
 async function _cierrePendientes(nombre) {
   const hoy = _mxHoy(), r = await _aseoResumenHoy(), out = [];
@@ -3444,7 +3451,7 @@ async function _botNotifyAdmin(text) {
   const to = String(process.env.ADMIN_NOTIFY_PHONE || "").trim();
   if (!to) { console.info("[bot-notify] ADMIN_NOTIFY_PHONE no configurado — solo log:", text); return; }
   try {
-    await _twilioSendMessage({ to: `whatsapp:${to}`, body: text, skipMirror: true });
+    await _twilioSendMessage({ to: `whatsapp:${to}`, body: text, skipMirror: true, logChat: true, logMeta: { aviso: true } });
   } catch (e) { console.warn("[bot-notify] falló:", e.message); }
 }
 
@@ -3729,7 +3736,7 @@ async function _botNotifyEmergency(text) {
   const list = (_BOT_EMERGENCY.phones || []).filter(Boolean);
   if (!list.length) { console.info("[bot-emergency] lista vacía — skip"); return; }
   for (const p of list) {
-    try { await _twilioSendMessage({ to: `whatsapp:${p}`, body: text, skipMirror: true }); }
+    try { await _twilioSendMessage({ to: `whatsapp:${p}`, body: text, skipMirror: true, logChat: true, logMeta: { aviso: "emergencia" } }); }
     catch (e) { console.warn(`[bot-emergency] falló ${p}:`, e.message); }
   }
 }
@@ -3839,20 +3846,21 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   const hasLocation = latRaw && lngRaw && !isNaN(Number(latRaw)) && !isNaN(Number(lngRaw));
   if (hasLocation) {
     const pending = _asistenciaPending.get(phone10);
+    if (pending && (Date.now() - pending.ts) < _ASIST_PENDING_TTL_MS) _botAppendMessage(phone10, "user", "📍 Ubicación compartida", { from: fromRaw, staff: true, lat: latRaw, lng: lngRaw }).catch(() => {});
     if (pending && (Date.now() - pending.ts) < _ASIST_PENDING_TTL_MS) {
       _asistenciaPending.delete(phone10);
       const resp = await _asistenciaMarcarEnSheet(phone10, pending.tipo, latRaw, lngRaw, "");
       const ciU = _asistCierre.get(phone10);
       if (resp && resp.ok && pending.tipo === "salida" && ciU && Date.now() < ciU.exp) {
         ciU.ubic = true;
-        await _twilioSendMessage({ to: fromRaw, body: "📍 Ubicación guardada. En cuanto me digas cómo quedaron tus tareas cierro tu salida (o escribe «salir»).", skipMirror: true }).catch(() => {});
+        await _twilioSendMessage({ to: fromRaw, body: "📍 Ubicación guardada. En cuanto me digas cómo quedaron tus tareas cierro tu salida (o escribe «salir»).", skipMirror: true, logChat: true }).catch(() => {});
         return;
       }
       if (resp && resp.ok) {
         const emoji = pending.tipo === "entrada" ? "🕘" : "🕕";
         const verbo = pending.tipo === "entrada" ? "Entrada" : "Salida";
         const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n📍 Ubicación guardada\nGracias, ${resp.empleado.split(" ")[0]}!`;
-        await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
+        await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true, logChat: true }).catch(()=>{});
         // Registro de ENTRADA completo (con ubicación) → lista de limpiezas/inspecciones asignadas hoy.
         if (pending.tipo === "entrada") {
           try { await _aseoEnviarLista(String(resp.empleado || ""), fromRaw, phone10, "limpiezas_al_llegar"); }
@@ -3888,6 +3896,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   if (_asistIntent) {
     const emp = await _asistenciaLookupEmpleado(phone10);
     if (emp && emp.ok && emp.empleado) {
+      if (!bodyAlreadyPersisted) { _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, staff: true }); bodyAlreadyPersisted = true; } // queda en el hilo del panel
       // Marca directamente sin ubicación (llegará luego, o no)
       const resp = await _asistenciaMarcarEnSheet(phone10, _asistIntent, "", "", "");
       if (resp && resp.ok) {
@@ -3900,10 +3909,10 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
           catch (e) { console.warn("[cierre] no se pudo iniciar:", e.message); _asistCierre.delete(phone10); }
         }
         const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n\n📍 Ahora comparte tu ubicación (obligatoria) — sin ella el registro queda incompleto.\n\nGracias, ${nombre}!`;
-        await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true }).catch(()=>{});
+        await _twilioSendMessage({ to: fromRaw, body: reply, skipMirror: true, logChat: true }).catch(()=>{});
 
       } else {
-        await _twilioSendMessage({ to: fromRaw, body: `⚠️ No pude registrar tu ${_asistIntent}. Contacta al admin.`, skipMirror: true }).catch(()=>{});
+        await _twilioSendMessage({ to: fromRaw, body: `⚠️ No pude registrar tu ${_asistIntent}. Contacta al admin.`, skipMirror: true, logChat: true }).catch(()=>{});
       }
       return;  // NO caemos al flujo huésped/admin
     }
