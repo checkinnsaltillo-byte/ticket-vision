@@ -74533,9 +74533,9 @@ function bkEntrSup_() {
       <div style="margin-top:8px;display:grid;gap:6px">${(x.mensajes || []).map(m => `<div style="justify-self:start;max-width:85%;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:6px 10px;font-size:12.5px;white-space:pre-wrap">👤 ${esc(m.texto)}</div>`).join('')}
         <div style="justify-self:end;max-width:85%;background:#dcfce7;border:1px solid #bbf7d0;border-radius:10px;padding:6px 10px;font-size:12.5px;white-space:pre-wrap">✅ ${esc(x.final)}</div></div>
       ${x.editado ? `<details style="margin-top:6px"><summary class="bk-mut" style="cursor:pointer;font-size:11.5px">Sugerencia original del bot</summary><div class="bk-ex" style="margin-top:4px">${esc(x.borrador)}</div></details>` : ''}
-      <div class="bk-row" style="justify-content:flex-end;margin-top:6px"><button class="bk-btn sm red" onclick="bkSupBorrar_('${esc(x.id)}')">🗑 Quitar</button></div></div>`;
+      <div class="bk-row" style="justify-content:space-between;margin-top:8px;gap:8px">${bkSw_(x.usar !== false, x.usar !== false ? 'El bot lo usa como referencia' : 'Solo registro (el bot no lo usa)', `bkSupUsar_('${esc(x.id)}')`)}<button class="bk-btn sm red" onclick="bkSupBorrar_('${esc(x.id)}')">🗑 Quitar</button></div></div>`;
   return `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><div><h3>✍️ Respuestas supervisadas <span class="bk-chip" style="background:#ede9fe;color:#5b21b6">${L.length}</span></h3>
-      <div class="bk-sub">Borradores del bot que el equipo aprobó (tal cual o corregidos) y guardó desde Chats bot con «💾 Guardar como ejemplo». La IA eligió los mensajes del huésped que originaron cada respuesta y la clasificó.</div></div>
+      <div class="bk-sub">Borradores del bot que el equipo aprobó (tal cual o corregidos) y guardó desde Chats bot con «💾 Guardar como ejemplo». La IA eligió los mensajes del huésped que originaron cada respuesta y la clasificó. Ante situaciones parecidas, el bot recibe hasta 4 de estos ejemplos (del mismo proceso, priorizando los editados a mano) y los usa como referencia desde el siguiente mensaje.</div></div>
       <div class="bk-row" style="gap:6px"><select class="bk-sel" style="width:auto" onchange="BK.supF=this.value;bkRender_()"><option value="">Todas las categorías</option>${cats.map(c => `<option ${c === f ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><button class="bk-btn sm" onclick="bkSupCargar_()">↻</button></div></div>
     <div style="margin-top:10px">${!BK.sup ? '<div class="bk-mut">⏳ Cargando…</div>' : V.length ? V.slice(0, 60).map(card).join('') + (V.length > 60 ? `<div class="bk-mut" style="font-size:12px">Mostrando 60 de ${V.length}.</div>` : '') : '<div class="bk-mut" style="font-size:12.5px">Aún no hay respuestas guardadas. En Chats bot, al enviar una sugerencia del bot marca «💾 Guardar como ejemplo de entrenamiento» (se marca sola si editas el texto).</div>'}</div></div>`;
 }
@@ -74585,3 +74585,7 @@ window._bknGuardar_ = async function () {
     if (!j.ok) throw new Error(j.error || 'Error'); BKN.L = j.numeros; BKN.ini = JSON.stringify(j.numeros); _bknPintar_(); (typeof bkToast_ === 'function' ? bkToast_ : alert)('✓ Números guardados'); }
   catch (e) { alert('No se pudo guardar: ' + (e.message || e)); }
 };
+
+async function bkSupUsar_(id) { const x = (BK.sup || []).find(y => y.id === id); if (!x) return; const usar = x.usar === false; x.usar = usar; bkRender_();
+  try { const j = await fetch(`${BACKEND}/bot/control/supervisados/usar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, usar }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); }
+  catch (e) { x.usar = !usar; bkRender_(); alert('No se pudo: ' + (e.message || e)); } }

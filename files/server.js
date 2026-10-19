@@ -13587,7 +13587,7 @@ async function _bcGate({ texto, canal, conv, booking, control, mensajes, nombre,
   else { accion = "auto"; motivo = "todo en Automático"; }
   // Procesos apagados que conviven con otros temas: el modelo debe contestar ese tema con el respaldo.
   const offTxt = procs.filter(k => (modos[k] || {}).modo === "off").map(k => { const c = catL.find(x => x.clave === k); const m = modos[k]; return `- ${c ? c.nombre : k}: no lo atiendas; responde solo: «${(cfg.procesos[k] || {}).respaldo || (m.canal ? cfg.respaldoCanal : cfg.respaldoGeneral)}»`; });
-  const prompt = _bcPerfilPrompt(cfg.perfil, procs) + (offTxt.length ? `\n\nTEMAS DESACTIVADOS EN ESTE MOMENTO:\n${offTxt.join("\n")}` : "") + await _enPromptAprobadas(procs).catch(() => "");
+  const prompt = _bcPerfilPrompt(cfg.perfil, procs) + (offTxt.length ? `\n\nTEMAS DESACTIVADOS EN ESTE MOMENTO:\n${offTxt.join("\n")}` : "") + await _enPromptAprobadas(procs).catch(() => "") + await _supPromptEjemplos(procs, texto).catch(() => "");
   return { masterOff, activo: !!cfg.activo && !simular, observar: !cfg.activo, accion, msg, motivo, tools, bloqueadas: [...bloq], prompt, procesos: procs, seguimiento, detectados: detect, modos, ipo: ip.ipo, prioridad: ip.prioridad, factores: ip.factores, senales: ip.senales, emergencia: ip.emergencia,
     horario: hor, nivel: nivelTxt, derivacion: der.motivos, conv, hid: cat.hid, estanciaActiva, linkModo, sinLink: linkModo === "off" || linkModo === "der", canal: cat.canal, nombre, aloj, ms: Date.now() - t0, objetivo };
 }
@@ -14350,6 +14350,27 @@ async function _supClasificar(id) {
       x.proceso = String(r.proceso || ""); x.resumen = String(r.resumen || "").slice(0, 200); x.estado = "clasificado"; });
   } catch (e) { console.warn("[supervisados] clasificar:", e.message); await _supMut(dd => { const x = dd.items.find(y => y.id === id); if (x) { x.estado = "error"; x.error = e.message; } }).catch(() => {}); }
 }
+// Ejemplos para el prompt: respuestas supervisadas del mismo proceso (o, si no hay, las más parecidas por palabras),
+// priorizando las editadas a mano y las recientes. Solo las marcadas «Usar como referencia» (por omisión sí).
+let _supC = { d: null, ts: 0 };
+const _SUP_VACIAS = new Set("hola buenas buenos dias tardes noches gracias muchas favor para porque como cuando donde este esta estos estas tienen tiene tengo tenemos quiero queria quisiera puedo puede pueden seria sobre entonces tambien ustedes nosotros usted aqui alla algun alguna mucho poco solo pero sera estan estoy hacer hago saber oye check checkin checkout todo bien estancia mañana manana hora horas".split(" "));
+const _supPal = t => new Set(_bcNrm(t).split(/[^a-z0-9ñ]+/).filter(w => w.length > 3 && !_SUP_VACIAS.has(w)).map(w => w.slice(0, 5))); // raíz: «estacionar» ≈ «estacionamiento»
+async function _supPromptEjemplos(procs, texto) {
+  if (!_supC.d || Date.now() - _supC.ts > 30e3) _supC = { d: (await _rhdGetJson(_SUP_OBJ).catch(() => ({}))).items || [], ts: Date.now() };
+  const L = _supC.d.filter(x => x.usar !== false && x.estado === "clasificado" && x.final && (x.mensajes || []).length); if (!L.length) return "";
+  const P = _supPal(texto), sim = x => { const W = _supPal((x.mensajes || []).map(m => m.texto).join(" ")); let n = 0; P.forEach(w => { if (W.has(w)) n++; }); return n; };
+  const puntua = x => sim(x) * 3 + (x.editado ? 2 : 0) + Math.max(0, 2 - (Date.now() - Date.parse(x.at)) / (30 * 86400e3));
+  // Mismo proceso (salvo «Dudas generales», que es genérico) o, de cualquier proceso, que comparta el tema por palabras.
+  const C = L.filter(x => sim(x) >= 1 || ((procs || []).includes(x.proceso) && x.proceso !== "dudas" && x.proceso !== "guia"));
+  const E = C.map(x => [puntua(x), x]).sort((a, b) => b[0] - a[0]).slice(0, 4).map(y => y[1]); if (!E.length) return "";
+  return `\n\nEJEMPLOS DE RESPUESTAS APROBADAS POR EL EQUIPO (situaciones parecidas que el equipo ya revisó; imita el tono, la extensión y la forma de resolver. Adapta a esta conversación: NO copies nombres, fechas, precios, alojamientos ni datos de esos huéspedes; si la información de esta reserva o de la guía contradice un ejemplo, manda la información actual. Usa un ejemplo SOLO si es la misma situación que plantea el huésped; si no se parece, ignóralo):\n` +
+    E.map((x, i) => `Ejemplo ${i + 1}${x.categoria && x.categoria.nombre ? ` (${x.categoria.nombre})` : ""}:\n  Huésped: ${(x.mensajes || []).map(m => String(m.texto).replace(/\s+/g, " ").slice(0, 400)).join(" / ")}\n  Respuesta aprobada: ${String(x.final).replace(/\n/g, "\n  ").slice(0, 1200)}`).join("\n");
+}
+app.post("/bot/control/supervisados/usar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const { id, usar } = req.body || {}; await _supMut(d => { const x = d.items.find(y => y.id === id); if (x) x.usar = !!usar; }); _supC.ts = 0; res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/bot/control/supervisados", async (req, res) => {
   res.set("Cache-Control", "no-store");
   try { const d = await _rhdGetJson(_SUP_OBJ).catch(() => ({})); res.json({ ok: true, items: (d.items || []).slice().reverse() }); }
@@ -14363,12 +14384,12 @@ app.post("/bot/control/supervisados", async (req, res) => {
     const it = { id: _bcId(), at: new Date().toISOString(), por: String(b.usuario || "").slice(0, 60), conv, canal: String(b.canal || (conv.startsWith("abn") ? "airbnb" : "whatsapp")),
       huesped: String(b.huesped || "").slice(0, 120), aloj: String(b.aloj || "").slice(0, 60), borrador, final, editado: !!borrador && borrador !== final, contexto, mensajes: [], estado: "clasificando" };
     await _supMut(d => { d.items.push(it); if (d.items.length > 2000) d.items = d.items.slice(-2000); });
-    _supClasificar(it.id); res.json({ ok: true, id: it.id });
+    _supClasificar(it.id).then(() => { _supC.ts = 0; }); res.json({ ok: true, id: it.id });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/bot/control/supervisados/borrar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-  try { const id = String((req.body || {}).id || ""); await _supMut(d => { d.items = d.items.filter(x => x.id !== id); }); res.json({ ok: true }); }
+  try { const id = String((req.body || {}).id || ""); await _supMut(d => { d.items = d.items.filter(x => x.id !== id); }); _supC.ts = 0; res.json({ ok: true }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/bot/control/entrenamiento", async (req, res) => {
