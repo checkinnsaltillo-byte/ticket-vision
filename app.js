@@ -74642,3 +74642,12 @@ window._botcTranscribir_ = async function (i) {
       ${t ? `<div style="display:flex;gap:6px;margin-top:10px"><button type="button" onclick="navigator.clipboard.writeText(${JSON.stringify(t).replace(/"/g, '&quot;')}).then(()=>bkToast_('✓ Copiado'))" style="all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;background:#f3f4f6;font-weight:700;font-size:12px">📋 Copiar</button></div>` : ''}`); }
   catch (e) { _botcResultBox_(`<div style="color:#b91c1c">No se pudo transcribir: ${_botcEsc(e.message || e)}</div>`); }
 };
+// ═══ Cámara directa en celulares (2026-10-19): en pantallas táctiles todo campo de foto abre la cámara (Android lo exige con
+// el atributo capture; iPhone ya la ofrecía). Se aplica a los inputs existentes y a los que se pinten después. ═══
+(function () {
+  try { if (!window.matchMedia || !matchMedia('(pointer:coarse)').matches) return; } catch (_) { return; }
+  const fix = root => { try { (root.querySelectorAll ? root.querySelectorAll('input[type="file"][accept*="image"]:not([capture])') : []).forEach(i => i.setAttribute('capture', 'environment')); } catch (_) {} };
+  fix(document);
+  new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType !== 1) return; if (n.matches && n.matches('input[type="file"]')) fix(n.parentNode || document); else fix(n); })))
+    .observe(document.documentElement, { childList: true, subtree: true });
+})();
