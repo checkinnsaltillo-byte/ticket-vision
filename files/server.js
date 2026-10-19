@@ -11899,8 +11899,8 @@ async function _abnBotResponder(bid, m) {
   }
   const tel = String((bk && bk.guest && bk.guest.phone) || "").replace(/\D/g, ""), phone10 = tel.length >= 10 ? tel.slice(-10) : "";
   const ctx = phone10 ? await _botFindActiveBooking(phone10).catch(() => null) : null;
-  if (m.control === "bot") { const hid = (ctx && ctx.booking && ctx.booking.HouseId) || (bk && bk.property_id);
-    if (!(await _botIsAlojamientoEnabled(hid))) return "alojamiento sin bot activado"; } // misma regla que WhatsApp
+  if (m.control === "bot" && !(_gOn && _g.accion === "supervisado")) { const hid = (ctx && ctx.booking && ctx.booking.HouseId) || (bk && bk.property_id); // misma regla que WhatsApp: el filtro de alojamientos habilitados
+    if (!(await _botIsAlojamientoEnabled(hid))) return "alojamiento sin bot activado"; } // solo aplica en Automático; si el gate manda Supervisado se deja borrador igual (no se envía solo)
   const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Mexico_City" });
   const context = ctx && ctx.booking ? _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings)
     : `\n[Reserva ${bid} de Airbnb${bk ? ` · llegada ${String(bk.arrival || "").slice(0, 10)} · salida ${String(bk.departure || "").slice(0, 10)}` : ""}.]`;
