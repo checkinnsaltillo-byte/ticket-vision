@@ -51414,15 +51414,20 @@ function _botcAjustarAlto_() {
   if (!mod || mod.classList.contains('hidden')) return;
   if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) { // celular: la ventana mide exactamente la pantalla visible; la página no se desplaza
     if (window.scrollY) window.scrollTo(0, 0);
-    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight, top = Math.max(0, Math.round(mod.getBoundingClientRect().top));
-    mod.style.height = mod.style.maxHeight = Math.max(240, Math.round(vh - top)) + 'px';
+    // Con el teclado abierto iOS desplaza la vista (offsetTop) aunque la página no se mueva: el módulo debe terminar
+    // justo donde empieza el teclado (offsetTop + alto visible), si no queda un hueco enorme bajo la barra de texto.
+    const vv = window.visualViewport, vh = vv ? vv.height : window.innerHeight, off = vv ? Math.max(0, vv.offsetTop) : 0;
+    const top = Math.max(0, Math.round(mod.getBoundingClientRect().top));
+    mod.style.height = mod.style.maxHeight = Math.max(240, Math.round(vh + off - top)) + 'px';
     return;
   }
   const top = Math.max(0, Math.round(mod.getBoundingClientRect().top + window.scrollY));
   mod.style.height = mod.style.maxHeight = `calc(100dvh - ${top}px)`;
 }
 window.addEventListener('resize', () => _botcAjustarAlto_());
-if (window.visualViewport) window.visualViewport.addEventListener('resize', () => _botcAjustarAlto_()); // barra del navegador / teclado del celular
+if (window.visualViewport) { window.visualViewport.addEventListener('resize', () => _botcAjustarAlto_()); window.visualViewport.addEventListener('scroll', () => _botcAjustarAlto_()); } // barra del navegador / teclado del celular
+document.addEventListener('focusin', e => { if (e.target && e.target.closest && e.target.closest('#module-bot-chats')) [120, 350, 700].forEach(t => setTimeout(_botcAjustarAlto_, t)); });
+document.addEventListener('focusout', e => { if (e.target && e.target.closest && e.target.closest('#module-bot-chats')) [120, 400].forEach(t => setTimeout(_botcAjustarAlto_, t)); });
 // Búsqueda: sin distinguir mayúsculas ni acentos, en todos los datos de la tarjeta y en el texto de las conversaciones (servidor).
 const _botcNorm_ = v => String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 function _botcTextoBusq_(c) {
