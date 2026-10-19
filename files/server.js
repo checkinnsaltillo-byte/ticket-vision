@@ -11868,10 +11868,23 @@ app.all("/airbnb/bot-tick", async (req, res) => {
   if (_abnTickCorriendo) return res.json({ ok: true, ocupado: true });
   _abnTickCorriendo = true; const out = {};
   try {
-    const modos = await _rhdGetJson(_ABN_MODOS_OBJ);
+    const modos = (await _rhdGetJson(_ABN_MODOS_OBJ)) || {}, _mg = await _bcModoGeneral();
+    // Modo general en Automático/Supervisado: aplica a TODAS las conversaciones activas de la bandeja (no solo a las activadas a mano).
+    // Las que no tenían registro se dan de alta con «desde» reciente: en Supervisado se revisan mensajes de las últimas 12 h; en Automático solo lo nuevo.
+    const band = _abn.band || await _rhdGetJson(_ABN_BAND_OBJ).catch(() => null), porBid = new Map(((band && band.hilos) || []).map(h => [String(h.bid), h]));
+    if (band && Date.now() - (band.ts || 0) > 5 * 60_000) _abnBandejaCargar().catch(() => {});
+    if (_mg === "bot" || _mg === "supervised") {
+      const nuevos = [...porBid.values()].filter(h => !modos[h.bid] && h.ult && h.ult.de === "huesped");
+      if (nuevos.length) { const desde = new Date(Date.now() - (_mg === "supervised" ? 12 * 3600e3 : 10 * 60e3)).toISOString(), at = new Date().toISOString();
+        await _abnModosMutar(d => { nuevos.forEach(h => { if (!d[h.bid]) d[h.bid] = { general: true, desde, at }; }); });
+        nuevos.forEach(h => { modos[h.bid] = { general: true, desde, at }; }); }
+    }
     for (const [bid, m] of Object.entries(modos)) {
-      const _mg = await _bcModoGeneral(), mm = _mg ? Object.assign({}, m, { control: _mg }) : m; // modo general manda sobre el de cada conversación
+      const mm = _mg ? Object.assign({}, m, { control: _mg }) : m; // modo general manda sobre el de cada conversación
       if (!["bot", "supervised"].includes(mm.control)) continue;
+      // Altas del modo general: se consulta Lodgify solo si la bandeja muestra un mensaje del huésped sin procesar (evita 139 consultas cada 2 min).
+      if (m.general && !m.control) { const h = porBid.get(String(bid)), base = String(m.procesado || "") > String(m.desde || "") ? String(m.procesado) : String(m.desde || "");
+        if (!h || !h.ult || h.ult.de !== "huesped" || String(h.ult.fecha) <= base) continue; }
       try { out[bid] = await _abnBotResponder(bid, mm); } catch (e) { out[bid] = "error: " + e.message; console.warn("[airbnb-bot]", bid, e.message); }
     }
     if (Object.values(out).some(v => /contestado|borrador|escalado/.test(v))) console.log("[airbnb-bot]", JSON.stringify(out));
