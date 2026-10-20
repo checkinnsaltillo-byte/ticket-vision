@@ -4184,7 +4184,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
       const _todayL = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
       const _yearL  = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
       const _tempoL = `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${_todayL} (América/Mexico_City).\n- AÑO ACTUAL: ${_yearL}. Úsalo por default si no se menciona año.`;
-      const leadSystem = BOT_SYSTEM_PROMPT_BASE + leadPromptsBlock + _tempoL + _gPrompt + await _bcSinRespPrompt() + `
+      const leadSystem = BOT_SYSTEM_PROMPT_BASE + leadPromptsBlock + _tempoL + _gPrompt + await _bcPromptCierre(String(state.control) === "supervised" || _forzarSup) + `
 
 CONTEXTO ESPECIAL — LEAD ENTRANTE SIN RESERVA
 No tenemos una reserva asociada a este número. Tu objetivo es SOLO capturar los datos mínimos para poder cotizar y armar la reserva:
@@ -4211,7 +4211,8 @@ REGLAS ESTRICTAS
         if (await _bcExigeSup(_g, llm.toolsUsed)) _forzarSup = true;
         console.info(`[bot-in] ${phone10}: LLM lead+tools en ${Date.now()-tLlm}ms (${(llm.toolsUsed||[]).length} tools)`);
         for (const t of (llm.toolsUsed || [])) { if (t.notifyText) _botNotifyAdmin(t.notifyText); }
-        if (_bcEsSinResp(llm.text)) { _bcSinRespRegistrar(phone10, "whatsapp", bodyMsg); console.info(`[bot-in] ${phone10}: sin respuesta (lead) — espera atención manual`); return; }
+        if (_bcEsSinResp(llm.text) && !(String(state.control) === "supervised" || _forzarSup)) { _bcSinRespRegistrar(phone10, "whatsapp", bodyMsg); console.info(`[bot-in] ${phone10}: sin respuesta (lead) — espera atención manual`); return; }
+        if (_bcEsSinResp(llm.text)) llm.text = "[CONFIRMAR: el bot no encontró la respuesta; redacta la respuesta]";
         const replyText = String(llm.text || "").trim() ||
           "¡Hola! Gracias por contactar Check-inn Saltillo. Para poder ayudarte, ¿me compartes tu nombre, el alojamiento o zona que te interesa, fechas tentativas y número de huéspedes? 🏠";
         // Modo SUPERVISED: guardar como draft para revisión humana.
@@ -4260,7 +4261,7 @@ REGLAS ESTRICTAS
     const _today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
     const _year  = new Date().toLocaleDateString('en-US', { timeZone: 'America/Mexico_City', year: 'numeric' });
     const _tempo = `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${_today} (América/Mexico_City).\n- AÑO ACTUAL: ${_year}. Úsalo por default si el huésped no menciona año; si esa fecha ya pasó, salta al año siguiente.`;
-    const system = BOT_SYSTEM_PROMPT_BASE + promptsBlock + _tempo + context + _gPrompt + await _bcSinRespPrompt();
+    const system = BOT_SYSTEM_PROMPT_BASE + promptsBlock + _tempo + context + _gPrompt + await _bcPromptCierre(String(state.control) === "supervised" || _forzarSup);
     const history = (ctxResp.messages || []).slice(-10, -1); // excluir el user actual (ya guardado)
     // Anthropic solo acepta roles 'user' | 'assistant'. Nuestros roles
     // internos incluyen 'admin' (envío manual del panel), 'template'
@@ -4280,7 +4281,8 @@ REGLAS ESTRICTAS
     for (const t of (llm.toolsUsed || [])) {
       if (t.notifyText) _botNotifyAdmin(t.notifyText);
     }
-    if (_bcEsSinResp(llm.text)) { _bcSinRespRegistrar(phone10, "whatsapp", bodyMsg); console.info(`[bot-in] ${phone10}: sin respuesta — espera atención manual`); return; }
+    if (_bcEsSinResp(llm.text) && !(String(state.control) === "supervised" || _forzarSup)) { _bcSinRespRegistrar(phone10, "whatsapp", bodyMsg); console.info(`[bot-in] ${phone10}: sin respuesta — espera atención manual`); return; }
+    if (_bcEsSinResp(llm.text)) llm.text = "[CONFIRMAR: el bot no encontró la respuesta en la guía ni en la reserva; redacta la respuesta]";
     const replyText = String(llm.text || "").trim();
     if (!replyText) {
       console.warn(`[bot-in] ${phone10}: respuesta vacía del LLM (modo=${state.control}) — no cambia modo`);
@@ -11906,11 +11908,12 @@ async function _abnBotResponder(bid, m) {
   const context = ctx && ctx.booking ? _botBuildAlojamientoContext(ctx.alojRow, ctx.booking, ctx.allBookings)
     : `\n[Reserva ${bid} de Airbnb${bk ? ` · llegada ${String(bk.arrival || "").slice(0, 10)} · salida ${String(bk.departure || "").slice(0, 10)}` : ""}.]`;
   const system = BOT_SYSTEM_PROMPT_BASE + _botBuildPromptsBlock(await _botGetPrompts({ claves: _g && _g.detectados })) + `\n\nCONTEXTO TEMPORAL:\n- HOY es: ${hoy} (America/Mexico_City).` + context +
-    `\n\nCANAL: esta conversación es por la mensajería de AIRBNB (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos (Airbnb los bloquea). Sé breve y cordial.` + (_gOn ? _g.prompt : "") + await _bcSinRespPrompt();
+    `\n\nCANAL: esta conversación es por la mensajería de AIRBNB (no WhatsApp). Responde dentro de este chat; no pidas que escriban por WhatsApp y no compartas teléfonos, correos ni enlaces externos (Airbnb los bloquea). Sé breve y cordial.` + (_gOn ? _g.prompt : "") + await _bcPromptCierre(m.control === "supervised" || (_gOn && _g.accion === "supervisado"));
   const llm = await _botLlmLoop({ system, history, userMsg, ctx: { phone10, fromRaw: phone10 ? `whatsapp:+52${phone10}` : "", booking: (ctx && ctx.booking) || {}, alojRow: (ctx && ctx.alojRow) || {}, sinLink: _gOn && _g.sinLink }, tools: _gOn ? _g.tools : undefined });
   for (const t of (llm.toolsUsed || [])) if (t.notifyText) _botNotifyAdmin(t.notifyText);
-  if (_bcEsSinResp(llm.text)) { _bcSinRespRegistrar("abn" + bid, _bcCanalDe(bk && bk.source), userMsg); return "sin respuesta: espera atención manual"; }
-  const reply = String(llm.text || "").trim(); if (!reply) return "respuesta vacía";
+  const _esSupA = m.control === "supervised" || (_gOn && (_g.accion === "supervisado" || await _bcExigeSup(_g, llm.toolsUsed)));
+  if (_bcEsSinResp(llm.text) && !_esSupA) { _bcSinRespRegistrar("abn" + bid, _bcCanalDe(bk && bk.source), userMsg); return "sin respuesta: espera atención manual"; }
+  const reply = (_bcEsSinResp(llm.text) ? "[CONFIRMAR: el bot no encontró la respuesta en la guía ni en la reserva; redacta la respuesta]" : String(llm.text || "")).trim(); if (!reply) return "respuesta vacía";
   if (m.control === "supervised" || (_gOn && (_g.accion === "supervisado" || await _bcExigeSup(_g, llm.toolsUsed)))) { await _abnModosMutar(d => { if (d[bid]) { d[bid].draft = reply; d[bid].draftAt = new Date().toISOString(); } }); return "borrador"; }
   await _abnEnviar(bid, reply, "bot");
   return "contestado";
@@ -13461,6 +13464,9 @@ const _BOT_SIN_RESP = "[SIN_RESPUESTA]";
 async function _bcSinRespPrompt() { const cfg = await _bcCfg().catch(() => ({})); if ((cfg.sinRespuesta || "callar") !== "callar") return "";
   return `\n\nSI NO TIENES LA RESPUESTA (REGLA PRIORITARIA): si con la información disponible (guía del alojamiento, reserva, fichas de proceso y herramientas) no puedes responder con certeza, o la petición necesita a una persona y no tienes una herramienta para registrarla, responde EXACTAMENTE ${_BOT_SIN_RESP} y nada más. Una persona del equipo contestará manualmente. Si el mensaje tiene varias preguntas y alguna importante no la puedes responder con certeza, NO contestes a medias: responde solo ${_BOT_SIN_RESP} para que la persona conteste todo. Nunca digas «no tengo esa información», «lo confirmo con el equipo» ni similares: en esos casos usa la marca. Esta regla tiene prioridad sobre cualquier otra instrucción. No uses la marca si sí sabes la respuesta completa o si registraste la solicitud con una herramienta.`; }
 const _bcEsSinResp = t => String(t || "").includes(_BOT_SIN_RESP);
+// Cuando la respuesta va a quedar como BORRADOR (Supervisado) no se calla: se pide la mejor propuesta marcando lo que falte confirmar.
+const _BC_BORRADOR_PROMPT = `\n\nBORRADOR PARA EL EQUIPO (REGLA PRIORITARIA): tu respuesta NO se envía sola; una persona la revisa y decide. Por eso NUNCA respondas ${_BOT_SIN_RESP}: redacta la mejor respuesta posible con lo que tengas y, si falta un dato que no tienes (p. ej. un código de acceso, una fecha o un precio), déjalo señalado entre corchetes así: [CONFIRMAR: qué falta]. Mantén el idioma del huésped.`;
+async function _bcPromptCierre(esBorrador) { return esBorrador ? _BC_BORRADOR_PROMPT : await _bcSinRespPrompt(); }
 function _bcSinRespRegistrar(conv, canal, texto) { _bcLog({ tipo: "sin_respuesta", conv, canal, resultado: "el bot no tenía la respuesta: no contestó; espera atención manual", motivo: String(texto || "").slice(0, 160) });
   _bcMut(_BC.CONV, d => { const c = d[conv] = d[conv] || {}; Object.assign(c, { canal, at: new Date().toISOString(), estado: "nueva", asignado: "equipo", accion: "sin_respuesta", motivo: "El bot no tenía la respuesta: espera atención manual", ult: String(texto || "").slice(0, 200) }); }).catch(() => {}); }
 const _bcQ = {};
