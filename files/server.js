@@ -11572,7 +11572,7 @@ Object.assign(_GCS_ACT, {
     const convs = Object.keys(e).filter(p => /^\d{10}$/.test(p)).map(p => { const s = e[p], f = pf[p] || {};
       if (!s.name && !f.nombre) _waNombre(p); // conversación nueva: busca su nombre en Perfiles en segundo plano
       return { phone: p, name: f.nombre || s.name || "", razon_social: f.razon_social || s.razon_social || "", regimen_fiscal: f.regimen_fiscal || s.regimen_fiscal || "", control: s.control || "bot", last_msg_at: s.last_msg_at || "", last_msg_preview: s.last_msg_preview || "",
-        escalated_at: s.escalated_at || "", escalated_reason: s.escalated_reason || "", notes: s.notes || "", pending_draft_body: s.pending_draft_body || "", pending_draft_at: s.pending_draft_at || "", last_msg_role: s.last_msg_role || "" }; })
+        escalated_at: s.escalated_at || "", escalated_reason: s.escalated_reason || "", notes: s.notes || "", pending_draft_body: s.pending_draft_body || "", pending_draft_at: s.pending_draft_at || "", last_msg_role: s.last_msg_role || "", unread: s.unread != null ? Number(s.unread) || 0 : (String(s.last_msg_role || "") === "user" ? 1 : 0) }; })
       .filter(c => filter === "bot" ? c.control === "bot" : filter === "human" || filter === "pending" ? c.control === "human" : filter === "supervised" ? c.control === "supervised" : true)
       .sort((a, b) => String(b.last_msg_at).localeCompare(String(a.last_msg_at)));
     return { ok: true, conversations: convs.slice(0, limit), total: convs.length };
@@ -11591,8 +11591,14 @@ Object.assign(_GCS_ACT, {
     const body = String(data.body || "").slice(0, 4000), ts = _waIso();
     await _waMutar(_waChatObj(p), d => { if (!Array.isArray(d.msgs)) d.msgs = []; d.msgs.push({ ts, role, body, meta }); if (d.msgs.length > 2000) d.msgs.splice(0, d.msgs.length - 2000); });
     let nueva = false;
-    await _waMutar(_WA_OBJ.estado, e => { nueva = !e[p]; const s = _waEstadoDe(e, p); s.last_msg_at = ts; s.last_msg_preview = body.slice(0, 120); s.last_msg_role = role; });
+    await _waMutar(_WA_OBJ.estado, e => { nueva = !e[p]; const s = _waEstadoDe(e, p); s.last_msg_at = ts; s.last_msg_preview = body.slice(0, 120); s.last_msg_role = role;
+      if (role === "user") s.unread = (Number(s.unread) || 0) + 1; else if (role === "admin") s.unread = 0; }); // no leídos: suben con cada mensaje del huésped; se limpian al abrir el chat o al contestar a mano
     return nueva ? { ok: true, appended: true, phone: p, created_state: true } : { ok: true, appended: true, phone: p };
+  },
+  wa_chat_visto: async data => { // el admin abrió la conversación en el panel
+    const p = _waP10(data.phone || data.phone10); if (!p) return { ok: false, error: "phone requerido" };
+    await _waMutar(_WA_OBJ.estado, e => { if (e[p]) { e[p].unread = 0; e[p].visto_at = _waIso(); } });
+    _wa_cache.convs.clear(); return { ok: true };
   },
   wa_chat_set_control: async data => {
     const p = _waP10(data.phone || data.phone10); if (!p) return { ok: false, error: "phone requerido" };
@@ -11782,7 +11788,8 @@ app.get("/airbnb/bandeja", async (req, res) => {
     const visto = await _abnVisto();
     const modos = await _abnModos().catch(() => ({}));
     res.json({ ok: true, ts: _abn.band.ts, hilos: _abn.band.hilos.map(h => { const m = modos[h.bid] || {};
-      return Object.assign({}, h, { noLeido: !!(h.ult && h.ult.de === "huesped" && String(h.ult.fecha) > _abnVistoDe(visto, h.bid)), control: m.control || "human", draft: m.draft || "", draftAt: m.draftAt || "" }); }) });
+      const vdt = _abnVistoDe(visto, h.bid), ch = _abn.hilos.get(String(h.bid)), nl = ch && Array.isArray(ch.mensajes) ? ch.mensajes.filter(x => x.de === "huesped" && String(x.fecha) > vdt).length : (h.ult && h.ult.de === "huesped" && String(h.ult.fecha) > vdt ? 1 : 0);
+      return Object.assign({}, h, { noLeido: nl > 0, nl, control: m.control || "human", draft: m.draft || "", draftAt: m.draftAt || "" }); }) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/airbnb/hilo", async (req, res) => {
