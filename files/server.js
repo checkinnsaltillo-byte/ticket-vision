@@ -11630,11 +11630,12 @@ const _bnPick = (d, names) => { // como pickIdx de Apps Script: exacto y luego "
 };
 const _bnStr = v => String(v ?? "").trim();
 const _bnNumOrEmpty = v => (v === "" || v == null ? "" : _bnToNumber(v));
-// Llave de duplicados (sin Saldo): día | cuenta bancaria | subcuenta bancaria | descripción | cargo | abono.
+// Llave de duplicados: día | cuenta bancaria | descripción | cargo | abono. Sin Saldo y SIN subcuenta: al subir un
+// estado de cuenta todavía no existe clasificación (Cuenta/Subcuenta/Categoría/Concepto las pone el administrador después).
 function _bnKeyFn(d) {
-  const cDia = _bnPick(d, ["DÍA", "DIA", "FECHA"]), cCta = _bnPick(d, ["CUENTA BANCARIA"]), cSub = _bnCol(d, "Subcuenta_bancaria"),
+  const cDia = _bnPick(d, ["DÍA", "DIA", "FECHA"]), cCta = _bnPick(d, ["CUENTA BANCARIA"]),
     cDes = _bnPick(d, ["DESCRIPCION", "DESCRIPCIÓN"]), cCar = _bnPick(d, ["CARGO"]), cAbo = _bnPick(d, ["ABONO"]);
-  return r => [_bnDiaIso(cDia ? r[cDia] : ""), cCta ? _bnNormStr(r[cCta]) : "", cSub ? _bnNormStr(r[cSub]) : "", cDes ? _bnNormStr(r[cDes]) : "", cCar ? _bnNumStr(r[cCar]) : "", cAbo ? _bnNumStr(r[cAbo]) : ""].join("|");
+  return r => [_bnDiaIso(cDia ? r[cDia] : ""), cCta ? _bnNormStr(r[cCta]) : "", "", cDes ? _bnNormStr(r[cDes]) : "", cCar ? _bnNumStr(r[cCar]) : "", cAbo ? _bnNumStr(r[cAbo]) : ""].join("|");
 }
 async function _bnPresupuesto() {
   if (_bnC.pres && Date.now() - _bnC.presTs < 10 * 60_000) return _bnC.pres;
