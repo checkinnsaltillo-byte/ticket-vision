@@ -23025,7 +23025,7 @@ function bnUploadAssignCountersAndDedupe(rows) {
     if (r._error) continue;
     const dia = bnUploadDiaToIso(r['Día']);
     const cta = bnUploadNormStr(r['Cuenta bancaria']);
-    const sub = bnUploadNormStr(r['Subcuenta_bancaria']);
+    const sub = ''; // la subcuenta NO identifica duplicados: al subir el estado de cuenta aún no hay clasificación
     const desc = bnUploadNormStr(r['DESCRIPCION']);
     const car = bnUploadNumStr(r['CARGO']);
     const abo = bnUploadNumStr(r['ABONO']);
