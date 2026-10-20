@@ -11723,30 +11723,39 @@ Object.assign(_GCS_ACT, {
   bn_bancos_insert_bulk: async data => {
     const rows = (data && data.rows) || [];
     if (!Array.isArray(rows) || !rows.length) return { ok: true, inserted: 0, actualizados: 0, omitidos: 0, message: "Sin filas para insertar." };
-    return _bnMutar(d => {
-      _bnEnsureCols(d, _BN_COLS_EFE);
-      const key = _bnKeyFn(d), cSaldo = _bnPick(d, ["SALDO"]);
+    const meta = (data && data.lote) || {};
+    const slug = String(meta.cuenta || rows[0]["Cuenta bancaria"] || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "").toUpperCase().slice(0, 12) || "BANCOS";
+    const ts = _bnAhora(), loteId = `L-${ts.slice(0, 10).replace(/-/g, "")}-${ts.slice(11, 16).replace(":", "")}-${slug}`;
+    const detalle = { id: loteId, fecha: ts, usuario: String(meta.usuario || ""), cuenta: String(meta.cuenta || ""), archivos: Array.isArray(meta.archivos) ? meta.archivos.slice(0, 50) : [], inserted: 0, actualizados: [], omitidos: [], rowNums: [] };
+    const r = await _bnMutar(d => {
+      _bnEnsureCols(d, _BN_COLS_EFE.concat(["Lote", "Línea"]));
+      const key = _bnKeyFn(d), cSaldo = _bnPick(d, ["SALDO"]), cLote = _bnCol(d, "Lote"), cLin = _bnCol(d, "Línea");
       const idx = new Map(); d.rows.forEach(r => { const k = key(r); if (!idx.has(k)) idx.set(k, []); idx.get(k).push(r); });
       const usados = new Map(); // llave → cuántas filas existentes ya "consumió" este lote
-      let inserted = 0, actualizados = 0, omitidos = 0; const startRow = d.siguiente, lote = [];
+      let inserted = 0, actualizados = 0, omitidos = 0; const startRow = d.siguiente, lote = []; let linea = 0;
       for (const src of rows) {
+        linea++;
         const byNorm = {}; Object.keys(src || {}).forEach(k => { byNorm[_bnNormH(k)] = src[k]; });
         const o = { rowNum: 0 }; d.headers.forEach(h => { const v = byNorm[_bnNormH(h)]; o[h] = v === undefined || v === null ? "" : v; });
+        o[cLote] = loteId; if (!_bnStr(o[cLin])) o[cLin] = linea;
         const k = key(o), sNew = cSaldo ? o[cSaldo] : "";
         // Dentro del mismo lote: misma llave y saldos iguales (o uno vacío) = la misma transacción listada dos veces.
         const igual = lote.find(x => x.k === k && (_bnNumStr(x.o[cSaldo]) === _bnNumStr(sNew) || !_bnStr(x.o[cSaldo]) || !_bnStr(sNew)));
-        if (igual) { if (cSaldo && !_bnStr(igual.o[cSaldo]) && _bnStr(sNew)) igual.o[cSaldo] = sNew; omitidos++; continue; }
+        if (igual) { if (cSaldo && !_bnStr(igual.o[cSaldo]) && _bnStr(sNew)) igual.o[cSaldo] = sNew; omitidos++; detalle.omitidos.push({ linea, contra: igual.o.rowNum, motivo: "repetida en el archivo" }); continue; }
         const ex = idx.get(k) || [], n = (usados.get(k) || 0);
         if (n < ex.length) {
           usados.set(k, n + 1); const e = ex[n];
-          if (cSaldo && _bnTransito(e[cSaldo]) && _bnStr(sNew) && !_bnTransito(sNew)) { e[cSaldo] = sNew; actualizados++; }
-          else omitidos++;
+          if (cSaldo && _bnTransito(e[cSaldo]) && _bnStr(sNew) && !_bnTransito(sNew)) { detalle.actualizados.push({ rowNum: e.rowNum, antes: e[cSaldo], despues: sNew }); e[cSaldo] = sNew; actualizados++; }
+          else { omitidos++; detalle.omitidos.push({ linea, contra: e.rowNum, motivo: "ya existe en la base" }); }
           continue;
         }
-        o.rowNum = d.siguiente++; d.rows.push(o); lote.push({ k, o }); inserted++;
+        o.rowNum = d.siguiente++; d.rows.push(o); lote.push({ k, o }); inserted++; detalle.rowNums.push(o.rowNum);
       }
-      return { ok: true, inserted, actualizados, omitidos, startRow };
+      detalle.inserted = inserted;
+      return { ok: true, inserted, actualizados, omitidos, startRow, lote: loteId };
     });
+    if (detalle.inserted || detalle.actualizados.length) await _bnLotesMutar(L => { L.lotes.push(detalle); }).catch(e => console.warn("[bancos] lotes:", e.message));
+    return r;
   },
   bn_update_rows_bulk: async data => {
     const updates = (data && data.updates) || [];
@@ -11818,6 +11827,47 @@ Object.assign(_GCS_ACT, {
     });
   },
 });
+// Lotes de importación: bancos/lotes.json { lotes:[{id, fecha, usuario, cuenta, archivos, inserted, actualizados, omitidos, rowNums, deshecho}] }
+const _BN_LOTES_OBJ = "bancos/lotes.json";
+let _bnLotesQ = Promise.resolve();
+function _bnLotesMutar(fn) {
+  const run = _bnLotesQ.then(async () => {
+    for (let i = 0; i < 7; i++) {
+      const { data, gen } = await _bnReadGcs(_BN_LOTES_OBJ); const L = data && Array.isArray(data.lotes) ? data : { v: 1, lotes: [] };
+      const out = fn(L);
+      try { await _bnWriteGcs(_BN_LOTES_OBJ, L, data ? gen : "0"); return out; }
+      catch (e) { if (!e.conflict && !e.retry) throw e; await new Promise(r => setTimeout(r, Math.min(8000, 1100 * Math.pow(1.6, i)))); }
+    }
+    throw new Error("No se pudo guardar el registro de lotes");
+  });
+  _bnLotesQ = run.catch(() => {});
+  return run;
+}
+app.get("/bn/lotes", async (_req, res) => {
+  try { const { data } = await _bnReadGcs(_BN_LOTES_OBJ); const lotes = (data && data.lotes || []).slice().reverse().map(l => Object.assign({}, l, { rowNums: undefined, n_omitidos: (l.omitidos || []).length, n_actualizados: (l.actualizados || []).length })); res.set("Cache-Control", "no-store"); res.json({ ok: true, lotes }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/bn/lotes/:id", async (req, res) => {
+  try { const { data } = await _bnReadGcs(_BN_LOTES_OBJ); const l = (data && data.lotes || []).find(x => x.id === req.params.id); if (!l) return res.status(404).json({ ok: false, error: "Lote no encontrado" }); res.json({ ok: true, lote: l }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Deshacer un lote: sus filas van a la papelera del archivo y los saldos que actualizó vuelven a como estaban.
+app.post("/bn/lotes/deshacer", async (req, res) => {
+  try {
+    const id = String((req.body || {}).lote || "").trim(); if (!id) throw new Error("Falta lote");
+    const { data } = await _bnReadGcs(_BN_LOTES_OBJ); const l = (data && data.lotes || []).find(x => x.id === id);
+    if (!l) throw new Error("Lote no encontrado"); if (l.deshecho) throw new Error("Este lote ya se deshizo el " + l.deshecho);
+    const usuario = String((req.body || {}).usuario || "");
+    const r = await _bnMutar(d => {
+      const cLote = _bnCol(d, "Lote"), cSaldo = _bnPick(d, ["SALDO"]); let borradas = 0, revertidos = 0;
+      for (let i = d.rows.length - 1; i >= 0; i--) { const row = d.rows[i]; if ((cLote && row[cLote] === id) || (l.rowNums || []).includes(row.rowNum)) { d.rows.splice(i, 1); (d.borrados = d.borrados || []).push(Object.assign({}, row, { borrado: _bnAhora(), motivo: "deshacer lote " + id, usuario })); borradas++; } }
+      for (const a of l.actualizados || []) { const row = d.rows.find(x => x.rowNum === a.rowNum); if (row && cSaldo && _bnNumStr(row[cSaldo]) === _bnNumStr(a.despues)) { row[cSaldo] = a.antes; revertidos++; } }
+      return { borradas, revertidos };
+    }, { borra: Math.max(l.inserted || 0, (l.rowNums || []).length) });
+    await _bnLotesMutar(L => { const x = L.lotes.find(y => y.id === id); if (x) { x.deshecho = _bnAhora(); x.deshecho_por = usuario; x.deshecho_detalle = r; } });
+    res.json({ ok: true, lote: id, ...r });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // Estado y conciliación contra la pestaña de Google Sheets (solo lectura de Sheets; con ?agregar=1 copia a Cloud Storage
 // las filas que existan en Sheets y falten aquí — útil solo durante la transición).
 app.get("/bn/estado", async (_req, res) => {
@@ -11826,7 +11876,7 @@ app.get("/bn/estado", async (_req, res) => {
 });
 // Datos crudos: todas las columnas tal cual están guardadas (vista tipo hoja de cálculo en Registros contables).
 app.get("/bn/crudos", async (_req, res) => {
-  try { const d = await _bnDatos(true); res.set("Cache-Control", "no-store"); res.json({ ok: true, headers: d.headers, rows: d.rows, modificado: d.modificado || d.migrado || null }); }
+  try { const d = await _bnDatos(true); res.set("Cache-Control", "no-store"); res.json({ ok: true, headers: d.headers, rows: d.rows, borrados: (d.borrados || []).length, modificado: d.modificado || d.migrado || null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/bn/reconciliar", async (req, res) => {
