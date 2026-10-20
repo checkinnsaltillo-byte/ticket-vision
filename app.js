@@ -74897,3 +74897,165 @@ window.bnUploadDeCuenta_ = function (secId, cuenta, input) {
 };
 // «Leer archivos de Drive» de una cuenta: abre el selector de Drive debajo de la tabla, mostrando solo los archivos de la carpeta de esa cuenta.
 window.bnDriveDeCuenta_ = function (secId, cuenta) { bnUploadColocarCard_(secId, cuenta); BN_DRIVE_STATE.filtroCuenta = cuenta; bnDrivePickerOpen(); };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🧾 Datos crudos de BANCOS (v2094): vista tipo Google Sheets de la base en Cloud Storage (bancos/bancos.json).
+// Solo lectura por omisión; «Edición» permite cambiar celdas y guardar (POST /bn/update-rows → rowNum + campos).
+// Ordenar por encabezado, búsqueda libre en toda la hoja, filtro por columna (valores), filas virtualizadas.
+// ═══════════════════════════════════════════════════════════════════════════
+const BN_CRUDOS = { headers: [], rows: [], vista: [], sort: null, q: '', filtros: {}, edicion: false, cambios: {}, sel: null, anchos: {}, RH: 26, top: 0 };
+const _bcrS = v => v == null ? '' : String(v);
+const _bcrNum = v => { if (typeof v === 'number') return v; const s = _bcrS(v).trim(); if (!s) return null; const n = Number(s.replace(/[$,\s]/g, '')); return isFinite(n) ? n : null; };
+function _bcrCss_() {
+  if (document.getElementById('bcr-css')) return;
+  const st = document.createElement('style'); st.id = 'bcr-css'; st.textContent = `
+  #bcr-ov{position:fixed;inset:0;z-index:9000;background:#fff;display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif}
+  .bcr-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #dadce0;background:#f8f9fa;flex-wrap:wrap}
+  .bcr-bar input[type=text]{padding:6px 10px;border:1px solid #dadce0;border-radius:6px;font-size:13px;min-width:240px}
+  .bcr-btn{padding:6px 12px;border:1px solid #dadce0;border-radius:6px;background:#fff;font-size:12.5px;font-weight:700;color:#3c4043;cursor:pointer}
+  .bcr-btn:hover{background:#f1f3f4}.bcr-btn.on{background:#e8f0fe;color:#1967d2;border-color:#aecbfa}.bcr-btn.pri{background:#1a73e8;color:#fff;border-color:#1a73e8}
+  .bcr-btn:disabled{opacity:.45;cursor:not-allowed}
+  #bcr-wrap{flex:1;overflow:auto;position:relative;background:#fff}
+  #bcr-tbl{border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:12.5px;color:#202124}
+  #bcr-tbl th,#bcr-tbl td{border-right:1px solid #e2e3e3;border-bottom:1px solid #e2e3e3;padding:0 6px;height:26px;line-height:26px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box}
+  #bcr-tbl th{position:sticky;top:0;z-index:3;background:#f8f9fa;font-weight:700;text-align:center;color:#3c4043;cursor:pointer;user-select:none;border-bottom:1px solid #c0c0c0}
+  #bcr-tbl th .bcr-ico{font-size:10px;color:#5f6368;margin-left:4px}#bcr-tbl th.filt{background:#e8f0fe;color:#1967d2}
+  #bcr-tbl .bcr-rn{position:sticky;left:0;z-index:2;background:#f8f9fa;color:#5f6368;text-align:center;font-size:11.5px;width:56px}
+  #bcr-tbl th.bcr-rn{z-index:4}
+  #bcr-tbl td.num{text-align:right}#bcr-tbl td.chg{background:#fff8e1}#bcr-tbl td.sel{outline:2px solid #1a73e8;outline-offset:-2px}
+  #bcr-tbl tr:hover td{background:#f8fbff}#bcr-tbl tr:hover td.chg{background:#fff3cd}
+  #bcr-tbl td[contenteditable=true]{background:#fff;outline:2px solid #1a73e8;outline-offset:-2px;white-space:normal;overflow:visible;line-height:1.3;padding-top:4px}
+  .bcr-pop{position:fixed;z-index:9100;background:#fff;border:1px solid #dadce0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);width:280px;max-height:380px;display:flex;flex-direction:column;font-size:12.5px}
+  .bcr-pop .h{padding:8px 10px;border-bottom:1px solid #eee;display:flex;gap:6px;align-items:center}.bcr-pop .h input{flex:1;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;font-size:12px}
+  .bcr-pop .l{overflow:auto;flex:1;padding:4px 0}.bcr-pop .l label{display:flex;gap:8px;align-items:center;padding:4px 10px;cursor:pointer}.bcr-pop .l label:hover{background:#f1f3f4}
+  .bcr-ck{width:16px;height:16px;border:1.5px solid #5f6368;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#fff;flex:none}.bcr-ck.on{background:#1a73e8;border-color:#1a73e8}
+  .bcr-pop .f{padding:8px 10px;border-top:1px solid #eee;display:flex;gap:6px;justify-content:flex-end}
+  .bcr-info{font-size:12px;color:#5f6368;margin-left:auto}`;
+  document.head.appendChild(st);
+}
+window.bnCrudosOpen = async function () {
+  _bcrCss_();
+  let ov = document.getElementById('bcr-ov');
+  if (!ov) {
+    ov = document.createElement('div'); ov.id = 'bcr-ov';
+    ov.innerHTML = `<div class="bcr-bar">
+      <div style="font-size:15px;font-weight:800;color:#0f172a">🧾 Datos crudos · BANCOS</div>
+      <input type="text" id="bcr-q" placeholder="🔍 Buscar en toda la hoja…" oninput="bnCrudosBuscar_(this.value)">
+      <button class="bcr-btn" id="bcr-limpiar" onclick="bnCrudosLimpiar_()">✕ Quitar filtros</button>
+      <span class="bcr-info" id="bcr-info"></span>
+      <button class="bcr-btn" id="bcr-edit" onclick="bnCrudosEdicion_()">✏️ Edición</button>
+      <button class="bcr-btn pri" id="bcr-save" onclick="bnCrudosGuardar_()" disabled>💾 Guardar</button>
+      <button class="bcr-btn" onclick="bnCrudosCerrar_()">Cerrar ✕</button></div>
+      <div id="bcr-wrap" onscroll="bnCrudosScroll_()"><div id="bcr-msg" style="padding:30px;color:#5f6368;font-size:13px">⏳ Cargando la base…</div></div>`;
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', _bcrKey_);
+  }
+  ov.style.display = 'flex'; document.body.style.overflow = 'hidden';
+  try {
+    const j = await fetch(`${BACKEND}/bn/crudos`, { cache: 'no-store' }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'No se pudo leer la base');
+    BN_CRUDOS.headers = j.headers; BN_CRUDOS.rows = j.rows; BN_CRUDOS.cambios = {}; BN_CRUDOS.edicion = false; BN_CRUDOS.sel = null;
+    document.getElementById('bcr-edit').classList.remove('on'); document.getElementById('bcr-save').disabled = true;
+    BN_CRUDOS.anchos = {}; j.headers.forEach(h => { let w = Math.max(90, h.length * 8 + 24); const sample = j.rows.slice(-300); let m = 0; sample.forEach(r => { m = Math.max(m, _bcrS(r[h]).length); }); w = Math.max(w, Math.min(360, m * 7 + 16)); BN_CRUDOS.anchos[h] = w; });
+    bnCrudosAplicar_();
+  } catch (e) { const m = document.getElementById('bcr-msg'); if (m) m.textContent = '⚠ ' + e.message; }
+};
+window.bnCrudosCerrar_ = function () {
+  if (Object.keys(BN_CRUDOS.cambios).length && !confirm('Hay cambios sin guardar. ¿Cerrar y descartarlos?')) return;
+  const ov = document.getElementById('bcr-ov'); if (ov) ov.style.display = 'none'; document.body.style.overflow = ''; _bcrPopCerrar_();
+};
+function _bcrKey_(e) { const ov = document.getElementById('bcr-ov'); if (!ov || ov.style.display === 'none') return; if (e.key === 'Escape') { if (document.querySelector('.bcr-pop')) _bcrPopCerrar_(); else if (!document.activeElement?.isContentEditable) bnCrudosCerrar_(); } }
+window.bnCrudosBuscar_ = function (v) { BN_CRUDOS.q = v; clearTimeout(BN_CRUDOS._t); BN_CRUDOS._t = setTimeout(bnCrudosAplicar_, 180); };
+window.bnCrudosLimpiar_ = function () { BN_CRUDOS.q = ''; BN_CRUDOS.filtros = {}; BN_CRUDOS.sort = null; const q = document.getElementById('bcr-q'); if (q) q.value = ''; bnCrudosAplicar_(); };
+// Aplica búsqueda + filtros por columna + orden → BN_CRUDOS.vista (índices de filas).
+function bnCrudosAplicar_() {
+  const H = BN_CRUDOS.headers, R = BN_CRUDOS.rows, q = bnUploadNormStr(BN_CRUDOS.q), F = BN_CRUDOS.filtros, fk = Object.keys(F);
+  let idx = [];
+  for (let i = 0; i < R.length; i++) {
+    const r = R[i]; let ok = true;
+    for (const h of fk) { if (!F[h].has(_bcrS(r[h]))) { ok = false; break; } }
+    if (ok && q) { ok = false; for (const h of H) { if (bnUploadNormStr(r[h]).includes(q)) { ok = true; break; } } if (!ok && String(r.rowNum).includes(q)) ok = true; }
+    if (ok) idx.push(i);
+  }
+  const s = BN_CRUDOS.sort;
+  if (s) { const d = s.dir === 'asc' ? 1 : -1; idx.sort((a, b) => { const va = R[a][s.h], vb = R[b][s.h]; const na = _bcrNum(va), nb = _bcrNum(vb); if (na != null && nb != null) return (na - nb) * d; if (va === '' && vb !== '') return 1; if (vb === '' && va !== '') return -1; return _bcrS(va).localeCompare(_bcrS(vb), 'es', { numeric: true, sensitivity: 'base' }) * d; }); }
+  BN_CRUDOS.vista = idx;
+  const info = document.getElementById('bcr-info'); if (info) info.textContent = `${idx.length.toLocaleString('es-MX')} de ${R.length.toLocaleString('es-MX')} filas · ${H.length} columnas` + (fk.length || q ? ' (filtrado)' : '');
+  const w = document.getElementById('bcr-wrap'); if (w) w.scrollTop = 0;
+  bnCrudosPintar_(true);
+}
+function bnCrudosPintar_(reset) {
+  const wrap = document.getElementById('bcr-wrap'); if (!wrap) return;
+  const H = BN_CRUDOS.headers, R = BN_CRUDOS.rows, V = BN_CRUDOS.vista, RH = BN_CRUDOS.RH;
+  const vh = wrap.clientHeight || 600, first = Math.max(0, Math.floor(wrap.scrollTop / RH) - 5), n = Math.ceil(vh / RH) + 10, last = Math.min(V.length, first + n);
+  if (!reset && BN_CRUDOS._f === first && BN_CRUDOS._l === last) return; BN_CRUDOS._f = first; BN_CRUDOS._l = last;
+  const th = H.map(h => { const s = BN_CRUDOS.sort && BN_CRUDOS.sort.h === h ? (BN_CRUDOS.sort.dir === 'asc' ? '▲' : '▼') : ''; const f = BN_CRUDOS.filtros[h] ? ' filt' : '';
+    return `<th class="${f.trim()}" style="width:${BN_CRUDOS.anchos[h]}px;min-width:${BN_CRUDOS.anchos[h]}px" onclick="bnCrudosOrdenar_(${JSON.stringify(h).replace(/"/g, '&quot;')})" title="Clic: ordenar · ▾: filtrar">${esc(h)}<span class="bcr-ico">${s}</span><span class="bcr-ico" onclick="event.stopPropagation();bnCrudosFiltro_(${JSON.stringify(h).replace(/"/g, '&quot;')},event)" style="padding:0 3px;font-size:12px">▾</span></th>`; }).join('');
+  const C = BN_CRUDOS.cambios, S = BN_CRUDOS.sel;
+  let body = '';
+  for (let k = first; k < last; k++) {
+    const i = V[k], r = R[i], ch = C[r.rowNum] || {};
+    body += `<tr data-i="${i}"><td class="bcr-rn">${r.rowNum}</td>` + H.map(h => { const v = h in ch ? ch[h] : r[h]; const nu = typeof v === 'number'; const cl = (nu ? 'num' : '') + (h in ch ? ' chg' : '') + (S && S.i === i && S.h === h ? ' sel' : '');
+      return `<td class="${cl.trim()}" data-h="${esc(h)}" title="${esc(_bcrS(v))}" onclick="bnCrudosCelda_(${i},this)" ondblclick="bnCrudosEditar_(${i},this)">${esc(_bcrS(v))}</td>`; }).join('') + '</tr>';
+  }
+  const totalH = V.length * RH, padTop = first * RH, padBot = Math.max(0, totalH - last * RH);
+  wrap.innerHTML = `<table id="bcr-tbl"><thead><tr><th class="bcr-rn" onclick="bnCrudosOrdenar_('rowNum')">#${BN_CRUDOS.sort && BN_CRUDOS.sort.h === 'rowNum' ? (BN_CRUDOS.sort.dir === 'asc' ? '▲' : '▼') : ''}</th>${th}</tr></thead>
+    <tbody><tr style="height:${padTop}px"><td colspan="${H.length + 1}" style="border:0;padding:0;height:${padTop}px"></td></tr>${body}<tr style="height:${padBot}px"><td colspan="${H.length + 1}" style="border:0;padding:0;height:${padBot}px"></td></tr></tbody></table>` + (V.length ? '' : '<div style="padding:30px;color:#5f6368;font-size:13px">Sin filas que coincidan.</div>');
+}
+window.bnCrudosScroll_ = function () { bnCrudosPintar_(false); };
+window.bnCrudosOrdenar_ = function (h) { const s = BN_CRUDOS.sort; BN_CRUDOS.sort = s && s.h === h ? (s.dir === 'asc' ? { h, dir: 'desc' } : null) : { h, dir: 'asc' }; bnCrudosAplicar_(); };
+function _bcrPopCerrar_() { document.querySelectorAll('.bcr-pop').forEach(p => p.remove()); }
+// Filtro por columna: lista de valores (de las filas que pasan los demás filtros) con buscador y casillas.
+window.bnCrudosFiltro_ = function (h, ev) {
+  _bcrPopCerrar_();
+  const R = BN_CRUDOS.rows, F = BN_CRUDOS.filtros, otros = Object.keys(F).filter(k => k !== h);
+  const cnt = new Map();
+  for (const r of R) { let ok = true; for (const k of otros) if (!F[k].has(_bcrS(r[k]))) { ok = false; break; } if (!ok) continue; const v = _bcrS(r[h]); cnt.set(v, (cnt.get(v) || 0) + 1); }
+  const vals = [...cnt.keys()].sort((a, b) => { const na = _bcrNum(a), nb = _bcrNum(b); if (na != null && nb != null) return na - nb; return a.localeCompare(b, 'es', { numeric: true }); });
+  const sel = new Set(F[h] ? [...F[h]] : vals);
+  const pop = document.createElement('div'); pop.className = 'bcr-pop';
+  const x = Math.min(window.innerWidth - 290, ev.clientX - 20), y = ev.clientY + 12; pop.style.left = x + 'px'; pop.style.top = y + 'px';
+  const pintar = q => { const Q = bnUploadNormStr(q); const vis = vals.filter(v => !Q || bnUploadNormStr(v).includes(Q)); pop.querySelector('.l').innerHTML = vis.slice(0, 600).map(v => `<label><span class="bcr-ck ${sel.has(v) ? 'on' : ''}" data-v="${esc(v)}">${sel.has(v) ? '✓' : ''}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis">${v === '' ? '<i style="color:#9aa0a6">(vacío)</i>' : esc(v)}</span><span style="color:#9aa0a6;font-size:11px">${cnt.get(v)}</span></label>`).join('') + (vis.length > 600 ? `<div style="padding:6px 10px;color:#9aa0a6">… ${vis.length - 600} más (usa el buscador)</div>` : ''); pop._vis = vis; };
+  pop.innerHTML = `<div class="h"><b style="font-size:12px">${esc(h)}</b><input type="text" placeholder="Buscar valor…"></div><div style="padding:4px 10px;display:flex;gap:10px;font-size:11.5px"><a href="#" data-a="all">Seleccionar todo</a><a href="#" data-a="none">Borrar</a></div><div class="l"></div><div class="f"><button class="bcr-btn" data-a="cancel">Cancelar</button><button class="bcr-btn pri" data-a="ok">Aceptar</button></div>`;
+  document.body.appendChild(pop); pintar('');
+  pop.querySelector('input').oninput = e => pintar(e.target.value);
+  pop.onclick = e => { const ck = e.target.closest('.bcr-ck'); if (ck) { const v = ck.dataset.v; if (sel.has(v)) sel.delete(v); else sel.add(v); ck.classList.toggle('on', sel.has(v)); ck.textContent = sel.has(v) ? '✓' : ''; return; }
+    const a = e.target.dataset.a; if (!a) return; e.preventDefault();
+    if (a === 'all') { pop._vis.forEach(v => sel.add(v)); pintar(pop.querySelector('input').value); }
+    else if (a === 'none') { pop._vis.forEach(v => sel.delete(v)); pintar(pop.querySelector('input').value); }
+    else if (a === 'cancel') _bcrPopCerrar_();
+    else if (a === 'ok') { if (sel.size === vals.length) delete F[h]; else F[h] = sel; _bcrPopCerrar_(); bnCrudosAplicar_(); } };
+  setTimeout(() => document.addEventListener('mousedown', function fx(e) { if (!pop.contains(e.target)) { _bcrPopCerrar_(); document.removeEventListener('mousedown', fx); } }), 0);
+};
+window.bnCrudosEdicion_ = function () {
+  BN_CRUDOS.edicion = !BN_CRUDOS.edicion; const b = document.getElementById('bcr-edit'); b.classList.toggle('on', BN_CRUDOS.edicion); b.textContent = BN_CRUDOS.edicion ? '✏️ Edición activa (doble clic en una celda)' : '✏️ Edición';
+  if (!BN_CRUDOS.edicion && Object.keys(BN_CRUDOS.cambios).length && confirm('Saliste de Edición con cambios sin guardar. ¿Descartarlos?')) { BN_CRUDOS.cambios = {}; document.getElementById('bcr-save').disabled = true; bnCrudosPintar_(true); }
+};
+window.bnCrudosCelda_ = function (i, td) { BN_CRUDOS.sel = { i, h: td.dataset.h }; document.querySelectorAll('#bcr-tbl td.sel').forEach(x => x.classList.remove('sel')); td.classList.add('sel'); };
+window.bnCrudosEditar_ = function (i, td) {
+  if (!BN_CRUDOS.edicion) { const b = document.getElementById('bcr-edit'); b.style.boxShadow = '0 0 0 3px #fbbf24'; setTimeout(() => { b.style.boxShadow = ''; }, 900); return; }
+  const h = td.dataset.h, r = BN_CRUDOS.rows[i]; if (h === 'rowNum') return;
+  const orig = h in (BN_CRUDOS.cambios[r.rowNum] || {}) ? BN_CRUDOS.cambios[r.rowNum][h] : r[h];
+  td.textContent = _bcrS(orig); td.contentEditable = 'true'; td.focus(); document.execCommand && document.execCommand('selectAll', false, null);
+  const fin = guardar => { td.contentEditable = 'false'; td.onblur = null; td.onkeydown = null;
+    if (guardar) { let v = td.textContent; const was = r[h]; if (typeof was === 'number' && _bcrNum(v) != null && String(_bcrNum(v)) === v.trim().replace(/[$,\s]/g, '')) v = _bcrNum(v);
+      const ch = BN_CRUDOS.cambios[r.rowNum] = BN_CRUDOS.cambios[r.rowNum] || {};
+      if (_bcrS(v) === _bcrS(was)) delete ch[h]; else ch[h] = v; if (!Object.keys(ch).length) delete BN_CRUDOS.cambios[r.rowNum]; }
+    document.getElementById('bcr-save').disabled = !Object.keys(BN_CRUDOS.cambios).length; bnCrudosPintar_(true); };
+  td.onblur = () => fin(true);
+  td.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); td.blur(); } else if (e.key === 'Escape') { e.preventDefault(); fin(false); } else if (e.key === 'Tab') { e.preventDefault(); const nx = e.shiftKey ? td.previousElementSibling : td.nextElementSibling; td.blur(); if (nx && nx.dataset.h) setTimeout(() => { const t = document.querySelector(`#bcr-tbl tr[data-i="${i}"] td[data-h="${CSS.escape(nx.dataset.h)}"]`); if (t) bnCrudosEditar_(i, t); }, 30); } };
+};
+window.bnCrudosGuardar_ = async function () {
+  const C = BN_CRUDOS.cambios, rns = Object.keys(C); if (!rns.length) return;
+  const n = rns.reduce((a, k) => a + Object.keys(C[k]).length, 0);
+  if (!confirm(`Se guardarán ${n} celda(s) en ${rns.length} registro(s) de la base BANCOS. ¿Continuar?`)) return;
+  const b = document.getElementById('bcr-save'); b.disabled = true; b.textContent = '⏳ Guardando…';
+  try {
+    const j = await fetch(`${BACKEND}/bn/update-rows`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ updates: rns.map(k => ({ rowNum: Number(k), fields: C[k] })) }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'No se guardó');
+    rns.forEach(k => { const r = BN_CRUDOS.rows.find(x => x.rowNum === Number(k)); if (r) Object.assign(r, C[k]); });
+    BN_CRUDOS.cambios = {}; bnCrudosAplicar_();
+    if (typeof BN_RAW !== 'undefined') try { fetch(`${BACKEND}/get-bancos?fresh=1`, { cache: 'no-store' }).then(r => r.json()).then(d => { if (d && d.ok) BN_RAW = d.records.map((r, i) => r.rowNum ? { ...r } : { ...r, rowNum: i + 2 }); }); } catch (_) {}
+    b.textContent = `✓ ${j.written} registro(s) guardados`; setTimeout(() => { b.textContent = '💾 Guardar'; }, 2500);
+  } catch (e) { alert('⚠ ' + e.message); b.disabled = false; b.textContent = '💾 Guardar'; }
+};
