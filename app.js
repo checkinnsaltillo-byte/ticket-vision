@@ -74917,7 +74917,7 @@ const _bcrNum = v => { if (typeof v === 'number') return v; const s = _bcrS(v).t
 function _bcrCss_() {
   if (document.getElementById('bcr-css')) return;
   const st = document.createElement('style'); st.id = 'bcr-css'; st.textContent = `
-  #bcr-ov{position:fixed;left:0;right:0;bottom:0;top:0;z-index:900;background:#fff;display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif}
+  #bcr-ov{position:relative;width:100%;background:#fff;display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
   .bcr-filt{display:flex;flex-wrap:wrap;gap:8px 10px;padding:8px 12px;border-bottom:1px solid #dadce0;background:#fff}
   .bcr-fi{min-width:120px;flex:1 1 120px;max-width:200px}.bcr-fi label{display:block;font-weight:700;color:#6b7280;font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .bcr-fi button{width:100%;padding:6px 9px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;text-align:left;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;gap:6px}
@@ -74963,11 +74963,13 @@ window.bnCrudosOpen = async function () {
       <button class="bcr-btn" onclick="bnCrudosCerrar_()">Cerrar ✕</button></div>
       <div class="bcr-filt" id="bcr-filt"></div>
       <div id="bcr-wrap" onscroll="bnCrudosScroll_()"><div id="bcr-msg" style="padding:30px;color:#5f6368;font-size:13px">⏳ Cargando la base…</div></div>`;
-    document.body.appendChild(ov);
+    const mod = document.getElementById('module-registros'); if (mod && mod.parentElement) mod.parentElement.insertBefore(ov, mod.nextSibling); else document.body.appendChild(ov);
     document.addEventListener('keydown', _bcrKey_);
     window.addEventListener('resize', _bcrTop_);
   }
-  ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; _bcrTop_();
+  // Sección independiente: se oculta la ventana de entrada del módulo y la hoja ocupa todo lo que queda bajo el encabezado (sin scroll de página).
+  document.getElementById('module-registros')?.classList.add('hidden');
+  ov.style.display = 'flex'; document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden'; _bcrTop_();
   try {
     const j = await fetch(`${BACKEND}/bn/crudos`, { cache: 'no-store' }).then(r => r.json());
     if (!j.ok) throw new Error(j.error || 'No se pudo leer la base');
@@ -74979,10 +74981,11 @@ window.bnCrudosOpen = async function () {
 };
 window.bnCrudosCerrar_ = function () {
   if (Object.keys(BN_CRUDOS.cambios).length && !confirm('Hay cambios sin guardar. ¿Cerrar y descartarlos?')) return;
-  const ov = document.getElementById('bcr-ov'); if (ov) ov.style.display = 'none'; document.body.style.overflow = ''; _bcrPopCerrar_();
+  const ov = document.getElementById('bcr-ov'); if (ov) ov.style.display = 'none'; document.documentElement.style.overflow = ''; document.body.style.overflow = ''; _bcrPopCerrar_();
+  document.getElementById('module-registros')?.classList.remove('hidden');
 };
 // El encabezado del sistema (Check Inn · Saltillo) siempre queda visible: la vista empieza justo debajo.
-function _bcrTop_() { const ov = document.getElementById('bcr-ov'), hd = document.getElementById('user-greeting'); if (!ov) return; const b = hd && !hd.classList.contains('hidden') ? hd.getBoundingClientRect().bottom : 0; ov.style.top = Math.max(0, Math.round(b)) + 'px'; }
+function _bcrTop_() { const ov = document.getElementById('bcr-ov'); if (!ov || ov.style.display === 'none') return; window.scrollTo(0, 0); const r = ov.getBoundingClientRect(); ov.style.height = Math.max(240, Math.floor(window.innerHeight - r.top)) + 'px'; }
 // Filtros rápidos (mismos que Registros contables) sobre las columnas crudas.
 const _BCR_FILTROS = [['Año', '📅 Año'], ['Mes', '📅 Mes'], ['CUENTA', 'Cuenta'], ['SUBCUENTA', 'Subcuenta'], ['CATEGORIA', 'Categoría'], ['CONCEPTO', 'Concepto'], ['Cuenta bancaria', 'Cuenta bancaria'], ['Día', '📅 Día (fecha)'], ['PROPIEDAD', 'Propiedad'], ['DEPARTAMENTO', '# Departamento'], ['DEDUCIBLE', 'Deducible'], ['DUDA', 'Duda'], ['VALIDADO', 'Validado'], ['Factura', 'Factura'], ['METODO_PAGO', 'Método de pago'], ['REEMBOLSO', 'Reembolso'], ['ENCARGADO', 'Encargado de operación'], ['Ticket_relacionado', '🔗 Relacionados con tickets'], ['Lote', '📦 Lote de importación']];
 function bnCrudosFiltBar_() {
