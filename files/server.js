@@ -11554,8 +11554,9 @@ app.all("/as", express.text({ type: "*/*", limit: "32mb" }), async (req, res) =>
     if (fn) r = await fn(data);
     else {
       const url = post ? CHECKIN_APPS_SCRIPT_URL : CHECKIN_APPS_SCRIPT_URL + "?" + new URLSearchParams(req.query).toString();
-      const rr = await _fetchReal(url, post ? { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: _AS_ANTES[action] || typeof req.body !== "string" ? JSON.stringify(data) : req.body, redirect: "follow" } : { redirect: "follow" });
-      const t = await rr.text();
+      const opts = post ? { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: _AS_ANTES[action] || typeof req.body !== "string" ? JSON.stringify(data) : req.body, redirect: "follow" } : { redirect: "follow" };
+      let rr = await _fetchReal(url, opts), t = await rr.text();
+      for (let i = 0; i < 2 && /^\s*<!doctype|^\s*<html/i.test(t); i++) { await new Promise(r => setTimeout(r, 1200)); rr = await _fetchReal(url, opts); t = await rr.text(); } // Apps Script a veces devuelve una página HTML intermedia: reintenta
       try { r = JSON.parse(t); } catch (_) { return res.status(rr.status).type(rr.headers.get("content-type") || "text/plain").send(t); }
       if (post) _lecturaSWRBorrar(action);
     }
