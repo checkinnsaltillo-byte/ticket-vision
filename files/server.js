@@ -11824,6 +11824,11 @@ app.get("/bn/estado", async (_req, res) => {
   try { const d = await _bnDatos(true); res.json({ ok: true, fuente: _BN_OBJ, filas: d.rows.length, borrados: (d.borrados || []).length, columnas: d.headers.length, siguiente: d.siguiente, migrado: d.migrado, modificado: d.modificado || null, respaldo: d.respaldo || null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// Datos crudos: todas las columnas tal cual están guardadas (vista tipo hoja de cálculo en Registros contables).
+app.get("/bn/crudos", async (_req, res) => {
+  try { const d = await _bnDatos(true); res.set("Cache-Control", "no-store"); res.json({ ok: true, headers: d.headers, rows: d.rows, modificado: d.modificado || d.migrado || null }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/bn/reconciliar", async (req, res) => {
   try {
     if (!process.env.SYNC_SECRET || (req.get("X-Sync-Secret") || req.query.secret || "") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
