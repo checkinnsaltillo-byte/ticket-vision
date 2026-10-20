@@ -74836,7 +74836,7 @@ async function bnUploadResumen_() {
 window.bnResVerMas_ = function (id, n) { const L = BN_UPLOAD_STATE.resLim = BN_UPLOAD_STATE.resLim || {}; L[id] = n ? (L[id] || 6) + n : 6; const y = window.scrollY; bnUploadResumen_().then(() => { if (!n) { const el = document.getElementById(id); if (el) el.scrollIntoView({ block: 'start' }); } else window.scrollTo(0, y); }); };
 // «Subir archivos» de una cuenta: la tarjeta «Carga de datos bancarios» (con todo su flujo) se coloca debajo de esa tabla y procesa los archivos.
 window.bnUploadDeCuenta_ = function (secId, cuenta, input) {
-  const files = input && input.files; if (!files || !files.length) return;
+  const files = input && input.files ? Array.from(input.files) : []; if (!files.length) return; // copia: al limpiar el input, la lista original queda vacía
   BN_UPLOAD_STATE.cuentaPref = cuenta; BN_UPLOAD_STATE.cuentaSec = secId;
   const card = document.getElementById('bn-upload-card'), sec = document.getElementById(secId), h = sec && sec.querySelector('.bn-res-host');
   if (card && h) { h.appendChild(card); card.style.margin = '0 10px 12px'; card.style.borderColor = '#c4b5fd'; const t = card.querySelector('div > div > div'); if (t && !card.querySelector('.bn-res-tag')) { const tag = document.createElement('div'); tag.className = 'bn-res-tag'; tag.style.cssText = 'font-size:11.5px;color:#5b21b6;font-weight:700;margin-bottom:6px'; tag.textContent = `⬆ Cuenta: ${cuenta}`; card.prepend(tag); } else if (card.querySelector('.bn-res-tag')) card.querySelector('.bn-res-tag').textContent = `⬆ Cuenta: ${cuenta}`; }
