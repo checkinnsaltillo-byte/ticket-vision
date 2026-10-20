@@ -31,6 +31,9 @@ app.use(express.json({ limit: "32mb" }));
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqMfC6tITLXlhEwYzQ5mKzw-KD6-nV7XVKIuekj6pK4Po50oRfVKClZeHcr-si3ppB/exec";
 
 async function callAppsScript(payload, _intento, _timeoutMs) {
+  // BANCOS y otras acciones ya viven en Cloud Storage (_GCS_ACT); payload._directo salta la copia y va a Google Sheets.
+  if (payload && payload.action && !payload._directo && typeof _GCS_ACT !== "undefined" && _GCS_ACT[payload.action]) return _GCS_ACT[payload.action](payload);
+  if (payload && payload._directo) { payload = Object.assign({}, payload); delete payload._directo; }
   const intento = _intento || 1;
   const timeoutMs = _timeoutMs || 25000; // 25s por defecto; los callers pesados pasan más
   const controller = new AbortController();
@@ -101,7 +104,7 @@ app.get("/get-tickets", async (req, res) => {
 // Ahora /get-bancos responde AL INSTANTE con la copia en memoria y la refresca
 // en segundo plano (1 sola consulta a la vez). ?fresh=1 espera la versión
 // nueva (se usa tras insertar movimientos de efectivo).
-const BANCOS_TTL_MS = 2 * 60 * 1000;
+const BANCOS_TTL_MS = 20 * 1000; // desde 2026-10-20 la copia se arma desde Cloud Storage (bancos/bancos.json): refrescar es barato
 const _bancos = { payload: null, ts: 0, inflight: null, dirty: false, lastError: "", lastMs: 0 };
 function _bancosRefresh(reason) {
   if (_bancos.inflight) return _bancos.inflight;
@@ -11539,6 +11542,308 @@ async function _ckappProxy(req, res) {
     const buf = Buffer.from(await r.arrayBuffer()); res.status(r.status); const ct = r.headers.get("content-type"); if (ct) res.type(ct); res.send(buf);
   } catch (e) { res.status(502).json({ ok: false, error: "checkin-app: " + e.message }); }
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// 🏦 BANCOS en Cloud Storage (2026-10-20). La pestaña BANCOS de Google Sheets queda intacta como
+// copia histórica pero YA NO ES LA FUENTE: todo (lectura, carga de estados de cuenta, clasificación,
+// matches con tickets, borrado) se atiende aquí con las mismas acciones y respuestas que Apps Script.
+//   bancos/bancos.json             { v, headers, rows:[{rowNum, <columna>: valor}], borrados, siguiente }
+//   bancos/presupuesto.json        copia de Presupuesto_sys (catálogo; se refresca desde Sheets 1 vez al día)
+//   bancos/respaldo/<fecha>.json   versión previa a la primera modificación de cada día (+ versionado del bucket)
+// rowNum es un identificador ESTABLE (no se recorre al borrar; Rentas usa BANCOS-<rowNum>).
+// Escrituras: en serie por proceso + ifGenerationMatch (varias copias del servidor no se pisan) + guardia de
+// integridad (nunca se guarda con menos filas de las que había salvo un borrado explícito; toda fila lleva rowNum).
+// ═══════════════════════════════════════════════════════════════════════════
+const _BN_OBJ = "bancos/bancos.json", _BN_PRES_OBJ = "bancos/presupuesto.json";
+const _bnC = { d: null, ts: 0, pres: null, presTs: 0 };
+async function _bnReadGcs(name) {
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(name)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
+  if (r.status === 404) return { data: null, gen: "0" };
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+  return { data: await r.json(), gen: r.headers.get("x-goog-generation") || "0" };
+}
+async function _bnWriteGcs(name, data, gen) {
+  const tok = await _vGcsToken();
+  const r = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(name)}${gen != null ? `&ifGenerationMatch=${gen}` : ""}`,
+    { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: JSON.stringify(data) });
+  if (r.status === 412) { const e = new Error("conflicto"); e.conflict = true; throw e; }
+  if (r.status === 429 || r.status === 503) { const e = new Error(`Cloud Storage ${r.status}`); e.retry = true; throw e; }
+  if (!r.ok) throw new Error(`Cloud Storage ${r.status}`);
+}
+async function _bnDatos(fresco) {
+  if (!fresco && _bnC.d && Date.now() - _bnC.ts < 5_000) return _bnC.d;
+  const { data } = await _bnReadGcs(_BN_OBJ);
+  if (!data || !Array.isArray(data.rows) || !Array.isArray(data.headers)) throw new Error("bancos/bancos.json no existe en Cloud Storage (falta la migración inicial)");
+  _bnC.d = data; _bnC.ts = Date.now();
+  return data;
+}
+let _bnQ = Promise.resolve();
+const _bnHoy = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Monterrey" });
+function _bnMutar(fn, opts) {
+  const run = _bnQ.then(async () => {
+    for (let i = 0; i < 7; i++) {
+      const { data, gen } = await _bnReadGcs(_BN_OBJ);
+      if (!data || !Array.isArray(data.rows) || !Array.isArray(data.headers)) throw new Error("bancos/bancos.json no existe en Cloud Storage (falta la migración inicial)");
+      const hoy = _bnHoy();
+      if (data.respaldo !== hoy) { await _bnWriteGcs(`bancos/respaldo/${hoy}.json`, data, null); data.respaldo = hoy; } // respaldo diario (versión previa)
+      const antes = data.rows.length;
+      const out = fn(data);
+      if (data.rows.length < antes - ((opts && opts.borra) || 0)) throw new Error(`Guardia de integridad: la operación dejaría ${data.rows.length} filas (había ${antes}); no se guardó`);
+      for (const r of data.rows) if (!r || !Number.isInteger(r.rowNum) || r.rowNum < 2) throw new Error("Guardia de integridad: fila sin rowNum; no se guardó");
+      if (!Number.isInteger(data.siguiente) || data.rows.some(r => r.rowNum >= data.siguiente)) data.siguiente = Math.max(1, ...data.rows.map(r => r.rowNum), ...(data.borrados || []).map(r => r.rowNum)) + 1;
+      data.modificado = new Date().toISOString();
+      try { await _bnWriteGcs(_BN_OBJ, data, gen); _bnC.d = data; _bnC.ts = Date.now(); _bancosMarkDirty(); return out; }
+      catch (e) { if (!e.conflict && !e.retry) throw e; await new Promise(r => setTimeout(r, Math.min(8000, 1100 * Math.pow(1.6, i)))); }
+    }
+    throw new Error("No se pudo guardar BANCOS (conflicto entre escrituras). Intenta de nuevo.");
+  });
+  _bnQ = run.catch(() => {});
+  return run;
+}
+// Normalizaciones idénticas a Apps Script / frontend (bnUploadNormStr, bnUploadNumStr, bnUploadDiaToIso).
+const _bnNormH = s => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[_\s]+/g, "_");
+const _bnNormU = s => String(s ?? "").replace(/[​-‍﻿]/g, "").replace(/ /g, " ").trim().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").toUpperCase();
+const _bnNormStr = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ /g, " ").replace(/[–—]/g, "-").trim().toLowerCase().replace(/\s+/g, " ");
+const _bnNumStr = v => {
+  if (v === null || v === undefined || v === "") return "";
+  if (typeof v === "number" && isFinite(v)) return String(Math.round(v * 100) / 100);
+  let s = String(v).trim(); if (!s) return "";
+  if (/^\(.*\)$/.test(s)) s = "-" + s.slice(1, -1);
+  s = s.replace(/[$\s,]/g, ""); const n = Number(s);
+  return isFinite(n) ? String(Math.round(n * 100) / 100) : s.trim();
+};
+const _bnToNumber = v => { if (typeof v === "number") return isFinite(v) ? v : 0; const s = String(v ?? "").trim(); if (!s) return 0; const n = Number(s.replace(/[^0-9\-\.]/g, "")); return isFinite(n) ? n : 0; };
+const _bnDiaIso = s => {
+  if (!s) return ""; const str = String(s).trim();
+  let m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  const d = new Date(str); return isNaN(d.getTime()) ? str : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const _bnTransito = v => /tr[aá]nsito/i.test(String(v ?? ""));
+const _bnCol = (d, name) => { const n = _bnNormH(name); return d.headers.find(h => _bnNormH(h) === n) || null; };
+const _bnEnsureCols = (d, names) => names.forEach(n => { if (!_bnCol(d, n)) d.headers.push(n); });
+const _bnPick = (d, names) => { // como pickIdx de Apps Script: exacto y luego "contiene"
+  const H = d.headers.map(_bnNormU);
+  for (const n of names) { const i = H.indexOf(_bnNormU(n)); if (i >= 0) return d.headers[i]; }
+  for (const n of names) { const k = _bnNormU(n), j = H.findIndex(h => h.includes(k)); if (j >= 0) return d.headers[j]; }
+  return null;
+};
+const _bnStr = v => String(v ?? "").trim();
+const _bnNumOrEmpty = v => (v === "" || v == null ? "" : _bnToNumber(v));
+// Llave de duplicados (sin Saldo): día | cuenta bancaria | subcuenta bancaria | descripción | cargo | abono.
+function _bnKeyFn(d) {
+  const cDia = _bnPick(d, ["DÍA", "DIA", "FECHA"]), cCta = _bnPick(d, ["CUENTA BANCARIA"]), cSub = _bnCol(d, "Subcuenta_bancaria"),
+    cDes = _bnPick(d, ["DESCRIPCION", "DESCRIPCIÓN"]), cCar = _bnPick(d, ["CARGO"]), cAbo = _bnPick(d, ["ABONO"]);
+  return r => [_bnDiaIso(cDia ? r[cDia] : ""), cCta ? _bnNormStr(r[cCta]) : "", cSub ? _bnNormStr(r[cSub]) : "", cDes ? _bnNormStr(r[cDes]) : "", cCar ? _bnNumStr(r[cCar]) : "", cAbo ? _bnNumStr(r[cAbo]) : ""].join("|");
+}
+async function _bnPresupuesto() {
+  if (_bnC.pres && Date.now() - _bnC.presTs < 10 * 60_000) return _bnC.pres;
+  const { data } = await _bnReadGcs(_BN_PRES_OBJ);
+  _bnC.pres = data && Array.isArray(data.rows) ? data : { headers: [], rows: [] }; _bnC.presTs = Date.now();
+  return _bnC.pres;
+}
+// Presupuesto_sys se sigue editando en Google Sheets: copia diaria (get_bancos_data directo trae el presupuesto ya armado).
+async function _bnPresRefrescar() {
+  const r = await callAppsScript({ action: "get_bancos_data", _directo: true }, 1, 90000);
+  if (!r || r.ok === false || !Array.isArray(r.budget)) throw new Error((r && r.error) || "sin presupuesto");
+  await _bnWriteGcs(_BN_PRES_OBJ, { v: 2, budget: r.budget, rows: [], headers: [], migrado: new Date().toISOString(), origen: "get_bancos_data" }, null);
+  _bnC.pres = null;
+  return r;
+}
+function _bnBudget(p) {
+  if (Array.isArray(p.budget)) return p.budget; // v2: ya viene armado
+  const d = { headers: p.headers || [] }, c = n => _bnPick(d, n);
+  const cCu = c(["CUENTA"]), cTi = c(["TIPO"]), cPe = c(["PERIODICIDAD"]), cNa = c(["NATURALEZA"]), cSu = c(["SUBCUENTA", "SUB-CUENTA"]), cCa = c(["CATEGORIA", "CATEGORÍA"]),
+    cCo = c(["CONCEPTO"]), cDe = c(["DESCRIPCION", "DESCRIPCIÓN"]), cCc = c(["CONCATENADO"]), cSe = c(["SEMANAL"]), cMe = c(["MENSUAL", "PRESUPUESTO MENSUAL"]), cBi = c(["BIMESTRAL"]), cAn = c(["ANUAL", "PRESUPUESTO ANUAL"]);
+  const g = (r, k) => (k ? _bnStr(r[k]) : "");
+  return (p.rows || []).filter(r => !(_bnNormU(g(r, cCu)).startsWith("SUBTOTAL") || _bnNormU(g(r, cCa)).startsWith("SUBTOTAL") || _bnNormU(g(r, cCo)).startsWith("SUBTOTAL")))
+    .map(r => ({ CUENTA: g(r, cCu), TIPO: g(r, cTi), PERIODICIDAD: g(r, cPe), NATURALEZA: g(r, cNa), SUBCUENTA: g(r, cSu), CATEGORIA: g(r, cCa), CONCEPTO: g(r, cCo), DESCRIPCION: g(r, cDe), CONCATENADO: g(r, cCc),
+      SEMANAL: _bnToNumber(cSe ? r[cSe] : 0), MENSUAL: _bnToNumber(cMe ? r[cMe] : 0), BIMESTRAL: _bnToNumber(cBi ? r[cBi] : 0), ANUAL: _bnToNumber(cAn ? r[cAn] : 0) }))
+    .filter(r => r.CUENTA);
+}
+// Misma forma de registro que getBancosData_ de Apps Script.
+function _bnRecords(d) {
+  const P = n => _bnPick(d, n);
+  const cAno = P(["AÑO", "ANO", "ANIO", "YEAR"]), cMes = P(["MES"]), cDia = P(["DÍA", "DIA", "DIA DE OPERACION", "FECHA"]), cCta = P(["CUENTA BANCARIA"]), cCuenta = P(["CUENTA"]), cSub = P(["SUBCUENTA", "SUB-CUENTA"]),
+    cCat = P(["CATEGORIA", "CATEGORÍA"]), cDes = P(["DESCRIPCION", "DESCRIPCIÓN"]), cConRef = P(["CONCEPTO / REFERENCIA", "CONCEPTO/REFERENCIA", "CONCEPTO REFERENCIA", "REFERENCIA", "CONCEPTO"]), cCon = P(["CONCEPTO"]),
+    cFac = P(["FACTURA"]), cMon = P(["MONTO"]), cCargo = P(["CARGO"]), cAbono = P(["ABONO"]), cSaldo = P(["SALDO"]), cDud = P(["DUDA"]), cDudN = P(["DUDA_NOTA", "DUDA NOTA", "NOTA_DUDA"]), cVal = P(["VALIDADO"]),
+    cArch = P(["ARCHIVADO"]), cComB = P(["COMENTARIOS", "COMENTARIO"]), cCuentaA = P(["CUENTA_AUTO", "CUENTA AUTO"]), cSubA = P(["SUBCUENTA_AUTO", "SUBCUENTA AUTO"]), cCatA = P(["CATEGORIA_AUTO", "CATEGORÍA_AUTO", "CATEGORIA AUTO"]),
+    cConA = P(["CONCEPTO_AUTO", "CONCEPTO AUTO"]), cProb = P(["PROBABILIDAD_CLASIF", "PROBABILIDAD CLASIF", "PROBABILIDAD"]), cArgs = P(["ARGUMENTOS_CLASIF", "ARGUMENTOS CLASIF", "ARGUMENTOS"]),
+    cTrel = P(["TICKET_RELACIONADO", "TICKET RELACIONADO"]), cTms = P(["TICKET_MATCH_SCORE", "TICKET MATCH SCORE"]), cTmt = P(["TICKET_MATCH_TIENDA", "TICKET MATCH TIENDA"]), cTmf = P(["TICKET_MATCH_FECHA", "TICKET MATCH FECHA"]),
+    cTmfo = P(["TICKET_MATCH_FOLIO", "TICKET MATCH FOLIO"]), cTmto = P(["TICKET_MATCH_TOTAL", "TICKET MATCH TOTAL"]), cOrDe = P(["ORIGEN/DESTINO", "ORIGEN DESTINO", "ORIGEN_DESTINO"]),
+    cOrDeC = P(["ORIGEN/DESTINO_COMMENTS", "ORIGEN_DESTINO_COMMENTS", "ORIGEN/DESTINO COMMENTS", "ORIGEN DESTINO COMMENTS"]), cInq = P(["INQUILINO"]), cInqProp = P(["INQUILINO_PROPIEDAD"]), cInqDep = P(["INQUILINO_DEPTO"]),
+    cMesCorr = P(["MES_CORRESPONDIENTE"]), cProp = P(["PROPIEDAD"]), cDepto = P(["DEPARTAMENTO"]), cEnc = P(["ENCARGADO"]), cDed = P(["DEDUCIBLE"]), cReem = P(["REEMBOLSO"]), cReemA = P(["REEMBOLSO_A", "REEMBOLSO A"]), cMetP = P(["METODO_PAGO", "METODO PAGO", "MÉTODO_PAGO"]);
+  const S = (r, k) => (k ? _bnStr(r[k]) : ""), N = (r, k) => _bnToNumber(k ? r[k] : 0), NE = (r, k) => (k ? _bnNumOrEmpty(r[k]) : "");
+  return d.rows.map(r => {
+    const factura = S(r, cFac);
+    return { Año: S(r, cAno), Mes: S(r, cMes), Día: S(r, cDia), "Cuenta bancaria": S(r, cCta), CUENTA: S(r, cCuenta), SUBCUENTA: S(r, cSub), CATEGORIA: S(r, cCat), Concepto: S(r, cConRef), CONCEPTO: S(r, cCon), DESCRIPCION: S(r, cDes),
+      Factura: factura, FacturaFlag: factura.length ? "Con factura" : "Sin factura", Monto: N(r, cMon), CARGO: NE(r, cCargo), ABONO: NE(r, cAbono), SALDO: NE(r, cSaldo), DUDA: S(r, cDud), DUDA_NOTA: S(r, cDudN), VALIDADO: S(r, cVal),
+      ARCHIVADO: S(r, cArch), COMENTARIOS: S(r, cComB), CUENTA_auto: S(r, cCuentaA), SUBCUENTA_auto: S(r, cSubA), CATEGORIA_auto: S(r, cCatA), CONCEPTO_auto: S(r, cConA), Probabilidad_clasif: N(r, cProb), Argumentos_clasif: S(r, cArgs),
+      Ticket_relacionado: S(r, cTrel), Ticket_match_score: N(r, cTms), Ticket_match_tienda: S(r, cTmt), Ticket_match_fecha: S(r, cTmf), Ticket_match_folio: S(r, cTmfo), Ticket_match_total: N(r, cTmto),
+      "ORIGEN/DESTINO": S(r, cOrDe), "ORIGEN/DESTINO_comments": S(r, cOrDeC), INQUILINO: S(r, cInq), INQUILINO_PROPIEDAD: S(r, cInqProp), INQUILINO_DEPTO: S(r, cInqDep), MES_CORRESPONDIENTE: S(r, cMesCorr),
+      PROPIEDAD: S(r, cProp), DEPARTAMENTO: S(r, cDepto), ENCARGADO: S(r, cEnc), DEDUCIBLE: S(r, cDed), REEMBOLSO: S(r, cReem), REEMBOLSO_A: S(r, cReemA), METODO_PAGO: S(r, cMetP), rowNum: r.rowNum };
+  });
+}
+const _BN_COLS_EFE = ["ORIGEN/DESTINO", "ORIGEN/DESTINO_comments", "INQUILINO", "INQUILINO_PROPIEDAD", "INQUILINO_DEPTO", "MES_CORRESPONDIENTE"];
+const _bnAhora = () => new Date().toLocaleString("sv-SE", { timeZone: "America/Monterrey" }).slice(0, 19);
+const _bnPayload = data => { const p = data && data.payload !== undefined ? data.payload : data; return typeof p === "string" ? JSON.parse(p) : (p || {}); };
+Object.assign(_GCS_ACT, {
+  get_bancos_data: async () => {
+    const d = await _bnDatos(), p = await _bnPresupuesto(), records = _bnRecords(d), budget = _bnBudget(p);
+    return { ok: true, spreadsheetId: "cloud-storage", spreadsheetUrl: "", sourceSheets: { bancos: "Cloud Storage · " + _BN_OBJ, presupuesto: "Cloud Storage · " + _BN_PRES_OBJ }, counts: { records: records.length, budget: budget.length }, records, budget };
+  },
+  bn_bancos_dedupe_index: async () => {
+    const d = await _bnDatos(true), key = _bnKeyFn(d), cDia = _bnPick(d, ["DÍA", "DIA", "FECHA"]), cSaldo = _bnPick(d, ["SALDO"]);
+    const seen = {}, keys = [], transito = [];
+    for (const r of d.rows) {
+      if (!cDia || !_bnStr(r[cDia])) continue;
+      const base = key(r); seen[base] = (seen[base] || 0) + 1;
+      const k = base + "|#" + seen[base]; keys.push(k);
+      if (cSaldo && _bnTransito(r[cSaldo])) transito.push(k); // el saldo "En tránsito" se actualiza cuando el banco lo confirma
+    }
+    return { ok: true, keys, transito };
+  },
+  bn_bancos_classified_history: async () => {
+    const d = await _bnDatos(), cDes = _bnPick(d, ["DESCRIPCION", "DESCRIPCIÓN"]), cMon = _bnPick(d, ["MONTO"]), cCue = _bnPick(d, ["CUENTA"]), cSub = _bnPick(d, ["SUBCUENTA"]), cCat = _bnPick(d, ["CATEGORIA", "CATEGORÍA"]), cCon = _bnPick(d, ["CONCEPTO"]);
+    if (!cDes) return { ok: false, error: "BANCOS no tiene columna DESCRIPCION." };
+    const rows = [];
+    for (const r of d.rows) {
+      const descripcion = _bnStr(r[cDes]); if (!descripcion) continue;
+      const cuenta = _bnStr(cCue && r[cCue]), subcuenta = _bnStr(cSub && r[cSub]), categoria = _bnStr(cCat && r[cCat]), concepto = _bnStr(cCon && r[cCon]);
+      if (!cuenta && !subcuenta && !categoria && !concepto) continue;
+      const monto = Number(cMon ? r[cMon] : 0);
+      rows.push({ descripcion, monto: isFinite(monto) ? monto : 0, cuenta, subcuenta, categoria, concepto });
+    }
+    return { ok: true, rows };
+  },
+  // Carga de estados de cuenta. Además de lo que marcó el frontend, aquí se vuelve a verificar cada fila contra la base
+  // (regla 2026-10-20): misma llave (día, cuenta, subcuenta, descripción, cargo, abono) = duplicada aunque el Saldo
+  // difiera o esté vacío; si la fila existente dice "En tránsito" y la nueva trae saldo real, se ACTUALIZA el saldo.
+  bn_bancos_insert_bulk: async data => {
+    const rows = (data && data.rows) || [];
+    if (!Array.isArray(rows) || !rows.length) return { ok: true, inserted: 0, actualizados: 0, omitidos: 0, message: "Sin filas para insertar." };
+    return _bnMutar(d => {
+      _bnEnsureCols(d, _BN_COLS_EFE);
+      const key = _bnKeyFn(d), cSaldo = _bnPick(d, ["SALDO"]);
+      const idx = new Map(); d.rows.forEach(r => { const k = key(r); if (!idx.has(k)) idx.set(k, []); idx.get(k).push(r); });
+      const usados = new Map(); // llave → cuántas filas existentes ya "consumió" este lote
+      let inserted = 0, actualizados = 0, omitidos = 0; const startRow = d.siguiente, lote = [];
+      for (const src of rows) {
+        const byNorm = {}; Object.keys(src || {}).forEach(k => { byNorm[_bnNormH(k)] = src[k]; });
+        const o = { rowNum: 0 }; d.headers.forEach(h => { const v = byNorm[_bnNormH(h)]; o[h] = v === undefined || v === null ? "" : v; });
+        const k = key(o), sNew = cSaldo ? o[cSaldo] : "";
+        // Dentro del mismo lote: misma llave y saldos iguales (o uno vacío) = la misma transacción listada dos veces.
+        const igual = lote.find(x => x.k === k && (_bnNumStr(x.o[cSaldo]) === _bnNumStr(sNew) || !_bnStr(x.o[cSaldo]) || !_bnStr(sNew)));
+        if (igual) { if (cSaldo && !_bnStr(igual.o[cSaldo]) && _bnStr(sNew)) igual.o[cSaldo] = sNew; omitidos++; continue; }
+        const ex = idx.get(k) || [], n = (usados.get(k) || 0);
+        if (n < ex.length) {
+          usados.set(k, n + 1); const e = ex[n];
+          if (cSaldo && _bnTransito(e[cSaldo]) && _bnStr(sNew) && !_bnTransito(sNew)) { e[cSaldo] = sNew; actualizados++; }
+          else omitidos++;
+          continue;
+        }
+        o.rowNum = d.siguiente++; d.rows.push(o); lote.push({ k, o }); inserted++;
+      }
+      return { ok: true, inserted, actualizados, omitidos, startRow };
+    });
+  },
+  bn_update_rows_bulk: async data => {
+    const updates = (data && data.updates) || [];
+    if (!Array.isArray(updates) || !updates.length) return { ok: true, written: 0 };
+    return _bnMutar(d => {
+      _bnEnsureCols(d, _BN_COLS_EFE);
+      const clear = ["CUENTA", "SUBCUENTA", "CATEGORIA", "CONCEPTO"].map(n => _bnCol(d, n)).filter(Boolean);
+      let written = 0;
+      for (const u of updates) {
+        const rn = Number(u && u.rowNum); if (!rn || rn < 2) continue;
+        const r = d.rows.find(x => x.rowNum === rn); if (!r) continue;
+        Object.keys(u.fields || {}).forEach(k => { const h = _bnCol(d, k); if (h) r[h] = u.fields[k] == null ? "" : u.fields[k]; });
+        if (u.clearClasif) clear.forEach(h => { r[h] = ""; });
+        written++;
+      }
+      return { ok: true, written };
+    });
+  },
+  bn_bancos_delete_row: async data => {
+    const rowNum = Number(data && data.rowNum);
+    if (!rowNum || rowNum < 2) return { ok: false, error: "rowNum inválido." };
+    return _bnMutar(d => {
+      const i = d.rows.findIndex(r => r.rowNum === rowNum);
+      if (i < 0) return { ok: false, error: "rowNum fuera de rango." };
+      const [r] = d.rows.splice(i, 1);
+      (d.borrados = d.borrados || []).push(Object.assign({}, r, { borrado: _bnAhora() })); // nada se pierde: queda en la papelera del archivo
+      return { ok: true, deleted: 1 };
+    }, { borra: 1 });
+  },
+  save_banco_clasificacion: async data => {
+    const rowNum = Number(data.rowNum);
+    if (!rowNum || rowNum < 2) return { ok: false, error: "invalid_row", message: "rowNum inválido: " + data.rowNum };
+    const COLS = ["CUENTA", "SUBCUENTA", "CATEGORIA", "CONCEPTO", "PROPIEDAD", "DEPARTAMENTO", "ENCARGADO", "DEDUCIBLE", "REEMBOLSO", "REEMBOLSO_A", "METODO_PAGO", "CLASIFICADO_POR", "FECHA_CLASIF", "DUDA", "DUDA_NOTA", "VALIDADO", "COMENTARIOS"];
+    return _bnMutar(d => {
+      _bnEnsureCols(d, COLS);
+      const r = d.rows.find(x => x.rowNum === rowNum);
+      if (!r) return { ok: false, error: "invalid_row", message: "No existe el registro " + rowNum };
+      const w = (name, v) => { if (!_bnCol(d, name)) d.headers.push(name); r[_bnCol(d, name)] = v ?? ""; };
+      const c = data.clasificacion || {};
+      if (data.descripcion_edit) w("DESCRIPCION", data.descripcion || "");
+      if (data.duda_edit) { w("DUDA", data.duda || ""); if (data.duda_nota !== undefined) w("DUDA_NOTA", data.duda_nota || ""); return { ok: true, rowNum, duda: data.duda, duda_nota: data.duda_nota || "" }; }
+      if (data.duda_nota_edit) { w("DUDA_NOTA", data.duda_nota || ""); return { ok: true, rowNum, duda_nota: data.duda_nota || "" }; }
+      if (data.validado_edit) { w("VALIDADO", data.validado || ""); return { ok: true, rowNum, validado: data.validado }; }
+      if (data.archivado_edit) { const a = data.archivado === "Sí" ? "Sí" : ""; w("ARCHIVADO", a); return { ok: true, rowNum, archivado: a }; }
+      if (data.fecha_edit) { const h = _bnPick(d, ["DIA", "DÍA", "FECHA"]); if (h) r[h] = data.dia || (c && c.dia) || ""; return { ok: true, rowNum, dia_updated: true }; }
+      w("CUENTA", c.cuenta || ""); w("SUBCUENTA", c.subcuenta || ""); w("CATEGORIA", c.categoria_gasto || ""); w("CONCEPTO", c.concepto || ""); w("PROPIEDAD", c.propiedad || ""); w("DEPARTAMENTO", c.departamento || "");
+      w("ENCARGADO", c.encargado || ""); w("DEDUCIBLE", c.deducible || ""); w("REEMBOLSO", c.reembolso || ""); w("REEMBOLSO_A", c.reembolso_a || ""); w("METODO_PAGO", c.metodo_pago || ""); w("CLASIFICADO_POR", c.clasificado_por || ""); w("FECHA_CLASIF", _bnAhora());
+      if (c.duda !== undefined) w("DUDA", c.duda || ""); if (c.duda_nota !== undefined) w("DUDA_NOTA", c.duda_nota || ""); if (c.validado !== undefined) w("VALIDADO", c.validado || ""); if (c.comentarios !== undefined) w("COMENTARIOS", c.comentarios || "");
+      return { ok: true, rowNum, columnsWritten: COLS.length };
+    });
+  },
+  bn_set_ticket_matches_bulk: async data => {
+    const p = _bnPayload(data), updates = (p && p.updates) || [];
+    if (!Array.isArray(updates) || !updates.length) return { ok: false, error: "updates vacío" };
+    return _bnMutar(d => {
+      const names = ["Ticket_relacionado", "Ticket_match_score", "Ticket_match_tienda", "Ticket_match_fecha", "Ticket_match_folio", "Ticket_match_total"];
+      _bnEnsureCols(d, names); const [cRel, cSc, cTi, cFe, cFo, cTo] = names.map(n => _bnCol(d, n));
+      let written = 0;
+      for (const u of updates) {
+        const rn = Number(u.rowNum); if (!rn || rn < 2) continue;
+        const r = d.rows.find(x => x.rowNum === rn); if (!r) continue;
+        r[cRel] = u.ticket_relacionado || "";
+        const si = u.ticket_relacionado === "Sí";
+        r[cSc] = si && u.ticket_match_score != null ? u.ticket_match_score : ""; r[cTi] = si ? u.ticket_match_tienda || "" : ""; r[cFe] = si ? u.ticket_match_fecha || "" : "";
+        r[cFo] = si ? u.ticket_match_folio || "" : ""; r[cTo] = si && u.ticket_match_total != null ? u.ticket_match_total : "";
+        written++;
+      }
+      return { ok: true, written };
+    });
+  },
+});
+// Estado y conciliación contra la pestaña de Google Sheets (solo lectura de Sheets; con ?agregar=1 copia a Cloud Storage
+// las filas que existan en Sheets y falten aquí — útil solo durante la transición).
+app.get("/bn/estado", async (_req, res) => {
+  try { const d = await _bnDatos(true); res.json({ ok: true, fuente: _BN_OBJ, filas: d.rows.length, borrados: (d.borrados || []).length, columnas: d.headers.length, siguiente: d.siguiente, migrado: d.migrado, modificado: d.modificado || null, respaldo: d.respaldo || null }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/bn/reconciliar", async (req, res) => {
+  try {
+    if (!process.env.SYNC_SECRET || (req.get("X-Sync-Secret") || req.query.secret || "") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
+    const sh = await callAppsScript({ action: "get_bancos_data", _directo: true }, 1, 120000);
+    if (!sh || sh.ok === false || !Array.isArray(sh.records)) throw new Error((sh && sh.error) || "Google Sheets no respondió");
+    const d = await _bnDatos(true), mios = _bnRecords(d), byRn = new Map(mios.map(r => [r.rowNum, r]));
+    const faltan = sh.records.filter(r => !byRn.has(r.rowNum)), sobran = mios.filter(r => !sh.records.some(s => s.rowNum === r.rowNum)).map(r => r.rowNum);
+    const difs = [];
+    for (const s of sh.records) { const m = byRn.get(s.rowNum); if (!m) continue; for (const k of ["Cuenta bancaria", "DESCRIPCION", "Monto", "CUENTA", "SUBCUENTA", "CATEGORIA", "VALIDADO", "ARCHIVADO"]) if (String(s[k]) !== String(m[k])) difs.push({ rowNum: s.rowNum, campo: k, sheets: s[k], cloud: m[k] }); }
+    let agregadas = 0;
+    if (String(req.query.agregar || "") === "1" && faltan.length) {
+      agregadas = await _bnMutar(dd => { let n = 0; for (const s of faltan) { if (dd.rows.some(r => r.rowNum === s.rowNum)) continue; const o = { rowNum: s.rowNum }; dd.headers.forEach(h => { const v = s[h] !== undefined ? s[h] : s[_bnNormU(h)]; o[h] = v == null ? "" : v; }); const cDia = _bnPick(dd, ["DÍA", "DIA"]), cSal = _bnPick(dd, ["SALDO"]), cCar = _bnPick(dd, ["CARGO"]), cAbo = _bnPick(dd, ["ABONO"]); if (cDia) o[cDia] = s["Día"]; if (cSal) o[cSal] = s.SALDO; if (cCar) o[cCar] = s.CARGO; if (cAbo) o[cAbo] = s.ABONO; dd.rows.push(o); n++; } dd.rows.sort((a, b) => a.rowNum - b.rowNum); return n; });
+    }
+    res.json({ ok: true, sheets: sh.records.length, cloud: mios.length, faltan_en_cloud: faltan.map(r => r.rowNum), sobran_en_cloud: sobran, diferencias: difs.slice(0, 200), total_diferencias: difs.length, agregadas });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/bn/presupuesto/refrescar", async (req, res) => {
+  try { if (!process.env.SYNC_SECRET || (req.get("X-Sync-Secret") || "") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" }); const r = await _bnPresRefrescar(); _bancosMarkDirty(); res.json({ ok: true, budget: r.budget.length }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+setTimeout(() => { _bnPresRefrescar().then(r => console.log(`[bancos] presupuesto copiado desde Sheets: ${r.budget.length} filas`)).catch(e => console.warn("[bancos] presupuesto:", e.message)); setInterval(() => _bnPresRefrescar().catch(() => {}), 24 * 3600_000); }, 90_000);
 app.all(["/facturapi", "/facturapi/*"], _ckappProxy);
 app.all("/api/breezeway/*", _ckappProxy);
 app.all("/as", express.text({ type: "*/*", limit: "32mb" }), async (req, res) => {
