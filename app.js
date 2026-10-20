@@ -74909,7 +74909,11 @@ const _bcrNum = v => { if (typeof v === 'number') return v; const s = _bcrS(v).t
 function _bcrCss_() {
   if (document.getElementById('bcr-css')) return;
   const st = document.createElement('style'); st.id = 'bcr-css'; st.textContent = `
-  #bcr-ov{position:fixed;inset:0;z-index:9000;background:#fff;display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif}
+  #bcr-ov{position:fixed;left:0;right:0;bottom:0;top:0;z-index:900;background:#fff;display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif}
+  .bcr-filt{display:flex;flex-wrap:wrap;gap:8px 10px;padding:8px 12px;border-bottom:1px solid #dadce0;background:#fff}
+  .bcr-fi{min-width:120px;flex:1 1 120px;max-width:200px}.bcr-fi label{display:block;font-weight:700;color:#6b7280;font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bcr-fi button{width:100%;padding:6px 9px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;text-align:left;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .bcr-fi button span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bcr-fi button.on{border-color:#1a73e8;background:#e8f0fe;color:#1967d2;font-weight:700}
   .bcr-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #dadce0;background:#f8f9fa;flex-wrap:wrap}
   .bcr-bar input[type=text]{padding:6px 10px;border:1px solid #dadce0;border-radius:6px;font-size:13px;min-width:240px}
   .bcr-btn{padding:6px 12px;border:1px solid #dadce0;border-radius:6px;background:#fff;font-size:12.5px;font-weight:700;color:#3c4043;cursor:pointer}
@@ -74946,11 +74950,13 @@ window.bnCrudosOpen = async function () {
       <button class="bcr-btn" id="bcr-edit" onclick="bnCrudosEdicion_()">✏️ Edición</button>
       <button class="bcr-btn pri" id="bcr-save" onclick="bnCrudosGuardar_()" disabled>💾 Guardar</button>
       <button class="bcr-btn" onclick="bnCrudosCerrar_()">Cerrar ✕</button></div>
+      <div class="bcr-filt" id="bcr-filt"></div>
       <div id="bcr-wrap" onscroll="bnCrudosScroll_()"><div id="bcr-msg" style="padding:30px;color:#5f6368;font-size:13px">⏳ Cargando la base…</div></div>`;
     document.body.appendChild(ov);
     document.addEventListener('keydown', _bcrKey_);
+    window.addEventListener('resize', _bcrTop_);
   }
-  ov.style.display = 'flex'; document.body.style.overflow = 'hidden';
+  ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; _bcrTop_();
   try {
     const j = await fetch(`${BACKEND}/bn/crudos`, { cache: 'no-store' }).then(r => r.json());
     if (!j.ok) throw new Error(j.error || 'No se pudo leer la base');
@@ -74964,6 +74970,16 @@ window.bnCrudosCerrar_ = function () {
   if (Object.keys(BN_CRUDOS.cambios).length && !confirm('Hay cambios sin guardar. ¿Cerrar y descartarlos?')) return;
   const ov = document.getElementById('bcr-ov'); if (ov) ov.style.display = 'none'; document.body.style.overflow = ''; _bcrPopCerrar_();
 };
+// El encabezado del sistema (Check Inn · Saltillo) siempre queda visible: la vista empieza justo debajo.
+function _bcrTop_() { const ov = document.getElementById('bcr-ov'), hd = document.getElementById('user-greeting'); if (!ov) return; const b = hd && !hd.classList.contains('hidden') ? hd.getBoundingClientRect().bottom : 0; ov.style.top = Math.max(0, Math.round(b)) + 'px'; }
+// Filtros rápidos (mismos que Registros contables) sobre las columnas crudas.
+const _BCR_FILTROS = [['Año', '📅 Año'], ['Mes', '📅 Mes'], ['CUENTA', 'Cuenta'], ['SUBCUENTA', 'Subcuenta'], ['CATEGORIA', 'Categoría'], ['CONCEPTO', 'Concepto'], ['Cuenta bancaria', 'Cuenta bancaria'], ['Día', '📅 Día (fecha)'], ['PROPIEDAD', 'Propiedad'], ['DEPARTAMENTO', '# Departamento'], ['DEDUCIBLE', 'Deducible'], ['DUDA', 'Duda'], ['VALIDADO', 'Validado'], ['Factura', 'Factura'], ['METODO_PAGO', 'Método de pago'], ['REEMBOLSO', 'Reembolso'], ['ENCARGADO', 'Encargado de operación'], ['Ticket_relacionado', '🔗 Relacionados con tickets']];
+function bnCrudosFiltBar_() {
+  const bar = document.getElementById('bcr-filt'); if (!bar) return;
+  const H = new Set(BN_CRUDOS.headers);
+  bar.innerHTML = _BCR_FILTROS.filter(([h]) => H.has(h)).map(([h, lbl]) => { const F = BN_CRUDOS.filtros[h]; const txt = !F ? 'Todos' : F.size === 1 ? ([...F][0] || '(vacío)') : `${F.size} seleccionados`;
+    return `<div class="bcr-fi"><label title="${esc(lbl)}">${esc(lbl)}</label><button type="button" class="${F ? 'on' : ''}" onclick="bnCrudosFiltro_(${JSON.stringify(h).replace(/"/g, '&quot;')},event)"><span>${esc(txt)}</span><span style="font-size:10px;color:#6b7280">▼</span></button></div>`; }).join('');
+}
 function _bcrKey_(e) { const ov = document.getElementById('bcr-ov'); if (!ov || ov.style.display === 'none') return; if (e.key === 'Escape') { if (document.querySelector('.bcr-pop')) _bcrPopCerrar_(); else if (!document.activeElement?.isContentEditable) bnCrudosCerrar_(); } }
 window.bnCrudosBuscar_ = function (v) { BN_CRUDOS.q = v; clearTimeout(BN_CRUDOS._t); BN_CRUDOS._t = setTimeout(bnCrudosAplicar_, 180); };
 window.bnCrudosLimpiar_ = function () { BN_CRUDOS.q = ''; BN_CRUDOS.filtros = {}; BN_CRUDOS.sort = null; const q = document.getElementById('bcr-q'); if (q) q.value = ''; bnCrudosAplicar_(); };
@@ -74982,6 +74998,7 @@ function bnCrudosAplicar_() {
   BN_CRUDOS.vista = idx;
   const info = document.getElementById('bcr-info'); if (info) info.textContent = `${idx.length.toLocaleString('es-MX')} de ${R.length.toLocaleString('es-MX')} filas · ${H.length} columnas` + (fk.length || q ? ' (filtrado)' : '');
   const w = document.getElementById('bcr-wrap'); if (w) w.scrollTop = 0;
+  bnCrudosFiltBar_();
   bnCrudosPintar_(true);
 }
 function bnCrudosPintar_(reset) {
@@ -75014,7 +75031,8 @@ window.bnCrudosFiltro_ = function (h, ev) {
   const vals = [...cnt.keys()].sort((a, b) => { const na = _bcrNum(a), nb = _bcrNum(b); if (na != null && nb != null) return na - nb; return a.localeCompare(b, 'es', { numeric: true }); });
   const sel = new Set(F[h] ? [...F[h]] : vals);
   const pop = document.createElement('div'); pop.className = 'bcr-pop';
-  const x = Math.min(window.innerWidth - 290, ev.clientX - 20), y = ev.clientY + 12; pop.style.left = x + 'px'; pop.style.top = y + 'px';
+  const bt = ev && ev.currentTarget && ev.currentTarget.getBoundingClientRect ? ev.currentTarget.getBoundingClientRect() : null;
+  const x = Math.min(window.innerWidth - 290, bt ? bt.left : ev.clientX - 20), y = Math.min(window.innerHeight - 390, bt ? bt.bottom + 4 : ev.clientY + 12); pop.style.left = Math.max(4, x) + 'px'; pop.style.top = Math.max(4, y) + 'px';
   const pintar = q => { const Q = bnUploadNormStr(q); const vis = vals.filter(v => !Q || bnUploadNormStr(v).includes(Q)); pop.querySelector('.l').innerHTML = vis.slice(0, 600).map(v => `<label><span class="bcr-ck ${sel.has(v) ? 'on' : ''}" data-v="${esc(v)}">${sel.has(v) ? '✓' : ''}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis">${v === '' ? '<i style="color:#9aa0a6">(vacío)</i>' : esc(v)}</span><span style="color:#9aa0a6;font-size:11px">${cnt.get(v)}</span></label>`).join('') + (vis.length > 600 ? `<div style="padding:6px 10px;color:#9aa0a6">… ${vis.length - 600} más (usa el buscador)</div>` : ''); pop._vis = vis; };
   pop.innerHTML = `<div class="h"><b style="font-size:12px">${esc(h)}</b><input type="text" placeholder="Buscar valor…"></div><div style="padding:4px 10px;display:flex;gap:10px;font-size:11.5px"><a href="#" data-a="all">Seleccionar todo</a><a href="#" data-a="none">Borrar</a></div><div class="l"></div><div class="f"><button class="bcr-btn" data-a="cancel">Cancelar</button><button class="bcr-btn pri" data-a="ok">Aceptar</button></div>`;
   document.body.appendChild(pop); pintar('');
