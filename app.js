@@ -23298,6 +23298,8 @@ async function _bnUploadConfirmInsertInner() {
     await bnUploadRefreshDedupe();
     bnUploadClearPreview();
     if (status) status.textContent = `✓ Listo. ${j.inserted} filas insertadas correctamente.`;
+    // Las tablas bajo cada cuenta bancaria se repintan con la base ya actualizada (fresh=1 espera la versión nueva).
+    try { const d = await fetch(`${BACKEND}/get-bancos?fresh=1`, { cache: 'no-store' }).then(r => r.json()); if (d && d.ok && Array.isArray(d.records)) { BN_RAW = d.records.map((r, i) => r.rowNum ? { ...r } : { ...r, rowNum: i + 2 }); bnUploadResumen_(); } } catch (_) {}
     return j;
   } catch (e) {
     if (status) status.textContent = `⚠ Error al insertar: ${e.message}`;
