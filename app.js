@@ -22524,6 +22524,7 @@ function bnUploadSortValue(r, col) {
 /** Carga mapeos de cuentas_bancarias e índice de dedupe vs BANCOS.
  *  Se llama al entrar a la pestaña UPLOAD (cacheado en memoria). */
 async function bnUploadInit() {
+  try { bnUploadResumen_(); } catch (_) {}
   const status = document.getElementById('bn-upload-status');
   // Si no hay mapeos cacheados, los traemos
   if (!BN_UPLOAD_STATE.cuentasMap) {
@@ -74798,3 +74799,29 @@ window.tdCrearTareaLv_ = function (i) {
     if (c && !String(phone).startsWith('abn') && (Number(c.unread) || 0) > 0 && !(opts && opts.silent)) { c.unread = 0; _botcRenderSidebar();
       fetch(`${BACKEND}/as`, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'wa_chat_visto', phone: String(phone) }) }).catch(() => {}); } } catch (_) {}
   return _o.apply(this, arguments); }; }
+
+// ═══ Subir archivos bancarios › resumen por cuenta: último registro de cada cuenta para saber desde cuándo falta subir archivos ═══
+function bnResFecha_(r) { const m = String(r['Día'] || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  const M = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 }[String(r.Mes || '').toLowerCase()]; return r['Año'] && M ? `${r['Año']}-${String(M).padStart(2, '0')}-01` : ''; }
+async function bnUploadResumen_() {
+  const host = document.getElementById('bn-upload-resumen'); if (!host) return;
+  let R = Array.isArray(BN_RAW) && BN_RAW.length ? BN_RAW : null;
+  if (!R) { host.innerHTML = '<div style="font-size:12px;color:#64748b;margin:0 0 12px">⏳ Cargando registros…</div>';
+    try { const j = await fetch(`${BACKEND}/get-bancos`, { cache: 'no-store' }).then(r => r.json()); R = (j && j.records) || []; } catch (_) { R = []; } }
+  const G = {}; R.forEach(r => { const raw = String(r['Cuenta bancaria'] || '').trim(); if (!raw || /^efectivo$/i.test(raw)) return; const k = raw.toLowerCase().replace(/\s+/g, ' ');
+    const g = G[k] = G[k] || { nombres: {}, rows: [] }; g.nombres[raw] = (g.nombres[raw] || 0) + 1; const f = bnResFecha_(r); if (f) g.rows.push({ f, r }); });
+  const hoy = new Date(); hoy.setHours(12, 0, 0, 0); const hoyIso = hoy.toISOString().slice(0, 10), dias = f => Math.round((Date.parse(hoyIso) - Date.parse(f)) / 86400e3);
+  const fmt = f => { const d = new Date(f + 'T12:00:00'); return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' }); };
+  const money = v => { const n = Number(v); return isNaN(n) || v === '' || v == null ? '' : n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }); };
+  const cards = Object.values(G).map(g => { const nombre = Object.entries(g.nombres).sort((a, b) => b[1] - a[1])[0][0]; g.rows.sort((a, b) => b.f.localeCompare(a.f) || (Number(b.r.rowNum) || 0) - (Number(a.r.rowNum) || 0));
+    const ult = g.rows[0], d = ult ? dias(ult.f) : null, c = d == null ? ['#6b7280', '#f3f4f6', 'Sin fechas'] : d <= 7 ? ['#15803d', '#dcfce7', `Hace ${d} día${d === 1 ? '' : 's'}`] : d <= 30 ? ['#b45309', '#fef3c7', `Hace ${d} días`] : ['#b91c1c', '#fee2e2', `Hace ${d} días · faltan archivos`];
+    const mes = g.rows.filter(x => dias(x.f) <= 30).length;
+    return { d: d == null ? 9e9 : d, html: `<div style="background:#fff;border:1.5px solid ${c[0]}33;border-top:4px solid ${c[0]};border-radius:12px;padding:12px 14px;min-width:0">
+      <div style="font-size:13px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(nombre)}">🏦 ${esc(nombre)}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px"><b style="font-size:18px;color:#0f172a">${ult ? fmt(ult.f) : '—'}</b><span style="font-size:11px;font-weight:700;color:${c[0]};background:${c[1]};padding:2px 8px;border-radius:999px">${c[2]}</span></div>
+      <div style="font-size:11px;color:#64748b;margin-top:2px">Último registro · ${g.rows.length} en total · ${mes} en los últimos 30 días</div>
+      <div style="margin-top:8px;border-top:1px solid #f1f5f9">${g.rows.slice(0, 5).map(x => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #f8fafc;font-size:11.5px"><span style="color:#64748b;white-space:nowrap;min-width:62px">${fmt(x.f)}</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#334155" title="${esc(String(x.r.DESCRIPCION || x.r.Concepto || x.r.CONCEPTO || ''))}">${esc(String(x.r.DESCRIPCION || x.r.Concepto || x.r.CONCEPTO || '—'))}</span><b style="white-space:nowrap;color:${Number(x.r.Monto) < 0 ? '#b91c1c' : '#15803d'}">${money(x.r.Monto)}</b></div>`).join('')}</div></div>` }; })
+    .sort((a, b) => b.d - a.d);
+  host.innerHTML = cards.length ? `<div style="margin:0 0 14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="font-size:13px;font-weight:800;color:#0f172a">🗓️ Último registro por cuenta</div><span style="font-size:11.5px;color:#64748b">Las cuentas con más días sin registros van primero. Verde ≤ 7 días · Ámbar ≤ 30 · Rojo más de 30.</span><button type="button" onclick="bnUploadResumen_()" style="margin-left:auto;all:unset;cursor:pointer;font-size:12px;color:#5b21b6;font-weight:700">↻ Actualizar</button></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px">${cards.map(c => c.html).join('')}</div></div>` : '';
+}
