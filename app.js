@@ -22635,7 +22635,34 @@ async function bnUploadHandleFiles(files) {
   // Auto-clasificar las filas NUEVAS basándose en historial de BANCOS
   bnUploadClassifyRows(allRows);
   BN_UPLOAD_STATE.parsedRows = allRows;
+  bnUploadAvisoCuenta_(allRows);
   bnUploadRenderPreview();
+}
+
+/** Aviso cuando el archivo no corresponde a la cuenta desde donde se subió: el número o la terminación de
+ *  tarjeta que trae el archivo se compara con el catálogo (cuentas_bancarias). También avisa si el archivo
+ *  no trae ningún número reconocible (no se puede verificar). Los movimientos se registran SIEMPRE en la
+ *  cuenta que dice el archivo; el aviso evita subir el estado de cuenta equivocado. */
+function bnUploadAvisoCuenta_(rows) {
+  const pref = String(BN_UPLOAD_STATE.cuentaPref || '').trim();
+  const N = s => bnUploadNormStr(s);
+  const porArchivo = {};
+  (rows || []).forEach(r => { if (r._error) return; const a = r._archivo || '(archivo)'; const g = porArchivo[a] = porArchivo[a] || { cuentas: {}, sinNum: 0, n: 0 }; g.n++;
+    if (r._cuentaDetectada) g.cuentas[r._cuentaDetectada] = g.cuentas[r._cuentaDetectada] || r._numDetectado; else g.sinNum++; });
+  const avisos = [];
+  Object.entries(porArchivo).forEach(([arch, g]) => {
+    const otras = Object.entries(g.cuentas).filter(([c]) => !pref || N(c) !== N(pref));
+    if (pref && otras.length) avisos.push({ tipo: 'otra', html: `⚠ <b>«${esc(arch)}»</b> corresponde a <b>${otras.map(([c, num]) => esc(c) + (num ? ` (${esc(num)})` : '')).join(', ')}</b>, no a <b>${esc(pref)}</b> (la cuenta desde donde lo subiste). Sus ${g.n} movimientos se registrarían en ${otras.map(([c]) => esc(c)).join(', ')}.` });
+    else if (!Object.keys(g.cuentas).length) avisos.push({ tipo: 'sinNum', html: pref
+      ? `ℹ En <b>«${esc(arch)}»</b> no se encontró ningún número de cuenta o terminación de tarjeta del catálogo: no se pudo verificar. Sus ${g.n} movimientos se asignarán a <b>${esc(pref)}</b> por la cuenta desde donde lo subiste.`
+      : `⚠ En <b>«${esc(arch)}»</b> no se reconoció la cuenta bancaria (sin número ni terminación del catálogo). Súbelo desde la tarjeta de la cuenta correspondiente.` });
+  });
+  BN_UPLOAD_STATE.avisoCuenta = avisos;
+  let box = document.getElementById('bn-upload-aviso');
+  const st = document.getElementById('bn-upload-status');
+  if (!box && st) { box = document.createElement('div'); box.id = 'bn-upload-aviso'; st.parentElement.insertBefore(box, st); }
+  if (!box) return;
+  box.innerHTML = avisos.map(a => `<div style="margin:0 0 8px;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.45;${a.tipo === 'otra' ? 'background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b' : 'background:#fffbeb;border:1.5px solid #fde68a;color:#92400e'}">${a.html}</div>`).join('');
 }
 
 /** Parsea un xlsx según el formato BBVA: marcadores de subcuenta + filas.
@@ -22825,6 +22852,8 @@ async function _bnUploadParseWorkbook(wb, fileName) {
       out.push({
         _archivo: fileName,
         _tagOrig: curTagOrig,
+        _cuentaDetectada: curMap ? curMap.cuenta_nombre : '', // cuenta reconocida por el número/terminación dentro del archivo
+        _numDetectado: curMap ? (curMap.cuenta_tag_original || curMap.cuenta_numero || '') : '',
         'Año': anio,
         'Mes': mes,
         'Día': dia,
@@ -23185,6 +23214,8 @@ function bnUploadClearPreview() {
   BN_UPLOAD_STATE.parsedRows = [];
   BN_UPLOAD_STATE.unchecked = new Set();
   BN_UPLOAD_STATE.monthFilter = new Set();
+  BN_UPLOAD_STATE.avisoCuenta = [];
+  const aviso = document.getElementById('bn-upload-aviso'); if (aviso) aviso.innerHTML = '';
   document.getElementById('bn-upload-preview-wrap').style.display = 'none';
   const status = document.getElementById('bn-upload-status');
   if (status) status.textContent = '';
@@ -23201,6 +23232,8 @@ async function bnUploadConfirmInsert() {
     console.warn('[BN] insert ya en curso — ignorando doble-click');
     return;
   }
+  const _otra = (BN_UPLOAD_STATE.avisoCuenta || []).filter(a => a.tipo === 'otra');
+  if (_otra.length && !confirm(`${_otra.map(a => a.html.replace(/<[^>]+>/g, '')).join('\n\n')}\n\n¿Insertar de todas formas?`)) return;
   window.__bnUploadInserting = true;
   const btnConfirm = document.getElementById('bn-upload-confirm');
   const _origBtnText = btnConfirm ? btnConfirm.textContent : '';
@@ -23518,6 +23551,7 @@ window.bnDriveProcessSelected = async function() {
   bnUploadAssignCountersAndDedupe(allRows);
   bnUploadClassifyRows(allRows);
   BN_UPLOAD_STATE.parsedRows = allRows;
+  bnUploadAvisoCuenta_(allRows);
   bnUploadRenderPreview();
   bnDriveClosePanel();
   const newCount = allRows.filter(r => r._status === 'new' || r._status === 'update').length;
