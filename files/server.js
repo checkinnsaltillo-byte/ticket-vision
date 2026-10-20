@@ -11592,7 +11592,7 @@ Object.assign(_GCS_ACT, {
     await _waMutar(_waChatObj(p), d => { if (!Array.isArray(d.msgs)) d.msgs = []; d.msgs.push({ ts, role, body, meta }); if (d.msgs.length > 2000) d.msgs.splice(0, d.msgs.length - 2000); });
     let nueva = false;
     await _waMutar(_WA_OBJ.estado, e => { nueva = !e[p]; const s = _waEstadoDe(e, p); s.last_msg_at = ts; s.last_msg_preview = body.slice(0, 120); s.last_msg_role = role;
-      if (role === "user") s.unread = (Number(s.unread) || 0) + 1; else if (role === "admin") s.unread = 0; }); // no leídos: suben con cada mensaje del huésped; se limpian al abrir el chat o al contestar a mano
+      if (role === "user") s.unread = (Number(s.unread) || 0) + 1; else s.unread = 0; }); // no leídos = mensajes seguidos del huésped sin respuesta (bot, admin o plantilla); también se limpian al abrir el chat
     return nueva ? { ok: true, appended: true, phone: p, created_state: true } : { ok: true, appended: true, phone: p };
   },
   wa_chat_visto: async data => { // el admin abrió la conversación en el panel
