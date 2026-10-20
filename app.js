@@ -23328,13 +23328,15 @@ window.bnDrivePickerOpen = async function() {
     ]);
     if (!filesRes.ok) throw new Error(filesRes.error || 'No se pudo listar Drive');
     const importedIds = new Set((importedRes.files || []).map(f => f.file_id));
-    BN_DRIVE_STATE.files = (filesRes.files || []).map(f => ({ ...f, _imported: importedIds.has(f.id) }));
+    let L = (filesRes.files || []).map(f => ({ ...f, _imported: importedIds.has(f.id) }));
+    const fc = BN_DRIVE_STATE.filtroCuenta; if (fc) { const N = bnUploadNormStr(fc), M = L.filter(f => bnUploadNormStr(String(f.path || f.name || '')).includes(N)); if (M.length) L = M; } // solo la carpeta de la cuenta elegida (si no hay coincidencias, se muestran todos)
+    BN_DRIVE_STATE.files = L;
     BN_DRIVE_STATE.importedIds = importedIds;
     bnDriveRenderPicker();
     if (panel) panel.style.display = '';
     if (status) {
       const newCount = BN_DRIVE_STATE.files.filter(f => !f._imported).length;
-      status.textContent = `✓ ${BN_DRIVE_STATE.files.length} archivos en Drive · ${importedIds.size} ya importados · ${newCount} nuevos`;
+      status.textContent = `✓ ${BN_DRIVE_STATE.files.length} archivos en Drive${BN_DRIVE_STATE.filtroCuenta ? ` (carpeta ${BN_DRIVE_STATE.filtroCuenta})` : ''} · ${BN_DRIVE_STATE.files.filter(f => f._imported).length} ya importados · ${newCount} nuevos`;
     }
   } catch (e) {
     if (status) status.textContent = `⚠ Error al listar Drive: ${e.message}`;
@@ -74825,7 +74827,8 @@ async function bnUploadResumen_() {
       <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;flex-wrap:wrap">
         <div style="min-width:0"><div style="font-size:13.5px;font-weight:800;color:#0f172a">🏦 ${esc(nombre)}</div><div style="font-size:11.5px;color:#64748b">Último registro: <b style="color:#0f172a">${ult ? fmt(ult.f) : '—'}</b> · ${g.rows.length} registros · ${mes} en los últimos 30 días</div></div>
         <span style="font-size:11px;font-weight:700;color:${c[0]};background:${c[1]};padding:3px 9px;border-radius:999px">${c[2]}</span>
-        <label style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1.5px solid #7c3aed;background:linear-gradient(180deg,#ede9fe,#fff);color:#5b21b6;border-radius:9px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Subir archivos<input type="file" multiple accept=".xlsx,.xls,.csv" hidden onchange="bnUploadDeCuenta_('${esc(id)}', ${JSON.stringify(nombre).replace(/"/g, '&quot;')}, this)"></label></div>
+        <label style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1.5px solid #7c3aed;background:linear-gradient(180deg,#ede9fe,#fff);color:#5b21b6;border-radius:9px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Subir archivos<input type="file" multiple accept=".xlsx,.xls,.csv" hidden onchange="bnUploadDeCuenta_('${esc(id)}', ${JSON.stringify(nombre).replace(/"/g, '&quot;')}, this)"></label>
+        <button type="button" onclick="bnDriveDeCuenta_('${esc(id)}', ${JSON.stringify(nombre).replace(/"/g, '&quot;')})" title="Lista los archivos de la carpeta de esta cuenta en Drive" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1.5px solid #0d9488;background:linear-gradient(180deg,#ccfbf1,#fff);color:#0f766e;border-radius:9px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap">📁 Leer archivos de Drive</button></div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="${th}">Fecha</th><th style="${th}">Cuenta</th><th style="${th}">Subcuenta</th><th style="${th}">Categoría</th><th style="${th}">Descripción</th><th style="${th};text-align:right">Monto</th></tr></thead><tbody>
         ${g.rows.slice(0, lim).map(x => `<tr><td style="${td};white-space:nowrap;color:#64748b">${fmt(x.f)}</td><td style="${td};white-space:nowrap">${esc(String(x.r.CUENTA || ''))}</td><td style="${td};white-space:nowrap;color:#475569">${esc(String(x.r.SUBCUENTA || ''))}</td><td style="${td};white-space:nowrap;color:#64748b">${esc(String(x.r.CATEGORIA || ''))}</td><td style="${td};max-width:380px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(String(x.r.DESCRIPCION || x.r.Concepto || x.r.CONCEPTO || ''))}">${esc(String(x.r.DESCRIPCION || x.r.Concepto || x.r.CONCEPTO || '—'))}</td><td style="${td};text-align:right;white-space:nowrap;font-weight:700;color:${Number(x.r.Monto) < 0 ? '#b91c1c' : '#15803d'}">${money(x.r.Monto)}</td></tr>`).join('') || `<tr><td colspan="6" style="${td};color:#94a3b8">Sin registros</td></tr>`}</tbody></table></div>
       ${g.rows.length > lim ? `<div style="padding:8px 14px;border-top:1px solid #f1f5f9;display:flex;justify-content:center;gap:10px;font-size:12px"><button type="button" onclick="bnResVerMas_('${esc(id)}', 100)" style="all:unset;cursor:pointer;color:#5b21b6;font-weight:700">▾ Ver 100 registros más</button><span style="color:#94a3b8">(${lim} de ${g.rows.length})</span></div>` : lim > 6 ? `<div style="padding:8px 14px;border-top:1px solid #f1f5f9;display:flex;justify-content:center;gap:10px;font-size:12px"><button type="button" onclick="bnResVerMas_('${esc(id)}', 0)" style="all:unset;cursor:pointer;color:#5b21b6;font-weight:700">▴ Mostrar menos</button><span style="color:#94a3b8">(${g.rows.length} de ${g.rows.length})</span></div>` : ''}
@@ -74835,11 +74838,17 @@ async function bnUploadResumen_() {
 }
 window.bnResVerMas_ = function (id, n) { const L = BN_UPLOAD_STATE.resLim = BN_UPLOAD_STATE.resLim || {}; L[id] = n ? (L[id] || 6) + n : 6; const y = window.scrollY; bnUploadResumen_().then(() => { if (!n) { const el = document.getElementById(id); if (el) el.scrollIntoView({ block: 'start' }); } else window.scrollTo(0, y); }); };
 // «Subir archivos» de una cuenta: la tarjeta «Carga de datos bancarios» (con todo su flujo) se coloca debajo de esa tabla y procesa los archivos.
-window.bnUploadDeCuenta_ = function (secId, cuenta, input) {
-  const files = input && input.files ? Array.from(input.files) : []; if (!files.length) return; // copia: al limpiar el input, la lista original queda vacía
+function bnUploadColocarCard_(secId, cuenta) {
   BN_UPLOAD_STATE.cuentaPref = cuenta; BN_UPLOAD_STATE.cuentaSec = secId;
   const card = document.getElementById('bn-upload-card'), sec = document.getElementById(secId), h = sec && sec.querySelector('.bn-res-host');
-  if (card && h) { h.appendChild(card); card.style.margin = '0 10px 12px'; card.style.borderColor = '#c4b5fd'; const t = card.querySelector('div > div > div'); if (t && !card.querySelector('.bn-res-tag')) { const tag = document.createElement('div'); tag.className = 'bn-res-tag'; tag.style.cssText = 'font-size:11.5px;color:#5b21b6;font-weight:700;margin-bottom:6px'; tag.textContent = `⬆ Cuenta: ${cuenta}`; card.prepend(tag); } else if (card.querySelector('.bn-res-tag')) card.querySelector('.bn-res-tag').textContent = `⬆ Cuenta: ${cuenta}`; }
-  bnUploadHandleFiles(files); try { input.value = ''; } catch (_) {}
+  if (card && h) { h.appendChild(card); card.style.margin = '0 10px 12px'; card.style.borderColor = '#c4b5fd'; let tag = card.querySelector('.bn-res-tag'); if (!tag) { tag = document.createElement('div'); tag.className = 'bn-res-tag'; tag.style.cssText = 'font-size:11.5px;color:#5b21b6;font-weight:700;margin-bottom:6px'; card.prepend(tag); } tag.textContent = `⬆ Cuenta: ${cuenta}`; }
   setTimeout(() => { if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+  return card;
+}
+window.bnUploadDeCuenta_ = function (secId, cuenta, input) {
+  const files = input && input.files ? Array.from(input.files) : []; if (!files.length) return; // copia: al limpiar el input, la lista original queda vacía
+  bnUploadColocarCard_(secId, cuenta);
+  bnUploadHandleFiles(files); try { input.value = ''; } catch (_) {}
 };
+// «Leer archivos de Drive» de una cuenta: abre el selector de Drive debajo de la tabla, mostrando solo los archivos de la carpeta de esa cuenta.
+window.bnDriveDeCuenta_ = function (secId, cuenta) { bnUploadColocarCard_(secId, cuenta); BN_DRIVE_STATE.filtroCuenta = cuenta; bnDrivePickerOpen(); };
