@@ -22827,9 +22827,9 @@ async function _bnUploadParseWorkbook(wb, fileName) {
         'Año': anio,
         'Mes': mes,
         'Día': dia,
-        'Cuenta bancaria':    curMap ? curMap.cuenta_nombre  : '(sin mapeo)',
-        '# Cuenta':           curMap ? curMap.cuenta_numero  : '',
-        'Subcuenta_bancaria': curMap ? curMap.cuenta_tag     : '(sin mapeo)',
+        'Cuenta bancaria':    (curMap || bnUploadMapPref_()) ? (curMap || bnUploadMapPref_()).cuenta_nombre  : '(sin mapeo)',
+        '# Cuenta':           (curMap || bnUploadMapPref_()) ? (curMap || bnUploadMapPref_()).cuenta_numero  : '',
+        'Subcuenta_bancaria': (curMap || bnUploadMapPref_()) ? (curMap || bnUploadMapPref_()).cuenta_tag     : '(sin mapeo)',
         'Reportado por':      (typeof currentUser !== 'undefined' && currentUser) ? currentUser : '',
         'DESCRIPCION': desc,
         'CARGO': cargo !== null ? cargo : '',
@@ -74803,25 +74803,41 @@ window.tdCrearTareaLv_ = function (i) {
 // ═══ Subir archivos bancarios › resumen por cuenta: último registro de cada cuenta para saber desde cuándo falta subir archivos ═══
 function bnResFecha_(r) { const m = String(r['Día'] || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   const M = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 }[String(r.Mes || '').toLowerCase()]; return r['Año'] && M ? `${r['Año']}-${String(M).padStart(2, '0')}-01` : ''; }
+// Cuenta elegida con «Subir archivos» de una tabla: se usa cuando el archivo no trae un encabezado reconocible.
+function bnUploadMapPref_() { const n = BN_UPLOAD_STATE.cuentaPref; if (!n) return null; const N = bnUploadNormStr(n); return (BN_UPLOAD_STATE.cuentasMap || []).find(m => bnUploadNormStr(m.cuenta_nombre) === N) || null; }
 async function bnUploadResumen_() {
   const host = document.getElementById('bn-upload-resumen'); if (!host) return;
+  // La tarjeta «Carga de datos bancarios» puede estar dentro de una cuenta: se saca antes de repintar y se vuelve a colocar después.
+  const card = document.getElementById('bn-upload-card'); if (card && host.contains(card)) host.parentElement.insertBefore(card, host.nextSibling);
   let R = Array.isArray(BN_RAW) && BN_RAW.length ? BN_RAW : null;
   if (!R) { host.innerHTML = '<div style="font-size:12px;color:#64748b;margin:0 0 12px">⏳ Cargando registros…</div>';
     try { const j = await fetch(`${BACKEND}/get-bancos`, { cache: 'no-store' }).then(r => r.json()); R = (j && j.records) || []; } catch (_) { R = []; } }
   const G = {}; R.forEach(r => { const raw = String(r['Cuenta bancaria'] || '').trim(); if (!raw || /^efectivo$/i.test(raw)) return; const k = raw.toLowerCase().replace(/\s+/g, ' ');
-    const g = G[k] = G[k] || { nombres: {}, rows: [] }; g.nombres[raw] = (g.nombres[raw] || 0) + 1; const f = bnResFecha_(r); if (f) g.rows.push({ f, r }); });
+    const g = G[k] = G[k] || { k, nombres: {}, rows: [] }; g.nombres[raw] = (g.nombres[raw] || 0) + 1; const f = bnResFecha_(r); if (f) g.rows.push({ f, r }); });
   const hoy = new Date(); hoy.setHours(12, 0, 0, 0); const hoyIso = hoy.toISOString().slice(0, 10), dias = f => Math.round((Date.parse(hoyIso) - Date.parse(f)) / 86400e3);
   const fmt = f => { const d = new Date(f + 'T12:00:00'); return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' }); };
   const money = v => { const n = Number(v); return isNaN(n) || v === '' || v == null ? '' : n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }); };
-  const cards = Object.values(G).map(g => { const nombre = Object.entries(g.nombres).sort((a, b) => b[1] - a[1])[0][0]; g.rows.sort((a, b) => b.f.localeCompare(a.f) || (Number(b.r.rowNum) || 0) - (Number(a.r.rowNum) || 0));
+  const td = 'padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;vertical-align:middle', th = 'padding:6px 10px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em;text-align:left;background:#f8fafc;border-bottom:1px solid #e5e7eb';
+  const secs = Object.values(G).map(g => { const nombre = Object.entries(g.nombres).sort((a, b) => b[1] - a[1])[0][0]; g.rows.sort((a, b) => b.f.localeCompare(a.f) || (Number(b.r.rowNum) || 0) - (Number(a.r.rowNum) || 0));
     const ult = g.rows[0], d = ult ? dias(ult.f) : null, c = d == null ? ['#6b7280', '#f3f4f6', 'Sin fechas'] : d <= 7 ? ['#15803d', '#dcfce7', `Hace ${d} día${d === 1 ? '' : 's'}`] : d <= 30 ? ['#b45309', '#fef3c7', `Hace ${d} días`] : ['#b91c1c', '#fee2e2', `Hace ${d} días · faltan archivos`];
-    const mes = g.rows.filter(x => dias(x.f) <= 30).length;
-    return { d: d == null ? 9e9 : d, html: `<div style="background:#fff;border:1.5px solid ${c[0]}33;border-top:4px solid ${c[0]};border-radius:12px;padding:12px 14px;min-width:0">
-      <div style="font-size:13px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(nombre)}">🏦 ${esc(nombre)}</div>
-      <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px"><b style="font-size:18px;color:#0f172a">${ult ? fmt(ult.f) : '—'}</b><span style="font-size:11px;font-weight:700;color:${c[0]};background:${c[1]};padding:2px 8px;border-radius:999px">${c[2]}</span></div>
-      <div style="font-size:11px;color:#64748b;margin-top:2px">Último registro · ${g.rows.length} en total · ${mes} en los últimos 30 días</div>
-      <div style="margin-top:8px;border-top:1px solid #f1f5f9">${g.rows.slice(0, 5).map(x => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #f8fafc;font-size:11.5px"><span style="color:#64748b;white-space:nowrap;min-width:62px">${fmt(x.f)}</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#334155" title="${esc(String(x.r.DESCRIPCION || x.r.Concepto || x.r.CONCEPTO || ''))}">${esc(String(x.r.DESCRIPCION || x.r.Concepto || x.r.CONCEPTO || '—'))}</span><b style="white-space:nowrap;color:${Number(x.r.Monto) < 0 ? '#b91c1c' : '#15803d'}">${money(x.r.Monto)}</b></div>`).join('')}</div></div>` }; })
-    .sort((a, b) => b.d - a.d);
-  host.innerHTML = cards.length ? `<div style="margin:0 0 14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="font-size:13px;font-weight:800;color:#0f172a">🗓️ Último registro por cuenta</div><span style="font-size:11.5px;color:#64748b">Las cuentas con más días sin registros van primero. Verde ≤ 7 días · Ámbar ≤ 30 · Rojo más de 30.</span><button type="button" onclick="bnUploadResumen_()" style="margin-left:auto;all:unset;cursor:pointer;font-size:12px;color:#5b21b6;font-weight:700">↻ Actualizar</button></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px">${cards.map(c => c.html).join('')}</div></div>` : '';
+    const mes = g.rows.filter(x => dias(x.f) <= 30).length, id = 'bnres-' + g.k.replace(/[^a-z0-9]+/g, '-');
+    return { d: d == null ? 9e9 : d, html: `<div class="bn-res-sec" id="${id}" style="background:#fff;border:1.5px solid #e2e8f0;border-left:4px solid ${c[0]};border-radius:12px;margin-bottom:12px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;flex-wrap:wrap">
+        <div style="min-width:0"><div style="font-size:13.5px;font-weight:800;color:#0f172a">🏦 ${esc(nombre)}</div><div style="font-size:11.5px;color:#64748b">Último registro: <b style="color:#0f172a">${ult ? fmt(ult.f) : '—'}</b> · ${g.rows.length} registros · ${mes} en los últimos 30 días</div></div>
+        <span style="font-size:11px;font-weight:700;color:${c[0]};background:${c[1]};padding:3px 9px;border-radius:999px">${c[2]}</span>
+        <label style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1.5px solid #7c3aed;background:linear-gradient(180deg,#ede9fe,#fff);color:#5b21b6;border-radius:9px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Subir archivos<input type="file" multiple accept=".xlsx,.xls,.csv" hidden onchange="bnUploadDeCuenta_('${esc(id)}', ${JSON.stringify(nombre).replace(/"/g, '&quot;')}, this)"></label></div>
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="${th}">Fecha</th><th style="${th}">Descripción</th><th style="${th}">Categoría</th><th style="${th};text-align:right">Monto</th></tr></thead><tbody>
+        ${g.rows.slice(0, 6).map(x => `<tr><td style="${td};white-space:nowrap;color:#64748b">${fmt(x.f)}</td><td style="${td};max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(String(x.r.DESCRIPCION || x.r.Concepto || x.r.CONCEPTO || ''))}">${esc(String(x.r.DESCRIPCION || x.r.Concepto || x.r.CONCEPTO || '—'))}</td><td style="${td};color:#64748b;white-space:nowrap">${esc(String(x.r.CATEGORIA || x.r.SUBCUENTA || ''))}</td><td style="${td};text-align:right;white-space:nowrap;font-weight:700;color:${Number(x.r.Monto) < 0 ? '#b91c1c' : '#15803d'}">${money(x.r.Monto)}</td></tr>`).join('') || `<tr><td colspan="4" style="${td};color:#94a3b8">Sin registros</td></tr>`}</tbody></table></div>
+      <div class="bn-res-host"></div></div>` }; }).sort((a, b) => b.d - a.d);
+  host.innerHTML = secs.length ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="font-size:13px;font-weight:800;color:#0f172a">🗓️ Último registro por cuenta</div><span style="font-size:11.5px;color:#64748b">De la que lleva más tiempo sin registros a la más reciente · verde ≤ 7 días, ámbar ≤ 30, rojo más de 30. Usa «Subir archivos» en la cuenta que corresponda.</span><button type="button" onclick="bnUploadResumen_()" style="margin-left:auto;all:unset;cursor:pointer;font-size:12px;color:#5b21b6;font-weight:700">↻ Actualizar</button></div>${secs.map(x => x.html).join('')}` : '';
+  if (card && BN_UPLOAD_STATE.cuentaSec) { const sec = document.getElementById(BN_UPLOAD_STATE.cuentaSec), h = sec && sec.querySelector('.bn-res-host'); if (h) h.appendChild(card); }
 }
+// «Subir archivos» de una cuenta: la tarjeta «Carga de datos bancarios» (con todo su flujo) se coloca debajo de esa tabla y procesa los archivos.
+window.bnUploadDeCuenta_ = function (secId, cuenta, input) {
+  const files = input && input.files; if (!files || !files.length) return;
+  BN_UPLOAD_STATE.cuentaPref = cuenta; BN_UPLOAD_STATE.cuentaSec = secId;
+  const card = document.getElementById('bn-upload-card'), sec = document.getElementById(secId), h = sec && sec.querySelector('.bn-res-host');
+  if (card && h) { h.appendChild(card); card.style.margin = '0 10px 12px'; card.style.borderColor = '#c4b5fd'; const t = card.querySelector('div > div > div'); if (t && !card.querySelector('.bn-res-tag')) { const tag = document.createElement('div'); tag.className = 'bn-res-tag'; tag.style.cssText = 'font-size:11.5px;color:#5b21b6;font-weight:700;margin-bottom:6px'; tag.textContent = `⬆ Cuenta: ${cuenta}`; card.prepend(tag); } else if (card.querySelector('.bn-res-tag')) card.querySelector('.bn-res-tag').textContent = `⬆ Cuenta: ${cuenta}`; }
+  bnUploadHandleFiles(files); try { input.value = ''; } catch (_) {}
+  setTimeout(() => { if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+};
