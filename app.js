@@ -22446,7 +22446,7 @@ function bnUploadMesUpdateLabel() {
 window.bnUploadSetSelectAll = function (mode) {
   const rows = BN_UPLOAD_STATE.parsedRows || [];
   rows.forEach((r, i) => {
-    if (r._status !== 'new') return;
+    if (r._status !== 'new' && r._status !== 'update') return;
     if (!_bnUploadMesPasses(r)) return;
     const k = _bnUploadRowKey(r, i);
     if (mode === 'all')   BN_UPLOAD_STATE.unchecked.delete(k);
@@ -22463,7 +22463,7 @@ window.bnUploadToggleRow = function (key, checked) {
 function bnUploadUpdateConfirmCount() {
   const rows = BN_UPLOAD_STATE.parsedRows || [];
   const sel = rows.filter((r, i) => {
-    if (r._status !== 'new') return false;
+    if (r._status !== 'new' && r._status !== 'update') return false;
     if (!_bnUploadMesPasses(r)) return false;
     return !BN_UPLOAD_STATE.unchecked.has(_bnUploadRowKey(r, i));
   }).length;
@@ -22556,6 +22556,7 @@ async function bnUploadInit() {
       const j = await res.json();
       if (!j.ok) throw new Error(j.error || 'No se pudo indexar BANCOS');
       BN_UPLOAD_STATE.dedupeKeys = new Set(j.keys || []);
+      BN_UPLOAD_STATE.transitoKeys = new Set(j.transito || []); // filas cuyo Saldo dice "En tránsito"
     } catch (e) {
       if (status) status.textContent = `⚠ Error indexando BANCOS: ${e.message}`;
       return;
@@ -23029,27 +23030,32 @@ function bnUploadAssignCountersAndDedupe(rows) {
     const car = bnUploadNumStr(r['CARGO']);
     const abo = bnUploadNumStr(r['ABONO']);
     const sal = bnUploadNumStr(r['SALDO']);
-    // ─── Paso 1: within-upload dedupe por SALDO (huella canónica) ───
-    if (sal) {
-      const fingerprint = [dia, cta, sub, desc, car, abo, sal].join('|');
-      if (seenInUpload[fingerprint]) {
-        r._status = 'duplicate';
-        r._withinUploadDup = true;
-        r._dedupeKey = fingerprint + '|withinUpload';
-        continue;
-      }
-      seenInUpload[fingerprint] = true;
-    }
-    // ─── Paso 2: contador #N + check vs BANCOS ───
     const baseFull  = [dia, cta, sub, desc, car, abo].join('|');
+    // ─── Paso 1: dentro del mismo archivo (regla 2026-10-20): misma llave y saldos iguales
+    //     (o uno de los dos vacío) = la misma transacción listada dos veces → se ignora la
+    //     segunda (y si la primera venía sin saldo, toma el saldo de la segunda). Dos saldos
+    //     distintos y no vacíos sí son dos movimientos (el saldo corriente cambió entre ellos).
+    const prev = seenInUpload[baseFull] || (seenInUpload[baseFull] = []);
+    const igual = prev.find(p => p.sal === sal || !p.sal || !sal);
+    if (igual) {
+      if (!igual.sal && sal) { igual.r['SALDO'] = r['SALDO']; igual.sal = sal; }
+      r._status = 'duplicate';
+      r._withinUploadDup = true;
+      r._dedupeKey = baseFull + '|withinUpload';
+      continue;
+    }
+    prev.push({ sal, r });
+    // ─── Paso 2: contador #N + check vs BANCOS ───
     const baseLoose = [dia, cta, '',  desc, car, abo].join('|');
     countersFull[baseFull]   = (countersFull[baseFull]   || 0) + 1;
     countersLoose[baseLoose] = (countersLoose[baseLoose] || 0) + 1;
     const keyFull  = baseFull  + '|#' + countersFull[baseFull];
     const keyLoose = baseLoose + '|#' + countersLoose[baseLoose];
     r._dedupeKey = keyFull;
+    const tr = BN_UPLOAD_STATE.transitoKeys;
     if (set && set.has(keyFull)) {
-      r._status = 'duplicate';
+      // Ya existe; si en BANCOS su saldo dice "En tránsito" y el banco ya lo confirmó, se actualiza el saldo.
+      r._status = (tr && tr.has(keyFull) && sal && !/tr[aá]nsito/i.test(String(r['SALDO']))) ? 'update' : 'duplicate';
     } else if (set && set.has(keyLoose)) {
       r._status = 'duplicate';
       r._matchedLoose = true;
@@ -23067,7 +23073,7 @@ function bnUploadRenderPreview() {
   const counts = document.getElementById('bn-upload-counts');
   if (!wrap || !body) return;
   const allRows = BN_UPLOAD_STATE.parsedRows || [];
-  const newCount = allRows.filter(r => r._status === 'new').length;
+  const newCount = allRows.filter(r => r._status === 'new' || r._status === 'update').length;
   const dupCount = allRows.filter(r => r._status === 'duplicate').length;
   const errCount = allRows.filter(r => r._error).length;
   const anomCount = allRows.filter(r => r.COMENTARIOS).length;
@@ -23122,8 +23128,8 @@ function bnUploadRenderPreview() {
   const html = rows.map(r => {
     if (r._error) return `<tr style="background:#fef2f2"><td colspan="${BN_UPLOAD_COLS.length + 1}" style="padding:6px 8px;color:#b91c1c;font-style:italic">${esc(r._error)}</td></tr>`;
     const _key = _bnUploadRowKey(r, r._origIdx);
-    const _checked = r._status === 'new' && !BN_UPLOAD_STATE.unchecked.has(_key);
-    const _chkCell = r._status === 'new'
+    const _checked = (r._status === 'new' || r._status === 'update') && !BN_UPLOAD_STATE.unchecked.has(_key);
+    const _chkCell = (r._status === 'new' || r._status === 'update')
       ? `<td style="padding:6px 4px;text-align:center"><input type="checkbox" class="bn-up-chk" ${_checked?'checked':''} onchange="bnUploadToggleRow('${esc(_key)}',this.checked)"></td>`
       : `<td style="padding:6px 4px"></td>`;
     const badge = r._status === 'duplicate'
@@ -23132,7 +23138,9 @@ function bnUploadRenderPreview() {
           : r._matchedLoose
             ? '<span title="BANCOS tiene una fila igual pero sin Subcuenta — se considera duplicada" style="display:inline-block;padding:2px 7px;border-radius:999px;background:#fef3c7;color:#92400e;font-weight:700;font-size:10px;border:1px solid #fde68a">⊝ Duplicada<span style="font-size:9px;opacity:.7"> ·sin sub</span></span>'
             : '<span style="display:inline-block;padding:2px 7px;border-radius:999px;background:#fef3c7;color:#92400e;font-weight:700;font-size:10px;border:1px solid #fde68a">⊝ Duplicada</span>')
-      : '<span style="display:inline-block;padding:2px 7px;border-radius:999px;background:#dcfce7;color:#15803d;font-weight:700;font-size:10px;border:1px solid #86efac">+ Nueva</span>';
+      : r._status === 'update'
+        ? '<span title="BANCOS tiene este movimiento con Saldo «En tránsito»; al insertar se actualiza su saldo (no se duplica)" style="display:inline-block;padding:2px 7px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-weight:700;font-size:10px;border:1px solid #bfdbfe">↻ Actualiza saldo</span>'
+        : '<span style="display:inline-block;padding:2px 7px;border-radius:999px;background:#dcfce7;color:#15803d;font-weight:700;font-size:10px;border:1px solid #86efac">+ Nueva</span>';
     const bg = r._status === 'duplicate' ? 'background:#fffbeb' : (r.COMENTARIOS ? 'background:#faf5ff' : '');
     const montoFmt = (r.Monto === '' || r.Monto === null || r.Monto === undefined) ? '<span style="color:#94a3b8;font-style:italic">vacío</span>' : fmt$(r.Monto);
     const montoColor = (r.Monto !== '' && Number(r.Monto) < 0) ? '#b91c1c' : '#15803d';
@@ -23217,7 +23225,7 @@ async function bnUploadConfirmInsert() {
 }
 async function _bnUploadConfirmInsertInner() {
   const rows = (BN_UPLOAD_STATE.parsedRows || []).filter((r, i) => {
-    if (r._error || r._status !== 'new') return false;
+    if (r._error || (r._status !== 'new' && r._status !== 'update')) return false;
     if (!_bnUploadMesPasses(r)) return false;
     return !BN_UPLOAD_STATE.unchecked.has(_bnUploadRowKey(r, i));
   });
@@ -23242,7 +23250,8 @@ async function _bnUploadConfirmInsertInner() {
     });
     const j = await res.json();
     if (!j.ok) throw new Error(j.error || 'Insert falló');
-    if (status) status.textContent = `✓ ${j.inserted} filas insertadas en BANCOS. Refrescando índice…`;
+    const _extra = (j.actualizados ? ` · ${j.actualizados} saldo(s) actualizado(s)` : '') + (j.omitidos ? ` · ${j.omitidos} duplicada(s) omitida(s) por la base` : '');
+    if (status) status.textContent = `✓ ${j.inserted} filas insertadas en BANCOS${_extra}. Refrescando índice…`;
     // La inserción va directo a Apps Script: avisa al servidor que su copia cambió.
     fetch(`${BACKEND}/bn/invalidate`, { method: 'POST' }).catch(() => {});
     // Si el origen fue Drive, marca cada file_id como importado para que
@@ -23509,7 +23518,7 @@ window.bnDriveProcessSelected = async function() {
   BN_UPLOAD_STATE.parsedRows = allRows;
   bnUploadRenderPreview();
   bnDriveClosePanel();
-  const newCount = allRows.filter(r => r._status === 'new').length;
+  const newCount = allRows.filter(r => r._status === 'new' || r._status === 'update').length;
   const dupCount = allRows.filter(r => r._status === 'duplicate').length;
   const errCount = allRows.filter(r => r._error).length;
   console.info(`[BN drive] total filas=${allRows.length} · nuevas=${newCount} · duplicadas=${dupCount} · errores=${errCount}`);
