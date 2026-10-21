@@ -6923,6 +6923,14 @@ setInterval(() => {
   if (Date.now() - _lgSnap.ts >= LG_SNAP_REFRESH_MS - 60_000) _lgSnapRefresh('intervalo');
 }, 60_000);
 
+// Montos de una reserva según Lodgify (la página pública de facturación los usa cuando la hoja Reservaciones no trae «$ MONTO TOTAL Airbnb»).
+app.get("/reservas/total/:id", (req, res) => {
+  const id = String(req.params.id || "").replace(/\D/g, "");
+  const b = ((_lgSnap.payload && _lgSnap.payload.bookings) || []).find(x => String(x.Id) === id);
+  if (!b) return res.status(404).json({ ok: false, error: "Reserva no encontrada en la copia de Lodgify" });
+  res.set("Cache-Control", "no-store");
+  res.json({ ok: true, Id: b.Id, Source: b.Source || "", TotalAmount: Number(b.TotalAmount) || 0, AmountPaid: Number(b.AmountPaid) || 0, AmountDue: Number(b.AmountDue) || 0, Status: b.Status || "" });
+});
 app.get("/lodgify-snapshot-status", (_req, res) => {
   res.json({
     ok: true,
@@ -11901,6 +11909,8 @@ app.post("/bn/presupuesto/refrescar", async (req, res) => {
 setTimeout(() => { _bnPresRefrescar().then(r => console.log(`[bancos] presupuesto copiado desde Sheets: ${r.budget.length} filas`)).catch(e => console.warn("[bancos] presupuesto:", e.message)); setInterval(() => _bnPresRefrescar().catch(() => {}), 24 * 3600_000); }, 90_000);
 app.all(["/facturapi", "/facturapi/*"], _ckappProxy);
 app.all("/api/breezeway/*", _ckappProxy);
+// Página pública de Facturapi (checkin-app) abierta vía api.check-inn.mx/facturapi: sus llamadas relativas /api/… también se reenvían.
+app.all(["/api/products", "/api/create-receipt", "/api/send-receipt-email", "/api/checkin-config", "/api/next-facturapi-folio"], _ckappProxy);
 app.all("/as", express.text({ type: "*/*", limit: "32mb" }), async (req, res) => {
   try {
     const post = req.method === "POST";
