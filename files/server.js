@@ -1413,7 +1413,7 @@ REGLAS:
 const BOT_TOOLS = [
   {
     name: "preparar_estado_aseo",
-    description: "ADMIN o PERSONAL. Prepara (NO guarda) la actualización del ESTADO DE ASEO de uno o varios alojamientos (ej. 'cu2 listo', 'Jc1 terminado Alma', 'ox1 inspeccionado', 'Cumbres 2 terminado y validado'). El backend reconoce el alojamiento aunque venga abreviado o con errores (cu2, jc2, 'jose cardenas 2', 'oaxaca1', 'oxaca 1'…), busca la reserva que salió, y asigna a la persona (la del celular, o la que se nombre en el texto). Devuelve draft_id + resumen para mostrar y pedir confirmación.",
+    description: "ADMIN o PERSONAL. Prepara (NO guarda) la actualización del ESTADO DE ASEO de uno o varios alojamientos (ej. 'cu2 listo', 'cumbres #2 limpio', 'cu2 acabado/concluido/terminado/ya quedó', 'Jc1 terminado Alma', 'ox1 inspeccionado', 'Cumbres 2 terminado y validado'). Si hoy no había limpieza programada para ese alojamiento, al confirmar se crea la card desde el chat. El backend reconoce el alojamiento aunque venga abreviado o con errores (cu2, jc2, 'jose cardenas 2', 'oaxaca1', 'oxaca 1'…), busca la reserva que salió, y asigna a la persona (la del celular, o la que se nombre en el texto). Devuelve draft_id + resumen para mostrar y pedir confirmación.",
     input_schema: {
       type: "object",
       properties: {
@@ -1950,7 +1950,7 @@ async function _botTarClasificar(desc, cat) {
   } catch (e) { console.warn("[bot-tarea] clasificar:", e.message); return { clasificacion: "", subclasificacion: "" }; }
 }
 // Conversación del PERSONAL por WhatsApp (estado de aseo, Check-Flow…): palabras que la activan, prompt y herramientas.
-const _BOT_ASEO_KW = /\b(me toca\w*|que me toca|asignad\w*|pendientes?|listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,}|historial|modific\w*|cambi\w*|huesped\w*|celular|datos)\b/;
+const _BOT_ASEO_KW = /\b(me toca\w*|que me toca|asignad\w*|pendientes?|listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|acabad\w*|conclui\w*|finaliz\w*|complet\w*|quedo|hech[oa]s?|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,}|historial|modific\w*|cambi\w*|huesped\w*|celular|datos)\b/;
 function _botStaffSys(nombre) {
   const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
   return `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
@@ -1964,9 +1964,9 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
 - Si una herramienta responde que no tiene permiso (solo administradores), dilo en 1 línea.
 - "resumen del día", "cierre del día", "resume las limpiezas", "resumen de limpiezas" → llama consultar_resumen_dia y responde con formatted_message TAL CUAL.
 - "lista actualizada de limpiezas", "estado de las limpiezas", "lista de limpiezas", "limpiezas de hoy", "¿cómo va el aseo?" → llama consultar_limpiezas_hoy y responde con formatted_message TAL CUAL. "mis limpiezas", "qué me toca", "mis aseos/inspecciones" → solo_mias=true; "limpiezas de Alma" → persona="Alma". No expliques cómo filtra.
-- Mensajes como "cu2 listo", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos":
+- Mensajes como "cu2 listo", "cumbres #2 limpio", "cumbres 2 terminado", "cu2 acabado", "cu2 concluido", "cu2 ya quedó", "Jc1 terminado Alma", "ox1 inspeccionado", "Cumbres 2 terminado y validado", "bc7 empezando", "jose cardenas 3 y ox1 listos" (nombre corto o largo + número = alojamiento; listo/limpio/terminado/acabado/concluido/hecho/ya quedó = terminado; cualquier persona del personal puede reportarlo y la limpieza queda asignada a quien escribe):
   · Llama preparar_estado_aseo con: alojamientos TAL CUAL los escribió (el sistema los reconoce aunque estén abreviados o con errores), estado (listo/lista/terminado/terminé/acabé = terminado · inspeccionado/revisado/checado = inspeccionado · empezando/limpiando/en proceso = en_proceso), validado=true SOLO si dice validado/publicado, y persona SOLO si nombra a alguien distinto de quien escribe (ej. "Alma").
-  · Envía el campo resumen TAL CUAL y espera respuesta.
+  · Envía el campo resumen TAL CUAL y espera respuesta. Pregunta UNA SOLA VEZ (el resumen ya confirma alojamiento y estado); no repitas la pregunta ni pidas más datos.
   · SOLO si contesta afirmativamente ("sí", "ok", "correcto", "dale") en un mensaje POSTERIOR, llama confirmar_estado_aseo y responde en 1 línea.
   · Si corrige algo ("no, es cu3", "fue Brenda", "nada más terminado"), vuelve a llamar preparar_estado_aseo con TODO corregido y muestra el nuevo resumen.
   · Si dice "no" / "cancela", responde "Cancelado." y no guardes.
@@ -2764,12 +2764,9 @@ async function _botExecTool(toolUse, ctx) {
         else personaNota = (r.amb && Object.keys(r.amb).length) ? `"${args.persona}" puede ser: ${Object.values(r.amb)[0].join(", ")}` : `No encontré a "${args.persona}" en Personal`;
       }
       const esAdm = await _aseoPuedeCierre(ctx);
-      if (!esAdm) {
-        // Empleado: solo sus tareas asignadas, a su nombre y sin validar.
-        persona = ctx.staffNombre || ""; personaNota = "";
-        const rh = await _aseoResumenHoy(), mias = new Set(_aseoMiasDe(rh, persona).map(i => String(i.hid)));
-        for (let k = items.length - 1; k >= 0; k--) if (!mias.has(String(items[k].hid))) { errores.push(`${items[k].code}: no la tienes asignada (solo puedes cambiar el estado de tus tareas)`); items.splice(k, 1); }
-      }
+      if (!esAdm) persona = ctx.staffNombre || "", personaNota = ""; // Empleado: a su nombre y sin validar (2026-10-21: cualquier persona del personal puede reportar; la tarea se le asigna)
+      // Sin card de limpieza prevista hoy para ese alojamiento → al confirmar se genera desde el chat (la card lleva el indicador «Desde el chat»).
+      { const rh = await _aseoResumenHoy(), conCard = new Set(rh.items.filter(i => !i.fantasma).map(i => String(i.hid))); items.forEach(x => { x.sinCard = !conCard.has(String(x.hid)); }); }
       if (!items.length) return { content: JSON.stringify({ ok: false, errores, instruccion: "Explica el problema en 1-2 líneas y pide el alojamiento correcto (ej. CU2, JC1, OX3)." }), notifyText: null };
       const validar = esAdm && (estado !== "terminado" || !!args.validado);
       const id = "AS" + Date.now().toString(36);
@@ -2791,6 +2788,7 @@ async function _botExecTool(toolUse, ctx) {
         `• Estado: ${_ASEO_EST_TXT[estado]}`,
         `• Publicar en guía: ${pub}`,
         `• ${estado === "inspeccionado" ? "Inspeccionó" : "Realizó"}: ${persona || "Sin asignar"}`,
+        ...(items.some(x => x.sinCard) ? [`• ${items.filter(x => x.sinCard).map(x => x.code).join(", ")}: hoy no había limpieza programada; se creará la card desde este chat`] : []),
         ...(errores.length ? [`⚠️ ${errores.join(" · ")}`] : []),
         ...(personaNota ? [`⚠️ ${personaNota}`] : []),
         "¿Confirmas? (sí / no / corrige lo que haga falta)"].join("\n");
@@ -2918,7 +2916,8 @@ async function _botExecTool(toolUse, ctx) {
       for (const x of d.items) {
         const reg = await _aseoGuardarEstado({ id: x.booking, hid: x.hid, estado: d.estado, validar: d.validar, user });
         const nuevo = d.persona ? await _aseoAsignarRol(x.booking, rol, d.persona, user).then(o => o && o._nuevo).catch(() => false) : false;
-        hechos.push(`${x.code}`);
+        if (x.sinCard) await _aseoMutate(_ASEO_EXTRA_OBJ, "extra", X => { X[x.booking] = Object.assign({}, X[x.booking], { chat: { by: d.persona || user, tel: ctx.phone10, at: new Date().toISOString(), estado: d.estado } }); delete X[x.booking].archivada; }).catch(e => console.warn("[aseo] extra chat:", e.message));
+        hechos.push(`${x.code}${x.sinCard ? " (card creada desde el chat)" : ""}`);
         if (reg && reg.validado === false) pend.push(x.code); // mismo dato que muestran las cards
         _aseoAutoMarca(x.hid, "modificado", _aseoEstadoDet(reg, d.estado));
         if (nuevo) _aseoAutoMarca(x.hid, "modificado", `${rol === "inspeccion" ? "🔍 Inspección" : "🧹 Aseo"}: ${_aseoCorto(d.persona)} (nuevo)`);
