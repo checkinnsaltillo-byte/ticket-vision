@@ -2764,7 +2764,7 @@ async function _botExecTool(toolUse, ctx) {
         else personaNota = (r.amb && Object.keys(r.amb).length) ? `"${args.persona}" puede ser: ${Object.values(r.amb)[0].join(", ")}` : `No encontré a "${args.persona}" en Personal`;
       }
       const esAdm = await _aseoPuedeCierre(ctx);
-      if (!esAdm) persona = ctx.staffNombre || "", personaNota = ""; // Empleado: a su nombre y sin validar (2026-10-21: cualquier persona del personal puede reportar; la tarea se le asigna)
+      // Empleado (2026-10-21): puede reportar cualquier alojamiento y nombrar a quien lo hizo («cu2 listo Brenda»); sin nombre queda a su nombre. No valida.
       // Sin card de limpieza prevista hoy para ese alojamiento → al confirmar se genera desde el chat (la card lleva el indicador «Desde el chat»).
       { const rh = await _aseoResumenHoy(), conCard = new Set(rh.items.filter(i => !i.fantasma).map(i => String(i.hid))); items.forEach(x => { x.sinCard = !conCard.has(String(x.hid)); }); }
       if (!items.length) return { content: JSON.stringify({ ok: false, errores, instruccion: "Explica el problema en 1-2 líneas y pide el alojamiento correcto (ej. CU2, JC1, OX3)." }), notifyText: null };
