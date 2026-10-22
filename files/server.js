@@ -12140,7 +12140,7 @@ function _rlpDeHtml(html, url) {
   const amen = (acc.amenityFeature || []).map(a => a && (a.name || a.value)).filter(x => typeof x === "string");
   const fs = acc.floorSize && (acc.floorSize.value || acc.floorSize);
   return { titulo, descripcion: (inm && inm.description) || _rlpMeta(html, "og:description") || _rlpMeta(html, "description") || "",
-    tipo: T(acc) || T(inm) || (/depa|depart/i.test(titulo) ? "departamento" : /casa/i.test(titulo) ? "casa" : ""), operacion: /vent|sale/i.test(titulo + " " + url) ? "venta" : /rent|alquil/i.test(titulo + " " + url) ? "renta" : "",
+    tipo: /Apartment/i.test(T(acc)) ? "departamento" : /House|SingleFamily/i.test(T(acc)) ? "casa" : _rlpTipo(titulo) !== "otro" ? _rlpTipo(titulo) : (T(acc) || ""), operacion: /vent|sale/i.test(titulo + " " + url) ? "venta" : /rent|alquil/i.test(titulo + " " + url) ? "renta" : "",
     precio, moneda: (oferta && oferta.priceCurrency) || (/USD|dólares/i.test(texto.slice(0, 5000)) ? "USD" : "MXN"),
     ciudad: addr.addressLocality || g(/en\s+(Saltillo|Monterrey|Torre[oó]n|Ramos Arizpe|Arteaga)/i) || "", estado: addr.addressRegion || "", colonia: "", direccion: addr.streetAddress || "", cp: addr.postalCode || "",
     lat: _rlpNum(geo.latitude), lng: _rlpNum(geo.longitude),
