@@ -1843,7 +1843,25 @@ const _BOT_PRIO_W = { "Crítico": 4, "Alto": 3, "Medio": 2, "Bajo": 1 };
 const _BOT_PRIO_E = { "Crítico": "🔴", "Alto": "🟠", "Medio": "🟡", "Bajo": "🔵" };
 const _BOT_ADMIN_ONLY_TOOLS = new Set(["consultar_datos_reserva", "consultar_historial", "consultar_tareas_checklist", "consultar_incidencias", "actualizar_incidencia", "actualizar_tarea_checklist", "consultar_limpiezas_hoy", "preparar_estado_aseo", "confirmar_estado_aseo", "preparar_solicitud_aseo", "confirmar_solicitud_aseo", "preparar_reprog_aseo", "confirmar_reprog_aseo", "consultar_resumen_dia", "consultar_resumen_tareas", "reportar_no_desalojo", "consultar_pendientes_del_dia", "crear_incidencia", "preparar_tarea_programada", "confirmar_tarea_programada", "crear_tarea_correctiva", "preparar_recordatorio_pizarra", "confirmar_recordatorio_pizarra"]);
 const _botPzDrafts = new Map(); // phone10 → recordatorio de pizarra pendiente de confirmar
-const _botAseoDrafts = new Map(); // phone10 → actualización de estado de aseo pendiente de confirmar
+// phone10 → actualización de estado de aseo pendiente de confirmar. Persistido en Cloud Storage (2026-10-22): antes vivía solo en
+// memoria y un deploy o una copia distinta del servidor perdía el borrador → el «sí» del empleado caía al flujo de huésped
+// («no tenemos personal en línea»).
+const _BOT_ASEO_DRAFTS_OBJ = "whatsapp/aseo-drafts.json";
+const _botAseoDrafts = {
+  m: new Map(), _del: new Set(), _t: null, _ts: 0,
+  get(k) { const v = this.m.get(k); if (v && v.exp && Date.now() > v.exp) { this.m.delete(k); return undefined; } return v; },
+  set(k, v) { this.m.set(k, v); this._del.delete(k); this._persist(); },
+  delete(k) { this.m.delete(k); this._del.add(k); this._persist(); },
+  _persist() { clearTimeout(this._t); this._t = setTimeout(async () => {
+    try { const o = (await _rhdGetJson(_BOT_ASEO_DRAFTS_OBJ).catch(() => ({}))) || {};
+      this._del.forEach(k => { delete o[k]; }); this._del.clear();
+      this.m.forEach((v, k) => { if (!v.exp || v.exp > Date.now()) o[k] = v; });
+      Object.keys(o).forEach(k => { if (o[k] && o[k].exp && o[k].exp < Date.now()) delete o[k]; });
+      await _rhdPut(_BOT_ASEO_DRAFTS_OBJ, JSON.stringify(o), "application/json"); } catch (e) { console.warn("[aseo-drafts] persistir:", e.message); } }, 150); },
+  async cargar() { if (Date.now() - this._ts < 2000) return; this._ts = Date.now();
+    try { const o = (await _rhdGetJson(_BOT_ASEO_DRAFTS_OBJ).catch(() => ({}))) || {};
+      Object.entries(o).forEach(([k, v]) => { if (v && v.exp > Date.now() && !this._del.has(k) && (!this.m.has(k) || (this.m.get(k).msgTs || 0) < (v.msgTs || 0))) this.m.set(k, v); }); } catch (_) {} },
+};
 const _botNsDatos = new Map(); // phone10 → reservas reportadas «no ha desalojado» (para «¿Quieres los datos del huésped…?»)
 const _ASEO_EST_TXT = { en_proceso: "En proceso", terminado: "Terminado", inspeccionado: "Inspeccionado" };
 // ¿El mensaje actual es un "sí" a un resumen "(por confirmar)" que el bot YA envió?
@@ -2757,12 +2775,15 @@ async function _botExecTool(toolUse, ctx) {
         items.push({ q, hid: m.aloj.hid, nombre: m.aloj.nombre, code: m.aloj.code.toUpperCase(), booking: t ? t.id : "H" + m.aloj.hid, salida: t ? t.dep : "", huesped: t ? (t.guest || "") : "", seguro: m.seguro });
       }
       // Persona: la nombrada en el texto (tolerante a nombres cortos) o el dueño del celular.
-      let persona = ctx.staffNombre || ctx.adminNombre || "", personaNota = "";
-      if (args.persona) {
-        const r = _botResolverPersonal([String(args.persona)], await _botPersonalActivo().catch(() => []));
-        if (r.ok.length) persona = r.ok[0];
-        else personaNota = (r.amb && Object.keys(r.amb).length) ? `"${args.persona}" puede ser: ${Object.values(r.amb)[0].join(", ")}` : `No encontré a "${args.persona}" en Personal`;
+      const _nomStr = v => v && typeof v === "object" ? String(v.nombre || v.Nombre || v.name || "") : String(v || "");
+      let persona = _nomStr(ctx.staffNombre) || _nomStr(ctx.adminNombre) || "", personaNota = "";
+      const personaArg = Array.isArray(args.persona) ? _nomStr(args.persona[0]) : _nomStr(args.persona);
+      if (personaArg && personaArg !== "[object Object]") {
+        const r = _botResolverPersonal([personaArg], await _botPersonalActivo().catch(() => []));
+        if (r.ok.length) persona = _nomStr(r.ok[0]);
+        else personaNota = (r.amb && Object.keys(r.amb).length) ? `"${personaArg}" puede ser: ${Object.values(r.amb)[0].join(", ")}` : `No encontré a "${personaArg}" en Personal`;
       }
+      if (!persona || persona === "[object Object]") persona = _nomStr(ctx.staffNombre) || "";
       const esAdm = await _aseoPuedeCierre(ctx);
       // Empleado (2026-10-21): puede reportar cualquier alojamiento y nombrar a quien lo hizo («cu2 listo Brenda»); sin nombre queda a su nombre. No valida.
       // Sin card de limpieza prevista hoy para ese alojamiento → al confirmar se genera desde el chat (la card lleva el indicador «Desde el chat»).
@@ -3394,6 +3415,8 @@ async function _cierreFinal(ci, hechos, fromRaw, phone10) {
   L.push("", `Gracias, ${pila}!`);
   await _cierreEnviar(fromRaw, phone10, (ci.dry ? `🧪 _Prueba como ${ci.nombre}: no se registró la salida_\n` : "") + L.join("\n"));
 }
+// asistencia_lookup_empleado (copia en Cloud Storage) devuelve empleado = {nombre, puesto, row}; el Apps Script devolvía el nombre.
+const _empNombre = v => (v && typeof v === "object" ? String(v.nombre || v.Nombre || "") : String(v || "")).trim();
 async function _asistenciaLookupEmpleado(phone10) {
   const cached = _asistenciaEmpCache.get(phone10);
   if (cached && (Date.now() - cached.ts) < _ASIST_EMP_TTL_MS) return cached.data;
@@ -3975,9 +3998,9 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
         const emoji = _asistIntent === "entrada" ? "🕘" : "🕕";
         const verbo = _asistIntent === "entrada" ? "Entrada" : "Salida";
         const nombre = String(resp.empleado || "").split(" ")[0];
-        await _aseoAutoCfgLoad().catch(() => {}); const _pfS = _aseoPerfil(String(resp.empleado || emp.empleado || ""));
+        await _aseoAutoCfgLoad().catch(() => {}); const _pfS = _aseoPerfil(_empNombre(resp.empleado) || _empNombre(emp.empleado));
         if (_asistIntent === "salida" && !(_pfS && _pfS.cierre === false)) { // cierre de jornada (salvo que el perfil lo tenga apagado): lista + estados pendientes; la confirmación llega al final
-          try { await _cierreIniciar({ nombre: String(resp.empleado || emp.empleado || ""), hora: resp.hora, fromRaw, phone10, dry: false }); return; }
+          try { await _cierreIniciar({ nombre: _empNombre(resp.empleado) || _empNombre(emp.empleado), hora: resp.hora, fromRaw, phone10, dry: false }); return; }
           catch (e) { console.warn("[cierre] no se pudo iniciar:", e.message); _asistCierre.delete(phone10); }
         }
         const reply = `${emoji} ${verbo} registrada · ${resp.hora}\n\n📍 Ahora comparte tu ubicación (obligatoria) — sin ella el registro queda incompleto.\n\nGracias, ${nombre}!`;
@@ -4083,13 +4106,14 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
   // pendiente de confirmar (para el "sí / no / corrección").
   {
     const _aseoKw = _BOT_ASEO_KW;
+    await _botAseoDrafts.cargar(); // borradores de otras copias del servidor / antes de un deploy
     const _aseoDraft = _botAseoDrafts.get(phone10);
     const _nsD = _botNsDatos.get(phone10);
     const _aseoPend = (_aseoDraft && Date.now() < _aseoDraft.exp) || (_nsD && Date.now() < _nsD.exp); // incluye la pregunta de datos del huésped
     if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
       const emp = _prueba ? { ok: true, empleado: _prueba } : await _asistenciaLookupEmpleado(phone10).catch(() => null);
       if (emp && emp.ok && emp.empleado) {
-        const nombre = String(emp.empleado || "").trim();
+        const nombre = _empNombre(emp.empleado);
         if (!bodyAlreadyPersisted) { await _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, staff: true }); bodyAlreadyPersisted = true; }
         try {
           let hist = [];
