@@ -617,8 +617,8 @@ app.get("/alojamientos-list", async (req, res) => {
     }
     if (wantId && payload && payload.ok && Array.isArray(payload.rows)) {
       const filtered = payload.rows.filter(r =>
-        String(r.HouseId || r.HouseID || r.ID || "").trim().toLowerCase() === wantId
-      );
+        String(r.HouseId || r.HouseID || r.ID || r.id_lodgify || "").trim().toLowerCase() === wantId
+      ).map(r => Object.assign({}, r, { HouseId: String(r.HouseId || r.id_lodgify || "").trim(), photos: Array.isArray(r.fotos) ? r.fotos : [] })); // fotos subidas a mano (las de Lodgify las agrega el JSON estático)
       return res.json({ ...payload, rows: filtered, total: filtered.length, cached: true });
     }
     res.json(payload);
@@ -5275,7 +5275,7 @@ app.post("/internal/sync-guias-to-github", async (req, res) => {
     for (const row of rows) {
       const id = String(row.HouseId || row.HouseID || row.id_lodgify || row.ID || "").trim(); // HouseId viene vacío en el catálogo: usar id_lodgify
       if (!id) continue;
-      const photos = await fetchLodgifyPhotos(id);
+      const photos = (Array.isArray(row.fotos) ? row.fotos.filter(f => f && f.url) : []).concat(/^9\d{8}$/.test(id) ? [] : await fetchLodgifyPhotos(id)); // subidas a mano primero; los manuales (9xxxxxxxx) no existen en Lodgify
       const rowWithPhotos = Object.assign({}, row, { photos, HouseId: id }); // la guía pública busca por HouseId
       files.push({
         path: `${baseDir}/${id}.json`,
@@ -12027,6 +12027,52 @@ Object.assign(_GCS_ACT, {
       d.rows.forEach(r => { const h = _alId(r); if (!h) return; const on = wanted.has(h), cur = _alBot(r.bot_enabled); if (on !== cur) { r.bot_enabled = on ? "TRUE" : ""; updated++; } });
       return { ok: true, updated, total_enabled: wanted.size }; });
   },
+});
+// Alojamiento nuevo desde cero (sin Lodgify): id manual 9 + 8 dígitos; hereda los campos de propiedad/globales de la base.
+app.post("/alojamientos/nuevo", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = (req.body || {}).datos || req.body || {}, txt = (v, n) => String(v == null ? "" : v).trim().slice(0, n || 500);
+    const prop = txt(b.Propiedad, 80), dep = txt(b["# Departamento"], 20);
+    if (!prop) return res.status(400).json({ ok: false, error: "Falta la Propiedad" });
+    const out = await _alMutar(d => {
+      if (d.rows.some(r => String(r.Propiedad || "").trim().toLowerCase() === prop.toLowerCase() && String(r["# Departamento"] || "").trim().toLowerCase() === dep.toLowerCase())) return { ok: false, error: `Ya existe ${prop}${dep ? " #" + dep : ""}` };
+      let id = String(b.id_lodgify || "").replace(/\D/g, "");
+      if (!id || d.rows.some(r => _alId(r) === id)) { do { id = "9" + String(Date.now()).slice(-8); } while (d.rows.some(r => _alId(r) === id)); }
+      const base = d.rows.find(r => String(r.Propiedad || "").trim().toLowerCase() === prop.toLowerCase()) || null, any = d.rows[0] || {};
+      const row = {}; d.headers.forEach(h => { row[h] = ""; });
+      _AL_SCOPES.global.forEach(k => { row[k] = any[k] == null ? "" : any[k]; });
+      if (base) _AL_SCOPES.propiedad.forEach(k => { row[k] = base[k] == null ? "" : base[k]; });
+      Object.keys(b).forEach(k => { if (k !== "id_lodgify" && typeof b[k] !== "object") { if (!d.headers.includes(k)) d.headers.push(k); row[k] = txt(b[k], 4000); } });
+      row.id_lodgify = id; row.HouseId = id; row.Propiedad = prop; row["# Departamento"] = dep; if (!row.Status) row.Status = "Activo";
+      if (!row.HouseName) row.HouseName = `${prop}${dep ? " #" + dep : ""}`; if (!row.titulo_txt) row.titulo_txt = row.HouseName;
+      if (!d.headers.includes("HouseId")) d.headers.push("HouseId"); if (!d.headers.includes("fotos")) d.headers.push("fotos"); row.fotos = [];
+      row.creado = new Date().toISOString(); row.creado_por = txt(b.__usuario, 80); delete row.__usuario; if (!d.headers.includes("creado")) d.headers.push("creado", "creado_por");
+      d.rows.push(row); return { ok: true, id, row, heredado: base ? `campos de ${prop}` : "solo generales" };
+    });
+    res.status(out.ok ? 200 : 400).json(out);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Fotos subidas a mano → bucket público (senaletica) en alojamientos/<id>/…; se guardan en la fila (fotos: [{url, alt}]).
+app.post("/alojamientos/fotos", upload.array("fotos", 20), async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const id = String((req.body || {}).id || "").trim(); if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    const files = (req.files || []).filter(f => /^image\//.test(f.mimetype || "")); if (!files.length) return res.status(400).json({ ok: false, error: "Sin imágenes" });
+    const nuevas = [];
+    for (const f of files) {
+      const ext = (f.mimetype === "image/png" ? "png" : f.mimetype === "image/webp" ? "webp" : "jpg"), name = `alojamientos/${id}/${Date.now()}-${crypto.randomBytes(3).toString("hex")}.${ext}`;
+      await _snWriteObj(name, fs.readFileSync(f.path), f.mimetype, null, "public, max-age=31536000"); try { fs.unlinkSync(f.path); } catch (_) {}
+      nuevas.push({ url: `https://storage.googleapis.com/${_SN_BUCKET}/${name}`, alt: String(f.originalname || "").replace(/\.[a-z0-9]+$/i, "").slice(0, 120) });
+    }
+    const r = await _alMutar(d => { const row = d.rows.find(x => _alId(x) === id); if (!row) return { ok: false, error: "Alojamiento no encontrado" }; if (!d.headers.includes("fotos")) d.headers.push("fotos"); row.fotos = (Array.isArray(row.fotos) ? row.fotos : []).concat(nuevas).slice(0, 60); return { ok: true, fotos: row.fotos }; });
+    res.status(r.ok ? 200 : 404).json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/alojamientos/fotos/quitar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const { id, url } = req.body || {}; const r = await _alMutar(d => { const row = d.rows.find(x => _alId(x) === String(id || "").trim()); if (!row) return { ok: false, error: "Alojamiento no encontrado" }; row.fotos = (Array.isArray(row.fotos) ? row.fotos : []).filter(f => f.url !== url); return { ok: true, fotos: row.fotos }; }); res.json(r); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/alojamientos/esquema", async (_req, res) => {
   try { const d = await _alDatos(); const props = {}; d.rows.forEach(r => { const p = String(r.Propiedad || "").trim(); if (p) props[p] = (props[p] || 0) + 1; });
