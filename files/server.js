@@ -597,9 +597,10 @@ async function _alojGetPayload() {
 
 app.get("/alojamientos-list", async (req, res) => {
   try {
-    await _alojGetPayload();
-    let payload = _alojCache.payload;
     const wantId = String(req.query.id || "").trim().toLowerCase();
+    let payload;
+    if (req.query.live) payload = await _GCS_ACT.list_alojamientos(); // vista en vivo (editor del sistema): directo de Cloud Storage, sin la copia de 5 min de esta instancia
+    else { await _alojGetPayload(); payload = _alojCache.payload; }
     // Cache-Control agresivo por-id: la guía pública se puede cachear en el
     // navegador y en cualquier CDN intermedio (Cloudflare/proxies del ISP)
     // sin miedo — los datos de una guía cambian raro. Si el admin edita,
@@ -11973,13 +11974,13 @@ async function _alDatos(fresco) {
   return data;
 }
 let _alQ = Promise.resolve();
-function _alMutar(fn) {
+function _alMutar(fn, opts) {
   const run = _alQ.then(async () => {
     for (let i = 0; i < 7; i++) {
       let { data, gen } = await _bnReadGcs(_AL_OBJ);
       if (!data || !Array.isArray(data.rows)) { data = await _alMigrar(); ({ data, gen } = await _bnReadGcs(_AL_OBJ)); }
       const antes = data.rows.length, out = fn(data);
-      if (data.rows.length < antes) throw new Error("Guardia: la operación quitaría alojamientos; no se guardó");
+      if (data.rows.length < antes - ((opts && opts.borra) || 0)) throw new Error("Guardia: la operación quitaría alojamientos; no se guardó");
       data.modificado = new Date().toISOString();
       try { await _bnWriteGcs(_AL_OBJ, data, gen); _alC.d = data; _alC.ts = Date.now(); _alInvalidar(); return out; }
       catch (e) { if (!e.conflict && !e.retry) throw e; await new Promise(r => setTimeout(r, Math.min(8000, 1100 * Math.pow(1.6, i)))); }
@@ -11997,7 +11998,7 @@ function _alInvalidar() {
 const _alId = r => String(r.HouseId || r.id_lodgify || "").trim();
 const _alBot = v => v === true || String(v).toUpperCase() === "TRUE" || String(v).trim() === "1";
 Object.assign(_GCS_ACT, {
-  list_alojamientos: async () => { const d = await _alDatos(); return { ok: true, rows: d.rows, total: d.rows.length, headers: d.headers }; },
+  list_alojamientos: async () => { const d = await _alDatos(true); return { ok: true, rows: d.rows, total: d.rows.length, headers: d.headers }; },
   alojamientos_list: async () => { const d = await _alDatos(); return { ok: true, rows: d.rows, total: d.rows.length }; },
   save_alojamiento: async data => {
     const payload = data && data.payload ? (typeof data.payload === "string" ? JSON.parse(data.payload) : data.payload) : (data || {});
@@ -12072,6 +12073,14 @@ app.post("/alojamientos/fotos", upload.array("fotos", 20), async (req, res) => {
 app.post("/alojamientos/fotos/quitar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const { id, url } = req.body || {}; const r = await _alMutar(d => { const row = d.rows.find(x => _alId(x) === String(id || "").trim()); if (!row) return { ok: false, error: "Alojamiento no encontrado" }; row.fotos = (Array.isArray(row.fotos) ? row.fotos : []).filter(f => f.url !== url); return { ok: true, fotos: row.fotos }; }); res.json(r); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Eliminar (va a la papelera del archivo: `eliminados`). Pensado para alojamientos creados desde cero; los de Lodgify se confirman en la UI.
+app.post("/alojamientos/eliminar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).id || "").trim(), usuario = String((req.body || {}).usuario || "").slice(0, 80); if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+    const r = await _alMutar(d => { const i = d.rows.findIndex(x => _alId(x) === id); if (i < 0) return { ok: false, error: "Alojamiento no encontrado" }; const [row] = d.rows.splice(i, 1); (d.eliminados = d.eliminados || []).push(Object.assign({}, row, { eliminado: new Date().toISOString(), eliminado_por: usuario })); return { ok: true, id }; }, { borra: 1 });
+    res.status(r.ok ? 200 : 404).json(r); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/alojamientos/esquema", async (_req, res) => {
