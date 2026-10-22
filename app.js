@@ -75350,10 +75350,32 @@ function rlpCss_() {
   @media(max-width:900px){.rlp-bar{grid-template-columns:1fr 1fr}.rlp-go{grid-column:1/-1;padding:12px}.rlp-form{grid-template-columns:1fr 1fr}.rlp-form .w2,.rlp-form .w3{grid-column:1/-1}}`;
   document.head.appendChild(st);
 }
+// Marcador «Enviar a Check-inn»: se arrastra a la barra de marcadores; en un anuncio lo captura (datos estructurados, texto y
+// fotos cargadas) y abre el sistema con la publicación prellenada. Sirve para los portales que bloquean al servidor.
+const RLP_MARCADOR = "javascript:(()=>{const q=s=>[...document.querySelectorAll(s)];const ld=q('script[type=\"application/ld+json\"]').map(s=>{try{return JSON.parse(s.textContent)}catch(e){return null}}).filter(Boolean);const m=k=>(document.querySelector('meta[property=\"'+k+'\"],meta[name=\"'+k+'\"]')||{}).content||'';const im=q('img');const imgs=[...new Set(im.filter(i=>{const u=i.currentSrc||i.src||'';return /^https?:/.test(u)&&!/logo|icon|avatar|sprite|\\.svg|flag|badge/i.test(u)&&(i.naturalWidth>=300||/naventcdn|cdn|img|photo|foto|media/i.test(u))}).map(i=>i.currentSrc||i.src))].slice(0,40);const d={url:location.href,title:document.title,og:{t:m('og:title'),d:m('og:description')||m('description'),i:m('og:image')},ld,imgs,text:document.body.innerText.slice(0,15000)};window.open('https://www.check-inn.mx/admin/?rlp='+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(d)))))+'#rentas-lp')})();";
+window.rlpMarcador_ = function () {
+  document.querySelectorAll('.rlp-modal').forEach(x => x.remove()); const m = document.createElement('div'); m.className = 'rlp-modal'; m.onclick = e => { if (e.target === m) m.remove(); };
+  m.innerHTML = `<div class="rlp-box" style="width:min(640px,100%)"><div class="rlp-bh"><h3>📎 Marcador «Enviar a Check-inn»</h3><button class="rlp-x" onclick="this.closest('.rlp-modal').remove()">✕</button></div>
+    <div style="padding:16px 18px;font-size:13.5px;line-height:1.55;color:#334155">
+      <p style="margin:0 0 10px">Vivanuncios, Inmuebles24 y otros portales bloquean la lectura automática desde el servidor, pero no desde tu navegador. Este marcador captura el anuncio <b>con sus fotos</b> y abre el sistema con la publicación prellenada.</p>
+      <ol style="margin:0 0 14px;padding-left:20px"><li>Arrastra este botón a tu barra de marcadores (Cmd/Ctrl+Shift+B la muestra):</li></ol>
+      <div style="text-align:center;margin:0 0 16px"><a href="${RLP_MARCADOR.replace(/"/g, '&quot;')}" onclick="return false" style="display:inline-block;padding:12px 20px;border-radius:12px;background:linear-gradient(135deg,#fec503,#ff9500);color:#111;font-weight:900;text-decoration:none;cursor:grab;box-shadow:0 10px 20px -8px rgba(255,149,0,.6)">🏘️ Enviar a Check-inn</a></div>
+      <ol start="2" style="margin:0;padding-left:20px"><li>Abre el anuncio en el portal y baja hasta ver las fotos (así se cargan todas).</li><li>Toca el marcador: se abre el sistema con los datos y las fotos listos para revisar y guardar.</li></ol>
+      <details style="margin-top:12px"><summary style="cursor:pointer;color:#64748b;font-size:12px">En celular o si no puedes arrastrarlo</summary><div style="font-size:12px;color:#64748b;margin-top:6px">Crea un marcador cualquiera, edítalo y pega este código como dirección:</div><textarea readonly onclick="this.select()" style="width:100%;box-sizing:border-box;height:90px;font-size:10.5px;margin-top:6px;padding:8px;border:1px solid #cbd5e1;border-radius:8px">${esc(RLP_MARCADOR)}</textarea></details></div></div>`;
+  document.body.appendChild(m);
+};
+// Al abrir el sistema desde el marcador (?rlp=…): se guarda el paquete y se abre la publicación prellenada.
+(function () { try { const u = new URL(location.href), b = u.searchParams.get('rlp'); if (b) { sessionStorage.setItem('rlp_pend', decodeURIComponent(escape(atob(b)))); u.searchParams.delete('rlp'); history.replaceState(null, '', u.pathname + (u.search || '') + '#rentas-lp'); } } catch (_) {} })();
+async function rlpPendiente_() {
+  let d = null; try { d = JSON.parse(sessionStorage.getItem('rlp_pend') || 'null'); } catch (_) {} if (!d) return; sessionStorage.removeItem('rlp_pend');
+  rlpNueva_(); const msg = document.getElementById('rlp-ext-msg'); document.getElementById('rlp-url').value = d.url || ''; if (msg) msg.textContent = '⏳ Procesando lo capturado en el portal…';
+  try { const j = await fetch(`${BACKEND}/rentas/extraer-pagina`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ datos: d }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error); const n = rlpAplicarExt_(j.pub); if (msg) msg.innerHTML = `✓ ${n} campos y ${(j.pub.fotos || []).length} fotos capturados de <b>${esc(j.pub.portal)}</b>. Revisa y guarda.`; }
+  catch (e) { if (msg) msg.textContent = '⚠ ' + (e.message || e); }
+}
 window.rlpInit = async function () {
   rlpCss_(); const root = document.getElementById('rlp-root'); if (!root) return;
   if (!RLP.items) { root.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b">⏳ Cargando publicaciones…</div>'; await rlpCargar_(); }
-  rlpRender_();
+  rlpRender_(); rlpPendiente_();
 };
 async function rlpCargar_() { try { const j = await fetch(`${BACKEND}/rentas`, { cache: 'no-store' }).then(r => r.json()); RLP.items = j.ok ? j.items : []; } catch (_) { RLP.items = RLP.items || []; } }
 function rlpFiltrar_() {
@@ -75385,7 +75407,7 @@ function rlpRender_() {
       <div class="rlp-pills"><span>Propias y de portales en una sola base</span><span>Extrae datos desde un link</span><span>Comparte y ve en el mapa</span></div></section>
     <div class="rlp-head"><div class="rlp-count">${L.length} propiedad${L.length === 1 ? '' : 'es'}<small>${[q.operacion, q.tipo && rlpTipoTx_(q.tipo), q.lugar].filter(Boolean).join(' · ') || 'todas'}</small></div>
       <span style="font-size:12px;color:#64748b">Ordenar:</span><select class="rlp-sel" onchange="RLP.q.orden=this.value;rlpRender_()">${opt([['reciente', 'Más reciente'], ['precio_asc', 'Precio: menor a mayor'], ['precio_desc', 'Precio: mayor a menor'], ['m2', 'Más m²']], q.orden)}</select>
-      <button class="rlp-new" onclick="rlpNueva_()">➕ Nueva publicación</button></div>
+      <button class="rlp-btn" style="margin-left:auto" onclick="rlpMarcador_()" title="Para capturar anuncios de portales que bloquean la lectura automática">📎 Marcador</button><button class="rlp-new" style="margin-left:0" onclick="rlpNueva_()">➕ Nueva publicación</button></div>
     <div class="rlp-grid">${L.map(rlpCard_).join('') || '<div style="grid-column:1/-1;text-align:center;padding:50px 20px;color:#94a3b8">Sin propiedades con esos filtros. Crea una con «➕ Nueva publicación» o pega un link de Vivanuncios, Inmuebles24, Century 21, Lamudi…</div>'}</div>
     <div class="rlp-float"><button class="rlp-fmap" onclick="rlpMapa_()">🗺️ Ver mapa</button><button class="rlp-fshare" onclick="rlpCompartir_(this)">🔗 Compartir</button></div>`;
 }
@@ -75477,7 +75499,7 @@ window.rlpExtraer_ = async function () {
   const url = (document.getElementById('rlp-url').value || '').trim(), msg = document.getElementById('rlp-ext-msg'); if (!/^https?:\/\//.test(url)) { msg.textContent = 'Pega un link válido.'; return; }
   msg.textContent = '⏳ Leyendo el anuncio…'; document.getElementById('rlp-ext-texto').style.display = 'none';
   try { const j = await fetch(`${BACKEND}/rentas/extraer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error);
-    if (j.bloqueado) { msg.innerHTML = `⚠️ <b>${esc(j.portal)}</b> bloquea la lectura automática. Abre el anuncio, selecciona todo (Ctrl/Cmd+A), copia y pega el texto abajo; la IA lo estructura.`; document.getElementById('rlp-ext-texto').style.display = 'block'; const cur = rlpLeerForm_(); cur.url_origen = url; cur.portal = j.portal; RLP.form = cur; return; }
+    if (j.bloqueado) { msg.innerHTML = `⚠️ <b>${esc(j.portal)}</b> bloquea la lectura automática. Opción A (con fotos): usa el marcador <a href="#" onclick="rlpMarcador_();return false" style="color:#0369a1;font-weight:800">📎 Enviar a Check-inn</a> desde el anuncio. Opción B: selecciona todo el texto del anuncio, cópialo y pégalo abajo; la IA lo estructura (sin fotos).`; document.getElementById('rlp-ext-texto').style.display = 'block'; const cur = rlpLeerForm_(); cur.url_origen = url; cur.portal = j.portal; RLP.form = cur; return; }
     const n = rlpAplicarExt_(j.pub); msg.innerHTML = `✓ ${n} campos tomados de <b>${esc(j.pub.portal)}</b>. Revisa y completa lo que falte.`;
   } catch (e) { msg.textContent = '⚠ ' + (e.message || e); }
 };
