@@ -14774,6 +14774,11 @@ async function _supContexto(conv) {
   const c = await _botFetchConversation(String(conv).replace(/\D/g, "").slice(-10), 14).catch(() => ({ messages: [] }));
   return (c.messages || []).filter(m => m.role !== "system").slice(-14).map(m => ({ de: m.role === "user" ? "huesped" : "nosotros", texto: String(m.body || "").slice(0, 1200), fecha: m.timestamp || "" }));
 }
+// Hilo del tema: desde el primer mensaje relacionado hasta el final (ambos lados), sin la respuesta aprobada. Contexto para el panel y para el prompt.
+function _supHilo(it, desde) {
+  const C = it.contexto || [], i0 = Math.max(0, Math.min(desde == null ? C.length - 1 : desde, C.length - 1)), fin = String(it.final || "").trim();
+  return C.slice(i0).filter(m => String(m.texto || "").trim() !== fin).slice(-10);
+}
 async function _supClasificar(id) {
   try {
     const d = await _rhdGetJson(_SUP_OBJ).catch(() => ({})), it = (d.items || []).find(x => x.id === id); if (!it) return;
@@ -14781,11 +14786,12 @@ async function _supClasificar(id) {
     const cfg = await _bcCfg(), procs = _bcCatalogo(cfg).filter(c => (c.tipo || "huesped") === "huesped").map(c => `${c.clave}: ${c.nombre}`).join("\n");
     const conv = (it.contexto || []).map((m, i) => `[${i}] ${m.de === "huesped" ? "HUÉSPED" : "NOSOTROS"}: ${m.texto}`).join("\n");
     const r = await _enLlm("Eres analista de atención a huéspedes de rentas de corta estancia. Respondes SOLO JSON.",
-      `Conversación reciente (índices entre corchetes):\n${conv}\n\nRespuesta que el equipo aprobó y envió:\n«${it.final}»\n\nTareas:\n1) "idx": índices de los mensajes del HUÉSPED que originaron esta respuesta (los que contienen la pregunta o situación que se responde; omite saludos sueltos, agradecimientos o temas ya resueltos).\n2) "categoria": id de la categoría que mejor corresponde, de esta lista:\n${cats}\nSi ninguna aplica usa "otra" y propone "categoria_nueva" (nombre corto).\n3) "proceso": clave del proceso del bot que corresponde, de esta lista:\n${procs}\n4) "resumen": la situación en una frase corta.\nFormato: {"idx":[..],"categoria":"..","categoria_nueva":"","proceso":"..","resumen":".."}`, 1200, "low");
+      `Conversación reciente (índices entre corchetes):\n${conv}\n\nRespuesta que el equipo aprobó y envió:\n«${it.final}»\n\nTareas:\n1) "idx": índices de los mensajes del HUÉSPED que originaron esta respuesta (los que contienen la pregunta o situación que se responde; omite saludos sueltos, agradecimientos o temas ya resueltos).\n1b) "desde": índice del PRIMER mensaje (de cualquiera de los dos) donde empieza el tema de esta respuesta, para conservar el contexto previo relacionado (preguntas anteriores del huésped y lo que ya le contestamos sobre lo mismo); omite temas anteriores ya cerrados.\n2) "categoria": id de la categoría que mejor corresponde, de esta lista:\n${cats}\nSi ninguna aplica usa "otra" y propone "categoria_nueva" (nombre corto).\n3) "proceso": clave del proceso del bot que corresponde, de esta lista:\n${procs}\n4) "resumen": la situación en una frase corta.\nFormato: {"idx":[..],"desde":0,"categoria":"..","categoria_nueva":"","proceso":"..","resumen":".."}`, 1200, "low");
     const idx = (Array.isArray(r.idx) ? r.idx : []).map(Number).filter(i => it.contexto[i] && it.contexto[i].de === "huesped");
     const cat = (en.categorias || []).find(c => c.id === r.categoria);
     await _supMut(dd => { const x = dd.items.find(y => y.id === id); if (!x) return;
       x.mensajes = (idx.length ? idx : [it.contexto.map(m => m.de).lastIndexOf("huesped")].filter(i => i >= 0)).map(i => it.contexto[i]);
+      const d0 = Number.isInteger(Number(r.desde)) ? Number(r.desde) : (idx.length ? Math.min(...idx) : null); x.hilo = _supHilo(it, d0 == null ? null : Math.min(d0, ...(idx.length ? idx : [d0])));
       x.categoria = cat ? { id: cat.id, nombre: cat.nombre } : { id: "otra", nombre: String(r.categoria_nueva || "Otra").slice(0, 80) };
       x.proceso = String(r.proceso || ""); x.resumen = String(r.resumen || "").slice(0, 200); x.estado = "clasificado"; });
   } catch (e) { console.warn("[supervisados] clasificar:", e.message); await _supMut(dd => { const x = dd.items.find(y => y.id === id); if (x) { x.estado = "error"; x.error = e.message; } }).catch(() => {}); }
@@ -14804,7 +14810,9 @@ async function _supPromptEjemplos(procs, texto) {
   const C = L.filter(x => sim(x) >= 1 || ((procs || []).includes(x.proceso) && x.proceso !== "dudas" && x.proceso !== "guia"));
   const E = C.map(x => [puntua(x), x]).sort((a, b) => b[0] - a[0]).slice(0, 4).map(y => y[1]); if (!E.length) return "";
   return `\n\nEJEMPLOS DE RESPUESTAS APROBADAS POR EL EQUIPO (situaciones parecidas que el equipo ya revisó; imita el tono, la extensión y la forma de resolver. Adapta a esta conversación: NO copies nombres, fechas, precios, alojamientos ni datos de esos huéspedes; si la información de esta reserva o de la guía contradice un ejemplo, manda la información actual. Usa un ejemplo SOLO si es la misma situación que plantea el huésped; si no se parece, ignóralo):\n` +
-    E.map((x, i) => `Ejemplo ${i + 1}${x.categoria && x.categoria.nombre ? ` (${x.categoria.nombre})` : ""}:\n  Huésped: ${(x.mensajes || []).map(m => String(m.texto).replace(/\s+/g, " ").slice(0, 400)).join(" / ")}\n  Respuesta aprobada: ${String(x.final).replace(/\n/g, "\n  ").slice(0, 1200)}`).join("\n");
+    E.map((x, i) => { const H = (x.hilo && x.hilo.length ? x.hilo : null) || _supHilo(x, (x.mensajes || []).length ? (x.contexto || []).findIndex(m => m.texto === x.mensajes[0].texto) : null);
+      const hilo = (H || []).slice(-6).map(m => `  ${m.de === "huesped" ? "Huésped" : "Nosotros"}: ${String(m.texto).replace(/\s+/g, " ").slice(0, 300)}`).join("\n");
+      return `Ejemplo ${i + 1}${x.categoria && x.categoria.nombre ? ` (${x.categoria.nombre})` : ""}:\n${hilo || `  Huésped: ${(x.mensajes || []).map(m => String(m.texto).replace(/\s+/g, " ").slice(0, 400)).join(" / ")}`}\n  Respuesta aprobada: ${String(x.final).replace(/\n/g, "\n  ").slice(0, 1200)}`; }).join("\n");
 }
 app.post("/bot/control/supervisados/usar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
@@ -14813,7 +14821,7 @@ app.post("/bot/control/supervisados/usar", async (req, res) => {
 });
 app.get("/bot/control/supervisados", async (req, res) => {
   res.set("Cache-Control", "no-store");
-  try { const d = await _rhdGetJson(_SUP_OBJ).catch(() => ({})); res.json({ ok: true, items: (d.items || []).slice().reverse() }); }
+  try { const d = await _rhdGetJson(_SUP_OBJ).catch(() => ({})); res.json({ ok: true, items: (d.items || []).map(x => x.hilo || !(x.contexto || []).length ? x : Object.assign({}, x, { hilo: _supHilo(x, (x.mensajes || []).length ? x.contexto.findIndex(m => m.texto === x.mensajes[0].texto) : null) })).reverse() }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/bot/control/supervisados", async (req, res) => {
