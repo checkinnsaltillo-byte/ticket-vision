@@ -12088,6 +12088,118 @@ app.get("/alojamientos/esquema", async (_req, res) => {
     res.set("Cache-Control", "no-store"); res.json({ ok: true, fuente: _AL_OBJ, scopes: _AL_SCOPES, headers: d.headers, propiedades: Object.entries(props).map(([nombre, n]) => ({ nombre, n })), filas: d.rows.length, migrado: d.migrado, modificado: d.modificado || null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ═══════════════════════════════════════════════════════════════════════════
+// 🏘️ Rentas de largo plazo (2026-10-22): publicaciones de propiedades en renta/venta (propias o de portales) homologadas en
+// una sola base: gs://…-panel/rentas-lp/publicaciones.json { v, items:[{…columnas…}], eliminados }.
+// Extracción desde un link: JSON-LD (schema.org RealEstateListing/Apartment/House/Offer…) + Open Graph + texto; si el portal
+// bloquea al servidor (Cloudflare), el usuario pega el texto del anuncio y la IA lo estructura (/rentas/extraer-texto).
+// ═══════════════════════════════════════════════════════════════════════════
+const _RLP_OBJ = "rentas-lp/publicaciones.json";
+const _RLP_TIPOS = ["departamento", "casa", "local", "oficina", "terreno", "bodega", "cuarto", "otro"];
+const _RLP_COLS = ["id", "titulo", "descripcion", "tipo", "operacion", "precio", "moneda", "periodo", "ciudad", "estado", "colonia", "direccion", "cp", "lat", "lng", "recamaras", "banos", "medios_banos", "estacionamientos", "m2_construccion", "m2_terreno", "amueblado", "amenidades", "fotos", "url_origen", "portal", "contacto_nombre", "contacto_tel", "fecha_publicacion", "estatus", "notas", "propia", "creado", "creado_por", "actualizado", "actualizado_por"];
+async function _rlpDatos() { const { data } = await _bnReadGcs(_RLP_OBJ); return data && Array.isArray(data.items) ? data : { v: 1, items: [], eliminados: [] }; }
+let _rlpQ = Promise.resolve();
+function _rlpMutar(fn) {
+  const run = _rlpQ.then(async () => { for (let i = 0; i < 7; i++) { const { data, gen } = await _bnReadGcs(_RLP_OBJ); const d = data && Array.isArray(data.items) ? data : { v: 1, items: [], eliminados: [] }; const out = fn(d); d.modificado = new Date().toISOString();
+      try { await _bnWriteGcs(_RLP_OBJ, d, data ? gen : "0"); return out; } catch (e) { if (!e.conflict && !e.retry) throw e; await new Promise(r => setTimeout(r, Math.min(8000, 1100 * Math.pow(1.6, i)))); } }
+    throw new Error("No se pudo guardar (conflicto). Intenta de nuevo."); });
+  _rlpQ = run.catch(() => {}); return run;
+}
+const _rlpNum = v => { if (v == null || v === "") return null; if (typeof v === "number") return isFinite(v) ? v : null; const n = Number(String(v).replace(/[^0-9.\-]/g, "")); return isFinite(n) ? n : null; };
+const _rlpTipo = t => { const x = _bcNrm(String(t || "")); return /depa|depto|apart|loft|flat|suite/.test(x) ? "departamento" : /casa|house|residen|villa/.test(x) ? "casa" : /local|comerc/.test(x) ? "local" : /oficin|office/.test(x) ? "oficina" : /terren|lote|land/.test(x) ? "terreno" : /bodeg|nave|warehouse/.test(x) ? "bodega" : /cuarto|habitaci|room/.test(x) ? "cuarto" : _RLP_TIPOS.includes(x) ? x : "otro"; };
+const _rlpOper = (t, precio) => { const x = _bcNrm(String(t || "")); return /vent|sale|compra/.test(x) ? "venta" : /rent|alquil|lease/.test(x) ? "renta" : (precio && precio > 400000 ? "venta" : "renta"); };
+function _rlpNormalizar(p, prev) {
+  p = p || {}; const txt = (v, n) => String(v == null ? "" : v).trim().slice(0, n || 300);
+  const precio = _rlpNum(p.precio), o = {
+    id: prev ? prev.id : (txt(p.id, 40) || "RLP-" + Date.now().toString(36).toUpperCase()),
+    titulo: txt(p.titulo, 200), descripcion: txt(p.descripcion, 6000), tipo: _rlpTipo(p.tipo), operacion: _rlpOper(p.operacion, precio),
+    precio, moneda: /usd|dólar|dolar/i.test(String(p.moneda || "")) ? "USD" : "MXN", periodo: txt(p.periodo, 20) || (_rlpOper(p.operacion, precio) === "renta" ? "mensual" : ""),
+    ciudad: txt(p.ciudad, 80) || "Saltillo", estado: txt(p.estado, 80) || "Coahuila", colonia: txt(p.colonia, 120), direccion: txt(p.direccion, 300), cp: txt(p.cp, 10),
+    lat: _rlpNum(p.lat), lng: _rlpNum(p.lng), recamaras: _rlpNum(p.recamaras), banos: _rlpNum(p.banos), medios_banos: _rlpNum(p.medios_banos), estacionamientos: _rlpNum(p.estacionamientos),
+    m2_construccion: _rlpNum(p.m2_construccion), m2_terreno: _rlpNum(p.m2_terreno), amueblado: p.amueblado === true || /^(s[ií]|true|1|amueblad)/i.test(String(p.amueblado || "")),
+    amenidades: (Array.isArray(p.amenidades) ? p.amenidades : String(p.amenidades || "").split(/[,;\n]/)).map(x => txt(x, 60)).filter(Boolean).slice(0, 60),
+    fotos: (Array.isArray(p.fotos) ? p.fotos : []).map(f => typeof f === "string" ? { url: f, alt: "" } : f).filter(f => f && /^https?:\/\//.test(String(f.url || ""))).map(f => ({ url: txt(f.url, 600), alt: txt(f.alt, 120) })).slice(0, 40),
+    url_origen: txt(p.url_origen, 600), portal: txt(p.portal, 40) || (p.url_origen ? _rlpPortal(p.url_origen) : "propia"), contacto_nombre: txt(p.contacto_nombre, 120), contacto_tel: txt(p.contacto_tel, 40),
+    fecha_publicacion: txt(p.fecha_publicacion, 20), estatus: ["activa", "pausada", "cerrada"].includes(p.estatus) ? p.estatus : (prev ? prev.estatus : "activa"), notas: txt(p.notas, 2000), propia: p.propia === true || String(p.propia) === "true",
+    creado: prev ? prev.creado : new Date().toISOString(), creado_por: prev ? prev.creado_por : txt(p.usuario, 80), actualizado: new Date().toISOString(), actualizado_por: txt(p.usuario, 80),
+  };
+  return o;
+}
+function _rlpPortal(u) { try { const h = new URL(u).hostname.replace(/^www\./, ""); return h.split(".")[0]; } catch (_) { return "otro"; } }
+function _rlpLd(html) { const out = []; (html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || []).forEach(b => { try { const j = JSON.parse(b.replace(/^[\s\S]*?>/, "").replace(/<\/script>$/i, "")); const push = x => { if (!x || typeof x !== "object") return; if (Array.isArray(x)) return x.forEach(push); out.push(x); if (Array.isArray(x["@graph"])) x["@graph"].forEach(push); }; push(j); } catch (_) {} }); return out; }
+const _rlpMeta = (html, k) => { const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]+content=["']([^"']*)["']`, "i")) || html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`, "i")); return m ? m[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : ""; };
+function _rlpDeHtml(html, url) {
+  const ld = _rlpLd(html), T = x => String((x && x["@type"]) || ""), find = re => ld.find(x => re.test(T(x))) || null;
+  const inm = find(/RealEstateListing|Apartment|House|Residence|Accommodation|Product|Place/i), oferta = find(/^Offer$/i) || (inm && inm.offers && (Array.isArray(inm.offers) ? inm.offers[0] : inm.offers)) || null;
+  const acc = find(/Apartment|House|Residence|Accommodation/i) || inm || {}, addr = (acc.address || (inm && inm.address) || {}), geo = acc.geo || (inm && inm.geo) || {};
+  const texto = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+  const g = re => { const m = texto.match(re); return m ? m[1] : null; };
+  const titulo = (inm && inm.name) || _rlpMeta(html, "og:title") || (html.match(/<title>([^<]*)<\/title>/i) || [])[1] || "";
+  const precio = _rlpNum(oferta && (oferta.price || (oferta.priceSpecification && oferta.priceSpecification.price))) || _rlpNum(_rlpMeta(html, "product:price:amount")) || _rlpNum(g(/(?:MN|MXN|\$)\s?([\d.,]{4,})/)) ;
+  const imgs = [].concat(inm && inm.image || [], acc.image || [], _rlpMeta(html, "og:image") || []).flat().map(x => typeof x === "string" ? x : (x && (x.url || x.contentUrl))).filter(Boolean);
+  const amen = (acc.amenityFeature || []).map(a => a && (a.name || a.value)).filter(x => typeof x === "string");
+  const fs = acc.floorSize && (acc.floorSize.value || acc.floorSize);
+  return { titulo, descripcion: (inm && inm.description) || _rlpMeta(html, "og:description") || _rlpMeta(html, "description") || "",
+    tipo: T(acc) || T(inm) || (/depa|depart/i.test(titulo) ? "departamento" : /casa/i.test(titulo) ? "casa" : ""), operacion: /vent|sale/i.test(titulo + " " + url) ? "venta" : /rent|alquil/i.test(titulo + " " + url) ? "renta" : "",
+    precio, moneda: (oferta && oferta.priceCurrency) || (/USD|dólares/i.test(texto.slice(0, 5000)) ? "USD" : "MXN"),
+    ciudad: addr.addressLocality || g(/en\s+(Saltillo|Monterrey|Torre[oó]n|Ramos Arizpe|Arteaga)/i) || "", estado: addr.addressRegion || "", colonia: "", direccion: addr.streetAddress || "", cp: addr.postalCode || "",
+    lat: _rlpNum(geo.latitude), lng: _rlpNum(geo.longitude),
+    recamaras: _rlpNum(acc.numberOfBedrooms || acc.numberOfRooms) || _rlpNum(g(/(\d+)\s*rec[aá]maras?/i)), banos: _rlpNum(acc.numberOfBathroomsTotal) || _rlpNum(g(/(\d+)\s*baños?/i)),
+    estacionamientos: _rlpNum(g(/(\d+)\s*(?:estacionamientos?|cajones?|cochera)/i)), m2_construccion: _rlpNum(fs) || _rlpNum(g(/(\d{2,5})\s*m²/)), m2_terreno: _rlpNum(g(/terreno[^0-9]{0,20}(\d{2,5})\s*m/i)),
+    amueblado: /amueblad/i.test(titulo + " " + ((inm && inm.description) || "")), amenidades: [...new Set(amen)].slice(0, 40), fotos: [...new Set(imgs)].slice(0, 30).map(u => ({ url: String(u).replace(/^\/\//, "https://"), alt: "" })),
+    url_origen: url, portal: _rlpPortal(url), contacto_nombre: "", contacto_tel: g(/(\+?52\s?)?(\d{3}[\s-]?\d{3}[\s-]?\d{4})/) || "" };
+}
+app.get("/rentas", async (_req, res) => { try { const d = await _rlpDatos(); res.set("Cache-Control", "no-store"); res.json({ ok: true, items: d.items, modificado: d.modificado || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/rentas/guardar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const p = (req.body || {}).pub || {}; if (!String(p.titulo || "").trim()) return res.status(400).json({ ok: false, error: "Falta el título" });
+    const r = await _rlpMutar(d => { const i = d.items.findIndex(x => x.id === p.id); const o = _rlpNormalizar(p, i >= 0 ? d.items[i] : null); if (i >= 0) d.items[i] = o; else d.items.unshift(o); return o; });
+    res.json({ ok: true, pub: r }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/rentas/eliminar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).id || ""); const r = await _rlpMutar(d => { const i = d.items.findIndex(x => x.id === id); if (i < 0) return { ok: false, error: "No encontrada" }; const [x] = d.items.splice(i, 1); (d.eliminados = d.eliminados || []).push(Object.assign({}, x, { eliminado: new Date().toISOString(), eliminado_por: String((req.body || {}).usuario || "") })); return { ok: true }; }); res.json(r); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/rentas/extraer", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const url = String((req.body || {}).url || "").trim(); if (!/^https?:\/\//.test(url)) return res.status(400).json({ ok: false, error: "Pega un link válido (https://…)" });
+    const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), 25000);
+    let r, html = "";
+    try { r = await _fetchReal(url, { redirect: "follow", signal: ctrl.signal, headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Accept": "text/html,application/xhtml+xml", "Accept-Language": "es-MX,es;q=0.9" } }); html = await r.text(); } finally { clearTimeout(t); }
+    const bloqueado = !r.ok || /Just a moment|Attention Required|cf-browser-verification|captcha/i.test(html.slice(0, 20000)) && html.length < 60000;
+    if (bloqueado) return res.json({ ok: true, bloqueado: true, portal: _rlpPortal(url), status: r.status, mensaje: "Este portal bloquea la lectura automática. Abre el anuncio, selecciona todo el texto (Ctrl/Cmd+A), cópialo y pégalo abajo; la IA lo estructura." });
+    const pub = _rlpDeHtml(html, url); res.json({ ok: true, bloqueado: false, pub, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "" && !(Array.isArray(pub[k]) && !pub[k].length)) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/rentas/extraer-texto", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const texto = String((req.body || {}).texto || "").slice(0, 60000), url = String((req.body || {}).url || "").trim(); if (texto.length < 40) return res.status(400).json({ ok: false, error: "Pega el texto del anuncio" });
+    const j = await _enLlm("Eres un extractor de datos de anuncios inmobiliarios de México. Respondes SOLO un objeto JSON.",
+      `Texto del anuncio (puede incluir menús y basura de la página; ignórala):\n"""\n${texto}\n"""\nURL: ${url || "(sin url)"}\n\nDevuelve JSON con estas claves (null si no aparece): titulo, descripcion (texto completo del anuncio, limpio), tipo (departamento|casa|local|oficina|terreno|bodega|cuarto|otro), operacion (renta|venta), precio (número, sin símbolos), moneda (MXN|USD), periodo (mensual|anual|"" ), ciudad, estado, colonia, direccion, cp, recamaras (número), banos (número), medios_banos, estacionamientos, m2_construccion, m2_terreno, amueblado (true/false), amenidades (lista de textos cortos), contacto_nombre, contacto_tel, fecha_publicacion (YYYY-MM-DD si aparece).`, 3000, "low");
+    const pub = Object.assign({}, j, { url_origen: url, portal: url ? _rlpPortal(url) : "otro" });
+    res.json({ ok: true, pub, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "") });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/rentas/fotos", upload.array("fotos", 30), async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).id || "nueva").replace(/[^\w-]/g, "").slice(0, 40); const files = (req.files || []).filter(f => /^image\//.test(f.mimetype || "")); if (!files.length) return res.status(400).json({ ok: false, error: "Sin imágenes" });
+    const fotos = []; for (const f of files) { const ext = f.mimetype === "image/png" ? "png" : f.mimetype === "image/webp" ? "webp" : "jpg", name = `rentas/${id}/${Date.now()}-${crypto.randomBytes(3).toString("hex")}.${ext}`; await _snWriteObj(name, fs.readFileSync(f.path), f.mimetype, null, "public, max-age=31536000"); try { fs.unlinkSync(f.path); } catch (_) {} fotos.push({ url: `https://storage.googleapis.com/${_SN_BUCKET}/${name}`, alt: String(f.originalname || "").replace(/\.[a-z0-9]+$/i, "").slice(0, 120) }); }
+    res.json({ ok: true, fotos }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Copia a nuestro bucket las fotos externas de una publicación (los portales a veces borran o bloquean sus imágenes).
+app.post("/rentas/fotos/importar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).id || "").replace(/[^\w-]/g, ""); const urls = (Array.isArray((req.body || {}).urls) ? req.body.urls : []).slice(0, 30); const out = [];
+    for (const u of urls) { try { const r = await _fetchReal(u, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*,*/*", "Referer": String((req.body || {}).referer || "") } }); if (!r.ok) throw new Error(r.status); const ct = r.headers.get("content-type") || "image/jpeg"; if (!/^image\//.test(ct)) throw new Error(ct); const buf = Buffer.from(await r.arrayBuffer()); if (buf.length < 2000 || buf.length > 15e6) throw new Error("tamaño"); const name = `rentas/${id || "import"}/${Date.now()}-${crypto.randomBytes(3).toString("hex")}.${ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg"}`; await _snWriteObj(name, buf, ct, null, "public, max-age=31536000"); out.push({ origen: u, url: `https://storage.googleapis.com/${_SN_BUCKET}/${name}` }); } catch (e) { out.push({ origen: u, error: String(e.message || e) }); } }
+    if (id) await _rlpMutar(d => { const x = d.items.find(y => y.id === id); if (!x) return; const map = new Map(out.filter(o => o.url).map(o => [o.origen, o.url])); x.fotos = (x.fotos || []).map(f => map.has(f.url) ? Object.assign({}, f, { url: map.get(f.url), origen: f.url }) : f); });
+    res.json({ ok: true, fotos: out }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.all(["/facturapi", "/facturapi/*"], _ckappProxy);
 app.all("/api/breezeway/*", _ckappProxy);
 // Página pública de Facturapi (checkin-app) abierta vía api.check-inn.mx/facturapi: sus llamadas relativas /api/… también se reenvían.
