@@ -34065,7 +34065,9 @@ function guiasBuildEditor_(alojs) {
   const secs = GUIAS_EDIT_SECCIONES.map(([ico, tit, campos]) => { const F = campos.filter(([, col]) => filtro(col)); if (!F.length) return '';
     return guiasCard(tit, ico, F.map(([lbl, col, type]) => guiasField(lbl, col, alojs, { type: type || 'text' })).join('')); }).join('');
   const fotos = !C && alojs.length === 1 ? guiasFotosHtml_(alojs[0]) : '';
-  return aviso + fotos + (secs || '<div style="color:#94a3b8;font-size:13px">Sin campos para este alcance.</div>');
+  const idU = alojs.length === 1 ? String(alojs[0]['HouseId'] || alojs[0]['id_lodgify'] || '').trim() : '';
+  const borrar = !C && idU && /^9\d{8}$/.test(idU) ? `<div style="text-align:right;margin:4px 0 16px"><button type="button" onclick="guiasEliminar_('${esc(idU)}')" style="all:unset;cursor:pointer;color:#b91c1c;font-size:12px;font-weight:700;border:1px solid #fca5a5;padding:6px 12px;border-radius:8px">🗑 Eliminar este alojamiento</button></div>` : '';
+  return aviso + fotos + (secs || '<div style="color:#94a3b8;font-size:13px">Sin campos para este alcance.</div>') + borrar;
 }
 // ── 📷 Fotos subidas a mano (se guardan en la base y las muestra la guía junto a las de Lodgify) ──
 function guiasFotosHtml_(aloj) {
@@ -34091,6 +34093,11 @@ window.guiasFotosSubir_ = async function (id, input) {
     guiasRenderContent();
   } catch (e) { if (st) st.textContent = '⚠ ' + e.message; alert('⚠ ' + e.message); }
   try { input.value = ''; } catch (_) {}
+};
+window.guiasEliminar_ = async function (id) {
+  const a = guiasAlojById(id); if (!confirm(`¿Eliminar «${a ? guiasItemLabel(a) : id}» de la base? Queda en la papelera del archivo, pero su guía dejará de existir.`)) return;
+  try { const j = await fetch(`${BACKEND}/alojamientos/eliminar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, usuario: (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser) : '' }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error);
+    GUIAS_STATE.editMode = false; GUIAS_STATE.dirty = {}; await _alojFetchAndIndex(); GUIAS_STATE.selectedIds = new Set(); guiasInit(); } catch (e) { alert('⚠ ' + (e.message || e)); }
 };
 window.guiasFotoQuitar_ = async function (id, url) {
   if (!confirm('¿Quitar esta foto de la guía?')) return;
