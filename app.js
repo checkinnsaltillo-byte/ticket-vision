@@ -34510,7 +34510,8 @@ function guiasRenderContent() {
   // Descripción: solo mostrar si es distinta al nombre del alojamiento.
   const descPropShown = (descProp && descProp.toLowerCase() !== nombreProp.toLowerCase()) ? descProp : '';
   const heroHtml = isReadOne
-    ? `<div id="guias-logo-bar" style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:10px 16px;display:flex;align-items:center;justify-content:center">
+    ? `<div id="guias-logo-bar" style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:10px 16px;display:flex;align-items:center;justify-content:center;position:relative">
+         <div style="position:absolute;right:12px;top:50%;transform:translateY(-50%)">${editBtn}</div>
          <div style="display:inline-flex;align-items:center;gap:4px">
            <img src="https://checkinnsaltillo-byte.github.io/checkin-app/public/registro/loader_text.png" alt="Check-inn" style="display:block;height:32px">
            <img src="https://checkinnsaltillo-byte.github.io/checkin-app/public/registro/loader_pin.png" alt="" style="display:block;height:36px">
