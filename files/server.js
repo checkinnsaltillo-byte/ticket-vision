@@ -11931,6 +11931,108 @@ app.post("/bn/presupuesto/refrescar", async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 setTimeout(() => { _bnPresRefrescar().then(r => console.log(`[bancos] presupuesto copiado desde Sheets: ${r.budget.length} filas`)).catch(e => console.warn("[bancos] presupuesto:", e.message)); setInterval(() => _bnPresRefrescar().catch(() => {}), 24 * 3600_000); }, 90_000);
+// ═══════════════════════════════════════════════════════════════════════════
+// 🏠 Catálogo «alojamientos» en Cloud Storage (2026-10-22). La pestaña de Google Sheets queda intacta pero YA NO ES LA FUENTE.
+//   config/alojamientos.json  { v, headers, rows:[{<columna>: valor}], migrado }   (misma forma que list_alojamientos)
+// Alcance de cada campo (lo que ve el editor de Guías de bienvenida y lo que propaga save_alojamiento):
+//   global    → el mismo valor para TODOS los alojamientos (reglamento, horas de entrada/salida)
+//   propiedad → el mismo valor para los alojamientos de la MISMA «Propiedad» (dirección, wifi, estacionamiento, lavandería…)
+//   unidad    → lo demás (cada alojamiento el suyo)
+// Guardar un campo global/propiedad desde cualquier alojamiento lo escribe en todos los que comparten ese alcance
+// (salvo payload.alcance === "unidad"). Las filas «ED. …» (edificios) son su propia propiedad.
+// ═══════════════════════════════════════════════════════════════════════════
+const _AL_OBJ = "config/alojamientos.json";
+const _AL_SCOPES = {
+  global: ["reglamento", "hora_llegada", "hora_salida"],
+  propiedad: ["Propiedad_short", "ubicacion", "ubicacion_txt", "direccion", "referencia_googlemaps", "url_google_maps", "clasificacion", "amenidades", "wifi_red", "wifi_contrasena", "wifi_falla",
+    "estacionamiento_instrucciones", "estacioamiento_aviso", "estacionamiento_aviso", "lavanderia_reglamento", "lavanderia_aviso", "insumos_ubicacion", "insumos", "insumos_aviso", "salida_instrucciones",
+    "instrucciones_aviso", "salida_aviso", "contacto_emergencia_1_nombre", "contacto_emergencia_1_numero", "contacto_emergencia_2_nombre", "contacto_emergencia_2_numero", "contacto_whatsapp", "restaurantes"],
+};
+const _alScope = k => _AL_SCOPES.global.includes(k) ? "global" : _AL_SCOPES.propiedad.includes(k) ? "propiedad" : "unidad";
+const _alC = { d: null, ts: 0 };
+let _alMig = null;
+async function _alMigrar() {
+  if (_alMig) return _alMig;
+  _alMig = (async () => {
+    const r = await callCheckinAppsScript("list_alojamientos", null, { directo: true });
+    if (!r || r.ok === false || !Array.isArray(r.rows) || !r.rows.length) throw new Error("No se pudo copiar la hoja alojamientos: " + ((r && r.error) || "sin filas"));
+    const headers = []; r.rows.forEach(x => Object.keys(x).forEach(k => { if (k && !headers.includes(k)) headers.push(k); }));
+    const d = { v: 1, headers, rows: r.rows.map(x => { const o = {}; headers.forEach(h => { o[h] = x[h] == null ? "" : x[h]; }); return o; }), migrado: new Date().toISOString(), origen: "Google Sheets · alojamientos" };
+    await _bnWriteGcs(`config/respaldo/alojamientos-migracion-${_bnHoy()}.json`, d, null);
+    await _bnWriteGcs(_AL_OBJ, d, "0").catch(e => { if (!e.conflict) throw e; }); // si otra copia ya lo creó, se usa esa
+    console.log(`[alojamientos] copiado a Cloud Storage: ${d.rows.length} filas, ${headers.length} columnas`);
+    return d;
+  })().finally(() => { _alMig = null; });
+  return _alMig;
+}
+async function _alDatos(fresco) {
+  if (!fresco && _alC.d && Date.now() - _alC.ts < 5_000) return _alC.d;
+  let { data } = await _bnReadGcs(_AL_OBJ);
+  if (!data || !Array.isArray(data.rows)) data = await _alMigrar();
+  _alC.d = data; _alC.ts = Date.now();
+  return data;
+}
+let _alQ = Promise.resolve();
+function _alMutar(fn) {
+  const run = _alQ.then(async () => {
+    for (let i = 0; i < 7; i++) {
+      let { data, gen } = await _bnReadGcs(_AL_OBJ);
+      if (!data || !Array.isArray(data.rows)) { data = await _alMigrar(); ({ data, gen } = await _bnReadGcs(_AL_OBJ)); }
+      const antes = data.rows.length, out = fn(data);
+      if (data.rows.length < antes) throw new Error("Guardia: la operación quitaría alojamientos; no se guardó");
+      data.modificado = new Date().toISOString();
+      try { await _bnWriteGcs(_AL_OBJ, data, gen); _alC.d = data; _alC.ts = Date.now(); _alInvalidar(); return out; }
+      catch (e) { if (!e.conflict && !e.retry) throw e; await new Promise(r => setTimeout(r, Math.min(8000, 1100 * Math.pow(1.6, i)))); }
+    }
+    throw new Error("No se pudo guardar alojamientos (conflicto). Intenta de nuevo.");
+  });
+  _alQ = run.catch(() => {});
+  return run;
+}
+function _alInvalidar() {
+  _alojCache.payload = null; _alojCache.ts = 0; _botAlojRowsCache.rows = null; _botAlojRowsCache.ts = 0; _botAlojEnabledCache.map = null; _botAlojEnabledCache.ts = 0;
+  // Las guías públicas leen JSON estático: se regenera en segundo plano 45 s después del último cambio.
+  clearTimeout(_alInvalidar._t); _alInvalidar._t = setTimeout(() => { if (process.env.SYNC_SECRET) fetch(`http://127.0.0.1:${process.env.PORT || 8080}/internal/sync-guias-to-github`, { method: "POST", headers: { "Content-Type": "application/json", "X-Sync-Secret": process.env.SYNC_SECRET }, body: "{}" }).catch(() => {}); }, 45_000);
+}
+const _alId = r => String(r.HouseId || r.id_lodgify || "").trim();
+const _alBot = v => v === true || String(v).toUpperCase() === "TRUE" || String(v).trim() === "1";
+Object.assign(_GCS_ACT, {
+  list_alojamientos: async () => { const d = await _alDatos(); return { ok: true, rows: d.rows, total: d.rows.length, headers: d.headers }; },
+  alojamientos_list: async () => { const d = await _alDatos(); return { ok: true, rows: d.rows, total: d.rows.length }; },
+  save_alojamiento: async data => {
+    const payload = data && data.payload ? (typeof data.payload === "string" ? JSON.parse(data.payload) : data.payload) : (data || {});
+    const id = String(payload.HouseId || payload.houseId || payload.ID || payload.id_lodgify || "").trim(); if (!id) return { ok: false, error: "HouseId requerido." };
+    let changes = payload.changes || {}; if (typeof changes === "string") changes = JSON.parse(changes);
+    if (!changes || typeof changes !== "object" || !Object.keys(changes).length) return { ok: false, error: "Sin cambios." };
+    const soloUnidad = String(payload.alcance || "") === "unidad";
+    return _alMutar(d => {
+      const row = d.rows.find(r => _alId(r) === id || String(r.id_lodgify || "").trim() === id || String(r.HouseId || "").trim() === id);
+      if (!row) return { ok: false, error: "No se encontró alojamiento con HouseId " + id };
+      let written = 0; const filas = new Set(), propagados = {};
+      for (const k of Object.keys(changes)) {
+        if (!d.headers.includes(k)) d.headers.push(k);
+        const v = changes[k] == null ? "" : String(changes[k]), sc = soloUnidad ? "unidad" : _alScope(k);
+        const destino = sc === "global" ? d.rows : sc === "propiedad" ? d.rows.filter(r => String(r.Propiedad || "").trim() === String(row.Propiedad || "").trim()) : [row];
+        destino.forEach(r => { r[k] = v; filas.add(_alId(r) || r.Propiedad + "#" + r["# Departamento"]); });
+        if (sc !== "unidad") propagados[k] = { alcance: sc, alojamientos: destino.length };
+        written++;
+      }
+      return { ok: true, houseId: id, updated: written, alojamientos_afectados: filas.size, propagados };
+    });
+  },
+  wa_bot_alojamientos: async () => { const d = await _alDatos(); return { ok: true, alojamientos: d.rows.map(r => ({ HouseId: _alId(r), Propiedad: String(r.Propiedad || ""), Departamento: String(r["# Departamento"] || ""), bot_enabled: _alBot(r.bot_enabled) })).filter(x => x.HouseId) }; },
+  wa_bot_alojamientos_set: async data => {
+    const wanted = new Set((Array.isArray(data && data.houseIds) ? data.houseIds : []).map(h => String(h).trim()));
+    return _alMutar(d => { if (!d.headers.includes("bot_enabled")) d.headers.push("bot_enabled"); let updated = 0;
+      d.rows.forEach(r => { const h = _alId(r); if (!h) return; const on = wanted.has(h), cur = _alBot(r.bot_enabled); if (on !== cur) { r.bot_enabled = on ? "TRUE" : ""; updated++; } });
+      return { ok: true, updated, total_enabled: wanted.size }; });
+  },
+});
+app.get("/alojamientos/esquema", async (_req, res) => {
+  try { const d = await _alDatos(); const props = {}; d.rows.forEach(r => { const p = String(r.Propiedad || "").trim(); if (p) props[p] = (props[p] || 0) + 1; });
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, fuente: _AL_OBJ, scopes: _AL_SCOPES, headers: d.headers, propiedades: Object.entries(props).map(([nombre, n]) => ({ nombre, n })), filas: d.rows.length, migrado: d.migrado, modificado: d.modificado || null }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.all(["/facturapi", "/facturapi/*"], _ckappProxy);
 app.all("/api/breezeway/*", _ckappProxy);
 // Página pública de Facturapi (checkin-app) abierta vía api.check-inn.mx/facturapi: sus llamadas relativas /api/… también se reenvían.
