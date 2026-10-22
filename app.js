@@ -34064,8 +34064,73 @@ function guiasBuildEditor_(alojs) {
     : `<div style="margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px;color:#475569;line-height:1.45">Cada campo indica su alcance: <b>🌐 General</b> (todos), <b>🏢 Propiedad</b> (los alojamientos de la misma propiedad) o <b>🚪 Este alojamiento</b>. Al guardar, los campos generales y de propiedad se copian automáticamente a los demás.</div>`;
   const secs = GUIAS_EDIT_SECCIONES.map(([ico, tit, campos]) => { const F = campos.filter(([, col]) => filtro(col)); if (!F.length) return '';
     return guiasCard(tit, ico, F.map(([lbl, col, type]) => guiasField(lbl, col, alojs, { type: type || 'text' })).join('')); }).join('');
-  return aviso + (secs || '<div style="color:#94a3b8;font-size:13px">Sin campos para este alcance.</div>');
+  const fotos = !C && alojs.length === 1 ? guiasFotosHtml_(alojs[0]) : '';
+  return aviso + fotos + (secs || '<div style="color:#94a3b8;font-size:13px">Sin campos para este alcance.</div>');
 }
+// ── 📷 Fotos subidas a mano (se guardan en la base y las muestra la guía junto a las de Lodgify) ──
+function guiasFotosHtml_(aloj) {
+  const id = String(aloj['HouseId'] || aloj['id_lodgify'] || '').trim(), F = Array.isArray(aloj.fotos) ? aloj.fotos : [];
+  const manual = /^9\d{8}$/.test(id);
+  const inner = `<div style="font-size:12px;color:#64748b;margin-bottom:8px">${manual ? 'Alojamiento creado desde cero: estas fotos son las de su guía.' : 'Además de las fotos que llegan de Lodgify, puedes subir fotos propias; aparecen primero en la galería de la guía.'}</div>
+    <div id="guias-fotos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:10px">${F.map(f => `<div style="position:relative;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;background:#f8fafc;aspect-ratio:4/3"><img src="${esc(f.url)}" alt="${esc(f.alt || '')}" style="width:100%;height:100%;object-fit:cover;display:block"><button type="button" title="Quitar foto" onclick="guiasFotoQuitar_('${esc(id)}','${esc(f.url)}')" style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:999px;border:0;background:rgba(15,23,42,.75);color:#fff;font-size:13px;cursor:pointer">✕</button></div>`).join('')}${F.length ? '' : '<div style="grid-column:1/-1;color:#94a3b8;font-size:12px;font-style:italic">Sin fotos propias todavía.</div>'}</div>
+    <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;background:#0d9488;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">📷 Subir fotos<input type="file" accept="image/*" multiple style="display:none" onchange="guiasFotosSubir_('${esc(id)}', this)"></label>
+    <span id="guias-fotos-st" style="margin-left:10px;font-size:12px;color:#64748b"></span>`;
+  return guiasCard('Fotos del alojamiento', '📷', inner);
+}
+window.guiasFotosSubir_ = async function (id, input) {
+  const files = Array.from(input.files || []); if (!files.length) return; const st = document.getElementById('guias-fotos-st');
+  try {
+    if (st) st.textContent = `⏳ Preparando ${files.length} foto(s)…`;
+    const fd = new FormData(); fd.append('id', id);
+    for (const f of files) { let b = f; try { if (typeof imgLigera_ === 'function') b = await imgLigera_(f, 1600, 0.8); } catch (_) {} fd.append('fotos', b, f.name); }
+    if (st) st.textContent = '⏳ Subiendo…';
+    const j = await fetch(`${BACKEND}/alojamientos/fotos`, { method: 'POST', body: fd }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'No se pudieron subir');
+    const a = guiasAlojById(id) || (ALOJ_STATE.rows || []).find(r => String(r.id_lodgify || '') === id); if (a) a.fotos = j.fotos;
+    if (st) st.textContent = `✓ ${j.fotos.length} foto(s) guardadas`;
+    guiasRenderContent();
+  } catch (e) { if (st) st.textContent = '⚠ ' + e.message; alert('⚠ ' + e.message); }
+  try { input.value = ''; } catch (_) {}
+};
+window.guiasFotoQuitar_ = async function (id, url) {
+  if (!confirm('¿Quitar esta foto de la guía?')) return;
+  try { const j = await fetch(`${BACKEND}/alojamientos/fotos/quitar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, url }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error);
+    const a = guiasAlojById(id) || (ALOJ_STATE.rows || []).find(r => String(r.id_lodgify || '') === id); if (a) a.fotos = j.fotos; guiasRenderContent(); } catch (e) { alert('⚠ ' + (e.message || e)); }
+};
+// ── ➕ Nuevo alojamiento desde cero (sin Lodgify): hereda los datos de su propiedad y abre el editor completo ──
+window.guiasNuevoAbrir_ = function () {
+  document.getElementById('guias-nuevo-modal')?.remove();
+  const props = [...new Set((ALOJ_STATE.rows || []).map(r => String(r['Propiedad'] || '').trim()).filter(p => p && !/^ED\. /.test(p)))].sort();
+  const inp = (id, lbl, ph, extra) => `<label style="display:block;margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px">${lbl}</div><input id="${id}" ${extra || ''} placeholder="${ph || ''}" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;box-sizing:border-box"></label>`;
+  const m = document.createElement('div'); m.id = 'guias-nuevo-modal'; m.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML = `<div style="background:#fff;border-radius:16px;width:min(560px,100%);max-height:92vh;overflow:auto;padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h3 style="margin:0;font-size:16px;flex:1">➕ Nuevo alojamiento</h3><button type="button" onclick="document.getElementById('guias-nuevo-modal').remove()" style="all:unset;cursor:pointer;font-size:18px;color:#64748b">✕</button></div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:14px;line-height:1.45">Se crea en la base del sistema (no necesita existir en Lodgify). Si la propiedad ya existe, hereda sus datos comunes (dirección, WiFi, estacionamiento, lavandería, contactos…) y los generales (reglamento y horarios). Después se abre el editor para completar el resto y subir fotos.</div>
+    ${inp('gn-prop', 'Propiedad *', 'Ej. Calle Cumbres (o una nueva)', 'list="gn-props"')}<datalist id="gn-props">${props.map(p => `<option value="${esc(p)}">`).join('')}</datalist>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${inp('gn-dep', '# Departamento *', 'Ej. 7')}${inp('gn-short', 'Nombre corto', 'Ej. CU7')}</div>
+    ${inp('gn-tit', 'Título de la guía', 'Ej. Calle Cumbres #7 - Loft 2 personas')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${inp('gn-lg', 'URL Lodgify', 'https://…')}${inp('gn-lgp', 'URL fotos Lodgify', 'https://…')}${inp('gn-ab', 'URL Airbnb', 'https://airbnb.mx/…')}${inp('gn-gm', 'URL Google Maps', 'https://maps.app.goo.gl/…')}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">${inp('gn-cap', 'Capacidad', 'Ej. 2')}${inp('gn-rec', 'Recámaras', 'Ej. 1')}${inp('gn-ban', 'Baños', 'Ej. 1')}</div>
+    <div id="gn-msg" style="font-size:12px;color:#b91c1c;min-height:16px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn-limpiar" onclick="document.getElementById('guias-nuevo-modal').remove()">Cancelar</button><button type="button" id="gn-ok" onclick="guiasNuevoCrear_()" style="padding:8px 16px;border:0;border-radius:8px;background:#16a34a;color:#fff;font-weight:800;font-size:13px;cursor:pointer">Crear y editar</button></div></div>`;
+  document.body.appendChild(m); setTimeout(() => document.getElementById('gn-prop')?.focus(), 50);
+};
+window.guiasNuevoCrear_ = async function () {
+  const v = id => (document.getElementById(id) || {}).value || '', msg = document.getElementById('gn-msg'), btn = document.getElementById('gn-ok');
+  if (!v('gn-prop').trim() || !v('gn-dep').trim()) { if (msg) msg.textContent = 'Propiedad y # Departamento son obligatorios.'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Creando…';
+  try {
+    const datos = { Propiedad: v('gn-prop').trim(), '# Departamento': v('gn-dep').trim(), Propiedad_short: v('gn-short').trim(), titulo_txt: v('gn-tit').trim(), url_lodgify: v('gn-lg').trim(), url_lodgify_pics: v('gn-lgp').trim(), url_airbnb: v('gn-ab').trim(), url_google_maps: v('gn-gm').trim(), capacidad: v('gn-cap').trim(), recamaras: v('gn-rec').trim(), banos: v('gn-ban').trim(), __usuario: (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser) : '' };
+    const j = await fetch(`${BACKEND}/alojamientos/nuevo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ datos }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'No se pudo crear');
+    document.getElementById('guias-nuevo-modal')?.remove();
+    await _alojFetchAndIndex(); GUIAS_STATE.esquema = null; guiasEsquemaCargar_();
+    GUIAS_STATE.filters.propiedad.clear(); GUIAS_STATE.filters.departamento.clear();
+    GUIAS_STATE.selectedIds = new Set([String(j.id)]); GUIAS_STATE.comunes = null; GUIAS_STATE.dirty = {}; GUIAS_STATE.editMode = true;
+    guiasRenderSidebar(); guiasRenderContent(); try { document.getElementById('guias-content').scrollIntoView({ block: 'start' }); } catch (_) {}
+    if (typeof bkToast_ === 'function') bkToast_(`✓ Alojamiento creado (${j.heredado}). Completa los datos y sube fotos.`);
+  } catch (e) { if (msg) msg.textContent = '⚠ ' + (e.message || e); btn.disabled = false; btn.textContent = 'Crear y editar'; }
+};
 // «⚙️ Datos comunes»: elige Generales o una propiedad y edita solo sus campos compartidos.
 window.guiasComunesMenu_ = function (btn) {
   document.querySelectorAll('.guias-com-pop').forEach(p => p.remove());
