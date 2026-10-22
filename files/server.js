@@ -12121,6 +12121,7 @@ function _rlpNormalizar(p, prev) {
     fotos: (Array.isArray(p.fotos) ? p.fotos : []).map(f => typeof f === "string" ? { url: f, alt: "" } : f).filter(f => f && /^https?:\/\//.test(String(f.url || ""))).map(f => ({ url: txt(f.url, 600), alt: txt(f.alt, 120) })).slice(0, 40),
     url_origen: txt(p.url_origen, 600), portal: txt(p.portal, 40) || (p.url_origen ? _rlpPortal(p.url_origen) : "propia"), contacto_nombre: txt(p.contacto_nombre, 120), contacto_tel: txt(p.contacto_tel, 40),
     fecha_publicacion: txt(p.fecha_publicacion, 20), estatus: ["activa", "pausada", "cerrada"].includes(p.estatus) ? p.estatus : (prev ? prev.estatus : "activa"), notas: txt(p.notas, 2000), propia: p.propia === true || String(p.propia) === "true",
+    publicada: p.publicada === undefined ? (prev ? prev.publicada !== false : true) : (p.publicada === true || String(p.publicada) === "true"), // visible en www.check-inn.mx/public/rentas/
     creado: prev ? prev.creado : new Date().toISOString(), creado_por: prev ? prev.creado_por : txt(p.usuario, 80), actualizado: new Date().toISOString(), actualizado_por: txt(p.usuario, 80),
   };
   return o;
@@ -12129,26 +12130,38 @@ function _rlpPortal(u) { try { const h = new URL(u).hostname.replace(/^www\./, "
 function _rlpLd(html) { const out = []; (html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || []).forEach(b => { try { const j = JSON.parse(b.replace(/^[\s\S]*?>/, "").replace(/<\/script>$/i, "")); const push = x => { if (!x || typeof x !== "object") return; if (Array.isArray(x)) return x.forEach(push); out.push(x); if (Array.isArray(x["@graph"])) x["@graph"].forEach(push); }; push(j); } catch (_) {} }); return out; }
 const _rlpMeta = (html, k) => { const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]+content=["']([^"']*)["']`, "i")) || html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`, "i")); return m ? m[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : ""; };
 function _rlpDeHtml(html, url) {
-  const ld = _rlpLd(html), T = x => String((x && x["@type"]) || ""), find = re => ld.find(x => re.test(T(x))) || null;
+  const texto = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+  return _rlpDeDatos({ url, ld: _rlpLd(html), og: { t: _rlpMeta(html, "og:title"), d: _rlpMeta(html, "og:description") || _rlpMeta(html, "description"), i: _rlpMeta(html, "og:image") }, title: (html.match(/<title>([^<]*)<\/title>/i) || [])[1] || "", imgs: [], text: texto, price_meta: _rlpMeta(html, "product:price:amount") });
+}
+// Datos de una página ya leída (por el servidor o por el marcador «Enviar a Check-inn» en el navegador del usuario).
+function _rlpDeDatos(D) {
+  const url = String(D.url || ""), ld = []; (Array.isArray(D.ld) ? D.ld : []).forEach(function push(x) { if (!x || typeof x !== "object") return; if (Array.isArray(x)) return x.forEach(push); ld.push(x); if (Array.isArray(x["@graph"])) x["@graph"].forEach(push); });
+  const T = x => String((x && x["@type"]) || ""), find = re => ld.find(x => re.test(T(x))) || null, OG = D.og || {};
   const inm = find(/RealEstateListing|Apartment|House|Residence|Accommodation|Product|Place/i), oferta = find(/^Offer$/i) || (inm && inm.offers && (Array.isArray(inm.offers) ? inm.offers[0] : inm.offers)) || null;
   const acc = find(/Apartment|House|Residence|Accommodation/i) || inm || {}, addr = (acc.address || (inm && inm.address) || {}), geo = acc.geo || (inm && inm.geo) || {};
-  const texto = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+  const texto = String(D.text || "").replace(/\s+/g, " ");
   const g = re => { const m = texto.match(re); return m ? m[1] : null; };
-  const titulo = (inm && inm.name) || _rlpMeta(html, "og:title") || (html.match(/<title>([^<]*)<\/title>/i) || [])[1] || "";
-  const precio = _rlpNum(oferta && (oferta.price || (oferta.priceSpecification && oferta.priceSpecification.price))) || _rlpNum(_rlpMeta(html, "product:price:amount")) || _rlpNum(g(/(?:MN|MXN|\$)\s?([\d.,]{4,})/)) ;
-  const imgs = [].concat(inm && inm.image || [], acc.image || [], _rlpMeta(html, "og:image") || []).flat().map(x => typeof x === "string" ? x : (x && (x.url || x.contentUrl))).filter(Boolean);
+  const titulo = (inm && inm.name) || OG.t || String(D.title || "").replace(/\s*[-|·]\s*(Inmuebles24|Vivanuncios|Lamudi|Century 21[^|]*|Propiedades\.com)\s*$/i, "").trim() || "";
+  const precio = _rlpNum(oferta && (oferta.price || (oferta.priceSpecification && oferta.priceSpecification.price))) || _rlpNum(D.price_meta) || _rlpNum(g(/(?:MN|MXN|\$)\s?([\d.,]{4,})/)) ;
+  const imgs = [].concat(inm && inm.image || [], acc.image || [], OG.i || [], Array.isArray(D.imgs) ? D.imgs : []).flat().map(x => typeof x === "string" ? x : (x && (x.url || x.contentUrl))).filter(Boolean).map(u => String(u).replace(/\/\d{3,4}x\d{3,4}\//, "/1200x1200/")); // Navent (Inmuebles24/Vivanuncios): tamaño grande
   const amen = (acc.amenityFeature || []).map(a => a && (a.name || a.value)).filter(x => typeof x === "string");
   const fs = acc.floorSize && (acc.floorSize.value || acc.floorSize);
-  return { titulo, descripcion: (inm && inm.description) || _rlpMeta(html, "og:description") || _rlpMeta(html, "description") || "",
+  return { titulo, descripcion: (inm && inm.description) || OG.d || "",
     tipo: /Apartment/i.test(T(acc)) ? "departamento" : /House|SingleFamily/i.test(T(acc)) ? "casa" : _rlpTipo(titulo) !== "otro" ? _rlpTipo(titulo) : (T(acc) || ""), operacion: /vent|sale/i.test(titulo + " " + url) ? "venta" : /rent|alquil/i.test(titulo + " " + url) ? "renta" : "",
     precio, moneda: (oferta && oferta.priceCurrency) || (/USD|dólares/i.test(texto.slice(0, 5000)) ? "USD" : "MXN"),
-    ciudad: addr.addressLocality || g(/en\s+(Saltillo|Monterrey|Torre[oó]n|Ramos Arizpe|Arteaga)/i) || "", estado: addr.addressRegion || "", colonia: "", direccion: addr.streetAddress || "", cp: addr.postalCode || "",
+    ciudad: String(addr.addressLocality || "").split(",")[0].trim() || g(/en\s+(Saltillo|Monterrey|Torre[oó]n|Ramos Arizpe|Arteaga)/i) || "", estado: /coahuila|nuevo le/i.test(String(addr.addressRegion || "")) ? addr.addressRegion : (/Coahuila/i.test(String(addr.addressLocality || "") + texto.slice(0, 3000)) ? "Coahuila" : ""), colonia: addr.addressRegion && !/coahuila|nuevo le|estado/i.test(String(addr.addressRegion)) ? addr.addressRegion : "", direccion: addr.streetAddress || "", cp: addr.postalCode || "",
     lat: _rlpNum(geo.latitude), lng: _rlpNum(geo.longitude),
     recamaras: _rlpNum(acc.numberOfBedrooms || acc.numberOfRooms) || _rlpNum(g(/(\d+)\s*rec[aá]maras?/i)), banos: _rlpNum(acc.numberOfBathroomsTotal) || _rlpNum(g(/(\d+)\s*baños?/i)),
     estacionamientos: _rlpNum(g(/(\d+)\s*(?:estacionamientos?|cajones?|cochera)/i)), m2_construccion: _rlpNum(fs) || _rlpNum(g(/(\d{2,5})\s*m²/)), m2_terreno: _rlpNum(g(/terreno[^0-9]{0,20}(\d{2,5})\s*m/i)),
     amueblado: /amueblad/i.test(titulo + " " + ((inm && inm.description) || "")), amenidades: [...new Set(amen)].slice(0, 40), fotos: [...new Set(imgs)].slice(0, 30).map(u => ({ url: String(u).replace(/^\/\//, "https://"), alt: "" })),
     url_origen: url, portal: _rlpPortal(url), contacto_nombre: "", contacto_tel: g(/(\+?52\s?)?(\d{3}[\s-]?\d{3}[\s-]?\d{4})/) || "" };
 }
+// Página pública (www.check-inn.mx/public/rentas/): solo publicadas y activas, sin datos internos.
+app.get("/rentas/publicas", async (_req, res) => {
+  try { const d = await _rlpDatos(); const P = d.items.filter(x => x.publicada !== false && x.estatus === "activa").map(x => { const o = Object.assign({}, x); ["notas", "creado_por", "actualizado_por", "propia"].forEach(k => { delete o[k]; }); return o; });
+    res.set("Cache-Control", "public, max-age=120, stale-while-revalidate=600"); res.json({ ok: true, items: P, modificado: d.modificado || null }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/rentas", async (_req, res) => { try { const d = await _rlpDatos(); res.set("Cache-Control", "no-store"); res.json({ ok: true, items: d.items, modificado: d.modificado || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.post("/rentas/guardar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
@@ -12173,6 +12186,12 @@ app.post("/rentas/extraer", async (req, res) => {
     if (bloqueado) return res.json({ ok: true, bloqueado: true, portal: _rlpPortal(url), status: r.status, mensaje: "Este portal bloquea la lectura automática. Abre el anuncio, selecciona todo el texto (Ctrl/Cmd+A), cópialo y pégalo abajo; la IA lo estructura." });
     const pub = _rlpDeHtml(html, url); res.json({ ok: true, bloqueado: false, pub, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "" && !(Array.isArray(pub[k]) && !pub[k].length)) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Datos capturados en el navegador del usuario con el marcador «Enviar a Check-inn» (portales que bloquean al servidor).
+app.post("/rentas/extraer-pagina", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const D = (req.body || {}).datos || {}; if (!D.url) return res.status(400).json({ ok: false, error: "Faltan datos de la página" }); const pub = _rlpDeDatos(D); res.json({ ok: true, pub, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "" && !(Array.isArray(pub[k]) && !pub[k].length)) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/rentas/extraer-texto", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
