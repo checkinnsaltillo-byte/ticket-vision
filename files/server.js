@@ -2807,7 +2807,7 @@ async function _botExecTool(toolUse, ctx) {
       const resumen = ["🧽 Estado de aseo (por confirmar)",
         ...items.map(x => `• ${x.nombre} (${x.code})${x.huesped ? ` · salió ${x.huesped} (${fmtD(x.salida)})` : ""}`),
         `• Estado: ${_ASEO_EST_TXT[estado]}`,
-        `• Publicar en guía: ${pub}`,
+        ...(esAdm ? [`• Publicar en guía: ${pub}`] : []), // solo administradores (el personal no valida ni publica)
         `• ${estado === "inspeccionado" ? "Inspeccionó" : "Realizó"}: ${persona || "Sin asignar"}`,
         ...(items.some(x => x.sinCard) ? [`• ${items.filter(x => x.sinCard).map(x => x.code).join(", ")}: hoy no había limpieza programada; se creará la card desde este chat`] : []),
         ...(errores.length ? [`⚠️ ${errores.join(" · ")}`] : []),
