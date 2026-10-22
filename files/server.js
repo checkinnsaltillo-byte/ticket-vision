@@ -12141,9 +12141,9 @@ function _rlpDeDatos(D) {
   const acc = find(/Apartment|House|Residence|Accommodation/i) || inm || {}, addr = (acc.address || (inm && inm.address) || {}), geo = acc.geo || (inm && inm.geo) || {};
   const texto = String(D.text || "").replace(/\s+/g, " ");
   const g = re => { const m = texto.match(re); return m ? m[1] : null; };
-  const titulo = (inm && inm.name) || OG.t || String(D.title || "").replace(/\s*[-|·]\s*(Inmuebles24|Vivanuncios|Lamudi|Century 21[^|]*|Propiedades\.com)\s*$/i, "").trim() || "";
+  const titulo = String((inm && inm.name) || OG.t || D.title || "").replace(/\s*[-|·—]\s*(Inmuebles24|Vivanuncios|Lamudi|Century 21[^|]*|Propiedades\.com|Mercado Libre)\s*$/i, "").trim();
   const precio = _rlpNum(oferta && (oferta.price || (oferta.priceSpecification && oferta.priceSpecification.price))) || _rlpNum(D.price_meta) || _rlpNum(g(/(?:MN|MXN|\$)\s?([\d.,]{4,})/)) ;
-  const imgs = [].concat(inm && inm.image || [], acc.image || [], OG.i || [], Array.isArray(D.imgs) ? D.imgs : []).flat().map(x => typeof x === "string" ? x : (x && (x.url || x.contentUrl))).filter(Boolean).map(u => String(u).replace(/\/\d{3,4}x\d{3,4}\//, "/1200x1200/")); // Navent (Inmuebles24/Vivanuncios): tamaño grande
+  const imgs = [].concat(inm && inm.image || [], acc.image || [], OG.i || [], Array.isArray(D.imgs) ? D.imgs : []).flat().map(x => typeof x === "string" ? x : (x && (x.url || x.contentUrl))).filter(Boolean).map(u => String(u).replace(/\/\d{3,4}x\d{3,4}\//, "/1200x1200/").replace(/\/avisos\/resize\//, "/avisos/")).filter(u => !/\/empresas\/|\/ficha\/map\/|creativecdn|doubleclick|\/logo|favicon|\.svg(\?|$)|\/static\//i.test(u)); // Navent: tamaño grande, sin logos de inmobiliaria ni mapas
   const amen = (acc.amenityFeature || []).map(a => a && (a.name || a.value)).filter(x => typeof x === "string");
   const fs = acc.floorSize && (acc.floorSize.value || acc.floorSize);
   return { titulo, descripcion: (inm && inm.description) || OG.d || "",
@@ -12154,7 +12154,7 @@ function _rlpDeDatos(D) {
     recamaras: _rlpNum(acc.numberOfBedrooms || acc.numberOfRooms) || _rlpNum(g(/(\d+)\s*rec[aá]maras?/i)), banos: _rlpNum(acc.numberOfBathroomsTotal) || _rlpNum(g(/(\d+)\s*baños?/i)),
     estacionamientos: _rlpNum(g(/(\d+)\s*(?:estacionamientos?|cajones?|cochera)/i)), m2_construccion: _rlpNum(fs) || _rlpNum(g(/(\d{2,5})\s*m²/)), m2_terreno: _rlpNum(g(/terreno[^0-9]{0,20}(\d{2,5})\s*m/i)),
     amueblado: /amueblad/i.test(titulo + " " + ((inm && inm.description) || "")), amenidades: [...new Set(amen)].slice(0, 40), fotos: [...new Set(imgs)].slice(0, 30).map(u => ({ url: String(u).replace(/^\/\//, "https://"), alt: "" })),
-    url_origen: url, portal: _rlpPortal(url), contacto_nombre: "", contacto_tel: g(/(\+?52\s?)?(\d{3}[\s-]?\d{3}[\s-]?\d{4})/) || "" };
+    url_origen: url, portal: _rlpPortal(url), contacto_nombre: String((acc.seller && acc.seller.name) || (inm && inm.seller && inm.seller.name) || "").slice(0, 120), contacto_tel: String(acc.telephone || (inm && inm.telephone) || g(/(?:\+?52\s?)?(\d{3}[\s-]?\d{3}[\s-]?\d{4})/) || "").replace(/^52\s?(?=\d{10})/, "").trim() };
 }
 // Página pública (www.check-inn.mx/public/rentas/): solo publicadas y activas, sin datos internos.
 app.get("/rentas/publicas", async (_req, res) => {
