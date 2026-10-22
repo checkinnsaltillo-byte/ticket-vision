@@ -34025,6 +34025,65 @@ const GUIAS_STATE = {
   editMode: false,
   filters: { propiedad: new Set(), departamento: new Set() },
   dirty: {},
+  esquema: null,   // /alojamientos/esquema: alcance de cada campo (global / propiedad / unidad)
+  comunes: null,   // {tipo:'global'} | {tipo:'propiedad', prop} → editor de datos comunes
+};
+// Editor completo de la base «alojamientos» (Cloud Storage): mismas secciones que la guía de bienvenida.
+const GUIAS_EDIT_SECCIONES = [
+  ['📝', 'Identidad del alojamiento', [['Propiedad', 'Propiedad'], ['# Departamento', '# Departamento'], ['Nombre corto', 'Propiedad_short'], ['Título de la guía', 'titulo_txt'], ['Nombre en Lodgify', 'HouseName'], ['Status', 'Status'], ['Clasificación', 'clasificacion'], ['URL Lodgify', 'url_lodgify'], ['URL fotos Lodgify', 'url_lodgify_pics'], ['URL Airbnb', 'url_airbnb'], ['URL de la guía', 'url_guia'], ['Dispositivo (cerradura)', 'device_name']]],
+  ['📍', 'Ubicación y cómo llegar', [['Ubicación', 'ubicacion'], ['Detalles de ubicación', 'ubicacion_txt', 'textarea'], ['Dirección', 'direccion', 'textarea'], ['Referencia', 'referencia', 'textarea'], ['Aviso para Google Maps', 'referencia_googlemaps', 'textarea'], ['URL Google Maps', 'url_google_maps']]],
+  ['🏠', 'Características', [['Tipo', 'tipo'], ['Capacidad', 'capacidad'], ['Recámaras', 'recamaras'], ['Camas', 'camas'], ['Tipo de cama', 'cama_tipo'], ['Baños', 'banos'], ['Planta', 'planta'], ['Otros espacios', 'otros_espacios', 'textarea'], ['Superficie', 'superficie']]],
+  ['✨', 'Amenidades', [['Amenidades (separadas por coma)', 'amenidades', 'textarea']]],
+  ['📋', 'Reglamento de la casa', [['Reglamento (un renglón por regla)', 'reglamento', 'textarea']]],
+  ['🕐', 'Horas de entrada y salida', [['Hora de llegada', 'hora_llegada'], ['Hora de salida', 'hora_salida']]],
+  ['🚪', 'Método de llegada y acceso', [['Método de check-in', 'check_in_method'], ['Pasos de llegada (un renglón por paso)', 'metodo_llegada', 'textarea'], ['Método de llegada (alterno)', 'metodo_llegada_1', 'textarea'], ['Clave de acceso', 'clave_acceso'], ['Instrucciones de check-in', 'checkin_txt', 'textarea']]],
+  ['📶', 'WiFi', [['Red', 'wifi_red'], ['Contraseña', 'wifi_contrasena'], ['Si falla el WiFi', 'wifi_falla', 'textarea'], ['Red 1 (SSID)', 'wifi_name_1'], ['Red 2 (SSID)', 'wifi_name_2'], ['Instrucciones WiFi', 'wifi_txt', 'textarea']]],
+  ['🅿️', 'Estacionamiento', [['Tipo', 'estacionamiento_tipo'], ['Instrucciones', 'estacionamiento_instrucciones', 'textarea'], ['En la calle', 'estacionamiento_calle', 'textarea'], ['Aviso', 'estacioamiento_aviso', 'textarea'], ['Texto de estacionamiento', 'parking_txt', 'textarea']]],
+  ['🧺', 'Lavandería', [['Ubicación', 'lavanderia_ubicacion'], ['Acceso', 'lavanderia_acceso', 'textarea'], ['Reglamento', 'lavanderia_reglamento', 'textarea'], ['Aviso', 'lavanderia_aviso', 'textarea']]],
+  ['🧴', 'Insumos', [['Ubicación', 'insumos_ubicacion'], ['Insumos (separados por coma)', 'insumos', 'textarea'], ['Aviso', 'insumos_aviso', 'textarea']]],
+  ['👋', 'Instrucciones de salida', [['Instrucciones (un renglón por paso)', 'salida_instrucciones', 'textarea'], ['Aviso', 'instrucciones_aviso', 'textarea']]],
+  ['🚨', 'Contactos', [['Emergencia 1 · nombre', 'contacto_emergencia_1_nombre'], ['Emergencia 1 · número', 'contacto_emergencia_1_numero'], ['Emergencia 2 · nombre', 'contacto_emergencia_2_nombre'], ['Emergencia 2 · número', 'contacto_emergencia_2_numero'], ['WhatsApp de contacto', 'contacto_whatsapp'], ['Mensaje de WhatsApp', 'whatsapp_mensaje', 'textarea'], ['Contactos (texto)', 'contactos_txt', 'textarea']]],
+  ['🔥', 'Parrilla y mantenimiento', [['Parrilla (pasos)', 'parrilla', 'textarea'], ['Mantenimiento / limpieza / residuos', 'mantenimiento_txt', 'textarea']]],
+  ['🍽️', 'Recomendaciones', [['Restaurantes y lugares cerca', 'restaurantes', 'textarea']]],
+];
+const GUIAS_SCOPE_UI = { global: ['🌐', 'General', '#1d4ed8', '#dbeafe'], propiedad: ['🏢', 'Propiedad', '#7c3aed', '#ede9fe'], unidad: ['🚪', 'Este alojamiento', '#475569', '#f1f5f9'] };
+function guiasScopeDe_(col) { const S = (GUIAS_STATE.esquema || {}).scopes || {}; return (S.global || []).includes(col) ? 'global' : (S.propiedad || []).includes(col) ? 'propiedad' : 'unidad'; }
+async function guiasEsquemaCargar_() { try { const j = await fetch(`${BACKEND}/alojamientos/esquema`, { cache: 'no-store' }).then(r => r.json()); if (j.ok) GUIAS_STATE.esquema = j; } catch (_) {} }
+function guiasPropN_(prop) { return (ALOJ_STATE.rows || []).filter(r => String(r['Propiedad'] || '').trim() === prop).length; }
+// Chip de alcance junto a cada campo en modo edición.
+function guiasScopeChip_(col, alojs) {
+  const sc = guiasScopeDe_(col), [ico, txt, fg, bg] = GUIAS_SCOPE_UI[sc];
+  const prop = alojs && alojs.length ? String(alojs[0]['Propiedad'] || '').trim() : '';
+  const det = sc === 'global' ? 'se aplica a todos los alojamientos' : sc === 'propiedad' ? `se aplica a los ${guiasPropN_(prop)} alojamientos de ${prop}` : 'solo este alojamiento';
+  return `<span title="${esc(det)}" style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:800;color:${fg};background:${bg}">${ico} ${esc(txt)}${sc === 'propiedad' && prop ? ` · ${guiasPropN_(prop)}` : ''}</span>`;
+}
+// Editor por secciones (todas las columnas de la base). En «Datos comunes» solo los campos del alcance elegido.
+function guiasBuildEditor_(alojs) {
+  const C = GUIAS_STATE.comunes, filtro = col => !C || guiasScopeDe_(col) === C.tipo;
+  const aviso = C ? `<div style="margin:0 0 12px;padding:10px 12px;border-radius:10px;background:${C.tipo === 'global' ? '#dbeafe' : '#ede9fe'};color:${C.tipo === 'global' ? '#1e3a8a' : '#4c1d95'};font-size:12.5px;line-height:1.45">${C.tipo === 'global' ? '🌐 <b>Datos generales</b>: lo que escribas aquí se aplica a <b>todos los alojamientos</b>.' : `🏢 <b>Datos comunes de ${esc(C.prop)}</b>: se aplican a sus <b>${guiasPropN_(C.prop)} alojamientos</b>.`}</div>`
+    : `<div style="margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px;color:#475569;line-height:1.45">Cada campo indica su alcance: <b>🌐 General</b> (todos), <b>🏢 Propiedad</b> (los alojamientos de la misma propiedad) o <b>🚪 Este alojamiento</b>. Al guardar, los campos generales y de propiedad se copian automáticamente a los demás.</div>`;
+  const secs = GUIAS_EDIT_SECCIONES.map(([ico, tit, campos]) => { const F = campos.filter(([, col]) => filtro(col)); if (!F.length) return '';
+    return guiasCard(tit, ico, F.map(([lbl, col, type]) => guiasField(lbl, col, alojs, { type: type || 'text' })).join('')); }).join('');
+  return aviso + (secs || '<div style="color:#94a3b8;font-size:13px">Sin campos para este alcance.</div>');
+}
+// «⚙️ Datos comunes»: elige Generales o una propiedad y edita solo sus campos compartidos.
+window.guiasComunesMenu_ = function (btn) {
+  document.querySelectorAll('.guias-com-pop').forEach(p => p.remove());
+  const props = ((GUIAS_STATE.esquema || {}).propiedades || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const pop = document.createElement('div'); pop.className = 'guias-com-pop'; const r = btn.getBoundingClientRect();
+  pop.style.cssText = `position:fixed;top:${r.bottom + 6}px;left:${Math.max(8, Math.min(window.innerWidth - 300, r.left))}px;z-index:9100;width:290px;max-height:70vh;overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:8px;font-size:13px`;
+  const item = (ico, txt, sub, on) => `<div onclick="${on}" style="padding:8px 10px;border-radius:8px;cursor:pointer;display:flex;gap:8px;align-items:center" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''"><span>${ico}</span><span style="flex:1"><b>${esc(txt)}</b>${sub ? `<div style="font-size:11px;color:#64748b">${esc(sub)}</div>` : ''}</span></div>`;
+  pop.innerHTML = item('🌐', 'Datos generales', 'Reglamento y horas: todos los alojamientos', "guiasComunes_('global')") + `<div style="border-top:1px solid #f1f5f9;margin:6px 0"></div>` + props.map(p => item('🏢', p.nombre, `${p.n} alojamiento${p.n === 1 ? '' : 's'} · dirección, WiFi, estacionamiento, lavandería…`, `guiasComunes_('propiedad',${JSON.stringify(p.nombre).replace(/"/g, '&quot;')})`)).join('');
+  document.body.appendChild(pop);
+  setTimeout(() => document.addEventListener('mousedown', function fx(e) { if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('mousedown', fx); } }), 0);
+};
+window.guiasComunes_ = function (tipo, prop) {
+  document.querySelectorAll('.guias-com-pop').forEach(p => p.remove());
+  const rows = (ALOJ_STATE.rows || []).filter(r => tipo === 'global' || String(r['Propiedad'] || '').trim() === prop);
+  if (!rows.length) return;
+  GUIAS_STATE.comunes = tipo === 'global' ? { tipo: 'global' } : { tipo: 'propiedad', prop };
+  GUIAS_STATE.selectedIds = new Set(rows.map(guiasItemId)); GUIAS_STATE.dirty = {}; GUIAS_STATE.editMode = true;
+  guiasRenderSidebar(); guiasRenderContent(); try { document.getElementById('guias-content').scrollIntoView({ block: 'start' }); } catch (_) {}
 };
 
 const GUIAS_TABS = [
@@ -34038,6 +34097,7 @@ const GUIAS_TABS = [
 ];
 
 async function guiasInit() {
+  if (!GUIAS_STATE.esquema) guiasEsquemaCargar_();
   // Asegura la carga aunque estemos entrando directo desde el menú.
   if (!ALOJ_STATE.loaded && !ALOJ_STATE.loading) await lgLoadAlojamientos();
   // Si otro flujo ya inició la carga, esperamos a que termine.
@@ -34110,7 +34170,7 @@ window.guiasOnFieldChange = function(fieldKey, value) {
 };
 window.guiasToggleEdit = function() {
   GUIAS_STATE.editMode = !GUIAS_STATE.editMode;
-  if (!GUIAS_STATE.editMode) GUIAS_STATE.dirty = {}; // Cancelar limpia los pending
+  if (!GUIAS_STATE.editMode) { GUIAS_STATE.dirty = {}; if (GUIAS_STATE.comunes) { GUIAS_STATE.comunes = null; GUIAS_STATE.selectedIds = new Set([GUIAS_STATE.selectedIds.values().next().value].filter(Boolean)); guiasRenderSidebar(); } } // Cancelar limpia los pending
   guiasRenderContent();
 };
 window.guiasSaveEdits = async function() {
@@ -34124,12 +34184,13 @@ window.guiasSaveEdits = async function() {
     if (!aloj || !changes) continue;
     for (const k of Object.keys(changes)) aloj[k] = changes[k];
   }
-  // Persistencia al sheet vía Cloud Run → Apps Script save_alojamiento.
-  let ok = 0, err = 0;
-  for (const id of ids) {
+  // Persistencia en Cloud Storage (config/alojamientos.json). El servidor copia los campos generales / de propiedad a los demás alojamientos.
+  // En «Datos comunes» basta UNA llamada: todos los seleccionados comparten el alcance.
+  let ok = 0, err = 0, afect = 0; const prop = {};
+  for (const id of (GUIAS_STATE.comunes ? ids.slice(0, 1) : ids)) {
     const aloj = byId.get(id);
     if (!aloj) { err++; continue; }
-    const houseId = String(aloj.HouseId || aloj.HouseID || aloj.ID || '').trim();
+    const houseId = String(aloj.HouseId || aloj.HouseID || aloj.ID || aloj.id_lodgify || '').trim();
     if (!houseId) { err++; continue; }
     try {
       const res = await fetch(`${BACKEND}/alojamientos/save`, {
@@ -34138,15 +34199,18 @@ window.guiasSaveEdits = async function() {
         body: JSON.stringify({ payload: { HouseId: houseId, changes: GUIAS_STATE.dirty[id] } }),
       });
       const j = await res.json();
-      if (j.ok) ok++; else err++;
+      if (j.ok) { ok++; afect = Math.max(afect, Number(j.alojamientos_afectados) || 0); Object.assign(prop, j.propagados || {}); } else err++;
     } catch { err++; }
   }
+  const P = Object.entries(prop).map(([k, v]) => `${k} → ${v.alcance === 'global' ? 'todos' : v.alojamientos + ' de la propiedad'}`);
   alert(err
     ? `✓ Guardados: ${ok}. ✗ Con error: ${err}.`
-    : `✓ ${ok} alojamiento(s) guardado(s). Los cambios ya son visibles en las URLs públicas.`);
+    : `✓ Guardado${afect ? ` en ${afect} alojamiento(s)` : ''}.${P.length ? '\nCampos compartidos copiados: ' + P.join(' · ') : ''}\nLas guías públicas se regeneran solas en un minuto.`);
   GUIAS_STATE.dirty = {};
   GUIAS_STATE.editMode = false;
-  guiasRenderContent();
+  if (GUIAS_STATE.comunes) { GUIAS_STATE.comunes = null; GUIAS_STATE.selectedIds = new Set([ids[0]]); }
+  try { await _alojFetchAndIndex(); } catch (_) {}
+  guiasRenderSidebar(); guiasRenderContent();
 };
 
 // ── Filtros + selección de la sidebar ──
@@ -34411,7 +34475,9 @@ function guiasRenderContent() {
     host.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#94a3b8;font-size:13px">Selecciona uno o más alojamientos a la izquierda.</div>';
     return;
   }
-  const heading = alojs.length === 1
+  const heading = GUIAS_STATE.comunes
+    ? (GUIAS_STATE.comunes.tipo === 'global' ? '🌐 Datos generales (todos los alojamientos)' : `🏢 Datos comunes · ${GUIAS_STATE.comunes.prop} (${alojs.length} alojamientos)`)
+    : alojs.length === 1
     ? `📍 ${guiasItemLabel(alojs[0])}`
     : `📍 ${alojs.length} alojamientos seleccionados (los cambios aplican a todos)`;
   const tabs = GUIAS_TABS.map(t => {
@@ -34554,8 +34620,7 @@ function guiasRenderContent() {
   // En modo EDICIÓN se conserva el layout de tabs (formulario por campo).
   // En modo LECTURA se pinta la guía tipo "guía de llegada" con acordeón.
   const body = GUIAS_STATE.editMode
-    ? `<div style="display:flex;gap:4px;background:#f1f5f9;padding:4px;border-radius:12px;margin-bottom:14px;overflow-x:auto">${tabs}</div>
-       <div id="guias-tab-content">${guiasBuildTabHtml(GUIAS_STATE.activeTab, alojs)}</div>`
+    ? `<div id="guias-tab-content">${guiasBuildEditor_(alojs)}</div>`
     : `${quicknavHtml}<div id="guias-tab-content">${guiasBuildGuide(alojs)}</div>`;
   // Asegura position:relative para que el fab de WhatsApp se ancle aquí.
   host.style.position = 'relative';
@@ -34568,7 +34633,7 @@ function guiasRenderContent() {
   // En modo lectura (guía) el contenido usa TODO el ancho disponible sin
   // límites, así se adapta al ancho de la ventana. En modo edición
   // conservamos el max-width:640 para que el form no sea inmenso.
-  const wrapWidth = GUIAS_STATE.editMode ? 'max-width:640px;margin:0 auto;padding:0 4px' : 'width:100%;padding:0';
+  const wrapWidth = GUIAS_STATE.editMode ? 'max-width:760px;margin:0 auto;padding:0 4px' : 'width:100%;padding:0';
   host.innerHTML = `
     ${heroHtml}
     <div style="${wrapWidth}">
@@ -35451,7 +35516,7 @@ function guiasField(label, fieldKey, alojs, opts) {
       ? `<textarea oninput="guiasOnFieldChange('${esc(fieldKey)}', this.value)" placeholder="${esc(placeholder)}" rows="3" style="width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-family:inherit;box-sizing:border-box">${esc(value)}</textarea>`
       : `<input type="${esc(inputType)}" oninput="guiasOnFieldChange('${esc(fieldKey)}', this.value)" value="${esc(value)}" placeholder="${esc(placeholder)}" style="width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;box-sizing:border-box">`;
     return `<div style="padding:6px 0">
-      <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:700">${esc(label)}</div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:700;display:flex;align-items:center;flex-wrap:wrap">${esc(label)}${guiasScopeChip_(fieldKey, alojs)}</div>
       ${input}
     </div>`;
   }
