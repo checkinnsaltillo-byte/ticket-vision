@@ -34505,6 +34505,20 @@ function guiasRenderContent() {
   const photoPageUrl = (alojs.length === 1) ? String(alojs[0]['url_lodgify'] || '').trim() : '';
   // ── HERO tipo "guía de llegada" (solo modo lectura, 1 alojamiento) ──
   const isReadOne = !GUIAS_STATE.editMode && alojs.length === 1;
+  // Un solo renderer (2026-10-22): en lectura de UNA guía se incrusta la guía pública (checkin-app/public/guia) con datos en vivo,
+  // así el módulo y lo que ve el huésped son exactamente lo mismo. La edición sigue en este módulo.
+  if (isReadOne) {
+    const hid = String(alojs[0]['HouseId'] || alojs[0]['id_lodgify'] || '').trim();
+    if (hid) {
+      host.style.position = 'relative'; host.style.padding = '0';
+      host.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
+          <div style="font-size:12px;color:#64748b;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">📍 ${esc(guiasItemLabel(alojs[0]))} <span style="font-weight:500">· vista idéntica a la guía publicada</span></div>
+          <a href="https://www.check-inn.mx/public/guia/index.html?id=${encodeURIComponent(hid)}" target="_blank" rel="noopener" style="font-size:12px;color:#0369a1;font-weight:700;text-decoration:none">↗ Abrir publicada</a>${editBtn}</div>
+        <iframe id="guias-pub-frame" title="Guía de bienvenida" src="https://www.check-inn.mx/public/guia/index.html?id=${encodeURIComponent(hid)}&live=1&_=${Date.now()}" style="width:100%;height:calc(100vh - 150px);min-height:600px;border:0;display:block;background:#fff"></iframe>`;
+      return;
+    }
+  }
+  host.style.padding = '';
   const nombreProp = isReadOne ? guiasItemLabel(alojs[0]) : '';
   const descProp   = isReadOne ? (guiasVal_(alojs[0], 'titulo_txt') || 'Todo lo que necesitas para una estancia perfecta, en un solo lugar.') : '';
   // Descripción: solo mostrar si es distinta al nombre del alojamiento.
