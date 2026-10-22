@@ -14821,7 +14821,7 @@ app.post("/bot/control/supervisados/usar", async (req, res) => {
 });
 app.get("/bot/control/supervisados", async (req, res) => {
   res.set("Cache-Control", "no-store");
-  try { const d = await _rhdGetJson(_SUP_OBJ).catch(() => ({})); res.json({ ok: true, items: (d.items || []).map(x => x.hilo || !(x.contexto || []).length ? x : Object.assign({}, x, { hilo: _supHilo(x, (x.mensajes || []).length ? x.contexto.findIndex(m => m.texto === x.mensajes[0].texto) : null) })).reverse() }); }
+  try { const d = await _rhdGetJson(_SUP_OBJ).catch(() => ({})); res.json({ ok: true, items: (d.items || []).map(x => x.hilo || !(x.contexto || []).length ? x : Object.assign({}, x, { hilo: _supHilo(x, (x.mensajes || []).length ? Math.max(0, x.contexto.findIndex(m => m.texto === x.mensajes[0].texto) - 3) : null) })).reverse() }); } // registros previos a 2026-10-22: 3 mensajes antes del que originó la respuesta
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/bot/control/supervisados", async (req, res) => {
