@@ -350,7 +350,7 @@ const SYS_MODULE_PERMS = {
   // 'personas' e 'inquilinos' son pestañas del módulo compuesto
   // "Huéspedes/Inquilinos" → cualquier usuario con permiso a alguno de los
   // dos debe ver la entrada. Se listan en ambos grupos.
-  III:  ['huespedes','lodgify','reservas-detalles','pagos','personas','inquilinos','proveedores','dir-inquilinos','mensajes'],
+  III:  ['huespedes','lodgify','reservas-detalles','pagos','personas','inquilinos','proveedores','dir-inquilinos','mensajes','rentas-lp'],
   IV:   ['breezeway','aseo'],
   V:    ['incidencias'],
   VI:   ['objetos'],
@@ -379,6 +379,7 @@ const SYS_MODULE_LIST = [
   ['inventarios',      '📦 Inventarios'],
   ['tuya',             '🛰️ Dispositivos'],
   ['guias',            '📖 Guías de Bienvenida'],
+  ['rentas-lp',        '🏘️ Rentas de largo plazo'],
   ['llaves',           '🔑 Llavero'],
   ['config-admin',     '⚙️ Configuración Admin'],
   ['bot-chats',        '🤖 Chats bot'],
@@ -411,7 +412,7 @@ function sysApplyPermissions(user) {
     });
   } else {
     // Usuario legado de sys_users (grupos por número romano).
-    allowed = new Set(['home', 'tuya', 'guias', 'config-admin', 'llaves', 'bot-chats', 'bot-control', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
+    allowed = new Set(['home', 'tuya', 'guias', 'rentas-lp', 'config-admin', 'llaves', 'bot-chats', 'bot-control', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
     if (user && user.modulos) {
       for (const k in SYS_MODULE_PERMS) {
         if (user.modulos[k]) SYS_MODULE_PERMS[k].forEach(m => allowed.add(m));
@@ -7880,6 +7881,9 @@ function bn_goToCardPage(p) {
     if (mod === 'guias') {
       if (typeof guiasInit === 'function') guiasInit();
     }
+    if (mod === 'rentas-lp') {
+      if (typeof rlpInit === 'function') rlpInit();
+    }
   };
 })();
 
@@ -9149,7 +9153,7 @@ function esc(v) {
 const _VALID_MODULES = new Set([
   'home','tickets','registros','huespedes','lodgify','reservas-detalles',
   'breezeway','aseo','incidencias','objetos','reportes-tecnicos','ocupacion',
-  'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias',
+  'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias','rentas-lp',
   'config-admin','llaves','bot-chats','bot-control','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','reglasbot','mantenimiento','mensajes',
 ]);
 function _bootModuleFromHash_() {
@@ -75275,3 +75279,229 @@ window.bnCrudosGuardar_ = async function () {
     b.textContent = `✓ ${j.written} registro(s) guardados`; setTimeout(() => { b.textContent = '💾 Guardar'; }, 2500);
   } catch (e) { alert('⚠ ' + e.message); b.disabled = false; b.textContent = '💾 Guardar'; }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🏘️ Rentas de largo plazo (v2105): publicaciones de propiedades en renta/venta — propias o importadas de portales —
+// con el diseño de la página pública de reservas (barra de búsqueda, cards, Ver mapa, Compartir).
+// Base: GET /rentas · POST /rentas/guardar · /rentas/eliminar · /rentas/extraer {url} · /rentas/extraer-texto · /rentas/fotos
+// ═══════════════════════════════════════════════════════════════════════════
+const RLP = { items: null, q: { tipo: '', operacion: '', lugar: '', rec: '', banos: '', min: '', max: '', orden: 'reciente' }, form: null, ext: null, map: null };
+const RLP_TIPOS = [['departamento', 'Departamento'], ['casa', 'Casa'], ['local', 'Local comercial'], ['oficina', 'Oficina'], ['terreno', 'Terreno'], ['bodega', 'Bodega / nave'], ['cuarto', 'Cuarto'], ['otro', 'Otro']];
+const rlpTipoTx_ = t => (RLP_TIPOS.find(x => x[0] === t) || ['', t])[1] || '';
+const rlp$ = (n, m) => n == null || n === '' ? '—' : (m === 'USD' ? 'US$' : '$') + Number(n).toLocaleString('es-MX', { maximumFractionDigits: 0 });
+function rlpCss_() {
+  if (document.getElementById('rlp-css')) return;
+  const st = document.createElement('style'); st.id = 'rlp-css'; st.textContent = `
+  #rlp-root{--rk:#0f172a;--rm:#64748b;--rl:#e2e8f0;--ra:#fec503;--ro:#ff9500;--rp:#e3141b;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',sans-serif;background:#f8fafc;min-height:100%}
+  .rlp-hero{position:relative;overflow:hidden;padding:34px 24px 26px;text-align:center;isolation:isolate}
+  .rlp-hero::before{content:'';position:absolute;inset:-40%;z-index:-1;background:radial-gradient(60% 50% at 30% 20%,rgba(254,197,3,.35),transparent 60%),radial-gradient(50% 45% at 80% 30%,rgba(255,149,0,.28),transparent 60%),linear-gradient(180deg,#fff7df,#fff 70%)}
+  .rlp-eyebrow{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;background:#fff;border:1px solid #f1e3b0;color:#7a5800;padding:5px 12px;border-radius:999px}
+  .rlp-title{font-size:clamp(26px,4vw,42px);font-weight:800;letter-spacing:-.03em;line-height:1.08;margin:12px auto 8px;max-width:760px;color:#111}
+  .rlp-title em{font-style:normal;background:linear-gradient(120deg,#ff9500,#fec503 45%,#e3141b);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .rlp-sub{font-size:14px;color:var(--rm);margin:0 0 18px;font-weight:500}
+  .rlp-bar{max-width:1080px;margin:0 auto;background:#fff;border-radius:18px;box-shadow:0 18px 40px -16px rgba(15,23,42,.25),0 2px 6px rgba(15,23,42,.06);padding:8px;display:grid;grid-template-columns:repeat(6,1fr) auto;gap:4px;text-align:left}
+  .rlp-f{display:flex;flex-direction:column;padding:8px 12px;border-radius:12px;border:1px solid transparent;min-width:0}.rlp-f:hover{background:#f8fafc}.rlp-f:focus-within{background:#fffbea;border-color:var(--ra)}
+  .rlp-f label{font-size:10px;font-weight:800;color:var(--rm);letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
+  .rlp-f input,.rlp-f select{border:0;outline:0;background:transparent;font-size:13.5px;font-weight:700;color:var(--rk);padding:2px 0;font-family:inherit;width:100%;min-width:0}
+  .rlp-f .rng{display:flex;gap:4px;align-items:center}.rlp-f .rng input{width:50%}
+  .rlp-go{background:linear-gradient(135deg,#fec503,#ff9500);color:#111;border:0;border-radius:14px;padding:0 20px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 10px 20px -8px rgba(255,149,0,.6);white-space:nowrap}
+  .rlp-pills{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:14px;font-size:12px;color:#475569;font-weight:600}.rlp-pills span::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ra);margin-right:6px}
+  .rlp-head{max-width:1080px;margin:18px auto 0;padding:0 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .rlp-count{font-size:14px;font-weight:800;color:var(--rk)}.rlp-count small{color:var(--rm);font-weight:600;margin-left:6px}
+  .rlp-sel{padding:6px 10px;border:1px solid var(--rl);border-radius:8px;font-size:12px;font-weight:700;background:#fff;color:var(--rk)}
+  .rlp-new{margin-left:auto;background:linear-gradient(135deg,#111827,#374151);color:#fff;border:0;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:800;cursor:pointer}
+  .rlp-grid{max-width:1080px;margin:16px auto 90px;padding:0 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
+  .rlp-card{background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.06);border:1px solid rgba(17,24,39,.06);cursor:pointer;transition:transform .22s,box-shadow .22s;display:flex;flex-direction:column}
+  .rlp-card:hover{transform:translateY(-4px);box-shadow:0 20px 40px -10px rgba(15,23,42,.15)}
+  .rlp-img{aspect-ratio:16/10;background:linear-gradient(135deg,#e2e8f0,#cbd5e1);position:relative;overflow:hidden}.rlp-img img{width:100%;height:100%;object-fit:cover;transition:transform .5s}.rlp-card:hover .rlp-img img{transform:scale(1.05)}
+  .rlp-type{position:absolute;top:12px;left:12px;background:rgba(255,255,255,.95);color:#7a5800;font-size:10px;font-weight:800;padding:4px 10px;border-radius:99px;letter-spacing:.04em;text-transform:uppercase}
+  .rlp-op{position:absolute;top:12px;right:12px;font-size:10px;font-weight:800;padding:4px 10px;border-radius:99px;letter-spacing:.04em;text-transform:uppercase;color:#fff;background:#0f766e}.rlp-op.venta{background:#7c3aed}
+  .rlp-nf{position:absolute;bottom:10px;right:12px;background:rgba(15,23,42,.65);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px}
+  .rlp-body{padding:14px 16px 16px;flex:1;display:flex;flex-direction:column}
+  .rlp-ct{font-size:15px;font-weight:800;color:var(--rk);line-height:1.3;margin:0 0 4px;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .rlp-loc{font-size:12px;color:var(--rm);margin:0 0 10px}
+  .rlp-cap{display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:#475569;font-weight:600;margin-bottom:10px}
+  .rlp-amen{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}.rlp-amen span{font-size:10px;background:#f1f5f9;color:#475569;padding:3px 8px;border-radius:99px;font-weight:600}
+  .rlp-foot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;padding-top:10px;border-top:1px dashed var(--rl)}
+  .rlp-price{font-size:20px;font-weight:900;color:#111;letter-spacing:-.02em}.rlp-price small{font-size:11px;color:var(--rm);font-weight:600;display:block;letter-spacing:0}
+  .rlp-btns{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .rlp-mapbtn{background:#fff;color:var(--rk);border:1px solid #cbd5e1;padding:5px 10px;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap}.rlp-mapbtn:hover{border-color:var(--rp);color:var(--rp)}
+  .rlp-cta{background:linear-gradient(135deg,#111827,#374151);color:#fff;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:800}
+  .rlp-float{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:9400;display:flex;gap:8px}
+  .rlp-float button{border-radius:999px;padding:10px 16px;font-size:13px;font-weight:800;cursor:pointer;border:0}
+  .rlp-fmap{background:var(--rk);color:#fff;box-shadow:0 6px 18px -4px rgba(15,23,42,.4)}.rlp-fshare{background:#fff;color:var(--rk);border:1px solid #e5e7eb!important;box-shadow:0 6px 18px -4px rgba(15,23,42,.2)}.rlp-fshare.ok{background:#10b981;color:#fff}
+  .rlp-modal{position:fixed;inset:0;z-index:9500;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:14px}
+  .rlp-box{background:#fff;border-radius:18px;width:min(900px,100%);max-height:94vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+  .rlp-box h3{margin:0;font-size:17px}.rlp-bh{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--rl);position:sticky;top:0;background:#fff;z-index:2}
+  .rlp-x{all:unset;cursor:pointer;font-size:20px;color:var(--rm);margin-left:auto}
+  .rlp-form{padding:16px 18px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px 12px}.rlp-form .w2{grid-column:span 2}.rlp-form .w3{grid-column:1/-1}
+  .rlp-form label{display:block;font-size:11px;font-weight:700;color:var(--rm);margin-bottom:3px}.rlp-form input,.rlp-form select,.rlp-form textarea{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit}
+  .rlp-form textarea{min-height:90px;resize:vertical}
+  .rlp-ext{margin:0 18px;padding:12px 14px;border-radius:12px;background:#fffbea;border:1px solid #fde68a}
+  .rlp-ext input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid #fcd34d;border-radius:8px;font-size:13px}
+  .rlp-btn{padding:8px 14px;border-radius:8px;font-size:12.5px;font-weight:800;cursor:pointer;border:1px solid #cbd5e1;background:#fff;color:var(--rk)}.rlp-btn.p{background:#16a34a;color:#fff;border-color:#16a34a}.rlp-btn.d{background:#111827;color:#fff;border-color:#111827}.rlp-btn.r{color:#b91c1c;border-color:#fca5a5}
+  .rlp-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}.rlp-gal div{position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;border:1px solid var(--rl);background:#f8fafc}.rlp-gal img{width:100%;height:100%;object-fit:cover;display:block}.rlp-gal button{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:999px;border:0;background:rgba(15,23,42,.75);color:#fff;font-size:12px;cursor:pointer}
+  .rlp-det{padding:0 18px 18px}.rlp-det .big{width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#e2e8f0;margin-bottom:10px}.rlp-det .big img{width:100%;height:100%;object-fit:cover}
+  .rlp-thumbs{display:flex;gap:6px;overflow:auto;padding-bottom:6px;margin-bottom:12px}.rlp-thumbs img{width:84px;height:62px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid transparent;flex:none}.rlp-thumbs img.on{border-color:var(--ro)}
+  .rlp-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:12px 0}.rlp-kv div{background:#f8fafc;border:1px solid var(--rl);border-radius:10px;padding:8px 10px;font-size:12.5px}.rlp-kv b{display:block;font-size:10px;color:var(--rm);text-transform:uppercase;letter-spacing:.04em}
+  #rlp-map{height:70vh;border-radius:14px}
+  @media(max-width:900px){.rlp-bar{grid-template-columns:1fr 1fr}.rlp-go{grid-column:1/-1;padding:12px}.rlp-form{grid-template-columns:1fr 1fr}.rlp-form .w2,.rlp-form .w3{grid-column:1/-1}}`;
+  document.head.appendChild(st);
+}
+window.rlpInit = async function () {
+  rlpCss_(); const root = document.getElementById('rlp-root'); if (!root) return;
+  if (!RLP.items) { root.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b">⏳ Cargando publicaciones…</div>'; await rlpCargar_(); }
+  rlpRender_();
+};
+async function rlpCargar_() { try { const j = await fetch(`${BACKEND}/rentas`, { cache: 'no-store' }).then(r => r.json()); RLP.items = j.ok ? j.items : []; } catch (_) { RLP.items = RLP.items || []; } }
+function rlpFiltrar_() {
+  const q = RLP.q, N = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  let L = (RLP.items || []).filter(p => p.estatus !== 'cerrada');
+  if (q.tipo) L = L.filter(p => p.tipo === q.tipo); if (q.operacion) L = L.filter(p => p.operacion === q.operacion);
+  if (q.lugar) { const t = N(q.lugar); L = L.filter(p => N([p.ciudad, p.estado, p.colonia, p.direccion, p.titulo].join(' ')).includes(t)); }
+  if (q.rec) L = L.filter(p => Number(p.recamaras || 0) >= Number(q.rec)); if (q.banos) L = L.filter(p => Number(p.banos || 0) >= Number(q.banos));
+  if (q.min) L = L.filter(p => Number(p.precio || 0) >= Number(q.min)); if (q.max) L = L.filter(p => p.precio != null && Number(p.precio) <= Number(q.max));
+  const o = q.orden; L.sort((a, b) => o === 'precio_asc' ? (a.precio || 0) - (b.precio || 0) : o === 'precio_desc' ? (b.precio || 0) - (a.precio || 0) : o === 'm2' ? (b.m2_construccion || 0) - (a.m2_construccion || 0) : String(b.actualizado || '').localeCompare(String(a.actualizado || '')));
+  return L;
+}
+function rlpRender_() {
+  const root = document.getElementById('rlp-root'); if (!root) return; const q = RLP.q, L = rlpFiltrar_();
+  const opt = (arr, cur) => arr.map(([v, t]) => `<option value="${esc(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  const nums = [['', 'Cualquiera'], ['1', '1+'], ['2', '2+'], ['3', '3+'], ['4', '4+']];
+  root.innerHTML = `<section class="rlp-hero">
+      <span class="rlp-eyebrow">🏘️ Rentas y ventas de largo plazo · Saltillo</span>
+      <h1 class="rlp-title">Encuentra tu <em>próxima propiedad</em></h1>
+      <p class="rlp-sub">Consulta, compara y publica propiedades en renta o venta.</p>
+      <form class="rlp-bar" onsubmit="event.preventDefault();rlpBuscar_(this)">
+        <div class="rlp-f"><label>Tipo</label><select name="tipo"><option value="">Todos</option>${opt(RLP_TIPOS, q.tipo)}</select></div>
+        <div class="rlp-f"><label>Operación</label><select name="operacion">${opt([['', 'Renta o venta'], ['renta', 'Renta'], ['venta', 'Venta']], q.operacion)}</select></div>
+        <div class="rlp-f"><label>Lugar</label><input name="lugar" value="${esc(q.lugar)}" placeholder="Saltillo, Coahuila…"></div>
+        <div class="rlp-f"><label>Recámaras</label><select name="rec">${opt(nums, q.rec)}</select></div>
+        <div class="rlp-f"><label>Baños</label><select name="banos">${opt(nums, q.banos)}</select></div>
+        <div class="rlp-f"><label>Precio</label><div class="rng"><input name="min" type="number" value="${esc(q.min)}" placeholder="Mín"><span style="color:#94a3b8">–</span><input name="max" type="number" value="${esc(q.max)}" placeholder="Máx"></div></div>
+        <button class="rlp-go" type="submit">🔍 Buscar</button></form>
+      <div class="rlp-pills"><span>Propias y de portales en una sola base</span><span>Extrae datos desde un link</span><span>Comparte y ve en el mapa</span></div></section>
+    <div class="rlp-head"><div class="rlp-count">${L.length} propiedad${L.length === 1 ? '' : 'es'}<small>${[q.operacion, q.tipo && rlpTipoTx_(q.tipo), q.lugar].filter(Boolean).join(' · ') || 'todas'}</small></div>
+      <span style="font-size:12px;color:#64748b">Ordenar:</span><select class="rlp-sel" onchange="RLP.q.orden=this.value;rlpRender_()">${opt([['reciente', 'Más reciente'], ['precio_asc', 'Precio: menor a mayor'], ['precio_desc', 'Precio: mayor a menor'], ['m2', 'Más m²']], q.orden)}</select>
+      <button class="rlp-new" onclick="rlpNueva_()">➕ Nueva publicación</button></div>
+    <div class="rlp-grid">${L.map(rlpCard_).join('') || '<div style="grid-column:1/-1;text-align:center;padding:50px 20px;color:#94a3b8">Sin propiedades con esos filtros. Crea una con «➕ Nueva publicación» o pega un link de Vivanuncios, Inmuebles24, Century 21, Lamudi…</div>'}</div>
+    <div class="rlp-float"><button class="rlp-fmap" onclick="rlpMapa_()">🗺️ Ver mapa</button><button class="rlp-fshare" onclick="rlpCompartir_(this)">🔗 Compartir</button></div>`;
+}
+function rlpCard_(p) {
+  const f = (p.fotos || [])[0], cap = [];
+  if (p.recamaras) cap.push(`<span>🛏 ${p.recamaras}</span>`); if (p.banos) cap.push(`<span>🚿 ${p.banos}${p.medios_banos ? '½' : ''}</span>`); if (p.m2_construccion) cap.push(`<span>📐 ${p.m2_construccion} m²</span>`); if (p.estacionamientos) cap.push(`<span>🚗 ${p.estacionamientos}</span>`); if (p.amueblado) cap.push('<span>🛋 Amueblado</span>');
+  const loc = [p.colonia, p.ciudad, p.estado].filter(Boolean).join(', ');
+  return `<div class="rlp-card" onclick="rlpFicha_('${esc(p.id)}')">
+    <div class="rlp-img"><div class="rlp-type">${esc(rlpTipoTx_(p.tipo))}</div><div class="rlp-op ${p.operacion}">${p.operacion === 'venta' ? 'Venta' : 'Renta'}</div>${f ? `<img src="${esc(f.url)}" alt="" loading="lazy">` : ''}${(p.fotos || []).length > 1 ? `<div class="rlp-nf">📷 ${p.fotos.length}</div>` : ''}</div>
+    <div class="rlp-body"><h3 class="rlp-ct">${esc(p.titulo)}</h3><p class="rlp-loc">📍 ${esc(loc || 'Saltillo')}${p.portal && p.portal !== 'propia' ? ` · <span style="color:#7a5800">${esc(p.portal)}</span>` : ''}</p>
+      ${cap.length ? `<div class="rlp-cap">${cap.join('')}</div>` : ''}${(p.amenidades || []).length ? `<div class="rlp-amen">${p.amenidades.slice(0, 4).map(a => `<span>${esc(a)}</span>`).join('')}${p.amenidades.length > 4 ? `<span>+${p.amenidades.length - 4}</span>` : ''}</div>` : ''}
+      <div class="rlp-foot"><div class="rlp-price">${rlp$(p.precio, p.moneda)}<small>${p.operacion === 'venta' ? 'precio de venta' : (p.periodo || 'mensual')}</small></div>
+        <div class="rlp-btns"><button class="rlp-mapbtn" onclick="event.stopPropagation();rlpMapa_('${esc(p.id)}')">🗺️ Ver en mapa</button><span class="rlp-cta">Ver ficha →</span></div></div></div></div>`;
+}
+window.rlpBuscar_ = function (form) { const fd = new FormData(form); ['tipo', 'operacion', 'lugar', 'rec', 'banos', 'min', 'max'].forEach(k => { RLP.q[k] = String(fd.get(k) || '').trim(); }); rlpRender_(); };
+// ── Compartir: resumen de los resultados filtrados (o de una ficha) listo para WhatsApp ──
+window.rlpCompartir_ = async function (btn, id) {
+  const L = id ? (RLP.items || []).filter(p => p.id === id) : rlpFiltrar_().slice(0, 15);
+  const txt = (id ? '' : `🏘️ Propiedades (${L.length})\n`) + L.map(p => `• ${p.titulo}\n  ${p.operacion === 'venta' ? 'Venta' : 'Renta'} · ${rlp$(p.precio, p.moneda)}${p.operacion === 'renta' ? ' /mes' : ''} · ${[p.recamaras && p.recamaras + ' rec', p.banos && p.banos + ' baños', p.m2_construccion && p.m2_construccion + ' m²'].filter(Boolean).join(' · ')}\n  📍 ${[p.colonia, p.ciudad].filter(Boolean).join(', ')}${p.url_origen ? '\n  ' + p.url_origen : ''}${(p.fotos || [])[0] ? '\n  📷 ' + p.fotos[0].url : ''}`).join('\n\n');
+  try { await navigator.clipboard.writeText(txt); } catch (_) {}
+  if (btn) { const t = btn.textContent; btn.classList.add('ok'); btn.textContent = '✓ Copiado'; setTimeout(() => { btn.classList.remove('ok'); btn.textContent = t; }, 1800); }
+  if (id) window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank', 'noopener');
+};
+// ── Mapa (Leaflet): todas las propiedades con coordenadas; una sola resalta. Sin coordenadas → Google Maps por dirección. ──
+window.rlpMapa_ = function (id) {
+  const L = id ? (RLP.items || []).filter(p => p.id === id) : rlpFiltrar_();
+  const conGeo = L.filter(p => p.lat && p.lng);
+  if (id && !conGeo.length) { const p = L[0]; if (p) window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.direccion, p.colonia, p.ciudad, p.estado].filter(Boolean).join(', '))}`, '_blank', 'noopener'); return; }
+  const m = document.createElement('div'); m.className = 'rlp-modal'; m.onclick = e => { if (e.target === m) m.remove(); };
+  m.innerHTML = `<div class="rlp-box" style="width:min(1000px,100%)"><div class="rlp-bh"><h3>🗺️ Mapa · ${conGeo.length} con ubicación${L.length - conGeo.length ? ` · ${L.length - conGeo.length} sin coordenadas` : ''}</h3><button class="rlp-x" onclick="this.closest('.rlp-modal').remove()">✕</button></div><div style="padding:12px 18px 18px"><div id="rlp-map"></div></div></div>`;
+  document.body.appendChild(m);
+  _rsvEnsureLeaflet_(() => { const map = window.L.map('rlp-map').setView(conGeo.length ? [conGeo[0].lat, conGeo[0].lng] : [25.4232, -101.0053], conGeo.length === 1 ? 15 : 12);
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+    const g = []; conGeo.forEach(p => { const mk = window.L.marker([p.lat, p.lng]).addTo(map).bindPopup(`<b>${esc(p.titulo)}</b><br>${rlp$(p.precio, p.moneda)} · ${esc(rlpTipoTx_(p.tipo))}<br><a href="#" onclick="rlpFicha_('${esc(p.id)}');return false">Ver ficha</a>`); g.push(mk); });
+    if (g.length > 1) map.fitBounds(window.L.featureGroup(g).getBounds().pad(0.2)); if (g.length === 1) g[0].openPopup(); });
+};
+// ── Ficha ──
+window.rlpFicha_ = function (id) {
+  const p = (RLP.items || []).find(x => x.id === id); if (!p) return; document.querySelectorAll('.rlp-modal').forEach(x => x.remove());
+  const F = p.fotos || [], kv = [['Operación', p.operacion === 'venta' ? 'Venta' : 'Renta'], ['Tipo', rlpTipoTx_(p.tipo)], ['Precio', rlp$(p.precio, p.moneda) + (p.operacion === 'renta' ? ' / ' + (p.periodo || 'mes') : '')], ['Recámaras', p.recamaras], ['Baños', p.banos ? p.banos + (p.medios_banos ? ' + ' + p.medios_banos + ' medio' : '') : ''], ['Estacionamientos', p.estacionamientos], ['Construcción', p.m2_construccion ? p.m2_construccion + ' m²' : ''], ['Terreno', p.m2_terreno ? p.m2_terreno + ' m²' : ''], ['Amueblado', p.amueblado ? 'Sí' : 'No'], ['Ubicación', [p.direccion, p.colonia, p.ciudad, p.estado, p.cp].filter(Boolean).join(', ')], ['Contacto', [p.contacto_nombre, p.contacto_tel].filter(Boolean).join(' · ')], ['Origen', p.portal === 'propia' ? 'Publicación propia' : p.portal], ['Publicado', p.fecha_publicacion], ['Estatus', p.estatus]].filter(x => x[1]);
+  const m = document.createElement('div'); m.className = 'rlp-modal'; m.onclick = e => { if (e.target === m) m.remove(); };
+  m.innerHTML = `<div class="rlp-box"><div class="rlp-bh"><h3>${esc(p.titulo)}</h3><button class="rlp-btn" onclick="rlpCompartir_(null,'${esc(p.id)}')">🔗 Compartir</button><button class="rlp-btn" onclick="rlpMapa_('${esc(p.id)}')">🗺️ Mapa</button><button class="rlp-btn d" onclick="rlpEditar_('${esc(p.id)}')">✏️ Editar</button><button class="rlp-x" onclick="this.closest('.rlp-modal').remove()">✕</button></div>
+    <div class="rlp-det">${F.length ? `<div class="big"><img id="rlp-big" src="${esc(F[0].url)}" alt=""></div><div class="rlp-thumbs">${F.map((f, i) => `<img src="${esc(f.url)}" class="${i ? '' : 'on'}" onclick="document.getElementById('rlp-big').src=this.src;this.parentElement.querySelectorAll('img').forEach(x=>x.classList.remove('on'));this.classList.add('on')">`).join('')}</div>` : ''}
+      <div class="rlp-kv">${kv.map(([k, v]) => `<div><b>${esc(k)}</b>${esc(String(v))}</div>`).join('')}</div>
+      ${(p.amenidades || []).length ? `<div class="rlp-amen" style="margin-bottom:12px">${p.amenidades.map(a => `<span>${esc(a)}</span>`).join('')}</div>` : ''}
+      ${p.descripcion ? `<div style="font-size:13.5px;line-height:1.55;color:#334155;white-space:pre-wrap">${esc(p.descripcion)}</div>` : ''}
+      ${p.notas ? `<div style="margin-top:10px;padding:10px 12px;background:#fffbea;border:1px solid #fde68a;border-radius:10px;font-size:12.5px"><b>Notas internas:</b> ${esc(p.notas)}</div>` : ''}
+      ${p.url_origen ? `<div style="margin-top:12px"><a href="${esc(p.url_origen)}" target="_blank" rel="noopener" style="color:#0369a1;font-weight:700;font-size:13px">↗ Ver anuncio original (${esc(p.portal)})</a></div>` : ''}</div></div>`;
+  document.body.appendChild(m);
+};
+// ── Nueva / editar: formulario + extracción desde link (o desde texto pegado si el portal bloquea) ──
+window.rlpNueva_ = function () { rlpForm_({ operacion: 'renta', tipo: 'departamento', moneda: 'MXN', ciudad: 'Saltillo', estado: 'Coahuila', fotos: [], amenidades: [], propia: true }); };
+window.rlpEditar_ = function (id) { const p = (RLP.items || []).find(x => x.id === id); if (p) rlpForm_(JSON.parse(JSON.stringify(p))); };
+function rlpForm_(p) {
+  document.querySelectorAll('.rlp-modal').forEach(x => x.remove()); RLP.form = p;
+  const m = document.createElement('div'); m.className = 'rlp-modal'; m.id = 'rlp-form-modal';
+  m.innerHTML = `<div class="rlp-box"><div class="rlp-bh"><h3>${p.id ? '✏️ Editar publicación' : '➕ Nueva publicación'}</h3>${p.id ? `<button class="rlp-btn r" onclick="rlpEliminar_('${esc(p.id)}')">🗑 Eliminar</button>` : ''}<button class="rlp-x" onclick="rlpFormCerrar_()">✕</button></div>
+    <div class="rlp-ext"><div style="font-size:12px;font-weight:800;color:#7a5800;margin-bottom:6px">🔗 Pegar link de un portal (Vivanuncios, Inmuebles24, Century 21, Lamudi, Propiedades.com…)</div>
+      <div style="display:flex;gap:8px"><input id="rlp-url" value="${esc(p.url_origen || '')}" placeholder="https://…"><button class="rlp-btn d" onclick="rlpExtraer_()">Extraer datos</button></div>
+      <div id="rlp-ext-msg" style="font-size:12px;color:#64748b;margin-top:6px"></div>
+      <div id="rlp-ext-texto" style="display:none;margin-top:8px"><textarea id="rlp-texto" placeholder="Pega aquí todo el texto del anuncio (abre el link, Ctrl/Cmd+A, copiar, pegar)" style="width:100%;box-sizing:border-box;min-height:120px;padding:9px 11px;border:1px solid #fcd34d;border-radius:8px;font-size:12.5px"></textarea><button class="rlp-btn d" style="margin-top:6px" onclick="rlpExtraerTexto_()">🤖 Estructurar con IA</button></div></div>
+    <div class="rlp-form" id="rlp-form">${rlpFormCampos_(p)}</div>
+    <div style="padding:0 18px 18px"><div style="font-size:12px;font-weight:800;color:#64748b;margin-bottom:6px">📷 Fotos (${(p.fotos || []).length})</div><div class="rlp-gal" id="rlp-gal">${rlpGal_(p)}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><label class="rlp-btn" style="cursor:pointer">📷 Subir fotos<input type="file" accept="image/*" multiple style="display:none" onchange="rlpFotosSubir_(this)"></label><input id="rlp-foto-url" placeholder="o pega la URL de una imagen" style="flex:1;min-width:200px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px"><button class="rlp-btn" onclick="rlpFotoUrl_()">Agregar</button><span id="rlp-foto-st" style="font-size:12px;color:#64748b"></span></div></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding:0 18px 18px"><button class="rlp-btn" onclick="rlpFormCerrar_()">Cancelar</button><button class="rlp-btn p" id="rlp-save" onclick="rlpGuardar_()">💾 Guardar publicación</button></div></div>`;
+  document.body.appendChild(m);
+}
+function rlpFormCampos_(p) {
+  const I = (k, lbl, cls, type, ph) => `<div class="${cls || ''}"><label>${lbl}</label><input name="${k}" type="${type || 'text'}" value="${esc(p[k] == null ? '' : p[k])}" placeholder="${esc(ph || '')}"></div>`;
+  const S = (k, lbl, opts, cls) => `<div class="${cls || ''}"><label>${lbl}</label><select name="${k}">${opts.map(([v, t]) => `<option value="${esc(v)}" ${String(p[k]) === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+  return I('titulo', 'Título *', 'w3', 'text', 'Ej. Departamento amueblado 1 recámara al norte de Saltillo') + S('operacion', 'Operación', [['renta', 'Renta'], ['venta', 'Venta']]) + S('tipo', 'Tipo', RLP_TIPOS) + S('estatus', 'Estatus', [['activa', 'Activa'], ['pausada', 'Pausada'], ['cerrada', 'Cerrada / rentada']])
+    + I('precio', 'Precio', '', 'number') + S('moneda', 'Moneda', [['MXN', 'MXN'], ['USD', 'USD']]) + S('periodo', 'Periodo (renta)', [['mensual', 'Mensual'], ['anual', 'Anual'], ['', '—']])
+    + I('recamaras', 'Recámaras', '', 'number') + I('banos', 'Baños', '', 'number') + I('medios_banos', 'Medios baños', '', 'number') + I('estacionamientos', 'Estacionamientos', '', 'number') + I('m2_construccion', 'm² construcción', '', 'number') + I('m2_terreno', 'm² terreno', '', 'number')
+    + S('amueblado', 'Amueblado', [['false', 'No'], ['true', 'Sí']]) + I('ciudad', 'Ciudad') + I('estado', 'Estado') + I('colonia', 'Colonia') + I('direccion', 'Dirección', 'w2') + I('cp', 'C.P.') + I('lat', 'Latitud', '', 'text', '25.42') + I('lng', 'Longitud', '', 'text', '-101.00')
+    + `<div class="w3"><label>Amenidades (separadas por coma)</label><input name="amenidades" value="${esc((p.amenidades || []).join(', '))}"></div>`
+    + `<div class="w3"><label>Descripción</label><textarea name="descripcion">${esc(p.descripcion || '')}</textarea></div>`
+    + I('contacto_nombre', 'Contacto · nombre') + I('contacto_tel', 'Contacto · teléfono') + I('fecha_publicacion', 'Fecha de publicación', '', 'date') + S('propia', 'Publicación', [['true', 'Propia (Check-inn)'], ['false', 'De terceros / portal']])
+    + `<div class="w2"><label>Notas internas</label><input name="notas" value="${esc(p.notas || '')}"></div>`;
+}
+function rlpGal_(p) { return (p.fotos || []).map((f, i) => `<div><img src="${esc(f.url)}" alt=""><button type="button" onclick="RLP.form.fotos.splice(${i},1);document.getElementById('rlp-gal').innerHTML=rlpGal_(RLP.form)">✕</button></div>`).join('') || '<div style="grid-column:1/-1;color:#94a3b8;font-size:12px;font-style:italic;aspect-ratio:auto;border:0;background:none">Sin fotos. Sube archivos, pega URLs o extrae desde un link.</div>'; }
+function rlpLeerForm_() { const f = document.getElementById('rlp-form'); const o = Object.assign({}, RLP.form); f.querySelectorAll('input,select,textarea').forEach(el => { o[el.name] = el.value; }); o.amenidades = String(o.amenidades || '').split(',').map(x => x.trim()).filter(Boolean); o.amueblado = o.amueblado === 'true'; o.propia = o.propia === 'true'; o.fotos = RLP.form.fotos || []; return o; }
+function rlpAplicarExt_(pub, campos) {
+  const cur = rlpLeerForm_(); const n = {};
+  Object.keys(pub).forEach(k => { const v = pub[k]; if (v == null || v === '' || (Array.isArray(v) && !v.length)) return; if (k === 'fotos') { const have = new Set((cur.fotos || []).map(f => f.url)); cur.fotos = (cur.fotos || []).concat(v.filter(f => !have.has(f.url))); n.fotos = 1; return; } cur[k] = v; n[k] = 1; });
+  RLP.form = cur; document.getElementById('rlp-form').innerHTML = rlpFormCampos_(cur); document.getElementById('rlp-gal').innerHTML = rlpGal_(cur);
+  return Object.keys(n).length;
+}
+window.rlpExtraer_ = async function () {
+  const url = (document.getElementById('rlp-url').value || '').trim(), msg = document.getElementById('rlp-ext-msg'); if (!/^https?:\/\//.test(url)) { msg.textContent = 'Pega un link válido.'; return; }
+  msg.textContent = '⏳ Leyendo el anuncio…'; document.getElementById('rlp-ext-texto').style.display = 'none';
+  try { const j = await fetch(`${BACKEND}/rentas/extraer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error);
+    if (j.bloqueado) { msg.innerHTML = `⚠️ <b>${esc(j.portal)}</b> bloquea la lectura automática. Abre el anuncio, selecciona todo (Ctrl/Cmd+A), copia y pega el texto abajo; la IA lo estructura.`; document.getElementById('rlp-ext-texto').style.display = 'block'; const cur = rlpLeerForm_(); cur.url_origen = url; cur.portal = j.portal; RLP.form = cur; return; }
+    const n = rlpAplicarExt_(j.pub); msg.innerHTML = `✓ ${n} campos tomados de <b>${esc(j.pub.portal)}</b>. Revisa y completa lo que falte.`;
+  } catch (e) { msg.textContent = '⚠ ' + (e.message || e); }
+};
+window.rlpExtraerTexto_ = async function () {
+  const texto = (document.getElementById('rlp-texto').value || '').trim(), url = (document.getElementById('rlp-url').value || '').trim(), msg = document.getElementById('rlp-ext-msg'); if (texto.length < 40) { msg.textContent = 'Pega el texto del anuncio.'; return; }
+  msg.textContent = '🤖 Estructurando con IA…';
+  try { const j = await fetch(`${BACKEND}/rentas/extraer-texto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto, url }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error);
+    const n = rlpAplicarExt_(j.pub); msg.innerHTML = `✓ ${n} campos estructurados. Las fotos no viajan en el texto: pega sus URLs o súbelas.`; document.getElementById('rlp-ext-texto').style.display = 'none';
+  } catch (e) { msg.textContent = '⚠ ' + (e.message || e); }
+};
+window.rlpFotoUrl_ = function () { const i = document.getElementById('rlp-foto-url'), u = (i.value || '').trim(); if (!/^https?:\/\//.test(u)) return; RLP.form = rlpLeerForm_(); RLP.form.fotos.push({ url: u, alt: '' }); i.value = ''; document.getElementById('rlp-gal').innerHTML = rlpGal_(RLP.form); };
+window.rlpFotosSubir_ = async function (input) {
+  const files = Array.from(input.files || []); if (!files.length) return; const st = document.getElementById('rlp-foto-st'); RLP.form = rlpLeerForm_();
+  try { st.textContent = `⏳ Subiendo ${files.length}…`; const fd = new FormData(); fd.append('id', RLP.form.id || 'nueva'); for (const f of files) { let b = f; try { if (typeof imgLigera_ === 'function') b = await imgLigera_(f, 1600, 0.8); } catch (_) {} fd.append('fotos', b, f.name); }
+    const j = await fetch(`${BACKEND}/rentas/fotos`, { method: 'POST', body: fd }).then(r => r.json()); if (!j.ok) throw new Error(j.error); RLP.form.fotos = (RLP.form.fotos || []).concat(j.fotos); document.getElementById('rlp-gal').innerHTML = rlpGal_(RLP.form); st.textContent = `✓ ${j.fotos.length} subidas`; }
+  catch (e) { st.textContent = '⚠ ' + (e.message || e); } try { input.value = ''; } catch (_) {}
+};
+window.rlpGuardar_ = async function () {
+  const pub = rlpLeerForm_(); pub.usuario = (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser) : ''; if (!pub.titulo.trim()) { alert('Falta el título.'); return; }
+  const b = document.getElementById('rlp-save'); b.disabled = true; b.textContent = '⏳ Guardando…';
+  try { const j = await fetch(`${BACKEND}/rentas/guardar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pub }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error);
+    // Fotos de portales: se copian a nuestro almacenamiento en segundo plano (si el portal lo permite).
+    const ext = (j.pub.fotos || []).filter(f => !/storage\.googleapis\.com/.test(f.url)).map(f => f.url);
+    if (ext.length) fetch(`${BACKEND}/rentas/fotos/importar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: j.pub.id, urls: ext, referer: j.pub.url_origen }) }).then(() => rlpCargar_().then(rlpRender_)).catch(() => {});
+    rlpFormCerrar_(); await rlpCargar_(); rlpRender_(); if (typeof bkToast_ === 'function') bkToast_('✓ Publicación guardada'); }
+  catch (e) { alert('⚠ ' + (e.message || e)); b.disabled = false; b.textContent = '💾 Guardar publicación'; }
+};
+window.rlpEliminar_ = async function (id) { if (!confirm('¿Eliminar esta publicación? (queda en la papelera del archivo)')) return; try { const j = await fetch(`${BACKEND}/rentas/eliminar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, usuario: (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser) : '' }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error); rlpFormCerrar_(); await rlpCargar_(); rlpRender_(); } catch (e) { alert('⚠ ' + (e.message || e)); } };
+window.rlpFormCerrar_ = function () { document.getElementById('rlp-form-modal')?.remove(); RLP.form = null; };
