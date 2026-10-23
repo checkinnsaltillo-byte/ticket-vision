@@ -12301,7 +12301,7 @@ app.post("/rentas/fotos/importar", async (req, res) => {
 // (bucket privado). Publicaciones hechas en marketing/publicaciones.json.
 // Requiere META_APP_ID / META_APP_SECRET (Cloud Run) y la app «Check-inn Saltillo» en Meta for Developers.
 // ═══════════════════════════════════════════════════════════════════════════
-const _MK = { OBJ: "marketing/meta.json", PUB: "marketing/publicaciones.json", G: "https://graph.facebook.com/v21.0", CB: "https://api.check-inn.mx/marketing/meta/callback", ADMIN: "https://www.check-inn.mx/admin/", SCOPES: "pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_manage_insights" };
+const _MK = { OBJ: "marketing/meta.json", PUB: "marketing/publicaciones.json", G: "https://graph.facebook.com/v21.0", CB: "https://api.check-inn.mx/marketing/meta/callback", ADMIN: "https://www.check-inn.mx/admin/", SCOPES: process.env.META_SCOPES || "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_manage_insights" };
 async function _mkMeta() { const { data } = await _bnReadGcs(_MK.OBJ); return data || { paginas: [] }; }
 async function _mkGraph(path, params, opts) {
   const o = opts || {}, u = new URL(_MK.G + path); Object.entries(params || {}).forEach(([k, v]) => { if (v != null) u.searchParams.set(k, String(v)); });
