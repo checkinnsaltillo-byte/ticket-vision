@@ -12925,9 +12925,9 @@ function _plLimpia(b, user, prev) {
   return { id: prev ? prev.id : sid(b.id), titulo: txt(b.titulo, 140) || "Sin título",
     depto: ["limpieza", "inspeccion", "insumos", "mantenimiento", "administrativo"].includes(b.depto) ? b.depto : "inspeccion",
     prioridad: ["baja", "media", "alta", "critica"].includes(b.prioridad) ? b.prioridad : "media", descripcion: txt(b.descripcion, 2000),
-    secciones: (Array.isArray(b.secciones) ? b.secciones : []).slice(0, 120).map(sx => ({ id: sid(sx.id), titulo: txt(sx.titulo, 160) || "Sección",
+    secciones: (Array.isArray(b.secciones) ? b.secciones : []).slice(0, 120).map(sx => ({ id: sid(sx.id), titulo: txt(sx.titulo, 160) || "Sección", ...(sx.critico ? { critico: true } : {}), // 2026-10-23: sección crítica
       items: (Array.isArray(sx.items) ? sx.items : []).slice(0, 150).filter(it => _PL_TIPOS.includes(it && it.tipo)).map(it => {
-        const o = { id: sid(it.id), tipo: it.tipo, texto: txt(it.texto, 400), foto: !!it.foto, ref: refs(it.ref) };
+        const o = { id: sid(it.id), tipo: it.tipo, texto: txt(it.texto, 400), foto: !!it.foto, ref: refs(it.ref) }; if (it.critico) o.critico = true; // campo crítico
         if (it.tipo === "contar") { const mi = num(it.min), ma = num(it.max); if (mi !== undefined) o.min = mi; if (ma !== undefined) o.max = ma; }
         if (it.tipo === "calif") o.escala = [3, 5, 10].includes(Number(it.escala)) ? Number(it.escala) : 5;
         if (it.tipo === "lista") o.sub = (Array.isArray(it.sub) ? it.sub : []).map(x => txt(x, 200)).filter(Boolean).slice(0, 60);
