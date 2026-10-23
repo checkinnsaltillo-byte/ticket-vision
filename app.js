@@ -61742,11 +61742,11 @@ function pcMovAlojGrupos_(cols, dia) {
   // canceladas se conservan únicamente para mostrar su aviso de cancelación.
   const okB = x => /^booked$/i.test(String(x.b.Status || '').trim()) || (x.cambio && x.cambio.k === 'cancelada');
   cols = cols.map(c => Object.assign({}, c, { list: c.list.filter(okB) }));
-  // v2130: si la reserva se extendió o cambió de fechas y ya NO sale este día, la card de limpieza se va al nuevo día de salida
-  // (la misma reserva la genera ahí, con su asignación). Se conserva aquí solo si alguien fijó la fecha de aseo en este día o ya la empezó.
+  // v2130-2132: si la reserva se extendió o cambió de fechas y ya NO sale este día, la card de este día se marca `ext` (sombreada, sin
+  // contar en avances) y la limpieza real aparece en el nuevo día de salida. No se marca si alguien fijó la fecha de aseo en este día o ya la empezó.
   { const d0 = dia || aseoHoyIso_(), RP0 = (window.ASEO && ASEO.reprog) || {};
     const seFue = x => { const id = String(x.b.Id), e = typeof aseoEstDe_ === 'function' ? aseoEstDe_(id) : null; return x.cambio && (x.cambio.k === 'extendida' || x.cambio.k === 'reprogramada') && _pagosDateIso(x.b.DateDeparture) !== d0 && !(RP0[id] && RP0[id].fecha === d0) && !(e && e.estado && e.estado !== 'pendiente'); };
-    cols[0] = Object.assign({}, cols[0], { list: cols[0].list.filter(x => !seFue(x)) }); }
+    cols[0].list.forEach(x => { if (seFue(x)) x.ext = true; }); } // v2132: se queda en el día original como card sombreada con el aviso de extensión
   cols[0].list.forEach(x => { const k = key(x); if (!m.has(k)) m.set(k, { k, aloj: x.aloj, hid: String(x.b.HouseId || ''), sal: [], ent: [] }); m.get(k).sal.push(x); });
   // Si en el alojamiento sale una reserva confirmada y otra cancelada, la card (y su estado/asignación) es la confirmada.
   const esCanc = x => !!(x.cambio && x.cambio.k === 'cancelada');
@@ -67782,10 +67782,12 @@ function adInfo_(g, hoy, o) {
   const esCopia = !!(g.reprogDe && !g.fantasma);
   const diasSal = esCopia ? Math.round((Date.parse(hoy) - Date.parse(g.reprogDe)) / 864e5) : 0;
   const h = adHoraMx_();
-  const fantasma = !!g.fantasma || (esHoyC && !esCopia && g.sal.length && !vivosEnt && selE === 'pendiente' && h >= 15);
-  const noSale = !!(xs && esHoyC && aseoNoSaleOn_(xs.b.Id));
+  const ext = !!(xs && xs.ext && xs.cambio); // v2132: la reserva extendió / cambió de fechas y ya no sale este día
+  const fantasma = ext || !!g.fantasma || (esHoyC && !esCopia && g.sal.length && !vivosEnt && selE === 'pendiente' && h >= 15);
+  const noSale = !ext && !!(xs && esHoyC && aseoNoSaleOn_(xs.b.Id));
   let aviso = null;
-  if (noSale) aviso = { c: 'red', t: 'No ha desalojado' };
+  if (ext) aviso = { c: 'ext', t: `${xs.cambio.t} · ${xs.cambio.d}`, cb: xs.cambio };
+  else if (noSale) aviso = { c: 'red', t: 'No ha desalojado' };
   else if (fantasma) aviso = { c: 'violet', t: 'Pasó al día siguiente · cerrar fecha en calendario' };
   else if (esHoyC && g.sal.length && vivosEnt && selE === 'pendiente' && h >= 14) aviso = { c: 'red', t: 'Urge · entra hoy y sigue pendiente' };
   else if (esHoyC && !g.sal.length && vivosEnt && pubE !== 'terminado' && pubE !== 'inspeccionado') aviso = { c: 'orange', t: 'Requiere inspección antes de la entrada' };
@@ -68077,7 +68079,7 @@ function adCard_(I) {
   return `<div class="ad-card tipo est-tint ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
-    ${I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
+    ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${adExtraInsumos_(I)}
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
