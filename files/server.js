@@ -12146,7 +12146,9 @@ function _rlpDeDatos(D) {
   const imgs = [].concat(inm && inm.image || [], acc.image || [], OG.i || [], Array.isArray(D.imgs) ? D.imgs : []).flat().map(x => typeof x === "string" ? x : (x && (x.url || x.contentUrl))).filter(Boolean).map(u => String(u).replace(/\/\d{3,4}x\d{3,4}\//, "/1200x1200/").replace(/\/avisos\/resize\//, "/avisos/")).filter(u => !/\/empresas\/|\/ficha\/map\/|creativecdn|doubleclick|\/logo|favicon|\.svg(\?|$)|\/static\//i.test(u)); // Navent: tamaño grande, sin logos de inmobiliaria ni mapas
   const amen = (acc.amenityFeature || []).map(a => a && (a.name || a.value)).filter(x => typeof x === "string");
   const fs = acc.floorSize && (acc.floorSize.value || acc.floorSize);
-  return { titulo, descripcion: (inm && inm.description) || OG.d || "",
+  const descLd = String((inm && inm.description) || OG.d || ""), descDom = String(D.desc || "").trim(); // D.desc: la descripción completa capturada en el navegador (tras abrir «Leer descripción completa»)
+  const descripcion = (descDom.length > descLd.replace(/\.{3}$/, "").length && descDom.length < 8000) ? descDom : descLd;
+  return { titulo, descripcion,
     tipo: /Apartment/i.test(T(acc)) ? "departamento" : /House|SingleFamily/i.test(T(acc)) ? "casa" : _rlpTipo(titulo) !== "otro" ? _rlpTipo(titulo) : (T(acc) || ""), operacion: /vent|sale/i.test(titulo + " " + url) ? "venta" : /rent|alquil/i.test(titulo + " " + url) ? "renta" : "",
     precio, moneda: (oferta && oferta.priceCurrency) || (/USD|dólares/i.test(texto.slice(0, 5000)) ? "USD" : "MXN"),
     ciudad: String(addr.addressLocality || "").split(",")[0].trim() || g(/en\s+(Saltillo|Monterrey|Torre[oó]n|Ramos Arizpe|Arteaga)/i) || "", estado: /coahuila|nuevo le/i.test(String(addr.addressRegion || "")) ? addr.addressRegion : (/Coahuila/i.test(String(addr.addressLocality || "") + texto.slice(0, 3000)) ? "Coahuila" : ""), colonia: addr.addressRegion && !/coahuila|nuevo le|estado/i.test(String(addr.addressRegion)) ? addr.addressRegion : "", direccion: addr.streetAddress || "", cp: addr.postalCode || "",
