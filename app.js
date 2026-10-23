@@ -75300,11 +75300,12 @@ function rlpCss_() {
   .rlp-title{font-size:clamp(26px,4vw,42px);font-weight:800;letter-spacing:-.03em;line-height:1.08;margin:12px auto 8px;max-width:760px;color:#111}
   .rlp-title em{font-style:normal;background:linear-gradient(120deg,#ff9500,#fec503 45%,#e3141b);-webkit-background-clip:text;background-clip:text;color:transparent}
   .rlp-sub{font-size:14px;color:var(--rm);margin:0 0 18px;font-weight:500}
-  .rlp-bar{max-width:1080px;margin:0 auto;background:#fff;border-radius:18px;box-shadow:0 18px 40px -16px rgba(15,23,42,.25),0 2px 6px rgba(15,23,42,.06);padding:8px;display:grid;grid-template-columns:repeat(6,1fr) auto;gap:4px;text-align:left}
+  .rlp-bar{max-width:1080px;margin:0 auto;background:#fff;border-radius:18px;box-shadow:0 18px 40px -16px rgba(15,23,42,.25),0 2px 6px rgba(15,23,42,.06);padding:8px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;text-align:left}
+  .rlp-bar .rlp-go{grid-column:1/-1}@media(min-width:1000px){.rlp-bar{grid-template-columns:repeat(6,minmax(0,1fr)) auto}.rlp-bar .rlp-go{grid-column:auto}}
   .rlp-f{display:flex;flex-direction:column;padding:8px 12px;border-radius:12px;border:1px solid transparent;min-width:0}.rlp-f:hover{background:#f8fafc}.rlp-f:focus-within{background:#fffbea;border-color:var(--ra)}
   .rlp-f label{font-size:10px;font-weight:800;color:var(--rm);letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
-  .rlp-f input,.rlp-f select{border:0;outline:0;background:transparent;font-size:13.5px;font-weight:700;color:var(--rk);padding:2px 0;font-family:inherit;width:100%;min-width:0}
-  .rlp-f .rng{display:flex;gap:4px;align-items:center}.rlp-f .rng input{width:50%}
+  .rlp-f input,.rlp-f select{border:0;outline:0;background:transparent;font-size:13.5px;font-weight:700;color:var(--rk);padding:2px 0;font-family:inherit;width:100%;min-width:0;text-overflow:ellipsis}
+  .rlp-f .rng{display:flex;gap:4px;align-items:center}.rlp-f .rng input{width:50%;min-width:0}
   .rlp-go{background:linear-gradient(135deg,#fec503,#ff9500);color:#111;border:0;border-radius:14px;padding:0 20px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 10px 20px -8px rgba(255,149,0,.6);white-space:nowrap}
   .rlp-pills{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:14px;font-size:12px;color:#475569;font-weight:600}.rlp-pills span::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ra);margin-right:6px}
   .rlp-head{max-width:1080px;margin:18px auto 0;padding:0 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -75347,7 +75348,7 @@ function rlpCss_() {
   .rlp-thumbs{display:flex;gap:6px;overflow:auto;padding-bottom:6px;margin-bottom:12px}.rlp-thumbs img{width:84px;height:62px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid transparent;flex:none}.rlp-thumbs img.on{border-color:var(--ro)}
   .rlp-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:12px 0}.rlp-kv div{background:#f8fafc;border:1px solid var(--rl);border-radius:10px;padding:8px 10px;font-size:12.5px}.rlp-kv b{display:block;font-size:10px;color:var(--rm);text-transform:uppercase;letter-spacing:.04em}
   #rlp-map{height:70vh;border-radius:14px}
-  @media(max-width:900px){.rlp-bar{grid-template-columns:1fr 1fr}.rlp-go{grid-column:1/-1;padding:12px}.rlp-form{grid-template-columns:1fr 1fr}.rlp-form .w2,.rlp-form .w3{grid-column:1/-1}}`;
+  @media(max-width:640px){.rlp-bar{grid-template-columns:1fr 1fr}.rlp-f{padding:8px 10px}.rlp-go{padding:12px}}@media(max-width:900px){.rlp-form{grid-template-columns:1fr 1fr}.rlp-form .w2,.rlp-form .w3{grid-column:1/-1}}`;
   document.head.appendChild(st);
 }
 // Marcador «Enviar a Check-inn»: se arrastra a la barra de marcadores; en un anuncio lo captura (datos estructurados, texto y
@@ -75391,17 +75392,18 @@ function rlpFiltrar_() {
 function rlpRender_() {
   const root = document.getElementById('rlp-root'); if (!root) return; const q = RLP.q, L = rlpFiltrar_();
   const opt = (arr, cur) => arr.map(([v, t]) => `<option value="${esc(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('');
-  const nums = [['', 'Cualquiera'], ['1', '1+'], ['2', '2+'], ['3', '3+'], ['4', '4+']];
+  const T = RLP.items || [], numsDe = k => [...new Set(T.map(p => Number(p[k])).filter(n => n > 0))].sort((a, b) => a - b).map(n => [String(n), n + '+']);
+  const tiposDisp = RLP_TIPOS.filter(([v]) => T.some(p => p.tipo === v)), opsDisp = [['renta', 'Renta'], ['venta', 'Venta']].filter(([v]) => T.some(p => p.operacion === v));
+  const lugares = [...new Set(T.flatMap(p => [p.colonia, p.ciudad].filter(Boolean)))].sort();
   root.innerHTML = `<section class="rlp-hero">
-      <span class="rlp-eyebrow">🏘️ Rentas y ventas de largo plazo · Saltillo</span>
+      <span class="rlp-eyebrow">🏘️ Arrendamiento de Larga Estancia</span>
       <h1 class="rlp-title">Encuentra tu <em>próxima propiedad</em></h1>
-      <p class="rlp-sub">Consulta, compara y publica propiedades en renta o venta.</p>
       <form class="rlp-bar" onsubmit="event.preventDefault();rlpBuscar_(this)">
-        <div class="rlp-f"><label>Tipo</label><select name="tipo"><option value="">Todos</option>${opt(RLP_TIPOS, q.tipo)}</select></div>
-        <div class="rlp-f"><label>Operación</label><select name="operacion">${opt([['', 'Renta o venta'], ['renta', 'Renta'], ['venta', 'Venta']], q.operacion)}</select></div>
-        <div class="rlp-f"><label>Lugar</label><input name="lugar" value="${esc(q.lugar)}" placeholder="Saltillo, Coahuila…"></div>
-        <div class="rlp-f"><label>Recámaras</label><select name="rec">${opt(nums, q.rec)}</select></div>
-        <div class="rlp-f"><label>Baños</label><select name="banos">${opt(nums, q.banos)}</select></div>
+        <div class="rlp-f"><label>Tipo</label><select name="tipo"><option value="">Todos</option>${opt(tiposDisp, q.tipo)}</select></div>
+        <div class="rlp-f"><label>Operación</label><select name="operacion"><option value="">Renta o venta</option>${opt(opsDisp, q.operacion)}</select></div>
+        <div class="rlp-f"><label>Lugar</label><input name="lugar" value="${esc(q.lugar)}" placeholder="Saltillo, Coahuila…" list="rlp-lugares"><datalist id="rlp-lugares">${lugares.map(v => `<option value="${esc(v)}">`).join('')}</datalist></div>
+        <div class="rlp-f"><label>Recámaras</label><select name="rec"><option value="">Cualquiera</option>${opt(numsDe('recamaras'), q.rec)}</select></div>
+        <div class="rlp-f"><label>Baños</label><select name="banos"><option value="">Cualquiera</option>${opt(numsDe('banos'), q.banos)}</select></div>
         <div class="rlp-f"><label>Precio</label><div class="rng"><input name="min" type="number" value="${esc(q.min)}" placeholder="Mín"><span style="color:#94a3b8">–</span><input name="max" type="number" value="${esc(q.max)}" placeholder="Máx"></div></div>
         <button class="rlp-go" type="submit">🔍 Buscar</button></form>
       <div class="rlp-pills"><span>Propias y de portales en una sola base</span><span>Extrae datos desde un link</span><span>Comparte y ve en el mapa</span></div></section>
