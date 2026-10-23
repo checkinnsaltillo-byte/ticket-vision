@@ -67919,6 +67919,8 @@ function axTipoTareaHtml_(cur, fn) {
 // v2138: «💬 Comentarios» en cada tarea/card (aseo/extra.json[llave].comentarios; llaves: asigId · T<id> · R<rtId>); se guarda al salir del campo
 function axComentHtml_(k, hid) { const c = axEx_(k), id = 'axc-' + String(k).replace(/\W/g, '');
   return `<div class="lab">💬 Comentarios</div><textarea class="at-in" id="${id}" rows="3" style="width:100%;box-sizing:border-box" placeholder="Escribe un comentario…" onchange="axComentGuardar_('${pcEsc(k)}','${pcEsc(String(hid || ''))}',this)">${pcEsc(c.comentarios || '')}</textarea><div class="at-hint" id="${id}-m" style="margin:2px 0 0">${c.comAt ? `Último cambio: ${pcEsc(c.comBy || '')} · ${new Date(c.comAt).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}</div>`; }
+// v2139: indicador 💬 en la card cuando la tarea tiene comentarios (el texto aparece al pasar el cursor)
+function axComChip_(k) { const c = axEx_(k).comentarios; if (c) atGalCss_(); return c ? `<span class="ad-com" title="${pcEsc(String(c).slice(0, 300))}">💬</span>` : ''; }
 window.axComentGuardar_ = function (k, hid, el) {
   const v = String(el.value || '').trim(), user = (typeof currentUser !== 'undefined' && currentUser) || '', m = document.getElementById(el.id + '-m'); if (m) m.textContent = '⏳ Guardando…';
   ASEO.extra = ASEO.extra || {}; const prev = ASEO.extra[k], at = new Date().toISOString();
@@ -68098,7 +68100,7 @@ function adCard_(I) {
   if (ASEO.simple) // Vista «Simple»: nombre corto · Sale/Entra · tipo y servicio · no ha desalojado · ＋⚠ · prioridad · estados
     return `<div class="ad-card tipo est-tint ad-simp ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
+    <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && /^Reprogramada/.test(I.aviso.t) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     <div class="r2">${catP}${adCamasHtml_(I.hid)}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
@@ -68109,7 +68111,7 @@ function adCard_(I) {
   </div>`;
   return `<div class="ad-card tipo est-tint ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
+    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${adExtraInsumos_(I)}
@@ -68825,7 +68827,7 @@ function rtCardA_(I) {
   const pasos = [['pendiente', 'Pend.', '#94a3b8'], ['en_proceso', 'Proceso', '#f59e0b'], ['terminado', 'Term.', '#10b981'], ['cancelado', 'Cancel.', '#64748b']];
   return `<div class="ad-card tipo est-tint tarea ${t.bloquea && !cerrado ? 'alert' : ''} ${t.estado === 'cancelado' ? 'ghost' : ''} ${axEsDeInc_('R' + t.rtId) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="R${pcEsc(t.rtId)}" style="--tc:${D.c};--sc:${adEstC_(t.estado)}" onclick="rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'R:${pcEsc(t.rtId)}','',true,true)" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span>${atNuevoChip_(row.Timestamp)}</div>
+    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}${axComChip_('R' + t.rtId)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span>${atNuevoChip_(row.Timestamp)}</div>
     ${flags.join('')}
     <div class="r2">${axCatHtml_('mantenimiento', 'R' + t.rtId, false)}<span class="sep"></span><span>${cat.icon} ${pcEsc(cat.label)}</span><span class="sep"></span><span>${pcEsc(row.Folio || row.ID)}</span>${RC.meta}</div>
     ${axFila_('R' + t.rtId, false, t.hid, I.dia || t.fecha)}
@@ -68871,7 +68873,7 @@ function atCard_(I) {
   const sel = ASEO._dr && ASEO._dr.tarea === t.id;
   return `<div class="ad-card tipo est-tint tarea ${t.problema ? 'alert' : ''} ${axEsDeInc_('T' + t.id) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="T${pcEsc(t.id)}" style="--tc:${D.c};--sc:${adEstC_(I.selE)}" onclick="atAbrir_('${pcEsc(t.id)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'${I.key}','',true,${t.depto !== 'limpieza'})" ondragend="adDragEnd_(event)">
-    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${t.depto === 'limpieza' ? rbCardRetHtml_('T' + t.id, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
+    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${t.depto === 'limpieza' ? rbCardRetHtml_('T' + t.id, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}${axComChip_('T' + t.id)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
     ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}${RC.flags}
@@ -69094,7 +69096,7 @@ function atFotosHtml_() { const L = ASEO._tf.adjuntos || [], imgs = L.map((a, i)
   return imgs.map((x, j) => `<div class="at-ph"><img src="${BACKEND}${x.a.url}" alt="" onclick="fotoVer_(atFotoUrls_(ASEO._tf.adjuntos),${j})"><b onclick="ASEO._tf.adjuntos.splice(${x.i},1);atAdjsPintar_()">✕</b></div>`).join(''); }
 function atFotoUrls_(L) { return (L || []).filter(atEsImg_).map(a => BACKEND + a.url); }
 function atAdjsPintar_() { const g = document.getElementById('at-fotos'); if (g) g.innerHTML = atFotosHtml_(); const b = document.getElementById('at-adjs'); if (b) b.innerHTML = atAdjsHtml_(); }
-function atGalCss_() { if (document.getElementById('at-gal-css')) return; const st = document.createElement('style'); st.id = 'at-gal-css'; st.textContent = `.at-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin:4px 0 10px}.at-ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;background:#f8fafc}.at-ph img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}.at-ph b{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:999px;background:rgba(15,23,42,.75);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer}.at-ph.sub{opacity:.6}`; document.head.appendChild(st); }
+function atGalCss_() { if (document.getElementById('at-gal-css')) return; const st = document.createElement('style'); st.id = 'at-gal-css'; st.textContent = `.at-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin:4px 0 10px}.at-ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;background:#f8fafc}.at-ph img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}.at-ph b{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:999px;background:rgba(15,23,42,.75);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer}.at-ph.sub{opacity:.6}.ad-com{flex:none;font-size:12px;line-height:1;cursor:help}`; document.head.appendChild(st); }
 window.atSubir_ = async function (inp) {
   const files = [...(inp.files || [])]; inp.value = '';
   const box = document.getElementById('at-adjs');
