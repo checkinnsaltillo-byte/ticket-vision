@@ -2785,6 +2785,8 @@ async function _botExecTool(toolUse, ctx) {
         else personaNota = (r.amb && Object.keys(r.amb).length) ? `"${personaArg}" puede ser: ${Object.values(r.amb)[0].join(", ")}` : `No encontré a "${personaArg}" en Personal`;
       }
       if (!persona || persona === "[object Object]") persona = _nomStr(ctx.staffNombre) || "";
+      // 2026-10-23: el nombre se guarda SIEMPRE como está en Personal (sys_users tenía «Sandra Sánchez» y Personal «Sandra Sánchez Rojas» → dos renglones en «Por usuario»).
+      if (persona) { try { const rc = _botResolverPersonal([persona], await _botPersonalActivo()); if (rc.ok.length === 1) persona = _nomStr(rc.ok[0]); } catch (_) {} }
       const esAdm = await _aseoPuedeCierre(ctx);
       // Empleado (2026-10-21): puede reportar cualquier alojamiento y nombrar a quien lo hizo («cu2 listo Brenda»); sin nombre queda a su nombre. No valida.
       // Sin card de limpieza prevista hoy para ese alojamiento → al confirmar se genera desde el chat (la card lleva el indicador «Desde el chat»).
