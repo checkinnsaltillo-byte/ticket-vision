@@ -67916,6 +67916,18 @@ function axCatHtml_(depto, k, autoCO) {
 function axTipoTareaHtml_(cur, fn) {
   return `<div class="lab">Tipo de tarea *</div><div class="ad-steps" style="grid-template-columns:repeat(3,1fr)">${Object.entries(AT_DEPTO).map(([k, X]) => `<button type="button" class="${cur === k ? 'on' : ''}" style="--c:${X.c}${fn || cur === k ? '' : ';opacity:.45;cursor:not-allowed'}" ${fn ? `onclick="${fn}('${k}')"` : `title="Este tipo lo define la reserva: salida = Limpieza · solo entrada = Inspección"`}>${X.ico} ${X.t}</button>`).join('')}</div>`;
 }
+// v2138: «💬 Comentarios» en cada tarea/card (aseo/extra.json[llave].comentarios; llaves: asigId · T<id> · R<rtId>); se guarda al salir del campo
+function axComentHtml_(k, hid) { const c = axEx_(k), id = 'axc-' + String(k).replace(/\W/g, '');
+  return `<div class="lab">💬 Comentarios</div><textarea class="at-in" id="${id}" rows="3" style="width:100%;box-sizing:border-box" placeholder="Escribe un comentario…" onchange="axComentGuardar_('${pcEsc(k)}','${pcEsc(String(hid || ''))}',this)">${pcEsc(c.comentarios || '')}</textarea><div class="at-hint" id="${id}-m" style="margin:2px 0 0">${c.comAt ? `Último cambio: ${pcEsc(c.comBy || '')} · ${new Date(c.comAt).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}</div>`; }
+window.axComentGuardar_ = function (k, hid, el) {
+  const v = String(el.value || '').trim(), user = (typeof currentUser !== 'undefined' && currentUser) || '', m = document.getElementById(el.id + '-m'); if (m) m.textContent = '⏳ Guardando…';
+  ASEO.extra = ASEO.extra || {}; const prev = ASEO.extra[k], at = new Date().toISOString();
+  ASEO.extra[k] = Object.assign({}, prev, v ? { comentarios: v, comBy: user, comAt: at } : {}); if (!v) { delete ASEO.extra[k].comentarios; delete ASEO.extra[k].comBy; delete ASEO.extra[k].comAt; }
+  (ASEO._pend = ASEO._pend || {})['x:' + k] = { tipo: 'extra', id: k, rec: ASEO.extra[k], campos: ['comentarios', 'comBy', 'comAt'], t: Date.now() };
+  fetch(`${BACKEND}/aseo/extra`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: k, hid: hid || '', user, comentarios: v }) }).then(r => r.json())
+    .then(j => { if (!j.ok) throw new Error(j.error); if (m) m.textContent = v ? '✓ Guardado' : '✓ Comentario borrado'; })
+    .catch(e => { if (prev) ASEO.extra[k] = prev; else delete ASEO.extra[k]; if (m) m.textContent = '⚠ No se pudo guardar'; alert('No se pudo guardar el comentario: ' + (e.message || e)); });
+};
 // v2137: fotos en cards de limpieza por reserva (aseo/extra.json[asigId].fotos): galería con zoom y subida múltiple
 function axFotosHtml_(k) { const L = axEx_(k).fotos || []; if (!L.length) return '<div class="at-hint" style="margin:0 0 10px">Sin fotos. Puedes agregar varias a la vez.</div>';
   return `<div class="at-gal">${L.map((f, i) => `<div class="at-ph"><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(axEx_('${pcEsc(k)}').fotos.map(x=>BACKEND+x.url),${i})"><b onclick="axFotoQuitar_('${pcEsc(k)}',${i})">✕</b></div>`).join('')}</div>`; }
@@ -68716,6 +68728,7 @@ function adPintar_(nuevo) {
       <div class="lab">Fecha de aseo</div>${aseoFechaCampo_(I.asigId, I.hid, I.hoy, I.g.reprogDe)}
       <div class="at-sec" style="margin-top:14px"><span>📷 Fotos</span><label class="ad-link">＋ Agregar fotos<input type="file" accept="image/*" multiple hidden onchange="axFotoSubir_(this,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}')"></label></div>
       ${(atGalCss_(), axFotosHtml_(I.asigId))}
+      ${axComentHtml_(I.asigId, I.hid)}
       ${reservas ? `<details class="ad-res"><summary>Reservas y acciones (${I.ids.length})</summary>${reservas}</details>` : ''}
       ${histSecHtml_([I.asigId].concat(I.ids || []).map(x => 'A:' + x))}
     </div>
@@ -68910,6 +68923,7 @@ function atPintar_(nuevo) {
       <div class="lab">Asignados</div><div class="ad-ppl">${(t.asignados || []).map(n => `<div class="ad-pp">${adAv_(n)}<span>${pcEsc(n)}</span></div>`).join('') || '<div class="ad-un">Sin asignar</div>'}</div>
       ${(t.adjuntos || []).some(atEsImg_) ? (atGalCss_(), `<div class="lab">📷 Fotos (${t.adjuntos.filter(atEsImg_).length})</div><div class="at-gal">${t.adjuntos.filter(atEsImg_).map((a, j) => `<div class="at-ph"><img src="${BACKEND}${a.turl || a.url}" alt="" onclick="fotoVer_(atFotoUrls_(ASEO.tareas['${pcEsc(t.id)}'].adjuntos),${j})"></div>`).join('')}</div>`) : ''}
       ${(t.adjuntos || []).some(a => !atEsImg_(a)) ? `<div class="lab">📎 Archivos</div><div class="ad-adjs">${t.adjuntos.filter(a => !atEsImg_(a)).map(a => `<a class="ad-adj" href="${BACKEND}${a.url}" target="_blank" rel="noopener"><span class="fi">📄</span><span>${pcEsc(a.nombre)}</span></a>`).join('')}</div>` : ''}
+      ${axComentHtml_('T' + t.id, t.hid)}
       ${histSecHtml_(['T:' + t.id])}
     </div>
     <div class="ad-ft"><button type="button" class="ad-bt" onclick="atForm_('${pcEsc(t.id)}')">Editar</button><button type="button" class="ad-bt" onclick="atBorrar_('${pcEsc(t.id)}')">Eliminar</button>
@@ -69267,6 +69281,7 @@ function rtPintarA_(nuevo) {
       ${fotos(rtFotos_(row.Fotos_antes_urls), 'Fotos antes')}${fotos(rtFotos_(row.Fotos_despues_urls), 'Fotos después')}
       ${row.Descripcion_solucion ? `<div class="lab">Solución</div><div class="ad-desc">${pcEsc(row.Descripcion_solucion).replace(/\n/g, '<br>')}</div>` : ''}
       ${row.Notas ? `<div class="lab">Notas</div><div class="ad-desc">${pcEsc(row.Notas).replace(/\n/g, '<br>')}</div>` : ''}
+      ${axComentHtml_('R' + t.rtId, t.hid)}
       ${histSecHtml_(['R:' + t.rtId])}
     </div>
     <div class="ad-ft"><button type="button" class="ad-bt" onclick="rtFormA_('${id}')">Editar</button><button type="button" class="ad-bt" onclick="rtBorrarA_('${id}')">Eliminar</button>
