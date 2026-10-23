@@ -12295,6 +12295,109 @@ app.post("/rentas/fotos/importar", async (req, res) => {
     res.json({ ok: true, fotos: out }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ═══════════════════════════════════════════════════════════════════════════
+// 📣 Marketing en redes (2026-10-22): publicar propiedades (Rentas de largo plazo) en la Página de Facebook e Instagram
+// con la API oficial de Meta (Graph API) y leer sus estadísticas. Conexión por OAuth; tokens en gs://…-panel/marketing/meta.json
+// (bucket privado). Publicaciones hechas en marketing/publicaciones.json.
+// Requiere META_APP_ID / META_APP_SECRET (Cloud Run) y la app «Check-inn Saltillo» en Meta for Developers.
+// ═══════════════════════════════════════════════════════════════════════════
+const _MK = { OBJ: "marketing/meta.json", PUB: "marketing/publicaciones.json", G: "https://graph.facebook.com/v21.0", CB: "https://api.check-inn.mx/marketing/meta/callback", ADMIN: "https://www.check-inn.mx/admin/", SCOPES: "pages_show_list,pages_manage_posts,pages_read_engagement,pages_read_user_content,instagram_basic,instagram_content_publish,instagram_manage_insights,business_management" };
+async function _mkMeta() { const { data } = await _bnReadGcs(_MK.OBJ); return data || { paginas: [] }; }
+async function _mkGraph(path, params, opts) {
+  const o = opts || {}, u = new URL(_MK.G + path); Object.entries(params || {}).forEach(([k, v]) => { if (v != null) u.searchParams.set(k, String(v)); });
+  const r = await _fetchReal(u.toString(), { method: o.method || "GET" }); const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) { const e = new Error((j.error && (j.error.message || j.error.error_user_msg)) || `Meta ${r.status}`); e.meta = j.error; throw e; }
+  return j;
+}
+app.get("/marketing/meta/conectar", (req, res) => {
+  if (!process.env.META_APP_ID) return res.status(500).send("Falta META_APP_ID");
+  const state = _vSign({ t: "mk", exp: Date.now() + 15 * 60_000 });
+  res.redirect(`https://www.facebook.com/v21.0/dialog/oauth?client_id=${process.env.META_APP_ID}&redirect_uri=${encodeURIComponent(_MK.CB)}&scope=${encodeURIComponent(_MK.SCOPES)}&response_type=code&state=${encodeURIComponent(state)}`);
+});
+app.get("/marketing/meta/callback", async (req, res) => {
+  const vuelta = (q) => res.redirect(_MK.ADMIN + "?" + new URLSearchParams(q).toString() + "#marketing");
+  try {
+    const st = _vUnsign(String(req.query.state || "")); if (!st || st.t !== "mk" || Date.now() > st.exp) return vuelta({ mk: "error", msg: "Sesión de conexión vencida; vuelve a intentar" });
+    if (req.query.error) return vuelta({ mk: "error", msg: String(req.query.error_description || req.query.error) });
+    const code = String(req.query.code || ""); if (!code) return vuelta({ mk: "error", msg: "Meta no devolvió código" });
+    // 1) token corto → 2) token largo (60 días) → 3) páginas con su token (no caduca mientras el de usuario sea válido) e Instagram ligado
+    const t1 = await _mkGraph("/oauth/access_token", { client_id: process.env.META_APP_ID, client_secret: process.env.META_APP_SECRET, redirect_uri: _MK.CB, code });
+    const t2 = await _mkGraph("/oauth/access_token", { grant_type: "fb_exchange_token", client_id: process.env.META_APP_ID, client_secret: process.env.META_APP_SECRET, fb_exchange_token: t1.access_token }).catch(() => t1);
+    const me = await _mkGraph("/me", { fields: "id,name", access_token: t2.access_token });
+    const pg = await _mkGraph("/me/accounts", { fields: "id,name,access_token,instagram_business_account{id,username,profile_picture_url},picture{url}", limit: 50, access_token: t2.access_token });
+    const paginas = (pg.data || []).map(p => ({ id: p.id, nombre: p.name, token: p.access_token, foto: p.picture && p.picture.data && p.picture.data.url, ig: p.instagram_business_account ? { id: p.instagram_business_account.id, usuario: p.instagram_business_account.username, foto: p.instagram_business_account.profile_picture_url } : null }));
+    const prev = await _mkMeta();
+    await _bnWriteGcs(_MK.OBJ, { usuario: { id: me.id, nombre: me.name, token: t2.access_token, expira: t2.expires_in ? new Date(Date.now() + t2.expires_in * 1000).toISOString() : null }, paginas, pagina_activa: prev.pagina_activa && paginas.some(p => p.id === prev.pagina_activa) ? prev.pagina_activa : (paginas[0] && paginas[0].id) || "", conectado: new Date().toISOString() }, null);
+    vuelta({ mk: "ok", n: paginas.length });
+  } catch (e) { vuelta({ mk: "error", msg: e.message }); }
+});
+app.get("/marketing/estado", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const m = await _mkMeta(); res.set("Cache-Control", "no-store"); res.json({ ok: true, app: !!process.env.META_APP_ID, conectado: m.conectado || null, usuario: m.usuario ? { nombre: m.usuario.nombre, expira: m.usuario.expira } : null, pagina_activa: m.pagina_activa || "", paginas: (m.paginas || []).map(p => ({ id: p.id, nombre: p.nombre, foto: p.foto, ig: p.ig })) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/marketing/pagina", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).id || ""); const m = await _mkMeta(); if (!(m.paginas || []).some(p => p.id === id)) return res.status(400).json({ ok: false, error: "Página no conectada" }); m.pagina_activa = id; await _bnWriteGcs(_MK.OBJ, m, null); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/marketing/desconectar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { await _bnWriteGcs(_MK.OBJ, { paginas: [], desconectado: new Date().toISOString() }, null); res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Texto sugerido por la IA para una propiedad (versión Facebook e Instagram).
+app.post("/marketing/redactar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).pubId || ""); const d = await _rlpDatos(); const p = d.items.find(x => x.id === id); if (!p) return res.status(404).json({ ok: false, error: "Publicación no encontrada" });
+    const liga = `https://www.check-inn.mx/public/rentas/#${p.id}`;
+    const j = await _enLlm("Eres el community manager de Check-inn Saltillo (rentas y ventas de propiedades). Escribes en español de México, cercano y claro, sin exagerar. Respondes SOLO JSON.",
+      `Propiedad:\n${JSON.stringify({ titulo: p.titulo, tipo: p.tipo, operacion: p.operacion, precio: p.precio, moneda: p.moneda, periodo: p.periodo, colonia: p.colonia, ciudad: p.ciudad, recamaras: p.recamaras, banos: p.banos, medios_banos: p.medios_banos, estacionamientos: p.estacionamientos, m2: p.m2_construccion, amueblado: p.amueblado, amenidades: (p.amenidades || []).slice(0, 15), descripcion: String(p.descripcion || "").slice(0, 1500) })}\nEnlace de la ficha: ${liga}\nWhatsApp: +52 844 444 3922\n\nDevuelve {"facebook": "texto de 500-900 caracteres con emojis moderados, datos clave en renglones cortos, llamada a la acción con el enlace y el WhatsApp", "instagram": "texto de 300-600 caracteres, sin enlaces (Instagram no los hace clic), con llamada a la acción 'escríbenos por WhatsApp' y 8-12 hashtags al final (#Saltillo #RentaSaltillo etc.)"}`, 1500, "low");
+    res.json({ ok: true, facebook: String(j.facebook || ""), instagram: String(j.instagram || ""), liga }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Publicar en Facebook (fotos + texto) e Instagram (foto o carrusel + texto). Las fotos deben ser URLs públicas (nuestro bucket).
+app.post("/marketing/publicar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, pubId = String(b.pubId || ""), fotos = (Array.isArray(b.fotos) ? b.fotos : []).filter(u => /^https:\/\//.test(String(u))).slice(0, 10), usuario = String(b.usuario || "").slice(0, 80);
+    const m = await _mkMeta(), pg = (m.paginas || []).find(p => p.id === (b.pagina || m.pagina_activa)); if (!pg) return res.status(400).json({ ok: false, error: "Conecta primero tu Página de Facebook" });
+    const out = { id: _bcId(), pubId, at: new Date().toISOString(), por: usuario, pagina: { id: pg.id, nombre: pg.nombre }, fb: null, ig: null, errores: [] };
+    if (b.facebook && String(b.facebook.texto || "").trim()) {
+      try { const ids = []; for (const u of fotos) { const r = await _mkGraph(`/${pg.id}/photos`, { url: u, published: "false", access_token: pg.token }, { method: "POST" }); ids.push(r.id); }
+        const params = { message: String(b.facebook.texto).slice(0, 5000), access_token: pg.token }; ids.forEach((id, i) => { params[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id }); });
+        if (!ids.length && b.facebook.link) params.link = String(b.facebook.link);
+        const r = await _mkGraph(`/${pg.id}/feed`, params, { method: "POST" }); out.fb = { post_id: r.id, url: `https://www.facebook.com/${r.id}`, fotos: ids.length };
+      } catch (e) { out.errores.push("Facebook: " + e.message); }
+    }
+    if (b.instagram && String(b.instagram.texto || "").trim()) {
+      try { if (!pg.ig) throw new Error("La Página no tiene cuenta de Instagram profesional ligada"); if (!fotos.length) throw new Error("Instagram requiere al menos una foto");
+        const cap = String(b.instagram.texto).slice(0, 2200); let creation;
+        if (fotos.length === 1) creation = (await _mkGraph(`/${pg.ig.id}/media`, { image_url: fotos[0], caption: cap, access_token: pg.token }, { method: "POST" })).id;
+        else { const hijos = []; for (const u of fotos) hijos.push((await _mkGraph(`/${pg.ig.id}/media`, { image_url: u, is_carousel_item: "true", access_token: pg.token }, { method: "POST" })).id);
+          creation = (await _mkGraph(`/${pg.ig.id}/media`, { media_type: "CAROUSEL", children: hijos.join(","), caption: cap, access_token: pg.token }, { method: "POST" })).id; }
+        let listo = false; for (let i = 0; i < 12 && !listo; i++) { const st = await _mkGraph(`/${creation}`, { fields: "status_code,status", access_token: pg.token }); if (st.status_code === "FINISHED") listo = true; else if (st.status_code === "ERROR") throw new Error("Instagram no pudo procesar las fotos: " + (st.status || "")); else await new Promise(r => setTimeout(r, 2500)); }
+        const r = await _mkGraph(`/${pg.ig.id}/media_publish`, { creation_id: creation, access_token: pg.token }, { method: "POST" });
+        const info = await _mkGraph(`/${r.id}`, { fields: "permalink", access_token: pg.token }).catch(() => ({})); out.ig = { media_id: r.id, url: info.permalink || "", fotos: fotos.length };
+      } catch (e) { out.errores.push("Instagram: " + e.message); }
+    }
+    if (!out.fb && !out.ig) return res.status(400).json({ ok: false, error: out.errores.join(" · ") || "Nada que publicar" });
+    out.texto = { fb: b.facebook && b.facebook.texto, ig: b.instagram && b.instagram.texto }; out.fotos = fotos;
+    { const { data } = await _bnReadGcs(_MK.PUB); const d = data && Array.isArray(data.items) ? data : { items: [] }; d.items.unshift(out); d.items = d.items.slice(0, 2000); await _bnWriteGcs(_MK.PUB, d, null); }
+    res.json({ ok: true, publicacion: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Publicaciones hechas con sus estadísticas (alcance, impresiones, interacciones); copia de 10 min.
+const _mkStC = new Map();
+app.get("/marketing/publicaciones", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const m = await _mkMeta(); const { data } = await _bnReadGcs(_MK.PUB); const items = (data && data.items) || [];
+    const conStats = await Promise.all(items.slice(0, 60).map(async it => { const pg = (m.paginas || []).find(p => p.id === (it.pagina && it.pagina.id)); const c = _mkStC.get(it.id); if (c && Date.now() - c.ts < 600e3) return Object.assign({}, it, { stats: c.s }); const s = {};
+      if (pg && it.fb && it.fb.post_id) { try { const r = await _mkGraph(`/${it.fb.post_id}`, { fields: "shares,likes.summary(true).limit(0),comments.summary(true).limit(0),insights.metric(post_impressions,post_impressions_unique,post_engaged_users,post_clicks)", access_token: pg.token }); const ins = {}; ((r.insights && r.insights.data) || []).forEach(x => { ins[x.name] = x.values && x.values[0] && x.values[0].value; }); s.fb = { impresiones: ins.post_impressions || 0, alcance: ins.post_impressions_unique || 0, interacciones: ins.post_engaged_users || 0, clics: ins.post_clicks || 0, me_gusta: (r.likes && r.likes.summary && r.likes.summary.total_count) || 0, comentarios: (r.comments && r.comments.summary && r.comments.summary.total_count) || 0, compartidos: (r.shares && r.shares.count) || 0 }; } catch (e) { s.fb = { error: e.message }; } }
+      if (pg && it.ig && it.ig.media_id) { try { const r = await _mkGraph(`/${it.ig.media_id}/insights`, { metric: "impressions,reach,likes,comments,saved,shares", access_token: pg.token }); const ins = {}; (r.data || []).forEach(x => { ins[x.name] = x.values && x.values[0] && x.values[0].value; }); s.ig = { impresiones: ins.impressions || 0, alcance: ins.reach || 0, me_gusta: ins.likes || 0, comentarios: ins.comments || 0, guardados: ins.saved || 0, compartidos: ins.shares || 0 }; } catch (e) { s.ig = { error: e.message }; } }
+      _mkStC.set(it.id, { ts: Date.now(), s }); return Object.assign({}, it, { stats: s }); }));
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, items: conStats }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.all(["/facturapi", "/facturapi/*"], _ckappProxy);
 app.all("/api/breezeway/*", _ckappProxy);
 // Página pública de Facturapi (checkin-app) abierta vía api.check-inn.mx/facturapi: sus llamadas relativas /api/… también se reenvían.
