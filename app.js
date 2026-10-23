@@ -67655,6 +67655,8 @@ function clEsAdminReal_() {
   return false;
 }
 function clModoPersonal_() { return !clEsAdmin_(); }
+// v2129: «Sandra Sánchez» y «Sandra Sánchez Rojas» son la misma persona → un solo renglón (se queda el nombre más completo).
+function adCanonMap_(nombres) { const M = new Map(), C = []; [...new Set(nombres.filter(Boolean))].sort((a, b) => b.length - a.length).forEach(n => { const c = C.find(x => clMisma_(x, n)); M.set(n, c || n); if (!c) C.push(n); }); return M; }
 // v2128: en modo personal, Levantamientos / Incidencias / Objetos muestran SOLO lo asignado o reportado por la persona.
 function clSoloMio_(nombres) { return !(typeof clModoPersonal_ === 'function' && clModoPersonal_()) || clEsMio_(nombres); }
 function clEsMio_(nombres) { const yo = clVerComo_() || (typeof currentUser !== 'undefined' && currentUser) || ''; return (nombres || []).some(n => clMisma_(n, yo)); }
@@ -68270,7 +68272,8 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
     const quien = I => [...new Set([...(I.pA || []), ...(I.pI || [])])];
     // Todas las cards cuentan, también las tareas ligadas a una incidencia (van en el renglón de su asignado).
     const tops = ASEO.simple ? ver : sinHijos(ver), nombres = new Map();
-    ver.forEach(I => quien(I).forEach(n => { const k = String(n).replace(/\s*\(WhatsApp\)\s*$/, '').trim(); if (!nombres.has(k)) nombres.set(k, []); if (!nombres.get(k).includes(I)) nombres.get(k).push(I); }));
+    const limpio = n => String(n).replace(/\s*\(WhatsApp\)\s*$/, '').trim(), CM = adCanonMap_(ver.flatMap(I => quien(I).map(limpio)));
+    ver.forEach(I => quien(I).forEach(n => { const k = CM.get(limpio(n)) || limpio(n); if (!nombres.has(k)) nombres.set(k, []); if (!nombres.get(k).includes(I)) nombres.get(k).push(I); }));
     const sinA = tops.filter(I => !quien(I).length);
     const ord = (a, b) => a[0].localeCompare(b[0], 'es'); // siempre alfabético
     const pN = I => (PRIO4[I.tarea ? prio4Key_(I.t.prioridad) : I.prio] || { n: 0 }).n;
@@ -70308,11 +70311,12 @@ function aseoTimelineHtml_(dia, m) {
       const key = t.tarea ? `T${t.tarea.id}-${dia}` : t.id, reg = aseoEstDe_(key); if (!reg || !['terminado', 'inspeccionado'].includes(reg.estado)) return;
       const H = reg.hist || {}, fin = (H.terminado && H.terminado.at) || reg.at, ini = H.en_proceso && H.en_proceso.at; if (!fin) return;
       const d = new Date(fin); if (isNaN(d) || tarIso_(d) !== dia) return;
-      const pers = t.tarea ? (t.tarea.asignados || []) : aseoAsigDe_(t.id, 'aseo'), lista = pers.length ? pers : ['Sin asignar'];
+      const pers = t.tarea ? (t.tarea.asignados || []) : aseoAsigDe_(t.id, 'aseo'), lista = pers.length ? pers.map(n => String(n).replace(/\s*\(WhatsApp\)\s*$/, '').trim()) : ['Sin asignar'];
       const it = { t, cod, h: d.getHours(), min: d.getMinutes(), fin: hhmm(fin), ini: ini ? hhmm(ini) : '' }; hs.push(it.h);
       lista.forEach(n => { if (!porP.has(n)) porP.set(n, []); porP.get(n).push(it); });
     });
   });
+  { const CM = adCanonMap_([...porP.keys()].filter(n => n !== 'Sin asignar')); [...porP.keys()].forEach(n => { const c = CM.get(n); if (c && c !== n) { porP.set(c, (porP.get(c) || []).concat(porP.get(n))); porP.delete(n); } }); }
   if (!porP.size) return `<div class="tl"><div class="tl-void">Sin limpiezas terminadas el ${aseoDiaTxt_(dia)}.<br><small>Las cards aparecen en la hora en que se marcan como Terminadas.</small></div></div>`;
   const h0 = Math.min(7, ...hs), h1 = Math.max(19, ...hs), horas = Array.from({ length: h1 - h0 + 1 }, (_, i) => h0 + i), ahora = new Date(), esHoy = dia === aseoHoyIso_();
   const filas = [...porP.keys()].sort((a, b) => a === 'Sin asignar' ? 1 : b === 'Sin asignar' ? -1 : a.localeCompare(b, 'es'));
