@@ -59098,7 +59098,7 @@ function tdRender_() {
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       ${TAR_STATE.sub === 'rec' ? `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','Recordatorio')">＋ Recordatorio</button>`
         : `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','IG')" title="Levantamiento de varios alojamientos con una plantilla">＋ Levantamiento</button>`}</div>`;
-  const nRec = TAR_STATE.list.filter(tarEsRec_).length, nIG = TAR_STATE.list.filter(tdEsIG_).length;
+  const mio = r => typeof clSoloMio_ !== 'function' || clSoloMio_(tarPersonalList_(r)); const nRec = TAR_STATE.list.filter(r => tarEsRec_(r) && mio(r)).length, nIG = TAR_STATE.list.filter(r => tdEsIG_(r) && mio(r)).length;
   const nav = `<div class="cl-nav-slot" data-act="tareas">${typeof clNavHtml_ === 'function' ? clNavHtml_('tareas') : ''}</div>
     <div class="cl-sub">${[['ig', '📝 Levantamientos', nIG, AT_DEPTO.inspeccion.c], ['rec', '📌 Recordatorios', nRec, '#d97706']].map(([k, t, n, c]) => `<button type="button" class="cl-sb ${(TAR_STATE.sub || 'ig') === k ? 'on' : ''}" style="--c:${c}" onclick="TAR_STATE.sub='${k}';tdRender_()">${t} · ${n}</button>`).join('')}</div>`;
   const head = `<div class="cl-title">🛠️ Operaciones</div>`;
@@ -59152,6 +59152,7 @@ function tdOcMes_(ym, filtrar) {
   return out;
 }
 function tdKpisOc_(O, ym) {
+  if (typeof clSoloMio_ === 'function') O = O.filter(x => clSoloMio_(tarPersonalList_(x.r))); // modo personal: solo lo asignado a la persona
   const est = x => tdEst_(x.r, x.iso), vivos = O.filter(x => est(x) !== 'Cancelado'), n = k => O.filter(x => est(x) === k).length;
   const res = n('Resuelto'), pct = vivos.length ? Math.round(res / vivos.length * 100) : 0, abierta = x => !['Resuelto', 'Cancelado'].includes(est(x));
   const recs = O.filter(x => tarEsRec_(x.r) && abierta(x)).length, urg = O.filter(x => ['Crítico', 'Alto'].includes(tdPrioEf_(x.r, x.iso)) && abierta(x)).length;
@@ -59581,6 +59582,7 @@ TAR_STATE.fx = TAR_STATE.fx || { tipo: '', clas: new Set(), sub: new Set(), prio
 const TAR_SIN = '(Sin clasificación)', TAR_SIN_PERS = '(Sin asignar)';
 function tarPasaFiltro_(r) {
   const fx = TAR_STATE.fx;
+  if (typeof clSoloMio_ === 'function' && !clSoloMio_(tarPersonalList_(r))) return false; // modo personal: solo lo asignado a la persona
   if (TAR_STATE.sub === 'rec' ? !tarEsRec_(r) : !tdEsIG_(r)) return false; // subsección: 📝 Levantamientos | 📌 Recordatorios
   if (TAR_STATE.q) { const pl = r.Plantilla && typeof ASEO !== 'undefined' && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
     if (!ckBusca_(TAR_STATE.q, [r.Nombre, r.Clasificacion, r.Subclasificacion, r.Personal, r.Comentarios, r.Mensaje, r.Programacion_texto, pl && pl.titulo, tdEsIG_(r) ? tdIGAlojs_(r).map(ckAlojTxt_) : '', r.Prioridad, r.Tipo])) return false; }
@@ -67653,6 +67655,8 @@ function clEsAdminReal_() {
   return false;
 }
 function clModoPersonal_() { return !clEsAdmin_(); }
+// v2128: en modo personal, Levantamientos / Incidencias / Objetos muestran SOLO lo asignado o reportado por la persona.
+function clSoloMio_(nombres) { return !(typeof clModoPersonal_ === 'function' && clModoPersonal_()) || clEsMio_(nombres); }
 function clEsMio_(nombres) { const yo = clVerComo_() || (typeof currentUser !== 'undefined' && currentUser) || ''; return (nombres || []).some(n => clMisma_(n, yo)); }
 function ckVerComoHtml_() {
   if (!clEsAdminReal_()) return '';
@@ -70061,7 +70065,7 @@ function icRow_(row) {
     cls: /hu[eé]sped/i.test(String(row.Clase || '')) ? 'huesped' : row.Clase ? 'operativa' : (mot.some(m => /^(daños|faltantes|reglamento)$/i.test(m)) ? 'huesped' : 'operativa'),
     arch: /^s[ií]/i.test(String(row.Archivada || '')), desc: String(row.Descripcion || ''), acc: String(row.Acciones || ''), seg: String(row.Seguimiento || ''), fotos: icSplit_(row.Fotos_URLs), upd: String(row.UpdatedAt || '') };
 }
-function icTodas_() { return (typeof INC_STATE !== 'undefined' ? INC_STATE.list || [] : []).filter(r => r && r.ID).map(icRow_).sort((a, b) => b.fecha.localeCompare(a.fecha)); }
+function icTodas_() { return (typeof INC_STATE !== 'undefined' ? INC_STATE.list || [] : []).filter(r => r && r.ID).map(icRow_).filter(x => clSoloMio_([...x.pers, x.rep])).sort((a, b) => b.fecha.localeCompare(a.fecha)); }
 function icHaceDias_(n) { const d = new Date(aseoHoyIso_() + 'T12:00:00'); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); }
 function icPasa_(x, sinPer) {
   const fx = IC.fx;
@@ -70786,7 +70790,7 @@ function obRow_(row) {
     lug, lugTxt: lug === 'Otro' && row.Lugar_otro ? String(row.Lugar_otro) : lug, rep: String(row.Reportante || ''), desc: String(row.Descripcion || ''), com: String(row.Comentarios || ''),
     fotos: icSplit_(row.Fotos_URLs), upd: String(row.UpdatedAt || row.Updated_at || ''), arch: /^s[ií]/i.test(String(row.Archivada || '')) };
 }
-function obTodos_() { return (OBJ_STATE.list || []).filter(r => r && r.ID).map(obRow_).sort((a, b) => b.fecha.localeCompare(a.fecha)); }
+function obTodos_() { return (OBJ_STATE.list || []).filter(r => r && r.ID).map(obRow_).filter(x => clSoloMio_([x.rep, x.entA])).sort((a, b) => b.fecha.localeCompare(a.fecha)); }
 function obTitulo_(x) { return x.desc ? x.desc.split('\n')[0].slice(0, 70) : x.catTxt; }
 function obPasa_(x, sinPer) {
   const fx = OB.fx;
