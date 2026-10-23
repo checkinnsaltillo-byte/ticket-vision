@@ -380,6 +380,7 @@ const SYS_MODULE_LIST = [
   ['tuya',             '🛰️ Dispositivos'],
   ['guias',            '📖 Guías de Bienvenida'],
   ['rentas-lp',        '🏘️ Rentas de largo plazo'],
+  ['marketing',        '📣 Marketing en redes'],
   ['llaves',           '🔑 Llavero'],
   ['config-admin',     '⚙️ Configuración Admin'],
   ['bot-chats',        '🤖 Chats bot'],
@@ -393,8 +394,8 @@ const SYS_MODULE_EXTRAS = {
   aseo:      ['breezeway'],
   'reportes-tecnicos': ['aseo'], // quien tenía Reportes técnicos ve Aseo (ahí vive Mantenimiento)
   breezeway: ['aseo'], // empleados que ya tenían Breezeway ven el módulo Aseo completo
-  lodgify:   ['reservas-detalles', 'mensajes', 'rentas-lp'], // quien gestiona reservas ve Rentas de largo plazo
-  inquilinos: ['rentas-lp'], 'dir-inquilinos': ['rentas-lp'], 'reservas-nueva': ['rentas-lp'],
+  lodgify:   ['reservas-detalles', 'mensajes', 'rentas-lp', 'marketing'], // quien gestiona reservas ve Rentas de largo plazo y Marketing
+  inquilinos: ['rentas-lp', 'marketing'], 'dir-inquilinos': ['rentas-lp'], 'reservas-nueva': ['rentas-lp', 'marketing'], 'rentas-lp': ['marketing'],
   ocupacion: ['dashboard', 'calendario'],
   'bot-chats': ['bot-control'], // quien atiende Chats bot ve también su centro de mando
 };
@@ -413,7 +414,7 @@ function sysApplyPermissions(user) {
     });
   } else {
     // Usuario legado de sys_users (grupos por número romano).
-    allowed = new Set(['home', 'tuya', 'guias', 'rentas-lp', 'config-admin', 'llaves', 'bot-chats', 'bot-control', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
+    allowed = new Set(['home', 'tuya', 'guias', 'rentas-lp', 'marketing', 'config-admin', 'llaves', 'bot-chats', 'bot-control', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
     if (user && user.modulos) {
       for (const k in SYS_MODULE_PERMS) {
         if (user.modulos[k]) SYS_MODULE_PERMS[k].forEach(m => allowed.add(m));
@@ -7885,6 +7886,9 @@ function bn_goToCardPage(p) {
     if (mod === 'rentas-lp') {
       if (typeof rlpInit === 'function') rlpInit();
     }
+    if (mod === 'marketing') {
+      if (typeof mkInit === 'function') mkInit();
+    }
   };
 })();
 
@@ -9154,7 +9158,7 @@ function esc(v) {
 const _VALID_MODULES = new Set([
   'home','tickets','registros','huespedes','lodgify','reservas-detalles',
   'breezeway','aseo','incidencias','objetos','reportes-tecnicos','ocupacion',
-  'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias','rentas-lp',
+  'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias','rentas-lp','marketing',
   'config-admin','llaves','bot-chats','bot-control','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','reglasbot','mantenimiento','mensajes',
 ]);
 function _bootModuleFromHash_() {
@@ -9304,7 +9308,7 @@ function switchModule(mod) {
     const greet = document.getElementById('user-greeting');
     if (greet) greet.style.display = '';
   } catch(_){}
-  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "bot-control", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "reglasbot", "mensajes", "rentas-lp"].forEach(m => {
+  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "bot-control", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "reglasbot", "mensajes", "rentas-lp", "marketing"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== containerMod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === containerMod);
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === containerMod);
@@ -75454,7 +75458,7 @@ window.rlpFicha_ = function (id) {
   const p = (RLP.items || []).find(x => x.id === id); if (!p) return; document.querySelectorAll('.rlp-modal').forEach(x => x.remove());
   const F = p.fotos || [], kv = [['Operación', p.operacion === 'venta' ? 'Venta' : 'Renta'], ['Tipo', rlpTipoTx_(p.tipo)], ['Precio', rlp$(p.precio, p.moneda) + (p.operacion === 'renta' ? ' / ' + (p.periodo || 'mes') : '')], ['Recámaras', p.recamaras], ['Baños', p.banos ? p.banos + (p.medios_banos ? ' + ' + p.medios_banos + ' medio' : '') : ''], ['Estacionamientos', p.estacionamientos], ['Construcción', p.m2_construccion ? p.m2_construccion + ' m²' : ''], ['Terreno', p.m2_terreno ? p.m2_terreno + ' m²' : ''], ['Amueblado', p.amueblado ? 'Sí' : 'No'], ['Ubicación', [p.direccion, p.colonia, p.ciudad, p.estado, p.cp].filter(Boolean).join(', ')], ['Contacto', [p.contacto_nombre, p.contacto_tel].filter(Boolean).join(' · ')], ['Origen', p.portal === 'propia' ? 'Publicación propia' : p.portal], ['Publicado', p.fecha_publicacion], ['Estatus', p.estatus]].filter(x => x[1]);
   const m = document.createElement('div'); m.className = 'rlp-modal'; m.onclick = e => { if (e.target === m) m.remove(); };
-  m.innerHTML = `<div class="rlp-box"><div class="rlp-bh"><h3>${esc(p.titulo)}</h3><button class="rlp-btn" onclick="rlpCompartir_(null,'${esc(p.id)}')">🔗 Compartir</button><button class="rlp-btn" onclick="rlpMapa_('${esc(p.id)}')">🗺️ Mapa</button><button class="rlp-btn d" onclick="rlpEditar_('${esc(p.id)}')">✏️ Editar</button><button class="rlp-x" onclick="this.closest('.rlp-modal').remove()">✕</button></div>
+  m.innerHTML = `<div class="rlp-box"><div class="rlp-bh"><h3>${esc(p.titulo)}</h3><button class="rlp-btn" onclick="rlpCompartir_(null,'${esc(p.id)}')">🔗 Compartir</button><button class="rlp-btn" onclick="rlpMapa_('${esc(p.id)}')">🗺️ Mapa</button><button class="rlp-btn d" onclick="rlpEditar_('${esc(p.id)}')">✏️ Editar</button><button class="rlp-btn" style="background:#1877f2;color:#fff;border-color:#1877f2" onclick="mkPublicarDesde_('${esc(p.id)}')">📣 Publicar en redes</button><button class="rlp-x" onclick="this.closest('.rlp-modal').remove()">✕</button></div>
     <div class="rlp-det">${F.length ? `<div class="big"><img id="rlp-big" src="${esc(F[0].url)}" alt=""></div><div class="rlp-thumbs">${F.map((f, i) => `<img src="${esc(f.url)}" class="${i ? '' : 'on'}" onclick="document.getElementById('rlp-big').src=this.src;this.parentElement.querySelectorAll('img').forEach(x=>x.classList.remove('on'));this.classList.add('on')">`).join('')}</div>` : ''}
       <div class="rlp-kv">${kv.map(([k, v]) => `<div><b>${esc(k)}</b>${esc(String(v))}</div>`).join('')}</div>
       ${(p.amenidades || []).length ? `<div class="rlp-amen" style="margin-bottom:12px">${p.amenidades.map(a => `<span>${esc(a)}</span>`).join('')}</div>` : ''}
@@ -75571,3 +75575,61 @@ window.rlpGuardar_ = async function () {
 };
 window.rlpEliminar_ = async function (id) { if (!confirm('¿Eliminar esta publicación? (queda en la papelera del archivo)')) return; try { const j = await fetch(`${BACKEND}/rentas/eliminar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, usuario: (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser) : '' }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error); rlpFormCerrar_(); await rlpCargar_(); rlpRender_(); } catch (e) { alert('⚠ ' + (e.message || e)); } };
 window.rlpFormCerrar_ = function () { document.getElementById('rlp-form-modal')?.remove(); RLP.form = null; RLP_GEO.map = null; RLP_GEO.pin = null; };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 📣 Marketing en redes (v2123): conexión con Facebook/Instagram (API oficial de Meta), publicar una propiedad con un clic
+// (texto por IA, fotos del anuncio) y ver estadísticas de cada publicación. Backend: /marketing/*
+// ═══════════════════════════════════════════════════════════════════════════
+const MK = { estado: null, pubs: null };
+window.mkInit = async function () {
+  const root = document.getElementById('mk-root'); if (!root) return; root.innerHTML = '<div class="bk-card bk-mut">⏳ Cargando…</div>';
+  const u = new URL(location.href); if (u.searchParams.get('mk')) { const ok = u.searchParams.get('mk') === 'ok'; if (typeof bkToast_ === 'function') bkToast_(ok ? `✓ Facebook conectado (${u.searchParams.get('n')} página(s))` : '⚠ ' + (u.searchParams.get('msg') || 'No se pudo conectar')); else alert(ok ? 'Conectado' : '⚠ ' + u.searchParams.get('msg')); ['mk', 'n', 'msg'].forEach(k => u.searchParams.delete(k)); history.replaceState(null, '', u.pathname + (u.search || '') + '#marketing'); }
+  await mkCargar_(); mkRender_();
+};
+async function mkCargar_() { try { const [e, p] = await Promise.all([fetch(`${BACKEND}/marketing/estado`, { cache: 'no-store' }).then(r => r.json()), fetch(`${BACKEND}/marketing/publicaciones`, { cache: 'no-store' }).then(r => r.json())]); MK.estado = e.ok ? e : { ok: false, error: e.error }; MK.pubs = p.ok ? p.items : []; } catch (e) { MK.estado = { ok: false, error: e.message }; MK.pubs = []; } }
+function mkRender_() {
+  const root = document.getElementById('mk-root'); if (!root) return; const E = MK.estado || {}, P = MK.pubs || [], num = n => Number(n || 0).toLocaleString('es-MX');
+  const pag = (E.paginas || []).find(p => p.id === E.pagina_activa) || (E.paginas || [])[0];
+  const conex = `<div class="bk-card"><div class="bk-row" style="justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3>🔗 Conexiones</h3><div class="bk-sub">Facebook e Instagram con la API oficial de Meta (app «Check-inn Saltillo»). Google Business Profile: en trámite de acceso.</div></div>
+      <div class="bk-row" style="gap:6px"><a class="bk-btn sm ${pag ? '' : 'pri'}" href="${BACKEND}/marketing/meta/conectar" style="text-decoration:none">${pag ? '🔄 Volver a conectar' : '🔗 Conectar Facebook e Instagram'}</a>${pag ? `<button class="bk-btn sm red" onclick="mkDesconectar_()">Desconectar</button>` : ''}</div></div>
+    ${!E.app ? '<div class="bk-why" style="margin-top:8px">⚠ Falta configurar la app de Meta en el servidor.</div>' : ''}
+    ${pag ? `<div class="bk-row" style="margin-top:12px;gap:14px;flex-wrap:wrap">${(E.paginas || []).map(p => `<div onclick="mkPagina_('${esc(p.id)}')" style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;border:2px solid ${p.id === pag.id ? '#1877f2' : '#e5e7eb'};background:#fff;cursor:pointer;min-width:260px">${p.foto ? `<img src="${esc(p.foto)}" style="width:40px;height:40px;border-radius:50%">` : '<span style="font-size:26px">📘</span>'}<div><div style="font-weight:800">${esc(p.nombre)}</div><div style="font-size:12px;color:#64748b">${p.ig ? `📸 @${esc(p.ig.usuario)}` : '⚠ sin Instagram ligado'}</div></div>${p.id === pag.id ? '<span class="bk-chip" style="background:#dbeafe;color:#1d4ed8;margin-left:auto">Activa</span>' : ''}</div>`).join('')}</div><div class="bk-sub" style="margin-top:8px">Conectado por ${esc((E.usuario || {}).nombre || '')} · el acceso vence ${E.usuario && E.usuario.expira ? new Date(E.usuario.expira).toLocaleDateString('es-MX') : '—'} (vuelve a conectar antes de esa fecha).</div>` : '<div class="bk-sub" style="margin-top:10px">Al conectar, Meta te pedirá autorizar la app para tu Página de Facebook y la cuenta de Instagram ligada. Mientras la app esté en modo desarrollo, solo los administradores de la app pueden conectar.</div>'}</div>`;
+  const tot = P.reduce((a, it) => { const f = (it.stats || {}).fb || {}, g = (it.stats || {}).ig || {}; a.alc += (f.alcance || 0) + (g.alcance || 0); a.imp += (f.impresiones || 0) + (g.impresiones || 0); a.int += (f.interacciones || 0) + (g.me_gusta || 0) + (g.comentarios || 0) + (g.guardados || 0); a.clic += (f.clics || 0); return a; }, { alc: 0, imp: 0, int: 0, clic: 0 });
+  const kpis = `<div class="bk-kpis"><div class="bk-kpi"><b>${num(P.length)}</b><span>Publicaciones</span></div><div class="bk-kpi"><b>${num(tot.alc)}</b><span>Alcance</span></div><div class="bk-kpi"><b>${num(tot.imp)}</b><span>Impresiones</span></div><div class="bk-kpi"><b>${num(tot.int)}</b><span>Interacciones</span></div><div class="bk-kpi"><b>${num(tot.clic)}</b><span>Clics (Facebook)</span></div></div>`;
+  const st = (s, k) => s && s[k] != null ? num(s[k]) : '—';
+  const lista = `<div class="bk-card"><div class="bk-row" style="justify-content:space-between"><h3>📰 Publicaciones</h3><button class="bk-btn sm pri" onclick="switchModule('rentas-lp')">➕ Publicar una propiedad</button></div><div class="bk-sub">Desde Rentas de largo plazo › ficha › «📣 Publicar en redes». Las estadísticas se actualizan cada 10 minutos.</div>
+    ${P.length ? `<div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#f8fafc;color:#64748b;font-size:11px;text-transform:uppercase"><th style="padding:8px;text-align:left">Fecha</th><th style="padding:8px;text-align:left">Propiedad</th><th style="padding:8px">Red</th><th style="padding:8px">Alcance</th><th style="padding:8px">Impresiones</th><th style="padding:8px">Me gusta</th><th style="padding:8px">Comentarios</th><th style="padding:8px">Compartidos</th><th style="padding:8px">Clics</th><th style="padding:8px"></th></tr></thead><tbody>
+      ${P.map(it => { const prop = ((RLP.items || []).find(x => x.id === it.pubId) || {}).titulo || it.pubId; const filas = []; if (it.fb) filas.push(['📘 Facebook', it.stats && it.stats.fb, it.fb.url]); if (it.ig) filas.push(['📸 Instagram', it.stats && it.stats.ig, it.ig.url]);
+        return filas.map(([red, s, url], i) => `<tr style="border-bottom:1px solid #f1f5f9">${i === 0 ? `<td rowspan="${filas.length}" style="padding:8px;white-space:nowrap">${esc(new Date(it.at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}<div style="font-size:11px;color:#94a3b8">${esc(it.por || '')}</div></td><td rowspan="${filas.length}" style="padding:8px;max-width:260px">${esc(prop)}${it.errores && it.errores.length ? `<div style="font-size:11px;color:#b91c1c">⚠ ${esc(it.errores.join(' · '))}</div>` : ''}</td>` : ''}<td style="padding:8px;white-space:nowrap">${red}${s && s.error ? ` <span title="${esc(s.error)}" style="color:#b91c1c">⚠</span>` : ''}</td><td style="padding:8px;text-align:center">${st(s, 'alcance')}</td><td style="padding:8px;text-align:center">${st(s, 'impresiones')}</td><td style="padding:8px;text-align:center">${st(s, 'me_gusta')}</td><td style="padding:8px;text-align:center">${st(s, 'comentarios')}</td><td style="padding:8px;text-align:center">${st(s, 'compartidos')}</td><td style="padding:8px;text-align:center">${st(s, 'clics')}</td><td style="padding:8px">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:#0369a1;font-weight:700;font-size:12px">↗ Ver</a>` : ''}</td></tr>`).join(''); }).join('')}</tbody></table></div>` : '<div class="bk-mut" style="margin-top:10px;font-size:12.5px">Aún no hay publicaciones desde el sistema.</div>'}</div>`;
+  root.innerHTML = `<div class="bk-card" style="background:linear-gradient(135deg,#1e3a8a,#1877f2);color:#fff"><h3 style="color:#fff">📣 Marketing en redes</h3><div style="opacity:.9;font-size:13px">Publica tus propiedades en Facebook e Instagram con un clic y mide alcance, interacciones y clics.</div></div>${conex}${kpis}${lista}`;
+}
+window.mkPagina_ = async function (id) { await fetch(`${BACKEND}/marketing/pagina`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); await mkCargar_(); mkRender_(); };
+window.mkDesconectar_ = async function () { if (!confirm('¿Desconectar Facebook e Instagram del sistema?')) return; await fetch(`${BACKEND}/marketing/desconectar`, { method: 'POST' }); await mkCargar_(); mkRender_(); };
+// ── Publicar una propiedad: vista previa por red, fotos a elegir, texto de la IA editable ──
+window.mkPublicarDesde_ = async function (pubId) {
+  if (!MK.estado) await mkCargar_(); const E = MK.estado || {}, pag = (E.paginas || []).find(p => p.id === E.pagina_activa) || (E.paginas || [])[0];
+  if (!pag) { alert('Primero conecta Facebook e Instagram en el módulo 📣 Marketing en redes.'); switchModule('marketing'); return; }
+  const p = (RLP.items || []).find(x => x.id === pubId); if (!p) return; document.querySelectorAll('.rlp-modal').forEach(x => x.remove());
+  const fotos = (p.fotos || []).filter(f => /storage\.googleapis\.com/.test(f.url)); const m = document.createElement('div'); m.className = 'rlp-modal'; m.id = 'mk-modal';
+  m.innerHTML = `<div class="rlp-box"><div class="rlp-bh"><h3>📣 Publicar: ${esc(p.titulo)}</h3><button class="rlp-x" onclick="document.getElementById('mk-modal').remove()">✕</button></div>
+    <div style="padding:14px 18px;display:grid;gap:12px">
+      <div style="font-size:12.5px;color:#475569">Se publicará en <b>${esc(pag.nombre)}</b>${pag.ig ? ` y en <b>@${esc(pag.ig.usuario)}</b>` : ' (sin Instagram ligado)'} con las fotos marcadas. ${fotos.length ? '' : '<b style="color:#b91c1c">Esta propiedad no tiene fotos en nuestro almacenamiento; Instagram las requiere.</b>'}</div>
+      <div><div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px">📷 Fotos (máx. 10)</div><div class="rlp-gal" id="mk-fotos">${fotos.map((f, i) => `<div class="${i < 10 ? '' : 'off'}" onclick="this.classList.toggle('off');this.querySelector('i').textContent=this.classList.contains('off')?'':'✓'" style="cursor:pointer;position:relative;${i < 10 ? '' : 'opacity:.4'}" onmouseup="this.style.opacity=this.classList.contains('off')?.4:1" data-u="${esc(f.url)}"><img src="${esc(f.url)}"><i style="position:absolute;top:4px;left:4px;width:22px;height:22px;border-radius:999px;background:#16a34a;color:#fff;font-style:normal;font-size:13px;display:flex;align-items:center;justify-content:center">${i < 10 ? '✓' : ''}</i></div>`).join('')}</div></div>
+      <div id="mk-txt"><div class="bk-mut">🤖 Redactando los textos…</div></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px"><button class="rlp-btn" onclick="document.getElementById('mk-modal').remove()">Cancelar</button><button class="rlp-btn p" id="mk-go" onclick="mkPublicar_('${esc(p.id)}')" disabled>📣 Publicar ahora</button></div></div></div>`;
+  document.body.appendChild(m);
+  try { const j = await fetch(`${BACKEND}/marketing/redactar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pubId }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error);
+    document.getElementById('mk-txt').innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><label style="display:flex;gap:8px;align-items:center;font-size:12px;font-weight:700;margin-bottom:4px">${bkCk18_('on')}<span onclick="mkTog_(this)" data-k="fb" style="cursor:pointer">📘 Facebook (${esc(pag.nombre)})</span></label><textarea id="mk-fb" style="width:100%;box-sizing:border-box;min-height:220px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-family:inherit">${esc(j.facebook)}</textarea></div><div><label style="display:flex;gap:8px;align-items:center;font-size:12px;font-weight:700;margin-bottom:4px">${bkCk18_(pag.ig ? 'on' : '')}<span onclick="mkTog_(this)" data-k="ig" style="cursor:pointer">📸 Instagram ${pag.ig ? '(@' + esc(pag.ig.usuario) + ')' : '(no ligado)'}</span></label><textarea id="mk-ig" ${pag.ig ? '' : 'disabled'} style="width:100%;box-sizing:border-box;min-height:220px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-family:inherit">${esc(j.instagram)}</textarea></div></div><div class="bk-sub">Puedes editar los textos antes de publicar. Enlace de la ficha: ${esc(j.liga)}</div>`;
+    document.getElementById('mk-go').disabled = false; } catch (e) { document.getElementById('mk-txt').innerHTML = `<div style="color:#b91c1c">⚠ ${esc(e.message || e)}</div>`; }
+};
+window.mkTog_ = function (sp) { const ck = sp.previousElementSibling, on = ck.textContent.trim() !== '✓'; ck.outerHTML = bkCk18_(on ? 'on' : ''); };
+function mkOn_(k) { const sp = document.querySelector(`[data-k="${k}"]`); return !!sp && sp.previousElementSibling.textContent.trim() === '✓'; }
+window.mkPublicar_ = async function (pubId) {
+  const fotos = [...document.querySelectorAll('#mk-fotos div:not(.off)')].map(d => d.dataset.u).slice(0, 10), fbOn = mkOn_('fb'), igOn = mkOn_('ig');
+  const fb = document.getElementById('mk-fb').value.trim(), ig = (document.getElementById('mk-ig') || {}).value || '';
+  if (!fbOn && !igOn) { alert('Elige al menos una red.'); return; } if (!confirm(`¿Publicar ahora en ${[fbOn && 'Facebook', igOn && 'Instagram'].filter(Boolean).join(' e ')} con ${fotos.length} foto(s)?`)) return;
+  const b = document.getElementById('mk-go'); b.disabled = true; b.textContent = '⏳ Publicando…';
+  try { const j = await fetch(`${BACKEND}/marketing/publicar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pubId, fotos, facebook: fbOn ? { texto: fb } : null, instagram: igOn ? { texto: ig.trim() } : null, usuario: (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser) : '' }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error);
+    const r = j.publicacion; alert(`✓ Publicado.${r.fb ? '\nFacebook: ' + r.fb.url : ''}${r.ig ? '\nInstagram: ' + (r.ig.url || 'listo') : ''}${r.errores.length ? '\n⚠ ' + r.errores.join('\n⚠ ') : ''}`); document.getElementById('mk-modal').remove(); MK.pubs = null; switchModule('marketing'); }
+  catch (e) { alert('⚠ ' + (e.message || e)); b.disabled = false; b.textContent = '📣 Publicar ahora'; }
+};
