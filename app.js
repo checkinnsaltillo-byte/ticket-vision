@@ -67789,6 +67789,7 @@ function adInfo_(g, hoy, o) {
   else if (fantasma) aviso = { c: 'violet', t: 'Pasó al día siguiente · cerrar fecha en calendario' };
   else if (esHoyC && g.sal.length && vivosEnt && selE === 'pendiente' && h >= 14) aviso = { c: 'red', t: 'Urge · entra hoy y sigue pendiente' };
   else if (esHoyC && !g.sal.length && vivosEnt && pubE !== 'terminado' && pubE !== 'inspeccionado') aviso = { c: 'orange', t: 'Requiere inspección antes de la entrada' };
+  else if (xs && xs.cambio && (xs.cambio.k === 'extendida' || xs.cambio.k === 'reprogramada') && selE === 'pendiente') aviso = { c: 'orange', t: `Reprogramada · ${xs.cambio.k === 'extendida' ? 'el huésped extendió' : 'cambio de fechas'} · ${xs.cambio.d}` }; // v2131
   // Prioridad del aseo: crítica si urge o no ha desalojado con entrada; alta si entra huésped; media si solo sale.
   const prio = (ASEO.prio || {})[asigId] || (aviso && aviso.c === 'red' && vivosEnt ? 'critica' : (vivosEnt || (temp && temp.aceptada)) ? 'alta' : g.sal.length && !fantasma ? 'media' : 'baja');
   const mant = g.hid ? rtAvisoImpacto_(g.hid) : null;
