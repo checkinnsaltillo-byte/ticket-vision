@@ -75446,7 +75446,7 @@ window.rlpMapa_ = function (id) {
   document.body.appendChild(m);
   _rsvEnsureLeaflet_(() => { const map = window.L.map('rlp-map').setView(conGeo.length ? [conGeo[0].lat, conGeo[0].lng] : [25.4232, -101.0053], conGeo.length === 1 ? 15 : 12);
     window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
-    const g = []; conGeo.forEach(p => { const mk = window.L.marker([p.lat, p.lng]).addTo(map).bindPopup(`<b>${esc(p.titulo)}</b><br>${rlp$(p.precio, p.moneda)} · ${esc(rlpTipoTx_(p.tipo))}<br><a href="#" onclick="rlpFicha_('${esc(p.id)}');return false">Ver ficha</a>`); g.push(mk); });
+    const g = []; conGeo.forEach(p => { const f = (p.fotos || [])[0]; const mk = window.L.marker([p.lat, p.lng]).addTo(map).bindPopup(`<div style="display:flex;gap:10px;align-items:flex-start;min-width:260px">${f ? `<img src="${esc(f.url)}" alt="" style="width:96px;height:72px;object-fit:cover;border-radius:8px;flex:none">` : ''}<div style="min-width:0"><b style="display:block;font-size:13px;line-height:1.3;margin-bottom:3px">${esc(p.titulo)}</b><div style="font-size:12px;color:#334155">${rlp$(p.precio, p.moneda)}${p.operacion === 'renta' ? ' /mes' : ''} · ${esc(rlpTipoTx_(p.tipo))}</div><div style="font-size:11px;color:#64748b">${[p.recamaras && p.recamaras + ' rec', p.banos && p.banos + ' baños', p.m2_construccion && p.m2_construccion + ' m²'].filter(Boolean).join(' · ')}</div><a href="#" onclick="rlpFicha_('${esc(p.id)}');return false" style="font-size:12px;font-weight:700;color:#0369a1">Ver ficha →</a></div></div>`, { maxWidth: 340 }); g.push(mk); });
     if (g.length > 1) map.fitBounds(window.L.featureGroup(g).getBounds().pad(0.2)); if (g.length === 1) g[0].openPopup(); });
 };
 // ── Ficha ──
