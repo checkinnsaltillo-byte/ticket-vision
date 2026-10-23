@@ -12204,6 +12204,21 @@ app.post("/rentas/extraer-pagina", async (req, res) => {
   try { const D = (req.body || {}).datos || {}; if (!D.url) return res.status(400).json({ ok: false, error: "Faltan datos de la página" }); const pub = _rlpDeDatos(D); res.json({ ok: true, pub, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "" && !(Array.isArray(pub[k]) && !pub[k].length)) }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// Captura del marcador «Enviar a Check-inn»: el navegador del usuario (desde el portal, cualquier origen) deja aquí el paquete
+// y abre el sistema con un token corto (la URL con todo el paquete daba «URI Too Long»). Se guarda 1 hora en Cloud Storage.
+app.post("/rentas/captura", async (req, res) => {
+  try { const D = req.body || {}; if (!D.url) return res.status(400).json({ ok: false, error: "Faltan datos" });
+    const token = crypto.randomBytes(9).toString("base64url"); await _bnWriteGcs(`rentas-lp/capturas/${token}.json`, Object.assign({ _at: new Date().toISOString() }, D), null);
+    res.json({ ok: true, token }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/rentas/captura/:token", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const t = String(req.params.token || "").replace(/[^A-Za-z0-9_-]/g, ""); const { data } = await _bnReadGcs(`rentas-lp/capturas/${t}.json`); if (!data) return res.status(404).json({ ok: false, error: "Captura no encontrada o vencida" });
+    if (Date.now() - Date.parse(data._at || 0) > 3600e3) return res.status(410).json({ ok: false, error: "La captura venció (1 h); vuelve a usar el marcador" });
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, datos: data }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/rentas/extraer-texto", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
