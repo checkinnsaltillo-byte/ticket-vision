@@ -13243,6 +13243,10 @@ app.post("/aseo/extra", async (req, res) => {
         const L = [...new Set(b.incIds.map(x => String(x || "").replace(/[^\w-]/g, "").slice(0, 60)).filter(Boolean))].slice(-30);
         if (L.length) { cur.incIds = L; cur.incId = L[L.length - 1]; } else { delete cur.incIds; delete cur.incId; }
       }
+      if (Array.isArray(b.fotos)) { // 2026-10-23: fotos de la card (limpieza por reserva); la URL firmada se recalcula aquí
+        const F = b.fotos.filter(f => f && /^aseo\/adjuntos\//.test(String(f.k || ""))).slice(0, 40).map(f => ({ k: String(f.k), nombre: String(f.nombre || "").slice(0, 120), tipo: String(f.tipo || "").slice(0, 80), url: `/aseo/adjunto?k=${encodeURIComponent(f.k)}&s=${_aseoAdjSig(f.k)}` }));
+        if (F.length) cur.fotos = F; else delete cur.fotos;
+      }
       Object.assign(cur, { by: user, at: new Date().toISOString() });
       d[key] = cur; return cur;
     });
