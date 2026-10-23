@@ -9187,8 +9187,8 @@ function clNavHtml_(act) {
   const MPn = typeof clModoPersonal_ === 'function' && clModoPersonal_();
   const enTareas = act === 'checkinn' || act === 'mant';
   const items = (clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '✅ Tareas', 'aseo', enTareas) : '')
-    + (!MPn && clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (!MPn && clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '')
-    + (!MPn && clPuede_('tareas') ? b('tareas', '📝 Levantamientos', 'tareas') : '');
+    + (clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '')
+    + (clPuede_('tareas') ? b('tareas', '📝 Levantamientos', 'tareas') : ''); // v2127: en modo personal se respeta lo marcado en «Editar empleado» (antes se ocultaban siempre)
   const pl = !MPn && clPuede_('aseo') ? `<div class="cl-g cl-der">${b('plantillas', '📋 Plantillas', 'plantillas')}${b('reglasbot', '🧹 Programación', 'reglasbot')}</div>` : '';
   const sub = enTareas && window.ASEO ? `<div class="cl-sub">${CL_SUBS.map(([k, ico, t]) => { const D = AT_DEPTO[k] || {}; return `<button type="button" class="cl-sb ${(ASEO.sub || 'todos') === k ? 'on' : ''}" style="--c:${D.c || '#0f1729'}" onclick="clSub_('${k}')">${ico || D.ico} ${t || D.t}</button>`; }).join('')}</div>` : '';
   return items.trim() || pl ? `<div class="cl-nav">${items.trim() ? `<div class="cl-g">${items}</div>` : ''}${pl}</div>${sub}` : '';
