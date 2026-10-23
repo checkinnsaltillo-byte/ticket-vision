@@ -61742,6 +61742,11 @@ function pcMovAlojGrupos_(cols, dia) {
   // canceladas se conservan únicamente para mostrar su aviso de cancelación.
   const okB = x => /^booked$/i.test(String(x.b.Status || '').trim()) || (x.cambio && x.cambio.k === 'cancelada');
   cols = cols.map(c => Object.assign({}, c, { list: c.list.filter(okB) }));
+  // v2130: si la reserva se extendió o cambió de fechas y ya NO sale este día, la card de limpieza se va al nuevo día de salida
+  // (la misma reserva la genera ahí, con su asignación). Se conserva aquí solo si alguien fijó la fecha de aseo en este día o ya la empezó.
+  { const d0 = dia || aseoHoyIso_(), RP0 = (window.ASEO && ASEO.reprog) || {};
+    const seFue = x => { const id = String(x.b.Id), e = typeof aseoEstDe_ === 'function' ? aseoEstDe_(id) : null; return x.cambio && (x.cambio.k === 'extendida' || x.cambio.k === 'reprogramada') && _pagosDateIso(x.b.DateDeparture) !== d0 && !(RP0[id] && RP0[id].fecha === d0) && !(e && e.estado && e.estado !== 'pendiente'); };
+    cols[0] = Object.assign({}, cols[0], { list: cols[0].list.filter(x => !seFue(x)) }); }
   cols[0].list.forEach(x => { const k = key(x); if (!m.has(k)) m.set(k, { k, aloj: x.aloj, hid: String(x.b.HouseId || ''), sal: [], ent: [] }); m.get(k).sal.push(x); });
   // Si en el alojamiento sale una reserva confirmada y otra cancelada, la card (y su estado/asignación) es la confirmada.
   const esCanc = x => !!(x.cambio && x.cambio.k === 'cancelada');
