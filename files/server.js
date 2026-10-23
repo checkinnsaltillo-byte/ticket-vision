@@ -12105,7 +12105,7 @@ function _rlpMutar(fn) {
     throw new Error("No se pudo guardar (conflicto). Intenta de nuevo."); });
   _rlpQ = run.catch(() => {}); return run;
 }
-const _rlpNum = v => { if (v == null || v === "") return null; if (typeof v === "number") return isFinite(v) ? v : null; const n = Number(String(v).replace(/[^0-9.\-]/g, "")); return isFinite(n) ? n : null; };
+const _rlpNum = v => { if (v == null || v === "") return null; if (typeof v === "number") return isFinite(v) ? v : null; let t = String(v).trim(); if (/^-?\$?\s?\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(t)) t = t.replace(/\./g, "").replace(",", "."); /* "4.150.000" (Facebook MX) */ const n = Number(t.replace(/[^0-9.\-]/g, "")); return isFinite(n) ? n : null; };
 const _rlpTipo = t => { const x = _bcNrm(String(t || "")); return /depa|depto|apart|loft|flat|suite/.test(x) ? "departamento" : /casa|house|residen|villa/.test(x) ? "casa" : /local|comerc/.test(x) ? "local" : /oficin|office/.test(x) ? "oficina" : /terren|lote|land/.test(x) ? "terreno" : /bodeg|nave|warehouse/.test(x) ? "bodega" : /cuarto|habitaci|room/.test(x) ? "cuarto" : _RLP_TIPOS.includes(x) ? x : "otro"; };
 const _rlpOper = (t, precio) => { const x = _bcNrm(String(t || "")); return /vent|sale|compra/.test(x) ? "venta" : /rent|alquil|lease/.test(x) ? "renta" : (precio && precio > 400000 ? "venta" : "renta"); };
 function _rlpNormalizar(p, prev) {
@@ -12201,7 +12201,12 @@ app.post("/rentas/extraer", async (req, res) => {
 // Datos capturados en el navegador del usuario con el marcador «Enviar a Check-inn» (portales que bloquean al servidor).
 app.post("/rentas/extraer-pagina", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-  try { const D = (req.body || {}).datos || {}; if (!D.url) return res.status(400).json({ ok: false, error: "Faltan datos de la página" }); const pub = _rlpDeDatos(D); res.json({ ok: true, pub, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "" && !(Array.isArray(pub[k]) && !pub[k].length)) }); }
+  try { const D = (req.body || {}).datos || {}; if (!D.url) return res.status(400).json({ ok: false, error: "Faltan datos de la página" }); let pub = _rlpDeDatos(D), metodo = "estructurado";
+    // Sin datos estructurados del inmueble (Facebook Marketplace, etc.): la IA estructura el texto y rellena lo que falte.
+    if ((!pub.recamaras || !pub.precio) && String(D.text || "").length > 120) {
+      try { const j = await _rlpLlmTexto(String(D.text || "").slice(0, 20000), String(D.url || "")); Object.keys(j).forEach(k => { const v = j[k]; if (v == null || v === "" || (Array.isArray(v) && !v.length)) return; if (pub[k] == null || pub[k] === "" || (Array.isArray(pub[k]) && !pub[k].length) || (k === "descripcion" && String(v).length > String(pub[k]).length) || k === "tipo" || k === "operacion") pub[k] = v; }); metodo = "ia"; } catch (e) { console.warn("[rentas] IA texto:", e.message); }
+    }
+    res.json({ ok: true, pub, metodo, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "" && !(Array.isArray(pub[k]) && !pub[k].length)) }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // Captura del marcador «Enviar a Check-inn»: el navegador del usuario (desde el portal, cualquier origen) deja aquí el paquete
@@ -12212,6 +12217,14 @@ app.post("/rentas/captura", async (req, res) => {
     res.json({ ok: true, token }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// Misma captura por FORMULARIO (navegación): Facebook y otros sitios bloquean fetch/beacon a otros dominios con su CSP,
+// pero no un envío de formulario. Responde con una redirección al sistema con el token.
+app.post("/rentas/captura-form", express.urlencoded({ extended: false, limit: "4mb" }), async (req, res) => {
+  try { let D = {}; try { D = JSON.parse(String((req.body || {}).datos || "{}")); } catch (_) {} if (!D.url) return res.status(400).send("Faltan datos de la captura");
+    const token = crypto.randomBytes(9).toString("base64url"); await _bnWriteGcs(`rentas-lp/capturas/${token}.json`, Object.assign({ _at: new Date().toISOString() }, D), null);
+    res.redirect(302, `https://www.check-inn.mx/admin/?rlpk=${encodeURIComponent(token)}#rentas-lp`); }
+  catch (e) { res.status(500).send("Error: " + e.message); }
+});
 app.get("/rentas/captura/:token", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const t = String(req.params.token || "").replace(/[^A-Za-z0-9_-]/g, ""); const { data } = await _bnReadGcs(`rentas-lp/capturas/${t}.json`); if (!data) return res.status(404).json({ ok: false, error: "Captura no encontrada o vencida" });
@@ -12219,12 +12232,15 @@ app.get("/rentas/captura/:token", async (req, res) => {
     res.set("Cache-Control", "no-store"); res.json({ ok: true, datos: data }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+async function _rlpLlmTexto(texto, url) {
+  return _enLlm("Eres un extractor de datos de anuncios inmobiliarios de México. Respondes SOLO un objeto JSON.",
+    `Texto del anuncio (puede incluir menús, listados relacionados y basura de la página; ignóralos y usa solo el anuncio principal):\n"""\n${texto}\n"""\nURL: ${url || "(sin url)"}\n\nDevuelve JSON con estas claves (null si no aparece): titulo (descriptivo y corto), descripcion (texto completo del anuncio, limpio, con saltos de línea), tipo (departamento|casa|local|oficina|terreno|bodega|cuarto|otro), operacion (renta|venta; "Viviendas en venta" = venta, "Alquiler" = renta), precio (número sin símbolos; en Facebook México "$4.150.000" son 4150000), moneda (MXN|USD), periodo (mensual|anual|""), ciudad, estado, colonia, direccion, cp, recamaras (número), banos (número; "2.5 baños" → banos 2 y medios_banos 1), medios_banos, estacionamientos, m2_construccion, m2_terreno, amueblado (true/false), amenidades (lista de textos cortos), contacto_nombre, contacto_tel, fecha_publicacion (YYYY-MM-DD si aparece).`, 3000, "low");
+}
 app.post("/rentas/extraer-texto", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
     const texto = String((req.body || {}).texto || "").slice(0, 60000), url = String((req.body || {}).url || "").trim(); if (texto.length < 40) return res.status(400).json({ ok: false, error: "Pega el texto del anuncio" });
-    const j = await _enLlm("Eres un extractor de datos de anuncios inmobiliarios de México. Respondes SOLO un objeto JSON.",
-      `Texto del anuncio (puede incluir menús y basura de la página; ignórala):\n"""\n${texto}\n"""\nURL: ${url || "(sin url)"}\n\nDevuelve JSON con estas claves (null si no aparece): titulo, descripcion (texto completo del anuncio, limpio), tipo (departamento|casa|local|oficina|terreno|bodega|cuarto|otro), operacion (renta|venta), precio (número, sin símbolos), moneda (MXN|USD), periodo (mensual|anual|"" ), ciudad, estado, colonia, direccion, cp, recamaras (número), banos (número), medios_banos, estacionamientos, m2_construccion, m2_terreno, amueblado (true/false), amenidades (lista de textos cortos), contacto_nombre, contacto_tel, fecha_publicacion (YYYY-MM-DD si aparece).`, 3000, "low");
+    const j = await _rlpLlmTexto(texto, url);
     const pub = Object.assign({}, j, { url_origen: url, portal: url ? _rlpPortal(url) : "otro" });
     res.json({ ok: true, pub, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "") });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
