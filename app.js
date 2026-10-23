@@ -68888,7 +68888,8 @@ function atPintar_(nuevo) {
         ${(t.etiquetas || []).length ? `<span>Etiquetas</span><b>${t.etiquetas.map(x => `<em class="ad-tag">${pcEsc(x)}</em>`).join(' ')}</b>` : ''}
         <span>Creada</span><b>${t.at ? new Date(t.at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : ''}${t.by ? ' · ' + pcEsc(t.by) : ''}</b></div>
       <div class="lab">Asignados</div><div class="ad-ppl">${(t.asignados || []).map(n => `<div class="ad-pp">${adAv_(n)}<span>${pcEsc(n)}</span></div>`).join('') || '<div class="ad-un">Sin asignar</div>'}</div>
-      ${(t.adjuntos || []).length ? `<div class="lab">Adjuntos</div><div class="ad-adjs">${t.adjuntos.map(a => `<a class="ad-adj" href="${BACKEND}${a.url}" target="_blank" rel="noopener">${/^image\//.test(a.tipo) ? `<img src="${BACKEND}${a.url}" alt="">` : '<span class="fi">📄</span>'}<span>${pcEsc(a.nombre)}</span></a>`).join('')}</div>` : ''}
+      ${(t.adjuntos || []).some(atEsImg_) ? (atGalCss_(), `<div class="lab">📷 Fotos (${t.adjuntos.filter(atEsImg_).length})</div><div class="at-gal">${t.adjuntos.filter(atEsImg_).map((a, j) => `<div class="at-ph"><img src="${BACKEND}${a.turl || a.url}" alt="" onclick="fotoVer_(atFotoUrls_(ASEO.tareas['${pcEsc(t.id)}'].adjuntos),${j})"></div>`).join('')}</div>`) : ''}
+      ${(t.adjuntos || []).some(a => !atEsImg_(a)) ? `<div class="lab">📎 Archivos</div><div class="ad-adjs">${t.adjuntos.filter(a => !atEsImg_(a)).map(a => `<a class="ad-adj" href="${BACKEND}${a.url}" target="_blank" rel="noopener"><span class="fi">📄</span><span>${pcEsc(a.nombre)}</span></a>`).join('')}</div>` : ''}
       ${histSecHtml_(['T:' + t.id])}
     </div>
     <div class="ad-ft"><button type="button" class="ad-bt" onclick="atForm_('${pcEsc(t.id)}')">Editar</button><button type="button" class="ad-bt" onclick="atBorrar_('${pcEsc(t.id)}')">Eliminar</button>
@@ -68922,6 +68923,7 @@ window.atForm_ = function (id, hid, dia) {
   atFormPintar_();
 };
 function atFormPintar_() {
+  atGalCss_();
   const F = ASEO._tf, dr = atShell_();
   const alojs = atAlojs_().slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
   const horas = ['']; for (let m = 6 * 60; m <= 23 * 60 + 30; m += 30) horas.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
@@ -68948,7 +68950,9 @@ function atFormPintar_() {
         <div class="at-hint">Nota: las personas asignadas lo estarán en todas las repeticiones.</div>` : ''}
       <div class="at-sec"><span>👤 Asignados</span><button type="button" class="ad-link" onclick="atAsignar_(this)">＋ Añadir asignado</button></div>
       <div class="at-chips" id="at-asig">${atAsigChips_()}</div>
-      <div class="at-sec"><span>📎 Adjuntos</span><label class="ad-link">＋ Añadir archivo adjunto<input type="file" multiple hidden onchange="atSubir_(this)"></label></div>
+      <div class="at-sec"><span>📷 Fotos</span><label class="ad-link">＋ Agregar fotos<input type="file" accept="image/*" multiple hidden onchange="atSubir_(this)"></label></div>
+      <div class="at-gal" id="at-fotos">${atFotosHtml_()}</div>
+      <div class="at-sec"><span>📎 Otros archivos</span><label class="ad-link">＋ Añadir archivo adjunto<input type="file" multiple hidden onchange="atSubir_(this)"></label></div>
       <div class="ad-adjs" id="at-adjs">${atAdjsHtml_()}</div>
       <div class="at-sec"><span>🏷️ Etiquetas de tareas</span></div>
       <div class="at-chips">${(F.etiquetas || []).map((x, i) => `<span class="at-chip">#${pcEsc(x)}<b onclick="ASEO._tf.etiquetas.splice(${i},1);atFormPintar_()">✕</b></span>`).join('')}
@@ -69049,21 +69053,28 @@ window.atAsigPick_ = function (el) {
   el.classList.toggle('on', on); const ck = el.querySelector('.pz-ck'); ck.classList.toggle('on', on); ck.textContent = on ? '✓' : '';
   const c = document.getElementById('at-asig'); if (c) c.innerHTML = atAsigChips_();
 };
-function atAdjsHtml_() { return (ASEO._tf.adjuntos || []).map((a, i) => `<span class="ad-adj">${/^image\//.test(a.tipo) && a.url ? `<img src="${BACKEND}${a.url}" alt="">` : '<span class="fi">📄</span>'}<span>${pcEsc(a.nombre)}</span><b onclick="ASEO._tf.adjuntos.splice(${i},1);document.getElementById('at-adjs').innerHTML=atAdjsHtml_()">✕</b></span>`).join(''); }
+const atEsImg_ = a => /^image\//.test(String(a.tipo || '')) || /\.(jpe?g|png|webp|gif|heic)$/i.test(String(a.nombre || ''));
+function atAdjsHtml_() { return (ASEO._tf.adjuntos || []).map((a, i) => atEsImg_(a) ? '' : `<span class="ad-adj"><span class="fi">📄</span><span>${pcEsc(a.nombre)}</span><b onclick="ASEO._tf.adjuntos.splice(${i},1);atAdjsPintar_()">✕</b></span>`).join(''); }
+// v2136: galería de fotos de la tarea (vista previa, clic = zoom con flechas, ✕ quitar)
+function atFotosHtml_() { const L = ASEO._tf.adjuntos || [], imgs = L.map((a, i) => ({ a, i })).filter(x => atEsImg_(x.a)); if (!imgs.length) return '<div class="at-hint" style="margin:0">Sin fotos. Puedes agregar varias a la vez.</div>';
+  return imgs.map((x, j) => `<div class="at-ph"><img src="${BACKEND}${x.a.url}" alt="" onclick="fotoVer_(atFotoUrls_(ASEO._tf.adjuntos),${j})"><b onclick="ASEO._tf.adjuntos.splice(${x.i},1);atAdjsPintar_()">✕</b></div>`).join(''); }
+function atFotoUrls_(L) { return (L || []).filter(atEsImg_).map(a => BACKEND + a.url); }
+function atAdjsPintar_() { const g = document.getElementById('at-fotos'); if (g) g.innerHTML = atFotosHtml_(); const b = document.getElementById('at-adjs'); if (b) b.innerHTML = atAdjsHtml_(); }
+function atGalCss_() { if (document.getElementById('at-gal-css')) return; const st = document.createElement('style'); st.id = 'at-gal-css'; st.textContent = `.at-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin:4px 0 10px}.at-ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;background:#f8fafc}.at-ph img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}.at-ph b{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:999px;background:rgba(15,23,42,.75);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer}.at-ph.sub{opacity:.6}`; document.head.appendChild(st); }
 window.atSubir_ = async function (inp) {
   const files = [...(inp.files || [])]; inp.value = '';
   const box = document.getElementById('at-adjs');
   for (const f0 of files) {
     const f = await imgLigera_(f0); // fotos ligeras
     if (f.size > 15 * 1024 * 1024) { alert(`«${f.name}» pesa más de 15 MB.`); continue; }
-    const tmp = document.createElement('span'); tmp.className = 'ad-adj'; tmp.textContent = '⏳ ' + f.name; box && box.appendChild(tmp);
+    const tmp = document.createElement('span'); tmp.className = 'ad-adj'; tmp.textContent = '⏳ ' + f.name; (document.getElementById(/^image\//.test(f.type) ? 'at-fotos' : 'at-adjs') || box) && (document.getElementById(/^image\//.test(f.type) ? 'at-fotos' : 'at-adjs') || box).appendChild(tmp);
     try {
       const data = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(f); });
       const r = await fetch(`${BACKEND}/aseo/adjunto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: f.name, tipo: f.type, data }) }).then(r => r.json());
       if (!r.ok) throw new Error(r.error || 'Error');
       ASEO._tf.adjuntos.push(r.adjunto);
     } catch (e) { alert(`No se pudo subir «${f.name}»: ${e.message || e}`); }
-    if (box) box.innerHTML = atAdjsHtml_();
+    atAdjsPintar_();
   }
 };
 window.atGuardar_ = async function () {
@@ -71412,6 +71423,7 @@ function plCss_() {
   .pl-ck .ck{width:18px;height:18px;border:1.5px solid #94a3b8;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;background:#fff;flex:none;box-sizing:border-box}
   .pl-ck.on .ck{background:#4f46e5;border-color:#4f46e5}
   .pl-crit{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:800;white-space:nowrap}
+  .pl-caract{display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:#e0f2fe;color:#0369a1;font-size:11px;font-weight:800}
   .pl-sm{width:70px!important;padding:5px 8px!important}
   .pl-lnk{all:unset;cursor:pointer;color:#0284c7;font-size:12.5px;font-weight:600}.pl-lnk:hover{text-decoration:underline}
   .pl-add{display:flex;flex-wrap:wrap;gap:6px 16px;padding:10px 0 4px}
@@ -73073,7 +73085,8 @@ function plEdPintar_(arriba) {
         ${i.tipo === 'contar' ? `<span>Mín. <input class="pl-in pl-sm" type="number" value="${i.min ?? ''}" oninput="plEdNum_(${a},'min',this.value)"></span><span>Máx. <input class="pl-in pl-sm" type="number" value="${i.max ?? ''}" oninput="plEdNum_(${a},'max',this.value)"></span>` : ''}
         ${i.tipo === 'calif' ? `<span>Escala <select class="pl-in pl-sm" onchange="ASEO.pl.ed.secciones[${si}].items[${ii}].escala=+this.value">${[3, 5, 10].map(n => `<option ${Number(i.escala || 5) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></span>` : ''}
         <label class="pl-lnk">Subir foto de referencia +<input type="file" accept="image/*" hidden onchange="plEdRef_(this,${a})"></label>
-        ${s.critico ? '<span class="pl-crit">🚨 Crítico (toda la sección)</span>' : ck(!!i.critico, `plEdTg_(${a},'critico')`, '🚨 Crítico')}
+        ${i.caract ? '' : s.critico ? '<span class="pl-crit">🚨 Crítico (toda la sección)</span>' : ck(!!i.critico, `plEdTg_(${a},'critico')`, '🚨 Crítico')}
+        ${ck(!!i.caract, `plEdTg_(${a},'caract')`, 'ℹ️ Solo característica (no se evalúa)')}
       </div>
       ${(i.ref || []).length ? `<div class="pl-refs">${i.ref.map((f, fi) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(ASEO.pl.ed.secciones[${si}].items[${ii}].ref.map(x=>BACKEND+x.url),${fi})"><b onclick="ASEO.pl.ed.secciones[${si}].items[${ii}].ref.splice(${fi},1);plEdPintar_()">✕</b></span>`).join('')}</div>` : ''}
     </div><div class="tl"><button type="button" class="pl-x" title="Subir" onclick="plEdMover_(${a},-1)">↑</button><button type="button" class="pl-x" title="Bajar" onclick="plEdMover_(${a},1)">↓</button><button type="button" class="pl-x" title="Quitar" onclick="ASEO.pl.ed.secciones[${si}].items.splice(${ii},1);plEdPintar_()">✕</button></div></div>`;
@@ -73241,7 +73254,7 @@ function plFillItem_(it, r, s) {
   else if (it.tipo === 'sino') ctl = `<div class="plf-seg"><button type="button" class="${r.v === 'si' ? 'on' : ''}" style="--c:#16a34a" onclick="plSet_('${id}','si')">Sí</button><button type="button" class="${r.v === 'no' ? 'on' : ''}" style="--c:#dc2626" onclick="plSet_('${id}','no')">No</button></div>`;
   else if (it.tipo === 'calif') { const E = Number(it.escala) || 5; ctl = `<div class="plf-stars">${Array.from({ length: E }, (_, i) => `<button type="button" class="${Number(r.v) > i ? 'on' : ''}" title="${i + 1} de ${E}" onclick="plSet_('${id}',${i + 1})">★</button>`).join('')}${r.v ? `<span class="plf-ref" style="align-self:center;margin-left:6px">${r.v} de ${E}</span>` : ''}</div>`; }
   const hecho = plHecho_(it, r);
-  return `<div class="plf-it" data-i="${id}"><div class="plf-q"><span class="st ${hecho ? 'on' : ''}">${hecho ? '✓' : ''}</span><span>${pcEsc(q)}</span>${typeof plEsCrit_ === 'function' && plEsCrit_(s, it) ? '<span class="pl-crit">🚨</span>' : ''}<em>${it.texto ? T.t : ''}${it.foto && it.tipo !== 'foto' ? `${it.texto ? ' · ' : ''}📷 obligatoria` : ''}</em></div>
+  return `<div class="plf-it" data-i="${id}"><div class="plf-q"><span class="st ${hecho ? 'on' : ''}">${hecho ? '✓' : ''}</span><span>${pcEsc(q)}</span>${it.caract ? '<span class="pl-caract" title="Solo característica del alojamiento, no se evalúa">ℹ️</span>' : typeof plEsCrit_ === 'function' && plEsCrit_(s, it) ? '<span class="pl-crit">🚨</span>' : ''}<em>${it.texto ? T.t : ''}${it.foto && it.tipo !== 'foto' ? `${it.texto ? ' · ' : ''}📷 obligatoria` : ''}</em></div>
     <div class="plf-bd">${(it.ref || []).length ? `<div class="plf-fotos"><span class="plf-ref">Referencia:</span>${it.ref.map((f, i) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(${pcEsc(JSON.stringify(it.ref.map(x => BACKEND + x.url)))},${i})"></span>`).join('')}</div>` : ''}
     <div class="plf-row"><div class="plf-ctl">${ctl}</div>${iconos}</div>${fotosHtml}${notaHtml}</div></div>`;
 }
@@ -74939,7 +74952,7 @@ function tdUrgDe_(it, rr) {
 const TD_NIV = { alta: { r: 4, t: 'Alta', c: '#dc2626', e: '🔴' }, media: { r: 3, t: 'Media', c: '#f97316', e: '🟠' }, baja: { r: 2, t: 'Baja', c: '#eab308', e: '🟡' }, seg: { r: 1, t: 'Seguimiento', c: '#94a3b8', e: '⚪' } };
 function tdNivelDe_(crit, u) { const g = u.n >= 3 ? 'grave' : u.n === 2 ? 'media' : 'leve'; const k = crit ? { grave: 'alta', media: 'media', leve: 'baja' }[g] : { grave: 'media', media: 'baja', leve: 'seg' }[g]; return Object.assign({ k }, TD_NIV[k]); }
 function tdSemHtml_(niv) { const on = niv.k; return `<span class="tb-sem" title="Urgencia ${niv.t}">${['alta', 'media', 'baja'].map(k => `<i class="${on === k ? 'on' : ''}" style="--c:${TD_NIV[k].c}"></i>`).join('')}<b style="color:${niv.c}">${niv.t}</b></span>`; }
-function tdRelChip_(crit) { return crit ? '<span class="pl-crit">🚨 Crítico</span>' : '<span class="tb-rel">Normal</span>'; }
+function tdRelChip_(crit) { return crit ? '<span class="pl-crit">🚨 Crítico</span>' : '<span class="tb-rel">No crítico</span>'; }
 function tdRespTxt_(it, rr) { const v = rr.v; if (it.tipo === 'condicion') return v === 'na' ? 'N/A' : (PL_COND.find(x => x[0] === v) || [])[1] || '—'; if (it.tipo === 'sino') return v === 'si' ? 'Sí' : v === 'no' ? 'No' : '—';
   if (it.tipo === 'calif') return v ? `${v} de ${Number(it.escala) || 5}` : '—'; if (it.tipo === 'lista') return (it.sub || []).length ? `${Object.values(v || {}).filter(Boolean).length}/${it.sub.length}` : v === true ? 'Hecho' : '—'; return v == null || v === '' ? '—' : String(v).slice(0, 60); }
 // Hallazgos de todos los levantamientos del periodo: {items, faltan (llaves aún no cargadas), hids (por alojamiento: doc elegido)}.
@@ -74964,7 +74977,7 @@ function tdUrgDatos_(O) {
         if (doc && doc.resp && Object.keys(doc.resp).length && (!mejor || String(doc.at || '') > String(mejor.at || ''))) { mejor = doc; mejorKey = key; } }
       if (!mejor) { hids[r.ID + '|' + hid] = null; return; } const key = mejorKey, resp = mejor.resp, per = (key.match(/:(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/) || [])[1] || P;
       hids[r.ID + '|' + hid] = { key, per, at: mejor.at || '', n: Object.keys(resp).length };
-      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (u) { const crit = plEsCrit_(s, it); items.push({ r, hid, P, per, key, p, s, it, rr, u, crit, niv: tdNivelDe_(crit, u), at: mejor.at || '' }); } })); }); });
+      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (it.caract) return; if (u) { const crit = plEsCrit_(s, it); items.push({ r, hid, P, per, key, p, s, it, rr, u, crit, niv: tdNivelDe_(crit, u), at: mejor.at || '' }); } })); }); });
   if (faltan.length && !U.pend) { U.pend = fetch(`${BACKEND}/aseo/plantilla-resp/lote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ks: faltan }) }).then(r => r.json())
     .then(j => { (j.items || []).forEach(x => { U.docs[x.k] = x.doc || {}; }); faltan.forEach(k => { if (U.docs[k] === undefined) U.docs[k] = {}; }); U.pend = null; tdRender_(); }).catch(() => { U.pend = null; }); }
   items.sort((a, b) => b.niv.r - a.niv.r || (b.crit - a.crit) || b.u.n - a.u.n || String(b.at).localeCompare(String(a.at))); // urgencia alta arriba; a igual nivel, críticos primero
