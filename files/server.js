@@ -12245,8 +12245,16 @@ app.get("/rentas/geocodificar", async (req, res) => {
     let url; if (q) url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&countrycodes=mx&accept-language=es&q=${encodeURIComponent(q)}`;
     else if (lat != null && lng != null) url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=es&lat=${lat}&lon=${lng}`;
     else return res.status(400).json({ ok: false, error: "Falta q o lat/lng" });
-    const r = await _fetchReal(url, { headers: { "User-Agent": "check-inn-saltillo/1.0 (sistemas@check-inn.mx)", "Accept": "application/json" } }); if (!r.ok) throw new Error("Geocodificador " + r.status);
-    const j = await r.json(); const norm = x => { const a = x.address || {}; return { lat: _rlpNum(x.lat), lng: _rlpNum(x.lon), nombre: String(x.display_name || ""), calle: [a.road, a.house_number].filter(Boolean).join(" "), colonia: a.neighbourhood || a.suburb || a.quarter || a.residential || a.hamlet || "", ciudad: a.city || a.town || a.village || a.municipality || "", estado: a.state || "", cp: a.postcode || "" }; };
+    const H = { headers: { "User-Agent": "check-inn-saltillo/1.0 (sistemas@check-inn.mx)", "Accept": "application/json" } };
+    let r = await _fetchReal(url, H); if (!r.ok) throw new Error("Geocodificador " + r.status);
+    let j = await r.json();
+    // Sin resultados con texto libre: reintenta simplificando (sin «plaza», «col.», números, etc.) y acotado a Saltillo.
+    if (q && Array.isArray(j) && !j.length) {
+      const base = q.replace(/\b(plaza|centro comercial|col\.?|colonia|fracc\.?|fraccionamiento|calle|avenida|av\.?|blvd\.?|boulevard|privada|priv\.?|#|no\.?|n[uú]mero)\b/gi, " ").replace(/\d+[a-z]?/g, " ").replace(/\s+/g, " ").trim();
+      const variantes = [...new Set([base, /saltillo/i.test(base) ? base : base + " Saltillo", base.split(" ").slice(1).join(" ") + " Saltillo"])].filter(v => v.replace(/saltillo/i, "").trim().length > 2);
+      for (const v of variantes) { r = await _fetchReal(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&countrycodes=mx&accept-language=es&q=${encodeURIComponent(v)}`, H); if (!r.ok) continue; j = await r.json(); if (Array.isArray(j) && j.length) break; }
+    }
+    const norm = x => { const a = x.address || {}; return { lat: _rlpNum(x.lat), lng: _rlpNum(x.lon), nombre: String(x.display_name || ""), calle: [a.road, a.house_number].filter(Boolean).join(" "), colonia: a.neighbourhood || a.suburb || a.quarter || a.residential || a.hamlet || "", ciudad: a.city || a.town || a.village || a.municipality || "", estado: a.state || "", cp: a.postcode || "" }; };
     const out = { ok: true, resultados: (Array.isArray(j) ? j : [j]).filter(x => x && x.lat).map(norm) };
     _rlpGeoC.set(key, { ts: Date.now(), r: out }); res.set("Cache-Control", "no-store"); res.json(out);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
