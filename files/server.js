@@ -12131,7 +12131,16 @@ function _rlpLd(html) { const out = []; (html.match(/<script[^>]*type=["']applic
 const _rlpMeta = (html, k) => { const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]+content=["']([^"']*)["']`, "i")) || html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`, "i")); return m ? m[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : ""; };
 function _rlpDeHtml(html, url) {
   const texto = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
-  return _rlpDeDatos({ url, ld: _rlpLd(html), og: { t: _rlpMeta(html, "og:title"), d: _rlpMeta(html, "og:description") || _rlpMeta(html, "description"), i: _rlpMeta(html, "og:image") }, title: (html.match(/<title>([^<]*)<\/title>/i) || [])[1] || "", imgs: [], text: texto, price_meta: _rlpMeta(html, "product:price:amount") });
+  return _rlpDeDatos({ url, ld: _rlpLd(html), og: { t: _rlpMeta(html, "og:title"), d: _rlpMeta(html, "og:description") || _rlpMeta(html, "description"), i: _rlpMeta(html, "og:image") }, title: (html.match(/<title>([^<]*)<\/title>/i) || [])[1] || "", imgs: [], text: texto, price_meta: _rlpMeta(html, "product:price:amount"), geo: _rlpGeoHtml(html) });
+}
+// Coordenadas en el HTML: "latitude":…, position="lat,lng", enlaces de Google Maps o cualquier par lat,lng plausible para México.
+function _rlpGeoHtml(html) {
+  const ok = (a, b) => a > 13 && a < 33.5 && b < -85 && b > -119, N = v => Number(v);
+  let m = html.match(/"?latitude"?\s*[:=]\s*"?(-?\d{1,2}\.\d{3,})"?[\s\S]{0,80}?"?longitude"?\s*[:=]\s*"?(-?\d{2,3}\.\d{3,})/i); if (m && ok(N(m[1]), N(m[2]))) return { lat: N(m[1]), lng: N(m[2]) };
+  m = html.match(/position=["'](-?\d{1,2}\.\d{3,}),\s*(-?\d{2,3}\.\d{3,})/i); if (m && ok(N(m[1]), N(m[2]))) return { lat: N(m[1]), lng: N(m[2]) };
+  m = html.match(/google\.[a-z.]+\/maps[^"'\s]*?[@?&=/](-?\d{1,2}\.\d{3,}),(-?\d{2,3}\.\d{3,})/i); if (m && ok(N(m[1]), N(m[2]))) return { lat: N(m[1]), lng: N(m[2]) };
+  const re = /(-?\d{1,2}\.\d{4,})\s*,\s*(-?\d{2,3}\.\d{4,})/g; while ((m = re.exec(html))) if (ok(N(m[1]), N(m[2]))) return { lat: N(m[1]), lng: N(m[2]) };
+  return null;
 }
 // Datos de una página ya leída (por el servidor o por el marcador «Enviar a Check-inn» en el navegador del usuario).
 function _rlpDeDatos(D) {
@@ -12152,7 +12161,7 @@ function _rlpDeDatos(D) {
     tipo: /Apartment/i.test(T(acc)) ? "departamento" : /House|SingleFamily/i.test(T(acc)) ? "casa" : _rlpTipo(titulo) !== "otro" ? _rlpTipo(titulo) : (T(acc) || ""), operacion: /vent|sale/i.test(titulo + " " + url) ? "venta" : /rent|alquil/i.test(titulo + " " + url) ? "renta" : "",
     precio, moneda: (oferta && oferta.priceCurrency) || (/USD|dólares/i.test(texto.slice(0, 5000)) ? "USD" : "MXN"),
     ciudad: String(addr.addressLocality || "").split(",")[0].trim() || g(/en\s+(Saltillo|Monterrey|Torre[oó]n|Ramos Arizpe|Arteaga)/i) || "", estado: /coahuila|nuevo le/i.test(String(addr.addressRegion || "")) ? addr.addressRegion : (/Coahuila/i.test(String(addr.addressLocality || "") + texto.slice(0, 3000)) ? "Coahuila" : ""), colonia: addr.addressRegion && !/coahuila|nuevo le|estado/i.test(String(addr.addressRegion)) ? addr.addressRegion : "", direccion: addr.streetAddress || "", cp: addr.postalCode || "",
-    lat: _rlpNum(geo.latitude), lng: _rlpNum(geo.longitude),
+    lat: _rlpNum(geo.latitude) || (D.geo && _rlpNum(D.geo.lat)) || null, lng: _rlpNum(geo.longitude) || (D.geo && _rlpNum(D.geo.lng)) || null,
     recamaras: _rlpNum(acc.numberOfBedrooms || acc.numberOfRooms) || _rlpNum(g(/(\d+)\s*rec[aá]maras?/i)), banos: _rlpNum(acc.numberOfBathroomsTotal) || _rlpNum(g(/(\d+)\s*baños?/i)),
     estacionamientos: _rlpNum(g(/(\d+)\s*(?:estacionamientos?|cajones?|cochera)/i)), m2_construccion: _rlpNum(fs) || _rlpNum(g(/(\d{2,5})\s*m²/)), m2_terreno: _rlpNum(g(/terreno[^0-9]{0,20}(\d{2,5})\s*m/i)),
     amueblado: /amueblad/i.test(titulo + " " + ((inm && inm.description) || "")), amenidades: [...new Set(amen)].slice(0, 40), fotos: [...new Set(imgs)].slice(0, 30).map(u => ({ url: String(u).replace(/^\/\//, "https://"), alt: "" })),
