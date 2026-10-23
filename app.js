@@ -74934,6 +74934,12 @@ function tdUrgDe_(it, rr) {
   if (nota) return { n: 1, t: 'Con nota', c: '#6366f1' };
   return null;
 }
+// v2135: Urgencia = Relevancia (Crítico/Normal, de la plantilla) × gravedad de la respuesta (Grave: Malo/No · Media: Regular, calificación
+// baja, fuera de rango · Leve: solo nota). Crítico: Grave→Alta, Media→Media, Leve→Baja. Normal: Grave→Media, Media→Baja, Leve→Seguimiento.
+const TD_NIV = { alta: { r: 4, t: 'Alta', c: '#dc2626', e: '🔴' }, media: { r: 3, t: 'Media', c: '#f97316', e: '🟠' }, baja: { r: 2, t: 'Baja', c: '#eab308', e: '🟡' }, seg: { r: 1, t: 'Seguimiento', c: '#94a3b8', e: '⚪' } };
+function tdNivelDe_(crit, u) { const g = u.n >= 3 ? 'grave' : u.n === 2 ? 'media' : 'leve'; const k = crit ? { grave: 'alta', media: 'media', leve: 'baja' }[g] : { grave: 'media', media: 'baja', leve: 'seg' }[g]; return Object.assign({ k }, TD_NIV[k]); }
+function tdSemHtml_(niv) { const on = niv.k; return `<span class="tb-sem" title="Urgencia ${niv.t}">${['alta', 'media', 'baja'].map(k => `<i class="${on === k ? 'on' : ''}" style="--c:${TD_NIV[k].c}"></i>`).join('')}<b style="color:${niv.c}">${niv.t}</b></span>`; }
+function tdRelChip_(crit) { return crit ? '<span class="pl-crit">🚨 Crítico</span>' : '<span class="tb-rel">Normal</span>'; }
 function tdRespTxt_(it, rr) { const v = rr.v; if (it.tipo === 'condicion') return v === 'na' ? 'N/A' : (PL_COND.find(x => x[0] === v) || [])[1] || '—'; if (it.tipo === 'sino') return v === 'si' ? 'Sí' : v === 'no' ? 'No' : '—';
   if (it.tipo === 'calif') return v ? `${v} de ${Number(it.escala) || 5}` : '—'; if (it.tipo === 'lista') return (it.sub || []).length ? `${Object.values(v || {}).filter(Boolean).length}/${it.sub.length}` : v === true ? 'Hecho' : '—'; return v == null || v === '' ? '—' : String(v).slice(0, 60); }
 // Hallazgos de todos los levantamientos del periodo: {items, faltan (llaves aún no cargadas), hids (por alojamiento: doc elegido)}.
@@ -74958,10 +74964,10 @@ function tdUrgDatos_(O) {
         if (doc && doc.resp && Object.keys(doc.resp).length && (!mejor || String(doc.at || '') > String(mejor.at || ''))) { mejor = doc; mejorKey = key; } }
       if (!mejor) { hids[r.ID + '|' + hid] = null; return; } const key = mejorKey, resp = mejor.resp, per = (key.match(/:(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/) || [])[1] || P;
       hids[r.ID + '|' + hid] = { key, per, at: mejor.at || '', n: Object.keys(resp).length };
-      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (u) items.push({ r, hid, P, per, key, p, s, it, rr, u, at: mejor.at || '' }); })); }); });
+      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (u) { const crit = plEsCrit_(s, it); items.push({ r, hid, P, per, key, p, s, it, rr, u, crit, niv: tdNivelDe_(crit, u), at: mejor.at || '' }); } })); }); });
   if (faltan.length && !U.pend) { U.pend = fetch(`${BACKEND}/aseo/plantilla-resp/lote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ks: faltan }) }).then(r => r.json())
     .then(j => { (j.items || []).forEach(x => { U.docs[x.k] = x.doc || {}; }); faltan.forEach(k => { if (U.docs[k] === undefined) U.docs[k] = {}; }); U.pend = null; tdRender_(); }).catch(() => { U.pend = null; }); }
-  items.sort((a, b) => (plEsCrit_(b.s, b.it) - plEsCrit_(a.s, a.it)) || b.u.n - a.u.n || String(b.at).localeCompare(String(a.at))); // críticos arriba
+  items.sort((a, b) => b.niv.r - a.niv.r || (b.crit - a.crit) || b.u.n - a.u.n || String(b.at).localeCompare(String(a.at))); // urgencia alta arriba; a igual nivel, críticos primero
   return { items, faltan, hids };
 }
 function tdTablaUrg_(O, vac) {
@@ -74973,9 +74979,9 @@ function tdTablaUrg_(O, vac) {
     return { onclick: x.per && x.per !== tdIGPerDe_(x.r, x.hid, x.P) ? `tdAbrirHijo_('${esc(x.r.ID)}','${esc(x.hid)}','${esc(x.per)}')` : `tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')`, cells: [
       `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || x.hid).replace(/^Calle\s+/i, ''))}</small></span>`,
       ckTx_(x.at ? aseoDiaTxt_(String(x.at).slice(0, 10)) : '—'),
-      `<span class="tb-ret" style="background:${x.u.c}1a;color:${x.u.c}">${esc(x.u.t)}</span>`,
-      `<span class="tb-a"><b style="font-size:12px">${plCritChip_(x.s, x.it)} ${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</b><small>${esc(x.it.texto ? (x.s.titulo || '') : PL_TIPOS[x.it.tipo].t)}</small></span>`,
-      ckTx_(tdRespTxt_(x.it, x.rr)),
+      tdSemHtml_(x.niv),
+      `<span class="tb-a">${tdRelChip_(x.crit)}<small style="color:#0f1729;font-weight:600;white-space:normal">${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</small></span>`,
+      `<span class="tb-a"><b style="font-size:12px;color:${x.u.c}">${esc(x.u.t)}</b><small>${esc(tdRespTxt_(x.it, x.rr))}</small></span>`,
       `<span class="tb-mu" style="white-space:normal;font-size:11.5px">${esc(String(x.rr.nota || '').slice(0, 140))}</span>`,
       fotos ? `<button type="button" class="tb-foto" title="Ver ${fotos === 1 ? 'la foto' : fotos + ' fotos'}" onclick="event.stopPropagation();tdUrgFotos_(${i})"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${fotos > 1 ? `<i>${fotos}</i>` : ''}</button>` : '<span class="tb-mu">—</span>',
       ckTx_(`📝 ${x.r.Nombre || x.p.titulo}`),
@@ -74985,25 +74991,27 @@ function tdTablaUrg_(O, vac) {
   const fa = fh && typeof atAloj_ === 'function' ? atAloj_(fh) : null, chip = fh ? `<div style="display:inline-flex;align-items:center;gap:8px;margin:0 0 10px 10px;padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:999px;font-size:12px;font-weight:700;color:#3730a3">🏠 ${esc(fa && fa.corto ? String(fa.corto).toUpperCase() : fh)}${fa && fa.nombre ? ` · ${esc(String(fa.nombre).replace(/^Calle\s+/i, ''))}` : ''}<button type="button" onclick="TAR_STATE.urgHid='';tdRender_()" style="all:unset;cursor:pointer;font-weight:900">✕</button></div>` : '';
   if (!document.getElementById('tdurg-css')) { const st = document.createElement('style'); st.id = 'tdurg-css'; st.textContent = `.tb-ed{all:unset;cursor:pointer;padding:3px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;color:#334155;font-size:11.5px;font-weight:600;white-space:nowrap}.tb-ed:hover{background:#eef2ff;border-color:#c7d2fe;color:#4338ca}.tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
     .ad-tbl .tb-ret{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ad-tbl .tb-pg{max-height:calc(100vh - 240px);overflow:auto}
+    .tb-sem{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}.tb-sem i{width:12px;height:12px;border-radius:50%;background:#e5e7eb;border:1px solid #d1d5db;box-sizing:border-box}.tb-sem i.on{background:var(--c);border-color:var(--c);box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 30%,#fff)}.tb-sem b{margin-left:5px;font-size:11.5px;font-weight:800}
+    .tb-rel{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:11px;font-weight:700;white-space:nowrap}
     .ad-tbl .tb-lnk{color:#15803d;font-weight:700;font-size:12px;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}.ad-tbl .tb-lnk:hover{color:#166534}
     .ad-tbl .tb-foto{all:unset;position:relative;cursor:pointer;width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:#4f46e5}.ad-tbl .tb-foto:hover{background:#eef2ff}
     .ad-tbl .tb-foto i{position:absolute;top:-2px;right:-4px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:#4f46e5;color:#fff;font:700 9px/14px Inter,system-ui,sans-serif;font-style:normal;text-align:center}`; document.head.appendChild(st); }
-  return chip + ckTablaHtml_([['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantado', '110px'], ['Urgencia', '100px'], ['Campo', 'minmax(220px,1.5fr)'], ['Respuesta', '110px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '60px'], ['Levantamiento', '160px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
+  return chip + ckTablaHtml_([['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantado', '110px'], ['Urgencia', '150px'], ['Relevancia', 'minmax(220px,1.5fr)'], ['Respuesta', '130px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '60px'], ['Levantamiento', '160px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
 }
 // ═══ Dashboard de riesgos («Por tipo»): levantamiento › edificio › alojamiento con el conteo de alertas (no barras de avance) ═══
 function tdEdifDe_(hid) { const E = typeof alojEdif_ === 'function' ? alojEdif_(hid) : null; if (E) return { k: E.k, nom: E.nom }; const a = typeof atAloj_ === 'function' ? atAloj_(hid) : null, c = String((a && a.corto) || '').toUpperCase(), m = c.match(/^([A-Z]+)\d/); return m ? { k: m[1], nom: m[1] } : { k: 'OTROS', nom: 'Otros' }; }
 function tdRiesgoDe_(c) { return c.crit ? ['Alto', '#dc2626', '#fee2e2'] : c.warn ? ['Medio', '#ea580c', '#ffedd5'] : c.info ? ['Bajo', '#2563eb', '#dbeafe'] : c.doc ? ['Sin alertas', '#15803d', '#dcfce7'] : ['Sin levantar', '#6b7280', '#f3f4f6']; }
 function tdBarra_(c, h) { const t = c.crit + c.warn + c.info; if (!t) return `<span class="rk-bar"><i style="width:100%;background:${c.doc ? '#bbf7d0' : '#e5e7eb'}"></i></span>`;
-  return `<span class="rk-bar">${c.crit ? `<i style="width:${100 * c.crit / t}%;background:#dc2626" title="${c.crit} críticas"></i>` : ''}${c.warn ? `<i style="width:${100 * c.warn / t}%;background:#f97316" title="${c.warn} con atención"></i>` : ''}${c.info ? `<i style="width:${100 * c.info / t}%;background:#60a5fa" title="${c.info} con nota"></i>` : ''}</span>`; }
+  return `<span class="rk-bar">${c.crit ? `<i style="width:${100 * c.crit / t}%;background:#dc2626" title="${c.crit} urgencia alta"></i>` : ''}${c.warn ? `<i style="width:${100 * c.warn / t}%;background:#f97316" title="${c.warn} urgencia media"></i>` : ''}${c.info ? `<i style="width:${100 * c.info / t}%;background:#eab308" title="${c.info} urgencia baja / seguimiento"></i>` : ''}</span>`; }
 function tdCnt_(c, hid) { const b = (n, cls, t) => `<button type="button" class="rk-n ${cls} ${n ? '' : 'z'}" title="${t}" onclick="event.stopPropagation();tdUrgIr_('${esc(hid || '')}')">${n}</button>`;
-  return `<span class="rk-cnts">${b(c.crit, 'c', 'Malo / No (críticas)')}${b(c.warn, 'w', 'Regular / fuera de rango / calificación baja')}${b(c.info, 'i', 'Solo con nota')}</span>`; }
+  return `<span class="rk-cnts">${b(c.crit, 'c', '🔴 Urgencia alta')}${b(c.warn, 'w', '🟠 Urgencia media')}${b(c.info, 'i', '🟡 Urgencia baja / seguimiento')}</span>`; }
 window.tdUrgIr_ = function (hid) { TAR_STATE.urgHid = hid || ''; TAR_STATE.tbModo = 'urg'; tdRender_(); };
 function tdTablaLv_(O, vac) {
   const D = tdUrgDatos_(O); if (!D) return '<div class="pc-mv-empty">⏳ Cargando plantillas…</div>';
   const Cab = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(), Eab = TAR_STATE.tbEd = TAR_STATE.tbEd || new Set();
   const nuevo = () => ({ crit: 0, warn: 0, info: 0, doc: 0, alojs: 0, conAl: 0 });
   const suma = (a, b) => { a.crit += b.crit; a.warn += b.warn; a.info += b.info; a.doc += b.doc; a.alojs += b.alojs; a.conAl += b.conAl; };
-  const porHid = {}; D.items.forEach(x => { const k = x.r.ID + '|' + x.hid, c = porHid[k] = porHid[k] || nuevo(); if (x.u.n >= 3) c.crit++; else if (x.u.n === 2) c.warn++; else c.info++; });
+  const porHid = {}; D.items.forEach(x => { const k = x.r.ID + '|' + x.hid, c = porHid[k] = porHid[k] || nuevo(); if (x.niv.k === 'alta') c.crit++; else if (x.niv.k === 'media') c.warn++; else c.info++; }); // crit = urgencia Alta · warn = Media · info = Baja/Seguimiento
   TAR_STATE._urgItems = D.items; const Aab = TAR_STATE.tbAl = TAR_STATE.tbAl || new Set();
   const TOT = nuevo(), grupos = O.filter(x => tdEsIG_(x.r)).map(x => {
     const r = x.r, P = tdFinMes_(x.iso), kG = r.ID + '|' + P, G = nuevo(), eds = {};
@@ -75036,7 +75044,7 @@ function tdTablaLv_(O, vac) {
     .rk-mu{font-size:11.5px;color:#6b7280;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rk-al{display:flex;flex-direction:column;min-width:170px}.rk-al b{font-size:12px}.rk-al small{color:#334155;font-weight:600;font-size:11px}
     .rk-bar{display:inline-flex;width:120px;height:8px;border-radius:999px;background:#f1f5f9;overflow:hidden;flex-shrink:0}.rk-bar i{display:block;height:100%}
     .rk-cnts{display:inline-flex;gap:4px;flex-shrink:0}.rk-n{all:unset;cursor:pointer;min-width:26px;height:24px;padding:0 7px;border-radius:8px;font-size:12px;font-weight:800;text-align:center;line-height:24px;box-sizing:border-box}
-    .rk-n.c{background:#fee2e2;color:#b91c1c}.rk-n.w{background:#ffedd5;color:#c2410c}.rk-n.i{background:#dbeafe;color:#1d4ed8}.rk-n.z{background:#f3f4f6;color:#9ca3af;font-weight:600}.rk-n:hover{filter:brightness(.95)}
+    .rk-n.c{background:#fee2e2;color:#b91c1c}.rk-n.w{background:#ffedd5;color:#c2410c}.rk-n.i{background:#fef9c3;color:#a16207}.rk-n.z{background:#f3f4f6;color:#9ca3af;font-weight:600}.rk-n:hover{filter:brightness(.95)}
     .rk-chip{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap;flex-shrink:0;min-width:74px;text-align:center}
     .rk-row.ab{background:#eef2ff}.rk-det{padding:10px 16px 14px 52px;background:#fafbff;border-top:1px solid #e0e7ff;border-bottom:1px solid #e0e7ff;cursor:default}
     .rk-dh{display:flex;align-items:center;gap:10px;margin-bottom:8px}.rk-tw{background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:auto}
@@ -75046,7 +75054,7 @@ function tdTablaLv_(O, vac) {
     @media (max-width:760px){.rk-bar,.rk-mu{display:none}.rk-row{padding-left:24px}.rk-edh{padding-left:18px}.rk-al{min-width:0;flex:1}.rk-det{padding:10px}
       .rk-h,.rk-edh{gap:8px;padding:10px}.rk-h b,.rk-edh b{flex:1;min-width:0;font-size:13px}.rk-h .tb-ed{font-size:0;padding:4px 8px}.rk-h .tb-ed:before{content:"✎";font-size:13px}.rk-chip{min-width:0;padding:3px 7px;font-size:10.5px}.rk-n{min-width:22px;padding:0 5px}}`; document.head.appendChild(st); }
   const kp = (n, t, c) => `<div class="rk-kpi" style="--c:${c}"><b>${n}</b><span>${t}</span></div>`;
-  const kpis = `<div class="rk-kpis">${kp(TOT.crit, 'Alertas críticas · Malo / No', '#dc2626')}${kp(TOT.warn, 'Requieren atención · Regular', '#f97316')}${kp(TOT.info, 'Solo con nota', '#3b82f6')}${kp(`${TOT.conAl}<small style="font-size:13px;color:#94a3b8"> / ${TOT.alojs}</small>`, 'Alojamientos con alertas', '#0f172a')}${kp(TOT.alojs - TOT.doc, 'Sin levantar', '#9ca3af')}</div>`;
+  const kpis = `<div class="rk-kpis">${kp(TOT.crit, '🔴 Urgencia alta', '#dc2626')}${kp(TOT.warn, '🟠 Urgencia media', '#f97316')}${kp(TOT.info, '🟡 Urgencia baja / seguimiento', '#eab308')}${kp(`${TOT.conAl}<small style="font-size:13px;color:#94a3b8"> / ${TOT.alojs}</small>`, 'Alojamientos con alertas', '#0f172a')}${kp(TOT.alojs - TOT.doc, 'Sin levantar', '#9ca3af')}</div>`;
   return kpis + (D.faltan.length ? '<div class="pc-mv-empty" style="margin-bottom:10px">⏳ Cargando las respuestas de los levantamientos…</div>' : '') + grupos.map(g => g.html).join('');
 }
 window.tdTbAlTg_ = function (k) { const C = TAR_STATE.tbAl = TAR_STATE.tbAl || new Set(); if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
@@ -75055,12 +75063,12 @@ function tdAlDetalle_(r, w, L, abrir) {
   const tareaDe = x => Object.values(ASEO.tareas || {}).find(t => t && t.lv && t.lv.key === x.key && t.lv.item === x.it.id);
   const head = `<div class="rk-dh"><span class="rk-mu" style="flex:0 0 auto">${L.length} hallazgo${L.length === 1 ? '' : 's'}</span>${tdCnt_(w.c, w.hid)}<span style="flex:1"></span><button type="button" class="tb-ed" onclick="event.stopPropagation();${abrir}">📋 Abrir levantamiento</button></div>`;
   const filas = L.map(x => { const i = TAR_STATE._urgItems.indexOf(x), fotos = (x.rr.fotos || []).filter(f => !f.subiendo), T = tareaDe(x);
-    return `<tr><td><span class="rk-chip" style="color:${x.u.c};background:${x.u.c}1a">${esc(x.u.t)}</span></td>
-      <td><b>${plCritChip_(x.s, x.it)} ${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</b><small>${esc(x.it.texto ? (x.s.titulo || '') : PL_TIPOS[x.it.tipo].t)}</small></td>
-      <td>${esc(tdRespTxt_(x.it, x.rr))}</td><td class="nt">${esc(String(x.rr.nota || '').slice(0, 160))}</td>
+    return `<tr><td>${tdSemHtml_(x.niv)}</td>
+      <td>${tdRelChip_(x.crit)}<small>${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</small></td>
+      <td><b style="color:${x.u.c}">${esc(x.u.t)}</b><small>${esc(tdRespTxt_(x.it, x.rr))}</small></td><td class="nt">${esc(String(x.rr.nota || '').slice(0, 160))}</td>
       <td>${fotos.length ? `<button type="button" class="tb-foto" onclick="event.stopPropagation();tdUrgFotos_(${i})" title="${fotos.length} foto${fotos.length === 1 ? '' : 's'}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${fotos.length > 1 ? `<i>${fotos.length}</i>` : ''}</button>` : '<span class="rk-mu">—</span>'}</td>
       <td class="ac">${T ? `<a href="#" class="tb-lnk" onclick="event.preventDefault();event.stopPropagation();atAbrir_('${esc(T.id)}','${esc(T.fecha || '')}')">🔗 Ver tarea</a>` : `<button type="button" class="tb-ed" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`}</td></tr>`; }).join('');
-  return `<div class="rk-det" onclick="event.stopPropagation()">${head}${L.length ? `<div class="rk-tw"><table class="rk-tb"><thead><tr><th>Urgencia</th><th>Campo</th><th>Respuesta</th><th>Nota</th><th>Fotos</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>` : '<div class="rk-mu" style="padding:6px 0">Sin hallazgos en este alojamiento.</div>'}</div>`;
+  return `<div class="rk-det" onclick="event.stopPropagation()">${head}${L.length ? `<div class="rk-tw"><table class="rk-tb"><thead><tr><th>Urgencia</th><th>Relevancia</th><th>Respuesta</th><th>Nota</th><th>Fotos</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>` : '<div class="rk-mu" style="padding:6px 0">Sin hallazgos en este alojamiento.</div>'}</div>`;
 }
 window.tdTbEdTg_ = function (k) { const C = TAR_STATE.tbEd = TAR_STATE.tbEd || new Set(); TAR_STATE.tbEdTocado = true; if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 // Fotos de un hallazgo en el visor (con flechas si hay varias), sin abrir la sub-card.
@@ -75072,7 +75080,7 @@ window.tdCrearTareaLv_ = function (i) {
   const a = typeof atAloj_ === 'function' ? atAloj_(x.hid) : { corto: '', nombre: x.hid };
   const campo = x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t, cod = a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid), campoFull = `${x.s.titulo && x.it.texto ? x.s.titulo + ' › ' : ''}${campo}`;
   atForm_(null, String(x.hid), typeof aseoDiaNuevo_ === 'function' ? aseoDiaNuevo_() : tarIso_(tarToday_()));
-  Object.assign(ASEO._tf, { depto: 'mantenimiento', srv: 'general', prioridad: x.u.n >= 4 ? 'critica' : x.u.n >= 3 ? 'alta' : 'media', titulo: `${campo} · ${cod}`,
+  Object.assign(ASEO._tf, { depto: 'mantenimiento', srv: 'general', prioridad: x.niv.k === 'alta' ? 'critica' : x.niv.k === 'media' ? 'alta' : 'media', titulo: `${campo} · ${cod}`,
     desc: `Detectado en el levantamiento «${x.r.Nombre || x.p.titulo}» · ${cod} ${String(a.nombre || '').replace(/^Calle\s+/i, '')}\n${campoFull}: ${tdRespTxt_(x.it, x.rr)}${x.rr.nota ? `\nNota: ${x.rr.nota}` : ''}`,
     lv: { id: x.r.ID, hid: String(x.hid), item: x.it.id, key: x.key, campo: campoFull } });
   atFormPintar_();
