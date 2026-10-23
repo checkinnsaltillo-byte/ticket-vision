@@ -70233,6 +70233,7 @@ function ckCalSt_(s) { return s === 'ic' && typeof IC !== 'undefined' ? IC : s =
 function ckCalRe_(s) { if (s === 'aseo') { ASEO.calSig = ''; aseoRender_(); } else if (s === 'ic') icRender_(); else if (s === 'ob') obRender_(); }
 window.ckCalV_ = function (s, v) {
   CKCAL.v[s] = v; const st = ckCalSt_(s);
+  if (s === 'aseo' && v === 'tl' && !ASEO.cal) { aseoToggleCal_(); aseoSplitSet_(60); return; } // Timeline vive en el calendario: lo abre si estaba oculto (ancho para ver las horas)
   if (st) { const ym = st.mes || ckMesHoy_(); if (v === 'aloj') (CKCAL.d = CKCAL.d || {})[s] = ym === ckMesHoy_() ? aseoHoyIso_() : ym + '-01'; if (v === 'mes') CKCAL.m[s] = ym; if (v === 'sem') (CKCAL.w = CKCAL.w || {})[s] = ckLunes_(ym === ckMesHoy_() ? aseoHoyIso_() : ym + '-01'); }
   ckCalRe_(s);
 };
