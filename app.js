@@ -71411,6 +71411,7 @@ function plCss_() {
   .pl-ck{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;font-size:12.5px;color:#334155}
   .pl-ck .ck{width:18px;height:18px;border:1.5px solid #94a3b8;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;background:#fff;flex:none;box-sizing:border-box}
   .pl-ck.on .ck{background:#4f46e5;border-color:#4f46e5}
+  .pl-crit{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:800;white-space:nowrap}
   .pl-sm{width:70px!important;padding:5px 8px!important}
   .pl-lnk{all:unset;cursor:pointer;color:#0284c7;font-size:12.5px;font-weight:600}.pl-lnk:hover{text-decoration:underline}
   .pl-add{display:flex;flex-wrap:wrap;gap:6px 16px;padding:10px 0 4px}
@@ -71477,6 +71478,9 @@ async function plCargar_(fuerza) {
   return ASEO.pl._p;
 }
 function plCampos_(p) { return (p.secciones || []).reduce((n, s) => n + (s.items || []).length, 0); }
+// v2134: campo crítico = marcado en el campo o en toda su sección (editor de plantillas); va arriba en «Por urgencia» y «Por tipo».
+function plEsCrit_(s, it) { return !!((it && it.critico) || (s && s.critico)); }
+function plCritChip_(s, it) { return plEsCrit_(s, it) ? '<span class="pl-crit" title="Campo crítico (definido en la plantilla)">🚨 Crítico</span>' : ''; }
 // ── Sección «Plantillas» (lista + editor) ──
 window.plInit_ = async function () {
   plCss_();
@@ -73069,6 +73073,7 @@ function plEdPintar_(arriba) {
         ${i.tipo === 'contar' ? `<span>Mín. <input class="pl-in pl-sm" type="number" value="${i.min ?? ''}" oninput="plEdNum_(${a},'min',this.value)"></span><span>Máx. <input class="pl-in pl-sm" type="number" value="${i.max ?? ''}" oninput="plEdNum_(${a},'max',this.value)"></span>` : ''}
         ${i.tipo === 'calif' ? `<span>Escala <select class="pl-in pl-sm" onchange="ASEO.pl.ed.secciones[${si}].items[${ii}].escala=+this.value">${[3, 5, 10].map(n => `<option ${Number(i.escala || 5) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></span>` : ''}
         <label class="pl-lnk">Subir foto de referencia +<input type="file" accept="image/*" hidden onchange="plEdRef_(this,${a})"></label>
+        ${s.critico ? '<span class="pl-crit">🚨 Crítico (toda la sección)</span>' : ck(!!i.critico, `plEdTg_(${a},'critico')`, '🚨 Crítico')}
       </div>
       ${(i.ref || []).length ? `<div class="pl-refs">${i.ref.map((f, fi) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(ASEO.pl.ed.secciones[${si}].items[${ii}].ref.map(x=>BACKEND+x.url),${fi})"><b onclick="ASEO.pl.ed.secciones[${si}].items[${ii}].ref.splice(${fi},1);plEdPintar_()">✕</b></span>`).join('')}</div>` : ''}
     </div><div class="tl"><button type="button" class="pl-x" title="Subir" onclick="plEdMover_(${a},-1)">↑</button><button type="button" class="pl-x" title="Bajar" onclick="plEdMover_(${a},1)">↓</button><button type="button" class="pl-x" title="Quitar" onclick="ASEO.pl.ed.secciones[${si}].items.splice(${ii},1);plEdPintar_()">✕</button></div></div>`;
@@ -73092,6 +73097,7 @@ function plEdPintar_(arriba) {
           <div class="pl-sh"><input value="${pcEsc(s.titulo)}" placeholder="Nombre de la sección" oninput="ASEO.pl.ed.secciones[${si}].titulo=this.value">
             <button type="button" class="pl-x" title="Subir sección" onclick="plEdMoverSec_(${si},-1)">↑</button><button type="button" class="pl-x" title="Bajar sección" onclick="plEdMoverSec_(${si},1)">↓</button>
             <button type="button" class="pl-x" onclick="plEdQuitarSec_(${si})">Quitar sección</button></div>
+          <div style="margin:-4px 0 8px">${ck(!!s.critico, `plEdTgSec_(${si},'critico')`, '🚨 Sección crítica (todos sus campos)')}</div>
           ${s.items.map((i, ii) => it(s, i, si, ii)).join('') || '<div class="pl-hint">Sección sin campos: agrega uno abajo.</div>'}
           <div class="pl-add">${Object.entries(PL_TIPOS).map(([k, T]) => `<button type="button" class="pl-lnk" onclick="plEdItem_(${si},'${k}')">${T.t} +</button>`).join('')}</div>
         </div>`).join('')}
@@ -73103,6 +73109,7 @@ function plEdPintar_(arriba) {
 }
 window.plEdPrio_ = function (k) { ASEO.pl.ed.prioridad = k; plEdPintar_(); };
 window.plEdTg_ = function (si, ii, c) { const i = ASEO.pl.ed.secciones[si].items[ii]; i[c] = !i[c]; plEdPintar_(); };
+window.plEdTgSec_ = function (si, c) { const s = ASEO.pl.ed.secciones[si]; s[c] = !s[c]; plEdPintar_(); };
 window.plEdNum_ = function (si, ii, c, v) { const i = ASEO.pl.ed.secciones[si].items[ii]; if (v === '' || isNaN(+v)) delete i[c]; else i[c] = +v; };
 window.plEdItem_ = function (si, tipo) { ASEO.pl.ed.secciones[si].items.push({ id: plId_('i'), tipo, texto: '', foto: false, ref: [], ...(tipo === 'calif' ? { escala: 5 } : {}), ...(tipo === 'lista' ? { sub: [] } : {}) }); plEdPintar_(); setTimeout(() => { const s = document.getElementById('pl-s' + si); const L = s && s.querySelectorAll('.pl-it .bd > input'); if (L && L.length) L[L.length - 1].focus(); }, 0); };
 window.plEdSec_ = function () { ASEO.pl.ed.secciones.push({ id: plId_('s'), titulo: '', items: [] }); plEdPintar_(); const n = ASEO.pl.ed.secciones.length - 1; setTimeout(() => { const s = document.getElementById('pl-s' + n); if (s) { s.scrollIntoView({ behavior: 'smooth', block: 'start' }); const i = s.querySelector('.pl-sh input'); if (i) i.focus(); } }, 0); };
@@ -73234,7 +73241,7 @@ function plFillItem_(it, r, s) {
   else if (it.tipo === 'sino') ctl = `<div class="plf-seg"><button type="button" class="${r.v === 'si' ? 'on' : ''}" style="--c:#16a34a" onclick="plSet_('${id}','si')">Sí</button><button type="button" class="${r.v === 'no' ? 'on' : ''}" style="--c:#dc2626" onclick="plSet_('${id}','no')">No</button></div>`;
   else if (it.tipo === 'calif') { const E = Number(it.escala) || 5; ctl = `<div class="plf-stars">${Array.from({ length: E }, (_, i) => `<button type="button" class="${Number(r.v) > i ? 'on' : ''}" title="${i + 1} de ${E}" onclick="plSet_('${id}',${i + 1})">★</button>`).join('')}${r.v ? `<span class="plf-ref" style="align-self:center;margin-left:6px">${r.v} de ${E}</span>` : ''}</div>`; }
   const hecho = plHecho_(it, r);
-  return `<div class="plf-it" data-i="${id}"><div class="plf-q"><span class="st ${hecho ? 'on' : ''}">${hecho ? '✓' : ''}</span><span>${pcEsc(q)}</span><em>${it.texto ? T.t : ''}${it.foto && it.tipo !== 'foto' ? `${it.texto ? ' · ' : ''}📷 obligatoria` : ''}</em></div>
+  return `<div class="plf-it" data-i="${id}"><div class="plf-q"><span class="st ${hecho ? 'on' : ''}">${hecho ? '✓' : ''}</span><span>${pcEsc(q)}</span>${typeof plEsCrit_ === 'function' && plEsCrit_(s, it) ? '<span class="pl-crit">🚨</span>' : ''}<em>${it.texto ? T.t : ''}${it.foto && it.tipo !== 'foto' ? `${it.texto ? ' · ' : ''}📷 obligatoria` : ''}</em></div>
     <div class="plf-bd">${(it.ref || []).length ? `<div class="plf-fotos"><span class="plf-ref">Referencia:</span>${it.ref.map((f, i) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(${pcEsc(JSON.stringify(it.ref.map(x => BACKEND + x.url)))},${i})"></span>`).join('')}</div>` : ''}
     <div class="plf-row"><div class="plf-ctl">${ctl}</div>${iconos}</div>${fotosHtml}${notaHtml}</div></div>`;
 }
@@ -74954,7 +74961,7 @@ function tdUrgDatos_(O) {
       (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (u) items.push({ r, hid, P, per, key, p, s, it, rr, u, at: mejor.at || '' }); })); }); });
   if (faltan.length && !U.pend) { U.pend = fetch(`${BACKEND}/aseo/plantilla-resp/lote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ks: faltan }) }).then(r => r.json())
     .then(j => { (j.items || []).forEach(x => { U.docs[x.k] = x.doc || {}; }); faltan.forEach(k => { if (U.docs[k] === undefined) U.docs[k] = {}; }); U.pend = null; tdRender_(); }).catch(() => { U.pend = null; }); }
-  items.sort((a, b) => b.u.n - a.u.n || String(b.at).localeCompare(String(a.at)));
+  items.sort((a, b) => (plEsCrit_(b.s, b.it) - plEsCrit_(a.s, a.it)) || b.u.n - a.u.n || String(b.at).localeCompare(String(a.at))); // críticos arriba
   return { items, faltan, hids };
 }
 function tdTablaUrg_(O, vac) {
@@ -74967,7 +74974,7 @@ function tdTablaUrg_(O, vac) {
       `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || x.hid).replace(/^Calle\s+/i, ''))}</small></span>`,
       ckTx_(x.at ? aseoDiaTxt_(String(x.at).slice(0, 10)) : '—'),
       `<span class="tb-ret" style="background:${x.u.c}1a;color:${x.u.c}">${esc(x.u.t)}</span>`,
-      `<span class="tb-a"><b style="font-size:12px">${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</b><small>${esc(x.it.texto ? (x.s.titulo || '') : PL_TIPOS[x.it.tipo].t)}</small></span>`,
+      `<span class="tb-a"><b style="font-size:12px">${plCritChip_(x.s, x.it)} ${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</b><small>${esc(x.it.texto ? (x.s.titulo || '') : PL_TIPOS[x.it.tipo].t)}</small></span>`,
       ckTx_(tdRespTxt_(x.it, x.rr)),
       `<span class="tb-mu" style="white-space:normal;font-size:11.5px">${esc(String(x.rr.nota || '').slice(0, 140))}</span>`,
       fotos ? `<button type="button" class="tb-foto" title="Ver ${fotos === 1 ? 'la foto' : fotos + ' fotos'}" onclick="event.stopPropagation();tdUrgFotos_(${i})"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${fotos > 1 ? `<i>${fotos}</i>` : ''}</button>` : '<span class="tb-mu">—</span>',
@@ -75049,7 +75056,7 @@ function tdAlDetalle_(r, w, L, abrir) {
   const head = `<div class="rk-dh"><span class="rk-mu" style="flex:0 0 auto">${L.length} hallazgo${L.length === 1 ? '' : 's'}</span>${tdCnt_(w.c, w.hid)}<span style="flex:1"></span><button type="button" class="tb-ed" onclick="event.stopPropagation();${abrir}">📋 Abrir levantamiento</button></div>`;
   const filas = L.map(x => { const i = TAR_STATE._urgItems.indexOf(x), fotos = (x.rr.fotos || []).filter(f => !f.subiendo), T = tareaDe(x);
     return `<tr><td><span class="rk-chip" style="color:${x.u.c};background:${x.u.c}1a">${esc(x.u.t)}</span></td>
-      <td><b>${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</b><small>${esc(x.it.texto ? (x.s.titulo || '') : PL_TIPOS[x.it.tipo].t)}</small></td>
+      <td><b>${plCritChip_(x.s, x.it)} ${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</b><small>${esc(x.it.texto ? (x.s.titulo || '') : PL_TIPOS[x.it.tipo].t)}</small></td>
       <td>${esc(tdRespTxt_(x.it, x.rr))}</td><td class="nt">${esc(String(x.rr.nota || '').slice(0, 160))}</td>
       <td>${fotos.length ? `<button type="button" class="tb-foto" onclick="event.stopPropagation();tdUrgFotos_(${i})" title="${fotos.length} foto${fotos.length === 1 ? '' : 's'}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${fotos.length > 1 ? `<i>${fotos.length}</i>` : ''}</button>` : '<span class="rk-mu">—</span>'}</td>
       <td class="ac">${T ? `<a href="#" class="tb-lnk" onclick="event.preventDefault();event.stopPropagation();atAbrir_('${esc(T.id)}','${esc(T.fecha || '')}')">🔗 Ver tarea</a>` : `<button type="button" class="tb-ed" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`}</td></tr>`; }).join('');
