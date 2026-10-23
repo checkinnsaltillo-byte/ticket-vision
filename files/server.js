@@ -12166,7 +12166,7 @@ function _rlpDeDatos(D) {
     medios_banos: (() => { const b = _rlpNum(acc.numberOfBathroomsTotal) || _rlpNum(g(/(\d+(?:[.,]5)?)\s*baños?/i)); return b != null && b % 1 >= 0.5 ? 1 : _rlpNum(g(/(\d+)\s*medios?\s*baños?/i)); })(), // "2.5 baños" → 2 + 1 medio
     estacionamientos: _rlpNum(g(/(\d+)\s*(?:estacionamientos?|cajones?|cochera)/i)), m2_construccion: _rlpNum(fs) || _rlpNum(g(/(\d{2,5})\s*m²/)), m2_terreno: _rlpNum(g(/terreno[^0-9]{0,20}(\d{2,5})\s*m/i)),
     amueblado: /amueblad/i.test(titulo + " " + ((inm && inm.description) || "")), amenidades: [...new Set(amen)].slice(0, 40), fotos: [...new Set(imgs)].slice(0, 30).map(u => ({ url: String(u).replace(/^\/\//, "https://"), alt: "" })),
-    url_origen: url, portal: _rlpPortal(url), contacto_nombre: String((acc.seller && acc.seller.name) || (inm && inm.seller && inm.seller.name) || "").slice(0, 120), contacto_tel: String(acc.telephone || (inm && inm.telephone) || g(/(?:\+?52\s?)?(\d{3}[\s-]?\d{3}[\s-]?\d{4})/) || "").replace(/^52\s?(?=\d{10})/, "").trim() };
+    _estructurado: !!inm, url_origen: url, portal: _rlpPortal(url), contacto_nombre: String((acc.seller && acc.seller.name) || (inm && inm.seller && inm.seller.name) || "").slice(0, 120), contacto_tel: String(acc.telephone || (inm && inm.telephone) || g(/(?:\+?52\s?)?(\d{3}[\s-]?\d{3}[\s-]?\d{4})/) || "").replace(/^52\s?(?=\d{10})/, "").trim() };
 }
 // Página pública (www.check-inn.mx/public/rentas/): solo publicadas y activas, sin datos internos.
 app.get("/rentas/publicas", async (_req, res) => {
@@ -12196,7 +12196,7 @@ app.post("/rentas/extraer", async (req, res) => {
     try { r = await _fetchReal(url, { redirect: "follow", signal: ctrl.signal, headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Accept": "text/html,application/xhtml+xml", "Accept-Language": "es-MX,es;q=0.9" } }); html = await r.text(); } finally { clearTimeout(t); }
     const bloqueado = !r.ok || /Just a moment|Attention Required|cf-browser-verification|captcha/i.test(html.slice(0, 20000)) && html.length < 60000;
     if (bloqueado) return res.json({ ok: true, bloqueado: true, portal: _rlpPortal(url), status: r.status, mensaje: "Este portal bloquea la lectura automática. Abre el anuncio, selecciona todo el texto (Ctrl/Cmd+A), cópialo y pégalo abajo; la IA lo estructura." });
-    const pub = _rlpDeHtml(html, url); res.json({ ok: true, bloqueado: false, pub, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "" && !(Array.isArray(pub[k]) && !pub[k].length)) });
+    const pub = _rlpDeHtml(html, url); delete pub._estructurado; res.json({ ok: true, bloqueado: false, pub, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "" && !(Array.isArray(pub[k]) && !pub[k].length)) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // Datos capturados en el navegador del usuario con el marcador «Enviar a Check-inn» (portales que bloquean al servidor).
@@ -12204,7 +12204,8 @@ app.post("/rentas/extraer-pagina", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const D = (req.body || {}).datos || {}; if (!D.url) return res.status(400).json({ ok: false, error: "Faltan datos de la página" }); let pub = _rlpDeDatos(D), metodo = "estructurado";
     // Sin datos estructurados del inmueble (Facebook Marketplace, etc.): la IA estructura el texto y rellena lo que falte.
-    if ((!pub.recamaras || !pub.precio) && String(D.text || "").length > 120) {
+    const sinSchema = !pub._estructurado; delete pub._estructurado;
+    if ((sinSchema || !pub.recamaras || !pub.precio) && String(D.text || "").length > 120) {
       try { const j = await _rlpLlmTexto(String(D.text || "").slice(0, 20000), String(D.url || "")); Object.keys(j).forEach(k => { const v = j[k]; if (v == null || v === "" || (Array.isArray(v) && !v.length)) return; if (pub[k] == null || pub[k] === "" || (Array.isArray(pub[k]) && !pub[k].length) || (k === "descripcion" && String(v).length > String(pub[k]).length) || k === "tipo" || k === "operacion") pub[k] = v; }); metodo = "ia"; } catch (e) { console.warn("[rentas] IA texto:", e.message); }
     }
     res.json({ ok: true, pub, metodo, campos: Object.keys(pub).filter(k => pub[k] != null && pub[k] !== "" && !(Array.isArray(pub[k]) && !pub[k].length)) }); }
