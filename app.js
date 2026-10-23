@@ -75478,15 +75478,50 @@ function rlpForm_(p) {
     <div style="padding:0 18px 18px"><div style="font-size:12px;font-weight:800;color:#64748b;margin-bottom:6px">📷 Fotos (${(p.fotos || []).length})</div><div class="rlp-gal" id="rlp-gal">${rlpGal_(p)}</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><label class="rlp-btn" style="cursor:pointer">📷 Subir fotos<input type="file" accept="image/*" multiple style="display:none" onchange="rlpFotosSubir_(this)"></label><input id="rlp-foto-url" placeholder="o pega la URL de una imagen" style="flex:1;min-width:200px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px"><button class="rlp-btn" onclick="rlpFotoUrl_()">Agregar</button><span id="rlp-foto-st" style="font-size:12px;color:#64748b"></span></div></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;padding:0 18px 18px"><button class="rlp-btn" onclick="rlpFormCerrar_()">Cancelar</button><button class="rlp-btn p" id="rlp-save" onclick="rlpGuardar_()">💾 Guardar publicación</button></div></div>`;
-  document.body.appendChild(m);
+  document.body.appendChild(m); rlpGeoInit_();
 }
+// ── Mapa para fijar la ubicación (Leaflet + OpenStreetMap; geocodificación vía /rentas/geocodificar) ──
+const RLP_GEO = { map: null, pin: null };
+function rlpGeoInit_() {
+  const el = document.getElementById('rlp-map'); if (!el) return;
+  _rsvEnsureLeaflet_(() => { if (!document.getElementById('rlp-map')) return;
+    const f = RLP.form || {}, lat = Number(f.lat), lng = Number(f.lng), hay = lat && lng;
+    const map = window.L.map('rlp-map').setView(hay ? [lat, lng] : [25.4232, -101.0053], hay ? 16 : 12); RLP_GEO.map = map;
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+    RLP_GEO.pin = hay ? window.L.marker([lat, lng], { draggable: true }).addTo(map) : null;
+    if (RLP_GEO.pin) RLP_GEO.pin.on('dragend', () => { const c = RLP_GEO.pin.getLatLng(); rlpGeoSet_(c.lat, c.lng, true); });
+    map.on('click', e => rlpGeoSet_(e.latlng.lat, e.latlng.lng, true));
+    setTimeout(() => map.invalidateSize(), 300); });
+}
+function rlpGeoSet_(lat, lng, reverse) {
+  const f = document.getElementById('rlp-form'); if (!f) return; lat = Math.round(lat * 1e7) / 1e7; lng = Math.round(lng * 1e7) / 1e7;
+  f.querySelector('input[name="lat"]').value = lat; f.querySelector('input[name="lng"]').value = lng;
+  if (RLP_GEO.map) { if (!RLP_GEO.pin) { RLP_GEO.pin = window.L.marker([lat, lng], { draggable: true }).addTo(RLP_GEO.map); RLP_GEO.pin.on('dragend', () => { const c = RLP_GEO.pin.getLatLng(); rlpGeoSet_(c.lat, c.lng, true); }); } else RLP_GEO.pin.setLatLng([lat, lng]); }
+  if (reverse) fetch(`${BACKEND}/rentas/geocodificar?lat=${lat}&lng=${lng}`).then(r => r.json()).then(j => { const r = j.ok && j.resultados[0]; if (!r) return; const v = (k, val) => { const i = f.querySelector(`input[name="${k}"]`); if (i && !i.value.trim() && val) i.value = val; }; v('direccion', r.calle); v('colonia', r.colonia); v('ciudad', r.ciudad); v('estado', r.estado); v('cp', r.cp); }).catch(() => {});
+}
+window.rlpGeoPin_ = function () { const f = document.getElementById('rlp-form'), lat = Number(f.querySelector('input[name="lat"]').value), lng = Number(f.querySelector('input[name="lng"]').value); if (lat && lng && RLP_GEO.map) { rlpGeoSet_(lat, lng, false); RLP_GEO.map.setView([lat, lng], Math.max(RLP_GEO.map.getZoom(), 15)); } };
+window.rlpGeoBuscar_ = async function (texto) {
+  const q = String(texto || document.getElementById('rlp-geo-q').value || '').trim(), box = document.getElementById('rlp-geo-res'); if (!q) return;
+  box.style.display = 'block'; box.innerHTML = '<div style="padding:8px 10px;color:#64748b">⏳ Buscando…</div>';
+  try { const j = await fetch(`${BACKEND}/rentas/geocodificar?q=${encodeURIComponent(q)}`).then(r => r.json()); if (!j.ok) throw new Error(j.error);
+    if (!j.resultados.length) { box.innerHTML = '<div style="padding:8px 10px;color:#b45309">Sin resultados. Prueba con menos detalle (colonia y ciudad) o fija el punto en el mapa.</div>'; return; }
+    RLP_GEO.res = j.resultados; box.innerHTML = j.resultados.map((r, i) => `<div onclick="rlpGeoElegir_(${i})" style="padding:7px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">📍 ${esc(r.nombre)}</div>`).join('');
+  } catch (e) { box.innerHTML = `<div style="padding:8px 10px;color:#b91c1c">⚠ ${esc(e.message || e)}</div>`; }
+};
+window.rlpGeoElegir_ = function (i) { const r = (RLP_GEO.res || [])[i]; if (!r) return; rlpGeoSet_(r.lat, r.lng, false); if (RLP_GEO.map) RLP_GEO.map.setView([r.lat, r.lng], 16); document.getElementById('rlp-geo-res').style.display = 'none'; const f = document.getElementById('rlp-form'), v = (k, val) => { const el = f.querySelector(`input[name="${k}"]`); if (el && !el.value.trim() && val) el.value = val; }; v('colonia', r.colonia); v('ciudad', r.ciudad); v('estado', r.estado); v('cp', r.cp); v('direccion', r.calle); };
+window.rlpGeoDeForm_ = function () { const f = rlpLeerForm_(); const q = [f.direccion, f.colonia, f.ciudad || 'Saltillo', f.estado || 'Coahuila'].filter(Boolean).join(', '); document.getElementById('rlp-geo-q').value = q; rlpGeoBuscar_(q); };
 function rlpFormCampos_(p) {
   const I = (k, lbl, cls, type, ph) => `<div class="${cls || ''}"><label>${lbl}</label><input name="${k}" type="${type || 'text'}" value="${esc(p[k] == null ? '' : p[k])}" placeholder="${esc(ph || '')}"></div>`;
   const S = (k, lbl, opts, cls) => `<div class="${cls || ''}"><label>${lbl}</label><select name="${k}">${opts.map(([v, t]) => `<option value="${esc(v)}" ${String(p[k]) === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
   return I('titulo', 'Título *', 'w3', 'text', 'Ej. Departamento amueblado 1 recámara al norte de Saltillo') + S('operacion', 'Operación', [['renta', 'Renta'], ['venta', 'Venta']]) + S('tipo', 'Tipo', RLP_TIPOS) + S('estatus', 'Estatus', [['activa', 'Activa'], ['pausada', 'Pausada'], ['cerrada', 'Cerrada / rentada']])
     + I('precio', 'Precio', '', 'number') + S('moneda', 'Moneda', [['MXN', 'MXN'], ['USD', 'USD']]) + S('periodo', 'Periodo (renta)', [['mensual', 'Mensual'], ['anual', 'Anual'], ['', '—']])
     + I('recamaras', 'Recámaras', '', 'number') + I('banos', 'Baños', '', 'number') + I('medios_banos', 'Medios baños', '', 'number') + I('estacionamientos', 'Estacionamientos', '', 'number') + I('m2_construccion', 'm² construcción', '', 'number') + I('m2_terreno', 'm² terreno', '', 'number')
-    + S('amueblado', 'Amueblado', [['false', 'No'], ['true', 'Sí']]) + I('ciudad', 'Ciudad') + I('estado', 'Estado') + I('colonia', 'Colonia') + I('direccion', 'Dirección', 'w2') + I('cp', 'C.P.') + I('lat', 'Latitud', '', 'text', '25.42') + I('lng', 'Longitud', '', 'text', '-101.00')
+    + S('amueblado', 'Amueblado', [['false', 'No'], ['true', 'Sí']]) + I('ciudad', 'Ciudad') + I('estado', 'Estado') + I('colonia', 'Colonia') + I('direccion', 'Dirección', 'w2') + I('cp', 'C.P.')
+    + `<div class="w3" id="rlp-geo"><label>Ubicación en el mapa</label>
+      <div style="display:flex;gap:6px;margin-bottom:6px"><input id="rlp-geo-q" placeholder="Busca una dirección, colonia o lugar… (Enter)" onkeydown="if(event.key==='Enter'){event.preventDefault();rlpGeoBuscar_()}" style="flex:1"><button type="button" class="rlp-btn" onclick="rlpGeoBuscar_()">🔍 Buscar</button><button type="button" class="rlp-btn" onclick="rlpGeoDeForm_()" title="Buscar con la dirección, colonia y ciudad capturadas arriba">📋 Usar dirección</button></div>
+      <div id="rlp-geo-res" style="display:none;border:1px solid #cbd5e1;border-radius:8px;max-height:150px;overflow:auto;margin-bottom:6px;font-size:12px"></div>
+      <div id="rlp-map" style="height:260px;border-radius:10px;border:1px solid #cbd5e1;background:#f1f5f9"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:11.5px;color:#64748b"><span>Haz clic en el mapa o arrastra el pin para fijar el punto.</span><span style="margin-left:auto">Lat <input name="lat" value="${esc(p.lat == null ? '' : p.lat)}" oninput="rlpGeoPin_()" style="width:90px;padding:3px 6px;font-size:11.5px"> Lng <input name="lng" value="${esc(p.lng == null ? '' : p.lng)}" oninput="rlpGeoPin_()" style="width:90px;padding:3px 6px;font-size:11.5px"></span></div></div>`
     + `<div class="w3"><label>Amenidades (separadas por coma)</label><input name="amenidades" value="${esc((p.amenidades || []).join(', '))}"></div>`
     + `<div class="w3"><label>Descripción</label><textarea name="descripcion">${esc(p.descripcion || '')}</textarea></div>`
     + I('contacto_nombre', 'Contacto · nombre') + I('contacto_tel', 'Contacto · teléfono') + I('fecha_publicacion', 'Fecha de publicación', '', 'date') + S('propia', 'Publicación', [['true', 'Propia (Check-inn)'], ['false', 'De terceros / portal']])
@@ -75499,7 +75534,7 @@ function rlpLeerForm_() { const f = document.getElementById('rlp-form'); const o
 function rlpAplicarExt_(pub, campos) {
   const cur = rlpLeerForm_(); const n = {};
   Object.keys(pub).forEach(k => { const v = pub[k]; if (v == null || v === '' || (Array.isArray(v) && !v.length)) return; if (k === 'fotos') { const have = new Set((cur.fotos || []).map(f => f.url)); cur.fotos = (cur.fotos || []).concat(v.filter(f => !have.has(f.url))); n.fotos = 1; return; } cur[k] = v; n[k] = 1; });
-  RLP.form = cur; document.getElementById('rlp-form').innerHTML = rlpFormCampos_(cur); document.getElementById('rlp-gal').innerHTML = rlpGal_(cur);
+  RLP.form = cur; document.getElementById('rlp-form').innerHTML = rlpFormCampos_(cur); document.getElementById('rlp-gal').innerHTML = rlpGal_(cur); RLP_GEO.map = null; RLP_GEO.pin = null; rlpGeoInit_();
   return Object.keys(n).length;
 }
 window.rlpExtraer_ = async function () {
@@ -75535,4 +75570,4 @@ window.rlpGuardar_ = async function () {
   catch (e) { alert('⚠ ' + (e.message || e)); b.disabled = false; b.textContent = '💾 Guardar publicación'; }
 };
 window.rlpEliminar_ = async function (id) { if (!confirm('¿Eliminar esta publicación? (queda en la papelera del archivo)')) return; try { const j = await fetch(`${BACKEND}/rentas/eliminar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, usuario: (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser) : '' }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error); rlpFormCerrar_(); await rlpCargar_(); rlpRender_(); } catch (e) { alert('⚠ ' + (e.message || e)); } };
-window.rlpFormCerrar_ = function () { document.getElementById('rlp-form-modal')?.remove(); RLP.form = null; };
+window.rlpFormCerrar_ = function () { document.getElementById('rlp-form-modal')?.remove(); RLP.form = null; RLP_GEO.map = null; RLP_GEO.pin = null; };
