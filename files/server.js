@@ -12225,6 +12225,15 @@ app.post("/rentas/captura-form", express.urlencoded({ extended: false, limit: "4
     res.redirect(302, `https://www.check-inn.mx/admin/?rlpk=${encodeURIComponent(token)}#rentas-lp`); }
   catch (e) { res.status(500).send("Error: " + e.message); }
 });
+// Página puente para el marcador: el anuncio (Facebook, etc.) la abre en una pestaña nueva y le manda la captura con
+// postMessage (no lo bloquea ninguna CSP); esta página, ya en nuestro dominio, la guarda y salta al sistema con el token.
+app.get("/rentas/captura-page", (_req, res) => {
+  res.set("Cache-Control", "no-store").type("html").send(`<!doctype html><meta charset="utf-8"><title>Check-inn · recibiendo anuncio</title>
+<body style="font-family:-apple-system,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#fff7df;color:#0f172a"><div style="text-align:center"><div style="font-size:40px">🏘️</div><div id="m" style="font-size:16px;font-weight:700;margin-top:8px">Recibiendo el anuncio…</div><div style="font-size:12px;color:#64748b;margin-top:6px">No cierres esta pestaña.</div></div>
+<script>let listo=false;window.addEventListener("message",async e=>{const d=e.data;if(listo||!d||typeof d!=="object"||!d.url)return;listo=true;try{e.source&&e.source.postMessage("rlp-ok","*")}catch(_){}
+try{const r=await fetch("/rentas/captura",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});const j=await r.json();if(!j.ok)throw new Error(j.error||"No se pudo guardar");location.replace("https://www.check-inn.mx/admin/?rlpk="+encodeURIComponent(j.token)+"#rentas-lp")}catch(err){document.getElementById("m").textContent="⚠ "+err.message;listo=false}});
+setTimeout(()=>{if(!listo)document.getElementById("m").textContent="No llegó la captura. Vuelve al anuncio y toca el marcador otra vez."},12000);</script>`);
+});
 app.get("/rentas/captura/:token", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const t = String(req.params.token || "").replace(/[^A-Za-z0-9_-]/g, ""); const { data } = await _bnReadGcs(`rentas-lp/capturas/${t}.json`); if (!data) return res.status(404).json({ ok: false, error: "Captura no encontrada o vencida" });
