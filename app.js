@@ -75582,7 +75582,7 @@ window.rlpFormCerrar_ = function () { document.getElementById('rlp-form-modal')?
 // ═══════════════════════════════════════════════════════════════════════════
 const MK = { estado: null, pubs: null };
 window.mkInit = async function () {
-  const root = document.getElementById('mk-root'); if (!root) return; root.innerHTML = '<div class="bk-card bk-mut">⏳ Cargando…</div>';
+  const root = document.getElementById('mk-root'); if (!root) return; if (typeof bkCss_ === 'function') bkCss_(); if (!document.getElementById('mk-css')) { const st = document.createElement('style'); st.id = 'mk-css'; st.textContent = '#module-marketing{--bk-line:#e5e7eb;--bk-tx:#111827;--bk-mut:#6b7280;--bk-bg:#f8fafc;--bk-card:#fff;--bk-ac:#1877f2;color:var(--bk-tx);padding:18px 22px 70px!important}#mk-fotos div.off{opacity:.4}'; document.head.appendChild(st); } root.innerHTML = '<div class="bk-card bk-mut">⏳ Cargando…</div>';
   const u = new URL(location.href); if (u.searchParams.get('mk')) { const ok = u.searchParams.get('mk') === 'ok'; if (typeof bkToast_ === 'function') bkToast_(ok ? `✓ Facebook conectado (${u.searchParams.get('n')} página(s))` : '⚠ ' + (u.searchParams.get('msg') || 'No se pudo conectar')); else alert(ok ? 'Conectado' : '⚠ ' + u.searchParams.get('msg')); ['mk', 'n', 'msg'].forEach(k => u.searchParams.delete(k)); history.replaceState(null, '', u.pathname + (u.search || '') + '#marketing'); }
   await mkCargar_(); mkRender_();
 };
