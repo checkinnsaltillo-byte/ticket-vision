@@ -68069,6 +68069,7 @@ function adCard_(I) {
     return `<div class="ad-card tipo est-tint ad-simp ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}<span class="mv">${mov}</span></div>
+    ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && /^Reprogramada/.test(I.aviso.t) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     <div class="r2">${catP}${adCamasHtml_(I.hid)}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${adExtraInsumos_(I)}
