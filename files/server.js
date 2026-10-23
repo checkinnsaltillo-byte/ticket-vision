@@ -13243,6 +13243,7 @@ app.post("/aseo/extra", async (req, res) => {
         const L = [...new Set(b.incIds.map(x => String(x || "").replace(/[^\w-]/g, "").slice(0, 60)).filter(Boolean))].slice(-30);
         if (L.length) { cur.incIds = L; cur.incId = L[L.length - 1]; } else { delete cur.incIds; delete cur.incId; }
       }
+      if (typeof b.comentarios === "string") { const c = b.comentarios.trim().slice(0, 3000); if (c) { cur.comentarios = c; cur.comBy = user; cur.comAt = new Date().toISOString(); } else { delete cur.comentarios; delete cur.comBy; delete cur.comAt; } } // 2026-10-23: comentarios de la tarea/card
       if (Array.isArray(b.fotos)) { // 2026-10-23: fotos de la card (limpieza por reserva); la URL firmada se recalcula aquí
         const F = b.fotos.filter(f => f && /^aseo\/adjuntos\//.test(String(f.k || ""))).slice(0, 40).map(f => ({ k: String(f.k), nombre: String(f.nombre || "").slice(0, 120), tipo: String(f.tipo || "").slice(0, 80), url: `/aseo/adjunto?k=${encodeURIComponent(f.k)}&s=${_aseoAdjSig(f.k)}` }));
         if (F.length) cur.fotos = F; else delete cur.fotos;
@@ -13255,6 +13256,7 @@ app.post("/aseo/extra", async (req, res) => {
       if (["checkout", "correctivo", "preventivo"].some(k => typeof b[k] === "boolean")) H.push(["Tipo de servicio", srvDe(a), srvDe(n)]);
       if (typeof b.incidencia === "boolean") H.push(["Incidencia", a.incidencia ? "Reportada" : "Sin incidencia", n.incidencia ? "Reportada" : "Sin incidencia"]);
       if (typeof b.archivada === "boolean") H.push(["Archivada", !!a.archivada, !!n.archivada]);
+      if (typeof b.comentarios === "string" && String(a.comentarios || "") !== String(n.comentarios || "")) H.push(["Comentarios", String(a.comentarios || "—").slice(0, 120), String(n.comentarios || "—").slice(0, 120)]);
       _histAdd(_histKey(key), H, user); }
     if (typeof b.incidencia === "boolean") _aseoAutoMarca(String(b.hid || _aseoHidDe(key)), "modificado", b.incidencia ? "Incidencia: ⚠️ reportada" : "Incidencia: ya no");
     res.json({ ok: true, extra: out });
