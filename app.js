@@ -67689,6 +67689,10 @@ function aseoRender_() {
     const l = ckCalW_0_('aseo'), f = tarParseIso_(l); f.setDate(f.getDate() + 6);
     const fil = aseoCalFiltrar_(aseoCalTareas_(l, tarIso_(f)));
     cal.classList.add('ckm-on'); cal.innerHTML = ckSemGridHtml_(l, aseoCalMesItems_(fil.tareas), 'aseoIrDia_', aseoDia_());
+  } else if (cal && sig !== ASEO.calSig && ckCalV_0_('aseo') === 'tl') { // «Timeline»: renglones = personal · columnas = horas
+    ASEO.calSig = sig;
+    const dia = aseoDia_(), fil = aseoCalFiltrar_(aseoCalTareas_(dia, dia));
+    cal.classList.add('ckm-on'); cal.innerHTML = aseoTimelineHtml_(dia, fil.tareas);
   } else if (cal && sig !== ASEO.calSig && ckCalV_0_('aseo') === 'mes') { // «Por mes»: celdas por día
     ASEO.calSig = sig;
     const ym = ckCalM_0_('aseo'), dim = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate();
@@ -69844,7 +69848,7 @@ function aseoDiaLabel_(iso) {
 }
 // Periodo de la vista «Por semana» / «Por mes» (null = «Por alojamiento»: un solo día).
 function aseoRango_() {
-  const v = ckCalV_0_('aseo'); if (v === 'aloj') return null;
+  const v = ckCalV_0_('aseo'); if (v === 'aloj' || v === 'tl') return null;
   if (v === 'sem') { const l = ckCalW_0_('aseo'); return Array.from({ length: 7 }, (_, i) => { const d = tarParseIso_(l); d.setDate(d.getDate() + i); return tarIso_(d); }); }
   const ym = ckCalM_0_('aseo'), n = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(); return Array.from({ length: n }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
 }
@@ -69853,7 +69857,7 @@ window.aseoPerHoy_ = function () { CKCAL.m.aseo = aseoHoyIso_().slice(0, 7); (CK
 function aseoDnavPaint_() {
   const el = document.getElementById('aseo-dnav'); if (!el) return;
   const vw = ckCalV_0_('aseo');
-  if (vw !== 'aloj') { // semana o mes: el controlador de la barra mueve el periodo (calendario y cards)
+  if (vw !== 'aloj' && vw !== 'tl') { // semana o mes: el controlador de la barra mueve el periodo (calendario y cards)
     let lbl; if (vw === 'sem') { const l = tarParseIso_(ckCalW_0_('aseo')), f = new Date(l); f.setDate(f.getDate() + 6); lbl = `${l.getDate()} ${TAR_MESES[l.getMonth()]} – ${f.getDate()} ${TAR_MESES[f.getMonth()]}`; } else { const ym = ckCalM_0_('aseo'); lbl = `${TAR_MESES_L[+ym.slice(5, 7) - 1]} ${ym.slice(0, 4)}`; }
     const fn = vw === 'sem' ? 'ckCalW_' : 'ckCalM_';
     el.innerHTML = `<button type="button" onclick="${fn}('aseo',-1)" title="Anterior">‹</button><button type="button" class="lb" onclick="aseoPerHoy_()" title="Volver al periodo actual">${lbl}</button><button type="button" onclick="${fn}('aseo',1)" title="Siguiente">›</button>`;
@@ -69872,7 +69876,7 @@ window.aseoSetDia_ = function (delta) {
   if (!delta) ASEO.dia = null;
   else { const d = new Date(aseoDia_() + 'T12:00:00'); d.setDate(d.getDate() + delta); const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; ASEO.dia = iso === aseoHoyIso_() ? null : iso; }
   ASEO.sel = null;
-  if (ASEO.cal && ckCalV_0_('aseo') !== 'aloj') { CKCAL.m.aseo = aseoDia_().slice(0, 7); (CKCAL.w = CKCAL.w || {}).aseo = ckLunes_(aseoDia_()); aseoDnavPaint_(); aseoRender_(); return; } // el calendario por mes/semana sigue al día elegido
+  if (ASEO.cal && !['aloj', 'tl'].includes(ckCalV_0_('aseo'))) { CKCAL.m.aseo = aseoDia_().slice(0, 7); (CKCAL.w = CKCAL.w || {}).aseo = ckLunes_(aseoDia_()); aseoDnavPaint_(); aseoRender_(); return; } // el calendario por mes/semana sigue al día elegido
   aseoDnavPaint_(); aseoRenderSide_();
 };
 // Divisor arrastrable entre calendario y cards (ancho del calendario en %).
@@ -69903,7 +69907,7 @@ window.aseoHoy_ = function () {
   // Regresa el selector de día a HOY y, si el calendario está abierto, lo centra en hoy.
   aseoSetDia_(0);
   const cal = document.getElementById('aseo-cal');
-  if (ASEO.cal && cal && ckCalV_0_('aseo') !== 'aloj') { CKCAL.m.aseo = aseoHoyIso_().slice(0, 7); (CKCAL.w = CKCAL.w || {}).aseo = ckLunes_(aseoHoyIso_()); ASEO.calSig = ''; aseoRender_(); return; }
+  if (ASEO.cal && cal && !['aloj', 'tl'].includes(ckCalV_0_('aseo'))) { CKCAL.m.aseo = aseoHoyIso_().slice(0, 7); (CKCAL.w = CKCAL.w || {}).aseo = ckLunes_(aseoHoyIso_()); ASEO.calSig = ''; aseoRender_(); return; }
   if (ASEO.cal && cal) ocupCentrarHoy_(cal, true);
 };
 window.aseoRecargar_ = async function () { const b = document.getElementById('aseo-upd-btn'); if (b) b.classList.add('girando'); try { await aseoRefresh_(true); } finally { if (b) b.classList.remove('girando'); } ASEO.calSig = ''; aseoRender_(); if (document.getElementById('pc-sec-movs')) pcRenderMovs_(); };
@@ -70219,7 +70223,7 @@ function ckOcupCal_(id, items) {
 window.ckBarNada_ = function () {};
 // ── Calendario: vista «Por alojamiento» (renglones = alojamientos) o «Por mes» (celdas = días, como en Levantamientos) ──
 window.CKCAL = window.CKCAL || { v: {}, m: {}, w: {} }; // vista del calendario: al abrirlo vuelve a la predeterminada (Por alojamiento)
-function ckCalV_0_(s) { return CKCAL.v[s] === 'mes' || CKCAL.v[s] === 'sem' ? CKCAL.v[s] : 'aloj'; }
+function ckCalV_0_(s) { return CKCAL.v[s] === 'mes' || CKCAL.v[s] === 'sem' || (s === 'aseo' && CKCAL.v[s] === 'tl') ? CKCAL.v[s] : 'aloj'; }
 function ckLunes_(iso) { const d = tarParseIso_(iso); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return tarIso_(d); }
 function ckCalW_0_(s) { CKCAL.w = CKCAL.w || {}; return CKCAL.w[s] || ckLunes_(aseoHoyIso_()); }
 window.ckCalW_ = function (s, d) { const x = tarParseIso_(ckCalW_0_(s)); x.setDate(x.getDate() + 7 * d); CKCAL.w[s] = tarIso_(x); const st = ckCalSt_(s); if (st) st.mes = CKCAL.w[s].slice(0, 7); ckCalRe_(s); };
@@ -70233,7 +70237,7 @@ window.ckCalV_ = function (s, v) {
   ckCalRe_(s);
 };
 window.ckCalM_ = function (s, d) { CKCAL.m[s] = ckMesMover_(ckCalM_0_(s), d); const st = ckCalSt_(s); if (st) st.mes = CKCAL.m[s]; ckCalRe_(s); };
-function ckCalSegHtml_(s) { const v = ckCalV_0_(s); return `<div class="ad-seg ckcal-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">📅 Por día</button><button type="button" class="${v === 'sem' ? 'on' : ''}" onclick="ckCalV_('${s}','sem')">📆 Por semana</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button></div>`; }
+function ckCalSegHtml_(s) { const v = ckCalV_0_(s); return `<div class="ad-seg ckcal-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">📅 Por día</button><button type="button" class="${v === 'sem' ? 'on' : ''}" onclick="ckCalV_('${s}','sem')">📆 Por semana</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button>${s === 'aseo' ? `<button type="button" class="${v === 'tl' ? 'on' : ''}" onclick="ckCalV_('${s}','tl')" title="Avance de cada persona a lo largo del día">⏱️ Timeline</button>` : ''}</div>`; }
 function ckCalHdHtml_(s, sinSeg) {
   const v = ckCalV_0_(s), ym = ckCalM_0_(s), lbl = TAR_MESES_L[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4);
   if (sinSeg && v === 'sem') { const l = tarParseIso_(ckCalW_0_(s)), f = new Date(l); f.setDate(f.getDate() + 6);
@@ -70277,6 +70281,41 @@ function ckSemGridHtml_(lunes, items, onDia, sel) {
   const by = new Map(); items.forEach(t => { if (!dias.includes(t.dia)) return; if (!by.has(t.dia)) by.set(t.dia, []); by.get(t.dia).push(t); });
   return `<div class="ckm ckw"><div class="ckm-g">${dias.map((iso, i) => { const L = (by.get(iso) || []).sort((a, b) => String(a.cod).localeCompare(String(b.cod), 'es', { numeric: true }));
     return `<div class="ckm-d ${iso === hoy ? 'hoy' : ''} ${iso === sel ? 'sel' : ''} ${onDia ? 'lk' : ''}" ${onDia ? `onclick="${onDia}('${iso}')"` : ''}><span class="n">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][i]} ${+iso.slice(8)}</span>${L.map(t => `<div class="ckm-c" style="--sc:${t.c || '#94a3b8'}" onclick="event.stopPropagation();${t.onclick || ''}" title="${pcEsc((t.cod ? t.cod + ' · ' : '') + (t.titulo || ''))}"><b>${pcEsc(t.cod || '—')}</b><span>${pcEsc(t.titulo || '')}</span></div>`).join('')}</div>`; }).join('')}</div></div>`;
+}
+// «Timeline» (v2125): renglones = personal, columnas = horas del día; cada card Terminada/Inspeccionada se coloca en la hora
+// en que se marcó Terminado (aseo/estados.json → hist.terminado.at). Muestra el avance de cada persona a lo largo del día.
+function aseoTimelineHtml_(dia, m) {
+  ckMesCss_();
+  if (!document.getElementById('tl-css')) { const st = document.createElement('style'); st.id = 'tl-css'; st.textContent = `
+    .tl{padding:8px;font-family:Inter,system-ui,sans-serif;min-width:max-content}.tl-g{display:grid;gap:4px}
+    .tl-hd{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;text-align:center;padding:4px 0;position:sticky;top:0;background:#fff;z-index:2}
+    .tl-p{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:6px 8px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;position:sticky;left:0;z-index:1}
+    .tl-p b{font-size:12px;font-weight:800;color:#0f1729;white-space:nowrap}.tl-p small{font-size:10.5px;color:#64748b;font-weight:600}.tl-p .ad-av{width:24px;height:24px;font-size:10px}
+    .tl-c{min-height:64px;min-width:0;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:4px;display:flex;flex-direction:column;gap:4px}.tl-c.hoy{background:#faf5ff;border-color:#ddd6fe}
+    .tl-card.oc-task{position:static;width:auto;height:auto;cursor:pointer}.tl-card .t0{display:flex;align-items:center;gap:6px;margin-bottom:3px}.tl-card .t0 b{font:700 10.5px ui-monospace,Menlo,monospace;color:#0f1729}.tl-card .t0 span{font-size:10.5px;font-weight:700;color:#4338ca;background:#eef2ff;border-radius:5px;padding:0 5px;margin-left:auto}.tl-card .t0 small{font-size:10px;color:#94a3b8}
+    .tl-void{padding:40px;text-align:center;color:#94a3b8;font-size:13px}`; document.head.appendChild(st); }
+  const porP = new Map(), hs = [];
+  const hhmm = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  m.forEach((L, hid) => {
+    const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '' }, cod = String(a.corto || '').toUpperCase() || String(a.nombre || hid);
+    L.forEach(t => {
+      if (t.ghost || t.dia !== dia || (t.tarea && t.tarea.rt)) return;
+      const key = t.tarea ? `T${t.tarea.id}-${dia}` : t.id, reg = aseoEstDe_(key); if (!reg || !['terminado', 'inspeccionado'].includes(reg.estado)) return;
+      const H = reg.hist || {}, fin = (H.terminado && H.terminado.at) || reg.at, ini = H.en_proceso && H.en_proceso.at; if (!fin) return;
+      const d = new Date(fin); if (isNaN(d) || tarIso_(d) !== dia) return;
+      const pers = t.tarea ? (t.tarea.asignados || []) : aseoAsigDe_(t.id, 'aseo'), lista = pers.length ? pers : ['Sin asignar'];
+      const it = { t, cod, h: d.getHours(), min: d.getMinutes(), fin: hhmm(fin), ini: ini ? hhmm(ini) : '' }; hs.push(it.h);
+      lista.forEach(n => { if (!porP.has(n)) porP.set(n, []); porP.get(n).push(it); });
+    });
+  });
+  if (!porP.size) return `<div class="tl"><div class="tl-void">Sin limpiezas terminadas el ${aseoDiaTxt_(dia)}.<br><small>Las cards aparecen en la hora en que se marcan como Terminadas.</small></div></div>`;
+  const h0 = Math.min(7, ...hs), h1 = Math.max(19, ...hs), horas = Array.from({ length: h1 - h0 + 1 }, (_, i) => h0 + i), ahora = new Date(), esHoy = dia === aseoHoyIso_();
+  const filas = [...porP.keys()].sort((a, b) => a === 'Sin asignar' ? 1 : b === 'Sin asignar' ? -1 : a.localeCompare(b, 'es'));
+  const card = it => `<div class="oc-task ty-limpieza tl-card" onclick="${it.t.onclick || ''}" title="${pcEsc(it.cod)} · Terminado ${it.fin}${it.ini ? ' (inició ' + it.ini + ')' : ''}"><div class="t0"><b>${pcEsc(it.cod)}</b>${it.ini ? `<small>${it.ini} →</small>` : ''}<span>${it.fin}</span></div>${aseoCalTareaHtml_(it.t)}</div>`;
+  return `<div class="tl"><div class="tl-g" style="grid-template-columns:150px repeat(${horas.length},minmax(130px,1fr))">
+    <div class="tl-hd" style="text-align:left">Personal</div>${horas.map(h => `<div class="tl-hd">${String(h).padStart(2, '0')}:00</div>`).join('')}
+    ${filas.map(n => { const L = porP.get(n); return `<div class="tl-p">${n === 'Sin asignar' ? '<b>Sin asignar</b>' : `<span class="ad-avs">${adAv_(n)}</span><b>${pcEsc(n)}</b>`}<small>${L.length} terminada${L.length === 1 ? '' : 's'}</small></div>${horas.map(h => `<div class="tl-c ${esHoy && h === ahora.getHours() ? 'hoy' : ''}">${L.filter(x => x.h === h).sort((a, b) => a.min - b.min).map(card).join('')}</div>`).join('')}`; }).join('')}
+  </div></div>`;
 }
 // Tarjetas del calendario de Aseo/Mantenimiento convertidas a chips del calendario por mes.
 function aseoCalMesItems_(m) {
