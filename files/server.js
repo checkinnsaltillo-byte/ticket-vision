@@ -12236,6 +12236,21 @@ app.get("/rentas/captura-page", (_req, res) => {
 try{const r=await fetch("/rentas/captura",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});const j=await r.json();if(!j.ok)throw new Error(j.error||"No se pudo guardar");location.replace("https://www.check-inn.mx/admin/?rlpk="+encodeURIComponent(j.token)+"#rentas-lp")}catch(err){document.getElementById("m").textContent="⚠ "+err.message;listo=false}});
 setTimeout(()=>{if(!listo)document.getElementById("m").textContent="No llegó la captura. Vuelve al anuncio y toca el marcador otra vez."},12000);</script>`);
 });
+// Geocodificación (OpenStreetMap/Nominatim, sin llave): texto libre → candidatos; lat,lng → dirección. Copia de 1 h por consulta.
+const _rlpGeoC = new Map();
+app.get("/rentas/geocodificar", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim().slice(0, 200), lat = _rlpNum(req.query.lat), lng = _rlpNum(req.query.lng);
+    const key = q ? "q:" + q.toLowerCase() : `r:${lat},${lng}`; const c = _rlpGeoC.get(key); if (c && Date.now() - c.ts < 3600e3) return res.json(c.r);
+    let url; if (q) url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&countrycodes=mx&accept-language=es&q=${encodeURIComponent(q)}`;
+    else if (lat != null && lng != null) url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=es&lat=${lat}&lon=${lng}`;
+    else return res.status(400).json({ ok: false, error: "Falta q o lat/lng" });
+    const r = await _fetchReal(url, { headers: { "User-Agent": "check-inn-saltillo/1.0 (sistemas@check-inn.mx)", "Accept": "application/json" } }); if (!r.ok) throw new Error("Geocodificador " + r.status);
+    const j = await r.json(); const norm = x => { const a = x.address || {}; return { lat: _rlpNum(x.lat), lng: _rlpNum(x.lon), nombre: String(x.display_name || ""), calle: [a.road, a.house_number].filter(Boolean).join(" "), colonia: a.neighbourhood || a.suburb || a.quarter || a.residential || a.hamlet || "", ciudad: a.city || a.town || a.village || a.municipality || "", estado: a.state || "", cp: a.postcode || "" }; };
+    const out = { ok: true, resultados: (Array.isArray(j) ? j : [j]).filter(x => x && x.lat).map(norm) };
+    _rlpGeoC.set(key, { ts: Date.now(), r: out }); res.set("Cache-Control", "no-store"); res.json(out);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/rentas/captura/:token", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const t = String(req.params.token || "").replace(/[^A-Za-z0-9_-]/g, ""); const { data } = await _bnReadGcs(`rentas-lp/capturas/${t}.json`); if (!data) return res.status(404).json({ ok: false, error: "Captura no encontrada o vencida" });
