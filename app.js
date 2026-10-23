@@ -67916,6 +67916,24 @@ function axCatHtml_(depto, k, autoCO) {
 function axTipoTareaHtml_(cur, fn) {
   return `<div class="lab">Tipo de tarea *</div><div class="ad-steps" style="grid-template-columns:repeat(3,1fr)">${Object.entries(AT_DEPTO).map(([k, X]) => `<button type="button" class="${cur === k ? 'on' : ''}" style="--c:${X.c}${fn || cur === k ? '' : ';opacity:.45;cursor:not-allowed'}" ${fn ? `onclick="${fn}('${k}')"` : `title="Este tipo lo define la reserva: salida = Limpieza · solo entrada = Inspección"`}>${X.ico} ${X.t}</button>`).join('')}</div>`;
 }
+// v2137: fotos en cards de limpieza por reserva (aseo/extra.json[asigId].fotos): galería con zoom y subida múltiple
+function axFotosHtml_(k) { const L = axEx_(k).fotos || []; if (!L.length) return '<div class="at-hint" style="margin:0 0 10px">Sin fotos. Puedes agregar varias a la vez.</div>';
+  return `<div class="at-gal">${L.map((f, i) => `<div class="at-ph"><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(axEx_('${pcEsc(k)}').fotos.map(x=>BACKEND+x.url),${i})"><b onclick="axFotoQuitar_('${pcEsc(k)}',${i})">✕</b></div>`).join('')}</div>`; }
+window.axFotoQuitar_ = function (k, i) { const L = (axEx_(k).fotos || []).slice(); L.splice(i, 1); axSet_(k, { fotos: L }); };
+window.axFotoSubir_ = async function (inp, k, hid) {
+  const files = [...(inp.files || [])]; inp.value = ''; if (!files.length) return;
+  const lab = inp.parentNode, t0 = lab.firstChild.textContent; lab.firstChild.textContent = '⏳ Subiendo… ';
+  const nuevas = [];
+  for (const f0 of files) {
+    try { const f = await imgLigera_(f0); if (f.size > 15 * 1024 * 1024) { alert(`«${f.name}» pesa más de 15 MB.`); continue; }
+      const data = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(f); });
+      const r = await fetch(`${BACKEND}/aseo/adjunto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: f.name, tipo: f.type, data }) }).then(r => r.json());
+      if (!r.ok) throw new Error(r.error || 'Error'); nuevas.push(r.adjunto);
+    } catch (e) { alert(`No se pudo subir «${f0.name}»: ${e.message || e}`); }
+  }
+  lab.firstChild.textContent = t0;
+  if (nuevas.length) axSet_(k, { fotos: (axEx_(k).fotos || []).concat(nuevas) }, hid);
+};
 window.axSet_ = function (k, patch, hid) {
   ASEO.extra = ASEO.extra || {}; const prev = ASEO.extra[k];
   ASEO.extra[k] = Object.assign({}, prev, patch);
@@ -68696,6 +68714,8 @@ function adPintar_(nuevo) {
         <div class="ad-addrow"><button type="button" class="ad-link" onclick="aseoAsignar_('${id}',this,'aseo')">＋ Asignar aseo</button><button type="button" class="ad-link" onclick="aseoAsignar_('${id}',this,'inspeccion')">＋ Asignar inspección</button></div></div>
       ${I.xs && I.esHoyC && !I.esCopia ? `<div class="lab">Desalojo</div><div class="ad-tgl" onclick="aseoNoSale_('${pcEsc(String(I.xs.b.Id))}','${hid}',${!I.noSale})"><div><b>${I.noSale ? 'El huésped NO ha desalojado' : '¿No ha desalojado?'}</b><small>${I.noSale ? 'Clic cuando ya haya salido' : 'Activa la alerta si el huésped sigue adentro'}</small></div><span class="ad-sw ${I.noSale ? 'red' : 'off'}"></span></div>` : ''}
       <div class="lab">Fecha de aseo</div>${aseoFechaCampo_(I.asigId, I.hid, I.hoy, I.g.reprogDe)}
+      <div class="at-sec" style="margin-top:14px"><span>📷 Fotos</span><label class="ad-link">＋ Agregar fotos<input type="file" accept="image/*" multiple hidden onchange="axFotoSubir_(this,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}')"></label></div>
+      ${(atGalCss_(), axFotosHtml_(I.asigId))}
       ${reservas ? `<details class="ad-res"><summary>Reservas y acciones (${I.ids.length})</summary>${reservas}</details>` : ''}
       ${histSecHtml_([I.asigId].concat(I.ids || []).map(x => 'A:' + x))}
     </div>
