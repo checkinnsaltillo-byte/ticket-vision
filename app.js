@@ -75835,7 +75835,7 @@ function mcRender_() {
 }
 function mcProg_() {
   const h = document.getElementById('mc-prog'); if (!h) return; const J = MC.job, run = J && J.running, n = MC.lista.length, pct = J && J.total ? Math.round(100 * J.done / J.total) : 0;
-  h.innerHTML = `<div class="mc-row"><button type="button" class="mc-btn pri" onclick="mcExtraer_()" ${run || !n ? 'disabled' : ''}>${run ? '⏳ Extrayendo…' : '🔍 Extraer / actualizar'}</button>
+  h.innerHTML = `<div class="mc-row"><button type="button" class="mc-btn pri" onclick="mcExtraer_()" ${run ? 'disabled' : ''}>${run ? '⏳ Extrayendo…' : '🔍 Extraer / actualizar'}</button>
     ${run ? `<div class="mc-bar"><i style="width:${pct}%"></i></div><span class="mc-mu">${J.done} de ${J.total}${J.actual ? ' · publicación ' + esc(J.actual) : ''}</span>` : `<span class="mc-mu">${n} publicación${n === 1 ? '' : 'es'} en la lista${MC.act ? ' · última actualización ' + esc(mcF(MC.act)) + ' ' + esc(new Date(MC.act).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })) : ''}</span>`}
     ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
 }
@@ -75861,11 +75861,11 @@ function mcTabla_(rows) {
   return `<table class="mc-tb"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 function mcCal_(rows) {
-  const W = 22, hoy = new Date(), d0 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()), fin = new Date(hoy.getFullYear(), hoy.getMonth() + MC.meses, 0), n = Math.round((fin - d0) / 864e5) + 1;
-  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, dias = Array.from({ length: n }, (_, k) => { const d = new Date(d0); d.setDate(d.getDate() + k); return d; });
+  const W = 22, hoy = new Date(), d0 = new Date(hoy.getFullYear(), hoy.getMonth(), 1), fin = new Date(hoy.getFullYear(), hoy.getMonth() + MC.meses, 0), n = Math.round((fin - d0) / 864e5) + 1; // desde el día 1 del mes actual: los días pasados también se ven (Airbnb los marca como no disponibles)
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, hoyIso = iso(hoy), dias = Array.from({ length: n }, (_, k) => { const d = new Date(d0); d.setDate(d.getDate() + k); return d; });
   const MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'], L = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
   const mm = []; dias.forEach((d, k) => { const ym = iso(d).slice(0, 7); if (!mm.length || mm[mm.length - 1].ym !== ym) mm.push({ ym, n: 0, t: `${MES[d.getMonth()]} ${d.getFullYear()}` }); mm[mm.length - 1].n++; });
-  const head = `<div class="mc-ch"><div class="mc-cm">${mm.map(m => `<span style="width:${m.n * W}px">${m.t}</span>`).join('')}</div><div class="mc-cd">${dias.map((d, k) => `<span class="${d.getDay() === 0 || d.getDay() === 6 ? 'fs' : ''} ${k === 0 ? 'hoy' : ''}"><b>${d.getDate()}</b>${L[d.getDay()]}</span>`).join('')}</div></div>`;
+  const head = `<div class="mc-ch"><div class="mc-cm">${mm.map(m => `<span style="width:${m.n * W}px">${m.t}</span>`).join('')}</div><div class="mc-cd">${dias.map((d, k) => `<span class="${d.getDay() === 0 || d.getDay() === 6 ? 'fs' : ''} ${iso(d) === hoyIso ? 'hoy' : ''}"><b>${d.getDate()}</b>${L[d.getDay()]}</span>`).join('')}</div></div>`;
   const filas = rows.map(i => { const cal = i.cal || {}; let runs = [], cur = null;
     dias.forEach((d, k) => { const s = iso(d), ch = (cal[s.slice(0, 7)] || '')[d.getDate() - 1]; const st = ch === '0' ? 'n' : ch === '1' ? 'a' : 'x'; if (cur && cur.st === st) cur.len++; else { cur = { st, ini: k, len: 1 }; runs.push(cur); } });
     const bars = runs.filter(r => r.st !== 'a').map(r => { const a = dias[r.ini], b = dias[r.ini + r.len - 1], tip = `${r.st === 'n' ? 'No disponible' : 'Sin dato'}: ${mcF(iso(a))} – ${mcF(iso(b))} (${r.len} ${r.len === 1 ? 'día' : 'días'})`; return `<div class="mc-bk ${r.st === 'x' ? 'k' : ''}" style="left:${r.ini * W}px;width:${r.len * W}px" title="${esc(tip)}">${r.len * W > 40 && r.st === 'n' ? r.len + ' d' : ''}</div>`; }).join('');
@@ -75882,7 +75882,9 @@ window.mcAgregar_ = async function () {
 };
 window.mcQuitar_ = async function (id) { if (!confirm('¿Quitar esta publicación de la lista? También se borran sus datos extraídos.')) return; try { await fetch(`${BACKEND}/mercado/airbnb/quitar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); await mcCargar_(); mcProg_(); mcRes_(); } catch (e) { alert('No se pudo quitar: ' + (e.message || e)); } };
 window.mcExtraer_ = async function () {
-  try { const j = await fetch(`${BACKEND}/mercado/airbnb/extraer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error');
+  const t = document.getElementById('mc-txt'); if (t && t.value.trim()) { await mcAgregar_(); } // lo escrito en el paso 1 se suma a la lista antes de extraer
+  if (!MC.lista.length) { mcMsg_('Pega primero las URLs de Airbnb.'); return; }
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/extraer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json()); if (!j.ok) { if (/en curso/i.test(j.error || '')) { await mcCargar_(); mcProg_(); mcPoll_(); return; } throw new Error(j.error || 'Error'); }
     MC.job = { running: true, total: j.total, done: 0, ok: 0, fallidas: 0, actual: '' }; mcProg_(); mcPoll_(); } catch (e) { MC.error = String(e.message || e); mcProg_(); }
 };
 function mcPoll_() { clearInterval(MC.timer); MC.timer = setInterval(async () => { const aun = document.getElementById('mc-prog'); if (!aun) { clearInterval(MC.timer); return; } await mcCargar_(); mcProg_(); mcRes_(); if (!(MC.job && MC.job.running)) clearInterval(MC.timer); }, 3500); }
