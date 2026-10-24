@@ -12497,6 +12497,36 @@ function _maFusion(prev, nuevo, hoy) {
   });
   return { cal, cambios, nuevas, canc };
 }
+// ── Búsqueda automática (Paso 0 «Automática»): hace en airbnb.mx la misma consulta de la página principal (destino · fechas · huéspedes),
+//    recorre las páginas de resultados y suma a la lista la URL de cada alojamiento disponible (con el precio que muestra la búsqueda).
+async function _maPagina(p, cursor) {
+  const slug = encodeURIComponent(String(p.destino).replace(/\s*,\s*/g, "--").replace(/\s+/g, "-"));
+  const u = `https://www.airbnb.mx/s/${slug}/homes?checkin=${p.checkin}&checkout=${p.checkout}&adults=${p.adultos}&query=${encodeURIComponent(p.destino)}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+  const r = await _fetchReal(u, { headers: { "User-Agent": _MA.UA, "Accept-Language": "es-MX,es;q=0.9", Accept: "text/html,application/xhtml+xml" }, redirect: "follow", signal: AbortSignal.timeout(40000) });
+  if (!r.ok) throw new Error(`Airbnb respondió ${r.status}`); const h = await r.text();
+  const m = h.match(/<script id="data-deferred-state-0"[^>]*>([\s\S]*?)<\/script>/); if (!m) throw new Error("La búsqueda no devolvió resultados legibles (posible bloqueo temporal)");
+  const R = _maG(JSON.parse(m[1]), "niobeClientData.0.1.data.presentation.staysSearch.results"); if (!R) throw new Error("La búsqueda no devolvió resultados"); return R;
+}
+const _maPrecio = x => { const sp = x.structuredDisplayPrice || {}, pl = sp.primaryLine || {}, tot = _maNum(String(pl.price || "").replace(/[^\d.,]/g, "").replace(/,/g, "")); let noche = null;
+  JSON.stringify(_maG(sp, "explanationData.priceDetails") || []).replace(/"description":"(\d+)\s*noches?\s*x\s*\$([\d,.]+)/i, (a, n, v) => { noche = _maNum(String(v).replace(/,/g, "")); return a; });
+  if (noche == null && /noche/i.test(pl.qualifier || "")) noche = tot; return { total: /total/i.test(pl.qualifier || "") ? tot : null, noche }; };
+async function _maBuscar(p) {
+  const now = () => new Date().toISOString(); await _maMutar(d => { d.busqueda = { running: true, params: p, pagina: 0, paginas: 0, encontrados: 0, inicio: now(), upd: now(), error: "" }; });
+  const vistos = new Map(); let cursors = [null], err = "";
+  try {
+    for (let i = 0; i < cursors.length && i < 15; i++) {
+      const R = await _maPagina(p, cursors[i]); if (i === 0) cursors = (_maG(R, "paginationInfo.pageCursors") || [null]).slice(0, 15);
+      (R.searchResults || []).forEach(x => { let id = ""; try { id = Buffer.from(String(_maG(x, "demandStayListing.id") || ""), "base64").toString().split(":")[1] || ""; } catch (_) {} if (!id || vistos.has(id)) return; const pr = _maPrecio(x); vistos.set(id, { tipo: String(x.title || ""), nombre: String(x.subtitle || ""), total: pr.total, noche: pr.noche }); });
+      await _maMutar(d => { d.busqueda.pagina = i + 1; d.busqueda.paginas = cursors.length; d.busqueda.encontrados = vistos.size; d.busqueda.upd = now(); });
+      if (i + 1 < cursors.length) await _maSleep(1500 + Math.floor(Math.random() * 1200));
+    }
+  } catch (e) { err = String(e.message || e).slice(0, 200); }
+  await _maMutar(d => { const t = now(); d.lista = d.lista || []; let nuevos = 0;
+    vistos.forEach((v, id) => { let l = d.lista.find(x => x.id === id); if (!l) { l = { id, url: `https://www.airbnb.mx/rooms/${id}`, agregado: t, origen: "automática" }; d.lista.push(l); nuevos++; }
+      Object.assign(l, { precioTotal: v.total, precioNoche: v.noche, tipoBusq: v.tipo, busqueda: { destino: p.destino, checkin: p.checkin, checkout: p.checkout, adultos: p.adultos }, busquedaAt: t }); });
+    d.ultimaBusqueda = { params: p, ids: [...vistos.keys()], at: t, nuevos, error: err };
+    if (d.busqueda) { d.busqueda.running = false; d.busqueda.fin = t; d.busqueda.upd = t; d.busqueda.nuevos = nuevos; d.busqueda.error = vistos.size ? err : (err || "La búsqueda no encontró alojamientos"); } });
+}
 async function _maExtraer(id) { const ficha = _maFicha(await _maHtml(id)); await _maSleep(400); const cal = await _maCalendario(id); return Object.assign({ id, url: `https://www.airbnb.mx/rooms/${id}` }, ficha, cal, { extraido: new Date().toISOString(), error: "" }); }
 async function _maCorrer(ids) {
   const now = () => new Date().toISOString();
@@ -12515,15 +12545,28 @@ app.get("/mercado/airbnb", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const { data } = await _bnReadGcs(_MA.OBJ); const d = data && data.items ? data : { lista: [], items: {}, job: null };
     const job = d.job ? Object.assign({}, d.job) : null; if (job && job.running && Date.now() - Date.parse(job.upd || 0) > 180_000) { job.running = false; job.interrumpida = true; } // sin avances en 3 min = se interrumpió
-    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: d.lista || [], items: d.items || {}, job, actualizado: d.actualizado || "" }); }
+    const bus = d.busqueda ? Object.assign({}, d.busqueda) : null; if (bus && bus.running && Date.now() - Date.parse(bus.upd || 0) > 180_000) { bus.running = false; bus.error = bus.error || "La búsqueda se interrumpió"; }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: d.lista || [], items: d.items || {}, job, busqueda: bus, ultimaBusqueda: d.ultimaBusqueda || null, actualizado: d.actualizado || "" }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/lista", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const lineas = String((req.body || {}).texto || "").split(/[\r\n,;\s]+/).map(x => x.trim()).filter(Boolean), nuevos = [], existentes = [], invalidos = [];
     const ids = []; lineas.forEach(l => { const id = _maId(l); if (!id) { invalidos.push(l.slice(0, 80)); return; } if (!ids.includes(id)) ids.push(id); });
-    await _maMutar(d => { d.lista = d.lista || []; ids.forEach(id => { if (d.lista.some(x => x.id === id)) existentes.push(id); else { d.lista.push({ id, url: `https://www.airbnb.mx/rooms/${id}`, agregado: new Date().toISOString() }); nuevos.push(id); } }); });
+    await _maMutar(d => { d.lista = d.lista || []; ids.forEach(id => { if (d.lista.some(x => x.id === id)) existentes.push(id); else { d.lista.push({ id, url: `https://www.airbnb.mx/rooms/${id}`, agregado: new Date().toISOString(), origen: "manual" }); nuevos.push(id); } }); });
     res.json({ ok: true, nuevos: nuevos.length, existentes: existentes.length, invalidos }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/airbnb/buscar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const b = req.body || {}, destino = String(b.destino || "").replace(/\s+/g, " ").trim().slice(0, 80), re = /^\d{4}-\d{2}-\d{2}$/, hoy = _mxHoy();
+    let checkin = String(b.checkin || ""), checkout = String(b.checkout || ""); const dia = (f, n) => { const t = new Date(f + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+    if (!re.test(checkin)) checkin = dia(hoy, 1); if (!re.test(checkout)) checkout = dia(checkin, 3);
+    const adultos = Math.max(1, Math.min(16, parseInt(b.adultos, 10) || 1));
+    if (!destino) return res.status(400).json({ ok: false, error: "Escribe el destino (por ejemplo «Saltillo, Coah.»)" });
+    if (checkin < hoy) return res.status(400).json({ ok: false, error: "La fecha de entrada ya pasó" }); if (checkout <= checkin) return res.status(400).json({ ok: false, error: "La salida debe ser posterior a la entrada" });
+    const { data } = await _bnReadGcs(_MA.OBJ), d = data && data.items ? data : {}; if (d.busqueda && d.busqueda.running && Date.now() - Date.parse(d.busqueda.upd || 0) < 180_000) return res.status(409).json({ ok: false, error: "Ya hay una búsqueda en curso" });
+    _maBuscar({ destino, checkin, checkout, adultos }).catch(e => console.warn("[mercado] búsqueda:", e.message)); res.json({ ok: true, params: { destino, checkin, checkout, adultos } }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/quitar", async (req, res) => {
