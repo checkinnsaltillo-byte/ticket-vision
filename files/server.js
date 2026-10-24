@@ -12453,7 +12453,11 @@ function _maFicha(html) {
   o.amenidades = [...am].slice(0, 120); o.nAmenidades = am.size;
   const R = ((_maG(P, "rules.groupItems") || [])[0] || {}).items || []; o.reglas = R.map(x => String(x.title || "").replace(/ /g, " ")).filter(Boolean); const rt = o.reglas.join(" | ");
   o.mascotas = /no se admiten mascotas/i.test(rt) ? (/solo animales de servicio/i.test(JSON.stringify(R)) ? "Solo servicio" : "No") : /mascotas/i.test(rt) ? "Sí" : ""; o.fumar = /prohibido fumar/i.test(rt) ? "No" : ""; o.fiestas = /no se admiten fiestas/i.test(rt) ? "No" : "";
-  o.destacados = (P.highlights || []).map(x => _maG(x, "headline.localizedContent")).filter(Boolean).slice(0, 8);
+  const hl = (P.highlights || []).map(x => ({ t: x.type, h: _maG(x, "headline.localizedContent") || _maG(x, "headline.ugcContent.localizedString") || "", b: _maG(x, "body.localizedContent") || _maG(x, "body.ugcContent.localizedString") || "" }));
+  o.destacados = hl.map(x => x.h).filter(Boolean).slice(0, 8);
+  // Resumen de la zona que genera Airbnb («En el norte de Saltillo, cerca de…» + descripción): no sale en todas las consultas
+  const zona = hl.find(x => x.t === "LISTING_CUSTOM_OFFLINE_GENERATED" && x.h); o.ubicacionTxt = zona ? String(zona.h + (zona.b ? " — " + zona.b : "")).slice(0, 400) : "";
+  o.barrio = _maTxt(_maG((_maG(P, "location.previewLocationDetails") || [])[0], "content.content.localizedString"), 400); // «Aspectos destacados del barrio» (lo escribe el anfitrión)
   const E = _maG(P, "heroMedia.edges") || []; o.fotos = E.length; o.foto = _maG(E[0], "node.image.uri") || emb.pictureUrl || "";
   o.descripcion = _maTxt(_maG(P, "descriptions.longDescriptionHtml.localizedString") || _maG(P, "descriptions.shortDescriptionHtml.content.localizedString"), 900);
   return o;
@@ -12532,6 +12536,19 @@ async function _maBuscar(p) {
     d.ultimaBusqueda = { params: p, ids: [...vistos.keys()], at: t, nuevos, error: err };
     if (d.busqueda) { d.busqueda.running = false; d.busqueda.fin = t; d.busqueda.upd = t; d.busqueda.nuevos = nuevos; d.busqueda.error = vistos.size ? err : (err || "La búsqueda no encontró alojamientos"); } });
 }
+// ── Alojamientos propios: el catálogo (config/alojamientos.json) trae el enlace de Airbnb de cada uno (corto, tipo airbnb.com/h/checkinn-cu1, o /rooms/<id>).
+//    Los cortos se resuelven con su redirección a /rooms/<id>. Se guarda en doc.propios y se refresca cada 7 días.
+let _maPropiosCorre = false;
+async function _maPropios() {
+  const { data: cat } = await _bnReadGcs("config/alojamientos.json"), rows = (cat && cat.rows) || [], ids = {}; let conEnlace = 0, sinResolver = 0;
+  for (const r of rows) {
+    const raw = String(r.url_airbnb || "").trim(); if (!raw) continue; conEnlace++; let id = _maId(raw);
+    if (!id) { try { const u = "https://www." + raw.replace(/^https?:\/\/(www\.)?/i, ""); const x = await _fetchReal(u, { redirect: "manual", headers: { "User-Agent": _MA.UA }, signal: AbortSignal.timeout(20000) }); id = _maId(x.headers.get("location") || ""); } catch (_) {} await _maSleep(450); }
+    if (!id) { sinResolver++; continue; }
+    ids[id] = { codigo: String(r.HouseName || [r.Propiedad_short, r["# Departamento"]].filter(Boolean).join(" ") || r.id_lodgify || "").trim().slice(0, 60), lodgify: String(r.id_lodgify || "") };
+  }
+  await _maMutar(d => { d.propios = { at: new Date().toISOString(), ids, conEnlace, sinResolver, total: rows.length }; });
+}
 async function _maExtraer(id) { const ficha = _maFicha(await _maHtml(id)); await _maSleep(400); const cal = await _maCalendario(id); return Object.assign({ id, url: `https://www.airbnb.mx/rooms/${id}` }, ficha, cal, { extraido: new Date().toISOString(), error: "" }); }
 async function _maCorrer(ids) {
   const now = () => new Date().toISOString();
@@ -12540,7 +12557,7 @@ async function _maCorrer(ids) {
     await _maMutar(d => { if (d.job) { d.job.actual = id; d.job.upd = now(); } });
     let res = null, err = "";
     try { res = await _maExtraer(id); } catch (e) { err = String(e.message || e).slice(0, 200); }
-    await _maMutar(d => { const prev = d.items[id] || {}; if (res) { const hoy = _mxHoy(), hora = +new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false }) % 24, F = _maFusion(prev, res, hoy, hora), log = (prev.cambios || []).concat(F.cambios.map(x => Object.assign({ at: now() }, x))).slice(-400);
+    await _maMutar(d => { const prev = d.items[id] || {}; if (res) { if (!res.ubicacionTxt && prev.ubicacionTxt) res.ubicacionTxt = prev.ubicacionTxt; const hoy = _mxHoy(), hora = +new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false }) % 24, F = _maFusion(prev, res, hoy, hora), log = (prev.cambios || []).concat(F.cambios.map(x => Object.assign({ at: now() }, x))).slice(-400);
         d.items[id] = Object.assign({}, prev, res, { cal: F.cal, v: 2, histDesde: prev.histDesde || hoy, nuevasUlt: F.nuevas, canceladasUlt: F.canc, cambios: log, primeraExtraccion: prev.primeraExtraccion || now() }); d.job.ok++; } else { d.items[id] = Object.assign({}, prev, { id, url: prev.url || `https://www.airbnb.mx/rooms/${id}`, error: err, errorAt: now() }); d.job.fallidas++; } d.job.done++; d.job.upd = now(); });
     await _maSleep(1500 + Math.floor(Math.random() * 1200));
   }
@@ -12551,7 +12568,8 @@ app.get("/mercado/airbnb", async (req, res) => {
   try { const { data } = await _bnReadGcs(_MA.OBJ); const d = data && data.items ? data : { lista: [], items: {}, job: null };
     const job = d.job ? Object.assign({}, d.job) : null; if (job && job.running && Date.now() - Date.parse(job.upd || 0) > 180_000) { job.running = false; job.interrumpida = true; } // sin avances en 3 min = se interrumpió
     const bus = d.busqueda ? Object.assign({}, d.busqueda) : null; if (bus && bus.running && Date.now() - Date.parse(bus.upd || 0) > 180_000) { bus.running = false; bus.error = bus.error || "La búsqueda se interrumpió"; }
-    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: d.lista || [], items: d.items || {}, job, busqueda: bus, ultimaBusqueda: d.ultimaBusqueda || null, actualizado: d.actualizado || "" }); }
+    if ((!d.propios || Date.now() - Date.parse(d.propios.at || 0) > 7 * 864e5) && !_maPropiosCorre) { _maPropiosCorre = true; _maPropios().catch(e => console.warn("[mercado] propios:", e.message)).finally(() => { _maPropiosCorre = false; }); }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: d.lista || [], items: d.items || {}, job, busqueda: bus, ultimaBusqueda: d.ultimaBusqueda || null, propios: d.propios || null, actualizado: d.actualizado || "" }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/lista", async (req, res) => {
