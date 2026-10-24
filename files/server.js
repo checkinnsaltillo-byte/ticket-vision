@@ -12484,13 +12484,15 @@ async function _maCalendario(id) {
 // se cancela, el día vuelve a '1'. Cada cambio queda en `cambios` (últimos 400).
 function _maFusion(prev, nuevo, hoy) {
   const v2 = !!(prev && prev.v === 2), old = v2 && prev.cal ? prev.cal : {}, ks = Object.keys(nuevo.cal).sort(); let ultLibre = "";
+  // Airbnb solo reserva hasta 24 meses (hoy + 729 días): lo que muestre más allá no es real (a veces «no disponible», a veces «libre»). Se ignora y se limpia lo guardado antes.
+  const tope = (() => { const t = new Date(hoy + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + 729); return t.toISOString().slice(0, 10); })();
   ks.forEach(k => [...nuevo.cal[k]].forEach((c, i) => { if (c === "1") ultLibre = `${k}-${String(i + 1).padStart(2, "0")}`; }));
   const cal = {}, cambios = []; let nuevas = 0, canc = 0;
   [...new Set([...Object.keys(old), ...ks])].sort().forEach(k => {
     const nd = nuevo.cal[k] || "", od = old[k] || "", dim = Math.max(nd.length, od.length); let t = "";
     for (let i = 0; i < dim; i++) {
-      const f = `${k}-${String(i + 1).padStart(2, "0")}`, o = od[i] || "?"; let c = o;
-      if (nd[i] && f >= hoy && f <= ultLibre) { c = nd[i]; if (v2 && o !== "?" && o !== c) { if (o === "1" && c === "0") nuevas++; else if (o === "0" && c === "1") canc++; cambios.push({ dia: f, de: o, a: c }); } }
+      const f = `${k}-${String(i + 1).padStart(2, "0")}`, o = od[i] || "?"; let c = f > tope ? "?" : o;
+      if (nd[i] && f >= hoy && f <= ultLibre && f <= tope) { c = nd[i]; if (v2 && o !== "?" && o !== c) { if (o === "1" && c === "0") nuevas++; else if (o === "0" && c === "1") canc++; cambios.push({ dia: f, de: o, a: c }); } }
       t += c;
     }
     cal[k] = t;
