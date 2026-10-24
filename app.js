@@ -75770,14 +75770,14 @@ window.mkPublicar_ = async function (pubId) {
 // 📈 Investigación de mercados › Airbnb (v2142): lista de URLs → «Extraer» (servidor lee ficha + calendario de 36 meses) → tabla + calendario
 // Backend: /mercado/airbnb (GET), /lista, /quitar, /extraer. Datos en gs://…-panel/mercado/airbnb.json
 // ═══════════════════════════════════════════════════════════════════════════
-const MC = { items: {}, lista: [], job: null, act: '', q: '', meses: 12, timer: null, error: '', sync: false };
+const MC = { items: {}, lista: [], job: null, bus: null, ultima: null, act: '', q: '', meses: 12, timer: null, error: '', sync: false, metodo: (() => { try { return localStorage.getItem('mc-metodo') === 'auto' ? 'auto' : 'manual'; } catch (_) { return 'manual'; } })() };
 const MC_RH = 40; // alto de renglón (igual en tabla y calendario para que queden alineados)
 window.mcInit = async function () {
   const root = document.getElementById('mc-root'); if (!root) return; mcCss_(); root.innerHTML = '<div class="mc-card">⏳ Cargando…</div>';
-  await mcCargar_(); mcRender_(); if (MC.job && MC.job.running) mcPoll_();
+  await mcCargar_(); mcRender_(); if ((MC.job && MC.job.running) || (MC.bus && MC.bus.running)) mcPoll_();
 };
 async function mcCargar_() {
-  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.act = j.actualizado || ''; MC.error = ''; }
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; MC.act = j.actualizado || ''; MC.error = ''; }
   catch (e) { MC.error = String(e.message || e); }
 }
 function mcCss_() {
@@ -75806,12 +75806,14 @@ function mcCss_() {
   .mc-bk{position:absolute;top:7px;height:26px;border-radius:7px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:10.5px;font-weight:800;line-height:26px;padding:0 6px;overflow:hidden;white-space:nowrap;box-sizing:border-box;border:1px solid #b91c1c}
   .mc-bk.k{background:repeating-linear-gradient(135deg,#e5e7eb 0 6px,#d1d5db 6px 12px);border-color:#cbd5e1;color:#6b7280}
   .mc-lg{display:flex;gap:12px;align-items:center;font-size:11.5px;color:var(--mu);font-weight:600}.mc-lg i{display:inline-block;width:14px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
-  .mc-cl{position:sticky;left:0;z-index:2;height:${MC_RH}px}`; document.head.appendChild(st);
+  .mc-cl{position:sticky;left:0;z-index:2;height:${MC_RH}px}
+  .mc-seg{display:inline-flex;border:1.5px solid #cbd5e1;border-radius:11px;overflow:hidden;margin:2px 0 10px}.mc-seg button{all:unset;cursor:pointer;padding:8px 18px;font-size:13px;font-weight:800;color:#475569;background:#fff}.mc-seg button.on{background:#0f766e;color:#fff}
+  .mc-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.3fr) 120px;gap:12px;margin-bottom:10px}@media(max-width:760px){.mc-grid{grid-template-columns:1fr}}.mc-grid label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em}.mc-grid .mc-in{width:100%;box-sizing:border-box;font-size:13px;text-transform:none;letter-spacing:0;font-weight:600;color:#111827}.mc-fx{border:1.5px solid #e2e8f0;background:#f8fafc;border-radius:9px;padding:7px 10px;font-size:13px;font-weight:700;color:#111827;text-transform:none;letter-spacing:0}.mc-fx small{display:block;font-size:10.5px;font-weight:600;color:#64748b}`; document.head.appendChild(st);
 }
 // Noches ocupadas / libres ya pasadas, según lo último que se supo de cada día (historia propia; no el «tachado» de Airbnb)
 function mcHist_(i) { if (i.v !== 2 || !i.cal) return null; const d = new Date(), hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; let o = 0, l = 0;
   Object.keys(i.cal).forEach(k => [...i.cal[k]].forEach((c, x) => { if (`${k}-${String(x + 1).padStart(2, '0')}` < hoy) { if (c === '0') o++; else if (c === '1') l++; } })); return { o, l }; }
-function mcRows_() { const q = MC.q.trim().toLowerCase(); return MC.lista.map(l => MC.items[l.id] || { id: l.id, url: l.url, pendiente: true }).filter(it => !q || [it.titulo, it.ciudad, it.anfitrion, it.id, it.tipo].some(x => String(x || '').toLowerCase().includes(q))); }
+function mcRows_() { const q = MC.q.trim().toLowerCase(); return MC.lista.map(l => Object.assign({}, MC.items[l.id] || { id: l.id, url: l.url, pendiente: true }, { _l: l })).filter(it => !q || [it.titulo, it.ciudad, it.anfitrion, it.id, it.tipo].some(x => String(x || '').toLowerCase().includes(q))); }
 const mcN = v => v == null || v === '' ? '—' : v, mcF = iso => { if (!iso) return '—'; const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso); return isNaN(d) ? '—' : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: iso.length === 10 ? '2-digit' : undefined }); };
 const mcPct = v => v == null ? '—' : v + '%', mcSN = v => v === true ? 'Sí' : v === false ? 'No' : '—';
 // Columnas: t = encabezado · v = valor (texto, también para CSV) · h = html opcional
@@ -75826,22 +75828,60 @@ const MC_COLS = [
   { t: 'Días libres (365)', v: i => mcN(i.diasLibres365) }, { t: '1ª fecha libre', v: i => mcF(i.primeraLibre) }, { t: 'Próx. bloqueo', v: i => i.extraido ? (i.proximoBloqueo ? mcF(i.proximoBloqueo) : 'Sin bloqueos') : '—' },
   { t: 'Noches ocupadas (histórico)', v: i => { const h = mcHist_(i); return h ? h.o : '—'; } }, { t: 'Ocup. histórica', v: i => { const h = mcHist_(i); return h && h.o + h.l ? Math.round(100 * h.o / (h.o + h.l)) + '%' : '—'; } },
   { t: 'Reservas nuevas (última)', v: i => i.v === 2 ? mcN(i.nuevasUlt) : '—' }, { t: 'Canceladas (última)', v: i => i.v === 2 ? mcN(i.canceladasUlt) : '—' }, { t: 'Seguimiento desde', v: i => i.v === 2 ? mcF(i.histDesde) : '—' },
+  { t: 'Precio total (búsqueda)', v: i => i._l && i._l.precioTotal != null ? '$' + Number(i._l.precioTotal).toLocaleString('es-MX') : '—' }, { t: 'Precio por noche (búsqueda)', v: i => i._l && i._l.precioNoche != null ? '$' + Number(i._l.precioNoche).toLocaleString('es-MX', { maximumFractionDigits: 0 }) : '—' },
+  { t: 'Fechas de la búsqueda', v: i => i._l && i._l.busqueda ? `${mcF(i._l.busqueda.checkin)} → ${mcF(i._l.busqueda.checkout)}` : '—' }, { t: 'Origen en la lista', v: i => i._l ? mcN(i._l.origen) : '—' },
   { t: 'Fotos', v: i => mcN(i.fotos) }, { t: 'Latitud', v: i => mcN(i.lat) }, { t: 'Longitud', v: i => mcN(i.lng) }, { t: 'Descripción', v: i => String(i.descripcion || '').replace(/\s+/g, ' ').slice(0, 160) }, { t: 'Extraído', v: i => mcF(i.extraido) }];
+function mcFechas_() { const a = new Date(); a.setDate(a.getDate() + 1); const b = new Date(a); b.setDate(b.getDate() + 3); const f = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return { checkin: f(a), checkout: f(b) }; }
 function mcRender_() {
   const root = document.getElementById('mc-root'); if (!root) return;
   root.innerHTML = `<div class="mc-hero"><h2>📈 Investigación de mercados</h2><small>Compara tu oferta con la competencia: datos públicos de cada publicación y su calendario de disponibilidad.</small></div>
     <div class="mc-tabs"><span class="mc-tab on">🏠 Airbnb</span></div>
-    <div class="mc-card"><h3>1 · Lista de publicaciones</h3><div class="sub">Pega las URLs de Airbnb (una por línea) o carga un archivo .txt / .csv. Se suman a la lista actual; las que ya estaban se actualizan al extraer.</div>
-      <textarea class="mc-txt" id="mc-txt" placeholder="https://www.airbnb.mx/rooms/844091512343541991&#10;https://www.airbnb.mx/rooms/…"></textarea>
-      <div class="mc-row" style="margin-top:8px"><label class="mc-btn">📄 Cargar archivo<input type="file" accept=".txt,.csv,text/plain" hidden onchange="mcArchivo_(this)"></label><button type="button" class="mc-btn" onclick="mcAgregar_()">➕ Agregar a la lista</button><span class="mc-mu" id="mc-msg"></span></div></div>
+    <div id="mc-top"></div>
     <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Se ejecuta solo todos los días a las 3:00 a.m.; también puedes pulsarlo cuando quieras.</div><div id="mc-prog"></div></div>
     <div id="mc-res"></div>`;
-  mcProg_(); mcRes_();
+  mcTop_(); mcProg_(); mcRes_();
 }
+// Paso 0 (método) y Paso 1 (lista). Solo se repinta al cambiar de método; durante la búsqueda se actualizan #mc-bus y #mc-autolist.
+function mcTop_() {
+  const h = document.getElementById('mc-top'); if (!h) return; const aut = MC.metodo === 'auto', F = mcFechas_(); let dest = 'Saltillo, Coah.', hu = 1; try { dest = localStorage.getItem('mc-destino') || dest; hu = parseInt(localStorage.getItem('mc-huesp'), 10) || 1; } catch (_) {}
+  const fx = d => mcF(d);
+  h.innerHTML = `<div class="mc-card"><h3>0 · Método de extracción</h3><div class="sub">Elige cómo se arma la lista de publicaciones: pegando las URLs tú mismo o buscando en Airbnb los alojamientos disponibles de un destino.</div>
+      <div class="mc-seg"><button type="button" class="${aut ? '' : 'on'}" onclick="mcMetodo_('manual')">✋ Manual</button><button type="button" class="${aut ? 'on' : ''}" onclick="mcMetodo_('auto')">🔎 Automática</button></div>
+      ${aut ? `<div class="mc-grid"><label>Destino<input class="mc-in" id="mc-dest" value="${esc(dest)}" placeholder="Ej. Saltillo, Coah."></label>
+        <label>Fechas<div class="mc-fx">${esc(fx(F.checkin))} → ${esc(fx(F.checkout))}<small>Automático: entrada = mañana · salida = entrada + 3 días</small></div></label>
+        <label>Huéspedes<input class="mc-in" id="mc-hu" type="number" min="1" max="16" value="${hu}"></label></div>
+        <div class="mc-row"><button type="button" class="mc-btn pri" id="mc-bbtn" onclick="mcBuscar_()">🔎 Extraer lista de publicaciones</button><span id="mc-bus" class="mc-mu"></span></div>` : ''}</div>
+    <div class="mc-card"><h3>1 · Lista de publicaciones</h3>
+      ${aut ? `<div class="sub">Alojamientos disponibles que encontró la búsqueda (una URL por línea). Se suman a la lista de seguimiento y se usan en el paso 2.</div><textarea class="mc-txt" id="mc-autolist" readonly></textarea><div class="mc-mu" id="mc-autosum" style="margin-top:6px"></div>`
+        : `<div class="sub">Pega las URLs de Airbnb (una por línea) o carga un archivo .txt / .csv. Se suman a la lista actual; las que ya estaban se actualizan al extraer.</div>
+      <textarea class="mc-txt" id="mc-txt" placeholder="https://www.airbnb.mx/rooms/844091512343541991&#10;https://www.airbnb.mx/rooms/…"></textarea>
+      <div class="mc-row" style="margin-top:8px"><label class="mc-btn">📄 Cargar archivo<input type="file" accept=".txt,.csv,text/plain" hidden onchange="mcArchivo_(this)"></label><button type="button" class="mc-btn" onclick="mcAgregar_()">➕ Agregar a la lista</button><span class="mc-mu" id="mc-msg"></span></div>`}</div>`;
+  if (aut) mcBus_();
+}
+window.mcMetodo_ = function (m) { MC.metodo = m; try { localStorage.setItem('mc-metodo', m); } catch (_) {} mcTop_(); };
+function mcBus_() {
+  const st = document.getElementById('mc-bus'), b = MC.bus, u = MC.ultima, run = b && b.running; if (!st) return;
+  const btn = document.getElementById('mc-bbtn'); if (btn) { btn.disabled = !!run; btn.textContent = run ? '⏳ Buscando…' : '🔎 Extraer lista de publicaciones'; }
+  if (run) st.innerHTML = `Buscando en Airbnb… página ${b.pagina || 0} de ${b.paginas || '?'} · <b>${b.encontrados || 0}</b> alojamientos encontrados`;
+  else if (b && b.error && !(u && u.ids && u.ids.length)) st.innerHTML = `<span class="mc-err">⚠ ${esc(b.error)}</span>`;
+  else if (u && u.at) { const p = u.params || {}; st.innerHTML = `✓ <b>${(u.ids || []).length}</b> alojamientos${u.nuevos != null ? ` (${u.nuevos} nuevos en la lista)` : ''} · ${esc(p.destino || '')} · ${esc(mcF(p.checkin))} → ${esc(mcF(p.checkout))} · ${p.adultos || 1} huésped${(p.adultos || 1) === 1 ? '' : 'es'}${u.error ? ` · <span class="mc-err">⚠ ${esc(u.error)}</span>` : ''}`; }
+  else st.textContent = 'Aún no se ha hecho ninguna búsqueda.';
+  const ta = document.getElementById('mc-autolist'); if (ta) ta.value = (u && u.ids ? u.ids : []).map(id => `https://www.airbnb.mx/rooms/${id}`).join('\n');
+  const sm = document.getElementById('mc-autosum'); if (sm) sm.textContent = u && u.ids && u.ids.length ? `${u.ids.length} URLs de la última búsqueda · ${MC.lista.length} publicaciones en total en la lista de seguimiento` : '';
+}
+window.mcBuscar_ = async function () {
+  const d = (document.getElementById('mc-dest') || {}).value || '', hu = parseInt((document.getElementById('mc-hu') || {}).value, 10) || 1, F = mcFechas_();
+  if (!d.trim()) { const st = document.getElementById('mc-bus'); if (st) st.innerHTML = '<span class="mc-err">⚠ Escribe el destino.</span>'; return; }
+  try { localStorage.setItem('mc-destino', d.trim()); localStorage.setItem('mc-huesp', String(hu)); } catch (_) {}
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/buscar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destino: d.trim(), checkin: F.checkin, checkout: F.checkout, adultos: hu }) }).then(r => r.json());
+    if (!j.ok && !/en curso/i.test(j.error || '')) throw new Error(j.error || 'Error');
+    MC.bus = { running: true, pagina: 0, paginas: 0, encontrados: 0 }; mcBus_(); mcPoll_(); }
+  catch (e) { const st = document.getElementById('mc-bus'); if (st) st.innerHTML = `<span class="mc-err">⚠ ${esc(e.message || e)}</span>`; }
+};
 function mcProg_() {
   const h = document.getElementById('mc-prog'); if (!h) return; const J = MC.job, run = J && J.running, n = MC.lista.length, pct = J && J.total ? Math.round(100 * J.done / J.total) : 0;
   h.innerHTML = `<div class="mc-row"><button type="button" class="mc-btn pri" onclick="mcExtraer_()" ${run ? 'disabled' : ''}>${run ? '⏳ Extrayendo…' : '🔍 Extraer / actualizar'}</button>
-    ${run ? `<div class="mc-bar"><i style="width:${pct}%"></i></div><span class="mc-mu">${J.done} de ${J.total}${J.actual ? ' · publicación ' + esc(J.actual) : ''}</span>` : `<span class="mc-mu">${n} publicación${n === 1 ? '' : 'es'} en la lista${MC.act ? ' · última actualización ' + esc(mcF(MC.act)) + ' ' + esc(new Date(MC.act).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })) : ''}</span>`}
+    ${!run && n > 25 ? `<span class="mc-mu">Tardará unos ${Math.ceil(n * 9 / 60)} min.</span>` : ''}${run ? `<div class="mc-bar"><i style="width:${pct}%"></i></div><span class="mc-mu">${J.done} de ${J.total}${J.actual ? ' · publicación ' + esc(J.actual) : ''}</span>` : `<span class="mc-mu">${n} publicación${n === 1 ? '' : 'es'} en la lista${MC.act ? ' · última actualización ' + esc(mcF(MC.act)) + ' ' + esc(new Date(MC.act).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })) : ''}</span>`}
     ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
 }
 function mcRes_() {
@@ -75892,7 +75932,7 @@ window.mcExtraer_ = async function () {
   try { const j = await fetch(`${BACKEND}/mercado/airbnb/extraer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json()); if (!j.ok) { if (/en curso/i.test(j.error || '')) { await mcCargar_(); mcProg_(); mcPoll_(); return; } throw new Error(j.error || 'Error'); }
     MC.job = { running: true, total: j.total, done: 0, ok: 0, fallidas: 0, actual: '' }; mcProg_(); mcPoll_(); } catch (e) { MC.error = String(e.message || e); mcProg_(); }
 };
-function mcPoll_() { clearInterval(MC.timer); MC.timer = setInterval(async () => { const aun = document.getElementById('mc-prog'); if (!aun) { clearInterval(MC.timer); return; } await mcCargar_(); mcProg_(); mcRes_(); if (!(MC.job && MC.job.running)) clearInterval(MC.timer); }, 3500); }
+function mcPoll_() { clearInterval(MC.timer); MC.timer = setInterval(async () => { const aun = document.getElementById('mc-prog'); if (!aun) { clearInterval(MC.timer); return; } await mcCargar_(); mcProg_(); mcBus_(); mcRes_(); if (!(MC.job && MC.job.running) && !(MC.bus && MC.bus.running)) clearInterval(MC.timer); }, 3500); }
 window.mcCsv_ = function () {
   const rows = mcRows_(), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"', cab = ['ID', 'URL', 'Título', 'Estado extracción', ...MC_COLS.map(c => c.t)];
   const L = [cab.map(q).join(',')].concat(rows.map(i => [i.id, i.url, i.titulo || '', i.error ? 'Error: ' + i.error : i.extraido ? 'OK' : 'Pendiente', ...MC_COLS.map(c => c.v(i))].map(q).join(',')));
