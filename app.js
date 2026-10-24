@@ -76360,13 +76360,20 @@ window.mcMetodo_ = function (m) { MC.metodo = m; try { localStorage.setItem('mc-
 function mcBus_() {
   const st = document.getElementById('mc-bus'), b = MC.bus, u = MC.ultima, run = b && b.running; if (!st) return;
   const btn = document.getElementById('mc-bbtn'); if (btn) { btn.disabled = !!run; btn.textContent = run ? '⏳ Buscando…' : '🔎 Extraer lista de publicaciones'; }
-  if (run) st.innerHTML = `Buscando en Airbnb… fechas <b>${b.rango || 1} de ${b.rangos || (MC.esc ? MC.esc.length : 4)}</b> · página ${b.pagina || 0} de ${b.paginas || '?'} · <b>${b.encontrados || 0}</b> alojamientos únicos`;
+  if (run) st.innerHTML = `Buscando en Airbnb… fechas <b>${b.rango || 1} de ${b.rangos || (MC.esc ? MC.esc.length : 4)}</b> · página ${b.pagina || 0} de ${b.paginas || '?'} · <b>${b.encontrados || 0}</b> alojamientos únicos ${b.cancelar ? '· ⏳ deteniendo…' : '<button type="button" class="mc-btn" style="color:#b91c1c;border-color:#fca5a5;padding:3px 10px;margin-left:6px" onclick="mcDetener_()" title="Se detiene al terminar la página en curso y conserva lo encontrado">⛔ Detener</button>'}`;
+  else if (b && b.detenida && b.fin && u && u.at && Date.parse(b.fin) >= Date.parse(u.at) - 5000) st.innerHTML = `⛔ <b>Búsqueda detenida</b> · se conservaron los <b>${(u.ids || []).length}</b> alojamientos encontrados hasta ese momento${u.nuevos != null ? ` (${u.nuevos} nuevos en la lista)` : ''}`;
   else if (b && b.error && !(u && u.ids && u.ids.length)) st.innerHTML = `<span class="mc-err">⚠ ${esc(b.error)}</span>`;
   else if (u && u.at) { const p = u.params || {}; st.innerHTML = `✓ <b>${(u.ids || []).length}</b> alojamientos únicos${u.nuevos != null ? ` (${u.nuevos} nuevos en la lista)` : ''} · ${esc(p.destino || '')} · ${p.adultos || 1} huésped${(p.adultos || 1) === 1 ? '' : 'es'}${(u.porRango || []).length ? `<br><span title="Cada búsqueda con sus fechas; entre paréntesis lo que aportó de nuevo">Por fechas: ${u.porRango.map((r, k) => `${k + 1}) <b>${r.encontrados}</b> (+${r.nuevos})`).join(' · ')}</span>` : ''}${u.error ? `<br><span class="mc-err">⚠ ${esc(u.error)}</span>` : ''}`; }
   else st.textContent = 'Aún no se ha hecho ninguna búsqueda.';
   const ta = document.getElementById('mc-autolist'); if (ta) ta.value = (u && u.ids ? u.ids : []).map(id => `https://www.airbnb.mx/rooms/${id}`).join('\n');
   const sm = document.getElementById('mc-autosum'); if (sm) sm.textContent = u && u.ids && u.ids.length ? `${u.ids.length} URLs de la última búsqueda · ${MC.lista.length} publicaciones en total en la lista de seguimiento` : '';
 }
+window.mcDetener_ = async function () {
+  if (!confirm('¿Detener el proceso en curso? Se conserva todo lo que ya se extrajo.')) return;
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/detener`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error');
+    if (MC.job && j.extraccion) MC.job.cancelar = true; if (MC.bus && j.busqueda) MC.bus.cancelar = true; mcProg_(); mcBus_(); if (typeof mcPoll_ === 'function') mcPoll_(); }
+  catch (e) { alert('No se pudo detener: ' + (e.message || e)); }
+};
 window.mcBuscar_ = async function () {
   const d = (document.getElementById('mc-dest') || {}).value || '', hu = parseInt((document.getElementById('mc-hu') || {}).value, 10) || 1;
   if (!d.trim()) { const st = document.getElementById('mc-bus'); if (st) st.innerHTML = '<span class="mc-err">⚠ Escribe el destino.</span>'; return; }
@@ -76379,8 +76386,8 @@ window.mcBuscar_ = async function () {
 function mcProg_() {
   const h = document.getElementById('mc-prog'); if (!h) return; const J = MC.job, run = J && J.running, n = MC.lista.length, pct = J && J.total ? Math.round(100 * J.done / J.total) : 0;
   h.innerHTML = `<div class="mc-row"><button type="button" class="mc-btn pri" onclick="mcExtraer_()" ${run ? 'disabled' : ''}>${run ? '⏳ Extrayendo…' : '🔍 Extraer / actualizar'}</button>
-    ${!run && n > 25 ? `<span class="mc-mu">Tardará unos ${Math.ceil(n * 9 / 60)} min.</span>` : ''}${run ? `<div class="mc-bar"><i style="width:${pct}%"></i></div><span class="mc-mu">${J.done} de ${J.total}${J.actual ? ' · publicación ' + esc(J.actual) : ''}</span>` : `<span class="mc-mu">${n} publicación${n === 1 ? '' : 'es'} en la lista${MC.act ? ' · última actualización ' + esc(mcF(MC.act)) + ' ' + esc(new Date(MC.act).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })) : ''}</span>`}
-    ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
+    ${run ? (J.cancelar ? '<button type="button" class="mc-btn" disabled>⏳ Deteniendo…</button>' : '<button type="button" class="mc-btn" style="color:#b91c1c;border-color:#fca5a5" onclick="mcDetener_()" title="Termina la publicación en curso y se detiene; lo ya extraído se conserva">⛔ Detener</button>') : ''}${!run && n > 25 ? `<span class="mc-mu">Tardará unos ${Math.ceil(n * 9 / 60)} min.</span>` : ''}${run ? `<div class="mc-bar"><i style="width:${pct}%"></i></div><span class="mc-mu">${J.done} de ${J.total}${J.actual ? ' · publicación ' + esc(J.actual) : ''}</span>` : `<span class="mc-mu">${n} publicación${n === 1 ? '' : 'es'} en la lista${MC.act ? ' · última actualización ' + esc(mcF(MC.act)) + ' ' + esc(new Date(MC.act).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })) : ''}</span>`}
+    ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}${J.detenida ? ' · ⛔ <b>detenida por el usuario</b>' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
 }
 // Tabla única: datos clave → calendario de disponibilidad → resto de los datos. Un solo desplazamiento; encabezado fijo; clic en un encabezado ordena.
 const MC_PRE = ['Propios', 'Tipo', 'Ciudad', 'Ubicación (texto)', 'Anfitrión', 'Habit.', 'Camas', 'Baños', 'Cocina', '★ Calif.', 'Evaluaciones', 'Ocup. estimada por reservas (365 d)', 'Noches ocupadas en la ventana', 'Estancia mín.', 'Precio por noche (búsqueda)', 'Precio por noche / # habitaciones'];

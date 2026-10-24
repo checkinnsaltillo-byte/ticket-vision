@@ -12531,26 +12531,27 @@ const _maRangos = (hoy, esc) => (Array.isArray(esc) && esc.length ? esc : _MA_ES
 async function _maBuscar(p) {
   const now = () => new Date().toISOString(), RG = p.rangos && p.rangos.length ? p.rangos : [{ checkin: p.checkin, checkout: p.checkout }];
   await _maMutar(d => { d.busqueda = { running: true, params: p, rango: 0, rangos: RG.length, pagina: 0, paginas: 0, encontrados: 0, inicio: now(), upd: now(), error: "" }; });
-  const vistos = new Map(), porRango = []; let err = "";
-  for (let r = 0; r < RG.length; r++) {
+  const vistos = new Map(), porRango = []; let err = "", parada = false;
+  for (let r = 0; r < RG.length && !parada; r++) {
     const pr = { destino: p.destino, adultos: p.adultos, checkin: RG[r].checkin, checkout: RG[r].checkout }, delRango = new Set(), antes = vistos.size; let cursors = [null];
     try {
       for (let i = 0; i < cursors.length && i < 15; i++) {
         const R = await _maPagina(pr, cursors[i]); if (i === 0) cursors = (_maG(R, "paginationInfo.pageCursors") || [null]).slice(0, 15);
         (R.searchResults || []).forEach(x => { let id = ""; try { id = Buffer.from(String(_maG(x, "demandStayListing.id") || ""), "base64").toString().split(":")[1] || ""; } catch (_) {} if (!id) return; delRango.add(id);
           if (!vistos.has(id)) { const pr2 = _maPrecio(x); vistos.set(id, { tipo: String(x.title || ""), nombre: String(x.subtitle || ""), total: pr2.total, noche: pr2.noche, busq: { destino: p.destino, checkin: pr.checkin, checkout: pr.checkout, adultos: p.adultos }, rangos: [r + 1] }); } else if (!vistos.get(id).rangos.includes(r + 1)) vistos.get(id).rangos.push(r + 1); });
-        await _maMutar(d => { if (d.busqueda) { d.busqueda.rango = r + 1; d.busqueda.pagina = i + 1; d.busqueda.paginas = cursors.length; d.busqueda.encontrados = vistos.size; d.busqueda.upd = now(); } });
+        if (await _maMutar(d => { if (d.busqueda) { d.busqueda.rango = r + 1; d.busqueda.pagina = i + 1; d.busqueda.paginas = cursors.length; d.busqueda.encontrados = vistos.size; d.busqueda.upd = now(); return !!d.busqueda.cancelar; } return false; })) { parada = true; break; }
         if (i + 1 < cursors.length) await _maSleep(1500 + Math.floor(Math.random() * 1200));
       }
     } catch (e) { err += `${err ? " · " : ""}Fechas ${r + 1}: ${String(e.message || e).slice(0, 120)}`; }
     porRango.push({ checkin: pr.checkin, checkout: pr.checkout, encontrados: delRango.size, nuevos: vistos.size - antes });
-    if (r + 1 < RG.length) await _maSleep(2000);
+    if (r + 1 < RG.length && !parada) await _maSleep(2000);
   }
   await _maMutar(d => { const t = now(); d.lista = d.lista || []; let nuevos = 0;
     vistos.forEach((v, id) => { let l = d.lista.find(x => x.id === id); if (!l) { l = { id, url: `https://www.airbnb.mx/rooms/${id}`, agregado: t, origen: "automática" }; d.lista.push(l); nuevos++; }
       Object.assign(l, { precioTotal: v.total, precioNoche: v.noche, tipoBusq: v.tipo, busqueda: v.busq, apareceEn: v.rangos, busquedaAt: t }); });
     d.ultimaBusqueda = { params: { destino: p.destino, adultos: p.adultos, rangos: RG }, ids: [...vistos.keys()], at: t, nuevos, error: err, porRango };
-    if (d.busqueda) { d.busqueda.running = false; d.busqueda.fin = t; d.busqueda.upd = t; d.busqueda.nuevos = nuevos; d.busqueda.error = vistos.size ? err : (err || "La búsqueda no encontró alojamientos"); } });
+    if (d.busqueda) { d.busqueda.running = false; d.busqueda.fin = t; d.busqueda.upd = t; d.busqueda.nuevos = nuevos; d.busqueda.error = vistos.size ? err : (err || (parada ? "" : "La búsqueda no encontró alojamientos")); if (parada) d.busqueda.detenida = true; delete d.busqueda.cancelar; } });
+  return parada;
 }
 // ── Alojamientos propios: el catálogo (config/alojamientos.json) trae el enlace de Airbnb de cada uno (corto, tipo airbnb.com/h/checkinn-cu1, o /rooms/<id>).
 //    Los cortos se resuelven con su redirección a /rooms/<id>. Se guarda en doc.propios y se refresca cada 7 días.
@@ -12569,15 +12570,16 @@ async function _maExtraer(id) { const ficha = _maFicha(await _maHtml(id)); await
 async function _maCorrer(ids) {
   const now = () => new Date().toISOString();
   await _maMutar(d => { d.job = { running: true, total: ids.length, done: 0, ok: 0, fallidas: 0, actual: "", inicio: now(), upd: now() }; });
+  let parada = false;
   for (const id of ids) {
-    await _maMutar(d => { if (d.job) { d.job.actual = id; d.job.upd = now(); } });
+    if (await _maMutar(d => { if (d.job && d.job.cancelar) return true; if (d.job) { d.job.actual = id; d.job.upd = now(); } return false; })) { parada = true; break; } // ⛔ Detener: termina la publicación en curso y se detiene
     let res = null, err = "";
     try { res = await _maExtraer(id); } catch (e) { err = String(e.message || e).slice(0, 200); }
     await _maMutar(d => { const prev = d.items[id] || {}; if (res) { if (!res.ubicacionTxt && prev.ubicacionTxt) res.ubicacionTxt = prev.ubicacionTxt; const hoy = _mxHoy(), hora = +new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false }) % 24, F = _maFusion(prev, res, hoy, hora), log = (prev.cambios || []).concat(F.cambios.map(x => Object.assign({ at: now() }, x))).slice(-400);
         d.items[id] = Object.assign({}, prev, res, { cal: F.cal, v: 2, histDesde: prev.histDesde || hoy, nuevasUlt: F.nuevas, canceladasUlt: F.canc, cambios: log, primeraExtraccion: prev.primeraExtraccion || now() }); d.job.ok++; } else { d.items[id] = Object.assign({}, prev, { id, url: prev.url || `https://www.airbnb.mx/rooms/${id}`, error: err, errorAt: now() }); d.job.fallidas++; } d.job.done++; d.job.upd = now(); });
     await _maSleep(1500 + Math.floor(Math.random() * 1200));
   }
-  await _maMutar(d => { if (d.job) { d.job.running = false; d.job.actual = ""; d.job.fin = now(); d.job.upd = now(); } });
+  await _maMutar(d => { if (d.job) { d.job.running = false; d.job.actual = ""; d.job.fin = now(); d.job.upd = now(); if (parada) d.job.detenida = true; delete d.job.cancelar; } });
 }
 app.get("/mercado/airbnb", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
@@ -12613,6 +12615,15 @@ app.post("/mercado/airbnb/horas", async (req, res) => {
     await _maMutar(d => { d.horas = L; }); res.json({ ok: true, horas: L }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ⛔ Detener la extracción y/o la búsqueda en curso: marca `cancelar`; el proceso lo ve antes de la siguiente publicación/página, conserva lo ya obtenido y termina.
+app.post("/mercado/airbnb/detener", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const out = await _maMutar(d => { const r = { extraccion: false, busqueda: false }, rancio = x => Date.now() - Date.parse(x.upd || 0) > 180_000;
+      [["job", "extraccion"], ["busqueda", "busqueda"]].forEach(([k, n]) => { const x = d[k]; if (!x || !x.running) return; if (rancio(x)) { x.running = false; x.interrumpida = true; return; } x.cancelar = true; r[n] = true; });
+      return r; });
+    res.json(Object.assign({ ok: true }, out)); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/mercado/airbnb/buscar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const b = req.body || {}, destino = String(b.destino || "").replace(/\s+/g, " ").trim().slice(0, 80), adultos = Math.max(1, Math.min(16, parseInt(b.adultos, 10) || 1));
@@ -12630,7 +12641,7 @@ app.post("/mercado/airbnb/quitar", async (req, res) => {
 // (entrada = mañana, salida = +3 días) para sumar publicaciones nuevas a la lista; 2) extrae ficha y calendario de TODA la lista.
 async function _maDiaria() {
   const { data } = await _bnReadGcs(_MA.OBJ), u = data && data.ultimaBusqueda, p = u && u.params;
-  if (p && p.destino) await _maBuscar({ destino: p.destino, adultos: p.adultos || 1, rangos: _maRangos(_mxHoy(), data && data.escenarios) }).catch(e => console.warn("[mercado] búsqueda diaria:", e.message));
+  if (p && p.destino && await _maBuscar({ destino: p.destino, adultos: p.adultos || 1, rangos: _maRangos(_mxHoy(), data && data.escenarios) }).catch(e => { console.warn("[mercado] búsqueda diaria:", e.message); return false; })) return; // la detuvieron: no sigue con la extracción
   const { data: d2 } = await _bnReadGcs(_MA.OBJ), ids = ((d2 && d2.lista) || []).map(x => x.id); if (ids.length) await _maCorrer(ids);
 }
 // Extracción programada (Cloud Scheduler, todos los días 3:00 a.m. America/Monterrey): búsqueda (si aplica) + extracción de toda la lista.
