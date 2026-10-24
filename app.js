@@ -74996,13 +74996,31 @@ function tdUrgDe_(it, rr) {
 // baja, fuera de rango · Leve: solo nota). Crítico: Grave→Alta, Media→Media, Leve→Baja. Normal: Grave→Media, Media→Baja, Leve→Seguimiento.
 const TD_NIV = { alta: { r: 4, t: 'Alta', c: '#dc2626', e: '🔴' }, media: { r: 3, t: 'Media', c: '#f97316', e: '🟠' }, baja: { r: 2, t: 'Baja', c: '#eab308', e: '🟡' }, seg: { r: 1, t: 'Seguimiento', c: '#94a3b8', e: '⚪' } };
 function tdNivelDe_(crit, u) { const g = u.n >= 3 ? 'grave' : u.n === 2 ? 'media' : 'leve'; const k = crit ? { grave: 'alta', media: 'media', leve: 'baja' }[g] : { grave: 'media', media: 'baja', leve: 'seg' }[g]; return Object.assign({ k }, TD_NIV[k]); }
-function tdSemHtml_(niv) { const on = niv.k; return `<span class="tb-sem" title="Urgencia ${niv.t}">${['alta', 'media', 'baja'].map(k => `<i class="${on === k ? 'on' : ''}" style="--c:${TD_NIV[k].c}"></i>`).join('')}<b style="color:${niv.c}">${niv.t}</b></span>`; }
+function tdSemCss_() { if (document.getElementById('td-sem-css')) return; const st = document.createElement('style'); st.id = 'td-sem-css'; st.textContent = `.tb-sem.ed{cursor:pointer;padding:3px 6px;margin:-3px -6px;border-radius:8px;border:1px dashed transparent}.tb-sem.ed:hover{background:#f1f5f9;border-color:#cbd5e1}.tb-sem em{font-style:normal;font-size:11px;margin-left:3px;color:#6366f1}
+  .td-um{position:fixed;z-index:30000;background:#fff;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 14px 40px rgba(15,23,42,.28);padding:6px;min-width:230px;font-family:Inter,system-ui,sans-serif}.td-um h6{margin:4px 8px 6px;font-size:10.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+  .td-um button{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;width:calc(100% - 16px);padding:7px 8px;border-radius:8px;font-size:13px;font-weight:700;color:#0f172a}.td-um button:hover{background:#f1f5f9}.td-um button i{width:12px;height:12px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.12)}.td-um button.on{background:#eef2ff}.td-um button .ck{margin-left:auto;color:#4338ca}.td-um hr{border:0;border-top:1px solid #e5e7eb;margin:4px 0}.td-um .au{font-weight:600;color:#475569}`; document.head.appendChild(st); }
+// Semáforo de urgencia. Con `i` (índice en TAR_STATE._urgItems) es editable: clic → menú para cambiarla a mano o volver a la automática.
+function tdSemHtml_(niv, i) { tdSemCss_(); const on = niv.k, ed = i != null; return `<span class="tb-sem ${ed ? 'ed' : ''}" ${ed ? `onclick="event.stopPropagation();tdUrgMenu_(this,${i})"` : ''} title="${ed ? 'Clic para cambiar la urgencia' : 'Urgencia ' + niv.t}${niv.manual ? ' · cambiada manualmente (automática: ' + niv.auto.t + ')' : ''}">${['alta', 'media', 'baja'].map(k => `<i class="${on === k ? 'on' : ''}" style="--c:${TD_NIV[k].c}"></i>`).join('')}<b style="color:${niv.c}">${niv.t}</b>${niv.manual ? '<em title="Cambiada manualmente">✎</em>' : ''}</span>`; }
+window.tdUrgMenu_ = function (el, i) {
+  const x = (TAR_STATE._urgItems || [])[i]; const old = document.getElementById('td-um'); if (old) old.remove(); if (!x) return; tdSemCss_(); const m = document.createElement('div'); m.id = 'td-um'; m.className = 'td-um';
+  m.innerHTML = `<h6>Urgencia de este campo</h6>${['alta', 'media', 'baja', 'seg'].map(k => `<button type="button" class="${x.niv.k === k ? 'on' : ''}" onclick="tdUrgSet_(${i},'${k}')"><i style="background:${TD_NIV[k].c}"></i>${TD_NIV[k].t}${x.niv.k === k ? '<span class="ck">✓</span>' : ''}</button>`).join('')}
+    ${x.niv.manual ? `<hr><button type="button" onclick="tdUrgSet_(${i},null)"><span class="au">↺ Volver a automática (${esc(x.auto.t)})</span></button>` : `<hr><div class="au" style="padding:4px 8px;font-size:11.5px">Automática: <b>${esc(x.auto.t)}</b> (relevancia × respuesta)</div>`}`;
+  document.body.appendChild(m); const r = el.getBoundingClientRect(); m.style.left = Math.max(8, Math.min(innerWidth - m.offsetWidth - 8, r.left)) + 'px'; m.style.top = (r.bottom + m.offsetHeight + 12 > innerHeight ? Math.max(8, r.top - m.offsetHeight - 4) : r.bottom + 4) + 'px';
+  setTimeout(() => { const cerrar = ev => { if (!m.contains(ev.target)) { m.remove(); document.removeEventListener('mousedown', cerrar, true); } }; document.addEventListener('mousedown', cerrar, true); }, 0);
+};
+window.tdUrgSet_ = async function (i, k) {
+  const x = (TAR_STATE._urgItems || [])[i], m = document.getElementById('td-um'); if (m) m.remove(); if (!x) return; const llave = x.key + '|' + x.it.id, man = TAR_STATE._urgMan = TAR_STATE._urgMan || {}, prev = man[llave];
+  if (k) man[llave] = { n: k, by: (typeof currentUser !== 'undefined' && currentUser) || '', at: new Date().toISOString() }; else delete man[llave]; tdRender_(); // se ve al instante
+  try { const j = await fetch(`${BACKEND}/aseo/urgencia`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: x.key, item: x.it.id, nivel: k || '', user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); }
+  catch (e) { if (prev) man[llave] = prev; else delete man[llave]; tdRender_(); alert('No se pudo guardar la urgencia: ' + (e.message || e)); }
+};
 function tdRelChip_(crit) { return crit ? '<span class="pl-crit">🚨 Crítico</span>' : '<span class="tb-rel">No crítico</span>'; }
 function tdRespTxt_(it, rr) { const v = rr.v; if (it.tipo === 'condicion') return v === 'na' ? 'N/A' : (PL_COND.find(x => x[0] === v) || [])[1] || '—'; if (it.tipo === 'sino') return v === 'si' ? 'Sí' : v === 'no' ? 'No' : '—';
   if (it.tipo === 'calif') return v ? `${v} de ${Number(it.escala) || 5}` : '—'; if (it.tipo === 'lista') return (it.sub || []).length ? `${Object.values(v || {}).filter(Boolean).length}/${it.sub.length}` : v === true ? 'Hecho' : '—'; return v == null || v === '' ? '—' : String(v).slice(0, 60); }
 // Hallazgos de todos los levantamientos del periodo: {items, faltan (llaves aún no cargadas), hids (por alojamiento: doc elegido)}.
 function tdUrgDatos_(O) {
   const U = ASEO.pl.urg = ASEO.pl.urg || { docs: {} };
+  if (!TAR_STATE._urgManOk && !TAR_STATE._urgManPed) { TAR_STATE._urgManPed = 1; fetch(`${BACKEND}/aseo/urgencias`, { cache: 'no-store' }).then(r => r.json()).then(j => { if (j.ok) TAR_STATE._urgMan = j.urg || {}; TAR_STATE._urgManOk = 1; TAR_STATE._urgManPed = 0; tdRender_(); }).catch(() => { TAR_STATE._urgManPed = 0; TAR_STATE._urgManOk = 1; }); }
   if (!ASEO.pl.cargado) { plCargar_().then(() => tdRender_()); return null; }
   if (!ASEO.tareas && !U.cargandoT) { U.cargandoT = true; aseoRefresh_().catch(() => {}).then(() => { U.cargandoT = false; tdRender_(); }); } // tareas manuales (para marcar las ya ligadas)
   const items = [], faltan = [], hids = {};
@@ -75022,7 +75040,7 @@ function tdUrgDatos_(O) {
         if (doc && doc.resp && Object.keys(doc.resp).length && (!mejor || String(doc.at || '') > String(mejor.at || ''))) { mejor = doc; mejorKey = key; } }
       if (!mejor) { hids[r.ID + '|' + hid] = null; return; } const key = mejorKey, resp = mejor.resp, per = (key.match(/:(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/) || [])[1] || P;
       hids[r.ID + '|' + hid] = { key, per, at: mejor.at || '', n: Object.keys(resp).length };
-      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (it.caract) return; if (u) { const crit = plEsCrit_(s, it); items.push({ r, hid, P, per, key, p, s, it, rr, u, crit, niv: tdNivelDe_(crit, u), at: mejor.at || '' }); } })); }); });
+      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (it.caract) return; if (u) { const crit = plEsCrit_(s, it), auto = tdNivelDe_(crit, u), man = (TAR_STATE._urgMan || {})[key + '|' + it.id], niv = man && TD_NIV[man.n] ? Object.assign({ k: man.n }, TD_NIV[man.n], { manual: true, auto, by: man.by, at: man.at }) : auto; items.push({ r, hid, P, per, key, p, s, it, rr, u, crit, auto, niv, at: mejor.at || '' }); } })); }); });
   if (faltan.length && !U.pend) { U.pend = fetch(`${BACKEND}/aseo/plantilla-resp/lote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ks: faltan }) }).then(r => r.json())
     .then(j => { (j.items || []).forEach(x => { U.docs[x.k] = x.doc || {}; }); faltan.forEach(k => { if (U.docs[k] === undefined) U.docs[k] = {}; }); U.pend = null; tdRender_(); }).catch(() => { U.pend = null; }); }
   items.sort((a, b) => b.niv.r - a.niv.r || (b.crit - a.crit) || b.u.n - a.u.n || String(b.at).localeCompare(String(a.at))); // urgencia alta arriba; a igual nivel, críticos primero
@@ -75037,7 +75055,7 @@ function tdTablaUrg_(O, vac) {
     return { onclick: x.per && x.per !== tdIGPerDe_(x.r, x.hid, x.P) ? `tdAbrirHijo_('${esc(x.r.ID)}','${esc(x.hid)}','${esc(x.per)}')` : `tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')`, cells: [
       `<span class="tb-a"><b class="code" style="font-size:11px">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><small style="color:#0f1729;font-weight:600">${esc(String(a.nombre || x.hid).replace(/^Calle\s+/i, ''))}</small></span>`,
       ckTx_(x.at ? aseoDiaTxt_(String(x.at).slice(0, 10)) : '—'),
-      tdSemHtml_(x.niv),
+      tdSemHtml_(x.niv, i),
       `<span class="tb-a">${tdRelChip_(x.crit)}<small style="color:#0f1729;font-weight:600;white-space:normal">${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</small></span>`,
       `<span class="tb-a"><b style="font-size:12px;color:${x.u.c}">${esc(x.u.t)}</b><small>${esc(tdRespTxt_(x.it, x.rr))}</small></span>`,
       `<span class="tb-mu" style="white-space:normal;font-size:11.5px">${esc(String(x.rr.nota || '').slice(0, 140))}</span>`,
@@ -75121,7 +75139,7 @@ function tdAlDetalle_(r, w, L, abrir) {
   const tareaDe = x => Object.values(ASEO.tareas || {}).find(t => t && t.lv && t.lv.key === x.key && t.lv.item === x.it.id);
   const head = `<div class="rk-dh"><span class="rk-mu" style="flex:0 0 auto">${L.length} hallazgo${L.length === 1 ? '' : 's'}</span>${tdCnt_(w.c, w.hid)}<span style="flex:1"></span><button type="button" class="tb-ed" onclick="event.stopPropagation();${abrir}">📋 Abrir levantamiento</button></div>`;
   const filas = L.map(x => { const i = TAR_STATE._urgItems.indexOf(x), fotos = (x.rr.fotos || []).filter(f => !f.subiendo), T = tareaDe(x);
-    return `<tr><td>${tdSemHtml_(x.niv)}</td>
+    return `<tr><td>${tdSemHtml_(x.niv, i)}</td>
       <td>${tdRelChip_(x.crit)}<small>${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</small></td>
       <td><b style="color:${x.u.c}">${esc(x.u.t)}</b><small>${esc(tdRespTxt_(x.it, x.rr))}</small></td><td class="nt">${esc(String(x.rr.nota || '').slice(0, 160))}</td>
       <td>${fotos.length ? `<button type="button" class="tb-foto" onclick="event.stopPropagation();tdUrgFotos_(${i})" title="${fotos.length} foto${fotos.length === 1 ? '' : 's'}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${fotos.length > 1 ? `<i>${fotos.length}</i>` : ''}</button>` : '<span class="rk-mu">—</span>'}</td>
