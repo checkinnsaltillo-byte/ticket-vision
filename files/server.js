@@ -10064,7 +10064,7 @@ app.get("/aseo/live", async (req, res) => {
     if (!_aseo.plidx || Date.now() - (_aseo.plidxTs || 0) > 5_000) { _aseo.plidx = await _rhdGetJson(_ASEO_PLIDX_OBJ).catch(() => _aseo.plidx || {}); _aseo.plidxTs = Date.now(); }
     // Tareas con enlace firmado de cada adjunto.
     const tareas = {};
-    Object.values(_aseo.tareas || {}).forEach(t => { tareas[t.id] = Object.assign({}, t, { adjuntos: (t.adjuntos || []).map(a => Object.assign({}, a, { url: `/aseo/adjunto?k=${encodeURIComponent(a.k)}&s=${_aseoAdjSig(a.k)}` })) }); });
+    Object.values(_aseo.tareas || {}).forEach(t => { tareas[t.id] = Object.assign({}, t, { adjuntos: (t.adjuntos || []).map(a => Object.assign({}, a, { url: `/aseo/adjunto?k=${encodeURIComponent(a.k)}&s=${_aseoAdjSig(a.k)}` })), refs: (t.refs || []).map(a => Object.assign({}, a, { url: `/aseo/adjunto?k=${encodeURIComponent(a.k)}&s=${_aseoAdjSig(a.k)}`, ...(a.tk ? { turl: `/aseo/adjunto?k=${encodeURIComponent(a.tk)}&s=${_aseoAdjSig(a.tk)}` } : {}) })) }); });
     res.json({ plidx: _aseo.plidx || {}, extra: _aseo.extra || {}, prio: _aseo.prio || {}, tareas, nosale: _aseo.nosale || {}, reprog: _aseo.reprog || {}, autonotif: _aseo.autoCfg || {}, tardia: _aseo.tardia || {}, ok: true, ts: _aseo.okTs, now: Date.now(), err: _aseo.err, rows: _aseo.rows || [], cambios: _aseo.cambios || {}, asig: _aseo.asig || {}, estados: _aseo.estados || {}, guias,
       temprana: _aseo.temprana || {}, sms: _aseo.sms || {} });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -10901,6 +10901,7 @@ app.post("/aseo/tarea", async (req, res) => {
         asignados: (Array.isArray(b.asignados) ? b.asignados : []).map(n => txt(n, 80)).filter(Boolean).slice(0, 20),
         etiquetas: (Array.isArray(b.etiquetas) ? b.etiquetas : []).map(n => txt(n, 40)).filter(Boolean).slice(0, 20),
         adjuntos: (Array.isArray(b.adjuntos) ? b.adjuntos : []).filter(a => a && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.k)).slice(0, 20).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80), tam: Number(a.tam) || 0 })),
+        refs: (Array.isArray(b.refs) ? b.refs : []).filter(a => a && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.k)).slice(0, 40).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80) || "image/jpeg", ...(a.tk && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.tk) ? { tk: a.tk } : {}) })), // 2026-10-23: fotos de referencia (p. ej. las del hallazgo de un levantamiento)
         reserva: String(b.reserva || "").replace(/\D/g, "").slice(0, 20),
         plantilla: String(b.plantilla || "").replace(/[^\w-]/g, "").slice(0, 40), // Plantilla (formulario) asignada a la tarea
         lv: b.lv && typeof b.lv === "object" && b.lv.key ? { id: txt(b.lv.id, 60), hid: String(b.lv.hid || "").replace(/\D/g, "").slice(0, 20), item: txt(b.lv.item, 40), key: txt(b.lv.key, 80), campo: txt(b.lv.campo, 160) } : (prev && prev.lv) || undefined, // hallazgo de levantamiento que la originó
