@@ -75859,7 +75859,7 @@ function mcCss_() {
   if (document.getElementById('mc-css')) return; const st = document.createElement('style'); st.id = 'mc-css'; st.textContent = `
   #module-mercado{--ln:#e5e7eb;--tx:#111827;--mu:#6b7280;color:var(--tx);padding:18px 22px 70px!important;font-family:Inter,system-ui,sans-serif}
   .mc-hero{background:linear-gradient(135deg,#0f766e,#0e7490);color:#fff;border-radius:16px;padding:14px 18px;margin-bottom:12px}.mc-hero h2{margin:0;font-size:20px}.mc-hero small{opacity:.9}
-  .mc-tabs{display:flex;gap:6px;margin:0 0 12px}.mc-tab{padding:7px 14px;border-radius:999px;border:1.5px solid var(--ln);background:#fff;font-size:13px;font-weight:700;color:#334155;cursor:default}.mc-tab.on{background:#111827;color:#fff;border-color:#111827}
+  .mc-tabs{display:flex;gap:6px;margin:0 0 12px}.mc-tab{padding:7px 14px;border-radius:999px;border:1.5px solid var(--ln);background:#fff;font-size:13px;font-weight:700;color:#334155;cursor:pointer;font-family:inherit}.mc-dash .mc-mbox{width:auto;max-height:none;box-shadow:none;border:1px solid var(--ln);overflow:visible}.mc-dash .mc-mh{position:static}.mc-tab.on{background:#111827;color:#fff;border-color:#111827}
   .mc-card{background:#fff;border:1px solid var(--ln);border-radius:14px;padding:14px 16px;margin-bottom:12px}.mc-card h3{margin:0 0 4px;font-size:14px}.mc-card .sub{font-size:12px;color:var(--mu);margin-bottom:8px}
   .mc-txt{width:100%;box-sizing:border-box;min-height:96px;border:1.5px solid #cbd5e1;border-radius:10px;padding:9px 11px;font:12px ui-monospace,Menlo,monospace;resize:vertical}
   .mc-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.mc-btn{all:unset;cursor:pointer;padding:7px 14px;border-radius:9px;border:1.5px solid #cbd5e1;background:#fff;font-size:12.5px;font-weight:700;color:#334155;white-space:nowrap}.mc-btn:hover{background:#f8fafc}
@@ -76034,13 +76034,21 @@ function mcsMca(vars, sup) { const n = vars[0].v.length, Q = vars.length, cats =
 // ═══ Ventana «Ocupación agregada»: pestañas [📊 Ocupación agregada | 🧩 Segmentación] ═══
 const MCMES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const MCQC = ['#38bdf8', '#34d399', '#fbbf24', '#ef4444']; // cuartiles de precio: bajo → alto
-window.mcGraf_ = function (tab) {
-  if (tab) MC.gtab = tab; MC.gtab = MC.gtab || 'ocu'; const old = document.getElementById('mc-gr'); if (old) old.remove(); const m = document.createElement('div'); m.id = 'mc-gr'; m.className = 'mc-modal';
-  m.innerHTML = `<div class="mc-mbox ${MC.gtab === 'seg' ? 'wide' : ''}"><div class="mc-mh"><div class="mc-seg sm" style="flex:none"><button type="button" class="${MC.gtab === 'ocu' ? 'on' : ''}" onclick="mcGraf_('ocu')">📊 Ocupación agregada</button><button type="button" class="${MC.gtab === 'seg' ? 'on' : ''}" onclick="mcGraf_('seg')">🧩 Segmentación</button></div>
-      <span class="mc-mu" id="mc-gr-sub"></span><span style="flex:1"></span><div id="mc-gctl" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div><button type="button" class="mc-x" style="font-size:18px" onclick="document.getElementById('mc-gr').remove()">✕</button></div><div id="mc-gbody"></div></div>`;
-  m.addEventListener('click', e => { if (e.target === m) m.remove(); }); document.body.appendChild(m); mcGrafPintar_();
-};
-function mcGrafPintar_() { if (!document.getElementById('mc-gbody')) return; if (MC.gtab === 'seg') mcSegPintar_(); else mcOcuPintar_(); }
+// v2176: el antiguo popup «Ocupación agregada / Segmentación» ahora es la sección «Dashboard» (A Ocupación agregada · B Segmentación · C Anfitriones).
+window.mcGraf_ = function (tab) { if (tab) MC.gtab = tab; MC.gtab = MC.gtab || 'ocu'; MC.sec = 'dash'; try { localStorage.setItem('mc-sec', 'dash'); } catch (_) {} mcSecPintar_(); };
+window.mcSec_ = function (s) { MC.sec = s; try { localStorage.setItem('mc-sec', s); } catch (_) {} mcSecPintar_(); };
+function mcSecPintar_() {
+  const dash = MC.sec === 'dash', e = document.getElementById('mc-sec-ext'), d = document.getElementById('mc-sec-dash'); if (!e || !d) return;
+  e.style.display = dash ? 'none' : ''; d.style.display = dash ? '' : 'none'; document.querySelectorAll('#mc-root .mc-tab').forEach(t => t.classList.toggle('on', t.dataset.s === (dash ? 'dash' : 'ext')));
+  if (dash) mcDashPintar_(); else { mcProg_(); mcRes_(); }
+}
+function mcDashPintar_() {
+  const h = document.getElementById('mc-sec-dash'); if (!h) return; MC.gtab = MC.gtab || 'ocu';
+  h.innerHTML = `<div class="mc-dash" id="mc-gr"><div class="mc-mbox wide"><div class="mc-mh"><div class="mc-seg sm" style="flex:none">${[['ocu', '📊 A) Ocupación agregada'], ['seg', '🧩 B) Segmentación'], ['host', '👥 C) Anfitriones']].map(([k, t]) => `<button type="button" class="${MC.gtab === k ? 'on' : ''}" onclick="mcGraf_('${k}')">${t}</button>`).join('')}</div>
+    <span class="mc-mu" id="mc-gr-sub"></span><span style="flex:1"></span><div id="mc-gctl" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div></div><div id="mc-gbody"></div></div></div>`;
+  mcGrafPintar_();
+}
+function mcGrafPintar_() { if (!document.getElementById('mc-gbody')) return; if (MC.gtab === 'seg') mcSegPintar_(); else if (MC.gtab === 'host') mcHostPintar_(); else mcOcuPintar_(); }
 function mcNice_(v) { if (v <= 0) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; }
 const mcFd_ = iso => { const d = new Date(iso + 'T12:00:00'); return `${d.getDate()} ${MCMES[d.getMonth()]} ${d.getFullYear()}`; };
 // ── Pestaña 1: serie agregada con control de ventana (arrastra las barras del selector superior para acercar) ──
@@ -76157,6 +76165,172 @@ function mcSvgDisp_(pts, o) { const W = o.w || 520, H = o.h || 380, L = 54, R = 
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block"><rect x="${L}" y="${T}" width="${pw}" height="${ph}" fill="#fff" stroke="#cbd5e1"/>${s}<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11.5" fill="#475569">${esc(o.xl || '')}</text><text x="13" y="${T + ph / 2}" transform="rotate(-90 13 ${T + ph / 2})" text-anchor="middle" font-size="11.5" fill="#475569">${esc(o.yl || '')}</text></svg>`; }
 const mcLeyendaQ_ = () => `<div class="mc-ley">${['Q1 · más barato', 'Q2', 'Q3', 'Q4 · más caro'].map((t, k) => `<span><i style="background:${MCQC[k]}"></i>${t}</span>`).join('')}</div>`;
 // ── Pintado de la pestaña ──
+// ═══════════════════════════════════════════════════════════════════════════
+// 📊 Dashboard › C) Anfitriones (v2176): mercado agregado vs. desagregado por anfitrión + modelos de ocupación y reputación + recomendaciones.
+// La identidad de un anfitrión es su hostId (número de usuario de Airbnb), no su nombre. «Alojamientos del anfitrión» = los que hay en TU lista (no necesariamente todos los suyos).
+// ═══════════════════════════════════════════════════════════════════════════
+const mcOk_ = v => v != null && isFinite(v);
+const mcAvg_ = a => { a = a.filter(mcOk_); return a.length ? mcsMean(a) : null; };
+const mcMed_ = a => { a = a.filter(mcOk_); return a.length ? mcsQ(a, .5) : null; };
+// Ocupación estimada de los próximos 90 días (más representativa que 365: las reservas lejanas aún no existen). Cuenta según el selector «Contar» (MC.cuenta);
+// los días de bloqueo probable del anfitrión no cuentan como disponibles (salen del denominador) salvo en «Todas las no disponibles».
+function mcHOcc_(i) {
+  const o = mcOccDias_(i, MC.cuenta); if (!o.size) return null; const d0 = new Date(), hoy = mcIso_(d0), fin = mcIso_(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + 89)), blq = new Set();
+  if (MC.cuenta !== 'todas') mcRuns_(i).forEach(r => { if (r.tipo !== 'bloqueo') return; const d = new Date(r.ini + 'T12:00:00'); for (let k = 0; k < r.n; k++) { blq.add(mcIso_(d)); d.setDate(d.getDate() + 1); } });
+  let n = 0, t = 0; o.forEach((v, f) => { if (f < hoy || f > fin || blq.has(f)) return; n++; t += v; }); return n >= 30 ? 100 * t / n : null;
+}
+function mcHRows_() {
+  const sig = Object.keys(MC.items || {}).length + '|' + (MC.act || '') + '|' + (MC.propios ? 1 : 0) + '|' + MC.cuenta;
+  if (MC._hr && MC._hr.sig === sig) return MC._hr.rows;
+  const rows = [], num = v => mcOk_(v) && v !== '' ? +v : null;
+  MC.lista.forEach(l => { const i = MC.items[l.id]; if (!i || !i.extraido || !i.hostId) return;
+    const occ = mcHOcc_(i), pr = l.precioNoche > 0 ? +l.precioNoche : null, co = mcCocina_(i);
+    let h = i.habitaciones; if (h == null && /habitaci[oó]n/i.test(`${l.tipoBusq || ''} ${i.tipo || ''}`)) h = 1;
+    rows.push({ id: l.id, hostId: String(i.hostId), host: i.anfitrion || '—', foto: i.hostFoto || '', titulo: i.titulo || l.id, url: i.url || l.url, precio: pr, pxh: pr != null && h != null ? pr / Math.max(1, +h || 0) : null, occ,
+      cal: num(i.calificacion), ev: +i.evaluaciones || 0, hab: num(h), camas: num(i.camas), banos: num(i.banos), huesp: num(i.huespedes), coc: co === '—' ? null : (co === 'Sí' ? 1 : 0),
+      nam: num(i.nAmenidades), fotos: num(i.fotos), sup: i.superanfitrion ? 1 : 0, anios: num(i.hostAnios), minN: num(i.minNoches), priv: /^habitaci[oó]n/i.test(l.tipoBusq || i.tipo || '') ? 1 : 0, cat: i.cat || {}, propio: !!mcPropio_(i) }); });
+  const cnt = new Map(); rows.forEach(r => cnt.set(r.hostId, (cnt.get(r.hostId) || 0) + 1)); rows.forEach(r => { r.port = cnt.get(r.hostId); });
+  MC._hr = { sig, rows }; return rows;
+}
+function mcHMet_(L) {
+  const w = L.filter(r => mcOk_(r.cal) && r.ev > 0), sw = w.reduce((s, r) => s + r.ev, 0), A = k => mcAvg_(L.map(r => r[k]));
+  return { n: L.length, nOcc: L.filter(r => r.occ != null).length, occ: A('occ'), precio: mcMed_(L.map(r => r.precio)), pxh: mcMed_(L.map(r => r.pxh)), cal: sw ? w.reduce((s, r) => s + r.cal * r.ev, 0) / sw : A('cal'), ev: L.reduce((s, r) => s + r.ev, 0),
+    hab: A('hab'), nam: A('nam'), fotos: A('fotos'), sup: A('sup') == null ? null : 100 * A('sup'), coc: A('coc') == null ? null : 100 * A('coc'), anios: A('anios'), port: A('port') };
+}
+function mcWelch_(a, b) { a = a.filter(mcOk_); b = b.filter(mcOk_); if (a.length < 3 || b.length < 3) return null; const ma = mcsMean(a), mb = mcsMean(b), va = mcsSd(a) ** 2 / a.length, vb = mcsSd(b) ** 2 / b.length, se = Math.sqrt(va + vb); if (!se) return null;
+  const t = (ma - mb) / se, df = (va + vb) ** 2 / (va * va / (a.length - 1) + vb * vb / (b.length - 1)); return { ma, mb, p: mcsTp(t, df), na: a.length, nb: b.length }; }
+function mcHModelo_(R, resp, preds, minN) {
+  const D = R.filter(r => mcOk_(resp(r)) && preds.every(p => mcOk_(p.f(r))));
+  if (D.length < (minN || 40)) return { n: D.length, error: `Solo ${D.length} alojamientos tienen todos los datos del modelo; se necesitan al menos ${minN || 40}. Extrae más publicaciones.` };
+  const V = preds.filter(p => mcsSd(D.map(p.f)) > 0), y = D.map(resp), cols = V.map(p => D.map(p.f)), M = mcsOls(D.map((r, i) => [1].concat(cols.map(c => c[i]))), y);
+  if (!M) return { n: D.length, error: 'Los factores están perfectamente correlacionados entre sí; no se puede ajustar el modelo.' };
+  const lmg = mcsLmg(V.map((p, j) => ({ cols: [cols[j]] })), y), sy = mcsSd(y);
+  const ef = V.map((p, j) => ({ k: p.k, n: p.n, b: M.beta[j + 1], p: M.p[j + 1], ef: p.ef(M.beta[j + 1]), u: p.u, std: M.beta[j + 1] * mcsSd(cols[j]) / sy, lmg: lmg[j], share: lmg[j] / (M.r2 || 1), med: mcsQ(cols[j], .5) })).sort((a, b) => b.lmg - a.lmg);
+  return { n: D.length, M, ef, y, mean: mcsMean(y) };
+}
+const MCH_OCC = [
+  { k: 'precio', n: 'Precio por noche', f: r => r.precio > 0 ? Math.log(r.precio) : null, ef: b => b * Math.log(1.1), u: 'pp por cada +10% de precio' },
+  { k: 'cal', n: 'Calificación del alojamiento', f: r => r.cal, ef: b => b * 0.1, u: 'pp por cada +0.1 de calificación' },
+  { k: 'ev', n: 'Evaluaciones (experiencia)', f: r => Math.log(1 + r.ev), ef: b => b * Math.LN2, u: 'pp por cada duplicación' },
+  { k: 'sup', n: 'Superanfitrión', f: r => r.sup, ef: b => b, u: 'pp, sí vs no' },
+  { k: 'hab', n: 'Habitaciones', f: r => r.hab, ef: b => b, u: 'pp por habitación adicional' },
+  { k: 'coc', n: 'Cocina', f: r => r.coc, ef: b => b, u: 'pp, con vs sin cocina' },
+  { k: 'nam', n: 'Amenidades', f: r => r.nam, ef: b => b * 10, u: 'pp por cada +10 amenidades' },
+  { k: 'fotos', n: 'Fotos', f: r => r.fotos, ef: b => b * 10, u: 'pp por cada +10 fotos' },
+  { k: 'anios', n: 'Años como anfitrión', f: r => r.anios, ef: b => b, u: 'pp por año adicional' },
+  { k: 'port', n: 'Alojamientos del anfitrión', f: r => r.port > 0 ? Math.log(r.port) : null, ef: b => b * Math.LN2, u: 'pp por cada duplicación del portafolio' }];
+const MCH_REP = [
+  { k: 'precio', n: 'Precio por noche', f: r => r.precio > 0 ? Math.log(r.precio) : null, ef: b => b * Math.log(1.1), u: 'pts de calificación por cada +10% de precio' },
+  { k: 'hab', n: 'Habitaciones', f: r => r.hab, ef: b => b, u: 'pts por habitación adicional' },
+  { k: 'priv', n: 'Habitación privada', f: r => r.priv, ef: b => b, u: 'pts, habitación privada vs alojamiento completo' },
+  { k: 'coc', n: 'Cocina', f: r => r.coc, ef: b => b, u: 'pts, con vs sin cocina' },
+  { k: 'nam', n: 'Amenidades', f: r => r.nam, ef: b => b * 10, u: 'pts por cada +10 amenidades' },
+  { k: 'fotos', n: 'Fotos', f: r => r.fotos, ef: b => b * 10, u: 'pts por cada +10 fotos' },
+  { k: 'anios', n: 'Años como anfitrión', f: r => r.anios, ef: b => b, u: 'pts por año adicional' },
+  { k: 'port', n: 'Alojamientos del anfitrión', f: r => r.port > 0 ? Math.log(r.port) : null, ef: b => b * Math.LN2, u: 'pts por cada duplicación del portafolio' },
+  { k: 'ev', n: 'Evaluaciones (experiencia)', f: r => Math.log(1 + r.ev), ef: b => b * Math.LN2, u: 'pts por cada duplicación' }];
+const MCH_CAT = [['limpieza', 'Limpieza'], ['veracidad', 'Veracidad'], ['llegada', 'Llegada'], ['comunicacion', 'Comunicación'], ['ubicacionCal', 'Ubicación'], ['valor', 'Calidad-precio']].map(([k, n]) => ({ k, n, f: r => r.cat && mcOk_(r.cat[k]) ? +r.cat[k] : null, ef: b => b * 0.1, u: 'pts de calificación global por cada +0.1 en esta categoría' }));
+const MCH_MET = [['Ocupación estimada (%)', 'occ', v => MCN(v, 1) + '%', 'pp'], ['Precio por noche (mediana)', 'precio', MCFMT], ['Precio por habitación (mediana)', 'pxh', MCFMT], ['Calificación', 'cal', v => MCN(v, 2)], ['Evaluaciones (por alojamiento)', 'evp', v => Math.round(v)],
+  ['Habitaciones', 'hab', v => MCN(v, 1)], ['Amenidades', 'nam', v => MCN(v, 0)], ['Fotos', 'fotos', v => MCN(v, 0)], ['Con cocina (%)', 'coc', v => MCN(v, 0) + '%', 'pp'], ['Superanfitrión (%)', 'sup', v => MCN(v, 0) + '%', 'pp'], ['Años como anfitrión', 'anios', v => MCN(v, 1)]];
+function mcHLideres_(R) {
+  const O = R.filter(r => r.occ != null); if (O.length < 40) return null; const q = mcsQ(O.map(r => r.occ), .75), L = O.filter(r => r.occ >= q), N = O.filter(r => r.occ < q);
+  const defs = [['Precio por noche', 'precio', MCFMT], ['Precio por habitación', 'pxh', MCFMT], ['Calificación', 'cal', v => MCN(v, 2)], ['Evaluaciones', 'ev', v => Math.round(v)], ['Habitaciones', 'hab', v => MCN(v, 1)], ['Baños', 'banos', v => MCN(v, 1)], ['Huéspedes (capacidad)', 'huesp', v => MCN(v, 1)],
+    ['Con cocina (%)', 'coc', v => MCN(v, 0) + '%', 100], ['Amenidades', 'nam', v => MCN(v, 1)], ['Fotos', 'fotos', v => MCN(v, 0)], ['Superanfitrión (%)', 'sup', v => MCN(v, 0) + '%', 100], ['Años del anfitrión', 'anios', v => MCN(v, 1)], ['Alojamientos del anfitrión', 'port', v => MCN(v, 1)], ['Estancia mínima (noches)', 'minN', v => MCN(v, 1)]];
+  const filas = defs.map(([t, k, f, mul]) => { const a = L.map(r => mcOk_(r[k]) ? r[k] * (mul || 1) : null), b = N.map(r => mcOk_(r[k]) ? r[k] * (mul || 1) : null), w = mcWelch_(a, b); return w ? { t, k, f, a: w.ma, b: w.mb, p: w.p, rel: w.mb ? w.ma / w.mb - 1 : null, bin: !!mul } : null; }).filter(Boolean);
+  return { umbral: q, nL: L.length, nN: N.length, filas, L, N };
+}
+function mcHHosts_(R) {
+  const G = new Map(); R.forEach(r => { if (!G.has(r.hostId)) G.set(r.hostId, []); G.get(r.hostId).push(r); });
+  return [...G.entries()].map(([id, L]) => Object.assign({ id, host: L[0].host, foto: L.map(r => r.foto).find(Boolean) || '', L }, mcHMet_(L), { evp: L.reduce((s, r) => s + r.ev, 0) / L.length })).filter(h => h.n > 0);
+}
+function mcHAnalisis_() {
+  const rows = mcHRows_(); if (MC._hA && MC._hA.rows === rows) return MC._hA;
+  if (rows.length < 30) return { rows, error: `Solo hay ${rows.length} alojamientos extraídos con anfitrión; se necesitan al menos 30. Pulsa «Extraer / actualizar» en la sección Extracción.` };
+  const mkt = mcHMet_(rows); mkt.evp = rows.reduce((s, r) => s + r.ev, 0) / rows.length;
+  const A = { rows, mkt, lid: mcHLideres_(rows), hosts: mcHHosts_(rows),
+    mOcc: mcHModelo_(rows, r => r.occ, MCH_OCC), mRep: mcHModelo_(rows.filter(r => r.ev >= 5), r => r.cal, MCH_REP), mCat: mcHModelo_(rows.filter(r => r.ev >= 5), r => r.cal, MCH_CAT) };
+  A.hosts.forEach(h => { h.evp = h.ev / h.n; }); A.mkt.evp = mkt.ev / rows.length;
+  const seg = (t, f) => { const L = rows.filter(f); return L.length ? Object.assign({ t, hosts: new Set(L.map(r => r.hostId)).size }, mcHMet_(L), { evp: L.reduce((s, r) => s + r.ev, 0) / L.length }) : null; };
+  A.segs = [seg('Anfitriones con 1 alojamiento', r => r.port === 1), seg('Con 2 a 4 alojamientos', r => r.port >= 2 && r.port <= 4), seg('Con 5 o más alojamientos', r => r.port >= 5), seg('Superanfitriones', r => r.sup === 1), seg('Anfitriones sin insignia', r => r.sup === 0), seg('🏠 Mis alojamientos', r => r.propio)].filter(Boolean);
+  MC._hA = A; return A;
+}
+// Porcentaje de alojamientos del mercado por debajo de este valor (para decir «mejor que el X %»)
+const mcHPct_ = (rows, k, v) => { const a = rows.map(r => r[k]).filter(mcOk_); return a.length && mcOk_(v) ? Math.round(100 * a.filter(x => x < v).length / a.length) : null; };
+function mcHGrupoSel_(A) {
+  const sel = MC.hostSel || (A.rows.some(r => r.propio) ? '__mios' : (A.hosts.slice().sort((a, b) => b.n - a.n || (b.occ || 0) - (a.occ || 0))[0] || {}).id);
+  if (sel === '__mios') { const L = A.rows.filter(r => r.propio); return L.length ? Object.assign({ id: '__mios', host: '🏠 Mis alojamientos', foto: '', L }, mcHMet_(L), { evp: L.reduce((s, r) => s + r.ev, 0) / L.length }) : null; }
+  return A.hosts.find(h => h.id === sel) || null;
+}
+const mcHFmt_ = (m, h) => { const v = m[1] === 'evp' ? h.evp : h[m[1]]; return mcOk_(v) ? m[2](v) : '—'; };
+function mcHDif_(m, a, b) { const x = m[1] === 'evp' ? a.evp : a[m[1]], y = m[1] === 'evp' ? b.evp : b[m[1]]; if (!mcOk_(x) || !mcOk_(y)) return ''; if (m[3] === 'pp') { const d = x - y; return `<span class="${d >= 0 ? 'pos' : 'neg'}">${d >= 0 ? '+' : ''}${MCN(d, 0)} pp</span>`; } if (!y) return ''; const d = (x / y - 1) * 100; return `<span class="${d >= 0 ? 'pos' : 'neg'}">${d >= 0 ? '+' : ''}${MCN(d, 0)}%</span>`; }
+const mcHAvatar_ = h => mcHostFoto_({ anfitrion: h.host, hostFoto: h.foto, hostId: h.id }, 26);
+const mcHNombre_ = h => { const hom = h.id !== '__mios' && mcHomonimo_({ anfitrion: h.host, hostId: h.id }); const a = h.anios == null ? '' : ' · ' + MCN(h.anios, 0) + ' a.'; return `<span class="mc-host">${h.id === '__mios' ? '<span style="font-size:20px">🏠</span>' : mcHAvatar_(h)}<span>${esc(h.host)}${hom ? `<small class="mc-hid" title="Hay ${hom} anfitriones distintos con este nombre; este es el ID …${esc(h.id.slice(-4))}">ID …${esc(h.id.slice(-4))}${a}</small>` : ''}</span></span>`; };
+function mcHRecs_(A, S, lm) {
+  const R = { occ: [], rep: [], lid: [], imit: [], pos: [] }, sg = e => (e.ef >= 0 ? '+' : '') + MCN(e.ef, 1), sg2 = e => (e.ef >= 0 ? '+' : '') + MCN(e.ef, 2);
+  const AD = { cal: 'cuida la limpieza, aclara expectativas en el anuncio y responde rápido', ev: 'pide la reseña al terminar cada estancia y mantén los anuncios siempre activos', sup: 'cumple los requisitos de la insignia (respuesta rápida, cero cancelaciones propias, calificación alta)', hab: 'las unidades con más habitaciones capturan grupos y estancias largas',
+    coc: 'anuncia y equipa una cocina completa', nam: 'completa las amenidades que más tienen los líderes (ver la tabla de líderes)', fotos: 'sube más fotos, de calidad y en orden (sala, cama, baño, cocina, exterior)', anios: 'la antigüedad pesa: conserva tus anuncios y su historial de reseñas en lugar de recrearlos', port: 'operar varios alojamientos suele implicar procesos más profesionales (precios por temporada, limpieza estandarizada, respuesta rápida)' };
+  const M = A.mOcc; if (M && !M.error) { M.ef.filter(e => e.p < .10).forEach(e => {
+    if (e.k === 'precio') R.occ.push(e.ef < 0 ? `<b>Precio.</b> Cada +10% de tarifa se asocia con <b>${sg(e)} pp</b> de ocupación (con lo demás igual): la demanda sí reacciona al precio. Sube tarifas con cautela y por fechas, no de forma general.` : `<b>Precio.</b> Los alojamientos más caros <b>no</b> están menos ocupados (${sg(e)} pp por cada +10% de tarifa): hay margen para posicionarse más arriba si el producto, las fotos y las reseñas lo respaldan.`);
+    else R.occ.push(e.ef >= 0 ? `<b>${esc(e.n)}.</b> Se asocia con <b>${sg(e)} ${e.u}</b> de ocupación (≈ ${MCN(e.ef / M.mean * 100, 0)}% más sobre la media de ${MCN(M.mean, 1)}%). Qué hacer: ${AD[e.k] || 'imítalo'}.` : `<b>${esc(e.n)}.</b> Se asocia con <b>${sg(e)} ${e.u}</b> de ocupación: más de esto NO viene acompañado de mayor ocupación; puede ser un efecto del tipo de alojamiento y no de una decisión del anfitrión.`); });
+    const ns = M.ef.filter(e => e.p >= .10).map(e => e.n); if (ns.length) R.occ.push(`<span class="mc-mu">Sin efecto claro sobre la ocupación (p ≥ 0.10): ${ns.map(esc).join(', ')}.</span>`); }
+  const P = A.mRep; if (P && !P.error) { P.ef.filter(e => e.p < .10).forEach(e => R.rep.push(`<b>${esc(e.n)}.</b> Se asocia con <b>${sg2(e)} ${e.u}</b>.${e.ef >= 0 && AD[e.k] ? ' Qué hacer: ' + AD[e.k] + '.' : ''}`));
+    const ns = P.ef.filter(e => e.p >= .10).map(e => e.n); if (ns.length) R.rep.push(`<span class="mc-mu">Sin relación clara con la calificación (p ≥ 0.10): ${ns.map(esc).join(', ')}.</span>`); }
+  const C = A.mCat; if (C && !C.error) { const t = C.ef.slice(0, 3); R.rep.push(`<b>Qué componentes pesan más en la calificación global:</b> ${t.map(e => `<b>${esc(e.n)}</b> (${MCN(e.share * 100, 0)}%)`).join(', ')}. Prioriza esos aspectos: son los que más mueven la nota que ven los huéspedes.`); }
+  const L = A.lid; if (L) { const sig = L.filas.filter(f => f.p < .05); sig.forEach(f => R.lid.push(`<b>${esc(f.t)}:</b> los líderes tienen ${f.f(f.a)} frente a ${f.f(f.b)} del resto${f.rel != null && !f.bin ? ` (${f.rel >= 0 ? '+' : ''}${MCN(f.rel * 100, 0)}%)` : ''}.`));
+    if (!sig.length) R.lid.push('Con los datos actuales los líderes no se distinguen claramente del resto en ninguna característica medida (p < 0.05).'); }
+  const mk = A.mkt, cand = A.hosts.filter(h => h.n >= 2 && h.nOcc >= 2); const pool = (cand.length >= 3 ? cand : A.hosts.filter(h => h.nOcc >= 1 && h.ev >= 30));
+  const rk = (a, k) => { const v = pool.map(h => h[k]).filter(mcOk_).sort((x, y) => x - y); return v.length && mcOk_(a) ? v.filter(x => x < a).length / v.length : 0; };
+  const top = pool.map(h => Object.assign(h, { _s: rk(h.occ, 'occ') + rk(h.cal, 'cal') })).sort((a, b) => b._s - a._s).slice(0, 5);
+  top.forEach(h => { const d = []; if (mcOk_(h.precio) && mcOk_(mk.precio)) d.push(`precio mediano ${MCFMT(h.precio)} (${h.precio >= mk.precio ? '+' : ''}${MCN((h.precio / mk.precio - 1) * 100, 0)}% vs mercado)`); if (mcOk_(h.nam) && mcOk_(mk.nam)) d.push(`${MCN(h.nam, 0)} amenidades (mercado ${MCN(mk.nam, 0)})`); if (mcOk_(h.fotos) && mcOk_(mk.fotos)) d.push(`${MCN(h.fotos, 0)} fotos (mercado ${MCN(mk.fotos, 0)})`); if (h.sup >= 50) d.push('superanfitrión'); if (mcOk_(h.anios)) d.push(`${MCN(h.anios, 0)} años como anfitrión`);
+    R.imit.push({ h, txt: `ocupación <b>${MCN(h.occ, 0)}%</b> (mercado ${MCN(mk.occ, 0)}%) · calificación <b>${MCN(h.cal, 2)}</b> (mercado ${MCN(mk.cal, 2)}) · ${h.n} alojamiento${h.n === 1 ? '' : 's'} en tu lista · ${d.join(' · ')}` }); });
+  if (S) { const b = []; MCH_MET.forEach(m => { const x = m[1] === 'evp' ? S.evp : S[m[1]], y = m[1] === 'evp' ? mk.evp : mk[m[1]]; if (!mcOk_(x) || !mcOk_(y) || !y) return; const d = m[3] === 'pp' ? x - y : (x / y - 1) * 100, lv = lm ? (m[1] === 'evp' ? lm.evp : lm[m[1]]) : null; b.push({ t: m[0], d, pp: m[3] === 'pp', lid: mcOk_(lv) ? m[2](lv) : '', mio: m[2](x) }); });
+    const pos = b.filter(x => Math.abs(x.d) >= (x.pp ? 8 : 10)); pos.sort((a, c) => Math.abs(c.d) - Math.abs(a.d)).slice(0, 6).forEach(x => R.pos.push(`<b>${esc(x.t)}:</b> ${x.d >= 0 ? 'por encima' : 'por debajo'} del mercado (${x.d >= 0 ? '+' : ''}${MCN(x.d, 0)}${x.pp ? ' pp' : '%'}): ${x.mio}${x.lid ? ` frente a ${x.lid} de los líderes` : ''}.`)); if (!pos.length) R.pos.push('Está en línea con el mercado en las variables medidas.'); }
+  return R;
+}
+function mcHHtml_(A) {
+  if (A.error) return `<div class="mc-mu" style="padding:26px;text-align:center">${esc(A.error)}</div>`;
+  const mk = A.mkt, S = mcHGrupoSel_(A), lm = A.lid ? Object.assign(mcHMet_(A.lid.L), { evp: A.lid.L.reduce((s, r) => s + r.ev, 0) / A.lid.L.length }) : null, R = mcHRecs_(A, S, lm), fig = (t, h, n) => `<div class="mc-fig"><b>${t}</b>${h}${n ? `<div class="mc-mu" style="font-size:11.5px;margin-top:4px">${n}</div>` : ''}</div>`;
+  const nH = A.hosts.length, multi = A.hosts.filter(h => h.n >= 2).length;
+  const kpi = `<div class="mc-sgk"><div><b>${A.rows.length}</b><span>alojamientos analizados</span></div><div><b>${nH}</b><span>anfitriones distintos (por ID de Airbnb)</span></div><div><b>${multi}</b><span>con 2 o más alojamientos en tu lista</span></div><div><b>${MCN(mk.occ, 0)}%</b><span>ocupación estimada media</span></div><div><b>${MCFMT(mk.precio)}</b><span>precio mediano por noche</span></div><div><b>${MCN(mk.cal, 2)}</b><span>calificación media ponderada</span></div></div>
+    <div class="mc-mu" style="font-size:12px">«Ocupación estimada» = % de noches ocupadas en los <b>próximos 90 días</b> según el calendario público (cuenta: ${esc(MC_CUENTA_T[MC.cuenta] || '')}; los días de bloqueo probable del anfitrión no cuentan como disponibles). Cambia qué se cuenta con el selector de arriba. «Alojamientos del anfitrión» cuenta solo los de tu lista.</div>`;
+  // 1 · agregado vs. desagregado
+  const opts = [A.rows.some(r => r.propio) ? `<option value="__mios" ${S && S.id === '__mios' ? 'selected' : ''}>🏠 Mis alojamientos</option>` : '', ...A.hosts.slice().sort((a, b) => b.n - a.n || (b.occ || 0) - (a.occ || 0)).slice(0, 200).map(h => `<option value="${esc(h.id)}" ${S && S.id === h.id ? 'selected' : ''}>${esc(h.host)}${mcHomonimo_({ anfitrion: h.host, hostId: h.id }) ? ' (ID …' + esc(h.id.slice(-4)) + ')' : ''} · ${h.n} aloj.</option>`)].join('');
+  const cmp = S ? `<table class="mc-st"><thead><tr><th>Indicador</th><th>${esc(S.host)}</th><th>Mercado (agregado)</th><th>Diferencia</th>${lm ? '<th>Líderes de ocupación</th>' : ''}</tr></thead><tbody>${MCH_MET.map(m => `<tr><td><b>${m[0]}</b></td><td>${mcHFmt_(m, S)}</td><td>${mcHFmt_(m, mk)}</td><td>${mcHDif_(m, S, mk)}</td>${lm ? `<td>${mcHFmt_(m, lm)}</td>` : ''}</tr>`).join('')}</tbody></table>
+    <div class="mc-mu" style="font-size:11.5px">Posición en el mercado: ${[['occ', 'ocupación'], ['precio', 'precio'], ['cal', 'calificación']].map(([k, t]) => { const p = mcHPct_(A.rows, k, S[k]); return p == null ? '' : `${t}: mejor que el <b>${p}%</b> de los alojamientos`; }).filter(Boolean).join(' · ')}.</div>` : '<div class="mc-mu">No hay alojamientos propios identificados; elige un anfitrión.</div>';
+  const segT = `<table class="mc-st"><thead><tr><th>Segmento</th><th>Anfitr.</th><th>Aloj.</th><th>Ocupación</th><th>Precio/noche</th><th>Precio/hab.</th><th>Calificación</th><th>Eval./aloj.</th><th>Amenid.</th><th>Fotos</th></tr></thead><tbody><tr style="background:#f0fdfa"><td><b>Mercado (agregado)</b></td><td>${nH}</td><td>${A.rows.length}</td><td>${MCN(mk.occ, 0)}%</td><td>${MCFMT(mk.precio)}</td><td>${MCFMT(mk.pxh)}</td><td>${MCN(mk.cal, 2)}</td><td>${Math.round(mk.evp)}</td><td>${MCN(mk.nam, 0)}</td><td>${MCN(mk.fotos, 0)}</td></tr>${A.segs.map(s => `<tr><td><b>${esc(s.t)}</b></td><td>${s.hosts}</td><td>${s.n}</td><td>${mcOk_(s.occ) ? MCN(s.occ, 0) + '%' : '—'}</td><td>${mcOk_(s.precio) ? MCFMT(s.precio) : '—'}</td><td>${mcOk_(s.pxh) ? MCFMT(s.pxh) : '—'}</td><td>${mcOk_(s.cal) ? MCN(s.cal, 2) : '—'}</td><td>${Math.round(s.evp)}</td><td>${mcOk_(s.nam) ? MCN(s.nam, 0) : '—'}</td><td>${mcOk_(s.fotos) ? MCN(s.fotos, 0) : '—'}</td></tr>`).join('')}</tbody></table>`;
+  // 2 · ranking de anfitriones
+  const ord = MC.hostOrd || 'occ', mn = MC.hostMin || 1, orden = { occ: 'Ocupación', cal: 'Calificación', precio: 'Precio por noche', n: 'Nº de alojamientos', ev: 'Evaluaciones' };
+  const RK = A.hosts.filter(h => h.n >= mn && (ord !== 'occ' || h.nOcc > 0)).sort((a, b) => (mcOk_(b[ord]) ? b[ord] : -1) - (mcOk_(a[ord]) ? a[ord] : -1)).slice(0, 25);
+  const rank = `<div class="mc-row" style="margin:6px 0"><label class="mc-mu">Ordenar por <select class="mc-in" onchange="MC.hostOrd=this.value;mcHostRe_()">${Object.entries(orden).map(([k, t]) => `<option value="${k}" ${ord === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label class="mc-mu">Mínimo de alojamientos <select class="mc-in" onchange="MC.hostMin=+this.value;mcHostRe_()">${[1, 2, 3, 5].map(v => `<option value="${v}" ${mn === v ? 'selected' : ''}>${v}+</option>`).join('')}</select></label></div>
+    <table class="mc-st"><thead><tr><th>#</th><th>Anfitrión</th><th>Aloj.</th><th>Ocupación</th><th>Precio/noche</th><th>Calificación</th><th>Evaluaciones</th><th>Amenid.</th><th>Fotos</th><th>Super</th></tr></thead><tbody>${RK.map((h, k) => `<tr style="cursor:pointer" title="Clic para compararlo con el mercado" onclick="MC.hostSel='${esc(h.id)}';mcHostRe_(true)"><td>${k + 1}</td><td>${mcHNombre_(h)}</td><td>${h.n}</td><td>${mcOk_(h.occ) ? MCN(h.occ, 0) + '%' : '—'}</td><td>${mcOk_(h.precio) ? MCFMT(h.precio) : '—'}</td><td>${mcOk_(h.cal) ? MCN(h.cal, 2) : '—'}</td><td>${h.ev}</td><td>${mcOk_(h.nam) ? MCN(h.nam, 0) : '—'}</td><td>${mcOk_(h.fotos) ? MCN(h.fotos, 0) : '—'}</td><td>${h.sup >= 50 ? '★' : ''}</td></tr>`).join('') || '<tr><td colspan="10" class="mc-mu">Sin anfitriones con esos filtros.</td></tr>'}</tbody></table>`;
+  // 3 · líderes
+  const L = A.lid, lid = L ? `<div class="mc-mu" style="font-size:12px">«Líderes» = el 25% de alojamientos con más ocupación estimada (≥ ${MCN(L.umbral, 0)}%): <b>${L.nL}</b> frente a <b>${L.nN}</b> del resto. Se comparan promedios con la prueba t de Welch.</div>
+    <table class="mc-st"><thead><tr><th>Característica</th><th>Líderes</th><th>Resto</th><th>Diferencia</th><th>p</th></tr></thead><tbody>${L.filas.map(f => `<tr><td><b>${f.t}</b></td><td>${f.f(f.a)}</td><td>${f.f(f.b)}</td><td>${f.bin ? `${f.a - f.b >= 0 ? '+' : ''}${MCN(f.a - f.b, 0)} pp` : f.rel == null ? '—' : `${f.rel >= 0 ? '+' : ''}${MCN(f.rel * 100, 0)}%`}</td><td class="${f.p < .05 ? 'sig' : ''}">${MCPV(f.p)}${f.p < .05 ? ' ✓' : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="mc-mu">Se necesitan al menos 40 alojamientos con ocupación estimada.</div>';
+  // 4 · modelos
+  const mod = (t, M, sub, unidad) => !M ? '' : M.error ? fig(t, `<div class="mc-mu">${esc(M.error)}</div>`) : fig(t, mcSvgBarras_(M.ef.map(e => ({ l: e.n, v: e.lmg, t: MCN(e.share * 100, 0) + '%  (' + MCN(e.lmg * 100, 1) + ')' })), { w: 520, l0: 190, max: Math.max(...M.ef.map(e => e.lmg), 1e-9) })
+      + `<table class="mc-st"><thead><tr><th>Factor</th><th>Efecto (${unidad})</th>${unidad === 'pp' ? '<th>Sobre la media</th>' : ''}<th>p</th><th>Peso (LMG)</th><th>β estándar</th></tr></thead><tbody>${M.ef.map(e => `<tr><td><b>${esc(e.n)}</b><div class="mc-mu" style="font-size:10.5px">${esc(e.u)}</div></td><td class="${e.ef >= 0 ? 'pos' : 'neg'}">${e.ef >= 0 ? '+' : ''}${MCN(e.ef, unidad === 'pp' ? 1 : 2)}</td>${unidad === 'pp' ? `<td class="${e.ef >= 0 ? 'pos' : 'neg'}">${e.ef >= 0 ? '+' : ''}${MCN(e.ef / M.mean * 100, 0)}%</td>` : ''}<td class="${e.p < .05 ? 'sig' : ''}">${MCPV(e.p)}${e.p < .05 ? ' ✓' : ''}</td><td>${MCN(e.share * 100, 0)}%</td><td>${MCN(e.std, 2)}</td></tr>`).join('')}</tbody></table>`, sub + ` n=${M.n}, R²=${MCN(M.M.r2, 3)}, R² ajustado=${MCN(M.M.adj, 3)}. «Peso (LMG)» = parte del R² atribuible a cada factor promediando todos los órdenes de entrada al modelo; entre paréntesis, puntos de R².`);
+  const modelos = `<div class="mc-sgrid2">${mod('Ocupación estimada: ¿qué la explica?', A.mOcc, 'Regresión lineal múltiple; variable de respuesta: ocupación estimada de los próximos 90 días (%). Efecto en puntos porcentuales (pp), manteniendo lo demás constante.', 'pp')}${mod('Reputación: ¿qué explica la calificación del alojamiento?', A.mRep, 'Regresión lineal múltiple sobre alojamientos con 5+ evaluaciones; respuesta: calificación (1–5). No incluye «superanfitrión» porque esa insignia se otorga por tener buenas calificaciones (relación circular).', 'pts')}</div>
+    <div class="mc-sgrid2">${mod('Componentes de la calificación global', A.mCat, 'Regresión de la calificación global sobre las 6 categorías que Airbnb publica (limpieza, veracidad, llegada, comunicación, ubicación, calidad-precio), alojamientos con 5+ evaluaciones.', 'pts')}<div></div></div>`;
+  const lista = (t, a, v) => a.length ? `<div style="margin:10px 0"><b>${t}</b><ul style="margin:4px 0 0 18px;padding:0;font-size:13px;line-height:1.5">${a.map(x => `<li>${x}</li>`).join('')}</ul></div>` : v || '';
+  const imit = R.imit.length ? `<div style="margin:10px 0"><b>Anfitriones a imitar</b> <span class="mc-mu" style="font-size:12px">(mejor combinación de ocupación y calificación${A.hosts.some(h => h.n >= 2 && h.nOcc >= 2) ? ', con 2+ alojamientos' : ''})</span>${R.imit.map(x => `<div style="display:flex;gap:10px;align-items:flex-start;margin:8px 0;padding:8px 10px;background:#fff;border:1px solid #99f6e4;border-radius:10px">${mcHAvatar_(x.h)}<div style="font-size:13px;line-height:1.45"><b>${esc(x.h.host)}</b>${mcHomonimo_({ anfitrion: x.h.host, hostId: x.h.id }) ? ` <small class="mc-hid">ID …${esc(x.h.id.slice(-4))}</small>` : ''}<br>${x.txt}</div></div>`).join('')}</div>` : '';
+  const concl = `${lista('Para subir la ocupación' , R.occ, '')}${lista('Para mejorar la reputación', R.rep, '')}${lista('Lo que distingue a los líderes de ocupación', R.lid, '')}${imit}${S ? lista(`Dónde está ${esc(S.host)} frente al mercado`, R.pos, '') : ''}
+    <p class="mc-mu" style="font-size:12px"><b>Cómo leer esto.</b> Son asociaciones estadísticas entre anfitriones, no pruebas de causa y efecto. La ocupación es una estimación hecha con el calendario público de Airbnb (solo se ven las noches ya reservadas hacia adelante) y la calificación está cerca del tope de 5, por lo que las diferencias son pequeñas. Los factores con ✓ (p &lt; 0.05) son los más confiables; con pocas publicaciones, los demás pueden ser ruido. Conviene repetir el análisis cada cierto tiempo conforme crece la muestra.</p>`;
+  return `<div class="mc-sg">${kpi}
+    <h4>1 · Mercado agregado vs. desagregado por anfitrión</h4><div class="mc-row" style="margin:6px 0"><label class="mc-mu">Comparar con el mercado a: <select class="mc-in" style="min-width:260px" onchange="MC.hostSel=this.value;mcHostRe_()">${opts}</select></label></div>${cmp}
+    <div style="margin-top:14px"><b style="font-size:12.5px;color:#334155">Segmentos de anfitriones</b>${segT}</div>
+    <h4>2 · Ranking de anfitriones</h4>${rank}
+    <h4>3 · Perfil de los líderes de ocupación</h4>${lid}
+    <h4>4 · Modelos estadísticos: qué influye en la ocupación y en la reputación</h4>${modelos}
+    <h4>5 · Recomendaciones y estrategias a considerar</h4><div class="mc-concl">${concl}</div></div>`;
+}
+function mcHostPintar_() {
+  const body = document.getElementById('mc-gbody'), ctl = document.getElementById('mc-gctl'), sub = document.getElementById('mc-gr-sub'); if (!body) return; sub.textContent = '';
+  ctl.innerHTML = `<span class="mc-mu">Contar como ocupada:</span><select class="mc-in" onchange="mcCuenta_(this.value)">${Object.entries(MC_CUENTA_T).map(([k, t]) => `<option value="${k}" ${MC.cuenta === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+  body.innerHTML = '<div class="mc-mu" style="padding:30px;text-align:center">⏳ Calculando…</div>';
+  setTimeout(() => { let A; try { A = mcHAnalisis_(); } catch (e) { body.innerHTML = `<div class="mc-err" style="padding:20px">⚠ No se pudo calcular el análisis: ${esc(e.message || e)}</div>`; return; }
+    sub.textContent = A.error ? '' : `${A.rows.length} alojamientos · ${A.hosts.length} anfitriones`; body.innerHTML = mcHHtml_(A); }, 30);
+}
+window.mcHostRe_ = function (arriba) { const body = document.getElementById('mc-gbody'); if (!body || !MC._hA) return; const y = window.scrollY; body.innerHTML = mcHHtml_(MC._hA); if (arriba) { const h = body.querySelector('h4'); if (h) h.scrollIntoView({ block: 'start' }); } else window.scrollTo(0, y); };
 window.mcSegOpt_ = function (k) { MC[k] = !MC[k]; try { localStorage.setItem('mc-' + k, MC[k] ? '1' : '0'); } catch (_) {} mcSegPintar_(); };
 function mcSegPintar_() {
   const body = document.getElementById('mc-gbody'), ctl = document.getElementById('mc-gctl'); MC.sgExt = MC.sgExt !== false; const box = (k, t) => `<span class="pl-ck mc-ck ${MC[k] ? 'on' : ''}" onclick="mcSegOpt_('${k}')"><span class="ck">${MC[k] ? '✓' : ''}</span>${t}</span>`;
@@ -76278,12 +76452,13 @@ function mcFechas_() { const a = new Date(); a.setDate(a.getDate() + 1); const b
 function mcRender_() {
   const root = document.getElementById('mc-root'); if (!root) return;
   root.innerHTML = `<div class="mc-hero"><h2>📈 Investigación de mercados</h2><small>Compara tu oferta con la competencia: datos públicos de cada publicación y su calendario de disponibilidad.</small></div>
-    <div class="mc-tabs"><span class="mc-tab on">🏠 Airbnb</span></div>
-    <div id="mc-top"></div>
+    <div class="mc-tabs"><button type="button" class="mc-tab" data-s="ext" onclick="mcSec_('ext')">📥 Extracción</button><button type="button" class="mc-tab" data-s="dash" onclick="mcSec_('dash')">📊 Dashboard</button></div>
+    <div id="mc-sec-ext"><div id="mc-top"></div>
     <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Se ejecuta solo a las horas que elijas abajo (si usas el método Automática, primero repite la búsqueda para sumar publicaciones nuevas); también puedes pulsarlo cuando quieras.</div>
       <div class="mc-fx" id="mc-hw" style="max-width:340px;margin:0 0 12px"><b style="font-size:12px">Hora del día de la extracción</b>${mcHorasHtml_()}</div><div id="mc-prog"></div></div>
-    <div id="mc-res"></div>`;
-  mcTop_(); mcProg_(); mcRes_();
+    <div id="mc-res"></div></div><div id="mc-sec-dash" style="display:none"></div>`;
+  if (!MC.sec) { try { MC.sec = localStorage.getItem('mc-sec') === 'dash' ? 'dash' : 'ext'; } catch (_) { MC.sec = 'ext'; } }
+  mcTop_(); mcProg_(); mcRes_(); mcSecPintar_();
 }
 // Paso 0 (método) y Paso 1 (lista). Solo se repinta al cambiar de método; durante la búsqueda se actualizan #mc-bus y #mc-autolist.
 function mcTop_() {
@@ -76407,7 +76582,7 @@ function mcRes_() {
   const sc = h.querySelector('.mc-sc'), st0 = sc ? sc.scrollTop : 0, sl0 = sc ? sc.scrollLeft : 0;
   h.innerHTML = `<div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${rows.length}${rows.length !== todos ? ' de ' + todos : ''})</span>${MC.propios ? `<span class="mc-chip mc-own" title="Alojamientos propios en la tabla">🏠 ${rows.filter(mcPropio_).length} propios</span>` : ''}<input class="mc-in" id="mc-q" placeholder="🔎 Buscar…" value="${esc(MC.q)}" oninput="MC.q=this.value;clearTimeout(MC._qt);MC._qt=setTimeout(()=>{mcRes_();const i=document.getElementById('mc-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)"><button type="button" class="mc-btn" onclick="mcCsv_()">⬇ CSV</button>
       <div class="mc-seg sm"><button type="button" class="${MC.vista !== 'acum' ? 'on' : ''}" onclick="mcVista_('cal')">📅 Tabla con calendario</button><button type="button" class="${MC.vista === 'acum' ? 'on' : ''}" onclick="mcVista_('acum')">📈 Tabla con ocupación acumulada</button></div>
-      <button type="button" class="mc-btn" onclick="mcGraf_()">📊 Ocupación agregada</button><span style="flex:1"></span>
+      <span style="flex:1"></span>
       ${MC.vista === 'acum' ? `<span class="mc-lg"><span><i style="background:#0f766e;height:3px"></i>Noches ocupadas acumuladas desde hoy</span></span><select class="mc-in" title="Qué cuenta como noche ocupada" onchange="mcCuenta_(this.value)">${Object.entries(MC_CUENTA_T).map(([k, t]) => `<option value="${k}" ${MC.cuenta === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`
         : `<span class="mc-lg"><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span>${Object.values(MC_TIPO).map(t => `<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}</span>`}
       <select class="mc-in" onchange="MC.meses=+this.value;mcRes_()">${[3, 6, 12, 24].map(m => `<option value="${m}" ${MC.meses === m ? 'selected' : ''}>${m} meses</option>`).join('')}</select></div>
