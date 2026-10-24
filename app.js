@@ -75777,7 +75777,7 @@ window.mcInit = async function () {
   await mcCargar_(); mcRender_(); if ((MC.job && MC.job.running) || (MC.bus && MC.bus.running)) mcPoll_(); if (!MC.propios) setTimeout(async () => { if (!document.getElementById('mc-res')) return; await mcCargar_(); mcRes_(); }, 30000); // los propios se resuelven en segundo plano la primera vez
 };
 async function mcCargar_() {
-  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; MC.esc = j.escenarios || null; MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; if (!MC._escTs || Date.now() - MC._escTs > 8000) MC.esc = j.escenarios || MC.esc || null; /* una respuesta vieja del sondeo no pisa fechas recién guardadas */ MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
   catch (e) { MC.error = String(e.message || e); }
 }
 function mcCss_() {
@@ -75807,6 +75807,23 @@ function mcCss_() {
   .mc-bk.k{background:repeating-linear-gradient(135deg,#e5e7eb 0 6px,#d1d5db 6px 12px);border-color:#cbd5e1;color:#6b7280}
   .mc-lg{display:flex;gap:12px;align-items:center;font-size:11.5px;color:var(--mu);font-weight:600}.mc-lg i{display:inline-block;width:14px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
   .mc-cl{position:sticky;left:0;z-index:2;height:${MC_RH}px}
+  .mc-fxr{display:flex;align-items:center;gap:4px;margin:0 0 5px}.mc-fxb{all:unset;cursor:pointer;flex:1;display:flex;align-items:center;justify-content:space-between;gap:8px;border:1.5px solid #cbd5e1;background:#fff;border-radius:9px;padding:6px 10px;font-size:13px;font-weight:700;color:#111827;text-transform:none;letter-spacing:0}.mc-fxb:hover{border-color:#0f766e;background:#f0fdfa}.mc-fxb i{font-style:normal;color:#94a3b8}
+  .mc-fxadd{all:unset;cursor:pointer;display:inline-block;margin:2px 0 6px;font-size:12px;font-weight:800;color:#0f766e;text-transform:none;letter-spacing:0}.mc-fxadd:hover{text-decoration:underline}.mc-fx small{display:block;margin-top:4px;font-weight:600}
+  .mc-dp{position:fixed;inset:0;z-index:21000;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;animation:mcDpIn .15s ease}@keyframes mcDpIn{from{opacity:0}to{opacity:1}}
+  .mc-dp-b{background:#fff;width:min(460px,100vw);height:min(720px,92vh);border-radius:20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 70px rgba(0,0,0,.3);font-family:Inter,system-ui,sans-serif;color:#0f172a}@media(max-width:600px){.mc-dp-b{width:100vw;height:100%;border-radius:0}}
+  .mc-dp-h{display:flex;align-items:center;gap:12px;padding:16px 18px 10px}.mc-dp-h b{font-size:18px;font-weight:700;flex:1}.mc-dp-x{all:unset;cursor:pointer;font-size:20px;color:#475569;padding:4px 8px;border-radius:8px}.mc-dp-x:hover{background:#f1f5f9}
+  .mc-dp-io{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:4px 18px 12px;border-bottom:1px solid #e2e8f0;box-shadow:0 4px 10px -8px rgba(15,23,42,.25)}
+  .mc-dp-io button{all:unset;cursor:pointer;box-sizing:border-box;border:1.5px solid #cbd5e1;border-radius:12px;padding:8px 12px;text-align:center}.mc-dp-io small{display:block;font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#64748b;text-transform:uppercase;text-align:left;margin-bottom:2px}.mc-dp-io span{font-size:14px;font-weight:700}.mc-dp-io span.v{color:#94a3b8}
+  .mc-dp-io button.on{border:2px solid #e3141b;box-shadow:0 0 0 3px rgba(227,20,27,.12)}.mc-dp-io button.on small{color:#e3141b}
+  .mc-dp-wk{display:grid;grid-template-columns:repeat(7,1fr);padding:8px 14px 4px;font-size:11px;font-weight:800;color:#64748b;text-align:center;letter-spacing:.04em}.mc-dp-sc{flex:1;overflow-y:auto;padding:0 14px 10px;overscroll-behavior:contain}
+  .mc-dp-m{margin:6px 0 14px}.mc-dp-mt{font-size:18px;font-weight:600;padding:10px 4px 8px}.mc-dp-mt small{font-size:13px;color:#94a3b8;font-weight:500}.mc-dp-g{display:grid;grid-template-columns:repeat(7,1fr);row-gap:4px}
+  .mc-dp-d{position:relative;height:46px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;font-weight:600;user-select:none}.mc-dp-d i{position:relative;z-index:1;width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;transition:background .12s}
+  .mc-dp-d:hover i{background:#f1f5f9}.mc-dp-d.hoy i{box-shadow:inset 0 0 0 1.5px #cbd5e1}.mc-dp-d.off{color:#cbd5e1;cursor:default;text-decoration:line-through}.mc-dp-d.off:hover i{background:none}
+  .mc-dp-d.in::before,.mc-dp-d.st.rng::before,.mc-dp-d.en::before{content:'';position:absolute;top:3px;bottom:3px;left:0;right:0;background:#fde4e5}.mc-dp-d.st.rng::before{left:50%;border-radius:0}.mc-dp-d.en::before{right:50%}
+  .mc-dp-d.st i,.mc-dp-d.en i{background:#e3141b!important;color:#fff;font-weight:800;box-shadow:0 4px 10px -2px rgba(227,20,27,.45)}.mc-dp-d.in{color:#9f1015}
+  .mc-dp-g .mc-dp-d.in:nth-child(7n+1)::before{border-radius:999px 0 0 999px;left:4px}.mc-dp-g .mc-dp-d.in:nth-child(7n)::before{border-radius:0 999px 999px 0;right:4px}
+  .mc-dp-f{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid #e2e8f0}.mc-dp-f span{flex:1;font-size:13px;color:#475569}.mc-dp-f span b{color:#0f172a}.mc-dp-cl{all:unset;cursor:pointer;font-size:14px;font-weight:800;text-decoration:underline;padding:8px}
+  .mc-dp-ok{all:unset;cursor:pointer;padding:12px 24px;border-radius:999px;background:#e3141b;color:#fff;font-size:15px;font-weight:800}.mc-dp-ok:disabled{background:#cbd5e1;cursor:default}
   .mc-ph{height:auto!important;min-height:48px;flex-wrap:wrap!important;padding-top:8px!important;padding-bottom:8px!important;row-gap:6px;overflow:visible!important}.mc-seg.sm{margin:0}.mc-seg.sm button{padding:6px 12px;font-size:12px}
   .mc-modal{position:fixed;inset:0;z-index:20000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px}.mc-mbox{background:#fff;border-radius:16px;width:min(1040px,100%);max-height:94vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.35)}
   .mc-mh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid #eef0f3;font-size:15px}.mc-mh .mc-in{width:auto;flex:0 0 auto}.mc-mh .mc-btn{flex:none}.mc-mh .mc-seg{flex:none}.mc-gw{position:relative;padding:8px 10px 0}.mc-tip{position:absolute;pointer-events:none;background:#0f172a;color:#fff;font-size:12px;line-height:1.45;padding:7px 10px;border-radius:9px;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.3)}
@@ -75969,7 +75986,7 @@ function mcTop_() {
   h.innerHTML = `<div class="mc-card"><h3>0 · Método de extracción</h3><div class="sub">Elige cómo se arma la lista de publicaciones: pegando las URLs tú mismo o buscando en Airbnb los alojamientos disponibles de un destino.</div>
       <div class="mc-seg"><button type="button" class="${aut ? '' : 'on'}" onclick="mcMetodo_('manual')">✋ Manual</button><button type="button" class="${aut ? 'on' : ''}" onclick="mcMetodo_('auto')">🔎 Automática</button></div>
       ${aut ? `<div class="mc-grid"><label>Destino<input class="mc-in" id="mc-dest" value="${esc(dest)}" placeholder="Ej. Saltillo, Coah."></label>
-        <label>Fechas<div class="mc-fx">${E.map((e, k) => `<div>${k + 1}) ${esc(fx(e.checkin))} → ${esc(fx(e.checkout))} <span class="mc-mu">· ${e.n} noche${e.n === 1 ? '' : 's'}</span></div>`).join('')}<small>Automático: se hacen ${E.length} búsquedas con estas fechas (hoy + días) y se unen sin repetir publicaciones</small></div></label>
+        <label>Fechas<div class="mc-fx" id="mc-fxw">${mcFxHtml_(E)}</div></label>
         <label>Huéspedes<input class="mc-in" id="mc-hu" type="number" min="1" max="16" value="${hu}"></label></div>
         <div class="mc-row"><button type="button" class="mc-btn pri" id="mc-bbtn" onclick="mcBuscar_()">🔎 Extraer lista de publicaciones</button><span id="mc-bus" class="mc-mu"></span></div>` : ''}</div>
     <div class="mc-card"><h3>1 · Lista de publicaciones</h3>
@@ -75979,6 +75996,53 @@ function mcTop_() {
       <div class="mc-row" style="margin-top:8px"><label class="mc-btn">📄 Cargar archivo<input type="file" accept=".txt,.csv,text/plain" hidden onchange="mcArchivo_(this)"></label><button type="button" class="mc-btn" onclick="mcAgregar_()">➕ Agregar a la lista</button><span class="mc-mu" id="mc-msg"></span></div>`}</div>`;
   if (aut) mcBus_();
 }
+// ── Fechas de la búsqueda: cada renglón abre el calendario de rango (Llegada → Salida en la misma ventana, igual que check-inn.mx) ──
+function mcFxHtml_(E) {
+  E = E || MC.esc || []; return E.map((e, k) => `<div class="mc-fxr"><button type="button" class="mc-fxb" onclick="mcDpOpen_(${k})" title="Cambiar estas fechas"><span>📅 <b>${k + 1})</b> ${esc(mcF(e.checkin))} → ${esc(mcF(e.checkout))} <span class="mc-mu">· ${e.n} noche${e.n === 1 ? '' : 's'}</span></span><i>✎</i></button>${E.length > 1 ? `<button type="button" class="mc-x" title="Quitar este rango" onclick="mcFxQuitar_(${k})">✕</button>` : ''}</div>`).join('')
+    + (E.length < 8 ? '<button type="button" class="mc-fxadd" onclick="mcDpOpen_(-1)">＋ Agregar fechas</button>' : '')
+    + `<small>Se hacen ${E.length} búsqueda${E.length === 1 ? '' : 's'} y se unen sin repetir publicaciones. Las fechas se guardan como «hoy + N días» y se mueven solas cada día (también en la búsqueda de las 3 a.m.).</small>`;
+}
+function mcFxPintar_() { const w = document.getElementById('mc-fxw'); if (w) w.innerHTML = mcFxHtml_(); }
+async function mcFxGuardar_(lista) {
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/escenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ escenarios: lista }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.esc = j.escenarios; MC._escTs = Date.now(); mcFxPintar_(); return true; }
+  catch (e) { alert('No se pudieron guardar las fechas: ' + (e.message || e)); return false; }
+}
+window.mcFxQuitar_ = function (k) { const L = (MC.esc || []).map(e => ({ a: e.a, n: e.n })); if (L.length <= 1) return; L.splice(k, 1); mcFxGuardar_(L); };
+(function () {
+  const MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'], MCs = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'], DS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, pd = s => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d); };
+  const txt = s => { if (!s) return ''; const d = pd(s); return `${DS[d.getDay()]}. ${d.getDate()} ${MCs[d.getMonth()]} ${d.getFullYear()}`; }, S = { a: '', d: '', foco: 'a', idx: -1, fx: false };
+  function pinta(scroll) {
+    const ov = document.getElementById('mc-dp'); if (!ov) return; const hoy = iso(new Date()), noches = S.a && S.d ? Math.round((pd(S.d) - pd(S.a)) / 864e5) : 0;
+    ov.querySelector('.mc-dp-io').innerHTML = `<button type="button" class="${S.foco === 'a' ? 'on' : ''}" onclick="mcDpFoco_('a')"><small>Llegada</small><span class="${S.a ? '' : 'v'}">${S.a ? txt(S.a) : '—'}</span></button><button type="button" class="${S.foco === 'd' ? 'on' : ''}" onclick="mcDpFoco_('d')"><small>Salida</small><span class="${S.d ? '' : 'v'}">${S.d ? txt(S.d) : '—'}</span></button>`;
+    let h = ''; const base = new Date(); base.setDate(1);
+    for (let k = 0; k < 13; k++) { const m = new Date(base.getFullYear(), base.getMonth() + k, 1), n = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate(); let g = ''; for (let i = 0; i < m.getDay(); i++) g += '<div></div>';
+      for (let d = 1; d <= n; d++) { const v = iso(new Date(m.getFullYear(), m.getMonth(), d)), off = v < hoy, cls = ['mc-dp-d']; if (off) cls.push('off'); if (v === hoy) cls.push('hoy'); if (v === S.a) { cls.push('st'); if (S.d) cls.push('rng'); } if (v === S.d) cls.push('en'); if (S.a && S.d && v > S.a && v < S.d) cls.push('in');
+        g += `<div class="${cls.join(' ')}" ${off ? '' : `onclick="mcDpDia_('${v}')"`} data-d="${v}"><i>${d}</i></div>`; }
+      h += `<div class="mc-dp-m"><div class="mc-dp-mt">${MES[m.getMonth()]} <small>${m.getFullYear()}</small></div><div class="mc-dp-g">${g}</div></div>`; }
+    const sc = ov.querySelector('.mc-dp-sc'), top = sc.scrollTop; sc.innerHTML = h; sc.scrollTop = top;
+    if (scroll && S.a) { const el = sc.querySelector(`[data-d="${S.a}"]`); if (el) sc.scrollTop = el.closest('.mc-dp-m').offsetTop - sc.offsetTop; }
+    ov.querySelector('.mc-dp-f span').innerHTML = noches ? `<b>${noches} noche${noches === 1 ? '' : 's'}</b> · ${txt(S.a)} → ${txt(S.d)}` : S.a ? 'Ahora elige la fecha de salida' : 'Elige la fecha de llegada'; ov.querySelector('.mc-dp-ok').disabled = !(S.a && S.d);
+  }
+  window.mcDpOpen_ = function (idx) {
+    const e = idx >= 0 && MC.esc ? MC.esc[idx] : null; S.idx = idx; S.a = e ? e.checkin : ''; S.d = e ? e.checkout : ''; S.foco = 'a'; S.fx = false; document.getElementById('mc-dp') && document.getElementById('mc-dp').remove();
+    const ov = document.createElement('div'); ov.id = 'mc-dp'; ov.className = 'mc-dp';
+    ov.innerHTML = `<div class="mc-dp-b" role="dialog" aria-label="Selecciona las fechas"><div class="mc-dp-h"><b>${idx >= 0 ? `Fechas ${idx + 1}` : 'Agregar fechas'} de la búsqueda</b><button type="button" class="mc-dp-x" onclick="mcDpClose_()" aria-label="Cerrar">✕</button></div><div class="mc-dp-io"></div>
+      <div class="mc-dp-wk">${DS.map(x => `<span>${x.toUpperCase()}</span>`).join('')}</div><div class="mc-dp-sc"></div><div class="mc-dp-f"><span></span><button type="button" class="mc-dp-cl" onclick="mcDpBorrar_()">Borrar</button><button type="button" class="mc-dp-ok" onclick="mcDpAplicar_()">Aplicar</button></div></div>`;
+    ov.addEventListener('click', e2 => { if (e2.target === ov) mcDpClose_(); }); document.body.appendChild(ov); pinta(true);
+  };
+  window.mcDpClose_ = function () { const o = document.getElementById('mc-dp'); if (o) o.remove(); };
+  window.mcDpFoco_ = function (f) { S.foco = f === 'd' && S.a ? 'd' : 'a'; S.fx = true; pinta(); };
+  window.mcDpDia_ = function (v) { if (S.a && S.d && !S.fx) { S.a = v; S.d = ''; S.foco = 'd'; } else if (S.foco === 'a' || !S.a || v <= S.a) { S.a = v; if (S.d && S.d <= v) S.d = ''; S.foco = 'd'; } else S.d = v; S.fx = false; pinta(); };
+  window.mcDpBorrar_ = function () { S.a = ''; S.d = ''; S.foco = 'a'; pinta(); };
+  window.mcDpAplicar_ = async function () {
+    if (!(S.a && S.d)) return; const hoy = pd(iso(new Date())), a = Math.round((pd(S.a) - hoy) / 864e5), n = Math.round((pd(S.d) - pd(S.a)) / 864e5), L = (MC.esc || []).map(e => ({ a: e.a, n: e.n }));
+    if (a < 0 || a > 364) { alert('La fecha de llegada debe estar entre hoy y los próximos 12 meses.'); return; } if (n < 1 || n > 28) { alert('La estancia puede ser de 1 a 28 noches.'); return; }
+    if (S.idx >= 0) L[S.idx] = { a, n }; else L.push({ a, n });
+    if (await mcFxGuardar_(L)) mcDpClose_();
+  };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('mc-dp')) mcDpClose_(); });
+})();
 window.mcMetodo_ = function (m) { MC.metodo = m; try { localStorage.setItem('mc-metodo', m); } catch (_) {} mcTop_(); };
 function mcBus_() {
   const st = document.getElementById('mc-bus'), b = MC.bus, u = MC.ultima, run = b && b.running; if (!st) return;
