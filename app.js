@@ -75852,7 +75852,7 @@ window.mcInit = async function () {
   await mcCargar_(); mcRender_(); if ((MC.job && MC.job.running) || (MC.bus && MC.bus.running)) mcPoll_(); if (!MC.propios) setTimeout(async () => { if (!document.getElementById('mc-res')) return; await mcCargar_(); mcRes_(); }, 30000); // los propios se resuelven en segundo plano la primera vez
 };
 async function mcCargar_() {
-  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; if (!MC._escTs || Date.now() - MC._escTs > 8000) MC.esc = j.escenarios || MC.esc || null; /* una respuesta vieja del sondeo no pisa fechas recién guardadas */ if (!MC._horasTs || Date.now() - MC._horasTs > 8000) MC.horas = j.horas || MC.horas || [11, 19]; MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; if (!MC._escTs || Date.now() - MC._escTs > 8000) MC.esc = j.escenarios || MC.esc || null; /* una respuesta vieja del sondeo no pisa fechas recién guardadas */ if (!MC._horasTs || Date.now() - MC._horasTs > 8000) MC.horas = j.horas || MC.horas || [11, 19]; MC.muestreo = j.muestreo !== false; MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
   catch (e) { MC.error = String(e.message || e); }
 }
 function mcCss_() {
@@ -76044,11 +76044,11 @@ function mcSecPintar_() {
 }
 function mcDashPintar_() {
   const h = document.getElementById('mc-sec-dash'); if (!h) return; MC.gtab = MC.gtab || 'ocu';
-  h.innerHTML = `<div class="mc-dash" id="mc-gr"><div class="mc-mbox wide"><div class="mc-mh"><div class="mc-seg sm" style="flex:none">${[['ocu', '📊 A) Ocupación agregada'], ['seg', '🧩 B) Segmentación'], ['host', '👥 C) Anfitriones']].map(([k, t]) => `<button type="button" class="${MC.gtab === k ? 'on' : ''}" onclick="mcGraf_('${k}')">${t}</button>`).join('')}</div>
+  h.innerHTML = `<div class="mc-dash" id="mc-gr"><div class="mc-mbox wide"><div class="mc-mh"><div class="mc-seg sm" style="flex:none">${[['ocu', '📊 A) Ocupación agregada'], ['seg', '🧩 B) Segmentación'], ['host', '👥 C) Anfitriones'], ['precios', '💲 D) Precios']].map(([k, t]) => `<button type="button" class="${MC.gtab === k ? 'on' : ''}" onclick="mcGraf_('${k}')">${t}</button>`).join('')}</div>
     <span class="mc-mu" id="mc-gr-sub"></span><span style="flex:1"></span><div id="mc-gctl" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div></div><div id="mc-gbody"></div></div></div>`;
   mcGrafPintar_();
 }
-function mcGrafPintar_() { if (!document.getElementById('mc-gbody')) return; if (MC.gtab === 'seg') mcSegPintar_(); else if (MC.gtab === 'host') mcHostPintar_(); else mcOcuPintar_(); }
+function mcGrafPintar_() { if (!document.getElementById('mc-gbody')) return; if (MC.gtab === 'seg') mcSegPintar_(); else if (MC.gtab === 'host') mcHostPintar_(); else if (MC.gtab === 'precios') mcPreciosPintar_(); else mcOcuPintar_(); }
 function mcNice_(v) { if (v <= 0) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; }
 const mcFd_ = iso => { const d = new Date(iso + 'T12:00:00'); return `${d.getDate()} ${MCMES[d.getMonth()]} ${d.getFullYear()}`; };
 // ── Pestaña 1: serie agregada con control de ventana (arrastra las barras del selector superior para acercar) ──
@@ -76105,9 +76105,9 @@ function mcMainPintar_() {
 const MCFMT = v => '$' + Math.round(v).toLocaleString('es-MX'), MCPC = (v, d) => (v * 100).toFixed(d == null ? 1 : d) + '%', MCN = (v, d) => Number(v).toFixed(d == null ? 2 : d);
 const MCPV = p => p < 0.001 ? '<0.001' : p.toFixed(3);
 function mcSegDatos_(opt) {
-  const todos = [], conPrecio = MC.lista.filter(l => l.precioNoche > 0).length;
-  MC.lista.forEach(l => { const i = MC.items[l.id]; if (!i || !i.extraido || !(l.precioNoche > 0)) return; let h = i.habitaciones; if (h == null && /habitaci[oó]n/i.test(`${l.tipoBusq || ''} ${i.tipo || ''}`)) h = 1; const coc = mcCocina_(i); if (h == null || i.camas == null || i.banos == null || coc === '—') return;
-    todos.push({ id: l.id, titulo: i.titulo || l.id, precio: l.precioNoche, hab: +h, camas: +i.camas, banos: +i.banos, coc: coc === 'Sí' ? 1 : 0, huesp: i.huespedes == null ? null : +i.huespedes, priv: /^habitaci[oó]n/i.test(l.tipoBusq || i.tipo || '') ? 1 : 0 }); });
+  const todos = [], conPrecio = MC.lista.filter(l => mcPrecio_(l) > 0).length;
+  MC.lista.forEach(l => { const i = MC.items[l.id]; if (!i || !i.extraido || !(mcPrecio_(l) > 0)) return; let h = i.habitaciones; if (h == null && /habitaci[oó]n/i.test(`${l.tipoBusq || ''} ${i.tipo || ''}`)) h = 1; const coc = mcCocina_(i); if (h == null || i.camas == null || i.banos == null || coc === '—') return;
+    todos.push({ id: l.id, titulo: i.titulo || l.id, precio: mcPrecio_(l), hab: +h, camas: +i.camas, banos: +i.banos, coc: coc === 'Sí' ? 1 : 0, huesp: i.huespedes == null ? null : +i.huespedes, priv: /^habitaci[oó]n/i.test(l.tipoBusq || i.tipo || '') ? 1 : 0 }); });
   let base = opt.extra ? todos.filter(r => r.huesp != null) : todos, ext = [];
   if (opt.sinExt && base.length > 20) { const lp = base.map(r => Math.log(r.precio)), q1 = mcsQ(lp, .25), q3 = mcsQ(lp, .75), k = 3 * (q3 - q1), lo = q1 - k, hi = q3 + k; ext = base.filter(r => { const v = Math.log(r.precio); return v < lo || v > hi; }); base = base.filter(r => !ext.includes(r)); }
   return { rows: base, ext, conPrecio, completos: todos.length };
@@ -76180,11 +76180,11 @@ function mcHOcc_(i) {
   let n = 0, t = 0; o.forEach((v, f) => { if (f < hoy || f > fin || blq.has(f)) return; n++; t += v; }); return n >= 30 ? 100 * t / n : null;
 }
 function mcHRows_() {
-  const sig = Object.keys(MC.items || {}).length + '|' + (MC.act || '') + '|' + (MC.propios ? 1 : 0) + '|' + MC.cuenta;
+  const sig = Object.keys(MC.items || {}).length + '|' + (MC.act || '') + '|' + (MC.propios ? 1 : 0) + '|' + MC.cuenta + '|' + (MC._pT || 0);
   if (MC._hr && MC._hr.sig === sig) return MC._hr.rows;
   const rows = [], num = v => mcOk_(v) && v !== '' ? +v : null;
   MC.lista.forEach(l => { const i = MC.items[l.id]; if (!i || !i.extraido || !i.hostId) return;
-    const occ = mcHOcc_(i), pr = l.precioNoche > 0 ? +l.precioNoche : null, co = mcCocina_(i);
+    const occ = mcHOcc_(i), pr = mcPrecio_(l), co = mcCocina_(i);
     let h = i.habitaciones; if (h == null && /habitaci[oó]n/i.test(`${l.tipoBusq || ''} ${i.tipo || ''}`)) h = 1;
     rows.push({ id: l.id, hostId: String(i.hostId), host: i.anfitrion || '—', foto: i.hostFoto || '', titulo: i.titulo || l.id, url: i.url || l.url, precio: pr, pxh: pr != null && h != null ? pr / Math.max(1, +h || 0) : null, occ,
       cal: num(i.calificacion), ev: +i.evaluaciones || 0, hab: num(h), camas: num(i.camas), banos: num(i.banos), huesp: num(i.huespedes), coc: co === '—' ? null : (co === 'Sí' ? 1 : 0),
@@ -76331,6 +76331,95 @@ function mcHostPintar_() {
     sub.textContent = A.error ? '' : `${A.rows.length} alojamientos · ${A.hosts.length} anfitriones`; body.innerHTML = mcHHtml_(A); }, 30);
 }
 window.mcHostRe_ = function (arriba) { const body = document.getElementById('mc-gbody'); if (!body || !MC._hA) return; const y = window.scrollY; body.innerHTML = mcHHtml_(MC._hA); if (arriba) { const h = body.querySelector('h4'); if (h) h.scrollIntoView({ block: 'start' }); } else window.scrollTo(0, y); };
+// ═══════════════════════════════════════════════════════════════════════════
+// 📊 Dashboard › D) Precios (v2177): bitácora de precios por noche (mercado/precios/*.json) → día de la semana, anticipación, temporada y anfitriones con precio dinámico.
+// El precio de cada publicación viene de la búsqueda de Airbnb para unas fechas concretas; por eso se guarda cada observación con su fecha de entrada y noches.
+// ═══════════════════════════════════════════════════════════════════════════
+async function mcPreciosCargar_(fuerza) {
+  if (!fuerza && MC._pT && Date.now() - MC._pT < 300000) return;
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/precios`, { cache: 'no-store' }).then(r => r.json()); if (j && j.ok !== false) { MC.precios = j; MC._pT = Date.now(); } } catch (_) {}
+}
+const mcPInfo_ = id => MC.precios && MC.precios.porListing ? MC.precios.porListing[id] : null;
+// Precio por noche de referencia: mediana de las noches de martes a jueves observadas (o la mediana general); si aún no hay bitácora, el de la última búsqueda.
+const mcPrecio_ = l => { const P = l && mcPInfo_(l.id); return P && P.ref > 0 ? P.ref : (l && l.precioNoche > 0 ? +l.precioNoche : null); };
+const MCP_DOW = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'], MCP_LEAD = [['0-3', '0–3 días'], ['4-7', '4–7 días'], ['8-14', '8–14 días'], ['15-30', '15–30 días'], ['31-60', '31–60 días'], ['61+', '61+ días']];
+const mcPct_ = v => (v >= 0 ? '+' : '') + MCN(v * 100, 0) + '%';
+// Barras verticales alrededor de 1.00 (= precio medio de cada publicación): arriba = más caro que su promedio, abajo = más barato
+function mcSvgIdx_(it, o) {
+  o = o || {}; const W = o.w || 460, H = o.h || 230, L = 40, R = 8, T = 16, B = 44, pw = W - L - R, ph = H - T - B; if (!it.length) return '<div class="mc-mu">Sin datos suficientes todavía.</div>';
+  const vs = it.map(x => x.v), lo = Math.min(0.85, ...vs) - 0.03, hi = Math.max(1.15, ...vs) + 0.03, y = v => T + ph - (v - lo) / (hi - lo) * ph, bw = Math.min(46, pw / it.length * 0.62);
+  let s = [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4].filter(v => v >= lo && v <= hi).map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="${v === 1 ? '#475569' : '#eef0f3'}" ${v === 1 ? 'stroke-dasharray="4 3"' : ''}/><text x="${L - 5}" y="${y(v) + 4}" text-anchor="end" font-size="10" fill="#64748b">${MCN(v, 1)}</text>`).join('');
+  it.forEach((x, k) => { const cx = L + pw * (k + .5) / it.length, y0 = y(1), y1 = y(x.v), c = x.c || (x.v >= 1.0 ? '#0f766e' : '#94a3b8');
+    s += `<rect x="${cx - bw / 2}" y="${Math.min(y0, y1)}" width="${bw}" height="${Math.max(1.5, Math.abs(y0 - y1))}" rx="3" fill="${c}"/><text x="${cx}" y="${(x.v >= 1 ? Math.min(y0, y1) - 4 : Math.max(y0, y1) + 12)}" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">${mcPct_(x.v - 1)}</text><text x="${cx}" y="${H - 26}" text-anchor="middle" font-size="11" fill="#334155" font-weight="700">${esc(x.l)}</text><text x="${cx}" y="${H - 13}" text-anchor="middle" font-size="9.5" fill="#94a3b8">n=${x.n}</text>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${s}</svg>`;
+}
+function mcSvgFechas_(pts) {
+  if (pts.length < 3) return '<div class="mc-mu">Aún no hay suficientes fechas de estancia con observaciones.</div>'; const W = 960, H = 230, L = 40, R = 12, T = 14, B = 34, pw = W - L - R, ph = H - T - B, vs = pts.map(p => p.v), lo = Math.min(0.85, ...vs) - 0.03, hi = Math.max(1.15, ...vs) + 0.03, N = pts.length,
+    x = k => L + (N <= 1 ? 0 : k * pw / (N - 1)), y = v => T + ph - (v - lo) / (hi - lo) * ph;
+  let s = [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4].filter(v => v >= lo && v <= hi).map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="${v === 1 ? '#475569' : '#eef0f3'}" ${v === 1 ? 'stroke-dasharray="4 3"' : ''}/><text x="${L - 5}" y="${y(v) + 4}" text-anchor="end" font-size="10" fill="#64748b">${MCN(v, 1)}</text>`).join('');
+  s += `<polyline points="${pts.map((p, k) => `${x(k).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ')}" fill="none" stroke="#94a3b8" stroke-width="1.4"/>`;
+  pts.forEach((p, k) => { const dw = new Date(p.f + 'T12:00:00').getDay(), fin = dw === 5 || dw === 6; s += `<circle cx="${x(k)}" cy="${y(p.v)}" r="${fin ? 3.6 : 2.4}" fill="${fin ? '#dc2626' : '#0f766e'}"><title>${MCP_DOW[dw]} ${mcF(p.f)}: ${mcPct_(p.v - 1)} (n=${p.n})</title></circle>`; });
+  const st = Math.max(1, Math.round(N / 12)); for (let k = 0; k < N; k += st) s += `<text x="${x(k)}" y="${H - 12}" text-anchor="middle" font-size="10" fill="#475569">${mcF(pts[k].f).replace(/ \d{2}$/, '')}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${s}</svg><div class="mc-ley"><span><i style="background:#dc2626"></i>Viernes y sábado</span><span><i style="background:#0f766e"></i>Resto de noches</span></div>`;
+}
+function mcPreciosHtml_() {
+  const P = MC.precios, fig = (t, h, n) => `<div class="mc-fig"><b>${t}</b>${h}${n ? `<div class="mc-mu" style="font-size:11.5px;margin-top:4px">${n}</div>` : ''}</div>`;
+  if (!P || !P.nObs) return `<div class="mc-sg"><div class="mc-concl"><p><b>La bitácora de precios aún está vacía.</b> Se empieza a llenar con la próxima búsqueda de publicaciones: la automática (a las horas que definiste en «2 · Extraer», método Automática) o la manual con «Extraer lista de publicaciones». Cada búsqueda guarda el precio por noche de cada publicación con su fecha de entrada.</p>
+    <p class="mc-mu" style="font-size:12.5px">Para medir el efecto del día de la semana, la anticipación y la temporada, cada búsqueda consulta además 4 fechas de 1 noche (a 7, 21, 45 y 75 días). Los primeros patrones útiles aparecen con 2–3 semanas de datos; la temporada anual necesita meses.</p></div></div>`;
+  const rows = mcHRows_(), pI = id => mcPInfo_(id), conP = rows.filter(r => pI(r.id)), n3 = rows.filter(r => pI(r.id) && pI(r.id).n >= 3);
+  const kpi = `<div class="mc-sgk"><div><b>${P.nObs.toLocaleString('es-MX')}</b><span>precios observados</span></div><div><b>${P.nDias}</b><span>días con búsqueda (${esc(mcF(P.desde))} → ${esc(mcF(P.hasta))})</span></div><div><b>${P.nListings}</b><span>publicaciones con precio</span></div><div><b>${(P.fecha || []).length}</b><span>fechas de estancia con datos suficientes</span></div></div>`
+    + (P.nDias < 14 ? `<div class="mc-concl" style="margin:8px 0"><p>⏳ <b>La bitácora apenas se está llenando</b> (${P.nDias} día${P.nDias === 1 ? '' : 's'}). Los índices de abajo son preliminares: el efecto del día de la semana se vuelve confiable con ~2 semanas, y el de temporada con varios meses.</p></div>` : '');
+  const dow = (P.dow || []).map(x => ({ l: MCP_DOW[x.k], v: x.idx, n: x.n, c: x.k === 5 || x.k === 6 ? '#dc2626' : null })), lead = MCP_LEAD.map(([k, t]) => { const x = (P.lead || []).find(z => z.k === k); return x ? { l: t, v: x.idx, n: x.n } : null; }).filter(Boolean),
+    mes = (P.mes || []).map(x => ({ l: MCMES[+x.k.slice(5, 7) - 1] + ' ' + x.k.slice(2, 4), v: x.idx, n: x.n })), fechas = (P.fecha || []).slice(0, 150).map(x => ({ f: x.k, v: x.idx, n: x.n }));
+  // Precio dinámico por anfitrión
+  const G = new Map(); n3.forEach(r => { if (!G.has(r.hostId)) G.set(r.hostId, []); G.get(r.hostId).push(r); });
+  const H = [...G.entries()].map(([id, L]) => { const cvs = L.map(r => pI(r.id).cv).filter(mcOk_), prs = L.map(r => pI(r.id).prem).filter(mcOk_); return { id, host: L[0].host, foto: L[0].foto, n: L.length, cv: mcAvg_(cvs), prem: mcAvg_(prs), occ: mcAvg_(L.map(r => r.occ)), cal: mcAvg_(L.map(r => r.cal)) }; }).filter(h => mcOk_(h.cv));
+  const clase = h => h.cv >= .12 || (mcOk_(h.prem) && h.prem >= .15) ? 'Dinámico' : h.cv < .05 ? 'Fijo' : 'Intermedio';
+  H.forEach(h => { h.cl = clase(h); });
+  const cnt = k => H.filter(h => h.cl === k).length, occDe = k => mcAvg_(H.filter(h => h.cl === k).map(h => h.occ));
+  const topH = H.slice().sort((a, b) => b.cv - a.cv).slice(0, 15);
+  const hostT = `<table class="mc-st"><thead><tr><th>Anfitrión</th><th>Aloj.</th><th>Variación del precio</th><th>Prima fin de semana</th><th>Tipo</th><th>Ocupación</th><th>Calificación</th></tr></thead><tbody>${topH.map(h => `<tr><td>${mcHNombre_({ id: h.id, host: h.host, foto: h.foto, anios: null })}</td><td>${h.n}</td><td>${MCN(h.cv * 100, 0)}%</td><td>${mcOk_(h.prem) ? mcPct_(h.prem) : '—'}</td><td>${h.cl}</td><td>${mcOk_(h.occ) ? MCN(h.occ, 0) + '%' : '—'}</td><td>${mcOk_(h.cal) ? MCN(h.cal, 2) : '—'}</td></tr>`).join('') || '<tr><td colspan="7" class="mc-mu">Aún no hay anfitriones con 3+ observaciones por publicación.</td></tr>'}</tbody></table>`;
+  const seg = `<div class="mc-sgk"><div><b>${cnt('Dinámico')}</b><span>anfitriones con precio dinámico (variación ≥ 12% o prima de fin de semana ≥ 15%)</span></div><div><b>${cnt('Intermedio')}</b><span>intermedios</span></div><div><b>${cnt('Fijo')}</b><span>con tarifa casi fija (variación &lt; 5%)</span></div><div><b>${mcOk_(occDe('Dinámico')) ? MCN(occDe('Dinámico'), 1) + '%' : '—'} / ${mcOk_(occDe('Fijo')) ? MCN(occDe('Fijo'), 1) + '%' : '—'}</b><span>ocupación media: dinámicos / fijos</span></div></div>`;
+  // Mis alojamientos vs mercado
+  const mios = n3.filter(r => r.propio), premM = mcMed_(n3.map(r => pI(r.id).prem)), cvM = mcMed_(n3.map(r => pI(r.id).cv)), premO = mcMed_(mios.map(r => pI(r.id).prem)), cvO = mcMed_(mios.map(r => pI(r.id).cv));
+  const propios = mios.length ? `<table class="mc-st"><thead><tr><th></th><th>Mis alojamientos</th><th>Mercado</th></tr></thead><tbody><tr><td><b>Alojamientos con 3+ precios</b></td><td>${mios.length}</td><td>${n3.length}</td></tr><tr><td><b>Prima de fin de semana (mediana)</b></td><td>${mcOk_(premO) ? mcPct_(premO) : '—'}</td><td>${mcOk_(premM) ? mcPct_(premM) : '—'}</td></tr><tr><td><b>Variación del precio entre fechas (mediana)</b></td><td>${mcOk_(cvO) ? MCN(cvO * 100, 0) + '%' : '—'}</td><td>${mcOk_(cvM) ? MCN(cvM * 100, 0) + '%' : '—'}</td></tr></tbody></table>` : '<div class="mc-mu">Aún no hay alojamientos propios con suficientes observaciones de precio.</div>';
+  // Precio vs ocupación (cuartiles de precio por habitación)
+  const Q = conP.filter(r => r.pxh != null && r.occ != null); let cuart = '';
+  if (Q.length >= 40) { const q = [mcsQ(Q.map(r => r.pxh), .25), mcsQ(Q.map(r => r.pxh), .5), mcsQ(Q.map(r => r.pxh), .75)], gr = [Q.filter(r => r.pxh <= q[0]), Q.filter(r => r.pxh > q[0] && r.pxh <= q[1]), Q.filter(r => r.pxh > q[1] && r.pxh <= q[2]), Q.filter(r => r.pxh > q[2])], rho = mcsSpear(Q.map(r => r.pxh), Q.map(r => r.occ));
+    cuart = `<table class="mc-st"><thead><tr><th>Cuartil de precio por habitación</th><th>Rango</th><th>Aloj.</th><th>Ocupación media</th><th>Calificación media</th></tr></thead><tbody>${gr.map((g, k) => `<tr><td><b>Q${k + 1}${k === 0 ? ' · más barato' : k === 3 ? ' · más caro' : ''}</b></td><td>${MCFMT(Math.min(...g.map(r => r.pxh)))} – ${MCFMT(Math.max(...g.map(r => r.pxh)))}</td><td>${g.length}</td><td>${MCN(mcAvg_(g.map(r => r.occ)), 1)}%</td><td>${MCN(mcAvg_(g.map(r => r.cal)), 2)}</td></tr>`).join('')}</tbody></table><div class="mc-mu" style="font-size:11.5px">Correlación de Spearman precio–ocupación: <b>${MCN(rho, 2)}</b> (${Math.abs(rho) < .1 ? 'prácticamente nula' : rho > 0 ? 'positiva: lo más caro tiende a estar más ocupado' : 'negativa: lo más caro tiende a estar menos ocupado'}).</div>`; }
+  else cuart = '<div class="mc-mu">Se necesitan al menos 40 publicaciones con precio y ocupación.</div>';
+  // Recomendaciones
+  const R = [], mx = dow.slice().sort((a, b) => b.v - a.v), mn = dow.slice().sort((a, b) => a.v - b.v);
+  if (dow.length >= 5) { R.push(`<b>Día de la semana.</b> Las noches de <b>${mx.slice(0, 2).map(x => x.l).join(' y ')}</b> cuestan ${mcPct_(mx[0].v - 1)} y ${mcPct_(mx[1].v - 1)} sobre el promedio de cada publicación; las de <b>${mn[0].l}</b> ${mcPct_(mn[0].v - 1)}. ${mcOk_(premO) && mcOk_(premM) ? (premO < premM - 0.03 ? `Tu prima de fin de semana (${mcPct_(premO)}) está por debajo de la del mercado (${mcPct_(premM)}): hay espacio para subir viernes y sábado.` : premO > premM + 0.03 ? `Tu prima de fin de semana (${mcPct_(premO)}) supera la del mercado (${mcPct_(premM)}): revisa que no te esté costando ocupación.` : 'Tu prima de fin de semana está en línea con el mercado.') : 'Cuando tus alojamientos tengan suficientes observaciones se comparará tu prima con la del mercado.'}`); }
+  const l0 = lead.find(x => x.l === '0–3 días'), l1 = lead.find(x => x.l === '61+ días'); if (l0 && l1) R.push(`<b>Anticipación.</b> Reservar a último momento (0–3 días) se publica ${mcPct_(l0.v - 1)} frente al promedio y a 61+ días ${mcPct_(l1.v - 1)}. ${l0.v < l1.v ? 'El mercado baja el precio cuando se acerca la fecha sin reservar: conviene tener una regla de descuento de último minuto y no ofrecer lo mismo a 2 meses que a 2 días.' : 'El mercado sube el precio a último minuto: no regales las noches cercanas si ya tienes poca disponibilidad.'}`);
+  if (mes.length >= 2) { const a = mes.slice().sort((x, y) => y.v - x.v), b = mes.slice().sort((x, y) => x.v - y.v); R.push(`<b>Temporada.</b> Por ahora los meses más caros son <b>${a.slice(0, 2).map(x => x.l).join(' y ')}</b> (${mcPct_(a[0].v - 1)}) y el más barato <b>${b[0].l}</b> (${mcPct_(b[0].v - 1)}). Esta lectura mejora conforme se acumulen meses de bitácora.`); }
+  if (cnt('Dinámico') && cnt('Fijo') && mcOk_(occDe('Dinámico')) && mcOk_(occDe('Fijo'))) R.push(`<b>Precio dinámico.</b> ${cnt('Dinámico')} anfitriones ajustan su tarifa según la fecha y ${cnt('Fijo')} mantienen una casi fija; los dinámicos tienen ocupación media de ${MCN(occDe('Dinámico'), 1)}% frente a ${MCN(occDe('Fijo'), 1)}% de los fijos. ${occDe('Dinámico') > occDe('Fijo') ? 'Variar el precio por fecha se asocia con más ocupación: considera una herramienta de precios dinámicos o reglas por día y anticipación.' : 'No se observa ventaja de ocupación para los dinámicos con los datos actuales.'}`);
+  R.push('<span class="mc-mu">Los índices comparan cada observación con la mediana de su propia publicación, por eso no dependen del tamaño o el nivel de precio del alojamiento. Son precios publicados en la búsqueda (tarifa base por noche), no precios efectivamente cobrados.</span>');
+  return `<div class="mc-sg">${kpi}
+    <h4>1 · ¿Cómo cambia el precio según el día de la semana, la anticipación y el mes?</h4><div class="mc-sgrid2">${fig('Por día de la semana de la noche', mcSvgIdx_(dow), '1.00 = precio medio de cada publicación. Rojo = viernes y sábado.')}${fig('Por anticipación (días entre la consulta y la entrada)', mcSvgIdx_(lead), 'Muestra si el mercado sube o baja el precio cerca de la fecha.')}</div>
+    <div class="mc-sgrid2">${fig('Por mes de la estancia', mcSvgIdx_(mes), 'Necesita meses de bitácora para reflejar la temporada.')}<div></div></div>
+    <h4>2 · Precio por fecha de estancia (próximas noches)</h4>${fig('Índice de precio de cada noche futura', mcSvgFechas_(fechas), 'Cada punto es una fecha de entrada con 8+ observaciones. Los picos suelen ser fines de semana, puentes y festivos.')}
+    <h4>3 · Anfitriones con precio dinámico</h4>${seg}${hostT}
+    <h4>4 · Tus alojamientos frente al mercado</h4>${propios}
+    <h4>5 · Precio y ocupación</h4>${cuart}
+    <h4>6 · Conclusiones</h4><div class="mc-concl"><ul style="margin:6px 0 6px 18px;padding:0;font-size:13px;line-height:1.55">${R.map(x => `<li>${x}</li>`).join('')}</ul></div></div>`;
+}
+function mcPreciosPintar_() {
+  const body = document.getElementById('mc-gbody'), ctl = document.getElementById('mc-gctl'), sub = document.getElementById('mc-gr-sub'); if (!body) return; sub.textContent = ''; ctl.innerHTML = '<button type="button" class="mc-btn" onclick="mcPreciosRefrescar_()">↻ Actualizar</button>';
+  body.innerHTML = '<div class="mc-mu" style="padding:30px;text-align:center">⏳ Cargando bitácora de precios…</div>';
+  mcPreciosCargar_(true).then(() => { if (MC.gtab !== 'precios') return; const b = document.getElementById('mc-gbody'); if (!b) return; let h; try { h = mcPreciosHtml_(); } catch (e) { h = `<div class="mc-err" style="padding:20px">⚠ No se pudo calcular: ${esc(e.message || e)}</div>`; } b.innerHTML = h; const P = MC.precios; document.getElementById('mc-gr-sub').textContent = P && P.nObs ? `${P.nObs.toLocaleString('es-MX')} precios · ${P.nDias} días` : ''; });
+}
+window.mcPreciosRefrescar_ = function () { mcPreciosPintar_(); };
+// Interruptor del muestreo de precios (sección 2 · Extraer)
+function mcMuestreoHtml_() {
+  const on = MC.muestreo !== false, P = MC.precios; return `<span class="pl-ck mc-ck ${on ? 'on' : ''}" onclick="mcMuestreo_()"><span class="ck">${on ? '✓' : ''}</span>Muestreo de precios</span>
+    <small style="display:block;margin-top:4px">Cada búsqueda consulta además 4 fechas de 1 noche (a 7, 21, 45 y 75 días) para medir cómo cambia el precio por día de la semana, anticipación y temporada. Cada precio se guarda con su fecha en la bitácora.${P && P.nObs ? ` <b>Bitácora:</b> ${P.nObs.toLocaleString('es-MX')} precios en ${P.nDias} día${P.nDias === 1 ? '' : 's'}.` : ' La bitácora se empieza a llenar con la próxima búsqueda.'}</small>`;
+}
+window.mcMuestreo_ = async function () {
+  const nuevo = MC.muestreo === false; MC.muestreo = nuevo; const w = document.getElementById('mc-pw'); if (w) w.innerHTML = mcMuestreoHtml_();
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/muestreo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: nuevo }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); }
+  catch (e) { MC.muestreo = !nuevo; if (w) w.innerHTML = mcMuestreoHtml_(); alert('No se pudo guardar: ' + (e.message || e)); }
+};
 window.mcSegOpt_ = function (k) { MC[k] = !MC[k]; try { localStorage.setItem('mc-' + k, MC[k] ? '1' : '0'); } catch (_) {} mcSegPintar_(); };
 function mcSegPintar_() {
   const body = document.getElementById('mc-gbody'), ctl = document.getElementById('mc-gctl'); MC.sgExt = MC.sgExt !== false; const box = (k, t) => `<span class="pl-ck mc-ck ${MC[k] ? 'on' : ''}" onclick="mcSegOpt_('${k}')"><span class="ck">${MC[k] ? '✓' : ''}</span>${t}</span>`;
@@ -76395,7 +76484,7 @@ window.mcSegCsv_ = function () { const A = MC._seg; if (!A || !A.R) return; cons
 window.mcGrafCsv_ = function () { const A = mcAgreg_(MC.cuenta); if (!A) return; const L = ['Fecha,Alojamientos ocupados (noche),Noches ocupadas acumuladas,Alojamientos con dato'].concat(A.dias.map((f, k) => `${f},${A.daily[k]},${A.cum[k]},${A.nobs[k]}`));
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\n')], { type: 'text/csv;charset=utf-8' })); a.download = `ocupacion-agregada-${mcIso_(new Date())}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
 // Precio por noche (de la búsqueda) entre el número de habitaciones; estudio/loft sin recámara = 1
-function mcPxHab_(i) { const p = i._l && i._l.precioNoche; let h = i.habitaciones; if (h == null && /habitaci[oó]n/i.test(`${i._l && i._l.tipoBusq || ''} ${i.tipo || ''}`)) h = 1; if (p == null || h == null) return null; return p / Math.max(1, Number(h) || 0); } // habitación privada = 1
+function mcPxHab_(i) { const p = i._l && mcPrecio_(i._l); let h = i.habitaciones; if (h == null && /habitaci[oó]n/i.test(`${i._l && i._l.tipoBusq || ''} ${i.tipo || ''}`)) h = 1; if (p == null || h == null) return null; return p / Math.max(1, Number(h) || 0); } // habitación privada = 1
 // Alojamiento propio: su publicación de Airbnb está en el catálogo (url_airbnb) o lo publica el mismo anfitrión que alguno de los propios.
 function mcPropio_(i) { const P = MC.propios; if (!P) return null; const c = P.ids && P.ids[i.id]; if (c) return { cod: String(c.codigo || '').split(/\s*\(/)[0].replace(/\s+/g, ' ').trim(), por: 'catálogo' }; if (i.hostId && MC.ownHosts && MC.ownHosts.has(i.hostId)) return { cod: '', por: 'anfitrión' }; return null; }
 function mcCocina_(i) { const A = i.amenidades; if (!A || !A.length) return '—'; if (A.some(a => /^cocina compartida/i.test(a))) return 'Compartida'; return A.some(a => /^cocina\b|cocineta/i.test(a)) ? 'Sí' : 'No'; }
@@ -76444,7 +76533,11 @@ const MC_COLS = [
   { t: 'Días libres (365)', v: i => mcN(i.diasLibres365) }, { t: '1ª fecha libre', v: i => mcF(i.primeraLibre), k: i => i.primeraLibre || null }, { t: 'Próx. bloqueo', v: i => i.extraido ? (i.proximoBloqueo ? mcF(i.proximoBloqueo) : 'Sin bloqueos') : '—', k: i => i.extraido ? (i.proximoBloqueo || '9999') : null },
   { t: 'Noches ocupadas (histórico)', v: i => { const h = mcHist_(i); return h ? h.o : '—'; } }, { t: 'Ocup. histórica', v: i => { const h = mcHist_(i); return h && h.o + h.l ? Math.round(100 * h.o / (h.o + h.l)) + '%' : '—'; } },
   { t: 'Reservas nuevas (última)', v: i => i.v === 2 ? mcN(i.nuevasUlt) : '—' }, { t: 'Canceladas (última)', v: i => i.v === 2 ? mcN(i.canceladasUlt) : '—' }, { t: 'Seguimiento desde', v: i => i.v === 2 ? mcF(i.histDesde) : '—', k: i => i.v === 2 ? i.histDesde : null },
-  { t: 'Precio total (búsqueda)', v: i => i._l && i._l.precioTotal != null ? '$' + Number(i._l.precioTotal).toLocaleString('es-MX') : '—' }, { t: 'Precio por noche (búsqueda)', v: i => i._l && i._l.precioNoche != null ? '$' + Number(i._l.precioNoche).toLocaleString('es-MX', { maximumFractionDigits: 0 }) : '—' },
+  { t: 'Precio total (búsqueda)', v: i => i._l && i._l.precioTotal != null ? '$' + Number(i._l.precioTotal).toLocaleString('es-MX') : '—' }, { t: 'Precio por noche (búsqueda)', v: i => i._l && i._l.precioNoche != null ? '$' + Number(i._l.precioNoche).toLocaleString('es-MX', { maximumFractionDigits: 0 }) : '—', tt: i => i._l && i._l.busqueda ? `Precio de la última búsqueda para ${mcF(i._l.busqueda.checkin)} → ${mcF(i._l.busqueda.checkout)} (cambia con la fecha consultada)` : '' },
+  { t: 'Precio de referencia (mar–jue)', v: i => { const p = i._l && mcPrecio_(i._l); return p == null ? '—' : '$' + Math.round(p).toLocaleString('es-MX'); }, k: i => i._l ? mcPrecio_(i._l) : null, tt: i => { const P = mcPInfo_(i.id); return P ? `Mediana de ${P.n} precios observados (noches de martes a jueves; si no hay, todas) en los últimos 45 días` : 'Aún sin bitácora: es el precio de la última búsqueda'; } },
+  { t: 'Precio mínimo observado', v: i => { const P = mcPInfo_(i.id); return P ? '$' + Math.round(P.min).toLocaleString('es-MX') : '—'; }, k: i => (mcPInfo_(i.id) || {}).min ?? null }, { t: 'Precio máximo observado', v: i => { const P = mcPInfo_(i.id); return P ? '$' + Math.round(P.max).toLocaleString('es-MX') : '—'; }, k: i => (mcPInfo_(i.id) || {}).max ?? null },
+  { t: 'Variación del precio (CV)', v: i => { const P = mcPInfo_(i.id); return P && P.cv != null ? Math.round(P.cv * 100) + '%' : '—'; }, k: i => (mcPInfo_(i.id) || {}).cv ?? null, tt: () => 'Desviación estándar ÷ promedio de los precios observados: alto = precio dinámico, bajo = tarifa casi fija' },
+  { t: 'Prima fin de semana', v: i => { const P = mcPInfo_(i.id); return P && P.prem != null ? (P.prem >= 0 ? '+' : '') + Math.round(P.prem * 100) + '%' : '—'; }, k: i => (mcPInfo_(i.id) || {}).prem ?? null, tt: () => 'Precio de viernes y sábado frente al de martes a jueves (necesita 2+ observaciones de cada tipo)' }, { t: 'Observaciones de precio', v: i => { const P = mcPInfo_(i.id); return P ? P.n : 0; }, k: i => (mcPInfo_(i.id) || {}).n || 0 },
   { t: 'Precio por noche / # habitaciones', v: i => { const p = mcPxHab_(i); return p == null ? '—' : '$' + p.toLocaleString('es-MX', { maximumFractionDigits: 0 }); }, k: i => mcPxHab_(i), tt: i => 'Precio por noche de la búsqueda ÷ número de habitaciones (estudio o habitación privada cuentan como 1)' },
   { t: 'Fechas de la búsqueda', v: i => i._l && i._l.busqueda ? `${mcF(i._l.busqueda.checkin)} → ${mcF(i._l.busqueda.checkout)}` : '—', k: i => (i._l && i._l.busqueda && i._l.busqueda.checkin) || null }, { t: 'Origen en la lista', v: i => i._l ? mcN(i._l.origen) : '—' },
   { t: 'Fotos', v: i => mcN(i.fotos) }, { t: 'Latitud', v: i => mcN(i.lat) }, { t: 'Longitud', v: i => mcN(i.lng) }, { t: 'Descripción', v: i => String(i.descripcion || '').replace(/\s+/g, ' ').slice(0, 160) }, { t: 'Extraído', v: i => mcF(i.extraido), k: i => i.extraido || null }];
@@ -76455,10 +76548,12 @@ function mcRender_() {
     <div class="mc-tabs"><button type="button" class="mc-tab" data-s="ext" onclick="mcSec_('ext')">📥 Extracción</button><button type="button" class="mc-tab" data-s="dash" onclick="mcSec_('dash')">📊 Dashboard</button></div>
     <div id="mc-sec-ext"><div id="mc-top"></div>
     <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Se ejecuta solo a las horas que elijas abajo (si usas el método Automática, primero repite la búsqueda para sumar publicaciones nuevas); también puedes pulsarlo cuando quieras.</div>
-      <div class="mc-fx" id="mc-hw" style="max-width:340px;margin:0 0 12px"><b style="font-size:12px">Hora del día de la extracción</b>${mcHorasHtml_()}</div><div id="mc-prog"></div></div>
+      <div class="mc-fx" id="mc-hw" style="max-width:340px;margin:0 0 12px"><b style="font-size:12px">Hora del día de la extracción</b>${mcHorasHtml_()}</div>
+      <div class="mc-fx" id="mc-pw" style="max-width:520px;margin:0 0 12px">${mcMuestreoHtml_()}</div><div id="mc-prog"></div></div>
     <div id="mc-res"></div></div><div id="mc-sec-dash" style="display:none"></div>`;
   if (!MC.sec) { try { MC.sec = localStorage.getItem('mc-sec') === 'dash' ? 'dash' : 'ext'; } catch (_) { MC.sec = 'ext'; } }
   mcTop_(); mcProg_(); mcRes_(); mcSecPintar_();
+  mcPreciosCargar_().then(() => { const w = document.getElementById('mc-pw'); if (w) w.innerHTML = mcMuestreoHtml_(); if (MC.sec !== 'dash') mcRes_(); });
 }
 // Paso 0 (método) y Paso 1 (lista). Solo se repinta al cambiar de método; durante la búsqueda se actualizan #mc-bus y #mc-autolist.
 function mcTop_() {
@@ -76548,7 +76643,7 @@ function mcBus_() {
   if (run) st.innerHTML = `Buscando en Airbnb… fechas <b>${b.rango || 1} de ${b.rangos || (MC.esc ? MC.esc.length : 4)}</b> · página ${b.pagina || 0} de ${b.paginas || '?'} · <b>${b.encontrados || 0}</b> alojamientos únicos ${b.cancelar ? '· ⏳ deteniendo…' : '<button type="button" class="mc-btn" style="color:#b91c1c;border-color:#fca5a5;padding:3px 10px;margin-left:6px" onclick="mcDetener_()" title="Se detiene al terminar la página en curso y conserva lo encontrado">⛔ Detener</button>'}`;
   else if (b && b.detenida && b.fin && u && u.at && Date.parse(b.fin) >= Date.parse(u.at) - 5000) st.innerHTML = `⛔ <b>Búsqueda detenida</b> · se conservaron los <b>${(u.ids || []).length}</b> alojamientos encontrados hasta ese momento${u.nuevos != null ? ` (${u.nuevos} nuevos en la lista)` : ''}`;
   else if (b && b.error && !(u && u.ids && u.ids.length)) st.innerHTML = `<span class="mc-err">⚠ ${esc(b.error)}</span>`;
-  else if (u && u.at) { const p = u.params || {}; st.innerHTML = `✓ <b>${(u.ids || []).length}</b> alojamientos únicos${u.nuevos != null ? ` (${u.nuevos} nuevos en la lista)` : ''} · ${esc(p.destino || '')} · ${p.adultos || 1} huésped${(p.adultos || 1) === 1 ? '' : 'es'}${(u.porRango || []).length ? `<br><span title="Cada búsqueda con sus fechas; entre paréntesis lo que aportó de nuevo">Por fechas: ${u.porRango.map((r, k) => `${k + 1}) <b>${r.encontrados}</b> (+${r.nuevos})`).join(' · ')}</span>` : ''}${u.error ? `<br><span class="mc-err">⚠ ${esc(u.error)}</span>` : ''}`; }
+  else if (u && u.at) { const p = u.params || {}; st.innerHTML = `✓ <b>${(u.ids || []).length}</b> alojamientos únicos${u.nuevos != null ? ` (${u.nuevos} nuevos en la lista)` : ''} · ${esc(p.destino || '')} · ${p.adultos || 1} huésped${(p.adultos || 1) === 1 ? '' : 'es'}${(u.porRango || []).length ? `<br><span title="Cada búsqueda con sus fechas; entre paréntesis lo que aportó de nuevo">Por fechas: ${u.porRango.filter(r => !r.m).map((r, k) => `${k + 1}) <b>${r.encontrados}</b> (+${r.nuevos})`).join(' · ')}${u.porRango.some(r => r.m) ? ` · muestreo de precios: ${u.porRango.filter(r => r.m).length} fechas` : ''}</span>` : ''}${u.error ? `<br><span class="mc-err">⚠ ${esc(u.error)}</span>` : ''}`; }
   else st.textContent = 'Aún no se ha hecho ninguna búsqueda.';
   const ta = document.getElementById('mc-autolist'); if (ta) ta.value = (u && u.ids ? u.ids : []).map(id => `https://www.airbnb.mx/rooms/${id}`).join('\n');
   const sm = document.getElementById('mc-autosum'); if (sm) sm.textContent = u && u.ids && u.ids.length ? `${u.ids.length} URLs de la última búsqueda · ${MC.lista.length} publicaciones en total en la lista de seguimiento` : '';
@@ -76575,7 +76670,7 @@ function mcProg_() {
     ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}${J.detenida ? ' · ⛔ <b>detenida por el usuario</b>' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
 }
 // Tabla única: datos clave → calendario de disponibilidad → resto de los datos. Un solo desplazamiento; encabezado fijo; clic en un encabezado ordena.
-const MC_PRE = ['Propios', 'Tipo', 'Ciudad', 'Ubicación (texto)', 'Anfitrión', 'Foto anfitrión', 'Habit.', 'Camas', 'Baños', 'Cocina', '★ Calif.', 'Evaluaciones', 'Ocup. estimada por reservas (365 d)', 'Noches ocupadas en la ventana', 'Estancia mín.', 'Precio por noche (búsqueda)', 'Precio por noche / # habitaciones'];
+const MC_PRE = ['Propios', 'Tipo', 'Ciudad', 'Ubicación (texto)', 'Anfitrión', 'Foto anfitrión', 'Habit.', 'Camas', 'Baños', 'Cocina', '★ Calif.', 'Evaluaciones', 'Ocup. estimada por reservas (365 d)', 'Noches ocupadas en la ventana', 'Estancia mín.', 'Precio de referencia (mar–jue)', 'Precio por noche / # habitaciones'];
 function mcRes_() {
   const h = document.getElementById('mc-res'); if (!h) return; const rows = mcRows_(), todos = MC.lista.length;
   if (!todos) { h.innerHTML = '<div class="mc-card mc-mu">Aún no hay publicaciones. Agrega URLs en el paso 1.</div>'; return; }
