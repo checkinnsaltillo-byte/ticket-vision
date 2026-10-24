@@ -12482,7 +12482,7 @@ async function _maCalendario(id) {
 // '1' libre · '0' ocupada · '?' sin dato. Solo se actualizan los días desde HOY hasta el último día disponible extraído (más allá es el límite de
 // reservación anticipada de Airbnb, no ocupación). Los días ya pasados conservan lo último que se supo (noche ocupada o libre); si una reserva futura
 // se cancela, el día vuelve a '1'. Cada cambio queda en `cambios` (últimos 400).
-function _maFusion(prev, nuevo, hoy) {
+function _maFusion(prev, nuevo, hoy, hora) {
   const v2 = !!(prev && prev.v === 2), old = v2 && prev.cal ? prev.cal : {}, ks = Object.keys(nuevo.cal).sort(); let ultLibre = "";
   // Airbnb solo reserva hasta 24 meses (hoy + 729 días): lo que muestre más allá no es real (a veces «no disponible», a veces «libre»). Se ignora y se limpia lo guardado antes.
   const tope = (() => { const t = new Date(hoy + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + 729); return t.toISOString().slice(0, 10); })();
@@ -12492,7 +12492,10 @@ function _maFusion(prev, nuevo, hoy) {
     const nd = nuevo.cal[k] || "", od = old[k] || "", dim = Math.max(nd.length, od.length); let t = "";
     for (let i = 0; i < dim; i++) {
       const f = `${k}-${String(i + 1).padStart(2, "0")}`, o = od[i] || "?"; let c = f > tope ? "?" : o;
-      if (nd[i] && f >= hoy && f <= ultLibre && f <= tope) { c = nd[i]; if (v2 && o !== "?" && o !== c) { if (o === "1" && c === "0") nuevas++; else if (o === "0" && c === "1") canc++; cambios.push({ dia: f, de: o, a: c }); } }
+      if (nd[i] && f >= hoy && f <= ultLibre && f <= tope) { c = nd[i];
+        // Después del mediodía, el día en curso sale «no disponible» en casi todas las publicaciones por el corte de reservas del mismo día (no por una reserva):
+        // en la tarde/noche no se marca como ocupado un día que no lo estaba. La corrida de las 3 a.m. sí lo registra.
+        if (f === hoy && nd[i] === "0" && o !== "0" && hora >= 12) c = o; if (v2 && o !== "?" && o !== c) { if (o === "1" && c === "0") nuevas++; else if (o === "0" && c === "1") canc++; cambios.push({ dia: f, de: o, a: c }); } }
       t += c;
     }
     cal[k] = t;
@@ -12537,7 +12540,7 @@ async function _maCorrer(ids) {
     await _maMutar(d => { if (d.job) { d.job.actual = id; d.job.upd = now(); } });
     let res = null, err = "";
     try { res = await _maExtraer(id); } catch (e) { err = String(e.message || e).slice(0, 200); }
-    await _maMutar(d => { const prev = d.items[id] || {}; if (res) { const hoy = _mxHoy(), F = _maFusion(prev, res, hoy), log = (prev.cambios || []).concat(F.cambios.map(x => Object.assign({ at: now() }, x))).slice(-400);
+    await _maMutar(d => { const prev = d.items[id] || {}; if (res) { const hoy = _mxHoy(), hora = +new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "numeric", hour12: false }) % 24, F = _maFusion(prev, res, hoy, hora), log = (prev.cambios || []).concat(F.cambios.map(x => Object.assign({ at: now() }, x))).slice(-400);
         d.items[id] = Object.assign({}, prev, res, { cal: F.cal, v: 2, histDesde: prev.histDesde || hoy, nuevasUlt: F.nuevas, canceladasUlt: F.canc, cambios: log, primeraExtraccion: prev.primeraExtraccion || now() }); d.job.ok++; } else { d.items[id] = Object.assign({}, prev, { id, url: prev.url || `https://www.airbnb.mx/rooms/${id}`, error: err, errorAt: now() }); d.job.fallidas++; } d.job.done++; d.job.upd = now(); });
     await _maSleep(1500 + Math.floor(Math.random() * 1200));
   }
