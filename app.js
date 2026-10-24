@@ -75770,7 +75770,7 @@ window.mkPublicar_ = async function (pubId) {
 // 📈 Investigación de mercados › Airbnb (v2142): lista de URLs → «Extraer» (servidor lee ficha + calendario de 36 meses) → tabla + calendario
 // Backend: /mercado/airbnb (GET), /lista, /quitar, /extraer. Datos en gs://…-panel/mercado/airbnb.json
 // ═══════════════════════════════════════════════════════════════════════════
-const MC = { items: {}, lista: [], job: null, bus: null, ultima: null, act: '', q: '', meses: 12, timer: null, error: '', sync: false, metodo: (() => { try { return localStorage.getItem('mc-metodo') === 'auto' ? 'auto' : 'manual'; } catch (_) { return 'manual'; } })() };
+const MC = { sort: { k: '', d: 1 }, items: {}, lista: [], job: null, bus: null, ultima: null, act: '', q: '', meses: 12, timer: null, error: '', sync: false, metodo: (() => { try { return localStorage.getItem('mc-metodo') === 'auto' ? 'auto' : 'manual'; } catch (_) { return 'manual'; } })() };
 const MC_RH = 40; // alto de renglón (igual en tabla y calendario para que queden alineados)
 window.mcInit = async function () {
   const root = document.getElementById('mc-root'); if (!root) return; mcCss_(); root.innerHTML = '<div class="mc-card">⏳ Cargando…</div>';
@@ -75807,13 +75807,60 @@ function mcCss_() {
   .mc-bk.k{background:repeating-linear-gradient(135deg,#e5e7eb 0 6px,#d1d5db 6px 12px);border-color:#cbd5e1;color:#6b7280}
   .mc-lg{display:flex;gap:12px;align-items:center;font-size:11.5px;color:var(--mu);font-weight:600}.mc-lg i{display:inline-block;width:14px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
   .mc-cl{position:sticky;left:0;z-index:2;height:${MC_RH}px}
+  .mc-tb th.srt{cursor:pointer;user-select:none}.mc-tb th.srt:hover{background:#eef2f7}.mc-tb th.srt i{font-style:normal;margin-left:5px;font-size:9px;color:#cbd5e1}.mc-tb th.srt.on{color:#0f766e}.mc-tb th.srt.on i{color:#0f766e;font-size:10px}
+  .mc-tb td.mc-tdc{padding:0;max-width:none;overflow:visible;border-left:2px solid #99f6e4;border-right:2px solid #99f6e4}.mc-tb th.mc-thc{padding:0;cursor:default;border-left:2px solid #99f6e4;border-right:2px solid #99f6e4;background:#f8fafc}
+  .mc-tb tbody tr:hover td{background:#f0fdfa}.mc-tb tbody tr:hover td.sk{background:#f0fdfa}.mc-tb tbody tr:hover .mc-cr{background-color:#f0fdfa}
+  .mc-bk.t-bloqueo{background:linear-gradient(135deg,#64748b,#475569);border-color:#334155}.mc-bk.t-indet{background:linear-gradient(135deg,#f59e0b,#d97706);border-color:#b45309}
   .mc-seg{display:inline-flex;border:1.5px solid #cbd5e1;border-radius:11px;overflow:hidden;margin:2px 0 10px}.mc-seg button{all:unset;cursor:pointer;padding:8px 18px;font-size:13px;font-weight:800;color:#475569;background:#fff}.mc-seg button.on{background:#0f766e;color:#fff}
   .mc-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.3fr) 120px;gap:12px;margin-bottom:10px}@media(max-width:760px){.mc-grid{grid-template-columns:1fr}}.mc-grid label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em}.mc-grid .mc-in{width:100%;box-sizing:border-box;font-size:13px;text-transform:none;letter-spacing:0;font-weight:600;color:#111827}.mc-fx{border:1.5px solid #e2e8f0;background:#f8fafc;border-radius:9px;padding:7px 10px;font-size:13px;font-weight:700;color:#111827;text-transform:none;letter-spacing:0}.mc-fx small{display:block;font-size:10.5px;font-weight:600;color:#64748b}`; document.head.appendChild(st);
 }
 // Noches ocupadas / libres ya pasadas, según lo último que se supo de cada día (historia propia; no el «tachado» de Airbnb)
-function mcHist_(i) { if (i.v !== 2 || !i.cal) return null; const d = new Date(), hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; let o = 0, l = 0;
+function mcHist_(i) { return mcMemo_(i, 'h', () => mcHist0_(i)); }
+function mcHist0_(i) { if (i.v !== 2 || !i.cal) return null; const d = new Date(), hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; let o = 0, l = 0;
   Object.keys(i.cal).forEach(k => [...i.cal[k]].forEach((c, x) => { if (`${k}-${String(x + 1).padStart(2, '0')}` < hoy) { if (c === '0') o++; else if (c === '1') l++; } })); return { o, l }; }
-function mcRows_() { const q = MC.q.trim().toLowerCase(); return MC.lista.map(l => Object.assign({}, MC.items[l.id] || { id: l.id, url: l.url, pendiente: true }, { _l: l })).filter(it => !q || [it.titulo, it.ciudad, it.anfitrion, it.id, it.tipo].some(x => String(x || '').toLowerCase().includes(q))); }
+// Tipo probable de cada bloque «no disponible» desde hoy. Airbnb NO dice el motivo (reserva, bloqueo del anfitrión, aviso previo…): es una estimación.
+//   bloqueo: empieza hoy y dura ≤ 2 noches (aviso previo) · dura ≥ 30 noches · empieza a más de 1 año
+//   reserva: dura ≤ 14 noches y el seguimiento la vio aparecer (libre → ocupada), o empieza en los próximos 9 meses
+//   indeterminado: el resto (15–29 noches o sin señales claras)
+const mcIso_ = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const MC_TIPO = { reserva: { t: 'Reserva probable', c: '#dc2626' }, bloqueo: { t: 'Bloqueo probable', c: '#475569' }, indet: { t: 'Indeterminado', c: '#d97706' } };
+// Memo por publicación y día (las filas se recrean en cada orden/búsqueda; los cálculos de bloques no)
+const mcMemo_ = (i, k, fn) => { const M = MC._m = MC._m || new Map(), kk = `${k}|${i.id}|${i.extraido || ''}|${mcIso_(new Date())}`; if (!M.has(kk)) { if (M.size > 4000) M.clear(); M.set(kk, fn()); } return M.get(kk); };
+function mcRuns_(i) { return mcMemo_(i, 'r', () => mcRuns0_(i)); }
+function mcRuns0_(i) {
+  if (!i.cal) return [];
+  const hoyD = new Date(), hoy = mcIso_(hoyD), add = n => mcIso_(new Date(hoyD.getFullYear(), hoyD.getMonth(), hoyD.getDate() + n)), l365 = add(365), l270 = add(270), tope = add(729); // Airbnb solo reserva a 24 meses: lo de más allá no es real
+  const dias = []; Object.keys(i.cal).sort().forEach(k => [...i.cal[k]].forEach((c, x) => { const f = `${k}-${String(x + 1).padStart(2, '0')}`; if (f >= hoy && f <= tope) dias.push({ f, c }); }));
+  const nuevos = new Set((i.cambios || []).filter(x => x.de === '1' && x.a === '0').map(x => x.dia)); const runs = []; let cur = null, ult = -9;
+  dias.forEach((d, k) => { if (d.c === '0') { if (cur && ult === k - 1) { cur.fin = d.f; cur.n++; } else { cur = { ini: d.f, fin: d.f, n: 1, nuevo: false, n365: 0 }; runs.push(cur); } ult = k; if (nuevos.has(d.f)) cur.nuevo = true; if (d.f < l365) cur.n365++; } });
+  runs.forEach(r => { let tipo = 'indet', m = 'Bloque sin señales claras';
+    if (r.ini === hoy && r.n <= 2) { tipo = 'bloqueo'; m = 'Empieza hoy y dura ≤ 2 noches: aviso previo o regla del anfitrión'; }
+    else if (r.fin >= tope && r.n >= 30) { tipo = 'bloqueo'; m = 'Llega hasta el final del calendario: el anfitrión limita con cuánta anticipación se puede reservar'; }
+    else if (r.n >= 30) { tipo = 'bloqueo'; m = 'Bloque largo (≥ 30 noches): cierre del anfitrión o estancia mensual'; }
+    else if (r.ini > l365) { tipo = 'bloqueo'; m = 'A más de un año: cierre del anfitrión'; }
+    else if (r.n <= 14 && r.nuevo) { tipo = 'reserva'; m = 'El seguimiento la vio aparecer (noche libre → ocupada)'; }
+    else if (r.n <= 14 && r.ini <= l270) { tipo = 'reserva'; m = 'Bloque corto (≤ 14 noches) en los próximos 9 meses'; }
+    else if (r.n >= 15) m = 'Entre 15 y 29 noches: puede ser estancia larga o bloqueo';
+    r.tipo = tipo; r.motivo = m; });
+  return runs;
+}
+function mcTipos_(i) { return mcMemo_(i, 't', () => mcTipos0_(i)); }
+function mcTipos0_(i) { if (!i.cal) return null; const o = { reserva: 0, bloqueo: 0, indet: 0, con: 0 }; mcRuns_(i).forEach(r => { o[r.tipo] += r.n365; });
+  const d0 = new Date(), hoy = mcIso_(d0), l365 = mcIso_(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + 365)); Object.keys(i.cal).forEach(k => [...i.cal[k]].forEach((c, x) => { const f = `${k}-${String(x + 1).padStart(2, '0')}`; if (f >= hoy && f < l365 && (c === '0' || c === '1')) o.con++; })); return o; }
+// Orden de la tabla: clic en el encabezado → A-Z, otro clic → Z-A, otro → sin orden. Los vacíos van siempre al final.
+function mcKey_(key, i) {
+  if (key === 'pub') return String(i.titulo || '').toLowerCase() || null; if (key === 'est') return i.error ? 'error' : (i.pendiente || !i.extraido) ? 'pendiente' : 'ok';
+  const c = MC_COLS[+key.slice(1)]; if (!c) return null; if (c.k) return c.k(i);
+  const v = c.v(i); if (v === '—' || v === '' || v == null) return null; const t = String(v).replace(/[$%]/g, '').replace(/\s*(noches?|d)\s*$/i, '').trim(), n = parseFloat(t.replace(/,/g, '')); return /^-?[\d.,]+$/.test(t) && !isNaN(n) ? n : String(v).toLowerCase();
+}
+window.mcSort_ = function (key) { const S = MC.sort; if (S.k !== key) { MC.sort = { k: key, d: 1 }; } else if (S.d === 1) S.d = -1; else MC.sort = { k: '', d: 1 }; mcRes_(); };
+function mcRows_() {
+  const q = MC.q.trim().toLowerCase();
+  let R = MC.lista.map(l => Object.assign({}, MC.items[l.id] || { id: l.id, url: l.url, pendiente: true }, { _l: l })).filter(it => !q || [it.titulo, it.ciudad, it.anfitrion, it.id, it.tipo].some(x => String(x || '').toLowerCase().includes(q)));
+  const S = MC.sort; if (S && S.k) { const K = new Map(R.map(i => [i, mcKey_(S.k, i)]));
+    R = R.slice().sort((a, b) => { const x = K.get(a), y = K.get(b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; let c; if (typeof x === 'number' && typeof y === 'number') c = x - y; else if (typeof x === 'number') c = -1; else if (typeof y === 'number') c = 1; else c = String(x).localeCompare(String(y), 'es', { numeric: true, sensitivity: 'base' }); return c * S.d; }); }
+  return R;
+}
 const mcN = v => v == null || v === '' ? '—' : v, mcF = iso => { if (!iso) return '—'; const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso); return isNaN(d) ? '—' : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: iso.length === 10 ? '2-digit' : undefined }); };
 const mcPct = v => v == null ? '—' : v + '%', mcSN = v => v === true ? 'Sí' : v === false ? 'No' : '—';
 // Columnas: t = encabezado · v = valor (texto, también para CSV) · h = html opcional
@@ -75824,13 +75871,15 @@ const MC_COLS = [
   { t: '★ Calif.', v: i => mcN(i.calificacion) }, { t: 'Evaluaciones', v: i => mcN(i.evaluaciones) }, { t: 'Favorito huéspedes', v: i => mcSN(i.favorito) }, { t: '% 5★', v: i => mcPct(i.pct5) },
   { t: 'Limpieza', v: i => mcN((i.cat || {}).limpieza) }, { t: 'Veracidad', v: i => mcN((i.cat || {}).veracidad) }, { t: 'Llegada', v: i => mcN((i.cat || {}).llegada) }, { t: 'Comunicación', v: i => mcN((i.cat || {}).comunicacion) }, { t: 'Ubicación (calif.)', v: i => mcN((i.cat || {}).ubicacionCal) }, { t: 'Calidad-precio', v: i => mcN((i.cat || {}).valor) },
   { t: 'Amenidades', v: i => mcN(i.nAmenidades), tt: i => (i.amenidades || []).join(', ') }, { t: 'Mascotas', v: i => i.mascotas }, { t: 'Fumar', v: i => i.fumar }, { t: 'Fiestas', v: i => i.fiestas }, { t: 'Reglas', v: i => (i.reglas || []).join(' | ') },
-  { t: 'Estancia mín.', v: i => i.minNoches == null ? '—' : i.minNoches + ' noches' }, { t: 'Ocup. 30 d', v: i => mcPct(i.ocup30) }, { t: 'Ocup. 90 d', v: i => mcPct(i.ocup90) }, { t: 'Ocup. 365 d', v: i => mcPct(i.ocup365) },
-  { t: 'Días libres (365)', v: i => mcN(i.diasLibres365) }, { t: '1ª fecha libre', v: i => mcF(i.primeraLibre) }, { t: 'Próx. bloqueo', v: i => i.extraido ? (i.proximoBloqueo ? mcF(i.proximoBloqueo) : 'Sin bloqueos') : '—' },
+  { t: 'Estancia mín.', v: i => i.minNoches == null ? '—' : i.minNoches + ' noches' }, { t: 'No disponible 30 d', v: i => mcPct(i.ocup30) }, { t: 'No disponible 90 d', v: i => mcPct(i.ocup90) }, { t: 'No disponible 365 d', v: i => mcPct(i.ocup365) },
+  { t: 'Noches reserva probable (365 d)', v: i => { const r = mcTipos_(i); return r ? r.reserva : '—'; }, tt: () => 'Bloques cortos o que el seguimiento vio aparecer' }, { t: 'Noches bloqueo probable (365 d)', v: i => { const r = mcTipos_(i); return r ? r.bloqueo : '—'; }, tt: () => 'Bloques de 30+ noches, aviso previo o a más de un año' },
+  { t: 'Noches indeterminadas (365 d)', v: i => { const r = mcTipos_(i); return r ? r.indet : '—'; } }, { t: 'Ocup. estimada por reservas (365 d)', v: i => { const r = mcTipos_(i); return r && r.con ? Math.round(100 * r.reserva / r.con) + '%' : '—'; }, tt: () => 'Solo cuenta las noches de «reserva probable»' },
+  { t: 'Días libres (365)', v: i => mcN(i.diasLibres365) }, { t: '1ª fecha libre', v: i => mcF(i.primeraLibre), k: i => i.primeraLibre || null }, { t: 'Próx. bloqueo', v: i => i.extraido ? (i.proximoBloqueo ? mcF(i.proximoBloqueo) : 'Sin bloqueos') : '—', k: i => i.extraido ? (i.proximoBloqueo || '9999') : null },
   { t: 'Noches ocupadas (histórico)', v: i => { const h = mcHist_(i); return h ? h.o : '—'; } }, { t: 'Ocup. histórica', v: i => { const h = mcHist_(i); return h && h.o + h.l ? Math.round(100 * h.o / (h.o + h.l)) + '%' : '—'; } },
-  { t: 'Reservas nuevas (última)', v: i => i.v === 2 ? mcN(i.nuevasUlt) : '—' }, { t: 'Canceladas (última)', v: i => i.v === 2 ? mcN(i.canceladasUlt) : '—' }, { t: 'Seguimiento desde', v: i => i.v === 2 ? mcF(i.histDesde) : '—' },
+  { t: 'Reservas nuevas (última)', v: i => i.v === 2 ? mcN(i.nuevasUlt) : '—' }, { t: 'Canceladas (última)', v: i => i.v === 2 ? mcN(i.canceladasUlt) : '—' }, { t: 'Seguimiento desde', v: i => i.v === 2 ? mcF(i.histDesde) : '—', k: i => i.v === 2 ? i.histDesde : null },
   { t: 'Precio total (búsqueda)', v: i => i._l && i._l.precioTotal != null ? '$' + Number(i._l.precioTotal).toLocaleString('es-MX') : '—' }, { t: 'Precio por noche (búsqueda)', v: i => i._l && i._l.precioNoche != null ? '$' + Number(i._l.precioNoche).toLocaleString('es-MX', { maximumFractionDigits: 0 }) : '—' },
-  { t: 'Fechas de la búsqueda', v: i => i._l && i._l.busqueda ? `${mcF(i._l.busqueda.checkin)} → ${mcF(i._l.busqueda.checkout)}` : '—' }, { t: 'Origen en la lista', v: i => i._l ? mcN(i._l.origen) : '—' },
-  { t: 'Fotos', v: i => mcN(i.fotos) }, { t: 'Latitud', v: i => mcN(i.lat) }, { t: 'Longitud', v: i => mcN(i.lng) }, { t: 'Descripción', v: i => String(i.descripcion || '').replace(/\s+/g, ' ').slice(0, 160) }, { t: 'Extraído', v: i => mcF(i.extraido) }];
+  { t: 'Fechas de la búsqueda', v: i => i._l && i._l.busqueda ? `${mcF(i._l.busqueda.checkin)} → ${mcF(i._l.busqueda.checkout)}` : '—', k: i => (i._l && i._l.busqueda && i._l.busqueda.checkin) || null }, { t: 'Origen en la lista', v: i => i._l ? mcN(i._l.origen) : '—' },
+  { t: 'Fotos', v: i => mcN(i.fotos) }, { t: 'Latitud', v: i => mcN(i.lat) }, { t: 'Longitud', v: i => mcN(i.lng) }, { t: 'Descripción', v: i => String(i.descripcion || '').replace(/\s+/g, ' ').slice(0, 160) }, { t: 'Extraído', v: i => mcF(i.extraido), k: i => i.extraido || null }];
 function mcFechas_() { const a = new Date(); a.setDate(a.getDate() + 1); const b = new Date(a); b.setDate(b.getDate() + 3); const f = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return { checkin: f(a), checkout: f(b) }; }
 function mcRender_() {
   const root = document.getElementById('mc-root'); if (!root) return;
@@ -75884,38 +75933,37 @@ function mcProg_() {
     ${!run && n > 25 ? `<span class="mc-mu">Tardará unos ${Math.ceil(n * 9 / 60)} min.</span>` : ''}${run ? `<div class="mc-bar"><i style="width:${pct}%"></i></div><span class="mc-mu">${J.done} de ${J.total}${J.actual ? ' · publicación ' + esc(J.actual) : ''}</span>` : `<span class="mc-mu">${n} publicación${n === 1 ? '' : 'es'} en la lista${MC.act ? ' · última actualización ' + esc(mcF(MC.act)) + ' ' + esc(new Date(MC.act).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })) : ''}</span>`}
     ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
 }
+// Tabla única: datos clave → calendario de disponibilidad → resto de los datos. Un solo desplazamiento; encabezado fijo; clic en un encabezado ordena.
+const MC_PRE = ['Tipo', 'Ciudad', '★ Calif.', 'Evaluaciones', 'No disponible 30 d', 'No disponible 90 d', 'No disponible 365 d', 'Ocup. estimada por reservas (365 d)', 'Estancia mín.', 'Precio por noche (búsqueda)'];
 function mcRes_() {
   const h = document.getElementById('mc-res'); if (!h) return; const rows = mcRows_(), todos = MC.lista.length;
   if (!todos) { h.innerHTML = '<div class="mc-card mc-mu">Aún no hay publicaciones. Agrega URLs en el paso 1.</div>'; return; }
-  const sk = h.querySelector('.mc-sc.t'), st0 = sk ? sk.scrollTop : 0, sl0 = sk ? sk.scrollLeft : 0, cs = h.querySelector('.mc-sc.c'), cl0 = cs ? cs.scrollLeft : null;
-  h.innerHTML = `<div class="mc-split">
-    <div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${rows.length}${rows.length !== todos ? ' de ' + todos : ''})</span><span style="flex:1"></span><input class="mc-in" id="mc-q" placeholder="🔎 Buscar…" value="${esc(MC.q)}" oninput="MC.q=this.value;clearTimeout(MC._qt);MC._qt=setTimeout(()=>{mcRes_();const i=document.getElementById('mc-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)"><button type="button" class="mc-btn" onclick="mcCsv_()">⬇ CSV</button></div>
-      <div class="mc-sc t" onscroll="mcSync_(this,'c')">${mcTabla_(rows)}</div></div>
-    <div class="mc-pane"><div class="mc-ph">📅 Disponibilidad <span style="flex:1"></span><span class="mc-lg"><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span><span><i style="background:#dc2626"></i>Ocupada / no disponible</span></span>
+  const sc = h.querySelector('.mc-sc'), st0 = sc ? sc.scrollTop : 0, sl0 = sc ? sc.scrollLeft : 0;
+  h.innerHTML = `<div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${rows.length}${rows.length !== todos ? ' de ' + todos : ''})</span><input class="mc-in" id="mc-q" placeholder="🔎 Buscar…" value="${esc(MC.q)}" oninput="MC.q=this.value;clearTimeout(MC._qt);MC._qt=setTimeout(()=>{mcRes_();const i=document.getElementById('mc-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)"><button type="button" class="mc-btn" onclick="mcCsv_()">⬇ CSV</button><span style="flex:1"></span>
+      <span class="mc-lg"><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span>${Object.values(MC_TIPO).map(t => `<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}</span>
       <select class="mc-in" onchange="MC.meses=+this.value;mcRes_()">${[3, 6, 12, 24].map(m => `<option value="${m}" ${MC.meses === m ? 'selected' : ''}>${m} meses</option>`).join('')}</select></div>
-      <div class="mc-sc c" onscroll="mcSync_(this,'t')">${mcCal_(rows)}</div></div></div>`;
-  const t = h.querySelector('.mc-sc.t'), c = h.querySelector('.mc-sc.c'); if (t) { t.scrollTop = st0; t.scrollLeft = sl0; } if (c) { c.scrollTop = st0; if (cl0 != null) c.scrollLeft = cl0; }
-  h.onmouseover = e => { const r = e.target.closest('[data-id]'); const id = r && r.dataset.id; h.querySelectorAll('.hl').forEach(x => x.classList.remove('hl')); if (id) h.querySelectorAll(`[data-id="${id}"]`).forEach(x => x.classList.add('hl')); };
+    <div class="mc-sc">${mcTabla_(rows)}</div></div>`;
+  const c = h.querySelector('.mc-sc'); if (c) { c.scrollTop = st0; c.scrollLeft = sl0; }
 }
-window.mcSync_ = function (el, otro) { if (MC.sync) return; const o = document.querySelector('#mc-res .mc-sc.' + otro); if (!o) return; MC.sync = true; o.scrollTop = el.scrollTop; requestAnimationFrame(() => { MC.sync = false; }); };
 function mcTabla_(rows) {
-  const head = `<tr><th class="sk">Publicación</th><th>Estado</th>${MC_COLS.map(c => `<th>${esc(c.t)}</th>`).join('')}</tr>`;
+  const pre = MC_PRE.map(t => MC_COLS.findIndex(c => c.t === t)).filter(x => x >= 0), post = MC_COLS.map((c, x) => x).filter(x => !pre.includes(x));
+  const th = (key, t, cls) => { const on = MC.sort.k === key; return `<th class="${cls || ''} srt ${on ? 'on' : ''}" onclick="mcSort_('${key}')" title="Ordenar A-Z / Z-A">${esc(t)}<i>${on ? (MC.sort.d === 1 ? '▲' : '▼') : '↕'}</i></th>`; };
+  const W = 22, hoy = new Date(), d0 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()), fin = new Date(hoy.getFullYear(), hoy.getMonth() + MC.meses, 0), n = Math.round((fin - d0) / 864e5) + 1, hoyIso = mcIso_(hoy);
+  const dias = Array.from({ length: n }, (_, k) => { const d = new Date(d0); d.setDate(d.getDate() + k); return d; }), MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'], L = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+  const mm = []; dias.forEach(d => { const ym = mcIso_(d).slice(0, 7); if (!mm.length || mm[mm.length - 1].ym !== ym) mm.push({ ym, n: 0, t: `${MES[d.getMonth()]} ${d.getFullYear()}` }); mm[mm.length - 1].n++; });
+  const calH = `<div class="mc-ch"><div class="mc-cm">${mm.map(m => `<span style="width:${m.n * W}px">${m.t}</span>`).join('')}</div><div class="mc-cd">${dias.map(d => `<span class="${d.getDay() === 0 || d.getDay() === 6 ? 'fs' : ''} ${mcIso_(d) === hoyIso ? 'hoy' : ''}"><b>${d.getDate()}</b>${L[d.getDay()]}</span>`).join('')}</div></div>`;
+  const head = `<tr>${th('pub', 'Publicación', 'sk')}${th('est', 'Estado')}${pre.map(x => th('c' + x, MC_COLS[x].t)).join('')}<th class="mc-thc">${calH}</th>${post.map(x => th('c' + x, MC_COLS[x].t)).join('')}</tr>`;
+  const cell = (i, x) => { const c = MC_COLS[x]; return `<td ${c.tt ? `title="${esc(c.tt(i))}"` : ''}>${esc(c.v(i))}</td>`; };
+  const idx = new Map(dias.map((d, k) => [mcIso_(d), k])), fmt = iso => mcF(iso);
+  const cal = i => { if (!i.cal) return '<td class="mc-tdc" style="width:' + n * W + 'px"><span class="mc-mu" style="padding-left:8px">Sin extraer</span></td>';
+    const bars = [];
+    mcRuns_(i).forEach(r => { const a = idx.get(r.ini) != null ? idx.get(r.ini) : (r.ini < mcIso_(d0) ? 0 : null), b = idx.has(r.fin) ? idx.get(r.fin) : (r.fin > mcIso_(dias[n - 1]) ? n - 1 : null); if (a == null || b == null || b < a) return;
+      const T = MC_TIPO[r.tipo], tip = `${T.t} · ${r.n} ${r.n === 1 ? 'noche' : 'noches'} (${fmt(r.ini)} – ${fmt(r.fin)}) · ${r.motivo}`; bars.push(`<div class="mc-bk t-${r.tipo}" style="left:${a * W}px;width:${(b - a + 1) * W}px" title="${esc(tip)}">${(b - a + 1) * W > 40 ? r.n + ' d' : ''}</div>`); });
+    return `<td class="mc-tdc" style="width:${n * W}px"><div class="mc-cr" style="width:${n * W}px">${bars.join('')}</div></td>`; };
   const body = rows.map(i => { const est = i.error ? `<span class="mc-chip mc-ko" title="${esc(i.error)}">Error</span>` : i.pendiente || !i.extraido ? '<span class="mc-chip mc-pe">Pendiente</span>' : '<span class="mc-chip mc-ok">OK</span>';
     return `<tr data-id="${esc(i.id)}"><td class="sk"><div class="mc-ti">${i.foto ? `<img src="${esc(i.foto)}" alt="" loading="lazy">` : '<img alt="">'}<div style="min-width:0"><b title="${esc(i.titulo || '')}"><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.titulo || 'Publicación ' + i.id)}</a></b><small>${esc(i.id)}${i.error ? ' · <span class="mc-err">' + esc(String(i.error).slice(0, 60)) + '</span>' : ''}</small></div><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcQuitar_('${esc(i.id)}')">🗑</button></div></td>
-      <td>${est}</td>${MC_COLS.map(c => `<td ${c.tt ? `title="${esc(c.tt(i))}"` : ''}>${esc(c.v(i))}</td>`).join('')}</tr>`; }).join('');
+      <td>${est}</td>${pre.map(x => cell(i, x)).join('')}${cal(i)}${post.map(x => cell(i, x)).join('')}</tr>`; }).join('');
   return `<table class="mc-tb"><thead>${head}</thead><tbody>${body}</tbody></table>`;
-}
-function mcCal_(rows) {
-  const W = 22, hoy = new Date(), d0 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()), fin = new Date(hoy.getFullYear(), hoy.getMonth() + MC.meses, 0), n = Math.round((fin - d0) / 864e5) + 1; // empieza HOY: los días pasados no se muestran (Airbnb solo los marca «no disponible»; su historia queda en la base)
-  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, hoyIso = iso(hoy), dias = Array.from({ length: n }, (_, k) => { const d = new Date(d0); d.setDate(d.getDate() + k); return d; });
-  const MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'], L = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
-  const mm = []; dias.forEach((d, k) => { const ym = iso(d).slice(0, 7); if (!mm.length || mm[mm.length - 1].ym !== ym) mm.push({ ym, n: 0, t: `${MES[d.getMonth()]} ${d.getFullYear()}` }); mm[mm.length - 1].n++; });
-  const head = `<div class="mc-ch"><div class="mc-cm">${mm.map(m => `<span style="width:${m.n * W}px">${m.t}</span>`).join('')}</div><div class="mc-cd">${dias.map((d, k) => `<span class="${d.getDay() === 0 || d.getDay() === 6 ? 'fs' : ''} ${iso(d) === hoyIso ? 'hoy' : ''}"><b>${d.getDate()}</b>${L[d.getDay()]}</span>`).join('')}</div></div>`;
-  const filas = rows.map(i => { const cal = i.cal || {}; let runs = [], cur = null;
-    dias.forEach((d, k) => { const s = iso(d), ch = (cal[s.slice(0, 7)] || '')[d.getDate() - 1]; const st = ch === '0' ? 'n' : ch === '1' ? 'a' : 'x'; if (cur && cur.st === st) cur.len++; else { cur = { st, ini: k, len: 1 }; runs.push(cur); } });
-    const bars = runs.filter(r => r.st !== 'a').map(r => { const a = dias[r.ini], b = dias[r.ini + r.len - 1], tip = `${r.st === 'n' ? 'No disponible' : 'Sin dato'}: ${mcF(iso(a))} – ${mcF(iso(b))} (${r.len} ${r.len === 1 ? 'día' : 'días'})`; return `<div class="mc-bk ${r.st === 'x' ? 'k' : ''}" style="left:${r.ini * W}px;width:${r.len * W}px" title="${esc(tip)}">${r.len * W > 40 && r.st === 'n' ? r.len + ' d' : ''}</div>`; }).join('');
-    return `<div class="mc-cr" data-id="${esc(i.id)}" style="width:${n * W}px" title="${esc(i.titulo || i.id)}">${i.cal ? bars : '<span class="mc-mu" style="line-height:40px;padding-left:8px;position:sticky;left:0">Sin extraer</span>'}</div>`; }).join('');
-  return `<div class="mc-cal" style="width:${n * W}px">${head}${filas}</div>`;
 }
 window.mcArchivo_ = function (inp) { const f = inp.files && inp.files[0]; inp.value = ''; if (!f) return; const r = new FileReader(); r.onload = () => { const t = document.getElementById('mc-txt'); if (t) t.value = (t.value ? t.value.trim() + '\n' : '') + String(r.result || ''); mcMsg_(`📄 «${f.name}» cargado: revisa la lista y pulsa «Agregar a la lista».`); }; r.readAsText(f); };
 function mcMsg_(t) { const m = document.getElementById('mc-msg'); if (m) m.textContent = t; }
