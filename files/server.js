@@ -12427,7 +12427,7 @@ const _maNum = v => { const n = parseFloat(String(v == null ? "" : v).replace(",
 const _maTxt = (h, n) => String(h == null ? "" : h).replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/ /g, " ").trim().slice(0, n || 800);
 async function _maHtml(id) {
   const r = await _fetchReal(`https://www.airbnb.mx/rooms/${id}?adults=2&currency=MXN`, { headers: { "User-Agent": _MA.UA, "Accept-Language": "es-MX,es;q=0.9", Accept: "text/html,application/xhtml+xml" }, redirect: "follow", signal: AbortSignal.timeout(35000) });
-  if (r.status === 404) throw new Error("La publicación no existe o ya no está disponible");
+  if (r.status === 404 || r.status === 410) throw new Error("La publicación ya no existe o fue retirada de Airbnb");
   if (!r.ok) throw new Error(`Airbnb respondió ${r.status}`);
   return r.text();
 }
