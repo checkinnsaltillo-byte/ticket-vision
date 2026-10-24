@@ -75907,6 +75907,8 @@ function mcGrafPintar_() {
 }
 window.mcGrafCsv_ = function () { const A = mcAgreg_(MC.cuenta); if (!A) return; const L = ['Fecha,Alojamientos ocupados (noche),Noches ocupadas acumuladas,Alojamientos con dato'].concat(A.dias.map((f, k) => `${f},${A.daily[k]},${A.cum[k]},${A.nobs[k]}`));
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\n')], { type: 'text/csv;charset=utf-8' })); a.download = `ocupacion-agregada-${mcIso_(new Date())}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
+// Precio por noche (de la búsqueda) entre el número de habitaciones; estudio/loft sin recámara = 1
+function mcPxHab_(i) { const p = i._l && i._l.precioNoche; let h = i.habitaciones; if (h == null && /habitaci[oó]n/i.test(`${i._l && i._l.tipoBusq || ''} ${i.tipo || ''}`)) h = 1; if (p == null || h == null) return null; return p / Math.max(1, Number(h) || 0); } // habitación privada = 1
 // Alojamiento propio: su publicación de Airbnb está en el catálogo (url_airbnb) o lo publica el mismo anfitrión que alguno de los propios.
 function mcPropio_(i) { const P = MC.propios; if (!P) return null; const c = P.ids && P.ids[i.id]; if (c) return { cod: String(c.codigo || '').split(/\s*\(/)[0].replace(/\s+/g, ' ').trim(), por: 'catálogo' }; if (i.hostId && MC.ownHosts && MC.ownHosts.has(i.hostId)) return { cod: '', por: 'anfitrión' }; return null; }
 function mcCocina_(i) { const A = i.amenidades; if (!A || !A.length) return '—'; if (A.some(a => /^cocina compartida/i.test(a))) return 'Compartida'; return A.some(a => /^cocina\b|cocineta/i.test(a)) ? 'Sí' : 'No'; }
@@ -75947,6 +75949,7 @@ const MC_COLS = [
   { t: 'Noches ocupadas (histórico)', v: i => { const h = mcHist_(i); return h ? h.o : '—'; } }, { t: 'Ocup. histórica', v: i => { const h = mcHist_(i); return h && h.o + h.l ? Math.round(100 * h.o / (h.o + h.l)) + '%' : '—'; } },
   { t: 'Reservas nuevas (última)', v: i => i.v === 2 ? mcN(i.nuevasUlt) : '—' }, { t: 'Canceladas (última)', v: i => i.v === 2 ? mcN(i.canceladasUlt) : '—' }, { t: 'Seguimiento desde', v: i => i.v === 2 ? mcF(i.histDesde) : '—', k: i => i.v === 2 ? i.histDesde : null },
   { t: 'Precio total (búsqueda)', v: i => i._l && i._l.precioTotal != null ? '$' + Number(i._l.precioTotal).toLocaleString('es-MX') : '—' }, { t: 'Precio por noche (búsqueda)', v: i => i._l && i._l.precioNoche != null ? '$' + Number(i._l.precioNoche).toLocaleString('es-MX', { maximumFractionDigits: 0 }) : '—' },
+  { t: 'Precio por noche / # habitaciones', v: i => { const p = mcPxHab_(i); return p == null ? '—' : '$' + p.toLocaleString('es-MX', { maximumFractionDigits: 0 }); }, k: i => mcPxHab_(i), tt: i => 'Precio por noche de la búsqueda ÷ número de habitaciones (estudio o habitación privada cuentan como 1)' },
   { t: 'Fechas de la búsqueda', v: i => i._l && i._l.busqueda ? `${mcF(i._l.busqueda.checkin)} → ${mcF(i._l.busqueda.checkout)}` : '—', k: i => (i._l && i._l.busqueda && i._l.busqueda.checkin) || null }, { t: 'Origen en la lista', v: i => i._l ? mcN(i._l.origen) : '—' },
   { t: 'Fotos', v: i => mcN(i.fotos) }, { t: 'Latitud', v: i => mcN(i.lat) }, { t: 'Longitud', v: i => mcN(i.lng) }, { t: 'Descripción', v: i => String(i.descripcion || '').replace(/\s+/g, ' ').slice(0, 160) }, { t: 'Extraído', v: i => mcF(i.extraido), k: i => i.extraido || null }];
 function mcFechas_() { const a = new Date(); a.setDate(a.getDate() + 1); const b = new Date(a); b.setDate(b.getDate() + 3); const f = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return { checkin: f(a), checkout: f(b) }; }
@@ -76003,7 +76006,7 @@ function mcProg_() {
     ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
 }
 // Tabla única: datos clave → calendario de disponibilidad → resto de los datos. Un solo desplazamiento; encabezado fijo; clic en un encabezado ordena.
-const MC_PRE = ['Propios', 'Tipo', 'Ciudad', 'Ubicación (texto)', 'Anfitrión', 'Habit.', 'Camas', 'Baños', 'Cocina', '★ Calif.', 'Evaluaciones', 'Ocup. estimada por reservas (365 d)', 'Noches ocupadas en la ventana', 'Estancia mín.', 'Precio por noche (búsqueda)'];
+const MC_PRE = ['Propios', 'Tipo', 'Ciudad', 'Ubicación (texto)', 'Anfitrión', 'Habit.', 'Camas', 'Baños', 'Cocina', '★ Calif.', 'Evaluaciones', 'Ocup. estimada por reservas (365 d)', 'Noches ocupadas en la ventana', 'Estancia mín.', 'Precio por noche (búsqueda)', 'Precio por noche / # habitaciones'];
 function mcRes_() {
   const h = document.getElementById('mc-res'); if (!h) return; const rows = mcRows_(), todos = MC.lista.length;
   if (!todos) { h.innerHTML = '<div class="mc-card mc-mu">Aún no hay publicaciones. Agrega URLs en el paso 1.</div>'; return; }
