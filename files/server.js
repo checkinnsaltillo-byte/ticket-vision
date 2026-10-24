@@ -12523,7 +12523,7 @@ const _maPrecio = x => { const sp = x.structuredDisplayPrice || {}, pl = sp.prim
 //   1) mañana → +3 noches (hoy+1 → hoy+4) · 2) mañana → 1 noche (hoy+1 → hoy+2) · 3) hoy+4 → 1 noche (hoy+4 → hoy+5) · 4) hoy+7 → 2 noches (hoy+7 → hoy+9)
 const _MA_ESC = [{ a: 1, n: 3 }, { a: 1, n: 1 }, { a: 4, n: 1 }, { a: 7, n: 2 }];
 const _maDiaF = (f, n) => { const t = new Date(f + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
-const _maRangos = hoy => _MA_ESC.map(e => ({ a: e.a, n: e.n, checkin: _maDiaF(hoy, e.a), checkout: _maDiaF(hoy, e.a + e.n) }));
+const _maRangos = (hoy, esc) => (Array.isArray(esc) && esc.length ? esc : _MA_ESC).map(e => ({ a: e.a, n: e.n, checkin: _maDiaF(hoy, e.a), checkout: _maDiaF(hoy, e.a + e.n) })); // esc = escenarios guardados por el usuario (doc.escenarios); si no hay, los de fábrica
 async function _maBuscar(p) {
   const now = () => new Date().toISOString(), RG = p.rangos && p.rangos.length ? p.rangos : [{ checkin: p.checkin, checkout: p.checkout }];
   await _maMutar(d => { d.busqueda = { running: true, params: p, rango: 0, rangos: RG.length, pagina: 0, paginas: 0, encontrados: 0, inicio: now(), upd: now(), error: "" }; });
@@ -12581,7 +12581,7 @@ app.get("/mercado/airbnb", async (req, res) => {
     const job = d.job ? Object.assign({}, d.job) : null; if (job && job.running && Date.now() - Date.parse(job.upd || 0) > 180_000) { job.running = false; job.interrumpida = true; } // sin avances en 3 min = se interrumpió
     const bus = d.busqueda ? Object.assign({}, d.busqueda) : null; if (bus && bus.running && Date.now() - Date.parse(bus.upd || 0) > 180_000) { bus.running = false; bus.error = bus.error || "La búsqueda se interrumpió"; }
     if ((!d.propios || Date.now() - Date.parse(d.propios.at || 0) > 7 * 864e5) && !_maPropiosCorre) { _maPropiosCorre = true; _maPropios().catch(e => console.warn("[mercado] propios:", e.message)).finally(() => { _maPropiosCorre = false; }); }
-    res.set("Cache-Control", "no-store"); res.json({ ok: true, escenarios: _maRangos(_mxHoy()), lista: d.lista || [], items: d.items || {}, job, busqueda: bus, ultimaBusqueda: d.ultimaBusqueda || null, propios: d.propios || null, actualizado: d.actualizado || "" }); }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, escenarios: _maRangos(_mxHoy(), d.escenarios), lista: d.lista || [], items: d.items || {}, job, busqueda: bus, ultimaBusqueda: d.ultimaBusqueda || null, propios: d.propios || null, actualizado: d.actualizado || "" }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/lista", async (req, res) => {
@@ -12592,12 +12592,21 @@ app.post("/mercado/airbnb/lista", async (req, res) => {
     res.json({ ok: true, nuevos: nuevos.length, existentes: existentes.length, invalidos }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// Fechas de la búsqueda editables: cada escenario = {a: días desde hoy hasta la entrada, n: noches}. Se guardan relativos a hoy para que se muevan solos cada día.
+app.post("/mercado/airbnb/escenarios", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const L = Array.isArray((req.body || {}).escenarios) ? req.body.escenarios : [], vistos = new Set(), esc = [];
+    L.forEach(e => { const a = parseInt(e && e.a, 10), n = parseInt(e && e.n, 10); if (!(a >= 0 && a <= 364 && n >= 1 && n <= 28)) return; const k = a + "/" + n; if (vistos.has(k)) return; vistos.add(k); esc.push({ a, n }); });
+    if (!esc.length) return res.status(400).json({ ok: false, error: "Deja al menos un rango de fechas válido (entrada desde hoy y hasta 28 noches)" }); if (esc.length > 8) return res.status(400).json({ ok: false, error: "Máximo 8 rangos de fechas" });
+    await _maMutar(d => { d.escenarios = esc; }); res.json({ ok: true, escenarios: _maRangos(_mxHoy(), esc) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/mercado/airbnb/buscar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const b = req.body || {}, destino = String(b.destino || "").replace(/\s+/g, " ").trim().slice(0, 80), adultos = Math.max(1, Math.min(16, parseInt(b.adultos, 10) || 1));
     if (!destino) return res.status(400).json({ ok: false, error: "Escribe el destino (por ejemplo «Saltillo, Coah.»)" });
     const { data } = await _bnReadGcs(_MA.OBJ), d = data && data.items ? data : {}; if (d.busqueda && d.busqueda.running && Date.now() - Date.parse(d.busqueda.upd || 0) < 180_000) return res.status(409).json({ ok: false, error: "Ya hay una búsqueda en curso" });
-    const rangos = _maRangos(_mxHoy()); _maBuscar({ destino, adultos, rangos }).catch(e => console.warn("[mercado] búsqueda:", e.message)); res.json({ ok: true, params: { destino, adultos, rangos } }); }
+    const rangos = _maRangos(_mxHoy(), d.escenarios); _maBuscar({ destino, adultos, rangos }).catch(e => console.warn("[mercado] búsqueda:", e.message)); res.json({ ok: true, params: { destino, adultos, rangos } }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/quitar", async (req, res) => {
@@ -12609,7 +12618,7 @@ app.post("/mercado/airbnb/quitar", async (req, res) => {
 // (entrada = mañana, salida = +3 días) para sumar publicaciones nuevas a la lista; 2) extrae ficha y calendario de TODA la lista.
 async function _maDiaria() {
   const { data } = await _bnReadGcs(_MA.OBJ), u = data && data.ultimaBusqueda, p = u && u.params;
-  if (p && p.destino) await _maBuscar({ destino: p.destino, adultos: p.adultos || 1, rangos: _maRangos(_mxHoy()) }).catch(e => console.warn("[mercado] búsqueda diaria:", e.message));
+  if (p && p.destino) await _maBuscar({ destino: p.destino, adultos: p.adultos || 1, rangos: _maRangos(_mxHoy(), data && data.escenarios) }).catch(e => console.warn("[mercado] búsqueda diaria:", e.message));
   const { data: d2 } = await _bnReadGcs(_MA.OBJ), ids = ((d2 && d2.lista) || []).map(x => x.id); if (ids.length) await _maCorrer(ids);
 }
 // Extracción programada (Cloud Scheduler, todos los días 3:00 a.m. America/Monterrey): búsqueda (si aplica) + extracción de toda la lista.
