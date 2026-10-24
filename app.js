@@ -75837,7 +75837,7 @@ function mcRender_() {
   root.innerHTML = `<div class="mc-hero"><h2>📈 Investigación de mercados</h2><small>Compara tu oferta con la competencia: datos públicos de cada publicación y su calendario de disponibilidad.</small></div>
     <div class="mc-tabs"><span class="mc-tab on">🏠 Airbnb</span></div>
     <div id="mc-top"></div>
-    <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Se ejecuta solo todos los días a las 3:00 a.m.; también puedes pulsarlo cuando quieras.</div><div id="mc-prog"></div></div>
+    <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Todos los días a las 3:00 a.m. se ejecuta solo (si usas el método Automática, primero repite la búsqueda para sumar publicaciones nuevas); también puedes pulsarlo cuando quieras.</div><div id="mc-prog"></div></div>
     <div id="mc-res"></div>`;
   mcTop_(); mcProg_(); mcRes_();
 }
