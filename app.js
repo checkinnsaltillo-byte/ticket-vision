@@ -67668,7 +67668,9 @@ function clModoPersonal_() { return !clEsAdmin_(); }
 function adCanonMap_(nombres) { const M = new Map(), C = []; [...new Set(nombres.filter(Boolean))].sort((a, b) => b.length - a.length).forEach(n => { const c = C.find(x => clMisma_(x, n)); M.set(n, c || n); if (!c) C.push(n); }); return M; }
 // v2128: en modo personal, Levantamientos / Incidencias / Objetos muestran SOLO lo asignado o reportado por la persona.
 function clSoloMio_(nombres) { return !(typeof clModoPersonal_ === 'function' && clModoPersonal_()) || clEsMio_(nombres); }
-function clEsMio_(nombres) { const yo = clVerComo_() || (typeof currentUser !== 'undefined' && currentUser) || ''; return (nombres || []).some(n => clMisma_(n, yo)); }
+// v2168: Adán ve TODAS las tareas de Operaciones (aunque no tenga asignación); los demás empleados solo las suyas.
+function clVeTodo_(yo) { return clNorm_(yo)[0] === 'adan'; }
+function clEsMio_(nombres) { const yo = clVerComo_() || (typeof currentUser !== 'undefined' && currentUser) || ''; return clVeTodo_(yo) || (nombres || []).some(n => clMisma_(n, yo)); }
 function ckVerComoHtml_() {
   if (!clEsAdminReal_()) return '';
   const on = !!ASEO.pruebaOn, v = clVerComo_();
