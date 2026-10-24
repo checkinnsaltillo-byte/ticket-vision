@@ -12522,6 +12522,9 @@ const _maPrecio = x => { const sp = x.structuredDisplayPrice || {}, pl = sp.prim
   if (noche == null && /noche/i.test(pl.qualifier || "")) noche = tot; return { total: /total/i.test(pl.qualifier || "") ? tot : null, noche }; };
 // Escenarios de fechas de la búsqueda (a = días desde hoy hasta la entrada · n = noches). Se hacen todos y las listas se UNEN sin repetir.
 //   1) mañana → +3 noches (hoy+1 → hoy+4) · 2) mañana → 1 noche (hoy+1 → hoy+2) · 3) hoy+4 → 1 noche (hoy+4 → hoy+5) · 4) hoy+7 → 2 noches (hoy+7 → hoy+9)
+const _MA_HORAS = [11, 19]; // horas del día (America/Monterrey) en que corre sola la extracción; editables en «2 · Extraer»
+const _maHoras = d => Array.isArray(d && d.horas) && d.horas.length ? d.horas : _MA_HORAS;
+const _mxHora = () => parseInt(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "2-digit", hour12: false }), 10) % 24;
 const _MA_ESC = [{ a: 1, n: 3 }, { a: 1, n: 1 }, { a: 4, n: 1 }, { a: 7, n: 2 }];
 const _maDiaF = (f, n) => { const t = new Date(f + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const _maRangos = (hoy, esc) => (Array.isArray(esc) && esc.length ? esc : _MA_ESC).map(e => ({ a: e.a, n: e.n, checkin: _maDiaF(hoy, e.a), checkout: _maDiaF(hoy, e.a + e.n) })); // esc = escenarios guardados por el usuario (doc.escenarios); si no hay, los de fábrica
@@ -12582,7 +12585,7 @@ app.get("/mercado/airbnb", async (req, res) => {
     const job = d.job ? Object.assign({}, d.job) : null; if (job && job.running && Date.now() - Date.parse(job.upd || 0) > 180_000) { job.running = false; job.interrumpida = true; } // sin avances en 3 min = se interrumpió
     const bus = d.busqueda ? Object.assign({}, d.busqueda) : null; if (bus && bus.running && Date.now() - Date.parse(bus.upd || 0) > 180_000) { bus.running = false; bus.error = bus.error || "La búsqueda se interrumpió"; }
     if ((!d.propios || Date.now() - Date.parse(d.propios.at || 0) > 7 * 864e5) && !_maPropiosCorre) { _maPropiosCorre = true; _maPropios().catch(e => console.warn("[mercado] propios:", e.message)).finally(() => { _maPropiosCorre = false; }); }
-    res.set("Cache-Control", "no-store"); res.json({ ok: true, escenarios: _maRangos(_mxHoy(), d.escenarios), lista: d.lista || [], items: d.items || {}, job, busqueda: bus, ultimaBusqueda: d.ultimaBusqueda || null, propios: d.propios || null, actualizado: d.actualizado || "" }); }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, escenarios: _maRangos(_mxHoy(), d.escenarios), horas: _maHoras(d), lista: d.lista || [], items: d.items || {}, job, busqueda: bus, ultimaBusqueda: d.ultimaBusqueda || null, propios: d.propios || null, actualizado: d.actualizado || "" }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/lista", async (req, res) => {
@@ -12600,6 +12603,14 @@ app.post("/mercado/airbnb/escenarios", async (req, res) => {
     L.forEach(e => { const a = parseInt(e && e.a, 10), n = parseInt(e && e.n, 10); if (!(a >= 0 && a <= 364 && n >= 1 && n <= 28)) return; const k = a + "/" + n; if (vistos.has(k)) return; vistos.add(k); esc.push({ a, n }); });
     if (!esc.length) return res.status(400).json({ ok: false, error: "Deja al menos un rango de fechas válido (entrada desde hoy y hasta 28 noches)" }); if (esc.length > 8) return res.status(400).json({ ok: false, error: "Máximo 8 rangos de fechas" });
     await _maMutar(d => { d.escenarios = esc; }); res.json({ ok: true, escenarios: _maRangos(_mxHoy(), esc) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Horas del día de la extracción automática: 1 a 8 horas distintas (0–23). Cloud Scheduler llama cada hora en punto a /cron y este decide si toca.
+app.post("/mercado/airbnb/horas", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const L = [...new Set((Array.isArray((req.body || {}).horas) ? req.body.horas : []).map(h => parseInt(h, 10)).filter(h => h >= 0 && h <= 23))].sort((a, b) => a - b);
+    if (!L.length) return res.status(400).json({ ok: false, error: "Deja al menos una hora" }); if (L.length > 8) return res.status(400).json({ ok: false, error: "Máximo 8 extracciones al día" });
+    await _maMutar(d => { d.horas = L; }); res.json({ ok: true, horas: L }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/buscar", async (req, res) => {
@@ -12626,8 +12637,13 @@ async function _maDiaria() {
 app.post("/mercado/airbnb/cron", async (req, res) => {
   if (!process.env.SYNC_SECRET || (req.get("X-Sync-Secret") || "") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
   try { const { data } = await _bnReadGcs(_MA.OBJ), d = data && data.items ? data : { lista: [], items: {} };
+    // Cloud Scheduler llama cada hora en punto; solo corre si esta hora está en la lista del usuario y no se corrió ya en esta misma hora.
+    const hh = _mxHora(), marca = _mxHoy() + "T" + String(hh).padStart(2, "0");
+    if (!_maHoras(d).includes(hh)) return res.json({ ok: true, omitido: "no es hora de extracción (" + hh + ":00)", horas: _maHoras(d) });
+    if (d.ultimaCron === marca) return res.json({ ok: true, omitido: "ya se ejecutó en esta hora" });
     if ((d.job && d.job.running && Date.now() - Date.parse(d.job.upd || 0) < 180_000) || (d.busqueda && d.busqueda.running && Date.now() - Date.parse(d.busqueda.upd || 0) < 180_000)) return res.json({ ok: true, omitido: "ya hay una extracción o búsqueda en curso" });
     const ids = (d.lista || []).map(x => x.id); if (!ids.length && !(d.ultimaBusqueda && d.ultimaBusqueda.params)) return res.json({ ok: true, total: 0 });
+    await _maMutar(x => { x.ultimaCron = marca; });
     _maDiaria().catch(e => console.warn("[mercado] corrida diaria:", e.message)); res.json({ ok: true, total: ids.length, conBusqueda: !!(d.ultimaBusqueda && d.ultimaBusqueda.params) }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });

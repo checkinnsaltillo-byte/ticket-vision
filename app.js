@@ -75852,7 +75852,7 @@ window.mcInit = async function () {
   await mcCargar_(); mcRender_(); if ((MC.job && MC.job.running) || (MC.bus && MC.bus.running)) mcPoll_(); if (!MC.propios) setTimeout(async () => { if (!document.getElementById('mc-res')) return; await mcCargar_(); mcRes_(); }, 30000); // los propios se resuelven en segundo plano la primera vez
 };
 async function mcCargar_() {
-  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; if (!MC._escTs || Date.now() - MC._escTs > 8000) MC.esc = j.escenarios || MC.esc || null; /* una respuesta vieja del sondeo no pisa fechas recién guardadas */ MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; if (!MC._escTs || Date.now() - MC._escTs > 8000) MC.esc = j.escenarios || MC.esc || null; /* una respuesta vieja del sondeo no pisa fechas recién guardadas */ if (!MC._horasTs || Date.now() - MC._horasTs > 8000) MC.horas = j.horas || MC.horas || [11, 19]; MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
   catch (e) { MC.error = String(e.message || e); }
 }
 function mcCss_() {
@@ -76270,7 +76270,8 @@ function mcRender_() {
   root.innerHTML = `<div class="mc-hero"><h2>📈 Investigación de mercados</h2><small>Compara tu oferta con la competencia: datos públicos de cada publicación y su calendario de disponibilidad.</small></div>
     <div class="mc-tabs"><span class="mc-tab on">🏠 Airbnb</span></div>
     <div id="mc-top"></div>
-    <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Todos los días a las 3:00 a.m. se ejecuta solo (si usas el método Automática, primero repite la búsqueda para sumar publicaciones nuevas); también puedes pulsarlo cuando quieras.</div><div id="mc-prog"></div></div>
+    <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Se ejecuta solo a las horas que elijas abajo (si usas el método Automática, primero repite la búsqueda para sumar publicaciones nuevas); también puedes pulsarlo cuando quieras.</div>
+      <div class="mc-fx" id="mc-hw" style="max-width:340px;margin:0 0 12px"><b style="font-size:12px">Hora del día de la extracción</b>${mcHorasHtml_()}</div><div id="mc-prog"></div></div>
     <div id="mc-res"></div>`;
   mcTop_(); mcProg_(); mcRes_();
 }
@@ -76295,8 +76296,25 @@ function mcTop_() {
 function mcFxHtml_(E) {
   E = E || MC.esc || []; return E.map((e, k) => `<div class="mc-fxr"><button type="button" class="mc-fxb" onclick="mcDpOpen_(${k})" title="Cambiar estas fechas"><span>📅 <b>${k + 1})</b> ${esc(mcF(e.checkin))} → ${esc(mcF(e.checkout))} <span class="mc-mu">· ${e.n} noche${e.n === 1 ? '' : 's'}</span></span><i>✎</i></button>${E.length > 1 ? `<button type="button" class="mc-x" title="Quitar este rango" onclick="mcFxQuitar_(${k})">✕</button>` : ''}</div>`).join('')
     + (E.length < 8 ? '<button type="button" class="mc-fxadd" onclick="mcDpOpen_(-1)">＋ Agregar fechas</button>' : '')
-    + `<small>Se hacen ${E.length} búsqueda${E.length === 1 ? '' : 's'} y se unen sin repetir publicaciones. Las fechas se guardan como «hoy + N días» y se mueven solas cada día (también en la búsqueda de las 3 a.m.).</small>`;
+    + `<small>Se hacen ${E.length} búsqueda${E.length === 1 ? '' : 's'} y se unen sin repetir publicaciones. Las fechas se guardan como «hoy + N días» y se mueven solas cada día (también en la búsqueda automática de cada extracción).</small>`;
 }
+// ── Hora del día de la extracción automática: una fila por hora (varias = varias extracciones al día) ──
+function mcHoraTxt_(h) { return `${h % 12 || 12}:00 ${h < 12 ? 'a.m.' : 'p.m.'}`; }
+function mcHorasHtml_() {
+  const H = MC.horas && MC.horas.length ? MC.horas : [11, 19];
+  return H.map((h, k) => `<div class="mc-fxr"><select class="mc-in" style="flex:1" onchange="mcHoraSet_(${k},this.value)" title="Hora de esta extracción">${Array.from({ length: 24 }, (_, x) => `<option value="${x}" ${x === h ? 'selected' : ''}>🕐 ${mcHoraTxt_(x)}</option>`).join('')}</select>${H.length > 1 ? `<button type="button" class="mc-x" title="Quitar esta hora" onclick="mcHoraQuitar_(${k})">✕</button>` : ''}</div>`).join('')
+    + (H.length < 8 ? '<button type="button" class="mc-fxadd" onclick="mcHoraAgregar_()">＋ Agregar hora</button>' : '')
+    + `<small>${H.length === 1 ? 'Se hace 1 extracción al día' : `Se hacen ${H.length} extracciones al día`}, automáticamente a ${H.length === 1 ? 'esa hora' : 'estas horas'} (hora de Saltillo).</small>`;
+}
+function mcHorasPintar_() { const w = document.getElementById('mc-hw'); if (w) w.innerHTML = `<b style="font-size:12px">Hora del día de la extracción</b>${mcHorasHtml_()}`; }
+async function mcHorasGuardar_(lista) {
+  const L = [...new Set(lista.map(Number))].sort((a, b) => a - b), prev = MC.horas; MC.horas = L; MC._horasTs = Date.now(); mcHorasPintar_();
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/horas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horas: L }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.horas = j.horas; mcHorasPintar_(); }
+  catch (e) { MC.horas = prev; mcHorasPintar_(); alert('No se pudieron guardar las horas: ' + (e.message || e)); }
+}
+window.mcHoraSet_ = function (k, v) { const L = (MC.horas || [11, 19]).slice(); L[k] = +v; if (new Set(L).size < L.length) { alert('Esa hora ya está en la lista.'); mcHorasPintar_(); return; } mcHorasGuardar_(L); };
+window.mcHoraQuitar_ = function (k) { const L = (MC.horas || [11, 19]).slice(); if (L.length <= 1) return; L.splice(k, 1); mcHorasGuardar_(L); };
+window.mcHoraAgregar_ = function () { const L = (MC.horas || [11, 19]).slice(), h = [8, 12, 15, 18, 21, 6, 9, 13, 16, 20, 7, 10, 14, 17, 22, 23, 0, 1, 2, 3, 4, 5].find(x => !L.includes(x)); if (h == null) return; L.push(h); mcHorasGuardar_(L); };
 function mcFxPintar_() { const w = document.getElementById('mc-fxw'); if (w) w.innerHTML = mcFxHtml_(); }
 async function mcFxGuardar_(lista) {
   try { const j = await fetch(`${BACKEND}/mercado/airbnb/escenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ escenarios: lista }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.esc = j.escenarios; MC._escTs = Date.now(); mcFxPintar_(); return true; }
