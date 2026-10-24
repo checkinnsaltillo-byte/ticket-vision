@@ -70422,13 +70422,15 @@ function aseoTimelineHtml_(dia, m) {
     .tl-c{min-height:64px;min-width:0;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:4px;display:flex;flex-direction:column;gap:4px}.tl-c.hoy{background:#faf5ff;border-color:#ddd6fe}
     .tl-card.oc-task{position:static;width:auto;height:auto;cursor:pointer}.tl-card .t0{display:flex;align-items:center;gap:6px;margin-bottom:3px}.tl-card .t0 b{font:700 10.5px ui-monospace,Menlo,monospace;color:#0f1729}.tl-card .t0 span{font-size:10.5px;font-weight:700;color:#4338ca;background:#eef2ff;border-radius:5px;padding:0 5px;margin-left:auto}.tl-card .t0 small{font-size:10px;color:#94a3b8}
     .tl-void{padding:40px;text-align:center;color:#94a3b8;font-size:13px}`; document.head.appendChild(st); }
-  const porP = new Map(), hs = [];
+  const porP = new Map(), hs = [], vistas = new Set();
   const hhmm = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
   m.forEach((L, hid) => {
     const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '' }, cod = String(a.corto || '').toUpperCase() || String(a.nombre || hid);
     L.forEach(t => {
-      if (t.ghost || t.dia !== dia || (t.tarea && t.tarea.rt)) return;
-      const key = t.tarea ? `T${t.tarea.id}-${dia}` : t.id, reg = aseoEstDe_(key); if (!reg || !['terminado', 'inspeccionado'].includes(reg.estado)) return;
+      // v2172: una limpieza atrasada (card de un día anterior) terminada HOY también cuenta: lo que manda es el día en que se marcó Terminado.
+      if (t.ghost || (t.tarea && (t.tarea.rt || t.dia !== dia))) return;
+      const key = t.tarea ? `T${t.tarea.id}-${dia}` : t.id; if (vistas.has(key)) return; vistas.add(key);
+      const reg = aseoEstDe_(key); if (!reg || !['terminado', 'inspeccionado'].includes(reg.estado)) return;
       const H = reg.hist || {}, fin = (H.terminado && H.terminado.at) || reg.at, ini = H.en_proceso && H.en_proceso.at; if (!fin) return;
       const d = new Date(fin); if (isNaN(d) || tarIso_(d) !== dia) return;
       const pers = t.tarea ? (t.tarea.asignados || []) : aseoAsigDe_(t.id, 'aseo'), lista = pers.length ? pers.map(n => String(n).replace(/\s*\(WhatsApp\)\s*$/, '').trim()) : ['Sin asignar'];
