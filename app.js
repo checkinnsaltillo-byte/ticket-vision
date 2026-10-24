@@ -75808,6 +75808,9 @@ function mcCss_() {
   .mc-lg{display:flex;gap:12px;align-items:center;font-size:11.5px;color:var(--mu);font-weight:600}.mc-lg i{display:inline-block;width:14px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
   .mc-cl{position:sticky;left:0;z-index:2;height:${MC_RH}px}`; document.head.appendChild(st);
 }
+// Noches ocupadas / libres ya pasadas, según lo último que se supo de cada día (historia propia; no el «tachado» de Airbnb)
+function mcHist_(i) { if (i.v !== 2 || !i.cal) return null; const d = new Date(), hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; let o = 0, l = 0;
+  Object.keys(i.cal).forEach(k => [...i.cal[k]].forEach((c, x) => { if (`${k}-${String(x + 1).padStart(2, '0')}` < hoy) { if (c === '0') o++; else if (c === '1') l++; } })); return { o, l }; }
 function mcRows_() { const q = MC.q.trim().toLowerCase(); return MC.lista.map(l => MC.items[l.id] || { id: l.id, url: l.url, pendiente: true }).filter(it => !q || [it.titulo, it.ciudad, it.anfitrion, it.id, it.tipo].some(x => String(x || '').toLowerCase().includes(q))); }
 const mcN = v => v == null || v === '' ? '—' : v, mcF = iso => { if (!iso) return '—'; const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso); return isNaN(d) ? '—' : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: iso.length === 10 ? '2-digit' : undefined }); };
 const mcPct = v => v == null ? '—' : v + '%', mcSN = v => v === true ? 'Sí' : v === false ? 'No' : '—';
@@ -75821,6 +75824,8 @@ const MC_COLS = [
   { t: 'Amenidades', v: i => mcN(i.nAmenidades), tt: i => (i.amenidades || []).join(', ') }, { t: 'Mascotas', v: i => i.mascotas }, { t: 'Fumar', v: i => i.fumar }, { t: 'Fiestas', v: i => i.fiestas }, { t: 'Reglas', v: i => (i.reglas || []).join(' | ') },
   { t: 'Estancia mín.', v: i => i.minNoches == null ? '—' : i.minNoches + ' noches' }, { t: 'Ocup. 30 d', v: i => mcPct(i.ocup30) }, { t: 'Ocup. 90 d', v: i => mcPct(i.ocup90) }, { t: 'Ocup. 365 d', v: i => mcPct(i.ocup365) },
   { t: 'Días libres (365)', v: i => mcN(i.diasLibres365) }, { t: '1ª fecha libre', v: i => mcF(i.primeraLibre) }, { t: 'Próx. bloqueo', v: i => i.extraido ? (i.proximoBloqueo ? mcF(i.proximoBloqueo) : 'Sin bloqueos') : '—' },
+  { t: 'Noches ocupadas (histórico)', v: i => { const h = mcHist_(i); return h ? h.o : '—'; } }, { t: 'Ocup. histórica', v: i => { const h = mcHist_(i); return h && h.o + h.l ? Math.round(100 * h.o / (h.o + h.l)) + '%' : '—'; } },
+  { t: 'Reservas nuevas (última)', v: i => i.v === 2 ? mcN(i.nuevasUlt) : '—' }, { t: 'Canceladas (última)', v: i => i.v === 2 ? mcN(i.canceladasUlt) : '—' }, { t: 'Seguimiento desde', v: i => i.v === 2 ? mcF(i.histDesde) : '—' },
   { t: 'Fotos', v: i => mcN(i.fotos) }, { t: 'Latitud', v: i => mcN(i.lat) }, { t: 'Longitud', v: i => mcN(i.lng) }, { t: 'Descripción', v: i => String(i.descripcion || '').replace(/\s+/g, ' ').slice(0, 160) }, { t: 'Extraído', v: i => mcF(i.extraido) }];
 function mcRender_() {
   const root = document.getElementById('mc-root'); if (!root) return;
@@ -75829,7 +75834,7 @@ function mcRender_() {
     <div class="mc-card"><h3>1 · Lista de publicaciones</h3><div class="sub">Pega las URLs de Airbnb (una por línea) o carga un archivo .txt / .csv. Se suman a la lista actual; las que ya estaban se actualizan al extraer.</div>
       <textarea class="mc-txt" id="mc-txt" placeholder="https://www.airbnb.mx/rooms/844091512343541991&#10;https://www.airbnb.mx/rooms/…"></textarea>
       <div class="mc-row" style="margin-top:8px"><label class="mc-btn">📄 Cargar archivo<input type="file" accept=".txt,.csv,text/plain" hidden onchange="mcArchivo_(this)"></label><button type="button" class="mc-btn" onclick="mcAgregar_()">➕ Agregar a la lista</button><span class="mc-mu" id="mc-msg"></span></div></div>
-    <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses). Puedes volver a pulsarlo cuando quieras para traer lo más reciente.</div><div id="mc-prog"></div></div>
+    <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Se ejecuta solo todos los días a las 3:00 a.m.; también puedes pulsarlo cuando quieras.</div><div id="mc-prog"></div></div>
     <div id="mc-res"></div>`;
   mcProg_(); mcRes_();
 }
@@ -75846,7 +75851,7 @@ function mcRes_() {
   h.innerHTML = `<div class="mc-split">
     <div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${rows.length}${rows.length !== todos ? ' de ' + todos : ''})</span><span style="flex:1"></span><input class="mc-in" id="mc-q" placeholder="🔎 Buscar…" value="${esc(MC.q)}" oninput="MC.q=this.value;clearTimeout(MC._qt);MC._qt=setTimeout(()=>{mcRes_();const i=document.getElementById('mc-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)"><button type="button" class="mc-btn" onclick="mcCsv_()">⬇ CSV</button></div>
       <div class="mc-sc t" onscroll="mcSync_(this,'c')">${mcTabla_(rows)}</div></div>
-    <div class="mc-pane"><div class="mc-ph">📅 Disponibilidad <span style="flex:1"></span><span class="mc-lg"><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span><span><i style="background:#dc2626"></i>No disponible</span></span>
+    <div class="mc-pane"><div class="mc-ph">📅 Disponibilidad <span style="flex:1"></span><span class="mc-lg"><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span><span><i style="background:#dc2626"></i>Ocupada / no disponible</span></span>
       <select class="mc-in" onchange="MC.meses=+this.value;mcRes_()">${[3, 6, 12, 24].map(m => `<option value="${m}" ${MC.meses === m ? 'selected' : ''}>${m} meses</option>`).join('')}</select></div>
       <div class="mc-sc c" onscroll="mcSync_(this,'t')">${mcCal_(rows)}</div></div></div>`;
   const t = h.querySelector('.mc-sc.t'), c = h.querySelector('.mc-sc.c'); if (t) { t.scrollTop = st0; t.scrollLeft = sl0; } if (c) { c.scrollTop = st0; if (cl0 != null) c.scrollLeft = cl0; }
@@ -75861,7 +75866,7 @@ function mcTabla_(rows) {
   return `<table class="mc-tb"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 function mcCal_(rows) {
-  const W = 22, hoy = new Date(), d0 = new Date(hoy.getFullYear(), hoy.getMonth(), 1), fin = new Date(hoy.getFullYear(), hoy.getMonth() + MC.meses, 0), n = Math.round((fin - d0) / 864e5) + 1; // desde el día 1 del mes actual: los días pasados también se ven (Airbnb los marca como no disponibles)
+  const W = 22, hoy = new Date(), d0 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()), fin = new Date(hoy.getFullYear(), hoy.getMonth() + MC.meses, 0), n = Math.round((fin - d0) / 864e5) + 1; // empieza HOY: los días pasados no se muestran (Airbnb solo los marca «no disponible»; su historia queda en la base)
   const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, hoyIso = iso(hoy), dias = Array.from({ length: n }, (_, k) => { const d = new Date(d0); d.setDate(d.getDate() + k); return d; });
   const MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'], L = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
   const mm = []; dias.forEach((d, k) => { const ym = iso(d).slice(0, 7); if (!mm.length || mm[mm.length - 1].ym !== ym) mm.push({ ym, n: 0, t: `${MES[d.getMonth()]} ${d.getFullYear()}` }); mm[mm.length - 1].n++; });
