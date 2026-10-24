@@ -68990,7 +68990,6 @@ function atFormPintar_() {
       <div class="at-sec"><span>📷 Fotos</span><label class="ad-link">＋ Agregar fotos<input type="file" accept="image/*" multiple hidden onchange="atSubir_(this)"></label></div>
       <div class="at-gal" id="at-fotos">${atFotosHtml_()}</div>
       <div class="at-sec"><span>🖼️ Fotos de referencia</span><label class="ad-link">＋ Agregar fotos de referencia<input type="file" accept="image/*" multiple hidden data-campo="refs" onchange="atSubir_(this)"></label></div>
-      <div class="at-hint" style="margin:0 0 4px">Las verá cualquier persona asignada a la tarea (cómo debe quedar, el hallazgo original…).</div>
       <div class="at-gal" id="at-refs">${atFotosHtml_('refs')}</div>
       <div class="at-sec"><span>📎 Otros archivos</span><label class="ad-link">＋ Añadir archivo adjunto<input type="file" multiple hidden onchange="atSubir_(this)"></label></div>
       <div class="ad-adjs" id="at-adjs">${atAdjsHtml_()}</div>
