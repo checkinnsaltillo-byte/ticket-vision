@@ -75774,10 +75774,10 @@ const MC = { vista: (() => { try { return localStorage.getItem('mc-vista') === '
 const MC_RH = 40; // alto de renglón (igual en tabla y calendario para que queden alineados)
 window.mcInit = async function () {
   const root = document.getElementById('mc-root'); if (!root) return; mcCss_(); root.innerHTML = '<div class="mc-card">⏳ Cargando…</div>';
-  await mcCargar_(); mcRender_(); if ((MC.job && MC.job.running) || (MC.bus && MC.bus.running)) mcPoll_();
+  await mcCargar_(); mcRender_(); if ((MC.job && MC.job.running) || (MC.bus && MC.bus.running)) mcPoll_(); if (!MC.propios) setTimeout(async () => { if (!document.getElementById('mc-res')) return; await mcCargar_(); mcRes_(); }, 30000); // los propios se resuelven en segundo plano la primera vez
 };
 async function mcCargar_() {
-  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; MC.act = j.actualizado || ''; MC.error = ''; }
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
   catch (e) { MC.error = String(e.message || e); }
 }
 function mcCss_() {
@@ -75810,6 +75810,7 @@ function mcCss_() {
   .mc-ph{height:auto!important;min-height:48px;flex-wrap:wrap!important;padding-top:8px!important;padding-bottom:8px!important;row-gap:6px;overflow:visible!important}.mc-seg.sm{margin:0}.mc-seg.sm button{padding:6px 12px;font-size:12px}
   .mc-modal{position:fixed;inset:0;z-index:20000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px}.mc-mbox{background:#fff;border-radius:16px;width:min(1040px,100%);max-height:94vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.35)}
   .mc-mh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid #eef0f3;font-size:15px}.mc-mh .mc-in{width:auto;flex:0 0 auto}.mc-mh .mc-btn{flex:none}.mc-mh .mc-seg{flex:none}.mc-gw{position:relative;padding:8px 10px 0}.mc-tip{position:absolute;pointer-events:none;background:#0f172a;color:#fff;font-size:12px;line-height:1.45;padding:7px 10px;border-radius:9px;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+  .mc-chip.mc-own{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}.mc-tb tr.own td{background:#fffbeb}.mc-tb tr.own td.sk{background:#fffbeb}.mc-tb tr.own:hover td{background:#fef3c7}
   .mc-tb th.srt{cursor:pointer;user-select:none}.mc-tb th.srt:hover{background:#eef2f7}.mc-tb th.srt i{font-style:normal;margin-left:5px;font-size:9px;color:#cbd5e1}.mc-tb th.srt.on{color:#0f766e}.mc-tb th.srt.on i{color:#0f766e;font-size:10px}
   .mc-tb td.mc-tdc{padding:0;max-width:none;overflow:visible;border-left:2px solid #99f6e4;border-right:2px solid #99f6e4}.mc-tb th.mc-thc{padding:0;cursor:default;border-left:2px solid #99f6e4;border-right:2px solid #99f6e4;background:#f8fafc}
   .mc-tb tbody tr:hover td{background:#f0fdfa}.mc-tb tbody tr:hover td.sk{background:#f0fdfa}.mc-tb tbody tr:hover .mc-cr{background-color:#f0fdfa}
@@ -75906,6 +75907,9 @@ function mcGrafPintar_() {
 }
 window.mcGrafCsv_ = function () { const A = mcAgreg_(MC.cuenta); if (!A) return; const L = ['Fecha,Alojamientos ocupados (noche),Noches ocupadas acumuladas,Alojamientos con dato'].concat(A.dias.map((f, k) => `${f},${A.daily[k]},${A.cum[k]},${A.nobs[k]}`));
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\n')], { type: 'text/csv;charset=utf-8' })); a.download = `ocupacion-agregada-${mcIso_(new Date())}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
+// Alojamiento propio: su publicación de Airbnb está en el catálogo (url_airbnb) o lo publica el mismo anfitrión que alguno de los propios.
+function mcPropio_(i) { const P = MC.propios; if (!P) return null; const c = P.ids && P.ids[i.id]; if (c) return { cod: String(c.codigo || '').split(/\s*\(/)[0].replace(/\s+/g, ' ').trim(), por: 'catálogo' }; if (i.hostId && MC.ownHosts && MC.ownHosts.has(i.hostId)) return { cod: '', por: 'anfitrión' }; return null; }
+function mcCocina_(i) { const A = i.amenidades; if (!A || !A.length) return '—'; if (A.some(a => /^cocina compartida/i.test(a))) return 'Compartida'; return A.some(a => /^cocina\b|cocineta/i.test(a)) ? 'Sí' : 'No'; }
 // Orden de la tabla: clic en el encabezado → A-Z, otro clic → Z-A, otro → sin orden. Los vacíos van siempre al final.
 function mcKey_(key, i) {
   if (key === 'pub') return String(i.titulo || '').toLowerCase() || null; if (key === 'est') return i.error ? 'error' : (i.pendiente || !i.extraido) ? 'pendiente' : 'ok';
@@ -75924,7 +75928,12 @@ const mcN = v => v == null || v === '' ? '—' : v, mcF = iso => { if (!iso) ret
 const mcPct = v => v == null ? '—' : v + '%', mcSN = v => v === true ? 'Sí' : v === false ? 'No' : '—';
 // Columnas: t = encabezado · v = valor (texto, también para CSV) · h = html opcional
 const MC_COLS = [
+  { t: 'Propios', v: i => { const p = mcPropio_(i); return !MC.propios ? '…' : p ? (p.cod ? 'Mío · ' + p.cod : 'Mío') : 'No'; }, k: i => MC.propios ? (mcPropio_(i) ? 0 : 1) : null,
+    h: i => { const p = mcPropio_(i); return p ? `<span class="mc-chip mc-own" title="Alojamiento propio (${p.por === 'catálogo' ? 'está en tu catálogo' : 'mismo anfitrión que tus alojamientos'})">🏠 Mío${p.cod ? ' · ' + esc(p.cod) : ''}</span>` : (MC.propios ? '<span class="mc-mu">—</span>' : '<span class="mc-mu">…</span>'); } },
   { t: 'Tipo', v: i => i.tipo }, { t: 'Ciudad', v: i => i.ciudad }, { t: 'Estado', v: i => i.estado }, { t: 'Anfitrión', v: i => i.anfitrion },
+  { t: 'Ubicación (texto)', v: i => i.ubicacionTxt || i.barrio || i.ubicacion || '', tt: i => [i.ubicacionTxt, i.barrio, i.ubicacion].filter(Boolean).join('\n\n') },
+  { t: 'Coordenadas', v: i => i.lat != null && i.lng != null ? `${Number(i.lat).toFixed(5)}, ${Number(i.lng).toFixed(5)}` : '—', k: i => i.lat != null ? Number(i.lat) : null, h: i => i.lat != null && i.lng != null ? `<a href="https://www.google.com/maps?q=${i.lat},${i.lng}" target="_blank" rel="noopener" style="color:#0f766e" title="Abrir en Google Maps">📍 ${Number(i.lat).toFixed(5)}, ${Number(i.lng).toFixed(5)}</a>` : '—' },
+  { t: 'Cocina', v: i => mcCocina_(i), tt: i => (i.amenidades || []).filter(a => /cocina|cocineta|refrigerador|microondas|estufa|horno|cafetera/i.test(a)).join(', ') },
   { t: 'Superanfitrión', v: i => mcSN(i.superanfitrion) }, { t: 'Años anfitrión', v: i => mcN(i.hostAnios) }, { t: 'Eval. anfitrión', v: i => mcN(i.hostEvaluaciones) }, { t: 'Calif. anfitrión', v: i => mcN(i.hostCalificacion) },
   { t: 'Respuesta', v: i => i.hostRespuesta }, { t: 'Tiempo resp.', v: i => i.hostTiempo }, { t: 'Huéspedes', v: i => mcN(i.huespedes) }, { t: 'Habit.', v: i => mcN(i.habitaciones) }, { t: 'Camas', v: i => mcN(i.camas) }, { t: 'Baños', v: i => mcN(i.banos) },
   { t: '★ Calif.', v: i => mcN(i.calificacion) }, { t: 'Evaluaciones', v: i => mcN(i.evaluaciones) }, { t: 'Favorito huéspedes', v: i => mcSN(i.favorito) }, { t: '% 5★', v: i => mcPct(i.pct5) },
@@ -75994,12 +76003,12 @@ function mcProg_() {
     ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
 }
 // Tabla única: datos clave → calendario de disponibilidad → resto de los datos. Un solo desplazamiento; encabezado fijo; clic en un encabezado ordena.
-const MC_PRE = ['Tipo', 'Ciudad', '★ Calif.', 'Evaluaciones', 'No disponible 30 d', 'No disponible 90 d', 'No disponible 365 d', 'Ocup. estimada por reservas (365 d)', 'Noches ocupadas en la ventana', 'Estancia mín.', 'Precio por noche (búsqueda)'];
+const MC_PRE = ['Propios', 'Tipo', 'Ciudad', 'Ubicación (texto)', 'Anfitrión', 'Habit.', 'Camas', 'Baños', 'Cocina', '★ Calif.', 'Evaluaciones', 'Ocup. estimada por reservas (365 d)', 'Noches ocupadas en la ventana', 'Estancia mín.', 'Precio por noche (búsqueda)'];
 function mcRes_() {
   const h = document.getElementById('mc-res'); if (!h) return; const rows = mcRows_(), todos = MC.lista.length;
   if (!todos) { h.innerHTML = '<div class="mc-card mc-mu">Aún no hay publicaciones. Agrega URLs en el paso 1.</div>'; return; }
   const sc = h.querySelector('.mc-sc'), st0 = sc ? sc.scrollTop : 0, sl0 = sc ? sc.scrollLeft : 0;
-  h.innerHTML = `<div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${rows.length}${rows.length !== todos ? ' de ' + todos : ''})</span><input class="mc-in" id="mc-q" placeholder="🔎 Buscar…" value="${esc(MC.q)}" oninput="MC.q=this.value;clearTimeout(MC._qt);MC._qt=setTimeout(()=>{mcRes_();const i=document.getElementById('mc-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)"><button type="button" class="mc-btn" onclick="mcCsv_()">⬇ CSV</button>
+  h.innerHTML = `<div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${rows.length}${rows.length !== todos ? ' de ' + todos : ''})</span>${MC.propios ? `<span class="mc-chip mc-own" title="Alojamientos propios en la tabla">🏠 ${rows.filter(mcPropio_).length} propios</span>` : ''}<input class="mc-in" id="mc-q" placeholder="🔎 Buscar…" value="${esc(MC.q)}" oninput="MC.q=this.value;clearTimeout(MC._qt);MC._qt=setTimeout(()=>{mcRes_();const i=document.getElementById('mc-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)"><button type="button" class="mc-btn" onclick="mcCsv_()">⬇ CSV</button>
       <div class="mc-seg sm"><button type="button" class="${MC.vista !== 'acum' ? 'on' : ''}" onclick="mcVista_('cal')">📅 Tabla con calendario</button><button type="button" class="${MC.vista === 'acum' ? 'on' : ''}" onclick="mcVista_('acum')">📈 Tabla con ocupación acumulada</button></div>
       <button type="button" class="mc-btn" onclick="mcGraf_()">📊 Ocupación agregada</button><span style="flex:1"></span>
       ${MC.vista === 'acum' ? `<span class="mc-lg"><span><i style="background:#0f766e;height:3px"></i>Noches ocupadas acumuladas desde hoy</span></span><select class="mc-in" title="Qué cuenta como noche ocupada" onchange="mcCuenta_(this.value)">${Object.entries(MC_CUENTA_T).map(([k, t]) => `<option value="${k}" ${MC.cuenta === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`
@@ -76016,7 +76025,7 @@ function mcTabla_(rows) {
   const mm = []; dias.forEach(d => { const ym = mcIso_(d).slice(0, 7); if (!mm.length || mm[mm.length - 1].ym !== ym) mm.push({ ym, n: 0, t: `${MES[d.getMonth()]} ${d.getFullYear()}` }); mm[mm.length - 1].n++; });
   const calH = `<div class="mc-ch"><div class="mc-cm">${mm.map(m => `<span style="width:${m.n * W}px">${m.t}</span>`).join('')}</div><div class="mc-cd">${dias.map(d => `<span class="${d.getDay() === 0 || d.getDay() === 6 ? 'fs' : ''} ${mcIso_(d) === hoyIso ? 'hoy' : ''}"><b>${d.getDate()}</b>${L[d.getDay()]}</span>`).join('')}</div></div>`;
   const head = `<tr>${th('pub', 'Publicación', 'sk')}${th('est', 'Estado')}${pre.map(x => th('c' + x, MC_COLS[x].t)).join('')}<th class="mc-thc">${calH}</th>${post.map(x => th('c' + x, MC_COLS[x].t)).join('')}</tr>`;
-  const cell = (i, x) => { const c = MC_COLS[x]; return `<td ${c.tt ? `title="${esc(c.tt(i))}"` : ''}>${esc(c.v(i))}</td>`; };
+  const cell = (i, x) => { const c = MC_COLS[x]; return `<td ${c.tt ? `title="${esc(c.tt(i))}"` : ''}>${c.h ? c.h(i) : esc(c.v(i))}</td>`; };
   const idx = new Map(dias.map((d, k) => [mcIso_(d), k])), fmt = iso => mcF(iso);
   const cal = i => { if (!i.cal) return '<td class="mc-tdc" style="width:' + n * W + 'px"><span class="mc-mu" style="padding-left:8px">Sin extraer</span></td>';
     const bars = [];
@@ -76027,7 +76036,7 @@ function mcTabla_(rows) {
     const occ = mcOccDias_(i, MC.cuenta); let c = 0; const cum = dias.map(d => { if (occ.get(mcIso_(d)) === 1) c++; return c; }); MC._ser[i.id] = cum; const H = 40, mx = c, y = v => mx ? (H - 5 - v / mx * (H - 13)) : H - 5, pts = cum.map((v, k) => `${(k * W + W / 2).toFixed(0)},${y(v).toFixed(1)}`).join(' ');
     return `<td class="mc-tdc" style="width:${n * W}px"><div class="mc-cr" style="width:${n * W}px" onmousemove="mcTipSerie_(this,event,'${esc(i.id)}','${d0iso}')"><svg width="${n * W}" height="${H}" style="display:block;position:absolute;left:0;top:0"><polygon points="${W / 2},${H - 5} ${pts} ${(n - 1) * W + W / 2},${H - 5}" fill="#14b8a6" opacity=".2"/><polyline points="${pts}" fill="none" stroke="#0f766e" stroke-width="1.8" stroke-linejoin="round"/></svg></div></td>`; };
   const body = rows.map(i => { const est = i.error ? `<span class="mc-chip mc-ko" title="${esc(i.error)}">Error</span>` : i.pendiente || !i.extraido ? '<span class="mc-chip mc-pe">Pendiente</span>' : '<span class="mc-chip mc-ok">OK</span>';
-    return `<tr data-id="${esc(i.id)}"><td class="sk"><div class="mc-ti">${i.foto ? `<img src="${esc(i.foto)}" alt="" loading="lazy">` : '<img alt="">'}<div style="min-width:0"><b title="${esc(i.titulo || '')}"><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.titulo || 'Publicación ' + i.id)}</a></b><small>${esc(i.id)}${i.error ? ' · <span class="mc-err">' + esc(String(i.error).slice(0, 60)) + '</span>' : ''}</small></div><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcQuitar_('${esc(i.id)}')">🗑</button></div></td>
+    return `<tr data-id="${esc(i.id)}" class="${mcPropio_(i) ? 'own' : ''}"><td class="sk"><div class="mc-ti">${i.foto ? `<img src="${esc(i.foto)}" alt="" loading="lazy">` : '<img alt="">'}<div style="min-width:0"><b title="${esc(i.titulo || '')}"><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.titulo || 'Publicación ' + i.id)}</a></b><small>${esc(i.id)}${i.error ? ' · <span class="mc-err">' + esc(String(i.error).slice(0, 60)) + '</span>' : ''}</small></div><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcQuitar_('${esc(i.id)}')">🗑</button></div></td>
       <td>${est}</td>${pre.map(x => cell(i, x)).join('')}${(MC.vista === 'acum' ? serie : cal)(i)}${post.map(x => cell(i, x)).join('')}</tr>`; }).join('');
   return `<table class="mc-tb"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
