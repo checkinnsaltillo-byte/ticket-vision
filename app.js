@@ -67886,6 +67886,24 @@ window.adDropUser_ = async function (ev, dest) {
     aseoRenderSide_();
   } catch (e) { alert('No se pudo cambiar la asignación: ' + (e.message || e)); aseoRenderSide_(); }
 };
+// Vista «Semana»: navegar de semana y soltar una tarea en un día (o en «Sin fecha»).
+window.adSemMover_ = function (v) { const hoyL = ckLunes_(aseoHoyIso_()); if (!v) ASEO.semIni = hoyL; else { const d = tarParseIso_(ASEO.semIni || hoyL); d.setDate(d.getDate() + 7 * v); ASEO.semIni = tarIso_(d); } aseoRenderSide_(); };
+window.adSemOver_ = function (ev) { const D = ASEO._dragEst; if (!D || !D.tarea || /^R:/.test(D.id)) return; ev.preventDefault(); document.querySelectorAll('.sm-board .ad-col.drop').forEach(c => { if (c !== ev.currentTarget) c.classList.remove('drop'); }); ev.currentTarget.classList.add('drop'); };
+window.adSemDrop_ = async function (ev, dest) {
+  ev.preventDefault(); document.querySelectorAll('.sm-board .ad-col.drop').forEach(c => c.classList.remove('drop'));
+  const D = ASEO._dragEst; ASEO._dragEst = null; if (!D || !D.tarea || /^R:/.test(D.id)) return;
+  const m = String(D.id).match(/^T([a-z0-9]+)/i), t = m && (ASEO.tareas || {})[m[1]]; if (!t) return;
+  if (t.repite) return alert('Esta tarea es recurrente: su fecha se cambia desde «Detalles» → editar.');
+  if ((t.fecha || '') === dest) return;
+  const prev = t.fecha || '', user = (typeof currentUser !== 'undefined' && currentUser) || '';
+  t.fecha = dest; ASEO.calSig = ''; aseoRenderSide_(); // al instante; si falla se regresa
+  try {
+    const j = await fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea: Object.assign({}, t, { fecha: dest }), user }) }).then(r => r.json());
+    if (!j.ok) throw new Error(j.error || 'Error');
+    ASEO.tareas[m[1]] = Object.assign(j.tarea, { adjuntos: t.adjuntos, refs: t.refs || [] });
+  } catch (e) { t.fecha = prev; alert('No se pudo cambiar la fecha: ' + (e.message || e)); }
+  ASEO.calSig = ''; aseoRenderSide_();
+};
 window.adDragOver_ = function (ev, k) {
   const D = ASEO._dragEst; if (!D || (k === 'inspeccionado' && D.sinInsp)) return; // mantenimiento/inspección no tienen "Inspeccionado"
   ev.preventDefault(); ev.dataTransfer.dropEffect = 'move';
@@ -68144,7 +68162,7 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   const fPers = ASEO.fPers || [];
   const tInfos = []; { const ya = new Set(); (ASEO._rango || [hoy]).forEach(d => atLista_().filter(t => atToca_(t, d)).forEach(t => { const I = atInfo_(t, d); if (ya.has(I.key)) return; ya.add(I.key); if (ASEO._rango) I._dia = d; tInfos.push(I); })); }
   // Administrativas únicas sin resolver de días pasados: siguen apareciendo hoy (como los antiguos Pendientes).
-  if (hoy === aseoHoyIso_()) { const ya = new Set(tInfos.map(I => I.k)); atLista_().forEach(t => { if (t.rt || t.repite || t.depto !== 'administrativo' || !(t.fecha < hoy) || ya.has('T' + t.id)) return; const I = atInfo_(t, t.fecha); if (['terminado', 'inspeccionado', 'cancelado'].includes(I.selE)) return; I.atrasada = true; tInfos.push(I); }); }
+  if (hoy === aseoHoyIso_()) { const ya = new Set(tInfos.map(I => I.k)); atLista_().forEach(t => { if (t.rt || t.repite || t.depto !== 'administrativo' || !t.fecha || !(t.fecha < hoy) || ya.has('T' + t.id)) return; const I = atInfo_(t, t.fecha); if (['terminado', 'inspeccionado', 'cancelado'].includes(I.selE)) return; I.atrasada = true; tInfos.push(I); }); }
   plReconciliar_();
   // Card reprogramada a este día: sus tareas ligadas por incidencia (de cualquier tipo) que sigan sin resolver la acompañan.
   { const ya = new Set(tInfos.map(I => I.k));
@@ -68246,9 +68264,9 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
       const p = L.find(I => !I.tarea) || L.find(I => !['correctivo', 'preventivo'].includes(axSrv_(kDe(I)))) || L[0], pi = idsDe(p), hs = L.filter(I => I !== p);
       hijosDe.set(p, hs); hs.forEach(h => { padreDe.set(h, p); const hi = idsDe(h); puenteDe.set(h, hi.find(x => pi.includes(x)) || hi[0]); });
     }); }
-  const vista = !MP && ['estado', 'usuario', 'tabla'].includes(ASEO.vista) ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados solo «por propiedad»
+  const vista = MP ? (ASEO.vista === 'estado' ? 'estado' : 'propiedad') : ['estado', 'usuario', 'tabla', 'semana'].includes(ASEO.vista) ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados: «por propiedad» o «por estado»
   const propHtml = props.length > 1 ? `<div class="mv-pf ad-prf"><small>🏘️ Propiedad:</small>${props.map(p => `<button type="button" class="mv-pf-c ad-pr ${fP.includes(p) ? 'on' : ''}" data-p="${pcEsc(p)}" onclick="adPropToggle_(this.dataset.p)">${pcEsc(p)}<b>${infos.concat(tInfos).filter(I => propDe(I) === p).length}</b></button>`).join('')}${fP.length ? '<button type="button" class="mv-pf-x" onclick="ASEO.fProp=[];aseoRender_()">Quitar filtro</button>' : ''}</div>` : '';
-  const segV = `${MP ? '' : ckVistasHtml_(vista, 'adVista_')}<div class="ad-seg ad-seg2"><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
+  const segV = `${MP ? ckVistasHtml_(vista, 'adVista_', ['estado', 'propiedad']) : ckVistasHtml_(vista, 'adVista_', null, [['semana', '🗓️ Semana']])}<div class="ad-seg ad-seg2"><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
   ASEO._pubKeys = infos.filter(I => I.esHoyC && I.G).map(I => ({ key: I.pubKey, on: !I.noPub }));
   const vivos = infos.filter(I => !I.fantasma);
   const n = k => vivos.filter(I => I.selE === k).length;
@@ -68394,6 +68412,33 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
   ASEO._hamHtml = `<button type="button" class="ad-ham ${ASEO.filtrosAb ? 'on' : ''}" onclick="adFiltrosToggle_()" title="${ASEO.filtrosAb ? 'Ocultar filtros' : 'Mostrar filtros'}${nFil ? ` (${nFil} activo${nFil === 1 ? '' : 's'})` : ''}">☰${nFil ? `<b>${nFil}</b>` : ''}</button>`;
   ASEO._filtrosHtml = ASEO.filtrosAb ? `<div class="ad-gfil">${filtroHtml}${propHtml}${ASEO.sec === 'aseo' ? '' : tipoHtml}${prioHtml}${archHtml}</div>` : '';
   ASEO._segVHtml = segV;
+  // Vista «Semana» (planeador): col. 1 = tareas sin fecha (fija); col. 2–8 = lunes a domingo de la semana elegida. Arrastrar una card a un día le asigna esa fecha.
+  const semanaHtml = () => {
+    if (!document.getElementById('sm-css')) { const st = document.createElement('style'); st.id = 'sm-css'; st.textContent = `
+      .sm-nav{display:flex;align-items:center;gap:8px;margin:0 0 10px 272px;flex-wrap:wrap}
+      .sm-nav button{border:1px solid #d7dbe2;background:#fff;border-radius:9px;padding:5px 11px;font:600 13px Inter,system-ui,sans-serif;color:#0f1729;cursor:pointer}
+      .sm-nav button:hover{background:#f1f5f9}.sm-nav .lb{min-width:210px}.sm-nav .hoy{color:#4f46e5}
+      .sm-wrap{overflow-x:auto;padding-bottom:6px}
+      .sm-board{display:grid;grid-template-columns:262px repeat(7,minmax(210px,1fr));gap:10px;align-items:stretch;min-width:1760px}
+      .sm-board .ad-col{min-height:300px}
+      .sm-board .ad-col.sin{background:#e7eaf5;border:1px dashed #a5b4fc}
+      .sm-board .ad-col.hoy{background:#e8efff;box-shadow:inset 0 0 0 2px #a5b4fc}
+      .sm-board .ad-colh{position:static;margin:-7px -7px 6px}.sm-board .ad-colh em{font-style:normal;font-weight:500;color:#9aa1ad;margin-left:4px}
+      .sm-board .ad-col>.ad-card{margin-bottom:8px}.sm-vacio{font-size:12px;color:#9aa1ad;text-align:center;padding:18px 6px;font-style:italic}`; document.head.appendChild(st); }
+    const hoyI = aseoHoyIso_(), lun = ASEO.semIni || ckLunes_(hoyI);
+    const dias = Array.from({ length: 7 }, (_, i) => { const d = tarParseIso_(lun); d.setDate(d.getDate() + i); return tarIso_(d); });
+    const dA = tarParseIso_(dias[0]), dB = tarParseIso_(dias[6]), mes = d => d.toLocaleDateString('es-MX', { month: 'long' });
+    const lbl = dA.getMonth() === dB.getMonth() ? `del ${dA.getDate()} al ${dB.getDate()} de ${mes(dB)}` : `del ${dA.getDate()} de ${mes(dA)} al ${dB.getDate()} de ${mes(dB)}`;
+    const okT = t => clSoloMio_(t.asignados || []) && (ASEO.sec !== 'mant' || t.rt || t.depto === 'mantenimiento');
+    const ordena = L => L.slice().sort((x, y) => pN0(y) - pN0(x));
+    const infosDe = (fn, dia) => ordena(atLista_().filter(t => okT(t) && fn(t)).map(t => atInfo_(t, dia)).filter(I => (!fSub || tipoDe(I) === fSub) && (!fT.length || fT.includes(tipoDe(I))) && (!fPr.length || fPr.includes(prioDe(I)))));
+    const sinF = infosDe(t => !t.rt && !t.fecha, hoyI);
+    const col = (cls, h, n, L, dest) => `<div class="ad-col ${cls}" ondragover="adSemOver_(event)" ondragleave="if(!this.contains(event.relatedTarget))this.classList.remove('drop')" ondrop="adSemDrop_(event,'${dest}')"><div class="ad-colh">${h}<span>${n}</span></div>${L.map(I => atCard_(I)).join('') || `<div class="sm-vacio">${dest ? 'Suelta aquí una tarea' : 'No hay tareas sin fecha'}</div>`}</div>`;
+    const dn = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    return `<div class="sm-nav"><button type="button" onclick="adSemMover_(-1)" title="Semana anterior">‹</button><button type="button" class="lb" onclick="adSemMover_(0)" title="Volver a la semana en curso">${lbl}</button><button type="button" onclick="adSemMover_(1)" title="Semana siguiente">›</button>${lun !== ckLunes_(hoyI) ? '<button type="button" class="hoy" onclick="adSemMover_(0)">Esta semana</button>' : ''}</div>
+      <div class="sm-wrap"><div class="sm-board">${col('sin', '📥 Sin fecha', sinF.length, sinF, '')}${dias.map((d, i) => { const L = infosDe(t => atToca_(t, d), d); return col(d === hoyI ? 'hoy' : '', `${dn[i]} ${tarParseIso_(d).getDate()}${d === hoyI ? '<em>hoy</em>' : ''}`, L.length, L, d); }).join('')}</div></div>`;
+  };
+  if (vista === 'semana') { ASEO._kpisHtml = kpis; return semanaHtml(); }
   return `${ver.length ? (vista === 'tabla' ? tablaHtml() : vista === 'usuario' ? `<div class="ad-urows">${cols}</div>` : `<div class="ad-board ${vista === 'estado' ? 'est' : ''}">${cols}</div>`) : `<div class="pc-mv-empty">${vacio}</div>`}`;
 }
 function adTblCss_() {
@@ -68913,7 +68958,7 @@ function atPintar_(nuevo) {
   const sig = pasos[Math.min(pasos.length - 1, pasos.findIndex(e => e.k === adEstBase_(I.selE)) + 1)];
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="code">${pcEsc(I.corto || '—')}</span><span class="t">${pcEsc(I.aloj)}</span><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></div>
       <div class="ad-tt">${D.ico} ${pcEsc(t.titulo)}</div>
-      <div class="ad-sub">${aseoDiaTxt_(I.dia)}${t.hora ? ' · ' + aseoHoraTxt_(t.hora) : ''} · <i style="background:${E.c}"></i>${E.t} · ${prio4Html_(t.prioridad)}</div>
+      <div class="ad-sub">${t.fecha || t.rt ? aseoDiaTxt_(I.dia) : 'Sin fecha'}${t.hora ? ' · ' + aseoHoraTxt_(t.hora) : ''} · <i style="background:${E.c}"></i>${E.t} · ${prio4Html_(t.prioridad)}</div>
       ${t.problema ? '<div class="ad-badge red"><i></i>Creada como problema</div>' : ''}</div>
     <div class="ad-db">
       <div class="lab">Estado</div><div class="ad-steps" style="grid-template-columns:repeat(${pasos.length + (t.depto === 'limpieza' ? 1 : 0)},1fr)">${adEstBtns_(I.key, '', I.selE, true, t.depto !== 'limpieza', true)}</div>
@@ -68961,7 +69006,7 @@ window.atBorrar_ = async function (id) {
 // ── Formulario "Crea una tarea" ──
 window.atForm_ = function (id, hid, dia) {
   const t = id ? (ASEO.tareas || {})[id] : null;
-  ASEO._tf = t ? Object.assign(JSON.parse(JSON.stringify(t)), { srv: axSrv_('T' + t.id, false) }) : { srv: 'general', hid: hid || '', depto: '', problema: false, prioridad: 'media', titulo: '', desc: '', fecha: dia || aseoDiaNuevo_(), hora: '', repite: null, asignados: [], etiquetas: [], adjuntos: [], reserva: '' };
+  ASEO._tf = t ? Object.assign(JSON.parse(JSON.stringify(t)), { srv: axSrv_('T' + t.id, false), _sf: !t.fecha }) : { srv: 'general', hid: hid || '', depto: '', problema: false, prioridad: 'media', titulo: '', desc: '', fecha: dia || aseoDiaNuevo_(), hora: '', repite: null, asignados: [], etiquetas: [], adjuntos: [], reserva: '' };
   ASEO._dr = { form: true, k: 'form' };
   atFormPintar_();
 };
@@ -68987,8 +69032,9 @@ function atFormPintar_() {
       <input class="at-in" placeholder="Introduce un título" value="${pcEsc(F.titulo)}" oninput="ASEO._tf.titulo=this.value">
       <textarea class="at-in" rows="4" placeholder="Añade una descripción…" oninput="ASEO._tf.desc=this.value">${pcEsc(F.desc)}</textarea>
       <div class="at-sec"><span>📅 Programar</span><label class="at-tg">Recurrente ${sw(!!F.repite, "atRecTog_()")}</label></div>
-      ${F.repite ? atRecHtml_(F) : `<div class="at-row"><span class="at-k">Vence el</span><input type="date" class="at-in" value="${pcEsc(F.fecha)}" ${atResRango_()} onchange="ASEO._tf.fecha=this.value;atFormPintar_()">
-        <select class="at-in" onchange="ASEO._tf.hora=this.value">${horas.map(h => `<option value="${h}" ${h === (F.hora || '') ? 'selected' : ''}>${h ? aseoHoraTxt_(h) : 'Sin hora'}</option>`).join('')}</select></div>`}
+      ${F.repite ? atRecHtml_(F) : `<div class="at-row"><span class="at-k">Vence el</span>${F._sf ? '<span class="at-in" style="display:inline-flex;align-items:center;color:#64748b">Sin fecha (se asigna en la vista Semana)</span>' : `<input type="date" class="at-in" value="${pcEsc(F.fecha)}" ${atResRango_()} onchange="ASEO._tf.fecha=this.value;atFormPintar_()">`}
+        <button type="button" class="ad-bt" style="flex:none" onclick="atSinFecha_()" title="${F._sf ? 'Elegir una fecha' : 'Dejar la tarea sin fecha para asignarla después'}">${F._sf ? '📅 Poner fecha' : '📥 Sin fecha'}</button>
+        ${F._sf ? '' : `<select class="at-in" onchange="ASEO._tf.hora=this.value">${horas.map(h => `<option value="${h}" ${h === (F.hora || '') ? 'selected' : ''}>${h ? aseoHoraTxt_(h) : 'Sin hora'}</option>`).join('')}</select>`}</div>`}
       ${F.repite ? `<div class="at-row"><span class="at-k">Hora</span><select class="at-in" onchange="ASEO._tf.hora=this.value">${horas.map(h => `<option value="${h}" ${h === (F.hora || '') ? 'selected' : ''}>${h ? aseoHoraTxt_(h) : 'Sin hora'}</option>`).join('')}</select></div>
         <div class="at-hint">Nota: las personas asignadas lo estarán en todas las repeticiones.</div>` : ''}
       <div class="at-sec"><span>👤 Asignados</span><button type="button" class="ad-link" onclick="atAsignar_(this)">＋ Añadir asignado</button></div>
@@ -69123,15 +69169,17 @@ window.atSubir_ = async function (inp) {
     atAdjsPintar_();
   }
 };
+window.atSinFecha_ = function () { const F = ASEO._tf; F._sf = !F._sf; F.fecha = F._sf ? '' : aseoDiaNuevo_(); F.hora = F._sf ? '' : F.hora; atFormPintar_(); };
 window.atGuardar_ = async function () {
   const F = ASEO._tf;
   if (!F.depto) return alert('Elige el tipo de tarea: Aseo, Inspección o Mantenimiento.');
   if (!String(F.titulo || '').trim()) return alert('Escribe el título de la tarea.');
-  if (!F.fecha) return alert('Elige la fecha.');
+  if (F.repite) F._sf = false;
+  if (!F.fecha && !F._sf) return alert('Elige la fecha (o marca «Sin fecha»).');
   const R = F.repite;
   if (R && Array.isArray(R.dias_semana) && !(R.tipo === 'semanal' ? R.dias_semana : R.dias_mes || []).length) return alert(R.tipo === 'semanal' ? 'Elige al menos un día de la semana.' : 'Elige al menos un día del mes.');
   if (R && R.fin && R.fin < F.fecha) return alert('«Hasta» debe ser posterior a «Desde».');
-  if (F.reserva) { const b = pcMovBookings_().find(x => String(x.Id) === String(F.reserva)); if (b && !(F.fecha >= _pagosDateIso(b.DateArrival) && F.fecha <= _pagosDateIso(b.DateDeparture))) return alert('La fecha debe quedar dentro de la estancia de la reserva enlazada.'); }
+  if (F.reserva && F.fecha) { const b = pcMovBookings_().find(x => String(x.Id) === String(F.reserva)); if (b && !(F.fecha >= _pagosDateIso(b.DateArrival) && F.fecha <= _pagosDateIso(b.DateDeparture))) return alert('La fecha debe quedar dentro de la estancia de la reserva enlazada.'); }
   const btn = document.getElementById('at-ok'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando…'; }
   try {
     const r = await fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea: Object.assign({}, F, { _deRt: undefined }), user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
@@ -70198,7 +70246,7 @@ const CK_VISTAS = [['estado', 'Por estado'], ['propiedad', 'Por propiedad'], ['u
 // 📅 Calendario: botón que se activa/desactiva y se muestra a la izquierda, compartido con cualquier vista (como en Aseo).
 function ckCalBtnHtml_(on, fn) { return `<button type="button" class="aseo-btn ck-ib ${on ? 'on' : ''}" onclick="${fn}" title="${on ? 'Ocultar calendario' : 'Mostrar calendario'}">📅</button>`; }
 function ckSplitHtml_(on, calHtml, mainHtml, cls) { return on ? `<div class="ck-split ${cls || ''}"><div class="ck-splitcal">${calHtml}</div><div class="ck-splitmain">${mainHtml}</div></div>` : mainHtml; }
-function ckVistasHtml_(cur, fn) { return `<div class="ad-seg"><span>Vista</span>${CK_VISTAS.map(([k, t]) => `<button type="button" class="${cur === k ? 'on' : ''}" onclick="${fn}('${k}')">${t}</button>`).join('')}</div>`; }
+function ckVistasHtml_(cur, fn, ks, extra) { return `<div class="ad-seg"><span>Vista</span>${CK_VISTAS.filter(v => !ks || ks.includes(v[0])).concat(extra || []).map(([k, t]) => `<button type="button" class="${cur === k ? 'on' : ''}" onclick="${fn}('${k}')">${t}</button>`).join('')}</div>`; }
 function ckMesHoy_() { return aseoHoyIso_().slice(0, 7); }
 function ckMesMover_(ym, v) { if (typeof v === 'string') return v; if (!v) return ckMesHoy_(); const [y, m] = (ym || ckMesHoy_()).split('-').map(Number), d = new Date(y, m - 1 + v, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
 function ckMesNavHtml_(ym, fn) {

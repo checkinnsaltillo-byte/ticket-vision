@@ -10883,7 +10883,8 @@ app.post("/aseo/tarea", async (req, res) => {
     const iso = /^\d{4}-\d{2}-\d{2}$/, txt = (v, n) => String(v || "").trim().slice(0, n);
     const hid = String(b.hid || "").replace(/\D/g, "").slice(0, 20);
     const titulo = txt(b.titulo, 140);
-    if (!titulo || !iso.test(String(b.fecha || ""))) return res.status(400).json({ ok: false, error: "Faltan título o fecha" }); // alojamiento opcional
+    const sinFecha = b.fecha === "" && !b.repite; // tarea «sin fecha»: se programa después arrastrándola en la vista Semana
+    if (!titulo || !(iso.test(String(b.fecha || "")) || sinFecha)) return res.status(400).json({ ok: false, error: "Faltan título o fecha" }); // alojamiento opcional
     const depto = ["limpieza", "inspeccion", "insumos", "mantenimiento", "administrativo"].includes(b.depto) ? b.depto : "limpieza";
     const R = b.repite, ints = (L, a, z) => [...new Set((Array.isArray(L) ? L : []).map(Number).filter(n => Number.isInteger(n) && n >= a && n <= z))];
     const rp = R && Array.isArray(R.dias_semana) && ["semanal", "mensual", "bimestral"].includes(R.tipo) // «Recurrente» (mismo modelo que Pendientes)
@@ -10897,7 +10898,7 @@ app.post("/aseo/tarea", async (req, res) => {
       d[id] = { id, hid, depto, problema: !!b.problema,
         // Prioridad homologada (4 niveles, igual que Reportes técnicos); la escala anterior 1–5 se convierte.
         prioridad: ["baja", "media", "alta", "critica"].includes(b.prioridad) ? b.prioridad : ({ 1: "baja", 2: "baja", 3: "media", 4: "alta", 5: "critica" })[Number(b.prioridad)] || "media", titulo, desc: txt(b.desc, 2000),
-        fecha: b.fecha, hora: /^\d{2}:\d{2}$/.test(String(b.hora || "")) ? b.hora : "", repite: rp,
+        fecha: sinFecha ? "" : b.fecha, hora: /^\d{2}:\d{2}$/.test(String(b.hora || "")) ? b.hora : "", repite: rp,
         asignados: (Array.isArray(b.asignados) ? b.asignados : []).map(n => txt(n, 80)).filter(Boolean).slice(0, 20),
         etiquetas: (Array.isArray(b.etiquetas) ? b.etiquetas : []).map(n => txt(n, 40)).filter(Boolean).slice(0, 20),
         adjuntos: (Array.isArray(b.adjuntos) ? b.adjuntos : []).filter(a => a && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.k)).slice(0, 20).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80), tam: Number(a.tam) || 0 })),
