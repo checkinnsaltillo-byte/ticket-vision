@@ -68924,6 +68924,7 @@ function atPintar_(nuevo) {
         <span>Creada</span><b>${t.at ? new Date(t.at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : ''}${t.by ? ' · ' + pcEsc(t.by) : ''}</b></div>
       <div class="lab">Asignados</div><div class="ad-ppl">${(t.asignados || []).map(n => `<div class="ad-pp">${adAv_(n)}<span>${pcEsc(n)}</span></div>`).join('') || '<div class="ad-un">Sin asignar</div>'}</div>
       ${(t.adjuntos || []).some(atEsImg_) ? (atGalCss_(), `<div class="lab">📷 Fotos (${t.adjuntos.filter(atEsImg_).length})</div><div class="at-gal">${t.adjuntos.filter(atEsImg_).map((a, j) => `<div class="at-ph"><img src="${BACKEND}${a.turl || a.url}" alt="" onclick="fotoVer_(atFotoUrls_(ASEO.tareas['${pcEsc(t.id)}'].adjuntos),${j})"></div>`).join('')}</div>`) : ''}
+      ${(t.refs || []).length ? (atGalCss_(), `<div class="lab">🖼️ Fotos de referencia (${t.refs.length})</div><div class="at-gal">${t.refs.map((a, j) => `<div class="at-ph"><img src="${BACKEND}${a.turl || a.url}" alt="" onclick="fotoVer_(atFotoUrls_(ASEO.tareas['${pcEsc(t.id)}'].refs,true),${j})"></div>`).join('')}</div>`) : ''}
       ${(t.adjuntos || []).some(a => !atEsImg_(a)) ? `<div class="lab">📎 Archivos</div><div class="ad-adjs">${t.adjuntos.filter(a => !atEsImg_(a)).map(a => `<a class="ad-adj" href="${BACKEND}${a.url}" target="_blank" rel="noopener"><span class="fi">📄</span><span>${pcEsc(a.nombre)}</span></a>`).join('')}</div>` : ''}
       ${axComentHtml_('T' + t.id, t.hid)}
       ${histSecHtml_(['T:' + t.id])}
@@ -68988,6 +68989,9 @@ function atFormPintar_() {
       <div class="at-chips" id="at-asig">${atAsigChips_()}</div>
       <div class="at-sec"><span>📷 Fotos</span><label class="ad-link">＋ Agregar fotos<input type="file" accept="image/*" multiple hidden onchange="atSubir_(this)"></label></div>
       <div class="at-gal" id="at-fotos">${atFotosHtml_()}</div>
+      <div class="at-sec"><span>🖼️ Fotos de referencia</span><label class="ad-link">＋ Agregar fotos de referencia<input type="file" accept="image/*" multiple hidden data-campo="refs" onchange="atSubir_(this)"></label></div>
+      <div class="at-hint" style="margin:0 0 4px">Las verá cualquier persona asignada a la tarea (cómo debe quedar, el hallazgo original…).</div>
+      <div class="at-gal" id="at-refs">${atFotosHtml_('refs')}</div>
       <div class="at-sec"><span>📎 Otros archivos</span><label class="ad-link">＋ Añadir archivo adjunto<input type="file" multiple hidden onchange="atSubir_(this)"></label></div>
       <div class="ad-adjs" id="at-adjs">${atAdjsHtml_()}</div>
       <div class="at-sec"><span>🏷️ Etiquetas de tareas</span></div>
@@ -69092,23 +69096,24 @@ window.atAsigPick_ = function (el) {
 const atEsImg_ = a => /^image\//.test(String(a.tipo || '')) || /\.(jpe?g|png|webp|gif|heic)$/i.test(String(a.nombre || ''));
 function atAdjsHtml_() { return (ASEO._tf.adjuntos || []).map((a, i) => atEsImg_(a) ? '' : `<span class="ad-adj"><span class="fi">📄</span><span>${pcEsc(a.nombre)}</span><b onclick="ASEO._tf.adjuntos.splice(${i},1);atAdjsPintar_()">✕</b></span>`).join(''); }
 // v2136: galería de fotos de la tarea (vista previa, clic = zoom con flechas, ✕ quitar)
-function atFotosHtml_() { const L = ASEO._tf.adjuntos || [], imgs = L.map((a, i) => ({ a, i })).filter(x => atEsImg_(x.a)); if (!imgs.length) return '<div class="at-hint" style="margin:0">Sin fotos. Puedes agregar varias a la vez.</div>';
-  return imgs.map((x, j) => `<div class="at-ph"><img src="${BACKEND}${x.a.url}" alt="" onclick="fotoVer_(atFotoUrls_(ASEO._tf.adjuntos),${j})"><b onclick="ASEO._tf.adjuntos.splice(${x.i},1);atAdjsPintar_()">✕</b></div>`).join(''); }
-function atFotoUrls_(L) { return (L || []).filter(atEsImg_).map(a => BACKEND + a.url); }
-function atAdjsPintar_() { const g = document.getElementById('at-fotos'); if (g) g.innerHTML = atFotosHtml_(); const b = document.getElementById('at-adjs'); if (b) b.innerHTML = atAdjsHtml_(); }
+function atFotosHtml_(campo) { campo = campo || 'adjuntos'; const L = ASEO._tf[campo] || [], imgs = L.map((a, i) => ({ a, i })).filter(x => campo === 'refs' || atEsImg_(x.a)); if (!imgs.length) return '<div class="at-hint" style="margin:0">Sin fotos. Puedes agregar varias a la vez.</div>';
+  return imgs.map((x, j) => `<div class="at-ph"><img src="${BACKEND}${x.a.turl || x.a.url}" alt="" onclick="fotoVer_(atFotoUrls_(ASEO._tf.${campo},${campo === 'refs'}),${j})"><b onclick="ASEO._tf.${campo}.splice(${x.i},1);atAdjsPintar_()">✕</b></div>`).join(''); }
+function atFotoUrls_(L, todas) { return (L || []).filter(a => todas || atEsImg_(a)).map(a => BACKEND + a.url); }
+function atAdjsPintar_() { const g = document.getElementById('at-fotos'); if (g) g.innerHTML = atFotosHtml_(); const r = document.getElementById('at-refs'); if (r) r.innerHTML = atFotosHtml_('refs'); const b = document.getElementById('at-adjs'); if (b) b.innerHTML = atAdjsHtml_(); }
 function atGalCss_() { if (document.getElementById('at-gal-css')) return; const st = document.createElement('style'); st.id = 'at-gal-css'; st.textContent = `.at-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin:4px 0 10px}.at-ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;background:#f8fafc}.at-ph img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}.at-ph b{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:999px;background:rgba(15,23,42,.75);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer}.at-ph.sub{opacity:.6}.ad-com{flex:none;font-size:12px;line-height:1;cursor:help}`; document.head.appendChild(st); }
 window.atSubir_ = async function (inp) {
+  const campo = inp.dataset.campo || 'adjuntos'; // 'refs' = fotos de referencia
   const files = [...(inp.files || [])]; inp.value = '';
   const box = document.getElementById('at-adjs');
   for (const f0 of files) {
     const f = await imgLigera_(f0); // fotos ligeras
     if (f.size > 15 * 1024 * 1024) { alert(`«${f.name}» pesa más de 15 MB.`); continue; }
-    const tmp = document.createElement('span'); tmp.className = 'ad-adj'; tmp.textContent = '⏳ ' + f.name; (document.getElementById(/^image\//.test(f.type) ? 'at-fotos' : 'at-adjs') || box) && (document.getElementById(/^image\//.test(f.type) ? 'at-fotos' : 'at-adjs') || box).appendChild(tmp);
+    const tmp = document.createElement('span'); tmp.className = 'ad-adj'; tmp.textContent = '⏳ ' + f.name; { const dst = document.getElementById(campo === 'refs' ? 'at-refs' : /^image\//.test(f.type) ? 'at-fotos' : 'at-adjs') || box; if (dst) dst.appendChild(tmp); }
     try {
       const data = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(f); });
       const r = await fetch(`${BACKEND}/aseo/adjunto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: f.name, tipo: f.type, data }) }).then(r => r.json());
       if (!r.ok) throw new Error(r.error || 'Error');
-      ASEO._tf.adjuntos.push(r.adjunto);
+      (ASEO._tf[campo] = ASEO._tf[campo] || []).push(r.adjunto);
     } catch (e) { alert(`No se pudo subir «${f.name}»: ${e.message || e}`); }
     atAdjsPintar_();
   }
@@ -69126,7 +69131,7 @@ window.atGuardar_ = async function () {
   try {
     const r = await fetch(`${BACKEND}/aseo/tarea`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea: Object.assign({}, F, { _deRt: undefined }), user: (typeof currentUser !== 'undefined' && currentUser) || '' }) }).then(r => r.json());
     if (!r.ok) throw new Error(r.error || 'Error');
-    (ASEO.tareas = ASEO.tareas || {})[r.tarea.id] = Object.assign(r.tarea, { adjuntos: F.adjuntos });
+    (ASEO.tareas = ASEO.tareas || {})[r.tarea.id] = Object.assign(r.tarea, { adjuntos: F.adjuntos, refs: F.refs || [] });
     if ((F.srv || 'general') !== axSrv_('T' + r.tarea.id, false)) axSet_('T' + r.tarea.id, axSrvPatch_(F.srv || 'general'), r.tarea.hid);
     if (F._deRt) { // conversión Mantenimiento → Aseo/Inspección: se retira el reporte técnico original
       await fetch(`${BACKEND}/reportes-tecnicos-delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: F._deRt }) }).then(r => r.json()).catch(() => null);
@@ -75132,7 +75137,9 @@ window.tdCrearTareaLv_ = function (i) {
   atForm_(null, String(x.hid), typeof aseoDiaNuevo_ === 'function' ? aseoDiaNuevo_() : tarIso_(tarToday_()));
   Object.assign(ASEO._tf, { depto: 'mantenimiento', srv: 'general', prioridad: x.niv.k === 'alta' ? 'critica' : x.niv.k === 'media' ? 'alta' : 'media', titulo: `${campo} · ${cod}`,
     desc: `Detectado en el levantamiento «${x.r.Nombre || x.p.titulo}» · ${cod} ${String(a.nombre || '').replace(/^Calle\s+/i, '')}\n${campoFull}: ${tdRespTxt_(x.it, x.rr)}${x.rr.nota ? `\nNota: ${x.rr.nota}` : ''}`,
-    lv: { id: x.r.ID, hid: String(x.hid), item: x.it.id, key: x.key, campo: campoFull } });
+    lv: { id: x.r.ID, hid: String(x.hid), item: x.it.id, key: x.key, campo: campoFull },
+    // v2140: las fotos del hallazgo pasan a «Fotos de referencia» de la tarea (mismos archivos, sin duplicar)
+    refs: (x.rr.fotos || []).filter(f => f && f.k && !f.subiendo).map(f => ({ k: f.k, nombre: f.nombre || 'foto', tipo: 'image/jpeg', url: f.url, ...(f.tk ? { tk: f.tk, turl: f.turl } : {}) })) });
   atFormPintar_();
 };
 
