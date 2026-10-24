@@ -12401,6 +12401,126 @@ app.get("/marketing/publicaciones", async (req, res) => {
     res.set("Cache-Control", "no-store"); res.json({ ok: true, items: conStats }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ═══════════════════════════════════════════════════════════════════════════
+// 📈 Investigación de mercados › Airbnb (2026-10-23): el usuario carga una lista de URLs de publicaciones; «Extraer» lee de cada una los datos
+// públicos de la ficha y su calendario de disponibilidad (36 meses) y los guarda en gs://…-panel/mercado/airbnb.json.
+// Misma información que ve cualquier visitante en la página (sin iniciar sesión). Secuencial y con pausas; no evade bloqueos.
+// ═══════════════════════════════════════════════════════════════════════════
+const _MA = { OBJ: "mercado/airbnb.json", Q: Promise.resolve(), KEY: "d306zoyjsyarp7ifhu67rjxn52tv0t20", HASH: "4d4724885b57d91f65be3c50c8b792b92a0dc723a871affb6ee358a0caf6d694",
+  UA: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" };
+const _maSleep = ms => new Promise(r => setTimeout(r, ms));
+const _maId = t => { const m = String(t || "").match(/rooms\/(?:plus\/)?(\d{5,})/i) || String(t || "").match(/^\s*(\d{6,})\s*$/); return m ? m[1] : ""; };
+function _maMutar(fn) {
+  const run = _MA.Q.then(async () => {
+    for (let i = 0; i < 7; i++) {
+      let { data, gen } = await _bnReadGcs(_MA.OBJ); data = data && data.items ? data : { v: 1, lista: [], items: {}, job: null };
+      const out = fn(data); data.actualizado = new Date().toISOString();
+      try { await _bnWriteGcs(_MA.OBJ, data, gen); return out; }
+      catch (e) { if (!e.conflict && !e.retry) throw e; await _maSleep(Math.min(8000, 900 * Math.pow(1.6, i))); }
+    }
+    throw new Error("No se pudo guardar (conflicto). Intenta de nuevo.");
+  });
+  _MA.Q = run.catch(() => {}); return run;
+}
+const _maG = (o, p) => String(p).split(".").reduce((a, k) => (a == null ? undefined : a[k]), o);
+const _maNum = v => { const n = parseFloat(String(v == null ? "" : v).replace(",", ".")); return isNaN(n) ? null : n; };
+const _maTxt = (h, n) => String(h == null ? "" : h).replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/ /g, " ").trim().slice(0, n || 800);
+async function _maHtml(id) {
+  const r = await _fetchReal(`https://www.airbnb.mx/rooms/${id}?adults=2&currency=MXN`, { headers: { "User-Agent": _MA.UA, "Accept-Language": "es-MX,es;q=0.9", Accept: "text/html,application/xhtml+xml" }, redirect: "follow", signal: AbortSignal.timeout(35000) });
+  if (r.status === 404) throw new Error("La publicación no existe o ya no está disponible");
+  if (!r.ok) throw new Error(`Airbnb respondió ${r.status}`);
+  return r.text();
+}
+function _maFicha(html) {
+  const m = html.match(/<script id="data-deferred-state-0"[^>]*>([\s\S]*?)<\/script>/); if (!m) throw new Error("La página no trae los datos de la publicación (posible bloqueo temporal)");
+  let d; try { d = JSON.parse(m[1]); } catch (e) { throw new Error("No se pudo leer la página de la publicación"); }
+  const data = _maG(d, "niobeClientData.0.1.data"), N = data && data.node, P = N && N.pdpPresentation; if (!P) throw new Error("La publicación no trae información (¿es privada?)");
+  const secs = _maG(data, "presentation.stayProductDetailPage.sections.sections") || []; let emb = {}; secs.forEach(x => { const e = _maG(x, "section.shareSave.embedData"); if (e) emb = e; });
+  const items = P.overview && P.overview.items || [], pick = re => { const t = items.find(x => re.test(String(x))); return t ? _maNum(String(t).match(/[\d.,]+/)) : null; };
+  const o = { titulo: _maG(N, "description.name.localizedString") || emb.name || "", tipo: emb.propertyType || _maG(P, "overview.title") || "", ubicacion: _maG(P, "location.subtitle") || "", lat: _maG(P, "location.latitude") ?? null, lng: _maG(P, "location.longitude") ?? null,
+    huespedes: pick(/huésped/i) ?? emb.personCapacity ?? N.personCapacity ?? null, habitaciones: /estudio/i.test(items.join(" ")) && pick(/habitaci/i) == null ? 0 : pick(/habitaci|recámara/i), camas: pick(/cama/i), banos: pick(/ba[ñn]o/i),
+    calificacion: _maG(N, "listingRatingStats.overallRatingStats.ratingAverage") ?? emb.starRating ?? null, evaluaciones: _maNum(_maG(N, "listingRatingStats.overallRatingStats.ratingCount") ?? emb.reviewCount), favorito: !!_maG(P, "quality.isGuestFavorite"), nuevo: !!_maG(P, "quality.isNewListing") };
+  const ub = String(o.ubicacion).split(",").map(x => x.trim()); o.ciudad = ub[0] || ""; o.estado = ub.length >= 3 ? ub[ub.length - 2] : (ub[1] || "");
+  const CAT = { CLEANLINESS: "limpieza", ACCURACY: "veracidad", CHECKIN: "llegada", COMMUNICATION: "comunicacion", LOCATION: "ubicacionCal", VALUE: "valor" }; o.cat = {};
+  (_maG(P, "quality.categoryRatings") || []).forEach(c => { const k = CAT[c.categoryType]; if (k) o.cat[k] = _maNum(c.localizedRating); });
+  const r5 = (_maG(P, "quality.ratingDistribution") || []).find(x => String(x.label) === "5"); o.pct5 = r5 && r5.percentage != null ? Math.round(r5.percentage * 100) : null;
+  const H = _maG(P, "hostInfo.passportData") || {}, st = t => { const x = (H.stats || []).find(y => y.type === t); return x ? _maNum(x.value) : null; };
+  let hid = ""; try { hid = Buffer.from(String(H.userId || ""), "base64").toString().split(":")[1] || ""; } catch (_) {}
+  Object.assign(o, { anfitrion: H.name || "", hostId: hid, superanfitrion: !!H.isSuperhost, hostAnios: st("YEARS_HOSTING") ?? (H.timeAsHost ? H.timeAsHost.years : null), hostEvaluaciones: st("REVIEW_COUNT"), hostCalificacion: st("RATING"),
+    hostRespuesta: _maG(P, "hostInfo.responseRateText") || "", hostTiempo: _maG(P, "hostInfo.responseTimeText") || "", coanfitriones: (N.cohosts || []).length, administrado: !!_maG(P, "hostInfo.isAirbnbManaged") });
+  const am = new Set(); (_maG(P, "amenities.seeAllAmenitiesGroups") || []).forEach(g => (g.amenities || []).forEach(a => { if (a && a.title && a.available !== false) am.add(String(a.title).replace(/ /g, " ")); }));
+  if (!am.size) (_maG(P, "amenities.previewAmenitiesGroups") || []).forEach(g => (g.amenities || []).forEach(a => { if (a && a.title && a.available !== false) am.add(String(a.title)); }));
+  o.amenidades = [...am].slice(0, 120); o.nAmenidades = am.size;
+  const R = ((_maG(P, "rules.groupItems") || [])[0] || {}).items || []; o.reglas = R.map(x => String(x.title || "").replace(/ /g, " ")).filter(Boolean); const rt = o.reglas.join(" | ");
+  o.mascotas = /no se admiten mascotas/i.test(rt) ? (/solo animales de servicio/i.test(JSON.stringify(R)) ? "Solo servicio" : "No") : /mascotas/i.test(rt) ? "Sí" : ""; o.fumar = /prohibido fumar/i.test(rt) ? "No" : ""; o.fiestas = /no se admiten fiestas/i.test(rt) ? "No" : "";
+  o.destacados = (P.highlights || []).map(x => _maG(x, "headline.localizedContent")).filter(Boolean).slice(0, 8);
+  const E = _maG(P, "heroMedia.edges") || []; o.fotos = E.length; o.foto = _maG(E[0], "node.image.uri") || emb.pictureUrl || "";
+  o.descripcion = _maTxt(_maG(P, "descriptions.longDescriptionHtml.localizedString") || _maG(P, "descriptions.shortDescriptionHtml.content.localizedString"), 900);
+  return o;
+}
+async function _maCalendario(id) {
+  const gid = Buffer.from("DemandStayListing:" + id).toString("base64"), hoy = _mxHoy(); let y = +hoy.slice(0, 4), mo = +hoy.slice(5, 7); const cal = {}, mins = {};
+  for (let k = 0; k < 3; k++) {
+    const v = JSON.stringify({ listingId: gid, input: { count: 12, month: mo, year: y, returnPropertyLevelCalendarIfApplicable: false } }), x = JSON.stringify({ persistedQuery: { version: 1, sha256Hash: _MA.HASH } });
+    const r = await _fetchReal(`https://www.airbnb.mx/api/v3/PdpAvailabilityCalendarV2Query/${_MA.HASH}?operationName=PdpAvailabilityCalendarV2Query&locale=es-419&currency=MXN&variables=${encodeURIComponent(v)}&extensions=${encodeURIComponent(x)}`,
+      { headers: { "User-Agent": _MA.UA, "x-airbnb-api-key": _MA.KEY, "Accept-Language": "es-MX,es;q=0.9", "Content-Type": "application/json" }, signal: AbortSignal.timeout(35000) });
+    if (!r.ok) throw new Error(`Calendario: Airbnb respondió ${r.status}`); const j = await r.json();
+    const M = _maG(j, "data.node.pdpAvailabilityCalendar.calendarMonths"); if (!Array.isArray(M)) throw new Error("Calendario: respuesta sin datos" + (j.errors ? " (" + String((j.errors[0] || {}).message || "").slice(0, 80) + ")" : ""));
+    M.forEach(mm => { const key = `${mm.year}-${String(mm.month).padStart(2, "0")}`; cal[key] = (mm.days || []).map(dd => dd.available ? "1" : "0").join(""); mins[key] = (mm.days || []).map(dd => (dd.available ? Number(dd.minNights) || 0 : 0)); });
+    mo += 12; if (mo > 12) { mo -= 12; y += 1; } else y += 1; // el siguiente bloque de 12 meses
+    if (k < 2) await _maSleep(500);
+  }
+  // Resumen a partir de hoy (la última semana del calendario es el límite de reservación anticipada de Airbnb, no ocupación)
+  const dias = []; Object.keys(cal).sort().forEach(k => { [...cal[k]].forEach((c, i) => dias.push({ f: `${k}-${String(i + 1).padStart(2, "0")}`, a: c === "1", mn: mins[k][i] })); });
+  const fut = dias.filter(d => d.f >= hoy), lim = n => { const t = new Date(hoy + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+  const pct = n => { const L = fut.filter(d => d.f < lim(n)); return L.length ? Math.round(100 * L.filter(d => !d.a).length / L.length) : null; };
+  const L365 = fut.filter(d => d.f < lim(365)), moda = {}; L365.filter(d => d.a && d.mn).forEach(d => { moda[d.mn] = (moda[d.mn] || 0) + 1; }); const mn = Object.entries(moda).sort((a, b) => b[1] - a[1])[0];
+  const libre = fut.find(d => d.a), bloq = L365.find(d => !d.a);
+  return { cal, calDesde: Object.keys(cal).sort()[0] || "", ocup30: pct(30), ocup90: pct(90), ocup365: pct(365), diasLibres365: L365.filter(d => d.a).length, diasOcupados365: L365.filter(d => !d.a).length, primeraLibre: libre ? libre.f : "", proximoBloqueo: bloq ? bloq.f : "", minNoches: mn ? Number(mn[0]) : null };
+}
+async function _maExtraer(id) { const ficha = _maFicha(await _maHtml(id)); await _maSleep(400); const cal = await _maCalendario(id); return Object.assign({ id, url: `https://www.airbnb.mx/rooms/${id}` }, ficha, cal, { extraido: new Date().toISOString(), error: "" }); }
+async function _maCorrer(ids) {
+  const now = () => new Date().toISOString();
+  await _maMutar(d => { d.job = { running: true, total: ids.length, done: 0, ok: 0, fallidas: 0, actual: "", inicio: now(), upd: now() }; });
+  for (const id of ids) {
+    await _maMutar(d => { if (d.job) { d.job.actual = id; d.job.upd = now(); } });
+    let res = null, err = "";
+    try { res = await _maExtraer(id); } catch (e) { err = String(e.message || e).slice(0, 200); }
+    await _maMutar(d => { const prev = d.items[id] || {}; if (res) { d.items[id] = Object.assign({}, prev, res, { primeraExtraccion: prev.primeraExtraccion || now() }); d.job.ok++; } else { d.items[id] = Object.assign({}, prev, { id, url: prev.url || `https://www.airbnb.mx/rooms/${id}`, error: err, errorAt: now() }); d.job.fallidas++; } d.job.done++; d.job.upd = now(); });
+    await _maSleep(1500 + Math.floor(Math.random() * 1200));
+  }
+  await _maMutar(d => { if (d.job) { d.job.running = false; d.job.actual = ""; d.job.fin = now(); d.job.upd = now(); } });
+}
+app.get("/mercado/airbnb", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const { data } = await _bnReadGcs(_MA.OBJ); const d = data && data.items ? data : { lista: [], items: {}, job: null };
+    const job = d.job ? Object.assign({}, d.job) : null; if (job && job.running && Date.now() - Date.parse(job.upd || 0) > 180_000) { job.running = false; job.interrumpida = true; } // sin avances en 3 min = se interrumpió
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: d.lista || [], items: d.items || {}, job, actualizado: d.actualizado || "" }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/airbnb/lista", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const lineas = String((req.body || {}).texto || "").split(/[\r\n,;\s]+/).map(x => x.trim()).filter(Boolean), nuevos = [], existentes = [], invalidos = [];
+    const ids = []; lineas.forEach(l => { const id = _maId(l); if (!id) { invalidos.push(l.slice(0, 80)); return; } if (!ids.includes(id)) ids.push(id); });
+    await _maMutar(d => { d.lista = d.lista || []; ids.forEach(id => { if (d.lista.some(x => x.id === id)) existentes.push(id); else { d.lista.push({ id, url: `https://www.airbnb.mx/rooms/${id}`, agregado: new Date().toISOString() }); nuevos.push(id); } }); });
+    res.json({ ok: true, nuevos: nuevos.length, existentes: existentes.length, invalidos }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/airbnb/quitar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).id || "").replace(/\D/g, ""); await _maMutar(d => { d.lista = (d.lista || []).filter(x => x.id !== id); delete d.items[id]; }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/airbnb/extraer", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const { data } = await _bnReadGcs(_MA.OBJ), d = data && data.items ? data : { lista: [], items: {} };
+    if (d.job && d.job.running && Date.now() - Date.parse(d.job.upd || 0) < 180_000) return res.status(409).json({ ok: false, error: "Ya hay una extracción en curso" });
+    let ids = (d.lista || []).map(x => x.id); const sel = Array.isArray((req.body || {}).ids) ? req.body.ids.map(String) : null; if (sel) ids = ids.filter(x => sel.includes(x));
+    if (!ids.length) return res.status(400).json({ ok: false, error: "La lista está vacía: agrega primero las URLs" });
+    _maCorrer(ids).catch(e => console.warn("[mercado] extracción:", e.message)); // segundo plano; el avance se consulta en GET /mercado/airbnb
+    res.json({ ok: true, total: ids.length }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.all(["/facturapi", "/facturapi/*"], _ckappProxy);
 app.all("/api/breezeway/*", _ckappProxy);
 // Página pública de Facturapi (checkin-app) abierta vía api.check-inn.mx/facturapi: sus llamadas relativas /api/… también se reenvían.
