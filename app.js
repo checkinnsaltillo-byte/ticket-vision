@@ -381,6 +381,7 @@ const SYS_MODULE_LIST = [
   ['guias',            '📖 Guías de Bienvenida'],
   ['rentas-lp',        '🏘️ Rentas de largo plazo'],
   ['marketing',        '📣 Marketing en redes'],
+  ['mercado',          '📈 Investigación de mercados'],
   ['llaves',           '🔑 Llavero'],
   ['config-admin',     '⚙️ Configuración Admin'],
   ['bot-chats',        '🤖 Chats bot'],
@@ -394,7 +395,7 @@ const SYS_MODULE_EXTRAS = {
   aseo:      ['breezeway'],
   'reportes-tecnicos': ['aseo'], // quien tenía Reportes técnicos ve Aseo (ahí vive Mantenimiento)
   breezeway: ['aseo'], // empleados que ya tenían Breezeway ven el módulo Aseo completo
-  lodgify:   ['reservas-detalles', 'mensajes', 'rentas-lp', 'marketing'], // quien gestiona reservas ve Rentas de largo plazo y Marketing
+  lodgify:   ['reservas-detalles', 'mensajes', 'rentas-lp', 'marketing', 'mercado'], // quien gestiona reservas ve Rentas de largo plazo y Marketing
   inquilinos: ['rentas-lp', 'marketing'], 'dir-inquilinos': ['rentas-lp'], 'reservas-nueva': ['rentas-lp', 'marketing'], 'rentas-lp': ['marketing'],
   ocupacion: ['dashboard', 'calendario'],
   'bot-chats': ['bot-control'], // quien atiende Chats bot ve también su centro de mando
@@ -414,7 +415,7 @@ function sysApplyPermissions(user) {
     });
   } else {
     // Usuario legado de sys_users (grupos por número romano).
-    allowed = new Set(['home', 'tuya', 'guias', 'rentas-lp', 'marketing', 'config-admin', 'llaves', 'bot-chats', 'bot-control', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
+    allowed = new Set(['home', 'tuya', 'guias', 'rentas-lp', 'marketing', 'mercado', 'config-admin', 'llaves', 'bot-chats', 'bot-control', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
     if (user && user.modulos) {
       for (const k in SYS_MODULE_PERMS) {
         if (user.modulos[k]) SYS_MODULE_PERMS[k].forEach(m => allowed.add(m));
@@ -7889,6 +7890,9 @@ function bn_goToCardPage(p) {
     if (mod === 'marketing') {
       if (typeof mkInit === 'function') mkInit();
     }
+    if (mod === 'mercado') {
+      if (typeof mcInit === 'function') mcInit();
+    }
   };
 })();
 
@@ -9158,7 +9162,7 @@ function esc(v) {
 const _VALID_MODULES = new Set([
   'home','tickets','registros','huespedes','lodgify','reservas-detalles',
   'breezeway','aseo','incidencias','objetos','reportes-tecnicos','ocupacion',
-  'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias','rentas-lp','marketing',
+  'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias','rentas-lp','marketing','mercado',
   'config-admin','llaves','bot-chats','bot-control','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','reglasbot','mantenimiento','mensajes',
 ]);
 function _bootModuleFromHash_() {
@@ -9308,7 +9312,7 @@ function switchModule(mod) {
     const greet = document.getElementById('user-greeting');
     if (greet) greet.style.display = '';
   } catch(_){}
-  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "bot-control", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "reglasbot", "mensajes", "rentas-lp", "marketing"].forEach(m => {
+  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "bot-control", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "reglasbot", "mensajes", "rentas-lp", "marketing", "mercado"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== containerMod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === containerMod);
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === containerMod);
@@ -75760,4 +75764,130 @@ window.mkPublicar_ = async function (pubId) {
   try { const j = await fetch(`${BACKEND}/marketing/publicar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pubId, fotos, facebook: fbOn ? { texto: fb } : null, instagram: igOn ? { texto: ig.trim() } : null, usuario: (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser) : '' }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error);
     const r = j.publicacion; alert(`✓ Publicado.${r.fb ? '\nFacebook: ' + r.fb.url : ''}${r.ig ? '\nInstagram: ' + (r.ig.url || 'listo') : ''}${r.errores.length ? '\n⚠ ' + r.errores.join('\n⚠ ') : ''}`); document.getElementById('mk-modal').remove(); MK.pubs = null; switchModule('marketing'); }
   catch (e) { alert('⚠ ' + (e.message || e)); b.disabled = false; b.textContent = '📣 Publicar ahora'; }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 📈 Investigación de mercados › Airbnb (v2142): lista de URLs → «Extraer» (servidor lee ficha + calendario de 36 meses) → tabla + calendario
+// Backend: /mercado/airbnb (GET), /lista, /quitar, /extraer. Datos en gs://…-panel/mercado/airbnb.json
+// ═══════════════════════════════════════════════════════════════════════════
+const MC = { items: {}, lista: [], job: null, act: '', q: '', meses: 12, timer: null, error: '', sync: false };
+const MC_RH = 40; // alto de renglón (igual en tabla y calendario para que queden alineados)
+window.mcInit = async function () {
+  const root = document.getElementById('mc-root'); if (!root) return; mcCss_(); root.innerHTML = '<div class="mc-card">⏳ Cargando…</div>';
+  await mcCargar_(); mcRender_(); if (MC.job && MC.job.running) mcPoll_();
+};
+async function mcCargar_() {
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.act = j.actualizado || ''; MC.error = ''; }
+  catch (e) { MC.error = String(e.message || e); }
+}
+function mcCss_() {
+  if (document.getElementById('mc-css')) return; const st = document.createElement('style'); st.id = 'mc-css'; st.textContent = `
+  #module-mercado{--ln:#e5e7eb;--tx:#111827;--mu:#6b7280;color:var(--tx);padding:18px 22px 70px!important;font-family:Inter,system-ui,sans-serif}
+  .mc-hero{background:linear-gradient(135deg,#0f766e,#0e7490);color:#fff;border-radius:16px;padding:14px 18px;margin-bottom:12px}.mc-hero h2{margin:0;font-size:20px}.mc-hero small{opacity:.9}
+  .mc-tabs{display:flex;gap:6px;margin:0 0 12px}.mc-tab{padding:7px 14px;border-radius:999px;border:1.5px solid var(--ln);background:#fff;font-size:13px;font-weight:700;color:#334155;cursor:default}.mc-tab.on{background:#111827;color:#fff;border-color:#111827}
+  .mc-card{background:#fff;border:1px solid var(--ln);border-radius:14px;padding:14px 16px;margin-bottom:12px}.mc-card h3{margin:0 0 4px;font-size:14px}.mc-card .sub{font-size:12px;color:var(--mu);margin-bottom:8px}
+  .mc-txt{width:100%;box-sizing:border-box;min-height:96px;border:1.5px solid #cbd5e1;border-radius:10px;padding:9px 11px;font:12px ui-monospace,Menlo,monospace;resize:vertical}
+  .mc-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.mc-btn{all:unset;cursor:pointer;padding:7px 14px;border-radius:9px;border:1.5px solid #cbd5e1;background:#fff;font-size:12.5px;font-weight:700;color:#334155;white-space:nowrap}.mc-btn:hover{background:#f8fafc}
+  .mc-btn.pri{background:#0f766e;border-color:#0f766e;color:#fff}.mc-btn.pri:hover{background:#115e59}.mc-btn[disabled]{opacity:.5;pointer-events:none}.mc-in{border:1.5px solid #cbd5e1;border-radius:9px;padding:6px 10px;font-size:12.5px}
+  .mc-bar{height:8px;border-radius:999px;background:#e5e7eb;overflow:hidden;min-width:180px;flex:1}.mc-bar i{display:block;height:100%;background:#0f766e;transition:width .4s}
+  .mc-mu{font-size:12px;color:var(--mu)}.mc-err{color:#b91c1c;font-size:12px}
+  .mc-split{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px;align-items:start}@media(max-width:1100px){.mc-split{grid-template-columns:1fr}}
+  .mc-pane{background:#fff;border:1px solid var(--ln);border-radius:14px;overflow:hidden}.mc-ph{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;height:48px;box-sizing:border-box;overflow:hidden;padding:0 12px;border-bottom:1px solid #eef0f3;font-size:13px;font-weight:800;white-space:nowrap}.mc-ph .mc-in{width:auto;min-width:0;flex:1 1 120px;max-width:240px}.mc-ph select.mc-in{flex:0 0 auto;max-width:none}.mc-ph .mc-btn{flex:none}.mc-ph .mc-lg{flex:none}
+  .mc-sc{overflow:auto;max-height:68vh;position:relative}
+  .mc-tb{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-content}.mc-tb th{position:sticky;top:0;z-index:3;background:#f8fafc;height:56px;padding:0 10px;text-align:left;font-size:10.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--ln);white-space:nowrap;box-sizing:border-box}
+  .mc-tb td{height:${MC_RH}px;box-sizing:border-box;padding:0 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}.mc-tb tr.hl td{background:#f0fdfa}.mc-tb td.sk,.mc-tb th.sk{position:sticky;left:0;z-index:2;background:#fff;border-right:1px solid var(--ln)}.mc-tb th.sk{z-index:4;background:#f8fafc}.mc-tb tr.hl td.sk{background:#f0fdfa}
+  .mc-ti{display:flex;align-items:center;gap:8px;min-width:260px;max-width:300px}.mc-ti img{width:40px;height:30px;object-fit:cover;border-radius:6px;flex:none;background:#e5e7eb}.mc-ti b{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:210px}.mc-ti small{color:var(--mu);font-size:10.5px}
+  .mc-ti a{color:#0f766e;text-decoration:none}.mc-ti a:hover{text-decoration:underline}.mc-x{all:unset;cursor:pointer;color:#9ca3af;font-size:13px;padding:0 4px}.mc-x:hover{color:#dc2626}
+  .mc-chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700}.mc-ok{background:#dcfce7;color:#15803d}.mc-pe{background:#f1f5f9;color:#64748b}.mc-ko{background:#fee2e2;color:#b91c1c}.mc-sh{background:#fef3c7;color:#92400e}
+  .mc-cal{min-width:max-content;position:relative}.mc-ch{position:sticky;top:0;z-index:3;background:#f8fafc;border-bottom:1px solid var(--ln);display:flex;flex-direction:column;height:56px;box-sizing:border-box}
+  .mc-cm{display:flex;height:22px}.mc-cm span{font-size:11px;font-weight:800;color:#334155;padding:3px 6px;border-right:1px solid var(--ln);box-sizing:border-box;overflow:hidden;white-space:nowrap}
+  .mc-cd{display:flex;height:34px}.mc-cd span{width:22px;flex:none;text-align:center;font-size:9.5px;line-height:1.15;color:#64748b;padding-top:3px;box-sizing:border-box;border-right:1px solid #eef0f3}.mc-cd span b{display:block;font-size:11px;color:#111827}.mc-cd span.fs{background:#f1f5f9}.mc-cd span.hoy{background:#0f766e;color:#fff}.mc-cd span.hoy b{color:#fff}
+  .mc-cr{position:relative;height:${MC_RH}px;border-bottom:1px solid #f1f5f9;box-sizing:border-box;background-image:linear-gradient(to right,#eef0f3 1px,transparent 1px);background-size:22px 100%}.mc-cr.hl{background-color:#f0fdfa}
+  .mc-bk{position:absolute;top:7px;height:26px;border-radius:7px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:10.5px;font-weight:800;line-height:26px;padding:0 6px;overflow:hidden;white-space:nowrap;box-sizing:border-box;border:1px solid #b91c1c}
+  .mc-bk.k{background:repeating-linear-gradient(135deg,#e5e7eb 0 6px,#d1d5db 6px 12px);border-color:#cbd5e1;color:#6b7280}
+  .mc-lg{display:flex;gap:12px;align-items:center;font-size:11.5px;color:var(--mu);font-weight:600}.mc-lg i{display:inline-block;width:14px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
+  .mc-cl{position:sticky;left:0;z-index:2;height:${MC_RH}px}`; document.head.appendChild(st);
+}
+function mcRows_() { const q = MC.q.trim().toLowerCase(); return MC.lista.map(l => MC.items[l.id] || { id: l.id, url: l.url, pendiente: true }).filter(it => !q || [it.titulo, it.ciudad, it.anfitrion, it.id, it.tipo].some(x => String(x || '').toLowerCase().includes(q))); }
+const mcN = v => v == null || v === '' ? '—' : v, mcF = iso => { if (!iso) return '—'; const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso); return isNaN(d) ? '—' : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: iso.length === 10 ? '2-digit' : undefined }); };
+const mcPct = v => v == null ? '—' : v + '%', mcSN = v => v === true ? 'Sí' : v === false ? 'No' : '—';
+// Columnas: t = encabezado · v = valor (texto, también para CSV) · h = html opcional
+const MC_COLS = [
+  { t: 'Tipo', v: i => i.tipo }, { t: 'Ciudad', v: i => i.ciudad }, { t: 'Estado', v: i => i.estado }, { t: 'Anfitrión', v: i => i.anfitrion },
+  { t: 'Superanfitrión', v: i => mcSN(i.superanfitrion) }, { t: 'Años anfitrión', v: i => mcN(i.hostAnios) }, { t: 'Eval. anfitrión', v: i => mcN(i.hostEvaluaciones) }, { t: 'Calif. anfitrión', v: i => mcN(i.hostCalificacion) },
+  { t: 'Respuesta', v: i => i.hostRespuesta }, { t: 'Tiempo resp.', v: i => i.hostTiempo }, { t: 'Huéspedes', v: i => mcN(i.huespedes) }, { t: 'Habit.', v: i => mcN(i.habitaciones) }, { t: 'Camas', v: i => mcN(i.camas) }, { t: 'Baños', v: i => mcN(i.banos) },
+  { t: '★ Calif.', v: i => mcN(i.calificacion) }, { t: 'Evaluaciones', v: i => mcN(i.evaluaciones) }, { t: 'Favorito huéspedes', v: i => mcSN(i.favorito) }, { t: '% 5★', v: i => mcPct(i.pct5) },
+  { t: 'Limpieza', v: i => mcN((i.cat || {}).limpieza) }, { t: 'Veracidad', v: i => mcN((i.cat || {}).veracidad) }, { t: 'Llegada', v: i => mcN((i.cat || {}).llegada) }, { t: 'Comunicación', v: i => mcN((i.cat || {}).comunicacion) }, { t: 'Ubicación (calif.)', v: i => mcN((i.cat || {}).ubicacionCal) }, { t: 'Calidad-precio', v: i => mcN((i.cat || {}).valor) },
+  { t: 'Amenidades', v: i => mcN(i.nAmenidades), tt: i => (i.amenidades || []).join(', ') }, { t: 'Mascotas', v: i => i.mascotas }, { t: 'Fumar', v: i => i.fumar }, { t: 'Fiestas', v: i => i.fiestas }, { t: 'Reglas', v: i => (i.reglas || []).join(' | ') },
+  { t: 'Estancia mín.', v: i => i.minNoches == null ? '—' : i.minNoches + ' noches' }, { t: 'Ocup. 30 d', v: i => mcPct(i.ocup30) }, { t: 'Ocup. 90 d', v: i => mcPct(i.ocup90) }, { t: 'Ocup. 365 d', v: i => mcPct(i.ocup365) },
+  { t: 'Días libres (365)', v: i => mcN(i.diasLibres365) }, { t: '1ª fecha libre', v: i => mcF(i.primeraLibre) }, { t: 'Próx. bloqueo', v: i => i.extraido ? (i.proximoBloqueo ? mcF(i.proximoBloqueo) : 'Sin bloqueos') : '—' },
+  { t: 'Fotos', v: i => mcN(i.fotos) }, { t: 'Latitud', v: i => mcN(i.lat) }, { t: 'Longitud', v: i => mcN(i.lng) }, { t: 'Descripción', v: i => String(i.descripcion || '').replace(/\s+/g, ' ').slice(0, 160) }, { t: 'Extraído', v: i => mcF(i.extraido) }];
+function mcRender_() {
+  const root = document.getElementById('mc-root'); if (!root) return;
+  root.innerHTML = `<div class="mc-hero"><h2>📈 Investigación de mercados</h2><small>Compara tu oferta con la competencia: datos públicos de cada publicación y su calendario de disponibilidad.</small></div>
+    <div class="mc-tabs"><span class="mc-tab on">🏠 Airbnb</span></div>
+    <div class="mc-card"><h3>1 · Lista de publicaciones</h3><div class="sub">Pega las URLs de Airbnb (una por línea) o carga un archivo .txt / .csv. Se suman a la lista actual; las que ya estaban se actualizan al extraer.</div>
+      <textarea class="mc-txt" id="mc-txt" placeholder="https://www.airbnb.mx/rooms/844091512343541991&#10;https://www.airbnb.mx/rooms/…"></textarea>
+      <div class="mc-row" style="margin-top:8px"><label class="mc-btn">📄 Cargar archivo<input type="file" accept=".txt,.csv,text/plain" hidden onchange="mcArchivo_(this)"></label><button type="button" class="mc-btn" onclick="mcAgregar_()">➕ Agregar a la lista</button><span class="mc-mu" id="mc-msg"></span></div></div>
+    <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses). Puedes volver a pulsarlo cuando quieras para traer lo más reciente.</div><div id="mc-prog"></div></div>
+    <div id="mc-res"></div>`;
+  mcProg_(); mcRes_();
+}
+function mcProg_() {
+  const h = document.getElementById('mc-prog'); if (!h) return; const J = MC.job, run = J && J.running, n = MC.lista.length, pct = J && J.total ? Math.round(100 * J.done / J.total) : 0;
+  h.innerHTML = `<div class="mc-row"><button type="button" class="mc-btn pri" onclick="mcExtraer_()" ${run || !n ? 'disabled' : ''}>${run ? '⏳ Extrayendo…' : '🔍 Extraer / actualizar'}</button>
+    ${run ? `<div class="mc-bar"><i style="width:${pct}%"></i></div><span class="mc-mu">${J.done} de ${J.total}${J.actual ? ' · publicación ' + esc(J.actual) : ''}</span>` : `<span class="mc-mu">${n} publicación${n === 1 ? '' : 'es'} en la lista${MC.act ? ' · última actualización ' + esc(mcF(MC.act)) + ' ' + esc(new Date(MC.act).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })) : ''}</span>`}
+    ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
+}
+function mcRes_() {
+  const h = document.getElementById('mc-res'); if (!h) return; const rows = mcRows_(), todos = MC.lista.length;
+  if (!todos) { h.innerHTML = '<div class="mc-card mc-mu">Aún no hay publicaciones. Agrega URLs en el paso 1.</div>'; return; }
+  const sk = h.querySelector('.mc-sc.t'), st0 = sk ? sk.scrollTop : 0, sl0 = sk ? sk.scrollLeft : 0, cs = h.querySelector('.mc-sc.c'), cl0 = cs ? cs.scrollLeft : null;
+  h.innerHTML = `<div class="mc-split">
+    <div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${rows.length}${rows.length !== todos ? ' de ' + todos : ''})</span><span style="flex:1"></span><input class="mc-in" id="mc-q" placeholder="🔎 Buscar…" value="${esc(MC.q)}" oninput="MC.q=this.value;clearTimeout(MC._qt);MC._qt=setTimeout(()=>{mcRes_();const i=document.getElementById('mc-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)"><button type="button" class="mc-btn" onclick="mcCsv_()">⬇ CSV</button></div>
+      <div class="mc-sc t" onscroll="mcSync_(this,'c')">${mcTabla_(rows)}</div></div>
+    <div class="mc-pane"><div class="mc-ph">📅 Disponibilidad <span style="flex:1"></span><span class="mc-lg"><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span><span><i style="background:#dc2626"></i>No disponible</span></span>
+      <select class="mc-in" onchange="MC.meses=+this.value;mcRes_()">${[3, 6, 12, 24].map(m => `<option value="${m}" ${MC.meses === m ? 'selected' : ''}>${m} meses</option>`).join('')}</select></div>
+      <div class="mc-sc c" onscroll="mcSync_(this,'t')">${mcCal_(rows)}</div></div></div>`;
+  const t = h.querySelector('.mc-sc.t'), c = h.querySelector('.mc-sc.c'); if (t) { t.scrollTop = st0; t.scrollLeft = sl0; } if (c) { c.scrollTop = st0; if (cl0 != null) c.scrollLeft = cl0; }
+  h.onmouseover = e => { const r = e.target.closest('[data-id]'); const id = r && r.dataset.id; h.querySelectorAll('.hl').forEach(x => x.classList.remove('hl')); if (id) h.querySelectorAll(`[data-id="${id}"]`).forEach(x => x.classList.add('hl')); };
+}
+window.mcSync_ = function (el, otro) { if (MC.sync) return; const o = document.querySelector('#mc-res .mc-sc.' + otro); if (!o) return; MC.sync = true; o.scrollTop = el.scrollTop; requestAnimationFrame(() => { MC.sync = false; }); };
+function mcTabla_(rows) {
+  const head = `<tr><th class="sk">Publicación</th><th>Estado</th>${MC_COLS.map(c => `<th>${esc(c.t)}</th>`).join('')}</tr>`;
+  const body = rows.map(i => { const est = i.error ? `<span class="mc-chip mc-ko" title="${esc(i.error)}">Error</span>` : i.pendiente || !i.extraido ? '<span class="mc-chip mc-pe">Pendiente</span>' : '<span class="mc-chip mc-ok">OK</span>';
+    return `<tr data-id="${esc(i.id)}"><td class="sk"><div class="mc-ti">${i.foto ? `<img src="${esc(i.foto)}" alt="" loading="lazy">` : '<img alt="">'}<div style="min-width:0"><b title="${esc(i.titulo || '')}"><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.titulo || 'Publicación ' + i.id)}</a></b><small>${esc(i.id)}${i.error ? ' · <span class="mc-err">' + esc(String(i.error).slice(0, 60)) + '</span>' : ''}</small></div><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcQuitar_('${esc(i.id)}')">🗑</button></div></td>
+      <td>${est}</td>${MC_COLS.map(c => `<td ${c.tt ? `title="${esc(c.tt(i))}"` : ''}>${esc(c.v(i))}</td>`).join('')}</tr>`; }).join('');
+  return `<table class="mc-tb"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+function mcCal_(rows) {
+  const W = 22, hoy = new Date(), d0 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()), fin = new Date(hoy.getFullYear(), hoy.getMonth() + MC.meses, 0), n = Math.round((fin - d0) / 864e5) + 1;
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, dias = Array.from({ length: n }, (_, k) => { const d = new Date(d0); d.setDate(d.getDate() + k); return d; });
+  const MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'], L = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+  const mm = []; dias.forEach((d, k) => { const ym = iso(d).slice(0, 7); if (!mm.length || mm[mm.length - 1].ym !== ym) mm.push({ ym, n: 0, t: `${MES[d.getMonth()]} ${d.getFullYear()}` }); mm[mm.length - 1].n++; });
+  const head = `<div class="mc-ch"><div class="mc-cm">${mm.map(m => `<span style="width:${m.n * W}px">${m.t}</span>`).join('')}</div><div class="mc-cd">${dias.map((d, k) => `<span class="${d.getDay() === 0 || d.getDay() === 6 ? 'fs' : ''} ${k === 0 ? 'hoy' : ''}"><b>${d.getDate()}</b>${L[d.getDay()]}</span>`).join('')}</div></div>`;
+  const filas = rows.map(i => { const cal = i.cal || {}; let runs = [], cur = null;
+    dias.forEach((d, k) => { const s = iso(d), ch = (cal[s.slice(0, 7)] || '')[d.getDate() - 1]; const st = ch === '0' ? 'n' : ch === '1' ? 'a' : 'x'; if (cur && cur.st === st) cur.len++; else { cur = { st, ini: k, len: 1 }; runs.push(cur); } });
+    const bars = runs.filter(r => r.st !== 'a').map(r => { const a = dias[r.ini], b = dias[r.ini + r.len - 1], tip = `${r.st === 'n' ? 'No disponible' : 'Sin dato'}: ${mcF(iso(a))} – ${mcF(iso(b))} (${r.len} ${r.len === 1 ? 'día' : 'días'})`; return `<div class="mc-bk ${r.st === 'x' ? 'k' : ''}" style="left:${r.ini * W}px;width:${r.len * W}px" title="${esc(tip)}">${r.len * W > 40 && r.st === 'n' ? r.len + ' d' : ''}</div>`; }).join('');
+    return `<div class="mc-cr" data-id="${esc(i.id)}" style="width:${n * W}px" title="${esc(i.titulo || i.id)}">${i.cal ? bars : '<span class="mc-mu" style="line-height:40px;padding-left:8px;position:sticky;left:0">Sin extraer</span>'}</div>`; }).join('');
+  return `<div class="mc-cal" style="width:${n * W}px">${head}${filas}</div>`;
+}
+window.mcArchivo_ = function (inp) { const f = inp.files && inp.files[0]; inp.value = ''; if (!f) return; const r = new FileReader(); r.onload = () => { const t = document.getElementById('mc-txt'); if (t) t.value = (t.value ? t.value.trim() + '\n' : '') + String(r.result || ''); mcMsg_(`📄 «${f.name}» cargado: revisa la lista y pulsa «Agregar a la lista».`); }; r.readAsText(f); };
+function mcMsg_(t) { const m = document.getElementById('mc-msg'); if (m) m.textContent = t; }
+window.mcAgregar_ = async function () {
+  const t = document.getElementById('mc-txt'); if (!t || !t.value.trim()) { mcMsg_('Pega primero las URLs.'); return; } mcMsg_('⏳ Guardando…');
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/lista`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: t.value }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error');
+    t.value = ''; mcMsg_(`✓ ${j.nuevos} nueva${j.nuevos === 1 ? '' : 's'} · ${j.existentes} ya estaba${j.existentes === 1 ? '' : 'n'}${j.invalidos && j.invalidos.length ? ` · ${j.invalidos.length} no válida${j.invalidos.length === 1 ? '' : 's'} (sin enlace de Airbnb)` : ''}`);
+    await mcCargar_(); mcProg_(); mcRes_(); } catch (e) { mcMsg_('⚠ ' + (e.message || e)); }
+};
+window.mcQuitar_ = async function (id) { if (!confirm('¿Quitar esta publicación de la lista? También se borran sus datos extraídos.')) return; try { await fetch(`${BACKEND}/mercado/airbnb/quitar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); await mcCargar_(); mcProg_(); mcRes_(); } catch (e) { alert('No se pudo quitar: ' + (e.message || e)); } };
+window.mcExtraer_ = async function () {
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/extraer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error');
+    MC.job = { running: true, total: j.total, done: 0, ok: 0, fallidas: 0, actual: '' }; mcProg_(); mcPoll_(); } catch (e) { MC.error = String(e.message || e); mcProg_(); }
+};
+function mcPoll_() { clearInterval(MC.timer); MC.timer = setInterval(async () => { const aun = document.getElementById('mc-prog'); if (!aun) { clearInterval(MC.timer); return; } await mcCargar_(); mcProg_(); mcRes_(); if (!(MC.job && MC.job.running)) clearInterval(MC.timer); }, 3500); }
+window.mcCsv_ = function () {
+  const rows = mcRows_(), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"', cab = ['ID', 'URL', 'Título', 'Estado extracción', ...MC_COLS.map(c => c.t)];
+  const L = [cab.map(q).join(',')].concat(rows.map(i => [i.id, i.url, i.titulo || '', i.error ? 'Error: ' + i.error : i.extraido ? 'OK' : 'Pendiente', ...MC_COLS.map(c => c.v(i))].map(q).join(',')));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\n')], { type: 'text/csv;charset=utf-8' })); a.download = `airbnb-mercado-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); a.remove();
 };
