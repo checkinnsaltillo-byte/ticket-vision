@@ -75770,7 +75770,7 @@ window.mkPublicar_ = async function (pubId) {
 // 📈 Investigación de mercados › Airbnb (v2142): lista de URLs → «Extraer» (servidor lee ficha + calendario de 36 meses) → tabla + calendario
 // Backend: /mercado/airbnb (GET), /lista, /quitar, /extraer. Datos en gs://…-panel/mercado/airbnb.json
 // ═══════════════════════════════════════════════════════════════════════════
-const MC = { sort: { k: '', d: 1 }, items: {}, lista: [], job: null, bus: null, ultima: null, act: '', q: '', meses: 12, timer: null, error: '', sync: false, metodo: (() => { try { return localStorage.getItem('mc-metodo') === 'auto' ? 'auto' : 'manual'; } catch (_) { return 'manual'; } })() };
+const MC = { vista: (() => { try { return localStorage.getItem('mc-vista') === 'acum' ? 'acum' : 'cal'; } catch (_) { return 'cal'; } })(), cuenta: (() => { try { return localStorage.getItem('mc-cuenta') || 'reserva'; } catch (_) { return 'reserva'; } })(), gm: 'cum', _ser: {}, sort: { k: '', d: 1 }, items: {}, lista: [], job: null, bus: null, ultima: null, act: '', q: '', meses: 12, timer: null, error: '', sync: false, metodo: (() => { try { return localStorage.getItem('mc-metodo') === 'auto' ? 'auto' : 'manual'; } catch (_) { return 'manual'; } })() };
 const MC_RH = 40; // alto de renglón (igual en tabla y calendario para que queden alineados)
 window.mcInit = async function () {
   const root = document.getElementById('mc-root'); if (!root) return; mcCss_(); root.innerHTML = '<div class="mc-card">⏳ Cargando…</div>';
@@ -75807,6 +75807,9 @@ function mcCss_() {
   .mc-bk.k{background:repeating-linear-gradient(135deg,#e5e7eb 0 6px,#d1d5db 6px 12px);border-color:#cbd5e1;color:#6b7280}
   .mc-lg{display:flex;gap:12px;align-items:center;font-size:11.5px;color:var(--mu);font-weight:600}.mc-lg i{display:inline-block;width:14px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
   .mc-cl{position:sticky;left:0;z-index:2;height:${MC_RH}px}
+  .mc-ph{height:auto!important;min-height:48px;flex-wrap:wrap!important;padding-top:8px!important;padding-bottom:8px!important;row-gap:6px;overflow:visible!important}.mc-seg.sm{margin:0}.mc-seg.sm button{padding:6px 12px;font-size:12px}
+  .mc-modal{position:fixed;inset:0;z-index:20000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px}.mc-mbox{background:#fff;border-radius:16px;width:min(1040px,100%);max-height:94vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+  .mc-mh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid #eef0f3;font-size:15px}.mc-mh .mc-in{width:auto;flex:0 0 auto}.mc-mh .mc-btn{flex:none}.mc-mh .mc-seg{flex:none}.mc-gw{position:relative;padding:8px 10px 0}.mc-tip{position:absolute;pointer-events:none;background:#0f172a;color:#fff;font-size:12px;line-height:1.45;padding:7px 10px;border-radius:9px;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.3)}
   .mc-tb th.srt{cursor:pointer;user-select:none}.mc-tb th.srt:hover{background:#eef2f7}.mc-tb th.srt i{font-style:normal;margin-left:5px;font-size:9px;color:#cbd5e1}.mc-tb th.srt.on{color:#0f766e}.mc-tb th.srt.on i{color:#0f766e;font-size:10px}
   .mc-tb td.mc-tdc{padding:0;max-width:none;overflow:visible;border-left:2px solid #99f6e4;border-right:2px solid #99f6e4}.mc-tb th.mc-thc{padding:0;cursor:default;border-left:2px solid #99f6e4;border-right:2px solid #99f6e4;background:#f8fafc}
   .mc-tb tbody tr:hover td{background:#f0fdfa}.mc-tb tbody tr:hover td.sk{background:#f0fdfa}.mc-tb tbody tr:hover .mc-cr{background-color:#f0fdfa}
@@ -75847,6 +75850,62 @@ function mcRuns0_(i) {
 function mcTipos_(i) { return mcMemo_(i, 't', () => mcTipos0_(i)); }
 function mcTipos0_(i) { if (!i.cal) return null; const o = { reserva: 0, bloqueo: 0, indet: 0, con: 0 }; mcRuns_(i).forEach(r => { o[r.tipo] += r.n365; });
   const d0 = new Date(), hoy = mcIso_(d0), l365 = mcIso_(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + 365)); Object.keys(i.cal).forEach(k => [...i.cal[k]].forEach((c, x) => { const f = `${k}-${String(x + 1).padStart(2, '0')}`; if (f >= hoy && f < l365 && (c === '0' || c === '1')) o.con++; })); return o; }
+// ── Ocupación (noches ocupadas) por alojamiento y agregada ──
+// «Contar» decide qué bloques futuros cuentan como noche ocupada: solo reservas probables · + indeterminados · todas las no disponibles.
+// Los días ya pasados cuentan como ocupados si lo último que se supo de ese día era «ocupada» (historia propia del seguimiento).
+const MC_CUENTA = { reserva: ['reserva'], res_ind: ['reserva', 'indet'], todas: ['reserva', 'indet', 'bloqueo'] };
+const MC_CUENTA_T = { reserva: 'Solo reservas probables', res_ind: 'Reservas + indeterminadas', todas: 'Todas las no disponibles' };
+function mcOccDias_(i, modo) { return mcMemo_(i, 'o:' + modo, () => {
+  const m = new Map(); if (!i.cal) return m; const d0 = new Date(), hoy = mcIso_(d0), tope = mcIso_(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + 729)), set = new Set(MC_CUENTA[modo] || MC_CUENTA.reserva);
+  Object.keys(i.cal).forEach(k => [...i.cal[k]].forEach((c, x) => { const f = `${k}-${String(x + 1).padStart(2, '0')}`; if (f > tope) return; if (c === '0') m.set(f, f < hoy ? 1 : 0); else if (c === '1') m.set(f, 0); }));
+  mcRuns_(i).forEach(r => { if (!set.has(r.tipo)) return; const d = new Date(r.ini + 'T12:00:00'); for (let k = 0; k < r.n; k++) { m.set(mcIso_(d), 1); d.setDate(d.getDate() + 1); } });
+  return m; }); }
+function mcAcumVentana_(i) { const o = mcOccDias_(i, MC.cuenta); if (!o.size) return null; const d0 = new Date(), hoy = mcIso_(d0), fin = mcIso_(new Date(d0.getFullYear(), d0.getMonth() + MC.meses, 0)); let n = 0; o.forEach((v, f) => { if (v === 1 && f >= hoy && f <= fin) n++; }); return n; }
+function mcAgreg_(modo) {
+  const its = MC.lista.map(l => MC.items[l.id]).filter(i => i && i.cal); if (!its.length) return null; const maps = its.map(i => mcOccDias_(i, modo)); let ini = null, fin = null;
+  maps.forEach(m => m.forEach((v, f) => { if (ini === null || f < ini) ini = f; if (fin === null || f > fin) fin = f; })); if (ini === null) return null;
+  const dias = [], d = new Date(ini + 'T12:00:00'), dfin = new Date(fin + 'T12:00:00'); while (d <= dfin) { dias.push(mcIso_(d)); d.setDate(d.getDate() + 1); }
+  let acum = 0; const daily = [], cum = [], nobs = []; dias.forEach(f => { let t = 0, n = 0; maps.forEach(m => { const v = m.get(f); if (v != null) { t += v; n++; } }); acum += t; daily.push(t); cum.push(acum); nobs.push(n); });
+  return { dias, daily, cum, nobs, n: its.length };
+}
+window.mcVista_ = function (v) { MC.vista = v; try { localStorage.setItem('mc-vista', v); } catch (_) {} mcRes_(); };
+window.mcCuenta_ = function (c) { MC.cuenta = c; try { localStorage.setItem('mc-cuenta', c); } catch (_) {} if (document.getElementById('mc-gr')) mcGrafPintar_(); mcRes_(); };
+window.mcTipSerie_ = function (el, e, id, d0) { const cum = MC._ser[id]; if (!cum) return; const k = Math.max(0, Math.min(cum.length - 1, Math.floor((e.clientX - el.getBoundingClientRect().left) / 22))), d = new Date(d0 + 'T12:00:00'); d.setDate(d.getDate() + k); el.title = `${mcF(mcIso_(d))}: ${cum[k]} noche${cum[k] === 1 ? '' : 's'} ocupada${cum[k] === 1 ? '' : 's'} acumulada${cum[k] === 1 ? '' : 's'}`; };
+// Gráfica emergente «Ocupación agregada»: suma de las noches ocupadas de todos los alojamientos (acumulada o por día), mes-día en X y noches en Y.
+window.mcGraf_ = function () {
+  document.getElementById('mc-gr') && document.getElementById('mc-gr').remove(); const m = document.createElement('div'); m.id = 'mc-gr'; m.className = 'mc-modal';
+  m.innerHTML = `<div class="mc-mbox"><div class="mc-mh"><b>📊 Ocupación agregada</b><span class="mc-mu" id="mc-gr-sub"></span><span style="flex:1"></span>
+      <div class="mc-seg sm"><button type="button" id="mc-gb-cum" onclick="MC.gm='cum';mcGrafPintar_()">Acumulada</button><button type="button" id="mc-gb-dia" onclick="MC.gm='dia';mcGrafPintar_()">Por noche</button></div>
+      <select class="mc-in" onchange="mcCuenta_(this.value)">${Object.entries(MC_CUENTA_T).map(([k, t]) => `<option value="${k}" ${MC.cuenta === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <button type="button" class="mc-btn" onclick="mcGrafCsv_()">⬇ CSV</button><button type="button" class="mc-x" style="font-size:18px" onclick="document.getElementById('mc-gr').remove()">✕</button></div>
+    <div class="mc-gw" id="mc-gw"></div><div class="mc-mu" style="padding:6px 14px 12px" id="mc-gr-nota"></div></div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); }); document.body.appendChild(m); mcGrafPintar_();
+};
+function mcNice_(v) { if (v <= 0) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; }
+function mcGrafPintar_() {
+  const w = document.getElementById('mc-gw'); if (!w) return; const A = mcAgreg_(MC.cuenta), cum = MC.gm === 'cum', MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const b1 = document.getElementById('mc-gb-cum'), b2 = document.getElementById('mc-gb-dia'); if (b1) b1.className = cum ? 'on' : ''; if (b2) b2.className = cum ? '' : 'on';
+  if (!A) { w.innerHTML = '<div class="mc-mu" style="padding:30px;text-align:center">Aún no hay datos extraídos. Pulsa «Extraer / actualizar».</div>'; return; }
+  const V = cum ? A.cum : A.daily, N = V.length, W = 960, H = 380, L = 58, R = 22, T = 18, B = 52, pw = W - L - R, ph = H - T - B, ymax = mcNice_(Math.max(1, ...V) * 1.05), x = k => L + (N <= 1 ? 0 : k * pw / (N - 1)), y = v => T + ph - v / ymax * ph;
+  const hoyIso = mcIso_(new Date()), kh = A.dias.indexOf(hoyIso), step = Math.max(1, Math.ceil(N / 12)); let yt = ''; for (let t = 0; t <= 5; t++) { const v = ymax * t / 5, yy = y(v); yt += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="#e5e7eb"/><text x="${L - 8}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#64748b">${Math.round(v).toLocaleString('es-MX')}</text>`; }
+  let xt = ''; for (let k = 0; k < N; k += step) { const d = new Date(A.dias[k] + 'T12:00:00'), lab = `${MES[d.getMonth()]}-${String(d.getDate()).padStart(2, '0')}`, yr = (k === 0 || d.getMonth() === 0 || (k - step >= 0 && new Date(A.dias[k - step] + 'T12:00:00').getFullYear() !== d.getFullYear())) ? d.getFullYear() : ''; xt += `<line x1="${x(k)}" x2="${x(k)}" y1="${T + ph}" y2="${T + ph + 5}" stroke="#94a3b8"/><text x="${x(k)}" y="${T + ph + 18}" text-anchor="middle" font-size="11" fill="#475569">${lab}</text>${yr ? `<text x="${x(k)}" y="${T + ph + 32}" text-anchor="middle" font-size="10" fill="#94a3b8">${yr}</text>` : ''}`; }
+  const pts = V.map((v, k) => `${x(k).toFixed(1)},${y(v).toFixed(1)}`).join(' '), area = `${x(0)},${T + ph} ${pts} ${x(N - 1)},${T + ph}`;
+  const hoyL = kh >= 0 ? `<rect x="${x(kh)}" y="${T}" width="${Math.max(0, x(N - 1) - x(kh))}" height="${ph}" fill="#f0fdfa" opacity=".7"/><line x1="${x(kh)}" x2="${x(kh)}" y1="${T}" y2="${T + ph}" stroke="#0f766e" stroke-dasharray="4 3"/><text x="${x(kh) + 4}" y="${T + 11}" font-size="10.5" fill="#0f766e" font-weight="700">Hoy</text>` : '';
+  w.innerHTML = `<svg id="mc-gsvg" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${yt}${hoyL}<polygon points="${area}" fill="#14b8a6" opacity=".18"/><polyline points="${pts}" fill="none" stroke="#0f766e" stroke-width="2.2" stroke-linejoin="round"/>${xt}
+      <line x1="${L}" x2="${L}" y1="${T}" y2="${T + ph}" stroke="#94a3b8"/><line x1="${L}" x2="${W - R}" y1="${T + ph}" y2="${T + ph}" stroke="#94a3b8"/>
+      <text x="14" y="${T + ph / 2}" transform="rotate(-90 14 ${T + ph / 2})" text-anchor="middle" font-size="11.5" fill="#475569">${cum ? 'Noches ocupadas acumuladas (suma de todos los alojamientos)' : 'Alojamientos ocupados cada noche'}</text>
+      <g id="mc-gh" style="display:none"><line id="mc-ghl" y1="${T}" y2="${T + ph}" stroke="#0f766e" stroke-dasharray="3 3"/><circle id="mc-ghc" r="4.5" fill="#0f766e" stroke="#fff" stroke-width="2"/></g><rect id="mc-gov" x="${L}" y="${T}" width="${pw}" height="${ph}" fill="transparent"/></svg><div class="mc-tip" id="mc-gtip" style="display:none"></div>`;
+  const pico = A.daily.reduce((a, v, k) => v > a.v ? { v, k } : a, { v: -1, k: 0 }); document.getElementById('mc-gr-sub').textContent = `· ${A.n} alojamientos con datos · ${MC_CUENTA_T[MC.cuenta]}`;
+  document.getElementById('mc-gr-nota').textContent = `Total de noches ocupadas en el periodo: ${A.cum[N - 1].toLocaleString('es-MX')} · pico de ${pico.v} alojamiento${pico.v === 1 ? '' : 's'} ocupados el ${mcF(A.dias[pico.k])}. Incluye los días ya pasados desde que empezó el seguimiento (${mcF(A.dias[0])}) y se actualiza con cada extracción diaria.`;
+  const ov = document.getElementById('mc-gov'), svg = document.getElementById('mc-gsvg'), tip = document.getElementById('mc-gtip'), hv = document.getElementById('mc-gh');
+  ov.onmousemove = e => { const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width, k = Math.max(0, Math.min(N - 1, Math.round((px - L) / pw * (N - 1)))), d = new Date(A.dias[k] + 'T12:00:00');
+    hv.style.display = ''; document.getElementById('mc-ghl').setAttribute('x1', x(k)); document.getElementById('mc-ghl').setAttribute('x2', x(k)); document.getElementById('mc-ghc').setAttribute('cx', x(k)); document.getElementById('mc-ghc').setAttribute('cy', y(V[k]));
+    tip.style.display = 'block'; tip.innerHTML = `<b>${d.getDate()} ${MES[d.getMonth()]} ${d.getFullYear()}</b><br>${cum ? `<b>${A.cum[k].toLocaleString('es-MX')}</b> noches acumuladas<br>` : ''}${A.daily[k]} de ${A.nobs[k]} alojamientos ocupados`;
+    const wr = w.getBoundingClientRect(); tip.style.left = Math.min(wr.width - 190, Math.max(4, e.clientX - wr.left + 14)) + 'px'; tip.style.top = Math.max(4, e.clientY - wr.top - 54) + 'px'; };
+  ov.onmouseleave = () => { hv.style.display = 'none'; tip.style.display = 'none'; };
+}
+window.mcGrafCsv_ = function () { const A = mcAgreg_(MC.cuenta); if (!A) return; const L = ['Fecha,Alojamientos ocupados (noche),Noches ocupadas acumuladas,Alojamientos con dato'].concat(A.dias.map((f, k) => `${f},${A.daily[k]},${A.cum[k]},${A.nobs[k]}`));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\n')], { type: 'text/csv;charset=utf-8' })); a.download = `ocupacion-agregada-${mcIso_(new Date())}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
 // Orden de la tabla: clic en el encabezado → A-Z, otro clic → Z-A, otro → sin orden. Los vacíos van siempre al final.
 function mcKey_(key, i) {
   if (key === 'pub') return String(i.titulo || '').toLowerCase() || null; if (key === 'est') return i.error ? 'error' : (i.pendiente || !i.extraido) ? 'pendiente' : 'ok';
@@ -75873,6 +75932,7 @@ const MC_COLS = [
   { t: 'Amenidades', v: i => mcN(i.nAmenidades), tt: i => (i.amenidades || []).join(', ') }, { t: 'Mascotas', v: i => i.mascotas }, { t: 'Fumar', v: i => i.fumar }, { t: 'Fiestas', v: i => i.fiestas }, { t: 'Reglas', v: i => (i.reglas || []).join(' | ') },
   { t: 'Estancia mín.', v: i => i.minNoches == null ? '—' : i.minNoches + ' noches' }, { t: 'No disponible 30 d', v: i => mcPct(i.ocup30) }, { t: 'No disponible 90 d', v: i => mcPct(i.ocup90) }, { t: 'No disponible 365 d', v: i => mcPct(i.ocup365) },
   { t: 'Noches reserva probable (365 d)', v: i => { const r = mcTipos_(i); return r ? r.reserva : '—'; }, tt: () => 'Bloques cortos o que el seguimiento vio aparecer' }, { t: 'Noches bloqueo probable (365 d)', v: i => { const r = mcTipos_(i); return r ? r.bloqueo : '—'; }, tt: () => 'Bloques de 30+ noches, aviso previo o a más de un año' },
+  { t: 'Noches ocupadas en la ventana', v: i => { const n = mcAcumVentana_(i); return n == null ? '—' : n; }, tt: () => 'Noches ocupadas desde hoy hasta el final del calendario mostrado, según «Contar»' },
   { t: 'Noches indeterminadas (365 d)', v: i => { const r = mcTipos_(i); return r ? r.indet : '—'; } }, { t: 'Ocup. estimada por reservas (365 d)', v: i => { const r = mcTipos_(i); return r && r.con ? Math.round(100 * r.reserva / r.con) + '%' : '—'; }, tt: () => 'Solo cuenta las noches de «reserva probable»' },
   { t: 'Días libres (365)', v: i => mcN(i.diasLibres365) }, { t: '1ª fecha libre', v: i => mcF(i.primeraLibre), k: i => i.primeraLibre || null }, { t: 'Próx. bloqueo', v: i => i.extraido ? (i.proximoBloqueo ? mcF(i.proximoBloqueo) : 'Sin bloqueos') : '—', k: i => i.extraido ? (i.proximoBloqueo || '9999') : null },
   { t: 'Noches ocupadas (histórico)', v: i => { const h = mcHist_(i); return h ? h.o : '—'; } }, { t: 'Ocup. histórica', v: i => { const h = mcHist_(i); return h && h.o + h.l ? Math.round(100 * h.o / (h.o + h.l)) + '%' : '—'; } },
@@ -75934,13 +75994,16 @@ function mcProg_() {
     ${J && !run && J.fin ? `<span class="mc-mu">· última corrida: ${J.ok || 0} bien${J.fallidas ? `, <b class="mc-err">${J.fallidas} con error</b>` : ''}${J.interrumpida ? ' (se interrumpió)' : ''}</span>` : ''}</div>${MC.error ? `<div class="mc-err" style="margin-top:6px">⚠ ${esc(MC.error)}</div>` : ''}`;
 }
 // Tabla única: datos clave → calendario de disponibilidad → resto de los datos. Un solo desplazamiento; encabezado fijo; clic en un encabezado ordena.
-const MC_PRE = ['Tipo', 'Ciudad', '★ Calif.', 'Evaluaciones', 'No disponible 30 d', 'No disponible 90 d', 'No disponible 365 d', 'Ocup. estimada por reservas (365 d)', 'Estancia mín.', 'Precio por noche (búsqueda)'];
+const MC_PRE = ['Tipo', 'Ciudad', '★ Calif.', 'Evaluaciones', 'No disponible 30 d', 'No disponible 90 d', 'No disponible 365 d', 'Ocup. estimada por reservas (365 d)', 'Noches ocupadas en la ventana', 'Estancia mín.', 'Precio por noche (búsqueda)'];
 function mcRes_() {
   const h = document.getElementById('mc-res'); if (!h) return; const rows = mcRows_(), todos = MC.lista.length;
   if (!todos) { h.innerHTML = '<div class="mc-card mc-mu">Aún no hay publicaciones. Agrega URLs en el paso 1.</div>'; return; }
   const sc = h.querySelector('.mc-sc'), st0 = sc ? sc.scrollTop : 0, sl0 = sc ? sc.scrollLeft : 0;
-  h.innerHTML = `<div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${rows.length}${rows.length !== todos ? ' de ' + todos : ''})</span><input class="mc-in" id="mc-q" placeholder="🔎 Buscar…" value="${esc(MC.q)}" oninput="MC.q=this.value;clearTimeout(MC._qt);MC._qt=setTimeout(()=>{mcRes_();const i=document.getElementById('mc-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)"><button type="button" class="mc-btn" onclick="mcCsv_()">⬇ CSV</button><span style="flex:1"></span>
-      <span class="mc-lg"><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span>${Object.values(MC_TIPO).map(t => `<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}</span>
+  h.innerHTML = `<div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${rows.length}${rows.length !== todos ? ' de ' + todos : ''})</span><input class="mc-in" id="mc-q" placeholder="🔎 Buscar…" value="${esc(MC.q)}" oninput="MC.q=this.value;clearTimeout(MC._qt);MC._qt=setTimeout(()=>{mcRes_();const i=document.getElementById('mc-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)"><button type="button" class="mc-btn" onclick="mcCsv_()">⬇ CSV</button>
+      <div class="mc-seg sm"><button type="button" class="${MC.vista !== 'acum' ? 'on' : ''}" onclick="mcVista_('cal')">📅 Tabla con calendario</button><button type="button" class="${MC.vista === 'acum' ? 'on' : ''}" onclick="mcVista_('acum')">📈 Tabla con ocupación acumulada</button></div>
+      <button type="button" class="mc-btn" onclick="mcGraf_()">📊 Ocupación agregada</button><span style="flex:1"></span>
+      ${MC.vista === 'acum' ? `<span class="mc-lg"><span><i style="background:#0f766e;height:3px"></i>Noches ocupadas acumuladas desde hoy</span></span><select class="mc-in" title="Qué cuenta como noche ocupada" onchange="mcCuenta_(this.value)">${Object.entries(MC_CUENTA_T).map(([k, t]) => `<option value="${k}" ${MC.cuenta === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`
+        : `<span class="mc-lg"><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span>${Object.values(MC_TIPO).map(t => `<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}</span>`}
       <select class="mc-in" onchange="MC.meses=+this.value;mcRes_()">${[3, 6, 12, 24].map(m => `<option value="${m}" ${MC.meses === m ? 'selected' : ''}>${m} meses</option>`).join('')}</select></div>
     <div class="mc-sc">${mcTabla_(rows)}</div></div>`;
   const c = h.querySelector('.mc-sc'); if (c) { c.scrollTop = st0; c.scrollLeft = sl0; }
@@ -75960,9 +76023,12 @@ function mcTabla_(rows) {
     mcRuns_(i).forEach(r => { const a = idx.get(r.ini) != null ? idx.get(r.ini) : (r.ini < mcIso_(d0) ? 0 : null), b = idx.has(r.fin) ? idx.get(r.fin) : (r.fin > mcIso_(dias[n - 1]) ? n - 1 : null); if (a == null || b == null || b < a) return;
       const T = MC_TIPO[r.tipo], tip = `${T.t} · ${r.n} ${r.n === 1 ? 'noche' : 'noches'} (${fmt(r.ini)} – ${fmt(r.fin)}) · ${r.motivo}`; bars.push(`<div class="mc-bk t-${r.tipo}" style="left:${a * W}px;width:${(b - a + 1) * W}px" title="${esc(tip)}">${(b - a + 1) * W > 40 ? r.n + ' d' : ''}</div>`); });
     return `<td class="mc-tdc" style="width:${n * W}px"><div class="mc-cr" style="width:${n * W}px">${bars.join('')}</div></td>`; };
+  const d0iso = mcIso_(d0), serie = i => { if (!i.cal) return '<td class="mc-tdc" style="width:' + n * W + 'px"><span class="mc-mu" style="padding-left:8px">Sin extraer</span></td>';
+    const occ = mcOccDias_(i, MC.cuenta); let c = 0; const cum = dias.map(d => { if (occ.get(mcIso_(d)) === 1) c++; return c; }); MC._ser[i.id] = cum; const H = 40, mx = c, y = v => mx ? (H - 5 - v / mx * (H - 13)) : H - 5, pts = cum.map((v, k) => `${(k * W + W / 2).toFixed(0)},${y(v).toFixed(1)}`).join(' ');
+    return `<td class="mc-tdc" style="width:${n * W}px"><div class="mc-cr" style="width:${n * W}px" onmousemove="mcTipSerie_(this,event,'${esc(i.id)}','${d0iso}')"><svg width="${n * W}" height="${H}" style="display:block;position:absolute;left:0;top:0"><polygon points="${W / 2},${H - 5} ${pts} ${(n - 1) * W + W / 2},${H - 5}" fill="#14b8a6" opacity=".2"/><polyline points="${pts}" fill="none" stroke="#0f766e" stroke-width="1.8" stroke-linejoin="round"/></svg></div></td>`; };
   const body = rows.map(i => { const est = i.error ? `<span class="mc-chip mc-ko" title="${esc(i.error)}">Error</span>` : i.pendiente || !i.extraido ? '<span class="mc-chip mc-pe">Pendiente</span>' : '<span class="mc-chip mc-ok">OK</span>';
     return `<tr data-id="${esc(i.id)}"><td class="sk"><div class="mc-ti">${i.foto ? `<img src="${esc(i.foto)}" alt="" loading="lazy">` : '<img alt="">'}<div style="min-width:0"><b title="${esc(i.titulo || '')}"><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.titulo || 'Publicación ' + i.id)}</a></b><small>${esc(i.id)}${i.error ? ' · <span class="mc-err">' + esc(String(i.error).slice(0, 60)) + '</span>' : ''}</small></div><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcQuitar_('${esc(i.id)}')">🗑</button></div></td>
-      <td>${est}</td>${pre.map(x => cell(i, x)).join('')}${cal(i)}${post.map(x => cell(i, x)).join('')}</tr>`; }).join('');
+      <td>${est}</td>${pre.map(x => cell(i, x)).join('')}${(MC.vista === 'acum' ? serie : cal)(i)}${post.map(x => cell(i, x)).join('')}</tr>`; }).join('');
   return `<table class="mc-tb"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 window.mcArchivo_ = function (inp) { const f = inp.files && inp.files[0]; inp.value = ''; if (!f) return; const r = new FileReader(); r.onload = () => { const t = document.getElementById('mc-txt'); if (t) t.value = (t.value ? t.value.trim() + '\n' : '') + String(r.result || ''); mcMsg_(`📄 «${f.name}» cargado: revisa la lista y pulsa «Agregar a la lista».`); }; r.readAsText(f); };
