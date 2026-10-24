@@ -67757,10 +67757,15 @@ function adPuesto_(n) { // puesto en Personal (por nombre completo)
   const pr = rows.find(r => _rhPersonalFullName_(r).toLowerCase() === q || String(r.Nombre || '').trim().toLowerCase() === q);
   return pr ? String(pr.Puesto || '').trim() : '';
 }
-function adNom_(n, rol, onclick, pk) { const t = String(n || '').replace(/\s*\(WhatsApp\)\s*$/, '').trim();
+// v2171: hora en que se registró el TÉRMINO de la card/tarea (se muestra dentro del chip del personal).
+function adTermHora_(key) {
+  const r = aseoEstDe_(key); if (!r || !['terminado', 'inspeccionado'].includes(r.estado)) return '';
+  return aseoHora_((r.hist && r.hist.terminado && r.hist.terminado.at) || r.at).replace(/\s*([ap])\.?\s*m\.?/i, (m, x) => x.toLowerCase() + 'm').replace(/^0/, '');
+}
+function adNom_(n, rol, onclick, pk, hora) { const t = String(n || '').replace(/\s*\(WhatsApp\)\s*$/, '').trim();
   if (pk && typeof rbPendDe_ === 'function' && rbPendDe_(pk + '|' + n)) { const k = pcEsc(JSON.stringify(pk + '|' + n)), nn = pcEsc(JSON.stringify(t)); // asignación automática por confirmar
     return `<span class="ad-nm lk pend" style="--pc:${aseoPersonaColor_(n)}" title="${pcEsc((rol ? rol + ': ' : '') + t)} · asignación automática: clic para confirmar" onclick="event.stopPropagation();rbConfPend_(${k},${nn})">${pcEsc(t.split(/\s+/)[0] || '?')}?</span>`; }
-  return `<span class="ad-nm ${onclick ? 'lk' : ''}" style="--pc:${aseoPersonaColor_(n)}" title="${pcEsc((rol ? rol + ': ' : '') + t)}${onclick ? ' · clic para cambiar' : ''}"${onclick ? ` onclick="event.stopPropagation();${onclick}"` : ''}>${pcEsc(t.split(/\s+/)[0] || '?')}</span>`; }
+  return `<span class="ad-nm ${onclick ? 'lk' : ''}" style="--pc:${aseoPersonaColor_(n)}" title="${pcEsc((rol ? rol + ': ' : '') + t)}${hora ? ' · término registrado a las ' + hora : ''}${onclick ? ' · clic para cambiar' : ''}"${onclick ? ` onclick="event.stopPropagation();${onclick}"` : ''}>${pcEsc(t.split(/\s+/)[0] || '?')}${hora ? `<small style="font-weight:600;opacity:.8;margin-left:5px;font-size:10px;white-space:nowrap">${pcEsc(hora)}</small>` : ''}</span>`; }
 function adAv_(n, rol) { return `<span class="ad-av" style="background:${aseoPersonaColor_(n)}" title="${pcEsc((rol ? rol + ': ' : '') + n)}">${pcEsc(adIni_(n))}</span>`; }
 // Todo lo que se necesita de una card (mismas reglas que pcAlojCard_ y que el bot).
 // Salidas (Booked) por alojamiento, calculadas una vez por copia de reservas (antes se recorrían todas por card).
@@ -68117,7 +68122,7 @@ function adCard_(I) {
   const srcTxt = xR ? [xR.b.Source ? String(xR.b.Source) : '', xR.tier ? xR.tier.label : (xR.stats && xR.stats.visitas <= (HU_REGLAS.primera_max_visitas ?? 1) ? '1ª visita' : '')].filter(Boolean).join(' · ') : '';
   // Asignar directo en la card: «＋ Asignar» o clic en el nombre para cambiarlo (sin abrir los detalles).
   const asg = rol => `aseoAsignar_('${pcEsc(I.asigId)}',this,'${rol}')`;
-  const equipo = I.pA.length || I.pI.length ? `<span class="ad-avs">${I.pA.map(n => adNom_(n, 'Aseo', asg('aseo'), I.asigId + '|aseo')).join('')}${I.pI.map(n => adNom_(n, 'Inspección', asg('inspeccion'), I.asigId + '|inspeccion')).join('')}</span>`
+  const equipo = I.pA.length || I.pI.length ? `<span class="ad-avs">${I.pA.map(n => adNom_(n, 'Aseo', asg('aseo'), I.asigId + '|aseo', adTermHora_(I.asigId))).join('')}${I.pI.map(n => adNom_(n, 'Inspección', asg('inspeccion'), I.asigId + '|inspeccion', adTermHora_(I.asigId))).join('')}</span>`
     : `<button type="button" class="ad-asg" title="Asignar personal sin abrir los detalles" onclick="event.stopPropagation();${asg(I.depto === 'inspeccion' ? 'inspeccion' : 'aseo')}">＋ Asignar</button>`;
   const guia = !I.esHoyC ? '' : `<span class="ad-gd ${I.G && I.G.texto && !I.noPub ? 'on' : ''}" title="${I.noPub ? 'No publicado en la guía' : I.G && I.G.texto ? 'La guía muestra: ' + pcEsc(I.G.texto) : 'La guía no muestra aviso'}">◉ Guía</span>`;
   const sel = ASEO._dr && ASEO._dr.k === I.k;
@@ -68896,9 +68901,9 @@ function atResCtx_(hid, reserva) {
     ns: C.xs && C.esHoyC && !C.esCopia && String(C.xs.b.Id) === id ? aseoNoSaleChip_(C.xs.b.Id, C.hid) : '' };
 }
 // Personal de una tarea (manual «T» o reporte técnico «R») directo desde la card, con el mismo selector que las cards de aseo.
-function atEquipo_(tipo, t) {
+function atEquipo_(tipo, t, key) {
   const fn = `atAsigCard_('${tipo}','${pcEsc(tipo === 'R' ? t.rtId : t.id)}',this)`;
-  return (t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n, 'Asignado', fn, tipo === 'T' ? 'T' + t.id : '')).join('')}</span>`
+  return (t.asignados || []).length ? `<span class="ad-avs">${t.asignados.map(n => adNom_(n, 'Asignado', fn, tipo === 'T' ? 'T' + t.id : '', tipo === 'T' && key ? adTermHora_(key) : '')).join('')}</span>`
     : `<button type="button" class="ad-asg" title="Asignar personal sin abrir los detalles" onclick="event.stopPropagation();${fn}">Sin asignar</button>`;
 }
 window.atAsigCard_ = async function (tipo, id, anchor) {
@@ -68930,7 +68935,7 @@ function atCard_(I) {
     ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}${RC.flags}
     <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${RC.meta}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
-    <div class="r3">${RC.ns}${atEquipo_('T', t)}<span class="sp"></span>${t.depto === 'limpieza' ? rbCardRetBtn_('T' + t.id, I._dia || aseoDia_()) : ''}${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
+    <div class="r3">${RC.ns}${atEquipo_('T', t, I.key)}<span class="sp"></span>${t.depto === 'limpieza' ? rbCardRetBtn_('T' + t.id, I._dia || aseoDia_()) : ''}${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
     ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}${plBarra_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key)}
   </div>`;
 }
