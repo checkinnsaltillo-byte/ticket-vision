@@ -12478,6 +12478,25 @@ async function _maCalendario(id) {
   const libre = fut.find(d => d.a), bloq = L365.find(d => !d.a);
   return { cal, calDesde: Object.keys(cal).sort()[0] || "", ocup30: pct(30), ocup90: pct(90), ocup365: pct(365), diasLibres365: L365.filter(d => d.a).length, diasOcupados365: L365.filter(d => !d.a).length, primeraLibre: libre ? libre.f : "", proximoBloqueo: bloq ? bloq.f : "", minNoches: mn ? Number(mn[0]) : null };
 }
+// Fusión con la historia (2026-10-23): el calendario de Airbnb solo dice «no disponible» (reservada, bloqueada o ya pasada). Nuestra base guarda por día
+// '1' libre · '0' ocupada · '?' sin dato. Solo se actualizan los días desde HOY hasta el último día disponible extraído (más allá es el límite de
+// reservación anticipada de Airbnb, no ocupación). Los días ya pasados conservan lo último que se supo (noche ocupada o libre); si una reserva futura
+// se cancela, el día vuelve a '1'. Cada cambio queda en `cambios` (últimos 400).
+function _maFusion(prev, nuevo, hoy) {
+  const v2 = !!(prev && prev.v === 2), old = v2 && prev.cal ? prev.cal : {}, ks = Object.keys(nuevo.cal).sort(); let ultLibre = "";
+  ks.forEach(k => [...nuevo.cal[k]].forEach((c, i) => { if (c === "1") ultLibre = `${k}-${String(i + 1).padStart(2, "0")}`; }));
+  const cal = {}, cambios = []; let nuevas = 0, canc = 0;
+  [...new Set([...Object.keys(old), ...ks])].sort().forEach(k => {
+    const nd = nuevo.cal[k] || "", od = old[k] || "", dim = Math.max(nd.length, od.length); let t = "";
+    for (let i = 0; i < dim; i++) {
+      const f = `${k}-${String(i + 1).padStart(2, "0")}`, o = od[i] || "?"; let c = o;
+      if (nd[i] && f >= hoy && f <= ultLibre) { c = nd[i]; if (v2 && o !== "?" && o !== c) { if (o === "1" && c === "0") nuevas++; else if (o === "0" && c === "1") canc++; cambios.push({ dia: f, de: o, a: c }); } }
+      t += c;
+    }
+    cal[k] = t;
+  });
+  return { cal, cambios, nuevas, canc };
+}
 async function _maExtraer(id) { const ficha = _maFicha(await _maHtml(id)); await _maSleep(400); const cal = await _maCalendario(id); return Object.assign({ id, url: `https://www.airbnb.mx/rooms/${id}` }, ficha, cal, { extraido: new Date().toISOString(), error: "" }); }
 async function _maCorrer(ids) {
   const now = () => new Date().toISOString();
@@ -12486,7 +12505,8 @@ async function _maCorrer(ids) {
     await _maMutar(d => { if (d.job) { d.job.actual = id; d.job.upd = now(); } });
     let res = null, err = "";
     try { res = await _maExtraer(id); } catch (e) { err = String(e.message || e).slice(0, 200); }
-    await _maMutar(d => { const prev = d.items[id] || {}; if (res) { d.items[id] = Object.assign({}, prev, res, { primeraExtraccion: prev.primeraExtraccion || now() }); d.job.ok++; } else { d.items[id] = Object.assign({}, prev, { id, url: prev.url || `https://www.airbnb.mx/rooms/${id}`, error: err, errorAt: now() }); d.job.fallidas++; } d.job.done++; d.job.upd = now(); });
+    await _maMutar(d => { const prev = d.items[id] || {}; if (res) { const hoy = _mxHoy(), F = _maFusion(prev, res, hoy), log = (prev.cambios || []).concat(F.cambios.map(x => Object.assign({ at: now() }, x))).slice(-400);
+        d.items[id] = Object.assign({}, prev, res, { cal: F.cal, v: 2, histDesde: prev.histDesde || hoy, nuevasUlt: F.nuevas, canceladasUlt: F.canc, cambios: log, primeraExtraccion: prev.primeraExtraccion || now() }); d.job.ok++; } else { d.items[id] = Object.assign({}, prev, { id, url: prev.url || `https://www.airbnb.mx/rooms/${id}`, error: err, errorAt: now() }); d.job.fallidas++; } d.job.done++; d.job.upd = now(); });
     await _maSleep(1500 + Math.floor(Math.random() * 1200));
   }
   await _maMutar(d => { if (d.job) { d.job.running = false; d.job.actual = ""; d.job.fin = now(); d.job.upd = now(); } });
@@ -12509,6 +12529,15 @@ app.post("/mercado/airbnb/lista", async (req, res) => {
 app.post("/mercado/airbnb/quitar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const id = String((req.body || {}).id || "").replace(/\D/g, ""); await _maMutar(d => { d.lista = (d.lista || []).filter(x => x.id !== id); delete d.items[id]; }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Extracción programada (Cloud Scheduler, todos los días 3:00 a.m. America/Monterrey): mismo proceso que el botón, sobre toda la lista.
+app.post("/mercado/airbnb/cron", async (req, res) => {
+  if (!process.env.SYNC_SECRET || (req.get("X-Sync-Secret") || "") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
+  try { const { data } = await _bnReadGcs(_MA.OBJ), d = data && data.items ? data : { lista: [], items: {} };
+    if (d.job && d.job.running && Date.now() - Date.parse(d.job.upd || 0) < 180_000) return res.json({ ok: true, omitido: "ya hay una extracción en curso" });
+    const ids = (d.lista || []).map(x => x.id); if (!ids.length) return res.json({ ok: true, total: 0 });
+    _maCorrer(ids).catch(e => console.warn("[mercado] extracción programada:", e.message)); res.json({ ok: true, total: ids.length }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/extraer", async (req, res) => {
