@@ -13505,6 +13505,21 @@ app.post("/aseo/extra", async (req, res) => {
 // ── Prioridad elegida a mano en una card de aseo (clic en el indicador): aseo/prioridad.json → { <asigId>: "baja|media|alta|critica" } ──
 const _ASEO_PRIO_OBJ = "aseo/prioridad.json";
 async function _aseoPrioLoad() { if (!_aseo.prio || Date.now() - (_aseo.prioTs || 0) > 5_000) { _aseo.prio = await _rhdGetJson(_ASEO_PRIO_OBJ).catch(() => _aseo.prio || {}); _aseo.prioTs = Date.now(); } }
+// Urgencia de hallazgos de levantamientos (Por urgencia / Por tipo): la automática se calcula en el cliente (relevancia × respuesta); aquí se guardan los cambios MANUALES.
+// Llave = <llave de respuestas del levantamiento>|<id del campo>; valor {n: alta|media|baja|seg, by, at}. Sin entrada = automática.
+const _ASEO_URG_OBJ = "aseo/urgencias.json";
+app.get("/aseo/urgencias", async (req, res) => {
+  try { if (!_aseo.urg || Date.now() - (_aseo.urgTs || 0) > 5_000) { _aseo.urg = await _rhdGetJson(_ASEO_URG_OBJ).catch(() => ({})); _aseo.urgTs = Date.now(); } res.set("Cache-Control", "no-store"); res.json({ ok: true, urg: _aseo.urg || {} }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/aseo/urgencia", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const b = req.body || {}, key = String(b.key || "").replace(/[^\w:.\-]/g, "").slice(0, 100), item = String(b.item || "").replace(/[^\w-]/g, "").slice(0, 40), nivel = String(b.nivel || ""), user = String(b.user || "").slice(0, 80);
+    if (!key || !item) return res.status(400).json({ ok: false, error: "Falta el levantamiento o el campo" }); const k = key + "|" + item, valido = ["alta", "media", "baja", "seg"].includes(nivel);
+    await _aseoMutate(_ASEO_URG_OBJ, "urg", d => { if (valido) d[k] = { n: nivel, by: user, at: new Date().toISOString() }; else delete d[k]; }); _aseo.urgTs = Date.now();
+    res.json({ ok: true, k, nivel: valido ? nivel : null });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/aseo/prioridad", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try {
