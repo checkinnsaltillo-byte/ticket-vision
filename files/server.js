@@ -12574,13 +12574,21 @@ app.post("/mercado/airbnb/quitar", async (req, res) => {
   try { const id = String((req.body || {}).id || "").replace(/\D/g, ""); await _maMutar(d => { d.lista = (d.lista || []).filter(x => x.id !== id); delete d.items[id]; }); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
-// Extracción programada (Cloud Scheduler, todos los días 3:00 a.m. America/Monterrey): mismo proceso que el botón, sobre toda la lista.
+// Corrida diaria completa (3:00 a.m.): 1) si ya se usó el método Automática, repite la búsqueda con los mismos destino y huéspedes y fechas móviles
+// (entrada = mañana, salida = +3 días) para sumar publicaciones nuevas a la lista; 2) extrae ficha y calendario de TODA la lista.
+async function _maDiaria() {
+  const { data } = await _bnReadGcs(_MA.OBJ), u = data && data.ultimaBusqueda, p = u && u.params;
+  if (p && p.destino) { const hoy = _mxHoy(), dia = (f, n) => { const t = new Date(f + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }, checkin = dia(hoy, 1);
+    await _maBuscar({ destino: p.destino, checkin, checkout: dia(checkin, 3), adultos: p.adultos || 1 }).catch(e => console.warn("[mercado] búsqueda diaria:", e.message)); }
+  const { data: d2 } = await _bnReadGcs(_MA.OBJ), ids = ((d2 && d2.lista) || []).map(x => x.id); if (ids.length) await _maCorrer(ids);
+}
+// Extracción programada (Cloud Scheduler, todos los días 3:00 a.m. America/Monterrey): búsqueda (si aplica) + extracción de toda la lista.
 app.post("/mercado/airbnb/cron", async (req, res) => {
   if (!process.env.SYNC_SECRET || (req.get("X-Sync-Secret") || "") !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
   try { const { data } = await _bnReadGcs(_MA.OBJ), d = data && data.items ? data : { lista: [], items: {} };
-    if (d.job && d.job.running && Date.now() - Date.parse(d.job.upd || 0) < 180_000) return res.json({ ok: true, omitido: "ya hay una extracción en curso" });
-    const ids = (d.lista || []).map(x => x.id); if (!ids.length) return res.json({ ok: true, total: 0 });
-    _maCorrer(ids).catch(e => console.warn("[mercado] extracción programada:", e.message)); res.json({ ok: true, total: ids.length }); }
+    if ((d.job && d.job.running && Date.now() - Date.parse(d.job.upd || 0) < 180_000) || (d.busqueda && d.busqueda.running && Date.now() - Date.parse(d.busqueda.upd || 0) < 180_000)) return res.json({ ok: true, omitido: "ya hay una extracción o búsqueda en curso" });
+    const ids = (d.lista || []).map(x => x.id); if (!ids.length && !(d.ultimaBusqueda && d.ultimaBusqueda.params)) return res.json({ ok: true, total: 0 });
+    _maDiaria().catch(e => console.warn("[mercado] corrida diaria:", e.message)); res.json({ ok: true, total: ids.length, conBusqueda: !!(d.ultimaBusqueda && d.ultimaBusqueda.params) }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/extraer", async (req, res) => {
