@@ -12432,6 +12432,15 @@ async function _maHtml(id) {
   if (!r.ok) throw new Error(`Airbnb respondió ${r.status}`);
   return r.text();
 }
+// Lista completa de fotos de una publicación (galería principal + nombre del espacio del «tour»); se lee bajo demanda y se guarda en mercado/fotos/<id>.json (30 días).
+function _maFotosDe(html) {
+  const m = html.match(/<script id="data-deferred-state-0"[^>]*>([\s\S]*?)<\/script>/); if (!m) throw new Error("La página no trae los datos de la publicación");
+  let d; try { d = JSON.parse(m[1]); } catch (e) { throw new Error("No se pudo leer la página de la publicación"); }
+  const P = _maG(d, "niobeClientData.0.1.data.node.pdpPresentation"); if (!P) throw new Error("La publicación no trae información");
+  const esp = {}, stops = _maG(P, "mediaTour.stops") || []; stops.forEach(st => (st.items || []).forEach(it => { const u = _maG(it, "image.uri"); if (u && !esp[u]) esp[u] = String(st.name || "").slice(0, 60); }));
+  const fotos = (_maG(P, "heroMedia.edges") || []).map(e => { const im = _maG(e, "node.image") || {}; return { u: String(im.uri || "").split("?")[0], c: String(_maG(im, "caption.user.localizedString") || im.altText || "").slice(0, 160), e: esp[im.uri] || "", r: Math.round((Number(_maG(im, "assetMetadata.aspectRatio")) || 0) * 100) / 100 }; }).filter(f => /^https:\/\/a0\.muscache\.com\//.test(f.u));
+  return { at: new Date().toISOString(), fotos, espacios: stops.map(st => ({ n: String(st.name || "").slice(0, 60), k: (st.items || []).length })).filter(x => x.k) };
+}
 function _maFicha(html) {
   const m = html.match(/<script id="data-deferred-state-0"[^>]*>([\s\S]*?)<\/script>/); if (!m) throw new Error("La página no trae los datos de la publicación (posible bloqueo temporal)");
   let d; try { d = JSON.parse(m[1]); } catch (e) { throw new Error("No se pudo leer la página de la publicación"); }
@@ -12448,7 +12457,7 @@ function _maFicha(html) {
   const H = _maG(P, "hostInfo.passportData") || {}, st = t => { const x = (H.stats || []).find(y => y.type === t); return x ? _maNum(x.value) : null; };
   let hid = ""; try { hid = Buffer.from(String(H.userId || ""), "base64").toString().split(":")[1] || ""; } catch (_) {}
   Object.assign(o, { anfitrion: H.name || "", hostId: hid, hostFoto: /^https:\/\/[a-z0-9.-]*muscache\.com\//i.test(String(H.profilePictureUrl || "")) ? String(H.profilePictureUrl) : "", superanfitrion: !!H.isSuperhost, hostAnios: st("YEARS_HOSTING") ?? (H.timeAsHost ? H.timeAsHost.years : null), hostEvaluaciones: st("REVIEW_COUNT"), hostCalificacion: st("RATING"),
-    hostRespuesta: _maG(P, "hostInfo.responseRateText") || "", hostTiempo: _maG(P, "hostInfo.responseTimeText") || "", coanfitriones: (N.cohosts || []).length, administrado: !!_maG(P, "hostInfo.isAirbnbManaged") });
+    hostAcerca: String(_maG(P, "hostInfo.about.localizedString") || _maG(P, "hostInfo.about.localizedStringWithTranslationPreference") || "").trim().slice(0, 900), hostDest: (_maG(P, "hostInfo.highlights") || []).map(h => String(_maG(h, "text.content.localizedString") || _maG(h, "text.text") || "").trim()).filter(Boolean).slice(0, 8), hostRespuesta: _maG(P, "hostInfo.responseRateText") || "", hostTiempo: _maG(P, "hostInfo.responseTimeText") || "", coanfitriones: (N.cohosts || []).length, administrado: !!_maG(P, "hostInfo.isAirbnbManaged") });
   const am = new Set(); (_maG(P, "amenities.seeAllAmenitiesGroups") || []).forEach(g => (g.amenities || []).forEach(a => { if (a && a.title && a.available !== false) am.add(String(a.title).replace(/ /g, " ")); }));
   if (!am.size) (_maG(P, "amenities.previewAmenitiesGroups") || []).forEach(g => (g.amenities || []).forEach(a => { if (a && a.title && a.available !== false) am.add(String(a.title)); }));
   o.amenidades = [...am].slice(0, 120); o.nAmenidades = am.size;
@@ -12648,6 +12657,16 @@ app.post("/mercado/airbnb/horas", async (req, res) => {
     await _maMutar(d => { d.horas = L; }); res.json({ ok: true, horas: L }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// Fotos de una publicación para la sección «Alojamientos»: del archivo guardado, o se leen de Airbnb en el momento (~2 s) y se guardan.
+app.get("/mercado/airbnb/fotos", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  const id = String(req.query.id || "").replace(/\D/g, ""); if (!/^\d{5,20}$/.test(id)) return res.status(400).json({ ok: false, error: "id inválido" });
+  const f = `mercado/fotos/${id}.json`; let data = null;
+  try { data = (await _bnReadGcs(f)).data; } catch (_) {}
+  try { if (!data || req.query.fresh === "1" || Date.now() - Date.parse(data.at || 0) > 30 * 864e5) { const r = _maFotosDe(await _maHtml(id)); data = r; await _bnWriteGcs(f, r, null).catch(() => {}); }
+    res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, data)); }
+  catch (e) { if (data) return res.json(Object.assign({ ok: true, antigua: true }, data)); res.status(502).json({ ok: false, error: String(e.message || e).slice(0, 200) }); }
+});
 // Foto de cada anfitrión (rellenar lo ya extraído): UNA lectura por anfitrión distinto (por hostId), no por publicación; copia la foto a todas sus publicaciones.
 let _maHostsCorre = false;
 app.post("/mercado/airbnb/anfitriones", async (req, res) => {
@@ -12655,11 +12674,11 @@ app.post("/mercado/airbnb/anfitriones", async (req, res) => {
   if (_maHostsCorre) return res.status(409).json({ ok: false, error: "Ya se está haciendo" });
   try { const { data } = await _bnReadGcs(_MA.OBJ), d = data && data.items ? data : { items: {} };
     if (d.job && d.job.running && Date.now() - Date.parse(d.job.upd || 0) < 180_000) return res.status(409).json({ ok: false, error: "Hay una extracción en curso; espera a que termine" });
-    const porHost = new Map(); Object.values(d.items || {}).forEach(i => { if (i.hostId && !i.hostFoto && !porHost.has(i.hostId)) porHost.set(i.hostId, i.id); });
+    const porHost = new Map(); Object.values(d.items || {}).forEach(i => { if (i.hostId && (!i.hostFoto || i.hostAcerca === undefined) && !porHost.has(i.hostId)) porHost.set(i.hostId, i.id); });
     _maHostsCorre = true; res.json({ ok: true, anfitriones: porHost.size });
     (async () => { let ok = 0;
       for (const [hid, id] of porHost) {
-        try { const f = _maFicha(await _maHtml(id)); if (f && f.hostFoto) { await _maMutar(x => { Object.values(x.items || {}).forEach(i => { if (String(i.hostId) === String(hid)) i.hostFoto = f.hostFoto; }); }); ok++; } } catch (_) {}
+        try { const f = _maFicha(await _maHtml(id)); if (f && (f.hostFoto || f.hostAcerca !== undefined)) { await _maMutar(x => { Object.values(x.items || {}).forEach(i => { if (String(i.hostId) === String(hid)) { if (f.hostFoto) i.hostFoto = f.hostFoto; i.hostAcerca = f.hostAcerca || ""; i.hostDest = f.hostDest || []; } }); }); ok++; } } catch (_) {}
         await _maSleep(1200 + Math.floor(Math.random() * 900));
       }
       console.log("[mercado] fotos de anfitrión:", ok, "de", porHost.size); })().catch(e => console.warn("[mercado] anfitriones:", e.message)).finally(() => { _maHostsCorre = false; }); }
