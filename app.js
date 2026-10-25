@@ -77366,7 +77366,7 @@ function mcMapaMarcas_() {
     const cLat = g.reduce((s, k) => s + P[k].lat, 0) / g.length, cLng = g.reduce((s, k) => s + P[k].lng, 0) / g.length, minP = Math.min(...g.map(k => P[k].precio || Infinity)), haySel = g.some(k => P[k].id === sel || (selH && P[k].hostId === selH));
     const html = `<div class="rsv-map-cluster" style="${haySel ? 'box-shadow:0 0 0 3px #14b8a6,0 6px 18px rgba(249,115,22,.35)' : ''}"><span class="rsv-map-cluster-count">${g.length}</span><span class="rsv-map-cluster-price">desde ${isFinite(minP) ? MCFMT(minP) : '—'}</span></div>`;
     const mk = Lf.marker([cLat, cLng], { icon: Lf.divIcon({ className: '', html, iconSize: [130, 36], iconAnchor: [65, 18] }), zIndexOffset: haySel ? 2500 : 500 }).addTo(m);
-    const hook = () => { const el = mk.getElement() && mk.getElement().querySelector('.rsv-map-cluster'); if (el) { el.addEventListener('mouseenter', () => mcMapaSpider_(g, [cLat, cLng])); el.addEventListener('click', () => m.fitBounds(g.map(k => [P[k].lat, P[k].lng]), { padding: [90, 90], maxZoom: 18 })); } };
+    const hook = () => { const el = mk.getElement() && mk.getElement().querySelector('.rsv-map-cluster'); if (el) { if (g.length <= 14) el.addEventListener('mouseenter', () => mcMapaSpider_(g, [cLat, cLng])); /* los grupos grandes no se despliegan en araña: solo se acercan con clic */ else el.title = `${g.length} alojamientos · clic para acercar`; el.addEventListener('click', () => m.fitBounds(g.map(k => [P[k].lat, P[k].lng]), { padding: [90, 90], maxZoom: 18 })); } };
     mk.on('add', hook); if (mk.getElement()) hook(); MC.map.mk.set('c' + g[0], mk);
   });
 }
