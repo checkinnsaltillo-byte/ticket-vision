@@ -12898,7 +12898,7 @@ function _enArma(id, it, v, usadas, uso, fuente, radio) {
 }
 async function _enAnaliza(id) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
-  const { data } = await _bnReadGcs(_MA.OBJ), it = data && data.items && data.items[id]; if (!it || it.lat == null) throw new Error("La publicación no tiene coordenadas");
+  const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa");
   const lat = +it.lat, lng = +it.lng, RADIO = await _enRadio(); _enJob.paso = `Buscando fotos de Street View a ≤ ${RADIO} m`;
   const P = await _enPanos(lat, lng, key, RADIO); if (!P.length) throw new Error(`Sin cobertura de Street View en ${RADIO} m de esta coordenada`);
   const T = _enTomas(P, lat, lng); _enJob.paso = `Descargando ${T.length} fotos`; const content = [], usadas = [];
@@ -12973,7 +12973,7 @@ let _plJob = { running: false };
 async function _plIndiceSet(id, ent) { for (let i = 0; i < 6; i++) { const { data, gen } = await _bnReadGcs("mercado/lugares/_indice.json"), d = data && data.i ? data : { i: {} }; d.i[id] = ent; try { await _bnWriteGcs("mercado/lugares/_indice.json", d, gen); return; } catch (e) { if (!e.conflict && !e.retry) throw e; await _maSleep(500 * (i + 1)); } } }
 async function _plAnaliza(id, radio, max) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
-  const { data } = await _bnReadGcs(_MA.OBJ), it = data && data.items && data.items[id]; if (!it || it.lat == null) throw new Error("La publicación no tiene coordenadas");
+  const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa");
   const lat = +it.lat, lng = +it.lng; _plJob.paso = `Buscando negocios a ≤ ${radio} m`;
   const r = await _plBusca(key, lat, lng, radio, max), res = _plResumen(r.places, radio), at = new Date().toISOString();
   const rec = { id, ver: "lugares-v1", at, expira: new Date(Date.now() + 30 * 864e5).toISOString(), fuente: "Google Places API (New) · Nearby Search", lat, lng, radio, reqs: r.reqs, saturados: r.saturados, truncado: r.truncado, resumen: res, places: r.places };
@@ -13051,9 +13051,30 @@ function _fbAgrega(d, tarjetas, origen) { let nuevas = 0, existentes = 0; const 
     if (x) { existentes++; if (t.precio && !x.precio) x.precio = _fbTxt(t.precio, 60); if (t.titulo && !x.titulo) x.titulo = _fbTxt(t.titulo, 200); if (t.ubicacion && !x.ubicacion) x.ubicacion = _fbTxt(t.ubicacion, 120); if (t.thumb && !x.thumb) x.thumb = _fbTxt(t.thumb, 600); x.visto = hoy; }
     else { nuevas++; d.lista.push({ id, url: "https://www.facebook.com/marketplace/item/" + id + "/", precio: _fbTxt(t.precio, 60), titulo: _fbTxt(t.titulo, 200), ubicacion: _fbTxt(t.ubicacion, 120), thumb: _fbTxt(t.thumb, 600), estado: "pendiente", intentos: 0, agregado: hoy, visto: hoy, origen }); } });
   return { nuevas, existentes }; }
+// Coordenadas de Marketplace: la página trae un «latitude» ajeno a la publicación (el mismo en todas), así que NO se usa. Se geocodifica la dirección / colonia / CP que
+// aparece en la ficha y solo se acepta si es una ubicación precisa (calle, colonia o CP), nunca el centro de la ciudad.
+const _fbPrec = r => { const t = String(r.addresstype || r.type || "").toLowerCase(), c = String(r.category || r.class || "").toLowerCase(); if (/^(house|building|apartments|residential|road|street|amenity|shop|commercial|retail|industrial|office|tourism|leisure|highway|footway|service|living_street|pedestrian)$/.test(t) || /^(building|amenity|shop|highway|office|tourism|leisure)$/.test(c)) return "direccion"; if (/^(neighbourhood|suburb|quarter|residential_area|hamlet|borough|city_block|locality)$/.test(t)) return "colonia"; if (t === "postcode") return "cp"; return ""; };
+let _fbGeoT = 0;
+async function _fbGeo(pub) {
+  const c = _fbTxt(pub.ciudad, 60), est = _fbTxt(pub.estado, 40) || "Coahuila", dir = _fbTxt(pub.direccion, 160), col = _fbTxt(pub.colonia, 80), cp = _fbTxt(pub.cp, 10);
+  const esCiudad = dir && c && dir.toLowerCase().replace(/[.,\s]+/g, " ").trim().startsWith(c.toLowerCase()) && dir.split(",").length <= 2 && !/\d/.test(dir);
+  const calle = dir && !esCiudad ? dir : "", base = [c || "Saltillo", est, "México"].filter(Boolean).join(", ");
+  const Q = []; if (calle) { Q.push([calle, base].join(", ")); const s = calle.replace(/\b(plaza|centro comercial|col\.?|colonia|fracc\.?|fraccionamiento)\b[^,]*/gi, "").replace(/#\s*\d+[a-z]?|\bn[uú]m(ero)?\.?\s*\d+/gi, "").replace(/\s+,/g, ",").replace(/,\s*,/g, ",").trim(); if (s && s !== calle) Q.push([s, base].join(", ")); }
+  if (col) Q.push([col, base].join(", ")); if (cp) Q.push([cp, c || "Saltillo", est, "México"].join(", "));
+  for (const q of Q) { const w = _fbGeoT + 1100 - Date.now(); if (w > 0) await _maSleep(w); _fbGeoT = Date.now();
+    try { const r = await _fetchReal(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=3&countrycodes=mx&accept-language=es&q=${encodeURIComponent(q)}`, { headers: { "User-Agent": "check-inn-saltillo/1.0 (sistemas@check-inn.mx)", "Accept": "application/json" }, signal: AbortSignal.timeout(15000) }); if (!r.ok) continue; const j = await r.json();
+      for (const x of Array.isArray(j) ? j : []) { const prec = _fbPrec(x); if (!prec) continue; const ciu = String((x.address || {}).city || (x.address || {}).town || (x.address || {}).municipality || "").toLowerCase(); if (c && ciu && !/saltillo|ramos arizpe|arteaga|santa catarina|monterrey|torre[oó]n|gomez|g[oó]mez|general cepeda|derramadero|parras|monclova/.test(ciu) && !ciu.includes(c.toLowerCase())) continue; return { lat: Math.round(+x.lat * 1e5) / 1e5, lng: Math.round(+x.lon * 1e5) / 1e5, prec, q, at: new Date().toISOString() }; } } catch (_) {} }
+  return null;
+}
+// Coordenadas y datos mínimos de una publicación por id: Airbnb o Marketplace (la misma vía de Entorno urbano y Negocios en 1 km).
+async function _mcItem(id) {
+  const { data } = await _bnReadGcs(_MA.OBJ), a = data && data.items && data.items[id]; if (a) return a;
+  const d = await _fbDoc(), f = d.items && d.items[id]; if (!f || !f.geo || f.lat == null) return null;
+  return { id, titulo: f.titulo, tipo: f.tipo, ciudad: f.ciudad, lat: f.lat, lng: f.lng, ubicacion: f.direccion || f.colonia || f.ciudad };
+}
 // Detalle: estructura una ficha capturada en el navegador con el extractor de Rentas LP; si faltan datos clave y hay texto suficiente, la IA lo completa.
 async function _fbEstructura(it, usarIA) {
-  const FBJ = it.fb || {}, D = { url: it.url, ld: Array.isArray(it.ld) ? it.ld : [], og: it.og || {}, title: it.title || "", imgs: (Array.isArray(it.imgs) ? it.imgs : []).concat(FBJ.fotos || []), text: String(it.text || "").slice(0, 20000), desc: FBJ.descripcion || "", geo: FBJ.lat != null ? { lat: FBJ.lat, lng: FBJ.lng } : it.geo };
+  const FBJ = it.fb || {}, D = { url: it.url, ld: Array.isArray(it.ld) ? it.ld : [], og: it.og || {}, title: it.title || "", imgs: (Array.isArray(it.imgs) ? it.imgs : []).concat(FBJ.fotos || []), text: String(it.text || "").slice(0, 20000), desc: FBJ.descripcion || "", geo: null };
   const pub = _rlpDeDatos(D); delete pub._estructurado;
   if (FBJ.titulo) pub.titulo = FBJ.titulo; if (FBJ.precio != null && FBJ.precio > 0) pub.precio = FBJ.precio; if (FBJ.moneda) pub.moneda = FBJ.moneda; if (FBJ.descripcion && FBJ.descripcion.length > String(pub.descripcion || "").length) pub.descripcion = FBJ.descripcion;
   if (FBJ.ubicacion) { const p = FBJ.ubicacion.split(",").map(s => s.trim()); pub.ciudad = pub.ciudad || p[0] || ""; pub.colonia = pub.colonia || ""; pub.direccion = FBJ.ubicacion; }
@@ -13061,7 +13082,10 @@ async function _fbEstructura(it, usarIA) {
   if (usarIA && (!pub.recamaras || !pub.precio || !pub.tipo || pub.tipo === "otro") && String(D.text || FBJ.descripcion || "").length > 80) {
     try { const j = await _rlpLlmTexto(String((D.text && D.text.length > 200 ? D.text : (pub.titulo + "\n" + (FBJ.descripcion || ""))) || "").slice(0, 14000), it.url); Object.keys(j || {}).forEach(k => { const v = j[k]; if (v == null || v === "" || (Array.isArray(v) && !v.length)) return; if (pub[k] == null || pub[k] === "" || (Array.isArray(pub[k]) && !pub[k].length) || k === "tipo" || k === "operacion") pub[k] = v; }); metodo = "IA"; } catch (_) {}
   }
-  const o = _rlpNormalizar(Object.assign({}, pub, { url_origen: it.url, portal: "facebook", operacion: "renta" })); return { pub: o, metodo };
+  const o = _rlpNormalizar(Object.assign({}, pub, { url_origen: it.url, portal: "facebook", operacion: "renta" })); o.lat = null; o.lng = null; o.geo = null;
+  const cand = (Array.isArray(FBJ.geos) ? FBJ.geos : []).filter(g => Array.isArray(g) && g[2] != null && g[2] >= 0 && g[2] < 30000 && isFinite(g[0]) && isFinite(g[1])).sort((a, b) => a[2] - b[2])[0]; if (cand) { o.lat = Math.round(cand[0] * 1e5) / 1e5; o.lng = Math.round(cand[1] * 1e5) / 1e5; o.geo = { prec: "facebook", q: "coordenada de la ficha (aprox.)", at: new Date().toISOString() }; }
+  if (!o.geo) try { const g = await _fbGeo(o); if (g) { o.lat = g.lat; o.lng = g.lng; o.geo = { prec: g.prec, q: g.q, at: g.at }; } } catch (_) {}
+  return { pub: o, metodo };
 }
 app.get("/mercado/facebook", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
@@ -13081,6 +13105,14 @@ app.post("/mercado/facebook/lista", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const b = req.body || {}, urls = String(b.urls || "").split(/[\s,;]+/).filter(Boolean), tarjetas = urls.map(u => ({ url: u })), inval = urls.filter(u => !_fbId(u)).slice(0, 10);
     const r = await _fbMutar(d => _fbAgrega(d, tarjetas.filter(t => _fbId(t.url)), "manual")); res.json({ ok: true, nuevas: r.nuevas, existentes: r.existentes, invalidas: inval }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/facebook/ubicar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const d0 = await _fbDoc(), ids = (Array.isArray((req.body || {}).ids) ? req.body.ids.map(String) : Object.keys(d0.items || {})).filter(id => d0.items[id]).slice(0, 60), out = {};
+    for (const id of ids) { const it = d0.items[id]; if (it.geo && it.lat != null) continue; const g = await _fbGeo(it); out[id] = g; }
+    await _fbMutar(d => { Object.keys(out).forEach(id => { const it = d.items[id]; if (!it) return; const g = out[id]; if (g) { it.lat = g.lat; it.lng = g.lng; it.geo = { prec: g.prec, q: g.q, at: g.at }; } else { it.lat = null; it.lng = null; it.geo = null; } }); });
+    res.json({ ok: true, revisadas: Object.keys(out).length, ubicadas: Object.values(out).filter(Boolean).length }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/facebook/seleccion", async (req, res) => {
@@ -13134,12 +13166,12 @@ app.post("/mercado/facebook/captura", async (req, res) => {
 app.get("/mercado/facebook/puente", (_req, res) => {
   res.set("Cache-Control", "no-store").type("html").send(`<!doctype html><meta charset="utf-8"><title>Check-inn · puente de Facebook</title>
 <body style="font-family:-apple-system,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#eef6ff;color:#0f172a"><div style="text-align:center;max-width:420px"><div style="font-size:40px">🔗</div><div id="m" style="font-size:16px;font-weight:700;margin-top:8px">Conectado con Check-inn</div><div id="s" style="font-size:12px;color:#64748b;margin-top:6px">Deja esta pestaña abierta mientras el marcador trabaja en Facebook. Se cierra sola al terminar.</div></div>
-<script>const FB=/^https:\\/\\/([a-z0-9-]+\\.)?facebook\\.com$/;let n=0;const set=(m,s)=>{document.getElementById("m").textContent=m;if(s)document.getElementById("s").textContent=s};
+<script>const FB=/^https:\\/\\/([a-z0-9-]+\\.)?facebook\\.com$/;let n=0,tg=0,te=0,tl=0;const set=(m,s)=>{document.getElementById("m").textContent=m;if(s)document.getElementById("s").textContent=s};
 async function api(u,o){const r=await fetch(u,o);return r.json()}
 window.addEventListener("message",async e=>{if(!FB.test(e.origin))return;const d=e.data;if(!d||typeof d!=="object")return;const re=m=>{try{e.source.postMessage(m,e.origin)}catch(_){}};
  try{
   if(d.t==="hola"){const j=await api("/mercado/facebook/pendientes");re({t:"pend",lista:j.lista||[],cfg:j.cfg||{}});set("Listo: "+(j.lista||[]).length+" publicaciones por extraer")}
-  else if(d.t==="lista"||d.t==="detalle"){const j=await api("/mercado/facebook/captura",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});n++;re({t:"ok",n:d.n,res:j});set(d.t==="lista"?"Lista recibida: "+(j.nuevas||0)+" nuevas":"Guardadas "+(j.guardadas||0)+" fichas ("+(j.errores||0)+" con error)")}
+  else if(d.t==="lista"||d.t==="detalle"){const j=await api("/mercado/facebook/captura",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});n++;re({t:"ok",n:d.n,res:j});(d.t==="lista"?(tl+=(j.nuevas||0),set("Lista recibida: "+tl+" nuevas en total")):(tg+=(j.guardadas||0),te+=(j.errores||0),set("Fichas guardadas: "+tg+" ("+te+" con error)","Actualizado "+new Date().toLocaleTimeString("es-MX")+" · el marcador sigue trabajando en Facebook; esta ventana se cierra sola al terminar.")))}
   else if(d.t==="fin"){set("Terminado. Vuelve a Check-inn y actualiza la pantalla.");setTimeout(()=>window.close(),2500)}
  }catch(err){re({t:"err",error:String(err.message||err)});set("⚠ "+err.message)}});
 try{window.opener&&window.opener.postMessage({t:"listo"},"*")}catch(_){}

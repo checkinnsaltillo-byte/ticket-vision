@@ -75852,8 +75852,9 @@ window.mcInit = async function () {
   await mcCargar_(); mcRender_(); if ((MC.job && MC.job.running) || (MC.bus && MC.bus.running)) mcPoll_(); if (!MC.propios) setTimeout(async () => { if (!document.getElementById('mc-res')) return; await mcCargar_(); mcRes_(); }, 30000); // los propios se resuelven en segundo plano la primera vez
 };
 async function mcCargar_() {
-  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; if (!MC._escTs || Date.now() - MC._escTs > 8000) MC.esc = j.escenarios || MC.esc || null; MC.dest = j.destinos || MC.dest || null; /* una respuesta vieja del sondeo no pisa fechas recién guardadas */ if (!MC._horasTs || Date.now() - MC._horasTs > 8000) MC.horas = j.horas || MC.horas || [11, 19]; MC.muestreo = j.muestreo !== false; MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); if (MC.ctx === 'fb') { MC._ctxBack = true; mcCtx_('air', true); } MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; if (!MC._escTs || Date.now() - MC._escTs > 8000) MC.esc = j.escenarios || MC.esc || null; MC.dest = j.destinos || MC.dest || null; /* una respuesta vieja del sondeo no pisa fechas recién guardadas */ if (!MC._horasTs || Date.now() - MC._horasTs > 8000) MC.horas = j.horas || MC.horas || [11, 19]; MC.muestreo = j.muestreo !== false; MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
   catch (e) { MC.error = String(e.message || e); }
+  finally { if (MC._ctxBack) { MC._ctxBack = false; mcCtx_('fb', true); } }
 }
 function mcCss_() {
   if (document.getElementById('mc-css')) return; const st = document.createElement('style'); st.id = 'mc-css'; st.textContent = `
@@ -76048,9 +76049,10 @@ const MCQC = ['#38bdf8', '#34d399', '#fbbf24', '#ef4444']; // cuartiles de preci
 window.mcGraf_ = function (tab) { if (tab) MC.gtab = tab; MC.gtab = MC.gtab || 'ocu'; MC.sec = 'dash'; try { localStorage.setItem('mc-sec', 'dash'); } catch (_) {} mcSecPintar_(); };
 window.mcSec_ = function (s) { MC.sec = s; try { localStorage.setItem('mc-sec', s); } catch (_) {} mcSecPintar_(); };
 function mcSecPintar_() {
-  const sec = MC.sec === 'dash' || MC.sec === 'alo' ? MC.sec : 'ext', ids = { ext: 'mc-sec-ext', dash: 'mc-sec-dash', alo: 'mc-sec-alo' }; if (!document.getElementById('mc-sec-ext')) return;
-  Object.entries(ids).forEach(([k, id]) => { const e = document.getElementById(id); if (e) e.style.display = k === sec ? '' : 'none'; }); document.querySelectorAll('#mc-root .mc-tab').forEach(t => t.classList.toggle('on', t.dataset.s === sec));
-  if (sec === 'dash') mcDashPintar_(); else if (sec === 'alo') mcAloPintar_(); else { mcProg_(); mcRes_(); }
+  const sec = MC.sec === 'dash' || MC.sec === 'alo' || MC.sec === 'fbp' ? MC.sec : 'ext', ids = { ext: 'mc-sec-ext', dash: 'mc-sec-dash', alo: 'mc-sec-alo', fbp: 'mc-sec-alo' }; if (!document.getElementById('mc-sec-ext')) return;
+  mcCtx_(sec === 'fbp' ? 'fb' : 'air');
+  new Set(Object.values(ids)).forEach(id => { const e = document.getElementById(id); if (e) e.style.display = id === ids[sec] ? '' : 'none'; }); document.querySelectorAll('#mc-root .mc-tab').forEach(t => t.classList.toggle('on', t.dataset.s === sec));
+  if (sec === 'dash') mcDashPintar_(); else if (sec === 'alo') mcAloPintar_(); else if (sec === 'fbp') { const w = document.getElementById('mc-sec-alo'); if (w) w.innerHTML = '<div class="mc-card mc-mu">Cargando publicaciones de Facebook…</div>'; mcFbpPrep_().then(() => { if (MC.sec === 'fbp' && MC.ctx === 'fb') mcAloPintar_(); }); } else { mcProg_(); mcRes_(); }
 }
 function mcDashPintar_() {
   const h = document.getElementById('mc-sec-dash'); if (!h) return; MC.gtab = MC.gtab || 'ocu';
@@ -76437,7 +76439,7 @@ window.mcMuestreo_ = async function () {
 // ═══════════════════════════════════════════════════════════════════════════
 MC.al = MC.al || { host: null, id: null, q: '', ord: 'n', filt: 'todos', pag: 48, sp: '', k: 0 };
 // Airbnb (muscache) solo sirve estos anchos: 240, 480, 720, 1200, 1440; cualquier otro devuelve error.
-const mcImg_ = (u, w) => u ? String(u).split('?')[0] + '?im_w=' + ([240, 480, 720, 1200, 1440].find(x => x >= w) || 1440) : '';
+const mcImg_ = (u, w) => u ? (MC.ctx === 'fb' ? String(u) : String(u).split('?')[0] + '?im_w=' + ([240, 480, 720, 1200, 1440].find(x => x >= w) || 1440)) : '';
 function mcAloCss_() {
   if (document.getElementById('al-css')) return; const st = document.createElement('style'); st.id = 'al-css'; st.textContent = `
   #mc-sec-alo{--al-bg:#f6f8fb;--al-ln:#e4e9f0;--al-ink:#0f172a;--al-mu:#64748b;--al-ac:#0f766e;--al-ac2:#14b8a6}
@@ -76595,6 +76597,7 @@ const MCFL_OPT = { ent: [['A', 'Entorno A (muy favorable)'], ['B', 'Entorno B (f
   coc: [['Sí', 'Con cocina'], ['Compartida', 'Compartida'], ['No', 'Sin cocina']], minN: [['1', '1 noche'], ['2', '2 noches'], ['3-6', '3 a 6'], ['7-29', '7 a 29'], ['30+', '30 o más']], niv: [['A', 'Nivel A'], ['B', 'Nivel B'], ['C', 'Nivel C'], ['S/C', 'Sin clasificar']] };
 const MCFL_LBL = { ent: 'Entorno urbano', camp: 'Campestre', huesp: 'Huéspedes', tipo: 'Tipo de alojamiento', sup: 'Superanfitrión', hab: 'Habitaciones', banos: 'Baños', camas: 'Camas', coc: 'Cocina', ciudad: 'Ciudad', minN: 'Estancia mínima', niv: 'Clasificación', nicho: 'Nicho' };
 function mcFlDom_() { // dominios de los sliders (según los datos)
+  if (MC.ctx === 'fb') return mcFbpDom_();
   const A = mcAloData_(); if (MC._fd && MC._fd.rows === A.rows) return MC._fd; const ext = (k, cap) => { const v = A.rows.map(r => r[k]).filter(x => mcOk_(x) && x > 0).sort((a, b) => a - b); if (!v.length) return [0, 1]; const hi = cap ? mcsQ(v, cap) : v[v.length - 1]; return [0, Math.ceil(hi / 50) * 50]; };
   const cals = A.rows.map(r => r.cal).filter(x => mcOk_(x) && x > 0);
   const ciudades = {}; A.rows.forEach(r => { const c = (MC.items[r.id] || {}).ciudad || 'Sin ciudad'; ciudades[c] = (ciudades[c] || 0) + 1; });
@@ -76602,8 +76605,9 @@ function mcFlDom_() { // dominios de los sliders (según los datos)
 }
 const mcFlRg_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return r ? [Math.max(D[0], r[0]), Math.min(D[1], r[1])] : D.slice(); };
 const mcFlRgOn_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return !!r && (r[0] > D[0] || r[1] < D[1]); };
-const mcFlActivos_ = () => ['ent', 'camp', 'huesp', 'tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length;
+const mcFlActivos_ = () => MC.ctx === 'fb' ? ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad'].filter(k => MC.fl[k].size).length + ['precio', 'm2'].filter(mcFlRgOn_).length : ['ent', 'camp', 'huesp', 'tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length;
 function mcAloPasa_(r) {
+  if (MC.ctx === 'fb') return mcFbpPasa_(r);
   const F = MC.fl, i = MC.items[r.id] || {}, D = mcFlDom_();
   if (!F.tipo) F.tipo = new Set();
   if (F.camp && F.camp.size && !F.camp.has(r.camp ? 'Sí' : 'No')) return false;
@@ -76622,12 +76626,12 @@ function mcAloHostsDe_(rows) { const hs = mcHHosts_(rows); hs.forEach(h => { con
 // ── Controles ──
 function mcFlChips_(k, opts) { return `<div class="al-chips" data-k="${k}">${opts.map(([v, t]) => `<button type="button" class="al-chip ${MC.fl[k].has(v) ? 'on' : ''}" onclick="mcAloTg_('${k}',${esc(JSON.stringify(v))},this)">${esc(t)}</button>`).join('')}</div>`; }
 function mcFlSlider_(k, titulo, fmt) {
-  const D = mcFlDom_()[k], [lo, hi] = mcFlRg_(k), step = k === 'cal' ? 0.01 : 10, pct = v => D[1] === D[0] ? 0 : (v - D[0]) / (D[1] - D[0]) * 100;
+  const D = mcFlDom_()[k], [lo, hi] = mcFlRg_(k), step = k === 'cal' ? 0.01 : MC.ctx === 'fb' && k === 'precio' ? (D[1] > 2e6 ? 50000 : D[1] > 2e5 ? 5000 : D[1] > 5000 ? 100 : 10) : MC.ctx === 'fb' ? 1 : 10, pct = v => D[1] === D[0] ? 0 : (v - D[0]) / (D[1] - D[0]) * 100;
   return `<div class="al-fg"><label>${titulo} <b id="rgv-${k}">${fmt(lo)} – ${fmt(hi)}${k !== 'cal' && hi >= D[1] ? '+' : ''}</b></label><div class="al-rg" id="rg-${k}"><div class="tr"></div><div class="fl" style="left:${pct(lo)}%;right:${100 - pct(hi)}%"></div>
     <input type="range" min="${D[0]}" max="${D[1]}" step="${step}" value="${lo}" oninput="mcAloRgIn_('${k}')" aria-label="${titulo} mínimo"><input type="range" min="${D[0]}" max="${D[1]}" step="${step}" value="${hi}" oninput="mcAloRgIn_('${k}')" aria-label="${titulo} máximo"></div>
-    <div class="fs-nums"><label><span>${k === 'cal' ? '' : '$'}</span><input type="number" id="rgn-${k}-0" min="${D[0]}" max="${D[1]}" step="${step}" value="${lo}" onchange="mcAloRgNum_('${k}')" aria-label="${titulo} mínimo"></label><i></i><label><span>${k === 'cal' ? '' : '$'}</span><input type="number" id="rgn-${k}-1" min="${D[0]}" max="${D[1]}" step="${step}" value="${hi}" onchange="mcAloRgNum_('${k}')" aria-label="${titulo} máximo"></label></div></div>`;
+    <div class="fs-nums"><label><span>${k === 'cal' || k === 'm2' ? '' : '$'}</span><input type="number" id="rgn-${k}-0" min="${D[0]}" max="${D[1]}" step="${step}" value="${lo}" onchange="mcAloRgNum_('${k}')" aria-label="${titulo} mínimo"></label><i></i><label><span>${k === 'cal' || k === 'm2' ? '' : '$'}</span><input type="number" id="rgn-${k}-1" min="${D[0]}" max="${D[1]}" step="${step}" value="${hi}" onchange="mcAloRgNum_('${k}')" aria-label="${titulo} máximo"></label></div></div>`;
 }
-const mcFlFmt_ = { cal: v => MCN(v, 2), precio: v => MCFMT(v), pxh: v => MCFMT(v) };
+const mcFlFmt_ = { cal: v => MCN(v, 2), precio: v => MCFMT(v), pxh: v => MCFMT(v), m2: v => Math.round(v) + ' m²' };
 window.mcAloRgIn_ = function (k) {
   const w = document.getElementById('rg-' + k); if (!w) return; const [a, b] = w.querySelectorAll('input'), D = mcFlDom_()[k]; let lo = +a.value, hi = +b.value; if (lo > hi) { if (document.activeElement === a) { lo = hi; a.value = lo; } else { hi = lo; b.value = hi; } }
   MC.fl.rg[k] = [lo, hi]; const pct = v => D[1] === D[0] ? 0 : (v - D[0]) / (D[1] - D[0]) * 100, fl = w.querySelector('.fl'); fl.style.left = pct(lo) + '%'; fl.style.right = (100 - pct(hi)) + '%';
@@ -76645,7 +76649,7 @@ window.mcAloFlToggle_ = function () { MC.al.flAb = !MC.al.flAb; const p = docume
 window.mcAloVista_ = function (v) { MC.al.vista = v; try { localStorage.setItem('mc-alo-vista', v); } catch (_) {} MC.al.host = null; MC.al.id = null; mcAloPintar_(); };
 function mcAloTopPinta_() {
   const t = document.getElementById('al-top'); if (!t) return; const D = mcFlDom_(), n = mcFlActivos_(), nichos = Object.entries(MCCL_N).filter(([k]) => /^S/.test(k)).map(([k, v]) => [k, v]).concat([['S/C', 'Sin nicho / sin clasificar']]);
-  t.innerHTML = `<div class="al-vw"><button type="button" class="al-chip ${MC.al.flAb ? 'on' : ''}" id="al-flbt" onclick="mcAloFlToggle_()"><svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5h8M15 5.5h2M3 10h2M9 10h8M3 14.5h9M16 14.5h1"/><circle cx="13" cy="5.5" r="1.8"/><circle cx="7" cy="10" r="1.8"/><circle cx="14" cy="14.5" r="1.8"/></svg>Filtros <b id="al-flcnt" style="${n ? '' : 'display:none'}">${n}</b></button><div class="ad-seg">${[['alo', `<svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="6" height="6" rx="1.6"/><rect x="11.5" y="2.5" width="6" height="6" rx="1.6"/><rect x="2.5" y="11.5" width="6" height="6" rx="1.6"/><rect x="11.5" y="11.5" width="6" height="6" rx="1.6"/></svg>Por alojamiento`], ['host', `<svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="3"/><path d="M2 16.5c.4-2.8 2.6-4.5 5.5-4.5s5.1 1.7 5.5 4.5"/><path d="M13.5 4.4a3 3 0 010 5.2M15 12.2c1.7.5 2.8 2 3 4.3"/></svg>Por anfitrión`], ['tabla', `<svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M2.5 8h15M2.5 12.2h15M8 8v8.5"/></svg>Tabla`]].map(([k, x]) => `<button type="button" class="${MC.al.vista === k ? 'on' : ''}" onclick="mcAloVista_('${k}')">${x}</button>`).join('')}</div>
+  t.innerHTML = `<div class="al-vw"><button type="button" class="al-chip ${MC.al.flAb ? 'on' : ''}" id="al-flbt" onclick="mcAloFlToggle_()"><svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5h8M15 5.5h2M3 10h2M9 10h8M3 14.5h9M16 14.5h1"/><circle cx="13" cy="5.5" r="1.8"/><circle cx="7" cy="10" r="1.8"/><circle cx="14" cy="14.5" r="1.8"/></svg>Filtros <b id="al-flcnt" style="${n ? '' : 'display:none'}">${n}</b></button><div class="ad-seg">${[['alo', `<svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="6" height="6" rx="1.6"/><rect x="11.5" y="2.5" width="6" height="6" rx="1.6"/><rect x="2.5" y="11.5" width="6" height="6" rx="1.6"/><rect x="11.5" y="11.5" width="6" height="6" rx="1.6"/></svg>${MC.ctx === 'fb' ? 'Por publicación' : 'Por alojamiento'}`], ['host', `<svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="3"/><path d="M2 16.5c.4-2.8 2.6-4.5 5.5-4.5s5.1 1.7 5.5 4.5"/><path d="M13.5 4.4a3 3 0 010 5.2M15 12.2c1.7.5 2.8 2 3 4.3"/></svg>${MC.ctx === 'fb' ? 'Por publicante' : 'Por anfitrión'}`], ['tabla', `<svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M2.5 8h15M2.5 12.2h15M8 8v8.5"/></svg>Tabla`]].map(([k, x]) => `<button type="button" class="${MC.al.vista === k ? 'on' : ''}" onclick="mcAloVista_('${k}')">${x}</button>`).join('')}</div>
       <button type="button" class="al-chip ${MC.al.mapa ? 'on' : ''}" id="al-mapbt" onclick="mcMapaToggle_()" title="Dividir la pantalla: mapa a la izquierda, tarjetas o tabla a la derecha, sincronizados"><svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5L2.5 5.5v11L7 14.5l6 2 4.5-2v-11l-4.5 2-6-2z"/><path d="M7 3.5v11M13 5.5v11"/></svg>Ver mapa</button><button type="button" class="al-chip" id="al-flrst" style="${n ? '' : 'display:none'}" onclick="mcAloFlReset_()"><svg class="al-ic" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>Quitar filtros</button><span class="mc-mu" id="al-flinfo"></span></div>
   </div>`;
   const f = document.getElementById('al-flp'); if (f) f.innerHTML = mcFlSideHtml_(D, nichos, n);
@@ -76655,6 +76659,7 @@ const mcCampestre_ = (i, l) => MC_CAMP_RE.test(`${i && i.tipo || ''} ${l && l.ti
 function mcFlVal_(k, r) { if (k === 'ent') { const x = MC.en.ix[r.id]; return !x ? 'Sin' : x.cv || 'N/C'; } if (k === 'camp') return r.camp ? 'Sí' : 'No'; const i = MC.items[r.id] || {}; if (k === 'tipo') return r.priv ? 'Habitación' : 'Entero'; if (k === 'sup') return i.superanfitrion ? 'Sí' : 'No'; if (k === 'coc') { const c = mcCocina_(i); return c === '—' ? 'No' : c; } if (k === 'ciudad') return i.ciudad || 'Sin ciudad'; if (k === 'niv' || k === 'nicho') { const x = MC.cl.ix[r.id]; return k === 'niv' ? (x ? mcClNivel_(x.indice) : 'S/C') : (x ? mcClNichoRec_(x).n1 : null) || 'S/C'; } return MCFL_CAT[k](r); }
 function mcFlChecks_(k, opts, cnt) { return `<div class="fs-ops" data-k="${k}">${opts.map(([v, t]) => `<div class="fs-op ${MC.fl[k].has(v) ? 'on' : ''}" role="checkbox" tabindex="0" onclick="mcAloTg_('${k}',${esc(JSON.stringify(v))},this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"><span class="fs-ck">✓</span><span class="fs-tx">${esc(t)}</span><em>${cnt[k][v] || 0}</em></div>`).join('')}</div>`; }
 function mcFlSideHtml_(D, nichos, n) {
+  if (MC.ctx === 'fb') return mcFbpSide_(D, n);
   const cnt = {}; ['tipo', 'camp', 'ent', 'sup', 'huesp', 'hab', 'banos', 'camas', 'coc', 'minN', 'ciudad', 'niv', 'nicho'].forEach(k => cnt[k] = {}); D.rows.forEach(r => { for (const k in cnt) { const v = mcFlVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; } });
   const sec = (t, body, open, k) => `<details class="fs-sec" ${open ? 'open' : ''}><summary>${t}${k && MC.fl[k] && MC.fl[k].size ? `<b>${MC.fl[k].size}</b>` : ''}</summary><div class="fs-bd">${body}</div></details>`;
   const sl = (k, t, fm) => sec(t, mcFlSlider_(k, '', fm), true);
@@ -76673,16 +76678,16 @@ function mcFlSideHtml_(D, nichos, n) {
 // ── Pintado ──
 function mcAloPintar_() {
   const w = document.getElementById('mc-sec-alo'); if (!w) return; if (MC.map && MC.map.m) mcMapaDestruye_(); mcAloCss_(); mcClCss_(); const A = mcAloData_(); document.removeEventListener('keydown', MC._alKd || (() => {})); const S = MC.al;
-  if (A.rows.length < 1) { w.innerHTML = '<div class="mc-card mc-mu">Aún no hay alojamientos extraídos. Ve a «Extracción» y pulsa «Extraer / actualizar».</div>'; return; }
+  if (A.rows.length < 1) { w.innerHTML = MC.ctx === 'fb' ? '<div class="mc-card mc-mu">Aún no hay publicaciones de Facebook extraídas. Ve a «Extracción › Facebook», selecciona publicaciones en el paso 1 y extráelas en el paso 2.</div>' : '<div class="mc-card mc-mu">Aún no hay alojamientos extraídos. Ve a «Extracción» y pulsa «Extraer / actualizar».</div>'; return; }
   const h = S.host && A.hosts.find(x => x.id === S.host), r = S.id && A.rows.find(x => x.id === S.id);
   if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); mcEnFicha_(r.id); mcPlFicha_(r.id); mcAloMapaDet_(r.id); return; }
   w.innerHTML = `<div id="al-top"></div><div class="fs-lay ${S.flAb ? 'fs-on' : ''}" id="al-lay"><aside class="fs-side" id="al-flp"></aside><div id="al-body"></div></div>`; mcAloTopPinta_(); mcAloCuerpo_();
 }
 function mcAloCuerpo_() {
   const b = document.getElementById('al-body'); if (!b) return; const A = mcAloData_(), S = MC.al, L = mcAloFiltradas_(), info = document.getElementById('al-flinfo'), hs = mcAloHostsDe_(L);
-  if (info) info.textContent = `${L.length} de ${A.rows.length} alojamientos · ${hs.length} anfitriones`;
+  if (info) info.textContent = MC.ctx === 'fb' ? `${L.length} de ${A.rows.length} publicaciones · ${hs.length} publicantes` : `${L.length} de ${A.rows.length} alojamientos · ${hs.length} anfitriones`;
   let tgt = b; if (S.mapa) tgt = mcMapaEstructura_(b); else if (b.querySelector('.al-split')) { mcMapaDestruye_(); b.innerHTML = ''; }
-  if (S.vista === 'tabla') { if (!tgt.querySelector('#mc-res')) tgt.innerHTML = '<div id="mc-res"></div>'; mcRes_(); }
+  if (S.vista === 'tabla') { if (!tgt.querySelector('#mc-res')) tgt.innerHTML = '<div id="mc-res"></div>'; if (MC.ctx === 'fb') mcFbpTabla_(L); else mcRes_(); }
   else if (S.vista === 'host' && S.host && A.hosts.find(x => x.id === S.host)) { const hF = A.hosts.find(x => x.id === S.host); tgt.innerHTML = mcAloHostHtml_(Object.assign({}, hF, { L: hF.L.filter(r => MC.alIds.has(r.id)), _total: hF.L.length })); }
   else if (S.vista === 'host') tgt.innerHTML = mcAloDirHtml_(hs); else tgt.innerHTML = mcAloListaHtml_(L);
   mcAloSent_();
@@ -76692,7 +76697,7 @@ function mcAloCuerpo_() {
 function mcAloMapaDet_(id) {
   const el = document.getElementById('al-dmap'); if (!el) return; mcMapaCss_(); if (MC._dmap) { try { MC._dmap.remove(); } catch (_) {} MC._dmap = null; }
   _rsvEnsureLeaflet_(() => { const el2 = document.getElementById('al-dmap'); if (!el2 || MC.al.id !== id) return; const Lf = window.L, A = mcAloData_(), r = A.rows.find(x => x.id === id), i = MC.items[id] || {}; if (!r) return;
-    const p = { id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || id, ev: r.ev };
+    const p = { id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || id, ev: r.ev, tipo: i.tipo, sub: i.sub, m2: i.m2, op: i.op };
     const m = Lf.map(el2, { scrollWheelZoom: false }).setView([p.lat, p.lng], 15); Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
     Lf.marker([p.lat, p.lng], { icon: Lf.divIcon({ className: '', html: mcMapaPinHtml_(p, true), iconSize: [200, 46], iconAnchor: [100, 46] }) }).addTo(m); MC._dmap = m; setTimeout(() => m.invalidateSize(), 150); });
 }
@@ -76712,6 +76717,7 @@ window.mcAloMas_ = function () {
 };
 // ── Por alojamiento ──
 function mcAloListaHtml_(L) {
+  if (MC.ctx === 'fb') return mcFbpListaHtml_(L);
   const S = MC.al, ords = { idx: 'Índice de calidad (IA)', precio: 'Precio por noche', pxh: 'Precio por habitación', cal: 'Calificación', occ: 'Ocupación', ev: 'Evaluaciones', hab: 'Habitaciones' };
   const k = S.ordA, val = r => k === 'idx' ? (MC.cl.ix[r.id] ? MC.cl.ix[r.id].indice : null) : r[k], M = L.slice().sort((a, b) => (mcOk_(val(b)) ? val(b) : -1) - (mcOk_(val(a)) ? val(a) : -1)); MC.al._M = M;
   return `<div class="al-bar"><select class="mc-in" onchange="MC.al.ordA=this.value;mcAloCuerpo_()">${Object.entries(ords).map(([x, t]) => `<option value="${x}" ${k === x ? 'selected' : ''}>Ordenar: ${t}</option>`).join('')}</select></div>
@@ -76720,6 +76726,7 @@ function mcAloListaHtml_(L) {
 }
 // ── Por anfitrión (directorio) ──
 function mcAloDirHtml_(hs) {
+  if (MC.ctx === 'fb') return mcFbpDirHtml_(hs);
   const S = MC.al, q = mcNormN_(S.q), ords = { n: 'Nº de alojamientos', idx: 'Índice de calidad (IA)', occ: 'Ocupación', cal: 'Calificación', precio: 'Precio por noche', ev: 'Evaluaciones', host: 'Nombre (A–Z)' };
   let L = hs.filter(h => !q || mcNormN_(h.host).includes(q) || h.id.includes(q) || h.L.some(r => mcNormN_(r.titulo).includes(q)));
   L = L.slice().sort((a, b) => S.ord === 'host' ? a.host.localeCompare(b.host, 'es') : (mcOk_(b[S.ord]) ? b[S.ord] : -1) - (mcOk_(a[S.ord]) ? a[S.ord] : -1)); MC.al._L = L;
@@ -76730,6 +76737,7 @@ function mcAloDirHtml_(hs) {
 window.mcAloDirRe_ = function (inp) { const pos = inp.selectionStart; mcAloCuerpo_(); const n = document.querySelector('#mc-sec-alo .al-q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
 
 function mcAloHostCard_(h) {
+  if (MC.ctx === 'fb') return mcFbpHostCard_(h);
   const cov = h.L.map(r => (MC.items[r.id] || {}).foto).filter(Boolean).slice(0, 4), it = h.it;
   return `<button type="button" class="al-hc" data-hid="${h.id}" onclick="mcAloHostClk_('${h.id}')" ondblclick="mcAloIr_('${h.id}')"><div class="al-hct">${mcAloAv_(h.host, it.hostFoto, 52)}<div><b>${esc(h.host)}</b><small>${mcOk_(h.anios) ? MCN(h.anios, 0) + ' años como anfitrión' : 'Anfitrión'}</small><div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">${h.sup >= 50 ? '<span class="al-bd">★ Superanfitrión</span>' : ''}${h.mio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${mcAloTag_(h)}</div></div></div>
     <div class="al-mos">${Array.from({ length: 4 }, (_, k) => cov[k] ? `<img loading="lazy" src="${esc(mcImg_(cov[k], 200))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : '<i></i>').join('')}</div>
@@ -76738,6 +76746,7 @@ function mcAloHostCard_(h) {
 }
 // ── 2 · Ficha del anfitrión ──
 function mcAloHostHtml_(h) {
+  if (MC.ctx === 'fb') return mcFbpHostHtml_(h);
   const A = MC._alD, mk = A.rows.length ? mcHMet_(A.rows) : {}, it = h.it, dl = (a, b, f) => mcOk_(a) && mcOk_(b) && b ? `<small class="${a >= b ? 'up' : 'dn'}">${a >= b ? '▲' : '▼'} ${f(a, b)} vs mercado</small>` : '';
   const kp = [[h.n, 'alojamientos en tu lista', ''], [mcOk_(h.occ) ? MCN(h.occ, 1) + '%' : '—', 'ocupación media (90 d)', dl(h.occ, mk.occ, (a, b) => (a >= b ? '+' : '') + MCN(a - b, 1) + ' pp')], [mcOk_(h.precio) ? MCFMT(h.precio) : '—', 'precio mediano por noche', dl(h.precio, mk.precio, (a, b) => (a >= b ? '+' : '') + MCN((a / b - 1) * 100, 0) + '%')],
     [mcOk_(h.cal) ? MCN(h.cal, 2) : '—', 'calificación de sus alojamientos', dl(h.cal, mk.cal, (a, b) => (a >= b ? '+' : '') + MCN(a - b, 2))], [h.ev.toLocaleString('es-MX'), 'evaluaciones recibidas', ''], [mcOk_(h.nam) ? MCN(h.nam, 0) : '—', 'amenidades por alojamiento', dl(h.nam, mk.nam, (a, b) => (a >= b ? '+' : '') + MCN((a / b - 1) * 100, 0) + '%')],
@@ -76754,6 +76763,7 @@ function mcAloHostHtml_(h) {
     <div class="al-grid">${L.map(r => mcAloListCard_(h, r)).join('')}</div>`;
 }
 function mcAloListCard_(h, r, showHost) {
+  if (MC.ctx === 'fb') return mcFbpCard_(h, r, showHost);
   const i = MC.items[r.id] || {}, sp = [i.huespedes != null ? i.huespedes + ' huésp.' : '', i.habitaciones != null ? (i.habitaciones === 0 ? 'Estudio' : i.habitaciones + ' hab.') : '', i.camas != null ? i.camas + ' camas' : '', i.banos != null ? i.banos + ' baños' : ''].filter(Boolean).join(' · ');
   return `<button type="button" class="al-lc" data-id="${r.id}" onclick="mcAloCardClk_('${h.id}','${r.id}')" ondblclick="mcAloIr_('${h.id}','${r.id}')"><div class="al-cv"><img loading="lazy" src="${esc(mcImg_(i.foto, 560))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"><div class="al-bg">${mcClBadge_(r.id)}${i.favorito ? '<span class="al-bd">🏆 Favorito</span>' : ''}${r.propio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${i.nuevo ? '<span class="al-bd b">Nuevo</span>' : ''}</div></div>
     <div class="al-lb"><h4>${esc(i.titulo || r.id)}</h4><small>${esc(i.tipo || '')}${i.ciudad ? ' · ' + esc(i.ciudad) : ''}</small>${MC.cl.ix[r.id] || r.camp || MC.en.ix[r.id] ? `<div style="margin:4px 0;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${mcEnChip_(r.id)}${r.camp ? '<span class="al-camp">🏕️ Campestre</span>' : ''}${MC.cl.ix[r.id] ? mcClNicho_(r.id) : ''}</div>` : ''}<small>${esc(sp)}</small>${showHost ? `<small style="margin-top:2px">👤 ${esc(r.host)}${r.sup ? ' · ★' : ''}</small>` : ''}
@@ -76774,6 +76784,7 @@ function mcAloCal_(i) {
   return `<div class="al-calw">${out}</div><div class="al-lg"><span><i style="background:#ccfbf1"></i>Disponible</span><span><i style="background:#dc2626"></i>Reserva probable</span><span><i style="background:#475569"></i>Bloqueo probable</span><span><i style="background:#d97706"></i>Indeterminado</span><span><i style="background:#b45353"></i>Ocupada (pasado)</span><span><i style="background:#cbd5e1"></i>Libre (pasado)</span><span><i style="background:repeating-linear-gradient(135deg,#e5e7eb 0 3px,#cbd5e1 3px 6px)"></i>Sin dato</span><button type="button" class="mc-help sm" onclick="mcAyuda_()" title="¿Cómo se define cada estatus?">?</button></div>`;
 }
 function mcAloDetHtml_(h, r) {
+  if (MC.ctx === 'fb') return mcFbpDet_(h, r);
   const i = MC.items[r.id] || {}, P = mcPInfo_(r.id), mk = mcHMet_(MC._alD.rows), t = mcTipos_(i), cat = i.cat || {}, ex = (a, b) => `<div><small>${a}</small><b>${b == null || b === '' ? '—' : esc(String(b))}</b></div>`, si = v => v === true ? 'Sí' : v === false ? 'No' : '—';
   const CATS = [['limpieza', 'Limpieza'], ['veracidad', 'Veracidad'], ['llegada', 'Llegada'], ['comunicacion', 'Comunicación'], ['ubicacionCal', 'Ubicación'], ['valor', 'Calidad-precio']], am = mcAloAmen_(i.amenidades);
   const fx = [[i.huespedes, 'huéspedes'], [i.habitaciones === 0 ? 'Estudio' : i.habitaciones, 'habitaciones'], [i.camas, 'camas'], [i.banos, 'baños'], [mcCocina_(i), 'cocina'], [i.fotos, 'fotos']];
@@ -76807,6 +76818,7 @@ function mcAloDetHtml_(h, r) {
 // ── Galería ──
 async function mcAloFotosCargar_(id) {
   MC._fotos = MC._fotos || {}; const g = () => document.getElementById('al-gal'); const i = MC.items[id] || {};
+  if (!MC._fotos[id] && MC.ctx === 'fb') MC._fotos[id] = { fotos: (i.fotosL || []).map(u => ({ u, c: '', e: '' })), espacios: [] };
   if (!MC._fotos[id]) { try { const j = await fetch(`${BACKEND}/mercado/airbnb/fotos?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC._fotos[id] = j; } catch (e) { MC._fotos[id] = { fotos: i.foto ? [{ u: String(i.foto).split('?')[0], c: '', e: '' }] : [], espacios: [], error: String(e.message || e) }; } }
   if (MC.al.id !== id || !g()) return; MC.al.fotos = MC._fotos[id].fotos || []; MC.al.esp = MC._fotos[id].espacios || []; MC.al.k = 0; MC.al.sp = ''; mcAloGal_();
   MC._alKd = ev => { if (!document.getElementById('al-gal')) { document.removeEventListener('keydown', MC._alKd); return; } if (ev.key === 'ArrowRight') mcAloNav_(1); else if (ev.key === 'ArrowLeft') mcAloNav_(-1); else if (ev.key === 'Escape') mcAloLight_(false); }; document.addEventListener('keydown', MC._alKd);
@@ -77154,10 +77166,10 @@ function mcPlHtml_(o) {
     <div style="margin-top:8px"><button type="button" class="cl-bt" onclick="mcPlCorre_('${esc(o.id)}')" ${MC.pl.job && MC.pl.job.running ? 'disabled' : ''}>🔄 Actualizar negocios (≈ 40–150 consultas)</button></div>`;
 }
 async function mcPlFicha_(id) {
-  const w = document.getElementById('al-pl'); if (!w) return;
+  const w = document.getElementById('al-pl'); if (!w) return; if (MC.ctx === 'fb' && (MC.items[id] || {}).lat == null) return;
   try { const j = await fetch(`${BACKEND}/mercado/airbnb/lugares/dato?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(r => r.json()); const w2 = document.getElementById('al-pl'); if (!w2 || MC.al.id !== id) return; MC.pl.et = j.etiquetas || {};
     if (j.ok && j.lugares) { MC.pl.rec = j.lugares; if (MC.pl.iso && MC.pl.iso._id !== j.lugares.id) MC.pl.iso = null; MC.pl.g = ''; MC.pl.q = ''; MC.pl.n = 40; try { const ix = await fetch(`${BACKEND}/mercado/airbnb/lugares/indice`, { cache: 'no-store' }).then(r => r.json()); if (ix.ok) MC.pl.ix = ix.indice; } catch (_) {} w2.innerHTML = mcPlHtml_(j.lugares); mcPlMapa_(); if (MC.pl.vista === 'iso') { if (await mcPlIsoCarga_()) { mcPlVwBotones_(); mcPlMapaVista_(); mcPlRadioPinta_(); } else { MC.pl.vista = 'radios'; mcPlVwBotones_(); } } }
-    else { const it = MC.items[id] || {}; MC.pl.rec = null; w2.innerHTML = `<div class="mc-mu" style="padding:6px 0">Aún no se han buscado los negocios cercanos a este alojamiento.</div><div style="margin-top:8px"><button type="button" class="cl-bt" onclick="mcPlCorre_('${esc(id)}')" ${it.lat == null || (MC.pl.job && MC.pl.job.running) ? 'disabled' : ''}>🏪 Buscar negocios en 1 km (≈ 40–150 consultas a Google)</button> <span class="mc-mu" style="font-size:11.5px">Consulta Google Places en un radio de 1 km; las consultas se descuentan del uso gratuito mensual de la API.${it.lat == null ? ' Este alojamiento no tiene coordenadas.' : ''}</span></div>`; }
+    else { const it = MC.items[id] || {}; MC.pl.rec = null; w2.innerHTML = `<div class="mc-mu" style="padding:6px 0">Aún no se han buscado los negocios cercanos a ${MC.ctx === 'fb' ? 'esta publicación' : 'este alojamiento'}.</div><div style="margin-top:8px"><button type="button" class="cl-bt" onclick="mcPlCorre_('${esc(id)}')" ${it.lat == null || (MC.pl.job && MC.pl.job.running) ? 'disabled' : ''}>🏪 Buscar negocios en 1 km (≈ 40–150 consultas a Google)</button> <span class="mc-mu" style="font-size:11.5px">Consulta Google Places en un radio de 1 km; las consultas se descuentan del uso gratuito mensual de la API.${it.lat == null ? ' Este alojamiento no tiene coordenadas.' : ''}</span></div>`; }
   } catch (e) { const w2 = document.getElementById('al-pl'); if (w2) w2.innerHTML = `<div class="mc-err">No se pudo leer: ${esc(e.message || e)}</div>`; }
 }
 window.mcPlCorre_ = async function (id) {
@@ -77220,10 +77232,10 @@ window.mcEnRadioGuardar_ = async function () {
   catch (e) { if (msg) msg.innerHTML = `<span class="mc-err">${esc(e.message || e)}</span>`; }
 };
 async function mcEnFicha_(id) {
-  const w = document.getElementById('al-en'); if (!w) return;
+  const w = document.getElementById('al-en'); if (!w) return; if (MC.ctx === 'fb' && (MC.items[id] || {}).lat == null) return;
   try { const j = await fetch(`${BACKEND}/mercado/airbnb/entorno/dato?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(r => r.json()); const w2 = document.getElementById('al-en'); if (!w2 || MC.al.id !== id) return;
     if (j.ok && j.entorno) w2.innerHTML = mcEnHtml_(j.entorno);
-    else { const it = MC.items[id] || {}; w2.innerHTML = `<div class="mc-mu" style="padding:6px 0">Este alojamiento aún no tiene análisis del entorno urbano.</div><div style="margin-top:8px"><button type="button" class="cl-bt" onclick="mcEnCorre_('${esc(id)}')" ${it.lat == null || (MC.en.job && MC.en.job.running) ? 'disabled' : ''}>🏙️ Analizar entorno con Street View (≈ $0.09)</button> <span class="mc-mu" style="font-size:11.5px">Toma ~10 fotos a ≤ 200 m, las califica con IA y guarda solo los puntajes.${it.lat == null ? ' Este alojamiento no tiene coordenadas.' : ''}</span></div>`; }
+    else { const it = MC.items[id] || {}; w2.innerHTML = `<div class="mc-mu" style="padding:6px 0">${MC.ctx === 'fb' ? 'Esta publicación' : 'Este alojamiento'} aún no tiene análisis del entorno urbano.</div><div style="margin-top:8px"><button type="button" class="cl-bt" onclick="mcEnCorre_('${esc(id)}')" ${it.lat == null || (MC.en.job && MC.en.job.running) ? 'disabled' : ''}>🏙️ Analizar entorno con Street View (≈ $0.09)</button> <span class="mc-mu" style="font-size:11.5px">Toma ~10 fotos a ≤ 200 m, las califica con IA y guarda solo los puntajes.${it.lat == null ? ' Este alojamiento no tiene coordenadas.' : ''}</span></div>`; }
   } catch (e) { const w2 = document.getElementById('al-en'); if (w2) w2.innerHTML = `<div class="mc-err">No se pudo leer el análisis del entorno: ${esc(e.message || e)}</div>`; }
 }
 window.mcEnCorre_ = async function (id) {
@@ -77352,7 +77364,7 @@ function mcMapaIniciar_() {
 // Puntos = alojamientos filtrados con coordenadas (en «Por anfitrión» con un anfitrión abierto, solo los suyos)
 function mcMapaPuntos_() {
   const A = mcAloData_(), S = MC.al, ids = MC.alIds; let rows = A.rows.filter(r => !ids || ids.has(r.id)); if (S.vista === 'host' && S.host) rows = rows.filter(r => r.hostId === S.host);
-  return rows.map(r => { const i = MC.items[r.id] || {}; return { id: r.id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || r.id, ev: r.ev }; }).filter(p => isFinite(p.lat) && isFinite(p.lng) && p.lat && p.lng);
+  return rows.map(r => { const i = MC.items[r.id] || {}; return { id: r.id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || r.id, ev: r.ev, tipo: i.tipo, sub: i.sub, m2: i.m2, op: i.op }; }).filter(p => isFinite(p.lat) && isFinite(p.lng) && p.lat && p.lng);
 }
 function mcMapaActualiza_(fit) {
   const m = MC.map.m; if (!m) return; const P = mcMapaPuntos_(), sig = P.length + '|' + (P[0] || {}).id + '|' + (P[P.length - 1] || {}).id; MC.map.pts = P;
@@ -77362,6 +77374,7 @@ function mcMapaActualiza_(fit) {
 }
 const mcMapaCoc_ = c => c === 'Sí' ? '🍳 Sí' : c === 'Compartida' ? '🍳 Comp.' : '🍳 No';
 function mcMapaPinHtml_(p, sel) {
+  if (MC.ctx === 'fb') return mcFbpPin_(p, sel);
   const hab = p.hab == null ? '?' : p.hab === 0 ? 'Est.' : p.hab;
   return `<div class="rsv-map-pin mc-pin ${sel ? 'sel' : ''}" data-id="${esc(p.id)}"><div class="im" style="background-image:url('${esc(mcImg_(p.foto, 240))}')">${p.sup ? '<i title="Superanfitrión">★</i>' : ''}</div><div><div class="t"><b>${mcOk_(p.precio) ? MCFMT(p.precio) : '—'}</b><span>★ ${mcOk_(p.cal) ? MCN(p.cal, 2) : '—'}</span></div><small>${hab} hab · ${p.camas == null ? '?' : p.camas} camas · ${p.banos == null ? '?' : p.banos} baños</small><small>${mcMapaCoc_(p.coc)}${p.sup ? ' · ★ Superanfitrión' : ''}</small></div></div>`;
 }
@@ -77389,7 +77402,7 @@ function mcMapaSpider_(idxs, centro) { // despliegue en araña (igual que el de 
   const onMove = ev => { const r = mapEl.getBoundingClientRect(), dx = ev.clientX - r.left - c.x, dy = ev.clientY - r.top - c.y; if (Math.sqrt(dx * dx + dy * dy) > R + 90) mcMapaSpiderCierra_(); }; mapEl.addEventListener('mousemove', onMove); MC.map._spC = () => mapEl.removeEventListener('mousemove', onMove);
 }
 // ── Sincronización pin ↔ tarjeta/tabla ──
-function mcMapaCardInfo_(p) { const w = document.getElementById('mc-mapinfo'); if (!w) return; if (!p) { w.innerHTML = ''; return; }
+function mcMapaCardInfo_(p) { const w = document.getElementById('mc-mapinfo'); if (!w) return; if (!p) { w.innerHTML = ''; return; } if (MC.ctx === 'fb') { w.innerHTML = mcFbpMapInfo_(p); return; }
   w.innerHTML = `<div class="al-mapcard"><img src="${esc(mcImg_(p.foto, 240))}" alt="" referrerpolicy="no-referrer"><div style="min-width:0"><b>${esc(p.titulo)}</b><small>👤 ${esc(p.host)}${p.sup ? ' · ★ Superanfitrión' : ''}</small><small>${mcOk_(p.precio) ? '<b style="display:inline;color:#0f766e">' + MCFMT(p.precio) + '</b> /noche · ' : ''}★ ${mcOk_(p.cal) ? MCN(p.cal, 2) : '—'} (${p.ev}) · ${p.hab === 0 ? 'Estudio' : (p.hab ?? '?') + ' hab'} · ${p.camas ?? '?'} camas · ${p.banos ?? '?'} baños · ${mcMapaCoc_(p.coc)}</small><button type="button" class="al-btn" onclick="mcAloIr_('${esc(p.hostId)}','${esc(p.id)}')">Ver ficha ↗</button></div></div>`; }
 function mcMapaMarcaSel_() { // recoloca la selección en los pines visibles
   const m = MC.map.m; if (!m) return; MC.map.mk.forEach((mk, k) => { if (String(k)[0] === 'c') return; const p = (MC.map.pts || []).find(x => x.id === k); if (!p) return; const esSel = MC.map.sel === p.id || (MC.map.selHost && p.hostId === MC.map.selHost); const el = mk.getElement(); const pin = el && el.querySelector('.mc-pin'); if (pin) pin.classList.toggle('sel', esSel); mk.setZIndexOffset(esSel ? 3000 : 0); });
@@ -77584,7 +77597,7 @@ const MCFB_DET = 'javascript:' + ('(async()=>{const TIT="extraer detalles";' + M
 if(!await conectar())return;
 const un=s=>{try{return JSON.parse('"'+s+'"')}catch(e){return s}},g=(h,re)=>{const x=h.match(re);return x?x[1]:null};
 const extrae=(html,it)=>{const doc=new DOMParser().parseFromString(html,'text/html'),m=k=>(doc.querySelector('meta[property="'+k+'"],meta[name="'+k+'"]')||{}).content||'',ld=[...doc.querySelectorAll('script[type="application/ld+json"]')].map(s=>{try{return JSON.parse(s.textContent)}catch(e){return null}}).filter(Boolean);doc.querySelectorAll('script,style,noscript').forEach(e=>e.remove());const text=W(doc.body?doc.body.textContent:'').slice(0,14000);
-const fb={titulo:un(g(html,/"marketplace_listing_title":"((?:[^"\\]|\\.)*)"/)||''),descripcion:un(g(html,/"redacted_description":\{"text":"((?:[^"\\]|\\.)*)"/)||''),ubicacion:un(g(html,/"location_text":\{"text":"((?:[^"\\]|\\.)*)"/)||''),precio:parseFloat(g(html,/"listing_price":\{[^}]*?"amount":"([\d.]+)"/)||'')||null,moneda:g(html,/"listing_price":\{[^}]*?"currency":"([A-Z]{3})"/),lat:parseFloat(g(html,/"latitude":(-?\d+\.\d+)/)||'')||null,lng:parseFloat(g(html,/"longitude":(-?\d+\.\d+)/)||'')||null,fotos:[...new Set((html.match(/"(?:uri|image_uri)":"(https:[^"]+scontent[^"]+)"/g)||[]).map(x=>un(x.replace(/^"(?:uri|image_uri)":"/,'').replace(/"$/,''))))].slice(0,20)};
+const fb={titulo:un(g(html,/"marketplace_listing_title":"((?:[^"\\]|\\.)*)"/)||''),descripcion:un(g(html,/"redacted_description":\{"text":"((?:[^"\\]|\\.)*)"/)||''),ubicacion:un(g(html,/"location_text":\{"text":"((?:[^"\\]|\\.)*)"/)||''),precio:parseFloat(g(html,/"listing_price":\{[^}]*?"amount":"([\d.]+)"/)||'')||null,moneda:g(html,/"listing_price":\{[^}]*?"currency":"([A-Z]{3})"/),geos:(()=>{const t=html.indexOf('"marketplace_listing_title"'),o=[],re=/"latitude":(-?\d+\.\d+),"longitude":(-?\d+\.\d+)/g;let m;while((m=re.exec(html))&&o.length<8)o.push([+m[1],+m[2],t<0?null:m.index-t]);return o})(),fotos:[...new Set((html.match(/"(?:uri|image_uri)":"(https:[^"]+scontent[^"]+)"/g)||[]).map(x=>un(x.replace(/^"(?:uri|image_uri)":"/,'').replace(/"$/,''))))].slice(0,20)};
 return{id:it.id,url:it.url,og:{t:m('og:title'),d:m('og:description'),i:m('og:image')},title:doc.title,ld,text,fb,estado:'ok'}};
 let n=0,totOk=0,totErr=0,bloq='',ronda=0,fin1='';
 const enviar=async(arr,nota)=>{if(!arr.length&&!nota)return;PV.postMessage({t:'detalle',n:++n,items:arr,nota:nota||''},OR);await esperar('ok',n,90000)};
@@ -77823,10 +77836,163 @@ window.mcFbReintentar_ = async function () { await fetch(`${BACKEND}/mercado/fac
 window.mcFbTexto_ = async function () { const u = (document.getElementById('fb-tu') || {}).value || '', t = (document.getElementById('fb-tt') || {}).value || '', m = document.getElementById('fb-tm'); if (m) m.textContent = '⏳ Estructurando…';
   try { const j = await fetch(`${BACKEND}/mercado/facebook/texto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: u, texto: t }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); await mcFbCargar_(); mcFbPintar_(); const m2 = document.getElementById('fb-tm'); if (m2) m2.textContent = '✓ Ficha guardada'; }
   catch (e) { if (m) m.innerHTML = `<span class="mc-err">⚠ ${esc(e.message || e)}</span>`; } };
+// ═══════════════════════════════════════════════════════════════════════════
+// 📣 Publicaciones Facebook (v2222): réplica de «Alojamientos» con las fichas extraídas de Marketplace.
+// Cambia el contexto de datos (MC.items/lista/fl/al/map/…) y reutiliza las mismas vistas, filtros, mapa, galería, Entorno urbano y Negocios en 1 km.
+// ═══════════════════════════════════════════════════════════════════════════
+const MCCTX_KEYS = ['items', 'lista', 'cl', 'en', 'pl', 'al', 'fl', 'map', '_alD', '_fd', '_hr', '_fotos', 'alIds', 'alFiltroOn', 'propios', 'ownHosts', 'act'];
+function mcFbpNuevo_() {
+  const pl = Object.assign({}, MC.pl, { rec: null, et: {}, ix: {}, iso: null, job: null, open: null, sel: null, g: '', q: '', n: 40, _m: null, _mk: [] });
+  return { items: {}, lista: [], cl: { ix: {}, cfg: { pA: 85, pC: 30 }, est: null, f: { nivel: '', nicho: '', q: '', ord: 'indice' } }, en: { ix: {}, job: null }, pl,
+    al: { host: null, id: null, q: '', ord: 'n', filt: 'todos', pag: 48, sp: '', k: 0, vista: 'alo', ordA: 'precio', pagA: 48, flAb: true, mapa: false },
+    fl: { ent: new Set(), camp: new Set(), huesp: new Set(), tipo: new Set(), sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), cat: new Set(), sub: new Set(), op: new Set(), amu: new Set(), est: new Set(), rg: {} },
+    map: { m: null, mk: new Map(), sel: null, selHost: null, sig: '', pts: [], clusters: [] }, _alD: null, _fd: null, _hr: null, _fotos: {}, alIds: null, alFiltroOn: false, propios: null, ownHosts: new Set(), act: '' };
+}
+function mcCtx_(n, keep) {
+  const cur = MC.ctx || 'air'; if (cur === n) return; if (!keep) { try { if (MC.map && MC.map.m) mcMapaDestruye_(); } catch (_) {} }
+  const S = MC._ctxS = MC._ctxS || {}; S[cur] = {}; MCCTX_KEYS.forEach(k => { S[cur][k] = MC[k]; }); if (!S[n]) S[n] = mcFbpNuevo_();
+  MCCTX_KEYS.forEach(k => { MC[k] = S[n][k]; }); MC.ctx = n;
+}
+const mcFbSlug_ = t => mcFbNorm_(t).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'sin-nombre';
+// Facebook mezcla en la ficha la foto de perfil del publicante (PNG pequeño, varias medidas) con las fotos reales: se descartan y se quitan duplicados.
+function mcFbpFotos_(arr) {
+  const seen = new Set(), out = []; (arr || []).forEach(f => { const u = String((f && f.url) || ''); if (!u || /\.png(\?|$)/i.test(u) || /\/t1\.30497-1\/|\/t39\.30808-1\//.test(u) || /[?&]ctp=s\d{2,3}x\d{2,3}(&|$)/.test(u)) return; const k = u.split('?')[0]; if (seen.has(k)) return; seen.add(k); out.push(u); }); return out;
+}
+function mcFbpDatos_() {
+  const I = MC.fb.items || {}, LX = {}; (MC.fb.lista || []).forEach(x => { LX[x.id] = x; }); const items = {}, lista = [], FQ = {};
+  const FL = {}; Object.values(I).forEach(p => { FL[p.id] = mcFbpFotos_(p.fotos); new Set(FL[p.id].map(u => u.split('?')[0])).forEach(k => { FQ[k] = (FQ[k] || 0) + 1; }); }); // una foto que aparece en varias publicaciones es de «publicaciones sugeridas», no de esta
+  Object.values(I).forEach(p => {
+    const x = LX[p.id] || { id: p.id, titulo: p.titulo, precio: p.precio ? 'MX$' + p.precio : '' }, c = mcFbClas_(x), nom = String(p.contacto_nombre || '').trim(), fotos = (FL[p.id] || []).filter(u => FQ[u.split('?')[0]] < 2), geo = p.lat != null && p.lng != null && p.geo;
+    items[p.id] = { id: p.id, extraido: p.extraido || '1', hostId: 'fb-' + (nom ? mcFbSlug_(nom) : 'sin-nombre'), anfitrion: nom || 'Sin nombre', titulo: p.titulo || x.titulo || p.id, url: p.url_origen || x.url, tipo: c.c, sub: c.s, op: c.o, ciudad: p.ciudad || '', estado: p.estado || '', ubicacion: [p.colonia, p.ciudad].filter(Boolean).join(', '), direccion: p.direccion || '', colonia: p.colonia || '', cp: p.cp || '',
+      habitaciones: p.recamaras ?? null, banos: p.banos ?? null, medios: p.medios_banos ?? null, m2: p.m2_construccion ?? null, m2t: p.m2_terreno ?? null, estac: p.estacionamientos ?? null, amueblado: p.amueblado == null ? null : !!p.amueblado, amenidades: p.amenidades || [], nAmenidades: (p.amenidades || []).length, descripcion: p.descripcion || '',
+      foto: fotos[0] || x.thumb || '', fotos: fotos.length, fotosL: fotos.length ? fotos : (x.thumb ? [x.thumb] : []), lat: geo ? p.lat : null, lng: geo ? p.lng : null, geoPrec: geo ? p.geo.prec : '', geoQ: geo ? p.geo.q : '', contacto: nom, tel: p.contacto_tel || '', publicada: p.publicada || '', cat: {}, _fb: true };
+    lista.push({ id: p.id, url: p.url_origen, tipoBusq: c.c, precioNoche: p.precio > 0 ? p.precio : null });
+  });
+  return { items, lista };
+}
+async function mcFbpPrep_() {
+  if (!MC.fb.cargado) await mcFbCargar_(); if (MC.ctx !== 'fb') return;
+  const D = mcFbpDatos_(); MC.items = D.items; MC.lista = D.lista; MC.act = 'fb|' + Object.keys(D.items).length + '|' + (MC._fbpRev = (MC._fbpRev || 0) + 1); MC._alD = null; MC._fd = null; MC._hr = null;
+  try { const [a, b] = await Promise.all([fetch(`${BACKEND}/mercado/airbnb/entorno/indice`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({})), fetch(`${BACKEND}/mercado/airbnb/lugares/indice`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({}))]); if (MC.ctx !== 'fb') return; if (a.ok) MC.en.ix = a.indice || {}; if (b.ok) MC.pl.ix = b.indice || {}; } catch (_) {}
+}
+window.mcFbpUbicar_ = async function (id) {
+  const b = document.getElementById('fbp-ub'); if (b) { b.disabled = true; b.textContent = '⏳ Buscando la ubicación…'; }
+  try { const j = await fetch(`${BACKEND}/mercado/facebook/ubicar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [id], forzar: true }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); await mcFbCargar_(); await mcFbpPrep_(); mcAloPintar_(); const i = MC.items[id] || {}; if (i.lat == null) { const m = document.getElementById('fbp-ub-m'); if (m) m.textContent = 'No se encontró una ubicación precisa con los datos de la ficha (falta dirección, colonia o código postal).'; } }
+  catch (e) { if (b) { b.disabled = false; b.textContent = '📍 Intentar ubicar con la dirección'; } const m = document.getElementById('fbp-ub-m'); if (m) m.textContent = '⚠ ' + (e.message || e); }
+};
+const mcFbpPrecio_ = (r, i) => mcOk_(r.precio) ? MCFMT(r.precio) + (i.op === 'Venta' ? '' : ' <small style="display:inline">/mes</small>') : '—';
+function mcFbpCard_(h, r, showHost) {
+  const i = MC.items[r.id] || {}, sp = [i.habitaciones != null ? (i.habitaciones === 0 ? 'Monoambiente' : i.habitaciones + ' rec.') : '', i.banos != null ? i.banos + ' baños' : '', i.m2 ? i.m2 + ' m²' : '', i.estac ? i.estac + ' est.' : ''].filter(Boolean).join(' · '), pm2 = i.m2 > 0 && r.precio > 0 ? r.precio / i.m2 : null;
+  return `<button type="button" class="al-lc" data-id="${r.id}" onclick="mcAloCardClk_('${h.id}','${r.id}')" ondblclick="mcAloIr_('${h.id}','${r.id}')"><div class="al-cv"><img loading="lazy" src="${esc(mcImg_(i.foto, 560))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"><div class="al-bg"><span class="al-bd b">${esc(i.tipo)}</span><span class="al-bd ${i.op === 'Venta' ? '' : 'g'}">${esc(i.op)}</span>${i.amueblado ? '<span class="al-bd">Amueblado</span>' : ''}</div></div>
+    <div class="al-lb"><h4>${esc(i.titulo || r.id)}</h4><small>${esc(i.sub)}${i.ciudad ? ' · ' + esc(i.ciudad) : ''}</small>${MC.en.ix[r.id] ? `<div style="margin:4px 0;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${mcEnChip_(r.id)}</div>` : ''}<small>${esc(sp) || '&nbsp;'}</small>${showHost ? `<small style="margin-top:2px">👤 ${esc(r.host)}</small>` : ''}
+    <div class="al-r"><span><b>${mcOk_(r.precio) ? MCFMT(r.precio) : '—'}</b> <small style="display:inline">${i.op === 'Venta' ? '' : '/mes'}</small></span><span>${pm2 ? `<b style="font-size:13px">${MCFMT(pm2)}</b> <small style="display:inline">/m²</small>` : ''}</span></div>
+    <small style="margin-top:6px">${i.lat != null ? '📍 Con ubicación' : 'Sin ubicación precisa'}${i.publicada ? ' · publicada ' + esc(mcF(String(i.publicada).slice(0, 10))) : ''}</small></div></button>`;
+}
+function mcFbpListaHtml_(L) {
+  const S = MC.al, ords = { precio: 'Precio', pm2: 'Precio por m²', m2: 'Superficie', hab: 'Recámaras', rec: 'Más recientes' }, k = ords[S.ordA] ? S.ordA : 'precio';
+  const val = r => { const i = MC.items[r.id] || {}; return k === 'precio' ? r.precio : k === 'pm2' ? (i.m2 > 0 && r.precio > 0 ? r.precio / i.m2 : null) : k === 'm2' ? i.m2 : k === 'hab' ? r.hab : (Date.parse(i.publicada || i.extraido || '') || null); };
+  const M = L.slice().sort((a, b) => (mcOk_(val(b)) ? val(b) : -1) - (mcOk_(val(a)) ? val(a) : -1)); MC.al._M = M;
+  return `<div class="al-bar"><select class="mc-in" onchange="MC.al.ordA=this.value;mcAloCuerpo_()">${Object.entries(ords).map(([x, t]) => `<option value="${x}" ${k === x ? 'selected' : ''}>Ordenar: ${t}</option>`).join('')}</select></div>
+    <div class="al-grid" id="al-grid">${M.slice(0, S.pagA).map(r => mcFbpCard_({ id: r.hostId }, r, true)).join('') || '<div class="mc-mu">Ninguna publicación coincide con los filtros.</div>'}</div>
+    ${M.length > S.pagA ? `<div id="al-sent" data-k="alo" class="al-sent">Cargando más… (${M.length - S.pagA} restantes)</div>` : ''}`;
+}
+// ── Filtros (mismos controles que Alojamientos) ──
+const mcFbpVal_ = (k, r) => { const i = MC.items[r.id] || {}; if (k === 'cat') return i.tipo || '?'; if (k === 'sub') return (i.tipo || '?') + '|' + (i.sub || '—'); if (k === 'op') return i.op || 'Renta'; if (k === 'hab') return MCFL_CAT.hab(r); if (k === 'banos') return MCFL_CAT.banos(r); if (k === 'amu') return i.amueblado == null ? '?' : i.amueblado ? 'Sí' : 'No'; if (k === 'est') return i.estac > 0 ? 'Sí' : 'No'; if (k === 'ciudad') return i.ciudad || 'Sin ciudad'; if (k === 'ent') return mcFlVal_('ent', r); return ''; };
+function mcFbpDom_() {
+  const A = mcAloData_(); if (MC._fd && MC._fd.rows === A.rows) return MC._fd; const ext = v => { v = v.filter(x => mcOk_(x) && x > 0).sort((a, b) => a - b); if (!v.length) return [0, 1]; const hi = mcsQ(v, .98), st = hi > 2e6 ? 50000 : hi > 2e5 ? 5000 : hi > 5000 ? 100 : 10; return [0, Math.max(Math.ceil(hi / st) * st, st)]; };
+  const ciudades = {}; A.rows.forEach(r => { const c = (MC.items[r.id] || {}).ciudad || 'Sin ciudad'; ciudades[c] = (ciudades[c] || 0) + 1; });
+  return MC._fd = { rows: A.rows, precio: ext(A.rows.map(r => r.precio)), m2: ext(A.rows.map(r => (MC.items[r.id] || {}).m2)), pxh: [0, 1], cal: [0, 5], ciudades: Object.entries(ciudades).sort((a, b) => b[1] - a[1]) };
+}
+function mcFbpPasa_(r) {
+  const F = MC.fl, D = mcFbpDom_(); for (const k of ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad']) if (F[k].size && !F[k].has(mcFbpVal_(k, r))) return false;
+  for (const k of ['precio', 'm2']) if (mcFlRgOn_(k)) { const [lo, hi] = mcFlRg_(k), v = k === 'm2' ? (MC.items[r.id] || {}).m2 : r.precio; if (!mcOk_(v) || v < lo || (hi < D[k][1] && v > hi)) return false; }
+  return true;
+}
+function mcFbpSide_(D, n) {
+  const ks = ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad'], cnt = {}; ks.forEach(k => cnt[k] = {}); D.rows.forEach(r => { ks.forEach(k => { const v = mcFbpVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; }); });
+  const top = k => Object.entries(cnt[k]).sort((a, b) => b[1] - a[1]), sec = (t, body, open, k) => `<details class="fs-sec" ${open ? 'open' : ''}><summary>${t}${k && MC.fl[k] && MC.fl[k].size ? `<b>${MC.fl[k].size}</b>` : ''}</summary><div class="fs-bd">${body}</div></details>`, sl = (k, t) => sec(t, mcFlSlider_(k, '', mcFlFmt_[k]), true);
+  const opts = { cat: top('cat').map(([v]) => [v, v]), sub: Object.keys(cnt.sub).sort().map(v => [v, v.replace('|', ' › ')]), op: [['Renta', 'Renta'], ['Venta', 'Venta']], hab: MCFL_OPT.hab.concat([['?', 'Sin dato']]), banos: MCFL_OPT.banos.concat([['?', 'Sin dato']]), amu: [['Sí', 'Amueblado'], ['No', 'Sin amueblar'], ['?', 'Sin dato']], est: [['Sí', 'Con estacionamiento'], ['No', 'Sin estacionamiento']], ent: MCFL_OPT.ent, ciudad: top('ciudad').slice(0, 14).map(([v]) => [v, v]) };
+  return `<div class="fs-hd"><span>Filtros</span><button type="button" onclick="mcAloFlReset_()" style="${n ? '' : 'visibility:hidden'}">Borrar todo</button></div>
+    ${sec('Tipo (categoría)', mcFlChecks_('cat', opts.cat, cnt), true, 'cat')}${sec('Subcategoría', mcFlChecks_('sub', opts.sub, cnt), true, 'sub')}${sec('Operación', mcFlChecks_('op', opts.op, cnt), true, 'op')}
+    ${sl('precio', '💲 Precio')}${sl('m2', '📐 Superficie construida')}
+    ${sec('Recámaras', mcFlChecks_('hab', opts.hab, cnt), true, 'hab')}${sec('Baños', mcFlChecks_('banos', opts.banos, cnt), false, 'banos')}${sec('Amueblado', mcFlChecks_('amu', opts.amu, cnt), false, 'amu')}${sec('Estacionamiento', mcFlChecks_('est', opts.est, cnt), false, 'est')}
+    ${sec('Análisis del entorno urbano', mcFlChecks_('ent', opts.ent, cnt), true, 'ent')}${sec('Ciudad', mcFlChecks_('ciudad', opts.ciudad, cnt), false, 'ciudad')}`;
+}
+// ── Publicantes (equivalente a «Por anfitrión») ──
+function mcFbpHostCard_(h) {
+  const cov = h.L.map(r => (MC.items[r.id] || {}).foto).filter(Boolean).slice(0, 4), m2 = h.L.map(r => (MC.items[r.id] || {}).m2).filter(mcOk_), tel = (MC.items[h.L[0].id] || {}).tel;
+  return `<button type="button" class="al-hc" data-hid="${h.id}" onclick="mcAloHostClk_('${h.id}')" ondblclick="mcAloIr_('${h.id}')"><div class="al-hct">${mcAloAv_(h.host, '', 52)}<div><b>${esc(h.host)}</b><small>${tel ? esc(tel) : 'Publicante en Marketplace'}</small></div></div>
+    <div class="al-mos">${Array.from({ length: 4 }, (_, k) => cov[k] ? `<img loading="lazy" src="${esc(mcImg_(cov[k], 200))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : '<i></i>').join('')}</div>
+    <div class="al-st"><span><b>${h.n}</b>public.</span><span><b>${mcOk_(h.precio) ? MCFMT(h.precio) : '—'}</b>precio mediano</span><span><b>${m2.length ? Math.round(mcAvg_(m2)) : '—'}</b>m² medios</span><span><b>${mcOk_(h.hab) ? MCN(h.hab, 1) : '—'}</b>rec. medias</span></div></button>`;
+}
+function mcFbpDirHtml_(hs) {
+  const S = MC.al, q = mcNormN_(S.q), ords = { n: 'Nº de publicaciones', precio: 'Precio mediano', host: 'Nombre (A–Z)' }, ord = ords[S.ord] ? S.ord : 'n';
+  let L = hs.filter(h => !q || mcNormN_(h.host).includes(q) || h.L.some(r => mcNormN_(r.titulo).includes(q)));
+  L = L.slice().sort((a, b) => ord === 'host' ? a.host.localeCompare(b.host, 'es') : (mcOk_(b[ord]) ? b[ord] : -1) - (mcOk_(a[ord]) ? a[ord] : -1)); MC.al._L = L;
+  return `<div class="al-bar"><input class="mc-in al-q" placeholder="🔎 Buscar publicante o publicación…" value="${esc(S.q)}" oninput="MC.al.q=this.value;MC.al.pag=48;mcAloDirRe_(this)"><select class="mc-in" onchange="MC.al.ord=this.value;mcAloCuerpo_()">${Object.entries(ords).map(([k, t]) => `<option value="${k}" ${ord === k ? 'selected' : ''}>Ordenar: ${t}</option>`).join('')}</select></div>
+    <div class="al-grid" id="al-dir">${L.slice(0, S.pag).map(mcFbpHostCard_).join('') || '<div class="mc-mu">Ningún publicante coincide.</div>'}</div>
+    ${L.length > S.pag ? `<div id="al-sent" data-k="host" class="al-sent">Cargando más… (${L.length - S.pag} restantes)</div>` : ''}`;
+}
+function mcFbpHostHtml_(h) {
+  const A = MC._alD, mk = A.rows.length ? mcHMet_(A.rows) : {}, i0 = MC.items[h.L[0].id] || {}, dl = (a, b, f) => mcOk_(a) && mcOk_(b) && b ? `<small class="${a >= b ? 'up' : 'dn'}">${a >= b ? '▲' : '▼'} ${f(a, b)} vs mercado</small>` : '';
+  const m2 = h.L.map(r => (MC.items[r.id] || {}).m2).filter(mcOk_), kp = [[h.n, 'publicaciones en tu lista', ''], [mcOk_(h.precio) ? MCFMT(h.precio) : '—', 'precio mediano', dl(h.precio, mk.precio, (a, b) => (a >= b ? '+' : '') + MCN((a / b - 1) * 100, 0) + '%')], [m2.length ? Math.round(mcAvg_(m2)) + ' m²' : '—', 'superficie media', ''], [mcOk_(h.hab) ? MCN(h.hab, 1) : '—', 'recámaras medias', ''], [h.L.filter(r => (MC.items[r.id] || {}).lat != null).length, 'con ubicación precisa', '']];
+  const L = h.L.slice().sort((a, b) => (b.precio ?? -1) - (a.precio ?? -1));
+  return `<div class="al-bc"><button type="button" onclick="mcAloIr_()">📣 Publicaciones Facebook</button><span>›</span><b>${esc(h.host)}</b></div>
+    <div class="al-hero">${mcAloAv_(h.host, '', 110)}<div><h2>${esc(h.host)}</h2><div style="font-size:13px;color:#a7f3d0">${h.n} publicación${h.n === 1 ? '' : 'es'} en tu lista${i0.tel ? ' · ' + esc(i0.tel) : ''}</div></div></div>
+    <div class="al-kp">${kp.map(([v, t, d]) => `<div><b>${esc(String(v))}</b><span>${t}</span>${d}</div>`).join('')}</div>
+    <div class="al-bc"><b>Publicaciones de ${esc(h.host)}</b><span>· ${h.L.length}${h._total && h._total !== h.L.length ? ' de ' + h._total + ' (filtradas)' : ''}</span></div>
+    <div class="al-grid">${L.map(r => mcFbpCard_(h, r)).join('')}</div>`;
+}
+// ── Ficha de la publicación ──
+function mcFbpDet_(h, r) {
+  const i = MC.items[r.id] || {}, ex = (a, b) => `<div><small>${a}</small><b>${b == null || b === '' ? '—' : esc(String(b))}</b></div>`, am = mcAloAmen_(i.amenidades), pm2 = i.m2 > 0 && r.precio > 0 ? r.precio / i.m2 : null, geo = i.lat != null && i.lng != null && isFinite(+i.lat) && isFinite(+i.lng);
+  const fx = [[i.habitaciones === 0 ? 'Mono.' : i.habitaciones, 'recámaras'], [i.banos, 'baños'], [i.m2, 'm² constr.'], [i.estac, 'estac.'], [i.amueblado == null ? null : i.amueblado ? 'Sí' : 'No', 'amueblado'], [i.fotos, 'fotos']], pre = i.geoPrec === 'facebook' ? 'aproximada, de la ficha de Facebook' : i.geoPrec ? 'calculada con la dirección (' + i.geoPrec + ')' : '';
+  const sinGeo = (t) => `<div class="mc-mu" style="padding:6px 0">${t} necesita una coordenada precisa y esta publicación no la tiene (la ficha no trae dirección, colonia ni código postal que se pueda ubicar).</div><div style="margin-top:8px"><button type="button" class="cl-bt" id="fbp-ub" onclick="mcFbpUbicar_('${esc(r.id)}')">📍 Intentar ubicar con la dirección</button> <span class="mc-mu" style="font-size:11.5px" id="fbp-ub-m"></span></div>`;
+  return `<div class="al-bc"><button type="button" onclick="mcAloIr_()">📣 Publicaciones Facebook</button><span>›</span><button type="button" onclick="mcAloHostIr_('${h.id}')">${esc(h.host)}</button><span>›</span><b>${esc(i.titulo || r.id)}</b></div>
+    <div class="al-det"><div class="al-gal"><div id="al-gal"><div class="al-sk" style="aspect-ratio:16/10"></div></div></div>
+    <aside class="al-side"><div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"><span class="al-bd b">${esc(i.tipo)}</span><span class="al-bd">${esc(i.sub)}</span><span class="al-bd ${i.op === 'Venta' ? '' : 'g'}">${esc(i.op)}</span>${i.amueblado ? '<span class="al-bd">Amueblado</span>' : ''}</div>
+      <h3>${esc(i.titulo || r.id)}</h3><div class="loc">📍 ${esc(i.direccion || i.ubicacion || i.ciudad || '')}</div>
+      <div class="al-price"><b>${mcOk_(r.precio) ? MCFMT(r.precio) : '—'}</b><span>${i.op === 'Venta' ? 'precio de venta' : 'renta mensual'}</span>${pm2 ? `<div>${MCFMT(pm2)} por m²</div>` : ''}${mcOk_(r.pxh) && r.hab > 1 ? `<div>${MCFMT(r.pxh)} por recámara</div>` : ''}${i.publicada ? `<div>Publicada ${esc(mcF(String(i.publicada).slice(0, 10)))}</div>` : ''}</div>
+      <div class="al-fx">${fx.map(([v, t]) => `<div><b>${v == null || v === '' ? '—' : esc(String(v))}</b><span>${t}</span></div>`).join('')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="al-btn" href="${esc(i.url || 'https://www.facebook.com/marketplace/item/' + r.id + '/')}" target="_blank" rel="noopener">Abrir en Facebook ↗</a>${geo ? `<a class="al-btn sec" href="https://www.google.com/maps?q=${i.lat},${i.lng}" target="_blank" rel="noopener">📍 Mapa</a>` : ''}</div>
+      <div class="al-hm" onclick="mcAloHostIr_('${h.id}')">${mcAloAv_(h.host, '', 44)}<div><b>${esc(h.host)}</b><small>${h.n} publicación${h.n === 1 ? '' : 'es'}${i.tel ? ' · ' + esc(i.tel) : ''} — ver publicante</small></div></div>
+      ${geo ? `<div class="al-mp"><div id="al-dmap" aria-label="Mapa de ubicación"></div><small>Ubicación ${esc(pre)}</small></div>` : ''}</aside></div>
+    <div class="al-secs">
+      <div class="al-card"><h5>🏠 Características</h5><div class="al-fs">${ex('Tipo', i.tipo)}${ex('Subcategoría', i.sub)}${ex('Operación', i.op)}${ex('Recámaras', i.habitaciones === 0 ? 'Monoambiente' : i.habitaciones)}${ex('Baños', i.banos)}${ex('Medios baños', i.medios)}${ex('Estacionamientos', i.estac)}${ex('Superficie construida', i.m2 ? i.m2 + ' m²' : '')}${ex('Superficie de terreno', i.m2t ? i.m2t + ' m²' : '')}${ex('Amueblado', i.amueblado == null ? '' : i.amueblado ? 'Sí' : 'No')}${ex('Amenidades', i.nAmenidades)}${ex('Fotos', i.fotos)}${ex('ID de Marketplace', r.id)}${ex('Publicada', i.publicada ? mcF(String(i.publicada).slice(0, 10)) : '')}</div></div>
+      <div class="al-card"><h5>💲 Precio</h5><div class="al-fs">${ex(i.op === 'Venta' ? 'Precio de venta' : 'Renta mensual', mcOk_(r.precio) ? MCFMT(r.precio) : '')}${ex('Por m² construido', pm2 ? MCFMT(pm2) : '')}${ex('Por recámara', mcOk_(r.pxh) && r.hab > 1 ? MCFMT(r.pxh) : '')}${ex('Mercado (mediana)', (() => { const v = mcHMet_(MC._alD.rows).precio; return mcOk_(v) ? MCFMT(v) : ''; })())}</div></div>
+      ${am.length ? `<div class="al-card w"><h5>🧰 Amenidades (${i.nAmenidades})</h5><div class="al-am">${am.map(([g, v]) => `<div><h6>${g}</h6>${v.map(a => `<span>${esc(a)}</span>`).join('')}</div>`).join('')}</div></div>` : ''}
+      <div class="al-card"><h5>📍 Ubicación</h5><div class="al-fs">${ex('Dirección', i.direccion)}${ex('Colonia', i.colonia)}${ex('Código postal', i.cp)}${ex('Ciudad', i.ciudad)}${ex('Estado', i.estado)}${ex('Coordenadas', geo ? `${Number(i.lat).toFixed(5)}, ${Number(i.lng).toFixed(5)}` : '')}${ex('Precisión', geo ? pre : 'Sin coordenada precisa')}</div></div>
+      <div class="al-card"><h5>👤 Publicante</h5><div class="al-fs">${ex('Nombre', i.contacto || 'Sin nombre')}${ex('Teléfono', i.tel)}${ex('Publicaciones en tu lista', h.n)}</div></div>
+      ${i.descripcion ? `<div class="al-card w"><h5>📝 Descripción</h5><div class="al-tx">${esc(String(i.descripcion).trim())}</div></div>` : ''}
+      <div class="al-card w"><h5>🏙️ Análisis del entorno urbano <span class="al-bd" style="font-weight:700">opcional</span> <button type="button" class="en-q" onclick="mcEnAyuda_()" title="Glosario, metodología y radio de análisis" aria-label="Glosario y metodología">?</button></h5><div id="al-en">${geo ? '<div class="al-sk" style="height:90px"></div>' : sinGeo('El análisis con Street View')}</div></div>
+      <div class="al-card w"><h5>🏪 Negocios y establecimientos en 1 km <span class="al-bd" style="font-weight:700">opcional</span> <small style="font-weight:600;color:#94a3b8">(Google Places)</small></h5><div id="al-pl">${geo ? '<div class="al-sk" style="height:90px"></div>' : sinGeo('La búsqueda de negocios')}</div></div>
+    </div>`;
+}
+// ── Tabla (equivalente a «Tabla») ──
+window.mcFbpSort_ = function (k) { const t = MC.al.tsort || (MC.al.tsort = { k: 'precio', d: -1 }); if (t.k === k) t.d = -t.d; else { t.k = k; t.d = k === 'titulo' || k === 'tipo' || k === 'sub' || k === 'ciudad' || k === 'host' ? 1 : -1; } mcAloCuerpo_(); };
+const mcFbpCols_ = [['titulo', 'Publicación', (r, i) => i.titulo || r.id], ['tipo', 'Tipo', (r, i) => i.tipo], ['sub', 'Subcategoría', (r, i) => i.sub], ['op', 'Operación', (r, i) => i.op], ['precio', 'Precio', r => r.precio], ['hab', 'Rec.', r => r.hab], ['banos', 'Baños', r => r.banos], ['m2', 'm²', (r, i) => i.m2], ['pm2', '$/m²', (r, i) => i.m2 > 0 && r.precio > 0 ? r.precio / i.m2 : null], ['estac', 'Est.', (r, i) => i.estac], ['ciudad', 'Ciudad', (r, i) => i.ciudad], ['host', 'Publicante', r => r.host]];
+function mcFbpTabla_(L) {
+  const h = document.getElementById('mc-res'); if (!h) return; const t = MC.al.tsort || (MC.al.tsort = { k: 'precio', d: -1 }), col = mcFbpCols_.find(c => c[0] === t.k) || mcFbpCols_[4];
+  const R = (L || mcAloFiltradas_()).slice().sort((a, b) => { const x = col[2](a, MC.items[a.id] || {}), y = col[2](b, MC.items[b.id] || {}); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'string' ? x.localeCompare(y, 'es') : x - y) * t.d; }); MC.al._T = R;
+  const f = v => v == null || v === '' ? '—' : esc(String(v)), cel = (c, r, i) => { const v = c[2](r, i); return c[0] === 'precio' ? (mcOk_(v) ? MCFMT(v) : '—') : c[0] === 'pm2' ? (v ? MCFMT(v) : '—') : c[0] === 'm2' ? (v ? Math.round(v) : '—') : f(v); };
+  h.innerHTML = `<div class="mc-pane"><div class="mc-ph">📋 Publicaciones <span class="mc-mu">(${R.length})</span><span style="flex:1"></span><button type="button" class="mc-btn" onclick="mcFbpCsv_()">⬇ CSV</button></div><div class="mc-sc"><table class="mc-tb"><thead><tr><th></th>${mcFbpCols_.map(c => `<th class="srt ${t.k === c[0] ? 'on' : ''}" onclick="mcFbpSort_('${c[0]}')" title="Ordenar">${esc(c[1])}<i>${t.k === c[0] ? (t.d === 1 ? '▲' : '▼') : '↕'}</i></th>`).join('')}<th>Entorno</th><th></th></tr></thead>
+    <tbody>${R.slice(0, 400).map(r => { const i = MC.items[r.id] || {}; return `<tr data-id="${esc(r.id)}" onclick="if(MC.al.mapa&&MC.map.m){mcFilaClk_(event,'${esc(r.id)}')}" ondblclick="mcAloIr_('${esc(r.hostId)}','${esc(r.id)}')"><td><div class="mc-ti"><img loading="lazy" src="${esc(mcImg_(i.foto, 240))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"></div></td>${mcFbpCols_.map(c => c[0] === 'titulo' ? `<td><b style="font-size:12px;display:block;max-width:260px;overflow:hidden;text-overflow:ellipsis">${esc(i.titulo || r.id)}</b></td>` : `<td>${cel(c, r, i)}</td>`).join('')}<td>${mcEnChip_(r.id) || '—'}</td><td><button type="button" class="mc-btn" onclick="mcAloIr_('${esc(r.hostId)}','${esc(r.id)}')">Ficha ↗</button></td></tr>`; }).join('')}</tbody></table></div>${R.length > 400 ? `<div class="mc-mu" style="padding:8px 12px">Se muestran las primeras 400 de ${R.length}; usa los filtros para acotar.</div>` : ''}</div>`;
+}
+window.mcFbpCsv_ = function () {
+  const R = MC.al._T || [], q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`, rows = [['ID', 'URL'].concat(mcFbpCols_.map(c => c[1])).concat(['Latitud', 'Longitud'])].concat(R.map(r => { const i = MC.items[r.id] || {}; return [r.id, i.url].concat(mcFbpCols_.map(c => c[2](r, i))).concat([i.lat, i.lng]); }));
+  const blob = new Blob(['﻿' + rows.map(x => x.map(q).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'publicaciones-facebook.csv'; document.body.appendChild(a); a.click(); a.remove();
+};
+// ── Mapa ──
+function mcFbpPin_(p, sel) {
+  return `<div class="rsv-map-pin mc-pin ${sel ? 'sel' : ''}" data-id="${esc(p.id)}"><div class="im" style="background-image:url('${esc(mcImg_(p.foto, 240))}')"></div><div><div class="t"><b>${mcOk_(p.precio) ? MCFMT(p.precio) : '—'}</b><span>${esc(p.tipo || '')}</span></div><small>${p.hab == null ? '?' : p.hab === 0 ? 'Mono.' : p.hab} rec · ${p.banos == null ? '?' : p.banos} baños${p.m2 ? ' · ' + Math.round(p.m2) + ' m²' : ''}</small><small>${esc(p.sub || '')}</small></div></div>`;
+}
+function mcFbpMapInfo_(p) {
+  return `<div class="al-mapcard"><img src="${esc(mcImg_(p.foto, 240))}" alt="" referrerpolicy="no-referrer"><div style="min-width:0"><b>${esc(p.titulo)}</b><small>👤 ${esc(p.host)} · ${esc(p.tipo || '')} › ${esc(p.sub || '')}</small><small>${mcOk_(p.precio) ? '<b style="display:inline;color:#0f766e">' + MCFMT(p.precio) + '</b>' + (p.op === 'Venta' ? '' : ' /mes') + ' · ' : ''}${p.hab === 0 ? 'Monoambiente' : (p.hab ?? '?') + ' rec'} · ${p.banos ?? '?'} baños${p.m2 ? ' · ' + Math.round(p.m2) + ' m²' : ''}</small><button type="button" class="al-btn" onclick="mcAloIr_('${esc(p.hostId)}','${esc(p.id)}')">Ver ficha ↗</button></div></div>`;
+}
 function mcRender_() {
   const root = document.getElementById('mc-root'); if (!root) return;
   root.innerHTML = `<div class="mc-hero" style="position:relative"><button type="button" class="mc-help" onclick="mcAyuda_()" title="Cómo se definen Disponible, Reserva probable, Bloqueo probable e Indeterminado" aria-label="Ayuda: criterios del calendario">?</button><h2>📈 Investigación de mercados</h2><small>Compara tu oferta con la competencia: datos públicos de cada publicación y su calendario de disponibilidad.</small></div>
-    <div class="mc-tabs"><button type="button" class="mc-tab" data-s="ext" onclick="mcSec_('ext')">📥 Extracción</button><button type="button" class="mc-tab" data-s="dash" onclick="mcSec_('dash')">📊 Dashboard</button><button type="button" class="mc-tab" data-s="alo" onclick="mcSec_('alo')">🏘️ Alojamientos</button></div>
+    <div class="mc-tabs"><button type="button" class="mc-tab" data-s="ext" onclick="mcSec_('ext')">📥 Extracción</button><button type="button" class="mc-tab" data-s="dash" onclick="mcSec_('dash')">📊 Dashboard</button><button type="button" class="mc-tab" data-s="alo" onclick="mcSec_('alo')">🏘️ Alojamientos</button><button type="button" class="mc-tab" data-s="fbp" onclick="mcSec_('fbp')">📣 Publicaciones Facebook</button></div>
     <div id="mc-sec-ext"><div class="mcfb-subs" role="tablist" aria-label="Fuente"><button type="button" data-v="air" class="on" onclick="mcSub_('air')"><svg viewBox="0 0 48 48" width="16" height="16" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#f44336"/><path d="M24 12.6c-1.3 0-2.2.8-3 2.3l-6.3 12.7c-.6 1.1-.9 1.9-.9 2.8 0 2.4 1.9 4.3 4.3 4.3 1.9 0 3.5-1.2 5.9-3.8 2.4 2.6 4 3.8 5.9 3.8 2.4 0 4.3-1.9 4.3-4.3 0-.9-.3-1.7-.9-2.8L27 14.9c-.8-1.5-1.7-2.3-3-2.3zm0 19.1c-1.9-2.2-3.2-4.1-3.2-5.6 0-1.8 1.4-3.2 3.2-3.2s3.2 1.4 3.2 3.2c0 1.5-1.3 3.4-3.2 5.6z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>Airbnb</button><button type="button" data-v="fb" onclick="mcSub_('fb')"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1877f2"/><path d="M13.4 19.5v-6.1h2l.4-2.5h-2.4V9.4c0-.7.3-1.2 1.3-1.2h1.2V6c-.2 0-1-.1-1.8-.1-1.9 0-3.1 1.1-3.1 3.2v1.8H9v2.5h2V19.5z" fill="#fff"/></svg>Facebook</button></div>
     <div id="mc-ext-air"><div id="mc-top"></div>
     <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Se ejecuta solo a las horas que elijas abajo (si usas el método Automática, primero repite la búsqueda para sumar publicaciones nuevas); también puedes pulsarlo cuando quieras.</div>
@@ -77834,7 +78000,7 @@ function mcRender_() {
       <div class="mc-fx" id="mc-pw" style="max-width:520px;margin:0 0 12px">${mcMuestreoHtml_()}</div><div id="mc-prog"></div></div></div>
     <div id="mc-ext-fb" style="display:none"></div>
     </div><div id="mc-sec-dash" style="display:none"></div><div id="mc-sec-alo" style="display:none"></div>`;
-  if (!MC.sec) { try { const v = localStorage.getItem('mc-sec'); MC.sec = v === 'dash' || v === 'alo' ? v : 'ext'; } catch (_) { MC.sec = 'ext'; } }
+  if (!MC.sec) { try { const v = localStorage.getItem('mc-sec'); MC.sec = v === 'dash' || v === 'alo' || v === 'fbp' ? v : 'ext'; } catch (_) { MC.sec = 'ext'; } }
   try { MC.sub = MC.sub || (localStorage.getItem('mc-sub') === 'fb' ? 'fb' : 'air'); } catch (_) { MC.sub = 'air'; } mcTop_(); mcProg_(); mcRes_(); mcSecPintar_(); mcSubPintar_();
   mcPreciosCargar_().then(() => { const w = document.getElementById('mc-pw'); if (w) w.innerHTML = mcMuestreoHtml_(); if (MC.sec !== 'dash') mcRes_(); });
   mcClCargar_().then(() => { if (MC.sec === 'alo' && !MC.al.id && !MC.al.host) mcAloPintar_(); });
