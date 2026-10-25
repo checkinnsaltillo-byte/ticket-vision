@@ -76464,6 +76464,7 @@ function mcAloCss_() {
   .en-ay{padding:6px 18px 18px;font-size:13px;line-height:1.55;color:#1e293b;max-height:72vh;overflow:auto}.en-ay h6{margin:14px 0 6px;font-size:13.5px;font-weight:800;color:#0f172a}.en-ay ol,.en-ay ul{margin:0 0 6px 18px;padding:0}.en-ay li{margin:3px 0}.en-ay dl{margin:0}.en-ay dt{font-weight:800;margin-top:8px;color:#0f766e}.en-ay dd{margin:2px 0 0}
   .en-pr{background:#f0fdfa;border:1px solid #ccfbf1;border-radius:12px;padding:10px 14px;margin-top:6px}.en-pr h6{margin:0 0 6px}.en-pr label{font-weight:700}.en-pr label small{font-weight:500;color:#64748b}.en-pr-r{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}.en-pr-r input{width:90px;border:1.5px solid #cbd5e1;border-radius:9px;padding:6px 10px;font-size:14px;font-weight:700}.en-pr-r span{font-weight:700}
   .en-wt{border-collapse:collapse;font-size:12.5px}.en-wt th,.en-wt td{border-bottom:1px solid #e4e9f0;padding:4px 14px 4px 0;text-align:left}.en-wt td:nth-child(n+2),.en-wt th:nth-child(n+2){text-align:right}
+  .al-sent{text-align:center;margin:18px;color:#94a3b8;font-size:12px;font-weight:700;min-height:20px}
   .al-camp{display:inline-block;background:#ecfccb;color:#3f6212;border:1px solid #d9f99d;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}
   .fs-lay{display:block}.fs-side{display:none}.fs-lay.fs-on{display:grid;grid-template-columns:268px minmax(0,1fr);gap:20px;align-items:start}.fs-lay.fs-on .fs-side{display:block;position:sticky;top:8px;max-height:calc(100vh - 24px);overflow:auto;background:#fff;border:1px solid var(--al-ln);border-radius:16px;padding:4px 16px 10px;scrollbar-width:thin}
   .fs-hd{display:flex;justify-content:space-between;align-items:center;padding:12px 0 8px;font-size:16px;font-weight:900;color:var(--al-ink);position:sticky;top:0;background:#fff;z-index:2;border-bottom:1px solid var(--al-ln)}.fs-hd button{all:unset;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--al-ac)}.fs-hd button:hover{text-decoration:underline}
@@ -76625,24 +76626,39 @@ function mcAloCuerpo_() {
   if (S.vista === 'tabla') { if (!tgt.querySelector('#mc-res')) tgt.innerHTML = '<div id="mc-res"></div>'; mcRes_(); }
   else if (S.vista === 'host' && S.host && A.hosts.find(x => x.id === S.host)) { const hF = A.hosts.find(x => x.id === S.host); tgt.innerHTML = mcAloHostHtml_(Object.assign({}, hF, { L: hF.L.filter(r => MC.alIds.has(r.id)), _total: hF.L.length })); }
   else if (S.vista === 'host') tgt.innerHTML = mcAloDirHtml_(hs); else tgt.innerHTML = mcAloListaHtml_(L);
+  mcAloSent_();
   if (S.mapa) { mcMapaActualiza_(false); mcMapaResalta_(MC.map.sel, (MC.map.pts.find(p => p.id === MC.map.sel) || {}).hostId || MC.map.selHost, false); if (MC.map.selHost) { const el = document.querySelector(`#al-list [data-hid="${CSS.escape(String(MC.map.selHost))}"]`); if (el) el.classList.add('al-sel'); } }
 }
+// ── Desplazamiento infinito: al llegar al final de la lista se cargan las 48 siguientes (sin botón) ──
+function mcAloSent_() {
+  if (MC._alIO) { MC._alIO.disconnect(); MC._alIO = null; } const el = document.getElementById('al-sent'); if (!el) return;
+  if (!('IntersectionObserver' in window)) { el.innerHTML = '<button type="button" class="al-btn sec" onclick="mcAloMas_()">Mostrar más</button>'; return; }
+  const w = document.getElementById('al-list'), root = w && getComputedStyle(w).overflowY !== 'visible' ? w : null;
+  MC._alIO = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) mcAloMas_(); }, { root, rootMargin: '0px 0px 500px 0px' }); MC._alIO.observe(el);
+}
+window.mcAloMas_ = function () {
+  const el = document.getElementById('al-sent'); if (!el) return; const S = MC.al, k = el.dataset.k; let n = 0;
+  if (k === 'alo') { const M = S._M || [], a = S.pagA, g = document.getElementById('al-grid'); S.pagA += 48; if (g) g.insertAdjacentHTML('beforeend', M.slice(a, S.pagA).map(r => mcAloListCard_({ id: r.hostId }, r, true)).join('')); n = M.length - S.pagA; }
+  else { const L = S._L || [], a = S.pag, g = document.getElementById('al-dir'); S.pag += 48; if (g) g.insertAdjacentHTML('beforeend', L.slice(a, S.pag).map(mcAloHostCard_).join('')); n = L.length - S.pag; }
+  if (n > 0) { el.textContent = `Cargando más… (${n} restantes)`; mcAloSent_(); } else { el.remove(); if (MC._alIO) { MC._alIO.disconnect(); MC._alIO = null; } }
+  if (S.mapa && MC.map && MC.map.sel) mcMapaResalta_(MC.map.sel, (MC.map.pts.find(p => p.id === MC.map.sel) || {}).hostId || MC.map.selHost, false);
+};
 // ── Por alojamiento ──
 function mcAloListaHtml_(L) {
   const S = MC.al, ords = { idx: 'Índice de calidad (IA)', precio: 'Precio por noche', pxh: 'Precio por habitación', cal: 'Calificación', occ: 'Ocupación', ev: 'Evaluaciones', hab: 'Habitaciones' };
-  const k = S.ordA, val = r => k === 'idx' ? (MC.cl.ix[r.id] ? MC.cl.ix[r.id].indice : null) : r[k], M = L.slice().sort((a, b) => (mcOk_(val(b)) ? val(b) : -1) - (mcOk_(val(a)) ? val(a) : -1));
+  const k = S.ordA, val = r => k === 'idx' ? (MC.cl.ix[r.id] ? MC.cl.ix[r.id].indice : null) : r[k], M = L.slice().sort((a, b) => (mcOk_(val(b)) ? val(b) : -1) - (mcOk_(val(a)) ? val(a) : -1)); MC.al._M = M;
   return `<div class="al-bar"><select class="mc-in" onchange="MC.al.ordA=this.value;mcAloCuerpo_()">${Object.entries(ords).map(([x, t]) => `<option value="${x}" ${k === x ? 'selected' : ''}>Ordenar: ${t}</option>`).join('')}</select></div>
-    <div class="al-grid">${M.slice(0, S.pagA).map(r => mcAloListCard_({ id: r.hostId }, r, true)).join('') || '<div class="mc-mu">Ningún alojamiento coincide con los filtros.</div>'}</div>
-    ${M.length > S.pagA ? `<div style="text-align:center;margin:18px"><button type="button" class="al-btn sec" onclick="MC.al.pagA+=48;mcAloCuerpo_()">Mostrar más (${M.length - S.pagA})</button></div>` : ''}`;
+    <div class="al-grid" id="al-grid">${M.slice(0, S.pagA).map(r => mcAloListCard_({ id: r.hostId }, r, true)).join('') || '<div class="mc-mu">Ningún alojamiento coincide con los filtros.</div>'}</div>
+    ${M.length > S.pagA ? `<div id="al-sent" data-k="alo" class="al-sent">Cargando más… (${M.length - S.pagA} restantes)</div>` : ''}`; /* M se guarda en MC.al._M para el desplazamiento infinito */
 }
 // ── Por anfitrión (directorio) ──
 function mcAloDirHtml_(hs) {
   const S = MC.al, q = mcNormN_(S.q), ords = { n: 'Nº de alojamientos', idx: 'Índice de calidad (IA)', occ: 'Ocupación', cal: 'Calificación', precio: 'Precio por noche', ev: 'Evaluaciones', host: 'Nombre (A–Z)' };
   let L = hs.filter(h => !q || mcNormN_(h.host).includes(q) || h.id.includes(q) || h.L.some(r => mcNormN_(r.titulo).includes(q)));
-  L = L.slice().sort((a, b) => S.ord === 'host' ? a.host.localeCompare(b.host, 'es') : (mcOk_(b[S.ord]) ? b[S.ord] : -1) - (mcOk_(a[S.ord]) ? a[S.ord] : -1));
+  L = L.slice().sort((a, b) => S.ord === 'host' ? a.host.localeCompare(b.host, 'es') : (mcOk_(b[S.ord]) ? b[S.ord] : -1) - (mcOk_(a[S.ord]) ? a[S.ord] : -1)); MC.al._L = L;
   return `<div class="al-bar"><input class="mc-in al-q" placeholder="🔎 Buscar anfitrión, ID o alojamiento…" value="${esc(S.q)}" oninput="MC.al.q=this.value;MC.al.pag=48;mcAloDirRe_(this)"><select class="mc-in" onchange="MC.al.ord=this.value;mcAloCuerpo_()">${Object.entries(ords).map(([k, t]) => `<option value="${k}" ${S.ord === k ? 'selected' : ''}>Ordenar: ${t}</option>`).join('')}</select></div>
     <div class="al-grid" id="al-dir">${L.slice(0, S.pag).map(mcAloHostCard_).join('') || '<div class="mc-mu">Ningún anfitrión coincide.</div>'}</div>
-    ${L.length > S.pag ? `<div style="text-align:center;margin:18px"><button type="button" class="al-btn sec" onclick="MC.al.pag+=48;mcAloCuerpo_()">Mostrar más (${L.length - S.pag})</button></div>` : ''}`;
+    ${L.length > S.pag ? `<div id="al-sent" data-k="host" class="al-sent">Cargando más… (${L.length - S.pag} restantes)</div>` : ''}`;
 }
 window.mcAloDirRe_ = function (inp) { const pos = inp.selectionStart; mcAloCuerpo_(); const n = document.querySelector('#mc-sec-alo .al-q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
 
