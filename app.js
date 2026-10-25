@@ -76473,6 +76473,7 @@ function mcAloCss_() {
   .en-pr{background:#f0fdfa;border:1px solid #ccfbf1;border-radius:12px;padding:10px 14px;margin-top:6px}.en-pr h6{margin:0 0 6px}.en-pr label{font-weight:700}.en-pr label small{font-weight:500;color:#64748b}.en-pr-r{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}.en-pr-r input{width:90px;border:1.5px solid #cbd5e1;border-radius:9px;padding:6px 10px;font-size:14px;font-weight:700}.en-pr-r span{font-weight:700}
   .en-wt{border-collapse:collapse;font-size:12.5px}.en-wt th,.en-wt td{border-bottom:1px solid #e4e9f0;padding:4px 14px 4px 0;text-align:left}.en-wt td:nth-child(n+2),.en-wt th:nth-child(n+2){text-align:right}
   .al-mp{margin-top:14px;border:1px solid #e4e9f0;border-radius:14px;overflow:hidden;background:#fff}#al-dmap{height:300px;width:100%}.al-mp small{display:block;padding:5px 10px;font-size:10.5px;color:#94a3b8}
+  #mc-res tr.al-sel>td{background:#e6f7f4!important}#mc-res tr.al-sel>td:first-child{box-shadow:inset 3px 0 0 #0f766e}#mc-res tbody tr[data-id]{cursor:pointer}
   .al-sent{text-align:center;margin:18px;color:#94a3b8;font-size:12px;font-weight:700;min-height:20px}
   .pl-kps{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:2px 0 14px}.pl-kp{background:#fff;border:1px solid #e4e9f0;border-radius:12px;padding:10px 14px}.pl-kp small{display:block;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.02em}.pl-kp b{display:block;font-size:21px;font-weight:800;color:#0f172a;margin-top:2px}.pl-kp em{display:block;font-style:normal;font-size:11px;color:#94a3b8;margin-top:1px}
   .pl-d2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}.pl-cL{display:flex;flex-direction:column;gap:14px;min-width:0}.pl-cR{min-width:0;position:static;align-self:start}.pl-cR .pl-p{display:flex;flex-direction:column}.pl-cR .pl-sc{max-height:max(440px,calc(100vh - 300px));min-height:360px}.pl-ans0{margin:0 0 14px}
@@ -77394,9 +77395,13 @@ function mcMapaMarcaSel_() { // recoloca la selección en los pines visibles
   const m = MC.map.m; if (!m) return; MC.map.mk.forEach((mk, k) => { if (String(k)[0] === 'c') return; const p = (MC.map.pts || []).find(x => x.id === k); if (!p) return; const esSel = MC.map.sel === p.id || (MC.map.selHost && p.hostId === MC.map.selHost); const el = mk.getElement(); const pin = el && el.querySelector('.mc-pin'); if (pin) pin.classList.toggle('sel', esSel); mk.setZIndexOffset(esSel ? 3000 : 0); });
 }
 function mcMapaResalta_(id, hostId, scroll) {
-  const l = document.getElementById('al-list'); if (!l) return; l.querySelectorAll('.al-sel').forEach(e => e.classList.remove('al-sel'));
-  let el = null; if (MC.al.vista === 'host' && !MC.al.host) { if (hostId) el = l.querySelector(`[data-hid="${CSS.escape(String(hostId))}"]`); } else if (id) el = l.querySelector(`[data-id="${CSS.escape(String(id))}"]`);
-  if (el) { el.classList.add('al-sel'); if (scroll) { const lr = l.getBoundingClientRect(), er = el.getBoundingClientRect(); l.scrollTo({ top: l.scrollTop + er.top - lr.top - lr.height / 2 + er.height / 2, behavior: 'smooth' }); } }
+  const tabla = MC.al.vista === 'tabla', root = tabla ? document.getElementById('mc-res') : document.getElementById('al-list'); if (!root) return;
+  document.querySelectorAll('#al-list .al-sel, #mc-res .al-sel').forEach(e => e.classList.remove('al-sel'));
+  const busca = () => (MC.al.vista === 'host' && !MC.al.host) ? (hostId ? root.querySelector(`[data-hid="${CSS.escape(String(hostId))}"]`) : null) : (id ? root.querySelector(`[data-id="${CSS.escape(String(id))}"]`) : null);
+  let el = busca();
+  // con desplazamiento infinito la card puede no estar pintada aún: se cargan páginas hasta encontrarla
+  if (!el && !tabla && (id || hostId)) { let g = 0; while (!el && document.getElementById('al-sent') && g++ < 40) { mcAloMas_(); el = busca(); } }
+  if (el) { el.classList.add('al-sel'); if (scroll) { let sc = el.parentElement; while (sc && !(['auto', 'scroll'].includes(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight + 2)) sc = sc.parentElement; if (sc) { const lr = sc.getBoundingClientRect(), er = el.getBoundingClientRect(); sc.scrollTo({ top: sc.scrollTop + er.top - lr.top - lr.height / 2 + er.height / 2, behavior: 'smooth' }); } } }
 }
 window.mcMapaSel_ = function (id, desde) {
   const P = MC.map.pts || [], p = id ? P.find(x => x.id === String(id)) : null; MC.map.sel = p ? p.id : null; MC.map.selHost = null; mcMapaCardInfo_(p);
@@ -77409,6 +77414,8 @@ window.mcMapaHost_ = function (hid) { // tarjeta de anfitrión → resalta todos
   const l = document.getElementById('al-list'); if (l) { l.querySelectorAll('.al-sel').forEach(e => e.classList.remove('al-sel')); const el = l.querySelector(`[data-hid="${CSS.escape(String(hid))}"]`); if (el) el.classList.add('al-sel'); }
   if (MC.map.m && P.length) { if (P.length === 1) MC.map.m.flyTo([P[0].lat, P[0].lng], 16, { duration: .6 }); else MC.map.m.fitBounds(P.map(p => [p.lat, p.lng]), { padding: [90, 90], maxZoom: 16 }); } setTimeout(mcMapaMarcas_, 700); mcMapaMarcas_();
 };
+// clic en un renglón de la tabla: con el mapa abierto lo acerca y resalta el renglón (sin interferir con enlaces o controles del renglón)
+window.mcFilaClk_ = function (ev, id) { if (!(MC.al.mapa && MC.map.m)) return; if (ev.target.closest('a,button,input,select,textarea,.mc-cb,.mc-x')) return; mcMapaSel_(id, 'card'); };
 window.mcAloCardClk_ = function (hid, id) { if (MC.al.mapa && MC.map.m) mcMapaSel_(id, 'card'); else mcAloIr_(hid, id); };
 window.mcAloHostClk_ = function (hid) { if (MC.al.mapa && MC.map.m) mcMapaHost_(hid); else mcAloIr_(hid); };
 window.mcSegOpt_ = function (k) { MC[k] = !MC[k]; try { localStorage.setItem('mc-' + k, MC[k] ? '1' : '0'); } catch (_) {} mcSegPintar_(); };
@@ -77733,7 +77740,7 @@ function mcTabla_(rows) {
     const occ = mcOccDias_(i, MC.cuenta); let c = 0; const cum = dias.map(d => { if (occ.get(mcIso_(d)) === 1) c++; return c; }); MC._ser[i.id] = cum; const H = 40, mx = c, y = v => mx ? (H - 5 - v / mx * (H - 13)) : H - 5, pts = cum.map((v, k) => `${(k * W + W / 2).toFixed(0)},${y(v).toFixed(1)}`).join(' ');
     return `<td class="mc-tdc" style="width:${n * W}px"><div class="mc-cr" style="width:${n * W}px" onmousemove="mcTipSerie_(this,event,'${esc(i.id)}','${d0iso}')"><svg width="${n * W}" height="${H}" style="display:block;position:absolute;left:0;top:0"><polygon points="${W / 2},${H - 5} ${pts} ${(n - 1) * W + W / 2},${H - 5}" fill="#14b8a6" opacity=".2"/><polyline points="${pts}" fill="none" stroke="#0f766e" stroke-width="1.8" stroke-linejoin="round"/></svg></div></td>`; };
   const body = rows.map(i => { const est = i.error ? `<span class="mc-chip mc-ko" title="${esc(i.error)}">Error</span>` : i.pendiente || !i.extraido ? '<span class="mc-chip mc-pe">Pendiente</span>' : '<span class="mc-chip mc-ok">OK</span>';
-    return `<tr data-id="${esc(i.id)}" class="${mcPropio_(i) ? 'own' : ''}"><td class="sk"><div class="mc-ti">${i.foto ? `<img src="${esc(i.foto)}" alt="" loading="lazy">` : '<img alt="">'}<div style="min-width:0"><b title="${esc(i.titulo || '')}"><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.titulo || 'Publicación ' + i.id)}</a></b><small>${esc(i.id)}${i.error ? ' · <span class="mc-err">' + esc(String(i.error).slice(0, 60)) + '</span>' : ''}</small></div><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcQuitar_('${esc(i.id)}')">🗑</button></div></td>
+    return `<tr data-id="${esc(i.id)}" class="${mcPropio_(i) ? 'own' : ''}" onclick="mcFilaClk_(event,'${esc(i.id)}')"><td class="sk"><div class="mc-ti">${i.foto ? `<img src="${esc(i.foto)}" alt="" loading="lazy">` : '<img alt="">'}<div style="min-width:0"><b title="${esc(i.titulo || '')}"><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.titulo || 'Publicación ' + i.id)}</a></b><small>${esc(i.id)}${i.error ? ' · <span class="mc-err">' + esc(String(i.error).slice(0, 60)) + '</span>' : ''}</small></div><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcQuitar_('${esc(i.id)}')">🗑</button></div></td>
       <td>${est}</td>${pre.map(x => cell(i, x)).join('')}${(MC.vista === 'acum' ? serie : cal)(i)}${post.map(x => cell(i, x)).join('')}</tr>`; }).join('');
   return `<table class="mc-tb"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
