@@ -76544,7 +76544,7 @@ window.mcAloVista_ = function (v) { MC.al.vista = v; try { localStorage.setItem(
 function mcAloTopPinta_() {
   const t = document.getElementById('al-top'); if (!t) return; const D = mcFlDom_(), n = mcFlActivos_(), nichos = Object.entries(MCCL_N).filter(([k]) => /^S/.test(k)).map(([k, v]) => [k, v]).concat([['S/C', 'Sin nicho / sin clasificar']]);
   t.innerHTML = `<div class="al-vw"><div class="ad-seg">${[['alo', '🗂️ Por alojamiento'], ['host', '👥 Por anfitrión'], ['tabla', '📋 Tabla']].map(([k, x]) => `<button type="button" class="${MC.al.vista === k ? 'on' : ''}" onclick="mcAloVista_('${k}')">${x}</button>`).join('')}</div>
-      <button type="button" class="al-chip ${MC.al.flAb ? 'on' : ''}" id="al-flbt" onclick="mcAloFlToggle_()">🎛️ Filtros <b id="al-flcnt" style="${n ? '' : 'display:none'}">${n}</b></button><button type="button" class="al-chip" id="al-flrst" style="${n ? '' : 'display:none'}" onclick="mcAloFlReset_()">✕ Quitar filtros</button><span class="mc-mu" id="al-flinfo"></span></div>
+      <button type="button" class="al-chip ${MC.al.flAb ? 'on' : ''}" id="al-flbt" onclick="mcAloFlToggle_()">🎛️ Filtros <b id="al-flcnt" style="${n ? '' : 'display:none'}">${n}</b></button><button type="button" class="al-chip ${MC.al.mapa ? 'on' : ''}" id="al-mapbt" onclick="mcMapaToggle_()" title="Dividir la pantalla: mapa a la izquierda, tarjetas o tabla a la derecha, sincronizados">🗺️ Ver mapa</button><button type="button" class="al-chip" id="al-flrst" style="${n ? '' : 'display:none'}" onclick="mcAloFlReset_()">✕ Quitar filtros</button><span class="mc-mu" id="al-flinfo"></span></div>
     <div class="al-flp" id="al-flp" style="${MC.al.flAb ? '' : 'display:none'}">
       <div class="al-fgrid">${mcFlSlider_('cal', '⭐ Calificación', mcFlFmt_.cal)}${mcFlSlider_('precio', '💲 Precio por noche', mcFlFmt_.precio)}${mcFlSlider_('pxh', '🛏️ Precio por habitación', mcFlFmt_.pxh)}</div>
       <div class="al-fgrid c">${[['sup', 'Superanfitrión'], ['hab', 'Habitaciones'], ['banos', 'Baños'], ['camas', 'Camas'], ['coc', 'Cocina'], ['minN', 'Estancia mínima']].map(([k, tt]) => `<div class="al-fg"><label>${tt}</label>${mcFlChips_(k, MCFL_OPT[k])}</div>`).join('')}
@@ -76553,7 +76553,7 @@ function mcAloTopPinta_() {
 }
 // ── Pintado ──
 function mcAloPintar_() {
-  const w = document.getElementById('mc-sec-alo'); if (!w) return; mcAloCss_(); mcClCss_(); const A = mcAloData_(); document.removeEventListener('keydown', MC._alKd || (() => {})); const S = MC.al;
+  const w = document.getElementById('mc-sec-alo'); if (!w) return; if (MC.map && MC.map.m) mcMapaDestruye_(); mcAloCss_(); mcClCss_(); const A = mcAloData_(); document.removeEventListener('keydown', MC._alKd || (() => {})); const S = MC.al;
   if (A.rows.length < 1) { w.innerHTML = '<div class="mc-card mc-mu">Aún no hay alojamientos extraídos. Ve a «Extracción» y pulsa «Extraer / actualizar».</div>'; return; }
   const h = S.host && A.hosts.find(x => x.id === S.host), r = S.id && A.rows.find(x => x.id === S.id);
   if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); return; }
@@ -76562,9 +76562,11 @@ function mcAloPintar_() {
 function mcAloCuerpo_() {
   const b = document.getElementById('al-body'); if (!b) return; const A = mcAloData_(), S = MC.al, L = mcAloFiltradas_(), info = document.getElementById('al-flinfo'), hs = mcAloHostsDe_(L);
   if (info) info.textContent = `${L.length} de ${A.rows.length} alojamientos · ${hs.length} anfitriones`;
-  if (S.vista === 'tabla') { if (!document.getElementById('mc-res')) b.innerHTML = '<div id="mc-res"></div>'; mcRes_(); return; }
-  if (S.vista === 'host' && S.host) { const hF = A.hosts.find(x => x.id === S.host); if (hF) { b.innerHTML = mcAloHostHtml_(Object.assign({}, hF, { L: hF.L.filter(r => MC.alIds.has(r.id)), _total: hF.L.length })); return; } }
-  if (S.vista === 'host') b.innerHTML = mcAloDirHtml_(hs); else b.innerHTML = mcAloListaHtml_(L);
+  let tgt = b; if (S.mapa) tgt = mcMapaEstructura_(b); else if (b.querySelector('.al-split')) { mcMapaDestruye_(); b.innerHTML = ''; }
+  if (S.vista === 'tabla') { if (!tgt.querySelector('#mc-res')) tgt.innerHTML = '<div id="mc-res"></div>'; mcRes_(); }
+  else if (S.vista === 'host' && S.host && A.hosts.find(x => x.id === S.host)) { const hF = A.hosts.find(x => x.id === S.host); tgt.innerHTML = mcAloHostHtml_(Object.assign({}, hF, { L: hF.L.filter(r => MC.alIds.has(r.id)), _total: hF.L.length })); }
+  else if (S.vista === 'host') tgt.innerHTML = mcAloDirHtml_(hs); else tgt.innerHTML = mcAloListaHtml_(L);
+  if (S.mapa) { mcMapaActualiza_(false); mcMapaResalta_(MC.map.sel, (MC.map.pts.find(p => p.id === MC.map.sel) || {}).hostId || MC.map.selHost, false); if (MC.map.selHost) { const el = document.querySelector(`#al-list [data-hid="${CSS.escape(String(MC.map.selHost))}"]`); if (el) el.classList.add('al-sel'); } }
 }
 // ── Por alojamiento ──
 function mcAloListaHtml_(L) {
@@ -76587,7 +76589,7 @@ window.mcAloDirRe_ = function (inp) { const pos = inp.selectionStart; mcAloCuerp
 
 function mcAloHostCard_(h) {
   const cov = h.L.map(r => (MC.items[r.id] || {}).foto).filter(Boolean).slice(0, 4), it = h.it;
-  return `<button type="button" class="al-hc" onclick="mcAloIr_('${h.id}')"><div class="al-hct">${mcAloAv_(h.host, it.hostFoto, 52)}<div><b>${esc(h.host)}</b><small>${mcOk_(h.anios) ? MCN(h.anios, 0) + ' años como anfitrión' : 'Anfitrión'}</small><div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">${h.sup >= 50 ? '<span class="al-bd">★ Superanfitrión</span>' : ''}${h.mio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${mcAloTag_(h)}</div></div></div>
+  return `<button type="button" class="al-hc" data-hid="${h.id}" onclick="mcAloHostClk_('${h.id}')" ondblclick="mcAloIr_('${h.id}')"><div class="al-hct">${mcAloAv_(h.host, it.hostFoto, 52)}<div><b>${esc(h.host)}</b><small>${mcOk_(h.anios) ? MCN(h.anios, 0) + ' años como anfitrión' : 'Anfitrión'}</small><div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">${h.sup >= 50 ? '<span class="al-bd">★ Superanfitrión</span>' : ''}${h.mio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${mcAloTag_(h)}</div></div></div>
     <div class="al-mos">${Array.from({ length: 4 }, (_, k) => cov[k] ? `<img loading="lazy" src="${esc(mcImg_(cov[k], 200))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : '<i></i>').join('')}</div>
     <div class="al-st"><span><b>${h.n}</b>aloj.</span><span><b>${mcOk_(h.cal) ? MCN(h.cal, 2) : '—'}</b>★ calif.</span><span><b>${mcOk_(h.occ) ? MCN(h.occ, 0) + '%' : '—'}</b>ocupación</span><span><b>${mcOk_(h.precio) ? MCFMT(h.precio) : '—'}</b>por noche</span></div>
     ${h.ncl ? `<div class="al-cls">${h.L.filter(r => MC.cl.ix[r.id]).slice(0, 8).map(r => mcClBadge_(r.id)).join('')}<span>🧭 ${h.ncl} clasificado${h.ncl > 1 ? 's' : ''} · índice ${MCN(h.idx, 0)}</span></div>` : ''}</button>`;
@@ -76611,7 +76613,7 @@ function mcAloHostHtml_(h) {
 }
 function mcAloListCard_(h, r, showHost) {
   const i = MC.items[r.id] || {}, sp = [i.huespedes != null ? i.huespedes + ' huésp.' : '', i.habitaciones != null ? (i.habitaciones === 0 ? 'Estudio' : i.habitaciones + ' hab.') : '', i.camas != null ? i.camas + ' camas' : '', i.banos != null ? i.banos + ' baños' : ''].filter(Boolean).join(' · ');
-  return `<button type="button" class="al-lc" onclick="mcAloIr_('${h.id}','${r.id}')"><div class="al-cv"><img loading="lazy" src="${esc(mcImg_(i.foto, 560))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"><div class="al-bg">${mcClBadge_(r.id)}${i.favorito ? '<span class="al-bd">🏆 Favorito</span>' : ''}${r.propio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${i.nuevo ? '<span class="al-bd b">Nuevo</span>' : ''}</div></div>
+  return `<button type="button" class="al-lc" data-id="${r.id}" onclick="mcAloCardClk_('${h.id}','${r.id}')" ondblclick="mcAloIr_('${h.id}','${r.id}')"><div class="al-cv"><img loading="lazy" src="${esc(mcImg_(i.foto, 560))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"><div class="al-bg">${mcClBadge_(r.id)}${i.favorito ? '<span class="al-bd">🏆 Favorito</span>' : ''}${r.propio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${i.nuevo ? '<span class="al-bd b">Nuevo</span>' : ''}</div></div>
     <div class="al-lb"><h4>${esc(i.titulo || r.id)}</h4><small>${esc(i.tipo || '')}${i.ciudad ? ' · ' + esc(i.ciudad) : ''}</small>${MC.cl.ix[r.id] ? `<div style="margin:4px 0">${mcClNicho_(r.id)}</div>` : ''}<small>${esc(sp)}</small>${showHost ? `<small style="margin-top:2px">👤 ${esc(r.host)}${r.sup ? ' · ★' : ''}</small>` : ''}
     <div class="al-r"><span><b>${mcOk_(r.precio) ? MCFMT(r.precio) : '—'}</b> <small style="display:inline">/noche</small></span><span>★ <b style="font-size:13px">${mcOk_(r.cal) ? MCN(r.cal, 2) : '—'}</b> <small style="display:inline">(${r.ev})</small></span></div>
     <div class="al-bar2" title="Ocupación estimada de los próximos 90 días"><i style="width:${Math.min(100, (r.occ || 0) * 2.5)}%"></i></div><small style="margin-top:4px">Ocupación ${mcOk_(r.occ) ? MCN(r.occ, 0) + '%' : '—'}</small></div></button>`;
@@ -76808,6 +76810,105 @@ window.mcAyuda_ = function () {
     <p class="mc-mu" style="font-size:12px;margin-top:10px">El selector <b>«Contar»</b> decide qué estatus suman como noche ocupada en las cifras de ocupación (solo reservas probables, reservas + indeterminadas, o todas las no disponibles). La <b>ocupación estimada</b> de los análisis usa los próximos 90 días y excluye los bloqueos probables del total de noches disponibles.</p></div></div>`;
   document.body.appendChild(m);
 };
+// ═══════════════════════════════════════════════════════════════════════════
+// 🗺️ Mapa de Alojamientos (v2184): MISMO mapa que la búsqueda de disponibilidad de check-inn.mx (Leaflet 1.9.4 + OpenStreetMap, pines de precio, racimos «N desde $X» por cercanía
+// y despliegue en araña al pasar el cursor; se reutiliza _rsvEnsureLeaflet_ y los estilos .rsv-map-pin / .rsv-map-cluster). Cada pin muestra precio, calificación, hab./camas/baños, cocina,
+// miniatura y marca de superanfitrión. Mapa y tarjetas/tabla quedan sincronizados: pin ↔ tarjeta (resaltado y desplazamiento).
+// ═══════════════════════════════════════════════════════════════════════════
+MC.map = MC.map || { m: null, mk: new Map(), sel: null, selHost: null, sig: '', pts: [], clusters: [] };
+const MCMAP_CSS = `
+  .al-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;height:calc(100vh - 170px);min-height:540px}
+  .al-mapw{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--al-ln);background:#e8edf3}#mc-map{position:absolute;inset:0;z-index:1}
+  .al-listw{overflow:auto;padding:2px 6px 14px 2px;scroll-behavior:smooth}.al-split .al-grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+  .al-lc.al-sel,.al-hc.al-sel{outline:3px solid #14b8a6;box-shadow:0 14px 34px rgba(20,184,166,.38)!important;border-color:#14b8a6}.mc-tb tr.al-sel td{background:#ccfbf1!important}
+  .mc-pin{display:flex!important;align-items:center;gap:7px;padding:4px 11px 4px 4px!important;border-radius:15px!important;line-height:1.15;min-width:150px;transform-origin:50% 100%}
+  .mc-pin .im{position:relative;width:38px;height:38px;border-radius:11px;flex:none;background:#e2e8f0 center/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(15,23,42,.08)}.mc-pin .im i{position:absolute;right:-5px;top:-5px;width:16px;height:16px;border-radius:50%;background:#f59e0b;color:#fff;font:900 10px/16px Inter,sans-serif;text-align:center;border:1.5px solid #fff;font-style:normal;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+  .mc-pin .t{display:flex;gap:7px;align-items:baseline}.mc-pin .t b{font-size:13px;letter-spacing:-.01em}.mc-pin .t span{font-size:11px;font-weight:800;color:#b45309}.mc-pin small{display:block;font-size:10.5px;font-weight:700;color:#475569}
+  .mc-pin:hover,.mc-pin.sel{background:#0f766e!important;color:#fff!important;transform:scale(1.08);box-shadow:0 8px 22px rgba(15,118,110,.5)!important}.mc-pin:hover .t span,.mc-pin.sel .t span{color:#fde68a}.mc-pin:hover small,.mc-pin.sel small{color:#ccfbf1}
+  #mc-spider-overlay{position:absolute;inset:0;pointer-events:none;z-index:900}#mc-spider-overlay svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .mc-spider-chip{position:absolute;pointer-events:auto;cursor:pointer;transform:translate(-50%,-50%) scale(.6);opacity:0;transition:opacity .18s,transform .22s cubic-bezier(.34,1.56,.64,1)}.mc-spider-chip.in{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  .al-mapinfo{position:absolute;left:12px;right:12px;bottom:12px;z-index:1000;pointer-events:none}.al-mapcard{pointer-events:auto;background:#fff;border-radius:14px;box-shadow:0 20px 50px -8px rgba(0,0,0,.4);display:flex;gap:12px;padding:10px;align-items:center;max-width:460px;margin:0 auto}.al-mapcard img{width:76px;height:76px;border-radius:11px;object-fit:cover;flex:none;background:#e2e8f0}.al-mapcard b{display:block;font-size:13.5px;color:#0f172a;line-height:1.3}.al-mapcard small{display:block;color:#64748b;font-size:11.5px;margin-top:2px}.al-mapcard .al-btn{margin-top:6px;padding:6px 12px;font-size:12px}
+  .al-maptag{position:absolute;left:12px;top:12px;z-index:1000;background:rgba(255,255,255,.92);border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:700;color:#334155;box-shadow:0 2px 8px rgba(0,0,0,.15);backdrop-filter:blur(4px)}
+  @media (max-width:900px){.al-split{grid-template-columns:1fr;height:auto}.al-mapw{height:420px}.al-listw{overflow:visible}}`;
+function mcMapaCss_() { if (document.getElementById('mcmap-css')) return; const st = document.createElement('style'); st.id = 'mcmap-css'; st.textContent = MCMAP_CSS; document.head.appendChild(st); }
+window.mcMapaToggle_ = function () { MC.al.mapa = !MC.al.mapa; const b = document.getElementById('al-mapbt'); if (b) b.classList.toggle('on', MC.al.mapa); mcAloCuerpo_(); };
+// Estructura dividida: mapa a la izquierda, tarjetas/tabla a la derecha. Devuelve el contenedor de la lista.
+function mcMapaEstructura_(b) {
+  mcMapaCss_();
+  if (!b.querySelector('.al-split')) { b.innerHTML = '<div class="al-split"><div class="al-mapw"><div id="mc-map"></div><div class="al-maptag" id="mc-maptag"></div><div class="al-mapinfo" id="mc-mapinfo"></div></div><div class="al-listw" id="al-list"></div></div>'; mcMapaIniciar_(); }
+  if (!b._mapClk) { b._mapClk = true; b.addEventListener('click', e => { if (!MC.al.mapa || MC.al.vista !== 'tabla') return; const tr = e.target.closest && e.target.closest('#mc-res tbody tr'); if (!tr || e.target.closest('a,button')) return; mcMapaSel_(tr.dataset.id, 'card'); }); }
+  return b.querySelector('#al-list');
+}
+function mcMapaDestruye_() { mcMapaSpiderCierra_(); if (MC.map.m) { try { MC.map.m.remove(); } catch (_) {} } MC.map.m = null; MC.map.mk = new Map(); MC.map.sig = ''; }
+function mcMapaIniciar_() {
+  _rsvEnsureLeaflet_(() => { const el = document.getElementById('mc-map'); if (!el) return; const Lf = window.L; if (MC.map.m) { try { MC.map.m.remove(); } catch (_) {} MC.map.m = null; }
+    const m = Lf.map(el).setView([25.4232, -100.9906], 12); Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m); MC.map.m = m;
+    m.on('zoomend', mcMapaMarcas_); m.on('movestart zoomstart', mcMapaSpiderCierra_); m.on('click', () => { mcMapaSel_(null); });
+    setTimeout(() => { m.invalidateSize(); mcMapaActualiza_(true); }, 100); });
+}
+// Puntos = alojamientos filtrados con coordenadas (en «Por anfitrión» con un anfitrión abierto, solo los suyos)
+function mcMapaPuntos_() {
+  const A = mcAloData_(), S = MC.al, ids = MC.alIds; let rows = A.rows.filter(r => !ids || ids.has(r.id)); if (S.vista === 'host' && S.host) rows = rows.filter(r => r.hostId === S.host);
+  return rows.map(r => { const i = MC.items[r.id] || {}; return { id: r.id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || r.id, ev: r.ev }; }).filter(p => isFinite(p.lat) && isFinite(p.lng) && p.lat && p.lng);
+}
+function mcMapaActualiza_(fit) {
+  const m = MC.map.m; if (!m) return; const P = mcMapaPuntos_(), sig = P.length + '|' + (P[0] || {}).id + '|' + (P[P.length - 1] || {}).id; MC.map.pts = P;
+  const tag = document.getElementById('mc-maptag'); if (tag) { const A = mcAloData_(), tot = MC.alIds ? MC.alIds.size : A.rows.length; tag.textContent = `📍 ${P.length} en el mapa${P.length < tot ? ` · ${tot - P.length} sin coordenadas` : ''}`; }
+  if (fit || sig !== MC.map.sig) { MC.map.sig = sig; if (P.length > 1) m.fitBounds(P.map(p => [p.lat, p.lng]), { padding: [60, 60], maxZoom: 15 }); else if (P.length === 1) m.setView([P[0].lat, P[0].lng], 16); }
+  mcMapaMarcas_();
+}
+const mcMapaCoc_ = c => c === 'Sí' ? '🍳 Sí' : c === 'Compartida' ? '🍳 Comp.' : '🍳 No';
+function mcMapaPinHtml_(p, sel) {
+  const hab = p.hab == null ? '?' : p.hab === 0 ? 'Est.' : p.hab;
+  return `<div class="rsv-map-pin mc-pin ${sel ? 'sel' : ''}" data-id="${esc(p.id)}"><div class="im" style="background-image:url('${esc(mcImg_(p.foto, 240))}')">${p.sup ? '<i title="Superanfitrión">★</i>' : ''}</div><div><div class="t"><b>${mcOk_(p.precio) ? MCFMT(p.precio) : '—'}</b><span>★ ${mcOk_(p.cal) ? MCN(p.cal, 2) : '—'}</span></div><small>${hab} hab · ${p.camas == null ? '?' : p.camas} camas · ${p.banos == null ? '?' : p.banos} baños</small><small>${mcMapaCoc_(p.coc)}${p.sup ? ' · ★ Superanfitrión' : ''}</small></div></div>`;
+}
+function mcMapaMarcas_() {
+  const m = MC.map.m, Lf = window.L; if (!m || !Lf) return; MC.map.mk.forEach(x => { try { m.removeLayer(x); } catch (_) {} }); MC.map.mk = new Map(); mcMapaSpiderCierra_();
+  const P = MC.map.pts || [], sel = MC.map.sel, selH = MC.map.selHost, LW = 190, LH = 50, pts = P.map((p, i) => ({ i, p, px: m.latLngToLayerPoint([p.lat, p.lng]) })), seen = new Set(), grupos = [];
+  for (const a of pts) { if (seen.has(a.i)) continue; const g = [a.i]; seen.add(a.i); for (const b of pts) { if (seen.has(b.i)) continue; if (g.some(k => Math.abs(pts[k].px.x - b.px.x) < LW && Math.abs(pts[k].px.y - b.px.y) < LH)) { g.push(b.i); seen.add(b.i); } } grupos.push(g); }
+  MC.map.clusters = grupos.filter(g => g.length > 1);
+  grupos.forEach(g => {
+    if (g.length === 1) { const p = P[g[0]], esSel = sel === p.id || (selH && p.hostId === selH), icon = Lf.divIcon({ className: '', html: mcMapaPinHtml_(p, esSel), iconSize: [200, 46], iconAnchor: [100, 46] }); const mk = Lf.marker([p.lat, p.lng], { icon, zIndexOffset: esSel ? 3000 : 0 }).addTo(m); mk.on('click', ev => { Lf.DomEvent.stopPropagation(ev); mcMapaSel_(p.id, 'pin'); }); mk.on('dblclick', ev => { Lf.DomEvent.stopPropagation(ev); mcAloIr_(p.hostId, p.id); }); MC.map.mk.set(p.id, mk); return; }
+    const cLat = g.reduce((s, k) => s + P[k].lat, 0) / g.length, cLng = g.reduce((s, k) => s + P[k].lng, 0) / g.length, minP = Math.min(...g.map(k => P[k].precio || Infinity)), haySel = g.some(k => P[k].id === sel || (selH && P[k].hostId === selH));
+    const html = `<div class="rsv-map-cluster" style="${haySel ? 'box-shadow:0 0 0 3px #14b8a6,0 6px 18px rgba(249,115,22,.35)' : ''}"><span class="rsv-map-cluster-count">${g.length}</span><span class="rsv-map-cluster-price">desde ${isFinite(minP) ? MCFMT(minP) : '—'}</span></div>`;
+    const mk = Lf.marker([cLat, cLng], { icon: Lf.divIcon({ className: '', html, iconSize: [130, 36], iconAnchor: [65, 18] }), zIndexOffset: haySel ? 2500 : 500 }).addTo(m);
+    const hook = () => { const el = mk.getElement() && mk.getElement().querySelector('.rsv-map-cluster'); if (el) { el.addEventListener('mouseenter', () => mcMapaSpider_(g, [cLat, cLng])); el.addEventListener('click', () => m.fitBounds(g.map(k => [P[k].lat, P[k].lng]), { padding: [90, 90], maxZoom: 18 })); } };
+    mk.on('add', hook); if (mk.getElement()) hook(); MC.map.mk.set('c' + g[0], mk);
+  });
+}
+function mcMapaSpiderCierra_() { const ov = document.getElementById('mc-spider-overlay'); if (ov) ov.remove(); if (MC.map._spC) { try { MC.map._spC(); } catch (_) {} MC.map._spC = null; } }
+function mcMapaSpider_(idxs, centro) { // despliegue en araña (igual que el de check-inn.mx)
+  mcMapaSpiderCierra_(); const m = MC.map.m; if (!m) return; const P = MC.map.pts, mapEl = document.getElementById('mc-map'), c = m.latLngToContainerPoint(centro), N = idxs.length, R = 110 + N * 12;
+  const ov = document.createElement('div'); ov.id = 'mc-spider-overlay'; ov.innerHTML = '<svg><g id="mc-spider-lines"></g></svg>'; mapEl.appendChild(ov); const svg = ov.querySelector('#mc-spider-lines');
+  idxs.forEach((k, j) => { const ang = -Math.PI / 2 + (2 * Math.PI / N) * j, x = c.x + Math.cos(ang) * R, y = c.y + Math.sin(ang) * R, ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    ['x1', c.x, 'y1', c.y, 'x2', x, 'y2', y, 'stroke', 'rgba(15,23,42,.55)', 'stroke-width', '1.5', 'stroke-dasharray', '3 4', 'stroke-linecap', 'round'].forEach((v, q, a) => { if (q % 2 === 0) ln.setAttribute(v, a[q + 1]); }); svg.appendChild(ln);
+    const p = P[k], chip = document.createElement('div'); chip.className = 'mc-spider-chip'; chip.style.left = x + 'px'; chip.style.top = y + 'px'; chip.innerHTML = mcMapaPinHtml_(p, MC.map.sel === p.id); chip.onclick = () => { mcMapaSel_(p.id, 'pin'); }; chip.ondblclick = () => mcAloIr_(p.hostId, p.id); ov.appendChild(chip); requestAnimationFrame(() => chip.classList.add('in')); });
+  const onMove = ev => { const r = mapEl.getBoundingClientRect(), dx = ev.clientX - r.left - c.x, dy = ev.clientY - r.top - c.y; if (Math.sqrt(dx * dx + dy * dy) > R + 90) mcMapaSpiderCierra_(); }; mapEl.addEventListener('mousemove', onMove); MC.map._spC = () => mapEl.removeEventListener('mousemove', onMove);
+}
+// ── Sincronización pin ↔ tarjeta/tabla ──
+function mcMapaCardInfo_(p) { const w = document.getElementById('mc-mapinfo'); if (!w) return; if (!p) { w.innerHTML = ''; return; }
+  w.innerHTML = `<div class="al-mapcard"><img src="${esc(mcImg_(p.foto, 240))}" alt="" referrerpolicy="no-referrer"><div style="min-width:0"><b>${esc(p.titulo)}</b><small>👤 ${esc(p.host)}${p.sup ? ' · ★ Superanfitrión' : ''}</small><small>${mcOk_(p.precio) ? '<b style="display:inline;color:#0f766e">' + MCFMT(p.precio) + '</b> /noche · ' : ''}★ ${mcOk_(p.cal) ? MCN(p.cal, 2) : '—'} (${p.ev}) · ${p.hab === 0 ? 'Estudio' : (p.hab ?? '?') + ' hab'} · ${p.camas ?? '?'} camas · ${p.banos ?? '?'} baños · ${mcMapaCoc_(p.coc)}</small><button type="button" class="al-btn" onclick="mcAloIr_('${esc(p.hostId)}','${esc(p.id)}')">Ver ficha ↗</button></div></div>`; }
+function mcMapaMarcaSel_() { // recoloca la selección en los pines visibles
+  const m = MC.map.m; if (!m) return; MC.map.mk.forEach((mk, k) => { if (String(k)[0] === 'c') return; const p = (MC.map.pts || []).find(x => x.id === k); if (!p) return; const esSel = MC.map.sel === p.id || (MC.map.selHost && p.hostId === MC.map.selHost); const el = mk.getElement(); const pin = el && el.querySelector('.mc-pin'); if (pin) pin.classList.toggle('sel', esSel); mk.setZIndexOffset(esSel ? 3000 : 0); });
+}
+function mcMapaResalta_(id, hostId, scroll) {
+  const l = document.getElementById('al-list'); if (!l) return; l.querySelectorAll('.al-sel').forEach(e => e.classList.remove('al-sel'));
+  let el = null; if (MC.al.vista === 'host' && !MC.al.host) { if (hostId) el = l.querySelector(`[data-hid="${CSS.escape(String(hostId))}"]`); } else if (id) el = l.querySelector(`[data-id="${CSS.escape(String(id))}"]`);
+  if (el) { el.classList.add('al-sel'); if (scroll) { const lr = l.getBoundingClientRect(), er = el.getBoundingClientRect(); l.scrollTo({ top: l.scrollTop + er.top - lr.top - lr.height / 2 + er.height / 2, behavior: 'smooth' }); } }
+}
+window.mcMapaSel_ = function (id, desde) {
+  const P = MC.map.pts || [], p = id ? P.find(x => x.id === String(id)) : null; MC.map.sel = p ? p.id : null; MC.map.selHost = null; mcMapaCardInfo_(p);
+  if (!p) { mcMapaResalta_(null); mcMapaMarcaSel_(); return; }
+  if (desde === 'card' && MC.map.m) { MC.map.m.flyTo([p.lat, p.lng], Math.max(MC.map.m.getZoom(), 16), { duration: .6 }); }
+  mcMapaResalta_(p.id, p.hostId, desde === 'pin'); setTimeout(mcMapaMarcaSel_, desde === 'card' ? 700 : 0); mcMapaMarcaSel_();
+};
+window.mcMapaHost_ = function (hid) { // tarjeta de anfitrión → resalta todos sus pines y encuadra
+  const P = (MC.map.pts || []).filter(p => p.hostId === String(hid)); MC.map.sel = null; MC.map.selHost = String(hid); mcMapaCardInfo_(null); mcMapaResalta_(null, hid, false);
+  const l = document.getElementById('al-list'); if (l) { l.querySelectorAll('.al-sel').forEach(e => e.classList.remove('al-sel')); const el = l.querySelector(`[data-hid="${CSS.escape(String(hid))}"]`); if (el) el.classList.add('al-sel'); }
+  if (MC.map.m && P.length) { if (P.length === 1) MC.map.m.flyTo([P[0].lat, P[0].lng], 16, { duration: .6 }); else MC.map.m.fitBounds(P.map(p => [p.lat, p.lng]), { padding: [90, 90], maxZoom: 16 }); } setTimeout(mcMapaMarcas_, 700); mcMapaMarcas_();
+};
+window.mcAloCardClk_ = function (hid, id) { if (MC.al.mapa && MC.map.m) mcMapaSel_(id, 'card'); else mcAloIr_(hid, id); };
+window.mcAloHostClk_ = function (hid) { if (MC.al.mapa && MC.map.m) mcMapaHost_(hid); else mcAloIr_(hid); };
 window.mcSegOpt_ = function (k) { MC[k] = !MC[k]; try { localStorage.setItem('mc-' + k, MC[k] ? '1' : '0'); } catch (_) {} mcSegPintar_(); };
 function mcSegPintar_() {
   const body = document.getElementById('mc-gbody'), ctl = document.getElementById('mc-gctl'); MC.sgExt = MC.sgExt !== false; const box = (k, t) => `<span class="pl-ck mc-ck ${MC[k] ? 'on' : ''}" onclick="mcSegOpt_('${k}')"><span class="ck">${MC[k] ? '✓' : ''}</span>${t}</span>`;
