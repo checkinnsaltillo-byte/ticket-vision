@@ -77323,7 +77323,7 @@ const MCMAP_CSS = `
   .al-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;height:calc(100vh - 170px);min-height:540px}
   .al-mapw{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--al-ln);background:#e8edf3}#mc-map{position:absolute;inset:0;z-index:1}
   .al-listw{overflow:auto;padding:2px 6px 14px 2px;scroll-behavior:smooth}.al-split .al-grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
-  .al-lc.al-sel,.al-hc.al-sel{outline:3px solid #14b8a6;box-shadow:0 14px 34px rgba(20,184,166,.38)!important;border-color:#14b8a6}.mc-tb tr.al-sel td{background:#ccfbf1!important}
+  .al-lc.al-sel,.al-hc.al-sel{outline:3px solid #14b8a6;box-shadow:0 14px 34px rgba(20,184,166,.38)!important;border-color:#14b8a6;background:#f0fdfa}.al-lc.al-sel::after,.al-hc.al-sel::after{content:'● En el mapa';position:absolute;top:10px;right:10px;z-index:4;background:#0f766e;color:#fff;font-size:11px;font-weight:800;padding:3px 10px;border-radius:99px;box-shadow:0 2px 8px rgba(15,118,110,.4);animation:alpulso .9s ease-out 1}@keyframes alpulso{0%{transform:scale(.7);opacity:0}60%{transform:scale(1.1);opacity:1}100%{transform:scale(1)}}.mc-tb tr.al-sel td{background:#ccfbf1!important}
   .mc-pin{display:flex!important;align-items:center;gap:7px;padding:4px 11px 4px 4px!important;border-radius:15px!important;line-height:1.15;min-width:150px;transform-origin:50% 100%}
   .mc-pin .im{position:relative;width:38px;height:38px;border-radius:11px;flex:none;background:#e2e8f0 center/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(15,23,42,.08)}.mc-pin .im i{position:absolute;right:-5px;top:-5px;width:16px;height:16px;border-radius:50%;background:#f59e0b;color:#fff;font:900 10px/16px Inter,sans-serif;text-align:center;border:1.5px solid #fff;font-style:normal;box-shadow:0 1px 4px rgba(0,0,0,.3)}
   .mc-pin .t{display:flex;gap:7px;align-items:baseline}.mc-pin .t b{font-size:13px;letter-spacing:-.01em}.mc-pin .t span{font-size:11px;font-weight:800;color:#b45309}.mc-pin small{display:block;font-size:10.5px;font-weight:700;color:#475569}
@@ -77375,7 +77375,7 @@ function mcMapaMarcas_() {
     const cLat = g.reduce((s, k) => s + P[k].lat, 0) / g.length, cLng = g.reduce((s, k) => s + P[k].lng, 0) / g.length, minP = Math.min(...g.map(k => P[k].precio || Infinity)), haySel = g.some(k => P[k].id === sel || (selH && P[k].hostId === selH));
     const html = `<div class="rsv-map-cluster" style="${haySel ? 'box-shadow:0 0 0 3px #14b8a6,0 6px 18px rgba(249,115,22,.35)' : ''}"><span class="rsv-map-cluster-count">${g.length}</span><span class="rsv-map-cluster-price">desde ${isFinite(minP) ? MCFMT(minP) : '—'}</span></div>`;
     const mk = Lf.marker([cLat, cLng], { icon: Lf.divIcon({ className: '', html, iconSize: [130, 36], iconAnchor: [65, 18] }), zIndexOffset: haySel ? 2500 : 500 }).addTo(m);
-    const hook = () => { const el = mk.getElement() && mk.getElement().querySelector('.rsv-map-cluster'); if (el) { if (g.length <= 14) el.addEventListener('mouseenter', () => mcMapaSpider_(g, [cLat, cLng])); /* los grupos grandes no se despliegan en araña: solo se acercan con clic */ else el.title = `${g.length} alojamientos · clic para acercar`; el.addEventListener('click', () => m.fitBounds(g.map(k => [P[k].lat, P[k].lng]), { padding: [90, 90], maxZoom: 18 })); } };
+    const hook = () => { const el = mk.getElement() && mk.getElement().querySelector('.rsv-map-cluster'); if (el) { if (g.length <= 14) el.addEventListener('mouseenter', () => mcMapaSpider_(g, [cLat, cLng])); /* los grupos grandes no se despliegan en araña: solo se acercan con clic */ else el.title = `${g.length} alojamientos · clic para acercar`; el.addEventListener('click', ev => { ev.stopPropagation(); m.fitBounds(g.map(k => [P[k].lat, P[k].lng]), { padding: [90, 90], maxZoom: 18 }); mcMapaResaltaGrupo_(g.map(k => P[k].id)); }); } };
     mk.on('add', hook); if (mk.getElement()) hook(); MC.map.mk.set('c' + g[0], mk);
   });
 }
@@ -77394,22 +77394,31 @@ function mcMapaCardInfo_(p) { const w = document.getElementById('mc-mapinfo'); i
 function mcMapaMarcaSel_() { // recoloca la selección en los pines visibles
   const m = MC.map.m; if (!m) return; MC.map.mk.forEach((mk, k) => { if (String(k)[0] === 'c') return; const p = (MC.map.pts || []).find(x => x.id === k); if (!p) return; const esSel = MC.map.sel === p.id || (MC.map.selHost && p.hostId === MC.map.selHost); const el = mk.getElement(); const pin = el && el.querySelector('.mc-pin'); if (pin) pin.classList.toggle('sel', esSel); mk.setZIndexOffset(esSel ? 3000 : 0); });
 }
+// Clic en un grupo del mapa: resalta las cards (o renglones) de todos sus alojamientos y se desplaza a la primera
+function mcMapaResaltaGrupo_(ids) {
+  const tabla = MC.al.vista === 'tabla', root = tabla ? document.getElementById('mc-res') : document.getElementById('al-list'); if (!root) return; MC.map.sel = null; MC.map.selGrupo = ids.slice(0, 60);
+  document.querySelectorAll('#al-list .al-sel, #mc-res .al-sel').forEach(e => e.classList.remove('al-sel')); const L = MC.map.selGrupo, els = [];
+  L.forEach(id => { const q = `[data-id="${CSS.escape(String(id))}"]`; let el = root.querySelector(q); if (!el && !tabla) { let g = 0; while (!el && document.getElementById('al-sent') && g++ < 40) { mcAloMas_(); el = root.querySelector(q); } } if (el) { el.classList.add('al-sel'); els.push(el); } });
+  const f = els[0]; if (f) { let sc = f.parentElement; while (sc && !(['auto', 'scroll'].includes(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight + 2)) sc = sc.parentElement; if (sc) { const lr = sc.getBoundingClientRect(), er = f.getBoundingClientRect(); sc.scrollTo({ top: sc.scrollTop + er.top - lr.top - 12, behavior: 'smooth' }); } }
+}
 function mcMapaResalta_(id, hostId, scroll) {
   const tabla = MC.al.vista === 'tabla', root = tabla ? document.getElementById('mc-res') : document.getElementById('al-list'); if (!root) return;
   document.querySelectorAll('#al-list .al-sel, #mc-res .al-sel').forEach(e => e.classList.remove('al-sel'));
   const busca = () => (MC.al.vista === 'host' && !MC.al.host) ? (hostId ? root.querySelector(`[data-hid="${CSS.escape(String(hostId))}"]`) : null) : (id ? root.querySelector(`[data-id="${CSS.escape(String(id))}"]`) : null);
+  if (!id && !hostId && MC.map.selGrupo && MC.map.selGrupo.length) { MC.map.selGrupo.forEach(g => { const e2 = root.querySelector(`[data-id="${CSS.escape(String(g))}"]`); if (e2) e2.classList.add('al-sel'); }); return; } // la selección de un grupo se conserva al redibujar el mapa
   let el = busca();
   // con desplazamiento infinito la card puede no estar pintada aún: se cargan páginas hasta encontrarla
   if (!el && !tabla && (id || hostId)) { let g = 0; while (!el && document.getElementById('al-sent') && g++ < 40) { mcAloMas_(); el = busca(); } }
   if (el) { el.classList.add('al-sel'); if (scroll) { let sc = el.parentElement; while (sc && !(['auto', 'scroll'].includes(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight + 2)) sc = sc.parentElement; if (sc) { const lr = sc.getBoundingClientRect(), er = el.getBoundingClientRect(); sc.scrollTo({ top: sc.scrollTop + er.top - lr.top - lr.height / 2 + er.height / 2, behavior: 'smooth' }); } } }
 }
 window.mcMapaSel_ = function (id, desde) {
+  MC.map.selGrupo = null;
   const P = MC.map.pts || [], p = id ? P.find(x => x.id === String(id)) : null; MC.map.sel = p ? p.id : null; MC.map.selHost = null; mcMapaCardInfo_(p);
   if (!p) { mcMapaResalta_(null); mcMapaMarcaSel_(); return; }
   if (desde === 'card' && MC.map.m) { MC.map.m.flyTo([p.lat, p.lng], Math.max(MC.map.m.getZoom(), 16), { duration: .6 }); }
   mcMapaResalta_(p.id, p.hostId, desde === 'pin'); setTimeout(mcMapaMarcaSel_, desde === 'card' ? 700 : 0); mcMapaMarcaSel_();
 };
-window.mcMapaHost_ = function (hid) { // tarjeta de anfitrión → resalta todos sus pines y encuadra
+window.mcMapaHost_ = function (hid) { MC.map.selGrupo = null; // tarjeta de anfitrión → resalta todos sus pines y encuadra
   const P = (MC.map.pts || []).filter(p => p.hostId === String(hid)); MC.map.sel = null; MC.map.selHost = String(hid); mcMapaCardInfo_(null); mcMapaResalta_(null, hid, false);
   const l = document.getElementById('al-list'); if (l) { l.querySelectorAll('.al-sel').forEach(e => e.classList.remove('al-sel')); const el = l.querySelector(`[data-hid="${CSS.escape(String(hid))}"]`); if (el) el.classList.add('al-sel'); }
   if (MC.map.m && P.length) { if (P.length === 1) MC.map.m.flyTo([P[0].lat, P[0].lng], 16, { duration: .6 }); else MC.map.m.fitBounds(P.map(p => [p.lat, p.lng]), { padding: [90, 90], maxZoom: 16 }); } setTimeout(mcMapaMarcas_, 700); mcMapaMarcas_();
