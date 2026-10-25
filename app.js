@@ -75858,6 +75858,7 @@ async function mcCargar_() {
 function mcCss_() {
   if (document.getElementById('mc-css')) return; const st = document.createElement('style'); st.id = 'mc-css'; st.textContent = `
   #module-mercado{--ln:#e5e7eb;--tx:#111827;--mu:#6b7280;color:var(--tx);padding:18px 22px 70px!important;font-family:Inter,system-ui,sans-serif}
+  .mc-help{all:unset;cursor:pointer;position:absolute;top:12px;right:14px;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.22);color:#fff;font:800 13px Inter,sans-serif;display:flex;align-items:center;justify-content:center;transition:background .15s}.mc-help:hover{background:rgba(255,255,255,.4)}.mc-help.sm{position:static;display:inline-flex;width:18px;height:18px;font-size:11px;background:#e2e8f0;color:#475569;margin-left:6px;vertical-align:middle}.mc-help.sm:hover{background:#cbd5e1}
   .mc-hero{background:linear-gradient(135deg,#0f766e,#0e7490);color:#fff;border-radius:16px;padding:14px 18px;margin-bottom:12px}.mc-hero h2{margin:0;font-size:20px}.mc-hero small{opacity:.9}
   .mc-tabs{display:flex;gap:6px;margin:0 0 12px}.mc-tab{padding:7px 14px;border-radius:999px;border:1.5px solid var(--ln);background:#fff;font-size:13px;font-weight:700;color:#334155;cursor:pointer;font-family:inherit}.mc-dash .mc-mbox{width:auto;max-height:none;box-shadow:none;border:1px solid var(--ln);overflow:visible}.mc-dash .mc-mh{position:static}.mc-tab.on{background:#111827;color:#fff;border-color:#111827}
   .mc-card{background:#fff;border:1px solid var(--ln);border-radius:14px;padding:14px 16px;margin-bottom:12px}.mc-card h3{margin:0 0 4px;font-size:14px}.mc-card .sub{font-size:12px;color:var(--mu);margin-bottom:8px}
@@ -76620,7 +76621,7 @@ function mcAloCal_(i) {
   const hoy = mcIso_(new Date()), d0 = new Date(); let out = '';
   for (let m = 0; m < 12; m++) { const d = new Date(d0.getFullYear(), d0.getMonth() + m, 1), key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, s = i.cal[key]; if (!s) continue;
     out += `<div class="al-cm"><b>${MCMES[d.getMonth()]} ’${String(d.getFullYear()).slice(2)}</b><div class="al-cd">${[...s].map((c, x) => { const f = `${key}-${String(x + 1).padStart(2, '0')}`, t = c === '0' ? (tip.get(f) || 'indet') : ''; return `<i class="${f < hoy ? 'pas' : c === '1' ? '' : t}" title="${f}${f >= hoy ? ' · ' + (c === '1' ? 'disponible' : (MC_TIPO[t] || {}).t || 'no disponible') : ''}"></i>`; }).join('')}</div></div>`; }
-  return out + `<div class="al-lg"><span><i style="background:#ccfbf1"></i>Disponible</span><span><i style="background:#dc2626"></i>Reserva probable</span><span><i style="background:#475569"></i>Bloqueo probable</span><span><i style="background:#d97706"></i>Indeterminado</span><span><i style="background:#e8edf3"></i>Pasado</span></div>`;
+  return out + `<div class="al-lg"><span><i style="background:#ccfbf1"></i>Disponible</span><span><i style="background:#dc2626"></i>Reserva probable</span><span><i style="background:#475569"></i>Bloqueo probable</span><span><i style="background:#d97706"></i>Indeterminado</span><span><i style="background:#e8edf3"></i>Pasado</span><button type="button" class="mc-help sm" onclick="mcAyuda_()" title="¿Cómo se define cada estatus?">?</button></div>`;
 }
 function mcAloDetHtml_(h, r) {
   const i = MC.items[r.id] || {}, P = mcPInfo_(r.id), mk = mcHMet_(MC._alD.rows), t = mcTipos_(i), cat = i.cat || {}, ex = (a, b) => `<div><small>${a}</small><b>${b == null || b === '' ? '—' : esc(String(b))}</b></div>`, si = v => v === true ? 'Sí' : v === false ? 'No' : '—';
@@ -76784,6 +76785,23 @@ function mcNichosPintar_() {
 }
 window.mcNichosRefrescar_ = function () { mcNichosPintar_(); };
 async function mcClEstadoInicial_() { try { const j = await fetch(`${BACKEND}/mercado/airbnb/clasif/estado`, { cache: 'no-store' }).then(r => r.json()); if (j.running || j.done) { MC.cl.est = j; mcClProgPinta_(); if (j.running) { mcClPoll_(); mcClRepinta_(); mcClProgPinta_(); } } } catch (_) {} }
+// Ayuda: criterios con que se clasifica cada noche del calendario (reflejan mcRuns0_; si cambian las reglas, actualizar aquí)
+window.mcAyuda_ = function () {
+  const old = document.getElementById('mc-ayuda'); if (old) { old.remove(); return; } const m = document.createElement('div'); m.id = 'mc-ayuda'; m.className = 'mc-modal'; m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  const sw = c => `<i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${c};margin-right:6px;vertical-align:-1px"></i>`;
+  m.innerHTML = `<div class="mc-mbox" style="max-width:720px"><div class="mc-mh"><b>¿Cómo se define el estatus de cada noche?</b><span style="flex:1"></span><button type="button" class="mc-x" style="font-size:18px" onclick="document.getElementById('mc-ayuda').remove()">✕</button></div>
+    <div style="padding:6px 18px 18px;font-size:13px;line-height:1.55;color:#1e293b">
+    <p>Airbnb solo informa si una noche está <b>disponible</b> o <b>no disponible</b>; <u>no dice el motivo</u> (reserva, bloqueo del anfitrión, aviso previo…). Por eso cada bloque de noches seguidas «no disponibles» se clasifica con las reglas de abajo. Es una <b>estimación</b>.</p>
+    <p>${sw('#ccfbf1')}<b>Disponible.</b> La noche aparece libre en el calendario público de Airbnb.</p>
+    <p>${sw('#475569')}<b>Bloqueo probable</b> (cierre del anfitrión, no una reserva). Un bloque no disponible es bloqueo si cumple <i>alguna</i>:</p>
+    <ul style="margin:0 0 8px 18px;padding:0"><li>Empieza <b>hoy</b> y dura <b>2 noches o menos</b> (aviso previo o regla del anfitrión).</li><li>Dura <b>30 noches o más</b> (cierre largo o estancia mensual).</li><li>Llega hasta el <b>final del calendario</b> (≈ 24 meses) y dura 30+ noches: el anfitrión limita con cuánta anticipación se puede reservar.</li><li>Empieza a <b>más de 1 año</b> (365 días) de hoy.</li></ul>
+    <p>${sw('#dc2626')}<b>Reserva probable.</b> Si no es bloqueo y dura <b>14 noches o menos</b>, y además:</p>
+    <ul style="margin:0 0 8px 18px;padding:0"><li>el seguimiento <b>la vio aparecer</b> (una noche que estaba libre pasó a ocupada desde que empezó el seguimiento), o</li><li>empieza dentro de los <b>próximos 9 meses</b> (270 días).</li></ul>
+    <p>${sw('#d97706')}<b>Indeterminado.</b> Lo que no encaja en lo anterior: bloques de <b>15 a 29 noches</b> (pueden ser estancia larga o bloqueo) y bloques cortos que empiezan entre 9 y 12 meses sin que se hayan visto aparecer.</p>
+    <p>${sw('#e8edf3')}<b>Pasado.</b> Noches anteriores a hoy. Cuentan como ocupadas si lo último que se supo de ese día fue «no disponible».</p>
+    <p class="mc-mu" style="font-size:12px;margin-top:10px">El selector <b>«Contar»</b> decide qué estatus suman como noche ocupada en las cifras de ocupación (solo reservas probables, reservas + indeterminadas, o todas las no disponibles). La <b>ocupación estimada</b> de los análisis usa los próximos 90 días y excluye los bloqueos probables del total de noches disponibles.</p></div></div>`;
+  document.body.appendChild(m);
+};
 window.mcSegOpt_ = function (k) { MC[k] = !MC[k]; try { localStorage.setItem('mc-' + k, MC[k] ? '1' : '0'); } catch (_) {} mcSegPintar_(); };
 function mcSegPintar_() {
   const body = document.getElementById('mc-gbody'), ctl = document.getElementById('mc-gctl'); MC.sgExt = MC.sgExt !== false; const box = (k, t) => `<span class="pl-ck mc-ck ${MC[k] ? 'on' : ''}" onclick="mcSegOpt_('${k}')"><span class="ck">${MC[k] ? '✓' : ''}</span>${t}</span>`;
@@ -76909,7 +76927,7 @@ const MC_COLS = [
 function mcFechas_() { const a = new Date(); a.setDate(a.getDate() + 1); const b = new Date(a); b.setDate(b.getDate() + 3); const f = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return { checkin: f(a), checkout: f(b) }; }
 function mcRender_() {
   const root = document.getElementById('mc-root'); if (!root) return;
-  root.innerHTML = `<div class="mc-hero"><h2>📈 Investigación de mercados</h2><small>Compara tu oferta con la competencia: datos públicos de cada publicación y su calendario de disponibilidad.</small></div>
+  root.innerHTML = `<div class="mc-hero" style="position:relative"><button type="button" class="mc-help" onclick="mcAyuda_()" title="Cómo se definen Disponible, Reserva probable, Bloqueo probable e Indeterminado" aria-label="Ayuda: criterios del calendario">?</button><h2>📈 Investigación de mercados</h2><small>Compara tu oferta con la competencia: datos públicos de cada publicación y su calendario de disponibilidad.</small></div>
     <div class="mc-tabs"><button type="button" class="mc-tab" data-s="ext" onclick="mcSec_('ext')">📥 Extracción</button><button type="button" class="mc-tab" data-s="dash" onclick="mcSec_('dash')">📊 Dashboard</button><button type="button" class="mc-tab" data-s="alo" onclick="mcSec_('alo')">🏘️ Alojamientos</button></div>
     <div id="mc-sec-ext"><div id="mc-top"></div>
     <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Se ejecuta solo a las horas que elijas abajo (si usas el método Automática, primero repite la búsqueda para sumar publicaciones nuevas); también puedes pulsarlo cuando quieras.</div>
@@ -77045,7 +77063,7 @@ function mcRes_() {
       <div class="mc-seg sm"><button type="button" class="${MC.vista !== 'acum' ? 'on' : ''}" onclick="mcVista_('cal')">📅 Tabla con calendario</button><button type="button" class="${MC.vista === 'acum' ? 'on' : ''}" onclick="mcVista_('acum')">📈 Tabla con ocupación acumulada</button></div>
       <span style="flex:1"></span>
       ${MC.vista === 'acum' ? `<span class="mc-lg"><span><i style="background:#0f766e;height:3px"></i>Noches ocupadas acumuladas desde hoy</span></span><select class="mc-in" title="Qué cuenta como noche ocupada" onchange="mcCuenta_(this.value)">${Object.entries(MC_CUENTA_T).map(([k, t]) => `<option value="${k}" ${MC.cuenta === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`
-        : `<span class="mc-lg"><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span>${Object.values(MC_TIPO).map(t => `<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}</span>`}
+        : `<span class="mc-lg"><button type="button" class="mc-help sm" style="margin:0 6px 0 0" onclick="mcAyuda_()" title="¿Cómo se define cada estatus?">?</button><span><i style="background:#fff;border:1px solid #cbd5e1"></i>Disponible</span>${Object.values(MC_TIPO).map(t => `<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}</span>`}
       <select class="mc-in" onchange="MC.meses=+this.value;mcRes_()">${[3, 6, 12, 24].map(m => `<option value="${m}" ${MC.meses === m ? 'selected' : ''}>${m} meses</option>`).join('')}</select></div>
     <div class="mc-sc">${mcTabla_(rows)}</div></div>`;
   const c = h.querySelector('.mc-sc'); if (c) { c.scrollTop = st0; c.scrollLeft = sl0; }
