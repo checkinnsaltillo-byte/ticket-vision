@@ -76963,12 +76963,12 @@ window.mcPlSel_ = function (id, desde) {
   if (idx < 0) { MC.pl.g = ''; MC.pl.q = ''; document.querySelectorAll('#al-pl .pl-chip').forEach(b => b.classList.remove('on')); F = mcPlFilas_(); idx = F.findIndex(x => x.id === id); rep = true; mcPlMapaMarca_(); }
   if (idx >= MC.pl.n) { MC.pl.n = idx + 20; rep = true; } if (rep) mcPlTablaPinta_();
   document.querySelectorAll('#pl-tabla tr.pl-r.sel').forEach(t => t.classList.remove('sel')); const tr = document.querySelector(`#pl-tabla tr.pl-r[data-id="${CSS.escape(id)}"]`);
-  if (tr) { tr.classList.add('sel'); if (desde !== 'tabla') { const sc = tr.closest('.pl-sc'); if (sc) sc.scrollTo({ top: Math.max(0, tr.offsetTop - sc.clientHeight / 2 + tr.offsetHeight / 2), behavior: 'smooth' }); } }
+  if (tr) { tr.classList.add('sel'); if (desde !== 'tabla') { document.querySelectorAll('#pl-tabla tr.pl-dr').forEach(x => x.remove()); mcPlDetToggle_(id, true); /* despliega el registro */ const sc = tr.closest('.pl-sc'); if (sc) sc.scrollTo({ top: Math.max(0, tr.offsetTop - 44), behavior: 'smooth' }); } }
   mcPlScatterSel_(); mcPlMapaMarca_();
   if (desde !== 'mapa' && MC.pl._m) { const mk = (MC.pl._mk || []).find(m => m._id === id); if (mk) { MC.pl._m.panTo(mk.getLatLng()); mk.openPopup(); } }
 };
 function mcPlScatterSel_() { const id = MC.pl.sel; document.querySelectorAll('#al-pl .pl-anch').forEach(c => { const on = c.dataset.id === id; c.classList.toggle('sel', on); c.setAttribute('r', on ? 9.5 : 6.5); if (on) c.parentNode.appendChild(c); }); document.querySelectorAll('#al-pl .pl-dot').forEach(c => { const on = c.dataset.id === id; c.classList.toggle('sel', on); c.setAttribute('fill-opacity', on ? '.95' : id ? '.28' : '.55'); if (on) c.parentNode.appendChild(c); }); }
-window.mcPlRowClick_ = function (id) { if (MC.pl.sel === id) { mcPlDetToggle_(id); } else { mcPlSel_(id, 'tabla'); mcPlDetToggle_(id, true); } };
+window.mcPlRowClick_ = function (id) { if (MC.pl.sel === id) { mcPlDetToggle_(id); } else { document.querySelectorAll('#pl-tabla tr.pl-dr').forEach(x => x.remove()); mcPlSel_(id, 'tabla'); mcPlDetToggle_(id, true); } };
 function mcPlDetToggle_(id, abrir) { const tr = document.querySelector(`#pl-tabla tr.pl-r[data-id="${CSS.escape(id)}"]`); if (!tr) return; const nx = tr.nextElementSibling; if (nx && nx.classList.contains('pl-dr')) { if (!abrir) nx.remove(); return; } const p = (MC.pl.rec.places || []).find(x => x.id === id); if (!p) return; const d = document.createElement('tr'); d.className = 'pl-dr'; d.innerHTML = `<td colspan="5">${mcPlDetHtml_(p)}</td>`; tr.after(d); }
 // ── Cantidad acumulada de negocios por categoría según la distancia (con marcadores de anclas y centros de gravedad) ──
 const MCPL_SER = { salud: '#dc2626', abasto: '#16a34a', educacion: '#ca8a04', ocio: '#db2777', transporte: '#0891b2', servicios: '#6366f1' };
