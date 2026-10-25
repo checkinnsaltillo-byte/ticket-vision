@@ -75924,7 +75924,8 @@ function mcHist_(i) { return mcMemo_(i, 'h', () => mcHist0_(i)); }
 function mcHist0_(i) { if (i.v !== 2 || !i.cal) return null; const d = new Date(), hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; let o = 0, l = 0;
   Object.keys(i.cal).forEach(k => [...i.cal[k]].forEach((c, x) => { if (`${k}-${String(x + 1).padStart(2, '0')}` < hoy) { if (c === '0') o++; else if (c === '1') l++; } })); return { o, l }; }
 // Tipo probable de cada bloque «no disponible» desde hoy. Airbnb NO dice el motivo (reserva, bloqueo del anfitrión, aviso previo…): es una estimación.
-//   bloqueo: empieza hoy y dura ≤ 2 noches (aviso previo) · dura ≥ 30 noches · empieza a más de 1 año
+//   bloqueo: dura ≥ 30 noches · llega al final del calendario · empieza a más de 1 año
+//   (v2182) «empieza hoy y dura ≤ 2 noches» YA NO es bloqueo: puede ser una reserva de último momento o el aviso previo del anfitrión → indeterminado
 //   reserva: dura ≤ 14 noches y el seguimiento la vio aparecer (libre → ocupada), o empieza en los próximos 9 meses
 //   indeterminado: el resto (15–29 noches o sin señales claras)
 const mcIso_ = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -75939,7 +75940,7 @@ function mcRuns0_(i) {
   const nuevos = new Set((i.cambios || []).filter(x => x.de === '1' && x.a === '0').map(x => x.dia)); const runs = []; let cur = null, ult = -9;
   dias.forEach((d, k) => { if (d.c === '0') { if (cur && ult === k - 1) { cur.fin = d.f; cur.n++; } else { cur = { ini: d.f, fin: d.f, n: 1, nuevo: false, n365: 0 }; runs.push(cur); } ult = k; if (nuevos.has(d.f)) cur.nuevo = true; if (d.f < l365) cur.n365++; } });
   runs.forEach(r => { let tipo = 'indet', m = 'Bloque sin señales claras';
-    if (r.ini === hoy && r.n <= 2) { tipo = 'bloqueo'; m = 'Empieza hoy y dura ≤ 2 noches: aviso previo o regla del anfitrión'; }
+    if (r.ini === hoy && r.n <= 2) { tipo = 'indet'; m = 'Empieza hoy y dura ≤ 2 noches: puede ser una reserva de último momento o el aviso previo del anfitrión (el calendario no permite distinguirlo)'; }
     else if (r.fin >= tope && r.n >= 30) { tipo = 'bloqueo'; m = 'Llega hasta el final del calendario: el anfitrión limita con cuánta anticipación se puede reservar'; }
     else if (r.n >= 30) { tipo = 'bloqueo'; m = 'Bloque largo (≥ 30 noches): cierre del anfitrión o estancia mensual'; }
     else if (r.ini > l365) { tipo = 'bloqueo'; m = 'A más de un año: cierre del anfitrión'; }
@@ -76794,10 +76795,10 @@ window.mcAyuda_ = function () {
     <p>Airbnb solo informa si una noche está <b>disponible</b> o <b>no disponible</b>; <u>no dice el motivo</u> (reserva, bloqueo del anfitrión, aviso previo…). Por eso cada bloque de noches seguidas «no disponibles» se clasifica con las reglas de abajo. Es una <b>estimación</b>.</p>
     <p>${sw('#ccfbf1')}<b>Disponible.</b> La noche aparece libre en el calendario público de Airbnb.</p>
     <p>${sw('#475569')}<b>Bloqueo probable</b> (cierre del anfitrión, no una reserva). Un bloque no disponible es bloqueo si cumple <i>alguna</i>:</p>
-    <ul style="margin:0 0 8px 18px;padding:0"><li>Empieza <b>hoy</b> y dura <b>2 noches o menos</b> (aviso previo o regla del anfitrión).</li><li>Dura <b>30 noches o más</b> (cierre largo o estancia mensual).</li><li>Llega hasta el <b>final del calendario</b> (≈ 24 meses) y dura 30+ noches: el anfitrión limita con cuánta anticipación se puede reservar.</li><li>Empieza a <b>más de 1 año</b> (365 días) de hoy.</li></ul>
+    <ul style="margin:0 0 8px 18px;padding:0"><li>Dura <b>30 noches o más</b> (cierre largo o estancia mensual).</li><li>Llega hasta el <b>final del calendario</b> (≈ 24 meses) y dura 30+ noches: el anfitrión limita con cuánta anticipación se puede reservar.</li><li>Empieza a <b>más de 1 año</b> (365 días) de hoy.</li></ul>
     <p>${sw('#dc2626')}<b>Reserva probable.</b> Si no es bloqueo y dura <b>14 noches o menos</b>, y además:</p>
     <ul style="margin:0 0 8px 18px;padding:0"><li>el seguimiento <b>la vio aparecer</b> (una noche que estaba libre pasó a ocupada desde que empezó el seguimiento), o</li><li>empieza dentro de los <b>próximos 9 meses</b> (270 días).</li></ul>
-    <p>${sw('#d97706')}<b>Indeterminado.</b> Lo que no encaja en lo anterior: bloques de <b>15 a 29 noches</b> (pueden ser estancia larga o bloqueo) y bloques cortos que empiezan entre 9 y 12 meses sin que se hayan visto aparecer.</p>
+    <p>${sw('#d97706')}<b>Indeterminado.</b> Lo que no se puede asegurar: bloques que <b>empiezan hoy y duran 2 noches o menos</b> (pueden ser una reserva de última hora o el aviso previo que fija el anfitrión; el calendario no lo distingue), bloques de <b>15 a 29 noches</b> (estancia larga o bloqueo) y bloques cortos que empiezan entre 9 y 12 meses sin que se hayan visto aparecer.</p>
     <p>${sw('#e8edf3')}<b>Pasado.</b> Noches anteriores a hoy. Cuentan como ocupadas si lo último que se supo de ese día fue «no disponible».</p>
     <p class="mc-mu" style="font-size:12px;margin-top:10px">El selector <b>«Contar»</b> decide qué estatus suman como noche ocupada en las cifras de ocupación (solo reservas probables, reservas + indeterminadas, o todas las no disponibles). La <b>ocupación estimada</b> de los análisis usa los próximos 90 días y excluye los bloqueos probables del total de noches disponibles.</p></div></div>`;
   document.body.appendChild(m);
