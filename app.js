@@ -76451,6 +76451,11 @@ function mcAloCss_() {
   .al-rg input[type=range]{position:absolute;left:0;top:5px;width:100%;margin:0;height:18px;pointer-events:none;-webkit-appearance:none;appearance:none;background:none}.al-rg input[type=range]::-webkit-slider-thumb{pointer-events:auto;-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;border:2.5px solid #0f766e;box-shadow:0 2px 6px rgba(15,23,42,.25);cursor:grab}.al-rg input[type=range]::-moz-range-thumb{pointer-events:auto;width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid #0f766e;box-shadow:0 2px 6px rgba(15,23,42,.25);cursor:grab}.al-rg input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;transform:scale(1.15)}
   .al-cls{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px dashed #e4e9f0;font-size:11.5px;color:#64748b}.al-cls .al-lv{min-width:20px;height:20px;font-size:11px;border-radius:6px;box-shadow:none}.al-cls span:last-child{margin-left:4px}
 
+  .al-en{display:inline-block;background:#e0f2fe;color:#075985;border:1px solid #bae6fd;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}
+  .en-top{margin:0 0 10px}.en-tip{font-size:15px;font-weight:800;color:#0f172a}.en-ks{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 14px}.en-k{background:#f8fafc;border:1px solid #e4e9f0;border-radius:12px;padding:10px 12px}.en-k small{display:block;color:#64748b;font-size:11.5px;font-weight:700}.en-k b{display:block;font-size:20px;color:#0f172a;margin-top:2px}.en-k em{display:block;font-style:normal;font-size:11px;color:#94a3b8;margin-top:2px}
+  .en-h{margin:14px 0 8px;font-size:13px;font-weight:800;color:#0f172a}.en-h small{font-weight:600;color:#94a3b8;font-size:11.5px}.en-ds{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:8px 22px}.en-d{display:grid;grid-template-columns:minmax(120px,170px) 1fr 34px;align-items:center;gap:8px;font-size:12.5px;color:#334155}.en-d small{grid-column:1/-1;color:#94a3b8;font-size:11px;margin-top:-4px}.en-d b{text-align:right}.en-b{height:8px;background:#eef2f6;border-radius:99px;overflow:hidden}.en-b i{display:block;height:100%;border-radius:99px}
+  .en-fs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:14px}.en-f{border-radius:12px;padding:10px 12px;font-size:12.5px}.en-f h6{margin:0 0 6px;font-size:12.5px;font-weight:800}.en-f ul{margin:0;padding-left:16px}.en-f li{margin:2px 0}.en-f.f{background:#f0fdf4}.en-f.d{background:#fff7ed}.en-f.r{background:#fef2f2}.en-f.o{background:#eff6ff}
+  .en-pn{display:flex;flex-wrap:wrap;gap:6px}.en-pn a{font-size:11.5px;font-weight:700;color:#0f766e;background:#f0fdfa;border:1px solid #ccfbf1;border-radius:99px;padding:2px 10px;text-decoration:none}.en-pn a:hover{background:#ccfbf1}
   .al-camp{display:inline-block;background:#ecfccb;color:#3f6212;border:1px solid #d9f99d;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}
   .fs-lay{display:block}.fs-side{display:none}.fs-lay.fs-on{display:grid;grid-template-columns:268px minmax(0,1fr);gap:20px;align-items:start}.fs-lay.fs-on .fs-side{display:block;position:sticky;top:8px;max-height:calc(100vh - 24px);overflow:auto;background:#fff;border:1px solid var(--al-ln);border-radius:16px;padding:4px 16px 10px;scrollbar-width:thin}
   .fs-hd{display:flex;justify-content:space-between;align-items:center;padding:12px 0 8px;font-size:16px;font-weight:900;color:var(--al-ink);position:sticky;top:0;background:#fff;z-index:2;border-bottom:1px solid var(--al-ln)}.fs-hd button{all:unset;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--al-ac)}.fs-hd button:hover{text-decoration:underline}
@@ -76514,13 +76519,13 @@ window.mcAloIr_ = function (host, id) { MC.al.host = host || null; MC.al.id = id
 // 🏘️ Alojamientos (v2180): 3 vistas —🗂️ Por alojamiento · 👥 Por anfitrión · 📋 Tabla— con los MISMOS filtros: superanfitrión, rangos (calificación, precio, precio/habitación)
 // con slider de doble punta, habitaciones, baños, camas, cocina, ciudad, estancia mínima, clasificación (A/B/C) y nicho. Los categóricos admiten selección múltiple.
 // ═══════════════════════════════════════════════════════════════════════════
-MC.fl = MC.fl || { camp: new Set(), huesp: new Set(), tipo: new Set(), sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), rg: {} };
+MC.fl = MC.fl || { ent: new Set(), camp: new Set(), huesp: new Set(), tipo: new Set(), sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), rg: {} };
 MC.al.vista = (() => { try { const v = localStorage.getItem('mc-alo-vista'); return v === 'host' || v === 'tabla' ? v : 'alo'; } catch (_) { return 'alo'; } })();
 MC.al.ordA = MC.al.ordA || 'idx'; MC.al.pagA = MC.al.pagA || 48; MC.al.flAb = MC.al.flAb !== false;
 const MCFL_CAT = { huesp: r => r.huesp == null ? '?' : r.huesp <= 1 ? '1' : r.huesp >= 9 ? '9+' : r.huesp >= 7 ? '7-8' : r.huesp >= 5 ? '5-6' : String(r.huesp), hab: r => r.hab == null ? '?' : r.hab === 0 ? '0' : r.hab >= 5 ? '5+' : String(r.hab), banos: r => r.banos == null ? '?' : r.banos <= 1 ? '1' : r.banos >= 3 ? '3+' : String(r.banos), camas: r => r.camas == null ? '?' : r.camas >= 5 ? '5+' : String(r.camas), minN: r => r.minN == null ? '?' : r.minN <= 1 ? '1' : r.minN <= 2 ? '2' : r.minN <= 6 ? '3-6' : r.minN <= 29 ? '7-29' : '30+' };
-const MCFL_OPT = { camp: [['Sí', 'Campestre / cabaña / camping'], ['No', 'Urbano / otros']], huesp: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5-6', '5 a 6'], ['7-8', '7 a 8'], ['9+', '9 o más']], tipo: [['Entero', 'Alojamiento entero'], ['Habitación', 'Habitación']], sup: [['Sí', '★ Superanfitrión'], ['No', 'Sin insignia']], hab: [['0', 'Estudio'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']], banos: [['1', '1'], ['1.5', '1.5'], ['2', '2'], ['2.5', '2.5'], ['3+', '3 o más']], camas: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']],
+const MCFL_OPT = { ent: [['A', 'Entorno A (muy favorable)'], ['B', 'Entorno B (favorable)'], ['C', 'Entorno C (intermedio)'], ['D', 'Entorno D'], ['E', 'Entorno E'], ['N/C', 'Analizado, sin índice'], ['Sin', 'Sin análisis de entorno']], camp: [['Sí', 'Campestre / cabaña / camping'], ['No', 'Urbano / otros']], huesp: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5-6', '5 a 6'], ['7-8', '7 a 8'], ['9+', '9 o más']], tipo: [['Entero', 'Alojamiento entero'], ['Habitación', 'Habitación']], sup: [['Sí', '★ Superanfitrión'], ['No', 'Sin insignia']], hab: [['0', 'Estudio'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']], banos: [['1', '1'], ['1.5', '1.5'], ['2', '2'], ['2.5', '2.5'], ['3+', '3 o más']], camas: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']],
   coc: [['Sí', 'Con cocina'], ['Compartida', 'Compartida'], ['No', 'Sin cocina']], minN: [['1', '1 noche'], ['2', '2 noches'], ['3-6', '3 a 6'], ['7-29', '7 a 29'], ['30+', '30 o más']], niv: [['A', 'Nivel A'], ['B', 'Nivel B'], ['C', 'Nivel C'], ['S/C', 'Sin clasificar']] };
-const MCFL_LBL = { camp: 'Campestre', huesp: 'Huéspedes', tipo: 'Tipo de alojamiento', sup: 'Superanfitrión', hab: 'Habitaciones', banos: 'Baños', camas: 'Camas', coc: 'Cocina', ciudad: 'Ciudad', minN: 'Estancia mínima', niv: 'Clasificación', nicho: 'Nicho' };
+const MCFL_LBL = { ent: 'Entorno urbano', camp: 'Campestre', huesp: 'Huéspedes', tipo: 'Tipo de alojamiento', sup: 'Superanfitrión', hab: 'Habitaciones', banos: 'Baños', camas: 'Camas', coc: 'Cocina', ciudad: 'Ciudad', minN: 'Estancia mínima', niv: 'Clasificación', nicho: 'Nicho' };
 function mcFlDom_() { // dominios de los sliders (según los datos)
   const A = mcAloData_(); if (MC._fd && MC._fd.rows === A.rows) return MC._fd; const ext = (k, cap) => { const v = A.rows.map(r => r[k]).filter(x => mcOk_(x) && x > 0).sort((a, b) => a - b); if (!v.length) return [0, 1]; const hi = cap ? mcsQ(v, cap) : v[v.length - 1]; return [0, Math.ceil(hi / 50) * 50]; };
   const cals = A.rows.map(r => r.cal).filter(x => mcOk_(x) && x > 0);
@@ -76529,11 +76534,12 @@ function mcFlDom_() { // dominios de los sliders (según los datos)
 }
 const mcFlRg_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return r ? [Math.max(D[0], r[0]), Math.min(D[1], r[1])] : D.slice(); };
 const mcFlRgOn_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return !!r && (r[0] > D[0] || r[1] < D[1]); };
-const mcFlActivos_ = () => ['camp', 'huesp', 'tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length;
+const mcFlActivos_ = () => ['ent', 'camp', 'huesp', 'tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length;
 function mcAloPasa_(r) {
   const F = MC.fl, i = MC.items[r.id] || {}, D = mcFlDom_();
   if (!F.tipo) F.tipo = new Set();
   if (F.camp && F.camp.size && !F.camp.has(r.camp ? 'Sí' : 'No')) return false;
+  if (F.ent && F.ent.size && !F.ent.has(mcFlVal_('ent', r))) return false;
   if (F.tipo.size && !F.tipo.has(r.priv ? 'Habitación' : 'Entero')) return false;
   if (F.sup.size && !F.sup.has(i.superanfitrion ? 'Sí' : 'No')) return false;
   for (const k of ['cal', 'precio', 'pxh']) if (mcFlRgOn_(k)) { const [lo, hi] = mcFlRg_(k), v = r[k]; if (!mcOk_(v) || v < lo || (hi < D[k][1] && v > hi)) return false; }
@@ -76578,16 +76584,17 @@ function mcAloTopPinta_() {
 }
 const MC_CAMP_RE = /caba[ñn]a|casa de campo|finca|campestre|tienda|acampar|camping|glamping|contenedor|domo|tipi|yurta|remolque|caravana|casa (?:en|del) [aá]rbol|rancho|granja/i;
 const mcCampestre_ = (i, l) => MC_CAMP_RE.test(`${i && i.tipo || ''} ${l && l.tipoBusq || ''}`);
-function mcFlVal_(k, r) { if (k === 'camp') return r.camp ? 'Sí' : 'No'; const i = MC.items[r.id] || {}; if (k === 'tipo') return r.priv ? 'Habitación' : 'Entero'; if (k === 'sup') return i.superanfitrion ? 'Sí' : 'No'; if (k === 'coc') { const c = mcCocina_(i); return c === '—' ? 'No' : c; } if (k === 'ciudad') return i.ciudad || 'Sin ciudad'; if (k === 'niv' || k === 'nicho') { const x = MC.cl.ix[r.id]; return k === 'niv' ? (x ? mcClNivel_(x.indice) : 'S/C') : (x ? mcClNichoRec_(x).n1 : null) || 'S/C'; } return MCFL_CAT[k](r); }
+function mcFlVal_(k, r) { if (k === 'ent') { const x = MC.en.ix[r.id]; return !x ? 'Sin' : x.cv || 'N/C'; } if (k === 'camp') return r.camp ? 'Sí' : 'No'; const i = MC.items[r.id] || {}; if (k === 'tipo') return r.priv ? 'Habitación' : 'Entero'; if (k === 'sup') return i.superanfitrion ? 'Sí' : 'No'; if (k === 'coc') { const c = mcCocina_(i); return c === '—' ? 'No' : c; } if (k === 'ciudad') return i.ciudad || 'Sin ciudad'; if (k === 'niv' || k === 'nicho') { const x = MC.cl.ix[r.id]; return k === 'niv' ? (x ? mcClNivel_(x.indice) : 'S/C') : (x ? mcClNichoRec_(x).n1 : null) || 'S/C'; } return MCFL_CAT[k](r); }
 function mcFlChecks_(k, opts, cnt) { return `<div class="fs-ops" data-k="${k}">${opts.map(([v, t]) => `<div class="fs-op ${MC.fl[k].has(v) ? 'on' : ''}" role="checkbox" tabindex="0" onclick="mcAloTg_('${k}',${esc(JSON.stringify(v))},this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"><span class="fs-ck">✓</span><span class="fs-tx">${esc(t)}</span><em>${cnt[k][v] || 0}</em></div>`).join('')}</div>`; }
 function mcFlSideHtml_(D, nichos, n) {
-  const cnt = {}; ['tipo', 'camp', 'sup', 'huesp', 'hab', 'banos', 'camas', 'coc', 'minN', 'ciudad', 'niv', 'nicho'].forEach(k => cnt[k] = {}); D.rows.forEach(r => { for (const k in cnt) { const v = mcFlVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; } });
+  const cnt = {}; ['tipo', 'camp', 'ent', 'sup', 'huesp', 'hab', 'banos', 'camas', 'coc', 'minN', 'ciudad', 'niv', 'nicho'].forEach(k => cnt[k] = {}); D.rows.forEach(r => { for (const k in cnt) { const v = mcFlVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; } });
   const sec = (t, body, open, k) => `<details class="fs-sec" ${open ? 'open' : ''}><summary>${t}${k && MC.fl[k] && MC.fl[k].size ? `<b>${MC.fl[k].size}</b>` : ''}</summary><div class="fs-bd">${body}</div></details>`;
   const sl = (k, t, fm) => sec(t, mcFlSlider_(k, '', fm), true);
   return `<div class="fs-hd"><span>Filtros</span><button type="button" onclick="mcAloFlReset_()" style="${n ? '' : 'visibility:hidden'}">Borrar todo</button></div>
     ${sec('Tipo de alojamiento', mcFlChecks_('tipo', MCFL_OPT.tipo, cnt), true, 'tipo')}
     ${sl('precio', '💲 Precio por noche', mcFlFmt_.precio)}${sl('pxh', '🛏️ Precio por habitación', mcFlFmt_.pxh)}${sl('cal', '⭐ Calificación', mcFlFmt_.cal)}
     ${sec('Campestre (cabaña, casa de campo, camping…)', mcFlChecks_('camp', MCFL_OPT.camp, cnt), true, 'camp')}
+    ${sec('Análisis del entorno urbano', mcFlChecks_('ent', MCFL_OPT.ent, cnt), true, 'ent')}
     ${sec('Superanfitrión', mcFlChecks_('sup', MCFL_OPT.sup, cnt), true, 'sup')}
     ${sec('Clasificación (IA)', mcFlChecks_('niv', MCFL_OPT.niv, cnt), true, 'niv')}
     ${sec('Huéspedes (capacidad)', mcFlChecks_('huesp', MCFL_OPT.huesp, cnt), true, 'huesp')}
@@ -76600,7 +76607,7 @@ function mcAloPintar_() {
   const w = document.getElementById('mc-sec-alo'); if (!w) return; if (MC.map && MC.map.m) mcMapaDestruye_(); mcAloCss_(); mcClCss_(); const A = mcAloData_(); document.removeEventListener('keydown', MC._alKd || (() => {})); const S = MC.al;
   if (A.rows.length < 1) { w.innerHTML = '<div class="mc-card mc-mu">Aún no hay alojamientos extraídos. Ve a «Extracción» y pulsa «Extraer / actualizar».</div>'; return; }
   const h = S.host && A.hosts.find(x => x.id === S.host), r = S.id && A.rows.find(x => x.id === S.id);
-  if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); return; }
+  if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); mcEnFicha_(r.id); return; }
   w.innerHTML = `<div id="al-top"></div><div class="fs-lay ${S.flAb ? 'fs-on' : ''}" id="al-lay"><aside class="fs-side" id="al-flp"></aside><div id="al-body"></div></div>`; mcAloTopPinta_(); mcAloCuerpo_();
 }
 function mcAloCuerpo_() {
@@ -76658,7 +76665,7 @@ function mcAloHostHtml_(h) {
 function mcAloListCard_(h, r, showHost) {
   const i = MC.items[r.id] || {}, sp = [i.huespedes != null ? i.huespedes + ' huésp.' : '', i.habitaciones != null ? (i.habitaciones === 0 ? 'Estudio' : i.habitaciones + ' hab.') : '', i.camas != null ? i.camas + ' camas' : '', i.banos != null ? i.banos + ' baños' : ''].filter(Boolean).join(' · ');
   return `<button type="button" class="al-lc" data-id="${r.id}" onclick="mcAloCardClk_('${h.id}','${r.id}')" ondblclick="mcAloIr_('${h.id}','${r.id}')"><div class="al-cv"><img loading="lazy" src="${esc(mcImg_(i.foto, 560))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"><div class="al-bg">${mcClBadge_(r.id)}${i.favorito ? '<span class="al-bd">🏆 Favorito</span>' : ''}${r.propio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${i.nuevo ? '<span class="al-bd b">Nuevo</span>' : ''}</div></div>
-    <div class="al-lb"><h4>${esc(i.titulo || r.id)}</h4><small>${esc(i.tipo || '')}${i.ciudad ? ' · ' + esc(i.ciudad) : ''}</small>${MC.cl.ix[r.id] || r.camp ? `<div style="margin:4px 0;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${r.camp ? '<span class="al-camp">🏕️ Campestre</span>' : ''}${MC.cl.ix[r.id] ? mcClNicho_(r.id) : ''}</div>` : ''}<small>${esc(sp)}</small>${showHost ? `<small style="margin-top:2px">👤 ${esc(r.host)}${r.sup ? ' · ★' : ''}</small>` : ''}
+    <div class="al-lb"><h4>${esc(i.titulo || r.id)}</h4><small>${esc(i.tipo || '')}${i.ciudad ? ' · ' + esc(i.ciudad) : ''}</small>${MC.cl.ix[r.id] || r.camp || MC.en.ix[r.id] ? `<div style="margin:4px 0;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${mcEnChip_(r.id)}${r.camp ? '<span class="al-camp">🏕️ Campestre</span>' : ''}${MC.cl.ix[r.id] ? mcClNicho_(r.id) : ''}</div>` : ''}<small>${esc(sp)}</small>${showHost ? `<small style="margin-top:2px">👤 ${esc(r.host)}${r.sup ? ' · ★' : ''}</small>` : ''}
     <div class="al-r"><span><b>${mcOk_(r.precio) ? MCFMT(r.precio) : '—'}</b> <small style="display:inline">/noche</small></span><span>★ <b style="font-size:13px">${mcOk_(r.cal) ? MCN(r.cal, 2) : '—'}</b> <small style="display:inline">(${r.ev})</small></span></div>
     <div class="al-bar2" title="Ocupación estimada de los próximos 90 días"><i style="width:${Math.min(100, (r.occ || 0) * 2.5)}%"></i></div><small style="margin-top:4px">Ocupación ${mcOk_(r.occ) ? MCN(r.occ, 0) + '%' : '—'}</small></div></button>`;
 }
@@ -76701,6 +76708,7 @@ function mcAloDetHtml_(h, r) {
       <div class="al-card"><h5>📍 Ubicación</h5><div class="al-tx">${esc(i.ubicacionTxt || i.ubicacion || '')}</div>${i.barrio ? `<div class="al-tx" style="margin-top:10px;color:#475569">${esc(i.barrio)}</div>` : ''}</div>
       <div class="al-card"><h5>👤 Anfitrión</h5><div class="al-fs">${ex('Nombre', h.host)}${ex('ID', h.id)}${ex('Años como anfitrión', i.hostAnios)}${ex('Evaluaciones del perfil', i.hostEvaluaciones)}${ex('Calificación del perfil', i.hostCalificacion)}${ex('Superanfitrión', si(i.superanfitrion))}${ex('Respuesta', i.hostRespuesta)}${ex('Tiempo de respuesta', i.hostTiempo)}${ex('Coanfitriones', i.coanfitriones)}${ex('Alojamientos en tu lista', h.n)}</div>${(h.it || {}).hostAcerca ? `<div class="al-tx" style="margin-top:12px;color:#475569">${esc(h.it.hostAcerca)}</div>` : ''}</div>
       ${i.descripcion ? `<div class="al-card w"><h5>📝 Descripción</h5><div class="al-tx">${esc(String(i.descripcion).trim())}</div></div>` : ''}
+      <div class="al-card w"><h5>🏙️ Análisis del entorno urbano</h5><div id="al-en"><div class="al-sk" style="height:90px"></div></div></div>
     </div>`;
 }
 // ── Galería ──
@@ -76741,9 +76749,10 @@ const MCCL_TIER = { S1: 'BC', S2: 'AB', S3: 'BC', S4: 'AB', S5: 'AB', S6: 'A' };
 function mcClNichoRec_(x) { const ap = (x && x.ap) || []; if (!ap.length) return { n1: (x && x.ne) || null, n2: (x && x.ne2) || null }; const niv = mcClNivel_(x.indice), t = ap.filter(n => !MCCL_TIER[n] || MCCL_TIER[n].includes(niv)), L = t.length ? t.concat(ap.filter(n => !t.includes(n))) : ap; return { n1: L[0], n2: L[1] || null }; }
 const MCCL_D = { SEG: 'Seguridad', LIM: 'Limpieza', MOB: 'Mobiliario', INS: 'Instalaciones', EST: 'Estética', DIS: 'Distribución', AME: 'Amenidades', COS: 'Costos', SEN: 'Presentación', ENT: 'Entorno' };
 const MCCL_VAR = { LIM_BANO: 'limpieza del baño', LIM_CAMA: 'ropa de cama', AME_WIFI: 'Wi-Fi', AME_ESTACIONA: 'estacionamiento', EQ_TRABAJO: 'puesto de trabajo', EQ_CLIMA: 'clima', SEG_PRIVACIDAD: 'privacidad', MOB_CALIDAD: 'calidad del mobiliario', MOB_ERGONOMIA: 'ergonomía', EQ_COCINA: 'cocina equipada', AME_LAVADO: 'lavandería', MOB_ALMACEN: 'almacenamiento', MOB_CAPACIDAD: 'camas vs capacidad', DIS_CAPACIDAD: 'espacio vs huéspedes', SEG_ANTIDESLIZ: 'prevención de caídas', DIS_BANOS: 'baños', EST_ACOGEDOR: 'ambiente acogedor', INS_BANO: 'baño (acabados)', EST_COHERENCIA: 'coherencia de estilo', INV_NIVEL: 'inversión visible', EST_IDENTIDAD: 'identidad', FOT_CALIDAD: 'fotografía', AME_MASCOTAS: 'política de mascotas', INS_PISOS: 'pisos', COS_DANO: 'resistencia al uso', ACC_ESCALONES: 'accesibilidad (escalones)', COS_REPOSICION: 'costo de reposición' };
+MC.en = MC.en || { ix: {}, job: null };
 MC.cl = MC.cl || { ix: {}, cfg: { pA: 85, pC: 30 }, est: null, f: { nivel: '', nicho: '', q: '', ord: 'indice' } };
 async function mcClCargar_() {
-  try { const [a, b] = await Promise.all([fetch(`${BACKEND}/mercado/airbnb/clasif/indice`, { cache: 'no-store' }).then(r => r.json()), fetch(`${BACKEND}/mercado/airbnb/clasif/config`, { cache: 'no-store' }).then(r => r.json())]); if (a.ok) MC.cl.ix = a.indice || {}; if (b.ok) MC.cl.cfg = b.config; MC.cl._ts = Date.now(); } catch (_) {}
+  try { const [a, b, c] = await Promise.all([fetch(`${BACKEND}/mercado/airbnb/clasif/indice`, { cache: 'no-store' }).then(r => r.json()), fetch(`${BACKEND}/mercado/airbnb/clasif/config`, { cache: 'no-store' }).then(r => r.json()), fetch(`${BACKEND}/mercado/airbnb/entorno/indice`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({}))]); if (a.ok) MC.cl.ix = a.indice || {}; if (b.ok) MC.cl.cfg = b.config; if (c.ok) MC.en.ix = c.indice || {}; MC.cl._ts = Date.now(); } catch (_) {}
 }
 function mcClUmbrales_() { const v = Object.values(MC.cl.ix).map(x => x.indice).filter(mcOk_).sort((a, b) => a - b); if (v.length < 8) return { A: 75, C: 50, n: v.length, rel: false }; return { A: mcsQ(v, MC.cl.cfg.pA / 100), C: mcsQ(v, MC.cl.cfg.pC / 100), n: v.length, rel: true }; }
 const mcClNivel_ = ix => { const u = mcClUmbrales_(); return ix >= u.A ? 'A' : ix < u.C ? 'C' : 'B'; };
@@ -76778,6 +76787,42 @@ function mcClFichaHtml_(o, id) {
       <h6 style="margin-top:14px">Mejoras sugeridas</h6>${mj.map(m => `<div class="cl-al"><b>P${esc(m.p)}</b> · ${esc(m.a || '')} <span class="mc-mu">· ${esc(MCCL_D[m.d] || m.d || '')} · $${(+m.min || 0).toLocaleString('es-MX')}–$${(+m.max || 0).toLocaleString('es-MX')}</span></div>`).join('') || '<div class="mc-mu">Sin mejoras sugeridas.</div>'}</div></div>
     <div class="cl-ph">${(o.fotos_usadas || []).map((f, k) => `<div title="${esc(f.espacio || '')}"><img loading="lazy" src="${esc(mcImg_(f.u, 240))}" alt="" referrerpolicy="no-referrer"><span><b>${k + 1}</b>${esc(f.espacio || '')}</span></div>`).join('')}</div>
     <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="cl-bt sec" onclick="mcClCorre_(['${esc(id)}'])" ${MC.cl.est && MC.cl.est.running ? 'disabled' : ''}>🔄 Volver a analizar (≈ $0.07)</button><span class="mc-mu" style="font-size:11.5px">Analizado ${esc(mcF(o.analizado_en))} · ${esc(o.modelo || '')} · el nivel y los nichos se recalculan al cambiar los percentiles.</span></div>`;
+}
+// ── Análisis del entorno urbano (Street View + IA): chip, ficha y botón de análisis ──
+const MCEN_DIM = { S1: 'Uso aparente y vocación', S2: 'Morfología urbana', S3: 'Vialidad y accesibilidad', S4: 'Comercio y servicios', S5: 'Generadores de afluencia', S6: 'Ambiente y paisaje', S7: 'Infraestructura urbana', S8: 'Calidad constructiva', S9: 'Seguridad física visible', S10: 'Tipología y perfil aparente', S11: 'Informalidad / espacio público', S12: 'Movilidad y ruido (indicios)', S14: 'Equipamiento recreativo' };
+const mcEnSem_ = v => v == null ? '#cbd5e1' : v >= 80 ? '#15803d' : v >= 60 ? '#65a30d' : v >= 40 ? '#d97706' : v >= 20 ? '#ea580c' : '#b91c1c';
+function mcEnChip_(id) { const x = MC.en.ix[id]; if (!x) return ''; return `<span class="al-en" title="Análisis del entorno urbano · ICE vivienda ${x.viv != null ? x.viv + '/100' : 'no calculable'} · ${esc(x.tip || '')} · confianza ${esc(x.conf || '')}">🏙️ Entorno ${x.cv ? esc(x.cv) : '·'}</span>`; }
+function mcEnHtml_(o) {
+  const k = (t, v, s) => `<div class="en-k"><small>${t}</small><b>${v}</b>${s ? `<em>${s}</em>` : ''}</div>`, ice = (u, t) => { const x = (o.ice || {})[u] || {}; return k(t, x.v != null ? `${MCN(x.v, 1)} <span class="al-lv ${x.cl === 'A' ? 'A' : x.cl === 'B' ? 'B' : 'C'}">${esc(x.cl)}</span>` : '<span class="mc-mu">no calculable</span>', `cobertura ${x.cov != null ? x.cov : '—'} %`); };
+  const dims = Object.entries(MCEN_DIM).map(([c, t]) => { const x = (o.S || {})[c] || {}, v = x.x; return `<div class="en-d"><span>${esc(t)}</span><div class="en-b" title="${v == null ? 'No evaluable con las fotos' : v + '/100'}"><i style="width:${v == null ? 0 : v}%;background:${mcEnSem_(v)}"></i></div><b>${v == null ? '—' : v}</b>${x.c ? `<small>${esc(x.c)}</small>` : ''}</div>`; }).join('');
+  const L = (t, a, cls) => `<div class="en-f ${cls}"><h6>${t}</h6>${(a || []).length ? `<ul>${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<span class="mc-mu">—</span>'}</div>`;
+  const pan = (o.panos || []).map(p => `<a href="https://www.google.com/maps/@?api=1&map_action=pano&pano=${encodeURIComponent(p.pano)}&heading=${p.h || 0}" target="_blank" rel="noopener" title="Abre la foto original en Google Street View">${esc(p.date || 's/f')} · ${p.d} m ↗</a>`).join('');
+  return `<div class="en-top"><div class="en-tip">${esc(o.tip || '—')}</div><div class="mc-mu" style="font-size:12px">${esc(o.rs || '')}</div></div>
+    <div class="en-ks">${ice('viv', 'ICE · vivienda')}${ice('rc', 'ICE · renta corta')}${k('IRE · riesgo', o.ire && o.ire.v != null ? o.ire.v : '—', 'más alto = más riesgo')}${k('IOI · oportunidad', o.ioi && o.ioi.v != null ? o.ioi.v : '—')}${k('Confianza', esc(o.conf || '—'), esc(o.fuente || ''))}</div>
+    <h6 class="en-h">Dimensiones <small>(0 = muy desfavorable · 100 = muy favorable · — = no evaluable con las fotos)</small></h6><div class="en-ds">${dims}</div>
+    <div class="en-fs">${L('✅ Ventajas', o.fort, 'f')}${L('⚠️ Desventajas', o.deb, 'd')}${L('🚩 Riesgos (señales por verificar)', o.ries, 'r')}${L('💡 Oportunidades', o.opor, 'o')}</div>
+    ${pan ? `<h6 class="en-h">Fotos analizadas <small>(${(o.panos || []).length} panoramas de Street View a ≤ ${o.radio || 200} m)</small></h6><div class="en-pn">${pan}</div>` : ''}
+    <div class="mc-mu" style="font-size:11.5px;margin-top:10px">Análisis del ${esc(mcF(String(o.at || '').slice(0, 10)))} (${esc(o.ver || '')}). Se basa solo en lo visible a nivel de calle y en la fecha de cada foto; no mide densidad poblacional, nivel socioeconómico real, delincuencia ni tráfico. El ICE usa pesos iniciales sin calibrar. Es un apoyo a la valuación, no un avalúo. No se guardan las imágenes de Google.</div>
+    <div style="margin-top:8px"><button type="button" class="cl-bt" onclick="mcEnCorre_('${esc(o.id)}')" ${MC.en.job && MC.en.job.running ? 'disabled' : ''}>🔄 Reanalizar con IA (≈ $0.04)</button></div>`;
+}
+async function mcEnFicha_(id) {
+  const w = document.getElementById('al-en'); if (!w) return;
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/entorno/dato?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(r => r.json()); const w2 = document.getElementById('al-en'); if (!w2 || MC.al.id !== id) return;
+    if (j.ok && j.entorno) w2.innerHTML = mcEnHtml_(j.entorno);
+    else { const it = MC.items[id] || {}; w2.innerHTML = `<div class="mc-mu" style="padding:6px 0">Este alojamiento aún no tiene análisis del entorno urbano.</div><div style="margin-top:8px"><button type="button" class="cl-bt" onclick="mcEnCorre_('${esc(id)}')" ${it.lat == null || (MC.en.job && MC.en.job.running) ? 'disabled' : ''}>🏙️ Analizar entorno con Street View (≈ $0.04)</button> <span class="mc-mu" style="font-size:11.5px">Toma ~10 fotos a ≤ 200 m, las califica con IA y guarda solo los puntajes.${it.lat == null ? ' Este alojamiento no tiene coordenadas.' : ''}</span></div>`; }
+  } catch (e) { const w2 = document.getElementById('al-en'); if (w2) w2.innerHTML = `<div class="mc-err">No se pudo leer el análisis del entorno: ${esc(e.message || e)}</div>`; }
+}
+window.mcEnCorre_ = async function (id) {
+  const w = document.getElementById('al-en'); if (w) w.innerHTML = '<div class="mc-mu" id="en-prog">⏳ Iniciando…</div>';
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/entorno/analizar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).then(r => r.json()); if (!j.ok && !/en curso/i.test(j.error || '')) throw new Error(j.error || 'Error'); MC.en.job = { running: true }; mcEnPoll_(id); }
+  catch (e) { if (w) w.innerHTML = `<div class="mc-err">⚠ ${esc(e.message || e)}</div>`; }
+};
+function mcEnPoll_(id) {
+  clearTimeout(MC._enT); MC._enT = setTimeout(async () => {
+    try { const j = await fetch(`${BACKEND}/mercado/airbnb/entorno/estado`, { cache: 'no-store' }).then(r => r.json()); MC.en.job = j; const p = document.getElementById('en-prog'); if (j.running) { if (p) p.textContent = '⏳ ' + (j.paso || 'Analizando…'); mcEnPoll_(id); return; }
+      if (j.error) { const w = document.getElementById('al-en'); if (w && MC.al.id === id) w.innerHTML = `<div class="mc-err">⚠ ${esc(j.error)}</div><div style="margin-top:8px"><button type="button" class="cl-bt" onclick="mcEnCorre_('${esc(id)}')">Reintentar</button></div>`; return; }
+      await mcClCargar_(); if (MC.al && MC.al.id === id) mcEnFicha_(id); else mcAloCuerpo_(); } catch (_) { mcEnPoll_(id); }
+  }, 3000);
 }
 async function mcClFicha_(id) {
   const w = document.getElementById('al-cl'); if (!w) return; mcClCss_();
