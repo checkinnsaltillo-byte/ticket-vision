@@ -76445,6 +76445,13 @@ function mcAloCss_() {
   .al-rg{position:relative;height:28px;margin:2px 4px}.al-rg .tr{position:absolute;top:12px;left:0;right:0;height:4px;background:#e2e8f0;border-radius:4px}.al-rg .fl{position:absolute;top:12px;height:4px;background:#0f766e;border-radius:4px}
   .al-rg input[type=range]{position:absolute;left:0;top:5px;width:100%;margin:0;height:18px;pointer-events:none;-webkit-appearance:none;appearance:none;background:none}.al-rg input[type=range]::-webkit-slider-thumb{pointer-events:auto;-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;border:2.5px solid #0f766e;box-shadow:0 2px 6px rgba(15,23,42,.25);cursor:grab}.al-rg input[type=range]::-moz-range-thumb{pointer-events:auto;width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid #0f766e;box-shadow:0 2px 6px rgba(15,23,42,.25);cursor:grab}.al-rg input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;transform:scale(1.15)}
   .al-cls{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px dashed #e4e9f0;font-size:11.5px;color:#64748b}.al-cls .al-lv{min-width:20px;height:20px;font-size:11px;border-radius:6px;box-shadow:none}.al-cls span:last-child{margin-left:4px}
+
+  .fs-lay{display:block}.fs-side{display:none}.fs-lay.fs-on{display:grid;grid-template-columns:268px minmax(0,1fr);gap:20px;align-items:start}.fs-lay.fs-on .fs-side{display:block;position:sticky;top:8px;max-height:calc(100vh - 24px);overflow:auto;background:#fff;border:1px solid var(--al-ln);border-radius:16px;padding:4px 16px 10px;scrollbar-width:thin}
+  .fs-hd{display:flex;justify-content:space-between;align-items:center;padding:12px 0 8px;font-size:16px;font-weight:900;color:var(--al-ink);position:sticky;top:0;background:#fff;z-index:2;border-bottom:1px solid var(--al-ln)}.fs-hd button{all:unset;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--al-ac)}.fs-hd button:hover{text-decoration:underline}
+  .fs-sec{border-bottom:1px solid #eef2f6;padding:10px 0}.fs-sec:last-child{border:0}.fs-sec summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-size:13.5px;font-weight:800;color:var(--al-ink)}.fs-sec summary::-webkit-details-marker{display:none}.fs-sec summary::after{content:'▾';color:#94a3b8;font-size:12px;transition:transform .15s}.fs-sec:not([open]) summary::after{transform:rotate(-90deg)}.fs-sec summary b{margin-left:auto;margin-right:8px;background:var(--al-ac);color:#fff;border-radius:99px;padding:0 7px;font-size:11px}
+  .fs-bd{padding-top:8px}.fs-bd .al-fg label{margin:0 0 4px}.fs-bd .al-fg label b{margin:0;font-size:13px}.fs-ops{display:flex;flex-direction:column;gap:1px}.fs-op{display:flex;align-items:center;gap:9px;padding:5px 4px;border-radius:8px;cursor:pointer;font-size:13px;color:#334155;user-select:none}.fs-op:hover{background:#f1f5f9}.fs-op:focus-visible{outline:2px solid var(--al-ac2)}.fs-tx{flex:1;min-width:0}.fs-op em{font-style:normal;font-size:11.5px;color:#94a3b8}
+  .fs-ck{width:18px;height:18px;flex:none;box-sizing:border-box;border:1.5px solid #94a3b8;border-radius:5px;background:#fff;color:transparent;font-size:12px;font-weight:900;line-height:15px;text-align:center;transition:all .12s}.fs-op.on .fs-ck{background:var(--al-ac);border-color:var(--al-ac);color:#fff}.fs-op.on .fs-tx{font-weight:800;color:var(--al-ink)}
+  @media (max-width:900px){.fs-lay.fs-on{grid-template-columns:1fr}.fs-lay.fs-on .fs-side{position:static;max-height:none}}
   .al-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
   .al-hc,.al-lc{all:unset;box-sizing:border-box;cursor:pointer;background:#fff;border:1px solid var(--al-ln);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;transition:transform .18s ease,box-shadow .18s ease,border-color .18s;position:relative}
   .al-hc:hover,.al-lc:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(15,23,42,.12);border-color:#99f6e4}
@@ -76539,19 +76546,31 @@ window.mcAloRgIn_ = function (k) {
   document.getElementById('rgv-' + k).textContent = `${mcFlFmt_[k](lo)} – ${mcFlFmt_[k](hi)}${k !== 'cal' && hi >= D[1] ? '+' : ''}`; mcAloFlCambio_();
 };
 window.mcAloTg_ = function (k, v, el) { const S = MC.fl[k]; if (S.has(v)) S.delete(v); else S.add(v); if (el) el.classList.toggle('on', S.has(v)); mcAloFlCambio_(); };
-function mcAloFlCambio_() { if (MC._flRaf) return; MC._flRaf = setTimeout(() => { MC._flRaf = 0; MC.al.pag = 48; MC.al.pagA = 48; const n = mcFlActivos_(), b = document.getElementById('al-flcnt'); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; } const r = document.getElementById('al-flrst'); if (r) r.style.display = n ? '' : 'none'; mcAloCuerpo_(); }, 40); }
+function mcAloFlCambio_() { if (MC._flRaf) return; MC._flRaf = setTimeout(() => { MC._flRaf = 0; MC.al.pag = 48; MC.al.pagA = 48; const n = mcFlActivos_(), b = document.getElementById('al-flcnt'); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; } const r = document.getElementById('al-flrst'); if (r) r.style.display = n ? '' : 'none'; const rb = document.querySelector('#al-flp .fs-hd button'); if (rb) rb.style.visibility = n ? '' : 'hidden'; mcAloCuerpo_(); }, 40); }
 window.mcAloFlReset_ = function () { Object.keys(MC.fl).forEach(k => { if (MC.fl[k] instanceof Set) MC.fl[k].clear(); }); MC.fl.rg = {}; mcAloTopPinta_(); mcAloCuerpo_(); };
-window.mcAloFlToggle_ = function () { MC.al.flAb = !MC.al.flAb; const p = document.getElementById('al-flp'); if (p) p.style.display = MC.al.flAb ? '' : 'none'; const b = document.getElementById('al-flbt'); if (b) b.classList.toggle('on', MC.al.flAb); };
+window.mcAloFlToggle_ = function () { MC.al.flAb = !MC.al.flAb; const p = document.getElementById('al-lay'); if (p) p.classList.toggle('fs-on', !!MC.al.flAb); const b = document.getElementById('al-flbt'); if (b) b.classList.toggle('on', MC.al.flAb); };
 window.mcAloVista_ = function (v) { MC.al.vista = v; try { localStorage.setItem('mc-alo-vista', v); } catch (_) {} MC.al.host = null; MC.al.id = null; mcAloPintar_(); };
 function mcAloTopPinta_() {
   const t = document.getElementById('al-top'); if (!t) return; const D = mcFlDom_(), n = mcFlActivos_(), nichos = Object.entries(MCCL_N).filter(([k]) => /^S/.test(k)).map(([k, v]) => [k, v]).concat([['S/C', 'Sin nicho / sin clasificar']]);
   t.innerHTML = `<div class="al-vw"><div class="ad-seg">${[['alo', '🗂️ Por alojamiento'], ['host', '👥 Por anfitrión'], ['tabla', '📋 Tabla']].map(([k, x]) => `<button type="button" class="${MC.al.vista === k ? 'on' : ''}" onclick="mcAloVista_('${k}')">${x}</button>`).join('')}</div>
       <button type="button" class="al-chip ${MC.al.flAb ? 'on' : ''}" id="al-flbt" onclick="mcAloFlToggle_()">🎛️ Filtros <b id="al-flcnt" style="${n ? '' : 'display:none'}">${n}</b></button><button type="button" class="al-chip ${MC.al.mapa ? 'on' : ''}" id="al-mapbt" onclick="mcMapaToggle_()" title="Dividir la pantalla: mapa a la izquierda, tarjetas o tabla a la derecha, sincronizados">🗺️ Ver mapa</button><button type="button" class="al-chip" id="al-flrst" style="${n ? '' : 'display:none'}" onclick="mcAloFlReset_()">✕ Quitar filtros</button><span class="mc-mu" id="al-flinfo"></span></div>
-    <div class="al-flp" id="al-flp" style="${MC.al.flAb ? '' : 'display:none'}">
-      <div class="al-fgrid">${mcFlSlider_('cal', '⭐ Calificación', mcFlFmt_.cal)}${mcFlSlider_('precio', '💲 Precio por noche', mcFlFmt_.precio)}${mcFlSlider_('pxh', '🛏️ Precio por habitación', mcFlFmt_.pxh)}</div>
-      <div class="al-fgrid c">${[['tipo', 'Tipo de alojamiento'], ['sup', 'Superanfitrión'], ['hab', 'Habitaciones'], ['banos', 'Baños'], ['camas', 'Camas'], ['coc', 'Cocina'], ['minN', 'Estancia mínima']].map(([k, tt]) => `<div class="al-fg"><label>${tt}</label>${mcFlChips_(k, MCFL_OPT[k])}</div>`).join('')}
-        <div class="al-fg"><label>Ciudad</label>${mcFlChips_('ciudad', D.ciudades.slice(0, 14).map(([c, n2]) => [c, `${c} (${n2})`]))}</div>
-        <div class="al-fg"><label>Clasificación (IA)</label>${mcFlChips_('niv', MCFL_OPT.niv)}</div><div class="al-fg w"><label>Nicho recomendado</label>${mcFlChips_('nicho', nichos)}</div></div></div>`;
+  </div>`;
+  const f = document.getElementById('al-flp'); if (f) f.innerHTML = mcFlSideHtml_(D, nichos, n);
+}
+function mcFlVal_(k, r) { const i = MC.items[r.id] || {}; if (k === 'tipo') return r.priv ? 'Habitación' : 'Entero'; if (k === 'sup') return i.superanfitrion ? 'Sí' : 'No'; if (k === 'coc') { const c = mcCocina_(i); return c === '—' ? 'No' : c; } if (k === 'ciudad') return i.ciudad || 'Sin ciudad'; if (k === 'niv' || k === 'nicho') { const x = MC.cl.ix[r.id]; return k === 'niv' ? (x ? mcClNivel_(x.indice) : 'S/C') : (x ? mcClNichoRec_(x).n1 : null) || 'S/C'; } return MCFL_CAT[k](r); }
+function mcFlChecks_(k, opts, cnt) { return `<div class="fs-ops" data-k="${k}">${opts.map(([v, t]) => `<div class="fs-op ${MC.fl[k].has(v) ? 'on' : ''}" role="checkbox" tabindex="0" onclick="mcAloTg_('${k}',${esc(JSON.stringify(v))},this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"><span class="fs-ck">✓</span><span class="fs-tx">${esc(t)}</span><em>${cnt[k][v] || 0}</em></div>`).join('')}</div>`; }
+function mcFlSideHtml_(D, nichos, n) {
+  const cnt = {}; ['tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'minN', 'ciudad', 'niv', 'nicho'].forEach(k => cnt[k] = {}); D.rows.forEach(r => { for (const k in cnt) { const v = mcFlVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; } });
+  const sec = (t, body, open, k) => `<details class="fs-sec" ${open ? 'open' : ''}><summary>${t}${k && MC.fl[k] && MC.fl[k].size ? `<b>${MC.fl[k].size}</b>` : ''}</summary><div class="fs-bd">${body}</div></details>`;
+  const sl = (k, t, fm) => sec(t, mcFlSlider_(k, '', fm), true);
+  return `<div class="fs-hd"><span>Filtros</span><button type="button" onclick="mcAloFlReset_()" style="${n ? '' : 'visibility:hidden'}">Borrar todo</button></div>
+    ${sec('Tipo de alojamiento', mcFlChecks_('tipo', MCFL_OPT.tipo, cnt), true, 'tipo')}
+    ${sl('precio', '💲 Precio por noche', mcFlFmt_.precio)}${sl('pxh', '🛏️ Precio por habitación', mcFlFmt_.pxh)}${sl('cal', '⭐ Calificación', mcFlFmt_.cal)}
+    ${sec('Superanfitrión', mcFlChecks_('sup', MCFL_OPT.sup, cnt), true, 'sup')}
+    ${sec('Clasificación (IA)', mcFlChecks_('niv', MCFL_OPT.niv, cnt), true, 'niv')}
+    ${sec('Habitaciones', mcFlChecks_('hab', MCFL_OPT.hab, cnt), false, 'hab')}${sec('Baños', mcFlChecks_('banos', MCFL_OPT.banos, cnt), false, 'banos')}${sec('Camas', mcFlChecks_('camas', MCFL_OPT.camas, cnt), false, 'camas')}
+    ${sec('Cocina', mcFlChecks_('coc', MCFL_OPT.coc, cnt), false, 'coc')}${sec('Estancia mínima', mcFlChecks_('minN', MCFL_OPT.minN, cnt), false, 'minN')}
+    ${sec('Ciudad', mcFlChecks_('ciudad', D.ciudades.slice(0, 14).map(([c]) => [c, c]), cnt), false, 'ciudad')}${sec('Nicho recomendado', mcFlChecks_('nicho', nichos, cnt), false, 'nicho')}`;
 }
 // ── Pintado ──
 function mcAloPintar_() {
@@ -76559,7 +76578,7 @@ function mcAloPintar_() {
   if (A.rows.length < 1) { w.innerHTML = '<div class="mc-card mc-mu">Aún no hay alojamientos extraídos. Ve a «Extracción» y pulsa «Extraer / actualizar».</div>'; return; }
   const h = S.host && A.hosts.find(x => x.id === S.host), r = S.id && A.rows.find(x => x.id === S.id);
   if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); return; }
-  w.innerHTML = '<div id="al-top"></div><div id="al-body"></div>'; mcAloTopPinta_(); mcAloCuerpo_();
+  w.innerHTML = `<div id="al-top"></div><div class="fs-lay ${S.flAb ? 'fs-on' : ''}" id="al-lay"><aside class="fs-side" id="al-flp"></aside><div id="al-body"></div></div>`; mcAloTopPinta_(); mcAloCuerpo_();
 }
 function mcAloCuerpo_() {
   const b = document.getElementById('al-body'); if (!b) return; const A = mcAloData_(), S = MC.al, L = mcAloFiltradas_(), info = document.getElementById('al-flinfo'), hs = mcAloHostsDe_(L);
