@@ -13000,6 +13000,31 @@ app.post("/mercado/airbnb/lugares/recalcular", async (req, res) => {
       await _plIndiceSet(id, { total: res2.total, dens: res2.densidad_ha, rating: res2.rating_medio, rev: res2.resenas, div: res2.diversidad, sc: res2.scores, g: Object.fromEntries(Object.entries(res2.grupos).map(([k, v]) => [k, v.n])), at: rec.at, trunc: rec.truncado }); n++; }
     res.json({ ok: true, recalculados: n }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Isócronas (caminando y en auto) a 1–15 min con Valhalla sobre datos de OpenStreetMap (servidor público; sin clave). Se guardan en mercado/lugares/iso/<id>.json
+//    y se asigna a cada negocio el tiempo mínimo (en min) del contorno que lo contiene.
+const _PL_ISO_COST = { p: "pedestrian", a: "auto" };
+async function _plValhalla(lat, lng, costing, tiempos) {
+  const json = JSON.stringify({ locations: [{ lat, lon: lng }], costing, contours: tiempos.map(t => ({ time: t })), polygons: true, denoise: 0.4, generalize: 25 });
+  for (let i = 0; i < 4; i++) {
+    try { const r = await fetch("https://valhalla1.openstreetmap.de/isochrone?json=" + encodeURIComponent(json), { headers: { "User-Agent": "CheckInn-Saltillo/1.0 (analisis de entorno)" }, signal: AbortSignal.timeout(45000) }); const j = await r.json(); if (r.ok && j.features) return j.features; if (r.status === 400) throw new Error("Valhalla: " + (j.error || "solicitud inválida")); } catch (e) { if (/Valhalla:/.test(String(e.message))) throw e; }
+    await _maSleep(1500 * (i + 1));
+  }
+  throw new Error("El servicio de isócronas no respondió; intenta de nuevo en unos minutos");
+}
+const _plEnPoligono = (la, lo, ring) => { let d = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const yi = ring[i][0], xi = ring[i][1], yj = ring[j][0], xj = ring[j][1]; if ((yi > la) !== (yj > la) && lo < (xj - xi) * (la - yi) / (yj - yi) + xi) d = !d; } return d; };
+async function _plIsoCalc(id) {
+  const { data: rec } = await _bnReadGcs(`mercado/lugares/${id}.json`); if (!rec) throw new Error("Primero busca los negocios de este alojamiento"); const lat = +rec.lat, lng = +rec.lng, modos = {};
+  for (const [k, costing] of Object.entries(_PL_ISO_COST)) { const C = {}; for (const lote of [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15]]) { const F = await _plValhalla(lat, lng, costing, lote); F.forEach(f => { const t = Math.round(f.properties.contour), g = f.geometry; const ring = g.type === "Polygon" ? g.coordinates[0] : (g.coordinates[0] || [])[0]; if (ring) C[t] = ring.map(([x, y]) => [Math.round(y * 1e5) / 1e5, Math.round(x * 1e5) / 1e5]); }); await _maSleep(700); } modos[k] = C; }
+  const out = { id, at: new Date().toISOString(), fuente: "Valhalla sobre datos de OpenStreetMap", lat, lng, modos }; await _bnWriteGcs(`mercado/lugares/iso/${id}.json`, out, null); return out;
+}
+function _plIsoTiempos(iso, places) { const t = {}; places.forEach(p => { const la = p.location.latitude, lo = p.location.longitude, o = {}; for (const k of ["p", "a"]) { const C = (iso.modos || {})[k] || {}; for (let m = 1; m <= 15; m++) { if (C[m] && _plEnPoligono(la, lo, C[m])) { o[k] = m; break; } } } t[p.id] = o; }); return t; }
+app.get("/mercado/airbnb/lugares/iso", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const id = String(req.query.id || "").replace(/\D/g, "");
+  try { let { data: iso } = await _bnReadGcs(`mercado/lugares/iso/${id}.json`); if (!iso || req.query.recalcular === "1") iso = await _plIsoCalc(id); const { data: rec } = await _bnReadGcs(`mercado/lugares/${id}.json`);
+    const vis = {}; for (const k of ["p", "a"]) { vis[k] = {}; [5, 10, 15].forEach(m => { if ((iso.modos[k] || {})[m]) vis[k][m] = iso.modos[k][m]; }); }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, at: iso.at, fuente: iso.fuente, vis, t: _plIsoTiempos(iso, (rec && rec.places) || []) }); }
+  catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
 app.post("/mercado/airbnb/lugares/analizar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   const id = String((req.body || {}).id || "").replace(/\D/g, ""), radio = Math.max(200, Math.min(2000, parseInt((req.body || {}).radio, 10) || 1000)); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
