@@ -76495,13 +76495,13 @@ window.mcAloIr_ = function (host, id) { MC.al.host = host || null; MC.al.id = id
 // 🏘️ Alojamientos (v2180): 3 vistas —🗂️ Por alojamiento · 👥 Por anfitrión · 📋 Tabla— con los MISMOS filtros: superanfitrión, rangos (calificación, precio, precio/habitación)
 // con slider de doble punta, habitaciones, baños, camas, cocina, ciudad, estancia mínima, clasificación (A/B/C) y nicho. Los categóricos admiten selección múltiple.
 // ═══════════════════════════════════════════════════════════════════════════
-MC.fl = MC.fl || { sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), rg: {} };
+MC.fl = MC.fl || { tipo: new Set(), sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), rg: {} };
 MC.al.vista = (() => { try { const v = localStorage.getItem('mc-alo-vista'); return v === 'host' || v === 'tabla' ? v : 'alo'; } catch (_) { return 'alo'; } })();
 MC.al.ordA = MC.al.ordA || 'idx'; MC.al.pagA = MC.al.pagA || 48; MC.al.flAb = MC.al.flAb !== false;
 const MCFL_CAT = { hab: r => r.hab == null ? '?' : r.hab === 0 ? '0' : r.hab >= 5 ? '5+' : String(r.hab), banos: r => r.banos == null ? '?' : r.banos <= 1 ? '1' : r.banos >= 3 ? '3+' : String(r.banos), camas: r => r.camas == null ? '?' : r.camas >= 5 ? '5+' : String(r.camas), minN: r => r.minN == null ? '?' : r.minN <= 1 ? '1' : r.minN <= 2 ? '2' : r.minN <= 6 ? '3-6' : r.minN <= 29 ? '7-29' : '30+' };
-const MCFL_OPT = { sup: [['Sí', '★ Superanfitrión'], ['No', 'Sin insignia']], hab: [['0', 'Estudio'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']], banos: [['1', '1'], ['1.5', '1.5'], ['2', '2'], ['2.5', '2.5'], ['3+', '3 o más']], camas: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']],
+const MCFL_OPT = { tipo: [['Entero', 'Alojamiento entero'], ['Habitación', 'Habitación']], sup: [['Sí', '★ Superanfitrión'], ['No', 'Sin insignia']], hab: [['0', 'Estudio'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']], banos: [['1', '1'], ['1.5', '1.5'], ['2', '2'], ['2.5', '2.5'], ['3+', '3 o más']], camas: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']],
   coc: [['Sí', 'Con cocina'], ['Compartida', 'Compartida'], ['No', 'Sin cocina']], minN: [['1', '1 noche'], ['2', '2 noches'], ['3-6', '3 a 6'], ['7-29', '7 a 29'], ['30+', '30 o más']], niv: [['A', 'Nivel A'], ['B', 'Nivel B'], ['C', 'Nivel C'], ['S/C', 'Sin clasificar']] };
-const MCFL_LBL = { sup: 'Superanfitrión', hab: 'Habitaciones', banos: 'Baños', camas: 'Camas', coc: 'Cocina', ciudad: 'Ciudad', minN: 'Estancia mínima', niv: 'Clasificación', nicho: 'Nicho' };
+const MCFL_LBL = { tipo: 'Tipo de alojamiento', sup: 'Superanfitrión', hab: 'Habitaciones', banos: 'Baños', camas: 'Camas', coc: 'Cocina', ciudad: 'Ciudad', minN: 'Estancia mínima', niv: 'Clasificación', nicho: 'Nicho' };
 function mcFlDom_() { // dominios de los sliders (según los datos)
   const A = mcAloData_(); if (MC._fd && MC._fd.rows === A.rows) return MC._fd; const ext = (k, cap) => { const v = A.rows.map(r => r[k]).filter(x => mcOk_(x) && x > 0).sort((a, b) => a - b); if (!v.length) return [0, 1]; const hi = cap ? mcsQ(v, cap) : v[v.length - 1]; return [0, Math.ceil(hi / 50) * 50]; };
   const cals = A.rows.map(r => r.cal).filter(x => mcOk_(x) && x > 0);
@@ -76510,9 +76510,11 @@ function mcFlDom_() { // dominios de los sliders (según los datos)
 }
 const mcFlRg_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return r ? [Math.max(D[0], r[0]), Math.min(D[1], r[1])] : D.slice(); };
 const mcFlRgOn_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return !!r && (r[0] > D[0] || r[1] < D[1]); };
-const mcFlActivos_ = () => ['sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length;
+const mcFlActivos_ = () => ['tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length;
 function mcAloPasa_(r) {
   const F = MC.fl, i = MC.items[r.id] || {}, D = mcFlDom_();
+  if (!F.tipo) F.tipo = new Set();
+  if (F.tipo.size && !F.tipo.has(r.priv ? 'Habitación' : 'Entero')) return false;
   if (F.sup.size && !F.sup.has(i.superanfitrion ? 'Sí' : 'No')) return false;
   for (const k of ['cal', 'precio', 'pxh']) if (mcFlRgOn_(k)) { const [lo, hi] = mcFlRg_(k), v = r[k]; if (!mcOk_(v) || v < lo || (hi < D[k][1] && v > hi)) return false; }
   for (const k of ['hab', 'banos', 'camas', 'minN']) if (F[k].size && !F[k].has(MCFL_CAT[k](r))) return false;
@@ -76547,7 +76549,7 @@ function mcAloTopPinta_() {
       <button type="button" class="al-chip ${MC.al.flAb ? 'on' : ''}" id="al-flbt" onclick="mcAloFlToggle_()">🎛️ Filtros <b id="al-flcnt" style="${n ? '' : 'display:none'}">${n}</b></button><button type="button" class="al-chip ${MC.al.mapa ? 'on' : ''}" id="al-mapbt" onclick="mcMapaToggle_()" title="Dividir la pantalla: mapa a la izquierda, tarjetas o tabla a la derecha, sincronizados">🗺️ Ver mapa</button><button type="button" class="al-chip" id="al-flrst" style="${n ? '' : 'display:none'}" onclick="mcAloFlReset_()">✕ Quitar filtros</button><span class="mc-mu" id="al-flinfo"></span></div>
     <div class="al-flp" id="al-flp" style="${MC.al.flAb ? '' : 'display:none'}">
       <div class="al-fgrid">${mcFlSlider_('cal', '⭐ Calificación', mcFlFmt_.cal)}${mcFlSlider_('precio', '💲 Precio por noche', mcFlFmt_.precio)}${mcFlSlider_('pxh', '🛏️ Precio por habitación', mcFlFmt_.pxh)}</div>
-      <div class="al-fgrid c">${[['sup', 'Superanfitrión'], ['hab', 'Habitaciones'], ['banos', 'Baños'], ['camas', 'Camas'], ['coc', 'Cocina'], ['minN', 'Estancia mínima']].map(([k, tt]) => `<div class="al-fg"><label>${tt}</label>${mcFlChips_(k, MCFL_OPT[k])}</div>`).join('')}
+      <div class="al-fgrid c">${[['tipo', 'Tipo de alojamiento'], ['sup', 'Superanfitrión'], ['hab', 'Habitaciones'], ['banos', 'Baños'], ['camas', 'Camas'], ['coc', 'Cocina'], ['minN', 'Estancia mínima']].map(([k, tt]) => `<div class="al-fg"><label>${tt}</label>${mcFlChips_(k, MCFL_OPT[k])}</div>`).join('')}
         <div class="al-fg"><label>Ciudad</label>${mcFlChips_('ciudad', D.ciudades.slice(0, 14).map(([c, n2]) => [c, `${c} (${n2})`]))}</div>
         <div class="al-fg"><label>Clasificación (IA)</label>${mcFlChips_('niv', MCFL_OPT.niv)}</div><div class="al-fg w"><label>Nicho recomendado</label>${mcFlChips_('nicho', nichos)}</div></div></div>`;
 }
