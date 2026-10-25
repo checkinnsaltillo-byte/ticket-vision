@@ -8790,6 +8790,8 @@ app.get("/reservas/search", async (req, res) => {
           nights: Math.max(1, Math.round((new Date(departure) - new Date(arrival)) / 86_400_000)),
           quote_raw: first,
           hostedUrl: hostedUrl || null,
+          // Enlace de la publicación en Airbnb (del catálogo); la landing lo muestra como «Reservar en Airbnb».
+          airbnbUrl: (() => { const u = String((aloj && aloj.url_airbnb) || "").trim(); return u ? (/^https?:\/\//i.test(u) ? u : "https://www." + u.replace(/^www\./i, "")) : null; })(),
         };
       } catch (e) {
         // 400 típicamente = no hay disponibilidad para el rango. Ignorar.
@@ -12911,6 +12913,76 @@ app.get("/mercado/airbnb/entorno/foto", async (req, res) => {
   try { const pano = String(req.query.pano || ""), h = parseInt(req.query.h, 10), sz = Math.min(640, Math.max(120, parseInt(req.query.s, 10) || 360)); if (!/^[A-Za-z0-9_-]{10,60}$/.test(pano) || !(h >= 0 && h < 360) || String(req.query.sig || "") !== _enSig(pano, h)) return res.status(403).end();
     const key = process.env.GOOGLE_MAPS_KEY; if (!key) return res.status(503).end(); const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=${sz}x${sz}&pano=${pano}&heading=${h}&fov=90&pitch=0&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(30000) }); if (!r.ok) return res.status(502).end();
     res.set({ "Content-Type": r.headers.get("content-type") || "image/jpeg", "Cache-Control": "private, max-age=600" }); res.send(Buffer.from(await r.arrayBuffer())); } catch (_) { res.status(500).end(); }
+});
+// ── Negocios y establecimientos en el radio de influencia (Google Places API (New) · Nearby Search) ──
+//    Por cada grupo de tipos de negocio se consulta el círculo (máx. 20 resultados por consulta); si se llena se subdivide en 7 círculos (hasta 2 niveles). Se deduplica por id de lugar.
+//    Se guarda mercado/lugares/<id>.json (negocios completos + resumen) y mercado/lugares/_indice.json. Los términos de Google limitan conservar su contenido: el registro lleva «expira» (30 días).
+const _PL_GRUPOS = {
+  comida: ["restaurant","cafe","bakery","bar","coffee_shop","fast_food_restaurant","ice_cream_shop","meal_takeaway"],
+  abasto: ["supermarket","grocery_store","convenience_store","liquor_store"],
+  tiendas: ["clothing_store","shoe_store","shopping_mall","department_store","hardware_store","home_improvement_store","furniture_store","electronics_store","book_store","pet_store","jewelry_store","florist","discount_store","auto_parts_store","gift_shop"],
+  salud: ["pharmacy","drugstore","hospital","doctor","dentist","physiotherapist","veterinary_care","medical_lab"],
+  finanzas: ["bank","atm","accounting","insurance_agency"],
+  educacion: ["school","primary_school","secondary_school","university","preschool","library"],
+  transporte: ["bus_station","bus_stop","taxi_stand","transit_station","train_station","gas_station","parking","car_rental","electric_vehicle_charging_station"],
+  ocio: ["gym","fitness_center","park","playground","stadium","movie_theater","night_club","spa","beauty_salon","hair_care","tourist_attraction","museum","amusement_park","sports_complex","bowling_alley"],
+  hospedaje: ["lodging","hotel","motel","hostel","bed_and_breakfast","guest_house","resort_hotel"],
+  servicios: ["laundry","car_repair","car_wash","post_office","plumber","electrician","locksmith","real_estate_agency","storage","funeral_home"],
+  publico: ["church","police","fire_station","city_hall","courthouse","local_government_office"]
+};
+const _PL_FM = "places.id,places.displayName,places.primaryType,places.primaryTypeDisplayName,places.types,places.formattedAddress,places.shortFormattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.priceRange,places.businessStatus,places.regularOpeningHours,places.currentOpeningHours,places.websiteUri,places.nationalPhoneNumber,places.googleMapsUri,places.editorialSummary,places.reviews,places.dineIn,places.takeout,places.delivery,places.curbsidePickup,places.reservable,places.servesBreakfast,places.servesLunch,places.servesDinner,places.servesBeer,places.servesWine,places.servesCoffee,places.outdoorSeating,places.liveMusic,places.menuForChildren,places.goodForChildren,places.goodForGroups,places.allowsDogs,places.restroom,places.parkingOptions,places.accessibilityOptions,places.paymentOptions,places.evChargeOptions,places.fuelOptions,places.generativeSummary,places.reviewSummary";
+const _plMetros = (a, b) => { const p = Math.PI / 180, x = Math.sin((b[0] - a[0]) * p / 2) ** 2 + Math.cos(a[0] * p) * Math.cos(b[0] * p) * Math.sin((b[1] - a[1]) * p / 2) ** 2; return 2000 * 6371 * Math.asin(Math.sqrt(x)); };
+const _plOff = (lat, lng, dn, de) => [lat + dn / 111320, lng + de / (111320 * Math.cos(lat * Math.PI / 180))];
+async function _plBuscaGrupo(key, tipos, lat, lng, r, ctx, depth) {
+  if (ctx.reqs >= ctx.max) { ctx.truncado = true; return []; }
+  ctx.reqs++; const rr = await fetch("https://places.googleapis.com/v1/places:searchNearby", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": _PL_FM }, body: JSON.stringify({ includedTypes: tipos, locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: r } }, maxResultCount: 20, rankPreference: "POPULARITY", languageCode: "es" }), signal: AbortSignal.timeout(30000) });
+  const j = await rr.json(); if (!rr.ok) throw new Error(`Places ${rr.status}: ${(j.error && j.error.message) || ""}`.slice(0, 200));
+  let P = j.places || [];
+  if (P.length >= 20 && depth < 2 && r > 200) { ctx.saturados++; const c = [[lat, lng]]; for (let k = 0; k < 6; k++) { const a = Math.PI / 3 * k; c.push(_plOff(lat, lng, r * 0.6 * Math.cos(a), r * 0.6 * Math.sin(a))); } for (const [a, b] of c) P = P.concat(await _plBuscaGrupo(key, tipos, a, b, r * 0.55, ctx, depth + 1)); }
+  return P;
+}
+async function _plBusca(key, lat, lng, radio, max) {
+  const ctx = { reqs: 0, max: max || 120, saturados: 0, truncado: false }, M = new Map();
+  for (const [g, tipos] of Object.entries(_PL_GRUPOS)) { const P = await _plBuscaGrupo(key, tipos, lat, lng, radio, ctx, 0); P.forEach(p => { const d = _plMetros([lat, lng], [p.location.latitude, p.location.longitude]); if (d > radio * 1.02) return; if (!M.has(p.id)) { p.grupo = g; p.dist = Math.round(d); M.set(p.id, p); } else { const q = M.get(p.id); q.grupos = [...new Set([...(q.grupos || [q.grupo]), g])]; } }); }
+  return { places: [...M.values()].sort((a, b) => a.dist - b.dist), reqs: ctx.reqs, saturados: ctx.saturados, truncado: ctx.truncado };
+}
+
+const _PL_GRUPO_LBL = { comida: "Comida y bebida", abasto: "Abasto y conveniencia", tiendas: "Tiendas y comercio", salud: "Salud", finanzas: "Banca y finanzas", educacion: "Educación", transporte: "Transporte y movilidad", ocio: "Ocio, deporte y bienestar", hospedaje: "Hospedaje", servicios: "Servicios", publico: "Gobierno, seguridad y culto" };
+function _plResumen(places, radio) {
+  const R = radio || 1000, area = Math.PI * (R / 1000) ** 2 * 100, grupos = {}, tipos = {}, med = a => { a = a.filter(v => v != null).sort((x, y) => x - y); return a.length ? a[Math.floor((a.length - 1) / 2)] : null; };
+  Object.keys(_PL_GRUPO_LBL).forEach(g => grupos[g] = { n: 0, rev: 0, rs: 0, rn: 0, cerca: null, abiertos: 0 });
+  let rs = 0, rn = 0, alto = 0, rev = 0, abiertos = 0, conHor = 0, cerrados = 0;
+  places.forEach(p => { const g = grupos[p.grupo] || (grupos[p.grupo] = { n: 0, rev: 0, rs: 0, rn: 0, cerca: null, abiertos: 0 }); g.n++; g.rev += p.userRatingCount || 0; if (p.rating && (p.userRatingCount || 0) >= 5) { g.rs += p.rating; g.rn++; rs += p.rating; rn++; if (p.rating >= 4.3) alto++; } if (g.cerca == null || p.dist < g.cerca) g.cerca = p.dist; rev += p.userRatingCount || 0;
+    if (p.businessStatus && p.businessStatus !== "OPERATIONAL") cerrados++; const o = p.regularOpeningHours && p.regularOpeningHours.openNow; if (o != null) { conHor++; if (o) { abiertos++; g.abiertos++; } } const t = p.primaryType || "otro"; tipos[t] = (tipos[t] || 0) + 1; });
+  const N = places.length, H = Object.values(tipos).reduce((s, v) => s - (v / N) * Math.log(v / N), 0), Hmax = Math.log(Math.max(2, Object.keys(tipos).length));
+  const has = ts => places.filter(p => (p.types || []).some(t => ts.includes(t)));
+  const anclas = { supermercados: has(["supermarket"]).length, centros_comerciales: has(["shopping_mall"]).length, hospitales: has(["hospital"]).length, escuelas: has(["school", "primary_school", "secondary_school", "preschool"]).length, universidades: has(["university"]).length, farmacias: has(["pharmacy", "drugstore"]).length, bancos: has(["bank"]).length, gasolineras: has(["gas_station"]).length, paradas: has(["bus_station", "bus_stop", "transit_station", "train_station"]).length, parques: has(["park", "playground"]).length, gimnasios: has(["gym", "fitness_center"]).length };
+  Object.values(grupos).forEach(g => { g.rating = g.rn ? Math.round(g.rs / g.rn * 100) / 100 : null; delete g.rs; delete g.rn; });
+  const top = places.slice().sort((a, b) => (b.userRatingCount || 0) - (a.userRatingCount || 0)).slice(0, 10).map(p => ({ id: p.id, n: (p.displayName || {}).text, t: (p.primaryTypeDisplayName || {}).text, r: p.rating, c: p.userRatingCount, d: p.dist }));
+  return { total: N, densidad_ha: Math.round(N / area * 10) / 10, rating_medio: rn ? Math.round(rs / rn * 100) / 100 : null, pct_rating_alto: rn ? Math.round(alto / rn * 100) : null, resenas: rev, abiertos_ahora: abiertos, con_horario: conHor, cerrados_definitivo: cerrados, diversidad: Math.round(H / Hmax * 100), tipos_distintos: Object.keys(tipos).length, grupos, anclas, top };
+}
+
+
+let _plJob = { running: false };
+async function _plIndiceSet(id, ent) { for (let i = 0; i < 6; i++) { const { data, gen } = await _bnReadGcs("mercado/lugares/_indice.json"), d = data && data.i ? data : { i: {} }; d.i[id] = ent; try { await _bnWriteGcs("mercado/lugares/_indice.json", d, gen); return; } catch (e) { if (!e.conflict && !e.retry) throw e; await _maSleep(500 * (i + 1)); } } }
+async function _plAnaliza(id, radio, max) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
+  const { data } = await _bnReadGcs(_MA.OBJ), it = data && data.items && data.items[id]; if (!it || it.lat == null) throw new Error("La publicación no tiene coordenadas");
+  const lat = +it.lat, lng = +it.lng; _plJob.paso = `Buscando negocios a ≤ ${radio} m`;
+  const r = await _plBusca(key, lat, lng, radio, max), res = _plResumen(r.places, radio), at = new Date().toISOString();
+  const rec = { id, ver: "lugares-v1", at, expira: new Date(Date.now() + 30 * 864e5).toISOString(), fuente: "Google Places API (New) · Nearby Search", lat, lng, radio, reqs: r.reqs, saturados: r.saturados, truncado: r.truncado, resumen: res, places: r.places };
+  await _bnWriteGcs(`mercado/lugares/${id}.json`, rec, null); await _plIndiceSet(id, { total: res.total, dens: res.densidad_ha, rating: res.rating_medio, rev: res.resenas, div: res.diversidad, g: Object.fromEntries(Object.entries(res.grupos).map(([k, v]) => [k, v.n])), at, trunc: r.truncado }); return rec;
+}
+app.get("/mercado/airbnb/lugares/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs("mercado/lugares/_indice.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: (data && data.i) || {} }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/airbnb/lugares/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _plJob)); });
+app.get("/mercado/airbnb/lugares/dato", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/lugares/${id}.json`); res.set("Cache-Control", "no-store"); res.json({ ok: true, lugares: data || null, etiquetas: _PL_GRUPO_LBL }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/airbnb/lugares/analizar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  const id = String((req.body || {}).id || "").replace(/\D/g, ""), radio = Math.max(200, Math.min(2000, parseInt((req.body || {}).radio, 10) || 1000)); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
+  if (_plJob.running && Date.now() - Date.parse(_plJob.upd || 0) < 240000) return res.status(409).json({ ok: false, error: "Ya hay una búsqueda de negocios en curso" });
+  _plJob = { running: true, id, radio, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _plJob.upd = new Date().toISOString(); }, 15000);
+  _plAnaliza(id, radio, 150).then(() => { _plJob.ok = true; }).catch(e => { _plJob.error = String(e.message || e); console.warn("[lugares]", id, e.message); }).finally(() => { clearInterval(t); _plJob.running = false; _plJob.fin = new Date().toISOString(); });
+  res.json({ ok: true });
 });
 app.get("/mercado/airbnb/entorno/config", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); _enCfg.t = 0; res.set("Cache-Control", "no-store"); res.json({ ok: true, radio: await _enRadio(), min: 50, max: 500 }); });
 app.post("/mercado/airbnb/entorno/config", async (req, res) => {
