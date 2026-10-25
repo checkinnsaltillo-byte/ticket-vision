@@ -13034,7 +13034,7 @@ app.get("/mercado/airbnb/lugares/iso", async (req, res) => {
 //   Aquí cada ficha se estructura con el mismo extractor de Rentas LP (_rlpDeDatos + IA sobre el texto) y se guarda en mercado/facebook.json.
 // ═══════════════════════════════════════════════════════════════════════════
 const _FB_OBJ = "mercado/facebook.json", _FB_ORIG = /^https:\/\/([a-z0-9-]+\.)?facebook\.com$/;
-const _FB_CFG0 = { ubicacion: "Saltillo", lat: 25.4366, lng: -100.9626, radio: 2, precioMin: null, precioMax: null, dormitorios: "", banos: "", tipos: [], m2Min: null, m2Max: null, lote: 25, pausaMin: 3, pausaMax: 7 };
+const _FB_CFG0 = { ubicacion: "Saltillo", lat: 25.4366, lng: -100.9626, radio: 2, precioMin: null, precioMax: null, dormitorios: "", banos: "", tipos: [], m2Min: null, m2Max: null, lote: 25, pausaMin: 2, pausaMax: 5 };
 let _fbQ = Promise.resolve();
 async function _fbDoc() { const { data } = await _bnReadGcs(_FB_OBJ); return data && data.lista ? data : { v: 1, config: Object.assign({}, _FB_CFG0), lista: [], items: {}, ejecuciones: [] }; }
 function _fbMutar(fn) {
