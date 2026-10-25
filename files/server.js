@@ -13025,6 +13025,121 @@ app.get("/mercado/airbnb/lugares/iso", async (req, res) => {
     res.set("Cache-Control", "no-store"); res.json({ ok: true, at: iso.at, fuente: iso.fuente, vis, t: _plIsoTiempos(iso, (rec && rec.places) || []) }); }
   catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
+// ═══════════════════════════════════════════════════════════════════════════
+// Investigación de mercados · Facebook Marketplace (renta de propiedades). Mismo método que «Rentas de largo plazo»: Facebook bloquea al servidor,
+// así que la lectura se hace en el NAVEGADOR del usuario (marcadores) y llega aquí por una página puente (postMessage; ninguna CSP lo bloquea).
+//   Paso 1 · marcador «Capturar lista»: recorre los resultados de Marketplace y envía las tarjetas (id, precio, título, ubicación, foto).
+//   Paso 2 · marcador «Extraer detalles»: pide a la puente las publicaciones pendientes y lee cada ficha con fetch del mismo origen (sesión del usuario),
+//            con pausas aleatorias, reintentos con espera creciente, y se detiene sola ante bloqueo (429, checkpoint, login, captcha).
+//   Aquí cada ficha se estructura con el mismo extractor de Rentas LP (_rlpDeDatos + IA sobre el texto) y se guarda en mercado/facebook.json.
+// ═══════════════════════════════════════════════════════════════════════════
+const _FB_OBJ = "mercado/facebook.json", _FB_ORIG = /^https:\/\/([a-z0-9-]+\.)?facebook\.com$/;
+const _FB_CFG0 = { ubicacion: "Saltillo", lat: 25.4366, lng: -100.9626, radio: 2, precioMin: null, precioMax: null, dormitorios: "", banos: "", tipos: [], m2Min: null, m2Max: null, lote: 25, pausaMin: 3, pausaMax: 7 };
+let _fbQ = Promise.resolve();
+async function _fbDoc() { const { data } = await _bnReadGcs(_FB_OBJ); return data && data.lista ? data : { v: 1, config: Object.assign({}, _FB_CFG0), lista: [], items: {}, ejecuciones: [] }; }
+function _fbMutar(fn) {
+  const run = _fbQ.then(async () => { for (let i = 0; i < 7; i++) { const { data, gen } = await _bnReadGcs(_FB_OBJ), d = data && data.lista ? data : { v: 1, config: Object.assign({}, _FB_CFG0), lista: [], items: {}, ejecuciones: [] }; const out = fn(d); d.modificado = new Date().toISOString();
+      try { await _bnWriteGcs(_FB_OBJ, d, data ? gen : "0"); return out; } catch (e) { if (!e.conflict && !e.retry) throw e; await new Promise(r => setTimeout(r, Math.min(8000, 900 * Math.pow(1.6, i)))); } }
+    throw new Error("No se pudo guardar (conflicto). Intenta de nuevo."); });
+  _fbQ = run.catch(() => {}); return run;
+}
+const _fbId = u => { const m = String(u || "").match(/marketplace\/item\/(\d{6,})/) || String(u || "").match(/^(\d{8,})$/); return m ? m[1] : null; };
+const _fbTxt = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n || 300);
+// Lista: agrega publicaciones nuevas (por id) sin pisar las ya extraídas.
+function _fbAgrega(d, tarjetas, origen) { let nuevas = 0, existentes = 0; const hoy = new Date().toISOString();
+  (tarjetas || []).forEach(t => { const id = _fbId(t.id || t.url); if (!id) return; const x = d.lista.find(y => y.id === id);
+    if (x) { existentes++; if (t.precio && !x.precio) x.precio = _fbTxt(t.precio, 60); if (t.titulo && !x.titulo) x.titulo = _fbTxt(t.titulo, 200); if (t.ubicacion && !x.ubicacion) x.ubicacion = _fbTxt(t.ubicacion, 120); if (t.thumb && !x.thumb) x.thumb = _fbTxt(t.thumb, 600); x.visto = hoy; }
+    else { nuevas++; d.lista.push({ id, url: "https://www.facebook.com/marketplace/item/" + id + "/", precio: _fbTxt(t.precio, 60), titulo: _fbTxt(t.titulo, 200), ubicacion: _fbTxt(t.ubicacion, 120), thumb: _fbTxt(t.thumb, 600), estado: "pendiente", intentos: 0, agregado: hoy, visto: hoy, origen }); } });
+  return { nuevas, existentes }; }
+// Detalle: estructura una ficha capturada en el navegador con el extractor de Rentas LP; si faltan datos clave y hay texto suficiente, la IA lo completa.
+async function _fbEstructura(it, usarIA) {
+  const FBJ = it.fb || {}, D = { url: it.url, ld: Array.isArray(it.ld) ? it.ld : [], og: it.og || {}, title: it.title || "", imgs: (Array.isArray(it.imgs) ? it.imgs : []).concat(FBJ.fotos || []), text: String(it.text || "").slice(0, 20000), desc: FBJ.descripcion || "", geo: FBJ.lat != null ? { lat: FBJ.lat, lng: FBJ.lng } : it.geo };
+  const pub = _rlpDeDatos(D); delete pub._estructurado;
+  if (FBJ.titulo) pub.titulo = FBJ.titulo; if (FBJ.precio != null && FBJ.precio > 0) pub.precio = FBJ.precio; if (FBJ.moneda) pub.moneda = FBJ.moneda; if (FBJ.descripcion && FBJ.descripcion.length > String(pub.descripcion || "").length) pub.descripcion = FBJ.descripcion;
+  if (FBJ.ubicacion) { const p = FBJ.ubicacion.split(",").map(s => s.trim()); pub.ciudad = pub.ciudad || p[0] || ""; pub.colonia = pub.colonia || ""; pub.direccion = FBJ.ubicacion; }
+  let metodo = "estructurado";
+  if (usarIA && (!pub.recamaras || !pub.precio || !pub.tipo || pub.tipo === "otro") && String(D.text || FBJ.descripcion || "").length > 80) {
+    try { const j = await _rlpLlmTexto(String((D.text && D.text.length > 200 ? D.text : (pub.titulo + "\n" + (FBJ.descripcion || ""))) || "").slice(0, 14000), it.url); Object.keys(j || {}).forEach(k => { const v = j[k]; if (v == null || v === "" || (Array.isArray(v) && !v.length)) return; if (pub[k] == null || pub[k] === "" || (Array.isArray(pub[k]) && !pub[k].length) || k === "tipo" || k === "operacion") pub[k] = v; }); metodo = "IA"; } catch (_) {}
+  }
+  const o = _rlpNormalizar(Object.assign({}, pub, { url_origen: it.url, portal: "facebook", operacion: "renta" })); return { pub: o, metodo };
+}
+app.get("/mercado/facebook", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const d = await _fbDoc(), L = d.lista; res.set("Cache-Control", "no-store"); res.json({ ok: true, config: Object.assign({}, _FB_CFG0, d.config || {}), lista: L, items: d.items || {}, ejecuciones: (d.ejecuciones || []).slice(-12), stats: { total: L.length, pendientes: L.filter(x => x.estado === "pendiente").length, ok: L.filter(x => x.estado === "ok").length, errores: L.filter(x => x.estado === "error").length, no_disponibles: L.filter(x => x.estado === "no_disponible").length } }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/facebook/config", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const c = (req.body || {}).config || {}, n = (v, a, b) => { const x = _rlpNum(v); return x == null ? null : Math.max(a, Math.min(b, x)); };
+    const cfg = { ubicacion: _fbTxt(c.ubicacion, 120) || "Saltillo", lat: n(c.lat, -90, 90) ?? _FB_CFG0.lat, lng: n(c.lng, -180, 180) ?? _FB_CFG0.lng, radio: [1, 2, 5, 10, 20, 40, 60, 80, 100, 250, 500].includes(+c.radio) ? +c.radio : 2, precioMin: n(c.precioMin, 0, 1e8), precioMax: n(c.precioMax, 0, 1e8),
+      dormitorios: ["", "1", "2", "3", "4", "5", "6"].includes(String(c.dormitorios || "")) ? String(c.dormitorios || "") : "", banos: ["", "1", "1.5", "2", "3", "4", "5"].includes(String(c.banos || "")) ? String(c.banos || "") : "", tipos: (Array.isArray(c.tipos) ? c.tipos : []).filter(t => ["apartamento", "casa", "habitacion", "townhouse"].includes(t)),
+      m2Min: n(c.m2Min, 0, 1e5), m2Max: n(c.m2Max, 0, 1e5), lote: n(c.lote, 5, 40) ?? 25, pausaMin: n(c.pausaMin, 2, 20) ?? 3, pausaMax: n(c.pausaMax, 3, 40) ?? 7 }; if (cfg.pausaMax < cfg.pausaMin) cfg.pausaMax = cfg.pausaMin + 2;
+    await _fbMutar(d => { d.config = cfg; }); res.json({ ok: true, config: cfg }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/facebook/lista", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const b = req.body || {}, urls = String(b.urls || "").split(/[\s,;]+/).filter(Boolean), tarjetas = urls.map(u => ({ url: u })), inval = urls.filter(u => !_fbId(u)).slice(0, 10);
+    const r = await _fbMutar(d => _fbAgrega(d, tarjetas.filter(t => _fbId(t.url)), "manual")); res.json({ ok: true, nuevas: r.nuevas, existentes: r.existentes, invalidas: inval }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/facebook/quitar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const b = req.body || {}, ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(String)), todo = b.estado; await _fbMutar(d => { d.lista = d.lista.filter(x => !(ids.has(x.id) || (todo && x.estado === todo))); Object.keys(d.items).forEach(k => { if (!d.lista.some(x => x.id === k)) delete d.items[k]; }); }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/facebook/reintentar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const n = await _fbMutar(d => { let c = 0; d.lista.forEach(x => { if (x.estado === "error") { x.estado = "pendiente"; x.intentos = 0; x.error = ""; c++; } }); return c; }); res.json({ ok: true, reiniciadas: n }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Texto pegado a mano (respaldo si el marcador no sirve): la IA lo estructura y se guarda como ficha extraída.
+app.post("/mercado/facebook/texto", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const b = req.body || {}, url = String(b.url || "").trim(), id = _fbId(url), texto = String(b.texto || "").slice(0, 30000); if (!id) return res.status(400).json({ ok: false, error: "Pega el link del anuncio (…/marketplace/item/123…)" }); if (texto.length < 40) return res.status(400).json({ ok: false, error: "Pega el texto del anuncio" });
+    const { pub, metodo } = await _fbEstructura({ id, url: "https://www.facebook.com/marketplace/item/" + id + "/", text: texto }, true);
+    await _fbMutar(d => { _fbAgrega(d, [{ id, url }], "manual"); const x = d.lista.find(y => y.id === id); x.estado = "ok"; x.error = ""; x.titulo = x.titulo || pub.titulo; x.precio = x.precio || (pub.precio ? "$" + pub.precio : ""); d.items[id] = Object.assign({}, pub, { id, extraido: new Date().toISOString(), metodo: "texto pegado · " + metodo }); }); res.json({ ok: true, pub }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ── Para la página puente (mismo dominio api.check-inn.mx) ──
+app.get("/mercado/facebook/pendientes", async (req, res) => {
+  const o = String(req.headers.origin || ""); if (o && o !== "https://api.check-inn.mx" && !_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const d = await _fbDoc(), lim = Math.max(1, Math.min(40, parseInt(req.query.limite, 10) || (d.config && d.config.lote) || 25)); const L = d.lista.filter(x => x.estado === "pendiente" || (x.estado === "error" && (x.intentos || 0) < 3)).sort((a, b) => (a.intentos || 0) - (b.intentos || 0)).slice(0, lim).map(x => ({ id: x.id, url: x.url }));
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: L, cfg: { pausaMin: (d.config || {}).pausaMin || 3, pausaMax: (d.config || {}).pausaMax || 7, lote: lim } }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/facebook/captura", async (req, res) => {
+  const o = String(req.headers.origin || ""); if (o !== "https://api.check-inn.mx" && !_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const b = req.body || {}, hoy = new Date().toISOString();
+    if (b.t === "lista") { const r = await _fbMutar(d => { const x = _fbAgrega(d, (Array.isArray(b.tarjetas) ? b.tarjetas : []).slice(0, 400), "marcador"); d.ejecuciones = (d.ejecuciones || []).concat([{ at: hoy, tipo: "lista", nuevas: x.nuevas, existentes: x.existentes }]).slice(-30); return x; }); return res.json({ ok: true, nuevas: r.nuevas, existentes: r.existentes }); }
+    if (b.t === "detalle") { const items = (Array.isArray(b.items) ? b.items : []).slice(0, 12), out = []; let ia = 0;
+      for (const it of items) { const id = _fbId(it.id || it.url); if (!id) continue;
+        if (it.estado && it.estado !== "ok") { out.push({ id, estado: it.estado, motivo: _fbTxt(it.motivo, 160) }); continue; }
+        let pub = null, metodo = ""; try { const r = await _fbEstructura(Object.assign({}, it, { id, url: "https://www.facebook.com/marketplace/item/" + id + "/" }), ia++ < 12); pub = r.pub; metodo = r.metodo; } catch (e) { out.push({ id, estado: "error", motivo: "No se pudo estructurar: " + String(e.message || e).slice(0, 120) }); continue; }
+        out.push({ id, estado: "ok", pub, metodo }); }
+      await _fbMutar(d => { out.forEach(r => { const x = d.lista.find(y => y.id === r.id) || (_fbAgrega(d, [{ id: r.id }], "marcador"), d.lista.find(y => y.id === r.id)); x.intentos = (x.intentos || 0) + 1; x.visto = hoy;
+          if (r.estado === "ok") { x.estado = "ok"; x.error = ""; x.titulo = r.pub.titulo || x.titulo; if (r.pub.precio) x.precio = "$" + Number(r.pub.precio).toLocaleString("es-MX"); d.items[r.id] = Object.assign({}, r.pub, { id: r.id, extraido: hoy, metodo: r.metodo }); }
+          else { x.estado = r.estado === "no_disponible" ? "no_disponible" : "error"; x.error = r.motivo || ""; } });
+        d.ejecuciones = (d.ejecuciones || []).concat([{ at: hoy, tipo: "detalle", ok: out.filter(r => r.estado === "ok").length, errores: out.filter(r => r.estado !== "ok").length, nota: _fbTxt(b.nota, 160) }]).slice(-30); });
+      return res.json({ ok: true, guardadas: out.filter(r => r.estado === "ok").length, errores: out.filter(r => r.estado !== "ok").length }); }
+    res.status(400).json({ ok: false, error: "Tipo de captura desconocido" }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Página puente: la abre el marcador desde Facebook; recibe y envía datos con postMessage (solo desde facebook.com) y habla con la API de su mismo dominio.
+app.get("/mercado/facebook/puente", (_req, res) => {
+  res.set("Cache-Control", "no-store").type("html").send(`<!doctype html><meta charset="utf-8"><title>Check-inn · puente de Facebook</title>
+<body style="font-family:-apple-system,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#eef6ff;color:#0f172a"><div style="text-align:center;max-width:420px"><div style="font-size:40px">🔗</div><div id="m" style="font-size:16px;font-weight:700;margin-top:8px">Conectado con Check-inn</div><div id="s" style="font-size:12px;color:#64748b;margin-top:6px">Deja esta pestaña abierta mientras el marcador trabaja en Facebook. Se cierra sola al terminar.</div></div>
+<script>const FB=/^https:\\/\\/([a-z0-9-]+\\.)?facebook\\.com$/;let n=0;const set=(m,s)=>{document.getElementById("m").textContent=m;if(s)document.getElementById("s").textContent=s};
+async function api(u,o){const r=await fetch(u,o);return r.json()}
+window.addEventListener("message",async e=>{if(!FB.test(e.origin))return;const d=e.data;if(!d||typeof d!=="object")return;const re=m=>{try{e.source.postMessage(m,e.origin)}catch(_){}};
+ try{
+  if(d.t==="hola"){const j=await api("/mercado/facebook/pendientes");re({t:"pend",lista:j.lista||[],cfg:j.cfg||{}});set("Listo: "+(j.lista||[]).length+" publicaciones por extraer")}
+  else if(d.t==="lista"||d.t==="detalle"){const j=await api("/mercado/facebook/captura",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});n++;re({t:"ok",n:d.n,res:j});set(d.t==="lista"?"Lista recibida: "+(j.nuevas||0)+" nuevas":"Guardadas "+(j.guardadas||0)+" fichas ("+(j.errores||0)+" con error)")}
+  else if(d.t==="fin"){set("Terminado. Vuelve a Check-inn y actualiza la pantalla.");setTimeout(()=>window.close(),2500)}
+ }catch(err){re({t:"err",error:String(err.message||err)});set("⚠ "+err.message)}});
+try{window.opener&&window.opener.postMessage({t:"listo"},"*")}catch(_){}
+</script>`);
+});
 app.post("/mercado/airbnb/lugares/analizar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   const id = String((req.body || {}).id || "").replace(/\D/g, ""), radio = Math.max(200, Math.min(2000, parseInt((req.body || {}).radio, 10) || 1000)); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
