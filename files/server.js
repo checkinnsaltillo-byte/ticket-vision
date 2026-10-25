@@ -12720,6 +12720,12 @@ function _clDeriva(code, it) {
   if (code === "DIS_BANOS") { const b = Number(it.banos), h = Number(it.huespedes); if (!(b > 0) || !(h > 0)) return null; const r = b / h; return r >= 0.5 ? 85 : r >= 0.34 ? 70 : r >= 0.25 ? 55 : 35; }
   return null;
 }
+// Ajuste (fit) y bloqueos por nicho a partir de los puntajes de variables S = {COD:{x,c}}. Se usa al analizar y al leer (así un cambio de nichos no exige volver a pagar la IA).
+function _clNichosDe(S) {
+  const nichos = {}; _CL.nichos.forEach(n => { let sw = 0, sx = 0; const W = _CL.W[n.id]; _CL.vars.forEach(v => { const s = S[v.c]; if (s) { sw += W[v.c]; sx += s.x * W[v.c]; } }); nichos[n.id] = { fit: sw ? Math.round(sx / sw * 10) / 10 : null, bloqueado: false, gates: [] }; });
+  _CL.gates.forEach(g => { if (g.efecto !== "BLOQUEA NICHO") return; const codes = g.vars.split(",").map(x => x.trim()).filter(x => S[x]); if (!codes.length) return; if (Math.min(...codes.map(c => S[c].x)) >= g.t) return; (g.nichos === "TODOS" ? _CL.nichos.map(n => n.id) : g.nichos.split(",")).forEach(id => { if (nichos[id]) { nichos[id].bloqueado = true; nichos[id].gates.push(g.id); } }); });
+  return nichos;
+}
 // Calcula todo lo derivado de los puntajes de variables. vis = {CODIGO:[puntaje, confianza]}
 function _clCalcula(vis, it, nFotos, nEsp) {
   const S = {}; _CL.vars.forEach(v => { if (v.v) { const a = vis && vis[v.c]; if (Array.isArray(a) && a[0] != null && isFinite(a[0])) S[v.c] = { x: _clClamp(a[0]), c: a[1] != null && isFinite(a[1]) ? Math.max(0, Math.min(1, +a[1])) : 0.5 }; } else { const x = _clDeriva(v.c, it); if (x != null) S[v.c] = { x, c: 0.9 }; } });
@@ -12729,14 +12735,9 @@ function _clCalcula(vis, it, nFotos, nEsp) {
   // cobertura global (sin ENT, que aún no tiene datos externos)
   let cw = 0, ct = 0; _CL.vars.filter(v => v.d !== "ENT").forEach(v => { ct += v.w; if (S[v.c]) cw += v.w; }); const cob = ct ? cw / ct : 0;
   const conf = cob >= 0.75 && nFotos >= 8 && nEsp >= 4 ? "alta" : cob >= 0.55 ? "media" : "baja";
-  const nichos = {}; _CL.nichos.forEach(n => { let sw = 0, sx = 0; const W = _CL.W[n.id]; _CL.vars.forEach(v => { const s = S[v.c]; if (s) { sw += W[v.c]; sx += s.x * W[v.c]; } }); nichos[n.id] = { fit: sw ? Math.round(sx / sw * 10) / 10 : null, bloqueado: false, gates: [] }; });
-  const alertas = [];
-  _CL.gates.forEach(g => { const codes = g.vars.split(",").map(x => x.trim()).filter(x => S[x]); if (!codes.length) return; const mn = Math.min(...codes.map(c => S[c].x)); if (mn >= g.t) return;
-    if (g.efecto === "ALERTA CRÍTICA") alertas.push({ c: g.id, s: "critica", t: g.razon, insp: true, v: codes.join(",") });
-    else if (g.efecto === "BLOQUEA NICHO") (g.nichos === "TODOS" ? _CL.nichos.map(n => n.id) : g.nichos.split(",")).forEach(id => { if (nichos[id]) { nichos[id].bloqueado = true; nichos[id].gates.push(g.id); } }); });
-  if (nichos.N14) nichos.N14.gates.push("NO_VERIFICADO"); // accesibilidad nunca se da por verificada solo con fotos
-  if (!S.AME_MASCOTAS && nichos.N11) { nichos.N11.bloqueado = true; nichos.N11.gates.push("SIN_DATO_MASCOTAS"); } // política de mascotas desconocida: no se asigna el nicho
-  const libres = Object.entries(nichos).filter(([id, v]) => id !== "N14" && !v.bloqueado && v.fit != null).sort((a, b) => b[1].fit - a[1].fit); // N14 (accesible) solo con inspección
+  const nichos = _clNichosDe(S), alertas = [];
+  _CL.gates.forEach(g => { if (g.efecto !== "ALERTA CRÍTICA") return; const codes = g.vars.split(",").map(x => x.trim()).filter(x => S[x]); if (!codes.length) return; if (Math.min(...codes.map(c => S[c].x)) < g.t) alertas.push({ c: g.id, s: "critica", t: g.razon, insp: true, v: codes.join(",") }); });
+  const libres = Object.entries(nichos).filter(([id, v]) => !v.bloqueado && v.fit != null).sort((a, b) => b[1].fit - a[1].fit);
   return { variables: S, dimensiones: dims, calidad: { indice, nivel, confianza: conf }, nichos, nicho_principal: conf === "baja" ? null : (libres[0] || [])[0] || null, nicho_secundario: conf === "baja" ? null : (libres[1] || [])[0] || null, cobertura_total: Math.round(cob * 100) / 100, alertas_reglas: alertas };
 }
 // Elige ~8 fotos: portada + una por espacio clave (exterior, sala, cocina, recámara, baño, comedor, balcón) + segundas de recámara/baño/sala
@@ -12775,13 +12776,11 @@ async function _clClaude(content) {
   return { data, uso: j.usage || {}, stop: j.stop_reason };
 }
 // Criterios POSITIVOS por nicho: variables clave que el alojamiento debe cumplir (≥ umbral) para ser «apto»; con ≥ 75% cumplidos el nicho cuenta.
-const _CL_CRIT = { N01: { LIM_BANO: 50, LIM_CAMA: 50, AME_WIFI: 50, AME_ESTACIONA: 40 }, N02: { EQ_TRABAJO: 50, AME_WIFI: 50, EQ_CLIMA: 50, SEG_PRIVACIDAD: 50, MOB_CALIDAD: 55 }, N03: { EQ_TRABAJO: 60, AME_WIFI: 70, MOB_ERGONOMIA: 50, EQ_COCINA: 45 },
-  N04: { EQ_COCINA: 50, AME_LAVADO: 50, MOB_ALMACEN: 50 }, N05: { AME_ESTACIONA: 50, MOB_CAPACIDAD: 50, DIS_CAPACIDAD: 50, AME_LAVADO: 50 }, N06: { DIS_CAPACIDAD: 55, EQ_COCINA: 50, SEG_ANTIDESLIZ: 50, DIS_BANOS: 55 },
-  N07: { EST_ACOGEDOR: 60, SEG_PRIVACIDAD: 55, LIM_CAMA: 60 }, N08: { MOB_CALIDAD: 70, INS_BANO: 65, EST_COHERENCIA: 70, INV_NIVEL: 65 }, N09: { EST_IDENTIDAD: 60, EST_COHERENCIA: 60, FOT_CALIDAD: 55 },
-  N10: { DIS_CAPACIDAD: 60, DIS_BANOS: 60, MOB_CAPACIDAD: 55 }, N11: { AME_MASCOTAS: 50, INS_PISOS: 50, COS_DANO: 45 }, N12: { ACC_ESCALONES: 55, SEG_ANTIDESLIZ: 50, LIM_BANO: 60 }, N13: { EQ_TRABAJO: 45, AME_WIFI: 50, COS_REPOSICION: 45 } };
-// Especialización = fit del nicho − índice general. Nicho recomendado = el de mayor especialización entre los APTOS (no bloqueados + criterios positivos ≥ 75%); N14 (accesible) solo con inspección.
+const _CL_CRIT = { S1: { LIM_BANO: 50, LIM_CAMA: 50, AME_WIFI: 50, AME_ESTACIONA: 40, COS_DANO: 40 }, S2: { EQ_TRABAJO: 55, AME_WIFI: 60, EQ_CLIMA: 50, MOB_ERGONOMIA: 50, SEG_PRIVACIDAD: 50, MOB_CALIDAD: 55 }, S3: { EQ_COCINA: 50, AME_LAVADO: 50, MOB_ALMACEN: 50, LIM_BANO: 55, SEG_ANTIDESLIZ: 50 },
+  S4: { DIS_CAPACIDAD: 55, EQ_COCINA: 50, DIS_BANOS: 55, MOB_CAPACIDAD: 50, SEG_ANTIDESLIZ: 50 }, S5: { EST_ACOGEDOR: 60, EST_COHERENCIA: 60, SEG_PRIVACIDAD: 55, LIM_CAMA: 60, FOT_CALIDAD: 50 }, S6: { MOB_CALIDAD: 70, INS_BANO: 65, EST_COHERENCIA: 70, INV_NIVEL: 65, FOT_CALIDAD: 60 } };
+// Especialización = fit del nicho − índice general. Nicho recomendado = el de mayor especialización entre los APTOS (no bloqueados + criterios positivos ≥ 75%); La accesibilidad ya no es un nicho: requiere inspección.
 function _clDerivado(o) {
-  const g = o.calidad && o.calidad.indice, S = o.variables || {}, esp = {}, crit = {}; Object.entries(o.nichos || {}).forEach(([k, v]) => { if (v.fit != null && g != null) esp[k] = Math.round((v.fit - g) * 10) / 10; });
+  const g = o.calidad && o.calidad.indice, S = o.variables || {}, esp = {}, crit = {}; o.nichos = _clNichosDe(S); /* siempre con los nichos y pesos vigentes */ Object.entries(o.nichos || {}).forEach(([k, v]) => { if (v.fit != null && g != null) esp[k] = Math.round((v.fit - g) * 10) / 10; });
   Object.entries(_CL_CRIT).forEach(([n, cs]) => { const ks = Object.keys(cs), con = ks.filter(c => S[c]), met = con.filter(c => S[c].x >= cs[c]), falta = ks.filter(c => !S[c] || S[c].x < cs[c]); crit[n] = { met: met.length, total: ks.length, evaluables: con.length, cumple: ks.length ? Math.round(met.length / ks.length * 100) / 100 : 0, faltan: falta }; });
   const aptos = Object.keys(crit).filter(n => crit[n].cumple >= 0.75 && !(o.nichos[n] || {}).bloqueado && esp[n] != null).sort((a, b) => esp[b] - esp[a] || crit[b].cumple - crit[a].cumple);
   o.especializacion = esp; o.criterios = crit; o.nichos_aptos = aptos; o.nicho_fit = o.nicho_fit || o.nicho_principal; o.nicho_esp = aptos[0] || null; o.nicho_esp2 = aptos[1] || null;

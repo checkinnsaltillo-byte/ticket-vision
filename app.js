@@ -76434,6 +76434,12 @@ function mcAloCss_() {
   .al-bc{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;color:var(--al-mu);margin:0 0 14px}.al-bc button{all:unset;cursor:pointer;color:var(--al-ac);font-weight:700;padding:3px 8px;border-radius:8px;transition:background .15s}.al-bc button:hover{background:#ccfbf1}.al-bc b{color:var(--al-ink);font-weight:800;max-width:46ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .al-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 14px}.al-bar .mc-in{width:auto}.al-q{flex:1;min-width:200px}
   .al-chips{display:flex;gap:6px;flex-wrap:wrap}.al-chip{all:unset;cursor:pointer;padding:6px 12px;border-radius:999px;border:1.5px solid var(--al-ln);background:#fff;font-size:12.5px;font-weight:700;color:#334155;transition:all .15s}.al-chip:hover{border-color:var(--al-ac2)}.al-chip.on{background:var(--al-ac);border-color:var(--al-ac);color:#fff}
+  .al-vw{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}.al-vw .al-chip b{background:#fff;color:#0f766e;border-radius:99px;padding:0 7px;margin-left:4px;font-size:11px}
+  .al-flp{background:#fff;border:1px solid var(--al-ln);border-radius:16px;padding:14px 16px;margin:0 0 16px}.al-fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 26px}.al-fgrid.c{margin-top:12px;padding-top:12px;border-top:1px dashed #e4e9f0}.al-fg label{display:block;font-size:11.5px;font-weight:800;color:#475569;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}.al-fg label b{color:#0f766e;text-transform:none;letter-spacing:0;margin-left:6px;font-size:12.5px}.al-fg.w{grid-column:1/-1}
+  .al-fg .al-chips{display:flex;gap:5px;flex-wrap:wrap}.al-fg .al-chip{padding:4px 10px;font-size:12px}
+  .al-rg{position:relative;height:28px;margin:2px 4px}.al-rg .tr{position:absolute;top:12px;left:0;right:0;height:4px;background:#e2e8f0;border-radius:4px}.al-rg .fl{position:absolute;top:12px;height:4px;background:#0f766e;border-radius:4px}
+  .al-rg input[type=range]{position:absolute;left:0;top:5px;width:100%;margin:0;height:18px;pointer-events:none;-webkit-appearance:none;appearance:none;background:none}.al-rg input[type=range]::-webkit-slider-thumb{pointer-events:auto;-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;border:2.5px solid #0f766e;box-shadow:0 2px 6px rgba(15,23,42,.25);cursor:grab}.al-rg input[type=range]::-moz-range-thumb{pointer-events:auto;width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid #0f766e;box-shadow:0 2px 6px rgba(15,23,42,.25);cursor:grab}.al-rg input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;transform:scale(1.15)}
+  .al-cls{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px dashed #e4e9f0;font-size:11.5px;color:#64748b}.al-cls .al-lv{min-width:20px;height:20px;font-size:11px;border-radius:6px;box-shadow:none}.al-cls span:last-child{margin-left:4px}
   .al-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
   .al-hc,.al-lc{all:unset;box-sizing:border-box;cursor:pointer;background:#fff;border:1px solid var(--al-ln);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;transition:transform .18s ease,box-shadow .18s ease,border-color .18s;position:relative}
   .al-hc:hover,.al-lc:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(15,23,42,.12);border-color:#99f6e4}
@@ -76478,31 +76484,108 @@ function mcAloData_() { const rows = mcHRows_(); if (MC._alD && MC._alD.rows ===
   return MC._alD = { rows, hosts }; }
 const mcAloAv_ = (nombre, foto, px) => foto ? `<img class="al-av" src="${esc(mcImg_(foto, px * 2))}" width="${px}" height="${px}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:${px}px;height:${px}px" onerror="this.style.visibility='hidden'">` : `<span class="al-av" style="width:${px}px;height:${px}px;font-size:${Math.round(px * .42)}px">${esc(String(nombre || '?').trim().charAt(0).toUpperCase())}</span>`;
 const mcAloTag_ = h => { const n = mcHomonimo_({ anfitrion: h.host, hostId: h.id }); return n ? `<span class="al-bd" title="Hay ${n} anfitriones distintos con este nombre; se distinguen por su ID de Airbnb">ID …${esc(String(h.id).slice(-4))}</span>` : ''; };
+window.mcAloHostIr_ = function (hid) { MC.al.vista = 'host'; try { localStorage.setItem('mc-alo-vista', 'host'); } catch (_) {} mcAloIr_(hid); };
+window.mcAloIr_ = function (host, id) { MC.al.host = host || null; MC.al.id = id || null; MC.al.k = 0; MC.al.sp = ''; mcAloPintar_(); const t = document.getElementById('mc-root'); if (t) t.scrollIntoView({ block: 'start' }); };
+// ═══════════════════════════════════════════════════════════════════════════
+// 🏘️ Alojamientos (v2180): 3 vistas —🗂️ Por alojamiento · 👥 Por anfitrión · 📋 Tabla— con los MISMOS filtros: superanfitrión, rangos (calificación, precio, precio/habitación)
+// con slider de doble punta, habitaciones, baños, camas, cocina, ciudad, estancia mínima, clasificación (A/B/C) y nicho. Los categóricos admiten selección múltiple.
+// ═══════════════════════════════════════════════════════════════════════════
+MC.fl = MC.fl || { sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), rg: {} };
+MC.al.vista = (() => { try { const v = localStorage.getItem('mc-alo-vista'); return v === 'host' || v === 'tabla' ? v : 'alo'; } catch (_) { return 'alo'; } })();
+MC.al.ordA = MC.al.ordA || 'idx'; MC.al.pagA = MC.al.pagA || 48; MC.al.flAb = MC.al.flAb !== false;
+const MCFL_CAT = { hab: r => r.hab == null ? '?' : r.hab === 0 ? '0' : r.hab >= 5 ? '5+' : String(r.hab), banos: r => r.banos == null ? '?' : r.banos <= 1 ? '1' : r.banos >= 3 ? '3+' : String(r.banos), camas: r => r.camas == null ? '?' : r.camas >= 5 ? '5+' : String(r.camas), minN: r => r.minN == null ? '?' : r.minN <= 1 ? '1' : r.minN <= 2 ? '2' : r.minN <= 6 ? '3-6' : r.minN <= 29 ? '7-29' : '30+' };
+const MCFL_OPT = { sup: [['Sí', '★ Superanfitrión'], ['No', 'Sin insignia']], hab: [['0', 'Estudio'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']], banos: [['1', '1'], ['1.5', '1.5'], ['2', '2'], ['2.5', '2.5'], ['3+', '3 o más']], camas: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']],
+  coc: [['Sí', 'Con cocina'], ['Compartida', 'Compartida'], ['No', 'Sin cocina']], minN: [['1', '1 noche'], ['2', '2 noches'], ['3-6', '3 a 6'], ['7-29', '7 a 29'], ['30+', '30 o más']], niv: [['A', 'Nivel A'], ['B', 'Nivel B'], ['C', 'Nivel C'], ['S/C', 'Sin clasificar']] };
+const MCFL_LBL = { sup: 'Superanfitrión', hab: 'Habitaciones', banos: 'Baños', camas: 'Camas', coc: 'Cocina', ciudad: 'Ciudad', minN: 'Estancia mínima', niv: 'Clasificación', nicho: 'Nicho' };
+function mcFlDom_() { // dominios de los sliders (según los datos)
+  const A = mcAloData_(); if (MC._fd && MC._fd.rows === A.rows) return MC._fd; const ext = (k, cap) => { const v = A.rows.map(r => r[k]).filter(x => mcOk_(x) && x > 0).sort((a, b) => a - b); if (!v.length) return [0, 1]; const hi = cap ? mcsQ(v, cap) : v[v.length - 1]; return [0, Math.ceil(hi / 50) * 50]; };
+  const cals = A.rows.map(r => r.cal).filter(x => mcOk_(x) && x > 0);
+  const ciudades = {}; A.rows.forEach(r => { const c = (MC.items[r.id] || {}).ciudad || 'Sin ciudad'; ciudades[c] = (ciudades[c] || 0) + 1; });
+  return MC._fd = { rows: A.rows, cal: cals.length ? [Math.floor(Math.min(...cals) * 10) / 10, Math.ceil(Math.max(...cals) * 10) / 10] : [0, 5], precio: ext('precio', .98), pxh: ext('pxh', .98), ciudades: Object.entries(ciudades).sort((a, b) => b[1] - a[1]) };
+}
+const mcFlRg_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return r ? [Math.max(D[0], r[0]), Math.min(D[1], r[1])] : D.slice(); };
+const mcFlRgOn_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return !!r && (r[0] > D[0] || r[1] < D[1]); };
+const mcFlActivos_ = () => ['sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length;
+function mcAloPasa_(r) {
+  const F = MC.fl, i = MC.items[r.id] || {}, D = mcFlDom_();
+  if (F.sup.size && !F.sup.has(i.superanfitrion ? 'Sí' : 'No')) return false;
+  for (const k of ['cal', 'precio', 'pxh']) if (mcFlRgOn_(k)) { const [lo, hi] = mcFlRg_(k), v = r[k]; if (!mcOk_(v) || v < lo || (hi < D[k][1] && v > hi)) return false; }
+  for (const k of ['hab', 'banos', 'camas', 'minN']) if (F[k].size && !F[k].has(MCFL_CAT[k](r))) return false;
+  if (F.coc.size) { const c = mcCocina_(i); if (!F.coc.has(c === '—' ? 'No' : c)) return false; }
+  if (F.ciudad.size && !F.ciudad.has(i.ciudad || 'Sin ciudad')) return false;
+  if (F.niv.size || F.nicho.size) { const x = MC.cl.ix[r.id], niv = x ? mcClNivel_(x.indice) : 'S/C', n = x ? mcClNichoRec_(x).n1 : null; if (F.niv.size && !F.niv.has(niv)) return false; if (F.nicho.size && !F.nicho.has(n || 'S/C')) return false; }
+  return true;
+}
+function mcAloFiltradas_() { const A = mcAloData_(), on = mcFlActivos_() > 0, L = A.rows.filter(r => !on || mcAloPasa_(r)); MC.alFiltroOn = on; MC.alIds = new Set(L.map(r => r.id)); return L; }
+function mcAloHostsDe_(rows) { const hs = mcHHosts_(rows); hs.forEach(h => { const I = h.L.map(r => MC.items[r.id] || {}); h.it = I.find(i => i.hostAcerca) || I[0] || {}; h.mio = h.L.some(r => r.propio); h.hostCal = h.it.hostCalificacion; h.hostEv = h.it.hostEvaluaciones; const c = h.L.map(r => MC.cl.ix[r.id]).filter(Boolean); h.ncl = c.length; h.idx = c.length ? mcAvg_(c.map(x => x.indice)) : null; }); return hs; }
+// ── Controles ──
+function mcFlChips_(k, opts) { return `<div class="al-chips" data-k="${k}">${opts.map(([v, t]) => `<button type="button" class="al-chip ${MC.fl[k].has(v) ? 'on' : ''}" onclick="mcAloTg_('${k}',${esc(JSON.stringify(v))},this)">${esc(t)}</button>`).join('')}</div>`; }
+function mcFlSlider_(k, titulo, fmt) {
+  const D = mcFlDom_()[k], [lo, hi] = mcFlRg_(k), step = k === 'cal' ? 0.01 : 10, pct = v => D[1] === D[0] ? 0 : (v - D[0]) / (D[1] - D[0]) * 100;
+  return `<div class="al-fg"><label>${titulo} <b id="rgv-${k}">${fmt(lo)} – ${fmt(hi)}${k !== 'cal' && hi >= D[1] ? '+' : ''}</b></label><div class="al-rg" id="rg-${k}"><div class="tr"></div><div class="fl" style="left:${pct(lo)}%;right:${100 - pct(hi)}%"></div>
+    <input type="range" min="${D[0]}" max="${D[1]}" step="${step}" value="${lo}" oninput="mcAloRgIn_('${k}')" aria-label="${titulo} mínimo"><input type="range" min="${D[0]}" max="${D[1]}" step="${step}" value="${hi}" oninput="mcAloRgIn_('${k}')" aria-label="${titulo} máximo"></div></div>`;
+}
+const mcFlFmt_ = { cal: v => MCN(v, 2), precio: v => MCFMT(v), pxh: v => MCFMT(v) };
+window.mcAloRgIn_ = function (k) {
+  const w = document.getElementById('rg-' + k); if (!w) return; const [a, b] = w.querySelectorAll('input'), D = mcFlDom_()[k]; let lo = +a.value, hi = +b.value; if (lo > hi) { if (document.activeElement === a) { lo = hi; a.value = lo; } else { hi = lo; b.value = hi; } }
+  MC.fl.rg[k] = [lo, hi]; const pct = v => D[1] === D[0] ? 0 : (v - D[0]) / (D[1] - D[0]) * 100, fl = w.querySelector('.fl'); fl.style.left = pct(lo) + '%'; fl.style.right = (100 - pct(hi)) + '%';
+  document.getElementById('rgv-' + k).textContent = `${mcFlFmt_[k](lo)} – ${mcFlFmt_[k](hi)}${k !== 'cal' && hi >= D[1] ? '+' : ''}`; mcAloFlCambio_();
+};
+window.mcAloTg_ = function (k, v, el) { const S = MC.fl[k]; if (S.has(v)) S.delete(v); else S.add(v); if (el) el.classList.toggle('on', S.has(v)); mcAloFlCambio_(); };
+function mcAloFlCambio_() { if (MC._flRaf) return; MC._flRaf = setTimeout(() => { MC._flRaf = 0; MC.al.pag = 48; MC.al.pagA = 48; const n = mcFlActivos_(), b = document.getElementById('al-flcnt'); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; } const r = document.getElementById('al-flrst'); if (r) r.style.display = n ? '' : 'none'; mcAloCuerpo_(); }, 40); }
+window.mcAloFlReset_ = function () { Object.keys(MC.fl).forEach(k => { if (MC.fl[k] instanceof Set) MC.fl[k].clear(); }); MC.fl.rg = {}; mcAloTopPinta_(); mcAloCuerpo_(); };
+window.mcAloFlToggle_ = function () { MC.al.flAb = !MC.al.flAb; const p = document.getElementById('al-flp'); if (p) p.style.display = MC.al.flAb ? '' : 'none'; const b = document.getElementById('al-flbt'); if (b) b.classList.toggle('on', MC.al.flAb); };
+window.mcAloVista_ = function (v) { MC.al.vista = v; try { localStorage.setItem('mc-alo-vista', v); } catch (_) {} MC.al.host = null; MC.al.id = null; mcAloPintar_(); };
+function mcAloTopPinta_() {
+  const t = document.getElementById('al-top'); if (!t) return; const D = mcFlDom_(), n = mcFlActivos_(), nichos = Object.entries(MCCL_N).filter(([k]) => /^S/.test(k)).map(([k, v]) => [k, v]).concat([['S/C', 'Sin nicho / sin clasificar']]);
+  t.innerHTML = `<div class="al-vw"><div class="ad-seg">${[['alo', '🗂️ Por alojamiento'], ['host', '👥 Por anfitrión'], ['tabla', '📋 Tabla']].map(([k, x]) => `<button type="button" class="${MC.al.vista === k ? 'on' : ''}" onclick="mcAloVista_('${k}')">${x}</button>`).join('')}</div>
+      <button type="button" class="al-chip ${MC.al.flAb ? 'on' : ''}" id="al-flbt" onclick="mcAloFlToggle_()">🎛️ Filtros <b id="al-flcnt" style="${n ? '' : 'display:none'}">${n}</b></button><button type="button" class="al-chip" id="al-flrst" style="${n ? '' : 'display:none'}" onclick="mcAloFlReset_()">✕ Quitar filtros</button><span class="mc-mu" id="al-flinfo"></span></div>
+    <div class="al-flp" id="al-flp" style="${MC.al.flAb ? '' : 'display:none'}">
+      <div class="al-fgrid">${mcFlSlider_('cal', '⭐ Calificación', mcFlFmt_.cal)}${mcFlSlider_('precio', '💲 Precio por noche', mcFlFmt_.precio)}${mcFlSlider_('pxh', '🛏️ Precio por habitación', mcFlFmt_.pxh)}</div>
+      <div class="al-fgrid c">${[['sup', 'Superanfitrión'], ['hab', 'Habitaciones'], ['banos', 'Baños'], ['camas', 'Camas'], ['coc', 'Cocina'], ['minN', 'Estancia mínima']].map(([k, tt]) => `<div class="al-fg"><label>${tt}</label>${mcFlChips_(k, MCFL_OPT[k])}</div>`).join('')}
+        <div class="al-fg"><label>Ciudad</label>${mcFlChips_('ciudad', D.ciudades.slice(0, 14).map(([c, n2]) => [c, `${c} (${n2})`]))}</div>
+        <div class="al-fg"><label>Clasificación (IA)</label>${mcFlChips_('niv', MCFL_OPT.niv)}</div><div class="al-fg w"><label>Nicho recomendado</label>${mcFlChips_('nicho', nichos)}</div></div></div>`;
+}
+// ── Pintado ──
 function mcAloPintar_() {
   const w = document.getElementById('mc-sec-alo'); if (!w) return; mcAloCss_(); mcClCss_(); const A = mcAloData_(); document.removeEventListener('keydown', MC._alKd || (() => {})); const S = MC.al;
   if (A.rows.length < 1) { w.innerHTML = '<div class="mc-card mc-mu">Aún no hay alojamientos extraídos. Ve a «Extracción» y pulsa «Extraer / actualizar».</div>'; return; }
   const h = S.host && A.hosts.find(x => x.id === S.host), r = S.id && A.rows.find(x => x.id === S.id);
-  if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); } else if (h) w.innerHTML = mcAloHostHtml_(h); else w.innerHTML = mcAloDirHtml_(A);
+  if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); return; }
+  w.innerHTML = '<div id="al-top"></div><div id="al-body"></div>'; mcAloTopPinta_(); mcAloCuerpo_();
 }
-window.mcAloIr_ = function (host, id) { MC.al.host = host || null; MC.al.id = id || null; MC.al.k = 0; MC.al.sp = ''; mcAloPintar_(); const t = document.getElementById('mc-root'); if (t) t.scrollIntoView({ block: 'start' }); };
-// ── 1 · Directorio de anfitriones ──
-function mcAloDirHtml_(A) {
-  const S = MC.al, q = mcNormN_(S.q), ords = { n: 'Nº de alojamientos', occ: 'Ocupación', cal: 'Calificación', precio: 'Precio por noche', ev: 'Evaluaciones', host: 'Nombre (A–Z)' };
-  let L = A.hosts.filter(h => (S.filt === 'multi' ? h.n >= 2 : S.filt === 'sup' ? h.sup >= 50 : S.filt === 'mios' ? h.mio : true) && (!q || mcNormN_(h.host).includes(q) || h.id.includes(q) || h.L.some(r => mcNormN_(r.titulo).includes(q))));
+function mcAloCuerpo_() {
+  const b = document.getElementById('al-body'); if (!b) return; const A = mcAloData_(), S = MC.al, L = mcAloFiltradas_(), info = document.getElementById('al-flinfo'), hs = mcAloHostsDe_(L);
+  if (info) info.textContent = `${L.length} de ${A.rows.length} alojamientos · ${hs.length} anfitriones`;
+  if (S.vista === 'tabla') { if (!document.getElementById('mc-res')) b.innerHTML = '<div id="mc-res"></div>'; mcRes_(); return; }
+  if (S.vista === 'host' && S.host) { const hF = A.hosts.find(x => x.id === S.host); if (hF) { b.innerHTML = mcAloHostHtml_(Object.assign({}, hF, { L: hF.L.filter(r => MC.alIds.has(r.id)), _total: hF.L.length })); return; } }
+  if (S.vista === 'host') b.innerHTML = mcAloDirHtml_(hs); else b.innerHTML = mcAloListaHtml_(L);
+}
+// ── Por alojamiento ──
+function mcAloListaHtml_(L) {
+  const S = MC.al, ords = { idx: 'Índice de calidad (IA)', precio: 'Precio por noche', pxh: 'Precio por habitación', cal: 'Calificación', occ: 'Ocupación', ev: 'Evaluaciones', hab: 'Habitaciones' };
+  const k = S.ordA, val = r => k === 'idx' ? (MC.cl.ix[r.id] ? MC.cl.ix[r.id].indice : null) : r[k], M = L.slice().sort((a, b) => (mcOk_(val(b)) ? val(b) : -1) - (mcOk_(val(a)) ? val(a) : -1));
+  return `<div class="al-bar"><select class="mc-in" onchange="MC.al.ordA=this.value;mcAloCuerpo_()">${Object.entries(ords).map(([x, t]) => `<option value="${x}" ${k === x ? 'selected' : ''}>Ordenar: ${t}</option>`).join('')}</select></div>
+    <div class="al-grid">${M.slice(0, S.pagA).map(r => mcAloListCard_({ id: r.hostId }, r, true)).join('') || '<div class="mc-mu">Ningún alojamiento coincide con los filtros.</div>'}</div>
+    ${M.length > S.pagA ? `<div style="text-align:center;margin:18px"><button type="button" class="al-btn sec" onclick="MC.al.pagA+=48;mcAloCuerpo_()">Mostrar más (${M.length - S.pagA})</button></div>` : ''}`;
+}
+// ── Por anfitrión (directorio) ──
+function mcAloDirHtml_(hs) {
+  const S = MC.al, q = mcNormN_(S.q), ords = { n: 'Nº de alojamientos', idx: 'Índice de calidad (IA)', occ: 'Ocupación', cal: 'Calificación', precio: 'Precio por noche', ev: 'Evaluaciones', host: 'Nombre (A–Z)' };
+  let L = hs.filter(h => !q || mcNormN_(h.host).includes(q) || h.id.includes(q) || h.L.some(r => mcNormN_(r.titulo).includes(q)));
   L = L.slice().sort((a, b) => S.ord === 'host' ? a.host.localeCompare(b.host, 'es') : (mcOk_(b[S.ord]) ? b[S.ord] : -1) - (mcOk_(a[S.ord]) ? a[S.ord] : -1));
-  const f = [['todos', 'Todos'], ['multi', '2+ alojamientos'], ['sup', '★ Superanfitriones'], ['mios', '🏠 Míos']];
-  return `<div class="al-bc"><b>🏘️ Anfitriones</b><span>· ${L.length} de ${A.hosts.length} anfitriones · ${A.rows.length} alojamientos</span></div>
-    <div class="al-bar"><input class="mc-in al-q" placeholder="🔎 Buscar anfitrión, ID o alojamiento…" value="${esc(S.q)}" oninput="MC.al.q=this.value;MC.al.pag=48;mcAloDirRe_(this)"><select class="mc-in" onchange="MC.al.ord=this.value;mcAloPintar_()">${Object.entries(ords).map(([k, t]) => `<option value="${k}" ${S.ord === k ? 'selected' : ''}>Ordenar: ${t}</option>`).join('')}</select>
-      <div class="al-chips">${f.map(([k, t]) => `<button type="button" class="al-chip ${S.filt === k ? 'on' : ''}" onclick="MC.al.filt='${k}';MC.al.pag=48;mcAloPintar_()">${t}</button>`).join('')}</div></div>
+  return `<div class="al-bar"><input class="mc-in al-q" placeholder="🔎 Buscar anfitrión, ID o alojamiento…" value="${esc(S.q)}" oninput="MC.al.q=this.value;MC.al.pag=48;mcAloDirRe_(this)"><select class="mc-in" onchange="MC.al.ord=this.value;mcAloCuerpo_()">${Object.entries(ords).map(([k, t]) => `<option value="${k}" ${S.ord === k ? 'selected' : ''}>Ordenar: ${t}</option>`).join('')}</select></div>
     <div class="al-grid" id="al-dir">${L.slice(0, S.pag).map(mcAloHostCard_).join('') || '<div class="mc-mu">Ningún anfitrión coincide.</div>'}</div>
-    ${L.length > S.pag ? `<div style="text-align:center;margin:18px"><button type="button" class="al-btn sec" onclick="MC.al.pag+=48;mcAloPintar_()">Mostrar más (${L.length - S.pag})</button></div>` : ''}`;
+    ${L.length > S.pag ? `<div style="text-align:center;margin:18px"><button type="button" class="al-btn sec" onclick="MC.al.pag+=48;mcAloCuerpo_()">Mostrar más (${L.length - S.pag})</button></div>` : ''}`;
 }
-window.mcAloDirRe_ = function (inp) { const pos = inp.selectionStart; mcAloPintar_(); const n = document.querySelector('#mc-sec-alo .al-q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
+window.mcAloDirRe_ = function (inp) { const pos = inp.selectionStart; mcAloCuerpo_(); const n = document.querySelector('#mc-sec-alo .al-q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
+
 function mcAloHostCard_(h) {
   const cov = h.L.map(r => (MC.items[r.id] || {}).foto).filter(Boolean).slice(0, 4), it = h.it;
   return `<button type="button" class="al-hc" onclick="mcAloIr_('${h.id}')"><div class="al-hct">${mcAloAv_(h.host, it.hostFoto, 52)}<div><b>${esc(h.host)}</b><small>${mcOk_(h.anios) ? MCN(h.anios, 0) + ' años como anfitrión' : 'Anfitrión'}</small><div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">${h.sup >= 50 ? '<span class="al-bd">★ Superanfitrión</span>' : ''}${h.mio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${mcAloTag_(h)}</div></div></div>
     <div class="al-mos">${Array.from({ length: 4 }, (_, k) => cov[k] ? `<img loading="lazy" src="${esc(mcImg_(cov[k], 200))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : '<i></i>').join('')}</div>
-    <div class="al-st"><span><b>${h.n}</b>aloj.</span><span><b>${mcOk_(h.cal) ? MCN(h.cal, 2) : '—'}</b>★ calif.</span><span><b>${mcOk_(h.occ) ? MCN(h.occ, 0) + '%' : '—'}</b>ocupación</span><span><b>${mcOk_(h.precio) ? MCFMT(h.precio) : '—'}</b>por noche</span></div></button>`;
+    <div class="al-st"><span><b>${h.n}</b>aloj.</span><span><b>${mcOk_(h.cal) ? MCN(h.cal, 2) : '—'}</b>★ calif.</span><span><b>${mcOk_(h.occ) ? MCN(h.occ, 0) + '%' : '—'}</b>ocupación</span><span><b>${mcOk_(h.precio) ? MCFMT(h.precio) : '—'}</b>por noche</span></div>
+    ${h.ncl ? `<div class="al-cls">${h.L.filter(r => MC.cl.ix[r.id]).slice(0, 8).map(r => mcClBadge_(r.id)).join('')}<span>🧭 ${h.ncl} clasificado${h.ncl > 1 ? 's' : ''} · índice ${MCN(h.idx, 0)}</span></div>` : ''}</button>`;
 }
 // ── 2 · Ficha del anfitrión ──
 function mcAloHostHtml_(h) {
@@ -76511,20 +76594,20 @@ function mcAloHostHtml_(h) {
     [mcOk_(h.cal) ? MCN(h.cal, 2) : '—', 'calificación de sus alojamientos', dl(h.cal, mk.cal, (a, b) => (a >= b ? '+' : '') + MCN(a - b, 2))], [h.ev.toLocaleString('es-MX'), 'evaluaciones recibidas', ''], [mcOk_(h.nam) ? MCN(h.nam, 0) : '—', 'amenidades por alojamiento', dl(h.nam, mk.nam, (a, b) => (a >= b ? '+' : '') + MCN((a / b - 1) * 100, 0) + '%')],
     [it.hostCalificacion != null ? MCN(it.hostCalificacion, 2) : '—', 'calificación del perfil', ''], [it.hostRespuesta ? String(it.hostRespuesta).replace(/[^\d%]/g, '') || '—' : '—', 'índice de respuesta', it.hostTiempo ? `<small>${esc(it.hostTiempo)}</small>` : '']];
   const L = h.L.slice().sort((a, b) => (b.occ ?? -1) - (a.occ ?? -1));
-  return `<div class="al-bc"><button type="button" onclick="mcAloIr_()">🏘️ Anfitriones</button><span>›</span><b>${esc(h.host)}</b></div>
+  return `<div class="al-bc"><button type="button" onclick="mcAloIr_()">🏘️ Alojamientos</button><span>›</span><b>${esc(h.host)}</b></div>
     <div class="al-hero">${mcAloAv_(h.host, it.hostFoto, 110)}<div><h2>${esc(h.host)} ${h.sup >= 50 ? '<span class="al-bd">★ Superanfitrión</span>' : ''}${h.mio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${mcAloTag_(h)}</h2>
       <div style="font-size:13px;color:#a7f3d0">${mcOk_(h.anios) ? MCN(h.anios, 0) + ' años como anfitrión · ' : ''}${h.n} alojamiento${h.n === 1 ? '' : 's'} en tu lista${it.coanfitriones ? ' · con coanfitriones' : ''}${it.administrado ? ' · administrado por Airbnb' : ''}</div>
       ${it.hostAcerca ? `<p>${esc(it.hostAcerca)}</p>` : '<p style="opacity:.7">Este anfitrión no tiene descripción pública (o aún no se ha leído).</p>'}
       ${(it.hostDest || []).length ? `<div class="al-hl">${it.hostDest.map(x => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
       <div style="margin-top:14px"><a class="al-btn sec" href="https://www.airbnb.mx/users/show/${esc(h.id)}" target="_blank" rel="noopener">Ver perfil en Airbnb ↗</a></div></div></div>
     <div class="al-kp">${kp.map(([v, t, d]) => `<div><b>${esc(String(v))}</b><span>${t}</span>${d}</div>`).join('')}</div>
-    <div class="al-bc"><b>Alojamientos de ${esc(h.host)}</b><span>· ${h.n}</span></div>
+    <div class="al-bc"><b>Alojamientos de ${esc(h.host)}</b><span>· ${h.L.length}${h._total && h._total !== h.L.length ? ' de ' + h._total + ' (filtrados)' : ''}</span></div>
     <div class="al-grid">${L.map(r => mcAloListCard_(h, r)).join('')}</div>`;
 }
-function mcAloListCard_(h, r) {
+function mcAloListCard_(h, r, showHost) {
   const i = MC.items[r.id] || {}, sp = [i.huespedes != null ? i.huespedes + ' huésp.' : '', i.habitaciones != null ? (i.habitaciones === 0 ? 'Estudio' : i.habitaciones + ' hab.') : '', i.camas != null ? i.camas + ' camas' : '', i.banos != null ? i.banos + ' baños' : ''].filter(Boolean).join(' · ');
   return `<button type="button" class="al-lc" onclick="mcAloIr_('${h.id}','${r.id}')"><div class="al-cv"><img loading="lazy" src="${esc(mcImg_(i.foto, 560))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"><div class="al-bg">${mcClBadge_(r.id)}${i.favorito ? '<span class="al-bd">🏆 Favorito</span>' : ''}${r.propio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${i.nuevo ? '<span class="al-bd b">Nuevo</span>' : ''}</div></div>
-    <div class="al-lb"><h4>${esc(i.titulo || r.id)}</h4><small>${esc(i.tipo || '')}${i.ciudad ? ' · ' + esc(i.ciudad) : ''}</small>${MC.cl.ix[r.id] ? `<div style="margin:4px 0">${mcClNicho_(r.id)}</div>` : ''}<small>${esc(sp)}</small>
+    <div class="al-lb"><h4>${esc(i.titulo || r.id)}</h4><small>${esc(i.tipo || '')}${i.ciudad ? ' · ' + esc(i.ciudad) : ''}</small>${MC.cl.ix[r.id] ? `<div style="margin:4px 0">${mcClNicho_(r.id)}</div>` : ''}<small>${esc(sp)}</small>${showHost ? `<small style="margin-top:2px">👤 ${esc(r.host)}${r.sup ? ' · ★' : ''}</small>` : ''}
     <div class="al-r"><span><b>${mcOk_(r.precio) ? MCFMT(r.precio) : '—'}</b> <small style="display:inline">/noche</small></span><span>★ <b style="font-size:13px">${mcOk_(r.cal) ? MCN(r.cal, 2) : '—'}</b> <small style="display:inline">(${r.ev})</small></span></div>
     <div class="al-bar2" title="Ocupación estimada de los próximos 90 días"><i style="width:${Math.min(100, (r.occ || 0) * 2.5)}%"></i></div><small style="margin-top:4px">Ocupación ${mcOk_(r.occ) ? MCN(r.occ, 0) + '%' : '—'}</small></div></button>`;
 }
@@ -76544,7 +76627,7 @@ function mcAloDetHtml_(h, r) {
   const CATS = [['limpieza', 'Limpieza'], ['veracidad', 'Veracidad'], ['llegada', 'Llegada'], ['comunicacion', 'Comunicación'], ['ubicacionCal', 'Ubicación'], ['valor', 'Calidad-precio']], am = mcAloAmen_(i.amenidades);
   const fx = [[i.huespedes, 'huéspedes'], [i.habitaciones === 0 ? 'Estudio' : i.habitaciones, 'habitaciones'], [i.camas, 'camas'], [i.banos, 'baños'], [mcCocina_(i), 'cocina'], [i.fotos, 'fotos']];
   const lst = MC.lista.find(l => l.id === r.id) || {};
-  return `<div class="al-bc"><button type="button" onclick="mcAloIr_()">🏘️ Anfitriones</button><span>›</span><button type="button" onclick="mcAloIr_('${h.id}')">${esc(h.host)}</button><span>›</span><b>${esc(i.titulo || r.id)}</b></div>
+  return `<div class="al-bc"><button type="button" onclick="mcAloIr_()">🏘️ Alojamientos</button><span>›</span><button type="button" onclick="mcAloHostIr_('${h.id}')">${esc(h.host)}</button><span>›</span><b>${esc(i.titulo || r.id)}</b></div>
     <div class="al-det"><div class="al-gal"><div id="al-gal"><div class="al-sk" style="aspect-ratio:16/10"></div></div></div>
     <aside class="al-side"><div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">${mcClBadge_(r.id)}${i.favorito ? '<span class="al-bd">🏆 Favorito de huéspedes</span>' : ''}${i.superanfitrion ? '<span class="al-bd">★ Superanfitrión</span>' : ''}${r.propio ? '<span class="al-bd g">🏠 Mío</span>' : ''}${i.nuevo ? '<span class="al-bd b">Nuevo</span>' : ''}${i.administrado ? '<span class="al-bd b">Administrado</span>' : ''}</div>
       <h3>${esc(i.titulo || r.id)}</h3><div class="loc">📍 ${esc(i.ubicacion || i.ciudad || '')} · ${esc(i.tipo || '')}</div>
@@ -76552,7 +76635,7 @@ function mcAloDetHtml_(h, r) {
       <div class="al-price"><b>${mcOk_(r.precio) ? MCFMT(r.precio) : '—'}</b><span>por noche · referencia mar–jue</span>${P ? `<div>Rango observado ${MCFMT(P.min)} – ${MCFMT(P.max)}${P.prem != null ? ' · fin de semana ' + (P.prem >= 0 ? '+' : '') + Math.round(P.prem * 100) + '%' : ''} · ${P.n} observaciones</div>` : '<div>Aún sin bitácora de precios: se muestra el precio de la última búsqueda.</div>'}${mcOk_(r.pxh) && r.hab !== 1 ? `<div>${MCFMT(r.pxh)} por habitación</div>` : ''}</div>
       <div class="al-fx">${fx.map(([v, t]) => `<div><b>${v == null || v === '—' ? '—' : esc(String(v))}</b><span>${t}</span></div>`).join('')}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="al-btn" href="${esc(i.url || 'https://www.airbnb.mx/rooms/' + r.id)}" target="_blank" rel="noopener">Abrir en Airbnb ↗</a>${i.lat != null ? `<a class="al-btn sec" href="https://www.google.com/maps?q=${i.lat},${i.lng}" target="_blank" rel="noopener">📍 Mapa</a>` : ''}</div>
-      <div class="al-hm" onclick="mcAloIr_('${h.id}')">${mcAloAv_(h.host, (h.it || {}).hostFoto, 44)}<div><b>${esc(h.host)}</b> ${mcAloTag_(h)}<small>${h.n} alojamiento${h.n === 1 ? '' : 's'} · ${mcOk_(h.anios) ? MCN(h.anios, 0) + ' años' : 'anfitrión'}${i.superanfitrion ? ' · Superanfitrión' : ''} — ver perfil</small></div></div></aside></div>
+      <div class="al-hm" onclick="mcAloHostIr_('${h.id}')">${mcAloAv_(h.host, (h.it || {}).hostFoto, 44)}<div><b>${esc(h.host)}</b> ${mcAloTag_(h)}<small>${h.n} alojamiento${h.n === 1 ? '' : 's'} · ${mcOk_(h.anios) ? MCN(h.anios, 0) + ' años' : 'anfitrión'}${i.superanfitrion ? ' · Superanfitrión' : ''} — ver perfil</small></div></div></aside></div>
     <div class="al-secs">
       <div class="al-card w"><h5>🧭 Clasificación por nicho</h5><div id="al-cl"><div class="al-sk" style="height:90px"></div></div></div>
       <div class="al-card"><h5>📊 Ocupación y disponibilidad</h5><div class="al-fs">${ex('Ocupación estimada (90 d)', mcOk_(r.occ) ? MCN(r.occ, 1) + '%' : '—')}${ex('Mercado', mcOk_(mk.occ) ? MCN(mk.occ, 1) + '%' : '—')}${ex('No disponible 30 d', i.ocup30 != null ? i.ocup30 + '%' : '—')}${ex('No disponible 90 d', i.ocup90 != null ? i.ocup90 + '%' : '—')}${ex('No disponible 365 d', i.ocup365 != null ? i.ocup365 + '%' : '—')}${ex('Noches de reserva probable (365 d)', t ? t.reserva : '—')}${ex('Noches de bloqueo probable', t ? t.bloqueo : '—')}${ex('Primera fecha libre', i.primeraLibre ? mcF(i.primeraLibre) : '—')}${ex('Próximo bloqueo', i.extraido ? (i.proximoBloqueo ? mcF(i.proximoBloqueo) : 'Sin bloqueos') : '—')}${ex('Estancia mínima', i.minNoches != null ? i.minNoches + ' noches' : '—')}</div></div>
@@ -76598,7 +76681,11 @@ window.mcAloLight_ = function (on) {
 // Los resultados los calcula y guarda el servidor (mercado/clasif/<id>.json). Nivel = RELATIVO al catálogo analizado (percentiles editables). Nicho recomendado = mayor
 // especialización (fit del nicho − índice general) entre los nichos aptos (sin bloqueo y con ≥ 75% de criterios positivos).
 // ═══════════════════════════════════════════════════════════════════════════
-const MCCL_N = { N01: 'Corporativo económico', N02: 'Corporativo ejecutivo', N03: 'Trabajo remoto / estancia media', N04: 'Reubicación / estancia larga', N05: 'Cuadrillas y equipos de trabajo', N06: 'Vacacional familiar', N07: 'Parejas / escapada', N08: 'Lujo / premium', N09: 'Boutique / diseño', N10: 'Grupos de amigos', N11: 'Viajeros con mascotas', N12: 'Salud / acompañantes', N13: 'Estudiantes / presupuesto', N14: 'Accesible / adultos mayores' };
+const MCCL_N = { S1: 'Corporativo económico y cuadrillas', S2: 'Ejecutivo y trabajo remoto', S3: 'Estancia larga, estudiantes y salud', S4: 'Familiar, grupos y mascotas', S5: 'Parejas y boutique / diseño', S6: 'Lujo / premium',
+  N01: 'Corporativo económico', N02: 'Corporativo ejecutivo', N03: 'Trabajo remoto', N04: 'Estancia larga', N05: 'Cuadrillas', N06: 'Familiar', N07: 'Parejas', N08: 'Lujo', N09: 'Boutique', N10: 'Grupos', N11: 'Mascotas', N12: 'Salud', N13: 'Estudiantes', N14: 'Accesible' }; // N## = modelo anterior de 14 nichos
+// Nivel de calidad al que apunta cada nicho: el nicho recomendado se elige entre los aptos cuyo nivel objetivo incluye el nivel del alojamiento (así lujo solo sale en A).
+const MCCL_TIER = { S1: 'BC', S2: 'AB', S3: 'BC', S4: 'AB', S5: 'AB', S6: 'A' };
+function mcClNichoRec_(x) { const ap = (x && x.ap) || []; if (!ap.length) return { n1: (x && x.ne) || null, n2: (x && x.ne2) || null }; const niv = mcClNivel_(x.indice), t = ap.filter(n => !MCCL_TIER[n] || MCCL_TIER[n].includes(niv)), L = t.length ? t.concat(ap.filter(n => !t.includes(n))) : ap; return { n1: L[0], n2: L[1] || null }; }
 const MCCL_D = { SEG: 'Seguridad', LIM: 'Limpieza', MOB: 'Mobiliario', INS: 'Instalaciones', EST: 'Estética', DIS: 'Distribución', AME: 'Amenidades', COS: 'Costos', SEN: 'Presentación', ENT: 'Entorno' };
 const MCCL_VAR = { LIM_BANO: 'limpieza del baño', LIM_CAMA: 'ropa de cama', AME_WIFI: 'Wi-Fi', AME_ESTACIONA: 'estacionamiento', EQ_TRABAJO: 'puesto de trabajo', EQ_CLIMA: 'clima', SEG_PRIVACIDAD: 'privacidad', MOB_CALIDAD: 'calidad del mobiliario', MOB_ERGONOMIA: 'ergonomía', EQ_COCINA: 'cocina equipada', AME_LAVADO: 'lavandería', MOB_ALMACEN: 'almacenamiento', MOB_CAPACIDAD: 'camas vs capacidad', DIS_CAPACIDAD: 'espacio vs huéspedes', SEG_ANTIDESLIZ: 'prevención de caídas', DIS_BANOS: 'baños', EST_ACOGEDOR: 'ambiente acogedor', INS_BANO: 'baño (acabados)', EST_COHERENCIA: 'coherencia de estilo', INV_NIVEL: 'inversión visible', EST_IDENTIDAD: 'identidad', FOT_CALIDAD: 'fotografía', AME_MASCOTAS: 'política de mascotas', INS_PISOS: 'pisos', COS_DANO: 'resistencia al uso', ACC_ESCALONES: 'accesibilidad (escalones)', COS_REPOSICION: 'costo de reposición' };
 MC.cl = MC.cl || { ix: {}, cfg: { pA: 85, pC: 30 }, est: null, f: { nivel: '', nicho: '', q: '', ord: 'indice' } };
@@ -76608,7 +76695,7 @@ async function mcClCargar_() {
 function mcClUmbrales_() { const v = Object.values(MC.cl.ix).map(x => x.indice).filter(mcOk_).sort((a, b) => a - b); if (v.length < 8) return { A: 75, C: 50, n: v.length, rel: false }; return { A: mcsQ(v, MC.cl.cfg.pA / 100), C: mcsQ(v, MC.cl.cfg.pC / 100), n: v.length, rel: true }; }
 const mcClNivel_ = ix => { const u = mcClUmbrales_(); return ix >= u.A ? 'A' : ix < u.C ? 'C' : 'B'; };
 const mcClBadge_ = (id, grande) => { const x = MC.cl.ix[id]; if (!x) return ''; const n = mcClNivel_(x.indice); return `<span class="al-lv ${n} ${grande ? 'g' : ''}" title="Nivel ${n} (relativo al catálogo analizado) · índice ${MCN(x.indice, 1)}/100 · confianza ${esc(x.conf)}">${n}</span>`; };
-const mcClNicho_ = (id) => { const x = MC.cl.ix[id]; return x && x.ne ? `<span class="al-bd b" title="Nicho recomendado: ${esc(MCCL_N[x.ne])}">${esc(MCCL_N[x.ne])}</span>` : ''; };
+const mcClNicho_ = (id) => { const x = MC.cl.ix[id]; if (!x) return ''; const n = mcClNichoRec_(x).n1; return n ? `<span class="al-bd b" title="Nicho recomendado: ${esc(MCCL_N[n])}">${esc(MCCL_N[n])}</span>` : ''; };
 function mcClCss_() {
   if (document.getElementById('mccl-css')) return; const st = document.createElement('style'); st.id = 'mccl-css'; st.textContent = `
   .al-lv{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:8px;font:800 13px Inter,sans-serif;color:#fff;padding:0 6px;box-shadow:0 2px 8px rgba(0,0,0,.18)}.al-lv.A{background:#16a34a}.al-lv.B{background:#d97706}.al-lv.C{background:#dc2626}.al-lv.g{min-width:62px;height:62px;border-radius:18px;font-size:34px}
@@ -76626,14 +76713,14 @@ function mcClCss_() {
 }
 // ── Ficha de clasificación dentro del alojamiento ──
 function mcClFichaHtml_(o, id) {
-  const u = mcClUmbrales_(), niv = mcClNivel_(o.calidad.indice), dims = Object.keys(MCCL_D), apt = new Set(o.nichos_aptos || []);
-  const filas = Object.keys(MCCL_N).map(n => { const v = o.nichos[n] || {}, cr = (o.criterios || {})[n], e = (o.especializacion || {})[n]; return { n, fit: v.fit, e, bl: v.bloqueado, gates: v.gates || [], cr, apto: apt.has(n) }; }).sort((a, b) => (b.apto - a.apto) || ((b.e ?? -99) - (a.e ?? -99)));
+  const u = mcClUmbrales_(), niv = mcClNivel_(o.calidad.indice), dims = Object.keys(MCCL_D), apt = new Set(o.nichos_aptos || []), rec = mcClNichoRec_({ ap: o.nichos_aptos, indice: o.calidad.indice, ne: o.nicho_esp, ne2: o.nicho_esp2 });
+  const filas = Object.keys(o.nichos || {}).map(n => { const v = o.nichos[n] || {}, cr = (o.criterios || {})[n], e = (o.especializacion || {})[n]; return { n, fit: v.fit, e, bl: v.bloqueado, gates: v.gates || [], cr, apto: apt.has(n) }; }).sort((a, b) => ((b.n === rec.n1) - (a.n === rec.n1)) || (b.apto - a.apto) || ((b.e ?? -99) - (a.e ?? -99)));
   const al = (o.alertas || []).concat((o.alertas_reglas || []).map(a => Object.assign({ f: null }, a))), mj = o.mejoras || [], tot = mj.reduce((s, m) => s + (((+m.min || 0) + (+m.max || 0)) / 2), 0);
-  return `<div class="cl-top"><span class="al-lv ${niv} g" title="Nivel relativo al catálogo analizado">${niv}</span><div class="t"><h3>${o.nicho_esp ? 'Nicho recomendado: ' + esc(MCCL_N[o.nicho_esp]) : 'Sin nicho claro'}${o.nicho_esp2 ? ` <small style="font-weight:600;color:#64748b">· 2º: ${esc(MCCL_N[o.nicho_esp2])}</small>` : ''}</h3><p><b>${esc(o.estilo || '')}</b></p><p>${esc(o.resumen || '')}</p></div></div>
+  return `<div class="cl-top"><span class="al-lv ${niv} g" title="Nivel relativo al catálogo analizado">${niv}</span><div class="t"><h3>${rec.n1 ? 'Nicho recomendado: ' + esc(MCCL_N[rec.n1]) : 'Sin nicho claro'}${rec.n2 ? ` <small style="font-weight:600;color:#64748b">· 2º: ${esc(MCCL_N[rec.n2])}</small>` : ''}</h3><p><b>${esc(o.estilo || '')}</b></p><p>${esc(o.resumen || '')}</p></div></div>
     <div class="cl-kp"><div><b>${MCN(o.calidad.indice, 1)}</b><span>índice de calidad (0-100)</span></div><div><b>${esc(o.calidad.confianza)}</b><span>confianza (cobertura ${MCN(o.cobertura_total * 100, 0)}%)</span></div><div><b>${al.length}</b><span>alertas</span></div><div><b>$${Math.round(tot).toLocaleString('es-MX')}</b><span>mejoras (costo medio est.)</span></div><div><b>${(o.fotos_usadas || []).length}</b><span>fotos analizadas</span></div></div>
     <div class="mc-mu" style="font-size:11.5px">Nivel ${niv}: relativo al catálogo analizado (A ≥ ${MCN(u.A, 1)}, C < ${MCN(u.C, 1)}; percentiles ${MC.cl.cfg.pA} y ${MC.cl.cfg.pC}${u.rel ? '' : ' · con pocos datos se usan los umbrales fijos 75 y 50'}).</div>
     <div class="cl-cols"><div><h6>Dimensiones</h6>${dims.map(d => { const s = (o.dimensiones[d] || {}).score; return `<div class="cl-db"><span>${MCCL_D[d]}</span><i><u style="width:${s == null ? 0 : s}%"></u></i><b>${s == null ? 'n/d' : Math.round(s)}</b></div>`; }).join('')}</div>
-      <div><h6>Nichos (especialización = ajuste − índice)</h6><table class="cl-nt"><thead><tr><th>Nicho</th><th>Ajuste</th><th>Espec.</th><th>Estado</th></tr></thead><tbody>${filas.map(f => `<tr class="${f.n === o.nicho_esp ? 'rec' : ''}"><td>${f.n === o.nicho_esp ? '★ ' : ''}${esc(MCCL_N[f.n])}</td><td>${f.fit == null ? '—' : MCN(f.fit, 1)}</td><td class="${(f.e || 0) >= 0 ? 'pos' : 'neg'}">${f.e == null ? '—' : (f.e >= 0 ? '+' : '') + MCN(f.e, 1)}</td><td>${f.n === 'N14' ? '<span class="mc-mu">requiere inspección</span>' : f.bl ? `<span class="neg" title="Umbral no cumplido: ${esc(f.gates.join(', '))}">bloqueado</span>` : f.apto ? '<span class="pos">apto ✓</span>' : `<span class="mc-mu" title="Falta: ${esc((f.cr ? f.cr.faltan : []).map(c => MCCL_VAR[c] || c).join(', '))}">${f.cr ? f.cr.met + '/' + f.cr.total : ''} criterios</span>`}</td></tr>`).join('')}</tbody></table></div>
+      <div><h6>Nichos (especialización = ajuste − índice)</h6><table class="cl-nt"><thead><tr><th>Nicho</th><th>Ajuste</th><th>Espec.</th><th>Estado</th></tr></thead><tbody>${filas.map(f => `<tr class="${f.n === rec.n1 ? 'rec' : ''}"><td>${f.n === rec.n1 ? '★ ' : ''}${esc(MCCL_N[f.n] || f.n)}</td><td>${f.fit == null ? '—' : MCN(f.fit, 1)}</td><td class="${(f.e || 0) >= 0 ? 'pos' : 'neg'}">${f.e == null ? '—' : (f.e >= 0 ? '+' : '') + MCN(f.e, 1)}</td><td>${f.bl ? `<span class="neg" title="Umbral no cumplido: ${esc(f.gates.join(', '))}">bloqueado</span>` : f.apto ? '<span class="pos">apto ✓</span>' : `<span class="mc-mu" title="Falta: ${esc((f.cr ? f.cr.faltan : []).map(c => MCCL_VAR[c] || c).join(', '))}">${f.cr ? f.cr.met + '/' + f.cr.total : ''} criterios</span>`}</td></tr>`).join('')}</tbody></table></div>
       <div><h6>Alertas</h6>${al.map(a => `<div class="cl-al"><span class="cl-sv ${esc(a.s)}">${esc(a.s)}</span>${esc(a.t || '')}${a.f ? ` <span class="mc-mu">· foto ${a.f}</span>` : ''}${a.insp || a.i ? ' <span class="mc-mu">· requiere inspección</span>' : ''}</div>`).join('') || '<div class="mc-mu">Sin alertas detectadas.</div>'}
       <h6 style="margin-top:14px">Mejoras sugeridas</h6>${mj.map(m => `<div class="cl-al"><b>P${esc(m.p)}</b> · ${esc(m.a || '')} <span class="mc-mu">· ${esc(MCCL_D[m.d] || m.d || '')} · $${(+m.min || 0).toLocaleString('es-MX')}–$${(+m.max || 0).toLocaleString('es-MX')}</span></div>`).join('') || '<div class="mc-mu">Sin mejoras sugeridas.</div>'}</div></div>
     <div class="cl-ph">${(o.fotos_usadas || []).map((f, k) => `<div title="${esc(f.espacio || '')}"><img loading="lazy" src="${esc(mcImg_(f.u, 240))}" alt="" referrerpolicy="no-referrer"><span><b>${k + 1}</b>${esc(f.espacio || '')}</span></div>`).join('')}</div>
@@ -76662,7 +76749,7 @@ function mcClRepinta_() { if (MC.sec === 'dash' && MC.gtab === 'nichos') { const
 // ── Dashboard › E) Nichos ──
 function mcNichosFilas_() {
   const A = mcAloData_(), byId = new Map(A.rows.map(r => [r.id, r]));
-  return Object.entries(MC.cl.ix).map(([id, x]) => { const r = byId.get(id) || {}, it = MC.items[id] || {}; return { id, host: r.host || it.anfitrion || '—', hostId: r.hostId || it.hostId, titulo: it.titulo || id, tipo: (it.tipo || '').replace('Alojamiento entero: ', ''), precio: r.precio, pxh: r.pxh, occ: r.occ, cal: r.cal, ev: r.ev, nivel: mcClNivel_(x.indice), indice: x.indice, conf: x.conf, ne: x.ne, ne2: x.ne2, na: x.na, crit: x.crit }; });
+  return Object.entries(MC.cl.ix).map(([id, x]) => { const r = byId.get(id) || {}, it = MC.items[id] || {}; return { id, host: r.host || it.anfitrion || '—', hostId: r.hostId || it.hostId, titulo: it.titulo || id, tipo: (it.tipo || '').replace('Alojamiento entero: ', ''), precio: r.precio, pxh: r.pxh, occ: r.occ, cal: r.cal, ev: r.ev, nivel: mcClNivel_(x.indice), indice: x.indice, conf: x.conf, ne: mcClNichoRec_(x).n1, ne2: mcClNichoRec_(x).n2, na: x.na, crit: x.crit }; });
 }
 function mcNichosHtml_() {
   mcClCss_(); const F = MC.cl.f, u = mcClUmbrales_(), todas = mcNichosFilas_(), q = mcNormN_(F.q);
@@ -76678,11 +76765,11 @@ function mcNichosHtml_() {
   return `<div class="mc-sg">${kp}
     <h4>0 · Ejecutar y calibrar</h4><div class="mc-row" style="margin:6px 0;gap:10px;flex-wrap:wrap"><button type="button" class="cl-bt" ${run || !pend ? 'disabled' : ''} onclick="mcClPendientes_()">🧭 Clasificar los ${pend} pendientes (≈ $${MCN(pend * 0.066, 0)} USD)</button>
       <label class="mc-mu">Nivel A = mejor <input class="mc-in" style="width:62px" type="number" min="1" max="50" value="${100 - MC.cl.cfg.pA}" onchange="mcClCfg_(100-(+this.value),MC.cl.cfg.pC)">% </label><label class="mc-mu">Nivel C = peor <input class="mc-in" style="width:62px" type="number" min="1" max="60" value="${MC.cl.cfg.pC}" onchange="mcClCfg_(MC.cl.cfg.pA,+this.value)">%</label></div><div id="cl-prog"></div>
-    <div class="mc-mu" style="font-size:12px">Los niveles A/B/C son relativos al conjunto analizado (con percentiles editables). El nicho recomendado es el de mayor especialización (ajuste − índice general) entre los nichos aptos: sin umbral bloqueante y con ≥ 75% de sus criterios positivos cumplidos. «Accesible» nunca se asigna sin inspección.</div>
+    <div class="mc-mu" style="font-size:12px">Los niveles A/B/C son relativos al conjunto analizado (con percentiles editables). El nicho recomendado es el de mayor especialización (ajuste − índice general) entre los nichos aptos: sin umbral bloqueante y con ≥ 75% de sus criterios positivos cumplidos. La accesibilidad no es un nicho: requiere inspección. Entre los nichos aptos se prefieren los que apuntan al nivel de calidad del alojamiento (p. ej. «Lujo» solo para nivel A).</div>
     <h4>1 · Nichos: calidad, precio y ocupación reales</h4><table class="mc-st"><thead><tr><th>Nicho recomendado</th><th>Aloj.</th><th>Índice medio</th><th>Precio mediano/noche</th><th>Precio mediano/hab.</th><th>Ocupación media</th><th>Calif. media</th><th>A / B / C</th></tr></thead><tbody>${nich || '<tr><td colspan="8" class="mc-mu">Aún no hay alojamientos clasificados.</td></tr>'}</tbody></table>
     <h4>2 · Alojamientos clasificados</h4><div class="mc-row" style="margin:6px 0;gap:8px;flex-wrap:wrap"><input class="mc-in" style="min-width:220px" placeholder="🔎 Buscar alojamiento o anfitrión…" value="${esc(F.q)}" onchange="MC.cl.f.q=this.value;mcClRepinta_()">
       <select class="mc-in" onchange="MC.cl.f.nivel=this.value;mcClRepinta_()">${[['', 'Todos los niveles'], ['A', 'Nivel A'], ['B', 'Nivel B'], ['C', 'Nivel C']].map(([k, t]) => `<option value="${k}" ${F.nivel === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
-      <select class="mc-in" onchange="MC.cl.f.nicho=this.value;mcClRepinta_()"><option value="">Todos los nichos</option>${Object.entries(MCCL_N).filter(([k]) => k !== 'N14').map(([k, t]) => `<option value="${k}" ${F.nicho === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select><span class="mc-mu">${L.length} de ${todas.length}</span></div>
+      <select class="mc-in" onchange="MC.cl.f.nicho=this.value;mcClRepinta_()"><option value="">Todos los nichos</option>${Object.entries(MCCL_N).filter(([k]) => /^S/.test(k)).map(([k, t]) => `<option value="${k}" ${F.nicho === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select><span class="mc-mu">${L.length} de ${todas.length}</span></div>
     <div style="max-height:620px;overflow:auto;border:1px solid #e4e9f0;border-radius:12px">${tabla}</div></div>`;
 }
 window.mcClAbrir_ = function (hostId, id) { MC.sec = 'alo'; try { localStorage.setItem('mc-sec', 'alo'); } catch (_) {} mcSecPintar_(); mcAloIr_(String(hostId), String(id)); };
@@ -76775,6 +76862,7 @@ window.mcSort_ = function (key) { const S = MC.sort; if (S.k !== key) { MC.sort 
 function mcRows_() {
   const q = MC.q.trim().toLowerCase();
   let R = MC.lista.map(l => Object.assign({}, MC.items[l.id] || { id: l.id, url: l.url, pendiente: true }, { _l: l })).filter(it => !q || [it.titulo, it.ciudad, it.anfitrion, it.hostId, it.id, it.tipo].some(x => String(x || '').toLowerCase().includes(q)));
+  if (MC.sec === 'alo' && MC.alFiltroOn && MC.alIds) R = R.filter(it => MC.alIds.has(it.id));
   const S = MC.sort; if (S && S.k) { const K = new Map(R.map(i => [i, mcKey_(S.k, i)]));
     R = R.slice().sort((a, b) => { const x = K.get(a), y = K.get(b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; let c; if (typeof x === 'number' && typeof y === 'number') c = x - y; else if (typeof x === 'number') c = -1; else if (typeof y === 'number') c = 1; else c = String(x).localeCompare(String(y), 'es', { numeric: true, sensitivity: 'base' }); return c * S.d; }); }
   return R;
@@ -76827,7 +76915,7 @@ function mcRender_() {
     <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee de cada publicación sus datos y su calendario (hasta 36 meses) y actualiza la base: una noche que ya pasó se conserva como ocupada, y si una reserva futura se cancela vuelve a quedar libre. Se ejecuta solo a las horas que elijas abajo (si usas el método Automática, primero repite la búsqueda para sumar publicaciones nuevas); también puedes pulsarlo cuando quieras.</div>
       <div class="mc-fx" id="mc-hw" style="max-width:340px;margin:0 0 12px"><b style="font-size:12px">Hora del día de la extracción</b>${mcHorasHtml_()}</div>
       <div class="mc-fx" id="mc-pw" style="max-width:520px;margin:0 0 12px">${mcMuestreoHtml_()}</div><div id="mc-prog"></div></div>
-    <div id="mc-res"></div></div><div id="mc-sec-dash" style="display:none"></div><div id="mc-sec-alo" style="display:none"></div>`;
+    </div><div id="mc-sec-dash" style="display:none"></div><div id="mc-sec-alo" style="display:none"></div>`;
   if (!MC.sec) { try { const v = localStorage.getItem('mc-sec'); MC.sec = v === 'dash' || v === 'alo' ? v : 'ext'; } catch (_) { MC.sec = 'ext'; } }
   mcTop_(); mcProg_(); mcRes_(); mcSecPintar_();
   mcPreciosCargar_().then(() => { const w = document.getElementById('mc-pw'); if (w) w.innerHTML = mcMuestreoHtml_(); if (MC.sec !== 'dash') mcRes_(); });
