@@ -12981,7 +12981,17 @@ async function _plAnaliza(id, radio, max) {
 }
 app.get("/mercado/airbnb/lugares/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs("mercado/lugares/_indice.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: (data && data.i) || {} }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/airbnb/lugares/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _plJob)); });
-app.get("/mercado/airbnb/lugares/dato", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/lugares/${id}.json`); res.set("Cache-Control", "no-store"); res.json({ ok: true, lugares: data || null, etiquetas: _PL_GRUPO_LBL }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+const _plSig = pid => crypto.createHmac("sha256", process.env.SYNC_SECRET || "lugares").update(String(pid)).digest("hex").slice(0, 16);
+const _plFotoC = new Map(); // foto pequeña bajo demanda (caché en memoria de 10 min; no se almacena)
+app.get("/mercado/airbnb/lugares/foto", async (req, res) => {
+  try { const pid = String(req.query.pid || ""); if (!/^[A-Za-z0-9_-]{10,200}$/.test(pid) || String(req.query.sig || "") !== _plSig(pid)) return res.status(403).end(); const key = process.env.GOOGLE_MAPS_KEY; if (!key) return res.status(503).end();
+    const c = _plFotoC.get(pid); if (c && Date.now() - c.t < 600000) { if (!c.buf) return res.status(404).end(); res.set({ "Content-Type": c.type, "Cache-Control": "private, max-age=600" }); return res.send(c.buf); }
+    const d = await fetch(`https://places.googleapis.com/v1/places/${pid}`, { headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "photos" }, signal: AbortSignal.timeout(20000) }); const j = await d.json(), ph = d.ok && j.photos && j.photos[0];
+    if (!ph) { _plFotoC.set(pid, { t: Date.now(), buf: null }); return res.status(404).end(); }
+    const m = await fetch(`https://places.googleapis.com/v1/${ph.name}/media?maxHeightPx=240&maxWidthPx=240`, { headers: { "X-Goog-Api-Key": key }, redirect: "follow", signal: AbortSignal.timeout(20000) }); if (!m.ok) return res.status(502).end();
+    const buf = Buffer.from(await m.arrayBuffer()), type = m.headers.get("content-type") || "image/jpeg"; if (_plFotoC.size > 400) _plFotoC.clear(); _plFotoC.set(pid, { t: Date.now(), buf, type }); res.set({ "Content-Type": type, "Cache-Control": "private, max-age=600" }); res.send(buf); } catch (_) { res.status(500).end(); }
+});
+app.get("/mercado/airbnb/lugares/dato", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/lugares/${id}.json`); if (data && Array.isArray(data.places)) data.places.forEach(p => { p.fu = `/mercado/airbnb/lugares/foto?pid=${encodeURIComponent(p.id)}&sig=${_plSig(p.id)}`; }); res.set("Cache-Control", "no-store"); res.json({ ok: true, lugares: data || null, etiquetas: _PL_GRUPO_LBL }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 // Recalcula el resumen y las calificaciones desde los negocios ya guardados (sin consultar Google).
 app.post("/mercado/airbnb/lugares/recalcular", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
