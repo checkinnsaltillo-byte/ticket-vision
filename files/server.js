@@ -12701,6 +12701,131 @@ app.post("/mercado/airbnb/precios/recalcular", async (req, res) => {
   try { const r = await _maPreciosResumen(); _maPreciosC = { t: Date.now(), d: r }; res.json({ ok: true, nObs: r.nObs, nDias: r.nDias }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ═══════════════════════════════════════════════════════════════════════════
+// 🧭 Clasificación por nicho (v2179): la IA con visión puntúa 64 variables (0-100) a partir de ~8 fotos por alojamiento; el SERVIDOR calcula dimensiones, índice A/B/C,
+// ajuste por nicho (pesos de files/clasif_rubrica.json) y umbrales no compensatorios. Las 13 variables de anuncio/mapas no se mandan a la IA (se derivan del anuncio o quedan N/D).
+// Resultado por alojamiento: mercado/clasif/<id>.json · índice: mercado/clasif/_indice.json
+// ═══════════════════════════════════════════════════════════════════════════
+const _CL = JSON.parse(fs.readFileSync(path.join(__dirname, "clasif_rubrica.json"), "utf8"));
+const _CL_MODELO = "claude-sonnet-5", _CL_VERSION = "rubrica 1.0";
+const _clClamp = v => Math.max(0, Math.min(100, Math.round(Number(v))));
+// Variables que salen del anuncio (no de la foto)
+function _clDeriva(code, it) {
+  const A = Array.isArray(it.amenidades) ? it.amenidades : [], tx = A.join(" | "), cnt = re => A.filter(a => re.test(a)).length;
+  if (code === "AME_WIFI") { if (!/wi-?fi|internet/i.test(tx)) return 10; const m = tx.match(/wi-?fi[^|]*?(\d+)\s*mbps/i); const v = m ? +m[1] : null; return v == null ? 50 : v >= 50 ? 90 : v >= 20 ? 70 : 55; }
+  if (code === "AME_COCINA_COMPLETA") { const n = cnt(/^cocina\b|cocineta/i) + cnt(/estufa|parrilla el[eé]ctrica|horno/i) + cnt(/refriger/i) + cnt(/microondas/i) + cnt(/cafetera|hervidor|tostador/i) + cnt(/licuadora/i) + cnt(/platos|cubiertos|utensilios|vajilla/i); return n >= 6 ? 90 : n >= 4 ? 70 : n >= 2 ? 50 : n >= 1 ? 30 : 10; }
+  if (code === "AME_LAVADO") { const l = A.find(a => /^lavadora/i.test(a)); return l ? (/en el alojamiento/i.test(l) ? 90 : 60) : 15; }
+  if (code === "AME_FAMILIA") { const n = cnt(/cuna|silla alta|barreras de seguridad|protectores de enchufes|monitor de beb/i); return n >= 2 ? 85 : n === 1 ? 55 : 20; }
+  if (code === "AME_MASCOTAS") { const m = String(it.mascotas || ""); return m === "Sí" ? 90 : m === "Solo servicio" ? 20 : m === "No" ? 5 : null; }
+  if (code === "DIS_BANOS") { const b = Number(it.banos), h = Number(it.huespedes); if (!(b > 0) || !(h > 0)) return null; const r = b / h; return r >= 0.5 ? 85 : r >= 0.34 ? 70 : r >= 0.25 ? 55 : 35; }
+  return null;
+}
+// Calcula todo lo derivado de los puntajes de variables. vis = {CODIGO:[puntaje, confianza]}
+function _clCalcula(vis, it, nFotos, nEsp) {
+  const S = {}; _CL.vars.forEach(v => { if (v.v) { const a = vis && vis[v.c]; if (Array.isArray(a) && a[0] != null && isFinite(a[0])) S[v.c] = { x: _clClamp(a[0]), c: a[1] != null && isFinite(a[1]) ? Math.max(0, Math.min(1, +a[1])) : 0.5 }; } else { const x = _clDeriva(v.c, it); if (x != null) S[v.c] = { x, c: 0.9 }; } });
+  const dims = {}; _CL.dims.forEach(d => { let sw = 0, sx = 0, tw = 0; _CL.vars.filter(v => v.d === d.c).forEach(v => { tw += v.w; const s = S[v.c]; if (s) { sw += v.w; sx += s.x * v.w; } }); dims[d.c] = { score: sw ? Math.round(sx / sw * 10) / 10 : null, cobertura: tw ? Math.round(sw / tw * 100) / 100 : 0 }; });
+  let gw = 0, gx = 0; _CL.dims.forEach(d => { const s = dims[d.c].score; if (s != null) { gw += _CL.genW[d.c]; gx += s * _CL.genW[d.c]; } });
+  const indice = gw ? Math.round(gx / gw * 10) / 10 : null, nivel = indice == null ? null : indice >= _CL.umbralA ? "A" : indice >= _CL.umbralB ? "B" : "C";
+  // cobertura global (sin ENT, que aún no tiene datos externos)
+  let cw = 0, ct = 0; _CL.vars.filter(v => v.d !== "ENT").forEach(v => { ct += v.w; if (S[v.c]) cw += v.w; }); const cob = ct ? cw / ct : 0;
+  const conf = cob >= 0.75 && nFotos >= 8 && nEsp >= 4 ? "alta" : cob >= 0.55 ? "media" : "baja";
+  const nichos = {}; _CL.nichos.forEach(n => { let sw = 0, sx = 0; const W = _CL.W[n.id]; _CL.vars.forEach(v => { const s = S[v.c]; if (s) { sw += W[v.c]; sx += s.x * W[v.c]; } }); nichos[n.id] = { fit: sw ? Math.round(sx / sw * 10) / 10 : null, bloqueado: false, gates: [] }; });
+  const alertas = [];
+  _CL.gates.forEach(g => { const codes = g.vars.split(",").map(x => x.trim()).filter(x => S[x]); if (!codes.length) return; const mn = Math.min(...codes.map(c => S[c].x)); if (mn >= g.t) return;
+    if (g.efecto === "ALERTA CRÍTICA") alertas.push({ c: g.id, s: "critica", t: g.razon, insp: true, v: codes.join(",") });
+    else if (g.efecto === "BLOQUEA NICHO") (g.nichos === "TODOS" ? _CL.nichos.map(n => n.id) : g.nichos.split(",")).forEach(id => { if (nichos[id]) { nichos[id].bloqueado = true; nichos[id].gates.push(g.id); } }); });
+  if (nichos.N14) nichos.N14.gates.push("NO_VERIFICADO"); // accesibilidad nunca se da por verificada solo con fotos
+  if (!S.AME_MASCOTAS && nichos.N11) { nichos.N11.bloqueado = true; nichos.N11.gates.push("SIN_DATO_MASCOTAS"); } // política de mascotas desconocida: no se asigna el nicho
+  const libres = Object.entries(nichos).filter(([id, v]) => id !== "N14" && !v.bloqueado && v.fit != null).sort((a, b) => b[1].fit - a[1].fit); // N14 (accesible) solo con inspección
+  return { variables: S, dimensiones: dims, calidad: { indice, nivel, confianza: conf }, nichos, nicho_principal: conf === "baja" ? null : (libres[0] || [])[0] || null, nicho_secundario: conf === "baja" ? null : (libres[1] || [])[0] || null, cobertura_total: Math.round(cob * 100) / 100, alertas_reglas: alertas };
+}
+// Elige ~8 fotos: portada + una por espacio clave (exterior, sala, cocina, recámara, baño, comedor, balcón) + segundas de recámara/baño/sala
+const _clPri = [/exterior|fachada|entrada/i, /sala|estancia/i, /cocina/i, /rec[aá]mara|dormitorio|habitaci/i, /ba[nñ]o/i, /comedor/i, /balc[oó]n|terraza|patio|jard/i, /rec[aá]mara|dormitorio|habitaci/i, /ba[nñ]o/i, /sala|estancia/i, /cocina/i];
+function _clElige(fotos, n) {
+  const usado = new Set(), sel = []; if (!fotos.length) return [];
+  usado.add(0); sel.push(0);
+  _clPri.forEach(re => { if (sel.length >= n) return; const k = fotos.findIndex((f, i) => !usado.has(i) && re.test(`${f.e || ""} ${f.c || ""}`)); if (k >= 0) { usado.add(k); sel.push(k); } });
+  for (let step = 1; sel.length < Math.min(n, fotos.length) && step < 200; step++) { const k = Math.floor(step * fotos.length / (n + 1)); if (!usado.has(k) && k < fotos.length) { usado.add(k); sel.push(k); } }
+  for (let i = 0; sel.length < Math.min(n, fotos.length) && i < fotos.length; i++) if (!usado.has(i)) { usado.add(i); sel.push(i); }
+  return sel.sort((a, b) => a - b).map(i => ({ i, f: fotos[i] }));
+}
+function _clPrompt() {
+  const V = _CL.vars.filter(v => v.v).map(v => `${v.c} | ${v.n}${v.inv ? " (puntaje alto = RIESGO/COSTO BAJO)" : ""} | espacios: ${v.esp} | 0-20: ${v.a0} | ~50: ${v.a1} | 80-100: ${v.a2}`).join("\n");
+  return `Eres evaluador de alojamientos de corta estancia en Saltillo, México. Recibes ~8 fotos numeradas de un anuncio de Airbnb y datos del anuncio. Puntúa cada variable de 0 a 100 SOLO con lo que se ve; 100 siempre = mejor (más seguro, más limpio, mejor calidad, menor riesgo o costo). Si la foto no da evidencia, pon null. No inventes ni diagnostiques: lo que sugiera humedad, grietas o cableado peligroso es un INDICIO que requiere inspección. No juzgues a personas. Ten en cuenta que las fotos de anuncio suelen embellecer y que gran angular distorsiona el tamaño.
+Escala: 0-19 crítico · 20-39 deficiente · 40-59 básico · 60-79 bueno · 80-100 sobresaliente. Usa los anclajes de cada variable.
+Variables (CODIGO | nombre | espacios | anclajes):
+${V}
+Devuelve SOLO un JSON válido, sin texto antes ni después, con esta forma exacta y compacta:
+{"v":{"CODIGO":[puntaje|null,confianza 0-1],...todas las variables...},"al":[{"c":"ELEC|HUM|TECHO|CAIDA|ESTRUC|SEG|OTRO","s":"critica|alta|media","f":numero_de_foto,"t":"descripcion corta","i":true|false}],"mj":[{"a":"accion concreta","d":"codigo de dimension SEG|LIM|MOB|INS|EST|DIS|AME|COS|SEN","p":1-3,"min":costo_MXN,"max":costo_MXN}],"est":"estilo en 3-6 palabras","rs":"resumen de 2-3 oraciones: nivel, estilo, para quién sirve y principales riesgos"}
+Máximo 5 alertas y 6 mejoras (prioridad 1 = más urgente; costos en pesos mexicanos aproximados).`;
+}
+const _CL_PROMPT = _clPrompt();
+async function _clFotosDe(id) { // fotos guardadas o leídas en el momento
+  const f = `mercado/fotos/${id}.json`; let data = null; try { data = (await _bnReadGcs(f)).data; } catch (_) {}
+  if (!data || !Array.isArray(data.fotos) || !data.fotos.length) { data = _maFotosDe(await _maHtml(id)); await _bnWriteGcs(f, data, null).catch(() => {}); }
+  return data;
+}
+async function _clClaude(content) {
+  const body = { model: _CL_MODELO, max_tokens: 4500, thinking: { type: "disabled" }, system: _CL_PROMPT, messages: [{ role: "user", content }] };
+  const call = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(170000) });
+  const j = await call.json(); if (!call.ok) { const e = new Error(`Claude ${call.status}: ${(j.error && j.error.message) || ""}`); e.status = call.status; throw e; }
+  const raw = (j.content || []).filter(p => p.type === "text").map(p => p.text).join(""); let m = raw.match(/\{[\s\S]*\}/), data = null;
+  const repara = t => t.replace(/```(?:json)?/gi, "").replace(/,\s*([}\]])/g, "$1").replace(/[\u201C\u201D]/g, '"').replace(/\/\/[^\n"]*$/gm, "").replace(/\bNaN\b/g, "null");
+  try { data = JSON.parse(m ? m[0] : raw); } catch (e0) { try { data = JSON.parse(repara(m ? m[0] : raw)); } catch (e) { _clJob.tokensIn += (j.usage || {}).input_tokens || 0; _clJob.tokensOut += (j.usage || {}).output_tokens || 0; throw new Error(`JSON inválido (${e.message.slice(0, 60)}) ::` + raw.slice(0, 220).replace(/\s+/g, " ")); } }
+  return { data, uso: j.usage || {}, stop: j.stop_reason };
+}
+// Criterios POSITIVOS por nicho: variables clave que el alojamiento debe cumplir (≥ umbral) para ser «apto»; con ≥ 75% cumplidos el nicho cuenta.
+const _CL_CRIT = { N01: { LIM_BANO: 50, LIM_CAMA: 50, AME_WIFI: 50, AME_ESTACIONA: 40 }, N02: { EQ_TRABAJO: 50, AME_WIFI: 50, EQ_CLIMA: 50, SEG_PRIVACIDAD: 50, MOB_CALIDAD: 55 }, N03: { EQ_TRABAJO: 60, AME_WIFI: 70, MOB_ERGONOMIA: 50, EQ_COCINA: 45 },
+  N04: { EQ_COCINA: 50, AME_LAVADO: 50, MOB_ALMACEN: 50 }, N05: { AME_ESTACIONA: 50, MOB_CAPACIDAD: 50, DIS_CAPACIDAD: 50, AME_LAVADO: 50 }, N06: { DIS_CAPACIDAD: 55, EQ_COCINA: 50, SEG_ANTIDESLIZ: 50, DIS_BANOS: 55 },
+  N07: { EST_ACOGEDOR: 60, SEG_PRIVACIDAD: 55, LIM_CAMA: 60 }, N08: { MOB_CALIDAD: 70, INS_BANO: 65, EST_COHERENCIA: 70, INV_NIVEL: 65 }, N09: { EST_IDENTIDAD: 60, EST_COHERENCIA: 60, FOT_CALIDAD: 55 },
+  N10: { DIS_CAPACIDAD: 60, DIS_BANOS: 60, MOB_CAPACIDAD: 55 }, N11: { AME_MASCOTAS: 50, INS_PISOS: 50, COS_DANO: 45 }, N12: { ACC_ESCALONES: 55, SEG_ANTIDESLIZ: 50, LIM_BANO: 60 }, N13: { EQ_TRABAJO: 45, AME_WIFI: 50, COS_REPOSICION: 45 } };
+// Especialización = fit del nicho − índice general. Nicho recomendado = el de mayor especialización entre los APTOS (no bloqueados + criterios positivos ≥ 75%); N14 (accesible) solo con inspección.
+function _clDerivado(o) {
+  const g = o.calidad && o.calidad.indice, S = o.variables || {}, esp = {}, crit = {}; Object.entries(o.nichos || {}).forEach(([k, v]) => { if (v.fit != null && g != null) esp[k] = Math.round((v.fit - g) * 10) / 10; });
+  Object.entries(_CL_CRIT).forEach(([n, cs]) => { const ks = Object.keys(cs), con = ks.filter(c => S[c]), met = con.filter(c => S[c].x >= cs[c]), falta = ks.filter(c => !S[c] || S[c].x < cs[c]); crit[n] = { met: met.length, total: ks.length, evaluables: con.length, cumple: ks.length ? Math.round(met.length / ks.length * 100) / 100 : 0, faltan: falta }; });
+  const aptos = Object.keys(crit).filter(n => crit[n].cumple >= 0.75 && !(o.nichos[n] || {}).bloqueado && esp[n] != null).sort((a, b) => esp[b] - esp[a] || crit[b].cumple - crit[a].cumple);
+  o.especializacion = esp; o.criterios = crit; o.nichos_aptos = aptos; o.nicho_fit = o.nicho_fit || o.nicho_principal; o.nicho_esp = aptos[0] || null; o.nicho_esp2 = aptos[1] || null;
+  o.nicho_principal = o.calidad && o.calidad.confianza === "baja" ? null : o.nicho_esp; o.nicho_secundario = o.calidad && o.calidad.confianza === "baja" ? null : o.nicho_esp2; return o;
+}
+const _clEntrada = o => { _clDerivado(o); return { nivel: o.calidad.nivel, indice: o.calidad.indice, conf: o.calidad.confianza, cob: o.cobertura_total, n1: o.nicho_principal, n2: o.nicho_secundario, ne: o.nicho_esp, ne2: o.nicho_esp2, ap: o.nichos_aptos, cr: Object.fromEntries(Object.entries(o.criterios || {}).map(([k, v]) => [k, v.cumple])), esp: o.especializacion, at: o.analizado_en, est: o.estilo || "",
+  f: Object.fromEntries(Object.entries(o.nichos || {}).map(([k, v]) => [k, v.fit])), b: Object.entries(o.nichos || {}).filter(([, v]) => v.bloqueado).map(([k]) => k), dim: Object.fromEntries(Object.entries(o.dimensiones || {}).map(([k, v]) => [k, v.score])), na: (o.alertas || []).length + (o.alertas_reglas || []).length, crit: (o.alertas || []).concat(o.alertas_reglas || []).filter(a => a.s === "critica").length }; };
+let _clJob = { running: false };
+async function _clAnaliza(id, items) {
+  const it = items[id]; if (!it) throw new Error("La publicación no está extraída"); const fo = await _clFotosDe(id), sel = _clElige(fo.fotos, 8); if (sel.length < 3) throw new Error("Menos de 3 fotos disponibles");
+  const ctx = `Anuncio: «${it.titulo || ""}» · ${it.tipo || ""} · ${it.huespedes ?? "?"} huéspedes, ${it.habitaciones === 0 ? "estudio" : (it.habitaciones ?? "?") + " habitaciones"}, ${it.camas ?? "?"} camas, ${it.banos ?? "?"} baños · calificación ${it.calificacion ?? "?"} (${it.evaluaciones ?? "?"} evaluaciones) · amenidades declaradas: ${(it.amenidades || []).slice(0, 28).join(", ")}.`;
+  const mk = (b64) => { const c = []; sel.forEach(({ i, f }, k) => { c.push({ type: "text", text: `Foto ${k + 1}${f.e ? " · " + f.e : ""}${f.c ? " · «" + f.c + "»" : ""}` }); c.push(b64 ? b64[k] : { type: "image", source: { type: "url", url: f.u + "?im_w=720" } }); }); c.push({ type: "text", text: ctx + "\nDevuelve el JSON." }); return c; };
+  let r; try { r = await _clClaude(mk(null)); }
+  catch (e) { if (e.status !== 400 || !/image|url|media|fetch|download/i.test(String(e.message))) throw e; const b64 = []; for (const { f } of sel) { const rr = await fetch(f.u + "?im_w=720"); if (!rr.ok) throw new Error("No se pudo bajar una foto"); b64.push({ type: "image", source: { type: "base64", media_type: rr.headers.get("content-type") || "image/jpeg", data: Buffer.from(await rr.arrayBuffer()).toString("base64") } }); } r = await _clClaude(mk(b64)); }
+  const calc = _clCalcula(r.data.v || {}, it, sel.length, new Set(sel.map(s => s.f.e).filter(Boolean)).size);
+  const out = Object.assign({ id, analizado_en: new Date().toISOString(), modelo: `${_CL_MODELO} · ${_CL_VERSION}`, fotos_usadas: sel.map(s => ({ i: s.i, espacio: s.f.e || "", u: s.f.u })), espacios_cubiertos: [...new Set(sel.map(s => s.f.e).filter(Boolean))], alertas: (r.data.al || []).slice(0, 6), mejoras: (r.data.mj || []).slice(0, 8), estilo: r.data.est || "", resumen: r.data.rs || "", uso: r.uso, stop: r.stop, raw_v: r.data.v || {} }, calc);
+  await _bnWriteGcs(`mercado/clasif/${id}.json`, out, null); return out;
+}
+async function _clCorre(ids) {
+  _clJob = { running: true, total: ids.length, done: 0, ok: 0, fallidas: [], tokensIn: 0, tokensOut: 0, inicio: new Date().toISOString(), upd: new Date().toISOString(), actual: [] };
+  const { data } = await _bnReadGcs(_MA.OBJ), items = (data && data.items) || {}, indice = {}; let k = 0;
+  const trabajador = async () => { while (k < ids.length && !_clJob.cancelar) { const id = ids[k++]; _clJob.actual.push(id);
+    try { const o = await _clAnaliza(id, items); _clJob.ok++; _clJob.tokensIn += o.uso.input_tokens || 0; _clJob.tokensOut += o.uso.output_tokens || 0; indice[id] = _clEntrada(o); }
+    catch (e) { _clJob.fallidas.push({ id, error: String(e.message || e).slice(0, 420) }); }
+    _clJob.actual = _clJob.actual.filter(x => x !== id); _clJob.done++; _clJob.upd = new Date().toISOString(); } };
+  await Promise.all([trabajador(), trabajador()]);
+  try { const { data: ix, gen } = await _bnReadGcs("mercado/clasif/_indice.json"); await _bnWriteGcs("mercado/clasif/_indice.json", Object.assign({}, ix || {}, indice), gen); } catch (e) { console.warn("[clasif] índice:", e.message); }
+  _clJob.running = false; _clJob.fin = new Date().toISOString(); _clJob.costoUSD = Math.round((_clJob.tokensIn * 3 + _clJob.tokensOut * 15) / 1e4) / 100;
+}
+app.post("/mercado/airbnb/clasificar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  if (_clJob.running) return res.status(409).json({ ok: false, error: "Ya hay un análisis en curso" });
+  const ids = [...new Set((Array.isArray((req.body || {}).ids) ? req.body.ids : []).map(x => String(x).replace(/\D/g, "")).filter(Boolean))].slice(0, 400); if (!ids.length) return res.status(400).json({ ok: false, error: "Sin ids" });
+  _clCorre(ids).catch(e => { console.warn("[clasif]", e.message); _clJob.running = false; _clJob.error = e.message; }); res.json({ ok: true, total: ids.length });
+});
+app.post("/mercado/airbnb/clasificar/detener", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); _clJob.cancelar = true; res.json({ ok: true }); });
+app.get("/mercado/airbnb/clasif/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _clJob)); });
+app.get("/mercado/airbnb/clasif/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs("mercado/clasif/_indice.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: data || {} }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/airbnb/clasif/config", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs("mercado/clasif/_config.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, config: Object.assign({ pA: 85, pC: 30 }, data || {}) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/airbnb/clasif/config", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const b = req.body || {}, pA = Math.max(50, Math.min(99, parseInt(b.pA, 10) || 85)), pC = Math.max(1, Math.min(pA - 5, parseInt(b.pC, 10) || 30)); await _bnWriteGcs("mercado/clasif/_config.json", { pA, pC }, null); res.json({ ok: true, config: { pA, pC } }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/airbnb/clasif/reindexar", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data: ix, gen } = await _bnReadGcs("mercado/clasif/_indice.json"), nuevo = {};
+  for (const id of Object.keys(ix || {})) { const { data } = await _bnReadGcs(`mercado/clasif/${id}.json`); if (data && data.calidad) nuevo[id] = _clEntrada(data); }
+  await _bnWriteGcs("mercado/clasif/_indice.json", nuevo, gen); res.json({ ok: true, n: Object.keys(nuevo).length }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/airbnb/clasif", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const id = String(req.query.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); try { const { data } = await _bnReadGcs(`mercado/clasif/${id}.json`); res.set("Cache-Control", "no-store"); res.json(data ? Object.assign({ ok: true }, _clDerivado(data)) : { ok: false, error: "Sin clasificar" }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 // ⛔ Detener la extracción y/o la búsqueda en curso: marca `cancelar`; el proceso lo ve antes de la siguiente publicación/página, conserva lo ya obtenido y termina.
 app.post("/mercado/airbnb/detener", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
