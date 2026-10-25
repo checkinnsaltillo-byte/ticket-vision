@@ -12531,6 +12531,8 @@ const _maPrecio = x => { const sp = x.structuredDisplayPrice || {}, pl = sp.prim
   if (noche == null && /noche/i.test(pl.qualifier || "")) noche = tot; return { total: /total/i.test(pl.qualifier || "") ? tot : null, noche }; };
 // Escenarios de fechas de la búsqueda (a = días desde hoy hasta la entrada · n = noches). Se hacen todos y las listas se UNEN sin repetir.
 //   1) mañana → +3 noches (hoy+1 → hoy+4) · 2) mañana → 1 noche (hoy+1 → hoy+2) · 3) hoy+4 → 1 noche (hoy+4 → hoy+5) · 4) hoy+7 → 2 noches (hoy+7 → hoy+9)
+const _MA_DEST = ["Saltillo, Coah.", "Arteaga, Coah.", "Ramos Arizpe, Coah."]; // destinos de la búsqueda automática (editables en «0 · Método de extracción»); las listas de todos se UNEN sin repetir
+const _maDest = d => Array.isArray(d && d.destinos) && d.destinos.length ? d.destinos : _MA_DEST;
 const _MA_HORAS = [11, 19]; // horas del día (America/Monterrey) en que corre sola la extracción; editables en «2 · Extraer»
 const _maHoras = d => Array.isArray(d && d.horas) && d.horas.length ? d.horas : _MA_HORAS;
 const _mxHora = () => parseInt(new Date().toLocaleString("en-US", { timeZone: "America/Monterrey", hour: "2-digit", hour12: false }), 10) % 24;
@@ -12570,27 +12572,28 @@ async function _maPreciosResumen() {
 let _maPreciosC = { t: 0, d: null };
 async function _maBuscar(p) {
   const now = () => new Date().toISOString(), RG = p.rangos && p.rangos.length ? p.rangos : [{ checkin: p.checkin, checkout: p.checkout }];
-  await _maMutar(d => { d.busqueda = { running: true, params: p, rango: 0, rangos: RG.length, pagina: 0, paginas: 0, encontrados: 0, inicio: now(), upd: now(), error: "" }; });
+  const DS = p.destinos && p.destinos.length ? p.destinos : [p.destino], T = DS.flatMap(dest => RG.map((x, ix) => Object.assign({}, x, { destino: dest, ix }))); // destinos × fechas
+  await _maMutar(d => { d.busqueda = { running: true, params: Object.assign({}, p, { destinos: DS }), rango: 0, rangos: T.length, pagina: 0, paginas: 0, encontrados: 0, inicio: now(), upd: now(), error: "" }; });
   const vistos = new Map(), porRango = [], obs = []; let err = "", parada = false; const hObs = _mxHora();
-  for (let r = 0; r < RG.length && !parada; r++) {
-    const pr = { destino: p.destino, adultos: p.adultos, checkin: RG[r].checkin, checkout: RG[r].checkout }, delRango = new Set(), antes = vistos.size; let cursors = [null];
+  for (let r = 0; r < T.length && !parada; r++) {
+    const pr = { destino: T[r].destino, adultos: p.adultos, checkin: T[r].checkin, checkout: T[r].checkout }, delRango = new Set(), antes = vistos.size; let cursors = [null];
     try {
       for (let i = 0; i < cursors.length && i < 15; i++) {
         const R = await _maPagina(pr, cursors[i]); if (i === 0) cursors = (_maG(R, "paginationInfo.pageCursors") || [null]).slice(0, 15);
-        (R.searchResults || []).forEach(x => { let id = ""; try { id = Buffer.from(String(_maG(x, "demandStayListing.id") || ""), "base64").toString().split(":")[1] || ""; } catch (_) {} if (!id) return; const primera = !delRango.has(id); delRango.add(id); if (primera) { const q = _maPrecio(x); if (q.noche != null) obs.push([id, hObs, RG[r].checkin, Math.max(1, Math.round((Date.parse(RG[r].checkout + "T12:00:00Z") - Date.parse(RG[r].checkin + "T12:00:00Z")) / 864e5)), q.noche, q.total]); }
-          if (!vistos.has(id)) { const pr2 = _maPrecio(x); vistos.set(id, { tipo: String(x.title || ""), nombre: String(x.subtitle || ""), total: pr2.total, noche: pr2.noche, busq: { destino: p.destino, checkin: pr.checkin, checkout: pr.checkout, adultos: p.adultos }, rangos: RG[r].m ? [] : [r + 1] }); } else if (!RG[r].m && !vistos.get(id).rangos.includes(r + 1)) vistos.get(id).rangos.push(r + 1); });
+        (R.searchResults || []).forEach(x => { let id = ""; try { id = Buffer.from(String(_maG(x, "demandStayListing.id") || ""), "base64").toString().split(":")[1] || ""; } catch (_) {} if (!id) return; const primera = !delRango.has(id); delRango.add(id); if (primera) { const q = _maPrecio(x); if (q.noche != null) obs.push([id, hObs, T[r].checkin, Math.max(1, Math.round((Date.parse(T[r].checkout + "T12:00:00Z") - Date.parse(T[r].checkin + "T12:00:00Z")) / 864e5)), q.noche, q.total]); }
+          if (!vistos.has(id)) { const pr2 = _maPrecio(x); vistos.set(id, { tipo: String(x.title || ""), nombre: String(x.subtitle || ""), total: pr2.total, noche: pr2.noche, busq: { destino: pr.destino, checkin: pr.checkin, checkout: pr.checkout, adultos: p.adultos }, rangos: T[r].m ? [] : [T[r].ix + 1] }); } else if (!T[r].m && !vistos.get(id).rangos.includes(T[r].ix + 1)) vistos.get(id).rangos.push(T[r].ix + 1); });
         if (await _maMutar(d => { if (d.busqueda) { d.busqueda.rango = r + 1; d.busqueda.pagina = i + 1; d.busqueda.paginas = cursors.length; d.busqueda.encontrados = vistos.size; d.busqueda.upd = now(); return !!d.busqueda.cancelar; } return false; })) { parada = true; break; }
         if (i + 1 < cursors.length) await _maSleep(1500 + Math.floor(Math.random() * 1200));
       }
-    } catch (e) { err += `${err ? " · " : ""}Fechas ${r + 1}: ${String(e.message || e).slice(0, 120)}`; }
-    porRango.push({ checkin: pr.checkin, checkout: pr.checkout, encontrados: delRango.size, nuevos: vistos.size - antes, m: !!RG[r].m });
-    if (r + 1 < RG.length && !parada) await _maSleep(2000);
+    } catch (e) { err += `${err ? " · " : ""}${pr.destino.split(",")[0]} · fechas ${T[r].ix + 1}: ${String(e.message || e).slice(0, 120)}`; }
+    porRango.push({ checkin: pr.checkin, checkout: pr.checkout, dest: pr.destino, ix: T[r].ix + 1, encontrados: delRango.size, nuevos: vistos.size - antes, m: !!T[r].m });
+    if (r + 1 < T.length && !parada) await _maSleep(2000);
   }
   await _maPreciosGuardar(obs).catch(e => console.warn("[mercado] bitácora de precios:", e.message));
   await _maMutar(d => { const t = now(); d.lista = d.lista || []; let nuevos = 0;
     vistos.forEach((v, id) => { let l = d.lista.find(x => x.id === id); if (!l) { l = { id, url: `https://www.airbnb.mx/rooms/${id}`, agregado: t, origen: "automática" }; d.lista.push(l); nuevos++; }
       Object.assign(l, { precioTotal: v.total, precioNoche: v.noche, tipoBusq: v.tipo, busqueda: v.busq, apareceEn: v.rangos, busquedaAt: t }); });
-    d.ultimaBusqueda = { params: { destino: p.destino, adultos: p.adultos, rangos: RG }, ids: [...vistos.keys()], at: t, nuevos, error: err, porRango };
+    d.ultimaBusqueda = { params: { destino: DS.join(" · "), destinos: DS, adultos: p.adultos, rangos: RG }, ids: [...vistos.keys()], at: t, nuevos, error: err, porRango };
     if (d.busqueda) { d.busqueda.running = false; d.busqueda.fin = t; d.busqueda.upd = t; d.busqueda.nuevos = nuevos; d.busqueda.error = vistos.size ? err : (err || (parada ? "" : "La búsqueda no encontró alojamientos")); if (parada) d.busqueda.detenida = true; delete d.busqueda.cancelar; } });
   _maPreciosResumen().then(r => { _maPreciosC = { t: Date.now(), d: r }; }).catch(e => console.warn("[mercado] resumen de precios:", e.message));
   return parada;
@@ -12629,7 +12632,7 @@ app.get("/mercado/airbnb", async (req, res) => {
     const job = d.job ? Object.assign({}, d.job) : null; if (job && job.running && Date.now() - Date.parse(job.upd || 0) > 180_000) { job.running = false; job.interrumpida = true; } // sin avances en 3 min = se interrumpió
     const bus = d.busqueda ? Object.assign({}, d.busqueda) : null; if (bus && bus.running && Date.now() - Date.parse(bus.upd || 0) > 180_000) { bus.running = false; bus.error = bus.error || "La búsqueda se interrumpió"; }
     if ((!d.propios || Date.now() - Date.parse(d.propios.at || 0) > 7 * 864e5) && !_maPropiosCorre) { _maPropiosCorre = true; _maPropios().catch(e => console.warn("[mercado] propios:", e.message)).finally(() => { _maPropiosCorre = false; }); }
-    res.set("Cache-Control", "no-store"); res.json({ ok: true, escenarios: _maRangos(_mxHoy(), d.escenarios), horas: _maHoras(d), muestreo: d.muestreo !== false, lista: d.lista || [], items: d.items || {}, job, busqueda: bus, ultimaBusqueda: d.ultimaBusqueda || null, propios: d.propios || null, actualizado: d.actualizado || "" }); }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, escenarios: _maRangos(_mxHoy(), d.escenarios), destinos: _maDest(d), horas: _maHoras(d), muestreo: d.muestreo !== false, lista: d.lista || [], items: d.items || {}, job, busqueda: bus, ultimaBusqueda: d.ultimaBusqueda || null, propios: d.propios || null, actualizado: d.actualizado || "" }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/lista", async (req, res) => {
@@ -12647,6 +12650,15 @@ app.post("/mercado/airbnb/escenarios", async (req, res) => {
     L.forEach(e => { const a = parseInt(e && e.a, 10), n = parseInt(e && e.n, 10); if (!(a >= 0 && a <= 364 && n >= 1 && n <= 28)) return; const k = a + "/" + n; if (vistos.has(k)) return; vistos.add(k); esc.push({ a, n }); });
     if (!esc.length) return res.status(400).json({ ok: false, error: "Deja al menos un rango de fechas válido (entrada desde hoy y hasta 28 noches)" }); if (esc.length > 8) return res.status(400).json({ ok: false, error: "Máximo 8 rangos de fechas" });
     await _maMutar(d => { d.escenarios = esc; }); res.json({ ok: true, escenarios: _maRangos(_mxHoy(), esc) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Destinos de la búsqueda automática: 1 a 8 textos tal como se escribirían en airbnb.mx (p. ej. «Arteaga, Coah.»).
+app.post("/mercado/airbnb/destinos", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const L = Array.isArray((req.body || {}).destinos) ? req.body.destinos : [], seen = new Set(), out = [];
+    L.forEach(x => { const t = String(x || "").replace(/\s+/g, " ").trim().slice(0, 80), k = t.toLowerCase(); if (t && !seen.has(k)) { seen.add(k); out.push(t); } });
+    if (!out.length) return res.status(400).json({ ok: false, error: "Deja al menos un destino" }); if (out.length > 8) return res.status(400).json({ ok: false, error: "Máximo 8 destinos" });
+    await _maMutar(d => { d.destinos = out; }); res.json({ ok: true, destinos: out }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // Horas del día de la extracción automática: 1 a 8 horas distintas (0–23). Cloud Scheduler llama cada hora en punto a /cron y este decide si toca.
@@ -12836,10 +12848,9 @@ app.post("/mercado/airbnb/detener", async (req, res) => {
 });
 app.post("/mercado/airbnb/buscar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-  try { const b = req.body || {}, destino = String(b.destino || "").replace(/\s+/g, " ").trim().slice(0, 80), adultos = Math.max(1, Math.min(16, parseInt(b.adultos, 10) || 1));
-    if (!destino) return res.status(400).json({ ok: false, error: "Escribe el destino (por ejemplo «Saltillo, Coah.»)" });
-    const { data } = await _bnReadGcs(_MA.OBJ), d = data && data.items ? data : {}; if (d.busqueda && d.busqueda.running && Date.now() - Date.parse(d.busqueda.upd || 0) < 180_000) return res.status(409).json({ ok: false, error: "Ya hay una búsqueda en curso" });
-    const rangos = _maRangosTodos(d); _maBuscar({ destino, adultos, rangos }).catch(e => console.warn("[mercado] búsqueda:", e.message)); res.json({ ok: true, params: { destino, adultos, rangos } }); }
+  try { const b = req.body || {}, adultos = Math.max(1, Math.min(16, parseInt(b.adultos, 10) || 1));
+    const { data } = await _bnReadGcs(_MA.OBJ), d = data && data.items ? data : {}, destinos = _maDest(d), destino = destinos.join(" · "); if (d.busqueda && d.busqueda.running && Date.now() - Date.parse(d.busqueda.upd || 0) < 180_000) return res.status(409).json({ ok: false, error: "Ya hay una búsqueda en curso" });
+    const rangos = _maRangosTodos(d); _maBuscar({ destino, destinos, adultos, rangos }).catch(e => console.warn("[mercado] búsqueda:", e.message)); res.json({ ok: true, params: { destino, destinos, adultos, rangos } }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/airbnb/quitar", async (req, res) => {
@@ -12851,7 +12862,7 @@ app.post("/mercado/airbnb/quitar", async (req, res) => {
 // (entrada = mañana, salida = +3 días) para sumar publicaciones nuevas a la lista; 2) extrae ficha y calendario de TODA la lista.
 async function _maDiaria() {
   const { data } = await _bnReadGcs(_MA.OBJ), u = data && data.ultimaBusqueda, p = u && u.params;
-  if (p && p.destino && await _maBuscar({ destino: p.destino, adultos: p.adultos || 1, rangos: _maRangosTodos(data) }).catch(e => { console.warn("[mercado] búsqueda diaria:", e.message); return false; })) return; // la detuvieron: no sigue con la extracción
+  if (p && p.destino && await _maBuscar({ destino: p.destino, destinos: _maDest(data), adultos: p.adultos || 1, rangos: _maRangosTodos(data) }).catch(e => { console.warn("[mercado] búsqueda diaria:", e.message); return false; })) return; // la detuvieron: no sigue con la extracción
   const { data: d2 } = await _bnReadGcs(_MA.OBJ), ids = ((d2 && d2.lista) || []).map(x => x.id); if (ids.length) await _maCorrer(ids);
 }
 // Extracción programada (Cloud Scheduler, todos los días 3:00 a.m. America/Monterrey): búsqueda (si aplica) + extracción de toda la lista.

@@ -75852,7 +75852,7 @@ window.mcInit = async function () {
   await mcCargar_(); mcRender_(); if ((MC.job && MC.job.running) || (MC.bus && MC.bus.running)) mcPoll_(); if (!MC.propios) setTimeout(async () => { if (!document.getElementById('mc-res')) return; await mcCargar_(); mcRes_(); }, 30000); // los propios se resuelven en segundo plano la primera vez
 };
 async function mcCargar_() {
-  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; if (!MC._escTs || Date.now() - MC._escTs > 8000) MC.esc = j.escenarios || MC.esc || null; /* una respuesta vieja del sondeo no pisa fechas recién guardadas */ if (!MC._horasTs || Date.now() - MC._horasTs > 8000) MC.horas = j.horas || MC.horas || [11, 19]; MC.muestreo = j.muestreo !== false; MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.items = j.items || {}; MC.lista = j.lista || []; MC.job = j.job || null; MC.bus = j.busqueda || null; MC.ultima = j.ultimaBusqueda || null; if (!MC._escTs || Date.now() - MC._escTs > 8000) MC.esc = j.escenarios || MC.esc || null; MC.dest = j.destinos || MC.dest || null; /* una respuesta vieja del sondeo no pisa fechas recién guardadas */ if (!MC._horasTs || Date.now() - MC._horasTs > 8000) MC.horas = j.horas || MC.horas || [11, 19]; MC.muestreo = j.muestreo !== false; MC.propios = j.propios || null; MC.ownHosts = new Set(Object.keys((MC.propios && MC.propios.ids) || {}).map(id => (MC.items[id] || {}).hostId).filter(Boolean)); MC.act = j.actualizado || ''; MC.error = ''; }
   catch (e) { MC.error = String(e.message || e); }
 }
 function mcCss_() {
@@ -77090,7 +77090,7 @@ function mcTop_() {
   const fx = d => mcF(d), local = [[1, 3], [1, 1], [4, 1], [7, 2]].map(([a, n]) => { const e = new Date(); e.setDate(e.getDate() + a); const sd = new Date(e); sd.setDate(sd.getDate() + n); return { checkin: mcIso_(e), checkout: mcIso_(sd), n }; }), E = (MC.esc && MC.esc.length ? MC.esc : local);
   h.innerHTML = `<div class="mc-card"><h3>0 · Método de extracción</h3><div class="sub">Elige cómo se arma la lista de publicaciones: pegando las URLs tú mismo o buscando en Airbnb los alojamientos disponibles de un destino.</div>
       <div class="mc-seg"><button type="button" class="${aut ? '' : 'on'}" onclick="mcMetodo_('manual')">✋ Manual</button><button type="button" class="${aut ? 'on' : ''}" onclick="mcMetodo_('auto')">🔎 Automática</button></div>
-      ${aut ? `<div class="mc-grid"><label>Destino<input class="mc-in" id="mc-dest" value="${esc(dest)}" placeholder="Ej. Saltillo, Coah."></label>
+      ${aut ? `<div class="mc-grid"><label>Destinos<div class="mc-fx" id="mc-dsw">${mcDestHtml_()}</div></label>
         <label>Fechas<div class="mc-fx" id="mc-fxw">${mcFxHtml_(E)}</div></label>
         <label>Huéspedes<input class="mc-in" id="mc-hu" type="number" min="1" max="16" value="${hu}"></label></div>
         <div class="mc-row"><button type="button" class="mc-btn pri" id="mc-bbtn" onclick="mcBuscar_()">🔎 Extraer lista de publicaciones</button><span id="mc-bus" class="mc-mu"></span></div>` : ''}</div>
@@ -77124,6 +77124,22 @@ async function mcHorasGuardar_(lista) {
 window.mcHoraSet_ = function (k, v) { const L = (MC.horas || [11, 19]).slice(); L[k] = +v; if (new Set(L).size < L.length) { alert('Esa hora ya está en la lista.'); mcHorasPintar_(); return; } mcHorasGuardar_(L); };
 window.mcHoraQuitar_ = function (k) { const L = (MC.horas || [11, 19]).slice(); if (L.length <= 1) return; L.splice(k, 1); mcHorasGuardar_(L); };
 window.mcHoraAgregar_ = function () { const L = (MC.horas || [11, 19]).slice(), h = [8, 12, 15, 18, 21, 6, 9, 13, 16, 20, 7, 10, 14, 17, 22, 23, 0, 1, 2, 3, 4, 5].find(x => !L.includes(x)); if (h == null) return; L.push(h); mcHorasGuardar_(L); };
+// ── Destinos de la búsqueda: una fila por destino (cada uno se busca con todas las fechas y las listas se unen sin repetir) ──
+function mcDestHtml_() {
+  const D = MC.dest && MC.dest.length ? MC.dest : ['Saltillo, Coah.', 'Arteaga, Coah.', 'Ramos Arizpe, Coah.'];
+  return D.map((t, k) => `<div class="mc-fxr"><input class="mc-in" style="flex:1" value="${esc(t)}" placeholder="Ej. Saltillo, Coah." onchange="mcDestSet_(${k},this.value)" title="Destino tal como lo escribirías en airbnb.mx">${D.length > 1 ? `<button type="button" class="mc-x" title="Quitar este destino" onclick="mcDestQuitar_(${k})">✕</button>` : ''}</div>`).join('')
+    + (D.length < 8 ? '<button type="button" class="mc-fxadd" onclick="mcDestAgregar_()">＋ Agregar destino</button>' : '')
+    + `<small>Se busca en ${D.length} destino${D.length === 1 ? '' : 's'} con cada rango de fechas y se unen sin repetir publicaciones. Airbnb entrega como máximo ~270 resultados por búsqueda, por eso conviene buscar cada municipio por separado.</small>`;
+}
+function mcDestPintar_() { const w = document.getElementById('mc-dsw'); if (w) w.innerHTML = mcDestHtml_(); }
+async function mcDestGuardar_(lista) {
+  const prev = MC.dest; MC.dest = lista; mcDestPintar_();
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/destinos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinos: lista }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.dest = j.destinos; mcDestPintar_(); }
+  catch (e) { MC.dest = prev; mcDestPintar_(); alert('No se pudieron guardar los destinos: ' + (e.message || e)); }
+}
+window.mcDestSet_ = function (k, v) { const L = (MC.dest || []).slice(); v = String(v || '').trim(); if (!v) { mcDestPintar_(); return; } if (L.some((x, i) => i !== k && x.toLowerCase() === v.toLowerCase())) { alert('Ese destino ya está en la lista.'); mcDestPintar_(); return; } L[k] = v; mcDestGuardar_(L); };
+window.mcDestQuitar_ = function (k) { const L = (MC.dest || []).slice(); if (L.length <= 1) return; L.splice(k, 1); mcDestGuardar_(L); };
+window.mcDestAgregar_ = function () { const L = (MC.dest || []).slice(); L.push(''); MC.dest = L; mcDestPintar_(); const ins = document.querySelectorAll('#mc-dsw input'); const i = ins[ins.length - 1]; if (i) i.focus(); };
 function mcFxPintar_() { const w = document.getElementById('mc-fxw'); if (w) w.innerHTML = mcFxHtml_(); }
 async function mcFxGuardar_(lista) {
   try { const j = await fetch(`${BACKEND}/mercado/airbnb/escenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ escenarios: lista }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.esc = j.escenarios; MC._escTs = Date.now(); mcFxPintar_(); return true; }
@@ -77169,10 +77185,10 @@ window.mcMetodo_ = function (m) { MC.metodo = m; try { localStorage.setItem('mc-
 function mcBus_() {
   const st = document.getElementById('mc-bus'), b = MC.bus, u = MC.ultima, run = b && b.running; if (!st) return;
   const btn = document.getElementById('mc-bbtn'); if (btn) { btn.disabled = !!run; btn.textContent = run ? '⏳ Buscando…' : '🔎 Extraer lista de publicaciones'; }
-  if (run) st.innerHTML = `Buscando en Airbnb… fechas <b>${b.rango || 1} de ${b.rangos || (MC.esc ? MC.esc.length : 4)}</b> · página ${b.pagina || 0} de ${b.paginas || '?'} · <b>${b.encontrados || 0}</b> alojamientos únicos ${b.cancelar ? '· ⏳ deteniendo…' : '<button type="button" class="mc-btn" style="color:#b91c1c;border-color:#fca5a5;padding:3px 10px;margin-left:6px" onclick="mcDetener_()" title="Se detiene al terminar la página en curso y conserva lo encontrado">⛔ Detener</button>'}`;
+  if (run) st.innerHTML = `Buscando en Airbnb… búsqueda <b>${b.rango || 1} de ${b.rangos || (MC.esc ? MC.esc.length : 4)}</b> · página ${b.pagina || 0} de ${b.paginas || '?'} · <b>${b.encontrados || 0}</b> alojamientos únicos ${b.cancelar ? '· ⏳ deteniendo…' : '<button type="button" class="mc-btn" style="color:#b91c1c;border-color:#fca5a5;padding:3px 10px;margin-left:6px" onclick="mcDetener_()" title="Se detiene al terminar la página en curso y conserva lo encontrado">⛔ Detener</button>'}`;
   else if (b && b.detenida && b.fin && u && u.at && Date.parse(b.fin) >= Date.parse(u.at) - 5000) st.innerHTML = `⛔ <b>Búsqueda detenida</b> · se conservaron los <b>${(u.ids || []).length}</b> alojamientos encontrados hasta ese momento${u.nuevos != null ? ` (${u.nuevos} nuevos en la lista)` : ''}`;
   else if (b && b.error && !(u && u.ids && u.ids.length)) st.innerHTML = `<span class="mc-err">⚠ ${esc(b.error)}</span>`;
-  else if (u && u.at) { const p = u.params || {}; st.innerHTML = `✓ <b>${(u.ids || []).length}</b> alojamientos únicos${u.nuevos != null ? ` (${u.nuevos} nuevos en la lista)` : ''} · ${esc(p.destino || '')} · ${p.adultos || 1} huésped${(p.adultos || 1) === 1 ? '' : 'es'}${(u.porRango || []).length ? `<br><span title="Cada búsqueda con sus fechas; entre paréntesis lo que aportó de nuevo">Por fechas: ${u.porRango.filter(r => !r.m).map((r, k) => `${k + 1}) <b>${r.encontrados}</b> (+${r.nuevos})`).join(' · ')}${u.porRango.some(r => r.m) ? ` · muestreo de precios: ${u.porRango.filter(r => r.m).length} fechas` : ''}</span>` : ''}${u.error ? `<br><span class="mc-err">⚠ ${esc(u.error)}</span>` : ''}`; }
+  else if (u && u.at) { const p = u.params || {}; st.innerHTML = `✓ <b>${(u.ids || []).length}</b> alojamientos únicos${u.nuevos != null ? ` (${u.nuevos} nuevos en la lista)` : ''} · ${esc(p.destino || '')} · ${p.adultos || 1} huésped${(p.adultos || 1) === 1 ? '' : 'es'}${(u.porRango || []).length ? `<br><span title="Cada búsqueda con sus fechas; entre paréntesis lo que aportó de nuevo">Por fechas: ${u.porRango.filter(r => !r.m).map((r, k) => `${(MC.dest || []).length > 1 && r.dest ? esc(String(r.dest).split(',')[0]) + ' ' : ''}${r.ix || k + 1}) <b>${r.encontrados}</b> (+${r.nuevos})`).join(' · ')}${u.porRango.some(r => r.m) ? ` · muestreo de precios: ${u.porRango.filter(r => r.m).length} fechas` : ''}</span>` : ''}${u.error ? `<br><span class="mc-err">⚠ ${esc(u.error)}</span>` : ''}`; }
   else st.textContent = 'Aún no se ha hecho ninguna búsqueda.';
   const ta = document.getElementById('mc-autolist'); if (ta) ta.value = (u && u.ids ? u.ids : []).map(id => `https://www.airbnb.mx/rooms/${id}`).join('\n');
   const sm = document.getElementById('mc-autosum'); if (sm) sm.textContent = u && u.ids && u.ids.length ? `${u.ids.length} URLs de la última búsqueda · ${MC.lista.length} publicaciones en total en la lista de seguimiento` : '';
@@ -77184,10 +77200,10 @@ window.mcDetener_ = async function () {
   catch (e) { alert('No se pudo detener: ' + (e.message || e)); }
 };
 window.mcBuscar_ = async function () {
-  const d = (document.getElementById('mc-dest') || {}).value || '', hu = parseInt((document.getElementById('mc-hu') || {}).value, 10) || 1;
-  if (!d.trim()) { const st = document.getElementById('mc-bus'); if (st) st.innerHTML = '<span class="mc-err">⚠ Escribe el destino.</span>'; return; }
-  try { localStorage.setItem('mc-destino', d.trim()); localStorage.setItem('mc-huesp', String(hu)); } catch (_) {}
-  try { const j = await fetch(`${BACKEND}/mercado/airbnb/buscar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destino: d.trim(), adultos: hu }) }).then(r => r.json());
+  const hu = parseInt((document.getElementById('mc-hu') || {}).value, 10) || 1, vac = [...document.querySelectorAll('#mc-dsw input')].some(i => !i.value.trim());
+  if (vac || !(MC.dest || []).every(x => String(x).trim())) { const st = document.getElementById('mc-bus'); if (st) st.innerHTML = '<span class="mc-err">⚠ Escribe el destino o quita el renglón vacío.</span>'; return; }
+  try { localStorage.setItem('mc-huesp', String(hu)); } catch (_) {}
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/buscar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adultos: hu }) }).then(r => r.json());
     if (!j.ok && !/en curso/i.test(j.error || '')) throw new Error(j.error || 'Error');
     MC.bus = { running: true, pagina: 0, paginas: 0, encontrados: 0 }; mcBus_(); mcPoll_(); }
   catch (e) { const st = document.getElementById('mc-bus'); if (st) st.innerHTML = `<span class="mc-err">⚠ ${esc(e.message || e)}</span>`; }
