@@ -76464,6 +76464,7 @@ function mcAloCss_() {
   .en-ay{padding:6px 18px 18px;font-size:13px;line-height:1.55;color:#1e293b;max-height:72vh;overflow:auto}.en-ay h6{margin:14px 0 6px;font-size:13.5px;font-weight:800;color:#0f172a}.en-ay ol,.en-ay ul{margin:0 0 6px 18px;padding:0}.en-ay li{margin:3px 0}.en-ay dl{margin:0}.en-ay dt{font-weight:800;margin-top:8px;color:#0f766e}.en-ay dd{margin:2px 0 0}
   .en-pr{background:#f0fdfa;border:1px solid #ccfbf1;border-radius:12px;padding:10px 14px;margin-top:6px}.en-pr h6{margin:0 0 6px}.en-pr label{font-weight:700}.en-pr label small{font-weight:500;color:#64748b}.en-pr-r{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}.en-pr-r input{width:90px;border:1.5px solid #cbd5e1;border-radius:9px;padding:6px 10px;font-size:14px;font-weight:700}.en-pr-r span{font-weight:700}
   .en-wt{border-collapse:collapse;font-size:12.5px}.en-wt th,.en-wt td{border-bottom:1px solid #e4e9f0;padding:4px 14px 4px 0;text-align:left}.en-wt td:nth-child(n+2),.en-wt th:nth-child(n+2){text-align:right}
+  .al-mp{margin-top:14px;border:1px solid #e4e9f0;border-radius:14px;overflow:hidden;background:#fff}#al-dmap{height:260px;width:100%}.al-mp small{display:block;padding:5px 10px;font-size:10.5px;color:#94a3b8}
   .al-sent{text-align:center;margin:18px;color:#94a3b8;font-size:12px;font-weight:700;min-height:20px}
   .al-camp{display:inline-block;background:#ecfccb;color:#3f6212;border:1px solid #d9f99d;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}
   .fs-lay{display:block}.fs-side{display:none}.fs-lay.fs-on{display:grid;grid-template-columns:268px minmax(0,1fr);gap:20px;align-items:start}.fs-lay.fs-on .fs-side{display:block;position:sticky;top:8px;max-height:calc(100vh - 24px);overflow:auto;background:#fff;border:1px solid var(--al-ln);border-radius:16px;padding:4px 16px 10px;scrollbar-width:thin}
@@ -76616,7 +76617,7 @@ function mcAloPintar_() {
   const w = document.getElementById('mc-sec-alo'); if (!w) return; if (MC.map && MC.map.m) mcMapaDestruye_(); mcAloCss_(); mcClCss_(); const A = mcAloData_(); document.removeEventListener('keydown', MC._alKd || (() => {})); const S = MC.al;
   if (A.rows.length < 1) { w.innerHTML = '<div class="mc-card mc-mu">Aún no hay alojamientos extraídos. Ve a «Extracción» y pulsa «Extraer / actualizar».</div>'; return; }
   const h = S.host && A.hosts.find(x => x.id === S.host), r = S.id && A.rows.find(x => x.id === S.id);
-  if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); mcEnFicha_(r.id); return; }
+  if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); mcEnFicha_(r.id); mcAloMapaDet_(r.id); return; }
   w.innerHTML = `<div id="al-top"></div><div class="fs-lay ${S.flAb ? 'fs-on' : ''}" id="al-lay"><aside class="fs-side" id="al-flp"></aside><div id="al-body"></div></div>`; mcAloTopPinta_(); mcAloCuerpo_();
 }
 function mcAloCuerpo_() {
@@ -76628,6 +76629,14 @@ function mcAloCuerpo_() {
   else if (S.vista === 'host') tgt.innerHTML = mcAloDirHtml_(hs); else tgt.innerHTML = mcAloListaHtml_(L);
   mcAloSent_();
   if (S.mapa) { mcMapaActualiza_(false); mcMapaResalta_(MC.map.sel, (MC.map.pts.find(p => p.id === MC.map.sel) || {}).hostId || MC.map.selHost, false); if (MC.map.selHost) { const el = document.querySelector(`#al-list [data-hid="${CSS.escape(String(MC.map.selHost))}"]`); if (el) el.classList.add('al-sel'); } }
+}
+// ── Mapa con pin en la ficha del alojamiento (mismo pin y mapa que el mapa de la lista) ──
+function mcAloMapaDet_(id) {
+  const el = document.getElementById('al-dmap'); if (!el) return; mcMapaCss_(); if (MC._dmap) { try { MC._dmap.remove(); } catch (_) {} MC._dmap = null; }
+  _rsvEnsureLeaflet_(() => { const el2 = document.getElementById('al-dmap'); if (!el2 || MC.al.id !== id) return; const Lf = window.L, A = mcAloData_(), r = A.rows.find(x => x.id === id), i = MC.items[id] || {}; if (!r) return;
+    const p = { id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || id, ev: r.ev };
+    const m = Lf.map(el2, { scrollWheelZoom: false }).setView([p.lat, p.lng], 15); Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+    Lf.marker([p.lat, p.lng], { icon: Lf.divIcon({ className: '', html: mcMapaPinHtml_(p, true), iconSize: [200, 46], iconAnchor: [100, 46] }) }).addTo(m); MC._dmap = m; setTimeout(() => m.invalidateSize(), 150); });
 }
 // ── Desplazamiento infinito: al llegar al final de la lista se cargan las 48 siguientes (sin botón) ──
 function mcAloSent_() {
@@ -76719,7 +76728,8 @@ function mcAloDetHtml_(h, r) {
       <div class="al-price"><b>${mcOk_(r.precio) ? MCFMT(r.precio) : '—'}</b><span>por noche · referencia mar–jue</span>${P ? `<div>Rango observado ${MCFMT(P.min)} – ${MCFMT(P.max)}${P.prem != null ? ' · fin de semana ' + (P.prem >= 0 ? '+' : '') + Math.round(P.prem * 100) + '%' : ''} · ${P.n} observaciones</div>` : '<div>Aún sin bitácora de precios: se muestra el precio de la última búsqueda.</div>'}${mcOk_(r.pxh) && r.hab !== 1 ? `<div>${MCFMT(r.pxh)} por habitación</div>` : ''}</div>
       <div class="al-fx">${fx.map(([v, t]) => `<div><b>${v == null || v === '—' ? '—' : esc(String(v))}</b><span>${t}</span></div>`).join('')}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="al-btn" href="${esc(i.url || 'https://www.airbnb.mx/rooms/' + r.id)}" target="_blank" rel="noopener">Abrir en Airbnb ↗</a>${i.lat != null ? `<a class="al-btn sec" href="https://www.google.com/maps?q=${i.lat},${i.lng}" target="_blank" rel="noopener">📍 Mapa</a>` : ''}</div>
-      <div class="al-hm" onclick="mcAloHostIr_('${h.id}')">${mcAloAv_(h.host, (h.it || {}).hostFoto, 44)}<div><b>${esc(h.host)}</b> ${mcAloTag_(h)}<small>${h.n} alojamiento${h.n === 1 ? '' : 's'} · ${mcOk_(h.anios) ? MCN(h.anios, 0) + ' años' : 'anfitrión'}${i.superanfitrion ? ' · Superanfitrión' : ''} — ver perfil</small></div></div></aside></div>
+      <div class="al-hm" onclick="mcAloHostIr_('${h.id}')">${mcAloAv_(h.host, (h.it || {}).hostFoto, 44)}<div><b>${esc(h.host)}</b> ${mcAloTag_(h)}<small>${h.n} alojamiento${h.n === 1 ? '' : 's'} · ${mcOk_(h.anios) ? MCN(h.anios, 0) + ' años' : 'anfitrión'}${i.superanfitrion ? ' · Superanfitrión' : ''} — ver perfil</small></div></div>
+      ${(i.lat != null && i.lng != null && isFinite(+i.lat) && isFinite(+i.lng)) ? `<div class="al-mp"><div id="al-dmap" aria-label="Mapa de ubicación"></div><small>Ubicación aproximada que publica Airbnb</small></div>` : ''}</aside></div>
     <div class="al-secs">
       <div class="al-card w"><h5>🧭 Clasificación por nicho</h5><div id="al-cl"><div class="al-sk" style="height:90px"></div></div></div>
       <div class="al-card"><h5>📊 Ocupación y disponibilidad</h5><div class="al-fs">${ex('Ocupación estimada (90 d)', mcOk_(r.occ) ? MCN(r.occ, 1) + '%' : '—')}${ex('Mercado', mcOk_(mk.occ) ? MCN(mk.occ, 1) + '%' : '—')}${ex('No disponible 30 d', i.ocup30 != null ? i.ocup30 + '%' : '—')}${ex('No disponible 90 d', i.ocup90 != null ? i.ocup90 + '%' : '—')}${ex('No disponible 365 d', i.ocup365 != null ? i.ocup365 + '%' : '—')}${ex('Noches de reserva probable (365 d)', t ? t.reserva : '—')}${ex('Noches de bloqueo probable', t ? t.bloqueo : '—')}${ex('Primera fecha libre', i.primeraLibre ? mcF(i.primeraLibre) : '—')}${ex('Próximo bloqueo', i.extraido ? (i.proximoBloqueo ? mcF(i.proximoBloqueo) : 'Sin bloqueos') : '—')}${ex('Estancia mínima', i.minNoches != null ? i.minNoches + ' noches' : '—')}</div></div>
