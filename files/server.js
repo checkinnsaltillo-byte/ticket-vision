@@ -13080,7 +13080,7 @@ async function _mcItem(id) {
 }
 // Detalle: estructura una ficha capturada en el navegador con el extractor de Rentas LP; si faltan datos clave y hay texto suficiente, la IA lo completa.
 async function _fbEstructura(it, usarIA) {
-  const FBJ = it.fb || {}, D = { url: it.url, ld: Array.isArray(it.ld) ? it.ld : [], og: it.og || {}, title: it.title || "", imgs: (Array.isArray(it.imgs) ? it.imgs : []).concat(FBJ.fotos || []), text: String(it.text || "").slice(0, 20000), desc: FBJ.descripcion || "", geo: null };
+  const FBJ = it.fb || {}, D = { url: it.url, ld: Array.isArray(it.ld) ? it.ld : [], og: it.og || {}, title: it.title || "", imgs: (Array.isArray(it.imgs) && it.imgs.length) ? it.imgs : (FBJ.fotos || []), text: String(it.text || "").slice(0, 20000), desc: FBJ.descripcion || "", geo: null };
   const pub = _rlpDeDatos(D); delete pub._estructurado;
   if (FBJ.titulo) pub.titulo = FBJ.titulo; if (FBJ.precio != null && FBJ.precio > 0) pub.precio = FBJ.precio; if (FBJ.moneda) pub.moneda = FBJ.moneda; if (FBJ.descripcion && FBJ.descripcion.length > String(pub.descripcion || "").length) pub.descripcion = FBJ.descripcion;
   if (FBJ.ubicacion) { const p = FBJ.ubicacion.split(",").map(s => s.trim()); pub.ciudad = pub.ciudad || p[0] || ""; pub.colonia = pub.colonia || ""; pub.direccion = FBJ.ubicacion; }
@@ -13088,7 +13088,16 @@ async function _fbEstructura(it, usarIA) {
   if (usarIA && (!pub.recamaras || !pub.precio || !pub.tipo || pub.tipo === "otro") && String(D.text || FBJ.descripcion || "").length > 80) {
     try { const j = await _rlpLlmTexto(String((D.text && D.text.length > 200 ? D.text : (pub.titulo + "\n" + (FBJ.descripcion || ""))) || "").slice(0, 14000), it.url); Object.keys(j || {}).forEach(k => { const v = j[k]; if (v == null || v === "" || (Array.isArray(v) && !v.length)) return; if (pub[k] == null || pub[k] === "" || (Array.isArray(pub[k]) && !pub[k].length) || k === "tipo" || k === "operacion") pub[k] = v; }); metodo = "IA"; } catch (_) {}
   }
-  const o = _rlpNormalizar(Object.assign({}, pub, { url_origen: it.url, portal: "facebook", operacion: "renta" })); o.lat = null; o.lng = null; o.geo = null;
+  const o = _rlpNormalizar(Object.assign({}, pub, { url_origen: it.url, portal: "facebook", operacion: "renta" })); o.fotos_dom = Array.isArray(it.imgs) && it.imgs.length > 0;
+  { const tx = String(it.text || "").replace(/\s+/g, " "), pick = re => { const m = tx.match(re); return m ? m[1].trim() : ""; };
+    const pub = pick(/Publicado (hace [^.]{3,40}?)(?= Enviar| Detalles| Ubicaci| Descripci| Alquiler| Ver )/), n = pub.match(/hace (\d+|un|una|más de una|m[aá]s de un)\s*(minuto|hora|d[ií]a|semana|mes)/i);
+    if (pub) { o.publicado_texto = pub; if (n && !/m[aá]s/i.test(n[1])) { const v = /^un/i.test(n[1]) ? 1 : +n[1], u = n[2].toLowerCase(), ms = u.startsWith("minuto") ? 6e4 : u.startsWith("hora") ? 36e5 : /^d/.test(u) ? 864e5 : u.startsWith("semana") ? 6048e5 : 2592e6; o.fecha_publicacion = new Date(Date.now() - v * ms).toISOString().slice(0, 10); } }
+    const det = pick(/Detalles de la unidad (.{3,500}?)(?= Ubicaci[oó]n de la propiedad| Descripci[oó]n| Informaci[oó]n del vendedor)/i); if (det) o.detalles_unidad = det;
+    const ven = pick(/Informaci[oó]n del vendedor (.{3,80}?)(?= Se uni[oó]| Detalles del vendedor| Calificaci| Env[ií]a un mensaje|$)/i); if (ven && !o.contacto_nombre) o.contacto_nombre = ven.slice(0, 120);
+    const des = pick(/Se uni[oó] a Facebook en (\d{4})/i); if (des) o.vendedor_desde = des;
+    if (/no se admiten mascotas|sin mascotas/i.test(tx)) o.mascotas = false; else if (/se admiten (?:mascotas|perros|gatos)|admite mascotas|pet.?friendly/i.test(tx)) o.mascotas = true;
+  }
+  o.lat = null; o.lng = null; o.geo = null;
   const G0 = Array.isArray(FBJ.geos) ? FBJ.geos : []; o.mapas = (G0.find(g => Array.isArray(g) && g[0] === "mapas") || []).slice(1, 5).map(u => String(u).slice(0, 400));
   o.geos = G0.filter(g => Array.isArray(g) && isFinite(g[0]) && isFinite(g[1])).slice(0, 16).map(g => [g[0], g[1], g[2], String(g[3] || "").slice(0, 4), String(g[4] || "").slice(0, 60)]);
   { const tx = String(D.text || ""); if (!o.cp) { const m = tx.match(/,\s*Coah(?:uila)?\.?,?\s*(\d{5})\b/i); if (m) o.cp = m[1]; }
@@ -13128,7 +13137,7 @@ app.post("/mercado/facebook/ubicar", async (req, res) => {
 });
 app.post("/mercado/facebook/reextraer", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-  try { const b = req.body || {}, n = await _fbMutar(d => { let c = 0; d.lista.forEach(x => { const it = d.items[x.id]; if (it && x.estado === "ok" && (b.todas || it.lat == null || !it.geo)) { x.estado = "pendiente"; x.intentos = 0; x.sel = true; c++; } }); return c; }); res.json({ ok: true, marcadas: n }); }
+  try { const b = req.body || {}, n = await _fbMutar(d => { let c = 0; d.lista.forEach(x => { const it = d.items[x.id]; if (it && x.estado === "ok" && (b.todas || !it.fotos_dom)) { x.estado = "pendiente"; x.intentos = 0; x.sel = true; c++; } }); return c; }); res.json({ ok: true, marcadas: n }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/facebook/seleccion", async (req, res) => {
