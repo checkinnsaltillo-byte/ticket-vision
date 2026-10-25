@@ -13083,6 +13083,11 @@ app.post("/mercado/facebook/lista", async (req, res) => {
     const r = await _fbMutar(d => _fbAgrega(d, tarjetas.filter(t => _fbId(t.url)), "manual")); res.json({ ok: true, nuevas: r.nuevas, existentes: r.existentes, invalidas: inval }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+app.post("/mercado/facebook/seleccion", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const b = req.body || {}, ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(String)), val = !!b.sel; const n = await _fbMutar(d => { let c = 0; d.lista.forEach(x => { if (ids.has(x.id)) { if (val) x.sel = true; else delete x.sel; c++; } }); return c; }); res.json({ ok: true, cambiadas: n }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/mercado/facebook/quitar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const b = req.body || {}, ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(String)), todo = b.estado; await _fbMutar(d => { d.lista = d.lista.filter(x => !(ids.has(x.id) || (todo && x.estado === todo))); Object.keys(d.items).forEach(k => { if (!d.lista.some(x => x.id === k)) delete d.items[k]; }); }); res.json({ ok: true }); }
@@ -13104,8 +13109,8 @@ app.post("/mercado/facebook/texto", async (req, res) => {
 // ── Para la página puente (mismo dominio api.check-inn.mx) ──
 app.get("/mercado/facebook/pendientes", async (req, res) => {
   const o = String(req.headers.origin || ""); if (o && o !== "https://api.check-inn.mx" && !_vOriginOk(req)) return res.status(403).json({ ok: false });
-  try { const d = await _fbDoc(), lim = Math.max(1, Math.min(40, parseInt(req.query.limite, 10) || (d.config && d.config.lote) || 25)); const L = d.lista.filter(x => x.estado === "pendiente" || (x.estado === "error" && (x.intentos || 0) < 3)).sort((a, b) => (a.intentos || 0) - (b.intentos || 0)).slice(0, lim).map(x => ({ id: x.id, url: x.url }));
-    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: L, cfg: { pausaMin: (d.config || {}).pausaMin || 3, pausaMax: (d.config || {}).pausaMax || 7, lote: lim } }); }
+  try { const d = await _fbDoc(), lim = Math.max(1, Math.min(40, parseInt(req.query.limite, 10) || (d.config && d.config.lote) || 25)); const cand = d.lista.filter(x => x.estado === "pendiente" || (x.estado === "error" && (x.intentos || 0) < 3)), L = cand.filter(x => x.sel).sort((a, b) => (a.intentos || 0) - (b.intentos || 0)).slice(0, lim).map(x => ({ id: x.id, url: x.url }));
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: L, sinSel: cand.length - cand.filter(x => x.sel).length, cfg: { pausaMin: (d.config || {}).pausaMin || 3, pausaMax: (d.config || {}).pausaMax || 7, lote: lim } }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/facebook/captura", async (req, res) => {
@@ -13118,7 +13123,7 @@ app.post("/mercado/facebook/captura", async (req, res) => {
         let pub = null, metodo = ""; try { const r = await _fbEstructura(Object.assign({}, it, { id, url: "https://www.facebook.com/marketplace/item/" + id + "/" }), ia++ < 12); pub = r.pub; metodo = r.metodo; } catch (e) { out.push({ id, estado: "error", motivo: "No se pudo estructurar: " + String(e.message || e).slice(0, 120) }); continue; }
         out.push({ id, estado: "ok", pub, metodo }); }
       await _fbMutar(d => { out.forEach(r => { const x = d.lista.find(y => y.id === r.id) || (_fbAgrega(d, [{ id: r.id }], "marcador"), d.lista.find(y => y.id === r.id)); x.intentos = (x.intentos || 0) + 1; x.visto = hoy;
-          if (r.estado === "ok") { x.estado = "ok"; x.error = ""; x.titulo = r.pub.titulo || x.titulo; if (r.pub.precio) x.precio = "$" + Number(r.pub.precio).toLocaleString("es-MX"); d.items[r.id] = Object.assign({}, r.pub, { id: r.id, extraido: hoy, metodo: r.metodo }); }
+          if (r.estado === "ok") { x.estado = "ok"; x.sel = false; x.error = ""; x.titulo = r.pub.titulo || x.titulo; if (r.pub.precio) x.precio = "$" + Number(r.pub.precio).toLocaleString("es-MX"); d.items[r.id] = Object.assign({}, r.pub, { id: r.id, extraido: hoy, metodo: r.metodo }); }
           else { x.estado = r.estado === "no_disponible" ? "no_disponible" : "error"; x.error = r.motivo || ""; } });
         d.ejecuciones = (d.ejecuciones || []).concat([{ at: hoy, tipo: "detalle", ok: out.filter(r => r.estado === "ok").length, errores: out.filter(r => r.estado !== "ok").length, nota: _fbTxt(b.nota, 160) }]).slice(-30); });
       return res.json({ ok: true, guardadas: out.filter(r => r.estado === "ok").length, errores: out.filter(r => r.estado !== "ok").length }); }

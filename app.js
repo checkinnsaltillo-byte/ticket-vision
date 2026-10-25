@@ -77554,7 +77554,7 @@ function mcFechas_() { const a = new Date(); a.setDate(a.getDate() + 1); const b
 // Facebook bloquea al servidor; se lee en el NAVEGADOR del usuario con dos marcadores (igual que «Rentas de largo plazo»):
 //  1) «Capturar lista» recorre los resultados y envía las tarjetas; 2) «Extraer detalles» lee cada ficha (mismo origen, sesión del usuario)
 //  con pausas aleatorias, reintentos y paro automático ante bloqueo. Todo llega a Check-inn por una página puente (postMessage).
-MC.fb = MC.fb || { cfg: null, lista: [], items: {}, stats: {}, ejec: [], filtro: 'todas', cargado: false, ver: 50 };
+MC.fb = MC.fb || { cfg: null, lista: [], items: {}, stats: {}, ejec: [], filtro: 'todas', cargado: false, ver: 100 };
 const MCFB_BR = 'https://api.check-inn.mx/mercado/facebook/puente';
 const MCFB_PANEL = String.raw`const P=document.createElement('div');P.style.cssText='position:fixed;right:16px;bottom:16px;z-index:2147483647;background:#0f172a;color:#fff;padding:12px 14px;border-radius:12px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.45);width:300px';document.body.appendChild(P);let stop=false;
 const say=(h,b)=>{P.innerHTML='<b>🏘️ Check-inn · '+TIT+'</b><div style="margin:6px 0">'+h+'</div>'+(b?'<button id=ckx style="all:unset;cursor:pointer;background:#ef4444;padding:4px 12px;border-radius:8px;font-weight:700">Detener</button>':'<button id=ckc style="all:unset;cursor:pointer;background:#334155;padding:4px 12px;border-radius:8px;font-weight:700">Cerrar</button>');const x=P.querySelector('#ckx');if(x)x.onclick=()=>{stop=true};const c=P.querySelector('#ckc');if(c)c.onclick=()=>P.remove()};
@@ -77582,7 +77582,7 @@ PV.postMessage({t:'fin'},OR);say('✅ Listo: <b>'+arr.length+'</b> publicaciones
 })();`).replace(/\n/g, '');
 const MCFB_DET = 'javascript:' + ('(async()=>{const TIT="extraer detalles";' + MCFB_PANEL.replace('@@BR@@', MCFB_BR) + String.raw`
 if(!await conectar())return;PV.postMessage({t:'hola'},OR);const pend=await esperar('pend',null,20000);if(!pend){say('Check-inn no respondió.');return}
-const L=pend.lista||[],cfg=pend.cfg||{};if(!L.length){PV.postMessage({t:'fin'},OR);say('No hay publicaciones pendientes. Captura primero la lista (paso 1).');return}
+const L=pend.lista||[],cfg=pend.cfg||{};if(!L.length){PV.postMessage({t:'fin'},OR);say(pend.sinSel?'Hay '+pend.sinSel+' publicaciones pendientes pero <b>ninguna seleccionada</b>. Selecciónalas en el paso 1 de Check-inn.':'No hay publicaciones pendientes. Captura primero la lista (paso 1).');return}
 const un=s=>{try{return JSON.parse('"'+s+'"')}catch(e){return s}},g=(h,re)=>{const x=h.match(re);return x?x[1]:null};
 const extrae=(html,it)=>{const doc=new DOMParser().parseFromString(html,'text/html'),m=k=>(doc.querySelector('meta[property="'+k+'"],meta[name="'+k+'"]')||{}).content||'',ld=[...doc.querySelectorAll('script[type="application/ld+json"]')].map(s=>{try{return JSON.parse(s.textContent)}catch(e){return null}}).filter(Boolean);doc.querySelectorAll('script,style,noscript').forEach(e=>e.remove());const text=W(doc.body?doc.body.textContent:'').slice(0,14000);
 const fb={titulo:un(g(html,/"marketplace_listing_title":"((?:[^"\\]|\\.)*)"/)||''),descripcion:un(g(html,/"redacted_description":\{"text":"((?:[^"\\]|\\.)*)"/)||''),ubicacion:un(g(html,/"location_text":\{"text":"((?:[^"\\]|\\.)*)"/)||''),precio:parseFloat(g(html,/"listing_price":\{[^}]*?"amount":"([\d.]+)"/)||'')||null,moneda:g(html,/"listing_price":\{[^}]*?"currency":"([A-Z]{3})"/),lat:parseFloat(g(html,/"latitude":(-?\d+\.\d+)/)||'')||null,lng:parseFloat(g(html,/"longitude":(-?\d+\.\d+)/)||'')||null,fotos:[...new Set((html.match(/"(?:uri|image_uri)":"(https:[^"]+scontent[^"]+)"/g)||[]).map(x=>un(x.replace(/^"(?:uri|image_uri)":"/,'').replace(/"$/,''))))].slice(0,20)};
@@ -77607,8 +77607,24 @@ function mcFbUrl_(c) {
   c = c || MC.fb.cfg || {}; const q = [`exact=false`, `latitude=${c.lat}`, `longitude=${c.lng}`, `radius=${c.radio}`]; if (c.precioMin != null) q.push('minPrice=' + c.precioMin); if (c.precioMax != null) q.push('maxPrice=' + c.precioMax); if (c.dormitorios) q.push('minBedrooms=' + c.dormitorios); if (c.banos) q.push('minBathrooms=' + c.banos); if (c.m2Min != null) q.push('minAreaSize=' + c.m2Min); if (c.m2Max != null) q.push('maxAreaSize=' + c.m2Max);
   return 'https://www.facebook.com/marketplace/category/propertyrentals?' + q.join('&');
 }
+const MCFB_CSS2 = `
+  .fbf{--al-ink:#0f172a;--al-ac:#0f766e;--al-ac2:#14b8a6;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:12px 0}
+  .fbf .fbg{border:1px solid #e4e9f0;border-radius:12px;padding:10px 12px;background:#fff;min-width:0}
+  .fbf .fbg h5{margin:0 0 6px;font-size:12px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:flex;justify-content:space-between;align-items:center}
+  .fbf .fbg h5 button{all:unset;cursor:pointer;font-size:11px;font-weight:700;color:#0f766e;text-transform:none;letter-spacing:0}
+  .fbf .fs-ops{max-height:176px;overflow:auto}
+  .fbf .fs-bd{padding-top:2px}
+  .fbf .al-fg label{display:block;font-size:12.5px;color:#334155;margin:0 0 4px}
+  .fbsel{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #e4e9f0;border-radius:12px;background:#f8fafc}
+  .fbsel .n{font-size:13px;color:#0f172a;margin-right:4px}
+  .fbx{width:18px;height:18px;box-sizing:border-box;border:1.5px solid #94a3b8;border-radius:5px;background:#fff;color:transparent;font-size:12px;font-weight:900;line-height:15px;text-align:center;display:inline-block;cursor:pointer;transition:all .12s}
+  .fbx.on{background:#0f766e;border-color:#0f766e;color:#fff}.fbx.off{opacity:.3;cursor:not-allowed}
+  .fb-tb tr.sel td{background:#f0fdfa}
+  .fb-tag{display:inline-block;padding:2px 9px;border-radius:99px;background:#eef2f6;font-size:11.5px;font-weight:700;color:#334155;white-space:nowrap}
+  .fb-gate{padding:12px 14px;border-radius:12px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:13px;margin:8px 0}
+`;
 function mcFbCss_() {
-  if (document.getElementById('mcfb-css')) return; const st = document.createElement('style'); st.id = 'mcfb-css'; st.textContent = `
+  if (document.getElementById('mcfb-css')) return; mcAloCss_(); const st = document.createElement('style'); st.id = 'mcfb-css'; st.textContent = MCFB_CSS2 + `
   .mcfb-subs{display:inline-flex;gap:2px;padding:3px;background:#eef2f6;border-radius:12px;margin:0 0 14px;box-shadow:inset 0 0 0 1px rgba(15,23,42,.04)}.mcfb-subs button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 18px;border-radius:9px;font-size:13px;font-weight:600;color:#64748b;transition:all .18s}.mcfb-subs button:hover{color:#0f172a}.mcfb-subs button.on{background:#fff;color:#0f172a;box-shadow:0 1px 2px rgba(15,23,42,.10),0 2px 8px rgba(15,23,42,.06)}.mcfb-subs svg{flex:none}
   .fbp{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px 22px}.fbp .g>label{display:block;font-size:11.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin:0 0 6px}.fbp .rg{display:flex;flex-wrap:wrap;gap:6px}.fbp .rb{all:unset;cursor:pointer;padding:6px 13px;border-radius:99px;border:1.5px solid #e4e9f0;background:#fff;font-size:12.5px;font-weight:700;color:#334155;transition:all .15s}.fbp .rb:hover{border-color:#14b8a6}.fbp .rb.on{background:#0f766e;border-color:#0f766e;color:#fff}
   .fbp .ck{display:flex;align-items:center;gap:9px;padding:5px 2px;cursor:pointer;font-size:13px;color:#334155;user-select:none}.fbp .ck i{width:18px;height:18px;border:1.5px solid #94a3b8;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px;font-weight:900;color:transparent;background:#fff;flex:none}.fbp .ck.on i{background:#0f766e;border-color:#0f766e;color:#fff}
@@ -77620,7 +77636,7 @@ function mcFbCss_() {
   .fb-kp{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px}.fb-kp div{background:#f8fafc;border:1px solid #e4e9f0;border-radius:12px;padding:8px 14px}.fb-kp b{display:block;font-size:19px;color:#0f172a}.fb-kp small{color:#64748b;font-size:11px;font-weight:700}`; document.head.appendChild(st);
 }
 async function mcFbCargar_() {
-  try { const j = await fetch(`${BACKEND}/mercado/facebook`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.fb.cfg = j.config; MC.fb.lista = j.lista || []; MC.fb.items = j.items || {}; MC.fb.stats = j.stats || {}; MC.fb.ejec = j.ejecuciones || []; MC.fb.cargado = true; }
+  try { const j = await fetch(`${BACKEND}/mercado/facebook`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'Error'); MC.fb.cfg = j.config; MC.fb.lista = j.lista || []; MC.fb.items = j.items || {}; MC.fb.stats = j.stats || {}; MC.fb.ejec = j.ejecuciones || []; MC.fb._dom = null; MC.fb.cargado = true; }
   catch (e) { MC.fb.err = String(e.message || e); }
 }
 window.mcSub_ = function (v) { MC.sub = v === 'fb' ? 'fb' : 'air'; try { localStorage.setItem('mc-sub', MC.sub); } catch (_) {} mcSubPintar_(); };
@@ -77658,17 +77674,124 @@ function mcFbPintar_() {
     <div class="fb-kp"><div><b>${S.total || 0}</b><small>en la lista</small></div><div><b>${S.pendientes || 0}</b><small>pendientes</small></div><div><b>${S.ok || 0}</b><small>extraídas</small></div><div><b>${S.errores || 0}</b><small>con error</small></div><div><b>${S.no_disponibles || 0}</b><small>no disponibles</small></div></div>
     <div class="mc-row" style="gap:8px"><button type="button" class="mc-btn" onclick="mcFbRefrescar_()">🔄 Actualizar</button>${S.errores ? '<button type="button" class="mc-btn" onclick="mcFbReintentar_()">↻ Reintentar las que fallaron</button>' : ''}${S.no_disponibles || S.errores ? '<button type="button" class="mc-btn" onclick="mcFbLimpiar_()">🗑️ Quitar errores y no disponibles</button>' : ''}</div>
     <div class="fb-chips">${chip('todas', 'Todas', L.length)}${chip('pendiente', 'Pendientes', S.pendientes || 0)}${chip('ok', 'Extraídas', S.ok || 0)}${chip('error', 'Con error', S.errores || 0)}${chip('no_disponible', 'No disponibles', S.no_disponibles || 0)}</div>
-    ${L.length ? `<div class="fb-sc"><table class="fb-tb"><thead><tr><th></th><th>Publicación</th><th>Precio</th><th>Ubicación</th><th>Estado</th><th></th></tr></thead><tbody>${vis.slice(0, MC.fb.ver).map(x => `<tr><td>${x.thumb ? `<img src="${esc(x.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<img alt="">'}</td><td><a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:#0f172a;font-weight:700;text-decoration:none">${esc(x.titulo || 'Publicación ' + x.id)}</a><div class="mc-mu" style="font-size:11px">${esc(x.id)}${x.error ? ' · ' + esc(x.error) : ''}</div></td><td>${esc(x.precio || '—')}</td><td>${esc(x.ubicacion || '—')}</td><td>${stt(x.estado)}</td><td><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcFbQuitar_('${esc(x.id)}')">✕</button></td></tr>`).join('') || '<tr><td colspan="6" class="mc-mu" style="padding:14px;text-align:center">Sin publicaciones en este filtro.</td></tr>'}</tbody></table></div>${vis.length > MC.fb.ver ? `<div style="text-align:center;margin:8px"><button type="button" class="mc-btn" onclick="MC.fb.ver+=100;mcFbPintar_()">Mostrar más (${vis.length - MC.fb.ver})</button></div>` : ''}` : '<div class="mc-mu" style="padding:10px 0">Aún no hay publicaciones. Usa el marcador (o pega enlaces) para llenar la lista.</div>'}</div>
+    ${L.length ? mcFbListaHtml_() : '<div class="mc-mu" style="padding:10px 0">Aún no hay publicaciones. Usa el marcador (o pega enlaces) para llenar la lista.</div>'}</div>
 
   <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee cada ficha pendiente (título, precio, descripción, ubicación, fotos, recámaras, baños, m², contacto…) y la estructura con el mismo extractor de «Rentas de largo plazo»; si faltan datos, la IA completa a partir del texto. Es un segundo marcador porque también se ejecuta en tu navegador, con tu sesión de Facebook.</div>
-    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0"><a class="fb-bm" href="${esc(MCFB_DET)}" onclick="alert('Arrastra este botón a la barra de marcadores de tu navegador (no lo pulses aquí).');return false" title="Arrástralo a la barra de marcadores">⚙️ Extraer detalles de Marketplace</a><span class="mc-mu" style="font-size:12px">⬅ arrástralo a tu barra de marcadores (una sola vez)</span></div>
-    <ol class="fb-steps"><li>Abre <b>facebook.com/marketplace</b> en tu navegador (con sesión iniciada) y toca el marcador <b>Extraer detalles de Marketplace</b>.</li><li>Procesa hasta <b>${c.lote}</b> fichas por corrida; las demás quedan pendientes: repite el marcador cuando quieras (mejor en tandas, no todo de golpe).</li><li>Al terminar, regresa aquí y pulsa «Actualizar».</li></ol>
+    <div id="fb-gate">${mcFbGateHtml_()}</div>
+    <ol class="fb-steps"><li>Abre <b>facebook.com/marketplace</b> en tu navegador (con sesión iniciada) y toca el marcador <b>Extraer detalles de Marketplace</b>.</li><li>Procesa hasta <b>${c.lote}</b> fichas <b>seleccionadas</b> por corrida; las demás quedan pendientes: repite el marcador cuando quieras (mejor en tandas, no todo de golpe).</li><li>Al terminar, regresa aquí y pulsa «Actualizar».</li></ol>
     <div class="fb-note"><b>Protección contra bloqueos:</b> una ficha a la vez, nunca en paralelo · pausas aleatorias de ${c.pausaMin}–${c.pausaMax} s y una pausa larga cada 6 fichas · reintentos con espera creciente ante fallas de red o errores 5xx · <b>se detiene sola</b> si Facebook pide verificación, inicio de sesión, captcha o responde 429/403, y conserva lo ya guardado · lo pendiente se retoma en la siguiente corrida · todo el trabajo pasa por tu sesión, sin guardar contraseñas ni saturar al servidor.</div>
     <details style="margin:8px 0"><summary class="mc-mu" style="cursor:pointer;font-weight:700">Respaldo: pegar el texto de un anuncio</summary><div style="margin-top:8px"><input class="mc-in" id="fb-tu" placeholder="Enlace del anuncio (…/marketplace/item/123…)" style="width:100%;margin-bottom:6px"><textarea class="mc-txt" id="fb-tt" placeholder="Abre el anuncio, selecciona todo el texto (Ctrl/Cmd+A), cópialo y pégalo aquí"></textarea><div class="mc-row" style="margin-top:6px"><button type="button" class="mc-btn" onclick="mcFbTexto_()">🧠 Estructurar con IA</button><span id="fb-tm" class="mc-mu"></span></div></div></details>
     <h4 style="margin:14px 0 6px;font-size:13px">Fichas extraídas <span class="mc-mu" style="font-weight:600">(${ext.length})</span></h4>
     ${ext.length ? `<div class="fb-sc"><table class="fb-tb"><thead><tr><th></th><th>Publicación</th><th>Tipo</th><th>Precio</th><th>Rec.</th><th>Baños</th><th>m²</th><th>Ubicación</th><th>Método</th></tr></thead><tbody>${ext.slice(0, 150).map(p => { const ft = (p.fotos || [])[0]; return `<tr><td>${ft ? `<img src="${esc(ft.url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<img alt="">'}</td><td><a href="${esc(p.url_origen)}" target="_blank" rel="noopener" style="color:#0f172a;font-weight:700;text-decoration:none">${esc(p.titulo || p.id)}</a><div class="mc-mu" style="font-size:11px">${esc(String(p.descripcion || '').slice(0, 90))}</div></td><td>${esc(p.tipo || '—')}</td><td>${p.precio ? '$' + Number(p.precio).toLocaleString('es-MX') : '—'}</td><td>${p.recamaras ?? '—'}</td><td>${p.banos ?? '—'}</td><td>${p.m2_construccion ?? '—'}</td><td>${esc(p.colonia || p.direccion || p.ciudad || '—')}</td><td class="mc-mu" style="font-size:11px">${esc(p.metodo || '')}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="mc-mu">Todavía no hay fichas extraídas.</div>'}
     ${(MC.fb.ejec || []).length ? `<details style="margin-top:10px"><summary class="mc-mu" style="cursor:pointer;font-weight:700">Historial de corridas</summary><ul class="fb-steps">${MC.fb.ejec.slice().reverse().map(e => `<li>${esc(mcF(String(e.at).slice(0, 10)))} ${esc(String(e.at).slice(11, 16))} · ${e.tipo === 'lista' ? `lista: ${e.nuevas || 0} nuevas, ${e.existentes || 0} ya estaban` : `detalle: ${e.ok || 0} guardadas, ${e.errores || 0} con error`}${e.nota ? ' · ' + esc(e.nota) : ''}</li>`).join('')}</ul></details>` : ''}</div>`;
 }
+// ── Clasificación, filtros y selección de la lista de Marketplace ──
+const mcFbNorm_ = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+function mcFbClas_(x) {
+  if (x._c) return x._c; const I = (MC.fb.items || {})[x.id] || {}, t = mcFbNorm_((x.titulo || '') + ' ' + (I.titulo || '') + ' ' + (I.tipo || '')), h = re => re.test(t); let c = 'Otro / sin clasificar', u = '—';
+  const bm = t.match(/(\d+)\s*(?:habitaci|recamara|dormitorio|beds?\b|bd\b|hab\b)/), rec = h(/monoambiente|\bstudio\b|\bestudio\b/) && !bm ? 'Monoambiente' : bm ? (+bm[1] >= 4 ? '4 o más recámaras' : bm[1] === '1' ? '1 recámara' : bm[1] + ' recámaras') : null;
+  const fin = t.match(/(?:^|[\s-])(casa|house|departamento|apartamento|apartment|condo|condominio|townhouse|town house|terreno)\s*$/), ft = fin ? fin[1] : '';
+  if (/townhouse|town house|casa adosada/.test(ft) || (!ft && h(/town ?house|casa adosada/))) { c = 'Townhouse'; u = rec || (h(/amueblad/) ? 'Amueblado' : 'General'); }
+  else if (/^(casa|house)$/.test(ft)) { c = 'Casa'; u = rec || 'Casa sola'; }
+  else if (/^(departamento|apartamento|apartment|condo|condominio)$/.test(ft)) { c = 'Departamento'; u = rec || 'Departamento'; }
+  else if (ft === 'terreno') { c = 'Terreno'; u = 'Terreno'; }
+  else if (h(/bodega|nave industrial|\bnave\b|almacen|parque industrial/)) { c = 'Bodega'; u = h(/nave|parque industrial/) ? 'Nave industrial' : h(/almacen/) ? 'Almacén' : 'Bodega comercial'; }
+  else if (h(/oficina|consultorio|cowork|co-work/)) { c = 'Oficina'; u = h(/consultorio/) ? 'Consultorio' : h(/cowork|co-work/) ? 'Coworking' : 'Oficina'; }
+  else if (h(/\blocal(es)?\b|plaza comercial|centro comercial|restaurante|cafeteria|traspas/)) { c = 'Local'; u = h(/restaurante|cafeteria/) ? 'Restaurante / cafetería' : h(/plaza|centro comercial/) ? 'En plaza comercial' : h(/pie de calle|esquina|avenida|bulevar|blvd|a calle/) ? 'A pie de calle' : h(/traspas/) ? 'Traspaso de negocio' : 'Local comercial'; }
+  else if (h(/salon|terraza|eventos|recepcion|boda|jardin para|mobiliario/)) { c = 'Salón / eventos'; u = h(/terraza/) ? 'Terraza' : h(/jardin/) ? 'Jardín' : 'Salón'; }
+  else if (h(/terreno|\blotes?\b|predio/)) { c = 'Terreno'; u = h(/comercial/) ? 'Terreno comercial' : h(/industrial/) ? 'Terreno industrial' : 'Terreno'; }
+  else if (h(/estacionamiento|cochera|garaje|garage/)) { c = 'Estacionamiento'; u = 'Cochera / estacionamiento'; }
+  else if (h(/palapa|caban|glamping|tiny house|\bdomo\b|casa de campo|quinta|rancho|hacienda|finca|campestre/)) { c = 'Palapa / Cabaña'; u = h(/palapa/) ? 'Palapa' : h(/glamping|domo/) ? 'Glamping / domo' : h(/tiny/) ? 'Tiny house' : h(/caban/) ? 'Cabaña' : h(/quinta|casa de campo|campestre/) ? 'Casa de campo / quinta' : 'Rancho / hacienda'; }
+  else if (h(/^(se )?(renta(n|mos)?|rento|alquilo|alquiler)?\s*(de |una |un )?(habitacion|cuarto|recamara|room)\b/)) { c = 'Habitación'; u = h(/compartid|roomie|roommate/) ? 'Compartida' : h(/bano (propio|privado)|con bano/) ? 'Con baño propio' : h(/amueblad/) ? 'Amueblada' : 'Individual'; }
+  else if (h(/departamento|\bdepas?\b|depto|dpto|apartamento|apartment|\bapto\b|\bloft\b|penthouse|\bph\b|\bestudio\b|studio|\bsuite\b|monoambiente|condominio|\bcondo\b/)) { c = 'Departamento'; u = rec || (h(/penthouse|\bph\b/) ? 'Penthouse' : h(/\bloft\b/) ? 'Loft' : h(/\bsuite\b/) ? 'Suite' : h(/amueblad|equipad/) ? 'Amueblado' : h(/condominio|\bcondo\b|torre/) ? 'En condominio / torre' : 'Departamento'); }
+  else if (h(/\bcasas?\b|\bhouse\b|residencia|duplex|chalet|\bvilla\b|casita|vivienda/)) { c = 'Casa'; u = rec || (h(/duplex/) ? 'Dúplex' : h(/residencia|chalet|\bvilla\b/) ? 'Residencia' : h(/privada|coto|fraccionamiento|residencial|cerrada/) ? 'En privada / fraccionamiento' : h(/amueblad/) ? 'Amueblada' : 'Casa sola'); }
+  const pr = mcFbPrecio_(x), o = h(/\bventa\b|se vende|\bvendo\b/) || (pr != null && pr >= 250000) ? 'Venta' : 'Renta';
+  return x._c = { c, s: u, o };
+}
+function mcFbPrecio_(x) { const p = String(x.precio || ''); if (/gratis/i.test(p)) return 0; const d = p.replace(/[.,]\d{1,2}\s*$/, '').replace(/[^\d]/g, ''); return d ? +d : null; }
+function mcFbDom_() {
+  const F = mcFbF_(), key = [...F.op].sort().join(','); if (MC.fb._dom && MC.fb._domK === key) return MC.fb._dom; const v = (MC.fb.lista || []).filter(x => !F.op.size || F.op.has(mcFbClas_(x).o)).map(mcFbPrecio_).filter(p => p > 1).sort((a, b) => a - b); MC.fb._domK = key; if (!v.length) return MC.fb._dom = [0, 10000];
+  const hi0 = v[Math.min(v.length - 1, Math.floor(v.length * .98))], st = mcFbStep_([v[0], hi0]), lo = Math.floor(v[0] / st) * st; return MC.fb._dom = [lo, Math.max(Math.ceil(hi0 / st) * st, lo + st)];
+}
+const mcFbStep_ = D => D[1] - D[0] > 2e6 ? 50000 : D[1] - D[0] > 2e5 ? 5000 : 500;
+const mcFbF_ = () => MC.fb.f || (MC.fb.f = { ubi: new Set(), cat: new Set(), sub: new Set(), op: new Set(), pr: null });
+const mcFbPrOn_ = () => { const F = mcFbF_(), D = mcFbDom_(); return !!F.pr && (F.pr[0] > D[0] || F.pr[1] < D[1]); };
+const mcFbSelectable_ = x => x.estado === 'pendiente' || (x.estado === 'error' && (x.intentos || 0) < 3);
+const mcFbSelN_ = () => (MC.fb.lista || []).filter(x => x.sel && mcFbSelectable_(x)).length;
+function mcFbPasa_(x) {
+  const F = mcFbF_(), c = mcFbClas_(x); if (F.ubi.size && !F.ubi.has(x.ubicacion || 'Sin ubicación')) return false; if (F.cat.size && !F.cat.has(c.c)) return false; if (F.sub.size && !F.sub.has(c.c + '|' + c.s)) return false; if (F.op.size && !F.op.has(c.o)) return false;
+  if (mcFbPrOn_()) { const D = mcFbDom_(), p = mcFbPrecio_(x); if (p == null || p < F.pr[0] || (F.pr[1] < D[1] && p > F.pr[1])) return false; } return true;
+}
+const mcFbFiltradas_ = () => { const E = MC.fb.filtro; return (MC.fb.lista || []).filter(x => (E === 'todas' || x.estado === E) && mcFbPasa_(x)); };
+const mcFbStt_ = e => `<span class="fb-st ${e}">${{ pendiente: 'Pendiente', ok: 'Extraída', error: 'Con error', no_disponible: 'No disponible' }[e] || e}</span>`;
+function mcFbOps_(k, arr, sel) { return `<div class="fs-ops" data-k="${k}">${arr.map(([v, t, n]) => `<div class="fs-op ${sel.has(v) ? 'on' : ''}" role="checkbox" tabindex="0" onclick="mcFbTg_('${k}',${esc(JSON.stringify(v))},this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"><span class="fs-ck">✓</span><span class="fs-tx">${esc(t)}</span><em>${n}</em></div>`).join('') || '<div class="mc-mu" style="font-size:12px">Sin opciones</div>'}</div>`; }
+function mcFbSubHtml_() {
+  const F = mcFbF_(), cs = {}; (MC.fb.lista || []).forEach(x => { const c = mcFbClas_(x); if (F.cat.size && !F.cat.has(c.c)) return; const k = c.c + '|' + c.s; cs[k] = (cs[k] || 0) + 1; });
+  return mcFbOps_('sub', Object.entries(cs).sort((a, b) => a[0].localeCompare(b[0])).map(([k, n]) => [k, k.replace('|', ' › '), n]), F.sub);
+}
+function mcFbPrHtml_() {
+  const D = mcFbDom_(), st = mcFbStep_(D), [lo, hi] = mcFbF_().pr || D, pct = v => D[1] === D[0] ? 0 : (v - D[0]) / (D[1] - D[0]) * 100;
+  return `<div class="fs-bd"><div class="al-fg"><label>Renta mensual <b id="fbrgv">${MCFMT(lo)} – ${MCFMT(hi)}${hi >= D[1] ? '+' : ''}</b></label><div class="al-rg" id="fbrg"><div class="tr"></div><div class="fl" style="left:${pct(lo)}%;right:${100 - pct(hi)}%"></div>
+    <input type="range" min="${D[0]}" max="${D[1]}" step="${st}" value="${lo}" oninput="mcFbRgIn_()" aria-label="Precio mínimo"><input type="range" min="${D[0]}" max="${D[1]}" step="${st}" value="${hi}" oninput="mcFbRgIn_()" aria-label="Precio máximo"></div>
+    <div class="fs-nums"><label><span>$</span><input type="number" id="fbrgn0" min="${D[0]}" max="${D[1]}" step="${st}" value="${lo}" onchange="mcFbRgNum_()" aria-label="Precio mínimo"></label><i></i><label><span>$</span><input type="number" id="fbrgn1" min="${D[0]}" max="${D[1]}" step="${st}" value="${hi}" onchange="mcFbRgNum_()" aria-label="Precio máximo"></label></div></div></div>`;
+}
+function mcFbListaHtml_() {
+  const L = MC.fb.lista || [], F = mcFbF_(), cu = {}, cc = {}, co = {}; L.forEach(x => { const u = x.ubicacion || 'Sin ubicación', k = mcFbClas_(x), c = k.c; cu[u] = (cu[u] || 0) + 1; cc[c] = (cc[c] || 0) + 1; co[k.o] = (co[k.o] || 0) + 1; });
+  const ub = Object.entries(cu).sort((a, b) => b[1] - a[1]).map(([u, n]) => [u, u, n]), ct = Object.entries(cc).sort((a, b) => b[1] - a[1]).map(([c, n]) => [c, c, n]);
+  return `<div class="fbf" id="fbf">
+    <div class="fbg"><h5>Operación<button type="button" onclick="mcFbLimpiaF_('op')">Limpiar</button></h5><div id="fbf-op">${mcFbOps_('op', ['Renta', 'Venta'].map(o => [o, o, co[o] || 0]), F.op)}</div></div>
+    <div class="fbg"><h5>Ubicación<button type="button" onclick="mcFbLimpiaF_('ubi')">Limpiar</button></h5><div id="fbf-ubi">${mcFbOps_('ubi', ub, F.ubi)}</div></div>
+    <div class="fbg"><h5>Categoría<button type="button" onclick="mcFbLimpiaF_('cat')">Limpiar</button></h5><div id="fbf-cat">${mcFbOps_('cat', ct, F.cat)}</div></div>
+    <div class="fbg"><h5>Subcategoría<button type="button" onclick="mcFbLimpiaF_('sub')">Limpiar</button></h5><div id="fbf-sub">${mcFbSubHtml_()}</div></div>
+    <div class="fbg"><h5>Precio<button type="button" onclick="mcFbLimpiaF_('pr')">Limpiar</button></h5><div id="fbf-pr">${mcFbPrHtml_()}</div></div>
+  </div><div id="fbl-tab">${mcFbTablaHtml_(MC.fb._vis = mcFbFiltradas_())}</div>`;
+}
+function mcFbTablaHtml_(vis) {
+  const L = MC.fb.lista || [], nSel = mcFbSelN_(), nFil = vis.filter(mcFbSelectable_).length, on = !!(mcFbF_().ubi.size || mcFbF_().cat.size || mcFbF_().sub.size || mcFbF_().op.size || mcFbPrOn_());
+  return `<div class="fbsel"><span class="n"><b id="fbsel-n">${nSel}</b> seleccionadas para extraer</span><span class="mc-mu" style="font-size:12px">${vis.length} de ${L.length} coinciden${on ? ' con los filtros' : ''}</span>
+    <span style="flex:1"></span><button type="button" class="mc-btn" onclick="mcFbSelAcc_('todas')">Seleccionar todas</button><button type="button" class="mc-btn" ${nFil ? '' : 'disabled'} onclick="mcFbSelAcc_('filtradas')">Seleccionar las ${nFil} mostradas</button><button type="button" class="mc-btn" onclick="mcFbSelAcc_('quitarfil')">Quitar las mostradas</button><button type="button" class="mc-btn" onclick="mcFbSelAcc_('ninguna')">Ninguna</button></div>
+  <div class="fb-sc"><table class="fb-tb"><thead><tr><th></th><th></th><th>Publicación</th><th>Tipo</th><th>Subcategoría</th><th>Precio</th><th>Ubicación</th><th>Estado</th><th></th></tr></thead><tbody>${vis.slice(0, MC.fb.ver).map(x => { const c = mcFbClas_(x), ok = mcFbSelectable_(x); return `<tr class="${x.sel && ok ? 'sel' : ''}"><td><span class="fbx ${x.sel && ok ? 'on' : ''} ${ok ? '' : 'off'}" role="checkbox" aria-checked="${!!(x.sel && ok)}" title="${ok ? 'Seleccionar para extraer' : 'Ya no se puede extraer'}" onclick="mcFbRow_('${esc(x.id)}',this)">✓</span></td><td>${x.thumb ? `<img src="${esc(x.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<img alt="">'}</td><td><a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:#0f172a;font-weight:700;text-decoration:none">${esc(x.titulo || 'Publicación ' + x.id)}</a><div class="mc-mu" style="font-size:11px">${esc(x.id)}${x.error ? ' · ' + esc(x.error) : ''}</div></td><td><span class="fb-tag">${esc(c.c)}</span></td><td class="mc-mu" style="font-size:12px">${esc(c.s)}</td><td>${esc(x.precio || '—')}<div class="mc-mu" style="font-size:11px">${c.o}</div></td><td>${esc(x.ubicacion || '—')}</td><td>${mcFbStt_(x.estado)}</td><td><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcFbQuitar_('${esc(x.id)}')">✕</button></td></tr>`; }).join('') || '<tr><td colspan="9" class="mc-mu" style="padding:14px;text-align:center">Ninguna publicación coincide con los filtros.</td></tr>'}</tbody></table></div>${vis.length > MC.fb.ver ? `<div style="text-align:center;margin:8px"><button type="button" class="mc-btn" onclick="MC.fb.ver+=100;mcFbTabla_()">Mostrar más (${vis.length - MC.fb.ver})</button></div>` : ''}`;
+}
+function mcFbTabla_() { const el = document.getElementById('fbl-tab'); if (!el) return; el.innerHTML = mcFbTablaHtml_(MC.fb._vis = mcFbFiltradas_()); mcFbGate_(); }
+function mcFbTablaSoon_() { if (MC._fbRaf) return; MC._fbRaf = setTimeout(() => { MC._fbRaf = 0; MC.fb.ver = 100; mcFbTabla_(); }, 40); }
+function mcFbGateHtml_() {
+  const n = mcFbSelN_(), c = MC.fb.cfg || {}; MC.fb._gateN = n;
+  if (!n) return `<div class="fb-gate">⛔ Para extraer, <b>selecciona primero</b> las publicaciones en «1 · Lista de publicaciones»: todas, o por grupos usando los filtros (ubicación, categoría, subcategoría y precio) y «Seleccionar las mostradas».</div>`;
+  return `<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0"><a class="fb-bm" href="${esc(MCFB_DET)}" onclick="alert('Arrastra este botón a la barra de marcadores de tu navegador (no lo pulses aquí).');return false" title="Arrástralo a la barra de marcadores">⚙️ Extraer detalles de Marketplace</a><span class="mc-mu" style="font-size:12px">⬅ arrástralo a tu barra de marcadores (una sola vez)</span></div><div style="font-size:13px;margin:4px 0 8px">Se extraerán solo las <b>${n}</b> publicaciones seleccionadas (${Math.min(n, c.lote || 25)} por corrida).</div>`;
+}
+function mcFbGate_() { const g = document.getElementById('fb-gate'); if (g && (MC.fb._gateN !== mcFbSelN_() || !g.innerHTML)) g.innerHTML = mcFbGateHtml_(); }
+function mcFbSelPost_(ids, val) { fetch(`${BACKEND}/mercado/facebook/seleccion`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, sel: val }) }).then(r => r.json()).then(j => { if (!j.ok) throw new Error(j.error || 'Error'); }).catch(e => { const m = document.getElementById('fbsel-n'); if (m) m.title = 'No se guardó la selección: ' + (e.message || e); }); }
+function mcFbSelUpd_() { const n = document.getElementById('fbsel-n'); if (n) n.textContent = mcFbSelN_(); mcFbGate_(); }
+window.mcFbRow_ = function (id, el) { const x = (MC.fb.lista || []).find(y => y.id === id); if (!x || !mcFbSelectable_(x)) return; x.sel = !x.sel; el.classList.toggle('on', !!x.sel); el.setAttribute('aria-checked', !!x.sel); const tr = el.closest('tr'); if (tr) tr.classList.toggle('sel', !!x.sel); mcFbSelUpd_(); mcFbSelPost_([id], !!x.sel); };
+window.mcFbSelAcc_ = function (a) {
+  const L = MC.fb.lista || [], vis = MC.fb._vis || mcFbFiltradas_(); let ids, val = true;
+  if (a === 'todas') ids = L.filter(mcFbSelectable_).map(x => x.id); else if (a === 'filtradas') ids = vis.filter(mcFbSelectable_).map(x => x.id); else if (a === 'quitarfil') { ids = vis.map(x => x.id); val = false; } else { ids = L.filter(x => x.sel).map(x => x.id); val = false; }
+  const S = new Set(ids); L.forEach(x => { if (S.has(x.id)) x.sel = val; }); mcFbTabla_(); if (ids.length) mcFbSelPost_(ids, val);
+};
+window.mcFbTg_ = function (k, v, el) {
+  const S = mcFbF_()[k]; if (S.has(v)) S.delete(v); else S.add(v); if (el) el.classList.toggle('on', S.has(v));
+  if (k === 'cat') { const ok = new Set(); (MC.fb.lista || []).forEach(x => { const c = mcFbClas_(x); if (!S.size || S.has(c.c)) ok.add(c.c + '|' + c.s); }); [...mcFbF_().sub].forEach(q => { if (!ok.has(q)) mcFbF_().sub.delete(q); }); const b = document.getElementById('fbf-sub'); if (b) b.innerHTML = mcFbSubHtml_(); }
+  if (k === 'op') { mcFbF_().pr = null; const b = document.getElementById('fbf-pr'); if (b) b.innerHTML = mcFbPrHtml_(); }
+  mcFbTablaSoon_();
+};
+window.mcFbLimpiaF_ = function (k) {
+  const F = mcFbF_(); if (k === 'op') { F.op.clear(); F.pr = null; const b = document.getElementById('fbf-op'); if (b) b.innerHTML = mcFbOps_('op', ['Renta', 'Venta'].map(o => [o, o, (MC.fb.lista || []).filter(x => mcFbClas_(x).o === o).length]), F.op); const b2 = document.getElementById('fbf-pr'); if (b2) b2.innerHTML = mcFbPrHtml_(); } else if (k === 'pr') { F.pr = null; const b = document.getElementById('fbf-pr'); if (b) b.innerHTML = mcFbPrHtml_(); } else { F[k].clear(); const b = document.getElementById('fbf-' + k); if (b) b.innerHTML = k === 'sub' ? mcFbSubHtml_() : mcFbOps_(k, k === 'ubi' ? Object.entries((MC.fb.lista || []).reduce((o, x) => { const u = x.ubicacion || 'Sin ubicación'; o[u] = (o[u] || 0) + 1; return o; }, {})).sort((a, b) => b[1] - a[1]).map(([u, n]) => [u, u, n]) : Object.entries((MC.fb.lista || []).reduce((o, x) => { const c = mcFbClas_(x).c; o[c] = (o[c] || 0) + 1; return o; }, {})).sort((a, b) => b[1] - a[1]).map(([c, n]) => [c, c, n]), F[k]);
+    if (k === 'cat') { const b2 = document.getElementById('fbf-sub'); if (b2) b2.innerHTML = mcFbSubHtml_(); } }
+  mcFbTablaSoon_();
+};
+function mcFbRgPinta_(lo, hi) {
+  const D = mcFbDom_(), w = document.getElementById('fbrg'); if (!w) return; const pct = v => D[1] === D[0] ? 0 : (v - D[0]) / (D[1] - D[0]) * 100, fl = w.querySelector('.fl'); fl.style.left = pct(lo) + '%'; fl.style.right = (100 - pct(hi)) + '%';
+  const n0 = document.getElementById('fbrgn0'), n1 = document.getElementById('fbrgn1'); if (n0) n0.value = lo; if (n1) n1.value = hi; const t = document.getElementById('fbrgv'); if (t) t.textContent = `${MCFMT(lo)} – ${MCFMT(hi)}${hi >= D[1] ? '+' : ''}`;
+}
+window.mcFbRgIn_ = function () {
+  const w = document.getElementById('fbrg'); if (!w) return; const [a, b] = w.querySelectorAll('input'); let lo = +a.value, hi = +b.value;
+  if (lo > hi) { if (document.activeElement === a) { lo = hi; a.value = lo; } else { hi = lo; b.value = hi; } } mcFbF_().pr = [lo, hi]; mcFbRgPinta_(lo, hi); mcFbTablaSoon_();
+};
+window.mcFbRgNum_ = function () {
+  const w = document.getElementById('fbrg'), n0 = document.getElementById('fbrgn0'), n1 = document.getElementById('fbrgn1'); if (!w || !n0 || !n1) return; const [a, b] = w.querySelectorAll('input'), D = mcFbDom_();
+  let lo = parseFloat(n0.value), hi = parseFloat(n1.value); if (isNaN(lo)) lo = D[0]; if (isNaN(hi)) hi = D[1]; lo = Math.max(D[0], Math.min(lo, D[1])); hi = Math.max(D[0], Math.min(hi, D[1])); if (lo > hi) { const t = lo; lo = hi; hi = t; }
+  a.value = lo; b.value = hi; mcFbF_().pr = [lo, hi]; mcFbRgPinta_(lo, hi); mcFbTablaSoon_();
+};
 window.mcFbSet_ = function (k, v) { const c = MC.fb.cfg; if (k === 'radio') c.radio = +v; else c[k] = String(c[k] || '') === v && v !== '' ? '' : v; mcFbLeeForm_(); mcFbPintar_(); };
 window.mcFbTipo_ = function (k) { const c = MC.fb.cfg; mcFbLeeForm_(); const s = new Set(c.tipos || []); if (s.has(k)) s.delete(k); else s.add(k); c.tipos = [...s]; mcFbPintar_(); };
 function mcFbLeeForm_() { const c = MC.fb.cfg, g = id => { const e = document.getElementById(id); return e ? e.value : null; }, n = id => { const v = g(id); return v == null || v === '' ? null : +v; };
