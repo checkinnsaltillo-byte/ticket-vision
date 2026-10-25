@@ -12934,16 +12934,16 @@ const _PL_FM = "places.id,places.displayName,places.primaryType,places.primaryTy
 const _plMetros = (a, b) => { const p = Math.PI / 180, x = Math.sin((b[0] - a[0]) * p / 2) ** 2 + Math.cos(a[0] * p) * Math.cos(b[0] * p) * Math.sin((b[1] - a[1]) * p / 2) ** 2; return 2000 * 6371 * Math.asin(Math.sqrt(x)); };
 const _plOff = (lat, lng, dn, de) => [lat + dn / 111320, lng + de / (111320 * Math.cos(lat * Math.PI / 180))];
 async function _plBuscaGrupo(key, tipos, lat, lng, r, ctx, depth) {
-  if (ctx.reqs >= ctx.max) { ctx.truncado = true; return []; }
-  ctx.reqs++; const rr = await fetch("https://places.googleapis.com/v1/places:searchNearby", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": _PL_FM }, body: JSON.stringify({ includedTypes: tipos, locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: r } }, maxResultCount: 20, rankPreference: "POPULARITY", languageCode: "es" }), signal: AbortSignal.timeout(30000) });
+  if (ctx.reqs >= ctx.max || ctx.gr >= ctx.gmax) { ctx.truncado = true; return []; } // tope total y por grupo: un grupo muy denso no deja sin consultas a los demás
+  ctx.reqs++; ctx.gr++; const rr = await fetch("https://places.googleapis.com/v1/places:searchNearby", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": _PL_FM }, body: JSON.stringify({ includedTypes: tipos, locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: r } }, maxResultCount: 20, rankPreference: "POPULARITY", languageCode: "es" }), signal: AbortSignal.timeout(30000) });
   const j = await rr.json(); if (!rr.ok) throw new Error(`Places ${rr.status}: ${(j.error && j.error.message) || ""}`.slice(0, 200));
   let P = j.places || [];
   if (P.length >= 20 && depth < 2 && r > 200) { ctx.saturados++; const c = [[lat, lng]]; for (let k = 0; k < 6; k++) { const a = Math.PI / 3 * k; c.push(_plOff(lat, lng, r * 0.6 * Math.cos(a), r * 0.6 * Math.sin(a))); } for (const [a, b] of c) P = P.concat(await _plBuscaGrupo(key, tipos, a, b, r * 0.55, ctx, depth + 1)); }
   return P;
 }
 async function _plBusca(key, lat, lng, radio, max) {
-  const ctx = { reqs: 0, max: max || 120, saturados: 0, truncado: false }, M = new Map();
-  for (const [g, tipos] of Object.entries(_PL_GRUPOS)) { const P = await _plBuscaGrupo(key, tipos, lat, lng, radio, ctx, 0); P.forEach(p => { const d = _plMetros([lat, lng], [p.location.latitude, p.location.longitude]); if (d > radio * 1.02) return; if (!M.has(p.id)) { p.grupo = g; p.dist = Math.round(d); M.set(p.id, p); } else { const q = M.get(p.id); q.grupos = [...new Set([...(q.grupos || [q.grupo]), g])]; } }); }
+  const ctx = { reqs: 0, max: max || 160, gr: 0, gmax: 14, saturados: 0, truncado: false }, M = new Map();
+  for (const [g, tipos] of Object.entries(_PL_GRUPOS)) { ctx.gr = 0; const P = await _plBuscaGrupo(key, tipos, lat, lng, radio, ctx, 0); P.forEach(p => { const d = _plMetros([lat, lng], [p.location.latitude, p.location.longitude]); if (d > radio * 1.02) return; if (!M.has(p.id)) { p.grupo = g; p.dist = Math.round(d); M.set(p.id, p); } else { const q = M.get(p.id); q.grupos = [...new Set([...(q.grupos || [q.grupo]), g])]; } }); }
   return { places: [...M.values()].sort((a, b) => a.dist - b.dist), reqs: ctx.reqs, saturados: ctx.saturados, truncado: ctx.truncado };
 }
 
@@ -12959,10 +12959,16 @@ function _plResumen(places, radio) {
   const anclas = { supermercados: has(["supermarket"]).length, centros_comerciales: has(["shopping_mall"]).length, hospitales: has(["hospital"]).length, escuelas: has(["school", "primary_school", "secondary_school", "preschool"]).length, universidades: has(["university"]).length, farmacias: has(["pharmacy", "drugstore"]).length, bancos: has(["bank"]).length, gasolineras: has(["gas_station"]).length, paradas: has(["bus_station", "bus_stop", "transit_station", "train_station"]).length, parques: has(["park", "playground"]).length, gimnasios: has(["gym", "fitness_center"]).length };
   Object.values(grupos).forEach(g => { g.rating = g.rn ? Math.round(g.rs / g.rn * 100) / 100 : null; delete g.rs; delete g.rn; });
   const top = places.slice().sort((a, b) => (b.userRatingCount || 0) - (a.userRatingCount || 0)).slice(0, 10).map(p => ({ id: p.id, n: (p.displayName || {}).text, t: (p.primaryTypeDisplayName || {}).text, r: p.rating, c: p.userRatingCount, d: p.dist }));
-  return { total: N, densidad_ha: Math.round(N / area * 10) / 10, rating_medio: rn ? Math.round(rs / rn * 100) / 100 : null, pct_rating_alto: rn ? Math.round(alto / rn * 100) : null, resenas: rev, abiertos_ahora: abiertos, con_horario: conHor, cerrados_definitivo: cerrados, diversidad: Math.round(H / Hmax * 100), tipos_distintos: Object.keys(tipos).length, grupos, anclas, top };
+  return { scores: _plScores(places), total: N, densidad_ha: Math.round(N / area * 10) / 10, rating_medio: rn ? Math.round(rs / rn * 100) / 100 : null, pct_rating_alto: rn ? Math.round(alto / rn * 100) : null, resenas: rev, abiertos_ahora: abiertos, con_horario: conHor, cerrados_definitivo: cerrados, diversidad: Math.round(H / Hmax * 100), tipos_distintos: Object.keys(tipos).length, grupos, anclas, top };
 }
 
 
+// Calificación por categoría (0–100): 65 % cobertura (negocios operativos / referencia) + 35 % proximidad (más cercano a ≤ 800 m). Aptitud = promedio de las 6 categorías.
+const _PL_CATS = { salud: { g: ["salud"], ref: 8 }, abasto: { g: ["abasto"], ref: 10 }, educacion: { g: ["educacion"], ref: 6 }, ocio: { g: ["comida", "ocio"], ref: 25 }, transporte: { g: ["transporte"], ref: 10 }, servicios: { g: ["finanzas", "servicios", "publico", "tiendas"], ref: 20 } };
+function _plScores(places) {
+  const sc = {}; for (const [k, c] of Object.entries(_PL_CATS)) { const L = places.filter(p => (c.g.includes(p.grupo) || (p.grupos || []).some(x => c.g.includes(x))) && (!p.businessStatus || p.businessStatus === "OPERATIONAL")), n = L.length, d = n ? Math.min(...L.map(p => p.dist)) : null; sc[k] = n ? Math.round(100 * (0.65 * Math.min(1, n / c.ref) + 0.35 * (1 - Math.min(1, d / 800)))) : 0; }
+  sc.total = Math.round(Object.values(sc).reduce((a, b) => a + b, 0) / Object.keys(_PL_CATS).length); return sc;
+}
 let _plJob = { running: false };
 async function _plIndiceSet(id, ent) { for (let i = 0; i < 6; i++) { const { data, gen } = await _bnReadGcs("mercado/lugares/_indice.json"), d = data && data.i ? data : { i: {} }; d.i[id] = ent; try { await _bnWriteGcs("mercado/lugares/_indice.json", d, gen); return; } catch (e) { if (!e.conflict && !e.retry) throw e; await _maSleep(500 * (i + 1)); } } }
 async function _plAnaliza(id, radio, max) {
@@ -12971,17 +12977,25 @@ async function _plAnaliza(id, radio, max) {
   const lat = +it.lat, lng = +it.lng; _plJob.paso = `Buscando negocios a ≤ ${radio} m`;
   const r = await _plBusca(key, lat, lng, radio, max), res = _plResumen(r.places, radio), at = new Date().toISOString();
   const rec = { id, ver: "lugares-v1", at, expira: new Date(Date.now() + 30 * 864e5).toISOString(), fuente: "Google Places API (New) · Nearby Search", lat, lng, radio, reqs: r.reqs, saturados: r.saturados, truncado: r.truncado, resumen: res, places: r.places };
-  await _bnWriteGcs(`mercado/lugares/${id}.json`, rec, null); await _plIndiceSet(id, { total: res.total, dens: res.densidad_ha, rating: res.rating_medio, rev: res.resenas, div: res.diversidad, g: Object.fromEntries(Object.entries(res.grupos).map(([k, v]) => [k, v.n])), at, trunc: r.truncado }); return rec;
+  await _bnWriteGcs(`mercado/lugares/${id}.json`, rec, null); await _plIndiceSet(id, { total: res.total, dens: res.densidad_ha, rating: res.rating_medio, rev: res.resenas, div: res.diversidad, sc: res.scores, g: Object.fromEntries(Object.entries(res.grupos).map(([k, v]) => [k, v.n])), at, trunc: r.truncado }); return rec;
 }
 app.get("/mercado/airbnb/lugares/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs("mercado/lugares/_indice.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: (data && data.i) || {} }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/airbnb/lugares/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _plJob)); });
 app.get("/mercado/airbnb/lugares/dato", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/lugares/${id}.json`); res.set("Cache-Control", "no-store"); res.json({ ok: true, lugares: data || null, etiquetas: _PL_GRUPO_LBL }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+// Recalcula el resumen y las calificaciones desde los negocios ya guardados (sin consultar Google).
+app.post("/mercado/airbnb/lugares/recalcular", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const { data: ix } = await _bnReadGcs("mercado/lugares/_indice.json"), ids = Object.keys((ix && ix.i) || {}); let n = 0;
+    for (const id of ids) { const { data: rec } = await _bnReadGcs(`mercado/lugares/${id}.json`); if (!rec || !Array.isArray(rec.places)) continue; rec.resumen = _plResumen(rec.places, rec.radio || 1000); await _bnWriteGcs(`mercado/lugares/${id}.json`, rec, null); const res2 = rec.resumen;
+      await _plIndiceSet(id, { total: res2.total, dens: res2.densidad_ha, rating: res2.rating_medio, rev: res2.resenas, div: res2.diversidad, sc: res2.scores, g: Object.fromEntries(Object.entries(res2.grupos).map(([k, v]) => [k, v.n])), at: rec.at, trunc: rec.truncado }); n++; }
+    res.json({ ok: true, recalculados: n }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/mercado/airbnb/lugares/analizar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   const id = String((req.body || {}).id || "").replace(/\D/g, ""), radio = Math.max(200, Math.min(2000, parseInt((req.body || {}).radio, 10) || 1000)); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
   if (_plJob.running && Date.now() - Date.parse(_plJob.upd || 0) < 240000) return res.status(409).json({ ok: false, error: "Ya hay una búsqueda de negocios en curso" });
   _plJob = { running: true, id, radio, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _plJob.upd = new Date().toISOString(); }, 15000);
-  _plAnaliza(id, radio, 150).then(() => { _plJob.ok = true; }).catch(e => { _plJob.error = String(e.message || e); console.warn("[lugares]", id, e.message); }).finally(() => { clearInterval(t); _plJob.running = false; _plJob.fin = new Date().toISOString(); });
+  _plAnaliza(id, radio, 160).then(() => { _plJob.ok = true; }).catch(e => { _plJob.error = String(e.message || e); console.warn("[lugares]", id, e.message); }).finally(() => { clearInterval(t); _plJob.running = false; _plJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
 app.get("/mercado/airbnb/entorno/config", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); _enCfg.t = 0; res.set("Cache-Control", "no-store"); res.json({ ok: true, radio: await _enRadio(), min: 50, max: 500 }); });
