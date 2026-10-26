@@ -77738,7 +77738,7 @@ function mcFbPintar_() {
     <div class="fb-chips">${chip('all', 'Todas', L.length)}${chip('todas', 'Activas', act.length)}${chip('pendiente', 'Pendientes', cnt('pendiente'))}${chip('ok', 'Extraídas', cnt('ok'))}${chip('error', 'Con error', cnt('error'))}${chip('no_disponible', 'No disponibles', cnt('no_disponible'))}${chip('arch', 'Archivadas', L.length - act.length)}</div>
     ${L.length ? mcFbListaHtml_() : '<div class="mc-mu" style="padding:10px 0">Aún no hay publicaciones. Usa el marcador (o pega enlaces) para llenar la lista.</div>'}</div>
 
-  <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee cada ficha pendiente (título, precio, descripción, ubicación, fotos, recámaras, baños, m², contacto…) y la estructura con el mismo extractor de «Rentas de largo plazo»; si faltan datos, la IA completa a partir del texto. Es un segundo marcador porque también se ejecuta en tu navegador, con tu sesión de Facebook.</div>
+  <div class="mc-card"><h3>2 · Extraer</h3><div class="sub">Lee cada publicación seleccionada en el paso 1 (también las ya extraídas: se vuelven a leer y se actualizan) — título, precio, descripción, ubicación, fotos, recámaras, baños, m², contacto…) y la estructura con el mismo extractor de «Rentas de largo plazo»; si faltan datos, la IA completa a partir del texto. Es un segundo marcador porque también se ejecuta en tu navegador, con tu sesión de Facebook.</div>
     <div id="fb-prog">${mcFbProgHtml_()}</div>
     <div id="fb-gate">${mcFbGateHtml_()}</div>
     <ol class="fb-steps"><li>Abre <b>facebook.com/marketplace</b> en tu navegador (con sesión iniciada) y toca el marcador <b>Extraer detalles de Marketplace</b>. Permite las ventanas emergentes: se abre la de Check-inn y, al tocar <b>«Iniciar»</b> en el panel, una ventana pequeña donde se abre cada publicación (como si la vieras tú) para leer todas sus fotos, el mapa y el texto completo.</li><li>Procesa las <b>seleccionadas</b> en tandas de <b>${c.lote}</b> fichas y, tras cada tanda, descansa de 1,5 a 2,5 minutos y sigue sola hasta terminar (o hasta que pulses «Detener»). Deja esa pestaña de Facebook abierta y a la vista. Conviene seleccionar unas 100–150 por sesión.</li><li>Al terminar, regresa aquí y pulsa «Actualizar».</li></ol>
@@ -77778,7 +77778,7 @@ function mcFbDom_() {
 const mcFbStep_ = D => D[1] - D[0] > 2e6 ? 50000 : D[1] - D[0] > 2e5 ? 5000 : 500;
 const mcFbF_ = () => MC.fb.f || (MC.fb.f = { ubi: new Set(), cat: new Set(), sub: new Set(), op: new Set(), pr: null });
 const mcFbPrOn_ = () => { const F = mcFbF_(), D = mcFbDom_(); return !!F.pr && (F.pr[0] > D[0] || F.pr[1] < D[1]); };
-const mcFbExtraible_ = x => x.estado === 'pendiente' || (x.estado === 'error' && (x.intentos || 0) < 3);
+const mcFbExtraible_ = x => !x.arch && !(x.estado === 'error' && (x.intentos || 0) >= 3); // la selección es la cola de extracción (también las ya extraídas, que se actualizan)
 const mcFbSelectable_ = x => !x.arch; // se puede seleccionar cualquier publicación no archivada (para extraer o para validar, archivar o monitorear en lote)
 const mcFbSelN_ = () => (MC.fb.lista || []).filter(x => x.sel && !x.arch && mcFbExtraible_(x)).length; // las que realmente se extraerán
 const mcFbSelTot_ = () => (MC.fb.lista || []).filter(x => x.sel && !x.arch).length;
@@ -77868,16 +77868,16 @@ function mcFbTablaSoon_() { if (MC._fbRaf) return; MC._fbRaf = setTimeout(() => 
 function mcFbGateHtml_() {
   const n = mcFbSelN_(), c = MC.fb.cfg || {}; MC.fb._gateN = n;
   if (!n) return `<div class="fb-gate">⛔ Para extraer, <b>selecciona primero</b> las publicaciones en «1 · Lista de publicaciones»: todas, o por grupos usando los filtros (ubicación, categoría, subcategoría y precio) y «Seleccionar las mostradas».</div>`;
-  return `<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0"><a class="fb-bm" href="${esc(MCFB_DET)}" onclick="alert('Arrastra este botón a la barra de marcadores de tu navegador (no lo pulses aquí).');return false" title="Arrástralo a la barra de marcadores">⚙️ Extraer detalles de Marketplace</a><span class="mc-mu" style="font-size:12px">⬅ arrástralo a tu barra de marcadores (una sola vez)</span></div><div style="font-size:13px;margin:4px 0 8px">Se extraerán solo las <b>${n}</b> publicaciones seleccionadas (en tandas de ${c.lote || 25} con descansos de 1,5 a 2,5 min).</div>`;
+  return `<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0"><a class="fb-bm" href="${esc(MCFB_DET)}" onclick="alert('Arrastra este botón a la barra de marcadores de tu navegador (no lo pulses aquí).');return false" title="Arrástralo a la barra de marcadores">⚙️ Extraer detalles de Marketplace</a><span class="mc-mu" style="font-size:12px">⬅ arrástralo a tu barra de marcadores (una sola vez)</span></div><div style="font-size:13px;margin:4px 0 8px">Se extraerán las <b>${n}</b> publicaciones seleccionadas, también las que ya se extrajeron (se actualizan) (en tandas de ${c.lote || 25} con descansos de 1,5 a 2,5 min).</div>`;
 }
 function mcFbGate_() { const g = document.getElementById('fb-gate'); if (g && (MC.fb._gateN !== mcFbSelN_() || !g.innerHTML)) g.innerHTML = mcFbGateHtml_(); }
 function mcFbSelPost_(ids, val) { fetch(`${BACKEND}/mercado/facebook/seleccion`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, sel: val }) }).then(r => r.json()).then(j => { if (!j.ok) throw new Error(j.error || 'Error'); }).catch(e => { const m = document.getElementById('fbsel-n'); if (m) m.title = 'No se guardó la selección: ' + (e.message || e); }); }
 function mcFbSelUpd_() { const n = (MC.fb.lista || []).filter(x => x.sel && mcFbEnVista_(x)).length, e = document.getElementById('fbsel-n'); if (e) e.textContent = n; const x = document.getElementById('fbsel-x'); if (x) x.textContent = '· ' + mcFbSelN_() + ' para extraer'; document.querySelectorAll('.fbsel .fbb').forEach(b => { b.disabled = !n; b.title = `Aplica a las ${n} seleccionadas`; }); mcFbGate_(); }
-window.mcFbRow_ = function (id, el) { const x = (MC.fb.lista || []).find(y => y.id === id); if (!x || !mcFbEnVista_(x)) return; x.sel = !x.sel; el.classList.toggle('on', !!x.sel); el.setAttribute('aria-checked', !!x.sel); const tr = el.closest('tr'); if (tr) tr.classList.toggle('sel', !!x.sel); mcFbSelUpd_(); mcFbSelPost_([id], !!x.sel); };
+window.mcFbRow_ = function (id, el) { const x = (MC.fb.lista || []).find(y => y.id === id); if (!x || !mcFbEnVista_(x)) return; x.sel = !x.sel; if (x.sel && x.estado === 'error') x.intentos = 0; el.classList.toggle('on', !!x.sel); el.setAttribute('aria-checked', !!x.sel); const tr = el.closest('tr'); if (tr) tr.classList.toggle('sel', !!x.sel); mcFbSelUpd_(); mcFbSelPost_([id], !!x.sel); };
 window.mcFbSelAcc_ = function (a) {
   const L = (MC.fb.lista || []).filter(mcFbEnVista_), vis = MC.fb._vis || mcFbFiltradas_(); let ids, val = true;
   if (a === 'todas') ids = L.map(x => x.id); else if (a === 'filtradas') ids = vis.map(x => x.id); else if (a === 'quitarfil') { ids = vis.map(x => x.id); val = false; } else { ids = L.filter(x => x.sel).map(x => x.id); val = false; }
-  const S = new Set(ids); L.forEach(x => { if (S.has(x.id)) x.sel = val; }); mcFbTabla_(); if (ids.length) mcFbSelPost_(ids, val);
+  const S = new Set(ids); L.forEach(x => { if (S.has(x.id)) { x.sel = val; if (val && x.estado === 'error') x.intentos = 0; } }); mcFbTabla_(); if (ids.length) mcFbSelPost_(ids, val);
 };
 // Validar · Monitoreo · Archivar: por renglón o sobre los renglones seleccionados
 function mcFbMkSet_(campo, ids, val) {
