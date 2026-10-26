@@ -13034,7 +13034,7 @@ app.get("/mercado/airbnb/lugares/iso", async (req, res) => {
 //   Aquí cada ficha se estructura con el mismo extractor de Rentas LP (_rlpDeDatos + IA sobre el texto) y se guarda en mercado/facebook.json.
 // ═══════════════════════════════════════════════════════════════════════════
 const _FB_OBJ = "mercado/facebook.json", _FB_ORIG = /^https:\/\/([a-z0-9-]+\.)?facebook\.com$/;
-const _FB_CFG0 = { ubicacion: "Saltillo", lat: 25.4366, lng: -100.9626, radio: 2, precioMin: null, precioMax: null, dormitorios: "", banos: "", tipos: [], m2Min: null, m2Max: null, lote: 25, pausaMin: 2, pausaMax: 5 };
+const _FB_CFG0 = { ubicacion: "Saltillo", lat: 25.4366, lng: -100.9626, ubicaciones: [{ nombre: "Saltillo", lat: 25.4366, lng: -100.9626 }], radio: 2, precioMin: null, precioMax: null, dormitorios: "", banos: "", tipos: [], m2Min: null, m2Max: null, lote: 25, pausaMin: 2, pausaMax: 5 };
 let _fbQ = Promise.resolve();
 async function _fbDoc() { const { data } = await _bnReadGcs(_FB_OBJ); return data && data.lista ? data : { v: 1, config: Object.assign({}, _FB_CFG0), lista: [], items: {}, ejecuciones: [] }; }
 function _fbMutar(fn) {
@@ -13126,8 +13126,9 @@ app.post("/mercado/facebook/config", async (req, res) => {
   try { const c = (req.body || {}).config || {}, n = (v, a, b) => { const x = _rlpNum(v); return x == null ? null : Math.max(a, Math.min(b, x)); };
     const cfg = { ubicacion: _fbTxt(c.ubicacion, 120) || "Saltillo", lat: n(c.lat, -90, 90) ?? _FB_CFG0.lat, lng: n(c.lng, -180, 180) ?? _FB_CFG0.lng, radio: [1, 2, 5, 10, 20, 40, 60, 80, 100, 250, 500].includes(+c.radio) ? +c.radio : 2, precioMin: n(c.precioMin, 0, 1e8), precioMax: n(c.precioMax, 0, 1e8),
       dormitorios: ["", "1", "2", "3", "4", "5", "6"].includes(String(c.dormitorios || "")) ? String(c.dormitorios || "") : "", banos: ["", "1", "1.5", "2", "3", "4", "5"].includes(String(c.banos || "")) ? String(c.banos || "") : "", tipos: (Array.isArray(c.tipos) ? c.tipos : []).filter(t => ["apartamento", "casa", "habitacion", "townhouse"].includes(t)),
-      m2Min: n(c.m2Min, 0, 1e5), m2Max: n(c.m2Max, 0, 1e5), lote: n(c.lote, 5, 40) ?? 25, pausaMin: n(c.pausaMin, 2, 20) ?? 3, pausaMax: n(c.pausaMax, 3, 40) ?? 7 }; if (cfg.pausaMax < cfg.pausaMin) cfg.pausaMax = cfg.pausaMin + 2;
-    await _fbMutar(d => { d.config = cfg; }); res.json({ ok: true, config: cfg }); }
+      ubicaciones: (Array.isArray(c.ubicaciones) ? c.ubicaciones : []).map(u => ({ nombre: _fbTxt(u && u.nombre, 120), lat: n(u && u.lat, -90, 90), lng: n(u && u.lng, -180, 180) })).filter(u => u.nombre).slice(0, 8), m2Min: n(c.m2Min, 0, 1e5), m2Max: n(c.m2Max, 0, 1e5), lote: n(c.lote, 5, 40) ?? 25, pausaMin: n(c.pausaMin, 2, 20) ?? 3, pausaMax: n(c.pausaMax, 3, 40) ?? 7 }; if (cfg.pausaMax < cfg.pausaMin) cfg.pausaMax = cfg.pausaMin + 2;
+    if (!cfg.ubicaciones.length) cfg.ubicaciones = [{ nombre: cfg.ubicacion, lat: cfg.lat, lng: cfg.lng }]; cfg.ubicacion = cfg.ubicaciones[0].nombre; if (cfg.ubicaciones[0].lat != null) { cfg.lat = cfg.ubicaciones[0].lat; cfg.lng = cfg.ubicaciones[0].lng; }
+    let fin; await _fbMutar(d => { d.config = Object.assign({}, d.config || {}, cfg); fin = d.config; }); res.json({ ok: true, config: Object.assign({}, _FB_CFG0, fin) }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/facebook/lista", async (req, res) => {
@@ -13154,6 +13155,13 @@ app.post("/mercado/facebook/marcar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const b = req.body || {}, ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(String)), campo = ["val", "mon", "arch", "estado"].includes(b.campo) ? b.campo : null, val = !!b.valor; if (!campo) return res.status(400).json({ ok: false, error: "Campo no válido" });
     const hoy = new Date().toISOString(), est = campo === "estado" ? (["val", "mon"].includes(b.valor) ? b.valor : "") : null, n = await _fbMutar(d => { let c = 0; d.lista.forEach(x => { if (!ids.has(x.id)) return; if (campo === "estado") { delete x.val; delete x.mon; delete x.val_at; delete x.mon_at; if (est) { x[est] = true; x[est + "_at"] = hoy; } c++; return; } if (val) { x[campo] = true; x[campo + "_at"] = hoy; if (campo === "arch") { delete x.sel; delete x.val; delete x.mon; delete x.val_at; delete x.mon_at; } } else { delete x[campo]; delete x[campo + "_at"]; } c++; }); return c; }); res.json({ ok: true, cambiadas: n }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/facebook/programa", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const p = (req.body || {}).programa || {}, iso = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "", nums = (a, lo, hi) => [...new Set((Array.isArray(a) ? a : []).map(Number).filter(x => Number.isInteger(x) && x >= lo && x <= hi))].sort((a, b) => a - b);
+    const prog = { recurrente: p.recurrente !== false, tipo: ["semanal", "mensual", "bimestral"].includes(p.tipo) ? p.tipo : "semanal", fechas: (Array.isArray(p.fechas) ? p.fechas : []).map(iso).filter(Boolean).slice(0, 1), dias_semana: nums(p.dias_semana, 0, 6), dias_mes: nums(p.dias_mes, 1, 31), inicio: iso(p.inicio), fin: iso(p.fin), vigencia: ["Activa", "Pausada", "Cancelada"].includes(p.vigencia) ? p.vigencia : "Pausada", horas: nums(p.horas, 0, 23).slice(0, 8) }; if (!prog.horas.length) prog.horas = [11];
+    await _fbMutar(d => { d.config = Object.assign({}, d.config || {}, { programa: prog }); }); res.json({ ok: true, programa: prog }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/facebook/seleccion", async (req, res) => {
