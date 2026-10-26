@@ -76612,6 +76612,7 @@ function mcAloCss_() {
   .pl-dt{padding:6px 4px;font-size:12.5px;color:#334155}.pl-dt p{margin:0 0 6px}.pl-g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px 20px}.pl-h{margin:2px 0 0 16px;padding:0;font-size:12px}.pl-ats{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.pl-at{background:#eff6ff;color:#1d4ed8;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:700}.pl-rv{border-top:1px solid #eef2f6;padding:5px 0;font-size:12px}
   .al-camp{display:inline-block;background:#ecfccb;color:#3f6212;border:1px solid #d9f99d;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}
   .fs-lay{display:block}.fs-side{display:none}.fs-lay.fs-on{display:grid;grid-template-columns:268px minmax(0,1fr);gap:20px;align-items:start}.fs-lay.fs-on .fs-side{display:block;position:sticky;top:8px;max-height:calc(100vh - 24px);overflow:auto;background:#fff;border:1px solid var(--al-ln);border-radius:16px;padding:4px 16px 10px;scrollbar-width:thin}
+  .fs-q{padding:2px 0 8px;position:sticky;top:46px;background:#fff;z-index:2}.fs-q input{width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:10px;padding:9px 12px;font:600 13px inherit;outline:0;background:#f8fafc}.fs-q input:focus{border-color:#6366f1;background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.15)}
   .fs-hd{display:flex;justify-content:space-between;align-items:center;padding:12px 0 8px;font-size:16px;font-weight:900;color:var(--al-ink);position:sticky;top:0;background:#fff;z-index:2;border-bottom:1px solid var(--al-ln)}.fs-hd button{all:unset;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--al-ac)}.fs-hd button:hover{text-decoration:underline}
   .fs-sec{border-bottom:1px solid #eef2f6;padding:10px 0}.fs-sec:last-child{border:0}.fs-sec summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-size:13.5px;font-weight:800;color:var(--al-ink)}.fs-sec summary::-webkit-details-marker{display:none}.fs-sec summary::after{content:'▾';color:#94a3b8;font-size:12px;transition:transform .15s}.fs-sec:not([open]) summary::after{transform:rotate(-90deg)}.fs-sec summary b{margin-left:auto;margin-right:8px;background:var(--al-ac);color:#fff;border-radius:99px;padding:0 7px;font-size:11px}
   .fs-bd{padding-top:8px}.fs-bd .al-fg label{margin:0 0 4px}.fs-bd .al-fg label b{margin:0;font-size:13px}.fs-ops{display:flex;flex-direction:column;gap:1px}.fs-op{display:flex;align-items:center;gap:9px;padding:5px 4px;border-radius:8px;cursor:pointer;font-size:13px;color:#334155;user-select:none}.fs-op:hover{background:#f1f5f9}.fs-op:focus-visible{outline:2px solid var(--al-ac2)}.fs-tx{flex:1;min-width:0}.fs-op em{font-style:normal;font-size:11.5px;color:#94a3b8}
@@ -76690,9 +76691,21 @@ function mcFlDom_() { // dominios de los sliders (según los datos)
 }
 const mcFlRg_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return r ? [Math.max(D[0], r[0]), Math.min(D[1], r[1])] : D.slice(); };
 const mcFlRgOn_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return !!r && (r[0] > D[0] || r[1] < D[1]); };
-const mcFlActivos_ = () => MC.ctx === 'fb' ? ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad'].filter(k => MC.fl[k].size).length + ['precio', 'm2'].filter(mcFlRgOn_).length : ['ent', 'camp', 'huesp', 'tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length;
+const mcFlActivos_ = () => (String(MC.fl.q || '').trim() ? 1 : 0) + (MC.ctx === 'fb' ? ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad'].filter(k => MC.fl[k].size).length + ['precio', 'm2'].filter(mcFlRgOn_).length : ['ent', 'camp', 'huesp', 'tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length);
+// Búsqueda de texto libre (todas las palabras, sin acentos ni mayúsculas) sobre los textos de la ficha.
+const mcNorm_ = t => String(t == null ? '' : t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function mcFlTxt_(r) {
+  const q = mcNorm_(MC.fl.q).trim(); if (!q) return true;
+  if (MC._txtAct !== MC.act) { MC._txtAct = MC.act; MC._txt = new Map(); }
+  let h = MC._txt.get(r.id);
+  if (h == null) { const i = MC.items[r.id] || {}, P = [r.id]; Object.keys(i).forEach(k => { if (/foto|url|img|thumb|cal$/i.test(k)) return; const v = i[k]; if (typeof v === 'string' || typeof v === 'number') P.push(v); else if (Array.isArray(v) && v.every(x => typeof x === 'string')) P.push(v.join(' ')); }); h = mcNorm_(P.join(' · ')); MC._txt.set(r.id, h); }
+  return q.split(/\s+/).every(w => h.includes(w));
+}
+window.mcFlQ_ = function (v) { MC.fl.q = v; mcAloFlCambio_(); };
+const mcFlBuscaHtml_ = () => `<div class="fs-q"><input type="search" value="${esc(MC.fl.q || '')}" placeholder="🔎 Buscar texto: título, anfitrión, ciudad, descripción…" oninput="mcFlQ_(this.value)" autocomplete="off"></div>`;
 function mcAloPasa_(r) {
   if (MC.ctx === 'fb') return mcFbpPasa_(r);
+  if (!mcFlTxt_(r)) return false;
   const F = MC.fl, i = MC.items[r.id] || {}, D = mcFlDom_();
   if (!F.tipo) F.tipo = new Set();
   if (F.camp && F.camp.size && !F.camp.has(r.camp ? 'Sí' : 'No')) return false;
@@ -76729,7 +76742,7 @@ window.mcAloRgNum_ = function (k) {
 };
 window.mcAloTg_ = function (k, v, el) { const S = MC.fl[k]; if (S.has(v)) S.delete(v); else S.add(v); if (el) el.classList.toggle('on', S.has(v)); mcAloFlCambio_(); };
 function mcAloFlCambio_() { if (MC._flRaf) return; MC._flRaf = setTimeout(() => { MC._flRaf = 0; MC.al.pag = 48; MC.al.pagA = 48; const n = mcFlActivos_(), b = document.getElementById('al-flcnt'); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; } const r = document.getElementById('al-flrst'); if (r) r.style.display = n ? '' : 'none'; const rb = document.querySelector('#al-flp .fs-hd button'); if (rb) rb.style.visibility = n ? '' : 'hidden'; mcAloCuerpo_(); }, 40); }
-window.mcAloFlReset_ = function () { Object.keys(MC.fl).forEach(k => { if (MC.fl[k] instanceof Set) MC.fl[k].clear(); }); MC.fl.rg = {}; mcAloTopPinta_(); mcAloCuerpo_(); };
+window.mcAloFlReset_ = function () { Object.keys(MC.fl).forEach(k => { if (MC.fl[k] instanceof Set) MC.fl[k].clear(); }); MC.fl.rg = {}; MC.fl.q = ''; mcAloTopPinta_(); mcAloCuerpo_(); };
 window.mcAloFlToggle_ = function () { MC.al.flAb = !MC.al.flAb; const p = document.getElementById('al-lay'); if (p) p.classList.toggle('fs-on', !!MC.al.flAb); const b = document.getElementById('al-flbt'); if (b) b.classList.toggle('on', MC.al.flAb); };
 window.mcAloVista_ = function (v) { MC.al.vista = v; try { localStorage.setItem('mc-alo-vista', v); } catch (_) {} MC.al.host = null; MC.al.id = null; mcAloPintar_(); };
 function mcAloTopPinta_() {
@@ -76748,7 +76761,7 @@ function mcFlSideHtml_(D, nichos, n) {
   const cnt = {}; ['tipo', 'camp', 'ent', 'sup', 'huesp', 'hab', 'banos', 'camas', 'coc', 'minN', 'ciudad', 'niv', 'nicho'].forEach(k => cnt[k] = {}); D.rows.forEach(r => { for (const k in cnt) { const v = mcFlVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; } });
   const sec = (t, body, open, k) => `<details class="fs-sec" ${open ? 'open' : ''}><summary>${t}${k && MC.fl[k] && MC.fl[k].size ? `<b>${MC.fl[k].size}</b>` : ''}</summary><div class="fs-bd">${body}</div></details>`;
   const sl = (k, t, fm) => sec(t, mcFlSlider_(k, '', fm), true);
-  return `<div class="fs-hd"><span>Filtros</span><button type="button" onclick="mcAloFlReset_()" style="${n ? '' : 'visibility:hidden'}">Borrar todo</button></div>
+  return `<div class="fs-hd"><span>Filtros</span><button type="button" onclick="mcAloFlReset_()" style="${n ? '' : 'visibility:hidden'}">Borrar todo</button></div>${mcFlBuscaHtml_()}
     ${sec('Tipo de alojamiento', mcFlChecks_('tipo', MCFL_OPT.tipo, cnt), true, 'tipo')}
     ${sl('precio', '💲 Precio por noche', mcFlFmt_.precio)}${sl('pxh', '🛏️ Precio por habitación', mcFlFmt_.pxh)}${sl('cal', '⭐ Calificación', mcFlFmt_.cal)}
     ${sec('Campestre (cabaña, casa de campo, camping…)', mcFlChecks_('camp', MCFL_OPT.camp, cnt), true, 'camp')}
@@ -78182,6 +78195,7 @@ function mcFbpDom_() {
   return MC._fd = { rows: A.rows, precio: ext(A.rows.map(r => r.precio)), m2: ext(A.rows.map(r => (MC.items[r.id] || {}).m2)), pxh: [0, 1], cal: [0, 5], ciudades: Object.entries(ciudades).sort((a, b) => b[1] - a[1]) };
 }
 function mcFbpPasa_(r) {
+  if (!mcFlTxt_(r)) return false;
   const F = MC.fl, D = mcFbpDom_(); for (const k of ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad']) if (F[k].size && !F[k].has(mcFbpVal_(k, r))) return false;
   for (const k of ['precio', 'm2']) if (mcFlRgOn_(k)) { const [lo, hi] = mcFlRg_(k), v = k === 'm2' ? (MC.items[r.id] || {}).m2 : r.precio; if (!mcOk_(v) || v < lo || (hi < D[k][1] && v > hi)) return false; }
   return true;
@@ -78190,7 +78204,7 @@ function mcFbpSide_(D, n) {
   const ks = ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad'], cnt = {}; ks.forEach(k => cnt[k] = {}); D.rows.forEach(r => { ks.forEach(k => { const v = mcFbpVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; }); });
   const top = k => Object.entries(cnt[k]).sort((a, b) => b[1] - a[1]), sec = (t, body, open, k) => `<details class="fs-sec" ${open ? 'open' : ''}><summary>${t}${k && MC.fl[k] && MC.fl[k].size ? `<b>${MC.fl[k].size}</b>` : ''}</summary><div class="fs-bd">${body}</div></details>`, sl = (k, t) => sec(t, mcFlSlider_(k, '', mcFlFmt_[k]), true);
   const opts = { cat: top('cat').map(([v]) => [v, v]), sub: Object.keys(cnt.sub).sort().map(v => [v, v.replace('|', ' › ')]), op: [['Renta', 'Renta'], ['Venta', 'Venta']], hab: MCFL_OPT.hab.concat([['?', 'Sin dato']]), banos: MCFL_OPT.banos.concat([['?', 'Sin dato']]), amu: [['Sí', 'Amueblado'], ['No', 'Sin amueblar'], ['?', 'Sin dato']], est: [['Sí', 'Con estacionamiento'], ['No', 'Sin estacionamiento']], ent: MCFL_OPT.ent, ciudad: top('ciudad').slice(0, 14).map(([v]) => [v, v]) };
-  return `<div class="fs-hd"><span>Filtros</span><button type="button" onclick="mcAloFlReset_()" style="${n ? '' : 'visibility:hidden'}">Borrar todo</button></div>
+  return `<div class="fs-hd"><span>Filtros</span><button type="button" onclick="mcAloFlReset_()" style="${n ? '' : 'visibility:hidden'}">Borrar todo</button></div>${mcFlBuscaHtml_()}
     ${sec('Tipo (categoría)', mcFlChecks_('cat', opts.cat, cnt), true, 'cat')}${sec('Subcategoría', mcFlChecks_('sub', opts.sub, cnt), true, 'sub')}${sec('Operación', mcFlChecks_('op', opts.op, cnt), true, 'op')}
     ${sl('precio', '💲 Precio')}${sl('m2', '📐 Superficie construida')}
     ${sec('Recámaras', mcFlChecks_('hab', opts.hab, cnt), true, 'hab')}${sec('Baños', mcFlChecks_('banos', opts.banos, cnt), false, 'banos')}${sec('Amueblado', mcFlChecks_('amu', opts.amu, cnt), false, 'amu')}${sec('Estacionamiento', mcFlChecks_('est', opts.est, cnt), false, 'est')}
