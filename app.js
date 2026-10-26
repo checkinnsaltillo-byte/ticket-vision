@@ -76678,11 +76678,11 @@ window.mcAloIr_ = function (host, id) { MC.al.host = host || null; MC.al.id = id
 // 🏘️ Alojamientos (v2180): 3 vistas —🗂️ Por alojamiento · 👥 Por anfitrión · 📋 Tabla— con los MISMOS filtros: superanfitrión, rangos (calificación, precio, precio/habitación)
 // con slider de doble punta, habitaciones, baños, camas, cocina, ciudad, estancia mínima, clasificación (A/B/C) y nicho. Los categóricos admiten selección múltiple.
 // ═══════════════════════════════════════════════════════════════════════════
-MC.fl = MC.fl || { ent: new Set(), camp: new Set(), huesp: new Set(), tipo: new Set(), sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), rg: {} };
+MC.fl = MC.fl || { ent: new Set(), camp: new Set(), huesp: new Set(), tipo: new Set(), sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), neg: new Set(), amb: new Set(), rg: {} };
 MC.al.vista = (() => { try { const v = localStorage.getItem('mc-alo-vista'); return v === 'host' || v === 'tabla' ? v : 'alo'; } catch (_) { return 'alo'; } })();
 MC.al.ordA = MC.al.ordA || 'idx'; MC.al.pagA = MC.al.pagA || 48; MC.al.flAb = MC.al.flAb !== false;
 const MCFL_CAT = { huesp: r => r.huesp == null ? '?' : r.huesp <= 1 ? '1' : r.huesp >= 9 ? '9+' : r.huesp >= 7 ? '7-8' : r.huesp >= 5 ? '5-6' : String(r.huesp), hab: r => r.hab == null ? '?' : r.hab === 0 ? '0' : r.hab >= 5 ? '5+' : String(r.hab), banos: r => r.banos == null ? '?' : r.banos <= 1 ? '1' : r.banos >= 3 ? '3+' : String(r.banos), camas: r => r.camas == null ? '?' : r.camas >= 5 ? '5+' : String(r.camas), minN: r => r.minN == null ? '?' : r.minN <= 1 ? '1' : r.minN <= 2 ? '2' : r.minN <= 6 ? '3-6' : r.minN <= 29 ? '7-29' : '30+' };
-const MCFL_OPT = { ent: [['A', 'Entorno A (muy favorable)'], ['B', 'Entorno B (favorable)'], ['C', 'Entorno C (intermedio)'], ['D', 'Entorno D'], ['E', 'Entorno E'], ['N/C', 'Analizado, sin índice'], ['Sin', 'Sin análisis de entorno']], camp: [['Sí', 'Campestre / cabaña / camping'], ['No', 'Urbano / otros']], huesp: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5-6', '5 a 6'], ['7-8', '7 a 8'], ['9+', '9 o más']], tipo: [['Entero', 'Alojamiento entero'], ['Habitación', 'Habitación']], sup: [['Sí', '★ Superanfitrión'], ['No', 'Sin insignia']], hab: [['0', 'Estudio'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']], banos: [['1', '1'], ['1.5', '1.5'], ['2', '2'], ['2.5', '2.5'], ['3+', '3 o más']], camas: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']],
+const MCFL_OPT = { neg: [['Sí', 'Con búsqueda de negocios'], ['No', 'Sin buscar']], amb: [['Sí', 'Con datos ambientales'], ['No', 'Sin calcular']], ent: [['A', 'Entorno A (muy favorable)'], ['B', 'Entorno B (favorable)'], ['C', 'Entorno C (intermedio)'], ['D', 'Entorno D'], ['E', 'Entorno E'], ['N/C', 'Analizado, sin índice'], ['Sin', 'Sin análisis de entorno']], camp: [['Sí', 'Campestre / cabaña / camping'], ['No', 'Urbano / otros']], huesp: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5-6', '5 a 6'], ['7-8', '7 a 8'], ['9+', '9 o más']], tipo: [['Entero', 'Alojamiento entero'], ['Habitación', 'Habitación']], sup: [['Sí', '★ Superanfitrión'], ['No', 'Sin insignia']], hab: [['0', 'Estudio'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']], banos: [['1', '1'], ['1.5', '1.5'], ['2', '2'], ['2.5', '2.5'], ['3+', '3 o más']], camas: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5+', '5 o más']],
   coc: [['Sí', 'Con cocina'], ['Compartida', 'Compartida'], ['No', 'Sin cocina']], minN: [['1', '1 noche'], ['2', '2 noches'], ['3-6', '3 a 6'], ['7-29', '7 a 29'], ['30+', '30 o más']], niv: [['A', 'Nivel A'], ['B', 'Nivel B'], ['C', 'Nivel C'], ['S/C', 'Sin clasificar']] };
 const MCFL_LBL = { ent: 'Entorno urbano', camp: 'Campestre', huesp: 'Huéspedes', tipo: 'Tipo de alojamiento', sup: 'Superanfitrión', hab: 'Habitaciones', banos: 'Baños', camas: 'Camas', coc: 'Cocina', ciudad: 'Ciudad', minN: 'Estancia mínima', niv: 'Clasificación', nicho: 'Nicho' };
 function mcFlDom_() { // dominios de los sliders (según los datos)
@@ -76694,7 +76694,7 @@ function mcFlDom_() { // dominios de los sliders (según los datos)
 }
 const mcFlRg_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return r ? [Math.max(D[0], r[0]), Math.min(D[1], r[1])] : D.slice(); };
 const mcFlRgOn_ = k => { const D = mcFlDom_()[k], r = MC.fl.rg[k]; return !!r && (r[0] > D[0] || r[1] < D[1]); };
-const mcFlActivos_ = () => (String(MC.fl.q || '').trim() ? 1 : 0) + (MC.ctx === 'fb' ? ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad'].filter(k => MC.fl[k].size).length + ['precio', 'm2'].filter(mcFlRgOn_).length : ['ent', 'camp', 'huesp', 'tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length);
+const mcFlActivos_ = () => (String(MC.fl.q || '').trim() ? 1 : 0) + (MC.ctx === 'fb' ? ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'neg', 'amb', 'ciudad'].filter(k => MC.fl[k].size).length + ['precio', 'm2'].filter(mcFlRgOn_).length : ['ent', 'neg', 'amb', 'camp', 'huesp', 'tipo', 'sup', 'hab', 'banos', 'camas', 'coc', 'ciudad', 'minN', 'niv', 'nicho'].filter(k => MC.fl[k].size).length + ['cal', 'precio', 'pxh'].filter(mcFlRgOn_).length);
 // Búsqueda de texto libre (todas las palabras, sin acentos ni mayúsculas) sobre los textos de la ficha.
 const mcNorm_ = t => String(t == null ? '' : t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 function mcFlTxt_(r) {
@@ -76713,6 +76713,7 @@ function mcAloPasa_(r) {
   if (!F.tipo) F.tipo = new Set();
   if (F.camp && F.camp.size && !F.camp.has(r.camp ? 'Sí' : 'No')) return false;
   if (F.ent && F.ent.size && !F.ent.has(mcFlVal_('ent', r))) return false;
+  for (const k of ['neg', 'amb']) if (F[k] && F[k].size && !F[k].has(mcFlVal_(k, r))) return false;
   if (F.tipo.size && !F.tipo.has(r.priv ? 'Habitación' : 'Entero')) return false;
   if (F.sup.size && !F.sup.has(i.superanfitrion ? 'Sí' : 'No')) return false;
   for (const k of ['cal', 'precio', 'pxh']) if (mcFlRgOn_(k)) { const [lo, hi] = mcFlRg_(k), v = r[k]; if (!mcOk_(v) || v < lo || (hi < D[k][1] && v > hi)) return false; }
@@ -76757,11 +76758,11 @@ function mcAloTopPinta_() {
 }
 const MC_CAMP_RE = /caba[ñn]a|casa de campo|finca|campestre|tienda|acampar|camping|glamping|contenedor|domo|tipi|yurta|remolque|caravana|casa (?:en|del) [aá]rbol|rancho|granja/i;
 const mcCampestre_ = (i, l) => MC_CAMP_RE.test(`${i && i.tipo || ''} ${l && l.tipoBusq || ''}`);
-function mcFlVal_(k, r) { if (k === 'ent') { const x = MC.en.ix[r.id]; return !x ? 'Sin' : x.cv || 'N/C'; } if (k === 'camp') return r.camp ? 'Sí' : 'No'; const i = MC.items[r.id] || {}; if (k === 'tipo') return r.priv ? 'Habitación' : 'Entero'; if (k === 'sup') return i.superanfitrion ? 'Sí' : 'No'; if (k === 'coc') { const c = mcCocina_(i); return c === '—' ? 'No' : c; } if (k === 'ciudad') return i.ciudad || 'Sin ciudad'; if (k === 'niv' || k === 'nicho') { const x = MC.cl.ix[r.id]; return k === 'niv' ? (x ? mcClNivel_(x.indice) : 'S/C') : (x ? mcClNichoRec_(x).n1 : null) || 'S/C'; } return MCFL_CAT[k](r); }
+function mcFlVal_(k, r) { if (k === 'neg') return MC.pl.ix && MC.pl.ix[r.id] ? 'Sí' : 'No'; if (k === 'amb') return MC.am.ix[r.id] && MC.am.ix[r.id].ok ? 'Sí' : 'No'; if (k === 'ent') { const x = MC.en.ix[r.id]; return !x ? 'Sin' : x.cv || 'N/C'; } if (k === 'camp') return r.camp ? 'Sí' : 'No'; const i = MC.items[r.id] || {}; if (k === 'tipo') return r.priv ? 'Habitación' : 'Entero'; if (k === 'sup') return i.superanfitrion ? 'Sí' : 'No'; if (k === 'coc') { const c = mcCocina_(i); return c === '—' ? 'No' : c; } if (k === 'ciudad') return i.ciudad || 'Sin ciudad'; if (k === 'niv' || k === 'nicho') { const x = MC.cl.ix[r.id]; return k === 'niv' ? (x ? mcClNivel_(x.indice) : 'S/C') : (x ? mcClNichoRec_(x).n1 : null) || 'S/C'; } return MCFL_CAT[k](r); }
 function mcFlChecks_(k, opts, cnt) { return `<div class="fs-ops" data-k="${k}">${opts.map(([v, t]) => `<div class="fs-op ${MC.fl[k].has(v) ? 'on' : ''}" role="checkbox" tabindex="0" onclick="mcAloTg_('${k}',${esc(JSON.stringify(v))},this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"><span class="fs-ck">✓</span><span class="fs-tx">${esc(t)}</span><em>${cnt[k][v] || 0}</em></div>`).join('')}</div>`; }
 function mcFlSideHtml_(D, nichos, n) {
   if (MC.ctx === 'fb') return mcFbpSide_(D, n);
-  const cnt = {}; ['tipo', 'camp', 'ent', 'sup', 'huesp', 'hab', 'banos', 'camas', 'coc', 'minN', 'ciudad', 'niv', 'nicho'].forEach(k => cnt[k] = {}); D.rows.forEach(r => { for (const k in cnt) { const v = mcFlVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; } });
+  const cnt = {}; ['tipo', 'camp', 'ent', 'neg', 'amb', 'sup', 'huesp', 'hab', 'banos', 'camas', 'coc', 'minN', 'ciudad', 'niv', 'nicho'].forEach(k => cnt[k] = {}); D.rows.forEach(r => { for (const k in cnt) { const v = mcFlVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; } });
   const sec = (t, body, open, k) => `<details class="fs-sec" ${open ? 'open' : ''}><summary>${t}${k && MC.fl[k] && MC.fl[k].size ? `<b>${MC.fl[k].size}</b>` : ''}</summary><div class="fs-bd">${body}</div></details>`;
   const sl = (k, t, fm) => sec(t, mcFlSlider_(k, '', fm), true);
   return `<div class="fs-hd"><span>Filtros</span><button type="button" onclick="mcAloFlReset_()" style="${n ? '' : 'visibility:hidden'}">Borrar todo</button></div>${mcFlBuscaHtml_()}
@@ -76769,6 +76770,7 @@ function mcFlSideHtml_(D, nichos, n) {
     ${sl('precio', '💲 Precio por noche', mcFlFmt_.precio)}${sl('pxh', '🛏️ Precio por habitación', mcFlFmt_.pxh)}${sl('cal', '⭐ Calificación', mcFlFmt_.cal)}
     ${sec('Campestre (cabaña, casa de campo, camping…)', mcFlChecks_('camp', MCFL_OPT.camp, cnt), true, 'camp')}
     ${sec('Análisis del entorno urbano', mcFlChecks_('ent', MCFL_OPT.ent, cnt), true, 'ent')}
+    ${sec('🏪 Negocios en 1 km', mcFlChecks_('neg', MCFL_OPT.neg, cnt), true, 'neg')}${sec('🌡️ Datos ambientales y de riesgo', mcFlChecks_('amb', MCFL_OPT.amb, cnt), true, 'amb')}
     ${sec('Superanfitrión', mcFlChecks_('sup', MCFL_OPT.sup, cnt), true, 'sup')}
     ${sec('Clasificación (IA)', mcFlChecks_('niv', MCFL_OPT.niv, cnt), true, 'niv')}
     ${sec('Huéspedes (capacidad)', mcFlChecks_('huesp', MCFL_OPT.huesp, cnt), true, 'huesp')}
@@ -78195,7 +78197,7 @@ function mcFbpNuevo_() {
   const pl = Object.assign({}, MC.pl, { rec: null, et: {}, ix: {}, iso: null, job: null, open: null, sel: null, g: '', q: '', n: 40, _m: null, _mk: [] });
   return { items: {}, lista: [], cl: { ix: {}, cfg: { pA: 85, pC: 30 }, est: null, f: { nivel: '', nicho: '', q: '', ord: 'indice' } }, en: { ix: {}, job: null }, pl,
     al: { host: null, id: null, q: '', ord: 'n', filt: 'todos', pag: 48, sp: '', k: 0, vista: 'alo', ordA: 'precio', pagA: 48, flAb: true, mapa: false },
-    fl: { ent: new Set(), camp: new Set(), huesp: new Set(), tipo: new Set(), sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), cat: new Set(), sub: new Set(), op: new Set(), amu: new Set(), est: new Set(), rg: {} },
+    fl: { ent: new Set(), camp: new Set(), huesp: new Set(), tipo: new Set(), sup: new Set(), hab: new Set(), banos: new Set(), camas: new Set(), coc: new Set(), ciudad: new Set(), minN: new Set(), niv: new Set(), nicho: new Set(), neg: new Set(), amb: new Set(), cat: new Set(), sub: new Set(), op: new Set(), amu: new Set(), est: new Set(), rg: {} },
     map: { m: null, mk: new Map(), sel: null, selHost: null, sig: '', pts: [], clusters: [] }, _alD: null, _fd: null, _hr: null, _fotos: {}, alIds: null, alFiltroOn: false, propios: null, ownHosts: new Set(), act: '' };
 }
 function mcCtx_(n, keep) {
@@ -78248,7 +78250,7 @@ function mcFbpListaHtml_(L) {
     ${M.length > S.pagA ? `<div id="al-sent" data-k="alo" class="al-sent">Cargando más… (${M.length - S.pagA} restantes)</div>` : ''}`;
 }
 // ── Filtros (mismos controles que Alojamientos) ──
-const mcFbpVal_ = (k, r) => { const i = MC.items[r.id] || {}; if (k === 'cat') return i.tipo || '?'; if (k === 'sub') return (i.tipo || '?') + '|' + (i.sub || '—'); if (k === 'op') return i.op || 'Renta'; if (k === 'hab') return MCFL_CAT.hab(r); if (k === 'banos') return MCFL_CAT.banos(r); if (k === 'amu') return i.amueblado == null ? '?' : i.amueblado ? 'Sí' : 'No'; if (k === 'est') return i.estac > 0 ? 'Sí' : 'No'; if (k === 'ciudad') return i.ciudad || 'Sin ciudad'; if (k === 'ent') return mcFlVal_('ent', r); return ''; };
+const mcFbpVal_ = (k, r) => { if (k === 'neg' || k === 'amb') return mcFlVal_(k, r); const i = MC.items[r.id] || {}; if (k === 'cat') return i.tipo || '?'; if (k === 'sub') return (i.tipo || '?') + '|' + (i.sub || '—'); if (k === 'op') return i.op || 'Renta'; if (k === 'hab') return MCFL_CAT.hab(r); if (k === 'banos') return MCFL_CAT.banos(r); if (k === 'amu') return i.amueblado == null ? '?' : i.amueblado ? 'Sí' : 'No'; if (k === 'est') return i.estac > 0 ? 'Sí' : 'No'; if (k === 'ciudad') return i.ciudad || 'Sin ciudad'; if (k === 'ent') return mcFlVal_('ent', r); return ''; };
 function mcFbpDom_() {
   const A = mcAloData_(); if (MC._fd && MC._fd.rows === A.rows) return MC._fd; const ext = v => { v = v.filter(x => mcOk_(x) && x > 0).sort((a, b) => a - b); if (!v.length) return [0, 1]; const hi = mcsQ(v, .98), st = hi > 2e6 ? 50000 : hi > 2e5 ? 5000 : hi > 5000 ? 100 : 10; return [0, Math.max(Math.ceil(hi / st) * st, st)]; };
   const ciudades = {}; A.rows.forEach(r => { const c = (MC.items[r.id] || {}).ciudad || 'Sin ciudad'; ciudades[c] = (ciudades[c] || 0) + 1; });
@@ -78256,19 +78258,19 @@ function mcFbpDom_() {
 }
 function mcFbpPasa_(r) {
   if (!mcFlTxt_(r)) return false;
-  const F = MC.fl, D = mcFbpDom_(); for (const k of ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad']) if (F[k].size && !F[k].has(mcFbpVal_(k, r))) return false;
+  const F = MC.fl, D = mcFbpDom_(); for (const k of ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'neg', 'amb', 'ciudad']) if (F[k] && F[k].size && !F[k].has(mcFbpVal_(k, r))) return false;
   for (const k of ['precio', 'm2']) if (mcFlRgOn_(k)) { const [lo, hi] = mcFlRg_(k), v = k === 'm2' ? (MC.items[r.id] || {}).m2 : r.precio; if (!mcOk_(v) || v < lo || (hi < D[k][1] && v > hi)) return false; }
   return true;
 }
 function mcFbpSide_(D, n) {
-  const ks = ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'ciudad'], cnt = {}; ks.forEach(k => cnt[k] = {}); D.rows.forEach(r => { ks.forEach(k => { const v = mcFbpVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; }); });
+  const ks = ['cat', 'sub', 'op', 'hab', 'banos', 'amu', 'est', 'ent', 'neg', 'amb', 'ciudad'], cnt = {}; ks.forEach(k => cnt[k] = {}); D.rows.forEach(r => { ks.forEach(k => { const v = mcFbpVal_(k, r); cnt[k][v] = (cnt[k][v] || 0) + 1; }); });
   const top = k => Object.entries(cnt[k]).sort((a, b) => b[1] - a[1]), sec = (t, body, open, k) => `<details class="fs-sec" ${open ? 'open' : ''}><summary>${t}${k && MC.fl[k] && MC.fl[k].size ? `<b>${MC.fl[k].size}</b>` : ''}</summary><div class="fs-bd">${body}</div></details>`, sl = (k, t) => sec(t, mcFlSlider_(k, '', mcFlFmt_[k]), true);
   const opts = { cat: top('cat').map(([v]) => [v, v]), sub: Object.keys(cnt.sub).sort().map(v => [v, v.replace('|', ' › ')]), op: [['Renta', 'Renta'], ['Venta', 'Venta']], hab: MCFL_OPT.hab.concat([['?', 'Sin dato']]), banos: MCFL_OPT.banos.concat([['?', 'Sin dato']]), amu: [['Sí', 'Amueblado'], ['No', 'Sin amueblar'], ['?', 'Sin dato']], est: [['Sí', 'Con estacionamiento'], ['No', 'Sin estacionamiento']], ent: MCFL_OPT.ent, ciudad: top('ciudad').slice(0, 14).map(([v]) => [v, v]) };
   return `<div class="fs-hd"><span>Filtros</span><button type="button" onclick="mcAloFlReset_()" style="${n ? '' : 'visibility:hidden'}">Borrar todo</button></div>${mcFlBuscaHtml_()}
     ${sec('Tipo (categoría)', mcFlChecks_('cat', opts.cat, cnt), true, 'cat')}${sec('Subcategoría', mcFlChecks_('sub', opts.sub, cnt), true, 'sub')}${sec('Operación', mcFlChecks_('op', opts.op, cnt), true, 'op')}
     ${sl('precio', '💲 Precio')}${sl('m2', '📐 Superficie construida')}
     ${sec('Recámaras', mcFlChecks_('hab', opts.hab, cnt), true, 'hab')}${sec('Baños', mcFlChecks_('banos', opts.banos, cnt), false, 'banos')}${sec('Amueblado', mcFlChecks_('amu', opts.amu, cnt), false, 'amu')}${sec('Estacionamiento', mcFlChecks_('est', opts.est, cnt), false, 'est')}
-    ${sec('Análisis del entorno urbano', mcFlChecks_('ent', opts.ent, cnt), true, 'ent')}${sec('Ciudad', mcFlChecks_('ciudad', opts.ciudad, cnt), false, 'ciudad')}`;
+    ${sec('Análisis del entorno urbano', mcFlChecks_('ent', opts.ent, cnt), true, 'ent')}${sec('🏪 Negocios en 1 km', mcFlChecks_('neg', MCFL_OPT.neg, cnt), true, 'neg')}${sec('🌡️ Datos ambientales y de riesgo', mcFlChecks_('amb', MCFL_OPT.amb, cnt), true, 'amb')}${sec('Ciudad', mcFlChecks_('ciudad', opts.ciudad, cnt), false, 'ciudad')}`;
 }
 // ── Publicantes (equivalente a «Por anfitrión») ──
 function mcFbpHostCard_(h) {
