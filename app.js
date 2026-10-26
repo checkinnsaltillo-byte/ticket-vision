@@ -59410,14 +59410,15 @@ window.tdIGPlantillaHecha_ = function (key, pc) {
 function tdTablero_(O, dia) {
   ckVCss_();
   const lvSub = TAR_STATE.sub !== 'rec'; // Levantamientos: sin «Por estado» (ya no aplica); Recordatorios conserva todas las vistas
-  const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista; let vista = CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado'; if (lvSub && vista === 'estado') vista = 'propiedad';
-  TAR_STATE._segV = ckVistasHtml_(vista, 'tdVista_', lvSub ? ['propiedad', 'usuario', 'tabla'] : null); // va en la barra de arriba (tdRender_)
+  const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista; let vista = (lvSub && v0 === 'levantamiento') || CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado'; if (lvSub && vista === 'estado') vista = 'levantamiento';
+  TAR_STATE._segV = lvSub ? `<div class="ad-seg"><span>Vista</span>${[['levantamiento', 'Por levantamiento'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['tabla', 'Tabla']].map(([k, t]) => `<button type="button" class="${vista === k ? 'on' : ''}" onclick="tdVista_('${k}')">${t}</button>`).join('')}</div>` : ckVistasHtml_(vista, 'tdVista_'); // va en la barra de arriba (tdRender_)
   const PW = { 'Crítico': 4, 'Alto': 3, 'Medio': 2, 'Bajo': 1 };
   const urg = r => tdEsIG_(r) ? Math.max(...tdIGAlojs_(r).map(h => tdIGRetraso_(r, h).ret), -1e9) : -1e9;
   const ord = L => L.slice().sort((a, b) => urg(b.r) - urg(a.r) || tdLimAbajo_(a.r) - tdLimAbajo_(b.r) || a.iso.localeCompare(b.iso) || (PW[tdPrioEf_(b.r, b.iso)] || 0) - (PW[tdPrioEf_(a.r, a.iso)] || 0)); // con fecha límite: hasta abajo
   const card = x => tdCard_(x.r, x.iso, { cal: true, fecha: true });
   let cols;
   const ymV = TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7), vac = `No hay tareas ni recordatorios en ${bnEfeMesLabel_(ymV).toLowerCase()}`;
+  if (lvSub && vista === 'levantamiento') { const L = ord(O.filter(x => tdEsIG_(x.r))); return L.length ? `<div class="ad-board">${L.map(x => `<div class="ad-col">${card(x)}</div>`).join('')}</div>` : `<div class="pc-mv-empty">${vac}</div>`; } // las cards de colores de cada levantamiento (las de la antigua vista «Por estado»)
   if (lvSub && (vista === 'propiedad' || vista === 'usuario')) return tdLvBoard_(O, vista, vac);
   if (vista === 'usuario') {
     const N = [...new Set(O.flatMap(x => tarPersonalList_(x.r)))].sort((a, b) => a.localeCompare(b, 'es')), sin = O.filter(x => !tarPersonalList_(x.r).length);
