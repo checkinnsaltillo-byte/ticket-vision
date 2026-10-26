@@ -61616,7 +61616,7 @@ window.aseoEstadoPop_ = function (id, hid, anchor) {
   const pop = document.createElement('div'); pop.className = 'pz-pop';
   pop.innerHTML = `<div style="font-size:11px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">🧽 Estado de aseo</div>
     ${ASEO_EST.map(e => `<div class="pz-opt ${e.k === cur ? 'on' : ''}" onclick="aseoSetEstado_('${pcEsc(String(id))}','${pcEsc(String(hid || ''))}','${e.k}',false)"><span class="pz-ck sm ${e.k === cur ? 'on' : ''}" style="border-radius:50%">${e.k === cur ? '✓' : ''}</span>${e.ico} ${e.t}</div>`).join('')}
-    <div style="font-size:10.5px;color:#94a3b8;margin-top:6px;line-height:1.35">«En proceso» e «Inspeccionado» se publican directo en la guía. «Terminado» queda en gris hasta validarlo con el botón circular ✓; solo entonces se publica.</div>`;
+    <div style="font-size:10.5px;color:#94a3b8;margin-top:6px;line-height:1.35">«En proceso», «Terminado» e «Inspeccionado» se validan solos y se publican directo en la guía. Al poner «Terminado» también se marca «Guía del huésped» de ese alojamiento.</div>`;
   document.body.appendChild(pop);
   const rc = anchor.getBoundingClientRect(), w = 280;
   pop.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, rc.left)) + 'px';
@@ -61631,8 +61631,7 @@ function aseoCerrarPop_() {
 }
 window.aseoSetEstado_ = async function (id, hid, k, validar) {
   aseoCerrarPop_();
-  validar = !!validar || k !== 'terminado'; // solo "Terminado" requiere validación; el resto se publica directo
-  if (typeof clModoPersonal_ === 'function' && clModoPersonal_()) validar = false; // el personal no valida (igual que por WhatsApp)
+  validar = true; // «Terminado» se valida solo y se publica en la guía (pedido 2026-10-26); el servidor aplica lo mismo en todas las vías
   const prev = ASEO.estados[id];
   const cur0 = aseoEstDe_(id);
   if (!validar && cur0 && cur0.estado === k) return; // mismo estado: nada que cambiar

@@ -10176,6 +10176,7 @@ async function _aseoGuardarEstado({ id, hid, estado, validar, user, desvalidar }
       d[id] = cur; return cur;
     });
   }
+  if (estado === "terminado") validar = true; // pedido del usuario (2026-10-26): «Terminado» se valida solo y se publica en la guía; ya no espera validación manual
   { // historial: estado anterior → nuevo (las tareas guardan el día)
     const prev = ((_aseo.estados || {})[id] || {}), m = String(id).match(/^T([a-z0-9]+)-(\d{4}-\d{2}-\d{2})$/);
     const antes = prev.estado || "pendiente", key = m ? "T:" + m[1] : "A:" + id, dia = m ? ` (${m[2]})` : "";
@@ -10207,6 +10208,9 @@ async function _aseoGuardarEstado({ id, hid, estado, validar, user, desvalidar }
     return cur;
   });
   _aseo.estadosTs = Date.now();
+  if (estado === "terminado" && !/^T[a-z0-9]+-\d{4}-\d{2}-\d{2}$/.test(String(id))) { // «Guía del huésped»: queda marcada para publicarse (solo alojamientos, no tareas)
+    try { let nuevo = false; await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { if (!(d[id] && d[id].on)) { d[id] = { on: true, by: user || "auto", at: new Date().toISOString(), auto: true }; nuevo = true; } }); _aseo.guiaoffTs = Date.now(); if (nuevo) _histAdd("A:" + id, [["Publicado en la guía", false, true]], user); } catch (e) { console.warn("[aseo] no se pudo marcar la guía", id, e.message); }
+  }
   return out;
 }
 // Agrega a una persona al rol (aseo | inspeccion) de la reserva, sin quitar a los demás.
@@ -15099,6 +15103,17 @@ app.post("/aseo/guia", async (req, res) => {
     ids.forEach(id => _histAdd("A:" + id, [["Publicado en la guía", gAntes[id], publicar]], user));
     _aseo.guiaoffTs = Date.now();
     res.json({ ok: true, publicar });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Una sola vez: los «Terminado» que ya estaban sin validar pasan a validados y marcan la guía (mismo criterio que desde ahora se aplica solo).
+app.post("/aseo/validar-terminados", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 15_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
+    const L = Object.entries(_aseo.estados || {}).filter(([id, r]) => r && r.estado === "terminado" && r.validado === false && !/^T[a-z0-9]+-\d{4}-\d{2}-\d{2}$/.test(id)).map(([id, r]) => ({ id, hid: r.hid || "" }));
+    if ((req.body || {}).solo === "contar") return res.json({ ok: true, pendientes: L.length, ejemplos: L.slice(0, 5) });
+    for (const x of L.slice(0, 200)) await _aseoGuardarEstado({ id: x.id, hid: x.hid, estado: "terminado", validar: true, user: "auto" });
+    res.json({ ok: true, validados: Math.min(L.length, 200) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/aseo/estado-aloj", async (req, res) => {
