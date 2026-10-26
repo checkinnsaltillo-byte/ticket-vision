@@ -77662,6 +77662,7 @@ const MCFB_CSS2 = `
   .fb-tb tr.sel td{background:#f0fdfa}
   .fb-tag{display:inline-block;padding:2px 9px;border-radius:99px;background:#eef2f6;font-size:11.5px;font-weight:700;color:#334155;white-space:nowrap}
   .fbi{all:unset;box-sizing:border-box;width:26px;height:26px;border-radius:8px;border:1.5px solid #dbe2ea;background:#fff;color:#64748b;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .12s}.fbi:hover{border-color:#94a3b8;color:#0f172a;background:#f8fafc}.fbi svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .fbi.est{opacity:.45}.fbi.est:hover{opacity:.9}.fbi.est.v{opacity:1;background:#16a34a;border-color:#16a34a;color:#fff}.fbi.est.m{opacity:1;background:#0f766e;border-color:#0f766e;color:#fff}
   .fbi.val.on{background:#16a34a;border-color:#16a34a;color:#fff}.fbi.mon.on{background:#0f766e;border-color:#0f766e;color:#fff}.fbi.arch:hover{border-color:#ef4444;color:#ef4444;background:#fef2f2}
   .fb-ac{display:flex;gap:4px;align-items:center;white-space:nowrap}.fb-ex{font-size:12px;line-height:1.35}.fb-ex b{font-weight:800;color:#0f172a}.fb-ex.no{color:#94a3b8}
   .fbd{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 10px}.fbdd{position:relative;flex:1 1 190px;min-width:170px}
@@ -77817,8 +77818,7 @@ function mcFbExtr_(x) {
 }
 const mcFbAcc_ = x => { const id = esc(x.id), A = !!x.arch;
   return `<span class="fb-ac"><span class="fbx ${x.sel ? 'on' : ''}" role="checkbox" aria-checked="${!!x.sel}" title="Seleccionar" onclick="mcFbRow_('${id}',this)">✓</span>`
-    + `<button type="button" class="fbi val ${x.val ? 'on' : ''}" title="${x.val ? 'Validada (clic para quitar)' : 'Validar'}" aria-pressed="${!!x.val}" onclick="mcFbMk_('val','${id}')">${mcFbIc_.val}</button>`
-    + `<button type="button" class="fbi mon ${x.mon ? 'on' : ''}" title="${x.mon ? 'En monitoreo (clic para quitar)' : 'Marcar para monitoreo'}" aria-pressed="${!!x.mon}" onclick="mcFbMk_('mon','${id}')">${mcFbIc_.mon}</button>`
+    + (() => { const e = x.val ? 'val' : x.mon ? 'mon' : ''; return `<button type="button" class="fbi est ${e === 'val' ? 'v' : e === 'mon' ? 'm' : ''}" title="${e === 'val' ? 'Validado · clic para pasar a Monitoreo' : e === 'mon' ? 'Monitoreo · clic para desactivar' : 'Sin marcar · clic para Validar'}" aria-label="Estado de la publicación" onclick="mcFbMk_('est','${id}')">${e === 'mon' ? mcFbIc_.mon : mcFbIc_.val}</button>`; })()
     + `<button type="button" class="fbi arch" title="${A ? 'Restaurar a la lista' : 'Archivar'}" onclick="mcFbMk_('arch','${id}')">${A ? mcFbIc_.rest : mcFbIc_.arch}</button></span>`; };
 const mcFbFila_ = x => { const c = mcFbClas_(x); return `<tr class="${x.sel ? 'sel' : ''}"><td>${mcFbAcc_(x)}</td><td>${x.thumb ? `<img src="${esc(x.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<img alt="">'}</td><td><a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:#0f172a;font-weight:700;text-decoration:none">${esc(x.titulo || 'Publicación ' + x.id)}</a><div class="mc-mu" style="font-size:11px">${esc(x.id)}${x.error ? ' · ' + esc(x.error) : ''}</div></td><td>${mcFbExtr_(x)}</td><td><span class="fb-tag">${esc(c.c)}</span></td><td class="mc-mu" style="font-size:12px">${esc(c.s)}</td><td>${esc(x.precio || '—')}<div class="mc-mu" style="font-size:11px">${c.o}</div></td><td>${esc(x.ubicacion || '—')}</td><td>${mcFbStt_(x.estado)}</td><td><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcFbQuitar_('${esc(x.id)}')">✕</button></td></tr>`; };
 function mcFbTablaHtml_(vis) {
@@ -77863,10 +77863,16 @@ function mcFbMkSet_(campo, ids, val) {
   fetch(`${BACKEND}/mercado/facebook/marcar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, campo, valor: val }) }).then(r => r.json()).then(j => { if (!j.ok) throw new Error(j.error || 'Error'); }).catch(e => { const m = document.getElementById('fbsel-n'); if (m) m.title = 'No se guardó el cambio: ' + (e.message || e); });
   if (campo === 'arch') { MC.fb._dom = null; mcFbPintar_(); } else mcFbTabla_();
 }
-window.mcFbMk_ = function (campo, id) { const x = (MC.fb.lista || []).find(y => y.id === id); if (x) mcFbMkSet_(campo, [id], !x[campo]); };
+// Estado de revisión (excluyente): sin marcar → Validado → Monitoreo → sin marcar
+function mcFbEstSet_(ids, est) {
+  const S = new Set(ids); (MC.fb.lista || []).forEach(x => { if (!S.has(x.id)) return; delete x.val; delete x.mon; if (est === 'val') x.val = true; else if (est === 'mon') x.mon = true; });
+  fetch(`${BACKEND}/mercado/facebook/marcar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, campo: 'estado', valor: est }) }).then(r => r.json()).then(j => { if (!j.ok) throw new Error(j.error || 'Error'); }).catch(e => { const m = document.getElementById('fbsel-n'); if (m) m.title = 'No se guardó el cambio: ' + (e.message || e); });
+  mcFbTabla_();
+}
+window.mcFbMk_ = function (campo, id) { const x = (MC.fb.lista || []).find(y => y.id === id); if (!x) return; if (campo === 'est') mcFbEstSet_([id], !x.val && !x.mon ? 'val' : x.val ? 'mon' : ''); else mcFbMkSet_(campo, [id], !x[campo]); };
 window.mcFbBulk_ = function (campo) {
   const A = !!MC.fb.verArch, R = (MC.fb.lista || []).filter(x => x.sel && !!x.arch === A); if (!R.length) return;
-  const val = campo === 'arch' ? !A : !R.every(x => x[campo]); mcFbMkSet_(campo, R.map(x => x.id), val);
+  if (campo === 'arch') return mcFbMkSet_(campo, R.map(x => x.id), !A); mcFbEstSet_(R.map(x => x.id), R.every(x => x[campo]) ? '' : campo);
 };
 window.mcFbBusca_ = function (v, limpia) { MC.fb.q = v; const i = document.getElementById('fbq'); if (limpia && i) { i.value = ''; i.focus(); } const x = document.getElementById('fbq-x'); if (x) x.style.display = v ? '' : 'none'; mcFbTablaSoon_(); };
 window.mcFbVer_ = function (k) { if (k === 'arch') { MC.fb.verArch = !MC.fb.verArch; MC.fb.soloVal = MC.fb.soloMon = false; } else if (k === 'val') MC.fb.soloVal = !MC.fb.soloVal; else MC.fb.soloMon = !MC.fb.soloMon; MC.fb.ver = 60; mcFbTabla_(); };

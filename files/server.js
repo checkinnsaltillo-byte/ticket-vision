@@ -13152,8 +13152,8 @@ app.post("/mercado/facebook/reextraer", async (req, res) => {
 });
 app.post("/mercado/facebook/marcar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-  try { const b = req.body || {}, ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(String)), campo = ["val", "mon", "arch"].includes(b.campo) ? b.campo : null, val = !!b.valor; if (!campo) return res.status(400).json({ ok: false, error: "Campo no válido" });
-    const hoy = new Date().toISOString(), n = await _fbMutar(d => { let c = 0; d.lista.forEach(x => { if (!ids.has(x.id)) return; if (val) { x[campo] = true; x[campo + "_at"] = hoy; if (campo === "arch") delete x.sel; } else { delete x[campo]; delete x[campo + "_at"]; } c++; }); return c; }); res.json({ ok: true, cambiadas: n }); }
+  try { const b = req.body || {}, ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(String)), campo = ["val", "mon", "arch", "estado"].includes(b.campo) ? b.campo : null, val = !!b.valor; if (!campo) return res.status(400).json({ ok: false, error: "Campo no válido" });
+    const hoy = new Date().toISOString(), est = campo === "estado" ? (["val", "mon"].includes(b.valor) ? b.valor : "") : null, n = await _fbMutar(d => { let c = 0; d.lista.forEach(x => { if (!ids.has(x.id)) return; if (campo === "estado") { delete x.val; delete x.mon; delete x.val_at; delete x.mon_at; if (est) { x[est] = true; x[est + "_at"] = hoy; } c++; return; } if (val) { x[campo] = true; x[campo + "_at"] = hoy; if (campo === "arch") delete x.sel; } else { delete x[campo]; delete x[campo + "_at"]; } c++; }); return c; }); res.json({ ok: true, cambiadas: n }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/facebook/seleccion", async (req, res) => {
