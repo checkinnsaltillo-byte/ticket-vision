@@ -59283,14 +59283,22 @@ function tdHijosPorEd_(r, hijos, dia) {
   const ord = k => { const i = ED_ORDEN.indexOf(k); return i < 0 ? 99 : i; };
   return [...G.values()].sort((a, b) => ord(a.k) - ord(b.k) || a.t.localeCompare(b.t, 'es')).map(g => `<div class="td-hsec">🏢 ${esc(g.t)} <b>${g.L.length}</b></div>${g.L.map(h => tdHijoFila_(r, h, dia)).join('')}`).join('');
 }
+// Último REGISTRO de cada alojamiento en cada inventario (cualquiera: completo o inconcluso): fecha de su último guardado, estado y avance de ese ciclo.
+function tdIGRegMap_() {
+  if (TAR_STATE._igReg && Date.now() - (TAR_STATE._igRegTs || 0) < 1500) return TAR_STATE._igReg;
+  const U = new Map(); tdIGMapa_().forEach((A, d) => A.forEach(x => { const k = x.r.ID + '|' + x.hid, p = U.get(k); if (!p || d > p.d || (d === p.d && String(x.P) > String(p.P))) U.set(k, { d, P: x.P, est: x.est }); }));
+  TAR_STATE._igRegTs = Date.now(); return (TAR_STATE._igReg = U);
+}
 function tdHijoFila_(r, hid, dia) {
   const est = tdIGEstH_(r, hid, dia), a = typeof atAloj_ === 'function' ? atAloj_(hid) : { nombre: hid, corto: '' };
-  const x = r.Plantilla ? plIdxGet_(tdIGKey_(r, hid, dia)) : null, pc = est === 'Resuelto' && !x ? 100 : x ? x.p : 0, c = TD_EST[est] || '#94a3b8';
+  const x = r.Plantilla ? plIdxGet_(tdIGKey_(r, hid, dia)) : null, c = TD_EST[est] || '#94a3b8';
   const txt = est === 'Resuelto' ? 'Terminado' : est, R = tdIGRetraso_(r, hid);
+  // Última columna (a la derecha): fecha del último registro + ✅ si ese inventario quedó completo o ⏳ si quedó inconcluso, con su avance.
+  const g = tdIGRegMap_().get(r.ID + '|' + hid), gx = g && r.Plantilla ? plIdxGet_(tdIGKey_(r, hid, g.P, true)) : null, gp = g ? (g.est === 'Resuelto' && !gx ? 100 : gx ? gx.p : 0) : 0, gok = g && g.est === 'Resuelto';
+  const ult = g ? `<span class="dt" style="margin-left:auto;white-space:nowrap;font-weight:700" title="Último registro: ${esc(aseoDiaTxt_(g.d))} · ${gok ? 'completo' : 'inconcluso'} (${gp} %)">${esc(aseoDiaTxt_(g.d))} (${gok ? '✅' : '⏳'}${gp}%)</span>` : `<span class="dt" style="margin-left:auto;white-space:nowrap" title="Aún no hay ningún registro de este alojamiento">Sin previo</span>`;
   return `<div class="td-hf" style="--c:${c}" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')" title="${esc(a.nombre || hid)} · ${txt}${x ? ` · ${x.h} de ${x.t} campos` : ''} — clic para abrir el formulario">
     <b>${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span class="nm">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span>
-    <span class="dt" title="Último inventario">🕘 ${R.ult ? esc(aseoDiaTxt_(R.ult)) : 'Sin previo'}</span><span class="dt" title="Fecha límite">⏳ ${esc(aseoDiaTxt_(R.lim))}</span>${tdIGRetHtml_(R)}
-    <span class="es"><i></i>${txt}</span>${r.Plantilla ? `<span class="pc"><i style="width:${pc}%"></i></span><em>${pc}%</em>` : ''}</div>`;
+    <span class="dt" title="Fecha límite">⏳ ${esc(aseoDiaTxt_(R.lim))}</span>${tdIGRetHtml_(R)}${ult}</div>`;
 }
 window.tdIGRow_ = function (id) { const S = TAR_STATE.igRowAb = TAR_STATE.igRowAb || new Set(); if (S.has(id)) S.delete(id); else S.add(id); tarRender(); };
 // Sub-card de un alojamiento dentro de la inspección general (mismo formato de card de tarea).
