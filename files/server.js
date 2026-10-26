@@ -13074,6 +13074,11 @@ function _fbElige(geos, freq) {
 async function _fbFreq(extra) { const d = await _fbDoc(), f = {}; const add = geos => { const seen = new Set(); (Array.isArray(geos) ? geos : []).forEach(g => { if (!Array.isArray(g) || !isFinite(g[0])) return; const k = (+g[0]).toFixed(3) + "," + (+g[1]).toFixed(3); if (seen.has(k)) return; seen.add(k); f[k] = (f[k] || 0) + 1; }); }; Object.values(d.items || {}).forEach(it => add(it.geos)); if (extra) add(extra); return f; }
 const _fbKm = (a, b, c, d) => { const R = 6371, r = x => x * Math.PI / 180, dl = r(c - a), dg = r(d - b), h = Math.sin(dl / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dg / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
 async function _fbCerca(lat, lng) { const d = await _fbDoc(), c = Object.assign({}, _FB_CFG0, d.config || {}); return isFinite(lat) && isFinite(lng) && _fbKm(+c.lat, +c.lng, +lat, +lng) <= 100; } // descarta ubicaciones a más de 100 km de la zona de búsqueda (p. ej. otra ciudad con el mismo nombre de calle)
+async function _fbRev(lat, lng) {
+  const w = _fbGeoT + 1100 - Date.now(); if (w > 0) await _maSleep(w); _fbGeoT = Date.now();
+  try { const r = await _fetchReal(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=10&accept-language=es&lat=${lat}&lon=${lng}`, { headers: { "User-Agent": "check-inn-saltillo/1.0 (sistemas@check-inn.mx)", "Accept": "application/json" }, signal: AbortSignal.timeout(15000) }); if (!r.ok) return null; const a = (await r.json()).address || {};
+    const ciu = String(a.city || a.town || a.village || a.municipality || a.county || "").replace(/^Municipio de\s+/i, "").trim(), est = String(a.state || "").replace(/\s+de Zaragoza$/i, "").trim(); return ciu ? { ciudad: ciu, estado: est } : null; } catch (_) { return null; }
+}
 // La ficha trae la URL del mapa «Ubicación de la propiedad»: con marker_list = PIN (punto exacto); con circle= = círculo aproximado (radio en km al final, p. ej. «|2k»).
 function _fbMapa(urls) {
   const u = (Array.isArray(urls) ? urls : []).map(x => String(x).replace(/&amp;/g, "&")).filter(x => /[?&]center=/.test(x)).pop(); if (!u) return null;
@@ -13095,7 +13100,7 @@ async function _fbEstructura(it, usarIA) {
   const FBJ = it.fb || {}, D = { url: it.url, ld: Array.isArray(it.ld) ? it.ld : [], og: it.og || {}, title: it.title || "", imgs: (Array.isArray(it.imgs) && it.imgs.length) ? it.imgs : (FBJ.fotos || []), text: String(it.text || "").slice(0, 20000), desc: FBJ.descripcion || "", geo: null };
   const pub = _rlpDeDatos(D); delete pub._estructurado;
   if (FBJ.titulo) pub.titulo = FBJ.titulo; if (FBJ.precio != null && FBJ.precio > 0) pub.precio = FBJ.precio; if (FBJ.moneda) pub.moneda = FBJ.moneda; if (FBJ.descripcion && FBJ.descripcion.length > String(pub.descripcion || "").length) pub.descripcion = FBJ.descripcion;
-  if (FBJ.ubicacion) { const p = FBJ.ubicacion.split(",").map(s => s.trim()); pub.ciudad = pub.ciudad || p[0] || ""; pub.colonia = pub.colonia || ""; pub.direccion = FBJ.ubicacion; }
+  // OJO: «location_text» de la página es la ubicación de quien navega (p. ej. Monterrey), no la de la publicación: no se usa.
   let metodo = "estructurado";
   if (usarIA && (!pub.recamaras || !pub.precio || !pub.tipo || pub.tipo === "otro") && String(D.text || FBJ.descripcion || "").length > 80) {
     try { const j = await _rlpLlmTexto(String((D.text && D.text.length > 200 ? D.text : (pub.titulo + "\n" + (FBJ.descripcion || ""))) || "").slice(0, 14000), it.url); Object.keys(j || {}).forEach(k => { const v = j[k]; if (v == null || v === "" || (Array.isArray(v) && !v.length)) return; if (pub[k] == null || pub[k] === "" || (Array.isArray(pub[k]) && !pub[k].length) || k === "tipo" || k === "operacion") pub[k] = v; }); metodo = "IA"; } catch (_) {}
@@ -13106,7 +13111,7 @@ async function _fbEstructura(it, usarIA) {
     if (pub) { o.publicado_texto = pub; if (n && !/m[aá]s/i.test(n[1])) { const v = /^un/i.test(n[1]) ? 1 : +n[1], u = n[2].toLowerCase(), ms = u.startsWith("minuto") ? 6e4 : u.startsWith("hora") ? 36e5 : /^d/.test(u) ? 864e5 : u.startsWith("semana") ? 6048e5 : 2592e6; o.fecha_publicacion = new Date(Date.now() - v * ms).toISOString().slice(0, 10); } }
     const det = pick(/Detalles de la unidad (.{3,500}?)(?= Ubicaci[oó]n de la propiedad| Descripci[oó]n| Informaci[oó]n del vendedor)/i); if (det) o.detalles_unidad = det;
     const ven = pick(/Informaci[oó]n del vendedor (?:Detalles del vendedor )?(.{3,80}?)(?= Se uni[oó]| Detalles del vendedor| Calificaci| Env[ií]a un mensaje|$)/i).replace(/^Detalles del vendedor\s+/i, "").replace(/\s*\(\d+\)\s*$/, ""); if (ven && (!o.contacto_nombre || /^Detalles del vendedor/i.test(o.contacto_nombre))) o.contacto_nombre = ven.slice(0, 120);
-    { const ub = pick(/(?:Alquileres?|Viviendas en (?:venta|renta)|Casas? en (?:venta|renta)|Departamentos? en (?:venta|renta)) (.{3,110}?) Publicado hace/i); if (ub) { const P = ub.split(",").map(x => x.trim()).filter(Boolean), est = P.length > 1 ? P[P.length - 1] : "", ciu = P.length > 1 ? P[P.length - 2] : P[0]; if (ciu && ciu.length < 40) o.ciudad = ciu; if (est) o.estado = /^coah/i.test(est) ? "Coahuila" : /^(nl|n\.l\.|nuevo le)/i.test(est) ? "Nuevo León" : est; if (P.length > 2) o.direccion = P.slice(0, P.length - 2).join(", "); } }
+    { const ub = pick(/(?:Alquileres?|Viviendas en (?:venta|renta)|Casas? en (?:venta|renta)|Departamentos? en (?:venta|renta)) (.{3,110}?) Publicado hace/i); if (ub) { const P = ub.split(",").map(x => x.trim()).filter(Boolean), est = P.length > 1 ? P[P.length - 1] : "", ciu = P.length > 1 ? P[P.length - 2] : P[0]; if (ciu && ciu.length < 40) { o.ciudad = ciu; o.ciudad_fuente = "texto"; } if (est) o.estado = /^coah/i.test(est) ? "Coahuila" : /^(nl|n\.l\.|nuevo le)/i.test(est) ? "Nuevo León" : est; if (P.length > 2) o.direccion = P.slice(0, P.length - 2).join(", "); } }
     const des = pick(/Se uni[oó] a Facebook en (\d{4})/i); if (des) o.vendedor_desde = des;
     if (/no se admiten mascotas|sin mascotas/i.test(tx)) o.mascotas = false; else if (/se admiten (?:mascotas|perros|gatos)|admite mascotas|pet.?friendly/i.test(tx)) o.mascotas = true;
   }
@@ -13125,6 +13130,7 @@ async function _fbEstructura(it, usarIA) {
   { const mp = _fbMapa(o.mapas); if (mp && await _fbCerca(mp.lat, mp.lng)) { const fc = mp.tipo === "circulo" ? await _fbFreqC() : {}; if (mp.tipo === "punto" || (fc[_fbKeyC(mp)] || 0) < 2) { o.lat = mp.lat; o.lng = mp.lng; o.geo = { prec: "facebook", tipo: mp.tipo, radio_m: mp.tipo === "circulo" ? mp.radio : 0, q: mp.tipo === "punto" ? "pin «Ubicación de la propiedad» (punto)" : "mapa «Ubicación de la propiedad» (centro del círculo aproximado)", at: new Date().toISOString() }; } } }
   const cand0 = !o.geo && o.geos.length ? _fbElige(o.geos, await _fbFreq(o.geos)) : null, cand = cand0 && await _fbCerca(cand0[0], cand0[1]) ? cand0 : null; if (cand) { o.lat = Math.round(cand[0] * 1e5) / 1e5; o.lng = Math.round(cand[1] * 1e5) / 1e5; o.geo = { prec: "facebook", q: cand[3] === "c" ? "mapa «Ubicación de la propiedad» (centro del círculo aproximado)" : "coordenada de la ficha (aprox.)", at: new Date().toISOString() }; }
   if (!o.geo) try { const g = await _fbGeo(o); if (g && await _fbCerca(g.lat, g.lng)) { o.lat = g.lat; o.lng = g.lng; o.geo = { prec: g.prec, q: g.q, at: g.at }; } } catch (_) {}
+  if (o.ciudad_fuente !== "texto" && o.lat != null) { const rv = await _fbRev(o.lat, o.lng); if (rv) { o.ciudad = rv.ciudad; if (rv.estado) o.estado = rv.estado; o.ciudad_fuente = "mapa"; } }
   return { pub: o, metodo };
 }
 app.get("/mercado/facebook", async (req, res) => {
@@ -13173,6 +13179,14 @@ app.post("/mercado/facebook/programa", async (req, res) => {
   try { const p = (req.body || {}).programa || {}, iso = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "", nums = (a, lo, hi) => [...new Set((Array.isArray(a) ? a : []).map(Number).filter(x => Number.isInteger(x) && x >= lo && x <= hi))].sort((a, b) => a - b);
     const prog = { recurrente: p.recurrente !== false, tipo: ["semanal", "mensual", "bimestral"].includes(p.tipo) ? p.tipo : "semanal", fechas: (Array.isArray(p.fechas) ? p.fechas : []).map(iso).filter(Boolean).slice(0, 1), dias_semana: nums(p.dias_semana, 0, 6), dias_mes: nums(p.dias_mes, 1, 31), inicio: iso(p.inicio), fin: iso(p.fin), vigencia: ["Activa", "Pausada", "Cancelada"].includes(p.vigencia) ? p.vigencia : "Pausada", horas: nums(p.horas, 0, 23).slice(0, 8) }; if (!prog.horas.length) prog.horas = [11];
     await _fbMutar(d => { d.config = Object.assign({}, d.config || {}, { programa: prog }); }); res.json({ ok: true, programa: prog }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/facebook/ciudades", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const d0 = await _fbDoc(), ids = Object.keys(d0.items || {}).filter(id => { const it = d0.items[id]; return it.lat != null && it.ciudad_fuente !== "texto"; }).slice(0, 120), out = {};
+    for (const id of ids) { const it = d0.items[id], rv = await _fbRev(it.lat, it.lng); if (rv) out[id] = rv; }
+    let cambiadas = 0; await _fbMutar(d => { cambiadas = 0; Object.keys(out).forEach(id => { const it = d.items[id]; if (!it) return; const rv = out[id]; if (String(it.ciudad || "") !== rv.ciudad) cambiadas++; it.ciudad = rv.ciudad; if (rv.estado) it.estado = rv.estado; it.ciudad_fuente = "mapa"; }); });
+    res.json({ ok: true, revisadas: ids.length, cambiadas }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/facebook/seleccion", async (req, res) => {
