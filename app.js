@@ -372,7 +372,7 @@ const SYS_MODULE_LIST = [
   ['aseo',             '🛠️ Operaciones (limpieza, inspección, mantenimiento + Breezeway)'],
   ['incidencias',      '🚨 Incidencias'],
   ['reportes-tecnicos','🛠 Reportes técnicos'],
-  ['tareas',           '📝 Levantamientos'],
+  ['tareas',           '📝 Inventarios'],
   ['objetos',          '🧳 Objetos olvidados'],
   ['ocupacion',        '📊 Dashboard (Ocupación)'],
   ['rh',               '👥 Recursos Humanos'],
@@ -9192,7 +9192,7 @@ function clNavHtml_(act) {
   const enTareas = act === 'checkinn' || act === 'mant';
   const items = (clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '✅ Tareas', 'aseo', enTareas) : '')
     + (clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '')
-    + (clPuede_('tareas') ? b('tareas', '📝 Levantamientos', 'tareas') : ''); // v2127: en modo personal se respeta lo marcado en «Editar empleado» (antes se ocultaban siempre)
+    + (clPuede_('tareas') ? b('tareas', '📝 Inventarios', 'tareas') : ''); // v2127: en modo personal se respeta lo marcado en «Editar empleado» (antes se ocultaban siempre)
   const pl = !MPn && clPuede_('aseo') ? `<div class="cl-g cl-der">${b('plantillas', '📋 Plantillas', 'plantillas')}${b('reglasbot', '🧹 Programación', 'reglasbot')}</div>` : '';
   const sub = enTareas && window.ASEO ? `<div class="cl-sub">${CL_SUBS.map(([k, ico, t]) => { const D = AT_DEPTO[k] || {}; return `<button type="button" class="cl-sb ${(ASEO.sub || 'todos') === k ? 'on' : ''}" style="--c:${D.c || '#0f1729'}" onclick="clSub_('${k}')">${ico || D.ico} ${t || D.t}</button>`; }).join('')}</div>` : '';
   return items.trim() || pl ? `<div class="cl-nav">${items.trim() ? `<div class="cl-g">${items}</div>` : ''}${pl}</div>${sub}` : '';
@@ -58681,7 +58681,7 @@ const TAR_STATE = {
   ocur: [], ocurIdx: new Map(), hist: null,
 };
 function tarOcurKey_(id, iso) { return `${id}|${iso}`; }
-// Llave de fecha de una ocurrencia: «YYYY-MM-DD»; los ciclos de un levantamiento renovado el mismo día llevan sufijo («YYYY-MM-DD-2»).
+// Llave de fecha de una ocurrencia: «YYYY-MM-DD»; los ciclos de un inventario renovado el mismo día llevan sufijo («YYYY-MM-DD-2»).
 function tarFechaK_(v) { return (String(v || '').match(/^\d{4}-\d{2}-\d{2}(?:-\d+)?/) || [''])[0]; }
 function tarIndexOcur_() {
   TAR_STATE.ocurIdx = new Map(); TAR_STATE.ocurByTar = new Map();
@@ -58776,7 +58776,7 @@ function tarOccursOn_(row, iso) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(inicio) && iso < inicio) return false;
   if (p.fin && iso > p.fin) return false;
   if (p.tipo === 'semanal') return p.dias_semana.includes(d.getDay());
-  if (p.tipo === 'periodo') return true; // levantamiento por periodo: vigente todo el rango (su límite es dinámico por alojamiento)
+  if (p.tipo === 'periodo') return true; // inventario por periodo: vigente todo el rango (su límite es dinámico por alojamiento)
   const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   const day = d.getDate();
   // Días 29-31 en meses más cortos caen en el último día del mes.
@@ -58945,7 +58945,7 @@ function tdFinMes_(iso) { const d = tarParseIso_(iso); return tarIso_(new Date(d
 function tdIsoDe_(r, iso) { return tdEsIG_(r) ? tdFinMes_(iso) : iso; }
 function tdIsoId_(id, iso) { id = String(id); if (id.includes('~')) { const [pid, hid] = id.split('~'), r = TAR_STATE.list.find(x => x.ID === pid); return r ? tdIGPerDe_(r, hid, iso) : tdFinMes_(iso); } return tdEsIG_(TAR_STATE.list.find(x => x.ID === id)) ? tdFinMes_(iso) : iso; }
 // Fecha límite de la inspección dentro del mes (campo «Fecha límite»: se toma su día; sin él, el último día del mes).
-// Fecha límite del levantamiento en el mes de «iso»: mensual/bimestral → el día elegido (si el mes es más corto, su último día);
+// Fecha límite del inventario en el mes de «iso»: mensual/bimestral → el día elegido (si el mes es más corto, su último día);
 // por días de la semana (u otra) → el último día programado del mes (p. ej. el último viernes).
 const _tdLimC = new Map();
 function tdLimIG_(r, iso) {
@@ -58956,7 +58956,7 @@ function tdLimIG_(r, iso) {
   _tdLimC.set(k, lim); return lim;
 }
 // Fecha límite de una tarea (para avisos y prioridad automática). '' si no tiene.
-function tdLimite_(r, dia) { if (r.Fecha_limite !== 'Sí') return ''; if (tdEsIG_(r)) { const L = tdIGAlojs_(r).map(h => tdIGRetraso_(r, h).lim).sort(); return L[0] || tdLimIG_(r, dia); } /* levantamiento: la fecha límite más próxima de sus alojamientos */ const p = tarProg_(r); return p.tipo === 'unica' ? (p.fechas.slice().sort().filter(x => x >= tarIso_(tarToday_()))[0] || p.fechas.slice().sort().pop() || '') : (tarNextDate_(r) || ''); }
+function tdLimite_(r, dia) { if (r.Fecha_limite !== 'Sí') return ''; if (tdEsIG_(r)) { const L = tdIGAlojs_(r).map(h => tdIGRetraso_(r, h).lim).sort(); return L[0] || tdLimIG_(r, dia); } /* inventario: la fecha límite más próxima de sus alojamientos */ const p = tarProg_(r); return p.tipo === 'unica' ? (p.fechas.slice().sort().filter(x => x >= tarIso_(tarToday_()))[0] || p.fechas.slice().sort().pop() || '') : (tarNextDate_(r) || ''); }
 // Prioridad automática conforme se acerca la fecha límite: > 7 días la elegida · ≤ 7 Medio · ≤ 3 Alto · ≤ 1 o vencida Crítico (nunca baja la elegida).
 function tdPrioEf_(r, dia) {
   const base = r.Prioridad || 'Medio', est = tdEst_(r, dia), f = tdLimite_(r, dia);
@@ -58982,7 +58982,7 @@ function tdIGPerDe_(r, hid, iso, ex) { if (ex) return iso; const C = tdIGCiclos_
 function tdIGKey_(r, hid, iso, ex) { return `TI:${r.ID}:${hid}:${tdIGPerDe_(r, hid, iso, ex)}`; }
 // Estado informativo de un alojamiento según su plantilla (mismos criterios que Aseo/Mantenimiento):
 // 0 % Pendiente · > 0 % En proceso · ≥ 90 % Terminado. Si no hay plantilla (o se canceló/resolvió a mano) manda el estado guardado.
-// Regla de avance de plantilla (todas las tareas y levantamientos): > 10 % En proceso · ≥ 90 % Terminado/Resuelto.
+// Regla de avance de plantilla (todas las tareas y inventarios): > 10 % En proceso · ≥ 90 % Terminado/Resuelto.
 const PL_U_PROC = 10, PL_U_FIN = 90;
 function tdIGEstH_(r, hid, iso, ex) {
   const P = tdIGPerDe_(r, hid, iso, ex), e = tarOcurEstado_(tdIGHijo_(r, hid), P); if (e === 'Cancelado' || !r.Plantilla) return e;
@@ -59101,15 +59101,15 @@ function tdRender_() {
       <span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       ${TAR_STATE.sub === 'rec' ? `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','Recordatorio')">＋ Recordatorio</button>`
-        : `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','IG')" title="Levantamiento de varios alojamientos con una plantilla">＋ Levantamiento</button>`}</div>`;
+        : `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','IG')" title="Inventario de varios alojamientos con una plantilla">＋ Inventario</button>`}</div>`;
   const mio = r => typeof clSoloMio_ !== 'function' || clSoloMio_(tarPersonalList_(r)); const nRec = TAR_STATE.list.filter(r => tarEsRec_(r) && mio(r)).length, nIG = TAR_STATE.list.filter(r => tdEsIG_(r) && mio(r)).length;
   const nav = `<div class="cl-nav-slot" data-act="tareas">${typeof clNavHtml_ === 'function' ? clNavHtml_('tareas') : ''}</div>
-    <div class="cl-sub">${[['ig', '📝 Levantamientos', nIG, AT_DEPTO.inspeccion.c], ['rec', '📌 Recordatorios', nRec, '#d97706']].map(([k, t, n, c]) => `<button type="button" class="cl-sb ${(TAR_STATE.sub || 'ig') === k ? 'on' : ''}" style="--c:${c}" onclick="TAR_STATE.sub='${k}';tdRender_()">${t} · ${n}</button>`).join('')}</div>`;
+    <div class="cl-sub">${[['ig', '📝 Inventarios', nIG, AT_DEPTO.inspeccion.c], ['rec', '📌 Recordatorios', nRec, '#d97706']].map(([k, t, n, c]) => `<button type="button" class="cl-sb ${(TAR_STATE.sub || 'ig') === k ? 'on' : ''}" style="--c:${c}" onclick="TAR_STATE.sub='${k}';tdRender_()">${t} · ${n}</button>`).join('')}</div>`;
   const head = `<div class="cl-title">🛠️ Operaciones</div>`;
   if (sec === 'registro') {
     root.innerHTML = `<div style="max-width:1440px;margin:0 auto">${head}${nav}${bar.replace('__SEGV__', '')}${TAR_STATE.filAb ? `<div class="ad-v2">${tdFiltros_(TAR_STATE.list.slice())}</div>` : ''}<div id="tar-content">${tarRegistroHtml_()}</div></div>`;
   } else {
-    // Levantamientos: sus cards se ven siempre (cualquier mes elegido), con el estado actual de sus alojamientos;
+    // Inventarios: sus cards se ven siempre (cualquier mes elegido), con el estado actual de sus alojamientos;
     // el mes solo cambia el calendario (chips por alojamiento).
     const hoyLv = tarIso_(tarToday_()), lvs = TAR_STATE.list.filter(r => tdEsIG_(r) && tarVigencia_(r) !== 'Cancelada').map(r => ({ r, iso: hoyLv }));
     const oc0 = tdOcDias_(tdDiasVista_(ym), false).filter(x => !tdEsIG_(x.r)).concat(lvs), oc = oc0.filter(x => tarPasaFiltro_(x.r)), board = tdTablero_(oc, dia);
@@ -59127,7 +59127,7 @@ function tdRender_() {
 // Las tareas con fecha límite van ancladas al final de cualquier lista (tablero y calendario).
 function tdLimAbajo_(r) { return r && r.Fecha_limite === 'Sí' ? 1 : 0; }
 function tdOrdLim_(L) { return L.map((r, i) => [r, i]).sort((a, b) => tdLimAbajo_(a[0]) - tdLimAbajo_(b[0]) || a[1] - b[1]).map(x => x[0]); }
-// Días del periodo elegido en Levantamientos (día, semana o mes): filtran cards, tabla y calendario.
+// Días del periodo elegido en Inventarios (día, semana o mes): filtran cards, tabla y calendario.
 function tdDiasVista_(ym) {
   const v = TAR_STATE.calView, ref = TAR_STATE.calRef ? new Date(TAR_STATE.calRef) : tarToday_();
   if (v === 'dia') return [tarIso_(ref)];
@@ -59235,16 +59235,16 @@ try { TAR_STATE.vista = localStorage.getItem('tar-vista') || 'estado'; } catch (
 // ── Card compacta: misma distribución que las cards de Aseo / Mantenimiento ──
 //    r1: código · prioridad · ícono + nombre · r2: chip «Tipo › Clasificación» y datos · r3: personal · íconos · Detalles · estados.
 function tdCodigo_(r) {
-  if (tdEsIG_(r)) return 'LV'; // Levantamiento
+  if (tdEsIG_(r)) return 'LV'; // Inventario
   const c = String(r.Clasificacion || '').trim();
   return c ? c.split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase() : tarEsRec_(r) ? 'REC' : 'TP';
 }
 function tdChip_(r, T) {
   const ig = tdEsIG_(r), p = ig && r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
-  const t = ig ? '📝 Levantamiento' : `${tarEsRec_(r) ? '📌' : '📋'} ${T.t}`, sub = ig ? (p ? p.titulo : 'Sin plantilla') : (r.Clasificacion ? r.Clasificacion + (r.Subclasificacion ? ' › ' + r.Subclasificacion : '') : 'Sin clasificación');
+  const t = ig ? '📝 Inventario' : `${tarEsRec_(r) ? '📌' : '📋'} ${T.t}`, sub = ig ? (p ? p.titulo : 'Sin plantilla') : (r.Clasificacion ? r.Clasificacion + (r.Subclasificacion ? ' › ' + r.Subclasificacion : '') : 'Sin clasificación');
   return `<span class="ax-cat" style="--cc:${ig ? AT_DEPTO.inspeccion.c : T.c};--sc:#6b7280" title="${pcEsc(t + ' › ' + sub)}"><span class="t">${pcEsc(t)}</span><span class="a">›</span><span class="s">${pcEsc(sub)}</span></span>`;
 }
-function tdQs_(id, est, dia) { return `<div class="ad-qs" onclick="event.stopPropagation()">${TAR_ESTADOS.map(e => `<button type="button" class="${e.k === est ? 'on' : ''}" style="--c:${TD_EST[e.k]}" title="${e.k}" onclick="event.stopPropagation();${e.k === est ? '' : `tdSetEst_('${esc(id)}','${dia}','${e.k}')`}"><i></i>${TD_CORTO[e.k]}</button>`).join('')}</div>`; }
+function tdQs_(id, est, dia, ig) { return `<div class="ad-qs" onclick="event.stopPropagation()">${TAR_ESTADOS.map(e => `<button type="button" class="${e.k === est ? 'on' : ''}" style="--c:${TD_EST[e.k]}" title="${e.k}" onclick="event.stopPropagation();${e.k === est ? '' : `tdSetEst_('${esc(id)}','${dia}','${e.k}')`}"><i></i>${ig && e.k === 'Resuelto' ? 'Terminado' : TD_CORTO[e.k]}</button>`).join('')}</div>`; }
 function tdBarra_(pc, titulo) { if (typeof plCss_ === 'function') plCss_(); return `<div class="pl-cb2" title="${pcEsc(titulo)}: ${pc}%"><span><i style="width:${pc}%;background:hsl(${Math.round(pc * 1.2)},78%,44%)"></i></span><b>${pc}%</b></div>`; }
 function tdCard_(r, dia, o) {
   o = o || {};
@@ -59269,7 +59269,7 @@ function tdCard_(r, dia, o) {
     <div class="r1"><span class="code">${esc(tdCodigo_(r))}</span><span title="${prioEf !== (r.Prioridad || 'Medio') ? 'Prioridad subida automáticamente por la fecha límite (elegida: ' + esc(r.Prioridad || 'Medio') + ')' : ''}">${prio4Html_(prioEf, true, `tdPrioCiclo_('${esc(r.ID)}')`)}</span><span class="prop">${ico} ${esc(r.Nombre || 'Sin nombre')}</span></div>
     ${flag}
     <div class="r2">${meta.join('<span class="sep"></span>')}</div>
-    <div class="r3">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${ig ? `<span class="ad-gd" title="Alojamientos">🏠 ${hijos.length}</span>` : ''}${r.WhatsApp === 'Sí' ? '<span class="ad-gd" title="Envía WhatsApp">💬</span>' : ''}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();${abrir}">Detalles</button>${ig ? `<button type="button" class="ad-det" title="Editar el levantamiento" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button>` : ''}</div>
+    <div class="r3">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${ig ? `<span class="ad-gd" title="Alojamientos">🏠 ${hijos.length}</span>` : ''}${r.WhatsApp === 'Sí' ? '<span class="ad-gd" title="Envía WhatsApp">💬</span>' : ''}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();${abrir}">Detalles</button>${ig ? `<button type="button" class="ad-det" title="Editar el inventario" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button>` : ''}</div>
     ${ig ? '' : tdQs_(r.ID, est, dia)}${av != null ? tdBarra_(av, 'Avance de los alojamientos') : ''}
     ${ig && hijos.length ? `<button type="button" class="td-igtg ${ab ? 'ab' : ''}" onclick="event.stopPropagation();tdIGToggle_('${esc(r.ID)}')" title="${ab ? 'Ocultar' : 'Ver'} los alojamientos">${ab ? '▴ Ocultar' : '▾ Ver'} ${hijos.length} alojamiento${hijos.length === 1 ? '' : 's'}</button>` : ''}
     ${ab ? `<div class="td-hijos" onclick="event.stopPropagation()">${tdHijosPorEd_(r, hijos, dia)}</div>` : ''}
@@ -59277,7 +59277,7 @@ function tdCard_(r, dia, o) {
 }
 // Renglón desplegable de un alojamiento dentro de la inspección general (sin cards anidadas: aprovecha todo el ancho).
 //   Encabezado: ▸ código · nombre · estado · % de plantilla. Desplegado: estados rápidos y «Abrir formulario».
-// Alojamientos del levantamiento agrupados por edificio (orden A–G: Cumbres, Baja California, Oaxaca, José Cárdenas, Matamoros, Sevilla, Versalles; luego el resto).
+// Alojamientos del inventario agrupados por edificio (orden A–G: Cumbres, Baja California, Oaxaca, José Cárdenas, Matamoros, Sevilla, Versalles; luego el resto).
 function tdHijosPorEd_(r, hijos, dia) {
   const G = new Map(); hijos.forEach(h => { const E = alojEdif_(h), k = E ? E.k : '~' + ckPropDe_(h, ''), t = E ? E.nom : ckPropDe_(h, '').replace(/^Calle\s+/i, ''); if (!G.has(k)) G.set(k, { k, t, L: [] }); G.get(k).L.push(h); });
   const ord = k => { const i = ED_ORDEN.indexOf(k); return i < 0 ? 99 : i; };
@@ -59289,7 +59289,7 @@ function tdHijoFila_(r, hid, dia) {
   const txt = est === 'Resuelto' ? 'Terminado' : est, R = tdIGRetraso_(r, hid);
   return `<div class="td-hf" style="--c:${c}" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')" title="${esc(a.nombre || hid)} · ${txt}${x ? ` · ${x.h} de ${x.t} campos` : ''} — clic para abrir el formulario">
     <b>${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span class="nm">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span>
-    <span class="dt" title="Último levantamiento">🕘 ${R.ult ? esc(aseoDiaTxt_(R.ult)) : 'Sin previo'}</span><span class="dt" title="Fecha límite">⏳ ${esc(aseoDiaTxt_(R.lim))}</span>${tdIGRetHtml_(R)}
+    <span class="dt" title="Último inventario">🕘 ${R.ult ? esc(aseoDiaTxt_(R.ult)) : 'Sin previo'}</span><span class="dt" title="Fecha límite">⏳ ${esc(aseoDiaTxt_(R.lim))}</span>${tdIGRetHtml_(R)}
     <span class="es"><i></i>${txt}</span>${r.Plantilla ? `<span class="pc"><i style="width:${pc}%"></i></span><em>${pc}%</em>` : ''}</div>`;
 }
 window.tdIGRow_ = function (id) { const S = TAR_STATE.igRowAb = TAR_STATE.igRowAb || new Set(); if (S.has(id)) S.delete(id); else S.add(id); tarRender(); };
@@ -59300,9 +59300,9 @@ function tdHijoCard_(r, hid, dia) {
   const sel = TAR_STATE.dr && TAR_STATE.dr.hijo === id;
   return `<div class="ad-card tipo est-tint td-card td-hijo ${sel ? 'sel' : ''} ${est === 'Cancelado' ? 'ghost' : ''}" style="--tc:${AT_DEPTO.inspeccion.c};--sc:${TD_EST[est] || '#94a3b8'}" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')">
     <div class="r1"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span>${prio4Html_(r.Prioridad || 'Medio', true)}<span class="prop">🔍 ${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span></div>
-    <div class="r2"><span class="ax-cat" style="--cc:${AT_DEPTO.inspeccion.c};--sc:#6b7280"><span class="t">📝 Levantamiento</span><span class="a">›</span><span class="s">${esc(p ? p.titulo : 'Sin plantilla')}</span></span></div>
+    <div class="r2"><span class="ax-cat" style="--cc:${AT_DEPTO.inspeccion.c};--sc:#6b7280"><span class="t">📝 Inventario</span><span class="a">›</span><span class="s">${esc(p ? p.titulo : 'Sin plantilla')}</span></span></div>
     <div class="r3">${tarPersonalList_(r).length ? `<span class="ad-avs">${tarPersonalList_(r).map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')">Detalles</button></div>
-    ${tdQs_(id, est, dia)}${p ? tdBarra_(x ? x.p : (est === 'Resuelto' ? 100 : 0), 'Avance de la plantilla ' + p.titulo) : ''}
+    ${tdQs_(id, est, dia, true)}${p ? tdBarra_(x ? x.p : (est === 'Resuelto' ? 100 : 0), 'Avance de la plantilla ' + p.titulo) : ''}
   </div>`;
 }
 // Calendario (día/semana/mes/resumen): abre la ventana de detalle en la fecha de esa card.
@@ -59339,16 +59339,16 @@ function tdIGChips_(iso, grande) {
     const cod = a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid);
     const k = x.hid + '|' + (x.r.Plantilla || x.r.ID), ult = ULT.get(k), n = ult ? dias(ult, hoy) : null;
     const pi = x.r.Plantilla ? (plIdxGet_(tdIGKey_(x.r, x.hid, x.P, true)) || {}).p : null, pc = x.est === 'Resuelto' && pi == null ? 100 : pi || 0;
-    const dTxt = n == null ? 'Sin levantamiento previo' : n === 0 ? 'Levantado hoy' : `Hace ${n} día${n === 1 ? '' : 's'}`;
+    const dTxt = n == null ? 'Sin inventario previo' : n === 0 ? 'Levantado hoy' : `Hace ${n} día${n === 1 ? '' : 's'}`;
     const R = tdIGRetraso_(x.r, x.hid), sem = { baja: 'v', media: 'a', alta: 'r', critica: 'r' }[R.prio];
     return `<div class="td-igc" style="--sc:${TD_EST[x.est] || '#94a3b8'}" onclick="event.stopPropagation();tdAbrirHijoEn_('${esc(x.r.ID)}','${esc(x.hid)}','${x.P}')" title="${esc(String(a.nombre || x.hid))} · ${esc(pt)} · ${txt} · ${pc}%">
       <b>${esc(cod)}-${esc(tdAbrev_(pt))}</b>
       <span class="l2"><span class="d ${sem}">${dTxt}</span>${R.ret > 0 ? `<span class="rt">+${R.ret} días retraso</span>` : ''}</span>
       <span class="br"><span class="tk"><i style="width:${pc}%"></i></span><em>${pc}%</em></span></div>`; }).join('')}</div>`;
 }
-// Prioridad dinámica de un alojamiento en un levantamiento. Referencia = su último levantamiento terminado (o, si nunca se ha
+// Prioridad dinámica de un alojamiento en un inventario. Referencia = su último inventario terminado (o, si nunca se ha
 // hecho, el «Desde» de Fecha(s)); siguiente fecha límite = referencia + el periodo de Fecha(s) (semanal 7 días, mensual 1 mes,
-// bimestral 2 meses; con varios días elegidos se reparte el periodo). Cada levantamiento terminado reinicia la cuenta desde ese día.
+// bimestral 2 meses; con varios días elegidos se reparte el periodo). Cada inventario terminado reinicia la cuenta desde ese día.
 // Semáforo por días de retraso: al día → Baja (verde) · 1–10 → Media (amarillo) · 11–20 → Alta (naranja) · más de 20 → Crítica (rojo).
 const TD_LV_SEM = { baja: ['#15803d', '#dcfce7', 'Al día'], media: ['#a16207', '#fef9c3', ''], alta: ['#c2410c', '#ffedd5', ''], critica: ['#b91c1c', '#fee2e2', ''] };
 function tdLvSigLim_(r, base) {
@@ -59384,7 +59384,7 @@ function tdIGUltFecha_(r, hid, P) {
   const x = plIdxGet_(`TI:${r.ID}:${hid}:${P}`); if (x && x.at && String(x.at) > at) at = String(x.at);
   const d = at ? new Date(at) : null; return d && !isNaN(d) ? d.toLocaleDateString('en-CA', { timeZone: 'America/Monterrey' }) : '';
 }
-// Tabla de Levantamientos: un separador desplegable por levantamiento (plantilla) y un renglón por alojamiento.
+// Tabla de Inventarios: un separador desplegable por inventario (plantilla) y un renglón por alojamiento.
 window.tdTbTg_ = function (k) { const C = TAR_STATE.tbAb = TAR_STATE.tbAb || new Set(); if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 window.tdAbrirHijoEn_ = function (pid, hid, P) { if (tdFinMes_(tdDia_()) !== tdFinMes_(P)) TAR_STATE.dia = P; tdAbrirHijo_(pid, hid); };
 window.tdAbrirHijo_ = function (pid, hid, per) { // per: llave de un periodo/ciclo anterior (Historial)
@@ -59409,22 +59409,22 @@ window.tdIGPlantillaHecha_ = function (key, pc) {
 };
 function tdTablero_(O, dia) {
   ckVCss_();
-  const lvSub = TAR_STATE.sub !== 'rec'; // Levantamientos: sin «Por estado» (ya no aplica); Recordatorios conserva todas las vistas
-  const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista; let vista = (lvSub && v0 === 'levantamiento') || CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado'; if (lvSub && vista === 'estado') vista = 'levantamiento';
-  TAR_STATE._segV = lvSub ? `<div class="ad-seg"><span>Vista</span>${[['levantamiento', 'Por levantamiento'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['tabla', 'Tabla']].map(([k, t]) => `<button type="button" class="${vista === k ? 'on' : ''}" onclick="tdVista_('${k}')">${t}</button>`).join('')}</div>` : ckVistasHtml_(vista, 'tdVista_'); // va en la barra de arriba (tdRender_)
+  const lvSub = TAR_STATE.sub !== 'rec'; // Inventarios: sin «Por estado» (ya no aplica); Recordatorios conserva todas las vistas
+  const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista; let vista = (lvSub && v0 === 'inventario') || CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado'; if (lvSub && vista === 'estado') vista = 'inventario';
+  TAR_STATE._segV = lvSub ? `<div class="ad-seg"><span>Vista</span>${[['inventario', 'Por inventario'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['tabla', 'Tabla']].map(([k, t]) => `<button type="button" class="${vista === k ? 'on' : ''}" onclick="tdVista_('${k}')">${t}</button>`).join('')}</div>` : ckVistasHtml_(vista, 'tdVista_'); // va en la barra de arriba (tdRender_)
   const PW = { 'Crítico': 4, 'Alto': 3, 'Medio': 2, 'Bajo': 1 };
   const urg = r => tdEsIG_(r) ? Math.max(...tdIGAlojs_(r).map(h => tdIGRetraso_(r, h).ret), -1e9) : -1e9;
   const ord = L => L.slice().sort((a, b) => urg(b.r) - urg(a.r) || tdLimAbajo_(a.r) - tdLimAbajo_(b.r) || a.iso.localeCompare(b.iso) || (PW[tdPrioEf_(b.r, b.iso)] || 0) - (PW[tdPrioEf_(a.r, a.iso)] || 0)); // con fecha límite: hasta abajo
   const card = x => tdCard_(x.r, x.iso, { cal: true, fecha: true });
   let cols;
   const ymV = TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7), vac = `No hay tareas ni recordatorios en ${bnEfeMesLabel_(ymV).toLowerCase()}`;
-  if (lvSub && vista === 'levantamiento') { const L = ord(O.filter(x => tdEsIG_(x.r))); return L.length ? `<div class="ad-board">${L.map(x => `<div class="ad-col">${card(x)}</div>`).join('')}</div>` : `<div class="pc-mv-empty">${vac}</div>`; } // las cards de colores de cada levantamiento (las de la antigua vista «Por estado»)
+  if (lvSub && vista === 'inventario') { const L = ord(O.filter(x => tdEsIG_(x.r))); return L.length ? `<div class="ad-board">${L.map(x => `<div class="ad-col">${card(x)}</div>`).join('')}</div>` : `<div class="pc-mv-empty">${vac}</div>`; } // las cards de colores de cada inventario (las de la antigua vista «Por estado»)
   if (lvSub && (vista === 'propiedad' || vista === 'usuario')) return tdLvBoard_(O, vista, vac);
   if (vista === 'usuario') {
     const N = [...new Set(O.flatMap(x => tarPersonalList_(x.r)))].sort((a, b) => a.localeCompare(b, 'es')), sin = O.filter(x => !tarPersonalList_(x.r).length);
     return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', n: sin.length, cards: ord(sin).map(card).join('') }] : []).concat(N.map(n => { const X = ord(O.filter(x => tarPersonalList_(x.r).includes(n))); return { t: `${adAv_(n)} ${esc(aseoNombreCorto_(n))}`, n: X.length, cards: X.map(card).join('') }; })), vac);
   }
-  if (vista === 'tabla' && TAR_STATE.sub !== 'rec') { // Tabla de levantamientos: «Por tipo» (agrupada por levantamiento) o «Por urgencia» (todos los campos con hallazgos, sin agrupar)
+  if (vista === 'tabla' && TAR_STATE.sub !== 'rec') { // Tabla de inventarios: «Por tipo» (agrupada por inventario) o «Por urgencia» (todos los campos con hallazgos, sin agrupar)
     const m = TAR_STATE.tbModo === 'urg' ? 'urg' : 'tipo';
     const tog = `<div class="ad-seg" style="display:inline-flex;margin:0 0 10px">${[['tipo', '📝 Por tipo'], ['urg', '🚨 Por urgencia']].map(([k, t]) => `<button type="button" class="${m === k ? 'on' : ''}" onclick="TAR_STATE.tbModo='${k}';tdRender_()">${t}</button>`).join('')}</div>`;
     return tog + (m === 'urg' ? tdTablaUrg_(O, vac) : tdTablaLv_(O, vac)); }
@@ -59432,7 +59432,7 @@ function tdTablero_(O, dia) {
     const cl = [...new Set(O.map(x => x.r.Clasificacion || TAR_SIN))].sort((a, b) => a === TAR_SIN ? 1 : b === TAR_SIN ? -1 : a.localeCompare(b, 'es'));
     return ckTablaHtml_([['Tipo', '150px'], ['Prioridad', '90px'], ['Estado', '110px'], ['Tarea / nombre', 'minmax(200px,1.4fr)'], ['Personal', '110px'], ['Programación', '150px'], ['Fecha límite', '150px'], ['Fecha', '95px'], ['Clasificación', '150px']],
       cl.map(c => ({ t: '🗂️ ' + esc(c), rows: ord(O.filter(x => (x.r.Clasificacion || TAR_SIN) === c)).map(x => { const r = x.r, e = tdEst_(r, x.iso), T = TD_TIPO[tdTipoK_(r)], ig = tdEsIG_(r), fl = tdLimite_(r, x.iso), av = tdAvisoLim_(r, x.iso).replace(/<[^>]+>/g, '').replace('⏳ ', '');
-        return { onclick: `tdAbrirEn_('${esc(r.ID)}','${x.iso}')`, cls: /vencida|hoy/.test(av) ? 'al' : e === 'Cancelado' ? 'gh' : '', cells: [`<span class="tb-ch" style="--c:${ig ? AT_DEPTO.inspeccion.c : T.c}">${ig ? '📝 Levantamiento' : (tarEsRec_(r) ? '📌 ' : '📋 ') + T.t}</span>`, prio4Html_(tdPrioEf_(r, x.iso)), ckEst_(TD_EST[e] || '#94a3b8', e), `<span class="tb-a"><b class="code" style="font-size:11px">${esc(tdCodigo_(r))}</b><small style="color:#0f1729;font-weight:600">${esc(r.Nombre || '')}</small></span>`, ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')), fl ? `<span class="tb-fe ${/vencida|hoy/.test(av) ? 'tarde' : ''}" title="${esc(av)}">${esc(tarFmtFecha_(fl))}</span>` : '<span class="tb-mu">—</span>', ckTx_(aseoDiaTxt_(x.iso)), ckTx_(r.Clasificacion ? r.Clasificacion + (r.Subclasificacion ? ' › ' + r.Subclasificacion : '') : '')] }; }) })), vac);
+        return { onclick: `tdAbrirEn_('${esc(r.ID)}','${x.iso}')`, cls: /vencida|hoy/.test(av) ? 'al' : e === 'Cancelado' ? 'gh' : '', cells: [`<span class="tb-ch" style="--c:${ig ? AT_DEPTO.inspeccion.c : T.c}">${ig ? '📝 Inventario' : (tarEsRec_(r) ? '📌 ' : '📋 ') + T.t}</span>`, prio4Html_(tdPrioEf_(r, x.iso)), ckEst_(TD_EST[e] || '#94a3b8', e), `<span class="tb-a"><b class="code" style="font-size:11px">${esc(tdCodigo_(r))}</b><small style="color:#0f1729;font-weight:600">${esc(r.Nombre || '')}</small></span>`, ckPers_(tarPersonalList_(r)), ckTx_(tdProgCorto_(r).replace('📅 ', '')), fl ? `<span class="tb-fe ${/vencida|hoy/.test(av) ? 'tarde' : ''}" title="${esc(av)}">${esc(tarFmtFecha_(fl))}</span>` : '<span class="tb-mu">—</span>', ckTx_(aseoDiaTxt_(x.iso)), ckTx_(r.Clasificacion ? r.Clasificacion + (r.Subclasificacion ? ' › ' + r.Subclasificacion : '') : '')] }; }) })), vac);
   }
   if (vista === 'estado') cols = TAR_ESTADOS.map(e => {
     const X = ord(O.filter(x => tdEst_(x.r, x.iso) === e.k));
@@ -59450,8 +59450,8 @@ function tdTablero_(O, dia) {
   const vacio = tdOcMes_(ym, false).length ? 'Ninguna tarea coincide con los filtros' : `No hay tareas ni recordatorios en ${bnEfeMesLabel_(ym).toLowerCase()}`;
   return `${O.length ? `<div class="ad-board ${vista === 'estado' ? 'est' : ''}">${cols}</div>` : `<div class="pc-mv-empty">${vacio}</div>`}`;
 }
-// Levantamientos › «Por propiedad» y «Por usuario»: una columna por propiedad (o por persona) y, dentro, una sección por tipo de levantamiento
-// con una card por alojamiento (la misma sub-card que se abre desde el levantamiento).
+// Inventarios › «Por propiedad» y «Por usuario»: una columna por propiedad (o por persona) y, dentro, una sección por tipo de inventario
+// con una card por alojamiento (la misma sub-card que se abre desde el inventario).
 function tdLvBoard_(O, modo, vac) {
   const LV = O.filter(x => tdEsIG_(x.r)).sort((a, b) => String(a.r.Nombre || '').localeCompare(String(b.r.Nombre || ''), 'es'));
   const hijos = x => tdIGAlojs_(x.r).map(h => [h, tdIGRetraso_(x.r, h).ret]).sort((a, b) => b[1] - a[1]).map(t => t[0]); // los más atrasados arriba
@@ -59477,7 +59477,7 @@ window.tdSetEst_ = function (id, iso, k, ex) { // ex: iso ya es la llave del per
   tarRender();
   Promise.resolve(p).then(() => { tarRender(); if (k === 'Resuelto' && String(id).includes('~')) tdIGPreguntaSig_(id); }).catch(e => { alert('No se pudo guardar: ' + (e.message || e)); tarRender(); });
 };
-// Historial de levantamientos de un alojamiento: cada periodo/ciclo con su estado, avance y fecha de su último registro.
+// Historial de inventarios de un alojamiento: cada periodo/ciclo con su estado, avance y fecha de su último registro.
 function tdIGHistHtml_(r, hid, sel, actual) {
   const P = new Set(tdIGCiclos_(r, hid)); P.add(actual);
   (TAR_STATE.ocurByTar.get(tdIGHijo_(r, hid)) || []).forEach(o => { const f = tarFechaK_(o.Fecha); if (f) P.add(f); });
@@ -59485,12 +59485,12 @@ function tdIGHistHtml_(r, hid, sel, actual) {
   Object.keys(idx).forEach(k => { if (k.startsWith(pre)) P.add(k.slice(pre.length)); else if (k.startsWith(preS) && /^\d{4}-\d{2}-\d{2}(-\d+)?$/.test(k.slice(preS.length))) P.add(k.slice(preS.length)); });
   const F = new Map([...P].map(x => [x, tdIGUltFecha_(r, hid, x)]));
   const L = [...P].filter(x => /^\d{4}-\d{2}-\d{2}(-\d+)?$/.test(x)).sort((a, b) => (b === actual) - (a === actual) || String(F.get(b) || '').localeCompare(String(F.get(a) || '')) || b.localeCompare(a)); // actual primero, luego del más reciente al más antiguo
-  return `<div class="lab">🕘 Historial de levantamientos</div><div class="td-hist">${L.map(x => {
+  return `<div class="lab">🕘 Historial de inventarios</div><div class="td-hist">${L.map(x => {
     const e = tdIGEstH_(r, hid, x, true), f = tdIGUltFecha_(r, hid, x), pi = r.Plantilla ? (plIdxGet_(tdIGKey_(r, hid, x, true)) || {}).p : null, pc = e === 'Resuelto' && pi == null ? 100 : pi || 0;
     return `<a href="#" class="td-hf ${x === sel ? 'on' : ''}" style="--c:${TD_EST[e] || '#94a3b8'}" onclick="event.preventDefault();tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}','${x === actual ? '' : x}')">
       <b>${f ? esc(aseoDiaTxt_(f)) : 'Sin registro'}</b><span class="nm">${x === actual ? 'Actual' : 'Anterior'}</span><span class="es"><i></i>${e === 'Resuelto' ? 'Terminado' : e}</span>${r.Plantilla ? `<span class="pc"><i style="width:${pc}%"></i></span><em>${pc}%</em>` : ''}</a>`; }).join('')}</div>`;
 }
-// Alojamiento terminado → ¿programar el siguiente levantamiento? Sí: ciclo nuevo desde hoy (Pendiente, límite = hoy + periodo).
+// Alojamiento terminado → ¿programar el siguiente inventario? Sí: ciclo nuevo desde hoy (Pendiente, límite = hoy + periodo).
 window.tdIGPreguntaSig_ = function (hijo) {
   const [pid, hid] = String(hijo).split('~'), r = TAR_STATE.list.find(x => x.ID === pid); if (!r || !hid) return;
   const hoy = tarIso_(tarToday_()), C = tdIGCiclos_(r, hid);
@@ -59498,11 +59498,11 @@ window.tdIGPreguntaSig_ = function (hijo) {
   const p = tarProg_(r) || {}, a = typeof atAloj_ === 'function' ? atAloj_(hid) : { corto: '', nombre: hid }, cod = String(a.corto || a.nombre || hid).toUpperCase();
   const per = p.tipo === 'periodo' ? ((TAR_LV_PER.find(x => x[0] === p.periodo) || [])[1] || '') : tdProgCorto_(r).replace('📅 ', '');
   setTimeout(() => {
-    if (!confirm(`${cod} · ${r.Nombre || 'Levantamiento'} quedó Terminado.\n\n¿Programar el siguiente levantamiento (${per})?\nQuedará Pendiente con fecha límite ${aseoDiaTxt_(tdLvSigLim_(r, hoy))}.`)) return;
+    if (!confirm(`${cod} · ${r.Nombre || 'Inventario'} quedó Terminado.\n\n¿Programar el siguiente inventario (${per})?\nQuedará Pendiente con fecha límite ${aseoDiaTxt_(tdLvSigLim_(r, hoy))}.`)) return;
     let all = {}; try { all = JSON.parse(r.Ciclos_IG || '{}') || {}; } catch (_) {}
     all[hid] = [...new Set([...(all[hid] || []), nueva])].sort(); r.Ciclos_IG = JSON.stringify(all);
     tarRender();
-    tarSaveRow_({ ID: r.ID, Ciclos_IG: r.Ciclos_IG, Updated_at: new Date().toISOString() }).then(() => tarRender()).catch(e => alert('No se pudo programar el siguiente levantamiento: ' + (e.message || e)));
+    tarSaveRow_({ ID: r.ID, Ciclos_IG: r.Ciclos_IG, Updated_at: new Date().toISOString() }).then(() => tarRender()).catch(e => alert('No se pudo programar el siguiente inventario: ' + (e.message || e)));
   }, 50);
 };
 window.tdDragStart_ = function (ev, id) { TAR_STATE._drag = id; try { ev.dataTransfer.setData('text/plain', id); ev.dataTransfer.effectAllowed = 'move'; } catch (_) {} const c = ev.currentTarget; setTimeout(() => c.classList.add('dragging'), 0); };
@@ -59567,13 +59567,13 @@ function tdPintarHijo_(r, D, nuevo) {
   const a = typeof atAloj_ === 'function' ? atAloj_(D.hid) : { nombre: D.hid, corto: '' }, p = r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
   const sig = TAR_ESTADOS[Math.min(2, TAR_ESTADOS.findIndex(e => e.k === est) + 1)], key = tdIGKey_(r, D.hid, iso, true);
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span><span class="t">${esc(a.nombre || D.hid)}</span><button type="button" class="ad-close" onclick="tdCerrar_()">✕</button></div>
-      <div class="ad-tt">📝 ${esc(r.Nombre || 'Levantamiento')}</div>
+      <div class="ad-tt">📝 ${esc(r.Nombre || 'Inventario')}</div>
       ${(R => `<div class="ad-sub">Límite ${aseoDiaTxt_(R.lim)} · <i style="background:${TD_EST[est]}"></i>${est} · ${prio4Html_(R.prio)} ${tdIGRetHtml_(R)}</div>`)(tdIGRetraso_(r, D.hid))}
-      <div class="ad-hint" style="margin-top:6px"><a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrir_('${esc(r.ID)}')">‹ Levantamiento · ${tdIGAlojs_(r).length} alojamientos</a></div></div>
+      <div class="ad-hint" style="margin-top:6px"><a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrir_('${esc(r.ID)}')">‹ Inventario · ${tdIGAlojs_(r).length} alojamientos</a></div></div>
     <div class="ad-db">
       <div class="lab">Estado de este alojamiento</div>
-      <div class="ad-steps">${TAR_ESTADOS.map(e => `<button type="button" class="${e.k === est ? 'on' : ''}" style="--c:${TD_EST[e.k]}" onclick="tdSetEst_('${esc(id)}','${iso}','${e.k}',1)">${e.k}</button>`).join('')}</div>
-      ${iso !== actual ? `<div class="ad-hint" style="margin-top:6px;color:#b45309">Estás viendo un levantamiento anterior. <a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrirHijo_('${esc(r.ID)}','${esc(D.hid)}')">Ir al actual ›</a></div>` : ''}
+      <div class="ad-steps">${TAR_ESTADOS.map(e => `<button type="button" class="${e.k === est ? 'on' : ''}" style="--c:${TD_EST[e.k]}" onclick="tdSetEst_('${esc(id)}','${iso}','${e.k}',1)">${e.k === 'Resuelto' ? 'Terminado' : e.k}</button>`).join('')}</div>
+      ${iso !== actual ? `<div class="ad-hint" style="margin-top:6px;color:#b45309">Estás viendo un inventario anterior. <a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrirHijo_('${esc(r.ID)}','${esc(D.hid)}')">Ir al actual ›</a></div>` : ''}
       ${oc && oc.Atendido_por ? `<div class="ad-hint">Último cambio: ${esc(oc.Atendido_por)}${oc.Updated_at ? ' · ' + esc(String(oc.Updated_at).replace('T', ' ').slice(0, 16)) : ''}</div>` : ''}
       <textarea class="at-in td-com" rows="2" placeholder="Comentarios de este alojamiento…" onchange="tdComentario_('${esc(id)}','${iso}',this.value,1)">${esc((oc && oc.Comentarios) || '')}</textarea>
       ${p ? (key in (ASEO.pl.resp || {}) ? plBox_(p.id, key, null) : '<div class="lab">📋 Plantilla</div><div class="ad-hint">⏳ Cargando formulario…</div>') : '<div class="ad-hint" style="margin-top:12px">Esta inspección no tiene plantilla.</div>'}
@@ -59581,7 +59581,7 @@ function tdPintarHijo_(r, D, nuevo) {
       ${tdIGHistHtml_(r, D.hid, iso, actual)}
     </div>
     <div class="ad-ft"><button type="button" class="ad-bt" onclick="tdAbrir_('${esc(r.ID)}')">‹ Volver</button>
-      ${est === 'Resuelto' && iso === actual ? `<button type="button" class="ad-bt pri" onclick="tdIGPreguntaSig_('${esc(id)}')" title="Abre un levantamiento nuevo (0 %) con la siguiente fecha límite">↻ Programar siguiente</button>` : est === 'Resuelto' || est === 'Cancelado' ? `<button type="button" class="ad-bt ok" disabled>✓ ${est}</button>` : `<button type="button" class="ad-bt pri" onclick="tdSetEst_('${esc(id)}','${iso}','${sig.k}',1)">Marcar ${sig.k.toLowerCase()}</button>`}</div>`;
+      ${est === 'Resuelto' && iso === actual ? `<button type="button" class="ad-bt pri" onclick="tdIGPreguntaSig_('${esc(id)}')" title="Abre un inventario nuevo (0 %) con la siguiente fecha límite">↻ Programar siguiente</button>` : est === 'Resuelto' || est === 'Cancelado' ? `<button type="button" class="ad-bt ok" disabled>✓ ${est}</button>` : `<button type="button" class="ad-bt pri" onclick="tdSetEst_('${esc(id)}','${iso}','${sig.k}',1)">Marcar ${sig.k.toLowerCase()}</button>`}</div>`;
   if (!nuevo) { const b = dr.querySelector('.ad-db'); if (b) b.scrollTop = top; }
 }
 // Pendientes: clic en la prioridad = siguiente nivel (se guarda en la hoja Tareas).
@@ -59610,7 +59610,7 @@ const TAR_SIN = '(Sin clasificación)', TAR_SIN_PERS = '(Sin asignar)';
 function tarPasaFiltro_(r) {
   const fx = TAR_STATE.fx;
   if (typeof clSoloMio_ === 'function' && !clSoloMio_(tarPersonalList_(r))) return false; // modo personal: solo lo asignado a la persona
-  if (TAR_STATE.sub === 'rec' ? !tarEsRec_(r) : !tdEsIG_(r)) return false; // subsección: 📝 Levantamientos | 📌 Recordatorios
+  if (TAR_STATE.sub === 'rec' ? !tarEsRec_(r) : !tdEsIG_(r)) return false; // subsección: 📝 Inventarios | 📌 Recordatorios
   if (TAR_STATE.q) { const pl = r.Plantilla && typeof ASEO !== 'undefined' && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
     if (!ckBusca_(TAR_STATE.q, [r.Nombre, r.Clasificacion, r.Subclasificacion, r.Personal, r.Comentarios, r.Mensaje, r.Programacion_texto, pl && pl.titulo, tdEsIG_(r) ? tdIGAlojs_(r).map(ckAlojTxt_) : '', r.Prioridad, r.Tipo])) return false; }
   if (fx.tipo && (tarEsRec_(r) ? 'Recordatorio' : 'Pendiente programado') !== fx.tipo) return false;
@@ -60360,7 +60360,7 @@ function tarPanelRender_() {
   Promise.resolve().then(() => { const a = pn.querySelector('.tar-pb'), b = pn.querySelector('.tar-al'); if (a) a.scrollTop = pos[0]; if (b) b.scrollTop = pos[1]; }); // justo después de pintar (antes de que se vea)
   pn.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid #e8eaee">
-      <div style="font-size:16px;font-weight:600;color:#0f1729">${tdEsIG_(d) ? (P.id ? 'Editar levantamiento' : 'Nuevo levantamiento') : rec ? (P.id ? 'Editar recordatorio' : 'Crea un recordatorio') : (P.id ? 'Editar tarea' : 'Crea una tarea')}</div>
+      <div style="font-size:16px;font-weight:600;color:#0f1729">${tdEsIG_(d) ? (P.id ? 'Editar inventario' : 'Nuevo inventario') : rec ? (P.id ? 'Editar recordatorio' : 'Crea un recordatorio') : (P.id ? 'Editar tarea' : 'Crea una tarea')}</div>
       <button type="button" onclick="tarClosePanel()" style="all:unset;cursor:pointer;color:#9aa1ad;font-size:15px;padding:2px 6px;border-radius:6px">✕</button>
     </div>
     <div class="tar-pb" style="flex:1;overflow:auto;padding:14px 20px 18px">
@@ -60390,7 +60390,7 @@ function tarPanelRender_() {
         <div onclick="tarSetField('Fecha_limite', TAR_STATE.panel.d.Fecha_limite === 'Sí' ? 'No' : 'Sí')" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px;padding:10px 12px;border-radius:10px;border:1.5px solid ${d.Fecha_limite === 'Sí' ? '#fca5a5' : '#e2e8f0'};background:${d.Fecha_limite === 'Sí' ? '#fef2f2' : '#fff'}">
           ${tarCheck_(d.Fecha_limite === 'Sí')}
           <div><div style="font-size:13px;font-weight:900;color:#0f172a">⏳ Fecha límite</div>
-          <div style="font-size:11.5px;color:#64748b;margin-top:2px">${lvRec ? 'Activa el aviso de días de retraso: cada alojamiento debe levantarse dentro del periodo de la programación, contado desde su último levantamiento (o desde «Desde»).' : `La tarea debe quedar resuelta a más tardar en esa fecha${d.Naturaleza === 'Recurrente' ? ' (en cada fecha programada)' : ''}.`}</div></div>
+          <div style="font-size:11.5px;color:#64748b;margin-top:2px">${lvRec ? 'Activa el aviso de días de retraso: cada alojamiento debe levantarse dentro del periodo de la programación, contado desde su último inventario (o desde «Desde»).' : `La tarea debe quedar resuelta a más tardar en esa fecha${d.Naturaleza === 'Recurrente' ? ' (en cada fecha programada)' : ''}.`}</div></div>
         </div>
       `)}`}
       ${field(lbl(`Personal asignado${d._personal.length ? ` · ${d._personal.length}` : ''}`) + personalHtml)}
@@ -60415,7 +60415,7 @@ function tarIGCampos_(d, lbl, inp, field) {
     : '<div style="font-size:12px;color:#94a3b8">⏳ Cargando alojamientos…</div>';
   return field(lbl('Plantilla') + plSel) + field(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:11.5px;font-weight:600;color:#374151">Alojamiento(s) · ${sel.length}</label><span style="flex:1"></span>${btn('Todos', 'tarIGTodos_(true)')}${btn('Ninguno', 'tarIGTodos_(false)')}</div>${lista}`);
 }
-// Levantamiento recurrente: «Programación» por periodo (sin días de la semana ni del mes). _prog = { tipo: 'periodo', periodo, inicio, fin }.
+// Inventario recurrente: «Programación» por periodo (sin días de la semana ni del mes). _prog = { tipo: 'periodo', periodo, inicio, fin }.
 const TAR_LV_PER = [['semanal', 'Semanal', 0, 7], ['mensual', 'Mensual', 1], ['bimestral', 'Bimestral', 2], ['trimestral', 'Trimestral', 3], ['semestral', 'Semestral', 6], ['anual', 'Anual', 12]];
 function tarLvMas_(iso, per) { // fecha + un periodo (o + n meses/días)
   const d = tarParseIso_(iso); if (!d) return iso; const P = TAR_LV_PER.find(x => x[0] === per) || TAR_LV_PER[1];
@@ -60424,7 +60424,7 @@ function tarLvMas_(iso, per) { // fecha + un periodo (o + n meses/días)
 }
 function tarUnAnio_(iso) { const d = tarParseIso_(iso); if (!d) return ''; const x = new Date(d.getFullYear() + 1, d.getMonth(), 1); x.setDate(Math.min(d.getDate(), new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate())); return tarIso_(x); }
 function tarLvProgHtml_(prog, inp) {
-  if (prog.tipo !== 'periodo') { // levantamientos anteriores: se convierten al editar
+  if (prog.tipo !== 'periodo') { // inventarios anteriores: se convierten al editar
     const per = !(TAR_STATE.panel && TAR_STATE.panel.id) ? 'mensual' : prog.tipo === 'semanal' ? 'semanal' : prog.tipo === 'bimestral' ? 'bimestral' : 'mensual'; // nuevo: mensual
     Object.assign(prog, { tipo: 'periodo', periodo: per, dias_semana: [], dias_mes: [], fechas: [] });
   }
@@ -60445,7 +60445,7 @@ function tarLvProgHtml_(prog, inp) {
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:10px;font-weight:700;color:#94a3b8;text-align:center;margin-bottom:3px">${TAR_DOW.map(x => `<span>${x[1]}</span>`).join('')}</div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">${cel.join('')}</div>
     </div>
-    <div style="font-size:11px;color:#94a3b8;margin-top:6px">El periodo se cuenta para cada alojamiento desde su último levantamiento (la primera vez, desde «Desde»).</div>`;
+    <div style="font-size:11px;color:#94a3b8;margin-top:6px">El periodo se cuenta para cada alojamiento desde su último inventario (la primera vez, desde «Desde»).</div>`;
 }
 window.tarLvPer_ = function (k) { const P = TAR_STATE.panel; if (!P) return; P.d._prog.periodo = k; tarPanelRender_(); };
 window.tarLvDesde_ = function (iso) { const P = TAR_STATE.panel; if (!P) return; P.d._prog.inicio = iso; P.d._prog.fin = tarUnAnio_(iso); P.lvYm = iso.slice(0, 7); tarPanelRender_(); };
@@ -60476,7 +60476,7 @@ function tarPanelFooterHtml_(dirty) {
   const bt = 'all:unset;cursor:pointer;flex:1;text-align:center;padding:9px 6px;border-radius:9px;border:1px solid #e8eaee;font-weight:600;color:#374151;font-size:12px';
   const del = P && P.id ? `<button type="button" onclick="tarDelete()" style="${bt};color:#b91c1c">Eliminar</button>` : '';
   const nuevo = P && !P.id;
-  const save = dirty || nuevo ? `<button type="button" onclick="tarSavePanel()" ${P && P.saving ? 'disabled' : ''} style="${bt};background:#0f1729;border-color:#0f1729;color:#fff">${P && P.saving ? '⏳ Guardando…' : nuevo ? (tdEsIG_(P.d) ? 'Crear levantamiento' : P.d.Tipo === 'Recordatorio' ? 'Crear recordatorio' : 'Crear tarea') : 'Guardar cambios'}</button>` : '';
+  const save = dirty || nuevo ? `<button type="button" onclick="tarSavePanel()" ${P && P.saving ? 'disabled' : ''} style="${bt};background:#0f1729;border-color:#0f1729;color:#fff">${P && P.saving ? '⏳ Guardando…' : nuevo ? (tdEsIG_(P.d) ? 'Crear inventario' : P.d.Tipo === 'Recordatorio' ? 'Crear recordatorio' : 'Crear tarea') : 'Guardar cambios'}</button>` : '';
   return `${del}<button type="button" onclick="tarClosePanel()" style="${bt}">Cancelar</button>${save}`;
 }
 function tarPanelRefreshFooter_() {
@@ -64434,7 +64434,7 @@ const NAV_TREE = {
       // Breezeway desactivado por el momento (ver CL_BZW_OFF).
     ] },
     { t: '🗂️ Administración', mod: 'tareas', go: () => {}, subs: [
-      { t: '📝 Levantamientos', mod: 'tareas', go: () => {} },
+      { t: '📝 Inventarios', mod: 'tareas', go: () => {} },
     ] },
   ],
   'reportes-tecnicos': [
@@ -67688,7 +67688,7 @@ function clEsAdminReal_() {
 function clModoPersonal_() { return !clEsAdmin_(); }
 // v2129: «Sandra Sánchez» y «Sandra Sánchez Rojas» son la misma persona → un solo renglón (se queda el nombre más completo).
 function adCanonMap_(nombres) { const M = new Map(), C = []; [...new Set(nombres.filter(Boolean))].sort((a, b) => b.length - a.length).forEach(n => { const c = C.find(x => clMisma_(x, n)); M.set(n, c || n); if (!c) C.push(n); }); return M; }
-// v2128: en modo personal, Levantamientos / Incidencias / Objetos muestran SOLO lo asignado o reportado por la persona.
+// v2128: en modo personal, Inventarios / Incidencias / Objetos muestran SOLO lo asignado o reportado por la persona.
 function clSoloMio_(nombres) { return !(typeof clModoPersonal_ === 'function' && clModoPersonal_()) || clEsMio_(nombres); }
 // v2168: Adán ve TODAS las tareas de Operaciones (aunque no tenga asignación); los demás empleados solo las suyas.
 function clVeTodo_(yo) { return clNorm_(yo)[0] === 'adan'; }
@@ -69046,7 +69046,7 @@ function atFormPintar_() {
   dr.innerHTML = `<div class="ad-dh"><div class="r"><b class="ad-ftit">${F.id ? 'Editar tarea' : 'Crea una tarea'}</b><button type="button" class="ad-close" onclick="adCerrar_()">✕</button></div></div>
     <div class="ad-db at-f">
       ${atDeptoSeg_(F.depto, 'atFormDepto_')}
-      ${F._deRt ? '<div class="at-hint">Al guardar, el reporte técnico se convierte en esta tarea y sale de «Reportes técnicos».</div>' : ''}${F.lv ? `<div class="at-hint">📝 Ligada al hallazgo «${pcEsc(F.lv.campo || '')}» del levantamiento.</div>` : ''}
+      ${F._deRt ? '<div class="at-hint">Al guardar, el reporte técnico se convierte en esta tarea y sale de «Reportes técnicos».</div>' : ''}${F.lv ? `<div class="at-hint">📝 Ligada al hallazgo «${pcEsc(F.lv.campo || '')}» del inventario.</div>` : ''}
       <label class="at-l">Tipo de servicio</label>
       ${axSrvSeg_(F.srv || 'general', 'atFormSrv_')}
       <label class="at-l">Alojamiento</label>
@@ -69634,7 +69634,7 @@ const NP_REGLAS = [
     '<b>Incidencia:</b> «incidencia, mt7, sábanas manchadas, urgente». Al registrarla pregunta «¿Creo una tarea correctiva de …?»; responde «sí», «sí, mantenimiento para mañana con Paco» o «no». La tarea queda ligada a la incidencia como Correctivo.',
     '<b>Falla:</b> «reporte de fuga en cu13» crea un reporte de Mantenimiento (no una tarea programada).',
     '<b>Recordatorio:</b> «recordatorio: hablar a Rita» va a Pendientes del día.',
-    'El bot <b>no consulta</b> Levantamientos ni Objetos olvidados.']],
+    'El bot <b>no consulta</b> Inventarios ni Objetos olvidados.']],
   ['📬', 'Mensajes automáticos', 'Se controlan con el interruptor de arriba. Si está apagado, el bot no manda nada por su cuenta.', [
     '<b>Solo a administradores</b>, según lo que tengan marcado: 📋 <b>Resumen del día a las 2 pm</b> (limpiezas, tareas, tareas programadas e incidencias) · 🚨 <b>Alertas</b> (incidencias y «no ha desalojado») · 🔄 <b>Cada cambio</b> en las tareas de hoy (opcional).',
     '<b>A empleados</b> (con «🔔 Sus tareas del día»): su lista al registrar entrada y su lista actualizada cuando un cambio toca <i>sus</i> tareas (asignación, solicitudes, no ha desalojado, reserva nueva, reprogramación). Los cambios de estado no la disparan.',
@@ -70370,7 +70370,7 @@ function ckOcupCal_(id, items) {
   requestAnimationFrame(() => { if (pos) { cont.scrollLeft = pos[0]; cont.scrollTop = pos[1]; } else if (typeof ocupCentrarHoy_ === 'function') ocupCentrarHoy_(cont); cont.onscroll = () => { P[id] = [cont.scrollLeft, cont.scrollTop]; }; });
 }
 window.ckBarNada_ = function () {};
-// ── Calendario: vista «Por alojamiento» (renglones = alojamientos) o «Por mes» (celdas = días, como en Levantamientos) ──
+// ── Calendario: vista «Por alojamiento» (renglones = alojamientos) o «Por mes» (celdas = días, como en Inventarios) ──
 window.CKCAL = window.CKCAL || { v: {}, m: {}, w: {} }; // vista del calendario: al abrirlo vuelve a la predeterminada (Por alojamiento)
 function ckCalV_0_(s) { return CKCAL.v[s] === 'mes' || CKCAL.v[s] === 'sem' || (s === 'aseo' && CKCAL.v[s] === 'tl') ? CKCAL.v[s] : 'aloj'; }
 function ckLunes_(iso) { const d = tarParseIso_(iso); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return tarIso_(d); }
@@ -73429,7 +73429,7 @@ function plReconciliar_() {
   if (!ASEO.pl || !ASEO.pl.idx || !ASEO.estados || typeof aseoSetEstado_ !== 'function') return;
   const idx = ASEO.pl.idx || {}, A = ASEO.pl.autoT = ASEO.pl.autoT || {}, H = ASEO.pl._rec = ASEO.pl._rec || {}, cambios = [];
   const bks = typeof pcMovBookings_ === 'function' ? pcMovBookings_() : [];
-  // Todas las respuestas guardadas: tareas «T<id>-<fecha>» y cards de aseo «<reserva>» (los levantamientos «TI:» tienen su propia regla).
+  // Todas las respuestas guardadas: tareas «T<id>-<fecha>» y cards de aseo «<reserva>» (los inventarios «TI:» tienen su propia regla).
   const L = Object.keys(idx).map(key => {
     const m = key.match(/^T([a-z0-9]+)-\d{4}-\d{2}-\d{2}$/);
     if (m) return (ASEO.tareas || {})[m[1]] ? { key, hid: '' } : null;
@@ -75060,7 +75060,7 @@ window._botcTranscribir_ = async function (i) {
     .observe(document.documentElement, { childList: true, subtree: true });
 })();
 
-// ═══ Levantamientos › Tabla › «Por urgencia»: cada campo con hallazgo de todos los alojamientos, sin agrupar (los más graves arriba) ═══
+// ═══ Inventarios › Tabla › «Por urgencia»: cada campo con hallazgo de todos los alojamientos, sin agrupar (los más graves arriba) ═══
 // Urgencia de una respuesta: Malo > No > calificación baja > Regular / fuera de rango > solo con nota.
 function tdUrgDe_(it, rr) {
   const nota = String((rr || {}).nota || '').trim();
@@ -75096,7 +75096,7 @@ window.tdUrgSet_ = async function (i, k) {
 function tdRelChip_(crit) { return crit ? '<span class="pl-crit">🚨 Crítico</span>' : '<span class="tb-rel">No crítico</span>'; }
 function tdRespTxt_(it, rr) { const v = rr.v; if (it.tipo === 'condicion') return v === 'na' ? 'N/A' : (PL_COND.find(x => x[0] === v) || [])[1] || '—'; if (it.tipo === 'sino') return v === 'si' ? 'Sí' : v === 'no' ? 'No' : '—';
   if (it.tipo === 'calif') return v ? `${v} de ${Number(it.escala) || 5}` : '—'; if (it.tipo === 'lista') return (it.sub || []).length ? `${Object.values(v || {}).filter(Boolean).length}/${it.sub.length}` : v === true ? 'Hecho' : '—'; return v == null || v === '' ? '—' : String(v).slice(0, 60); }
-// Hallazgos de todos los levantamientos del periodo: {items, faltan (llaves aún no cargadas), hids (por alojamiento: doc elegido)}.
+// Hallazgos de todos los inventarios del periodo: {items, faltan (llaves aún no cargadas), hids (por alojamiento: doc elegido)}.
 function tdUrgDatos_(O) {
   const U = ASEO.pl.urg = ASEO.pl.urg || { docs: {} };
   if (!TAR_STATE._urgManOk && !TAR_STATE._urgManPed) { TAR_STATE._urgManPed = 1; fetch(`${BACKEND}/aseo/urgencias`, { cache: 'no-store' }).then(r => r.json()).then(j => { if (j.ok) TAR_STATE._urgMan = j.urg || {}; TAR_STATE._urgManOk = 1; TAR_STATE._urgManPed = 0; tdRender_(); }).catch(() => { TAR_STATE._urgManPed = 0; TAR_STATE._urgManOk = 1; }); }
@@ -75106,7 +75106,7 @@ function tdUrgDatos_(O) {
   O.filter(x => tdEsIG_(x.r)).forEach(x => { const r = x.r, P = tdFinMes_(x.iso), p = r.Plantilla ? ASEO.pl.lista[r.Plantilla] : null; if (!p) return;
     tdIGAlojs_(r).forEach(hid => {
       // Un alojamiento terminado arranca un ciclo nuevo (llave con sufijo) que aún no tiene respuestas: se toma el ciclo más reciente
-      // que sí tenga respuestas (el levantamiento actual o el último terminado), no solo la llave del periodo en curso.
+      // que sí tenga respuestas (el inventario actual o el último terminado), no solo la llave del periodo en curso.
       // Candidatos: llave del periodo en curso, ciclos registrados y las llaves "fin de mes" de este mes y del anterior (las respuestas
       // se guardan con el periodo vigente al contestar; al terminar, el ciclo nuevo cambia la llave aunque las respuestas sigan en la anterior).
       const mesAnt = tdFinMes_(new Date(Date.parse(P.slice(0, 7) + '-01T12:00:00Z') - 86400e3).toISOString().slice(0, 10));
@@ -75142,7 +75142,7 @@ function tdTablaUrg_(O, vac) {
       ckTx_(`📝 ${x.r.Nombre || x.p.titulo}`),
       T ? `<a href="#" class="tb-lnk" onclick="event.preventDefault();event.stopPropagation();atAbrir_('${esc(T.id)}','${esc(T.fecha || '')}')" title="${esc(T.titulo || 'Abrir la tarea')}">🔗 Ver tarea</a>` : `<button type="button" class="tb-ed" style="margin-left:0" onclick="event.stopPropagation();tdCrearTareaLv_(${i})">＋ Crear tarea</button>`,
     ] }; });
-  const vacio = faltan.length ? '⏳ Cargando las respuestas de los levantamientos…' : 'Sin hallazgos en los levantamientos del periodo (Malo, No, calificación baja, fuera de rango o con nota).';
+  const vacio = faltan.length ? '⏳ Cargando las respuestas de los inventarios…' : 'Sin hallazgos en los inventarios del periodo (Malo, No, calificación baja, fuera de rango o con nota).';
   const fa = fh && typeof atAloj_ === 'function' ? atAloj_(fh) : null, chip = fh ? `<div style="display:inline-flex;align-items:center;gap:8px;margin:0 0 10px 10px;padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:999px;font-size:12px;font-weight:700;color:#3730a3">🏠 ${esc(fa && fa.corto ? String(fa.corto).toUpperCase() : fh)}${fa && fa.nombre ? ` · ${esc(String(fa.nombre).replace(/^Calle\s+/i, ''))}` : ''}<button type="button" onclick="TAR_STATE.urgHid='';tdRender_()" style="all:unset;cursor:pointer;font-weight:900">✕</button></div>` : '';
   if (!document.getElementById('tdurg-css')) { const st = document.createElement('style'); st.id = 'tdurg-css'; st.textContent = `.tb-ed{all:unset;cursor:pointer;padding:3px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;color:#334155;font-size:11.5px;font-weight:600;white-space:nowrap}.tb-ed:hover{background:#eef2ff;border-color:#c7d2fe;color:#4338ca}.tb-car{font-style:normal;display:inline-block;width:14px;color:#6b7280}
     .ad-tbl .tb-ret{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ad-tbl .tb-pg{max-height:calc(100vh - 240px);overflow:auto}
@@ -75151,9 +75151,9 @@ function tdTablaUrg_(O, vac) {
     .ad-tbl .tb-lnk{color:#15803d;font-weight:700;font-size:12px;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}.ad-tbl .tb-lnk:hover{color:#166534}
     .ad-tbl .tb-foto{all:unset;position:relative;cursor:pointer;width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:#4f46e5}.ad-tbl .tb-foto:hover{background:#eef2ff}
     .ad-tbl .tb-foto i{position:absolute;top:-2px;right:-4px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:#4f46e5;color:#fff;font:700 9px/14px Inter,system-ui,sans-serif;font-style:normal;text-align:center}`; document.head.appendChild(st); }
-  return chip + ckTablaHtml_([['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantado', '110px'], ['Urgencia', '150px'], ['Relevancia', 'minmax(220px,1.5fr)'], ['Respuesta', '130px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '60px'], ['Levantamiento', '160px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
+  return chip + ckTablaHtml_([['Alojamiento', 'minmax(180px,1.2fr)'], ['Levantado', '110px'], ['Urgencia', '150px'], ['Relevancia', 'minmax(220px,1.5fr)'], ['Respuesta', '130px'], ['Nota', 'minmax(160px,1fr)'], ['Fotos', '60px'], ['Inventario', '160px'], ['', '130px']], [{ t: '🚨 Campos que requieren atención', rows }], vacio);
 }
-// ═══ Dashboard de riesgos («Por tipo»): levantamiento › edificio › alojamiento con el conteo de alertas (no barras de avance) ═══
+// ═══ Dashboard de riesgos («Por tipo»): inventario › edificio › alojamiento con el conteo de alertas (no barras de avance) ═══
 function tdEdifDe_(hid) { const E = typeof alojEdif_ === 'function' ? alojEdif_(hid) : null; if (E) return { k: E.k, nom: E.nom }; const a = typeof atAloj_ === 'function' ? atAloj_(hid) : null, c = String((a && a.corto) || '').toUpperCase(), m = c.match(/^([A-Z]+)\d/); return m ? { k: m[1], nom: m[1] } : { k: 'OTROS', nom: 'Otros' }; }
 function tdRiesgoDe_(c) { return c.crit ? ['Alto', '#dc2626', '#fee2e2'] : c.warn ? ['Medio', '#ea580c', '#ffedd5'] : c.info ? ['Bajo', '#2563eb', '#dbeafe'] : c.doc ? ['Sin alertas', '#15803d', '#dcfce7'] : ['Sin levantar', '#6b7280', '#f3f4f6']; }
 function tdBarra_(c, h) { const t = c.crit + c.warn + c.info; if (!t) return `<span class="rk-bar"><i style="width:100%;background:${c.doc ? '#bbf7d0' : '#e5e7eb'}"></i></span>`;
@@ -75187,9 +75187,9 @@ function tdTablaLv_(O, vac) {
             <span class="rk-al"><b>${esc(w.a.corto ? String(w.a.corto).toUpperCase() : '—')}</b><small>${esc(String(w.a.nombre || w.hid).replace(/^Calle\s+/i, ''))}</small></span>
             <span class="rk-chip" style="color:${c};background:${b}">${t}</span>${tdBarra_(w.c)}${tdCnt_(w.c, w.hid)}
             <span class="rk-mu">${w.info ? `${esc(aseoDiaTxt_(String(w.info.at).slice(0, 10)))} · ${esc(w.est === 'Resuelto' ? 'Terminado' : w.est)}` : 'Sin levantar'}</span><i class="tb-car">${abA ? '▾' : '▸'}</i></div>${abA ? tdAlDetalle_(r, w, D.items.filter(x => x.r.ID === r.ID && String(x.hid) === String(w.hid)), abrir) : ''}`; }).join('')}</div>` : ''}</div>`; };
-    return { kG, G, html: `<div class="rk-card"><div class="rk-h" onclick="tdTbTg_('${esc(kG)}')"><i class="tb-car">${ab ? '▾' : '▸'}</i><b>📝 ${esc(r.Nombre || 'Levantamiento')}</b><span class="rk-mu">${G.alojs} alojamientos · ${G.conAl} con alertas${G.alojs - G.doc ? ` · ${G.alojs - G.doc} sin levantar` : ''}</span>${tdBarra_(G)}${tdCnt_(G, '')}<span class="rk-chip" style="color:${rc};background:${rb}">${rt}</span><button type="button" class="tb-ed" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button></div>${ab ? edsL.map(edHtml).join('') : ''}</div>` };
+    return { kG, G, html: `<div class="rk-card"><div class="rk-h" onclick="tdTbTg_('${esc(kG)}')"><i class="tb-car">${ab ? '▾' : '▸'}</i><b>📝 ${esc(r.Nombre || 'Inventario')}</b><span class="rk-mu">${G.alojs} alojamientos · ${G.conAl} con alertas${G.alojs - G.doc ? ` · ${G.alojs - G.doc} sin levantar` : ''}</span>${tdBarra_(G)}${tdCnt_(G, '')}<span class="rk-chip" style="color:${rc};background:${rb}">${rt}</span><button type="button" class="tb-ed" onclick="event.stopPropagation();tarOpenPanel('${esc(r.ID)}')">✎ Editar</button></div>${ab ? edsL.map(edHtml).join('') : ''}</div>` };
   }).sort((A, B) => B.G.crit - A.G.crit || B.G.warn - A.G.warn);
-  if (!grupos.length) return `<div class="pc-mv-empty">${vac || 'Sin levantamientos en el periodo'}</div>`;
+  if (!grupos.length) return `<div class="pc-mv-empty">${vac || 'Sin inventarios en el periodo'}</div>`;
   if (!document.getElementById('tdrk-css')) { const st = document.createElement('style'); st.id = 'tdrk-css'; st.textContent = `
     .rk-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 12px}.rk-kpi{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;position:relative;overflow:hidden}
     .rk-kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c,#e5e7eb)}.rk-kpi b{font-size:22px;font-weight:800;color:#0f172a;line-height:1.1}.rk-kpi span{font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em}
@@ -75210,13 +75210,13 @@ function tdTablaLv_(O, vac) {
       .rk-h,.rk-edh{gap:8px;padding:10px}.rk-h b,.rk-edh b{flex:1;min-width:0;font-size:13px}.rk-h .tb-ed{font-size:0;padding:4px 8px}.rk-h .tb-ed:before{content:"✎";font-size:13px}.rk-chip{min-width:0;padding:3px 7px;font-size:10.5px}.rk-n{min-width:22px;padding:0 5px}}`; document.head.appendChild(st); }
   const kp = (n, t, c) => `<div class="rk-kpi" style="--c:${c}"><b>${n}</b><span>${t}</span></div>`;
   const kpis = `<div class="rk-kpis">${kp(TOT.crit, '🔴 Urgencia alta', '#dc2626')}${kp(TOT.warn, '🟠 Urgencia media', '#f97316')}${kp(TOT.info, '🟡 Urgencia baja / seguimiento', '#eab308')}${kp(`${TOT.conAl}<small style="font-size:13px;color:#94a3b8"> / ${TOT.alojs}</small>`, 'Alojamientos con alertas', '#0f172a')}${kp(TOT.alojs - TOT.doc, 'Sin levantar', '#9ca3af')}</div>`;
-  return kpis + (D.faltan.length ? '<div class="pc-mv-empty" style="margin-bottom:10px">⏳ Cargando las respuestas de los levantamientos…</div>' : '') + grupos.map(g => g.html).join('');
+  return kpis + (D.faltan.length ? '<div class="pc-mv-empty" style="margin-bottom:10px">⏳ Cargando las respuestas de los inventarios…</div>' : '') + grupos.map(g => g.html).join('');
 }
 window.tdTbAlTg_ = function (k) { const C = TAR_STATE.tbAl = TAR_STATE.tbAl || new Set(); if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 // Detalle ejecutivo de un alojamiento dentro del dashboard: resumen por sección + hallazgos (mismos criterios que «Por urgencia»).
 function tdAlDetalle_(r, w, L, abrir) {
   const tareaDe = x => Object.values(ASEO.tareas || {}).find(t => t && t.lv && t.lv.key === x.key && t.lv.item === x.it.id);
-  const head = `<div class="rk-dh"><span class="rk-mu" style="flex:0 0 auto">${L.length} hallazgo${L.length === 1 ? '' : 's'}</span>${tdCnt_(w.c, w.hid)}<span style="flex:1"></span><button type="button" class="tb-ed" onclick="event.stopPropagation();${abrir}">📋 Abrir levantamiento</button></div>`;
+  const head = `<div class="rk-dh"><span class="rk-mu" style="flex:0 0 auto">${L.length} hallazgo${L.length === 1 ? '' : 's'}</span>${tdCnt_(w.c, w.hid)}<span style="flex:1"></span><button type="button" class="tb-ed" onclick="event.stopPropagation();${abrir}">📋 Abrir inventario</button></div>`;
   const filas = L.map(x => { const i = TAR_STATE._urgItems.indexOf(x), fotos = (x.rr.fotos || []).filter(f => !f.subiendo), T = tareaDe(x);
     return `<tr><td>${tdSemHtml_(x.niv, i)}</td>
       <td>${tdRelChip_(x.crit)}<small>${esc(x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t)}</small></td>
@@ -75228,7 +75228,7 @@ function tdAlDetalle_(r, w, L, abrir) {
 window.tdTbEdTg_ = function (k) { const C = TAR_STATE.tbEd = TAR_STATE.tbEd || new Set(); TAR_STATE.tbEdTocado = true; if (C.has(k)) C.delete(k); else C.add(k); tdRender_(); };
 // Fotos de un hallazgo en el visor (con flechas si hay varias), sin abrir la sub-card.
 window.tdUrgFotos_ = function (i) { const x = (TAR_STATE._urgItems || [])[i]; if (!x) return; fotoVer_(((x.rr || {}).fotos || []).filter(f => !f.subiendo).map(f => f.loc || BACKEND + (f.url || f.turl)), 0); };
-// «＋ Crear tarea» desde un hallazgo: abre «Nueva tarea» ya llenada y ligada al registro del levantamiento (Origen/LV_*).
+// «＋ Crear tarea» desde un hallazgo: abre «Nueva tarea» ya llenada y ligada al registro del inventario (Origen/LV_*).
 window.tdCrearTareaLv_ = function (i) {
   const x = (TAR_STATE._urgItems || [])[i]; if (!x) return;
   // Abre el formulario de Operaciones › Tareas (tarea manual por alojamiento) ya llenado y ligado al hallazgo (tarea.lv).
@@ -75236,7 +75236,7 @@ window.tdCrearTareaLv_ = function (i) {
   const campo = x.it.texto || x.s.titulo || PL_TIPOS[x.it.tipo].t, cod = a.corto ? String(a.corto).toUpperCase() : String(a.nombre || x.hid), campoFull = `${x.s.titulo && x.it.texto ? x.s.titulo + ' › ' : ''}${campo}`;
   atForm_(null, String(x.hid), typeof aseoDiaNuevo_ === 'function' ? aseoDiaNuevo_() : tarIso_(tarToday_()));
   Object.assign(ASEO._tf, { depto: 'mantenimiento', srv: 'general', prioridad: x.niv.k === 'alta' ? 'critica' : x.niv.k === 'media' ? 'alta' : 'media', titulo: `${campo} · ${cod}`,
-    desc: `Detectado en el levantamiento «${x.r.Nombre || x.p.titulo}» · ${cod} ${String(a.nombre || '').replace(/^Calle\s+/i, '')}\n${campoFull}: ${tdRespTxt_(x.it, x.rr)}${x.rr.nota ? `\nNota: ${x.rr.nota}` : ''}`,
+    desc: `Detectado en el inventario «${x.r.Nombre || x.p.titulo}» · ${cod} ${String(a.nombre || '').replace(/^Calle\s+/i, '')}\n${campoFull}: ${tdRespTxt_(x.it, x.rr)}${x.rr.nota ? `\nNota: ${x.rr.nota}` : ''}`,
     lv: { id: x.r.ID, hid: String(x.hid), item: x.it.id, key: x.key, campo: campoFull },
     // v2140: las fotos del hallazgo pasan a «Fotos de referencia» de la tarea (mismos archivos, sin duplicar)
     refs: (x.rr.fotos || []).filter(f => f && f.k && !f.subiendo).map(f => ({ k: f.k, nombre: f.nombre || 'foto', tipo: 'image/jpeg', url: f.url, ...(f.tk ? { tk: f.tk, turl: f.turl } : {}) })) });

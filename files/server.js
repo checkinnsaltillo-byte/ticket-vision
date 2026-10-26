@@ -1363,8 +1363,8 @@ REGLAS:
     Si hay no_encontrados o ambiguos, dilo en una línea (ej. "No encontré a 'Paco' en Personal" o "'Ana' puede ser: Ana López, Ana Ruiz — ¿cuál?").
   · AQUÍ SÍ debes esperar confirmación: SOLO cuando el admin responda afirmativamente en un mensaje POSTERIOR ("sí", "ok", "dale", "confirmo", "guárdala") llama confirmar_tarea_programada con el draft_id. Si pide cambios, vuelve a llamar preparar_tarea_programada con todo corregido y muestra el resumen nuevo. Si dice "no"/"cancela", no guardes y responde "Cancelada.".
   · Tras confirmar, responde en 1 línea: "✅ Tarea guardada para <fecha_texto>."
-- NO CONSULTES las secciones «Levantamientos» ni «Objetos olvidados»: si te preguntan por ellas, responde en 1 línea que se consultan en el sistema (Check-Flow).
-- PENDIENTES DEL DÍA (recordatorios y tareas de la pizarra; no incluye levantamientos) — si el admin pide sus pendientes, las tareas o recordatorios de hoy (o de otro día), "¿qué hay que hacer hoy?", "pendientes de mañana", "mis pendientes", "pendientes de Paco":
+- NO CONSULTES las secciones «Inventarios» ni «Objetos olvidados»: si te preguntan por ellas, responde en 1 línea que se consultan en el sistema (Check-Flow).
+- PENDIENTES DEL DÍA (recordatorios y tareas de la pizarra; no incluye inventarios) — si el admin pide sus pendientes, las tareas o recordatorios de hoy (o de otro día), "¿qué hay que hacer hoy?", "pendientes de mañana", "mis pendientes", "pendientes de Paco":
   · Llama consultar_pendientes_del_dia (fecha YYYY-MM-DD si menciona otro día, por defecto hoy; solo_mios=true si dice "mis/míos"; personal si nombra a alguien; incluir_resueltos=true solo si pide también lo ya hecho).
   · Responde con el campo formatted_message TAL CUAL (sin resumirlo ni reordenarlo). Si no hay pendientes, dilo en 1 línea.
 - RECORDATORIOS (se guardan en Tareas programadas con tipo "Recordatorio": siempre únicos, aparecen cada día en "Pendientes del día" hasta resolverse; NO llevan programación ni recurrencia) — "recordatorio: …", "anota en la pizarra …", "recuérdale a Paco que …", "apunta que hay que …":
@@ -1802,7 +1802,7 @@ function _botTarProg(r) {
   return p;
 }
 function _botTarDelDia(rows, ocur, iso, hoy) {
-  rows = rows.filter(r => String(r.Insp_general || "") !== "Sí"); // Levantamientos: el bot no los consulta
+  rows = rows.filter(r => String(r.Insp_general || "") !== "Sí"); // Inventarios: el bot no los consulta
   const byTar = new Map();
   ocur.forEach(o => { if (!byTar.has(o.Tarea_ID)) byTar.set(o.Tarea_ID, []); byTar.get(o.Tarea_ID).push(o); });
   byTar.forEach(a => a.sort((x, y) => _botIsoDay(x.Fecha).localeCompare(_botIsoDay(y.Fecha))));
@@ -10908,10 +10908,10 @@ app.post("/aseo/tarea", async (req, res) => {
         asignados: (Array.isArray(b.asignados) ? b.asignados : []).map(n => txt(n, 80)).filter(Boolean).slice(0, 20),
         etiquetas: (Array.isArray(b.etiquetas) ? b.etiquetas : []).map(n => txt(n, 40)).filter(Boolean).slice(0, 20),
         adjuntos: (Array.isArray(b.adjuntos) ? b.adjuntos : []).filter(a => a && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.k)).slice(0, 20).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80), tam: Number(a.tam) || 0 })),
-        refs: (Array.isArray(b.refs) ? b.refs : []).filter(a => a && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.k)).slice(0, 40).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80) || "image/jpeg", ...(a.tk && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.tk) ? { tk: a.tk } : {}) })), // 2026-10-23: fotos de referencia (p. ej. las del hallazgo de un levantamiento)
+        refs: (Array.isArray(b.refs) ? b.refs : []).filter(a => a && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.k)).slice(0, 40).map(a => ({ k: a.k, nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 80) || "image/jpeg", ...(a.tk && /^(aseo\/adjuntos|incidencias\/fotos)\//.test(a.tk) ? { tk: a.tk } : {}) })), // 2026-10-23: fotos de referencia (p. ej. las del hallazgo de un inventario)
         reserva: String(b.reserva || "").replace(/\D/g, "").slice(0, 20),
         plantilla: String(b.plantilla || "").replace(/[^\w-]/g, "").slice(0, 40), // Plantilla (formulario) asignada a la tarea
-        lv: b.lv && typeof b.lv === "object" && b.lv.key ? { id: txt(b.lv.id, 60), hid: String(b.lv.hid || "").replace(/\D/g, "").slice(0, 20), item: txt(b.lv.item, 40), key: txt(b.lv.key, 80), campo: txt(b.lv.campo, 160) } : (prev && prev.lv) || undefined, // hallazgo de levantamiento que la originó
+        lv: b.lv && typeof b.lv === "object" && b.lv.key ? { id: txt(b.lv.id, 60), hid: String(b.lv.hid || "").replace(/\D/g, "").slice(0, 20), item: txt(b.lv.item, 40), key: txt(b.lv.key, 80), campo: txt(b.lv.campo, 160) } : (prev && prev.lv) || undefined, // hallazgo de inventario que la originó
         by: prev ? prev.by : user, at: prev ? prev.at : new Date().toISOString(), editBy: prev ? user : "", editAt: prev ? new Date().toISOString() : "" };
       return d[id];
     });
@@ -13913,7 +13913,7 @@ app.get("/aseo/plantilla-resp", async (req, res) => {
     res.json({ ok: true, resp: await _rhdGetJson(`aseo/plresp/${k}.json`).catch(() => ({})) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
-// Varias respuestas de plantilla de una vez (tabla «Por urgencia» de Levantamientos). ks = llaves tal como las usa el panel.
+// Varias respuestas de plantilla de una vez (tabla «Por urgencia» de Inventarios). ks = llaves tal como las usa el panel.
 app.post("/aseo/plantilla-resp/lote", async (req, res) => {
   try { const ks = [...new Set((Array.isArray((req.body || {}).ks) ? req.body.ks : []).map(String).filter(Boolean))].slice(0, 500), out = [];
     let i = 0; await Promise.all(Array.from({ length: 12 }, async () => { while (i < ks.length) { const k = ks[i++], f = _plKey(k); out.push({ k, doc: f ? await _rhdGetJson(`aseo/plresp/${f}.json`).catch(() => ({})) : {} }); } }));
@@ -14210,8 +14210,8 @@ app.post("/aseo/extra", async (req, res) => {
 // ── Prioridad elegida a mano en una card de aseo (clic en el indicador): aseo/prioridad.json → { <asigId>: "baja|media|alta|critica" } ──
 const _ASEO_PRIO_OBJ = "aseo/prioridad.json";
 async function _aseoPrioLoad() { if (!_aseo.prio || Date.now() - (_aseo.prioTs || 0) > 5_000) { _aseo.prio = await _rhdGetJson(_ASEO_PRIO_OBJ).catch(() => _aseo.prio || {}); _aseo.prioTs = Date.now(); } }
-// Urgencia de hallazgos de levantamientos (Por urgencia / Por tipo): la automática se calcula en el cliente (relevancia × respuesta); aquí se guardan los cambios MANUALES.
-// Llave = <llave de respuestas del levantamiento>|<id del campo>; valor {n: alta|media|baja|seg, by, at}. Sin entrada = automática.
+// Urgencia de hallazgos de inventarios (Por urgencia / Por tipo): la automática se calcula en el cliente (relevancia × respuesta); aquí se guardan los cambios MANUALES.
+// Llave = <llave de respuestas del inventario>|<id del campo>; valor {n: alta|media|baja|seg, by, at}. Sin entrada = automática.
 const _ASEO_URG_OBJ = "aseo/urgencias.json";
 app.get("/aseo/urgencias", async (req, res) => {
   try { if (!_aseo.urg || Date.now() - (_aseo.urgTs || 0) > 5_000) { _aseo.urg = await _rhdGetJson(_ASEO_URG_OBJ).catch(() => ({})); _aseo.urgTs = Date.now(); } res.set("Cache-Control", "no-store"); res.json({ ok: true, urg: _aseo.urg || {} }); }
@@ -14220,7 +14220,7 @@ app.get("/aseo/urgencias", async (req, res) => {
 app.post("/aseo/urgencia", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const b = req.body || {}, key = String(b.key || "").replace(/[^\w:.\-]/g, "").slice(0, 100), item = String(b.item || "").replace(/[^\w-]/g, "").slice(0, 40), nivel = String(b.nivel || ""), user = String(b.user || "").slice(0, 80);
-    if (!key || !item) return res.status(400).json({ ok: false, error: "Falta el levantamiento o el campo" }); const k = key + "|" + item, valido = ["alta", "media", "baja", "seg"].includes(nivel);
+    if (!key || !item) return res.status(400).json({ ok: false, error: "Falta el inventario o el campo" }); const k = key + "|" + item, valido = ["alta", "media", "baja", "seg"].includes(nivel);
     await _aseoMutate(_ASEO_URG_OBJ, "urg", d => { if (valido) d[k] = { n: nivel, by: user, at: new Date().toISOString() }; else delete d[k]; }); _aseo.urgTs = Date.now();
     res.json({ ok: true, k, nivel: valido ? nivel : null });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
