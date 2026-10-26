@@ -13285,6 +13285,113 @@ app.post("/mercado/airbnb/entorno/analizar", async (req, res) => {
   _enAnaliza(id).then(() => { _enJob.ok = true; }).catch(e => { _enJob.error = String(e.message || e); console.warn("[entorno]", id, e.message); }).finally(() => { clearInterval(t); _enJob.running = false; _enJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
+// ── Datos ambientales y de riesgo por coordenada (fase 1) ─────────────────────────────────────────────────────────────────────────────────────────
+//    Altitud, clima (promedio 2020-2024) y aire (modelo, últimos 30 días) desde Open-Meteo; riesgo tecnológico (gasolineras, industria, ferrocarril, autopistas, ductos,
+//    líneas de alta tensión) y accesibilidad (hospitales, escuelas, supermercados) desde OpenStreetMap vía Overpass, a ≤ 3 km. Se guarda todo en mercado/ambiente.json (id → datos).
+//    Las publicaciones de Facebook con ubicación aproximada (círculo) llevan altitud, clima y aire, pero no distancias (el centro del círculo no es la propiedad).
+const _AM_OBJ = "mercado/ambiente.json", _AM_R = 3000, _AM_UA = { "User-Agent": "CheckInn-Saltillo/1.0 (ambiente; contacto: correodeandrescarreon@gmail.com)" };
+let _amJob = { running: false };
+const _amSleep = ms => new Promise(r => setTimeout(r, ms));
+let _amSv = 0; async function _amEstadoGuarda(f) { if (!f && Date.now() - _amSv < 6000) return; _amSv = Date.now(); try { await _bnWriteGcs("mercado/ambiente_estado.json", _amJob, null); } catch (_) {} }
+async function _amGet(url, opts, tries) {
+  let ult, r429 = false; for (let i = 0; i < (tries || 4); i++) {
+    r429 = false; try { const r = await fetch(url, Object.assign({ headers: _AM_UA, signal: AbortSignal.timeout(60000) }, opts || {})); if (r.ok) return await r.json(); r429 = r.status === 429; ult = new Error("HTTP " + r.status + " " + url.split("?")[0]); if (r.status !== 429 && r.status < 500) break; } catch (e) { ult = e; }
+    await _amSleep(r429 ? 20000 * (i + 1) : 2500 * Math.pow(2, i));
+  }
+  throw ult || new Error("sin respuesta");
+}
+const _amCel = (lat, lng) => (Math.round(lat * 10) / 10).toFixed(1) + "," + (Math.round(lng * 10) / 10).toFixed(1); // celda de ~11 km: el clima y el aire de Open-Meteo vienen de modelos de esa resolución
+async function _amElevs(pts) { const out = []; for (let i = 0; i < pts.length; i += 60) { const L = pts.slice(i, i + 60), j = await _amGet(`https://api.open-meteo.com/v1/elevation?latitude=${L.map(p => p.lat.toFixed(5)).join(",")}&longitude=${L.map(p => p.lng.toFixed(5)).join(",")}`); (j.elevation || []).forEach(e => out.push(e)); await _amSleep(7000); } return out; } // ~500 por minuto: Open-Meteo corta (429) por encima de 600/min
+async function _amClima(lat, lng) {
+  const j = await _amGet(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=2020-01-01&end_date=2024-12-31&daily=temperature_2m_mean,precipitation_sum&timezone=auto`), d = j.daily || {}, T = d.temperature_2m_mean || [], P = d.precipitation_sum || [], M = Array.from({ length: 12 }, () => ({ t: 0, nt: 0, p: 0 }));
+  let st = 0, nt = 0, sp = 0, dl = 0, np = 0; (d.time || []).forEach((f, i) => { const m = +String(f).slice(5, 7) - 1; if (T[i] != null) { st += T[i]; nt++; M[m].t += T[i]; M[m].nt++; } if (P[i] != null) { sp += P[i]; np++; M[m].p += P[i]; if (P[i] >= 1) dl++; } });
+  const mt = M.map(m => m.nt ? m.t / m.nt : null), mp = M.map(m => m.p / 5), v = mt.filter(x => x != null); if (!nt) throw new Error("sin datos de clima");
+  const r1 = x => Math.round(x * 10) / 10;
+  return { tMedia: r1(st / nt), tCalido: r1(Math.max(...v)), tFrio: r1(Math.min(...v)), precAnual: Math.round(sp / 5), diasLluvia: Math.round(dl / 5), tMes: mt.map(x => x == null ? null : r1(x)), pMes: mp.map(x => Math.round(x)), años: "2020-2024" };
+}
+async function _amAire(lat, lng) {
+  const j = await _amGet(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lng}&hourly=pm2_5,pm10,us_aqi,nitrogen_dioxide&past_days=30&forecast_days=1&timezone=auto`), h = j.hourly || {}, av = k => { const a = (h[k] || []).filter(x => x != null); return a.length ? a.reduce((s, x) => s + x, 0) / a.length : null; }, r1 = x => x == null ? null : Math.round(x * 10) / 10;
+  const aqi = av("us_aqi"); if (aqi == null && av("pm2_5") == null) throw new Error("sin datos de aire");
+  return { pm25: r1(av("pm2_5")), pm10: r1(av("pm10")), no2: r1(av("nitrogen_dioxide")), aqi: aqi == null ? null : Math.round(aqi), cat: aqi == null ? null : aqi <= 50 ? "Buena" : aqi <= 100 ? "Moderada" : aqi <= 150 ? "Dañina para sensibles" : aqi <= 200 ? "Dañina" : "Muy dañina", dias: 30, fuente: "modelo" };
+}
+// Distancias en metros sobre un plano local alrededor del punto.
+function _amDist(lat0, lng0, g) {
+  const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540, P = g.map(q => [(q.lon - lng0) * kx, (q.lat - lat0) * ky]);
+  if (P.length === 1) return Math.hypot(P[0][0], P[0][1]);
+  let best = Infinity; for (let i = 0; i < P.length - 1; i++) { const [ax, ay] = P[i], [bx, by] = P[i + 1], dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0; best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy)); }
+  if (P.length > 3 && Math.hypot(P[0][0] - P[P.length - 1][0], P[0][1] - P[P.length - 1][1]) < 1) { let dentro = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > 0) !== (P[j][1] > 0) && 0 < (P[j][0] - P[i][0]) * (0 - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) dentro = !dentro; if (dentro) return 0; }
+  return best;
+}
+const _AM_CATS = { fuel: "Gasolinera", industria: "Zona industrial", tren: "Vía de tren", autopista: "Autopista / vía rápida", ducto: "Ducto", alta: "Línea de alta tensión", hospital: "Hospital o clínica", escuela: "Escuela o universidad", super: "Supermercado o centro comercial" };
+function _amCat(t) {
+  if (t.amenity === "fuel") return "fuel"; if (t.landuse === "industrial") return "industria"; if (t.railway === "rail") return "tren"; if (t.highway === "motorway" || t.highway === "trunk") return "autopista"; if (t.man_made === "pipeline") return "ducto"; if (t.power === "line") return "alta";
+  if (t.amenity === "hospital" || t.amenity === "clinic") return "hospital"; if (t.amenity === "school" || t.amenity === "university") return "escuela"; if (t.shop === "supermarket" || t.shop === "mall") return "super"; return null;
+}
+// Una sola consulta por cuadro de ~16 km (las consultas por punto tardaban de 50 a 100 s cada una); las distancias se calculan aquí.
+async function _amOsmCelda(S, W, N, E) {
+  const a = `(${S},${W},${N},${E})`, q = `[out:json][timeout:170];(node${a}["amenity"="fuel"];way${a}["amenity"="fuel"];way${a}["landuse"="industrial"];way${a}["railway"="rail"];way${a}["highway"~"^(motorway|trunk)$"];way${a}["man_made"="pipeline"];way${a}["power"="line"];node${a}["amenity"~"^(hospital|clinic|school|university)$"];way${a}["amenity"~"^(hospital|clinic|school|university)$"];node${a}["shop"~"^(supermarket|mall)$"];way${a}["shop"~"^(supermarket|mall)$"];);out tags geom;`;
+  let j, ult; for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(190000) }, 2); break; } catch (e) { ult = e; } }
+  if (!j) throw ult || new Error("Overpass sin respuesta");
+  const F = []; (j.elements || []).forEach(e => { const c = _amCat(e.tags || {}); if (!c) return; const g = e.type === "node" ? [{ lat: e.lat, lon: e.lon }] : (e.geometry || []).filter(q => q && q.lat != null); if (g.length) F.push({ c, g }); });
+  return F;
+}
+function _amOsm(F, lat, lng) {
+  const R = {}; Object.keys(_AM_CATS).forEach(k => { R[k] = { d: null, n: 0 }; });
+  F.forEach(f => { const d = _amDist(lat, lng, f.g); if (d > _AM_R) return; const r = R[f.c]; r.n++; if (r.d == null || d < r.d) r.d = Math.round(d); });
+  return R;
+}
+async function _amGuardar(patch) {
+  for (let i = 0; i < 6; i++) { const { data, gen } = await _bnReadGcs(_AM_OBJ), d = data && data.d ? data : { v: 1, d: {} }; Object.assign(d.d, patch); d.upd = new Date().toISOString(); try { await _bnWriteGcs(_AM_OBJ, d, data ? gen : "0"); return; } catch (e) { if (!e.conflict && !e.retry) throw e; await _amSleep(700 * (i + 1)); } }
+  throw new Error("No se pudo guardar el ambiente (conflicto)");
+}
+async function _amItems(ids) {
+  const { data } = await _bnReadGcs(_MA.OBJ), fb = await _fbDoc(), A = (data && data.items) || {}, F = fb.items || {}, out = [];
+  const arm = id => { const a = A[id], f = F[id]; if (a && a.lat != null && a.lng != null) return { id, lat: +a.lat, lng: +a.lng, aprox: false }; if (f && f.geo && f.lat != null && f.lng != null) return { id, lat: +f.lat, lng: +f.lng, aprox: (f.geo.tipo || (f.geo.prec === "facebook" ? "circulo" : "punto")) === "circulo" }; return null; };
+  (ids || [...Object.keys(A), ...Object.keys(F)]).forEach(id => { const x = arm(String(id)); if (x && isFinite(x.lat) && isFinite(x.lng)) out.push(x); });
+  return out;
+}
+async function _amCorre(ids, forzar) {
+  const J = _amJob, { data } = await _bnReadGcs(_AM_OBJ), ya = (data && data.d) || {}; J.paso = "Buscando coordenadas";
+  let L = await _amItems(ids); if (!forzar) L = L.filter(x => !ya[x.id] || (ya[x.id].err && !ya[x.id].ok)); J.total = L.length; J.hechos = 0; J.ok = 0; J.err = 0;
+  if (!L.length) return;
+  J.paso = "Altitud"; const E = await _amElevs(L), cel = new Map();
+  L.forEach(x => { const k = _amCel(x.lat, x.lng); if (!cel.has(k)) cel.set(k, { lat: +k.split(",")[0], lng: +k.split(",")[1] }); });
+  const clima = new Map(), aire = new Map(); let n = 0;
+  for (const [k, c] of cel) { J.paso = `Clima y aire (${++n}/${cel.size} zonas)`; J.upd = new Date().toISOString(); _amEstadoGuarda(); try { clima.set(k, await _amClima(c.lat, c.lng)); } catch (e) { clima.set(k, null); } await _amSleep(900); try { aire.set(k, await _amAire(c.lat, c.lng)); } catch (e) { aire.set(k, null); } await _amSleep(500); }
+  const celdas = new Map(); L.forEach((x, i) => { if (x.aprox) return; const k = Math.floor(x.lat / 0.15) + "," + Math.floor(x.lng / 0.15); if (!celdas.has(k)) celdas.set(k, []); celdas.get(k).push(i); });
+  const feats = new Map(), errC = new Map(); let nc = 0;
+  for (const [k, idx] of celdas) {
+    J.paso = `Entorno de OpenStreetMap (zona ${++nc}/${celdas.size})`; J.upd = new Date().toISOString(); _amEstadoGuarda(); const [fy, fx] = k.split(",").map(Number), m = _AM_R / 100000;
+    try { feats.set(k, await _amOsmCelda((fy * 0.15 - m).toFixed(4), (fx * 0.15 - m).toFixed(4), ((fy + 1) * 0.15 + m).toFixed(4), ((fx + 1) * 0.15 + m).toFixed(4))); } catch (e) { errC.set(k, String(e.message || e).slice(0, 120)); }
+    await _amSleep(2500);
+  }
+  let buf = {};
+  for (let i = 0; i < L.length; i++) {
+    const x = L[i], k = _amCel(x.lat, x.lng), kc = Math.floor(x.lat / 0.15) + "," + Math.floor(x.lng / 0.15), r = { id: x.id, v: "ambiente-v1", at: new Date().toISOString(), lat: x.lat, lng: x.lng, aprox: x.aprox, alt: E[i] == null ? null : Math.round(E[i]), clima: clima.get(k) || null, aire: aire.get(k) || null, osm: null, radio: _AM_R };
+    J.paso = `Guardando ${i + 1}/${L.length}`; J.upd = new Date().toISOString(); _amEstadoGuarda();
+    if (!x.aprox) { if (feats.has(kc)) r.osm = _amOsm(feats.get(kc), x.lat, x.lng); else r.errOsm = errC.get(kc) || "sin datos"; }
+    r.ok = !!(r.alt != null || r.clima || r.aire || r.osm); if (!r.ok || (!x.aprox && !r.osm)) { r.err = r.errOsm || "incompleto"; J.err++; } else J.ok++;
+    buf[x.id] = r; J.hechos = i + 1; if (Object.keys(buf).length >= 100 || i === L.length - 1) { await _amGuardar(buf); buf = {}; }
+  }
+}
+function _amArranca(ids, forzar) {
+  _amJob = { running: true, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString(), total: 0, hechos: 0, ok: 0, err: 0 }; const t = setInterval(() => { _amJob.upd = new Date().toISOString(); _amEstadoGuarda(); }, 15000); _amEstadoGuarda(true);
+  _amCorre(ids, forzar).catch(e => { _amJob.error = String(e.message || e); console.warn("[ambiente]", e.message); }).finally(() => { clearInterval(t); _amJob.running = false; _amJob.fin = new Date().toISOString(); _amJob.paso = _amJob.error ? "Error" : "Listo"; _amEstadoGuarda(true); });
+}
+app.get("/mercado/airbnb/ambiente/estado", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); let J = _amJob;
+  if (!J.running) { try { const { data } = await _bnReadGcs("mercado/ambiente_estado.json"); if (data && data.inicio && (!J.inicio || data.inicio > J.inicio)) { J = data; if (J.running && Date.now() - Date.parse(J.upd || 0) > 240000) J = Object.assign({}, J, { running: false, error: J.error || "Se interrumpió" }); } } catch (_) {} } // Cloud Run puede atender cada petición en otra instancia: el estado vive también en Cloud Storage
+  res.json(Object.assign({ ok: true }, J));
+});
+app.get("/mercado/airbnb/ambiente/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs(_AM_OBJ), o = {}; Object.values((data && data.d) || {}).forEach(r => { o[r.id] = { at: r.at, ok: !!r.ok, alt: r.alt, t: r.clima && r.clima.tMedia, aqi: r.aire && r.aire.aqi }; }); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: o }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/airbnb/ambiente/dato", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(_AM_OBJ); res.set("Cache-Control", "no-store"); res.json({ ok: true, ambiente: (data && data.d && data.d[id]) || null, cats: _AM_CATS }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/airbnb/ambiente/calcular", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  let otro = _amJob; if (!otro.running) { try { const { data } = await _bnReadGcs("mercado/ambiente_estado.json"); if (data && data.running) otro = data; } catch (_) {} }
+  if (otro.running && Date.now() - Date.parse(otro.upd || 0) < 240000) return res.status(409).json({ ok: false, error: "Ya hay un cálculo ambiental en curso" });
+  const b = req.body || {}, ids = Array.isArray(b.ids) && b.ids.length ? b.ids.map(x => String(x).replace(/\D/g, "")).filter(Boolean).slice(0, 3000) : null;
+  _amArranca(ids, !!b.forzar); res.json({ ok: true });
+});
 app.get("/mercado/airbnb/clasif/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _clJob)); });
 app.get("/mercado/airbnb/clasif/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs("mercado/clasif/_indice.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: data || {} }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/airbnb/clasif/config", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs("mercado/clasif/_config.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, config: Object.assign({ pA: 85, pC: 30 }, data || {}) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
