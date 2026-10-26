@@ -59575,19 +59575,22 @@ function tdPintarHijo_(r, D, nuevo) {
   const dia = tdDia_(), actual = tdIGPerDe_(r, D.hid, dia), iso = D.per || actual, id = D.hijo, est = tarOcurEstado_(id, iso), oc = tarOcur_(id, iso);
   const a = typeof atAloj_ === 'function' ? atAloj_(D.hid) : { nombre: D.hid, corto: '' }, p = r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
   const sig = TAR_ESTADOS[Math.min(2, TAR_ESTADOS.findIndex(e => e.k === est) + 1)], key = tdIGKey_(r, D.hid, iso, true);
+  const hu = () => {
+    const e2 = tarOcurEstado_(id, iso), o2 = tarOcur_(id, iso);
+    return {
+      top: `<div onclick="event.stopPropagation()" style="margin:6px 0 8px;cursor:default"><div class="ad-steps">${TAR_ESTADOS.map(e => `<button type="button" class="${e.k === e2 ? 'on' : ''}" style="--c:${TD_EST[e.k]}" onclick="tdSetEst_('${esc(id)}','${iso}','${e.k}',1)">${e.k === 'Resuelto' ? 'Terminado' : e.k}</button>`).join('')}</div>${iso !== actual ? `<div class="ad-hint" style="margin-top:6px;color:#b45309">Estás viendo un inventario anterior. <a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrirHijo_('${esc(r.ID)}','${esc(D.hid)}')">Ir al actual ›</a></div>` : ''}</div>`,
+      bot: `<div onclick="event.stopPropagation()" style="margin-top:8px;cursor:default">${o2 && o2.Atendido_por ? `<div class="ad-hint">Último cambio: ${esc(o2.Atendido_por)}${o2.Updated_at ? ' · ' + esc(String(o2.Updated_at).replace('T', ' ').slice(0, 16)) : ''}</div>` : ''}<textarea class="at-in td-com" rows="2" placeholder="Comentarios de este levantamiento…" onchange="tdComentario_('${esc(id)}','${iso}',this.value,1)">${esc((o2 && o2.Comentarios) || '')}</textarea></div>`
+    };
+  };
+  ASEO.pl.hijoUI = { key, fn: hu };
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span><span class="t">${esc(a.nombre || D.hid)}</span><button type="button" class="ad-close" onclick="tdCerrar_()">✕</button></div>
       <div class="ad-tt">📝 ${esc(r.Nombre || 'Inventario')}</div>
       ${(R => `<div class="ad-sub">Límite ${aseoDiaTxt_(R.lim)} · <i style="background:${TD_EST[est]}"></i>${est} · ${prio4Html_(R.prio)} ${tdIGRetHtml_(R)}</div>`)(tdIGRetraso_(r, D.hid))}
       <div class="ad-hint" style="margin-top:6px"><a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrir_('${esc(r.ID)}')">‹ Inventario · ${tdIGAlojs_(r).length} alojamientos</a></div></div>
     <div class="ad-db">
-      <div class="lab">Estado de este alojamiento</div>
-      <div class="ad-steps">${TAR_ESTADOS.map(e => `<button type="button" class="${e.k === est ? 'on' : ''}" style="--c:${TD_EST[e.k]}" onclick="tdSetEst_('${esc(id)}','${iso}','${e.k}',1)">${e.k === 'Resuelto' ? 'Terminado' : e.k}</button>`).join('')}</div>
-      ${iso !== actual ? `<div class="ad-hint" style="margin-top:6px;color:#b45309">Estás viendo un inventario anterior. <a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrirHijo_('${esc(r.ID)}','${esc(D.hid)}')">Ir al actual ›</a></div>` : ''}
-      ${oc && oc.Atendido_por ? `<div class="ad-hint">Último cambio: ${esc(oc.Atendido_por)}${oc.Updated_at ? ' · ' + esc(String(oc.Updated_at).replace('T', ' ').slice(0, 16)) : ''}</div>` : ''}
-      <textarea class="at-in td-com" rows="2" placeholder="Comentarios de este alojamiento…" onchange="tdComentario_('${esc(id)}','${iso}',this.value,1)">${esc((oc && oc.Comentarios) || '')}</textarea>
-      ${p ? (key in (ASEO.pl.resp || {}) ? plBox_(p.id, key, null) : '<div class="lab">📋 Plantilla</div><div class="ad-hint">⏳ Cargando formulario…</div>') : '<div class="ad-hint" style="margin-top:12px">Esta inspección no tiene plantilla.</div>'}
-      <div class="lab">Personal asignado</div><div class="ad-ppl">${tarPersonalList_(r).map(n => `<div class="ad-pp">${adAv_(n)}<span>${esc(n)}</span></div>`).join('') || '<div class="ad-un">Sin asignar</div>'}</div>
       ${tdIGHistHtml_(r, D.hid, iso, actual)}
+      ${p ? (key in (ASEO.pl.resp || {}) ? plBox_(p.id, key, null) : `${hu().top}<div class="lab">📋 Plantilla</div><div class="ad-hint">⏳ Cargando formulario…</div>${hu().bot}`) : `${hu().top}<div class="ad-hint" style="margin-top:12px">Esta inspección no tiene plantilla.</div>${hu().bot}`}
+      <div class="lab">Personal asignado</div><div class="ad-ppl">${tarPersonalList_(r).map(n => `<div class="ad-pp">${adAv_(n)}<span>${esc(n)}</span></div>`).join('') || '<div class="ad-un">Sin asignar</div>'}</div>
     </div>
     <div class="ad-ft"><button type="button" class="ad-bt" onclick="tdAbrir_('${esc(r.ID)}')">‹ Volver</button>
       ${est === 'Resuelto' && iso === actual ? `<button type="button" class="ad-bt pri" onclick="tdIGPreguntaSig_('${esc(id)}')" title="Abre un inventario nuevo (0 %) con la siguiente fecha límite">↻ Programar siguiente</button>` : est === 'Resuelto' || est === 'Cancelado' ? `<button type="button" class="ad-bt ok" disabled>✓ ${est}</button>` : `<button type="button" class="ad-bt pri" onclick="tdSetEst_('${esc(id)}','${iso}','${sig.k}',1)">Marcar ${sig.k.toLowerCase()}</button>`}</div>`;
@@ -73358,7 +73361,8 @@ function plFillHtml_(p, key) {
   const abiertas = ASEO.pl.abiertas = ASEO.pl.abiertas || {};
   const at = (ASEO.pl.respAt || {})[key];
   const exp = !!(ASEO.pl.exp || {})[key];
-  return `<div class="plf-h" role="button" onclick="plTg_('${pcEsc(key)}')" title="${exp ? 'Contraer' : 'Desplegar'} la plantilla"><div class="plf-ht"><b>📋 ${pcEsc(p.titulo)}</b><span class="plf-car">${exp ? '▾' : '▸'}</span></div><div class="plf-bar ${A.p === 100 ? 'ok' : ''}"><span><i style="width:${A.p}%"></i></span>${A.p}% · ${A.h}/${A.t}</div>
+  const HU = ASEO.pl.hijoUI && ASEO.pl.hijoUI.key === key ? ASEO.pl.hijoUI.fn() : { top: '', bot: '' }; // inventarios: estado arriba de la barra y comentarios debajo
+  return `<div class="plf-h" role="button" onclick="plTg_('${pcEsc(key)}')" title="${exp ? 'Contraer' : 'Desplegar'} la plantilla"><div class="plf-ht"><b>📋 ${pcEsc(p.titulo)}</b><span class="plf-car">${exp ? '▾' : '▸'}</span></div>${HU.top}<div class="plf-bar ${A.p === 100 ? 'ok' : ''}"><span><i style="width:${A.p}%"></i></span>${A.p}% · ${A.h}/${A.t}</div>${HU.bot}
       <div class="plf-st" id="plf-st">${ASEO.pl._guardando === key ? '⏳ Guardando…' : at ? `Guardado ${new Date(at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : 'Se guarda solo al responder'}</div></div>
     ${!exp ? '' : (() => { const pend = (p.secciones || []).findIndex(s => s.items.some(it => !plHecho_(it, resp[it.id]))); return (p.secciones || []).map((s, si) => {
       // Abiertas: todas si son pocas secciones; si son muchas, solo la primera con campos pendientes (las demás con un clic).
