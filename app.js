@@ -76697,9 +76697,9 @@ function mcAloCuerpo_() {
 function mcAloMapaDet_(id) {
   const el = document.getElementById('al-dmap'); if (!el) return; mcMapaCss_(); if (MC._dmap) { try { MC._dmap.remove(); } catch (_) {} MC._dmap = null; }
   _rsvEnsureLeaflet_(() => { const el2 = document.getElementById('al-dmap'); if (!el2 || MC.al.id !== id) return; const Lf = window.L, A = mcAloData_(), r = A.rows.find(x => x.id === id), i = MC.items[id] || {}; if (!r) return;
-    const p = { id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || id, ev: r.ev, tipo: i.tipo, sub: i.sub, m2: i.m2, op: i.op };
-    const m = Lf.map(el2, { scrollWheelZoom: false }).setView([p.lat, p.lng], 15); Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
-    Lf.marker([p.lat, p.lng], { icon: Lf.divIcon({ className: '', html: mcMapaPinHtml_(p, true), iconSize: [200, 46], iconAnchor: [100, 46] }) }).addTo(m); MC._dmap = m; setTimeout(() => m.invalidateSize(), 150); });
+    const p = { id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || id, ev: r.ev, tipo: i.tipo, sub: i.sub, m2: i.m2, op: i.op, aprox: i.geoPrec === 'facebook' };
+    const m = Lf.map(el2, { scrollWheelZoom: false }).setView([p.lat, p.lng], p.aprox ? 12 : 15); Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+    if (p.aprox) { const c = Lf.circle([p.lat, p.lng], { radius: 2000, color: '#0f766e', weight: 2.5, fillColor: '#14b8a6', fillOpacity: .2 }).addTo(m); m.fitBounds(c.getBounds(), { padding: [20, 20] }); } else Lf.marker([p.lat, p.lng], { icon: Lf.divIcon({ className: '', html: mcMapaPinHtml_(p, true), iconSize: [200, 46], iconAnchor: [100, 46] }) }).addTo(m); MC._dmap = m; setTimeout(() => m.invalidateSize(), 150); });
 }
 // ── Desplazamiento infinito: al llegar al final de la lista se cargan las 48 siguientes (sin botón) ──
 function mcAloSent_() {
@@ -77354,7 +77354,7 @@ function mcMapaEstructura_(b) {
   if (!b._mapClk) { b._mapClk = true; b.addEventListener('click', e => { if (!MC.al.mapa || MC.al.vista !== 'tabla') return; const tr = e.target.closest && e.target.closest('#mc-res tbody tr'); if (!tr || e.target.closest('a,button')) return; mcMapaSel_(tr.dataset.id, 'card'); }); }
   return b.querySelector('#al-list');
 }
-function mcMapaDestruye_() { mcMapaSpiderCierra_(); if (MC.map.m) { try { MC.map.m.remove(); } catch (_) {} } MC.map.m = null; MC.map.mk = new Map(); MC.map.sig = ''; }
+function mcMapaDestruye_() { mcMapaSpiderCierra_(); if (MC.map.m) { try { MC.map.m.remove(); } catch (_) {} } MC.map.m = null; MC.map.mk = new Map(); MC.map.circ = new Map(); MC.map.sig = ''; }
 function mcMapaIniciar_() {
   _rsvEnsureLeaflet_(() => { const el = document.getElementById('mc-map'); if (!el) return; const Lf = window.L; if (MC.map.m) { try { MC.map.m.remove(); } catch (_) {} MC.map.m = null; }
     const m = Lf.map(el).setView([25.4232, -100.9906], 12); Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m); MC.map.m = m;
@@ -77364,7 +77364,7 @@ function mcMapaIniciar_() {
 // Puntos = alojamientos filtrados con coordenadas (en «Por anfitrión» con un anfitrión abierto, solo los suyos)
 function mcMapaPuntos_() {
   const A = mcAloData_(), S = MC.al, ids = MC.alIds; let rows = A.rows.filter(r => !ids || ids.has(r.id)); if (S.vista === 'host' && S.host) rows = rows.filter(r => r.hostId === S.host);
-  return rows.map(r => { const i = MC.items[r.id] || {}; return { id: r.id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || r.id, ev: r.ev, tipo: i.tipo, sub: i.sub, m2: i.m2, op: i.op }; }).filter(p => isFinite(p.lat) && isFinite(p.lng) && p.lat && p.lng);
+  return rows.map(r => { const i = MC.items[r.id] || {}; return { id: r.id, hostId: r.hostId, host: r.host, lat: +i.lat, lng: +i.lng, precio: r.precio, cal: r.cal, hab: r.hab, camas: r.camas, banos: r.banos, coc: mcCocina_(i), sup: !!i.superanfitrion, foto: i.foto, titulo: i.titulo || r.id, ev: r.ev, tipo: i.tipo, sub: i.sub, m2: i.m2, op: i.op, aprox: i.geoPrec === 'facebook' }; }).filter(p => isFinite(p.lat) && isFinite(p.lng) && p.lat && p.lng);
 }
 function mcMapaActualiza_(fit) {
   const m = MC.map.m; if (!m) return; const P = mcMapaPuntos_(), sig = P.length + '|' + (P[0] || {}).id + '|' + (P[P.length - 1] || {}).id; MC.map.pts = P;
@@ -77379,8 +77379,9 @@ function mcMapaPinHtml_(p, sel) {
   return `<div class="rsv-map-pin mc-pin ${sel ? 'sel' : ''}" data-id="${esc(p.id)}"><div class="im" style="background-image:url('${esc(mcImg_(p.foto, 240))}')">${p.sup ? '<i title="Superanfitrión">★</i>' : ''}</div><div><div class="t"><b>${mcOk_(p.precio) ? MCFMT(p.precio) : '—'}</b><span>★ ${mcOk_(p.cal) ? MCN(p.cal, 2) : '—'}</span></div><small>${hab} hab · ${p.camas == null ? '?' : p.camas} camas · ${p.banos == null ? '?' : p.banos} baños</small><small>${mcMapaCoc_(p.coc)}${p.sup ? ' · ★ Superanfitrión' : ''}</small></div></div>`;
 }
 function mcMapaMarcas_() {
-  const m = MC.map.m, Lf = window.L; if (!m || !Lf) return; MC.map.mk.forEach(x => { try { m.removeLayer(x); } catch (_) {} }); MC.map.mk = new Map(); mcMapaSpiderCierra_();
-  const P = MC.map.pts || [], sel = MC.map.sel, selH = MC.map.selHost, LW = 190, LH = 50, pts = P.map((p, i) => ({ i, p, px: m.latLngToLayerPoint([p.lat, p.lng]) })), seen = new Set(), grupos = [];
+  const m = MC.map.m, Lf = window.L; if (!m || !Lf) return; MC.map.mk.forEach(x => { try { m.removeLayer(x); } catch (_) {} }); MC.map.mk = new Map(); (MC.map.circ || new Map()).forEach(x => { try { m.removeLayer(x); } catch (_) {} }); MC.map.circ = new Map(); mcMapaSpiderCierra_();
+  mcFbpCirculos_(m, Lf);
+  const P = (MC.map.pins = (MC.map.pts || []).filter(p => !p.aprox)), sel = MC.map.sel, selH = MC.map.selHost, LW = 190, LH = 50, pts = P.map((p, i) => ({ i, p, px: m.latLngToLayerPoint([p.lat, p.lng]) })), seen = new Set(), grupos = [];
   for (const a of pts) { if (seen.has(a.i)) continue; const g = [a.i]; seen.add(a.i); for (const b of pts) { if (seen.has(b.i)) continue; if (g.some(k => Math.abs(pts[k].px.x - b.px.x) < LW && Math.abs(pts[k].px.y - b.px.y) < LH)) { g.push(b.i); seen.add(b.i); } } grupos.push(g); }
   MC.map.clusters = grupos.filter(g => g.length > 1);
   grupos.forEach(g => {
@@ -77394,7 +77395,7 @@ function mcMapaMarcas_() {
 }
 function mcMapaSpiderCierra_() { const ov = document.getElementById('mc-spider-overlay'); if (ov) ov.remove(); if (MC.map._spC) { try { MC.map._spC(); } catch (_) {} MC.map._spC = null; } }
 function mcMapaSpider_(idxs, centro) { // despliegue en araña (igual que el de check-inn.mx)
-  mcMapaSpiderCierra_(); const m = MC.map.m; if (!m) return; const P = MC.map.pts, mapEl = document.getElementById('mc-map'), c = m.latLngToContainerPoint(centro), N = idxs.length, R = 110 + N * 12;
+  mcMapaSpiderCierra_(); const m = MC.map.m; if (!m) return; const P = MC.map.pins || MC.map.pts, mapEl = document.getElementById('mc-map'), c = m.latLngToContainerPoint(centro), N = idxs.length, R = 110 + N * 12;
   const ov = document.createElement('div'); ov.id = 'mc-spider-overlay'; ov.innerHTML = '<svg><g id="mc-spider-lines"></g></svg>'; mapEl.appendChild(ov); const svg = ov.querySelector('#mc-spider-lines');
   idxs.forEach((k, j) => { const ang = -Math.PI / 2 + (2 * Math.PI / N) * j, x = c.x + Math.cos(ang) * R, y = c.y + Math.sin(ang) * R, ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     ['x1', c.x, 'y1', c.y, 'x2', x, 'y2', y, 'stroke', 'rgba(15,23,42,.55)', 'stroke-width', '1.5', 'stroke-dasharray', '3 4', 'stroke-linecap', 'round'].forEach((v, q, a) => { if (q % 2 === 0) ln.setAttribute(v, a[q + 1]); }); svg.appendChild(ln);
@@ -77405,7 +77406,7 @@ function mcMapaSpider_(idxs, centro) { // despliegue en araña (igual que el de 
 function mcMapaCardInfo_(p) { const w = document.getElementById('mc-mapinfo'); if (!w) return; if (!p) { w.innerHTML = ''; return; } if (MC.ctx === 'fb') { w.innerHTML = ''; return; }
   w.innerHTML = `<div class="al-mapcard"><img src="${esc(mcImg_(p.foto, 240))}" alt="" referrerpolicy="no-referrer"><div style="min-width:0"><b>${esc(p.titulo)}</b><small>👤 ${esc(p.host)}${p.sup ? ' · ★ Superanfitrión' : ''}</small><small>${mcOk_(p.precio) ? '<b style="display:inline;color:#0f766e">' + MCFMT(p.precio) + '</b> /noche · ' : ''}★ ${mcOk_(p.cal) ? MCN(p.cal, 2) : '—'} (${p.ev}) · ${p.hab === 0 ? 'Estudio' : (p.hab ?? '?') + ' hab'} · ${p.camas ?? '?'} camas · ${p.banos ?? '?'} baños · ${mcMapaCoc_(p.coc)}</small><button type="button" class="al-btn" onclick="mcAloIr_('${esc(p.hostId)}','${esc(p.id)}')">Ver ficha ↗</button></div></div>`; }
 function mcMapaMarcaSel_() { // recoloca la selección en los pines visibles
-  const m = MC.map.m; if (!m) return; MC.map.mk.forEach((mk, k) => { if (String(k)[0] === 'c') return; const p = (MC.map.pts || []).find(x => x.id === k); if (!p) return; const esSel = MC.map.sel === p.id || (MC.map.selHost && p.hostId === MC.map.selHost); const el = mk.getElement(); const pin = el && el.querySelector('.mc-pin'); if (pin) pin.classList.toggle('sel', esSel); mk.setZIndexOffset(esSel ? 3000 : 0); });
+  const m = MC.map.m; if (!m) return; mcFbpCircEstilo_(); MC.map.mk.forEach((mk, k) => { if (String(k)[0] === 'c') return; const p = (MC.map.pts || []).find(x => x.id === k); if (!p) return; const esSel = MC.map.sel === p.id || (MC.map.selHost && p.hostId === MC.map.selHost); const el = mk.getElement(); const pin = el && el.querySelector('.mc-pin'); if (pin) pin.classList.toggle('sel', esSel); mk.setZIndexOffset(esSel ? 3000 : 0); });
 }
 // Clic en un grupo del mapa: resalta las cards (o renglones) de todos sus alojamientos y se desplaza a la primera
 function mcMapaResaltaGrupo_(ids) {
@@ -77428,7 +77429,7 @@ window.mcMapaSel_ = function (id, desde) {
   MC.map.selGrupo = null;
   const P = MC.map.pts || [], p = id ? P.find(x => x.id === String(id)) : null; MC.map.sel = p ? p.id : null; MC.map.selHost = null; mcMapaCardInfo_(p);
   if (!p) { mcMapaResalta_(null); mcMapaMarcaSel_(); return; }
-  if (desde === 'card' && MC.map.m) { MC.map.m.flyTo([p.lat, p.lng], Math.max(MC.map.m.getZoom(), 16), { duration: .6 }); }
+  if (desde === 'card' && MC.map.m) { MC.map.m.flyTo([p.lat, p.lng], p.aprox ? 13 : Math.max(MC.map.m.getZoom(), 16), { duration: .6 }); }
   mcMapaResalta_(p.id, p.hostId, desde === 'pin'); setTimeout(mcMapaMarcaSel_, desde === 'card' ? 700 : 0); mcMapaMarcaSel_();
 };
 window.mcMapaHost_ = function (hid) { MC.map.selGrupo = null; // tarjeta de anfitrión → resalta todos sus pines y encuadra
@@ -77907,7 +77908,7 @@ function mcFbpCard_(h, r, showHost) {
   return `<button type="button" class="al-lc" data-id="${r.id}" onclick="mcAloCardClk_('${h.id}','${r.id}')" ondblclick="mcAloIr_('${h.id}','${r.id}')"><div class="al-cv"><img loading="lazy" src="${esc(mcImg_(i.foto, 560))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"><div class="al-bg"><span class="al-bd b">${esc(i.tipo)}</span><span class="al-bd ${i.op === 'Venta' ? '' : 'g'}">${esc(i.op)}</span>${i.amueblado ? '<span class="al-bd">Amueblado</span>' : ''}</div></div>
     <div class="al-lb"><h4>${esc(i.titulo || r.id)}</h4><small>${esc(i.sub)}${i.ciudad ? ' · ' + esc(i.ciudad) : ''}</small>${MC.en.ix[r.id] ? `<div style="margin:4px 0;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${mcEnChip_(r.id)}</div>` : ''}<small>${esc(sp) || '&nbsp;'}</small>${showHost ? `<small style="margin-top:2px">👤 ${esc(r.host)}</small>` : ''}
     <div class="al-r"><span><b>${mcOk_(r.precio) ? MCFMT(r.precio) : '—'}</b> <small style="display:inline">${i.op === 'Venta' ? '' : '/mes'}</small></span><span>${pm2 ? `<b style="font-size:13px">${MCFMT(pm2)}</b> <small style="display:inline">/m²</small>` : ''}</span></div>
-    <small style="margin-top:6px">${i.lat != null ? '📍 Con ubicación' : 'Sin ubicación precisa'}${i.publicada ? ' · publicada ' + esc(mcF(String(i.publicada).slice(0, 10))) : i.publicadoTxt ? ' · ' + esc(i.publicadoTxt) : ''}</small>
+    <small style="margin-top:6px">${i.lat != null ? (i.geoPrec === 'facebook' ? '⭕ Ubicación aproximada (círculo de 4 km)' : '📍 Con ubicación') : 'Sin ubicación precisa'}${i.publicada ? ' · publicada ' + esc(mcF(String(i.publicada).slice(0, 10))) : i.publicadoTxt ? ' · ' + esc(i.publicadoTxt) : ''}</small>
     <span role="button" tabindex="0" class="al-btn" style="margin-top:10px;display:block;text-align:center" onclick="event.stopPropagation();mcAloIr_('${h.id}','${r.id}')" onkeydown="if(event.key==='Enter'){event.stopPropagation();mcAloIr_('${h.id}','${r.id}')}">Ver ficha ↗</span></div></button>`;
 }
 function mcFbpListaHtml_(L) {
@@ -77968,7 +77969,7 @@ function mcFbpHostHtml_(h) {
 // ── Ficha de la publicación ──
 function mcFbpDet_(h, r) {
   const i = MC.items[r.id] || {}, ex = (a, b) => `<div><small>${a}</small><b>${b == null || b === '' ? '—' : esc(String(b))}</b></div>`, am = mcAloAmen_(i.amenidades), pm2 = i.m2 > 0 && r.precio > 0 ? r.precio / i.m2 : null, geo = i.lat != null && i.lng != null && isFinite(+i.lat) && isFinite(+i.lng);
-  const fx = [[i.habitaciones === 0 ? 'Mono.' : i.habitaciones, 'recámaras'], [i.banos, 'baños'], [i.m2, 'm² constr.'], [i.estac, 'estac.'], [i.amueblado == null ? null : i.amueblado ? 'Sí' : 'No', 'amueblado'], [i.fotos, 'fotos']], pre = i.geoPrec === 'facebook' ? 'aproximada, de la ficha de Facebook' : i.geoPrec ? 'calculada con la dirección (' + i.geoPrec + ')' : '';
+  const fx = [[i.habitaciones === 0 ? 'Mono.' : i.habitaciones, 'recámaras'], [i.banos, 'baños'], [i.m2, 'm² constr.'], [i.estac, 'estac.'], [i.amueblado == null ? null : i.amueblado ? 'Sí' : 'No', 'amueblado'], [i.fotos, 'fotos']], pre = i.geoPrec === 'facebook' ? 'aproximada: Facebook solo muestra una zona (círculo de 4 km de diámetro); el punto de referencia es el centro del círculo' : i.geoPrec ? 'calculada con la dirección (' + i.geoPrec + ')' : '';
   const sinGeo = (t) => `<div class="mc-mu" style="padding:6px 0">${t} necesita una coordenada precisa y esta publicación no la tiene (la ficha no trae dirección, colonia ni código postal que se pueda ubicar).</div><div style="margin-top:8px"><button type="button" class="cl-bt" id="fbp-ub" onclick="mcFbpUbicar_('${esc(r.id)}')">📍 Intentar ubicar con la dirección</button> <span class="mc-mu" style="font-size:11.5px" id="fbp-ub-m"></span></div>`;
   return `<div class="al-bc"><button type="button" onclick="mcAloIr_()">📣 Publicaciones Facebook</button><span>›</span><button type="button" onclick="mcAloHostIr_('${h.id}')">${esc(h.host)}</button><span>›</span><b>${esc(i.titulo || r.id)}</b></div>
     <div class="al-det"><div class="al-gal"><div id="al-gal"><div class="al-sk" style="aspect-ratio:16/10"></div></div></div>
@@ -77993,7 +77994,7 @@ function mcFbpDet_(h, r) {
 }
 // ── Tabla (equivalente a «Tabla») ──
 window.mcFbpSort_ = function (k) { const t = MC.al.tsort || (MC.al.tsort = { k: 'precio', d: -1 }); if (t.k === k) t.d = -t.d; else { t.k = k; t.d = k === 'titulo' || k === 'tipo' || k === 'sub' || k === 'ciudad' || k === 'host' ? 1 : -1; } mcAloCuerpo_(); };
-const mcFbpCols_ = [['titulo', 'Publicación', (r, i) => i.titulo || r.id], ['tipo', 'Tipo', (r, i) => i.tipo], ['sub', 'Subcategoría', (r, i) => i.sub], ['op', 'Operación', (r, i) => i.op], ['precio', 'Precio', r => r.precio], ['hab', 'Rec.', r => r.hab], ['banos', 'Baños', r => r.banos], ['m2', 'm²', (r, i) => i.m2], ['pm2', '$/m²', (r, i) => i.m2 > 0 && r.precio > 0 ? r.precio / i.m2 : null], ['estac', 'Est.', (r, i) => i.estac], ['medios', 'Medios baños', (r, i) => i.medios], ['m2t', 'm² terreno', (r, i) => i.m2t], ['amu', 'Amueblado', (r, i) => i.amueblado == null ? null : i.amueblado ? 'Sí' : 'No'], ['colonia', 'Colonia', (r, i) => i.colonia], ['cp', 'C.P.', (r, i) => i.cp], ['dir', 'Dirección', (r, i) => i.direccion], ['ciudad', 'Ciudad', (r, i) => i.ciudad], ['host', 'Publicante', r => r.host], ['tel', 'Teléfono', (r, i) => i.tel], ['pub', 'Fecha de publicación', (r, i) => i.publicadoTxt || (i.publicada ? String(i.publicada).slice(0, 10) : '')], ['vcal', 'Calificación vendedor', (r, i) => i.vend && i.vend.calificacion ? i.vend.calificacion : null], ['vseg', 'Seguidores', (r, i) => i.vend && i.vend.seguidores ? i.vend.seguidores : ''], ['fotos', 'Fotos', (r, i) => i.fotos], ['geo', 'Ubicación', (r, i) => i.lat != null ? 'Sí' : 'No']];
+const mcFbpCols_ = [['titulo', 'Publicación', (r, i) => i.titulo || r.id], ['tipo', 'Tipo', (r, i) => i.tipo], ['sub', 'Subcategoría', (r, i) => i.sub], ['op', 'Operación', (r, i) => i.op], ['precio', 'Precio', r => r.precio], ['hab', 'Rec.', r => r.hab], ['banos', 'Baños', r => r.banos], ['m2', 'm²', (r, i) => i.m2], ['pm2', '$/m²', (r, i) => i.m2 > 0 && r.precio > 0 ? r.precio / i.m2 : null], ['estac', 'Est.', (r, i) => i.estac], ['medios', 'Medios baños', (r, i) => i.medios], ['m2t', 'm² terreno', (r, i) => i.m2t], ['amu', 'Amueblado', (r, i) => i.amueblado == null ? null : i.amueblado ? 'Sí' : 'No'], ['colonia', 'Colonia', (r, i) => i.colonia], ['cp', 'C.P.', (r, i) => i.cp], ['dir', 'Dirección', (r, i) => i.direccion], ['ciudad', 'Ciudad', (r, i) => i.ciudad], ['host', 'Publicante', r => r.host], ['tel', 'Teléfono', (r, i) => i.tel], ['pub', 'Fecha de publicación', (r, i) => i.publicadoTxt || (i.publicada ? String(i.publicada).slice(0, 10) : '')], ['vcal', 'Calificación vendedor', (r, i) => i.vend && i.vend.calificacion ? i.vend.calificacion : null], ['vseg', 'Seguidores', (r, i) => i.vend && i.vend.seguidores ? i.vend.seguidores : ''], ['fotos', 'Fotos', (r, i) => i.fotos], ['geo', 'Ubicación', (r, i) => i.lat == null ? 'No' : i.geoPrec === 'facebook' ? 'Aproximada (círculo 4 km)' : 'Sí']];
 function mcFbpTabla_(L) {
   const h = document.getElementById('mc-res'); if (!h) return; const t = MC.al.tsort || (MC.al.tsort = { k: 'precio', d: -1 }), col = mcFbpCols_.find(c => c[0] === t.k) || mcFbpCols_[4];
   const R = (L || mcAloFiltradas_()).slice().sort((a, b) => { const x = col[2](a, MC.items[a.id] || {}), y = col[2](b, MC.items[b.id] || {}); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'string' ? x.localeCompare(y, 'es') : x - y) * t.d; }); MC.al._T = R;
@@ -78006,6 +78007,14 @@ window.mcFbpCsv_ = function () {
   const blob = new Blob(['﻿' + rows.map(x => x.map(q).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'publicaciones-facebook.csv'; document.body.appendChild(a); a.click(); a.remove();
 };
 // ── Mapa ──
+// Facebook solo da una zona aproximada (círculo de 2 km de radio = 4 km de diámetro): se dibuja el círculo, no un pin.
+function mcFbpCirculos_(m, Lf) {
+  (MC.map.pts || []).filter(p => p.aprox).forEach(p => { const c = Lf.circle([p.lat, p.lng], { radius: 2000, color: '#14b8a6', weight: 1, fillColor: '#14b8a6', fillOpacity: .05 }).addTo(m); c._pid = p.id;
+    c.bindTooltip(`${esc(p.titulo)} · ${mcOk_(p.precio) ? MCFMT(p.precio) : '—'}${p.op === 'Venta' ? '' : ' /mes'}`, { sticky: true });
+    c.on('click', ev => { Lf.DomEvent.stopPropagation(ev); mcMapaSel_(p.id, 'pin'); }); c.on('dblclick', ev => { Lf.DomEvent.stopPropagation(ev); mcAloIr_(p.hostId, p.id); }); MC.map.circ.set(p.id, c); });
+  mcFbpCircEstilo_();
+}
+function mcFbpCircEstilo_() { (MC.map.circ || new Map()).forEach((c, id) => { const on = MC.map.sel === id || (MC.map.selGrupo || []).includes(id); c.setStyle(on ? { color: '#0f766e', weight: 3, fillColor: '#0f766e', fillOpacity: .3 } : { color: '#14b8a6', weight: 1, fillColor: '#14b8a6', fillOpacity: .05 }); if (on) c.bringToFront(); }); }
 function mcFbpPin_(p, sel) {
   return `<div class="rsv-map-pin mc-pin ${sel ? 'sel' : ''}" data-id="${esc(p.id)}"><div class="im" style="background-image:url('${esc(mcImg_(p.foto, 240))}')"></div><div><div class="t"><b>${mcOk_(p.precio) ? MCFMT(p.precio) : '—'}</b><span>${esc(p.tipo || '')}</span></div><small>${p.hab == null ? '?' : p.hab === 0 ? 'Mono.' : p.hab} rec · ${p.banos == null ? '?' : p.banos} baños${p.m2 ? ' · ' + Math.round(p.m2) + ' m²' : ''}</small><small>${esc(p.sub || '')}</small></div></div>`;
 }
