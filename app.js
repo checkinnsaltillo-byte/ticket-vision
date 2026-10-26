@@ -59576,22 +59576,24 @@ function tdPintarHijo_(r, D, nuevo) {
   const dia = tdDia_(), actual = tdIGPerDe_(r, D.hid, dia), iso = D.per || actual, id = D.hijo, est = tarOcurEstado_(id, iso), oc = tarOcur_(id, iso);
   const a = typeof atAloj_ === 'function' ? atAloj_(D.hid) : { nombre: D.hid, corto: '' }, p = r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
   const sig = TAR_ESTADOS[Math.min(2, TAR_ESTADOS.findIndex(e => e.k === est) + 1)], key = tdIGKey_(r, D.hid, iso, true);
-  const hu = () => {
+  const full = !!TAR_STATE.drFull, hu = side => {
+    if (full && !side) return { top: '', bot: '' }; // pantalla completa: estado y comentarios viven en el panel lateral
     const e2 = tarOcurEstado_(id, iso), o2 = tarOcur_(id, iso);
     return {
       top: `<div onclick="event.stopPropagation()" style="margin:6px 0 8px;cursor:default"><div class="ad-steps">${TAR_ESTADOS.map(e => `<button type="button" class="${e.k === e2 ? 'on' : ''}" style="--c:${TD_EST[e.k]}" onclick="tdSetEst_('${esc(id)}','${iso}','${e.k}',1)">${e.k === 'Resuelto' ? 'Terminado' : e.k}</button>`).join('')}</div>${iso !== actual ? `<div class="ad-hint" style="margin-top:6px;color:#b45309">Estás viendo un inventario anterior. <a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrirHijo_('${esc(r.ID)}','${esc(D.hid)}')">Ir al actual ›</a></div>` : ''}</div>`,
       bot: `<div onclick="event.stopPropagation()" style="margin-top:8px;cursor:default">${o2 && o2.Atendido_por ? `<div class="ad-hint">Último cambio: ${esc(o2.Atendido_por)}${o2.Updated_at ? ' · ' + esc(String(o2.Updated_at).replace('T', ' ').slice(0, 16)) : ''}</div>` : ''}<textarea class="at-in td-com" rows="2" placeholder="Comentarios de este levantamiento…" onchange="tdComentario_('${esc(id)}','${iso}',this.value,1)">${esc((o2 && o2.Comentarios) || '')}</textarea></div>`
     };
   };
+  const pe = `<div class="ad-pe"><div class="lab">Personal asignado</div><div class="ad-ppl">${tarPersonalList_(r).map(n => `<div class="ad-pp">${adAv_(n)}<span>${esc(n)}</span></div>`).join('') || '<div class="ad-un">Sin asignar</div>'}</div></div>`;
   ASEO.pl.hijoUI = { key, fn: hu };
   dr.innerHTML = `<div class="ad-dh"><div class="r"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span><span class="t">${esc(a.nombre || D.hid)}</span><button type="button" class="ad-exp" onclick="tdFull_()" title="${TAR_STATE.drFull ? 'Reducir la ventana' : 'Ampliar a pantalla completa'}">${TAR_STATE.drFull ? '→' : '←'}</button><button type="button" class="ad-close" onclick="tdCerrar_()">✕</button></div>
       <div class="ad-tt">📝 ${esc(r.Nombre || 'Inventario')}</div>
       ${(R => `<div class="ad-sub">Límite ${aseoDiaTxt_(R.lim)} · <i style="background:${TD_EST[est]}"></i>${est} · ${prio4Html_(R.prio)} ${tdIGRetHtml_(R)}</div>`)(tdIGRetraso_(r, D.hid))}
       <div class="ad-hint" style="margin-top:6px"><a href="#" style="color:#4f46e5;font-weight:600" onclick="event.preventDefault();tdAbrir_('${esc(r.ID)}')">‹ Inventario · ${tdIGAlojs_(r).length} alojamientos</a></div></div>
     <div class="ad-db">
-      <div class="ad-hs">${tdIGHistHtml_(r, D.hid, iso, actual)}</div>
+      <div class="ad-hs">${full ? plKpiHtml_(p, key) + hu(1).top + hu(1).bot : ''}${tdIGHistHtml_(r, D.hid, iso, actual)}${full ? pe : ''}</div>
       <div class="ad-pl">${p ? (key in (ASEO.pl.resp || {}) ? plBox_(p.id, key, null) : `${hu().top}<div class="lab">📋 Plantilla</div><div class="ad-hint">⏳ Cargando formulario…</div>${hu().bot}`) : `${hu().top}<div class="ad-hint" style="margin-top:12px">Esta inspección no tiene plantilla.</div>${hu().bot}`}</div>
-      <div class="ad-pe"><div class="lab">Personal asignado</div><div class="ad-ppl">${tarPersonalList_(r).map(n => `<div class="ad-pp">${adAv_(n)}<span>${esc(n)}</span></div>`).join('') || '<div class="ad-un">Sin asignar</div>'}</div></div>
+      ${full ? '' : pe}
     </div>
     <div class="ad-ft"><button type="button" class="ad-bt" onclick="tdAbrir_('${esc(r.ID)}')">‹ Volver</button>
       ${est === 'Resuelto' && iso === actual ? `<button type="button" class="ad-bt pri" onclick="tdIGPreguntaSig_('${esc(id)}')" title="Abre un inventario nuevo (0 %) con la siguiente fecha límite">↻ Programar siguiente</button>` : est === 'Resuelto' || est === 'Cancelado' ? `<button type="button" class="ad-bt ok" disabled>✓ ${est}</button>` : `<button type="button" class="ad-bt pri" onclick="tdSetEst_('${esc(id)}','${iso}','${sig.k}',1)">Marcar ${sig.k.toLowerCase()}</button>`}</div>`;
@@ -67219,18 +67221,42 @@ function aseoEnsureCss_() {
     font:12.5px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ad-tx,#0f1729);animation:adIn .22s cubic-bezier(.2,.7,.3,1)}
   #ad-drawer{transition:width .25s cubic-bezier(.2,.7,.3,1)}
   .ad-exp{all:unset;cursor:pointer;margin-left:auto;color:#475569;font-size:17px;font-weight:700;line-height:1;padding:3px 9px;border-radius:7px;border:1px solid #e2e8f0}.ad-exp:hover{background:#eef2ff;color:#312e81;border-color:#c7d2fe}.ad-exp+.ad-close{margin-left:6px}
-  #ad-drawer.full{width:100vw}
-  #ad-drawer.full .ad-db{display:grid;grid-template-columns:300px minmax(0,1fr);grid-template-rows:auto 1fr;column-gap:22px;align-content:start;padding:10px 24px 20px}
-  #ad-drawer.full .ad-hs{grid-column:1;grid-row:1}#ad-drawer.full .ad-pe{grid-column:1;grid-row:2;align-self:start}#ad-drawer.full .ad-pl{grid-column:2;grid-row:1 / span 2;min-width:0}
-  #ad-drawer.full .ad-pl>.lab{display:none}
-  #ad-drawer.full .plf{border:0;overflow:visible;background:transparent;margin:0;display:grid;gap:14px}
-  #ad-drawer.full .plf-h{border-radius:12px;cursor:default}#ad-drawer.full .plf-h:hover{background:#eef2ff}#ad-drawer.full .plf-car{display:none}
-  #ad-drawer.full .plf-sec{border:1px solid #e0e7ff;border-radius:12px;background:#fff;overflow:hidden}
-  #ad-drawer.full .plf-its{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
-  #ad-drawer.full .plf-sec>summary{background:#f8faff;pointer-events:none;padding:10px 14px;font-size:13.5px}
-  #ad-drawer.full .plf-sec .plf-it{padding:12px 14px 14px;border-top:1px solid #eef0f3;align-content:start}#ad-drawer.full .plf-sec .plf-it:nth-child(even){border-left:1px solid #eef0f3}
-  #ad-drawer.full .plf-fotos{gap:10px}#ad-drawer.full .plf-fotos img{width:450px;height:450px;border-radius:12px}
-  @media (max-width:1000px){#ad-drawer.full .ad-db{display:block}#ad-drawer.full .plf-its{grid-template-columns:1fr}#ad-drawer.full .plf-sec .plf-it:nth-child(even){border-left:0}}
+  @property --p{syntax:'<number>';inherits:false;initial-value:0}
+  #ad-drawer.full{width:100vw;background:#f1f5f9}
+  #ad-drawer.full .ad-dh{background:linear-gradient(120deg,#0f172a 0%,#1e1b4b 55%,#312e81 100%);border:0;padding:18px 32px 18px;color:#e0e7ff}
+  #ad-drawer.full .ad-dh .code{background:rgba(255,255,255,.14);color:#fff;padding:3px 11px;border-radius:8px;font-size:16px}
+  #ad-drawer.full .ad-dh .t{color:#c7d2fe;font-size:13.5px}
+  #ad-drawer.full .ad-tt{color:#fff;font-size:26px;font-weight:800;letter-spacing:-.015em;margin-top:8px}
+  #ad-drawer.full .ad-sub{color:#c7d2fe;font-size:12.5px;margin-top:6px}
+  #ad-drawer.full .ad-hint a{color:#a5b4fc!important}
+  #ad-drawer.full .ad-exp,#ad-drawer.full .ad-close{color:#e0e7ff;border-color:rgba(255,255,255,.28)}#ad-drawer.full .ad-exp:hover,#ad-drawer.full .ad-close:hover{background:rgba(255,255,255,.16);color:#fff}
+  #ad-drawer.full .ad-db{display:grid;grid-template-columns:350px minmax(0,1fr);gap:22px;align-items:start;padding:22px 32px 30px;background:#f1f5f9}
+  #ad-drawer.full .ad-hs{grid-column:1;position:sticky;top:0;max-height:calc(100vh - 200px);overflow:auto;background:#fff;border-radius:18px;padding:18px;box-shadow:0 1px 3px rgba(15,23,42,.08),0 10px 28px rgba(15,23,42,.05)}
+  #ad-drawer.full .ad-pl{grid-column:2;min-width:0}#ad-drawer.full .ad-pl>.lab{display:none}
+  #ad-drawer.full .ad-hs .lab{margin:18px 0 8px}
+  #ad-drawer.full .ad-hs .ad-steps{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .ad-kp2{display:flex;align-items:center;gap:16px;padding:4px 2px 6px}
+  .ad-ring{--p:0;--rc:#6366f1;position:relative;flex:none;width:96px;height:96px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--rc) calc(var(--p) * 1%),#e5e7eb 0);transition:--p .7s cubic-bezier(.2,.7,.3,1)}
+  .ad-ring b{width:74px;height:74px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:21px;font-weight:800;color:#0f172a;letter-spacing:-.02em}
+  .ad-ring.ok{--rc:#16a34a}
+  .ad-kp2 .kv{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;flex:1}.ad-kp2 .kv div{text-align:center}.ad-kp2 .kv b{display:block;font-size:20px;font-weight:800;color:#0f172a;line-height:1.1}.ad-kp2 .kv small{font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .ad-kp2 .kv div:nth-child(2) b{color:#d97706}.ad-kp2 .kv div:nth-child(1) b{color:#16a34a}
+  #ad-drawer.full .plf{border:0;overflow:visible;background:transparent;margin:0;display:grid;gap:18px}
+  #ad-drawer.full .plf-h{border-radius:18px;cursor:default;background:linear-gradient(120deg,#eef2ff,#fff);padding:16px 20px;gap:10px;box-shadow:0 1px 3px rgba(15,23,42,.08)}#ad-drawer.full .plf-h:hover{background:linear-gradient(120deg,#eef2ff,#fff)}
+  #ad-drawer.full .plf-ht b{font-size:17px}#ad-drawer.full .plf-car{display:none}
+  .plf-chips{display:flex;flex-wrap:wrap;gap:8px}.plf-chips button{all:unset;cursor:pointer;font-size:12.5px;font-weight:700;color:#475569;background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:6px 14px;transition:.15s}
+  .plf-chips button i{font-style:normal;margin-left:6px;font-size:11px;background:#f1f5f9;color:#64748b;border-radius:999px;padding:1px 8px}
+  .plf-chips button:hover{border-color:#a5b4fc;color:#3730a3}.plf-chips button.on{background:#4f46e5;border-color:#4f46e5;color:#fff;box-shadow:0 4px 12px rgba(79,70,229,.35)}.plf-chips button.on i{background:rgba(255,255,255,.22);color:#fff}
+  #ad-drawer.full .plf-sec{border:0;border-radius:18px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.08),0 10px 28px rgba(15,23,42,.05)}
+  #ad-drawer.full .plf-sec>summary{background:linear-gradient(90deg,#e0e7ff,#fff 70%);pointer-events:none;padding:14px 20px;font-size:15px;font-weight:800;color:#312e81}
+  #ad-drawer.full .plf-its{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:16px;background:#f8fafc}
+  #ad-drawer.full .plf-sec .plf-it{background:#fff;border:1px solid #e2e8f0;border-left:5px solid #f59e0b;border-radius:14px;padding:14px 16px 16px;box-shadow:0 1px 2px rgba(15,23,42,.05);align-content:start;gap:10px;transition:box-shadow .18s,transform .18s}
+  #ad-drawer.full .plf-sec .plf-it:has(.plf-q .st.on){border-left-color:#16a34a}
+  #ad-drawer.full .plf-sec .plf-it:hover{box-shadow:0 10px 26px rgba(15,23,42,.12);transform:translateY(-2px)}
+  #ad-drawer.full .plf-q{font-size:15px;font-weight:700}
+  #ad-drawer.full .plf-fotos{gap:12px}#ad-drawer.full .plf-fotos img{width:450px;max-width:100%;height:340px;border-radius:14px;box-shadow:0 4px 14px rgba(15,23,42,.18);transition:transform .2s}#ad-drawer.full .plf-fotos span:hover img{transform:scale(1.015)}
+  #ad-drawer.full .ad-ft{background:#fff;padding:12px 32px;box-shadow:0 -6px 20px rgba(15,23,42,.06)}
+  @media (max-width:1000px){#ad-drawer.full .ad-db{display:block}#ad-drawer.full .ad-hs{position:static;max-height:none;margin-bottom:16px}#ad-drawer.full .plf-its{grid-template-columns:1fr}}
   @keyframes adIn{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}@keyframes adFade{from{opacity:0}}
   #ad-drawer .ad-dh{padding:16px 20px 12px;border-bottom:1px solid #e8eaee}
   #ad-drawer .ad-dh .r{display:flex;align-items:center;gap:10px}
@@ -73377,14 +73403,18 @@ function plFillHtml_(p, key) {
   const at = (ASEO.pl.respAt || {})[key];
   const full = !!(ASEO.pl.hijoUI && ASEO.pl.hijoUI.key === key && TAR_STATE.drFull && document.getElementById('ad-drawer')); // pantalla completa: formulario siempre desplegado
   const exp = full || !!(ASEO.pl.exp || {})[key];
+  const fil = full ? ((ASEO.pl.fil || {})[key] || 'all') : 'all';
+  const okF = it => { const r = resp[it.id] || {}, h = plHecho_(it, r), ff = (it.tipo === 'foto' || !!it.foto) && !(r.fotos || []).some(f => !f.subiendo); return fil === 'pend' ? !h : fil === 'ok' ? h : fil === 'foto' ? ff : true; };
+  const chips = full ? (() => { const all = (p.secciones || []).flatMap(s => s.items || []), n = { all: all.length, pend: 0, ok: 0, foto: 0 }; all.forEach(it => { const r = resp[it.id] || {}; if (plHecho_(it, r)) n.ok++; else n.pend++; if ((it.tipo === 'foto' || !!it.foto) && !(r.fotos || []).some(f => !f.subiendo)) n.foto++; });
+    return `<div class="plf-chips" onclick="event.stopPropagation()">${[['all', 'Todas'], ['pend', '⏳ Pendientes'], ['ok', '✅ Completas'], ['foto', '📷 Falta foto']].map(([k, l]) => `<button type="button" class="${fil === k ? 'on' : ''}" onclick="plFil_('${pcEsc(key)}','${k}')">${l}<i>${n[k]}</i></button>`).join('')}</div>`; })() : '';
   const HU = ASEO.pl.hijoUI && ASEO.pl.hijoUI.key === key ? ASEO.pl.hijoUI.fn() : { top: '', bot: '' }; // inventarios: estado arriba de la barra y comentarios debajo
-  return `<div class="plf-h" role="button" onclick="plTg_('${pcEsc(key)}')" title="${exp ? 'Contraer' : 'Desplegar'} la plantilla"><div class="plf-ht"><b>📋 ${pcEsc(p.titulo)}</b><span class="plf-car">${exp ? '▾' : '▸'}</span></div>${HU.top}<div class="plf-bar ${A.p === 100 ? 'ok' : ''}"><span><i style="width:${A.p}%"></i></span>${A.p}% · ${A.h}/${A.t}</div>${HU.bot}
+  return `<div class="plf-h" role="button" onclick="plTg_('${pcEsc(key)}')" title="${exp ? 'Contraer' : 'Desplegar'} la plantilla"><div class="plf-ht"><b>📋 ${pcEsc(p.titulo)}</b><span class="plf-car">${exp ? '▾' : '▸'}</span></div>${chips}${HU.top}<div class="plf-bar ${A.p === 100 ? 'ok' : ''}"><span><i style="width:${A.p}%"></i></span>${A.p}% · ${A.h}/${A.t}</div>${HU.bot}
       <div class="plf-st" id="plf-st">${ASEO.pl._guardando === key ? '⏳ Guardando…' : at ? `Guardado ${new Date(at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : 'Se guarda solo al responder'}</div></div>
-    ${!exp ? '' : (() => { const pend = (p.secciones || []).findIndex(s => s.items.some(it => !plHecho_(it, resp[it.id]))); return (p.secciones || []).map((s, si) => {
+    ${!exp ? '' : (() => { const pend = (p.secciones || []).findIndex(s => s.items.some(it => !plHecho_(it, resp[it.id]))); return (p.secciones || []).map((s, si) => { if (full && !s.items.some(okF)) return '';
       // Abiertas: todas si son pocas secciones; si son muchas, solo la primera con campos pendientes (las demás con un clic).
       const hs = s.items.filter(it => plHecho_(it, resp[it.id])).length, op = full || (abiertas[key + '|' + si] ?? (p.secciones.length <= 3 || si === pend));
       return `<details class="plf-sec" ${op ? 'open' : ''} ontoggle="(ASEO.pl.abiertas||(ASEO.pl.abiertas={}))['${pcEsc(key)}|${si}']=this.open"><summary>${pcEsc(s.titulo)}<small class="${hs === s.items.length ? 'ok' : ''}">${hs === s.items.length ? '✓ ' : ''}${hs}/${s.items.length}</small></summary>
-        <div class="plf-its">${s.items.map(it => plFillItem_(it, resp[it.id] || {}, s)).join('')}</div></details>`;
+        <div class="plf-its">${s.items.filter(okF).map(it => plFillItem_(it, resp[it.id] || {}, s)).join('')}</div></details>`;
     }).join(''); })()}`;
 }
 function plFillItem_(it, r, s) {
@@ -73421,9 +73451,9 @@ function plRepinta_(suave) {
   if (suave) { // al escribir: solo la barra y las palomitas, sin perder el foco
     const A = plAvance_(C.p, C.resp), bar = C.el.querySelector('.plf-bar');
     if (bar) { bar.classList.toggle('ok', A.p === 100); bar.innerHTML = `<span><i style="width:${A.p}%"></i></span>${A.p}% · ${A.h}/${A.t}`; }
-    return;
+    plKpiUpd_(C.p, C.key); return;
   }
-  C.el.innerHTML = plFillHtml_(C.p, C.key);
+  C.el.innerHTML = plFillHtml_(C.p, C.key); plKpiUpd_(C.p, C.key);
 }
 function plRespLimpia_(resp) { // sin vistas previas locales ni fotos que siguen subiendo
   const o = {}; Object.entries(resp || {}).forEach(([k, r]) => { o[k] = Object.assign({}, r); if (r.fotos) o[k].fotos = r.fotos.filter(f => !f.subiendo).map(f => { const x = Object.assign({}, f); delete x.loc; return x; }); }); return o;
@@ -73486,6 +73516,10 @@ function plAutoTerminado_(key, pc) {
   const cur = (aseoEstDe_(c.id) || {}).estado || 'pendiente';
   if (cur === 'pendiente' || cur === 'en_proceso') aseoSetEstado_(c.id, c.hid || '', 'terminado', false);
 }
+window.plFil_ = function (key, k) { (ASEO.pl.fil = ASEO.pl.fil || {})[key] = k; plRepinta_(); };
+function plKpi_(p, key) { const resp = ASEO.pl.resp && ASEO.pl.resp[key]; let nf = 0; Object.values(resp || {}).forEach(r => { nf += (r.fotos || []).filter(f => !f.subiendo).length; }); return { A: p && resp ? plAvance_(p, resp) : { h: 0, t: 0, p: 0 }, nf }; }
+function plKpiHtml_(p, key) { const { A, nf } = plKpi_(p, key); return `<div class="ad-kp2"><div class="ad-ring ${A.p === 100 ? 'ok' : ''}" style="--p:${A.p}"><b>${A.p}%</b></div><div class="kv"><div><b class="k-h">${A.h}</b><small>Listas</small></div><div><b class="k-p">${A.t - A.h}</b><small>Pendientes</small></div><div><b class="k-f">${nf}</b><small>Fotos</small></div></div></div>`; }
+function plKpiUpd_(p, key) { const k = document.querySelector('.ad-kp2'); if (!k || !p) return; const { A, nf } = plKpi_(p, key), g = k.querySelector('.ad-ring'); g.style.setProperty('--p', A.p); g.classList.toggle('ok', A.p === 100); g.querySelector('b').textContent = A.p + '%'; k.querySelector('.k-h').textContent = A.h; k.querySelector('.k-p').textContent = A.t - A.h; k.querySelector('.k-f').textContent = nf; }
 window.plTg_ = function (key) { const E = ASEO.pl.exp = ASEO.pl.exp || {}; E[key] = !E[key]; const el = document.getElementById('plf'); if (el) el.classList.toggle('exp', E[key]); plRepinta_(); };
 window.plSet_ = function (id, v, suave) {
   const C = plCtx_(); if (!C) return; const r = C.resp[id] = C.resp[id] || {};
