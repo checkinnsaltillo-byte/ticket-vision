@@ -59298,7 +59298,7 @@ function tdHijoFila_(r, hid, dia) {
   const ult = g ? `<span class="dt" style="margin-left:auto;white-space:nowrap;font-weight:700" title="Último registro: ${esc(aseoDiaTxt_(g.d))} · ${gok ? 'completo' : 'inconcluso'} (${gp} %)">${(() => { const d0 = tarParseIso_(g.d); return d0 ? String(d0.getDate()).padStart(2, '0') + '/' + TAR_MESES[d0.getMonth()] + '/' + String(d0.getFullYear()).slice(2) : esc(g.d); })()} ${gok ? '✅' : '⏳'} ${gp}%</span>` : `<span class="dt" style="margin-left:auto;white-space:nowrap" title="Aún no hay ningún registro de este alojamiento">Sin previo</span>`;
   return `<div class="td-hf" style="--c:${c}" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')" title="${esc(a.nombre || hid)} · ${txt}${x ? ` · ${x.h} de ${x.t} campos` : ''} — clic para abrir el formulario">
     <b>${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span class="nm">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span>
-    ${tdIGRetHtml_(R, true)}${ult}</div>`;
+    ${ult}${tdIGRetHtml_(R, true)}</div>`;
 }
 window.tdIGRow_ = function (id) { const S = TAR_STATE.igRowAb = TAR_STATE.igRowAb || new Set(); if (S.has(id)) S.delete(id); else S.add(id); tarRender(); };
 // Sub-card de un alojamiento dentro de la inspección general (mismo formato de card de tarea).
