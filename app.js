@@ -67229,7 +67229,7 @@ function aseoEnsureCss_() {
   #ad-drawer.full .plf-its{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
   #ad-drawer.full .plf-sec>summary{background:#f8faff;pointer-events:none;padding:10px 14px;font-size:13.5px}
   #ad-drawer.full .plf-sec .plf-it{padding:12px 14px 14px;border-top:1px solid #eef0f3;align-content:start}#ad-drawer.full .plf-sec .plf-it:nth-child(even){border-left:1px solid #eef0f3}
-  #ad-drawer.full .plf-fotos{gap:10px}#ad-drawer.full .plf-fotos img{width:300px;height:300px;border-radius:12px}
+  #ad-drawer.full .plf-fotos{gap:10px}#ad-drawer.full .plf-fotos img{width:450px;height:450px;border-radius:12px}
   @media (max-width:1000px){#ad-drawer.full .ad-db{display:block}#ad-drawer.full .plf-its{grid-template-columns:1fr}#ad-drawer.full .plf-sec .plf-it:nth-child(even){border-left:0}}
   @keyframes adIn{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}@keyframes adFade{from{opacity:0}}
   #ad-drawer .ad-dh{padding:16px 20px 12px;border-bottom:1px solid #e8eaee}
