@@ -13098,6 +13098,12 @@ async function _fbEstructura(it, usarIA) {
     if (/no se admiten mascotas|sin mascotas/i.test(tx)) o.mascotas = false; else if (/se admiten (?:mascotas|perros|gatos)|admite mascotas|pet.?friendly/i.test(tx)) o.mascotas = true;
   }
   o.lat = null; o.lng = null; o.geo = null;
+  if (it.vend && it.vend.text) { const raw = String(it.vend.text), L = raw.split("\n").map(x => x.replace(/\s+/g, " ").trim()).filter(Boolean), vt = L.join(" ");
+    const si = L.findIndex(x => /Se uni[oó] a Facebook/i.test(x)), nom = si > 0 ? L[si - 1] : (L.find(x => !/^([\d.,]+\s*(\(\d+\))?|\(\d+\))$/.test(x) && x.length > 2 && x.length < 60) || "");
+    const mm = (re, k) => { const m = vt.match(re); return m ? (k == null ? m[1] : m[k]) : ""; };
+    const ci = L.findIndex(x => /Calificaci[oó]n y puntos fuertes/i.test(x)), pf = (ci >= 0 ? L.slice(ci + 1) : []).filter(x => !/^([\d.,]+\s*(\(\d+\))?|\(\d+\))$/.test(x) && !/^(Ver m[aá]s|Seguir|Ver perfil|Enviar mensaje|Cerrar)$/i.test(x)).slice(0, 8).join(" · ");
+    const cal = vt.match(/(\d[.,]\d)\s*\((\d+)\)/), v = { nombre: /^(Seguir|Ver perfil)/i.test(nom) ? "" : nom.slice(0, 80), desde: mm(/Se uni[oó] a Facebook en (\d{4})/i), publicaciones: mm(/(\d[\d.,]*\+?)\s*publicaciones activas/i), seguidores: mm(/(\d[\d.,]*)\s*seguidores/i), calificacion: cal ? cal[1].replace(",", ".") : "", resenas: cal ? cal[2] : "", puntos: pf.slice(0, 300), foto: /^https?:\/\//.test(String(it.vend.foto || "")) ? String(it.vend.foto).slice(0, 700) : "", texto: vt.slice(0, 600) };
+    o.vendedor = v; if (v.desde) o.vendedor_desde = v.desde; if (v.nombre && !o.contacto_nombre) o.contacto_nombre = v.nombre; }
   const G0 = Array.isArray(FBJ.geos) ? FBJ.geos : []; o.mapas = (G0.find(g => Array.isArray(g) && g[0] === "mapas") || []).slice(1, 5).map(u => String(u).slice(0, 400));
   o.geos = G0.filter(g => Array.isArray(g) && isFinite(g[0]) && isFinite(g[1])).slice(0, 16).map(g => [g[0], g[1], g[2], String(g[3] || "").slice(0, 4), String(g[4] || "").slice(0, 60)]);
   { const tx = String(D.text || ""); if (!o.cp) { const m = tx.match(/,\s*Coah(?:uila)?\.?,?\s*(\d{5})\b/i); if (m) o.cp = m[1]; }
