@@ -77402,7 +77402,7 @@ function mcMapaSpider_(idxs, centro) { // despliegue en araña (igual que el de 
   const onMove = ev => { const r = mapEl.getBoundingClientRect(), dx = ev.clientX - r.left - c.x, dy = ev.clientY - r.top - c.y; if (Math.sqrt(dx * dx + dy * dy) > R + 90) mcMapaSpiderCierra_(); }; mapEl.addEventListener('mousemove', onMove); MC.map._spC = () => mapEl.removeEventListener('mousemove', onMove);
 }
 // ── Sincronización pin ↔ tarjeta/tabla ──
-function mcMapaCardInfo_(p) { const w = document.getElementById('mc-mapinfo'); if (!w) return; if (!p) { w.innerHTML = ''; return; } if (MC.ctx === 'fb') { w.innerHTML = mcFbpMapInfo_(p); return; }
+function mcMapaCardInfo_(p) { const w = document.getElementById('mc-mapinfo'); if (!w) return; if (!p) { w.innerHTML = ''; return; } if (MC.ctx === 'fb') { w.innerHTML = ''; return; }
   w.innerHTML = `<div class="al-mapcard"><img src="${esc(mcImg_(p.foto, 240))}" alt="" referrerpolicy="no-referrer"><div style="min-width:0"><b>${esc(p.titulo)}</b><small>👤 ${esc(p.host)}${p.sup ? ' · ★ Superanfitrión' : ''}</small><small>${mcOk_(p.precio) ? '<b style="display:inline;color:#0f766e">' + MCFMT(p.precio) + '</b> /noche · ' : ''}★ ${mcOk_(p.cal) ? MCN(p.cal, 2) : '—'} (${p.ev}) · ${p.hab === 0 ? 'Estudio' : (p.hab ?? '?') + ' hab'} · ${p.camas ?? '?'} camas · ${p.banos ?? '?'} baños · ${mcMapaCoc_(p.coc)}</small><button type="button" class="al-btn" onclick="mcAloIr_('${esc(p.hostId)}','${esc(p.id)}')">Ver ficha ↗</button></div></div>`; }
 function mcMapaMarcaSel_() { // recoloca la selección en los pines visibles
   const m = MC.map.m; if (!m) return; MC.map.mk.forEach((mk, k) => { if (String(k)[0] === 'c') return; const p = (MC.map.pts || []).find(x => x.id === k); if (!p) return; const esSel = MC.map.sel === p.id || (MC.map.selHost && p.hostId === MC.map.selHost); const el = mk.getElement(); const pin = el && el.querySelector('.mc-pin'); if (pin) pin.classList.toggle('sel', esSel); mk.setZIndexOffset(esSel ? 3000 : 0); });
@@ -77907,7 +77907,8 @@ function mcFbpCard_(h, r, showHost) {
   return `<button type="button" class="al-lc" data-id="${r.id}" onclick="mcAloCardClk_('${h.id}','${r.id}')" ondblclick="mcAloIr_('${h.id}','${r.id}')"><div class="al-cv"><img loading="lazy" src="${esc(mcImg_(i.foto, 560))}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"><div class="al-bg"><span class="al-bd b">${esc(i.tipo)}</span><span class="al-bd ${i.op === 'Venta' ? '' : 'g'}">${esc(i.op)}</span>${i.amueblado ? '<span class="al-bd">Amueblado</span>' : ''}</div></div>
     <div class="al-lb"><h4>${esc(i.titulo || r.id)}</h4><small>${esc(i.sub)}${i.ciudad ? ' · ' + esc(i.ciudad) : ''}</small>${MC.en.ix[r.id] ? `<div style="margin:4px 0;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${mcEnChip_(r.id)}</div>` : ''}<small>${esc(sp) || '&nbsp;'}</small>${showHost ? `<small style="margin-top:2px">👤 ${esc(r.host)}</small>` : ''}
     <div class="al-r"><span><b>${mcOk_(r.precio) ? MCFMT(r.precio) : '—'}</b> <small style="display:inline">${i.op === 'Venta' ? '' : '/mes'}</small></span><span>${pm2 ? `<b style="font-size:13px">${MCFMT(pm2)}</b> <small style="display:inline">/m²</small>` : ''}</span></div>
-    <small style="margin-top:6px">${i.lat != null ? '📍 Con ubicación' : 'Sin ubicación precisa'}${i.publicada ? ' · publicada ' + esc(mcF(String(i.publicada).slice(0, 10))) : i.publicadoTxt ? ' · ' + esc(i.publicadoTxt) : ''}</small></div></button>`;
+    <small style="margin-top:6px">${i.lat != null ? '📍 Con ubicación' : 'Sin ubicación precisa'}${i.publicada ? ' · publicada ' + esc(mcF(String(i.publicada).slice(0, 10))) : i.publicadoTxt ? ' · ' + esc(i.publicadoTxt) : ''}</small>
+    <span role="button" tabindex="0" class="al-btn" style="margin-top:10px;display:block;text-align:center" onclick="event.stopPropagation();mcAloIr_('${h.id}','${r.id}')" onkeydown="if(event.key==='Enter'){event.stopPropagation();mcAloIr_('${h.id}','${r.id}')}">Ver ficha ↗</span></div></button>`;
 }
 function mcFbpListaHtml_(L) {
   const S = MC.al, ords = { precio: 'Precio', pm2: 'Precio por m²', m2: 'Superficie', hab: 'Recámaras', rec: 'Más recientes' }, k = ords[S.ordA] ? S.ordA : 'precio';
@@ -78007,9 +78008,6 @@ window.mcFbpCsv_ = function () {
 // ── Mapa ──
 function mcFbpPin_(p, sel) {
   return `<div class="rsv-map-pin mc-pin ${sel ? 'sel' : ''}" data-id="${esc(p.id)}"><div class="im" style="background-image:url('${esc(mcImg_(p.foto, 240))}')"></div><div><div class="t"><b>${mcOk_(p.precio) ? MCFMT(p.precio) : '—'}</b><span>${esc(p.tipo || '')}</span></div><small>${p.hab == null ? '?' : p.hab === 0 ? 'Mono.' : p.hab} rec · ${p.banos == null ? '?' : p.banos} baños${p.m2 ? ' · ' + Math.round(p.m2) + ' m²' : ''}</small><small>${esc(p.sub || '')}</small></div></div>`;
-}
-function mcFbpMapInfo_(p) {
-  return `<div class="al-mapcard"><img src="${esc(mcImg_(p.foto, 240))}" alt="" referrerpolicy="no-referrer"><div style="min-width:0"><b>${esc(p.titulo)}</b><small>👤 ${esc(p.host)} · ${esc(p.tipo || '')} › ${esc(p.sub || '')}</small><small>${mcOk_(p.precio) ? '<b style="display:inline;color:#0f766e">' + MCFMT(p.precio) + '</b>' + (p.op === 'Venta' ? '' : ' /mes') + ' · ' : ''}${p.hab === 0 ? 'Monoambiente' : (p.hab ?? '?') + ' rec'} · ${p.banos ?? '?'} baños${p.m2 ? ' · ' + Math.round(p.m2) + ' m²' : ''}</small><button type="button" class="al-btn" onclick="mcAloIr_('${esc(p.hostId)}','${esc(p.id)}')">Ver ficha ↗</button></div></div>`;
 }
 function mcRender_() {
   const root = document.getElementById('mc-root'); if (!root) return;
