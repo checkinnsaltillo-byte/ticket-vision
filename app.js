@@ -59298,7 +59298,7 @@ function tdHijoFila_(r, hid, dia) {
   const ult = g ? `<span class="dt" style="margin-left:auto;white-space:nowrap;font-weight:700" title="Último registro: ${esc(aseoDiaTxt_(g.d))} · ${gok ? 'completo' : 'inconcluso'} (${gp} %)">${esc(aseoDiaTxt_(g.d))} (${gok ? '✅' : '⏳'}${gp}%)</span>` : `<span class="dt" style="margin-left:auto;white-space:nowrap" title="Aún no hay ningún registro de este alojamiento">Sin previo</span>`;
   return `<div class="td-hf" style="--c:${c}" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')" title="${esc(a.nombre || hid)} · ${txt}${x ? ` · ${x.h} de ${x.t} campos` : ''} — clic para abrir el formulario">
     <b>${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</b><span class="nm">${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span>
-    <span class="dt" title="Fecha límite">⏳ ${esc(aseoDiaTxt_(R.lim))}</span>${tdIGRetHtml_(R)}${ult}</div>`;
+    ${tdIGRetHtml_(R, true)}${ult}</div>`;
 }
 window.tdIGRow_ = function (id) { const S = TAR_STATE.igRowAb = TAR_STATE.igRowAb || new Set(); if (S.has(id)) S.delete(id); else S.add(id); tarRender(); };
 // Sub-card de un alojamiento dentro de la inspección general (mismo formato de card de tarea).
@@ -59381,10 +59381,11 @@ function tdIGRetraso_(r, hid) {
   const prio = ret > 0 ? 'critica' : rest <= Math.max(1, Math.round(len * 0.10)) ? 'alta' : rest <= Math.ceil(len * 0.25) ? 'media' : 'baja';
   return { ult, base, lim, dias, ret, len, prio };
 }
-function tdIGRetHtml_(R) {
+function tdIGRetHtml_(R, conFecha) { // conFecha: agrega la fecha límite junto a los días («Faltan 26 días (21-nov-2026)»)
   const c = TD_LV_SEM[R.prio];
   const t = R.ret > 0 ? `⛔ ${R.ret} día${R.ret === 1 ? '' : 's'} de retraso` : R.ret === 0 ? '⚠️ Vence hoy' : `${R.prio === 'baja' ? '' : '⏳ '}Faltan ${-R.ret} día${R.ret === -1 ? '' : 's'}`;
-  return `<span class="tb-ret" title="Fecha límite ${esc(aseoDiaTxt_(R.lim))}" style="display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:${c[0]};background:${c[1]}${R.prio === 'critica' ? ';color:#fff;background:#dc2626' : ''}">${t}</span>`;
+  const tf = conFecha ? `${t} (${esc(aseoDiaTxt_(R.lim))})` : t;
+  return `<span class="tb-ret" title="Fecha límite ${esc(aseoDiaTxt_(R.lim))}" style="display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:${c[0]};background:${c[1]}${R.prio === 'critica' ? ';color:#fff;background:#dc2626' : ''}">${tf}</span>`;
 }
 // Fecha (local) del último guardado del estado o de la plantilla de un alojamiento en el periodo P (fin de mes).
 function tdIGUltFecha_(r, hid, P) {
