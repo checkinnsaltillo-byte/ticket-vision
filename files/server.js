@@ -13341,7 +13341,7 @@ function _amOsm(F, lat, lng) {
   return R;
 }
 async function _amGuardar(patch) {
-  for (let i = 0; i < 6; i++) { const { data, gen } = await _bnReadGcs(_AM_OBJ), d = data && data.d ? data : { v: 1, d: {} }; Object.assign(d.d, patch); d.upd = new Date().toISOString(); try { await _bnWriteGcs(_AM_OBJ, d, data ? gen : "0"); return; } catch (e) { if (!e.conflict && !e.retry) throw e; await _amSleep(700 * (i + 1)); } }
+  for (let i = 0; i < 6; i++) { const { data, gen } = await _bnReadGcs(_AM_OBJ), d = data && data.d ? data : { v: 1, d: {} }; Object.keys(patch).forEach(k => { d.d[k] = Object.assign({}, d.d[k], patch[k]); }); d.upd = new Date().toISOString(); try { await _bnWriteGcs(_AM_OBJ, d, data ? gen : "0"); return; } catch (e) { if (!e.conflict && !e.retry) throw e; await _amSleep(700 * (i + 1)); } }
   throw new Error("No se pudo guardar el ambiente (conflicto)");
 }
 async function _amItems(ids) {
@@ -13374,23 +13374,69 @@ async function _amCorre(ids, forzar) {
     buf[x.id] = r; J.hechos = i + 1; if (Object.keys(buf).length >= 100 || i === L.length - 1) { await _amGuardar(buf); buf = {}; }
   }
 }
-function _amArranca(ids, forzar) {
+// ── Fase 2: relieve/pendiente (teselas de elevación «Terrain Tiles» en AWS, z12 ≈ 35 m por píxel) y cobertura del suelo (ESA WorldCover 10 m, 2021, COG en AWS) ──
+const _TR_Z = 12, _TR_COVER = { 10: "Árboles", 20: "Matorral", 30: "Pastizal", 40: "Cultivos", 50: "Construido", 60: "Suelo desnudo", 70: "Nieve y hielo", 80: "Agua", 90: "Humedal", 95: "Manglar", 100: "Musgo y líquenes" };
+const _trTiles = new Map(), _wcImgs = new Map();
+async function _trTile(x, y) {
+  const k = x + "/" + y; if (_trTiles.has(k)) return _trTiles.get(k);
+  const { PNG } = require("pngjs"); let buf; for (let i = 0; i < 3; i++) { try { const r = await fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${_TR_Z}/${x}/${y}.png`, { signal: AbortSignal.timeout(30000) }); if (!r.ok) throw new Error("HTTP " + r.status); buf = Buffer.from(await r.arrayBuffer()); break; } catch (e) { if (i === 2) throw e; await _amSleep(1500); } }
+  const p = PNG.sync.read(buf), z = new Float32Array(256 * 256); for (let i = 0; i < z.length; i++) z[i] = p.data[i * 4] * 256 + p.data[i * 4 + 1] + p.data[i * 4 + 2] / 256 - 32768;
+  if (_trTiles.size > 160) _trTiles.delete(_trTiles.keys().next().value); _trTiles.set(k, z); return z;
+}
+async function _trRelieve(lat, lng) {
+  const n = Math.pow(2, _TR_Z) * 256, gx = (lng + 180) / 360 * n, la = lat * Math.PI / 180, gy = (1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2 * n, mpp = 40075016.686 / n * Math.cos(la);
+  const R = Math.ceil(1000 / mpp) + 2, x0 = Math.floor(gx) - R, y0 = Math.floor(gy) - R, W = 2 * R + 1, Z = new Float32Array(W * W);
+  const tiles = new Map(); for (let ty = Math.floor(y0 / 256); ty <= Math.floor((y0 + W - 1) / 256); ty++) for (let tx = Math.floor(x0 / 256); tx <= Math.floor((x0 + W - 1) / 256); tx++) tiles.set(tx + "/" + ty, await _trTile(tx, ty));
+  for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) { const X = x0 + i, Y = y0 + j, t = tiles.get(Math.floor(X / 256) + "/" + Math.floor(Y / 256)); Z[j * W + i] = t[(Y % 256) * 256 + (X % 256)]; }
+  const c = R, zc = Z[c * W + c]; let sl = 0, ns = 0, sx = 0, sy = 0, mn = Infinity, mx = -Infinity, sm = 0, nm = 0; const slopes = [];
+  for (let j = 1; j < W - 1; j++) for (let i = 1; i < W - 1; i++) {
+    const d = Math.hypot(i - c, j - c) * mpp; if (d > 1000) continue; const z = Z[j * W + i]; if (z < mn) mn = z; if (z > mx) mx = z; sm += z; nm++;
+    if (d <= 250) { const dx = (Z[j * W + i + 1] - Z[j * W + i - 1]) / (2 * mpp), dy = (Z[(j + 1) * W + i] - Z[(j - 1) * W + i]) / (2 * mpp); slopes.push(Math.atan(Math.hypot(dx, dy)) * 180 / Math.PI); sx += dx; sy += dy; sl += slopes[slopes.length - 1]; ns++; }
+  }
+  slopes.sort((a, b) => a - b); const pend = sl / ns, tpi = zc - sm / nm, r1 = v => Math.round(v * 10) / 10;
+  let expo = null; if (pend >= 2) { const az = (Math.atan2(-sx, sy) * 180 / Math.PI + 360) % 360; expo = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"][Math.round(az / 45) % 8]; } // hacia dónde mira la ladera (sx, sy = gradiente; la ladera mira cuesta abajo)
+  return { alt: Math.round(zc), pend: r1(pend), pendMax: r1(slopes[Math.floor(slopes.length * .95)] || 0), relieve: Math.round(mx - mn), tpi: Math.round(tpi), expo, radio: 250, rel_radio: 1000, fuente: "Terrain Tiles (≈ 35 m)" };
+}
+async function _wcImg(lat, lng) {
+  const GT = require("geotiff"), la0 = Math.floor(lat / 3) * 3, lo0 = Math.floor(lng / 3) * 3, id = `${la0 < 0 ? "S" : "N"}${String(Math.abs(la0)).padStart(2, "0")}${lo0 < 0 ? "W" : "E"}${String(Math.abs(lo0)).padStart(3, "0")}`;
+  if (!_wcImgs.has(id)) _wcImgs.set(id, (async () => { const t = await GT.fromUrl(`https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_${id}_Map.tif`); return t.getImage(); })().catch(e => { _wcImgs.delete(id); throw e; }));
+  return _wcImgs.get(id);
+}
+async function _wcSuelo(lat, lng) {
+  const img = await _wcImg(lat, lng), [w, s, e, n] = img.getBoundingBox(), W = img.getWidth(), H = img.getHeight(), px = (lng - w) / (e - w) * W, py = (n - lat) / (n - s) * H, mx = (e - w) / W * 111320 * Math.cos(lat * Math.PI / 180), my = (n - s) / H * 110540, R = 500, rx = Math.ceil(R / mx), ry = Math.ceil(R / my);
+  const x0 = Math.max(0, Math.round(px) - rx), x1 = Math.min(W, Math.round(px) + rx + 1), y0 = Math.max(0, Math.round(py) - ry), y1 = Math.min(H, Math.round(py) + ry + 1);
+  const r = await img.readRasters({ window: [x0, y0, x1, y1], samples: [0] }), A = r[0], w2 = x1 - x0, cnt = {}; let tot = 0;
+  for (let j = 0; j < y1 - y0; j++) for (let i = 0; i < w2; i++) { if (Math.hypot((x0 + i - px) * mx, (y0 + j - py) * my) > R) continue; const v = A[j * w2 + i]; if (!v) continue; cnt[v] = (cnt[v] || 0) + 1; tot++; }
+  if (!tot) throw new Error("sin datos de cobertura");
+  const p = {}; Object.keys(cnt).forEach(k => { p[k] = Math.round(cnt[k] / tot * 1000) / 10; }); const dom = Object.keys(p).sort((a, b) => p[b] - p[a])[0], verde = ["10", "20", "30"].reduce((s2, k) => s2 + (p[k] || 0), 0);
+  return { p, dom: +dom, domTxt: _TR_COVER[dom] || String(dom), verde: Math.round(verde * 10) / 10, radio: R, año: 2021, fuente: "ESA WorldCover 10 m" };
+}
+async function _amTerreno(ids, forzar) {
+  const J = _amJob, { data } = await _bnReadGcs(_AM_OBJ), ya = (data && data.d) || {}; J.paso = "Relieve y suelo: buscando coordenadas";
+  let L = (await _amItems(ids)).filter(x => !x.aprox); if (!forzar) L = L.filter(x => !(ya[x.id] && ya[x.id].terreno && ya[x.id].suelo)); J.total2 = L.length; J.hechos2 = 0; J.ok2 = 0; J.err2 = 0; if (!L.length) return;
+  let buf = {}, i = 0; const cola = L.slice();
+  const trab = async () => { while (cola.length) { const x = cola.shift(), r = {}; let err = ""; try { r.terreno = await _trRelieve(x.lat, x.lng); } catch (e) { err = "relieve: " + String(e.message || e).slice(0, 80); } try { r.suelo = await _wcSuelo(x.lat, x.lng); } catch (e) { err += " suelo: " + String(e.message || e).slice(0, 80); }
+    r.id = x.id; if (!ya[x.id]) { r.lat = x.lat; r.lng = x.lng; r.v = "ambiente-v1"; r.at = new Date().toISOString(); } if (err) { r.errT = err; J.err2++; } else J.ok2++; buf[x.id] = r; J.hechos2++; i++; J.paso = `Relieve y suelo ${J.hechos2}/${L.length}`; J.upd = new Date().toISOString(); _amEstadoGuarda();
+    if (Object.keys(buf).length >= 60) { const b = buf; buf = {}; await _amGuardar(b); } } };
+  await Promise.all([trab(), trab(), trab(), trab()]); if (Object.keys(buf).length) await _amGuardar(buf);
+}
+function _amArranca(ids, forzar, fase) {
   _amJob = { running: true, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString(), total: 0, hechos: 0, ok: 0, err: 0 }; const t = setInterval(() => { _amJob.upd = new Date().toISOString(); _amEstadoGuarda(); }, 15000); _amEstadoGuarda(true);
-  _amCorre(ids, forzar).catch(e => { _amJob.error = String(e.message || e); console.warn("[ambiente]", e.message); }).finally(() => { clearInterval(t); _amJob.running = false; _amJob.fin = new Date().toISOString(); _amJob.paso = _amJob.error ? "Error" : "Listo"; _amEstadoGuarda(true); });
+  (async () => { if (fase !== 2) await _amCorre(ids, forzar); if (fase !== 1) await _amTerreno(ids, forzar); })().catch(e => { _amJob.error = String(e.message || e); console.warn("[ambiente]", e.message); }).finally(() => { clearInterval(t); _amJob.running = false; _amJob.fin = new Date().toISOString(); _amJob.paso = _amJob.error ? "Error" : "Listo"; _amEstadoGuarda(true); });
 }
 app.get("/mercado/airbnb/ambiente/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); let J = _amJob;
   if (!J.running) { try { const { data } = await _bnReadGcs("mercado/ambiente_estado.json"); if (data && data.inicio && (!J.inicio || data.inicio > J.inicio)) { J = data; if (J.running && Date.now() - Date.parse(J.upd || 0) > 240000) J = Object.assign({}, J, { running: false, error: J.error || "Se interrumpió" }); } } catch (_) {} } // Cloud Run puede atender cada petición en otra instancia: el estado vive también en Cloud Storage
   res.json(Object.assign({ ok: true }, J));
 });
-app.get("/mercado/airbnb/ambiente/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs(_AM_OBJ), o = {}; Object.values((data && data.d) || {}).forEach(r => { o[r.id] = { at: r.at, ok: !!r.ok, alt: r.alt, t: r.clima && r.clima.tMedia, aqi: r.aire && r.aire.aqi }; }); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: o }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/airbnb/ambiente/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs(_AM_OBJ), o = {}; Object.values((data && data.d) || {}).forEach(r => { o[r.id] = { at: r.at, ok: !!r.ok, t2: !!(r.terreno && r.suelo), alt: r.alt, t: r.clima && r.clima.tMedia, aqi: r.aire && r.aire.aqi }; }); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: o }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/airbnb/ambiente/dato", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(_AM_OBJ); res.set("Cache-Control", "no-store"); res.json({ ok: true, ambiente: (data && data.d && data.d[id]) || null, cats: _AM_CATS }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.post("/mercado/airbnb/ambiente/calcular", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   let otro = _amJob; if (!otro.running) { try { const { data } = await _bnReadGcs("mercado/ambiente_estado.json"); if (data && data.running) otro = data; } catch (_) {} }
   if (otro.running && Date.now() - Date.parse(otro.upd || 0) < 240000) return res.status(409).json({ ok: false, error: "Ya hay un cálculo ambiental en curso" });
   const b = req.body || {}, ids = Array.isArray(b.ids) && b.ids.length ? b.ids.map(x => String(x).replace(/\D/g, "")).filter(Boolean).slice(0, 3000) : null;
-  _amArranca(ids, !!b.forzar); res.json({ ok: true });
+  _amArranca(ids, !!b.forzar, +b.fase || 0); res.json({ ok: true });
 });
 app.get("/mercado/airbnb/clasif/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _clJob)); });
 app.get("/mercado/airbnb/clasif/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs("mercado/clasif/_indice.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: data || {} }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
