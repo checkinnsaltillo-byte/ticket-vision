@@ -67229,7 +67229,7 @@ function aseoEnsureCss_() {
   #ad-drawer.full .plf-its{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
   #ad-drawer.full .plf-sec>summary{background:#f8faff;pointer-events:none;padding:10px 14px;font-size:13.5px}
   #ad-drawer.full .plf-sec .plf-it{padding:12px 14px 14px;border-top:1px solid #eef0f3;align-content:start}#ad-drawer.full .plf-sec .plf-it:nth-child(even){border-left:1px solid #eef0f3}
-  #ad-drawer.full .plf-fotos img{width:150px;height:150px;border-radius:10px}
+  #ad-drawer.full .plf-fotos{gap:10px}#ad-drawer.full .plf-fotos img{width:300px;height:300px;border-radius:12px}
   @media (max-width:1000px){#ad-drawer.full .ad-db{display:block}#ad-drawer.full .plf-its{grid-template-columns:1fr}#ad-drawer.full .plf-sec .plf-it:nth-child(even){border-left:0}}
   @keyframes adIn{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}@keyframes adFade{from{opacity:0}}
   #ad-drawer .ad-dh{padding:16px 20px 12px;border-bottom:1px solid #e8eaee}
@@ -73396,7 +73396,7 @@ function plFillItem_(it, r, s) {
   const CAM = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
   const PEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
   const iconos = `<span class="plf-ico"><label class="plf-ic cam ${req ? (falta ? 'req' : 'ok') : 'opt'}" title="${req ? 'Foto obligatoria' : 'Foto opcional'}">${CAM}${fotos.length ? `<i>${fotos.length}</i>` : ''}<input type="file" accept="image/*" multiple hidden onchange="plFotoSubir_(this,'${id}')"></label><span class="plf-ic pen ${r.nota ? 'has' : ''}" title="${r.nota ? 'Editar o quitar la nota' : 'Agregar una nota'}" onclick="plNotaTg_('${id}')">${PEN}</span></span>`;
-  const fotosHtml = fotos.length ? `<div class="plf-fotos">${fotos.map((f, i) => `<span class="${f.subiendo ? 'sub' : ''}"><img src="${f.loc || BACKEND + (f.turl || f.url)}" alt="" loading="lazy" decoding="async" onclick="plFotoVer_('${id}',${i})">${f.subiendo ? '<i>⏳</i>' : `<b onclick="plQuitarFoto_('${id}',${i})">✕</b>`}</span>`).join('')}</div>` : '';
+  const fotosHtml = fotos.length ? `<div class="plf-fotos">${fotos.map((f, i) => `<span class="${f.subiendo ? 'sub' : ''}"><img src="${f.loc || BACKEND + ((TAR_STATE.drFull && f.url) || f.turl || f.url)}" alt="" loading="lazy" decoding="async" onclick="plFotoVer_('${id}',${i})">${f.subiendo ? '<i>⏳</i>' : `<b onclick="plQuitarFoto_('${id}',${i})">✕</b>`}</span>`).join('')}</div>` : '';
   const notaAb = !!(ASEO.pl.notaAb || {})[it.id] || !!String(r.nota || '').trim() || (it.tipo === 'condicion' && (r.v === 'regular' || r.v === 'malo'));
   const notaHtml = notaAb ? `<textarea class="pl-in plf-nota" rows="2" placeholder="${it.tipo === 'condicion' && (r.v === 'regular' || r.v === 'malo') ? '¿Qué se encontró?' : 'Nota (texto libre)'}" oninput="plNota_('${id}',this.value)">${pcEsc(r.nota || '')}</textarea>` : '';
   let ctl = '';
