@@ -77661,6 +77661,10 @@ const MCFB_CSS2 = `
   .fbx.on{background:#0f766e;border-color:#0f766e;color:#fff}.fbx.off{opacity:.3;cursor:not-allowed}
   .fb-tb tr.sel td{background:#f0fdfa}
   .fb-tag{display:inline-block;padding:2px 9px;border-radius:99px;background:#eef2f6;font-size:11.5px;font-weight:700;color:#334155;white-space:nowrap}
+  .fbi{all:unset;box-sizing:border-box;width:26px;height:26px;border-radius:8px;border:1.5px solid #dbe2ea;background:#fff;color:#64748b;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .12s}.fbi:hover{border-color:#94a3b8;color:#0f172a;background:#f8fafc}.fbi svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .fbi.val.on{background:#16a34a;border-color:#16a34a;color:#fff}.fbi.mon.on{background:#0f766e;border-color:#0f766e;color:#fff}.fbi.arch:hover{border-color:#ef4444;color:#ef4444;background:#fef2f2}
+  .fb-ac{display:flex;gap:4px;align-items:center;white-space:nowrap}.fb-ex{font-size:12px;line-height:1.35}.fb-ex b{font-weight:800;color:#0f172a}.fb-ex.no{color:#94a3b8}
+  .fb-vwb{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0}.fb-vwb .mc-btn.on{background:#0f172a;border-color:#0f172a;color:#fff}
   .fb-gate{padding:12px 14px;border-radius:12px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:13px;margin:8px 0}
 `;
 function mcFbCss_() {
@@ -77750,23 +77754,26 @@ function mcFbClas_(x) {
 }
 function mcFbPrecio_(x) { const p = String(x.precio || ''); if (/gratis/i.test(p)) return 0; const d = p.replace(/[.,]\d{1,2}\s*$/, '').replace(/[^\d]/g, ''); return d ? +d : null; }
 function mcFbDom_() {
-  const F = mcFbF_(), key = [...F.op].sort().join(','); if (MC.fb._dom && MC.fb._domK === key) return MC.fb._dom; const v = (MC.fb.lista || []).filter(x => !F.op.size || F.op.has(mcFbClas_(x).o)).map(mcFbPrecio_).filter(p => p > 1).sort((a, b) => a - b); MC.fb._domK = key; if (!v.length) return MC.fb._dom = [0, 10000];
+  const F = mcFbF_(), key = [...F.op].sort().join(','); if (MC.fb._dom && MC.fb._domK === key) return MC.fb._dom; const v = mcFbNoArch_().filter(x => !F.op.size || F.op.has(mcFbClas_(x).o)).map(mcFbPrecio_).filter(p => p > 1).sort((a, b) => a - b); MC.fb._domK = key; if (!v.length) return MC.fb._dom = [0, 10000];
   const hi0 = v[Math.min(v.length - 1, Math.floor(v.length * .98))], st = mcFbStep_([v[0], hi0]), lo = Math.floor(v[0] / st) * st; return MC.fb._dom = [lo, Math.max(Math.ceil(hi0 / st) * st, lo + st)];
 }
 const mcFbStep_ = D => D[1] - D[0] > 2e6 ? 50000 : D[1] - D[0] > 2e5 ? 5000 : 500;
 const mcFbF_ = () => MC.fb.f || (MC.fb.f = { ubi: new Set(), cat: new Set(), sub: new Set(), op: new Set(), pr: null });
 const mcFbPrOn_ = () => { const F = mcFbF_(), D = mcFbDom_(); return !!F.pr && (F.pr[0] > D[0] || F.pr[1] < D[1]); };
-const mcFbSelectable_ = x => x.estado === 'pendiente' || (x.estado === 'error' && (x.intentos || 0) < 3);
-const mcFbSelN_ = () => (MC.fb.lista || []).filter(x => x.sel && mcFbSelectable_(x)).length;
+const mcFbExtraible_ = x => x.estado === 'pendiente' || (x.estado === 'error' && (x.intentos || 0) < 3);
+const mcFbSelectable_ = x => !x.arch; // se puede seleccionar cualquier publicación no archivada (para extraer o para validar, archivar o monitorear en lote)
+const mcFbSelN_ = () => (MC.fb.lista || []).filter(x => x.sel && !x.arch && mcFbExtraible_(x)).length; // las que realmente se extraerán
+const mcFbSelTot_ = () => (MC.fb.lista || []).filter(x => x.sel && !x.arch).length;
+const mcFbNoArch_ = () => (MC.fb.lista || []).filter(x => !x.arch);
 function mcFbPasa_(x) {
   const F = mcFbF_(), c = mcFbClas_(x); if (F.ubi.size && !F.ubi.has(x.ubicacion || 'Sin ubicación')) return false; if (F.cat.size && !F.cat.has(c.c)) return false; if (F.sub.size && !F.sub.has(c.c + '|' + c.s)) return false; if (F.op.size && !F.op.has(c.o)) return false;
   if (mcFbPrOn_()) { const D = mcFbDom_(), p = mcFbPrecio_(x); if (p == null || p < F.pr[0] || (F.pr[1] < D[1] && p > F.pr[1])) return false; } return true;
 }
-const mcFbFiltradas_ = () => { const E = MC.fb.filtro; return (MC.fb.lista || []).filter(x => (E === 'todas' || x.estado === E) && mcFbPasa_(x)); };
+const mcFbFiltradas_ = () => { const E = MC.fb.filtro, A = !!MC.fb.verArch, Fv = MC.fb.soloVal, Fm = MC.fb.soloMon; return (MC.fb.lista || []).filter(x => !!x.arch === A && (E === 'todas' || x.estado === E) && (!Fv || x.val) && (!Fm || x.mon) && mcFbPasa_(x)); };
 const mcFbStt_ = e => `<span class="fb-st ${e}">${{ pendiente: 'Pendiente', ok: 'Extraída', error: 'Con error', no_disponible: 'No disponible' }[e] || e}</span>`;
 function mcFbOps_(k, arr, sel) { return `<div class="fs-ops" data-k="${k}">${arr.map(([v, t, n]) => `<div class="fs-op ${sel.has(v) ? 'on' : ''}" role="checkbox" tabindex="0" onclick="mcFbTg_('${k}',${esc(JSON.stringify(v))},this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"><span class="fs-ck">✓</span><span class="fs-tx">${esc(t)}</span><em>${n}</em></div>`).join('') || '<div class="mc-mu" style="font-size:12px">Sin opciones</div>'}</div>`; }
 function mcFbSubHtml_() {
-  const F = mcFbF_(), cs = {}; (MC.fb.lista || []).forEach(x => { const c = mcFbClas_(x); if (F.cat.size && !F.cat.has(c.c)) return; const k = c.c + '|' + c.s; cs[k] = (cs[k] || 0) + 1; });
+  const F = mcFbF_(), cs = {}; mcFbNoArch_().forEach(x => { const c = mcFbClas_(x); if (F.cat.size && !F.cat.has(c.c)) return; const k = c.c + '|' + c.s; cs[k] = (cs[k] || 0) + 1; });
   return mcFbOps_('sub', Object.entries(cs).sort((a, b) => a[0].localeCompare(b[0])).map(([k, n]) => [k, k.replace('|', ' › '), n]), F.sub);
 }
 function mcFbPrHtml_() {
@@ -77776,7 +77783,7 @@ function mcFbPrHtml_() {
     <div class="fs-nums"><label><span>$</span><input type="number" id="fbrgn0" min="${D[0]}" max="${D[1]}" step="${st}" value="${lo}" onchange="mcFbRgNum_()" aria-label="Precio mínimo"></label><i></i><label><span>$</span><input type="number" id="fbrgn1" min="${D[0]}" max="${D[1]}" step="${st}" value="${hi}" onchange="mcFbRgNum_()" aria-label="Precio máximo"></label></div></div></div>`;
 }
 function mcFbListaHtml_() {
-  const L = MC.fb.lista || [], F = mcFbF_(), cu = {}, cc = {}, co = {}; L.forEach(x => { const u = x.ubicacion || 'Sin ubicación', k = mcFbClas_(x), c = k.c; cu[u] = (cu[u] || 0) + 1; cc[c] = (cc[c] || 0) + 1; co[k.o] = (co[k.o] || 0) + 1; });
+  const L = mcFbNoArch_(), F = mcFbF_(), cu = {}, cc = {}, co = {}; L.forEach(x => { const u = x.ubicacion || 'Sin ubicación', k = mcFbClas_(x), c = k.c; cu[u] = (cu[u] || 0) + 1; cc[c] = (cc[c] || 0) + 1; co[k.o] = (co[k.o] || 0) + 1; });
   const ub = Object.entries(cu).sort((a, b) => b[1] - a[1]).map(([u, n]) => [u, u, n]), ct = Object.entries(cc).sort((a, b) => b[1] - a[1]).map(([c, n]) => [c, c, n]);
   return `<div class="fbf" id="fbf">
     <div class="fbg"><h5>Operación<button type="button" onclick="mcFbLimpiaF_('op')">Limpiar</button></h5><div id="fbf-op">${mcFbOps_('op', ['Renta', 'Venta'].map(o => [o, o, co[o] || 0]), F.op)}</div></div>
@@ -77786,11 +77793,24 @@ function mcFbListaHtml_() {
     <div class="fbg"><h5>Precio<button type="button" onclick="mcFbLimpiaF_('pr')">Limpiar</button></h5><div id="fbf-pr">${mcFbPrHtml_()}</div></div>
   </div><div id="fbl-tab">${mcFbTablaHtml_(MC.fb._vis = mcFbFiltradas_())}</div>`;
 }
+const mcFbIc_ = { val: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>', arch: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3"/></svg>', mon: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg>', rest: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 108-8M4 4v5h5"/></svg>' };
+function mcFbExtr_(x) {
+  const it = (MC.fb.items || {})[x.id], n = x.n_extr || (it ? 1 : 0), f = x.ult_extr || (it && it.extraido) || ''; if (!n) return '<div class="fb-ex no">Sin extracción</div>';
+  return `<div class="fb-ex"><b>${esc(f ? mcF(String(f).slice(0, 10)) : '—')}</b><br>${n} extracción${n > 1 ? 'es' : ''}${n > 1 ? ` · ${n - 1} actualización${n > 2 ? 'es' : ''}` : ''}</div>`;
+}
+const mcFbAcc_ = x => { const id = esc(x.id), A = !!x.arch;
+  return `<span class="fb-ac"><span class="fbx ${x.sel ? 'on' : ''}" role="checkbox" aria-checked="${!!x.sel}" title="Seleccionar" onclick="mcFbRow_('${id}',this)">✓</span>`
+    + `<button type="button" class="fbi val ${x.val ? 'on' : ''}" title="${x.val ? 'Validada (clic para quitar)' : 'Validar'}" aria-pressed="${!!x.val}" onclick="mcFbMk_('val','${id}')">${mcFbIc_.val}</button>`
+    + `<button type="button" class="fbi mon ${x.mon ? 'on' : ''}" title="${x.mon ? 'En monitoreo (clic para quitar)' : 'Marcar para monitoreo'}" aria-pressed="${!!x.mon}" onclick="mcFbMk_('mon','${id}')">${mcFbIc_.mon}</button>`
+    + `<button type="button" class="fbi arch" title="${A ? 'Restaurar a la lista' : 'Archivar'}" onclick="mcFbMk_('arch','${id}')">${A ? mcFbIc_.rest : mcFbIc_.arch}</button></span>`; };
 function mcFbTablaHtml_(vis) {
-  const L = MC.fb.lista || [], nSel = mcFbSelN_(), nFil = vis.filter(mcFbSelectable_).length, on = !!(mcFbF_().ubi.size || mcFbF_().cat.size || mcFbF_().sub.size || mcFbF_().op.size || mcFbPrOn_());
-  return `<div class="fbsel"><span class="n"><b id="fbsel-n">${nSel}</b> seleccionadas para extraer</span><span class="mc-mu" style="font-size:12px">${vis.length} de ${L.length} coinciden${on ? ' con los filtros' : ''}</span>
-    <span style="flex:1"></span><button type="button" class="mc-btn" onclick="mcFbSelAcc_('todas')">Seleccionar todas</button><button type="button" class="mc-btn" ${nFil ? '' : 'disabled'} onclick="mcFbSelAcc_('filtradas')">Seleccionar las ${nFil} mostradas</button><button type="button" class="mc-btn" onclick="mcFbSelAcc_('quitarfil')">Quitar las mostradas</button><button type="button" class="mc-btn" onclick="mcFbSelAcc_('ninguna')">Ninguna</button></div>
-  <div class="fb-sc"><table class="fb-tb"><thead><tr><th></th><th></th><th>Publicación</th><th>Tipo</th><th>Subcategoría</th><th>Precio</th><th>Ubicación</th><th>Estado</th><th></th></tr></thead><tbody>${vis.slice(0, MC.fb.ver).map(x => { const c = mcFbClas_(x), ok = mcFbSelectable_(x); return `<tr class="${x.sel && ok ? 'sel' : ''}"><td><span class="fbx ${x.sel && ok ? 'on' : ''} ${ok ? '' : 'off'}" role="checkbox" aria-checked="${!!(x.sel && ok)}" title="${ok ? 'Seleccionar para extraer' : 'Ya no se puede extraer'}" onclick="mcFbRow_('${esc(x.id)}',this)">✓</span></td><td>${x.thumb ? `<img src="${esc(x.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<img alt="">'}</td><td><a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:#0f172a;font-weight:700;text-decoration:none">${esc(x.titulo || 'Publicación ' + x.id)}</a><div class="mc-mu" style="font-size:11px">${esc(x.id)}${x.error ? ' · ' + esc(x.error) : ''}</div></td><td><span class="fb-tag">${esc(c.c)}</span></td><td class="mc-mu" style="font-size:12px">${esc(c.s)}</td><td>${esc(x.precio || '—')}<div class="mc-mu" style="font-size:11px">${c.o}</div></td><td>${esc(x.ubicacion || '—')}</td><td>${mcFbStt_(x.estado)}</td><td><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcFbQuitar_('${esc(x.id)}')">✕</button></td></tr>`; }).join('') || '<tr><td colspan="9" class="mc-mu" style="padding:14px;text-align:center">Ninguna publicación coincide con los filtros.</td></tr>'}</tbody></table></div>${vis.length > MC.fb.ver ? `<div style="text-align:center;margin:8px"><button type="button" class="mc-btn" onclick="MC.fb.ver+=100;mcFbTabla_()">Mostrar más (${vis.length - MC.fb.ver})</button></div>` : ''}`;
+  const all = MC.fb.lista || [], A = !!MC.fb.verArch, L = all.filter(x => !!x.arch === A), nArch = all.filter(x => x.arch).length, nVal = all.filter(x => !x.arch && x.val).length, nMon = all.filter(x => !x.arch && x.mon).length;
+  const nSel = L.filter(x => x.sel).length, nExt = A ? 0 : mcFbSelN_(), nFil = vis.length, on = !!(mcFbF_().ubi.size || mcFbF_().cat.size || mcFbF_().sub.size || mcFbF_().op.size || mcFbPrOn_());
+  const bk = (k, t, ic) => `<button type="button" class="mc-btn fbb" ${nSel ? '' : 'disabled'} title="Aplica a las ${nSel} seleccionadas" onclick="mcFbBulk_('${k}')">${t}</button>`;
+  return `<div class="fb-vwb"><button type="button" class="mc-btn ${A ? 'on' : ''}" onclick="mcFbVer_('arch')">${mcFbIc_.arch.replace('<svg', '<svg style="width:13px;height:13px;vertical-align:-2px;margin-right:5px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"')}Archivados (${nArch})</button>${A ? '' : `<button type="button" class="mc-btn ${MC.fb.soloVal ? 'on' : ''}" onclick="mcFbVer_('val')">Validadas (${nVal})</button><button type="button" class="mc-btn ${MC.fb.soloMon ? 'on' : ''}" onclick="mcFbVer_('mon')">En monitoreo (${nMon})</button>`}${A ? '<span class="mc-mu" style="align-self:center;font-size:12px">Publicaciones archivadas. Restáuralas con el botón de cada renglón; no se extraen ni aparecen en «Publicaciones Facebook».</span>' : ''}</div>
+  <div class="fbsel"><span class="n"><b id="fbsel-n">${nSel}</b> seleccionadas${A ? '' : ` <span id="fbsel-x" class="mc-mu" style="font-size:12px">· ${nExt} para extraer</span>`}</span><span class="mc-mu" style="font-size:12px">${vis.length} de ${L.length} coinciden${on ? ' con los filtros' : ''}</span>
+    <span style="flex:1"></span>${bk('val', 'Validar')}${bk('mon', 'Monitoreo')}${bk('arch', A ? 'Restaurar' : 'Archivar')}<span style="width:1px;height:20px;background:#e2e8f0"></span><button type="button" class="mc-btn" onclick="mcFbSelAcc_('todas')">Seleccionar todas</button><button type="button" class="mc-btn" ${nFil ? '' : 'disabled'} onclick="mcFbSelAcc_('filtradas')">Seleccionar las ${nFil} mostradas</button><button type="button" class="mc-btn" onclick="mcFbSelAcc_('quitarfil')">Quitar las mostradas</button><button type="button" class="mc-btn" onclick="mcFbSelAcc_('ninguna')">Ninguna</button></div>
+  <div class="fb-sc"><table class="fb-tb"><thead><tr><th>Seleccionar</th><th></th><th>Publicación</th><th>Extracción</th><th>Tipo</th><th>Subcategoría</th><th>Precio</th><th>Ubicación</th><th>Estado</th><th></th></tr></thead><tbody>${vis.slice(0, MC.fb.ver).map(x => { const c = mcFbClas_(x); return `<tr class="${x.sel ? 'sel' : ''}"><td>${mcFbAcc_(x)}</td><td>${x.thumb ? `<img src="${esc(x.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<img alt="">'}</td><td><a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:#0f172a;font-weight:700;text-decoration:none">${esc(x.titulo || 'Publicación ' + x.id)}</a><div class="mc-mu" style="font-size:11px">${esc(x.id)}${x.error ? ' · ' + esc(x.error) : ''}</div></td><td>${mcFbExtr_(x)}</td><td><span class="fb-tag">${esc(c.c)}</span></td><td class="mc-mu" style="font-size:12px">${esc(c.s)}</td><td>${esc(x.precio || '—')}<div class="mc-mu" style="font-size:11px">${c.o}</div></td><td>${esc(x.ubicacion || '—')}</td><td>${mcFbStt_(x.estado)}</td><td><button type="button" class="mc-x" title="Quitar de la lista" onclick="mcFbQuitar_('${esc(x.id)}')">✕</button></td></tr>`; }).join('') || `<tr><td colspan="10" class="mc-mu" style="padding:14px;text-align:center">${A ? 'No hay publicaciones archivadas.' : 'Ninguna publicación coincide con los filtros.'}</td></tr>`}</tbody></table></div>${vis.length > MC.fb.ver ? `<div style="text-align:center;margin:8px"><button type="button" class="mc-btn" onclick="MC.fb.ver+=100;mcFbTabla_()">Mostrar más (${vis.length - MC.fb.ver})</button></div>` : ''}`;
 }
 function mcFbTabla_() { const el = document.getElementById('fbl-tab'); if (!el) return; el.innerHTML = mcFbTablaHtml_(MC.fb._vis = mcFbFiltradas_()); mcFbGate_(); }
 function mcFbTablaSoon_() { if (MC._fbRaf) return; MC._fbRaf = setTimeout(() => { MC._fbRaf = 0; MC.fb.ver = 100; mcFbTabla_(); }, 40); }
@@ -77801,13 +77821,25 @@ function mcFbGateHtml_() {
 }
 function mcFbGate_() { const g = document.getElementById('fb-gate'); if (g && (MC.fb._gateN !== mcFbSelN_() || !g.innerHTML)) g.innerHTML = mcFbGateHtml_(); }
 function mcFbSelPost_(ids, val) { fetch(`${BACKEND}/mercado/facebook/seleccion`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, sel: val }) }).then(r => r.json()).then(j => { if (!j.ok) throw new Error(j.error || 'Error'); }).catch(e => { const m = document.getElementById('fbsel-n'); if (m) m.title = 'No se guardó la selección: ' + (e.message || e); }); }
-function mcFbSelUpd_() { const n = document.getElementById('fbsel-n'); if (n) n.textContent = mcFbSelN_(); mcFbGate_(); }
-window.mcFbRow_ = function (id, el) { const x = (MC.fb.lista || []).find(y => y.id === id); if (!x || !mcFbSelectable_(x)) return; x.sel = !x.sel; el.classList.toggle('on', !!x.sel); el.setAttribute('aria-checked', !!x.sel); const tr = el.closest('tr'); if (tr) tr.classList.toggle('sel', !!x.sel); mcFbSelUpd_(); mcFbSelPost_([id], !!x.sel); };
+function mcFbSelUpd_() { const A = !!MC.fb.verArch, n = (MC.fb.lista || []).filter(x => x.sel && !!x.arch === A).length, e = document.getElementById('fbsel-n'); if (e) e.textContent = n; const x = document.getElementById('fbsel-x'); if (x) x.textContent = '· ' + mcFbSelN_() + ' para extraer'; document.querySelectorAll('.fbsel .fbb').forEach(b => { b.disabled = !n; b.title = `Aplica a las ${n} seleccionadas`; }); mcFbGate_(); }
+window.mcFbRow_ = function (id, el) { const x = (MC.fb.lista || []).find(y => y.id === id); if (!x || !!x.arch !== !!MC.fb.verArch) return; x.sel = !x.sel; el.classList.toggle('on', !!x.sel); el.setAttribute('aria-checked', !!x.sel); const tr = el.closest('tr'); if (tr) tr.classList.toggle('sel', !!x.sel); mcFbSelUpd_(); mcFbSelPost_([id], !!x.sel); };
 window.mcFbSelAcc_ = function (a) {
-  const L = MC.fb.lista || [], vis = MC.fb._vis || mcFbFiltradas_(); let ids, val = true;
-  if (a === 'todas') ids = L.filter(mcFbSelectable_).map(x => x.id); else if (a === 'filtradas') ids = vis.filter(mcFbSelectable_).map(x => x.id); else if (a === 'quitarfil') { ids = vis.map(x => x.id); val = false; } else { ids = L.filter(x => x.sel).map(x => x.id); val = false; }
+  const A = !!MC.fb.verArch, L = (MC.fb.lista || []).filter(x => !!x.arch === A), vis = MC.fb._vis || mcFbFiltradas_(); let ids, val = true;
+  if (a === 'todas') ids = L.map(x => x.id); else if (a === 'filtradas') ids = vis.map(x => x.id); else if (a === 'quitarfil') { ids = vis.map(x => x.id); val = false; } else { ids = L.filter(x => x.sel).map(x => x.id); val = false; }
   const S = new Set(ids); L.forEach(x => { if (S.has(x.id)) x.sel = val; }); mcFbTabla_(); if (ids.length) mcFbSelPost_(ids, val);
 };
+// Validar · Monitoreo · Archivar: por renglón o sobre los renglones seleccionados
+function mcFbMkSet_(campo, ids, val) {
+  const S = new Set(ids); (MC.fb.lista || []).forEach(x => { if (!S.has(x.id)) return; if (val) { x[campo] = true; if (campo === 'arch') x.sel = false; } else delete x[campo]; });
+  fetch(`${BACKEND}/mercado/facebook/marcar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, campo, valor: val }) }).then(r => r.json()).then(j => { if (!j.ok) throw new Error(j.error || 'Error'); }).catch(e => { const m = document.getElementById('fbsel-n'); if (m) m.title = 'No se guardó el cambio: ' + (e.message || e); });
+  if (campo === 'arch') { MC.fb._dom = null; mcFbPintar_(); } else mcFbTabla_();
+}
+window.mcFbMk_ = function (campo, id) { const x = (MC.fb.lista || []).find(y => y.id === id); if (x) mcFbMkSet_(campo, [id], !x[campo]); };
+window.mcFbBulk_ = function (campo) {
+  const A = !!MC.fb.verArch, R = (MC.fb.lista || []).filter(x => x.sel && !!x.arch === A); if (!R.length) return;
+  const val = campo === 'arch' ? !A : !R.every(x => x[campo]); mcFbMkSet_(campo, R.map(x => x.id), val);
+};
+window.mcFbVer_ = function (k) { if (k === 'arch') { MC.fb.verArch = !MC.fb.verArch; MC.fb.soloVal = MC.fb.soloMon = false; } else if (k === 'val') MC.fb.soloVal = !MC.fb.soloVal; else MC.fb.soloMon = !MC.fb.soloMon; MC.fb.ver = 100; mcFbTabla_(); };
 window.mcFbTg_ = function (k, v, el) {
   const S = mcFbF_()[k]; if (S.has(v)) S.delete(v); else S.add(v); if (el) el.classList.toggle('on', S.has(v));
   if (k === 'cat') { const ok = new Set(); (MC.fb.lista || []).forEach(x => { const c = mcFbClas_(x); if (!S.size || S.has(c.c)) ok.add(c.c + '|' + c.s); }); [...mcFbF_().sub].forEach(q => { if (!ok.has(q)) mcFbF_().sub.delete(q); }); const b = document.getElementById('fbf-sub'); if (b) b.innerHTML = mcFbSubHtml_(); }
@@ -77883,7 +77915,7 @@ function mcFbpFotos_(arr) {
 function mcFbpDatos_() {
   const I = MC.fb.items || {}, LX = {}; (MC.fb.lista || []).forEach(x => { LX[x.id] = x; }); const items = {}, lista = [], FQ = {};
   const FL = {}; Object.values(I).forEach(p => { FL[p.id] = mcFbpFotos_(p.fotos); new Set(FL[p.id].map(u => u.split('?')[0])).forEach(k => { FQ[k] = (FQ[k] || 0) + 1; }); }); // una foto que aparece en varias publicaciones es de «publicaciones sugeridas», no de esta
-  Object.values(I).forEach(p => {
+  Object.values(I).filter(p => !(LX[p.id] && LX[p.id].arch)).forEach(p => {
     const x = LX[p.id] || { id: p.id, titulo: p.titulo, precio: p.precio ? 'MX$' + p.precio : '' }, c = mcFbClas_(x), nom = String(p.contacto_nombre || '').trim(), fotos = p.fotos_dom ? (p.fotos || []).map(f => f.url).filter(Boolean) : (FL[p.id] || []).filter(u => FQ[u.split('?')[0]] < 2), geo = p.lat != null && p.lng != null && p.geo;
     items[p.id] = { id: p.id, extraido: p.extraido || '1', hostId: 'fb-' + (nom ? mcFbSlug_(nom) : 'sin-nombre'), anfitrion: nom || 'Sin nombre', titulo: p.titulo || x.titulo || p.id, url: p.url_origen || x.url, tipo: c.c, sub: c.s, op: c.o, ciudad: p.ciudad || '', estado: p.estado || '', ubicacion: [p.colonia, p.ciudad].filter(Boolean).join(', '), direccion: p.direccion || '', colonia: p.colonia || '', cp: p.cp || '',
       habitaciones: p.recamaras ?? null, banos: p.banos ?? null, medios: p.medios_banos ?? null, m2: p.m2_construccion ?? null, m2t: p.m2_terreno ?? null, estac: p.estacionamientos ?? null, amueblado: p.amueblado == null ? null : !!p.amueblado, amenidades: p.amenidades || [], nAmenidades: (p.amenidades || []).length, descripcion: p.descripcion || '',
