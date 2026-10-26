@@ -13252,6 +13252,7 @@ window.addEventListener("message",async e=>{if(!FB.test(e.origin))return;const d
   else if(d.t==="lista"||d.t==="detalle"){const j=await api("/mercado/facebook/captura",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});n++;re({t:"ok",n:d.n,res:j});(d.t==="lista"?(tl+=(j.nuevas||0),set("Lista recibida: "+tl+" nuevas en total")):(tg+=(j.guardadas||0),te+=(j.errores||0),set("Fichas guardadas: "+tg+" ("+te+" con error)","Actualizado "+new Date().toLocaleTimeString("es-MX")+" · el marcador sigue trabajando en Facebook; esta ventana se cierra sola al terminar.")))}
   else if(d.t==="fin"){set("Terminado. Vuelve a Check-inn y actualiza la pantalla.");setTimeout(()=>window.close(),2500)}
  }catch(err){re({t:"err",error:String(err.message||err)});set("⚠ "+err.message)}});
+try{navigator.locks&&navigator.locks.request("ck-puente",()=>new Promise(()=>{}))}catch(_){}
 try{window.opener&&window.opener.postMessage({t:"listo"},"*")}catch(_){}
 </script>`);
 });
