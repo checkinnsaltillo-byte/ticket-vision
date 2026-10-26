@@ -13101,6 +13101,7 @@ async function _fbEstructura(it, usarIA) {
     if (/no se admiten mascotas|sin mascotas/i.test(tx)) o.mascotas = false; else if (/se admiten (?:mascotas|perros|gatos)|admite mascotas|pet.?friendly/i.test(tx)) o.mascotas = true;
   }
   o.lat = null; o.lng = null; o.geo = null;
+  o.vend_estado = Object.prototype.hasOwnProperty.call(it, "vend") ? (it.vend ? (it.vend.text ? "leido" : "vacio") : "sin boton Detalles del vendedor") : "marcador anterior (sin lectura de vendedor)";
   if (it.vend && it.vend.text) { const raw = String(it.vend.text), L = raw.split("\n").map(x => x.replace(/\s+/g, " ").trim()).filter(Boolean), vt = L.join(" ");
     const si = L.findIndex(x => /Se uni[oó] a Facebook/i.test(x)), nom = si > 0 ? L[si - 1] : (L.find(x => !/^([\d.,]+\s*(\(\d+\))?|\(\d+\))$/.test(x) && x.length > 2 && x.length < 60) || "");
     const mm = (re, k) => { const m = vt.match(re); return m ? (k == null ? m[1] : m[k]) : ""; };
