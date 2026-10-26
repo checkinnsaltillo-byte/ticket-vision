@@ -59409,14 +59409,16 @@ window.tdIGPlantillaHecha_ = function (key, pc) {
 };
 function tdTablero_(O, dia) {
   ckVCss_();
-  const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista, vista = CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado';
-  TAR_STATE._segV = ckVistasHtml_(vista, 'tdVista_'); // va en la barra de arriba (tdRender_)
+  const lvSub = TAR_STATE.sub !== 'rec'; // Levantamientos: sin «Por estado» (ya no aplica); Recordatorios conserva todas las vistas
+  const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista; let vista = CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado'; if (lvSub && vista === 'estado') vista = 'propiedad';
+  TAR_STATE._segV = ckVistasHtml_(vista, 'tdVista_', lvSub ? ['propiedad', 'usuario', 'tabla'] : null); // va en la barra de arriba (tdRender_)
   const PW = { 'Crítico': 4, 'Alto': 3, 'Medio': 2, 'Bajo': 1 };
   const urg = r => tdEsIG_(r) ? Math.max(...tdIGAlojs_(r).map(h => tdIGRetraso_(r, h).ret), -1e9) : -1e9;
   const ord = L => L.slice().sort((a, b) => urg(b.r) - urg(a.r) || tdLimAbajo_(a.r) - tdLimAbajo_(b.r) || a.iso.localeCompare(b.iso) || (PW[tdPrioEf_(b.r, b.iso)] || 0) - (PW[tdPrioEf_(a.r, a.iso)] || 0)); // con fecha límite: hasta abajo
   const card = x => tdCard_(x.r, x.iso, { cal: true, fecha: true });
   let cols;
   const ymV = TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7), vac = `No hay tareas ni recordatorios en ${bnEfeMesLabel_(ymV).toLowerCase()}`;
+  if (lvSub && (vista === 'propiedad' || vista === 'usuario')) return tdLvBoard_(O, vista, vac);
   if (vista === 'usuario') {
     const N = [...new Set(O.flatMap(x => tarPersonalList_(x.r)))].sort((a, b) => a.localeCompare(b, 'es')), sin = O.filter(x => !tarPersonalList_(x.r).length);
     return ckColsHtml_((sin.length ? [{ t: '<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', n: sin.length, cards: ord(sin).map(card).join('') }] : []).concat(N.map(n => { const X = ord(O.filter(x => tarPersonalList_(x.r).includes(n))); return { t: `${adAv_(n)} ${esc(aseoNombreCorto_(n))}`, n: X.length, cards: X.map(card).join('') }; })), vac);
@@ -59446,6 +59448,26 @@ function tdTablero_(O, dia) {
   const ym = TAR_STATE.mes || tarIso_(tarToday_()).slice(0, 7);
   const vacio = tdOcMes_(ym, false).length ? 'Ninguna tarea coincide con los filtros' : `No hay tareas ni recordatorios en ${bnEfeMesLabel_(ym).toLowerCase()}`;
   return `${O.length ? `<div class="ad-board ${vista === 'estado' ? 'est' : ''}">${cols}</div>` : `<div class="pc-mv-empty">${vacio}</div>`}`;
+}
+// Levantamientos › «Por propiedad» y «Por usuario»: una columna por propiedad (o por persona) y, dentro, una sección por tipo de levantamiento
+// con una card por alojamiento (la misma sub-card que se abre desde el levantamiento).
+function tdLvBoard_(O, modo, vac) {
+  const LV = O.filter(x => tdEsIG_(x.r)).sort((a, b) => String(a.r.Nombre || '').localeCompare(String(b.r.Nombre || ''), 'es'));
+  const hijos = x => tdIGAlojs_(x.r).map(h => [h, tdIGRetraso_(x.r, h).ret]).sort((a, b) => b[1] - a[1]).map(t => t[0]); // los más atrasados arriba
+  const sec = (x, n) => `<div class="td-hsec" style="padding:8px 8px 4px" title="${esc(x.r.Nombre || '')}">📝 ${esc(x.r.Nombre || 'Sin nombre')} <b>${n}</b></div>`;
+  const cardH = (x, h) => tdHijoCard_(x.r, h, x.iso);
+  if (modo === 'propiedad') {
+    const G = new Map();
+    LV.forEach(x => hijos(x).forEach(h => {
+      const E = alojEdif_(h), k = E ? E.k : '~' + ckPropDe_(h, ''), t = E ? E.nom : ckPropDe_(h, '').replace(/^Calle\s+/i, '');
+      if (!G.has(k)) G.set(k, { k, t, S: new Map(), n: 0 }); const g = G.get(k); if (!g.S.has(x.r.ID)) g.S.set(x.r.ID, { x, L: [] }); g.S.get(x.r.ID).L.push(h); g.n++;
+    }));
+    const ord = k => { const i = ED_ORDEN.indexOf(k); return i < 0 ? 99 : i; };
+    return ckColsHtml_([...G.values()].sort((a, b) => ord(a.k) - ord(b.k) || a.t.localeCompare(b.t, 'es')).map(g => ({ t: `🏢 ${esc(g.t)}`, n: g.n, cards: [...g.S.values()].map(s => sec(s.x, s.L.length) + s.L.map(h => cardH(s.x, h)).join('')).join('') })), vac);
+  }
+  const N = [...new Set(LV.flatMap(x => tarPersonalList_(x.r)))].sort((a, b) => a.localeCompare(b, 'es')), sin = LV.filter(x => !tarPersonalList_(x.r).length);
+  const col = (t, L) => { const H = L.map(x => [x, hijos(x)]); return { t, n: H.reduce((s, h) => s + h[1].length, 0), cards: H.map(([x, hs]) => sec(x, hs.length) + hs.map(h => cardH(x, h)).join('')).join('') }; };
+  return ckColsHtml_((sin.length ? [col('<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', sin)] : []).concat(N.map(n => col(`${adAv_(n)} ${esc(aseoNombreCorto_(n))}`, LV.filter(x => tarPersonalList_(x.r).includes(n))))), vac);
 }
 window.tdSetEst_ = function (id, iso, k, ex) { // ex: iso ya es la llave del periodo (ventana del alojamiento)
   if (!ex) iso = tdIsoId_(id, iso);
