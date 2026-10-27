@@ -13459,9 +13459,38 @@ async function _amCrecimiento(ids, forzar) {
     const ks = Object.keys(patch); for (let i = 0; i < ks.length; i += 100) await _amGuardar(Object.fromEntries(ks.slice(i, i + 100).map(k => [k, patch[k]])));
   }
 }
+// ── Fase 4: raster regional de la superficie edificada (12 épocas, 1975-2030) para el mapa de crecimiento urbano ──
+//    Un recorte único que cubre todas las coordenadas (rejilla nativa de GHSL, ~90 m) → un PNG transparente por época en mercado/ambiente/raster/E<año>.png + meta.json con los límites.
+const _GH12 = [1975, 1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015, 2020, 2025, 2030], _GP = 3 / 3600, _GX0 = -180.00791620855503, _GY0 = 89.09958342, _GT = 12000, _RS_DIR = "mercado/ambiente/raster/";
+async function _amPutBin(name, buf, ct) { const tok = await _vGcsToken(), r = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(name)}`, { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": ct }, body: buf }); if (!r.ok) throw new Error("Cloud Storage " + r.status); }
+async function _amGetBin(name) { const tok = await _vGcsToken(), r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(name)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } }); if (r.status === 404) return null; if (!r.ok) throw new Error("Cloud Storage " + r.status); return Buffer.from(await r.arrayBuffer()); }
+function _rsRampa(p) { // fracción edificada de la celda (0–1) → [r, g, b, a]
+  if (p < 0.01) return [0, 0, 0, 0]; const t = Math.min(1, p / 0.7), S = [[0, 253, 224, 71], [.35, 251, 146, 60], [.7, 234, 88, 12], [1, 124, 45, 18]]; let k = 0; while (k < S.length - 2 && t > S[k + 1][0]) k++; const a = S[k], b = S[k + 1], u = (t - a[0]) / (b[0] - a[0]);
+  return [Math.round(a[1] + (b[1] - a[1]) * u), Math.round(a[2] + (b[2] - a[2]) * u), Math.round(a[3] + (b[3] - a[3]) * u), Math.round(110 + 120 * t)];
+}
+async function _amRaster(forzar) {
+  const J = _amJob, { PNG } = require("pngjs"); J.paso = "Raster: calculando el recorte"; const meta0 = (await _bnReadGcs(_RS_DIR + "meta.json")).data; if (meta0 && !forzar) return;
+  const L = await _amItems(null); if (!L.length) return; const M = 0.04, S = Math.min(...L.map(x => x.lat)) - M, N = Math.max(...L.map(x => x.lat)) + M, Wd = Math.min(...L.map(x => x.lng)) - M, E = Math.max(...L.map(x => x.lng)) + M;
+  const x0 = Math.floor((Wd - _GX0) / _GP), x1 = Math.ceil((E - _GX0) / _GP), y0 = Math.floor((_GY0 - N) / _GP), y1 = Math.ceil((_GY0 - S) / _GP), W = x1 - x0, H = y1 - y0; if (W * H > 30e6) throw new Error(`El recorte es demasiado grande (${W}×${H}); revisa coordenadas atípicas`);
+  J.total4 = _GH12.length; J.hechos4 = 0; let k = 0;
+  for (const ep of _GH12) {
+    k++; J.paso = `Raster: época ${ep} (${k}/${_GH12.length})`; J.upd = new Date().toISOString(); _amEstadoGuarda(); const mos = new Uint16Array(W * H);
+    for (let r = Math.floor(y0 / _GT); r <= Math.floor((y1 - 1) / _GT); r++) for (let c = Math.floor(x0 / _GT); c <= Math.floor((x1 - 1) / _GT); c++) {
+      const img = await _ghImg(ep, `R${r + 1}_C${c + 1}`), gx0 = Math.max(x0, c * _GT), gx1 = Math.min(x1, (c + 1) * _GT), gy0 = Math.max(y0, r * _GT), gy1 = Math.min(y1, (r + 1) * _GT), w2 = gx1 - gx0;
+      const A = (await img.readRasters({ window: [gx0 - c * _GT, gy0 - r * _GT, gx1 - c * _GT, gy1 - r * _GT], samples: [0] }))[0];
+      for (let j = 0; j < gy1 - gy0; j++) for (let i = 0; i < w2; i++) { const v = A[j * w2 + i]; mos[(gy0 - y0 + j) * W + (gx0 - x0 + i)] = v > 0 && v < 20000 ? v : 0; }
+    }
+    const png = new PNG({ width: W, height: H }); for (let j = 0; j < H; j++) { const lat = _GY0 - (y0 + j + .5) * _GP, area = _GP * 111320 * Math.cos(lat * Math.PI / 180) * _GP * 110540; for (let i = 0; i < W; i++) { const q = _rsRampa(mos[j * W + i] / area), o = (j * W + i) * 4; png.data[o] = q[0]; png.data[o + 1] = q[1]; png.data[o + 2] = q[2]; png.data[o + 3] = q[3]; } }
+    await _amPutBin(`${_RS_DIR}E${ep}.png`, PNG.sync.write(png, { colorType: 6 }), "image/png"); J.hechos4 = k;
+  }
+  await _bnWriteGcs(_RS_DIR + "meta.json", { v: 1, at: new Date().toISOString(), epochs: _GH12, w: W, h: H, bounds: { south: _GY0 - y1 * _GP, west: _GX0 + x0 * _GP, north: _GY0 - y0 * _GP, east: _GX0 + x1 * _GP }, fuente: "GHSL GHS-BUILT-S R2023A (JRC, Comisión Europea) · CC BY 4.0", cellM: 90, proy: [2025, 2030] }, null);
+}
+const _rsC = new Map();
+app.get("/mercado/airbnb/ambiente/raster/meta", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs(_RS_DIR + "meta.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, meta: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/airbnb/ambiente/raster/img", async (req, res) => { try { const ep = parseInt(req.query.ep, 10); if (!_GH12.includes(ep)) return res.status(400).end(); let b = _rsC.get(ep); if (!b) { b = await _amGetBin(`${_RS_DIR}E${ep}.png`); if (!b) return res.status(404).end(); if (_rsC.size > 14) _rsC.clear(); _rsC.set(ep, b); } res.set({ "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" }); res.send(b); } catch (e) { res.status(500).end(); } });
 function _amArranca(ids, forzar, fase) {
   _amJob = { running: true, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString(), total: 0, hechos: 0, ok: 0, err: 0 }; const t = setInterval(() => { _amJob.upd = new Date().toISOString(); _amEstadoGuarda(); }, 15000); _amEstadoGuarda(true);
-  (async () => { if (!fase || fase === 1) await _amCorre(ids, forzar); if (!fase || fase === 2) await _amTerreno(ids, forzar); if (!fase || fase === 3) await _amCrecimiento(ids, forzar); })().catch(e => { _amJob.error = String(e.message || e); console.warn("[ambiente]", e.message); }).finally(() => { clearInterval(t); _amJob.running = false; _amJob.fin = new Date().toISOString(); _amJob.paso = _amJob.error ? "Error" : "Listo"; _amEstadoGuarda(true); });
+  (async () => { if (!fase || fase === 1) await _amCorre(ids, forzar); if (!fase || fase === 2) await _amTerreno(ids, forzar); if (!fase || fase === 3) await _amCrecimiento(ids, forzar); if (fase === 4) await _amRaster(true); else if (!fase) await _amRaster(false); })().catch(e => { _amJob.error = String(e.message || e); console.warn("[ambiente]", e.message); }).finally(() => { clearInterval(t); _amJob.running = false; _amJob.fin = new Date().toISOString(); _amJob.paso = _amJob.error ? "Error" : "Listo"; _amEstadoGuarda(true); });
 }
 app.get("/mercado/airbnb/ambiente/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); let J = _amJob;

@@ -76556,6 +76556,7 @@ function mcAloCss_() {
   .am-ks{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}.am-k{flex:1 1 128px;min-width:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}.am-kh{display:flex;align-items:center;gap:8px}.am-kv svg{width:56px;height:auto}.am-kv{flex:none;line-height:0}.am-kt small{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b}.am-kt b{display:block;font-size:22px;font-weight:900;letter-spacing:-.02em;color:#0f172a;margin:2px 0}.am-kt em{display:block;font-style:normal;font-size:12px;color:#64748b;line-height:1.45}
   .am-kr{flex:2 1 228px;flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px}.am-kr .am-bars{flex:1 1 90px;margin:0;height:76px}.am-sb{flex:1 1 150px;display:flex;flex-direction:column;gap:5px}.am-sr{display:grid;grid-template-columns:82px 1fr 46px;white-space:nowrap;align-items:center;gap:6px;font-size:11.5px;color:#475569}.am-sr>div{height:9px;border-radius:99px;background:#e5e7eb;overflow:hidden}.am-sr i{display:block;height:100%;border-radius:99px}.am-sr b{text-align:right;color:#0f172a;font-variant-numeric:tabular-nums}
   .am-k .am-bars{margin:auto 0 0;height:64px}.am-aqb{display:flex;position:relative;height:9px;border-radius:99px;overflow:visible}.am-aqb i{display:block;height:9px}.am-aqb i:first-child{border-radius:99px 0 0 99px}.am-aqb i:nth-child(5){border-radius:0 99px 99px 0}.am-aqb u{position:absolute;top:-4px;width:3px;height:17px;background:#0f172a;border-radius:2px;transform:translateX(-50%);text-decoration:none}.am-aql{display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:3px}.am-aqi{margin-top:auto}
+  .am-click{cursor:pointer;transition:box-shadow .15s,border-color .15s}.am-click:hover{border-color:#fb923c;box-shadow:0 4px 14px rgba(234,88,12,.18)}.am-click u{text-decoration:none;color:#ea580c;font-weight:800;text-transform:none;letter-spacing:0}
   .am-ch{display:inline-block;margin-top:5px;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:800;color:var(--c);background:color-mix(in srgb,var(--c) 13%,#fff);border:1px solid color-mix(in srgb,var(--c) 35%,#fff);white-space:nowrap}
   .am-pie{width:88px;height:88px;border-radius:50%;box-shadow:0 0 0 3px #fff,0 0 0 4px #e2e8f0}
   .am-sbar{display:flex;height:11px;border-radius:99px;overflow:hidden;margin-top:auto;box-shadow:inset 0 0 0 1px #e2e8f0}.am-sbar i{display:block;height:100%}.am-sleg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:#475569;margin-top:6px}.am-sleg span{display:inline-flex;align-items:center;gap:5px}.am-sleg i{width:9px;height:9px;border-radius:3px;display:inline-block}
@@ -77410,10 +77411,49 @@ function mcAmTerrHtml_(o) {
   if (o.crec && o.crec.serie) {
     const S = o.crec.serie, eps = [1975, 1990, 2000, 2010, 2020], v = eps.map(e => S[e]), mx = Math.max(1, ...v.filter(x => x != null)), a = S[2020], b = S[1990], d = a != null && b != null ? Math.round((a - b) * 10) / 10 : null;
     const bars = `<div class="am-bars" title="Superficie edificada (% del área en 1 km) · GHSL">${eps.map((e, i) => `<div><i style="height:${v[i] == null ? 0 : Math.round(v[i] / mx * 100)}%;background:linear-gradient(#fb923c,#ea580c)" title="${e}: ${v[i] ?? '—'} %"></i><span style="font-size:8.5px;letter-spacing:-.3px">${e}</span></div>`).join('')}</div>`;
-    c3 = `<div class="am-k am-kr"><div class="am-kh"><div class="am-kt"><small>🏘️ Crecimiento urbano</small><b>${a != null ? a + ' %' : '—'}</b><em>edificado en 1 km (2020)<br>${d != null ? `<span style="color:${d >= 3 ? '#ea580c' : '#64748b'};font-weight:700">${d >= 0 ? '+' : ''}${d} pts desde 1990</span>` : ''}</em>${o.crec.etapa ? `<span class="am-ch" style="--c:${(MCAM_ETAPA[o.crec.etapa] || '#64748b')}">${esc(o.crec.etapa)}</span>` : ''}</div></div>${bars}</div>`;
+    c3 = `<div class="am-k am-kr am-click" onclick="mcCrMapa_('${esc(o.id)}')" title="Ver el mapa de crecimiento 1975-2030"><div class="am-kh"><div class="am-kt"><small>🏘️ Crecimiento urbano · <u>🗺️ ver mapa</u></small><b>${a != null ? a + ' %' : '—'}</b><em>edificado en 1 km (2020)<br>${d != null ? `<span style="color:${d >= 3 ? '#ea580c' : '#64748b'};font-weight:700">${d >= 0 ? '+' : ''}${d} pts desde 1990</span>` : ''}</em>${o.crec.etapa ? `<span class="am-ch" style="--c:${(MCAM_ETAPA[o.crec.etapa] || '#64748b')}">${esc(o.crec.etapa)}</span>` : ''}</div></div>${bars}</div>`;
   }
   return { cards: c1 + c2 + c3, hint: '' };
 }
+// ── Mapa emergente del crecimiento urbano (raster GHSL, 12 épocas) ──
+window.mcCrMapa_ = async function (id) {
+  const i = MC.items[id] || {}, lat = +i.lat, lng = +i.lng; if (!isFinite(lat) || !isFinite(lng)) return;
+  let meta = MC._crMeta; if (!meta) { try { const j = await fetch(`${BACKEND}/mercado/airbnb/ambiente/raster/meta`, { cache: 'no-store' }).then(r => r.json()); meta = MC._crMeta = j.meta; } catch (_) {} }
+  if (!meta) { alert('El mapa de crecimiento aún no está generado. Se crea una sola vez con el botón «🌡️ Ambiente» o desde el servidor.'); return; }
+  const old = document.getElementById('cr-pop'); if (old) old.remove();
+  const eps = meta.epochs, url = e => `${BACKEND}/mercado/airbnb/ambiente/raster/img?ep=${e}`, pop = document.createElement('div'); pop.id = 'cr-pop';
+  pop.innerHTML = `<style>
+    #cr-pop{position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.62);display:flex;align-items:center;justify-content:center;padding:2.5vh 2.5vw;font:13px/1.4 Inter,system-ui,sans-serif}
+    #cr-pop .cr-c{background:#fff;border-radius:18px;width:min(1200px,96vw);height:min(840px,94vh);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)}
+    #cr-pop .cr-h{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #e5e7eb}#cr-pop .cr-h b{font-size:15px;color:#0f172a}#cr-pop .cr-h small{color:#64748b}#cr-pop .cr-x{all:unset;margin-left:auto;cursor:pointer;font-size:18px;padding:2px 10px;border-radius:8px;color:#64748b}#cr-pop .cr-x:hover{background:#f1f5f9}
+    #cr-pop .cr-m{flex:1;position:relative;min-height:0}#cr-map{position:absolute;inset:0}
+    #cr-pop .cr-big{position:absolute;left:14px;top:12px;z-index:500;background:rgba(255,255,255,.94);border-radius:14px;padding:6px 16px;box-shadow:0 4px 16px rgba(0,0,0,.18);text-align:center}#cr-pop .cr-big b{display:block;font-size:34px;font-weight:900;line-height:1.05;color:#c2410c;letter-spacing:-.02em}#cr-pop .cr-big em{display:block;font-style:normal;font-size:11px;font-weight:700;color:#64748b}
+    #cr-pop .cr-lg{position:absolute;right:14px;bottom:30px;z-index:500;background:rgba(255,255,255,.94);border-radius:12px;padding:8px 12px;box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:11px;color:#475569}#cr-pop .cr-lg i{display:block;width:150px;height:9px;border-radius:99px;background:linear-gradient(90deg,#fde047,#fb923c 35%,#ea580c 70%,#7c2d12);margin:4px 0 2px}#cr-pop .cr-lg div{display:flex;justify-content:space-between}
+    #cr-pop .cr-f{display:flex;align-items:center;gap:14px;padding:10px 18px;border-top:1px solid #e5e7eb;background:#fafafa}
+    #cr-pop .cr-pl{all:unset;cursor:pointer;width:38px;height:38px;border-radius:50%;background:#ea580c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 4px 12px rgba(234,88,12,.4);flex:none}#cr-pop .cr-pl:hover{background:#c2410c}
+    #cr-pop .cr-sl{flex:1;position:relative;padding-bottom:16px}#cr-pop .cr-sl input{width:100%;accent-color:#ea580c}#cr-pop .cr-tk{display:flex;justify-content:space-between;position:absolute;left:7px;right:7px;bottom:0;font-size:10px;color:#94a3b8}#cr-pop .cr-tk span.on{color:#c2410c;font-weight:800}
+    #cr-pop .cr-at{padding:0 18px 8px;font-size:10.5px;color:#94a3b8;background:#fafafa}
+  </style>
+  <div class="cr-c" role="dialog" aria-label="Crecimiento urbano"><div class="cr-h"><b>🏘️ Crecimiento urbano</b><small>${esc(i.titulo || id)}</small><button type="button" class="cr-x" id="cr-x" aria-label="Cerrar">✕</button></div>
+    <div class="cr-m"><div id="cr-map"></div><div class="cr-big"><b id="cr-y">${eps[0]}</b><em id="cr-t"></em></div><div class="cr-lg">Superficie edificada por celda de ~90 m<i></i><div><span>1 %</span><span>35 %</span><span>70 %+</span></div></div></div>
+    <div class="cr-f"><button type="button" class="cr-pl" id="cr-pl" title="Reproducir">▶</button><div class="cr-sl"><input type="range" id="cr-r" min="0" max="${eps.length - 1}" value="0" step="1"><div class="cr-tk">${eps.map(e => `<span data-e="${e}">${e}</span>`).join('')}</div></div></div>
+    <div class="cr-at">${esc(meta.fuente || 'GHSL GHS-BUILT-S R2023A')} · 2025 y 2030 son proyecciones · huella de edificios, no lotes ni uso del suelo · base © OpenStreetMap</div></div>`;
+  document.body.appendChild(pop);
+  let timer = null, map = null; const cerrar = () => { clearInterval(timer); try { map && map.remove(); } catch (_) {} pop.remove(); document.removeEventListener('keydown', kd); }, kd = e => { if (e.key === 'Escape') cerrar(); };
+  document.addEventListener('keydown', kd); pop.addEventListener('click', e => { if (e.target === pop) cerrar(); }); pop.querySelector('#cr-x').onclick = cerrar;
+  eps.forEach(e => { const im = new Image(); im.src = url(e); }); // precarga: la animación no parpadea
+  _rsvEnsureLeaflet_(() => {
+    if (!document.getElementById('cr-map')) return; const Lf = window.L, b = meta.bounds, bounds = [[b.south, b.west], [b.north, b.east]];
+    map = Lf.map('cr-map', { zoomControl: true }).setView([lat, lng], i.geoTipo === 'circulo' ? 12 : 13); Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+    const ov = Lf.imageOverlay(url(eps[0]), bounds, { opacity: .88, interactive: false }).addTo(map), pix = () => { const el = ov.getElement && ov.getElement(); if (el) el.style.imageRendering = 'pixelated'; }; pix();
+    Lf.circle([lat, lng], { radius: i.geoTipo === 'circulo' ? (i.radioM || 2000) : 1000, color: '#0f172a', weight: 1.6, dashArray: '5 5', fill: false }).addTo(map);
+    Lf.circleMarker([lat, lng], { radius: 7, color: '#fff', weight: 2.5, fillColor: '#2563eb', fillOpacity: 1 }).addTo(map).bindTooltip(esc(i.titulo || 'Propiedad'));
+    const r = pop.querySelector('#cr-r'), pl = pop.querySelector('#cr-pl'), set = k => { const e = eps[k]; ov.setUrl(url(e)); pix(); r.value = k; pop.querySelector('#cr-y').textContent = e; pop.querySelector('#cr-t').textContent = e >= 2025 ? 'proyección' : (k === eps.indexOf(2020) ? 'dato más reciente' : ''); pop.querySelectorAll('.cr-tk span').forEach(s2 => s2.classList.toggle('on', +s2.dataset.e === e)); };
+    set(0); r.oninput = () => { clearInterval(timer); timer = null; pl.textContent = '▶'; set(+r.value); };
+    pl.onclick = () => { if (timer) { clearInterval(timer); timer = null; pl.textContent = '▶'; return; } if (+r.value >= eps.length - 1) set(0); pl.textContent = '❚❚'; timer = setInterval(() => { const k = +r.value + 1; if (k >= eps.length) { clearInterval(timer); timer = null; pl.textContent = '▶'; return; } set(k); }, 900); };
+    setTimeout(() => map.invalidateSize(), 80);
+  });
+};
 async function mcAmFicha_(id) {
   const w = document.getElementById('al-am'); if (!w) return; if (MC.ctx === 'fb' && (MC.items[id] || {}).lat == null) { w.innerHTML = '<div class="mc-mu">Esta publicación no tiene coordenada.</div>'; return; }
   try { const j = await fetch(`${BACKEND}/mercado/airbnb/ambiente/dato?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(r => r.json()); const w2 = document.getElementById('al-am'); if (!w2 || MC.al.id !== id) return;
