@@ -76960,7 +76960,7 @@ if (!window._mqMsg) { window._mqMsg = true; window.addEventListener('message', e
 window.mcMqCosto_ = function () {
   const e = document.getElementById('mq-cost'); if (!e) return; const r = +document.getElementById('mq-r').value, f = +document.getElementById('mq-f').value; if (!(r >= 80 && r <= 600 && f >= 4 && f <= 60)) { e.textContent = ''; return; }
   const ts = r > 400 ? 344 : 172, k = Math.max(1, Math.ceil((r - ts / 2) / ts)), tiles = (2 * k + 1) ** 2, fotos = f + 4, sv = fotos * 0.007, ia = fotos * 0.0053 + tiles * 0.01, tot = sv + ia;
-  e.innerHTML = `💲 Costo estimado ≈ <b>$${tot.toFixed(2)} USD</b> <span style="font-weight:600;color:#64748b">(Street View $${sv.toFixed(2)} · IA $${ia.toFixed(2)} · ${fotos} fotos y ${tiles} imágenes satelitales)</span>`;
+  e.innerHTML = `💲 Costo estimado ≈ <b>$${tot.toFixed(2)} USD</b> <span style="font-weight:600;color:#64748b">(Street View $${sv.toFixed(2)} · IA $${ia.toFixed(2)} · ${f} fotos + 4 del punto exacto de la propiedad y ${tiles} imágenes satelitales)</span>`;
 };
 window.mcMqCorre_ = async function (id) {
   const b = document.getElementById('mq-go'), st = document.getElementById('mq-st'), r = +document.getElementById('mq-r').value, f = +document.getElementById('mq-f').value; if (!b) return;
