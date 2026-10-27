@@ -13038,7 +13038,7 @@ app.get("/mercado/airbnb/lugares/iso", async (req, res) => {
 //   Aquí cada ficha se estructura con el mismo extractor de Rentas LP (_rlpDeDatos + IA sobre el texto) y se guarda en mercado/facebook.json.
 // ═══════════════════════════════════════════════════════════════════════════
 const _FB_OBJ = "mercado/facebook.json", _FB_ORIG = /^https:\/\/([a-z0-9-]+\.)?facebook\.com$/;
-const _FB_CFG0 = { ubicacion: "Saltillo", lat: 25.4366, lng: -100.9626, ubicaciones: [{ nombre: "Saltillo", lat: 25.4366, lng: -100.9626 }], radio: 2, precioMin: null, precioMax: null, dormitorios: "", banos: "", tipos: [], m2Min: null, m2Max: null, lote: 25, pausaMin: 2, pausaMax: 5 };
+const _FB_CFG0 = { ubicacion: "Saltillo", lat: 25.4366, lng: -100.9626, ubicaciones: [{ nombre: "Saltillo", lat: 25.4366, lng: -100.9626 }], radio: 2, precioMin: null, precioMax: null, dormitorios: "", banos: "", tipos: [], m2Min: null, m2Max: null, lote: 25, pausaMin: 2, pausaMax: 5, vendedor: false };
 let _fbQ = Promise.resolve();
 async function _fbDoc() { const { data } = await _bnReadGcs(_FB_OBJ); return data && data.lista ? data : { v: 1, config: Object.assign({}, _FB_CFG0), lista: [], items: {}, ejecuciones: [] }; }
 function _fbMutar(fn) {
@@ -13147,7 +13147,7 @@ app.post("/mercado/facebook/config", async (req, res) => {
   try { const c = (req.body || {}).config || {}, n = (v, a, b) => { const x = _rlpNum(v); return x == null ? null : Math.max(a, Math.min(b, x)); };
     const cfg = { ubicacion: _fbTxt(c.ubicacion, 120) || "Saltillo", lat: n(c.lat, -90, 90) ?? _FB_CFG0.lat, lng: n(c.lng, -180, 180) ?? _FB_CFG0.lng, radio: [1, 2, 5, 10, 20, 40, 60, 80, 100, 250, 500].includes(+c.radio) ? +c.radio : 2, precioMin: n(c.precioMin, 0, 1e8), precioMax: n(c.precioMax, 0, 1e8),
       dormitorios: ["", "1", "2", "3", "4", "5", "6"].includes(String(c.dormitorios || "")) ? String(c.dormitorios || "") : "", banos: ["", "1", "1.5", "2", "3", "4", "5"].includes(String(c.banos || "")) ? String(c.banos || "") : "", tipos: (Array.isArray(c.tipos) ? c.tipos : []).filter(t => ["apartamento", "casa", "habitacion", "townhouse"].includes(t)),
-      ubicaciones: (Array.isArray(c.ubicaciones) ? c.ubicaciones : []).map(u => ({ nombre: _fbTxt(u && u.nombre, 120), lat: n(u && u.lat, -90, 90), lng: n(u && u.lng, -180, 180) })).filter(u => u.nombre).slice(0, 8), m2Min: n(c.m2Min, 0, 1e5), m2Max: n(c.m2Max, 0, 1e5), lote: n(c.lote, 5, 40) ?? 25, pausaMin: n(c.pausaMin, 2, 20) ?? 3, pausaMax: n(c.pausaMax, 3, 40) ?? 7 }; if (cfg.pausaMax < cfg.pausaMin) cfg.pausaMax = cfg.pausaMin + 2;
+      ubicaciones: (Array.isArray(c.ubicaciones) ? c.ubicaciones : []).map(u => ({ nombre: _fbTxt(u && u.nombre, 120), lat: n(u && u.lat, -90, 90), lng: n(u && u.lng, -180, 180) })).filter(u => u.nombre).slice(0, 8), m2Min: n(c.m2Min, 0, 1e5), m2Max: n(c.m2Max, 0, 1e5), lote: n(c.lote, 5, 40) ?? 25, pausaMin: n(c.pausaMin, 2, 20) ?? 3, pausaMax: n(c.pausaMax, 3, 40) ?? 7, vendedor: c.vendedor === true }; if (cfg.pausaMax < cfg.pausaMin) cfg.pausaMax = cfg.pausaMin + 2;
     if (!cfg.ubicaciones.length) cfg.ubicaciones = [{ nombre: cfg.ubicacion, lat: cfg.lat, lng: cfg.lng }]; cfg.ubicacion = cfg.ubicaciones[0].nombre; if (cfg.ubicaciones[0].lat != null) { cfg.lat = cfg.ubicaciones[0].lat; cfg.lng = cfg.ubicaciones[0].lng; }
     let fin; await _fbMutar(d => { d.config = Object.assign({}, d.config || {}, cfg); fin = d.config; }); res.json({ ok: true, config: Object.assign({}, _FB_CFG0, fin) }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -13221,7 +13221,7 @@ app.get("/mercado/facebook/pendientes", async (req, res) => {
   const o = String(req.headers.origin || ""); if (o && o !== "https://api.check-inn.mx" && !_vOriginOk(req)) return res.status(403).json({ ok: false });
   try { const d = await _fbDoc(), lim = Math.max(1, Math.min(40, parseInt(req.query.limite, 10) || (d.config && d.config.lote) || 25)); // La selección del paso 1 ES la cola: se extrae toda publicación seleccionada (también las ya extraídas, que se actualizan); un error se reintenta hasta 3 veces.
     const sels = d.lista.filter(x => !x.arch && x.sel && !(x.estado === "error" && (x.intentos || 0) >= 3)), L = sels.sort((a, b) => (a.intentos || 0) - (b.intentos || 0)).slice(0, lim).map(x => ({ id: x.id, url: x.url })), cand = d.lista.filter(x => !x.arch && (x.estado === "pendiente" || (x.estado === "error" && (x.intentos || 0) < 3)));
-    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: L, sinSel: cand.filter(x => !x.sel).length, cfg: { pausaMin: (d.config || {}).pausaMin || 3, pausaMax: (d.config || {}).pausaMax || 7, lote: lim } }); }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: L, sinSel: cand.filter(x => !x.sel).length, cfg: { pausaMin: (d.config || {}).pausaMin || 3, pausaMax: (d.config || {}).pausaMax || 7, lote: lim, vendedor: (d.config || {}).vendedor === true } }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/mercado/facebook/captura", async (req, res) => {
