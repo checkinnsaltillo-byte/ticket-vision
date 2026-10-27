@@ -13336,9 +13336,24 @@ async function _mqGenera(id, R, NF) {
   }
   if (!obs.length) throw new Error("No se pudieron leer fachadas de las fotos");
   const out = { id, ver: "maqueta-geo-v1", at: new Date().toISOString(), lat, lng, radio: R, fotos: obs.length, tit: it.titulo || "", roads: osm.roads, builds: osm.builds, trees: osm.trees, lamps: osm.lamps, obs, uso };
-  await _bnWriteGcs(`mercado/maqueta/${id}.json`, out, null); return out;
+  await _bnWriteGcs(`mercado/maqueta/${id}.json`, out, null); try { const tok = await _vGcsToken(); await fetch(_mqGlbUrl(id), { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } }); } catch (_) {} return out;
 }
 app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+// Modelo 3D ya armado (.glb, lo exporta el navegador): se guarda en mercado/maqueta/<id>.glb y se borra al regenerar la maqueta.
+const _mqGlbUrl = (id, up) => up ? `https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(`mercado/maqueta/${id}.glb`)}` : `https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(`mercado/maqueta/${id}.glb`)}`;
+app.post("/mercado/maqueta/modelo", express.raw({ type: () => true, limit: "90mb" }), async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  const id = String(req.query.id || "").replace(/\D/g, ""), b = req.body; if (!id || !Buffer.isBuffer(b) || b.length < 100 || b.slice(0, 4).toString() !== "glTF") return res.status(400).json({ ok: false, error: "Archivo .glb inválido" });
+  try { const tok = await _vGcsToken(), r = await fetch(_mqGlbUrl(id, true), { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "model/gltf-binary" }, body: b }); if (!r.ok) throw new Error("Cloud Storage " + r.status); res.json({ ok: true, bytes: b.length }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/mercado/maqueta/modelo", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  const id = String(req.query.id || "").replace(/\D/g, ""); if (!id) return res.status(400).end();
+  try { const tok = await _vGcsToken(), info = req.query.info === "1", r = await fetch(_mqGlbUrl(id) + (info ? "" : "?alt=media"), { headers: { Authorization: `Bearer ${tok}` } });
+    if (r.status === 404) return info ? res.json({ ok: true, modelo: null }) : res.status(404).end(); if (!r.ok) throw new Error("Cloud Storage " + r.status);
+    if (info) { const j = await r.json(); return res.json({ ok: true, modelo: { bytes: +j.size, at: j.updated } }); }
+    res.set({ "Content-Type": "model/gltf-binary", "Content-Disposition": `attachment; filename="maqueta-${id}.glb"`, "Cache-Control": "private, max-age=300" }); res.send(Buffer.from(await r.arrayBuffer())); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/mercado/maqueta/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _mqJob)); });
 app.post("/mercado/maqueta/generar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
