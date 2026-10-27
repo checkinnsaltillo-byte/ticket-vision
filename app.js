@@ -77418,16 +77418,16 @@ function mcAmTerrHtml_(o) {
 // ── Mapa emergente del crecimiento urbano (raster GHSL, 12 épocas) ──
 window.mcCrMapa_ = async function (id) {
   const i = MC.items[id] || {}, lat = +i.lat, lng = +i.lng; if (!isFinite(lat) || !isFinite(lng)) return;
-  let meta = MC._crMeta; if (!meta) { try { const j = await fetch(`${BACKEND}/mercado/airbnb/ambiente/raster/meta`, { cache: 'no-store' }).then(r => r.json()); meta = MC._crMeta = j.meta; } catch (_) {} }
-  if (!meta) { alert('El mapa de crecimiento aún no está generado. Se crea una sola vez con el botón «🌡️ Ambiente» o desde el servidor.'); return; }
+  let meta = MC._crMeta; if (!meta) { try { meta = MC._crMeta = await fetch('crecimiento/meta.json', { cache: 'no-cache' }).then(r => r.json()); } catch (_) {} }
+  if (!meta) { alert('El mapa de crecimiento no está disponible por ahora.'); return; }
   const old = document.getElementById('cr-pop'); if (old) old.remove();
-  const eps = meta.epochs, url = e => `${BACKEND}/mercado/airbnb/ambiente/raster/img?ep=${e}`, pop = document.createElement('div'); pop.id = 'cr-pop';
+  const eps = meta.epochs, url = e => `crecimiento/E${e}.png?v=${String(meta.at || '').slice(0, 10)}`, pop = document.createElement('div'); pop.id = 'cr-pop';
   pop.innerHTML = `<style>
     #cr-pop{position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.62);display:flex;align-items:center;justify-content:center;padding:2.5vh 2.5vw;font:13px/1.4 Inter,system-ui,sans-serif}
     #cr-pop .cr-c{background:#fff;border-radius:18px;width:min(1200px,96vw);height:min(840px,94vh);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)}
     #cr-pop .cr-h{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #e5e7eb}#cr-pop .cr-h b{font-size:15px;color:#0f172a}#cr-pop .cr-h small{color:#64748b}#cr-pop .cr-x{all:unset;margin-left:auto;cursor:pointer;font-size:18px;padding:2px 10px;border-radius:8px;color:#64748b}#cr-pop .cr-x:hover{background:#f1f5f9}
     #cr-pop .cr-m{flex:1;position:relative;min-height:0}#cr-map{position:absolute;inset:0}
-    #cr-pop .cr-big{position:absolute;left:14px;top:12px;z-index:500;background:rgba(255,255,255,.94);border-radius:14px;padding:6px 16px;box-shadow:0 4px 16px rgba(0,0,0,.18);text-align:center}#cr-pop .cr-big b{display:block;font-size:34px;font-weight:900;line-height:1.05;color:#c2410c;letter-spacing:-.02em}#cr-pop .cr-big em{display:block;font-style:normal;font-size:11px;font-weight:700;color:#64748b}
+    #cr-pop .cr-big{position:absolute;left:62px;top:12px;z-index:500;background:rgba(255,255,255,.94);border-radius:14px;padding:6px 16px;box-shadow:0 4px 16px rgba(0,0,0,.18);text-align:center}#cr-pop .cr-big b{display:block;font-size:34px;font-weight:900;line-height:1.05;color:#c2410c;letter-spacing:-.02em}#cr-pop .cr-big em{display:block;font-style:normal;font-size:11px;font-weight:700;color:#64748b}
     #cr-pop .cr-lg{position:absolute;right:14px;bottom:30px;z-index:500;background:rgba(255,255,255,.94);border-radius:12px;padding:8px 12px;box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:11px;color:#475569}#cr-pop .cr-lg i{display:block;width:150px;height:9px;border-radius:99px;background:linear-gradient(90deg,#fde047,#fb923c 35%,#ea580c 70%,#7c2d12);margin:4px 0 2px}#cr-pop .cr-lg div{display:flex;justify-content:space-between}
     #cr-pop .cr-f{display:flex;align-items:center;gap:14px;padding:10px 18px;border-top:1px solid #e5e7eb;background:#fafafa}
     #cr-pop .cr-pl{all:unset;cursor:pointer;width:38px;height:38px;border-radius:50%;background:#ea580c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 4px 12px rgba(234,88,12,.4);flex:none}#cr-pop .cr-pl:hover{background:#c2410c}
