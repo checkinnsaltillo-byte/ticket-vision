@@ -76943,17 +76943,25 @@ async function mcMqFicha_(id) {
   const inp = 'width:78px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;font-weight:700';
   w.innerHTML = `<h5>🧱 Maqueta 3D del entorno <small style="font-weight:600;color:#94a3b8">(calles y edificios de OpenStreetMap + fachadas de Street View + imagen satelital)</small></h5>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:6px 0 10px">
-      <label style="font-size:12px;color:#475569;font-weight:700">Radio (m)<br><input id="mq-r" type="number" min="80" max="600" step="10" value="${rad}" style="${inp}"></label>
-      <label style="font-size:12px;color:#475569;font-weight:700">Fotos de Street View<br><input id="mq-f" type="number" min="4" max="60" step="2" value="${nf}" style="${inp}"></label>
+      <label style="font-size:12px;color:#475569;font-weight:700">Radio (m)<br><input id="mq-r" type="number" min="80" max="600" step="10" value="${rad}" style="${inp}" oninput="mcMqCosto_()"></label>
+      <label style="font-size:12px;color:#475569;font-weight:700">Fotos de Street View<br><input id="mq-f" type="number" min="4" max="60" step="2" value="${nf}" style="${inp}" oninput="mcMqCosto_()"></label>
       <button type="button" class="al-btn" id="mq-go" onclick="mcMqCorre_('${esc ? esc.id : id}')">${esc ? '🔄 Regenerar con estos parámetros' : '🧱 Generar maqueta'}</button>
       <a class="al-chip" style="padding:6px 14px;text-decoration:none${esc ? '' : ';display:none'}" href="maqueta/entorno.html?id=${encodeURIComponent(id)}&v=${Date.now()}" target="_blank" rel="noopener">Pantalla completa ↗</a>
       <span id="mq-glb" style="${esc ? '' : 'display:none'}"></span>
+      <span id="mq-cost" style="font-size:12px;font-weight:700;color:#0f172a;background:#f1f5f9;border-radius:8px;padding:6px 10px"></span>
       <span id="mq-st" class="mc-mu" style="font-size:12px;flex:1;min-width:200px">${esc ? `Generada ${fe} · radio ${esc.radio} m · ${esc.fotos} fotos leídas · ${esc.roads.length} tramos de calle · ${esc.builds.length} edificios de OSM` : 'Siempre toma 4 fotos desde el punto exacto (N, S, E, O), analiza la imagen satelital y marca lugares relevantes. Por omisión usa las fotos ya descargadas del análisis del entorno' + (nEnt ? ` (${nEnt})` : '') + '; si pides más, se descargan fotos nuevas sobre las calles (≈ $0.02 por foto entre Street View e IA).'}</span></div>
     ${esc ? `<iframe src="maqueta/entorno.html?id=${encodeURIComponent(id)}&embed=1&v=${Date.now()}" style="width:100%;height:min(74vh,620px);border:0;border-radius:12px;background:#bdbdbd" loading="lazy" allow="fullscreen"></iframe>` : '<div class="mc-mu" style="padding:18px 0;text-align:center">Aún no se ha generado la maqueta de este alojamiento.</div>'}`;
   if (esc) mcMqGlb_(id);
+  mcMqCosto_();
 }
 window.mcMqGlb_ = async function (id) { const e = document.getElementById('mq-glb'); if (!e) return; try { const j = await fetch(`${BACKEND}/mercado/maqueta/modelo?id=${encodeURIComponent(id)}&info=1`, { cache: 'no-store' }).then(r => r.json()); e.innerHTML = j.modelo ? `<a class="al-chip" style="padding:6px 14px;text-decoration:none" href="${BACKEND}/mercado/maqueta/modelo?id=${encodeURIComponent(id)}" title="Guardado ${esc(new Date(j.modelo.at).toLocaleString('es-MX'))}">☁️ Descargar modelo 3D (${(j.modelo.bytes / 1048576).toFixed(1)} MB)</a>` : '<span class="mc-mu" style="font-size:12px">Sin modelo 3D guardado: usa «⬇️ Modelo 3D» dentro de la maqueta para guardarlo en la nube.</span>'; } catch (_) {} };
 if (!window._mqMsg) { window._mqMsg = true; window.addEventListener('message', ev => { if (ev.data && ev.data.mq === 'glb') mcMqGlb_(ev.data.id); }); }
+// Estimado por generación: Street View ≈ $0.007/foto (+4 cardinales); IA ≈ $0.0053/foto leída y ≈ $0.01 por imagen satelital (se mide en cada generación; precios aproximados).
+window.mcMqCosto_ = function () {
+  const e = document.getElementById('mq-cost'); if (!e) return; const r = +document.getElementById('mq-r').value, f = +document.getElementById('mq-f').value; if (!(r >= 80 && r <= 600 && f >= 4 && f <= 60)) { e.textContent = ''; return; }
+  const ts = r > 400 ? 344 : 172, k = Math.max(1, Math.ceil((r - ts / 2) / ts)), tiles = (2 * k + 1) ** 2, fotos = f + 4, sv = fotos * 0.007, ia = fotos * 0.0053 + tiles * 0.01, tot = sv + ia;
+  e.innerHTML = `💲 Costo estimado ≈ <b>$${tot.toFixed(2)} USD</b> <span style="font-weight:600;color:#64748b">(Street View $${sv.toFixed(2)} · IA $${ia.toFixed(2)} · ${fotos} fotos y ${tiles} imágenes satelitales)</span>`;
+};
 window.mcMqCorre_ = async function (id) {
   const b = document.getElementById('mq-go'), st = document.getElementById('mq-st'), r = +document.getElementById('mq-r').value, f = +document.getElementById('mq-f').value; if (!b) return;
   if (!(r >= 80 && r <= 600)) { st.textContent = 'El radio debe estar entre 80 y 600 m.'; return; } if (!(f >= 4 && f <= 60)) { st.textContent = 'Las fotos deben estar entre 4 y 60.'; return; }
