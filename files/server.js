@@ -13286,6 +13286,68 @@ app.post("/mercado/airbnb/entorno/analizar", async (req, res) => {
   _enAnaliza(id).then(() => { _enJob.ok = true; }).catch(e => { _enJob.error = String(e.message || e); console.warn("[entorno]", id, e.message); }).finally(() => { clearInterval(t); _enJob.running = false; _enJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
+// ── Maqueta 3D geográfica: calles y edificios de OpenStreetMap en el radio pedido + fachadas leídas de las fotos de Street View (georreferenciadas: panorama + rumbo).
+//    Se guarda mercado/maqueta/<id>.json en metros locales (x = este, y = norte, origen = coordenada del alojamiento). La maqueta se arma en el navegador (maqueta/entorno.html).
+const _MQ_FR = `Eres un arquitecto que describe fachadas de calles mexicanas para armar una maqueta 3D. Recibes fotos de Street View numeradas (con su rumbo). Para CADA foto lista los frentes de construcción visibles de izquierda a derecha ("fr") y datos de la calle ("c").
+Cada frente: {"x": posición horizontal del centro en la imagen 0-1, "d": distancia aprox. en metros (3-60), "t": "casa1p"|"casa2p"|"dpto"|"comercio"|"bloque"|"piedra"|"barda"|"baldio"|"edificio"|"escuela"|"otro", "p": número de pisos, "k": color dominante de la fachada "#rrggbb", "k2": color secundario o null, "co": true si tiene cochera/portón de auto, "rj": "blanca"|"negra"|"madera"|"ninguna", "te": "plano"|"teja"|"lamina", "ar": "fresno"|"pino"|"palmera"|"arbusto"|"ninguno"}.
+Calle "c": {"pav":"asfalto"|"concreto"|"adoquin"|"terraceria", "gu":"amarilla"|"gris"|"ninguna", "cab":0-3 (0 sin cables aéreos, 3 muchos), "pos":"madera"|"concreto"|"metal"|"ninguno", "au":número de autos estacionados visibles, "ban":"ancha"|"angosta"|"ninguna", "arb":0-3 (árboles de calle)}.
+Devuelve SOLO JSON: {"fotos":[{"n":1,"fr":[...],"c":{...}}]}. Sin comentarios. Si una foto no muestra frentes, "fr":[].`;
+const _mqProy = (lat0, lng0) => { const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 111320; return { xy: (la, ln) => [Math.round((ln - lng0) * kx * 10) / 10, Math.round((la - lat0) * ky * 10) / 10], kx, ky }; };
+async function _mqOsm(lat, lng, R) {
+  const q = `[out:json][timeout:60];(way(around:${R},${lat},${lng})[highway];way(around:${R},${lat},${lng})[building];node(around:${R},${lat},${lng})[natural=tree];node(around:${R},${lat},${lng})[highway=street_lamp];);out tags geom;`;
+  let j, ult; for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(120000) }, 2); break; } catch (e) { ult = e; } }
+  if (!j) throw ult || new Error("Overpass sin respuesta");
+  const P = _mqProy(lat, lng), roads = [], builds = [], trees = [], lamps = [];
+  (j.elements || []).forEach(e => { const t = e.tags || {};
+    if (e.type === "node") { const p = P.xy(e.lat, e.lon); (t.natural === "tree" ? trees : lamps).push(p); return; }
+    const g = (e.geometry || []).filter(q => q && q.lat != null).map(q => P.xy(q.lat, q.lon)); if (g.length < 2) return;
+    if (t.highway) { if (/^(footway|steps|path|proposed|construction|corridor|elevator)$/.test(t.highway)) return; roads.push({ n: t.name || "", h: t.highway, l: t.lanes ? +t.lanes : null, o: t.oneway === "yes" ? 1 : 0, w: t.width ? parseFloat(t.width) : null, g }); }
+    else if (t.building && g.length >= 4) builds.push({ b: t.building, l: t["building:levels"] ? +t["building:levels"] : null, h: t.height ? parseFloat(t.height) : null, n: t.name || "", g: g.slice(0, -1) });
+  });
+  return { roads, builds, trees, lamps };
+}
+async function _mqPanosCalles(lat, lng, R, roads, key, max, ya) {
+  const P = _mqProy(lat, lng), C = []; roads.filter(r => /^(residential|tertiary|secondary|primary|unclassified|living_street|service)$/.test(r.h)).forEach(r => { let acc = 0; for (let i = 1; i < r.g.length; i++) { const a = r.g[i - 1], b = r.g[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]); for (let s = acc ? 30 - acc : 15; s < L; s += 32) { const u = s / L, x = a[0] + (b[0] - a[0]) * u, y = a[1] + (b[1] - a[1]) * u; if (Math.hypot(x, y) <= R) C.push({ x, y, br: (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI + 360) % 360 }); } acc = (L - (acc ? 30 - acc : 15)) % 32; } });
+  C.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y)); const got = new Map(), vistos = new Set(ya.map(f => f.pano));
+  for (let i = 0; i < C.length && got.size < max; i += 6) await Promise.all(C.slice(i, i + 6).map(async c => { try { const la = lat + c.y / P.ky, ln = lng + c.x / P.kx, m = await _enMeta(la, ln, key); if (m.status !== "OK" || vistos.has(m.pano_id) || got.has(m.pano_id)) return; if (_enMetros([lat, lng], [m.location.lat, m.location.lng]) > R * 1.05) return; got.set(m.pano_id, { pano: m.pano_id, lat: m.location.lat, lng: m.location.lng, date: m.date || "", br: c.br }); } catch (_) {} }));
+  return [...got.values()].slice(0, max);
+}
+async function _mqClaude(content) {
+  const body = { model: _CL_MODELO, max_tokens: 9000, thinking: { type: "disabled" }, system: _MQ_FR, messages: [{ role: "user", content }] };
+  const call = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(280000) });
+  const j = await call.json(); if (!call.ok) throw new Error(`Claude ${call.status}: ${(j.error && j.error.message) || ""}`);
+  const raw = (j.content || []).filter(p => p.type === "text").map(p => p.text).join(""), m = raw.match(/\{[\s\S]*\}/); let d; try { d = JSON.parse(m ? m[0] : raw); } catch (_) { try { d = JSON.parse((m ? m[0] : raw).replace(/```(?:json)?/gi, "").replace(/,\s*([}\]])/g, "$1")); } catch (e) { throw new Error("JSON inválido de fachadas"); } }
+  return { d, uso: j.usage || {} };
+}
+let _mqJob = { running: false };
+async function _mqGenera(id, R, NF) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
+  const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng);
+  _mqJob.paso = `Calles y edificios de OpenStreetMap (${R} m)`; const osm = await _mqOsm(lat, lng, R);
+  let ent = null; try { ent = (await _bnReadGcs(`mercado/entorno/${id}.json`)).data; } catch (_) {}
+  const ya = ((ent && ent.fotos) || []).map(f => ({ pano: f.pano, h: f.h, lat: f.lat, lng: f.lng })); let tomas = ya.slice();
+  if (NF > tomas.length) { _mqJob.paso = "Buscando más panoramas sobre las calles"; const nuevos = await _mqPanosCalles(lat, lng, R, osm.roads, key, Math.ceil((NF - tomas.length) / 2) + 2, ya); for (const p of nuevos) { for (const dh of [90, 270]) if (tomas.length < NF) tomas.push({ pano: p.pano, h: Math.round((p.br + dh) % 360), lat: p.lat, lng: p.lng }); } }
+  tomas = tomas.slice(0, Math.max(NF, 1)); const obs = [], uso = { input_tokens: 0, output_tokens: 0 };
+  for (let i = 0; i < tomas.length; i += 8) {
+    const L = tomas.slice(i, i + 8); _mqJob.paso = `Leyendo fachadas (fotos ${i + 1}–${i + L.length} de ${tomas.length})`; _mqJob.upd = new Date().toISOString(); const content = [], ok = [];
+    for (const t of L) { try { const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${t.pano}&heading=${t.h}&fov=90&pitch=0&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(40000) }); if (!r.ok) continue; ok.push(t); content.push({ type: "text", text: `Foto ${ok.length} · rumbo ${t.h}°` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: Buffer.from(await r.arrayBuffer()).toString("base64") } }); } catch (_) {} }
+    if (!ok.length) continue; content.push({ type: "text", text: "Devuelve el JSON con las fotos descritas." }); const r = await _mqClaude(content); uso.input_tokens += r.uso.input_tokens || 0; uso.output_tokens += r.uso.output_tokens || 0;
+    (r.d.fotos || []).forEach(f => { const t = ok[(f.n || 0) - 1]; if (!t) return; const p = P.xy(t.lat, t.lng); obs.push({ x: p[0], y: p[1], h: t.h, pano: t.pano, fr: (f.fr || []).slice(0, 8), c: f.c || {} }); });
+  }
+  if (!obs.length) throw new Error("No se pudieron leer fachadas de las fotos");
+  const out = { id, ver: "maqueta-geo-v1", at: new Date().toISOString(), lat, lng, radio: R, fotos: obs.length, tit: it.titulo || "", roads: osm.roads, builds: osm.builds, trees: osm.trees, lamps: osm.lamps, obs, uso };
+  await _bnWriteGcs(`mercado/maqueta/${id}.json`, out, null); return out;
+}
+app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/maqueta/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _mqJob)); });
+app.post("/mercado/maqueta/generar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), R = Math.max(80, Math.min(600, parseInt(b.radio, 10) || 250)), NF = Math.max(4, Math.min(60, parseInt(b.fotos, 10) || 10)); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
+  if (_mqJob.running && Date.now() - Date.parse(_mqJob.upd || 0) < 240000) return res.status(409).json({ ok: false, error: "Ya hay una maqueta generándose" });
+  _mqJob = { running: true, id, radio: R, fotos: NF, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _mqJob.upd = new Date().toISOString(); }, 15000);
+  _mqGenera(id, R, NF).then(() => { _mqJob.ok = true; }).catch(e => { _mqJob.error = String(e.message || e); console.warn("[maqueta]", id, e.message); }).finally(() => { clearInterval(t); _mqJob.running = false; _mqJob.fin = new Date().toISOString(); });
+  res.json({ ok: true });
+});
 // ── Datos ambientales y de riesgo por coordenada (fase 1) ─────────────────────────────────────────────────────────────────────────────────────────
 //    Altitud, clima (promedio 2020-2024) y aire (modelo, últimos 30 días) desde Open-Meteo; riesgo tecnológico (gasolineras, industria, ferrocarril, autopistas, ductos,
 //    líneas de alta tensión) y accesibilidad (hospitales, escuelas, supermercados) desde OpenStreetMap vía Overpass, a ≤ 3 km. Se guarda todo en mercado/ambiente.json (id → datos).
