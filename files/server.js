@@ -13358,6 +13358,24 @@ async function _mqSat(lat, lng, R, key, J) {
   const pois = []; tiles.forEach(t => (t.p || []).forEach(p => { if (typeof p.x !== "number" || typeof p.y !== "number") return; const W = t.png.width, x = t.cx + (p.x * W - W / 2) * t.mpp, y = t.cy - (p.y * W - W / 2) * t.mpp; if (Math.abs(x) > R || Math.abs(y) > R) return; if (pois.some(o => o.t === p.t && Math.hypot(o.x - x, o.y - y) < 40)) return; pois.push({ t: String(p.t || "otro"), n: p.n ? String(p.n).slice(0, 60) : "", x: Math.round(x), y: Math.round(y), f: "sat" }); }));
   return { sat: { cell: CS, n: N, R, c: cc.join(""), k: kk.join(""), fuente, zoom }, pois, uso };
 }
+// Huellas de edificios detectadas por IA desde imágenes satelitales (Microsoft Global ML Building Footprints, licencia ODbL): se descargan por cuadrante (quadkey nivel 9) y se recortan al radio.
+let _mqDl = { t: 0, m: null };
+async function _mqLinks() {
+  if (_mqDl.m && Date.now() - _mqDl.t < 864e5) return _mqDl.m;
+  const txt = await (await fetch("https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv", { signal: AbortSignal.timeout(90000) })).text(), m = {};
+  txt.split("\n").forEach(l => { if (!l.startsWith("Mexico,")) return; const c = l.split(","); m[c[1]] = c[2]; }); _mqDl = { t: Date.now(), m }; return m;
+}
+const _mqQk = (lat, lng, z) => { const n = 2 ** z, x = Math.floor((lng + 180) / 360 * n), sn = Math.sin(lat * Math.PI / 180), y = Math.floor((0.5 - Math.log((1 + sn) / (1 - sn)) / (4 * Math.PI)) * n); let q = ""; for (let i = z; i > 0; i--) { let d = 0; const mk = 1 << (i - 1); if (x & mk) d += 1; if (y & mk) d += 2; q += d; } return q; };
+async function _mqFootprints(lat, lng, R) {
+  const links = await _mqLinks(), P = _mqProy(lat, lng), dl = R / P.ky, dn = R / P.kx, qks = new Set();
+  for (const [a, b] of [[lat - dl, lng - dn], [lat - dl, lng + dn], [lat + dl, lng - dn], [lat + dl, lng + dn]]) qks.add(_mqQk(a, b, 9));
+  const out = [], zlib = require("zlib"), readline = require("readline"), { Readable } = require("stream"), re = /\[\[\[(-?[\d.]+), (-?[\d.]+)/;
+  for (const qk of qks) { const url = links[qk]; if (!url) continue; const r = await fetch(url, { signal: AbortSignal.timeout(120000) }); if (!r.ok) throw new Error("Huellas HTTP " + r.status);
+    const rl = readline.createInterface({ input: Readable.fromWeb(r.body).pipe(zlib.createGunzip()), crlfDelay: Infinity });
+    for await (const line of rl) { const m = re.exec(line); if (!m) continue; const lo = +m[1], la = +m[2]; if (Math.abs(la - lat) > dl * 1.1 || Math.abs(lo - lng) > dn * 1.1) continue; let j; try { j = JSON.parse(line); } catch (_) { continue; } const ring = j.geometry && j.geometry.coordinates && j.geometry.coordinates[0]; if (!ring || ring.length < 4) continue;
+      const g = ring.slice(0, -1).map(q => P.xy(q[1], q[0])), cx = g.reduce((a, p) => a + p[0], 0) / g.length, cy = g.reduce((a, p) => a + p[1], 0) / g.length; if (Math.abs(cx) > R || Math.abs(cy) > R) continue; const f = []; g.forEach(p => f.push(p[0], p[1])); out.push(f); } }
+  return out;
+}
 let _mqJob = { running: false };
 async function _mqGenera(id, R, NF) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
@@ -13375,9 +13393,10 @@ async function _mqGenera(id, R, NF) {
     (r.d.fotos || []).forEach(f => { const t = ok[(f.n || 0) - 1]; if (!t) return; const p = P.xy(t.lat, t.lng); obs.push({ x: p[0], y: p[1], h: t.h, pano: t.pano, cen: t.cen ? 1 : 0, fr: (f.fr || []).slice(0, t.cen ? 12 : 8), c: f.c || {} }); });
   }
   if (!obs.length) throw new Error("No se pudieron leer fachadas de las fotos");
+  _mqJob.paso = "Huellas de edificios (imágenes satelitales)"; let mb = []; try { mb = await _mqFootprints(lat, lng, R); } catch (e) { console.warn("[maqueta] huellas", e.message); _mqJob.aviso = "Sin huellas de edificios: " + e.message; }
   _mqJob.paso = "Lugares relevantes (OpenStreetMap)"; let pois = []; try { pois = await _mqPois(lat, lng, R); } catch (e) { console.warn("[maqueta] pois", e.message); }
   _mqJob.paso = "Imagen satelital"; let sat = null; try { const r = await _mqSat(lat, lng, R, key, _mqJob); sat = r.sat; r.pois.forEach(q => { if (!pois.some(o => o.t === q.t && Math.hypot(o.x - q.x, o.y - q.y) < 50)) pois.push(q); }); uso.input_tokens += r.uso.input_tokens; uso.output_tokens += r.uso.output_tokens; } catch (e) { console.warn("[maqueta] satélite", e.message); _mqJob.aviso = "Sin imagen satelital: " + e.message; }
-  const out = { id, ver: "maqueta-geo-v1", at: new Date().toISOString(), lat, lng, radio: R, fotos: obs.length, tit: it.titulo || "", roads: osm.roads, builds: osm.builds, trees: osm.trees, lamps: osm.lamps, obs, pois, sat, uso };
+  const out = { id, ver: "maqueta-geo-v1", at: new Date().toISOString(), lat, lng, radio: R, fotos: obs.length, tit: it.titulo || "", roads: osm.roads, builds: osm.builds, trees: osm.trees, lamps: osm.lamps, obs, pois, sat, mb, uso };
   await _bnWriteGcs(`mercado/maqueta/${id}.json`, out, null); try { const tok = await _vGcsToken(); await fetch(_mqGlbUrl(id), { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } }); } catch (_) {} return out;
 }
 app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
