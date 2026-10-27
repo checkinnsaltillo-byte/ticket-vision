@@ -13345,7 +13345,7 @@ app.post("/mercado/maqueta/generar", async (req, res) => {
   const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), R = Math.max(80, Math.min(600, parseInt(b.radio, 10) || 250)), NF = Math.max(4, Math.min(60, parseInt(b.fotos, 10) || 10)); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
   if (_mqJob.running && Date.now() - Date.parse(_mqJob.upd || 0) < 240000) return res.status(409).json({ ok: false, error: "Ya hay una maqueta generándose" });
   _mqJob = { running: true, id, radio: R, fotos: NF, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _mqJob.upd = new Date().toISOString(); }, 15000);
-  _mqGenera(id, R, NF).then(() => { _mqJob.ok = true; }).catch(e => { _mqJob.error = String(e.message || e); console.warn("[maqueta]", id, e.message); }).finally(() => { clearInterval(t); _mqJob.running = false; _mqJob.fin = new Date().toISOString(); });
+  _mqGenera(id, R, NF).then(() => { _mqJob.ok = true; }).catch(e => { _mqJob.error = String(e.message || e) + " (" + (_mqJob.paso || "") + ")"; console.warn("[maqueta]", id, "paso:", _mqJob.paso, "·", e.message); }).finally(() => { clearInterval(t); _mqJob.running = false; _mqJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
 // ── Datos ambientales y de riesgo por coordenada (fase 1) ─────────────────────────────────────────────────────────────────────────────────────────

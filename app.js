@@ -76932,13 +76932,34 @@ function mcAloDetHtml_(h, r) {
       <div class="al-card w"><h5>🏪 Negocios y establecimientos en 1 km <small style="font-weight:600;color:#94a3b8">(Google Places)</small></h5><div id="al-pl"><div class="al-sk" style="height:90px"></div></div></div>
     </div>`;
 }
-// Maqueta 3D del entorno: solo aparece si existe la escena maqueta/escenas/<id>.json
+// Maqueta 3D del entorno: calles y edificios reales (OpenStreetMap) + fachadas leídas de las fotos de Street View. Parámetros: radio y número de fotos.
 async function mcMqFicha_(id) {
-  const w = document.getElementById('al-mq'); if (!w) return;
-  try { const r = await fetch(`maqueta/escenas/${encodeURIComponent(id)}.json`, { cache: 'no-cache' }); if (!r.ok) return; await r.json(); } catch (e) { return; }
-  if (!document.getElementById('al-mq')) return;
-  w.style.display = ''; w.innerHTML = `<h5>🧱 Maqueta 3D del entorno <small style="font-weight:600;color:#94a3b8">(reconstruida del análisis y las fotos de Street View)</small> <a class="al-chip" style="padding:3px 12px;font-size:12px;margin-left:8px;text-decoration:none" href="maqueta/entorno.html?id=${encodeURIComponent(id)}" target="_blank" rel="noopener">Abrir a pantalla completa ↗</a></h5><iframe src="maqueta/entorno.html?id=${encodeURIComponent(id)}&embed=1" style="width:100%;height:min(70vh,560px);border:0;border-radius:12px;background:#bdbdbd" loading="lazy" allow="fullscreen"></iframe>`;
+  const w = document.getElementById('al-mq'); if (!w) return; const it = MC.items[id] || {}; if (it.lat == null || it.lng == null || !/^\d+$/.test(String(id))) return;
+  let esc = null, nEnt = 0;
+  try { const j = await fetch(`${BACKEND}/mercado/maqueta/escena?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(r => r.json()); esc = j.ok && j.escena && j.escena.roads ? j.escena : null; } catch (_) {}
+  try { const j = await fetch(`${BACKEND}/mercado/airbnb/entorno/dato?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(r => r.json()); nEnt = ((j.entorno || {}).fotos || []).length; } catch (_) {}
+  if (!document.getElementById('al-mq')) return; w.style.display = '';
+  const rad = esc ? esc.radio : 250, nf = esc ? esc.fotos : (nEnt || 10), fe = esc ? new Date(esc.at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const inp = 'width:78px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;font-weight:700';
+  w.innerHTML = `<h5>🧱 Maqueta 3D del entorno <small style="font-weight:600;color:#94a3b8">(calles y edificios de OpenStreetMap + fachadas de las fotos de Street View)</small></h5>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:6px 0 10px">
+      <label style="font-size:12px;color:#475569;font-weight:700">Radio (m)<br><input id="mq-r" type="number" min="80" max="600" step="10" value="${rad}" style="${inp}"></label>
+      <label style="font-size:12px;color:#475569;font-weight:700">Fotos de Street View<br><input id="mq-f" type="number" min="4" max="60" step="2" value="${nf}" style="${inp}"></label>
+      <button type="button" class="al-btn" id="mq-go" onclick="mcMqCorre_('${esc ? esc.id : id}')">${esc ? '🔄 Regenerar con estos parámetros' : '🧱 Generar maqueta'}</button>
+      <a class="al-chip" style="padding:6px 14px;text-decoration:none${esc ? '' : ';display:none'}" href="maqueta/entorno.html?id=${encodeURIComponent(id)}&v=${Date.now()}" target="_blank" rel="noopener">Pantalla completa ↗</a>
+      <span id="mq-st" class="mc-mu" style="font-size:12px;flex:1;min-width:200px">${esc ? `Generada ${fe} · radio ${esc.radio} m · ${esc.fotos} fotos leídas · ${esc.roads.length} tramos de calle · ${esc.builds.length} edificios de OSM` : 'Por omisión usa las fotos ya descargadas del análisis del entorno' + (nEnt ? ` (${nEnt})` : '') + '; si pides más, se descargan fotos nuevas sobre las calles (≈ $0.02 por foto entre Street View e IA).'}</span></div>
+    ${esc ? `<iframe src="maqueta/entorno.html?id=${encodeURIComponent(id)}&embed=1&v=${Date.now()}" style="width:100%;height:min(74vh,620px);border:0;border-radius:12px;background:#bdbdbd" loading="lazy" allow="fullscreen"></iframe>` : '<div class="mc-mu" style="padding:18px 0;text-align:center">Aún no se ha generado la maqueta de este alojamiento.</div>'}`;
 }
+window.mcMqCorre_ = async function (id) {
+  const b = document.getElementById('mq-go'), st = document.getElementById('mq-st'), r = +document.getElementById('mq-r').value, f = +document.getElementById('mq-f').value; if (!b) return;
+  if (!(r >= 80 && r <= 600)) { st.textContent = 'El radio debe estar entre 80 y 600 m.'; return; } if (!(f >= 4 && f <= 60)) { st.textContent = 'Las fotos deben estar entre 4 y 60.'; return; }
+  b.disabled = true; const t0 = Date.now(); st.textContent = 'Iniciando…';
+  try { const j = await fetch(`${BACKEND}/mercado/maqueta/generar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, radio: r, fotos: f }) }).then(x => x.json()); if (!j.ok) throw new Error(j.error || 'Error'); } catch (e) { st.textContent = '⚠️ ' + e.message; b.disabled = false; return; }
+  for (let k = 0; k < 120; k++) { await new Promise(z => setTimeout(z, 3000)); if (!document.getElementById('al-mq')) return;
+    try { const j = await fetch(`${BACKEND}/mercado/maqueta/estado`, { cache: 'no-store' }).then(x => x.json()); if (j.id === id && j.running) { st.textContent = '⏳ ' + (j.paso || 'Trabajando…'); continue; } if (j.id === id && j.error) { st.textContent = '⚠️ ' + j.error; b.disabled = false; return; } } catch (_) {}
+    try { const e = await fetch(`${BACKEND}/mercado/maqueta/escena?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(x => x.json()); if (e.ok && e.escena && Date.parse(e.escena.at) > t0 - 2000) { mcMqFicha_(id); return; } } catch (_) {} }
+  st.textContent = 'La generación tarda más de lo normal; vuelve a abrir esta ficha en unos minutos.'; b.disabled = false;
+};
 // ── Galería ──
 async function mcAloFotosCargar_(id) {
   MC._fotos = MC._fotos || {}; const g = () => document.getElementById('al-gal'); const i = MC.items[id] || {};
@@ -78625,6 +78646,7 @@ function mcFbpDet_(h, r) {
       ${i.descripcion ? `<div class="al-card w"><h5>📝 Descripción</h5><div class="al-tx">${esc(String(i.descripcion).trim())}</div></div>` : ''}
       <div class="al-card w"><h5>🌡️ Datos ambientales y de riesgo <small style="font-weight:600;color:#94a3b8">(Open-Meteo · OpenStreetMap)</small> <button type="button" class="al-chip" style="padding:3px 12px;font-size:12px;margin-left:8px" onclick="mcAmMapa_(MC.al.id,'alt')">🗺️ Mapa de la ciudad</button></h5><div id="al-am"><div class="al-sk" style="height:90px"></div></div></div>
       <div class="al-card w"><h5>🏙️ Análisis del entorno urbano <span class="al-bd" style="font-weight:700">opcional</span> <button type="button" class="en-q" onclick="mcEnAyuda_()" title="Glosario, metodología y radio de análisis" aria-label="Glosario y metodología">?</button></h5><div id="al-en">${geo ? '<div class="al-sk" style="height:90px"></div>' : sinGeo('El análisis con Street View')}</div></div>
+      <div class="al-card w" id="al-mq" style="display:none"></div>
       <div class="al-card w"><h5>🏪 Negocios y establecimientos en 1 km <span class="al-bd" style="font-weight:700">opcional</span> <small style="font-weight:600;color:#94a3b8">(Google Places)</small></h5><div id="al-pl">${geo ? '<div class="al-sk" style="height:90px"></div>' : sinGeo('La búsqueda de negocios')}</div></div>
     </div>`;
 }
