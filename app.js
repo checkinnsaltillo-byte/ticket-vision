@@ -76553,8 +76553,8 @@ function mcAloCss_() {
 
   .al-pl{display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}.al-am{display:inline-block;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}
   .al-en{display:inline-block;background:#e0f2fe;color:#075985;border:1px solid #bae6fd;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}
-  .am-ks{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;margin:8px 0 14px}.am-k{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}.am-kh{display:flex;align-items:center;gap:14px}.am-kv{flex:none;line-height:0}.am-kt small{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b}.am-kt b{display:block;font-size:26px;font-weight:900;letter-spacing:-.02em;color:#0f172a;margin:2px 0}.am-kt em{display:block;font-style:normal;font-size:12px;color:#64748b;line-height:1.45}
-  .am-kr{flex-direction:row;flex-wrap:wrap;align-items:center;gap:14px}.am-kr .am-bars{flex:1 1 170px;margin:0;height:92px}
+  .am-ks{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}.am-k{flex:1 1 150px;min-width:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}.am-kh{display:flex;align-items:center;gap:8px}.am-kv svg{width:56px;height:auto}.am-kv{flex:none;line-height:0}.am-kt small{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b}.am-kt b{display:block;font-size:22px;font-weight:900;letter-spacing:-.02em;color:#0f172a;margin:2px 0}.am-kt em{display:block;font-style:normal;font-size:12px;color:#64748b;line-height:1.45}
+  .am-kr{flex:2 1 270px;flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px}.am-kr .am-bars{flex:1 1 110px;margin:0;height:76px}.am-sb{flex:1 1 190px;display:flex;flex-direction:column;gap:5px}.am-sr{display:grid;grid-template-columns:82px 1fr 46px;white-space:nowrap;align-items:center;gap:6px;font-size:11.5px;color:#475569}.am-sr>div{height:9px;border-radius:99px;background:#e5e7eb;overflow:hidden}.am-sr i{display:block;height:100%;border-radius:99px}.am-sr b{text-align:right;color:#0f172a;font-variant-numeric:tabular-nums}
   .am-k .am-bars{margin:auto 0 0;height:64px}.am-aqb{display:flex;position:relative;height:9px;border-radius:99px;overflow:visible}.am-aqb i{display:block;height:9px}.am-aqb i:first-child{border-radius:99px 0 0 99px}.am-aqb i:nth-child(5){border-radius:0 99px 99px 0}.am-aqb u{position:absolute;top:-4px;width:3px;height:17px;background:#0f172a;border-radius:2px;transform:translateX(-50%);text-decoration:none}.am-aql{display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:3px}.am-aqi{margin-top:auto}
   .am-pie{width:88px;height:88px;border-radius:50%;box-shadow:0 0 0 3px #fff,0 0 0 4px #e2e8f0}
   .am-sbar{display:flex;height:11px;border-radius:99px;overflow:hidden;margin-top:auto;box-shadow:inset 0 0 0 1px #e2e8f0}.am-sbar i{display:block;height:100%}.am-sleg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:#475569;margin-top:6px}.am-sleg span{display:inline-flex;align-items:center;gap:5px}.am-sleg i{width:9px;height:9px;border-radius:3px;display:inline-block}
@@ -77380,8 +77380,8 @@ function mcAmHtml_(o) {
     cLluvia = cardK('🌧️', 'Precipitación anual', svgLl, c ? `${MCN(c.precAnual, 0)} mm` : '—', c ? `≈ ${c.diasLluvia} días con lluvia al año` : '', barras).replace('class="am-k"', 'class="am-k am-kr"'),
     cAire = cardK('🌫️', 'Calidad del aire', svgAire, a ? `<span style="color:${aq}">${a.cat || '—'}</span>` : '—', a ? `AQI ${a.aqi ?? '—'} · PM2.5 ${a.pm25 ?? '—'} µg/m³<br>PM10 ${a.pm10 ?? '—'} µg/m³` : '');
   const fila = ([key, ic, t, cnt]) => { const x = (o.osm || {})[key] || {}, srv = MCAM_SERV.some(z => z[0] === key); return `<div class="am-r"><span class="am-i">${ic}</span><span class="am-t">${t}${cnt && x.n ? ` <em>· ${x.n} a ≤ 3 km</em>` : ''}</span><b style="color:${mcAmSem_(x.d, srv)}">${mcAmDist_(x.d)}</b></div>`; };
-  return `<div class="am-ks">${cAlt}${cTemp}${cLluvia}${cAire}</div>
-    ${mcAmTerrHtml_(o)}
+  const T = mcAmTerrHtml_(o);
+  return `<div class="am-ks">${cAlt}${cTemp}${cLluvia}${cAire}${T.cards}</div>${T.hint}
     ${o.aprox ? `<div class="mc-mu" style="margin:8px 0;font-size:12px">📍 Esta publicación solo tiene una ubicación aproximada (círculo): se calcularon altitud, clima y aire de la zona, pero no las distancias a riesgos y servicios.</div>` : `<div class="am-cols"><div><h6 class="en-h">Riesgo tecnológico <small>(distancia al más cercano, radio 3 km)</small></h6>${MCAM_RIESGO.map(fila).join('')}</div><div><h6 class="en-h">Servicios cercanos</h6>${MCAM_SERV.map(fila).join('')}</div></div>${o.osm ? '' : `<div class="mc-mu" style="font-size:12px">OpenStreetMap no respondió${o.errOsm ? ` (${esc(o.errOsm)})` : ''}. Pulsa «Recalcular».</div>`}`}
     <div class="mc-mu" style="font-size:11.5px;margin-top:8px">Clima: promedio ${c ? c.años : '2020-2024'} y aire: modelo de los últimos 30 días (Open-Meteo, celdas de ~10 km: sirven para comparar zonas, no cuadras). Riesgos y servicios: OpenStreetMap, puede estar incompleto. Calculado el ${esc(String(o.at || '').slice(0, 10))}. <button type="button" class="al-chip" style="padding:2px 10px;font-size:11.5px" onclick="mcAmCorre_('${esc(o.id)}')">↻ Recalcular</button></div>`;
 }
@@ -77389,8 +77389,8 @@ function mcAmHtml_(o) {
 const MCAM_WC = { 10: ['Árboles', '#006400'], 20: ['Matorral', '#ffbb22'], 30: ['Pastizal', '#ffff4c'], 40: ['Cultivos', '#f096ff'], 50: ['Construido', '#fa0000'], 60: ['Suelo desnudo', '#b4b4b4'], 70: ['Nieve y hielo', '#e5e7eb'], 80: ['Agua', '#0064c8'], 90: ['Humedal', '#0096a0'], 95: ['Manglar', '#00cf75'], 100: ['Musgo', '#fae6a0'] };
 const mcAmPend_ = d => d < 3 ? ['Plano', '#16a34a'] : d < 8 ? ['Suave', '#84cc16'] : d < 15 ? ['Moderada', '#f59e0b'] : d < 25 ? ['Fuerte', '#f97316'] : ['Muy fuerte', '#ef4444'];
 function mcAmTerrHtml_(o) {
-  const t = o.terreno, w = o.suelo; if (o.aprox) return '';
-  if (!t && !w) return `<div class="mc-mu" style="margin:0 0 12px;font-size:12.5px">Relieve, pendiente y cobertura del suelo: aún no calculados. <button type="button" class="al-chip" style="padding:2px 10px;font-size:11.5px" onclick="mcAmCorre_('${esc(o.id)}')">Calcular</button></div>`;
+  const t = o.terreno, w = o.suelo; if (o.aprox) return { cards: '', hint: '' };
+  if (!t && !w) return { cards: '', hint: `<div class="mc-mu" style="margin:0 0 12px;font-size:12.5px">Relieve, pendiente y cobertura del suelo: aún no calculados. <button type="button" class="al-chip" style="padding:2px 10px;font-size:11.5px" onclick="mcAmCorre_('${esc(o.id)}')">Calcular</button></div>` };
   const card = (ic, tt, svg, val, sub, extra) => `<div class="am-k"><div class="am-kh"><div class="am-kv">${svg}</div><div class="am-kt"><small>${ic} ${tt}</small><b>${val}</b><em>${sub || ''}</em></div></div>${extra || ''}</div>`;
   let c1 = '', c2 = '';
   if (t) {
@@ -77401,11 +77401,10 @@ function mcAmTerrHtml_(o) {
   }
   if (w) {
     const ks = Object.keys(w.p).sort((a, b) => w.p[b] - w.p[a]), nm = k => (MCAM_WC[k] || [k, '#94a3b8']);
-    let ac = 0; const stops = ks.map(k => { const a0 = ac; ac += w.p[k]; return `${nm(k)[1]} ${a0}% ${Math.min(100, ac)}%`; }).join(','), svg = `<div class="am-pie" style="background:conic-gradient(${stops})" role="img" aria-label="Composición del suelo"></div>`;
-    const bar = `<div class="am-sleg">${ks.slice(0, 6).map(k => `<span><i style="background:${nm(k)[1]}"></i>${nm(k)[0]} ${w.p[k]} %</span>`).join('')}</div>`;
-    c2 = card('🌳', 'Cobertura del suelo', svg, `${esc(w.domTxt)}`, `Dentro de ${w.radio} m · vegetación ${w.verde} %<br>ESA WorldCover ${w.año} (10 m)`, bar);
+    const bars = `<div class="am-sb">${ks.slice(0, 6).map(k => `<div class="am-sr"><span>${nm(k)[0]}</span><div><i style="width:${Math.max(1.5, w.p[k])}%;background:${nm(k)[1]}"></i></div><b>${w.p[k]} %</b></div>`).join('')}</div>`;
+    c2 = `<div class="am-k am-kr"><div class="am-kh"><div class="am-kt"><small>🌳 Cobertura del suelo</small><b>${esc(w.domTxt)}</b><em>Dentro de ${w.radio} m · vegetación ${w.verde} %<br>ESA WorldCover ${w.año} (10 m)</em></div></div>${bars}</div>`;
   }
-  return `<div class="am-ks">${c1}${c2}</div>`;
+  return { cards: c1 + c2, hint: '' };
 }
 async function mcAmFicha_(id) {
   const w = document.getElementById('al-am'); if (!w) return; if (MC.ctx === 'fb' && (MC.items[id] || {}).lat == null) { w.innerHTML = '<div class="mc-mu">Esta publicación no tiene coordenada.</div>'; return; }
