@@ -76941,14 +76941,14 @@ async function mcMqFicha_(id) {
   if (!document.getElementById('al-mq')) return; w.style.display = '';
   const rad = esc ? esc.radio : 250, nf = esc ? esc.fotos : (nEnt || 10), fe = esc ? new Date(esc.at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '';
   const inp = 'width:78px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;font-weight:700';
-  w.innerHTML = `<h5>🧱 Maqueta 3D del entorno <small style="font-weight:600;color:#94a3b8">(calles y edificios de OpenStreetMap + fachadas de las fotos de Street View)</small></h5>
+  w.innerHTML = `<h5>🧱 Maqueta 3D del entorno <small style="font-weight:600;color:#94a3b8">(calles y edificios de OpenStreetMap + fachadas de Street View + imagen satelital)</small></h5>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:6px 0 10px">
       <label style="font-size:12px;color:#475569;font-weight:700">Radio (m)<br><input id="mq-r" type="number" min="80" max="600" step="10" value="${rad}" style="${inp}"></label>
       <label style="font-size:12px;color:#475569;font-weight:700">Fotos de Street View<br><input id="mq-f" type="number" min="4" max="60" step="2" value="${nf}" style="${inp}"></label>
       <button type="button" class="al-btn" id="mq-go" onclick="mcMqCorre_('${esc ? esc.id : id}')">${esc ? '🔄 Regenerar con estos parámetros' : '🧱 Generar maqueta'}</button>
       <a class="al-chip" style="padding:6px 14px;text-decoration:none${esc ? '' : ';display:none'}" href="maqueta/entorno.html?id=${encodeURIComponent(id)}&v=${Date.now()}" target="_blank" rel="noopener">Pantalla completa ↗</a>
       <span id="mq-glb" style="${esc ? '' : 'display:none'}"></span>
-      <span id="mq-st" class="mc-mu" style="font-size:12px;flex:1;min-width:200px">${esc ? `Generada ${fe} · radio ${esc.radio} m · ${esc.fotos} fotos leídas · ${esc.roads.length} tramos de calle · ${esc.builds.length} edificios de OSM` : 'Por omisión usa las fotos ya descargadas del análisis del entorno' + (nEnt ? ` (${nEnt})` : '') + '; si pides más, se descargan fotos nuevas sobre las calles (≈ $0.02 por foto entre Street View e IA).'}</span></div>
+      <span id="mq-st" class="mc-mu" style="font-size:12px;flex:1;min-width:200px">${esc ? `Generada ${fe} · radio ${esc.radio} m · ${esc.fotos} fotos leídas · ${esc.roads.length} tramos de calle · ${esc.builds.length} edificios de OSM` : 'Siempre toma 4 fotos desde el punto exacto (N, S, E, O), analiza la imagen satelital y marca lugares relevantes. Por omisión usa las fotos ya descargadas del análisis del entorno' + (nEnt ? ` (${nEnt})` : '') + '; si pides más, se descargan fotos nuevas sobre las calles (≈ $0.02 por foto entre Street View e IA).'}</span></div>
     ${esc ? `<iframe src="maqueta/entorno.html?id=${encodeURIComponent(id)}&embed=1&v=${Date.now()}" style="width:100%;height:min(74vh,620px);border:0;border-radius:12px;background:#bdbdbd" loading="lazy" allow="fullscreen"></iframe>` : '<div class="mc-mu" style="padding:18px 0;text-align:center">Aún no se ha generado la maqueta de este alojamiento.</div>'}`;
   if (esc) mcMqGlb_(id);
 }
