@@ -13096,6 +13096,7 @@ async function _fbFreqC() { const d = await _fbDoc(), f = {}; Object.values(d.it
 // Coordenadas y datos mínimos de una publicación por id: Airbnb o Marketplace (la misma vía de Entorno urbano y Negocios en 1 km).
 async function _mcItem(id) {
   const { data } = await _bnReadGcs(_MA.OBJ), a = data && data.items && data.items[id]; if (a) return a;
+  const dm = await _mlDoc().catch(() => null), m = dm && dm.items && dm.items[id]; if (m && m.lat != null && m.lng != null) return { id, titulo: m.titulo, tipo: "Inmueble", ciudad: m.ciudad, lat: m.lat, lng: m.lng, ubicacion: m.direccion || m.colonia || m.ciudad };
   const d = await _fbDoc(), f = d.items && d.items[id]; if (!f || !f.geo || f.lat == null) return null;
   return { id, titulo: f.titulo, tipo: f.tipo, ciudad: f.ciudad, lat: f.lat, lng: f.lng, ubicacion: f.direccion || f.colonia || f.ciudad };
 }
@@ -13347,7 +13348,8 @@ async function _amGuardar(patch) {
 async function _amItems(ids) {
   const { data } = await _bnReadGcs(_MA.OBJ), fb = await _fbDoc(), A = (data && data.items) || {}, F = fb.items || {}, out = [];
   const arm = id => { const a = A[id], f = F[id]; if (a && a.lat != null && a.lng != null) return { id, lat: +a.lat, lng: +a.lng, aprox: false }; if (f && f.geo && f.lat != null && f.lng != null) return { id, lat: +f.lat, lng: +f.lng, aprox: (f.geo.tipo || (f.geo.prec === "facebook" ? "circulo" : "punto")) === "circulo" }; return null; };
-  (ids || [...Object.keys(A), ...Object.keys(F)]).forEach(id => { const x = arm(String(id)); if (x && isFinite(x.lat) && isFinite(x.lng)) out.push(x); });
+  const dm = await _mlDoc().catch(() => null), Mi = (dm && dm.items) || {}, armM = id => { const m = Mi[id]; return m && m.lat != null && m.lng != null ? { id, lat: +m.lat, lng: +m.lng, aprox: m.geoTipo === "aprox" } : null; };
+  (ids || [...Object.keys(A), ...Object.keys(F), ...Object.keys(Mi)]).forEach(id => { const x = arm(String(id)) || armM(String(id)); if (x && isFinite(x.lat) && isFinite(x.lng)) out.push(x); });
   return out;
 }
 async function _amCorre(ids, forzar) {
@@ -13556,7 +13558,7 @@ async function _mlExtraer(cfg) {
   for (const q of cola) {
     if (await _mlCancelado()) break; J.paso = `Extrayendo ${J.hechos + 1} de ${cola.length}`; J.upd = new Date().toISOString(); _mlEstadoGuarda();
     try { const r = await ML.pedir(q.url, 3); if (r.status === 404 || !r.html) { bufL[q.id] = { estado: "no_disponible", sel: false, ult_extr: new Date().toISOString() }; J.no_disp++; }
-      else { const f = ML.parseFicha(r.html, q.url); if (!f.id || (!f.titulo && !f.precio)) throw new Error("Ficha sin datos reconocibles"); f.descripcion = String(f.descripcion || "").slice(0, 5000); f.extraido = new Date().toISOString(); const prec = f.geoPrec != null ? (f.geoPrec >= 6 ? "punto" : "aprox") : ""; f.geoTipo = prec;
+      else { const f = ML.parseFicha(r.html, q.url); if (!f.id || (!f.titulo && !f.precio)) throw new Error("Ficha sin datos reconocibles"); f.descripcion = String(f.descripcion || "").slice(0, 5000); f.extraido = new Date().toISOString(); const prec = f.geoPrec != null ? (f.geoPrec >= 4 ? "punto" : "aprox") : ""; f.geoTipo = prec;
         bufI[q.id] = f; bufL[q.id] = { estado: f.estado_pub === "no_disponible" ? "no_disponible" : "ok", sel: false, intentos: 0, n_extr: ((d0.lista.find(x => x.id === q.id) || {}).n_extr || 0) + 1, ult_extr: f.extraido, precio: f.precio != null ? f.precio : undefined, titulo: f.titulo || undefined }; J.ok++; } }
     catch (e) { const pr = d0.lista.find(x => x.id === q.id) || {}; bufL[q.id] = { estado: "error", intentos: (pr.intentos || 0) + 1, error: String(e.message || e).slice(0, 160), ult_extr: new Date().toISOString() }; J.err++; J.ultErr = String(e.message || e).slice(0, 160); if (e.bloqueo) { await vuelca(); J.error = e.message; return; } }
     J.hechos++; if (Object.keys(bufL).length >= 10) await vuelca(); await _mlPausa(cfg);
