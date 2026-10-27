@@ -13488,6 +13488,89 @@ async function _amRaster(forzar) {
 const _rsC = new Map();
 app.get("/mercado/airbnb/ambiente/raster/meta", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs(_RS_DIR + "meta.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, meta: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/airbnb/ambiente/raster/img", async (req, res) => { try { const ep = parseInt(req.query.ep, 10); if (!_GH12.includes(ep)) return res.status(400).end(); let b = _rsC.get(ep); if (!b) { b = await _amGetBin(`${_RS_DIR}E${ep}.png`); if (!b) return res.status(404).end(); if (_rsC.size > 14) _rsC.clear(); _rsC.set(ep, b); } res.set({ "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" }); res.send(b); } catch (e) { res.status(500).end(); } });
+// ═══ Mercado Libre Inmuebles (Extracción › Mercado Libre) ═══════════════════════════════════════════════════════════════════════════════════════════
+//   Paso 0 parámetros (tipos, clasificaciones, ubicaciones) · paso 1 lista (recorre las páginas de resultados) · paso 2 extraer (lee la ficha de cada seleccionada).
+//   A diferencia de Facebook, Mercado Libre sí responde al servidor: no hace falta marcador. Se leen las páginas con pausas aleatorias (modo cortés).
+//   Datos: mercado/mercadolibre.json { config, lista[], items{}, ejecuciones[] } · estado del proceso en mercado/mercadolibre_estado.json (Cloud Run puede atender cada petición en otra instancia).
+const ML = require("./mercadolibre");
+const _ML_OBJ = "mercado/mercadolibre.json", _ML_EST = "mercado/mercadolibre_estado.json";
+const _ML_CFG0 = { tipos: ["renta", "venta"], clases: ML.CLASES.map(c => c.id), ubicaciones: [{ nombre: "Saltillo, Coah.", estado: "coahuila", ciudad: "saltillo" }], pausaMin: 1.5, pausaMax: 3.5, maxPaginas: 42 };
+let _mlQ = Promise.resolve(), _mlJob = { running: false }, _mlSv = 0;
+const _mlVacio = () => ({ v: 1, config: Object.assign({}, _ML_CFG0), lista: [], items: {}, ejecuciones: [] });
+async function _mlDoc() { const { data } = await _bnReadGcs(_ML_OBJ); return data && data.lista ? data : _mlVacio(); }
+function _mlMutar(fn) {
+  const run = _mlQ.then(async () => { for (let i = 0; i < 7; i++) { const { data, gen } = await _bnReadGcs(_ML_OBJ), d = data && data.lista ? data : _mlVacio(); const out = fn(d); d.modificado = new Date().toISOString();
+      try { await _bnWriteGcs(_ML_OBJ, d, data ? gen : "0"); return out; } catch (e) { await new Promise(r => setTimeout(r, Math.min(8000, 900 * Math.pow(1.6, i)))); } }
+    throw new Error("No se pudo guardar (conflicto). Intenta de nuevo."); });
+  _mlQ = run.catch(() => {}); return run;
+}
+async function _mlEstadoGuarda(f) { if (!f && Date.now() - _mlSv < 5000) return; _mlSv = Date.now(); try { await _bnWriteGcs(_ML_EST, _mlJob, null); } catch (_) {} }
+async function _mlEstadoLee() { if (_mlJob.running) return _mlJob; try { const { data } = await _bnReadGcs(_ML_EST); if (data && data.inicio && (!_mlJob.inicio || data.inicio > _mlJob.inicio)) { if (data.running && Date.now() - Date.parse(data.upd || 0) > 240000) return Object.assign({}, data, { running: false, error: data.error || "Se interrumpió" }); return data; } } catch (_) {} return _mlJob; }
+const _mlSleep = ms => new Promise(r => setTimeout(r, ms)), _mlPausa = c => _mlSleep(1000 * (c.pausaMin + Math.random() * Math.max(0.2, c.pausaMax - c.pausaMin)));
+const _mlSan = c => {
+  const T = new Set(ML.TIPOS.map(x => x.id)), K = new Set(ML.CLASES.map(x => x.id)), n = (v, a, b, d) => { v = +v; return isFinite(v) ? Math.max(a, Math.min(b, v)) : d; };
+  const u = (Array.isArray(c.ubicaciones) ? c.ubicaciones : []).map(x => ML.parseUbicacion(x && x.nombre)).filter(x => !x.error).slice(0, 10);
+  const o = { tipos: (c.tipos || []).filter(x => T.has(x)), clases: (c.clases || []).filter(x => K.has(x)), ubicaciones: u, pausaMin: n(c.pausaMin, 0.8, 20, 1.5), pausaMax: n(c.pausaMax, 1, 40, 3.5), maxPaginas: Math.round(n(c.maxPaginas, 1, 42, 42)) }; if (o.pausaMax < o.pausaMin) o.pausaMax = o.pausaMin + 1; return o;
+};
+const _mlStats = d => { const act = d.lista.filter(x => !x.arch), c = e => act.filter(x => (x.estado || "pendiente") === e).length; return { total: d.lista.length, activas: act.length, seleccionadas: act.filter(x => x.sel).length, pendiente: c("pendiente"), ok: c("ok"), error: c("error"), no_disponible: c("no_disponible"), archivadas: d.lista.length - act.length }; };
+const _mlOk = (req, res) => { if (!_vOriginOk(req)) { res.status(403).json({ ok: false, error: "Origen no permitido" }); return false; } return true; };
+app.get("/mercado/mercadolibre", async (req, res) => { if (!_mlOk(req, res)) return; try { const d = await _mlDoc(); res.set("Cache-Control", "no-store"); res.json({ ok: true, config: d.config, lista: d.lista, items: d.items, stats: _mlStats(d), ejecuciones: (d.ejecuciones || []).slice(-15), clases: ML.CLASES.map(x => ({ id: x.id, nombre: x.nombre })), tipos: ML.TIPOS, job: await _mlEstadoLee() }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/mercadolibre/estado", async (req, res) => { if (!_mlOk(req, res)) return; res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, await _mlEstadoLee())); });
+app.post("/mercado/mercadolibre/config", async (req, res) => { if (!_mlOk(req, res)) return; try { const cfg = _mlSan((req.body || {}).config || {}); await _mlMutar(d => { d.config = cfg; }); res.json({ ok: true, config: cfg }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/mercadolibre/ubicacion", async (req, res) => {
+  if (!_mlOk(req, res)) return; const u = ML.parseUbicacion((req.body || {}).texto); if (u.error) return res.status(400).json({ ok: false, error: u.error });
+  try { const r = await ML.pedir(ML.rutaBusqueda({ tipo: "venta", estado: u.estado, ciudad: u.ciudad, pagina: 1 }), 2), b = r.status === 200 ? ML.parseBusqueda(r.html) : { total: 0, items: [] };
+    if (!b.items.length) return res.status(404).json({ ok: false, error: `Mercado Libre no muestra inmuebles en «${u.nombre}». Revisa la ortografía (Ciudad, Estado).` }); res.json({ ok: true, ubicacion: u, total: b.total }); } catch (e) { res.status(502).json({ ok: false, error: "No se pudo consultar Mercado Libre: " + e.message }); }
+});
+app.post("/mercado/mercadolibre/seleccion", async (req, res) => { if (!_mlOk(req, res)) return; const b = req.body || {}, ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(String)), v = !!b.sel; try { const n = await _mlMutar(d => { let k = 0; d.lista.forEach(x => { if (ids.has(x.id) && !x.arch && !!x.sel !== v) { x.sel = v; k++; } }); return k; }); res.json({ ok: true, cambiadas: n }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/mercadolibre/marcar", async (req, res) => { if (!_mlOk(req, res)) return; const b = req.body || {}, ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(String)), v = !!b.valor; if (b.campo !== "arch") return res.status(400).json({ ok: false, error: "Campo no válido" }); try { const n = await _mlMutar(d => { let k = 0; d.lista.forEach(x => { if (ids.has(x.id) && !!x.arch !== v) { x.arch = v; if (v) x.sel = false; k++; } }); return k; }); res.json({ ok: true, cambiadas: n }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/mercadolibre/detener", async (req, res) => { if (!_mlOk(req, res)) return; _mlJob.cancelar = true; try { const { data } = await _bnReadGcs(_ML_EST); if (data && data.running) { data.cancelar = true; await _bnWriteGcs(_ML_EST, data, null); } } catch (_) {} res.json({ ok: true }); });
+const _mlCancelado = async () => { if (_mlJob.cancelar) return true; try { const { data } = await _bnReadGcs(_ML_EST); if (data && data.running && data.cancelar && data.inicio === _mlJob.inicio) { _mlJob.cancelar = true; return true; } } catch (_) {} return false; };
+// Paso 1: recorre las páginas de resultados de cada combinación (ubicación × tipo × clasificación) y agrega a la lista las publicaciones nuevas.
+async function _mlBuscar(cfg) {
+  const J = _mlJob, rutas = [], K = new Map(ML.CLASES.map(c => [c.id, c])), usadas = new Set();
+  cfg.ubicaciones.forEach(u => { ["renta", "venta"].forEach(t => { if (!cfg.tipos.includes(t)) return; const vistas = new Set(); cfg.clases.forEach(cid => { const r = K.get(cid).ruta; if (vistas.has(r)) return; vistas.add(r); rutas.push({ u, tipo: t, clase: cid, ruta: r }); }); });
+    ["desarrollos", "remate"].forEach(t => { if (cfg.tipos.includes(t)) rutas.push({ u, tipo: t, clase: "", ruta: "" }); }); });
+  J.total = rutas.length; J.hechos = 0; J.nuevas = 0; J.leidas = 0; J.err = 0; const nuevas = []; const visto = new Map();
+  for (const r of rutas) {
+    if (await _mlCancelado()) break; J.paso = `${r.u.nombre} · ${ML.TIPOS.find(x => x.id === r.tipo).nombre}${r.clase ? " · " + K.get(r.clase).nombre : ""}`; J.upd = new Date().toISOString(); _mlEstadoGuarda();
+    for (let pg = 1; pg <= cfg.maxPaginas; pg++) {
+      if (await _mlCancelado()) break; let b; try { const x = await ML.pedir(ML.rutaBusqueda({ tipo: r.tipo, clase: r.clase, estado: r.u.estado, ciudad: r.u.ciudad, pagina: pg }), 3); if (x.status !== 200) break; b = ML.parseBusqueda(x.html); } catch (e) { J.err++; J.ultErr = String(e.message || e).slice(0, 160); if (e.bloqueo) { J.error = e.message; return; } break; }
+      if (!b.items.length) break; J.leidas += b.items.length; J.upd = new Date().toISOString(); _mlEstadoGuarda();
+      b.items.forEach(it => { const op = r.tipo === "renta" || /renta/i.test(it.headline) ? "renta" : /venta/i.test(it.headline) || r.tipo === "venta" ? "venta" : r.tipo, cond = /condominio/i.test(it.titulo + " " + it.headline), clase = r.clase === "casa" || r.clase === "casa-condominio" ? (cond ? "casa-condominio" : "casa") : r.clase;
+        if (r.clase && r.clase.startsWith("casa") && !cfg.clases.includes(clase)) return; const k = it.id; if (visto.has(k)) { if (r.tipo === "desarrollos" || r.tipo === "remate") visto.get(k).especial = r.tipo; return; }
+        const e = Object.assign({}, it, { op, clase: clase || "", ubic_q: r.u.nombre, especial: r.tipo === "desarrollos" || r.tipo === "remate" ? r.tipo : "" }); visto.set(k, e); nuevas.push(e); });
+      if (b.items.length < 48 || (b.total && pg * 48 >= b.total)) break; await _mlPausa(cfg);
+    }
+    J.hechos++; await _mlPausa(cfg);
+  }
+  const ahora = new Date().toISOString(); let agregadas = 0, actualizadas = 0;
+  await _mlMutar(d => { const ix = new Map(d.lista.map(x => [x.id, x])); nuevas.forEach(e => { const x = ix.get(e.id); if (x) { Object.assign(x, { titulo: e.titulo, precio: e.precio, moneda: e.moneda, headline: e.headline, atributos: e.atributos, recamaras: e.recamaras, banos: e.banos, m2: e.m2, ubicacion: e.ubicacion, thumb: e.thumb || x.thumb, visto: ahora }); if (e.especial) x.especial = e.especial; actualizadas++; } else { d.lista.push(Object.assign({}, e, { sel: false, arch: false, estado: "pendiente", n_extr: 0, alta: ahora, visto: ahora })); agregadas++; } });
+    d.ejecuciones = (d.ejecuciones || []).concat([{ tipo: "lista", at: ahora, leidas: J.leidas, nuevas: agregadas, actualizadas, rutas: rutas.length, errores: J.err }]).slice(-40); });
+  J.nuevas = agregadas; J.actualizadas = actualizadas;
+}
+// Paso 2: lee la ficha de cada publicación seleccionada. Éxito → se quita de la selección; error → se reintenta hasta 3 veces.
+async function _mlExtraer(cfg) {
+  const J = _mlJob, d0 = await _mlDoc(), cola = d0.lista.filter(x => x.sel && !x.arch && (x.estado !== "error" || (x.intentos || 0) < 3)).map(x => ({ id: x.id, url: x.url })); J.total = cola.length; J.hechos = 0; J.ok = 0; J.err = 0; J.no_disp = 0; let bufI = {}, bufL = {};
+  const vuelca = async () => { if (!Object.keys(bufL).length) return; const I = bufI, Ls = bufL; bufI = {}; bufL = {}; await _mlMutar(d => { Object.assign(d.items, I); d.lista.forEach(x => { const u = Ls[x.id]; if (u) Object.assign(x, u); }); }); };
+  for (const q of cola) {
+    if (await _mlCancelado()) break; J.paso = `Extrayendo ${J.hechos + 1} de ${cola.length}`; J.upd = new Date().toISOString(); _mlEstadoGuarda();
+    try { const r = await ML.pedir(q.url, 3); if (r.status === 404 || !r.html) { bufL[q.id] = { estado: "no_disponible", sel: false, ult_extr: new Date().toISOString() }; J.no_disp++; }
+      else { const f = ML.parseFicha(r.html, q.url); if (!f.id || (!f.titulo && !f.precio)) throw new Error("Ficha sin datos reconocibles"); f.descripcion = String(f.descripcion || "").slice(0, 5000); f.extraido = new Date().toISOString(); const prec = f.geoPrec != null ? (f.geoPrec >= 6 ? "punto" : "aprox") : ""; f.geoTipo = prec;
+        bufI[q.id] = f; bufL[q.id] = { estado: f.estado_pub === "no_disponible" ? "no_disponible" : "ok", sel: false, intentos: 0, n_extr: ((d0.lista.find(x => x.id === q.id) || {}).n_extr || 0) + 1, ult_extr: f.extraido, precio: f.precio != null ? f.precio : undefined, titulo: f.titulo || undefined }; J.ok++; } }
+    catch (e) { const pr = d0.lista.find(x => x.id === q.id) || {}; bufL[q.id] = { estado: "error", intentos: (pr.intentos || 0) + 1, error: String(e.message || e).slice(0, 160), ult_extr: new Date().toISOString() }; J.err++; J.ultErr = String(e.message || e).slice(0, 160); if (e.bloqueo) { await vuelca(); J.error = e.message; return; } }
+    J.hechos++; if (Object.keys(bufL).length >= 10) await vuelca(); await _mlPausa(cfg);
+  }
+  await vuelca(); const ahora = new Date().toISOString(); await _mlMutar(d => { d.ejecuciones = (d.ejecuciones || []).concat([{ tipo: "extraer", at: ahora, ok: J.ok, errores: J.err, no_disponibles: J.no_disp }]).slice(-40); });
+}
+async function _mlArranca(tipo, cfg) {
+  const otro = await _mlEstadoLee(); if (otro.running && Date.now() - Date.parse(otro.upd || 0) < 240000) { const e = new Error("Ya hay un proceso de Mercado Libre en curso"); e.codigo = 409; throw e; }
+  _mlJob = { running: true, tipo, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString(), total: 0, hechos: 0 }; await _mlEstadoGuarda(true); const t = setInterval(() => { _mlJob.upd = new Date().toISOString(); _mlEstadoGuarda(); }, 15000);
+  (tipo === "lista" ? _mlBuscar(cfg) : _mlExtraer(cfg)).catch(e => { _mlJob.error = String(e.message || e); console.warn("[mercadolibre]", e.message); }).finally(() => { clearInterval(t); _mlJob.running = false; _mlJob.fin = new Date().toISOString(); _mlJob.paso = _mlJob.error ? "Error" : _mlJob.cancelar ? "Detenido" : "Listo"; _mlEstadoGuarda(true); });
+}
+app.post("/mercado/mercadolibre/buscar", async (req, res) => { if (!_mlOk(req, res)) return; try { const d = await _mlDoc(), cfg = _mlSan(d.config || {}); if (!cfg.ubicaciones.length || !cfg.tipos.length || (!cfg.clases.length && !cfg.tipos.every(t => t === "desarrollos" || t === "remate"))) return res.status(400).json({ ok: false, error: "Elige al menos un tipo, una clasificación y una ubicación, y guarda los parámetros." }); await _mlArranca("lista", cfg); res.json({ ok: true }); } catch (e) { res.status(e.codigo || 500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/mercadolibre/extraer", async (req, res) => { if (!_mlOk(req, res)) return; try { const d = await _mlDoc(); if (!d.lista.some(x => x.sel && !x.arch)) return res.status(400).json({ ok: false, error: "Selecciona publicaciones en el paso 1." }); await _mlArranca("extraer", _mlSan(d.config || {})); res.json({ ok: true }); } catch (e) { res.status(e.codigo || 500).json({ ok: false, error: e.message }); } });
+
 function _amArranca(ids, forzar, fase) {
   _amJob = { running: true, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString(), total: 0, hechos: 0, ok: 0, err: 0 }; const t = setInterval(() => { _amJob.upd = new Date().toISOString(); _amEstadoGuarda(); }, 15000); _amEstadoGuarda(true);
   (async () => { if (!fase || fase === 1) await _amCorre(ids, forzar); if (!fase || fase === 2) await _amTerreno(ids, forzar); if (!fase || fase === 3) await _amCrecimiento(ids, forzar); if (fase === 4) await _amRaster(true); else if (!fase) await _amRaster(false); })().catch(e => { _amJob.error = String(e.message || e); console.warn("[ambiente]", e.message); }).finally(() => { clearInterval(t); _amJob.running = false; _amJob.fin = new Date().toISOString(); _amJob.paso = _amJob.error ? "Error" : "Listo"; _amEstadoGuarda(true); });
