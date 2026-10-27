@@ -76795,7 +76795,7 @@ function mcAloPintar_() {
   const w = document.getElementById('mc-sec-alo'); if (!w) return; if (MC.map && MC.map.m) mcMapaDestruye_(); mcAloCss_(); mcClCss_(); const A = mcAloData_(); document.removeEventListener('keydown', MC._alKd || (() => {})); const S = MC.al;
   if (A.rows.length < 1) { w.innerHTML = mcIsFb_() ? '<div class="mc-card mc-mu">Aún no hay publicaciones de ' + mcSrc_().n + ' extraídas. Ve a «' + mcSrc_().ext + '», selecciona publicaciones en el paso 1 y extráelas en el paso 2.</div>' : '<div class="mc-card mc-mu">Aún no hay alojamientos extraídos. Ve a «Extracción» y pulsa «Extraer / actualizar».</div>'; return; }
   const h = S.host && A.hosts.find(x => x.id === S.host), r = S.id && A.rows.find(x => x.id === S.id);
-  if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); mcAmFicha_(r.id); mcEnFicha_(r.id); mcPlFicha_(r.id); mcAloMapaDet_(r.id); return; }
+  if (r && h) { w.innerHTML = mcAloDetHtml_(h, r); mcAloFotosCargar_(r.id); mcClFicha_(r.id); mcAmFicha_(r.id); mcEnFicha_(r.id); mcMqFicha_(r.id); mcPlFicha_(r.id); mcAloMapaDet_(r.id); return; }
   w.innerHTML = `<div id="al-top"></div><div class="fs-lay ${S.flAb ? 'fs-on' : ''}" id="al-lay"><aside class="fs-side" id="al-flp"></aside><div id="al-body"></div></div>`; mcAloTopPinta_(); mcAloCuerpo_();
 }
 function mcAloCuerpo_() {
@@ -76928,8 +76928,16 @@ function mcAloDetHtml_(h, r) {
       ${i.descripcion ? `<div class="al-card w"><h5>📝 Descripción</h5><div class="al-tx">${esc(String(i.descripcion).trim())}</div></div>` : ''}
       <div class="al-card w"><h5>🌡️ Datos ambientales y de riesgo <small style="font-weight:600;color:#94a3b8">(Open-Meteo · OpenStreetMap)</small> <button type="button" class="al-chip" style="padding:3px 12px;font-size:12px;margin-left:8px" onclick="mcAmMapa_(MC.al.id,'alt')">🗺️ Mapa de la ciudad</button></h5><div id="al-am"><div class="al-sk" style="height:90px"></div></div></div>
       <div class="al-card w"><h5>🏙️ Análisis del entorno urbano <button type="button" class="en-q" onclick="mcEnAyuda_()" title="Glosario, metodología y radio de análisis" aria-label="Glosario y metodología">?</button></h5><div id="al-en"><div class="al-sk" style="height:90px"></div></div></div>
+      <div class="al-card w" id="al-mq" style="display:none"></div>
       <div class="al-card w"><h5>🏪 Negocios y establecimientos en 1 km <small style="font-weight:600;color:#94a3b8">(Google Places)</small></h5><div id="al-pl"><div class="al-sk" style="height:90px"></div></div></div>
     </div>`;
+}
+// Maqueta 3D del entorno: solo aparece si existe la escena maqueta/escenas/<id>.json
+async function mcMqFicha_(id) {
+  const w = document.getElementById('al-mq'); if (!w) return;
+  try { const r = await fetch(`maqueta/escenas/${encodeURIComponent(id)}.json`, { cache: 'no-cache' }); if (!r.ok) return; await r.json(); } catch (e) { return; }
+  if (!document.getElementById('al-mq')) return;
+  w.style.display = ''; w.innerHTML = `<h5>🧱 Maqueta 3D del entorno <small style="font-weight:600;color:#94a3b8">(reconstruida del análisis y las fotos de Street View)</small> <a class="al-chip" style="padding:3px 12px;font-size:12px;margin-left:8px;text-decoration:none" href="maqueta/entorno.html?id=${encodeURIComponent(id)}" target="_blank" rel="noopener">Abrir a pantalla completa ↗</a></h5><iframe src="maqueta/entorno.html?id=${encodeURIComponent(id)}&embed=1" style="width:100%;height:min(70vh,560px);border:0;border-radius:12px;background:#bdbdbd" loading="lazy" allow="fullscreen"></iframe>`;
 }
 // ── Galería ──
 async function mcAloFotosCargar_(id) {
