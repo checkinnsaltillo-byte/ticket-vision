@@ -13341,7 +13341,7 @@ function _amOsm(F, lat, lng) {
   return R;
 }
 async function _amGuardar(patch) {
-  for (let i = 0; i < 6; i++) { const { data, gen } = await _bnReadGcs(_AM_OBJ), d = data && data.d ? data : { v: 1, d: {} }; Object.keys(patch).forEach(k => { d.d[k] = Object.assign({}, d.d[k], patch[k]); }); d.upd = new Date().toISOString(); try { await _bnWriteGcs(_AM_OBJ, d, data ? gen : "0"); return; } catch (e) { if (!e.conflict && !e.retry) throw e; await _amSleep(700 * (i + 1)); } }
+  for (let i = 0; i < 6; i++) { let data, gen; try { ({ data, gen } = await _bnReadGcs(_AM_OBJ)); } catch (e) { console.warn("[ambiente] leer:", e.message); await _amSleep(1500 * (i + 1)); continue; } const d = data && data.d ? data : { v: 1, d: {} }; Object.keys(patch).forEach(k => { d.d[k] = Object.assign({}, d.d[k], patch[k]); }); d.upd = new Date().toISOString(); try { await _bnWriteGcs(_AM_OBJ, d, data ? gen : "0"); return; } catch (e) { console.warn("[ambiente] guardar:", e.message); await _amSleep(1500 * (i + 1)); } }
   throw new Error("No se pudo guardar el ambiente (conflicto)");
 }
 async function _amItems(ids) {
@@ -13420,16 +13420,55 @@ async function _amTerreno(ids, forzar) {
     if (Object.keys(buf).length >= 60) { const b = buf; buf = {}; await _amGuardar(b); } } };
   await Promise.all([trab(), trab(), trab(), trab()]); if (Object.keys(buf).length) await _amGuardar(buf);
 }
+// ── Fase 3: crecimiento de la mancha urbana (GHSL GHS-BUILT-S, superficie edificada a ~90 m, épocas 1975-2020) ──
+//    Cada época es una tesela de 10° (zip de ~12 MB, GeoTIFF dentro); se baja una vez por época y tesela, se calcula el % edificado en un radio de 1 km para todos los puntos de esa tesela y se descarta.
+const _GH_EP = [1975, 1990, 2000, 2010, 2020], _GH_R = 1000;
+const _ghTile = (lat, lng) => { const r = Math.floor((89.0996 - lat) / 10) + 1, c = Math.floor((lng + 180.0079) / 10) + 1; return `R${r}_C${c}`; };
+function _ghUnzipTif(buf) {
+  const zlib = require("zlib"); let e = buf.length - 22; while (e > 0 && buf.readUInt32LE(e) !== 0x06054b50) e--; if (e <= 0) throw new Error("zip inválido");
+  const n = buf.readUInt16LE(e + 10); let o = buf.readUInt32LE(e + 16);
+  for (let i = 0; i < n; i++) { const meth = buf.readUInt16LE(o + 10), csz = buf.readUInt32LE(o + 20), nl = buf.readUInt16LE(o + 28), el = buf.readUInt16LE(o + 30), cl = buf.readUInt16LE(o + 32), lo = buf.readUInt32LE(o + 42), name = buf.toString("utf8", o + 46, o + 46 + nl);
+    if (/\.tif$/i.test(name)) { const ds = lo + 30 + buf.readUInt16LE(lo + 26) + buf.readUInt16LE(lo + 28), d = buf.subarray(ds, ds + csz); return meth === 0 ? d : zlib.inflateRawSync(d); } o += 46 + nl + el + cl; }
+  throw new Error("el zip no trae .tif");
+}
+async function _ghImg(ep, tid) {
+  const GT = require("geotiff"); let buf, ult; for (let i = 0; i < 3; i++) { try { const r = await fetch(`https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_BUILT_S_GLOBE_R2023A/GHS_BUILT_S_E${ep}_GLOBE_R2023A_4326_3ss/V1-0/tiles/GHS_BUILT_S_E${ep}_GLOBE_R2023A_4326_3ss_V1_0_${tid}.zip`, { signal: AbortSignal.timeout(240000) }); if (!r.ok) throw new Error("HTTP " + r.status); buf = Buffer.from(await r.arrayBuffer()); break; } catch (e) { ult = e; await _amSleep(3000); } }
+  if (!buf) throw ult || new Error("sin descarga GHSL");
+  const tif = _ghUnzipTif(buf), ab = tif.buffer.slice(tif.byteOffset, tif.byteOffset + tif.byteLength); return (await GT.fromArrayBuffer(ab)).getImage();
+}
+async function _ghPct(img, lat, lng) {
+  const [w, s, e, n] = img.getBoundingBox(), W = img.getWidth(), H = img.getHeight(), px = (lng - w) / (e - w) * W, py = (n - lat) / (n - s) * H, mx = (e - w) / W * 111320 * Math.cos(lat * Math.PI / 180), my = (n - s) / H * 110540, rx = Math.ceil(_GH_R / mx), ry = Math.ceil(_GH_R / my);
+  const x0 = Math.max(0, Math.round(px) - rx), x1 = Math.min(W, Math.round(px) + rx + 1), y0 = Math.max(0, Math.round(py) - ry), y1 = Math.min(H, Math.round(py) + ry + 1); if (x1 <= x0 || y1 <= y0) return null;
+  const A = (await img.readRasters({ window: [x0, y0, x1, y1], samples: [0] }))[0], w2 = x1 - x0; let sum = 0, cnt = 0;
+  for (let j = 0; j < y1 - y0; j++) for (let i = 0; i < w2; i++) { if (Math.hypot((x0 + i - px) * mx, (y0 + j - py) * my) > _GH_R) continue; const v = A[j * w2 + i]; sum += v > 0 && v < 20000 ? v : 0; cnt++; }
+  return cnt ? Math.round(sum / (cnt * mx * my) * 1000) / 10 : null;
+}
+function _ghEtapa(S) {
+  const a = S[2020], b = S[2000], c = S[1990]; if (a == null) return null; const dd = a - (b != null ? b : (c != null ? c : a)), dl = a - (S[1975] != null ? S[1975] : a);
+  if (a < 2) return dl >= 1 ? "Frente de expansión reciente" : "Sin urbanizar"; if (dd >= 6) return "En expansión rápida"; if (a >= 25 && dd < 3) return "Consolidada"; if (dd >= 1.5) return "En crecimiento"; return a >= 10 ? "Urbana estable" : "Periurbana de baja densidad";
+}
+async function _amCrecimiento(ids, forzar) {
+  const J = _amJob, { data } = await _bnReadGcs(_AM_OBJ), ya = (data && data.d) || {}; J.paso = "Crecimiento urbano: buscando coordenadas";
+  let L = (await _amItems(ids)).filter(x => !x.aprox); L = L.filter(x => !(ya[x.id] && ya[x.id].crec)); J.total3 = L.length; J.hechos3 = 0; J.ok3 = 0; J.err3 = 0; if (!L.length) return; // el historial no cambia: no se repite si ya existe
+  const G = new Map(); L.forEach(x => { const t = _ghTile(x.lat, x.lng); if (!G.has(t)) G.set(t, []); G.get(t).push(x); }); let k = 0;
+  for (const [tid, xs] of G) {
+    k++; const S = new Map(xs.map(x => [x.id, {}])); let err = "";
+    for (const ep of _GH_EP) { J.paso = `Crecimiento urbano: zona ${k}/${G.size}, año ${ep}`; J.upd = new Date().toISOString(); _amEstadoGuarda();
+      try { const img = await _ghImg(ep, tid); for (const x of xs) { try { S.get(x.id)[ep] = await _ghPct(img, x.lat, x.lng); } catch (e) { err = String(e.message || e).slice(0, 80); } } } catch (e) { err = String(e.message || e).slice(0, 80); } }
+    const patch = {}; xs.forEach(x => { const s0 = S.get(x.id), n = _GH_EP.filter(ep => s0[ep] != null).length; if (n >= 4) { patch[x.id] = { crec: { serie: s0, radio: _GH_R, etapa: _ghEtapa(s0), fuente: "GHSL GHS-BUILT-S R2023A (≈ 90 m)", at: new Date().toISOString() } }; J.ok3++; } else { patch[x.id] = { errC: err || "incompleto" }; J.err3++; } J.hechos3++; });
+    const ks = Object.keys(patch); for (let i = 0; i < ks.length; i += 100) await _amGuardar(Object.fromEntries(ks.slice(i, i + 100).map(k => [k, patch[k]])));
+  }
+}
 function _amArranca(ids, forzar, fase) {
   _amJob = { running: true, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString(), total: 0, hechos: 0, ok: 0, err: 0 }; const t = setInterval(() => { _amJob.upd = new Date().toISOString(); _amEstadoGuarda(); }, 15000); _amEstadoGuarda(true);
-  (async () => { if (fase !== 2) await _amCorre(ids, forzar); if (fase !== 1) await _amTerreno(ids, forzar); })().catch(e => { _amJob.error = String(e.message || e); console.warn("[ambiente]", e.message); }).finally(() => { clearInterval(t); _amJob.running = false; _amJob.fin = new Date().toISOString(); _amJob.paso = _amJob.error ? "Error" : "Listo"; _amEstadoGuarda(true); });
+  (async () => { if (!fase || fase === 1) await _amCorre(ids, forzar); if (!fase || fase === 2) await _amTerreno(ids, forzar); if (!fase || fase === 3) await _amCrecimiento(ids, forzar); })().catch(e => { _amJob.error = String(e.message || e); console.warn("[ambiente]", e.message); }).finally(() => { clearInterval(t); _amJob.running = false; _amJob.fin = new Date().toISOString(); _amJob.paso = _amJob.error ? "Error" : "Listo"; _amEstadoGuarda(true); });
 }
 app.get("/mercado/airbnb/ambiente/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); let J = _amJob;
   if (!J.running) { try { const { data } = await _bnReadGcs("mercado/ambiente_estado.json"); if (data && data.inicio && (!J.inicio || data.inicio > J.inicio)) { J = data; if (J.running && Date.now() - Date.parse(J.upd || 0) > 240000) J = Object.assign({}, J, { running: false, error: J.error || "Se interrumpió" }); } } catch (_) {} } // Cloud Run puede atender cada petición en otra instancia: el estado vive también en Cloud Storage
   res.json(Object.assign({ ok: true }, J));
 });
-app.get("/mercado/airbnb/ambiente/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs(_AM_OBJ), o = {}; Object.values((data && data.d) || {}).forEach(r => { o[r.id] = { at: r.at, ok: !!r.ok, t2: !!(r.terreno && r.suelo), alt: r.alt, t: r.clima && r.clima.tMedia, aqi: r.aire && r.aire.aqi }; }); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: o }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/airbnb/ambiente/indice", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs(_AM_OBJ), o = {}; Object.values((data && data.d) || {}).forEach(r => { o[r.id] = { at: r.at, ok: !!r.ok, t2: !!(r.terreno && r.suelo), t3: !!r.crec, alt: r.alt, t: r.clima && r.clima.tMedia, aqi: r.aire && r.aire.aqi }; }); res.set("Cache-Control", "no-store"); res.json({ ok: true, indice: o }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/airbnb/ambiente/dato", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(_AM_OBJ); res.set("Cache-Control", "no-store"); res.json({ ok: true, ambiente: (data && data.d && data.d[id]) || null, cats: _AM_CATS }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.post("/mercado/airbnb/ambiente/calcular", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });

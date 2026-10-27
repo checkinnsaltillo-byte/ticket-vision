@@ -76553,8 +76553,8 @@ function mcAloCss_() {
 
   .al-pl{display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}.al-am{display:inline-block;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}
   .al-en{display:inline-block;background:#e0f2fe;color:#075985;border:1px solid #bae6fd;border-radius:99px;padding:1px 9px;font-size:11.5px;font-weight:800}
-  .am-ks{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}.am-k{flex:1 1 150px;min-width:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}.am-kh{display:flex;align-items:center;gap:8px}.am-kv svg{width:56px;height:auto}.am-kv{flex:none;line-height:0}.am-kt small{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b}.am-kt b{display:block;font-size:22px;font-weight:900;letter-spacing:-.02em;color:#0f172a;margin:2px 0}.am-kt em{display:block;font-style:normal;font-size:12px;color:#64748b;line-height:1.45}
-  .am-kr{flex:2 1 270px;flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px}.am-kr .am-bars{flex:1 1 110px;margin:0;height:76px}.am-sb{flex:1 1 190px;display:flex;flex-direction:column;gap:5px}.am-sr{display:grid;grid-template-columns:82px 1fr 46px;white-space:nowrap;align-items:center;gap:6px;font-size:11.5px;color:#475569}.am-sr>div{height:9px;border-radius:99px;background:#e5e7eb;overflow:hidden}.am-sr i{display:block;height:100%;border-radius:99px}.am-sr b{text-align:right;color:#0f172a;font-variant-numeric:tabular-nums}
+  .am-ks{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}.am-k{flex:1 1 128px;min-width:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}.am-kh{display:flex;align-items:center;gap:8px}.am-kv svg{width:56px;height:auto}.am-kv{flex:none;line-height:0}.am-kt small{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b}.am-kt b{display:block;font-size:22px;font-weight:900;letter-spacing:-.02em;color:#0f172a;margin:2px 0}.am-kt em{display:block;font-style:normal;font-size:12px;color:#64748b;line-height:1.45}
+  .am-kr{flex:2 1 228px;flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px}.am-kr .am-bars{flex:1 1 90px;margin:0;height:76px}.am-sb{flex:1 1 150px;display:flex;flex-direction:column;gap:5px}.am-sr{display:grid;grid-template-columns:82px 1fr 46px;white-space:nowrap;align-items:center;gap:6px;font-size:11.5px;color:#475569}.am-sr>div{height:9px;border-radius:99px;background:#e5e7eb;overflow:hidden}.am-sr i{display:block;height:100%;border-radius:99px}.am-sr b{text-align:right;color:#0f172a;font-variant-numeric:tabular-nums}
   .am-k .am-bars{margin:auto 0 0;height:64px}.am-aqb{display:flex;position:relative;height:9px;border-radius:99px;overflow:visible}.am-aqb i{display:block;height:9px}.am-aqb i:first-child{border-radius:99px 0 0 99px}.am-aqb i:nth-child(5){border-radius:0 99px 99px 0}.am-aqb u{position:absolute;top:-4px;width:3px;height:17px;background:#0f172a;border-radius:2px;transform:translateX(-50%);text-decoration:none}.am-aql{display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:3px}.am-aqi{margin-top:auto}
   .am-pie{width:88px;height:88px;border-radius:50%;box-shadow:0 0 0 3px #fff,0 0 0 4px #e2e8f0}
   .am-sbar{display:flex;height:11px;border-radius:99px;overflow:hidden;margin-top:auto;box-shadow:inset 0 0 0 1px #e2e8f0}.am-sbar i{display:block;height:100%}.am-sleg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:#475569;margin-top:6px}.am-sleg span{display:inline-flex;align-items:center;gap:5px}.am-sleg i{width:9px;height:9px;border-radius:3px;display:inline-block}
@@ -77404,7 +77404,13 @@ function mcAmTerrHtml_(o) {
     const bars = `<div class="am-sb">${ks.slice(0, 6).map(k => `<div class="am-sr"><span>${nm(k)[0]}</span><div><i style="width:${Math.max(1.5, w.p[k])}%;background:${nm(k)[1]}"></i></div><b>${w.p[k]} %</b></div>`).join('')}</div>`;
     c2 = `<div class="am-k am-kr"><div class="am-kh"><div class="am-kt"><small>🌳 Cobertura del suelo</small><b>${esc(w.domTxt)}</b><em>Dentro de ${w.radio} m · vegetación ${w.verde} %<br>ESA WorldCover ${w.año} (10 m)</em></div></div>${bars}</div>`;
   }
-  return { cards: c1 + c2, hint: '' };
+  let c3 = '';
+  if (o.crec && o.crec.serie) {
+    const S = o.crec.serie, eps = [1975, 1990, 2000, 2010, 2020], v = eps.map(e => S[e]), mx = Math.max(1, ...v.filter(x => x != null)), a = S[2020], b = S[1990], d = a != null && b != null ? Math.round((a - b) * 10) / 10 : null;
+    const bars = `<div class="am-bars" title="Superficie edificada (% del área en 1 km) · GHSL">${eps.map((e, i) => `<div><i style="height:${v[i] == null ? 0 : Math.round(v[i] / mx * 100)}%;background:linear-gradient(#fb923c,#ea580c)" title="${e}: ${v[i] ?? '—'} %"></i><span>${String(e).slice(2)}</span></div>`).join('')}</div>`;
+    c3 = `<div class="am-k am-kr"><div class="am-kh"><div class="am-kt"><small>🏘️ Crecimiento urbano</small><b>${a != null ? a + ' %' : '—'}</b><em>edificado en 1 km (2020)<br>${d != null ? `<span style="color:${d >= 3 ? '#ea580c' : '#64748b'};font-weight:700">${d >= 0 ? '+' : ''}${d} pts desde 1990</span>` : ''}${o.crec.etapa ? `<br>${esc(o.crec.etapa)}` : ''}</em></div></div>${bars}</div>`;
+  }
+  return { cards: c1 + c2 + c3, hint: '' };
 }
 async function mcAmFicha_(id) {
   const w = document.getElementById('al-am'); if (!w) return; if (MC.ctx === 'fb' && (MC.items[id] || {}).lat == null) { w.innerHTML = '<div class="mc-mu">Esta publicación no tiene coordenada.</div>'; return; }
@@ -77427,7 +77433,7 @@ window.mcAmTodos_ = async function () {
     const st = await fetch(`${BACKEND}/mercado/airbnb/ambiente/estado`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({}));
     if (st.running) { mcAmPoll_(); return; }
     const ix = await fetch(`${BACKEND}/mercado/airbnb/ambiente/indice`, { cache: 'no-store' }).then(r => r.json()); MC.am.ix = ix.indice || {};
-    const pend = ids.filter(id => { const x = MC.am.ix[id], i = MC.items[id] || {}; return !(x && x.ok && (x.t2 || i.geoTipo === 'circulo')); });
+    const pend = ids.filter(id => { const x = MC.am.ix[id], i = MC.items[id] || {}; return !(x && x.ok && ((x.t2 && x.t3) || i.geoTipo === 'circulo')); });
     if (!pend.length) { alert(`Las ${ids.length} coordenadas de esta sección ya tienen datos ambientales.`); return; }
     if (!confirm(`Se calcularán los datos ambientales de ${pend.length} coordenadas (de ${ids.length}). Es gratis y sin llaves; tarda unos ${Math.max(1, Math.round(pend.length * 3.2 / 60))} minutos y sigue aunque cierres la pantalla. ¿Continuar?`)) return;
     if (b) b.textContent = '⏳ Iniciando…';
