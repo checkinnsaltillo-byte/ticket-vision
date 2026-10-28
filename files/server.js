@@ -13475,6 +13475,23 @@ app.get("/mercado/maqueta/modelo", async (req, res) => {
     if (info) { const j = await r.json(); return res.json({ ok: true, modelo: { bytes: +j.size, at: j.updated } }); }
     res.set({ "Content-Type": "model/gltf-binary", "Content-Disposition": `attachment; filename="maqueta-${id}.glb"`, "Cache-Control": "private, max-age=300" }); res.send(Buffer.from(await r.arrayBuffer())); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Fricción de accesibilidad (modelo de red): red vial de OpenStreetMap alrededor de la propiedad, semáforos y anclas (hospitales, centros comerciales, universidades…) para calcular en el navegador tiempos de viaje, deformación espacial y dominancia tipo Voronoi.
+async function _mqFriccion(id, R) {
+  const ck = `mercado/maqueta/friccion/${id}_${R}.json`; try { const { data } = await _bnReadGcs(ck); if (data && data.roads && Date.now() - Date.parse(data.at || 0) < 30 * 864e5) return data; } catch (_) {}
+  const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng), A = `(around:${R},${lat},${lng})`;
+  const q = `[out:json][timeout:90];(way${A}[highway~"^(motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];way(around:900,${lat},${lng})[highway~"^(residential|unclassified|living_street)$"];node${A}[highway=traffic_signals];nwr${A}[amenity~"^(hospital|university|townhall|marketplace)$"];nwr${A}[shop~"^(mall|department_store|supermarket)$"];nwr${A}[leisure=stadium];);out tags geom;`;
+  let j, ult; for (let ronda = 0; ronda < 3 && !j; ronda++) for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(100000) }, 1); break; } catch (e) { ult = e; } if (!j) await _amSleep(4000); }
+  if (!j) throw ult || new Error("Overpass sin respuesta");
+  const roads = [], sem = [], an = []; const PRI = ["hospital", "centro_comercial", "universidad", "gobierno", "estadio", "mercado", "supermercado"];
+  (j.elements || []).forEach(e => { const t = e.tags || {};
+    if (e.type === "node" && t.highway === "traffic_signals") { sem.push(P.xy(e.lat, e.lon)); return; }
+    if (t.highway) { const g = (e.geometry || []).filter(q => q && q.lat != null).map(q => P.xy(q.lat, q.lon)); if (g.length < 2) return; roads.push({ h: t.highway, o: t.oneway === "yes" ? 1 : 0, s: t.maxspeed ? parseInt(t.maxspeed, 10) || 0 : 0, g }); return; }
+    const c = e.type === "node" ? { lat: e.lat, lon: e.lon } : e.center || (e.geometry && e.geometry[0] ? { lat: e.geometry[0].lat, lon: e.geometry[0].lon } : null); if (!c) return;
+    const ty = t.amenity === "hospital" ? "hospital" : t.shop === "mall" || t.shop === "department_store" ? "centro_comercial" : t.shop === "supermarket" ? "supermercado" : t.amenity === "university" ? "universidad" : t.amenity === "townhall" ? "gobierno" : t.leisure === "stadium" ? "estadio" : t.amenity === "marketplace" ? "mercado" : null; if (!ty || !t.name) return; const p = P.xy(c.lat, c.lon); if (an.some(a => a.t === ty && Math.hypot(a.x - p[0], a.y - p[1]) < 150)) return; an.push({ t: ty, n: t.name.slice(0, 40), x: p[0], y: p[1] }); });
+  an.sort((a, b) => PRI.indexOf(a.t) - PRI.indexOf(b.t) || Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+  const out = { id, at: new Date().toISOString(), lat, lng, radio: R, roads, sem, anclas: an.slice(0, 14) }; try { await _bnWriteGcs(ck, out, null); } catch (_) {} return out;
+}
+app.get("/mercado/maqueta/friccion", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), R = Math.max(1000, Math.min(5000, parseInt(req.query.radio, 10) || 3000)); if (!id) return res.status(400).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json({ ok: true, f: await _mqFriccion(id, R) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/maqueta/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _mqJob)); });
 app.post("/mercado/maqueta/generar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
