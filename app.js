@@ -76935,7 +76935,7 @@ function mcAloDetHtml_(h, r) {
 const MQ_BOX = 'border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff', MQ_INP = 'width:78px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;font-weight:700';
 function mcFtHtml_(id, set) {
   const R = set ? set.radio : 200, NF = set ? set.fotos : 10, NC = set ? set.frente : 4, n = set ? set.tomas.length : 0, fe = set ? new Date(set.at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '';
-  const th = set ? set.tomas.slice(0, 24).map(t => `<img loading="lazy" referrerpolicy="no-referrer" src="${BACKEND}${t.u}&s=160" title="${t.cen ? 'Frente a la propiedad · ' : ''}rumbo ${t.h}° · a ${t.dist || 0} m" style="width:64px;height:64px;object-fit:cover;border-radius:8px;${t.cen ? 'border:2px solid #0f172a' : 'border:1px solid #e2e8f0'}">`).join('') + (n > 24 ? `<span class="mc-mu" style="align-self:center">+${n - 24} más</span>` : '') : '';
+  MC.ft = { tomas: set ? set.tomas : [], k: 0 }; const th = '';
   return `<div style="${MQ_BOX}"><div style="font-weight:800;color:#0f172a">1 · 📸 Fotos de Street View <small style="font-weight:600;color:#94a3b8">(paso previo: las mismas fotos se usan en el análisis y en la maqueta 3D)</small></div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:8px 0">
       <label style="font-size:12px;color:#475569;font-weight:700">Radio (m)<br><input id="ft-r" type="number" min="50" max="600" step="10" value="${R}" style="${MQ_INP}"></label>
@@ -76943,8 +76943,26 @@ function mcFtHtml_(id, set) {
       <label style="font-size:12px;color:#475569;font-weight:700">Fotos frente a la propiedad<br><input id="ft-c" type="number" min="0" max="12" step="1" value="${NC}" style="${MQ_INP}"></label>
       <button type="button" class="al-btn" id="ft-go" onclick="mcFtCorre_('${esc(id)}')">${set ? '🔄 Volver a descargar fotos' : '📥 Descargar fotos'}</button>
       <span id="ft-st" class="mc-mu" style="font-size:12px;flex:1;min-width:200px">${set ? `✅ ${n} fotos seleccionadas (${set.frente} frente a la propiedad + ${set.fotos} del entorno) a ≤ ${set.radio} m · ${fe}` : 'Define los parámetros y descarga las fotos. Seleccionar las fotos no tiene costo; cada uso (análisis o maqueta) pide las imágenes a Google (≈ $0.007 c/u).'}</span></div>
-    ${set ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${th}</div>` : ''}</div>`;
+    ${set ? mcFtGalHtml_() : ''}</div>`;
 }
+// Reel de fotos: foto grande (hasta 640 px) con flechas y, debajo, el álbum de miniaturas
+function mcFtGalHtml_() {
+  const T = MC.ft.tomas; if (!T.length) return '';
+  return `<div id="ft-gal" tabindex="0" style="margin-top:6px;outline:none"><div style="position:relative;max-width:640px;margin:0 auto;background:#0f172a;border-radius:12px;overflow:hidden;line-height:0">
+      <a id="ft-lnk" href="#" target="_blank" rel="noopener" title="Abrir la foto original"><img id="ft-im" referrerpolicy="no-referrer" alt="" style="width:100%;aspect-ratio:1/1;object-fit:contain;display:block;background:#0f172a"></a>
+      <button type="button" onclick="mcFtNav_(-1)" aria-label="Anterior" style="all:unset;cursor:pointer;position:absolute;left:8px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:rgba(15,23,42,.65);color:#fff;font-size:24px;text-align:center;line-height:36px">‹</button>
+      <button type="button" onclick="mcFtNav_(1)" aria-label="Siguiente" style="all:unset;cursor:pointer;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:rgba(15,23,42,.65);color:#fff;font-size:24px;text-align:center;line-height:36px">›</button>
+      <div id="ft-cap" style="position:absolute;left:0;right:0;bottom:0;padding:8px 12px;background:linear-gradient(transparent,rgba(15,23,42,.85));color:#fff;font-size:12px;font-weight:600;line-height:1.35"></div></div>
+    <div id="ft-th" style="display:flex;gap:5px;overflow-x:auto;padding:8px 2px 2px;margin-top:4px">${T.map((t, i) => `<button type="button" onclick="mcFtGo_(${i})" style="all:unset;cursor:pointer;flex:0 0 auto;line-height:0"><img loading="lazy" referrerpolicy="no-referrer" src="${BACKEND}${t.u}&s=120" title="${t.cen ? 'Frente a la propiedad · ' : ''}rumbo ${t.h}° · a ${t.dist || 0} m" style="width:46px;height:46px;object-fit:cover;border-radius:6px;border:2px solid transparent;opacity:.75"></button>`).join('')}</div></div>`;
+}
+window.mcFtGo_ = function (k) {
+  const T = MC.ft.tomas; if (!T.length) return; MC.ft.k = (k + T.length) % T.length; const t = T[MC.ft.k], im = document.getElementById('ft-im'); if (!im) return;
+  im.src = `${BACKEND}${t.u}&s=640`; const a = document.getElementById('ft-lnk'); if (a) a.href = `${BACKEND}${t.u}&s=640`;
+  const cap = document.getElementById('ft-cap'); if (cap) cap.innerHTML = `<span style="background:${t.cen ? '#0f172a' : 'rgba(255,255,255,.2)'};border-radius:6px;padding:1px 7px;margin-right:6px">${t.cen ? '🏠 Frente a la propiedad' : '🛣️ Entorno'}</span>Foto ${MC.ft.k + 1} de ${T.length} · rumbo ${t.h}° · a ${t.dist || 0} m${t.date ? ' · ' + esc(t.date) : ''}`;
+  document.querySelectorAll('#ft-th img').forEach((x, i) => { const on = i === MC.ft.k; x.style.borderColor = on ? '#dc2626' : 'transparent'; x.style.opacity = on ? 1 : .75; if (on) { const c = document.getElementById('ft-th'); if (c) c.scrollLeft = x.offsetLeft - c.clientWidth / 2 + x.clientWidth / 2; } });
+};
+window.mcFtNav_ = d => mcFtGo_(MC.ft.k + d);
+if (!window._ftKd) { window._ftKd = true; document.addEventListener('keydown', ev => { const g = document.getElementById('ft-gal'); if (!g || !g.contains(document.activeElement) || /input|textarea|select/i.test(ev.target.tagName)) return; if (ev.key === 'ArrowRight') { mcFtNav_(1); ev.preventDefault(); } else if (ev.key === 'ArrowLeft') { mcFtNav_(-1); ev.preventDefault(); } }); }
 window.mcFtCorre_ = async function (id) {
   const b = document.getElementById('ft-go'), st = document.getElementById('ft-st'), r = +document.getElementById('ft-r').value, f = +document.getElementById('ft-f').value, c = +document.getElementById('ft-c').value; if (!b) return;
   if (!(r >= 50 && r <= 600)) { st.textContent = 'El radio debe estar entre 50 y 600 m.'; return; } if (!(f >= 0 && f <= 60) || !(c >= 0 && c <= 12) || f + c < 4) { st.textContent = 'Fotos del entorno 0–60, frente a la propiedad 0–12 y al menos 4 en total.'; return; }
@@ -77629,7 +77647,7 @@ async function mcEnFicha_(id) {
     let paso2; if (ent) paso2 = (obs ? '<div class="mc-mu" style="margin-bottom:8px;color:#b45309;font-weight:700">⚠️ Las fotos del paso 1 cambiaron después de este análisis: vuelve a analizar para usar las nuevas.</div>' : '') + mcEnHtml_(ent) + `<div style="margin-top:10px"><button type="button" class="cl-bt" onclick="mcEnCorre_('${esc(id)}')" ${!set || (MC.en.job && MC.en.job.running) ? 'disabled' : ''}>🔄 Volver a analizar con las fotos del paso 1</button></div>`;
     else { const n = set ? Math.min(40, set.tomas.length) : 0, c = n * 0.007 + 0.14; paso2 = `<div class="mc-mu" style="padding:4px 0">${mcIsFb_() ? 'Esta publicación' : 'Este alojamiento'} aún no tiene análisis del entorno urbano.</div><div style="margin-top:8px"><button type="button" class="cl-bt" onclick="mcEnCorre_('${esc(id)}')" ${!set || it.lat == null || (MC.en.job && MC.en.job.running) ? 'disabled' : ''}>🏙️ Analizar entorno con IA${set ? ` (≈ $${c.toFixed(2)})` : ''}</button> <span class="mc-mu" style="font-size:11.5px">${set ? `Usa las ${n} fotos del paso 1, las califica con IA y guarda solo los puntajes.` : 'Primero descarga las fotos (paso 1).'}${it.lat == null ? ' Este alojamiento no tiene coordenadas.' : ''}</span></div>`; }
     w2.innerHTML = mcFtHtml_(id, set) + `<div style="${MQ_BOX}"><div style="font-weight:800;color:#0f172a;margin-bottom:6px">2 · 🏙️ Análisis del entorno urbano (IA)</div>${paso2}</div><div id="al-mq"></div>`;
-    mcMqFicha_(id, set);
+    mcMqFicha_(id, set); if (set) mcFtGo_(0);
   } catch (e) { const w2 = document.getElementById('al-en'); if (w2) w2.innerHTML = `<div class="mc-err">No se pudo leer el análisis del entorno: ${esc(e.message || e)}</div>`; }
 }
 window.mcEnCorre_ = async function (id) {
