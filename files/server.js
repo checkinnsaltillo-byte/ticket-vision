@@ -13503,6 +13503,88 @@ async function _mqFriccion(id, cfg) {
 app.get("/mercado/maqueta/friccion", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json({ ok: true, f: await _mqFriccion(id, await _mqVialLee(id)) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/maqueta/vial", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json({ ok: true, cfg: await _mqVialLee(id) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.post("/mercado/maqueta/vial", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); const cfg = _mqVialNorm(b); await _bnWriteGcs(_mqVialObj(id), cfg, null); res.json({ ok: true, cfg }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+// ───────── Tráfico de las vialidades principales (Google Routes, tráfico típico por día y hora) ─────────
+// Vialidades motorway/trunk/primary/secondary/tertiary dentro del «Radio de vialidades principales» → un tramo de N m por vialidad (A→B en el sentido de la vía; doble sentido = A→B y B→A)
+// → una consulta a Google Routes (TRAFFIC_AWARE_OPTIMAL) por día y hora → matriz día×hora de duración / duración sin tráfico / distancia. Resultado y avance en GCS (mercado/trafico/*).
+const _TR_DEF = { tramo: 200, h0: 7, h1: 21, paso: 1, dias: [1, 2, 3, 4, 5, 6, 0], maxVias: 6 };
+const _TR_PRECIO = 10 / 1000; // USD por consulta (Routes · Compute Routes Pro, tráfico en tiempo/predicción); estimado
+const _trNorm = c => { c = c || {}; const n = (v, lo, hi, d) => { v = Math.round(Number(v)); return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; }; const h0 = n(c.h0, 0, 23, _TR_DEF.h0), h1 = Math.max(h0, n(c.h1, 0, 23, _TR_DEF.h1)); const dias = (Array.isArray(c.dias) ? c.dias : _TR_DEF.dias).map(Number).filter(d => d >= 0 && d <= 6).filter((d, i, a) => a.indexOf(d) === i); return { tramo: n(c.tramo, 50, 1000, _TR_DEF.tramo), h0, h1, paso: n(c.paso, 1, 6, _TR_DEF.paso), dias: dias.length ? dias : _TR_DEF.dias, maxVias: n(c.maxVias, 1, 12, _TR_DEF.maxVias) }; };
+const _trHoras = c => { const L = []; for (let h = c.h0; h <= c.h1; h += c.paso) L.push(h); return L; };
+const _trObj = id => `mercado/trafico/${id}.json`, _trEstObj = id => `mercado/trafico/estado/${id}.json`, _trViasObj = (id, R, cl) => `mercado/trafico/vias/${id}_${R}_${cl}.json`;
+const _trTz = lng => lng < -114 ? -8 : lng < -108 ? -7 : lng > -88.6 ? -5 : -6;
+let _trJob = { running: false };
+async function _trVias(id, vial, tramo, maxVias) {
+  const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng), R = vial.R;
+  const cls = vial.cl.filter(x => _MQ_VIAL_PRI.includes(x)); if (!cls.length) throw new Error("Elige al menos una clase principal (autopista, troncal, primaria, secundaria o terciaria) en «Red vial»");
+  const ck = _trViasObj(id, R, cls.map(x => x.slice(0, 3)).sort().join("")); let ways = null; try { const { data } = await _bnReadGcs(ck); if (data && data.ways && Date.now() - Date.parse(data.at || 0) < 30 * 864e5) ways = data.ways; } catch (_) {}
+  if (!ways) {
+    const q = `[out:json][timeout:90];way(around:${R},${lat},${lng})[highway~"^(${cls.join("|")})$"];out tags geom;`; let j, ult;
+    for (let ronda = 0; ronda < 3 && !j; ronda++) for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(100000) }, 1); break; } catch (e) { ult = e; } if (!j) await _amSleep(4000); }
+    if (!j) throw ult || new Error("Overpass sin respuesta");
+    ways = (j.elements || []).filter(e => e.type === "way").map(e => { const t = e.tags || {}, g = (e.geometry || []).filter(q => q && q.lat != null).map(q => [q.lat, q.lon]); if (g.length < 2) return null; const ow = _mqOneway(t, g.map(p => [p[0], p[1]])); return { id: e.id, n: t.name || "", ref: t.ref || "", h: t.highway, o: ow.o, g: ow.g }; }).filter(Boolean);
+    try { await _bnWriteGcs(ck, { at: new Date().toISOString(), ways }, null); } catch (_) {}
+  }
+  const xy = p => [(p[1] - lng) * P.kx, (p[0] - lat) * P.ky], dd = (a, b) => Math.hypot((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky), len = L => { let s = 0; for (let i = 1; i < L.length; i++) s += dd(L[i - 1], L[i]); return s; };
+  const dmin = g => g.reduce((m, p) => Math.min(m, Math.hypot(...xy(p))), 1e9), grupos = new Map();
+  ways.forEach(w => { const k = (w.n || w.ref || "w" + w.id).toLowerCase(); (grupos.get(k) || grupos.set(k, []).get(k)).push(w); });
+  const vias = [];
+  grupos.forEach(ws => {
+    ws.forEach(w => { w.d = dmin(w.g); }); ws.sort((a, b) => a.d - b.d); const w0 = ws[0]; if (w0.d > R) return;
+    let cur = w0.g.map(p => p.slice()), usados = new Set([w0.id]); const cerca = (a, b) => dd(a, b) < 2.5, flex = w0.o ? false : true;
+    for (let it2 = 0; it2 < 12 && len(cur) < tramo * 1.8; it2++) { let hecho = false;
+      for (const w of ws) { if (usados.has(w.id)) continue; const first = w.g[0], last = w.g[w.g.length - 1], fin = cur[cur.length - 1], ini = cur[0];
+        if (cerca(fin, first)) { cur = cur.concat(w.g.slice(1)); } else if (!w.o && cerca(fin, last)) { cur = cur.concat(w.g.slice().reverse().slice(1)); } else if (cerca(last, ini)) { cur = w.g.slice(0, -1).concat(cur); } else if (!w.o && cerca(first, ini)) { cur = w.g.slice().reverse().slice(0, -1).concat(cur); } else continue;
+        usados.add(w.id); hecho = true; break; }
+      if (!hecho) break; }
+    const total = len(cur); let best = 1e9, s0 = 0, acc = 0;
+    for (let i = 1; i < cur.length; i++) { const a = xy(cur[i - 1]), b = xy(cur[i]), dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, -(a[0] * dx + a[1] * dy) / l2)), d = Math.hypot(a[0] + dx * t, a[1] + dy * t), sl = Math.sqrt(l2); if (d < best) { best = d; s0 = acc + sl * t; } acc += sl; }
+    const T = Math.min(tramo, total), st = Math.max(0, Math.min(total - T, s0 - T / 2)), en = st + T, at = s => { let a = 0; for (let i = 1; i < cur.length; i++) { const l = dd(cur[i - 1], cur[i]); if (a + l >= s || i === cur.length - 1) { const u = l ? Math.max(0, Math.min(1, (s - a) / l)) : 0; return [cur[i - 1][0] + (cur[i][0] - cur[i - 1][0]) * u, cur[i - 1][1] + (cur[i][1] - cur[i - 1][1]) * u]; } a += l; } return cur[cur.length - 1]; };
+    const rd = p => [Math.round(p[0] * 1e6) / 1e6, Math.round(p[1] * 1e6) / 1e6], A = rd(at(st)), B = rd(at(en)), M = rd(at((st + en) / 2)); if (dd(A, B) < 20) return;
+    const brg = (a, b) => Math.round((Math.atan2((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky) * 180 / Math.PI + 360) % 360), sentidos = [{ dir: "A→B", a: A, b: B, m: M, rumbo: brg(A, B) }]; if (!w0.o) sentidos.push({ dir: "B→A", a: B, b: A, m: M, rumbo: brg(B, A) });
+    vias.push({ n: w0.n || w0.ref || "Sin nombre", ref: w0.ref || "", h: w0.h, o: w0.o, d: Math.round(best), len: Math.round(T), sentidos });
+  });
+  vias.sort((a, b) => a.d - b.d); return { lat, lng, R, vias: vias.slice(0, maxVias), disponibles: vias.length };
+}
+function _trFechas(dias, tz) { // próxima fecha local de cada día de la semana (mañana en adelante), para pedir el tráfico típico de ese día
+  const ahora = new Date(Date.now() + tz * 3600e3), out = {}; dias.forEach(d => { for (let i = 1; i <= 8; i++) { const x = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate() + i)); if (x.getUTCDay() === d) { out[d] = [x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()]; break; } } }); return out;
+}
+async function _trRuta(key, s, dep) {
+  const body = { origin: { location: { latLng: { latitude: s.a[0], longitude: s.a[1] } } }, destination: { location: { latLng: { latitude: s.b[0], longitude: s.b[1] } } }, intermediates: [{ location: { latLng: { latitude: s.m[0], longitude: s.m[1] } }, via: true }], travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE_OPTIMAL", departureTime: dep, units: "METRIC" };
+  for (let k = 0; k < 4; k++) {
+    const r = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+    if (r.status === 429 || r.status >= 500) { await _amSleep(800 * (k + 1)); continue; }
+    const j = await r.json().catch(() => ({})); if (!r.ok) { const e = new Error((j.error && j.error.message) || "Routes HTTP " + r.status); e.fatal = r.status === 403 || r.status === 400 || r.status === 401; throw e; }
+    const q = (j.routes || [])[0]; if (!q) return null; const sec = v => v ? parseFloat(String(v)) : null; return [sec(q.duration), sec(q.staticDuration), Math.round(q.distanceMeters || 0)];
+  }
+  return null;
+}
+app.get("/mercado/trafico", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); res.set("Cache-Control", "no-store"); let doc = null; try { doc = (await _bnReadGcs(_trObj(id))).data || null; } catch (_) {} res.json({ ok: true, doc, def: _TR_DEF, precio: _TR_PRECIO }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/trafico/estimar", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); const cfg = _trNorm(b.cfg), vial = await _mqVialLee(id), V = await _trVias(id, vial, cfg.tramo, cfg.maxVias), nS = V.vias.reduce((n, v) => n + v.sentidos.length, 0), calls = nS * cfg.dias.length * _trHoras(cfg).length; res.set("Cache-Control", "no-store"); res.json({ ok: true, cfg, R: vial.R, vias: V.vias, disponibles: V.disponibles, calls, costo: Math.round(calls * _TR_PRECIO * 100) / 100 }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/trafico/consultar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
+  if (_trJob.running && Date.now() - Date.parse(_trJob.upd || 0) < 180000) return res.status(409).json({ ok: false, error: "Ya hay una consulta de tráfico en proceso" });
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) return res.status(503).json({ ok: false, error: "Falta la clave de Google Maps en el servidor" });
+  const cfg = _trNorm(b.cfg); _trJob = { running: true, id, done: 0, total: 0, paso: "Buscando vialidades", inicio: new Date().toISOString(), upd: new Date().toISOString() };
+  const guarda = async () => { _trJob.upd = new Date().toISOString(); try { await _bnWriteGcs(_trEstObj(id), Object.assign({}, _trJob), null); } catch (_) {} };
+  await guarda(); res.json({ ok: true });
+  (async () => {
+    try {
+      const vial = await _mqVialLee(id), V = await _trVias(id, vial, cfg.tramo, cfg.maxVias); if (!V.vias.length) throw new Error("No hay vialidades principales dentro del radio");
+      const horas = _trHoras(cfg), tz = _trTz(V.lng), fechas = _trFechas(cfg.dias, tz), tareas = [];
+      V.vias.forEach((v, vi) => v.sentidos.forEach((s, si) => { s.cel = {}; cfg.dias.forEach(d => { s.cel[d] = {}; horas.forEach(h => tareas.push({ vi, si, d, h })); }); }));
+      _trJob.total = tareas.length; _trJob.paso = "Consultando Google Routes"; await guarda(); let i = 0, fallos = 0, fatal = null, ult = 0;
+      await Promise.all(Array.from({ length: 6 }, async () => { while (i < tareas.length && !fatal) { const t = tareas[i++], f = fechas[t.d], dep = new Date(Date.UTC(f[0], f[1], f[2], t.h - tz, 0, 0)).toISOString(), s = V.vias[t.vi].sentidos[t.si];
+        try { const r = await _trRuta(key, s, dep); if (r) s.cel[t.d][t.h] = r; else fallos++; } catch (e) { if (e.fatal) fatal = e; else fallos++; }
+        _trJob.done++; if (_trJob.done - ult >= 25) { ult = _trJob.done; await guarda(); } } }));
+      if (fatal) throw fatal; if (fallos > tareas.length * .2) throw new Error(`Google no respondió en ${fallos} de ${tareas.length} consultas`);
+      const doc = { id, at: new Date().toISOString(), lat: V.lat, lng: V.lng, R: V.R, cfg, tz, horas, vias: V.vias, calls: tareas.length, fallos, costo: Math.round(tareas.length * _TR_PRECIO * 100) / 100 };
+      await _bnWriteGcs(_trObj(id), doc, null); _trJob.running = false; _trJob.ok = true; _trJob.paso = "Listo"; await guarda();
+    } catch (e) { console.warn("[trafico]", id, e.message); _trJob.running = false; _trJob.error = String(e.message || e); await guarda(); }
+  })();
+});
+app.get("/mercado/trafico/estado", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); res.set("Cache-Control", "no-store"); let e = null; try { e = (await _bnReadGcs(_trEstObj(id))).data || null; } catch (_) {} if (_trJob.id === id && _trJob.upd && (!e || String(_trJob.upd) >= String(e.upd || ""))) e = _trJob; res.json(Object.assign({ ok: true }, e || { running: false })); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+
 app.get("/mercado/maqueta/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _mqJob)); });
 app.post("/mercado/maqueta/generar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
