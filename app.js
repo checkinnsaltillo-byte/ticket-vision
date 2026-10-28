@@ -60420,7 +60420,7 @@ function tarPanelRender_() {
 function tarIGCampos_(d, lbl, inp, field) {
   const L = typeof ASEO !== 'undefined' && ASEO.pl.cargado ? Object.values(ASEO.pl.lista || {}).filter(p => p.depto === 'inspeccion' || p.id === d.Plantilla).sort((a, b) => String(a.titulo).localeCompare(String(b.titulo), 'es')) : null;
   const plSel = !L ? '<div style="font-size:12px;color:#94a3b8">⏳ Cargando plantillas…</div>'
-    : L.length ? `<select onchange="tarIGPlantilla_(this.value)" style="${inp}"><option value="">Sin plantilla</option>${L.map(p => `<option value="${esc(p.id)}"${p.id === d.Plantilla ? ' selected' : ''}>${esc(p.titulo)}${typeof plCampos_ === 'function' ? ' · ' + plCampos_(p) + ' campos' : ''}</option>`).join('')}</select>`
+    : L.length ? `<select onchange="tarIGPlantilla_(this.value)" style="${inp}"><option value="">Sin plantilla</option>${L.map(p => `<option value="${esc(p.id)}"${p.id === d.Plantilla ? ' selected' : ''}>${esc(p.titulo)}${typeof plCamposTxt_ === 'function' ? ' · ' + plCamposTxt_(p) : ''}</option>`).join('')}</select>`
     : '<div style="font-size:12px;color:#94a3b8">No hay plantillas de Inspección. Créalas en «📋 Plantillas».</div>';
   const A = (typeof atAlojs_ === 'function' ? atAlojs_() : []).slice().sort((a, b) => String(a.corto || a.nombre).localeCompare(String(b.corto || b.nombre), 'es', { numeric: true }));
   const sel = d._alojs || [];
@@ -71667,6 +71667,9 @@ async function plCargar_(fuerza) {
   return ASEO.pl._p;
 }
 function plCampos_(p) { return (p.secciones || []).reduce((n, s) => n + (s.items || []).length, 0); }
+// «Inventario general» (p.libre): plantilla en blanco; los campos se agregan al llenarla y viven en la respuesta (resp.__extra), no en la plantilla.
+function plSecs_(p, resp) { return p && p.libre ? [{ id: 'libre', titulo: 'General', items: (resp && Array.isArray(resp.__extra)) ? resp.__extra : [] }] : ((p && p.secciones) || []); }
+function plCamposTxt_(p) { return p && p.libre ? 'inventario general · campos libres' : plCampos_(p) + ' campos'; }
 // v2134: campo crítico = marcado en el campo o en toda su sección (editor de plantillas); va arriba en «Por urgencia» y «Por tipo».
 function plEsCrit_(s, it) { return !!((it && it.critico) || (s && s.critico)); }
 function plCritChip_(s, it) { return plEsCrit_(s, it) ? '<span class="pl-crit" title="Campo crítico (definido en la plantilla)">🚨 Crítico</span>' : ''; }
@@ -73223,7 +73226,7 @@ function plPintar_() {
       (p.secciones || []).forEach(s => (s.items || []).forEach(it => { cnt[it.tipo] = (cnt[it.tipo] || 0) + 1; }));
       const u = usos(p.id);
       return `<div class="pl-card" onclick="plEditar_('${pcEsc(p.id)}')"><b>${pcEsc(p.titulo)}</b>
-        <div class="m"><span class="pl-chip" style="background:${D.c}1a;color:${D.c}">${D.ico} ${D.t}</span>${prio4Html_(p.prioridad)}<span>${(p.secciones || []).length} sección${(p.secciones || []).length === 1 ? '' : 'es'} · ${plCampos_(p)} campos</span></div>
+        <div class="m"><span class="pl-chip" style="background:${D.c}1a;color:${D.c}">${D.ico} ${D.t}</span>${prio4Html_(p.prioridad)}${p.libre ? '<span class="pl-chip" style="background:#ede9fe;color:#6d28d9">📦 Inventario general</span><span>Campos libres al llenarla</span>' : `<span>${(p.secciones || []).length} sección${(p.secciones || []).length === 1 ? '' : 'es'} · ${plCampos_(p)} campos</span>`}</div>
         <div class="ti">${Object.entries(cnt).map(([k, n]) => `<span>${PL_TIPOS[k] ? PL_TIPOS[k].ico + ' ' + PL_TIPOS[k].t : k} · ${n}</span>`).join('')}</div>
         ${p.descripcion ? `<div class="m">${pcEsc(p.descripcion).slice(0, 140)}</div>` : ''}
         <div class="m">${u ? `Asignada a ${u} tarea${u === 1 ? '' : 's'}` : 'Sin tareas asignadas'}</div>
@@ -73271,8 +73274,8 @@ function plEdPintar_(arriba) {
   root.innerHTML = `${plHead_()}
     <div class="pl-h"><button type="button" class="pl-bt" onclick="plEdCerrar_()">← Atrás</button><h1>${P.id ? 'Editar plantilla' : 'Nueva plantilla'}</h1></div>
     <div class="pl-ed">
-      <div class="pl-side"><h3>Secciones</h3>${P.secciones.map((s, si) => `<a onclick="document.getElementById('pl-s${si}').scrollIntoView({behavior:'smooth',block:'start'})">${pcEsc(s.titulo || 'Sección')} <small style="color:#94a3b8">· ${s.items.length}</small></a>`).join('')}
-        <button type="button" class="pl-lnk" onclick="plEdSec_()">+ Añadir sección</button></div>
+      <div class="pl-side"><h3>Secciones</h3>${(P.libre ? [] : P.secciones).map((s, si) => `<a onclick="document.getElementById('pl-s${si}').scrollIntoView({behavior:'smooth',block:'start'})">${pcEsc(s.titulo || 'Sección')} <small style="color:#94a3b8">· ${s.items.length}</small></a>`).join('')}
+        ${P.libre ? '' : '<button type="button" class="pl-lnk" onclick="plEdSec_()">+ Añadir sección</button>'}</div>
       <div class="pl-main">
         <div class="pl-f">
           <label>Departamento <i>*</i></label>
@@ -73283,20 +73286,27 @@ function plEdPintar_(arriba) {
           <label>Descripción de la plantilla</label>
           <textarea class="pl-in" rows="3" placeholder="Añadir descripción" oninput="ASEO.pl.ed.descripcion=this.value">${pcEsc(P.descripcion || '')}</textarea>
         </div>
-        ${P.secciones.map((s, si) => `<div class="pl-sec" id="pl-s${si}">
+        ${P.libre ? `<div class="pl-sec"><div class="pl-sh"><b>📦 Inventario general</b></div><div class="pl-hint" style="margin:6px 0">Esta plantilla queda en blanco: no lleva secciones ni campos fijos. Al seleccionarla en un inventario (y asignarle alojamientos) se mostrará el recuadro «General» con las opciones <b>Condición, Lista de verificación, Foto, Contar, Texto, Sí/No y Calificación</b> para agregar los campos que necesites en cada alojamiento.</div><button type="button" class="pl-lnk" onclick="plEdLibre_(false)">↩ Volver a plantilla con secciones</button></div>` : ''}
+        ${(P.libre ? [] : P.secciones).map((s, si) => `<div class="pl-sec" id="pl-s${si}">
           <div class="pl-sh"><input value="${pcEsc(s.titulo)}" placeholder="Nombre de la sección" oninput="ASEO.pl.ed.secciones[${si}].titulo=this.value">
             <button type="button" class="pl-x" title="Subir sección" onclick="plEdMoverSec_(${si},-1)">↑</button><button type="button" class="pl-x" title="Bajar sección" onclick="plEdMoverSec_(${si},1)">↓</button>
             <button type="button" class="pl-x" onclick="plEdQuitarSec_(${si})">Quitar sección</button></div>
           <div style="margin:-4px 0 8px">${ck(!!s.critico, `plEdTgSec_(${si},'critico')`, '🚨 Sección crítica (todos sus campos)')}</div>
           ${s.items.map((i, ii) => it(s, i, si, ii)).join('') || '<div class="pl-hint">Sección sin campos: agrega uno abajo.</div>'}
-          <div class="pl-add">${Object.entries(PL_TIPOS).map(([k, T]) => `<button type="button" class="pl-lnk" onclick="plEdItem_(${si},'${k}')">${T.t} +</button>`).join('')}</div>
+          <div class="pl-add">${Object.entries(PL_TIPOS).map(([k, T]) => `<button type="button" class="pl-lnk" onclick="plEdItem_(${si},'${k}')">${T.t} +</button>`).join('')}<button type="button" class="pl-lnk" style="font-weight:800;color:#6d28d9" title="Deja la plantilla en blanco: los campos se agregan al llenarla" onclick="plEdLibre_(true)">📦 Inventario general</button></div>
         </div>`).join('')}
-        <button type="button" class="pl-lnk" style="margin-top:12px" onclick="plEdSec_()">+ Añadir sección</button>
+        ${P.libre ? '' : '<button type="button" class="pl-lnk" style="margin-top:12px" onclick="plEdSec_()">+ Añadir sección</button>'}
         <div class="pl-ft"><button type="button" class="pl-bt pri" id="pl-ok" onclick="plEdGuardar_()">Guardar</button><button type="button" class="pl-bt" onclick="plEdCerrar_()">Cancelar</button></div>
       </div>
     </div>`;
   window.scrollTo(0, arriba ? 0 : y);
 }
+window.plEdLibre_ = function (on) {
+  const P = ASEO.pl.ed; if (!P) return;
+  if (on) { if (P.secciones.some(s => s.items.length) && !confirm('Al convertirla en «Inventario general» se quitarán sus secciones y campos. ¿Continuar?')) return; P.libre = true; P.secciones = []; }
+  else { delete P.libre; P.secciones = [{ id: plId_('s'), titulo: 'General', items: [] }]; }
+  plEdPintar_();
+};
 window.plEdPrio_ = function (k) { ASEO.pl.ed.prioridad = k; plEdPintar_(); };
 window.plEdTg_ = function (si, ii, c) { const i = ASEO.pl.ed.secciones[si].items[ii]; i[c] = !i[c]; plEdPintar_(); };
 window.plEdTgSec_ = function (si, c) { const s = ASEO.pl.ed.secciones[si]; s[c] = !s[c]; plEdPintar_(); };
@@ -73330,7 +73340,7 @@ window.plEdGuardar_ = async function () {
   const P = ASEO.pl.ed;
   if (!String(P.titulo || '').trim()) return alert('Escribe el título de la plantilla.');
   P.secciones.forEach(s => { if (!String(s.titulo || '').trim()) s.titulo = 'General'; });
-  if (!P.secciones.some(s => s.items.length)) return alert('Agrega al menos un campo (Condición, Lista de verificación, Foto, Contar, Texto, Sí/No o Calificación).');
+  if (!P.libre && !P.secciones.some(s => s.items.length)) return alert('Agrega al menos un campo (Condición, Lista de verificación, Foto, Contar, Texto, Sí/No o Calificación).');
   const b = document.getElementById('pl-ok'); if (b) { b.disabled = true; b.textContent = '⏳ Guardando…'; }
   try {
     const r = await fetch(`${BACKEND}/aseo/plantilla`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plantilla: P, user: plUser_() }) }).then(r => r.json());
@@ -73346,7 +73356,7 @@ function plSelTarea_() {
   if (!F.depto) return '<div class="at-hint">Elige primero el tipo de tarea para ver sus plantillas.</div>';
   const L = Object.values(ASEO.pl.lista || {}).filter(p => p.depto === F.depto || p.id === F.plantilla).sort((a, b) => String(a.titulo).localeCompare(String(b.titulo), 'es'));
   if (!L.length) return `<div class="at-hint">No hay plantillas de ${pcEsc((AT_DEPTO[F.depto] || {}).t || F.depto)}. Créalas en «📋 Plantillas».</div>`;
-  return `<select class="at-in" onchange="plTareaElegir_(this.value)"><option value="">Sin plantilla</option>${L.map(p => `<option value="${pcEsc(p.id)}" ${p.id === F.plantilla ? 'selected' : ''}>${pcEsc(p.titulo)} · ${plCampos_(p)} campos</option>`).join('')}</select>
+  return `<select class="at-in" onchange="plTareaElegir_(this.value)"><option value="">Sin plantilla</option>${L.map(p => `<option value="${pcEsc(p.id)}" ${p.id === F.plantilla ? 'selected' : ''}>${pcEsc(p.titulo)} · ${plCamposTxt_(p)}</option>`).join('')}</select>
     ${F.plantilla && !ASEO.pl.lista[F.plantilla] ? '<div class="at-hint">La plantilla asignada ya no existe.</div>' : F.plantilla ? '<div class="at-hint">Al abrir la tarea aparecerá este formulario para llenarlo.</div>' : ''}`;
 }
 window.plTareaElegir_ = function (id) {
@@ -73366,7 +73376,7 @@ function plHecho_(it, r) {
   return ok && (!it.foto || it.tipo === 'foto' || fotos > 0);
 }
 function plAvance_(p, resp) {
-  let h = 0, t = 0; (p.secciones || []).forEach(s => (s.items || []).forEach(it => { t++; if (plHecho_(it, (resp || {})[it.id])) h++; }));
+  let h = 0, t = 0; plSecs_(p, resp).forEach(s => (s.items || []).forEach(it => { t++; if (plHecho_(it, (resp || {})[it.id])) h++; }));
   return { h, t, p: t ? Math.round(h / t * 100) : 0 };
 }
 // Plantilla predeterminada: toda tarea/card de Limpieza › Check-out lleva «Limpieza CHECKOUT» (aunque no se haya elegido).
@@ -73398,23 +73408,23 @@ function plBox_(pid, key, ctx) {
   return `<div class="lab">📋 Plantilla</div><div class="plf ${(ASEO.pl.exp || {})[key] ? 'exp' : ''}" id="plf" data-k="${pcEsc(key)}" data-p="${pcEsc(p.id)}">${plFillHtml_(p, key)}</div>`;
 }
 function plFillHtml_(p, key) {
-  const resp = ASEO.pl.resp[key] || {}, A = plAvance_(p, resp);
+  const resp = ASEO.pl.resp[key] || {}, A = plAvance_(p, resp), SEC = plSecs_(p, resp);
   const abiertas = ASEO.pl.abiertas = ASEO.pl.abiertas || {};
   const at = (ASEO.pl.respAt || {})[key];
   const full = !!(ASEO.pl.hijoUI && ASEO.pl.hijoUI.key === key && TAR_STATE.drFull && document.getElementById('ad-drawer')); // pantalla completa: formulario siempre desplegado
   const exp = full || !!(ASEO.pl.exp || {})[key];
   const fil = full ? ((ASEO.pl.fil || {})[key] || 'all') : 'all';
   const okF = it => { const r = resp[it.id] || {}, h = plHecho_(it, r), ff = (it.tipo === 'foto' || !!it.foto) && !(r.fotos || []).some(f => !f.subiendo); return fil === 'pend' ? !h : fil === 'ok' ? h : fil === 'foto' ? ff : true; };
-  const chips = full ? (() => { const all = (p.secciones || []).flatMap(s => s.items || []), n = { all: all.length, pend: 0, ok: 0, foto: 0 }; all.forEach(it => { const r = resp[it.id] || {}; if (plHecho_(it, r)) n.ok++; else n.pend++; if ((it.tipo === 'foto' || !!it.foto) && !(r.fotos || []).some(f => !f.subiendo)) n.foto++; });
+  const chips = full ? (() => { const all = SEC.flatMap(s => s.items || []), n = { all: all.length, pend: 0, ok: 0, foto: 0 }; all.forEach(it => { const r = resp[it.id] || {}; if (plHecho_(it, r)) n.ok++; else n.pend++; if ((it.tipo === 'foto' || !!it.foto) && !(r.fotos || []).some(f => !f.subiendo)) n.foto++; });
     return `<div class="plf-chips" onclick="event.stopPropagation()">${[['all', 'Todas'], ['pend', '⏳ Pendientes'], ['ok', '✅ Completas'], ['foto', '📷 Falta foto']].map(([k, l]) => `<button type="button" class="${fil === k ? 'on' : ''}" onclick="plFil_('${pcEsc(key)}','${k}')">${l}<i>${n[k]}</i></button>`).join('')}</div>`; })() : '';
   const HU = ASEO.pl.hijoUI && ASEO.pl.hijoUI.key === key ? ASEO.pl.hijoUI.fn() : { top: '', bot: '' }; // inventarios: estado arriba de la barra y comentarios debajo
   return `<div class="plf-h" role="button" onclick="plTg_('${pcEsc(key)}')" title="${exp ? 'Contraer' : 'Desplegar'} la plantilla"><div class="plf-ht"><b>📋 ${pcEsc(p.titulo)}</b><span class="plf-car">${exp ? '▾' : '▸'}</span></div>${chips}${HU.top}<div class="plf-bar ${A.p === 100 ? 'ok' : ''}"><span><i style="width:${A.p}%"></i></span>${A.p}% · ${A.h}/${A.t}</div>${HU.bot}
       <div class="plf-st" id="plf-st">${ASEO.pl._guardando === key ? '⏳ Guardando…' : at ? `Guardado ${new Date(at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : 'Se guarda solo al responder'}</div></div>
-    ${!exp ? '' : (() => { const pend = (p.secciones || []).findIndex(s => s.items.some(it => !plHecho_(it, resp[it.id]))); return (p.secciones || []).map((s, si) => { if (full && !s.items.some(okF)) return '';
+    ${!exp ? '' : (() => { const pend = SEC.findIndex(s => s.items.some(it => !plHecho_(it, resp[it.id]))); return SEC.map((s, si) => { if (!p.libre && full && !s.items.some(okF)) return '';
       // Abiertas: todas si son pocas secciones; si son muchas, solo la primera con campos pendientes (las demás con un clic).
-      const hs = s.items.filter(it => plHecho_(it, resp[it.id])).length, op = full || (abiertas[key + '|' + si] ?? (p.secciones.length <= 3 || si === pend));
+      const hs = s.items.filter(it => plHecho_(it, resp[it.id])).length, op = full || p.libre || (abiertas[key + '|' + si] ?? (SEC.length <= 3 || si === pend));
       return `<details class="plf-sec" ${op ? 'open' : ''} ontoggle="(ASEO.pl.abiertas||(ASEO.pl.abiertas={}))['${pcEsc(key)}|${si}']=this.open"><summary>${pcEsc(s.titulo)}<small class="${hs === s.items.length ? 'ok' : ''}">${hs === s.items.length ? '✓ ' : ''}${hs}/${s.items.length}</small></summary>
-        <div class="plf-its">${s.items.filter(okF).map(it => plFillItem_(it, resp[it.id] || {}, s)).join('')}</div></details>`;
+        <div class="plf-its">${p.libre && !s.items.length ? '<div class="pl-hint">Inventario en blanco: agrega los campos que necesites abajo.</div>' : ''}${s.items.filter(okF).map(it => plFillItem_(it, resp[it.id] || {}, s)).join('')}${p.libre ? `<div class="pl-add" style="margin-top:8px">${Object.entries(PL_TIPOS).map(([k, T]) => `<button type="button" class="pl-lnk" onclick="plXAdd_('${k}')">${T.t} +</button>`).join('')}</div>` : ''}</div></details>`;
     }).join(''); })()}`;
 }
 function plFillItem_(it, r, s) {
@@ -73437,15 +73447,19 @@ function plFillItem_(it, r, s) {
   else if (it.tipo === 'sino') ctl = `<div class="plf-seg"><button type="button" class="${r.v === 'si' ? 'on' : ''}" style="--c:#16a34a" onclick="plSet_('${id}','si')">Sí</button><button type="button" class="${r.v === 'no' ? 'on' : ''}" style="--c:#dc2626" onclick="plSet_('${id}','no')">No</button></div>`;
   else if (it.tipo === 'calif') { const E = Number(it.escala) || 5; ctl = `<div class="plf-stars">${Array.from({ length: E }, (_, i) => `<button type="button" class="${Number(r.v) > i ? 'on' : ''}" title="${i + 1} de ${E}" onclick="plSet_('${id}',${i + 1})">★</button>`).join('')}${r.v ? `<span class="plf-ref" style="align-self:center;margin-left:6px">${r.v} de ${E}</span>` : ''}</div>`; }
   const hecho = plHecho_(it, r);
-  return `<div class="plf-it" data-i="${id}"><div class="plf-q"><span class="st ${hecho ? 'on' : ''}">${hecho ? '✓' : ''}</span><span>${pcEsc(q)}</span>${it.caract ? '<span class="pl-caract" title="Solo característica del alojamiento, no se evalúa">ℹ️</span>' : typeof plEsCrit_ === 'function' && plEsCrit_(s, it) ? '<span class="pl-crit">🚨</span>' : ''}<em>${it.texto ? T.t : ''}${it.foto && it.tipo !== 'foto' ? `${it.texto ? ' · ' : ''}📷 obligatoria` : ''}</em></div>
-    <div class="plf-bd">${(it.ref || []).length ? `<div class="plf-fotos"><span class="plf-ref">Referencia:</span>${it.ref.map((f, i) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(${pcEsc(JSON.stringify(it.ref.map(x => BACKEND + x.url)))},${i})"></span>`).join('')}</div>` : ''}
+  return `<div class="plf-it" data-i="${id}"><div class="plf-q"><span class="st ${hecho ? 'on' : ''}">${hecho ? '✓' : ''}</span>${it.x ? `<input class="pl-in" style="flex:1;min-width:0" placeholder="Nombre del campo (ej. Cafetera, Sillón…)" value="${pcEsc(it.texto || '')}" oninput="plXTxt_('${id}',this.value)"><button type="button" class="pl-x" title="Quitar este campo" onclick="plXDel_('${id}')">✕</button>` : `<span>${pcEsc(q)}</span>`}${it.caract ? '<span class="pl-caract" title="Solo característica del alojamiento, no se evalúa">ℹ️</span>' : typeof plEsCrit_ === 'function' && plEsCrit_(s, it) ? '<span class="pl-crit">🚨</span>' : ''}<em>${it.texto ? T.t : ''}${it.foto && it.tipo !== 'foto' ? `${it.texto ? ' · ' : ''}📷 obligatoria` : ''}</em></div>
+    <div class="plf-bd">${it.x && it.tipo === 'lista' ? `<textarea class="pl-in" rows="2" placeholder="Elementos de la lista (uno por renglón, opcional)" oninput="plXSub_('${id}',this.value)">${pcEsc((it.sub || []).join('\n'))}</textarea>` : ''}${(it.ref || []).length ? `<div class="plf-fotos"><span class="plf-ref">Referencia:</span>${it.ref.map((f, i) => `<span><img src="${BACKEND}${f.url}" alt="" onclick="fotoVer_(${pcEsc(JSON.stringify(it.ref.map(x => BACKEND + x.url)))},${i})"></span>`).join('')}</div>` : ''}
     <div class="plf-row"><div class="plf-ctl">${ctl}</div>${iconos}</div>${fotosHtml}${notaHtml}</div></div>`;
 }
+window.plXAdd_ = function (tipo) { const C = plCtx_(); if (!C || !C.p.libre) return; const ex = C.resp.__extra = C.resp.__extra || [], id = plId_('x'); ex.push({ id, x: true, tipo, texto: '', foto: false, ref: [], ...(tipo === 'calif' ? { escala: 5 } : {}), ...(tipo === 'lista' ? { sub: [] } : {}) }); plGuardarLuego_(); plRepinta_(); setTimeout(() => { const i = document.querySelector(`.plf-it[data-i="${id}"] .plf-q input`); if (i) i.focus(); }, 0); };
+window.plXTxt_ = function (id, v) { const C = plCtx_(); if (!C) return; const it = (C.resp.__extra || []).find(x => x.id === id); if (it) { it.texto = v; plGuardarLuego_(); } };
+window.plXSub_ = function (id, v) { const C = plCtx_(); if (!C) return; const it = (C.resp.__extra || []).find(x => x.id === id); if (it) { it.sub = String(v).split('\n').map(x => x.trim()).filter(Boolean).slice(0, 60); plGuardarLuego_(); } };
+window.plXDel_ = function (id) { const C = plCtx_(); if (!C) return; const it = (C.resp.__extra || []).find(x => x.id === id); if (!it) return; if ((it.texto || C.resp[id]) && !confirm('¿Quitar este campo y su respuesta?')) return; C.resp.__extra = C.resp.__extra.filter(x => x.id !== id); delete C.resp[id]; plGuardarLuego_(); plRepinta_(); };
 window.plNotaTg_ = function (id) { const A = ASEO.pl.notaAb = ASEO.pl.notaAb || {}; const C = plCtx_(); const r = C ? (C.resp[id] || {}) : {};
   if (A[id] || String(r.nota || '').trim()) { if (String(r.nota || '').trim() && !confirm('¿Quitar la nota de este campo?')) return; delete A[id]; if (C && C.resp[id]) { delete C.resp[id].nota; plGuardarLuego_(); } } else A[id] = true;
   plRepinta_(); setTimeout(() => { const t = document.querySelector(`.plf-it[data-i="${id}"] .plf-nota`); if (t && A[id]) t.focus(); }, 0); };
 function plCtx_() { const el = document.getElementById('plf'); if (!el) return null; const p = ASEO.pl.lista[el.dataset.p]; return p ? { el, key: el.dataset.k, p, resp: (ASEO.pl.resp[el.dataset.k] = ASEO.pl.resp[el.dataset.k] || {}) } : null; }
-function plItem_(p, id) { for (const s of p.secciones || []) for (const it of s.items || []) if (it.id === id) return it; return null; }
+function plItem_(p, id, resp) { for (const s of plSecs_(p, resp)) for (const it of s.items || []) if (it.id === id) return it; return null; }
 function plRepinta_(suave) {
   const C = plCtx_(); if (!C) return;
   if (suave) { // al escribir: solo la barra y las palomitas, sin perder el foco
@@ -73456,7 +73470,7 @@ function plRepinta_(suave) {
   C.el.innerHTML = plFillHtml_(C.p, C.key); plKpiUpd_(C.p, C.key);
 }
 function plRespLimpia_(resp) { // sin vistas previas locales ni fotos que siguen subiendo
-  const o = {}; Object.entries(resp || {}).forEach(([k, r]) => { o[k] = Object.assign({}, r); if (r.fotos) o[k].fotos = r.fotos.filter(f => !f.subiendo).map(f => { const x = Object.assign({}, f); delete x.loc; return x; }); }); return o;
+  const o = {}; Object.entries(resp || {}).forEach(([k, r]) => { if (k === '__extra') { o[k] = r; return; } o[k] = Object.assign({}, r); if (r.fotos) o[k].fotos = r.fotos.filter(f => !f.subiendo).map(f => { const x = Object.assign({}, f); delete x.loc; return x; }); }); return o;
 }
 function plGuardarLuego_(key0, pid0) {
   const C = key0 ? null : plCtx_(); if (!key0 && !C) return;
@@ -73517,14 +73531,14 @@ function plAutoTerminado_(key, pc) {
   if (cur === 'pendiente' || cur === 'en_proceso') aseoSetEstado_(c.id, c.hid || '', 'terminado', false);
 }
 window.plFil_ = function (key, k) { (ASEO.pl.fil = ASEO.pl.fil || {})[key] = k; plRepinta_(); };
-function plKpi_(p, key) { const resp = ASEO.pl.resp && ASEO.pl.resp[key]; let nf = 0; Object.values(resp || {}).forEach(r => { nf += (r.fotos || []).filter(f => !f.subiendo).length; }); return { A: p && resp ? plAvance_(p, resp) : { h: 0, t: 0, p: 0 }, nf }; }
+function plKpi_(p, key) { const resp = ASEO.pl.resp && ASEO.pl.resp[key]; let nf = 0; Object.entries(resp || {}).forEach(([k, r]) => { if (k !== '__extra') nf += ((r && r.fotos) || []).filter(f => !f.subiendo).length; }); return { A: p && resp ? plAvance_(p, resp) : { h: 0, t: 0, p: 0 }, nf }; }
 function plKpiHtml_(p, key) { const { A, nf } = plKpi_(p, key); return `<div class="ad-kp2"><div class="ad-ring ${A.p === 100 ? 'ok' : ''}" style="--p:${A.p}"><b>${A.p}%</b></div><div class="kv"><div><b class="k-h">${A.h}</b><small>Listas</small></div><div><b class="k-p">${A.t - A.h}</b><small>Pendientes</small></div><div><b class="k-f">${nf}</b><small>Fotos</small></div></div></div>`; }
 function plKpiUpd_(p, key) { const k = document.querySelector('.ad-kp2'); if (!k || !p) return; const { A, nf } = plKpi_(p, key), g = k.querySelector('.ad-ring'); g.style.setProperty('--p', A.p); g.classList.toggle('ok', A.p === 100); g.querySelector('b').textContent = A.p + '%'; k.querySelector('.k-h').textContent = A.h; k.querySelector('.k-p').textContent = A.t - A.h; k.querySelector('.k-f').textContent = nf; }
 window.plTg_ = function (key) { const E = ASEO.pl.exp = ASEO.pl.exp || {}; E[key] = !E[key]; const el = document.getElementById('plf'); if (el) el.classList.toggle('exp', E[key]); plRepinta_(); };
 window.plSet_ = function (id, v, suave) {
   const C = plCtx_(); if (!C) return; const r = C.resp[id] = C.resp[id] || {};
   if (v === null || (!suave && r.v === v && typeof v !== 'number')) delete r.v; else r.v = v;
-  if (suave) { const it = plItem_(C.p, id), box = C.el.querySelector(`.plf-it[data-i="${id}"] .plf-q .st`); if (box && it) { const h = plHecho_(it, r); box.classList.toggle('on', h); box.textContent = h ? '✓' : ''; } plRepinta_(true); }
+  if (suave) { const it = plItem_(C.p, id, C.resp), box = C.el.querySelector(`.plf-it[data-i="${id}"] .plf-q .st`); if (box && it) { const h = plHecho_(it, r); box.classList.toggle('on', h); box.textContent = h ? '✓' : ''; } plRepinta_(true); }
   else plRepinta_();
   plGuardarLuego_();
 };
@@ -75182,7 +75196,7 @@ function tdUrgDatos_(O) {
         if (doc && doc.resp && Object.keys(doc.resp).length && (!mejor || String(doc.at || '') > String(mejor.at || ''))) { mejor = doc; mejorKey = key; } }
       if (!mejor) { hids[r.ID + '|' + hid] = null; return; } const key = mejorKey, resp = mejor.resp, per = (key.match(/:(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/) || [])[1] || P;
       hids[r.ID + '|' + hid] = { key, per, at: mejor.at || '', n: Object.keys(resp).length };
-      (p.secciones || []).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (it.caract) return; if (u) { const crit = plEsCrit_(s, it), auto = tdNivelDe_(crit, u), man = (TAR_STATE._urgMan || {})[key + '|' + it.id], niv = man && TD_NIV[man.n] ? Object.assign({ k: man.n }, TD_NIV[man.n], { manual: true, auto, by: man.by, at: man.at }) : auto; items.push({ r, hid, P, per, key, p, s, it, rr, u, crit, auto, niv, at: mejor.at || '' }); } })); }); });
+      plSecs_(p, resp).forEach(s => (s.items || []).forEach(it => { const rr = resp[it.id]; if (!rr) return; const u = tdUrgDe_(it, rr); if (it.caract) return; if (u) { const crit = plEsCrit_(s, it), auto = tdNivelDe_(crit, u), man = (TAR_STATE._urgMan || {})[key + '|' + it.id], niv = man && TD_NIV[man.n] ? Object.assign({ k: man.n }, TD_NIV[man.n], { manual: true, auto, by: man.by, at: man.at }) : auto; items.push({ r, hid, P, per, key, p, s, it, rr, u, crit, auto, niv, at: mejor.at || '' }); } })); }); });
   if (faltan.length && !U.pend) { U.pend = fetch(`${BACKEND}/aseo/plantilla-resp/lote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ks: faltan }) }).then(r => r.json())
     .then(j => { (j.items || []).forEach(x => { U.docs[x.k] = x.doc || {}; }); faltan.forEach(k => { if (U.docs[k] === undefined) U.docs[k] = {}; }); U.pend = null; tdRender_(); }).catch(() => { U.pend = null; }); }
   items.sort((a, b) => b.niv.r - a.niv.r || (b.crit - a.crit) || b.u.n - a.u.n || String(b.at).localeCompare(String(a.at))); // urgencia alta arriba; a igual nivel, críticos primero
