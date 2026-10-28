@@ -12903,13 +12903,13 @@ function _enArma(id, it, v, usadas, uso, fuente, radio) {
 async function _enAnaliza(id) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
   const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa");
-  const lat = +it.lat, lng = +it.lng, RADIO = await _enRadio(); _enJob.paso = `Buscando fotos de Street View a ≤ ${RADIO} m`;
-  const P = await _enPanos(lat, lng, key, RADIO); if (!P.length) throw new Error(`Sin cobertura de Street View en ${RADIO} m de esta coordenada`);
-  const T = _enTomas(P, lat, lng); _enJob.paso = `Descargando ${T.length} fotos`; const content = [], usadas = [];
+  let set = null; try { set = (await _bnReadGcs(_ftObj(id))).data; } catch (_) {} if (!set || !(set.tomas || []).length) throw new Error("Primero descarga las fotos de Street View (paso 1 de esta sección)");
+  const lat = +it.lat, lng = +it.lng, RADIO = set.radio || 200; const cen = set.tomas.filter(t => t.cen), otras = set.tomas.filter(t => !t.cen), CAP = 40, rest = otras.length <= CAP - cen.length ? otras : Array.from({ length: CAP - cen.length }, (_, i) => otras[Math.floor(i * otras.length / (CAP - cen.length))]);
+  const T = cen.concat(rest).map(t => ({ p: { pano: t.pano, date: t.date, dist: t.dist, lat: t.lat, lng: t.lng }, h: t.h })); _enJob.paso = `Descargando ${T.length} fotos`; const content = [], usadas = [];
   for (const t of T) { const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${t.p.pano}&heading=${t.h}&fov=90&pitch=0&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(40000) }); if (!r.ok) continue; const n = usadas.length + 1; content.push({ type: "text", text: `Foto ${n} · captura ${t.p.date || "?"} · a ${t.p.dist} m del alojamiento · dirección ${t.h}°` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: Buffer.from(await r.arrayBuffer()).toString("base64") } }); usadas.push({ n, pano: t.p.pano, h: t.h, date: t.p.date || "", d: t.p.dist, lat: t.p.lat, lng: t.p.lng }); }
   if (usadas.length < 4) throw new Error("No se pudieron descargar suficientes fotos"); content.push({ type: "text", text: `Alojamiento: «${it.titulo || ""}» · ${it.tipo || ""} · ${it.ciudad || ""}. Devuelve el JSON con TODOS los subindicadores.` });
   _enJob.paso = "Analizando con IA (≈ 1 min)"; const r = await _enClaude(content);
-  const out = _enArma(id, it, r.data, usadas, r.uso, "Street View + IA", RADIO); await _bnWriteGcs(`mercado/entorno/${id}.json`, out, null); await _enIndiceSet(id, _enResumen(out)); return out;
+  const out = _enArma(id, it, r.data, usadas, r.uso, "Street View + IA", RADIO); out.fotosAt = set.at; await _bnWriteGcs(`mercado/entorno/${id}.json`, out, null); await _enIndiceSet(id, _enResumen(out)); return out;
 }
 // Miniatura bajo demanda: se pide a Google en el momento de verla (no se almacena). Enlace firmado para que solo sirva panoramas de análisis guardados.
 const _enSig = (pano, h) => crypto.createHmac("sha256", process.env.SYNC_SECRET || "entorno").update(`${pano}|${h}`).digest("hex").slice(0, 16);
@@ -13378,16 +13378,40 @@ async function _mqFootprints(lat, lng, R) {
       const g = ring.slice(0, -1).map(q => P.xy(q[1], q[0])), cx = g.reduce((a, p) => a + p[0], 0) / g.length, cy = g.reduce((a, p) => a + p[1], 0) / g.length; if (Math.abs(cx) > R || Math.abs(cy) > R) continue; const f = []; g.forEach(p => f.push(p[0], p[1])); out.push(f); } }
   return out;
 }
+// ── Fotos de Street View del entorno: paso previo común al análisis del entorno urbano y a la maqueta 3D (se guardan referencias: panorama + rumbo; las imágenes se piden a Google al usarlas)
+let _ftJob = { running: false };
+const _ftObj = id => `mercado/entorno/fotos/${id}.json`;
+async function _ftSelecciona(id, R, NF, NC) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
+  const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng;
+  _ftJob.paso = "Buscando el panorama más cercano a la propiedad"; const tomas = [], m0 = await _enMeta(lat, lng, key); let p0 = null;
+  if (m0.status === "OK") { p0 = { pano: m0.pano_id, lat: m0.location.lat, lng: m0.location.lng, date: m0.date || "", dist: Math.round(_enMetros([lat, lng], [m0.location.lat, m0.location.lng])) }; for (let k = 0; k < NC; k++) tomas.push(Object.assign({ h: Math.round(360 * k / NC) % 360, cen: 1 }, p0)); }
+  _ftJob.paso = `Calles de OpenStreetMap (${R} m)`; let roads = []; for (let i = 0; i < 3 && !roads.length; i++) { try { roads = (await _mqOsm(lat, lng, R)).roads; } catch (_) { await _amSleep(3000); } }
+  _ftJob.paso = "Buscando panoramas sobre las calles"; let nuevos = [];
+  if (NF > 0) { if (roads.length) nuevos = await _mqPanosCalles(lat, lng, R, roads, key, Math.ceil(NF / 2) + 3, p0 ? [p0] : []); else { const PP = await _enPanos(lat, lng, key, R); nuevos = PP.filter(q => !p0 || q.pano !== p0.pano).map(q => ({ pano: q.pano, lat: q.lat, lng: q.lng, date: q.date, br: 0 })); } }
+  let n = 0; for (const q of nuevos) { const dist = Math.round(_enMetros([lat, lng], [q.lat, q.lng])); for (const dh of [90, 270]) if (n < NF) { tomas.push({ pano: q.pano, h: Math.round(((q.br || 0) + dh) % 360), lat: q.lat, lng: q.lng, date: q.date || "", dist, cen: 0 }); n++; } }
+  if (!tomas.length) throw new Error(`Sin cobertura de Street View en ${R} m de esta coordenada`);
+  const out = { id, at: new Date().toISOString(), radio: R, fotos: NF, frente: NC, lat, lng, tomas }; await _bnWriteGcs(_ftObj(id), out, null); return out;
+}
+const _ftFirma = t => Object.assign({}, t, { u: `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(t.pano)}&h=${t.h}&sig=${_enSig(t.pano, t.h)}` });
+app.get("/mercado/entorno/fotos", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(_ftObj(id)); res.set("Cache-Control", "no-store"); if (data && Array.isArray(data.tomas)) data.tomas = data.tomas.map(_ftFirma); res.json({ ok: true, set: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/entorno/fotos/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _ftJob)); });
+app.post("/mercado/entorno/fotos", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), R = parseInt(b.radio, 10), NF = parseInt(b.fotos, 10), NC = parseInt(b.frente, 10); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
+  if (!(R >= 50 && R <= 600)) return res.status(400).json({ ok: false, error: "El radio debe estar entre 50 y 600 m" }); if (!(NF >= 0 && NF <= 60)) return res.status(400).json({ ok: false, error: "Las fotos del entorno deben estar entre 0 y 60" }); if (!(NC >= 0 && NC <= 12) || NF + NC < 4) return res.status(400).json({ ok: false, error: "Fotos frente a la propiedad entre 0 y 12, y al menos 4 fotos en total" });
+  if (_ftJob.running && Date.now() - Date.parse(_ftJob.upd || 0) < 180000) return res.status(409).json({ ok: false, error: "Ya hay una descarga de fotos en curso" });
+  _ftJob = { running: true, id, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _ftJob.upd = new Date().toISOString(); }, 10000);
+  _ftSelecciona(id, R, NF, NC).then(() => { _ftJob.ok = true; }).catch(e => { _ftJob.error = String(e.message || e); console.warn("[fotos]", id, e.message); }).finally(() => { clearInterval(t); _ftJob.running = false; _ftJob.fin = new Date().toISOString(); });
+  res.json({ ok: true });
+});
 let _mqJob = { running: false };
-async function _mqGenera(id, R, NF) {
+async function _mqGenera(id) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
   const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng);
-  _mqJob.paso = `Calles y edificios de OpenStreetMap (${R} m)`; const osm = await _mqOsm(lat, lng, R);
-  let ent = null; try { ent = (await _bnReadGcs(`mercado/entorno/${id}.json`)).data; } catch (_) {}
-  const ya = ((ent && ent.fotos) || []).map(f => ({ pano: f.pano, h: f.h, lat: f.lat, lng: f.lng })); let tomas = ya.slice();
-  if (NF > tomas.length) { _mqJob.paso = "Buscando más panoramas sobre las calles"; const nuevos = await _mqPanosCalles(lat, lng, R, osm.roads, key, Math.ceil((NF - tomas.length) / 2) + 2, ya); for (const p of nuevos) { for (const dh of [90, 270]) if (tomas.length < NF) tomas.push({ pano: p.pano, h: Math.round((p.br + dh) % 360), lat: p.lat, lng: p.lng }); } }
-  tomas = tomas.slice(0, Math.max(NF, 1)); const obs = [], uso = { input_tokens: 0, output_tokens: 0 };
-  try { const m0 = await _enMeta(lat, lng, key); if (m0.status === "OK") { const p0 = { pano: m0.pano_id, lat: m0.location.lat, lng: m0.location.lng }; tomas = [0, 90, 180, 270].map(h => Object.assign({ h, cen: 1 }, p0)).concat(tomas.filter(t => !(t.pano === p0.pano))); } } catch (_) {}
+  let set = null; try { set = (await _bnReadGcs(_ftObj(id))).data; } catch (_) {} if (!set || !(set.tomas || []).length) throw new Error("Primero descarga las fotos de Street View (paso 1 de la sección Análisis del entorno urbano)");
+  const R = set.radio || 200; _mqJob.radio = R; _mqJob.paso = `Calles y edificios de OpenStreetMap (${R} m)`; const osm = await _mqOsm(lat, lng, R);
+  const tomas = set.tomas.map(t => ({ pano: t.pano, h: t.h, lat: t.lat, lng: t.lng, cen: t.cen ? 1 : 0 })); const obs = [], uso = { input_tokens: 0, output_tokens: 0 };
   for (let i = 0; i < tomas.length; i += 8) {
     const L = tomas.slice(i, i + 8); _mqJob.paso = `Leyendo fachadas (fotos ${i + 1}–${i + L.length} de ${tomas.length})`; _mqJob.upd = new Date().toISOString(); const content = [], ok = [];
     for (const t of L) { try { const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${t.pano}&heading=${t.h}&fov=90&pitch=0&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(40000) }); if (!r.ok) continue; ok.push(t); content.push({ type: "text", text: `Foto ${ok.length} · rumbo ${t.h}°${t.cen ? " · FOTO CENTRAL tomada desde el punto exacto de la propiedad: describe hasta 12 frentes con el mayor detalle" : ""}` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: Buffer.from(await r.arrayBuffer()).toString("base64") } }); } catch (_) {} }
@@ -13400,15 +13424,15 @@ async function _mqGenera(id, R, NF) {
   _mqJob.paso = "Imagen satelital"; let sat = null; try { const r = await _mqSat(lat, lng, R, key, _mqJob); sat = r.sat; r.pois.forEach(q => { if (!pois.some(o => o.t === q.t && Math.hypot(o.x - q.x, o.y - q.y) < 50)) pois.push(q); }); uso.input_tokens += r.uso.input_tokens; uso.output_tokens += r.uso.output_tokens; } catch (e) { console.warn("[maqueta] satélite", e.message); _mqJob.aviso = "Sin imagen satelital: " + e.message; }
   // riesgos georreferenciados: posición del panorama + rumbo + posición en la imagen + distancia estimada; más semáforos y cruces de OpenStreetMap
   const riesgos = []; const TIPOS = ["pavimento", "peatonal", "semaforo", "estacionamiento", "acceso", "obstruccion", "otro"];
-  obs.forEach((o, oi) => (o.rg || []).forEach(q => { if (!q || typeof q.x !== "number") return; const t = TIPOS.includes(q.t) ? q.t : "otro", d = Math.max(3, Math.min(60, +q.d || 15)), th = (o.h + Math.atan((Math.max(0, Math.min(1, q.x)) - .5) * 2) * 180 / Math.PI) * Math.PI / 180, x = o.x + d * Math.sin(th), y = o.y + d * Math.cos(th); if (Math.abs(x) > R || Math.abs(y) > R) return; riesgos.push({ t, s: Math.max(1, Math.min(3, Math.round(+q.s || 1))), n: String(q.n || "").slice(0, 90), k: String(q.k || "").slice(0, 26), x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, f: "foto", o: oi }); }));
+  obs.forEach((o, oi) => (o.rg || []).forEach(q => { if (!q || typeof q.x !== "number") return; const t = TIPOS.includes(q.t) ? q.t : "otro", d = Math.max(3, Math.min(60, +q.d || 15)), th = (o.h + Math.atan((Math.max(0, Math.min(1, q.x)) - .5) * 2) * 180 / Math.PI) * Math.PI / 180, x = o.x + d * Math.sin(th), y = o.y + d * Math.cos(th); if (Math.abs(x) > R || Math.abs(y) > R) return; riesgos.push({ t, s: Math.max(1, Math.min(3, Math.round(+q.s || 1))), n: String(q.n || "").slice(0, 90), k: String(q.k || "").slice(0, 26), ix: Math.round(Math.max(0, Math.min(1, q.x)) * 100) / 100, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, f: "foto", o: oi }); }));
   obs.forEach(o => { delete o.rg; });
   (osm.sem || []).forEach(p => riesgos.push({ t: "semaforo", s: 2, n: "Semáforo (OpenStreetMap): +15 a 45 s por intersección", x: p[0], y: p[1], f: "osm" }));
   (osm.cruces || []).forEach(c => { if (c.r) riesgos.push({ t: "peatonal", s: 2, n: "Cruce peatonal sin marcas o sin rampa (OpenStreetMap)", x: c.p[0], y: c.p[1], f: "osm" }); });
   const fin = []; riesgos.sort((a, b) => b.s - a.s).forEach(r => { const i = fin.findIndex(q => q.t === r.t && Math.hypot(q.x - r.x, q.y - r.y) < (r.t === "semaforo" ? 14 : 12)); if (i < 0) fin.push(r); else if (r.s > fin[i].s) fin[i] = r; });
-  const out = { id, ver: "maqueta-geo-v1", at: new Date().toISOString(), lat, lng, radio: R, fotos: obs.length, tit: it.titulo || "", roads: osm.roads, builds: osm.builds, trees: osm.trees, lamps: osm.lamps, obs, pois, sat, mb, riesgos: fin.slice(0, 60), uso };
+  const out = { id, ver: "maqueta-geo-v1", at: new Date().toISOString(), lat, lng, radio: R, fotos: obs.length, fotosAt: set.at, tit: it.titulo || "", roads: osm.roads, builds: osm.builds, trees: osm.trees, lamps: osm.lamps, obs, pois, sat, mb, riesgos: fin.slice(0, 60), uso };
   await _bnWriteGcs(`mercado/maqueta/${id}.json`, out, null); try { const tok = await _vGcsToken(); await fetch(_mqGlbUrl(id), { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } }); } catch (_) {} return out;
 }
-app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); if (data && Array.isArray(data.obs)) data.obs.forEach(o => { o.u = `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(o.pano)}&h=${o.h}&sig=${_enSig(o.pano, o.h)}`; }); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 // Modelo 3D ya armado (.glb, lo exporta el navegador): se guarda en mercado/maqueta/<id>.glb y se borra al regenerar la maqueta.
 const _mqGlbUrl = (id, up) => up ? `https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(`mercado/maqueta/${id}.glb`)}` : `https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(`mercado/maqueta/${id}.glb`)}`;
 app.post("/mercado/maqueta/modelo", express.raw({ type: () => true, limit: "90mb" }), async (req, res) => {
@@ -13427,10 +13451,10 @@ app.get("/mercado/maqueta/modelo", async (req, res) => {
 app.get("/mercado/maqueta/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _mqJob)); });
 app.post("/mercado/maqueta/generar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), R = Math.max(80, Math.min(600, parseInt(b.radio, 10) || 250)), NF = Math.max(4, Math.min(60, parseInt(b.fotos, 10) || 10)); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
+  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
   if (_mqJob.running && Date.now() - Date.parse(_mqJob.upd || 0) < 240000) return res.status(409).json({ ok: false, error: "Ya hay una maqueta generándose" });
-  _mqJob = { running: true, id, radio: R, fotos: NF, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _mqJob.upd = new Date().toISOString(); }, 15000);
-  _mqGenera(id, R, NF).then(() => { _mqJob.ok = true; }).catch(e => { _mqJob.error = String(e.message || e) + " (" + (_mqJob.paso || "") + ")"; console.warn("[maqueta]", id, "paso:", _mqJob.paso, "·", e.message); }).finally(() => { clearInterval(t); _mqJob.running = false; _mqJob.fin = new Date().toISOString(); });
+  _mqJob = { running: true, id, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _mqJob.upd = new Date().toISOString(); }, 15000);
+  _mqGenera(id).then(() => { _mqJob.ok = true; }).catch(e => { _mqJob.error = String(e.message || e) + " (" + (_mqJob.paso || "") + ")"; console.warn("[maqueta]", id, "paso:", _mqJob.paso, "·", e.message); }).finally(() => { clearInterval(t); _mqJob.running = false; _mqJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
 // ── Datos ambientales y de riesgo por coordenada (fase 1) ─────────────────────────────────────────────────────────────────────────────────────────
