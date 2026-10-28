@@ -13530,12 +13530,17 @@ async function _trVias(id, vial, tramo, maxVias) {
   const vias = [];
   grupos.forEach(ws => {
     ws.forEach(w => { w.d = dmin(w.g); }); ws.sort((a, b) => a.d - b.d); const w0 = ws[0]; if (w0.d > R) return;
-    let cur = w0.g.map(p => p.slice()), usados = new Set([w0.id]); const cerca = (a, b) => dd(a, b) < 2.5, flex = w0.o ? false : true;
-    for (let it2 = 0; it2 < 12 && len(cur) < tramo * 1.8; it2++) { let hecho = false;
-      for (const w of ws) { if (usados.has(w.id)) continue; const first = w.g[0], last = w.g[w.g.length - 1], fin = cur[cur.length - 1], ini = cur[0];
-        if (cerca(fin, first)) { cur = cur.concat(w.g.slice(1)); } else if (!w.o && cerca(fin, last)) { cur = cur.concat(w.g.slice().reverse().slice(1)); } else if (cerca(last, ini)) { cur = w.g.slice(0, -1).concat(cur); } else if (!w.o && cerca(first, ini)) { cur = w.g.slice().reverse().slice(0, -1).concat(cur); } else continue;
-        usados.add(w.id); hecho = true; break; }
-      if (!hecho) break; }
+    let cur = w0.g.map(p => p.slice()), usados = new Set([w0.id]); const cerca = (a, b) => dd(a, b) < 2.5, rumbo = (a, b) => Math.atan2((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky), giro = (r1, r2) => Math.abs(((r2 - r1 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
+    // se prolonga el tramo con las vías conectadas (aunque cambien de nombre) eligiendo la que menos gira, hasta tener ~1.8× el tramo pedido
+    for (let it2 = 0; it2 < 14 && len(cur) < tramo * 1.8; it2++) { let mejor = null;
+      const hf = rumbo(cur[cur.length - 2], cur[cur.length - 1]), hi = rumbo(cur[1], cur[0]), fin = cur[cur.length - 1], ini = cur[0];
+      for (const w of ways) { if (usados.has(w.id)) continue; const n = w.g.length, op = [];
+        if (cerca(fin, w.g[0])) op.push({ lado: "f", g: w.g, ang: giro(hf, rumbo(w.g[0], w.g[1])) });
+        if (!w.o && cerca(fin, w.g[n - 1])) op.push({ lado: "f", g: w.g.slice().reverse(), ang: giro(hf, rumbo(w.g[n - 1], w.g[n - 2])) });
+        if (cerca(ini, w.g[n - 1])) op.push({ lado: "i", g: w.g, ang: giro(hi, rumbo(w.g[n - 1], w.g[n - 2])) });
+        if (!w.o && cerca(ini, w.g[0])) op.push({ lado: "i", g: w.g.slice().reverse(), ang: giro(hi, rumbo(w.g[0], w.g[1])) });
+        op.forEach(o => { if (o.ang < 1.05 && (!mejor || o.ang < mejor.ang)) mejor = Object.assign(o, { w }); }); }
+      if (!mejor) break; usados.add(mejor.w.id); cur = mejor.lado === "f" ? cur.concat(mejor.g.slice(1)) : mejor.g.slice(0, -1).concat(cur); }
     const total = len(cur); let best = 1e9, s0 = 0, acc = 0;
     for (let i = 1; i < cur.length; i++) { const a = xy(cur[i - 1]), b = xy(cur[i]), dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, -(a[0] * dx + a[1] * dy) / l2)), d = Math.hypot(a[0] + dx * t, a[1] + dy * t), sl = Math.sqrt(l2); if (d < best) { best = d; s0 = acc + sl * t; } acc += sl; }
     const T = Math.min(tramo, total), st = Math.max(0, Math.min(total - T, s0 - T / 2)), en = st + T, at = s => { let a = 0; for (let i = 1; i < cur.length; i++) { const l = dd(cur[i - 1], cur[i]); if (a + l >= s || i === cur.length - 1) { const u = l ? Math.max(0, Math.min(1, (s - a) / l)) : 0; return [cur[i - 1][0] + (cur[i][0] - cur[i - 1][0]) * u, cur[i - 1][1] + (cur[i][1] - cur[i - 1][1]) * u]; } a += l; } return cur[cur.length - 1]; };
@@ -13543,7 +13548,7 @@ async function _trVias(id, vial, tramo, maxVias) {
     const brg = (a, b) => Math.round((Math.atan2((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky) * 180 / Math.PI + 360) % 360), sentidos = [{ dir: "A→B", a: A, b: B, m: M, rumbo: brg(A, B) }]; if (!w0.o) sentidos.push({ dir: "B→A", a: B, b: A, m: M, rumbo: brg(B, A) });
     vias.push({ n: w0.n || w0.ref || "Sin nombre", ref: w0.ref || "", h: w0.h, o: w0.o, d: Math.round(best), len: Math.round(T), sentidos });
   });
-  vias.sort((a, b) => a.d - b.d); return { lat, lng, R, vias: vias.slice(0, maxVias), disponibles: vias.length };
+  const RK = { motorway: 0, trunk: 1, primary: 2, secondary: 3, tertiary: 4 }; vias.sort((a, b) => (RK[a.h] - RK[b.h]) || a.d - b.d); return { lat, lng, R, vias: vias.slice(0, maxVias), disponibles: vias.length };
 }
 function _trFechas(dias, tz) { // próxima fecha local de cada día de la semana (mañana en adelante), para pedir el tráfico típico de ese día
   const ahora = new Date(Date.now() + tz * 3600e3), out = {}; dias.forEach(d => { for (let i = 1; i <= 8; i++) { const x = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate() + i)); if (x.getUTCDay() === d) { out[d] = [x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()]; break; } } }); return out;
