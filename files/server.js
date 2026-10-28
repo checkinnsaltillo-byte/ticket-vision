@@ -13307,9 +13307,13 @@ Además, para CADA foto reporta SOLO los RIESGOS CLARAMENTE CRÍTICOS visibles (
 Cada riesgo: {"t":"pavimento"|"peatonal"|"semaforo"|"estacionamiento"|"acceso"|"obstruccion"|"seguridad"|"ambiental"|"fisico"|"informalidad"|"infraestructura"|"otro","s":3,"x":posición horizontal en la imagen 0-1,"d":distancia aprox. en metros (3-60),"k":palabra clave de la causa en 1 a 3 palabras (ej.: "Baches", "Banqueta rota", "Sin rampa", "Cables bajos", "Doble fila", "Grafiti", "Basura", "Predio abandonado", "Ambulantaje"),"n":qué se ve y por qué es riesgo, máx. 70 caracteres}.
 Devuelve SOLO JSON: {"fotos":[{"n":1,"fr":[...],"c":{...},"rg":[...]}]}. Sin comentarios. Si una foto no muestra frentes, "fr":[]; si no ves riesgos, "rg":[].`;
 const _mqProy = (lat0, lng0) => { const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 111320; return { xy: (la, ln) => [Math.round((ln - lng0) * kx * 10) / 10, Math.round((la - lat0) * ky * 10) / 10], kx, ky }; };
-async function _mqOsm(lat, lng, R) {
+async function _mqOsm(lat, lng, R, id) {
+  const ck = id ? `mercado/maqueta/osm/${id}_${R}.json` : null; if (ck) { try { const { data } = await _bnReadGcs(ck); if (data && data.roads && Date.now() - Date.parse(data.at || 0) < 30 * 864e5) return data; } catch (_) {} }
+  const out = await _mqOsm0(lat, lng, R); if (ck) { try { out.at = new Date().toISOString(); await _bnWriteGcs(ck, out, null); } catch (_) {} } return out;
+}
+async function _mqOsm0(lat, lng, R) {
   const q = `[out:json][timeout:60];(way(around:${R},${lat},${lng})[highway];way(around:${R},${lat},${lng})[building];node(around:${R},${lat},${lng})[natural=tree];node(around:${R},${lat},${lng})[highway=street_lamp];node(around:${R},${lat},${lng})[highway=traffic_signals];node(around:${R},${lat},${lng})[highway=crossing];way(around:${R},${lat},${lng})[power=line];way(around:${R},${lat},${lng})[railway=rail];way(around:${R},${lat},${lng})[waterway~"^(river|stream|canal|drain)$"];node(around:${R},${lat},${lng})[power=tower]["voltage"];);out tags geom;`;
-  let j, ult; for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(120000) }, 2); break; } catch (e) { ult = e; } }
+  let j, ult; for (let ronda = 0; ronda < 3 && !j; ronda++) for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(75000) }, 1); break; } catch (e) { ult = e; } if (!j) await _amSleep(4000); }
   if (!j) throw ult || new Error("Overpass sin respuesta");
   const P = _mqProy(lat, lng), roads = [], builds = [], trees = [], lamps = [], sem = [], cruces = [], fis = [];
   (j.elements || []).forEach(e => { const t = e.tags || {};
@@ -13423,7 +13427,7 @@ async function _mqGenera(id) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
   const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng);
   let set = null; try { set = (await _bnReadGcs(_ftObj(id))).data; } catch (_) {} if (!set || !(set.tomas || []).length) throw new Error("Primero descarga las fotos de Street View (paso 1 de la sección Análisis del entorno urbano)");
-  const R = set.radio || 200; _mqJob.radio = R; _mqJob.paso = `Calles y edificios de OpenStreetMap (${R} m)`; const osm = await _mqOsm(lat, lng, R);
+  const R = set.radio || 200; _mqJob.radio = R; _mqJob.paso = `Calles y edificios de OpenStreetMap (${R} m)`; const osm = await _mqOsm(lat, lng, R, id);
   const tomas = set.tomas.map(t => ({ pano: t.pano, h: t.h, lat: t.lat, lng: t.lng, cen: t.cen ? 1 : 0 })); const obs = [], uso = { input_tokens: 0, output_tokens: 0 };
   for (let i = 0; i < tomas.length; i += 8) {
     const L = tomas.slice(i, i + 8); _mqJob.paso = `Leyendo fachadas (fotos ${i + 1}–${i + L.length} de ${tomas.length})`; _mqJob.upd = new Date().toISOString(); const content = [], ok = [];
