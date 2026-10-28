@@ -515,7 +515,7 @@ function frGrafo(F, riesgos) {
   const pen = new Float32Array(n); (F.sem || []).forEach(p => { const q = near(p[0], p[1], 40); if (q && q.d < 20) { const art = adj[q.i].some(e => e[2]); pen[q.i] = Math.max(pen[q.i], art ? 45 : 30); } });
   return { n, X, Y, adj, pen, near };
 }
-function frDijkstra(G, srcs) { const t = new Float32Array(G.n).fill(Infinity), lab = new Int16Array(G.n).fill(-1), prev = new Int32Array(G.n).fill(-1), h = new FHeap(); srcs.forEach((s, k) => { if (s >= 0 && t[s] > 0) { t[s] = 0; lab[s] = k; h.push(0, s); } }); while (h.n) { const [d, u] = h.pop(); if (d > t[u]) continue; for (const [v, sec] of G.adj[u]) { const nd = d + sec + G.pen[v]; if (nd < t[v]) { t[v] = nd; lab[v] = lab[u]; prev[v] = u; h.push(nd, v); } } } return { t, lab, prev }; }
+function frDijkstra(G, srcs) { const t = new Float64Array(G.n).fill(Infinity), lab = new Int16Array(G.n).fill(-1), prev = new Int32Array(G.n).fill(-1), h = new FHeap(); srcs.forEach((s, k) => { if (s >= 0 && t[s] > 0) { t[s] = 0; lab[s] = k; h.push(0, s); } }); while (h.n) { const [d, u] = h.pop(); if (d > t[u]) continue; for (const [v, sec] of G.adj[u]) { const nd = d + sec + G.pen[v]; if (nd < t[v]) { t[v] = nd; lab[v] = lab[u]; prev[v] = u; h.push(nd, v); } } } return { t, lab, prev }; }
 function frConstruir(F, S) {
   const Rf = F.radio, G = frGrafo(F, S.riesgos), org = G.near(0, 0, 400); if (!org) throw new Error('Sin red vial cerca de la propiedad');
   const D = frDijkstra(G, [org.i]), tt = D.t, anc = (F.anclas || []).map(a => { const q = G.near(a.x, a.y, 600); return q ? Object.assign({}, a, { node: q.i, acc: q.d }) : null; }).filter(Boolean), DV = frDijkstra(G, anc.map(a => a.node));
