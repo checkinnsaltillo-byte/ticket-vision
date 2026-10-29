@@ -13596,7 +13596,11 @@ app.post("/mercado/trafico/consultar", async (req, res) => {
         try { const r = await _trRuta(key, s, dep); if (r) s.cel[t.d][t.h] = r; else fallos++; } catch (e) { if (e.fatal) fatal = e; else fallos++; }
         _trJob.done++; if (_trJob.done - ult >= 25) { ult = _trJob.done; await guarda(); } } }));
       if (fatal) throw fatal; if (fallos > tareas.length * .2) throw new Error(`Google no respondió en ${fallos} de ${tareas.length} consultas`);
-      const doc = { id, at: new Date().toISOString(), lat: V.lat, lng: V.lng, R: V.R, cfg, tz, horas, vias: V.vias, calls: tareas.length, fallos, costo: Math.round(tareas.length * _TR_PRECIO * 100) / 100 };
+      // los resultados se acumulan: las vialidades ya consultadas se conservan (con sus propios días y horas) y las que se vuelven a consultar se reemplazan
+      let prev = null; try { prev = (await _bnReadGcs(_trObj(id))).data || null; } catch (_) {} const ahora = new Date().toISOString(), mapa = new Map();
+      ((prev && prev.vias) || []).forEach(v => { const k = v.k || String(v.n || "").toLowerCase().slice(0, 90); mapa.set(k, Object.assign({}, v, { k, horas: v.horas || prev.horas, dias: v.dias || (prev.cfg || {}).dias, tramo: v.tramo || (prev.cfg || {}).tramo, at: v.at || prev.at })); });
+      V.vias.forEach(v => mapa.set(v.k, Object.assign(v, { horas, dias: cfg.dias, tramo: cfg.tramo, at: ahora })));
+      const doc = { id, at: ahora, lat: V.lat, lng: V.lng, R: V.R, cfg, tz, horas, vias: [...mapa.values()], calls: tareas.length, fallos, costo: Math.round(tareas.length * _TR_PRECIO * 100) / 100, nuevas: V.vias.length };
       await _bnWriteGcs(_trObj(id), doc, null); _trJob.running = false; _trJob.ok = true; _trJob.paso = "Listo"; await guarda();
     } catch (e) { console.warn("[trafico]", id, e.message); _trJob.running = false; _trJob.error = String(e.message || e); await guarda(); }
   })();
