@@ -13475,6 +13475,108 @@ async function _mqGenera(id, refrescar) {
   const out = { id, ver: "maqueta-geo-v1", at: new Date().toISOString(), lat, lng, radio: R, fotos: obs.length, fotosAt: set.at, tit: it.titulo || "", roads: osm.roads, builds: osm.builds, trees: osm.trees, lamps: osm.lamps, lampsF, svF, cpF, paF, paradas: osm.paradas || [], cruces: (osm.cruces || []).filter(c => c.m !== "unmarked").map(c => c.p), obs, pois, sat, mb, riesgos: fin.filter(q => q.s >= 2).slice(0, 40), uso };
   await _bnWriteGcs(`mercado/maqueta/${id}.json`, out, null); try { const tok = await _vGcsToken(); await fetch(_mqGlbUrl(id), { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } }); } catch (_) {} return out;
 }
+// ── Origen del tráfico frente a una propiedad (estimación por modelo, sin datos de movilidad reales):
+// zonas polares alrededor de la propiedad → pesos (viviendas / empleos de OpenStreetMap) → modelo de gravedad con tiempos de Google (hora pico) →
+// ruteo en la red vial de OpenStreetMap → porcentaje de viajes que cruzan la calle de la propiedad según su zona de origen.
+// Tope de gasto en Google Routes: 625 elementos de matriz + 60 rutas (≈ 6.9 USD como máximo).
+const _OD_VEL = { motorway: 80, trunk: 60, primary: 45, secondary: 38, tertiary: 32, unclassified: 28, residential: 22, living_street: 12 };
+const _OD_RK = { motorway: 6, trunk: 5, primary: 4, secondary: 3, tertiary: 2, unclassified: 1, residential: 0, living_street: 0 };
+const _OD_MAX_EL = 324, _OD_MAX_RUTAS = 40, _OD_RUMBOS = ["Norte", "Noreste", "Este", "Sureste", "Sur", "Suroeste", "Oeste", "Noroeste"];
+let _odJob = { running: false };
+const _odKey = id => `mercado/maqueta/od/${id}.json`;
+async function _odOverpass(q) {
+  let j, ult; for (let ronda = 0; ronda < 3 && !j; ronda++) { for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(170000) }, 1); break; } catch (e) { ult = e; } } if (!j) await _amSleep(5000); }
+  if (!j) throw ult || new Error("Overpass sin respuesta"); return j;
+}
+async function _odCuenta(q) { const j = await _odOverpass(q), c = (j.elements || []).find(e => e.type === "count"); return c && c.tags ? +c.tags.total || 0 : 0; }
+async function _odPool(arr, n, fn) { const out = new Array(arr.length); let k = 0; await Promise.all(Array.from({ length: n }, async () => { while (k < arr.length) { const i = k++; out[i] = await fn(arr[i], i); } })); return out; }
+function _odDecode(s) { const out = []; let i = 0, la = 0, ln = 0; while (i < s.length) { for (const w of [0, 1]) { let b, sh = 0, r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); const d = (r & 1) ? ~(r >> 1) : (r >> 1); if (w) ln += d; else la += d; } out.push([la / 1e5, ln / 1e5]); } return out; }
+function _odDistSeg(ax, ay, bx, by) { const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)); return Math.hypot(ax + dx * t, ay + dy * t); }
+function _odGrafo(ways, P) {
+  const idx = new Map(), X = [], Y = [], RK = [], adj = [], eA = [], eB = [], eT = [], eW = [], eL = [], W = [], vistos = new Set();
+  const nodo = g => { const k = g.lat.toFixed(6) + "," + g.lon.toFixed(6); let i = idx.get(k); if (i == null) { i = X.length; idx.set(k, i); const p = P.xy(g.lat, g.lon); X.push(p[0]); Y.push(p[1]); RK.push(0); adj.push([]); } return i; };
+  ways.forEach(w => { if (vistos.has(w.id)) return; vistos.add(w.id); const t = w.tags || {}, hw0 = t.highway || "", link = /_link$/.test(hw0), hw = hw0.replace("_link", ""); if (!(hw in _OD_VEL) || !Array.isArray(w.geometry) || w.geometry.length < 2) return;
+    const v = _OD_VEL[hw] * (link ? .7 : 1) / 3.6, ow = String(t.oneway || ""), fwd = /^(yes|true|1)$/.test(ow) || t.junction === "roundabout" || hw === "motorway" && ow !== "no", rev = ow === "-1", wi = W.length; W.push({ n: t.name || t.ref || "", hw, rk: _OD_RK[hw] });
+    for (let k = 1; k < w.geometry.length; k++) { const a = nodo(w.geometry[k - 1]), b = nodo(w.geometry[k]); if (a === b) continue; const L = Math.hypot(X[a] - X[b], Y[a] - Y[b]); RK[a] = Math.max(RK[a], _OD_RK[hw]); RK[b] = Math.max(RK[b], _OD_RK[hw]);
+      const add = (u, z) => { const e = eA.length; eA.push(u); eB.push(z); eT.push(L / v); eW.push(wi); eL.push(L); adj[u].push(e); };
+      if (!rev) add(a, b); if (!fwd || rev) add(b, a); if (!fwd && !rev) { /* doble sentido: ya se agregaron ambos */ } } });
+  return { X, Y, RK, adj, eA, eB, eT, eW, eL, W };
+}
+function _odDijkstra(G, src) {
+  const n = G.X.length, dist = new Float64Array(n).fill(Infinity), prev = new Int32Array(n).fill(-1), h = [[0, src]]; dist[src] = 0;
+  const push = it => { h.push(it); let i = h.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (h[p][0] <= h[i][0]) break; [h[p], h[i]] = [h[i], h[p]]; i = p; } };
+  const pop = () => { const top = h[0], last = h.pop(); if (h.length) { h[0] = last; let i = 0; for (;;) { let m = i; const l = 2 * i + 1, r = l + 1; if (l < h.length && h[l][0] < h[m][0]) m = l; if (r < h.length && h[r][0] < h[m][0]) m = r; if (m === i) break; [h[m], h[i]] = [h[i], h[m]]; i = m; } } return top; };
+  while (h.length) { const [d, u] = pop(); if (d > dist[u]) continue; for (const e of G.adj[u]) { const z = G.eB[e], nd = d + G.eT[e]; if (nd < dist[z]) { dist[z] = nd; prev[z] = e; push([nd, z]); } } }
+  return { dist, prev };
+}
+async function _odGenera(id) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
+  const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng), uso = { elementos: 0, rutas: 0 };
+  const paso = s => { _odJob.paso = s; _odJob.upd = new Date().toISOString(); };
+  paso("Red vial de OpenStreetMap (20 km)");
+  const HWM = "motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link", HWL = HWM + "|unclassified|residential|living_street";
+  const [ja, jb] = await Promise.all([_odOverpass(`[out:json][timeout:150];way(around:20000,${lat},${lng})[highway~"^(${HWM})$"];out tags geom;`), _odOverpass(`[out:json][timeout:90];way(around:1500,${lat},${lng})[highway~"^(${HWL})$"];out tags geom;`)]);
+  const G = _odGrafo([].concat(ja.elements || [], jb.elements || []).filter(e => e.type === "way"), P); if (G.X.length < 50) throw new Error("La red vial de OpenStreetMap vino vacía");
+  // calle de la propiedad: la vía más cercana; se cuentan los tramos que quedan a ≤ 110 m de la propiedad
+  let best = null, bd = 1e9; for (let e = 0; e < G.eA.length; e++) { const d = _odDistSeg(G.X[G.eA[e]], G.Y[G.eA[e]], G.X[G.eB[e]], G.Y[G.eB[e]]); if (d < bd) { bd = d; best = G.eW[e]; } }
+  const seg = new Set(), nomb = new Set([G.W[best].n || "(sin nombre)"]); for (let e = 0; e < G.eA.length; e++) { const d = _odDistSeg(G.X[G.eA[e]], G.Y[G.eA[e]], G.X[G.eB[e]], G.Y[G.eB[e]]); if ((G.eW[e] === best && d < 110) || (G.W[G.eW[e]].rk >= 2 && d < 150)) { seg.add(e); if (G.W[G.eW[e]].n) nomb.add(G.W[G.eW[e]].n); } } if (!seg.size) throw new Error("No se encontró la calle de la propiedad en la red");
+  const calle = [...nomb].join(" · ");
+  // zonas: núcleo (0–2.5 km) y 3 anillos de 8 sectores (2.5–6, 6–11, 11–20 km)
+  const RING = [[0, 2500], [2500, 6000], [6000, 11000], [11000, 20000]], Z = [];
+  RING.forEach((r, ri) => { if (ri === 0) Z.push({ ri, k: -1, r0: 0, r1: r[1] }); else for (let k = 0; k < 8; k++) Z.push({ ri, k, r0: r[0], r1: r[1] }); });
+  const zonaDe = (x, y) => { const r = Math.hypot(x, y), ri = RING.findIndex(q => r >= q[0] && r < q[1]); if (ri < 0) return -1; if (ri === 0) return 0; const b = (Math.atan2(x, y) * 180 / Math.PI + 360) % 360, k = Math.round(b / 45) % 8; return Z.findIndex(z => z.ri === ri && z.k === k); };
+  const nz = Z.map(() => []); for (let i = 0; i < G.X.length; i++) if (G.RK[i] >= 2) { const zi = zonaDe(G.X[i], G.Y[i]); if (zi >= 0) nz[zi].push(i); }
+  Z.forEach((z, zi) => { const L = nz[zi]; if (!L.length) { z.nodo = -1; return; } const mx = L.reduce((a, i) => a + G.X[i], 0) / L.length, my = L.reduce((a, i) => a + G.Y[i], 0) / L.length; let b = L[0], bdd = 1e18; L.forEach(i => { const d = (G.X[i] - mx) ** 2 + (G.Y[i] - my) ** 2; if (d < bdd) { bdd = d; b = i; } }); z.nodo = b; z.nn = L.length; });
+  let act = Z.map((z, i) => i).filter(i => Z[i].nodo >= 0), n = act.length; if (n < 6) throw new Error("Muy pocas zonas con red vial");
+  Z.forEach(z => { z.nombre = z.k < 0 ? "Entorno inmediato (0–2.5 km)" : `${_OD_RUMBOS[z.k]} · ${z.r0 / 1000}–${z.r1 / 1000} km`; });
+  // pesos por zona, de OpenStreetMap con una sola consulta por tipo: viviendas = superficie de uso de suelo residencial; empleos = comercios, oficinas y servicios + superficie comercial (×5) e industrial (×8)
+  paso("Usos de suelo y comercios (OpenStreetMap)");
+  const [jl, jp] = await Promise.all([_odOverpass(`[out:json][timeout:150];way(around:20000,${lat},${lng})[landuse~"^(residential|commercial|retail|industrial)$"];out tags geom;`), _odOverpass(`[out:json][timeout:150];(node(around:20000,${lat},${lng})["shop"];node(around:20000,${lat},${lng})["office"];node(around:20000,${lat},${lng})["amenity"~"^(school|kindergarten|college|university|hospital|clinic|bank|restaurant|marketplace|fuel|pharmacy|cafe|townhall)$"];);out skel;`)]);
+  Z.forEach(z => { z.res = 0; z.emp = 0; z.est = "ok"; });
+  (jl.elements || []).forEach(w => { const g = (w.geometry || []).map(q => P.xy(q.lat, q.lon)); if (g.length < 4) return; let A = 0, cx = 0, cy = 0; for (let i = 0; i < g.length; i++) { const q = g[(i + 1) % g.length]; A += g[i][0] * q[1] - q[0] * g[i][1]; cx += g[i][0]; cy += g[i][1]; } A = Math.abs(A) / 2 / 1e4; cx /= g.length; cy /= g.length; const zi = zonaDe(cx, cy); if (zi < 0 || A <= 0) return; const lu = (w.tags || {}).landuse; if (lu === "residential") Z[zi].res += A; else if (lu === "industrial") Z[zi].emp += 8 * A; else Z[zi].emp += 5 * A; });
+  (jp.elements || []).forEach(e => { if (e.lat == null) return; const q = P.xy(e.lat, e.lon), zi = zonaDe(q[0], q[1]); if (zi >= 0) Z[zi].emp += 1; });
+  Z.forEach(z => { z.res = Math.round(z.res * 10) / 10; z.emp = Math.round(z.emp * 10) / 10; });
+  { const mx = Math.floor(Math.sqrt(_OD_MAX_EL)); if (act.length > mx) { const top = act.slice().sort((a, b) => (Z[b].res + Z[b].emp) - (Z[a].res + Z[a].emp)).slice(0, mx); if (!top.includes(0) && act.includes(0)) top[top.length - 1] = 0; act = act.filter(i => top.includes(i)); n = act.length; } }
+  // tiempos de Google en hora pico de un martes (8:00, hora del centro de México): una sola matriz
+  paso("Tiempos de Google en hora pico (matriz)"); const dep = (() => { const d = new Date(Date.now() + 36 * 3600e3); while (d.getUTCDay() !== 2) d.setUTCDate(d.getUTCDate() + 1); d.setUTCHours(14, 0, 0, 0); return d.toISOString(); })();
+  const wp = act.map(zi => ({ waypoint: { location: { latLng: { latitude: lat + G.Y[Z[zi].nodo] / P.ky, longitude: lng + G.X[Z[zi].nodo] / P.kx } } } })); 
+  const mk = act.map(zi => Z[zi].nodo).join(","), gT = Array.from({ length: n }, () => new Array(n).fill(null)); let cache = null; try { cache = (await _bnReadGcs(_odKey(id + "_matriz"))).data; } catch (_) {}
+  if (cache && cache.k === mk && Array.isArray(cache.gT)) { cache.gT.forEach((r, i) => r.forEach((v, j) => { gT[i][j] = v; })); _odJob.matrizCache = true; }
+  else { uso.elementos += n * n; const rm = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "originIndex,destinationIndex,duration,distanceMeters,condition" }, body: JSON.stringify({ origins: wp, destinations: wp, travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE", departureTime: dep }), signal: AbortSignal.timeout(120000) });
+    const mj = await rm.json().catch(() => null); if (!rm.ok || !Array.isArray(mj)) throw new Error("Google Routes (matriz): " + ((mj && mj.error && mj.error.message) || rm.status));
+    mj.forEach(e => { if (e.duration && e.condition !== "ROUTE_NOT_FOUND") gT[e.originIndex][e.destinationIndex] = parseFloat(e.duration) / 60; }); try { await _bnWriteGcs(_odKey(id + "_matriz"), { k: mk, dep, gT }, null); } catch (_) {} }
+  // ruteo en la red de OpenStreetMap y marca de los viajes que cruzan la calle de la propiedad
+  paso("Rutas más rápidas entre zonas"); const pass = Array.from({ length: n }, () => new Array(n).fill(false)), troncal = Array.from({ length: n }, () => ({})), oT = Array.from({ length: n }, () => new Array(n).fill(null)), pathN = {};
+  act.forEach((zi, a) => { const D = _odDijkstra(G, Z[zi].nodo); act.forEach((zj, b) => { if (a === b) return; const d = D.dist[Z[zj].nodo]; if (!isFinite(d)) return; oT[a][b] = d / 60; let u = Z[zj].nodo, ps = false; const len = {}; while (u !== Z[zi].nodo) { const e = D.prev[u]; if (e < 0) break; if (seg.has(e)) ps = true; const w = G.W[G.eW[e]]; if (w.rk >= 2 && w.n) len[w.n] = (len[w.n] || 0) + G.eL[e]; u = G.eA[e]; } pass[a][b] = ps; if (ps) { const top = Object.entries(len).sort((p, q) => q[1] - p[1])[0]; pathN[a + "|" + b] = top ? top[0] : ""; } }); });
+  // gravedad: T_ij = H_i · D_j · f(t_ij) / Σ_k D_k · f(t_ik)
+  const H = act.map(zi => Math.max(1, Z[zi].res)), Dm = act.map(zi => Math.max(1, Z[zi].emp)), tt = (a, b) => a === b ? 5 : (gT[a][b] != null ? gT[a][b] : (oT[a][b] != null ? oT[a][b] * 1.3 : null)), f = t => t == null ? 0 : Math.exp(-t / 14);
+  const T = Array.from({ length: n }, () => new Array(n).fill(0)); for (let a = 0; a < n; a++) { let s = 0; for (let b = 0; b < n; b++) s += Dm[b] * f(tt(a, b)); if (s <= 0) continue; for (let b = 0; b < n; b++) T[a][b] = H[a] * Dm[b] * f(tt(a, b)) / s; }
+  const am = new Array(n).fill(0), pm = new Array(n).fill(0), via = Array.from({ length: n }, () => ({}));
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) { if (a === b) continue; if (pass[a][b]) { am[a] += T[a][b]; const nm = pathN[a + "|" + b]; if (nm) via[a][nm] = (via[a][nm] || 0) + T[a][b]; } if (pass[b][a]) pm[b] += T[a][b]; }
+  const sA = am.reduce((x, y) => x + y, 0) || 1, sP = pm.reduce((x, y) => x + y, 0) || 1;
+  // verificación con rutas reales de Google (trazado): las parejas con más flujo que sí cruzan y las que no
+  paso("Verificación con rutas de Google"); const pares = []; for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) if (a !== b) pares.push({ a, b, f: T[a][b], p: pass[a][b] });
+  const si = pares.filter(q => q.p).sort((x, y) => y.f - x.f).slice(0, 25), no = pares.filter(q => !q.p).sort((x, y) => y.f - x.f).slice(0, 15), ver = { n: 0, ok: 0, si: [0, 0], no: [0, 0] };
+  await _odPool(si.concat(no.map(q => Object.assign(q, { _no: 1 }))).slice(0, _OD_MAX_RUTAS), 4, async q => { if (uso.rutas >= _OD_MAX_RUTAS) return; uso.rutas++; try {
+    const r = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "routes.polyline.encodedPolyline" }, body: JSON.stringify({ origin: wp[q.a].waypoint, destination: wp[q.b].waypoint, travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE", departureTime: dep }), signal: AbortSignal.timeout(30000) }); const j = await r.json(); const pl = j.routes && j.routes[0] && j.routes[0].polyline && j.routes[0].polyline.encodedPolyline; if (!pl) return;
+    const pts = _odDecode(pl).map(p => P.xy(p[0], p[1])); let g = false; for (let i = 1; i < pts.length && !g; i++) if (_odDistSeg(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) < 150) g = true;
+    ver.n++; const k = q.p ? "si" : "no"; ver[k][1]++; if (g === q.p) { ver.ok++; ver[k][0]++; } } catch (_) {} });
+  // calibración: tiempos de Google contra los de la red propia
+  const par = []; for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) if (a !== b && gT[a][b] != null && oT[a][b] != null) par.push([gT[a][b], oT[a][b]]);
+  const med = par.map(p => p[0] / p[1]).sort((x, y) => x - y)[Math.floor(par.length / 2)] || null, mg = par.reduce((s, p) => s + p[0], 0) / (par.length || 1), mo = par.reduce((s, p) => s + p[1], 0) / (par.length || 1), cov = par.reduce((s, p) => s + (p[0] - mg) * (p[1] - mo), 0), vg = par.reduce((s, p) => s + (p[0] - mg) ** 2, 0), vo = par.reduce((s, p) => s + (p[1] - mo) ** 2, 0), corr = par.length > 3 && vg > 0 && vo > 0 ? cov / Math.sqrt(vg * vo) : null;
+  const rd = v => Math.round(v * 1000) / 1000, zonas = act.map((zi, a) => { const z = Z[zi], vv = Object.entries(via[a]).sort((x, y) => y[1] - x[1])[0]; return { id: zi, nombre: z.nombre, rumbo: z.k < 0 ? null : z.k * 45, r0: z.r0, r1: z.r1, lat: Math.round((lat + G.Y[z.nodo] / P.ky) * 1e5) / 1e5, lng: Math.round((lng + G.X[z.nodo] / P.kx) * 1e5) / 1e5, viv: z.res, emp: z.emp, est: z.est, am: rd(am[a] / sA), pm: rd(pm[a] / sP), dia: rd((am[a] / sA + pm[a] / sP) / 2), via: vv ? vv[0] : "", min: gT[a][act.indexOf(0)] != null ? Math.round(gT[a][act.indexOf(0)] * 10) / 10 : null }; });
+  const out = { id, ver: "od-modelo-v1", at: new Date().toISOString(), lat, lng, calle, zonas: zonas.sort((x, y) => y.dia - x.dia), cal: { ratioTiempos: med ? rd(med) : null, correlacion: corr == null ? null : rd(corr), verificacion: ver, aciertos: ver.n ? rd(ver.ok / ver.n) : null }, supuestos: { gravedad: "exp(-t/14 min)", horaGoogle: dep, intrazonal: "los viajes dentro de una misma zona no se cuentan", pesos: "viviendas = superficie residencial de OpenStreetMap; empleos = comercios y servicios + superficie comercial ×5 e industrial ×8" }, uso: { elementosMatriz: uso.elementos, rutas: uso.rutas, usdMax: Math.round((uso.elementos + uso.rutas) * 0.01 * 100) / 100 } };
+  await _bnWriteGcs(_odKey(id), out, null); return out;
+}
+app.post("/mercado/maqueta/od-estima", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" }); const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
+  if (_odJob.running && Date.now() - Date.parse(_odJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay una estimación en curso" });
+  _odJob = { running: true, id, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _odJob.upd = new Date().toISOString(); }, 15000);
+  _odGenera(id).then(() => { _odJob.ok = true; }).catch(e => { _odJob.error = String(e.message || e) + " (" + (_odJob.paso || "") + ")"; console.warn("[od]", id, e.message); }).finally(() => { clearInterval(t); _odJob.running = false; _odJob.fin = new Date().toISOString(); });
+  res.json({ ok: true });
+});
+app.get("/mercado/maqueta/od-estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _odJob)); });
+app.get("/mercado/maqueta/od", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(_odKey(id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, od: data || null }); } catch (e) { res.json({ ok: true, od: null }); } });
 app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); if (data && Array.isArray(data.obs)) data.obs.forEach(o => { o.u = `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(o.pano)}&h=${o.h}&sig=${_enSig(o.pano, o.h)}`; }); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 // Modelo 3D ya armado (.glb, lo exporta el navegador): se guarda en mercado/maqueta/<id>.glb y se borra al regenerar la maqueta.
 const _mqGlbUrl = (id, up) => up ? `https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(`mercado/maqueta/${id}.glb`)}` : `https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(`mercado/maqueta/${id}.glb`)}`;
