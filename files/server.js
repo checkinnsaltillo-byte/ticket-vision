@@ -13511,7 +13511,7 @@ const _TR_CLASES = ["motorway", "trunk", "primary", "secondary", "tertiary", "mo
 const _TR_PRECIO = 10 / 1000; // USD por consulta (Routes · Compute Routes Pro, tráfico en tiempo/predicción); estimado
 const _trNorm = c => { c = c || {}; const n = (v, lo, hi, d) => { v = Math.round(Number(v)); return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; }; const h0 = n(c.h0, 0, 23, _TR_DEF.h0), h1 = Math.max(h0, n(c.h1, 0, 23, _TR_DEF.h1)); const dias = (Array.isArray(c.dias) ? c.dias : _TR_DEF.dias).map(Number).filter(d => d >= 0 && d <= 6).filter((d, i, a) => a.indexOf(d) === i); return { tramo: n(c.tramo, 50, 1000, _TR_DEF.tramo), h0, h1, paso: n(c.paso, 1, 6, _TR_DEF.paso), dias: dias.length ? dias : _TR_DEF.dias, maxVias: n(c.maxVias, 0, 30, _TR_DEF.maxVias), sel: (Array.isArray(c.sel) ? c.sel : []).map(x => String(x).slice(0, 90)).slice(0, 400), clases: (Array.isArray(c.clases) ? c.clases : _TR_PRI).filter(x => _TR_CLASES.includes(x)).filter((x, i, a) => a.indexOf(x) === i) }; };
 const _trHoras = c => { const L = []; for (let h = c.h0; h <= c.h1; h += c.paso) L.push(h); return L; };
-const _trObj = id => `mercado/trafico/${id}.json`, _trEstObj = id => `mercado/trafico/estado/${id}.json`, _trViasObj = (id, R, cl) => `mercado/trafico/vias/${id}_${R}_${cl}.json`;
+const _trObj = id => `mercado/trafico/${id}.json`, _trEstObj = id => `mercado/trafico/estado/${id}.json`, _trViasObj = (id, R, cl) => `mercado/trafico/vias/${id}_${R}_${cl}_v2.json`;
 const _trTz = lng => lng < -114 ? -8 : lng < -108 ? -7 : lng > -88.6 ? -5 : -6;
 let _trJob = { running: false };
 async function _trVias(id, vial, tramo, maxVias, clases) {
@@ -13523,7 +13523,7 @@ async function _trVias(id, vial, tramo, maxVias, clases) {
     const q = `[out:json][timeout:120];(${grandes.length ? `way(around:${R},${lat},${lng})[highway~"^(${grandes.join("|")})$"];` : ""}${locales.length ? `way(around:${Rloc},${lat},${lng})[highway~"^(${locales.join("|")})$"];` : ""});out tags geom;`; let j, ult;
     for (let ronda = 0; ronda < 3 && !j; ronda++) for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(130000) }, 1); break; } catch (e) { ult = e; } if (!j) await _amSleep(4000); }
     if (!j) throw ult || new Error("Overpass sin respuesta");
-    ways = (j.elements || []).filter(e => e.type === "way").map(e => { const t = e.tags || {}, g = (e.geometry || []).filter(q => q && q.lat != null).map(q => [q.lat, q.lon]); if (g.length < 2) return null; const ow = _mqOneway(t, g.map(p => [p[0], p[1]])); return { id: e.id, n: t.name || "", ref: t.ref || "", h: t.highway, o: ow.o, g: ow.g }; }).filter(Boolean);
+    ways = (j.elements || []).filter(e => e.type === "way").map(e => { const t = e.tags || {}, g = (e.geometry || []).filter(q => q && q.lat != null).map(q => [q.lat, q.lon]); if (g.length < 2) return null; const ow = _mqOneway(t, g.map(p => [p[0], p[1]])); return { id: e.id, n: t.name || "", ref: t.ref || "", h: t.highway, o: ow.o, l: t.lanes ? (parseInt(t.lanes, 10) || null) : null, g: ow.g }; }).filter(Boolean);
     try { await _bnWriteGcs(ck, { at: new Date().toISOString(), ways }, null); } catch (_) {}
   }
   const xy = p => [(p[1] - lng) * P.kx, (p[0] - lat) * P.ky], dd = (a, b) => Math.hypot((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky), len = L => { let s = 0; for (let i = 1; i < L.length; i++) s += dd(L[i - 1], L[i]); return s; };
@@ -13551,7 +13551,7 @@ async function _trVias(id, vial, tramo, maxVias, clases) {
     const brg = (a, b) => Math.round((Math.atan2((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky) * 180 / Math.PI + 360) % 360), sentidos = [{ dir: "A→B", a: A, b: B, m: M, rumbo: brg(A, B) }]; if (!w0.o) sentidos.push({ dir: "B→A", a: B, b: A, m: M, rumbo: brg(B, A) });
     const plp = [A]; { let a2 = 0; for (let i = 1; i < cur.length; i++) { a2 += dd(cur[i - 1], cur[i]); if (a2 > st + 1 && a2 < en - 1) plp.push(rd(cur[i])); } plp.push(B); }
     const plc = plp.length > 14 ? plp.filter((_, i) => i === 0 || i === plp.length - 1 || i % Math.ceil(plp.length / 12) === 0) : plp;
-    const via = { k: String(w0.n || w0.ref || "w" + w0.id).toLowerCase().slice(0, 90), n: w0.n || w0.ref || "Sin nombre", ref: w0.ref || "", h: w0.h, o: w0.o, d: Math.round(best), len: Math.round(T), pl: plc, sentidos };
+    const via = { k: String(w0.n || w0.ref || "w" + w0.id).toLowerCase().slice(0, 90), n: w0.n || w0.ref || "Sin nombre", ref: w0.ref || "", h: w0.h, o: w0.o, l: w0.l || null, d: Math.round(best), len: Math.round(T), pl: plc, sentidos };
     return { via, usados, rumbo: brg(A, B), M };
   };
   const difGrados = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
