@@ -13656,6 +13656,22 @@ app.post("/mercado/maqueta/fachadas", async (req, res) => {
   _mqFachadas(id, max).then(() => { _mqFacJob.ok = true; }).catch(e => { _mqFacJob.error = String(e.message || e); console.warn("[fachadas]", e.message); }).finally(() => { _mqFacJob.running = false; _mqFacJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
+// ── Negocios de Google Places dentro del radio de la maqueta (posición local en metros + horario semanal compacto) ──
+app.get("/mercado/maqueta/negocios", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const id = String(req.query.id || "").replace(/\D/g, ""), { data: S } = await _bnReadGcs(`mercado/maqueta/${id}.json`), { data: L } = await _bnReadGcs(`mercado/lugares/${id}.json`);
+    res.set("Cache-Control", "no-store"); if (!S || !L || !Array.isArray(L.places)) return res.json({ ok: true, items: [] });
+    const P = _mqProy(+S.lat, +S.lng), R = S.radio || 200, items = [];
+    L.places.forEach(q => {
+      if (!q.location || q.businessStatus === "CLOSED_PERMANENTLY") return; const p = P.xy(q.location.latitude, q.location.longitude); if (Math.abs(p[0]) > R - 3 || Math.abs(p[1]) > R - 3) return;
+      const oh = q.regularOpeningHours || q.currentOpeningHours || null; let per = null, h24 = false;
+      if (oh && Array.isArray(oh.periods) && oh.periods.length) { per = []; oh.periods.forEach(r => { if (!r.open) return; if (!r.close) { if ((r.open.hour || 0) === 0 && (r.open.minute || 0) === 0) h24 = true; return; } const o = (r.open.hour || 0) * 60 + (r.open.minute || 0), dd = (r.close.day - r.open.day + 7) % 7, c = dd * 1440 + (r.close.hour || 0) * 60 + (r.close.minute || 0); per.push([r.open.day, o, c <= o ? c + 1440 : c]); }); }
+      items.push({ id: q.id, n: String((q.displayName && q.displayName.text) || "").slice(0, 40), t: q.primaryType || (q.types || [])[0] || "", g: q.grupo || "", x: Math.round(p[0] * 10) / 10, y: Math.round(p[1] * 10) / 10, r: q.rating || 0, nr: q.userRatingCount || 0, tx: (q.primaryTypeDisplayName && q.primaryTypeDisplayName.text) || "", h24, p: per });
+    });
+    items.sort((a, b) => b.nr - a.nr); res.json({ ok: true, items: items.slice(0, 160) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── Datos ambientales y de riesgo por coordenada (fase 1) ─────────────────────────────────────────────────────────────────────────────────────────
 //    Altitud, clima (promedio 2020-2024) y aire (modelo, últimos 30 días) desde Open-Meteo; riesgo tecnológico (gasolineras, industria, ferrocarril, autopistas, ductos,
 //    líneas de alta tensión) y accesibilidad (hospitales, escuelas, supermercados) desde OpenStreetMap vía Overpass, a ≤ 3 km. Se guarda todo en mercado/ambiente.json (id → datos).
