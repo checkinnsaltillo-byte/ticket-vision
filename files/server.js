@@ -13532,9 +13532,8 @@ async function _trVias(id, vial, tramo, maxVias, clases) {
   const idx = new Map(), pk = p => Math.round(p[0] * 1e4) + "," + Math.round(p[1] * 1e4); ways.forEach(w => { for (const p of [w.g[0], w.g[w.g.length - 1]]) { const k = pk(p); (idx.get(k) || idx.set(k, []).get(k)).push(w); } });
   const cercanas = p => { const out = new Set(), a = Math.round(p[0] * 1e4), b = Math.round(p[1] * 1e4); for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) (idx.get((a + i) + "," + (b + j)) || []).forEach(w => out.add(w)); return out; };
   const vias = [];
-  grupos.forEach(ws => {
-    ws.forEach(w => { w.d = dmin(w.g); }); ws.sort((a, b) => a.d - b.d); const w0 = ws[0]; if (w0.d > R) return;
-    let cur = w0.g.map(p => p.slice()), usados = new Set([w0.id]); const cerca = (a, b) => dd(a, b) < 2.5, rumbo = (a, b) => Math.atan2((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky), giro = (r1, r2) => Math.abs(((r2 - r1 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
+  const tramoDe = (w0, base) => {
+    let cur = w0.g.map(p => p.slice()), usados = new Set([...(base || []), w0.id]); const cerca = (a, b) => dd(a, b) < 2.5, rumbo = (a, b) => Math.atan2((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky), giro = (r1, r2) => Math.abs(((r2 - r1 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
     // se prolonga el tramo con las vías conectadas (aunque cambien de nombre) eligiendo la que menos gira, hasta tener ~1.8× el tramo pedido
     for (let it2 = 0; it2 < 14 && len(cur) < tramo * 1.8; it2++) { let mejor = null;
       const hf = rumbo(cur[cur.length - 2], cur[cur.length - 1]), hi = rumbo(cur[1], cur[0]), fin = cur[cur.length - 1], ini = cur[0];
@@ -13548,11 +13547,19 @@ async function _trVias(id, vial, tramo, maxVias, clases) {
     const total = len(cur); let best = 1e9, s0 = 0, acc = 0;
     for (let i = 1; i < cur.length; i++) { const a = xy(cur[i - 1]), b = xy(cur[i]), dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, -(a[0] * dx + a[1] * dy) / l2)), d = Math.hypot(a[0] + dx * t, a[1] + dy * t), sl = Math.sqrt(l2); if (d < best) { best = d; s0 = acc + sl * t; } acc += sl; }
     const T = Math.min(tramo, total), st = Math.max(0, Math.min(total - T, s0 - T / 2)), en = st + T, at = s => { let a = 0; for (let i = 1; i < cur.length; i++) { const l = dd(cur[i - 1], cur[i]); if (a + l >= s || i === cur.length - 1) { const u = l ? Math.max(0, Math.min(1, (s - a) / l)) : 0; return [cur[i - 1][0] + (cur[i][0] - cur[i - 1][0]) * u, cur[i - 1][1] + (cur[i][1] - cur[i - 1][1]) * u]; } a += l; } return cur[cur.length - 1]; };
-    const rd = p => [Math.round(p[0] * 1e6) / 1e6, Math.round(p[1] * 1e6) / 1e6], A = rd(at(st)), B = rd(at(en)), M = rd(at((st + en) / 2)); if (dd(A, B) < 20) return;
+    const rd = p => [Math.round(p[0] * 1e6) / 1e6, Math.round(p[1] * 1e6) / 1e6], A = rd(at(st)), B = rd(at(en)), M = rd(at((st + en) / 2)); if (dd(A, B) < 20) return null;
     const brg = (a, b) => Math.round((Math.atan2((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky) * 180 / Math.PI + 360) % 360), sentidos = [{ dir: "A→B", a: A, b: B, m: M, rumbo: brg(A, B) }]; if (!w0.o) sentidos.push({ dir: "B→A", a: B, b: A, m: M, rumbo: brg(B, A) });
     const plp = [A]; { let a2 = 0; for (let i = 1; i < cur.length; i++) { a2 += dd(cur[i - 1], cur[i]); if (a2 > st + 1 && a2 < en - 1) plp.push(rd(cur[i])); } plp.push(B); }
     const plc = plp.length > 14 ? plp.filter((_, i) => i === 0 || i === plp.length - 1 || i % Math.ceil(plp.length / 12) === 0) : plp;
-    vias.push({ k: String(w0.n || w0.ref || "w" + w0.id).toLowerCase().slice(0, 90), n: w0.n || w0.ref || "Sin nombre", ref: w0.ref || "", h: w0.h, o: w0.o, d: Math.round(best), len: Math.round(T), pl: plc, sentidos });
+    const via = { k: String(w0.n || w0.ref || "w" + w0.id).toLowerCase().slice(0, 90), n: w0.n || w0.ref || "Sin nombre", ref: w0.ref || "", h: w0.h, o: w0.o, d: Math.round(best), len: Math.round(T), pl: plc, sentidos };
+    return { via, usados, rumbo: brg(A, B), M };
+  };
+  const difGrados = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+  grupos.forEach(ws => {
+    ws.forEach(w => { w.d = dmin(w.g); }); ws.sort((a, b) => a.d - b.d); const w0 = ws[0]; if (w0.d > R) return;
+    const t1 = tramoDe(w0); if (!t1) return; vias.push(t1.via);
+    // vías divididas (p. ej. un bulevar con dos cuerpos de un solo sentido y el mismo nombre): se agrega también el cuerpo contrario, el más cercano con rumbo opuesto a ≤ 250 m
+    if (w0.o) for (const w of ws) { if (t1.usados.has(w.id) || !w.o) continue; if (w.d > t1.via.d + 250) break; const t2 = tramoDe(w, t1.usados); if (!t2) continue; if (difGrados(t1.rumbo, t2.rumbo) > 110 && dd(t1.M, t2.M) < 250) { t2.via.k += "#2"; t2.via.n += " (cuerpo contrario)"; vias.push(t2.via); break; } }
   });
   const RK = {}; _TR_CLASES.forEach((c, i) => { RK[c] = i; }); vias.sort((a, b) => (RK[a.h] - RK[b.h]) || a.d - b.d); return { lat, lng, R, vias, pre: vias.slice(0, maxVias).map(v => v.k), disponibles: vias.length };
 }
