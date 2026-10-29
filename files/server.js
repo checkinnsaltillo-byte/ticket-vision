@@ -13507,19 +13507,21 @@ app.post("/mercado/maqueta/vial", async (req, res) => { if (!_vOriginOk(req)) re
 // Vialidades motorway/trunk/primary/secondary/tertiary dentro del «Radio de vialidades principales» → un tramo de N m por vialidad (A→B en el sentido de la vía; doble sentido = A→B y B→A)
 // → una consulta a Google Routes (TRAFFIC_AWARE_OPTIMAL) por día y hora → matriz día×hora de duración / duración sin tráfico / distancia. Resultado y avance en GCS (mercado/trafico/*).
 const _TR_DEF = { tramo: 200, h0: 7, h1: 21, paso: 2, dias: [2, 5, 6], maxVias: 6 }; // por omisión: martes, viernes y sábado, cada 2 h (≈ 72 consultas por 3 vialidades de un sentido)
+const _TR_CLASES = ["motorway", "trunk", "primary", "secondary", "tertiary", "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link", "unclassified", "residential", "living_street", "service", "road", "track", "busway", "pedestrian", "cycleway", "footway", "path", "steps", "bridleway", "bus_guideway", "corridor", "raceway", "escape", "construction", "proposed"], _TR_PRI = ["motorway", "trunk", "primary", "secondary", "tertiary"];
 const _TR_PRECIO = 10 / 1000; // USD por consulta (Routes · Compute Routes Pro, tráfico en tiempo/predicción); estimado
-const _trNorm = c => { c = c || {}; const n = (v, lo, hi, d) => { v = Math.round(Number(v)); return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; }; const h0 = n(c.h0, 0, 23, _TR_DEF.h0), h1 = Math.max(h0, n(c.h1, 0, 23, _TR_DEF.h1)); const dias = (Array.isArray(c.dias) ? c.dias : _TR_DEF.dias).map(Number).filter(d => d >= 0 && d <= 6).filter((d, i, a) => a.indexOf(d) === i); return { tramo: n(c.tramo, 50, 1000, _TR_DEF.tramo), h0, h1, paso: n(c.paso, 1, 6, _TR_DEF.paso), dias: dias.length ? dias : _TR_DEF.dias, maxVias: n(c.maxVias, 0, 30, _TR_DEF.maxVias), sel: (Array.isArray(c.sel) ? c.sel : []).map(x => String(x).slice(0, 90)).slice(0, 200) }; };
+const _trNorm = c => { c = c || {}; const n = (v, lo, hi, d) => { v = Math.round(Number(v)); return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; }; const h0 = n(c.h0, 0, 23, _TR_DEF.h0), h1 = Math.max(h0, n(c.h1, 0, 23, _TR_DEF.h1)); const dias = (Array.isArray(c.dias) ? c.dias : _TR_DEF.dias).map(Number).filter(d => d >= 0 && d <= 6).filter((d, i, a) => a.indexOf(d) === i); return { tramo: n(c.tramo, 50, 1000, _TR_DEF.tramo), h0, h1, paso: n(c.paso, 1, 6, _TR_DEF.paso), dias: dias.length ? dias : _TR_DEF.dias, maxVias: n(c.maxVias, 0, 30, _TR_DEF.maxVias), sel: (Array.isArray(c.sel) ? c.sel : []).map(x => String(x).slice(0, 90)).slice(0, 400), clases: (Array.isArray(c.clases) ? c.clases : _TR_PRI).filter(x => _TR_CLASES.includes(x)).filter((x, i, a) => a.indexOf(x) === i) }; };
 const _trHoras = c => { const L = []; for (let h = c.h0; h <= c.h1; h += c.paso) L.push(h); return L; };
 const _trObj = id => `mercado/trafico/${id}.json`, _trEstObj = id => `mercado/trafico/estado/${id}.json`, _trViasObj = (id, R, cl) => `mercado/trafico/vias/${id}_${R}_${cl}.json`;
 const _trTz = lng => lng < -114 ? -8 : lng < -108 ? -7 : lng > -88.6 ? -5 : -6;
 let _trJob = { running: false };
-async function _trVias(id, vial, tramo, maxVias) {
+async function _trVias(id, vial, tramo, maxVias, clases) {
   const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng), R = vial.R;
-  const cls = vial.cl.filter(x => _MQ_VIAL_PRI.includes(x)); if (!cls.length) throw new Error("Elige al menos una clase principal (autopista, troncal, primaria, secundaria o terciaria) en «Red vial»");
-  const ck = _trViasObj(id, R, cls.map(x => x.slice(0, 3)).sort().join("")); let ways = null; try { const { data } = await _bnReadGcs(ck); if (data && data.ways && Date.now() - Date.parse(data.at || 0) < 30 * 864e5) ways = data.ways; } catch (_) {}
+  const cls = (clases && clases.length ? clases : _TR_PRI).filter(x => _TR_CLASES.includes(x)), Rloc = Math.min(R, vial.Rloc || 900); if (!cls.length) throw new Error("Elige al menos una clase de vialidad");
+  const grandes = cls.filter(x => _TR_PRI.includes(x) || /_link$/.test(x)), locales = cls.filter(x => !grandes.includes(x));
+  const ck = _trViasObj(id, R + "_" + Rloc, cls.map(x => x.slice(0, 4) + x.length).sort().join("")); let ways = null; try { const { data } = await _bnReadGcs(ck); if (data && data.ways && Date.now() - Date.parse(data.at || 0) < 30 * 864e5) ways = data.ways; } catch (_) {}
   if (!ways) {
-    const q = `[out:json][timeout:90];way(around:${R},${lat},${lng})[highway~"^(${cls.join("|")})$"];out tags geom;`; let j, ult;
-    for (let ronda = 0; ronda < 3 && !j; ronda++) for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(100000) }, 1); break; } catch (e) { ult = e; } if (!j) await _amSleep(4000); }
+    const q = `[out:json][timeout:120];(${grandes.length ? `way(around:${R},${lat},${lng})[highway~"^(${grandes.join("|")})$"];` : ""}${locales.length ? `way(around:${Rloc},${lat},${lng})[highway~"^(${locales.join("|")})$"];` : ""});out tags geom;`; let j, ult;
+    for (let ronda = 0; ronda < 3 && !j; ronda++) for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(130000) }, 1); break; } catch (e) { ult = e; } if (!j) await _amSleep(4000); }
     if (!j) throw ult || new Error("Overpass sin respuesta");
     ways = (j.elements || []).filter(e => e.type === "way").map(e => { const t = e.tags || {}, g = (e.geometry || []).filter(q => q && q.lat != null).map(q => [q.lat, q.lon]); if (g.length < 2) return null; const ow = _mqOneway(t, g.map(p => [p[0], p[1]])); return { id: e.id, n: t.name || "", ref: t.ref || "", h: t.highway, o: ow.o, g: ow.g }; }).filter(Boolean);
     try { await _bnWriteGcs(ck, { at: new Date().toISOString(), ways }, null); } catch (_) {}
@@ -13527,6 +13529,8 @@ async function _trVias(id, vial, tramo, maxVias) {
   const xy = p => [(p[1] - lng) * P.kx, (p[0] - lat) * P.ky], dd = (a, b) => Math.hypot((b[1] - a[1]) * P.kx, (b[0] - a[0]) * P.ky), len = L => { let s = 0; for (let i = 1; i < L.length; i++) s += dd(L[i - 1], L[i]); return s; };
   const dmin = g => g.reduce((m, p) => Math.min(m, Math.hypot(...xy(p))), 1e9), grupos = new Map();
   ways.forEach(w => { const k = (w.n || w.ref || "w" + w.id).toLowerCase(); (grupos.get(k) || grupos.set(k, []).get(k)).push(w); });
+  const idx = new Map(), pk = p => Math.round(p[0] * 1e4) + "," + Math.round(p[1] * 1e4); ways.forEach(w => { for (const p of [w.g[0], w.g[w.g.length - 1]]) { const k = pk(p); (idx.get(k) || idx.set(k, []).get(k)).push(w); } });
+  const cercanas = p => { const out = new Set(), a = Math.round(p[0] * 1e4), b = Math.round(p[1] * 1e4); for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) (idx.get((a + i) + "," + (b + j)) || []).forEach(w => out.add(w)); return out; };
   const vias = [];
   grupos.forEach(ws => {
     ws.forEach(w => { w.d = dmin(w.g); }); ws.sort((a, b) => a.d - b.d); const w0 = ws[0]; if (w0.d > R) return;
@@ -13534,7 +13538,7 @@ async function _trVias(id, vial, tramo, maxVias) {
     // se prolonga el tramo con las vías conectadas (aunque cambien de nombre) eligiendo la que menos gira, hasta tener ~1.8× el tramo pedido
     for (let it2 = 0; it2 < 14 && len(cur) < tramo * 1.8; it2++) { let mejor = null;
       const hf = rumbo(cur[cur.length - 2], cur[cur.length - 1]), hi = rumbo(cur[1], cur[0]), fin = cur[cur.length - 1], ini = cur[0];
-      for (const w of ways) { if (usados.has(w.id)) continue; const n = w.g.length, op = [];
+      for (const w of new Set([...cercanas(fin), ...cercanas(ini)])) { if (usados.has(w.id)) continue; const n = w.g.length, op = [];
         if (cerca(fin, w.g[0])) op.push({ lado: "f", g: w.g, ang: giro(hf, rumbo(w.g[0], w.g[1])) });
         if (!w.o && cerca(fin, w.g[n - 1])) op.push({ lado: "f", g: w.g.slice().reverse(), ang: giro(hf, rumbo(w.g[n - 1], w.g[n - 2])) });
         if (cerca(ini, w.g[n - 1])) op.push({ lado: "i", g: w.g, ang: giro(hi, rumbo(w.g[n - 1], w.g[n - 2])) });
@@ -13550,7 +13554,7 @@ async function _trVias(id, vial, tramo, maxVias) {
     const plc = plp.length > 14 ? plp.filter((_, i) => i === 0 || i === plp.length - 1 || i % Math.ceil(plp.length / 12) === 0) : plp;
     vias.push({ k: String(w0.n || w0.ref || "w" + w0.id).toLowerCase().slice(0, 90), n: w0.n || w0.ref || "Sin nombre", ref: w0.ref || "", h: w0.h, o: w0.o, d: Math.round(best), len: Math.round(T), pl: plc, sentidos });
   });
-  const RK = { motorway: 0, trunk: 1, primary: 2, secondary: 3, tertiary: 4 }; vias.sort((a, b) => (RK[a.h] - RK[b.h]) || a.d - b.d); return { lat, lng, R, vias, pre: vias.slice(0, maxVias).map(v => v.k), disponibles: vias.length };
+  const RK = {}; _TR_CLASES.forEach((c, i) => { RK[c] = i; }); vias.sort((a, b) => (RK[a.h] - RK[b.h]) || a.d - b.d); return { lat, lng, R, vias, pre: vias.slice(0, maxVias).map(v => v.k), disponibles: vias.length };
 }
 function _trFechas(dias, tz) { // próxima fecha local de cada día de la semana (mañana en adelante), para pedir el tráfico típico de ese día
   const ahora = new Date(Date.now() + tz * 3600e3), out = {}; dias.forEach(d => { for (let i = 1; i <= 8; i++) { const x = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate() + i)); if (x.getUTCDay() === d) { out[d] = [x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()]; break; } } }); return out;
@@ -13566,7 +13570,7 @@ async function _trRuta(key, s, dep) {
   return null;
 }
 app.get("/mercado/trafico", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); res.set("Cache-Control", "no-store"); let doc = null; try { doc = (await _bnReadGcs(_trObj(id))).data || null; } catch (_) {} res.json({ ok: true, doc, def: _TR_DEF, precio: _TR_PRECIO }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
-app.post("/mercado/trafico/estimar", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); const cfg = _trNorm(b.cfg), vial = await _mqVialLee(id), V = await _trVias(id, vial, cfg.tramo, cfg.maxVias); res.set("Cache-Control", "no-store"); res.json({ ok: true, cfg, R: vial.R, lat: V.lat, lng: V.lng, vias: V.vias.slice(0, 200), pre: V.pre, disponibles: V.disponibles, precio: _TR_PRECIO }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/trafico/estimar", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); const cfg = _trNorm(b.cfg), vial = await _mqVialLee(id), V = await _trVias(id, vial, cfg.tramo, cfg.maxVias, cfg.clases); res.set("Cache-Control", "no-store"); res.json({ ok: true, cfg, R: vial.R, lat: V.lat, lng: V.lng, vias: V.vias.slice(0, 600), clasesDisp: _TR_CLASES, pre: V.pre, disponibles: V.disponibles, precio: _TR_PRECIO }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.post("/mercado/trafico/consultar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
@@ -13577,7 +13581,7 @@ app.post("/mercado/trafico/consultar", async (req, res) => {
   await guarda(); res.json({ ok: true });
   (async () => {
     try {
-      const vial = await _mqVialLee(id), V = await _trVias(id, vial, cfg.tramo, cfg.maxVias), elegidas = cfg.sel.length ? new Set(cfg.sel) : new Set(V.pre); V.vias = V.vias.filter(v => elegidas.has(v.k)); if (!V.vias.length) throw new Error("Elige al menos una vialidad");
+      const vial = await _mqVialLee(id), V = await _trVias(id, vial, cfg.tramo, cfg.maxVias, cfg.clases), elegidas = cfg.sel.length ? new Set(cfg.sel) : new Set(V.pre); V.vias = V.vias.filter(v => elegidas.has(v.k)); if (!V.vias.length) throw new Error("Elige al menos una vialidad");
       const horas = _trHoras(cfg), tz = _trTz(V.lng), fechas = _trFechas(cfg.dias, tz), tareas = [];
       V.vias.forEach((v, vi) => v.sentidos.forEach((s, si) => { s.cel = {}; cfg.dias.forEach(d => { s.cel[d] = {}; horas.forEach(h => tareas.push({ vi, si, d, h })); }); }));
       _trJob.total = tareas.length; _trJob.paso = "Consultando Google Routes"; await guarda(); let i = 0, fallos = 0, fatal = null, ult = 0;
