@@ -13616,6 +13616,42 @@ app.post("/mercado/maqueta/generar", async (req, res) => {
   _mqGenera(id, !!(req.body || {}).refrescar).then(() => { _mqJob.ok = true; }).catch(e => { _mqJob.error = String(e.message || e) + " (" + (_mqJob.paso || "") + ")"; console.warn("[maqueta]", id, "paso:", _mqJob.paso, "·", e.message); }).finally(() => { clearInterval(t); _mqJob.running = false; _mqJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
+// ── Texturas de fachada con IA (Street View → Gemini imagen): textura frontal rectificada por edificio, guardada en mercado/maqueta/fachadas/<id>/ ──
+const _mqFacIdx = id => `mercado/maqueta/fachadas/${id}/_idx.json`;
+let _mqFacJob = { running: false };
+const _MQ_FAC_T = { casa1p: "casa de un nivel", casa2p: "casa de dos niveles", dpto: "edificio de departamentos", comercio: "local comercial", bloque: "edificio de bloque de concreto", piedra: "casa de piedra", edificio: "edificio", escuela: "escuela" };
+async function _mqFachadas(id, max) {
+  const { data: S } = await _bnReadGcs(`mercado/maqueta/${id}.json`); if (!S || !Array.isArray(S.obs)) throw new Error("Primero genera la maqueta");
+  let idx = { items: [] }; try { idx = (await _bnReadGcs(_mqFacIdx(id))).data || idx; } catch (_) {}
+  const kOf = (o, f) => crypto.createHash("sha1").update(`${o.pano}|${o.h}|${f.x}`).digest("hex").slice(0, 12), hechos = new Set(idx.items.map(i => i.k)), cand = [];
+  S.obs.forEach(o => (o.fr || []).forEach(f => { const d = f.d || 20; if (_MQ_FAC_T[f.t] && d <= 32 && f.x >= .08 && f.x <= .92 && !hechos.has(kOf(o, f))) cand.push({ o, f, d, sc: (o.cen ? 0 : 1) + d / 40 + Math.abs(f.x - .5) }); }));
+  cand.sort((a, b) => a.sc - b.sc); const lista = cand.slice(0, max); _mqFacJob.total = lista.length; _mqFacJob.hechas = 0; _mqFacJob.fallos = 0;
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps");
+  const uno = async ({ o, f, d }) => {
+    const sv = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${o.pano}&heading=${o.h}&fov=90&pitch=0&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(30000) }); if (!sv.ok) throw new Error("Street View " + sv.status);
+    const img = Buffer.from(await sv.arrayBuffer()).toString("base64"), tipo = _MQ_FAC_T[f.t];
+    const prompt = `Esta es una foto de Street View. La fachada a extraer es la ${tipo} cuyo centro horizontal está a aproximadamente el ${Math.round(f.x * 100)}% del ancho de la imagen (de izquierda a derecha), a unos ${d} metros de la cámara; ignora el resto de la escena. Genera la TEXTURA FRONTAL RECTIFICADA de esa fachada: vista ortogonal de frente, sin perspectiva, como si la fotografiaras de frente, a nivel de calle, con la fachada llenando todo el encuadre. Conserva con fidelidad los colores, materiales (aplanado, ladrillo, bloque, piedra, lámina), puertas, portones, ventanas, rejas, cortinas metálicas, rótulos y el desgaste; elimina cielo, autos, personas, árboles y postes que estorben (reconstruye lo que quede detrás de forma verosímil). Iluminación pareja y plana, sin sombras fuertes. Encuadre 3:2 horizontal. Sin texto añadido, sin marcos ni bordes.`;
+    const tok = await _vGcsToken();
+    const r = await fetch("https://aiplatform.googleapis.com/v1/projects/check-in-493804/locations/global/publishers/google/models/gemini-2.5-flash-image:generateContent", { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(180000),
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/jpeg", data: img } }, { text: prompt }] }], generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "3:2" } } }) });
+    if (!r.ok) throw new Error("Gemini " + r.status + " " + (await r.text()).slice(0, 160));
+    const j = await r.json(), part = ((j.candidates || [])[0] || {}).content; const ip = part && (part.parts || []).find(p => p.inlineData); if (!ip) throw new Error("Gemini sin imagen");
+    const k = kOf(o, f); await _rhdPut(`mercado/maqueta/fachadas/${id}/${k}.png`, Buffer.from(ip.inlineData.data, "base64"), "image/png");
+    idx.items.push({ k, pano: o.pano, h: o.h, x: f.x, t: f.t }); await _bnWriteGcs(_mqFacIdx(id), idx, null);
+  };
+  let i = 0; const worker = async () => { while (i < lista.length) { const c = lista[i++]; try { await uno(c); _mqFacJob.hechas++; } catch (e) { _mqFacJob.fallos++; _mqFacJob.ultimoError = String(e.message || e); console.warn("[fachadas]", id, e.message); } _mqFacJob.upd = new Date().toISOString(); } };
+  await Promise.all([worker(), worker(), worker()]);
+}
+app.get("/mercado/maqueta/fachadas", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); let idx = { items: [] }; try { idx = (await _bnReadGcs(_mqFacIdx(id))).data || idx; } catch (_) {} res.set("Cache-Control", "no-store"); res.json({ ok: true, items: idx.items, job: _mqFacJob }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/maqueta/fachada/img", async (req, res) => { try { const id = String(req.query.id || "").replace(/\D/g, ""), k = String(req.query.k || ""); if (!id || !/^[a-f0-9]{12}$/.test(k)) return res.status(400).end(); const tok = await _vGcsToken(), r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(`mercado/maqueta/fachadas/${id}/${k}.png`)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } }); if (!r.ok) return res.status(404).end(); res.set({ "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" }); res.send(Buffer.from(await r.arrayBuffer())); } catch (_) { res.status(500).end(); } });
+app.post("/mercado/maqueta/fachadas", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), max = Math.max(1, Math.min(40, parseInt(b.max, 10) || 16)); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
+  if (_mqFacJob.running && Date.now() - Date.parse(_mqFacJob.upd || _mqFacJob.inicio || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay fachadas generándose" });
+  _mqFacJob = { running: true, id, inicio: new Date().toISOString(), upd: new Date().toISOString() };
+  _mqFachadas(id, max).then(() => { _mqFacJob.ok = true; }).catch(e => { _mqFacJob.error = String(e.message || e); console.warn("[fachadas]", e.message); }).finally(() => { _mqFacJob.running = false; _mqFacJob.fin = new Date().toISOString(); });
+  res.json({ ok: true });
+});
 // ── Datos ambientales y de riesgo por coordenada (fase 1) ─────────────────────────────────────────────────────────────────────────────────────────
 //    Altitud, clima (promedio 2020-2024) y aire (modelo, últimos 30 días) desde Open-Meteo; riesgo tecnológico (gasolineras, industria, ferrocarril, autopistas, ductos,
 //    líneas de alta tensión) y accesibilidad (hospitales, escuelas, supermercados) desde OpenStreetMap vía Overpass, a ≤ 3 km. Se guarda todo en mercado/ambiente.json (id → datos).
