@@ -13673,6 +13673,26 @@ app.get("/mercado/maqueta/negocios", async (req, res) => {
     items.sort((a, b) => b.nr - a.nr); res.json({ ok: true, items: items.slice(0, 160) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Rutas de acceso con Google Routes: cada origen (cruce de vialidad principal) → propiedad, con tráfico típico del día y la hora elegidos ──
+const _rtCache = new Map();
+function _rtDep(dia, hora) { const loc = new Date(Date.now() - 6 * 3600e3); let c = Date.UTC(loc.getUTCFullYear(), loc.getUTCMonth(), loc.getUTCDate(), hora, 0, 0); for (let k = 0; k < 8; k++) { const d = new Date(c + k * 864e5); if (d.getUTCDay() === dia && c + k * 864e5 > loc.getTime() + 10 * 60e3) return new Date(c + k * 864e5 + 6 * 3600e3).toISOString(); } return new Date(Date.now() + 864e5).toISOString(); }
+app.post("/mercado/maqueta/rutas-acceso", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try {
+    const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), dia = Math.max(0, Math.min(6, parseInt(b.dia, 10) || 0)), hora = Math.max(0, Math.min(23, parseInt(b.hora, 10) || 8)), org = (Array.isArray(b.origenes) ? b.origenes : []).slice(0, 8).filter(o => o && isFinite(o.lat) && isFinite(o.lng));
+    if (!id || !org.length) return res.status(400).json({ ok: false, error: "Faltan datos" });
+    const { data: S } = await _bnReadGcs(`mercado/maqueta/${id}.json`); if (!S || S.lat == null) return res.status(404).json({ ok: false, error: "Sin maqueta" }); const key = process.env.GOOGLE_MAPS_KEY; if (!key) return res.status(503).json({ ok: false, error: "Falta la clave de Google Maps" });
+    const lat0 = +S.lat, lng0 = +S.lng, dep = _rtDep(dia, hora), ck = [id, dia, hora, org.map(o => (+o.lat).toFixed(5) + "," + (+o.lng).toFixed(5)).join("|")].join("#"), hit = _rtCache.get(ck);
+    if (hit && Date.now() - hit.t < 6 * 3600e3) return res.json({ ok: true, dep, cache: true, items: hit.items });
+    const items = new Array(org.length); let nx = 0; const uno = async i => { const o = org[i]; if (Math.abs(o.lat - lat0) > .05 || Math.abs(o.lng - lng0) > .05) return;
+      const body = { origin: { location: { latLng: { latitude: +o.lat, longitude: +o.lng } } }, destination: { location: { latLng: { latitude: lat0, longitude: lng0 } } }, travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE_OPTIMAL", departureTime: dep, units: "METRIC", languageCode: "es-MX", regionCode: "MX" };
+      for (let k = 0; k < 3; k++) { const r = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters,routes.polyline.encodedPolyline" }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+        if (r.status === 429 || r.status >= 500) { await _amSleep(700 * (k + 1)); continue; } const j = await r.json().catch(() => ({})); if (!r.ok) { items[i] = { err: (j.error && j.error.message) || "HTTP " + r.status }; return; }
+        const q = (j.routes || [])[0]; if (!q || !q.polyline) { items[i] = { err: "Sin ruta" }; return; } const sec = v => v ? parseFloat(String(v)) : null; items[i] = { enc: q.polyline.encodedPolyline, dur: sec(q.duration), sta: sec(q.staticDuration), dist: Math.round(q.distanceMeters || 0) }; return; } };
+    await Promise.all([0, 1, 2, 3].map(async () => { while (nx < org.length) { const i = nx++; try { await uno(i); } catch (e) { items[i] = { err: String(e.message || e) }; } } }));
+    const out = items.map(x => x || { err: "Fuera de zona" }); if (out.some(x => x.enc)) _rtCache.set(ck, { t: Date.now(), items: out }); res.json({ ok: true, dep, items: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── Datos ambientales y de riesgo por coordenada (fase 1) ─────────────────────────────────────────────────────────────────────────────────────────
 //    Altitud, clima (promedio 2020-2024) y aire (modelo, últimos 30 días) desde Open-Meteo; riesgo tecnológico (gasolineras, industria, ferrocarril, autopistas, ductos,
 //    líneas de alta tensión) y accesibilidad (hospitales, escuelas, supermercados) desde OpenStreetMap vía Overpass, a ≤ 3 km. Se guarda todo en mercado/ambiente.json (id → datos).
