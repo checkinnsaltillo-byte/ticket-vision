@@ -13509,7 +13509,7 @@ function _odDijkstra(G, src) {
   while (h.length) { const [d, u] = pop(); if (d > dist[u]) continue; for (const e of G.adj[u]) { const z = G.eB[e], nd = d + G.eT[e]; if (nd < dist[z]) { dist[z] = nd; prev[z] = e; push([nd, z]); } } }
   return { dist, prev };
 }
-async function _odGenera(id, enlace) {
+async function _odGenera(id, enlace, pagar) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
   const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng), uso = { elementos: 0, rutas: 0 };
   const paso = s => { _odJob.paso = s; _odJob.upd = new Date().toISOString(); };
@@ -13555,7 +13555,7 @@ async function _odGenera(id, enlace) {
   const wp = act.map(zi => ({ waypoint: { location: { latLng: { latitude: lat + G.Y[Z[zi].nodo] / P.ky, longitude: lng + G.X[Z[zi].nodo] / P.kx } } } })); 
   const mk = act.map(zi => Z[zi].nodo).join(","), gT = Array.from({ length: n }, () => new Array(n).fill(null)); let cache = null; try { cache = (await _bnReadGcs(_odKey(id + "_matriz"))).data; } catch (_) {}
   if (cache && cache.k === mk && Array.isArray(cache.gT)) { cache.gT.forEach((r, i) => r.forEach((v, j) => { gT[i][j] = v; })); _odJob.matrizCache = true; }
-  else { uso.elementos += n * n; const rm = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "originIndex,destinationIndex,duration,distanceMeters,condition" }, body: JSON.stringify({ origins: wp, destinations: wp, travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE", departureTime: dep }), signal: AbortSignal.timeout(120000) });
+  else { if (!pagar) throw new Error("COSTO:" + (n * n * 0.01).toFixed(2)); uso.elementos += n * n; const rm = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "originIndex,destinationIndex,duration,distanceMeters,condition" }, body: JSON.stringify({ origins: wp, destinations: wp, travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE", departureTime: dep }), signal: AbortSignal.timeout(120000) });
     const mj = await rm.json().catch(() => null); if (!rm.ok || !Array.isArray(mj)) throw new Error("Google Routes (matriz): " + ((mj && mj.error && mj.error.message) || rm.status));
     mj.forEach(e => { if (e.duration && e.condition !== "ROUTE_NOT_FOUND") gT[e.originIndex][e.destinationIndex] = parseFloat(e.duration) / 60; }); try { await _bnWriteGcs(_odKey(id + "_matriz"), { k: mk, dep, gT, ver: null }, null); } catch (_) {} }
   // ruteo en la red de OpenStreetMap y marca de los viajes que cruzan la calle de la propiedad
@@ -13576,7 +13576,7 @@ async function _odGenera(id, enlace) {
   paso("Verificación con rutas de Google"); const pares = []; for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) if (a !== b) pares.push({ a, b, f: T[a][b], p: pass[a][b] });
   const si = pares.filter(q => q.p).sort((x, y) => y.f - x.f).slice(0, 25), no = pares.filter(q => !q.p).sort((x, y) => y.f - x.f).slice(0, 15), ver = { n: 0, ok: 0, si: [0, 0], no: [0, 0] };
   let prevOut = null; try { prevOut = (await _bnReadGcs(_odKey(id))).data; } catch (_) {} const reuseVer = _odJob.matrizCache && prevOut && prevOut.cal && prevOut.cal.verificacion && prevOut.cal.verificacion.n;
-  if (enlace) { /* sin verificación en punto específico: no gasta rutas de Google */ } else if (reuseVer) Object.assign(ver, prevOut.cal.verificacion); else await _odPool(si.concat(no.map(q => Object.assign(q, { _no: 1 }))).slice(0, _OD_MAX_RUTAS), 4, async q => { if (uso.rutas >= _OD_MAX_RUTAS) return; uso.rutas++; try {
+  if (enlace) { /* sin verificación en punto específico: no gasta rutas de Google */ } else if (reuseVer) Object.assign(ver, prevOut.cal.verificacion); else if (!pagar) { /* sin verificación: no se autorizó gasto en Google */ } else await _odPool(si.concat(no.map(q => Object.assign(q, { _no: 1 }))).slice(0, _OD_MAX_RUTAS), 4, async q => { if (uso.rutas >= _OD_MAX_RUTAS) return; uso.rutas++; try {
     const r = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "routes.polyline.encodedPolyline" }, body: JSON.stringify({ origin: wp[q.a].waypoint, destination: wp[q.b].waypoint, travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE", departureTime: dep }), signal: AbortSignal.timeout(30000) }); const j = await r.json(); const pl = j.routes && j.routes[0] && j.routes[0].polyline && j.routes[0].polyline.encodedPolyline; if (!pl) return;
     const pts = _odDecode(pl).map(p => P.xy(p[0], p[1])); let g = false; for (let i = 1; i < pts.length && !g; i++) if (_odDistSeg(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) < 150) g = true;
     ver.n++; const k = q.p ? "si" : "no"; ver[k][1]++; if (g === q.p) { ver.ok++; ver[k][0]++; } } catch (_) {} });
@@ -13589,10 +13589,12 @@ async function _odGenera(id, enlace) {
   await _bnWriteGcs(enlace ? _odKey(id + "_punto") : _odKey(id), out, null); return out;
 }
 app.post("/mercado/maqueta/od-estima", async (req, res) => {
-  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" }); const id = String((req.body || {}).id || "").replace(/\D/g, ""), en = (req.body || {}).enlace; if (!id) return res.status(400).json({ ok: false, error: "Falta el id" }); if (en && !(Math.abs(+en.lat) <= 90 && Math.abs(+en.lng) <= 180 && en.lat != null && en.lng != null)) return res.status(400).json({ ok: false, error: "Punto no válido" });
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" }); const id = String((req.body || {}).id || "").replace(/\D/g, ""), en = (req.body || {}).enlace, confirmo = !!(req.body || {}).confirmo; if (!id) return res.status(400).json({ ok: false, error: "Falta el id" }); if (en && !(Math.abs(+en.lat) <= 90 && Math.abs(+en.lng) <= 180 && en.lat != null && en.lng != null)) return res.status(400).json({ ok: false, error: "Punto no válido" });
+  // costo previo: la matriz de tiempos de Google guardada hace gratis el cálculo; sin ella cuesta hasta 3.24 USD (324 elementos) y, en la zona, hasta 0.40 USD de verificación
+  { let usd = 0, hay = false; try { const r = await _bnReadGcs(_odKey(id + "_matriz")); hay = !!(r && r.data); } catch (_) {} if (!hay) usd += 3.24; if (!en) { let pv = null; try { pv = (await _bnReadGcs(_odKey(id))).data; } catch (_) {} if (!(pv && pv.cal && pv.cal.verificacion && pv.cal.verificacion.n)) usd += 0.4; } if (usd > 0 && !confirmo) return res.json({ ok: false, requiere: true, usd: Math.round(usd * 100) / 100 }); }
   if (_odJob.running && Date.now() - Date.parse(_odJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay una estimación en curso" });
   _odJob = { running: true, id, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _odJob.upd = new Date().toISOString(); }, 15000);
-  _odGenera(id, en).then(() => { _odJob.ok = true; }).catch(e => { _odJob.error = String(e.message || e) + " (" + (_odJob.paso || "") + ")"; console.warn("[od]", id, e.message); }).finally(() => { clearInterval(t); _odJob.running = false; _odJob.fin = new Date().toISOString(); });
+  _odGenera(id, en, confirmo).then(() => { _odJob.ok = true; }).catch(e => { _odJob.error = String(e.message || e) + " (" + (_odJob.paso || "") + ")"; console.warn("[od]", id, e.message); }).finally(() => { clearInterval(t); _odJob.running = false; _odJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
 app.get("/mercado/maqueta/od-estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _odJob)); });
