@@ -13029,6 +13029,18 @@ app.get("/mercado/airbnb/lugares/iso", async (req, res) => {
     res.set("Cache-Control", "no-store"); res.json({ ok: true, at: iso.at, fuente: iso.fuente, vis, t: _plIsoTiempos(iso, (rec && rec.places) || []) }); }
   catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
+// ── Cobertura (maqueta): isócronas a pie / en auto con los tiempos que elija el usuario (Valhalla, de a 4 contornos por consulta); caché por punto y modo en GCS
+app.get("/mercado/maqueta/cobertura", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const lat = +req.query.lat, lng = +req.query.lng, modo = req.query.modo === "a" ? "a" : "p", ts = [...new Set(String(req.query.t || "").split(",").map(Number).filter(v => v >= 1 && v <= 90))].sort((a, b) => a - b).slice(0, 8);
+    if (!isFinite(lat) || !isFinite(lng) || !ts.length) return res.status(400).json({ ok: false, error: "Parámetros inválidos" });
+    const key = `mercado/maqueta/cob/${modo}_${lat.toFixed(4)}_${lng.toFixed(4)}.json`, { data: cache } = await _bnReadGcs(key), C = (cache && cache.t) || {}, faltan = ts.filter(t => !C[t]);
+    for (let i = 0; i < faltan.length; i += 4) { const F = await _plValhalla(lat, lng, _PL_ISO_COST[modo], faltan.slice(i, i + 4));
+      F.forEach(f => { const t = Math.round(f.properties.contour), g = f.geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : []; C[t] = polys.map(po => po.map(r => r.map(c => [Math.round(c[1] * 1e5) / 1e5, Math.round(c[0] * 1e5) / 1e5]))); }); }
+    if (faltan.length) await _bnWriteGcs(key, { at: new Date().toISOString(), fuente: "Valhalla sobre datos de OpenStreetMap", t: C }, null);
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, fuente: "Valhalla sobre datos de OpenStreetMap", rings: ts.map(t => ({ t, polys: C[t] || [] })) }); }
+  catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
 // ═══════════════════════════════════════════════════════════════════════════
 // Investigación de mercados · Facebook Marketplace (renta de propiedades). Mismo método que «Rentas de largo plazo»: Facebook bloquea al servidor,
 // así que la lectura se hace en el NAVEGADOR del usuario (marcadores) y llega aquí por una página puente (postMessage; ninguna CSP lo bloquea).
