@@ -79144,7 +79144,7 @@ window.mcCsv_ = function () {
 // ╚═══════════════════════════════════════════════════════════════════════╝
 function gmHtml_() {
   return `<div class="gm">
-    <header class="gm-top"><div class="gm-w"><img class="gm-logo" src="geometrika-logo.png" alt="GeoMetrika"><nav class="gm-nav"><a href="maqueta/entorno.html" target="_blank" rel="noopener">visor</a></nav></div></header>
+    <header class="gm-top"><div class="gm-w"><nav class="gm-nav"><a href="maqueta/entorno.html" target="_blank" rel="noopener">Iniciar sesión</a></nav></div></header>
     <main class="gm-w gm-main">
       <img class="gm-hero-logo" src="geometrika-logo.png" alt="GeoMetrika Geo-Intelligence">
       <div class="gm-st"><i class="gm-dot ok"></i><span>Sistema de geointeligencia de mercados</span></div>
