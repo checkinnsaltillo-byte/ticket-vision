@@ -13641,7 +13641,7 @@ app.post("/mercado/maqueta/vuelo-instruccion", async (req, res) => {
 - orbitar: true si debe girar alrededor del punto mientras espera
 - vueltas: vueltas completas alrededor de cada punto (0.25–6)
 - repetir: false si debe hacerlo una sola vez; true si en bucle
-- orden: arreglo con los nombres de los puntos en el orden pedido (usa los nombres tal como aparecen en la lista)
+- orden: SOLO si el usuario pide explícitamente un orden de visita; arreglo con los nombres de los puntos en ese orden (usa los nombres tal como aparecen en la lista). Si solo dice dónde empezar, no lo incluyas: usa inicio
 - inicio: nombre del punto donde debe empezar
 - notas: una frase corta en español que resuma lo que entendiste
 Puntos disponibles: ${puntos.join(" | ") || "(sin lista)"}.`;
