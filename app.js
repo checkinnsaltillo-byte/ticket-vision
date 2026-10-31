@@ -79142,7 +79142,8 @@ window.mcCsv_ = function () {
 // ║ Landing minimalista: logo, propuesta, acceso al visor de maquetas y    ║
 // ║ tabla de disponibilidad de las fuentes de datos (estado en vivo).      ║
 // ╚═══════════════════════════════════════════════════════════════════════╝
-const GMW = { vista: 'landing', paso: 1, perfil: '', objetivo: '', lat: 25.4232, lng: -101.0053, radio: 0, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '' };
+const GM_TKEY = 'AIzaSyA_-JCgn6M504YbM0xhrKtVYWdpt6q7AoY';   // llave de navegador restringida a Map Tiles API y a los dominios de Check Inn
+const GMW = { vista: 'landing', paso: 1, perfil: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, lat: 25.4232, lng: -101.0053, radio: 0, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '' };
 const GMW_DIAS = [[1, 'LUN'], [2, 'MAR'], [3, 'MIÉ'], [4, 'JUE'], [5, 'VIE'], [6, 'SÁB'], [0, 'DOM']], GMW_PASOS = [['Objetivo del proyecto', 'qué se quiere lograr'], ['Punto de interés', 'dónde se mide'], ['Radio de influencia', 'qué tanto entorno'], ['Días y horas de tráfico', 'cuándo se mide']], GMW_PERFILES = ['Perfil · por definir 1', 'Perfil · por definir 2', 'Perfil · por definir 3', 'Perfil · por definir 4'];
 const gmEsc_ = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function gmFalta_() { const f = []; if (!GMW.perfil && !GMW.objetivo.trim()) f.push('objetivo'); if (!(GMW.radio >= 100)) f.push('radio'); if (!GMW.dias.length) f.push('días'); if (!GMW.horas.length) f.push('horas'); return f; }
@@ -79161,7 +79162,7 @@ function gmLanding_() {
 }
 function gmFicha_() {
   const d = GMW.dias.slice().sort((a, b) => (a || 7) - (b || 7)).map(x => GMW_DIAS.find(q => q[0] === x)[1]).join(' '), n = GMW.dias.length * GMW.horas.length, row = (k, v) => `<div class="gmw-r"><span>${k}</span><b>${v}</b></div>`;
-  return `<div class="gmw-fi"><div class="gmw-fh"><span>ficha de especificación</span><span>${GMW.proy ? 'registrado' : 'borrador'}</span></div><div class="gmw-fb">${row('perfil', gmEsc_(GMW.perfil || '—'))}${row('objetivo', GMW.objetivo.trim() ? gmEsc_(GMW.objetivo.trim().slice(0, 26)) + (GMW.objetivo.trim().length > 26 ? '…' : '') : '—')}${row('punto de interés', GMW.lat.toFixed(5) + ', ' + GMW.lng.toFixed(5))}${row('radio de influencia', GMW.radio >= 100 ? (GMW.radio >= 1000 ? (GMW.radio / 1000).toLocaleString('es-MX') + ' km' : GMW.radio + ' m') : '—')}${row('red vial', 'openstreetmap')}${row('días', d || '—')}${row('horas', GMW.horas.length ? gmHorasTxt_() : '—')}${row('consultas de tráfico', n ? n + ' franjas día-hora' : '—')}</div></div>`;
+  return `<div class="gmw-fi"><div class="gmw-fh"><span>ficha de especificación</span><span>${GMW.proy ? 'registrado' : 'borrador'}</span></div><div class="gmw-fb">${row('perfil', gmEsc_(GMW.perfil || '—'))}${row('objetivo', GMW.objetivo.trim() ? gmEsc_(GMW.objetivo.trim().slice(0, 26)) + (GMW.objetivo.trim().length > 26 ? '…' : '') : '—')}${row('punto de interés', GMW.lat.toFixed(5) + ', ' + GMW.lng.toFixed(5))}${GMW.dir ? row('dirección', gmEsc_(GMW.dir.length > 34 ? GMW.dir.slice(0, 34) + '…' : GMW.dir)) : ''}${row('radio de influencia', GMW.radio >= 100 ? (GMW.radio >= 1000 ? (GMW.radio / 1000).toLocaleString('es-MX') + ' km' : GMW.radio + ' m') : '—')}${row('red vial', 'openstreetmap')}${row('días', d || '—')}${row('horas', GMW.horas.length ? gmHorasTxt_() : '—')}${row('consultas de tráfico', n ? n + ' franjas día-hora' : '—')}</div></div>`;
 }
 function gmHorasTxt_() { const h = GMW.horas.slice().sort((a, b) => a - b), g = []; let a = h[0], p = h[0]; for (let i = 1; i <= h.length; i++) { if (h[i] === p + 1) { p = h[i]; continue; } g.push(a === p ? String(a).padStart(2, '0') : String(a).padStart(2, '0') + '–' + String(p).padStart(2, '0')); a = p = h[i]; } return g.join(' · '); }
 function gmPie_() {
@@ -79169,10 +79170,29 @@ function gmPie_() {
   const der = ult ? `${f.length ? `<span class="gmw-fl">faltan: ${f.join(', ')}</span>` : ''}<button type="button" class="gm-btn${f.length || GMW.enviando ? ' dis' : ''}" onclick="gmEjecutar_()">${GMW.enviando ? 'enviando…' : 'ejecutar análisis'}</button>` : `<button type="button" class="gm-btn" onclick="gmPaso_(${GMW.paso + 1})">continuar <span>→</span></button>`;
   return `${atras}<span class="gmw-rg">${GMW.err ? `<span class="gmw-er">${gmEsc_(GMW.err)}</span>` : ''}${der}</span>`;
 }
+function gmResHtml_() {
+  if (GMW.buscando) return '<p class="gmw-mu">buscando…</p>'; if (!GMW.resultados) return GMW.dir ? `<p class="gmw-mu">dirección: <b>${gmEsc_(GMW.dir)}</b></p>` : '';
+  if (!GMW.resultados.length) return '<p class="gmw-mu">sin resultados; prueba con más datos (colonia, ciudad) o marca el punto en el mapa</p>';
+  return `<div class="gmw-rs">${GMW.resultados.map((r, i) => `<a data-g="${i}"><b>${gmEsc_(r.n)}</b><span>${gmEsc_(r.dir)}</span></a>`).join('')}</div>`;
+}
+async function gmTiles_() {
+  if (GMW.tiles) return GMW.tiles;
+  try { const j = await fetch('https://tile.googleapis.com/v1/createSession?key=' + GM_TKEY, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapType: 'roadmap', language: 'es-MX', region: 'MX' }) }).then(r => r.json()); if (j.session) GMW.tiles = `https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${j.session}&key=${GM_TKEY}`; } catch (_) { }
+  return GMW.tiles;
+}
+async function gmBuscar_() {
+  const q = (document.getElementById('gmw-q') || {}).value || ''; if (q.trim().length < 3 || GMW.buscando) return; GMW.buscando = true; GMW.resultados = null; const box = document.getElementById('gmw-res'); if (box) box.innerHTML = gmResHtml_();
+  try { const j = await fetch(`${BACKEND}/geometrika/direccion?q=${encodeURIComponent(q.trim())}`).then(r => r.json()); GMW.resultados = j.ok ? j.r : []; if (!j.ok) GMW.err = j.error || ''; } catch (_) { GMW.resultados = []; }
+  GMW.buscando = false; const b2 = document.getElementById('gmw-res'); if (b2) b2.innerHTML = gmResHtml_();
+}
+function gmElige_(i) {
+  const r = (GMW.resultados || [])[i]; if (!r) return; GMW.lat = r.lat; GMW.lng = r.lng; GMW.dir = r.dir || r.n; GMW.resultados = null; const box = document.getElementById('gmw-res'); if (box) box.innerHTML = gmResHtml_();
+  const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = r.lat.toFixed(6); if (b) b.value = r.lng.toFixed(6); if (GMW.map) { GMW.map.setView([r.lat, r.lng], 17); if (GMW.pin) GMW.pin.setLatLng([r.lat, r.lng]); } gmUpd_();
+}
 function gmPasoHtml_() {
   const p = GMW.paso;
   if (p === 1) return `<div class="gmw-sb"><span class="gmw-lt"><i>a</i>Perfil</span><div class="gmw-ch">${GMW_PERFILES.map(x => `<button type="button" class="gmw-c${GMW.perfil === x ? ' on' : ''}" data-p="${gmEsc_(x)}">${gmEsc_(x)}</button>`).join('')}</div></div><div class="gmw-sb"><span class="gmw-lt"><i>b</i>Descríbelo con tus palabras</span><textarea id="gmw-obj" class="gmw-ta" rows="5" maxlength="1000" placeholder="qué decisión quieres tomar con este análisis">${gmEsc_(GMW.objetivo)}</textarea></div>`;
-  if (p === 2) return `<div id="gmw-map"></div><div class="gmw-fld"><label>lat <input id="gmw-lat" value="${GMW.lat.toFixed(6)}" inputmode="decimal"></label><label>lng <input id="gmw-lng" value="${GMW.lng.toFixed(6)}" inputmode="decimal"></label><span class="gmw-mu">clic en el mapa para fijar el punto</span></div>`;
+  if (p === 2) return `<div class="gmw-sr"><input id="gmw-q" placeholder="buscar dirección o lugar: calle, número, colonia, ciudad" autocomplete="off"><button type="button" class="gmw-c" id="gmw-go">buscar</button></div><div id="gmw-res">${gmResHtml_()}</div><div id="gmw-map"></div><div class="gmw-fld"><label>lat <input id="gmw-lat" value="${GMW.lat.toFixed(6)}" inputmode="decimal"></label><label>lng <input id="gmw-lng" value="${GMW.lng.toFixed(6)}" inputmode="decimal"></label><span class="gmw-mu">clic en el mapa para fijar el punto</span></div>`;
   if (p === 3) return `<div id="gmw-map"></div><div class="gmw-fld"><label>radio (m) <input id="gmw-rad" value="${GMW.radio || ''}" inputmode="numeric" placeholder="100–5000"></label>${[[500, '500 m'], [1000, '1 km'], [2500, '2.5 km'], [5000, '5 km']].map(([v, l]) => `<button type="button" class="gmw-c" data-r="${v}">${l}</button>`).join('')}</div><input id="gmw-rng" class="gmw-rng" type="range" min="0" max="5000" step="50" value="${GMW.radio}"><div class="gmw-sc"><span>0 m</span><span>5 000 m</span></div><p class="gmw-mu" id="gmw-ar"></p>`;
   return `<div class="gmw-sb"><span class="gmw-lt"><i>a</i>Días</span><div class="gmw-ch">${GMW_DIAS.map(([v, l]) => `<button type="button" class="gmw-c${GMW.dias.includes(v) ? ' on' : ''}" data-d="${v}">${l}</button>`).join('')}</div><div class="gmw-q"><a data-q="d:1,2,3,4,5">entre semana</a><a data-q="d:6,0">fin de semana</a><a data-q="d:0,1,2,3,4,5,6">todos</a><a data-q="d:">limpiar</a></div></div><div class="gmw-sb"><span class="gmw-lt"><i>b</i>Horas</span><div class="gmw-hr">${Array.from({ length: 24 }, (_, h) => `<button type="button" class="gmw-c${GMW.horas.includes(h) ? ' on' : ''}" data-h="${h}">${String(h).padStart(2, '0')}</button>`).join('')}</div><div class="gmw-q"><a data-q="h:7,8,9,17,18,19">hora pico</a><a data-q="h:8,9,10,11,12,13,14,15,16,17,18">día hábil</a><a data-q="h:${Array.from({ length: 24 }, (_, i) => i).join(',')}">todo el día</a><a data-q="h:">limpiar</a></div></div>`;
 }
@@ -79195,16 +79215,16 @@ function gmRender_() {
   host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : gmWizard_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso === 2 || GMW.paso === 3) gmMapa_(); if (GMW.paso === 3) gmRadio_(GMW.radio, true); }
 }
-function gmNuevo_(reset) { if (reset) Object.assign(GMW, { paso: 1, perfil: '', objetivo: '', radio: 0, horas: [], dias: [1, 2, 3, 4, 5], proy: null, err: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function gmNuevo_(reset) { if (reset) Object.assign(GMW, { paso: 1, perfil: '', objetivo: '', dir: '', resultados: null, radio: 0, horas: [], dias: [1, 2, 3, 4, 5], proy: null, err: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function gmVolver_() { GMW.vista = 'landing'; gmRender_(); }
 function gmPaso_(n) { if (n < 1 || n > 4) return; GMW.paso = n; GMW.err = ''; gmRender_(); }
 function gmUpd_() { const f = document.getElementById('gmw-ficha'), p = document.getElementById('gmw-pie'); if (f) f.innerHTML = gmFicha_(); if (p) p.innerHTML = gmPie_(); }
 function gmMapa_() {
-  _rsvEnsureLeaflet_(() => {
-    const el = document.getElementById('gmw-map'); if (!el || !window.L) return; const L = window.L, m = GMW.map = L.map(el, { zoomControl: true }).setView([GMW.lat, GMW.lng], GMW.paso === 3 ? 13 : 12);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: '© Esri' }).addTo(m);
+  _rsvEnsureLeaflet_(async () => {
+    const el = document.getElementById('gmw-map'); if (!el || !window.L) return; const L = window.L, g = await gmTiles_(); if (!document.getElementById('gmw-map')) return; const m = GMW.map = L.map(el, { zoomControl: true, maxZoom: g ? 20 : 16 }).setView([GMW.lat, GMW.lng], GMW.paso === 3 ? 13 : (GMW.dir ? 16 : 12));
+    if (g) L.tileLayer(g, { maxZoom: 20, attribution: 'Map data © Google' }).addTo(m); else L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: '© Esri' }).addTo(m);
     GMW.pin = L.marker([GMW.lat, GMW.lng], { icon: L.divIcon({ className: 'gmw-pin', html: '<i></i>', iconSize: [26, 26], iconAnchor: [13, 13] }), interactive: false }).addTo(m);
-    if (GMW.paso === 2) m.on('click', e => { GMW.lat = e.latlng.lat; GMW.lng = e.latlng.lng; GMW.pin.setLatLng(e.latlng); const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = GMW.lat.toFixed(6); if (b) b.value = GMW.lng.toFixed(6); gmUpd_(); });
+    if (GMW.paso === 2) m.on('click', e => { GMW.lat = e.latlng.lat; GMW.lng = e.latlng.lng; GMW.dir = ''; GMW.pin.setLatLng(e.latlng); const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = GMW.lat.toFixed(6); if (b) b.value = GMW.lng.toFixed(6); gmUpd_(); });
     if (GMW.paso === 3) gmRadio_(GMW.radio, true); setTimeout(() => m.invalidateSize(), 60);
   });
 }
@@ -79217,18 +79237,20 @@ function gmRadio_(r, ajusta) {
 function gmWiring_() {
   const body = document.getElementById('gmw-body'); if (!body) return;
   body.addEventListener('click', e => {
+    if (e.target.closest('#gmw-go')) { gmBuscar_(); return; } const gr = e.target.closest('[data-g]'); if (gr) { gmElige_(+gr.dataset.g); return; }
     const pf = e.target.closest('[data-p]'); if (pf) { GMW.perfil = GMW.perfil === pf.dataset.p ? '' : pf.dataset.p; body.querySelectorAll('[data-p]').forEach(b => b.classList.toggle('on', b.dataset.p === GMW.perfil)); gmUpd_(); return; }
     const r = e.target.closest('[data-r]'); if (r) { gmRadio_(+r.dataset.r); return; }
     const d = e.target.closest('[data-d]'); if (d) { const v = +d.dataset.d, i = GMW.dias.indexOf(v); if (i >= 0) GMW.dias.splice(i, 1); else GMW.dias.push(v); d.classList.toggle('on'); gmUpd_(); return; }
     const h = e.target.closest('[data-h]'); if (h) { const v = +h.dataset.h, i = GMW.horas.indexOf(v); if (i >= 0) GMW.horas.splice(i, 1); else GMW.horas.push(v); h.classList.toggle('on'); gmUpd_(); return; }
     const q = e.target.closest('[data-q]'); if (q) { const [k, l] = q.dataset.q.split(':'), arr = l ? l.split(',').map(Number) : []; if (k === 'd') GMW.dias = arr; else GMW.horas = arr; body.querySelectorAll('[data-' + k + ']').forEach(b => b.classList.toggle('on', arr.includes(+b.dataset[k]))); gmUpd_(); } });
+  body.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'gmw-q') { e.preventDefault(); gmBuscar_(); } });
   body.addEventListener('input', e => { if (e.target.id === 'gmw-obj') { GMW.objetivo = e.target.value; gmUpd_(); } else if (e.target.id === 'gmw-rng') gmRadio_(+e.target.value, false); else if (e.target.id === 'gmw-rad') gmRadio_(+e.target.value.replace(/\D/g, ''), false); });
   body.addEventListener('change', e => { if (e.target.id === 'gmw-rng' || e.target.id === 'gmw-rad') { if (GMW.circ && GMW.map) GMW.map.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 15 }); }
     if (e.target.id === 'gmw-lat' || e.target.id === 'gmw-lng') { const la = parseFloat(document.getElementById('gmw-lat').value), lo = parseFloat(document.getElementById('gmw-lng').value); if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) { GMW.lat = la; GMW.lng = lo; if (GMW.map) { GMW.map.setView([la, lo]); GMW.pin.setLatLng([la, lo]); } gmUpd_(); } } });
 }
 async function gmEjecutar_() {
   if (gmFalta_().length || GMW.enviando) return; GMW.enviando = true; GMW.err = ''; gmUpd_();
-  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), lat: GMW.lat, lng: GMW.lng, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: GMW.dir, lat: GMW.lat, lng: GMW.lng, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   catch (e) { GMW.enviando = false; GMW.err = String(e.message || e); gmUpd_(); }
 }
 window.geometrikaInit = function () {
