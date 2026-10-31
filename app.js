@@ -79156,18 +79156,18 @@ const GM_FUENTES = [
 ];
 function gmHtml_() {
   return `<div class="gm">
-    <header class="gm-top"><img class="gm-logo" src="geometrika-logo.png" alt="GeoMetrika"><span class="gm-st"><i class="gm-dot" id="gm-dot"></i><span id="gm-stt">verificando servicios…</span></span></header>
-    <main class="gm-main">
-      <p class="gm-kick">geo-intelligence</p>
-      <h1 class="gm-h1">Información geográfica,<br>verificable y disponible<i></i></h1>
-      <p class="gm-p">Cada indicador cita su fuente, su fecha y su método. Datos que se pueden revisar, sin adornos.</p>
+    <header class="gm-top"><div class="gm-w"><img class="gm-logo" src="geometrika-logo.png" alt="GeoMetrika"><nav class="gm-nav"><a onclick="document.getElementById('gm-fuentes').scrollIntoView({behavior:'smooth'})">fuentes</a><a href="maqueta/entorno.html" target="_blank" rel="noopener">visor</a></nav></div></header>
+    <main class="gm-w gm-main">
+      <div class="gm-st"><i class="gm-dot" id="gm-dot"></i><span id="gm-stt">verificando servicios…</span></div>
+      <h1 class="gm-h1">Información geográfica verificable,<br><span>siempre disponible.</span></h1>
+      <p class="gm-p">Cada indicador cita su fuente, su fecha y su método.</p>
       <div class="gm-cta"><a class="gm-btn" href="maqueta/entorno.html" target="_blank" rel="noopener">Abrir visor <span>→</span></a><a class="gm-ln" onclick="document.getElementById('gm-fuentes').scrollIntoView({behavior:'smooth'})">ver fuentes de datos</a></div>
-      <dl class="gm-kpi"><div><dt>análisis</dt><dd>16</dd></div><div><dt>fuentes</dt><dd>${GM_FUENTES.length}</dd></div><div><dt>puntos con entorno</dt><dd id="gm-k-ent">—</dd></div><div><dt>puntos con negocios</dt><dd id="gm-k-pl">—</dd></div></dl>
     </main>
-    <section class="gm-src" id="gm-fuentes"><h2>disponibilidad de datos</h2>
+    <div class="gm-w"><dl class="gm-kpi"><div><dd>16</dd><dt>análisis</dt></div><div><dd>${GM_FUENTES.length}</dd><dt>fuentes de datos</dt></div><div><dd>38 941</dd><dt>establecimientos DENUE</dt></div><div><dd id="gm-k-ent">—</dd><dt>puntos analizados</dt></div></dl></div>
+    <section class="gm-w gm-src" id="gm-fuentes"><h2>disponibilidad de datos</h2>
       <table class="gm-tb"><thead><tr><th>fuente</th><th>cobertura</th><th>actualización</th><th>estado</th></tr></thead><tbody id="gm-tb">${GM_FUENTES.map((f, i) => `<tr data-i="${i}"><td>${f[0]}</td><td>${f[1]}</td><td>${f[2]}</td><td><i class="gm-dot ${f[3] === 'ok' ? 'ok' : f[3] === 'mid' ? 'mid' : ''}"></i><span>${f[3] === 'ok' ? 'disponible' : f[3] === 'mid' ? 'limitado' : 'verificando'}</span></td></tr>`).join('')}</tbody></table>
     </section>
-    <footer class="gm-foot"><span>GeoMetrika · una plataforma de Check Inn</span><span>fuentes públicas y servicios de terceros; los umbrales son criterios orientativos</span></footer>
+    <footer class="gm-foot"><div class="gm-w"><span>GeoMetrika · Check Inn</span><span>fuentes públicas y servicios de terceros</span></div></footer>
   </div>`;
 }
 window.geometrikaInit = async function () {
@@ -79176,7 +79176,7 @@ window.geometrikaInit = async function () {
   const J = u => fetch(`${BACKEND}/mercado/${u}`, { cache: 'no-store' }).then(r => r.json()).catch(() => null), fila = (k, ok, txt, cob) => { const tr = host.querySelector(`#gm-tb tr[data-i="${GM_FUENTES.findIndex(f => f[3] === k)}"]`); if (!tr) return; const d = tr.querySelector('.gm-dot'); d.className = 'gm-dot ' + (ok ? 'ok' : 'mid'); tr.lastElementChild.querySelector('span').textContent = txt; if (cob != null) tr.children[1].textContent = cob; };
   const [en, pl, ai] = await Promise.all([J('airbnb/entorno/indice'), J('airbnb/lugares/indice'), J('ambiente/aire?lat=25.4272&lng=-100.993')]);
   const nEn = en && en.indice ? Object.keys(en.indice).length : null, nPl = pl && pl.indice ? Object.keys(pl.indice).length : null, set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v == null ? '—' : v.toLocaleString('es-MX'); };
-  set('gm-k-ent', nEn); set('gm-k-pl', nPl);
+  set('gm-k-ent', nEn);
   fila('ent', nEn != null, nEn != null ? 'disponible' : 'sin respuesta', nEn != null ? `${nEn} puntos analizados` : ''); fila('pl', nPl != null, nPl != null ? 'disponible' : 'sin respuesta', nPl != null ? `${nPl} puntos con negocios a 1 km` : '');
   const aOk = !!(ai && ai.ok && ai.aire && ai.aire.act && !ai.aire.act.error); fila('air', aOk, aOk ? 'en vivo' : 'sin respuesta');
   const sv = [nEn, nPl].every(v => v != null) && aOk, dot = document.getElementById('gm-dot'), t = document.getElementById('gm-stt'); if (dot) dot.className = 'gm-dot ' + (sv ? 'ok' : 'mid'); if (t) t.textContent = sv ? 'todos los servicios operativos' : 'servicio parcial';
