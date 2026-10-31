@@ -79142,7 +79142,11 @@ window.mcCsv_ = function () {
 // ║ Landing minimalista: logo, propuesta, acceso al visor de maquetas y    ║
 // ║ tabla de disponibilidad de las fuentes de datos (estado en vivo).      ║
 // ╚═══════════════════════════════════════════════════════════════════════╝
-function gmHtml_() {
+const GMW = { vista: 'landing', paso: 1, lat: 25.4232, lng: -101.0053, radio: 0, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '' };
+const GMW_DIAS = [[1, 'LUN'], [2, 'MAR'], [3, 'MIÉ'], [4, 'JUE'], [5, 'VIE'], [6, 'SÁB'], [0, 'DOM']], GMW_PASOS = [['punto', 'dónde se mide'], ['radio', 'qué tanto entorno'], ['días', 'qué días'], ['horas', 'a qué hora']];
+const gmEsc_ = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function gmFalta_() { const f = []; if (!(GMW.radio >= 100)) f.push('radio'); if (!GMW.dias.length) f.push('días'); if (!GMW.horas.length) f.push('horas'); return f; }
+function gmLanding_() {
   return `<div class="gm">
     <header class="gm-top"><div class="gm-w"><nav class="gm-nav"><a href="maqueta/entorno.html" target="_blank" rel="noopener">Iniciar sesión</a></nav></div></header>
     <main class="gm-w gm-main">
@@ -79150,12 +79154,84 @@ function gmHtml_() {
       <div class="gm-st"><i class="gm-dot ok"></i><span>Sistema de geointeligencia de mercados</span></div>
       <h1 class="gm-h1">Información geográfica verificable,<br><span>siempre disponible.</span></h1>
       <p class="gm-p">Cada indicador cita su fuente, su fecha y su método.</p>
-      <div class="gm-cta"><a class="gm-btn" href="maqueta/entorno.html" target="_blank" rel="noopener">Crea tu primer proyecto <span>→</span></a></div>
+      <div class="gm-cta"><button type="button" class="gm-btn" onclick="gmNuevo_()">Crea tu primer proyecto <span>→</span></button></div>
     </main>
     <footer class="gm-foot"><div class="gm-w"><span>GeoMetrika · Check Inn</span><span>fuentes públicas y servicios de terceros</span></div></footer>
   </div>`;
 }
+function gmFicha_() {
+  const d = GMW.dias.slice().sort((a, b) => (a || 7) - (b || 7)).map(x => GMW_DIAS.find(q => q[0] === x)[1]).join(' '), n = GMW.dias.length * GMW.horas.length, row = (k, v) => `<div class="gmw-r"><span>${k}</span><b>${v}</b></div>`;
+  return `<div class="gmw-fi"><div class="gmw-fh"><span>ficha de especificación</span><span>${GMW.proy ? 'registrado' : 'borrador'}</span></div><div class="gmw-fb">${row('punto', GMW.lat.toFixed(5) + ', ' + GMW.lng.toFixed(5))}${row('radio', GMW.radio >= 100 ? (GMW.radio >= 1000 ? (GMW.radio / 1000).toLocaleString('es-MX') + ' km' : GMW.radio + ' m') : '—')}${row('red vial', 'openstreetmap')}${row('días', d || '—')}${row('horas', GMW.horas.length ? gmHorasTxt_() : '—')}${row('consultas de tráfico', n ? n + ' franjas día-hora' : '—')}</div></div>`;
+}
+function gmHorasTxt_() { const h = GMW.horas.slice().sort((a, b) => a - b), g = []; let a = h[0], p = h[0]; for (let i = 1; i <= h.length; i++) { if (h[i] === p + 1) { p = h[i]; continue; } g.push(a === p ? String(a).padStart(2, '0') : String(a).padStart(2, '0') + '–' + String(p).padStart(2, '0')); a = p = h[i]; } return g.join(' · '); }
+function gmPie_() {
+  const f = gmFalta_(), ult = GMW.paso === 4, atras = GMW.paso === 1 ? `<a class="gmw-bk" onclick="gmVolver_()">← inicio</a>` : `<a class="gmw-bk" onclick="gmPaso_(${GMW.paso - 1})">← atrás</a>`;
+  const der = ult ? `${f.length ? `<span class="gmw-fl">faltan: ${f.join(', ')}</span>` : ''}<button type="button" class="gm-btn${f.length || GMW.enviando ? ' dis' : ''}" onclick="gmEjecutar_()">${GMW.enviando ? 'enviando…' : 'ejecutar análisis'}</button>` : `<button type="button" class="gm-btn" onclick="gmPaso_(${GMW.paso + 1})">continuar <span>→</span></button>`;
+  return `${atras}<span class="gmw-rg">${GMW.err ? `<span class="gmw-er">${gmEsc_(GMW.err)}</span>` : ''}${der}</span>`;
+}
+function gmPasoHtml_() {
+  const p = GMW.paso;
+  if (p === 1) return `<div id="gmw-map"></div><div class="gmw-fld"><label>lat <input id="gmw-lat" value="${GMW.lat.toFixed(6)}" inputmode="decimal"></label><label>lng <input id="gmw-lng" value="${GMW.lng.toFixed(6)}" inputmode="decimal"></label><span class="gmw-mu">clic en el mapa para fijar el punto</span></div>`;
+  if (p === 2) return `<div id="gmw-map"></div><div class="gmw-fld"><label>radio (m) <input id="gmw-rad" value="${GMW.radio || ''}" inputmode="numeric" placeholder="100–5000"></label>${[[500, '500 m'], [1000, '1 km'], [2500, '2.5 km'], [5000, '5 km']].map(([v, l]) => `<button type="button" class="gmw-c" data-r="${v}">${l}</button>`).join('')}</div><input id="gmw-rng" class="gmw-rng" type="range" min="0" max="5000" step="50" value="${GMW.radio}"><div class="gmw-sc"><span>0 m</span><span>5 000 m</span></div><p class="gmw-mu" id="gmw-ar"></p>`;
+  if (p === 3) return `<div class="gmw-ch">${GMW_DIAS.map(([v, l]) => `<button type="button" class="gmw-c${GMW.dias.includes(v) ? ' on' : ''}" data-d="${v}">${l}</button>`).join('')}</div><div class="gmw-q"><a data-q="d:1,2,3,4,5">entre semana</a><a data-q="d:6,0">fin de semana</a><a data-q="d:0,1,2,3,4,5,6">todos</a><a data-q="d:">limpiar</a></div>`;
+  return `<div class="gmw-hr">${Array.from({ length: 24 }, (_, h) => `<button type="button" class="gmw-c${GMW.horas.includes(h) ? ' on' : ''}" data-h="${h}">${String(h).padStart(2, '0')}</button>`).join('')}</div><div class="gmw-q"><a data-q="h:7,8,9,17,18,19">hora pico</a><a data-q="h:8,9,10,11,12,13,14,15,16,17,18">día hábil</a><a data-q="h:${Array.from({ length: 24 }, (_, i) => i).join(',')}">todo el día</a><a data-q="h:">limpiar</a></div>`;
+}
+function gmWizard_() {
+  const p = GMW.paso;
+  return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>Nuevo análisis</h2><span>${String(p).padStart(2, '0')}/04</span></div>
+    <div class="gmw-pg">${[1, 2, 3, 4].map(i => `<i class="${i < p ? 'done' : i === p ? 'on' : ''}"></i>`).join('')}</div>
+    <div class="gmw-b"><nav class="gmw-rail">${GMW_PASOS.map(([n], i) => `<a class="gmw-s ${i + 1 < p ? 'done' : i + 1 === p ? 'on' : ''}" onclick="gmPaso_(${i + 1})"><small>${String(i + 1).padStart(2, '0')}</small><span>${n}</span></a>`).join('')}</nav>
+      <section class="gmw-c1"><div class="gmw-t"><small>${String(p).padStart(2, '0')}</small><b>${GMW_PASOS[p - 1][0]}</b><span>· ${GMW_PASOS[p - 1][1]}</span></div><div id="gmw-body">${gmPasoHtml_()}</div></section></div>
+    <div id="gmw-ficha">${gmFicha_()}</div><div class="gmw-ft" id="gmw-pie">${gmPie_()}</div></div></div>`;
+}
+function gmDone_() {
+  const P = GMW.proy;
+  return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>Proyecto registrado</h2><span>${gmEsc_(P.id)}</span></div><div class="gmw-pg"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i></div>
+    <p class="gmw-mu" style="margin:0 0 22px;max-width:520px">Los parámetros quedaron guardados. El análisis se ejecutará sobre la red vial de OpenStreetMap dentro del radio, en las franjas elegidas.</p>${gmFicha_()}
+    <div class="gmw-ft"><a class="gmw-bk" onclick="gmNuevo_(true)">← nuevo análisis</a><span class="gmw-rg"><a class="gm-btn" href="maqueta/entorno.html" target="_blank" rel="noopener">abrir visor <span>→</span></a></span></div></div></div>`;
+}
+function gmRender_() {
+  const host = document.getElementById('geometrika-host'); if (!host) return; if (GMW.map) { try { GMW.map.remove(); } catch (_) { } GMW.map = GMW.pin = GMW.circ = null; }
+  host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : gmWizard_();
+  if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso <= 2) gmMapa_(); if (GMW.paso === 2) gmRadio_(GMW.radio, true); }
+}
+function gmNuevo_(reset) { if (reset) Object.assign(GMW, { paso: 1, radio: 0, horas: [], dias: [1, 2, 3, 4, 5], proy: null, err: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function gmVolver_() { GMW.vista = 'landing'; gmRender_(); }
+function gmPaso_(n) { if (n < 1 || n > 4) return; GMW.paso = n; GMW.err = ''; gmRender_(); }
+function gmUpd_() { const f = document.getElementById('gmw-ficha'), p = document.getElementById('gmw-pie'); if (f) f.innerHTML = gmFicha_(); if (p) p.innerHTML = gmPie_(); }
+function gmMapa_() {
+  _rsvEnsureLeaflet_(() => {
+    const el = document.getElementById('gmw-map'); if (!el || !window.L) return; const L = window.L, m = GMW.map = L.map(el, { zoomControl: true }).setView([GMW.lat, GMW.lng], GMW.paso === 2 ? 13 : 12);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: '© Esri' }).addTo(m);
+    GMW.pin = L.marker([GMW.lat, GMW.lng], { icon: L.divIcon({ className: 'gmw-pin', html: '<i></i>', iconSize: [26, 26], iconAnchor: [13, 13] }), interactive: false }).addTo(m);
+    if (GMW.paso === 1) m.on('click', e => { GMW.lat = e.latlng.lat; GMW.lng = e.latlng.lng; GMW.pin.setLatLng(e.latlng); const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = GMW.lat.toFixed(6); if (b) b.value = GMW.lng.toFixed(6); gmUpd_(); });
+    if (GMW.paso === 2) gmRadio_(GMW.radio, true); setTimeout(() => m.invalidateSize(), 60);
+  });
+}
+function gmRadio_(r, ajusta) {
+  GMW.radio = Math.max(0, Math.min(5000, Math.round(r) || 0)); const L = window.L, m = GMW.map; if (m && L) { if (GMW.circ) { m.removeLayer(GMW.circ); GMW.circ = null; } if (GMW.radio >= 100) { GMW.circ = L.circle([GMW.lat, GMW.lng], { radius: GMW.radio, color: '#1f8a8a', weight: 1.5, fillColor: '#1f8a8a', fillOpacity: .08 }).addTo(m); if (ajusta !== false) m.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 15 }); } }
+  const rng = document.getElementById('gmw-rng'), inp = document.getElementById('gmw-rad'), ar = document.getElementById('gmw-ar'); if (rng && +rng.value !== GMW.radio) rng.value = GMW.radio; if (inp && document.activeElement !== inp) inp.value = GMW.radio || '';
+  if (ar) ar.innerHTML = `se descarga la red vial de OpenStreetMap dentro del radio · área estimada <b>${(Math.PI * (GMW.radio / 1000) ** 2).toLocaleString('es-MX', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} km²</b>`;
+  document.querySelectorAll('.gmw-c[data-r]').forEach(b => b.classList.toggle('on', +b.dataset.r === GMW.radio)); gmUpd_();
+}
+function gmWiring_() {
+  const body = document.getElementById('gmw-body'); if (!body) return;
+  body.addEventListener('click', e => {
+    const r = e.target.closest('[data-r]'); if (r) { gmRadio_(+r.dataset.r); return; }
+    const d = e.target.closest('[data-d]'); if (d) { const v = +d.dataset.d, i = GMW.dias.indexOf(v); if (i >= 0) GMW.dias.splice(i, 1); else GMW.dias.push(v); d.classList.toggle('on'); gmUpd_(); return; }
+    const h = e.target.closest('[data-h]'); if (h) { const v = +h.dataset.h, i = GMW.horas.indexOf(v); if (i >= 0) GMW.horas.splice(i, 1); else GMW.horas.push(v); h.classList.toggle('on'); gmUpd_(); return; }
+    const q = e.target.closest('[data-q]'); if (q) { const [k, l] = q.dataset.q.split(':'), arr = l ? l.split(',').map(Number) : []; if (k === 'd') GMW.dias = arr; else GMW.horas = arr; body.querySelectorAll('[data-' + k + ']').forEach(b => b.classList.toggle('on', arr.includes(+b.dataset[k]))); gmUpd_(); } });
+  body.addEventListener('input', e => { if (e.target.id === 'gmw-rng') gmRadio_(+e.target.value, false); else if (e.target.id === 'gmw-rad') gmRadio_(+e.target.value.replace(/\D/g, ''), false); });
+  body.addEventListener('change', e => { if (e.target.id === 'gmw-rng' || e.target.id === 'gmw-rad') { if (GMW.circ && GMW.map) GMW.map.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 15 }); }
+    if (e.target.id === 'gmw-lat' || e.target.id === 'gmw-lng') { const la = parseFloat(document.getElementById('gmw-lat').value), lo = parseFloat(document.getElementById('gmw-lng').value); if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) { GMW.lat = la; GMW.lng = lo; if (GMW.map) { GMW.map.setView([la, lo]); GMW.pin.setLatLng([la, lo]); } gmUpd_(); } } });
+}
+async function gmEjecutar_() {
+  if (gmFalta_().length || GMW.enviando) return; GMW.enviando = true; GMW.err = ''; gmUpd_();
+  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lat: GMW.lat, lng: GMW.lng, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  catch (e) { GMW.enviando = false; GMW.err = String(e.message || e); gmUpd_(); }
+}
 window.geometrikaInit = function () {
   const host = document.getElementById('geometrika-host'); if (!host) return;
-  if (!host.dataset.ok) { host.dataset.ok = '1'; host.innerHTML = gmHtml_(); }
+  if (!host.dataset.ok) { host.dataset.ok = '1'; GMW.vista = 'landing'; }
+  gmRender_();
 };
