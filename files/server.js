@@ -12980,11 +12980,12 @@ app.post("/mercado/ambiente/solar", async (req, res) => {
 app.post("/geometrika/proyecto", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
-    const b = req.body || {}, lat = +b.lat, lng = +b.lng, radio = Math.round(+b.radio), dias = [...new Set((Array.isArray(b.dias) ? b.dias : []).map(Number))].filter(d => d >= 0 && d <= 6).sort((a, c) => (a || 7) - (c || 7)), horas = [...new Set((Array.isArray(b.horas) ? b.horas : []).map(Number))].filter(h => h >= 0 && h <= 23).sort((a, c) => a - c);
+    const b = req.body || {}, perfil = String(b.perfil || "").slice(0, 80), objetivo = String(b.objetivo || "").slice(0, 1000), lat = +b.lat, lng = +b.lng, radio = Math.round(+b.radio), dias = [...new Set((Array.isArray(b.dias) ? b.dias : []).map(Number))].filter(d => d >= 0 && d <= 6).sort((a, c) => (a || 7) - (c || 7)), horas = [...new Set((Array.isArray(b.horas) ? b.horas : []).map(Number))].filter(h => h >= 0 && h <= 23).sort((a, c) => a - c);
     if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
     if (!(radio >= 100 && radio <= 5000)) return res.status(400).json({ ok: false, error: "El radio debe estar entre 100 y 5 000 m" });
     if (!dias.length || !horas.length) return res.status(400).json({ ok: false, error: "Elige al menos un día y una hora" });
-    const id = "gm" + Date.now().toString(36), doc = { id, ver: "gm-v1", creado: new Date().toISOString(), estado: "borrador", lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length };
+    if (!perfil && !objetivo.trim()) return res.status(400).json({ ok: false, error: "Define el objetivo del proyecto" });
+    const id = "gm" + Date.now().toString(36), doc = { id, ver: "gm-v1", creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length };
     await _bnWriteGcs(`geometrika/proyectos/${id}.json`, doc, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyecto: doc });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
