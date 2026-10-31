@@ -13019,7 +13019,9 @@ app.post("/geometrika/proyecto", async (req, res) => {
     if (!(radio >= 100 && radio <= 5000)) return res.status(400).json({ ok: false, error: "El radio debe estar entre 100 y 5 000 m" });
     if (!dias.length || !horas.length) return res.status(400).json({ ok: false, error: "Elige al menos un día y una hora" });
     if (!perfil && !objetivo.trim()) return res.status(400).json({ ok: false, error: "Define el objetivo del proyecto" });
-    const id = "gm" + Date.now().toString(36), doc = { id, ver: "gm-v1", creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length };
+    const cl = n => Math.max(0, Math.min(99, Math.round(+n) || 0)), F = b.fotos || {}, fotos = { frente: Math.min(12, cl(F.frente)), inmediato: Math.min(30, cl(F.inmediato)), general: Math.min(60, cl(F.general)) }, V = b.vialidades || {}, vialidades = { clases: [...new Set((Array.isArray(V.clases) ? V.clases : []).map(String))].filter(c => _TR_CLASES.includes(c)), tramo: Math.max(50, Math.min(1000, Math.round(+V.tramo) || 200)), preseleccionar: Math.min(30, cl(V.preseleccionar)) };
+    if (!vialidades.clases.length) return res.status(400).json({ ok: false, error: "Elige al menos una clasificación de vialidad" });
+    const id = "gm" + Date.now().toString(36), doc = { id, ver: "gm-v1", fotos, vialidades, creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length };
     await _bnWriteGcs(`geometrika/proyectos/${id}.json`, doc, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyecto: doc });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
