@@ -12977,15 +12977,27 @@ app.post("/mercado/ambiente/solar", async (req, res) => {
   })().catch(e => { _soJob.error = String(e.message || e); }).finally(() => { _soJob.running = false; _soJob.upd = new Date().toISOString(); });
 });
 // ── GeoMetrika: proyectos de análisis. El asistente «Nuevo análisis» captura punto, radio, días y horas y los guarda en geometrika/proyectos/<id>.json ──
+const _gmDirC = new Map();
+app.get("/geometrika/direccion", async (req, res) => {   // busca una dirección o lugar (Google Places · Text Search) y devuelve hasta 5 coincidencias con sus coordenadas
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const q = String(req.query.q || "").trim().slice(0, 200), key = process.env.GOOGLE_MAPS_KEY; if (q.length < 3) return res.status(400).json({ ok: false, error: "Escribe al menos 3 letras" }); if (!key) return res.status(503).json({ ok: false, error: "Falta la clave de Google Maps" });
+    const k = q.toLowerCase(), c = _gmDirC.get(k); if (c && Date.now() - c.t < 3600e3) return res.json({ ok: true, r: c.r });
+    const r = await fetch("https://places.googleapis.com/v1/places:searchText", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location" }, body: JSON.stringify({ textQuery: q, languageCode: "es", regionCode: "MX", maxResultCount: 5, locationBias: { circle: { center: { latitude: 25.4232, longitude: -101.0053 }, radius: 50000 } } }), signal: AbortSignal.timeout(20000) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || "Places HTTP " + r.status);
+    const out = (j.places || []).filter(p => p.location).map(p => ({ n: (p.displayName && p.displayName.text) || "", dir: p.formattedAddress || "", lat: p.location.latitude, lng: p.location.longitude }));
+    if (_gmDirC.size > 300) _gmDirC.clear(); _gmDirC.set(k, { t: Date.now(), r: out }); res.json({ ok: true, r: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/geometrika/proyecto", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
-    const b = req.body || {}, perfil = String(b.perfil || "").slice(0, 80), objetivo = String(b.objetivo || "").slice(0, 1000), lat = +b.lat, lng = +b.lng, radio = Math.round(+b.radio), dias = [...new Set((Array.isArray(b.dias) ? b.dias : []).map(Number))].filter(d => d >= 0 && d <= 6).sort((a, c) => (a || 7) - (c || 7)), horas = [...new Set((Array.isArray(b.horas) ? b.horas : []).map(Number))].filter(h => h >= 0 && h <= 23).sort((a, c) => a - c);
+    const b = req.body || {}, perfil = String(b.perfil || "").slice(0, 80), direccion = String(b.direccion || "").slice(0, 200), objetivo = String(b.objetivo || "").slice(0, 1000), lat = +b.lat, lng = +b.lng, radio = Math.round(+b.radio), dias = [...new Set((Array.isArray(b.dias) ? b.dias : []).map(Number))].filter(d => d >= 0 && d <= 6).sort((a, c) => (a || 7) - (c || 7)), horas = [...new Set((Array.isArray(b.horas) ? b.horas : []).map(Number))].filter(h => h >= 0 && h <= 23).sort((a, c) => a - c);
     if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
     if (!(radio >= 100 && radio <= 5000)) return res.status(400).json({ ok: false, error: "El radio debe estar entre 100 y 5 000 m" });
     if (!dias.length || !horas.length) return res.status(400).json({ ok: false, error: "Elige al menos un día y una hora" });
     if (!perfil && !objetivo.trim()) return res.status(400).json({ ok: false, error: "Define el objetivo del proyecto" });
-    const id = "gm" + Date.now().toString(36), doc = { id, ver: "gm-v1", creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length };
+    const id = "gm" + Date.now().toString(36), doc = { id, ver: "gm-v1", creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length };
     await _bnWriteGcs(`geometrika/proyectos/${id}.json`, doc, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyecto: doc });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
