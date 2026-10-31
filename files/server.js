@@ -12977,6 +12977,28 @@ app.post("/mercado/ambiente/solar", async (req, res) => {
   })().catch(e => { _soJob.error = String(e.message || e); }).finally(() => { _soJob.running = false; _soJob.upd = new Date().toISOString(); });
 });
 // ── GeoMetrika: proyectos de análisis. El asistente «Nuevo análisis» captura punto, radio, días y horas y los guarda en geometrika/proyectos/<id>.json ──
+const _gmSugC = new Map();
+app.get("/geometrika/sugerir", async (req, res) => {   // autocompletado de direcciones mientras se escribe (Google Places Autocomplete, con token de sesión)
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const q = String(req.query.q || "").trim().slice(0, 150), st = String(req.query.st || "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 64), key = process.env.GOOGLE_MAPS_KEY; if (q.length < 2) return res.json({ ok: true, r: [] }); if (!key) return res.status(503).json({ ok: false, error: "Falta la clave de Google Maps" });
+    const k = q.toLowerCase(), c = _gmSugC.get(k); if (c && Date.now() - c.t < 600e3) return res.json({ ok: true, r: c.r });
+    const body = { input: q, languageCode: "es", regionCode: "MX", locationBias: { circle: { center: { latitude: 25.4232, longitude: -101.0053 }, radius: 50000 } } }; if (st) body.sessionToken = st;
+    const r = await fetch("https://places.googleapis.com/v1/places:autocomplete", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || "Places HTTP " + r.status);
+    const out = (j.suggestions || []).filter(x => x.placePrediction).slice(0, 6).map(x => { const p = x.placePrediction, f = p.structuredFormat || {}; return { pid: p.placeId, n: (f.mainText && f.mainText.text) || (p.text && p.text.text) || "", dir: (f.secondaryText && f.secondaryText.text) || "" }; });
+    if (_gmSugC.size > 400) _gmSugC.clear(); _gmSugC.set(k, { t: Date.now(), r: out }); res.json({ ok: true, r: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/geometrika/lugar", async (req, res) => {   // coordenadas de la sugerencia elegida (cierra la sesión de autocompletado)
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const id = String(req.query.id || ""), st = String(req.query.st || "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 64), key = process.env.GOOGLE_MAPS_KEY; if (!/^[A-Za-z0-9_-]{10,200}$/.test(id)) return res.status(400).json({ ok: false, error: "Lugar no válido" }); if (!key) return res.status(503).json({ ok: false, error: "Falta la clave de Google Maps" });
+    const r = await fetch(`https://places.googleapis.com/v1/places/${id}?languageCode=es${st ? "&sessionToken=" + st : ""}`, { headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "displayName,formattedAddress,location" }, signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({})); if (!r.ok || !j.location) throw new Error((j.error && j.error.message) || "Places HTTP " + r.status);
+    res.json({ ok: true, n: (j.displayName && j.displayName.text) || "", dir: j.formattedAddress || "", lat: j.location.latitude, lng: j.location.longitude });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 const _gmDirC = new Map();
 app.get("/geometrika/direccion", async (req, res) => {   // busca una dirección o lugar (Google Places · Text Search) y devuelve hasta 5 coincidencias con sus coordenadas
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
