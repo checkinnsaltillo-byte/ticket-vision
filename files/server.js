@@ -12976,6 +12976,18 @@ app.post("/mercado/ambiente/solar", async (req, res) => {
     else _soJob.error = _soJob.error || "Google no tiene datos solares para estas azoteas";
   })().catch(e => { _soJob.error = String(e.message || e); }).finally(() => { _soJob.running = false; _soJob.upd = new Date().toISOString(); });
 });
+// ── GeoMetrika: proyectos de análisis. El asistente «Nuevo análisis» captura punto, radio, días y horas y los guarda en geometrika/proyectos/<id>.json ──
+app.post("/geometrika/proyecto", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, lat = +b.lat, lng = +b.lng, radio = Math.round(+b.radio), dias = [...new Set((Array.isArray(b.dias) ? b.dias : []).map(Number))].filter(d => d >= 0 && d <= 6).sort((a, c) => (a || 7) - (c || 7)), horas = [...new Set((Array.isArray(b.horas) ? b.horas : []).map(Number))].filter(h => h >= 0 && h <= 23).sort((a, c) => a - c);
+    if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
+    if (!(radio >= 100 && radio <= 5000)) return res.status(400).json({ ok: false, error: "El radio debe estar entre 100 y 5 000 m" });
+    if (!dias.length || !horas.length) return res.status(400).json({ ok: false, error: "Elige al menos un día y una hora" });
+    const id = "gm" + Date.now().toString(36), doc = { id, ver: "gm-v1", creado: new Date().toISOString(), estado: "borrador", lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length };
+    await _bnWriteGcs(`geometrika/proyectos/${id}.json`, doc, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyecto: doc });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── Negocios y establecimientos en el radio de influencia (Google Places API (New) · Nearby Search) ──
 //    Por cada grupo de tipos de negocio se consulta el círculo (máx. 20 resultados por consulta); si se llena se subdivide en 7 círculos (hasta 2 niveles). Se deduplica por id de lugar.
 //    Se guarda mercado/lugares/<id>.json (negocios completos + resumen) y mercado/lugares/_indice.json. Los términos de Google limitan conservar su contenido: el registro lleva «expira» (30 días).
