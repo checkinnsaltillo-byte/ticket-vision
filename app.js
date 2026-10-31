@@ -396,7 +396,8 @@ const SYS_MODULE_EXTRAS = {
   aseo:      ['breezeway'],
   'reportes-tecnicos': ['aseo'], // quien tenía Reportes técnicos ve Aseo (ahí vive Mantenimiento)
   breezeway: ['aseo'], // empleados que ya tenían Breezeway ven el módulo Aseo completo
-  lodgify:   ['reservas-detalles', 'mensajes', 'rentas-lp', 'marketing', 'mercado'], // quien gestiona reservas ve Rentas de largo plazo y Marketing
+  mercado:   ['geometrika'], // quien ve Investigación de mercados ve también GeoMetrika
+  lodgify:   ['reservas-detalles', 'mensajes', 'rentas-lp', 'marketing', 'mercado', 'geometrika'], // quien gestiona reservas ve Rentas de largo plazo y Marketing
   inquilinos: ['rentas-lp', 'marketing'], 'dir-inquilinos': ['rentas-lp'], 'reservas-nueva': ['rentas-lp', 'marketing'], 'rentas-lp': ['marketing'],
   ocupacion: ['dashboard', 'calendario'],
   'bot-chats': ['bot-control'], // quien atiende Chats bot ve también su centro de mando
