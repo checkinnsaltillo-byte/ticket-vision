@@ -13626,6 +13626,33 @@ app.post("/mercado/maqueta/od-estima", async (req, res) => {
 });
 app.get("/mercado/maqueta/od-estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _odJob)); });
 app.get("/mercado/maqueta/od", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(_odKey(req.query.modo === "punto" ? id + "_punto" : req.query.modo === "destino" ? id + "_destino" : id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, od: data || null }); } catch (e) { res.json({ ok: true, od: null }); } });
+// Sobrevuelo por instrucción en texto libre: el asistente convierte lo escrito en parámetros del vuelo (costo ≈ 0.001 USD por instrucción)
+app.post("/mercado/maqueta/vuelo-instruccion", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, texto = String(b.texto || "").slice(0, 1200).trim(), puntos = (Array.isArray(b.puntos) ? b.puntos : []).slice(0, 12).map(x => String(x).slice(0, 80)); if (!texto) return res.json({ ok: true, params: {} });
+    const key = process.env.ANTHROPIC_API_KEY; if (!key) return res.status(500).json({ ok: false, error: "Falta la clave del asistente" });
+    const sys = `Conviertes instrucciones en español sobre un sobrevuelo (una cámara que vuela como avión sobre una ciudad y desciende a ver cada punto) en un objeto JSON. Devuelve SOLO el JSON, sin texto adicional. Incluye únicamente los campos que la instrucción menciona o implica:
+- espera_s: segundos que se queda en cada punto (0–180)
+- alt_baja_m: altitud en metros al ver el detalle de un punto (80–1500)
+- alt_crucero_m: altitud en metros entre puntos (300–8000; "2 km" = 2000)
+- angulo_grados: ángulo de la cámara hacia abajo respecto al horizonte (10 = casi horizontal, 45 = oblicuo, 80 = cenital/vertical)
+- velocidad: factor de velocidad (0.25–4; lento = 0.5, normal = 1, rápido = 2)
+- orbitar: true si debe girar alrededor del punto mientras espera
+- vueltas: vueltas completas alrededor de cada punto (0.25–6)
+- repetir: false si debe hacerlo una sola vez; true si en bucle
+- orden: arreglo con los nombres de los puntos en el orden pedido (usa los nombres tal como aparecen en la lista)
+- inicio: nombre del punto donde debe empezar
+- notas: una frase corta en español que resuma lo que entendiste
+Puntos disponibles: ${puntos.join(" | ") || "(sin lista)"}.`;
+    const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 500, system: sys, messages: [{ role: "user", content: texto }] }), signal: AbortSignal.timeout(25000) });
+    const j = await r.json(); if (!r.ok) return res.status(502).json({ ok: false, error: "Asistente " + r.status }); const raw = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("\n"), m = raw.match(/\{[\s\S]*\}/); if (!m) return res.status(502).json({ ok: false, error: "Sin respuesta interpretable" });
+    const P = JSON.parse(m[0]), num = (v, lo, hi) => { v = parseFloat(v); return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : undefined; }, out = {};
+    [["espera_s", 0, 180], ["alt_baja_m", 80, 1500], ["alt_crucero_m", 300, 8000], ["angulo_grados", 10, 85], ["velocidad", .25, 4], ["vueltas", .25, 6]].forEach(([k, lo, hi]) => { const v = num(P[k], lo, hi); if (v !== undefined) out[k] = v; });
+    if (typeof P.orbitar === "boolean") out.orbitar = P.orbitar; if (typeof P.repetir === "boolean") out.repetir = P.repetir; if (Array.isArray(P.orden)) out.orden = P.orden.slice(0, 12).map(x => String(x).slice(0, 80)); if (P.inicio) out.inicio = String(P.inicio).slice(0, 80); if (P.notas) out.notas = String(P.notas).slice(0, 240);
+    res.json({ ok: true, params: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // Lista de maquetas ya generadas (para ver varias a la vez): índice persistente en mercado/maqueta/_indice.json que se completa leyendo cada escena una sola vez
 const _mqLista = { t: 0, items: null };
 app.get("/mercado/maqueta/lista", async (req, res) => {
