@@ -12918,6 +12918,64 @@ app.get("/mercado/airbnb/entorno/foto", async (req, res) => {
     const key = process.env.GOOGLE_MAPS_KEY; if (!key) return res.status(503).end(); const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=${sz}x${sz}&pano=${pano}&heading=${h}&fov=90&pitch=0&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(30000) }); if (!r.ok) return res.status(502).end();
     res.set({ "Content-Type": r.headers.get("content-type") || "image/jpeg", "Cache-Control": "private, max-age=600" }); res.send(Buffer.from(await r.arrayBuffer())); } catch (_) { res.status(500).end(); }
 });
+// ── Google Environment APIs: potencial solar de azoteas (Solar API), calidad del aire, polen y clima (Air Quality, Pollen y Weather API) ──
+//    Se consultan desde el servidor con GOOGLE_MAPS_KEY (restringida a esas APIs) y se guardan/cachean para no repetir cobros: aire y clima 20 min en memoria; azoteas en mercado/solar/<id>.json.
+const _gEnv = new Map();
+async function _gJson(url, body) { const r = await fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) } : { signal: AbortSignal.timeout(30000) }); const j = await r.json().catch(() => ({})); if (!r.ok) { const e = new Error((j.error && j.error.message) || ("HTTP " + r.status)); e.status = r.status; throw e; } return j; }
+async function _gMemo(k, ttl, fn) { const c = _gEnv.get(k); if (c && Date.now() - c.t < ttl) return c.v; const v = await fn(); if (_gEnv.size > 300) _gEnv.delete(_gEnv.keys().next().value); _gEnv.set(k, { t: Date.now(), v }); return v; }
+app.get("/mercado/ambiente/aire", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  const lat = +req.query.lat, lng = +req.query.lng, key = process.env.GOOGLE_MAPS_KEY; if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ ok: false, error: "coordenadas" }); if (!key) return res.status(503).json({ ok: false, error: "Falta la clave de Google Maps" });
+  try {
+    const out = await _gMemo("air|" + lat.toFixed(3) + "," + lng.toFixed(3), 20 * 60e3, async () => {
+      const loc = { latitude: lat, longitude: lng }, X = ["LOCAL_AQI", "HEALTH_RECOMMENDATIONS", "POLLUTANT_ADDITIONAL_INFO", "DOMINANT_POLLUTANT_CONCENTRATION", "POLLUTANT_CONCENTRATION"], h0 = Math.ceil(Date.now() / 36e5) * 36e5, ok = p => p.catch(e => ({ error: String(e.message || e).slice(0, 160) }));
+      const q = `location.latitude=${lat}&location.longitude=${lng}&languageCode=es&key=${key}`;
+      const [act, pron, hist, pol, cl, dias] = await Promise.all([
+        ok(_gJson(`https://airquality.googleapis.com/v1/currentConditions:lookup?key=${key}`, { location: loc, extraComputations: X, languageCode: "es" })),
+        ok(_gJson(`https://airquality.googleapis.com/v1/forecast:lookup?key=${key}`, { location: loc, period: { startTime: new Date(h0).toISOString(), endTime: new Date(h0 + 71 * 36e5).toISOString() }, pageSize: 72, languageCode: "es" })),
+        ok(_gJson(`https://airquality.googleapis.com/v1/history:lookup?key=${key}`, { location: loc, hours: 72, pageSize: 72, languageCode: "es" })),
+        ok(_gJson(`https://pollen.googleapis.com/v1/forecast:lookup?${q}&days=5`)),
+        ok(_gJson(`https://weather.googleapis.com/v1/currentConditions:lookup?${q}`)),
+        ok(_gJson(`https://weather.googleapis.com/v1/forecast/days:lookup?${q}&days=10`))]);
+      const idx = o => { const u = (o.indexes || []).find(i => i.code === "uaqi") || (o.indexes || [])[0] || {}; return { t: o.dateTime, aqi: u.aqi, cat: u.category, dom: u.dominantPollutant, col: u.color }; };
+      const lc = (act.indexes || []).find(i => i.code !== "uaqi");
+      return { at: new Date().toISOString(), act: act.error ? { error: act.error } : { t: act.dateTime, region: act.regionCode, indices: (act.indexes || []).map(i => ({ code: i.code, nombre: i.displayName, aqi: i.aqi, cat: i.category, dom: i.dominantPollutant, col: i.color })), local: lc ? { code: lc.code, nombre: lc.displayName, aqi: lc.aqi, cat: lc.category } : null, contaminantes: (act.pollutants || []).map(p => ({ code: p.code, nombre: p.displayName, nombreCompleto: p.fullName, conc: p.concentration, causas: p.additionalInfo && p.additionalInfo.sources, efectos: p.additionalInfo && p.additionalInfo.effects })), salud: act.healthRecommendations || null },
+        pron: pron.error ? [] : (pron.hourlyForecasts || []).map(idx), hist: hist.error ? [] : (hist.hoursInfo || []).map(idx).reverse(),
+        polen: pol.error ? { error: pol.error } : (pol.dailyInfo || []), clima: cl.error ? { error: cl.error } : cl, dias: dias.error ? [] : (dias.forecastDays || []), errores: [act, pron, hist, pol, cl, dias].filter(x => x && x.error).map(x => x.error) };
+    });
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, aire: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+const _gTileC = new Map();
+app.get("/mercado/ambiente/aire/tile", async (req, res) => {
+  const t = String(req.query.t || "UAQI_RED_GREEN"), z = parseInt(req.query.z, 10), x = parseInt(req.query.x, 10), y = parseInt(req.query.y, 10), key = process.env.GOOGLE_MAPS_KEY;
+  if (!["UAQI_RED_GREEN", "UAQI_INDIGO_PERSIMMON", "PM25_INDIGO_PERSIMMON", "US_AQI"].includes(t) || !(z >= 8 && z <= 16) || !(x >= 0 && y >= 0 && x < 2 ** z && y < 2 ** z) || !key) return res.status(400).end();
+  try { const k = `${t}/${z}/${x}/${y}`, c = _gTileC.get(k); res.set({ "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=1800" });
+    if (c && Date.now() - c.t < 3600e3) { res.set("Content-Type", "image/png"); return res.send(c.b); }
+    const r = await fetch(`https://airquality.googleapis.com/v1/mapTypes/${t}/heatmapTiles/${z}/${x}/${y}?key=${key}`, { signal: AbortSignal.timeout(20000) }); if (!r.ok) return res.status(r.status === 404 ? 204 : 502).end();
+    const b = Buffer.from(await r.arrayBuffer()); if (_gTileC.size > 600) _gTileC.clear(); _gTileC.set(k, { t: Date.now(), b }); res.set("Content-Type", "image/png"); res.send(b); } catch (_) { res.status(500).end(); }
+});
+const _soObj = id => `mercado/solar/${id}.json`;
+app.get("/mercado/ambiente/solar", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(_soObj(id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, solar: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+let _soJob = { running: false };
+app.get("/mercado/ambiente/solar/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _soJob)); });
+app.post("/mercado/ambiente/solar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) return res.status(503).json({ ok: false, error: "Falta la clave de Google Maps" });
+  const id = String((req.body || {}).id || "").replace(/\D/g, ""), pts = ((req.body || {}).pts || []).filter(p => Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180).slice(0, 40); if (!id || !pts.length) return res.status(400).json({ ok: false, error: "Faltan el punto y las azoteas a consultar" });
+  if (_soJob.running && Date.now() - Date.parse(_soJob.upd || 0) < 240000) return res.status(409).json({ ok: false, error: "Ya hay un análisis solar en curso" });
+  _soJob = { running: true, id, paso: "Consultando azoteas 0/" + pts.length, upd: new Date().toISOString() }; res.json({ ok: true, n: pts.length });
+  (async () => {
+    const M = new Map(); let hechos = 0, sinCob = 0;
+    const un = async p => { try { const j = await _gJson(`https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${(+p.lat).toFixed(6)}&location.longitude=${(+p.lng).toFixed(6)}&requiredQuality=LOW&key=${key}`); if (!j.name || M.has(j.name)) return; const sp = j.solarPotential || {}, w = sp.wholeRoofStats || {}, cf = sp.solarPanelConfigs || [], best = cf[cf.length - 1] || {};
+        M.set(j.name, { n: j.name, lat: j.center.latitude, lng: j.center.longitude, cp: j.postalCode || "", q: j.imageryQuality || "", f: j.imageryDate ? `${j.imageryDate.year}-${String(j.imageryDate.month).padStart(2, "0")}` : "", a: Math.round((w.areaMeters2 || 0) * 10) / 10, ag: Math.round((w.groundAreaMeters2 || 0) * 10) / 10, mp: sp.maxArrayPanelsCount || 0, ma: Math.round((sp.maxArrayAreaMeters2 || 0) * 10) / 10, h: Math.round(sp.maxSunshineHoursPerYear || 0), co: Math.round(sp.carbonOffsetFactorKgPerMwh || 0), pw: sp.panelCapacityWatts || 400, kwh: Math.round(best.yearlyEnergyDcKwh || 0), cfg: cf.filter((c, i) => i % Math.max(1, Math.floor(cf.length / 8)) === 0 || i === cf.length - 1).map(c => [c.panelsCount, Math.round(c.yearlyEnergyDcKwh)]),
+          seg: (sp.roofSegmentStats || []).map(s => [Math.round((s.pitchDegrees || 0) * 10) / 10, Math.round(s.azimuthDegrees || 0), Math.round((s.stats && s.stats.areaMeters2 || 0) * 10) / 10, Math.round((s.stats && s.stats.sunshineQuantiles && s.stats.sunshineQuantiles[s.stats.sunshineQuantiles.length >> 1]) || 0)]),
+          pn: (sp.solarPanels || []).map(q => [+q.center.latitude.toFixed(6), +q.center.longitude.toFixed(6), Math.round(q.yearlyEnergyDcKwh), q.segmentIndex || 0, q.orientation === "PORTRAIT" ? 1 : 0]), pdim: [sp.panelWidthMeters || 1.045, sp.panelHeightMeters || 1.879], vida: sp.panelLifetimeYears || 20 }); } catch (e) { if (e.status === 404) sinCob++; else if (!_soJob.error) _soJob.error = String(e.message || e).slice(0, 160); } };
+    const cola = pts.slice(); await Promise.all([1, 2, 3, 4].map(async () => { while (cola.length) { await un(cola.shift()); hechos++; _soJob.paso = `Consultando azoteas ${hechos}/${pts.length}`; _soJob.upd = new Date().toISOString(); } }));
+    if (M.size) await _bnWriteGcs(_soObj(id), { id, ver: "solar-v1", at: new Date().toISOString(), fuente: "Google Solar API · Building Insights", consultadas: pts.length, sinCobertura: sinCob, edificios: [...M.values()] }, null);
+    else _soJob.error = _soJob.error || "Google no tiene datos solares para estas azoteas";
+  })().catch(e => { _soJob.error = String(e.message || e); }).finally(() => { _soJob.running = false; _soJob.upd = new Date().toISOString(); });
+});
 // ── Negocios y establecimientos en el radio de influencia (Google Places API (New) · Nearby Search) ──
 //    Por cada grupo de tipos de negocio se consulta el círculo (máx. 20 resultados por consulta); si se llena se subdivide en 7 círculos (hasta 2 niveles). Se deduplica por id de lugar.
 //    Se guarda mercado/lugares/<id>.json (negocios completos + resumen) y mercado/lugares/_indice.json. Los términos de Google limitan conservar su contenido: el registro lleva «expira» (30 días).
