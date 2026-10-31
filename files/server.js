@@ -13978,6 +13978,21 @@ async function _wcSuelo(lat, lng) {
   const p = {}; Object.keys(cnt).forEach(k => { p[k] = Math.round(cnt[k] / tot * 1000) / 10; }); const dom = Object.keys(p).sort((a, b) => p[b] - p[a])[0], verde = ["10", "20", "30"].reduce((s2, k) => s2 + (p[k] || 0), 0);
   return { p, dom: +dom, domTxt: _TR_COVER[dom] || String(dom), verde: Math.round(verde * 10) / 10, radio: R, año: 2021, fuente: "ESA WorldCover 10 m" };
 }
+// Cobertura del suelo a 10 m para pintarla sobre la maqueta: cuadrícula de 10 m centrada en la propiedad (una clase ESA WorldCover por byte, fila 0 = norte)
+const _wcGrid = new Map();
+app.get("/mercado/maqueta/suelo", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng, R = Math.min(600, Math.max(50, +req.query.r || 300)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "coordenadas" });
+    const key = lat.toFixed(4) + "," + lng.toFixed(4) + "," + Math.round(R); if (_wcGrid.has(key)) { res.set("Cache-Control", "public, max-age=86400"); return res.json(_wcGrid.get(key)); }
+    const img = await _wcImg(lat, lng), [w, s, e, n] = img.getBoundingBox(), W = img.getWidth(), H = img.getHeight(), mx = (e - w) / W * 111320 * Math.cos(lat * Math.PI / 180), my = (n - s) / H * 110540, NN = Math.ceil(2 * R / 10), half = NN * 5;
+    const px = (lng - w) / (e - w) * W, py = (n - lat) / (n - s) * H, rx = Math.ceil(half / mx) + 2, ry = Math.ceil(half / my) + 2, x0 = Math.max(0, Math.floor(px) - rx), x1 = Math.min(W, Math.floor(px) + rx + 1), y0 = Math.max(0, Math.floor(py) - ry), y1 = Math.min(H, Math.floor(py) + ry + 1);
+    const r = await img.readRasters({ window: [x0, y0, x1, y1], samples: [0] }), A = r[0], w2 = x1 - x0, out = Buffer.alloc(NN * NN);
+    for (let j = 0; j < NN; j++) for (let i = 0; i < NN; i++) { const X = Math.floor(px + (-half + (i + .5) * 10) / mx), Y = Math.floor(py - (half - (j + .5) * 10) / my); if (X >= x0 && X < x1 && Y >= y0 && Y < y1) out[j * NN + i] = A[(Y - y0) * w2 + (X - x0)]; }
+    const o = { ok: true, n: NN, mpp: 10, b64: out.toString("base64"), fuente: "ESA WorldCover 10 m · 2021" }; if (_wcGrid.size > 200) _wcGrid.delete(_wcGrid.keys().next().value); _wcGrid.set(key, o);
+    res.set("Cache-Control", "public, max-age=86400"); res.json(o);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 async function _amTerreno(ids, forzar) {
   const J = _amJob, { data } = await _bnReadGcs(_AM_OBJ), ya = (data && data.d) || {}; J.paso = "Relieve y suelo: buscando coordenadas";
   let L = (await _amItems(ids)).filter(x => !x.aprox); if (!forzar) L = L.filter(x => !(ya[x.id] && ya[x.id].terreno && ya[x.id].suelo)); J.total2 = L.length; J.hechos2 = 0; J.ok2 = 0; J.err2 = 0; if (!L.length) return;
