@@ -79202,7 +79202,7 @@ function gmWizard_() {
     <div class="gmw-pg">${[1, 2, 3, 4].map(i => `<i class="${i < p ? 'done' : i === p ? 'on' : ''}"></i>`).join('')}</div>
     <div class="gmw-b"><nav class="gmw-rail">${GMW_PASOS.map(([n], i) => `<a class="gmw-s ${i + 1 < p ? 'done' : i + 1 === p ? 'on' : ''}" onclick="gmPaso_(${i + 1})"><small>Paso ${String(i + 1).padStart(2, '0')}</small><span>${n}</span></a>`).join('')}</nav>
       <section class="gmw-c1"><div class="gmw-t"><small>Paso ${String(p).padStart(2, '0')}</small><b>${GMW_PASOS[p - 1][0]}</b><span>· ${GMW_PASOS[p - 1][1]}</span></div><div id="gmw-body">${gmPasoHtml_()}</div></section></div>
-    <div id="gmw-ficha">${gmFicha_()}</div><div class="gmw-ft" id="gmw-pie">${gmPie_()}</div></div></div>`;
+    <div class="gmw-ft gmw-top" id="gmw-pie">${gmPie_()}</div><div id="gmw-ficha">${gmFicha_()}</div></div></div>`;
 }
 function gmDone_() {
   const P = GMW.proy;
