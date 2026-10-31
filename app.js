@@ -79158,6 +79158,7 @@ function gmHtml_() {
   return `<div class="gm">
     <header class="gm-top"><div class="gm-w"><img class="gm-logo" src="geometrika-logo.png" alt="GeoMetrika"><nav class="gm-nav"><a onclick="document.getElementById('gm-fuentes').scrollIntoView({behavior:'smooth'})">fuentes</a><a href="maqueta/entorno.html" target="_blank" rel="noopener">visor</a></nav></div></header>
     <main class="gm-w gm-main">
+      <img class="gm-hero-logo" src="geometrika-logo.png" alt="GeoMetrika Geo-Intelligence">
       <div class="gm-st"><i class="gm-dot" id="gm-dot"></i><span id="gm-stt">verificando servicios…</span></div>
       <h1 class="gm-h1">Información geográfica verificable,<br><span>siempre disponible.</span></h1>
       <p class="gm-p">Cada indicador cita su fuente, su fecha y su método.</p>
