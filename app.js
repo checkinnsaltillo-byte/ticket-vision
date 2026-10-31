@@ -382,6 +382,7 @@ const SYS_MODULE_LIST = [
   ['rentas-lp',        '🏘️ Rentas de largo plazo'],
   ['marketing',        '📣 Marketing en redes'],
   ['mercado',          '📈 Investigación de mercados'],
+  ['geometrika',       '🌐 GeoMetrika'],
   ['llaves',           '🔑 Llavero'],
   ['config-admin',     '⚙️ Configuración Admin'],
   ['bot-chats',        '🤖 Chats bot'],
@@ -415,7 +416,7 @@ function sysApplyPermissions(user) {
     });
   } else {
     // Usuario legado de sys_users (grupos por número romano).
-    allowed = new Set(['home', 'tuya', 'guias', 'rentas-lp', 'marketing', 'mercado', 'config-admin', 'llaves', 'bot-chats', 'bot-control', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
+    allowed = new Set(['home', 'tuya', 'guias', 'rentas-lp', 'marketing', 'mercado', 'geometrika', 'config-admin', 'llaves', 'bot-chats', 'bot-control', 'reportes-tecnicos', 'reservas-nueva', 'tareas', 'panel-control', 'procesos', 'senaletica']);
     if (user && user.modulos) {
       for (const k in SYS_MODULE_PERMS) {
         if (user.modulos[k]) SYS_MODULE_PERMS[k].forEach(m => allowed.add(m));
@@ -9162,7 +9163,7 @@ function esc(v) {
 const _VALID_MODULES = new Set([
   'home','tickets','registros','huespedes','lodgify','reservas-detalles',
   'breezeway','aseo','incidencias','objetos','reportes-tecnicos','ocupacion',
-  'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias','rentas-lp','marketing','mercado',
+  'dashboard','calendario','rh','inquilinos','proveedores','dir-inquilinos','inventarios','tuya','guias','rentas-lp','marketing','mercado','geometrika',
   'config-admin','llaves','bot-chats','bot-control','reservas-nueva','pagos','tareas','panel-control','procesos','senaletica','plantillas','reglasbot','mantenimiento','mensajes',
 ]);
 function _bootModuleFromHash_() {
@@ -9312,7 +9313,7 @@ function switchModule(mod) {
     const greet = document.getElementById('user-greeting');
     if (greet) greet.style.display = '';
   } catch(_){}
-  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "bot-control", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "reglasbot", "mensajes", "rentas-lp", "marketing", "mercado"].forEach(m => {
+  ["home", "tickets", "registros", "huespedes", "lodgify", "personas", "reservas-detalles", "breezeway", "aseo", "incidencias", "objetos", "reportes-tecnicos", "ocupacion", "rh", "inquilinos", "proveedores", "dir-inquilinos", "inventarios", "tuya", "guias", "config-admin", "llaves", "bot-chats", "bot-control", "reservas-nueva", "pagos", "tareas", "panel-control", "procesos", "senaletica", "plantillas", "reglasbot", "mensajes", "rentas-lp", "marketing", "mercado", "geometrika"].forEach(m => {
     document.getElementById(`module-${m}`)?.classList.toggle("hidden", m !== containerMod);
     document.getElementById(`tab-module-${m}`)?.classList.toggle("active", m === containerMod);
     document.getElementById(`nav-item-${m}`)?.classList.toggle("active", m === containerMod);
@@ -9488,6 +9489,9 @@ function switchModule(mod) {
   }
   if (mod === "panel-control") {
     if (typeof panelControlInit === 'function') panelControlInit();
+  }
+  if (mod === "geometrika") {
+    if (typeof geometrikaInit === 'function') geometrikaInit();
   }
   if (mod === "senaletica") {
     if (typeof senaleticaInit === 'function') senaleticaInit();
@@ -79130,4 +79134,49 @@ window.mcCsv_ = function () {
   const rows = mcRows_(), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"', cab = ['ID', 'URL', 'Título', 'Estado extracción', ...MC_COLS.map(c => c.t)];
   const L = [cab.map(q).join(',')].concat(rows.map(i => [i.id, i.url, i.titulo || '', i.error ? 'Error: ' + i.error : i.extraido ? 'OK' : 'Pendiente', ...MC_COLS.map(c => c.v(i))].map(q).join(',')));
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\n')], { type: 'text/csv;charset=utf-8' })); a.download = `airbnb-mercado-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); a.remove();
+};
+
+// ╔═══════════════════════════════════════════════════════════════════════╗
+// ║ MÓDULO 🌐 GeoMetrika (key: geometrika)                                 ║
+// ║ Landing minimalista: logo, propuesta, acceso al visor de maquetas y    ║
+// ║ tabla de disponibilidad de las fuentes de datos (estado en vivo).      ║
+// ╚═══════════════════════════════════════════════════════════════════════╝
+const GM_FUENTES = [
+  ['INEGI · Censo de Población y Vivienda', '2 222 hexágonos de 200 m · 996 mil habitantes', '2020', 'ok'],
+  ['INEGI · DENUE', '38 941 establecimientos económicos', '2025-04', 'ok'],
+  ['ESA WorldCover 10 m', 'tipo de suelo y arbolado', '2021', 'ok'],
+  ['GHSL · crecimiento urbano', 'superficie edificada 1975–2030', '2023', 'ok'],
+  ['Open-Meteo · ERA5 y CAMS', 'clima, viento y aire (promedios)', '2020–2024', 'ok'],
+  ['Google Street View + IA', '', 'por punto', 'ent'],
+  ['Google Places', '', 'por punto', 'pl'],
+  ['Google Solar API', 'potencial de azoteas', 'bajo demanda', 'ok'],
+  ['Google Air Quality · Weather', 'aire hiperlocal y clima', 'en vivo', 'air'],
+  ['Google Pollen', 'sin cobertura en México por ahora', 'en vivo', 'mid'],
+];
+function gmHtml_() {
+  return `<div class="gm">
+    <header class="gm-top"><img class="gm-logo" src="geometrika-logo.png" alt="GeoMetrika"><span class="gm-st"><i class="gm-dot" id="gm-dot"></i><span id="gm-stt">verificando servicios…</span></span></header>
+    <main class="gm-main">
+      <p class="gm-kick">geo-intelligence</p>
+      <h1 class="gm-h1">Información geográfica,<br>verificable y disponible<i></i></h1>
+      <p class="gm-p">Cada indicador cita su fuente, su fecha y su método. Datos que se pueden revisar, sin adornos.</p>
+      <div class="gm-cta"><a class="gm-btn" href="maqueta/entorno.html" target="_blank" rel="noopener">Abrir visor <span>→</span></a><a class="gm-ln" onclick="document.getElementById('gm-fuentes').scrollIntoView({behavior:'smooth'})">ver fuentes de datos</a></div>
+      <dl class="gm-kpi"><div><dt>análisis</dt><dd>16</dd></div><div><dt>fuentes</dt><dd>${GM_FUENTES.length}</dd></div><div><dt>puntos con entorno</dt><dd id="gm-k-ent">—</dd></div><div><dt>puntos con negocios</dt><dd id="gm-k-pl">—</dd></div></dl>
+    </main>
+    <section class="gm-src" id="gm-fuentes"><h2>disponibilidad de datos</h2>
+      <table class="gm-tb"><thead><tr><th>fuente</th><th>cobertura</th><th>actualización</th><th>estado</th></tr></thead><tbody id="gm-tb">${GM_FUENTES.map((f, i) => `<tr data-i="${i}"><td>${f[0]}</td><td>${f[1]}</td><td>${f[2]}</td><td><i class="gm-dot ${f[3] === 'ok' ? 'ok' : f[3] === 'mid' ? 'mid' : ''}"></i><span>${f[3] === 'ok' ? 'disponible' : f[3] === 'mid' ? 'limitado' : 'verificando'}</span></td></tr>`).join('')}</tbody></table>
+    </section>
+    <footer class="gm-foot"><span>GeoMetrika · una plataforma de Check Inn</span><span>fuentes públicas y servicios de terceros; los umbrales son criterios orientativos</span></footer>
+  </div>`;
+}
+window.geometrikaInit = async function () {
+  const host = document.getElementById('geometrika-host'); if (!host) return;
+  if (!host.dataset.ok) { host.dataset.ok = '1'; host.innerHTML = gmHtml_(); }
+  const J = u => fetch(`${BACKEND}/mercado/${u}`, { cache: 'no-store' }).then(r => r.json()).catch(() => null), fila = (k, ok, txt, cob) => { const tr = host.querySelector(`#gm-tb tr[data-i="${GM_FUENTES.findIndex(f => f[3] === k)}"]`); if (!tr) return; const d = tr.querySelector('.gm-dot'); d.className = 'gm-dot ' + (ok ? 'ok' : 'mid'); tr.lastElementChild.querySelector('span').textContent = txt; if (cob != null) tr.children[1].textContent = cob; };
+  const [en, pl, ai] = await Promise.all([J('airbnb/entorno/indice'), J('airbnb/lugares/indice'), J('ambiente/aire?lat=25.4272&lng=-100.993')]);
+  const nEn = en && en.indice ? Object.keys(en.indice).length : null, nPl = pl && pl.indice ? Object.keys(pl.indice).length : null, set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v == null ? '—' : v.toLocaleString('es-MX'); };
+  set('gm-k-ent', nEn); set('gm-k-pl', nPl);
+  fila('ent', nEn != null, nEn != null ? 'disponible' : 'sin respuesta', nEn != null ? `${nEn} puntos analizados` : ''); fila('pl', nPl != null, nPl != null ? 'disponible' : 'sin respuesta', nPl != null ? `${nPl} puntos con negocios a 1 km` : '');
+  const aOk = !!(ai && ai.ok && ai.aire && ai.aire.act && !ai.aire.act.error); fila('air', aOk, aOk ? 'en vivo' : 'sin respuesta');
+  const sv = [nEn, nPl].every(v => v != null) && aOk, dot = document.getElementById('gm-dot'), t = document.getElementById('gm-stt'); if (dot) dot.className = 'gm-dot ' + (sv ? 'ok' : 'mid'); if (t) t.textContent = sv ? 'todos los servicios operativos' : 'servicio parcial';
 };
