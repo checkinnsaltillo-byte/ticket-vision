@@ -79143,7 +79143,7 @@ window.mcCsv_ = function () {
 // ║ tabla de disponibilidad de las fuentes de datos (estado en vivo).      ║
 // ╚═══════════════════════════════════════════════════════════════════════╝
 const GM_TKEY = 'AIzaSyA_-JCgn6M504YbM0xhrKtVYWdpt6q7AoY';   // llave de navegador restringida a Map Tiles API y a los dominios de Check Inn
-const GMW = { vista: 'landing', paso: 1, perfil: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, lat: 25.4232, lng: -101.0053, radio: 0, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '' };
+const GMW = { vista: 'landing', paso: 1, perfil: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, st: '', seq: 0, lat: 25.4232, lng: -101.0053, radio: 0, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '' };
 const GMW_DIAS = [[1, 'LUN'], [2, 'MAR'], [3, 'MIÉ'], [4, 'JUE'], [5, 'VIE'], [6, 'SÁB'], [0, 'DOM']], GMW_PASOS = [['Objetivo del proyecto', 'qué se quiere lograr'], ['Punto de interés', 'dónde se mide'], ['Radio de influencia', 'qué tanto entorno'], ['Días y horas de tráfico', 'cuándo se mide']], GMW_PERFILES = ['Perfil · por definir 1', 'Perfil · por definir 2', 'Perfil · por definir 3', 'Perfil · por definir 4'];
 const gmEsc_ = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function gmFalta_() { const f = []; if (!GMW.perfil && !GMW.objetivo.trim()) f.push('objetivo'); if (!(GMW.radio >= 100)) f.push('radio'); if (!GMW.dias.length) f.push('días'); if (!GMW.horas.length) f.push('horas'); return f; }
@@ -79180,13 +79180,20 @@ async function gmTiles_() {
   try { const j = await fetch('https://tile.googleapis.com/v1/createSession?key=' + GM_TKEY, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapType: 'roadmap', language: 'es-MX', region: 'MX' }) }).then(r => r.json()); if (j.session) GMW.tiles = `https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${j.session}&key=${GM_TKEY}`; } catch (_) { }
   return GMW.tiles;
 }
+let gmSugT_ = 0;
+function gmSugerir_(q) {
+  clearTimeout(gmSugT_); if (q.trim().length < 2) { GMW.resultados = null; const b = document.getElementById('gmw-res'); if (b) b.innerHTML = gmResHtml_(); return; }
+  gmSugT_ = setTimeout(async () => { if (!GMW.st) GMW.st = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())); const seq = GMW.seq = (GMW.seq || 0) + 1;
+    try { const j = await fetch(`${BACKEND}/geometrika/sugerir?q=${encodeURIComponent(q.trim())}&st=${GMW.st}`).then(r => r.json()); if (seq !== GMW.seq) return; GMW.resultados = j.ok ? j.r : null; } catch (_) { return; } const b = document.getElementById('gmw-res'); if (b) b.innerHTML = gmResHtml_(); }, 230);
+}
 async function gmBuscar_() {
   const q = (document.getElementById('gmw-q') || {}).value || ''; if (q.trim().length < 3 || GMW.buscando) return; GMW.buscando = true; GMW.resultados = null; const box = document.getElementById('gmw-res'); if (box) box.innerHTML = gmResHtml_();
   try { const j = await fetch(`${BACKEND}/geometrika/direccion?q=${encodeURIComponent(q.trim())}`).then(r => r.json()); GMW.resultados = j.ok ? j.r : []; if (!j.ok) GMW.err = j.error || ''; } catch (_) { GMW.resultados = []; }
   GMW.buscando = false; const b2 = document.getElementById('gmw-res'); if (b2) b2.innerHTML = gmResHtml_();
 }
-function gmElige_(i) {
-  const r = (GMW.resultados || [])[i]; if (!r) return; GMW.lat = r.lat; GMW.lng = r.lng; GMW.dir = r.dir || r.n; GMW.resultados = null; const box = document.getElementById('gmw-res'); if (box) box.innerHTML = gmResHtml_();
+async function gmElige_(i) {
+  let r = (GMW.resultados || [])[i]; if (!r) return;
+  if (r.pid) { try { const j = await fetch(`${BACKEND}/geometrika/lugar?id=${encodeURIComponent(r.pid)}&st=${GMW.st || ''}`).then(x => x.json()); if (!j.ok) throw new Error(j.error); r = { n: j.n || r.n, dir: j.dir || r.dir, lat: j.lat, lng: j.lng }; } catch (_) { GMW.err = 'No se pudo ubicar ese lugar'; gmUpd_(); return; } GMW.st = ''; } GMW.lat = r.lat; GMW.lng = r.lng; GMW.dir = r.dir || r.n; const qi = document.getElementById('gmw-q'); if (qi && r.n) qi.value = r.n; GMW.resultados = null; const box = document.getElementById('gmw-res'); if (box) box.innerHTML = gmResHtml_();
   const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = r.lat.toFixed(6); if (b) b.value = r.lng.toFixed(6); if (GMW.map) { GMW.map.setView([r.lat, r.lng], 17); if (GMW.pin) GMW.pin.setLatLng([r.lat, r.lng]); } gmUpd_();
 }
 function gmPasoHtml_() {
@@ -79244,7 +79251,7 @@ function gmWiring_() {
     const h = e.target.closest('[data-h]'); if (h) { const v = +h.dataset.h, i = GMW.horas.indexOf(v); if (i >= 0) GMW.horas.splice(i, 1); else GMW.horas.push(v); h.classList.toggle('on'); gmUpd_(); return; }
     const q = e.target.closest('[data-q]'); if (q) { const [k, l] = q.dataset.q.split(':'), arr = l ? l.split(',').map(Number) : []; if (k === 'd') GMW.dias = arr; else GMW.horas = arr; body.querySelectorAll('[data-' + k + ']').forEach(b => b.classList.toggle('on', arr.includes(+b.dataset[k]))); gmUpd_(); } });
   body.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'gmw-q') { e.preventDefault(); gmBuscar_(); } });
-  body.addEventListener('input', e => { if (e.target.id === 'gmw-obj') { GMW.objetivo = e.target.value; gmUpd_(); } else if (e.target.id === 'gmw-rng') gmRadio_(+e.target.value, false); else if (e.target.id === 'gmw-rad') gmRadio_(+e.target.value.replace(/\D/g, ''), false); });
+  body.addEventListener('input', e => { if (e.target.id === 'gmw-q') gmSugerir_(e.target.value); else if (e.target.id === 'gmw-obj') { GMW.objetivo = e.target.value; gmUpd_(); } else if (e.target.id === 'gmw-rng') gmRadio_(+e.target.value, false); else if (e.target.id === 'gmw-rad') gmRadio_(+e.target.value.replace(/\D/g, ''), false); });
   body.addEventListener('change', e => { if (e.target.id === 'gmw-rng' || e.target.id === 'gmw-rad') { if (GMW.circ && GMW.map) GMW.map.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 15 }); }
     if (e.target.id === 'gmw-lat' || e.target.id === 'gmw-lng') { const la = parseFloat(document.getElementById('gmw-lat').value), lo = parseFloat(document.getElementById('gmw-lng').value); if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) { GMW.lat = la; GMW.lng = lo; if (GMW.map) { GMW.map.setView([la, lo]); GMW.pin.setLatLng([la, lo]); } gmUpd_(); } } });
 }
