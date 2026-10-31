@@ -11,3 +11,7 @@ Genera `maqueta/data/poblacion_hex_saltillo.json` con `poblacion_hex.py`.
 `p25` = `p20` × (población municipal 2025 / población municipal 2020): estimación, no dato de manzana.
 
 **Limitaciones:** manzanas posteriores a 2020 sin dato; no se reparte según edificación (mejora posible: interpolación dasimétrica con huellas de edificios); la EIC 2025 no publica manzanas.
+
+## Nivel socioeconómico (NSE)
+
+`nse_hex.py` agrega 13 variables del Censo 2020 (escolaridad, rezago educativo, seguridad social, automóvil, internet, computadora, TV de paga, lavadora, microondas, ocupantes por cuarto, piso de tierra, etc.) a cada hexágono con las mismas ponderaciones por manzana de `poblacion_hex.py`, obtiene un índice con el primer componente principal (ponderado por hogares) y lo parte en 4 estratos con Dalenius–Hodges (inspirado en la estratificación del INEGI; no es el índice AMAI). Salida: `maqueta/data/nse_hex_saltillo.json`.
