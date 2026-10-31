@@ -13625,6 +13625,19 @@ app.post("/mercado/maqueta/od-estima", async (req, res) => {
 });
 app.get("/mercado/maqueta/od-estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _odJob)); });
 app.get("/mercado/maqueta/od", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(_odKey(req.query.modo === "punto" ? id + "_punto" : req.query.modo === "destino" ? id + "_destino" : id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, od: data || null }); } catch (e) { res.json({ ok: true, od: null }); } });
+// Lista de maquetas ya generadas (para ver varias a la vez): índice persistente en mercado/maqueta/_indice.json que se completa leyendo cada escena una sola vez
+const _mqLista = { t: 0, items: null };
+app.get("/mercado/maqueta/lista", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    res.set("Cache-Control", "no-store"); if (_mqLista.items && Date.now() - _mqLista.t < 90000 && req.query.fresh !== "1") return res.json({ ok: true, items: _mqLista.items });
+    const names = (await _gcsList("mercado/maqueta/")).filter(n => /^mercado\/maqueta\/\d+\.json$/.test(n)); let idx = {}; try { const { data } = await _bnReadGcs("mercado/maqueta/_indice.json"); if (data && data.d) idx = data.d; } catch (_) {}
+    const falta = names.map(n => n.match(/(\d+)\.json$/)[1]).filter(id => !idx[id]); let cambio = false;
+    for (let i = 0; i < falta.length; i += 4) await Promise.all(falta.slice(i, i + 4).map(async id => { try { const { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); idx[id] = data && data.lat != null && data.roads ? { id, titulo: String(data.tit || data.titulo || id).slice(0, 90), lat: +data.lat, lng: +data.lng, radio: +data.radio || null } : { id, skip: 1 }; cambio = true; } catch (_) {} }));
+    if (cambio) { try { await _bnWriteGcs("mercado/maqueta/_indice.json", { d: idx, at: new Date().toISOString() }, null); } catch (_) {} }
+    const items = names.map(n => idx[n.match(/(\d+)\.json$/)[1]]).filter(x => x && !x.skip); _mqLista.t = Date.now(); _mqLista.items = items; res.json({ ok: true, items });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); if (data && Array.isArray(data.obs)) data.obs.forEach(o => { o.u = `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(o.pano)}&h=${o.h}&sig=${_enSig(o.pano, o.h)}`; }); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 // Modelo 3D ya armado (.glb, lo exporta el navegador): se guarda en mercado/maqueta/<id>.glb y se borra al regenerar la maqueta.
 const _mqGlbUrl = (id, up) => up ? `https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(`mercado/maqueta/${id}.glb`)}` : `https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(`mercado/maqueta/${id}.glb`)}`;
