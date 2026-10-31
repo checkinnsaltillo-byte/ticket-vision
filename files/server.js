@@ -13316,7 +13316,7 @@ Además, para CADA foto reporta SOLO los RIESGOS CLARAMENTE CRÍTICOS visibles (
 (1) pavimento: baches, hundimientos, parches, grietas severas, terracería, rejillas rotas (reducen la velocidad 10-40 %).
 (2) peatonal: banquetas ausentes, rotas, angostas, desniveladas u obstruidas, falta de rampas, cruces peatonales ausentes, borrados o peligrosos (multiplican el costo de caminar 1.0-2.4x).
 (3) semaforo: semáforos, cruces con alto conflicto, vías rápidas sin cruce seguro, transporte pesado (+15-45 s por intersección).
-(4) estacionamiento: calle saturada de autos, doble fila, falta de cajones, autos sobre banqueta (+2-8.5 min de búsqueda).
+(4) estacionamiento: calle saturada de autos, doble fila, falta de cajones, autos sobre banqueta.
 (5) acceso: entradas y salidas vehiculares comerciales, cocheras o portones que interrumpen el flujo, giros conflictivos, topes (+5 s por acceso activo).
 (6) obstruccion: postes, cables bajos o caóticos, puestos, escombros u objetos que bloquean el paso.
 (7) seguridad: grafitis o pintas, vandalismo, muros ciegos y rincones ocultos, lotes o casas abandonadas, vehículos abandonados, falta de vigilancia natural o de alumbrado instalado. Rejas, cámaras y grafitis son señales ambiguas: descríbelos, no afirmes criminalidad.
