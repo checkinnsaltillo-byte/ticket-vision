@@ -79145,9 +79145,9 @@ window.mcCsv_ = function () {
 const GM_TKEY = 'AIzaSyA_-JCgn6M504YbM0xhrKtVYWdpt6q7AoY';   // llave de navegador restringida a Map Tiles API y a los dominios de Check Inn
 const GMW = { vista: 'landing', paso: 1, perfil: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, st: '', seq: 0, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, lat: 25.4232, lng: -101.0053, radio: 200, vrad: 200, rp: 3000, rl: 900, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '' };
 const GMW_VORD = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'motorway_link', 'trunk_link', 'primary_link', 'secondary_link', 'tertiary_link', 'unclassified', 'residential', 'living_street', 'service', 'road', 'track', 'busway', 'pedestrian', 'cycleway', 'footway', 'path', 'steps', 'bridleway', 'bus_guideway', 'corridor', 'raceway', 'escape', 'construction', 'proposed'];
-const GMW_VGRP = [['Principales', GMW_VORD.slice(0, 5)], ['Enlaces', GMW_VORD.slice(5, 10)], ['Locales', GMW_VORD.slice(10, 16)], ['Otras (peatonales, ciclovías, senderos…)', GMW_VORD.slice(16)]];
+const GMW_VGRP = [['Principales', GMW_VORD.slice(0, 5)], ['Enlaces', GMW_VORD.slice(5, 10)], ['Locales', GMW_VORD.slice(10, 16)]];
 const GMW_VCL = { motorway: 'Autopista', trunk: 'Troncal', primary: 'Primaria', secondary: 'Secundaria', tertiary: 'Terciaria', motorway_link: 'Enlace autopista', trunk_link: 'Enlace troncal', primary_link: 'Enlace primaria', secondary_link: 'Enlace secundaria', tertiary_link: 'Enlace terciaria', unclassified: 'Sin clasificar', residential: 'Residencial', living_street: 'Calle de convivencia', service: 'Servicio', road: 'Camino', track: 'Terracería', busway: 'Carril de bus', pedestrian: 'Peatonal', cycleway: 'Ciclovía', footway: 'Banqueta', path: 'Sendero', steps: 'Escaleras', bridleway: 'Camino de herradura', bus_guideway: 'Guiado de bus', corridor: 'Pasillo', raceway: 'Pista', escape: 'Escape', construction: 'En construcción', proposed: 'Proyectada' };
-const GMW_DIAS = [[1, 'LUN'], [2, 'MAR'], [3, 'MIÉ'], [4, 'JUE'], [5, 'VIE'], [6, 'SÁB'], [0, 'DOM']], GMW_PASOS = [['Objetivo del proyecto', 'qué se quiere lograr'], ['Punto de interés', 'dónde se mide'], ['Radio de maqueta', 'fotos de calle'], ['Vialidades', 'descarga desde OpenStreetMap'], ['Radio de vialidades', 'red vial para la fricción de accesibilidad'], ['Días y horas de tráfico', 'cuándo se mide'], ['Verificación', 'revisa los datos antes de analizar']], GMW_PERFILES = ['Perfil · por definir 1', 'Perfil · por definir 2', 'Perfil · por definir 3', 'Perfil · por definir 4'];
+const GMW_DIAS = [[1, 'LUN'], [2, 'MAR'], [3, 'MIÉ'], [4, 'JUE'], [5, 'VIE'], [6, 'SÁB'], [0, 'DOM']], GMW_PASOS = [['Objetivo del proyecto', 'qué se quiere lograr'], ['Punto de interés', 'dónde se mide'], ['Radio de maqueta', 'fotos de calle'], ['Vialidades', 'descarga desde OpenStreetMap'], ['Días y horas de tráfico', 'cuándo se mide'], ['Verificación', 'revisa los datos antes de analizar']], GMW_PERFILES = ['Perfil · por definir 1', 'Perfil · por definir 2', 'Perfil · por definir 3', 'Perfil · por definir 4'];
 const gmEsc_ = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function gmFalta_() { const f = []; if (!GMW.perfil && !GMW.objetivo.trim()) f.push('objetivo'); if (!(GMW.radio >= 50)) f.push('radio de maqueta'); if (!GMW.vial.clases.length) f.push('vialidades'); if (!GMW.dias.length) f.push('días'); if (!GMW.horas.length) f.push('horas'); return f; }
 function gmLanding_() {
@@ -79169,7 +79169,7 @@ function gmFicha_() {
 }
 function gmHorasTxt_() { const h = GMW.horas.slice().sort((a, b) => a - b), g = []; let a = h[0], p = h[0]; for (let i = 1; i <= h.length; i++) { if (h[i] === p + 1) { p = h[i]; continue; } g.push(a === p ? String(a).padStart(2, '0') : String(a).padStart(2, '0') + '–' + String(p).padStart(2, '0')); a = p = h[i]; } return g.join(' · '); }
 function gmPie_() {
-  const f = gmFalta_(), ult = GMW.paso === 7, atras = GMW.paso === 1 ? `<a class="gmw-bk" onclick="gmVolver_()">← inicio</a>` : `<a class="gmw-bk" onclick="gmPaso_(${GMW.paso - 1})">← atrás</a>`;
+  const f = gmFalta_(), ult = GMW.paso === 6, atras = GMW.paso === 1 ? `<a class="gmw-bk" onclick="gmVolver_()">← inicio</a>` : `<a class="gmw-bk" onclick="gmPaso_(${GMW.paso - 1})">← atrás</a>`;
   const der = ult ? `${f.length ? `<span class="gmw-fl">faltan: ${f.join(', ')}</span>` : ''}<button type="button" class="gm-btn${f.length || GMW.enviando ? ' dis' : ''}" onclick="gmEjecutar_()">${GMW.enviando ? 'enviando…' : 'Analizar'}</button>` : `<button type="button" class="gm-btn" onclick="gmPaso_(${GMW.paso + 1})">continuar <span>→</span></button>`;
   return `${atras}<span class="gmw-rg">${GMW.err ? `<span class="gmw-er">${gmEsc_(GMW.err)}</span>` : ''}${der}</span>`;
 }
@@ -79206,52 +79206,50 @@ function gmPasoHtml_() {
   if (p === 3) return `<div id="gmw-map"></div>
     <div class="gmw-sb" style="margin-top:22px"><div class="gmw-fld" style="margin-top:0"><label>Radio (m) <input id="gmw-rad" value="${GMW.radio || ''}" inputmode="numeric" placeholder="50–600"></label>${[[100, '100 m'], [200, '200 m'], [400, '400 m'], [600, '600 m']].map(([v, l]) => `<button type="button" class="gmw-c" data-r="${v}">${l}</button>`).join('')}</div>
       <input id="gmw-rng" class="gmw-rng" type="range" min="0" max="600" step="10" value="${GMW.radio}"><div class="gmw-sc"><span>0 m</span><span>600 m</span></div><p class="gmw-mu" id="gmw-ar"></p></div>
-    <div class="gmw-sb"><span class="gmw-lt"><i>a</i>Visión a nivel de calle</span>
-      <div class="gmw-nf" style="margin-top:0"><label>Fotos frente a la propiedad<input id="gmw-ff" type="number" min="0" max="12" step="1" value="${GMW.ft.frente}"></label><label>Fotos del entorno inmediato<input id="gmw-fi" type="number" min="0" max="30" step="1" value="${GMW.ft.inmediato}"></label><label>Fotos del entorno general<input id="gmw-fg" type="number" min="0" max="60" step="2" value="${GMW.ft.general}"></label></div></div>`;
+    <div class="gmw-sb"><div class="gmw-nf" style="margin-top:0"><label>Fotos frente a la propiedad<input id="gmw-ff" type="number" min="0" max="12" step="1" value="${GMW.ft.frente}"></label><label>Fotos del entorno inmediato<input id="gmw-fi" type="number" min="0" max="30" step="1" value="${GMW.ft.inmediato}"></label><label>Fotos del entorno general<input id="gmw-fg" type="number" min="0" max="60" step="2" value="${GMW.ft.general}"></label></div></div>`;
   if (p === 4) return `<div id="gmw-map"></div>
-    <div class="gmw-sb" style="margin-top:22px"><span class="gmw-lt"><i>a</i>⬇️ Descargar vialidades <small>(OpenStreetMap)</small></span><p class="gmw-mu" style="margin:0 0 12px">de cada vialidad se toma un tramo de A a B (el radio) en el sentido de circulación</p>
+    <div class="gmw-sb" style="margin-top:22px"><span class="gmw-lt"><i>a</i>⬇️ Descargar vialidades <small>(OpenStreetMap)</small></span><div style="height:12px"></div>
       <div class="gmw-fld" style="margin-top:0"><label>Radio (m) <input id="gmw-vrad" value="${GMW.vrad || ''}" inputmode="numeric" placeholder="50–1000"></label>${[[100, '100 m'], [200, '200 m'], [400, '400 m'], [600, '600 m']].map(([v, l]) => `<button type="button" class="gmw-c" data-vr="${v}">${l}</button>`).join('')}</div>
       <input id="gmw-vrng" class="gmw-rng" type="range" min="0" max="1000" step="10" value="${GMW.vrad}"><div class="gmw-sc"><span>0 m</span><span>1 000 m</span></div>
       <div class="gmw-q" style="margin:18px 0 10px"><span class="gmw-mu">clasificaciones de vialidad</span><a data-qv="1">todas</a><a data-qv="2">solo principales</a><a data-qv="0">ninguna</a></div>
       ${GMW_VGRP.map(([t, L]) => `<div class="gmw-vg"><small>${t}</small><div class="gmw-ch">${L.map(k => `<button type="button" class="gmw-c${GMW.vial.clases.includes(k) ? ' on' : ''}" data-vc="${k}">${GMW_VCL[k]}</button>`).join('')}</div></div>`).join('')}
-      <div class="gmw-nf" style="margin-top:14px"><label title="cuántas vialidades vienen marcadas de inicio (las más importantes y cercanas)">Preseleccionar<input id="gmw-vp" type="number" min="0" max="30" step="1" value="${GMW.vial.pre}"></label></div></div>`;
-  if (p === 5) return `<div id="gmw-map"></div>
-    <div class="gmw-sb" style="margin-top:22px"><span class="gmw-lt"><i>a</i>Red vial para la fricción de accesibilidad <small>(OpenStreetMap)</small></span>
+      <div class="gmw-nf" style="margin-top:14px"><label title="cuántas vialidades vienen marcadas de inicio (las más importantes y cercanas)">Preseleccionar<input id="gmw-vp" type="number" min="0" max="30" step="1" value="${GMW.vial.pre}"></label></div></div>
+    <div class="gmw-sb"><span class="gmw-lt"><i>b</i>Red vial para la fricción de accesibilidad <small>(OpenStreetMap)</small></span>
       <div class="gmw-nf"><label>Radio de vialidades principales (m)<input id="gmw-rp" type="number" min="1000" max="5000" step="100" value="${GMW.rp}"></label><label>Radio de calles locales (m)<input id="gmw-rl" type="number" min="100" max="${GMW.rp}" step="100" value="${GMW.rl}"></label></div>
       <p class="gmw-mu" style="margin-top:14px">las vialidades principales (con sus enlaces) se descargan hasta el primer radio y las calles locales hasta el segundo; se aplica al abrir la maqueta, sin volver a descargar fotos</p></div>`;
-  if (p === 7) return `<p class="gmw-mu" style="margin:0 0 16px">revisa que todos los datos sean correctos y pulsa «Analizar»; puedes volver a cualquier paso desde la lista de la izquierda</p><div id="gmw-ficha">${gmFicha_()}</div>`;
+  if (p === 6) return `<p class="gmw-mu" style="margin:0 0 16px">revisa que todos los datos sean correctos y pulsa «Analizar»; puedes volver a cualquier paso desde la lista de la izquierda</p><div id="gmw-ficha">${gmFicha_()}</div>`;
   return `<div class="gmw-sb"><span class="gmw-lt"><i>a</i>Días</span><div class="gmw-ch">${GMW_DIAS.map(([v, l]) => `<button type="button" class="gmw-c${GMW.dias.includes(v) ? ' on' : ''}" data-d="${v}">${l}</button>`).join('')}</div><div class="gmw-q"><a data-q="d:1,2,3,4,5">entre semana</a><a data-q="d:6,0">fin de semana</a><a data-q="d:0,1,2,3,4,5,6">todos</a><a data-q="d:">limpiar</a></div></div><div class="gmw-sb"><span class="gmw-lt"><i>b</i>Horas</span><div class="gmw-hr">${Array.from({ length: 24 }, (_, h) => `<button type="button" class="gmw-c${GMW.horas.includes(h) ? ' on' : ''}" data-h="${h}">${String(h).padStart(2, '0')}</button>`).join('')}</div><div class="gmw-q"><a data-q="h:7,8,9,17,18,19">hora pico</a><a data-q="h:8,9,10,11,12,13,14,15,16,17,18">día hábil</a><a data-q="h:${Array.from({ length: 24 }, (_, i) => i).join(',')}">todo el día</a><a data-q="h:">limpiar</a></div></div>`;
 }
 function gmWizard_() {
   const p = GMW.paso;
-  return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>Nuevo análisis</h2><span>${String(p).padStart(2, '0')}/07</span></div>
-    <div class="gmw-pg" style="grid-template-columns:repeat(7,1fr)">${[1, 2, 3, 4, 5, 6, 7].map(i => `<i class="${i < p ? 'done' : i === p ? 'on' : ''}"></i>`).join('')}</div>
+  return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>Nuevo análisis</h2><span>${String(p).padStart(2, '0')}/06</span></div>
+    <div class="gmw-pg" style="grid-template-columns:repeat(6,1fr)">${[1, 2, 3, 4, 5, 6].map(i => `<i class="${i < p ? 'done' : i === p ? 'on' : ''}"></i>`).join('')}</div>
     <div class="gmw-b"><nav class="gmw-rail">${GMW_PASOS.map(([n], i) => `<a class="gmw-s ${i + 1 < p ? 'done' : i + 1 === p ? 'on' : ''}" onclick="gmPaso_(${i + 1})"><small>Paso ${String(i + 1).padStart(2, '0')}</small><span>${n}</span></a>`).join('')}</nav>
       <section class="gmw-c1"><div class="gmw-t"><small>Paso ${String(p).padStart(2, '0')}</small><b>${GMW_PASOS[p - 1][0]}</b><span>· ${GMW_PASOS[p - 1][1]}</span></div><div id="gmw-body">${gmPasoHtml_()}</div></section></div>
     <div class="gmw-ft gmw-top" id="gmw-pie">${gmPie_()}</div></div></div>`;
 }
 function gmDone_() {
   const P = GMW.proy;
-  return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>Proyecto registrado</h2><span>${gmEsc_(P.id)}</span></div><div class="gmw-pg" style="grid-template-columns:repeat(7,1fr)"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i></div>
+  return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>Proyecto registrado</h2><span>${gmEsc_(P.id)}</span></div><div class="gmw-pg" style="grid-template-columns:repeat(6,1fr)"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i></div>
     <p class="gmw-mu" style="margin:0 0 22px;max-width:520px">Los parámetros quedaron guardados. El análisis se ejecutará sobre la red vial de OpenStreetMap dentro del radio, en las franjas elegidas.</p>${gmFicha_()}
     <div class="gmw-ft"><a class="gmw-bk" onclick="gmNuevo_(true)">← nuevo análisis</a><span class="gmw-rg"><a class="gm-btn" href="maqueta/entorno.html" target="_blank" rel="noopener">abrir visor <span>→</span></a></span></div></div></div>`;
 }
 function gmRender_() {
   const host = document.getElementById('geometrika-host'); if (!host) return; if (GMW.map) { try { GMW.map.remove(); } catch (_) { } GMW.map = GMW.pin = GMW.circ = null; }
   host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : gmWizard_();
-  if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 5) gmMapa_(); }
+  if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
 }
 function gmNuevo_(reset) { if (reset) Object.assign(GMW, { paso: 1, perfil: '', objetivo: '', dir: '', resultados: null, radio: 200, vrad: 200, rp: 3000, rl: 900, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, radio: 0, horas: [], dias: [1, 2, 3, 4, 5], proy: null, err: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function gmVolver_() { GMW.vista = 'landing'; gmRender_(); }
-function gmPaso_(n) { if (n < 1 || n > 7) return; GMW.paso = n; GMW.err = ''; gmRender_(); }
+function gmPaso_(n) { if (n < 1 || n > 6) return; GMW.paso = n; GMW.err = ''; gmRender_(); }
 function gmUpd_() { const f = document.getElementById('gmw-ficha'), p = document.getElementById('gmw-pie'); if (f) f.innerHTML = gmFicha_(); if (p) p.innerHTML = gmPie_(); }
 function gmMapa_() {
   _rsvEnsureLeaflet_(async () => {
-    const el = document.getElementById('gmw-map'); if (!el || !window.L) return; const L = window.L, g = await gmTiles_(); if (!document.getElementById('gmw-map')) return; const m = GMW.map = L.map(el, { zoomControl: true, maxZoom: g ? 20 : 16 }).setView([GMW.lat, GMW.lng], GMW.paso === 3 ? 15 : GMW.paso === 4 ? 15 : GMW.paso === 5 ? 11 : (GMW.dir ? 16 : 12));
+    const el = document.getElementById('gmw-map'); if (!el || !window.L) return; const L = window.L, g = await gmTiles_(); if (!document.getElementById('gmw-map')) return; const m = GMW.map = L.map(el, { zoomControl: true, maxZoom: g ? 20 : 16 }).setView([GMW.lat, GMW.lng], GMW.paso === 3 ? 15 : GMW.paso === 4 ? 11 : (GMW.dir ? 16 : 12));
     if (g) L.tileLayer(g, { maxZoom: 20, attribution: 'Map data © Google' }).addTo(m); else L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: '© Esri' }).addTo(m);
     GMW.pin = L.marker([GMW.lat, GMW.lng], { icon: L.divIcon({ className: 'gmw-pin', html: '<i></i>', iconSize: [26, 26], iconAnchor: [13, 13] }), interactive: false }).addTo(m);
     if (GMW.paso === 2) m.on('click', e => { GMW.lat = e.latlng.lat; GMW.lng = e.latlng.lng; GMW.dir = ''; GMW.pin.setLatLng(e.latlng); const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = GMW.lat.toFixed(6); if (b) b.value = GMW.lng.toFixed(6); gmUpd_(); });
-    if (GMW.paso === 3) gmRadio_(GMW.radio, true); if (GMW.paso === 4) gmVrad_(GMW.vrad, true); if (GMW.paso === 5) gmVial_(true); setTimeout(() => m.invalidateSize(), 60);
+    if (GMW.paso === 3) gmRadio_(GMW.radio, true); if (GMW.paso === 4) { gmVrad_(GMW.vrad, false); gmVial_(true); } setTimeout(() => m.invalidateSize(), 60);
   });
 }
 function gmRadio_(r, ajusta) {
@@ -79275,7 +79273,7 @@ function gmWiring_() {
     if (e.target.closest('#gmw-go')) { gmBuscar_(); return; } const gr = e.target.closest('[data-g]'); if (gr) { gmElige_(+gr.dataset.g); return; }
     const pf = e.target.closest('[data-p]'); if (pf) { GMW.perfil = GMW.perfil === pf.dataset.p ? '' : pf.dataset.p; body.querySelectorAll('[data-p]').forEach(b => b.classList.toggle('on', b.dataset.p === GMW.perfil)); gmUpd_(); return; }
     const vc = e.target.closest('[data-vc]'); if (vc) { const k = vc.dataset.vc, ix = GMW.vial.clases.indexOf(k); if (ix >= 0) GMW.vial.clases.splice(ix, 1); else GMW.vial.clases.push(k); vc.classList.toggle('on'); gmUpd_(); return; }
-    const qv = e.target.closest('[data-qv]'); if (qv) { GMW.vial.clases = qv.dataset.qv === '1' ? GMW_VORD.slice() : qv.dataset.qv === '2' ? GMW_VORD.slice(0, 5) : []; body.querySelectorAll('[data-vc]').forEach(b => b.classList.toggle('on', GMW.vial.clases.includes(b.dataset.vc))); gmUpd_(); return; }
+    const qv = e.target.closest('[data-qv]'); if (qv) { GMW.vial.clases = qv.dataset.qv === '1' ? GMW_VORD.slice(0, 16) : qv.dataset.qv === '2' ? GMW_VORD.slice(0, 5) : []; body.querySelectorAll('[data-vc]').forEach(b => b.classList.toggle('on', GMW.vial.clases.includes(b.dataset.vc))); gmUpd_(); return; }
     const vr = e.target.closest('[data-vr]'); if (vr) { gmVrad_(+vr.dataset.vr); return; }
     const r = e.target.closest('[data-r]'); if (r) { gmRadio_(+r.dataset.r); return; }
     const d = e.target.closest('[data-d]'); if (d) { const v = +d.dataset.d, i = GMW.dias.indexOf(v); if (i >= 0) GMW.dias.splice(i, 1); else GMW.dias.push(v); d.classList.toggle('on'); gmUpd_(); return; }
