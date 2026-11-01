@@ -79297,10 +79297,10 @@ function gmPromo_() {
 }
 function gmPagoHtml_() {
   const c = gmCosto_(), ok = gmPagado_(), est = `<span class="gmw-pst ${ok ? 'ok' : ''}">${ok ? 'Pagado' : 'Pendiente de pago'}</span>`;
-  const panel = GMW.pagoAbre && !ok ? `<div class="gmw-pp"><p class="gmw-mu" style="margin:0 0 12px"><b>Simulación:</b> el pago en línea con tarjeta no está activo actualmente.</p>
+  const panel = GMW.pagoAbre && !ok ? `<div class="gmw-pp">
+<div class="gmw-sb" style="margin:0 0 18px"><span class="gmw-lt">Código promocional</span><div class="gmw-sr" style="margin-top:10px"><input id="gmw-promo" value="${gmEsc_(GMW.promo)}" placeholder="ingresa tu código" autocomplete="off"><button type="button" class="gmw-c" id="gmw-promo-ok">aplicar</button></div>${GMW.promoErr ? `<p class="gmw-er" style="margin:8px 0 0">${GMW.promoErr}</p>` : ''}</div>
     <div class="gmw-nf" style="margin-top:0"><label style="grid-column:1/-1">Número de tarjeta<input disabled placeholder="•••• •••• •••• ••••"></label><label>Vence<input disabled placeholder="MM/AA"></label><label>CVC<input disabled placeholder="•••"></label><label style="grid-column:1/-1">Nombre en la tarjeta<input disabled placeholder="como aparece en la tarjeta"></label></div>
-    <div class="gmw-fld"><button type="button" class="gm-btn gmw-sm dis" disabled>Pagar ${gmUsd_(c.total)}</button></div>
-    <div class="gmw-sb" style="margin:18px 0 0"><span class="gmw-lt">Código promocional</span><div class="gmw-sr" style="margin-top:10px"><input id="gmw-promo" value="${gmEsc_(GMW.promo)}" placeholder="ingresa tu código" autocomplete="off"><button type="button" class="gmw-c" id="gmw-promo-ok">aplicar</button></div>${GMW.promoErr ? `<p class="gmw-er" style="margin:8px 0 0">${GMW.promoErr}</p>` : ''}</div></div>` : '';
+    <div class="gmw-fld"><button type="button" class="gm-btn gmw-sm dis" disabled>Pagar ${gmUsd_(c.total)}</button></div></div>` : '';
   return `<div class="gmw-pg2"><div>${est}<span class="gmw-mu" style="margin-left:10px">${ok ? 'pagado con ' + GMW.pago.via + ' · ' + gmUsd_(GMW.pago.total) : 'total a pagar: ' + gmUsd_(c.total)}</span></div>${ok ? '' : `<button type="button" class="gm-btn gmw-sm" id="gmw-pagar">${GMW.pagoAbre ? 'Cerrar' : 'Pagar'}</button>`}</div>${panel}`;
 }
 function gmVMsg_() { if (GMW.vbusy) return GMW.vmsg; if (GMW.vias) return GMW.vstale ? 'cambiaste parámetros: pulsa Previsualizar para actualizar' : `<b>${GMW.vias.length}</b> vialidades descargadas · ${GMW.vsel.size} seleccionadas`; return GMW.vmsg || 'descarga las vialidades de OpenStreetMap para elegir las de interés'; }
