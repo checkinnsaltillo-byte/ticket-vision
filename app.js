@@ -79254,7 +79254,7 @@ function gmMapa_() {
   });
 }
 function gmRadio_(r, ajusta) {
-  GMW.radio = Math.max(0, Math.min(600, Math.round(r) || 0)); if (!GMW.vm) GMW.vrad = GMW.radio;   // el radio de vialidades sigue al de la maqueta mientras no se cambie a mano const L = window.L, m = GMW.map; if (m && L) { if (GMW.circ) { m.removeLayer(GMW.circ); GMW.circ = null; } if (GMW.radio >= 50 && GMW.paso === 3) { GMW.circ = L.circle([GMW.lat, GMW.lng], { radius: GMW.radio, color: '#1f8a8a', weight: 1.5, fillColor: '#1f8a8a', fillOpacity: .08 }).addTo(m); if (ajusta !== false) m.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 15 }); } }
+  GMW.radio = Math.max(0, Math.min(600, Math.round(r) || 0)); if (!GMW.vm) GMW.vrad = GMW.radio; /* el radio de vialidades sigue al de la maqueta mientras no se cambie a mano */ const L = window.L, m = GMW.map; if (m && L) { if (GMW.circ) { m.removeLayer(GMW.circ); GMW.circ = null; } if (GMW.radio >= 50 && GMW.paso === 3) { GMW.circ = L.circle([GMW.lat, GMW.lng], { radius: GMW.radio, color: '#1f8a8a', weight: 1.5, fillColor: '#1f8a8a', fillOpacity: .08 }).addTo(m); if (ajusta !== false) m.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 15 }); } }
   const rng = document.getElementById('gmw-rng'), inp = document.getElementById('gmw-rad'), ar = document.getElementById('gmw-ar'); if (rng && +rng.value !== GMW.radio) rng.value = GMW.radio; if (inp && document.activeElement !== inp) inp.value = GMW.radio || '';
   if (ar) ar.innerHTML = `área de influencia estimada <b>${(Math.PI * (GMW.radio / 1000) ** 2).toLocaleString('es-MX', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} km²</b>`;
   document.querySelectorAll('.gmw-c[data-r]').forEach(b => b.classList.toggle('on', +b.dataset.r === GMW.radio)); gmUpd_();
