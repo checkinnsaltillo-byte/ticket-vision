@@ -14016,6 +14016,12 @@ app.get("/mercado/maqueta/lista", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // recalcula solo el uso del suelo (satélite + mapa de calles) de una maqueta ya generada, sin volver a leer las fotos de calle
+// prueba sin guardar: detecta superficies (estacionamientos, canchas, paneles, albercas) en unas coordenadas cualquiera
+app.post("/mercado/maqueta/superficies-prueba", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const b = req.body || {}, lat = +b.lat, lng = +b.lng, R = Math.max(100, Math.min(400, +b.radio || 200)), key = process.env.GOOGLE_MAPS_KEY; if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180) || !key) return res.status(400).json({ ok: false });
+    const r = await _mqSat(lat, lng, R, key, {}); res.json({ ok: true, lat, lng, R, areas: r.sat.areas }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/mercado/maqueta/uso-suelo", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const id = String((req.body || {}).id || "").replace(/\D/g, ""), key = process.env.GOOGLE_MAPS_KEY; if (!id || !key) return res.status(400).json({ ok: false, error: "Falta el id o la clave de Google Maps" });
