@@ -37,7 +37,7 @@ html,body{margin:0;background:#f7f7f5;font-family:"JetBrains Mono",ui-monospace,
 <script>
 const BACKEND = "https://api.check-inn.mx", GP_HASH = "__HASH__", GP_HASH2 = "__HASH2__";  // GP_HASH2: nivel con precios reales
 function gpNivel(n) { window.GM_PRECIOS = n === "2"; }
-window.GM_MAQ = "/admin/maqueta/entorno.html";
+window.GM_MAQ = "/admin/maqueta/entorno.html"; window.GM_PUBLICO = true;
 window.GM_SALIR = function () { try { sessionStorage.removeItem("gp_ok"); } catch (_) { } location.reload(); };
 window._rsvEnsureLeaflet_ = function (cb) {
   if (window.L) return cb();

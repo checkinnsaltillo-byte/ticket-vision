@@ -13070,7 +13070,7 @@ async function _gmAnaliza(P) {
     if (op.trafico !== false && op.fotos !== false && !ya(k, "traf")) {
       _gmJob.fase = "traf"; _gmJob.paso = pre + "Tráfico en vialidades (Google Routes)"; _gmJob.sub = ""; await _gmGuarda(P); const sel = (P.vialidades.seleccion || []).length ? P.vialidades.seleccion : [];
       await _gmInicia("/mercado/trafico/consultar", { id, cfg: { tramo: P.vialidades.tramo, dias: P.dias, horas: P.horas, maxVias: sel.length ? 30 : P.vialidades.preseleccionar, sel, clases: P.vialidades.clases } });
-      for (let i = 0; i < 400; i++) { await _amSleep(5000); const e = await _gmCall(`/mercado/trafico/estado?id=${id}`); if (e.done != null && e.total) _gmJob.sub = `${e.done} de ${e.total} consultas`; if (!e.running) { if (e.error) throw new Error(e.error); break; } }
+      for (let i = 0; i < 400; i++) { await _amSleep(5000); const e = await _gmCall(`/mercado/trafico/estado?id=${id}`); if (e.done != null && e.total) _gmJob.sub = `${e.done} de ${e.total} consultas`; if (!e.running) { _gastoReg(id, { fuente: "trafico", rutas: e.done || 0 }); if (e.error) throw new Error(e.error); break; } }
       await fin(k, "traf");
     }
   }
@@ -13566,6 +13566,55 @@ async function _vialWays(lat, lng, R, test) {
     if (ok) out.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); }
   return out;
 }
+// ── Gasto por proyecto: precios de lista (USD) de las APIs de pago, consultados el 2026-11-01 en developers.google.com/maps/billing-and-pricing/pricing y platform.claude.com/docs/en/about-claude/pricing
+// Street View Static 7.00 / 1,000 · Maps Static 2.00 / 1,000 · Routes Pro (tráfico, TRAFFIC_AWARE_OPTIMAL) 10.00 / 1,000 · Claude Sonnet 5: 2 USD / MTok entrada y 10 USD / MTok salida (las imágenes cuentan como tokens de entrada).
+// Google da un tope gratis por SKU y mes (10,000 Street View y Static Maps; 5,000 Routes Pro) y la factura real puede ser menor; el precio de lista es el costo marginal.
+const _GM_PRECIOS = { sv: 0.007, estatico: 0.002, rutas: 0.010, claudeIn: 2 / 1e6, claudeOut: 10 / 1e6, modelo: "Claude Sonnet 5" };
+const _gastoBase = id => { const d = String(id || "").replace(/\D/g, ""); return /^9\d{14}$/.test(d) ? d.slice(0, 14) : d; };
+async function _gastoReg(id, ev) {
+  const base = _gastoBase(id); if (!base) return; const nom = `geometrika/gasto/${base}.json`;
+  for (let i = 0; i < 4; i++) { try { const { data, gen } = await _bnReadGcs(nom), d = data && Array.isArray(data.ev) ? data : { ev: [] }; d.ev.push(Object.assign({ at: new Date().toISOString() }, ev)); if (d.ev.length > 400) d.ev = d.ev.slice(-400); await _bnWriteGcs(nom, d, data ? gen : "0"); return; } catch (e) { if (!e.conflict) { console.warn("[gasto]", e.message); return; } } }
+}
+async function _gastoResumen(id) {
+  const base = _gastoBase(id); let ev = [], estimado = false, nota = "";
+  try { const { data } = await _bnReadGcs(`geometrika/gasto/${base}.json`); if (data && Array.isArray(data.ev)) ev = data.ev; } catch (_) {}
+  if (!ev.length) { // proyectos anteriores al registro: se estima con lo que quedó guardado en la maqueta
+    try { const { data: D } = await _bnReadGcs(`mercado/maqueta/${/^9\d{13}$/.test(base) ? base : id}.json`); if (D) { estimado = true; nota = "Proyecto anterior al registro de gasto: cantidades estimadas con lo que quedó guardado en la maqueta."; const ia = D.sat && D.sat.ia; ev = [{ sv: D.fotos || 0, estaticos: (D.sat && D.sat.ia && D.sat.ia.teselas) || 0, iaFotos: { in: Math.max(0, ((D.uso || {}).input_tokens || 0) - ((ia && ia.entrada) || 0)), out: Math.max(0, ((D.uso || {}).output_tokens || 0) - ((ia && ia.salida) || 0)) }, iaSat: { in: (ia && ia.entrada) || 0, out: (ia && ia.salida) || 0 } }]; } } catch (_) {}
+  }
+  const T = { sv: 0, est: 0, rut: 0, fi: 0, fo: 0, si: 0, so: 0 }; ev.forEach(e => { T.sv += e.sv || 0; T.est += e.estaticos || 0; T.rut += e.rutas || 0; T.fi += (e.iaFotos || {}).in || 0; T.fo += (e.iaFotos || {}).out || 0; T.si += (e.iaSat || {}).in || 0; T.so += (e.iaSat || {}).out || 0; });
+  const P = _GM_PRECIOS, lineas = [
+    { k: "sv", c: "Street View · fotos de calle", u: "foto", n: T.sv, pu: P.sv, usd: T.sv * P.sv },
+    { k: "est", c: "Maps Static · imágenes satelitales", u: "imagen", n: T.est, pu: P.estatico, usd: T.est * P.estatico },
+    { k: "rut", c: "Routes Pro · tráfico en vialidades", u: "consulta", n: T.rut, pu: P.rutas, usd: T.rut * P.rutas },
+    { k: "iaf", c: P.modelo + " · lectura de fotos de calle", u: "tokens", n: T.fi + T.fo, ent: T.fi, sal: T.fo, usd: T.fi * P.claudeIn + T.fo * P.claudeOut },
+    { k: "ias", c: P.modelo + " · análisis del satélite", u: "tokens", n: T.si + T.so, ent: T.si, sal: T.so, usd: T.si * P.claudeIn + T.so * P.claudeOut }].filter(l => l.n > 0);
+  return { ok: true, estimado, nota, lineas, total: lineas.reduce((a, l) => a + l.usd, 0), eventos: ev.length, precios: { sv: P.sv * 1000, estatico: P.estatico * 1000, rutas: P.rutas * 1000, claudeEntradaMTok: P.claudeIn * 1e6, claudeSalidaMTok: P.claudeOut * 1e6, modelo: P.modelo } };
+}
+const _GM_DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+app.get("/geometrika/ficha", async (req, res) => {   // ficha de descripción + desglose del gasto de un proyecto o maqueta
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const id = String(req.query.id || "").replace(/\D/g, ""); if (id.length < 6) return res.status(400).json({ ok: false, error: "Id no válido" }); res.set("Cache-Control", "no-store");
+    let P = null; if (/^9\d{13}$/.test(id)) { try { P = (await _bnReadGcs(`geometrika/proyectos/${id}.json`)).data; } catch (_) {} }
+    let D = null; try { D = (await _bnReadGcs(`mercado/maqueta/${id}.json`)).data; } catch (_) {}
+    if (!P && !D) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
+    const F = [], fe = x => x ? new Date(x).toLocaleString("es-MX", { timeZone: "America/Monterrey", dateStyle: "medium", timeStyle: "short" }) : "—";
+    let origen = "geometrika", titulo = "";
+    if (P) { const a = P.analisis || {}, V = P.vialidades || {}, N = (P.puntos || []).length, dur = a.inicio && a.fin ? Math.round((Date.parse(a.fin) - Date.parse(a.inicio)) / 60000) : null;
+      titulo = "GeoMetrika · " + (P.perfil || "Proyecto");
+      F.push(["Objetivo del proyecto", P.perfil || "—"], ["Descripción", P.objetivo || "—"], ["Creado", fe(P.creado)]);
+      (P.puntos || []).forEach((q, i) => F.push([N > 1 ? "Punto de interés " + (i + 1) : "Punto de interés", `${q.dir || "sin dirección"} (${(+q.lat).toFixed(5)}, ${(+q.lng).toFixed(5)})`]));
+      F.push(["Radio de maqueta", (P.radio || "—") + " m"], ["Fotos de calle", `${P.fotosModo === "manual" ? "manuales" : P.fotosModo === "mixta" ? "mixtas" : "automáticas"} · ${(P.fotos || {}).frente || 0} frente + ${(P.fotos || {}).inmediato || 0} entorno inmediato + ${(P.fotos || {}).general || 0} entorno general`],
+        ["Vialidades", `${(V.clases || []).length} clases · longitud de tramo ${V.tramo || "—"} m · ${(V.seleccion || []).length || V.preseleccionar || 0} seleccionadas`], ["Red vial (accesibilidad)", `vialidades principales ${(P.redVial || {}).principales || "—"} m · calles locales ${(P.redVial || {}).locales || "—"} m`],
+        ["Días de tráfico", (P.dias || []).map(d => _GM_DIAS[d]).join(", ") || "—"], ["Horas de tráfico", (P.horas || []).map(h => String(h).padStart(2, "0") + ":00").join(" ") || "—"],
+        ["Opciones", [P.opciones && P.opciones.fotos !== false ? "fotos y maqueta" : null, P.opciones && P.opciones.trafico !== false ? "tráfico" : null, P.opciones && P.opciones.od ? "origen/destino" : null].filter(Boolean).join(" · ") || "—"],
+        ["Análisis", a.estado ? `${a.estado === "listo" ? "terminado" : a.estado}${a.fin ? " · " + fe(a.fin) : ""}${dur != null ? " · " + dur + " min" : ""}${a.error ? " · " + a.error : ""}` : "sin ejecutar"]); }
+    else { const [ab, mlD, fb] = await Promise.all([_bnReadGcs(_MA.OBJ).then(r => (r.data && r.data.items) || {}).catch(() => ({})), _mlDoc().then(d => d.items || {}).catch(() => ({})), _fbDoc().then(d => d.items || {}).catch(() => ({}))]); origen = ab[id] ? "airbnb" : mlD[id] ? "mercadolibre" : fb[id] ? "facebook" : "otro"; titulo = D.tit || D.titulo || id; F.push(["Título", titulo]); }
+    if (D) { const A = (D.sat && D.sat.areas) || [], ct = {}; A.forEach(q => { ct[q.t] = (ct[q.t] || 0) + 1; });
+      F.push(["Maqueta generada", fe(D.at)], ["Ubicación", `${(+D.lat).toFixed(5)}, ${(+D.lng).toFixed(5)} · radio ${D.radio} m`], ["Fotos de calle leídas", String(D.fotos || 0)],
+        ["Contenido de la maqueta", `${(D.roads || []).length} vialidades · ${(D.builds || []).length + (D.mb || []).length} edificios · ${(D.trees || []).length} árboles · ${(D.pois || []).length} lugares · ${(D.riesgos || []).length} riesgos`],
+        ["Superficies detectadas", Object.keys(ct).map(k => ct[k] + " " + k + (ct[k] > 1 ? "s" : "")).join(" · ") || "ninguna"]); }
+    res.json({ ok: true, id, origen, titulo, filas: F, gasto: await _gastoResumen(id) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/geometrika/vial/estado", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const V = await _vialCarga(); res.set("Cache-Control", "no-store"); const lat = +req.query.lat, lng = +req.query.lng, R = +req.query.R || 400; let prueba = null; if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) { const v = await _vialWays(lat, lng, R, () => true), e = await _entElems(lat, lng, R); const c = {}; (e || []).forEach(x => { const k = x.type === "way" ? (x.tags.building ? "edificios" : x.tags.power ? "alta_tension" : x.tags.railway ? "ferrocarril" : "cauces") : (x.tags.natural || x.tags.highway || x.tags.public_transport || x.tags.power); c[k] = (c[k] || 0) + 1; }); const pl = await _entPois(lat, lng, R), pc = {}; (pl || []).forEach(x => { const k = x.tags.amenity || x.tags.shop || x.tags.leisure || x.tags.tourism || x.tags.place; pc[k] = (pc[k] || 0) + 1; }); prueba = { vias: v ? v.length : null, entorno: e ? c : null, lugares: pl ? pc : null, huellas: await _huellasLocal(lat, lng, Math.min(R, 600)).then(h => h ? h.length : null) }; }
   res.json({ ok: true, cargada: !!V, vias: V ? V.n : 0, at: V ? V.at : null, bbox: V ? V.bbox : null, prueba }); });
 // ── Entorno local de OpenStreetMap (edificios, árboles, luminarias, semáforos, cruces, paradas, líneas de alta tensión, vías férreas, cauces): cuadros de 0.1° en osm/entorno/<i>_<j>.json, cargados a demanda
@@ -13811,6 +13860,7 @@ app.post("/mercado/entorno/fotos", async (req, res) => {
 });
 let _mqJob = { running: false };
 async function _mqGenera(id, refrescar) {
+  let svN = 0;
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
   const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng);
   let set = null; try { set = (await _bnReadGcs(_ftObj(id))).data; } catch (_) {} if (!set || !(set.tomas || []).length) throw new Error("Primero descarga las fotos de Street View (paso 1 de la sección Análisis del entorno urbano)");
@@ -13821,7 +13871,7 @@ async function _mqGenera(id, refrescar) {
   const reuse = !refrescar && prev && prev.radio === R && prev.sat && prev.sat.ver === 3 && Array.isArray(prev.mb) && Date.now() - Date.parse(prev.at || 0) < 14 * 864e5;
   const lotes = []; for (let i = 0; i < tomas.length; i += 8) lotes.push(tomas.slice(i, i + 8)); let hechos = 0; _mqJob.paso = `Leyendo fotos (0/${lotes.length} lotes)`;
   const leer = async (L, bi) => {
-    const got = await Promise.all(L.map(async t => { try { const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${t.pano}&heading=${t.h}&fov=90&pitch=0&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(40000) }); return r.ok ? { t, b64: Buffer.from(await r.arrayBuffer()).toString("base64") } : null; } catch (_) { return null; } })), okk = got.filter(Boolean), content = [];
+    const got = await Promise.all(L.map(async t => { try { svN++; const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${t.pano}&heading=${t.h}&fov=90&pitch=0&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(40000) }); return r.ok ? { t, b64: Buffer.from(await r.arrayBuffer()).toString("base64") } : null; } catch (_) { return null; } })), okk = got.filter(Boolean), content = [];
     if (!okk.length) return []; okk.forEach((g, k) => content.push({ type: "text", text: `Foto ${k + 1} · rumbo ${g.t.h}°${g.t.cen ? " · FOTO CENTRAL tomada desde el punto exacto de la propiedad: describe hasta 12 frentes con el mayor detalle" : ""}` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: g.b64 } }));
     content.push({ type: "text", text: "Devuelve el JSON con las fotos descritas." }); const cv2 = okk.flatMap((g, k) => [{ type: "text", text: `Foto ${k + 1} · rumbo ${g.t.h}°` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: g.b64 } }]).concat([{ type: "text", text: "Devuelve el JSON con las fotos revisadas." }]); const [r, rv] = await Promise.all([_mqClaude(content), _mqClaude(cv2, _MQ_TRANS).catch(e => { console.warn("[maqueta] pasada vial", e.message); return { d: { fotos: [] }, uso: {} }; })]); uso.input_tokens += (r.uso.input_tokens || 0) + (rv.uso.input_tokens || 0); uso.output_tokens += (r.uso.output_tokens || 0) + (rv.uso.output_tokens || 0); const vv = new Map((rv.d.fotos || []).map(f => [f.n, f])); (r.d.fotos || []).forEach(f => { const v = vv.get(f.n); if (v) { f.sv = (f.sv || []).concat(v.sv || []); f.cp = v.cp || []; f.pa = v.pa || []; } }); hechos++; _mqJob.paso = `Leyendo fotos (${hechos}/${lotes.length} lotes)`; _mqJob.upd = new Date().toISOString();
     return (r.d.fotos || []).map(f => { const g = okk[(f.n || 0) - 1]; if (!g) return null; const t = g.t, p = P.xy(t.lat, t.lng); return { x: p[0], y: p[1], h: t.h, pano: t.pano, cen: t.cen ? 1 : 0, fr: (f.fr || []).slice(0, t.cen ? 12 : 8), c: f.c || {}, lu: (f.lu || []).filter(q => q && typeof q.x === "number").slice(0, 10), sv: (f.sv || []).filter(q => q && typeof q.x === "number").slice(0, 24), cp: (f.cp || []).filter(q => q && typeof q.x === "number").slice(0, 6), pa: (f.pa || []).filter(q => q && typeof q.x === "number").slice(0, 6), rg: (f.rg || []).filter(q => q && (q.t === "basura" ? +q.s >= 1 : +q.s >= 3) && !/posible|probable|ambigu|podr[ií]a|se renta|mural/i.test((q.n || "") + " " + (q.k || ""))).filter(q => q.t !== "basura").slice(0, 3).concat((f.rg || []).filter(q => q && q.t === "basura" && +q.s >= 1).slice(0, 3)) }; }).filter(Boolean);
@@ -13845,7 +13895,7 @@ async function _mqGenera(id, refrescar) {
   (osm.fis || []).filter(c => Math.hypot(c.p[0], c.p[1]) <= 120).forEach(c => riesgos.push({ t: "fisico", s: 2, n: c.n, k: c.k, x: c.p[0], y: c.p[1], f: "osm" }));
   const fin = []; riesgos.sort((a, b) => b.s - a.s).forEach(r => { const i = fin.findIndex(q => q.t === r.t && Math.hypot(q.x - r.x, q.y - r.y) < (r.t === "semaforo" ? 14 : 12)); if (i < 0) fin.push(r); else if (r.s > fin[i].s) fin[i] = r; });
   const out = { id, ver: "maqueta-geo-v1", at: new Date().toISOString(), lat, lng, radio: R, fotos: obs.length, fotosAt: set.at, tit: it.titulo || "", roads: osm.roads, builds: osm.builds, trees: osm.trees, lamps: osm.lamps, lampsF, svF, cpF, paF, paradas: osm.paradas || [], cruces: (osm.cruces || []).filter(c => c.m !== "unmarked").map(c => c.p), obs, pois, sat, mb, riesgos: fin.filter(q => q.s >= 2).slice(0, 40), uso };
-  await _bnWriteGcs(`mercado/maqueta/${id}.json`, out, null); try { const tok = await _vGcsToken(); await fetch(_mqGlbUrl(id), { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } }); } catch (_) {} return out;
+  await _bnWriteGcs(`mercado/maqueta/${id}.json`, out, null); { const sa = !reuse && sat && sat.ia ? sat.ia : null; _gastoReg(id, { fuente: "maqueta", sv: svN, estaticos: sa ? sa.teselas : 0, iaFotos: { in: Math.max(0, (uso.input_tokens || 0) - (sa ? sa.entrada : 0)), out: Math.max(0, (uso.output_tokens || 0) - (sa ? sa.salida : 0)) }, iaSat: { in: sa ? sa.entrada : 0, out: sa ? sa.salida : 0 } }); } try { const tok = await _vGcsToken(); await fetch(_mqGlbUrl(id), { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } }); } catch (_) {} return out;
 }
 // ── Origen del tráfico frente a una propiedad (estimación por modelo, sin datos de movilidad reales):
 // zonas polares alrededor de la propiedad → pesos (viviendas / empleos de OpenStreetMap) → modelo de gravedad con tiempos de Google (hora pico) →
@@ -14048,7 +14098,7 @@ app.post("/mercado/maqueta/uso-suelo", async (req, res) => {
   try { const id = String((req.body || {}).id || "").replace(/\D/g, ""), key = process.env.GOOGLE_MAPS_KEY; if (!id || !key) return res.status(400).json({ ok: false, error: "Falta el id o la clave de Google Maps" });
     const { data: D } = await _bnReadGcs(`mercado/maqueta/${id}.json`); if (!D || !D.radio) return res.status(404).json({ ok: false, error: "Maqueta no encontrada" });
     const r = await _mqSat(D.lat, D.lng, D.radio, key, {}, { fresh: !!(req.body || {}).fresh }); D.sat = r.sat; D.mb = _mqFiltraHuellas(await _mqFootprints(D.lat, D.lng, D.radio).catch(() => D.mb), r.sat); D.pois = (D.pois || []).filter(q => q.f !== "sat"); r.pois.forEach(q => { if (!D.pois.some(o => o.t === q.t && Math.hypot(o.x - q.x, o.y - q.y) < 50)) D.pois.push(q); });
-    await _bnWriteGcs(`mercado/maqueta/${id}.json`, D, null); res.json({ ok: true, celdas: r.sat.n, conCalles: r.sat.calles, ia: r.sat.ia }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+    await _bnWriteGcs(`mercado/maqueta/${id}.json`, D, null); _gastoReg(id, { fuente: "uso-suelo", estaticos: r.sat.ia.teselas, iaSat: { in: r.sat.ia.entrada, out: r.sat.ia.salida } }); res.json({ ok: true, celdas: r.sat.n, conCalles: r.sat.calles, ia: r.sat.ia }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); if (data && Array.isArray(data.obs)) data.obs.forEach(o => { o.u = `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(o.pano)}&h=${o.h}&sig=${_enSig(o.pano, o.h)}`; }); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 // Modelo 3D ya armado (.glb, lo exporta el navegador): se guarda en mercado/maqueta/<id>.glb y se borra al regenerar la maqueta.

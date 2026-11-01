@@ -79241,7 +79241,7 @@ function gmDone_() {
 }
 function gmRender_() {
   const host = document.getElementById('geometrika-host'); if (!host) return; if (GMW.map) { try { GMW.map.remove(); } catch (_) { } GMW.map = GMW.pin = GMW.circ = null; }
-  host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : GMW.vista === 'analizando' ? gmAn_() : gmWizard_();
+  host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'detalle' ? gmDetHtml_() : GMW.vista === 'hecho' ? gmDone_() : GMW.vista === 'analizando' ? gmAn_() : gmWizard_();
   host.insertAdjacentHTML('afterbegin', '<span class="gmw-beta">v.Beta</span>');
   if (GMW.vista === 'landing') gmCargaLista_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
@@ -79253,8 +79253,9 @@ const gmFotosAuto_ = () => GMW.ft.frente + GMW.ft.inmediato + GMW.ft.general, gm
 function gmFotosTxt_() { const f = GMW.ft; return GMW.fmode === 'auto' ? `${f.frente} + ${f.inmediato} + ${f.general} = ${gmFotosTot_()}` : GMW.fmode === 'manual' ? `${GMW.fm.length} puntos manuales = ${GMW.fm.length}` : `${f.frente} + ${f.inmediato} + ${f.general} + ${GMW.fm.length} manuales = ${gmFotosTot_()}`; }
 
 /* ── costos estimados (precio de lista × GMW_X) ── */
-const GMW_X = 10, GMW_PR = { sv: .007, ia: .0053, sat: .01, base: .04, ruta: .01, od: 364 };
-const gmOpt_ = () => GMW.opt || (GMW.opt = { fotos: true, trafico: true, od: false }), GMW_PRECIOS = false /* precios aún sin definir: se muestran como X */, gmUsd_ = v => GMW_PRECIOS || window.GM_PRECIOS ? '$' + v.toFixed(2) + ' USD' : '$X';
+// precios de lista en USD (consultados el 2026-11-01): Street View Static 7.00/1,000 · Routes Pro 10.00/1,000 · imagen satelital = Maps Static 2.00/1,000 + lectura con Claude Sonnet 5 (2 USD/MTok entrada, 10 USD/MTok salida; medido ≈ 3,070 tokens de entrada y 380 de salida por tesela)
+const GMW_X = 10, GMW_PR = { sv: .007, ia: .0053, sat: .012, base: 0, ruta: .01, od: 364 };
+const gmOpt_ = () => GMW.opt || (GMW.opt = { fotos: true, trafico: true, od: false }), GMW_PRECIOS = false, gmVerPrecios_ = () => window.GM_PUBLICO ? !!window.GM_PRECIOS : true /* en la página pública solo con la contraseña de precios; en el sistema siempre */, gmUsd_ = v => gmVerPrecios_() ? '$' + v.toFixed(2) + ' USD' : '$X', gmUsdN_ = (v, d) => gmVerPrecios_() ? '$' + v.toFixed(d) : '$X';
 function gmCosto_() {
   const nP = Math.max(1, gmPtsOk_().length), o = gmOpt_(), fotos = (GMW.fmode !== 'manual' ? gmFotosAuto_() * nP : 0) + (GMW.fmode !== 'auto' ? GMW.fm.length : 0);
   const ts = GMW.radio > 400 ? 344 : 172, k = Math.max(1, Math.ceil((GMW.radio - ts / 2) / ts)), tiles = GMW.radio >= 50 ? (2 * k + 1) ** 2 * nP : 0;
@@ -79475,11 +79476,30 @@ const GM_ORIGEN = { geometrika: 'GeoMetrika', airbnb: 'Alojamientos Airbnb', mer
 function gmListaHtml_() {
   const L = GMW.lista; if (L === 'err') return '<p class="gmw-mu">no se pudo cargar la lista de proyectos (el servidor se está actualizando)</p>'; if (!L) return ''; if (!L.length) return '';
   const est = { registrado: 'registrado', analizando: 'analizando…', listo: 'analizado', error: 'con error' };
-  return `<h3 class="gm-plt">Mis proyectos</h3>${L.map(p => `<div class="gm-pr"><div><b>${gmEsc_(p.perfil || 'Proyecto')} <i class="gm-or ${p.origen || 'geometrika'}">${GM_ORIGEN[p.origen || 'geometrika'] || 'Otro'}</i></b><span>${gmEsc_(p.direccion || (p.lat != null ? (+p.lat).toFixed(4) + ', ' + (+p.lng).toFixed(4) : ''))}${p.puntos > 1 ? ' · ' + p.puntos + ' puntos' : ''}${p.radio ? ' · ' + p.radio + ' m' : ''}${p.creado ? ' · ' + new Date(p.creado).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span></div><span class="gm-pe ${p.estado}">${est[p.estado] || p.estado}</span>${p.estado === 'listo' ? `<a class="gm-btn gmw-sm" href="${GM_MAQ_()}?id=${gmEsc_(p.id)}" target="_blank" rel="noopener">Abrir maqueta →</a>` : p.estado === 'analizando' ? `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}')">Ver avance</a>` : `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}',1)">Analizar</a>`}<div class="gm-km"><button type="button" class="gm-kb" aria-label="Más opciones" onclick="gmMenu_(event, this)">⋮</button><div class="gm-kmenu">${p.estado === 'listo' ? `<a onclick="gmReconstruir_('${gmEsc_(p.id)}', ${p.puntos || 1}, this)">Reconstruir maqueta</a>` : ''}<a onclick="gmElimina_('${gmEsc_(p.id)}')">Eliminar</a></div></div></div>`).join('')}`;
+  return `<h3 class="gm-plt">Mis proyectos</h3>${L.map(p => `<div class="gm-pr gm-prc" onclick="gmCard_(event, '${gmEsc_(p.id)}')"><div><b>${gmEsc_(p.perfil || 'Proyecto')} <i class="gm-or ${p.origen || 'geometrika'}">${GM_ORIGEN[p.origen || 'geometrika'] || 'Otro'}</i></b><span>${gmEsc_(p.direccion || (p.lat != null ? (+p.lat).toFixed(4) + ', ' + (+p.lng).toFixed(4) : ''))}${p.puntos > 1 ? ' · ' + p.puntos + ' puntos' : ''}${p.radio ? ' · ' + p.radio + ' m' : ''}${p.creado ? ' · ' + new Date(p.creado).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span></div><span class="gm-pe ${p.estado}">${est[p.estado] || p.estado}</span>${p.estado === 'listo' ? `<a class="gm-btn gmw-sm" href="${GM_MAQ_()}?id=${gmEsc_(p.id)}" target="_blank" rel="noopener">Abrir maqueta →</a>` : p.estado === 'analizando' ? `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}')">Ver avance</a>` : `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}',1)">Analizar</a>`}<div class="gm-km"><button type="button" class="gm-kb" aria-label="Más opciones" onclick="gmMenu_(event, this)">⋮</button><div class="gm-kmenu">${p.estado === 'listo' ? `<a onclick="gmReconstruir_('${gmEsc_(p.id)}', ${p.puntos || 1}, this)">Reconstruir maqueta</a>` : ''}<a onclick="gmElimina_('${gmEsc_(p.id)}')">Eliminar</a></div></div></div>`).join('')}`;
 }
 async function gmCargaLista_() {
   try { const t = await fetch(`${BACKEND}/geometrika/proyectos`).then(r => r.text()); const j = JSON.parse(t); GMW.lista = j.ok ? j.proyectos : 'err'; } catch (_) { GMW.lista = 'err'; }
   const b = document.getElementById('gm-lista'); if (b && GMW.vista === 'landing') b.innerHTML = gmListaHtml_();
+}
+// clic en la tarjeta de un proyecto: ficha de descripción y desglose del gasto (los botones y el menú «⋮» no la abren)
+function gmCard_(e, id) { if (e.target.closest('a,button,.gm-km')) return; gmDetalle_(id); }
+async function gmDetalle_(id) {
+  GMW.vista = 'detalle'; GMW.det = { id, cargando: true }; gmRender_(); window.scrollTo({ top: 0 });
+  try { const t = await fetch(`${BACKEND}/geometrika/ficha?id=${encodeURIComponent(id)}`).then(r => r.text()); let j = null; try { j = JSON.parse(t); } catch (_) { } if (!j || !j.ok) throw new Error((j && j.error) || 'El servidor no respondió correctamente'); GMW.det = { id, d: j }; } catch (e) { GMW.det = { id, err: String(e.message || e) }; }
+  if (GMW.vista === 'detalle') gmRender_();
+}
+function gmDetHtml_() {
+  const D = GMW.det || {}, d = D.d, X = GMW_X, num = n => (+n || 0).toLocaleString('es-MX');
+  let cuerpo = D.cargando ? '<p class="gmw-mu">cargando la ficha…</p>' : D.err ? `<p class="gmw-er">${gmEsc_(D.err)}</p>` : '';
+  if (d) {
+    const G = d.gasto || { lineas: [], total: 0 }, filas = d.filas.map(([k, v]) => `<tr><td>${gmEsc_(k)}</td><td>${gmEsc_(v)}</td></tr>`).join('');
+    const unit = l => l.k === 'iaf' || l.k === 'ias' ? `${gmUsdN_(d.gasto.precios.claudeEntradaMTok, 0)} / MTok entrada · ${gmUsdN_(d.gasto.precios.claudeSalidaMTok, 0)} / MTok salida` : `${gmUsdN_(l.pu * 1000, 2)} por 1,000`;
+    const cant = l => l.k === 'iaf' || l.k === 'ias' ? `${num(l.n)} tokens<small>${num(l.ent)} entrada + ${num(l.sal)} salida</small>` : `${num(l.n)} ${l.u}${l.n === 1 ? '' : 's'}`;
+    const gas = G.lineas.length ? `<table class="gm-dt gm-dg"><thead><tr><th>Concepto</th><th>Cantidad</th><th>Precio de lista</th><th>Costo</th></tr></thead><tbody>${G.lineas.map(l => `<tr><td>${gmEsc_(l.c)}</td><td>${cant(l)}</td><td>${unit(l)}</td><td>${gmUsdN_(l.usd, 4)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="3">Total del gasto incurrido</td><td><b>${gmUsdN_(G.total, 4)}</b></td></tr><tr><td colspan="3">Precio al cliente (costo × ${X})</td><td>${gmUsdN_(G.total * X, 2)}</td></tr></tfoot></table>` : '<p class="gmw-mu">todavía no hay gasto registrado para este proyecto</p>';
+    cuerpo = `<h3 class="gm-plt">Ficha de descripción</h3><table class="gm-dt"><tbody>${filas}</tbody></table><h3 class="gm-plt" style="margin-top:28px">Desglose del gasto incurrido</h3>${gas}<p class="gmw-mu" style="margin-top:12px">${G.estimado ? gmEsc_(G.nota) + ' ' : ''}Precios de lista de Google Maps Platform y de Claude (consultados el 1 nov 2026). Google da un tope gratis cada mes por servicio (10,000 fotos de Street View o imágenes de Static Maps, 5,000 consultas de Routes Pro), así que la factura real puede salir menor. OpenStreetMap, el Censo, el DENUE y las huellas de edificios no tienen costo.</p>`;
+  }
+  return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>${gmEsc_(d ? d.titulo : 'Proyecto')}</h2><span>${gmEsc_(D.id || '')}${d ? ' · <i class="gm-or ' + d.origen + '">' + (GM_ORIGEN[d.origen] || 'Otro origen') + '</i>' : ''}</span></div>${cuerpo}<div class="gmw-ft" style="margin-top:26px"><a class="gmw-bk" onclick="gmVolver_()">← volver a mis proyectos</a>${d ? `<span class="gmw-rg"><a class="gm-btn" href="${GM_MAQ_()}?id=${gmEsc_(D.id)}" target="_blank" rel="noopener">abrir maqueta <span>→</span></a></span>` : ''}</div></div></div>`;
 }
 // menú de tres puntos de cada proyecto
 function gmMenu_(e, b) { e.stopPropagation(); const m = b.nextElementSibling, abrir = !m.classList.contains('on'); document.querySelectorAll('.gm-kmenu.on').forEach(x => x.classList.remove('on')); if (abrir) m.classList.add('on'); }
