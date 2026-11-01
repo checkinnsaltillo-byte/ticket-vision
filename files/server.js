@@ -13586,7 +13586,7 @@ async function _gastoResumen(id) {
     { k: "sv", c: "Street View · fotos de calle", u: "foto", n: T.sv, pu: P.sv, usd: T.sv * P.sv },
     { k: "est", c: "Maps Static · imágenes satelitales", u: "imagen", n: T.est, pu: P.estatico, usd: T.est * P.estatico },
     { k: "rut", c: "Routes Pro · tráfico en vialidades", u: "consulta", n: T.rut, pu: P.rutas, usd: T.rut * P.rutas },
-    { k: "iaf", c: P.modelo + " · lectura de fotos de calle", u: "tokens", n: T.fi + T.fo, ent: T.fi, sal: T.fo, usd: T.fi * P.claudeIn + T.fo * P.claudeOut },
+    { k: "iaf", c: P.modelo + (estimado ? " · fotos y satélite (histórico estimado)" : " · lectura de fotos de calle"), u: "tokens", n: T.fi + T.fo, ent: T.fi, sal: T.fo, usd: T.fi * P.claudeIn + T.fo * P.claudeOut },
     { k: "ias", c: P.modelo + " · análisis del satélite", u: "tokens", n: T.si + T.so, ent: T.si, sal: T.so, usd: T.si * P.claudeIn + T.so * P.claudeOut }].filter(l => l.n > 0);
   return { ok: true, estimado, nota, lineas, total: lineas.reduce((a, l) => a + l.usd, 0), eventos: ev.length, precios: { sv: P.sv * 1000, estatico: P.estatico * 1000, rutas: P.rutas * 1000, claudeEntradaMTok: P.claudeIn * 1e6, claudeSalidaMTok: P.claudeOut * 1e6, modelo: P.modelo } };
 }
