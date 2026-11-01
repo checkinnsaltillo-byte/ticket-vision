@@ -79143,7 +79143,7 @@ window.mcCsv_ = function () {
 // ║ tabla de disponibilidad de las fuentes de datos (estado en vivo).      ║
 // ╚═══════════════════════════════════════════════════════════════════════╝
 const GM_TKEY = 'AIzaSyA_-JCgn6M504YbM0xhrKtVYWdpt6q7AoY';   // llave de navegador restringida a Map Tiles API y a los dominios de Check Inn
-const GMW = { vista: 'landing', paso: 1, perfil: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, st: '', seq: 0, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', grupo: null, layers: [], radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '' };
+const GMW = { vista: 'landing', paso: 1, perfil: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, st: '', seq: 0, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', grupo: null, layers: [], radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '', opt: null };
 const GMW_VORD = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'motorway_link', 'trunk_link', 'primary_link', 'secondary_link', 'tertiary_link', 'unclassified', 'residential', 'living_street', 'service', 'road', 'track', 'busway', 'pedestrian', 'cycleway', 'footway', 'path', 'steps', 'bridleway', 'bus_guideway', 'corridor', 'raceway', 'escape', 'construction', 'proposed'];
 const GMW_VGRP = [['Clasificación de vialidades (las principales incluyen sus enlaces)', GMW_VORD.slice(0, 5).concat(['residential'])]], GMW_VTODAS = GMW_VORD.slice(0, 5).concat(['residential']);
 const gmClases_ = () => GMW.vial.clases.concat(GMW.vial.clases.filter(k => GMW_VORD.indexOf(k) < 5).map(k => k + '_link'));   // al elegir una principal se descargan también sus enlaces
@@ -79200,7 +79200,7 @@ async function gmElige_(i) {
   if (r.pid) { try { const j = await fetch(`${BACKEND}/geometrika/lugar?id=${encodeURIComponent(r.pid)}&st=${GMW.st || ''}`).then(x => x.json()); if (!j.ok) throw new Error(j.error); r = { n: j.n || r.n, dir: j.dir || r.dir, lat: j.lat, lng: j.lng }; } catch (_) { GMW.err = 'No se pudo ubicar ese lugar'; gmUpd_(); return; } GMW.st = ''; } GMW.lat = r.lat; GMW.lng = r.lng; GMW.dir = r.dir || r.n; const qi = document.getElementById('gmw-q'); if (qi && r.n) qi.value = r.n; GMW.resultados = null; const box = document.getElementById('gmw-res'); if (box) box.innerHTML = gmResHtml_();
   const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = r.lat.toFixed(6); if (b) b.value = r.lng.toFixed(6); if (GMW.map) GMW.map.setView([r.lat, r.lng], 17); gmSync_(); gmDibuja_(false);
 }
-function gmPasoHtml_() {
+function gmPasoHtml0_() {
   const p = GMW.paso;
   if (p === 1) return `<div class="gmw-sb"><span class="gmw-lt"><i>a</i>Objetivo del proyecto</span><div class="gmw-ch">${GMW_PERFILES.map(x => `<button type="button" class="gmw-c${GMW.perfil === x ? ' on' : ''}" data-p="${gmEsc_(x)}">${gmEsc_(x)}</button>`).join('')}</div></div><div class="gmw-sb"><span class="gmw-lt"><i>b</i>Descríbelo con tus palabras</span><textarea id="gmw-obj" class="gmw-ta" rows="5" maxlength="1000" placeholder="qué decisión quieres tomar con este análisis">${gmEsc_(GMW.objetivo)}</textarea></div>`;
   if (p === 2) return `<div class="gmw-sr"><input id="gmw-q" placeholder="buscar dirección o lugar: calle, número, colonia, ciudad" autocomplete="off"><button type="button" class="gmw-c" id="gmw-go">buscar</button></div><div id="gmw-res">${gmResHtml_()}</div><div class="gmw-pl" id="gmw-pl">${gmPlHtml_()}</div><div id="gmw-map"></div><div class="gmw-fld"><label>lat <input id="gmw-lat" value="${GMW.lat.toFixed(6)}" inputmode="decimal"></label><label>lng <input id="gmw-lng" value="${GMW.lng.toFixed(6)}" inputmode="decimal"></label><span class="gmw-mu">clic en el mapa para fijar el punto</span></div>`;
@@ -79242,11 +79242,45 @@ function gmRender_() {
   host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : gmWizard_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
 }
-function gmNuevo_(reset) { if (reset) Object.assign(GMW, { vias: null, vsel: new Set(), vstale: false, vmsg: '', paso: 1, perfil: '', objetivo: '', dir: '', lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', resultados: null, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, radio: 0, horas: [], dias: [1, 2, 3, 4, 5], proy: null, err: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function gmNuevo_(reset) { if (reset) Object.assign(GMW, { vias: null, vsel: new Set(), vstale: false, vmsg: '', paso: 1, perfil: '', objetivo: '', dir: '', lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', resultados: null, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, radio: 0, horas: [], dias: [1, 2, 3, 4, 5], proy: null, err: '', opt: null }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function gmVolver_() { GMW.vista = 'landing'; gmRender_(); }
 function gmPaso_(n) { if (n < 1 || n > 6) return; gmPts_(); GMW.fmOn = false; GMW.paso = n; GMW.err = ''; gmRender_(); }
 const gmFotosAuto_ = () => GMW.ft.frente + GMW.ft.inmediato + GMW.ft.general, gmFotosTot_ = () => GMW.fmode === 'auto' ? gmFotosAuto_() : GMW.fmode === 'manual' ? GMW.fm.length : gmFotosAuto_() + GMW.fm.length;
 function gmFotosTxt_() { const f = GMW.ft; return GMW.fmode === 'auto' ? `${f.frente} + ${f.inmediato} + ${f.general} = ${gmFotosTot_()}` : GMW.fmode === 'manual' ? `${GMW.fm.length} puntos manuales = ${GMW.fm.length}` : `${f.frente} + ${f.inmediato} + ${f.general} + ${GMW.fm.length} manuales = ${gmFotosTot_()}`; }
+
+/* ── costos estimados (precio de lista × GMW_X) ── */
+const GMW_X = 10, GMW_PR = { sv: .007, ia: .0053, sat: .01, base: .04, ruta: .01, od: 364 };
+const gmOpt_ = () => GMW.opt || (GMW.opt = { fotos: true, trafico: true, od: false }), gmUsd_ = v => '$' + v.toFixed(2) + ' USD';
+function gmCosto_() {
+  const nP = gmPts_().length, o = gmOpt_(), fotos = (GMW.fmode !== 'manual' ? gmFotosAuto_() * nP : 0) + (GMW.fmode !== 'auto' ? GMW.fm.length : 0);
+  const ts = GMW.radio > 400 ? 344 : 172, k = Math.max(1, Math.ceil((GMW.radio - ts / 2) / ts)), tiles = GMW.radio >= 50 ? (2 * k + 1) ** 2 * nP : 0;
+  const sv = fotos * GMW_PR.sv * GMW_X, ia = (fotos * GMW_PR.ia + (fotos || tiles ? nP * GMW_PR.base : 0)) * GMW_X, sat = tiles * GMW_PR.sat * GMW_X;
+  const estim = !GMW.vias, sent = GMW.vias ? GMW.vias.filter(v => GMW.vsel.has(v.k)).reduce((n, v) => n + (v.o ? 1 : 2), 0) : GMW.vial.pre * 2 * nP, fr = GMW.dias.length * GMW.horas.length, calls = sent * fr, tr = calls * GMW_PR.ruta * GMW_X;
+  const od = nP * GMW_PR.od * GMW_PR.ruta * GMW_X, fo = sv + ia + sat;
+  return { nP, fotos, tiles, sv, ia, sat, fo, sent, fr, calls, tr, estim, od, total: (o.fotos ? fo : 0) + (o.trafico ? tr : 0) + (o.od ? od : 0) };
+}
+function gmCostHtml_(t) {
+  const c = gmCosto_(), o = gmOpt_();
+  if (t === 'aviso') return !o.fotos ? '' : `<b>⚠ Aviso:</b> el análisis de fotos de calle con IA tiene costo. Con los parámetros actuales ≈ <b>${gmUsd_(c.fo)}</b> (${c.fotos} fotos${c.nP > 1 ? ' en ' + c.nP + ' puntos' : ''}). El desglose está en el paso 6.`;
+  if (t === 'fotos') return `💲 Costo estimado de fotos: ${c.fotos} fotos · Street View ${gmUsd_(c.sv)} · análisis IA ${gmUsd_(c.ia)} · imágenes satelitales ${gmUsd_(c.sat)} = <b>${gmUsd_(c.fo)}</b>`;
+  if (t === 'trafico') return `💲 Costo estimado de tráfico (Google Routes): ${c.sent} sentidos${c.estim ? ' (estimado; previsualiza para afinar)' : ''} × ${GMW.dias.length} días × ${GMW.horas.length} horas = ${c.calls} consultas · <b>${gmUsd_(c.tr)}</b>`;
+  const f = (k, q, u, v, on) => `<tr class="${on ? '' : 'off'}"><td><span class="gmw-bx${on ? ' on' : ''}" ${k ? 'data-opt="' + k + '"' : ''}></span></td><td>${q[0]}<small>${q[1]}</small></td><td>${u}</td><td>${on ? gmUsd_(v) : '—'}</td></tr>`;
+  return `<table class="gmw-ct"><thead><tr><th></th><th>concepto</th><th>cantidad</th><th>costo estimado</th></tr></thead><tbody>
+    ${f('fotos', ['Fotos de calle con IA', 'Street View + análisis de IA + imágenes satelitales'], c.fotos + ' fotos', c.fo, o.fotos)}
+    ${f('trafico', ['Monitoreo de tráfico en vialidades', 'Google Routes con tráfico, por sentido · día · hora'], c.calls + ' consultas', c.tr, o.trafico)}
+    ${f('od', ['Verificar rutas origen/destino', 'Google Routes, hasta ' + GMW_PR.od + ' elementos por punto'], 'hasta ' + c.nP * GMW_PR.od, c.od, o.od)}
+    </tbody><tfoot><tr><td></td><td colspan="2">Total estimado</td><td><b>${gmUsd_(c.total)}</b></td></tr></tfoot></table>
+    <p class="gmw-mu">marca o desmarca cada concepto para incluirlo. Precios de lista de Google × ${GMW_X}. No incluye la búsqueda de direcciones ni los mapas de este asistente.</p>`;
+}
+function gmCostRefresca_() { document.querySelectorAll('[data-cost]').forEach(el => { el.innerHTML = gmCostHtml_(el.dataset.cost); if (el.dataset.cost === 'aviso') el.style.display = el.innerHTML ? '' : 'none'; }); }
+function gmPasoHtml_() {
+  const p = GMW.paso, K = (t, c) => `<div class="${c || 'gmw-cn'}" data-cost="${t}">${gmCostHtml_(t)}</div>`, av = `<div class="gmw-av" data-cost="aviso">${gmCostHtml_('aviso')}</div>`;
+  let h = gmPasoHtml0_(); if (p >= 2 && p <= 5) h = av + h;
+  if (p === 2) h += `<p class="gmw-mu">cada punto de interés repite el análisis de fotos y de tráfico, por lo que multiplica el costo</p>`;
+  if (p === 3) h += K('fotos'); if (p === 4 || p === 5) h += K('trafico');
+  if (p === 6) h += `<div class="gmw-sb" style="margin-top:22px"><span class="gmw-lt"><i>+</i>Resumen de costos</span><div style="height:12px"></div><div data-cost="tab">${gmCostHtml_('tab')}</div></div>`;
+  return h;
+}
 function gmVMsg_() { if (GMW.vbusy) return GMW.vmsg; if (GMW.vias) return GMW.vstale ? 'cambiaste parámetros: pulsa Previsualizar para actualizar' : `<b>${GMW.vias.length}</b> vialidades descargadas · ${GMW.vsel.size} seleccionadas`; return GMW.vmsg || 'descarga las vialidades de OpenStreetMap para elegir las de interés'; }
 function gmVCl_(h) { return (typeof MC_TR_CL !== 'undefined' && MC_TR_CL[h]) || GMW_VCL[h] || h; }
 function gmVTabla_() {
@@ -79280,7 +79314,7 @@ function gmFotosHtml_() {
 function gmFmModo_(k) {
   GMW.fmode = k; document.querySelectorAll('.gmw-op[data-fmo]').forEach(b => b.classList.toggle('on', b.dataset.fmo === k)); const bx = document.getElementById('gmw-fp'); if (bx) bx.innerHTML = gmFotosHtml_(); gmDibuja_(false); gmFmUpd_(); gmUpd_();
 }
-function gmUpd_() { const f = document.getElementById('gmw-ficha'), p = document.getElementById('gmw-pie'); if (f) f.innerHTML = gmFicha_(); if (p) p.innerHTML = gmPie_(); try { gmFmUpd_(); } catch (_) { } }
+function gmUpd_() { const f = document.getElementById('gmw-ficha'), p = document.getElementById('gmw-pie'); if (f) f.innerHTML = gmFicha_(); if (p) p.innerHTML = gmPie_(); gmCostRefresca_(); try { gmFmUpd_(); } catch (_) { } }
 function gmPts_() { GMW.pts[GMW.sel] = { lat: GMW.lat, lng: GMW.lng, dir: GMW.dir || '' }; return GMW.pts; }
 function gmPlHtml_() {
   const P = gmPts_(); return `<div class="gmw-ch">${P.map((q, i) => `<button type="button" class="gmw-c${i === GMW.sel ? ' on' : ''}" data-pt="${i}">Punto ${i + 1}${P.length > 1 ? ' <span data-rmpt="' + i + '" title="quitar este punto">✕</span>' : ''}</button>`).join('')}${P.length < 10 ? '<button type="button" class="gmw-c gmw-dash" id="gmw-addpt">＋ agregar punto</button>' : ''}</div>`;
@@ -79353,6 +79387,7 @@ function gmWiring_() {
     const qv = e.target.closest('[data-qv]'); if (qv) { gmVStale_(); GMW.vial.clases = qv.dataset.qv === '1' ? GMW_VTODAS.slice() : qv.dataset.qv === '2' ? GMW_VORD.slice(0, 5) : []; body.querySelectorAll('[data-vc]').forEach(b => b.classList.toggle('on', GMW.vial.clases.includes(b.dataset.vc))); gmUpd_(); return; }
     const vr = e.target.closest('[data-vr]'); if (vr) { gmVStale_(); GMW.vm = true; gmVrad_(+vr.dataset.vr); return; }
     const r = e.target.closest('[data-r]'); if (r) { gmRadio_(+r.dataset.r); return; }
+    const op = e.target.closest('[data-opt]'); if (op) { const o = gmOpt_(); o[op.dataset.opt] = !o[op.dataset.opt]; gmUpd_(); return; }
     const d = e.target.closest('[data-d]'); if (d) { const v = +d.dataset.d, i = GMW.dias.indexOf(v); if (i >= 0) GMW.dias.splice(i, 1); else GMW.dias.push(v); d.classList.toggle('on'); gmUpd_(); return; }
     const h = e.target.closest('[data-h]'); if (h) { const v = +h.dataset.h, i = GMW.horas.indexOf(v); if (i >= 0) GMW.horas.splice(i, 1); else GMW.horas.push(v); h.classList.toggle('on'); gmUpd_(); return; }
     const q = e.target.closest('[data-q]'); if (q) { const [k, l] = q.dataset.q.split(':'), arr = l ? l.split(',').map(Number) : []; if (k === 'd') GMW.dias = arr; else GMW.horas = arr; body.querySelectorAll('[data-' + k + ']').forEach(b => b.classList.toggle('on', arr.includes(+b.dataset[k]))); gmUpd_(); } });
@@ -79367,7 +79402,7 @@ function gmWiring_() {
 }
 async function gmEjecutar_() {
   if (gmFalta_().length || GMW.enviando) return; GMW.enviando = true; GMW.err = ''; gmUpd_();
-  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: gmPts_()[0].dir, puntos: gmPts_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fmode === 'auto' ? [] : GMW.fm, fotosModo: GMW.fmode, fotos: GMW.fmode === 'manual' ? { frente: 0, inmediato: 0, general: 0 } : GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre, seleccion: GMW.vias ? [...GMW.vsel] : [] }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPts_()[0].lat, lng: gmPts_()[0].lng, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: gmPts_()[0].dir, puntos: gmPts_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fmode === 'auto' ? [] : GMW.fm, fotosModo: GMW.fmode, fotos: GMW.fmode === 'manual' ? { frente: 0, inmediato: 0, general: 0 } : GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre, seleccion: GMW.vias ? [...GMW.vsel] : [] }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPts_()[0].lat, lng: gmPts_()[0].lng, opciones: gmOpt_(), costoEstimadoUSD: +gmCosto_().total.toFixed(2), radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   catch (e) { GMW.enviando = false; GMW.err = String(e.message || e); gmUpd_(); }
 }
 window.geometrikaInit = function () {
