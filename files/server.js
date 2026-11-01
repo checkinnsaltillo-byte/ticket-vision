@@ -13075,6 +13075,14 @@ app.post("/geometrika/analizar", async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+app.get("/geometrika/proyectos", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const nombres = (await _gcsList("geometrika/proyectos/")).filter(n => /\/9\d{13}\.json$/.test(n)).sort().reverse().slice(0, 40), lista = [];
+    for (let i = 0; i < nombres.length; i += 8) await Promise.all(nombres.slice(i, i + 8).map(async n => { try { const { data: P } = await _bnReadGcs(n); if (P && P.id) lista.push({ id: P.id, creado: P.creado, perfil: P.perfil || "", objetivo: (P.objetivo || "").slice(0, 80), direccion: (P.direccion || (P.puntos && P.puntos[0] && P.puntos[0].dir) || "").slice(0, 90), lat: P.lat, lng: P.lng, puntos: (P.puntos || []).length, radio: P.radio, estado: (P.analisis && P.analisis.estado) || "registrado", error: (P.analisis && P.analisis.error) || "" }); } catch (_) {} }));
+    lista.sort((a, b) => String(b.creado).localeCompare(String(a.creado))); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyectos: lista });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/geometrika/analizar/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try { const id = String(req.query.id || "").replace(/\D/g, ""); res.set("Cache-Control", "no-store"); if (_gmJob.id === id) return res.json({ ok: true, running: !!_gmJob.running, paso: _gmJob.paso, sub: _gmJob.sub, punto: _gmJob.punto, de: _gmJob.de, error: _gmJob.error || "", listo: !_gmJob.running && !_gmJob.error && !!_gmJob.fin });

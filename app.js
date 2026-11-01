@@ -79160,6 +79160,7 @@ function gmLanding_() {
       <h1 class="gm-h1">Información geográfica verificable,<br><span>siempre disponible.</span></h1>
       <p class="gm-p">Cada indicador cita su fuente, su fecha y su método.</p>
       <div class="gm-cta"><button type="button" class="gm-btn" onclick="gmNuevo_()">Crea tu primer proyecto <span>→</span></button></div>
+      <div id="gm-lista" class="gm-pl"></div>
     </main>
     <footer class="gm-foot"><div class="gm-w"><span>GeoMetrika · Check Inn</span><span>fuentes públicas y servicios de terceros</span></div></footer>
   </div>`;
@@ -79240,6 +79241,7 @@ function gmDone_() {
 function gmRender_() {
   const host = document.getElementById('geometrika-host'); if (!host) return; if (GMW.map) { try { GMW.map.remove(); } catch (_) { } GMW.map = GMW.pin = GMW.circ = null; }
   host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : GMW.vista === 'analizando' ? gmAn_() : gmWizard_();
+  if (GMW.vista === 'landing') gmCargaLista_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
 }
 function gmNuevo_(reset) { if (reset) Object.assign(GMW, { vias: null, vsel: new Set(), vstale: false, vmsg: '', paso: 1, perfil: '', objetivo: '', dir: '', lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', resultados: null, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, radio: 200, horas: [7, 8, 9, 17, 18, 19], dias: [1, 2, 3, 4, 5], proy: null, err: '', opt: null, pago: null, pagoAbre: false, promo: '', promoErr: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -79455,6 +79457,18 @@ async function gmSondea_(id) {
   } catch (_) { }
   setTimeout(() => gmSondea_(id), 4000);
 }
+
+/* ── Mis proyectos (landing): acceso a los proyectos creados ── */
+function gmListaHtml_() {
+  const L = GMW.lista; if (L === 'err') return '<p class="gmw-mu">no se pudo cargar la lista de proyectos (el servidor se está actualizando)</p>'; if (!L) return ''; if (!L.length) return '';
+  const est = { registrado: 'registrado', analizando: 'analizando…', listo: 'analizado', error: 'con error' };
+  return `<h3 class="gm-plt">Mis proyectos</h3>${L.map(p => `<div class="gm-pr"><div><b>${gmEsc_(p.perfil || 'Proyecto')}</b><span>${gmEsc_(p.direccion || (p.lat != null ? (+p.lat).toFixed(4) + ', ' + (+p.lng).toFixed(4) : ''))}${p.puntos > 1 ? ' · ' + p.puntos + ' puntos' : ''} · ${p.radio} m · ${p.creado ? new Date(p.creado).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span></div><span class="gm-pe ${p.estado}">${est[p.estado] || p.estado}</span>${p.estado === 'listo' ? `<a class="gm-btn gmw-sm" href="maqueta/entorno.html?id=${gmEsc_(p.id)}">Abrir maqueta →</a>` : p.estado === 'analizando' ? `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}')">Ver avance</a>` : `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}',1)">Analizar</a>`}</div>`).join('')}`;
+}
+async function gmCargaLista_() {
+  try { const t = await fetch(`${BACKEND}/geometrika/proyectos`).then(r => r.text()); const j = JSON.parse(t); GMW.lista = j.ok ? j.proyectos : 'err'; } catch (_) { GMW.lista = 'err'; }
+  const b = document.getElementById('gm-lista'); if (b && GMW.vista === 'landing') b.innerHTML = gmListaHtml_();
+}
+function gmVerAn_(id, inicia) { GMW.proy = { id }; if (inicia) gmIniciaAnalisis_(); else { GMW.vista = 'analizando'; GMW.an = { paso: 'Consultando avance', sub: '', err: '' }; gmRender_(); gmSondea_(id); } }
 async function gmEjecutar_() {
   if (gmFalta_().length || GMW.enviando) return; GMW.enviando = true; GMW.err = ''; gmUpd_();
   try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: gmPtsOk_()[0].dir, puntos: gmPtsOk_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fmode === 'auto' ? [] : GMW.fm, fotosModo: GMW.fmode, fotos: GMW.fmode === 'manual' ? { frente: 0, inmediato: 0, general: 0 } : GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre, seleccion: GMW.vias ? [...GMW.vsel] : [] }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPtsOk_()[0].lat, lng: gmPtsOk_()[0].lng, opciones: gmOpt_(), costoEstimadoUSD: GMW_PRECIOS ? +gmCosto_().total.toFixed(2) : null, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(async r => { const t = await r.text(); try { return JSON.parse(t); } catch (_) { return { ok: false, error: 'El servidor no respondió correctamente (' + r.status + '). Inténtalo de nuevo.' }; } }); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.enviando = false; gmIniciaAnalisis_(); }
