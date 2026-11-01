@@ -79486,9 +79486,9 @@ function gmMenu_(e, b) { e.stopPropagation(); const m = b.nextElementSibling, ab
 if (!window.__gmKm) { window.__gmKm = 1; document.addEventListener('click', e => { if (!e.target.closest('.gm-km')) document.querySelectorAll('.gm-kmenu.on').forEach(x => x.classList.remove('on')); }); }
 // Reconstruir maqueta: rehace el uso del suelo (satélite + capa Calles) de cada punto del proyecto sin volver a leer las fotos de calle
 async function gmReconstruir_(id, n, el) {
-  if (!el || el.dataset.busy) return; el.dataset.busy = '1'; const t0 = el.textContent; let ok = 0, err = '';
-  for (let k = 0; k < n; k++) { el.textContent = n > 1 ? `Reconstruyendo (${k + 1}/${n})…` : 'Reconstruyendo…'; try { const r = await fetch(`${BACKEND}/mercado/maqueta/uso-suelo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: k ? id + String(k) : id }) }), t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) { } if (j && j.ok) ok++; else err = (j && j.error) || ('el servidor respondió ' + r.status); } catch (e) { err = String(e.message || e); } }
-  delete el.dataset.busy; el.textContent = err ? '⚠ ' + err : (ok > 1 ? `Listo ✓ (${ok} puntos)` : 'Listo ✓'); setTimeout(() => { el.textContent = t0; }, err ? 6000 : 4000);
+  if (!el || el.dataset.busy) return; el.dataset.busy = '1'; const t0 = el.textContent; let ok = 0, err = ''; const tok = { ll: 0, ca: 0, en: 0, sa: 0 };
+  for (let k = 0; k < n; k++) { el.textContent = n > 1 ? `Reconstruyendo (${k + 1}/${n})…` : 'Reconstruyendo…'; try { const r = await fetch(`${BACKEND}/mercado/maqueta/uso-suelo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: k ? id + String(k) : id }) }), t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) { } if (j && j.ok) { ok++; if (j.ia) { tok.ll += j.ia.llamadas; tok.ca += j.ia.cache; tok.en += j.ia.entrada; tok.sa += j.ia.salida; } } else err = (j && j.error) || ('el servidor respondió ' + r.status); } catch (e) { err = String(e.message || e); } }
+  delete el.dataset.busy; el.textContent = err ? '⚠ ' + err : `Listo ✓ · ${tok.ll} llamadas de IA${tok.ca ? ` (${tok.ca} teselas de caché)` : ''} · ${(tok.en + tok.sa).toLocaleString('es-MX')} tokens`; setTimeout(() => { el.textContent = t0; }, err ? 6000 : 9000);
 }
 // Eliminar: solo desaparece de la lista; el proyecto y su información se conservan
 async function gmElimina_(id) {
