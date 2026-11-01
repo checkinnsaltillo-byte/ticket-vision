@@ -12977,6 +12977,16 @@ app.post("/mercado/ambiente/solar", async (req, res) => {
   })().catch(e => { _soJob.error = String(e.message || e); }).finally(() => { _soJob.running = false; _soJob.upd = new Date().toISOString(); });
 });
 // ── GeoMetrika: proyectos de análisis. El asistente «Nuevo análisis» captura punto, radio, días y horas y los guarda en geometrika/proyectos/<id>.json ──
+app.post("/geometrika/vialidades", async (req, res) => {   // previsualiza las vialidades (OpenStreetMap) de un punto cualquiera con los mismos criterios del módulo de tráfico
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, lat = +b.lat, lng = +b.lng; if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
+    const R = Math.max(1000, Math.min(5000, Math.round(+b.R) || 3000)), Rloc = Math.max(100, Math.min(R, Math.round(+b.Rloc) || 900)), tramo = Math.max(50, Math.min(1000, Math.round(+b.tramo) || 200)), maxVias = Math.max(0, Math.min(30, Math.round(+b.maxVias) || 0)), clases = (Array.isArray(b.clases) ? b.clases : []).map(String).filter(c => _TR_CLASES.includes(c));
+    if (!clases.length) return res.status(400).json({ ok: false, error: "Elige al menos una clasificación de vialidad" });
+    const id = "gmv" + Math.round(lat * 1e5) + "_" + Math.round(Math.abs(lng) * 1e5), V = await _trVias(id, { R, Rloc }, tramo, maxVias, clases, { lat, lng });
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, lat, lng, R, vias: V.vias.slice(0, 400).map(v => ({ k: v.k, n: v.n, ref: v.ref, h: v.h, o: v.o, l: v.l, d: v.d, len: v.len, pl: v.pl, rumbo: v.sentidos && v.sentidos[0] ? v.sentidos[0].rumbo : null })), pre: V.pre, disponibles: V.disponibles });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 const _gmSugC = new Map();
 app.get("/geometrika/sugerir", async (req, res) => {   // autocompletado de direcciones mientras se escribe (Google Places Autocomplete, con token de sesión)
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
@@ -13827,8 +13837,8 @@ const _trHoras = c => { const L = []; for (let h = c.h0; h <= c.h1; h += c.paso)
 const _trObj = id => `mercado/trafico/${id}.json`, _trEstObj = id => `mercado/trafico/estado/${id}.json`, _trViasObj = (id, R, cl) => `mercado/trafico/vias/${id}_${R}_${cl}_v2.json`;
 const _trTz = lng => lng < -114 ? -8 : lng < -108 ? -7 : lng > -88.6 ? -5 : -6;
 let _trJob = { running: false };
-async function _trVias(id, vial, tramo, maxVias, clases) {
-  const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng), R = vial.R;
+async function _trVias(id, vial, tramo, maxVias, clases, punto) {
+  const it = punto || await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng, P = _mqProy(lat, lng), R = vial.R;
   const cls = (clases && clases.length ? clases : _TR_PRI).filter(x => _TR_CLASES.includes(x)), Rloc = Math.min(R, vial.Rloc || 900); if (!cls.length) throw new Error("Elige al menos una clase de vialidad");
   const grandes = cls.filter(x => _TR_PRI.includes(x) || /_link$/.test(x)), locales = cls.filter(x => !grandes.includes(x));
   const ck = _trViasObj(id, R + "_" + Rloc, cls.map(x => x.slice(0, 4) + x.length).sort().join("")); let ways = null; try { const { data } = await _bnReadGcs(ck); if (data && data.ways && Date.now() - Date.parse(data.at || 0) < 30 * 864e5) ways = data.ways; } catch (_) {}
