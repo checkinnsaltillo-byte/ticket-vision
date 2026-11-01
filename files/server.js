@@ -13749,6 +13749,15 @@ const _OD_RK = { motorway: 6, trunk: 5, primary: 4, secondary: 3, tertiary: 2, u
 const _OD_MAX_EL = 324, _OD_MAX_RUTAS = 40, _OD_RUMBOS = ["Norte", "Noreste", "Este", "Sureste", "Sur", "Suroeste", "Oeste", "Noroeste"];
 let _odJob = { running: false };
 const _odKey = id => `mercado/maqueta/od/${id}.json`;
+// usos de suelo y comercios locales (osm/uso-saltillo.json): landuse residencial/comercial/industrial y nodos shop/office/amenity para el modelo origen-destino
+let _USO = undefined;
+async function _usoLocal(lat, lng, R) {
+  if (_USO === undefined) { try { const { data } = await _bnReadGcs("osm/uso-saltillo.json"); _USO = data && data.nodes ? data : null; } catch (_) { return null; } }
+  if (!_USO) return null; const [S, W, N, E] = _USO.bbox, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
+  const kx = 111320 * Math.cos(lat * Math.PI / 180), nodes = _USO.nodes.filter(n => Math.hypot((n[1] - lng) * kx, (n[0] - lat) * 111320) <= R).map(n => ({ type: "node", id: 0, lat: n[0], lon: n[1] })), ways = [];
+  for (const w of _USO.ways) { const g = _vialDec(w.g); if (_geoCerca(g, lat, lng, R)) ways.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); }
+  return [{ elements: ways }, { elements: nodes }];
+}
 async function _odOverpass(q) {
   let j, ult; for (let ronda = 0; ronda < 3 && !j; ronda++) { for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(170000) }, 1); break; } catch (e) { ult = e; } } if (!j) await _amSleep(5000); }
   if (!j) throw ult || new Error("Overpass sin respuesta"); return j;
@@ -13781,7 +13790,8 @@ async function _odGenera(id, enlace, pagar, soloOsm) {
   paso("Red vial de OpenStreetMap (20 km)");
   const HWM = "motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link", HWL = HWM + "|unclassified|residential|living_street";
   let oc = null; try { oc = (await _bnReadGcs(_odKey(id + "_osm"))).data; } catch (_) {} if (oc && Date.now() - Date.parse(oc.at || 0) > 30 * 864e5) oc = null;
-  const [ja, jb] = oc && oc.ja ? [oc.ja, oc.jb] : await Promise.all([_odOverpass(`[out:json][timeout:150];way(around:20000,${lat},${lng})[highway~"^(${HWM})$"];out tags geom;`), _odOverpass(`[out:json][timeout:90];way(around:1500,${lat},${lng})[highway~"^(${HWL})$"];out tags geom;`)]);
+  const hwmR = new RegExp("^(" + HWM + ")$"), hwlR = new RegExp("^(" + HWL + ")$"), lja = oc && oc.ja ? null : await _vialWays(lat, lng, 20000, t => hwmR.test(t.highway || "")), ljb = lja ? await _vialWays(lat, lng, 1500, t => hwlR.test(t.highway || "")) : null;   // red local: sin Overpass
+  const [ja, jb] = oc && oc.ja ? [oc.ja, oc.jb] : lja && ljb ? [{ elements: lja }, { elements: ljb }] : await Promise.all([_odOverpass(`[out:json][timeout:150];way(around:20000,${lat},${lng})[highway~"^(${HWM})$"];out tags geom;`), _odOverpass(`[out:json][timeout:90];way(around:1500,${lat},${lng})[highway~"^(${HWL})$"];out tags geom;`)]);
   if (!oc || !oc.ja) { try { await _bnWriteGcs(_odKey(id + "_osm"), { at: new Date().toISOString(), ja: { elements: (ja.elements || []).map(e => ({ type: e.type, id: e.id, tags: { highway: (e.tags || {}).highway, name: (e.tags || {}).name, ref: (e.tags || {}).ref, oneway: (e.tags || {}).oneway, junction: (e.tags || {}).junction }, geometry: e.geometry })) }, jb: { elements: (jb.elements || []).map(e => ({ type: e.type, id: e.id, tags: { highway: (e.tags || {}).highway, name: (e.tags || {}).name, ref: (e.tags || {}).ref, oneway: (e.tags || {}).oneway, junction: (e.tags || {}).junction }, geometry: e.geometry })) } }, null); } catch (e) { console.warn("[od] caché osm", e.message); } }
   const G = _odGrafo([].concat(ja.elements || [], jb.elements || []).filter(e => e.type === "way"), P); if (G.X.length < 50) throw new Error("La red vial de OpenStreetMap vino vacía");
   let seg = new Set(), nomb = new Set(), calle = "";
@@ -13808,7 +13818,7 @@ async function _odGenera(id, enlace, pagar, soloOsm) {
   // pesos por zona, de OpenStreetMap con una sola consulta por tipo: viviendas = superficie de uso de suelo residencial; empleos = comercios, oficinas y servicios + superficie comercial (×5) e industrial (×8)
   paso("Usos de suelo y comercios (OpenStreetMap)");
   let oc2 = null; try { oc2 = (await _bnReadGcs(_odKey(id + "_uso"))).data; } catch (_) {} if (oc2 && Date.now() - Date.parse(oc2.at || 0) > 30 * 864e5) oc2 = null;
-  const [jl, jp] = oc2 && oc2.jl ? [oc2.jl, oc2.jp] : await Promise.all([_odOverpass(`[out:json][timeout:150];way(around:20000,${lat},${lng})[landuse~"^(residential|commercial|retail|industrial)$"];out tags geom;`), _odOverpass(`[out:json][timeout:150];(node(around:20000,${lat},${lng})["shop"];node(around:20000,${lat},${lng})["office"];node(around:20000,${lat},${lng})["amenity"~"^(school|kindergarten|college|university|hospital|clinic|bank|restaurant|marketplace|fuel|pharmacy|cafe|townhall)$"];);out skel;`)]);
+  const uL = oc2 && oc2.jl ? null : await _usoLocal(lat, lng, 20000), [jl, jp] = oc2 && oc2.jl ? [oc2.jl, oc2.jp] : uL ? uL : await Promise.all([_odOverpass(`[out:json][timeout:150];way(around:20000,${lat},${lng})[landuse~"^(residential|commercial|retail|industrial)$"];out tags geom;`), _odOverpass(`[out:json][timeout:150];(node(around:20000,${lat},${lng})["shop"];node(around:20000,${lat},${lng})["office"];node(around:20000,${lat},${lng})["amenity"~"^(school|kindergarten|college|university|hospital|clinic|bank|restaurant|marketplace|fuel|pharmacy|cafe|townhall)$"];);out skel;`)]);
   if (!oc2 || !oc2.jl) { try { await _bnWriteGcs(_odKey(id + "_uso"), { at: new Date().toISOString(), jl, jp }, null); } catch (e) { console.warn("[od] caché uso", e.message); } }
   Z.forEach(z => { z.res = 0; z.emp = 0; z.est = "ok"; });
   (jl.elements || []).forEach(w => { const g = (w.geometry || []).map(q => P.xy(q.lat, q.lon)); if (g.length < 4) return; let A = 0, cx = 0, cy = 0; for (let i = 0; i < g.length; i++) { const q = g[(i + 1) % g.length]; A += g[i][0] * q[1] - q[0] * g[i][1]; cx += g[i][0]; cy += g[i][1]; } A = Math.abs(A) / 2 / 1e4; cx /= g.length; cy /= g.length; const zi = zonaDe(cx, cy); if (zi < 0 || A <= 0) return; const lu = (w.tags || {}).landuse; if (lu === "residential") Z[zi].res += A; else if (lu === "industrial") Z[zi].emp += 8 * A; else Z[zi].emp += 5 * A; });
