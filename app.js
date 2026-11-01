@@ -79444,7 +79444,8 @@ function gmWiring_() {
 /* ── análisis del proyecto: registra, ejecuta en el servidor (fotos → maqueta → tráfico) y abre la maqueta con los resultados ── */
 function gmAnHtml_() {
   const a = GMW.an || {}; if (a.err) return `<p class="gmw-er" style="margin:0 0 16px">${gmEsc_(a.err)}</p><div class="gmw-fld" style="margin-top:0"><button type="button" class="gm-btn gmw-sm" onclick="gmIniciaAnalisis_()">reintentar</button><a class="gmw-bk" onclick="GMW.vista='hecho';gmRender_()">ver el proyecto registrado</a></div>`;
-  return `<div class="gmw-bar"><i></i></div><p style="margin:14px 0 4px;font-size:13px"><b>${gmEsc_(a.paso || 'Iniciando')}</b></p><p class="gmw-mu" style="margin:0">${gmEsc_(a.sub || 'esto puede tardar varios minutos; puedes dejar esta ventana abierta')}</p>`;
+  const pc = Math.max(0, Math.min(100, Math.round(a.pct || 0)));
+  return `<div class="gmw-pct"><b>${pc} %</b><div class="gmw-bar gmw-bar2"><i style="width:${pc}%"></i></div></div><p style="margin:14px 0 4px;font-size:13px"><b>${gmEsc_(a.paso || 'Iniciando')}</b></p><p class="gmw-mu" style="margin:0">${gmEsc_(a.sub || 'esto puede tardar varios minutos; puedes dejar esta ventana abierta')}</p>`;
 }
 function gmAn_() {
   const P = GMW.proy || {};
@@ -79452,7 +79453,7 @@ function gmAn_() {
     <p class="gmw-mu" style="margin:0 0 22px;max-width:560px">Se descargan las fotos de calle, se leen con IA, se arma la maqueta y se consulta el tráfico. Al terminar se abrirá la maqueta con los resultados.</p><div id="gmw-an">${gmAnHtml_()}</div></div></div>`;
 }
 async function gmIniciaAnalisis_() {
-  GMW.vista = 'analizando'; GMW.an = { paso: 'Iniciando', sub: '', err: '' }; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  GMW.vista = 'analizando'; GMW.an = { paso: 'Iniciando', sub: '', err: '', pct: 0 }; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' });
   try {
     const r = await fetch(`${BACKEND}/geometrika/analizar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: GMW.proy.id }) }), t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) { }
     if (!j) throw new Error(r.status === 404 ? 'El proyecto quedó registrado, pero el servidor aún no tiene activado el motor de análisis (se está actualizando). Vuelve a intentarlo más tarde.' : 'El servidor no respondió correctamente (' + r.status + ').');
@@ -79464,7 +79465,7 @@ async function gmSondea_(id) {
   if (GMW.vista !== 'analizando' || !GMW.proy || GMW.proy.id !== id) return;
   try {
     const j = await fetch(`${BACKEND}/geometrika/analizar/estado?id=${id}`).then(r => r.json());
-    if (j.ok) { if (j.error) GMW.an.err = j.error; else if (j.listo) { location.href = `${GM_MAQ_()}?id=${id}`; return; } else { GMW.an.paso = j.paso; GMW.an.sub = j.sub; } const b = document.getElementById('gmw-an'); if (b) b.innerHTML = gmAnHtml_(); if (j.error) return; }
+    if (j.ok) { if (j.error) GMW.an.err = j.error; else if (j.listo) { location.href = `${GM_MAQ_()}?id=${id}`; return; } else { GMW.an.paso = j.paso; GMW.an.sub = j.sub; GMW.an.pct = Math.max(GMW.an.pct || 0, j.pct || 0); } const b = document.getElementById('gmw-an'); if (b) b.innerHTML = gmAnHtml_(); if (j.error) return; }
   } catch (_) { }
   setTimeout(() => gmSondea_(id), 4000);
 }
