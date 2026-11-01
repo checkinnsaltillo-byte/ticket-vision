@@ -13650,6 +13650,11 @@ async function _mqOsmTiles(lat, lng, R) {
   if (T.size < jobs.length * .8) return null;
   return { z, n: T.size, pix(la, ln) { const p = wp(la, ln), tx = Math.floor(p[0] / 256), ty = Math.floor(p[1] / 256), im = T.get(tx + "_" + ty); if (!im) return null; const x = Math.min(255, Math.floor(p[0] - tx * 256)), y = Math.min(255, Math.floor(p[1] - ty * 256)), d = (y * 256 + x) * 4; return [im.data[d], im.data[d + 1], im.data[d + 2]]; } };
 }
+// las huellas de edificios detectadas por IA a veces confunden arbolado o techumbres de plaza con construcciones: se descartan las que caen en celdas de parque/plaza o agua
+function _mqFiltraHuellas(mb, sat) {
+  if (!sat || !sat.c || !Array.isArray(mb)) return mb; const at = (x, y) => { const c = Math.floor((x + sat.R) / sat.cell), r = Math.floor((sat.R - y) / sat.cell); return c < 0 || r < 0 || c >= sat.n || r >= sat.n ? "E" : sat.c[r * sat.n + c]; };
+  return mb.filter(f => { let sx = 0, sy = 0, k = 0; for (let i = 0; i + 1 < f.length; i += 2) { sx += f[i]; sy += f[i + 1]; k++; } return !k || !"PW".includes(at(sx / k, sy / k)); });
+}
 // clase de uso del suelo según el color del mapa de calles de OSM: P parque/plaza/jardín, V arbolado, C cancha, W agua, I industrial
 function _mqOsmCls(c) {
   if (!c) return ""; const [r, g, b] = c;
@@ -13756,7 +13761,7 @@ async function _mqGenera(id, refrescar) {
     try { const r = await _mqSat(lat, lng, R, key, {}); sat = r.sat; r.pois.forEach(q => { if (!pois.some(o => o.t === q.t && Math.hypot(o.x - q.x, o.y - q.y) < 50)) pois.push(q); }); uso.input_tokens += r.uso.input_tokens; uso.output_tokens += r.uso.output_tokens; } catch (e) { console.warn("[maqueta] satélite", e.message); _mqJob.aviso = "Sin imagen satelital: " + e.message; }
     return { mb, pois, sat };
   })();
-  const [obsAll, extra] = await Promise.all([pFotos, pExtra]); obsAll.forEach(o => obs.push(o)); const { mb, pois, sat } = extra; _mqJob.reutilizo = !!reuse;
+  const [obsAll, extra] = await Promise.all([pFotos, pExtra]); obsAll.forEach(o => obs.push(o)); const { pois, sat } = extra, mb = _mqFiltraHuellas(extra.mb, sat); _mqJob.reutilizo = !!reuse;
   if (!obs.length) throw new Error("No se pudieron leer fachadas de las fotos");
   // riesgos georreferenciados: posición del panorama + rumbo + posición en la imagen + distancia estimada; más semáforos y cruces de OpenStreetMap
   const riesgos = []; const TIPOS = ["pavimento", "peatonal", "semaforo", "estacionamiento", "acceso", "obstruccion", "seguridad", "ambiental", "fisico", "informalidad", "infraestructura", "basura", "otro"];
@@ -13965,7 +13970,7 @@ app.post("/mercado/maqueta/uso-suelo", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const id = String((req.body || {}).id || "").replace(/\D/g, ""), key = process.env.GOOGLE_MAPS_KEY; if (!id || !key) return res.status(400).json({ ok: false, error: "Falta el id o la clave de Google Maps" });
     const { data: D } = await _bnReadGcs(`mercado/maqueta/${id}.json`); if (!D || !D.radio) return res.status(404).json({ ok: false, error: "Maqueta no encontrada" });
-    const r = await _mqSat(D.lat, D.lng, D.radio, key, {}); D.sat = r.sat; D.pois = (D.pois || []).filter(q => q.f !== "sat"); r.pois.forEach(q => { if (!D.pois.some(o => o.t === q.t && Math.hypot(o.x - q.x, o.y - q.y) < 50)) D.pois.push(q); });
+    const r = await _mqSat(D.lat, D.lng, D.radio, key, {}); D.sat = r.sat; D.mb = _mqFiltraHuellas(await _mqFootprints(D.lat, D.lng, D.radio).catch(() => D.mb), r.sat); D.pois = (D.pois || []).filter(q => q.f !== "sat"); r.pois.forEach(q => { if (!D.pois.some(o => o.t === q.t && Math.hypot(o.x - q.x, o.y - q.y) < 50)) D.pois.push(q); });
     await _bnWriteGcs(`mercado/maqueta/${id}.json`, D, null); res.json({ ok: true, celdas: r.sat.n, conCalles: r.sat.calles }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); if (data && Array.isArray(data.obs)) data.obs.forEach(o => { o.u = `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(o.pano)}&h=${o.h}&sig=${_enSig(o.pano, o.h)}`; }); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
