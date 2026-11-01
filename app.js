@@ -79239,10 +79239,12 @@ function gmDone_() {
     <p class="gmw-mu" style="margin:0 0 22px;max-width:520px">Los parámetros quedaron guardados. El análisis se ejecutará sobre la red vial de OpenStreetMap dentro del radio, en las franjas elegidas.</p>${gmFicha_()}
     <div class="gmw-ft"><a class="gmw-bk" onclick="gmNuevo_(true)">← nuevo análisis</a><span class="gmw-rg"><a class="gm-btn" href="${GM_MAQ_()}?id=${gmEsc_(P.id)}" target="_blank" rel="noopener">abrir maqueta <span>→</span></a></span></div></div></div>`;
 }
+// versión visible en el chip: la del archivo cargado (app.js?v=NNNN en el sistema, geometrika.js?v=NNNN en la página pública)
+function gmVer_() { const s = [...document.scripts].map(t => t.src || '').find(u => /\/(app|geometrika)\.js\?v=\d+/.test(u)), m = s && /[?&]v=(\d+)/.exec(s); return m ? '.' + m[1] : ''; }
 function gmRender_() {
   const host = document.getElementById('geometrika-host'); if (!host) return; if (GMW.map) { try { GMW.map.remove(); } catch (_) { } GMW.map = GMW.pin = GMW.circ = null; }
   host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'detalle' ? gmDetHtml_() : GMW.vista === 'hecho' ? gmDone_() : GMW.vista === 'analizando' ? gmAn_() : gmWizard_();
-  host.insertAdjacentHTML('afterbegin', '<span class="gmw-beta">v.Beta</span>');
+  host.insertAdjacentHTML('afterbegin', `<span class="gmw-beta">v.Beta${gmVer_()}</span>`);
   if (GMW.vista === 'landing') gmCargaLista_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
 }
