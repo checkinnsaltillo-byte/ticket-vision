@@ -13099,11 +13099,18 @@ app.post("/geometrika/analizar", async (req, res) => {
     _gmArranca(P, null); res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// «Eliminar» en Mis proyectos: solo se oculta de la lista (el proyecto y su información se conservan)
+app.post("/geometrika/proyecto/ocultar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
+    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
+    P.oculto = new Date().toISOString(); await _bnWriteGcs(`geometrika/proyectos/${id}.json`, P, null); res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/geometrika/proyectos", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
     const nombres = (await _gcsList("geometrika/proyectos/")).filter(n => /\/9\d{13}\.json$/.test(n)).sort().reverse().slice(0, 40), lista = [];
-    for (let i = 0; i < nombres.length; i += 8) await Promise.all(nombres.slice(i, i + 8).map(async n => { try { const { data: P } = await _bnReadGcs(n); if (P && P.id) lista.push({ id: P.id, creado: P.creado, perfil: P.perfil || "", objetivo: (P.objetivo || "").slice(0, 80), direccion: (P.direccion || (P.puntos && P.puntos[0] && P.puntos[0].dir) || "").slice(0, 90), lat: P.lat, lng: P.lng, puntos: (P.puntos || []).length, radio: P.radio, estado: (P.analisis && P.analisis.estado) || "registrado", error: (P.analisis && P.analisis.error) || "" }); } catch (_) {} }));
+    for (let i = 0; i < nombres.length; i += 8) await Promise.all(nombres.slice(i, i + 8).map(async n => { try { const { data: P } = await _bnReadGcs(n); if (P && P.id && !P.oculto) lista.push({ id: P.id, creado: P.creado, perfil: P.perfil || "", objetivo: (P.objetivo || "").slice(0, 80), direccion: (P.direccion || (P.puntos && P.puntos[0] && P.puntos[0].dir) || "").slice(0, 90), lat: P.lat, lng: P.lng, puntos: (P.puntos || []).length, radio: P.radio, estado: (P.analisis && P.analisis.estado) || "registrado", error: (P.analisis && P.analisis.error) || "" }); } catch (_) {} }));
     lista.sort((a, b) => String(b.creado).localeCompare(String(a.creado))); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyectos: lista });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
