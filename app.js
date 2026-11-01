@@ -79229,7 +79229,7 @@ function gmWizard_() {
   const p = GMW.paso;
   return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>Nuevo análisis</h2><span>${String(p).padStart(2, '0')}/06</span></div>
     <div class="gmw-pg" style="grid-template-columns:repeat(6,1fr)">${[1, 2, 3, 4, 5, 6].map(i => `<i class="${i < p ? 'done' : i === p ? 'on' : ''}"></i>`).join('')}</div>
-    <div class="gmw-b"><nav class="gmw-rail">${GMW_PASOS.map(([n], i) => `<a class="gmw-s ${i + 1 < p ? 'done' : i + 1 === p ? 'on' : ''}" onclick="gmPaso_(${i + 1})"><small>Paso ${String(i + 1).padStart(2, '0')}</small><span>${n}</span></a>`).join('')}</nav>
+    <div class="gmw-b">
       <section class="gmw-c1"><div class="gmw-t"><small>Paso ${String(p).padStart(2, '0')}</small><b>${GMW_PASOS[p - 1][0]}</b><span>· ${GMW_PASOS[p - 1][1]}</span></div><div id="gmw-body">${gmPasoHtml_()}</div></section></div>
     <div class="gmw-ft gmw-top" id="gmw-pie">${gmPie_()}</div></div></div>`;
 }
