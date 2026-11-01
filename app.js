@@ -79262,7 +79262,6 @@ function gmCosto_() {
 function gmCostHtml_(t) {
   const c = gmCosto_(), o = gmOpt_();
   if (t === 'aviso') { const p = GMW.paso, pp = v => gmUsd_(v / c.nP), P = c.nP > 1 ? ` en ${c.nP} puntos` : '';
-    if (p === 2) return (o.fotos || o.trafico) ? `<b>⚠ Aviso:</b> cada punto de interés tiene costo: ≈ <b>${pp((o.fotos ? c.fo : 0) + (o.trafico ? c.tr : 0))}</b> por punto. Con ${c.nP} punto${c.nP > 1 ? 's' : ''}: <b>${gmUsd_((o.fotos ? c.fo : 0) + (o.trafico ? c.tr : 0))}</b>.` : '';
     if (p === 3) return o.fotos ? `<b>⚠ Aviso:</b> el análisis de fotos de calle con IA tiene costo: ${c.fotos} fotos${P} · Street View ${gmUsd_(c.sv)} · análisis IA ${gmUsd_(c.ia)} · imágenes satelitales ${gmUsd_(c.sat)} = <b>${gmUsd_(c.fo)}</b>.` : '';
     if (p === 4) return o.trafico ? `<b>⚠ Aviso:</b> cada franja día-hora del monitoreo de tráfico cuesta ${c.sent} sentidos${c.estim ? ' (estimado; previsualiza para afinar)' : ''} × ${gmUsd_(GMW_PR.ruta * GMW_X)} = <b>${gmUsd_(c.sent * GMW_PR.ruta * GMW_X)}</b>. El total depende de los días y horas del paso 5.` : '';
     if (p === 5) return o.trafico ? `<b>⚠ Aviso:</b> ${GMW.dias.length} días × ${GMW.horas.length} horas × ${c.sent} sentidos = ${c.calls} consultas de tráfico · <b>${gmUsd_(c.tr)}</b>.` : '';
