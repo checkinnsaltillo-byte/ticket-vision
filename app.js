@@ -79267,7 +79267,7 @@ function gmCostHtml_(t) {
   const c = gmCosto_(), o = gmOpt_();
   if (t === 'aviso') { const p = GMW.paso, pp = v => gmUsd_(v / c.nP), P = c.nP > 1 ? ` en ${c.nP} puntos` : '';
     if (p === 3) return o.fotos ? `<b>⚠ Aviso:</b> el análisis de fotos de calle con IA tiene costo: ${c.fotos} fotos${P} · Street View ${gmUsd_(c.sv)} · análisis IA ${gmUsd_(c.ia)} · imágenes satelitales ${gmUsd_(c.sat)} = <b>${gmUsd_(c.fo)}</b>.` : '';
-    if (p === 4) return o.trafico ? `<b>⚠ Aviso:</b> cada franja día-hora del monitoreo de tráfico cuesta ${c.sent} sentidos${c.estim ? ' (estimado; previsualiza para afinar)' : ''} × ${gmUsd_(GMW_PR.ruta * GMW_X)} = <b>${gmUsd_(c.sent * GMW_PR.ruta * GMW_X)}</b>. El total depende de los días y horas del paso 5.` : '';
+    if (p === 4) return o.trafico ? `<b>⚠ Aviso:</b> el tráfico se consulta por cada sentido de cada vialidad seleccionada (2 si es de doble sentido, 1 si es de un solo sentido). ${c.estim ? 'Estimado con las vialidades preseleccionadas (previsualiza para afinarlo): ' : 'Con tu selección: '}<b>${c.sent} sentidos</b>. Cada consulta cuesta ${gmUsd_(GMW_PR.ruta * GMW_X)}, así que cada día y hora que elijas en el paso 5 te costará ${c.sent} × ${gmUsd_(GMW_PR.ruta * GMW_X)} = <b>${gmUsd_(c.sent * GMW_PR.ruta * GMW_X)}</b>.` : '';
     if (p === 5) return o.trafico ? `<b>⚠ Aviso:</b> ${GMW.dias.length} días × ${GMW.horas.length} horas × ${c.sent} sentidos = ${c.calls} consultas de tráfico · <b>${gmUsd_(c.tr)}</b>.` : '';
     return ''; }
   if (t === 'fotos') return `💲 Costo estimado de fotos: ${c.fotos} fotos · Street View ${gmUsd_(c.sv)} · análisis IA ${gmUsd_(c.ia)} · imágenes satelitales ${gmUsd_(c.sat)} = <b>${gmUsd_(c.fo)}</b>`;
