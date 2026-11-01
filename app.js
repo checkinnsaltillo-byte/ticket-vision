@@ -79242,7 +79242,7 @@ function gmDone_() {
 function gmRender_() {
   const host = document.getElementById('geometrika-host'); if (!host) return; if (GMW.map) { try { GMW.map.remove(); } catch (_) { } GMW.map = GMW.pin = GMW.circ = null; }
   host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : GMW.vista === 'analizando' ? gmAn_() : gmWizard_();
-  host.insertAdjacentHTML('afterbegin', '<span class="gmw-beta">vBeta de prueba</span>');
+  host.insertAdjacentHTML('afterbegin', '<span class="gmw-beta">v.Beta</span>');
   if (GMW.vista === 'landing') gmCargaLista_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
 }
@@ -79474,12 +79474,15 @@ async function gmSondea_(id) {
 function gmListaHtml_() {
   const L = GMW.lista; if (L === 'err') return '<p class="gmw-mu">no se pudo cargar la lista de proyectos (el servidor se está actualizando)</p>'; if (!L) return ''; if (!L.length) return '';
   const est = { registrado: 'registrado', analizando: 'analizando…', listo: 'analizado', error: 'con error' };
-  return `<h3 class="gm-plt">Mis proyectos</h3>${L.map(p => `<div class="gm-pr"><div><b>${gmEsc_(p.perfil || 'Proyecto')}</b><span>${gmEsc_(p.direccion || (p.lat != null ? (+p.lat).toFixed(4) + ', ' + (+p.lng).toFixed(4) : ''))}${p.puntos > 1 ? ' · ' + p.puntos + ' puntos' : ''} · ${p.radio} m · ${p.creado ? new Date(p.creado).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span></div><span class="gm-pe ${p.estado}">${est[p.estado] || p.estado}</span>${p.estado === 'listo' ? `<a class="gm-btn gmw-sm" href="${GM_MAQ_()}?id=${gmEsc_(p.id)}">Abrir maqueta →</a><a class="gmw-bk gm-pa" onclick="gmReconstruir_('${gmEsc_(p.id)}', ${p.puntos || 1}, this)">Reconstruir maqueta</a>` : p.estado === 'analizando' ? `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}')">Ver avance</a>` : `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}',1)">Analizar</a>`}<a class="gmw-bk gm-pa" onclick="gmElimina_('${gmEsc_(p.id)}')">Eliminar</a></div>`).join('')}`;
+  return `<h3 class="gm-plt">Mis proyectos</h3>${L.map(p => `<div class="gm-pr"><div><b>${gmEsc_(p.perfil || 'Proyecto')}</b><span>${gmEsc_(p.direccion || (p.lat != null ? (+p.lat).toFixed(4) + ', ' + (+p.lng).toFixed(4) : ''))}${p.puntos > 1 ? ' · ' + p.puntos + ' puntos' : ''} · ${p.radio} m · ${p.creado ? new Date(p.creado).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span></div><span class="gm-pe ${p.estado}">${est[p.estado] || p.estado}</span>${p.estado === 'listo' ? `<a class="gm-btn gmw-sm" href="${GM_MAQ_()}?id=${gmEsc_(p.id)}">Abrir maqueta →</a>` : p.estado === 'analizando' ? `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}')">Ver avance</a>` : `<a class="gm-btn gmw-sm" onclick="gmVerAn_('${gmEsc_(p.id)}',1)">Analizar</a>`}<div class="gm-km"><button type="button" class="gm-kb" aria-label="Más opciones" onclick="gmMenu_(event, this)">⋮</button><div class="gm-kmenu">${p.estado === 'listo' ? `<a onclick="gmReconstruir_('${gmEsc_(p.id)}', ${p.puntos || 1}, this)">Reconstruir maqueta</a>` : ''}<a onclick="gmElimina_('${gmEsc_(p.id)}')">Eliminar</a></div></div></div>`).join('')}`;
 }
 async function gmCargaLista_() {
   try { const t = await fetch(`${BACKEND}/geometrika/proyectos`).then(r => r.text()); const j = JSON.parse(t); GMW.lista = j.ok ? j.proyectos : 'err'; } catch (_) { GMW.lista = 'err'; }
   const b = document.getElementById('gm-lista'); if (b && GMW.vista === 'landing') b.innerHTML = gmListaHtml_();
 }
+// menú de tres puntos de cada proyecto
+function gmMenu_(e, b) { e.stopPropagation(); const m = b.nextElementSibling, abrir = !m.classList.contains('on'); document.querySelectorAll('.gm-kmenu.on').forEach(x => x.classList.remove('on')); if (abrir) m.classList.add('on'); }
+if (!window.__gmKm) { window.__gmKm = 1; document.addEventListener('click', e => { if (!e.target.closest('.gm-km')) document.querySelectorAll('.gm-kmenu.on').forEach(x => x.classList.remove('on')); }); }
 // Reconstruir maqueta: rehace el uso del suelo (satélite + capa Calles) de cada punto del proyecto sin volver a leer las fotos de calle
 async function gmReconstruir_(id, n, el) {
   if (!el || el.dataset.busy) return; el.dataset.busy = '1'; const t0 = el.textContent; let ok = 0, err = '';
