@@ -79143,7 +79143,7 @@ window.mcCsv_ = function () {
 // ║ tabla de disponibilidad de las fuentes de datos (estado en vivo).      ║
 // ╚═══════════════════════════════════════════════════════════════════════╝
 const GM_TKEY = 'AIzaSyA_-JCgn6M504YbM0xhrKtVYWdpt6q7AoY';   // llave de navegador restringida a Map Tiles API y a los dominios de Check Inn
-const GMW = { vista: 'landing', paso: 1, perfil: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, st: '', seq: 0, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, lat: 25.4232, lng: -101.0053, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '' };
+const GMW = { vista: 'landing', paso: 1, perfil: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, st: '', seq: 0, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmOn: false, grupo: null, layers: [], radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, dias: [1, 2, 3, 4, 5], horas: [], map: null, pin: null, circ: null, proy: null, enviando: false, err: '' };
 const GMW_VORD = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'motorway_link', 'trunk_link', 'primary_link', 'secondary_link', 'tertiary_link', 'unclassified', 'residential', 'living_street', 'service', 'road', 'track', 'busway', 'pedestrian', 'cycleway', 'footway', 'path', 'steps', 'bridleway', 'bus_guideway', 'corridor', 'raceway', 'escape', 'construction', 'proposed'];
 const GMW_VGRP = [['Clasificación de vialidades (las principales incluyen sus enlaces)', GMW_VORD.slice(0, 5).concat(['residential'])]], GMW_VTODAS = GMW_VORD.slice(0, 5).concat(['residential']);
 const gmClases_ = () => GMW.vial.clases.concat(GMW.vial.clases.filter(k => GMW_VORD.indexOf(k) < 5).map(k => k + '_link'));   // al elegir una principal se descargan también sus enlaces
@@ -79166,7 +79166,7 @@ function gmLanding_() {
 }
 function gmFicha_() {
   const d = GMW.dias.slice().sort((a, b) => (a || 7) - (b || 7)).map(x => GMW_DIAS.find(q => q[0] === x)[1]).join(' '), n = GMW.dias.length * GMW.horas.length, row = (k, v) => `<div class="gmw-r"><span>${k}</span><b>${v}</b></div>`;
-  return `<div class="gmw-fi"><div class="gmw-fh"><span>ficha de especificación</span><span>${GMW.proy ? 'registrado' : 'borrador'}</span></div><div class="gmw-fb">${row('perfil', gmEsc_(GMW.perfil || '—'))}${row('objetivo', GMW.objetivo.trim() ? gmEsc_(GMW.objetivo.trim().slice(0, 26)) + (GMW.objetivo.trim().length > 26 ? '…' : '') : '—')}${row('punto de interés', GMW.lat.toFixed(5) + ', ' + GMW.lng.toFixed(5))}${GMW.dir ? row('dirección', gmEsc_(GMW.dir.length > 34 ? GMW.dir.slice(0, 34) + '…' : GMW.dir)) : ''}${row('radio de maqueta', GMW.radio >= 50 ? GMW.radio + ' m' : '—')}${row('fotos de calle', GMW.ft.frente + ' + ' + GMW.ft.inmediato + ' + ' + GMW.ft.general)}${row('vialidades', GMW.vial.clases.length + ' clases · radio ' + GMW.vrad + ' m · pre ' + GMW.vial.pre)}${row('red vial (accesibilidad)', (GMW.rp / 1000).toLocaleString('es-MX') + ' km · locales ' + GMW.rl + ' m')}${row('red vial', 'openstreetmap')}${row('días', d || '—')}${row('horas', GMW.horas.length ? gmHorasTxt_() : '—')}${row('consultas de tráfico', n ? n + ' franjas día-hora' : '—')}</div></div>`;
+  return `<div class="gmw-fi"><div class="gmw-fh"><span>ficha de especificación</span><span>${GMW.proy ? 'registrado' : 'borrador'}</span></div><div class="gmw-fb">${row('perfil', gmEsc_(GMW.perfil || '—'))}${row('objetivo', GMW.objetivo.trim() ? gmEsc_(GMW.objetivo.trim().slice(0, 26)) + (GMW.objetivo.trim().length > 26 ? '…' : '') : '—')}${gmPts_().map((q, i, P) => row(P.length > 1 ? 'punto de interés ' + (i + 1) : 'punto de interés', q.lat.toFixed(5) + ', ' + q.lng.toFixed(5)) + (q.dir ? row(P.length > 1 ? 'dirección ' + (i + 1) : 'dirección', gmEsc_(q.dir.length > 34 ? q.dir.slice(0, 34) + '…' : q.dir)) : '')).join('')}${GMW.fm.length ? row('fotos en el mapa', GMW.fm.length + (GMW.fm.length === 1 ? ' punto' : ' puntos')) : ''}${row('radio de maqueta', GMW.radio >= 50 ? GMW.radio + ' m' : '—')}${row('fotos de calle', GMW.ft.frente + ' + ' + GMW.ft.inmediato + ' + ' + GMW.ft.general)}${row('vialidades', GMW.vial.clases.length + ' clases · radio ' + GMW.vrad + ' m · pre ' + GMW.vial.pre)}${row('red vial (accesibilidad)', (GMW.rp / 1000).toLocaleString('es-MX') + ' km · locales ' + GMW.rl + ' m')}${row('red vial', 'openstreetmap')}${row('días', d || '—')}${row('horas', GMW.horas.length ? gmHorasTxt_() : '—')}${row('consultas de tráfico', n ? n + ' franjas día-hora' : '—')}</div></div>`;
 }
 function gmHorasTxt_() { const h = GMW.horas.slice().sort((a, b) => a - b), g = []; let a = h[0], p = h[0]; for (let i = 1; i <= h.length; i++) { if (h[i] === p + 1) { p = h[i]; continue; } g.push(a === p ? String(a).padStart(2, '0') : String(a).padStart(2, '0') + '–' + String(p).padStart(2, '0')); a = p = h[i]; } return g.join(' · '); }
 function gmPie_() {
@@ -79198,16 +79198,17 @@ async function gmBuscar_() {
 async function gmElige_(i) {
   let r = (GMW.resultados || [])[i]; if (!r) return;
   if (r.pid) { try { const j = await fetch(`${BACKEND}/geometrika/lugar?id=${encodeURIComponent(r.pid)}&st=${GMW.st || ''}`).then(x => x.json()); if (!j.ok) throw new Error(j.error); r = { n: j.n || r.n, dir: j.dir || r.dir, lat: j.lat, lng: j.lng }; } catch (_) { GMW.err = 'No se pudo ubicar ese lugar'; gmUpd_(); return; } GMW.st = ''; } GMW.lat = r.lat; GMW.lng = r.lng; GMW.dir = r.dir || r.n; const qi = document.getElementById('gmw-q'); if (qi && r.n) qi.value = r.n; GMW.resultados = null; const box = document.getElementById('gmw-res'); if (box) box.innerHTML = gmResHtml_();
-  const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = r.lat.toFixed(6); if (b) b.value = r.lng.toFixed(6); if (GMW.map) { GMW.map.setView([r.lat, r.lng], 17); if (GMW.pin) GMW.pin.setLatLng([r.lat, r.lng]); } gmUpd_();
+  const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = r.lat.toFixed(6); if (b) b.value = r.lng.toFixed(6); if (GMW.map) GMW.map.setView([r.lat, r.lng], 17); gmSync_(); gmDibuja_(false);
 }
 function gmPasoHtml_() {
   const p = GMW.paso;
   if (p === 1) return `<div class="gmw-sb"><span class="gmw-lt"><i>a</i>Perfil</span><div class="gmw-ch">${GMW_PERFILES.map(x => `<button type="button" class="gmw-c${GMW.perfil === x ? ' on' : ''}" data-p="${gmEsc_(x)}">${gmEsc_(x)}</button>`).join('')}</div></div><div class="gmw-sb"><span class="gmw-lt"><i>b</i>Descríbelo con tus palabras</span><textarea id="gmw-obj" class="gmw-ta" rows="5" maxlength="1000" placeholder="qué decisión quieres tomar con este análisis">${gmEsc_(GMW.objetivo)}</textarea></div>`;
-  if (p === 2) return `<div class="gmw-sr"><input id="gmw-q" placeholder="buscar dirección o lugar: calle, número, colonia, ciudad" autocomplete="off"><button type="button" class="gmw-c" id="gmw-go">buscar</button></div><div id="gmw-res">${gmResHtml_()}</div><div id="gmw-map"></div><div class="gmw-fld"><label>lat <input id="gmw-lat" value="${GMW.lat.toFixed(6)}" inputmode="decimal"></label><label>lng <input id="gmw-lng" value="${GMW.lng.toFixed(6)}" inputmode="decimal"></label><span class="gmw-mu">clic en el mapa para fijar el punto</span></div>`;
+  if (p === 2) return `<div class="gmw-sr"><input id="gmw-q" placeholder="buscar dirección o lugar: calle, número, colonia, ciudad" autocomplete="off"><button type="button" class="gmw-c" id="gmw-go">buscar</button></div><div id="gmw-res">${gmResHtml_()}</div><div class="gmw-pl" id="gmw-pl">${gmPlHtml_()}</div><div id="gmw-map"></div><div class="gmw-fld"><label>lat <input id="gmw-lat" value="${GMW.lat.toFixed(6)}" inputmode="decimal"></label><label>lng <input id="gmw-lng" value="${GMW.lng.toFixed(6)}" inputmode="decimal"></label><span class="gmw-mu">clic en el mapa para fijar el punto</span></div>`;
   if (p === 3) return `<div id="gmw-map"></div>
     <div class="gmw-sb" style="margin-top:22px"><div class="gmw-fld" style="margin-top:0"><label>Radio (m) <input id="gmw-rad" value="${GMW.radio || ''}" inputmode="numeric" placeholder="50–600"></label>${[[100, '100 m'], [200, '200 m'], [400, '400 m'], [600, '600 m']].map(([v, l]) => `<button type="button" class="gmw-c" data-r="${v}">${l}</button>`).join('')}</div>
       <input id="gmw-rng" class="gmw-rng" type="range" min="0" max="600" step="10" value="${GMW.radio}"><div class="gmw-sc"><span>0 m</span><span>600 m</span></div><p class="gmw-mu" id="gmw-ar"></p></div>
-    <div class="gmw-sb"><div class="gmw-nf" style="margin-top:0"><label>Fotos frente a la propiedad<input id="gmw-ff" type="number" min="0" max="12" step="1" value="${GMW.ft.frente}"></label><label>Fotos del entorno inmediato<input id="gmw-fi" type="number" min="0" max="30" step="1" value="${GMW.ft.inmediato}"></label><label>Fotos del entorno general<input id="gmw-fg" type="number" min="0" max="60" step="2" value="${GMW.ft.general}"></label></div></div>`;
+    <div class="gmw-sb"><div class="gmw-nf" style="margin-top:0"><label>Fotos frente a la propiedad<input id="gmw-ff" type="number" min="0" max="12" step="1" value="${GMW.ft.frente}"></label><label>Fotos del entorno inmediato<input id="gmw-fi" type="number" min="0" max="30" step="1" value="${GMW.ft.inmediato}"></label><label>Fotos del entorno general<input id="gmw-fg" type="number" min="0" max="60" step="2" value="${GMW.ft.general}"></label></div>
+      <div class="gmw-fld" style="margin-top:18px"><button type="button" class="gmw-c${GMW.fmOn ? ' on' : ''}" id="gmw-fmt">${GMW.fmOn ? 'terminar de marcar' : '📷 marcar puntos en el mapa'}</button><a class="gmw-bk" id="gmw-fmc">limpiar</a><span class="gmw-mu" id="gmw-fmn"></span></div></div>`;
   if (p === 4) return `<div id="gmw-map"></div>
     <div class="gmw-sb" style="margin-top:22px"><span class="gmw-lt"><i>a</i>Vialidades para el monitoreo del tráfico</span><div style="height:12px"></div>
       <div class="gmw-fld" style="margin-top:0"><label>Radio (m) <input id="gmw-vrad" value="${GMW.vrad || ''}" inputmode="numeric" placeholder="50–1000"></label>${[[100, '100 m'], [200, '200 m'], [400, '400 m'], [600, '600 m']].map(([v, l]) => `<button type="button" class="gmw-c" data-vr="${v}">${l}</button>`).join('')}</div>
@@ -79240,37 +79241,71 @@ function gmRender_() {
   host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : gmWizard_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
 }
-function gmNuevo_(reset) { if (reset) Object.assign(GMW, { paso: 1, perfil: '', objetivo: '', dir: '', resultados: null, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, radio: 0, horas: [], dias: [1, 2, 3, 4, 5], proy: null, err: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function gmNuevo_(reset) { if (reset) Object.assign(GMW, { paso: 1, perfil: '', objetivo: '', dir: '', lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmOn: false, resultados: null, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, radio: 0, horas: [], dias: [1, 2, 3, 4, 5], proy: null, err: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function gmVolver_() { GMW.vista = 'landing'; gmRender_(); }
-function gmPaso_(n) { if (n < 1 || n > 6) return; GMW.paso = n; GMW.err = ''; gmRender_(); }
+function gmPaso_(n) { if (n < 1 || n > 6) return; gmPts_(); GMW.fmOn = false; GMW.paso = n; GMW.err = ''; gmRender_(); }
 function gmUpd_() { const f = document.getElementById('gmw-ficha'), p = document.getElementById('gmw-pie'); if (f) f.innerHTML = gmFicha_(); if (p) p.innerHTML = gmPie_(); }
+function gmPts_() { GMW.pts[GMW.sel] = { lat: GMW.lat, lng: GMW.lng, dir: GMW.dir || '' }; return GMW.pts; }
+function gmPlHtml_() {
+  const P = gmPts_(); return `<div class="gmw-ch">${P.map((q, i) => `<button type="button" class="gmw-c${i === GMW.sel ? ' on' : ''}" data-pt="${i}">Punto ${i + 1}${P.length > 1 ? ' <span data-rmpt="' + i + '" title="quitar este punto">✕</span>' : ''}</button>`).join('')}${P.length < 10 ? '<button type="button" class="gmw-c gmw-dash" id="gmw-addpt">＋ agregar punto</button>' : ''}</div>`;
+}
+function gmSync_() {
+  const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = GMW.lat.toFixed(6); if (b) b.value = GMW.lng.toFixed(6);
+  const pl = document.getElementById('gmw-pl'); if (pl) pl.innerHTML = gmPlHtml_(); const rs = document.getElementById('gmw-res'); if (rs && !GMW.buscando && !GMW.resultados) rs.innerHTML = gmResHtml_(); gmUpd_();
+}
+function gmSel_(i) { gmPts_(); if (i < 0 || i >= GMW.pts.length) return; GMW.sel = i; const q = GMW.pts[i]; GMW.lat = q.lat; GMW.lng = q.lng; GMW.dir = q.dir || ''; gmSync_(); gmDibuja_(false); }
+function gmAddPt_() { gmPts_(); if (GMW.pts.length >= 10) return; const c = GMW.map ? GMW.map.getCenter() : { lat: GMW.lat, lng: GMW.lng }; GMW.pts.push({ lat: c.lat, lng: c.lng, dir: '' }); gmSel_(GMW.pts.length - 1); }
+function gmDelPt_(i) { gmPts_(); if (GMW.pts.length <= 1) return; GMW.pts.splice(i, 1); if (i < GMW.sel) GMW.sel--; GMW.sel = Math.max(0, Math.min(GMW.sel, GMW.pts.length - 1)); const q = GMW.pts[GMW.sel]; GMW.lat = q.lat; GMW.lng = q.lng; GMW.dir = q.dir || ''; gmSync_(); gmDibuja_(false); }
+function gmFmUpd_() {
+  const n = GMW.fm.length, t = document.getElementById('gmw-fmt'), c = document.getElementById('gmw-fmn'); if (t) { t.classList.toggle('on', GMW.fmOn); t.textContent = GMW.fmOn ? 'terminar de marcar' : '📷 marcar puntos en el mapa'; }
+  if (c) c.textContent = n ? n + (n === 1 ? ' punto de foto' : ' puntos de foto') + (GMW.fmOn ? ' · clic en el mapa para agregar, clic en un punto para quitarlo' : '') : (GMW.fmOn ? 'clic en el mapa para agregar un punto de foto' : 'ninguno: las fotos se eligen solas');
+  if (GMW.map) GMW.map.getContainer().style.cursor = GMW.fmOn ? 'crosshair' : '';
+}
+function gmDibuja_(ajusta) {
+  const L = window.L, m = GMW.map; if (!m || !L) return; (GMW.layers || []).forEach(l => m.removeLayer(l)); GMW.layers = []; const add = l => { l.addTo(m); GMW.layers.push(l); return l; }, P = gmPts_(), p = GMW.paso, multi = P.length > 1, fit = [];
+  const circ = (q, r, o) => add(L.circle([q.lat, q.lng], Object.assign({ radius: r, color: '#1f8a8a', weight: 1.4, fillColor: '#1f8a8a', fillOpacity: .08, interactive: false }, o || {})));
+  P.forEach((q, i) => {
+    const mk = add(L.marker([q.lat, q.lng], { icon: L.divIcon({ className: 'gmw-pin' + (i === GMW.sel ? ' sel' : ''), html: '<i>' + (multi ? i + 1 : '') + '</i>', iconSize: [26, 26], iconAnchor: [13, 13] }), draggable: p === 2, interactive: p === 2, keyboard: false }));
+    if (p === 2) { mk.on('click', () => gmSel_(i)); mk.on('dragend', () => { const ll = mk.getLatLng(); if (i !== GMW.sel) gmSel_(i); GMW.lat = ll.lat; GMW.lng = ll.lng; GMW.dir = ''; gmSync_(); gmDibuja_(false); }); } fit.push(mk);
+    if (p === 3 && GMW.radio >= 50) fit.push(circ(q, GMW.radio, { weight: 1.5 }));
+    if (p === 4) { if (GMW.vrad >= 50) circ(q, GMW.vrad, { weight: 1.5 }); fit.push(circ(q, GMW.rp, { fillOpacity: .05 })); circ(q, GMW.rl, { color: '#111', fillColor: '#111', fillOpacity: 0, dashArray: '4 4' }); }
+  });
+  if (p === 3) GMW.fm.forEach((q, i) => { const mk = add(L.marker([q.lat, q.lng], { icon: L.divIcon({ className: 'gmw-cam', html: '<i><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.6-2.4h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg></i>', iconSize: [22, 22], iconAnchor: [11, 11] }), keyboard: false })); mk.on('click', ev => { L.DomEvent.stopPropagation(ev); GMW.fm.splice(i, 1); gmDibuja_(false); gmFmUpd_(); gmUpd_(); }); fit.push(mk); });
+  GMW.grupo = fit.length ? L.featureGroup(fit) : null; if (ajusta) gmAjusta_();
+}
+function gmAjusta_() { const g = GMW.grupo, m = GMW.map; if (!g || !m) return; const b = g.getBounds(); if (b.isValid() && !b.getNorthEast().equals(b.getSouthWest())) m.fitBounds(b, { padding: [24, 24], maxZoom: 17 }); }
+function gmClick_(e) {
+  if (GMW.paso === 2) { GMW.lat = e.latlng.lat; GMW.lng = e.latlng.lng; GMW.dir = ''; gmSync_(); gmDibuja_(false); }
+  else if (GMW.paso === 3 && GMW.fmOn && GMW.fm.length < 60) { GMW.fm.push({ lat: e.latlng.lat, lng: e.latlng.lng }); gmDibuja_(false); gmFmUpd_(); gmUpd_(); }
+}
 function gmMapa_() {
   _rsvEnsureLeaflet_(async () => {
     const el = document.getElementById('gmw-map'); if (!el || !window.L) return; const L = window.L, g = await gmTiles_(); if (!document.getElementById('gmw-map')) return; const m = GMW.map = L.map(el, { zoomControl: true, maxZoom: g ? 20 : 16 }).setView([GMW.lat, GMW.lng], GMW.paso === 3 ? 15 : GMW.paso === 4 ? 11 : (GMW.dir ? 16 : 12));
     if (g) L.tileLayer(g, { maxZoom: 20, attribution: 'Map data © Google' }).addTo(m); else L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: '© Esri' }).addTo(m);
-    GMW.pin = L.marker([GMW.lat, GMW.lng], { icon: L.divIcon({ className: 'gmw-pin', html: '<i></i>', iconSize: [26, 26], iconAnchor: [13, 13] }), interactive: false }).addTo(m);
-    if (GMW.paso === 2) m.on('click', e => { GMW.lat = e.latlng.lat; GMW.lng = e.latlng.lng; GMW.dir = ''; GMW.pin.setLatLng(e.latlng); const a = document.getElementById('gmw-lat'), b = document.getElementById('gmw-lng'); if (a) a.value = GMW.lat.toFixed(6); if (b) b.value = GMW.lng.toFixed(6); gmUpd_(); });
-    if (GMW.paso === 3) gmRadio_(GMW.radio, true); if (GMW.paso === 4) { gmVrad_(GMW.vrad, false); gmVial_(true); } setTimeout(() => m.invalidateSize(), 60);
+    m.on('click', gmClick_); GMW.layers = []; if (GMW.paso === 3) gmRadio_(GMW.radio, true); else if (GMW.paso === 4) { gmVrad_(GMW.vrad, false); gmDibuja_(true); } else gmDibuja_(GMW.pts.length > 1); gmFmUpd_(); setTimeout(() => m.invalidateSize(), 60);
   });
 }
 function gmRadio_(r, ajusta) {
-  GMW.radio = Math.max(0, Math.min(600, Math.round(r) || 0)); if (!GMW.rm) GMW.rl = Math.max(100, Math.min(GMW.rp, GMW.radio)); if (!GMW.vm) GMW.vrad = GMW.radio; /* el radio de vialidades sigue al de la maqueta mientras no se cambie a mano */ const L = window.L, m = GMW.map; if (m && L) { if (GMW.circ) { m.removeLayer(GMW.circ); GMW.circ = null; } if (GMW.radio >= 50 && GMW.paso === 3) { GMW.circ = L.circle([GMW.lat, GMW.lng], { radius: GMW.radio, color: '#1f8a8a', weight: 1.5, fillColor: '#1f8a8a', fillOpacity: .08 }).addTo(m); if (ajusta !== false) m.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 15 }); } }
+  GMW.radio = Math.max(0, Math.min(600, Math.round(r) || 0)); if (!GMW.rm) GMW.rl = Math.max(100, Math.min(GMW.rp, GMW.radio)); if (!GMW.vm) GMW.vrad = GMW.radio; /* el radio de vialidades y el de calles locales siguen al de la maqueta mientras no se cambien a mano */
+  gmDibuja_(ajusta !== false);
   const rng = document.getElementById('gmw-rng'), inp = document.getElementById('gmw-rad'), ar = document.getElementById('gmw-ar'); if (rng && +rng.value !== GMW.radio) rng.value = GMW.radio; if (inp && document.activeElement !== inp) inp.value = GMW.radio || '';
   if (ar) ar.innerHTML = `área de influencia estimada <b>${(Math.PI * (GMW.radio / 1000) ** 2).toLocaleString('es-MX', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} km²</b>`;
   document.querySelectorAll('.gmw-c[data-r]').forEach(b => b.classList.toggle('on', +b.dataset.r === GMW.radio)); gmUpd_();
 }
 function gmVrad_(r, ajusta) {
-  GMW.vrad = Math.max(0, Math.min(1000, Math.round(r) || 0)); const L = window.L, m = GMW.map; if (m && L) { if (GMW.circ) { m.removeLayer(GMW.circ); GMW.circ = null; } if (GMW.vrad >= 50 && GMW.paso === 4) { GMW.circ = L.circle([GMW.lat, GMW.lng], { radius: GMW.vrad, color: '#1f8a8a', weight: 1.5, fillColor: '#1f8a8a', fillOpacity: .08 }).addTo(m); if (ajusta !== false) m.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 17 }); } }
+  GMW.vrad = Math.max(0, Math.min(1000, Math.round(r) || 0)); gmDibuja_(false);
   const rng = document.getElementById('gmw-vrng'), inp = document.getElementById('gmw-vrad'); if (rng && +rng.value !== GMW.vrad) rng.value = GMW.vrad; if (inp && document.activeElement !== inp) inp.value = GMW.vrad || '';
   document.querySelectorAll('.gmw-c[data-vr]').forEach(b => b.classList.toggle('on', +b.dataset.vr === GMW.vrad)); gmUpd_();
 }
-function gmVial_(ajusta) {
-  const L = window.L, m = GMW.map; if (m && L) { (GMW.circs || []).forEach(c => m.removeLayer(c)); GMW.circs = [[GMW.rp, '#1f8a8a', .05], [GMW.rl, '#111', .0]].map(([r, col, fo]) => L.circle([GMW.lat, GMW.lng], { radius: r, color: col, weight: 1.4, dashArray: col === '#111' ? '4 4' : null, fillColor: col, fillOpacity: fo }).addTo(m)); if (ajusta !== false) m.fitBounds(GMW.circs[0].getBounds(), { padding: [20, 20] }); }
-  gmUpd_();
-}
+function gmVial_(ajusta) { gmDibuja_(ajusta !== false); gmUpd_(); }
 function gmWiring_() {
   const body = document.getElementById('gmw-body'); if (!body) return;
   body.addEventListener('click', e => {
+    const rm = e.target.closest('[data-rmpt]'); if (rm) { e.stopPropagation(); gmDelPt_(+rm.dataset.rmpt); return; }
+    const pt = e.target.closest('[data-pt]'); if (pt) { gmSel_(+pt.dataset.pt); return; }
+    if (e.target.closest('#gmw-addpt')) { gmAddPt_(); return; }
+    if (e.target.closest('#gmw-fmt')) { GMW.fmOn = !GMW.fmOn; gmFmUpd_(); return; }
+    if (e.target.closest('#gmw-fmc')) { GMW.fm = []; gmDibuja_(false); gmFmUpd_(); gmUpd_(); return; }
     if (e.target.closest('#gmw-go')) { gmBuscar_(); return; } const gr = e.target.closest('[data-g]'); if (gr) { gmElige_(+gr.dataset.g); return; }
     const pf = e.target.closest('[data-p]'); if (pf) { GMW.perfil = GMW.perfil === pf.dataset.p ? '' : pf.dataset.p; body.querySelectorAll('[data-p]').forEach(b => b.classList.toggle('on', b.dataset.p === GMW.perfil)); gmUpd_(); return; }
     const vc = e.target.closest('[data-vc]'); if (vc) { const k = vc.dataset.vc, ix = GMW.vial.clases.indexOf(k); if (ix >= 0) GMW.vial.clases.splice(ix, 1); else GMW.vial.clases.push(k); vc.classList.toggle('on'); gmUpd_(); return; }
@@ -79284,14 +79319,14 @@ function gmWiring_() {
   const num = (el, lo, hi) => Math.max(lo, Math.min(hi, Math.round(+el.value) || 0));
   body.addEventListener('input', e => { const id = e.target.id; if (id === 'gmw-ff') { GMW.ft.frente = num(e.target, 0, 12); gmUpd_(); return; } if (id === 'gmw-fi') { GMW.ft.inmediato = num(e.target, 0, 30); gmUpd_(); return; } if (id === 'gmw-fg') { GMW.ft.general = num(e.target, 0, 60); gmUpd_(); return; } if (id === 'gmw-rp') { GMW.rp = Math.max(1000, Math.min(5000, Math.round(+e.target.value) || 1000)); if (GMW.rl > GMW.rp) GMW.rl = GMW.rp; gmVial_(false); return; } if (id === 'gmw-rl') { GMW.rm = true; GMW.rl = Math.max(100, Math.min(GMW.rp, Math.round(+e.target.value) || 100)); gmVial_(false); return; } if (id === 'gmw-vp') { GMW.vial.pre = num(e.target, 0, 30); gmUpd_(); return; } });
   body.addEventListener('input', e => { if (e.target.id === 'gmw-q') gmSugerir_(e.target.value); else if (e.target.id === 'gmw-obj') { GMW.objetivo = e.target.value; gmUpd_(); } else if (e.target.id === 'gmw-rng') gmRadio_(+e.target.value, false); else if (e.target.id === 'gmw-vrng') { GMW.vm = true; gmVrad_(+e.target.value, false); } else if (e.target.id === 'gmw-vrad') { GMW.vm = true; gmVrad_(+e.target.value.replace(/\D/g, ''), false); } else if (e.target.id === 'gmw-rad') gmRadio_(+e.target.value.replace(/\D/g, ''), false); });
-  body.addEventListener('change', e => { if (e.target.id === 'gmw-vrng' || e.target.id === 'gmw-vrad') { if (GMW.circ && GMW.map) GMW.map.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 17 }); }
-    if (e.target.id === 'gmw-rng' || e.target.id === 'gmw-rad') { if (GMW.circ && GMW.map) GMW.map.fitBounds(GMW.circ.getBounds(), { padding: [20, 20], maxZoom: 17 }); }
-    if ((e.target.id === 'gmw-rp' || e.target.id === 'gmw-rl') && GMW.circs && GMW.map) GMW.map.fitBounds(GMW.circs[0].getBounds(), { padding: [20, 20] });
-    if (e.target.id === 'gmw-lat' || e.target.id === 'gmw-lng') { const la = parseFloat(document.getElementById('gmw-lat').value), lo = parseFloat(document.getElementById('gmw-lng').value); if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) { GMW.lat = la; GMW.lng = lo; if (GMW.map) { GMW.map.setView([la, lo]); GMW.pin.setLatLng([la, lo]); } gmUpd_(); } } });
+  body.addEventListener('change', e => { if (e.target.id === 'gmw-vrng' || e.target.id === 'gmw-vrad') gmAjusta_();
+    if (e.target.id === 'gmw-rng' || e.target.id === 'gmw-rad') gmAjusta_();
+    if (e.target.id === 'gmw-rp' || e.target.id === 'gmw-rl') gmAjusta_();
+    if (e.target.id === 'gmw-lat' || e.target.id === 'gmw-lng') { const la = parseFloat(document.getElementById('gmw-lat').value), lo = parseFloat(document.getElementById('gmw-lng').value); if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) { GMW.lat = la; GMW.lng = lo; GMW.dir = ''; if (GMW.map) GMW.map.setView([la, lo]); gmSync_(); gmDibuja_(false); } } });
 }
 async function gmEjecutar_() {
   if (gmFalta_().length || GMW.enviando) return; GMW.enviando = true; GMW.err = ''; gmUpd_();
-  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: GMW.dir, fotos: GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: GMW.lat, lng: GMW.lng, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: gmPts_()[0].dir, puntos: gmPts_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fm, fotos: GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPts_()[0].lat, lng: gmPts_()[0].lng, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   catch (e) { GMW.enviando = false; GMW.err = String(e.message || e); gmUpd_(); }
 }
 window.geometrikaInit = function () {
