@@ -79309,7 +79309,13 @@ function gmVTabla_() {
   if (!GMW.vias) return ''; const V = GMW.vias, g = {}; V.forEach(v => { (g[v.h] = g[v.h] || []).push(v); }); const orden = Object.keys(g).sort((x, y) => (GMW_VORD.indexOf(x) + 1 || 99) - (GMW_VORD.indexOf(y) + 1 || 99)), col = h => (typeof MC_TR_COL !== 'undefined' && MC_TR_COL[h]) || '#64748b';
   return `<div class="gmw-vtt"><span class="gmw-mu">validar y seleccionar las vialidades de interés</span><span class="gmw-q" style="margin:0"><a data-vs="1">todas</a><a data-vs="0">ninguna</a><a data-vs="2">las preseleccionadas</a></span></div><div class="gmw-vtb">${orden.map(h => { const n = g[h].filter(v => GMW.vsel.has(v.k)).length; return `<div class="gmw-vgh" data-vg="${h}"><span class="gmw-bx${n === g[h].length ? ' on' : n ? ' mid' : ''}"></span><i style="background:${col(h)}"></i><b>${gmEsc_(gmVCl_(h))}</b><small>${n}/${g[h].length}</small></div>${g[h].map(v => `<div class="gmw-vrw" data-vk="${gmEsc_(v.k)}"><span class="gmw-bx${GMW.vsel.has(v.k) ? ' on' : ''}"></span><span class="gmw-vnm"><b>${(GMW.vpre || []).includes(v.k) ? '<span class="gmw-star" title="preseleccionada">★</span> ' : ''}${gmEsc_(v.n)}</b><small>${v.o ? 'un sentido' : '2 sentidos'} · a ${v.d} m · tramo ${v.len} m</small></span></div>`).join('')}`; }).join('')}</div>`;
 }
-function gmVRefresca_() { const t = document.getElementById('gmw-vt'), m = document.getElementById('gmw-vst'); if (t) t.innerHTML = gmVTabla_(); if (m) m.innerHTML = gmVMsg_(); gmDibuja_(false); gmUpd_(); }
+function gmVRefresca_() {
+  const t = document.getElementById('gmw-vt'), m = document.getElementById('gmw-vst'), pos = [];   // se conserva el scroll: al reescribir la tabla la página se acortaba un instante y saltaba arriba
+  for (let e = t; e; e = e.parentElement) if (e.scrollTop) pos.push([e, e.scrollTop]); const sy = window.scrollY, lb = t && t.querySelector('.gmw-vtb'), ly = lb ? lb.scrollTop : 0;   // la lista tiene su propio scroll interno
+  if (t) { t.style.minHeight = t.offsetHeight + 'px'; t.innerHTML = gmVTabla_(); const nb = t.querySelector('.gmw-vtb'); if (nb) nb.scrollTop = ly; }
+  if (m) m.innerHTML = gmVMsg_(); gmDibuja_(false); gmUpd_();
+  pos.forEach(([e, y]) => { e.scrollTop = y; }); window.scrollTo(window.scrollX, sy); if (t) setTimeout(() => { t.style.minHeight = ''; }, 0);
+}
 function gmVTog_(k) { if (GMW.vsel.has(k)) GMW.vsel.delete(k); else GMW.vsel.add(k); gmVRefresca_(); }
 function gmVGrupo_(h) { const ks = (GMW.vias || []).filter(v => v.h === h).map(v => v.k), todas = ks.every(k => GMW.vsel.has(k)); ks.forEach(k => todas ? GMW.vsel.delete(k) : GMW.vsel.add(k)); gmVRefresca_(); }
 function gmVTodas_(m) { if (!GMW.vias) return; GMW.vsel = m === '1' ? new Set(GMW.vias.map(v => v.k)) : m === '2' ? new Set(GMW.vpre || []) : new Set(); gmVRefresca_(); }
