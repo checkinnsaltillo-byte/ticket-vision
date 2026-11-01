@@ -13047,7 +13047,7 @@ async function _gmCall(path, body) {
 }
 async function _gmInicia(path, body) { for (let i = 0; i < 60; i++) { try { return await _gmCall(path, body); } catch (e) { if (!e.ocupado) throw e; _gmJob.sub = "esperando a que termine otro proceso"; await _amSleep(10000); } } throw new Error("El servidor siguió ocupado con otro proceso; vuelve a intentarlo"); }
 async function _gmEspera(path, tmax) { const t0 = Date.now(); await _amSleep(2500); for (;;) { const j = await _gmCall(path); if (!j.running) { if (j.error) throw new Error(j.error); return j; } if (j.paso) _gmJob.sub = j.paso; if (Date.now() - t0 > tmax) throw new Error("El proceso tardó demasiado"); await _amSleep(4000); } }
-async function _gmGuarda(P) { P.analisis = { estado: _gmJob.running ? "analizando" : _gmJob.error ? "error" : "listo", paso: _gmJob.paso || "", sub: _gmJob.sub || "", punto: _gmJob.punto || 0, de: _gmJob.de || 0, error: _gmJob.error || "", inicio: _gmJob.inicio, fin: _gmJob.fin || null }; try { await _bnWriteGcs(`geometrika/proyectos/${P.id}.json`, P, null); } catch (_) {} }
+async function _gmGuarda(P) { P.analisis = { estado: _gmJob.running ? "analizando" : _gmJob.error ? "error" : "listo", paso: _gmJob.paso || "", sub: _gmJob.sub || "", punto: _gmJob.punto || 0, de: _gmJob.de || 0, pct: _gmJob.running ? _gmPct(_gmJob) : (!_gmJob.error && _gmJob.fin ? 100 : _gmPct(_gmJob)), hecho: _gmJob.hecho || [], upd: new Date().toISOString(), error: _gmJob.error || "", inicio: _gmJob.inicio, fin: _gmJob.fin || null }; try { await _bnWriteGcs(`geometrika/proyectos/${P.id}.json`, P, null); } catch (_) {} }
 // avance en %: cada punto pesa igual; dentro de un punto, fotos 20 · maqueta+IA 40 · red vial 5 · tráfico 35 (se reparte entre las fases activas)
 function _gmPesos(op) { const w = {}; if (op.fotos !== false) { w.fotos = 20; w.maq = 40; } w.vial = 5; if (op.trafico !== false && op.fotos !== false) w.traf = 35; const t = Object.values(w).reduce((a, b) => a + b, 0); Object.keys(w).forEach(k => { w[k] /= t; }); return w; }
 function _gmPct(J) {
@@ -13055,30 +13055,48 @@ function _gmPct(J) {
   return Math.max(0, Math.min(99, Math.round((((J.punto || 1) - 1) + (J.acum || 0) + w * f) / J.de * 100)));
 }
 async function _gmAnaliza(P) {
-  const op = P.opciones || {}, de = P.puntos.length, F = P.fotos || {}; let NC = Math.min(12, F.frente || 0), NF = Math.min(60, (F.inmediato || 0) + (F.general || 0)); if (NF + NC < 4) { NC = 4; NF = 6; }
+  const op = P.opciones || {}, de = P.puntos.length, F = P.fotos || {}, hecho = _gmJob.hecho || (_gmJob.hecho = []); let NC = Math.min(12, F.frente || 0), NF = Math.min(60, (F.inmediato || 0) + (F.general || 0)); if (NF + NC < 4) { NC = 4; NF = 6; }
+  const ya = (k, f) => hecho.includes(k + ":" + f), fin = async (k, f) => { hecho.push(k + ":" + f); await _gmGuarda(P); };   // etapas terminadas: si el servidor se reinicia, el análisis sigue desde la última
   for (let k = 0; k < de; k++) {
-    const id = _gmPid(P.id, k); _gmJob.punto = k + 1; _gmJob.de = de; _gmJob.pesos = _gmPesos(op); _gmJob.acum = 0; _gmJob.fase = ""; const pre = de > 1 ? `Punto ${k + 1} de ${de} · ` : "";
+    const id = _gmPid(P.id, k); _gmJob.punto = k + 1; _gmJob.de = de; _gmJob.pesos = _gmPesos(op); _gmJob.acum = 0; _gmJob.fase = ""; const pre = de > 1 ? `Punto ${k + 1} de ${de} · ` : "", W = _gmJob.pesos;
     if (op.fotos !== false) {
-      _gmJob.fase = "fotos"; _gmJob.paso = pre + "Fotos de calle (Street View)"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/entorno/fotos", { id, radio: P.radio, fotos: NF, frente: NC }); await _gmEspera("/mercado/entorno/fotos/estado", 20 * 60000); _gmJob.acum += _gmJob.pesos.fotos; _gmJob.fase = "maq";
-      _gmJob.paso = pre + "Maqueta y lectura de fotos con IA"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/maqueta/generar", { id }); await _gmEspera("/mercado/maqueta/estado", 40 * 60000); _gmJob.acum += _gmJob.pesos.maq;
+      if (!ya(k, "fotos")) { _gmJob.fase = "fotos"; _gmJob.paso = pre + "Fotos de calle (Street View)"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/entorno/fotos", { id, radio: P.radio, fotos: NF, frente: NC }); await _gmEspera("/mercado/entorno/fotos/estado", 20 * 60000); await fin(k, "fotos"); }
+      _gmJob.acum += W.fotos;
+      if (!ya(k, "maq")) { _gmJob.fase = "maq"; _gmJob.paso = pre + "Maqueta y lectura de fotos con IA"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/maqueta/generar", { id }); await _gmEspera("/mercado/maqueta/estado", 40 * 60000); await fin(k, "maq"); }
+      _gmJob.acum += W.maq;
     }
-    _gmJob.fase = "vial"; await _gmInicia("/mercado/maqueta/vial", { id, R: P.redVial.principales, Rloc: P.redVial.locales, cl: P.vialidades.clases }); _gmJob.acum += _gmJob.pesos.vial;
-    if (op.trafico !== false && op.fotos !== false) {
+    if (!ya(k, "vial")) { _gmJob.fase = "vial"; await _gmInicia("/mercado/maqueta/vial", { id, R: P.redVial.principales, Rloc: P.redVial.locales, cl: P.vialidades.clases }); await fin(k, "vial"); }
+    _gmJob.acum += W.vial;
+    if (op.trafico !== false && op.fotos !== false && !ya(k, "traf")) {
       _gmJob.fase = "traf"; _gmJob.paso = pre + "Tráfico en vialidades (Google Routes)"; _gmJob.sub = ""; await _gmGuarda(P); const sel = (P.vialidades.seleccion || []).length ? P.vialidades.seleccion : [];
       await _gmInicia("/mercado/trafico/consultar", { id, cfg: { tramo: P.vialidades.tramo, dias: P.dias, horas: P.horas, maxVias: sel.length ? 30 : P.vialidades.preseleccionar, sel, clases: P.vialidades.clases } });
       for (let i = 0; i < 400; i++) { await _amSleep(5000); const e = await _gmCall(`/mercado/trafico/estado?id=${id}`); if (e.done != null && e.total) _gmJob.sub = `${e.done} de ${e.total} consultas`; if (!e.running) { if (e.error) throw new Error(e.error); break; } }
+      await fin(k, "traf");
     }
   }
 }
+// arranca (o reanuda con `hecho`) el análisis de un proyecto; latido cada 15 s en el proyecto para que otra instancia sepa que sigue vivo
+function _gmArranca(P, hecho) {
+  _gmJob = { running: true, id: P.id, paso: hecho && hecho.length ? "Reanudando" : "Iniciando", sub: "", punto: 0, de: P.puntos.length, hecho: hecho ? hecho.slice() : [], inicio: (P.analisis && hecho && hecho.length && P.analisis.inicio) || new Date().toISOString(), upd: new Date().toISOString() };
+  const t = setInterval(() => { _gmJob.upd = new Date().toISOString(); _gmGuarda(P); }, 15000);
+  _gmGuarda(P).then(() => _gmAnaliza(P)).then(() => { _gmJob.paso = "Listo"; _gmJob.sub = ""; }).catch(e => { _gmJob.error = String(e.message || e); console.warn("[geometrika]", P.id, _gmJob.paso, e.message); }).finally(async () => { clearInterval(t); _gmJob.running = false; _gmJob.fin = new Date().toISOString(); await _gmGuarda(P); });
+}
+// vigilante: si quedó un análisis a medias (reinicio o despliegue) y nadie le da latido, se reanuda desde la última etapa terminada
+async function _gmVigila() {
+  if (_gmJob.running) return;
+  try { const nombres = (await _gcsList("geometrika/proyectos/")).filter(n => /\/9\d{13}\.json$/.test(n)).sort().reverse().slice(0, 10);
+    for (const n of nombres) { const { data: P } = await _bnReadGcs(n), a = P && P.analisis; if (!a || a.estado !== "analizando") continue; if (Date.now() - Date.parse(a.upd || a.inicio || 0) < 60000) continue; if (Date.now() - Date.parse(a.inicio || 0) > 6 * 3600e3) continue;
+      console.log("[geometrika] reanudando análisis", P.id, "hecho:", (a.hecho || []).join(",")); _gmArranca(P, a.hecho || []); return; } } catch (e) { console.warn("[geometrika] vigilante:", e.message); }
+}
+setTimeout(_gmVigila, 45000); setInterval(_gmVigila, 120000);
 app.post("/geometrika/analizar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
     const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
     if (_gmJob.running && Date.now() - Date.parse(_gmJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay un análisis en curso" });
     const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
-    _gmJob = { running: true, id, paso: "Iniciando", sub: "", punto: 0, de: P.puntos.length, inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _gmJob.upd = new Date().toISOString(); }, 15000);
-    _gmGuarda(P).then(() => _gmAnaliza(P)).then(() => { _gmJob.paso = "Listo"; _gmJob.sub = ""; }).catch(e => { _gmJob.error = String(e.message || e); console.warn("[geometrika]", id, _gmJob.paso, e.message); }).finally(async () => { clearInterval(t); _gmJob.running = false; _gmJob.fin = new Date().toISOString(); await _gmGuarda(P); });
-    res.json({ ok: true });
+    const a = P.analisis; if (a && a.estado === "analizando" && Date.now() - Date.parse(a.upd || 0) < 60000) return res.status(409).json({ ok: false, error: "Ya hay un análisis en curso" });
+    _gmArranca(P, null); res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/geometrika/proyectos", async (req, res) => {
@@ -13092,7 +13110,9 @@ app.get("/geometrika/proyectos", async (req, res) => {
 app.get("/geometrika/analizar/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try { const id = String(req.query.id || "").replace(/\D/g, ""); res.set("Cache-Control", "no-store"); if (_gmJob.id === id) return res.json({ ok: true, running: !!_gmJob.running, pct: _gmJob.running ? _gmPct(_gmJob) : (!_gmJob.error && _gmJob.fin ? 100 : _gmPct(_gmJob)), paso: _gmJob.paso, sub: _gmJob.sub, punto: _gmJob.punto, de: _gmJob.de, error: _gmJob.error || "", listo: !_gmJob.running && !_gmJob.error && !!_gmJob.fin });
-    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`), a = P && P.analisis; if (!a) return res.json({ ok: true, running: false, paso: "", error: "", listo: false }); res.json({ ok: true, running: false, paso: a.paso, sub: a.sub, punto: a.punto, de: a.de, error: a.estado === "analizando" ? "El análisis se interrumpió (el servidor se reinició). Vuelve a pulsar Analizar." : a.error, listo: a.estado === "listo" });
+    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`), a = P && P.analisis; if (!a) return res.json({ ok: true, running: false, paso: "", error: "", listo: false });
+    if (a.estado === "analizando") { const vivo = Date.now() - Date.parse(a.upd || 0) < 60000; return res.json({ ok: true, running: true, pct: a.pct || 0, paso: vivo ? a.paso : "Reanudando el análisis tras un reinicio del servidor", sub: vivo ? a.sub : "continúa desde la última etapa terminada", punto: a.punto, de: a.de, error: "", listo: false }); }
+    res.json({ ok: true, running: false, pct: a.estado === "listo" ? 100 : (a.pct || 0), paso: a.paso, sub: a.sub, punto: a.punto, de: a.de, error: a.error, listo: a.estado === "listo" });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Negocios y establecimientos en el radio de influencia (Google Places API (New) · Nearby Search) ──
