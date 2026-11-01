@@ -14093,6 +14093,22 @@ app.post("/mercado/maqueta/superficies-prueba", async (req, res) => {
   try { const b = req.body || {}, lat = +b.lat, lng = +b.lng, R = Math.max(100, Math.min(400, +b.radio || 200)), key = process.env.GOOGLE_MAPS_KEY; if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180) || !key) return res.status(400).json({ ok: false });
     const r = await _mqSat(lat, lng, R, key, {}, { fresh: !!b.fresh }); res.json({ ok: true, lat, lng, R, areas: r.sat.areas, ia: r.sat.ia }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Ediciones de la maqueta (eliminar edificios, agregar áreas verdes, edificios genéricos, estacionamientos, canchas…): se guardan aparte de la escena y se aplican al abrirla
+const _ED_TIPOS = ["edificio", "verde", "arbol", "estacionamiento", "cancha", "alberca", "solar"];
+const _edNum = n => Math.round(+n * 10) / 10;
+function _edLimpia(items) {
+  const out = []; (Array.isArray(items) ? items : []).slice(0, 600).forEach(o => { if (!o || (o.op !== "del" && o.op !== "add")) return;
+    const g = Array.isArray(o.g) ? o.g.slice(0, 200).filter(p => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1])).map(p => [_edNum(p[0]), _edNum(p[1])]) : null, c = Array.isArray(o.c) && isFinite(o.c[0]) && isFinite(o.c[1]) ? [_edNum(o.c[0]), _edNum(o.c[1])] : null;
+    if (o.op === "del") { if (g && g.length >= 3) out.push({ op: "del", g, n: String(o.n || "").slice(0, 40) }); else if (c) out.push({ op: "del", c, r: Math.max(1, Math.min(40, +o.r || 5)), n: String(o.n || "").slice(0, 40) }); return; }
+    if (!_ED_TIPOS.includes(o.t)) return; if (o.t === "arbol") { if (c) out.push({ op: "add", t: "arbol", c }); return; } if (g && g.length >= 3) out.push({ op: "add", t: o.t, k: String(o.k || "").slice(0, 16), h: Math.max(2, Math.min(200, +o.h || 9)), g }); });
+  return out;
+}
+app.get("/mercado/maqueta/ediciones", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); res.set("Cache-Control", "no-store"); const { data } = await _bnReadGcs(`mercado/maqueta/ed/${id}.json`); res.json({ ok: true, ed: data && Array.isArray(data.items) ? data : { items: [] } }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/maqueta/ediciones", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
+  try { const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (id.length < 6) return res.status(400).json({ ok: false, error: "Id no válido" }); const items = _edLimpia((req.body || {}).items);
+    await _bnWriteGcs(`mercado/maqueta/ed/${id}.json`, { v: 1, at: new Date().toISOString(), items }, null); res.json({ ok: true, n: items.length }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/mercado/maqueta/uso-suelo", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const id = String((req.body || {}).id || "").replace(/\D/g, ""), key = process.env.GOOGLE_MAPS_KEY; if (!id || !key) return res.status(400).json({ ok: false, error: "Falta el id o la clave de Google Maps" });
