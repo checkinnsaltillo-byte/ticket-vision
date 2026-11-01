@@ -6,7 +6,7 @@ TV="$(cd "$(dirname "$0")/.." && pwd)"
 CA="$TV/../../Check in"; OUT="$CA/geometrika"; mkdir -p "$OUT"
 V=$(grep -o 'app.js?v=[0-9]*' "$TV/index.html" | head -1 | cut -d= -f2)
 HASH=$(printf geo123 | shasum -a 256 | cut -d' ' -f1)
-HASH2=$(printf geometrika11235813 | shasum -a 256 | cut -d' ' -f1)   # ve precios reales
+HASH2=$(printf 1123 | shasum -a 256 | cut -d' ' -f1)   # ve precios reales
 n=$(grep -n '^const GM_MAQ_' "$TV/app.js" | cut -d: -f1)
 tail -n +$n "$TV/app.js" > /tmp/gm_block.js
 "$HOME/opt/terser/node_modules/.bin/terser" /tmp/gm_block.js -c -m --ecma 2020 -o "$OUT/geometrika.js"
