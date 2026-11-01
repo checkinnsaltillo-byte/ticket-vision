@@ -13552,7 +13552,7 @@ async function _vialWays(lat, lng, R, test) {
     if (ok) out.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); }
   return out;
 }
-app.get("/geometrika/vial/estado", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const V = await _vialCarga(); res.set("Cache-Control", "no-store"); const lat = +req.query.lat, lng = +req.query.lng, R = +req.query.R || 400; let prueba = null; if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) { const v = await _vialWays(lat, lng, R, () => true), e = await _entElems(lat, lng, R); const c = {}; (e || []).forEach(x => { const k = x.type === "way" ? (x.tags.building ? "edificios" : x.tags.power ? "alta_tension" : x.tags.railway ? "ferrocarril" : "cauces") : (x.tags.natural || x.tags.highway || x.tags.public_transport || x.tags.power); c[k] = (c[k] || 0) + 1; }); const pl = await _entPois(lat, lng, R), pc = {}; (pl || []).forEach(x => { const k = x.tags.amenity || x.tags.shop || x.tags.leisure || x.tags.tourism || x.tags.place; pc[k] = (pc[k] || 0) + 1; }); prueba = { vias: v ? v.length : null, entorno: e ? c : null, lugares: pl ? pc : null }; }
+app.get("/geometrika/vial/estado", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const V = await _vialCarga(); res.set("Cache-Control", "no-store"); const lat = +req.query.lat, lng = +req.query.lng, R = +req.query.R || 400; let prueba = null; if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) { const v = await _vialWays(lat, lng, R, () => true), e = await _entElems(lat, lng, R); const c = {}; (e || []).forEach(x => { const k = x.type === "way" ? (x.tags.building ? "edificios" : x.tags.power ? "alta_tension" : x.tags.railway ? "ferrocarril" : "cauces") : (x.tags.natural || x.tags.highway || x.tags.public_transport || x.tags.power); c[k] = (c[k] || 0) + 1; }); const pl = await _entPois(lat, lng, R), pc = {}; (pl || []).forEach(x => { const k = x.tags.amenity || x.tags.shop || x.tags.leisure || x.tags.tourism || x.tags.place; pc[k] = (pc[k] || 0) + 1; }); prueba = { vias: v ? v.length : null, entorno: e ? c : null, lugares: pl ? pc : null, huellas: await _huellasLocal(lat, lng, Math.min(R, 600)).then(h => h ? h.length : null) }; }
   res.json({ ok: true, cargada: !!V, vias: V ? V.n : 0, at: V ? V.at : null, bbox: V ? V.bbox : null, prueba }); });
 // ── Entorno local de OpenStreetMap (edificios, árboles, luminarias, semáforos, cruces, paradas, líneas de alta tensión, vías férreas, cauces): cuadros de 0.1° en osm/entorno/<i>_<j>.json, cargados a demanda
 const _ENT = { idx: undefined, tiles: new Map() };
@@ -13665,7 +13665,18 @@ async function _mqLinks() {
   txt.split("\n").forEach(l => { if (!l.startsWith("Mexico,")) return; const c = l.split(","); m[c[1]] = c[2]; }); _mqDl = { t: Date.now(), m }; return m;
 }
 const _mqQk = (lat, lng, z) => { const n = 2 ** z, x = Math.floor((lng + 180) / 360 * n), sn = Math.sin(lat * Math.PI / 180), y = Math.floor((0.5 - Math.log((1 + sn) / (1 - sn)) / (4 * Math.PI)) * n); let q = ""; for (let i = z; i > 0; i--) { let d = 0; const mk = 1 << (i - 1); if (x & mk) d += 1; if (y & mk) d += 2; q += d; } return q; };
+// huellas de edificios locales (osm/huellas/<i>_<j>.json, Microsoft ML Building Footprints): sin descargar los archivos de 20 MB en cada análisis
+const _HUE = { idx: undefined, tiles: new Map() };
+async function _huellasLocal(lat, lng, R) {
+  if (_HUE.idx === undefined) { try { const { data } = await _bnReadGcs("osm/huellas/index.json"); _HUE.idx = data && data.tiles ? { bbox: data.bbox, C: data.celda || 0.1, set: new Set(data.tiles) } : null; } catch (_) { return null; } }
+  const I = _HUE.idx; if (!I) return null; const P = _mqProy(lat, lng), dl = R / P.ky, dn = R / P.kx, [S, W, N, E] = I.bbox; if (lat - dl * 1.1 < S || lat + dl * 1.1 > N || lng - dn * 1.1 < W || lng + dn * 1.1 > E) return null;
+  const out = [];
+  for (let i = Math.floor((lat - dl * 1.1) / I.C); i <= Math.floor((lat + dl * 1.1) / I.C); i++) for (let j = Math.floor((lng - dn * 1.1) / I.C); j <= Math.floor((lng + dn * 1.1) / I.C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; let T = _HUE.tiles.get(k); if (!T) { T = (await _bnReadGcs(`osm/huellas/${k}.json`)).data || { f: [] }; _HUE.tiles.set(k, T); while (_HUE.tiles.size > 12) _HUE.tiles.delete(_HUE.tiles.keys().next().value); }
+    for (const e of T.f) { const ring = _vialDec(e), g = ring.map(q => P.xy(q[0], q[1])), cx = g.reduce((a, p) => a + p[0], 0) / g.length, cy = g.reduce((a, p) => a + p[1], 0) / g.length; if (Math.abs(cx) > R || Math.abs(cy) > R) continue; const f = []; g.forEach(p => f.push(p[0], p[1])); out.push(f); } }
+  return out;
+}
 async function _mqFootprints(lat, lng, R) {
+  const loc = await _huellasLocal(lat, lng, R); if (loc) return loc;
   const links = await _mqLinks(), P = _mqProy(lat, lng), dl = R / P.ky, dn = R / P.kx, qks = new Set();
   for (const [a, b] of [[lat - dl, lng - dn], [lat - dl, lng + dn], [lat + dl, lng - dn], [lat + dl, lng + dn]]) qks.add(_mqQk(a, b, 9));
   const out = [], zlib = require("zlib"), readline = require("readline"), { Readable } = require("stream"), re = /\[\[\[(-?[\d.]+), (-?[\d.]+)/;
@@ -13751,11 +13762,11 @@ let _odJob = { running: false };
 const _odKey = id => `mercado/maqueta/od/${id}.json`;
 // usos de suelo y comercios locales (osm/uso-saltillo.json): landuse residencial/comercial/industrial y nodos shop/office/amenity para el modelo origen-destino
 let _USO = undefined;
-async function _usoLocal(lat, lng, R) {
+async function _usoLocal(lat, lng, R, conDuctos) {
   if (_USO === undefined) { try { const { data } = await _bnReadGcs("osm/uso-saltillo.json"); _USO = data && data.nodes ? data : null; } catch (_) { return null; } }
   if (!_USO) return null; const [S, W, N, E] = _USO.bbox, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
   const kx = 111320 * Math.cos(lat * Math.PI / 180), nodes = _USO.nodes.filter(n => Math.hypot((n[1] - lng) * kx, (n[0] - lat) * 111320) <= R).map(n => ({ type: "node", id: 0, lat: n[0], lon: n[1] })), ways = [];
-  for (const w of _USO.ways) { const g = _vialDec(w.g); if (_geoCerca(g, lat, lng, R)) ways.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); }
+  for (const w of _USO.ways) { if (!w.t.landuse && !conDuctos) continue; const g = _vialDec(w.g); if (_geoCerca(g, lat, lng, R)) ways.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); }
   return [{ elements: ways }, { elements: nodes }];
 }
 async function _odOverpass(q) {
@@ -14203,7 +14214,15 @@ function _amCat(t) {
   if (t.amenity === "hospital" || t.amenity === "clinic") return "hospital"; if (t.amenity === "school" || t.amenity === "university") return "escuela"; if (t.shop === "supermarket" || t.shop === "mall") return "super"; return null;
 }
 // Una sola consulta por cuadro de ~16 km (las consultas por punto tardaban de 50 a 100 s cada una); las distancias se calculan aquí.
+// peligros y servicios cercanos con los datos locales (calles, entorno, lugares, usos de suelo y ductos); null si el cuadro cae fuera de la cobertura
+async function _amOsmCeldaLocal(S, W, N, E) {
+  const lat = (S + N) / 2, lng = (W + E) / 2, R = Math.hypot((N - S) / 2 * 111320, (E - W) / 2 * 111320 * Math.cos(lat * Math.PI / 180)) * 1.02;
+  const v = await _vialWays(lat, lng, R, t => t.highway === "motorway" || t.highway === "trunk"), e = v && await _entElems(lat, lng, R), p = e && await _entPois(lat, lng, R), u = p && await _usoLocal(lat, lng, R, true); if (!v || !e || !p || !u) return null;
+  const F = []; [...v, ...e.filter(x => x.type === "way"), ...p, ...u[0].elements].forEach(x => { const c = _amCat(x.tags || {}); if (!c) return; const g = x.type === "node" ? [{ lat: x.lat, lon: x.lon }] : (x.geometry || []); if (g.length) F.push({ c, g }); });
+  return F;
+}
 async function _amOsmCelda(S, W, N, E) {
+  const loc = await _amOsmCeldaLocal(S, W, N, E); if (loc) return loc;
   const a = `(${S},${W},${N},${E})`, q = `[out:json][timeout:170];(node${a}["amenity"="fuel"];way${a}["amenity"="fuel"];way${a}["landuse"="industrial"];way${a}["railway"="rail"];way${a}["highway"~"^(motorway|trunk)$"];way${a}["man_made"="pipeline"];way${a}["power"="line"];node${a}["amenity"~"^(hospital|clinic|school|university)$"];way${a}["amenity"~"^(hospital|clinic|school|university)$"];node${a}["shop"~"^(supermarket|mall)$"];way${a}["shop"~"^(supermarket|mall)$"];);out tags geom;`;
   let j, ult; for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(190000) }, 2); break; } catch (e) { ult = e; } }
   if (!j) throw ult || new Error("Overpass sin respuesta");
