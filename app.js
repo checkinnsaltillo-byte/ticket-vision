@@ -79211,18 +79211,18 @@ function gmPasoHtml0_() {
       <input id="gmw-rng" class="gmw-rng" type="range" min="0" max="600" step="10" value="${GMW.radio}"><div class="gmw-sc"><span>0 m</span><span>600 m</span></div><p class="gmw-mu" id="gmw-ar"></p></div>
     <div class="gmw-sb"><div class="gmw-md">${[['auto', 'Selección automática de puntos de fotos en el mapa'], ['manual', 'Selección manual de puntos de fotos en el mapa'], ['mixta', 'Selección mixta de puntos de fotos en el mapa']].map(([k, t]) => `<button type="button" class="gmw-op${GMW.fmode === k ? ' on' : ''}" data-fmo="${k}"><i></i>${t}</button>`).join('')}</div>
       <div id="gmw-fp" style="margin-top:16px">${gmFotosHtml_()}</div></div>`;
-  if (p === 4) return `<div id="gmw-map"></div>
-    <div class="gmw-sb" style="margin-top:22px"><span class="gmw-lt"><i>a</i>Vialidades para el monitoreo del tráfico</span><div style="height:12px"></div>
+  if (p === 4) return `<div class="gmw-sb"><span class="gmw-lt"><i>a</i>Vialidades para el monitoreo del tráfico</span><div style="height:12px"></div>
       <div class="gmw-fld" style="margin-top:0"><label>Longitud de la vialidad (m) <input id="gmw-vrad" value="${GMW.vrad || ''}" inputmode="numeric" placeholder="50–1000"></label>${[[100, '100 m'], [200, '200 m'], [400, '400 m'], [600, '600 m']].map(([v, l]) => `<button type="button" class="gmw-c" data-vr="${v}">${l}</button>`).join('')}</div>
       <input id="gmw-vrng" class="gmw-rng" type="range" min="0" max="1000" step="10" value="${GMW.vrad}"><div class="gmw-sc"><span>0 m</span><span>1 000 m</span></div>
       <div class="gmw-q" style="margin:18px 0 10px"><span class="gmw-mu">clasificaciones de vialidad <em class="gmw-st">* (Obligatorio)</em></span><a data-qv="1">todas</a><a data-qv="2">solo principales</a><a data-qv="0">ninguna</a></div>
       ${GMW_VGRP.map(([t, L]) => `<div class="gmw-vg"><small>${t}</small><div class="gmw-ch">${L.map(k => `<button type="button" class="gmw-c${k === 'residential' ? ' gmw-dash' : ''}${GMW.vial.clases.includes(k) ? ' on' : ''}" data-vc="${k}">${GMW_VCL[k]}</button>`).join('')}</div></div>`).join('')}
-      
-      <div class="gmw-fld" style="margin-top:16px"><button type="button" class="gm-btn gmw-sm" id="gmw-prev">Previsualizar</button><span class="gmw-mu" id="gmw-vst">${gmVMsg_()}</span></div><div id="gmw-vt">${gmVTabla_()}</div></div>
+</div>
     <div class="gmw-sb"><span class="gmw-lt"><i>b</i>Red vial para el análisis de accesibilidad</span>
       <div class="gmw-nf"><label>Radio de vialidades principales (m)<input id="gmw-rp" type="number" min="1000" max="5000" step="100" value="${GMW.rp}"></label><label>Radio de calles locales (m)<input id="gmw-rl" type="number" min="100" max="${GMW.rp}" step="100" value="${GMW.rl}"></label></div>
-      <p class="gmw-mu" style="margin-top:14px">las vialidades principales (con sus enlaces) se descargan hasta el primer radio y las calles locales hasta el segundo; se aplica al abrir la maqueta, sin volver a descargar fotos</p></div>`;
-  if (p === 6) return `<p class="gmw-mu" style="margin:0 0 16px">revisa que todos los datos sean correctos y pulsa «Analizar»; puedes volver a cualquier paso desde la lista de la izquierda</p><div id="gmw-ficha">${gmFicha_()}</div>`;
+      <p class="gmw-mu" style="margin-top:14px">las vialidades principales (con sus enlaces) se descargan hasta el primer radio y las calles locales hasta el segundo; se aplica al abrir la maqueta, sin volver a descargar fotos</p>
+      <div class="gmw-fld" style="margin-top:16px"><button type="button" class="gm-btn gmw-sm" id="gmw-prev">Previsualizar</button><span class="gmw-mu" id="gmw-vst">${gmVMsg_()}</span></div><div id="gmw-vt">${gmVTabla_()}</div></div>
+    <div id="gmw-mapw" style="margin-top:22px">${GMW.vias ? '<div id="gmw-map"></div>' : ''}</div>`;
+  if (p === 6) return `<p class="gmw-mu" style="margin:0 0 16px">revisa que todos los datos sean correctos y pulsa «Analizar»; puedes volver a un paso anterior con «← anterior»</p><div id="gmw-ficha">${gmFicha_()}</div>`;
   return `<div class="gmw-sb"><span class="gmw-lt"><i>a</i>Días <em class="gmw-st">* (Obligatorio)</em></span><div class="gmw-ch">${GMW_DIAS.map(([v, l]) => `<button type="button" class="gmw-c${GMW.dias.includes(v) ? ' on' : ''}" data-d="${v}">${l}</button>`).join('')}</div><div class="gmw-q"><a data-q="d:1,2,3,4,5">entre semana</a><a data-q="d:6,0">fin de semana</a><a data-q="d:0,1,2,3,4,5,6">todos</a><a data-q="d:">limpiar</a></div></div><div class="gmw-sb"><span class="gmw-lt"><i>b</i>Horas <em class="gmw-st">* (Obligatorio)</em></span><div class="gmw-hr">${Array.from({ length: 24 }, (_, h) => `<button type="button" class="gmw-c${GMW.horas.includes(h) ? ' on' : ''}" data-h="${h}">${String(h).padStart(2, '0')}</button>`).join('')}</div><div class="gmw-q"><a data-q="h:7,8,9,17,18,19">hora pico</a><a data-q="h:8,9,10,11,12,13,14,15,16,17,18">día hábil</a><a data-q="h:${Array.from({ length: 24 }, (_, i) => i).join(',')}">todo el día</a><a data-q="h:">limpiar</a></div></div>`;
 }
 function gmWizard_() {
@@ -79324,8 +79324,9 @@ async function gmPrev_() {
     GMW.vias = [...all.values()]; GMW.vsel = new Set(pre); GMW.vpre = [...pre]; GMW.vstale = false; GMW.vmsg = '';
   } catch (e) { GMW.vmsg = '⚠️ ' + (e.message || e); }
   GMW.vbusy = false; if (btn) btn.classList.remove('dis'); gmVRefresca_();
-  if (GMW.vias && GMW.vias.length && GMW.map && window.L) { const b = window.L.latLngBounds([]); GMW.vias.forEach(v => v.pl.forEach(q => b.extend(q))); if (b.isValid()) GMW.map.fitBounds(b, { padding: [24, 24], maxZoom: 15 }); }
+  if (GMW.vias && GMW.vias.length) { if (GMW.map) gmVFit_(); else { const w = document.getElementById('gmw-mapw'); if (w && !document.getElementById('gmw-map')) { w.innerHTML = '<div id="gmw-map"></div>'; gmMapa_(); } } }
 }
+function gmVFit_() { if (!(GMW.vias && GMW.vias.length && GMW.map && window.L)) return; const b = window.L.latLngBounds([]); GMW.vias.forEach(v => v.pl.forEach(q => b.extend(q))); if (b.isValid()) GMW.map.fitBounds(b, { padding: [24, 24], maxZoom: 15 }); }
 function gmFotosHtml_() {
   const m = GMW.fmode, f = GMW.ft, ro = (id, t, v) => `<label>${t}<input id="${id}" readonly value="${v}"></label>`, tres = `<label>Fotos frente a la propiedad<input id="gmw-ff" type="number" min="0" max="12" step="1" value="${f.frente}"></label><label>Fotos del entorno inmediato<input id="gmw-fi" type="number" min="0" max="30" step="1" value="${f.inmediato}"></label><label>Fotos del entorno general<input id="gmw-fg" type="number" min="0" max="60" step="2" value="${f.general}"></label>`;
   const ayuda = m === 'auto' ? '' : `<div class="gmw-fld" style="margin-top:14px"><a class="gmw-bk" id="gmw-fmc">limpiar puntos</a><span class="gmw-mu" id="gmw-fmn"></span></div>`;
@@ -79381,7 +79382,7 @@ function gmMapa_() {
   _rsvEnsureLeaflet_(async () => {
     const el = document.getElementById('gmw-map'); if (!el || !window.L) return; const L = window.L, g = await gmTiles_(); if (!document.getElementById('gmw-map')) return; const m = GMW.map = L.map(el, { zoomControl: true, maxZoom: g ? 20 : 16 }).setView([GMW.lat, GMW.lng], GMW.paso === 3 ? 15 : GMW.paso === 4 ? 11 : (GMW.dir ? 16 : 12));
     if (g) L.tileLayer(g, { maxZoom: 20, attribution: 'Map data © Google' }).addTo(m); else L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: '© Esri' }).addTo(m);
-    m.on('click', gmClick_); m.on('zoomend', gmEtiq_); GMW.layers = []; if (GMW.paso === 3) gmRadio_(GMW.radio, true); else if (GMW.paso === 4) { gmVrad_(GMW.vrad, false); gmDibuja_(true); } else gmDibuja_(GMW.pts.length > 1); gmFmUpd_(); setTimeout(() => m.invalidateSize(), 60);
+    m.on('click', gmClick_); m.on('zoomend', gmEtiq_); GMW.layers = []; if (GMW.paso === 3) gmRadio_(GMW.radio, true); else if (GMW.paso === 4) { gmVrad_(GMW.vrad, false); gmDibuja_(true); gmVFit_(); } else gmDibuja_(GMW.pts.length > 1); gmFmUpd_(); setTimeout(() => m.invalidateSize(), 60);
   });
 }
 function gmRadio_(r, ajusta) {
