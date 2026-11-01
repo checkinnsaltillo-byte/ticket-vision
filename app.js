@@ -79254,7 +79254,7 @@ function gmFotosTxt_() { const f = GMW.ft; return GMW.fmode === 'auto' ? `${f.fr
 
 /* ── costos estimados (precio de lista × GMW_X) ── */
 const GMW_X = 10, GMW_PR = { sv: .007, ia: .0053, sat: .01, base: .04, ruta: .01, od: 364 };
-const gmOpt_ = () => GMW.opt || (GMW.opt = { fotos: true, trafico: true, od: false }), GMW_PRECIOS = false /* precios aún sin definir: se muestran como X */, gmUsd_ = v => GMW_PRECIOS ? '$' + v.toFixed(2) + ' USD' : '$X';
+const gmOpt_ = () => GMW.opt || (GMW.opt = { fotos: true, trafico: true, od: false }), GMW_PRECIOS = false /* precios aún sin definir: se muestran como X */, gmUsd_ = v => GMW_PRECIOS || window.GM_PRECIOS ? '$' + v.toFixed(2) + ' USD' : '$X';
 function gmCosto_() {
   const nP = Math.max(1, gmPtsOk_().length), o = gmOpt_(), fotos = (GMW.fmode !== 'manual' ? gmFotosAuto_() * nP : 0) + (GMW.fmode !== 'auto' ? GMW.fm.length : 0);
   const ts = GMW.radio > 400 ? 344 : 172, k = Math.max(1, Math.ceil((GMW.radio - ts / 2) / ts)), tiles = GMW.radio >= 50 ? (2 * k + 1) ** 2 * nP : 0;
