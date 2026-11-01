@@ -79428,7 +79428,7 @@ function gmWiring_() {
   body.addEventListener('input', e => { if (e.target.id === 'gmw-q') gmSugerir_(e.target.value); else if (e.target.id === 'gmw-obj') { GMW.objetivo = e.target.value; gmUpd_(); } else if (e.target.id === 'gmw-rng') gmRadio_(+e.target.value, false); else if (e.target.id === 'gmw-vrng') { gmVStale_(); GMW.vm = true; gmVrad_(+e.target.value, false); } else if (e.target.id === 'gmw-vrad') { gmVStale_(); GMW.vm = true; gmVrad_(+e.target.value.replace(/\D/g, ''), false); } else if (e.target.id === 'gmw-rad') gmRadio_(+e.target.value.replace(/\D/g, ''), false); });
   body.addEventListener('change', e => { if (e.target.id === 'gmw-vrng' || e.target.id === 'gmw-vrad') gmAjusta_();
     if (e.target.id === 'gmw-rng' || e.target.id === 'gmw-rad') gmAjusta_();
-    if (e.target.id === 'gmw-rp' || e.target.id === 'gmw-rl') gmAjusta_();
+    if (e.target.id === 'gmw-rp' || e.target.id === 'gmw-rl') { const rp = document.getElementById('gmw-rp'), rl = document.getElementById('gmw-rl'); if (rp) rp.value = GMW.rp; if (rl) { rl.max = GMW.rp; rl.value = GMW.rl; } gmAjusta_(); }
     if (e.target.id === 'gmw-lat' || e.target.id === 'gmw-lng') { const la = parseFloat(document.getElementById('gmw-lat').value), lo = parseFloat(document.getElementById('gmw-lng').value); if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) { gmFijo_(); GMW.lat = la; GMW.lng = lo; GMW.dir = ''; if (GMW.map) GMW.map.setView([la, lo]); gmSync_(); gmDibuja_(false); } } });
 }
 
