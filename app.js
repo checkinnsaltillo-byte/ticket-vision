@@ -79242,6 +79242,7 @@ function gmDone_() {
 function gmRender_() {
   const host = document.getElementById('geometrika-host'); if (!host) return; if (GMW.map) { try { GMW.map.remove(); } catch (_) { } GMW.map = GMW.pin = GMW.circ = null; }
   host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : GMW.vista === 'analizando' ? gmAn_() : gmWizard_();
+  host.insertAdjacentHTML('afterbegin', '<span class="gmw-beta">vBeta de prueba</span>');
   if (GMW.vista === 'landing') gmCargaLista_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
 }
