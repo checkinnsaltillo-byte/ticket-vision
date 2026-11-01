@@ -13552,7 +13552,7 @@ async function _vialWays(lat, lng, R, test) {
     if (ok) out.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); }
   return out;
 }
-app.get("/geometrika/vial/estado", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const V = await _vialCarga(); res.set("Cache-Control", "no-store"); const lat = +req.query.lat, lng = +req.query.lng, R = +req.query.R || 400; let prueba = null; if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) { const v = await _vialWays(lat, lng, R, () => true), e = await _entElems(lat, lng, R); const c = {}; (e || []).forEach(x => { const k = x.type === "way" ? (x.tags.building ? "edificios" : x.tags.power ? "alta_tension" : x.tags.railway ? "ferrocarril" : "cauces") : (x.tags.natural || x.tags.highway || x.tags.public_transport || x.tags.power); c[k] = (c[k] || 0) + 1; }); prueba = { vias: v ? v.length : null, entorno: e ? c : null }; }
+app.get("/geometrika/vial/estado", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const V = await _vialCarga(); res.set("Cache-Control", "no-store"); const lat = +req.query.lat, lng = +req.query.lng, R = +req.query.R || 400; let prueba = null; if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) { const v = await _vialWays(lat, lng, R, () => true), e = await _entElems(lat, lng, R); const c = {}; (e || []).forEach(x => { const k = x.type === "way" ? (x.tags.building ? "edificios" : x.tags.power ? "alta_tension" : x.tags.railway ? "ferrocarril" : "cauces") : (x.tags.natural || x.tags.highway || x.tags.public_transport || x.tags.power); c[k] = (c[k] || 0) + 1; }); const pl = await _entPois(lat, lng, R), pc = {}; (pl || []).forEach(x => { const k = x.tags.amenity || x.tags.shop || x.tags.leisure || x.tags.tourism || x.tags.place; pc[k] = (pc[k] || 0) + 1; }); prueba = { vias: v ? v.length : null, entorno: e ? c : null, lugares: pl ? pc : null }; }
   res.json({ ok: true, cargada: !!V, vias: V ? V.n : 0, at: V ? V.at : null, bbox: V ? V.bbox : null, prueba }); });
 // ── Entorno local de OpenStreetMap (edificios, árboles, luminarias, semáforos, cruces, paradas, líneas de alta tensión, vías férreas, cauces): cuadros de 0.1° en osm/entorno/<i>_<j>.json, cargados a demanda
 const _ENT = { idx: undefined, tiles: new Map() };
@@ -13568,6 +13568,19 @@ async function _entElems(lat, lng, R) {
     for (const n of T.n) { if (Math.hypot((n[1] - lng) * 111320 * Math.cos(lat * Math.PI / 180), (n[0] - lat) * 111320) <= R) out.push({ type: "node", id: 0, lat: n[0], lon: n[1], tags: Object.assign({}, n[3], _ENT_NK[n[2]]) }); }
     for (const w of T.w) { if (vistos.has(w.i)) continue; vistos.add(w.i); const g = _vialDec(w.g); if (_geoCerca(g, lat, lng, R)) out.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); } }
   return out;
+}
+// lugares de interés (hospitales, escuelas, centros comerciales…): nodos con tags (las áreas vienen como su centro); null si no hay datos locales
+async function _entPois(lat, lng, R) {
+  const I = await _entIdx(); if (!I) return null; const [S, W, N, E] = I.bbox, C = I.C, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
+  const out = [], kx = 111320 * Math.cos(lat * Math.PI / 180);
+  for (let i = Math.floor((lat - mLat) / C); i <= Math.floor((lat + mLat) / C); i++) for (let j = Math.floor((lng - mLng) / C); j <= Math.floor((lng + mLng) / C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; const T = await _entTile(k); if (!T.p) return null;
+    for (const n of T.p) if (Math.hypot((n[1] - lng) * kx, (n[0] - lat) * 111320) <= R) out.push({ type: "node", id: 0, lat: n[0], lon: n[1], tags: n[2] }); }
+  return out;
+}
+async function _mqPoisLocal(lat, lng, R) {
+  const p = await _entPois(lat, lng, R), e = p && await _entElems(lat, lng, R), v = e && await _vialWays(lat, lng, R, t => t.bridge === "yes"); if (!p || !e || !v) return null;
+  const cen = g => g.length ? { lat: g[g.length >> 1].lat, lon: g[g.length >> 1].lon } : null, BT = /^(cathedral|church|hospital|school|stadium|civic|government)$/;
+  return [...p, ...e.filter(x => x.type === "way" && x.tags.building && BT.test(x.tags.building)).map(x => ({ type: "way", id: x.id, tags: x.tags, center: cen(x.geometry) })), ...v.map(x => ({ type: "way", id: x.id, tags: x.tags, center: cen(x.geometry) }))];
 }
 async function _mqOsm(lat, lng, R, id) {
   const ck = id ? `mercado/maqueta/osm/${id}_${R}_v4.json` : null; if (ck) { try { const { data } = await _bnReadGcs(ck); if (data && data.roads && Date.now() - Date.parse(data.at || 0) < 30 * 864e5) return data; } catch (_) {} }
@@ -13609,7 +13622,7 @@ async function _mqClaude(content, system) {
 const _MQ_POI_PRI = ["hospital", "centro_comercial", "universidad", "estadio", "gobierno", "plaza", "parque", "mercado", "supermercado", "iglesia", "puente", "escuela", "hotel", "gasolinera", "edificio_alto", "otro"];
 async function _mqPois(lat, lng, R) {
   const a = `(around:${R},${lat},${lng})`, q = `[out:json][timeout:60];(nwr${a}[amenity~"^(hospital|clinic|school|university|college|place_of_worship|townhall|marketplace|police|fire_station|library|theatre|cinema|bus_station|fuel)$"];nwr${a}[shop~"^(mall|supermarket|department_store)$"];nwr${a}[leisure~"^(park|stadium|sports_centre|garden)$"];nwr${a}[tourism~"^(hotel|attraction|museum)$"];nwr${a}[place=square];way${a}[bridge=yes][highway];nwr${a}[building~"^(cathedral|church|hospital|school|stadium|civic|government)$"];);out tags center;`;
-  let j; for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(90000) }, 2); break; } catch (_) {} }
+  const L = await _mqPoisLocal(lat, lng, R); let j = L ? { elements: L } : null; for (const ep of (j ? [] : ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"])) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(90000) }, 2); break; } catch (_) {} }
   if (!j) return []; const P = _mqProy(lat, lng), out = [];
   (j.elements || []).forEach(e => { const t = e.tags || {}, c = e.type === "node" ? { lat: e.lat, lon: e.lon } : e.center; if (!c) return; const p = P.xy(c.lat, c.lon); if (Math.abs(p[0]) > R || Math.abs(p[1]) > R) return;
     const am = t.amenity, sh = t.shop, le = t.leisure, to = t.tourism, bu = t.building;
@@ -13936,7 +13949,7 @@ async function _mqFriccion(id, cfg) {
   // con red local las vialidades salen de ahí; a Overpass solo se piden semáforos y lugares importantes (y si falla, el análisis sigue sin ellos)
   const lkR = new RegExp("^(" + lk + ")$"), lcR = new RegExp("^(" + loc.join("|") + ")$"), lvP = pri.length ? await _vialWays(lat, lng, cfg.R, t => lkR.test(t.highway || "")) : [], lvL = loc.length ? await _vialWays(lat, lng, cfg.Rloc, t => lcR.test(t.highway || "")) : [], lv = lvP && lvL ? [...new Map([...lvP, ...lvL].map(e => [e.id, e])).values()] : null;
   const qp = lv ? `[out:json][timeout:90];(node${A}[highway=traffic_signals];nwr${A}[amenity~"^(hospital|university|townhall|marketplace)$"];nwr${A}[shop~"^(mall|department_store|supermarket)$"];nwr${A}[leisure=stadium];);out tags geom;` : q;
-  let j, ult; for (let ronda = 0; ronda < (lv ? 1 : 3) && !j; ronda++) for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(qp), signal: AbortSignal.timeout(lv ? 25000 : 100000) }, 1); break; } catch (e) { ult = e; } if (!j && !lv) await _amSleep(4000); }
+  const lpP = lv ? await _entPois(lat, lng, cfg.R) : null, lpS = lv && lpP ? await _entElems(lat, lng, cfg.R) : null; let j = lpP && lpS ? { elements: [...lpP, ...lpS.filter(x => x.type === "node" && x.tags.highway === "traffic_signals")] } : null, ult; for (let ronda = 0; ronda < (lv ? 1 : 3) && !j; ronda++) for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]) { try { j = await _amGet(ep, { method: "POST", headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, _AM_UA), body: "data=" + encodeURIComponent(qp), signal: AbortSignal.timeout(lv ? 25000 : 100000) }, 1); break; } catch (e) { ult = e; } if (!j && !lv) await _amSleep(4000); }
   if (!j && lv) j = { elements: [] }; if (!j) throw ult || new Error("Overpass sin respuesta"); if (lv) j.elements = lv.concat(j.elements || []);
   const roads = [], sem = [], an = []; const PRI = ["hospital", "centro_comercial", "universidad", "gobierno", "estadio", "mercado", "supermercado"];
   (j.elements || []).forEach(e => { const t = e.tags || {};
