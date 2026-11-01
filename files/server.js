@@ -13102,16 +13102,23 @@ app.post("/geometrika/analizar", async (req, res) => {
 // «Eliminar» en Mis proyectos: solo se oculta de la lista (el proyecto y su información se conservan)
 app.post("/geometrika/proyecto/ocultar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
-  try { const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
-    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
-    P.oculto = new Date().toISOString(); await _bnWriteGcs(`geometrika/proyectos/${id}.json`, P, null); res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  try { const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (!/^\d{6,24}$/.test(id)) return res.status(400).json({ ok: false, error: "Id no válido" });
+    if (/^9\d{13}$/.test(id)) { const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" }); P.oculto = new Date().toISOString(); await _bnWriteGcs(`geometrika/proyectos/${id}.json`, P, null); return res.json({ ok: true }); }
+    for (let i = 0; i < 4; i++) { const { data, gen } = await _bnReadGcs("geometrika/ocultas.json"), ids = (data && data.ids) || []; if (!ids.includes(id)) ids.push(id); try { await _bnWriteGcs("geometrika/ocultas.json", { ids, at: new Date().toISOString() }, data ? gen : "0"); return res.json({ ok: true }); } catch (e) { if (!e.conflict) throw e; } }
+    res.status(409).json({ ok: false, error: "Intenta de nuevo" }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/geometrika/proyectos", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
     const nombres = (await _gcsList("geometrika/proyectos/")).filter(n => /\/9\d{13}\.json$/.test(n)).sort().reverse().slice(0, 40), lista = [];
     for (let i = 0; i < nombres.length; i += 8) await Promise.all(nombres.slice(i, i + 8).map(async n => { try { const { data: P } = await _bnReadGcs(n); if (P && P.id && !P.oculto) lista.push({ id: P.id, creado: P.creado, perfil: P.perfil || "", objetivo: (P.objetivo || "").slice(0, 80), direccion: (P.direccion || (P.puntos && P.puntos[0] && P.puntos[0].dir) || "").slice(0, 90), lat: P.lat, lng: P.lng, puntos: (P.puntos || []).length, radio: P.radio, estado: (P.analisis && P.analisis.estado) || "registrado", error: (P.analisis && P.analisis.error) || "" }); } catch (_) {} }));
-    lista.sort((a, b) => String(b.creado).localeCompare(String(a.creado))); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyectos: lista });
+    lista.forEach(p => { p.origen = "geometrika"; });
+    // además de los proyectos de GeoMetrika, se enlistan todas las maquetas existentes con su procedencia (Airbnb, MercadoLibre, Facebook…)
+    try { const [ml, oc] = await Promise.all([_gmCall("/mercado/maqueta/lista").catch(() => null), _bnReadGcs("geometrika/ocultas.json").then(r => (r.data && r.data.ids) || []).catch(() => [])]);
+      if (ml && ml.items && ml.items.length) { const [ab, mlD, fb] = await Promise.all([_bnReadGcs(_MA.OBJ).then(r => (r.data && r.data.items) || {}).catch(() => ({})), _mlDoc().then(d => d.items || {}).catch(() => ({})), _fbDoc().then(d => d.items || {}).catch(() => ({}))]), vistos = new Set(lista.map(p => p.id)), oculto = new Set(oc);
+        ml.items.forEach(m => { const id = String(m.id), base = /^9\d{14}$/.test(id) ? id.slice(0, 14) : id; if (vistos.has(base) || vistos.has(id) || oculto.has(id)) return; if (/^9\d{13,14}$/.test(id)) return;   // los de GeoMetrika ya salen de su proyecto (o están eliminados)
+          lista.push({ id, creado: null, perfil: m.titulo || id, objetivo: "", direccion: "", lat: m.lat, lng: m.lng, puntos: 1, radio: m.radio, estado: "listo", error: "", origen: ab[id] ? "airbnb" : mlD[id] ? "mercadolibre" : fb[id] ? "facebook" : "otro" }); }); } } catch (e) { console.warn("[geometrika] lista de maquetas:", e.message); }
+    lista.sort((a, b) => String(b.creado || "").localeCompare(String(a.creado || ""))); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyectos: lista });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/geometrika/analizar/estado", async (req, res) => {
