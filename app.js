@@ -79235,11 +79235,11 @@ function gmDone_() {
   const P = GMW.proy;
   return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>Proyecto registrado</h2><span>${gmEsc_(P.id)}</span></div><div class="gmw-pg" style="grid-template-columns:repeat(6,1fr)"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i></div>
     <p class="gmw-mu" style="margin:0 0 22px;max-width:520px">Los parámetros quedaron guardados. El análisis se ejecutará sobre la red vial de OpenStreetMap dentro del radio, en las franjas elegidas.</p>${gmFicha_()}
-    <div class="gmw-ft"><a class="gmw-bk" onclick="gmNuevo_(true)">← nuevo análisis</a><span class="gmw-rg"><a class="gm-btn" href="maqueta/entorno.html" target="_blank" rel="noopener">abrir visor <span>→</span></a></span></div></div></div>`;
+    <div class="gmw-ft"><a class="gmw-bk" onclick="gmNuevo_(true)">← nuevo análisis</a><span class="gmw-rg"><a class="gm-btn" href="maqueta/entorno.html?id=${gmEsc_(P.id)}" target="_blank" rel="noopener">abrir maqueta <span>→</span></a></span></div></div></div>`;
 }
 function gmRender_() {
   const host = document.getElementById('geometrika-host'); if (!host) return; if (GMW.map) { try { GMW.map.remove(); } catch (_) { } GMW.map = GMW.pin = GMW.circ = null; }
-  host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : gmWizard_();
+  host.innerHTML = GMW.vista === 'landing' ? gmLanding_() : GMW.vista === 'hecho' ? gmDone_() : GMW.vista === 'analizando' ? gmAn_() : gmWizard_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
 }
 function gmNuevo_(reset) { if (reset) Object.assign(GMW, { vias: null, vsel: new Set(), vstale: false, vmsg: '', paso: 1, perfil: '', objetivo: '', dir: '', lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', resultados: null, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, ft: { frente: 4, inmediato: 6, general: 10 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 6 }, radio: 200, horas: [7, 8, 9, 17, 18, 19], dias: [1, 2, 3, 4, 5], proy: null, err: '', opt: null, pago: null, pagoAbre: false, promo: '', promoErr: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -79427,9 +79427,37 @@ function gmWiring_() {
     if (e.target.id === 'gmw-rp' || e.target.id === 'gmw-rl') gmAjusta_();
     if (e.target.id === 'gmw-lat' || e.target.id === 'gmw-lng') { const la = parseFloat(document.getElementById('gmw-lat').value), lo = parseFloat(document.getElementById('gmw-lng').value); if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) { gmFijo_(); GMW.lat = la; GMW.lng = lo; GMW.dir = ''; if (GMW.map) GMW.map.setView([la, lo]); gmSync_(); gmDibuja_(false); } } });
 }
+
+/* ── análisis del proyecto: registra, ejecuta en el servidor (fotos → maqueta → tráfico) y abre la maqueta con los resultados ── */
+function gmAnHtml_() {
+  const a = GMW.an || {}; if (a.err) return `<p class="gmw-er" style="margin:0 0 16px">${gmEsc_(a.err)}</p><div class="gmw-fld" style="margin-top:0"><button type="button" class="gm-btn gmw-sm" onclick="gmIniciaAnalisis_()">reintentar</button><a class="gmw-bk" onclick="GMW.vista='hecho';gmRender_()">ver el proyecto registrado</a></div>`;
+  return `<div class="gmw-bar"><i></i></div><p style="margin:14px 0 4px;font-size:13px"><b>${gmEsc_(a.paso || 'Iniciando')}</b></p><p class="gmw-mu" style="margin:0">${gmEsc_(a.sub || 'esto puede tardar varios minutos; puedes dejar esta ventana abierta')}</p>`;
+}
+function gmAn_() {
+  const P = GMW.proy || {};
+  return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>Analizando el proyecto</h2><span>${gmEsc_(P.id || '')}</span></div><div class="gmw-pg" style="grid-template-columns:repeat(6,1fr)"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i></div>
+    <p class="gmw-mu" style="margin:0 0 22px;max-width:560px">Se descargan las fotos de calle, se leen con IA, se arma la maqueta y se consulta el tráfico. Al terminar se abrirá la maqueta con los resultados.</p><div id="gmw-an">${gmAnHtml_()}</div></div></div>`;
+}
+async function gmIniciaAnalisis_() {
+  GMW.vista = 'analizando'; GMW.an = { paso: 'Iniciando', sub: '', err: '' }; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  try {
+    const r = await fetch(`${BACKEND}/geometrika/analizar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: GMW.proy.id }) }), t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) { }
+    if (!j) throw new Error(r.status === 404 ? 'El proyecto quedó registrado, pero el servidor aún no tiene activado el motor de análisis (se está actualizando). Vuelve a intentarlo más tarde.' : 'El servidor no respondió correctamente (' + r.status + ').');
+    if (!j.ok && r.status !== 409) throw new Error(j.error || 'No se pudo iniciar el análisis');
+    gmSondea_(GMW.proy.id);
+  } catch (e) { GMW.an.err = String(e.message || e); const b = document.getElementById('gmw-an'); if (b) b.innerHTML = gmAnHtml_(); }
+}
+async function gmSondea_(id) {
+  if (GMW.vista !== 'analizando' || !GMW.proy || GMW.proy.id !== id) return;
+  try {
+    const j = await fetch(`${BACKEND}/geometrika/analizar/estado?id=${id}`).then(r => r.json());
+    if (j.ok) { if (j.error) GMW.an.err = j.error; else if (j.listo) { location.href = `maqueta/entorno.html?id=${id}`; return; } else { GMW.an.paso = j.paso; GMW.an.sub = j.sub; } const b = document.getElementById('gmw-an'); if (b) b.innerHTML = gmAnHtml_(); if (j.error) return; }
+  } catch (_) { }
+  setTimeout(() => gmSondea_(id), 4000);
+}
 async function gmEjecutar_() {
   if (gmFalta_().length || GMW.enviando) return; GMW.enviando = true; GMW.err = ''; gmUpd_();
-  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: gmPtsOk_()[0].dir, puntos: gmPtsOk_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fmode === 'auto' ? [] : GMW.fm, fotosModo: GMW.fmode, fotos: GMW.fmode === 'manual' ? { frente: 0, inmediato: 0, general: 0 } : GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre, seleccion: GMW.vias ? [...GMW.vsel] : [] }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPtsOk_()[0].lat, lng: gmPtsOk_()[0].lng, opciones: gmOpt_(), costoEstimadoUSD: GMW_PRECIOS ? +gmCosto_().total.toFixed(2) : null, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: gmPtsOk_()[0].dir, puntos: gmPtsOk_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fmode === 'auto' ? [] : GMW.fm, fotosModo: GMW.fmode, fotos: GMW.fmode === 'manual' ? { frente: 0, inmediato: 0, general: 0 } : GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre, seleccion: GMW.vias ? [...GMW.vsel] : [] }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPtsOk_()[0].lat, lng: gmPtsOk_()[0].lng, opciones: gmOpt_(), costoEstimadoUSD: GMW_PRECIOS ? +gmCosto_().total.toFixed(2) : null, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(async r => { const t = await r.text(); try { return JSON.parse(t); } catch (_) { return { ok: false, error: 'El servidor no respondió correctamente (' + r.status + '). Inténtalo de nuevo.' }; } }); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.enviando = false; gmIniciaAnalisis_(); }
   catch (e) { GMW.enviando = false; GMW.err = String(e.message || e); gmUpd_(); }
 }
 window.geometrikaInit = function () {

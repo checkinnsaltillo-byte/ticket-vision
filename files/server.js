@@ -13029,12 +13029,56 @@ app.post("/geometrika/proyecto", async (req, res) => {
     if (!(radio >= 50 && radio <= 600)) return res.status(400).json({ ok: false, error: "El radio de maqueta debe estar entre 50 y 600 m" });
     if (!dias.length || !horas.length) return res.status(400).json({ ok: false, error: "Elige al menos un día y una hora" });
     if (!perfil && !objetivo.trim()) return res.status(400).json({ ok: false, error: "Define el objetivo del proyecto" });
-    const cl = n => Math.max(0, Math.min(99, Math.round(+n) || 0)), F = b.fotos || {}, fotos = { frente: Math.min(12, cl(F.frente)), inmediato: Math.min(30, cl(F.inmediato)), general: Math.min(60, cl(F.general)) }, V = b.vialidades || {}, vialidades = { clases: [...new Set((Array.isArray(V.clases) ? V.clases : []).map(String))].filter(c => _TR_CLASES.includes(c)), tramo: Math.max(50, Math.min(1000, Math.round(+V.tramo) || 200)), preseleccionar: Math.min(30, cl(V.preseleccionar)) };
+    const cl = n => Math.max(0, Math.min(99, Math.round(+n) || 0)), F = b.fotos || {}, fotos = { frente: Math.min(12, cl(F.frente)), inmediato: Math.min(30, cl(F.inmediato)), general: Math.min(60, cl(F.general)) }, V = b.vialidades || {}, vialidades = { clases: [...new Set((Array.isArray(V.clases) ? V.clases : []).map(String))].filter(c => _TR_CLASES.includes(c)), tramo: Math.max(50, Math.min(1000, Math.round(+V.tramo) || 200)), preseleccionar: Math.min(30, cl(V.preseleccionar)), seleccion: (Array.isArray(V.seleccion) ? V.seleccion : []).map(x => String(x).slice(0, 90)).slice(0, 400) }, O = b.opciones || {}, opciones = { fotos: O.fotos !== false, trafico: O.trafico !== false, od: !!O.od };
     if (!vialidades.clases.length) return res.status(400).json({ ok: false, error: "Elige al menos una clasificación de vialidad" });
     const RV = b.redVial || {}, rp = Math.max(1000, Math.min(5000, Math.round(+RV.principales) || 3000)), redVial = { principales: rp, locales: Math.max(100, Math.min(rp, Math.round(+RV.locales) || 900)) };
     const okp = p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180, puntos = (Array.isArray(b.puntos) ? b.puntos : []).filter(okp).slice(0, 10).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6, dir: String(p.dir || "").slice(0, 200) })), fotosManuales = (Array.isArray(b.fotosManuales) ? b.fotosManuales : []).filter(okp).slice(0, 60).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6 }));
-    const id = "gm" + Date.now().toString(36), doc = { id, ver: "gm-v1", puntos: puntos.length ? puntos : [{ lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, dir: direccion }], fotosModo: ["auto", "manual", "mixta"].includes(b.fotosModo) ? b.fotosModo : "auto", fotosManuales, fotos, vialidades, redVial, creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length };
+    const id = "9" + Date.now(), doc = { id, ver: "gm-v1", puntos: puntos.length ? puntos : [{ lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, dir: direccion }], fotosModo: ["auto", "manual", "mixta"].includes(b.fotosModo) ? b.fotosModo : "auto", fotosManuales, fotos, vialidades, redVial, creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length, opciones };
     await _bnWriteGcs(`geometrika/proyectos/${id}.json`, doc, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyecto: doc });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Análisis del proyecto GeoMetrika: encadena fotos de calle (Street View + IA) → maqueta → tráfico, reutilizando los procesos de Alojamientos por id numérico ──
+const _gmPid = (id, k) => k ? id + String(k) : id;
+let _gmJob = { running: false };
+async function _gmCall(path, body) {
+  const r = await fetch(`http://127.0.0.1:${PORT}${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", Origin: "https://www.check-inn.mx" }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(60000) });
+  const j = await r.json().catch(() => ({})); if (r.status === 409) { const e = new Error(j.error || "ocupado"); e.ocupado = true; throw e; } if (!r.ok || j.ok === false) throw new Error(j.error || "HTTP " + r.status); return j;
+}
+async function _gmInicia(path, body) { for (let i = 0; i < 60; i++) { try { return await _gmCall(path, body); } catch (e) { if (!e.ocupado) throw e; _gmJob.sub = "esperando a que termine otro proceso"; await _amSleep(10000); } } throw new Error("El servidor siguió ocupado con otro proceso; vuelve a intentarlo"); }
+async function _gmEspera(path, tmax) { const t0 = Date.now(); await _amSleep(2500); for (;;) { const j = await _gmCall(path); if (!j.running) { if (j.error) throw new Error(j.error); return j; } if (j.paso) _gmJob.sub = j.paso; if (Date.now() - t0 > tmax) throw new Error("El proceso tardó demasiado"); await _amSleep(4000); } }
+async function _gmGuarda(P) { P.analisis = { estado: _gmJob.running ? "analizando" : _gmJob.error ? "error" : "listo", paso: _gmJob.paso || "", sub: _gmJob.sub || "", punto: _gmJob.punto || 0, de: _gmJob.de || 0, error: _gmJob.error || "", inicio: _gmJob.inicio, fin: _gmJob.fin || null }; try { await _bnWriteGcs(`geometrika/proyectos/${P.id}.json`, P, null); } catch (_) {} }
+async function _gmAnaliza(P) {
+  const op = P.opciones || {}, de = P.puntos.length, F = P.fotos || {}; let NC = Math.min(12, F.frente || 0), NF = Math.min(60, (F.inmediato || 0) + (F.general || 0)); if (NF + NC < 4) { NC = 4; NF = 6; }
+  for (let k = 0; k < de; k++) {
+    const id = _gmPid(P.id, k); _gmJob.punto = k + 1; _gmJob.de = de; const pre = de > 1 ? `Punto ${k + 1} de ${de} · ` : "";
+    if (op.fotos !== false) {
+      _gmJob.paso = pre + "Fotos de calle (Street View)"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/entorno/fotos", { id, radio: P.radio, fotos: NF, frente: NC }); await _gmEspera("/mercado/entorno/fotos/estado", 20 * 60000);
+      _gmJob.paso = pre + "Maqueta y lectura de fotos con IA"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/maqueta/generar", { id }); await _gmEspera("/mercado/maqueta/estado", 40 * 60000);
+    }
+    await _gmInicia("/mercado/maqueta/vial", { id, R: P.redVial.principales, Rloc: P.redVial.locales, cl: P.vialidades.clases });
+    if (op.trafico !== false && op.fotos !== false) {
+      _gmJob.paso = pre + "Tráfico en vialidades (Google Routes)"; _gmJob.sub = ""; await _gmGuarda(P); const sel = (P.vialidades.seleccion || []).length ? P.vialidades.seleccion : [];
+      await _gmInicia("/mercado/trafico/consultar", { id, cfg: { tramo: P.vialidades.tramo, dias: P.dias, horas: P.horas, maxVias: sel.length ? 30 : P.vialidades.preseleccionar, sel, clases: P.vialidades.clases } });
+      for (let i = 0; i < 400; i++) { await _amSleep(5000); const e = await _gmCall(`/mercado/trafico/estado?id=${id}`); if (e.done != null && e.total) _gmJob.sub = `${e.done} de ${e.total} consultas`; if (!e.running) { if (e.error) throw new Error(e.error); break; } }
+    }
+  }
+}
+app.post("/geometrika/analizar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
+    if (_gmJob.running && Date.now() - Date.parse(_gmJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay un análisis en curso" });
+    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
+    _gmJob = { running: true, id, paso: "Iniciando", sub: "", punto: 0, de: P.puntos.length, inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _gmJob.upd = new Date().toISOString(); }, 15000);
+    _gmGuarda(P).then(() => _gmAnaliza(P)).then(() => { _gmJob.paso = "Listo"; _gmJob.sub = ""; }).catch(e => { _gmJob.error = String(e.message || e); console.warn("[geometrika]", id, _gmJob.paso, e.message); }).finally(async () => { clearInterval(t); _gmJob.running = false; _gmJob.fin = new Date().toISOString(); await _gmGuarda(P); });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/geometrika/analizar/estado", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const id = String(req.query.id || "").replace(/\D/g, ""); res.set("Cache-Control", "no-store"); if (_gmJob.id === id) return res.json({ ok: true, running: !!_gmJob.running, paso: _gmJob.paso, sub: _gmJob.sub, punto: _gmJob.punto, de: _gmJob.de, error: _gmJob.error || "", listo: !_gmJob.running && !_gmJob.error && !!_gmJob.fin });
+    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`), a = P && P.analisis; if (!a) return res.json({ ok: true, running: false, paso: "", error: "", listo: false }); res.json({ ok: true, running: false, paso: a.paso, sub: a.sub, punto: a.punto, de: a.de, error: a.estado === "analizando" ? "El análisis se interrumpió (el servidor se reinició). Vuelve a pulsar Analizar." : a.error, listo: a.estado === "listo" });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Negocios y establecimientos en el radio de influencia (Google Places API (New) · Nearby Search) ──
@@ -13226,6 +13270,10 @@ const _fbKeyC = m => m.lat.toFixed(3) + "," + m.lng.toFixed(3);
 async function _fbFreqC() { const d = await _fbDoc(), f = {}; Object.values(d.items || {}).forEach(it => { const m = _fbMapa(it.mapas); if (m && m.tipo === "circulo") f[_fbKeyC(m)] = (f[_fbKeyC(m)] || 0) + 1; }); return f; } // el centro de ciudad que Facebook repite en muchas publicaciones no es una ubicación útil
 // Coordenadas y datos mínimos de una publicación por id: Airbnb o Marketplace (la misma vía de Entorno urbano y Negocios en 1 km).
 async function _mcItem(id) {
+  if (/^9\d{13,14}$/.test(String(id))) { // proyecto de GeoMetrika: 14 dígitos = punto 1; 15 dígitos = punto 2..10
+    const sid = String(id), base = sid.slice(0, 14), k = sid.length === 15 ? +sid.slice(14) : 0; let P = null; try { P = (await _bnReadGcs(`geometrika/proyectos/${base}.json`)).data; } catch (_) {}
+    const q = P && (P.puntos || [])[k]; if (q) return { id: sid, titulo: `GeoMetrika · ${P.perfil || "Proyecto"}${P.puntos.length > 1 ? " · punto " + (k + 1) : ""}`, tipo: "Proyecto GeoMetrika", ciudad: "", lat: q.lat, lng: q.lng, ubicacion: q.dir || P.direccion || "" };
+  }
   const { data } = await _bnReadGcs(_MA.OBJ), a = data && data.items && data.items[id]; if (a) return a;
   const dm = await _mlDoc().catch(() => null), m = dm && dm.items && dm.items[id]; if (m && m.lat != null && m.lng != null) return { id, titulo: m.titulo, tipo: "Inmueble", ciudad: m.ciudad, lat: m.lat, lng: m.lng, ubicacion: m.direccion || m.colonia || m.ciudad };
   const d = await _fbDoc(), f = d.items && d.items[id]; if (!f || !f.geo || f.lat == null) return null;
@@ -13832,8 +13880,8 @@ app.post("/mercado/maqueta/vial", async (req, res) => { if (!_vOriginOk(req)) re
 const _TR_DEF = { tramo: 200, h0: 7, h1: 21, paso: 2, dias: [2, 5, 6], maxVias: 6 }; // por omisión: martes, viernes y sábado, cada 2 h (≈ 72 consultas por 3 vialidades de un sentido)
 const _TR_CLASES = ["motorway", "trunk", "primary", "secondary", "tertiary", "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link", "unclassified", "residential", "living_street", "service", "road", "track", "busway", "pedestrian", "cycleway", "footway", "path", "steps", "bridleway", "bus_guideway", "corridor", "raceway", "escape", "construction", "proposed"], _TR_PRI = ["motorway", "trunk", "primary", "secondary", "tertiary"];
 const _TR_PRECIO = 10 / 1000; // USD por consulta (Routes · Compute Routes Pro, tráfico en tiempo/predicción); estimado
-const _trNorm = c => { c = c || {}; const n = (v, lo, hi, d) => { v = Math.round(Number(v)); return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; }; const h0 = n(c.h0, 0, 23, _TR_DEF.h0), h1 = Math.max(h0, n(c.h1, 0, 23, _TR_DEF.h1)); const dias = (Array.isArray(c.dias) ? c.dias : _TR_DEF.dias).map(Number).filter(d => d >= 0 && d <= 6).filter((d, i, a) => a.indexOf(d) === i); return { tramo: n(c.tramo, 50, 1000, _TR_DEF.tramo), h0, h1, paso: n(c.paso, 1, 6, _TR_DEF.paso), dias: dias.length ? dias : _TR_DEF.dias, maxVias: n(c.maxVias, 0, 30, _TR_DEF.maxVias), sel: (Array.isArray(c.sel) ? c.sel : []).map(x => String(x).slice(0, 90)).slice(0, 400), clases: (Array.isArray(c.clases) ? c.clases : _TR_PRI).filter(x => _TR_CLASES.includes(x)).filter((x, i, a) => a.indexOf(x) === i) }; };
-const _trHoras = c => { const L = []; for (let h = c.h0; h <= c.h1; h += c.paso) L.push(h); return L; };
+const _trNorm = c => { c = c || {}; const n = (v, lo, hi, d) => { v = Math.round(Number(v)); return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; }; const h0 = n(c.h0, 0, 23, _TR_DEF.h0), h1 = Math.max(h0, n(c.h1, 0, 23, _TR_DEF.h1)); const dias = (Array.isArray(c.dias) ? c.dias : _TR_DEF.dias).map(Number).filter(d => d >= 0 && d <= 6).filter((d, i, a) => a.indexOf(d) === i); return { horas: [...new Set((Array.isArray(c.horas) ? c.horas : []).map(Number).filter(h => h >= 0 && h <= 23))].sort((a, b) => a - b), tramo: n(c.tramo, 50, 1000, _TR_DEF.tramo), h0, h1, paso: n(c.paso, 1, 6, _TR_DEF.paso), dias: dias.length ? dias : _TR_DEF.dias, maxVias: n(c.maxVias, 0, 30, _TR_DEF.maxVias), sel: (Array.isArray(c.sel) ? c.sel : []).map(x => String(x).slice(0, 90)).slice(0, 400), clases: (Array.isArray(c.clases) ? c.clases : _TR_PRI).filter(x => _TR_CLASES.includes(x)).filter((x, i, a) => a.indexOf(x) === i) }; };
+const _trHoras = c => { if (c.horas && c.horas.length) return c.horas; const L = []; for (let h = c.h0; h <= c.h1; h += c.paso) L.push(h); return L; };
 const _trObj = id => `mercado/trafico/${id}.json`, _trEstObj = id => `mercado/trafico/estado/${id}.json`, _trViasObj = (id, R, cl) => `mercado/trafico/vias/${id}_${R}_${cl}_v2.json`;
 const _trTz = lng => lng < -114 ? -8 : lng < -108 ? -7 : lng > -88.6 ? -5 : -6;
 let _trJob = { running: false };
