@@ -79250,7 +79250,7 @@ function gmFotosTxt_() { const f = GMW.ft; return GMW.fmode === 'auto' ? `${f.fr
 
 /* ── costos estimados (precio de lista × GMW_X) ── */
 const GMW_X = 10, GMW_PR = { sv: .007, ia: .0053, sat: .01, base: .04, ruta: .01, od: 364 };
-const gmOpt_ = () => GMW.opt || (GMW.opt = { fotos: true, trafico: true, od: false }), gmUsd_ = v => '$' + v.toFixed(2) + ' USD';
+const gmOpt_ = () => GMW.opt || (GMW.opt = { fotos: true, trafico: true, od: false }), GMW_PRECIOS = false /* precios aún sin definir: se muestran como X */, gmUsd_ = v => GMW_PRECIOS ? '$' + v.toFixed(2) + ' USD' : 'X';
 function gmCosto_() {
   const nP = Math.max(1, gmPtsOk_().length), o = gmOpt_(), fotos = (GMW.fmode !== 'manual' ? gmFotosAuto_() * nP : 0) + (GMW.fmode !== 'auto' ? GMW.fm.length : 0);
   const ts = GMW.radio > 400 ? 344 : 172, k = Math.max(1, Math.ceil((GMW.radio - ts / 2) / ts)), tiles = GMW.radio >= 50 ? (2 * k + 1) ** 2 * nP : 0;
@@ -79274,7 +79274,7 @@ function gmCostHtml_(t) {
     ${f('trafico', ['Monitoreo de tráfico en vialidades', 'Google Routes con tráfico, por sentido · día · hora'], c.calls + ' consultas', c.tr, o.trafico)}
     ${f('od', ['Verificar rutas origen/destino', 'Google Routes, hasta ' + GMW_PR.od + ' elementos por punto'], 'hasta ' + c.nP * GMW_PR.od, c.od, o.od)}
     </tbody><tfoot><tr><td></td><td colspan="2">Total estimado</td><td><b>${gmUsd_(c.total)}</b></td></tr></tfoot></table>
-    <p class="gmw-mu">marca o desmarca cada concepto para incluirlo. Precios de lista de Google × ${GMW_X}. No incluye la búsqueda de direcciones ni los mapas de este asistente.</p>`;
+    <p class="gmw-mu">marca o desmarca cada concepto para incluirlo. Los precios (X) están por definir. No incluye la búsqueda de direcciones ni los mapas de este asistente.</p>`;
 }
 function gmCostRefresca_() { document.querySelectorAll('[data-cost]').forEach(el => { el.innerHTML = gmCostHtml_(el.dataset.cost); if (el.dataset.cost === 'aviso') el.style.display = el.innerHTML ? '' : 'none'; }); }
 function gmPasoHtml_() {
@@ -79429,7 +79429,7 @@ function gmWiring_() {
 }
 async function gmEjecutar_() {
   if (gmFalta_().length || GMW.enviando) return; GMW.enviando = true; GMW.err = ''; gmUpd_();
-  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: gmPtsOk_()[0].dir, puntos: gmPtsOk_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fmode === 'auto' ? [] : GMW.fm, fotosModo: GMW.fmode, fotos: GMW.fmode === 'manual' ? { frente: 0, inmediato: 0, general: 0 } : GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre, seleccion: GMW.vias ? [...GMW.vsel] : [] }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPtsOk_()[0].lat, lng: gmPtsOk_()[0].lng, opciones: gmOpt_(), costoEstimadoUSD: +gmCosto_().total.toFixed(2), radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  try { const j = await fetch(`${BACKEND}/geometrika/proyecto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil: GMW.perfil, objetivo: GMW.objetivo.trim(), direccion: gmPtsOk_()[0].dir, puntos: gmPtsOk_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fmode === 'auto' ? [] : GMW.fm, fotosModo: GMW.fmode, fotos: GMW.fmode === 'manual' ? { frente: 0, inmediato: 0, general: 0 } : GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre, seleccion: GMW.vias ? [...GMW.vsel] : [] }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPtsOk_()[0].lat, lng: gmPtsOk_()[0].lng, opciones: gmOpt_(), costoEstimadoUSD: GMW_PRECIOS ? +gmCosto_().total.toFixed(2) : null, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }) }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo registrar'); GMW.proy = j.proyecto; GMW.vista = 'hecho'; GMW.enviando = false; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   catch (e) { GMW.enviando = false; GMW.err = String(e.message || e); gmUpd_(); }
 }
 window.geometrikaInit = function () {
