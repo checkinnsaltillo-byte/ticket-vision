@@ -13160,7 +13160,7 @@ app.post("/geometrika/complementar", async (req, res) => {
     const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
     if (_gmJob.running && Date.now() - Date.parse(_gmJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay un análisis en curso" });
     const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
-    const hecho = []; (P.puntos || []).forEach((_, k) => { ["fotos", "maq", "vial", "traf"].forEach(f => hecho.push(k + ":" + f)); }); _gmArranca(P, hecho); res.json({ ok: true });
+    const solo = Array.isArray((req.body || {}).solo) ? req.body.solo : null, hecho = []; (P.puntos || []).forEach((_, k) => { ["fotos", "maq", "vial", "traf"].concat(["amb", "lug", "ent", "sol"].filter(f => solo && !solo.includes(f))).forEach(f => hecho.push(k + ":" + f)); }); _gmArranca(P, hecho); res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/geometrika/analizar", async (req, res) => {
