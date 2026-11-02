@@ -23,7 +23,7 @@ app.use(compression()); // gzip de respuestas — reduce 8.7MB → ~700KB en lod
 app.use(express.json({ limit: "32mb" }));
 // ── GeoMetrika: acceso por contraseña. Las rutas de la maqueta, de los análisis ambientales y de /geometrika exigen un token firmado (x-gm-token). Se obtiene con la contraseña (/geometrika/acceso) o al iniciar sesión en el sistema (/sys/login). ──
 const _GM_HASH = new Set(["97ef44bc8db6e747ccec504373e35680205e1f3e81d00fcf9f084906e6a927ee", "4739ee3bd29e4f415da8ba9298a087e0fdc9c61378420ba8fbbab298bd74c4df"].concat(String(process.env.GM_CLAVES_SHA || "").split(",").map(x => x.trim()).filter(Boolean)));
-const _GM_DUR = 30 * 24 * 3600 * 1000, _gmFallos = new Map();
+const _GM_DUR = 90 * 24 * 3600 * 1000, _gmFallos = new Map();
 function _gmToken() { const exp = Date.now() + _GM_DUR; return { token: _vSign({ t: "g", exp, n: crypto.randomBytes(5).toString("hex") }), exp }; }
 function _gmOk(req) { const s = _vUnsign(req.headers["x-gm-token"] || req.query.t); return !!(s && s.t === "g" && Date.now() < s.exp); }
 app.post("/geometrika/acceso", (req, res) => {
@@ -13051,11 +13051,25 @@ app.post("/geometrika/proyecto", async (req, res) => {
     if (!vialidades.clases.length) return res.status(400).json({ ok: false, error: "Elige al menos una clasificación de vialidad" });
     const RV = b.redVial || {}, rp = Math.max(1000, Math.min(5000, Math.round(+RV.principales) || 3000)), redVial = { principales: rp, locales: Math.max(100, Math.min(rp, Math.round(+RV.locales) || 900)) };
     const okp = p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180, puntos = (Array.isArray(b.puntos) ? b.puntos : []).filter(okp).slice(0, 10).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6, dir: String(p.dir || "").slice(0, 200) })), fotosManuales = (Array.isArray(b.fotosManuales) ? b.fotosManuales : []).filter(okp).slice(0, 60).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6 }));
-    const id = "9" + Date.now(), doc = { id, ver: "gm-v1", nombre, puntos: puntos.length ? puntos : [{ lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, dir: direccion }], fotosModo: ["auto", "manual", "mixta"].includes(b.fotosModo) ? b.fotosModo : "auto", fotosManuales, fotos, vialidades, redVial, creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length, opciones };
+    const ed = /^9\d{13}$/.test(String(b.editarId || "")) ? String(b.editarId) : "", id = ed || "9" + Date.now(), doc = { id, ver: "gm-v1", nombre, puntos: puntos.length ? puntos : [{ lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, dir: direccion }], fotosModo: ["auto", "manual", "mixta"].includes(b.fotosModo) ? b.fotosModo : "auto", fotosManuales, fotos, vialidades, redVial, creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length, opciones };
+    if (ed) {   // EDITAR: se actualizan los parámetros y solo se vuelven a procesar las etapas indicadas en «invalidar» (formato «punto:etapa», p. ej. «0:traf»)
+      const { data: O } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!O) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
+      if (_gmJob.running && Date.now() - Date.parse(_gmJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Hay un análisis en curso; espera a que termine para aplicar los cambios" });
+      const inv = (Array.isArray(b.invalidar) ? b.invalidar : []).map(String).filter(x => /^\d{1,2}:(fotos|maq|vial|traf)$/.test(x)), nP = doc.puntos.length, hecho = ((O.analisis && O.analisis.hecho) || []).filter(x => !inv.includes(x) && +x.split(":")[0] < nP), recalc = b.recalcular !== false && inv.length > 0;
+      Object.assign(doc, { creado: O.creado, estado: O.estado, oculto: O.oculto, analisis: O.analisis, ediciones: (O.ediciones || []).concat([{ at: new Date().toISOString(), invalidar: inv, recalcular: recalc, usd: Number.isFinite(+b.costoEstimadoUSD) ? +b.costoEstimadoUSD : null }]).slice(-40) });
+      await _bnWriteGcs(`geometrika/proyectos/${id}.json`, doc, null); res.set("Cache-Control", "no-store");
+      if (recalc) { _gmArranca(doc, hecho); return res.json({ ok: true, proyecto: doc, reanaliza: true }); }
+      return res.json({ ok: true, proyecto: doc, reanaliza: false });
+    }
     await _bnWriteGcs(`geometrika/proyectos/${id}.json`, doc, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyecto: doc });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+app.get("/geometrika/proyecto", async (req, res) => {   // proyecto completo (para editarlo)
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
+    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" }); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyecto: P }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── Análisis del proyecto GeoMetrika: encadena fotos de calle (Street View + IA) → maqueta → tráfico, reutilizando los procesos de Alojamientos por id numérico ──
 const _gmPid = (id, k) => k ? id + String(k) : id;
 let _gmJob = { running: false };
