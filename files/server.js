@@ -21,6 +21,23 @@ const upload = multer({ dest: UPLOAD_DIR });
 app.use(cors({ origin: true }));
 app.use(compression()); // gzip de respuestas — reduce 8.7MB → ~700KB en lodgify-list
 app.use(express.json({ limit: "32mb" }));
+// ── GeoMetrika: acceso por contraseña. Las rutas de la maqueta, de los análisis ambientales y de /geometrika exigen un token firmado (x-gm-token). Se obtiene con la contraseña (/geometrika/acceso) o al iniciar sesión en el sistema (/sys/login). ──
+const _GM_HASH = new Set(["97ef44bc8db6e747ccec504373e35680205e1f3e81d00fcf9f084906e6a927ee", "4739ee3bd29e4f415da8ba9298a087e0fdc9c61378420ba8fbbab298bd74c4df"].concat(String(process.env.GM_CLAVES_SHA || "").split(",").map(x => x.trim()).filter(Boolean)));
+const _GM_DUR = 30 * 24 * 3600 * 1000, _gmFallos = new Map();
+function _gmToken() { const exp = Date.now() + _GM_DUR; return { token: _vSign({ t: "g", exp, n: crypto.randomBytes(5).toString("hex") }), exp }; }
+function _gmOk(req) { const s = _vUnsign(req.headers["x-gm-token"] || req.query.t); return !!(s && s.t === "g" && Date.now() < s.exp); }
+app.post("/geometrika/acceso", (req, res) => {
+  const ip = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim(), ahora = Date.now(), f = (_gmFallos.get(ip) || []).filter(t => ahora - t < 10 * 60 * 1000);
+  if (f.length >= 8) return res.status(429).json({ ok: false, error: "Demasiados intentos. Espera unos minutos." });
+  const h = crypto.createHash("sha256").update(String((req.body || {}).clave || "").trim()).digest("hex");
+  if (!_GM_HASH.has(h)) { f.push(ahora); _gmFallos.set(ip, f); return res.status(401).json({ ok: false, error: "Contraseña incorrecta." }); }
+  res.json(Object.assign({ ok: true }, _gmToken()));
+});
+app.use(["/mercado/maqueta", "/mercado/ambiente", "/geometrika"], (req, res, next) => {
+  if (req.method === "OPTIONS") return next(); const b = req.baseUrl, p = req.path;
+  if ((b === "/geometrika" && p === "/acceso") || (b === "/mercado/maqueta" && p === "/fachada/img") || (b === "/mercado/ambiente" && p === "/aire/tile")) return next();
+  if (_gmOk(req)) return next(); res.status(401).json({ ok: false, gm: true, error: "Se requiere la contraseña de GeoMetrika" });
+});
 
 // ─── Apps Script URL (maneja Drive y Sheets) ───────────────────────────────
 
@@ -5977,6 +5994,7 @@ app.post("/sys/login", async (req, res) => {
     if (result && result.ok && !(result.user && result.user.Nombre)) {
       return res.json({ ok: false, error: 'No se pudo verificar la contraseña. Intenta de nuevo.' });
     }
+    if (result && result.ok && result.user && result.user.Nombre) Object.assign(result, { gmToken: _gmToken() });
     res.json(result);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
