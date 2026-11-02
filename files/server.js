@@ -14539,6 +14539,7 @@ async function _amItems(ids) {
   const arm = id => { const a = A[id], f = F[id]; if (a && a.lat != null && a.lng != null) return { id, lat: +a.lat, lng: +a.lng, aprox: false }; if (f && f.geo && f.lat != null && f.lng != null) return { id, lat: +f.lat, lng: +f.lng, aprox: (f.geo.tipo || (f.geo.prec === "facebook" ? "circulo" : "punto")) === "circulo" }; return null; };
   const dm = await _mlDoc().catch(() => null), Mi = (dm && dm.items) || {}, armM = id => { const m = Mi[id]; return m && m.lat != null && m.lng != null ? { id, lat: +m.lat, lng: +m.lng, aprox: m.geoTipo === "aprox" } : null; };
   (ids || [...Object.keys(A), ...Object.keys(F), ...Object.keys(Mi)]).forEach(id => { const x = arm(String(id)) || armM(String(id)); if (x && isFinite(x.lat) && isFinite(x.lng)) out.push(x); });
+  for (const id of (ids || [])) if (/^9\d{13,14}$/.test(String(id)) && !out.some(x => x.id === String(id))) { const it = await _mcItem(String(id)).catch(() => null); if (it && it.lat != null && isFinite(+it.lat) && isFinite(+it.lng)) out.push({ id: String(id), lat: +it.lat, lng: +it.lng, aprox: false }); }   // proyectos de GeoMetrika
   return out;
 }
 async function _amCorre(ids, forzar) {
