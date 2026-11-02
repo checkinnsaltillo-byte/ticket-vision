@@ -13,6 +13,6 @@ tail -n +$n "$TV/app.js" > /tmp/gm_block.js
 node --check "$OUT/geometrika.js"
 c=$(grep -n 'MÓDULO GeoMetrika' "$TV/styles.css" | head -1 | cut -d: -f1)
 tail -n +$c "$TV/styles.css" > "$OUT/geometrika.css"
-cp "$TV/geometrika-logo.png" "$OUT/geometrika-logo.png"
+cp "$TV/geometrika-logo.png" "$OUT/geometrika-logo.png"; cp "$TV/geometrika-logo-claro.png" "$OUT/geometrika-logo-claro.png"
 sed "s/__V__/$V/g; s/__HASH2__/$HASH2/g; s/__HASH__/$HASH/g" "$TV/geometrika-publico/index.template.html" > "$OUT/index.html"
 echo "generado en $OUT (v=$V)"

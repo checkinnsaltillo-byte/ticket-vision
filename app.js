@@ -79156,7 +79156,7 @@ function gmFalta_() {   /* en edición, si los cambios no cuestan nada no se pid
    const f = []; if (!GMW.perfil) f.push('objetivo del proyecto'); if (!gmPtsOk_().length) f.push('punto de interés'); if (!(GMW.radio >= 50)) f.push('radio de maqueta'); if (!GMW.vial.clases.length) f.push('vialidades'); if (GMW.fmode === 'manual' && !GMW.fm.length) f.push('puntos de fotos'); if (!GMW.dias.length) f.push('días'); if (!GMW.horas.length) f.push('horas'); if (!gmPagado_() && !(GMW.edit && gmCosto_().total === 0)) f.push('pago'); return f; }
 function gmHdr_(sub, btn, tab) {
   const t = [['landing', '📁 Mis proyectos'], ['wizard', '➕ Nuevo análisis']];
-  return `<div class="gm-hd"><div class="gm-lgw"><img src="geometrika-logo.png?v=2371" alt="GeoMetrika Geo-Intelligence"></div><div><h1>Sistema de Geo-Inteligencia</h1><small>${sub}</small></div><div class="sp"></div><span class="gm-ver">v.Beta${gmVer_()}</span>${btn}</div><div class="gm-tabs">${t.map(([k, l]) => `<a class="gm-tab${k === tab ? ' on' : ''}" onclick="${k === 'landing' ? 'gmVolver_()' : 'gmNuevo_()'}">${l}</a>`).join('')}</div>`;
+  return `<div class="gm-hd"><div class="gm-lgw"><img src="geometrika-logo-claro.png?v=2405" alt="GeoMetrika Geo-Intelligence"></div><div><h1>Sistema de Geo-Inteligencia</h1><small>${sub}</small></div><div class="sp"></div><span class="gm-ver">v.Beta${gmVer_()}</span>${btn}</div><div class="gm-tabs">${t.map(([k, l]) => `<a class="gm-tab${k === tab ? ' on' : ''}" onclick="${k === 'landing' ? 'gmVolver_()' : 'gmNuevo_()'}">${l}</a>`).join('')}</div>`;
 }
 function gmLanding_() {
   return `<div class="gm">
