@@ -14579,6 +14579,18 @@ async function _wcSuelo(lat, lng) {
 }
 // Cobertura del suelo a 10 m para pintarla sobre la maqueta: cuadrícula de 10 m centrada en la propiedad (una clase ESA WorldCover por byte, fila 0 = norte)
 const _wcGrid = new Map();
+// ── Huellas de Microsoft tal cual (Global ML Building Footprints): sin alinear, regularizar ni recortar; coordenadas en metros respecto del centro de la maqueta ──
+const _msRawC = new Map();
+app.get("/mercado/maqueta/ms-huellas", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng, R = Math.max(50, Math.min(3000, +req.query.r || 400)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
+    const key = [lat.toFixed(5), lng.toFixed(5), Math.round(R)].join("|"), c = _msRawC.get(key); res.set("Cache-Control", "no-store");
+    if (c && Date.now() - c.t < 30 * 60000) return res.json({ ok: true, n: c.f.length, f: c.f, cache: true });
+    const f = ((await _mqFootprints(lat, lng, R)) || []).slice(0, 20000); _msRawC.set(key, { t: Date.now(), f }); if (_msRawC.size > 20) _msRawC.delete(_msRawC.keys().next().value);
+    res.json({ ok: true, n: f.length, f });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/mercado/maqueta/suelo", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
