@@ -13100,7 +13100,7 @@ async function _gmInicia(path, body) { for (let i = 0; i < 60; i++) { try { retu
 async function _gmEspera(path, tmax) { const t0 = Date.now(); await _amSleep(2500); for (;;) { const j = await _gmCall(path); if (!j.running) { if (j.error) throw new Error(j.error); return j; } if (j.paso) _gmJob.sub = j.paso; if (Date.now() - t0 > tmax) throw new Error("El proceso tardó demasiado"); await _amSleep(4000); } }
 async function _gmGuarda(P) { P.analisis = { estado: _gmJob.running ? "analizando" : _gmJob.error ? "error" : "listo", paso: _gmJob.paso || "", sub: _gmJob.sub || "", punto: _gmJob.punto || 0, de: _gmJob.de || 0, pct: _gmJob.running ? _gmPct(_gmJob) : (!_gmJob.error && _gmJob.fin ? 100 : _gmPct(_gmJob)), hecho: _gmJob.hecho || [], upd: new Date().toISOString(), error: _gmJob.error || "", avisos: _gmJob.avisos || [], inicio: _gmJob.inicio, fin: _gmJob.fin || null }; try { await _bnWriteGcs(`geometrika/proyectos/${P.id}.json`, P, null); } catch (_) {} }
 // avance en %: cada punto pesa igual; dentro de un punto, fotos 20 · maqueta+IA 40 · red vial 5 · tráfico 35 (se reparte entre las fases activas)
-function _gmPesos(op) { const w = {}; if (op.fotos !== false) { w.fotos = 20; w.maq = 40; w.ent = 6; w.sol = 4; } w.vial = 5; w.amb = 6; w.lug = 4; if (op.trafico !== false && op.fotos !== false) w.traf = 35; const t = Object.values(w).reduce((a, b) => a + b, 0); Object.keys(w).forEach(k => { w[k] /= t; }); return w; }
+function _gmPesos(op) { const w = {}; if (op.fotos !== false) { w.fotos = 20; w.maq = 40; w.ent = 6; w.sol = 4; } w.vial = 5; w.amb = 6; w.lug = 4; w.pob = 3; if (op.trafico !== false && op.fotos !== false) w.traf = 35; const t = Object.values(w).reduce((a, b) => a + b, 0); Object.keys(w).forEach(k => { w[k] /= t; }); return w; }
 function _gmPct(J) {
   if (!J.pesos || !J.de) return 0; const m = /(\d+)\s*(?:\/|de)\s*(\d+)/.exec((J.sub || "") + " " + (J.paso || "")), f = m && +m[2] ? Math.min(1, +m[1] / +m[2]) : 0, w = J.pesos[J.fase] || 0;
   return Math.max(0, Math.min(99, Math.round((((J.punto || 1) - 1) + (J.acum || 0) + w * f) / J.de * 100)));
@@ -13131,6 +13131,7 @@ async function _gmAnaliza(P) {
         const kx = 111320 * Math.cos(+sc.lat * Math.PI / 180), pts = cands.map(g => ({ a: ar(g), c: g.reduce((u, q) => [u[0] + q[0] / g.length, u[1] + q[1] / g.length], [0, 0]) })).filter(b => b.a >= 70).sort((x, y) => y.a - x.a).slice(0, 30).map(b => ({ lat: +sc.lat + b.c[1] / 111320, lng: +sc.lng + b.c[0] / kx }));
         if (!pts.length) throw new Error("sin edificios grandes en la maqueta"); await _gmInicia("/mercado/ambiente/solar", { id, pts }); await _gmEspera("/mercado/ambiente/solar/estado", 10 * 60000); });
     }
+    await etapa("pob", "Población alcanzada (isócronas a pie y en auto)", async () => { const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("sin coordenada"); const q = `lat=${(+it.lat).toFixed(6)}&lng=${(+it.lng).toFixed(6)}`; await _gmCall(`/mercado/maqueta/cobertura?${q}&modo=p&t=5,10,15,30`); await _gmCall(`/mercado/maqueta/cobertura?${q}&modo=a&t=1,5,10`); });   // mismos tiempos predeterminados del visor; las isócronas quedan en caché y el visor mide la población al abrirse
     if (op.trafico !== false && op.fotos !== false && !ya(k, "traf")) {
       _gmJob.fase = "traf"; _gmJob.paso = pre + "Tráfico en vialidades (Google Routes)"; _gmJob.sub = ""; await _gmGuarda(P); const sel = (P.vialidades.seleccion || []).length ? P.vialidades.seleccion : [];
       await _gmInicia("/mercado/trafico/consultar", { id, cfg: { tramo: P.vialidades.tramo, dias: P.dias, horas: P.horas, maxVias: sel.length ? 30 : P.vialidades.preseleccionar, sel, clases: P.vialidades.clases } });
@@ -13160,7 +13161,7 @@ app.post("/geometrika/complementar", async (req, res) => {
     const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
     if (_gmJob.running && Date.now() - Date.parse(_gmJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay un análisis en curso" });
     const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
-    const solo = Array.isArray((req.body || {}).solo) ? req.body.solo : null, hecho = []; (P.puntos || []).forEach((_, k) => { ["fotos", "maq", "vial", "traf"].concat(["amb", "lug", "ent", "sol"].filter(f => solo && !solo.includes(f))).forEach(f => hecho.push(k + ":" + f)); }); _gmArranca(P, hecho); res.json({ ok: true });
+    const solo = Array.isArray((req.body || {}).solo) ? req.body.solo : null, hecho = []; (P.puntos || []).forEach((_, k) => { ["fotos", "maq", "vial", "traf"].concat(["amb", "lug", "ent", "sol", "pob"].filter(f => solo && !solo.includes(f))).forEach(f => hecho.push(k + ":" + f)); }); _gmArranca(P, hecho); res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/geometrika/analizar", async (req, res) => {
