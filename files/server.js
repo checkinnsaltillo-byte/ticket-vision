@@ -13098,9 +13098,9 @@ async function _gmCall(path, body) {
 }
 async function _gmInicia(path, body) { for (let i = 0; i < 60; i++) { try { return await _gmCall(path, body); } catch (e) { if (!e.ocupado) throw e; _gmJob.sub = "esperando a que termine otro proceso"; await _amSleep(10000); } } throw new Error("El servidor siguió ocupado con otro proceso; vuelve a intentarlo"); }
 async function _gmEspera(path, tmax) { const t0 = Date.now(); await _amSleep(2500); for (;;) { const j = await _gmCall(path); if (!j.running) { if (j.error) throw new Error(j.error); return j; } if (j.paso) _gmJob.sub = j.paso; if (Date.now() - t0 > tmax) throw new Error("El proceso tardó demasiado"); await _amSleep(4000); } }
-async function _gmGuarda(P) { P.analisis = { estado: _gmJob.running ? "analizando" : _gmJob.error ? "error" : "listo", paso: _gmJob.paso || "", sub: _gmJob.sub || "", punto: _gmJob.punto || 0, de: _gmJob.de || 0, pct: _gmJob.running ? _gmPct(_gmJob) : (!_gmJob.error && _gmJob.fin ? 100 : _gmPct(_gmJob)), hecho: _gmJob.hecho || [], upd: new Date().toISOString(), error: _gmJob.error || "", inicio: _gmJob.inicio, fin: _gmJob.fin || null }; try { await _bnWriteGcs(`geometrika/proyectos/${P.id}.json`, P, null); } catch (_) {} }
+async function _gmGuarda(P) { P.analisis = { estado: _gmJob.running ? "analizando" : _gmJob.error ? "error" : "listo", paso: _gmJob.paso || "", sub: _gmJob.sub || "", punto: _gmJob.punto || 0, de: _gmJob.de || 0, pct: _gmJob.running ? _gmPct(_gmJob) : (!_gmJob.error && _gmJob.fin ? 100 : _gmPct(_gmJob)), hecho: _gmJob.hecho || [], upd: new Date().toISOString(), error: _gmJob.error || "", avisos: _gmJob.avisos || [], inicio: _gmJob.inicio, fin: _gmJob.fin || null }; try { await _bnWriteGcs(`geometrika/proyectos/${P.id}.json`, P, null); } catch (_) {} }
 // avance en %: cada punto pesa igual; dentro de un punto, fotos 20 · maqueta+IA 40 · red vial 5 · tráfico 35 (se reparte entre las fases activas)
-function _gmPesos(op) { const w = {}; if (op.fotos !== false) { w.fotos = 20; w.maq = 40; } w.vial = 5; if (op.trafico !== false && op.fotos !== false) w.traf = 35; const t = Object.values(w).reduce((a, b) => a + b, 0); Object.keys(w).forEach(k => { w[k] /= t; }); return w; }
+function _gmPesos(op) { const w = {}; if (op.fotos !== false) { w.fotos = 20; w.maq = 40; w.ent = 6; w.sol = 4; } w.vial = 5; w.amb = 6; w.lug = 4; if (op.trafico !== false && op.fotos !== false) w.traf = 35; const t = Object.values(w).reduce((a, b) => a + b, 0); Object.keys(w).forEach(k => { w[k] /= t; }); return w; }
 function _gmPct(J) {
   if (!J.pesos || !J.de) return 0; const m = /(\d+)\s*(?:\/|de)\s*(\d+)/.exec((J.sub || "") + " " + (J.paso || "")), f = m && +m[2] ? Math.min(1, +m[1] / +m[2]) : 0, w = J.pesos[J.fase] || 0;
   return Math.max(0, Math.min(99, Math.round((((J.punto || 1) - 1) + (J.acum || 0) + w * f) / J.de * 100)));
@@ -13118,6 +13118,19 @@ async function _gmAnaliza(P) {
     }
     if (!ya(k, "vial")) { _gmJob.fase = "vial"; await _gmInicia("/mercado/maqueta/vial", { id, R: P.redVial.principales, Rloc: P.redVial.locales, cl: P.vialidades.clases }); await fin(k, "vial"); }
     _gmJob.acum += W.vial;
+    // datos complementarios que antes solo se generaban a mano en cada ventana del visor: ahora se consultan desde la primera vez; un fallo se anota como aviso y no detiene el análisis
+    const etapa = async (clave, titulo, fn) => { if (!ya(k, clave)) { _gmJob.fase = clave; _gmJob.paso = pre + titulo; _gmJob.sub = ""; await _gmGuarda(P); try { await fn(); } catch (e) { (_gmJob.avisos || (_gmJob.avisos = [])).push(titulo + ": " + String(e.message || e).slice(0, 140)); console.warn("[geometrika]", P.id, clave, e.message); } await fin(k, clave); } _gmJob.acum += W[clave] || 0; };
+    await etapa("amb", "Datos ambientales (entorno de riesgo, terreno y crecimiento)", async () => { await _gmInicia("/mercado/airbnb/ambiente/calcular", { ids: [id] }); await _gmEspera("/mercado/airbnb/ambiente/estado", 30 * 60000); });
+    await etapa("lug", "Negocios y lugares (Google Places)", async () => { await _gmInicia("/mercado/airbnb/lugares/analizar", { id, radio: 1000 }); await _gmEspera("/mercado/airbnb/lugares/estado", 15 * 60000); });
+    if (op.fotos !== false) {
+      await etapa("ent", "Análisis del entorno urbano con IA", async () => { await _gmInicia("/mercado/airbnb/entorno/analizar", { id }); await _gmEspera("/mercado/airbnb/entorno/estado", 15 * 60000); });
+      await etapa("sol", "Potencial solar de azoteas (Google Solar API)", async () => {
+        const sc = (await _bnReadGcs(`mercado/maqueta/${id}.json`)).data; if (!sc || sc.lat == null) throw new Error("sin maqueta");
+        const ar = g => { let a = 0; for (let i = 0; i < g.length; i++) { const q = g[(i + 1) % g.length]; a += g[i][0] * q[1] - q[0] * g[i][1]; } return Math.abs(a) / 2; }, cands = [];
+        (sc.builds || []).forEach(b => { if (b.g && b.g.length >= 3) cands.push(b.g); }); (sc.mb || []).forEach(f => { const g = []; for (let i = 0; i + 1 < f.length; i += 2) g.push([f[i], f[i + 1]]); if (g.length >= 3) cands.push(g); });
+        const kx = 111320 * Math.cos(+sc.lat * Math.PI / 180), pts = cands.map(g => ({ a: ar(g), c: g.reduce((u, q) => [u[0] + q[0] / g.length, u[1] + q[1] / g.length], [0, 0]) })).filter(b => b.a >= 70).sort((x, y) => y.a - x.a).slice(0, 30).map(b => ({ lat: +sc.lat + b.c[1] / 111320, lng: +sc.lng + b.c[0] / kx }));
+        if (!pts.length) throw new Error("sin edificios grandes en la maqueta"); await _gmInicia("/mercado/ambiente/solar", { id, pts }); await _gmEspera("/mercado/ambiente/solar/estado", 10 * 60000); });
+    }
     if (op.trafico !== false && op.fotos !== false && !ya(k, "traf")) {
       _gmJob.fase = "traf"; _gmJob.paso = pre + "Tráfico en vialidades (Google Routes)"; _gmJob.sub = ""; await _gmGuarda(P); const sel = (P.vialidades.seleccion || []).length ? P.vialidades.seleccion : [];
       await _gmInicia("/mercado/trafico/consultar", { id, cfg: { tramo: P.vialidades.tramo, dias: P.dias, horas: P.horas, maxVias: sel.length ? 30 : P.vialidades.preseleccionar, sel, clases: P.vialidades.clases } });
@@ -13140,6 +13153,16 @@ async function _gmVigila() {
       console.log("[geometrika] reanudando análisis", P.id, "hecho:", (a.hecho || []).join(",")); _gmArranca(P, a.hecho || []); return; } } catch (e) { console.warn("[geometrika] vigilante:", e.message); }
 }
 setTimeout(_gmVigila, 45000); setInterval(_gmVigila, 120000);
+// completa un proyecto ya analizado con los datos complementarios (ambientales, negocios, entorno, solar) sin repetir fotos, maqueta, vialidades ni tráfico
+app.post("/geometrika/complementar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
+    if (_gmJob.running && Date.now() - Date.parse(_gmJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay un análisis en curso" });
+    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
+    const hecho = []; (P.puntos || []).forEach((_, k) => { ["fotos", "maq", "vial", "traf"].forEach(f => hecho.push(k + ":" + f)); }); _gmArranca(P, hecho); res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/geometrika/analizar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
