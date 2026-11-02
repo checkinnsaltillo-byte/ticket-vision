@@ -13869,7 +13869,9 @@ function _mqRegularizaHuella(f) {
   const ar = area(P); if (ar < 12) return null;
   let bo = null; for (let a = 0; a < 90; a += 2) { const c = Math.cos(a * Math.PI / 180), s2 = Math.sin(a * Math.PI / 180); let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9; P.forEach(p => { const u = p[0] * c + p[1] * s2, v = -p[0] * s2 + p[1] * c; if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v; }); const A = (u1 - u0) * (v1 - v0); if (!bo || A < bo.A) bo = { A, c, s2, u0, u1, v0, v1 }; }
   if (ar / bo.A >= .78) return [[bo.u0, bo.v0], [bo.u1, bo.v0], [bo.u1, bo.v1], [bo.u0, bo.v1]].flatMap(([u, v]) => [Math.round((u * bo.c - v * bo.s2) * 100) / 100, Math.round((u * bo.s2 + v * bo.c) * 100) / 100]);
-  const R2 = rdp(P.concat([P[0]]), .9); R2.pop(); if (R2.length < 3 || area(R2) < 10) return null; return R2.flatMap(p => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100]);
+  // anillo cerrado: se parte en el vértice más lejano del primero (con inicio = fin, Douglas-Peucker no ve ninguna desviación y descartaba toda huella que no fuera casi rectangular)
+  let fi = 0, fd = -1; P.forEach((q, i) => { const d = Math.hypot(q[0] - P[0][0], q[1] - P[0][1]); if (d > fd) { fd = d; fi = i; } });
+  const R2 = fi ? rdp(P.slice(0, fi + 1), .9).slice(0, -1).concat(rdp(P.slice(fi).concat([P[0]]), .9).slice(0, -1)) : P; if (R2.length < 3 || area(R2) < 10) return null; return R2.flatMap(p => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100]);
 }
 async function _mqSat(lat, lng, R, key, J, opts) {
   opts = opts || {}; let nLlam = 0, nCache = 0; const iaV = require("crypto").createHash("md5").update(_MQ_SAT).digest("hex").slice(0, 8);   // la respuesta de la IA por tesela se guarda: solo se vuelve a llamar si cambia la tesela o las instrucciones (o se pide refrescar)
