@@ -12993,7 +12993,7 @@ app.get("/geometrika/sugerir", async (req, res) => {   // autocompletado de dire
   try {
     const q = String(req.query.q || "").trim().slice(0, 150), st = String(req.query.st || "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 64), key = process.env.GOOGLE_MAPS_KEY; if (q.length < 2) return res.json({ ok: true, r: [] }); if (!key) return res.status(503).json({ ok: false, error: "Falta la clave de Google Maps" });
     const k = q.toLowerCase(), c = _gmSugC.get(k); if (c && Date.now() - c.t < 600e3) return res.json({ ok: true, r: c.r });
-    const body = { input: q, languageCode: "es", regionCode: "MX", locationBias: { circle: { center: { latitude: 25.4232, longitude: -101.0053 }, radius: 50000 } } }; if (st) body.sessionToken = st;
+    const body = { input: q, languageCode: "es", regionCode: "MX", locationBias: { circle: { center: /monterrey|nuevo le[oó]n|\bn\.? ?l\.?\b|san pedro garza|san nicol[aá]s|guadalupe, n|apodaca|escobedo|santa catarina|garc[ií]a, n/i.test(q) ? { latitude: 25.6866, longitude: -100.3161 } : { latitude: 25.4232, longitude: -101.0053 }, radius: 50000 } } };   /* se sesga a Monterrey si el texto lo menciona */ if (st) body.sessionToken = st;
     const r = await fetch("https://places.googleapis.com/v1/places:autocomplete", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
     const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || "Places HTTP " + r.status);
     const out = (j.suggestions || []).filter(x => x.placePrediction).slice(0, 6).map(x => { const p = x.placePrediction, f = p.structuredFormat || {}; return { pid: p.placeId, n: (f.mainText && f.mainText.text) || (p.text && p.text.text) || "", dir: (f.secondaryText && f.secondaryText.text) || "" }; });
@@ -13547,19 +13547,24 @@ Devuelve SOLO JSON: {"fotos":[{"n":1,"fr":[...],"c":{...},"rg":[...]}]}. Sin com
 const _mqOneway = (t, g) => { const v = String(t.oneway || "").toLowerCase(); if (v === "-1" || v === "reverse") return { o: 1, g: g.slice().reverse() }; if (/^(yes|true|1)$/.test(v) || t.junction === "roundabout") return { o: 1, g }; return { o: 0, g }; };
 const _mqProy = (lat0, lng0) => { const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 111320; return { xy: (la, ln) => [Math.round((ln - lng0) * kx * 10) / 10, Math.round((la - lat0) * ky * 10) / 10], kx, ky }; };
 // ── Red vial local de OpenStreetMap (Saltillo + Arteaga + Ramos Arizpe): se descarga una sola vez (osm/vial-saltillo.json en Cloud Storage) y todas las consultas de vialidades la usan sin ir a Overpass
-let _VIAL = null, _vialP = null; const _VIAL_OBJ = "osm/vial-saltillo.json", _VIAL_CELDA = 0.02;
+// Regiones con datos locales (cada una con su cobertura): el servidor elige la región según el punto; fuera de ellas vuelve a Overpass / descarga de Microsoft
+const _REGIONES = [
+  { id: "saltillo", bbox: [25.15, -101.45, 25.80, -100.55], vial: "osm/vial-saltillo.json", ent: "osm/entorno/", hue: "osm/huellas/", uso: "osm/uso-saltillo.json" },
+  { id: "monterrey", bbox: [25.42, -100.50, 25.86, -100.11], vial: "osm/vial-monterrey.json", ent: "osm/entorno-monterrey/", hue: "osm/huellas-monterrey/", uso: "osm/uso-monterrey.json" }];
+const _regDe = (lat, lng) => _REGIONES.find(r => lat >= r.bbox[0] && lat <= r.bbox[2] && lng >= r.bbox[1] && lng <= r.bbox[3]) || null;
+const _VIAL_M = {}, _vialPM = {}, _VIAL_CELDA = 0.02;
 function _vialDec(s) { const o = []; let i = 0, la = 0, ln = 0; while (i < s.length) { for (let w = 0; w < 2; w++) { let b, sh = 0, r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); const d = (r & 1) ? ~(r >> 1) : (r >> 1); if (w) ln += d; else la += d; } o.push([la / 1e6, ln / 1e6]); } return o; }
-function _vialCarga() {
-  if (_VIAL) return Promise.resolve(_VIAL); if (_vialP) return _vialP;
-  _vialP = (async () => { try { const { data } = await _bnReadGcs(_VIAL_OBJ); if (!data || !Array.isArray(data.ways)) return null; const W = data.ways, grid = new Map(), bb = new Array(W.length);
+function _vialCarga(reg) {
+  if (!reg) return Promise.resolve(null); if (_VIAL_M[reg.id]) return Promise.resolve(_VIAL_M[reg.id]); if (_vialPM[reg.id]) return _vialPM[reg.id];
+  _vialPM[reg.id] = (async () => { try { const { data } = await _bnReadGcs(reg.vial); if (!data || !Array.isArray(data.ways)) return null; const W = data.ways, grid = new Map(), bb = new Array(W.length);
       W.forEach((w, k) => { const g = _vialDec(w.g); let a = 90, b = 180, c = -90, d = -180; g.forEach(p => { if (p[0] < a) a = p[0]; if (p[0] > c) c = p[0]; if (p[1] < b) b = p[1]; if (p[1] > d) d = p[1]; }); bb[k] = [a, b, c, d];
         for (let i = Math.floor(a / _VIAL_CELDA); i <= Math.floor(c / _VIAL_CELDA); i++) for (let j = Math.floor(b / _VIAL_CELDA); j <= Math.floor(d / _VIAL_CELDA); j++) { const key = i + "_" + j; let l = grid.get(key); if (!l) grid.set(key, l = []); l.push(k); } });
-      _VIAL = { at: data.at, bbox: data.bbox, W, grid, bb, n: W.length }; console.log("[vial] red vial local cargada:", W.length, "vías"); return _VIAL; } catch (e) { console.warn("[vial] no se pudo cargar:", e.message); return null; } finally { if (!_VIAL) _vialP = null; } })();
-  return _vialP;
+      _VIAL_M[reg.id] = { at: data.at, bbox: data.bbox, W, grid, bb, n: W.length }; console.log("[vial] red vial local cargada:", reg.id, W.length, "vías"); return _VIAL_M[reg.id]; } catch (e) { console.warn("[vial] no se pudo cargar:", reg.id, e.message); return null; } finally { if (!_VIAL_M[reg.id]) delete _vialPM[reg.id]; } })();
+  return _vialPM[reg.id];
 }
 // vías (elementos tipo Overpass: tags + geometry) con algún tramo a ≤ R metros del punto; null si no hay red local o el punto queda fuera de su cobertura
 async function _vialWays(lat, lng, R, test) {
-  const V = await _vialCarga(); if (!V || !V.bbox) return null; const [S, Wd, N, E] = V.bbox, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < Wd || lng + mLng > E) return null;
+  const V = await _vialCarga(_regDe(lat, lng)); if (!V || !V.bbox) return null; const [S, Wd, N, E] = V.bbox, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < Wd || lng + mLng > E) return null;
   const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320, vistos = new Set(), out = [];
   for (let i = Math.floor((lat - mLat) / _VIAL_CELDA); i <= Math.floor((lat + mLat) / _VIAL_CELDA); i++) for (let j = Math.floor((lng - mLng) / _VIAL_CELDA); j <= Math.floor((lng + mLng) / _VIAL_CELDA); j++) for (const k of V.grid.get(i + "_" + j) || []) { if (vistos.has(k)) continue; vistos.add(k); const w = V.W[k], b = V.bb[k]; if (b[2] < lat - mLat || b[0] > lat + mLat || b[3] < lng - mLng || b[1] > lng + mLng) continue; if (test && !test(w.t)) continue;
     const g = _vialDec(w.g); let ok = false; for (let q = 0; q < g.length && !ok; q++) { const ax = (g[q][1] - lng) * kx, ay = (g[q][0] - lat) * ky; if (q === 0 || q === g.length - 1) { if (Math.hypot(ax, ay) <= R) ok = true; } if (!ok && q > 0) { const bx = (g[q - 1][1] - lng) * kx, by = (g[q - 1][0] - lat) * ky, dx = ax - bx, dy = ay - by, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, -(bx * dx + by * dy) / l2)); if (Math.hypot(bx + dx * t, by + dy * t) <= R) ok = true; } }
@@ -13615,28 +13620,28 @@ app.get("/geometrika/ficha", async (req, res) => {   // ficha de descripción + 
         ["Superficies detectadas", Object.keys(ct).map(k => ct[k] + " " + k + (ct[k] > 1 ? "s" : "")).join(" · ") || "ninguna"]); }
     res.json({ ok: true, id, origen, titulo, filas: F, gasto: await _gastoResumen(id) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
-app.get("/geometrika/vial/estado", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const V = await _vialCarga(); res.set("Cache-Control", "no-store"); const lat = +req.query.lat, lng = +req.query.lng, R = +req.query.R || 400; let prueba = null; if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) { const v = await _vialWays(lat, lng, R, () => true), e = await _entElems(lat, lng, R); const c = {}; (e || []).forEach(x => { const k = x.type === "way" ? (x.tags.building ? "edificios" : x.tags.power ? "alta_tension" : x.tags.railway ? "ferrocarril" : "cauces") : (x.tags.natural || x.tags.highway || x.tags.public_transport || x.tags.power); c[k] = (c[k] || 0) + 1; }); const pl = await _entPois(lat, lng, R), pc = {}; (pl || []).forEach(x => { const k = x.tags.amenity || x.tags.shop || x.tags.leisure || x.tags.tourism || x.tags.place; pc[k] = (pc[k] || 0) + 1; }); prueba = { vias: v ? v.length : null, entorno: e ? c : null, lugares: pl ? pc : null, huellas: await _huellasLocal(lat, lng, Math.min(R, 600)).then(h => h ? h.length : null) }; }
+app.get("/geometrika/vial/estado", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const lat = +req.query.lat, lng = +req.query.lng, R = +req.query.R || 400, V = await _vialCarga(_regDe(lat, lng) || _REGIONES[0]); res.set("Cache-Control", "no-store"); let prueba = null; if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) { const v = await _vialWays(lat, lng, R, () => true), e = await _entElems(lat, lng, R); const c = {}; (e || []).forEach(x => { const k = x.type === "way" ? (x.tags.building ? "edificios" : x.tags.power ? "alta_tension" : x.tags.railway ? "ferrocarril" : "cauces") : (x.tags.natural || x.tags.highway || x.tags.public_transport || x.tags.power); c[k] = (c[k] || 0) + 1; }); const pl = await _entPois(lat, lng, R), pc = {}; (pl || []).forEach(x => { const k = x.tags.amenity || x.tags.shop || x.tags.leisure || x.tags.tourism || x.tags.place; pc[k] = (pc[k] || 0) + 1; }); prueba = { vias: v ? v.length : null, entorno: e ? c : null, lugares: pl ? pc : null, huellas: await _huellasLocal(lat, lng, Math.min(R, 600)).then(h => h ? h.length : null) }; }
   res.json({ ok: true, cargada: !!V, vias: V ? V.n : 0, at: V ? V.at : null, bbox: V ? V.bbox : null, prueba }); });
 // ── Entorno local de OpenStreetMap (edificios, árboles, luminarias, semáforos, cruces, paradas, líneas de alta tensión, vías férreas, cauces): cuadros de 0.1° en osm/entorno/<i>_<j>.json, cargados a demanda
-const _ENT = { idx: undefined, tiles: new Map() };
-async function _entIdx() { if (_ENT.idx !== undefined) return _ENT.idx; try { const { data } = await _bnReadGcs("osm/entorno/index.json"); _ENT.idx = data && data.tiles ? { bbox: data.bbox, C: data.celda || 0.1, set: new Set(data.tiles) } : null; } catch (_) { return null; } return _ENT.idx; }
-async function _entTile(k) { let t = _ENT.tiles.get(k); if (t) { _ENT.tiles.delete(k); _ENT.tiles.set(k, t); return t; } const { data } = await _bnReadGcs(`osm/entorno/${k}.json`); t = data || { n: [], w: [] }; _ENT.tiles.set(k, t); while (_ENT.tiles.size > 10) _ENT.tiles.delete(_ENT.tiles.keys().next().value); return t; }
+const _ENT_I = {}, _ENT_T = new Map();   // índice por región y cuadros en caché (se identifican por región + cuadro)
+async function _entIdx(reg) { if (!reg) return null; if (_ENT_I[reg.id] !== undefined) return _ENT_I[reg.id]; try { const { data } = await _bnReadGcs(reg.ent + "index.json"); _ENT_I[reg.id] = data && data.tiles ? { reg, bbox: data.bbox, C: data.celda || 0.1, set: new Set(data.tiles) } : null; } catch (_) { return null; } return _ENT_I[reg.id]; }
+async function _entTile(k, reg) { const kk = reg.id + ":" + k; let t = _ENT_T.get(kk); if (t) { _ENT_T.delete(kk); _ENT_T.set(kk, t); return t; } const { data } = await _bnReadGcs(`${reg.ent}${k}.json`); t = data || { n: [], w: [] }; _ENT_T.set(kk, t); while (_ENT_T.size > 10) _ENT_T.delete(_ENT_T.keys().next().value); return t; }
 const _ENT_NK = { t: { natural: "tree" }, l: { highway: "street_lamp" }, s: { highway: "traffic_signals" }, c: { highway: "crossing" }, b: { highway: "bus_stop" }, p: { public_transport: "platform" }, w: { power: "tower" } };
 function _geoCerca(g, lat, lng, R) { const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320; for (let q = 0; q < g.length; q++) { const ax = (g[q][1] - lng) * kx, ay = (g[q][0] - lat) * ky; if (Math.hypot(ax, ay) <= R) return true; if (q > 0) { const bx = (g[q - 1][1] - lng) * kx, by = (g[q - 1][0] - lat) * ky, dx = ax - bx, dy = ay - by, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, -(bx * dx + by * dy) / l2)); if (Math.hypot(bx + dx * t, by + dy * t) <= R) return true; } } return false; }
 // elementos tipo Overpass (nodos y vías) del entorno a ≤ R metros; null si no hay datos locales para ese punto
 async function _entElems(lat, lng, R) {
-  const I = await _entIdx(); if (!I) return null; const [S, W, N, E] = I.bbox, C = I.C, mLat = R / 111320 + 0.005, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)) + 0.005; if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
+  const I = await _entIdx(_regDe(lat, lng)); if (!I) return null; const [S, W, N, E] = I.bbox, C = I.C, mLat = R / 111320 + 0.005, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)) + 0.005; if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
   const out = [], vistos = new Set();
-  for (let i = Math.floor((lat - mLat) / C); i <= Math.floor((lat + mLat) / C); i++) for (let j = Math.floor((lng - mLng) / C); j <= Math.floor((lng + mLng) / C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; const T = await _entTile(k);
+  for (let i = Math.floor((lat - mLat) / C); i <= Math.floor((lat + mLat) / C); i++) for (let j = Math.floor((lng - mLng) / C); j <= Math.floor((lng + mLng) / C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; const T = await _entTile(k, I.reg);
     for (const n of T.n) { if (Math.hypot((n[1] - lng) * 111320 * Math.cos(lat * Math.PI / 180), (n[0] - lat) * 111320) <= R) out.push({ type: "node", id: 0, lat: n[0], lon: n[1], tags: Object.assign({}, n[3], _ENT_NK[n[2]]) }); }
     for (const w of T.w) { if (vistos.has(w.i)) continue; vistos.add(w.i); const g = _vialDec(w.g); if (_geoCerca(g, lat, lng, R)) out.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); } }
   return out;
 }
 // lugares de interés (hospitales, escuelas, centros comerciales…): nodos con tags (las áreas vienen como su centro); null si no hay datos locales
 async function _entPois(lat, lng, R) {
-  const I = await _entIdx(); if (!I) return null; const [S, W, N, E] = I.bbox, C = I.C, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
+  const I = await _entIdx(_regDe(lat, lng)); if (!I) return null; const [S, W, N, E] = I.bbox, C = I.C, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
   const out = [], kx = 111320 * Math.cos(lat * Math.PI / 180);
-  for (let i = Math.floor((lat - mLat) / C); i <= Math.floor((lat + mLat) / C); i++) for (let j = Math.floor((lng - mLng) / C); j <= Math.floor((lng + mLng) / C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; const T = await _entTile(k); if (!T.p) return null;
+  for (let i = Math.floor((lat - mLat) / C); i <= Math.floor((lat + mLat) / C); i++) for (let j = Math.floor((lng - mLng) / C); j <= Math.floor((lng + mLng) / C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; const T = await _entTile(k, I.reg); if (!T.p) return null;
     for (const n of T.p) if (Math.hypot((n[1] - lng) * kx, (n[0] - lat) * 111320) <= R) out.push({ type: "node", id: 0, lat: n[0], lon: n[1], tags: n[2] }); }
   return out;
 }
@@ -13726,9 +13731,9 @@ function _mqFiltraHuellas(mb, sat) {
 }
 // superficies de OSM (estacionamientos, canchas, pistas, albercas, paneles solares) a ≤ R metros; null si no hay datos locales
 async function _entAreas(lat, lng, R) {
-  const I = await _entIdx(); if (!I) return null; const [S, W, N, E] = I.bbox, C = I.C, mLat = R / 111320 + 0.01, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)) + 0.01; if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
+  const I = await _entIdx(_regDe(lat, lng)); if (!I) return null; const [S, W, N, E] = I.bbox, C = I.C, mLat = R / 111320 + 0.01, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)) + 0.01; if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
   const out = [], vistos = new Set();
-  for (let i = Math.floor((lat - mLat) / C); i <= Math.floor((lat + mLat) / C); i++) for (let j = Math.floor((lng - mLng) / C); j <= Math.floor((lng + mLng) / C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; const T = await _entTile(k); if (!T.a) return null;
+  for (let i = Math.floor((lat - mLat) / C); i <= Math.floor((lat + mLat) / C); i++) for (let j = Math.floor((lng - mLng) / C); j <= Math.floor((lng + mLng) / C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; const T = await _entTile(k, I.reg); if (!T.a) return null;
     for (const a of T.a) { if (vistos.has(a.i)) continue; vistos.add(a.i); const g = _vialDec(a.g); if (_geoCerca(g, lat, lng, R)) out.push({ k: a.k, s: a.s, g }); } }
   return out;
 }
@@ -13846,12 +13851,12 @@ async function _mqLinks() {
 }
 const _mqQk = (lat, lng, z) => { const n = 2 ** z, x = Math.floor((lng + 180) / 360 * n), sn = Math.sin(lat * Math.PI / 180), y = Math.floor((0.5 - Math.log((1 + sn) / (1 - sn)) / (4 * Math.PI)) * n); let q = ""; for (let i = z; i > 0; i--) { let d = 0; const mk = 1 << (i - 1); if (x & mk) d += 1; if (y & mk) d += 2; q += d; } return q; };
 // huellas de edificios locales (osm/huellas/<i>_<j>.json, Microsoft ML Building Footprints): sin descargar los archivos de 20 MB en cada análisis
-const _HUE = { idx: undefined, tiles: new Map() };
+const _HUE = { idx: {}, tiles: new Map() };
 async function _huellasLocal(lat, lng, R) {
-  if (_HUE.idx === undefined) { try { const { data } = await _bnReadGcs("osm/huellas/index.json"); _HUE.idx = data && data.tiles ? { bbox: data.bbox, C: data.celda || 0.1, set: new Set(data.tiles) } : null; } catch (_) { return null; } }
-  const I = _HUE.idx; if (!I) return null; const P = _mqProy(lat, lng), dl = R / P.ky, dn = R / P.kx, [S, W, N, E] = I.bbox; if (lat - dl * 1.1 < S || lat + dl * 1.1 > N || lng - dn * 1.1 < W || lng + dn * 1.1 > E) return null;
+  const reg = _regDe(lat, lng); if (!reg) return null; if (_HUE.idx[reg.id] === undefined) { try { const { data } = await _bnReadGcs(reg.hue + "index.json"); _HUE.idx[reg.id] = data && data.tiles ? { bbox: data.bbox, C: data.celda || 0.1, set: new Set(data.tiles) } : null; } catch (_) { return null; } }
+  const I = _HUE.idx[reg.id]; if (!I) return null; const P = _mqProy(lat, lng), dl = R / P.ky, dn = R / P.kx, [S, W, N, E] = I.bbox; if (lat - dl * 1.1 < S || lat + dl * 1.1 > N || lng - dn * 1.1 < W || lng + dn * 1.1 > E) return null;
   const out = [];
-  for (let i = Math.floor((lat - dl * 1.1) / I.C); i <= Math.floor((lat + dl * 1.1) / I.C); i++) for (let j = Math.floor((lng - dn * 1.1) / I.C); j <= Math.floor((lng + dn * 1.1) / I.C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; let T = _HUE.tiles.get(k); if (!T) { T = (await _bnReadGcs(`osm/huellas/${k}.json`)).data || { f: [] }; _HUE.tiles.set(k, T); while (_HUE.tiles.size > 12) _HUE.tiles.delete(_HUE.tiles.keys().next().value); }
+  for (let i = Math.floor((lat - dl * 1.1) / I.C); i <= Math.floor((lat + dl * 1.1) / I.C); i++) for (let j = Math.floor((lng - dn * 1.1) / I.C); j <= Math.floor((lng + dn * 1.1) / I.C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; let T = _HUE.tiles.get(reg.id + ":" + k); if (!T) { T = (await _bnReadGcs(`${reg.hue}${k}.json`)).data || { f: [] }; _HUE.tiles.set(reg.id + ":" + k, T); while (_HUE.tiles.size > 12) _HUE.tiles.delete(_HUE.tiles.keys().next().value); }
     for (const e of T.f) { const ring = _vialDec(e), g = ring.map(q => P.xy(q[0], q[1])), cx = g.reduce((a, p) => a + p[0], 0) / g.length, cy = g.reduce((a, p) => a + p[1], 0) / g.length; if (Math.abs(cx) > R || Math.abs(cy) > R) continue; const f = []; g.forEach(p => f.push(p[0], p[1])); out.push(f); } }
   return out;
 }
@@ -13942,10 +13947,10 @@ const _OD_MAX_EL = 324, _OD_MAX_RUTAS = 40, _OD_RUMBOS = ["Norte", "Noreste", "E
 let _odJob = { running: false };
 const _odKey = id => `mercado/maqueta/od/${id}.json`;
 // usos de suelo y comercios locales (osm/uso-saltillo.json): landuse residencial/comercial/industrial y nodos shop/office/amenity para el modelo origen-destino
-let _USO = undefined;
+const _USO_M = {};
 async function _usoLocal(lat, lng, R, conDuctos) {
-  if (_USO === undefined) { try { const { data } = await _bnReadGcs("osm/uso-saltillo.json"); _USO = data && data.nodes ? data : null; } catch (_) { return null; } }
-  if (!_USO) return null; const [S, W, N, E] = _USO.bbox, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
+  const reg = _regDe(lat, lng); if (!reg) return null; if (_USO_M[reg.id] === undefined) { try { const { data } = await _bnReadGcs(reg.uso); _USO_M[reg.id] = data && data.nodes ? data : null; } catch (_) { return null; } }
+  const _USO = _USO_M[reg.id]; if (!_USO) return null; const [S, W, N, E] = _USO.bbox, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
   const kx = 111320 * Math.cos(lat * Math.PI / 180), nodes = _USO.nodes.filter(n => Math.hypot((n[1] - lng) * kx, (n[0] - lat) * 111320) <= R).map(n => ({ type: "node", id: 0, lat: n[0], lon: n[1] })), ways = [];
   for (const w of _USO.ways) { if (!w.t.landuse && !conDuctos) continue; const g = _vialDec(w.g); if (_geoCerca(g, lat, lng, R)) ways.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); }
   return [{ elements: ways }, { elements: nodes }];
