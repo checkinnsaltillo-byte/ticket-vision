@@ -13070,6 +13070,25 @@ app.get("/geometrika/proyecto", async (req, res) => {   // proyecto completo (pa
   try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
     const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" }); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyecto: P }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Resumen ejecutivo de la lámina: relaciona los hallazgos (indicadores calculados en la maqueta) con el objetivo y la descripción capturados al crear el proyecto ──
+app.post("/geometrika/resumen", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    let id = String((req.body || {}).id || "").replace(/\D/g, ""); if (/^9\d{14}$/.test(id)) id = id.slice(0, 14);
+    const ind = Array.isArray((req.body || {}).indicadores) ? req.body.indicadores.slice(0, 90) : [], nom = String((req.body || {}).nombre || "").slice(0, 120), radio = +((req.body || {}).radio) || 0;
+    let perfil = "", objetivo = ""; if (/^9\d{13}$/.test(id)) { const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`).catch(() => ({})); if (P) { perfil = String(P.perfil || ""); objetivo = String(P.objetivo || ""); } }
+    if (!perfil && !objetivo) return res.json({ ok: true, sinObjetivo: true });
+    if (!ind.length) return res.status(400).json({ ok: false, error: "Sin indicadores" });
+    const lin = ind.map(i => `- [${String(i.s || "").slice(0, 12)}] ${String(i.n || "").slice(0, 90)}: ${String(i.v || "").slice(0, 40)}${i.m ? " — " + String(i.m).slice(0, 140) : ""}`).join("\n");
+    const system = "Eres analista de geointeligencia para decisiones de inversión inmobiliaria y de operación. Redactas en español de México, tono ejecutivo, claro y sobrio. Solo puedes usar los datos que se te entregan: no inventes cifras, nombres ni hechos. Los semáforos son: alerta (negativo), atención (a vigilar), favorable, informativo.";
+    const user = `PROYECTO: ${nom} (radio de ${radio} m)\nOBJETIVO ELEGIDO: ${perfil || "no indicado"}\nDESCRIPCIÓN DEL USUARIO (con sus palabras): ${objetivo || "no indicada"}\n\nRESULTADOS (semáforo, indicador: valor — nota):\n${lin}\n\nEscribe un RESUMEN EJECUTIVO de máximo 2 párrafos (cada uno de 3 a 5 oraciones) que RELACIONE los hallazgos con el objetivo y con la decisión que el usuario describió. Primer párrafo: qué dicen los datos más relevantes para ese objetivo y qué los respalda o contradice. Segundo párrafo: riesgos o condicionantes a vigilar y una recomendación concreta de siguiente paso para esa decisión. Cita valores reales de los indicadores. Si algún dato clave para el objetivo no está disponible, dilo. Devuelve solo los dos párrafos, separados por una línea en blanco, sin títulos ni viñetas.`;
+    const call = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: _CL_MODELO, max_tokens: 1200, thinking: { type: "disabled" }, system, messages: [{ role: "user", content: user }] }), signal: AbortSignal.timeout(60000) });
+    const j = await call.json(); if (!call.ok) throw new Error(`Claude ${call.status}: ${(j.error && j.error.message) || ""}`);
+    const txt = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim(), parrafos = txt.split(/\n\s*\n/).map(t => t.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 2);
+    if (!parrafos.length) throw new Error("Respuesta vacía");
+    res.json({ ok: true, perfil, objetivo, parrafos });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── Análisis del proyecto GeoMetrika: encadena fotos de calle (Street View + IA) → maqueta → tráfico, reutilizando los procesos de Alojamientos por id numérico ──
 const _gmPid = (id, k) => k ? id + String(k) : id;
 let _gmJob = { running: false };
