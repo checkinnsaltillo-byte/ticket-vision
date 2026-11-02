@@ -13074,7 +13074,7 @@ app.get("/geometrika/proyecto", async (req, res) => {   // proyecto completo (pa
 const _gmPid = (id, k) => k ? id + String(k) : id;
 let _gmJob = { running: false };
 async function _gmCall(path, body) {
-  const r = await fetch(`http://127.0.0.1:${PORT}${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", Origin: "https://www.check-inn.mx" }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(60000) });
+  const r = await fetch(`http://127.0.0.1:${PORT}${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", Origin: "https://www.check-inn.mx", "x-gm-token": _gmToken().token }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(60000) });
   const j = await r.json().catch(() => ({})); if (r.status === 409) { const e = new Error(j.error || "ocupado"); e.ocupado = true; throw e; } if (!r.ok || j.ok === false) throw new Error(j.error || "HTTP " + r.status); return j;
 }
 async function _gmInicia(path, body) { for (let i = 0; i < 60; i++) { try { return await _gmCall(path, body); } catch (e) { if (!e.ocupado) throw e; _gmJob.sub = "esperando a que termine otro proceso"; await _amSleep(10000); } } throw new Error("El servidor siguió ocupado con otro proceso; vuelve a intentarlo"); }
