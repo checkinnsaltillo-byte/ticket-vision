@@ -13024,7 +13024,7 @@ app.get("/geometrika/direccion", async (req, res) => {   // busca una dirección
 app.post("/geometrika/proyecto", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
-    const b = req.body || {}, perfil = String(b.perfil || "").slice(0, 80), direccion = String(b.direccion || "").slice(0, 200), objetivo = String(b.objetivo || "").slice(0, 1000), lat = +b.lat, lng = +b.lng, radio = Math.round(+b.radio), dias = [...new Set((Array.isArray(b.dias) ? b.dias : []).map(Number))].filter(d => d >= 0 && d <= 6).sort((a, c) => (a || 7) - (c || 7)), horas = [...new Set((Array.isArray(b.horas) ? b.horas : []).map(Number))].filter(h => h >= 0 && h <= 23).sort((a, c) => a - c);
+    const b = req.body || {}, perfil = String(b.perfil || "").slice(0, 80), nombre = String(b.nombre || "").trim().slice(0, 80), direccion = String(b.direccion || "").slice(0, 200), objetivo = String(b.objetivo || "").slice(0, 1000), lat = +b.lat, lng = +b.lng, radio = Math.round(+b.radio), dias = [...new Set((Array.isArray(b.dias) ? b.dias : []).map(Number))].filter(d => d >= 0 && d <= 6).sort((a, c) => (a || 7) - (c || 7)), horas = [...new Set((Array.isArray(b.horas) ? b.horas : []).map(Number))].filter(h => h >= 0 && h <= 23).sort((a, c) => a - c);
     if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
     if (!(radio >= 50 && radio <= 600)) return res.status(400).json({ ok: false, error: "El radio de maqueta debe estar entre 50 y 600 m" });
     if (!dias.length || !horas.length) return res.status(400).json({ ok: false, error: "Elige al menos un día y una hora" });
@@ -13033,7 +13033,7 @@ app.post("/geometrika/proyecto", async (req, res) => {
     if (!vialidades.clases.length) return res.status(400).json({ ok: false, error: "Elige al menos una clasificación de vialidad" });
     const RV = b.redVial || {}, rp = Math.max(1000, Math.min(5000, Math.round(+RV.principales) || 3000)), redVial = { principales: rp, locales: Math.max(100, Math.min(rp, Math.round(+RV.locales) || 900)) };
     const okp = p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180, puntos = (Array.isArray(b.puntos) ? b.puntos : []).filter(okp).slice(0, 10).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6, dir: String(p.dir || "").slice(0, 200) })), fotosManuales = (Array.isArray(b.fotosManuales) ? b.fotosManuales : []).filter(okp).slice(0, 60).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6 }));
-    const id = "9" + Date.now(), doc = { id, ver: "gm-v1", puntos: puntos.length ? puntos : [{ lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, dir: direccion }], fotosModo: ["auto", "manual", "mixta"].includes(b.fotosModo) ? b.fotosModo : "auto", fotosManuales, fotos, vialidades, redVial, creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length, opciones };
+    const id = "9" + Date.now(), doc = { id, ver: "gm-v1", nombre, puntos: puntos.length ? puntos : [{ lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, dir: direccion }], fotosModo: ["auto", "manual", "mixta"].includes(b.fotosModo) ? b.fotosModo : "auto", fotosManuales, fotos, vialidades, redVial, creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length, opciones };
     await _bnWriteGcs(`geometrika/proyectos/${id}.json`, doc, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyecto: doc });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -13111,7 +13111,7 @@ app.get("/geometrika/proyectos", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
     const nombres = (await _gcsList("geometrika/proyectos/")).filter(n => /\/9\d{13}\.json$/.test(n)).sort().reverse().slice(0, 40), lista = [];
-    for (let i = 0; i < nombres.length; i += 8) await Promise.all(nombres.slice(i, i + 8).map(async n => { try { const { data: P } = await _bnReadGcs(n); if (P && P.id && !P.oculto) lista.push({ id: P.id, creado: P.creado, perfil: P.perfil || "", objetivo: (P.objetivo || "").slice(0, 80), direccion: (P.direccion || (P.puntos && P.puntos[0] && P.puntos[0].dir) || "").slice(0, 90), lat: P.lat, lng: P.lng, puntos: (P.puntos || []).length, radio: P.radio, estado: (P.analisis && P.analisis.estado) || "registrado", error: (P.analisis && P.analisis.error) || "" }); } catch (_) {} }));
+    for (let i = 0; i < nombres.length; i += 8) await Promise.all(nombres.slice(i, i + 8).map(async n => { try { const { data: P } = await _bnReadGcs(n); if (P && P.id && !P.oculto) lista.push({ id: P.id, creado: P.creado, nombre: P.nombre || "", perfil: P.perfil || "", objetivo: (P.objetivo || "").slice(0, 80), direccion: (P.direccion || (P.puntos && P.puntos[0] && P.puntos[0].dir) || "").slice(0, 90), lat: P.lat, lng: P.lng, puntos: (P.puntos || []).length, radio: P.radio, estado: (P.analisis && P.analisis.estado) || "registrado", error: (P.analisis && P.analisis.error) || "" }); } catch (_) {} }));
     lista.forEach(p => { p.origen = "geometrika"; });
     // además de los proyectos de GeoMetrika, se enlistan todas las maquetas existentes con su procedencia (Airbnb, MercadoLibre, Facebook…)
     try { const [ml, oc] = await Promise.all([_gmCall("/mercado/maqueta/lista").catch(() => null), _bnReadGcs("geometrika/ocultas.json").then(r => (r.data && r.data.ids) || []).catch(() => [])]);
@@ -13320,7 +13320,7 @@ async function _fbFreqC() { const d = await _fbDoc(), f = {}; Object.values(d.it
 async function _mcItem(id) {
   if (/^9\d{13,14}$/.test(String(id))) { // proyecto de GeoMetrika: 14 dígitos = punto 1; 15 dígitos = punto 2..10
     const sid = String(id), base = sid.slice(0, 14), k = sid.length === 15 ? +sid.slice(14) : 0; let P = null; try { P = (await _bnReadGcs(`geometrika/proyectos/${base}.json`)).data; } catch (_) {}
-    const q = P && (P.puntos || [])[k]; if (q) return { id: sid, titulo: `GeoMetrika · ${P.perfil || "Proyecto"}${P.puntos.length > 1 ? " · punto " + (k + 1) : ""}`, tipo: "Proyecto GeoMetrika", ciudad: "", lat: q.lat, lng: q.lng, ubicacion: q.dir || P.direccion || "" };
+    const q = P && (P.puntos || [])[k]; if (q) return { id: sid, titulo: `GeoMetrika · ${P.nombre || P.perfil || "Proyecto"}${P.puntos.length > 1 ? " · punto " + (k + 1) : ""}`, tipo: "Proyecto GeoMetrika", ciudad: "", lat: q.lat, lng: q.lng, ubicacion: q.dir || P.direccion || "" };
   }
   const { data } = await _bnReadGcs(_MA.OBJ), a = data && data.items && data.items[id]; if (a) return a;
   const dm = await _mlDoc().catch(() => null), m = dm && dm.items && dm.items[id]; if (m && m.lat != null && m.lng != null) return { id, titulo: m.titulo, tipo: "Inmueble", ciudad: m.ciudad, lat: m.lat, lng: m.lng, ubicacion: m.direccion || m.colonia || m.ciudad };
@@ -13600,8 +13600,8 @@ app.get("/geometrika/ficha", async (req, res) => {   // ficha de descripción + 
     const F = [], fe = x => x ? new Date(x).toLocaleString("es-MX", { timeZone: "America/Monterrey", dateStyle: "medium", timeStyle: "short" }) : "—";
     let origen = "geometrika", titulo = "";
     if (P) { const a = P.analisis || {}, V = P.vialidades || {}, N = (P.puntos || []).length, dur = a.inicio && a.fin ? Math.round((Date.parse(a.fin) - Date.parse(a.inicio)) / 60000) : null;
-      titulo = "GeoMetrika · " + (P.perfil || "Proyecto");
-      F.push(["Objetivo del proyecto", P.perfil || "—"], ["Descripción", P.objetivo || "—"], ["Creado", fe(P.creado)]);
+      titulo = "GeoMetrika · " + (P.nombre || P.perfil || "Proyecto");
+      F.push(["Nombre del proyecto", P.nombre || "—"], ["Objetivo del proyecto", P.perfil || "—"], ["Descripción", P.objetivo || "—"], ["Creado", fe(P.creado)]);
       (P.puntos || []).forEach((q, i) => F.push([N > 1 ? "Punto de interés " + (i + 1) : "Punto de interés", `${q.dir || "sin dirección"} (${(+q.lat).toFixed(5)}, ${(+q.lng).toFixed(5)})`]));
       F.push(["Radio de maqueta", (P.radio || "—") + " m"], ["Fotos de calle", `${P.fotosModo === "manual" ? "manuales" : P.fotosModo === "mixta" ? "mixtas" : "automáticas"} · ${(P.fotos || {}).frente || 0} frente + ${(P.fotos || {}).inmediato || 0} entorno inmediato + ${(P.fotos || {}).general || 0} entorno general`],
         ["Vialidades", `${(V.clases || []).length} clases · longitud de tramo ${V.tramo || "—"} m · ${(V.seleccion || []).length || V.preseleccionar || 0} seleccionadas`], ["Red vial (accesibilidad)", `vialidades principales ${(P.redVial || {}).principales || "—"} m · calles locales ${(P.redVial || {}).locales || "—"} m`],
