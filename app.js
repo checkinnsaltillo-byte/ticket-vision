@@ -79156,7 +79156,7 @@ function gmLanding_() {
   return `<div class="gm">
     <header class="gm-top"><div class="gm-w"><nav class="gm-nav">${window.GM_SALIR ? '<a onclick="GM_SALIR()">Cerrar sesión</a>' : `<a href="${GM_MAQ_()}" target="_blank" rel="noopener">Iniciar sesión</a>`}</nav></div></header>
     <main class="gm-w gm-main">
-      <img class="gm-hero-logo" src="geometrika-logo.png" alt="GeoMetrika Geo-Intelligence">
+      <img class="gm-hero-logo" src="geometrika-logo.png?v=2371" alt="GeoMetrika Geo-Intelligence">
       <div class="gm-st"><i class="gm-dot ok"></i><span>Sistema de geointeligencia de mercados</span></div>
       <h1 class="gm-h1">Información geográfica verificable,<br><span>siempre disponible.</span></h1>
       <p class="gm-p">Cada indicador cita su fuente, su fecha y su método.</p>
