@@ -79154,9 +79154,13 @@ const GMW_DIAS = [[1, 'LUN'], [2, 'MAR'], [3, 'MIÉ'], [4, 'JUE'], [5, 'VIE'], [
 const gmEsc_ = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function gmFalta_() {   /* en edición, si los cambios no cuestan nada no se pide pago */
    const f = []; if (!GMW.perfil) f.push('objetivo del proyecto'); if (!gmPtsOk_().length) f.push('punto de interés'); if (!(GMW.radio >= 50)) f.push('radio de maqueta'); if (!GMW.vial.clases.length) f.push('vialidades'); if (GMW.fmode === 'manual' && !GMW.fm.length) f.push('puntos de fotos'); if (!GMW.dias.length) f.push('días'); if (!GMW.horas.length) f.push('horas'); if (!gmPagado_() && !(GMW.edit && gmCosto_().total === 0)) f.push('pago'); return f; }
+function gmHdr_(sub, btn, tab) {
+  const t = [['landing', '📁 Mis proyectos'], ['wizard', '➕ Nuevo análisis']];
+  return `<div class="gm-hd"><div class="gm-lg">G</div><div><h1>GeoMetrika</h1><small>${sub}</small></div><div class="sp"></div><span class="gm-ver">v.Beta${gmVer_()}</span>${btn}</div><div class="gm-tabs">${t.map(([k, l]) => `<a class="gm-tab${k === tab ? ' on' : ''}" onclick="${k === 'landing' ? 'gmVolver_()' : 'gmNuevo_()'}">${l}</a>`).join('')}</div>`;
+}
 function gmLanding_() {
   return `<div class="gm">
-    <header class="gm-top"><div class="gm-w"><nav class="gm-nav">${window.GM_SALIR ? '<a onclick="GM_SALIR()">Cerrar sesión</a>' : `<a href="${GM_MAQ_()}" target="_blank" rel="noopener">Iniciar sesión</a>`}</nav></div></header>
+    ${gmHdr_('Sistema de Geo-Inteligencia', window.GM_SALIR ? '<button class="gm-pill" onclick="GM_SALIR()">Cerrar sesión</button>' : `<a class="gm-pill" href="${GM_MAQ_()}" target="_blank" rel="noopener">Iniciar sesión</a>`, 'landing')}
     <main class="gm-w gm-main">
       <img class="gm-hero-logo" src="geometrika-logo.png?v=2371" alt="GeoMetrika Geo-Intelligence">
       <div class="gm-st"><i class="gm-dot ok"></i><span>Sistema de geointeligencia de mercados</span></div>
@@ -79229,7 +79233,7 @@ function gmPasoHtml0_() {
 }
 function gmWizard_() {
   const p = GMW.paso;
-  return `<div class="gm gmw-sh"><div class="gmw"><div class="gmw-h"><h2>${GMW.edit ? 'Editar proyecto' : 'Nuevo análisis'}</h2><span>${String(p).padStart(2, '0')}/06</span></div>
+  return `<div class="gm gmw-sh">${gmHdr_((GMW.edit ? 'Editar proyecto' : 'Nuevo análisis') + ' · paso ' + p + ' de 6', '<button class="gm-pill" onclick="gmVolver_()">← Volver</button>', 'wizard')}<div class="gmw"><div class="gmw-h"><h2>${GMW.edit ? 'Editar proyecto' : 'Nuevo análisis'}</h2><span>${String(p).padStart(2, '0')}/06</span></div>
     ${GMW.edit ? `<p class="gmw-mu" style="margin:0 0 12px">✎ ${gmEsc_(GMW.edit.nombre)} · solo se vuelve a procesar lo que cambies; lo demás se conserva.</p>` : ''}
     <div class="gmw-pg" style="grid-template-columns:repeat(6,1fr)">${[1, 2, 3, 4, 5, 6].map(i => `<i class="${i < p ? 'done' : i === p ? 'on' : ''}"></i>`).join('')}</div>
     <div class="gmw-b">
