@@ -56,7 +56,7 @@ async function gpEntra() {
   if (n) { try { sessionStorage.setItem("gp_ok", n); } catch (_) { } try { const r = await fetch("https://api.check-inn.mx/geometrika/acceso", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clave: v }) }), j = await r.json(); if (j && j.ok && window.gmGuarda) window.gmGuarda(j); } catch (_) { } gpNivel(n); gpAbre(); } else { e.textContent = "Contraseña incorrecta."; document.getElementById("gpPass").select(); }
 }
 document.getElementById("gpGo").onclick = gpEntra; document.getElementById("gpPass").onkeydown = e => { if (e.key === "Enter") gpEntra(); };
-try { const n = sessionStorage.getItem("gp_ok"); if (n === "1" || n === "2") { gpNivel(n); gpAbre(); } } catch (_) { }
+try { const n = sessionStorage.getItem("gp_ok"), t = JSON.parse(localStorage.getItem("gmTok") || "null"); if ((n === "1" || n === "2") && t && t.exp > Date.now()) { gpNivel(n); gpAbre(); } } catch (_) { }
 </script>
 </body>
 </html>

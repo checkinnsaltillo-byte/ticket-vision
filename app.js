@@ -570,8 +570,8 @@ window.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => { try { _bootModuleFromHash_(); } catch(_) {} }, 0);
   } else {
     // Auto-login si hay usuario válido en localStorage
-    const stored = sysGetStoredUser();
-    if (stored && stored.Nombre) {
+    const stored = sysGetStoredUser(), _gmTokOk = (() => { try { const t = JSON.parse(localStorage.getItem('gmTok') || 'null'); return !!(t && t.exp > Date.now()); } catch (_) { return false; } })();   /* la sesión guardada antes del acceso por token no trae token: se pide iniciar sesión una vez */
+    if (stored && stored.Nombre && _gmTokOk) {
       currentUser = stored.Nombre;
       sysApplyPermissions(stored);
       document.getElementById("loginOverlay")?.classList.add("hidden");
