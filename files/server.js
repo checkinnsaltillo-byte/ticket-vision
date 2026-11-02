@@ -13124,14 +13124,9 @@ async function _gmAnaliza(P) {
     await etapa("lug", "Negocios y lugares (Google Places)", async () => { await _gmInicia("/mercado/airbnb/lugares/analizar", { id, radio: 1000 }); await _gmEspera("/mercado/airbnb/lugares/estado", 15 * 60000); });
     if (op.fotos !== false) {
       await etapa("ent", "Análisis del entorno urbano con IA", async () => { await _gmInicia("/mercado/airbnb/entorno/analizar", { id }); await _gmEspera("/mercado/airbnb/entorno/estado", 15 * 60000); });
-      await etapa("sol", "Potencial solar de azoteas (Google Solar API)", async () => {
-        const sc = (await _bnReadGcs(`mercado/maqueta/${id}.json`)).data; if (!sc || sc.lat == null) throw new Error("sin maqueta");
-        const ar = g => { let a = 0; for (let i = 0; i < g.length; i++) { const q = g[(i + 1) % g.length]; a += g[i][0] * q[1] - q[0] * g[i][1]; } return Math.abs(a) / 2; }, cands = [];
-        (sc.builds || []).forEach(b => { if (b.g && b.g.length >= 3) cands.push(b.g); }); (sc.mb || []).forEach(f => { const g = []; for (let i = 0; i + 1 < f.length; i += 2) g.push([f[i], f[i + 1]]); if (g.length >= 3) cands.push(g); });
-        const kx = 111320 * Math.cos(+sc.lat * Math.PI / 180), pts = cands.map(g => ({ a: ar(g), c: g.reduce((u, q) => [u[0] + q[0] / g.length, u[1] + q[1] / g.length], [0, 0]) })).filter(b => b.a >= 70).sort((x, y) => y.a - x.a).slice(0, 30).map(b => ({ lat: +sc.lat + b.c[1] / 111320, lng: +sc.lng + b.c[0] / kx }));
-        if (!pts.length) throw new Error("sin edificios grandes en la maqueta"); await _gmInicia("/mercado/ambiente/solar", { id, pts }); await _gmEspera("/mercado/ambiente/solar/estado", 10 * 60000); });
+      await etapa("sol", "Potencial solar de azoteas (Google Solar API)", async () => { const sc = (await _bnReadGcs(`mercado/maqueta/${id}.json`)).data; if (!sc || sc.lat == null) throw new Error("sin maqueta"); await _cmSolar(id, sc); });
     }
-    await etapa("pob", "Población alcanzada (isócronas a pie y en auto)", async () => { const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("sin coordenada"); const q = `lat=${(+it.lat).toFixed(6)}&lng=${(+it.lng).toFixed(6)}`; await _gmCall(`/mercado/maqueta/cobertura?${q}&modo=p&t=5,10,15,30`); await _gmCall(`/mercado/maqueta/cobertura?${q}&modo=a&t=1,5,10`); });   // mismos tiempos predeterminados del visor; las isócronas quedan en caché y el visor mide la población al abrirse
+    await etapa("pob", "Población alcanzada (isócronas a pie y en auto)", async () => { const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("sin coordenada"); await _cmPob(it.lat, it.lng); });   // mismos tiempos predeterminados del visor; las isócronas quedan en caché y el visor mide la población al abrirse
     if (op.trafico !== false && op.fotos !== false && !ya(k, "traf")) {
       _gmJob.fase = "traf"; _gmJob.paso = pre + "Tráfico en vialidades (Google Routes)"; _gmJob.sub = ""; await _gmGuarda(P); const sel = (P.vialidades.seleccion || []).length ? P.vialidades.seleccion : [];
       await _gmInicia("/mercado/trafico/consultar", { id, cfg: { tramo: P.vialidades.tramo, dias: P.dias, horas: P.horas, maxVias: sel.length ? 30 : P.vialidades.preseleccionar, sel, clases: P.vialidades.clases } });
@@ -13164,6 +13159,36 @@ app.post("/geometrika/complementar", async (req, res) => {
     const solo = Array.isArray((req.body || {}).solo) ? req.body.solo : null, hecho = []; (P.puntos || []).forEach((_, k) => { ["fotos", "maq", "vial", "traf"].concat(["amb", "lug", "ent", "sol", "pob"].filter(f => solo && !solo.includes(f))).forEach(f => hecho.push(k + ":" + f)); }); _gmArranca(P, hecho); res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── datos complementarios de CUALQUIER maqueta (GeoMetrika, Airbnb, MercadoLibre…): ambientales, negocios, entorno urbano con IA, potencial solar y población. Se corren con los parámetros predeterminados al crear la maqueta y se completan las que ya existían
+async function _cmSolar(id, sc) {
+  const ar = g => { let a = 0; for (let i = 0; i < g.length; i++) { const q = g[(i + 1) % g.length]; a += g[i][0] * q[1] - q[0] * g[i][1]; } return Math.abs(a) / 2; }, cands = [];
+  (sc.builds || []).forEach(b => { if (b.g && b.g.length >= 3) cands.push(b.g); }); (sc.mb || []).forEach(f => { const g = []; for (let i = 0; i + 1 < f.length; i += 2) g.push([f[i], f[i + 1]]); if (g.length >= 3) cands.push(g); });
+  const kx = 111320 * Math.cos(+sc.lat * Math.PI / 180), pts = cands.map(g => ({ a: ar(g), c: g.reduce((u, q) => [u[0] + q[0] / g.length, u[1] + q[1] / g.length], [0, 0]) })).filter(b => b.a >= 70).sort((x, y) => y.a - x.a).slice(0, 30).map(b => ({ lat: +sc.lat + b.c[1] / 111320, lng: +sc.lng + b.c[0] / kx }));
+  if (!pts.length) throw new Error("sin edificios grandes en la maqueta"); await _gmInicia("/mercado/ambiente/solar", { id, pts }); await _gmEspera("/mercado/ambiente/solar/estado", 10 * 60000);
+}
+async function _cmPob(lat, lng) { const q = `lat=${(+lat).toFixed(6)}&lng=${(+lng).toFixed(6)}`; await _gmCall(`/mercado/maqueta/cobertura?${q}&modo=p&t=5,10,15,30`); await _gmCall(`/mercado/maqueta/cobertura?${q}&modo=a&t=1,5,10`); }
+async function _cmCompleta(id) {
+  const av = [], run = async (t, fn) => { try { await fn(); } catch (e) { av.push(id + " · " + t + ": " + String(e.message || e).slice(0, 140)); console.warn("[complementar]", id, t, e.message); } }, g = u => _gmCall(u).catch(() => ({}));
+  const [a, e, l, s, sc, ft] = await Promise.all([g(`/mercado/airbnb/ambiente/dato?id=${id}`), g(`/mercado/airbnb/entorno/dato?id=${id}`), g(`/mercado/airbnb/lugares/dato?id=${id}`), g(`/mercado/ambiente/solar?id=${id}`), _bnReadGcs(`mercado/maqueta/${id}.json`).then(r => r.data).catch(() => null), _bnReadGcs(_ftObj(id)).then(r => r.data).catch(() => null)]);
+  if (!sc || sc.lat == null) return av;
+  if (!a.ambiente) await run("ambientales", async () => { await _gmInicia("/mercado/airbnb/ambiente/calcular", { ids: [id] }); await _gmEspera("/mercado/airbnb/ambiente/estado", 30 * 60000); });
+  if (!l.lugares) await run("negocios", async () => { await _gmInicia("/mercado/airbnb/lugares/analizar", { id, radio: 1000 }); await _gmEspera("/mercado/airbnb/lugares/estado", 15 * 60000); });
+  if (!e.entorno) { if (ft && (ft.tomas || []).length) await run("entorno urbano", async () => { await _gmInicia("/mercado/airbnb/entorno/analizar", { id }); await _gmEspera("/mercado/airbnb/entorno/estado", 15 * 60000); }); else av.push(id + " · entorno urbano: sin fotos de Street View"); }
+  if (!s.solar) await run("potencial solar", () => _cmSolar(id, sc));
+  await run("población", () => _cmPob(sc.lat, sc.lng));
+  return av;
+}
+let _cmQ = [], _cmJob = { running: false, hechas: [], avisos: [], pendientes: 0 };
+function _cmEncola(ids) {
+  ids.forEach(id => { id = String(id); if (!_cmQ.includes(id) && _cmJob.actual !== id) _cmQ.push(id); }); if (_cmJob.running) { _cmJob.pendientes = _cmQ.length; return; }
+  _cmJob = { running: true, hechas: [], avisos: [], pendientes: _cmQ.length, inicio: new Date().toISOString(), upd: new Date().toISOString() };
+  (async () => { while (_cmQ.length) { const id = _cmQ.shift(); _cmJob.actual = id; _cmJob.pendientes = _cmQ.length; _cmJob.upd = new Date().toISOString(); try { (await _cmCompleta(id)).forEach(m => _cmJob.avisos.push(m)); } catch (e) { _cmJob.avisos.push(id + ": " + String(e.message || e).slice(0, 140)); } _cmJob.hechas.push(id); } })().finally(() => { _cmJob.running = false; _cmJob.actual = null; _cmJob.fin = new Date().toISOString(); });
+}
+app.post("/geometrika/completar-todas", async (req, res) => {   // completa todas las maquetas existentes (las que ya tienen un dato se saltan)
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const l = await _gmCall("/mercado/maqueta/lista"), ids = (l.items || []).map(m => String(m.id)); _cmEncola(ids); res.json({ ok: true, n: ids.length }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/geometrika/completar-todas/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _cmJob, { cola: _cmQ.length })); });
 app.post("/geometrika/analizar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
@@ -14393,7 +14418,7 @@ app.post("/mercado/maqueta/generar", async (req, res) => {
   const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
   if (_mqJob.running && Date.now() - Date.parse(_mqJob.upd || 0) < 240000) return res.status(409).json({ ok: false, error: "Ya hay una maqueta generándose" });
   _mqJob = { running: true, id, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _mqJob.upd = new Date().toISOString(); }, 15000);
-  _mqGenera(id, !!(req.body || {}).refrescar).then(() => { _mqJob.ok = true; }).catch(e => { _mqJob.error = String(e.message || e) + " (" + (_mqJob.paso || "") + ")"; console.warn("[maqueta]", id, "paso:", _mqJob.paso, "·", e.message); }).finally(() => { clearInterval(t); _mqJob.running = false; _mqJob.fin = new Date().toISOString(); });
+  _mqGenera(id, !!(req.body || {}).refrescar).then(() => { _mqJob.ok = true; if (!/^9\d{13,14}$/.test(id)) setTimeout(() => _cmEncola([id]), 3000); }).catch(e => { _mqJob.error = String(e.message || e) + " (" + (_mqJob.paso || "") + ")"; console.warn("[maqueta]", id, "paso:", _mqJob.paso, "·", e.message); }).finally(() => { clearInterval(t); _mqJob.running = false; _mqJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
 // ── Texturas de fachada con IA (Street View → Gemini imagen): textura frontal rectificada por edificio, guardada en mercado/maqueta/fachadas/<id>/ ──
