@@ -13574,7 +13574,7 @@ async function _vialWays(lat, lng, R, test) {
 // ── Gasto por proyecto: precios de lista (USD) de las APIs de pago, consultados el 2026-11-01 en developers.google.com/maps/billing-and-pricing/pricing y platform.claude.com/docs/en/about-claude/pricing
 // Street View Static 7.00 / 1,000 · Maps Static 2.00 / 1,000 · Routes Pro (tráfico, TRAFFIC_AWARE_OPTIMAL) 10.00 / 1,000 · Claude Sonnet 5: 2 USD / MTok entrada y 10 USD / MTok salida (las imágenes cuentan como tokens de entrada).
 // Google da un tope gratis por SKU y mes (10,000 Street View y Static Maps; 5,000 Routes Pro) y la factura real puede ser menor; el precio de lista es el costo marginal.
-const _GM_PRECIOS = { sv: 0.007, estatico: 0.002, rutas: 0.010, claudeIn: 2 / 1e6, claudeOut: 10 / 1e6, modelo: "Claude Sonnet 5" };
+const _GM_PRECIOS = { sv: 0.007, estatico: 0.002, rutas: 0.010, mapa3d: 0.006, claudeIn: 2 / 1e6, claudeOut: 10 / 1e6, modelo: "Claude Sonnet 5" };   // mapa3d: Photorealistic 3D Tiles, 6.00 USD / 1,000 solicitudes raíz (1 por visita a la maqueta)
 const _gastoBase = id => { const d = String(id || "").replace(/\D/g, ""); return /^9\d{14}$/.test(d) ? d.slice(0, 14) : d; };
 async function _gastoReg(id, ev) {
   const base = _gastoBase(id); if (!base) return; const nom = `geometrika/gasto/${base}.json`;
@@ -13586,16 +13586,20 @@ async function _gastoResumen(id) {
   if (!ev.length) { // proyectos anteriores al registro: se estima con lo que quedó guardado en la maqueta
     try { const { data: D } = await _bnReadGcs(`mercado/maqueta/${/^9\d{13}$/.test(base) ? base : id}.json`); if (D) { estimado = true; nota = "Proyecto anterior al registro de gasto: cantidades estimadas con lo que quedó guardado en la maqueta."; const ia = D.sat && D.sat.ia; ev = [{ sv: D.fotos || 0, estaticos: (D.sat && D.sat.ia && D.sat.ia.teselas) || 0, iaFotos: { in: Math.max(0, ((D.uso || {}).input_tokens || 0) - ((ia && ia.entrada) || 0)), out: Math.max(0, ((D.uso || {}).output_tokens || 0) - ((ia && ia.salida) || 0)) }, iaSat: { in: (ia && ia.entrada) || 0, out: (ia && ia.salida) || 0 } }]; } } catch (_) {}
   }
-  const T = { sv: 0, est: 0, rut: 0, fi: 0, fo: 0, si: 0, so: 0 }; ev.forEach(e => { T.sv += e.sv || 0; T.est += e.estaticos || 0; T.rut += e.rutas || 0; T.fi += (e.iaFotos || {}).in || 0; T.fo += (e.iaFotos || {}).out || 0; T.si += (e.iaSat || {}).in || 0; T.so += (e.iaSat || {}).out || 0; });
+  const T = { sv: 0, est: 0, rut: 0, fi: 0, fo: 0, si: 0, so: 0, m3: 0 }; ev.forEach(e => { T.m3 += e.visitas3d || 0; T.sv += e.sv || 0; T.est += e.estaticos || 0; T.rut += e.rutas || 0; T.fi += (e.iaFotos || {}).in || 0; T.fo += (e.iaFotos || {}).out || 0; T.si += (e.iaSat || {}).in || 0; T.so += (e.iaSat || {}).out || 0; });
   const P = _GM_PRECIOS, lineas = [
     { k: "sv", c: "Street View · fotos de calle", u: "foto", n: T.sv, pu: P.sv, usd: T.sv * P.sv },
     { k: "est", c: "Maps Static · imágenes satelitales", u: "imagen", n: T.est, pu: P.estatico, usd: T.est * P.estatico },
     { k: "rut", c: "Routes Pro · tráfico en vialidades", u: "consulta", n: T.rut, pu: P.rutas, usd: T.rut * P.rutas },
+    { k: "m3d", c: "Mapa 3D de Google · visitas a la maqueta", u: "visita", n: T.m3, pu: P.mapa3d, usd: T.m3 * P.mapa3d },
     { k: "iaf", c: P.modelo + (estimado ? " · fotos y satélite (histórico estimado)" : " · lectura de fotos de calle"), u: "tokens", n: T.fi + T.fo, ent: T.fi, sal: T.fo, usd: T.fi * P.claudeIn + T.fo * P.claudeOut },
     { k: "ias", c: P.modelo + " · análisis del satélite", u: "tokens", n: T.si + T.so, ent: T.si, sal: T.so, usd: T.si * P.claudeIn + T.so * P.claudeOut }].filter(l => l.n > 0);
-  return { ok: true, estimado, nota, lineas, total: lineas.reduce((a, l) => a + l.usd, 0), eventos: ev.length, precios: { sv: P.sv * 1000, estatico: P.estatico * 1000, rutas: P.rutas * 1000, claudeEntradaMTok: P.claudeIn * 1e6, claudeSalidaMTok: P.claudeOut * 1e6, modelo: P.modelo } };
+  return { ok: true, estimado, nota, lineas, total: lineas.reduce((a, l) => a + l.usd, 0), eventos: ev.length, precios: { sv: P.sv * 1000, estatico: P.estatico * 1000, rutas: P.rutas * 1000, mapa3d: P.mapa3d * 1000, claudeEntradaMTok: P.claudeIn * 1e6, claudeSalidaMTok: P.claudeOut * 1e6, modelo: P.modelo } };
 }
 const _GM_DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+app.post("/geometrika/gasto/visita", async (req, res) => {   // la maqueta avisa cada vez que se abre con el mapa 3D de Google (1 solicitud raíz facturable)
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String((req.body || {}).id || "").replace(/\D/g, ""); if (id.length < 6) return res.status(400).json({ ok: false }); _gastoReg(id, { fuente: "mapa3d", visitas3d: 1 }); res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/geometrika/ficha", async (req, res) => {   // ficha de descripción + desglose del gasto de un proyecto o maqueta
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try { const id = String(req.query.id || "").replace(/\D/g, ""); if (id.length < 6) return res.status(400).json({ ok: false, error: "Id no válido" }); res.set("Cache-Control", "no-store");

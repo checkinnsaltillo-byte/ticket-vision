@@ -79256,15 +79256,16 @@ function gmFotosTxt_() { const f = GMW.ft; return GMW.fmode === 'auto' ? `${f.fr
 
 /* ── costos estimados (precio de lista × GMW_X) ── */
 // precios de lista en USD (consultados el 2026-11-01): Street View Static 7.00/1,000 · Routes Pro 10.00/1,000 · imagen satelital = Maps Static 2.00/1,000 + lectura con Claude Sonnet 5 (2 USD/MTok entrada, 10 USD/MTok salida; medido ≈ 3,070 tokens de entrada y 380 de salida por tesela)
-const GMW_X = 10, GMW_PR = { sv: .007, ia: .0053, sat: .012, base: 0, ruta: .01, od: 364 };
-const gmOpt_ = () => GMW.opt || (GMW.opt = { fotos: true, trafico: true, od: false }), GMW_PRECIOS = false, gmVerPrecios_ = () => window.GM_PUBLICO ? !!window.GM_PRECIOS : true /* en la página pública solo con la contraseña de precios; en el sistema siempre */, gmUsd_ = v => gmVerPrecios_() ? '$' + v.toFixed(2) + ' USD' : '$X', gmUsdN_ = (v, d) => gmVerPrecios_() ? '$' + v.toFixed(d) : '$X';
+// mapa 3D de Google (Photorealistic 3D Tiles): 6.00 USD por 1,000 solicitudes de teselado raíz (1 por visita a la maqueta; 1,000 gratis al mes; consultado el 2026-11-02)
+const GMW_X = 10, GMW_PR = { sv: .007, ia: .0053, sat: .012, base: 0, ruta: .01, od: 364, m3d: .006 };
+const gmOpt_ = () => GMW.opt || (GMW.opt = { fotos: true, trafico: true, od: false, mapa3d: true }), GMW_PRECIOS = false, gmVerPrecios_ = () => window.GM_PUBLICO ? !!window.GM_PRECIOS : true /* en la página pública solo con la contraseña de precios; en el sistema siempre */, gmUsd_ = v => gmVerPrecios_() ? '$' + v.toFixed(2) + ' USD' : '$X', gmUsdN_ = (v, d) => gmVerPrecios_() ? '$' + v.toFixed(d) : '$X';
 function gmCosto_() {
   const nP = Math.max(1, gmPtsOk_().length), o = gmOpt_(), fotos = (GMW.fmode !== 'manual' ? gmFotosAuto_() * nP : 0) + (GMW.fmode !== 'auto' ? GMW.fm.length : 0);
   const ts = GMW.radio > 400 ? 344 : 172, k = Math.max(1, Math.ceil((GMW.radio - ts / 2) / ts)), tiles = GMW.radio >= 50 ? (2 * k + 1) ** 2 * nP : 0;
   const sv = fotos * GMW_PR.sv * GMW_X, ia = (fotos * GMW_PR.ia + (fotos || tiles ? nP * GMW_PR.base : 0)) * GMW_X, sat = tiles * GMW_PR.sat * GMW_X;
   const estim = !GMW.vias, sent = GMW.vias ? GMW.vias.filter(v => GMW.vsel.has(v.k)).reduce((n, v) => n + (v.o ? 1 : 2), 0) : GMW.vial.pre * 2 * nP, fr = GMW.dias.length * GMW.horas.length, calls = sent * fr, tr = calls * GMW_PR.ruta * GMW_X;
-  const od = nP * GMW_PR.od * GMW_PR.ruta * GMW_X, fo = sv + ia + sat;
-  return { nP, fotos, tiles, sv, ia, sat, fo, sent, fr, calls, tr, estim, od, total: (o.fotos ? fo : 0) + (o.trafico ? tr : 0) + (o.od ? od : 0) };
+  const od = nP * GMW_PR.od * GMW_PR.ruta * GMW_X, fo = sv + ia + sat, m3d = GMW_PR.m3d * GMW_X;
+  return { nP, fotos, tiles, sv, ia, sat, fo, sent, fr, calls, tr, estim, od, m3d, total: (o.fotos ? fo : 0) + (o.trafico ? tr : 0) + (o.od ? od : 0) + (o.mapa3d ? m3d : 0) };
 }
 function gmCostHtml_(t) {
   const c = gmCosto_(), o = gmOpt_();
@@ -79280,8 +79281,9 @@ function gmCostHtml_(t) {
     ${f('fotos', ['Fotos de calle con IA', 'Street View + análisis de IA + imágenes satelitales'], c.fotos + ' fotos', c.fo, o.fotos)}
     ${f('trafico', ['Monitoreo de tráfico en vialidades', 'Google Routes con tráfico, por sentido · día · hora'], c.calls + ' consultas', c.tr, o.trafico)}
     ${f('od', ['Verificar rutas origen/destino', 'Google Routes, hasta ' + GMW_PR.od + ' elementos por punto'], 'hasta ' + c.nP * GMW_PR.od, c.od, o.od)}
+    ${f('mapa3d', ['Mapa 3D de Google en la maqueta', 'Photorealistic 3D Tiles: 1 solicitud por visita a la maqueta'], '1 visita', c.m3d, o.mapa3d)}
     </tbody><tfoot><tr><td></td><td colspan="2">Total estimado</td><td><b>${gmUsd_(c.total)}</b></td></tr></tfoot></table>
-    <p class="gmw-mu">marca o desmarca cada concepto para incluirlo. Los precios (X) están por definir. No incluye la búsqueda de direcciones ni los mapas de este asistente.</p>`;
+    <p class="gmw-mu">marca o desmarca cada concepto para incluirlo. Precios de lista de Google y de Claude, por el factor ×${GMW_X}; el mapa 3D se cobra por cada visita que se haga a la maqueta. No incluye la búsqueda de direcciones ni los mapas de este asistente.</p>`;
 }
 function gmCostRefresca_() { document.querySelectorAll('[data-cost]').forEach(el => { el.innerHTML = gmCostHtml_(el.dataset.cost); if (el.dataset.cost === 'aviso') el.style.display = el.innerHTML ? '' : 'none'; }); }
 function gmPasoHtml_() {
