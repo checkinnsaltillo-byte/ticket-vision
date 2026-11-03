@@ -14009,18 +14009,34 @@ async function _mqFootprints(lat, lng, R) {
 // ── Fotos de Street View del entorno: paso previo común al análisis del entorno urbano y a la maqueta 3D (se guardan referencias: panorama + rumbo; las imágenes se piden a Google al usarlas)
 let _ftJob = { running: false };
 const _ftObj = id => `mercado/entorno/fotos/${id}.json`;
+// Selección de los puntos de Street View: la usan igual la descarga (_ftSelecciona) y la previsualización del asistente, así el mapa muestra exactamente lo que se va a consultar
+async function _ftPlan(lat, lng, R, NF, NC, paso) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor"); const P = t => { try { if (paso) paso(t); } catch (_) { } };
+  P("Buscando el panorama más cercano a la propiedad"); const tomas = [], m0 = await _enMeta(lat, lng, key); let p0 = null;
+  if (m0.status === "OK") { p0 = { pano: m0.pano_id, lat: m0.location.lat, lng: m0.location.lng, date: m0.date || "", dist: Math.round(_enMetros([lat, lng], [m0.location.lat, m0.location.lng])) }; for (let k = 0; k < NC; k++) tomas.push(Object.assign({ h: Math.round(360 * k / NC) % 360, cen: 1 }, p0)); }
+  P(`Calles de OpenStreetMap (${R} m)`); let roads = []; for (let i = 0; i < 3 && !roads.length; i++) { try { roads = (await _mqOsm0(lat, lng, R, true)).roads; } catch (_) { await _amSleep(3000); } }
+  P("Buscando panoramas sobre las calles"); let nuevos = [];
+  if (NF > 0) { if (roads.length) nuevos = await _mqPanosCalles(lat, lng, R, roads, key, Math.ceil(NF / 2) + 3, p0 ? [p0] : []); else { const PP = await _enPanos(lat, lng, key, R); nuevos = PP.filter(q => !p0 || q.pano !== p0.pano).map(q => ({ pano: q.pano, lat: q.lat, lng: q.lng, date: q.date, br: 0 })); } }
+  let n = 0; for (const q of nuevos) { const dist = Math.round(_enMetros([lat, lng], [q.lat, q.lng])); for (const dh of [90, 270]) if (n < NF) { tomas.push({ pano: q.pano, h: Math.round(((q.br || 0) + dh) % 360), lat: q.lat, lng: q.lng, date: q.date || "", dist, cen: 0 }); n++; } }
+  return tomas;
+}
 async function _ftSelecciona(id, R, NF, NC) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
   const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng;
-  _ftJob.paso = "Buscando el panorama más cercano a la propiedad"; const tomas = [], m0 = await _enMeta(lat, lng, key); let p0 = null;
-  if (m0.status === "OK") { p0 = { pano: m0.pano_id, lat: m0.location.lat, lng: m0.location.lng, date: m0.date || "", dist: Math.round(_enMetros([lat, lng], [m0.location.lat, m0.location.lng])) }; for (let k = 0; k < NC; k++) tomas.push(Object.assign({ h: Math.round(360 * k / NC) % 360, cen: 1 }, p0)); }
-  _ftJob.paso = `Calles de OpenStreetMap (${R} m)`; let roads = []; for (let i = 0; i < 3 && !roads.length; i++) { try { roads = (await _mqOsm0(lat, lng, R, true)).roads; } catch (_) { await _amSleep(3000); } }
-  _ftJob.paso = "Buscando panoramas sobre las calles"; let nuevos = [];
-  if (NF > 0) { if (roads.length) nuevos = await _mqPanosCalles(lat, lng, R, roads, key, Math.ceil(NF / 2) + 3, p0 ? [p0] : []); else { const PP = await _enPanos(lat, lng, key, R); nuevos = PP.filter(q => !p0 || q.pano !== p0.pano).map(q => ({ pano: q.pano, lat: q.lat, lng: q.lng, date: q.date, br: 0 })); } }
-  let n = 0; for (const q of nuevos) { const dist = Math.round(_enMetros([lat, lng], [q.lat, q.lng])); for (const dh of [90, 270]) if (n < NF) { tomas.push({ pano: q.pano, h: Math.round(((q.br || 0) + dh) % 360), lat: q.lat, lng: q.lng, date: q.date || "", dist, cen: 0 }); n++; } }
+  const tomas = await _ftPlan(lat, lng, R, NF, NC, t => { _ftJob.paso = t; });
   if (!tomas.length) throw new Error(`Sin cobertura de Street View en ${R} m de esta coordenada`);
   const out = { id, at: new Date().toISOString(), radio: R, fotos: NF, frente: NC, lat, lng, tomas }; await _bnWriteGcs(_ftObj(id), out, null); return out;
 }
+// Previsualización para el asistente de GeoMetrika: mismo cálculo y mismos topes que _gmAnaliza, pero solo con la API de metadatos de Street View (sin descargar ni cobrar imágenes)
+app.post("/geometrika/fotos/previsualizar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, R = Math.max(50, Math.min(600, parseInt(b.radio, 10) || 200)), cl = (n, m) => Math.max(0, Math.min(m, parseInt(n, 10) || 0)); let NC = cl(b.frente, 12), NF = Math.min(60, cl(b.inmediato, 30) + cl(b.general, 60)); if (NF + NC < 4) { NC = 4; NF = 6; }
+    const pts = (Array.isArray(b.puntos) ? b.puntos : []).filter(p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180).slice(0, 10); if (!pts.length) return res.status(400).json({ ok: false, error: "Falta al menos un punto" });
+    const out = []; for (let k = 0; k < pts.length; k++) { try { const tomas = await _ftPlan(+pts[k].lat, +pts[k].lng, R, NF, NC); out.push({ k, tomas: tomas.map(t => ({ pano: t.pano, lat: t.lat, lng: t.lng, h: t.h, cen: t.cen ? 1 : 0, dist: t.dist, date: t.date || "" })) }); } catch (e) { out.push({ k, tomas: [], error: String(e.message || e).slice(0, 160) }); } }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, radio: R, frente: NC, calle: NF, puntos: out });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
 const _ftFirma = t => Object.assign({}, t, { u: `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(t.pano)}&h=${t.h}&sig=${_enSig(t.pano, t.h)}` });
 app.get("/mercado/entorno/fotos", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(_ftObj(id)); res.set("Cache-Control", "no-store"); if (data && Array.isArray(data.tomas)) data.tomas = data.tomas.map(_ftFirma); res.json({ ok: true, set: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/entorno/fotos/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _ftJob)); });
