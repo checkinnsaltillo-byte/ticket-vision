@@ -1,6 +1,6 @@
 """Prepara los establecimientos del DENUE (INEGI) de la zona conurbada de Saltillo para el visor de maqueta.
 Uso: python3 -I denue_prep.py <denue_inegi_05_.csv> <poblacion_hex_saltillo.json> <salida.json>
-Descarga: https://www.inegi.org.mx/contenidos/masiva/denue/denue_05_csv.zip (Nuevo León, municipio de Monterrey)."""
+Descarga: https://www.inegi.org.mx/contenidos/masiva/denue/denue_05_csv.zip (Nuevo León, área metropolitana de Monterrey (18 municipios))."""
 import csv, json, sys, re
 csv_f, hex_f, out_f = sys.argv[1:4]
 H = json.load(open(hex_f))['hex']
@@ -26,11 +26,11 @@ def tam(t):
     m = re.match(r'(\d+)', t or ''); n = int(m.group(1)) if m else 0
     return 0 if n <= 5 else 1 if n <= 10 else 2 if n <= 30 else 3 if n <= 50 else 4 if n <= 100 else 5 if n <= 250 else 6
 P = []
-for r in csv.DictReader(open(csv_f, encoding='latin-1')):
+for r in csv.DictReader(open(csv_f, encoding='latin-1', errors='replace')):
     try: la, lo = float(r['latitud']), float(r['longitud'])
     except ValueError: continue
-    if r['cve_mun'] == '039':   # solo el municipio de Monterrey
+    if r['cve_mun'] in ('001', '006', '009', '010', '012', '018', '019', '021', '025', '026', '031', '039', '041', '045', '046', '047', '048', '049'):   # los 18 municipios del área metropolitana de Monterrey
         P.append([round(la, 5), round(lo, 5), grupo(r['codigo_act']), tam(r['per_ocu']), r['nom_estab'].strip().title()[:34], r['codigo_act']])
-json.dump({'meta': {'fuente': 'INEGI · DENUE (Directorio Estadístico Nacional de Unidades Económicas), Nuevo León, municipio de Monterrey', 'grupos': [{'n': n, 'c': c} for n, c in G],
+json.dump({'meta': {'fuente': 'INEGI · DENUE (Directorio Estadístico Nacional de Unidades Económicas), Nuevo León, área metropolitana de Monterrey (18 municipios)', 'grupos': [{'n': n, 'c': c} for n, c in G],
   'tamanos': ['0-5', '6-10', '11-30', '31-50', '51-100', '101-250', '251+'], 'n': len(P), 'campos': ['lat', 'lng', 'grupo', 'tamano', 'nombre', 'scian']}, 'p': P}, open(out_f, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
 print(len(P), [sum(1 for p in P if p[2] == k) for k in range(10)])

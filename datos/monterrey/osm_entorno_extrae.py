@@ -1,5 +1,5 @@
 import osmium, json, time, os, math, collections
-S,W,N,E = 25.42,-100.50,25.86,-100.11; C=0.1
+S,W,N,E = 25.211,-100.892,26.425,-99.656; C=0.1
 KN={"natural":{"tree":"t"},"highway":{"street_lamp":"l","traffic_signals":"s","crossing":"c","bus_stop":"b"},"public_transport":{"platform":"p"},"power":{"tower":"w"}}
 TN={"crossing","crossing:markings","tactile_paving","kerb","name","shelter","bench","public_transport","voltage","highway","natural","power"}
 TW={"building","building:levels","height","name","power","railway","waterway"}

@@ -1,5 +1,5 @@
 import osmium, json, time
-S,W,N,E = 25.42,-100.50,25.86,-100.11
+S,W,N,E = 25.211,-100.892,26.425,-99.656
 EXC={"footway","steps","path","corridor","elevator","proposed","construction","bridleway","platform"}
 t0=time.time(); ways=[]; n=0
 fp = osmium.FileProcessor('mexico.osm.pbf', osmium.osm.NODE | osmium.osm.WAY).with_locations('sparse_file_array,idx.bin').with_filter(osmium.filter.KeyFilter('highway'))

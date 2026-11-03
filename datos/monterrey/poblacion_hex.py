@@ -13,7 +13,7 @@ from collections import defaultdict
 
 CSV, SHP, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
 R = float(sys.argv[4]) if len(sys.argv) > 4 else 200.0
-MUNS = {"039": ("Monterrey", 1142994)}  # municipio de Monterrey; sin cifra municipal EIC 2025 publicada: la columna 2025 queda igual a 2020 (factor 1.0)
+MUNS = {"001": ("Abasolo", 0), "006": ("Apodaca", 0), "009": ("Cadereyta Jiménez", 0), "010": ("El Carmen", 0), "012": ("Ciénega de Flores", 0), "018": ("García", 0), "019": ("San Pedro Garza García", 0), "021": ("General Escobedo", 0), "025": ("General Zuazua", 0), "026": ("Guadalupe", 0), "031": ("Juárez", 0), "039": ("Monterrey", 0), "041": ("Pesquería", 0), "045": ("Salinas Victoria", 0), "046": ("San Nicolás de los Garza", 0), "047": ("Hidalgo", 0), "048": ("Santa Catarina", 0), "049": ("Santiago", 0)}  # municipio de Monterrey; sin cifra municipal EIC 2025 publicada: la columna 2025 queda igual a 2020 (factor 1.0)
 LAT0 = 25.6693; LNG0 = -100.3090  # ancla de la malla (Monterrey centro, Macroplaza)
 
 # ── proyección Lambert cónica conforme (INEGI, GRS80) ────────────────────────────────────────────────────────

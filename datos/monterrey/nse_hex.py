@@ -21,7 +21,7 @@ def num(x):
     except Exception: return None
 fil = {}
 for r in csv.DictReader(open(CSV, encoding='utf-8-sig')):
-    if r['MZA'] in ('000', '') or r['MUN'] not in ('039',): continue
+    if r['MZA'] in ('000', '') or r['MUN'] not in ('001', '006', '009', '010', '012', '018', '019', '021', '025', '026', '031', '039', '041', '045', '046', '047', '048', '049'): continue
     fil[r['ENTIDAD'] + r['MUN'] + r['LOC'] + r['AGEB'] + r['MZA']] = r
 # (clave, nombre, signo, numerador, denominador | None si ya es un promedio)
 VARS = [

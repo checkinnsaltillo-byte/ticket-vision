@@ -1,5 +1,5 @@
 import json, datetime
-S,W,N,E = 25.42,-100.50,25.86,-100.11
+S,W,N,E = 25.211,-100.892,26.425,-99.656
 KEEP={"highway","name","ref","oneway","junction","lanes","lanes:forward","lanes:backward","maxspeed","width","surface","bridge","tunnel","layer","sidewalk","service","access","lit"}
 def enc(pts):
     out=[]; la=ln=0

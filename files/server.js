@@ -13650,8 +13650,9 @@ const _mqProy = (lat0, lng0) => { const kx = 111320 * Math.cos(lat0 * Math.PI / 
 // Regiones con datos locales (cada una con su cobertura): el servidor elige la región según el punto; fuera de ellas vuelve a Overpass / descarga de Microsoft
 const _REGIONES = [
   { id: "saltillo", bbox: [25.15, -101.45, 25.80, -100.55], vial: "osm/vial-saltillo.json", ent: "osm/entorno/", hue: "osm/huellas/", uso: "osm/uso-saltillo.json" },
-  { id: "monterrey", bbox: [25.42, -100.50, 25.86, -100.11], vial: "osm/vial-monterrey.json", ent: "osm/entorno-monterrey/", hue: "osm/huellas-monterrey/", uso: "osm/uso-monterrey.json" }];
-const _regDe = (lat, lng) => _REGIONES.find(r => lat >= r.bbox[0] && lat <= r.bbox[2] && lng >= r.bbox[1] && lng <= r.bbox[3]) || null;
+  { id: "monterrey", bbox: [25.211, -100.892, 26.425, -99.656], vial: "osm/vial-monterrey.json", ent: "osm/entorno-monterrey/", hue: "osm/huellas-monterrey/", uso: "osm/uso-monterrey.json" }];
+// la región de monterrey cubre los 18 municipios del área metropolitana y se traslapa con la de saltillo en la sierra: gana la región cuyo centro queda más cerca del punto
+const _regDe = (lat, lng) => { let best = null, bd = 1e9; for (const r of _REGIONES) { if (lat < r.bbox[0] || lat > r.bbox[2] || lng < r.bbox[1] || lng > r.bbox[3]) continue; const d = Math.hypot(lat - (r.bbox[0] + r.bbox[2]) / 2, (lng - (r.bbox[1] + r.bbox[3]) / 2) * .9); if (d < bd) { bd = d; best = r; } } return best; };
 const _VIAL_M = {}, _vialPM = {}, _VIAL_CELDA = 0.02;
 function _vialDec(s) { const o = []; let i = 0, la = 0, ln = 0; while (i < s.length) { for (let w = 0; w < 2; w++) { let b, sh = 0, r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); const d = (r & 1) ? ~(r >> 1) : (r >> 1); if (w) ln += d; else la += d; } o.push([la / 1e6, ln / 1e6]); } return o; }
 function _vialCarga(reg) {

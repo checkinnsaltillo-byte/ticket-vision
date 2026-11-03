@@ -1,5 +1,5 @@
 import osmium, json, time
-S,W,N,E = 25.42,-100.50,25.86,-100.11
+S,W,N,E = 25.211,-100.892,26.425,-99.656
 AM={"school","kindergarten","college","university","hospital","clinic","bank","restaurant","marketplace","fuel","pharmacy","cafe","townhall"}; LU={"residential","commercial","retail","industrial"}
 def enc(pts):
     out=[]; la=ln=0

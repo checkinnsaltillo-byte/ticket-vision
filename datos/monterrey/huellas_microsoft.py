@@ -1,5 +1,5 @@
 import urllib.request, gzip, json, math, os, collections, re, io
-S,W,N,E = 25.42,-100.50,25.86,-100.11; C=0.1
+S,W,N,E = 25.211,-100.892,26.425,-99.656; C=0.1
 txt=urllib.request.urlopen("https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv",timeout=90).read().decode()
 m={}
 for l in txt.split("\n"):
@@ -12,7 +12,7 @@ def qk(lat,lng,z=9):
         if y&mk: d+=2
         q+=str(d)
     return q
-ks=set(qk(a,b) for a in [S,(S+N)/2,N] for b in [W,(W+E)/2,E])
+ks=set(qk(S+i*.1,W+j*.1) for i in range(int((N-S)/.1)+2) for j in range(int((E-W)/.1)+2))
 def enc(pts):
     out=[]; la=ln=0
     def v(d):
