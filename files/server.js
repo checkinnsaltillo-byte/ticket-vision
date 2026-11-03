@@ -35,7 +35,7 @@ app.post("/geometrika/acceso", (req, res) => {
 });
 app.use(["/mercado/maqueta", "/mercado/ambiente", "/geometrika"], (req, res, next) => {
   if (req.method === "OPTIONS") return next(); const b = req.baseUrl, p = req.path;
-  if ((b === "/geometrika" && p === "/acceso") || (b === "/mercado/maqueta" && p === "/fachada/img") || (b === "/mercado/ambiente" && p === "/aire/tile")) return next();
+  if ((b === "/geometrika" && p === "/acceso") || (b === "/mercado/maqueta" && p === "/fachada/img") || (b === "/mercado/maqueta" && p === "/trafico/tick") || (b === "/mercado/ambiente" && p === "/aire/tile")) return next();
   if (_gmOk(req)) return next(); res.status(401).json({ ok: false, gm: true, error: "Se requiere la contraseña de GeoMetrika" });
 });
 
