@@ -79155,7 +79155,7 @@ const gmEsc_ = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '
 function gmFalta_() {   /* en edición, si los cambios no cuestan nada no se pide pago */
    const f = []; if (!GMW.perfil) f.push('objetivo del proyecto'); if (!gmPtsOk_().length) f.push('punto de interés'); if (!(GMW.radio >= 50)) f.push('radio de maqueta'); if (!GMW.vial.clases.length) f.push('vialidades'); if (GMW.fmode === 'manual' && !GMW.fm.length) f.push('puntos de fotos'); if (!GMW.dias.length) f.push('días'); if (!GMW.horas.length) f.push('horas'); if (!gmPagado_() && !(GMW.edit && gmCosto_().total === 0)) f.push('pago'); return f; }
 function gmHdr_(sub, btn, tab) {
-  const t = [['landing', '📁 Mis proyectos'], ['wizard', '➕ Nuevo análisis']];
+  const t = [['landing', '📁 Mis proyectos']];
   return `<div class="gm-hd"><div class="gm-lgw"><img src="geometrika-logo-claro.png?v=2405" alt="GeoMetrika Geo-Intelligence"></div><div><h1>Sistema de Geo-Inteligencia</h1><small>${sub}</small></div><div class="sp"></div><span class="gm-ver">v.Beta${gmVer_()}</span>${btn}</div><div class="gm-tabs">${t.map(([k, l]) => `<a class="gm-tab${k === tab ? ' on' : ''}" onclick="${k === 'landing' ? 'gmVolver_()' : 'gmNuevo_()'}">${l}</a>`).join('')}</div>`;
 }
 function gmLanding_() {
@@ -79166,10 +79166,10 @@ function gmLanding_() {
       <div class="gm-st"><i class="gm-dot ok"></i><span>Sistema de geointeligencia de mercados</span></div>
       <h1 class="gm-h1">Información geográfica verificable,<br><span>siempre disponible.</span></h1>
       <p class="gm-p">Cada indicador cita su fuente, su fecha y su método.</p>
-      <div class="gm-cta"><button type="button" class="gm-btn" onclick="gmNuevo_()">Crea tu primer proyecto <span>→</span></button></div>
+      <div class="gm-cta"><button type="button" class="gm-btn" onclick="gmNuevo_()">Crea nuevo proyecto <span>→</span></button></div>
       <div id="gm-lista" class="gm-pl"></div>
     </main>
-    <footer class="gm-foot"><div class="gm-w"><span>GeoMetrika · Check Inn</span><span>fuentes públicas y servicios de terceros</span></div></footer>
+    <footer class="gm-foot"><div class="gm-w"><span>GeoMetrika · Check Inn</span></div></footer>
   </div>`;
 }
 function gmFicha_() {
@@ -79179,9 +79179,13 @@ function gmFicha_() {
 function gmHorasTxt_() { const h = GMW.horas.slice().sort((a, b) => a - b), g = []; let a = h[0], p = h[0]; for (let i = 1; i <= h.length; i++) { if (h[i] === p + 1) { p = h[i]; continue; } g.push(a === p ? String(a).padStart(2, '0') : String(a).padStart(2, '0') + '–' + String(p).padStart(2, '0')); a = p = h[i]; } return g.join(' · '); }
 function gmPie_() {
   const f = gmFalta_(), ult = GMW.paso === 6, atras = GMW.paso === 1 ? `<a class="gmw-bk" onclick="gmVolver_()">← inicio</a>` : `<a class="gmw-bk" onclick="gmPaso_(${GMW.paso - 1})">← atrás</a>`;
-  const der = ult ? `${f.length ? `<span class="gmw-fl">faltan: ${f.join(', ')}</span>` : ''}<button type="button" class="gm-btn${f.length || GMW.enviando ? ' dis' : ' gmw-rojo'}" onclick="gmEjecutar_()">${GMW.enviando ? 'enviando…' : GMW.edit ? (GMW.edit.recalc && !gmPlan_().vacio ? 'Guardar y recalcular' : 'Guardar cambios') : 'Analizar'}</button>` : `${GMW.paso === 1 && !GMW.perfil ? '<span class="gmw-fl">elige el objetivo del proyecto</span>' : ''}${GMW.paso === 2 && !gmPtsOk_().length ? '<span class="gmw-fl">busca una dirección o marca un punto en el mapa</span>' : ''}<button type="button" class="gm-btn${GMW.paso === 1 && !GMW.perfil || GMW.paso === 2 && !gmPtsOk_().length ? ' dis' : ''}" onclick="gmPaso_(${GMW.paso + 1})">continuar <span>→</span></button>`;
+  const ed = GMW.edit && gmEdCambio_(), etq = ed && GMW.edit.recalc && !gmPlan_().vacio ? 'Guardar cambios y Analizar' : 'Guardar cambios', gEd = ed && !ult ? `<button type="button" class="gm-btn gmw-rojo" style="margin-right:8px" onclick="gmEdGuardar_()"${GMW.enviando ? ' disabled' : ''}>${GMW.enviando ? 'enviando…' : etq}</button>` : '';   /* en edición, apenas hay un cambio el botón de guardar aparece en cualquier paso */
+  const der = ult ? `${f.length ? `<span class="gmw-fl">faltan: ${f.join(', ')}</span>` : ''}<button type="button" class="gm-btn${f.length || GMW.enviando ? ' dis' : ' gmw-rojo'}" onclick="gmEjecutar_()">${GMW.enviando ? 'enviando…' : GMW.edit ? etq : 'Analizar'}</button>` : `${GMW.paso === 1 && !GMW.perfil ? '<span class="gmw-fl">elige el objetivo del proyecto</span>' : ''}${GMW.paso === 2 && !gmPtsOk_().length ? '<span class="gmw-fl">busca una dirección o marca un punto en el mapa</span>' : ''}${gEd}<button type="button" class="gm-btn${GMW.paso === 1 && !GMW.perfil || GMW.paso === 2 && !gmPtsOk_().length ? ' dis' : ''}" onclick="gmPaso_(${GMW.paso + 1})">continuar <span>→</span></button>`;
   return `${atras}<span class="gmw-rg">${GMW.err ? `<span class="gmw-er">${gmEsc_(GMW.err)}</span>` : ''}${der}</span>`;
 }
+const gmEdCambio_ = () => { try { return !!(GMW.edit && GMW.edit.orig && JSON.stringify(GMW.edit.orig) !== JSON.stringify(gmSnap_())); } catch (_) { return false; } };
+function gmEdGuardar_() { if (!GMW.edit || GMW.enviando) return; const f = gmFalta_(); if (f.length) { if (f.length === 1 && f[0] === 'pago') { gmPaso_(6); return; } GMW.err = 'faltan: ' + f.join(', '); gmUpd_(); return; } gmGuardaEd_(); }   /* si el cambio cuesta y falta pagar, lleva al paso de verificación y pago */
+{ let t = 0; const ref = () => { clearTimeout(t); t = setTimeout(() => { if (!GMW.edit || GMW.vista !== 'wizard') return; const p = document.getElementById('gmw-pie'); if (p) p.innerHTML = gmPie_(); }, 140); }; ['input', 'change', 'click'].forEach(ev => document.addEventListener(ev, e => { if (GMW.edit && e.target && e.target.closest && e.target.closest('.gmw') && !e.target.closest('#gmw-pie')) ref(); }, true)); }   /* refresca el pie al editar cualquier campo para que el botón aparezca al instante */
 function gmResHtml_() {
   if (GMW.buscando) return '<p class="gmw-mu">buscando…</p>'; if (!GMW.resultados) return GMW.dir ? `<p class="gmw-mu">dirección: <b>${gmEsc_(GMW.dir)}</b></p>` : '';
   if (!GMW.resultados.length) return '<p class="gmw-mu">sin resultados; prueba con más datos (colonia, ciudad) o marca el punto en el mapa</p>';
