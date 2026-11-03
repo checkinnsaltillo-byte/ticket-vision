@@ -13053,7 +13053,7 @@ app.post("/geometrika/proyecto", async (req, res) => {
     const cl = n => Math.max(0, Math.min(99, Math.round(+n) || 0)), F = b.fotos || {}, fotos = Object.assign({ frente: Math.min(12, cl(F.frente)), inmediato: Math.min(30, cl(F.inmediato)), general: Math.min(60, cl(F.general)) }, F.max ? { max: Math.max(10, Math.min(60, cl(F.max))) } : {}), V = b.vialidades || {}, vialidades = { clases: [...new Set((Array.isArray(V.clases) ? V.clases : []).map(String))].filter(c => _TR_CLASES.includes(c)), tramo: Math.max(50, Math.min(1000, Math.round(+V.tramo) || 200)), preseleccionar: Math.min(30, cl(V.preseleccionar)), seleccion: (Array.isArray(V.seleccion) ? V.seleccion : []).map(x => String(x).slice(0, 90)).slice(0, 400) }, O = b.opciones || {}, opciones = { fotos: O.fotos !== false, trafico: O.trafico !== false, od: !!O.od };
     if (!vialidades.clases.length) return res.status(400).json({ ok: false, error: "Elige al menos una clasificación de vialidad" });
     const RV = b.redVial || {}, rp = Math.max(1000, Math.min(5000, Math.round(+RV.principales) || 3000)), redVial = { principales: rp, locales: Math.max(100, Math.min(rp, Math.round(+RV.locales) || 900)) };
-    const okp = p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180, puntos = (Array.isArray(b.puntos) ? b.puntos : []).filter(okp).slice(0, 10).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6, dir: String(p.dir || "").slice(0, 200) })), fotosManuales = (Array.isArray(b.fotosManuales) ? b.fotosManuales : []).filter(okp).slice(0, 60).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6 }));
+    const okp = p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180, puntos = (Array.isArray(b.puntos) ? b.puntos : []).filter(okp).slice(0, 10).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6, dir: String(p.dir || "").slice(0, 200) })), fotosManuales = (Array.isArray(b.fotosManuales) ? b.fotosManuales : []).filter(okp).slice(0, 60).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6, h: Math.round(((+p.h || 0) % 360 + 360) % 360) }));
     const ed = /^9\d{13}$/.test(String(b.editarId || "")) ? String(b.editarId) : "", id = ed || "9" + Date.now(), doc = { id, ver: "gm-v1", nombre, puntos: puntos.length ? puntos : [{ lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, dir: direccion }], fotosModo: ["auto", "manual", "mixta"].includes(b.fotosModo) ? b.fotosModo : "auto", fotosManuales, fotos, vialidades, redVial, creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length, opciones };
     if (ed) {   // EDITAR: se actualizan los parámetros y solo se vuelven a procesar las etapas indicadas en «invalidar» (formato «punto:etapa», p. ej. «0:traf»)
       const { data: O } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!O) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
@@ -13114,7 +13114,7 @@ async function _gmAnaliza(P) {
   for (let k = 0; k < de; k++) {
     const id = _gmPid(P.id, k); _gmJob.punto = k + 1; _gmJob.de = de; _gmJob.pesos = _gmPesos(op); _gmJob.acum = 0; _gmJob.fase = ""; const pre = de > 1 ? `Punto ${k + 1} de ${de} · ` : "", W = _gmJob.pesos;
     if (op.fotos !== false) {
-      if (!ya(k, "fotos")) { _gmJob.fase = "fotos"; _gmJob.paso = pre + "Fotos de calle (Street View)"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/entorno/fotos", MAXF ? { id, radio: P.radio, max: MAXF } : { id, radio: P.radio, fotos: NF, frente: NC }); await _gmEspera("/mercado/entorno/fotos/estado", 20 * 60000); await fin(k, "fotos"); }
+      if (!ya(k, "fotos")) { _gmJob.fase = "fotos"; _gmJob.paso = pre + "Fotos de calle (Street View)"; _gmJob.sub = ""; await _gmGuarda(P); const pk = P.puntos[k], man = (P.fotosManuales || []).filter(q => _enMetros([pk.lat, pk.lng], [q.lat, q.lng]) <= P.radio * 1.25 && (de === 1 || P.puntos.every((o, j) => j === k || _enMetros([o.lat, o.lng], [q.lat, q.lng]) >= _enMetros([pk.lat, pk.lng], [q.lat, q.lng])))); await _gmInicia("/mercado/entorno/fotos", P.fotosModo === "manual" && man.length ? { id, radio: P.radio, solo: true, manual: man } : MAXF ? { id, radio: P.radio, max: MAXF, manual: man } : { id, radio: P.radio, fotos: NF, frente: NC, manual: man }); await _gmEspera("/mercado/entorno/fotos/estado", 20 * 60000); await fin(k, "fotos"); }
       _gmJob.acum += W.fotos;
       if (!ya(k, "maq")) { _gmJob.fase = "maq"; _gmJob.paso = pre + "Maqueta y lectura de fotos con IA"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/maqueta/generar", { id }); await _gmEspera("/mercado/maqueta/estado", 40 * 60000); await fin(k, "maq"); }
       _gmJob.acum += W.maq;
@@ -14015,12 +14015,18 @@ const _ftObj = id => `mercado/entorno/fotos/${id}.json`;
 //   a) Frente a la propiedad: 6 fotos desde el panorama más cercano, en abanico de 36° (de −90° a +90° respecto del rumbo hacia el punto) para ver los detalles de la fachada desde distintos ángulos.
 //   b) Entorno inmediato: vialidades a ≤ Rin del punto; panoramas distribuidos de forma homogénea a lo largo de la línea, cada ~24–45 m (una foto perpendicular de 90° abarca ~24–30 m de fachada: menos separación se solapa, más deja huecos), 2 fotos por panorama (a cada lado de la calle).
 //   c) Radio circundante: resto del radio, cada ~50–140 m, para caracterizar el entorno. El presupuesto restante se reparte 60 % inmediato / 40 % circundante.
+// Puntos de foto puestos a mano en el asistente ({lat, lng, h}): cada uno se ajusta al panorama de Street View más cercano y se toma UNA foto con el rumbo elegido
+async function _ftManual(manual, lat, lng, R) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor"); const out = [], L = (Array.isArray(manual) ? manual : []).filter(p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180).slice(0, 60);
+  for (let i = 0; i < L.length; i += 6) await Promise.all(L.slice(i, i + 6).map(async (q, j) => { try { if (R && _enMetros([lat, lng], [+q.lat, +q.lng]) > R * 1.25) return; const m = await _enMeta(+q.lat, +q.lng, key); if (m.status !== "OK") return; const h = Math.round(((+q.h || 0) % 360 + 360) % 360); out[i + j] = { pano: m.pano_id, lat: m.location.lat, lng: m.location.lng, h, date: m.date || "", dist: Math.round(_enMetros([lat, lng], [m.location.lat, m.location.lng])), cen: 0, z: "m" }; } catch (_) { } }));
+  const vistos = new Set(); return out.filter(t => { if (!t) return false; const k = t.pano + "|" + t.h; if (vistos.has(k)) return false; vistos.add(k); return true; });
+}
 const _FT_AUTO_FRENTE = 6, _FT_ANG = [-90, -54, -18, 18, 54, 90];
 function _ftMuestras(roads, rMin, rMax, sp) {   // puntos cada `sp` m sobre cada vialidad (el primero a sp/2), solo dentro de la corona rMin–rMax del punto
   const C = []; roads.forEach(r => { let off = 0; for (let i = 1; i < r.g.length; i++) { const a = r.g[i - 1], b = r.g[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (!L) continue; const br = (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI + 360) % 360; for (let pos = sp / 2 + Math.max(0, Math.ceil((off - sp / 2) / sp)) * sp; pos < off + L; pos += sp) { const u = (pos - off) / L, x = a[0] + (b[0] - a[0]) * u, y = a[1] + (b[1] - a[1]) * u, d = Math.hypot(x, y); if (d >= rMin && d < rMax) C.push({ x, y, d, br, h: r.h }); } off += L; } }); return C;
 }
 const _ftLong = (roads, rMin, rMax) => _ftMuestras(roads, rMin, rMax, 6).length * 6;
-async function _ftPlanAuto(lat, lng, R, MAX, paso) {
+async function _ftPlanAuto(lat, lng, R, MAX, paso, manual) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor"); const Pp = t => { try { if (paso) paso(t); } catch (_) { } };
   MAX = Math.max(10, Math.min(60, parseInt(MAX, 10) || 20)); const tomas = [];
   Pp("Buscando el panorama más cercano a la propiedad"); const m0 = await _enMeta(lat, lng, key); let p0 = null;
@@ -14042,7 +14048,7 @@ async function _ftPlanAuto(lat, lng, R, MAX, paso) {
     for (let i = 0; i < C.length && n < nPan; i += 6) await Promise.all(C.slice(i, i + 6).map(async c => { try { const m = await _enMeta(lat + c.y / P.ky, lng + c.x / P.kx, key); if (m.status !== "OK" || n >= nPan || vistos.has(m.pano_id)) return; const dist = Math.round(_enMetros([lat, lng], [m.location.lat, m.location.lng])); if (dist > R * 1.05) return; if (sel.some(q => _enMetros([q.lat, q.lng], [m.location.lat, m.location.lng]) < Math.max(10, smin * 0.5))) return; vistos.add(m.pano_id); n++; const q = { pano: m.pano_id, lat: m.location.lat, lng: m.location.lng, date: m.date || "", dist }; sel.push(q); for (const dh of [90, 270]) tomas.push(Object.assign({ h: Math.round((c.br + dh) % 360), cen: 0, z }, q)); } catch (_) { } }));
   };
   await banda(0, Rin, nIn, 24, 45, "i", "de las vialidades inmediatas"); await banda(Rin, R, nCi, 50, 140, "c", "del entorno circundante");
-  return tomas.slice(0, MAX);
+  const auto = tomas.slice(0, MAX); return manual && manual.length ? auto.concat(await _ftManual(manual, lat, lng, R)) : auto;
 }
 // Selección de los puntos de Street View: la usan igual la descarga (_ftSelecciona) y la previsualización del asistente, así el mapa muestra exactamente lo que se va a consultar
 async function _ftPlan(lat, lng, R, NF, NC, paso) {
@@ -14055,10 +14061,10 @@ async function _ftPlan(lat, lng, R, NF, NC, paso) {
   let n = 0; for (const q of nuevos) { const dist = Math.round(_enMetros([lat, lng], [q.lat, q.lng])); for (const dh of [90, 270]) if (n < NF) { tomas.push({ pano: q.pano, h: Math.round(((q.br || 0) + dh) % 360), lat: q.lat, lng: q.lng, date: q.date || "", dist, cen: 0 }); n++; } }
   return tomas;
 }
-async function _ftSelecciona(id, R, NF, NC, MAX) {
+async function _ftSelecciona(id, R, NF, NC, MAX, MAN, SOLO) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
   const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng;
-  const tomas = MAX ? await _ftPlanAuto(lat, lng, R, MAX, t => { _ftJob.paso = t; }) : await _ftPlan(lat, lng, R, NF, NC, t => { _ftJob.paso = t; });
+  const tomas = SOLO ? await _ftManual(MAN, lat, lng, R) : MAX ? await _ftPlanAuto(lat, lng, R, MAX, t => { _ftJob.paso = t; }, MAN) : await _ftPlan(lat, lng, R, NF, NC, t => { _ftJob.paso = t; });
   if (!tomas.length) throw new Error(`Sin cobertura de Street View en ${R} m de esta coordenada`);
   const out = { id, at: new Date().toISOString(), radio: R, fotos: NF, frente: NC, max: MAX || undefined, lat, lng, tomas }; await _bnWriteGcs(_ftObj(id), out, null); return out;
 }
@@ -14066,9 +14072,9 @@ async function _ftSelecciona(id, R, NF, NC, MAX) {
 app.post("/geometrika/fotos/previsualizar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
-    const b = req.body || {}, R = Math.max(50, Math.min(600, parseInt(b.radio, 10) || 200)), cl = (n, m) => Math.max(0, Math.min(m, parseInt(n, 10) || 0)), MAXF = b.max ? Math.max(10, Math.min(60, parseInt(b.max, 10) || 20)) : 0; let NC = cl(b.frente, 12), NF = Math.min(60, cl(b.inmediato, 30) + cl(b.general, 60)); if (NF + NC < 4) { NC = 4; NF = 6; }
+    const b = req.body || {}, R = Math.max(50, Math.min(600, parseInt(b.radio, 10) || 200)), cl = (n, m) => Math.max(0, Math.min(m, parseInt(n, 10) || 0)), MAXF = b.max ? Math.max(10, Math.min(60, parseInt(b.max, 10) || 20)) : 0, MAN = Array.isArray(b.manual) ? b.manual.slice(0, 60) : []; let NC = cl(b.frente, 12), NF = Math.min(60, cl(b.inmediato, 30) + cl(b.general, 60)); if (NF + NC < 4) { NC = 4; NF = 6; }
     const pts = (Array.isArray(b.puntos) ? b.puntos : []).filter(p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180).slice(0, 10); if (!pts.length) return res.status(400).json({ ok: false, error: "Falta al menos un punto" });
-    const out = []; for (let k = 0; k < pts.length; k++) { try { const tomas = MAXF ? await _ftPlanAuto(+pts[k].lat, +pts[k].lng, R, MAXF) : await _ftPlan(+pts[k].lat, +pts[k].lng, R, NF, NC); out.push({ k, tomas: tomas.map(t => ({ pano: t.pano, lat: t.lat, lng: t.lng, h: t.h, cen: t.cen ? 1 : 0, z: t.z || (t.cen ? "f" : "i"), dist: t.dist, date: t.date || "" })) }); } catch (e) { out.push({ k, tomas: [], error: String(e.message || e).slice(0, 160) }); } }
+    const out = []; for (let k = 0; k < pts.length; k++) { try { const tomas = b.solo ? await _ftManual(MAN.filter(q => q && _enMetros([+pts[k].lat, +pts[k].lng], [+q.lat, +q.lng]) <= R * 1.25), +pts[k].lat, +pts[k].lng, R) : MAXF ? await _ftPlanAuto(+pts[k].lat, +pts[k].lng, R, MAXF, null, MAN.filter(q => q && _enMetros([+pts[k].lat, +pts[k].lng], [+q.lat, +q.lng]) <= R * 1.25)) : await _ftPlan(+pts[k].lat, +pts[k].lng, R, NF, NC); out.push({ k, tomas: tomas.map(t => ({ pano: t.pano, lat: t.lat, lng: t.lng, h: t.h, cen: t.cen ? 1 : 0, z: t.z || (t.cen ? "f" : "i"), dist: t.dist, date: t.date || "" })) }); } catch (e) { out.push({ k, tomas: [], error: String(e.message || e).slice(0, 160) }); } }
     res.set("Cache-Control", "no-store"); res.json({ ok: true, radio: R, max: MAXF || undefined, frente: MAXF ? _FT_AUTO_FRENTE : NC, calle: MAXF ? MAXF - _FT_AUTO_FRENTE : NF, puntos: out });
   } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
@@ -14077,11 +14083,11 @@ app.get("/mercado/entorno/fotos", async (req, res) => { if (!_vOriginOk(req)) re
 app.get("/mercado/entorno/fotos/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _ftJob)); });
 app.post("/mercado/entorno/fotos", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), R = parseInt(b.radio, 10), MAXF = parseInt(b.max, 10) || 0, NF = MAXF ? 0 : parseInt(b.fotos, 10), NC = MAXF ? 0 : parseInt(b.frente, 10); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
-  if (!(R >= 50 && R <= 600)) return res.status(400).json({ ok: false, error: "El radio debe estar entre 50 y 600 m" }); if (MAXF && !(MAXF >= 10 && MAXF <= 60)) return res.status(400).json({ ok: false, error: "La cantidad máxima de fotos debe estar entre 10 y 60" }); if (!MAXF && !(NF >= 0 && NF <= 60)) return res.status(400).json({ ok: false, error: "Las fotos del entorno deben estar entre 0 y 60" }); if (!MAXF && (!(NC >= 0 && NC <= 12) || NF + NC < 4)) return res.status(400).json({ ok: false, error: "Fotos frente a la propiedad entre 0 y 12, y al menos 4 fotos en total" });
+  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), R = parseInt(b.radio, 10), MAXF = parseInt(b.max, 10) || 0, SOLOM = !!b.solo, MANF = Array.isArray(b.manual) ? b.manual.slice(0, 60) : [], NF = MAXF || SOLOM ? 0 : parseInt(b.fotos, 10), NC = MAXF || SOLOM ? 0 : parseInt(b.frente, 10); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
+  if (!(R >= 50 && R <= 600)) return res.status(400).json({ ok: false, error: "El radio debe estar entre 50 y 600 m" }); if (SOLOM && !MANF.length) return res.status(400).json({ ok: false, error: "Faltan los puntos de foto manuales" }); if (MAXF && !(MAXF >= 10 && MAXF <= 60)) return res.status(400).json({ ok: false, error: "La cantidad máxima de fotos debe estar entre 10 y 60" }); if (!MAXF && !SOLOM && !(NF >= 0 && NF <= 60)) return res.status(400).json({ ok: false, error: "Las fotos del entorno deben estar entre 0 y 60" }); if (!MAXF && !SOLOM && (!(NC >= 0 && NC <= 12) || NF + NC < 4)) return res.status(400).json({ ok: false, error: "Fotos frente a la propiedad entre 0 y 12, y al menos 4 fotos en total" });
   if (_ftJob.running && Date.now() - Date.parse(_ftJob.upd || 0) < 180000) return res.status(409).json({ ok: false, error: "Ya hay una descarga de fotos en curso" });
   _ftJob = { running: true, id, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _ftJob.upd = new Date().toISOString(); }, 10000);
-  _ftSelecciona(id, R, NF, NC, MAXF).then(() => { _ftJob.ok = true; }).catch(e => { _ftJob.error = String(e.message || e); console.warn("[fotos]", id, e.message); }).finally(() => { clearInterval(t); _ftJob.running = false; _ftJob.fin = new Date().toISOString(); });
+  _ftSelecciona(id, R, NF, NC, MAXF, MANF, SOLOM).then(() => { _ftJob.ok = true; }).catch(e => { _ftJob.error = String(e.message || e); console.warn("[fotos]", id, e.message); }).finally(() => { clearInterval(t); _ftJob.running = false; _ftJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
 let _mqJob = { running: false };
