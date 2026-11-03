@@ -14651,6 +14651,14 @@ async function _inegiEstados() {
   for (const o of (j.items || [])) { if (!/^inegi\/\d\d\.json$/.test(o.name)) continue; let m = _inegiMem.get(o.name); if (!m || Date.now() - m.t > 6 * 3600000) { const { data } = await _bnReadGcs(o.name); if (!data) continue; m = { t: Date.now(), d: data }; _inegiMem.set(o.name, m); } l.push(m.d); }
   _inegiIdx = { t: Date.now(), l }; return l;
 }
+// ── Última consulta de tráfico de Google de cada maqueta (imagen PNG de la capa + fecha y hora): mercado/maqueta/trafico/<id>.json
+const _trafObj = id => `mercado/maqueta/trafico/${id}.json`;
+app.get("/mercado/maqueta/trafico", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); const { data } = await _bnReadGcs(_trafObj(id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, snap: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/maqueta/trafico", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), png = String(b.png || ""); if (!id || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(png) || png.length > 6e6) return res.status(400).json({ ok: false, error: "Datos no válidos" });
+    const snap = { t: Math.round(+b.t) || Date.now(), z: +b.z || 0, n: +b.n || 0, R: +b.R || 0, lat: +b.lat || 0, lng: +b.lng || 0, png }; await _bnWriteGcs(_trafObj(id), snap, null); res.json({ ok: true, t: snap.t }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/mercado/maqueta/inegi", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
