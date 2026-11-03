@@ -14682,6 +14682,24 @@ app.get("/mercado/maqueta/ghsl", async (req, res) => {
     const w = await _ghslVentana(lat, lng, r); res.set("Cache-Control", "public, max-age=3600"); res.json(w ? { ok: true, ...w } : { ok: true, fuera: true });
   } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
+// ── Vistas guardadas («screenshots») de cada maqueta: cámara, capas, ventanas y demás estado; miniatura incluida. mercado/maqueta/vistas/<id>.json
+const _VISTAS = id => `mercado/maqueta/vistas/${id}.json`;
+app.get("/mercado/maqueta/vistas", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); const { data } = await _bnReadGcs(_VISTAS(id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, items: (data && data.items) || [] }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/maqueta/vistas", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), op = String(b.op || ""); if (!id) return res.status(400).json({ ok: false });
+    for (let k = 0; k < 4; k++) {
+      const { data, gen } = await _bnReadGcs(_VISTAS(id)), items = ((data && data.items) || []).slice(); let out = null;
+      if (op === "add") { const it = b.item || {}; if (!it.estado || JSON.stringify(it).length > 1.5e6) return res.status(400).json({ ok: false, error: "Vista demasiado grande" }); out = { id: "v" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), nombre: String(it.nombre || "Vista").slice(0, 80), at: new Date().toISOString(), thumb: String(it.thumb || "").slice(0, 120000), estado: it.estado }; items.unshift(out); if (items.length > 60) items.length = 60; }
+      else if (op === "del") { const i = items.findIndex(x => x.id === b.vid); if (i < 0) return res.json({ ok: true, items }); items.splice(i, 1); }
+      else if (op === "ren") { const it = items.find(x => x.id === b.vid); if (!it) return res.status(404).json({ ok: false }); it.nombre = String(b.nombre || "").slice(0, 80) || it.nombre; }
+      else return res.status(400).json({ ok: false, error: "op" });
+      try { await _bnWriteGcs(_VISTAS(id), { items }, gen == null ? 0 : gen); return res.json({ ok: true, items, item: out }); } catch (e) { if (!e.conflict && !e.retry) throw e; }
+    }
+    res.status(409).json({ ok: false, error: "conflicto" });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── Tráfico de Google de cada maqueta: la consulta (teselas 2D layerTraffic) se hace en el servidor; se guarda la última (imagen de la capa + estado por vialidad) y un historial diario por maqueta. Con la descarga automática activa, Cloud Scheduler la repite cada X minutos (/mercado/maqueta/trafico/tick)
 const _TRG = { OBJ: id => `mercado/maqueta/trafico/${id}.json`, CFG: "mercado/maqueta/trafico/config.json", HIST: (id, dia) => `mercado/maqueta/trafico/hist/${id}/${dia}.json`, ses: null, st: 0, lock: false };
 const _TRG_ROADW = { motorway: 16, trunk: 14, primary: 13, secondary: 11, tertiary: 9, unclassified: 7.5, residential: 7.2, living_street: 6, service: 4.2, pedestrian: 4, track: 3.5 }, _trgRw = r => r.w || (r.l ? Math.max(r.l * 3.2, 5.5) : (_TRG_ROADW[r.h] || 7));
