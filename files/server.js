@@ -14271,7 +14271,7 @@ app.post("/mercado/maqueta/uso-suelo", async (req, res) => {
     const r = await _mqSat(D.lat, D.lng, D.radio, key, {}, { fresh: !!(req.body || {}).fresh }); D.sat = r.sat; D.mb = _mqFiltraHuellas(r.mb || await _mqFootprints(D.lat, D.lng, D.radio).catch(() => D.mb), r.sat); D.pois = (D.pois || []).filter(q => q.f !== "sat"); r.pois.forEach(q => { if (!D.pois.some(o => o.t === q.t && Math.hypot(o.x - q.x, o.y - q.y) < 50)) D.pois.push(q); });
     await _bnWriteGcs(`mercado/maqueta/${id}.json`, D, null); _gastoReg(id, { fuente: "uso-suelo", estaticos: r.sat.ia.teselas, iaSat: { in: r.sat.ia.entrada, out: r.sat.ia.salida } }); res.json({ ok: true, celdas: r.sat.n, conCalles: r.sat.calles, ia: r.sat.ia }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
-app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); if (data && Array.isArray(data.obs)) data.obs.forEach(o => { o.u = `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(o.pano)}&h=${o.h}&sig=${_enSig(o.pano, o.h)}`; }); res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/mercado/maqueta/escena", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""), { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); res.set("Cache-Control", "no-store"); if (data && Array.isArray(data.obs)) data.obs.forEach(o => { o.u = `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(o.pano)}&h=${o.h}&sig=${_enSig(o.pano, o.h)}`; }); if (data && data.lat != null) { try { const w = await _ghslVentana(+data.lat, +data.lng, +data.radio || 400); if (w) data.gh = w; } catch (_) { } } res.json({ ok: true, escena: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 // Modelo 3D ya armado (.glb, lo exporta el navegador): se guarda en mercado/maqueta/<id>.glb y se borra al regenerar la maqueta.
 const _mqGlbUrl = (id, up) => up ? `https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(`mercado/maqueta/${id}.glb`)}` : `https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(`mercado/maqueta/${id}.glb`)}`;
 app.post("/mercado/maqueta/modelo", express.raw({ type: () => true, limit: "90mb" }), async (req, res) => {
@@ -14660,6 +14660,28 @@ async function _inegiEstados() {
   for (const o of (j.items || [])) { if (!/^inegi\/\d\d\.json$/.test(o.name)) continue; let m = _inegiMem.get(o.name); if (!m || Date.now() - m.t > 6 * 3600000) { const { data } = await _bnReadGcs(o.name); if (!data) continue; m = { t: Date.now(), d: data }; _inegiMem.set(o.name, m); } l.push(m.d); }
   _inegiIdx = { t: Date.now(), l }; return l;
 }
+// ── Alturas de edificios GHSL (GHS-BUILT-H R2023A, altura media neta por celda de ~100 m): cuadrícula en grados guardada en gs://…/ghsl/alturas.bin.gz (1 byte por celda, unidades de 0.25 m); cada maqueta pide solo su ventana
+let _ghslM = null;
+async function _ghslCarga() {
+  if (_ghslM && Date.now() - _ghslM.t < 6 * 3600000) return _ghslM;
+  const tok = await _vGcsToken(), g = o => fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(o)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } });
+  const [rm, rb] = await Promise.all([g("ghsl/meta.json"), g("ghsl/alturas.bin.gz")]); if (!rm.ok || !rb.ok) throw new Error("Sin datos GHSL");
+  const meta = await rm.json(), buf = require("zlib").gunzipSync(Buffer.from(await rb.arrayBuffer())); _ghslM = { t: Date.now(), meta, buf }; return _ghslM;
+}
+async function _ghslVentana(lat, lng, r) {
+  const { meta: m, buf } = await _ghslCarga(), dl = (r + 300) / 111320, dn = (r + 300) / (111320 * Math.cos(lat * Math.PI / 180));
+  let i0 = Math.floor((m.la1 - (lat + dl)) / m.s), i1 = Math.ceil((m.la1 - (lat - dl)) / m.s), j0 = Math.floor((lng - dn - m.lo0) / m.s), j1 = Math.ceil((lng + dn - m.lo0) / m.s);
+  if (i1 < 0 || j1 < 0 || i0 >= m.ny || j0 >= m.nx) return null;
+  i0 = Math.max(0, i0); j0 = Math.max(0, j0); i1 = Math.min(m.ny, i1); j1 = Math.min(m.nx, j1);
+  const ny = i1 - i0, nx = j1 - j0, out = Buffer.alloc(ny * nx); for (let i = 0; i < ny; i++) buf.copy(out, i * nx, (i0 + i) * m.nx + j0, (i0 + i) * m.nx + j0 + nx);
+  return { la1: m.la1 - i0 * m.s, lo0: m.lo0 + j0 * m.s, s: m.s, ny, nx, u: m.u, d: out.toString("base64") };
+}
+app.get("/mercado/maqueta/ghsl", async (req, res) => {
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng, r = Math.max(100, Math.min(3000, +req.query.r || 400)); if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ ok: false, error: "coordenadas" });
+    const w = await _ghslVentana(lat, lng, r); res.set("Cache-Control", "public, max-age=3600"); res.json(w ? { ok: true, ...w } : { ok: true, fuera: true });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
 // ── Tráfico de Google de cada maqueta: la consulta (teselas 2D layerTraffic) se hace en el servidor; se guarda la última (imagen de la capa + estado por vialidad) y un historial diario por maqueta. Con la descarga automática activa, Cloud Scheduler la repite cada X minutos (/mercado/maqueta/trafico/tick)
 const _TRG = { OBJ: id => `mercado/maqueta/trafico/${id}.json`, CFG: "mercado/maqueta/trafico/config.json", HIST: (id, dia) => `mercado/maqueta/trafico/hist/${id}/${dia}.json`, ses: null, st: 0, lock: false };
 const _TRG_ROADW = { motorway: 16, trunk: 14, primary: 13, secondary: 11, tertiary: 9, unclassified: 7.5, residential: 7.2, living_street: 6, service: 4.2, pedestrian: 4, track: 3.5 }, _trgRw = r => r.w || (r.l ? Math.max(r.l * 3.2, 5.5) : (_TRG_ROADW[r.h] || 7));
