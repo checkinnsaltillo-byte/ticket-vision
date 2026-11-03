@@ -13050,7 +13050,7 @@ app.post("/geometrika/proyecto", async (req, res) => {
     if (!(radio >= 50 && radio <= 600)) return res.status(400).json({ ok: false, error: "El radio de maqueta debe estar entre 50 y 600 m" });
     if (!dias.length || !horas.length) return res.status(400).json({ ok: false, error: "Elige al menos un día y una hora" });
     if (!perfil && !objetivo.trim()) return res.status(400).json({ ok: false, error: "Define el objetivo del proyecto" });
-    const cl = n => Math.max(0, Math.min(99, Math.round(+n) || 0)), F = b.fotos || {}, fotos = { frente: Math.min(12, cl(F.frente)), inmediato: Math.min(30, cl(F.inmediato)), general: Math.min(60, cl(F.general)) }, V = b.vialidades || {}, vialidades = { clases: [...new Set((Array.isArray(V.clases) ? V.clases : []).map(String))].filter(c => _TR_CLASES.includes(c)), tramo: Math.max(50, Math.min(1000, Math.round(+V.tramo) || 200)), preseleccionar: Math.min(30, cl(V.preseleccionar)), seleccion: (Array.isArray(V.seleccion) ? V.seleccion : []).map(x => String(x).slice(0, 90)).slice(0, 400) }, O = b.opciones || {}, opciones = { fotos: O.fotos !== false, trafico: O.trafico !== false, od: !!O.od };
+    const cl = n => Math.max(0, Math.min(99, Math.round(+n) || 0)), F = b.fotos || {}, fotos = Object.assign({ frente: Math.min(12, cl(F.frente)), inmediato: Math.min(30, cl(F.inmediato)), general: Math.min(60, cl(F.general)) }, F.max ? { max: Math.max(10, Math.min(60, cl(F.max))) } : {}), V = b.vialidades || {}, vialidades = { clases: [...new Set((Array.isArray(V.clases) ? V.clases : []).map(String))].filter(c => _TR_CLASES.includes(c)), tramo: Math.max(50, Math.min(1000, Math.round(+V.tramo) || 200)), preseleccionar: Math.min(30, cl(V.preseleccionar)), seleccion: (Array.isArray(V.seleccion) ? V.seleccion : []).map(x => String(x).slice(0, 90)).slice(0, 400) }, O = b.opciones || {}, opciones = { fotos: O.fotos !== false, trafico: O.trafico !== false, od: !!O.od };
     if (!vialidades.clases.length) return res.status(400).json({ ok: false, error: "Elige al menos una clasificación de vialidad" });
     const RV = b.redVial || {}, rp = Math.max(1000, Math.min(5000, Math.round(+RV.principales) || 3000)), redVial = { principales: rp, locales: Math.max(100, Math.min(rp, Math.round(+RV.locales) || 900)) };
     const okp = p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180, puntos = (Array.isArray(b.puntos) ? b.puntos : []).filter(okp).slice(0, 10).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6, dir: String(p.dir || "").slice(0, 200) })), fotosManuales = (Array.isArray(b.fotosManuales) ? b.fotosManuales : []).filter(okp).slice(0, 60).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6 }));
@@ -13109,12 +13109,12 @@ function _gmPct(J) {
   return Math.max(0, Math.min(99, Math.round((((J.punto || 1) - 1) + (J.acum || 0) + w * f) / J.de * 100)));
 }
 async function _gmAnaliza(P) {
-  const op = P.opciones || {}, de = P.puntos.length, F = P.fotos || {}, hecho = _gmJob.hecho || (_gmJob.hecho = []); let NC = Math.min(12, F.frente || 0), NF = Math.min(60, (F.inmediato || 0) + (F.general || 0)); if (NF + NC < 4) { NC = 4; NF = 6; }
+  const op = P.opciones || {}, de = P.puntos.length, F = P.fotos || {}, hecho = _gmJob.hecho || (_gmJob.hecho = []); const MAXF = F.max ? Math.max(10, Math.min(60, +F.max)) : 0; let NC = Math.min(12, F.frente || 0), NF = Math.min(60, (F.inmediato || 0) + (F.general || 0)); if (!MAXF && NF + NC < 4) { NC = 4; NF = 6; }
   const ya = (k, f) => hecho.includes(k + ":" + f), fin = async (k, f) => { hecho.push(k + ":" + f); await _gmGuarda(P); };   // etapas terminadas: si el servidor se reinicia, el análisis sigue desde la última
   for (let k = 0; k < de; k++) {
     const id = _gmPid(P.id, k); _gmJob.punto = k + 1; _gmJob.de = de; _gmJob.pesos = _gmPesos(op); _gmJob.acum = 0; _gmJob.fase = ""; const pre = de > 1 ? `Punto ${k + 1} de ${de} · ` : "", W = _gmJob.pesos;
     if (op.fotos !== false) {
-      if (!ya(k, "fotos")) { _gmJob.fase = "fotos"; _gmJob.paso = pre + "Fotos de calle (Street View)"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/entorno/fotos", { id, radio: P.radio, fotos: NF, frente: NC }); await _gmEspera("/mercado/entorno/fotos/estado", 20 * 60000); await fin(k, "fotos"); }
+      if (!ya(k, "fotos")) { _gmJob.fase = "fotos"; _gmJob.paso = pre + "Fotos de calle (Street View)"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/entorno/fotos", MAXF ? { id, radio: P.radio, max: MAXF } : { id, radio: P.radio, fotos: NF, frente: NC }); await _gmEspera("/mercado/entorno/fotos/estado", 20 * 60000); await fin(k, "fotos"); }
       _gmJob.acum += W.fotos;
       if (!ya(k, "maq")) { _gmJob.fase = "maq"; _gmJob.paso = pre + "Maqueta y lectura de fotos con IA"; _gmJob.sub = ""; await _gmGuarda(P); await _gmInicia("/mercado/maqueta/generar", { id }); await _gmEspera("/mercado/maqueta/estado", 40 * 60000); await fin(k, "maq"); }
       _gmJob.acum += W.maq;
@@ -13741,7 +13741,7 @@ app.get("/geometrika/ficha", async (req, res) => {   // ficha de descripción + 
       titulo = "GeoMetrika · " + (P.nombre || P.perfil || "Proyecto");
       F.push(["Nombre del proyecto", P.nombre || "—"], ["Objetivo del proyecto", P.perfil || "—"], ["Descripción", P.objetivo || "—"], ["Creado", fe(P.creado)]);
       (P.puntos || []).forEach((q, i) => F.push([N > 1 ? "Punto de interés " + (i + 1) : "Punto de interés", `${q.dir || "sin dirección"} (${(+q.lat).toFixed(5)}, ${(+q.lng).toFixed(5)})`]));
-      F.push(["Radio de maqueta", (P.radio || "—") + " m"], ["Fotos de calle", `${P.fotosModo === "manual" ? "manuales" : P.fotosModo === "mixta" ? "mixtas" : "automáticas"} · ${(P.fotos || {}).frente || 0} frente + ${(P.fotos || {}).inmediato || 0} entorno inmediato + ${(P.fotos || {}).general || 0} entorno general`],
+      F.push(["Radio de maqueta", (P.radio || "—") + " m"], ["Fotos de calle", `${P.fotosModo === "manual" ? "manuales" : P.fotosModo === "mixta" ? "mixtas" : "automáticas"} · ${(P.fotos || {}).max ? "hasta " + P.fotos.max + " fotos (6 de frente + inmediato + circundante)" : ""}${(P.fotos || {}).max ? " · " : ""}${(P.fotos || {}).frente || 0} frente + ${(P.fotos || {}).inmediato || 0} entorno inmediato + ${(P.fotos || {}).general || 0} entorno general`],
         ["Vialidades", `${(V.clases || []).length} clases · longitud de tramo ${V.tramo || "—"} m · ${(V.seleccion || []).length || V.preseleccionar || 0} seleccionadas`], ["Red vial (accesibilidad)", `vialidades principales ${(P.redVial || {}).principales || "—"} m · calles locales ${(P.redVial || {}).locales || "—"} m`],
         ["Días de tráfico", (P.dias || []).map(d => _GM_DIAS[d]).join(", ") || "—"], ["Horas de tráfico", (P.horas || []).map(h => String(h).padStart(2, "0") + ":00").join(" ") || "—"],
         ["Opciones", [P.opciones && P.opciones.fotos !== false ? "fotos y maqueta" : null, P.opciones && P.opciones.trafico !== false ? "tráfico" : null, P.opciones && P.opciones.od ? "origen/destino" : null].filter(Boolean).join(" · ") || "—"],
@@ -14009,6 +14009,33 @@ async function _mqFootprints(lat, lng, R) {
 // ── Fotos de Street View del entorno: paso previo común al análisis del entorno urbano y a la maqueta 3D (se guardan referencias: panorama + rumbo; las imágenes se piden a Google al usarlas)
 let _ftJob = { running: false };
 const _ftObj = id => `mercado/entorno/fotos/${id}.json`;
+// ── Selección automática inteligente de fotos de Street View (GeoMetrika, desde 2026-11-03). Único parámetro: cantidad máxima de fotos.
+//   a) Frente a la propiedad: 6 fotos desde el panorama más cercano, en abanico de 36° (de −90° a +90° respecto del rumbo hacia el punto) para ver los detalles de la fachada desde distintos ángulos.
+//   b) Entorno inmediato: vialidades a ≤ Rin del punto; panoramas distribuidos de forma homogénea a lo largo de la línea, cada ~24–45 m (una foto perpendicular de 90° abarca ~24–30 m de fachada: menos separación se solapa, más deja huecos), 2 fotos por panorama (a cada lado de la calle).
+//   c) Radio circundante: resto del radio, cada ~50–140 m, para caracterizar el entorno. El presupuesto restante se reparte 60 % inmediato / 40 % circundante.
+const _FT_AUTO_FRENTE = 6, _FT_ANG = [-90, -54, -18, 18, 54, 90];
+function _ftMuestras(roads, rMin, rMax, sp) {   // puntos cada `sp` m sobre cada vialidad (el primero a sp/2), solo dentro de la corona rMin–rMax del punto
+  const C = []; roads.forEach(r => { let off = 0; for (let i = 1; i < r.g.length; i++) { const a = r.g[i - 1], b = r.g[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (!L) continue; const br = (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI + 360) % 360; for (let pos = sp / 2 + Math.max(0, Math.ceil((off - sp / 2) / sp)) * sp; pos < off + L; pos += sp) { const u = (pos - off) / L, x = a[0] + (b[0] - a[0]) * u, y = a[1] + (b[1] - a[1]) * u, d = Math.hypot(x, y); if (d >= rMin && d < rMax) C.push({ x, y, d, br }); } off += L; } }); return C;
+}
+const _ftLong = (roads, rMin, rMax) => _ftMuestras(roads, rMin, rMax, 6).length * 6;
+async function _ftPlanAuto(lat, lng, R, MAX, paso) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor"); const Pp = t => { try { if (paso) paso(t); } catch (_) { } };
+  MAX = Math.max(10, Math.min(60, parseInt(MAX, 10) || 20)); const tomas = [];
+  Pp("Buscando el panorama más cercano a la propiedad"); const m0 = await _enMeta(lat, lng, key); let p0 = null;
+  if (m0.status === "OK") { p0 = { pano: m0.pano_id, lat: m0.location.lat, lng: m0.location.lng, date: m0.date || "", dist: Math.round(_enMetros([lat, lng], [m0.location.lat, m0.location.lng])) }; const b0 = p0.dist >= 4 ? _enRumbo([p0.lat, p0.lng], [lat, lng]) : 0; for (const d of _FT_ANG) tomas.push(Object.assign({ h: Math.round((b0 + d + 360) % 360), cen: 1, z: "f" }, p0)); }
+  const B = MAX - tomas.length, nIn = Math.max(0, Math.floor(B * 0.6 / 2)), nCi = Math.max(0, Math.floor((B - nIn * 2) / 2)); if (B < 2) return tomas.slice(0, MAX);
+  Pp(`Calles de OpenStreetMap (${R} m)`); let roads = []; for (let i = 0; i < 3 && !roads.length; i++) { try { roads = (await _mqOsm0(lat, lng, R, true)).roads; } catch (_) { await _amSleep(3000); } }
+  roads = roads.filter(r => /^(residential|tertiary|secondary|primary|unclassified|living_street|service)$/.test(r.h)); const P = _mqProy(lat, lng), vistos = new Set(p0 ? [p0.pano] : []), sel = p0 ? [p0] : [];
+  if (!roads.length) { const PP = await _enPanos(lat, lng, key, R); PP.filter(q => !vistos.has(q.pano)).sort((a, b) => a.dist - b.dist).slice(0, nIn + nCi).forEach(q => { for (const dh of [90, 270]) tomas.push({ pano: q.pano, h: dh, lat: q.lat, lng: q.lng, date: q.date, dist: q.dist, cen: 0, z: "i" }); }); return tomas.slice(0, MAX); }
+  const Rin = Math.min(R, Math.max(80, Math.round(R * 0.45)));
+  const banda = async (rMin, rMax, nPan, smin, smax, z, etiqueta) => {
+    if (nPan <= 0 || rMax <= rMin) return; const L = _ftLong(roads, rMin, rMax); if (!L) return; const sp = Math.max(smin, Math.min(smax, L / nPan)); let C = _ftMuestras(roads, rMin, rMax, sp);
+    Pp(`Panoramas ${etiqueta} (cada ~${Math.round(sp)} m)`); let n = 0;
+    for (let i = 0; i < C.length && n < nPan; i += 6) await Promise.all(C.slice(i, i + 6).map(async c => { try { const m = await _enMeta(lat + c.y / P.ky, lng + c.x / P.kx, key); if (m.status !== "OK" || n >= nPan || vistos.has(m.pano_id)) return; const dist = Math.round(_enMetros([lat, lng], [m.location.lat, m.location.lng])); if (dist > R * 1.05) return; if (sel.some(q => _enMetros([q.lat, q.lng], [m.location.lat, m.location.lng]) < Math.max(10, sp * 0.4))) return; vistos.add(m.pano_id); n++; const q = { pano: m.pano_id, lat: m.location.lat, lng: m.location.lng, date: m.date || "", dist }; sel.push(q); for (const dh of [90, 270]) tomas.push(Object.assign({ h: Math.round((c.br + dh) % 360), cen: 0, z }, q)); } catch (_) { } }));
+  };
+  await banda(0, Rin, nIn, 24, 45, "i", "de las vialidades inmediatas"); await banda(Rin, R, nCi, 50, 140, "c", "del entorno circundante");
+  return tomas.slice(0, MAX);
+}
 // Selección de los puntos de Street View: la usan igual la descarga (_ftSelecciona) y la previsualización del asistente, así el mapa muestra exactamente lo que se va a consultar
 async function _ftPlan(lat, lng, R, NF, NC, paso) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor"); const P = t => { try { if (paso) paso(t); } catch (_) { } };
@@ -14020,21 +14047,21 @@ async function _ftPlan(lat, lng, R, NF, NC, paso) {
   let n = 0; for (const q of nuevos) { const dist = Math.round(_enMetros([lat, lng], [q.lat, q.lng])); for (const dh of [90, 270]) if (n < NF) { tomas.push({ pano: q.pano, h: Math.round(((q.br || 0) + dh) % 360), lat: q.lat, lng: q.lng, date: q.date || "", dist, cen: 0 }); n++; } }
   return tomas;
 }
-async function _ftSelecciona(id, R, NF, NC) {
+async function _ftSelecciona(id, R, NF, NC, MAX) {
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
   const it = await _mcItem(id); if (!it || it.lat == null) throw new Error("La publicación no tiene una coordenada precisa"); const lat = +it.lat, lng = +it.lng;
-  const tomas = await _ftPlan(lat, lng, R, NF, NC, t => { _ftJob.paso = t; });
+  const tomas = MAX ? await _ftPlanAuto(lat, lng, R, MAX, t => { _ftJob.paso = t; }) : await _ftPlan(lat, lng, R, NF, NC, t => { _ftJob.paso = t; });
   if (!tomas.length) throw new Error(`Sin cobertura de Street View en ${R} m de esta coordenada`);
-  const out = { id, at: new Date().toISOString(), radio: R, fotos: NF, frente: NC, lat, lng, tomas }; await _bnWriteGcs(_ftObj(id), out, null); return out;
+  const out = { id, at: new Date().toISOString(), radio: R, fotos: NF, frente: NC, max: MAX || undefined, lat, lng, tomas }; await _bnWriteGcs(_ftObj(id), out, null); return out;
 }
 // Previsualización para el asistente de GeoMetrika: mismo cálculo y mismos topes que _gmAnaliza, pero solo con la API de metadatos de Street View (sin descargar ni cobrar imágenes)
 app.post("/geometrika/fotos/previsualizar", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
-    const b = req.body || {}, R = Math.max(50, Math.min(600, parseInt(b.radio, 10) || 200)), cl = (n, m) => Math.max(0, Math.min(m, parseInt(n, 10) || 0)); let NC = cl(b.frente, 12), NF = Math.min(60, cl(b.inmediato, 30) + cl(b.general, 60)); if (NF + NC < 4) { NC = 4; NF = 6; }
+    const b = req.body || {}, R = Math.max(50, Math.min(600, parseInt(b.radio, 10) || 200)), cl = (n, m) => Math.max(0, Math.min(m, parseInt(n, 10) || 0)), MAXF = b.max ? Math.max(10, Math.min(60, parseInt(b.max, 10) || 20)) : 0; let NC = cl(b.frente, 12), NF = Math.min(60, cl(b.inmediato, 30) + cl(b.general, 60)); if (NF + NC < 4) { NC = 4; NF = 6; }
     const pts = (Array.isArray(b.puntos) ? b.puntos : []).filter(p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180).slice(0, 10); if (!pts.length) return res.status(400).json({ ok: false, error: "Falta al menos un punto" });
-    const out = []; for (let k = 0; k < pts.length; k++) { try { const tomas = await _ftPlan(+pts[k].lat, +pts[k].lng, R, NF, NC); out.push({ k, tomas: tomas.map(t => ({ pano: t.pano, lat: t.lat, lng: t.lng, h: t.h, cen: t.cen ? 1 : 0, dist: t.dist, date: t.date || "" })) }); } catch (e) { out.push({ k, tomas: [], error: String(e.message || e).slice(0, 160) }); } }
-    res.set("Cache-Control", "no-store"); res.json({ ok: true, radio: R, frente: NC, calle: NF, puntos: out });
+    const out = []; for (let k = 0; k < pts.length; k++) { try { const tomas = MAXF ? await _ftPlanAuto(+pts[k].lat, +pts[k].lng, R, MAXF) : await _ftPlan(+pts[k].lat, +pts[k].lng, R, NF, NC); out.push({ k, tomas: tomas.map(t => ({ pano: t.pano, lat: t.lat, lng: t.lng, h: t.h, cen: t.cen ? 1 : 0, z: t.z || (t.cen ? "f" : "i"), dist: t.dist, date: t.date || "" })) }); } catch (e) { out.push({ k, tomas: [], error: String(e.message || e).slice(0, 160) }); } }
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, radio: R, max: MAXF || undefined, frente: MAXF ? _FT_AUTO_FRENTE : NC, calle: MAXF ? MAXF - _FT_AUTO_FRENTE : NF, puntos: out });
   } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 const _ftFirma = t => Object.assign({}, t, { u: `/mercado/airbnb/entorno/foto?pano=${encodeURIComponent(t.pano)}&h=${t.h}&sig=${_enSig(t.pano, t.h)}` });
@@ -14042,11 +14069,11 @@ app.get("/mercado/entorno/fotos", async (req, res) => { if (!_vOriginOk(req)) re
 app.get("/mercado/entorno/fotos/estado", (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); res.json(Object.assign({ ok: true }, _ftJob)); });
 app.post("/mercado/entorno/fotos", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
-  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), R = parseInt(b.radio, 10), NF = parseInt(b.fotos, 10), NC = parseInt(b.frente, 10); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
-  if (!(R >= 50 && R <= 600)) return res.status(400).json({ ok: false, error: "El radio debe estar entre 50 y 600 m" }); if (!(NF >= 0 && NF <= 60)) return res.status(400).json({ ok: false, error: "Las fotos del entorno deben estar entre 0 y 60" }); if (!(NC >= 0 && NC <= 12) || NF + NC < 4) return res.status(400).json({ ok: false, error: "Fotos frente a la propiedad entre 0 y 12, y al menos 4 fotos en total" });
+  const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), R = parseInt(b.radio, 10), MAXF = parseInt(b.max, 10) || 0, NF = MAXF ? 0 : parseInt(b.fotos, 10), NC = MAXF ? 0 : parseInt(b.frente, 10); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
+  if (!(R >= 50 && R <= 600)) return res.status(400).json({ ok: false, error: "El radio debe estar entre 50 y 600 m" }); if (MAXF && !(MAXF >= 10 && MAXF <= 60)) return res.status(400).json({ ok: false, error: "La cantidad máxima de fotos debe estar entre 10 y 60" }); if (!MAXF && !(NF >= 0 && NF <= 60)) return res.status(400).json({ ok: false, error: "Las fotos del entorno deben estar entre 0 y 60" }); if (!MAXF && (!(NC >= 0 && NC <= 12) || NF + NC < 4)) return res.status(400).json({ ok: false, error: "Fotos frente a la propiedad entre 0 y 12, y al menos 4 fotos en total" });
   if (_ftJob.running && Date.now() - Date.parse(_ftJob.upd || 0) < 180000) return res.status(409).json({ ok: false, error: "Ya hay una descarga de fotos en curso" });
   _ftJob = { running: true, id, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const t = setInterval(() => { _ftJob.upd = new Date().toISOString(); }, 10000);
-  _ftSelecciona(id, R, NF, NC).then(() => { _ftJob.ok = true; }).catch(e => { _ftJob.error = String(e.message || e); console.warn("[fotos]", id, e.message); }).finally(() => { clearInterval(t); _ftJob.running = false; _ftJob.fin = new Date().toISOString(); });
+  _ftSelecciona(id, R, NF, NC, MAXF).then(() => { _ftJob.ok = true; }).catch(e => { _ftJob.error = String(e.message || e); console.warn("[fotos]", id, e.message); }).finally(() => { clearInterval(t); _ftJob.running = false; _ftJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
 let _mqJob = { running: false };
