@@ -14221,6 +14221,14 @@ Puntos disponibles: ${puntos.join(" | ") || "(sin lista)"}.`;
 });
 // Lista de maquetas ya generadas (para ver varias a la vez): índice persistente en mercado/maqueta/_indice.json que se completa leyendo cada escena una sola vez
 const _mqLista = { t: 0, items: null };
+// la lista de maquetas lleva el nombre del proyecto (en GeoMetrika el que se le puso al crearlo, no el perfil) y de dónde se originó cada una
+async function _mqEnriquece(items) {
+  let A = null, ML = null, FB = null; try { A = (await _bnReadGcs(_MA.OBJ)).data; } catch (_) { } try { ML = await _mlDoc(); } catch (_) { } try { FB = await _fbDoc(); } catch (_) { } const gm = {}, out = [];
+  for (const q of items) { const o = Object.assign({}, q);
+    if (/^9\d{13,14}$/.test(String(q.id))) { const base = String(q.id).slice(0, 14), k = String(q.id).length === 15 ? +String(q.id).slice(14) : 0; let P = gm[base]; if (P === undefined) { try { P = (await _bnReadGcs(`geometrika/proyectos/${base}.json`)).data || null; } catch (_) { P = null; } gm[base] = P; } if (P) o.titulo = (String(P.nombre || "").trim() || String(P.perfil || "") || o.titulo).slice(0, 90) + (P.puntos && P.puntos.length > 1 ? " · punto " + (k + 1) : ""); o.origen = "GeoMetrika"; }
+    else if (A && A.items && A.items[q.id]) o.origen = "Alojamientos Airbnb"; else if (ML && ML.items && ML.items[q.id]) o.origen = "Mercado Libre"; else if (FB && FB.items && FB.items[q.id]) o.origen = "Facebook Marketplace"; else o.origen = "Otro origen";
+    out.push(o); } return out;
+}
 app.get("/mercado/maqueta/lista", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
@@ -14229,7 +14237,7 @@ app.get("/mercado/maqueta/lista", async (req, res) => {
     const falta = names.map(n => n.match(/(\d+)\.json$/)[1]).filter(id => !idx[id]); let cambio = false;
     for (let i = 0; i < falta.length; i += 4) await Promise.all(falta.slice(i, i + 4).map(async id => { try { const { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); idx[id] = data && data.lat != null && data.roads ? { id, titulo: String(data.tit || data.titulo || id).slice(0, 90), lat: +data.lat, lng: +data.lng, radio: +data.radio || null } : { id, skip: 1 }; cambio = true; } catch (_) {} }));
     if (cambio) { try { await _bnWriteGcs("mercado/maqueta/_indice.json", { d: idx, at: new Date().toISOString() }, null); } catch (_) {} }
-    const items = names.map(n => idx[n.match(/(\d+)\.json$/)[1]]).filter(x => x && !x.skip); _mqLista.t = Date.now(); _mqLista.items = items; res.json({ ok: true, items });
+    const items = await _mqEnriquece(names.map(n => idx[n.match(/(\d+)\.json$/)[1]]).filter(x => x && !x.skip)); _mqLista.t = Date.now(); _mqLista.items = items; res.json({ ok: true, items });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // recalcula solo el uso del suelo (satélite + mapa de calles) de una maqueta ya generada, sin volver a leer las fotos de calle
