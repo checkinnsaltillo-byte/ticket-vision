@@ -14643,6 +14643,32 @@ app.get("/mercado/maqueta/ms-huellas", async (req, res) => {
     res.json({ ok: true, n: f.length, f });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Cartografía de INEGI (Marco Geoestadístico: servicios en área/línea/punto + ejes viales peatonales): un archivo por estado en inegi/<ent>.json (Cloud Storage); la maqueta pide solo lo que cae en su radio, en metros locales
+const _inegiMem = new Map(); let _inegiIdx = null;
+async function _inegiEstados() {
+  if (_inegiIdx && Date.now() - _inegiIdx.t < 600000) return _inegiIdx.l;
+  const tok = await _vGcsToken(), r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o?prefix=inegi/&fields=items(name)`, { headers: { Authorization: `Bearer ${tok}` } }), j = r.ok ? await r.json() : {}, l = [];
+  for (const o of (j.items || [])) { if (!/^inegi\/\d\d\.json$/.test(o.name)) continue; let m = _inegiMem.get(o.name); if (!m || Date.now() - m.t > 6 * 3600000) { const { data } = await _bnReadGcs(o.name); if (!data) continue; m = { t: Date.now(), d: data }; _inegiMem.set(o.name, m); } l.push(m.d); }
+  _inegiIdx = { t: Date.now(), l }; return l;
+}
+app.get("/mercado/maqueta/inegi", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng, R = Math.max(50, Math.min(3000, +req.query.r || 400)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
+    const est = (await _inegiEstados()).filter(d => lat >= d.bbox[0] - .02 && lat <= d.bbox[2] + .02 && lng >= d.bbox[1] - .02 && lng <= d.bbox[3] + .02); res.set("Cache-Control", "no-store");
+    if (!est.length) return res.json({ ok: true, sinDatos: true, n: 0, f: [] });
+    const P = _mqProy(lat, lng), M = R * 1.15, f = [], inn = q => Math.abs(q[0]) <= M && Math.abs(q[1]) <= M;
+    const poner = (k, d, parts) => { const o = { k, g: d.g || d.tv || "", t: d.t || d.s || "", c: d.c || "", n: d.n || "", gg: d.gg || "", tt: d.tt || "", p: parts.map(q => { const a = []; q.forEach(v => a.push(v[0], v[1])); return a; }) }; f.push(o); };
+    for (const E of est) for (const [lay, kind] of [["sia", "a"], ["sil", "l"], ["sip", "p"], ["e", "l"]]) for (const d of (E[lay] || [])) {
+      if (f.length > 9000) break; const out = [];
+      for (const pr of d.p) { const q = []; for (let i = 0; i < pr.length; i += 2) q.push(P.xy(pr[i + 1], pr[i]));
+        if (kind === "p") { if (q.length && inn(q[0])) out.push(q.slice(0, 1)); continue; }
+        if (kind === "a") { let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; q.forEach(v => { x0 = Math.min(x0, v[0]); x1 = Math.max(x1, v[0]); y0 = Math.min(y0, v[1]); y1 = Math.max(y1, v[1]); }); if (x1 >= -M && x0 <= M && y1 >= -M && y0 <= M && q.length >= 3) out.push(q); continue; }
+        let run = []; for (let i = 0; i < q.length; i++) { const dentro = inn(q[i]) || (i > 0 && inn(q[i - 1])) || (i < q.length - 1 && inn(q[i + 1])); if (dentro) run.push(q[i]); else { if (run.length > 1) out.push(run); run = []; } } if (run.length > 1) out.push(run); }
+      if (out.length) poner(kind, d, out); }
+    res.json({ ok: true, n: f.length, f, fuente: est.map(d => d.fuente).filter((v, i, a) => a.indexOf(v) === i).join(" · ") });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/mercado/maqueta/suelo", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
