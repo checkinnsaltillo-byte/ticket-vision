@@ -35,7 +35,7 @@ app.post("/geometrika/acceso", (req, res) => {
 });
 app.use(["/mercado/maqueta", "/mercado/ambiente", "/geometrika"], (req, res, next) => {
   if (req.method === "OPTIONS") return next(); const b = req.baseUrl, p = req.path;
-  if ((b === "/geometrika" && p === "/acceso") || (b === "/mercado/maqueta" && p === "/fachada/img") || (b === "/mercado/maqueta" && p === "/trafico/tick") || (b === "/mercado/ambiente" && p === "/aire/tile")) return next();
+  if ((b === "/geometrika" && p === "/acceso") || (b === "/geometrika" && p === "/miniatura") || (b === "/mercado/maqueta" && p === "/fachada/img") || (b === "/mercado/maqueta" && p === "/trafico/tick") || (b === "/mercado/ambiente" && p === "/aire/tile")) return next();
   if (_gmOk(req)) return next(); res.status(401).json({ ok: false, gm: true, error: "Se requiere la contraseña de GeoMetrika" });
 });
 
@@ -13218,8 +13218,33 @@ app.get("/geometrika/proyectos", async (req, res) => {
       if (ml && ml.items && ml.items.length) { const [ab, mlD, fb] = await Promise.all([_bnReadGcs(_MA.OBJ).then(r => (r.data && r.data.items) || {}).catch(() => ({})), _mlDoc().then(d => d.items || {}).catch(() => ({})), _fbDoc().then(d => d.items || {}).catch(() => ({}))]), vistos = new Set(lista.map(p => p.id)), oculto = new Set(oc);
         ml.items.forEach(m => { const id = String(m.id), base = /^9\d{14}$/.test(id) ? id.slice(0, 14) : id; if (vistos.has(base) || vistos.has(id) || oculto.has(id)) return; if (/^9\d{13,14}$/.test(id)) return;   // los de GeoMetrika ya salen de su proyecto (o están eliminados)
           lista.push({ id, creado: null, perfil: m.titulo || id, objetivo: "", direccion: "", lat: m.lat, lng: m.lng, puntos: 1, radio: m.radio, estado: "listo", error: "", origen: ab[id] ? "airbnb" : mlD[id] ? "mercadolibre" : fb[id] ? "facebook" : "otro" }); }); } } catch (e) { console.warn("[geometrika] lista de maquetas:", e.message); }
+    lista.forEach(p => { p.foto = `/geometrika/miniatura?id=${encodeURIComponent(p.id)}&sig=${_gmMiniSig(p.id)}`; });
     lista.sort((a, b) => String(b.creado || "").localeCompare(String(a.creado || ""))); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyectos: lista });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ── Miniatura de cada proyecto (tarjetas de «Mis proyectos»): foto de Google Street View frente a la coordenada. Si la maqueta ya tiene fotos de calle se usa el panorama más cercano mirando hacia el punto; si no, la imagen más cercana al punto. Se guarda 7 días en Cloud Storage (geometrika/miniaturas/<id>.jpg) y la URL va firmada porque la etiqueta <img> no puede enviar el token
+const _gmMiniSig = id => crypto.createHmac("sha256", process.env.SYNC_SECRET || "entorno").update("mini|" + id).digest("hex").slice(0, 16), _gmMiniMem = new Map(), _GM_MINI_DIAS = 7;
+async function _gmMiniGenera(id) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps");
+  let esc = null, lat = null, lng = null; try { esc = (await _bnReadGcs(`mercado/maqueta/${id}.json`)).data; } catch (_) { }
+  if (esc && esc.lat != null) { lat = +esc.lat; lng = +esc.lng; } else { try { const P = (await _bnReadGcs(`geometrika/proyectos/${id}.json`)).data; if (P && P.lat != null) { lat = +P.lat; lng = +P.lng; } else if (P && P.puntos && P.puntos[0]) { lat = +P.puntos[0].lat; lng = +P.puntos[0].lng; } } catch (_) { } }
+  let q = null; const obs = (esc && Array.isArray(esc.obs) ? esc.obs : []).filter(o => o.pano);
+  if (obs.length) { const o = obs.reduce((b, x) => Math.hypot(x.x, x.y) < Math.hypot(b.x, b.y) ? x : b), d = Math.hypot(o.x, o.y), rumbo = d >= 4 ? (Math.atan2(-o.x, -o.y) * 180 / Math.PI + 360) % 360 : (o.h || 0); q = `pano=${o.pano}&heading=${Math.round(rumbo)}`; }
+  else if (isFinite(lat) && isFinite(lng)) { const m = await fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lng}&radius=80&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(15000) }).then(r => r.json()).catch(() => ({})); if (m.status === "OK" && m.pano_id) { let rumbo = 0; if (m.location) rumbo = (Math.atan2((lng - m.location.lng) * Math.cos(lat * Math.PI / 180), lat - m.location.lat) * 180 / Math.PI + 360) % 360; q = `pano=${m.pano_id}&heading=${Math.round(rumbo)}`; } }
+  if (!q) return null;
+  const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x320&${q}&fov=95&pitch=6&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(30000) }); if (!r.ok) return null; return Buffer.from(await r.arrayBuffer());
+}
+app.get("/geometrika/miniatura", async (req, res) => {
+  try {
+    const id = String(req.query.id || "").replace(/\D/g, ""); if (!id || String(req.query.sig || "") !== _gmMiniSig(id)) return res.status(403).end();
+    let m = _gmMiniMem.get(id); if (m && Date.now() - m.t < 6 * 3600e3) { res.set({ "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" }); return res.send(m.b); }
+    const tok = await _vGcsToken(), nombre = `geometrika/miniaturas/${id}.jpg`, base = `https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(nombre)}`; let buf = null;
+    const meta = await fetch(base, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (meta && Date.now() - Date.parse(meta.updated || 0) < _GM_MINI_DIAS * 864e5) { const r = await fetch(base + "?alt=media", { headers: { Authorization: `Bearer ${tok}` } }); if (r.ok) buf = Buffer.from(await r.arrayBuffer()); }
+    if (!buf) { buf = await _gmMiniGenera(id); if (!buf) return res.status(404).end(); try { await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent(nombre)}`, { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "image/jpeg" }, body: buf }); } catch (_) { } }
+    _gmMiniMem.set(id, { t: Date.now(), b: buf }); if (_gmMiniMem.size > 120) _gmMiniMem.delete(_gmMiniMem.keys().next().value);
+    res.set({ "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" }); res.send(buf);
+  } catch (e) { res.status(500).end(); }
 });
 app.get("/geometrika/analizar/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
