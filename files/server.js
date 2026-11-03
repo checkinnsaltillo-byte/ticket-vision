@@ -11292,11 +11292,14 @@ Object.assign(_GCS_ACT, {
       d.headers = Array.from(new Set([...(d.headers || []), ..._RH_PERSONAL_HEADERS]));
       const val = v => v == null ? "" : String(v);
       const row = id ? d.rows.find(r => String(r.ID || "").trim() === id) : null;
-      if (row) { Object.keys(p).forEach(k => { if (d.headers.includes(k)) row[k] = val(p[k]); }); return { ok: true, id, mode: "update" }; }
+      if (row) { const viejo = String(row.sys_password || "").trim(); Object.keys(p).forEach(k => { if (d.headers.includes(k)) row[k] = val(p[k]); }); return { ok: true, id, mode: "update", pwViejo: p.sys_password && viejo && viejo !== p.sys_password ? viejo : "" }; }
       if (!id) id = _tbGenId("EMP"); p.ID = id;
       const o = {}; d.headers.forEach(h => { if (h) o[h] = val(p[h]); }); d.rows.push(o);
       return { ok: true, id, mode: "insert" };
-    }).then(r => { _botPersCache = { ts: 0, list: [] }; return r; });
+    }).then(async r => { _botPersCache = { ts: 0, list: [] };
+      // la lista anterior (sys-users) es un segundo acceso con su propia copia de la contraseña: si el empleado cambió la suya en RH, la contraseña vieja se retira de ahí para que deje de funcionar
+      if (r && r.pwViejo) { const viejo = r.pwViejo; delete r.pwViejo; try { await _waMutar(_SIS_OBJ.su, d => { (d.rows || []).forEach(u => { const k = Object.keys(u).find(x => ["sys_password", "password", "contraseña"].includes(x.trim().toLowerCase())); if (k && String(u[k]).trim() === viejo) u[k] = ""; }); }); } catch (e) { console.warn("[rh] no se pudo retirar la contraseña anterior de sys-users:", e.message); } }
+      return r; });
   },
   sys_login: async data => {
     const p = _tbPayload(data), pwd = String(p.password || p.sys_password || "").trim();
