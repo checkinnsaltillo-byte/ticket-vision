@@ -13042,6 +13042,31 @@ app.get("/geometrika/direccion", async (req, res) => {   // busca una dirección
     if (_gmDirC.size > 300) _gmDirC.clear(); _gmDirC.set(k, { t: Date.now(), r: out }); res.json({ ok: true, r: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Análisis «Competencia»: buscador de lugares en Google (texto libre, varios resultados con coordenadas) y puntos guardados por maqueta (referencia / competencia). mercado/maqueta/competencia/<id>.json
+app.get("/mercado/maqueta/places-buscar", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const q = String(req.query.q || "").trim().slice(0, 200), key = process.env.GOOGLE_MAPS_KEY; if (q.length < 2) return res.status(400).json({ ok: false, error: "Escribe al menos 2 letras" }); if (!key) return res.status(503).json({ ok: false, error: "Falta la clave de Google Maps" });
+    const la = +req.query.lat, ln = +req.query.lng, ok = isFinite(la) && isFinite(ln) && Math.abs(la) <= 90 && Math.abs(ln) <= 180, ck = q.toLowerCase() + "|" + (ok ? la.toFixed(2) + "," + ln.toFixed(2) : ""), c = _cmpPlC.get(ck); if (c && Date.now() - c.t < 1800e3) return res.json({ ok: true, r: c.r });
+    const body = { textQuery: q, languageCode: "es", regionCode: "MX", pageSize: 20 }; if (ok) body.locationBias = { circle: { center: { latitude: la, longitude: ln }, radius: 30000 } };
+    const r = await fetch("https://places.googleapis.com/v1/places:searchText", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.primaryTypeDisplayName,places.businessStatus" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || "Places HTTP " + r.status);
+    const out = (j.places || []).filter(p => p.location).map(p => ({ pid: p.id, n: (p.displayName && p.displayName.text) || "", dir: p.formattedAddress || "", lat: p.location.latitude, lng: p.location.longitude, rt: p.rating || null, nr: p.userRatingCount || 0, tp: (p.primaryTypeDisplayName && p.primaryTypeDisplayName.text) || "", st: p.businessStatus || "" }));
+    if (_cmpPlC.size > 200) _cmpPlC.clear(); _cmpPlC.set(ck, { t: Date.now(), r: out }); res.json({ ok: true, r: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+const _cmpPlC = new Map(), _CMP_OBJ = id => `mercado/maqueta/competencia/${id}.json`;
+app.get("/mercado/maqueta/competencia", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false }); const { data } = await _bnReadGcs(_CMP_OBJ(id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, pts: (data && data.pts) || null, at: (data && data.at) || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.post("/mercado/maqueta/competencia", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id || !Array.isArray(b.pts) || b.pts.length > 600) return res.status(400).json({ ok: false, error: "Datos no válidos" });
+    const txt = (v, n) => String(v == null ? "" : v).slice(0, n), pts = [];
+    for (const p of b.pts) { const lat = +p.lat, lng = +p.lng; if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) continue; if (p.rol !== "ref" && p.rol !== "comp") return res.status(400).json({ ok: false, error: "Hay puntos sin clasificar" });
+      pts.push({ id: txt(p.id, 40), n: txt(p.n, 120) || "Punto", lat, lng, src: ["maqueta", "denue", "google", "manual"].includes(p.src) ? p.src : "manual", rol: p.rol, dir: txt(p.dir, 200), sc: txt(p.sc, 8), tp: txt(p.tp, 80), rt: p.rt == null ? null : +p.rt || null, nr: +p.nr || 0, pid: txt(p.pid, 80) }); }
+    const at = new Date().toISOString(); await _bnWriteGcs(_CMP_OBJ(id), { pts, at }, null); res.json({ ok: true, pts, at });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post("/geometrika/proyecto", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
