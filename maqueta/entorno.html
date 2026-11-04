@@ -351,6 +351,7 @@ const brickMat = (w, h) => tmat('b', M.brick, w, h, 2.2, 1.1), blockMat = (w, h)
 let SRCLABS = [], TIPOLABS = [], LASTD = false, TXON = false, RVOFF = false, ALON = false, NOBAR = false, CURSPEC = null; const TXTEX = new Map(); function txMat(u) { let m = TXTEX.get(u); if (m) return m; const t = new THREE.TextureLoader().load(u, () => { if (typeof renderOnce === 'function') try { renderOnce(); } catch (_) {} }); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.repeat.set(.9, .56); t.offset.set(.05, .2); m = new THREE.MeshStandardMaterial({ map: t, roughness: .95, metalness: 0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }); TXTEX.set(u, m); return m; }
 function tipoTxt(f) { if (!f || !f.t) return null; const p = Math.max(1, Math.min(9, f.p || 1)), pis = p > 1 ? ` · ${p} pisos` : ''; switch (f.t) { case 'casa1p': case 'casa2p': return p >= 2 ? `Casa · ${p} pisos` : 'Casa · 1 piso'; case 'dpto': return 'Departamentos' + pis; case 'edificio': return 'Edificio' + pis; case 'comercio': return 'Comercio'; case 'bloque': return 'Bloque' + pis; case 'piedra': return 'Casa de piedra'; case 'baldio': return 'Terreno baldío'; case 'escuela': return 'Escuela'; default: return null; } }
 function build(S) {
+  COV.bk = [S.lat, S.lng, S.radio].join('|');   // la cobertura satelital cargada solo vale para la maqueta que se está construyendo
   (window.__bld = window.__bld || {})[String(S.id || '')] = window.__bldLast = [];
   TIPOLABS = []; SRCLABS = [];
   if (world) { scene.remove(world); }
@@ -3829,7 +3830,7 @@ async function covCarga(S) {
   return COV.busy;
 }
 function covCell(x, y) {
-  const n = COV.n; if (!n || !COV.wc) return null; const half = n * 5, i = Math.floor((x + half) / 10), j = Math.floor((half - y) / 10); if (i < 0 || j < 0 || i >= n || j >= n) return null; const k = j * n + i, S2 = COV.s2; let nd = null, nb = null;
+  if (COV.bk && COV.bk !== COV.key) return null; const n = COV.n; if (!n || !COV.wc) return null; const half = n * 5, i = Math.floor((x + half) / 10), j = Math.floor((half - y) / 10); if (i < 0 || j < 0 || i >= n || j >= n) return null; const k = j * n + i, S2 = COV.s2; let nd = null, nb = null;
   if (S2) { const cl = S2.scl[k]; if (S2.nd[k] !== -128 && ![3, 8, 9, 10, 11].includes(cl)) { nd = S2.nd[k]; nb = S2.nb[k]; } } return { wc: COV.wc[k], nd, nb };
 }
 function covShare(x, y) {   // vecindad 3×3 (30 m): parte de celdas construidas, de suelo desnudo y de vegetación (WorldCover o NDVI ≥ 0.40)
