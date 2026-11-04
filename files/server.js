@@ -13123,11 +13123,11 @@ async function _cmpCtx(id, pts, modo) {
   let R = Math.max(3500, Math.min(16000, maxD + 3000)), ways = null; for (let k = 0; k < 6 && !ways; k++) { ways = await _vialWays(cla, clo, R); if (!ways) R *= .8; } if (!ways || !ways.length) throw new Error("No hay red vial local para esa zona");
   const G = _cmpGrafo(ways, modo); if (G.n < 50) throw new Error("La red vial de la zona es demasiado pequeña");
   const M = await _mzCarga(reg.id); if (!M) throw new Error("No hay Censo por manzana de esta región");
-  const kx = 111320 * Math.cos(cla * Math.PI / 180), mz = { lat: [], lng: [], pop: [], side: [], node: [], acc: [] }; let sinRed = 0, sinRedPop = 0;
+  const kx = 111320 * Math.cos(cla * Math.PI / 180), mz = { lat: [], lng: [], pop: [], side: [], node: [], acc: [], poly: [] }; let sinRed = 0, sinRedPop = 0;
   for (const m of M.data.mz) { const pop = +m[5] || 0; if (pop <= 0) continue; if (Math.abs((m[2] - clo) * kx) > R + 200 || Math.abs((m[1] - cla) * 111320) > R + 200) continue;
     const sn = _cmpSnap(G, m[1], m[2], 450); if (!sn) { sinRed++; sinRedPop += pop; continue; }
     let ar = 0; const P = m[3] || []; for (let q = 0, n = P.length / 2; q < n; q++) { const x1 = P[2 * q], y1 = P[2 * q + 1], x2 = P[2 * ((q + 1) % n)], y2 = P[2 * ((q + 1) % n) + 1]; ar += x1 * y2 - x2 * y1; } ar = Math.abs(ar) / 2 / 100;   // decímetros² → m²
-    mz.lat.push(m[1]); mz.lng.push(m[2]); mz.pop.push(pop); mz.side.push(Math.max(18, Math.min(260, Math.sqrt(ar || 2500)))); mz.node.push(sn.n); mz.acc.push(sn.d / _CMP_VPIE); }
+    mz.lat.push(m[1]); mz.lng.push(m[2]); mz.pop.push(pop); mz.side.push(Math.max(18, Math.min(260, Math.sqrt(ar || 2500)))); { const st = Math.max(1, Math.ceil(P.length / 2 / 40)), o = []; for (let q = 0; q + 1 < P.length; q += 2 * st) o.push(P[q], P[q + 1]); mz.poly.push(o); } mz.node.push(sn.n); mz.acc.push(sn.d / _CMP_VPIE); }
   if (!mz.lat.length) throw new Error("No se encontraron manzanas del Censo con acceso a la red en esa zona");
   let fac = pts.map(p => { const sn = _cmpSnap(G, p.lat, p.lng, 600); return sn ? { id: p.id, n: p.n, rol: p.rol, lat: p.lat, lng: p.lng, pd: p.rol === "comp" ? (+p.pd || 5) : null, node: sn.n, acc: sn.d / _CMP_VPIE, dm: sn.d } : null; });
   const sinSnap = fac.filter(f => !f).length; fac = fac.filter(Boolean); if (fac.length > 250) { const rf = fac.filter(f => f.rol === "ref"), c0 = rf[0] || fac[0]; fac = rf.concat(fac.filter(f => f.rol === "comp").sort((a, b) => _cmpDm(c0.lat, c0.lng, a.lat, a.lng) - _cmpDm(c0.lat, c0.lng, b.lat, b.lng)).slice(0, 250 - rf.length)); }
@@ -13197,7 +13197,7 @@ async function _cmpAnaliza(id, pts, o) {
   }
   const rd = (a, k) => Array.from(a, v => +v.toFixed(k));
   return { ok: true, modo, hora, params: { beta, T, aRef, tmax: tmax / 60 }, region: ctx.reg, R: Math.round(ctx.R), nVias: ctx.nVias, nodos: G.n, totPop: ctx.totPop, nz: M, sinRed: ctx.sinRed, sinRedPop: ctx.sinRedPop, sinSnap: ctx.sinSnap, sinCob, qs, sens, cal: cal ? { kg: cal.kg, f: cal.f, n: cal.n, calibrado: !!cal.calibrado, motivo: cal.motivo || null, dia: cal.dia || null } : null, fac: facOut, traf,
-    mz: { la: rd(mz.lat, 5), ln: rd(mz.lng, 5), pop: mz.pop, sd: mz.side.map(v => Math.round(v)), own: Array.from(own), t: Array.from(tmin, v => v === Infinity ? -1 : Math.round(v)), hw: Array.from(hw), hp: Array.from(hp, v => Math.round(v * 100)), rp: Array.from(rp, v => Math.round(v * 100)), acc: rd(acc, 2) } };
+    mz: { la: rd(mz.lat, 5), ln: rd(mz.lng, 5), pop: mz.pop, sd: mz.side.map(v => Math.round(v)), pl: mz.poly, own: Array.from(own), t: Array.from(tmin, v => v === Infinity ? -1 : Math.round(v)), hw: Array.from(hw), hp: Array.from(hp, v => Math.round(v * 100)), rp: Array.from(rp, v => Math.round(v * 100)), acc: rd(acc, 2) } };
 }
 const _cmpLee = async id => { const { data } = await _bnReadGcs(_CMP_OBJ(id)); const pts = data && Array.isArray(data.pts) ? data.pts : null; if (!pts) throw new Error("Primero guarde los puntos (paso 2)"); return pts; };
 app.post("/mercado/maqueta/competencia/analisis", async (req, res) => {
