@@ -13143,8 +13143,13 @@ async function _cmpRuta(key, a, b, dep) {
   return null;
 }
 async function _cmpCalib(id, ctxA, forzar) {
-  const nom = `mercado/maqueta/competencia/${id}-calib.json`, F = ctxA.fac, pares = [], usados = new Set();
-  for (let s = 0; s < Math.min(6, F.length); s++) { const a = F[Math.floor(s * F.length / Math.min(6, F.length))]; let best = null, bd = 1e12; F.forEach(b => { if (b === a) return; const d = _cmpDm(a.lat, a.lng, b.lat, b.lng); if (d < 700) return; const sc = Math.abs(d - 4000); if (sc < bd) { bd = sc; best = b; } }); if (!best) continue; const k = [a.id, best.id].sort().join("~"); if (usados.has(k)) continue; usados.add(k); pares.push([a, best]); }
+  const nom = `mercado/maqueta/competencia/${id}-calib.json`, F = ctxA.fac, pares = [], usados = new Set(), G = ctxA.G;
+  for (let s = 0; s < Math.min(6, F.length); s++) { const a = F[Math.floor(s * F.length / Math.min(6, F.length))]; let best = null, bd = 1e12; F.forEach(b => { if (b === a) return; const d = _cmpDm(a.lat, a.lng, b.lat, b.lng); if (d < 2000) return; const sc = Math.abs(d - 5000); if (sc < bd) { bd = sc; best = b; } }); if (!best) continue; const k = [a.id, best.id].sort().join("~"); if (usados.has(k)) continue; usados.add(k); pares.push([a, best]); if (pares.length >= 3) break; }
+  if (pares.length < 6) {   // pares de apoyo: puntos de la red en un anillo de ~3 km alrededor de la zona (los puntos de competencia suelen estar muy juntos y rutas de 1–2 km no calibran bien)
+    const cla = F.reduce((x, f) => x + f.lat, 0) / F.length, clo = F.reduce((x, f) => x + f.lng, 0) / F.length, kx = 111320 * Math.cos(cla * Math.PI / 180), rr = Math.min(3200, ctxA.R * .55), an = [];
+    for (let k = 0; k < 6; k++) { const ang = k * Math.PI / 3, sn = _cmpSnap(G, cla + Math.cos(ang) * rr / 111320, clo + Math.sin(ang) * rr / kx, 400); if (sn) an.push({ id: "anillo" + k, n: "Punto de apoyo " + (k + 1), lat: G.la[sn.n], lng: G.ln[sn.n], node: sn.n, acc: 0 }); else an.push(null); }
+    [[0, 3], [1, 4], [2, 5], [0, 2], [1, 3], [3, 5]].forEach(([i, j]) => { if (pares.length < 6 && an[i] && an[j] && an[i].node !== an[j].node) pares.push([an[i], an[j]]); });
+  }
   const psig = pares.map(([a, b]) => a.lat.toFixed(5) + "," + a.lng.toFixed(5) + ">" + b.lat.toFixed(5) + "," + b.lng.toFixed(5)).join("|");
   let cal = null; try { const { data } = await _bnReadGcs(nom); if (data && data.psig === psig && Date.now() - Date.parse(data.at || 0) < 14 * 864e5 && !forzar) cal = data; } catch (_) {}
   if (cal) return cal;
