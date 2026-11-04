@@ -13063,7 +13063,7 @@ app.post("/mercado/maqueta/competencia", async (req, res) => {
     const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id || !Array.isArray(b.pts) || b.pts.length > 600) return res.status(400).json({ ok: false, error: "Datos no válidos" });
     const txt = (v, n) => String(v == null ? "" : v).slice(0, n), pts = [];
     for (const p of b.pts) { const lat = +p.lat, lng = +p.lng; if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) continue; if (p.rol !== "ref" && p.rol !== "comp") return res.status(400).json({ ok: false, error: "Hay puntos sin clasificar" });
-      pts.push({ id: txt(p.id, 40), n: txt(p.n, 120) || "Punto", lat, lng, src: ["maqueta", "denue", "google", "manual"].includes(p.src) ? p.src : "manual", rol: p.rol, dir: txt(p.dir, 200), sc: txt(p.sc, 8), tp: txt(p.tp, 80), rt: p.rt == null ? null : +p.rt || null, nr: +p.nr || 0, pid: txt(p.pid, 80) }); }
+      pts.push({ id: txt(p.id, 40), n: txt(p.n, 120) || "Punto", lat, lng, src: ["maqueta", "denue", "google", "manual"].includes(p.src) ? p.src : "manual", rol: p.rol, dir: txt(p.dir, 200), sc: txt(p.sc, 8), tp: txt(p.tp, 80), rt: p.rt == null ? null : +p.rt || null, nr: +p.nr || 0, pid: txt(p.pid, 80), pd: p.rol === "comp" ? Math.max(1, Math.min(10, Math.round(+p.pd) || 5)) : null }); }
     const at = new Date().toISOString(); await _bnWriteGcs(_CMP_OBJ(id), { pts, at }, null); res.json({ ok: true, pts, at });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
