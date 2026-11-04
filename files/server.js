@@ -14521,11 +14521,12 @@ app.post("/mercado/maqueta/generar", async (req, res) => {
 const _mqFacIdx = id => `mercado/maqueta/fachadas/${id}/_idx.json`;
 let _mqFacJob = { running: false };
 const _MQ_FAC_T = { casa1p: "casa de un nivel", casa2p: "casa de dos niveles", dpto: "edificio de departamentos", comercio: "local comercial", bloque: "edificio de bloque de concreto", piedra: "casa de piedra", edificio: "edificio", escuela: "escuela" };
-async function _mqFachadas(id, max) {
+async function _mqFachadas(id, max, foco) {
   const { data: S } = await _bnReadGcs(`mercado/maqueta/${id}.json`); if (!S || !Array.isArray(S.obs)) throw new Error("Primero genera la maqueta");
   let idx = { items: [] }; try { idx = (await _bnReadGcs(_mqFacIdx(id))).data || idx; } catch (_) {}
   const kOf = (o, f) => crypto.createHash("sha1").update(`${o.pano}|${o.h}|${f.x}`).digest("hex").slice(0, 12), hechos = new Set(idx.items.map(i => i.k)), cand = [];
-  S.obs.forEach(o => (o.fr || []).forEach(f => { const d = f.d || 20; if (_MQ_FAC_T[f.t] && d <= 32 && f.x >= .08 && f.x <= .92 && !hechos.has(kOf(o, f))) cand.push({ o, f, d, sc: (o.cen ? 0 : 1) + d / 40 + Math.abs(f.x - .5) }); }));
+  S.obs.forEach(o => (o.fr || []).forEach(f => { const d = f.d || 20; if (foco) { /* modo «edificio de interés»: solo fotos cuyo punto visto cae cerca del foco (x,y locales en m) */ if (!_MQ_FAC_T[f.t] || d > 45 || f.x < .06 || f.x > .94 || hechos.has(kOf(o, f))) return; const az = (o.h + (f.x - .5) * 90) * Math.PI / 180, dt = Math.hypot(o.x + d * Math.sin(az) - foco.x, o.y + d * Math.cos(az) - foco.y); if (dt <= foco.r) cand.push({ o, f, d, sc: dt / 10 + d / 60 + Math.abs(f.x - .5) }); return; }
+    if (_MQ_FAC_T[f.t] && d <= 32 && f.x >= .08 && f.x <= .92 && !hechos.has(kOf(o, f))) cand.push({ o, f, d, sc: (o.cen ? 0 : 1) + d / 40 + Math.abs(f.x - .5) }); }));
   cand.sort((a, b) => a.sc - b.sc); const lista = cand.slice(0, max); _mqFacJob.total = lista.length; _mqFacJob.hechas = 0; _mqFacJob.fallos = 0;
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps");
   const uno = async ({ o, f, d }) => {
@@ -14550,7 +14551,7 @@ app.post("/mercado/maqueta/fachadas", async (req, res) => {
   const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""), max = Math.max(1, Math.min(40, parseInt(b.max, 10) || 16)); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" });
   if (_mqFacJob.running && Date.now() - Date.parse(_mqFacJob.upd || _mqFacJob.inicio || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay fachadas generándose" });
   _mqFacJob = { running: true, id, inicio: new Date().toISOString(), upd: new Date().toISOString() };
-  _mqFachadas(id, max).then(() => { _mqFacJob.ok = true; }).catch(e => { _mqFacJob.error = String(e.message || e); console.warn("[fachadas]", e.message); }).finally(() => { _mqFacJob.running = false; _mqFacJob.fin = new Date().toISOString(); });
+  _mqFachadas(id, max, b.foco && isFinite(+b.foco.x) && isFinite(+b.foco.y) ? { x: +b.foco.x, y: +b.foco.y, r: Math.max(6, Math.min(40, +b.foco.r || 16)) } : null).then(() => { _mqFacJob.ok = true; }).catch(e => { _mqFacJob.error = String(e.message || e); console.warn("[fachadas]", e.message); }).finally(() => { _mqFacJob.running = false; _mqFacJob.fin = new Date().toISOString(); });
   res.json({ ok: true });
 });
 // ── Negocios de Google Places dentro del radio de la maqueta (posición local en metros + horario semanal compacto) ──
