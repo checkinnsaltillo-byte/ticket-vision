@@ -14583,7 +14583,8 @@ async function _mqFachadas(id, max, foco) {
     idx.items.push({ k, pano: o.pano, h: o.h, x: f.x, t: f.t }); await _bnWriteGcs(_mqFacIdx(id), idx, null);
   };
   let i = 0; const worker = async () => { while (i < lista.length) { const c = lista[i++]; try { await uno(c); _mqFacJob.hechas++; } catch (e) { _mqFacJob.fallos++; _mqFacJob.ultimoError = String(e.message || e); console.warn("[fachadas]", id, e.message); } _mqFacJob.upd = new Date().toISOString(); } };
-  await Promise.all([worker(), worker(), worker()]);
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  await _bnWriteGcs(_mqFacIdx(id), idx, null);   // escritura final: las escrituras paralelas del índice pueden perder entradas
 }
 app.get("/mercado/maqueta/fachadas", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const id = String(req.query.id || "").replace(/\D/g, ""); let idx = { items: [] }; try { idx = (await _bnReadGcs(_mqFacIdx(id))).data || idx; } catch (_) {} res.set("Cache-Control", "no-store"); res.json({ ok: true, items: idx.items, job: _mqFacJob }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/maqueta/fachada/img", async (req, res) => { try { const id = String(req.query.id || "").replace(/\D/g, ""), k = String(req.query.k || ""); if (!id || !/^[a-f0-9]{12}$/.test(k)) return res.status(400).end(); const tok = await _vGcsToken(), r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(`mercado/maqueta/fachadas/${id}/${k}.png`)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } }); if (!r.ok) return res.status(404).end(); res.set({ "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" }); res.send(Buffer.from(await r.arrayBuffer())); } catch (_) { res.status(500).end(); } });
