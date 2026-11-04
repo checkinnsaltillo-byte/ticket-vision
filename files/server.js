@@ -13176,6 +13176,8 @@ async function _cmpAnaliza(id, pts, o) {
   for (let j = 0; j < F; j++) { _cmpDij(G, fac[j].node, fac[j].acc, tmax, spm, dist); for (let m = 0; m < M; m++) { const d = dist[mz.node[m]]; Tm[j * M + m] = d === Infinity ? Infinity : d + mz.acc[m]; } if (j % 4 === 3) await _cmpYield(); }
   // 1) Voronoi por tiempo
   const own = new Int16Array(M).fill(-1), tmin = new Float32Array(M).fill(Infinity); for (let m = 0; m < M; m++) for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t < tmin[m]) { tmin[m] = t; own[m] = j; } }
+  // zona disputada: mejor tiempo de las referencias (tr) y del mejor competidor (tc) a cada manzana
+  const tr = new Float32Array(M).fill(Infinity), tc = new Float32Array(M).fill(Infinity); for (let j = 0; j < F; j++) { const ar = fac[j].rol === "ref"; for (let m = 0; m < M; m++) { const t = Tm[j * M + m]; if (ar) { if (t < tr[m]) tr[m] = t; } else if (t < tc[m]) tc[m] = t; } }
   // 2) Huff
   const Aj = fac.map(f => f.A), huff = (b, quien) => { const cap = new Float64Array(F); for (let m = 0; m < M; m++) { let s = 0; for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t === Infinity) continue; s += Aj[j] * Math.pow(Math.max(1, t / 60), -b); } if (!s) continue; for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t === Infinity) continue; const p = Aj[j] * Math.pow(Math.max(1, t / 60), -b) / s; cap[j] += mz.pop[m] * p; if (quien) quien(m, j, p); } } return cap; };
   const hw = new Int16Array(M).fill(-1), hp = new Float32Array(M), rp = new Float32Array(M); const refSet = new Set(fac.map((f, j) => f.rol === "ref" ? j : -1).filter(j => j >= 0));
@@ -13197,7 +13199,7 @@ async function _cmpAnaliza(id, pts, o) {
   }
   const rd = (a, k) => Array.from(a, v => +v.toFixed(k));
   return { ok: true, modo, hora, params: { beta, T, aRef, tmax: tmax / 60 }, region: ctx.reg, R: Math.round(ctx.R), nVias: ctx.nVias, nodos: G.n, totPop: ctx.totPop, nz: M, sinRed: ctx.sinRed, sinRedPop: ctx.sinRedPop, sinSnap: ctx.sinSnap, sinCob, qs, sens, cal: cal ? { kg: cal.kg, f: cal.f, n: cal.n, calibrado: !!cal.calibrado, motivo: cal.motivo || null, dia: cal.dia || null } : null, fac: facOut, traf,
-    mz: { la: rd(mz.lat, 5), ln: rd(mz.lng, 5), pop: mz.pop, sd: mz.side.map(v => Math.round(v)), pl: mz.poly, own: Array.from(own), t: Array.from(tmin, v => v === Infinity ? -1 : Math.round(v)), hw: Array.from(hw), hp: Array.from(hp, v => Math.round(v * 100)), rp: Array.from(rp, v => Math.round(v * 100)), acc: rd(acc, 2) } };
+    mz: { la: rd(mz.lat, 5), ln: rd(mz.lng, 5), pop: mz.pop, sd: mz.side.map(v => Math.round(v)), pl: mz.poly, own: Array.from(own), tr: Array.from(tr, v => v === Infinity ? -1 : Math.round(v)), tc: Array.from(tc, v => v === Infinity ? -1 : Math.round(v)), t: Array.from(tmin, v => v === Infinity ? -1 : Math.round(v)), hw: Array.from(hw), hp: Array.from(hp, v => Math.round(v * 100)), rp: Array.from(rp, v => Math.round(v * 100)), acc: rd(acc, 2) } };
 }
 const _cmpLee = async id => { const { data } = await _bnReadGcs(_CMP_OBJ(id)); const pts = data && Array.isArray(data.pts) ? data.pts : null; if (!pts) throw new Error("Primero guarde los puntos (paso 2)"); return pts; };
 app.post("/mercado/maqueta/competencia/analisis", async (req, res) => {
