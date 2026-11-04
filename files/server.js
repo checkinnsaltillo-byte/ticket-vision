@@ -14951,6 +14951,21 @@ app.get("/mercado/maqueta/inegi", async (req, res) => {
     res.json({ ok: true, n: f.length, f, fuente: est.map(d => d.fuente).filter((v, i, a) => a.indexOf(v) === i).join(" · ") });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Manzanas del Censo 2020 con población por sexo y grupo de edad (pirámide): archivos censo/manzanas-<región>.json en Cloud Storage (ver datos/poblacion/manzanas_edad.py)
+const _MZ = {};
+async function _mzCarga(reg) {
+  if (_MZ[reg]) return _MZ[reg]; return _MZ[reg] = (async () => { const { data } = await _bnReadGcs(`censo/manzanas-${reg}.json`); if (!data || !Array.isArray(data.mz)) return null; const grid = new Map(); data.mz.forEach((m, k) => { const key = Math.floor(m[1] / .01) + "_" + Math.floor(m[2] / .01); let l = grid.get(key); if (!l) grid.set(key, l = []); l.push(k); }); return { data, grid }; })().catch(e => { delete _MZ[reg]; throw e; });
+}
+app.get("/mercado/maqueta/manzanas", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const lat = +req.query.lat, lng = +req.query.lng, R = Math.min(1500, Math.max(60, +req.query.r || 300)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "coordenadas" });
+    const reg = _regDe(lat, lng); if (!reg) return res.json({ ok: true, fuera: true, items: [] }); const M = await _mzCarga(reg.id); if (!M) return res.json({ ok: true, fuera: true, items: [] });
+    const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320, rc = Math.ceil((R + 120) / (.01 * ky)) + 1, ci = Math.floor(lat / .01), cj = Math.floor(lng / .01), items = [], seen = new Set();
+    for (let i = ci - rc; i <= ci + rc; i++) for (let j = cj - rc; j <= cj + rc; j++) for (const k of (M.grid.get(i + "_" + j) || [])) { if (seen.has(k)) continue; seen.add(k); const m = M.data.mz[k], x = (m[2] - lng) * kx, y = (m[1] - lat) * ky; if (Math.abs(x) > R + 60 || Math.abs(y) > R + 60) continue;
+      const p = []; for (let q = 0; q + 1 < m[3].length; q += 2) p.push(Math.round((x + m[3][q] / 10) * 10) / 10, Math.round((y + m[3][q + 1] / 10) * 10) / 10); items.push({ id: m[0], x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, p, a: m[4], t: m[5] }); }
+    res.set("Cache-Control", "public, max-age=3600"); res.json({ ok: true, region: reg.id, grupos: M.data.meta.grupos, fuente: M.data.meta.fuente, items }); }
+  catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
 app.get("/mercado/maqueta/suelo", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
