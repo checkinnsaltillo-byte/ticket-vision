@@ -14836,6 +14836,27 @@ async function _ghslVentana(lat, lng, r) {
   const ny = i1 - i0, nx = j1 - j0, out = Buffer.alloc(ny * nx); for (let i = 0; i < ny; i++) buf.copy(out, i * nx, (i0 + i) * m.nx + j0, (i0 + i) * m.nx + j0 + nx);
   return { la1: m.la1 - i0 * m.s, lo0: m.lo0 + j0 * m.s, s: m.s, ny, nx, u: m.u, d: out.toString("base64") };
 }
+// ── Sentinel-2 L2A (10 m, datos abiertos en AWS): NDVI (vegetación), NDBI (construido) y máscara de nubes de la escena más reciente y despejada, en la misma rejilla de 10 m que /suelo (fila 0 = norte)
+const _s2Cache = new Map();
+function _utm(lat, lng, zone) { const a = 6378137, f = 1 / 298.257223563, k0 = .9996, e2 = f * (2 - f), ep2 = e2 / (1 - e2), lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180, phi = lat * Math.PI / 180, lam = lng * Math.PI / 180, N = a / Math.sqrt(1 - e2 * Math.sin(phi) ** 2), T = Math.tan(phi) ** 2, C = ep2 * Math.cos(phi) ** 2, A = (lam - lon0) * Math.cos(phi), M = a * ((1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256) * phi - (3 * e2 / 8 + 3 * e2 ** 2 / 32 + 45 * e2 ** 3 / 1024) * Math.sin(2 * phi) + (15 * e2 ** 2 / 256 + 45 * e2 ** 3 / 1024) * Math.sin(4 * phi) - 35 * e2 ** 3 / 3072 * Math.sin(6 * phi)); return [500000 + k0 * N * (A + (1 - T + C) * A ** 3 / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A ** 5 / 120), k0 * (M + N * Math.tan(phi) * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A ** 4 / 24 + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A ** 6 / 720))]; }
+async function _s2Ventana(lat, lng, R) {
+  const key = lat.toFixed(4) + "," + lng.toFixed(4) + "," + Math.round(R); const c = _s2Cache.get(key); if (c && Date.now() - c.t < 6 * 3600e3) return c.v;
+  const GT = require("geotiff"), d = .0012 + R / 111320, ini = new Date(Date.now() - 150 * 864e5).toISOString().slice(0, 19) + "Z", fin = new Date().toISOString().slice(0, 19) + "Z";
+  const st = await fetch("https://earth-search.aws.element84.com/v1/search", { method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(30000), body: JSON.stringify({ collections: ["sentinel-2-l2a"], intersects: { type: "Point", coordinates: [lng, lat] }, datetime: `${ini}/${fin}`, query: { "eo:cloud_cover": { lt: 12 } }, sortby: [{ field: "properties.datetime", direction: "desc" }], limit: 6 }) }).then(r => r.json());
+  const ft = (st.features || [])[0]; if (!ft) return null; const A = ft.assets, epsg = ft.properties["proj:epsg"] || 32614, zone = epsg % 100, off = ft.properties["earthsearch:boa_offset_applied"] ? 0 : 1000;
+  const NN = Math.ceil(2 * R / 10), half = NN * 5, [ce, cn] = _utm(lat, lng, zone), leer = async (href) => { const t = await GT.fromUrl(href), img = await t.getImage(), [w, s2, e, n] = img.getBoundingBox(), W = img.getWidth(), H = img.getHeight(), px = (e - w) / W, py = (n - s2) / H, x0 = Math.max(0, Math.floor((ce - half - w) / px) - 1), x1 = Math.min(W, Math.ceil((ce + half - w) / px) + 2), y0 = Math.max(0, Math.floor((n - (cn + half)) / py) - 1), y1 = Math.min(H, Math.ceil((n - (cn - half)) / py) + 2), r = await img.readRasters({ window: [x0, y0, x1, y1], samples: [0] }), w2 = x1 - x0;
+    return (x, y) => { const X = Math.floor((ce + x - w) / px), Y = Math.floor((n - (cn + y)) / py); return X >= x0 && X < x1 && Y >= y0 && Y < y1 ? r[0][(Y - y0) * w2 + (X - x0)] : 0; }; };
+  const [red, nir, sw, scl] = await Promise.all([leer(A.red.href), leer(A.nir.href), leer(A.swir16.href), leer(A.scl.href)]);
+  const nd = Buffer.alloc(NN * NN), nb = Buffer.alloc(NN * NN), sc = Buffer.alloc(NN * NN), rf = v => Math.max(0, (v - off) / 10000);
+  for (let j = 0; j < NN; j++) for (let i = 0; i < NN; i++) { const x = -half + (i + .5) * 10, y = half - (j + .5) * 10, k = j * NN + i, r = rf(red(x, y)), n2 = rf(nir(x, y)), s1 = rf(sw(x, y)), cl = scl(x, y); sc[k] = cl; if (!r && !n2) { nd.writeInt8(-128, k); nb.writeInt8(-128, k); continue; } nd.writeInt8(Math.max(-100, Math.min(100, Math.round((n2 - r) / ((n2 + r) || 1) * 100))), k); nb.writeInt8(Math.max(-100, Math.min(100, Math.round((s1 - n2) / ((s1 + n2) || 1) * 100))), k); }
+  const v = { n: NN, mpp: 10, fecha: String(ft.properties.datetime || "").slice(0, 10), nubes: Math.round(ft.properties["eo:cloud_cover"] || 0), escena: ft.id, nd: nd.toString("base64"), nb: nb.toString("base64"), scl: sc.toString("base64"), fuente: "Sentinel-2 L2A (ESA/Copernicus)" };
+  _s2Cache.set(key, { t: Date.now(), v }); return v;
+}
+app.get("/mercado/maqueta/s2", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const lat = +req.query.lat, lng = +req.query.lng, R = Math.min(600, Math.max(50, +req.query.r || 300)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "coordenadas" }); const v = await _s2Ventana(lat, lng, R); res.set("Cache-Control", "public, max-age=21600"); res.json(v ? { ok: true, ...v } : { ok: false, error: "sin escenas despejadas recientes" }); }
+  catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
 app.get("/mercado/maqueta/ghsl", async (req, res) => {
   try {
     const lat = +req.query.lat, lng = +req.query.lng, r = Math.max(100, Math.min(3000, +req.query.r || 400)); if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ ok: false, error: "coordenadas" });
