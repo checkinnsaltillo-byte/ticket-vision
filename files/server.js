@@ -13067,6 +13067,148 @@ app.post("/mercado/maqueta/competencia", async (req, res) => {
     const at = new Date().toISOString(); await _bnWriteGcs(_CMP_OBJ(id), { pts, at }, null); res.json({ ok: true, pts, at });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Competencia · enfoque A: competencia por accesibilidad real sobre la red vial (OSM local) con la población del Censo por manzana
+//    1) áreas de servicio por tiempo de viaje (Voronoi sobre la red + isócronas)  2) modelo gravitacional de Huff  3) accesibilidad de dos pasos (E2SFCA)  4) efecto del tráfico (calibrado con Google Routes)
+const _CMP_VEL = { motorway: 80, motorway_link: 50, trunk: 65, trunk_link: 40, primary: 50, primary_link: 35, secondary: 40, secondary_link: 30, tertiary: 35, tertiary_link: 28, unclassified: 30, residential: 25, living_street: 15, service: 15, road: 25 };   // km/h a flujo libre dentro de la ciudad (se recalibran con Google Routes)
+const _CMP_CL = Object.keys(_CMP_VEL).concat(["otra"]), _CMP_CLI = {}; _CMP_CL.forEach((c, i) => { _CMP_CLI[c] = i; });
+const _CMP_PESO_TRAF = { motorway: 1, motorway_link: 1, trunk: 1, trunk_link: 1, primary: 1, primary_link: 1, secondary: 1, secondary_link: .9, tertiary: .6, tertiary_link: .6 };   // cuánto de la congestión medida por Google se aplica a cada clase (el resto, .3)
+const _CMP_NO_PIE = new Set(["motorway", "motorway_link", "construction", "proposed", "raceway", "bus_guideway", "platform"]), _CMP_VPIE = 4.8 / 3.6;
+const _CMP_HORAS = { libre: null, am: 8, md: 13, pm: 19 }, _CMP_F0 = { am: 1.35, md: 1.12, pm: 1.4 };
+const _CMP_CTX = new Map(), _CMP_RES = new Map(), _cmpYield = () => new Promise(r => setImmediate(r));
+const _cmpSig = pts => { let h = 5381; const s = pts.map(p => p.id + "|" + (+p.lat).toFixed(6) + "|" + (+p.lng).toFixed(6) + "|" + p.rol).join(";"); for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + pts.length; };
+const _cmpMed = a => { const b = a.filter(Number.isFinite).sort((x, y) => x - y); return b.length ? (b.length % 2 ? b[(b.length - 1) >> 1] : (b[b.length / 2 - 1] + b[b.length / 2]) / 2) : null; };
+const _cmpDm = (la1, ln1, la2, ln2) => { const kx = 111320 * Math.cos((la1 + la2) / 2 * Math.PI / 180); return Math.hypot((ln2 - ln1) * kx, (la2 - la1) * 111320); };
+// grafo dirigido en formato CSR a partir de las vías OSM; auto = solo vías transitables en auto y respeta los sentidos; pie = todo menos autopistas, doble sentido
+function _cmpGrafo(ways, modo) {
+  const idx = new Map(), la = [], ln = [], eu = [], ev = [], el = [], ec = [];
+  const nodo = (a, b) => { const k = Math.round(a * 1e5) * 1e9 + (Math.round(b * 1e5) + 2e8); let i = idx.get(k); if (i == null) { i = la.length; idx.set(k, i); la.push(a); ln.push(b); } return i; };
+  for (const w of ways) {
+    const t = w.tags || {}, h = String(t.highway || ""); if (!h) continue; let cls;
+    if (modo === "auto") { if (_CMP_VEL[h] == null) continue; cls = _CMP_CLI[h]; } else { if (_CMP_NO_PIE.has(h)) continue; cls = _CMP_CLI[h] != null ? _CMP_CLI[h] : _CMP_CLI.otra; }
+    let dir = 0; if (modo === "auto") { const o = String(t.oneway || ""); if (o === "yes" || o === "1" || o === "true" || t.junction === "roundabout" || t.junction === "circular") dir = 1; else if (o === "-1" || o === "reverse") dir = -1; }
+    const g = w.geometry || []; let prev = -1;
+    for (let q = 0; q < g.length; q++) { const i = nodo(g[q].lat, g[q].lon); if (prev >= 0 && prev !== i) { const l = _cmpDm(la[prev], ln[prev], la[i], ln[i]); if (l > 0) { if (dir >= 0) { eu.push(prev); ev.push(i); el.push(l); ec.push(cls); } if (dir <= 0) { eu.push(i); ev.push(prev); el.push(l); ec.push(cls); } } } prev = i; }
+  }
+  const n = la.length, E = eu.length, off = new Int32Array(n + 1); for (let e = 0; e < E; e++) off[eu[e] + 1]++; for (let i = 0; i < n; i++) off[i + 1] += off[i];
+  const pos = off.slice(0, n), to = new Int32Array(E), len = new Float32Array(E), cl = new Uint8Array(E); for (let e = 0; e < E; e++) { const p = pos[eu[e]]++; to[p] = ev[e]; len[p] = el[e]; cl[p] = ec[e]; }
+  const cell = .003, grid = new Map(); for (let i = 0; i < n; i++) { if (off[i + 1] === off[i]) continue; const k = Math.floor(la[i] / cell) + "_" + Math.floor(ln[i] / cell); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
+  return { n, E, la, ln, off, to, len, cl, grid, cell, modo };
+}
+function _cmpSnap(G, lat, lng, maxM) {   // nodo de la red más cercano (con ≥ 1 arista) y distancia en m
+  const ci = Math.floor(lat / G.cell), cj = Math.floor(lng / G.cell); let best = -1, bd = 1e12;
+  for (let r = 0; r <= 4; r++) { for (let i = ci - r; i <= ci + r; i++) for (let j = cj - r; j <= cj + r; j++) { if (r > 0 && Math.abs(i - ci) !== r && Math.abs(j - cj) !== r) continue; for (const k of G.grid.get(i + "_" + j) || []) { const d = _cmpDm(lat, lng, G.la[k], G.ln[k]); if (d < bd) { bd = d; best = k; } } } if (best >= 0 && bd < r * G.cell * 111320 * .9) break; }
+  return best >= 0 && bd <= maxM ? { n: best, d: bd } : null;
+}
+// segundos por metro de cada clase: velocidad a flujo libre × calibración (kg) × congestión de la hora
+function _cmpSpm(modo, hora, cal) {
+  const spm = new Float64Array(_CMP_CL.length); if (modo === "pie") { spm.fill(1 / _CMP_VPIE); return spm; }
+  const kg = (cal && cal.kg) || 1, f = hora === "libre" ? 1 : ((cal && cal.f && cal.f[hora]) || _CMP_F0[hora] || 1);
+  _CMP_CL.forEach((c, i) => { const v = (_CMP_VEL[c] || 25) / 3.6, w = _CMP_PESO_TRAF[c] != null ? _CMP_PESO_TRAF[c] : .3; spm[i] = (1 / v) * kg * (1 + w * (f - 1)); });
+  return spm;
+}
+// Dijkstra con tope de tiempo (s); dist se llena con Infinity fuera del alcance
+function _cmpDij(G, src, off0, tmax, spm, dist) {
+  dist.fill(Infinity); const hk = [], hv = []; const push = (k, v) => { let i = hk.length; hk.push(k); hv.push(v); while (i > 0) { const p = (i - 1) >> 1; if (hk[p] <= k) break; hk[i] = hk[p]; hv[i] = hv[p]; i = p; } hk[i] = k; hv[i] = v; };
+  const pop = () => { const rk = hk[0], rv = hv[0], lk = hk.pop(), lv = hv.pop(), n = hk.length; if (n) { let i = 0; for (; ;) { let c = 2 * i + 1; if (c >= n) break; if (c + 1 < n && hk[c + 1] < hk[c]) c++; if (hk[c] >= lk) break; hk[i] = hk[c]; hv[i] = hv[c]; i = c; } hk[i] = lk; hv[i] = lv; } return [rk, rv]; };
+  dist[src] = off0; push(off0, src);
+  while (hk.length) { const [d, u] = pop(); if (d > dist[u]) continue; for (let e = G.off[u]; e < G.off[u + 1]; e++) { const nd = d + G.len[e] * spm[G.cl[e]]; if (nd > tmax) continue; const v = G.to[e]; if (nd < dist[v]) { dist[v] = nd; push(nd, v); } } }
+  return dist;
+}
+// contexto de un análisis: grafo + manzanas (con su nodo) + puntos (con su nodo); se guarda en memoria y se reconstruye si falta
+async function _cmpCtx(id, pts, modo) {
+  const sig = _cmpSig(pts), key = id + "|" + sig + "|" + modo; if (_CMP_CTX.has(key)) { const c = _CMP_CTX.get(key); _CMP_CTX.delete(key); _CMP_CTX.set(key, c); return c; }
+  const refs = pts.filter(p => p.rol === "ref"), comps = pts.filter(p => p.rol === "comp"); if (!refs.length || !comps.length) throw new Error("Hace falta al menos un punto de referencia y un competidor");
+  const cla = pts.reduce((a, p) => a + p.lat, 0) / pts.length, clo = pts.reduce((a, p) => a + p.lng, 0) / pts.length; let maxD = 0; pts.forEach(p => { maxD = Math.max(maxD, _cmpDm(cla, clo, p.lat, p.lng)); });
+  const reg = _regDe(cla, clo); if (!reg) throw new Error("Esta zona no tiene datos locales de red vial ni de Censo (solo Saltillo y Monterrey por ahora)");
+  let R = Math.max(3500, Math.min(16000, maxD + 3000)), ways = null; for (let k = 0; k < 6 && !ways; k++) { ways = await _vialWays(cla, clo, R); if (!ways) R *= .8; } if (!ways || !ways.length) throw new Error("No hay red vial local para esa zona");
+  const G = _cmpGrafo(ways, modo); if (G.n < 50) throw new Error("La red vial de la zona es demasiado pequeña");
+  const M = await _mzCarga(reg.id); if (!M) throw new Error("No hay Censo por manzana de esta región");
+  const kx = 111320 * Math.cos(cla * Math.PI / 180), mz = { lat: [], lng: [], pop: [], side: [], node: [], acc: [] }; let sinRed = 0, sinRedPop = 0;
+  for (const m of M.data.mz) { const pop = +m[5] || 0; if (pop <= 0) continue; if (Math.abs((m[2] - clo) * kx) > R + 200 || Math.abs((m[1] - cla) * 111320) > R + 200) continue;
+    const sn = _cmpSnap(G, m[1], m[2], 450); if (!sn) { sinRed++; sinRedPop += pop; continue; }
+    let ar = 0; const P = m[3] || []; for (let q = 0, n = P.length / 2; q < n; q++) { const x1 = P[2 * q], y1 = P[2 * q + 1], x2 = P[2 * ((q + 1) % n)], y2 = P[2 * ((q + 1) % n) + 1]; ar += x1 * y2 - x2 * y1; } ar = Math.abs(ar) / 2 / 100;   // decímetros² → m²
+    mz.lat.push(m[1]); mz.lng.push(m[2]); mz.pop.push(pop); mz.side.push(Math.max(18, Math.min(260, Math.sqrt(ar || 2500)))); mz.node.push(sn.n); mz.acc.push(sn.d / _CMP_VPIE); }
+  if (!mz.lat.length) throw new Error("No se encontraron manzanas del Censo con acceso a la red en esa zona");
+  let fac = pts.map(p => { const sn = _cmpSnap(G, p.lat, p.lng, 600); return sn ? { id: p.id, n: p.n, rol: p.rol, lat: p.lat, lng: p.lng, pd: p.rol === "comp" ? (+p.pd || 5) : null, node: sn.n, acc: sn.d / _CMP_VPIE, dm: sn.d } : null; });
+  const sinSnap = fac.filter(f => !f).length; fac = fac.filter(Boolean); if (fac.length > 250) { const rf = fac.filter(f => f.rol === "ref"), c0 = rf[0] || fac[0]; fac = rf.concat(fac.filter(f => f.rol === "comp").sort((a, b) => _cmpDm(c0.lat, c0.lng, a.lat, a.lng) - _cmpDm(c0.lat, c0.lng, b.lat, b.lng)).slice(0, 250 - rf.length)); }
+  const ctx = { key, sig, modo, reg: reg.id, R, G, mz, fac, sinRed, sinRedPop, sinSnap, nVias: ways.length, totPop: mz.pop.reduce((a, b) => a + b, 0) };
+  _CMP_CTX.set(key, ctx); while (_CMP_CTX.size > 3) _CMP_CTX.delete(_CMP_CTX.keys().next().value); return ctx;
+}
+// calibración con Google Routes: ~6 pares de puntos × 3 horas (≈ 18 consultas, USD 0.18 de lista, dentro del tope gratis); se guarda en Cloud Storage y se reutiliza 14 días
+async function _cmpRuta(key, a, b, dep) {
+  const body = { origin: { location: { latLng: { latitude: a.lat, longitude: a.lng } } }, destination: { location: { latLng: { latitude: b.lat, longitude: b.lng } } }, travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE_OPTIMAL", departureTime: dep, units: "METRIC" };
+  for (let k = 0; k < 3; k++) { const r = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+    if (r.status === 429 || r.status >= 500) { await _amSleep(700 * (k + 1)); continue; } const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || "Routes HTTP " + r.status);
+    const q = (j.routes || [])[0]; if (!q) return null; const sec = v => v ? parseFloat(String(v)) : null; return { d: sec(q.duration), s: sec(q.staticDuration), m: q.distanceMeters || 0 }; }
+  return null;
+}
+async function _cmpCalib(id, ctxA, forzar) {
+  const nom = `mercado/maqueta/competencia/${id}-calib.json`, F = ctxA.fac, pares = [], usados = new Set();
+  for (let s = 0; s < Math.min(6, F.length); s++) { const a = F[Math.floor(s * F.length / Math.min(6, F.length))]; let best = null, bd = 1e12; F.forEach(b => { if (b === a) return; const d = _cmpDm(a.lat, a.lng, b.lat, b.lng); if (d < 700) return; const sc = Math.abs(d - 4000); if (sc < bd) { bd = sc; best = b; } }); if (!best) continue; const k = [a.id, best.id].sort().join("~"); if (usados.has(k)) continue; usados.add(k); pares.push([a, best]); }
+  const psig = pares.map(([a, b]) => a.lat.toFixed(5) + "," + a.lng.toFixed(5) + ">" + b.lat.toFixed(5) + "," + b.lng.toFixed(5)).join("|");
+  let cal = null; try { const { data } = await _bnReadGcs(nom); if (data && data.psig === psig && Date.now() - Date.parse(data.at || 0) < 14 * 864e5 && !forzar) cal = data; } catch (_) {}
+  if (cal) return cal;
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key || !pares.length) return { psig, at: new Date().toISOString(), kg: 1, f: Object.assign({}, _CMP_F0), n: 0, calibrado: false, motivo: !key ? "Falta la clave de Google Maps en el servidor" : "No hay pares de puntos lo bastante separados", val: [] };
+  const tz = _trTz(ctxA.fac[0].lng), fe = _trFechas([2], tz)[2], dep = h => new Date(Date.UTC(fe[0], fe[1], fe[2], h - tz, 0, 0)).toISOString(), res = []; let llamadas = 0;
+  const tareas = []; pares.forEach(([a, b], pi) => [8, 13, 19].forEach(h => tareas.push({ pi, a, b, h }))); let i = 0, fatal = null;
+  await Promise.all(Array.from({ length: 4 }, async () => { while (i < tareas.length && !fatal) { const t = tareas[i++]; try { const r = await _cmpRuta(key, t.a, t.b, dep(t.h)); llamadas++; if (r) (res[t.pi] || (res[t.pi] = { h: {} })).h[t.h] = r; } catch (e) { fatal = e; } } }));
+  if (fatal && !res.some(Boolean)) return { psig, at: new Date().toISOString(), kg: 1, f: Object.assign({}, _CMP_F0), n: 0, calibrado: false, motivo: "Google Routes: " + fatal.message, val: [] };
+  const spm0 = _cmpSpm("auto", "libre", null), dist = new Float64Array(ctxA.G.n), rk = [], rf = { 8: [], 13: [], 19: [] }, val = [];
+  pares.forEach(([a, b], pi) => { const r = res[pi]; if (!r) return; const st = _cmpMed(Object.values(r.h).map(x => x.s)), g = (_cmpDij(ctxA.G, a.node, a.acc, 7200, spm0, dist), dist[b.node] + b.acc); if (st && Number.isFinite(g) && g > 0) { rk.push(st / g); val.push({ a: a.n, b: b.n, km: +(Object.values(r.h)[0].m / 1000).toFixed(1), google: Math.round(st / 6) / 10, red: Math.round(g / 6) / 10 }); } [8, 13, 19].forEach(h => { const x = r.h[h]; if (x && x.d && x.s) rf[h].push(x.d / x.s); }); });
+  const kg = Math.max(.6, Math.min(1.8, _cmpMed(rk) || 1)), fh = h => Math.max(.9, Math.min(3, _cmpMed(rf[h]) || 1));
+  cal = { psig, at: new Date().toISOString(), kg: +kg.toFixed(3), f: { am: +fh(8).toFixed(3), md: +fh(13).toFixed(3), pm: +fh(19).toFixed(3) }, n: rk.length, calibrado: rk.length > 0, val, llamadas, dia: "martes típico" };
+  if (cal.calibrado) { cal.val.forEach(v => { v.red = Math.round(v.red * kg * 10) / 10; }); try { await _bnWriteGcs(nom, cal, null); } catch (_) {} _gastoReg(id, { fuente: "competencia", rutas: llamadas }); }
+  return cal;
+}
+const _cmpCalLee = async id => { try { const { data } = await _bnReadGcs(`mercado/maqueta/competencia/${id}-calib.json`); return data && data.calibrado ? data : null; } catch (_) { return null; } };
+// ── análisis completo
+async function _cmpAnaliza(id, pts, o) {
+  const modo = o.modo === "pie" ? "pie" : "auto", hora = _CMP_HORAS[o.hora] !== undefined ? o.hora : "libre", beta = Math.max(.5, Math.min(4, +o.beta || 2)), T = Math.max(3, Math.min(30, Math.round(+o.T) || 10)), tmax = (modo === "auto" ? 25 : 25) * 60;
+  const ctx = await _cmpCtx(id, pts, modo); let cal = null; if (modo === "auto" && (hora !== "libre" || o.calibra)) cal = await _cmpCalib(id, modo === "auto" ? ctx : await _cmpCtx(id, pts, "auto"), false); else if (modo === "auto") cal = await _cmpCalLee(id);
+  const { G, mz, fac } = ctx, M = mz.lat.length, F = fac.length, spm = _cmpSpm(modo, hora, cal), dist = new Float64Array(G.n), Tm = new Float32Array(F * M);
+  const mC = pts.filter(p => p.rol === "comp").map(p => +p.pd || 5), aRef = Math.max(1, Math.min(10, Math.round(+o.aRef || (mC.reduce((a, b) => a + b, 0) / (mC.length || 1)) || 5)));
+  fac.forEach(f => { f.A = f.rol === "ref" ? aRef : f.pd; });
+  for (let j = 0; j < F; j++) { _cmpDij(G, fac[j].node, fac[j].acc, tmax, spm, dist); for (let m = 0; m < M; m++) { const d = dist[mz.node[m]]; Tm[j * M + m] = d === Infinity ? Infinity : d + mz.acc[m]; } if (j % 4 === 3) await _cmpYield(); }
+  // 1) Voronoi por tiempo
+  const own = new Int16Array(M).fill(-1), tmin = new Float32Array(M).fill(Infinity); for (let m = 0; m < M; m++) for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t < tmin[m]) { tmin[m] = t; own[m] = j; } }
+  // 2) Huff
+  const Aj = fac.map(f => f.A), huff = (b, quien) => { const cap = new Float64Array(F); for (let m = 0; m < M; m++) { let s = 0; for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t === Infinity) continue; s += Aj[j] * Math.pow(Math.max(1, t / 60), -b); } if (!s) continue; for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t === Infinity) continue; const p = Aj[j] * Math.pow(Math.max(1, t / 60), -b) / s; cap[j] += mz.pop[m] * p; if (quien) quien(m, j, p); } } return cap; };
+  const hw = new Int16Array(M).fill(-1), hp = new Float32Array(M), rp = new Float32Array(M); const refSet = new Set(fac.map((f, j) => f.rol === "ref" ? j : -1).filter(j => j >= 0));
+  const cap = huff(beta, (m, j, p) => { if (p > hp[m]) { hp[m] = p; hw[m] = j; } if (refSet.has(j)) rp[m] += p; });
+  const capTot = cap.reduce((a, b) => a + b, 0) || 1, sens = [1, 1.5, 2, 2.5, 3].map(b => { const c = b === beta ? cap : huff(b), r = [...refSet].reduce((a, j) => a + c[j], 0); return { beta: b, ref: +(r / (c.reduce((a, x) => a + x, 0) || 1) * 100).toFixed(1) }; });
+  // 3) E2SFCA (decaimiento gaussiano, T minutos)
+  const Ts = T * 60, w = t => t > Ts ? 0 : (Math.exp(-.5 * (t / Ts) ** 2) - Math.exp(-.5)) / (1 - Math.exp(-.5)), mA = Aj.reduce((a, b) => a + b, 0) / F, Rj = new Float64Array(F), acc = new Float64Array(M), cov = new Float64Array(F);
+  for (let j = 0; j < F; j++) { let d = 0, c = 0; for (let m = 0; m < M; m++) { const t = Tm[j * M + m]; if (t <= Ts) { d += mz.pop[m] * w(t); c += mz.pop[m]; } } Rj[j] = d > 0 ? (Aj[j] / mA) / d : 0; cov[j] = c; }
+  let sinCob = 0; for (let m = 0; m < M; m++) { let a = 0; for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t <= Ts) a += Rj[j] * w(t); } acc[m] = a * 10000; if (tmin[m] > Ts) sinCob += mz.pop[m]; }
+  const ord = [...Array(M).keys()].sort((a, b) => acc[a] - acc[b]), qs = [.2, .4, .6, .8].map(q => { let s = 0, lim = q * ctx.totPop; for (const m of ord) { s += mz.pop[m]; if (s >= lim) return +acc[m].toFixed(2); } return 0; });
+  // por punto
+  const terr = fac.map(() => ({ pop: 0, n: 0, ts: 0 })); for (let m = 0; m < M; m++) if (own[m] >= 0) { const q = terr[own[m]]; q.pop += mz.pop[m]; q.n++; q.ts += tmin[m] * mz.pop[m]; }
+  const facOut = fac.map((f, j) => ({ id: f.id, n: f.n, rol: f.rol, lat: f.lat, lng: f.lng, pd: f.pd, A: f.A, dm: Math.round(f.dm), pop: terr[j].pop, nz: terr[j].n, tmed: terr[j].pop ? +(terr[j].ts / terr[j].pop / 60).toFixed(1) : null, cap: Math.round(cap[j]), capPct: +(cap[j] / capTot * 100).toFixed(2), r: +(Rj[j] * 10000).toFixed(3), cov: Math.round(cov[j]) }));
+  // 4) efecto del tráfico en el alcance (solo auto con calibración): población a ≤ T min de cada punto de referencia y de los competidores más cercanos, a flujo libre y en cada hora
+  let traf = null; if (modo === "auto" && cal && cal.calibrado) {
+    const c0 = fac.find(f => f.rol === "ref"), sel = fac.map((f, j) => j).filter(j => fac[j].rol === "ref").concat(fac.map((f, j) => j).filter(j => fac[j].rol === "comp").sort((a, b) => _cmpDm(c0.lat, c0.lng, fac[a].lat, fac[a].lng) - _cmpDm(c0.lat, c0.lng, fac[b].lat, fac[b].lng)).slice(0, 9)); traf = { T, cal: { kg: cal.kg, f: cal.f, n: cal.n, val: cal.val, dia: cal.dia }, pts: [] };
+    const d2 = new Float64Array(G.n), hs = ["libre", "am", "md", "pm"], sp = hs.map(h => _cmpSpm("auto", h, cal));
+    for (const j of sel) { const r = { id: fac[j].id, n: fac[j].n, rol: fac[j].rol, cov: {} }; hs.forEach((h, k) => { _cmpDij(G, fac[j].node, fac[j].acc, Ts, sp[k], d2); let c = 0; for (let m = 0; m < M; m++) { const d = d2[mz.node[m]]; if (d !== Infinity && d + mz.acc[m] <= Ts) c += mz.pop[m]; } r.cov[h] = c; }); traf.pts.push(r); await _cmpYield(); }
+  }
+  const rd = (a, k) => Array.from(a, v => +v.toFixed(k));
+  return { ok: true, modo, hora, params: { beta, T, aRef, tmax: tmax / 60 }, region: ctx.reg, R: Math.round(ctx.R), nVias: ctx.nVias, nodos: G.n, totPop: ctx.totPop, nz: M, sinRed: ctx.sinRed, sinRedPop: ctx.sinRedPop, sinSnap: ctx.sinSnap, sinCob, qs, sens, cal: cal ? { kg: cal.kg, f: cal.f, n: cal.n, calibrado: !!cal.calibrado, motivo: cal.motivo || null, dia: cal.dia || null } : null, fac: facOut, traf,
+    mz: { la: rd(mz.lat, 5), ln: rd(mz.lng, 5), pop: mz.pop, sd: mz.side.map(v => Math.round(v)), own: Array.from(own), t: Array.from(tmin, v => v === Infinity ? -1 : Math.round(v)), hw: Array.from(hw), hp: Array.from(hp, v => Math.round(v * 100)), rp: Array.from(rp, v => Math.round(v * 100)), acc: rd(acc, 2) } };
+}
+const _cmpLee = async id => { const { data } = await _bnReadGcs(_CMP_OBJ(id)); const pts = data && Array.isArray(data.pts) ? data.pts : null; if (!pts) throw new Error("Primero guarde los puntos (paso 2)"); return pts; };
+app.post("/mercado/maqueta/competencia/analisis", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" }); const pts = await _cmpLee(id), o = { modo: b.modo, hora: b.hora, beta: b.beta, T: b.T, aRef: b.aRef, calibra: !!b.calibra };
+    const ck = [id, _cmpSig(pts), pts.map(p => p.pd || 0).join(""), o.modo, o.hora, o.beta, o.T, o.aRef, o.calibra].join("|"), hit = _CMP_RES.get(ck); if (hit) return res.json(hit);
+    const r = await _cmpAnaliza(id, pts, o); _CMP_RES.set(ck, r); while (_CMP_RES.size > 8) _CMP_RES.delete(_CMP_RES.keys().next().value); res.json(r);
+  } catch (e) { console.warn("[competencia/analisis]", e.message); res.status(400).json({ ok: false, error: String(e.message || e) }); }
+});
+app.get("/mercado/maqueta/competencia/isocrona", async (req, res) => {   // tiempo (s) desde un punto a cada manzana del último análisis; -1 = fuera de alcance
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const id = String(req.query.id || "").replace(/\D/g, ""), modo = req.query.modo === "pie" ? "pie" : "auto", hora = _CMP_HORAS[req.query.hora] !== undefined ? String(req.query.hora) : "libre", pts = await _cmpLee(id), ctx = await _cmpCtx(id, pts, modo), f = ctx.fac.find(x => x.id === String(req.query.f)); if (!f) return res.status(404).json({ ok: false, error: "Punto no encontrado" });
+    const cal = modo === "auto" ? await _cmpCalLee(id) : null, dist = new Float64Array(ctx.G.n); _cmpDij(ctx.G, f.node, f.acc, 30 * 60, _cmpSpm(modo, hora, cal), dist); const M = ctx.mz.lat.length, t = new Array(M);
+    for (let m = 0; m < M; m++) { const d = dist[ctx.mz.node[m]]; t[m] = d === Infinity ? -1 : Math.round(d + ctx.mz.acc[m]); } res.json({ ok: true, n: M, t }); }
+  catch (e) { res.status(400).json({ ok: false, error: String(e.message || e) }); }
+});
 app.post("/geometrika/proyecto", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
