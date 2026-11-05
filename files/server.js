@@ -13267,6 +13267,80 @@ app.post("/geometrika/resumen", async (req, res) => {
     res.json({ ok: true, perfil, objetivo, parrafos });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Data Lab · indicadores creados con ayuda de IA (protegido por la contraseña de GeoMetrika, como todo /geometrika). Se guardan en gs://…/datalab/indicadores.json.
+const _DL_OBJ = "datalab/indicadores.json", _dlQ = {};
+function _dlMut(fn) { const run = (_dlQ[_DL_OBJ] || Promise.resolve()).then(async () => { const d = (await _rhdGetJson(_DL_OBJ)) || {}; const out = await fn(d); await _rhdPut(_DL_OBJ, JSON.stringify(d), "application/json"); return out; }); _dlQ[_DL_OBJ] = run.catch(() => { }); return run; }
+const _dlT = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").replace(/[ \t]+/g, " ").trim().slice(0, n);
+const _dlL = (a, n, m) => (Array.isArray(a) ? a : []).slice(0, n).map(x => _dlT(x, m)).filter(Boolean);
+const _DL_RES = ["punto", "zona", "ciudad"], _DL_PER = ["Tiempo real", "Diaria", "Semanal", "Mensual", "Trimestral", "Anual", "Bajo demanda"], _DL_TIPO = ["Dato duro", "Dato calculado", "Índice", "Valoración cualitativa", "Valoración cuantitativa", "Dato inferido"], _DL_EST = ["Borrador", "Propuesto"];
+const _dlVars = (a, nom) => (Array.isArray(a) ? a : []).slice(0, 25).map(v => { v = v || {}; const n = _dlT(v.n || v.nombre, 140); return n ? { n, u: _dlT(v.u || v.unidades, 60), d: _dlT(v.d || v.descripcion, 400), f: _dlT(v.f || v.fuente, 200), cob: _dlT(v.cob || v.cobertura, 240), disponible: v.disponible === false ? false : true, nota: _dlT(v.nota, 300), en_catalogo: nom ? nom.has(n.toLowerCase()) : !!v.en_catalogo } : null; }).filter(Boolean);
+let _dlIA = []; // marcas de tiempo de las consultas a la IA (tope por hora)
+app.get("/geometrika/datalab/indicadores", async (req, res) => {
+  try { const d = (await _rhdGetJson(_DL_OBJ)) || {}; res.set("Cache-Control", "no-store"); res.json({ ok: true, items: Array.isArray(d.items) ? d.items : [] }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// La IA propone de 2 a 3 metodologías para el indicador descrito, apoyándose en el catálogo de variables y fuentes que manda la pantalla.
+app.post("/geometrika/datalab/indicadores/proponer", async (req, res) => {
+  try {
+    const b = req.body || {}, texto = _dlT(b.texto, 3000), resolucion = _DL_RES.includes(b.resolucion) ? b.resolucion : "";
+    if (texto.length < 12) return res.status(400).json({ ok: false, error: "Describe con un poco más de detalle qué quieres medir (mínimo una frase)." });
+    if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ ok: false, error: "Falta la clave de la IA en el servidor." });
+    const ahora = Date.now(); _dlIA = _dlIA.filter(t => ahora - t < 3600e3); if (_dlIA.length >= 40) return res.status(429).json({ ok: false, error: "Se alcanzó el tope de consultas a la IA por hora. Intenta más tarde." }); _dlIA.push(ahora);
+    const C = b.catalogo || {}, vars = (Array.isArray(C.variables) ? C.variables : []).slice(0, 220).map(v => ({ n: _dlT(v.n, 120), u: _dlT(v.u, 40), f: _dlT(v.f, 100), cob: _dlT(v.cob, 160) })).filter(v => v.n);
+    const fuentes = (Array.isArray(C.fuentes) ? C.fuentes : []).slice(0, 80).map(f => ({ n: _dlT(f.n, 120), p: _dlT(f.p, 100), t: _dlT(f.t, 12), a: _dlT(f.a, 12), cob: _dlT(f.cob, 200), act: _dlT(f.act, 100) })).filter(f => f.n);
+    const inds = (Array.isArray(C.indicadores) ? C.indicadores : []).slice(0, 150).map(i => ({ n: _dlT(i.n, 120), u: _dlT(i.u, 40) })).filter(i => i.n);
+    const sel = (Array.isArray(b.seleccion) ? b.seleccion : []).slice(0, 40).map(x => ({ tipo: _dlT(x.tipo, 12), n: _dlT(x.n, 140), u: _dlT(x.u, 40), f: _dlT(x.f, 160), cob: _dlT(x.cob, 200) })).filter(x => x.n);
+    const nom = new Set([...vars.map(v => v.n), ...inds.map(i => i.n), ...fuentes.map(f => f.n)].map(x => x.toLowerCase()));
+    const system = `Eres analista senior de datos geoespaciales e inteligencia de mercado de Check Inn (hospedaje y renta de propiedades en México; sistema Geo Lab de análisis por ubicación).
+Una persona describe en lenguaje corriente un indicador que quiere calcular. Propón de 2 a 3 METODOLOGÍAS distintas y realistas para calcularlo.
+Reglas:
+- Apóyate primero en las variables, indicadores y fuentes que YA existen en el catálogo recibido; úsalos con su nombre exacto. Si necesitas un dato que no está, márcalo como no disponible (disponible:false) y explica de qué fuente podría salir (pública o privada) en "nota". No inventes fuentes, cifras ni coberturas.
+- Respeta la resolución pedida (punto = una coordenada, zona = área alrededor o polígono, ciudad = toda la ciudad o área metropolitana).
+- Diferencia las metodologías por complejidad o por el dato en que se apoyan (por ejemplo una sencilla con datos ya disponibles y otra más precisa que requiere datos nuevos).
+- Escribe en español claro, sin jerga innecesaria. La fórmula en texto plano con símbolos (ej. I = Σ wᵢ·xᵢ / Σ wᵢ).
+Responde ÚNICAMENTE con JSON válido (sin texto antes o después ni bloques de código) con esta forma exacta:
+{"entendimiento":"qué entendiste que se quiere medir, en 1 a 2 frases","advertencias":["dudas o supuestos importantes"],"propuestas":[{"titulo":"nombre corto de la metodología","resumen":"2 a 3 frases","recomendada":true,"nombre_indicador":"nombre sugerido","descripcion":"qué mide, 1 a 2 frases","unidades":"unidades o escala","tipo":"Dato duro | Dato calculado | Índice | Valoración cualitativa | Valoración cuantitativa | Dato inferido","periodicidad":"Tiempo real | Diaria | Semanal | Mensual | Trimestral | Anual | Bajo demanda","objetivo_negocio":"para qué decisión de negocio sirve","pasos":["paso 1","paso 2"],"formula":"fórmula","variables":[{"nombre":"nombre exacto del catálogo o nombre nuevo","unidades":"","fuente":"","cobertura":"","disponible":true,"nota":""}],"supuestos":[""],"limitaciones":[""],"datos_faltantes":[""],"dificultad":"Baja | Media | Alta"}]}
+Marca "recomendada":true en una sola propuesta.`;
+    const user = `RESOLUCIÓN PEDIDA: ${resolucion || "no indicada"}
+INSTRUCCIONES DE LA PERSONA:
+${texto}
+${sel.length ? "\nELEMENTOS QUE LA PERSONA SELECCIONÓ DEL CATÁLOGO (úsalos de preferencia):\n" + sel.map(x => `- [${x.tipo}] ${x.n}${x.u ? " (" + x.u + ")" : ""}${x.f ? " · fuente: " + x.f : ""}${x.cob ? " · cobertura: " + x.cob : ""}`).join("\n") : ""}
+\nCATÁLOGO DISPONIBLE
+Fuentes de datos: ${JSON.stringify(fuentes)}
+Variables de Geo Lab: ${JSON.stringify(vars)}
+Indicadores existentes: ${JSON.stringify(inds)}`;
+    let j = null, err = null;
+    for (let k = 0; k < 2 && !j; k++) {
+      const call = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: _CL_MODELO, max_tokens: 6000, thinking: { type: "disabled" }, system, messages: [{ role: "user", content: user }] }), signal: AbortSignal.timeout(110000) }).catch(e => { err = e; return null; });
+      if (!call) continue; const r = await call.json().catch(() => ({})); if (!call.ok) { err = new Error(`IA ${call.status}: ${(r.error && r.error.message) || ""}`); if ([429, 500, 529].includes(call.status)) { await new Promise(z => setTimeout(z, 2500)); continue; } break; } j = r;
+    }
+    if (!j) throw err || new Error("La IA no respondió");
+    const txt = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim(), a = txt.indexOf("{"), z = txt.lastIndexOf("}"); let o; try { o = JSON.parse(txt.slice(a, z + 1)); } catch (_) { throw new Error("La IA devolvió una respuesta que no se pudo leer. Intenta de nuevo."); }
+    const props = (Array.isArray(o.propuestas) ? o.propuestas : []).slice(0, 3).map((p, i) => { p = p || {}; return { id: "p" + (i + 1), titulo: _dlT(p.titulo, 120) || "Metodología " + (i + 1), resumen: _dlT(p.resumen, 700), recomendada: !!p.recomendada, nombre: _dlT(p.nombre_indicador, 120), descripcion: _dlT(p.descripcion, 500), unidades: _dlT(p.unidades, 60), tipo: _DL_TIPO.includes(p.tipo) ? p.tipo : "Dato calculado", periodicidad: _DL_PER.includes(p.periodicidad) ? p.periodicidad : "Bajo demanda", objetivo: _dlT(p.objetivo_negocio, 400), pasos: _dlL(p.pasos, 12, 400), formula: _dlT(p.formula, 600), variables: _dlVars(p.variables, nom), supuestos: _dlL(p.supuestos, 8, 300), limitaciones: _dlL(p.limitaciones, 8, 300), faltantes: _dlL(p.datos_faltantes, 8, 300), dificultad: ["Baja", "Media", "Alta"].includes(p.dificultad) ? p.dificultad : "Media" }; }).filter(p => p.pasos.length || p.formula);
+    if (!props.length) throw new Error("La IA no propuso metodologías utilizables. Reformula la descripción.");
+    if (!props.some(p => p.recomendada)) props[0].recomendada = true;
+    res.json({ ok: true, entendimiento: _dlT(o.entendimiento, 500), advertencias: _dlL(o.advertencias, 6, 300), propuestas: props, uso: j.usage || null });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Guarda el indicador creado (con ?dry=1 solo valida y devuelve la ficha, sin guardar).
+app.post("/geometrika/datalab/indicadores", async (req, res) => {
+  try {
+    const b = req.body || {}, n = _dlT(b.n, 120), u = _dlT(b.u, 60), objetivo = _dlT(b.objetivo, 500), m = _dlT(b.m, 3000);
+    const falta = []; if (n.length < 3) falta.push("el nombre"); if (!u) falta.push("las unidades"); if (!_DL_RES.includes(b.res)) falta.push("la resolución"); if (!_DL_PER.includes(b.periodicidad)) falta.push("la periodicidad"); if (objetivo.length < 3) falta.push("el objetivo de negocio"); if (m.length < 10) falta.push("la metodología"); if (!/^[a-z]{2,10}$/.test(String(b.cat || ""))) falta.push("la categoría");
+    const enfN = b.enf === "__nuevo" ? _dlT(b.enfNuevo, 80) : ""; if (b.enf === "__nuevo" ? enfN.length < 3 : !/^[a-z0-9_-]{2,24}$/.test(String(b.enf || ""))) falta.push("el enfoque");
+    if (falta.length) return res.status(400).json({ ok: false, error: "Falta completar: " + falta.join(", ") + "." });
+    const id = (n.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "indicador") + "-" + crypto.randomBytes(2).toString("hex");
+    const item = { id, n, d: _dlT(b.d, 600), u, res: b.res, periodicidad: b.periodicidad, objetivo, cat: b.cat, enf: b.enf === "__nuevo" ? "dl-" + (enfN.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20) || "nuevo") : b.enf, enfNuevo: enfN, tipo: _DL_TIPO.includes(b.tipo) ? b.tipo : "Dato calculado", estado: _DL_EST.includes(b.estado) ? b.estado : "Borrador", responsable: _dlT(b.responsable, 80), m, f: _dlT(b.f, 700), pasos: _dlL(b.pasos, 14, 400), vars: _dlVars(b.vars), supuestos: _dlL(b.supuestos, 10, 300), limitaciones: _dlL(b.limitaciones, 10, 300), faltantes: _dlL(b.faltantes, 10, 300), dificultad: ["Baja", "Media", "Alta"].includes(b.dificultad) ? b.dificultad : "", instrucciones: _dlT(b.instrucciones, 3000), metodologiaTitulo: _dlT(b.metodologiaTitulo, 120), creado: new Date().toISOString() };
+    if (req.query.dry === "1") return res.json({ ok: true, dry: true, item });
+    await _dlMut(d => { d.items = Array.isArray(d.items) ? d.items : []; if (d.items.length >= 300) throw new Error("Se alcanzó el máximo de 300 indicadores creados."); d.items.push(item); });
+    res.json({ ok: true, item });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/geometrika/datalab/indicadores/eliminar", async (req, res) => {
+  try { const id = _dlT((req.body || {}).id, 80); if (!id) return res.status(400).json({ ok: false, error: "Falta el indicador." }); let n = 0; await _dlMut(d => { const a = Array.isArray(d.items) ? d.items : []; d.items = a.filter(x => x.id !== id); n = a.length - d.items.length; }); res.json({ ok: true, eliminados: n }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/geometrika/datalab/indicadores/estado", async (req, res) => {
+  try { const id = _dlT((req.body || {}).id, 80), estado = (req.body || {}).estado; if (!id || !_DL_EST.includes(estado)) return res.status(400).json({ ok: false, error: "Datos no válidos." }); let n = 0; await _dlMut(d => { (d.items || []).forEach(x => { if (x.id === id) { x.estado = estado; n++; } }); }); res.json({ ok: true, actualizados: n }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── Análisis del proyecto GeoMetrika: encadena fotos de calle (Street View + IA) → maqueta → tráfico, reutilizando los procesos de Alojamientos por id numérico ──
 const _gmPid = (id, k) => k ? id + String(k) : id;
 let _gmJob = { running: false };
