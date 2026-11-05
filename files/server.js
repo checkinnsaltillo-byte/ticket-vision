@@ -13910,7 +13910,7 @@ async function _nacCarga(forzar) {
 }
 setTimeout(() => _nacCarga(true).catch(() => { }), 4000); setInterval(() => _nacCarga(true).catch(() => { }), 20 * 60000);
 function _regNac(lat, lng) {
-  if (!_NAC.vial) return null; const i = Math.floor(lat / .5), j = Math.floor(lng / .5), k = i + "_" + j; if (!_NAC.vial.has(k)) return null;
+  if (!_NAC.vial) { if (Date.now() - (_NAC.try || 0) > 60000) { _NAC.try = Date.now(); _nacCarga(true).catch(() => { }); } return null; } const i = Math.floor(lat / .5), j = Math.floor(lng / .5), k = i + "_" + j; if (!_NAC.vial.has(k)) return null;
   let r = _NAC_REG.get(k); if (!r) { const S = i * .5 - .25, W = j * .5 - .25; r = { id: "n" + k, nac: true, bbox: [S, W, S + 1, W + 1], vial: `osm/nac/vial/${k}.json`, uso: _NAC.uso.has(k) ? `osm/nac/uso/${k}.json` : null, ent: "osm/nac/ent/", ek: "nac", hue: "osm/nac/hue/", hk: "nac" }; _NAC_REG.set(k, r); }
   return r;
 }
@@ -14985,8 +14985,11 @@ async function _trRelieve(lat, lng) {
 }
 async function _wcImg(lat, lng) {
   const GT = require("geotiff"), la0 = Math.floor(lat / 3) * 3, lo0 = Math.floor(lng / 3) * 3, id = `${la0 < 0 ? "S" : "N"}${String(Math.abs(la0)).padStart(2, "0")}${lo0 < 0 ? "W" : "E"}${String(Math.abs(lo0)).padStart(3, "0")}`;
-  if (!_wcImgs.has(id)) _wcImgs.set(id, (async () => { const t = await GT.fromUrl(`https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_${id}_Map.tif`); return t.getImage(); })().catch(e => { _wcImgs.delete(id); throw e; }));
-  return _wcImgs.get(id);
+  // copia propia en Cloud Storage (worldcover/2021/<id>.tif); si no está, AWS. La conexión lleva un token que caduca: se reabre cada 40 min.
+  const c = _wcImgs.get(id); if (c && Date.now() - c.t < 40 * 60000) return c.p;
+  const p = (async () => { try { const tok = await _vGcsToken(), t = await GT.fromUrl(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(`worldcover/2021/${id}.tif`)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } }); return await t.getImage(); }
+    catch (_) { const t = await GT.fromUrl(`https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_${id}_Map.tif`); return t.getImage(); } })();
+  _wcImgs.set(id, { t: Date.now(), p }); p.catch(() => { if ((_wcImgs.get(id) || {}).p === p) _wcImgs.delete(id); }); return p;
 }
 async function _wcSuelo(lat, lng) {
   const img = await _wcImg(lat, lng), [w, s, e, n] = img.getBoundingBox(), W = img.getWidth(), H = img.getHeight(), px = (lng - w) / (e - w) * W, py = (n - lat) / (n - s) * H, mx = (e - w) / W * 111320 * Math.cos(lat * Math.PI / 180), my = (n - s) / H * 110540, R = 500, rx = Math.ceil(R / mx), ry = Math.ceil(R / my);
@@ -15027,7 +15030,7 @@ async function _ghslCarga() {
   const [rm, rb] = await Promise.all([g("ghsl/meta.json"), g("ghsl/alturas.bin.gz")]); if (!rm.ok || !rb.ok) throw new Error("Sin datos GHSL");
   const meta = await rm.json(), buf = require("zlib").gunzipSync(Buffer.from(await rb.arrayBuffer())); _ghslM = { t: Date.now(), meta, buf }; return _ghslM;
 }
-async function _ghslVentana(lat, lng, r) {
+async function _ghslVentanaOld(lat, lng, r) {
   const { meta: m, buf } = await _ghslCarga(), dl = (r + 300) / 111320, dn = (r + 300) / (111320 * Math.cos(lat * Math.PI / 180));
   let i0 = Math.floor((m.la1 - (lat + dl)) / m.s), i1 = Math.ceil((m.la1 - (lat - dl)) / m.s), j0 = Math.floor((lng - dn - m.lo0) / m.s), j1 = Math.ceil((lng + dn - m.lo0) / m.s);
   if (i1 < 0 || j1 < 0 || i0 >= m.ny || j0 >= m.nx) return null;
@@ -15035,11 +15038,36 @@ async function _ghslVentana(lat, lng, r) {
   const ny = i1 - i0, nx = j1 - j0, out = Buffer.alloc(ny * nx); for (let i = 0; i < ny; i++) buf.copy(out, i * nx, (i0 + i) * m.nx + j0, (i0 + i) * m.nx + j0 + nx);
   return { la1: m.la1 - i0 * m.s, lo0: m.lo0 + j0 * m.s, s: m.s, ny, nx, u: m.u, d: out.toString("base64") };
 }
+// Alturas GHSL de todo México: cuadros de 1° x 1° (ghsl/nac/<i>_<j>.bin.gz, 1000 x 1000 bytes, fila 0 = norte, 1 byte = 0.25 m) que se ensamblan en la ventana pedida.
+// La ventana completa dentro del mosaico original de Saltillo/Monterrey sigue saliendo de él.
+const _GHSL_N = { idx: null, t: 0, tiles: new Map() };
+async function _ghslNacTile(i, j) {
+  const k = i + "_" + j; if (_GHSL_N.tiles.has(k)) { const b = _GHSL_N.tiles.get(k); _GHSL_N.tiles.delete(k); _GHSL_N.tiles.set(k, b); return b; }
+  let b = null; if (_GHSL_N.idx.set.has(k)) { const tok = await _vGcsToken(), r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(`ghsl/nac/${k}.bin.gz`)}?alt=media`, { headers: { Authorization: `Bearer ${tok}` } }); if (r.ok) b = require("zlib").gunzipSync(Buffer.from(await r.arrayBuffer())); }
+  _GHSL_N.tiles.set(k, b); while (_GHSL_N.tiles.size > 16) _GHSL_N.tiles.delete(_GHSL_N.tiles.keys().next().value); return b;
+}
+async function _ghslNac(lat, lng, r) {
+  if (!_GHSL_N.idx || Date.now() - _GHSL_N.t > 20 * 60000) { try { const { data } = await _bnReadGcs("ghsl/nac/index.json"); if (data && data.tiles) _GHSL_N.idx = { set: new Set(data.tiles), s: data.s || .001, u: data.u || .25 }; } catch (_) { } _GHSL_N.t = Date.now(); }
+  const X = _GHSL_N.idx; if (!X) return null; const S = X.s, dl = (r + 300) / 111320, dn = (r + 300) / (111320 * Math.cos(lat * Math.PI / 180));
+  const cj0 = Math.floor((lng - dn) / S), cj1 = Math.ceil((lng + dn) / S), rj0 = Math.floor((lat - dl) / S), rj1 = Math.ceil((lat + dl) / S), ny = rj1 - rj0, nx = cj1 - cj0; if (ny <= 0 || nx <= 0 || ny * nx > 25e6) return null;
+  const out = Buffer.alloc(ny * nx); let hay = false;
+  for (let i = Math.floor(rj0 / 1000); i <= Math.floor((rj1 - 1) / 1000); i++) for (let j = Math.floor(cj0 / 1000); j <= Math.floor((cj1 - 1) / 1000); j++) {
+    const T = await _ghslNacTile(i, j); if (!T) continue; hay = true; const rA = Math.max(rj0, i * 1000), rB = Math.min(rj1, (i + 1) * 1000), cA = Math.max(cj0, j * 1000), cB = Math.min(cj1, (j + 1) * 1000);
+    for (let q = rA; q < rB; q++) { const y = rj1 - 1 - q, kf = 999 - (q - i * 1000); T.copy(out, y * nx + (cA - cj0), kf * 1000 + (cA - j * 1000), kf * 1000 + (cB - j * 1000)); } }
+  return hay ? { la1: rj1 * S, lo0: cj0 * S, s: S, ny, nx, u: X.u, d: out.toString("base64") } : null;
+}
+async function _ghslVentana(lat, lng, r) {
+  const dl = (r + 300) / 111320, dn = (r + 300) / (111320 * Math.cos(lat * Math.PI / 180));
+  if (lat - dl >= 25.10 && lat + dl <= 26.50 && lng - dn >= -101.55 && lng + dn <= -99.60) return _ghslVentanaOld(lat, lng, r);
+  return _ghslNac(lat, lng, r);
+}
 // ── Sentinel-2 L2A (10 m, datos abiertos en AWS): NDVI (vegetación), NDBI (construido) y máscara de nubes de la escena más reciente y despejada, en la misma rejilla de 10 m que /suelo (fila 0 = norte)
 const _s2Cache = new Map();
 function _utm(lat, lng, zone) { const a = 6378137, f = 1 / 298.257223563, k0 = .9996, e2 = f * (2 - f), ep2 = e2 / (1 - e2), lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180, phi = lat * Math.PI / 180, lam = lng * Math.PI / 180, N = a / Math.sqrt(1 - e2 * Math.sin(phi) ** 2), T = Math.tan(phi) ** 2, C = ep2 * Math.cos(phi) ** 2, A = (lam - lon0) * Math.cos(phi), M = a * ((1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256) * phi - (3 * e2 / 8 + 3 * e2 ** 2 / 32 + 45 * e2 ** 3 / 1024) * Math.sin(2 * phi) + (15 * e2 ** 2 / 256 + 45 * e2 ** 3 / 1024) * Math.sin(4 * phi) - 35 * e2 ** 3 / 3072 * Math.sin(6 * phi)); return [500000 + k0 * N * (A + (1 - T + C) * A ** 3 / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A ** 5 / 120), k0 * (M + N * Math.tan(phi) * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A ** 4 / 24 + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A ** 6 / 720))]; }
 async function _s2Ventana(lat, lng, R) {
   const key = lat.toFixed(4) + "," + lng.toFixed(4) + "," + Math.round(R); const c = _s2Cache.get(key); if (c && Date.now() - c.t < 6 * 3600e3) return c.v;
+  // copia en Cloud Storage (s2/<lat>_<lng>_<radio>.json, vigente 30 días): evita ir a AWS cada vez, también después de reiniciar el servidor
+  const gk = `s2/${key.replace(/,/g, "_")}.json`; try { const { data } = await _bnReadGcs(gk); if (data && data.v && Date.now() - (data.t || 0) < 30 * 864e5) { _s2Cache.set(key, { t: Date.now(), v: data.v }); return data.v; } } catch (_) { }
   const GT = require("geotiff"), d = .0012 + R / 111320, ini = new Date(Date.now() - 150 * 864e5).toISOString().slice(0, 19) + "Z", fin = new Date().toISOString().slice(0, 19) + "Z";
   const st = await fetch("https://earth-search.aws.element84.com/v1/search", { method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(30000), body: JSON.stringify({ collections: ["sentinel-2-l2a"], intersects: { type: "Point", coordinates: [lng, lat] }, datetime: `${ini}/${fin}`, query: { "eo:cloud_cover": { lt: 12 } }, sortby: [{ field: "properties.datetime", direction: "desc" }], limit: 6 }) }).then(r => r.json());
   const ft = (st.features || [])[0]; if (!ft) return null; const A = ft.assets, epsg = ft.properties["proj:epsg"] || 32614, zone = epsg % 100, off = ft.properties["earthsearch:boa_offset_applied"] ? 0 : 1000;
@@ -15049,7 +15077,7 @@ async function _s2Ventana(lat, lng, R) {
   const nd = Buffer.alloc(NN * NN), nb = Buffer.alloc(NN * NN), sc = Buffer.alloc(NN * NN), rf = v => Math.max(0, (v - off) / 10000);
   for (let j = 0; j < NN; j++) for (let i = 0; i < NN; i++) { const x = -half + (i + .5) * 10, y = half - (j + .5) * 10, k = j * NN + i, r = rf(red(x, y)), n2 = rf(nir(x, y)), s1 = rf(sw(x, y)), cl = scl(x, y); sc[k] = cl; if (!r && !n2) { nd.writeInt8(-128, k); nb.writeInt8(-128, k); continue; } nd.writeInt8(Math.max(-100, Math.min(100, Math.round((n2 - r) / ((n2 + r) || 1) * 100))), k); nb.writeInt8(Math.max(-100, Math.min(100, Math.round((s1 - n2) / ((s1 + n2) || 1) * 100))), k); }
   const v = { n: NN, mpp: 10, fecha: String(ft.properties.datetime || "").slice(0, 10), nubes: Math.round(ft.properties["eo:cloud_cover"] || 0), escena: ft.id, nd: nd.toString("base64"), nb: nb.toString("base64"), scl: sc.toString("base64"), fuente: "Sentinel-2 L2A (ESA/Copernicus)" };
-  _s2Cache.set(key, { t: Date.now(), v }); return v;
+  _s2Cache.set(key, { t: Date.now(), v }); _bnWriteGcs(gk, { t: Date.now(), v }).catch(() => { }); return v;
 }
 app.get("/mercado/maqueta/s2", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
