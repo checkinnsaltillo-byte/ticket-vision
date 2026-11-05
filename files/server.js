@@ -13129,7 +13129,7 @@ async function _cmpCtx(id, pts, modo) {
     let ar = 0; const P = m[3] || []; for (let q = 0, n = P.length / 2; q < n; q++) { const x1 = P[2 * q], y1 = P[2 * q + 1], x2 = P[2 * ((q + 1) % n)], y2 = P[2 * ((q + 1) % n) + 1]; ar += x1 * y2 - x2 * y1; } ar = Math.abs(ar) / 2 / 100;   // decímetros² → m²
     mz.lat.push(m[1]); mz.lng.push(m[2]); mz.pop.push(pop); mz.side.push(Math.max(18, Math.min(260, Math.sqrt(ar || 2500)))); { const st = Math.max(1, Math.ceil(P.length / 2 / 40)), o = []; for (let q = 0; q + 1 < P.length; q += 2 * st) o.push(P[q], P[q + 1]); mz.poly.push(o); } mz.node.push(sn.n); mz.acc.push(sn.d / _CMP_VPIE); }
   if (!mz.lat.length) throw new Error("No se encontraron manzanas del Censo con acceso a la red en esa zona");
-  let fac = pts.map(p => { const sn = _cmpSnap(G, p.lat, p.lng, 600); return sn ? { id: p.id, n: p.n, rol: p.rol, lat: p.lat, lng: p.lng, pd: p.rol === "comp" ? (+p.pd || 5) : null, node: sn.n, acc: sn.d / _CMP_VPIE, dm: sn.d } : null; });
+  let fac = pts.map(p => { const sn = _cmpSnap(G, p.lat, p.lng, 600); return sn ? { id: p.id, n: p.n, rol: p.rol, lat: p.lat, lng: p.lng, pd: p.rol === "comp" ? (+p.pd || 5) : null, pdA: p.pdA || null, node: sn.n, acc: sn.d / _CMP_VPIE, dm: sn.d } : null; });
   const sinSnap = fac.filter(f => !f).length; fac = fac.filter(Boolean); if (fac.length > 250) { const rf = fac.filter(f => f.rol === "ref"), c0 = rf[0] || fac[0]; fac = rf.concat(fac.filter(f => f.rol === "comp").sort((a, b) => _cmpDm(c0.lat, c0.lng, a.lat, a.lng) - _cmpDm(c0.lat, c0.lng, b.lat, b.lng)).slice(0, 250 - rf.length)); }
   const ctx = { key, sig, modo, reg: reg.id, R, G, mz, fac, sinRed, sinRedPop, sinSnap, nVias: ways.length, totPop: mz.pop.reduce((a, b) => a + b, 0) };
   _CMP_CTX.set(key, ctx); while (_CMP_CTX.size > 3) _CMP_CTX.delete(_CMP_CTX.keys().next().value); return ctx;
@@ -13169,10 +13169,10 @@ const _cmpCalLee = async id => { try { const { data } = await _bnReadGcs(`mercad
 // ── análisis completo
 async function _cmpAnaliza(id, pts, o) {
   const modo = o.modo === "pie" ? "pie" : "auto", hora = _CMP_HORAS[o.hora] !== undefined ? o.hora : "libre", beta = Math.max(.5, Math.min(4, +o.beta || 2)), T = Math.max(3, Math.min(30, Math.round(+o.T) || 10)), tmax = (modo === "auto" ? 25 : 25) * 60;
-  const ctx = await _cmpCtx(id, pts, modo); let cal = null; if (modo === "auto" && (hora !== "libre" || o.calibra)) cal = await _cmpCalib(id, modo === "auto" ? ctx : await _cmpCtx(id, pts, "auto"), false); else if (modo === "auto") cal = await _cmpCalLee(id);
+  const ctx = await _cmpCtx(id, pts, modo); let cal = null; if (o.simulacion) { if (modo === "auto") cal = await _cmpCalLee(id); } else if (modo === "auto" && (hora !== "libre" || o.calibra)) cal = await _cmpCalib(id, modo === "auto" ? ctx : await _cmpCtx(id, pts, "auto"), false); else if (modo === "auto") cal = await _cmpCalLee(id);
   const { G, mz, fac } = ctx, M = mz.lat.length, F = fac.length, spm = _cmpSpm(modo, hora, cal), dist = new Float64Array(G.n), Tm = new Float32Array(F * M);
   const mC = pts.filter(p => p.rol === "comp").map(p => +p.pd || 5), aRef = Math.max(1, Math.min(10, Math.round(+o.aRef || (mC.reduce((a, b) => a + b, 0) / (mC.length || 1)) || 5)));
-  fac.forEach(f => { f.A = f.rol === "ref" ? aRef : f.pd; });
+  fac.forEach(f => { f.A = f.rol === "ref" ? (f.pdA || aRef) : f.pd; });
   for (let j = 0; j < F; j++) { _cmpDij(G, fac[j].node, fac[j].acc, tmax, spm, dist); for (let m = 0; m < M; m++) { const d = dist[mz.node[m]]; Tm[j * M + m] = d === Infinity ? Infinity : d + mz.acc[m]; } if (j % 4 === 3) await _cmpYield(); }
   // 1) Voronoi por tiempo
   const own = new Int16Array(M).fill(-1), tmin = new Float32Array(M).fill(Infinity); for (let m = 0; m < M; m++) for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t < tmin[m]) { tmin[m] = t; own[m] = j; } }
@@ -13180,8 +13180,8 @@ async function _cmpAnaliza(id, pts, o) {
   const tr = new Float32Array(M).fill(Infinity), tc = new Float32Array(M).fill(Infinity); for (let j = 0; j < F; j++) { const ar = fac[j].rol === "ref"; for (let m = 0; m < M; m++) { const t = Tm[j * M + m]; if (ar) { if (t < tr[m]) tr[m] = t; } else if (t < tc[m]) tc[m] = t; } }
   // 2) Huff
   const Aj = fac.map(f => f.A), huff = (b, quien) => { const cap = new Float64Array(F); for (let m = 0; m < M; m++) { let s = 0; for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t === Infinity) continue; s += Aj[j] * Math.pow(Math.max(1, t / 60), -b); } if (!s) continue; for (let j = 0; j < F; j++) { const t = Tm[j * M + m]; if (t === Infinity) continue; const p = Aj[j] * Math.pow(Math.max(1, t / 60), -b) / s; cap[j] += mz.pop[m] * p; if (quien) quien(m, j, p); } } return cap; };
-  const hw = new Int16Array(M).fill(-1), hp = new Float32Array(M), rp = new Float32Array(M); const refSet = new Set(fac.map((f, j) => f.rol === "ref" ? j : -1).filter(j => j >= 0));
-  const cap = huff(beta, (m, j, p) => { if (p > hp[m]) { hp[m] = p; hw[m] = j; } if (refSet.has(j)) rp[m] += p; });
+  const KP = 4, pj = new Int16Array(M * KP).fill(-1), pp = new Uint8Array(M * KP), hw = new Int16Array(M).fill(-1), hp = new Float32Array(M), rp = new Float32Array(M); const refSet = new Set(fac.map((f, j) => f.rol === "ref" ? j : -1).filter(j => j >= 0));
+  const cap = huff(beta, (m, j, p) => { if (p > hp[m]) { hp[m] = p; hw[m] = j; } if (refSet.has(j)) rp[m] += p; const pr = Math.round(p * 100); if (pr < 1) return; const b0 = m * KP; let pos = KP; for (let z = 0; z < KP; z++) if (pj[b0 + z] < 0 || pr > pp[b0 + z]) { pos = z; break; } if (pos < KP) { for (let z = KP - 1; z > pos; z--) { pj[b0 + z] = pj[b0 + z - 1]; pp[b0 + z] = pp[b0 + z - 1]; } pj[b0 + pos] = j; pp[b0 + pos] = pr; } });
   const capTot = cap.reduce((a, b) => a + b, 0) || 1, sens = [1, 1.5, 2, 2.5, 3].map(b => { const c = b === beta ? cap : huff(b), r = [...refSet].reduce((a, j) => a + c[j], 0); return { beta: b, ref: +(r / (c.reduce((a, x) => a + x, 0) || 1) * 100).toFixed(1) }; });
   // 3) E2SFCA (decaimiento gaussiano, T minutos)
   const Ts = T * 60, w = t => t > Ts ? 0 : (Math.exp(-.5 * (t / Ts) ** 2) - Math.exp(-.5)) / (1 - Math.exp(-.5)), mA = Aj.reduce((a, b) => a + b, 0) / F, Rj = new Float64Array(F), acc = new Float64Array(M), cov = new Float64Array(F);
@@ -13192,21 +13192,22 @@ async function _cmpAnaliza(id, pts, o) {
   const terr = fac.map(() => ({ pop: 0, n: 0, ts: 0 })); for (let m = 0; m < M; m++) if (own[m] >= 0) { const q = terr[own[m]]; q.pop += mz.pop[m]; q.n++; q.ts += tmin[m] * mz.pop[m]; }
   const facOut = fac.map((f, j) => ({ id: f.id, n: f.n, rol: f.rol, lat: f.lat, lng: f.lng, pd: f.pd, A: f.A, dm: Math.round(f.dm), pop: terr[j].pop, nz: terr[j].n, tmed: terr[j].pop ? +(terr[j].ts / terr[j].pop / 60).toFixed(1) : null, cap: Math.round(cap[j]), capPct: +(cap[j] / capTot * 100).toFixed(2), r: +(Rj[j] * 10000).toFixed(3), cov: Math.round(cov[j]) }));
   // 4) efecto del tráfico en el alcance (solo auto con calibración): población a ≤ T min de cada punto de referencia y de los competidores más cercanos, a flujo libre y en cada hora
-  let traf = null; if (modo === "auto" && cal && cal.calibrado) {
+  let traf = null; if (modo === "auto" && cal && cal.calibrado && !o.simulacion) {
     const c0 = fac.find(f => f.rol === "ref"), sel = fac.map((f, j) => j).filter(j => fac[j].rol === "ref").concat(fac.map((f, j) => j).filter(j => fac[j].rol === "comp").sort((a, b) => _cmpDm(c0.lat, c0.lng, fac[a].lat, fac[a].lng) - _cmpDm(c0.lat, c0.lng, fac[b].lat, fac[b].lng)).slice(0, 9)); traf = { T, cal: { kg: cal.kg, f: cal.f, n: cal.n, val: cal.val, dia: cal.dia }, pts: [] };
     const d2 = new Float64Array(G.n), hs = ["libre", "am", "md", "pm"], sp = hs.map(h => _cmpSpm("auto", h, cal));
     for (const j of sel) { const r = { id: fac[j].id, n: fac[j].n, rol: fac[j].rol, cov: {} }; hs.forEach((h, k) => { _cmpDij(G, fac[j].node, fac[j].acc, Ts, sp[k], d2); let c = 0; for (let m = 0; m < M; m++) { const d = d2[mz.node[m]]; if (d !== Infinity && d + mz.acc[m] <= Ts) c += mz.pop[m]; } r.cov[h] = c; }); traf.pts.push(r); await _cmpYield(); }
   }
   const rd = (a, k) => Array.from(a, v => +v.toFixed(k));
   return { ok: true, modo, hora, params: { beta, T, aRef, tmax: tmax / 60 }, region: ctx.reg, R: Math.round(ctx.R), nVias: ctx.nVias, nodos: G.n, totPop: ctx.totPop, nz: M, sinRed: ctx.sinRed, sinRedPop: ctx.sinRedPop, sinSnap: ctx.sinSnap, sinCob, qs, sens, cal: cal ? { kg: cal.kg, f: cal.f, n: cal.n, calibrado: !!cal.calibrado, motivo: cal.motivo || null, dia: cal.dia || null } : null, fac: facOut, traf,
-    mz: { la: rd(mz.lat, 5), ln: rd(mz.lng, 5), pop: mz.pop, sd: mz.side.map(v => Math.round(v)), pl: mz.poly, own: Array.from(own), tr: Array.from(tr, v => v === Infinity ? -1 : Math.round(v)), tc: Array.from(tc, v => v === Infinity ? -1 : Math.round(v)), t: Array.from(tmin, v => v === Infinity ? -1 : Math.round(v)), hw: Array.from(hw), hp: Array.from(hp, v => Math.round(v * 100)), rp: Array.from(rp, v => Math.round(v * 100)), acc: rd(acc, 2) } };
+    mz: { la: rd(mz.lat, 5), ln: rd(mz.lng, 5), pop: mz.pop, sd: mz.side.map(v => Math.round(v)), pl: mz.poly, own: Array.from(own), tr: Array.from(tr, v => v === Infinity ? -1 : Math.round(v)), tc: Array.from(tc, v => v === Infinity ? -1 : Math.round(v)), t: Array.from(tmin, v => v === Infinity ? -1 : Math.round(v)), hw: Array.from(hw), pj: Array.from(pj), pp: Array.from(pp), hp: Array.from(hp, v => Math.round(v * 100)), rp: Array.from(rp, v => Math.round(v * 100)), acc: rd(acc, 2) } };
 }
 const _cmpLee = async id => { const { data } = await _bnReadGcs(_CMP_OBJ(id)); const pts = data && Array.isArray(data.pts) ? data.pts : null; if (!pts) throw new Error("Primero guarde los puntos (paso 2)"); return pts; };
 app.post("/mercado/maqueta/competencia/analisis", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
-  try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" }); const pts = await _cmpLee(id), o = { modo: b.modo, hora: b.hora, beta: b.beta, T: b.T, aRef: b.aRef, calibra: !!b.calibra };
-    const ck = [id, _cmpSig(pts), pts.map(p => p.pd || 0).join(""), o.modo, o.hora, o.beta, o.T, o.aRef, o.calibra].join("|"), hit = _CMP_RES.get(ck); if (hit) return res.json(hit);
-    const r = await _cmpAnaliza(id, pts, o); _CMP_RES.set(ck, r); while (_CMP_RES.size > 8) _CMP_RES.delete(_CMP_RES.keys().next().value); res.json(r);
+  try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!id) return res.status(400).json({ ok: false, error: "Falta el id" }); let pts = await _cmpLee(id); const o = { modo: b.modo, hora: b.hora, beta: b.beta, T: b.T, aRef: b.aRef, calibra: !!b.calibra }, sm = b.sim && Math.abs(+b.sim.lat) <= 90 && Math.abs(+b.sim.lng) <= 180 ? b.sim : null;
+    if (sm) { o.calibra = false; o.simulacion = true; const nuevo = { id: "sim", n: "Punto nuevo (simulado)", lat: +sm.lat, lng: +sm.lng, rol: "ref", pd: 5, pdA: Math.max(1, Math.min(10, Math.round(+sm.pd) || 5)), src: "sim" }; pts = (sm.mover ? pts.filter(p => p.rol !== "ref") : pts.slice()).concat([nuevo]); }   // simulación: nunca consulta a Google, usa la calibración guardada
+    const ck = [id, _cmpSig(pts), pts.map(p => (p.pd || 0) + ":" + (p.pdA || 0)).join(""), o.modo, o.hora, o.beta, o.T, o.aRef, o.calibra, o.simulacion ? 1 : 0].join("|"), hit = _CMP_RES.get(ck); if (hit) return res.json(hit);
+    const r = await _cmpAnaliza(id, pts, o); if (sm && !r.fac.some(f => f.id === "sim")) throw new Error("El punto nuevo debe quedar a menos de 600 m de una calle"); _CMP_RES.set(ck, r); while (_CMP_RES.size > 8) _CMP_RES.delete(_CMP_RES.keys().next().value); res.json(r);
   } catch (e) { console.warn("[competencia/analisis]", e.message); res.status(400).json({ ok: false, error: String(e.message || e) }); }
 });
 app.get("/mercado/maqueta/competencia/isocrona", async (req, res) => {   // tiempo (s) desde un punto a cada manzana del último análisis; -1 = fuera de alcance
