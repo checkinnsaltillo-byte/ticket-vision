@@ -13119,7 +13119,7 @@ async function _cmpCtx(id, pts, modo) {
   const sig = _cmpSig(pts), key = id + "|" + sig + "|" + modo; if (_CMP_CTX.has(key)) { const c = _CMP_CTX.get(key); _CMP_CTX.delete(key); _CMP_CTX.set(key, c); return c; }
   const refs = pts.filter(p => p.rol === "ref"), comps = pts.filter(p => p.rol === "comp"); if (!refs.length || !comps.length) throw new Error("Hace falta al menos un punto de referencia y un competidor");
   const cla = pts.reduce((a, p) => a + p.lat, 0) / pts.length, clo = pts.reduce((a, p) => a + p.lng, 0) / pts.length; let maxD = 0; pts.forEach(p => { maxD = Math.max(maxD, _cmpDm(cla, clo, p.lat, p.lng)); });
-  const reg = _regDe(cla, clo); if (!reg) throw new Error("Esta zona no tiene datos locales de red vial ni de Censo (solo Saltillo y Monterrey por ahora)");
+  const reg = _regDe(cla, clo); if (!reg) throw new Error("Esta zona no tiene datos locales de red vial ni de Censo (todavía no se procesó el OpenStreetMap de esa zona)");
   let R = Math.max(3500, Math.min(16000, maxD + 3000)), ways = null; for (let k = 0; k < 6 && !ways; k++) { ways = await _vialWays(cla, clo, R); if (!ways) R *= .8; } if (!ways || !ways.length) throw new Error("No hay red vial local para esa zona");
   const G = _cmpGrafo(ways, modo); if (G.n < 50) throw new Error("La red vial de la zona es demasiado pequeña");
   const M = await _mzCarga(reg.id); if (!M) throw new Error("No hay Censo por manzana de esta región");
@@ -13897,7 +13897,31 @@ const _REGIONES = [
   { id: "saltillo", bbox: [25.15, -101.45, 25.80, -100.55], vial: "osm/vial-saltillo.json", ent: "osm/entorno/", hue: "osm/huellas/", uso: "osm/uso-saltillo.json" },
   { id: "monterrey", bbox: [25.211, -100.892, 26.425, -99.656], vial: "osm/vial-monterrey.json", ent: "osm/entorno-monterrey/", hue: "osm/huellas-monterrey/", uso: "osm/uso-monterrey.json" }];
 // la región de monterrey cubre los 18 municipios del área metropolitana y se traslapa con la de saltillo en la sierra: gana la región cuyo centro queda más cerca del punto
-const _regDe = (lat, lng) => { let best = null, bd = 1e9; for (const r of _REGIONES) { if (lat < r.bbox[0] || lat > r.bbox[2] || lng < r.bbox[1] || lng > r.bbox[3]) continue; const d = Math.hypot(lat - (r.bbox[0] + r.bbox[2]) / 2, (lng - (r.bbox[1] + r.bbox[3]) / 2) * .9); if (d < bd) { bd = d; best = r; } } return best; };
+const _regDe = (lat, lng) => { let best = null, bd = 1e9; for (const r of _REGIONES) { if (lat < r.bbox[0] || lat > r.bbox[2] || lng < r.bbox[1] || lng > r.bbox[3]) continue; const d = Math.hypot(lat - (r.bbox[0] + r.bbox[2]) / 2, (lng - (r.bbox[1] + r.bbox[3]) / 2) * .9); if (d < bd) { bd = d; best = r; } } return best || _regNac(lat, lng); };
+
+// ── Cobertura nacional (OpenStreetMap de todo México, osm/nac/…): celdas de 0.5° con 0.25° de margen; cada celda se comporta como una región más (mismo formato que Saltillo/Monterrey).
+// Los cuadros del entorno y de huellas (0.1°) se comparten entre todas las celdas (ek/hk "nac"). Las regiones propias (Saltillo, Monterrey) tienen prioridad.
+const _NAC = { vial: null, uso: new Set(), t: 0, mun: null, munT: 0 }, _NAC_REG = new Map();
+async function _nacCarga(forzar) {
+  if (!forzar && _NAC.vial && Date.now() - _NAC.t < 20 * 60000) return;
+  try { const [v, u] = await Promise.all([_bnReadGcs("osm/nac/vial/index.json"), _bnReadGcs("osm/nac/uso/index.json")]);
+    if (v.data && Array.isArray(v.data.celdas)) { _NAC.vial = new Set(v.data.celdas); _NAC.uso = new Set((u.data && u.data.celdas) || []); _NAC.t = Date.now(); console.log("[nac] OSM nacional:", _NAC.vial.size, "celdas de vialidad"); } }
+  catch (e) { console.warn("[nac] índice OSM nacional:", e.message); }
+}
+setTimeout(() => _nacCarga(true).catch(() => { }), 4000); setInterval(() => _nacCarga(true).catch(() => { }), 20 * 60000);
+function _regNac(lat, lng) {
+  if (!_NAC.vial) return null; const i = Math.floor(lat / .5), j = Math.floor(lng / .5), k = i + "_" + j; if (!_NAC.vial.has(k)) return null;
+  let r = _NAC_REG.get(k); if (!r) { const S = i * .5 - .25, W = j * .5 - .25; r = { id: "n" + k, nac: true, bbox: [S, W, S + 1, W + 1], vial: `osm/nac/vial/${k}.json`, uso: _NAC.uso.has(k) ? `osm/nac/uso/${k}.json` : null, ent: "osm/nac/ent/", ek: "nac", hue: "osm/nac/hue/", hk: "nac" }; _NAC_REG.set(k, r); }
+  return r;
+}
+// regiones nacionales en memoria: se conservan pocas a la vez (las grandes pesan decenas de MB); `extra` = otro caché por id (promesas)
+function _nacEvict(obj, id, max, extra) { if (!id || id[0] !== "n") return; const ks = Object.keys(obj).filter(k => k[0] === "n"); while (ks.length > (max || 3)) { const k = ks.shift(); delete obj[k]; if (extra) delete extra[k]; } }
+// municipios de todo el país (censo/DENUE descargados por estado): [{c: clave de 5 dígitos, nm, bbox, manzanas, pob, denue}]
+async function _nacMuns() {
+  if (_NAC.mun && Date.now() - _NAC.munT < 6 * 3600000) return _NAC.mun;
+  const out = []; for (let e = 1; e <= 32; e++) { try { const { data } = await _bnReadGcs(`nacional/estado-${String(e).padStart(2, "0")}.json`); if (data && data.mun) for (const [c, m] of Object.entries(data.mun)) if (m.bbox) out.push({ c, nm: m.nombre, bbox: m.bbox, manzanas: m.manzanas || 0, pob: m.pob || 0, denue: m.denue || 0 }); } catch (_) { } }
+  _NAC.mun = out; _NAC.munT = Date.now(); return out;
+}
 const _VIAL_M = {}, _vialPM = {}, _VIAL_CELDA = 0.02;
 function _vialDec(s) { const o = []; let i = 0, la = 0, ln = 0; while (i < s.length) { for (let w = 0; w < 2; w++) { let b, sh = 0, r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); const d = (r & 1) ? ~(r >> 1) : (r >> 1); if (w) ln += d; else la += d; } o.push([la / 1e6, ln / 1e6]); } return o; }
 function _vialCarga(reg) {
@@ -13905,7 +13929,7 @@ function _vialCarga(reg) {
   _vialPM[reg.id] = (async () => { try { const { data } = await _bnReadGcs(reg.vial); if (!data || !Array.isArray(data.ways)) return null; const W = data.ways, grid = new Map(), bb = new Array(W.length);
       W.forEach((w, k) => { const g = _vialDec(w.g); let a = 90, b = 180, c = -90, d = -180; g.forEach(p => { if (p[0] < a) a = p[0]; if (p[0] > c) c = p[0]; if (p[1] < b) b = p[1]; if (p[1] > d) d = p[1]; }); bb[k] = [a, b, c, d];
         for (let i = Math.floor(a / _VIAL_CELDA); i <= Math.floor(c / _VIAL_CELDA); i++) for (let j = Math.floor(b / _VIAL_CELDA); j <= Math.floor(d / _VIAL_CELDA); j++) { const key = i + "_" + j; let l = grid.get(key); if (!l) grid.set(key, l = []); l.push(k); } });
-      _VIAL_M[reg.id] = { at: data.at, bbox: data.bbox, W, grid, bb, n: W.length }; console.log("[vial] red vial local cargada:", reg.id, W.length, "vías"); return _VIAL_M[reg.id]; } catch (e) { console.warn("[vial] no se pudo cargar:", reg.id, e.message); return null; } finally { if (!_VIAL_M[reg.id]) delete _vialPM[reg.id]; } })();
+      _VIAL_M[reg.id] = { at: data.at, bbox: data.bbox, W, grid, bb, n: W.length }; _nacEvict(_VIAL_M, reg.id, 3, _vialPM); console.log("[vial] red vial local cargada:", reg.id, W.length, "vías"); return _VIAL_M[reg.id]; } catch (e) { console.warn("[vial] no se pudo cargar:", reg.id, e.message); return null; } finally { if (!_VIAL_M[reg.id]) delete _vialPM[reg.id]; } })();
   return _vialPM[reg.id];
 }
 // vías (elementos tipo Overpass: tags + geometry) con algún tramo a ≤ R metros del punto; null si no hay red local o el punto queda fuera de su cobertura
@@ -13974,8 +13998,8 @@ app.get("/geometrika/vial/estado", async (req, res) => { if (!_vOriginOk(req)) r
   res.json({ ok: true, cargada: !!V, vias: V ? V.n : 0, at: V ? V.at : null, bbox: V ? V.bbox : null, prueba }); });
 // ── Entorno local de OpenStreetMap (edificios, árboles, luminarias, semáforos, cruces, paradas, líneas de alta tensión, vías férreas, cauces): cuadros de 0.1° en osm/entorno/<i>_<j>.json, cargados a demanda
 const _ENT_I = {}, _ENT_T = new Map();   // índice por región y cuadros en caché (se identifican por región + cuadro)
-async function _entIdx(reg) { if (!reg) return null; if (_ENT_I[reg.id] !== undefined) return _ENT_I[reg.id]; try { const { data } = await _bnReadGcs(reg.ent + "index.json"); _ENT_I[reg.id] = data && data.tiles ? { reg, bbox: data.bbox, C: data.celda || 0.1, set: new Set(data.tiles) } : null; } catch (_) { return null; } return _ENT_I[reg.id]; }
-async function _entTile(k, reg) { const kk = reg.id + ":" + k; let t = _ENT_T.get(kk); if (t) { _ENT_T.delete(kk); _ENT_T.set(kk, t); return t; } const { data } = await _bnReadGcs(`${reg.ent}${k}.json`); t = data || { n: [], w: [] }; _ENT_T.set(kk, t); while (_ENT_T.size > 10) _ENT_T.delete(_ENT_T.keys().next().value); return t; }
+async function _entIdx(reg) { if (!reg) return null; const ek = reg.ek || reg.id, c = _ENT_I[ek]; if (c !== undefined && !(c === null && reg.nac && Date.now() - (_ENT_I.__t || 0) > 60000)) return c; try { const { data } = await _bnReadGcs(reg.ent + "index.json"); _ENT_I[ek] = data && data.tiles ? { reg, bbox: data.bbox, C: data.celda || 0.1, set: new Set(data.tiles) } : null; if (!_ENT_I[ek]) _ENT_I.__t = Date.now(); } catch (_) { return null; } return _ENT_I[ek]; }
+async function _entTile(k, reg) { const kk = (reg.ek || reg.id) + ":" + k; let t = _ENT_T.get(kk); if (t) { _ENT_T.delete(kk); _ENT_T.set(kk, t); return t; } const { data } = await _bnReadGcs(`${reg.ent}${k}.json`); t = data || { n: [], w: [] }; _ENT_T.set(kk, t); while (_ENT_T.size > 10) _ENT_T.delete(_ENT_T.keys().next().value); return t; }
 const _ENT_NK = { t: { natural: "tree" }, l: { highway: "street_lamp" }, s: { highway: "traffic_signals" }, c: { highway: "crossing" }, b: { highway: "bus_stop" }, p: { public_transport: "platform" }, w: { power: "tower" } };
 function _geoCerca(g, lat, lng, R) { const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320; for (let q = 0; q < g.length; q++) { const ax = (g[q][1] - lng) * kx, ay = (g[q][0] - lat) * ky; if (Math.hypot(ax, ay) <= R) return true; if (q > 0) { const bx = (g[q - 1][1] - lng) * kx, by = (g[q - 1][0] - lat) * ky, dx = ax - bx, dy = ay - by, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, -(bx * dx + by * dy) / l2)); if (Math.hypot(bx + dx * t, by + dy * t) <= R) return true; } } return false; }
 // elementos tipo Overpass (nodos y vías) del entorno a ≤ R metros; null si no hay datos locales para ese punto
@@ -14205,10 +14229,10 @@ const _mqQk = (lat, lng, z) => { const n = 2 ** z, x = Math.floor((lng + 180) / 
 // huellas de edificios locales (osm/huellas/<i>_<j>.json, Microsoft ML Building Footprints): sin descargar los archivos de 20 MB en cada análisis
 const _HUE = { idx: {}, tiles: new Map() };
 async function _huellasLocal(lat, lng, R) {
-  const reg = _regDe(lat, lng); if (!reg) return null; if (_HUE.idx[reg.id] === undefined) { try { const { data } = await _bnReadGcs(reg.hue + "index.json"); _HUE.idx[reg.id] = data && data.tiles ? { bbox: data.bbox, C: data.celda || 0.1, set: new Set(data.tiles) } : null; } catch (_) { return null; } }
-  const I = _HUE.idx[reg.id]; if (!I) return null; const P = _mqProy(lat, lng), dl = R / P.ky, dn = R / P.kx, [S, W, N, E] = I.bbox; if (lat - dl * 1.1 < S || lat + dl * 1.1 > N || lng - dn * 1.1 < W || lng + dn * 1.1 > E) return null;
+  const reg = _regDe(lat, lng); if (!reg) return null; if ((_HUE.idx[reg.hk || reg.id] === undefined || (_HUE.idx[reg.hk || reg.id] === null && reg.nac && Date.now() - (_HUE.t || 0) > 60000))) { try { const { data } = await _bnReadGcs(reg.hue + "index.json"); _HUE.idx[reg.hk || reg.id] = data && data.tiles ? { bbox: data.bbox, C: data.celda || 0.1, set: new Set(data.tiles) } : null; if (!_HUE.idx[reg.hk || reg.id]) _HUE.t = Date.now(); } catch (_) { return null; } }
+  const I = _HUE.idx[reg.hk || reg.id]; if (!I) return null; const P = _mqProy(lat, lng), dl = R / P.ky, dn = R / P.kx, [S, W, N, E] = I.bbox; if (lat - dl * 1.1 < S || lat + dl * 1.1 > N || lng - dn * 1.1 < W || lng + dn * 1.1 > E) return null;
   const out = [];
-  for (let i = Math.floor((lat - dl * 1.1) / I.C); i <= Math.floor((lat + dl * 1.1) / I.C); i++) for (let j = Math.floor((lng - dn * 1.1) / I.C); j <= Math.floor((lng + dn * 1.1) / I.C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; let T = _HUE.tiles.get(reg.id + ":" + k); if (!T) { T = (await _bnReadGcs(`${reg.hue}${k}.json`)).data || { f: [] }; _HUE.tiles.set(reg.id + ":" + k, T); while (_HUE.tiles.size > 12) _HUE.tiles.delete(_HUE.tiles.keys().next().value); }
+  for (let i = Math.floor((lat - dl * 1.1) / I.C); i <= Math.floor((lat + dl * 1.1) / I.C); i++) for (let j = Math.floor((lng - dn * 1.1) / I.C); j <= Math.floor((lng + dn * 1.1) / I.C); j++) { const k = i + "_" + j; if (!I.set.has(k)) continue; let T = _HUE.tiles.get((reg.hk || reg.id) + ":" + k); if (!T) { T = (await _bnReadGcs(`${reg.hue}${k}.json`)).data || { f: [] }; _HUE.tiles.set((reg.hk || reg.id) + ":" + k, T); while (_HUE.tiles.size > 12) _HUE.tiles.delete(_HUE.tiles.keys().next().value); }
     for (const e of T.f) { const ring = _vialDec(e), g = ring.map(q => P.xy(q[0], q[1])), cx = g.reduce((a, p) => a + p[0], 0) / g.length, cy = g.reduce((a, p) => a + p[1], 0) / g.length; if (Math.abs(cx) > R || Math.abs(cy) > R) continue; const f = []; g.forEach(p => f.push(p[0], p[1])); out.push(f); } }
   return out;
 }
@@ -14359,7 +14383,7 @@ const _odKey = id => `mercado/maqueta/od/${id}.json`;
 // usos de suelo y comercios locales (osm/uso-saltillo.json): landuse residencial/comercial/industrial y nodos shop/office/amenity para el modelo origen-destino
 const _USO_M = {};
 async function _usoLocal(lat, lng, R, conDuctos) {
-  const reg = _regDe(lat, lng); if (!reg) return null; if (_USO_M[reg.id] === undefined) { try { const { data } = await _bnReadGcs(reg.uso); _USO_M[reg.id] = data && data.nodes ? data : null; } catch (_) { return null; } }
+  const reg = _regDe(lat, lng); if (!reg || !reg.uso) return null; if (_USO_M[reg.id] === undefined) { try { const { data } = await _bnReadGcs(reg.uso); _USO_M[reg.id] = data && data.nodes ? data : null; _nacEvict(_USO_M, reg.id, 3); } catch (_) { return null; } }
   const _USO = _USO_M[reg.id]; if (!_USO) return null; const [S, W, N, E] = _USO.bbox, mLat = R / 111320, mLng = R / (111320 * Math.cos(lat * Math.PI / 180)); if (lat - mLat < S || lat + mLat > N || lng - mLng < W || lng + mLng > E) return null;
   const kx = 111320 * Math.cos(lat * Math.PI / 180), nodes = _USO.nodes.filter(n => Math.hypot((n[1] - lng) * kx, (n[0] - lat) * 111320) <= R).map(n => ({ type: "node", id: 0, lat: n[0], lon: n[1] })), ways = [];
   for (const w of _USO.ways) { if (!w.t.landuse && !conDuctos) continue; const g = _vialDec(w.g); if (_geoCerca(g, lat, lng, R)) ways.push({ type: "way", id: w.i, tags: w.t, geometry: g.map(p => ({ lat: p[0], lon: p[1] })) }); }
@@ -14989,11 +15013,11 @@ app.get("/mercado/maqueta/ms-huellas", async (req, res) => {
 });
 // ── Cartografía de INEGI (Marco Geoestadístico: servicios en área/línea/punto + ejes viales peatonales): un archivo por estado en inegi/<ent>.json (Cloud Storage); la maqueta pide solo lo que cae en su radio, en metros locales
 const _inegiMem = new Map(); let _inegiIdx = null;
-async function _inegiEstados() {
-  if (_inegiIdx && Date.now() - _inegiIdx.t < 600000) return _inegiIdx.l;
-  const tok = await _vGcsToken(), r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o?prefix=inegi/&fields=items(name)`, { headers: { Authorization: `Bearer ${tok}` } }), j = r.ok ? await r.json() : {}, l = [];
-  for (const o of (j.items || [])) { if (!/^inegi\/\d\d\.json$/.test(o.name)) continue; let m = _inegiMem.get(o.name); if (!m || Date.now() - m.t > 6 * 3600000) { const { data } = await _bnReadGcs(o.name); if (!data) continue; m = { t: Date.now(), d: data }; _inegiMem.set(o.name, m); } l.push(m.d); }
-  _inegiIdx = { t: Date.now(), l }; return l;
+async function _inegiEstados(lat, lng) {   // solo los estados cuyo contorno (de sus municipios, +0.5°) contiene el punto: cargar los 32 a la vez no cabe en memoria
+  const cand = new Set(); for (const m of await _nacMuns()) if (lat >= m.bbox[0] - .5 && lat <= m.bbox[2] + .5 && lng >= m.bbox[1] - .5 && lng <= m.bbox[3] + .5) cand.add(m.c.slice(0, 2));
+  const l = [];
+  for (const e of cand) { const name = `inegi/${e}.json`; let m = _inegiMem.get(name); if (!m || Date.now() - m.t > 6 * 3600000) { const { data } = await _bnReadGcs(name); if (!data) continue; m = { t: Date.now(), d: data }; _inegiMem.delete(name); _inegiMem.set(name, m); while (_inegiMem.size > 2) _inegiMem.delete(_inegiMem.keys().next().value); } l.push(m.d); }
+  return l;
 }
 // ── Alturas de edificios GHSL (GHS-BUILT-H R2023A, altura media neta por celda de ~100 m): cuadrícula en grados guardada en gs://…/ghsl/alturas.bin.gz (1 byte por celda, unidades de 0.25 m); cada maqueta pide solo su ventana
 let _ghslM = null;
@@ -15112,7 +15136,7 @@ app.get("/mercado/maqueta/inegi", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
     const lat = +req.query.lat, lng = +req.query.lng, R = Math.max(50, Math.min(3000, +req.query.r || 400)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
-    const est = (await _inegiEstados()).filter(d => lat >= d.bbox[0] - .02 && lat <= d.bbox[2] + .02 && lng >= d.bbox[1] - .02 && lng <= d.bbox[3] + .02); res.set("Cache-Control", "no-store");
+    const est = (await _inegiEstados(lat, lng)).filter(d => lat >= d.bbox[0] - .02 && lat <= d.bbox[2] + .02 && lng >= d.bbox[1] - .02 && lng <= d.bbox[3] + .02); res.set("Cache-Control", "no-store");
     if (!est.length) return res.json({ ok: true, sinDatos: true, n: 0, f: [] });
     const P = _mqProy(lat, lng), M = R * 1.15, f = [], inn = q => Math.abs(q[0]) <= M && Math.abs(q[1]) <= M;
     const poner = (k, d, parts) => { const o = { k, g: d.g || d.tv || "", t: d.t || d.s || "", c: d.c || "", n: d.n || "", gg: d.gg || "", tt: d.tt || "", p: parts.map(q => { const a = []; q.forEach(v => a.push(v[0], v[1])); return a; }) }; f.push(o); };
@@ -15129,7 +15153,16 @@ app.get("/mercado/maqueta/inegi", async (req, res) => {
 // ── Manzanas del Censo 2020 con población por sexo y grupo de edad (pirámide): archivos censo/manzanas-<región>.json en Cloud Storage (ver datos/poblacion/manzanas_edad.py)
 const _MZ = {};
 async function _mzCarga(reg) {
-  if (_MZ[reg]) return _MZ[reg]; return _MZ[reg] = (async () => { const { data } = await _bnReadGcs(`censo/manzanas-${reg}.json`); if (!data || !Array.isArray(data.mz)) return null; const grid = new Map(); data.mz.forEach((m, k) => { const key = Math.floor(m[1] / .01) + "_" + Math.floor(m[2] / .01); let l = grid.get(key); if (!l) grid.set(key, l = []); l.push(k); }); return { data, grid }; })().catch(e => { delete _MZ[reg]; throw e; });
+  if (_MZ[reg]) return _MZ[reg];
+  return _MZ[reg] = (async () => {
+    let data;
+    if (/^n-?\d+_-?\d+$/.test(reg)) {   // celda nacional: junta los municipios cuyo contorno toca la celda (con su margen)
+      const [i, j] = reg.slice(1).split("_").map(Number), S = i * .5 - .25, W = j * .5 - .25, N = S + 1, E = W + 1, mz = []; let meta = null;
+      for (const m of (await _nacMuns()).filter(m => m.manzanas && m.bbox[0] <= N && m.bbox[2] >= S && m.bbox[1] <= E && m.bbox[3] >= W)) { const r = (await _bnReadGcs(`censo/mun/${m.c.slice(0, 2)}/${m.c}.json`)).data; if (r && Array.isArray(r.mz)) { for (const x of r.mz) mz.push(x); meta = meta || r.meta; } }
+      data = mz.length ? { meta, mz } : null; _nacEvict(_MZ, reg, 2);
+    } else data = (await _bnReadGcs(`censo/manzanas-${reg}.json`)).data;
+    if (!data || !Array.isArray(data.mz)) return null; const grid = new Map(); data.mz.forEach((m, k) => { const key = Math.floor(m[1] / .01) + "_" + Math.floor(m[2] / .01); let l = grid.get(key); if (!l) grid.set(key, l = []); l.push(k); }); return { data, grid };
+  })().catch(e => { delete _MZ[reg]; throw e; });
 }
 app.get("/mercado/maqueta/manzanas", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
