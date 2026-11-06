@@ -18,7 +18,13 @@ const prop = (o, k) => { const p = o.properties.find(p => p.key && (p.key.name =
 const arrays = {}; let AN = null, RET = null;
 (function walk(n) {
   if (!n || typeof n.type !== "string") { return; }
-  if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && n.callee.property.name === "push" && n.arguments[0] && n.arguments[0].type === "ObjectExpression" && prop(n.arguments[0], "id") && prop(n.arguments[0], "tipo") && n.callee.object.type === "Identifier") {
+  // indicadores de cobertura del entorno urbano de INEGI: se generan con euCov(id, n, d, k, sub, lo, hi, nota); se expanden igual que en entorno.html
+  if (n.type === "CallExpression" && n.callee.type === "Identifier" && n.callee.name === "euCov") {
+    const A = n.arguments, sub = str(A[4]), FEU = "INEGI · Censo 2020 (entorno urbano por frente de manzana)";
+    (arrays.euL = arrays.euL || []).push({ id: str(A[0]), n: str(A[1]), tipo: "Dato duro", d: str(A[2]), u: "% de la longitud de vialidad", m: "Del entorno urbano del Censo 2020 por frente de manzana (INEGI) se suma la longitud de los frentes que " + sub + " y se divide entre la longitud de los frentes con dato, dentro de 500 m de la propiedad.", f: "P = L(frentes que " + sub + ") / L(frentes con dato) · 100",
+      vars: [{ n: "Longitud con el elemento", d: "Metros de vialidad cuyos frentes de manzana lo tienen.", u: "m", f: FEU, tr: [{ n: "Suma por longitud", d: "Cada frente de manzana pesa por su longitud.", f: "L = Σ lᵢ" }] }, { n: "Longitud con dato", d: "Metros de vialidad cuyos frentes tienen respuesta (sí o no).", u: "m", f: FEU, tr: [] }] });
+  }
+  if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && n.callee.property.name === "push" && n.arguments[0] && n.arguments[0].type === "ObjectExpression" && prop(n.arguments[0], "id") && prop(n.arguments[0], "id").type === "Literal" && prop(n.arguments[0], "tipo") && n.callee.object.type === "Identifier") {
     const o = n.arguments[0], a = n.callee.object.name, vars = [], vp = prop(o, "vars");
     if (vp && vp.type === "ArrayExpression") vp.elements.forEach(e => { if (e && e.type === "CallExpression" && e.callee.name === "V") { const A = e.arguments, tr = []; if (A[5] && A[5].type === "ArrayExpression") A[5].elements.forEach(t => { if (t && t.type === "CallExpression" && t.callee.name === "T") tr.push({ n: str(t.arguments[0]), d: str(t.arguments[1]), f: str(t.arguments[2]) }); }); vars.push({ n: str(A[0]), d: str(A[1]), u: str(A[2]), f: str(A[3]), tr }); } });
     (arrays[a] = arrays[a] || []).push({ id: str(prop(o, "id")), n: str(prop(o, "n")), tipo: str(prop(o, "tipo")), d: str(prop(o, "d")), u: str(prop(o, "u")), m: str(prop(o, "m")), f: str(prop(o, "f")), vars });
