@@ -30,7 +30,8 @@ const arrays = {}; let AN = null, RET = null;
     (arrays[a] = arrays[a] || []).push({ id: str(prop(o, "id")), n: str(prop(o, "n")), tipo: str(prop(o, "tipo")), d: str(prop(o, "d")), u: str(prop(o, "u")), m: str(prop(o, "m")), f: str(prop(o, "f")), vars });
   }
   if (n.type === "VariableDeclarator" && n.id.name === "AN" && n.init && n.init.type === "ObjectExpression") AN = n.init;
-  if (n.type === "ReturnStatement" && n.argument && n.argument.type === "ArrayExpression" && n.argument.elements[0] && n.argument.elements[0].type === "ObjectExpression" && prop(n.argument.elements[0], "an")) RET = n.argument;
+  if (n.type === "ReturnStatement" && n.argument) { const A = n.argument.type === "CallExpression" && n.argument.callee.name === "igIntegra" ? n.argument.arguments[0] : n.argument;   // return [...] o return igIntegra([...])
+    if (A && A.type === "ArrayExpression" && A.elements[0] && A.elements[0].type === "ObjectExpression" && prop(A.elements[0], "an")) RET = A; }
   for (const k in n) { const v = n[k]; if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v.type === "string") walk(v); }
 })(ast);
 if (!AN || !RET) throw new Error("no se halló AN o el return");
