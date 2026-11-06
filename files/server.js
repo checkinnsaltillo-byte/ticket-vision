@@ -24,14 +24,15 @@ app.use(express.json({ limit: "32mb" }));
 // ── GeoMetrika: acceso por contraseña. Las rutas de la maqueta, de los análisis ambientales y de /geometrika exigen un token firmado (x-gm-token). Se obtiene con la contraseña (/geometrika/acceso) o al iniciar sesión en el sistema (/sys/login). ──
 const _GM_HASH = new Set(["97ef44bc8db6e747ccec504373e35680205e1f3e81d00fcf9f084906e6a927ee", "4739ee3bd29e4f415da8ba9298a087e0fdc9c61378420ba8fbbab298bd74c4df"].concat(String(process.env.GM_CLAVES_SHA || "").split(",").map(x => x.trim()).filter(Boolean)));
 const _GM_DUR = 90 * 24 * 3600 * 1000, _gmFallos = new Map();
-function _gmToken() { const exp = Date.now() + _GM_DUR; return { token: _vSign({ t: "g", exp, n: crypto.randomBytes(5).toString("hex") }), exp }; }
+function _gmToken(nv) { const exp = Date.now() + _GM_DUR; return { token: _vSign({ t: "g", exp, nv: nv === 2 ? 2 : 1, n: crypto.randomBytes(5).toString("hex") }), exp }; }
+function _gmNivel(req) { const s = _vUnsign(req.headers["x-gm-token"] || req.query.t); return s && s.t === "g" && Date.now() < s.exp && s.nv === 2 ? 2 : 1; }
 function _gmOk(req) { const s = _vUnsign(req.headers["x-gm-token"] || req.query.t); return !!(s && s.t === "g" && Date.now() < s.exp); }
 app.post("/geometrika/acceso", (req, res) => {
   const ip = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim(), ahora = Date.now(), f = (_gmFallos.get(ip) || []).filter(t => ahora - t < 10 * 60 * 1000);
   if (f.length >= 8) return res.status(429).json({ ok: false, error: "Demasiados intentos. Espera unos minutos." });
   const h = crypto.createHash("sha256").update(String((req.body || {}).clave || "").trim()).digest("hex");
   if (!_GM_HASH.has(h)) { f.push(ahora); _gmFallos.set(ip, f); return res.status(401).json({ ok: false, error: "Contraseña incorrecta." }); }
-  res.json(Object.assign({ ok: true }, _gmToken()));
+  res.json(Object.assign({ ok: true }, _gmToken(h === "4739ee3bd29e4f415da8ba9298a087e0fdc9c61378420ba8fbbab298bd74c4df" ? 2 : 1)));
 });
 app.use(["/mercado/maqueta", "/mercado/ambiente", "/geometrika"], (req, res, next) => {
   if (req.method === "OPTIONS") return next(); const b = req.baseUrl, p = req.path;
@@ -13275,9 +13276,25 @@ const _dlL = (a, n, m) => (Array.isArray(a) ? a : []).slice(0, n).map(x => _dlT(
 const _DL_UNI = ["punto", "radio", "manzana", "hexagono", "ageb", "municipio", "ciudad"], _DL_ALC = ["proyecto", "maqueta", "ciudad_completa"], _DL_VIS = ["valor", "mapa_zona", "coropleta", "ranking"], _DL_CLA = ["cuartiles", "semaforo", "continua"], _DL_SEN = ["mayor_mejor", "menor_mejor", "neutro"], _DL_UNI_RES = { punto: "punto", zona: "radio", ciudad: "ciudad" };
 const _DL_RES = ["punto", "zona", "ciudad"], _DL_PER = ["Tiempo real", "Diaria", "Semanal", "Mensual", "Trimestral", "Anual", "Bajo demanda"], _DL_TIPO = ["Dato duro", "Dato calculado", "Índice", "Valoración cualitativa", "Valoración cuantitativa", "Dato inferido"], _DL_EST = ["Borrador", "Propuesto"];
 const _dlVars = (a, nom) => (Array.isArray(a) ? a : []).slice(0, 25).map(v => { v = v || {}; const n = _dlT(v.n || v.nombre, 140); return n ? { n, u: _dlT(v.u || v.unidades, 60), d: _dlT(v.d || v.descripcion, 400), f: _dlT(v.f || v.fuente, 200), cob: _dlT(v.cob || v.cobertura, 240), disponible: v.disponible === false ? false : true, nota: _dlT(v.nota, 300), en_catalogo: nom ? nom.has(n.toLowerCase()) : !!v.en_catalogo } : null; }).filter(Boolean);
+const _DL_VS = ["POBTOT", "POB_0_17", "POB_18_24", "POB_25_59", "POB_60MAS", "VIVTOT", "VIVHAB"], _DL_VP = ["GRAPROES", "PROM_OCUP", "PRO_OCUP_C", "V3MASOCU_P", "PISO_FIRME_P", "ELECTRICIDAD_P", "EXCUSADO_P", "DRENAJE_P", "DISCAPACIDAD_P", "MAYORES60_P", "NSE_Z"], _DL_EL = ["pav", "banq", "guarn", "alum", "dren", "arb", "rampa", "paso", "semaf", "ciclo", "transp", "bici", "rest", "amb", "indice"];
+function _dlOperando(o) {
+  if (!o || typeof o !== "object") return null;
+  if (o.t === "conteo") { const gr = (Array.isArray(o.grupos) ? o.grupos : []).map(Number).filter(g => Number.isInteger(g) && g >= 0 && g <= 9).slice(0, 10), sc = (Array.isArray(o.scian) ? o.scian : []).map(x => String(x).replace(/\D/g, "").slice(0, 6)).filter(Boolean).slice(0, 12); return { t: "conteo", grupos: [...new Set(gr)], scian: [...new Set(sc)] }; }
+  if (o.t === "suma" && _DL_VS.includes(o.v)) return { t: "suma", v: o.v };
+  if (o.t === "promedio" && _DL_VP.includes(o.v)) return { t: "promedio", v: o.v };
+  if (o.t === "cobertura" && _DL_EL.includes(o.e)) return { t: "cobertura", e: o.e };
+  return null;
+}
+function _dlReceta(r) {
+  if (!r || typeof r !== "object") return null;
+  if (r.tipo === "simple") { const a = _dlOperando(r.a); return a ? { tipo: "simple", a } : null; }
+  if (r.tipo === "razon") { const a = _dlOperando(r.a), b = _dlOperando(r.b), f = +r.factor; return a && b ? { tipo: "razon", a, b, factor: isFinite(f) && f > 0 ? f : 1 } : null; }
+  return null;
+}
+const _dlCalculable = (rc, uni) => !!rc && (uni === "radio" || uni === "manzana");
 let _dlIA = []; // marcas de tiempo de las consultas a la IA (tope por hora)
 app.get("/geometrika/datalab/indicadores", async (req, res) => {
-  try { const d = (await _rhdGetJson(_DL_OBJ)) || {}; res.set("Cache-Control", "no-store"); res.json({ ok: true, items: Array.isArray(d.items) ? d.items : [] }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  try { const d = (await _rhdGetJson(_DL_OBJ)) || {}; let L = Array.isArray(d.items) ? d.items : []; if (req.query.publicados === "1") L = L.filter(x => x.publicado); res.set("Cache-Control", "no-store"); res.json({ ok: true, items: L, nivel: _gmNivel(req) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // La IA propone de 2 a 3 metodologías para el indicador descrito, apoyándose en el catálogo de variables y fuentes que manda la pantalla.
 app.post("/geometrika/datalab/indicadores/proponer", async (req, res) => {
@@ -13304,9 +13321,18 @@ Reglas:
   · visualizacion = valor (una cifra con semáforo en la ventana Indicadores), mapa_zona (la zona calculada resaltada en el mapa con su cifra), coropleta (mapa coloreado por unidad con leyenda) o ranking (tabla ordenada de unidades).
   · clasificacion = cuartiles (colores relativos a la ciudad), semaforo (umbrales verde/ámbar/rojo; da umbral_verde y umbral_ambar) o continua; sentido = mayor_mejor, menor_mejor o neutro.
   · como_se_vera = 1 o 2 frases claras: sobre qué se calcula, para cuántas zonas y cómo se pinta.
+  · receta = cómo la plataforma puede calcularlo AUTOMÁTICAMENTE (solo con radio o manzana por ahora). Formas válidas (JSON exacto):
+      {"tipo":"simple","a":OPERANDO}   o   {"tipo":"razon","a":OPERANDO,"b":OPERANDO,"factor":1000}   (a/b·factor)
+      OPERANDO = {"t":"conteo","grupos":[0-9],"scian":["46","722"]}  (negocios del DENUE; grupos: 0 comercio al por menor, 1 al por mayor, 2 restaurantes y hospedaje, 3 finanzas y seguros, 4 profesionales/corporativos/inmobiliarios, 5 salud, 6 educación/cultura/esparcimiento, 7 industria/construcción/primario, 8 transporte/información/gobierno, 9 otros; scian = prefijos opcionales)
+               | {"t":"suma","v":VARIABLE}   (suma de una variable de las manzanas)
+               | {"t":"promedio","v":VARIABLE}   (promedio de una variable ponderado por población)
+               | {"t":"cobertura","e":ELEMENTO}   (% de longitud de vialidad que tiene el elemento)
+      VARIABLE de suma: POBTOT, POB_0_17, POB_18_24, POB_25_59, POB_60MAS, VIVTOT, VIVHAB. VARIABLE de promedio: GRAPROES, PROM_OCUP, PRO_OCUP_C, V3MASOCU_P, PISO_FIRME_P, ELECTRICIDAD_P, EXCUSADO_P, DRENAJE_P, DISCAPACIDAD_P, MAYORES60_P, NSE_Z.
+      ELEMENTO: pav, banq, guarn, alum, dren, arb, rampa, paso, semaf, ciclo, transp, bici, rest, amb, indice.
+      Si la metodología NO se puede expresar así (necesita otros datos, rutas, modelos, etc.), pon "receta": null y explícalo en limitaciones.
   La unidad debe ser coherente con la resolución pedida (punto→punto o radio; zona→radio, manzana, hexagono, ageb o municipio; ciudad→ciudad o municipio).
 Responde ÚNICAMENTE con JSON válido (sin texto antes o después ni bloques de código) con esta forma exacta:
-{"entendimiento":"qué entendiste que se quiere medir, en 1 a 2 frases","advertencias":["dudas o supuestos importantes"],"propuestas":[{"titulo":"nombre corto de la metodología","resumen":"2 a 3 frases","recomendada":true,"nombre_indicador":"nombre sugerido","descripcion":"qué mide, 1 a 2 frases","unidades":"unidades o escala","tipo":"Dato duro | Dato calculado | Índice | Valoración cualitativa | Valoración cuantitativa | Dato inferido","periodicidad":"Tiempo real | Diaria | Semanal | Mensual | Trimestral | Anual | Bajo demanda","objetivo_negocio":"para qué decisión de negocio sirve","unidad_espacial":"punto | radio | manzana | hexagono | ageb | municipio | ciudad","radio_m":500,"alcance":"proyecto | maqueta | ciudad_completa","visualizacion":"valor | mapa_zona | coropleta | ranking","clasificacion":"cuartiles | semaforo | continua","sentido":"mayor_mejor | menor_mejor | neutro","umbral_verde":0,"umbral_ambar":0,"como_se_vera":"cómo se calcula y se ve","pasos":["paso 1","paso 2"],"formula":"fórmula","variables":[{"nombre":"nombre exacto del catálogo o nombre nuevo","unidades":"","fuente":"","cobertura":"","disponible":true,"nota":""}],"supuestos":[""],"limitaciones":[""],"datos_faltantes":[""],"dificultad":"Baja | Media | Alta"}]}
+{"entendimiento":"qué entendiste que se quiere medir, en 1 a 2 frases","advertencias":["dudas o supuestos importantes"],"propuestas":[{"titulo":"nombre corto de la metodología","resumen":"2 a 3 frases","recomendada":true,"nombre_indicador":"nombre sugerido","descripcion":"qué mide, 1 a 2 frases","unidades":"unidades o escala","tipo":"Dato duro | Dato calculado | Índice | Valoración cualitativa | Valoración cuantitativa | Dato inferido","periodicidad":"Tiempo real | Diaria | Semanal | Mensual | Trimestral | Anual | Bajo demanda","objetivo_negocio":"para qué decisión de negocio sirve","unidad_espacial":"punto | radio | manzana | hexagono | ageb | municipio | ciudad","radio_m":500,"alcance":"proyecto | maqueta | ciudad_completa","visualizacion":"valor | mapa_zona | coropleta | ranking","clasificacion":"cuartiles | semaforo | continua","sentido":"mayor_mejor | menor_mejor | neutro","umbral_verde":0,"umbral_ambar":0,"como_se_vera":"cómo se calcula y se ve","receta":null,"pasos":["paso 1","paso 2"],"formula":"fórmula","variables":[{"nombre":"nombre exacto del catálogo o nombre nuevo","unidades":"","fuente":"","cobertura":"","disponible":true,"nota":""}],"supuestos":[""],"limitaciones":[""],"datos_faltantes":[""],"dificultad":"Baja | Media | Alta"}]}
 Marca "recomendada":true en una sola propuesta.`;
     const user = `RESOLUCIÓN PEDIDA: ${resolucion || "no indicada"}
 INSTRUCCIONES DE LA PERSONA:
@@ -13323,7 +13349,7 @@ Indicadores existentes: ${JSON.stringify(inds)}`;
     }
     if (!j) throw err || new Error("La IA no respondió");
     const txt = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim(), a = txt.indexOf("{"), z = txt.lastIndexOf("}"); let o; try { o = JSON.parse(txt.slice(a, z + 1)); } catch (_) { throw new Error("La IA devolvió una respuesta que no se pudo leer. Intenta de nuevo."); }
-    const props = (Array.isArray(o.propuestas) ? o.propuestas : []).slice(0, 3).map((p, i) => { p = p || {}; return { id: "p" + (i + 1), titulo: _dlT(p.titulo, 120) || "Metodología " + (i + 1), resumen: _dlT(p.resumen, 700), recomendada: !!p.recomendada, nombre: _dlT(p.nombre_indicador, 120), descripcion: _dlT(p.descripcion, 500), unidades: _dlT(p.unidades, 60), tipo: _DL_TIPO.includes(p.tipo) ? p.tipo : "Dato calculado", periodicidad: _DL_PER.includes(p.periodicidad) ? p.periodicidad : "Bajo demanda", objetivo: _dlT(p.objetivo_negocio, 400), unidad: _DL_UNI.includes(p.unidad_espacial) ? p.unidad_espacial : (_DL_UNI_RES[resolucion] || "radio"), radio: Math.max(50, Math.min(5000, Math.round(+p.radio_m) || 500)), alcance: _DL_ALC.includes(p.alcance) ? p.alcance : "proyecto", visual: _DL_VIS.includes(p.visualizacion) ? p.visualizacion : "valor", clasif: _DL_CLA.includes(p.clasificacion) ? p.clasificacion : "cuartiles", sentido: _DL_SEN.includes(p.sentido) ? p.sentido : "mayor_mejor", umbralVerde: isFinite(+p.umbral_verde) ? +p.umbral_verde : null, umbralAmbar: isFinite(+p.umbral_ambar) ? +p.umbral_ambar : null, comoSeVera: _dlT(p.como_se_vera, 500), pasos: _dlL(p.pasos, 12, 400), formula: _dlT(p.formula, 600), variables: _dlVars(p.variables, nom), supuestos: _dlL(p.supuestos, 8, 300), limitaciones: _dlL(p.limitaciones, 8, 300), faltantes: _dlL(p.datos_faltantes, 8, 300), dificultad: ["Baja", "Media", "Alta"].includes(p.dificultad) ? p.dificultad : "Media" }; }).filter(p => p.pasos.length || p.formula);
+    const props = (Array.isArray(o.propuestas) ? o.propuestas : []).slice(0, 3).map((p, i) => { p = p || {}; return { id: "p" + (i + 1), titulo: _dlT(p.titulo, 120) || "Metodología " + (i + 1), resumen: _dlT(p.resumen, 700), recomendada: !!p.recomendada, nombre: _dlT(p.nombre_indicador, 120), descripcion: _dlT(p.descripcion, 500), unidades: _dlT(p.unidades, 60), tipo: _DL_TIPO.includes(p.tipo) ? p.tipo : "Dato calculado", periodicidad: _DL_PER.includes(p.periodicidad) ? p.periodicidad : "Bajo demanda", objetivo: _dlT(p.objetivo_negocio, 400), unidad: _DL_UNI.includes(p.unidad_espacial) ? p.unidad_espacial : (_DL_UNI_RES[resolucion] || "radio"), radio: Math.max(50, Math.min(5000, Math.round(+p.radio_m) || 500)), alcance: _DL_ALC.includes(p.alcance) ? p.alcance : "proyecto", visual: _DL_VIS.includes(p.visualizacion) ? p.visualizacion : "valor", clasif: _DL_CLA.includes(p.clasificacion) ? p.clasificacion : "cuartiles", sentido: _DL_SEN.includes(p.sentido) ? p.sentido : "mayor_mejor", umbralVerde: isFinite(+p.umbral_verde) ? +p.umbral_verde : null, umbralAmbar: isFinite(+p.umbral_ambar) ? +p.umbral_ambar : null, comoSeVera: _dlT(p.como_se_vera, 500), receta: _dlReceta(p.receta), pasos: _dlL(p.pasos, 12, 400), formula: _dlT(p.formula, 600), variables: _dlVars(p.variables, nom), supuestos: _dlL(p.supuestos, 8, 300), limitaciones: _dlL(p.limitaciones, 8, 300), faltantes: _dlL(p.datos_faltantes, 8, 300), dificultad: ["Baja", "Media", "Alta"].includes(p.dificultad) ? p.dificultad : "Media" }; }).filter(p => p.pasos.length || p.formula);
     if (!props.length) throw new Error("La IA no propuso metodologías utilizables. Reformula la descripción.");
     if (!props.some(p => p.recomendada)) props[0].recomendada = true;
     res.json({ ok: true, entendimiento: _dlT(o.entendimiento, 500), advertencias: _dlL(o.advertencias, 6, 300), propuestas: props, uso: j.usage || null });
@@ -13337,7 +13363,8 @@ app.post("/geometrika/datalab/indicadores", async (req, res) => {
     const enfN = b.enf === "__nuevo" ? _dlT(b.enfNuevo, 80) : ""; if (b.enf === "__nuevo" ? enfN.length < 3 : !/^[a-z0-9_-]{2,24}$/.test(String(b.enf || ""))) falta.push("el enfoque");
     if (falta.length) return res.status(400).json({ ok: false, error: "Falta completar: " + falta.join(", ") + "." });
     const id = (n.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "indicador") + "-" + crypto.randomBytes(2).toString("hex");
-    const item = { id, n, d: _dlT(b.d, 600), u, res: b.res, periodicidad: b.periodicidad, objetivo, unidad: b.unidad, radio: b.unidad === "radio" ? Math.max(50, Math.min(5000, Math.round(+b.radio) || 500)) : null, alcance: b.alcance, visual: b.visual, clasif: _DL_CLA.includes(b.clasif) ? b.clasif : "cuartiles", sentido: _DL_SEN.includes(b.sentido) ? b.sentido : "mayor_mejor", umbralVerde: isFinite(+b.umbralVerde) && b.umbralVerde !== "" && b.umbralVerde != null ? +b.umbralVerde : null, umbralAmbar: isFinite(+b.umbralAmbar) && b.umbralAmbar !== "" && b.umbralAmbar != null ? +b.umbralAmbar : null, comoSeVera: _dlT(b.comoSeVera, 500), cat: b.cat, enf: b.enf === "__nuevo" ? "dl-" + (enfN.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20) || "nuevo") : b.enf, enfNuevo: enfN, tipo: _DL_TIPO.includes(b.tipo) ? b.tipo : "Dato calculado", estado: _DL_EST.includes(b.estado) ? b.estado : "Borrador", responsable: _dlT(b.responsable, 80), m, f: _dlT(b.f, 700), pasos: _dlL(b.pasos, 14, 400), vars: _dlVars(b.vars), supuestos: _dlL(b.supuestos, 10, 300), limitaciones: _dlL(b.limitaciones, 10, 300), faltantes: _dlL(b.faltantes, 10, 300), dificultad: ["Baja", "Media", "Alta"].includes(b.dificultad) ? b.dificultad : "", instrucciones: _dlT(b.instrucciones, 3000), metodologiaTitulo: _dlT(b.metodologiaTitulo, 120), creado: new Date().toISOString() };
+    const item = { id, n, d: _dlT(b.d, 600), u, res: b.res, periodicidad: b.periodicidad, objetivo, unidad: b.unidad, radio: b.unidad === "radio" ? Math.max(50, Math.min(5000, Math.round(+b.radio) || 500)) : null, alcance: b.alcance, visual: b.visual, clasif: _DL_CLA.includes(b.clasif) ? b.clasif : "cuartiles", sentido: _DL_SEN.includes(b.sentido) ? b.sentido : "mayor_mejor", umbralVerde: isFinite(+b.umbralVerde) && b.umbralVerde !== "" && b.umbralVerde != null ? +b.umbralVerde : null, umbralAmbar: isFinite(+b.umbralAmbar) && b.umbralAmbar !== "" && b.umbralAmbar != null ? +b.umbralAmbar : null, comoSeVera: _dlT(b.comoSeVera, 500), receta: _dlReceta(b.receta), cat: b.cat, enf: b.enf === "__nuevo" ? "dl-" + (enfN.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20) || "nuevo") : b.enf, enfNuevo: enfN, tipo: _DL_TIPO.includes(b.tipo) ? b.tipo : "Dato calculado", estado: _DL_EST.includes(b.estado) ? b.estado : "Borrador", responsable: _dlT(b.responsable, 80), m, f: _dlT(b.f, 700), pasos: _dlL(b.pasos, 14, 400), vars: _dlVars(b.vars), supuestos: _dlL(b.supuestos, 10, 300), limitaciones: _dlL(b.limitaciones, 10, 300), faltantes: _dlL(b.faltantes, 10, 300), dificultad: ["Baja", "Media", "Alta"].includes(b.dificultad) ? b.dificultad : "", instrucciones: _dlT(b.instrucciones, 3000), metodologiaTitulo: _dlT(b.metodologiaTitulo, 120), calculable: false, publicado: false, creado: new Date().toISOString() };
+    item.calculable = _dlCalculable(item.receta, item.unidad);
     if (req.query.dry === "1") return res.json({ ok: true, dry: true, item });
     await _dlMut(d => { d.items = Array.isArray(d.items) ? d.items : []; if (d.items.length >= 300) throw new Error("Se alcanzó el máximo de 300 indicadores creados."); d.items.push(item); });
     res.json({ ok: true, item });
@@ -13348,6 +13375,67 @@ app.post("/geometrika/datalab/indicadores/eliminar", async (req, res) => {
 });
 app.post("/geometrika/datalab/indicadores/estado", async (req, res) => {
   try { const id = _dlT((req.body || {}).id, 80), estado = (req.body || {}).estado; if (!id || !_DL_EST.includes(estado)) return res.status(400).json({ ok: false, error: "Datos no válidos." }); let n = 0; await _dlMut(d => { (d.items || []).forEach(x => { if (x.id === id) { x.estado = estado; n++; } }); }); res.json({ ok: true, actualizados: n }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ── Data Lab · motor de cálculo con recetas (etapa 1: radio alrededor de un punto y manzanas) + publicación para Geo Lab
+const _DL_VAL = { POBTOT: m => m.pob, POB_0_17: m => m.a.slice(0, 8).reduce((x, y) => x + y, 0), POB_18_24: m => m.a[8] + m.a[9], POB_25_59: m => m.a[10] + m.a[11], POB_60MAS: m => m.a[12] + m.a[13], VIVTOT: m => m.v[2], VIVHAB: m => m.v[3],
+  GRAPROES: m => m.v[1], PROM_OCUP: m => m.v[4], PRO_OCUP_C: m => m.v[5], V3MASOCU_P: m => m.v[6], PISO_FIRME_P: m => m.v[7], ELECTRICIDAD_P: m => m.v[8], EXCUSADO_P: m => m.v[9], DRENAJE_P: m => m.v[10], DISCAPACIDAD_P: m => m.v[11], MAYORES60_P: m => m.v[12], NSE_Z: m => m.z };
+const _DL_EL_IDX = { pav: [0], banq: [3], guarn: [4], alum: [7], dren: [15], arb: [10], rampa: [1], paso: [2], semaf: [11, 12], ciclo: [5, 6], transp: [16, 13], bici: [14], rest: [17, 18], amb: [19, 20] };
+function _dlIdxFte(c) { const P = [[0, 20], [3, 15], [4, 10], [7, 20], [15, 15], [10, 10], [1, 5], [2, 5]]; let a = 0, t = 0; for (const [i, w] of P) { const v = c[i]; if (v === "1") { a += w; t += w; } else if (v === "2") { a += w / 2; t += w; } else if (v === "3") t += w; } return t >= 40 ? 100 * a / t : null; }
+function _dlOp(o, S, P, F) {
+  if (o.t === "conteo") { let n = 0; for (const q of P) { if (o.grupos.length && !o.grupos.includes(q[2])) continue; if (o.scian.length && !o.scian.some(x => String(q[3]).startsWith(x))) continue; n++; } return n; }
+  if (o.t === "suma") { let t = 0, k = 0; for (const m of S) { const x = _DL_VAL[o.v](m); if (x != null && isFinite(x)) { t += x; k++; } } return k ? t : null; }
+  if (o.t === "promedio") { let sw = 0, sx = 0; for (const m of S) { const x = _DL_VAL[o.v](m), w = m.pob || 0; if (x != null && isFinite(x) && w > 0) { sx += x * w; sw += w; } } return sw ? sx / sw : null; }
+  if (o.t === "cobertura") { let si = 0, sab = 0; for (const f of F) { if (o.e === "indice") { const q = _dlIdxFte(f.c); if (q != null) { si += q * f.l; sab += f.l; } continue; } const vs = _DL_EL_IDX[o.e].map(i => f.c[i]); if (!vs.some(v => v === "1" || v === "2" || v === "3")) continue; sab += f.l; if (vs.includes("1")) si += f.l; } return sab ? (o.e === "indice" ? si / sab : 100 * si / sab) : null; }
+  return null;
+}
+const _dlR = v => v == null || !isFinite(v) ? null : Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
+async function _dlCalcula(rc, uni, lat, lng, R) {
+  const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320, ops = rc.tipo === "simple" ? [rc.a] : [rc.a, rc.b];
+  const nec = { denue: ops.some(o => o.t === "conteo"), manz: ops.some(o => o.t === "suma" || o.t === "promedio") || uni === "manzana", fte: ops.some(o => o.t === "cobertura") }, M = [], P = [], F = [];
+  const dl = (R + 250) / ky, dn = (R + 250) / kx, muns = (await _nacMuns()).filter(q => lat >= q.bbox[0] - dl && lat <= q.bbox[2] + dl && lng >= q.bbox[1] - dn && lng <= q.bbox[3] + dn); let hay = false;
+  for (const q of muns) {
+    const ent = q.c.slice(0, 2), [Fx, Mx, Cx, Dx] = await Promise.all([nec.fte ? _euArchivo(`inv/fte/${ent}/${q.c}.json`) : null, nec.manz ? _euArchivo(`inv/mza/${ent}/${q.c}.json`) : null, nec.manz ? _euArchivo(`censo/mun/${ent}/${q.c}.json`, d => { const mp = new Map(); (d.mz || []).forEach(z => mp.set(z[0], z)); return mp; }) : null, nec.denue ? _euArchivo(`denue/mun/${ent}/${q.c}.json`) : null]);
+    if (nec.manz && Cx) { hay = true; const inv = new Map(); ((Mx && Mx.m) || []).forEach(z => inv.set(z[0], z)); Cx.forEach((cm, id) => { const x = (cm[2] - lng) * kx, y = (cm[1] - lat) * ky; if (Math.abs(x) > R + 120 || Math.abs(y) > R + 120) return; const z = inv.get(id), p = []; for (let i = 0; i + 1 < cm[3].length; i += 2) p.push(Math.round((x + cm[3][i] / 10) * 10) / 10, Math.round((y + cm[3][i + 1] / 10) * 10) / 10); M.push({ id, x, y, p, pob: cm[5], a: cm[4], v: z ? z.slice(1, 14) : new Array(13).fill(null), z: z ? z[16] : null }); }); }
+    if (nec.denue && Dx && Dx.p) { hay = true; for (const e of Dx.p) { const x = (e[1] - lng) * kx, y = (e[0] - lat) * ky; if (Math.abs(x) <= R + 30 && Math.abs(y) <= R + 30) P.push([x, y, e[2], e[5]]); } }
+    if (nec.fte && Fx && Fx.f) { hay = true; for (const e of Fx.f) { const g = _vialDec(e[1]), pts = g.map(w => [(w[1] - lng) * kx, (w[0] - lat) * ky]); if (!pts.some(w => Math.hypot(w[0], w[1]) <= R + 20)) continue; let l = 0; for (let i = 1; i < pts.length; i++) l += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); F.push({ m: e[0], c: e[2], l, pts }); } }
+  }
+  if (!hay) return { fuera: true };
+  const ev = (S, Pp, Ff) => { const a = _dlOp(rc.a, S, Pp, Ff); if (rc.tipo === "simple") return { v: a, a }; const b = _dlOp(rc.b, S, Pp, Ff); return { v: a == null || !b ? null : a / b * rc.factor, a, b }; };
+  if (uni === "radio") { const S = M.filter(m => Math.hypot(m.x, m.y) <= R), Pp = P.filter(q => Math.hypot(q[0], q[1]) <= R), Ff = F.filter(f => f.pts.some(w => Math.hypot(w[0], w[1]) <= R)), r = ev(S, Pp, Ff); return { valor: _dlR(r.v), a: _dlR(r.a), b: r.b === undefined ? undefined : _dlR(r.b), manzanas: S.length, negocios: Pp.length, frentes: Ff.length }; }
+  const pip = (x, y, p) => { let d = false; for (let i = 0, k = p.length - 2; i + 1 < p.length; k = i, i += 2) { const xi = p[i], yi = p[i + 1], xk = p[k], yk = p[k + 1]; if ((yi > y) !== (yk > y) && x < (xk - xi) * (y - yi) / (yk - yi) + xi) d = !d; } return d; };
+  const porM = new Map(); F.forEach(f => { const l = porM.get(f.m); if (l) l.push(f); else porM.set(f.m, [f]); });
+  const items = []; for (const m of M) { if (Math.hypot(m.x, m.y) > R) continue; const Pp = nec.denue ? P.filter(q => pip(q[0], q[1], m.p)) : [], r = ev([m], Pp, porM.get(m.id) || []); if (r.v == null) continue; items.push({ id: m.id, x: Math.round(m.x * 10) / 10, y: Math.round(m.y * 10) / 10, p: m.p, v: _dlR(r.v), a: _dlR(r.a), b: r.b === undefined ? undefined : _dlR(r.b) }); }
+  const vs = items.map(i => i.v).sort((a, b) => a - b), q = f => vs.length ? vs[Math.min(vs.length - 1, Math.floor(f * vs.length))] : null;
+  return { items, stats: { n: vs.length, min: vs[0] == null ? null : vs[0], q1: q(.25), q2: q(.5), q3: q(.75), max: vs.length ? vs[vs.length - 1] : null, media: vs.length ? _dlR(vs.reduce((a, b) => a + b, 0) / vs.length) : null } };
+}
+const _dlResObj = id => `datalab/res/${String(id).replace(/[^a-z0-9-]/g, "")}.json`;
+app.post("/geometrika/datalab/indicadores/calcular", async (req, res) => {
+  try {
+    const b = req.body || {}, lat = +b.lat, lng = +b.lng; if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "Faltan las coordenadas." });
+    let it = null; if (b.id) { const d = (await _rhdGetJson(_DL_OBJ)) || {}; it = (d.items || []).find(x => x.id === _dlT(b.id, 80)); if (!it) return res.status(404).json({ ok: false, error: "No existe ese indicador." }); if (!it.publicado && _gmNivel(req) < 2) return res.status(403).json({ ok: false, error: "Este indicador todavía no está publicado." }); }
+    else if (_gmNivel(req) < 2) return res.status(403).json({ ok: false, error: "Solo un administrador puede probar una receta sin guardar." });
+    const receta = it ? _dlReceta(it.receta) : _dlReceta(b.receta), uni = it ? it.unidad : b.unidad;
+    if (!_dlCalculable(receta, uni)) return res.status(400).json({ ok: false, error: "Este indicador todavía no se puede calcular automáticamente (necesita una receta y unidad radio o manzana)." });
+    const R = uni === "radio" ? Math.max(50, Math.min(3000, Math.round(+b.radio || (it && it.radio) || 500))) : Math.max(100, Math.min(1500, Math.round(+b.radio || 500)));
+    const t0 = Date.now(), r = await _dlCalcula(receta, uni, lat, lng, R);
+    if (r.fuera) return res.json({ ok: true, fuera: true, mensaje: "No hay datos de INEGI para esta ubicación (solo zonas urbanas amanzanadas)." });
+    const out = Object.assign({ ok: true, id: it ? it.id : null, unidad: uni, radio: R, lat, lng, at: new Date().toISOString(), ms: Date.now() - t0 }, r);
+    if (it) { const key = lat.toFixed(4) + "," + lng.toFixed(4) + "," + R, d = (await _rhdGetJson(_dlResObj(it.id))) || {}; d.r = d.r || {}; d.r[key] = out; const ks = Object.keys(d.r).sort((x, y) => String(d.r[y].at).localeCompare(String(d.r[x].at))); ks.slice(12).forEach(k => delete d.r[k]); await _rhdPut(_dlResObj(it.id), JSON.stringify(d), "application/json"); }
+    res.json(out);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/geometrika/datalab/indicadores/resultado", async (req, res) => {
+  try { const id = _dlT(req.query.id, 80), lat = +req.query.lat, lng = +req.query.lng, R = Math.round(+req.query.r) || 0; if (!id || !isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "Faltan datos." });
+    const d = (await _rhdGetJson(_dlResObj(id))) || {}, key = lat.toFixed(4) + "," + lng.toFixed(4) + "," + R, r = (d.r || {})[key] || null; res.set("Cache-Control", "no-store"); res.json({ ok: true, resultado: r }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// publicar o retirar un indicador de Geo Lab: solo administrador (entra con la contraseña de administrador) y solo si se puede calcular
+app.post("/geometrika/datalab/indicadores/publicar", async (req, res) => {
+  try {
+    if (_gmNivel(req) < 2) return res.status(403).json({ ok: false, admin: true, error: "Solo un administrador puede publicar. Cierra sesión y entra con la contraseña de administrador." });
+    const id = _dlT((req.body || {}).id, 80), pub = !!(req.body || {}).publicado; if (!id) return res.status(400).json({ ok: false, error: "Falta el indicador." }); let err = null, item = null;
+    await _dlMut(d => { const it = (d.items || []).find(x => x.id === id); if (!it) { err = "No existe ese indicador."; return; } if (pub && !(it.calculable && _dlCalculable(_dlReceta(it.receta), it.unidad))) { err = "Todavía no se puede publicar: Geo Lab aún no sabe calcularlo (falta una receta válida y la unidad radio o manzana)."; return; } if (pub && (d.items || []).filter(x => x.publicado).length >= 12 && !it.publicado) { err = "Ya hay 12 indicadores publicados (máximo)."; return; } it.publicado = pub; it.publicadoEn = pub ? new Date().toISOString() : null; item = it; });
+    if (err) return res.status(400).json({ ok: false, error: err }); res.json({ ok: true, item });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Análisis del proyecto GeoMetrika: encadena fotos de calle (Street View + IA) → maqueta → tráfico, reutilizando los procesos de Alojamientos por id numérico ──
 const _gmPid = (id, k) => k ? id + String(k) : id;
@@ -15287,7 +15375,7 @@ app.get("/mercado/maqueta/manzanas", async (req, res) => {
 // ── Entorno urbano de INEGI (Inventario Nacional de Viviendas 2020 / Censo 2020): frentes de manzana con 21 características del entorno + manzanas con indicadores de vivienda, escolaridad y nivel socioeconómico estimado.
 // Archivos por municipio: inv/fte/<ent>/<entmun>.json (frentes), inv/mza/<ent>/<entmun>.json (manzanas), polígonos de manzana desde censo/mun/<ent>/<entmun>.json.
 const _EU = new Map();
-function _euArchivo(ruta, deriva) { let p = _EU.get(ruta); if (p) { _EU.delete(ruta); _EU.set(ruta, p); return p; } p = _bnReadGcs(ruta).then(r => r.data ? (deriva ? deriva(r.data) : r.data) : null).catch(() => null); _EU.set(ruta, p); while (_EU.size > 12) _EU.delete(_EU.keys().next().value); return p; }
+function _euArchivo(ruta, deriva) { let p = _EU.get(ruta); if (p) { _EU.delete(ruta); _EU.set(ruta, p); return p; } p = _bnReadGcs(ruta).then(r => { if (!r.data) { if (_EU.get(ruta) === p) _EU.delete(ruta); return null; } return deriva ? deriva(r.data) : r.data; }).catch(() => { if (_EU.get(ruta) === p) _EU.delete(ruta); return null; }); _EU.set(ruta, p); while (_EU.size > 12) _EU.delete(_EU.keys().next().value); return p; }
 app.get("/mercado/maqueta/entorno-inegi", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
@@ -15301,8 +15389,8 @@ app.get("/mercado/maqueta/entorno-inegi", async (req, res) => {
       if (M && M.m && C) for (const z of M.m) { const cm = C.get(z[0]); if (!cm) continue; const x = (cm[2] - lng) * kx, y = (cm[1] - lat) * ky; if (Math.abs(x) > R + 90 || Math.abs(y) > R + 90) continue;
         const p = []; for (let i = 0; i + 1 < cm[3].length; i += 2) p.push(r1(x + cm[3][i] / 10), r1(y + cm[3][i + 1] / 10)); m.push({ id: z[0], x: r1(x), y: r1(y), p, a: z.slice(1, 14), c: z[14], n: z[15], z: z[16] }); }
     }
+    if (!hay) { res.set("Cache-Control", "no-store"); return res.json({ ok: true, fuera: true, f: [], m: [] }); }
     res.set("Cache-Control", "public, max-age=3600");
-    if (!hay) return res.json({ ok: true, fuera: true, f: [], m: [] });
     res.json({ ok: true, fuente: "INEGI · Inventario Nacional de Viviendas 2020 (entorno urbano del Censo 2020 por frente de manzana)", atts: ["RECUCALL", "RAMPAS", "PASOPEAT", "BANQUETA", "GUARNICI", "CICLOVIA", "CICLOCAR", "ALUMPUB", "LETRERO", "TELPUB", "ARBOLES", "SEMAPEAT", "SEMAAUDI", "PARATRAN", "ESTABICI", "DRENAJEP", "TRANSCOL", "RESTPEAT", "RESTAUTO", "PUESTOSF", "PUESTOAM"],
       manzanas: ["POBTOT", "GRAPROES", "VIVTOT", "TVIPAHAB", "PROM_OCUP", "PRO_OCUP_C", "V3MASOCU_P", "VPH_PIDT_P", "VPH_C_EL_P", "VPH_EXSA_P", "VPH_DREN_P", "P_CD_P", "P_60YMAS_P"], nf: f.length, nm: m.length, f, m });
   } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
