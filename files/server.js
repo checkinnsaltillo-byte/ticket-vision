@@ -15276,6 +15276,29 @@ app.get("/mercado/maqueta/manzanas", async (req, res) => {
     res.set("Cache-Control", "public, max-age=3600"); res.json({ ok: true, region: reg.id, grupos: M.data.meta.grupos, fuente: M.data.meta.fuente, items }); }
   catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
+// ── Entorno urbano de INEGI (Inventario Nacional de Viviendas 2020 / Censo 2020): frentes de manzana con 21 características del entorno + manzanas con indicadores de vivienda, escolaridad y nivel socioeconómico estimado.
+// Archivos por municipio: inv/fte/<ent>/<entmun>.json (frentes), inv/mza/<ent>/<entmun>.json (manzanas), polígonos de manzana desde censo/mun/<ent>/<entmun>.json.
+const _EU = new Map();
+function _euArchivo(ruta, deriva) { let p = _EU.get(ruta); if (p) { _EU.delete(ruta); _EU.set(ruta, p); return p; } p = _bnReadGcs(ruta).then(r => r.data ? (deriva ? deriva(r.data) : r.data) : null).catch(() => null); _EU.set(ruta, p); while (_EU.size > 12) _EU.delete(_EU.keys().next().value); return p; }
+app.get("/mercado/maqueta/entorno-inegi", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng, R = Math.min(1500, Math.max(80, +req.query.r || 600)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
+    const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320, dl = (R + 250) / ky, dn = (R + 250) / kx, f = [], m = [], r1 = v => Math.round(v * 10) / 10;
+    const muns = (await _nacMuns()).filter(q => lat >= q.bbox[0] - dl && lat <= q.bbox[2] + dl && lng >= q.bbox[1] - dn && lng <= q.bbox[3] + dn);
+    let hay = false;
+    for (const q of muns) {
+      const ent = q.c.slice(0, 2), [F, M, C] = await Promise.all([_euArchivo(`inv/fte/${ent}/${q.c}.json`), _euArchivo(`inv/mza/${ent}/${q.c}.json`), _euArchivo(`censo/mun/${ent}/${q.c}.json`, d => { const mp = new Map(); (d.mz || []).forEach(z => mp.set(z[0], z)); return mp; })]);
+      if (F && F.f) { hay = true; for (const e of F.f) { const g = _vialDec(e[1]); let ok = false; const p = []; for (const w of g) { const x = (w[1] - lng) * kx, y = (w[0] - lat) * ky; p.push(r1(x), r1(y)); if (Math.hypot(x, y) <= R + 15) ok = true; } if (ok) f.push({ p, c: e[2], t: e[3], n: e[4], m: e[0], k: e[5] }); } }
+      if (M && M.m && C) for (const z of M.m) { const cm = C.get(z[0]); if (!cm) continue; const x = (cm[2] - lng) * kx, y = (cm[1] - lat) * ky; if (Math.abs(x) > R + 90 || Math.abs(y) > R + 90) continue;
+        const p = []; for (let i = 0; i + 1 < cm[3].length; i += 2) p.push(r1(x + cm[3][i] / 10), r1(y + cm[3][i + 1] / 10)); m.push({ id: z[0], x: r1(x), y: r1(y), p, a: z.slice(1, 14), c: z[14], n: z[15], z: z[16] }); }
+    }
+    res.set("Cache-Control", "public, max-age=3600");
+    if (!hay) return res.json({ ok: true, fuera: true, f: [], m: [] });
+    res.json({ ok: true, fuente: "INEGI · Inventario Nacional de Viviendas 2020 (entorno urbano del Censo 2020 por frente de manzana)", atts: ["RECUCALL", "RAMPAS", "PASOPEAT", "BANQUETA", "GUARNICI", "CICLOVIA", "CICLOCAR", "ALUMPUB", "LETRERO", "TELPUB", "ARBOLES", "SEMAPEAT", "SEMAAUDI", "PARATRAN", "ESTABICI", "DRENAJEP", "TRANSCOL", "RESTPEAT", "RESTAUTO", "PUESTOSF", "PUESTOAM"],
+      manzanas: ["POBTOT", "GRAPROES", "VIVTOT", "TVIPAHAB", "PROM_OCUP", "PRO_OCUP_C", "V3MASOCU_P", "VPH_PIDT_P", "VPH_C_EL_P", "VPH_EXSA_P", "VPH_DREN_P", "P_CD_P", "P_60YMAS_P"], nf: f.length, nm: m.length, f, m });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
 app.get("/mercado/maqueta/suelo", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
