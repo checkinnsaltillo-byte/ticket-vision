@@ -86,7 +86,7 @@ function gpAbre(sys) {
   if (sys === "data") {
     document.getElementById("datalab-host").style.display = "";
     const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "datalab.css?v=__DL__"; document.head.appendChild(l);
-    gpCarga("datalab-fuentes.js?v=__DL__", () => gpCarga("datalab-indicadores.js?v=__DL__", () => gpCarga("datalab.js?v=__DL__", () => window.datalabInit && window.datalabInit())));
+    gpCarga("datalab-fuentes.js?v=__DL__", () => gpCarga("datalab-indicadores.js?v=__DL__", () => gpCarga("datalab-geo.js?v=__DL__", () => gpCarga("datalab.js?v=__DL__", () => window.datalabInit && window.datalabInit()))));
   } else {
     document.getElementById("geometrika-host").style.display = "";
     gpCarga("geometrika.js?v=__V__", () => window.geometrikaInit && window.geometrikaInit());
