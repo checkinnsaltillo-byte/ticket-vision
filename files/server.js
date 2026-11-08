@@ -15444,6 +15444,14 @@ async function _hxArbCelda(ent, i, j) {
   });
   try { await _bnWriteGcs(name, { h: out }, null); _hxMem.delete(name); } catch (_) { } return out;
 }
+app.get("/mercado/maqueta/hexarb", async (req, res) => {   // calienta (calcula y guarda) el arbolado de una celda de 0.2°: lo usa el recorrido que deja todo el país listo
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const ent = String(req.query.ent || "").replace(/\D/g, "").padStart(2, "0"), i = parseInt(req.query.i), j = parseInt(req.query.j); if (!isFinite(i) || !isFinite(j)) {   // sin celda: recorre las pendientes de la entidad hasta ~50 s y avisa cuántas faltan
+      const idx = await _hxRead(`hex/${ent}/index.json`); if (!idx) return res.status(404).json({ ok: false, error: "sin hexágonos" }); const t0 = Date.now(); let hechas = 0, pend = 0;
+      for (const c of idx.celdas) { const [ci, cj] = c.split("_").map(Number); if (Date.now() - t0 > 50000) { pend++; continue; } const ya = await _bnReadGcs(`hex/${ent}/arb/${ci}_${cj}.json`); if (ya.data) continue; try { await _hxArbCelda(ent, ci, cj); hechas++; } catch (e) { console.warn("[hexarb]", ent, c, e.message); } }
+      return res.json({ ok: true, ent, hechas, pendientes: pend, total: idx.celdas.length }); }
+    const a = await _hxArbCelda(ent, i, j); res.json({ ok: true, hex: a.length, con_dato: a.filter(Boolean).length }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/mercado/maqueta/hexreg", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
@@ -15457,7 +15465,12 @@ app.get("/mercado/maqueta/hexreg", async (req, res) => {
       for (const [kk, lst] of celdas) { const [ent, i, j] = kk.split("|"), a = await _hxArbCelda(ent, +i, +j); lst.forEach(([k, p]) => { h[p] = a[k] || null; }); }
       return res.json({ meta: { fuente: "ESA WorldCover 10 m · 2021", campos: ["arbol", "matorral", "pasto_cultivo", "construido", "suelo_desnudo", "agua_otros"], unidad: "% del área del hexágono (radio efectivo ≈ 186 m)" }, h });
     }
-    if (n === "colonias") return res.json({ meta: { fuente: "INEGI · DENUE", colonias: 0, nota: "Colonias todavía no generadas para esta zona" }, c: [], p: [] });
+    if (n === "colonias") {   // celdas de 40 m con la colonia dominante (colonias_nacional.py → colonias/<ent>/<i>_<j>.json); se juntan las de la ventana
+      const ky = 110540, kx = 111320 * Math.cos(lat * Math.PI / 180), i0 = Math.floor((lat - R / ky) / .2), i1 = Math.floor((lat + R / ky) / .2), j0 = Math.floor((lng - R / kx) / .2), j1 = Math.floor((lng + R / kx) / .2), C = [], P = [];
+      for (const ent of W.ents.slice().sort()) { const idx = await _hxRead(`colonias/${ent}/index.json`); if (!idx) continue; const cel = new Set(idx.celdas || []);
+        for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { if (!cel.has(i + "_" + j)) continue; const tl = await _hxRead(`colonias/${ent}/${i}_${j}.json`); if (!tl) continue; const off = C.length; C.push(...tl.c); for (const q of tl.p) { const dx = (q[1] - lng) * kx, dy = (q[0] - lat) * ky; if (dx * dx + dy * dy <= R * R) P.push([q[0], q[1], q[2] + off]); } } }
+      return res.json({ meta: { fuente: "INEGI · DENUE: nombre de asentamiento (colonia) de cada establecimiento; territorio inferido", colonias: C.length, celdas: P.length, celda_m: 40 }, c: C, p: P });
+    }
     if (n === "denue") {
       const muns = new Set(W.T.map((t, i) => t[0] + W.H[i][6])), ky = 110540, kx = 111320 * Math.cos(lat * Math.PI / 180); let meta = null; const p = [];
       for (const cm of muns) { const d = await _hxRead(`denue/mun/${cm.slice(0, 2)}/${cm}.json`); if (!d) continue; meta = meta || d.meta; for (const q of d.p) { const dx = (q[1] - lng) * kx, dy = (q[0] - lat) * ky; if (dx * dx + dy * dy <= R * R) p.push(q); } if (p.length > 300000) break; }
