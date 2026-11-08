@@ -10,4 +10,4 @@ Fuentes (descarga con User-Agent de navegador):
 - Microsoft Global ML Building Footprints (dataset-links.csv)
 
 Scripts (en este orden): `poblacion_hex.py` (MUNS = los 18) → `nse_hex.py` → `denue_prep.py` (filtra los 18) → `arbolado_hex.py` (pide `/mercado/maqueta/suelo`, necesita `x-gm-token`); `osm_vial_extrae.py` + `osm_vial_empaca.py` → `osm/vial-monterrey.json`; `osm_entorno_extrae.py` → `osm/entorno-monterrey/`; `osm_uso_extrae.py` → `osm/uso-monterrey.json`; `huellas_microsoft.py` → `osm/huellas-monterrey/`. Los cuatro de OSM/Microsoft llevan la caja metropolitana en `S,W,N,E`.
-Sin cifra municipal EIC 2025: p25 = p20. El servidor y el visor eligen la región por el centro más cercano entre las cajas que contienen el punto (Monterrey se traslapa con Saltillo en la sierra).
+p25 = p20 × factor municipal EIC 2025 (cargado el 2026-11-08). El servidor y el visor eligen la región por el centro más cercano entre las cajas que contienen el punto (Monterrey se traslapa con Saltillo en la sierra).

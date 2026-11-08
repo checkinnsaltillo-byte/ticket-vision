@@ -81,14 +81,17 @@ def lee_censo(ent, trabajo, csv_zip=None):
     """Devuelve {cvegeo(16): {col: float|None}} de las manzanas del CSV del Censo 2020."""
     d = os.path.join(trabajo, ent); os.makedirs(d, exist_ok=True)
     cz = csv_zip or baja(CENSO % ent, f"{d}/censo.zip")
-    out = {}
+    out = {}; tot = {}
     with zipfile.ZipFile(cz) as z:
         nom = next(n for n in z.namelist() if n.lower().endswith(".csv") and "/conjunto_de_datos/" in n.lower() and "bitacora" not in n.lower())
         with z.open(nom) as f:
             for x in csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig", errors="replace", newline="")):
+                if x.get("LOC") == "0000" and x.get("AGEB") == "0000" and x.get("MZA") == "000":   # total del municipio (urbano + rural)
+                    v = num(x.get("POBTOT"))
+                    if v: tot[x["ENTIDAD"].zfill(2) + x["MUN"].zfill(3)] = v
                 if x.get("MZA", "000") in ("000", ""): continue
                 out[x["ENTIDAD"].zfill(2) + x["MUN"].zfill(3) + x["LOC"].zfill(4) + x["AGEB"] + x["MZA"].zfill(3)] = {c: num(x.get(c)) for c in COLS}
-    return out
+    return out, tot
 
 def manzanas(ent, sal, censo_local):
     """Itera (cve_mun, manzana) desde censo/mun/<ent>/*.json (local o Cloud Storage)."""
@@ -100,8 +103,13 @@ def manzanas(ent, sal, censo_local):
             if not b.name.endswith(".json"): continue
             for m in json.loads(b.download_as_bytes())["mz"]: yield b.name.split("/")[-1][:-5], m
 
+def carga_eic():
+    """Población municipal 2025 (Encuesta Intercensal 2025, viviendas particulares habitadas): eic2025_municipal.json junto al script ({'05030': {'n':'Saltillo','p':976477}, …})."""
+    return json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "eic2025_municipal.json")))
+
 def calcula(ent, sal, trabajo, censo_local, csv_zip):
-    t0 = time.time(); C = lee_censo(ent, trabajo, csv_zip); log(ent, "censo CSV:", len(C), "manzanas")
+    t0 = time.time(); C, TOT = lee_censo(ent, trabajo, csv_zip); EIC = carga_eic(); log(ent, "censo CSV:", len(C), "manzanas · EIC 2025:", sum(1 for c in EIC if c[:2] == ent), "municipios")
+    FAC = {cm: EIC[cm]['p'] / TOT[cm] for cm in TOT if cm in EIC and TOT[cm] > 0}
     hp = defaultdict(lambda: [0.0, 0.0]); hm = defaultdict(lambda: defaultdict(float)); S = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0])); VH = defaultdict(float)
     n_mz = 0; sin_csv = 0; pob_tot = 0
     for cm, m in manzanas(ent, sal, censo_local):
@@ -177,12 +185,12 @@ def calcula(ent, sal, trabajo, censo_local, csv_zip):
     tiles = defaultdict(lambda: ([], []))
     for k in llaves:
         la, ln = inv(*centro(*k)); mun = max(hm[k].items(), key=lambda kv: kv[1])[0][2:]
-        t = tiles[(math.floor(la / CELDA), math.floor(ln / CELDA))]; t[0].append([k[0], k[1], round(la, 6), round(ln, 6), round(hp[k][0], 1), round(hp[k][1], 1), mun]); t[1].append(nse.get(k))
+        t = tiles[(math.floor(la / CELDA), math.floor(ln / CELDA))]; p25 = sum(pm * FAC.get(cm, 1.0) for cm, pm in hm[k].items()); t[0].append([k[0], k[1], round(la, 6), round(ln, 6), round(hp[k][0], 1), round(hp[k][1], 1), mun, round(p25, 1)]); t[1].append(nse.get(k))
     celdas = []
     for (i, j), (hx, ns) in tiles.items():
         sal.pon(f"hex/{ent}/{i}_{j}.json", {"c": [i, j], "hex": hx, "nse": ns}); celdas.append(f"{i}_{j}")
     idx = {'ent': ent, 'nombre': NOMBRES[ent][3:], 'ancla': [LAT0, LNG0], 'radio_m': R, 'celda_grados': CELDA, 'celdas': sorted(celdas), 'hexagonos': len(llaves), 'pob_hexagonos': round(sum(hp[k][0] for k in llaves)), 'pob_manzanas': pob_tot, 'manzanas': n_mz, 'nse': meta_nse,
-           'fuente': 'INEGI · Censo de Población y Vivienda 2020 (manzanas urbanas) + Marco Geoestadístico', 'metodo': 'interpolación areal que conserva la población (reparto proporcional al área de intersección manzana-hexágono)', 'nota_2025': 'p25 = p20 (sin cifra municipal EIC 2025 cargada para esta entidad)',
+           'fuente': 'INEGI · Censo de Población y Vivienda 2020 (manzanas urbanas) + Marco Geoestadístico', 'metodo': 'interpolación areal que conserva la población (reparto proporcional al área de intersección manzana-hexágono)', 'nota_2025': 'p25 = p20 × (población municipal EIC 2025 en viviendas particulares / población total municipal del Censo 2020); estimación, no dato de manzana', 'municipios_eic2025': sum(1 for cm in TOT if cm in EIC), 'pob_hexagonos_2025': round(sum(sum(pm * FAC.get(cm, 1.0) for cm, pm in hm[k].items()) for k in llaves)),
            'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'segundos': round(time.time() - t0)}
     sal.pon(f"hex/{ent}/index.json", idx); log(ent, "LISTO:", len(llaves), "hexágonos,", len(celdas), "celdas,", len(nse), "con NSE,", idx['segundos'], "s")
 

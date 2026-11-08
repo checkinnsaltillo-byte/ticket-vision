@@ -15421,7 +15421,7 @@ async function _hxVentana(lat, lng, R) {
     for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
       if (!cel.has(i + "_" + j)) continue; const t = await _hxRead(`hex/${ent}/${i}_${j}.json`); if (!t) continue;
       t.hex.forEach((h, k) => { const dx = (h[3] - lng) * kx, dy = (h[2] - lat) * ky; if (dx * dx + dy * dy > R * R) return; const kk = h[0] + "|" + h[1], p = M.get(kk);
-        if (!p) M.set(kk, { h: h.slice(), n: t.nse[k], e: ent, t: [ent, i, j, k] }); else { p.h[4] += h[4]; p.h[5] += h[5]; if (h[4] > p.h[4] - h[4] && t.nse[k]) { p.n = t.nse[k]; p.e = ent; } }
+        if (!p) M.set(kk, { h: h.slice(), n: t.nse[k], e: ent, t: [ent, i, j, k] }); else { p.h[4] += h[4]; p.h[5] += h[5]; p.h[7] = (p.h[7] != null ? p.h[7] : p.h[4] - h[4]) + (h[7] != null ? h[7] : h[4]); if (h[4] > p.h[4] - h[4] && t.nse[k]) { p.n = t.nse[k]; p.e = ent; } }
         cuenta[ent] = (cuenta[ent] || 0) + 1; });
     }
   }
@@ -15458,7 +15458,7 @@ app.get("/mercado/maqueta/hexreg", async (req, res) => {
     const lat = +req.query.lat, lng = +req.query.lng, R = Math.min(20000, Math.max(3000, +req.query.r || 12000)), n = String(req.query.n || ""); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "coordenadas" });
     res.set("Cache-Control", "no-store"); const W = await _hxVentana(lat, lng, R);
     if (!W.H.length) return res.json({ ok: false, error: "Todavía no hay hexágonos de esta zona" });
-    if (n === "poblacion_hex") return res.json({ meta: { fuente: "INEGI · Censo de Población y Vivienda 2020 (manzanas urbanas)", metodo: "interpolación areal que conserva la población (hex_nacional.py)", radio_m: 200, ancla: [23, -102], nota_2025: "p25 = p20 (sin cifra municipal EIC 2025 cargada)", ventana_m: R }, hex: W.H.map(h => ({ q: h[0], r: h[1], lat: h[2], lng: h[3], p20: h[4], p25: h[4], viv: h[5], mun: h[6] })) });
+    if (n === "poblacion_hex") return res.json({ meta: { fuente: "INEGI · Censo de Población y Vivienda 2020 (manzanas urbanas)", metodo: "interpolación areal que conserva la población (hex_nacional.py)", radio_m: 200, ancla: [23, -102], nota_2025: "p25 = p20 × (población municipal de la Encuesta Intercensal 2025 / población municipal del Censo 2020); estimación, no dato de manzana", ventana_m: R }, hex: W.H.map(h => ({ q: h[0], r: h[1], lat: h[2], lng: h[3], p20: h[4], p25: h[7] != null ? h[7] : h[4], viv: h[5], mun: h[6] })) });
     if (n === "nse_hex") return res.json({ meta: W.metaNse || { niveles: [] }, h: W.N });
     if (n === "arbolado_hex") {
       const celdas = new Map(); W.T.forEach(([ent, i, j, k], p) => { const kk = ent + "|" + i + "|" + j; (celdas.get(kk) || celdas.set(kk, []).get(kk)).push([k, p]); }); const h = new Array(W.H.length).fill(null);
