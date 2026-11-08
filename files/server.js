@@ -15408,6 +15408,64 @@ app.get("/mercado/maqueta/suelo", async (req, res) => {
     res.set("Cache-Control", "public, max-age=86400"); res.json(o);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Hexágonos de población / NSE / arbolado y DENUE de TODO México (los deja hex_nacional.py en hex/<ent>/<i>_<j>.json): la maqueta los pide por ventana para las zonas fuera de Saltillo y Monterrey, con la misma forma que sus archivos de ciudad
+const _hxMem = new Map(), _hxWin = new Map();
+async function _hxRead(name) { const m = _hxMem.get(name); if (m && Date.now() - m.t < 6 * 3600e3) return m.d; const { data } = await _bnReadGcs(name); _hxMem.delete(name); _hxMem.set(name, { t: Date.now(), d: data || null }); if (_hxMem.size > 90) _hxMem.delete(_hxMem.keys().next().value); return data || null; }
+async function _hxVentana(lat, lng, R) {
+  const key = [lat.toFixed(3), lng.toFixed(3), Math.round(R)].join("|"), c = _hxWin.get(key); if (c && Date.now() - c.t < 30 * 60e3) return c.w;
+  const ents = new Set(); for (const m of await _nacMuns()) if (lat >= m.bbox[0] - .3 && lat <= m.bbox[2] + .3 && lng >= m.bbox[1] - .3 && lng <= m.bbox[3] + .3) ents.add(m.c.slice(0, 2));
+  const ky = 110540, kx = 111320 * Math.cos(lat * Math.PI / 180), dla = R / ky, dlo = R / kx, i0 = Math.floor((lat - dla) / .2), i1 = Math.floor((lat + dla) / .2), j0 = Math.floor((lng - dlo) / .2), j1 = Math.floor((lng + dlo) / .2);
+  const M = new Map(); const cuenta = {}; let metaNse = null;
+  for (const ent of [...ents].sort()) {
+    const idx = await _hxRead(`hex/${ent}/index.json`); if (!idx) continue; const cel = new Set(idx.celdas || []);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+      if (!cel.has(i + "_" + j)) continue; const t = await _hxRead(`hex/${ent}/${i}_${j}.json`); if (!t) continue;
+      t.hex.forEach((h, k) => { const dx = (h[3] - lng) * kx, dy = (h[2] - lat) * ky; if (dx * dx + dy * dy > R * R) return; const kk = h[0] + "|" + h[1], p = M.get(kk);
+        if (!p) M.set(kk, { h: h.slice(), n: t.nse[k], e: ent, t: [ent, i, j, k] }); else { p.h[4] += h[4]; p.h[5] += h[5]; if (h[4] > p.h[4] - h[4] && t.nse[k]) { p.n = t.nse[k]; p.e = ent; } }
+        cuenta[ent] = (cuenta[ent] || 0) + 1; });
+    }
+  }
+  const E = Object.keys(cuenta).sort((a, b) => cuenta[b] - cuenta[a])[0]; if (E) { const idx = await _hxRead(`hex/${E}/index.json`); metaNse = idx && idx.nse; }
+  const L = [...M.values()].sort((a, b) => a.h[0] - b.h[0] || a.h[1] - b.h[1]);
+  const w = { H: L.map(x => x.h), N: L.map(x => x.n || null), T: L.map(x => x.t), ents: [...ents], metaNse }; _hxWin.set(key, { t: Date.now(), w }); if (_hxWin.size > 16) _hxWin.delete(_hxWin.keys().next().value); return w;
+}
+// arbolado por hexágono (ESA WorldCover 10 m): se calcula la primera vez que se pide una celda de 0.2° y se guarda en hex/<ent>/arb/<i>_<j>.json
+async function _hxArbCelda(ent, i, j) {
+  const name = `hex/${ent}/arb/${i}_${j}.json`, c = await _hxRead(name); if (c && c.h) return c.h;
+  const t = await _hxRead(`hex/${ent}/${i}_${j}.json`); if (!t) return [];
+  const la0 = (i + .5) * .2, lo0 = (j + .5) * .2, img = await _wcImg(la0, lo0), [w, s, e, n] = img.getBoundingBox(), W = img.getWidth(), H = img.getHeight(), mx = (e - w) / W * 111320 * Math.cos(la0 * Math.PI / 180), my = (n - s) / H * 110540, Rr = 186;
+  const X = h => (h[3] - w) / (e - w) * W, Y = h => (n - h[2]) / (n - s) * H, rx = Math.ceil(Rr / mx) + 1, ry = Math.ceil(Rr / my) + 1;
+  const xs = t.hex.map(X), ys = t.hex.map(Y), x0 = Math.max(0, Math.floor(Math.min(...xs)) - rx), x1 = Math.min(W, Math.ceil(Math.max(...xs)) + rx + 1), y0 = Math.max(0, Math.floor(Math.min(...ys)) - ry), y1 = Math.min(H, Math.ceil(Math.max(...ys)) + ry + 1);
+  const A = (await img.readRasters({ window: [x0, y0, x1, y1], samples: [0] }))[0], w2 = x1 - x0, out = [];
+  t.hex.forEach((h, k) => {
+    const px = xs[k], py = ys[k], cnt = new Uint32Array(101); let tot = 0;
+    for (let y = Math.max(y0, Math.floor(py) - ry); y <= Math.min(y1 - 1, Math.floor(py) + ry); y++) for (let x = Math.max(x0, Math.floor(px) - rx); x <= Math.min(x1 - 1, Math.floor(px) + rx); x++) { if (Math.hypot((x + .5 - px) * mx, (y + .5 - py) * my) > Rr) continue; const v = A[(y - y0) * w2 + (x - x0)]; if (!v) continue; cnt[v]++; tot++; }
+    if (tot < 40) { out.push(null); return; } const f = cs => Math.round(100 * cs.reduce((a, c2) => a + cnt[c2], 0) / tot); out.push([f([10]), f([20]), f([30, 40]), f([50]), f([60]), f([80, 90, 95, 100, 70])]);
+  });
+  try { await _bnWriteGcs(name, { h: out }, null); _hxMem.delete(name); } catch (_) { } return out;
+}
+app.get("/mercado/maqueta/hexreg", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng, R = Math.min(20000, Math.max(3000, +req.query.r || 12000)), n = String(req.query.n || ""); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "coordenadas" });
+    res.set("Cache-Control", "no-store"); const W = await _hxVentana(lat, lng, R);
+    if (!W.H.length) return res.json({ ok: false, error: "Todavía no hay hexágonos de esta zona" });
+    if (n === "poblacion_hex") return res.json({ meta: { fuente: "INEGI · Censo de Población y Vivienda 2020 (manzanas urbanas)", metodo: "interpolación areal que conserva la población (hex_nacional.py)", radio_m: 200, ancla: [23, -102], nota_2025: "p25 = p20 (sin cifra municipal EIC 2025 cargada)", ventana_m: R }, hex: W.H.map(h => ({ q: h[0], r: h[1], lat: h[2], lng: h[3], p20: h[4], p25: h[4], viv: h[5], mun: h[6] })) });
+    if (n === "nse_hex") return res.json({ meta: W.metaNse || { niveles: [] }, h: W.N });
+    if (n === "arbolado_hex") {
+      const celdas = new Map(); W.T.forEach(([ent, i, j, k], p) => { const kk = ent + "|" + i + "|" + j; (celdas.get(kk) || celdas.set(kk, []).get(kk)).push([k, p]); }); const h = new Array(W.H.length).fill(null);
+      for (const [kk, lst] of celdas) { const [ent, i, j] = kk.split("|"), a = await _hxArbCelda(ent, +i, +j); lst.forEach(([k, p]) => { h[p] = a[k] || null; }); }
+      return res.json({ meta: { fuente: "ESA WorldCover 10 m · 2021", campos: ["arbol", "matorral", "pasto_cultivo", "construido", "suelo_desnudo", "agua_otros"], unidad: "% del área del hexágono (radio efectivo ≈ 186 m)" }, h });
+    }
+    if (n === "colonias") return res.json({ meta: { fuente: "INEGI · DENUE", colonias: 0, nota: "Colonias todavía no generadas para esta zona" }, c: [], p: [] });
+    if (n === "denue") {
+      const muns = new Set(W.T.map((t, i) => t[0] + W.H[i][6])), ky = 110540, kx = 111320 * Math.cos(lat * Math.PI / 180); let meta = null; const p = [];
+      for (const cm of muns) { const d = await _hxRead(`denue/mun/${cm.slice(0, 2)}/${cm}.json`); if (!d) continue; meta = meta || d.meta; for (const q of d.p) { const dx = (q[1] - lng) * kx, dy = (q[0] - lat) * ky; if (dx * dx + dy * dy <= R * R) p.push(q); } if (p.length > 300000) break; }
+      return res.json({ meta: meta || {}, p });
+    }
+    res.status(400).json({ ok: false, error: "n no válido" });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 async function _amTerreno(ids, forzar) {
   const J = _amJob, { data } = await _bnReadGcs(_AM_OBJ), ya = (data && data.d) || {}; J.paso = "Relieve y suelo: buscando coordenadas";
   let L = (await _amItems(ids)).filter(x => !x.aprox); if (!forzar) L = L.filter(x => !(ya[x.id] && ya[x.id].terreno && ya[x.id].suelo)); J.total2 = L.length; J.hechos2 = 0; J.ok2 = 0; J.err2 = 0; if (!L.length) return;
