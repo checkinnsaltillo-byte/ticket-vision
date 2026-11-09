@@ -112,20 +112,21 @@ def carga_eic():
     return json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "eic2025_municipal.json")))
 
 def reniveliza(ent, sal):
+    CP = 1.0 if ING.CAL.get('C_post_aplicada') else ING.CAL['C_post']
     """Segunda pasada: pone el nivel (quintiles de hogares del país, ingreso_calibracion.json) a manzanas, AGEB y hexágonos ya calculados."""
     idx = json.loads(sal.b.blob(f"hex/{ent}/index.json").download_as_bytes()); n = 0
     for c in idx["celdas"]:
         b = sal.b.blob(f"hex/{ent}/{c}.json"); d = json.loads(b.download_as_bytes())
         for g in d.get("ing", []):
-            if g: g[0] = round(g[0] * ING.CAL['C_post']); g[2] = round(g[2] * ING.CAL['C_post']); g[1] = ING.nivel(g[0])
+            if g: g[0] = round(g[0] * CP); g[2] = round(g[2] * CP); g[1] = ING.nivel(g[0], ent)
         sal.pon(f"hex/{ent}/{c}.json", d); n += 1
     for b in sal.b.list_blobs(prefix=f"ingreso/mun/{ent}/"):
         if not b.name.endswith(".json"): continue
         d = json.loads(b.download_as_bytes())
-        for x in d["mz"]: x[1] = round(x[1] * ING.CAL['C_post']); x[4] = round(x[4] * ING.CAL['C_post']); x[2] = ING.nivel(x[1])
+        for x in d["mz"]: x[1] = round(x[1] * CP); x[4] = round(x[4] * CP); x[2] = ING.nivel(x[1], ent)
         sal.pon(b.name, d)
     d = json.loads(sal.b.blob(f"ingreso/ageb/{ent}.json").download_as_bytes())
-    for v in d["ageb"].values(): v[0] = round(v[0] * ING.CAL['C_post']); v[3] = round(v[3] * ING.CAL['C_post']); v[1] = ING.nivel(v[0])
+    for v in d["ageb"].values(): v[0] = round(v[0] * CP); v[3] = round(v[3] * CP); v[1] = ING.nivel(v[0], ent)
     sal.pon(f"ingreso/ageb/{ent}.json", d); log(ent, "niveles de ingreso asignados en", n, "celdas")
 
 def ing_manzana(cve, r, AG, LP, AGC, ent):
@@ -213,7 +214,7 @@ def calcula(ent, sal, trabajo, censo_local, csv_zip):
     tiles = defaultdict(lambda: ([], [], []))
     for k in llaves:
         la, ln = inv(*centro(*k)); mun = max(hm[k].items(), key=lambda kv: kv[1])[0][2:]
-        t = tiles[(math.floor(la / CELDA), math.floor(ln / CELDA))]; p25 = sum(pm * FAC.get(cm, 1.0) for cm, pm in hm[k].items()); t[0].append([k[0], k[1], round(la, 6), round(ln, 6), round(hp[k][0], 1), round(hp[k][1], 1), mun, round(p25, 1)]); t[1].append(nse.get(k)); ig = hing.get(k); t[2].append([round(ig[0] / ig[2]), ING.nivel(ig[0] / ig[2]), round(ig[1] / ig[2])] if ig and ig[2] > 0 else None)
+        t = tiles[(math.floor(la / CELDA), math.floor(ln / CELDA))]; p25 = sum(pm * FAC.get(cm, 1.0) for cm, pm in hm[k].items()); t[0].append([k[0], k[1], round(la, 6), round(ln, 6), round(hp[k][0], 1), round(hp[k][1], 1), mun, round(p25, 1)]); t[1].append(nse.get(k)); ig = hing.get(k); t[2].append([round(ig[0] / ig[2]), ING.nivel(ig[0] / ig[2], ent), round(ig[1] / ig[2])] if ig and ig[2] > 0 else None)
     celdas = []
     for (i, j), (hx, ns, ig) in tiles.items():
         sal.pon(f"hex/{ent}/{i}_{j}.json", {"c": [i, j], "hex": hx, "nse": ns, "ing": ig}); celdas.append(f"{i}_{j}")
@@ -225,12 +226,12 @@ def calcula(ent, sal, trabajo, censo_local, csv_zip):
     for cve, r in C.items():
         i_ = ing_manzana(cve, r, AG, LP, AGC, ent)
         if i_ is None: continue
-        vh = int(r.get('VIVPAR_HAB') or 0); porMun[cve[:5]].append([cve, round(i_[1]), ING.nivel(i_[1]), vh, round(i_[0])]); n_ing += 1; hist[round(math.log(max(i_[1], 1)) / 0.02)] += vh
+        vh = int(r.get('VIVPAR_HAB') or 0); porMun[cve[:5]].append([cve, round(i_[1]), ING.nivel(i_[1], ent), vh, round(i_[0])]); n_ing += 1; hist[round(math.log(max(i_[1], 1)) / 0.02)] += vh
     for cm, lst in porMun.items(): sal.pon(f"ingreso/mun/{ent}/{cm}.json", {"campos": ["cvegeo", "ingreso_mediana", "nivel", "hogares", "ingreso_media"], "mz": lst})
     ag = {}
     for k, r in AG.items():
         i_ = AGC.get(k) if k in AGC else ING.ingreso_ageb(r, ent, ING.tam_loc(LP.get(k[:9], 0)))
-        if i_: ag[k] = [round(i_[1]), ING.nivel(i_[1]), int(r.get('VIVPAR_HAB') or 0), round(i_[0])]
+        if i_: ag[k] = [round(i_[1]), ING.nivel(i_[1], ent), int(r.get('VIVPAR_HAB') or 0), round(i_[0])]
     sal.pon(f"ingreso/ageb/{ent}.json", {"campos": ["ingreso_mediana", "nivel", "hogares", "ingreso_media"], "ageb": ag})
     idx['ingreso'] = {'manzanas': n_ing, 'agebs': len(ag), 'modelo_r2': ING.M['r2'], 'modelo_r2_cv': ING.M['r2_validacion_cruzada'], 'hogares': sum(hist.values()), 'hist': {str(k): v for k, v in hist.items()}}
     sal.pon(f"hex/{ent}/index.json", idx); log(ent, "LISTO:", len(llaves), "hexágonos,", len(celdas), "celdas,", len(nse), "con NSE,", idx['segundos'], "s")

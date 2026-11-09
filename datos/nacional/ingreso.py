@@ -59,6 +59,7 @@ def ingreso_mz(rm, ra, ing_ag, ent, tam):
         a, b = CAL.get("ab", [0.0, 1.0]); m = CAL["C"] * math.exp(a + b * lm); return m, m * CAL.get("med_sobre_media", 0.84)
     la = log_reg(armoniza(feats(ra), ent), ent, tam); n = rm["VIVPAR_HAB"]; w = n / (n + K_SHRINK); k = math.exp(CAL.get("kappa", 1.0) * w * (lm - la))
     return ing_ag[0] * k, ing_ag[1] * k
-def nivel(ing):
-    c = CAL.get("cortes") or []
+def nivel(ing, ent=None):
+    """nivel 1-5 (quintiles de hogares dentro de la entidad, igual que el NSE; sin entidad, quintiles del país)."""
+    c = (CAL.get("cortes_ent") or {}).get(ent) or CAL.get("cortes") or []
     return 0 if not c else 1 + sum(ing >= x for x in c)

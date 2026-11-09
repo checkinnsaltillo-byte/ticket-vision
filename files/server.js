@@ -15410,7 +15410,7 @@ app.get("/mercado/maqueta/suelo", async (req, res) => {
 });
 // ── Hexágonos de población / NSE / arbolado y DENUE de TODO México (los deja hex_nacional.py en hex/<ent>/<i>_<j>.json): la maqueta los pide por ventana para las zonas fuera de Saltillo y Monterrey, con la misma forma que sus archivos de ciudad
 const _hxMem = new Map(), _hxWin = new Map();
-async function _hxRead(name) { const m = _hxMem.get(name); if (m && Date.now() - m.t < 6 * 3600e3) return m.d; const { data } = await _bnReadGcs(name); _hxMem.delete(name); _hxMem.set(name, { t: Date.now(), d: data || null }); if (_hxMem.size > 90) _hxMem.delete(_hxMem.keys().next().value); return data || null; }
+async function _hxRead(name) { const m = _hxMem.get(name); if (m && Date.now() - m.t < 15 * 60e3) return m.d; const { data } = await _bnReadGcs(name); _hxMem.delete(name); _hxMem.set(name, { t: Date.now(), d: data || null }); if (_hxMem.size > 90) _hxMem.delete(_hxMem.keys().next().value); return data || null; }
 async function _hxVentana(lat, lng, R) {
   const key = [lat.toFixed(3), lng.toFixed(3), Math.round(R)].join("|"), c = _hxWin.get(key); if (c && Date.now() - c.t < 30 * 60e3) return c.w;
   const ents = new Set(); for (const m of await _nacMuns()) if (lat >= m.bbox[0] - .3 && lat <= m.bbox[2] + .3 && lng >= m.bbox[1] - .3 && lng <= m.bbox[3] + .3) ents.add(m.c.slice(0, 2));
