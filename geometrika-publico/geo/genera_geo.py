@@ -47,7 +47,7 @@ M = {  # clave → (¿en el mapa?, cómo se ve)
  'dem:pob': (1, 'Pestaña Población › «Ver en el mapa»: hexágonos de 200 m en columnas según los habitantes.'),
  'dem:den': (1, 'Pestaña Densidad › «Ver en el mapa»: hexágonos coloreados por habitantes/km².'),
  'dem:ocu': (1, 'Pestaña Viviendas › «Ver en el mapa»: hexágonos coloreados por vivienda y ocupación.'),
- 'dem:ing': (1, 'Pestaña Ingreso › «Ver en el mapa»: hexágonos coloreados por nivel de ingreso mensual estimado del hogar, con altura = habitantes.'),
+ 'dem:ing': (1, 'Pestaña Ingreso › «Ver en el mapa»: hexágonos coloreados por nivel del ingreso mensual típico (mediana) estimado del hogar, con altura = habitantes.'),
  'dem:nse': (1, 'Pestaña NSE › «Ver en el mapa»: hexágonos coloreados por estrato socioeconómico.'),
  'eco:denue': (1, 'Botón «Ver en el mapa» (DENUE): puntos de negocios y torres por manzana según el giro.'),
  'eco:gpn': (1, 'Botón «Ver negocios en el mapa»: coloca los negocios de Google Places, con filtro de los que abren de noche.'),

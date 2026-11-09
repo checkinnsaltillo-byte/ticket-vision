@@ -1,23 +1,28 @@
 {
- "C": 1.01692,
+ "C": 1.0,
  "cortes": [
-  21592,
-  25850,
-  29735,
-  35599
+  18268,
+  21437,
+  25158,
+  31981
  ],
+ "kappa": 1.0,
+ "ab": [
+  -0.042,
+  1.031
+ ],
+ "med_sobre_media": 0.8,
  "deciles": [
-  18400,
-  21592,
-  23390,
-  25850,
-  27449,
-  29735,
-  32212,
-  35599,
-  40949
+  15881,
+  18268,
+  19789,
+  21437,
+  23223,
+  25158,
+  27803,
+  31981,
+  40657
  ],
- "hogares_urbanos": 24428265,
- "media_cruda": 28047,
- "nota": "C iguala la media del ingreso estimado (hogares urbanos del Censo 2020) a la media urbana de la ENIGH 2024; cortes = quintiles de hogares del ingreso estimado"
+ "nota": "C=1 en la microsimulaci\u00f3n; C_post (mediana urbana ENIGH / mediana estimada) se aplica una sola vez en la pasada --reniveliza; cortes = quintiles de hogares urbanos del pa\u00eds del ingreso t\u00edpico (mediana) ya calibrado",
+ "C_post": 1.0438
 }

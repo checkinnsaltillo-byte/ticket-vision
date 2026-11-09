@@ -23,13 +23,13 @@ def anios(n, g):
     return {0: 0, 1: 0, 2: min(g, 6), 3: 6 + min(g, 3), 4: 9 + min(g, 3), 5: 12 + min(g, 4), 6: 9 + min(g, 3), 7: 12 + min(g, 5), 8: 16 + min(g, 2), 9: 16 + min(g, 2), 10: 18 + min(g, 4)}.get(int(n), 0)
 p = p[p['edad'] >= 15].copy(); p['anios'] = [anios(a, b) for a, b in zip(p['nivelaprob'], p['gradoaprob'])]
 esc = p.groupby(['folioviv', 'foliohog'])['anios'].mean().rename('gp').reset_index()
-m = c.merge(v[['folioviv', 'mat_pisos', 'num_cuarto']], on='folioviv').merge(h[['folioviv', 'foliohog', 'conex_inte', 'tv_paga', 'celular', 'telefono', 'num_auto', 'num_compu', 'num_lap', 'num_table', 'num_lavad', 'num_micro', 'num_refri', 'num_juego']], on=['folioviv', 'foliohog']).merge(esc, on=['folioviv', 'foliohog'], how='left')
+m = c.merge(v[['folioviv', 'mat_pisos', 'num_cuarto']], on='folioviv').merge(h[['folioviv', 'foliohog', 'conex_inte', 'tv_paga', 'celular', 'telefono', 'num_auto', 'num_van', 'num_pick', 'num_compu', 'num_lap', 'num_table', 'num_lavad', 'num_micro', 'num_refri', 'num_juego']], on=['folioviv', 'foliohog']).merge(esc, on=['folioviv', 'foliohog'], how='left')
 m = m[(m['ing_cor'] > 0) & (m['num_cuarto'] > 0) & m['gp'].notna()].copy()
 F = pd.DataFrame(index=m.index)
 F['pt'] = (m['mat_pisos'] == 1) * 1.0
 F['c3'] = (m['num_cuarto'] >= 3) * 1.0
 F['oc'] = m['tot_integ'] / m['num_cuarto']
-F['auto'] = (m['num_auto'] > 0) * 1.0
+F['auto'] = ((m['num_auto'] + m['num_van'] + m['num_pick']) > 0) * 1.0   # el Censo cuenta «automóvil o camioneta»
 F['inter'] = (m['conex_inte'] == 1) * 1.0
 F['pc'] = ((m['num_compu'] > 0) | (m['num_lap'] > 0) | (m['num_table'] > 0)) * 1.0
 F['stvp'] = (m['tv_paga'] == 1) * 1.0
@@ -72,6 +72,7 @@ out = {'fuente': 'INEGI · ENIGH 2024 (nueva serie): concentradohogar, viviendas
        'enigh_deciles_mensuales': [round(x) for x in wq(mensual, w, [i / 10 for i in range(1, 10)])],
        'dias': 'ingreso corriente trimestral / 3 (pesos del 3er trimestre de 2024)'}
 json.dump(out, open(OUT, 'w'), ensure_ascii=False, indent=1)
+np.savez(os.path.join(os.path.dirname(os.path.abspath(OUT)), 'ingreso_hogares_enigh.npz'), F=F.values, cols=np.array(FEATS), y=mensual, w=w, ent=ent.values.astype(str), tam=tam_loc.values.astype(int))
 print('hogares', len(y), 'R2', out['r2'], 'R2 validación cruzada', out['r2_validacion_cruzada'], 'sigma', out['sigma'], 'smear', out['smear'])
 print({n: (round(float(x), 3), round(float(s), 3)) for n, x, s in zip(names[:18], b[:18], se[:18])})
 print('media mensual nacional', out['enigh_media_mensual_nacional'], 'urbana', out['enigh_media_mensual_urbana'], 'deciles', out['enigh_deciles_mensuales'])

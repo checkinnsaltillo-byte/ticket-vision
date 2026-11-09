@@ -111,19 +111,33 @@ def carga_eic():
     """Población municipal 2025 (Encuesta Intercensal 2025, viviendas particulares habitadas): eic2025_municipal.json junto al script ({'05030': {'n':'Saltillo','p':976477}, …})."""
     return json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "eic2025_municipal.json")))
 
-def calibra(ent, sal, trabajo, csv_zip):
-    """Primera pasada: suma del ingreso crudo y su histograma (hogares) para calibrar el modelo a la media urbana de la ENIGH y fijar los cortes de los 5 niveles."""
-    C, TOT, AG, LP = lee_censo(ent, trabajo, csv_zip); s = 0.0; hog = 0.0; hist = defaultdict(float)
-    for cve, r in C.items():
-        lg = ING.log_estima(r, AG.get(cve[:13]), ent, ING.tam_loc(LP.get(cve[:9], 0)))
-        if lg is None: continue
-        vh = r.get('VIVPAR_HAB') or 0; s += vh * ING.crudo(lg); hog += vh; hist[round(lg / 0.02)] += vh
-    sal.pon(f"ingreso/calib/{ent}.json", {"ent": ent, "suma": s, "hogares": hog, "hist": {str(k): v for k, v in hist.items()}}); log(ent, "calibración:", round(hog), "hogares · ingreso crudo medio", round(s / max(hog, 1)))
+def reniveliza(ent, sal):
+    """Segunda pasada: pone el nivel (quintiles de hogares del país, ingreso_calibracion.json) a manzanas, AGEB y hexágonos ya calculados."""
+    idx = json.loads(sal.b.blob(f"hex/{ent}/index.json").download_as_bytes()); n = 0
+    for c in idx["celdas"]:
+        b = sal.b.blob(f"hex/{ent}/{c}.json"); d = json.loads(b.download_as_bytes())
+        for g in d.get("ing", []):
+            if g: g[0] = round(g[0] * ING.CAL['C_post']); g[2] = round(g[2] * ING.CAL['C_post']); g[1] = ING.nivel(g[0])
+        sal.pon(f"hex/{ent}/{c}.json", d); n += 1
+    for b in sal.b.list_blobs(prefix=f"ingreso/mun/{ent}/"):
+        if not b.name.endswith(".json"): continue
+        d = json.loads(b.download_as_bytes())
+        for x in d["mz"]: x[1] = round(x[1] * ING.CAL['C_post']); x[4] = round(x[4] * ING.CAL['C_post']); x[2] = ING.nivel(x[1])
+        sal.pon(b.name, d)
+    d = json.loads(sal.b.blob(f"ingreso/ageb/{ent}.json").download_as_bytes())
+    for v in d["ageb"].values(): v[0] = round(v[0] * ING.CAL['C_post']); v[3] = round(v[3] * ING.CAL['C_post']); v[1] = ING.nivel(v[0])
+    sal.pon(f"ingreso/ageb/{ent}.json", d); log(ent, "niveles de ingreso asignados en", n, "celdas")
+
+def ing_manzana(cve, r, AG, LP, AGC, ent):
+    """(media, mediana) mensual del hogar en la manzana: microsimulación del AGEB (con caché) y desviación propia de la manzana."""
+    k = cve[:13]; tm = ING.tam_loc(LP.get(cve[:9], 0)); ra = AG.get(k)
+    if k not in AGC: AGC[k] = ING.ingreso_ageb(ra, ent, tm) if ra else None
+    return ING.ingreso_mz(r, ra, AGC[k], ent, tm)
 
 def calcula(ent, sal, trabajo, censo_local, csv_zip):
     t0 = time.time(); C, TOT, AG, LP = lee_censo(ent, trabajo, csv_zip); EIC = carga_eic(); log(ent, "censo CSV:", len(C), "manzanas · EIC 2025:", sum(1 for c in EIC if c[:2] == ent), "municipios")
     FAC = {cm: EIC[cm]['p'] / TOT[cm] for cm in TOT if cm in EIC and TOT[cm] > 0}
-    hp = defaultdict(lambda: [0.0, 0.0]); hing = defaultdict(lambda: [0.0, 0.0]); hm = defaultdict(lambda: defaultdict(float)); S = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0])); VH = defaultdict(float)
+    hp = defaultdict(lambda: [0.0, 0.0]); hing = defaultdict(lambda: [0.0, 0.0, 0.0]); AGC = {}; hm = defaultdict(lambda: defaultdict(float)); S = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0])); VH = defaultdict(float)
     n_mz = 0; sin_csv = 0; pob_tot = 0
     for cm, m in manzanas(ent, sal, censo_local):
         cve, lat, lng, poly, _a, pt = m; r = C.get(cve)
@@ -143,11 +157,11 @@ def calcula(ent, sal, trabajo, censo_local, csv_zip):
                     if a > 1e-6: partes.append(((qq, rr), a))
         tot = sum(a for _, a in partes) or 1.0; viv = r.get('TVIVHAB') or 0.0; vh = r.get('VIVPAR_HAB')
         n_mz += 1; pob_tot += pt
-        lg = ING.log_estima(r, AG.get(cve[:13]), ent, ING.tam_loc(LP.get(cve[:9], 0))); ing_mz = ING.ingreso(lg) if lg is not None else None
+        ing_mz = ing_manzana(cve, r, AG, LP, AGC, ent)
         for k, a in partes:
             f = a / tot; hp[k][0] += pt * f; hp[k][1] += viv * f; hm[k][cm] += pt * f
             if vh: VH[k] += f * vh
-            if ing_mz is not None and vh: hing[k][0] += f * vh * ing_mz; hing[k][1] += f * vh
+            if ing_mz is not None and vh: hing[k][0] += f * vh * ing_mz[1]; hing[k][1] += f * vh * ing_mz[0]; hing[k][2] += f * vh
             for key, nom, sg, nu, de, pesoc in VARS:
                 wb = r.get(pesoc)
                 if wb is None or wb <= 0: continue
@@ -199,41 +213,39 @@ def calcula(ent, sal, trabajo, censo_local, csv_zip):
     tiles = defaultdict(lambda: ([], [], []))
     for k in llaves:
         la, ln = inv(*centro(*k)); mun = max(hm[k].items(), key=lambda kv: kv[1])[0][2:]
-        t = tiles[(math.floor(la / CELDA), math.floor(ln / CELDA))]; p25 = sum(pm * FAC.get(cm, 1.0) for cm, pm in hm[k].items()); t[0].append([k[0], k[1], round(la, 6), round(ln, 6), round(hp[k][0], 1), round(hp[k][1], 1), mun, round(p25, 1)]); t[1].append(nse.get(k)); ig = hing.get(k); t[2].append([round(ig[0] / ig[1]), ING.nivel(ig[0] / ig[1])] if ig and ig[1] > 0 else None)
+        t = tiles[(math.floor(la / CELDA), math.floor(ln / CELDA))]; p25 = sum(pm * FAC.get(cm, 1.0) for cm, pm in hm[k].items()); t[0].append([k[0], k[1], round(la, 6), round(ln, 6), round(hp[k][0], 1), round(hp[k][1], 1), mun, round(p25, 1)]); t[1].append(nse.get(k)); ig = hing.get(k); t[2].append([round(ig[0] / ig[2]), ING.nivel(ig[0] / ig[2]), round(ig[1] / ig[2])] if ig and ig[2] > 0 else None)
     celdas = []
     for (i, j), (hx, ns, ig) in tiles.items():
         sal.pon(f"hex/{ent}/{i}_{j}.json", {"c": [i, j], "hex": hx, "nse": ns, "ing": ig}); celdas.append(f"{i}_{j}")
     idx = {'ent': ent, 'nombre': NOMBRES[ent][3:], 'ancla': [LAT0, LNG0], 'radio_m': R, 'celda_grados': CELDA, 'celdas': sorted(celdas), 'hexagonos': len(llaves), 'pob_hexagonos': round(sum(hp[k][0] for k in llaves)), 'pob_manzanas': pob_tot, 'manzanas': n_mz, 'nse': meta_nse,
            'fuente': 'INEGI · Censo de Población y Vivienda 2020 (manzanas urbanas) + Marco Geoestadístico', 'metodo': 'interpolación areal que conserva la población (reparto proporcional al área de intersección manzana-hexágono)', 'nota_2025': 'p25 = p20 × (población municipal EIC 2025 en viviendas particulares / población total municipal del Censo 2020); estimación, no dato de manzana', 'municipios_eic2025': sum(1 for cm in TOT if cm in EIC), 'pob_hexagonos_2025': round(sum(sum(pm * FAC.get(cm, 1.0) for cm, pm in hm[k].items()) for k in llaves)),
            'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'segundos': round(time.time() - t0)}
-    # ingreso por manzana (un archivo por municipio) y por AGEB (uno por estado)
-    porMun = defaultdict(list); n_ing = 0
+    # ingreso por manzana (un archivo por municipio) y por AGEB (uno por estado); [mediana, media] mensual del hogar
+    porMun = defaultdict(list); n_ing = 0; hist = defaultdict(float)
     for cve, r in C.items():
-        lg = ING.log_estima(r, AG.get(cve[:13]), ent, ING.tam_loc(LP.get(cve[:9], 0)))
-        if lg is None: continue
-        i_ = ING.ingreso(lg); porMun[cve[:5]].append([cve, round(i_), ING.nivel(i_), int(r.get('VIVPAR_HAB') or 0)]); n_ing += 1
-    for cm, lst in porMun.items(): sal.pon(f"ingreso/mun/{ent}/{cm}.json", {"campos": ["cvegeo", "ingreso_mensual", "nivel", "hogares"], "mz": lst})
+        i_ = ing_manzana(cve, r, AG, LP, AGC, ent)
+        if i_ is None: continue
+        vh = int(r.get('VIVPAR_HAB') or 0); porMun[cve[:5]].append([cve, round(i_[1]), ING.nivel(i_[1]), vh, round(i_[0])]); n_ing += 1; hist[round(math.log(max(i_[1], 1)) / 0.02)] += vh
+    for cm, lst in porMun.items(): sal.pon(f"ingreso/mun/{ent}/{cm}.json", {"campos": ["cvegeo", "ingreso_mediana", "nivel", "hogares", "ingreso_media"], "mz": lst})
     ag = {}
     for k, r in AG.items():
-        f = ING.feats(r)
-        if f: i_ = ING.ingreso(ING.log_ing(f, ent, ING.tam_loc(LP.get(k[:9], 0)))); ag[k] = [round(i_), ING.nivel(i_), int(r.get('VIVPAR_HAB') or 0)]
-    sal.pon(f"ingreso/ageb/{ent}.json", {"campos": ["ingreso_mensual", "nivel", "hogares"], "ageb": ag})
-    idx['ingreso'] = {'manzanas': n_ing, 'agebs': len(ag), 'calibracion': ING.CAL.get('C'), 'modelo_r2': ING.M['r2'], 'modelo_r2_cv': ING.M['r2_validacion_cruzada']}
+        i_ = AGC.get(k) if k in AGC else ING.ingreso_ageb(r, ent, ING.tam_loc(LP.get(k[:9], 0)))
+        if i_: ag[k] = [round(i_[1]), ING.nivel(i_[1]), int(r.get('VIVPAR_HAB') or 0), round(i_[0])]
+    sal.pon(f"ingreso/ageb/{ent}.json", {"campos": ["ingreso_mediana", "nivel", "hogares", "ingreso_media"], "ageb": ag})
+    idx['ingreso'] = {'manzanas': n_ing, 'agebs': len(ag), 'modelo_r2': ING.M['r2'], 'modelo_r2_cv': ING.M['r2_validacion_cruzada'], 'hogares': sum(hist.values()), 'hist': {str(k): v for k, v in hist.items()}}
     sal.pon(f"hex/{ent}/index.json", idx); log(ent, "LISTO:", len(llaves), "hexágonos,", len(celdas), "celdas,", len(nse), "con NSE,", idx['segundos'], "s")
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("--estados", default=",".join(NOMBRES)); ap.add_argument("--local"); ap.add_argument("--censo-local"); ap.add_argument("--csv"); ap.add_argument("--bucket", default="check-in-493804-panel"); ap.add_argument("--forzar", action="store_true"); ap.add_argument("--calib", action="store_true"); ap.add_argument("--trabajo", default="/tmp/hx")
+    ap = argparse.ArgumentParser(); ap.add_argument("--estados", default=",".join(NOMBRES)); ap.add_argument("--local"); ap.add_argument("--censo-local"); ap.add_argument("--csv"); ap.add_argument("--bucket", default="check-in-493804-panel"); ap.add_argument("--forzar", action="store_true"); ap.add_argument("--reniveliza", action="store_true"); ap.add_argument("--trabajo", default="/tmp/hx")
     a = ap.parse_args(); sal = Salida(a.local, a.bucket); fallas = []
     if a.censo_local and not a.local: sys.exit("--censo-local requiere --local")
     if not sal.local and not hasattr(sal, "b"): sal.b = None
-    if a.local and not a.censo_local and not a.calib:
+    if a.local and not a.censo_local and not a.reniveliza:
         from google.cloud import storage; sal.b = storage.Client().bucket(a.bucket)
     ti, tn = int(os.environ.get("CLOUD_RUN_TASK_INDEX", 0)), int(os.environ.get("CLOUD_RUN_TASK_COUNT", 1))
     for ent in [e.strip().zfill(2) for e in a.estados.split(",") if e.strip()][ti::tn]:
         try:
-            if a.calib:
-                if not a.forzar and sal.existe(f"ingreso/calib/{ent}.json"): continue
-                calibra(ent, sal, a.trabajo, a.csv); shutil.rmtree(os.path.join(a.trabajo, ent), ignore_errors=True); continue
+            if a.reniveliza: reniveliza(ent, sal); continue
             if not a.forzar and sal.existe(f"hex/{ent}/index.json"): log(ent, "ya está hecho, se salta"); continue
             calcula(ent, sal, a.trabajo, a.censo_local, a.csv); shutil.rmtree(os.path.join(a.trabajo, ent), ignore_errors=True)
         except Exception as e:
