@@ -1,0 +1,23 @@
+{
+ "C": 1.01692,
+ "cortes": [
+  21592,
+  25850,
+  29735,
+  35599
+ ],
+ "deciles": [
+  18400,
+  21592,
+  23390,
+  25850,
+  27449,
+  29735,
+  32212,
+  35599,
+  40949
+ ],
+ "hogares_urbanos": 24428265,
+ "media_cruda": 28047,
+ "nota": "C iguala la media del ingreso estimado (hogares urbanos del Censo 2020) a la media urbana de la ENIGH 2024; cortes = quintiles de hogares del ingreso estimado"
+}

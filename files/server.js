@@ -15421,13 +15421,13 @@ async function _hxVentana(lat, lng, R) {
     for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
       if (!cel.has(i + "_" + j)) continue; const t = await _hxRead(`hex/${ent}/${i}_${j}.json`); if (!t) continue;
       t.hex.forEach((h, k) => { const dx = (h[3] - lng) * kx, dy = (h[2] - lat) * ky; if (dx * dx + dy * dy > R * R) return; const kk = h[0] + "|" + h[1], p = M.get(kk);
-        if (!p) M.set(kk, { h: h.slice(), n: t.nse[k], e: ent, t: [ent, i, j, k] }); else { p.h[4] += h[4]; p.h[5] += h[5]; p.h[7] = (p.h[7] != null ? p.h[7] : p.h[4] - h[4]) + (h[7] != null ? h[7] : h[4]); if (h[4] > p.h[4] - h[4] && t.nse[k]) { p.n = t.nse[k]; p.e = ent; } }
+        if (!p) M.set(kk, { h: h.slice(), n: t.nse[k], g: (t.ing || [])[k] || null, e: ent, t: [ent, i, j, k] }); else { p.h[4] += h[4]; p.h[5] += h[5]; p.h[7] = (p.h[7] != null ? p.h[7] : p.h[4] - h[4]) + (h[7] != null ? h[7] : h[4]); if (h[4] > p.h[4] - h[4] && t.nse[k]) { p.n = t.nse[k]; p.g = (t.ing || [])[k] || p.g; p.e = ent; } }
         cuenta[ent] = (cuenta[ent] || 0) + 1; });
     }
   }
   const E = Object.keys(cuenta).sort((a, b) => cuenta[b] - cuenta[a])[0]; if (E) { const idx = await _hxRead(`hex/${E}/index.json`); metaNse = idx && idx.nse; }
   const L = [...M.values()].sort((a, b) => a.h[0] - b.h[0] || a.h[1] - b.h[1]);
-  const w = { H: L.map(x => x.h), N: L.map(x => x.n || null), T: L.map(x => x.t), ents: [...ents], metaNse }; _hxWin.set(key, { t: Date.now(), w }); if (_hxWin.size > 16) _hxWin.delete(_hxWin.keys().next().value); return w;
+  const w = { H: L.map(x => x.h), N: L.map(x => x.n || null), G: L.map(x => x.g || null), T: L.map(x => x.t), ents: [...ents], metaNse }; _hxWin.set(key, { t: Date.now(), w }); if (_hxWin.size > 16) _hxWin.delete(_hxWin.keys().next().value); return w;
 }
 // arbolado por hexágono (ESA WorldCover 10 m): se calcula la primera vez que se pide una celda de 0.2° y se guarda en hex/<ent>/arb/<i>_<j>.json
 async function _hxArbCelda(ent, i, j) {
@@ -15460,6 +15460,7 @@ app.get("/mercado/maqueta/hexreg", async (req, res) => {
     if (!W.H.length) return res.json({ ok: false, error: "Todavía no hay hexágonos de esta zona" });
     if (n === "poblacion_hex") return res.json({ meta: { fuente: "INEGI · Censo de Población y Vivienda 2020 (manzanas urbanas)", metodo: "interpolación areal que conserva la población (hex_nacional.py)", radio_m: 200, ancla: [23, -102], nota_2025: "p25 = p20 × (población municipal de la Encuesta Intercensal 2025 / población municipal del Censo 2020); estimación, no dato de manzana", ventana_m: R }, hex: W.H.map(h => ({ q: h[0], r: h[1], lat: h[2], lng: h[3], p20: h[4], p25: h[7] != null ? h[7] : h[4], viv: h[5], mun: h[6] })) });
     if (n === "nse_hex") return res.json({ meta: W.metaNse || { niveles: [] }, h: W.N });
+    if (n === "ingreso_hex") return res.json({ meta: { fuente: "Estimación propia: regresión del ingreso corriente del hogar con la ENIGH 2024 (INEGI) sobre variables del Censo 2020, aplicada por manzana y promediada por hogares en cada hexágono", unidad: "MXN por hogar al mes (pesos de 2024)", campos: ["ingreso_mensual", "nivel"], niveles: ["Bajo", "Medio bajo", "Medio", "Medio alto", "Alto"], nota: "Estimación en áreas pequeñas, no un dato censal; niveles = quintiles de hogares urbanos del país" }, h: W.G });
     if (n === "arbolado_hex") {
       const celdas = new Map(); W.T.forEach(([ent, i, j, k], p) => { const kk = ent + "|" + i + "|" + j; (celdas.get(kk) || celdas.set(kk, []).get(kk)).push([k, p]); }); const h = new Array(W.H.length).fill(null);
       for (const [kk, lst] of celdas) { const [ent, i, j] = kk.split("|"), a = await _hxArbCelda(ent, +i, +j); lst.forEach(([k, p]) => { h[p] = a[k] || null; }); }
