@@ -7594,6 +7594,22 @@ app.get("/facturapi/ticket-url", async (req, res) => {
 // ║         envía email → envía WhatsApp con el link para auto-facturar.    ║
 // ║  Devuelve: { ok, folio, url, id, mail_sent, wa_sent }                    ║
 // ═══════════════════════════════════════════════════════════════════════════
+// Busca en Facturapi el producto «<n>. Arrendamiento…» (n = '1' o '2') con su caché de 10 min.
+const _emitAutoProdCache = {};
+async function _emitAutoProducto_(auth, n) {
+  const ck = auth.slice(-12) + ':' + n;
+  const c = _emitAutoProdCache[ck];
+  if (c && Date.now() - c.t < 600000) return c.p;
+  try {
+    const r = await fetch('https://www.facturapi.io/v2/products?limit=100', { headers: { 'Authorization': auth } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    const lista = Array.isArray(j.data) ? j.data : [];
+    const p = lista.find(x => new RegExp('^\\s*' + n + '\\s*[.\\-)]', 'i').test(String(x.description || '')) && /arrendamiento/i.test(String(x.description || ''))) || null;
+    if (p) _emitAutoProdCache[ck] = { t: Date.now(), p };
+    return p;
+  } catch (e) { console.error('[emit-auto] productos Facturapi:', e.message); return null; }
+}
 app.post("/facturapi/emit-auto", async (req, res) => {
   try {
     const b = req.body || {};
@@ -7617,16 +7633,35 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     const auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
     // 1) Emitir receipt (ticket de auto-facturación)
     const description = `Hospedaje ${propiedad || 'Check-inn Saltillo'}${arrival && departure ? ` · ${arrival} → ${departure}` : ''} · Reserva ${reservaId}`;
+    // Impuestos y retenciones: SIEMPRE los del producto configurado en Facturapi
+    // (igual que la emisión manual). Persona Moral → «1. Arrendamiento…»; resto → «2. …».
+    const regimenTxt = String(b.regimen || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const esMoral = /personas?\s+morales?/i.test(regimenTxt);
+    const prodFx = await _emitAutoProducto_(auth, esMoral ? '1' : '2');
+    let itemProduct;
+    if (prodFx) {
+      itemProduct = {
+        description: description.slice(0, 250),
+        product_key: prodFx.product_key,
+        price: Number(monto.toFixed(2)),
+        tax_included: true,
+        taxability: prodFx.taxability,
+        taxes: Array.isArray(prodFx.taxes) ? prodFx.taxes : [],
+        local_taxes: Array.isArray(prodFx.local_taxes) ? prodFx.local_taxes : [],
+        unit_key: prodFx.unit_key,
+        unit_name: prodFx.unit_name,
+        sku: prodFx.sku,
+      };
+    } else if (esMoral) {
+      throw new Error('No se encontró en Facturapi el producto «1. Arrendamiento…» para Persona Moral; no se emite el ticket sin sus retenciones.');
+    } else {
+      console.error('[emit-auto] producto «2.» no encontrado en Facturapi; se usa IVA 16% por omisión');
+      itemProduct = { description: description.slice(0, 250), product_key: '90121500', price: Number(monto.toFixed(2)), tax_included: true, taxes: [{ type: 'IVA', rate: 0.16 }] };
+    }
     const receiptBody = {
       items: [{
         quantity: 1,
-        product: {
-          description: description.slice(0, 250),
-          product_key: '90121500', // Servicio de hospedaje
-          price: Number(monto.toFixed(2)),
-          tax_included: true,
-          taxes: [{ type: 'IVA', rate: 0.16 }],
-        },
+        product: itemProduct,
       }],
       payment_form: '03', // transferencia electrónica
       currency,
