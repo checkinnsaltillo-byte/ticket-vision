@@ -10424,7 +10424,7 @@ async function __huespedesLoadInner(forceRefetch) {
       // El historial completo pesa 13 MB. En Gestión de reservas (ventana
       // 2 meses → futuro) basta la ventana (~1.7 MB). Se difiere para no
       // competir con la carga principal.
-      new Promise(r => setTimeout(r, 8000))
+      new Promise(r => setTimeout(r, typeof aseoVisible_ === 'function' && aseoVisible_() ? 60000 : 8000)) // en Operaciones se difiere: no compite con la carga del módulo
         .then(() => {
           const inLodgify = !document.getElementById('module-lodgify')?.classList.contains('hidden');
           const win = LG_STATE.__monthRange;
@@ -57072,7 +57072,12 @@ function _pagosAlertaExt(b, ext, tk) {
   if (tk.monto == null && !tk.emision) return 'Ya había ticket y la reserva se extendió. Revisar si se debe re-emitir.';
   return '';
 }
-async function _pagosLoadExtensiones_() {
+let _pagosExtP_ = null;
+function _pagosLoadExtensiones_() { // si ya hay una petición en curso, se comparte (antes Operaciones la pedía dos veces)
+  if (!_pagosExtP_) _pagosExtP_ = _pagosLoadExtensionesGo_().finally(() => { _pagosExtP_ = null; });
+  return _pagosExtP_;
+}
+async function _pagosLoadExtensionesGo_() {
   try {
     const j = await fetch(`${BACKEND}/lodgify-extensiones?_cb=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
     const m = new Map();
@@ -57229,10 +57234,13 @@ async function pagosLoad() {
   const _t0 = performance.now(), _T = {};
   const _mk = k => { _T[k] = Math.round(performance.now() - _t0); };
   try {
-    // Alojamientos: rápido, sí esperar (necesario para columna Alojamiento).
-    if (typeof lgLoadAlojamientos === 'function') {
-      try { await lgLoadAlojamientos(); } catch(_) {}
-    }
+    // Alojamientos (necesario para columna Alojamiento): se pide EN PARALELO con la lista de reservas
+    // (antes iban una tras otra y se sumaban sus tiempos).
+    const _pAloj = typeof lgLoadAlojamientos === 'function' ? Promise.resolve().then(() => lgLoadAlojamientos()).catch(() => {}) : Promise.resolve();
+    PAGOS_STATE.from = _pagosWindowFrom_();
+    const _pList = fetch(`${BACKEND}/lodgify-list?from=${PAGOS_STATE.from}&to=2099-12-31`);
+    _pagosLoadExtensiones_(); // en paralelo; re-pinta al llegar
+    try { await _pAloj; } catch(_) {}
     // Huéspedes/matches: LENTO (10k+ filas). Dispara en background y
     // re-renderiza cuando llegue — la tabla aparece de inmediato con
     // Razón social/Factura vacíos y se llenan a los pocos segundos.
@@ -57244,9 +57252,7 @@ async function pagosLoad() {
       }).catch(() => {});
     }
     _mk('alojamientos');
-    PAGOS_STATE.from = _pagosWindowFrom_();
-    _pagosLoadExtensiones_(); // en paralelo; re-pinta al llegar
-    const r = await fetch(`${BACKEND}/lodgify-list?from=${PAGOS_STATE.from}&to=2099-12-31`);
+    const r = await _pList;
     _mk('respuesta');
     const j = await r.json();
     _mk('json');
@@ -67688,18 +67694,26 @@ function mvSyncMini_() {
 function mvSyncTick_() { document.querySelectorAll('[data-sync]').forEach(el => { el.innerHTML = mvSyncTxt_(); }); document.querySelectorAll('[data-sync-mini]').forEach(el => { el.innerHTML = mvSyncMini_(); }); }
 if (!window.__mvSyncTick) window.__mvSyncTick = setInterval(() => { if (document.visibilityState === 'visible') mvSyncTick_(); }, 1000);
 // Carga base (copia del sistema + registros de huéspedes + extensiones), una vez.
-async function aseoEnsureBase_() {
+async function aseoEnsureBase_(mk) {
   if (typeof PAGOS_STATE !== 'undefined' && !PAGOS_STATE.loaded && typeof pagosLoad === 'function') await pagosLoad();
-  if (typeof _pagosLoadExtensiones_ === 'function' && !PAGOS_STATE.extById) await _pagosLoadExtensiones_();
+  if (mk) mk('pagosLoad');
+  // Las extensiones solo marcan avisos: ya no bloquean el pintado; al llegar se vuelve a dibujar.
+  if (typeof _pagosLoadExtensiones_ === 'function' && !PAGOS_STATE.extById) _pagosLoadExtensiones_().then(() => { try { if (aseoVisible_()) { ASEO.calSig = ''; aseoRender_(); } } catch (_) {} });
   if (typeof lgEnsureHuespedesAndMatch === 'function' && !ASEO._huOk) { ASEO._huOk = true; lgEnsureHuespedesAndMatch().then(() => { aseoRender_(); if (document.getElementById('pc-sec-movs')) pcRenderMovs_(); }).catch(() => {}); }
 }
 async function aseoInit() {
+  const T = {}, t0 = performance.now(), mk = k => { T[k] = Math.round(performance.now() - t0); };
   aseoEnsureCss_();
   const side = document.getElementById('aseo-side');
   if (side && !side.innerHTML.trim()) side.innerHTML = '<div class="pc-mv-empty">⏳ Cargando reservas…</div>';
-  await Promise.all([aseoEnsureBase_(), aseoRefresh_()]);
+  mk('css');
+  await Promise.all([aseoEnsureBase_(mk).then(() => mk('base_reservas')), aseoRefresh_().then(() => mk('aseo_live'))]);
   ASEO.calSig = ''; ASEO._centrar = true;
+  mk('antes_de_pintar');
   aseoRender_();
+  mk('pintado');
+  window.__aseoT = T; // diagnóstico: en la consola, window.__aseoT
+  console.info('[ASEO timing ms]', T);
 }
 // Filtro por personal (chips arriba de las columnas; varios a la vez; sin selección = todos).
 function aseoAsigIdDe_(g) { return String(g.estId || (g.sal[0] ? g.sal[0].b.Id : ([...g.ent, ...(g.cur || [])][0] || { b: {} }).b.Id) || ''); }

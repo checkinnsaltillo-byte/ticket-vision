@@ -10104,20 +10104,24 @@ app.get("/aseo/live", async (req, res) => {
     // ?force=1 (botón "Actualizar"): consulta Lodgify y Cloud Storage en este momento.
     const force = req.query.force === "1" && Date.now() - (_aseo.forceTs || 0) > 3000;
     if (force) { _aseo.forceTs = Date.now(); _aseo.cambiosTs = 0; _aseo.asigTs = 0; _aseo.estadosTs = 0; if (_aseo.inflight) await _aseo.inflight; }
-    if (force || !_aseo.rows || Date.now() - _aseo.ts > 20_000) await _aseoLiveLoad();
-    if (!_aseo.cambios || Date.now() - (_aseo.cambiosTs || 0) > 60_000) { _aseo.cambios = await _rhdGetJson(_ASEO_CAMBIOS_OBJ).catch(() => _aseo.cambios || {}); _aseo.cambiosTs = Date.now(); }
-    // Con varias copias del servidor, cada una relee de Cloud Storage cada 5 s (un cambio hecho en otra copia se ve casi al instante).
-    if (!_aseo.asig || Date.now() - (_aseo.asigTs || 0) > 5_000) { _aseo.asig = await _rhdGetJson(_ASEO_ASIG_OBJ).catch(() => _aseo.asig || {}); _aseo.asigTs = Date.now(); }
+    // Rápido: si ya hay copia de Lodgify (de cualquier edad < 3 min) se responde AL INSTANTE con ella y la
+    // actualización corre en segundo plano (antes cada petición con datos de más de 20 s esperaba 1-2.7 s a Lodgify).
+    // Solo se espera a Lodgify si es «Actualizar», no hay copia todavía o la copia es muy vieja.
+    const _t0 = Date.now(), _edad = Date.now() - (_aseo.ts || 0);
+    if (force || !_aseo.rows || _edad > 180_000) await _aseoLiveLoad();
+    else if (_edad > 20_000) _aseoLiveLoad().catch(() => {});
+    // Todas las lecturas de Cloud Storage de esta respuesta salen EN PARALELO (antes iban una tras otra: ~14 viajes en serie).
+    const _lee = (campo, tsCampo, obj, ttl) => (!_aseo[campo] || Date.now() - (_aseo[tsCampo] || 0) > ttl)
+      ? _rhdGetJson(obj).catch(() => _aseo[campo] || {}).then(v => { _aseo[campo] = v; _aseo[tsCampo] = Date.now(); }) : null;
     res.set("Cache-Control", "no-store");
-    if (!_aseo.estados || Date.now() - (_aseo.estadosTs || 0) > 5_000) { _aseo.estados = await _rhdGetJson(_ASEO_ESTADOS_OBJ).catch(() => _aseo.estados || {}); _aseo.estadosTs = Date.now(); }
-    await _aseoGuiaOffLoad();
+    await Promise.all([
+      _lee("cambios", "cambiosTs", _ASEO_CAMBIOS_OBJ, 60_000), _lee("asig", "asigTs", _ASEO_ASIG_OBJ, 5_000), _lee("estados", "estadosTs", _ASEO_ESTADOS_OBJ, 5_000),
+      _lee("temprana", "tempTs", _ASEO_TEMP_OBJ, 30_000), _lee("sms", "smsTs", _ASEO_SMS_OBJ, 30_000), _lee("tardia", "tardTs", _ASEO_TARD_OBJ, 30_000),
+      _lee("plidx", "plidxTs", _ASEO_PLIDX_OBJ, 5_000),
+      _aseoGuiaOffLoad(), _aseoReprogLoad(), _aseoAutoCfgLoad(), _aseoNoSaleLoad(), _aseoTareasLoad(), _aseoPrioLoad(), _aseoExtraLoad(),
+    ]);
+    res.set("Server-Timing", `aseo;dur=${Date.now() - _t0}`);
     let guias = {}; try { guias = _aseoGuiasTodas(); } catch (e) { console.warn("[aseo] guías:", e.message); }
-    if (!_aseo.temprana || Date.now() - (_aseo.tempTs || 0) > 30_000) { _aseo.temprana = await _rhdGetJson(_ASEO_TEMP_OBJ).catch(() => _aseo.temprana || {}); _aseo.tempTs = Date.now(); }
-    if (!_aseo.sms || Date.now() - (_aseo.smsTs || 0) > 30_000) { _aseo.sms = await _rhdGetJson(_ASEO_SMS_OBJ).catch(() => _aseo.sms || {}); _aseo.smsTs = Date.now(); }
-    if (!_aseo.tardia || Date.now() - (_aseo.tardTs || 0) > 30_000) { _aseo.tardia = await _rhdGetJson(_ASEO_TARD_OBJ).catch(() => _aseo.tardia || {}); _aseo.tardTs = Date.now(); }
-    await _aseoReprogLoad(); await _aseoAutoCfgLoad(); await _aseoNoSaleLoad(); await _aseoTareasLoad(); await _aseoPrioLoad(); await _aseoExtraLoad();
-    // Avance de plantillas (índice chico): viaja con cada actualización para que las demás pantallas lo vean sin recargar.
-    if (!_aseo.plidx || Date.now() - (_aseo.plidxTs || 0) > 5_000) { _aseo.plidx = await _rhdGetJson(_ASEO_PLIDX_OBJ).catch(() => _aseo.plidx || {}); _aseo.plidxTs = Date.now(); }
     // Tareas con enlace firmado de cada adjunto.
     const tareas = {};
     Object.values(_aseo.tareas || {}).forEach(t => { tareas[t.id] = Object.assign({}, t, { adjuntos: (t.adjuntos || []).map(a => Object.assign({}, a, { url: `/aseo/adjunto?k=${encodeURIComponent(a.k)}&s=${_aseoAdjSig(a.k)}` })), refs: (t.refs || []).map(a => Object.assign({}, a, { url: `/aseo/adjunto?k=${encodeURIComponent(a.k)}&s=${_aseoAdjSig(a.k)}`, ...(a.tk ? { turl: `/aseo/adjunto?k=${encodeURIComponent(a.tk)}&s=${_aseoAdjSig(a.tk)}` } : {}) })) }); });
