@@ -59742,11 +59742,13 @@ function tdAlojCard_(hid, items) { // items: [{ x, ret }] (x = ocurrencia del in
     ${items.map(it => tdInvFila_(it.x.r, hid, it.x.iso)).join('')}
   </div>`;
 }
+// Orden natural por código de alojamiento: JC, JC1, JC2, … JC10
+function tdCodCmp_(a, b) { const k = h => { const x = typeof atAloj_ === 'function' ? atAloj_(h) : null; return String((x && (x.corto || x.nombre)) || h).toUpperCase(); }; return k(a).localeCompare(k(b), 'es', { numeric: true, sensitivity: 'base' }); }
 function tdLvBoard_(O, modo, vac) {
   const LV = O.filter(x => tdEsIG_(x.r)).sort((a, b) => String(a.r.Nombre || '').localeCompare(String(b.r.Nombre || ''), 'es'));
-  // alojamientos → sus inventarios (el más atrasado arriba); alojamientos con el inventario más atrasado arriba
+  // alojamientos en orden de código; dentro de cada uno, el inventario más atrasado arriba
   const porAloj = L => { const M = new Map(); L.forEach(x => tdIGAlojs_(x.r).forEach(h => { if (!M.has(h)) M.set(h, []); M.get(h).push({ x, ret: tdIGRetraso_(x.r, h).ret }); }));
-    return [...M.entries()].map(([h, it]) => [h, it.sort((a, b) => b.ret - a.ret)]).sort((a, b) => b[1][0].ret - a[1][0].ret); };
+    return [...M.entries()].map(([h, it]) => [h, it.sort((a, b) => b.ret - a.ret)]).sort((a, b) => tdCodCmp_(a[0], b[0])); };
   const cardsDe = L => porAloj(L).map(([h, it]) => tdAlojCard_(h, it)).join('');
   const nDe = L => new Set(L.flatMap(x => tdIGAlojs_(x.r))).size;
   if (modo === 'propiedad') {
@@ -59757,7 +59759,7 @@ function tdLvBoard_(O, modo, vac) {
     }));
     const ord = k => { const i = ED_ORDEN.indexOf(k); return i < 0 ? 99 : i; };
     return ckColsHtml_([...G.values()].sort((a, b) => ord(a.k) - ord(b.k) || a.t.localeCompare(b.t, 'es')).map(g => ({ t: `🏢 ${esc(g.t)}`, n: g.M.size,
-      cards: [...g.M.entries()].map(([h, it]) => [h, it.sort((a, b) => b.ret - a.ret)]).sort((a, b) => b[1][0].ret - a[1][0].ret).map(([h, it]) => tdAlojCard_(h, it)).join('') })), vac);
+      cards: [...g.M.entries()].map(([h, it]) => [h, it.sort((a, b) => b.ret - a.ret)]).sort((a, b) => tdCodCmp_(a[0], b[0])).map(([h, it]) => tdAlojCard_(h, it)).join('') })), vac);
   }
   const N = [...new Set(LV.flatMap(x => tarPersonalList_(x.r)))].sort((a, b) => a.localeCompare(b, 'es')), sin = LV.filter(x => !tarPersonalList_(x.r).length);
   const col = (t, L) => ({ t, n: nDe(L), cards: cardsDe(L) });
