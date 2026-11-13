@@ -9265,7 +9265,7 @@ function ck2EnsureCss_() {
 /* ── 3) Barra de herramientas ─────────────────────────── */
 #module-aseo .ck2-bar{display:flex;flex-direction:column;gap:12px;margin:0 0 14px;padding:14px 14px 12px;background:#fff;border:1px solid var(--k-line);border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.04);font-family:var(--k-font)}
 #module-aseo .ck2-r{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 12px;min-width:0}
-#module-aseo .ck2-r+.ck2-r{padding-top:12px;border-top:1px solid #f1f5f9;margin-top:2px}
+#module-aseo .ck2-r+.ck2-r{padding-top:22px;border-top:1px solid #f1f5f9;margin-top:0}
 #module-aseo .ck2-sp{flex:1 1 0;min-width:0}
 #module-aseo .ck2-strip{display:contents}
 #module-aseo .ck2-bar #aseo-vista-slot{display:contents}
@@ -9355,6 +9355,9 @@ function ck2EnsureCss_() {
   /* búsqueda arriba a todo el ancho; cada tira de controles se desliza de lado */
   #module-aseo .ck2-r{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:0}
   #module-aseo .ck2-r+.ck2-r{padding-top:0;border-top:0;margin-top:0}
+  #module-aseo .ck2-top{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px}
+  #module-aseo .ck2-top .ck2-search{flex:1 1 0;width:auto;min-width:0}
+  #module-aseo .ck2-top .ck2-strip{flex:1 1 100%;padding-top:0;margin:0 -12px}
   #module-aseo .ck2-strip{display:flex;align-items:flex-end;gap:12px;overflow-x:auto;padding:16px 12px 2px;margin:0 -12px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   #module-aseo .ck2-strip::-webkit-scrollbar{display:none}
   #module-aseo .ck2-strip>*{flex:none}
@@ -9374,7 +9377,6 @@ function ck2EnsureCss_() {
   #module-aseo .ck2-bar .aseo-btn.ck-pri span{display:none}
   #module-aseo .ck2-bar .aseo-btn.ck-pri svg{width:22px;height:22px}
 }
-@media (min-width:761px) and (max-width:1100px){#module-aseo .ck2-search{max-width:none;flex-basis:100%}}
 @media (prefers-reduced-motion:reduce){.cl-tab,.cl-chip,#module-aseo .ck2-bar *{transition:none!important}}
 `;
   document.head.appendChild(st);
