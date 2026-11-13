@@ -59333,11 +59333,11 @@ function tdRender_() {
   const seg = `<div class="ad-seg"><button type="button" class="${sec === 'tablero' ? 'on' : ''}" onclick="tarSetSection('tablero')">Tablero</button><button type="button" class="${sec === 'registro' ? 'on' : ''}" onclick="tarSetSection('registro')">Registro</button></div>`;
   const bar = `<div class="ck-bar">${ckHam_(TAR_STATE.filAb, nFx, 'TAR_STATE.filAb=!TAR_STATE.filAb;tdRender_()')}
       <input class="ck-q td-q" type="search" placeholder="🔎 Buscar alojamiento, plantilla, persona…" value="${esc(TAR_STATE.q || '')}" oninput="TAR_STATE.q=this.value;clearTimeout(TAR_STATE._qt);TAR_STATE._qt=setTimeout(()=>{tdRender_();const i=document.querySelector('#module-tareas .td-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">
-      ${tarPerNavHtml_(ym)}${tarCalSegHtml_()}${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()')}
+      ${ckCalBtnHtml_(!!TAR_STATE.cal, 'tdToggleCal_()').replace(' ck-ib', ' ck-b').replace('>📅<', '>📅 Calendario<')}
       <span class="ck-sp"></span>__SEGV__
       <button type="button" class="aseo-btn ck-ib" onclick="tarOpenClasifManager()" title="Clasificaciones">⚙️</button>
       ${TAR_STATE.sub === 'rec' ? `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','Recordatorio')">＋ Recordatorio</button>`
-        : `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','IG')" title="Inventario de varios alojamientos con una plantilla">＋ Inventario</button>`}</div>`;
+        : `<button type="button" class="aseo-btn ck-pri" onclick="tarOpenPanel(null,'','IG')" title="Inventario de varios alojamientos con una plantilla">＋ Inventario</button>`}</div>${TAR_STATE.cal ? `<div class="ck-bar" style="margin-top:-4px">${tarPerNavHtml_(ym)}${tarCalSegHtml_()}</div>` : ''}`; // mes con flechitas + Por día/semana/mes: solo con el botón Calendario activo
   const mio = r => typeof clSoloMio_ !== 'function' || clSoloMio_(tarPersonalList_(r)); const nRec = TAR_STATE.list.filter(r => tarEsRec_(r) && mio(r)).length, nIG = TAR_STATE.list.filter(r => tdEsIG_(r) && mio(r)).length;
   const nav = `<div class="cl-nav-slot" data-act="tareas">${typeof clNavHtml_ === 'function' ? clNavHtml_('tareas') : ''}</div>
     <div class="cl-sub">${[['ig', '📝 Inventarios', nIG, AT_DEPTO.inspeccion.c], ['rec', '📌 Recordatorios', nRec, '#d97706']].map(([k, t, n, c]) => `<button type="button" class="cl-sb ${(TAR_STATE.sub || 'ig') === k ? 'on' : ''}" style="--c:${c}" onclick="TAR_STATE.sub='${k}';tdRender_()">${t} · ${n}</button>`).join('')}</div>`;
