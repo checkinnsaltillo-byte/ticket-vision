@@ -1988,6 +1988,16 @@ async function _botTarClasificar(desc, cat) {
 }
 // Conversación del PERSONAL por WhatsApp (estado de aseo, Check-Flow…): palabras que la activan, prompt y herramientas.
 const _BOT_ASEO_KW = /\b(me toca\w*|que me toca|asignad\w*|pendientes?|listo|lista|listos|listas|terminad\w*|termine|acabe|acabamos|acabad\w*|conclui\w*|finaliz\w*|complet\w*|quedo|hech[oa]s?|limpi\w*|inspecci\w*|revisad\w*|checad\w*|supervisad\w*|en proceso|empezando|empece|valida\w*|aseo|temprana|tardia|solicitud|reprogram\w*|inspeccionar|resum\w*|cierre|salido|salio|desaloj\w*|adentro|tareas?|incidenc\w*|mantenimiento|insumos?|inspeccion\w*|check ?list|correctiv\w*|programad\w*|folio|inc-\w+|[tr]\d{3,}|historial|modific\w*|cambi\w*|huesped\w*|celular|datos)\b/;
+// ¿El mensaje del personal habla de aseo? Tolera pegado («MT7listo»), sin espacios, y errores de ortografía («lisot», «terminadoo», «limpiio»).
+function _botAseoKwTest(txt) {
+  const n = _botNorm(txt);
+  if (_BOT_ASEO_KW.test(n)) return true;
+  const sp = n.replace(/([a-z])(\d)/g, "$1 $2").replace(/(\d)([a-z])/g, "$1 $2").replace(/\s+/g, " ");
+  if (sp !== n && _BOT_ASEO_KW.test(sp)) return true;
+  const CORE = ["listo", "lista", "listos", "listas", "terminado", "terminada", "termine", "limpio", "limpia", "acabe", "acabado", "inspeccionado", "revisado", "checado", "aseo", "proceso"];
+  const near = (w, c) => _aseoLev(w, c) <= (c.length >= 8 ? 2 : 1) || (c.length >= 5 && w.length === c.length && [...w].sort().join("") === [...c].sort().join("")); // también letras cambiadas de lugar («lisot»)
+  return sp.split(" ").some(w => w.length >= 4 && (CORE.some(c => near(w, c)) || CORE.some(c => c.length >= 5 && w.length > c.length && w.endsWith(c)) || CORE.some(c => c.length >= 5 && w.length > c.length && w.startsWith(c))));
+}
 function _botStaffSys(nombre) {
   const hoyL = new Date().toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
   return `Eres el asistente de operación de Check-inn Saltillo. Hablas con ${nombre}, miembro del PERSONAL (no es huésped). Hoy es ${hoyL}.
@@ -2013,7 +2023,7 @@ Tus funciones en este chat: registrar el ESTADO DE ASEO de los alojamientos, reg
 - DATOS DEL HUÉSPED — después de reportar que no ha desalojado preguntas «¿Quieres los datos del huésped y su reserva?»; si responde "sí" llama consultar_datos_reserva (sin alojamiento) y responde con formatted_message TAL CUAL. También ante "datos del huésped de cu2", "celular del huésped de ox3".
 - NO HA DESALOJADO — "cu2 no ha salido", "ox3 no ha desalojado", "cu2 aún hay gente adentro", "jc1 siguen adentro" → llama reportar_no_desalojo (alojamientos TAL CUAL) DE INMEDIATO, sin pedir confirmación. "cu2 ya salió" / "ya desalojaron ox3" → reportar_no_desalojo con ya_salio=true. Responde en 1 línea.
 - El RESUMEN/CIERRE DEL DÍA y sus instrucciones ("validar todos", "inspeccionar todos", "reprogramar…") solo los pueden usar administración y las personas del reenvío automático; si la herramienta responde que no tiene permiso, dilo en 1 línea.
-- CÓDIGOS DE ALOJAMIENTO: CU = Cumbres, JC = José Cárdenas, OX = Oaxaca, BC = Baja California, MT = Matamoros, SE = Sevilla, VS = Versalles, TR = Torreón (ej. CU2, JC1, OX3, BC7, MT4, SE3, VS1, TR10). Llegan con cualquier formato: «Tr.10», «tr-10», «TR 10», «torreon 10», «torreón #10», «Cu-12», «cumb 8»: NUNCA los rechaces por el formato (puntos, guiones, espacios, mayúsculas, «#»); llama preparar_estado_aseo con el texto TAL CUAL y que el sistema los reconozca. Solo si la herramienta responde que no lo reconoció, pide que lo escriba como CU2, JC1, OX3, BC7, MT4, TR10.
+- CÓDIGOS DE ALOJAMIENTO: CU = Cumbres, JC = José Cárdenas, OX = Oaxaca, BC = Baja California, MT = Matamoros, SE = Sevilla, VS = Versalles, TR = Torreón (ej. CU2, JC1, OX3, BC7, MT4, SE3, VS1, TR10). Llegan con cualquier formato: «Tr.10», «tr-10», «TR 10», «torreon 10», «torreón #10», «Cu-12», «cumb 8», «MT7listo» (pegado a «listo»): NUNCA los rechaces por el formato (puntos, guiones, espacios, mayúsculas, «#»); llama preparar_estado_aseo con el texto TAL CUAL y que el sistema los reconozca. Solo si la herramienta responde que no lo reconoció, pide que lo escriba como CU2, JC1, OX3, BC7, MT4, TR10.
 - Si el mensaje no es sobre la operación, responde en 1 línea que por este medio registras estados de aseo (ej. "cu2 listo"), solicitudes de entrada/salida, y das información de limpiezas, tareas de Check-Flow, incidencias y tareas programadas.
 - Si pide LEVANTAR una incidencia, crear una tarea nueva, reprogramar, cambiar prioridad o asignar responsables y no tienes herramienta para eso, responde en 1 línea: «Solo los administradores pueden hacerlo; avísale a un administrador.»
 - Sé breve, sin cortesías ni emojis extra.`;
@@ -3282,6 +3292,20 @@ const _ASIST_PENDING_TTL_MS = 10 * 60 * 1000;
 // Cache de lookup empleado por celular (5 min) para no golpear el sheet
 // en cada mensaje recibido de un mismo número.
 const _asistenciaEmpCache = new Map();
+// Se guarda en Cloud Storage para que sobreviva a los despliegues y reinicios (antes, tras cada despliegue el primer mensaje de cada
+// persona del personal tenía que esperar a Apps Script, que a ratos tarda 8-11 s).
+const _ASIST_EMP_OBJ = "bot/empleados-cache.json"; let _asistEmpCarga = null, _asistEmpT = null;
+function _asistEmpCargar() {
+  return _asistEmpCarga || (_asistEmpCarga = (async () => {
+    try { const o = (await _rhdGetJson(_ASIST_EMP_OBJ).catch(() => ({}))) || {};
+      Object.entries(o).forEach(([k, v]) => { if (v && v.data && v.data.ok && v.data.empleado && !_asistenciaEmpCache.has(k)) _asistenciaEmpCache.set(k, { data: v.data, ts: Number(v.ts) || 0 }); }); } catch (_) {}
+  })());
+}
+function _asistEmpGuardar() {
+  clearTimeout(_asistEmpT);
+  _asistEmpT = setTimeout(() => { const o = {}; _asistenciaEmpCache.forEach((v, k) => { if (v && v.data && v.data.ok && v.data.empleado) o[k] = { data: v.data, ts: v.ts }; });
+    _rhdPut(_ASIST_EMP_OBJ, JSON.stringify(o), "application/json").catch(e => console.warn("[asistencia] caché de empleados no guardada:", e.message)); }, 2000);
+}
 const _ASIST_EMP_TTL_MS = 5 * 60 * 1000;
 
 function _detectAsistenciaIntent(text) {
@@ -3441,6 +3465,7 @@ const _empNombre = v => (v && typeof v === "object" ? String(v.nombre || v.Nombr
 // Con el registro vencido se responde AL INSTANTE con el anterior y se renueva en segundo plano: Apps Script tarda 8-11 s a ratos y,
 // si el celular no se identificaba a tiempo, el mensaje del personal (p. ej. el «sí» de un resumen) caía al flujo de huéspedes y se ignoraba.
 async function _asistenciaLookupEmpleado(phone10) {
+  await _asistEmpCargar();
   const c = _asistenciaEmpCache.get(phone10);
   if (c && c.data && c.data.ok && c.data.empleado && Date.now() - c.ts >= _ASIST_EMP_TTL_MS) {
     if (!c.ref) { c.ref = true; _asistenciaLookupEmpleadoGo(phone10).catch(() => {}).finally(() => { c.ref = false; }); }
@@ -3462,7 +3487,7 @@ async function _asistenciaLookupEmpleadoGo(phone10) {
       txt = await _once();
       try {
         const j = JSON.parse(txt);
-        _asistenciaEmpCache.set(phone10, { data: j, ts: Date.now() });
+        _asistenciaEmpCache.set(phone10, { data: j, ts: Date.now() }); _asistEmpGuardar();
         return j;
       } catch(_) {
         if (txt.startsWith("<") && attempt === 0) {
@@ -4141,7 +4166,7 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     const _aseoDraft = _botAseoDrafts.get(phone10);
     const _nsD = _botNsDatos.get(phone10);
     const _aseoPend = (_aseoDraft && Date.now() < _aseoDraft.exp) || (_nsD && Date.now() < _nsD.exp); // incluye la pregunta de datos del huésped
-    if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
+    if (!admCheck.isAdmin && (_botAseoKwTest(bodyMsg) || _aseoPend)) {
       let emp = _prueba ? { ok: true, empleado: _prueba } : await _asistenciaLookupEmpleado(phone10).catch(() => null);
       if (!(emp && emp.ok && emp.empleado) && !_prueba) { await new Promise(r => setTimeout(r, 1500)); emp = await _asistenciaLookupEmpleado(phone10).catch(() => null); } // un reintento: Apps Script falla a ratos
       if (_aseoPend && (!emp || emp.ok === undefined)) { // respuesta vacía o con error (no «no es empleado»)
@@ -10345,7 +10370,7 @@ async function _aseoCatalogo() {
   }).filter(x => x.prop && (x.dep || (x.sint && x.code)));
 }
 function _aseoMatchAloj(q, cat) {
-  let t = _botNorm(q).replace(/\b(calle|plaza|av|avenida|privada|depto|departamento|dpto|numero|num|no|el|la|del|de|alojamiento|depa)\b/g, " ").replace(/\s+/g, " ").trim();
+  let t = _botNorm(q).replace(/([a-z])(\d)/g, "$1 $2").replace(/(\d)([a-z]{2,})/g, "$1 $2").replace(/\b(listo|lista|listos|listas|terminad[oa]s?|limpi[oa]s?|inspeccionad[oa]s?|acabad[oa]s?)\b/g, " ").replace(/\b(calle|plaza|av|avenida|privada|depto|departamento|dpto|numero|num|no|el|la|del|de|alojamiento|depa)\b/g, " ").replace(/\s+/g, " ").trim();
   // número de depto al final (acepta "4 a" → "4a")
   const mm = t.match(/(\d+)\s*([a-z])?$/);
   if (!mm) return { ok: false, error: `No identifiqué el número de departamento en "${q}"` };
