@@ -60667,7 +60667,7 @@ function tarIGCampos_(d, lbl, inp, field) {
   return field(lbl('Plantilla') + plSel) + field(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:11.5px;font-weight:600;color:#374151">Alojamiento(s) · ${sel.length}</label><span style="flex:1"></span>${btn('Todos', 'tarIGTodos_(true)')}${btn('Ninguno', 'tarIGTodos_(false)')}</div>${lista}`);
 }
 // Inventario recurrente: «Programación» por periodo (sin días de la semana ni del mes). _prog = { tipo: 'periodo', periodo, inicio, fin }.
-const TAR_LV_PER = [['semanal', 'Semanal', 0, 7], ['mensual', 'Mensual', 1], ['bimestral', 'Bimestral', 2], ['trimestral', 'Trimestral', 3], ['semestral', 'Semestral', 6], ['anual', 'Anual', 12]];
+const TAR_LV_PER = [['semanal', 'Semanal', 0, 7], ['quincenal', 'Quincenal', 0, 15], ['mensual', 'Mensual', 1], ['bimestral', 'Bimestral', 2], ['trimestral', 'Trimestral', 3], ['semestral', 'Semestral', 6], ['anual', 'Anual', 12]];
 function tarLvMas_(iso, per) { // fecha + un periodo (o + n meses/días)
   const d = tarParseIso_(iso); if (!d) return iso; const P = TAR_LV_PER.find(x => x[0] === per) || TAR_LV_PER[1];
   if (P[3]) { d.setDate(d.getDate() + P[3]); return tarIso_(d); }
