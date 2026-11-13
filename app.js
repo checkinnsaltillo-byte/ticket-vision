@@ -59307,6 +59307,12 @@ function tdCss_() {
   .td-hf b{font:700 11px ui-monospace,Menlo,monospace;flex:none;color:#0f1729}
   .td-hf .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#475569}
   .td-hijos .td-hf{flex-wrap:wrap;row-gap:2px}.td-hijos .td-hf .nm{flex:1 1 90px}
+  .td-aloj .r1{align-items:center}.td-aloj .td-an{margin-left:auto;flex:none;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+  .td-inv{position:relative;margin:8px 0 0;padding:9px 0 2px 11px;border-top:1px solid rgba(15,23,42,.08);cursor:pointer}
+  .td-inv::before{content:'';position:absolute;left:0;top:11px;bottom:4px;width:3px;border-radius:3px;background:var(--sc,#94a3b8)}
+  .td-inv:hover .ih .t{text-decoration:underline}.td-inv.sel{background:#f5f3ff;border-radius:8px}.td-inv.ghost{opacity:.55}
+  .td-inv .ih{display:flex;align-items:center;gap:6px;min-width:0}.td-inv .ih .t{font-size:12.5px;font-weight:700;color:#0f1729;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .td-inv .ip{margin:5px 0 0}.td-inv .td-hcd{margin-top:6px;padding-top:6px}
   .td-hcd{display:flex;flex-direction:column;gap:5px;margin:8px 0 2px;padding-top:7px;border-top:1px solid rgba(15,23,42,.08)}
   .td-hcd .ln{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;min-width:0}
   .td-hcd small{font-size:10.5px;font-weight:600;color:#6b7280;letter-spacing:.01em}
@@ -59718,24 +59724,43 @@ function tdTablero_(O, dia) {
   const vacio = tdOcMes_(ym, false).length ? 'Ninguna tarea coincide con los filtros' : `No hay tareas ni recordatorios en ${bnEfeMesLabel_(ym).toLowerCase()}`;
   return `${O.length ? `<div class="ad-board ${vista === 'estado' ? 'est' : ''}">${cols}</div>` : `<div class="pc-mv-empty">${vacio}</div>`}`;
 }
-// Inventarios › «Por propiedad» y «Por usuario»: una columna por propiedad (o por persona) y, dentro, una sección por tipo de inventario
-// con una card por alojamiento (la misma sub-card que se abre desde el inventario).
+// Inventarios › «Por propiedad» y «Por usuario»: una columna por propiedad (o por persona) y, dentro, UNA card por alojamiento
+// con el desglose de sus inventarios (un renglón por tipo de inventario: plantilla, personal, último registro, días para el siguiente y avance).
+function tdInvFila_(r, hid, dia) {
+  const id = tdIGHijo_(r, hid), iso = tdIGPerDe_(r, hid, dia), est = tarOcurEstado_(id, iso), p = r.Plantilla && ASEO.pl.lista ? ASEO.pl.lista[r.Plantilla] : null;
+  const x = plIdxGet_(tdIGKey_(r, hid, dia)), sel = TAR_STATE.dr && TAR_STATE.dr.hijo === id, pers = tarPersonalList_(r), oc = tarOcur_(id, iso);
+  return `<div class="td-inv ${sel ? 'sel' : ''} ${est === 'Cancelado' ? 'ghost' : ''}" style="--sc:${TD_EST[est] || '#94a3b8'}" onclick="tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')">
+    <div class="ih"><span class="t" title="${esc(r.Nombre || '')}">📝 ${esc(r.Nombre || (p ? p.titulo : 'Sin nombre'))}</span>${prio4Html_(r.Prioridad || 'Medio', true)}${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}</div>
+    <div class="ip">${pers.length ? `<span class="ad-avs">${pers.map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}</div>
+    ${tdHijoFechas_(r, hid)}${p ? tdBarra_(x ? x.p : (est === 'Resuelto' ? 100 : 0), 'Avance de la plantilla ' + p.titulo) : ''}
+  </div>`;
+}
+function tdAlojCard_(hid, items) { // items: [{ x, ret }] (x = ocurrencia del inventario)
+  const a = typeof atAloj_ === 'function' ? atAloj_(hid) : { nombre: hid, corto: '' };
+  return `<div class="ad-card tipo td-card td-aloj" style="--tc:${AT_DEPTO.inspeccion.c}">
+    <div class="r1"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span><span class="prop">🔍 ${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span><span class="td-an" title="${items.length} inventario${items.length === 1 ? '' : 's'}">${items.length}</span></div>
+    ${items.map(it => tdInvFila_(it.x.r, hid, it.x.iso)).join('')}
+  </div>`;
+}
 function tdLvBoard_(O, modo, vac) {
   const LV = O.filter(x => tdEsIG_(x.r)).sort((a, b) => String(a.r.Nombre || '').localeCompare(String(b.r.Nombre || ''), 'es'));
-  const hijos = x => tdIGAlojs_(x.r).map(h => [h, tdIGRetraso_(x.r, h).ret]).sort((a, b) => b[1] - a[1]).map(t => t[0]); // los más atrasados arriba
-  const sec = (x, n) => `<div class="td-hsec" style="padding:8px 8px 4px" title="${esc(x.r.Nombre || '')}">📝 ${esc(x.r.Nombre || 'Sin nombre')} <b>${n}</b></div>`;
-  const cardH = (x, h) => tdHijoCard_(x.r, h, x.iso);
+  // alojamientos → sus inventarios (el más atrasado arriba); alojamientos con el inventario más atrasado arriba
+  const porAloj = L => { const M = new Map(); L.forEach(x => tdIGAlojs_(x.r).forEach(h => { if (!M.has(h)) M.set(h, []); M.get(h).push({ x, ret: tdIGRetraso_(x.r, h).ret }); }));
+    return [...M.entries()].map(([h, it]) => [h, it.sort((a, b) => b.ret - a.ret)]).sort((a, b) => b[1][0].ret - a[1][0].ret); };
+  const cardsDe = L => porAloj(L).map(([h, it]) => tdAlojCard_(h, it)).join('');
+  const nDe = L => new Set(L.flatMap(x => tdIGAlojs_(x.r))).size;
   if (modo === 'propiedad') {
     const G = new Map();
-    LV.forEach(x => hijos(x).forEach(h => {
+    LV.forEach(x => tdIGAlojs_(x.r).forEach(h => {
       const E = alojEdif_(h), k = E ? E.k : '~' + ckPropDe_(h, ''), t = E ? E.nom : ckPropDe_(h, '').replace(/^Calle\s+/i, '');
-      if (!G.has(k)) G.set(k, { k, t, S: new Map(), n: 0 }); const g = G.get(k); if (!g.S.has(x.r.ID)) g.S.set(x.r.ID, { x, L: [] }); g.S.get(x.r.ID).L.push(h); g.n++;
+      if (!G.has(k)) G.set(k, { k, t, M: new Map() }); const m = G.get(k).M; if (!m.has(h)) m.set(h, []); m.get(h).push({ x, ret: tdIGRetraso_(x.r, h).ret });
     }));
     const ord = k => { const i = ED_ORDEN.indexOf(k); return i < 0 ? 99 : i; };
-    return ckColsHtml_([...G.values()].sort((a, b) => ord(a.k) - ord(b.k) || a.t.localeCompare(b.t, 'es')).map(g => ({ t: `🏢 ${esc(g.t)}`, n: g.n, cards: [...g.S.values()].map(s => sec(s.x, s.L.length) + s.L.map(h => cardH(s.x, h)).join('')).join('') })), vac);
+    return ckColsHtml_([...G.values()].sort((a, b) => ord(a.k) - ord(b.k) || a.t.localeCompare(b.t, 'es')).map(g => ({ t: `🏢 ${esc(g.t)}`, n: g.M.size,
+      cards: [...g.M.entries()].map(([h, it]) => [h, it.sort((a, b) => b.ret - a.ret)]).sort((a, b) => b[1][0].ret - a[1][0].ret).map(([h, it]) => tdAlojCard_(h, it)).join('') })), vac);
   }
   const N = [...new Set(LV.flatMap(x => tarPersonalList_(x.r)))].sort((a, b) => a.localeCompare(b, 'es')), sin = LV.filter(x => !tarPersonalList_(x.r).length);
-  const col = (t, L) => { const H = L.map(x => [x, hijos(x)]); return { t, n: H.reduce((s, h) => s + h[1].length, 0), cards: H.map(([x, hs]) => sec(x, hs.length) + hs.map(h => cardH(x, h)).join('')).join('') }; };
+  const col = (t, L) => ({ t, n: nDe(L), cards: cardsDe(L) });
   return ckColsHtml_((sin.length ? [col('<span class="ad-uav sin" style="width:20px;height:20px;font-size:10px">?</span> Sin asignación', sin)] : []).concat(N.map(n => col(`${adAv_(n)} ${esc(aseoNombreCorto_(n))}`, LV.filter(x => tarPersonalList_(x.r).includes(n))))), vac);
 }
 window.tdSetEst_ = function (id, iso, k, ex) { // ex: iso ya es la llave del periodo (ventana del alojamiento)
