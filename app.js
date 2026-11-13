@@ -59307,6 +59307,10 @@ function tdCss_() {
   .td-hf b{font:700 11px ui-monospace,Menlo,monospace;flex:none;color:#0f1729}
   .td-hf .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#475569}
   .td-hijos .td-hf{flex-wrap:wrap;row-gap:2px}.td-hijos .td-hf .nm{flex:1 1 90px}
+  .td-hcd{display:flex;flex-direction:column;gap:5px;margin:8px 0 2px;padding-top:7px;border-top:1px solid rgba(15,23,42,.08)}
+  .td-hcd .ln{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;min-width:0}
+  .td-hcd small{font-size:10.5px;font-weight:600;color:#6b7280;letter-spacing:.01em}
+  .td-hcd b{font-size:11.5px;font-weight:700;color:#0f1729;white-space:nowrap}.td-hcd b.nil{color:#94a3b8;font-weight:600}
   .td-hf .dt{flex:none;font-size:10.5px;font-weight:600;color:#475569;white-space:nowrap}.td-hf .tb-ret{flex:none;font-size:10px!important;padding:1px 7px!important}
   .td-hf .es{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;flex:none;color:color-mix(in srgb,var(--c) 70%,#000)}
   .td-hf .es i{width:7px;height:7px;border-radius:50%;background:var(--c)}
@@ -59557,8 +59561,16 @@ function tdHijoCard_(r, hid, dia) {
     <div class="r1"><span class="code">${esc(a.corto ? String(a.corto).toUpperCase() : '—')}</span>${prio4Html_(r.Prioridad || 'Medio', true)}<span class="prop">🔍 ${esc(String(a.nombre || hid).replace(/^Calle\s+/i, ''))}</span></div>
     <div class="r2"><span class="ax-cat" style="--cc:${AT_DEPTO.inspeccion.c};--sc:#6b7280"><span class="t">📝 Inventario</span><span class="a">›</span><span class="s">${esc(p ? p.titulo : 'Sin plantilla')}</span></span></div>
     <div class="r3">${tarPersonalList_(r).length ? `<span class="ad-avs">${tarPersonalList_(r).map(n => adNom_(n)).join('')}</span>` : '<span class="ad-un">Sin asignación</span>'}<span class="sp"></span>${oc && oc.Comentarios ? '<span class="ad-gd" title="Tiene comentarios">🗒</span>' : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();tdAbrirHijo_('${esc(r.ID)}','${esc(hid)}')">Detalles</button></div>
-    ${tdQs_(id, est, dia, true)}${p ? tdBarra_(x ? x.p : (est === 'Resuelto' ? 100 : 0), 'Avance de la plantilla ' + p.titulo) : ''}
+    ${tdHijoFechas_(r, hid)}${p ? tdBarra_(x ? x.p : (est === 'Resuelto' ? 100 : 0), 'Avance de la plantilla ' + p.titulo) : ''}
   </div>`;
+}
+// Datos de la sub-card (en lugar de los botones de estado): último registro/inspección del alojamiento y días que faltan para la siguiente.
+function tdHijoFechas_(r, hid) {
+  const g = tdIGRegMap_().get(r.ID + '|' + hid), R = tdIGRetraso_(r, hid);
+  const gx = g && r.Plantilla ? plIdxGet_(tdIGKey_(r, hid, g.P, true)) : null, gp = g ? (g.est === 'Resuelto' && !gx ? 100 : gx ? gx.p : 0) : 0, gok = !!(g && g.est === 'Resuelto');
+  const d0 = g ? tarParseIso_(g.d) : null, f = d0 ? String(d0.getDate()).padStart(2, '0') + '/' + TAR_MESES[d0.getMonth()] + '/' + String(d0.getFullYear()).slice(2) : '';
+  const ult = g ? `<b title="${esc(aseoDiaTxt_(g.d))} · ${gok ? 'completo' : 'inconcluso'} (${gp} %)">${esc(f)} ${gok ? '✅' : '⏳'} ${gp}%</b>` : '<b class="nil" title="Aún no hay ningún registro de este alojamiento">Sin registro previo</b>';
+  return `<div class="td-hcd"><div class="ln"><small>Último registro</small>${ult}</div><div class="ln"><small>Siguiente</small>${tdIGRetHtml_(R, true)}</div></div>`;
 }
 // Calendario (día/semana/mes/resumen): abre la ventana de detalle en la fecha de esa card.
 window.tdAbrirEn_ = function (id, iso) { TAR_STATE.dia = iso === tarIso_(tarToday_()) ? null : iso; tdAbrir_(id); };
