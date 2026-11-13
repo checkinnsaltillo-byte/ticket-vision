@@ -59315,6 +59315,8 @@ function tdCss_() {
   .td-inv .ip{margin:5px 0 0}.td-inv .td-hcd{margin-top:6px;padding-top:6px}
   .td-hcd{display:flex;flex-direction:column;gap:5px;margin:8px 0 2px;padding-top:7px;border-top:1px solid rgba(15,23,42,.08)}
   .td-hcd .ln{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;min-width:0}
+  .td-hcd .tb-ret{max-width:100%;box-sizing:border-box;white-space:normal!important;line-height:1.25;font-size:10.5px!important;padding:3px 9px!important}
+  .td-hcd .ln{min-width:0}.td-hcd{min-width:0;max-width:100%}
   .td-hcd small{font-size:10.5px;font-weight:600;color:#6b7280;letter-spacing:.01em}
   .td-hcd b{font-size:11.5px;font-weight:700;color:#0f1729;white-space:nowrap}.td-hcd b.nil{color:#94a3b8;font-weight:600}
   .td-hf .dt{flex:none;font-size:10.5px;font-weight:600;color:#475569;white-space:nowrap}.td-hf .tb-ret{flex:none;font-size:10px!important;padding:1px 7px!important}
