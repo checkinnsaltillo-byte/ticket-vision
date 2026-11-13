@@ -3438,7 +3438,17 @@ async function _cierreFinal(ci, hechos, fromRaw, phone10) {
 }
 // asistencia_lookup_empleado (copia en Cloud Storage) devuelve empleado = {nombre, puesto, row}; el Apps Script devolvía el nombre.
 const _empNombre = v => (v && typeof v === "object" ? String(v.nombre || v.Nombre || "") : String(v || "")).trim();
+// Con el registro vencido se responde AL INSTANTE con el anterior y se renueva en segundo plano: Apps Script tarda 8-11 s a ratos y,
+// si el celular no se identificaba a tiempo, el mensaje del personal (p. ej. el «sí» de un resumen) caía al flujo de huéspedes y se ignoraba.
 async function _asistenciaLookupEmpleado(phone10) {
+  const c = _asistenciaEmpCache.get(phone10);
+  if (c && c.data && c.data.ok && c.data.empleado && Date.now() - c.ts >= _ASIST_EMP_TTL_MS) {
+    if (!c.ref) { c.ref = true; _asistenciaLookupEmpleadoGo(phone10).catch(() => {}).finally(() => { c.ref = false; }); }
+    return c.data;
+  }
+  return _asistenciaLookupEmpleadoGo(phone10);
+}
+async function _asistenciaLookupEmpleadoGo(phone10) {
   const cached = _asistenciaEmpCache.get(phone10);
   if (cached && (Date.now() - cached.ts) < _ASIST_EMP_TTL_MS) return cached.data;
   // Reintenta 1 vez si la respuesta es HTML (Apps Script hipos).
@@ -4132,7 +4142,15 @@ app.post("/wa/webhook-inbound", express.urlencoded({ extended: false }), async (
     const _nsD = _botNsDatos.get(phone10);
     const _aseoPend = (_aseoDraft && Date.now() < _aseoDraft.exp) || (_nsD && Date.now() < _nsD.exp); // incluye la pregunta de datos del huésped
     if (!admCheck.isAdmin && (_aseoKw.test(_botNorm(bodyMsg)) || _aseoPend)) {
-      const emp = _prueba ? { ok: true, empleado: _prueba } : await _asistenciaLookupEmpleado(phone10).catch(() => null);
+      let emp = _prueba ? { ok: true, empleado: _prueba } : await _asistenciaLookupEmpleado(phone10).catch(() => null);
+      if (!(emp && emp.ok && emp.empleado) && !_prueba) { await new Promise(r => setTimeout(r, 1500)); emp = await _asistenciaLookupEmpleado(phone10).catch(() => null); } // un reintento: Apps Script falla a ratos
+      if (_aseoPend && (!emp || emp.ok === undefined)) { // respuesta vacía o con error (no «no es empleado»)
+        // Había un resumen por confirmar y no se pudo identificar el celular: NO se deja en silencio.
+        console.warn(`[bot-staff] ${phone10}: no se pudo identificar al empleado con un borrador pendiente`);
+        if (!bodyAlreadyPersisted) { await _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, staff: true }); bodyAlreadyPersisted = true; }
+        await _twilioSendMessage({ to: fromRaw, body: "No pude verificar tu celular en este momento. Vuelve a mandar tu mensaje (por ejemplo «sí») en unos segundos.", skipMirror: true }).catch(() => {});
+        return;
+      }
       if (emp && emp.ok && emp.empleado) {
         const nombre = _empNombre(emp.empleado);
         if (!bodyAlreadyPersisted) { await _botAppendMessage(phone10, "user", bodyMsg, { from: fromRaw, staff: true }); bodyAlreadyPersisted = true; }
