@@ -9190,15 +9190,25 @@ function clPuede_(m) { return !window.SYS_ALLOWED || window.SYS_ALLOWED.has(m); 
 // Secciones: ✅ Tareas (submenú por tipo) · 🚨 Incidencias · 🧳 Objetos olvidados · 🗓️ Pendientes; 📋 Plantillas aparte a la derecha.
 const CL_SUBS = [['todos', '📋', 'Todos'], ['limpieza'], ['mantenimiento'], ['inspeccion'], ['administrativo'], ['insumos']];
 function clNavHtml_(act) {
-  const b = (k, l, mod, on) => `<button type="button" class="cl-b ${(on != null ? on : act === k) ? 'on' : ''}" onclick="switchModule('${mod}')">${l}</button>`;
+  ck2EnsureCss_();
   const MPn = typeof clModoPersonal_ === 'function' && clModoPersonal_();
   const enTareas = act === 'checkinn' || act === 'mant';
-  const items = (clPuede_('aseo') || clPuede_('breezeway') ? b('checkinn', '✅ Tareas', 'aseo', enTareas) : '')
-    + (clPuede_('incidencias') ? b('incidencias', '🚨 Incidencias', 'incidencias') : '') + (clPuede_('objetos') ? b('objetos', '🧳 Objetos olvidados', 'objetos') : '')
-    + (clPuede_('tareas') ? b('tareas', '📝 Inventarios', 'tareas') : ''); // v2127: en modo personal se respeta lo marcado en «Editar empleado» (antes se ocultaban siempre)
-  const pl = !MPn && clPuede_('aseo') ? `<div class="cl-g cl-der">${b('plantillas', '📋 Plantillas', 'plantillas')}${b('reglasbot', '🧹 Programación', 'reglasbot')}</div>` : '';
-  const sub = enTareas && window.ASEO ? `<div class="cl-sub">${CL_SUBS.map(([k, ico, t]) => { const D = AT_DEPTO[k] || {}; return `<button type="button" class="cl-sb ${(ASEO.sub || 'todos') === k ? 'on' : ''}" style="--c:${D.c || '#0f1729'}" onclick="clSub_('${k}')">${ico || D.ico} ${t || D.t}</button>`; }).join('')}</div>` : '';
-  return items.trim() || pl ? `<div class="cl-nav">${items.trim() ? `<div class="cl-g">${items}</div>` : ''}${pl}</div>${sub}` : '';
+  const IC = {
+    tareas: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3.5"/><path d="m6.8 10.2 2.2 2.2 4.2-4.6"/></svg>',
+    inc: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.2 17.4 16H2.6L10 3.2Z"/><path d="M10 8.2v3.6M10 14h.01"/></svg>',
+    obj: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6.5" width="14" height="10" rx="2"/><path d="M7.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 12.5 5v1.5M3 11h14"/></svg>',
+    inv: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h6M7 4a1.5 1.5 0 0 0-1.5 1.5v0H4.8A1.3 1.3 0 0 0 3.5 6.8v9.4a1.3 1.3 0 0 0 1.3 1.3h10.4a1.3 1.3 0 0 0 1.3-1.3V6.8a1.3 1.3 0 0 0-1.3-1.3h-.7v0A1.5 1.5 0 0 0 13 4"/><path d="M7 10h6M7 13.2h4"/></svg>',
+    pl: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="12" height="14" rx="2"/><path d="M7.5 7h5M7.5 10h5M7.5 13h3"/></svg>',
+    prog: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.6 1.6"/></svg>',
+  };
+  const tab = (k, ic, l, mod, on) => { const o = on != null ? on : act === k; return `<button type="button" role="tab" aria-selected="${o}" class="cl-tab ${o ? 'on' : ''}" onclick="switchModule('${mod}')">${IC[ic]}<span>${l}</span></button>`; };
+  const tabs = (clPuede_('aseo') || clPuede_('breezeway') ? tab('checkinn', 'tareas', 'Tareas', 'aseo', enTareas) : '')
+    + (clPuede_('incidencias') ? tab('incidencias', 'inc', 'Incidencias', 'incidencias') : '') + (clPuede_('objetos') ? tab('objetos', 'obj', 'Objetos olvidados', 'objetos') : '')
+    + (clPuede_('tareas') ? tab('tareas', 'inv', 'Inventarios', 'tareas') : ''); // v2127: en modo personal se respeta lo marcado en «Editar empleado»
+  const cb = (k, ic, l, mod) => `<button type="button" class="cl-cfgb ${act === k ? 'on' : ''}" onclick="switchModule('${mod}')">${IC[ic]}<span>${l}</span></button>`;
+  const cfg = !MPn && clPuede_('aseo') ? `<div class="cl-cfg" role="group" aria-label="Configuración de Operaciones"><span class="cl-cfg-l">Configurar</span>${cb('plantillas', 'pl', 'Plantillas', 'plantillas')}${cb('reglasbot', 'prog', 'Programación', 'reglasbot')}</div>` : '';
+  const chips = enTareas && window.ASEO ? `<div class="cl-chips" role="group" aria-label="Filtrar por tipo de tarea"><span class="cl-chips-l">Tipo</span>${CL_SUBS.map(([k, ico, t]) => { const D = AT_DEPTO[k] || {}; const on = (ASEO.sub || 'todos') === k; return `<button type="button" class="cl-chip ${on ? 'on' : ''}" aria-pressed="${on}" style="--c:${D.c || '#0f1729'}" onclick="clSub_('${k}')"><i></i>${t || D.t}</button>`; }).join('')}</div>` : '';
+  return tabs.trim() || cfg ? `<div class="cl-nav2">${tabs.trim() ? `<div class="cl-tabs" role="tablist" aria-label="Secciones de Operaciones">${tabs}</div>` : '<span></span>'}${cfg}</div>${chips}` : '';
 }
 // Submenú de Tareas: «Todos» = todos los tipos; los demás, solo su tipo. Mantenimiento usa su sección (reportes técnicos).
 window.clSub_ = function (k) {
@@ -9215,6 +9225,160 @@ function ckAlojTxt_(hid) { const a = hid && typeof atAloj_ === 'function' ? atAl
 function ckFxN_(fx, def) { def = def || {}; return Object.entries(fx || {}).filter(([k, v]) => !(k in def && def[k] === v) && (v instanceof Set ? v.size : Array.isArray(v) ? v.length : !!v)).length; }
 function ckHam_(on, n, fn) { return `<button type="button" class="ad-ham ${on ? 'on' : ''}" onclick="${fn}" title="${on ? 'Ocultar filtros' : 'Mostrar filtros'}${n ? ` (${n} activo${n === 1 ? '' : 's'})` : ''}">☰${n ? `<b>${n}</b>` : ''}</button>`; }
 function ckDia_(iso, hoy) { const dif = Math.round((new Date(iso + 'T12:00:00') - new Date(hoy + 'T12:00:00')) / 864e5), d = new Date(iso + 'T12:00:00'), f = `${d.getDate()} ${ASEO_MES[d.getMonth()]}`; return dif === 0 ? `Hoy · ${f}` : dif === -1 ? `Ayer · ${f}` : dif === 1 ? `Mañana · ${f}` : `${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()]} ${f}`; }
+function ck2EnsureCss_() {
+  if (document.getElementById('ck2-css')) return;
+  const st = document.createElement('style'); st.id = 'ck2-css';
+  st.textContent = `/* ═══ Operaciones · barra rediseñada (v2461) ═══
+   Tipos de control, cada uno con su forma:
+   · PESTAÑAS con subrayado = ir a otra sección (navegación)
+   · CHIPS con punto de color = filtrar por tipo (varios estados, uno activo)
+   · CONTROL SEGMENTADO (pista gris + pieza blanca) = elegir UNA opción de una lista (fecha, periodo, vista, detalle)
+   · INTERRUPTOR / botón con borde = mostrar u ocultar algo (calendario, publicar)
+   · BOTÓN con icono = ejecuta una acción (programar, actualizar)
+   · BOTÓN índigo lleno = acción principal (nueva tarea) */
+:root{--k-ink:#0f172a;--k-mut:#64748b;--k-soft:#94a3b8;--k-line:#e5e7eb;--k-bg:#f1f5f9;--k-acc:#4f46e5;--k-acc2:#eef2ff;--k-font:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+
+/* ── 1) Pestañas de sección ───────────────────────────── */
+.cl-nav2{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:0 0 12px;border-bottom:1px solid var(--k-line);font-family:var(--k-font)}
+.cl-tabs{display:flex;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+.cl-tabs::-webkit-scrollbar,.cl-chips::-webkit-scrollbar{display:none}
+.cl-tab{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 14px;margin-bottom:-1px;border-bottom:2px solid transparent;font:600 13.5px/1 var(--k-font);color:var(--k-mut);white-space:nowrap;scroll-snap-align:start;-webkit-tap-highlight-color:transparent;transition:color .15s,border-color .15s}
+.cl-tab svg{width:17px;height:17px;flex:none}
+.cl-tab:hover{color:var(--k-ink)}
+.cl-tab.on{color:var(--k-acc);border-bottom-color:var(--k-acc)}
+.cl-tab:focus-visible,.cl-cfgb:focus-visible,.cl-chip:focus-visible{outline:2px solid var(--k-acc);outline-offset:-2px;border-radius:8px}
+.cl-cfg{display:flex;align-items:center;gap:4px;flex:none;padding-bottom:7px}
+.cl-cfg-l{font:600 10px/1 var(--k-font);letter-spacing:.09em;text-transform:uppercase;color:var(--k-soft);margin-right:4px}
+.cl-cfgb{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:8px;font:600 12.5px/1 var(--k-font);color:#475569;white-space:nowrap}
+.cl-cfgb svg{width:15px;height:15px;flex:none;color:var(--k-soft)}
+.cl-cfgb:hover,.cl-cfgb.on{background:var(--k-bg);color:var(--k-ink)}
+
+/* ── 2) Chips de tipo de tarea (filtro) ───────────────── */
+.cl-chips{display:flex;align-items:center;gap:6px;margin:0 0 12px;padding:2px 0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;font-family:var(--k-font)}
+.cl-chips-l{flex:none;font:600 10px/1 var(--k-font);letter-spacing:.09em;text-transform:uppercase;color:var(--k-soft);margin-right:4px}
+.cl-chip{all:unset;box-sizing:border-box;flex:none;cursor:pointer;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:999px;border:1px solid var(--k-line);background:#fff;font:600 12.5px/1 var(--k-font);color:#475569;white-space:nowrap;-webkit-tap-highlight-color:transparent;transition:background .15s,border-color .15s,color .15s}
+.cl-chip i{width:8px;height:8px;border-radius:50%;background:var(--c,#0f172a);flex:none}
+.cl-chip:hover{border-color:var(--c,#94a3b8);color:var(--k-ink)}
+.cl-chip.on{background:#f8fafc;border-color:var(--c,#0f172a);color:var(--k-ink)}
+@supports (background:color-mix(in srgb,red 10%,white)){.cl-chip.on{background:color-mix(in srgb,var(--c,#0f172a) 10%,#fff)}}
+
+/* ── 3) Barra de herramientas ─────────────────────────── */
+#module-aseo .ck2-bar{display:flex;flex-direction:column;gap:12px;margin:0 0 14px;padding:14px 14px 12px;background:#fff;border:1px solid var(--k-line);border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.04);font-family:var(--k-font)}
+#module-aseo .ck2-r{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 12px;min-width:0}
+#module-aseo .ck2-r+.ck2-r{padding-top:12px;border-top:1px solid #f1f5f9;margin-top:2px}
+#module-aseo .ck2-sp{flex:1 1 0;min-width:0}
+#module-aseo .ck2-strip{display:contents}
+#module-aseo .ck2-bar #aseo-vista-slot{display:contents}
+
+/* búsqueda */
+#module-aseo .ck2-search{position:relative;flex:1 1 240px;min-width:190px;max-width:360px;display:block}
+#module-aseo .ck2-search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--k-soft);pointer-events:none}
+#module-aseo .ck2-search .ck-q{all:unset;box-sizing:border-box;width:100%;height:36px;padding:0 12px 0 34px;border:1px solid var(--k-line);border-radius:10px;background:#f8fafc;font:500 13px/1 var(--k-font);color:var(--k-ink);transition:border-color .15s,background .15s,box-shadow .15s}
+#module-aseo .ck2-search .ck-q::placeholder{color:var(--k-soft)}
+#module-aseo .ck2-search .ck-q:focus{background:#fff;border-color:var(--k-acc);box-shadow:0 0 0 3px rgba(79,70,229,.14)}
+
+/* botones (acciones, interruptores) */
+#module-aseo .ck2-bar .aseo-btn{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 13px;border:1px solid var(--k-line);border-radius:10px;background:#fff;font:600 12.5px/1 var(--k-font);color:#334155;white-space:nowrap;-webkit-tap-highlight-color:transparent;transition:background .15s,border-color .15s,color .15s,transform .08s}
+#module-aseo .ck2-bar .aseo-btn svg{width:16px;height:16px;flex:none}
+#module-aseo .ck2-bar .aseo-btn:hover{background:#f8fafc;border-color:#cbd5e1;color:var(--k-ink)}
+#module-aseo .ck2-bar .aseo-btn:active{transform:scale(.97)}
+#module-aseo .ck2-bar .aseo-btn:focus-visible,#module-aseo .ck2-bar .ad-seg button:focus-visible,#aseo-dnav button:focus-visible,#module-aseo .ck2-bar .ad-ham:focus-visible{outline:2px solid var(--k-acc);outline-offset:2px}
+#module-aseo .ck2-bar .aseo-btn:disabled{opacity:.45;cursor:default;transform:none}
+/* interruptor «Calendario» */
+#module-aseo .ck2-bar .ck2-tog svg{color:var(--k-soft)}
+#module-aseo .ck2-bar .ck2-tog.on{background:var(--k-acc2);border-color:#c7d2fe;color:#4338ca}
+#module-aseo .ck2-bar .ck2-tog.on svg{color:var(--k-acc)}
+/* interruptor «Publicar en guías» (casilla = palanca) */
+#module-aseo .ck2-bar .mv-pubt .ck{all:unset;box-sizing:border-box;position:relative;flex:none;width:28px;height:16px;border-radius:999px;background:#cbd5e1;font-size:0;transition:background .15s}
+#module-aseo .ck2-bar .mv-pubt .ck::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.3);transition:transform .15s}
+#module-aseo .ck2-bar .mv-pubt.on .ck{background:#16a34a}
+#module-aseo .ck2-bar .mv-pubt.on .ck::after{transform:translateX(12px)}
+#module-aseo .ck2-bar .mv-pubt.mix .ck{background:#f59e0b}
+#module-aseo .ck2-bar .mv-pubt.mix .ck::after{transform:translateX(6px)}
+/* acción principal */
+#module-aseo .ck2-bar .aseo-btn.ck-pri{border:0;background:linear-gradient(180deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 1px 2px rgba(15,23,42,.18),0 2px 8px rgba(79,70,229,.32),inset 0 1px 0 rgba(255,255,255,.22)}
+#module-aseo .ck2-bar .aseo-btn.ck-pri:hover{background:linear-gradient(180deg,#5b5ef0,#4338ca);color:#fff}
+#module-aseo .ck2-bar .aseo-btn.ck-pri svg{width:15px;height:15px}
+#module-aseo .ck2-bar .aseo-btn.ck-ib{width:36px;padding:0}
+
+/* estado de conexión + actualizar (un solo bloque, no es un botón aparte) */
+#module-aseo .ck2-sync{display:inline-flex;align-items:center;gap:2px;height:36px;padding:0 3px 0 12px;border:1px solid var(--k-line);border-radius:10px;background:#f8fafc}
+#module-aseo .ck2-sync .ck-live{font:500 12px/1 var(--k-font);color:var(--k-mut);white-space:nowrap}
+#module-aseo .ck2-sync .ck-live-in{display:inline-flex;align-items:center;gap:7px;cursor:default}
+#module-aseo .ck2-sync .d{width:7px;height:7px;border-radius:50%;background:var(--k-soft);display:inline-block;flex:none}
+#module-aseo .ck2-sync .ck-live-in.ok .d{background:#16a34a;box-shadow:0 0 0 3px #dcfce7}
+#module-aseo .ck2-sync .ck-live-in.warn .d{background:#f59e0b;box-shadow:0 0 0 3px #fef3c7}
+#module-aseo .ck2-sync .ck-live-in.bad{color:#dc2626}
+#module-aseo .ck2-sync .ck-live-in.bad .d{background:#dc2626;box-shadow:0 0 0 3px #fee2e2}
+#module-aseo .ck2-sync .aseo-btn{height:30px;width:30px;border:0;background:transparent;border-radius:8px;box-shadow:none}
+#module-aseo .ck2-sync .aseo-btn:hover{background:#e0e7ff}
+#module-aseo .ck2-sync .ck-rf{color:var(--k-acc)}
+#module-aseo .ck2-sync .aseo-btn.girando .ck-rf{animation:ck2Gira .8s linear infinite}
+@keyframes ck2Gira{to{transform:rotate(360deg)}}
+
+/* control segmentado (fecha, periodo, vista, detalle): etiqueta pequeña encima = qué elige */
+#module-aseo .ck2-bar .ad-seg,#aseo-dnav{position:relative;margin-top:0}
+#module-aseo .ck2-bar .ad-seg{display:inline-flex!important;align-items:center;gap:2px!important;height:36px;padding:3px!important;box-sizing:border-box;background:var(--k-bg)!important;border:0!important;border-radius:10px!important;overflow:visible!important}
+#module-aseo .ck2-bar .ad-seg>span,#aseo-dnav::before{display:block!important;position:absolute;left:2px;top:-15px;padding:0;font:600 10px/1 var(--k-font);letter-spacing:.09em;text-transform:uppercase;color:var(--k-soft);white-space:nowrap;pointer-events:none}
+#aseo-dnav::before{content:'Fecha'}
+#module-aseo .ck2-bar .ad-seg button{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex!important;align-items:center;justify-content:center;height:30px;padding:0 12px!important;border:0!important;border-radius:7px!important;background:transparent;font:600 12.5px/1 var(--k-font)!important;color:var(--k-mut)!important;white-space:nowrap;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s}
+#module-aseo .ck2-bar .ad-seg button:hover{color:var(--k-ink)!important}
+#module-aseo .ck2-bar .ad-seg button.on{background:#fff!important;color:var(--k-ink)!important;box-shadow:0 1px 2px rgba(15,23,42,.14),0 0 0 1px rgba(15,23,42,.04)}
+#module-aseo .ck2-bar .ad-seg.ad-seg2{background:var(--k-bg)!important}
+/* navegador de fecha: ‹ Hoy · 12 nov › */
+#aseo-dnav{display:inline-flex;align-items:center;height:36px;border:1px solid var(--k-line);border-radius:10px;background:#fff}
+#aseo-dnav button{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;height:34px;min-width:34px;padding:0 8px;font:600 14px/1 var(--k-font);color:#475569;-webkit-tap-highlight-color:transparent}
+#aseo-dnav button:hover{background:#f8fafc;color:var(--k-ink)}
+#aseo-dnav button:first-child{border-radius:9px 0 0 9px}#aseo-dnav button:last-child{border-radius:0 9px 9px 0}
+#aseo-dnav .lb{min-width:118px;padding:0 12px;border-inline:1px solid var(--k-line);font-size:13px;color:var(--k-ink)}
+#aseo-dnav .lb.otro{color:#4338ca;background:var(--k-acc2)}
+/* filtros ☰ */
+#module-aseo .ck2-bar .ad-ham{all:unset;box-sizing:border-box;position:relative;cursor:pointer;display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 13px;border:1px solid var(--k-line);border-radius:10px;background:#fff;font:600 12.5px/1 var(--k-font);color:#334155}
+#module-aseo .ck2-bar .ad-ham::after{content:'Filtros'}
+#module-aseo .ck2-bar .ad-ham:hover,#module-aseo .ck2-bar .ad-ham.on{background:var(--k-acc2);border-color:#c7d2fe;color:#4338ca}
+#module-aseo .ck2-bar .ad-ham b{position:static;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--k-acc);color:#fff;font:700 10.5px/18px var(--k-font)}
+#aseo-ham-slot{display:inline-flex}
+
+/* título y modo personal */
+#module-aseo .cl-title{display:flex;align-items:center;gap:8px;margin:0 0 6px;font:700 22px/1.2 var(--k-font);letter-spacing:-.02em;color:var(--k-ink)}
+#module-aseo.cl-emp .ck2-bar .aseo-btn:not(.cl-keep),#module-aseo.cl-emp .ck2-bar #aseo-dnav,#module-aseo.cl-emp .ck2-bar #aseo-vista-slot .ad-seg2{display:none!important}
+
+/* ── Móvil ────────────────────────────────────────────── */
+@media (max-width:760px){
+  #module-aseo{padding:14px 12px 96px!important}
+  #module-aseo .cl-title{font-size:20px}
+  .cl-nav2{flex-direction:column;align-items:stretch;gap:0;margin:0 -12px 10px;padding:0 12px}
+  .cl-tab{height:46px;padding:0 13px}
+  .cl-cfg{padding:8px 0;overflow-x:auto;scrollbar-width:none}.cl-cfg::-webkit-scrollbar{display:none}
+  .cl-chips{margin:0 -12px 10px;padding:2px 12px}
+  #module-aseo .ck2-bar{gap:10px;margin:0 -4px 12px;padding:12px;border-radius:12px}
+  /* búsqueda arriba a todo el ancho; cada tira de controles se desliza de lado */
+  #module-aseo .ck2-r{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:0}
+  #module-aseo .ck2-r+.ck2-r{padding-top:0;border-top:0;margin-top:0}
+  #module-aseo .ck2-strip{display:flex;align-items:flex-end;gap:12px;overflow-x:auto;padding:16px 12px 2px;margin:0 -12px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  #module-aseo .ck2-strip::-webkit-scrollbar{display:none}
+  #module-aseo .ck2-strip>*{flex:none}
+  #module-aseo .ck2-bar *{order:0!important} /* anula reglas antiguas que reordenaban la barra vieja */
+  #module-aseo .ck2-strip::after{content:'';flex:none;width:16px}
+  #module-aseo .ck2-search{flex:none;width:100%;max-width:none}
+  #module-aseo .ck2-sp{display:none}
+  #module-aseo .ck2-sync .ck-live-in{white-space:nowrap}
+  #module-aseo .ck2-bar .aseo-btn,#module-aseo .ck2-search .ck-q,#module-aseo .ck2-bar .ad-ham,#aseo-dnav{height:40px}
+  #module-aseo .ck2-sync{height:40px}
+  #module-aseo .ck2-bar .ad-seg{height:40px}
+  #module-aseo .ck2-bar .ad-seg button{height:34px}
+  #aseo-dnav button{height:38px}
+  .cl-tabs,.cl-chips{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+  /* «Nueva tarea» = botón flotante (siempre a la mano del pulgar) */
+  #module-aseo .ck2-bar .aseo-btn.ck-pri{position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:40;width:56px;height:56px;padding:0;border-radius:18px;box-shadow:0 6px 20px rgba(79,70,229,.45),0 2px 6px rgba(15,23,42,.2)}
+  #module-aseo .ck2-bar .aseo-btn.ck-pri span{display:none}
+  #module-aseo .ck2-bar .aseo-btn.ck-pri svg{width:22px;height:22px}
+}
+@media (min-width:761px) and (max-width:1100px){#module-aseo .ck2-search{max-width:none;flex-basis:100%}}
+@media (prefers-reduced-motion:reduce){.cl-tab,.cl-chip,#module-aseo .ck2-bar *{transition:none!important}}
+`;
+  document.head.appendChild(st);
+}
 function clNavPaint_() {
   if (!document.getElementById('cl-css')) {
     const st = document.createElement('style'); st.id = 'cl-css';
@@ -62131,7 +62295,7 @@ function aseoPubTodasPaint_() {
   const on = els.filter(e => e.classList.contains('on')).length;
   const est = !els.length ? 'none' : on === els.length ? 'on' : on ? 'mix' : 'off';
   b.className = `aseo-btn mv-pubt ${est}`; b.disabled = !els.length;
-  if (b.closest('.ck-bar')) { b.innerHTML = `<span class="ck">${est === 'on' ? '✓' : est === 'mix' ? '–' : ''}</span>Publicar`; b.title = (!els.length ? 'No hay cards con aviso de guía' : est === 'on' ? `Publicado en las guías de las ${els.length} cards · clic para quitar` : est === 'mix' ? `Publicado solo en ${on} de ${els.length} cards (a las demás se les quitó con «◉ Guía») · clic para publicar en todas` : 'Ninguna card publica su aviso en la guía · clic para publicar en todas'); return; }
+  if (b.closest('.ck-bar,.ck2-bar')) { b.innerHTML = `<span class="ck">${est === 'on' ? '✓' : est === 'mix' ? '–' : ''}</span>Publicar`; b.title = (!els.length ? 'No hay cards con aviso de guía' : est === 'on' ? `Publicado en las guías de las ${els.length} cards · clic para quitar` : est === 'mix' ? `Publicado solo en ${on} de ${els.length} cards (a las demás se les quitó con «◉ Guía») · clic para publicar en todas` : 'Ninguna card publica su aviso en la guía · clic para publicar en todas'); return; }
   b.innerHTML = `<span class="ck">${est === 'on' ? '✓' : est === 'mix' ? '–' : ''}</span>Publicar en guías`;
   b.title = !els.length ? 'No hay cards con aviso de guía en pantalla' : est === 'on' ? 'Todas publicadas · clic para que ninguna guía muestre aviso' : 'Clic para publicar el aviso en las guías de todas las cards';
 }
@@ -67702,6 +67866,7 @@ async function aseoEnsureBase_(mk) {
   if (typeof lgEnsureHuespedesAndMatch === 'function' && !ASEO._huOk) { ASEO._huOk = true; lgEnsureHuespedesAndMatch().then(() => { aseoRender_(); if (document.getElementById('pc-sec-movs')) pcRenderMovs_(); }).catch(() => {}); }
 }
 async function aseoInit() {
+  ck2EnsureCss_();
   const T = {}, t0 = performance.now(), mk = k => { T[k] = Math.round(performance.now() - t0); };
   aseoEnsureCss_();
   const side = document.getElementById('aseo-side');
@@ -67785,7 +67950,7 @@ function aseoRender_() {
   // Calendario: oculto por defecto; se despliega a la izquierda con el botón.
   const grid = document.getElementById('aseo-grid');
   if (grid) { grid.classList.toggle('con-cal', !!ASEO.cal); grid.classList.remove('solo-cal'); }
-  const cb = document.getElementById('aseo-cal-btn'); if (cb) { cb.style.display = ''; cb.classList.toggle('on', !!ASEO.cal); cb.title = ASEO.cal ? 'Ocultar calendario' : 'Mostrar calendario'; }
+  const cb = document.getElementById('aseo-cal-btn'); if (cb) { cb.style.display = ''; cb.classList.toggle('on', !!ASEO.cal); cb.title = ASEO.cal ? 'Ocultar calendario' : 'Mostrar calendario'; cb.setAttribute('aria-pressed', ASEO.cal ? 'true' : 'false'); }
   if (cb) { let sl = document.getElementById('aseo-calv-slot'); if (!sl) { sl = document.createElement('span'); sl.id = 'aseo-calv-slot'; cb.before(sl); } sl.innerHTML = ckCalSegHtml_('aseo'); } // vistas (día/semana/mes): siempre visibles; filtran calendario, cards y tabla
   const tb = document.getElementById('aseo-todas-btn'); if (tb) tb.textContent = ASEO.todas ? '▾ Contraer todas' : '▸ Expandir todas las cards';
   // Solo se re-pinta si cambió algo (conserva el scroll del usuario).
@@ -68366,7 +68531,7 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
     }); }
   const vista = MP ? (ASEO.vista === 'estado' ? 'estado' : 'propiedad') : ['estado', 'usuario', 'tabla', 'semana'].includes(ASEO.vista) ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados: «por propiedad» o «por estado»
   const propHtml = props.length > 1 ? `<div class="mv-pf ad-prf"><small>🏘️ Propiedad:</small>${props.map(p => `<button type="button" class="mv-pf-c ad-pr ${fP.includes(p) ? 'on' : ''}" data-p="${pcEsc(p)}" onclick="adPropToggle_(this.dataset.p)">${pcEsc(p)}<b>${infos.concat(tInfos).filter(I => propDe(I) === p).length}</b></button>`).join('')}${fP.length ? '<button type="button" class="mv-pf-x" onclick="ASEO.fProp=[];aseoRender_()">Quitar filtro</button>' : ''}</div>` : '';
-  const segV = `${MP ? ckVistasHtml_(vista, 'adVista_', ['estado', 'propiedad']) : ckVistasHtml_(vista, 'adVista_', null, [['semana', '🗓️ Semana']])}<div class="ad-seg ad-seg2"><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
+  const segV = `${MP ? ckVistasHtml_(vista, 'adVista_', ['estado', 'propiedad']) : ckVistasHtml_(vista, 'adVista_', null, [['semana', 'Semana']])}<div class="ad-seg ad-seg2"><span>Detalle</span><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
   ASEO._pubKeys = infos.filter(I => I.esHoyC && I.G).map(I => ({ key: I.pubKey, on: !I.noPub }));
   const vivos = infos.filter(I => !I.fantasma);
   const n = k => vivos.filter(I => I.selE === k).length;
@@ -70460,7 +70625,7 @@ window.ckCalV_ = function (s, v) {
   ckCalRe_(s);
 };
 window.ckCalM_ = function (s, d) { CKCAL.m[s] = ckMesMover_(ckCalM_0_(s), d); const st = ckCalSt_(s); if (st) st.mes = CKCAL.m[s]; ckCalRe_(s); };
-function ckCalSegHtml_(s) { const v = ckCalV_0_(s); return `<div class="ad-seg ckcal-seg"><button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">📅 Por día</button><button type="button" class="${v === 'sem' ? 'on' : ''}" onclick="ckCalV_('${s}','sem')">📆 Por semana</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">🗓️ Por mes</button>${s === 'aseo' ? `<button type="button" class="${v === 'tl' ? 'on' : ''}" onclick="ckCalV_('${s}','tl')" title="Avance de cada persona a lo largo del día">⏱️ Timeline</button>` : ''}</div>`; }
+function ckCalSegHtml_(s) { const v = ckCalV_0_(s), A = s === 'aseo', L = A ? ['Día', 'Semana', 'Mes', 'Timeline'] : ['📅 Por día', '📆 Por semana', '🗓️ Por mes', '⏱️ Timeline']; return `<div class="ad-seg ckcal-seg">${A ? '<span>Periodo</span>' : ''}<button type="button" class="${v === 'aloj' ? 'on' : ''}" onclick="ckCalV_('${s}','aloj')">${L[0]}</button><button type="button" class="${v === 'sem' ? 'on' : ''}" onclick="ckCalV_('${s}','sem')">${L[1]}</button><button type="button" class="${v === 'mes' ? 'on' : ''}" onclick="ckCalV_('${s}','mes')">${L[2]}</button>${s === 'aseo' ? `<button type="button" class="${v === 'tl' ? 'on' : ''}" onclick="ckCalV_('${s}','tl')" title="Avance de cada persona a lo largo del día">${L[3]}</button>` : ''}</div>`; }
 function ckCalHdHtml_(s, sinSeg) {
   const v = ckCalV_0_(s), ym = ckCalM_0_(s), lbl = TAR_MESES_L[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4);
   if (sinSeg && v === 'sem') { const l = tarParseIso_(ckCalW_0_(s)), f = new Date(l); f.setDate(f.getDate() + 6);
