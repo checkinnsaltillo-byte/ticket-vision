@@ -9513,6 +9513,7 @@ function switchModule(mod) {
   // «Reportes técnicos» = sección Mantenimiento. «Mantenimiento» usa el mismo tablero de Aseo filtrado (ASEO.sec = 'mant').
   if (mod === 'reportes-tecnicos') mod = 'mantenimiento';
   let hashMod = mod;
+  if (typeof ASEO !== 'undefined' && mod === 'aseo') { const _mA = document.getElementById('module-aseo'); if (_mA && _mA.classList.contains('hidden')) { ASEO.sub = 'limpieza'; ASEO.sec = 'aseo'; ASEO.vista = 'usuario'; ASEO.calSig = ''; } } // al entrar a Operaciones: Limpieza · Por usuario
   if (typeof ASEO !== 'undefined' && (mod === 'aseo' || mod === 'mantenimiento')) { if (mod === 'mantenimiento') ASEO.sub = 'mantenimiento'; else if (!ASEO.sub || ASEO.sub === 'mantenimiento') ASEO.sub = 'todos';
     const sec = mod === 'mantenimiento' ? 'mant' : ASEO.sub === 'todos' ? 'todos' : 'aseo'; if (ASEO.sec !== sec) { ASEO.sec = sec; ASEO.calSig = ''; } }
   if (mod === 'mantenimiento') mod = 'aseo';
