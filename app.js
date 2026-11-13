@@ -59686,8 +59686,8 @@ window.tdIGPlantillaHecha_ = function (key, pc) {
 function tdTablero_(O, dia) {
   ckVCss_();
   const lvSub = TAR_STATE.sub !== 'rec'; // Inventarios: sin «Por estado» (ya no aplica); Recordatorios conserva todas las vistas
-  const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista; let vista = (lvSub && v0 === 'inventario') || CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado'; if (lvSub && vista === 'estado') vista = 'inventario';
-  TAR_STATE._segV = lvSub ? `<div class="ad-seg"><span>Vista</span>${[['inventario', 'Por inventario'], ['propiedad', 'Por propiedad'], ['usuario', 'Por usuario'], ['tabla', 'Tabla']].map(([k, t]) => `<button type="button" class="${vista === k ? 'on' : ''}" onclick="tdVista_('${k}')">${t}</button>`).join('')}</div>` : ckVistasHtml_(vista, 'tdVista_'); // va en la barra de arriba (tdRender_)
+  const v0 = TAR_STATE.vista === 'clas' ? 'propiedad' : TAR_STATE.vista; let vista = (lvSub && v0 === 'inventario') || CK_VISTAS.some(v => v[0] === v0) ? v0 : 'estado'; if (lvSub && (vista === 'estado' || vista === 'usuario')) vista = 'inventario'; // Inventarios ya no tiene «Por usuario»
+  TAR_STATE._segV = lvSub ? `<div class="ad-seg"><span>Vista</span>${[['inventario', 'Por inventario'], ['propiedad', 'Por propiedad'], ['tabla', 'Tabla']].map(([k, t]) => `<button type="button" class="${vista === k ? 'on' : ''}" onclick="tdVista_('${k}')">${t}</button>`).join('')}</div>` : ckVistasHtml_(vista, 'tdVista_'); // va en la barra de arriba (tdRender_)
   const PW = { 'Crítico': 4, 'Alto': 3, 'Medio': 2, 'Bajo': 1 };
   const urg = r => tdEsIG_(r) ? Math.max(...tdIGAlojs_(r).map(h => tdIGRetraso_(r, h).ret), -1e9) : -1e9;
   const ord = L => L.slice().sort((a, b) => urg(b.r) - urg(a.r) || tdLimAbajo_(a.r) - tdLimAbajo_(b.r) || a.iso.localeCompare(b.iso) || (PW[tdPrioEf_(b.r, b.iso)] || 0) - (PW[tdPrioEf_(a.r, a.iso)] || 0)); // con fecha límite: hasta abajo
