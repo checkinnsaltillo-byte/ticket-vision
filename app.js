@@ -59144,12 +59144,23 @@ window.tareasInit = async function () {
     } catch (_) {}
   }
   tarRender();
-  if (typeof aseoRefresh_ === 'function') aseoRefresh_().then(() => { try { clNavPaint_(); } catch (_) {} }).catch(() => {}); // barra «Última actualización» y botón de notificaciones
-  if (typeof INC_STATE !== 'undefined' && !(INC_STATE.personalRows || []).length && typeof incLoadPersonal === 'function') {
-    incLoadPersonal().catch(() => {});
-  }
+  // Perfiles del bot (aseoRefresh_) y Personal (incLoadPersonal) deciden si eres administrador (ves TODAS las tareas) o personal
+  // (solo las tuyas). Mientras no llegan, la lista salía incompleta (2 de 5 inventarios) hasta que algo la volvía a pintar:
+  // ahora, en cuanto llegan, se guarda el rol y se vuelve a pintar el tablero.
+  const _esAdm0 = typeof clEsAdmin_ === 'function' ? clEsAdmin_() : true;
+  const _rol = Promise.allSettled([
+    typeof aseoRefresh_ === 'function' ? aseoRefresh_() : null,
+    typeof INC_STATE !== 'undefined' && !(INC_STATE.personalRows || []).length && typeof incLoadPersonal === 'function' ? incLoadPersonal() : null,
+  ]).then(() => {
+    try {
+      if (typeof clVerComo_ === 'function' && !clVerComo_() && typeof clEsAdminReal_ === 'function') localStorage.setItem('cl-admin', JSON.stringify({ n: currentUser, a: !!clEsAdminReal_() }));
+      clNavPaint_();
+      if ((typeof clEsAdmin_ === 'function' ? clEsAdmin_() : true) !== _esAdm0 && !document.getElementById('module-tareas')?.classList.contains('hidden')) tarRender();
+    } catch (_) {}
+  });
   await tarLoad_();
   tarRender();
+  await _rol;
 };
 
 function tarRender() { tdRender_(); }
@@ -67980,7 +67991,7 @@ function clEsAdminReal_() {
   // Mientras no cargan perfiles ni Personal: lo que resultó la última vez en este navegador.
   if (!Object.keys(P).length && !((typeof INC_STATE !== 'undefined' && INC_STATE.personalRows) || []).length) { try { const c = JSON.parse(localStorage.getItem('cl-admin') || 'null'); if (c && c.n === yo && c.a) return true; } catch (_) {} }
   if (typeof INC_STATE !== 'undefined' && (INC_STATE.personalRows || []).length && typeof incPuestoDe === 'function' && /administr/i.test(incPuestoDe(yo))) return true;
-  if (typeof INC_STATE !== 'undefined' && !(INC_STATE.personalRows || []).length && typeof incLoadPersonal === 'function' && !clEsAdminReal_.c) { clEsAdminReal_.c = 1; incLoadPersonal().then(() => { try { aseoRender_(); clNavPaint_(); } catch (_) {} }).catch(() => { clEsAdminReal_.c = 0; }); }
+  if (typeof INC_STATE !== 'undefined' && !(INC_STATE.personalRows || []).length && typeof incLoadPersonal === 'function' && !clEsAdminReal_.c) { clEsAdminReal_.c = 1; incLoadPersonal().then(() => { try { aseoRender_(); clNavPaint_(); const v = id => { const m = document.getElementById('module-' + id); return !!(m && !m.classList.contains('hidden')); }; if (v('tareas') && typeof tdRender_ === 'function') tdRender_(); if (v('incidencias') && typeof icRender_ === 'function') icRender_(); if (v('objetos') && typeof obRender_ === 'function') obRender_(); } catch (_) {} }).catch(() => { clEsAdminReal_.c = 0; }); }
   return false;
 }
 function clModoPersonal_() { return !clEsAdmin_(); }
