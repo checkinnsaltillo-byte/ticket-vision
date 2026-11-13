@@ -9205,10 +9205,8 @@ function clNavHtml_(act) {
   const tabs = (clPuede_('aseo') || clPuede_('breezeway') ? tab('checkinn', 'tareas', 'Tareas', 'aseo', enTareas) : '')
     + (clPuede_('incidencias') ? tab('incidencias', 'inc', 'Incidencias', 'incidencias') : '') + (clPuede_('objetos') ? tab('objetos', 'obj', 'Objetos olvidados', 'objetos') : '')
     + (clPuede_('tareas') ? tab('tareas', 'inv', 'Inventarios', 'tareas') : ''); // v2127: en modo personal se respeta lo marcado en «Editar empleado»
-  const cb = (k, ic, l, mod) => `<button type="button" class="cl-cfgb ${act === k ? 'on' : ''}" onclick="switchModule('${mod}')">${IC[ic]}<span>${l}</span></button>`;
-  const cfg = !MPn && clPuede_('aseo') ? `<div class="cl-cfg" role="group" aria-label="Configuración de Operaciones"><span class="cl-cfg-l">Configurar</span>${cb('plantillas', 'pl', 'Plantillas', 'plantillas')}${cb('reglasbot', 'prog', 'Programación', 'reglasbot')}</div>` : '';
   const chips = enTareas && window.ASEO ? `<div class="cl-chips" role="group" aria-label="Filtrar por tipo de tarea"><span class="cl-chips-l">Tipo</span>${CL_SUBS.map(([k, ico, t]) => { const D = AT_DEPTO[k] || {}; const on = (ASEO.sub || 'todos') === k; return `<button type="button" class="cl-chip ${on ? 'on' : ''}" aria-pressed="${on}" style="--c:${D.c || '#0f1729'}" onclick="clSub_('${k}')"><i></i>${t || D.t}</button>`; }).join('')}</div>` : '';
-  return tabs.trim() || cfg ? `<div class="cl-nav2">${tabs.trim() ? `<div class="cl-tabs" role="tablist" aria-label="Secciones de Operaciones">${tabs}</div>` : '<span></span>'}${cfg}</div>${chips}` : '';
+  return tabs.trim() ? `<div class="cl-nav2"><div class="cl-tabs" role="tablist" aria-label="Secciones de Operaciones">${tabs}</div></div>${chips}` : '';
 }
 // Submenú de Tareas: «Todos» = todos los tipos; los demás, solo su tipo. Mantenimiento usa su sección (reportes técnicos).
 window.clSub_ = function (k) {
@@ -9378,8 +9376,67 @@ function ck2EnsureCss_() {
   #module-aseo .ck2-bar .aseo-btn.ck-pri svg{width:22px;height:22px}
 }
 @media (prefers-reduced-motion:reduce){.cl-tab,.cl-chip,#module-aseo .ck2-bar *{transition:none!important}}
+
+/* ── ⚙︎ Configurar (engrane al extremo derecho del título) ── */
+.cl-title{position:relative;display:flex;align-items:center;gap:8px}
+.cl-gear-w{margin-left:auto;position:relative;flex:none}
+.cl-gear{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid var(--k-line);border-radius:10px;background:#fff;color:#475569;-webkit-tap-highlight-color:transparent;transition:background .15s,border-color .15s,color .15s,transform .08s}
+.cl-gear svg{width:19px;height:19px}
+.cl-gear:hover{background:#f8fafc;border-color:#cbd5e1;color:var(--k-ink)}
+.cl-gear:active{transform:scale(.95)}
+.cl-gear[aria-expanded="true"],.cl-gear.on{background:var(--k-acc2);border-color:#c7d2fe;color:var(--k-acc)}
+.cl-gear:focus-visible{outline:2px solid var(--k-acc);outline-offset:2px}
+.cl-gear-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:272px;padding:6px;background:#fff;border:1px solid var(--k-line);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.16),0 2px 6px rgba(15,23,42,.08);font-family:var(--k-font)}
+.cl-gear-menu[hidden]{display:none}
+.cl-gm-h{padding:8px 10px 6px;font:600 10px/1 var(--k-font);letter-spacing:.09em;text-transform:uppercase;color:var(--k-soft)}
+.cl-gm-i{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:9px;color:#334155;-webkit-tap-highlight-color:transparent}
+.cl-gm-i svg{width:18px;height:18px;flex:none;color:var(--k-soft)}
+.cl-gm-i span{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cl-gm-i b{font:600 13px/1.1 var(--k-font);color:var(--k-ink)}
+.cl-gm-i small{font:500 11.5px/1.2 var(--k-font);color:var(--k-mut)}
+.cl-gm-i:hover{background:var(--k-bg)}
+.cl-gm-i.on{background:var(--k-acc2)}.cl-gm-i.on svg{color:var(--k-acc)}
+.cl-gm-i:focus-visible{outline:2px solid var(--k-acc);outline-offset:-2px}
+@media (max-width:760px){.cl-gear{width:42px;height:42px}.cl-gear-menu{width:min(300px,calc(100vw - 24px))}}
 `;
   document.head.appendChild(st);
+}
+function ck2GearHtml_(sec) {
+  const ic = {
+    gear: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="2.6"/><path d="M16.2 11.9a1.3 1.3 0 0 0 .26 1.43l.05.05a1.58 1.58 0 1 1-2.23 2.23l-.05-.05a1.3 1.3 0 0 0-1.43-.26 1.3 1.3 0 0 0-.79 1.19v.14a1.58 1.58 0 1 1-3.16 0v-.07a1.3 1.3 0 0 0-.85-1.19 1.3 1.3 0 0 0-1.43.26l-.05.05a1.58 1.58 0 1 1-2.23-2.23l.05-.05a1.3 1.3 0 0 0 .26-1.43 1.3 1.3 0 0 0-1.19-.79h-.14a1.58 1.58 0 1 1 0-3.16h.07a1.3 1.3 0 0 0 1.19-.85 1.3 1.3 0 0 0-.26-1.43l-.05-.05A1.58 1.58 0 1 1 6.4 3.4l.05.05a1.3 1.3 0 0 0 1.43.26h.06a1.3 1.3 0 0 0 .79-1.19v-.14a1.58 1.58 0 1 1 3.16 0v.07a1.3 1.3 0 0 0 .79 1.19 1.3 1.3 0 0 0 1.43-.26l.05-.05a1.58 1.58 0 1 1 2.23 2.23l-.05.05a1.3 1.3 0 0 0-.26 1.43v.06a1.3 1.3 0 0 0 1.19.79h.14a1.58 1.58 0 1 1 0 3.16h-.07a1.3 1.3 0 0 0-1.19.79Z"/></svg>',
+    pl: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="12" height="14" rx="2"/><path d="M7.5 7h5M7.5 10h5M7.5 13h3"/></svg>',
+    prog: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.6 1.6"/></svg>',
+  };
+  const it = (k, i, t, d, mod) => `<button type="button" role="menuitem" class="cl-gm-i ${sec === k ? 'on' : ''}" onclick="ck2GearGo_('${mod}')">${ic[i]}<span><b>${t}</b><small>${d}</small></span></button>`;
+  return `<div class="cl-gear-w"><button type="button" class="cl-gear ${sec ? 'on' : ''}" aria-haspopup="menu" aria-expanded="false" title="Configurar Operaciones" aria-label="Configurar Operaciones" onclick="ck2GearToggle_(event)">${ic.gear}</button><div class="cl-gear-menu" role="menu" hidden><div class="cl-gm-h">Configurar</div>${it('plantillas', 'pl', 'Plantillas', 'Formularios de las tareas', 'plantillas')}${it('reglasbot', 'prog', 'Programación', 'Reglas de limpiezas automáticas', 'reglasbot')}</div></div>`;
+}
+window.ck2GearToggle_ = function (e) {
+  e.stopPropagation();
+  const w = e.currentTarget.closest('.cl-gear-w'), m = w.querySelector('.cl-gear-menu'), abrir = m.hidden;
+  document.querySelectorAll('.cl-gear-menu').forEach(x => { x.hidden = true; const b = x.parentNode.querySelector('.cl-gear'); if (b) b.setAttribute('aria-expanded', 'false'); });
+  m.hidden = !abrir; e.currentTarget.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+};
+window.ck2GearGo_ = function (mod) { document.querySelectorAll('.cl-gear-menu').forEach(x => { x.hidden = true; }); switchModule(mod); };
+if (!window.__ck2GearOut) {
+  window.__ck2GearOut = true;
+  document.addEventListener('click', e => { if (!e.target.closest || !e.target.closest('.cl-gear-w')) document.querySelectorAll('.cl-gear-menu').forEach(x => { x.hidden = true; }); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.cl-gear-menu').forEach(x => { x.hidden = true; }); });
+}
+function ck2GearPaint_() {
+  const ok = clPuede_('aseo') && !(typeof clModoPersonal_ === 'function' && clModoPersonal_());
+  const vis = id => { const m = document.getElementById('module-' + id); return !!(m && !m.classList.contains('hidden')); };
+  const sec = vis('plantillas') ? 'plantillas' : vis('reglasbot') ? 'reglasbot' : '';
+  document.querySelectorAll('.cl-title').forEach(t => {
+    const g = t.querySelector('.cl-gear-w');
+    if (!ok) { if (g) g.remove(); return; }
+    if (g && g.dataset.sec === sec) return;
+    if (g) g.remove();
+    t.insertAdjacentHTML('beforeend', ck2GearHtml_(sec)); t.lastElementChild.dataset.sec = sec;
+  });
+}
+if (!window.__ck2GearObs && typeof MutationObserver === 'function') {
+  window.__ck2GearObs = true; let tm = 0;
+  new MutationObserver(() => { if (tm) return; tm = setTimeout(() => { tm = 0; try { ck2GearPaint_(); } catch (_) {} }, 60); }).observe(document.body, { childList: true, subtree: true });
 }
 function clNavPaint_() {
   if (!document.getElementById('cl-css')) {
@@ -9440,6 +9497,7 @@ function clNavPaint_() {
     document.head.appendChild(st);
   }
   document.querySelectorAll('.cl-nav-slot').forEach(el => { el.innerHTML = clNavHtml_(el.dataset.act); });
+  try { ck2GearPaint_(); } catch (_) {}
   // «Pendientes» ahora vive dentro de Operaciones; su entrada propia del menú solo queda para quien no ve Operaciones.
   // Igual con «Incidencias».
   const ni = document.getElementById('nav-item-incidencias');
