@@ -9263,6 +9263,7 @@ function ck2EnsureCss_() {
 /* ── 3) Barra de herramientas ─────────────────────────── */
 #module-aseo .ck2-bar{display:flex;flex-direction:column;gap:12px;margin:0 0 14px;padding:14px 14px 12px;background:#fff;border:1px solid var(--k-line);border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.04);font-family:var(--k-font)}
 #module-aseo .ck2-r{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 12px;min-width:0}
+#module-aseo .ck2-fil[hidden]{display:none}#module-aseo .ck2-fil .ad-gfil{margin-top:0;width:100%}#module-aseo .ck2-fil{padding-top:12px!important}
 #module-aseo .ck2-r+.ck2-r{padding-top:22px;border-top:1px solid #f1f5f9;margin-top:0}
 #module-aseo .ck2-sp{flex:1 1 0;min-width:0}
 #module-aseo .ck2-strip{display:contents}
@@ -70284,9 +70285,10 @@ function aseoRenderSide_() {
   // KPIs arriba del menú; renglón: ☰ filtros · última actualización · vista
   const kp = document.getElementById('aseo-kpis'); if (kp) kp.innerHTML = ASEO._kpisHtml || '';
   const hs = document.getElementById('aseo-ham-slot'), vs = document.getElementById('aseo-vista-slot');
+  const fs = document.getElementById('aseo-fil-slot'); if (fs) { fs.innerHTML = ASEO._filtrosHtml || ''; fs.hidden = !ASEO._filtrosHtml; }
   if (hs) hs.innerHTML = ASEO._hamHtml || ''; if (vs) vs.innerHTML = ASEO._segVHtml || '';
   document.querySelectorAll('[data-sync-mini]').forEach(e => { e.innerHTML = mvSyncMini_(); });
-  if (top) { top.innerHTML = `${hs ? '' : `<div class="ad-syncrow">${ASEO._hamHtml || ''}${mvSyncBar_('aseo')}${ASEO._segVHtml || ''}</div>`}${kp ? '' : ASEO._kpisHtml || ''}${rbModo_(aseoDia_()) ? RB_MODO_CSS + rbModoBarHtml_(aseoDia_()) : ''}${ASEO._filtrosHtml || ''}`; side.innerHTML = `${selBlock}${cuerpo}`; }
+  if (top) { top.innerHTML = `${hs ? '' : `<div class="ad-syncrow">${ASEO._hamHtml || ''}${mvSyncBar_('aseo')}${ASEO._segVHtml || ''}</div>`}${kp ? '' : ASEO._kpisHtml || ''}${rbModo_(aseoDia_()) ? RB_MODO_CSS + rbModoBarHtml_(aseoDia_()) : ''}${fs ? '' : ASEO._filtrosHtml || ''}`; side.innerHTML = `${selBlock}${cuerpo}`; }
   else side.innerHTML = `${mvSyncBar_()}${selBlock}${cuerpo}`;
   side.classList.add('ad-v2');
   aseoPubTodasPaint_();
