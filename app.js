@@ -68512,6 +68512,7 @@ function adCard_(I) {
     <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && /^Reprogramada/.test(I.aviso.t) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     <div class="r2">${catP}${adCamasHtml_(I.hid)}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
+    ${bwEvHtml_(I)}
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${adExtraInsumos_(I)}
     </div>
@@ -68527,6 +68528,7 @@ function adCard_(I) {
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${adExtraInsumos_(I)}
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
+    ${bwEvHtml_(I)}
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${srcTxt || xR ? `<div class="r2 ad-src"><span>${pcEsc(srcTxt)}</span>${xR ? (n => n ? `<span title="Personas">👥 ${n}</span>` : '')(Number(xR.b.NumberOfGuests) || (Number(xR.b.Adults) || 0) + (Number(xR.b.Children) || 0)) + (xR.noches ? `<span title="Noches">🌙 ${xR.noches}</span>` : '') : ''}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
@@ -69098,6 +69100,24 @@ function adDrawerInfo_() {
   const esHoy = hoy === aseoHoyIso_();
   return Object.assign(adInfo_(g, hoy, { esHoy }) /* las reprogramadas a hoy también son del día en curso (guía, avisos) */, { hoy });
 }
+// Eventos de la «Línea del día» (salida, entrada, hospedado). Se reutiliza en la ventana de detalle y en la card.
+function adEvsBuild_(I, adEv_) {
+  const evs = [];
+  I.g.sal.forEach(x => {
+    const t = aseoTardRec_(x.b.Id), canc = x.cambio && x.cambio.k === 'cancelada';
+    evs.push(adEv_('s', t ? aseoHoraTxt_(t.hora) : 'Sale', `${canc ? 'Cancelada · ' : 'Sale '}${pcEsc(x.b.GuestName || 'Sin nombre')}`, [`${x.noches} noche${x.noches === 1 ? '' : 's'}`, x.b.Source, t ? `salida tardía ${t.aceptada ? 'aceptada' : 'pendiente'}` : '', I.esCopia ? `salió el ${aseoDiaTxt_(I.g.reprogDe)}` : ''].filter(Boolean).map(pcEsc).join(' · ')));
+  });
+  if (I.noSale) { const r = (ASEO.nosale || {})[String(I.xs.b.Id)] || {}; evs.push(adEv_('a', r.at ? aseoHora_(r.at) : 'Ahora', '<span style="color:#dc2626">Aún no desaloja</span>', r.by ? 'Reportado por ' + pcEsc(String(r.by)) : '')); }
+  I.g.ent.forEach(x => {
+    const t = (ASEO.temprana || {})[String(x.b.Id)], canc = x.cambio && x.cambio.k === 'cancelada';
+    evs.push(adEv_('e', t && t.on ? aseoHoraTxt_(t.hora || '12:00') : 'Entra', `${canc ? 'Cancelada · ' : 'Entra '}${pcEsc(x.b.GuestName || 'Sin nombre')}`, [`${x.noches} noche${x.noches === 1 ? '' : 's'}`, x.b.Source, x.tier ? x.tier.label : (x.stats && x.stats.visitas <= (HU_REGLAS.primera_max_visitas ?? 1) ? '1ª visita' : ''), x.larga === 'mensual' ? 'estancia mensual' : x.larga ? 'estancia larga' : '', t && t.on ? `entrada temprana ${t.aceptada ? 'aceptada' : 'pendiente'}` : ''].filter(Boolean).map(pcEsc).join(' · ')));
+  });
+  (I.g.cur || []).forEach(x => evs.push(adEv_('c', '—', `Hospedado ${pcEsc(x.b.GuestName || '')}`, `hasta ${pcFmtDiaC_(x.dep)}`)));
+  return evs;
+}
+function bwEvHtml_(I) {
+  try { const L = adEvsBuild_(I, (cls, h, tit, sub) => `<div class="bw-ev"><b>${tit}</b>${sub ? `<small> · ${sub}</small>` : ''}</div>`); return L.join(''); } catch (_) { return ''; }
+}
 function adEv_(cls, h, tit, sub) { return `<div class="ev ${cls}"><span class="h">${h}</span><div><b>${tit}</b>${sub ? `<small>${sub}</small>` : ''}</div></div>`; }
 function adPintar_(nuevo) {
   if (!ASEO._dr || ASEO._dr.form) return; // el formulario no se re-dibuja con los refrescos
@@ -69115,17 +69135,7 @@ function adPintar_(nuevo) {
   // Estado: Pendiente · En proceso · Terminado (+ palomita «Inspeccionado»)
   const pasos = AD_EST.map(e => `<button type="button" class="${e.k === adEstBase_(I.selE) ? 'on' : ''}" style="--c:${e.c}" onclick="aseoSetEstado_('${id}','${hid}','${e.k}',false)">${e.t}</button>`).join('');
   // Línea del día
-  const evs = [];
-  I.g.sal.forEach(x => {
-    const t = aseoTardRec_(x.b.Id), canc = x.cambio && x.cambio.k === 'cancelada';
-    evs.push(adEv_('s', t ? aseoHoraTxt_(t.hora) : 'Sale', `${canc ? 'Cancelada · ' : 'Sale '}${pcEsc(x.b.GuestName || 'Sin nombre')}`, [`${x.noches} noche${x.noches === 1 ? '' : 's'}`, x.b.Source, t ? `salida tardía ${t.aceptada ? 'aceptada' : 'pendiente'}` : '', I.esCopia ? `salió el ${aseoDiaTxt_(I.g.reprogDe)}` : ''].filter(Boolean).map(pcEsc).join(' · ')));
-  });
-  if (I.noSale) { const r = (ASEO.nosale || {})[String(I.xs.b.Id)] || {}; evs.push(adEv_('a', r.at ? aseoHora_(r.at) : 'Ahora', '<span style="color:#dc2626">Aún no desaloja</span>', r.by ? 'Reportado por ' + pcEsc(String(r.by)) : '')); }
-  I.g.ent.forEach(x => {
-    const t = (ASEO.temprana || {})[String(x.b.Id)], canc = x.cambio && x.cambio.k === 'cancelada';
-    evs.push(adEv_('e', t && t.on ? aseoHoraTxt_(t.hora || '12:00') : 'Entra', `${canc ? 'Cancelada · ' : 'Entra '}${pcEsc(x.b.GuestName || 'Sin nombre')}`, [`${x.noches} noche${x.noches === 1 ? '' : 's'}`, x.b.Source, x.tier ? x.tier.label : (x.stats && x.stats.visitas <= (HU_REGLAS.primera_max_visitas ?? 1) ? '1ª visita' : ''), x.larga === 'mensual' ? 'estancia mensual' : x.larga ? 'estancia larga' : '', t && t.on ? `entrada temprana ${t.aceptada ? 'aceptada' : 'pendiente'}` : ''].filter(Boolean).map(pcEsc).join(' · ')));
-  });
-  (I.g.cur || []).forEach(x => evs.push(adEv_('c', '—', `Hospedado ${pcEsc(x.b.GuestName || '')}`, `hasta ${pcFmtDiaC_(x.dep)}`)));
+  const evs = adEvsBuild_(I, adEv_);
   // Solicitudes
   const sol = (tipo, x, rec) => {
     if (!x) return `<div class="ad-box mute"><div class="k">${tipo === 'tard' ? 'Salida tardía' : 'Entrada temprana'}</div><div class="v">—</div></div>`;
@@ -70405,7 +70415,7 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw>.bw-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 14px;margin:0;color:#fff;background:color-mix(in srgb,var(--sc) 72%,#0f172a);font:600 12px/1.2 Inter,system-ui,-apple-system,sans-serif;letter-spacing:.01em}
 .ad-card.bw>.bw-h span{display:inline-flex;align-items:center;gap:7px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ad-card.bw>.bw-h b{flex:none;font-weight:700;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
-.ad-card.bw>.bw-top{background:#f1f3f6;padding:9px 14px 8px;margin:0 0 9px}
+.ad-card.bw>.bw-top{background:color-mix(in srgb,var(--sc) 14%,#fff);padding:9px 14px 8px;margin:0 0 9px}
 .ad-card.bw.ghost>.bw-top{background:transparent}
 .ad-card.bw>*:not(.bw-h):not(.bw-top):not(.ad-insp){margin-left:14px;margin-right:14px}
 .ad-card.bw .bw-top>.r1{flex-wrap:wrap;gap:1px 8px;align-items:baseline;margin:0}
@@ -70417,6 +70427,7 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw .bw-top .r2 .ad-camas{margin-left:10px}
 .ad-card.bw .bw-top .r2 .ax-cat+.ad-camas,.ad-card.bw .bw-top .r2 .ad-camas:not(:first-child){margin-left:10px}
 .ad-card.bw .bw-top .flag{margin-top:5px}
+.ad-card.bw .bw-ev{margin-top:4px;font:600 13px/1.35 Inter,system-ui,sans-serif;color:#0f172a}.ad-card.bw .bw-ev small{font:400 12.5px/1.35 Inter,system-ui,sans-serif;color:#64748b}
 .ad-card.bw .bw-top .r4{margin-top:5px}
 html body .ad-card.bw>.r3{margin-top:0;padding-top:0;border-top:0}
 .ad-card.bw>.ad-eq{margin-top:0;margin-bottom:6px}
