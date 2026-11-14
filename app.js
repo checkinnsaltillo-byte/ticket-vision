@@ -70494,6 +70494,9 @@ html body .ad-card.bw .ad-qs button{padding:6px 2px!important;border-radius:7px!
 html body .ad-card.bw .ad-qs button.on{color:#fff}
 html body .ad-card.bw .pl-cb2>span{height:5px!important;border-radius:999px!important}
 html body .ad-card.bw .pl-cb2 b{font-size:11px!important;font-weight:600!important;color:#64748b!important}
+html body #aseo-side .ad-card.bw .r3.ad-r3w,html body .ad-card.bw .r3.ad-r3w{flex-wrap:nowrap!important;align-items:center;gap:8px}
+html body .ad-card.bw .r3.ad-r3w>.mv-ns{flex:none}
+html body .ad-card.bw .r3.ad-r3w .ad-r3b{flex:1 1 auto!important;min-width:0}
 @container (min-width:331px){html body .ad-card.bw .r3 .mv-ns{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif!important;font-size:10.5px!important;font-weight:600!important;line-height:1.45!important;letter-spacing:.02em!important;height:auto!important;padding:2px 9px!important}}
 html body .ad-card.bw>.r3{margin-top:0;padding-top:0;border-top:0}
 .ad-card.bw>.ad-eq{margin-top:0;margin-bottom:6px}
