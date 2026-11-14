@@ -9212,7 +9212,7 @@ function clNavHtml_(act) {
 }
 // Submenú de Tareas: «Todos» = todos los tipos; los demás, solo su tipo. Mantenimiento usa su sección (reportes técnicos).
 window.clSub_ = function (k) {
-  ASEO.sub = k; ASEO.calSig = '';
+  ASEO._defPend = false; ASEO.sub = k; ASEO.calSig = '';
   const quiere = k === 'mantenimiento' ? 'mant' : k === 'todos' ? 'todos' : 'aseo';
   if ((quiere === 'mant') !== (ASEO.sec === 'mant')) return switchModule(quiere === 'mant' ? 'mantenimiento' : 'aseo');
   ASEO.sec = quiere; aseoRender_(); clNavPaint_();
@@ -9517,7 +9517,7 @@ function switchModule(mod) {
   // «Reportes técnicos» = sección Mantenimiento. «Mantenimiento» usa el mismo tablero de Aseo filtrado (ASEO.sec = 'mant').
   if (mod === 'reportes-tecnicos') mod = 'mantenimiento';
   let hashMod = mod;
-  if (typeof ASEO !== 'undefined' && mod === 'aseo') { const _mA = document.getElementById('module-aseo'); if (_mA && _mA.classList.contains('hidden')) { if (document.body.classList.contains('cl-emp-u')) { ASEO.sub = 'todos'; ASEO.sec = 'todos'; } else { ASEO.sub = 'limpieza'; ASEO.sec = 'aseo'; ASEO.vista = 'usuario'; } ASEO.calSig = ''; } } // al entrar a Operaciones: admin → Limpieza · Por usuario; personal → Todos (solo sus cards)
+  if (typeof ASEO !== 'undefined' && mod === 'aseo') { const _mA = document.getElementById('module-aseo'); if (_mA && _mA.classList.contains('hidden')) { if (document.body.classList.contains('cl-emp-u')) { ASEO.sub = 'todos'; ASEO.sec = 'todos'; ASEO._defPend = true; } else { ASEO.sub = 'limpieza'; ASEO.sec = 'aseo'; ASEO.vista = 'usuario'; ASEO._defPend = false; } ASEO.calSig = ''; } } // al entrar a Operaciones: admin → Limpieza · Por usuario; personal → Todos (solo sus cards)
   if (typeof ASEO !== 'undefined' && (mod === 'aseo' || mod === 'mantenimiento')) { if (mod === 'mantenimiento') ASEO.sub = 'mantenimiento'; else if (!ASEO.sub || ASEO.sub === 'mantenimiento') ASEO.sub = 'todos';
     const sec = mod === 'mantenimiento' ? 'mant' : ASEO.sub === 'todos' ? 'todos' : 'aseo'; if (ASEO.sec !== sec) { ASEO.sec = sec; ASEO.calSig = ''; } }
   if (mod === 'mantenimiento') mod = 'aseo';
@@ -68874,7 +68874,7 @@ function adTblCss_() {
 try { ASEO.vista = localStorage.getItem('aseo-vista2') || 'propiedad'; } catch (_) { ASEO.vista = 'propiedad'; }
 try { const v = localStorage.getItem('aseo-simple2'); if (v != null) ASEO.simple = v === '1'; } catch (_) {} // sin elección: según el rol (adTablero_)
 window.adSimple_ = function (on) { ASEO.simple = !!on; try { localStorage.setItem('aseo-simple2', on ? '1' : '0'); } catch (_) {} aseoRenderSide_(); };
-window.adVista_ = function (v) { ASEO.vista = v; try { localStorage.setItem('aseo-vista2', v); } catch (_) {} aseoRenderSide_(); };
+window.adVista_ = function (v) { ASEO._defPend = false; ASEO.vista = v; try { localStorage.setItem('aseo-vista2', v); } catch (_) {} aseoRenderSide_(); };
 window.adPrioFiltro_ = function (k) { const s = ASEO.fPrio = ASEO.fPrio || []; const i = s.indexOf(k); if (i >= 0) s.splice(i, 1); else s.push(k); aseoRender_(); };
 window.adTipoToggle_ = function (k) { const s = ASEO.fTipo = ASEO.fTipo || []; const i = s.indexOf(k); if (i >= 0) s.splice(i, 1); else s.push(k); aseoRender_(); };
 window.adPropToggle_ = function (p) { const s = ASEO.fProp = ASEO.fProp || []; const i = s.indexOf(p); if (i >= 0) s.splice(i, 1); else s.push(p); aseoRender_(); };
@@ -70335,6 +70335,10 @@ function aseoRenderSide_() {
     const MP = clModoPersonal_();
     document.getElementById('module-aseo')?.classList.toggle('cl-emp', MP);
     document.body.classList.toggle('cl-emp-u', MP);
+    if (ASEO._mpNav === true && MP === false && ASEO._defPend) { // el rol se resolvió tarde (administrador): aplica la entrada predeterminada Limpieza · Por usuario
+      ASEO._defPend = false; ASEO.sub = 'limpieza'; ASEO.sec = 'aseo'; ASEO.vista = 'usuario'; ASEO.calSig = ''; ASEO._mpNav = MP;
+      setTimeout(() => { try { aseoRender_(); clNavPaint_(); } catch (_) {} }, 0);
+    }
     if (ASEO._mpNav !== MP) { ASEO._mpNav = MP; try { clNavPaint_(); } catch (_) {} } // menú de secciones acorde al rol
     if (!clVerComo_()) { try { localStorage.setItem('cl-admin', JSON.stringify({ n: currentUser, a: !MP })); } catch (_) {} }
     ckVerComoPaint_();
