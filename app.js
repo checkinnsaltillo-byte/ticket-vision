@@ -69126,7 +69126,8 @@ function bwMov_(I, mov) {
     const ex = adExtraInsumos_(I), exE = !!I.xe; let exPuesto = false;
     const caja = (cls, rot, evs) => { const aqui = ex && ((cls === 'e') === exE); if (aqui) exPuesto = true; return `<div class="bw-b ${cls}"><b>${rot}</b>${evs.map(e => `<div class="bw-l">${quita(e.tit)}${e.sub ? ' · ' + e.sub : ''}${e.ic || ''}</div>`).join('')}${aqui ? ex : ''}</div>`; };
     const S = E.filter(e => e.cls === 's' || e.cls === 'a'), N = E.filter(e => e.cls === 'e');
-    const rotS = I.esCopia && I.xs ? `Salida hace ${I.diasSal} día${I.diasSal === 1 ? '' : 's'}` : '↗ Sale', u = (String(mov).match(/<span class="u"[^>]*>.*?<\/span>/) || [''])[0];
+    const rotS = I.esCopia && I.xs ? `Salida hace ${I.diasSal} día${I.diasSal === 1 ? '' : 's'}` : '↗ Sale', uTxt = ((String(mov).match(/<span class="u"[^>]*>(.*?)<\/span>/) || [])[1] || '').trim(), u = '';
+    if (uTxt) S.push({ cls: 'u', tit: uTxt, sub: '' }); // «Salida hace N días» → dentro del recuadro rojo de Sale
     if (!S.length && !N.length) return mov + ex;
     const h = `<div class="bw-mv">${S.length ? caja('s', rotS, S) : ''}${N.length ? caja('e', '↘ Entra', N) : ''}${u}</div>`;
     return h + (ex && !exPuesto ? ex : '');
