@@ -69330,7 +69330,7 @@ function adEmpFiltrar_(dr) {
     let kind = '';
     Array.from(db.children).forEach(el => {
       const ini = el.classList.contains('lab') || el.classList.contains('at-sec');
-      if (ini) { const t = (el.textContent || '').trim(); kind = /^Tipo de servicio/.test(t) ? 'srv' : /^(Tipo de tarea|Línea del día|Equipo|📷|💬)/.test(t) ? 'ok' : ''; }
+      if (ini) { const t = (el.textContent || '').trim(); kind = /^(Tipo de servicio|Estado)/.test(t) ? 'srv' : /^(Tipo de tarea|Línea del día|Equipo|📷|💬)/.test(t) ? 'ok' : ''; }
       let ver = !on || !!kind;
       if (on && kind === 'srv' && !(ini || el.classList.contains('ad-steps'))) ver = false;
       if (on && (el.classList.contains('ad-tgl') || el.classList.contains('ad-res') || el.classList.contains('ad-hist') || el.tagName === 'DETAILS')) ver = false;
