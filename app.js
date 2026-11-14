@@ -67390,7 +67390,7 @@ function aseoEnsureCss_() {
   #ad-drawer .gv{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;font-size:11.5px;color:#92400e}
   #ad-drawer .gv button{all:unset;cursor:pointer;flex:none;background:#10b981;color:#fff;font-weight:700;font-size:11.5px;padding:5px 10px;border-radius:7px}
   #ad-drawer .gv button:hover{background:#059669}
-  #ad-drawer .ad-guia .gm{font-size:10.5px;color:#6b7280;margin-top:6px}
+  #ad-drawer .ad-guia .ad-gm{font-size:10.5px;color:#6b7280;margin-top:6px}
   /* Tinte por estado: fondo apenas teñido y borde a juego (elegante, se distingue a simple vista) */
   .ad-card.est-tint{background:linear-gradient(180deg,color-mix(in oklch,var(--sc) 34%,#fff),color-mix(in oklch,var(--sc) 18%,#fff));border-color:color-mix(in oklch,var(--sc) 80%,#fff);box-shadow:0 1px 0 color-mix(in oklch,var(--sc) 25%,transparent)}
   .ad-card.est-tint .r3{border-top-color:color-mix(in oklch,var(--sc) 45%,#fff)}
@@ -69136,7 +69136,7 @@ function adPintar_(nuevo) {
   // «📖 Guía del huésped» en un solo bloque, debajo del estado: publicar (sí/no) + qué dice + validación de «Terminado».
   const sinVal = I.selE === 'terminado' && !I.validado;
   const valTxt = sinVal ? `<div class="gv"><span>El personal marcó <b>«Terminado»</b>, pero aún no está validado: la guía sigue mostrando el estado anterior.</span><button type="button" onclick="aseoValidar_('${id}','${hid}')">✓ Validar</button></div>` : '';
-  const meta = I.reg && I.reg.at ? `<div class="gm">${sinVal ? 'Reportado' : '✓ Validado'} ${aseoHora_(I.reg.at)}${I.reg.by ? ' · ' + pcEsc(String(I.reg.by)) : ''}</div>` : '';
+  const meta = I.reg && I.reg.at ? `<div class="ad-gm">${sinVal ? 'Reportado' : '✓ Validado'} ${aseoHora_(I.reg.at)}${I.reg.by ? ' · ' + pcEsc(String(I.reg.by)) : ''}</div>` : '';
   const guiaBox = !I.esHoyC ? `${sinVal ? valTxt.replace('class="gv"', 'class="gv" style="margin-top:10px"') : ''}<div class="ad-hint">La guía del huésped solo muestra avisos del día en curso.</div>`
     : `<div class="ad-guia ${I.noPub ? 'off' : ''}">
         <div class="gh" ${G ? `onclick="aseoGuiaPublicar_('${pcEsc(I.pubKey)}',${I.noPub})" style="cursor:pointer"` : ''}><div><b>📖 Guía del huésped</b><small>${I.noPub ? 'No publicado: la guía no muestra nada' : 'Publicado: el huésped ve el estado de su alojamiento'}</small></div>${G ? `<span class="ad-sw ${I.noPub ? 'off' : ''}"></span>` : ''}</div>
