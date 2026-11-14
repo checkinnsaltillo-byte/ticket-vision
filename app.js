@@ -9304,6 +9304,7 @@ function ck2EnsureCss_() {
 #module-aseo .ck2-bar .aseo-btn.ck-ib{width:36px;padding:0}
 
 /* estado de conexión + actualizar (un solo bloque, no es un botón aparte) */
+#module-aseo .cl-title .ck2-sync{margin-left:auto;font-weight:400;letter-spacing:0;flex:none}#module-aseo .cl-title .ck2-sync+.cl-gear-w{margin-left:0}
 #module-aseo .ck2-sync{display:inline-flex;align-items:center;gap:2px;height:36px;padding:0 3px 0 12px;border:1px solid var(--k-line);border-radius:10px;background:#f8fafc}
 #module-aseo .ck2-sync .ck-live{font:500 12px/1 var(--k-font);color:var(--k-mut);white-space:nowrap}
 #module-aseo .ck2-sync .ck-live-in{display:inline-flex;align-items:center;gap:7px;cursor:default}
@@ -9369,7 +9370,7 @@ function ck2EnsureCss_() {
   #module-aseo .ck2-sp{display:none}
   #module-aseo .ck2-sync .ck-live-in{white-space:nowrap}
   #module-aseo .ck2-bar .aseo-btn,#module-aseo .ck2-search .ck-q,#module-aseo .ck2-bar .ad-ham,#aseo-dnav{height:40px}
-  #module-aseo .ck2-sync{height:40px}
+  #module-aseo .ck2-sync{height:40px}#module-aseo .cl-title .ck2-sync{height:38px;padding:0 3px}#module-aseo .cl-title .ck2-sync .ck-live{display:none}
   #module-aseo .ck2-bar .ad-seg{height:40px}
   #module-aseo .ck2-bar .ad-seg button{height:34px}
   #aseo-dnav button{height:38px}
