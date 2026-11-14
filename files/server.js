@@ -17496,7 +17496,7 @@ app.post("/aseo/estado", async (req, res) => {
 // ── Qué muestra la GUÍA de cada alojamiento HOY (regla única: la usan la guía pública
 //    y las cards del sistema, para que siempre digan lo mismo). Solo reservas Booked.
 const _ASEO_GUIA_TXT = {
-  ocupado: "Está ocupado",
+  ocupado: "Este alojamiento está actualmente ocupado",
   libre: "Está disponible",
   espera: "Te avisaremos en cuanto esté listo tu alojamiento para el ingreso.",
   desocupa: "Este alojamiento se desocupa hoy. Te avisaremos en cuanto esté listo para el ingreso.",
