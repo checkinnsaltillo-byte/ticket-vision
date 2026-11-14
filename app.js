@@ -69333,10 +69333,9 @@ function adEmpFiltrar_(dr) {
       if (ini) { const t = (el.textContent || '').trim(); kind = /^Tipo de servicio/.test(t) ? 'srv' : /^(Tipo de tarea|Línea del día|Equipo|📷|💬)/.test(t) ? 'ok' : ''; }
       let ver = !on || !!kind;
       if (on && kind === 'srv' && !(ini || el.classList.contains('ad-steps'))) ver = false;
-      if (on && (el.classList.contains('ad-tgl') || el.classList.contains('ad-addrow'))) ver = false;
+      if (on && (el.classList.contains('ad-tgl') || el.classList.contains('ad-res') || el.classList.contains('ad-hist') || el.tagName === 'DETAILS')) ver = false;
       el.style.display = ver ? '' : 'none';
     });
-    db.querySelectorAll('.ad-addrow').forEach(e => { e.style.display = on ? 'none' : ''; });
   } catch (_) {}
 }
 (function () {
