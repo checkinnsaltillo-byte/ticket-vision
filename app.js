@@ -9265,7 +9265,7 @@ function ck2EnsureCss_() {
 /* ── 3) Barra de herramientas ─────────────────────────── */
 #module-aseo .ck2-bar{display:flex;flex-direction:column;gap:12px;margin:0 0 14px;padding:14px 14px 12px;background:#fff;border:1px solid var(--k-line);border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.04);font-family:var(--k-font)}
 #module-aseo .ck2-r{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 12px;min-width:0}
-#module-aseo.cl-emp #aseo-kpis,#module-aseo.cl-emp .cl-nav-slot,#module-aseo.cl-emp .cl-nav2,#module-aseo.cl-emp .cl-chips,#module-aseo.cl-emp #aseo-ham-slot,#module-aseo.cl-emp #aseo-fil-slot,#module-aseo.cl-emp #aseo-top .ad-gfil,#module-aseo.cl-emp .ck2-r:has(#aseo-vista-slot){display:none!important}
+#module-aseo.cl-emp #aseo-kpis,#module-aseo.cl-emp .cl-nav-slot,#module-aseo.cl-emp .cl-nav2,#module-aseo.cl-emp .cl-chips,#module-aseo.cl-emp #aseo-ham-slot,#module-aseo.cl-emp .ck2-search,#module-aseo.cl-emp #aseo-fil-slot,#module-aseo.cl-emp #aseo-top .ad-gfil,#module-aseo.cl-emp .ck2-r:has(#aseo-vista-slot){display:none!important}
 #module-aseo .ck2-fil[hidden]{display:none}#module-aseo .ck2-fil .ad-gfil{margin-top:0;width:100%}#module-aseo .ck2-fil{padding-top:12px!important}
 #module-aseo .ck2-r+.ck2-r{padding-top:22px;border-top:1px solid #f1f5f9;margin-top:0}
 #module-aseo .ck2-sp{flex:1 1 0;min-width:0}
@@ -67133,7 +67133,7 @@ function clEmpCss_() {
     .ad-ham:hover,.ad-ham.on{background:#f1f5f9;border-color:#cbd5e1}
     .ad-ham b{position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:#111827;color:#fff;font:700 10px/16px Inter,system-ui,sans-serif;text-align:center}
     .ad-gfil{margin:0 0 10px}
-    #module-aseo.cl-emp .ad-card,#module-aseo.cl-emp .at-card,#module-aseo.cl-emp .rt-card,#module-aseo.cl-emp [draggable]{pointer-events:none!important;cursor:default!important}
+    #module-aseo.cl-emp .at-card,#module-aseo.cl-emp .rt-card,#module-aseo.cl-emp [draggable]{pointer-events:none!important;cursor:default!important}#module-aseo.cl-emp .ad-card{cursor:pointer!important}
     #module-aseo.cl-emp .ad-cta,body.cl-emp-u #ad-drawer .ic-levbtn{display:none!important}
     #module-aseo.cl-emp .ad-card .ad-qs,#module-aseo.cl-emp .ad-card .ad-qs button,#module-aseo.cl-emp .ad-card .mv-ns,#module-aseo.cl-emp .ad-card .ad-insp{pointer-events:auto!important;cursor:pointer!important}
 
@@ -69033,7 +69033,6 @@ window.adArchivar_ = function (k, hid, on) {
 };
 window.adFiltrosToggle_ = function () { ASEO.filtrosAb = !ASEO.filtrosAb; aseoRender_(); };
 window.adAbrir_ = function (k, dia, origen) {
-  if (clModoPersonal_()) return; // personal no administrativo: cards en solo lectura
   ASEO._dr = { k: String(k), dia: dia || aseoDia_() };
   const I = adDrawerInfo_();
   if (I && ASEO.cal) { ASEO.sel = String((I.xs || I.xe || {}).b ? (I.xs || I.xe).b.Id : ''); aseoMarcarSel_(); }
