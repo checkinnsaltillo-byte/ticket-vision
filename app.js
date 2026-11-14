@@ -68515,7 +68515,6 @@ function adCard_(I) {
     <div class="mv bw-mvw">${bwMov_(I, mov)}</div>
     ${bwEvHtml_(I)}
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
-    ${adExtraInsumos_(I)}
     </div>
     <div class="r3">${nsChip}${equipo}<span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${I.depto === 'limpieza' && I.hid ? rbCardRetBtn_('A' + I.hid, I._dia || aseoDia_()) : ''}${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
@@ -68527,7 +68526,6 @@ function adCard_(I) {
     <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${adCamasHtml_(I.hid)}${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}${bwAvisoFlag_(I, false)}</div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
-    ${adExtraInsumos_(I)}
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
     <div class="mv bw-mvw">${bwMov_(I, mov)}</div>
     ${bwEvHtml_(I)}
@@ -69125,11 +69123,13 @@ function bwMov_(I, mov) {
     E.forEach(e => { if (e.cls === 's' || e.cls === 'e') { const x = (e.cls === 's' ? I.g.sal : I.g.ent)[ix[e.cls]++]; if (x) { const b = x.b || {}, n = Number(b.NumberOfGuests) || (Number(b.Adults) || 0) + (Number(b.Children) || 0);
       e.sub = String(e.sub || '').replace(/^\d+ noches?( · )?/, ''); e.ic = (n ? `<span class="bw-i" title="Personas">👥 ${n}</span>` : '') + (x.noches ? `<span class="bw-i" title="Noches">🌙 ${x.noches}</span>` : ''); } } });
     const quita = t => String(t).replace(/^(Sale|Entra) /, '');
-    const caja = (cls, rot, evs) => `<div class="bw-b ${cls}"><b>${rot}</b>${evs.map(e => `<div class="bw-l">${quita(e.tit)}${e.sub ? ' · ' + e.sub : ''}${e.ic || ''}</div>`).join('')}</div>`;
+    const ex = adExtraInsumos_(I), exE = !!I.xe; let exPuesto = false;
+    const caja = (cls, rot, evs) => { const aqui = ex && ((cls === 'e') === exE); if (aqui) exPuesto = true; return `<div class="bw-b ${cls}"><b>${rot}</b>${evs.map(e => `<div class="bw-l">${quita(e.tit)}${e.sub ? ' · ' + e.sub : ''}${e.ic || ''}</div>`).join('')}${aqui ? ex : ''}</div>`; };
     const S = E.filter(e => e.cls === 's' || e.cls === 'a'), N = E.filter(e => e.cls === 'e');
     const rotS = I.esCopia && I.xs ? `Salida hace ${I.diasSal} día${I.diasSal === 1 ? '' : 's'}` : '↗ Sale', u = (String(mov).match(/<span class="u"[^>]*>.*?<\/span>/) || [''])[0];
-    if (!S.length && !N.length) return mov;
-    return `<div class="bw-mv">${S.length ? caja('s', rotS, S) : ''}${N.length ? caja('e', '↘ Entra', N) : ''}${u}</div>`;
+    if (!S.length && !N.length) return mov + ex;
+    const h = `<div class="bw-mv">${S.length ? caja('s', rotS, S) : ''}${N.length ? caja('e', '↘ Entra', N) : ''}${u}</div>`;
+    return h + (ex && !exPuesto ? ex : '');
   } catch (_) { return mov; }
 }
 // Aviso de la card («Urge: entra hoy y sigue pendiente»…) en la línea del título, pegado al margen derecho.
@@ -70457,6 +70457,7 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw .bw-b.s{background:#fef2f2;border-color:#fecaca;color:#7f1d1d}.ad-card.bw .bw-b.s b{color:#dc2626}
 .ad-card.bw .bw-b.e{background:#f0fdf4;border-color:#bbf7d0;color:#14532d}.ad-card.bw .bw-b.e b{color:#16a34a}
 .ad-card.bw .bw-l{overflow-wrap:anywhere}
+.ad-card.bw .bw-b .flag{margin-top:6px}
 .ad-card.bw .bw-i{display:inline-block;margin-left:8px;white-space:nowrap;font-size:12px;font-weight:600;opacity:.9}
 .ad-card.bw .bw-mv>.u{flex:none;align-self:center;font-size:11px;font-weight:600;line-height:1.4;padding:2px 7px;border-radius:6px;background:#f3f4f6;color:#6b7280}
 .ad-card.bw .bw-top .r2,.ad-card.bw .bw-top .r2 span,.ad-card.bw .ad-camas,.ad-card.bw .r2.ad-src span{font-size:12.5px;line-height:1.35}
