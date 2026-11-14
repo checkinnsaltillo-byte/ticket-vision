@@ -68508,7 +68508,7 @@ function adCard_(I) {
   if (ASEO.simple) // Vista «Simple»: nombre corto · Sale/Entra · tipo y servicio · no ha desalojado · ＋⚠ · prioridad · estados
     return `<div class="ad-card tipo est-tint ad-simp bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
-    ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t)}
+    ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t, bwChips_(mov))}
     <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${bwMov_(I, mov)}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && /^Reprogramada/.test(I.aviso.t) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     <div class="r2">${catP}${adCamasHtml_(I.hid)}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
@@ -68522,7 +68522,7 @@ function adCard_(I) {
   </div>`;
   return `<div class="ad-card tipo est-tint bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
-    ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t)}
+    ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t, bwChips_(mov))}
     <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${bwMov_(I, mov)}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
@@ -69116,11 +69116,12 @@ function adEvsBuild_(I, adEv_) {
   return evs;
 }
 // «Sale» / «Entra» como dos cuadros (rojo / verde) con los datos de la Línea del día: nombre, noches, medio de reserva y clasificación.
+function bwChips_(mov) { const g = c => (String(mov).match(new RegExp('<span class="' + c + '"[^>]*>.*?<\\/span>')) || [''])[0]; return g('s') + g('e'); }
 function bwMov_(I, mov) {
   try {
     const E = adEvsBuild_(I, (cls, h, tit, sub) => ({ cls, tit, sub }));
     const quita = t => String(t).replace(/^(Sale|Entra) /, '');
-    const caja = (cls, rot, evs) => `<div class="bw-b ${cls}"><b>${rot}</b>${evs.map(e => `<div class="bw-l">${quita(e.tit)}${e.sub ? ' · ' + e.sub : ''}</div>`).join('')}</div>`;
+    const caja = (cls, rot, evs) => `<div class="bw-b ${cls}">${evs.map(e => `<div class="bw-l">${quita(e.tit)}${e.sub ? ' · ' + e.sub : ''}</div>`).join('')}</div>`;
     const S = E.filter(e => e.cls === 's' || e.cls === 'a'), N = E.filter(e => e.cls === 'e');
     const rotS = I.esCopia && I.xs ? `Salida hace ${I.diasSal} día${I.diasSal === 1 ? '' : 's'}` : '↗ Sale', u = (String(mov).match(/<span class="u"[^>]*>.*?<\/span>/) || [''])[0];
     if (!S.length && !N.length) return mov;
@@ -70426,6 +70427,9 @@ html body .ad-card.bw.sel{border-color:#4f46e5 #4f46e5 #4f46e5 var(--tc)!importa
 html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!important;box-shadow:0 0 0 3px #fee2e2}
 .ad-card.bw>.bw-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 14px;margin:0;color:#fff;background:color-mix(in srgb,var(--sc) 72%,#0f172a);font:600 12px/1.2 Inter,system-ui,-apple-system,sans-serif;letter-spacing:.01em}
 .ad-card.bw>.bw-h span{display:inline-flex;align-items:center;gap:7px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ad-card.bw>.bw-h .bw-r{display:flex;align-items:center;gap:6px;flex:none}
+.ad-card.bw>.bw-h .bw-r>span{display:inline-block;overflow:visible;font:700 10.5px/1.5 Inter,system-ui,sans-serif;padding:0 7px;border-radius:5px;background:rgba(255,255,255,.94)}
+.ad-card.bw>.bw-h .bw-r>span.s{color:#dc2626}.ad-card.bw>.bw-h .bw-r>span.e{color:#16a34a}.ad-card.bw>.bw-h .bw-r>span.u{display:none}
 .ad-card.bw>.bw-h b{flex:none;font-weight:700;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
 .ad-card.bw>.bw-top{background:color-mix(in srgb,var(--sc) 14%,#fff);padding:9px 14px 8px;margin:0 0 9px}
 .ad-card.bw.ghost>.bw-top{background:transparent}
@@ -70455,11 +70459,11 @@ html body .ad-card.bw>.r3{margin-top:0;padding-top:0;border-top:0}
 `;
   document.head.appendChild(st);
 }
-function bwBand_(iso, estTxt) {
+function bwBand_(iso, estTxt, chips) {
   bwEnsureCss_();
   const hoy = typeof aseoHoyIso_ === 'function' ? aseoHoyIso_() : '', d = iso ? tarParseIso_(iso) : null;
   const f = d ? ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()] + ' ' + d.getDate() + ' ' + TAR_MESES[d.getMonth()] : 'Sin fecha';
-  return `<div class="bw-h"><span>📅 ${iso && iso === hoy ? 'Hoy · ' : ''}${f}</span><b>${pcEsc(estTxt || '')}</b></div>`;
+  return `<div class="bw-h"><span>📅 ${iso && iso === hoy ? 'Hoy · ' : ''}${f}</span><div class="bw-r">${chips || ''}<b>${pcEsc(estTxt || '')}</b></div></div>`;
 }
 function aseoDiaChip_(iso) { if (typeof ckMesCss_ === 'function') ckMesCss_(); const d = tarParseIso_(iso), h = iso === aseoHoyIso_(); return `<span class="ad-dia ${h ? 'hoy' : ''}" title="${aseoDiaTxt_(iso)}">${h ? 'Hoy' : ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()] + ' ' + d.getDate() + ' de ' + TAR_MESES[d.getMonth()]}</span>`; }
 window.aseoPerHoy_ = function () { CKCAL.m.aseo = aseoHoyIso_().slice(0, 7); (CKCAL.w = CKCAL.w || {}).aseo = ckLunes_(aseoHoyIso_()); ASEO.calSig = ''; aseoRender_(); };
