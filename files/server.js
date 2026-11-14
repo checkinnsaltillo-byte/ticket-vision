@@ -10310,7 +10310,7 @@ async function _aseoGuardarEstado({ id, hid, estado, validar, user, desvalidar }
   });
   _aseo.estadosTs = Date.now();
   if (estado === "terminado" && !/^T[a-z0-9]+-\d{4}-\d{2}-\d{2}$/.test(String(id))) { // «Guía del huésped»: queda marcada para publicarse (solo alojamientos, no tareas)
-    try { let nuevo = false; await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { if (!(d[id] && d[id].on)) { d[id] = { on: true, by: user || "auto", at: new Date().toISOString(), auto: true }; nuevo = true; } }); _aseo.guiaoffTs = Date.now(); if (nuevo) _histAdd("A:" + id, [["Publicado en la guía", false, true]], user); } catch (e) { console.warn("[aseo] no se pudo marcar la guía", id, e.message); }
+    try { let nuevo = false; await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { if (d[id] && d[id].off) return; if (!(d[id] && d[id].on)) { d[id] = { on: true, by: user || "auto", at: new Date().toISOString(), auto: true }; nuevo = true; } }); _aseo.guiaoffTs = Date.now(); if (nuevo) _histAdd("A:" + id, [["Publicado en la guía", false, true]], user); } catch (e) { console.warn("[aseo] no se pudo marcar la guía", id, e.message); }
   }
   return out;
 }
@@ -17496,7 +17496,9 @@ app.post("/aseo/estado", async (req, res) => {
 // ── Qué muestra la GUÍA de cada alojamiento HOY (regla única: la usan la guía pública
 //    y las cards del sistema, para que siempre digan lo mismo). Solo reservas Booked.
 const _ASEO_GUIA_TXT = {
-  ocupado: "Este alojamiento está actualmente ocupado",
+  ocupado: "Está ocupado",
+  libre: "Está disponible",
+  espera: "Te avisaremos en cuanto esté listo tu alojamiento para el ingreso.",
   desocupa: "Este alojamiento se desocupa hoy. Te avisaremos en cuanto esté listo para el ingreso.",
   en_proceso: "Aseo en proceso",
   terminado: "Ya puedes ingresar a tu alojamiento",
@@ -17527,12 +17529,13 @@ function _aseoGuiaCalc(hid, m, hoy, horaMx) {
   const pub = _aseoPub(reg); // solo lo VALIDADO se muestra en la guía
   const est = pub ? pub.estado : "pendiente";
   let modo = "";
-  if (salHoy) modo = est !== "pendiente" ? "aseo" : (entHoy && horaMx >= 14 ? "" : "desocupa");
-  else if (entHoy) modo = (est === "terminado" || est === "inspeccionado") ? "aseo" : "";
+  if (salHoy) modo = est !== "pendiente" ? "aseo" : (entHoy && horaMx >= 14 ? "espera" : "desocupa");
+  else if (entHoy) modo = (est === "terminado" || est === "inspeccionado") ? "aseo" : "espera";
   else if (ocupado) modo = "ocupado";
+  else modo = "libre"; // sin huésped hospedado ni entrada hoy: «Está disponible»
   // Publicar en la guía es OPT-IN (pedido del usuario 2026-10-10): sin marca {on:true} la guía no muestra nada.
   const keyPub = ult ? String(ult.id) : "H" + hid;
-  const noPub = !((_aseo.guiaoff || {})[keyPub] || {}).on;
+  const noPub = ((_aseo.guiaoff || {})[keyPub] || {}).off === true; // 2026-11-14: publicado por omisión en todos los alojamientos y reservas; solo se oculta si alguien lo apaga a mano
   const textoPrev = modo === "aseo" ? (_ASEO_GUIA_TXT[est] || "") : (_ASEO_GUIA_TXT[modo] || ""); // lo que diría si se publica
   if (noPub) modo = "";
   const estado = modo === "aseo" ? est : "";
@@ -17556,7 +17559,7 @@ app.post("/aseo/guia", async (req, res) => {
     if (!ids.length) return res.status(400).json({ ok: false, error: "Falta id" });
     const publicar = (req.body || {}).publicar !== false, user = String((req.body || {}).user || "").slice(0, 80);
     const gAntes = {};
-    await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { ids.forEach(id => { gAntes[id] = !!(d[id] && d[id].on); if (publicar) d[id] = { on: true, by: user, at: new Date().toISOString() }; else delete d[id]; }); });
+    await _aseoMutate(_ASEO_GUIAOFF_OBJ, "guiaoff", d => { ids.forEach(id => { gAntes[id] = !(d[id] && d[id].off); if (publicar) delete d[id]; else d[id] = { off: true, by: user, at: new Date().toISOString() }; }); });
     ids.forEach(id => _histAdd("A:" + id, [["Publicado en la guía", gAntes[id], publicar]], user));
     _aseo.guiaoffTs = Date.now();
     res.json({ ok: true, publicar });
