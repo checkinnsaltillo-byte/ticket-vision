@@ -17497,7 +17497,7 @@ app.post("/aseo/estado", async (req, res) => {
 //    y las cards del sistema, para que siempre digan lo mismo). Solo reservas Booked.
 const _ASEO_GUIA_TXT = {
   ocupado: "Este alojamiento está actualmente ocupado",
-  libre: "Está disponible",
+  libre: "Este alojamiento está actualmente disponible",
   espera: "Te avisaremos en cuanto esté listo tu alojamiento para el ingreso.",
   desocupa: "Este alojamiento se desocupa hoy. Te avisaremos en cuanto esté listo para el ingreso.",
   en_proceso: "Aseo en proceso",
