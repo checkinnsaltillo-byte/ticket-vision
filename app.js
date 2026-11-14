@@ -9170,7 +9170,9 @@ const _VALID_MODULES = new Set([
 ]);
 function _bootModuleFromHash_() {
   const h = (location.hash || '').replace(/^#/, '').trim();
-  const target = _VALID_MODULES.has(h) ? h : 'home';
+  // Personal (no administrativo): al entrar sin enlace directo, abre Operaciones.
+  const _emp = document.body.classList.contains('cl-emp-u') && (!window.SYS_ALLOWED || window.SYS_ALLOWED.has('aseo'));
+  const target = _VALID_MODULES.has(h) ? h : (_emp ? 'aseo' : 'home');
   switchModule(target);
 }
 // Sincroniza cambios de hash → módulo (back/forward del navegador, link
@@ -9513,7 +9515,7 @@ function switchModule(mod) {
   // «Reportes técnicos» = sección Mantenimiento. «Mantenimiento» usa el mismo tablero de Aseo filtrado (ASEO.sec = 'mant').
   if (mod === 'reportes-tecnicos') mod = 'mantenimiento';
   let hashMod = mod;
-  if (typeof ASEO !== 'undefined' && mod === 'aseo') { const _mA = document.getElementById('module-aseo'); if (_mA && _mA.classList.contains('hidden')) { ASEO.sub = 'limpieza'; ASEO.sec = 'aseo'; ASEO.vista = 'usuario'; ASEO.calSig = ''; } } // al entrar a Operaciones: Limpieza · Por usuario
+  if (typeof ASEO !== 'undefined' && mod === 'aseo') { const _mA = document.getElementById('module-aseo'); if (_mA && _mA.classList.contains('hidden')) { if (document.body.classList.contains('cl-emp-u')) { ASEO.sub = 'todos'; ASEO.sec = 'todos'; } else { ASEO.sub = 'limpieza'; ASEO.sec = 'aseo'; ASEO.vista = 'usuario'; } ASEO.calSig = ''; } } // al entrar a Operaciones: admin → Limpieza · Por usuario; personal → Todos (solo sus cards)
   if (typeof ASEO !== 'undefined' && (mod === 'aseo' || mod === 'mantenimiento')) { if (mod === 'mantenimiento') ASEO.sub = 'mantenimiento'; else if (!ASEO.sub || ASEO.sub === 'mantenimiento') ASEO.sub = 'todos';
     const sec = mod === 'mantenimiento' ? 'mant' : ASEO.sub === 'todos' ? 'todos' : 'aseo'; if (ASEO.sec !== sec) { ASEO.sec = sec; ASEO.calSig = ''; } }
   if (mod === 'mantenimiento') mod = 'aseo';
