@@ -17505,10 +17505,11 @@ const _ASEO_GUIA_TXT = {
 function _aseoIdxCasas() {
   const idx = new Map();
   const put = (hid, id, v) => { hid = String(hid || ""); if (!hid) return; if (!idx.has(hid)) idx.set(hid, new Map()); idx.get(hid).set(String(id), v); };
-  ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && b.Id) put(b.HouseId, b.Id, { Status: String(b.Status || ""), dep: _lgIso(b.DateDeparture), arr: _lgIso(b.DateArrival) }); });
-  (_aseo.rows || []).forEach(x => put(x.HouseId, x.Id, { Status: x.Status, dep: x.DateDeparture, arr: x.DateArrival }));
+  ((_lgSnap.payload && _lgSnap.payload.bookings) || []).forEach(b => { if (b && b.Id) put(b.HouseId, b.Id, { Status: String(b.Status || ""), dep: _lgIso(b.DateDeparture), arr: _lgIso(b.DateArrival), name: String(b.GuestName || "") }); });
+  (_aseo.rows || []).forEach(x => put(x.HouseId, x.Id, { Status: x.Status, dep: x.DateDeparture, arr: x.DateArrival, name: String(x.GuestName || "") }));
   return idx;
 }
+function _primerNombre(n) { const w = String(n || "").trim().split(/\s+/)[0] || ""; return w.length > 1 && /^[\p{L}'’.-]+$/u.test(w) ? w.charAt(0).toLocaleUpperCase("es") + w.slice(1).toLocaleLowerCase("es") : ""; }
 function _aseoGuiaCalc(hid, m, hoy, horaMx) {
   // · Sale hoy: estado de aseo; si sigue pendiente → "se desocupa hoy", salvo que también
   //   entre alguien hoy y ya sean las 2:00 p.m. (entonces nada; las cards avisan "urge validación").
@@ -17582,6 +17583,7 @@ app.get("/aseo/estado-aloj", async (req, res) => {
     if (!_aseo.rows || Date.now() - _aseo.ts > 30_000) await _aseoLiveLoad();
     const g = _aseoGuiaCalc(hid, _aseoIdxCasas().get(hid), _mxHoy(), _aseoHoraMx());
     res.json({ ok: true, hid, modo: g.modo, estado: g.estado, texto: g.texto, label: g.estado ? _ASEO_ETQ[g.estado] : "", listo: g.estado === "terminado" || g.estado === "inspeccionado",
+      huesped: (g.modo === "aseo" && (g.estado === "terminado" || g.estado === "inspeccionado") && g.entHoy) ? _primerNombre(g.entHoy.name) : "", // solo el primer nombre, y solo cuando el alojamiento ya está listo
       at: g.modo === "aseo" && g.pub ? g.pub.at : "", salida: g.ult ? g.ult.dep : "", entradaHoy: !!g.entHoy, salidaHoy: !!g.salHoy, hist: g.reg ? g.reg.hist : {}, ts: _aseo.okTs, now: Date.now() });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
