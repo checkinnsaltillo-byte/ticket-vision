@@ -69320,6 +69320,33 @@ window.atAbrir_ = function (id, dia, origen) {
   ASEO._dr = { k: 'T' + id, tarea: String(id), dia: dia || aseoDia_() }; adPintar_(true);
   const t = (ASEO.tareas || {})[id]; adSync_('T' + id, t ? t.hid : '', ASEO._dr.dia, 'T:' + id, origen);
 };
+// Personal (no administrativo): la ventana de detalle de las cards muestra solo Tipo de tarea, Tipo de servicio, Línea del día, Equipo, Fotos y Comentarios.
+function adEmpFiltrar_(dr) {
+  try {
+    const mod = document.getElementById('module-aseo');
+    const on = !!(dr && mod && !mod.classList.contains('hidden') && clModoPersonal_());
+    dr.classList.toggle('emp-lim', on);
+    const db = dr.querySelector('.ad-db'); if (!db) return;
+    let kind = '';
+    Array.from(db.children).forEach(el => {
+      const ini = el.classList.contains('lab') || el.classList.contains('at-sec');
+      if (ini) { const t = (el.textContent || '').trim(); kind = /^Tipo de servicio/.test(t) ? 'srv' : /^(Tipo de tarea|Línea del día|Equipo|📷|💬)/.test(t) ? 'ok' : ''; }
+      let ver = !on || !!kind;
+      if (on && kind === 'srv' && !(ini || el.classList.contains('ad-steps'))) ver = false;
+      if (on && (el.classList.contains('ad-tgl') || el.classList.contains('ad-addrow'))) ver = false;
+      el.style.display = ver ? '' : 'none';
+    });
+    db.querySelectorAll('.ad-addrow').forEach(e => { e.style.display = on ? 'none' : ''; });
+  } catch (_) {}
+}
+(function () {
+  if (window._adEmpObs) return; window._adEmpObs = true;
+  const st = document.createElement('style'); st.textContent = '#ad-drawer.emp-lim .ad-ft{display:none!important}'; document.head.appendChild(st);
+  let obsDr = null;
+  const att = () => { const dr = document.getElementById('ad-drawer'); if (!dr || dr === obsDr) return; obsDr = dr; new MutationObserver(() => adEmpFiltrar_(dr)).observe(dr, { childList: true }); adEmpFiltrar_(dr); };
+  new MutationObserver(att).observe(document.body, { childList: true });
+  att();
+})();
 function atShell_() {
   aseoEnsureCss_();
   if (!document.getElementById('ad-dim')) { const dim = document.createElement('div'); dim.id = 'ad-dim'; dim.onclick = adCerrar_; document.body.appendChild(dim); }
