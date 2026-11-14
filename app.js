@@ -70433,18 +70433,18 @@ html body .ad-card.bw:hover{box-shadow:0 2px 4px rgba(15,23,42,.08),0 12px 26px 
 html body .ad-card.bw.ghost{background:#f3f4f7!important}
 html body .ad-card.bw.sel{border-color:#4f46e5 #4f46e5 #4f46e5 var(--tc)!important;box-shadow:0 0 0 3px #e0e7ff}
 html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!important;box-shadow:0 0 0 3px #fee2e2}
-.ad-card.bw>.bw-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 14px;margin:0;color:#fff;background:color-mix(in srgb,var(--sc) 72%,#0f172a);font:600 12px/1.2 Inter,system-ui,-apple-system,sans-serif;letter-spacing:.01em}
+.ad-card.bw>.bw-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 14px;margin:0;color:#fff;background:color-mix(in srgb,var(--sc) 72%,#0f172a);font:600 12px/1.2 -apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif;letter-spacing:.01em}
 .ad-card.bw>.bw-h span{display:inline-flex;align-items:center;gap:7px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ad-card.bw>.bw-h .bw-r{display:flex;align-items:center;gap:6px;flex:none}
-.ad-card.bw>.bw-h .bw-r>span{display:inline-block;overflow:visible;font:700 10.5px/1.5 Inter,system-ui,sans-serif;padding:0 7px;border-radius:5px;background:rgba(255,255,255,.94)}
+.ad-card.bw>.bw-h .bw-r>span{display:inline-block;overflow:visible;font:700 10.5px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif;padding:0 7px;border-radius:5px;background:rgba(255,255,255,.94)}
 .ad-card.bw>.bw-h .bw-r>span.s{color:#dc2626}.ad-card.bw>.bw-h .bw-r>span.e{color:#16a34a}.ad-card.bw>.bw-h .bw-r>span.u{display:none}
 .ad-card.bw>.bw-h b{flex:none;font-weight:700;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
 .ad-card.bw>.bw-top{background:color-mix(in srgb,var(--sc) 14%,#fff);padding:9px 14px 8px;margin:0 0 9px}
 .ad-card.bw.ghost>.bw-top{background:transparent}
 .ad-card.bw>*:not(.bw-h):not(.bw-top):not(.ad-insp){margin-left:14px;margin-right:14px}
-.ad-card.bw,.ad-card.bw *{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif!important}
+.ad-card.bw,.ad-card.bw *{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif!important}
 .ad-card.bw .bw-top>.r1{flex-wrap:wrap;gap:1px 8px;align-items:baseline;margin:0}
-.ad-card.bw .r1 .code{font-size:15px;font-weight:700;line-height:1.25;letter-spacing:-.005em;color:#0f172a}
+.ad-card.bw .r1 .code{font-size:15px;font-weight:600;line-height:1.3;letter-spacing:.005em;color:#0f172a}
 .ad-card.bw .r1 .prop{font-size:12.5px;font-weight:600;line-height:1.3;color:#334155}
 .ad-card.bw .r1 .ad-dia{display:none}
 .ad-card.bw .r1 .mv{flex:1 1 100%;display:block;margin-top:0;order:5}
@@ -70470,11 +70470,11 @@ html body .ad-card.bw>.bw-h,html body .ad-card.bw>.bw-h span,html body .ad-card.
 html body .ad-card.bw .bw-b,html body .ad-card.bw .bw-b b,html body .ad-card.bw .bw-l,html body .ad-card.bw .bw-i,html body .ad-card.bw .bw-mv>.u,
 html body .ad-card.bw .bw-top .r2,html body .ad-card.bw .bw-top .r2 span,html body .ad-card.bw .ax-cat,html body .ad-card.bw .ax-cat .t,html body .ad-card.bw .ax-cat .s,html body .ad-card.bw .ax-cat .a,
 html body .ad-card.bw .ad-camas,html body .ad-card.bw .bw-top .bw-ev,html body .ad-card.bw .flag,html body .ad-card.bw .r1 .prop,
-html body .ad-card.bw .ad-nm,html body .ad-card.bw .ad-asg,html body .ad-card.bw .ad-arch,html body .ad-card.bw .ad-qs button,html body .ad-card.bw .pl-cb2 b,html body .ad-card.bw .ad-incchip{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif!important;font-size:12px!important;line-height:1.35!important;letter-spacing:0!important;text-transform:none!important}
-html body .ad-card.bw>.bw-h b,html body .ad-card.bw>.bw-h .bw-r>span,html body .ad-card.bw .bw-b b,html body .ad-card.bw .ax-cat .t,html body .ad-card.bw .ax-cat .s,html body .ad-card.bw .ad-nm,html body .ad-card.bw .ad-qs button.on,html body .ad-card.bw .flag,html body .ad-card.bw .r1 .prop{font-weight:600!important}
+html body .ad-card.bw .ad-nm,html body .ad-card.bw .ad-asg,html body .ad-card.bw .ad-arch,html body .ad-card.bw .ad-qs button,html body .ad-card.bw .pl-cb2 b,html body .ad-card.bw .ad-incchip{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif!important;font-size:11.5px!important;line-height:1.5!important;letter-spacing:.012em!important;text-transform:none!important}
+html body .ad-card.bw>.bw-h b,html body .ad-card.bw>.bw-h .bw-r>span,html body .ad-card.bw .bw-b b,html body .ad-card.bw .ax-cat .t,html body .ad-card.bw .ax-cat .s,html body .ad-card.bw .ad-nm,html body .ad-card.bw .ad-qs button.on,html body .ad-card.bw .flag,html body .ad-card.bw .r1 .prop{font-weight:500!important}
 html body .ad-card.bw .bw-b,html body .ad-card.bw .bw-l,html body .ad-card.bw .bw-top .r2,html body .ad-card.bw .bw-top .bw-ev,html body .ad-card.bw .ad-qs button:not(.on){font-weight:400!important}
 html body .ad-card.bw .ad-qs button{font-weight:500}
-@container (min-width:331px){html body .ad-card.bw .r3 .mv-ns{font-family:Inter,system-ui,-apple-system,sans-serif!important;font-size:12px!important;font-weight:600!important;line-height:1.35!important;height:auto!important;padding:2px 9px!important}}
+@container (min-width:331px){html body .ad-card.bw .r3 .mv-ns{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif!important;font-size:11.5px!important;font-weight:500!important;line-height:1.5!important;letter-spacing:.012em!important;height:auto!important;padding:2px 9px!important}}
 html body .ad-card.bw>.r3{margin-top:0;padding-top:0;border-top:0}
 .ad-card.bw>.ad-eq{margin-top:0;margin-bottom:6px}
 .ad-card.bw>.ad-qs,.ad-card.bw>.ad-incrow{margin-top:7px}
