@@ -68530,7 +68530,6 @@ function adCard_(I) {
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
     ${bwEvHtml_(I)}
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
-    ${srcTxt || xR ? `<div class="r2 ad-src"><span>${pcEsc(srcTxt)}</span>${xR ? (n => n ? `<span title="Personas">👥 ${n}</span>` : '')(Number(xR.b.NumberOfGuests) || (Number(xR.b.Adults) || 0) + (Number(xR.b.Children) || 0)) + (xR.noches ? `<span title="Noches">🌙 ${xR.noches}</span>` : '') : ''}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
     </div>
     <div class="ad-eq">${equipo}</div>
@@ -69120,8 +69119,11 @@ function bwChips_(mov) { const g = c => (String(mov).match(new RegExp('<span cla
 function bwMov_(I, mov) {
   try {
     const E = adEvsBuild_(I, (cls, h, tit, sub) => ({ cls, tit, sub }));
+    const ix = { s: 0, e: 0 };
+    E.forEach(e => { if (e.cls === 's' || e.cls === 'e') { const x = (e.cls === 's' ? I.g.sal : I.g.ent)[ix[e.cls]++]; if (x) { const b = x.b || {}, n = Number(b.NumberOfGuests) || (Number(b.Adults) || 0) + (Number(b.Children) || 0);
+      e.sub = String(e.sub || '').replace(/^\d+ noches?( · )?/, ''); e.ic = (n ? `<span class="bw-i" title="Personas">👥 ${n}</span>` : '') + (x.noches ? `<span class="bw-i" title="Noches">🌙 ${x.noches}</span>` : ''); } } });
     const quita = t => String(t).replace(/^(Sale|Entra) /, '');
-    const caja = (cls, rot, evs) => `<div class="bw-b ${cls}"><b>${rot}</b>${evs.map(e => `<div class="bw-l">${quita(e.tit)}${e.sub ? ' · ' + e.sub : ''}</div>`).join('')}</div>`;
+    const caja = (cls, rot, evs) => `<div class="bw-b ${cls}"><b>${rot}</b>${evs.map(e => `<div class="bw-l">${quita(e.tit)}${e.sub ? ' · ' + e.sub : ''}${e.ic || ''}</div>`).join('')}</div>`;
     const S = E.filter(e => e.cls === 's' || e.cls === 'a'), N = E.filter(e => e.cls === 'e');
     const rotS = I.esCopia && I.xs ? `Salida hace ${I.diasSal} día${I.diasSal === 1 ? '' : 's'}` : '↗ Sale', u = (String(mov).match(/<span class="u"[^>]*>.*?<\/span>/) || [''])[0];
     if (!S.length && !N.length) return mov;
@@ -70446,6 +70448,7 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw .bw-b.s{background:#fef2f2;border-color:#fecaca;color:#7f1d1d}.ad-card.bw .bw-b.s b{color:#dc2626}
 .ad-card.bw .bw-b.e{background:#f0fdf4;border-color:#bbf7d0;color:#14532d}.ad-card.bw .bw-b.e b{color:#16a34a}
 .ad-card.bw .bw-l{overflow-wrap:anywhere}
+.ad-card.bw .bw-i{display:inline-block;margin-left:8px;white-space:nowrap;font-size:12px;font-weight:600;opacity:.9}
 .ad-card.bw .bw-mv>.u{flex:none;align-self:center;font-size:11px;font-weight:600;line-height:1.4;padding:2px 7px;border-radius:6px;background:#f3f4f6;color:#6b7280}
 .ad-card.bw .bw-top .r2,.ad-card.bw .bw-top .r2 span,.ad-card.bw .ad-camas,.ad-card.bw .r2.ad-src span{font-size:12.5px;line-height:1.35}
 .ad-card.bw .bw-top .r2{margin-top:4px;font-weight:400;color:#475569}
