@@ -68509,11 +68509,12 @@ function adCard_(I) {
     return `<div class="ad-card tipo est-tint ad-simp bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t)}
-    <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
+    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && /^Reprogramada/.test(I.aviso.t) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     <div class="r2">${catP}${adCamasHtml_(I.hid)}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${adExtraInsumos_(I)}
+    </div>
     <div class="r3">${nsChip}${equipo}<span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${I.depto === 'limpieza' && I.hid ? rbCardRetBtn_('A' + I.hid, I._dia || aseoDia_()) : ''}${axIncMini_(I.asigId, I.hid, aseoDia_())}</div>
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
@@ -68521,7 +68522,7 @@ function adCard_(I) {
   return `<div class="ad-card tipo est-tint bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t)}
-    <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
+    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${adExtraInsumos_(I)}
@@ -68529,6 +68530,7 @@ function adCard_(I) {
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${srcTxt || xR ? `<div class="r2 ad-src"><span>${pcEsc(srcTxt)}</span>${xR ? (n => n ? `<span title="Personas">👥 ${n}</span>` : '')(Number(xR.b.NumberOfGuests) || (Number(xR.b.Adults) || 0) + (Number(xR.b.Children) || 0)) + (xR.noches ? `<span title="Noches">🌙 ${xR.noches}</span>` : '') : ''}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
+    </div>
     <div class="ad-eq">${equipo}</div>
     <div class="r3 ad-r3w">${nsChip}<span class="ad-r3b"><span class="sp"></span><button type="button" class="ad-arch" title="${I.arch ? 'Regresar esta card al tablero' : 'Archivar esta card (sale del tablero)'}" onclick="event.stopPropagation();adArchivar_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',${!I.arch})">${I.arch ? '↩' : '🗑'}</button>${I.depto === 'limpieza' && I.hid ? rbCardRetBtn_('A' + I.hid, I._dia || aseoDia_()) : ''}${axIncMini_(I.asigId, I.hid, aseoDia_())}${guia}<button type="button" class="ad-det" onclick="event.stopPropagation();adAbrir_('${pcEsc(I.k)}')">Detalles</button></span></div>
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
@@ -69264,10 +69266,11 @@ function rtCardA_(I) {
   return `<div class="ad-card tipo est-tint bw tarea ${t.bloquea && !cerrado ? 'alert' : ''} ${t.estado === 'cancelado' ? 'ghost' : ''} ${axEsDeInc_('R' + t.rtId) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="R${pcEsc(t.rtId)}" style="--tc:${D.c};--sc:${adEstC_(t.estado)}" onclick="rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'R:${pcEsc(t.rtId)}','',true,true)" ondragend="adDragEnd_(event)">
     ${bwBand_(I.dia || t.fecha, ({ pendiente: 'Pendiente', en_proceso: 'En proceso', terminado: 'Terminado', cancelado: 'Cancelado' })[t.estado] || 'Pendiente')}
-    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}${axComChip_('R' + t.rtId)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span>${atNuevoChip_(row.Timestamp)}</div>
+    <div class="bw-top"><div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}${axComChip_('R' + t.rtId)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span>${atNuevoChip_(row.Timestamp)}</div>
     ${flags.join('')}
     <div class="r2">${axCatHtml_('mantenimiento', 'R' + t.rtId, false)}<span class="sep"></span><span>${cat.icon} ${pcEsc(cat.label)}</span><span class="sep"></span><span>${pcEsc(row.Folio || row.ID)}</span>${RC.meta}</div>
     ${axFila_('R' + t.rtId, false, t.hid, I.dia || t.fecha)}
+    </div>
     <div class="r3">${RC.ns}${atEquipo_('R', t)}<span class="sp"></span>${axIncMini_('R' + t.rtId, t.hid, I.dia || t.fecha)}${nF ? `<span class="ad-gd">📷 ${nF}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')">Detalles</button></div>
     <div class="ad-qs" onclick="event.stopPropagation()">${pasos.map(p => `<button type="button" class="${p[0] === t.estado ? 'on' : ''}" style="--c:${p[2]}" onclick="event.stopPropagation();adRtEst_('${pcEsc(t.rtId)}','${p[0]}')"><i></i>${p[1]}</button>`).join('')}</div>
   </div>`;
@@ -69311,12 +69314,13 @@ function atCard_(I) {
   return `<div class="ad-card tipo est-tint bw tarea ${t.problema ? 'alert' : ''} ${axEsDeInc_('T' + t.id) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="T${pcEsc(t.id)}" style="--tc:${D.c};--sc:${adEstC_(I.selE)}" onclick="atAbrir_('${pcEsc(t.id)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'${I.key}','',true,${t.depto !== 'limpieza'})" ondragend="adDragEnd_(event)">
     ${bwBand_(I._dia || I.dia || t.fecha, adEstObj_(I.selE).t)}
-    <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${t.depto === 'limpieza' ? rbCardRetHtml_('T' + t.id, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}${axComChip_('T' + t.id)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
+    <div class="bw-top"><div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${t.depto === 'limpieza' ? rbCardRetHtml_('T' + t.id, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}${axComChip_('T' + t.id)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
     ${I.atrasada ? `<div class="flag red"><i></i>Atrasada · era para el ${aseoDiaTxt_(t.fecha)}</div>` : ''}${RC.flags}
     <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${RC.meta}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
+    </div>
     <div class="r3">${RC.ns}${atEquipo_('T', t, I.key)}<span class="sp"></span>${t.depto === 'limpieza' ? rbCardRetBtn_('T' + t.id, I._dia || aseoDia_()) : ''}${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
     ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}${plBarra_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key, I.selE)}
   </div>`;
@@ -70393,25 +70397,31 @@ function bwEnsureCss_() {
   if (document.getElementById('bw-css')) return;
   const st = document.createElement('style'); st.id = 'bw-css';
   st.textContent = `
-html body .ad-card.bw{padding:0 0 14px;overflow:hidden;border-radius:14px;margin-bottom:12px;background:#fff!important;border-color:#e6e8ec #e6e8ec #e6e8ec var(--tc)!important;box-shadow:0 1px 2px rgba(15,23,42,.06),0 8px 20px -12px rgba(15,23,42,.18)}
+html body .ad-card.bw{padding:0 0 10px;overflow:hidden;border-radius:14px;margin-bottom:10px;background:#fff!important;border-color:#e6e8ec #e6e8ec #e6e8ec var(--tc)!important;box-shadow:0 1px 2px rgba(15,23,42,.06),0 8px 20px -12px rgba(15,23,42,.18)}
 html body .ad-card.bw:hover{box-shadow:0 2px 4px rgba(15,23,42,.08),0 12px 26px -12px rgba(15,23,42,.28)}
 html body .ad-card.bw.ghost{background:#f3f4f7!important}
 html body .ad-card.bw.sel{border-color:#4f46e5 #4f46e5 #4f46e5 var(--tc)!important;box-shadow:0 0 0 3px #e0e7ff}
 html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!important;box-shadow:0 0 0 3px #fee2e2}
-.ad-card.bw>.bw-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;margin:0 0 12px;color:#fff;background:color-mix(in srgb,var(--sc) 72%,#0f172a);font:600 12px/1.2 Inter,system-ui,-apple-system,sans-serif;letter-spacing:.01em}
+.ad-card.bw>.bw-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 14px;margin:0;color:#fff;background:color-mix(in srgb,var(--sc) 72%,#0f172a);font:600 12px/1.2 Inter,system-ui,-apple-system,sans-serif;letter-spacing:.01em}
 .ad-card.bw>.bw-h span{display:inline-flex;align-items:center;gap:7px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ad-card.bw>.bw-h b{flex:none;font-weight:700;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
-.ad-card.bw>*:not(.bw-h):not(.ad-insp){margin-left:14px;margin-right:14px}
-.ad-card.bw>.r1{flex-wrap:wrap;gap:4px 8px;align-items:baseline}
-.ad-card.bw .r1 .code{font:700 18px/1.25 Inter,system-ui,-apple-system,sans-serif;letter-spacing:-.01em;color:#0f172a}
-.ad-card.bw .r1 .prop{font:600 14px/1.3 Inter,system-ui,sans-serif;color:#334155}
+.ad-card.bw>.bw-top{background:#f1f3f6;padding:9px 14px 8px;margin:0 0 9px}
+.ad-card.bw.ghost>.bw-top{background:transparent}
+.ad-card.bw>*:not(.bw-h):not(.bw-top):not(.ad-insp){margin-left:14px;margin-right:14px}
+.ad-card.bw .bw-top>.r1{flex-wrap:wrap;gap:1px 8px;align-items:baseline;margin:0}
+.ad-card.bw .r1 .code{font:700 18px/1.2 Inter,system-ui,-apple-system,sans-serif;letter-spacing:-.01em;color:#0f172a}
+.ad-card.bw .r1 .prop{font:600 14px/1.25 Inter,system-ui,sans-serif;color:#334155}
 .ad-card.bw .r1 .ad-dia{display:none}
-.ad-card.bw .r1 .mv{flex:1 1 100%;font:400 13px/1.35 Inter,system-ui,sans-serif;color:#64748b;margin-top:1px}
-.ad-card.bw .r2{margin-top:8px;font:400 13px/1.45 Inter,system-ui,sans-serif;color:#475569}
-.ad-card.bw .flag{margin-top:8px}
-.ad-card.bw>.r3{margin-top:12px;padding-top:11px;border-top:1px solid #eef0f3}
-.ad-card.bw>.ad-qs,.ad-card.bw>.ad-eq+.r3+.ad-qs{margin-top:12px}
-.ad-card.bw>.pl-cb2{margin-top:10px}
+.ad-card.bw .r1 .mv{flex:1 1 100%;font:400 13px/1.3 Inter,system-ui,sans-serif;color:#64748b;margin-top:0}
+.ad-card.bw .bw-top .r2{margin-top:4px;font:400 13px/1.35 Inter,system-ui,sans-serif;color:#475569}
+.ad-card.bw .bw-top .r2 .ad-camas{margin-left:10px}
+.ad-card.bw .bw-top .r2 .ax-cat+.ad-camas,.ad-card.bw .bw-top .r2 .ad-camas:not(:first-child){margin-left:10px}
+.ad-card.bw .bw-top .flag{margin-top:5px}
+.ad-card.bw .bw-top .r4{margin-top:5px}
+html body .ad-card.bw>.r3{margin-top:0;padding-top:0;border-top:0}
+.ad-card.bw>.ad-eq{margin-top:0;margin-bottom:6px}
+.ad-card.bw>.ad-qs,.ad-card.bw>.ad-incrow{margin-top:7px}
+.ad-card.bw>.pl-cb2{margin-top:7px}
 `;
   document.head.appendChild(st);
 }
