@@ -17498,7 +17498,7 @@ app.post("/aseo/estado", async (req, res) => {
 const _ASEO_GUIA_TXT = {
   ocupado: "Este alojamiento está actualmente ocupado",
   libre: "Este alojamiento está actualmente disponible",
-  espera: "Te avisaremos en cuanto esté listo tu alojamiento para el ingreso.",
+  espera: "Te avisaremos aquí mismo en cuanto esté listo tu alojamiento para el ingreso.",
   desocupa: "Este alojamiento se desocupa hoy. Te avisaremos aquí mismo en cuanto esté listo para el ingreso.",
   en_proceso: "Aseo en proceso",
   terminado: "Ya puedes ingresar a tu alojamiento",
