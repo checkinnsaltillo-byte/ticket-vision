@@ -70458,7 +70458,7 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw .bw-b.s{background:#fef2f2;border-color:#fecaca;color:#7f1d1d}.ad-card.bw .bw-b.s b{color:#dc2626}
 .ad-card.bw .bw-b.e{background:#f0fdf4;border-color:#bbf7d0;color:#14532d}.ad-card.bw .bw-b.e b{color:#16a34a}
 .ad-card.bw .bw-l{overflow-wrap:anywhere}
-.ad-card.bw .bw-b .flag{margin-top:6px}
+html body .ad-card.bw .bw-b .flag{margin:6px 0 0;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;color:#dc2626!important;font-weight:700!important}html body .ad-card.bw .bw-b .flag i{background:#dc2626!important;box-shadow:none!important}
 .ad-card.bw .bw-i{display:inline-block;margin-left:8px;white-space:nowrap;font-size:12px;font-weight:600;opacity:.9}
 .ad-card.bw .bw-mv>.u{flex:none;align-self:center;font-size:11px;font-weight:600;line-height:1.4;padding:2px 7px;border-radius:6px;background:#f3f4f6;color:#6b7280}
 .ad-card.bw .bw-top .r2,.ad-card.bw .bw-top .r2 span,.ad-card.bw .ad-camas,.ad-card.bw .r2.ad-src span{font-size:12.5px;line-height:1.35}
