@@ -70465,6 +70465,16 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw .ad-camas{margin-left:10px!important}
 .ad-card.bw .ax-cat .t,.ad-card.bw .ax-cat .s,.ad-card.bw .ax-cat .a{font-size:12px}
 .ad-card.bw .ad-avs,.ad-card.bw .ad-eq,.ad-card.bw .r3{font-size:12.5px}
+/* ── Escala tipográfica única de la card: todo a 12 px (títulos aparte). Regular 400 · énfasis 600 ── */
+html body .ad-card.bw>.bw-h,html body .ad-card.bw>.bw-h span,html body .ad-card.bw>.bw-h b,html body .ad-card.bw>.bw-h .bw-r>span,
+html body .ad-card.bw .bw-b,html body .ad-card.bw .bw-b b,html body .ad-card.bw .bw-l,html body .ad-card.bw .bw-i,html body .ad-card.bw .bw-mv>.u,
+html body .ad-card.bw .bw-top .r2,html body .ad-card.bw .bw-top .r2 span,html body .ad-card.bw .ax-cat,html body .ad-card.bw .ax-cat .t,html body .ad-card.bw .ax-cat .s,html body .ad-card.bw .ax-cat .a,
+html body .ad-card.bw .ad-camas,html body .ad-card.bw .bw-top .bw-ev,html body .ad-card.bw .flag,html body .ad-card.bw .r1 .prop,
+html body .ad-card.bw .ad-nm,html body .ad-card.bw .ad-asg,html body .ad-card.bw .ad-arch,html body .ad-card.bw .ad-qs button,html body .ad-card.bw .pl-cb2 b,html body .ad-card.bw .ad-incchip{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif!important;font-size:12px!important;line-height:1.35!important;letter-spacing:0!important;text-transform:none!important}
+html body .ad-card.bw>.bw-h b,html body .ad-card.bw>.bw-h .bw-r>span,html body .ad-card.bw .bw-b b,html body .ad-card.bw .ax-cat .t,html body .ad-card.bw .ax-cat .s,html body .ad-card.bw .ad-nm,html body .ad-card.bw .ad-qs button.on,html body .ad-card.bw .flag,html body .ad-card.bw .r1 .prop{font-weight:600!important}
+html body .ad-card.bw .bw-b,html body .ad-card.bw .bw-l,html body .ad-card.bw .bw-top .r2,html body .ad-card.bw .bw-top .bw-ev,html body .ad-card.bw .ad-qs button:not(.on){font-weight:400!important}
+html body .ad-card.bw .ad-qs button{font-weight:500}
+@container (min-width:331px){html body .ad-card.bw .r3 .mv-ns{font-family:Inter,system-ui,-apple-system,sans-serif!important;font-size:12px!important;font-weight:600!important;line-height:1.35!important;height:auto!important;padding:2px 9px!important}}
 html body .ad-card.bw>.r3{margin-top:0;padding-top:0;border-top:0}
 .ad-card.bw>.ad-eq{margin-top:0;margin-bottom:6px}
 .ad-card.bw>.ad-qs,.ad-card.bw>.ad-incrow{margin-top:7px}
