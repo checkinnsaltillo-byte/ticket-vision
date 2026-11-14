@@ -68509,7 +68509,7 @@ function adCard_(I) {
     return `<div class="ad-card tipo est-tint ad-simp bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t)}
-    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
+    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${bwMov_(I, mov)}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && /^Reprogramada/.test(I.aviso.t) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     <div class="r2">${catP}${adCamasHtml_(I.hid)}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
     ${bwEvHtml_(I)}
@@ -68523,7 +68523,7 @@ function adCard_(I) {
   return `<div class="ad-card tipo est-tint bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t)}
-    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
+    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${bwMov_(I, mov)}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${adExtraInsumos_(I)}
@@ -69115,8 +69115,20 @@ function adEvsBuild_(I, adEv_) {
   (I.g.cur || []).forEach(x => evs.push(adEv_('c', '—', `Hospedado ${pcEsc(x.b.GuestName || '')}`, `hasta ${pcFmtDiaC_(x.dep)}`)));
   return evs;
 }
+// «Sale» / «Entra» como dos cuadros (rojo / verde) con los datos de la Línea del día: nombre, noches, medio de reserva y clasificación.
+function bwMov_(I, mov) {
+  try {
+    const E = adEvsBuild_(I, (cls, h, tit, sub) => ({ cls, tit, sub }));
+    const quita = t => String(t).replace(/^(Sale|Entra) /, '');
+    const caja = (cls, rot, evs) => `<div class="bw-b ${cls}"><b>${rot}</b>${evs.map(e => `<div class="bw-l">${quita(e.tit)}${e.sub ? ' · ' + e.sub : ''}</div>`).join('')}</div>`;
+    const S = E.filter(e => e.cls === 's' || e.cls === 'a'), N = E.filter(e => e.cls === 'e');
+    const rotS = I.esCopia && I.xs ? `Salida hace ${I.diasSal} día${I.diasSal === 1 ? '' : 's'}` : '↗ Sale', u = (String(mov).match(/<span class="u"[^>]*>.*?<\/span>/) || [''])[0];
+    if (!S.length && !N.length) return mov;
+    return `<div class="bw-mv">${S.length ? caja('s', rotS, S) : ''}${N.length ? caja('e', '↘ Entra', N) : ''}${u}</div>`;
+  } catch (_) { return mov; }
+}
 function bwEvHtml_(I) {
-  try { const L = adEvsBuild_(I, (cls, h, tit, sub) => `<div class="bw-ev"><b>${tit}</b>${sub ? `<small> · ${sub}</small>` : ''}</div>`); return L.join(''); } catch (_) { return ''; }
+  try { const L = adEvsBuild_(I, (cls, h, tit, sub) => cls === 'c' ? `<div class="bw-ev"><b>${tit}</b>${sub ? `<small> · ${sub}</small>` : ''}</div>` : ''); return L.join(''); } catch (_) { return ''; }
 }
 function adEv_(cls, h, tit, sub) { return `<div class="ev ${cls}"><span class="h">${h}</span><div><b>${tit}</b>${sub ? `<small>${sub}</small>` : ''}</div></div>`; }
 function adPintar_(nuevo) {
@@ -70422,7 +70434,14 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw .r1 .code{font:700 18px/1.2 Inter,system-ui,-apple-system,sans-serif;letter-spacing:-.01em;color:#0f172a}
 .ad-card.bw .r1 .prop{font:600 14px/1.25 Inter,system-ui,sans-serif;color:#334155}
 .ad-card.bw .r1 .ad-dia{display:none}
-.ad-card.bw .r1 .mv{flex:1 1 100%;font:400 13px/1.3 Inter,system-ui,sans-serif;color:#64748b;margin-top:0}
+.ad-card.bw .r1 .mv{flex:1 1 100%;display:block;margin-top:0}
+.ad-card.bw .bw-mv{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.ad-card.bw .bw-b{flex:1 1 calc(50% - 3px);min-width:150px;box-sizing:border-box;border:1px solid;border-radius:9px;padding:5px 9px 6px;font:400 13px/1.35 Inter,system-ui,sans-serif}
+.ad-card.bw .bw-b b{display:block;font:700 12px/1.3 Inter,system-ui,sans-serif;letter-spacing:.02em}
+.ad-card.bw .bw-b.s{background:#fef2f2;border-color:#fecaca;color:#7f1d1d}.ad-card.bw .bw-b.s b{color:#dc2626}
+.ad-card.bw .bw-b.e{background:#f0fdf4;border-color:#bbf7d0;color:#14532d}.ad-card.bw .bw-b.e b{color:#16a34a}
+.ad-card.bw .bw-l{overflow-wrap:anywhere}
+.ad-card.bw .bw-mv>.u{flex:none;align-self:center;font:600 11px/1.4 Inter,system-ui,sans-serif;padding:2px 7px;border-radius:6px;background:#f3f4f6;color:#6b7280}
 .ad-card.bw .bw-top .r2{margin-top:4px;font:400 13px/1.35 Inter,system-ui,sans-serif;color:#475569}
 .ad-card.bw .bw-top .r2 .ad-camas{margin-left:10px}
 .ad-card.bw .bw-top .r2 .ax-cat+.ad-camas,.ad-card.bw .bw-top .r2 .ad-camas:not(:first-child){margin-left:10px}
