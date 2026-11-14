@@ -17529,7 +17529,8 @@ function _aseoGuiaCalc(hid, m, hoy, horaMx) {
   const pub = _aseoPub(reg); // solo lo VALIDADO se muestra en la guía
   const est = pub ? pub.estado : "pendiente";
   let modo = "";
-  if (salHoy) modo = est !== "pendiente" ? "aseo" : (entHoy && horaMx >= 14 ? "espera" : "desocupa");
+  const listoAseo = est === "terminado" || est === "inspeccionado";
+  if (salHoy) modo = est !== "pendiente" ? (listoAseo && !entHoy ? "libre" : "aseo") : (entHoy && horaMx >= 14 ? "espera" : "desocupa"); // aseo listo y nadie entra hoy → «Está disponible»
   else if (entHoy) modo = (est === "terminado" || est === "inspeccionado") ? "aseo" : "espera";
   else if (ocupado) modo = "ocupado";
   else modo = "libre"; // sin huésped hospedado ni entrada hoy: «Está disponible»
