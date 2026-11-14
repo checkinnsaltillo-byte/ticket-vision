@@ -70479,7 +70479,18 @@ html body .ad-card.bw>.bw-h b,html body .ad-card.bw>.bw-h .bw-r>span,html body .
 html body .ad-card.bw .bw-b,html body .ad-card.bw .bw-l,html body .ad-card.bw .bw-top .r2,html body .ad-card.bw .bw-top .bw-ev,html body .ad-card.bw .ad-qs button:not(.on){font-weight:400!important}
 html body .ad-card.bw .ad-qs button{font-weight:500}
 html body .ad-card.bw>.bw-h .bw-r>b{font-size:13px!important;font-weight:700!important;letter-spacing:.01em!important}
-@container (min-width:331px){html body .ad-card.bw .r3 .mv-ns{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif!important;font-size:11.5px!important;font-weight:500!important;line-height:1.5!important;letter-spacing:.012em!important;height:auto!important;padding:2px 9px!important}}
+/* ── Chips (10.5 px · seminegritas) y botones (11 px · negritas): más compactos y corporativos ── */
+html body .ad-card.bw>.bw-h .bw-r>span,html body .ad-card.bw .ax-cat,html body .ad-card.bw .ax-cat .t,html body .ad-card.bw .ax-cat .s,html body .ad-card.bw .ax-cat .a,html body .ad-card.bw .ad-nm,html body .ad-card.bw .ad-nm *,html body .ad-card.bw .ad-gd,html body .ad-card.bw .bw-mv>.u,html body .ad-card.bw .r3 .mv-ns{font-size:10.5px!important;font-weight:600!important;letter-spacing:.02em!important;line-height:1.45!important}
+html body .ad-card.bw .ad-qs button,html body .ad-card.bw .ad-asg,html body .ad-card.bw .ad-incchip,html body .ad-card.bw .ad-arch{font-size:11px!important;font-weight:700!important;letter-spacing:.03em!important;line-height:1.3!important}
+html body .ad-card.bw>.bw-h .bw-r>span{padding:1px 7px!important;border-radius:5px!important}
+html body .ad-card.bw .ax-cat{border-radius:6px}
+html body .ad-card.bw .ad-nm{height:20px!important;padding:0 8px!important;border-radius:6px!important}
+html body .ad-card.bw .ad-qs{gap:4px;padding:3px;border-radius:9px;background:#f1f3f6}
+html body .ad-card.bw .ad-qs button{padding:6px 2px!important;border-radius:7px!important;color:#64748b}
+html body .ad-card.bw .ad-qs button.on{color:#fff}
+html body .ad-card.bw .pl-cb2>span{height:5px!important;border-radius:999px!important}
+html body .ad-card.bw .pl-cb2 b{font-size:11px!important;font-weight:600!important;color:#64748b!important}
+@container (min-width:331px){html body .ad-card.bw .r3 .mv-ns{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif!important;font-size:10.5px!important;font-weight:600!important;line-height:1.45!important;letter-spacing:.02em!important;height:auto!important;padding:2px 9px!important}}
 html body .ad-card.bw>.r3{margin-top:0;padding-top:0;border-top:0}
 .ad-card.bw>.ad-eq{margin-top:0;margin-bottom:6px}
 .ad-card.bw>.ad-qs,.ad-card.bw>.ad-incrow{margin-top:7px}
