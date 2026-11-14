@@ -67133,7 +67133,7 @@ function clEmpCss_() {
     .ad-ham:hover,.ad-ham.on{background:#f1f5f9;border-color:#cbd5e1}
     .ad-ham b{position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:#111827;color:#fff;font:700 10px/16px Inter,system-ui,sans-serif;text-align:center}
     .ad-gfil{margin:0 0 10px}
-    #module-aseo.cl-emp .at-card,#module-aseo.cl-emp .rt-card,#module-aseo.cl-emp [draggable]{pointer-events:none!important;cursor:default!important}#module-aseo.cl-emp .ad-card{cursor:pointer!important}
+    #module-aseo.cl-emp .at-card,#module-aseo.cl-emp .rt-card,#module-aseo.cl-emp [draggable]:not(.ad-card){pointer-events:none!important;cursor:default!important}#module-aseo.cl-emp .ad-card{cursor:pointer!important}
     #module-aseo.cl-emp .ad-cta,body.cl-emp-u #ad-drawer .ic-levbtn{display:none!important}
     #module-aseo.cl-emp .ad-card .ad-qs,#module-aseo.cl-emp .ad-card .ad-qs button,#module-aseo.cl-emp .ad-card .mv-ns,#module-aseo.cl-emp .ad-card .ad-insp{pointer-events:auto!important;cursor:pointer!important}
 
@@ -68230,6 +68230,7 @@ window.adEstClick_ = function (id, hid, k, tarea) {
 };
 // Arrastrar una card a otra columna (vista por estado) → cambia su estado.
 window.adDragStart_ = function (ev, id, hid, tarea, sinInsp) {
+  if (clModoPersonal_()) { ev.preventDefault(); return; } // personal: las cards no se arrastran
   ASEO._dragEst = { id, hid, tarea: !!tarea, sinInsp: !!sinInsp };
   const fila = ev.currentTarget.closest && ev.currentTarget.closest('.ad-urow'); // vista «Por usuario»: renglón de origen
   ASEO._dragDe = fila ? (fila.dataset.n || '') : null; ASEO._dragDep = ev.currentTarget.dataset.dep || '';
@@ -70356,7 +70357,7 @@ function aseoRango_() {
   if (v === 'sem') { const l = ckCalW_0_('aseo'); return Array.from({ length: 7 }, (_, i) => { const d = tarParseIso_(l); d.setDate(d.getDate() + i); return tarIso_(d); }); }
   const ym = ckCalM_0_('aseo'), n = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(); return Array.from({ length: n }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
 }
-function aseoDiaChip_(iso) { if (typeof ckMesCss_ === 'function') ckMesCss_(); const d = tarParseIso_(iso), h = iso === aseoHoyIso_(); return `<span class="ad-dia ${h ? 'hoy' : ''}" title="${aseoDiaTxt_(iso)}">${h ? 'Hoy' : ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()] + ' ' + d.getDate()}</span>`; }
+function aseoDiaChip_(iso) { if (typeof ckMesCss_ === 'function') ckMesCss_(); const d = tarParseIso_(iso), h = iso === aseoHoyIso_(); return `<span class="ad-dia ${h ? 'hoy' : ''}" title="${aseoDiaTxt_(iso)}">${h ? 'Hoy' : ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()] + ' ' + d.getDate() + ' de ' + TAR_MESES[d.getMonth()]}</span>`; }
 window.aseoPerHoy_ = function () { CKCAL.m.aseo = aseoHoyIso_().slice(0, 7); (CKCAL.w = CKCAL.w || {}).aseo = ckLunes_(aseoHoyIso_()); ASEO.calSig = ''; aseoRender_(); };
 function aseoDnavPaint_() {
   const el = document.getElementById('aseo-dnav'); if (!el) return;
