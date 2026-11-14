@@ -68487,7 +68487,7 @@ function adCard_(I) {
   const mov = I.esCopia && I.xs ? `<span class="s">Salida hace ${I.diasSal} día${I.diasSal === 1 ? '' : 's'}</span>${I.g.ent.length ? `<span class="e">↘ Entra</span>` : ''}` : `${I.g.sal.length ? `<span class="s">↗ Sale</span>` : ''}${ultTxt ? `<span class="u" title="${I.ultSal ? 'Última salida: ' + aseoDiaTxt_(I.ultSal) : ''}">${ultTxt}</span>` : ''}${I.g.ent.length ? `<span class="e">↘ Entra</span>` : ''}`;
   const meta = [];
   const solB = adSolBtns_(I); // solicitudes de salida tardía / entrada temprana: se aceptan directo en la card
-  const plB = plBarra_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId); // barra de avance de la plantilla, debajo de los estados
+  const plB = plBarra_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId, I.selE); // barra de avance de la plantilla, debajo de los estados
   const catP = axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0);
   meta.unshift(catP); { const cm = adCamasHtml_(I.hid); if (cm) meta.splice(1, 0, cm); }
   // «No ha desalojado»: primer chip de la card de cada alojamiento con salida hoy
@@ -69314,7 +69314,7 @@ function atCard_(I) {
     <div class="r2">${axCatHtml_(t.depto, 'T' + t.id, false)}${t.hora ? `<span class="sep"></span><span>${aseoHoraTxt_(t.hora)}</span>` : ''}${RC.meta}${(t.etiquetas || []).length ? `<span class="sep"></span><span>${t.etiquetas.map(x => '#' + pcEsc(x)).join(' ')}</span>` : ''}</div>
     ${axFila_('T' + t.id, false, t.hid, I.dia)}
     <div class="r3">${RC.ns}${atEquipo_('T', t, I.key)}<span class="sp"></span>${t.depto === 'limpieza' ? rbCardRetBtn_('T' + t.id, I._dia || aseoDia_()) : ''}${axIncMini_('T' + t.id, t.hid, I.dia)}${(t.adjuntos || []).length ? `<span class="ad-gd">📎 ${t.adjuntos.length}</span>` : ''}<button type="button" class="ad-det" onclick="event.stopPropagation();atAbrir_('${pcEsc(t.id)}','${I.dia}')">Detalles</button></div>
-    ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}${plBarra_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key)}
+    ${adEstRapido_(I.key, '', I.selE, true, t.depto !== 'limpieza')}${plBarra_(plDe_(t.depto, axSrv_('T' + t.id, false), t.plantilla), I.key, I.selE)}
   </div>`;
 }
 window.atAbrir_ = function (id, dia, origen) {
@@ -73925,8 +73925,11 @@ function plSyncAbierta_() {
 // El servidor guarda las respuestas con la llave sin «:» ni otros signos (TI:TAR-…:hid:fecha → TITAR-…hidfecha).
 function plKeyS_(k) { return String(k || '').replace(/[^\w-]/g, '').slice(0, 60); }
 function plIdxGet_(k) { const I = (typeof ASEO !== 'undefined' && ASEO.pl && ASEO.pl.idx) || {}; return I[k] || I[plKeyS_(k)] || null; }
-function plBarra_(pid, key) {
-  if (!pid) return '';
+function plBarra_(pid, key, selE) {
+  if (!pid) { // sin plantilla: el avance sale del estado (Pendiente 0 · En proceso 40 · Terminado 80 · Inspeccionado 100)
+    plCss_(); const e = String(selE || 'pendiente'), pc = e === 'inspeccionado' ? 100 : e === 'terminado' ? 80 : e === 'en_proceso' ? 40 : 0;
+    return `<div class="pl-cb2" title="Avance según el estado (esta card no tiene plantilla): ${pc}%"><span><i style="width:${pc}%;background:hsl(${Math.round(pc * 1.2)},78%,44%)"></i></span><b>${pc}%</b></div>`;
+  }
   plCss_();
   const x = plIdxGet_(key), p = ASEO.pl.lista[pid], pc = x ? x.p : 0;
   return `<div class="pl-cb2" title="Avance de la plantilla ${pcEsc(p ? p.titulo : '')}: ${pc}%${x ? ` (${x.h} de ${x.t} campos)` : ' · sin capturar'}"><span><i style="width:${pc}%;background:hsl(${Math.round(pc * 1.2)},78%,44%)"></i></span><b>${pc}%</b></div>`;
