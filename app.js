@@ -68509,8 +68509,8 @@ function adCard_(I) {
     return `<div class="ad-card tipo est-tint ad-simp bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t, bwChips_(mov))}
-    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${bwMov_(I, mov)}</span></div>
-    ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && /^Reprogramada/.test(I.aviso.t) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
+    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}${bwAvisoFlag_(I, true)}<span class="mv">${bwMov_(I, mov)}</span></div>
+    ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : ''}
     <div class="r2">${catP}${adCamasHtml_(I.hid)}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
     ${bwEvHtml_(I)}
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
@@ -68523,8 +68523,8 @@ function adCard_(I) {
   return `<div class="ad-card tipo est-tint bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t, bwChips_(mov))}
-    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${bwMov_(I, mov)}</span></div>
-    ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
+    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}${bwAvisoFlag_(I, false)}<span class="mv">${bwMov_(I, mov)}</span></div>
+    ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${adExtraInsumos_(I)}
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
@@ -69129,6 +69129,12 @@ function bwMov_(I, mov) {
     if (!S.length && !N.length) return mov;
     return `<div class="bw-mv">${S.length ? caja('s', rotS, S) : ''}${N.length ? caja('e', '↘ Entra', N) : ''}${u}</div>`;
   } catch (_) { return mov; }
+}
+// Aviso de la card («Urge: entra hoy y sigue pendiente»…) en la línea del título, pegado al margen derecho.
+function bwAvisoFlag_(I, simple) {
+  const A = I.aviso; if (!A || A.cb) return '';
+  if (simple ? !/^Reprogramada/.test(A.t) : (I.noSale && /desaloj/i.test(A.t))) return '';
+  return `<div class="flag ${A.c}"><i></i>${pcEsc(A.t)}</div>`;
 }
 function bwEvHtml_(I) {
   try { const L = adEvsBuild_(I, (cls, h, tit, sub) => cls === 'c' ? `<div class="bw-ev"><b>${tit}</b>${sub ? `<small> · ${sub}</small>` : ''}</div>` : ''); return L.join(''); } catch (_) { return ''; }
@@ -70441,7 +70447,8 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw .r1 .code{font-size:15px;font-weight:700;line-height:1.25;letter-spacing:-.005em;color:#0f172a}
 .ad-card.bw .r1 .prop{font-size:12.5px;font-weight:600;line-height:1.3;color:#334155}
 .ad-card.bw .r1 .ad-dia{display:none}
-.ad-card.bw .r1 .mv{flex:1 1 100%;display:block;margin-top:0}
+.ad-card.bw .r1 .mv{flex:1 1 100%;display:block;margin-top:0;order:5}
+.ad-card.bw .bw-top .r1 .flag{order:2;margin:0 0 0 auto;max-width:100%;font-size:12px;font-weight:600;align-self:center}
 .ad-card.bw .bw-mv{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
 .ad-card.bw .bw-b{flex:1 1 calc(50% - 3px);min-width:150px;box-sizing:border-box;border:1px solid;border-radius:8px;padding:5px 9px 6px;font-size:12.5px;font-weight:400;line-height:1.35}
 .ad-card.bw .bw-b b{display:block;font-size:11px;font-weight:600;line-height:1.3;letter-spacing:.02em}
