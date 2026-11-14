@@ -70427,7 +70427,7 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw .bw-top .r2 .ad-camas{margin-left:10px}
 .ad-card.bw .bw-top .r2 .ax-cat+.ad-camas,.ad-card.bw .bw-top .r2 .ad-camas:not(:first-child){margin-left:10px}
 .ad-card.bw .bw-top .flag{margin-top:5px}
-.ad-card.bw .bw-ev{margin-top:4px;font:600 13px/1.35 Inter,system-ui,sans-serif;color:#0f172a}.ad-card.bw .bw-ev small{font:400 12.5px/1.35 Inter,system-ui,sans-serif;color:#64748b}
+.ad-card.bw .bw-top .bw-ev{margin-top:4px;font:400 13px/1.35 Inter,system-ui,sans-serif;color:#475569}.ad-card.bw .bw-ev b{font:inherit;font-weight:400;color:inherit}.ad-card.bw .bw-ev small{font:inherit;color:inherit}
 .ad-card.bw .bw-top .r4{margin-top:5px}
 html body .ad-card.bw>.r3{margin-top:0;padding-top:0;border-top:0}
 .ad-card.bw>.ad-eq{margin-top:0;margin-bottom:6px}
