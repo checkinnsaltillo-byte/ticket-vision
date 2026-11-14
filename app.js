@@ -68506,8 +68506,9 @@ function adCard_(I) {
   const guia = !I.esHoyC ? '' : `<span class="ad-gd ${I.G && I.G.texto && !I.noPub ? 'on' : ''}" title="${I.noPub ? 'No publicado en la guía' : I.G && I.G.texto ? 'La guía muestra: ' + pcEsc(I.G.texto) : 'La guía no muestra aviso'}">◉ Guía</span>`;
   const sel = ASEO._dr && ASEO._dr.k === I.k;
   if (ASEO.simple) // Vista «Simple»: nombre corto · Sale/Entra · tipo y servicio · no ha desalojado · ＋⚠ · prioridad · estados
-    return `<div class="ad-card tipo est-tint ad-simp ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
+    return `<div class="ad-card tipo est-tint ad-simp bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
+    ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t)}
     <div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && /^Reprogramada/.test(I.aviso.t) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     <div class="r2">${catP}${adCamasHtml_(I.hid)}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
@@ -68517,8 +68518,9 @@ function adCard_(I) {
     ${(ids => ids.length ? `<div class="ad-incrow"><button type="button" class="ad-incchip" title="Ver la incidencia" onclick="event.stopPropagation();axIncAbrir_('${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}','${aseoDia_()}')">⚠️ ${ids.length > 1 ? `Incidencias (${ids.length})` : 'Incidencia'}${ids.some(id => { const r = axIncRow_(id); return r && icLigsVal_(r).length; }) ? ' (tarea)' : ''}</button></div>` : '')(axEx_(I.asigId).incidencia ? axIncActivas_(I.asigId) : [])}
     ${adEstRapido_(I.asigId, I.hid, I.selE, false, false)}${plB}
   </div>`;
-  return `<div class="ad-card tipo est-tint ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
+  return `<div class="ad-card tipo est-tint bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
+    ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t)}
     <div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}<span class="mv">${mov}</span></div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : I.aviso && !(I.noSale && /desaloj/i.test(I.aviso.t)) ? `<div class="flag ${I.aviso.c}"><i></i>${pcEsc(I.aviso.t)}</div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
@@ -69259,8 +69261,9 @@ function rtCardA_(I) {
   const RC = atResCtx_(t.hid, row.Reservacion_id); if (RC.flags) flags.push(RC.flags);
   const nF = rtFotos_(row.Fotos_antes_urls).length + rtFotos_(row.Fotos_despues_urls).length;
   const pasos = [['pendiente', 'Pend.', '#94a3b8'], ['en_proceso', 'Proceso', '#f59e0b'], ['terminado', 'Term.', '#10b981'], ['cancelado', 'Cancel.', '#64748b']];
-  return `<div class="ad-card tipo est-tint tarea ${t.bloquea && !cerrado ? 'alert' : ''} ${t.estado === 'cancelado' ? 'ghost' : ''} ${axEsDeInc_('R' + t.rtId) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="R${pcEsc(t.rtId)}" style="--tc:${D.c};--sc:${adEstC_(t.estado)}" onclick="rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')"
+  return `<div class="ad-card tipo est-tint bw tarea ${t.bloquea && !cerrado ? 'alert' : ''} ${t.estado === 'cancelado' ? 'ghost' : ''} ${axEsDeInc_('R' + t.rtId) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="R${pcEsc(t.rtId)}" style="--tc:${D.c};--sc:${adEstC_(t.estado)}" onclick="rtAbrirA_('${pcEsc(t.rtId)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'R:${pcEsc(t.rtId)}','',true,true)" ondragend="adDragEnd_(event)">
+    ${bwBand_(I.dia || t.fecha, ({ pendiente: 'Pendiente', en_proceso: 'En proceso', terminado: 'Terminado', cancelado: 'Cancelado' })[t.estado] || 'Pendiente')}
     <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${prio4Html_(t.prioridad, true, `rtPrioCiclo_('${pcEsc(t.rtId)}')`)}${axComChip_('R' + t.rtId)}<span class="prop">🔧 ${pcEsc(t.titulo)}</span>${atNuevoChip_(row.Timestamp)}</div>
     ${flags.join('')}
     <div class="r2">${axCatHtml_('mantenimiento', 'R' + t.rtId, false)}<span class="sep"></span><span>${cat.icon} ${pcEsc(cat.label)}</span><span class="sep"></span><span>${pcEsc(row.Folio || row.ID)}</span>${RC.meta}</div>
@@ -69305,8 +69308,9 @@ function atCard_(I) {
   if (I.t.rt) return rtCardA_(I);
   const t = I.t, D = AT_DEPTO[t.depto] || AT_DEPTO.limpieza, RC = atResCtx_(t.hid, t.reserva);
   const sel = ASEO._dr && ASEO._dr.tarea === t.id;
-  return `<div class="ad-card tipo est-tint tarea ${t.problema ? 'alert' : ''} ${axEsDeInc_('T' + t.id) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="T${pcEsc(t.id)}" style="--tc:${D.c};--sc:${adEstC_(I.selE)}" onclick="atAbrir_('${pcEsc(t.id)}','${I.dia}')"
+  return `<div class="ad-card tipo est-tint bw tarea ${t.problema ? 'alert' : ''} ${axEsDeInc_('T' + t.id) ? 'deinc' : ''} ${sel ? 'sel' : ''}" data-k="T${pcEsc(t.id)}" style="--tc:${D.c};--sc:${adEstC_(I.selE)}" onclick="atAbrir_('${pcEsc(t.id)}','${I.dia}')"
     draggable="true" ondragstart="adDragStart_(event,'${I.key}','',true,${t.depto !== 'limpieza'})" ondragend="adDragEnd_(event)">
+    ${bwBand_(I._dia || I.dia || t.fecha, adEstObj_(I.selE).t)}
     <div class="r1"><span class="code">${ckCodEd_(t.hid, I.corto)}</span>${t.depto === 'limpieza' ? rbCardRetHtml_('T' + t.id, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(t.prioridad, true, `atPrioCiclo_('${pcEsc(t.id)}')`)}${axComChip_('T' + t.id)}<span class="prop">${D.ico} ${pcEsc(t.titulo)}</span>${atNuevoChip_(t.at)}${t.repite ? atRecChip_() : ''}</div>
     ${t.problema ? '<div class="flag red"><i></i>Problema</div>' : ''}
     ${I.arrastre ? `<div class="flag orange"><i></i>Sin resolver desde ${aseoDiaTxt_(t.fecha)} · sigue a su card</div>` : ''}
@@ -70383,6 +70387,39 @@ function aseoRango_() {
   const v = ckCalV_0_('aseo'); if (v === 'aloj' || v === 'tl') return null;
   if (v === 'sem') { const l = ckCalW_0_('aseo'); return Array.from({ length: 7 }, (_, i) => { const d = tarParseIso_(l); d.setDate(d.getDate() + i); return tarIso_(d); }); }
   const ym = ckCalM_0_('aseo'), n = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(); return Array.from({ length: n }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
+}
+// ── Cards al estilo Breezeway: franja de color con fecha y estado, título grande, texto sobrio y pie con acciones ──
+function bwEnsureCss_() {
+  if (document.getElementById('bw-css')) return;
+  const st = document.createElement('style'); st.id = 'bw-css';
+  st.textContent = `
+html body .ad-card.bw{padding:0 0 14px;overflow:hidden;border-radius:14px;margin-bottom:12px;background:#fff!important;border-color:#e6e8ec #e6e8ec #e6e8ec var(--tc)!important;box-shadow:0 1px 2px rgba(15,23,42,.06),0 8px 20px -12px rgba(15,23,42,.18)}
+html body .ad-card.bw:hover{box-shadow:0 2px 4px rgba(15,23,42,.08),0 12px 26px -12px rgba(15,23,42,.28)}
+html body .ad-card.bw.ghost{background:#f3f4f7!important}
+html body .ad-card.bw.sel{border-color:#4f46e5 #4f46e5 #4f46e5 var(--tc)!important;box-shadow:0 0 0 3px #e0e7ff}
+html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!important;box-shadow:0 0 0 3px #fee2e2}
+.ad-card.bw>.bw-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;margin:0 0 12px;color:#fff;background:color-mix(in srgb,var(--sc) 72%,#0f172a);font:600 12px/1.2 Inter,system-ui,-apple-system,sans-serif;letter-spacing:.01em}
+.ad-card.bw>.bw-h span{display:inline-flex;align-items:center;gap:7px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ad-card.bw>.bw-h b{flex:none;font-weight:700;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+.ad-card.bw>*:not(.bw-h):not(.ad-insp){margin-left:14px;margin-right:14px}
+.ad-card.bw>.r1{flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.ad-card.bw .r1 .code{font:700 18px/1.25 Inter,system-ui,-apple-system,sans-serif;letter-spacing:-.01em;color:#0f172a}
+.ad-card.bw .r1 .prop{font:600 14px/1.3 Inter,system-ui,sans-serif;color:#334155}
+.ad-card.bw .r1 .ad-dia{display:none}
+.ad-card.bw .r1 .mv{flex:1 1 100%;font:400 13px/1.35 Inter,system-ui,sans-serif;color:#64748b;margin-top:1px}
+.ad-card.bw .r2{margin-top:8px;font:400 13px/1.45 Inter,system-ui,sans-serif;color:#475569}
+.ad-card.bw .flag{margin-top:8px}
+.ad-card.bw>.r3{margin-top:12px;padding-top:11px;border-top:1px solid #eef0f3}
+.ad-card.bw>.ad-qs,.ad-card.bw>.ad-eq+.r3+.ad-qs{margin-top:12px}
+.ad-card.bw>.pl-cb2{margin-top:10px}
+`;
+  document.head.appendChild(st);
+}
+function bwBand_(iso, estTxt) {
+  bwEnsureCss_();
+  const hoy = typeof aseoHoyIso_ === 'function' ? aseoHoyIso_() : '', d = iso ? tarParseIso_(iso) : null;
+  const f = d ? ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()] + ' ' + d.getDate() + ' ' + TAR_MESES[d.getMonth()] : 'Sin fecha';
+  return `<div class="bw-h"><span>📅 ${iso && iso === hoy ? 'Hoy · ' : ''}${f}</span><b>${pcEsc(estTxt || '')}</b></div>`;
 }
 function aseoDiaChip_(iso) { if (typeof ckMesCss_ === 'function') ckMesCss_(); const d = tarParseIso_(iso), h = iso === aseoHoyIso_(); return `<span class="ad-dia ${h ? 'hoy' : ''}" title="${aseoDiaTxt_(iso)}">${h ? 'Hoy' : ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()] + ' ' + d.getDate() + ' de ' + TAR_MESES[d.getMonth()]}</span>`; }
 window.aseoPerHoy_ = function () { CKCAL.m.aseo = aseoHoyIso_().slice(0, 7); (CKCAL.w = CKCAL.w || {}).aseo = ckLunes_(aseoHoyIso_()); ASEO.calSig = ''; aseoRender_(); };
