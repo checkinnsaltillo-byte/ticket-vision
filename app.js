@@ -68489,7 +68489,7 @@ function adCard_(I) {
   const solB = adSolBtns_(I); // solicitudes de salida tardía / entrada temprana: se aceptan directo en la card
   const plB = plBarra_(plDe_(I.depto, axSrv_(I.asigId, I.g.sal.length > 0)), I.asigId, I.selE); // barra de avance de la plantilla, debajo de los estados
   const catP = axCatHtml_(I.depto, I.asigId, I.g.sal.length > 0);
-  meta.unshift(catP); { const cm = adCamasHtml_(I.hid); if (cm) meta.splice(1, 0, cm); }
+  meta.unshift(catP);
   // «No ha desalojado»: primer chip de la card de cada alojamiento con salida hoy
   const nsChip = I.xs && I.esHoyC && !I.esCopia ? aseoNoSaleChip_(I.xs.b.Id, I.hid) : ''; // va en el renglón de acciones (r3)
   if (I.prioritaria) meta.splice(1, 0, '<span class="pr">Prioritaria</span>');
@@ -68509,9 +68509,10 @@ function adCard_(I) {
     return `<div class="ad-card tipo est-tint ad-simp bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t, bwChips_(mov))}
-    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}${bwAvisoFlag_(I, true)}<span class="mv">${bwMov_(I, mov)}</span></div>
+    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || String(I.aloj || '—').replace(/^Calle\s+/i, ''))}</span>${adCamasHtml_(I.hid)}${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}${bwAvisoFlag_(I, true)}</div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : ''}
-    <div class="r2">${catP}${adCamasHtml_(I.hid)}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
+    <div class="r2">${catP}${axEx_(I.asigId).chat ? '<span class="chat" title="Card generada desde el chat de WhatsApp (no había limpieza prevista)">💬 Desde el chat</span>' : ''}</div>
+    <div class="mv bw-mvw">${bwMov_(I, mov)}</div>
     ${bwEvHtml_(I)}
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${adExtraInsumos_(I)}
@@ -68523,11 +68524,12 @@ function adCard_(I) {
   return `<div class="ad-card tipo est-tint bw ${I.fantasma ? 'ghost' : ''} ${I.noSale ? 'alert' : ''} ${sel ? 'sel' : ''}" style="--tc:${AT_DEPTO[I.depto].c};--sc:${adEstC_(I.selE)}" data-k="${pcEsc(I.k)}" data-dep="${I.depto || ''}" onclick="adAbrir_('${pcEsc(I.k)}'${I._dia ? `,'${I._dia}'` : ''})"
     draggable="true" ondragstart="adDragStart_(event,'${pcEsc(I.asigId)}','${pcEsc(String(I.hid || ''))}',false)" ondragend="adDragEnd_(event)">
     ${bwBand_(I._dia || aseoDia_(), adEstObj_(I.selE).t, bwChips_(mov))}
-    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}${bwAvisoFlag_(I, false)}<span class="mv">${bwMov_(I, mov)}</span></div>
+    <div class="bw-top"><div class="r1"><span class="code">${pcEsc(I.corto || '—')}</span>${adCamasHtml_(I.hid)}${I.depto === 'limpieza' && I.hid ? rbCardRetHtml_('A' + I.hid, I._dia || aseoDia_()) : ''}${I._dia ? aseoDiaChip_(I._dia) : ''}${prio4Html_(I.prio, true, `adPrioCiclo_('${pcEsc(I.asigId)}','${I.prio}')`)}${axComChip_(I.asigId)}${bwAvisoFlag_(I, false)}</div>
     ${I.aviso && I.aviso.cb ? `<div class="mv-alert" style="--ac:${I.aviso.cb.c};animation:none"><b>${I.aviso.cb.ico} ${pcEsc(I.aviso.cb.t)}</b><span>${pcEsc(I.aviso.cb.d)}</span></div>` : ''}
     ${I.mant ? `<div class="flag ${I.mant.c}" title="Mantenimiento abierto en este alojamiento"><i></i>${I.mant.ico} ${pcEsc(I.mant.t)}</div>` : ''}
     ${adExtraInsumos_(I)}
     ${meta.length ? `<div class="r2">${meta.join('<span class="sep"></span>')}</div>` : ''}
+    <div class="mv bw-mvw">${bwMov_(I, mov)}</div>
     ${bwEvHtml_(I)}
     ${solB ? `<div class="r2 ad-solr">${solB}</div>` : ''}
     ${axFila_(I.asigId, I.g.sal.length > 0, I.hid, aseoDia_())}
@@ -70447,7 +70449,7 @@ html body .ad-card.bw.alert{border-color:#fca5a5 #fca5a5 #fca5a5 var(--tc)!impor
 .ad-card.bw .r1 .code{font-size:15px;font-weight:600;line-height:1.3;letter-spacing:.005em;color:#0f172a}
 .ad-card.bw .r1 .prop{font-size:12.5px;font-weight:600;line-height:1.3;color:#334155}
 .ad-card.bw .r1 .ad-dia{display:none}
-.ad-card.bw .r1 .mv{flex:1 1 100%;display:block;margin-top:0;order:5}
+.ad-card.bw .bw-top>.mv{display:block;margin:0}.ad-card.bw .r1 .ad-camas{margin-left:2px!important;font-weight:500}
 .ad-card.bw .bw-top .r1 .flag{order:2;margin:0 0 0 auto;max-width:100%;font-size:12px;font-weight:600;align-self:center}
 .ad-card.bw .bw-mv{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
 .ad-card.bw .bw-b{flex:1 1 calc(50% - 3px);min-width:150px;box-sizing:border-box;border:1px solid;border-radius:8px;padding:5px 9px 6px;font-size:12.5px;font-weight:400;line-height:1.35}
@@ -70474,6 +70476,7 @@ html body .ad-card.bw .ad-nm,html body .ad-card.bw .ad-asg,html body .ad-card.bw
 html body .ad-card.bw>.bw-h b,html body .ad-card.bw>.bw-h .bw-r>span,html body .ad-card.bw .bw-b b,html body .ad-card.bw .ax-cat .t,html body .ad-card.bw .ax-cat .s,html body .ad-card.bw .ad-nm,html body .ad-card.bw .ad-qs button.on,html body .ad-card.bw .flag,html body .ad-card.bw .r1 .prop{font-weight:500!important}
 html body .ad-card.bw .bw-b,html body .ad-card.bw .bw-l,html body .ad-card.bw .bw-top .r2,html body .ad-card.bw .bw-top .bw-ev,html body .ad-card.bw .ad-qs button:not(.on){font-weight:400!important}
 html body .ad-card.bw .ad-qs button{font-weight:500}
+html body .ad-card.bw>.bw-h .bw-r>b{font-size:13px!important;font-weight:700!important;letter-spacing:.01em!important}
 @container (min-width:331px){html body .ad-card.bw .r3 .mv-ns{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif!important;font-size:11.5px!important;font-weight:500!important;line-height:1.5!important;letter-spacing:.012em!important;height:auto!important;padding:2px 9px!important}}
 html body .ad-card.bw>.r3{margin-top:0;padding-top:0;border-top:0}
 .ad-card.bw>.ad-eq{margin-top:0;margin-bottom:6px}
