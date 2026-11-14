@@ -9265,6 +9265,7 @@ function ck2EnsureCss_() {
 /* ── 3) Barra de herramientas ─────────────────────────── */
 #module-aseo .ck2-bar{display:flex;flex-direction:column;gap:12px;margin:0 0 14px;padding:14px 14px 12px;background:#fff;border:1px solid var(--k-line);border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.04);font-family:var(--k-font)}
 #module-aseo .ck2-r{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 12px;min-width:0}
+#module-aseo.cl-emp #aseo-kpis,#module-aseo.cl-emp .cl-nav-slot,#module-aseo.cl-emp .cl-nav2,#module-aseo.cl-emp .cl-chips,#module-aseo.cl-emp #aseo-ham-slot,#module-aseo.cl-emp #aseo-fil-slot,#module-aseo.cl-emp #aseo-top .ad-gfil,#module-aseo.cl-emp .ck2-r:has(#aseo-vista-slot){display:none!important}
 #module-aseo .ck2-fil[hidden]{display:none}#module-aseo .ck2-fil .ad-gfil{margin-top:0;width:100%}#module-aseo .ck2-fil{padding-top:12px!important}
 #module-aseo .ck2-r+.ck2-r{padding-top:22px;border-top:1px solid #f1f5f9;margin-top:0}
 #module-aseo .ck2-sp{flex:1 1 0;min-width:0}
@@ -68645,7 +68646,7 @@ function adTablero_(gs, gsF, hoy, esHoy, filtroHtml) {
       const p = L.find(I => !I.tarea) || L.find(I => !['correctivo', 'preventivo'].includes(axSrv_(kDe(I)))) || L[0], pi = idsDe(p), hs = L.filter(I => I !== p);
       hijosDe.set(p, hs); hs.forEach(h => { padreDe.set(h, p); const hi = idsDe(h); puenteDe.set(h, hi.find(x => pi.includes(x)) || hi[0]); });
     }); }
-  const vista = MP ? (ASEO.vista === 'estado' ? 'estado' : 'propiedad') : ['estado', 'usuario', 'tabla', 'semana'].includes(ASEO.vista) ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados: «por propiedad» o «por estado»
+  const vista = MP ? 'estado' : ['estado', 'usuario', 'tabla', 'semana'].includes(ASEO.vista) ? ASEO.vista : 'propiedad'; // predeterminada: por propiedad; empleados: «por propiedad» o «por estado»
   const propHtml = props.length > 1 ? `<div class="mv-pf ad-prf"><small>🏘️ Propiedad:</small>${props.map(p => `<button type="button" class="mv-pf-c ad-pr ${fP.includes(p) ? 'on' : ''}" data-p="${pcEsc(p)}" onclick="adPropToggle_(this.dataset.p)">${pcEsc(p)}<b>${infos.concat(tInfos).filter(I => propDe(I) === p).length}</b></button>`).join('')}${fP.length ? '<button type="button" class="mv-pf-x" onclick="ASEO.fProp=[];aseoRender_()">Quitar filtro</button>' : ''}</div>` : '';
   const segV = `${MP ? ckVistasHtml_(vista, 'adVista_', ['estado', 'propiedad']) : ckVistasHtml_(vista, 'adVista_', null, [['semana', 'Semana']])}<div class="ad-seg ad-seg2"><span>Detalle</span><button type="button" class="${ASEO.simple ? 'on' : ''}" onclick="adSimple_(true)">Simple</button><button type="button" class="${ASEO.simple ? '' : 'on'}" onclick="adSimple_(false)">Detalles</button></div>`;
   ASEO._pubKeys = infos.filter(I => I.esHoyC && I.G).map(I => ({ key: I.pubKey, on: !I.noPub }));
