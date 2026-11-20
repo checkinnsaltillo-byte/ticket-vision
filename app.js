@@ -79741,7 +79741,7 @@ function gmMcHtml_() {
     <textarea id="gmc-txt" class="gmw-ta" rows="7" maxlength="4000" placeholder="Ej.: Quiero abrir una segunda sucursal de mi cafetería y recuperar la inversión en 18 meses. Para eso necesito una zona con oficinas y universidades cerca, buen paso peatonal, renta accesible y poca competencia directa. Me preocupa la inseguridad y que el tráfico complique llegar…">${gmEsc_(M.txt || '')}</textarea>
     <div class="gmc-btns"><button type="button" class="gm-btn gmc-b1" data-mc="dia"${M.est ? ' disabled' : ''}>✨ Diagrama IA</button><button type="button" class="gmw-c" data-mc="add">＋ Caja</button><button type="button" class="gmw-c" data-mc="ord"${M.nodos.length ? '' : ' disabled'}>Ordenar</button><button type="button" class="gm-btn gmc-b2" data-mc="dat"${M.est || !M.nodos.length ? ' disabled' : ''}>🔎 Investigar datos disponibles</button><span class="gmc-est" id="gmc-est">${gmEsc_(M.est || M.err || '')}</span></div>
     <div class="gmc-cv" id="gmc-cv"></div>
-    <p class="gmw-mu gmc-ay">Cómo editar: escribe sobre el título o la descripción de una caja para cambiarlos · arrastra una caja desde su franja superior · <b>↗</b> y luego clic en otra caja crea (o quita) una flecha «contribuye a» · clic sobre una flecha la borra · <b>✕</b> borra la caja. En los datos: la palomita <b>valida</b> el recurso, <b>✕</b> lo quita y «＋ agregar dato» busca en toda la biblioteca. El mapa se guarda con el proyecto.</p>` : ''}</div>`;
+    <p class="gmw-mu gmc-ay">Cómo editar: escribe sobre el título o la descripción de una caja para cambiarlos · arrastra una caja desde su franja superior · clic en una caja resalta toda su ruta (a qué contribuye y qué la sostiene) · <b>↗</b> y luego clic en otra caja crea (o quita) una flecha «contribuye a» · clic sobre una flecha la borra · <b>✕</b> borra la caja. En los datos: la palomita <b>valida</b> el recurso, <b>✕</b> lo quita y «＋ agregar dato» busca en toda la biblioteca. El mapa se guarda con el proyecto.</p>` : ''}</div>`;
 }
 /* dibuja cajas y flechas */
 function gmMcPinta_() {
@@ -79762,6 +79762,15 @@ function gmMcFlechas_() {
     else { x1 = A.l; y1 = ay; x2 = B.l + B.w + 7; y2 = by; const m = Math.max(24, (x1 - x2) * .5); d = `M${x1},${y1} C${x1 - m},${y1 - 26} ${x2 + m},${y2 - 26} ${x2},${y2}`; px = -1; py = 0; }
     const s = 6, tri = px ? `M${x2 + px * 7},${y2} l${-px * s * 1.6},${-s * .7} l0,${s * 1.4} z` : `M${x2},${y2 + py * 7} l${-s * .7},${-py * s * 1.6} l${s * 1.4},0 z`;
     return `<g class="gmc-fl" data-a="${k}"><path d="${d}" class="gmc-fh"/><path d="${d}" class="gmc-fp"/><path d="${tri}" class="gmc-ft"/><title>Clic para borrar esta flecha</title></g>`; }).join('');
+  gmMcRuta_();
+}
+/* al seleccionar una caja se traza su ruta completa: hacia arriba, todo a lo que contribuye; hacia abajo, todo lo que contribuye a ella; lo demás se atenúa */
+function gmMcRuta_() {
+  const cv = document.getElementById('gmc-cv'), M = GMW.mc; if (!cv || !M) return; const sel = M.sel && M.nodos.some(n => n.id === M.sel) ? M.sel : (M.sel = null);
+  cv.classList.toggle('ruta', !!sel); const arriba = new Set(), abajo = new Set();
+  if (sel) { const anda = (ini, S, de, a) => { const cola = [ini]; while (cola.length) { const x = cola.pop(); M.ar.forEach(q => { if (q[de] === x && !S.has(q[a]) && q[a] !== ini) { S.add(q[a]); cola.push(q[a]); } }); } }; anda(sel, arriba, 0, 1); anda(sel, abajo, 1, 0); }
+  cv.querySelectorAll('.gmc-n').forEach(e => { const id = e.dataset.n; e.classList.toggle('sel', id === sel); e.classList.toggle('hi', !!sel && (id === sel || arriba.has(id) || abajo.has(id))); });
+  cv.querySelectorAll('.gmc-fl').forEach(g => { const q = M.ar[+g.dataset.a]; g.classList.toggle('hi', !!sel && !!q && (((q[0] === sel || arriba.has(q[0])) && arriba.has(q[1])) || (abajo.has(q[0]) && (q[1] === sel || abajo.has(q[1]))))); });
 }
 /* acomoda las cajas por nivel (arriba el objetivo final) usando su altura real */
 function gmMcOrdena_() {
@@ -79828,6 +79837,7 @@ function gmMcClic_(e) {
     if (a === 'rq' && rec) { nodo.rec = nodo.rec.filter(x => x !== rec); gmMcTipOff_(); gmMcPinta_(); gmUpd_(); return true; }
     return true; }
   if (nodo && M.con && M.con !== nid && !T.closest('[contenteditable]')) { const k = M.ar.findIndex(q => q[0] === M.con && q[1] === nid); if (k >= 0) M.ar.splice(k, 1); else M.ar.push([M.con, nid]); M.con = null; gmMcPinta_(); const es = document.getElementById('gmc-est'); if (es) es.textContent = ''; gmUpd_(); return true; }
+  if (nodo) { M.sel = M.sel === nid && !T.closest('[contenteditable]') ? null : nid; gmMcRuta_(); } else if (T.closest('#gmc-cv') && !T.closest('.gmc-n') && M.sel) { M.sel = null; gmMcRuta_(); }
   if (!T.closest('#gmc-bus')) gmMcBusOff_();
   return !!T.closest('#gmc-cv');
 }
