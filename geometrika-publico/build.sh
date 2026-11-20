@@ -21,5 +21,9 @@ node "$DL/extrae_indicadores.js" "$TV/maqueta/entorno.html" "$DL/datalab-indicad
 DLV=$(cat "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-geo.js" "$TV/datalab-logo.png" | shasum -a 256 | cut -c1-8)
 node --check "$DL/datalab.js"; node --check "$DL/datalab-fuentes.js"; node --check "$DL/datalab-indicadores.js"; node --check "$DL/datalab-geo.js"
 cp "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-geo.js" "$OUT/"; cp "$TV/datalab-logo.png" "$TV/datalab-logo-claro.png" "$OUT/"
-sed "s/__V__/$V/g; s/__DL__/$DLV/g; s/__HASH2__/$HASH2/g; s/__HASH__/$HASH/g" "$TV/geometrika-publico/index.template.html" > "$OUT/index.html"
+# EcoLab: tablero económico (datos descargados con ecolab-descarga.js)
+ECV=$(cat "$DL/ecolab.js" "$DL/ecolab.css" "$DL/ecolab-datos.js" | shasum -a 256 | cut -c1-8)
+node --check "$DL/ecolab.js"; node --check "$DL/ecolab-datos.js"
+cp "$DL/ecolab.js" "$DL/ecolab.css" "$DL/ecolab-datos.js" "$OUT/"
+sed "s/__V__/$V/g; s/__EC__/$ECV/g; s/__DL__/$DLV/g; s/__HASH2__/$HASH2/g; s/__HASH__/$HASH/g" "$TV/geometrika-publico/index.template.html" > "$OUT/index.html"
 echo "generado en $OUT (v=$V, datalab=$DLV)"

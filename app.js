@@ -4094,7 +4094,7 @@ function bn_recsForTipo(tipo) {
       if (sub === 'CA' && !t.includes('capital')) return false;
       return true;
     }
-    if (['T','E','I','AC','PA','CA'].includes(tipo)) {
+    if (['T','E','I','AC','PA','CA','RC'].includes(tipo)) {
       if (!revisado) return false;
       if (archived) return false;
     }
@@ -4703,7 +4703,7 @@ function bn_monthly() {
 // ─── Tab switching ────────────────────────────────────────────────────────────
 // Mapa tipo → menú padre (para resaltar el menú correspondiente)
 const BN_TIPO_PARENT = {
-  T:'reg', I:'reg', E:'reg', AC:'reg', PA:'reg', CA:'reg',
+  T:'reg', I:'reg', E:'reg', AC:'reg', PA:'reg', CA:'reg', RC:'reg',
   PC:'pc', PC_I:'pc', PC_E:'pc', PC_AC:'pc', PC_PA:'pc', PC_CA:'pc', PC_ARCH:'pc',
   A:'pres', AP:'pres', PR:'pres',
   F:'ind',
@@ -4729,6 +4729,7 @@ const BN_CAT_SUBS = {
     { id: 'AC', label: '📈 Activos' },
     { id: 'PA', label: '📋 Pasivos' },
     { id: 'CA', label: '💼 Capital' },
+    { id: 'RC', label: '🏦 Resumen cuentas' },
   ],
   pres: [
     { id: 'A',  label: '⚠️ Alertas' },
@@ -4811,7 +4812,7 @@ function bn_setTipo(t) {
     viewWrap.style.display = (parent === 'pc' || parent === 'reg') ? '' : 'none';
   }
   // En Planeación e Indicadores: ocultar Seleccionar/Relacionar/Mostrar por página
-  const isPresOrInd = (parent === 'pres' || parent === 'ind');
+  const isPresOrInd = (parent === 'pres' || parent === 'ind' || t === 'RC');
   const selBtn = document.getElementById('bn-btn-sel-mode');
   if (selBtn) selBtn.style.display = isPresOrInd ? 'none' : '';
   const matchBtn = document.getElementById('bn-btn-match-tickets');
@@ -4819,7 +4820,7 @@ function bn_setTipo(t) {
   const pageSize = document.getElementById('bn-page-size');
   const pageSizeWrap = pageSize?.parentElement;
   if (pageSizeWrap) pageSizeWrap.style.display = isPresOrInd ? 'none' : '';
-  const allTabs = ['T','E','I','AC','PA','CA','PC','PC_I','PC_E','PC_AC','PC_PA','PC_CA','PC_ARCH','A','F','AP','PR','UPLOAD','EFECTIVO'];
+  const allTabs = ['T','E','I','AC','PA','CA','RC','PC','PC_I','PC_E','PC_AC','PC_PA','PC_CA','PC_ARCH','A','F','AP','PR','UPLOAD','EFECTIVO'];
   const pal = BN_CAT_PALETTE[parent] || BN_CAT_PALETTE.pc;
   // Resaltar el chip activo (hijo activo en tono medio; resto en tono claro)
   allTabs.forEach(x => {
@@ -4860,6 +4861,86 @@ function bn_setTipo(t) {
   bn_render();
 }
 
+
+// ─── Resumen cuentas: ingresos y egresos por cuenta bancaria (con desglose por mes) ───────────
+// Mismos registros que los KPIs (validados, sin archivados ni «en tránsito») y mismos filtros Año/Mes/hamburguesa.
+const BN_RC_OPEN = new Set(); // cuentas desplegadas (clave en minúsculas)
+function bn_rcToggle(k) { if (BN_RC_OPEN.has(k)) BN_RC_OPEN.delete(k); else BN_RC_OPEN.add(k); bn_renderResumenCuentas(); }
+function bn_renderResumenCuentas() {
+  const host = document.getElementById('bn-resumen-cuentas'); if (!host) return;
+  const NM = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const mesLbl = k => { const m = String(k).match(/^(\d{4})-(\d{2})$/); return m ? NM[Number(m[2]) - 1].charAt(0).toUpperCase() + NM[Number(m[2]) - 1].slice(1) + ' ' + m[1] : 'Sin fecha'; };
+  const ing = bn_kpiRecs('I', true), egr = bn_kpiRecs('E', true);
+  const G = new Map(), M = new Map(); // cuenta → {…, meses}; mes → {I,E,ni,ne}
+  const slot = (map, k) => { if (!map.has(k)) map.set(k, { ni: 0, I: 0, ne: 0, E: 0 }); return map.get(k); };
+  const add = (r, esIng) => {
+    const raw = bn_norm(r['Cuenta bancaria'] || '') || '(sin cuenta)';
+    const k = raw.toLowerCase().replace(/\s+/g, ' ');
+    if (!G.has(k)) G.set(k, { ni: 0, I: 0, ne: 0, E: 0, nom: new Map(), meses: new Map() });
+    const g = G.get(k); g.nom.set(raw, (g.nom.get(raw) || 0) + 1);
+    const mk = (bn_formatDiaISO(r.Día || r.Dia || '').match(/^(\d{4}-\d{2})/) || [])[1] || '';
+    const v = Math.abs(Number(r.Monto || 0)), gm = slot(g.meses, mk), tm = slot(M, mk);
+    [g, gm, tm].forEach(o => { if (esIng) { o.ni++; o.I += v; } else { o.ne++; o.E += v; } });
+  };
+  ing.forEach(r => add(r, true)); egr.forEach(r => add(r, false));
+  const rows = [...G.entries()].map(([k, g]) => ({ k, nombre: [...g.nom.entries()].sort((a, b) => b[1] - a[1])[0][0], ni: g.ni, I: g.I, ne: g.ne, E: g.E, N: g.I - g.E, meses: g.meses }))
+    .sort((a, b) => (b.I + b.E) - (a.I + a.E));
+  const tI = rows.reduce((s, r) => s + r.I, 0), tE = rows.reduce((s, r) => s + r.E, 0);
+  const tni = rows.reduce((s, r) => s + r.ni, 0), tne = rows.reduce((s, r) => s + r.ne, 0);
+  const mx = Math.max(1, ...rows.map(r => Math.max(r.I, r.E)));
+  const col = n => n >= 0 ? '#16a34a' : '#dc2626';
+  const bar = (v, c, m) => `<div style="height:5px;border-radius:3px;background:#e2e8f0;margin-top:4px"><div style="height:5px;border-radius:3px;background:${c};width:${Math.round(v / m * 100)}%"></div></div>`;
+  const kpi = (l, v, c, sub) => `<div class="bn-kpi-card"><div class="bn-kpi-label">${l}</div><div class="bn-kpi-value" style="color:${c}">${bn_fmt$(v)}</div><div class="bn-kpi-sub">${sub}</div></div>`;
+  const per = (document.getElementById('bn-kpi-period-summary')?.textContent || '').replace(/^·\s*/, '');
+  const td = 'padding:10px 12px;text-align:right';
+  const mesRows = (map, indent) => {
+    const L = [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    return L.map(([mk, o]) => `<tr style="border-top:1px solid #eef2f7;background:${indent ? '#f8fafc' : '#fff'}">
+      <td style="padding:8px 12px 8px ${indent ? 34 : 12}px;color:#334155;${indent ? 'font-size:12px' : 'font-weight:600'}">${esc(mesLbl(mk))}</td>
+      <td style="${td};color:#64748b">${o.ni}</td><td style="${td};color:#16a34a;font-weight:600">${bn_fmt$(o.I)}</td>
+      <td style="${td};color:#64748b">${o.ne}</td><td style="${td};color:#dc2626;font-weight:600">${bn_fmt$(o.E)}</td>
+      <td style="${td};font-weight:700;color:${col(o.I - o.E)}">${bn_fmt$(o.I - o.E)}</td></tr>`).join('');
+  };
+  const th = 'text-align:right;padding:10px 12px';
+  const head = (first) => `<thead><tr style="background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+    <th style="text-align:left;padding:10px 12px">${first}</th><th style="${th}">Mov. ingresos</th><th style="${th};min-width:150px">Ingresos</th>
+    <th style="${th}">Mov. egresos</th><th style="${th};min-width:150px">Egresos</th><th style="${th}">Neto</th></tr></thead>`;
+  const wrap = 'overflow-x:auto;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:#fff';
+  host.innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;margin:4px 0 12px;flex-wrap:wrap">
+      <h3 style="margin:0;font-size:16px">🏦 Resumen por cuenta bancaria</h3>
+      <span style="font-size:11px;color:var(--text-soft,#6b7280)">${esc(per)}</span>
+    </div>
+    <div class="bn-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px">
+      ${kpi('Ingresos (período)', tI, '#16a34a', tni + ' mov')}
+      ${kpi('Egresos (período)', tE, '#dc2626', tne + ' mov')}
+      ${kpi('Neto (ingresos − egresos)', tI - tE, col(tI - tE), rows.length + ' cuentas')}
+    </div>
+    <div style="${wrap}">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px">${head('Cuenta bancaria <span style="text-transform:none;font-weight:500;color:#94a3b8">· toca una cuenta para ver los meses</span>')}
+        <tbody>${rows.length ? rows.map(r => `<tr onclick="bn_rcToggle(decodeURIComponent('${encodeURIComponent(r.k).replace(/'/g, '%27')}'))" style="border-top:1px solid #e5e7eb;cursor:pointer">
+          <td style="padding:10px 12px;font-weight:700;color:#0f172a"><span style="display:inline-block;width:14px;color:#94a3b8;font-size:10px">${BN_RC_OPEN.has(r.k) ? '▼' : '▶'}</span>${esc(r.nombre)}</td>
+          <td style="${td};color:#64748b">${r.ni}</td>
+          <td style="${td};font-weight:700;color:#16a34a">${bn_fmt$(r.I)}${bar(r.I, '#22c55e', mx)}</td>
+          <td style="${td};color:#64748b">${r.ne}</td>
+          <td style="${td};font-weight:700;color:#dc2626">${bn_fmt$(r.E)}${bar(r.E, '#ef4444', mx)}</td>
+          <td style="${td};font-weight:800;color:${col(r.N)}">${bn_fmt$(r.N)}</td></tr>${BN_RC_OPEN.has(r.k) ? mesRows(r.meses, true) : ''}`).join('') : '<tr><td colspan="6" style="padding:18px;text-align:center;color:#94a3b8">Sin movimientos en el período</td></tr>'}</tbody>
+        <tfoot><tr style="border-top:2px solid #cbd5e1;background:#f8fafc;font-weight:800">
+          <td style="padding:10px 12px">Total</td><td style="${td}">${tni}</td>
+          <td style="${td};color:#16a34a">${bn_fmt$(tI)}</td><td style="${td}">${tne}</td>
+          <td style="${td};color:#dc2626">${bn_fmt$(tE)}</td>
+          <td style="${td};color:${col(tI - tE)}">${bn_fmt$(tI - tE)}</td></tr></tfoot>
+      </table>
+    </div>
+    <h3 style="margin:20px 0 10px;font-size:15px">🗓️ Desglose por mes (todas las cuentas)</h3>
+    <div style="${wrap}">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px">${head('Mes')}
+        <tbody>${M.size ? mesRows(M, false) : '<tr><td colspan="6" style="padding:18px;text-align:center;color:#94a3b8">Sin movimientos en el período</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin-top:8px">Solo movimientos validados (sin archivados ni «en tránsito»), con los mismos filtros de Año, Mes y hamburguesa de arriba.</div>`;
+}
+
 // Abre/cierra un submenú (Registros contables o Control presupuestario)
 function bn_toggleMenu(name) {
   const sm = document.getElementById('bn-submenu-' + name);
@@ -4879,6 +4960,7 @@ document.addEventListener('click', (e) => {
 // ─── Main render ──────────────────────────────────────────────────────────────
 function bn_render() {
   if(!BN_LOADED) return;
+  document.getElementById('bn-resumen-cuentas')?.classList.add('hidden');
   const sE=bn_aggregate('E'), sI=bn_aggregate('I');
 
   // KPIs del período: solo registros clasificados (los que aparecen en "Cuentas"),
@@ -4959,7 +5041,7 @@ function bn_render() {
   bn_renderReviewPanel();
 
   // Subtitle — total filtrado de la pestaña actual
-  const visLen = bn_filteredRecs(BN_TIPO).length;
+  const visLen = bn_filteredRecs(BN_TIPO==='RC'?'T':BN_TIPO).length;
   bn_txt('bn-filter-subtitle', visLen.toLocaleString('es-MX')+' de '+BN_RAW.length.toLocaleString('es-MX')+' movimientos');
 
   const tw=document.getElementById('bn-table-wrap');
@@ -5070,6 +5152,16 @@ function bn_render() {
     return;
   }
   ap?.classList.add('hidden');
+
+  if(BN_TIPO==='RC'){
+    tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
+    document.getElementById('bn-presupuesto')?.classList.add('hidden');
+    document.getElementById('bn-actions-row')?.classList.add('hidden');
+    document.getElementById('bn-review-panel')?.classList.add('hidden');
+    document.getElementById('bn-resumen-cuentas')?.classList.remove('hidden');
+    bn_renderResumenCuentas();
+    return;
+  }
 
   if(BN_TIPO==='PR'){
     tw?.classList.add('hidden'); cw?.classList.add('hidden'); pw?.classList.add('hidden');
@@ -13864,15 +13956,25 @@ async function huespedesGenerarTicket(recordId) {
   let row = (HU_STATE.rows || []).find(r => String(r['ID']||r['row_number']||'') === String(recordId));
   if (!row) { alert('No se encontró la información del registro seleccionado.'); return; }
 
-  // Si falta régimen fiscal, lo traemos del detalle (igual que el original)
+  // Régimen fiscal SIEMPRE fresco: la fila en caché puede traer un régimen viejo o vacío, y de él depende el
+  // concepto (1 = Personas Morales, con retención de ISR e IVA; 2 = el resto, solo IVA). Si falta, se trae todo el
+  // detalle (como antes); si ya existe, solo se actualizan los datos fiscales con lo que haya en el servidor.
   const missingRegime = !huValueFlexible(row, ['Régimen fiscal','Regimen fiscal','Tax regime']);
-  if (missingRegime) {
-    try {
-      const res = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recordId)}`);
-      const json = await res.json();
-      if (json?.ok && json.record) row = { ...row, ...json.record };
-    } catch (_) {}
-  }
+  try {
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const tm = ctrl ? setTimeout(() => ctrl.abort(), 6000) : null;
+    const res = await fetch(`${BACKEND}/huespedes-detail?record_id=${encodeURIComponent(recordId)}`, ctrl ? { signal: ctrl.signal, cache: 'no-store' } : { cache: 'no-store' });
+    if (tm) clearTimeout(tm);
+    const json = await res.json();
+    if (json?.ok && json.record) {
+      if (missingRegime) row = { ...row, ...json.record };
+      else {
+        const fresh = json.record, fiscal = {};
+        ['Régimen fiscal', 'Régimen otro', 'Razón social', 'RFC', 'Código Postal'].forEach(k => { if (fresh[k] !== undefined && String(fresh[k]).trim() !== '') fiscal[k] = fresh[k]; });
+        row = { ...row, ...fiscal };
+      }
+    }
+  } catch (_) {}
 
   // Leer el monto facturado actual del input calculado del card (el valor
   // ya considera el cálculo Airbnb − comisión cuando aplica). El card puede
@@ -79599,12 +79701,23 @@ window.mcCsv_ = function () {
 // ╚═══════════════════════════════════════════════════════════════════════╝
 const GM_MAQ_ = () => window.GM_MAQ || 'maqueta/entorno.html'; /* la versión pública (/geometrika/) define window.GM_MAQ */
 const GM_TKEY = 'AIzaSyA_-JCgn6M504YbM0xhrKtVYWdpt6q7AoY';   // llave de navegador restringida a Map Tiles API y a los dominios de Check Inn
-const GMW = { vista: 'landing', paso: 1, perfil: '', nombre: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, st: '', seq: 0, ft: { max: 20, sep: 30, frente: 6, inmediato: 8, general: 6 }, fx: { p: [], f: [], n: 0 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 3 }, lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', grupo: null, layers: [], radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, dias: [1, 2, 3, 4, 5], horas: [7, 8, 9, 17, 18, 19], map: null, pin: null, circ: null, proy: null, enviando: false, err: '', opt: null, pago: null, pagoAbre: false, promo: '', promoErr: '' };
+const GMW = { vista: 'landing', paso: 1, perfil: '', oc: '', os: [], oa: [], oaMan: false, nombre: '', objetivo: '', dir: '', buscando: false, resultados: null, tiles: null, st: '', seq: 0, ft: { max: 20, sep: 30, frente: 6, inmediato: 8, general: 6 }, fx: { p: [], f: [], n: 0 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 3 }, lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', grupo: null, layers: [], radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, dias: [1, 2, 3, 4, 5], horas: [7, 8, 9, 17, 18, 19], map: null, pin: null, circ: null, proy: null, enviando: false, err: '', opt: null, pago: null, pagoAbre: false, promo: '', promoErr: '' };
 const GMW_VORD = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'motorway_link', 'trunk_link', 'primary_link', 'secondary_link', 'tertiary_link', 'unclassified', 'residential', 'living_street', 'service', 'road', 'track', 'busway', 'pedestrian', 'cycleway', 'footway', 'path', 'steps', 'bridleway', 'bus_guideway', 'corridor', 'raceway', 'escape', 'construction', 'proposed'];
 const GMW_VGRP = [['Clasificación de vialidades (las principales incluyen sus enlaces)', GMW_VORD.slice(0, 5).concat(['residential'])]], GMW_VTODAS = GMW_VORD.slice(0, 5).concat(['residential']);
 const gmClases_ = () => GMW.vial.clases.concat(GMW.vial.clases.filter(k => GMW_VORD.indexOf(k) < 5).map(k => k + '_link'));   // al elegir una principal se descargan también sus enlaces
 const GMW_VCL = { motorway: 'Autopista', trunk: 'Troncal', primary: 'Primaria', secondary: 'Secundaria', tertiary: 'Terciaria', motorway_link: 'Enlace autopista', trunk_link: 'Enlace troncal', primary_link: 'Enlace primaria', secondary_link: 'Enlace secundaria', tertiary_link: 'Enlace terciaria', unclassified: 'Sin clasificar', residential: 'Residencial', living_street: 'Calle de convivencia', service: 'Servicio', road: 'Camino', track: 'Terracería', busway: 'Carril de bus', pedestrian: 'Peatonal', cycleway: 'Ciclovía', footway: 'Banqueta', path: 'Sendero', steps: 'Escaleras', bridleway: 'Camino de herradura', bus_guideway: 'Guiado de bus', corridor: 'Pasillo', raceway: 'Pista', escape: 'Escape', construction: 'En construcción', proposed: 'Proyectada' };
 const GMW_DIAS = [[1, 'LUN'], [2, 'MAR'], [3, 'MIÉ'], [4, 'JUE'], [5, 'VIE'], [6, 'SÁB'], [0, 'DOM']], GMW_PASOS = [['Objetivo del proyecto', 'qué se quiere lograr'], ['Punto de interés', 'dónde se mide'], ['Radio de maqueta', 'fotos de calle'], ['Vialidades', 'descarga desde OpenStreetMap'], ['Días y horas de tráfico', 'cuándo se mide'], ['Verificación', 'revisa los datos antes de analizar']], GMW_PERFILES = ['Administrador', 'Valuación inmobiliaria', 'Comparar bienes raíces', 'Análisis de riesgos del entorno', 'Expansión territorial', 'Análisis de Competencia'];
+const GMW_OBJ = [["inm","🏠","Bienes raíces e inmobiliario",[["val","Valuación de un inmueble","amb,soc"],["cmp","Comparación de inmuebles","amb,soc"],["des","Evaluación de proyecto inmobiliario","amb,soc,coy"],["vac","Renta vacacional o de corta estancia","soc,coy"],["plu","Plusvalía y tendencia de la zona","coy"]]],["com","🏪","Comercio y expansión",[["pdv","Nuevo punto de venta (expansión geográfica)","soc"],["eva","Evaluación de un punto de venta existente",""],["cmp","Análisis de la competencia",""],["mer","Competitividad de mercado","coy"],["reu","Reubicación o cierre de sucursal",""]]],["mkt","📣","Mercadotecnia y opinión",[["afl","Zonas de alta afluencia",""],["seg","Segmentación de mercado por zona","soc"],["mue","Marco muestral para estudios de opinión","soc"],["cam","Campaña territorial o publicidad exterior","coy"]]],["rie","🚨","Riesgos del entorno",[["nat","Riesgos naturales y ambientales","amb"],["soc","Riesgos sociales y de seguridad","soc,coy"],["tec","Riesgos tecnológicos e industriales","amb"],["int","Evaluación integral de riesgos de un proyecto","amb,soc,coy"]]],["amb","🌿","Medio ambiente",[["cal","Islas de calor","amb"],["res","Tiraderos clandestinos y residuos","amb,soc"],["air","Calidad del aire y áreas verdes","amb"],["imp","Impacto ambiental de una operación o empresa","amb,soc"]]],["soc","🤝","Proyectos sociales y sector público",[["pro","Evaluación de un proyecto social","soc"],["equ","Cobertura de equipamiento y servicios públicos","soc"],["imp","Impacto social de una operación o empresa","soc,coy"],["urb","Planeación urbana","amb,soc"]]],["mov","🚚","Movilidad y logística",[["red","Movilidad en la red vial",""],["rut","Optimización de rutas",""],["cer","Cercas de seguridad para logística","soc,coy"],["acc","Accesibilidad y tiempos de traslado",""],["cdi","Ubicación de un centro de distribución",""]]],["gen","🧭","Diagnóstico general",[["dia","Diagnóstico integral del entorno (todo con el mismo peso)",""],["adm","Administrador",""]]]], GMW_ASP = [['amb', '🌿 Impacto ambiental'], ['soc', '👥 Impacto social'], ['coy', '📰 Coyuntura del entorno (noticias y economía)']], GMW_LEG = {"Valuación inmobiliaria":"inm.val","Comparar bienes raíces":"inm.cmp","Análisis de riesgos del entorno":"rie.int","Expansión territorial":"com.pdv","Análisis de Competencia":"com.cmp","Administrador":"gen.adm"};
+const gmObjSub_ = id => { const [c, x] = String(id || '').split('.'), C = GMW_OBJ.find(q => q[0] === c), S = C && C[3].find(q => q[0] === x); return S ? { id: c + '.' + x, c, cn: C[2], n: S[1], a: S[2] ? S[2].split(',') : [] } : null; };
+/* objetivo guardado en el proyecto → selección del asistente (los proyectos anteriores traen solo el texto del perfil) */
+function gmObjDe_(P) { const o = P && P.obj, s = o && Array.isArray(o.s) ? o.s.filter(gmObjSub_) : []; if (s.length) return { os: s, oc: s[0].split('.')[0], oa: (Array.isArray(o.a) ? o.a : []).filter(a => GMW_ASP.some(q => q[0] === a)) }; const l = GMW_LEG[P && P.perfil]; return l ? { os: [l], oc: l.split('.')[0], oa: gmObjSub_(l).a.slice() } : { os: [], oc: '', oa: [] }; }
+function gmObjPerfil_() { const S = (GMW.os || []).map(gmObjSub_).filter(Boolean); GMW.perfil = S.length ? (S[0].n + (S.length > 1 ? ' +' + (S.length - 1) : '')).slice(0, 80) : ''; }
+function gmObjHtml_() {
+  const os = GMW.os || [], oa = GMW.oa || [], C = GMW_OBJ.find(q => q[0] === GMW.oc), otros = os.map(gmObjSub_).filter(q => q && q.c !== GMW.oc);
+  return `<div class="gmw-sb"><span class="gmw-lt"><i>a</i>Categoría del objetivo <em class="gmw-st">* (Obligatorio)</em></span><div class="gmw-ch">${GMW_OBJ.map(q => { const n = os.filter(x => x.split('.')[0] === q[0]).length; return `<button type="button" class="gmw-c${GMW.oc === q[0] ? ' on' : ''}" data-oc="${q[0]}">${q[1]} ${gmEsc_(q[2])}${n ? ' · ' + n : ''}</button>`; }).join('')}</div></div>
+  <div class="gmw-sb"><span class="gmw-lt"><i>b</i>Objetivo específico <em class="gmw-st">* (Obligatorio)</em></span>${C ? `<div class="gmw-ch">${C[3].map(x => `<button type="button" class="gmw-c${os.includes(C[0] + '.' + x[0]) ? ' on' : ''}" data-os="${C[0]}.${x[0]}">${gmEsc_(x[1])}</button>`).join('')}</div><p class="gmw-mu">puedes marcar más de uno, también de otras categorías${otros.length ? ' · ya elegidos en otras: <b>' + otros.map(q => gmEsc_(q.n)).join(', ') + '</b>' : ''}</p>` : '<p class="gmw-mu" style="margin:0">elige primero una categoría</p>'}</div>
+  <div class="gmw-sb"><span class="gmw-lt"><i>c</i>Aspectos del entorno que pesan en la evaluación</span><div class="gmw-ch">${GMW_ASP.map(([k, t]) => `<button type="button" class="gmw-c${oa.includes(k) ? ' on' : ''}" data-oa="${k}">${t}</button>`).join('')}</div><p class="gmw-mu">se marcan solos según el objetivo; ajústalos si tu proyecto lo requiere. Con esto se definen los ponderadores de los indicadores</p></div>`;
+}
 const gmEsc_ = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function gmFalta_() {   /* en edición, si los cambios no cuestan nada no se pide pago */
    const f = []; if (!GMW.perfil) f.push('objetivo del proyecto'); if (!gmPtsOk_().length) f.push('punto de interés'); if (!(GMW.radio >= 50)) f.push('radio de maqueta'); if (!GMW.vial.clases.length) f.push('vialidades'); if (GMW.fmode === 'manual' && !GMW.fm.length) f.push('puntos de fotos'); if (!GMW.dias.length) f.push('días'); if (!GMW.horas.length) f.push('horas'); if (!gmPagado_() && !(GMW.edit && gmCosto_().total === 0)) f.push('pago'); return f; }
@@ -79628,7 +79741,7 @@ function gmLanding_() {
 }
 function gmFicha_() {
   const d = GMW.dias.slice().sort((a, b) => (a || 7) - (b || 7)).map(x => GMW_DIAS.find(q => q[0] === x)[1]).join(' '), n = GMW.dias.length * GMW.horas.length, row = (k, v) => `<div class="gmw-r"><span>${k}</span><b>${v}</b></div>`;
-  return `<div class="gmw-fi"><div class="gmw-fh"><span>ficha de especificación</span><span>${GMW.proy ? 'registrado' : 'borrador'}</span></div><div class="gmw-fb">${row('nombre del proyecto', gmEsc_(GMW.nombre || '—'))}${row('objetivo del proyecto', gmEsc_(GMW.perfil || '—'))}${row('descripción', GMW.objetivo.trim() ? gmEsc_(GMW.objetivo.trim().slice(0, 26)) + (GMW.objetivo.trim().length > 26 ? '…' : '') : '—')}${(gmPtsOk_().length ? gmPtsOk_() : [null]).map((q, i, P) => !q ? row('punto de interés', '—') : row(P.length > 1 ? 'punto de interés ' + (i + 1) : 'punto de interés', q.lat.toFixed(5) + ', ' + q.lng.toFixed(5)) + (q.dir ? row(P.length > 1 ? 'dirección ' + (i + 1) : 'dirección', gmEsc_(q.dir.length > 34 ? q.dir.slice(0, 34) + '…' : q.dir)) : '')).join('')}${row('radio de maqueta', GMW.radio >= 50 ? GMW.radio + ' m' : '—')}${row('selección de fotos', { auto: 'automática', manual: 'manual', mixta: 'mixta' }[GMW.fmode])}${row('fotos de calle', gmFotosTxt_())}${row('vialidades', GMW.vial.clases.length + ' clases · longitud ' + GMW.vrad + ' m')}${GMW.vias ? row('vialidades de interés', GMW.vsel.size + ' de ' + GMW.vias.length + (GMW.vstale ? ' (desactualizado)' : '')) : ''}${row('red vial (accesibilidad)', (GMW.rp / 1000).toLocaleString('es-MX') + ' km · locales ' + GMW.rl + ' m')}${row('red vial', 'OpenStreetMap + Google')}${row('días', d || '—')}${row('horas', GMW.horas.length ? gmHorasTxt_() : '—')}${row('consultas de tráfico', n ? n + ' franjas día-hora' : '—')}${row('estado de pago', gmPagado_() ? 'Pagado' : 'Pendiente')}</div></div>`;
+  return `<div class="gmw-fi"><div class="gmw-fh"><span>ficha de especificación</span><span>${GMW.proy ? 'registrado' : 'borrador'}</span></div><div class="gmw-fb">${row('nombre del proyecto', gmEsc_(GMW.nombre || '—'))}${row('objetivo del proyecto', gmEsc_(GMW.perfil || '—'))}${(GMW.os || []).length ? row('categoría', gmEsc_([...new Set((GMW.os || []).map(x => (gmObjSub_(x) || {}).cn).filter(Boolean))].join(', '))) : ''}${(GMW.oa || []).length ? row('aspectos del entorno', (GMW.oa || []).map(a => ({ amb: 'ambiental', soc: 'social', coy: 'coyuntura' }[a])).join(', ')) : ''}${row('descripción', GMW.objetivo.trim() ? gmEsc_(GMW.objetivo.trim().slice(0, 26)) + (GMW.objetivo.trim().length > 26 ? '…' : '') : '—')}${(gmPtsOk_().length ? gmPtsOk_() : [null]).map((q, i, P) => !q ? row('punto de interés', '—') : row(P.length > 1 ? 'punto de interés ' + (i + 1) : 'punto de interés', q.lat.toFixed(5) + ', ' + q.lng.toFixed(5)) + (q.dir ? row(P.length > 1 ? 'dirección ' + (i + 1) : 'dirección', gmEsc_(q.dir.length > 34 ? q.dir.slice(0, 34) + '…' : q.dir)) : '')).join('')}${row('radio de maqueta', GMW.radio >= 50 ? GMW.radio + ' m' : '—')}${row('selección de fotos', { auto: 'automática', manual: 'manual', mixta: 'mixta' }[GMW.fmode])}${row('fotos de calle', gmFotosTxt_())}${row('vialidades', GMW.vial.clases.length + ' clases · longitud ' + GMW.vrad + ' m')}${GMW.vias ? row('vialidades de interés', GMW.vsel.size + ' de ' + GMW.vias.length + (GMW.vstale ? ' (desactualizado)' : '')) : ''}${row('red vial (accesibilidad)', (GMW.rp / 1000).toLocaleString('es-MX') + ' km · locales ' + GMW.rl + ' m')}${row('red vial', 'OpenStreetMap + Google')}${row('días', d || '—')}${row('horas', GMW.horas.length ? gmHorasTxt_() : '—')}${row('consultas de tráfico', n ? n + ' franjas día-hora' : '—')}${row('estado de pago', gmPagado_() ? 'Pagado' : 'Pendiente')}</div></div>`;
 }
 function gmHorasTxt_() { const h = GMW.horas.slice().sort((a, b) => a - b), g = []; let a = h[0], p = h[0]; for (let i = 1; i <= h.length; i++) { if (h[i] === p + 1) { p = h[i]; continue; } g.push(a === p ? String(a).padStart(2, '0') : String(a).padStart(2, '0') + '–' + String(p).padStart(2, '0')); a = p = h[i]; } return g.join(' · '); }
 function gmPie_() {
@@ -79668,7 +79781,7 @@ async function gmElige_(i) {
 }
 function gmPasoHtml0_() {
   const p = GMW.paso;
-  if (p === 1) return `<div class="gmw-sb"><span class="gmw-lt"><i>a</i>Objetivo del proyecto <em class="gmw-st">* (Obligatorio)</em></span><div class="gmw-ch">${GMW_PERFILES.map(x => `<button type="button" class="gmw-c${GMW.perfil === x ? ' on' : ''}" data-p="${gmEsc_(x)}">${gmEsc_(x)}</button>`).join('')}</div></div><div class="gmw-sb"><span class="gmw-lt"><i>b</i>Descríbelo con tus palabras</span><textarea id="gmw-obj" class="gmw-ta" rows="5" maxlength="1000" placeholder="qué decisión quieres tomar con este análisis">${gmEsc_(GMW.objetivo)}</textarea></div><div class="gmw-sb"><span class="gmw-lt"><i>c</i>Nombre del proyecto</span><input id="gmw-nom" class="gmw-in" maxlength="80" placeholder="cómo quieres llamarlo (ej.: Depa Cumbres · valuación)" value="${gmEsc_(GMW.nombre || '')}" autocomplete="off"></div>`;
+  if (p === 1) return `<div id="gmw-objsel">${gmObjHtml_()}</div><div class="gmw-sb"><span class="gmw-lt"><i>d</i>Descríbelo con tus palabras</span><textarea id="gmw-obj" class="gmw-ta" rows="5" maxlength="1000" placeholder="qué decisión quieres tomar con este análisis">${gmEsc_(GMW.objetivo)}</textarea></div><div class="gmw-sb"><span class="gmw-lt"><i>e</i>Nombre del proyecto</span><input id="gmw-nom" class="gmw-in" maxlength="80" placeholder="cómo quieres llamarlo (ej.: Depa Cumbres · valuación)" value="${gmEsc_(GMW.nombre || '')}" autocomplete="off"></div>`;
   if (p === 2) return `<span class="gmw-lt" style="margin-bottom:12px">Punto de interés <em class="gmw-st">* (Obligatorio)</em></span><div class="gmw-sr"><input id="gmw-q" placeholder="buscar dirección o lugar: calle, número, colonia, ciudad" autocomplete="off"><button type="button" class="gmw-c" id="gmw-go">buscar</button></div><div id="gmw-res">${gmResHtml_()}</div><div class="gmw-pl" id="gmw-pl">${gmPlHtml_()}</div><div id="gmw-map"></div><div class="gmw-fld"><label>lat <input id="gmw-lat" value="${GMW.lat.toFixed(6)}" inputmode="decimal"></label><label>lng <input id="gmw-lng" value="${GMW.lng.toFixed(6)}" inputmode="decimal"></label><span class="gmw-mu">clic en el mapa para fijar el punto</span></div>`;
   if (p === 3) return `<div id="gmw-map"></div>
     <div class="gmw-sb" style="margin-top:22px"><div class="gmw-fld" style="margin-top:0"><label>Radio (m) <em class="gmw-st">* (Obligatorio)</em> <input id="gmw-rad" value="${GMW.radio || ''}" inputmode="numeric" placeholder="50–600"></label>${[[100, '100 m'], [200, '200 m'], [400, '400 m'], [600, '600 m']].map(([v, l]) => `<button type="button" class="gmw-c" data-r="${v}">${l}</button>`).join('')}</div>
@@ -79713,7 +79826,7 @@ function gmRender_() {
   if (GMW.vista === 'landing') gmCargaLista_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
 }
-function gmNuevo_(reset) { GMW.edit = null; if (reset) Object.assign(GMW, { vias: null, vsel: new Set(), vstale: false, vmsg: '', paso: 1, perfil: '', nombre: '', objetivo: '', dir: '', lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', resultados: null, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, ft: { max: 20, sep: 30, frente: 6, inmediato: 8, general: 6 }, fx: { p: [], f: [], n: 0 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 3 }, radio: 200, horas: [7, 8, 9, 17, 18, 19], dias: [1, 2, 3, 4, 5], proy: null, err: '', opt: null, pago: null, pagoAbre: false, promo: '', promoErr: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function gmNuevo_(reset) { GMW.edit = null; if (reset) Object.assign(GMW, { vias: null, vsel: new Set(), vstale: false, vmsg: '', paso: 1, perfil: '', oc: '', os: [], oa: [], oaMan: false, nombre: '', objetivo: '', dir: '', lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', resultados: null, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, ft: { max: 20, sep: 30, frente: 6, inmediato: 8, general: 6 }, fx: { p: [], f: [], n: 0 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 3 }, radio: 200, horas: [7, 8, 9, 17, 18, 19], dias: [1, 2, 3, 4, 5], proy: null, err: '', opt: null, pago: null, pagoAbre: false, promo: '', promoErr: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function gmVolver_() { GMW.edit = null; GMW.vista = 'landing'; gmRender_(); }
 function gmPaso_(n) { if (n < 1 || n > 6) return; gmPts_(); GMW.fmOn = false; GMW.err = ''; if (n > 1 && !GMW.perfil) { n = 1; GMW.err = 'elige el objetivo del proyecto para continuar'; } else if (n > 2 && !gmPtsOk_().length) { n = 2; GMW.err = 'elige al menos un punto de interés para continuar'; } GMW.paso = n; gmRender_(); }
 const gmFPrevSt_ = () => { const e = document.getElementById('gmw-fpst'); if (e && !GMW.fprevBusy) e.textContent = gmFPrevTxt_(); };
@@ -79738,7 +79851,7 @@ function gmCostoBase_() {
   return { nP, fotos, tiles, sv, ia, sat, fo, sent, fr, calls, tr, estim, od, m3d, total: (o.fotos ? fo : 0) + (o.trafico ? tr : 0) + (o.od ? od : 0) + (o.mapa3d ? m3d : 0) };
 }
 /* ── Editar proyecto: solo se cobra lo que se vuelve a descargar o analizar ── */
-function gmSnap_() { return { nombre: (GMW.nombre || '').trim(), perfil: GMW.perfil, objetivo: (GMW.objetivo || '').trim(), pts: gmPtsOk_().map(q => [+(+q.lat).toFixed(6), +(+q.lng).toFixed(6)]), radio: GMW.radio, fmode: GMW.fmode, ft: GMW.ft, fm: (GMW.fm || []).map(q => [+(+q.lat).toFixed(6), +(+q.lng).toFixed(6), Math.round(q.h || 0)]), fx: [GMW.fx.p.slice().sort(), GMW.fx.f.slice().sort()], cl: gmClases_().slice().sort(), rp: GMW.rp, rl: GMW.rl, tramo: GMW.vrad, pre: GMW.vial.pre, sel: [...GMW.vsel].sort(), dias: GMW.dias.slice().sort((a, b) => a - b), horas: GMW.horas.slice().sort((a, b) => a - b), opt: Object.assign({}, gmOpt_()) }; }
+function gmSnap_() { return { nombre: (GMW.nombre || '').trim(), perfil: GMW.perfil, os: (GMW.os || []).slice().sort(), oa: (GMW.oa || []).slice().sort(), objetivo: (GMW.objetivo || '').trim(), pts: gmPtsOk_().map(q => [+(+q.lat).toFixed(6), +(+q.lng).toFixed(6)]), radio: GMW.radio, fmode: GMW.fmode, ft: GMW.ft, fm: (GMW.fm || []).map(q => [+(+q.lat).toFixed(6), +(+q.lng).toFixed(6), Math.round(q.h || 0)]), fx: [GMW.fx.p.slice().sort(), GMW.fx.f.slice().sort()], cl: gmClases_().slice().sort(), rp: GMW.rp, rl: GMW.rl, tramo: GMW.vrad, pre: GMW.vial.pre, sel: [...GMW.vsel].sort(), dias: GMW.dias.slice().sort((a, b) => a - b), horas: GMW.horas.slice().sort((a, b) => a - b), opt: Object.assign({}, gmOpt_()) }; }
 function gmPlan_() {
   const o = GMW.edit.orig, n = gmSnap_(), J = JSON.stringify, dif = k => J(o[k]) !== J(n[k]), nP = n.pts.length, inv = [], items = [], fot = n.opt.fotos !== false, tra = n.opt.trafico !== false && fot;
   const mov = n.pts.map((q, k) => !o.pts[k] || J(o.pts[k]) !== J(q)), nMov = mov.filter(Boolean).length, fcfg = dif('fmode') || dif('ft') || dif('fm'), rMas = n.radio > o.radio, rCamb = n.radio !== o.radio, fOn = fot && o.opt.fotos === false, tOn = tra && o.opt.trafico === false;
@@ -79951,6 +80064,10 @@ function gmWiring_() {
     if (e.target.closest('#gmw-fxr')) { GMW.fx = { p: [], f: [], n: 0 }; const bx = document.getElementById('gmw-fp'); if (bx) bx.innerHTML = gmFotosHtml_(); gmDibuja_(false); gmFmUpd_(); gmUpd_(); return; }
     if (e.target.closest('#gmw-fmc')) { GMW.fm = []; gmDibuja_(false); gmFmUpd_(); gmUpd_(); return; }
     if (e.target.closest('#gmw-go')) { gmBuscar_(); return; } const gr = e.target.closest('[data-g]'); if (gr) { gmElige_(+gr.dataset.g); return; }
+    { const bx = document.getElementById('gmw-objsel'), oc = e.target.closest('[data-oc]'), osb = e.target.closest('[data-os]'), oab = e.target.closest('[data-oa]');
+      if (oc) { GMW.oc = oc.dataset.oc; if (bx) bx.innerHTML = gmObjHtml_(); return; }
+      if (osb) { const id = osb.dataset.os, L = GMW.os || (GMW.os = []), k = L.indexOf(id); if (k >= 0) L.splice(k, 1); else if (L.length < 8) L.push(id); if (!GMW.oaMan) GMW.oa = [...new Set(L.flatMap(x => (gmObjSub_(x) || { a: [] }).a))]; else if (k < 0) GMW.oa = [...new Set((GMW.oa || []).concat((gmObjSub_(id) || { a: [] }).a))]; gmObjPerfil_(); GMW.err = ''; if (bx) bx.innerHTML = gmObjHtml_(); gmUpd_(); return; }
+      if (oab) { const a = oab.dataset.oa, L = GMW.oa || (GMW.oa = []), k = L.indexOf(a); if (k >= 0) L.splice(k, 1); else L.push(a); GMW.oaMan = true; oab.classList.toggle('on', k < 0); gmUpd_(); return; } }
     const pf = e.target.closest('[data-p]'); if (pf) { GMW.perfil = GMW.perfil === pf.dataset.p ? '' : pf.dataset.p; body.querySelectorAll('[data-p]').forEach(b => b.classList.toggle('on', b.dataset.p === GMW.perfil)); gmUpd_(); return; }
     const vc = e.target.closest('[data-vc]'); if (vc) { gmVStale_(); const k = vc.dataset.vc, ix = GMW.vial.clases.indexOf(k); if (ix >= 0) GMW.vial.clases.splice(ix, 1); else GMW.vial.clases.push(k); vc.classList.toggle('on'); gmUpd_(); return; }
     const qv = e.target.closest('[data-qv]'); if (qv) { gmVStale_(); GMW.vial.clases = qv.dataset.qv === '1' ? GMW_VTODAS.slice() : qv.dataset.qv === '2' ? GMW_VORD.slice(0, 5) : []; body.querySelectorAll('[data-vc]').forEach(b => b.classList.toggle('on', GMW.vial.clases.includes(b.dataset.vc))); gmUpd_(); return; }
@@ -80052,7 +80169,7 @@ async function gmEditar_(id) {
   let P; try { const j = await fetch(`${BACKEND}/geometrika/proyecto?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(r => r.json()); if (!j.ok) throw new Error(j.error || 'No se pudo leer el proyecto'); P = j.proyecto; } catch (e) { alert('No se pudo abrir el proyecto para editarlo: ' + (e.message || e)); return; }
   if (P.analisis && P.analisis.estado === 'analizando') { alert('Este proyecto se está analizando. Espera a que termine para editarlo.'); return; }
   const V = P.vialidades || {}, R = P.redVial || {}, pts = (P.puntos || []).map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '', ok: true })); if (!pts.length) pts.push({ lat: P.lat, lng: P.lng, dir: P.direccion || '', ok: true });
-  Object.assign(GMW, { vias: null, vsel: new Set(V.seleccion || []), vstale: false, vmsg: '', vbusy: false, paso: 1, perfil: P.perfil || '', nombre: P.nombre || '', objetivo: P.objetivo || '', dir: pts[0].dir, lat: pts[0].lat, lng: pts[0].lng, pts, sel: 0, fm: (P.fotosManuales || []).map(q => ({ lat: q.lat, lng: q.lng, h: q.h || 0 })), fx: { p: ((P.fotosExcluir || {}).p || []).slice(), f: ((P.fotosExcluir || {}).f || []).slice(), n: (P.fotosExcluir || {}).n || 0 }, fmode: P.fotosModo === 'manual' ? 'manual' : 'auto', fmOn: false, resultados: null, radio: P.radio || 200, vrad: V.tramo || 200, vm: false, rm: false, rp: R.principales || 3000, rl: R.locales || 900, ft: gmFtNorm_((P.fotos || {}).max || (((P.fotos || {}).frente || 0) + ((P.fotos || {}).inmediato || 0) + ((P.fotos || {}).general || 0)) || 20, (P.fotos || {}).sep), vial: { clases: (V.clases || []).filter(k => !/_link$/.test(k)), tramo: V.tramo || 200, pre: V.preseleccionar || 3 }, dias: (P.dias || []).slice(), horas: (P.horas || []).slice(), proy: null, err: '', opt: Object.assign({ fotos: true, trafico: true, od: false, mapa3d: true }, P.opciones || {}), pago: null, pagoAbre: false, promo: '', promoErr: '', enviando: false });
+  Object.assign(GMW, { vias: null, vsel: new Set(V.seleccion || []), vstale: false, vmsg: '', vbusy: false, paso: 1, perfil: P.perfil || '', ...gmObjDe_(P), oaMan: true, nombre: P.nombre || '', objetivo: P.objetivo || '', dir: pts[0].dir, lat: pts[0].lat, lng: pts[0].lng, pts, sel: 0, fm: (P.fotosManuales || []).map(q => ({ lat: q.lat, lng: q.lng, h: q.h || 0 })), fx: { p: ((P.fotosExcluir || {}).p || []).slice(), f: ((P.fotosExcluir || {}).f || []).slice(), n: (P.fotosExcluir || {}).n || 0 }, fmode: P.fotosModo === 'manual' ? 'manual' : 'auto', fmOn: false, resultados: null, radio: P.radio || 200, vrad: V.tramo || 200, vm: false, rm: false, rp: R.principales || 3000, rl: R.locales || 900, ft: gmFtNorm_((P.fotos || {}).max || (((P.fotos || {}).frente || 0) + ((P.fotos || {}).inmediato || 0) + ((P.fotos || {}).general || 0)) || 20, (P.fotos || {}).sep), vial: { clases: (V.clases || []).filter(k => !/_link$/.test(k)), tramo: V.tramo || 200, pre: V.preseleccionar || 3 }, dias: (P.dias || []).slice(), horas: (P.horas || []).slice(), proy: null, err: '', opt: Object.assign({ fotos: true, trafico: true, od: false, mapa3d: true }, P.opciones || {}), pago: null, pagoAbre: false, promo: '', promoErr: '', enviando: false });
   GMW.edit = { id, nombre: P.nombre || P.perfil || 'Proyecto', recalc: true }; GMW.edit.orig = gmSnap_(); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function gmEdModo_(v) { if (!GMW.edit) return; GMW.edit.recalc = !!v; GMW.pago = null; GMW.pagoAbre = false; gmRender_(); }
@@ -80068,7 +80185,7 @@ async function gmGuardaEd_() {
   catch (e) { GMW.enviando = false; GMW.err = String(e.message || e); gmUpd_(); }
 }
 function gmVerAn_(id, inicia) { GMW.proy = { id }; if (inicia) gmIniciaAnalisis_(); else { GMW.vista = 'analizando'; GMW.an = { paso: 'Consultando avance', sub: '', err: '' }; gmRender_(); gmSondea_(id); } }
-function gmBody_() { return { perfil: GMW.perfil, nombre: (GMW.nombre || '').trim(), objetivo: GMW.objetivo.trim(), direccion: gmPtsOk_()[0].dir, puntos: gmPtsOk_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fm, fotosExcluir: GMW.fx, fotosModo: GMW.fmode, fotos: GMW.fmode === 'manual' ? { frente: 0, inmediato: 0, general: 0 } : GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre, seleccion: GMW.vias || GMW.edit ? [...GMW.vsel] : [] }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPtsOk_()[0].lat, lng: gmPtsOk_()[0].lng, opciones: gmOpt_(), costoEstimadoUSD: GMW_PRECIOS ? +gmCosto_().total.toFixed(2) : null, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }; }
+function gmBody_() { return { perfil: GMW.perfil, obj: { s: (GMW.os || []).slice(0, 8), a: (GMW.oa || []).slice() }, nombre: (GMW.nombre || '').trim(), objetivo: GMW.objetivo.trim(), direccion: gmPtsOk_()[0].dir, puntos: gmPtsOk_().map(q => ({ lat: q.lat, lng: q.lng, dir: q.dir || '' })), fotosManuales: GMW.fm, fotosExcluir: GMW.fx, fotosModo: GMW.fmode, fotos: GMW.fmode === 'manual' ? { frente: 0, inmediato: 0, general: 0 } : GMW.ft, vialidades: { clases: gmClases_(), tramo: GMW.vrad, preseleccionar: GMW.vial.pre, seleccion: GMW.vias || GMW.edit ? [...GMW.vsel] : [] }, redVial: { principales: GMW.rp, locales: GMW.rl }, lat: gmPtsOk_()[0].lat, lng: gmPtsOk_()[0].lng, opciones: gmOpt_(), costoEstimadoUSD: GMW_PRECIOS ? +gmCosto_().total.toFixed(2) : null, radio: GMW.radio, dias: GMW.dias, horas: GMW.horas }; }
 async function gmEjecutar_() {
   if (GMW.edit) return gmGuardaEd_();
   if (gmFalta_().length || GMW.enviando) return; GMW.enviando = true; GMW.err = ''; gmUpd_();
