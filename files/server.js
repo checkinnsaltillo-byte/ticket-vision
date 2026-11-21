@@ -15912,27 +15912,72 @@ app.get("/mercado/maqueta/crecimiento/img", async (req, res) => {
 const _IH_MAX = 100, _IH_SEM = ["ok", "warn", "bad", "info"], _ihQ = new Map();
 const _ihObj = id => `geometrika/indhist/${id}.json`, _ihId = v => { const s = String(v || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48); return s.length >= 1 ? s : ""; };
 app.get("/mercado/maqueta/indhist", async (req, res) => {
-  try { const id = _ihId(req.query.id); if (!id) return res.status(400).json({ ok: false, error: "Falta el proyecto." }); const { data } = await _bnReadGcs(_ihObj(id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, ind: (data && data.ind) || {} }); }
+  try { const id = _ihId(req.query.id); if (!id) return res.status(400).json({ ok: false, error: "Falta el proyecto." }); const { data } = await _bnReadGcs(_ihObj(id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, ind: (data && data.ind) || {}, geo: !!(data && isFinite(data.lat) && isFinite(data.lng)), usuario: (data && data.usuario) || "" }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// guarda lecturas en el historial de un proyecto. E = [[clave, {val, unit, sem, msg, viz}]]; extra: { lat, lng, usuario: true si viene de la pantalla, auto: true si es captura automática }
+function _ihMerge(id, E, extra) {
+  const T = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").slice(0, n), at = new Date().toISOString(), x = extra || {};
+  const run = (_ihQ.get(id) || Promise.resolve()).then(async () => {
+    const d = (await _bnReadGcs(_ihObj(id))).data || {}; d.ind = d.ind && typeof d.ind === "object" ? d.ind : {}; let n = 0;
+    if (isFinite(+x.lat) && isFinite(+x.lng) && Math.abs(+x.lat) <= 90 && Math.abs(+x.lng) <= 180) { d.lat = +(+x.lat).toFixed(6); d.lng = +(+x.lng).toFixed(6); }
+    if (x.usuario) d.usuario = at;   /* última vez que alguien abrió el proyecto: la captura automática solo sigue a los proyectos en uso */
+    for (const [k, r] of E) {
+      if (!/^[A-Za-z0-9_]{1,24}:[A-Za-z0-9_.-]{1,60}$/.test(k) || !r || !_IH_SEM.includes(r.sem)) continue;
+      const v = { at, val: T(r.val, 400), unit: T(r.unit, 80), sem: r.sem, msg: T(r.msg, 600) }; if (!v.val.replace(/<[^>]*>/g, "").trim() || v.val === "—") continue; if (x.auto) v.auto = 1;
+      const o = d.ind[k] && Array.isArray(d.ind[k].v) ? d.ind[k] : (d.ind[k] = { v: [] }), u = o.v[o.v.length - 1];
+      if (r.viz != null) o.viz = T(r.viz, 6000);   /* solo se conserva el dibujo de la versión más reciente */
+      if (u && u.val === v.val && u.unit === v.unit && u.msg === v.msg) { u.visto = at; continue; }   /* misma lectura: solo se anota cuándo se volvió a ver */
+      o.v.push(v); if (o.v.length > _IH_MAX) o.v.splice(0, o.v.length - _IH_MAX); n++;
+    }
+    d.actualizado = at; if (x.auto) d.auto = at; await _bnWriteGcs(_ihObj(id), d, null); return n;
+  });
+  _ihQ.set(id, run.catch(() => { })); if (_ihQ.size > 400) _ihQ.clear(); return run.then(n => ({ n, at }));
+}
 app.post("/mercado/maqueta/indhist", async (req, res) => {
   try {
-    const b = req.body || {}, id = _ihId(b.id), E = b.ind && typeof b.ind === "object" ? Object.entries(b.ind).slice(0, 200) : []; if (!id || !E.length) return res.status(400).json({ ok: false, error: "Datos no válidos." });
-    const T = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").slice(0, n), at = new Date().toISOString();
-    const run = (_ihQ.get(id) || Promise.resolve()).then(async () => {
-      const d = (await _bnReadGcs(_ihObj(id))).data || {}; d.ind = d.ind && typeof d.ind === "object" ? d.ind : {}; let n = 0;
-      for (const [k, r] of E) {
-        if (!/^[A-Za-z0-9_]{1,24}:[A-Za-z0-9_.-]{1,60}$/.test(k) || !r || !_IH_SEM.includes(r.sem)) continue;
-        const v = { at, val: T(r.val, 400), unit: T(r.unit, 80), sem: r.sem, msg: T(r.msg, 600) }; if (!v.val.replace(/<[^>]*>/g, "").trim() || v.val === "—") continue;
-        const o = d.ind[k] && Array.isArray(d.ind[k].v) ? d.ind[k] : (d.ind[k] = { v: [] }), u = o.v[o.v.length - 1];
-        if (r.viz != null) o.viz = T(r.viz, 6000);   /* solo se conserva el dibujo de la versión más reciente */
-        if (u && u.val === v.val && u.unit === v.unit && u.msg === v.msg) { u.visto = at; continue; }   /* misma lectura: solo se anota cuándo se volvió a ver */
-        o.v.push(v); if (o.v.length > _IH_MAX) o.v.splice(0, o.v.length - _IH_MAX); n++;
-      }
-      d.actualizado = at; await _bnWriteGcs(_ihObj(id), d, null); return n;
-    });
-    _ihQ.set(id, run.catch(() => { })); if (_ihQ.size > 400) _ihQ.clear(); const n = await run; res.json({ ok: true, nuevas: n, at });
+    const b = req.body || {}, id = _ihId(b.id), E = b.ind && typeof b.ind === "object" ? Object.entries(b.ind).slice(0, 200) : [], geo = isFinite(+b.lat) && isFinite(+b.lng); if (!id || (!E.length && !geo)) return res.status(400).json({ ok: false, error: "Datos no válidos." });
+    const r = await _ihMerge(id, E, { lat: b.lat, lng: b.lng, usuario: true }); res.json({ ok: true, nuevas: r.n, at: r.at });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ── Captura automática diaria de los indicadores que dependen de una consulta en vivo (calidad del aire y polen de Google). La dispara Cloud Scheduler
+//    (job indicadores-captura-diaria, cabecera X-Sync-Secret). Solo sigue a los proyectos en uso: los que alguien abrió en los últimos _IH_DIAS días y ya tienen
+//    historial con coordenadas. Tres consultas a Google por proyecto (aire actual, pronóstico de 24 h y polen). Los cálculos son los mismos de la maqueta (indLista).
+const _IH_DIAS = 60, _IH_TOPE = 150;
+const _ihViz = (() => { const indN = (v, d = 0) => Number(v).toLocaleString('es-MX', { minimumFractionDigits: d, maximumFractionDigits: d }), indP = p => Math.max(0, Math.min(1, p));
+  const vScale = (zones, v, lo, hi) => { let a = lo; return `<div class="ind-scale"><div>${zones.map(([to, c]) => { const w = to - a; a = to; return `<i style="flex:${w};background:${c}"></i>`; }).join('')}</div><u style="left:${indP((v - lo) / (hi - lo)) * 100}%"></u><span><em>${indN(lo)}</em><em>${indN(hi)}</em></span></div>`; };
+  const vSpark = (vals, c) => { const W = 88, H = 40, lo = Math.min(...vals), hi = Math.max(...vals), X = i => 2 + i / (vals.length - 1) * (W - 4), Y = v => 4 + (hi - v) / Math.max(1e-6, hi - lo) * (H - 10), pts = vals.map((v, i) => X(i) + ',' + Y(v)).join(' '), id = 'sp' + Math.random().toString(36).slice(2, 7); return `<svg viewBox="0 0 ${W} ${H}" class="ind-spark"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".35"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs><polygon points="2,${H - 2} ${pts} ${W - 2},${H - 2}" fill="url(#${id})"/><polyline points="${pts}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" pathLength="100"/><circle cx="${X(vals.length - 1)}" cy="${Y(vals[vals.length - 1])}" r="2.6" fill="${c}"/></svg>`; };
+  return { indN, vScale, vSpark }; })();
+async function _ihAire(lat, lng) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps"); const loc = { latitude: lat, longitude: lng }, h0 = Math.ceil(Date.now() / 36e5) * 36e5, ok = p => p.catch(e => ({ error: String(e.message || e).slice(0, 160) })), { indN, vScale, vSpark } = _ihViz, SEMC = { ok: "#16a34a", warn: "#f59e0b", bad: "#dc2626" };
+  const [act, pron, pol] = await Promise.all([
+    ok(_gJson(`https://airquality.googleapis.com/v1/currentConditions:lookup?key=${key}`, { location: loc, extraComputations: ["LOCAL_AQI", "POLLUTANT_CONCENTRATION"], languageCode: "es" })),
+    ok(_gJson(`https://airquality.googleapis.com/v1/forecast:lookup?key=${key}`, { location: loc, period: { startTime: new Date(h0).toISOString(), endTime: new Date(h0 + 23 * 36e5).toISOString() }, pageSize: 24, languageCode: "es" })),
+    ok(_gJson(`https://pollen.googleapis.com/v1/forecast:lookup?location.latitude=${lat}&location.longitude=${lng}&languageCode=es&key=${key}&days=1`))]);
+  const out = [];
+  if (!act.error) {
+    const u = (act.indexes || []).find(i => i.code === "uaqi"), c = (act.indexes || []).find(i => i.code !== "uaqi"), p = (act.pollutants || []).find(q => q.code === "pm25");
+    if (u && u.aqi != null) { const q = u.aqi, sem = q >= 60 ? "ok" : q >= 40 ? "warn" : "bad"; out.push(["aire:aqi", { val: indN(q), unit: "UAQI", viz: vScale([[20, "#b91c1c"], [40, "#ea580c"], [60, "#facc15"], [80, "#84cc16"], [100, "#15803d"]], q, 0, 100), sem, msg: `${u.category || ""}${c ? " · " + (c.displayName || "ICA") + ": " + (c.category || "") : ""}` }]); }
+    if (p && p.concentration && p.concentration.value != null) { const v = p.concentration.value, sem = v <= 15 ? "ok" : v <= 35 ? "warn" : "bad"; out.push(["aire:pm25a", { val: indN(v, 1), unit: "µg/m³", viz: vScale([[15, "#16a34a"], [35, "#eab308"], [55, "#f97316"], [150, "#ef4444"]], v, 0, 100), sem, msg: sem === "ok" ? "Dentro de la guía OMS" : sem === "warn" ? "Por encima de la guía OMS" : "Alto" }]); }
+  }
+  if (!pron.error) { const F = (pron.hourlyForecasts || []).map(o => { const u = (o.indexes || []).find(i => i.code === "uaqi") || (o.indexes || [])[0] || {}; return u.aqi; }).filter(x => x != null).slice(0, 24);
+    if (F.length) { const m = F.reduce((s, x) => s + x, 0) / F.length, sem = m >= 60 ? "ok" : m >= 40 ? "warn" : "bad"; out.push(["aire:pron", { val: indN(m), unit: "UAQI prom.", viz: F.length > 1 ? vSpark(F, SEMC[sem]) : "", sem, msg: `Peor momento ${Math.min(...F)} · mejor ${Math.max(...F)}` }]); } }
+  if (!pol.error) { const v = ((pol.dailyInfo || [])[0] && (pol.dailyInfo[0].pollenTypeInfo || []) || []).filter(q => q.indexInfo).map(q => q.indexInfo.value);
+    if (v.length) { const m = Math.max(...v), sem = m <= 2 ? "ok" : m <= 3 ? "warn" : "bad"; out.push(["aire:polen", { val: String(m), unit: "UPI", viz: vScale([[2, "#16a34a"], [3, "#eab308"], [5, "#ef4444"]], m, 0, 5), sem, msg: "Máximo entre pastos, árboles y malezas" }]); } }
+  return { lecturas: out, errores: [act, pron, pol].filter(x => x && x.error).map(x => x.error) };
+}
+let _ihCapBusy = false;
+app.all("/internal/indhist-capturar", async (req, res) => {
+  const secret = req.get("X-Sync-Secret") || ""; if (!process.env.SYNC_SECRET || secret !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
+  if (_ihCapBusy) return res.json({ ok: true, ocupado: true }); _ihCapBusy = true;
+  try {
+    const t0 = Date.now(), solo = _ihId(req.query.id), ids = solo ? [solo] : (await _gcsList("geometrika/indhist/")).map(n => (n.match(/indhist\/([A-Za-z0-9_-]+)\.json$/) || [])[1]).filter(Boolean);
+    const R = { proyectos: ids.length, capturados: 0, versiones: 0, sinCoordenadas: 0, sinUso: 0, sinDato: 0, errores: 0, detalle: [] }, cola = ids.slice();
+    const uno = async id => { try { const { data: d } = await _bnReadGcs(_ihObj(id)); if (!d || !isFinite(d.lat) || !isFinite(d.lng)) { R.sinCoordenadas++; return; } if (!solo && !(d.usuario && Date.now() - Date.parse(d.usuario) < _IH_DIAS * 864e5)) { R.sinUso++; return; } if (R.capturados >= _IH_TOPE) return;
+        R.capturados++; const a = await _ihAire(d.lat, d.lng); if (!a.lecturas.length) { R.sinDato++; if (R.detalle.length < 5 && a.errores.length) R.detalle.push(id + ": " + a.errores[0]); return; } const m = await _ihMerge(id, a.lecturas, { auto: true }); R.versiones += m.n; } catch (e) { R.errores++; if (R.detalle.length < 5) R.detalle.push(id + ": " + String(e.message || e).slice(0, 120)); } };
+    await Promise.all(Array.from({ length: 4 }, async () => { while (cola.length) await uno(cola.shift()); }));
+    R.segundos = Math.round((Date.now() - t0) / 1000); console.log("[indhist-capturar]", JSON.stringify(R)); res.json(Object.assign({ ok: true }, R));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); } finally { _ihCapBusy = false; }
 });
 // ═══ Mercado Libre Inmuebles (Extracción › Mercado Libre) ═══════════════════════════════════════════════════════════════════════════════════════════
 //   Paso 0 parámetros (tipos, clasificaciones, ubicaciones) · paso 1 lista (recorre las páginas de resultados) · paso 2 extraer (lee la ficha de cada seleccionada).
