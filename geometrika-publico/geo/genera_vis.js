@@ -29,5 +29,7 @@ CAT.forEach(c => (c.an || c.enf || []).forEach(e => e.ind.forEach(i => { const k
   if (a && b) { cpa(a, "ind-" + f + ".html"); cpa(b, "det-" + f + ".html"); o.c = 1; nc++; }
   if (q) { cpa(q, "kpi-" + f + ".html"); o.k = 1; nk++; }
   if (Object.keys(o).length) G.ind[k] = o; else console.log("sin ninguna pieza:", k); })));
+// las hojas de estilo llevan el sello de versión para que el navegador no use una copia guardada
+fs.readdirSync(OUT).filter(f => f.endsWith(".html")).forEach(f => { const p = path.join(OUT, f); fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace('href="maqueta.css"', 'href="maqueta.css?v=' + G.v + '"').replace('href="replica.css"', 'href="replica.css?v=' + G.v + '"')); });
 fs.writeFileSync(path.join(DL, "datalab-geovis.js"), "// generado por geo/genera_vis.js: piezas de Geo Lab por indicador (t pestaña de resultados · c tarjeta del panel · k KPI del mapa)\nwindow.DL_GVIS = " + JSON.stringify(G) + ";\n");
 console.log(`pestañas ${nr} · tarjetas ${nc} · KPI ${nk} · leyendas/ventanas ${na} · indicadores con piezas ${Object.keys(G.ind).length}`);
