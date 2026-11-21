@@ -36,7 +36,47 @@ const arrays = {}; let AN = null, RET = null;
 })(ast);
 if (!AN || !RET) throw new Error("no se halló AN o el return");
 const enf = {}; AN.properties.forEach(p => { const o = p.value, arr = prop(o, "ind"); enf[p.key.name] = { id: str(prop(o, "id")), ico: str(prop(o, "ico")), n: str(prop(o, "n")), d: str(prop(o, "d")), ind: arrays[arr.name] || [] }; });
-const cats = RET.elements.map(c => ({ id: str(prop(c, "id")), ico: str(prop(c, "ico")), n: str(prop(c, "n")), d: str(prop(c, "d")), an: prop(c, "an").elements.map(e => enf[e.property.name]) }));
+// Categorías cuyo «an» no es una lista literal de AN.x (MediaLab, EconoLab): los enfoques se arman con variables, .map() y funciones auxiliares (I0, eInd…).
+// Se resuelven de forma estática: sin proyecto, sin giro y sin ciudad elegidos; lo que depende de datos queda fuera del texto.
+const decl = {}; ast.body[0].expression.body.body.forEach(s => { if (s.type === "VariableDeclaration") s.declarations.forEach(d => { if (d.id.type === "Identifier" && d.init && !(d.id.name in decl)) decl[d.id.name] = d.init; }); });
+function evL(n, env, prof) {   // evaluación tolerante de textos: sustituye parámetros, sigue constantes y descarta los trozos dinámicos
+  if (!n || (prof = prof || 0) > 12) return undefined;
+  if (n.type === "Literal") return n.value;
+  if (n.type === "Identifier") { if (env && n.name in env) return evL(env[n.name].n, env[n.name].env, prof + 1); return decl[n.name] ? evL(decl[n.name], null, prof + 1) : undefined; }
+  if (n.type === "TemplateLiteral") { let s = ""; n.quasis.forEach((q, k) => { s += q.value.cooked; if (n.expressions[k]) { const v = evL(n.expressions[k], env, prof + 1); s += v === undefined ? "…" : v; } }); return s; }
+  if (n.type === "BinaryExpression" && n.operator === "+") { const a = evL(n.left, env, prof + 1), b = evL(n.right, env, prof + 1); return (a === undefined && b === undefined) ? undefined : (a === undefined ? "" : a) + (b === undefined ? "" : b); }
+  if (n.type === "LogicalExpression" && n.operator === "||") { const a = evL(n.left, env, prof + 1); return a === undefined || a === "" ? evL(n.right, env, prof + 1) : a; }
+  if (n.type === "ConditionalExpression") { const c = evL(n.consequent, env, prof + 1), a = evL(n.alternate, env, prof + 1); return n.test.type === "Identifier" ? (a !== undefined ? a : c) : (c !== undefined ? c : a); }   // «x ? … : …» con x = dato aún no elegido → rama sin dato
+  return undefined;
+}
+const strL = (n, env) => { const v = evL(n, env); if (v === undefined) { dinam++; return "…"; } return String(v).replace(/\s+/g, " ").replace(/\bde el\b/g, "del").trim(); };
+const propL = (o, k, env) => { const p = o.properties.find(p => p.key && (p.key.name === k || p.key.value === k)); return p ? strL(p.value, env) : ""; };
+function indDe(n, env, prof) {   // indicador a partir de un objeto literal o de una llamada a una función auxiliar que termina devolviéndolo
+  if (!n || (prof = prof || 0) > 8) return null;
+  if (n.type === "ObjectExpression") return prop(n, "id") ? { id: propL(n, "id", env), n: propL(n, "n", env), tipo: propL(n, "tipo", env), d: propL(n, "d", env), u: propL(n, "u", env), m: propL(n, "m", env), f: propL(n, "f", env), vars: [] } : null;
+  if (n.type === "CallExpression" && n.callee.type === "Identifier") { const fn = decl[n.callee.name]; if (!fn || fn.type !== "ArrowFunctionExpression" || fn.body.type === "BlockStatement") return null;
+    const e2 = {}; fn.params.forEach((p, k) => { if (p.type === "Identifier") e2[p.name] = { n: n.arguments[k] || null, env }; }); return indDe(fn.body, e2, prof + 1); }
+  return null;
+}
+function indsDe(n, env, prof) {   // lista de indicadores; null si no se puede resolver sin datos
+  if (!n || (prof = prof || 0) > 8) return null;
+  if (n.type === "Identifier") { const d = decl[n.name], L = d ? indsDe(d, env, prof + 1) : null; return arrays[n.name] && arrays[n.name].length ? (L || []).concat(arrays[n.name]) : L; }
+  if (n.type === "ConditionalExpression") { const c = indsDe(n.consequent, env, prof + 1), a = indsDe(n.alternate, env, prof + 1); return !c ? a : !a ? c : (a.length > c.length ? a : c); }   // la rama con más indicadores (la otra suele ser el aviso «sin datos»)
+  if (n.type === "ArrayExpression") { const L = []; n.elements.forEach(e => { if (!e) return; if (e.type === "SpreadElement") (indsDe(e.argument, env, prof + 1) || []).forEach(x => L.push(x)); else { const i = indDe(e, env); if (i) L.push(i); } }); return L; }
+  return null;
+}
+function enfDe(n, prof) {   // enfoques de una categoría: AN.x, objeto literal, variable, lista o lista.map(() => ({…}))
+  if (!n || (prof = prof || 0) > 8) return [];
+  if (n.type === "MemberExpression" && n.object.type === "Identifier" && n.object.name === "AN") { const e = enf[n.property.name]; if (!e) throw new Error("enfoque desconocido: AN." + n.property.name); return [e]; }
+  if (n.type === "ObjectExpression" && prop(n, "ind")) return [{ id: propL(n, "id"), ico: propL(n, "ico"), n: propL(n, "n"), d: propL(n, "d"), ind: indsDe(prop(n, "ind")) || [] }];
+  if (n.type === "Identifier" && decl[n.name]) return enfDe(decl[n.name], prof + 1);
+  if (n.type === "SpreadElement") return enfDe(n.argument, prof + 1);
+  if (n.type === "ArrayExpression") return n.elements.reduce((L, e) => L.concat(enfDe(e, prof + 1)), []);
+  if (n.type === "ConditionalExpression") { const c = enfDe(n.consequent, prof + 1), a = enfDe(n.alternate, prof + 1); return a.length > c.length ? a : c; }
+  if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && n.callee.property.name === "map" && n.arguments[0] && n.arguments[0].type === "ArrowFunctionExpression") return enfDe(n.arguments[0].body, prof + 1);   // un enfoque por elemento (p. ej. por proyecto): se documenta uno genérico
+  return [];
+}
+const cats = RET.elements.map(c => { const id = str(prop(c, "id")), an = enfDe(prop(c, "an")); if (!an.length) throw new Error("categoría «" + id + "» sin enfoques reconocibles: revisar la forma de su «an»"); return { id, ico: str(prop(c, "ico")), n: str(prop(c, "n")), d: str(prop(c, "d")), an }; });
 const nInd = cats.reduce((a, c) => a + c.an.reduce((b, e) => b + e.ind.length, 0), 0), sinVars = [];
 cats.forEach(c => c.an.forEach(e => e.ind.forEach(i => { if (!i.vars.length) sinVars.push(i.id); })));
 console.log("categorías", cats.length, "· enfoques", cats.reduce((a, c) => a + c.an.length, 0), "· indicadores", nInd, "· sin variables:", sinVars.join(",") || "ninguno", "· textos dinámicos:", dinam);
