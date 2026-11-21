@@ -5414,6 +5414,42 @@ app.post("/internal/sync-guias-to-github", async (req, res) => {
   }
 });
 
+// ── EcoLab: actualización mensual de datos del INEGI → GitHub (geometrika/ecolab-datos.js) ──
+// Lo dispara Cloud Scheduler (job ecolab-mensual). Mismo esquema que /internal/sync-guias-to-github:
+// header X-Sync-Secret, y variables GH_TOKEN / GH_OWNER / GH_REPO / GH_BRANCH + INEGI_TOKEN (token gratuito de la API del INEGI).
+// No publica nada si la descarga viene incompleta ni si los datos no cambiaron respecto de lo ya publicado.
+app.post("/internal/ecolab-actualizar", async (req, res) => {
+  try {
+    const secret = req.get("X-Sync-Secret") || "";
+    if (!process.env.SYNC_SECRET || secret !== process.env.SYNC_SECRET) return res.status(401).json({ ok: false, error: "unauthorized" });
+    const ghToken = process.env.GH_TOKEN, inegiToken = process.env.INEGI_TOKEN;
+    if (!ghToken) return res.status(500).json({ ok: false, error: "GH_TOKEN missing" });
+    if (!inegiToken) return res.status(500).json({ ok: false, error: "INEGI_TOKEN missing" });
+    const owner = process.env.GH_OWNER || "checkinnsaltillo-byte", repo = process.env.GH_REPO || "checkin-app", branch = process.env.GH_BRANCH || "main", file = "geometrika/ecolab-datos.js";
+    const { descargar, aJs } = require("./ecolab-descarga.js");
+    const t0 = Date.now(), d = await descargar(inegiToken), r = d.resumen;
+    if (r.nacionales < 80 || r.estatales < 18 || r.ciudades < 8) return res.status(502).json({ ok: false, error: "descarga incompleta; no se publicó", resumen: r });
+    const gh = async (path, opts = {}) => {
+      const x = await fetch(`https://api.github.com/repos/${owner}/${repo}${path}`, { method: opts.method || "GET", headers: { "Authorization": `token ${ghToken}`, "Accept": opts.accept || "application/vnd.github+json", "Content-Type": "application/json", "User-Agent": "ticket-vision-ecolab" }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+      const txt = await x.text(); if (!x.ok && !(opts.okStatus || []).includes(x.status)) throw new Error(`GH ${opts.method || "GET"} ${path}: ${x.status} ${txt.slice(0, 200)}`);
+      return opts.raw ? { status: x.status, txt } : (txt ? JSON.parse(txt) : {});
+    };
+    // ¿cambió algo respecto de lo publicado? (se ignora la fecha de generación)
+    const quita = s => { try { const o = JSON.parse(String(s).replace(/^window\.ECO_DATA=/, "").replace(/;\s*$/, "")); delete o.generado; delete o.resumen; return JSON.stringify(o); } catch (_) { return null; } };
+    const prev = await gh(`/contents/${file}?ref=${branch}`, { raw: true, accept: "application/vnd.github.raw+json", okStatus: [404] });
+    const nuevo = aJs(d);
+    if (prev.status === 200 && quita(prev.txt) && quita(prev.txt) === quita(nuevo)) return res.json({ ok: true, changed: false, resumen: r, segundos: Math.round((Date.now() - t0) / 1000) });
+    const ref = await gh(`/git/ref/heads/${branch}`), parentSha = ref.object.sha, parentCommit = await gh(`/git/commits/${parentSha}`);
+    const blob = await gh(`/git/blobs`, { method: "POST", body: { content: nuevo, encoding: "utf-8" } });
+    const tree = await gh(`/git/trees`, { method: "POST", body: { base_tree: parentCommit.tree.sha, tree: [{ path: file, mode: "100644", type: "blob", sha: blob.sha }] } });
+    const commit = await gh(`/git/commits`, { method: "POST", body: { message: `chore(ecolab): actualización mensual de datos INEGI ${d.generado.slice(0, 10)}`, tree: tree.sha, parents: [parentSha] } });
+    await gh(`/git/refs/heads/${branch}`, { method: "PATCH", body: { sha: commit.sha, force: false } });
+    res.json({ ok: true, changed: true, commit: commit.sha, resumen: r, segundos: Math.round((Date.now() - t0) / 1000) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Persistencia de cambios del catálogo "alojamientos" desde el panel admin
 // de Guías de bienvenida.
 app.post("/alojamientos/save", async (req, res) => {
@@ -13104,6 +13140,28 @@ app.get("/geometrika/sugerir", async (req, res) => {   // autocompletado de dire
     if (_gmSugC.size > 400) _gmSugC.clear(); _gmSugC.set(k, { t: Date.now(), r: out }); res.json({ ok: true, r: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+require("./medialab.js")(app, { readGcs: _bnReadGcs, writeGcs: _bnWriteGcs, nacMuns: _nacMuns, originOk: _vOriginOk });   // Media Lab: monitor masivo de noticias
+const _ubiCache = new Map();
+app.get("/geometrika/ubicacion", async (req, res) => {   // estado y municipio de unas coordenadas (encabezado de la maqueta)
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng, key = process.env.GOOGLE_MAPS_KEY;
+    if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
+    const k = lat.toFixed(3) + "," + lng.toFixed(3); if (_ubiCache.has(k)) return res.json(_ubiCache.get(k));
+    try {   // 1) datos propios (municipios de todo el país por estado): sin costo y sin depender de la clave de Google
+      const M = await _nacMuns(), M2 = 0.02; let best = null, bd = 1e9;
+      for (const m of M) { const b = m.bbox, dy = Math.max(b[0] - lat, 0, lat - b[2]), dx = Math.max(b[1] - lng, 0, lng - b[3]), d = Math.hypot(dy, dx), area = (b[2] - b[0]) * (b[3] - b[1]), sc = d > 0 ? d : -1 / (1 + area * 1000); if (sc < bd) { bd = sc; best = m; } }
+      if (best && (bd < 0 || bd <= M2 * 7)) { const out = { ok: true, ent: best.c.slice(0, 2), mun: best.c, municipio: best.nm, estado: "", ciudad: "", fuente: "local" }; _ubiCache.set(k, out); return res.json(out); }
+    } catch (_) { }
+    if (!key) return res.status(503).json({ ok: false, error: "Sin clave de Google" });
+    const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=es&result_type=locality|administrative_area_level_2|administrative_area_level_1&key=${key}`, { signal: AbortSignal.timeout(12000) });
+    const j = await r.json().catch(() => ({})); if (j.status !== "OK" && j.status !== "ZERO_RESULTS") throw new Error("Geocoding " + j.status + (j.error_message ? ": " + j.error_message : ""));
+    const comp = {}; ((j.results || []).slice(0, 4)).forEach(x => (x.address_components || []).forEach(c => { (c.types || []).forEach(t => { if (!comp[t]) comp[t] = c.long_name; }); }));
+    const out = { ok: true, estado: comp.administrative_area_level_1 || "", municipio: comp.administrative_area_level_2 || "", ciudad: comp.locality || "" };
+    _ubiCache.set(k, out); if (_ubiCache.size > 500) _ubiCache.delete(_ubiCache.keys().next().value);
+    res.json(out);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/geometrika/lugar", async (req, res) => {   // coordenadas de la sugerencia elegida (cierra la sesión de autocompletado)
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
@@ -13300,10 +13358,71 @@ app.get("/mercado/maqueta/competencia/isocrona", async (req, res) => {   // tiem
     for (let m = 0; m < M; m++) { const d = dist[ctx.mz.node[m]]; t[m] = d === Infinity ? -1 : Math.round(d + ctx.mz.acc[m]); } res.json({ ok: true, n: M, t }); }
   catch (e) { res.status(400).json({ ok: false, error: String(e.message || e) }); }
 });
+// ── Mapa conceptual del proyecto (paso 1 del asistente): cajas de objetivos/subobjetivos, relaciones entre ellas y los datos de la biblioteca que la persona validó para cada caja ──
+const _gmMapaSan = m => {
+  if (!m || typeof m !== "object" || !Array.isArray(m.nodos) || !m.nodos.length) return null;
+  const S = (v, n) => String(v == null ? "" : v).replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, n), idOk = v => /^[\w-]{1,14}$/.test(String(v || "")), ids = new Set();
+  const nodos = m.nodos.slice(0, 40).filter(n => n && idOk(n.id) && !ids.has(String(n.id)) && ids.add(String(n.id))).map(n => ({ id: String(n.id), t: S(n.t, 140), d: S(n.d, 500), niv: Math.max(0, Math.min(8, Math.round(+n.niv) || 0)), x: Math.round(+n.x) || 0, y: Math.round(+n.y) || 0,
+    rec: (Array.isArray(n.rec) ? n.rec : []).slice(0, 30).filter(r => r && /^[if]:[\w.\-:]{1,120}$/.test(String(r.id || ""))).map(r => ({ id: String(r.id), ok: !!r.ok, n: S(r.n, 180), sis: S(r.sis, 20), tipo: S(r.tipo, 30), fuente: S(r.fuente, 160), u: S(r.u, 60), fechas: S(r.fechas, 120) })) }));
+  const ar = (Array.isArray(m.ar) ? m.ar : []).slice(0, 160).filter(a => Array.isArray(a) && ids.has(String(a[0])) && ids.has(String(a[1])) && String(a[0]) !== String(a[1])).map(a => [String(a[0]), String(a[1]), [1, 2, 3].includes(+a[2]) ? +a[2] : 2]);
+  return nodos.length ? { txt: S(m.txt, 4000), nodos, ar, at: new Date().toISOString() } : null;
+};
+async function _gmClaudeJson(system, user, maxTok, ms) {
+  const call = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: _CL_MODELO, max_tokens: maxTok, thinking: { type: "disabled" }, system, messages: [{ role: "user", content: user }] }), signal: AbortSignal.timeout(ms || 120000) });
+  const j = await call.json(); if (!call.ok) throw new Error(`Claude ${call.status}: ${(j.error && j.error.message) || ""}`);
+  const txt = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim(), m = txt.match(/\{[\s\S]*\}/); let o = null; try { o = JSON.parse(m ? m[0] : txt); } catch (_) { }
+  if (!o) throw new Error("La respuesta no vino en el formato esperado; inténtalo de nuevo"); return o;
+}
+// «Diagrama IA»: propone el mapa de objetivos en cascada a partir de la descripción de la persona
+app.post("/geometrika/mapa/diagrama", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, S = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n), texto = S(b.texto, 4000), objetivo = S(b.objetivo, 160), nombre = S(b.nombre, 100);
+    if (texto.length < 30) return res.status(400).json({ ok: false, error: "Describe el objetivo con más detalle (al menos un par de oraciones)" });
+    const system = "Eres consultor de planeación estratégica y geointeligencia. Diseñas mapas estratégicos tipo Balanced Scorecard: un objetivo final arriba y, en cascada hacia abajo, los subobjetivos y condiciones que lo hacen posible. Redactas en español de México, con frases breves y concretas. Respondes únicamente con un objeto JSON válido, sin texto antes ni después.";
+    const user = `PROYECTO: ${nombre || "sin nombre"}\nTIPO DE OBJETIVO ELEGIDO: ${objetivo || "no indicado"}\nDESCRIPCIÓN DEL USUARIO:\n${texto}\n\nPropón un mapa conceptual de cómo lograr ese objetivo. Devuelve un JSON con esta forma exacta:\n{"nodos":[{"id":"n1","t":"título breve","d":"qué significa y cómo se sabría que se logró","niv":0}],"rel":[["n2","n1",3]]}\nReglas:\n- Entre 8 y 14 cajas. Exactamente una caja con niv 0: el objetivo final. Las demás en niveles 1 a 3 (1 = objetivos intermedios que lo sostienen directamente; 2 y 3 = condiciones, capacidades o factores del entorno que sostienen a los de arriba).\n- "t": máximo 8 palabras, en infinitivo o como resultado. "d": una oración.\n- "rel": cada elemento ["de","a",relevancia] significa «la caja "de" contribuye a lograr la caja "a"», y relevancia es qué tan determinante es para lograrla: 3 = alta (sin ella difícilmente se logra), 2 = media, 1 = baja (ayuda, pero no es decisiva). Usa los tres valores con criterio; no pongas todo en 3. La mayoría sube un nivel, pero incluye también, cuando tenga sentido, saltos de un nivel bajo a uno alto y relaciones transversales entre cajas del mismo nivel. Toda caja (salvo el objetivo final) debe contribuir al menos a otra.\n- Piensa en factores que se puedan medir con datos territoriales, económicos, sociales, ambientales y de medios/redes sociales.\n- Usa solo lo que el usuario describió y lo que razonablemente se desprende de ello.`;
+    const o = await _gmClaudeJson(system, user, 3000, 90000), ids = new Set();
+    const nodos = (Array.isArray(o.nodos) ? o.nodos : []).slice(0, 16).map((n, i) => ({ id: /^[\w-]{1,14}$/.test(String(n && n.id || "")) ? String(n.id) : "n" + (i + 1), t: S(n && n.t, 140), d: S(n && n.d, 500), niv: Math.max(0, Math.min(4, Math.round(+(n && n.niv)) || 0)) })).filter(n => n.t && !ids.has(n.id) && ids.add(n.id));
+    const rel = (Array.isArray(o.rel) ? o.rel : []).slice(0, 80).filter(a => Array.isArray(a) && ids.has(String(a[0])) && ids.has(String(a[1])) && String(a[0]) !== String(a[1])).map(a => [String(a[0]), String(a[1]), [1, 2, 3].includes(+a[2]) ? +a[2] : 2]);
+    if (nodos.length < 2) throw new Error("La IA no devolvió un mapa utilizable; inténtalo de nuevo");
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, nodos, rel });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// «Clasificar relevancia»: qué tan determinante es cada caja para lograr la caja a la que contribuye (3 alta · 2 media · 1 baja)
+app.post("/geometrika/mapa/relevancia", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, S = (x, n) => String(x == null ? "" : x).replace(/\s+/g, " ").trim().slice(0, n), ids = new Set();
+    const nodos = (Array.isArray(b.nodos) ? b.nodos : []).slice(0, 40).filter(n => n && /^[\w-]{1,14}$/.test(String(n.id || "")) && ids.add(String(n.id))).map(n => ({ id: String(n.id), t: S(n.t, 140), d: S(n.d, 300) }));
+    const ar = (Array.isArray(b.ar) ? b.ar : []).slice(0, 160).map(a => Array.isArray(a) && ids.has(String(a[0])) && ids.has(String(a[1])) ? [String(a[0]), String(a[1])] : null);
+    if (!nodos.length || !ar.some(Boolean)) return res.status(400).json({ ok: false, error: "El mapa no tiene relaciones que clasificar" });
+    const system = "Eres consultor de planeación estratégica. Evalúas, en un mapa de objetivos en cascada, qué tan determinante es cada subobjetivo para lograr el objetivo al que contribuye. Respondes únicamente con un objeto JSON válido, sin texto antes ni después.";
+    const user = `CONTEXTO DEL USUARIO: ${S(b.texto, 3000) || "no indicado"}\n\nCAJAS (id · título — descripción):\n${nodos.map(n => `${n.id} · ${n.t}${n.d ? " — " + n.d : ""}`).join("\n")}\n\nRELACIONES (número: la caja «de» contribuye a lograr la caja «a»):\n${ar.map((a, k) => a ? `${k + 1}: ${a[0]} → ${a[1]}` : "").filter(Boolean).join("\n")}\n\nDevuelve un JSON con esta forma exacta: {"r":{"<número de relación>":valor}}\nvalor: 3 = alta (sin esa caja difícilmente se logra la de arriba), 2 = media, 1 = baja (ayuda, pero no es decisiva). Compara entre sí las cajas que sostienen a una misma caja y usa los tres valores con criterio: no pongas todo en 3.`;
+    const o = await _gmClaudeJson(system, user, 1500, 90000);
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, r: ar.map((a, k) => { const x = +(o.r && o.r[String(k + 1)]); return a && [1, 2, 3].includes(x) ? x : 2; }) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// «Investigar datos disponibles»: de la biblioteca de datos (la manda el navegador, compacta) elige qué recursos aportan a cada caja
+app.post("/geometrika/mapa/datos", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, S = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
+    const nodos = (Array.isArray(b.nodos) ? b.nodos : []).slice(0, 40).filter(n => n && /^[\w-]{1,14}$/.test(String(n.id || ""))).map(n => ({ id: String(n.id), t: S(n.t, 140), d: S(n.d, 300) }));
+    const cat = (Array.isArray(b.cat) ? b.cat : []).slice(0, 700).map((c, i) => ({ k: i + 1, id: String(c && c.id || ""), n: S(c && c.n, 110), g: S(c && c.g, 60) })).filter(c => /^[if]:[\w.\-:]{1,120}$/.test(c.id) && c.n);
+    if (!nodos.length || !cat.length) return res.status(400).json({ ok: false, error: "Faltan las cajas del mapa o la biblioteca de datos" });
+    const system = "Eres analista de datos de un sistema de geointeligencia. Tu tarea es decidir qué recursos de la biblioteca de datos (indicadores, índices, variables y conjuntos de datos) aportan conocimiento útil para medir o sustentar cada objetivo de un mapa conceptual. Eres estricto: solo eliges recursos con relación clara. Respondes únicamente con un objeto JSON válido, sin texto antes ni después.";
+    const user = `OBJETIVOS DEL MAPA (id · título — descripción):\n${nodos.map(n => `${n.id} · ${n.t}${n.d ? " — " + n.d : ""}`).join("\n")}\n\nBIBLIOTECA DE DATOS (número | nombre | grupo):\n${cat.map(c => `${c.k} | ${c.n} | ${c.g}`).join("\n")}\n\nDevuelve un JSON con esta forma exacta: {"asig":{"<id del objetivo>":[números de recursos]}}\nReglas: de 0 a 6 recursos por objetivo, ordenados del más útil al menos útil; usa solo números que existan en la biblioteca; si ningún recurso aporta a un objetivo, deja su lista vacía; no repitas el mismo recurso en más de 3 objetivos.`;
+    const o = await _gmClaudeJson(system, user, 2500, 120000), porK = new Map(cat.map(c => [c.k, c.id])), asig = {};
+    nodos.forEach(n => { const L = o.asig && o.asig[n.id]; asig[n.id] = [...new Set((Array.isArray(L) ? L : []).map(k => porK.get(Math.round(+k))).filter(Boolean))].slice(0, 6); });
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, asig });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// objetivos del proyecto en dos niveles («categoría.subcategoría») y aspectos del entorno que pesan en la evaluación; de aquí salen los ponderadores de los indicadores
+const _gmObjSan = o => { if (!o || typeof o !== "object") return null; const s = [...new Set((Array.isArray(o.s) ? o.s : []).map(String).filter(x => /^[a-z]{2,5}\.[a-z]{2,5}$/.test(x)))].slice(0, 8), a = [...new Set((Array.isArray(o.a) ? o.a : []).map(String).filter(x => /^(amb|soc|coy)$/.test(x)))]; const c = /^[a-z]{2,5}$/.test(String(o.c || "")) ? String(o.c) : ""; return s.length || c ? { c, s, a } : null; };
 app.post("/geometrika/proyecto", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
-    const b = req.body || {}, perfil = String(b.perfil || "").slice(0, 80), nombre = String(b.nombre || "").trim().slice(0, 80), direccion = String(b.direccion || "").slice(0, 200), objetivo = String(b.objetivo || "").slice(0, 1000), lat = +b.lat, lng = +b.lng, radio = Math.round(+b.radio), dias = [...new Set((Array.isArray(b.dias) ? b.dias : []).map(Number))].filter(d => d >= 0 && d <= 6).sort((a, c) => (a || 7) - (c || 7)), horas = [...new Set((Array.isArray(b.horas) ? b.horas : []).map(Number))].filter(h => h >= 0 && h <= 23).sort((a, c) => a - c);
+    const b = req.body || {}, perfil = String(b.perfil || "").slice(0, 80), nombre = String(b.nombre || "").trim().slice(0, 80), direccion = String(b.direccion || "").slice(0, 200), objetivo = String(b.objetivo || "").slice(0, 4000), lat = +b.lat, lng = +b.lng, radio = Math.round(+b.radio), dias = [...new Set((Array.isArray(b.dias) ? b.dias : []).map(Number))].filter(d => d >= 0 && d <= 6).sort((a, c) => (a || 7) - (c || 7)), horas = [...new Set((Array.isArray(b.horas) ? b.horas : []).map(Number))].filter(h => h >= 0 && h <= 23).sort((a, c) => a - c);
     if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
     if (!(radio >= 50 && radio <= 600)) return res.status(400).json({ ok: false, error: "El radio de maqueta debe estar entre 50 y 600 m" });
     if (!dias.length || !horas.length) return res.status(400).json({ ok: false, error: "Elige al menos un día y una hora" });
@@ -13312,7 +13431,7 @@ app.post("/geometrika/proyecto", async (req, res) => {
     if (!vialidades.clases.length) return res.status(400).json({ ok: false, error: "Elige al menos una clasificación de vialidad" });
     const RV = b.redVial || {}, rp = Math.max(1000, Math.min(5000, Math.round(+RV.principales) || 3000)), redVial = { principales: rp, locales: Math.max(100, Math.min(rp, Math.round(+RV.locales) || 900)) };
     const okp = p => p && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180, puntos = (Array.isArray(b.puntos) ? b.puntos : []).filter(okp).slice(0, 10).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6, dir: String(p.dir || "").slice(0, 200) })), fotosExcluir = (() => { const X = b.fotosExcluir || {}, ids = a => (Array.isArray(a) ? a : []).map(v => String(v).replace(/[^A-Za-z0-9_|-]/g, "").slice(0, 70)).filter(Boolean); return { p: ids(X.p).slice(0, 300), f: ids(X.f).slice(0, 600), n: Math.max(0, Math.min(999, parseInt(X.n, 10) || 0)) }; })(), fotosManuales = (Array.isArray(b.fotosManuales) ? b.fotosManuales : []).filter(okp).slice(0, 60).map(p => ({ lat: Math.round(+p.lat * 1e6) / 1e6, lng: Math.round(+p.lng * 1e6) / 1e6, h: Math.round(((+p.h || 0) % 360 + 360) % 360) }));
-    const ed = /^9\d{13}$/.test(String(b.editarId || "")) ? String(b.editarId) : "", id = ed || "9" + Date.now(), doc = { id, ver: "gm-v1", nombre, puntos: puntos.length ? puntos : [{ lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, dir: direccion }], fotosModo: ["auto", "manual", "mixta"].includes(b.fotosModo) ? b.fotosModo : "auto", fotosManuales, fotosExcluir, fotos, vialidades, redVial, creado: new Date().toISOString(), estado: "borrador", perfil, objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length, opciones };
+    const ed = /^9\d{13}$/.test(String(b.editarId || "")) ? String(b.editarId) : "", id = ed || "9" + Date.now(), doc = { id, ver: "gm-v1", nombre, puntos: puntos.length ? puntos : [{ lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, dir: direccion }], fotosModo: ["auto", "manual", "mixta"].includes(b.fotosModo) ? b.fotosModo : "auto", fotosManuales, fotosExcluir, fotos, vialidades, redVial, creado: new Date().toISOString(), estado: "borrador", perfil, obj: _gmObjSan(b.obj), mapa: _gmMapaSan(b.mapa), objetivo: objetivo.trim(), direccion, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radio, dias, horas, red: "openstreetmap", franjas: dias.length * horas.length, opciones };
     if (ed) {   // EDITAR: se actualizan los parámetros y solo se vuelven a procesar las etapas indicadas en «invalidar» (formato «punto:etapa», p. ej. «0:traf»)
       const { data: O } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!O) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
       if (_gmJob.running && Date.now() - Date.parse(_gmJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Hay un análisis en curso; espera a que termine para aplicar los cambios" });
@@ -13326,6 +13445,24 @@ app.post("/geometrika/proyecto", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// cambia solo el objetivo del proyecto (desde DataLab › Ponderadores); no toca el análisis ni vuelve a procesar nada
+app.post("/geometrika/proyecto/objetivo", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
+    const obj = _gmObjSan(b.obj), perfil = String(b.perfil || "").trim().slice(0, 80); if (!obj || !perfil) return res.status(400).json({ ok: false, error: "Objetivo no válido" });
+    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
+    P.obj = obj; P.perfil = perfil; await _bnWriteGcs(`geometrika/proyectos/${id}.json`, P, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, perfil, obj });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+// pesos y sentidos de los ponderadores que la persona ajustó en DataLab › Ponderadores (se guardan en el proyecto para verlos desde cualquier equipo)
+app.post("/geometrika/proyecto/ponderadores", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
+    const ok = k => /^[cei]:[\w:.\-]{1,90}$/.test(k), w = {}, s = {};
+    Object.keys(b.w && typeof b.w === "object" ? b.w : {}).slice(0, 800).forEach(k => { const v = +b.w[k]; if (ok(k) && Number.isFinite(v) && v >= 0 && v <= 100) w[k] = Math.round(v * 100) / 100; });
+    Object.keys(b.s && typeof b.s === "object" ? b.s : {}).slice(0, 800).forEach(k => { if (ok(k) && +b.s[k] === -1) s[k] = -1; });
+    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
+    P.pond = { w, s, at: new Date().toISOString() }; await _bnWriteGcs(`geometrika/proyectos/${id}.json`, P, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, pond: P.pond });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/geometrika/proyecto", async (req, res) => {   // proyecto completo (para editarlo)
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try { const id = String(req.query.id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
@@ -13348,6 +13485,26 @@ app.post("/geometrika/resumen", async (req, res) => {
     const txt = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim(), parrafos = txt.split(/\n\s*\n/).map(t => t.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 2);
     if (!parrafos.length) throw new Error("Respuesta vacía");
     res.json({ ok: true, perfil, objetivo, parrafos });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ── Evaluación del proyecto › Balanced Scorecard: análisis con IA de cómo los índices por entorno aportan al objetivo (a pedido, desde DataLab) ──
+app.post("/geometrika/evaluacion-ia", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const b = req.body || {}, S = (v, n) => String(v == null ? "" : v).replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().slice(0, n), N = v => (Number.isFinite(+v) ? Math.round(+v * 10) / 10 : null);
+    const nom = S(b.nombre, 120), obj = S(b.objetivo, 200), per = (Array.isArray(b.perspectivas) ? b.perspectivas : []).slice(0, 8);
+    if (!per.length) return res.status(400).json({ ok: false, error: "Sin datos de evaluación" });
+    let desc = ""; { let id = String(b.id || "").replace(/\D/g, ""); if (/^9\d{14}$/.test(id)) id = id.slice(0, 14); if (/^9\d{13}$/.test(id)) { const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`).catch(() => ({})); if (P) desc = S(P.objetivo, 600); } }
+    const K = v => (/^[\w:.\-]{1,90}$/.test(String(v || "")) ? String(v) : ""); const lin = per.map(p => `## [${K(p.k)}] ${S(p.n, 60)} — índice ${N(p.idx)} de 100 · aporta ${N(p.ap)} puntos al índice global\n` + (Array.isArray(p.an) ? p.an : []).slice(0, 10).map(a => `- [${K(a.k)}] ${S(a.n, 70)}: puntaje ${N(a.sc)} · pesa ${N(a.w)} % del índice global · aporta ${N(a.ap)} pts` + ((Array.isArray(a.ind) ? a.ind : []).length ? "\n" + a.ind.slice(0, 8).map(i => `    · [${S(i.s, 12)}] ${S(i.n, 80)}: ${S(i.v, 40)}`).join("\n") : "")).join("\n")).join("\n\n");
+    const system = "Eres analista senior de geointeligencia y planeación estratégica. Redactas en español de México, tono ejecutivo, claro y sobrio. Solo puedes usar los datos que se te entregan: no inventes cifras, nombres ni hechos. El puntaje de cada índice va de 0 (desfavorable) a 100 (favorable); los semáforos son alerta (negativo), atención (a vigilar), favorable e informativo. Respondes únicamente con un objeto JSON válido, sin texto antes ni después.";
+    const user = `PROYECTO: ${nom}\nOBJETIVO DEL PROYECTO: ${obj || "no indicado"}\nDESCRIPCIÓN DEL USUARIO: ${desc || "no indicada"}\nÍNDICE GLOBAL: ${N(b.global)} de 100\n\nTABLERO POR ENTORNO DE INFLUENCIA (del más inmediato al más amplio, más medio ambiente y entorno digital):\n${lin}\n\nDevuelve un JSON con esta forma exacta:\n{"hallazgos":["…"],"riesgos":["…"],"oportunidades":["…"],"aporte":"…","entornos":[{"k":"clave","t":"…"}],"indices":[{"k":"clave","t":"…"}]}\n- hallazgos: de 3 a 4 hallazgos principales, cada uno de 1 o 2 oraciones, citando el índice o indicador y su valor real.\n- riesgos: de 2 a 3 riesgos concretos para ESTE objetivo, con el dato que los respalda.\n- oportunidades: de 2 a 3 oportunidades concretas para ESTE objetivo, con el dato que las respalda.\n- aporte: un párrafo de 3 a 4 oraciones que explique cómo los índices de cada entorno suman o restan al objetivo del proyecto y cuál es el siguiente paso recomendado.\n- entornos: un elemento por cada entorno (su clave es la que aparece entre corchetes en el título «##»), con 2 oraciones sobre cómo ese entorno suma o resta a ESTE objetivo y por qué, citando sus índices.\n- indices: un elemento por cada índice (su clave es la que aparece entre corchetes al inicio de su renglón), con 2 o 3 oraciones específicas: qué dicen sus indicadores y valores reales, y cómo eso ayuda o perjudica a ESTE objetivo en concreto. No repitas frases genéricas ni la misma redacción entre índices.\nSi un dato clave no está disponible, dilo en lugar de suponerlo.`;
+    const call = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: _CL_MODELO, max_tokens: 6000, thinking: { type: "disabled" }, system, messages: [{ role: "user", content: user }] }), signal: AbortSignal.timeout(150000) });
+    const j = await call.json(); if (!call.ok) throw new Error(`Claude ${call.status}: ${(j.error && j.error.message) || ""}`);
+    const txt = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim(), m = txt.match(/\{[\s\S]*\}/); let o = null; try { o = JSON.parse(m ? m[0] : txt); } catch (_) { }
+    if (!o) throw new Error("La respuesta no vino en el formato esperado; inténtalo de nuevo");
+    const L = (v, n) => (Array.isArray(v) ? v : []).map(x => S(x, 600)).filter(Boolean).slice(0, n);
+    const M = v => { const m = {}; (Array.isArray(v) ? v : []).slice(0, 60).forEach(x => { const k = K(x && x.k), tx = S(x && x.t, 700); if (k && tx) m[k] = tx; }); return m; };
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, hallazgos: L(o.hallazgos, 5), riesgos: L(o.riesgos, 4), oportunidades: L(o.oportunidades, 4), aporte: S(o.aporte, 1600), entornos: M(o.entornos), indices: M(o.indices) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Data Lab · indicadores creados con ayuda de IA (protegido por la contraseña de GeoMetrika, como todo /geometrika). Se guardan en gs://…/datalab/indicadores.json.
@@ -13517,6 +13674,21 @@ app.post("/geometrika/datalab/indicadores/publicar", async (req, res) => {
     const id = _dlT((req.body || {}).id, 80), pub = !!(req.body || {}).publicado; if (!id) return res.status(400).json({ ok: false, error: "Falta el indicador." }); let err = null, item = null;
     await _dlMut(d => { const it = (d.items || []).find(x => x.id === id); if (!it) { err = "No existe ese indicador."; return; } if (pub && !(it.calculable && _dlCalculable(_dlReceta(it.receta), it.unidad))) { err = "Todavía no se puede publicar: Geo Lab aún no sabe calcularlo (falta una receta válida y la unidad radio o manzana)."; return; } if (pub && (d.items || []).filter(x => x.publicado).length >= 12 && !it.publicado) { err = "Ya hay 12 indicadores publicados (máximo)."; return; } it.publicado = pub; it.publicadoEn = pub ? new Date().toISOString() : null; item = it; });
     if (err) return res.status(400).json({ ok: false, error: err }); res.json({ ok: true, item });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ── Data Lab · gráficas oficiales de cada indicador: las que un administrador validó para mostrarse en los demás sistemas. Se guardan en gs://…/datalab/graficas.json como { "<enfoque>:<indicador>": ["linea", "barras", …] }.
+const _DL_GRAF_OBJ = "datalab/graficas.json", _DL_GRAF_TIPOS = ["linea", "area", "barras", "signo", "spark", "heat", "box", "gauge", "barra", "escala", "pasos", "dona", "rank", "apiladas", "radar", "rosa", "piramide", "treemap"];
+let _dlGrafQ = Promise.resolve();
+app.get("/geometrika/datalab/graficas", async (req, res) => {
+  try { const d = (await _rhdGetJson(_DL_GRAF_OBJ)) || {}; res.set("Cache-Control", "no-store"); res.json({ ok: true, graficas: d.graficas || {}, nivel: _gmNivel(req) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/geometrika/datalab/graficas", async (req, res) => {
+  try {
+    if (_gmNivel(req) < 2) return res.status(403).json({ ok: false, admin: true, error: "Solo un administrador puede validar gráficas. Cierra sesión y entra con la contraseña de administrador." });
+    const k = String((req.body || {}).k || "").slice(0, 120); if (!/^[A-Za-z0-9_.:-]{3,120}$/.test(k)) return res.status(400).json({ ok: false, error: "Indicador no válido." });
+    const tipos = [...new Set((Array.isArray((req.body || {}).tipos) ? req.body.tipos : []).map(String).filter(x => _DL_GRAF_TIPOS.includes(x)))].slice(0, 8);
+    const run = _dlGrafQ.then(async () => { const d = (await _rhdGetJson(_DL_GRAF_OBJ)) || {}; d.graficas = d.graficas && typeof d.graficas === "object" ? d.graficas : {}; if (tipos.length) d.graficas[k] = tipos; else delete d.graficas[k]; d.actualizado = new Date().toISOString(); await _rhdPut(_DL_GRAF_OBJ, JSON.stringify(d), "application/json"); return d.graficas; });
+    _dlGrafQ = run.catch(() => { }); const graficas = await run; res.json({ ok: true, k, tipos, total: Object.keys(graficas).length });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Análisis del proyecto GeoMetrika: encadena fotos de calle (Street View + IA) → maqueta → tráfico, reutilizando los procesos de Alojamientos por id numérico ──
