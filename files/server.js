@@ -15907,6 +15907,33 @@ app.get("/mercado/maqueta/crecimiento/img", async (req, res) => {
     res.set({ "Content-Type": "image/png", "Cache-Control": "private, max-age=3600" }); res.send(PNG.sync.write(png, { colorType: 6 }));
   } catch (e) { res.status(500).end(); }
 });
+// ── Historial de indicadores por proyecto: cada lectura distinta de un indicador queda guardada como una versión, para que el proyecto siempre tenga
+//    información aunque la consulta en vivo falle o la fuente deje de publicar el dato. geometrika/indhist/<id>.json = { ind: { "<enfoque>:<indicador>": { v: [{at,val,unit,sem,msg}], viz } } }
+const _IH_MAX = 100, _IH_SEM = ["ok", "warn", "bad", "info"], _ihQ = new Map();
+const _ihObj = id => `geometrika/indhist/${id}.json`, _ihId = v => { const s = String(v || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48); return s.length >= 1 ? s : ""; };
+app.get("/mercado/maqueta/indhist", async (req, res) => {
+  try { const id = _ihId(req.query.id); if (!id) return res.status(400).json({ ok: false, error: "Falta el proyecto." }); const { data } = await _bnReadGcs(_ihObj(id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, ind: (data && data.ind) || {} }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/mercado/maqueta/indhist", async (req, res) => {
+  try {
+    const b = req.body || {}, id = _ihId(b.id), E = b.ind && typeof b.ind === "object" ? Object.entries(b.ind).slice(0, 200) : []; if (!id || !E.length) return res.status(400).json({ ok: false, error: "Datos no válidos." });
+    const T = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").slice(0, n), at = new Date().toISOString();
+    const run = (_ihQ.get(id) || Promise.resolve()).then(async () => {
+      const d = (await _bnReadGcs(_ihObj(id))).data || {}; d.ind = d.ind && typeof d.ind === "object" ? d.ind : {}; let n = 0;
+      for (const [k, r] of E) {
+        if (!/^[A-Za-z0-9_]{1,24}:[A-Za-z0-9_.-]{1,60}$/.test(k) || !r || !_IH_SEM.includes(r.sem)) continue;
+        const v = { at, val: T(r.val, 400), unit: T(r.unit, 80), sem: r.sem, msg: T(r.msg, 600) }; if (!v.val.replace(/<[^>]*>/g, "").trim() || v.val === "—") continue;
+        const o = d.ind[k] && Array.isArray(d.ind[k].v) ? d.ind[k] : (d.ind[k] = { v: [] }), u = o.v[o.v.length - 1];
+        if (r.viz != null) o.viz = T(r.viz, 6000);   /* solo se conserva el dibujo de la versión más reciente */
+        if (u && u.val === v.val && u.unit === v.unit && u.msg === v.msg) { u.visto = at; continue; }   /* misma lectura: solo se anota cuándo se volvió a ver */
+        o.v.push(v); if (o.v.length > _IH_MAX) o.v.splice(0, o.v.length - _IH_MAX); n++;
+      }
+      d.actualizado = at; await _bnWriteGcs(_ihObj(id), d, null); return n;
+    });
+    _ihQ.set(id, run.catch(() => { })); if (_ihQ.size > 400) _ihQ.clear(); const n = await run; res.json({ ok: true, nuevas: n, at });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ═══ Mercado Libre Inmuebles (Extracción › Mercado Libre) ═══════════════════════════════════════════════════════════════════════════════════════════
 //   Paso 0 parámetros (tipos, clasificaciones, ubicaciones) · paso 1 lista (recorre las páginas de resultados) · paso 2 extraer (lee la ficha de cada seleccionada).
 //   A diferencia de Facebook, Mercado Libre sí responde al servidor: no hace falta marcador. Se leen las páginas con pausas aleatorias (modo cortés).
