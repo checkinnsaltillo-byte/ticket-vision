@@ -12,7 +12,7 @@ global.window = {}; require(path.join(DL, "datalab-indicadores.js")); const CAT 
 fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
 const ex = f => fs.existsSync(path.join(SRC, f)), cp = f => fs.copyFileSync(path.join(SRC, f), path.join(OUT, f)), js = f => ex(f) ? JSON.parse(fs.readFileSync(path.join(SRC, f), "utf8")) : null;
 cp("maqueta.css"); fs.copyFileSync(path.join(__dirname, "replica.css"), path.join(OUT, "replica.css"));
-const mi = js("meta-ind.json") || { w: 368 }, G = { w: mi.w || 368, proy: "Tec de Mty", tabs: {}, ind: {} }; let nr = 0, nk = 0, nc = 0, na = 0;
+const mi = js("meta-ind.json") || { w: 368 }, G = { w: mi.w || 368, v: Date.now().toString(36), proy: "Tec de Mty", tabs: {}, ind: {} }; let nr = 0, nk = 0, nc = 0, na = 0;
 for (const [t, [enf, ids]] of Object.entries(T)) {
   if (!ex("res-" + t + ".html")) { console.log("sin resultados:", t); continue; } cp("res-" + t + ".html"); nr++;
   const m = js("meta-" + t + ".json") || {}, aux = [...(m.aux || []), ...(js("leg-" + t + ".json") || [])].filter(a => ex(a.f)).map(a => { cp(a.f); na++; return { f: a.f, w: a.w, h: a.h, t: (a.t || "").replace(/\s*▾ ✕ ⧉.*$/, "").replace(/\s+\d[\d ,.]*$/, "").trim(), k: a.id === "pob-box" ? "v" : "l" }; });
