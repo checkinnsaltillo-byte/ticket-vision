@@ -13677,18 +13677,69 @@ app.post("/geometrika/datalab/indicadores/publicar", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Data Lab · gráficas oficiales de cada indicador: las que un administrador validó para mostrarse en los demás sistemas. Se guardan en gs://…/datalab/graficas.json como { "<enfoque>:<indicador>": ["linea", "barras", …] }.
-const _DL_GRAF_OBJ = "datalab/graficas.json", _DL_GRAF_TIPOS = ["linea", "area", "barras", "signo", "spark", "heat", "box", "gauge", "barra", "escala", "pasos", "dona", "rank", "apiladas", "radar", "rosa", "piramide", "treemap"];
+const _DL_GRAF_OBJ = "datalab/graficas.json", _DL_GRAF_TIPOS = ["linea", "area", "barras", "signo", "spark", "heat", "box", "gauge", "barra", "escala", "pasos", "dona", "rank", "apiladas", "radar", "rosa", "piramide", "treemap", "w-medidor", "w-numero", "w-tendencia", "w-comparacion", "w-semaforo", "m-spark", "m-barra", "m-numero", "m-pastilla"];
 let _dlGrafQ = Promise.resolve();
 app.get("/geometrika/datalab/graficas", async (req, res) => {
-  try { const d = (await _rhdGetJson(_DL_GRAF_OBJ)) || {}; res.set("Cache-Control", "no-store"); res.json({ ok: true, graficas: d.graficas || {}, nivel: _gmNivel(req) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  try { const d = (await _rhdGetJson(_DL_GRAF_OBJ)) || {}; res.set("Cache-Control", "no-store"); res.json({ ok: true, graficas: d.graficas || {}, disenos: d.disenos || {}, nivel: _gmNivel(req) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post("/geometrika/datalab/graficas", async (req, res) => {
   try {
     if (_gmNivel(req) < 2) return res.status(403).json({ ok: false, admin: true, error: "Solo un administrador puede validar gráficas. Cierra sesión y entra con la contraseña de administrador." });
     const k = String((req.body || {}).k || "").slice(0, 120); if (!/^[A-Za-z0-9_.:-]{3,120}$/.test(k)) return res.status(400).json({ ok: false, error: "Indicador no válido." });
-    const tipos = [...new Set((Array.isArray((req.body || {}).tipos) ? req.body.tipos : []).map(String).filter(x => _DL_GRAF_TIPOS.includes(x)))].slice(0, 8);
+    const tipos = [...new Set((Array.isArray((req.body || {}).tipos) ? req.body.tipos : []).map(String).filter(x => _DL_GRAF_TIPOS.includes(x)))].slice(0, 16);
     const run = _dlGrafQ.then(async () => { const d = (await _rhdGetJson(_DL_GRAF_OBJ)) || {}; d.graficas = d.graficas && typeof d.graficas === "object" ? d.graficas : {}; if (tipos.length) d.graficas[k] = tipos; else delete d.graficas[k]; d.actualizado = new Date().toISOString(); await _rhdPut(_DL_GRAF_OBJ, JSON.stringify(d), "application/json"); return d.graficas; });
     _dlGrafQ = run.catch(() => { }); const graficas = await run; res.json({ ok: true, k, tipos, total: Object.keys(graficas).length });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ── Data Lab · diseño de cada gráfica (color, grosor, promedio, etc.). Lo propone la IA a partir de una instrucción y se guarda junto a las gráficas oficiales: { disenos: { "<indicador>": { "<tipo>": {…} } } }.
+// El diseño es solo configuración (lista cerrada de claves): la IA nunca devuelve código.
+function _dlDiseno(o) {
+  if (!o || typeof o !== "object") return null; const d = {};
+  ["color", "color2"].forEach(k => { if (/^#[0-9a-fA-F]{6}$/.test(String(o[k] || ""))) d[k] = String(o[k]).toLowerCase(); });
+  if (["claro", "oscuro"].includes(o.fondo)) d.fondo = o.fondo; if (["asc", "desc"].includes(o.orden)) d.orden = o.orden;
+  ["suave", "relleno", "puntos", "promedio", "extremos", "valores", "cero", "cuadricula"].forEach(k => { if (typeof o[k] === "boolean") d[k] = o[k]; });
+  [["grosor", 1, 6, 0], ["n", 6, 240, 1], ["decimales", 0, 4, 1], ["radio", 0, 10, 1], ["top", 3, 15, 1]].forEach(([k, lo, hi, ent]) => { const v = +o[k]; if (o[k] != null && o[k] !== "" && isFinite(v)) d[k] = Math.max(lo, Math.min(hi, ent ? Math.round(v) : Math.round(v * 10) / 10)); });
+  const ti = _dlT(o.titulo, 80), no = _dlT(o.nota, 160); if (ti) d.titulo = ti; if (no) d.nota = no;
+  return Object.keys(d).length ? d : null;
+}
+app.post("/geometrika/datalab/graficas/disenar", async (req, res) => {
+  try {
+    if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ ok: false, error: "Falta configurar la IA en el servidor." });
+    const b = req.body || {}, tipo = String(b.tipo || ""), ins = _dlT(b.instrucciones, 600); if (!_DL_GRAF_TIPOS.includes(tipo) || ins.length < 3) return res.status(400).json({ ok: false, error: "Escribe qué quieres cambiar de la gráfica." });
+    const ahora = Date.now(); _dlIA = _dlIA.filter(t => ahora - t < 3600e3); if (_dlIA.length >= 40) return res.status(429).json({ ok: false, error: "Se alcanzó el tope de consultas a la IA por hora. Intenta más tarde." }); _dlIA.push(ahora);
+    const actual = _dlDiseno(b.actual) || {}, cx = b.ctx || {};
+    const system = `Eres diseñador de visualización de datos. Recibes una gráfica (su tipo, el indicador, la unidad y rasgos de los datos), su diseño actual en JSON y una instrucción del usuario en español.
+Devuelve SOLO un objeto JSON, sin texto alrededor: {"diseno": {…}, "explicacion": "una frase corta en español que diga qué cambiaste"}.
+"diseno" es el diseño COMPLETO resultante y solo puede tener estas claves opcionales:
+- color: "#rrggbb" color principal · color2: "#rrggbb" color secundario (valores negativos o elemento resaltado)
+- fondo: "claro" | "oscuro"
+- grosor: 1 a 6 (línea) · radio: 0 a 10 (redondeo de las barras)
+- suave: true/false (curva suavizada) · relleno: true/false (área bajo la línea) · puntos: true/false (un punto en cada dato)
+- promedio: true/false (línea de promedio) · extremos: true/false (marcar máximo y mínimo) · valores: true/false (etiquetas con el valor)
+- cero: true/false (eje vertical desde cero) · cuadricula: true/false
+- n: 6 a 240 (cuántos datos recientes mostrar) · decimales: 0 a 4
+- top: 3 a 15 (cuántos lugares en la gráfica de comparación) · orden: "asc" | "desc"
+- titulo: texto de hasta 80 caracteres · nota: texto de hasta 160 caracteres al pie
+Parte del diseño actual y cambia solo lo que pide la instrucción; conserva lo demás. No inventes claves. Cuida el contraste y la legibilidad (con fondo oscuro usa colores claros o vivos).
+Si piden algo que estas claves no permiten (otro tipo de gráfica, otros datos, formas especiales), acércate lo más posible con las claves disponibles y dilo en "explicacion".`;
+    const user = `Gráfica: ${tipo}\nIndicador: ${_dlT(cx.nombre, 160)}\nUnidad: ${_dlT(cx.unidad, 60)}\nDatos: ${_dlT(cx.datos, 200)}\nDiseño actual: ${JSON.stringify(actual)}\nInstrucción del usuario: ${ins}`;
+    let j = null, err = null;
+    for (let k = 0; k < 2 && !j; k++) {
+      const call = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: _CL_MODELO, max_tokens: 700, thinking: { type: "disabled" }, system, messages: [{ role: "user", content: user }] }), signal: AbortSignal.timeout(45000) }).catch(e => { err = e; return null; });
+      if (!call) continue; const r = await call.json().catch(() => ({})); if (!call.ok) { err = new Error(`IA ${call.status}: ${(r.error && r.error.message) || ""}`); if ([429, 500, 529].includes(call.status)) { await new Promise(z => setTimeout(z, 2000)); continue; } break; } j = r;
+    }
+    if (!j) throw err || new Error("La IA no respondió. Intenta de nuevo.");
+    const txt = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim(), a = txt.indexOf("{"), z = txt.lastIndexOf("}"); let o; try { o = JSON.parse(txt.slice(a, z + 1)); } catch (_) { throw new Error("La IA devolvió una respuesta que no se pudo leer. Intenta de nuevo."); }
+    res.json({ ok: true, diseno: _dlDiseno(o.diseno) || {}, explicacion: _dlT(o.explicacion, 300) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/geometrika/datalab/graficas/diseno", async (req, res) => {
+  try {
+    if (_gmNivel(req) < 2) return res.status(403).json({ ok: false, admin: true, error: "Solo un administrador puede guardar el diseño de una gráfica." });
+    const b = req.body || {}, k = String(b.k || "").slice(0, 120), tipo = String(b.tipo || ""); if (!/^[A-Za-z0-9_.:-]{3,120}$/.test(k) || !_DL_GRAF_TIPOS.includes(tipo)) return res.status(400).json({ ok: false, error: "Datos no válidos." });
+    const dis = _dlDiseno(b.diseno);
+    const run = _dlGrafQ.then(async () => { const d = (await _rhdGetJson(_DL_GRAF_OBJ)) || {}; d.disenos = d.disenos && typeof d.disenos === "object" ? d.disenos : {}; const x = d.disenos[k] && typeof d.disenos[k] === "object" ? d.disenos[k] : {}; if (dis) x[tipo] = dis; else delete x[tipo]; if (Object.keys(x).length) d.disenos[k] = x; else delete d.disenos[k]; d.actualizado = new Date().toISOString(); await _rhdPut(_DL_GRAF_OBJ, JSON.stringify(d), "application/json"); });
+    _dlGrafQ = run.catch(() => { }); await run; res.json({ ok: true, k, tipo, diseno: dis });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Análisis del proyecto GeoMetrika: encadena fotos de calle (Street View + IA) → maqueta → tráfico, reutilizando los procesos de Alojamientos por id numérico ──
