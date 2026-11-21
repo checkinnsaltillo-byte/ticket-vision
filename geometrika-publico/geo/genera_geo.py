@@ -100,6 +100,7 @@ for _k in list(EU) :
     W['eu:' + _k] = ('G', 'Los datos de INEGI (entorno urbano por frente de manzana) ya están guardados; al abrir se recortan los del sitio.')
 out = {}; falta = []
 for c in cat:
+    if c['id'] in ('med', 'ecl'): continue   # MediaLab y EconoLab: se muestran en el panel pero no tienen tarjeta capturada; Data Lab los describe por su cuenta
     for e in c['an']:
         for i in e['ind']:
             k = e['id'] + ':' + i['id']; lk = 'aire:aire' if k == 'met:aire' else k
