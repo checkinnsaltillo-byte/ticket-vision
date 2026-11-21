@@ -14,16 +14,24 @@ node --check "$OUT/geometrika.js"
 c=$(grep -n 'MÓDULO GeoMetrika' "$TV/styles.css" | head -1 | cut -d: -f1)
 tail -n +$c "$TV/styles.css" > "$OUT/geometrika.css"
 cp "$TV/geometrika-logo.png" "$OUT/geometrika-logo.png"; cp "$TV/geometrika-logo-claro.png" "$OUT/geometrika-logo-claro.png"
+cp "$TV/metrika-logo.png" "$OUT/metrika-logo.png"; cp "$TV/econolab-logo.png" "$OUT/econolab-logo.png"
 # Data Lab: pantalla, estilos, inventario de fuentes y logos (la versión de caché sale de su contenido)
 DL="$TV/geometrika-publico"
 # el catálogo de indicadores se regenera desde la definición de Geo Lab (si falla, se conserva el último)
 node "$DL/extrae_indicadores.js" "$TV/maqueta/entorno.html" "$DL/datalab-indicadores.js.nuevo" && mv "$DL/datalab-indicadores.js.nuevo" "$DL/datalab-indicadores.js" || { rm -f "$DL/datalab-indicadores.js.nuevo"; echo "aviso: no se pudo regenerar el catálogo de indicadores; se usa el anterior"; }
-DLV=$(cat "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-geo.js" "$TV/datalab-logo.png" | shasum -a 256 | cut -c1-8)
-node --check "$DL/datalab.js"; node --check "$DL/datalab-fuentes.js"; node --check "$DL/datalab-indicadores.js"; node --check "$DL/datalab-geo.js"
-cp "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-geo.js" "$OUT/"; cp "$TV/datalab-logo.png" "$TV/datalab-logo-claro.png" "$OUT/"
+# series del INEGI (BIE/BISE) como indicadores y fuentes de Data Lab (se toma el ecolab-datos.js más reciente)
+node "$DL/extrae_inegi.js" "$DL/datalab-inegi.js.nuevo" "$DL/ecolab-datos.js" "$OUT/ecolab-datos.js" && mv "$DL/datalab-inegi.js.nuevo" "$DL/datalab-inegi.js" || { rm -f "$DL/datalab-inegi.js.nuevo"; echo "aviso: no se pudo regenerar el catálogo INEGI; se usa el anterior"; }
+DLV=$(cat "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-inegi.js" "$DL/datalab-geo.js" "$TV/datalab-logo.png" | shasum -a 256 | cut -c1-8)
+node --check "$DL/datalab.js"; node --check "$DL/datalab-fuentes.js"; node --check "$DL/datalab-indicadores.js"; node --check "$DL/datalab-inegi.js"; node --check "$DL/datalab-geo.js"
+cp "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-inegi.js" "$DL/datalab-geo.js" "$OUT/"; cp "$TV/datalab-logo.png" "$TV/datalab-logo-claro.png" "$OUT/"; mkdir -p "$OUT/geo-vis"; cp "$DL"/geo/vis/*.jpg "$OUT/geo-vis/"
+# Media Lab: monitor masivo de noticias (la versión de caché sale de su contenido)
+MLV=$(cat "$DL/medialab.js" "$DL/medialab.css" "$TV/medialab-logo.png" | shasum -a 256 | cut -c1-8)
+node --check "$DL/medialab.js"; cp "$DL/medialab.js" "$DL/medialab.css" "$OUT/"; cp "$TV/medialab-logo.png" "$OUT/medialab-logo.png"
 # EcoLab: tablero económico (datos descargados con ecolab-descarga.js)
-ECV=$(cat "$DL/ecolab.js" "$DL/ecolab.css" "$DL/ecolab-datos.js" | shasum -a 256 | cut -c1-8)
+ECV=$(cat "$DL/ecolab.js" "$DL/ecolab.css" | shasum -a 256 | cut -c1-8)
 node --check "$DL/ecolab.js"; node --check "$DL/ecolab-datos.js"
-cp "$DL/ecolab.js" "$DL/ecolab.css" "$DL/ecolab-datos.js" "$OUT/"
-sed "s/__V__/$V/g; s/__EC__/$ECV/g; s/__DL__/$DLV/g; s/__HASH2__/$HASH2/g; s/__HASH__/$HASH/g" "$TV/geometrika-publico/index.template.html" > "$OUT/index.html"
+cp "$DL/ecolab.js" "$DL/ecolab.css" "$OUT/"
+# los datos los actualiza solos el servidor cada mes (commit en Check in): no pisar una versión publicada más reciente
+if node -e 'const f=p=>{try{const w={};new Function("window",require("fs").readFileSync(p,"utf8"))(w);return w.ECO_DATA.generado||""}catch(_){return ""}};process.exit(f(process.argv[1])>f(process.argv[2])?0:1)' "$DL/ecolab-datos.js" "$OUT/ecolab-datos.js"; then cp "$DL/ecolab-datos.js" "$OUT/ecolab-datos.js"; else echo "ecolab-datos.js: se conserva la versión publicada (más reciente)"; fi
+sed "s/__V__/$V/g; s/__EC__/$ECV/g; s/__ML__/$MLV/g; s/__DL__/$DLV/g; s/__HASH2__/$HASH2/g; s/__HASH__/$HASH/g" "$TV/geometrika-publico/index.template.html" > "$OUT/index.html"
 echo "generado en $OUT (v=$V, datalab=$DLV)"
