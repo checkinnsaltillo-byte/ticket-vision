@@ -55,7 +55,10 @@ function indDe(n, env, prof) {   // indicador a partir de un objeto literal o de
   if (!n || (prof = prof || 0) > 8) return null;
   if (n.type === "ObjectExpression") return prop(n, "id") ? { id: propL(n, "id", env), n: propL(n, "n", env), tipo: propL(n, "tipo", env), d: propL(n, "d", env), u: propL(n, "u", env), m: propL(n, "m", env), f: propL(n, "f", env), vars: [] } : null;
   if (n.type === "CallExpression" && n.callee.type === "Identifier") { const fn = decl[n.callee.name]; if (!fn || fn.type !== "ArrowFunctionExpression" || fn.body.type === "BlockStatement") return null;
-    const e2 = {}; fn.params.forEach((p, k) => { if (p.type === "Identifier") e2[p.name] = { n: n.arguments[k] || null, env }; }); return indDe(fn.body, e2, prof + 1); }
+    const e2 = {}; fn.params.forEach((p, k) => { if (p.type === "Identifier") e2[p.name] = { n: n.arguments[k] || null, env }; }); const r = indDe(fn.body, e2, prof + 1);
+    // serie de EconoLab de la que sale el dato (ecNac = nacional, ecEst = por estado, ecLoc = por ciudad): Data Lab la usa para la vista previa
+    if (r) n.arguments.forEach(a => { const t = a && a.type === "CallExpression" && a.callee.type === "Identifier" && { ecNac: "nac", ecEst: "est", ecLoc: "ciu" }[a.callee.name]; if (t && a.arguments[0] && a.arguments[0].type === "Literal") r.s = [t, String(a.arguments[0].value)]; });
+    return r; }
   return null;
 }
 function indsDe(n, env, prof) {   // lista de indicadores; null si no se puede resolver sin datos
@@ -80,5 +83,6 @@ const cats = RET.elements.map(c => { const id = str(prop(c, "id")), an = enfDe(p
 const nInd = cats.reduce((a, c) => a + c.an.reduce((b, e) => b + e.ind.length, 0), 0), sinVars = [];
 cats.forEach(c => c.an.forEach(e => e.ind.forEach(i => { if (!i.vars.length) sinVars.push(i.id); })));
 console.log("categorías", cats.length, "· enfoques", cats.reduce((a, c) => a + c.an.length, 0), "· indicadores", nInd, "· sin variables:", sinVars.join(",") || "ninguno", "· textos dinámicos:", dinam);
+const ciu = {}; try { const m = txt.match(/const ECO_CIU = (\[\[[\s\S]*?\]\]);/); if (m) JSON.parse(m[1]).forEach(c => { ciu[c[0]] = c[1]; }); } catch (_) { }
 const nArr = Object.values(arrays).reduce((a, l) => a + l.length, 0); console.log("indicadores hallados en push:", nArr);
-fs.writeFileSync(out, "/* Catálogo de indicadores de Geo Lab (sin datos). Generado por extrae_indicadores.js a partir de maqueta/entorno.html; no editar a mano. */\nwindow.DL_INDICADORES = " + JSON.stringify(cats, null, 0) + ";\n");
+fs.writeFileSync(out, "/* Catálogo de indicadores de Geo Lab (sin datos). Generado por extrae_indicadores.js a partir de maqueta/entorno.html; no editar a mano. */\nwindow.DL_INDICADORES = " + JSON.stringify(cats, null, 0) + ";\n/* ciudades con datos de empleo (ENOE): clave → nombre */\nwindow.DL_ECO_CIU = " + JSON.stringify(ciu) + ";\n");
