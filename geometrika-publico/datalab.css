@@ -278,3 +278,125 @@
 @media (max-width:720px){.dl-geo-b .dl-geo-g{grid-template-columns:1fr}}
 .dl-geo-chip.wP{color:#1d4ed8;background:#dbeafe;border-color:#bfdbfe}.dl-geo-chip.wI{color:#b45309;background:#fef3c7;border-color:#fde68a}.dl-geo-chip.wD{color:#7c3aed;background:#ede9fe;border-color:#ddd6fe}.dl-geo-chip.wG{color:#047857;background:#d1fae5;border-color:#a7f3d0}.dl-geo-chip.wX{color:#64748b;background:#f1f5f9;border-color:#e2e8f0}
 .dl-geo-l .dl-geo-chip{margin-left:0}
+
+/* ── pestañas GeoLab · EcoLab · DataLab (cuando va dentro de la maqueta) ── */
+.gl-tabs{display:flex;gap:4px;margin:0 2px 8px;padding:3px;border-radius:14px;background:#eef2f7;border:1px solid #dbe3ee}
+.gl-tabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px 7px;border:0;border-radius:11px;background:transparent;color:#475569;font:800 11.5px system-ui,sans-serif;cursor:pointer;transition:background .15s,color .15s}
+.gl-tabs button i{font-style:normal;font-size:18px;line-height:1}
+.gl-tabs button:hover{background:#e0e7ff;color:#3730a3}
+.gl-tabs button.on{background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 14px rgba(79,70,229,.4)}
+.dl-emb #dlIrGeo,.dl-emb #dlSalir{display:none}
+.dl-app.dl-off .gl-tabs{flex-direction:column;margin:0 0 8px}.dl-app.dl-off .gl-tabs button{padding:6px 0}.dl-app.dl-off .gl-tabs button b{display:none}
+
+/* ── modo «ventana» dentro de la maqueta: menú en columna izquierda y contenido en una ventana flotante con X ── */
+html.emb .dl-app,.dl-emb{background:transparent!important}
+.dl-emb .dl-top{position:absolute;left:0;top:0;width:var(--col,404px);height:56px;z-index:3;gap:8px;padding:0 12px}
+.dl-emb .dl-brand,.dl-emb .dl-chip,.dl-emb #dlIrGeo,.dl-emb #dlSalir,.dl-emb .dl-burger{display:none!important}
+.dl-emb .dl-body{position:absolute;inset:0;display:block}
+.dl-emb .dl-side{position:absolute!important;left:0;top:0;bottom:0;width:var(--col,404px)!important;flex-basis:var(--col,404px);padding:66px 12px 14px;transform:none!important;box-shadow:8px 0 30px rgba(15,23,42,.18);z-index:2;display:flex}
+.dl-emb .dl-side-t,.dl-emb .dl-nav .tx,.dl-emb .dl-nav .bd,.dl-emb .dl-side-f{display:revert!important}
+.dl-emb .dl-nav{justify-content:flex-start!important;padding:10px 12px!important}
+.dl-emb .dl-wbar,.dl-emb .dl-main{display:none}
+.dl-emb.dl-open .dl-wbar{display:flex}.dl-emb.dl-open .dl-main{display:block}
+.dl-emb .dl-wbar{position:absolute;left:calc(var(--col,404px) + 12px);right:12px;top:12px;height:46px;align-items:center;gap:10px;padding:0 10px 0 18px;border-radius:16px 16px 0 0;background:#fff;border:1px solid #cbd5e1;z-index:2;box-shadow:0 -4px 30px rgba(15,23,42,.18)}
+.dl-wbar b{flex:1;min-width:0;font-size:14.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#0f172a}
+.dl-wx{flex:none;width:32px;height:32px;border-radius:50%;border:0;background:#e2e8f0;color:#334155;font-size:15px;cursor:pointer;transition:.15s}
+.dl-wx:hover{background:#ef4444;color:#fff}
+.dl-emb .dl-main{position:absolute;left:calc(var(--col,404px) + 12px);right:12px;top:58px;bottom:12px;overflow:auto;border-radius:0 0 16px 16px;background:var(--bg);border:1px solid #cbd5e1;border-top:0;box-shadow:0 24px 60px rgba(15,23,42,.35)}
+
+.gl-back{flex:none;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;border-radius:10px;padding:6px 11px;font:700 12px system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.gl-back:hover{background:rgba(255,255,255,.2)}
+.dl-emb .dl-sp{flex:1}
+
+/* ── encabezado nuevo: logos como pestañas y logo de Metrika ── */
+.gl-tabs{gap:6px;padding:0;background:none;border:0}
+.gl-tabs button{flex:1 1 0;min-width:0;gap:4px;padding:9px 6px 7px;border:2px solid transparent;background:#fff;color:#64748b;border-radius:14px;box-shadow:0 1px 4px rgba(15,23,42,.22);opacity:.82}
+.gl-tabs button img{height:30px;width:100%;object-fit:contain;display:block}
+.gl-tabs button b{font:800 9.5px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#64748b}
+.gl-tabs button:hover{opacity:1;background:#fff;color:#64748b}
+.gl-tabs button.on{opacity:1;border-color:#6366f1;background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.28),0 8px 18px rgba(79,70,229,.3)}
+.gl-tabs button.on b{color:#4338ca}
+.mt-logo{flex:1;min-width:0;height:34px;object-fit:contain;filter:invert(1) hue-rotate(180deg)}
+.dl-emb .dl-logo,.dl-emb .dl-brand{display:none}
+.dl-emb .dl-top{gap:10px}
+.dl-app.dl-off .gl-tabs{flex-direction:column}
+
+/* ── ventana flotante: sin scroll horizontal (tablas fluidas, texto que se ajusta) ── */
+.dl-emb .dl-main{overflow-x:hidden}
+.dl-emb .dl-tw{overflow-x:hidden}
+.dl-emb .dl-t,.dl-emb .dl-ti,.dl-emb .dl-vt{min-width:0;width:100%;table-layout:auto}
+.dl-emb .dl-t th,.dl-emb .dl-t td,.dl-emb .dl-vt th,.dl-emb .dl-vt td,.dl-emb .dl-ti th,.dl-emb .dl-ti td{white-space:normal;overflow-wrap:anywhere;word-break:normal}
+.dl-emb .dl-t thead{display:none}
+.dl-emb .dl-t,.dl-emb .dl-t tbody,.dl-emb .dl-t tr,.dl-emb .dl-t td{display:block;width:100%}
+.dl-emb .dl-r{padding:12px 14px 4px;border-bottom:1px solid #eef2f7}
+.dl-emb .dl-t td{border:0!important;padding:3px 0!important;background:none!important}
+.dl-emb .dl-t td[data-l]::before{content:attr(data-l);display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-top:6px}
+.dl-emb .dl-t td.dl-xc{display:none}.dl-emb .dl-ob{max-width:none}
+.dl-emb .dl-d .in{padding:6px 14px 16px}.dl-emb .dl-d .in.one{grid-template-columns:1fr}
+.dl-emb .dl-vt thead{display:none}.dl-emb .dl-vt,.dl-emb .dl-vt tbody,.dl-emb .dl-vt tr,.dl-emb .dl-vt td{display:block;width:100%}
+.dl-emb .dl-vt tr{padding:8px 10px;border-bottom:1px solid #eef2f7}
+.dl-emb img,.dl-emb svg,.dl-emb canvas{max-width:100%}
+
+/* encabezado fijo de la maqueta arriba; Data Lab solo muestra su menú debajo */
+.dl-emb .dl-top,.dl-emb .gl-tabs{display:none!important}
+.dl-emb .dl-side{padding-top:calc(var(--tth,0px) + 12px)!important}
+
+/* la ventana de la derecha es una extensión de la columna izquierda: pegada a ella y a todo el alto */
+.dl-emb .dl-wbar{left:var(--col,404px);right:0;top:0;border-radius:0;border-width:0 0 1px 1px;box-shadow:none}
+.dl-emb .dl-main{left:var(--col,404px);right:0;top:46px;bottom:0;border-radius:0;border-width:0 0 0 1px;box-shadow:-6px 0 30px rgba(15,23,42,.22)}
+
+/* fondos semitransparentes: se deja ver con sutileza el mapa de atrás */
+.dl-emb .dl-side{background:rgba(255,255,255,.82)}
+.dl-emb .dl-wbar{background:rgba(255,255,255,.9)}
+.dl-emb .dl-main{background:rgba(241,245,249,.88)}
+
+/* tema único (lo manda la maqueta): botón en el menú y tema oscuro de Data Lab */
+.dl-emb .dl-tbar{display:flex;justify-content:flex-end;margin:0 0 6px}
+.dl-emb .dl-tbtn{border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:10px;padding:6px 11px;font:600 12.5px system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+html.dl-dark .dl-emb .dl-side,html.dl-dark .dl-emb .dl-wbar,html.dl-dark .dl-emb .dl-main{filter:invert(1) hue-rotate(180deg)}
+html.dl-dark .dl-emb .dl-side img,html.dl-dark .dl-emb .dl-wbar img,html.dl-dark .dl-emb .dl-main img{filter:invert(1) hue-rotate(180deg)}
+html.dl-dark .dl-emb .dl-side{background:rgba(255,255,255,.80)}
+.dl-emb .dl-tbar{display:none!important}
+
+/* Indicadores · vista tipo «Banco de Indicadores»: lista a la izquierda, detalle al centro */
+.dl-ix{display:grid;grid-template-columns:minmax(240px,330px) minmax(0,1fr);gap:16px;align-items:start}
+.dl-ixm{position:sticky;top:72px;max-height:calc(100vh - 150px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px;overscroll-behavior:contain}
+.dl-ixm button{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:8px;cursor:pointer;border-radius:9px;transition:background .12s}
+.dl-ixm button:hover{background:#f1f5f9}
+.dl-ixm button.on{background:#eef2ff;color:#3730a3}
+.dl-ixm .n{flex:0 0 auto;font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;padding:1px 7px;border-radius:999px}
+.dl-ixm button.on .n{background:#fff;color:#4338ca}
+.dl-ixm .tx{flex:1;min-width:0}
+.dl-ixc{padding:10px 10px;font-weight:700;font-size:13.5px;color:var(--ink)}
+.dl-ixc .dl-chev{flex:0 0 auto;width:16px;height:16px;color:#94a3b8;transition:transform .2s}
+.dl-ixc.open .dl-chev{transform:rotate(180deg)}
+.dl-ixes{padding:0 0 6px 6px}
+.dl-ixe{padding:7px 9px;font-weight:600;font-size:13px;color:#334155}
+.dl-ixe .pm{flex:0 0 14px;text-align:center;font-weight:800;color:#6366f1}
+.dl-ixis{margin:0 0 4px 16px;padding-left:8px;border-left:2px solid #e2e8f0}
+.dl-ixi{padding:5px 9px;font-size:12.5px;color:#475569;line-height:1.35}
+.dl-ixi.on{font-weight:700}
+.dl-ixd{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px 24px;min-height:320px;min-width:0;scroll-margin-top:72px}
+.dl-ixd h2{margin:0;font-size:20px;font-weight:800;letter-spacing:-.01em;display:flex;gap:9px;align-items:center}
+.dl-ixd .ds{margin:6px 0 14px;color:var(--mut);max-width:760px}
+.dl-ixb{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12.5px;color:var(--mut);margin-bottom:10px}
+.dl-ixb button{all:unset;cursor:pointer;color:var(--ind);font-weight:600}.dl-ixb button:hover{text-decoration:underline}
+.dl-ixb i{font-style:normal;color:#cbd5e1}.dl-ixb b{color:#334155;font-weight:600}
+.dl-ixr{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:12px;padding:11px 8px;cursor:pointer;border-top:1px solid #eef2f7;transition:background .12s}
+.dl-ixr:hover{background:#f8fafc}
+.dl-ixr .ic{flex:0 0 auto;font-size:19px}
+.dl-ixr .tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.dl-ixr .tx b{font-weight:700;color:var(--ink)}.dl-ixr .tx span{color:var(--mut);font-size:12.5px}
+.dl-ixr .r{flex:0 0 auto}
+.dl-ixh{margin-bottom:14px}
+.dl-ixh .dl-nm{align-items:center}.dl-ixh .dl-nm .dot{margin-top:0}
+.dl-ixt{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}.dl-ixt .dl-geo-chip{margin-left:0}
+.dl-ixf .in{padding:0!important;animation:none}
+.dl-ixf .pre{white-space:pre-wrap}
+@media (max-width:900px){
+  .dl-ix{grid-template-columns:1fr}
+  .dl-ixm{position:static;max-height:46vh}
+  .dl-ixd{padding:16px 14px 18px}
+  .dl-ixr{flex-wrap:wrap}
+}
+.dl-emb .dl-ix{grid-template-columns:minmax(200px,270px) minmax(0,1fr)}
