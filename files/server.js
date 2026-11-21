@@ -13697,7 +13697,7 @@ function _dlDiseno(o) {
   if (!o || typeof o !== "object") return null; const d = {};
   ["color", "color2"].forEach(k => { if (/^#[0-9a-fA-F]{6}$/.test(String(o[k] || ""))) d[k] = String(o[k]).toLowerCase(); });
   if (["claro", "oscuro"].includes(o.fondo)) d.fondo = o.fondo; if (["asc", "desc"].includes(o.orden)) d.orden = o.orden;
-  ["suave", "relleno", "puntos", "promedio", "extremos", "valores", "cero", "cuadricula"].forEach(k => { if (typeof o[k] === "boolean") d[k] = o[k]; });
+  ["suave", "relleno", "puntos", "promedio", "extremos", "valores", "cero", "cuadricula", "anterior", "lugar", "periodo"].forEach(k => { if (typeof o[k] === "boolean") d[k] = o[k]; });
   [["grosor", 1, 6, 0], ["n", 6, 240, 1], ["decimales", 0, 4, 1], ["radio", 0, 10, 1], ["top", 3, 15, 1]].forEach(([k, lo, hi, ent]) => { const v = +o[k]; if (o[k] != null && o[k] !== "" && isFinite(v)) d[k] = Math.max(lo, Math.min(hi, ent ? Math.round(v) : Math.round(v * 10) / 10)); });
   const ti = _dlT(o.titulo, 80), no = _dlT(o.nota, 160); if (ti) d.titulo = ti; if (no) d.nota = no;
   return Object.keys(d).length ? d : null;
@@ -13720,6 +13720,8 @@ Devuelve SOLO un objeto JSON, sin texto alrededor: {"diseno": {…}, "explicacio
 - n: 6 a 240 (cuántos datos recientes mostrar) · decimales: 0 a 4
 - top: 3 a 15 (cuántos lugares en la gráfica de comparación) · orden: "asc" | "desc"
 - titulo: texto de hasta 80 caracteres · nota: texto de hasta 160 caracteres al pie
+- anterior: true/false · lugar: true/false · periodo: true/false (solo en widgets: mostrar u ocultar el dato anterior, el lugar entre lugares y el periodo)
+Si la gráfica es un widget (su tipo empieza con "w-" o "m-") solo aplican: color (color del número y de la mini-gráfica), color2 (color de la pastilla del lugar; en el mini-widget, color del número), titulo (la etiqueta de arriba), nota (texto al pie), decimales, radio (redondeo de las esquinas de la tarjeta), anterior, lugar y periodo.
 Parte del diseño actual y cambia solo lo que pide la instrucción; conserva lo demás. No inventes claves. Cuida el contraste y la legibilidad (con fondo oscuro usa colores claros o vivos).
 Si piden algo que estas claves no permiten (otro tipo de gráfica, otros datos, formas especiales), acércate lo más posible con las claves disponibles y dilo en "explicacion".`;
     const user = `Gráfica: ${tipo}\nIndicador: ${_dlT(cx.nombre, 160)}\nUnidad: ${_dlT(cx.unidad, 60)}\nDatos: ${_dlT(cx.datos, 200)}\nDiseño actual: ${JSON.stringify(actual)}\nInstrucción del usuario: ${ins}`;
