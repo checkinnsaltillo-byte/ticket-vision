@@ -79727,9 +79727,10 @@ function gmMcCat_() {
   const carga = u => new Promise((ok, no) => { const e = document.createElement('script'); e.src = location.origin + '/geometrika/' + u + '?v=' + Math.floor(Date.now() / 36e5); e.onload = ok; e.onerror = () => no(new Error('No se pudo cargar ' + u)); document.head.appendChild(e); });
   const falta = () => !(window.DL_INDICADORES && window.DL_INDICADORES.some(c => c.id === 'inegi') && window.DL_INDICADORES.some(c => c.id === 'nat') && window.DL_FUENTES);
   GMC.p = (falta() ? carga('datalab-fuentes.js').then(() => carga('datalab-indicadores.js')).then(() => carga('datalab-inegi.js')) : Promise.resolve()).then(() => {
-    const M = new Map(), lim = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
-    (window.DL_INDICADORES || []).forEach(c => (c.an || []).forEach(a => (a.ind || []).forEach(i => { const v0 = (i.vars || [])[0] || {}, fe = (/datos de ([^(;.]+)/.exec(i.m || '') || [])[1] || '', id = `i:${c.id}.${a.id}.${i.id}`; M.set(id, { id, n: lim(i.n), tipo: /ndice/.test(i.tipo || '') ? 'Índice' : 'Indicador', sis: c.id === 'inegi' ? 'EconoLab' : 'GeoLab', grupo: lim(c.n + ' › ' + a.n), nat: lim(i.tipo), u: lim(i.u), fuente: lim(v0.f), fechas: lim(fe || (/(\d{4}.*)$/.exec(v0.cob || '') || [])[1] || ''), cob: lim(v0.cob), d: lim(i.d), vars: (i.vars || []).map(v => lim(v.n)).slice(0, 8) }); })));
-    (window.DL_FUENTES || []).forEach(f => { const id = 'f:' + f.id; M.set(id, { id, n: lim(f.n), tipo: 'Conjunto de datos', sis: /notic|meta|facebook|apify|gdelt|gnews|newsdata/i.test(f.id + ' ' + f.n) ? 'MediaLab' : 'DataLab', grupo: 'Fuentes de datos', nat: lim([f.t, f.m].filter(Boolean).join(' · ')), u: '', fuente: lim(f.p), fechas: lim(f.act), cob: lim(f.cob), d: lim(f.ob), vars: (f.ind || []).map(lim).slice(0, 8) }); });
+    const M = new Map(), lim = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim(), nrm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    (window.DL_INDICADORES || []).forEach(c => (c.an || []).forEach(a => (a.ind || []).forEach(i => { const v0 = (i.vars || [])[0] || {}, fe = (/datos de ([^(;.]+)/.exec(i.m || '') || [])[1] || '', id = `i:${c.id}.${a.id}.${i.id}`; M.set(id, { id, n: lim(i.n), tipo: /ndice/.test(i.tipo || '') ? 'Índice' : 'Indicador', sis: c.id === 'inegi' ? 'EconoLab' : 'GeoLab', grupo: lim(c.n + ' › ' + a.n), cat: lim((c.ico ? c.ico + ' ' : '') + c.n), enf: lim(a.n), nat: lim(i.tipo), u: lim(i.u), fuente: lim(v0.f), fechas: lim(fe || (/(\d{4}.*)$/.exec(v0.cob || '') || [])[1] || ''), cob: lim(v0.cob), d: lim(i.d), vars: (i.vars || []).map(v => lim(v.n)).slice(0, 8) }); })));
+    (window.DL_FUENTES || []).forEach(f => { const id = 'f:' + f.id; M.set(id, { id, n: lim(f.n), tipo: 'Conjunto de datos', sis: /notic|meta|facebook|apify|gdelt|gnews|newsdata/i.test(f.id + ' ' + f.n) ? 'MediaLab' : 'DataLab', grupo: 'Fuentes de datos', cat: '🗂 Conjuntos de datos (fuentes)', enf: /notic|meta|facebook|apify|gdelt|gnews|newsdata/i.test(f.id + ' ' + f.n) ? 'MediaLab' : 'DataLab', nat: lim([f.t, f.m].filter(Boolean).join(' · ')), u: '', fuente: lim(f.p), fechas: lim(f.act), cob: lim(f.cob), d: lim(f.ob), vars: (f.ind || []).map(lim).slice(0, 8) }); });
+    M.forEach(c => { c.h = nrm([c.n, c.grupo, c.fuente, c.sis, c.tipo, c.d, c.vars.join(' ')].join(' ')); });
     GMC.m = M; return M; }).catch(e => { GMC.p = null; throw e; });
   return GMC.p;
 }
@@ -79742,14 +79743,14 @@ function gmMcHtml_() {
     <textarea id="gmc-txt" class="gmw-ta" rows="7" maxlength="4000" placeholder="Ej.: Quiero abrir una segunda sucursal de mi cafetería y recuperar la inversión en 18 meses. Para eso necesito una zona con oficinas y universidades cerca, buen paso peatonal, renta accesible y poca competencia directa. Me preocupa la inseguridad y que el tráfico complique llegar…">${gmEsc_(M.txt || '')}</textarea>
     <div class="gmc-btns"><button type="button" class="gm-btn gmc-b1" data-mc="dia"${M.est ? ' disabled' : ''}>✨ Diagrama IA</button><button type="button" class="gmw-c" data-mc="add">＋ Caja</button><button type="button" class="gmw-c" data-mc="ord"${M.nodos.length ? '' : ' disabled'}>Ordenar</button><button type="button" class="gmw-c" data-mc="rel"${M.est || !M.ar.length ? ' disabled' : ''} title="La IA clasifica qué tan relevante es cada caja para lograr la de arriba">⚖ Clasificar relevancia</button><button type="button" class="gm-btn gmc-b2" data-mc="dat"${M.est || !M.nodos.length ? ' disabled' : ''}>🔎 Investigar datos disponibles</button><span class="gmc-est" id="gmc-est">${gmEsc_(M.est || M.err || '')}</span></div>
     <div class="gmc-cv" id="gmc-cv"></div>
-    <p class="gmw-mu gmc-ay">Cómo editar: escribe sobre el título o la descripción de una caja para cambiarlos · arrastra una caja desde su franja superior · clic en una caja resalta toda su ruta (a qué contribuye y qué la sostiene) · <b>↗</b> y luego clic en otra caja crea (o quita) una flecha «contribuye a» · clic sobre una flecha la borra · la etiqueta de cada flecha es su <b>relevancia</b> para lograr la caja de arriba (clic para cambiarla: Alta › Media › Baja) y cada caja muestra su <b>importancia general</b> para el objetivo final · <b>✕</b> borra la caja. En los datos: la palomita <b>valida</b> el recurso, <b>✕</b> lo quita y «＋ agregar dato» busca en toda la biblioteca. El mapa se guarda con el proyecto.</p>` : ''}</div>`;
+    <p class="gmw-mu gmc-ay">Cómo editar: escribe sobre el título o la descripción de una caja para cambiarlos · arrastra una caja desde su franja superior · clic en una caja resalta toda su ruta (a qué contribuye y qué la sostiene) y abre a la derecha el <b>catálogo de indicadores</b> para marcar los que miden ese objetivo · <b>↗</b> y luego clic en otra caja crea (o quita) una flecha «contribuye a» · clic sobre una flecha la borra · la etiqueta de cada flecha es su <b>relevancia</b> para lograr la caja de arriba (clic para cambiarla: Alta › Media › Baja) y cada caja muestra su <b>importancia general</b> para el objetivo final · <b>✕</b> borra la caja. El mapa se guarda con el proyecto.</p>` : ''}</div>`;
 }
 /* dibuja cajas y flechas */
 function gmMcPinta_() {
   const cv = document.getElementById('gmc-cv'), M = GMW.mc; if (!cv || !M) return;
   if (!M.nodos.length) { cv.innerHTML = '<p class="gmw-mu gmc-vac">Aún no hay mapa. Describe tu objetivo y oprime «Diagrama IA», o agrega cajas a mano con «＋ Caja».</p>'; cv.style.height = ''; return; }
   const fin = M.nodos.reduce((a, n) => n.niv < a.niv ? n : a, M.nodos[0]);
-  cv.innerHTML = '<svg class="gmc-svg" id="gmc-svg"></svg>' + M.nodos.map(n => `<div class="gmc-n${n === fin ? ' fin' : ''}${M.con === n.id ? ' con' : ''}" data-n="${n.id}" style="left:${n.x}px;top:${n.y}px"><div class="gmc-nh"><span>${n === fin ? 'Objetivo final' : 'Subobjetivo'}</span><button type="button" data-mc="con" title="Conectar: después haz clic en la caja a la que contribuye" aria-label="Conectar con otra caja">↗</button><button type="button" data-mc="del" title="Borrar esta caja" aria-label="Borrar caja">✕</button></div><div class="gmc-im"></div><div class="gmc-t" contenteditable="true" spellcheck="false" data-f="t" data-ph="Título del objetivo">${gmEsc_(n.t)}</div><div class="gmc-d" contenteditable="true" spellcheck="false" data-f="d" data-ph="Descripción (opcional)">${gmEsc_(n.d)}</div><div class="gmc-rec">${(n.rec || []).map(r => `<div class="gmc-r${r.ok ? ' ok' : ''}" data-r="${gmEsc_(r.id)}"><span class="gmc-bx" data-mc="val" title="${r.ok ? 'Validado: clic para dejarlo como sugerencia' : 'Validar este dato'}">✓</span><span class="gmc-rn"><b>${gmEsc_(r.n)}</b><small>${gmEsc_([r.tipo, r.sis, r.u, r.fechas].filter(Boolean).join(' · '))}</small></span><button type="button" data-mc="rq" title="Quitar este dato" aria-label="Quitar dato">✕</button></div>`).join('')}<button type="button" class="gmc-ra" data-mc="radd">＋ agregar dato</button></div></div>`).join('');
+  cv.innerHTML = '<svg class="gmc-svg" id="gmc-svg"></svg>' + M.nodos.map(n => `<div class="gmc-n${n === fin ? ' fin' : ''}${M.con === n.id ? ' con' : ''}" data-n="${n.id}" style="left:${n.x}px;top:${n.y}px"><div class="gmc-nh"><span>${n === fin ? 'Objetivo final' : 'Subobjetivo'}</span><button type="button" data-mc="con" title="Conectar: después haz clic en la caja a la que contribuye" aria-label="Conectar con otra caja">↗</button><button type="button" data-mc="del" title="Borrar esta caja" aria-label="Borrar caja">✕</button></div><div class="gmc-im"></div><div class="gmc-t" contenteditable="true" spellcheck="false" data-f="t" data-ph="Título del objetivo">${gmEsc_(n.t)}</div><div class="gmc-d" contenteditable="true" spellcheck="false" data-f="d" data-ph="Descripción (opcional)">${gmEsc_(n.d)}</div><div class="gmc-rc" title="Abrir el catálogo de indicadores para este objetivo">${gmMcRcTx_(n)}</div></div>`).join('');
   gmMcMide_(); gmMcFlechas_();
 }
 function gmMcMide_() { const cv = document.getElementById('gmc-cv'); if (!cv) return; let w = 0, h = 0; cv.querySelectorAll('.gmc-n').forEach(e => { w = Math.max(w, e.offsetLeft + e.offsetWidth); h = Math.max(h, e.offsetTop + e.offsetHeight); }); cv.style.height = Math.max(360, h + 40) + 'px'; const sv = document.getElementById('gmc-svg'); if (sv) { sv.setAttribute('width', Math.max(cv.clientWidth, w + 40)); sv.setAttribute('height', Math.max(360, h + 40)); } }
@@ -79785,6 +79786,56 @@ function gmMcRuta_() {
   if (sel) { const anda = (ini, S, de, a) => { const cola = [ini]; while (cola.length) { const x = cola.pop(); M.ar.forEach(q => { if (q[de] === x && !S.has(q[a]) && q[a] !== ini) { S.add(q[a]); cola.push(q[a]); } }); } }; anda(sel, arriba, 0, 1); anda(sel, abajo, 1, 0); }
   cv.querySelectorAll('.gmc-n').forEach(e => { const id = e.dataset.n; e.classList.toggle('sel', id === sel); e.classList.toggle('hi', !!sel && (id === sel || arriba.has(id) || abajo.has(id))); });
   cv.querySelectorAll('.gmc-fl,.gmc-rl').forEach(g => { const q = M.ar[+g.dataset.a]; g.classList.toggle('hi', !!sel && !!q && (((q[0] === sel || arriba.has(q[0])) && arriba.has(q[1])) || (abajo.has(q[0]) && (q[1] === sel || abajo.has(q[1]))))); });
+  gmMcPan_();
+}
+/* panel lateral derecho: al seleccionar una caja se abre el catálogo completo de indicadores (el de la sección Indicadores de DataLab) para vincularlos a ese objetivo; marcar una fila NO redibuja la lista */
+function gmMcRcTx_(n) { const ok = (n.rec || []).filter(r => r.ok).length, sg = (n.rec || []).length - ok; return ok ? `<b>${ok}</b> indicador${ok === 1 ? '' : 'es'}${sg ? ` · <i>${sg} por revisar</i>` : ''}<u>ver ›</u>` : sg ? `<i>${sg} sugerido${sg === 1 ? '' : 's'} por revisar</i><u>ver ›</u>` : 'Sin indicadores<u>elegir ›</u>'; }
+function gmMcPanOff_() { const p = document.getElementById('gmc-pan'); if (p) p.remove(); const t = document.getElementById('gmc-tip'); if (t) t.classList.remove('on'); const cv = gmMcPanEl_(); if (cv && cv.style.marginRight) { cv.style.marginRight = ''; gmMcMide_(); } }
+function gmMcPanEl_() { const s = document.getElementById('gmc-sec'); return s && (s.closest('.gmw') || s); }
+function gmMcPanAj_() { const cv = gmMcPanEl_(), p = document.getElementById('gmc-pan'); if (!cv || !p) return; const m0 = parseFloat(cv.style.marginRight) || 0, m = innerWidth < 900 ? 0 : Math.max(0, Math.round(cv.getBoundingClientRect().right + m0 - (innerWidth - p.offsetWidth - 12))); if (m !== m0) { cv.style.marginRight = m ? m + 'px' : ''; gmMcMide_(); } }
+function gmMcPanCnt_(n) { const e = document.getElementById('gmc-pn'), ok = (n.rec || []).filter(r => r.ok).length, sg = (n.rec || []).length - ok; if (e) e.innerHTML = `<b>${ok}</b> vinculado${ok === 1 ? '' : 's'}${sg ? ` · ${sg} sugerido${sg === 1 ? '' : 's'} por IA` : ''}`; const v = document.querySelector('#gmc-pan [data-pa="vsug"]'); if (v) v.style.display = sg ? '' : 'none'; const c = document.querySelector(`#gmc-cv .gmc-n[data-n="${n.id}"] .gmc-rc`); if (c) c.innerHTML = gmMcRcTx_(n); }
+function gmMcPan_() {
+  const M = GMW.mc, cv = document.getElementById('gmc-cv'), n = M && M.sel && M.nodos.find(x => x.id === M.sel); if (!n || !cv) { gmMcPanOff_(); return; }
+  let p = document.getElementById('gmc-pan');
+  if (!p) { p = document.createElement('aside'); p.id = 'gmc-pan'; p.className = 'gmc-pan'; p.setAttribute('aria-label', 'Indicadores de DataLab'); document.body.appendChild(p);
+    p.addEventListener('click', gmMcPanClic_); p.addEventListener('input', e => { if (e.target.id === 'gmc-pq') gmMcPanLista_(); });
+    p.addEventListener('mouseover', e => { const r = e.target.closest('[data-r]'); if (r) gmMcTip_(r); }); p.addEventListener('mouseout', e => { const r = e.target.closest('[data-r]'); if (r && !r.contains(e.relatedTarget)) gmMcTipOff_(); });
+    p.addEventListener('keydown', e => { if (e.key === 'Escape') { GMW.mc.sel = null; gmMcRuta_(); } else if ((e.key === ' ' || e.key === 'Enter') && e.target.closest('[data-pi],[data-pc]') && e.target.tagName !== 'INPUT') { e.preventDefault(); e.target.click(); } }); }
+  const tit = n.t || 'Objetivo sin título';
+  if (p.dataset.n === n.id) { const h = p.querySelector('.gmc-pt'); if (h && h.textContent !== tit) h.textContent = tit; gmMcPanAj_(); return; }
+  p.dataset.n = n.id; p.dataset.solo = ''; GMC.ab = new Set();
+  p.innerHTML = `<div class="gmc-ph"><div><span>Indicadores de DataLab</span><h5 class="gmc-pt">${gmEsc_(tit)}</h5></div><button type="button" data-pa="x" title="Cerrar" aria-label="Cerrar el panel">✕</button></div><p class="gmc-pd">Catálogo completo de indicadores disponibles en el proyecto. Marca los que sirven para medir este objetivo; pasa el cursor sobre uno para ver su ficha.</p><input id="gmc-pq" type="search" placeholder="Buscar indicador, variable o fuente…" autocomplete="off" aria-label="Buscar en el catálogo"><div class="gmc-pf"><span id="gmc-pn"></span><button type="button" data-pa="vsug" title="Marca como vinculados todos los que sugirió la IA">Validar sugeridos</button><button type="button" data-pa="solo">Solo los de este objetivo</button><button type="button" data-pa="exp">Expandir todo</button></div><div class="gmc-pl" id="gmc-pl"><p>Cargando el catálogo…</p></div>`;
+  gmMcPanCnt_(n); gmMcPanAj_();
+  gmMcCat_().then(() => { const q = document.getElementById('gmc-pan'); if (q && q.dataset.n === n.id) gmMcPanLista_(); }).catch(e => { const l = document.getElementById('gmc-pl'); if (l) l.innerHTML = `<p>${gmEsc_(e.message || e)}</p>`; });
+}
+function gmMcPanLista_() {
+  const p = document.getElementById('gmc-pan'), l = document.getElementById('gmc-pl'), M = GMW.mc; if (!p || !l || !M || !GMC.m) return; const n = M.nodos.find(x => x.id === p.dataset.n); if (!n) return;
+  const nrm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''), ts = nrm((document.getElementById('gmc-pq') || {}).value).split(/\s+/).filter(Boolean), solo = p.dataset.solo === '1', est = new Map((n.rec || []).map(r => [r.id, r.ok ? 'ok' : 'sug'])), ab = GMC.ab || (GMC.ab = new Set());
+  const fila = c => { const e = est.get(c.id) || ''; return `<div class="gmc-pi${e ? ' ' + e : ''}" data-pi="${gmEsc_(c.id)}" data-r="${gmEsc_(c.id)}" role="checkbox" aria-checked="${e === 'ok'}" tabindex="0"><span class="gmc-bx">✓</span><span class="gmc-rn"><b>${gmEsc_(c.n)}</b><small>${gmEsc_([c.tipo, c.u, c.fuente].filter(Boolean).join(' · '))}</small></span><em>sugerido IA</em></div>`; };
+  const txt = c => !ts.length || ts.every(t => (c.h || nrm(c.n)).includes(t)), mios = (n.rec || []).map(r => GMC.m.get(r.id) || r).filter(txt); let h = '';
+  if (solo) h = mios.length ? mios.map(fila).join('') : `<p>${(n.rec || []).length ? 'Ninguno coincide con la búsqueda.' : 'Este objetivo aún no tiene indicadores. Quita el filtro y marca los que le sirvan.'}</p>`;
+  else {
+    if (!ts.length && mios.length) h += '<div class="gmc-pe gmc-pm">De este objetivo</div>' + mios.map(fila).join('');
+    const G = new Map(); for (const c of GMC.m.values()) { if (!txt(c)) continue; let g = G.get(c.cat); if (!g) G.set(c.cat, g = new Map()); let e = g.get(c.enf); if (!e) g.set(c.enf, e = []); e.push(c); }
+    for (const [cat, g] of G) { const tot = [...g.values()].reduce((a, e) => a + e.length, 0), abre = !!ts.length || ab.has(cat); h += `<div class="gmc-pc${abre ? ' ab' : ''}" data-pc="${gmEsc_(cat)}" role="button" tabindex="0" aria-expanded="${abre}"><i>▸</i><b>${gmEsc_(cat)}</b><span>${tot}</span></div>`; if (abre) for (const [enf, L] of g) h += `<div class="gmc-pe">${gmEsc_(enf)}</div>` + L.map(fila).join(''); }
+    if (!G.size) h += '<p>Sin resultados; prueba con otra palabra.</p>';
+  }
+  l.innerHTML = h;
+}
+function gmMcPanClic_(e) {
+  const T = e.target, p = document.getElementById('gmc-pan'), M = GMW.mc, n = M && p && M.nodos.find(x => x.id === p.dataset.n), l = document.getElementById('gmc-pl'); if (!T.closest) return;
+  const a = T.closest('[data-pa]'); if (a) { const k = a.dataset.pa;
+    if (k === 'x' || !n) { if (M) M.sel = null; gmMcRuta_(); gmMcPanOff_(); return; }
+    if (k === 'solo') { p.dataset.solo = p.dataset.solo === '1' ? '' : '1'; a.classList.toggle('on', p.dataset.solo === '1'); gmMcPanLista_(); return; }
+    if (k === 'vsug') { (n.rec || []).forEach(r => { r.ok = true; }); gmMcPanLista_(); gmMcPanCnt_(n); gmUpd_(); return; }
+    if (k === 'exp') { const todo = [...new Set([...GMC.m.values()].map(c => c.cat))], lleno = todo.every(c => GMC.ab.has(c)); GMC.ab = new Set(lleno ? [] : todo); a.textContent = lleno ? 'Expandir todo' : 'Contraer todo'; gmMcPanLista_(); return; }
+    return; }
+  if (!n) return;
+  const pc = T.closest('[data-pc]'); if (pc) { const c = pc.dataset.pc, y = l.scrollTop; if (GMC.ab.has(c)) GMC.ab.delete(c); else GMC.ab.add(c); gmMcPanLista_(); l.scrollTop = y; return; }
+  const pi = T.closest('[data-pi]'); if (!pi) return; const id = pi.dataset.pi, r = (n.rec || []).find(x => x.id === id); let on = true;
+  if (!r) { const nr = gmMcRec_(id); if (!nr) return; nr.ok = true; (n.rec = n.rec || []).push(nr); } else if (!r.ok) r.ok = true; else { n.rec = n.rec.filter(x => x !== r); on = false; }
+  p.querySelectorAll('[data-pi]').forEach(el => { if (el.dataset.pi === id) { el.classList.toggle('ok', on); el.classList.remove('sug'); el.setAttribute('aria-checked', on); } });
+  gmMcPanCnt_(n); gmUpd_();
 }
 /* acomoda las cajas por nivel (arriba el objetivo final) usando su altura real */
 function gmMcOrdena_() {
@@ -79813,7 +79864,7 @@ async function gmMcDatos_() {
   try { const C = await gmMcCat_(), cat = [...C.values()].map(c => ({ id: c.id, n: c.n, g: c.sis + ' · ' + c.grupo }));
     const j = await fetch(`${BACKEND}/geometrika/mapa/datos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nodos: M.nodos.map(n => ({ id: n.id, t: n.t, d: n.d })), cat }) }).then(r => r.json()); if (!j || !j.ok) throw new Error(j && j.error || 'sin respuesta');
     let nuevos = 0; M.nodos.forEach(n => { const ya = new Set((n.rec || []).map(r => r.id)); (j.asig[n.id] || []).forEach(id => { if (ya.has(id)) return; const r = gmMcRec_(id); if (r) { (n.rec = n.rec || []).push(r); nuevos++; } }); });
-    gmMcEst_(''); gmMcOrdena_(); gmUpd_(); const e = document.getElementById('gmc-est'); if (e) e.textContent = nuevos ? `Se sugirieron ${nuevos} datos. Valida con la palomita los que te sirvan y quita los demás.` : 'No se encontraron datos nuevos para estas cajas.'; }
+    const pa = document.getElementById('gmc-pan'); if (pa) pa.dataset.n = ''; gmMcEst_(''); gmMcOrdena_(); gmUpd_(); const e = document.getElementById('gmc-est'); if (e) e.textContent = nuevos ? `Se sugirieron ${nuevos} indicadores. Haz clic en cada caja para revisarlos en el panel de la derecha y validar los que te sirvan.` : 'No se encontraron indicadores nuevos para estas cajas.'; }
   catch (e) { gmMcEst_('No se pudieron investigar los datos: ' + (e.message || e), true); }
 }
 /* buscador manual de la biblioteca dentro de una caja */
@@ -79859,7 +79910,7 @@ function gmMcClic_(e) {
     if (a === 'rq' && rec) { nodo.rec = nodo.rec.filter(x => x !== rec); gmMcTipOff_(); gmMcPinta_(); gmUpd_(); return true; }
     return true; }
   if (nodo && M.con && M.con !== nid && !T.closest('[contenteditable]')) { const k = M.ar.findIndex(q => q[0] === M.con && q[1] === nid); if (k >= 0) M.ar.splice(k, 1); else M.ar.push([M.con, nid, 2]); M.con = null; gmMcPinta_(); const es = document.getElementById('gmc-est'); if (es) es.textContent = ''; gmUpd_(); return true; }
-  if (nodo) { M.sel = M.sel === nid && !T.closest('[contenteditable]') ? null : nid; gmMcRuta_(); } else if (T.closest('#gmc-cv') && !T.closest('.gmc-n') && M.sel) { M.sel = null; gmMcRuta_(); }
+  if (nodo) { M.sel = M.sel === nid && !T.closest('[contenteditable],.gmc-rc') ? null : nid; gmMcRuta_(); } else if (T.closest('#gmc-cv') && !T.closest('.gmc-n') && M.sel) { M.sel = null; gmMcRuta_(); }
   if (!T.closest('#gmc-bus')) gmMcBusOff_();
   return !!T.closest('#gmc-cv');
 }
@@ -79988,6 +80039,7 @@ function gmRender_() {
   host.insertAdjacentHTML('afterbegin', `<span class="gmw-beta">v.Beta${gmVer_()}</span>`);
   if (GMW.vista === 'landing') gmCargaLista_();
   if (GMW.vista === 'wizard') { gmWiring_(); if (GMW.paso >= 2 && GMW.paso <= 4) gmMapa_(); }
+  if (!document.getElementById('gmc-cv')) gmMcPanOff_();
 }
 function gmNuevo_(reset) { GMW.edit = null; if (reset) Object.assign(GMW, { vias: null, vsel: new Set(), vstale: false, vmsg: '', paso: 1, perfil: 'Diagnóstico general', oc: 'gen', os: [], oa: [], oaMan: false, mc: gmMcVacio_(), nombre: '', objetivo: '', dir: '', lat: 25.4232, lng: -101.0053, pts: [{ lat: 25.4232, lng: -101.0053, dir: '' }], sel: 0, fm: [], fmode: 'auto', fmOn: false, vias: null, vsel: new Set(), vbusy: false, vstale: false, vmsg: '', resultados: null, radio: 200, vrad: 200, vm: false, rm: false, rp: 3000, rl: 200, ft: { max: 20, sep: 30, frente: 6, inmediato: 8, general: 6 }, fx: { p: [], f: [], n: 0 }, vial: { clases: ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], tramo: 200, pre: 3 }, radio: 200, horas: [7, 8, 9, 17, 18, 19], dias: [1, 2, 3, 4, 5], proy: null, err: '', opt: null, pago: null, pagoAbre: false, promo: '', promoErr: '' }); GMW.vista = 'wizard'; gmRender_(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function gmVolver_() { GMW.edit = null; GMW.vista = 'landing'; gmRender_(); }
