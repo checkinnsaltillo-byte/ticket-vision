@@ -21,9 +21,9 @@ DL="$TV/geometrika-publico"
 node "$DL/extrae_indicadores.js" "$TV/maqueta/entorno.html" "$DL/datalab-indicadores.js.nuevo" && mv "$DL/datalab-indicadores.js.nuevo" "$DL/datalab-indicadores.js" || { rm -f "$DL/datalab-indicadores.js.nuevo"; echo "aviso: no se pudo regenerar el catálogo de indicadores; se usa el anterior"; }
 # series del INEGI (BIE/BISE) como indicadores y fuentes de Data Lab (se toma el ecolab-datos.js más reciente)
 node "$DL/extrae_inegi.js" "$DL/datalab-inegi.js.nuevo" "$DL/ecolab-datos.js" "$OUT/ecolab-datos.js" && mv "$DL/datalab-inegi.js.nuevo" "$DL/datalab-inegi.js" || { rm -f "$DL/datalab-inegi.js.nuevo"; echo "aviso: no se pudo regenerar el catálogo INEGI; se usa el anterior"; }
-DLV=$(cat "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-inegi.js" "$DL/datalab-geo.js" "$TV/datalab-logo.png" | shasum -a 256 | cut -c1-8)
-node --check "$DL/datalab.js"; node --check "$DL/datalab-fuentes.js"; node --check "$DL/datalab-indicadores.js"; node --check "$DL/datalab-inegi.js"; node --check "$DL/datalab-geo.js"
-cp "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-inegi.js" "$DL/datalab-geo.js" "$OUT/"; cp "$TV/datalab-logo.png" "$TV/datalab-logo-claro.png" "$OUT/"; mkdir -p "$OUT/geo-vis"; cp "$DL"/geo/vis/*.jpg "$OUT/geo-vis/"
+DLV=$(cat "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-inegi.js" "$DL/datalab-geo.js" "$DL/datalab-geovis.js" "$DL/geo/replica.css" "$TV/datalab-logo.png" | shasum -a 256 | cut -c1-8)
+node --check "$DL/datalab.js"; node --check "$DL/datalab-fuentes.js"; node --check "$DL/datalab-indicadores.js"; node --check "$DL/datalab-inegi.js"; node --check "$DL/datalab-geo.js"; node --check "$DL/datalab-geovis.js"
+cp "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indicadores.js" "$DL/datalab-inegi.js" "$DL/datalab-geo.js" "$DL/datalab-geovis.js" "$OUT/"; cp "$TV/datalab-logo.png" "$TV/datalab-logo-claro.png" "$OUT/"; mkdir -p "$OUT/geo-vis"; cp "$DL"/geo/vis/*.jpg "$OUT/geo-vis/"; rm -rf "$OUT/geo-vis/r"; cp -R "$DL/geo/vis/r" "$OUT/geo-vis/r"; cp "$DL/geo/replica.css" "$OUT/geo-vis/r/replica.css"
 # Media Lab: monitor masivo de noticias (la versión de caché sale de su contenido)
 MLV=$(cat "$DL/medialab.js" "$DL/medialab.css" "$TV/medialab-logo.png" | shasum -a 256 | cut -c1-8)
 node --check "$DL/medialab.js"; cp "$DL/medialab.js" "$DL/medialab.css" "$OUT/"; cp "$TV/medialab-logo.png" "$OUT/medialab-logo.png"

@@ -1,0 +1,31 @@
+// Arma las réplicas de Geo Lab que Data Lab muestra en «En todo Geo Lab» de cada indicador.
+// Entrada: carpeta con lo copiado de la maqueta (res-*.html ventana de resultados, kpi-*.html KPI del mapa, ind-*/det-*.html tarjeta cerrada/abierta,
+// aux-*.html leyendas y ventanas auxiliares, meta-*.json, leg-*.json, maqueta.css, replica.css). Salida: geo/vis/r/ y datalab-geovis.js.
+// Uso: node geo/genera_vis.js CARPETA
+const fs = require("fs"), path = require("path"), SRC = process.argv[2], DL = path.join(__dirname, ".."), OUT = path.join(__dirname, "vis", "r");
+if (!SRC || !fs.existsSync(SRC)) { console.error("falta la carpeta de origen"); process.exit(1); }
+// indicador → pestaña de resultados donde aparece
+const T = { "met-sol": ["met", "temp lluvia hum viento sol"], "met-cli": ["met", "clima"], inu: ["inu", "*"], "geo-alt": ["geo", "alt desn"], "geo-pend": ["geo", "pend pend5"], "urb-crec": ["urb", "edif crec etapa"], "urb-suelo": ["urb", "cons veg"], rie: ["rie", "*"], eu: ["eu", "*"], fri: ["fri", "ancla fric cerca"], "fri-rutas": ["fri", "rutas trafr"], cob: ["cob", "*"], tra: ["tra", "*"], od: ["od", "*"], "dem-pob": ["dem", "pob"], "dem-den": ["dem", "den"], "dem-viv": ["dem", "ocu"], "dem-ing": ["dem", "nsei ing"], "dem-nse": ["dem", "nse"], "eco-dbscan": ["eco", "denue div"], "eco-gp": ["eco", "gpn gpa gpr"], afl: ["afl", "*"], "ent-res": ["ent", "*"], "aire-hoy": ["aire", "aqi pm25a"], "aire-pro": ["aire", "pron"], "aire-pol": ["aire", "polen"], psl: ["psl", "*"], arb: ["arb", "*"], "emi-edi": ["emi", "emie emipc"], "emi-mov": ["emi", "emim"] };
+const NOM = { "met-sol": "Meteorología › Sol, viento y clima", "met-cli": "Meteorología › Clima (Google)", inu: "Meteorología › Lluvia e inundación", "geo-alt": "Terreno › Altitud", "geo-pend": "Terreno › Pendiente", "urb-crec": "Urbanización › Crecimiento urbano", "urb-suelo": "Urbanización › Cobertura de suelo", rie: "Riesgos", eu: "Entorno urbano (INEGI)", fri: "Accesibilidad › Deformación", "fri-rutas": "Accesibilidad › Rutas de acceso", cob: "Población", tra: "Tráfico › Monitoreo del tráfico", od: "Origen/Destino vehicular", "dem-pob": "Demografía › Población", "dem-den": "Demografía › Densidad", "dem-viv": "Demografía › Viviendas", "dem-ing": "Demografía › NSE por ingreso", "dem-nse": "Demografía › NSE estatal", "eco-dbscan": "Actividad económica › DENUE · Conglomerados", "eco-gp": "Actividad económica › Google Places", afl: "Afluencia", "ent-res": "Análisis del entorno urbano (IA) › Resumen", "aire-hoy": "Medio ambiente › Calidad del aire › Ahora", "aire-pro": "Medio ambiente › Calidad del aire › Pronóstico", "aire-pol": "Medio ambiente › Calidad del aire › Polen", psl: "Medio ambiente › Potencial solar", arb: "Cobertura arbórea", "emi-edi": "Medio ambiente › Emisiones › Edificaciones", "emi-mov": "Medio ambiente › Emisiones › Transporte" };
+const IMG = { "emi-edi": "emi" };
+global.window = {}; require(path.join(DL, "datalab-indicadores.js")); const CAT = window.DL_INDICADORES.cats || window.DL_INDICADORES;
+fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
+const ex = f => fs.existsSync(path.join(SRC, f)), cp = f => fs.copyFileSync(path.join(SRC, f), path.join(OUT, f)), js = f => ex(f) ? JSON.parse(fs.readFileSync(path.join(SRC, f), "utf8")) : null;
+cp("maqueta.css"); fs.copyFileSync(path.join(__dirname, "replica.css"), path.join(OUT, "replica.css"));
+const mi = js("meta-ind.json") || { w: 368 }, G = { w: mi.w || 368, proy: "Tec de Mty", tabs: {}, ind: {} }; let nr = 0, nk = 0, nc = 0, na = 0;
+for (const [t, [enf, ids]] of Object.entries(T)) {
+  if (!ex("res-" + t + ".html")) { console.log("sin resultados:", t); continue; } cp("res-" + t + ".html"); nr++;
+  const m = js("meta-" + t + ".json") || {}, aux = [...(m.aux || []), ...(js("leg-" + t + ".json") || [])].filter(a => ex(a.f)).map(a => { cp(a.f); na++; return { f: a.f, w: a.w, h: a.h, t: (a.t || "").replace(/\s*▾ ✕ ⧉.*$/, "").replace(/\s+\d[\d ,.]*$/, "").trim(), k: a.id === "pob-box" ? "v" : "l" }; });
+  const img = IMG[t] || t; G.tabs[t] = { n: NOM[t], img: fs.existsSync(path.join(__dirname, "vis", img + ".jpg")) ? img : "", aux };
+  const e = CAT.flatMap(c => c.an || c.enf || []).find(x => x.id === enf); if (!e) { console.log("enfoque desconocido:", enf); continue; }
+  (ids === "*" ? e.ind.map(i => i.id) : ids.split(" ")).forEach(id => { if (!e.ind.find(i => i.id === id)) return console.log("indicador desconocido:", enf + ":" + id); (G.ind[enf + ":" + id] = G.ind[enf + ":" + id] || {}).t = t; });
+}
+(G.ind["met:aire"] = G.ind["met:aire"] || {}).t = "aire-hoy";   // en Geo Lab «Calidad del aire» vive en el enfoque aire
+// en la maqueta el enfoque de MediaLab lleva el identificador del monitor (ml<hash>) y «Calidad del aire» está en aire:aire
+const LS = fs.readdirSync(SRC), orig = (pre, e, i) => { if (e === "ml") return LS.find(f => new RegExp("^" + pre + "-ml[0-9a-f]+-" + i + "\\.html$").test(f)) || ""; const f = pre + "-" + (e === "met" && i === "aire" ? "aire-aire" : e + "-" + i) + ".html"; return ex(f) ? f : ""; }, cpa = (a, b) => fs.copyFileSync(path.join(SRC, a), path.join(OUT, b));
+CAT.forEach(c => (c.an || c.enf || []).forEach(e => e.ind.forEach(i => { const k = e.id + ":" + i.id, f = e.id + "-" + i.id, o = G.ind[k] || {}, a = orig("ind", e.id, i.id), b = orig("det", e.id, i.id), q = orig("kpi", e.id, i.id);
+  if (a && b) { cpa(a, "ind-" + f + ".html"); cpa(b, "det-" + f + ".html"); o.c = 1; nc++; }
+  if (q) { cpa(q, "kpi-" + f + ".html"); o.k = 1; nk++; }
+  if (Object.keys(o).length) G.ind[k] = o; else console.log("sin ninguna pieza:", k); })));
+fs.writeFileSync(path.join(DL, "datalab-geovis.js"), "// generado por geo/genera_vis.js: piezas de Geo Lab por indicador (t pestaña de resultados · c tarjeta del panel · k KPI del mapa)\nwindow.DL_GVIS = " + JSON.stringify(G) + ";\n");
+console.log(`pestañas ${nr} · tarjetas ${nc} · KPI ${nk} · leyendas/ventanas ${na} · indicadores con piezas ${Object.keys(G.ind).length}`);
