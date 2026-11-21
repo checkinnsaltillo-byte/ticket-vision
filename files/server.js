@@ -15864,6 +15864,49 @@ async function _amRaster(forzar) {
 const _rsC = new Map();
 app.get("/mercado/airbnb/ambiente/raster/meta", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const { data } = await _bnReadGcs(_RS_DIR + "meta.json"); res.set("Cache-Control", "no-store"); res.json({ ok: true, meta: data || null }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/mercado/airbnb/ambiente/raster/img", async (req, res) => { try { const ep = parseInt(req.query.ep, 10); if (!_GH12.includes(ep)) return res.status(400).end(); let b = _rsC.get(ep); if (!b) { b = await _amGetBin(`${_RS_DIR}E${ep}.png`); if (!b) return res.status(404).end(); if (_rsC.size > 14) _rsC.clear(); _rsC.set(ep, b); } res.set({ "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" }); res.send(b); } catch (e) { res.status(500).end(); } });
+// ── Crecimiento urbano por ciudades (fuera de la zona de Saltillo): celdas de 0.5° en crecimiento/nac/<cy>_<cx>/E<año>.png, generadas por datos/nacional/crecimiento_nacional.py
+//    (solo las celdas que tocan la mancha urbana de municipios de 50 mil habitantes o más). El servidor arma una ventana alrededor del punto pedido.
+const _CR_DIR = "crecimiento/nac/", _CR_PX = 600, _crCel = new Map(); let _crIdxC = null, _crIdxT = 0;
+async function _crIdx() { if (_crIdxC && Date.now() - _crIdxT < 1800e3) return _crIdxC; const { data } = await _bnReadGcs(_CR_DIR + "index.json"); _crIdxC = data && data.cells ? data : { cells: {} }; _crIdxT = Date.now(); return _crIdxC; }
+async function _crAlfa(id, ep) {   /* canal alfa (fracción edificada codificada) de una celda y época; se guardan en memoria las más recientes */
+  const k = id + ":" + ep; if (_crCel.has(k)) return _crCel.get(k); const b = await _amGetBin(`${_CR_DIR}${id}/E${ep}.png`); let a = null;
+  if (b) { const { PNG } = require("pngjs"), p = PNG.sync.read(b); a = Buffer.alloc(p.width * p.height); for (let i = 0; i < a.length; i++) a[i] = p.data[i * 4 + 3]; }
+  if (_crCel.size >= 96) _crCel.delete(_crCel.keys().next().value); _crCel.set(k, a); return a;
+}
+async function _crVentana(lat, lng, km, eps) {
+  const idx = await _crIdx(), dLa = km / 110.54, dLo = km / (111.32 * Math.cos(lat * Math.PI / 180));
+  const pcy = Math.floor(Math.floor((_GY0 - lat) / _GP) / _CR_PX), pcx = Math.floor(Math.floor((lng - _GX0) / _GP) / _CR_PX); if (idx.cells[pcy + "_" + pcx] == null) return { cubierto: false };
+  const x0 = Math.floor((lng - dLo - _GX0) / _GP), x1 = Math.ceil((lng + dLo - _GX0) / _GP), y0 = Math.floor((_GY0 - (lat + dLa)) / _GP), y1 = Math.ceil((_GY0 - (lat - dLa)) / _GP), W = x1 - x0, H = y1 - y0, cel = [];
+  for (let cy = Math.floor(y0 / _CR_PX); cy <= Math.floor((y1 - 1) / _CR_PX); cy++) for (let cx = Math.floor(x0 / _CR_PX); cx <= Math.floor((x1 - 1) / _CR_PX); cx++) if (idx.cells[cy + "_" + cx] != null) cel.push([cy, cx]);
+  const out = {};
+  for (const ep of eps || []) {
+    const buf = Buffer.alloc(W * H);
+    for (const [cy, cx] of cel) { const a = await _crAlfa(cy + "_" + cx, ep); if (!a) continue; const gx0 = Math.max(x0, cx * _CR_PX), gx1 = Math.min(x1, (cx + 1) * _CR_PX), gy0 = Math.max(y0, cy * _CR_PX), gy1 = Math.min(y1, (cy + 1) * _CR_PX);
+      for (let gy = gy0; gy < gy1; gy++) { const f = (gy - cy * _CR_PX) * _CR_PX; a.copy(buf, (gy - y0) * W + (gx0 - x0), f + (gx0 - cx * _CR_PX), f + (gx1 - cx * _CR_PX)); } }
+    out[ep] = buf;
+  }
+  return { cubierto: true, w: W, h: H, bounds: { south: _GY0 - y1 * _GP, west: _GX0 + x0 * _GP, north: _GY0 - y0 * _GP, east: _GX0 + x1 * _GP }, a: out, at: idx.at || "", fuente: idx.fuente || "GHSL GHS-BUILT-S R2023A (JRC)" };
+}
+const _crQ = req => { const lat = +req.query.lat, lng = +req.query.lng; return isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null; };
+// ventana para los indicadores (unos km alrededor del punto): el alfa de cada época en base64. Con meta=1 solo devuelve tamaño y límites (para el mapa de la ciudad).
+app.get("/mercado/maqueta/crecimiento", async (req, res) => {
+  try {
+    const p = _crQ(req); if (!p) return res.status(400).json({ ok: false, error: "Faltan lat y lng." }); const meta = req.query.meta === "1", km = Math.max(1, Math.min(meta ? 40 : 8, +req.query.km || (meta ? 25 : 3)));
+    const v = await _crVentana(p.lat, p.lng, km, meta ? [] : _GH12); res.set("Cache-Control", "private, max-age=1800"); if (!v.cubierto) return res.json({ ok: true, cubierto: false });
+    const a = {}; if (!meta) _GH12.forEach(ep => { a[ep] = v.a[ep].toString("base64"); });
+    res.json(Object.assign({ ok: true, cubierto: true, w: v.w, h: v.h, bounds: v.bounds, epochs: _GH12, at: v.at, fuente: v.fuente }, meta ? {} : { a }));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// imagen a color de una época para el mapa de crecimiento de la ciudad (misma rampa que la zona de Saltillo)
+app.get("/mercado/maqueta/crecimiento/img", async (req, res) => {
+  try {
+    const p = _crQ(req), ep = parseInt(req.query.ep, 10); if (!p || !_GH12.includes(ep)) return res.status(400).end(); const km = Math.max(1, Math.min(40, +req.query.km || 25));
+    const v = await _crVentana(p.lat, p.lng, km, [ep]); if (!v.cubierto) return res.status(404).end();
+    const { PNG } = require("pngjs"), png = new PNG({ width: v.w, height: v.h }), A = v.a[ep];
+    for (let i = 0; i < A.length; i++) { const al = A[i]; if (al < 100) continue; const q = _rsRampa(Math.max(0.011, (al - 110) / 120 * 0.7)), o = i * 4; png.data[o] = q[0]; png.data[o + 1] = q[1]; png.data[o + 2] = q[2]; png.data[o + 3] = al; }
+    res.set({ "Content-Type": "image/png", "Cache-Control": "private, max-age=3600" }); res.send(PNG.sync.write(png, { colorType: 6 }));
+  } catch (e) { res.status(500).end(); }
+});
 // ═══ Mercado Libre Inmuebles (Extracción › Mercado Libre) ═══════════════════════════════════════════════════════════════════════════════════════════
 //   Paso 0 parámetros (tipos, clasificaciones, ubicaciones) · paso 1 lista (recorre las páginas de resultados) · paso 2 extraer (lee la ficha de cada seleccionada).
 //   A diferencia de Facebook, Mercado Libre sí responde al servidor: no hace falta marcador. Se leen las páginas con pausas aleatorias (modo cortés).
