@@ -15928,7 +15928,7 @@ async function _mallaAgeb() {
 // valor de un indicador de la malla a partir de la fila de malla/<ent>.json de una AGEB: g<k> negocios del giro k · p<k> gravedad económica · q<k> polaridad · d<k> distancia al polo (k = 0 total, 1-10 sectores; g: 0-9)
 // apt<k> aptitud comercial (0-5 categorías, 6 promedio) · apea afluencia peatonal diaria · aidx su índice 0-100 · aanc anclas · acc accesibilidad vial 0-100 · veh afluencia vehicular estimada · tipo asentamiento · nv/nw/nt entorno natural
 function _mVal(r, s, ref) {
-  if (!r) return null; const m = /^([a-z]+)(\d*)$/.exec(s || ""); if (!m) return null; const k = m[2] === "" ? 0 : +m[2], vi = r[8] || [0, 0, 0, 0, 0], acc = () => Math.min(100, 100 * (5 * vi[0] + 4 * vi[1] + 3 * vi[2] + 2 * vi[3] + vi[4]) / 60), aidx = () => Math.min(100, (r[6] / .785) / (ref.apea || 1) * 100);
+  if (!r) return null; const m = /^([a-z]+)(\d*)$/.exec(s || ""); if (!m) return null; const k = m[2] === "" ? 0 : +m[2], vi = r[8] || [0, 0, 0, 0, 0], acc = () => Math.min(100, 100 * (5 * vi[0] + 4 * vi[1] + 3 * vi[2] + 2 * vi[3] + vi[4]) / (ref.via || 135)), aidx = () => Math.min(100, (r[6] / .785) / (ref.apea || 1) * 100);
   const nz = v => v == null ? null : v;
   switch (m[1]) {
     case "g": return k < 10 ? nz(r[0][k]) : r[0].reduce((a, b) => a + b, 0); case "gt": return r[0].reduce((a, b) => a + b, 0);
