@@ -15932,7 +15932,7 @@ app.post("/geometrika/datalab/boxplot", async (req, res) => {
   try {
     if (_gmNivel(req) < 2) return res.status(403).json({ ok: false, admin: true, error: "Solo un administrador puede encender o apagar el boxplot de un indicador." });
     const b = req.body || {}, k = String(b.k || ""); if (!_bxOk(k)) return res.status(400).json({ ok: false, error: "Indicador no válido." });
-    const e = { on: !!b.on, modo: ["C", "H"].includes(b.modo) ? b.modo : "", s: [1, -1].includes(+b.s) ? +b.s : 0, at: new Date().toISOString() };
+    const e = { on: !!b.on, modo: ["C", "H", "N"].includes(b.modo) ? b.modo : "", s: [1, -1].includes(+b.s) ? +b.s : 0, at: new Date().toISOString() };
     const run = _dlBxQ.then(async () => { const d = (await _rhdGetJson(_DL_BX_OBJ)) || {}; d.cfg = d.cfg && typeof d.cfg === "object" ? d.cfg : {}; if (b.quitar) delete d.cfg[k]; else d.cfg[k] = e; d.actualizado = e.at; await _rhdPut(_DL_BX_OBJ, JSON.stringify(d), "application/json"); return d.cfg; });
     _dlBxQ = run.catch(() => { }); res.json({ ok: true, cfg: await run });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
