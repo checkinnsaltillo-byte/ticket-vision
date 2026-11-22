@@ -15917,13 +15917,35 @@ let _mallaAg = null, _mallaAgP = null;
 async function _mallaAgeb() {
   if (_mallaAg && Date.now() - _mallaAg.at < 6 * 3600e3) return _mallaAg; if (_mallaAgP) return _mallaAgP;
   _mallaAgP = (async () => {
-    const A = [], grid = new Map(), ents = Array.from({ length: 32 }, (_, i) => String(i + 1).padStart(2, "0")); let campos = null;
-    await Promise.all(ents.map(async e => { try { const { data: d } = await _bnReadGcs(`ageb/${e}.json`); if (!d || !d.ageb) return; campos = campos || d.campos; for (const k in d.ageb) { const v = d.ageb[k]; if (v[0] != null && v[1] != null) A.push([k, v]); } } catch (_) { } }));
+    const A = [], grid = new Map(), ents = Array.from({ length: 32 }, (_, i) => String(i + 1).padStart(2, "0")); let campos = null, mmeta = null;
+    await Promise.all(ents.map(async e => { try { const { data: d } = await _bnReadGcs(`ageb/${e}.json`); if (!d || !d.ageb) return; campos = campos || d.campos; let R2 = {}; try { const { data: mm } = await _bnReadGcs(`malla/${e}.json`); if (mm && mm.ageb) { R2 = mm.ageb; mmeta = mmeta || mm.meta; } } catch (_) { } for (const k in d.ageb) { const v = d.ageb[k]; if (v[0] != null && v[1] != null) A.push([k, v, R2[k] || null]); } } catch (_) { } }));
     A.forEach(([, v], i) => { const g = Math.floor(v[0] / .05) + "_" + Math.floor(v[1] / .05); (grid.get(g) || grid.set(g, []).get(g)).push(i); });
-    return (_mallaAg = { at: Date.now(), A, grid, campos });
+    let ref = { apea: 1 }; try { const { data: rf } = await _bnReadGcs("malla/ref.json"); if (rf && rf.p98) ref = rf.p98; } catch (_) { }
+    return (_mallaAg = { at: Date.now(), A, grid, campos, mmeta, ref });
   })().finally(() => { _mallaAgP = null; });
   return _mallaAgP;
 }
+// valor de un indicador de la malla a partir de la fila de malla/<ent>.json de una AGEB: g<k> negocios del giro k · p<k> gravedad económica · q<k> polaridad · d<k> distancia al polo (k = 0 total, 1-10 sectores; g: 0-9)
+// apt<k> aptitud comercial (0-5 categorías, 6 promedio) · apea afluencia peatonal diaria · aidx su índice 0-100 · aanc anclas · acc accesibilidad vial 0-100 · veh afluencia vehicular estimada · tipo asentamiento · nv/nw/nt entorno natural
+function _mVal(r, s, ref) {
+  if (!r) return null; const m = /^([a-z]+)(\d*)$/.exec(s || ""); if (!m) return null; const k = m[2] === "" ? 0 : +m[2], vi = r[8] || [0, 0, 0, 0, 0], acc = () => Math.min(100, 100 * (5 * vi[0] + 4 * vi[1] + 3 * vi[2] + 2 * vi[3] + vi[4]) / 60), aidx = () => Math.min(100, (r[6] / .785) / (ref.apea || 1) * 100);
+  const nz = v => v == null ? null : v;
+  switch (m[1]) {
+    case "g": return k < 10 ? nz(r[0][k]) : r[0].reduce((a, b) => a + b, 0); case "gt": return r[0].reduce((a, b) => a + b, 0);
+    case "p": return nz((r[1] || [])[k]); case "q": return nz((r[3] || [])[k]); case "d": return nz((r[2] || [])[k]); case "apt": return nz((r[4] || [])[k]);
+    case "apea": return r[6]; case "aidx": return Math.round(aidx()); case "aanc": return r[7]; case "acc": return Math.round(acc());
+    case "veh": return Math.round(.6 * acc() + .4 * aidx()); case "tipo": return r[10] >= 0 ? r[10] : null; case "nv": return nz((r[12] || [])[0]); case "nw": return nz((r[12] || [])[1]); case "nt": return nz((r[12] || [])[2]);
+  } return null;
+}
+app.get("/geometrika/malla/ageb/meta", async (req, res) => {
+  try { const M = await _mallaAgeb(); res.set("Cache-Control", "private, max-age=3600"); const m = M.mmeta || {}; res.json({ ok: true, listo: !!M.mmeta, giros: m.giros || [], tipos: m.tipos || [], apt: m.apt || [], via: m.via || [], ref: M.ref }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/geometrika/malla/ageb/nac/v", async (req, res) => {   // panorama nacional de un indicador de la malla: [lat, lng, valor] por AGEB
+  try { const M = await _mallaAgeb(), sp = String(req.query.v || ""), out = []; for (const [, v, r] of M.A) { const x = _mVal(r, sp, M.ref); if (x != null) out.push([Math.round(v[0] * 1e4) / 1e4, Math.round(v[1] * 1e4) / 1e4, typeof x === "number" ? Math.round(x * 10) / 10 : x]); }
+    res.set("Cache-Control", "private, max-age=3600"); res.json({ ok: true, n: out.length, a: out }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/geometrika/malla/ageb/nac", async (req, res) => {
   try { const M = await _mallaAgeb(); res.set("Cache-Control", "private, max-age=3600");
     res.json({ ok: true, n: M.A.length, campos: ["lat", "lng", "pob", "den", "ocu", "nse", "est", "div"], a: M.A.map(([, v]) => [Math.round(v[0] * 1e4) / 1e4, Math.round(v[1] * 1e4) / 1e4, v[4] != null ? v[4] : v[3], v[7], v[6], v[10], v[11], v[12]]) }); }
@@ -15932,9 +15954,9 @@ app.get("/geometrika/malla/ageb/nac", async (req, res) => {
 app.get("/geometrika/malla/ageb", async (req, res) => {
   try {
     const lat = +req.query.lat, lng = +req.query.lng, R = Math.min(25000, Math.max(1000, +req.query.r || 8000)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "coordenadas" });
-    const M = await _mallaAgeb(), kx = 111320 * Math.cos(lat * Math.PI / 180), dc = Math.ceil(R / (0.05 * 111320)) + 1, ci = Math.floor(lat / .05), cj = Math.floor(lng / .05), items = [];
-    for (let i = ci - dc; i <= ci + dc; i++) for (let j = cj - dc; j <= cj + dc; j++) for (const q of (M.grid.get(i + "_" + j) || [])) { const [k, v] = M.A[q]; if (Math.hypot((v[1] - lng) * kx, (v[0] - lat) * 111320) > R) continue; items.push([k, v[4] != null ? v[4] : v[3], v[7], v[6], v[10], v[11], v[12], v[14] || null]); if (items.length >= 6000) break; }
-    res.set("Cache-Control", "private, max-age=600"); res.json({ ok: true, campos: ["clave", "pob", "den", "ocu", "nse", "est", "div", "poligono"], items });
+    const M = await _mallaAgeb(), sp = String(req.query.v || ""), kx = 111320 * Math.cos(lat * Math.PI / 180), dc = Math.ceil(R / (0.05 * 111320)) + 1, ci = Math.floor(lat / .05), cj = Math.floor(lng / .05), items = [];
+    for (let i = ci - dc; i <= ci + dc; i++) for (let j = cj - dc; j <= cj + dc; j++) for (const q of (M.grid.get(i + "_" + j) || [])) { const [k, v, rw] = M.A[q]; if (Math.hypot((v[1] - lng) * kx, (v[0] - lat) * 111320) > R) continue; items.push([k, v[4] != null ? v[4] : v[3], v[7], v[6], v[10], v[11], v[12], v[14] || null, sp ? _mVal(rw, sp, M.ref) : null]); if (items.length >= 6000) break; }
+    res.set("Cache-Control", "private, max-age=600"); res.json({ ok: true, campos: ["clave", "pob", "den", "ocu", "nse", "est", "div", "poligono", "valor"], items });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Data Lab · boxplot por indicador. Un administrador enciende o apaga el boxplot de cada indicador y, para los que Geo Lab no trae de fábrica, elige el marco:
