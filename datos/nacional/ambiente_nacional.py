@@ -2,8 +2,8 @@
 """Malla nacional · relieve y clima por AGEB urbana de todo México → ambiente/<ent>.json
 
 Relieve: mosaicos Terrarium (AWS Terrain Tiles, nivel 11, ≈ 70 m por píxel) muestreados en el centro de cada AGEB y en dos anillos de 8 puntos a 500 m y 1 000 m.
-Clima: WorldClim 2.1 a 5 minutos de arco (normales 1970-2000), ya recortado a México en ambiente/clima.json (temperatura, precipitación, viento y radiación solar).
-Por AGEB: [altitud m, pendiente media % (a ≤ 500 m), desnivel m (máximo − mínimo a ≤ 1 km), temperatura media anual °C, precipitación anual mm, viento m/s, radiación kJ/m²/día].
+Clima: WorldClim 2.1 a 5 minutos de arco (normales 1970-2000), ya recortado a México en ambiente/clima.json (temperatura, precipitación, viento, radiación solar y humedad relativa).
+Por AGEB: [altitud m, pendiente media % (a ≤ 500 m), desnivel m (máximo − mínimo a ≤ 1 km), temperatura media anual °C, precipitación anual mm, viento m/s, radiación kJ/m²/día, humedad relativa %].
 Reanudable (--forzar rehace). Uso: python3 -I ambiente_nacional.py [--estados 06] [--local CARPETA --datos-local CARPETA] [--forzar]
 """
 import argparse, io, json, math, os, sys, time, urllib.request
@@ -47,7 +47,7 @@ def elev(lat, lng):
 
 def clima(C, lat, lng):
     G = C["paso"]; i = (C["lat1"] - lat) / G - .5; j = (lng - C["lon0"]) / G - .5; i0 = int(math.floor(i)); j0 = int(math.floor(j)); fi = i - i0; fj = j - j0; res = []
-    for k in ("tem", "llu", "vie", "rad"):
+    for k in ("tem", "llu", "vie", "rad", "hum"):
         g = C[k]; num = den = 0.0
         for di, dj, w in ((0, 0, (1 - fi) * (1 - fj)), (0, 1, (1 - fi) * fj), (1, 0, fi * (1 - fj)), (1, 1, fi * fj)):
             a, b = i0 + di, j0 + dj
@@ -70,7 +70,7 @@ def calcula(ent, sal, C):
     E = elev(LA.ravel(), LO.ravel()).reshape(17, n); alt = E[0]; r1 = E[1:9]; pend = np.nanmean(np.abs(r1 - alt) / 500.0 * 100, axis=0); desn = np.nanmax(E, axis=0) - np.nanmin(E, axis=0)
     out = {}; nan = lambda v, d=0: None if v is None or not np.isfinite(v) else round(float(v), d)
     for i, k in enumerate(ks): out[k] = [nan(alt[i]), nan(pend[i], 1), nan(desn[i]), *clima(C, float(la[i]), float(lo[i]))]
-    meta = {"ent": ent, "nombre": NOMBRES[ent][3:], "agebs": n, "campos": ["alt", "pend", "desn", "tem", "llu", "vie", "rad"],
+    meta = {"ent": ent, "nombre": NOMBRES[ent][3:], "agebs": n, "campos": ["alt", "pend", "desn", "tem", "llu", "vie", "rad", "hum"],
             "fuente": "Relieve: Terrain Tiles Terrarium (nivel 11, ≈ 70 m; SRTM y otras fuentes abiertas) · Clima: WorldClim 2.1 a 5 minutos de arco, normales 1970-2000",
             "notas": ["alt = altitud del centro del AGEB; pend = pendiente media entre el centro y 8 puntos a 500 m; desn = máximo menos mínimo de 17 puntos a ≤ 1 km.", "El clima tiene resolución de ≈ 9 km: todas las AGEB de una ciudad chica comparten casi el mismo valor."],
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "segundos": round(time.time() - t0)}

@@ -15931,7 +15931,7 @@ async function _mallaAgeb() {
 function _mVal(r, s, ref, am, su) {
   const SU = { sa: 0, sm: 1, sp: 2, sc: 3, sk: 4, sd: 5, sg: 6, sh: 7 };   // cobertura del suelo (WorldCover) de suelo/<ent>.json: % del área de la AGEB
   if (s in SU) return su && su[SU[s]] != null ? su[SU[s]] : null; if (s === "sv") return su ? su[0] + su[1] + su[2] : null;
-  const AM = { alt: 0, pend: 1, desn: 2, tem: 3, llu: 4, vie: 5, rad: 6 }; if (s in AM) return am && am[AM[s]] != null ? am[AM[s]] : null;   // relieve y clima: ambiente/<ent>.json
+  const AM = { alt: 0, pend: 1, desn: 2, tem: 3, llu: 4, vie: 5, rad: 6, hum: 7 }; if (s in AM) return am && am[AM[s]] != null ? am[AM[s]] : null;   // relieve y clima: ambiente/<ent>.json
   if (!r) return null; const m = /^([a-z]+)(\d*)$/.exec(s || ""); if (!m) return null; const k = m[2] === "" ? 0 : +m[2], vi = r[8] || [0, 0, 0, 0, 0], acc = () => Math.min(100, 100 * (5 * vi[0] + 4 * vi[1] + 3 * vi[2] + 2 * vi[3] + vi[4]) / (ref.via || 135)), aidx = () => Math.min(100, (r[6] / .785) / (ref.apea || 1) * 100);
   const nz = v => v == null ? null : v;
   switch (m[1]) {
