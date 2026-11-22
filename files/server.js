@@ -15911,6 +15911,47 @@ app.get("/mercado/maqueta/crecimiento/img", async (req, res) => {
 //    información aunque la consulta en vivo falle o la fuente deje de publicar el dato. geometrika/indhist/<id>.json = { ind: { "<enfoque>:<indicador>": { v: [{at,val,unit,sem,msg}], viz } } }
 const _IH_MAX = 100, _IH_SEM = ["ok", "warn", "bad", "info"], _ihQ = new Map();
 const _ihObj = id => `geometrika/indhist/${id}.json`, _ihId = v => { const s = String(v || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48); return s.length >= 1 ? s : ""; };
+// ── Data Lab · boxplot por indicador. Un administrador enciende o apaga el boxplot de cada indicador y, para los que Geo Lab no trae de fábrica, elige el marco:
+//    C = entre proyectos (el último valor guardado de cada proyecto) · H = historial del propio proyecto (sus versiones guardadas). Se guarda en gs://…/datalab/boxplot.json
+//    como { cfg: { "<enfoque>:<indicador>": { on, modo, s } } }. La viabilidad sale del historial de indicadores (geometrika/indhist/*.json).
+const _DL_BX_OBJ = "datalab/boxplot.json"; let _dlBxQ = Promise.resolve(), _dlBxCache = { at: 0, d: null, proy: 0 };
+const _bxNum = v => { const t = String(v == null ? "" : v).trim(); return /^[-+]?\d[\d,]*(\.\d+)?$/.test(t) ? +t.replace(/,/g, "") : null; };   // solo cifras limpias: «Sureste · 11–20 km» o «10 h 41» no cuentan como número
+const _bxKey = k => /^ml[0-9a-f]{6,}:/.test(k) ? "ml:" + k.split(":")[1] : k;   // MediaLab guarda el enfoque con el identificador del monitor
+const _bxOk = k => /^[A-Za-z0-9_.-]{1,40}:[A-Za-z0-9_.-]{1,60}$/.test(k);
+async function _bxValores() {
+  if (_dlBxCache.d && Date.now() - _dlBxCache.at < 600000) return _dlBxCache;
+  const ids = (await _gcsList("geometrika/indhist/")).map(n => (n.match(/indhist\/([A-Za-z0-9_-]+)\.json$/) || [])[1]).filter(Boolean).slice(0, 500), out = {}, cola = ids.slice();
+  const uno = async id => { try { const { data: d } = await _bnReadGcs(_ihObj(id)); const I = (d && d.ind) || {}; for (const k0 in I) { const v = (I[k0] && I[k0].v) || [], u = v[v.length - 1]; if (!u) continue; const k = _bxKey(k0), o = out[k] || (out[k] = { vals: [], ver: 0, txt: 0, n: 0 }); o.n++; o.ver = Math.max(o.ver, v.length); const x = _bxNum(u.val); if (x == null) o.txt++; else o.vals.push(x); } } catch (_) { } };
+  await Promise.all(Array.from({ length: 8 }, async () => { while (cola.length) await uno(cola.shift()); }));
+  return (_dlBxCache = { at: Date.now(), d: out, proy: ids.length });
+}
+app.get("/geometrika/datalab/boxplot", async (req, res) => {
+  try { const d = (await _rhdGetJson(_DL_BX_OBJ)) || {}; res.set("Cache-Control", "no-store"); res.json({ ok: true, cfg: d.cfg || {}, nivel: _gmNivel(req) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/geometrika/datalab/boxplot", async (req, res) => {
+  try {
+    if (_gmNivel(req) < 2) return res.status(403).json({ ok: false, admin: true, error: "Solo un administrador puede encender o apagar el boxplot de un indicador." });
+    const b = req.body || {}, k = String(b.k || ""); if (!_bxOk(k)) return res.status(400).json({ ok: false, error: "Indicador no válido." });
+    const e = { on: !!b.on, modo: ["C", "H"].includes(b.modo) ? b.modo : "", s: [1, -1].includes(+b.s) ? +b.s : 0, at: new Date().toISOString() };
+    const run = _dlBxQ.then(async () => { const d = (await _rhdGetJson(_DL_BX_OBJ)) || {}; d.cfg = d.cfg && typeof d.cfg === "object" ? d.cfg : {}; if (b.quitar) delete d.cfg[k]; else d.cfg[k] = e; d.actualizado = e.at; await _rhdPut(_DL_BX_OBJ, JSON.stringify(d), "application/json"); return d.cfg; });
+    _dlBxQ = run.catch(() => { }); res.json({ ok: true, cfg: await run });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// viabilidad: con qué se podría armar la distribución de ese indicador hoy
+app.get("/geometrika/datalab/boxplot/viabilidad", async (req, res) => {
+  try {
+    const k = String(req.query.k || ""); if (!_bxOk(k)) return res.status(400).json({ ok: false, error: "Indicador no válido." });
+    const C = await _bxValores(), o = C.d[k] || { vals: [], ver: 0, txt: 0, n: 0 }, v = o.vals.slice().sort((a, b) => a - b);
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, k, proyectos: C.proy, conDato: o.n, numericos: v.length, texto: o.txt, versiones: o.ver, minimo: 8, rango: v.length ? { min: v[0], med: v[Math.floor(v.length / 2)], max: v[v.length - 1] } : null });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// valores entre proyectos de los indicadores pedidos (para dibujar el boxplot en la maqueta)
+app.get("/geometrika/datalab/boxplot/valores", async (req, res) => {
+  try {
+    const ks = String(req.query.ks || "").split(",").map(x => x.trim()).filter(_bxOk).slice(0, 80), C = await _bxValores(), vals = {}; ks.forEach(k => { vals[k] = (C.d[k] || { vals: [] }).vals; });
+    res.set("Cache-Control", "no-store"); res.json({ ok: true, proyectos: C.proy, vals });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/mercado/maqueta/indhist", async (req, res) => {
   try { const id = _ihId(req.query.id); if (!id) return res.status(400).json({ ok: false, error: "Falta el proyecto." }); const { data } = await _bnReadGcs(_ihObj(id)); res.set("Cache-Control", "no-store"); res.json({ ok: true, ind: (data && data.ind) || {}, geo: !!(data && isFinite(data.lat) && isFinite(data.lng)), usuario: (data && data.usuario) || "" }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
