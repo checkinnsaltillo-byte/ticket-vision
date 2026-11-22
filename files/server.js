@@ -15911,6 +15911,32 @@ app.get("/mercado/maqueta/crecimiento/img", async (req, res) => {
 //    información aunque la consulta en vivo falle o la fuente deje de publicar el dato. geometrika/indhist/<id>.json = { ind: { "<enfoque>:<indicador>": { v: [{at,val,unit,sem,msg}], viz } } }
 const _IH_MAX = 100, _IH_SEM = ["ok", "warn", "bad", "info"], _ihQ = new Map();
 const _ihObj = id => `geometrika/indhist/${id}.json`, _ihId = v => { const s = String(v || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48); return s.length >= 1 ? s : ""; };
+// ── Malla nacional por AGEB (Data Lab): indicadores ya calculados por AGEB urbana de todo el país (ageb/<ent>.json, de datos/nacional/ageb_nacional.py).
+//    /geometrika/malla/ageb/nac → panorama nacional compacto (un punto por AGEB) · /geometrika/malla/ageb?lat&lng&r → las AGEB de una zona con su contorno
+let _mallaAg = null, _mallaAgP = null;
+async function _mallaAgeb() {
+  if (_mallaAg && Date.now() - _mallaAg.at < 6 * 3600e3) return _mallaAg; if (_mallaAgP) return _mallaAgP;
+  _mallaAgP = (async () => {
+    const A = [], grid = new Map(), ents = Array.from({ length: 32 }, (_, i) => String(i + 1).padStart(2, "0")); let campos = null;
+    await Promise.all(ents.map(async e => { try { const { data: d } = await _bnReadGcs(`ageb/${e}.json`); if (!d || !d.ageb) return; campos = campos || d.campos; for (const k in d.ageb) { const v = d.ageb[k]; if (v[0] != null && v[1] != null) A.push([k, v]); } } catch (_) { } }));
+    A.forEach(([, v], i) => { const g = Math.floor(v[0] / .05) + "_" + Math.floor(v[1] / .05); (grid.get(g) || grid.set(g, []).get(g)).push(i); });
+    return (_mallaAg = { at: Date.now(), A, grid, campos });
+  })().finally(() => { _mallaAgP = null; });
+  return _mallaAgP;
+}
+app.get("/geometrika/malla/ageb/nac", async (req, res) => {
+  try { const M = await _mallaAgeb(); res.set("Cache-Control", "private, max-age=3600");
+    res.json({ ok: true, n: M.A.length, campos: ["lat", "lng", "pob", "den", "ocu", "nse", "est", "div"], a: M.A.map(([, v]) => [Math.round(v[0] * 1e4) / 1e4, Math.round(v[1] * 1e4) / 1e4, v[4] != null ? v[4] : v[3], v[7], v[6], v[10], v[11], v[12]]) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/geometrika/malla/ageb", async (req, res) => {
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng, R = Math.min(25000, Math.max(1000, +req.query.r || 8000)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "coordenadas" });
+    const M = await _mallaAgeb(), kx = 111320 * Math.cos(lat * Math.PI / 180), dc = Math.ceil(R / (0.05 * 111320)) + 1, ci = Math.floor(lat / .05), cj = Math.floor(lng / .05), items = [];
+    for (let i = ci - dc; i <= ci + dc; i++) for (let j = cj - dc; j <= cj + dc; j++) for (const q of (M.grid.get(i + "_" + j) || [])) { const [k, v] = M.A[q]; if (Math.hypot((v[1] - lng) * kx, (v[0] - lat) * 111320) > R) continue; items.push([k, v[4] != null ? v[4] : v[3], v[7], v[6], v[10], v[11], v[12], v[14] || null]); if (items.length >= 6000) break; }
+    res.set("Cache-Control", "private, max-age=600"); res.json({ ok: true, campos: ["clave", "pob", "den", "ocu", "nse", "est", "div", "poligono"], items });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── Data Lab · boxplot por indicador. Un administrador enciende o apaga el boxplot de cada indicador y, para los que Geo Lab no trae de fábrica, elige el marco:
 //    C = entre proyectos (el último valor guardado de cada proyecto) · H = historial del propio proyecto (sus versiones guardadas). Se guarda en gs://…/datalab/boxplot.json
 //    como { cfg: { "<enfoque>:<indicador>": { on, modo, s } } }. La viabilidad sale del historial de indicadores (geometrika/indhist/*.json).

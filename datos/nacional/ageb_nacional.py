@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nacional import log, NOMBRES, Salida
 import hex_nacional as HX
 
-CAMPOS = ["lat", "lng", "mun", "pob_2020", "pob_2025", "viviendas_habitadas", "ocupantes_por_vivienda", "densidad_hab_km2", "area_manzanas_km2", "nse_indice", "nse_nivel", "establecimientos_denue", "diversidad_giros", "manzanas"]
+CAMPOS = ["lat", "lng", "mun", "pob_2020", "pob_2025", "viviendas_habitadas", "ocupantes_por_vivienda", "densidad_hab_km2", "area_manzanas_km2", "nse_indice", "nse_nivel", "establecimientos_denue", "diversidad_giros", "manzanas", "poligono"]
 CG = 200.0   # tamaño de la celda del índice espacial de manzanas (m)
 
 
@@ -36,6 +36,19 @@ def dentro(x, y, ring):
         if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi: c = not c
         j = i
     return c
+
+def envolvente(pts):
+    """envolvente convexa (cadena monótona) de una lista de (x, y)"""
+    pts = sorted(set(pts))
+    if len(pts) < 3: return pts
+    cr = lambda o, a, b: (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]); lo = []; hi = []
+    for p in pts:
+        while len(lo) >= 2 and cr(lo[-2], lo[-1], p) <= 0: lo.pop()
+        lo.append(p)
+    for p in reversed(pts):
+        while len(hi) >= 2 and cr(hi[-2], hi[-1], p) <= 0: hi.pop()
+        hi.append(p)
+    return lo[:-1] + hi[:-1]
 
 def nse_pca(filas):
     """filas: {clave: (peso, {var: valor})} con todas las variables → {clave: (índice, nivel)} y meta. Mismo método que hex_nacional.py, entre AGEB."""
@@ -71,14 +84,14 @@ def calcula(ent, sal, trabajo, datos_local, csv_zip):
     t0 = time.time(); _C, TOT, AG, _LP = HX.lee_censo(ent, trabajo, csv_zip); EIC = HX.carga_eic()
     FAC = {cm: EIC[cm]["p"] / TOT[cm] for cm in TOT if cm in EIC and TOT[cm] > 0}; log(ent, "censo CSV:", len(AG), "AGEB urbanas")
     # 1) manzanas: área, centro ponderado por población e índice espacial para ubicar negocios
-    geo = defaultdict(lambda: [0.0, 0.0, 0.0, 0.0, 0]); rej = defaultdict(list); n_mz = 0   # AGEB → [área m², Σw·lat, Σw·lng, Σw, manzanas]
+    geo = defaultdict(lambda: [0.0, 0.0, 0.0, 0.0, 0]); rej = defaultdict(list); n_mz = 0; vert = defaultdict(list)   # AGEB → [área m², Σw·lat, Σw·lng, Σw, manzanas]
     for _cm, d in lee_json(f"censo/mun/{ent}", sal, datos_local):
         for m in d["mz"]:
             cve, lat, lng, poly, _g, pt = m
             if len(poly) < 6: continue
             cx, cy = HX.fwd(lat, lng); ring = [(cx + poly[i] / 10.0, cy + poly[i + 1] / 10.0) for i in range(0, len(poly), 2)]; a = abs(HX.area_f(ring))
             if a < 1e-6: continue
-            k = cve[:13]; g = geo[k]; w = max(pt or 0, 1); g[0] += a; g[1] += w * lat; g[2] += w * lng; g[3] += w; g[4] += 1; n_mz += 1
+            k = cve[:13]; g = geo[k]; w = max(pt or 0, 1); g[0] += a; g[1] += w * lat; g[2] += w * lng; g[3] += w; g[4] += 1; n_mz += 1; vert[k].extend((round(q[0], 1), round(q[1], 1)) for q in ring)
             xs = [q[0] for q in ring]; ys = [q[1] for q in ring]; it = (ring, k, cx, cy)
             for gx in range(int(math.floor(min(xs) / CG)), int(math.floor(max(xs) / CG)) + 1):
                 for gy in range(int(math.floor(min(ys) / CG)), int(math.floor(max(ys) / CG)) + 1): rej[(gx, gy)].append(it)
@@ -127,12 +140,15 @@ def calcula(ent, sal, trabajo, datos_local, csv_zip):
         if not pob and not g: continue
         mun = k[:5]; f25 = FAC.get(mun); a_km2 = g[0] / 1e6 if g else None; e = est.get(k) or {}; n_e = sum(e.values())
         div = round(-sum(v / n_e * math.log(v / n_e) for v in e.values() if v) / math.log(ngr) * 100) if n_e else None
-        ns = nse.get(k); pob_t += pob; con_geo += 1 if g else 0
+        ns = nse.get(k); pob_t += pob; con_geo += 1 if g else 0; pol = None
+        if g:   # contorno aproximado de la AGEB: envolvente convexa de los vértices de sus manzanas, como [lat, lng, lat, lng, …]
+            pol = []
+            for x, y in envolvente(vert[k]): la, lo_ = HX.inv(x, y); pol += [round(la, 5), round(lo_, 5)]
         out[k] = [round(g[1] / g[3], 6) if g else None, round(g[2] / g[3], 6) if g else None, mun, int(pob), round(pob * f25) if f25 else None, int(viv), round(pob / vph, 2) if vph else None,
-                  round(pob / a_km2) if a_km2 and a_km2 > 0 else None, round(a_km2, 4) if a_km2 else None, ns[0] if ns else None, ns[1] if ns else None, n_e, div, g[4] if g else 0]
+                  round(pob / a_km2) if a_km2 and a_km2 > 0 else None, round(a_km2, 4) if a_km2 else None, ns[0] if ns else None, ns[1] if ns else None, n_e, div, g[4] if g else 0, pol]
     meta = {"ent": ent, "nombre": NOMBRES[ent][3:], "agebs": len(out), "con_geometria": con_geo, "pob_2020": int(pob_t), "negocios_denue": n_den, "negocios_sin_ageb": n_sin, "con_nse": len(nse), "nse": meta_nse,
             "fuente": "INEGI · Censo de Población y Vivienda 2020 (principales resultados por AGEB y manzana urbana), Encuesta Intercensal 2025 (factor municipal), DENUE y Marco Geoestadístico",
-            "notas": ["Solo AGEB urbanas.", "densidad = población / área sumada de las manzanas de la AGEB (no el polígono de la AGEB).", "centro = promedio de los centros de sus manzanas ponderado por población.",
+            "notas": ["Solo AGEB urbanas.", "poligono = contorno aproximado (envolvente convexa de sus manzanas), no el límite oficial de la AGEB; puede traslaparse un poco con las vecinas.", "densidad = población / área sumada de las manzanas de la AGEB (no el polígono de la AGEB).", "centro = promedio de los centros de sus manzanas ponderado por población.",
                       "pob_2025 = pob_2020 × (población municipal EIC 2025 / población municipal Censo 2020): estimación, no dato de AGEB.", "diversidad_giros = entropía de Shannon normalizada de los grupos DENUE × 100.", "Los conteos que el Censo oculta con «*» (1 o 2 casos) se toman como 1.5 para el NSE."],
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "segundos": round(time.time() - t0)}
     n = sal.pon(f"ageb/{ent}.json", {"meta": meta, "campos": CAMPOS, "ageb": out}); log(ent, "LISTO:", len(out), "AGEB,", con_geo, "con geometría,", len(nse), "con NSE,", n_den - n_sin, "negocios asignados,", round(n / 1e6, 2), "MB,", meta["segundos"], "s")
