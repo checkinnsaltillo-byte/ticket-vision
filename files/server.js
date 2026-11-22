@@ -15939,6 +15939,26 @@ function _mVal(r, s, ref, am) {
     case "veh": return Math.round(.6 * acc() + .4 * aidx()); case "tipo": return r[10] >= 0 ? r[10] : null; case "nv": return nz((r[12] || [])[0]); case "nw": return nz((r[12] || [])[1]); case "nt": return nz((r[12] || [])[2]);
   } return null;
 }
+// red vial OSM muestreada cada ~50 m, con su clase (0 autopista/troncal · 1 primaria · 2 secundaria · 3 terciaria · 4 local), de una ventana: Data Lab calcula con ella la accesibilidad vial por hexágono y manzana.
+// Cada celda de osm/nac/vial (0.5° con 0.25° de margen) se procesa una vez y queda en memoria (se guardan las últimas 4).
+const _MV_CL = { motorway: 0, motorway_link: 0, trunk: 0, trunk_link: 0, primary: 1, primary_link: 1, secondary: 2, secondary_link: 2, tertiary: 3, tertiary_link: 3, unclassified: 4, residential: 4, living_street: 4 }, _MV = new Map();
+async function _mvCelda(i, j) {
+  const k = i + "_" + j; if (_MV.has(k)) { const p = _MV.get(k); _MV.delete(k); _MV.set(k, p); return p; }
+  const p = (async () => { const { data: d } = await _bnReadGcs(`osm/nac/vial/${k}.json`), W = []; if (!d || !d.ways) return W;
+    for (const w of d.ways) { const c = _MV_CL[(w.t || {}).highway]; if (c == null || !w.g) continue; const g = _vialDec(w.g), pts = []; if (g.length < 2) continue;
+      for (let q = 0; q < g.length - 1; q++) { const ky = 110540, kx = 111320 * Math.cos(g[q][0] * Math.PI / 180), L = Math.hypot((g[q + 1][1] - g[q][1]) * kx, (g[q + 1][0] - g[q][0]) * ky), n = Math.max(1, Math.round(L / 50)); for (let t = 0; t < n; t++) { const f = (t + .5) / n; pts.push(g[q][0] + (g[q + 1][0] - g[q][0]) * f, g[q][1] + (g[q + 1][1] - g[q][1]) * f); } }
+      W.push({ i: w.i, c, p: Float32Array.from(pts) }); }
+    return W; })().catch(e => { _MV.delete(k); throw e; });
+  _MV.set(k, p); while (_MV.size > 4) _MV.delete(_MV.keys().next().value); return p;
+}
+app.get("/geometrika/malla/vial", async (req, res) => {
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng, R = Math.min(9000, Math.max(500, +req.query.r || 4000)); if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ ok: false, error: "coordenadas" });
+    const W = await _mvCelda(Math.floor(lat / .5), Math.floor(lng / .5)), kx = 111320 * Math.cos(lat * Math.PI / 180), out = [], vistos = new Set();
+    for (const w of W) { if (vistos.has(w.i)) continue; vistos.add(w.i); for (let q = 0; q < w.p.length; q += 2) { const dx = (w.p[q + 1] - lng) * kx, dy = (w.p[q] - lat) * 110540; if (dx * dx + dy * dy <= R * R) out.push([Math.round(w.p[q] * 1e5) / 1e5, Math.round(w.p[q + 1] * 1e5) / 1e5, w.c]); } }
+    res.set("Cache-Control", "private, max-age=3600"); res.json({ ok: true, n: out.length, paso_m: 50, p: out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/geometrika/malla/ageb/meta", async (req, res) => {
   try { const M = await _mallaAgeb(); res.set("Cache-Control", "private, max-age=3600"); const m = M.mmeta || {}; res.json({ ok: true, listo: !!M.mmeta, giros: m.giros || [], tipos: m.tipos || [], apt: m.apt || [], via: m.via || [], ref: M.ref }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
