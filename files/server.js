@@ -14882,6 +14882,33 @@ app.get("/geometrika/modelab-escena", async (req, res) => {
   try { const mid = String(req.query.id || ""), i = +req.query.p || 0; if (!/^m[a-z0-9]{6,24}$/.test(mid)) return res.status(400).json({ ok: false, error: "Id no válido" }); const e = await _mlEscena(mid, i), num = await _mlNum(mid); try { const w = await _ghslVentana(+e.lat, +e.lng, +e.radio || 300); if (w) e.gh = w; } catch (_) { } res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: e, pid: num ? _mlPid(num, i) : null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// ── Precálculo de los análisis gratuitos de TODOS los puntos de un proyecto de Model Lab (escena de OSM, datos ambientales, fricción/anclas y población alcanzada). Los de pago (Street View, IA, Places, Solar, Routes) nunca se piden.
+let _mlPre = { running: false };
+async function _mlPrecalcula(mid) {
+  const num = await _mlNum(mid), pts = ((await _bnReadGcs(`modelab/${mid}/puntos.json`)).data || {}).puntos || [], N = pts.length, sk = `modelab/${mid}/precalc.json`;
+  _mlPre = { running: true, id: mid, total: N, hechos: 0, errores: 0, fase: "Datos ambientales", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const guarda = () => { _mlPre.upd = new Date().toISOString(); return _bnWriteGcs(sk, _mlPre, null).catch(() => { }); };
+  try {
+    await guarda(); const pids = pts.map((_, i) => _mlPid(num, i));
+    for (let k = 0; k < 120 && _amJob && _amJob.running; k++) await _amSleep(5000);   // si ya hay un cálculo ambiental en curso, se espera
+    _amArranca(pids, false, 0); await _amSleep(3000); for (let k = 0; k < 720 && _amJob && _amJob.running; k++) { await _amSleep(5000); _mlPre.upd = new Date().toISOString(); }
+    _mlPre.fase = "Escena, red vial y población de cada punto"; await guarda(); let nx = 0;
+    await Promise.all([0, 1, 2].map(async () => { while (nx < N) { const i = nx++, pid = pids[i];
+      try { await _mlEscena(mid, i); await _mqFriccion(pid, await _mqVialLee(pid)); await _cmPob(+pts[i].lat, +pts[i].lng); } catch (e) { _mlPre.errores++; _mlPre.ult = String(e.message || e).slice(0, 160); }
+      _mlPre.hechos++; if (_mlPre.hechos % 25 === 0) await guarda(); } }));
+    _mlPre.fase = "Listo";
+  } catch (e) { _mlPre.error = String(e.message || e); }
+  _mlPre.running = false; _mlPre.fin = new Date().toISOString(); await guarda();
+}
+app.post("/geometrika/modelab-precalcular", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const mid = String((req.body || {}).id || ""); if (!/^m[a-z0-9]{6,24}$/.test(mid)) return res.status(400).json({ ok: false, error: "Id no válido" });
+    if (_mlPre.running && Date.now() - Date.parse(_mlPre.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay un precálculo en curso", estado: _mlPre });
+    _mlPrecalcula(mid); res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get("/geometrika/modelab-precalcular/estado", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); const mid = String(req.query.id || "");
+  if (_mlPre.running && (!mid || _mlPre.id === mid)) return res.json({ ok: true, estado: _mlPre }); try { const { data } = await _bnReadGcs(`modelab/${mid}/precalc.json`); res.json({ ok: true, estado: data || null }); } catch (_) { res.json({ ok: true, estado: null }); }
+});
 async function _mqGenera(id, refrescar) {
   let svN = 0;
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
