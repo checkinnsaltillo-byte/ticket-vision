@@ -13143,6 +13143,23 @@ app.get("/geometrika/sugerir", async (req, res) => {   // autocompletado de dire
 require("./medialab.js")(app, { readGcs: _bnReadGcs, writeGcs: _bnWriteGcs, nacMuns: _nacMuns, originOk: _vOriginOk });
 require("./modelab.js")(app, { readGcs: _bnReadGcs, writeGcs: _bnWriteGcs, nacMuns: _nacMuns, originOk: _vOriginOk, malla: () => _mallaAgeb(), mVal: (...a) => _mVal(...a), metro: () => _metro(), ents: () => _ENTS, hx: n => _hxRead(n) });   // Model Lab: modelado estadístico por proyecto   // Media Lab: monitor masivo de noticias
 const _ubiCache = new Map();
+// ── Dirección exacta de unas coordenadas (calle, número, colonia, ciudad): Google Geocoding; si no está disponible, OpenStreetMap. Se guarda por coordenada para no repetir la consulta
+const _gmDirPunto = new Map();
+app.get("/geometrika/direccion-punto", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const lat = +req.query.lat, lng = +req.query.lng; if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ ok: false, error: "Coordenadas no válidas" });
+    const k = lat.toFixed(5) + "_" + lng.toFixed(5), mem = _gmDirPunto.get(k); if (mem) return res.json(mem);
+    const ok = `geometrika/direcciones/${k}.json`; try { const { data } = await _bnReadGcs(ok); if (data && data.dir) { _gmDirPunto.set(k, data); return res.json(data); } } catch (_) { }
+    let out = null; const key = process.env.GOOGLE_MAPS_KEY;
+    if (key) { try { const j = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=es&region=mx&key=${key}`, { signal: AbortSignal.timeout(15000) }).then(r => r.json()); const R = (j.results || []), pick = R.find(x => (x.types || []).some(t => /^(street_address|premise|subpremise)$/.test(t))) || R.find(x => (x.types || []).includes("route")) || R[0];
+      if (j.status === "OK" && pick) out = { ok: true, dir: String(pick.formatted_address || "").replace(/, México$/, ""), fuente: "Google", exacta: (pick.types || []).some(t => /^(street_address|premise|subpremise)$/.test(t)) }; } catch (_) { } }
+    if (!out) { try { const r = await _fetchReal(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=es&lat=${lat}&lon=${lng}`, { headers: { "User-Agent": "check-inn-saltillo/1.0", "Accept": "application/json" } }); const j = r.ok ? await r.json() : null, a = (j && j.address) || {};
+      if (j) { const calle = [a.road, a.house_number].filter(Boolean).join(" "), col = a.neighbourhood || a.suburb || a.quarter || "", ciu = a.city || a.town || a.village || a.municipality || "", cp = a.postcode || ""; const dir = [calle, col, [cp, ciu].filter(Boolean).join(" "), a.state].filter(Boolean).join(", "); if (dir) out = { ok: true, dir, fuente: "OpenStreetMap", exacta: !!a.house_number }; } } catch (_) { } }
+    if (!out) return res.status(404).json({ ok: false, error: "Sin dirección para esas coordenadas" });
+    _gmDirPunto.set(k, out); try { await _bnWriteGcs(ok, out, null); } catch (_) { } res.json(out);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.get("/geometrika/ubicacion", async (req, res) => {   // estado y municipio de unas coordenadas (encabezado de la maqueta)
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
