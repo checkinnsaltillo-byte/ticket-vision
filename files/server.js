@@ -14505,7 +14505,7 @@ app.get("/geometrika/indicadores", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
     const raw = String(req.query.id || ""), id = /^m[a-z0-9]{6,24}$/.test(raw) ? raw : raw.replace(/\D/g, ""); if (id.length < 6) return res.status(400).json({ ok: false, error: "Id no válido" });
-    const pts = (await _proyPuntos(id)).filter(q => isFinite(q[0]) && isFinite(q[1])).slice(0, 3000); if (!pts.length) return res.json({ ok: true, puntos: 0, conAgeb: 0, items: [] });
+    const todos = (await _proyPuntos(id)), pi = req.query.i != null && req.query.i !== "" ? +req.query.i : null, pts = (pi != null && todos[pi] ? [todos[pi]] : todos).filter(q => isFinite(q[0]) && isFinite(q[1])).slice(0, 3000); if (!pts.length) return res.json({ ok: true, puntos: 0, conAgeb: 0, items: [] });
     const M = await _mallaAgeb(), tipos = (M.mmeta && M.mmeta.tipos) || [], cer = [];
     for (const [lat, lng] of pts) { const kx = 111320 * Math.cos(lat * Math.PI / 180), ci = Math.floor(lat / .05), cj = Math.floor(lng / .05); let best = null, bd = 3000 * 3000;
       for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) for (const k of (M.grid.get(i + "_" + j) || [])) { const v = M.A[k][1], dx = (v[1] - lng) * kx, dy = (v[0] - lat) * 111320, d2 = dx * dx + dy * dy; if (d2 < bd) { bd = d2; best = k; } } cer.push(best); }
