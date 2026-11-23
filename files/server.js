@@ -14854,6 +14854,21 @@ app.post("/mercado/entorno/fotos", async (req, res) => {
   res.json({ ok: true });
 });
 let _mqJob = { running: false };
+// ── Escena gratuita de un punto de Model Lab: calles, edificios, árboles, luminarias, paradas y lugares de OpenStreetMap y huellas locales (sin Street View, imagen satelital ni IA), para que corran todos los análisis sin costo
+const _mlEscC = new Map();
+async function _mlEscena(mid, i) {
+  const ck = `modelab/${mid}/escena/${i}.json`; try { const { data } = await _bnReadGcs(ck); if (data && data.roads) return data; } catch (_) { }
+  const pts = ((await _bnReadGcs(`modelab/${mid}/puntos.json`)).data || {}).puntos || [], q = pts[i]; if (!q) throw new Error("Punto no encontrado"); const lat = +q.lat, lng = +q.lng, R = 300, nom = q.id != null && q.id !== "" ? String(q.id) : "Punto " + (i + 1);
+  const osm = await _mqOsm(lat, lng, R, `ml${mid}_${i}`), [mb, pois] = await Promise.all([_mqFootprints(lat, lng, R).catch(() => []), _mqPois(lat, lng, R).catch(() => [])]);
+  const riesgos = (osm.fis || []).filter(c => Math.hypot(c.p[0], c.p[1]) <= 120).map(c => ({ t: "fisico", s: 2, n: c.n, k: c.k, x: c.p[0], y: c.p[1], f: "osm" })).slice(0, 40);
+  const out = { id: `${mid}~${i}`, ver: "maqueta-geo-v1", at: new Date().toISOString(), lat, lng, radio: R, fotos: 0, tit: nom, titulo: nom, roads: osm.roads, builds: osm.builds, trees: osm.trees, lamps: osm.lamps, lampsF: [], svF: [], cpF: [], paF: [], paradas: osm.paradas || [], cruces: (osm.cruces || []).filter(c => c.m !== "unmarked").map(c => c.p), obs: [], pois, sat: null, mb, riesgos, pkF: [], acF: [], sinFotos: true };
+  try { await _bnWriteGcs(ck, out, null); } catch (_) { } return out;
+}
+app.get("/geometrika/modelab-escena", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const mid = String(req.query.id || ""), i = +req.query.p || 0; if (!/^m[a-z0-9]{6,24}$/.test(mid)) return res.status(400).json({ ok: false, error: "Id no válido" }); const e = await _mlEscena(mid, i); try { const w = await _ghslVentana(+e.lat, +e.lng, +e.radio || 300); if (w) e.gh = w; } catch (_) { } res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: e }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 async function _mqGenera(id, refrescar) {
   let svN = 0;
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps en el servidor");
