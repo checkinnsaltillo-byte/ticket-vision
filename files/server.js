@@ -15968,17 +15968,19 @@ app.get("/geometrika/malla/vial", async (req, res) => {
 //    /geometrika/malla/buscar?q= → entidades y municipios (locales) y lugares (Nominatim, con caché y un máximo de una consulta por segundo)
 const _ENTS = ["", "Aguascalientes", "Baja California", "Baja California Sur", "Campeche", "Coahuila", "Colima", "Chiapas", "Chihuahua", "Ciudad de México", "Durango", "Guanajuato", "Guerrero", "Hidalgo", "Jalisco", "México", "Michoacán", "Morelos", "Nayarit", "Nuevo León", "Oaxaca", "Puebla", "Querétaro", "Quintana Roo", "San Luis Potosí", "Sinaloa", "Sonora", "Tabasco", "Tamaulipas", "Tlaxcala", "Veracruz", "Yucatán", "Zacatecas"];
 const _q21 = a => { const s = a.slice().sort((x, y) => x - y), n = s.length, o = []; for (let i = 0; i <= 20; i++) { const p = i / 20 * (n - 1), l = Math.floor(p), f = p - l; o.push(+(s[l] + ((s[Math.min(n - 1, l + 1)] - s[l]) * f)).toFixed(3)); } return o; };
+let _metroC = null;
+async function _metro() { if (_metroC && Date.now() - _metroC.at < 6 * 3600e3) return _metroC.d; let d = { met: {}, mun: {} }; try { const { data } = await _bnReadGcs("config/metropolis.json"); if (data && data.met) d = data; } catch (_) { } _metroC = { at: Date.now(), d }; return d; }
 async function _mBox(sp) {
   const M = await _mallaAgeb(); M.box = M.box || new Map(); if (M.box.has(sp)) return M.box.get(sp);
-  const suma = /^(pob|g\d+|gt|aanc)$/.test(sp), X = [], mun = new Map(), ent = new Map();
+  const suma = /^(pob|g\d+|gt|aanc)$/.test(sp), X = [], mun = new Map(), ent = new Map(), cit = new Map(), MT = (await _metro()).mun; let nA = 0, nW = 0;
   for (const [, v, r, am, su] of M.A) { const x = _mVal(r, sp, M.ref, am, su, v); if (typeof x !== "number" || !isFinite(x)) continue; X.push(x); const w = suma ? 1 : Math.max(1, v[4] != null ? v[4] : v[3] || 1), m = String(v[2]), e = m.slice(0, 2);
-    for (const [mp, k] of [[mun, m], [ent, e]]) { let o = mp.get(k); if (!o) mp.set(k, o = [0, 0]); o[0] += x * w; o[1] += suma ? 0 : w; } }
-  const fin = mp => { const o = new Map(); for (const [k, [a, w]] of mp) o.set(k, suma ? a : (w ? a / w : null)); return o; }, mV = fin(mun), eV = fin(ent);
-  const res = { sp, suma, ageb: { n: X.length, q: X.length ? _q21(X) : null }, mun: { n: mV.size, q: mV.size ? _q21([...mV.values()].filter(v => v != null)) : null }, ent: { n: eV.size, q: eV.size ? _q21([...eV.values()].filter(v => v != null)) : null }, mV, eV };
+    nA += x * w; nW += suma ? 0 : w; for (const [mp, k] of [[mun, m], [ent, e], [cit, MT[m]]]) { if (k == null) continue; let o = mp.get(k); if (!o) mp.set(k, o = [0, 0]); o[0] += x * w; o[1] += suma ? 0 : w; } }
+  const fin = mp => { const o = new Map(); for (const [k, [a, w]] of mp) o.set(k, suma ? a : (w ? a / w : null)); return o; }, mV = fin(mun), eV = fin(ent), cV = fin(cit);
+  const res = { sp, suma, ageb: { n: X.length, q: X.length ? _q21(X) : null }, mun: { n: mV.size, q: mV.size ? _q21([...mV.values()].filter(v => v != null)) : null }, ent: { n: eV.size, q: eV.size ? _q21([...eV.values()].filter(v => v != null)) : null }, city: { n: cV.size, q: cV.size ? _q21([...cV.values()].filter(v => v != null)) : null }, nac: suma ? nA : (nW ? nA / nW : null), mV, eV, cV };
   M.box.set(sp, res); return res;
 }
 app.get("/geometrika/malla/box", async (req, res) => {
-  try { const sp = String(req.query.v || ""); if (!/^[a-z]+\d*$/.test(sp)) return res.status(400).json({ ok: false, error: "indicador" }); const b = await _mBox(sp); res.set("Cache-Control", "private, max-age=3600"); res.json({ ok: true, sp, suma: b.suma, ageb: b.ageb, mun: b.mun, ent: b.ent }); }
+  try { const sp = String(req.query.v || ""); if (!/^[a-z]+\d*$/.test(sp)) return res.status(400).json({ ok: false, error: "indicador" }); const b = await _mBox(sp); res.set("Cache-Control", "private, max-age=3600"); res.json({ ok: true, sp, suma: b.suma, ageb: b.ageb, mun: b.mun, city: b.city, ent: b.ent, nac: b.nac }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/geometrika/malla/punto", async (req, res) => {
@@ -15987,8 +15989,8 @@ app.get("/geometrika/malla/punto", async (req, res) => {
     const M = await _mallaAgeb(), kx = 111320 * Math.cos(lat * Math.PI / 180), ci = Math.floor(lat / .05), cj = Math.floor(lng / .05); let best = null, bd = 5000 * 5000;
     for (let i = ci - 2; i <= ci + 2; i++) for (let j = cj - 2; j <= cj + 2; j++) for (const q of (M.grid.get(i + "_" + j) || [])) { const v = M.A[q][1], dx = (v[1] - lng) * kx, dy = (v[0] - lat) * 111320, d2 = dx * dx + dy * dy; if (d2 < bd) { bd = d2; best = q; } }
     if (best == null) return res.json({ ok: false, error: "Sin AGEB cercana" });
-    const [k, v, r, am, su] = M.A[best], m = String(v[2]), e = m.slice(0, 2), b = sp && /^[a-z]+\d*$/.test(sp) ? await _mBox(sp) : null, mu = (await _nacMuns()).find(x => x.c === m);
-    res.set("Cache-Control", "private, max-age=600"); res.json({ ok: true, ageb: { k, valor: sp ? _mVal(r, sp, M.ref, am, su, v) : null }, mun: { c: m, n: mu ? mu.nm : m, valor: b && b.mV.has(m) ? b.mV.get(m) : null }, ent: { c: e, n: _ENTS[+e] || e, valor: b && b.eV.has(e) ? b.eV.get(e) : null } });
+    const [k, v, r, am, su] = M.A[best], m = String(v[2]), e = m.slice(0, 2), MT = await _metro(), cty = MT.mun[m], b = sp && /^[a-z]+\d*$/.test(sp) ? await _mBox(sp) : null, mu = (await _nacMuns()).find(x => x.c === m);
+    res.set("Cache-Control", "private, max-age=600"); res.json({ ok: true, ageb: { k, valor: sp ? _mVal(r, sp, M.ref, am, su, v) : null }, mun: { c: m, n: mu ? mu.nm : m, valor: b && b.mV.has(m) ? b.mV.get(m) : null }, ent: { c: e, n: _ENTS[+e] || e, valor: b && b.eV.has(e) ? b.eV.get(e) : null }, city: cty ? { c: cty, n: (MT.met[cty] || {}).n || cty, valor: b && b.cV.has(cty) ? b.cV.get(cty) : null } : null });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 const _bsq = new Map(); let _bsLast = 0, _bsCola = Promise.resolve();
@@ -16000,7 +16002,9 @@ app.get("/geometrika/malla/buscar", async (req, res) => {
     const bbE = new Map(); for (const m of muns) { const e = m.c.slice(0, 2), b = bbE.get(e) || [90, 180, -90, -180]; bbE.set(e, [Math.min(b[0], m.bbox[0]), Math.min(b[1], m.bbox[1]), Math.max(b[2], m.bbox[2]), Math.max(b[3], m.bbox[3])]); }
     for (let e = 1; e <= 32; e++) { const n = _sinAc(_ENTS[e]); if (n.startsWith(q) || n.includes(q)) { const b = bbE.get(String(e).padStart(2, "0")); if (b) items.push({ n: _ENTS[e], t: "Estado", s: n.startsWith(q) ? 0 : 2, lat: (b[0] + b[2]) / 2, lng: (b[1] + b[3]) / 2, bb: [b[1], b[0], b[3], b[2]] }); } }
     for (const m of muns) { const n = _sinAc(m.nm); if (n.startsWith(q) || n.includes(q)) { const b = m.bbox; items.push({ n: m.nm, d: _ENTS[+m.c.slice(0, 2)], t: "Municipio", s: n === q ? -1 : n.startsWith(q) ? 1 : 3, lat: (b[0] + b[2]) / 2, lng: (b[1] + b[3]) / 2, bb: [b[1], b[0], b[3], b[2]] }); } }
-    items.sort((a, b) => a.s - b.s || b.t.localeCompare(a.t)); let out = items.slice(0, 6);
+    const MT = await _metro(), bbM = new Map(); for (const m of muns) { const ci = MT.mun[m.c]; if (!ci) continue; const b = bbM.get(ci) || [90, 180, -90, -180]; bbM.set(ci, [Math.min(b[0], m.bbox[0]), Math.min(b[1], m.bbox[1]), Math.max(b[2], m.bbox[2]), Math.max(b[3], m.bbox[3])]); }
+    for (const [ci, mt] of Object.entries(MT.met)) { const full = _sinAc(mt.n), n = full.replace(/^(zona metropolitana|metropoli municipal|zona conurbada) (de |del |de la |de los |de las )?/, ""), b = bbM.get(ci); if (!b) continue; if (n.startsWith(q) || n.includes(q) || full.includes(q)) items.push({ n: mt.n, d: "Ciudad", t: "Ciudad", s: n === q ? -1 : n.startsWith(q) ? 0 : 3, lat: (b[0] + b[2]) / 2, lng: (b[1] + b[3]) / 2, bb: [b[1], b[0], b[3], b[2]] }); }
+    items.sort((a, b) => a.s - b.s || b.t.localeCompare(a.t)); let out = items.slice(0, 7);
     if (q.length >= 3) {   // lugares (colonias, barrios, sitios): Nominatim de OpenStreetMap
       const ck = _bsq.get(q); let lug;
       if (ck && Date.now() - ck.t < 6 * 3600e3) lug = ck.r; else {
