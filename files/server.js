@@ -14118,7 +14118,20 @@ function _fbMapa(urls) {
 const _fbKeyC = m => m.lat.toFixed(3) + "," + m.lng.toFixed(3);
 async function _fbFreqC() { const d = await _fbDoc(), f = {}; Object.values(d.items || {}).forEach(it => { const m = _fbMapa(it.mapas); if (m && m.tipo === "circulo") f[_fbKeyC(m)] = (f[_fbKeyC(m)] || 0) + 1; }); return f; } // el centro de ciudad que Facebook repite en muchas publicaciones no es una ubicación útil
 // Coordenadas y datos mínimos de una publicación por id: Airbnb o Marketplace (la misma vía de Entorno urbano y Negocios en 1 km).
+// ── puntos de Model Lab como «propiedades» para los análisis: id numérico 8 + nº de proyecto (5 dígitos) + nº de punto (5 dígitos)
+async function _mlNum(mid) {
+  for (let t = 0; t < 4; t++) { const { data: ix, gen } = await _bnReadGcs("modelab/proyectos.json"); if (!ix) return null; const p = (ix.proyectos || []).find(x => x.id === mid); if (!p) return null; if (p.num) return p.num;
+    p.num = Math.max(0, ...(ix.proyectos || []).map(x => +x.num || 0)) + 1; try { await _bnWriteGcs("modelab/proyectos.json", ix, gen); return p.num; } catch (_) { } }
+  return null;
+}
+const _mlPid = (num, i) => "8" + String(num).padStart(5, "0") + String(i).padStart(5, "0");
+async function _mlItem(pid) {
+  const num = +pid.slice(1, 6), i = +pid.slice(6), ix = (await _bnReadGcs("modelab/proyectos.json")).data, p = ix && (ix.proyectos || []).find(x => +x.num === num); if (!p) return null;
+  const pts = ((await _bnReadGcs(`modelab/${p.id}/puntos.json`)).data || {}).puntos || [], q = pts[i]; if (!q) return null;
+  return { id: pid, titulo: `Model Lab · ${p.nombre || "Proyecto"} · ${q.id != null && q.id !== "" ? q.id : "punto " + (i + 1)}`, tipo: "Model Lab", ciudad: "", lat: q.lat, lng: q.lng, ubicacion: "" };
+}
 async function _mcItem(id) {
+  if (/^8\d{10}$/.test(String(id))) { const it = await _mlItem(String(id)).catch(() => null); if (it) return it; }
   if (/^9\d{13,14}$/.test(String(id))) { // proyecto de GeoMetrika: 14 dígitos = punto 1; 15 dígitos = punto 2..10
     const sid = String(id), base = sid.slice(0, 14), k = sid.length === 15 ? +sid.slice(14) : 0; let P = null; try { P = (await _bnReadGcs(`geometrika/proyectos/${base}.json`)).data; } catch (_) {}
     const q = P && (P.puntos || [])[k]; if (q) return { id: sid, titulo: `GeoMetrika · ${P.nombre || P.perfil || "Proyecto"}${P.puntos.length > 1 ? " · punto " + (k + 1) : ""}`, tipo: "Proyecto GeoMetrika", ciudad: "", lat: q.lat, lng: q.lng, ubicacion: q.dir || P.direccion || "" };
@@ -14866,7 +14879,7 @@ async function _mlEscena(mid, i) {
 }
 app.get("/geometrika/modelab-escena", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
-  try { const mid = String(req.query.id || ""), i = +req.query.p || 0; if (!/^m[a-z0-9]{6,24}$/.test(mid)) return res.status(400).json({ ok: false, error: "Id no válido" }); const e = await _mlEscena(mid, i); try { const w = await _ghslVentana(+e.lat, +e.lng, +e.radio || 300); if (w) e.gh = w; } catch (_) { } res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: e }); }
+  try { const mid = String(req.query.id || ""), i = +req.query.p || 0; if (!/^m[a-z0-9]{6,24}$/.test(mid)) return res.status(400).json({ ok: false, error: "Id no válido" }); const e = await _mlEscena(mid, i), num = await _mlNum(mid); try { const w = await _ghslVentana(+e.lat, +e.lng, +e.radio || 300); if (w) e.gh = w; } catch (_) { } res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: e, pid: num ? _mlPid(num, i) : null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 async function _mqGenera(id, refrescar) {
@@ -15470,7 +15483,7 @@ async function _amItems(ids) {
   const arm = id => { const a = A[id], f = F[id]; if (a && a.lat != null && a.lng != null) return { id, lat: +a.lat, lng: +a.lng, aprox: false }; if (f && f.geo && f.lat != null && f.lng != null) return { id, lat: +f.lat, lng: +f.lng, aprox: (f.geo.tipo || (f.geo.prec === "facebook" ? "circulo" : "punto")) === "circulo" }; return null; };
   const dm = await _mlDoc().catch(() => null), Mi = (dm && dm.items) || {}, armM = id => { const m = Mi[id]; return m && m.lat != null && m.lng != null ? { id, lat: +m.lat, lng: +m.lng, aprox: m.geoTipo === "aprox" } : null; };
   (ids || [...Object.keys(A), ...Object.keys(F), ...Object.keys(Mi)]).forEach(id => { const x = arm(String(id)) || armM(String(id)); if (x && isFinite(x.lat) && isFinite(x.lng)) out.push(x); });
-  for (const id of (ids || [])) if (/^9\d{13,14}$/.test(String(id)) && !out.some(x => x.id === String(id))) { const it = await _mcItem(String(id)).catch(() => null); if (it && it.lat != null && isFinite(+it.lat) && isFinite(+it.lng)) out.push({ id: String(id), lat: +it.lat, lng: +it.lng, aprox: false }); }   // proyectos de GeoMetrika
+  for (const id of (ids || [])) if (/^(9\d{13,14}|8\d{10})$/.test(String(id)) && !out.some(x => x.id === String(id))) { const it = await _mcItem(String(id)).catch(() => null); if (it && it.lat != null && isFinite(+it.lat) && isFinite(+it.lng)) out.push({ id: String(id), lat: +it.lat, lng: +it.lng, aprox: false }); }   // proyectos de GeoMetrika
   return out;
 }
 async function _amCorre(ids, forzar) {
