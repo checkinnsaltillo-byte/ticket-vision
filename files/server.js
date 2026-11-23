@@ -13875,7 +13875,7 @@ app.get("/geometrika/proyectos", async (req, res) => {
         ml.items.forEach(m => { const id = String(m.id), base = /^9\d{14}$/.test(id) ? id.slice(0, 14) : id; if (vistos.has(base) || vistos.has(id) || oculto.has(id)) return; if (/^9\d{13,14}$/.test(id)) return;   // los de GeoMetrika ya salen de su proyecto (o están eliminados)
           lista.push({ id, creado: null, perfil: m.titulo || id, objetivo: "", direccion: "", lat: m.lat, lng: m.lng, puntos: 1, radio: m.radio, estado: "listo", error: "", origen: ab[id] ? "airbnb" : mlD[id] ? "mercadolibre" : fb[id] ? "facebook" : "otro" }); }); } } catch (e) { console.warn("[geometrika] lista de maquetas:", e.message); }
     try { const mi = (await _bnReadGcs("modelab/proyectos.json")).data;   // proyectos de Model Lab: también aparecen como tarjetas de Geo Lab
-      for (const p0 of (mi && mi.proyectos) || []) { const p = await _mlGeo(p0); lista.push({ id: p.id, creado: p.actualizado || p.creado, nombre: p.nombre || "", perfil: "Modelado", objetivo: String(p.objetivo || "").slice(0, 80), direccion: p.zona || "", lat: p.lat, lng: p.lng, puntos: p.nPuntos || 0, radio: null, estado: p.estado === "modelado" ? "listo" : "registrado", estadoTxt: { nuevo: "sin configurar", configurado: "configurado", modelado: "modelado" }[p.estado] || p.estado, error: "", origen: "modelab" }); } } catch (_) { }
+      for (const p0 of ((mi && mi.proyectos) || []).filter(x => x.tipo !== "sim")) { const p = await _mlGeo(p0); lista.push({ id: p.id, creado: p.actualizado || p.creado, nombre: p.nombre || "", perfil: "Modelado", objetivo: String(p.objetivo || "").slice(0, 80), direccion: p.zona || "", lat: p.lat, lng: p.lng, puntos: p.nPuntos || 0, radio: null, estado: p.estado === "modelado" ? "listo" : "registrado", estadoTxt: { nuevo: "sin configurar", configurado: "configurado", modelado: "modelado" }[p.estado] || p.estado, error: "", origen: "modelab" }); } } catch (_) { }
     lista.forEach(p => { p.foto = `/geometrika/miniatura?id=${encodeURIComponent(p.id)}&sig=${_gmMiniSig(p.id)}`; });
     lista.sort((a, b) => String(b.creado || "").localeCompare(String(a.creado || ""))); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyectos: lista });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -14887,40 +14887,40 @@ app.get("/geometrika/modelab-escena", async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Precálculo de los análisis gratuitos de TODOS los puntos de un proyecto de Model Lab (escena de OSM, datos ambientales, fricción/anclas y población alcanzada). Los de pago (Street View, IA, Places, Solar, Routes) nunca se piden.
-let _mlPre = { running: false };
+const _mlPres = new Map();   // un precálculo por proyecto o conjunto de simulación (pueden correr al mismo tiempo)
 const _mlOdPausa = async () => { try { return !!((await _bnReadGcs("modelab/od_pausa.json")).data || {}).pausa; } catch (_) { return false; } };   // pausa solo la fase de Origen/Destino del precálculo
 app.post("/geometrika/modelab-od-pausa", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const p = !!(req.body || {}).pausa; await _bnWriteGcs("modelab/od_pausa.json", { pausa: p, at: new Date().toISOString() }, null); res.json({ ok: true, pausa: p }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/geometrika/modelab-od-pausa", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.json({ ok: true, pausa: await _mlOdPausa() }); });
 async function _mlPrecalcula(mid, odc) {
   odc = odc && typeof odc === "object" ? odc : { on: true, modo: "osm" }; const odOn = odc.on !== false, odGoogle = odc.modo === "google";
   const num = await _mlNum(mid), pts = ((await _bnReadGcs(`modelab/${mid}/puntos.json`)).data || {}).puntos || [], N = pts.length, sk = `modelab/${mid}/precalc.json`;
-  _mlPre = { running: true, id: mid, total: N, hechos: 0, errores: 0, fase: "Datos ambientales", inicio: new Date().toISOString(), upd: new Date().toISOString() }; const guarda = () => { _mlPre.upd = new Date().toISOString(); return _bnWriteGcs(sk, _mlPre, null).catch(() => { }); };
+  const J = { running: true, id: mid, total: N, hechos: 0, errores: 0, fase: "Datos ambientales", inicio: new Date().toISOString(), upd: new Date().toISOString() }; _mlPres.set(mid, J); const guarda = () => { J.upd = new Date().toISOString(); return _bnWriteGcs(sk, J, null).catch(() => { }); };
   try {
     await guarda(); const pids = pts.map((_, i) => _mlPid(num, i));
     for (let k = 0; k < 120 && _amJob && _amJob.running; k++) await _amSleep(5000);   // si ya hay un cálculo ambiental en curso, se espera
-    _amArranca(pids, false, 0); await _amSleep(3000); for (let k = 0; k < 720 && _amJob && _amJob.running; k++) { await _amSleep(5000); _mlPre.upd = new Date().toISOString(); }
-    _mlPre.fase = "Escena, red vial y población de cada punto"; await guarda(); let nx = 0;
+    _amArranca(pids, false, 0); await _amSleep(3000); for (let k = 0; k < 720 && _amJob && _amJob.running; k++) { await _amSleep(5000); J.upd = new Date().toISOString(); }
+    J.fase = "Escena, red vial y población de cada punto"; await guarda(); let nx = 0;
     await Promise.all([0, 1, 2].map(async () => { while (nx < N) { const i = nx++, pid = pids[i];
-      try { await _mlEscCopia(pid, await _mlEscena(mid, i)); await _mqFriccion(pid, await _mqVialLee(pid)); await _cmPob(+pts[i].lat, +pts[i].lng); } catch (e) { _mlPre.errores++; _mlPre.ult = String(e.message || e).slice(0, 160); }
-      _mlPre.hechos++; if (_mlPre.hechos % 25 === 0) await guarda(); } }));
-    _mlPre.fase = odGoogle ? "Origen/Destino vehicular (Google Routes)" : "Origen/Destino vehicular (solo OpenStreetMap, sin Google Routes)"; _mlPre.od = 0; await guarda();
-    for (let i = 0; odOn && i < N; i++) { for (; await _mlOdPausa();) { _mlPre.fase = "Origen/Destino en pausa"; _mlPre.upd = new Date().toISOString(); await _amSleep(15000); } const pid = pids[i]; let hay = false; try { hay = !!(await _bnReadGcs(_odKey(pid))).data; } catch (_) { }
+      try { await _mlEscCopia(pid, await _mlEscena(mid, i)); await _mqFriccion(pid, await _mqVialLee(pid)); await _cmPob(+pts[i].lat, +pts[i].lng); } catch (e) { J.errores++; J.ult = String(e.message || e).slice(0, 160); }
+      J.hechos++; if (J.hechos % 25 === 0) await guarda(); } }));
+    J.fase = odGoogle ? "Origen/Destino vehicular (Google Routes)" : "Origen/Destino vehicular (solo OpenStreetMap, sin Google Routes)"; J.od = 0; await guarda();
+    for (let i = 0; odOn && i < N; i++) { for (; await _mlOdPausa();) { J.fase = "Origen/Destino en pausa"; J.upd = new Date().toISOString(); await _amSleep(15000); } const pid = pids[i]; let hay = false; try { hay = !!(await _bnReadGcs(_odKey(pid))).data; } catch (_) { }
       if (!hay) { for (let k = 0; k < 120 && _odJob.running && Date.now() - Date.parse(_odJob.upd || 0) < 300000; k++) await _amSleep(2000);
-        _odJob = { running: true, id: pid, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; try { await _odGenera(pid, null, odGoogle, !odGoogle); } catch (e) { _mlPre.errores++; _mlPre.ult = "OD " + String(e.message || e).slice(0, 140); } _odJob.running = false; _odJob.fin = new Date().toISOString(); }
-      _mlPre.od++; if (_mlPre.od % 10 === 0) await guarda(); }
-    _mlPre.fase = "Listo";
-  } catch (e) { _mlPre.error = String(e.message || e); }
-  _mlPre.running = false; _mlPre.fin = new Date().toISOString(); await guarda();
+        _odJob = { running: true, id: pid, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; try { await _odGenera(pid, null, odGoogle, !odGoogle); } catch (e) { J.errores++; J.ult = "OD " + String(e.message || e).slice(0, 140); } _odJob.running = false; _odJob.fin = new Date().toISOString(); }
+      J.od++; if (J.od % 10 === 0) await guarda(); }
+    J.fase = "Listo";
+  } catch (e) { J.error = String(e.message || e); }
+  J.running = false; J.fin = new Date().toISOString(); await guarda();
 }
 app.post("/geometrika/modelab-precalcular", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try { const mid = String((req.body || {}).id || ""); if (!/^m[a-z0-9]{6,24}$/.test(mid)) return res.status(400).json({ ok: false, error: "Id no válido" });
-    if (_mlPre.running && Date.now() - Date.parse(_mlPre.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay un precálculo en curso", estado: _mlPre });
+    const J0 = _mlPres.get(mid); if (J0 && J0.running && Date.now() - Date.parse(J0.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Ya hay un precálculo en curso", estado: J0 });
     _mlPrecalcula(mid, (req.body || {}).od); res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/geometrika/modelab-precalcular/estado", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.set("Cache-Control", "no-store"); const mid = String(req.query.id || "");
-  if (_mlPre.running && (!mid || _mlPre.id === mid)) return res.json({ ok: true, estado: _mlPre }); try { const { data } = await _bnReadGcs(`modelab/${mid}/precalc.json`); res.json({ ok: true, estado: data || null }); } catch (_) { res.json({ ok: true, estado: null }); }
+  const J1 = _mlPres.get(mid); if (J1 && J1.running) return res.json({ ok: true, estado: J1 }); try { const { data } = await _bnReadGcs(`modelab/${mid}/precalc.json`); res.json({ ok: true, estado: data || null }); } catch (_) { res.json({ ok: true, estado: null }); }
 });
 async function _mqGenera(id, refrescar) {
   let svN = 0;
