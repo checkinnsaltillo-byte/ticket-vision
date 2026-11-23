@@ -13140,7 +13140,8 @@ app.get("/geometrika/sugerir", async (req, res) => {   // autocompletado de dire
     if (_gmSugC.size > 400) _gmSugC.clear(); _gmSugC.set(k, { t: Date.now(), r: out }); res.json({ ok: true, r: out });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
-require("./medialab.js")(app, { readGcs: _bnReadGcs, writeGcs: _bnWriteGcs, nacMuns: _nacMuns, originOk: _vOriginOk });   // Media Lab: monitor masivo de noticias
+require("./medialab.js")(app, { readGcs: _bnReadGcs, writeGcs: _bnWriteGcs, nacMuns: _nacMuns, originOk: _vOriginOk });
+require("./modelab.js")(app, { readGcs: _bnReadGcs, writeGcs: _bnWriteGcs, nacMuns: _nacMuns, originOk: _vOriginOk, malla: () => _mallaAgeb(), mVal: (...a) => _mVal(...a), metro: () => _metro(), ents: () => _ENTS, hx: n => _hxRead(n) });   // Model Lab: modelado estadístico por proyecto   // Media Lab: monitor masivo de noticias
 const _ubiCache = new Map();
 app.get("/geometrika/ubicacion", async (req, res) => {   // estado y municipio de unas coordenadas (encabezado de la maqueta)
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });

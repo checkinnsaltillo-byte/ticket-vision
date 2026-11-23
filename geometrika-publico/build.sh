@@ -27,11 +27,15 @@ cp "$DL/datalab.js" "$DL/datalab.css" "$DL/datalab-fuentes.js" "$DL/datalab-indi
 # Media Lab: monitor masivo de noticias (la versión de caché sale de su contenido)
 MLV=$(cat "$DL/medialab.js" "$DL/medialab.css" "$TV/medialab-logo.png" | shasum -a 256 | cut -c1-8)
 node --check "$DL/medialab.js"; cp "$DL/medialab.js" "$DL/medialab.css" "$OUT/"; cp "$TV/medialab-logo.png" "$OUT/medialab-logo.png"
+# Model Lab: modelado estadístico por proyecto (biblioteca de indicadores generada desde Data Lab; motor estadístico propio)
+node "$DL/extrae_biblioteca.js" || echo "modelab-biblioteca: se conserva la anterior"
+MOV=$(cat "$DL/modelab.js" "$DL/modelab.css" "$DL/modelab-motor.js" "$DL/modelab-biblioteca.js" "$TV/modelab-logo.png" "$TV/modelab-logo-claro.png" | shasum -a 256 | cut -c1-8)
+node --check "$DL/modelab.js"; node --check "$DL/modelab-motor.js"; cp "$DL/modelab.js" "$DL/modelab.css" "$DL/modelab-motor.js" "$DL/modelab-biblioteca.js" "$OUT/"; cp "$TV/modelab-logo.png" "$TV/modelab-logo-claro.png" "$OUT/"
 # EcoLab: tablero económico (datos descargados con ecolab-descarga.js)
 ECV=$(cat "$DL/ecolab.js" "$DL/ecolab.css" | shasum -a 256 | cut -c1-8)
 node --check "$DL/ecolab.js"; node --check "$DL/ecolab-datos.js"
 cp "$DL/ecolab.js" "$DL/ecolab.css" "$OUT/"
 # los datos los actualiza solos el servidor cada mes (commit en Check in): no pisar una versión publicada más reciente
 if node -e 'const f=p=>{try{const w={};new Function("window",require("fs").readFileSync(p,"utf8"))(w);return w.ECO_DATA.generado||""}catch(_){return ""}};process.exit(f(process.argv[1])>f(process.argv[2])?0:1)' "$DL/ecolab-datos.js" "$OUT/ecolab-datos.js"; then cp "$DL/ecolab-datos.js" "$OUT/ecolab-datos.js"; else echo "ecolab-datos.js: se conserva la versión publicada (más reciente)"; fi
-sed "s/__V__/$V/g; s/__EC__/$ECV/g; s/__ML__/$MLV/g; s/__DL__/$DLV/g; s/__HASH2__/$HASH2/g; s/__HASH__/$HASH/g" "$TV/geometrika-publico/index.template.html" > "$OUT/index.html"
+sed "s/__V__/$V/g; s/__EC__/$ECV/g; s/__ML__/$MLV/g; s/__MO__/$MOV/g; s/__DL__/$DLV/g; s/__HASH2__/$HASH2/g; s/__HASH__/$HASH/g" "$TV/geometrika-publico/index.template.html" > "$OUT/index.html"
 echo "generado en $OUT (v=$V, datalab=$DLV)"
