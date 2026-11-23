@@ -14871,6 +14871,8 @@ app.post("/mercado/entorno/fotos", async (req, res) => {
 let _mqJob = { running: false };
 // ── Escena gratuita de un punto de Model Lab: calles, edificios, árboles, luminarias, paradas y lugares de OpenStreetMap y huellas locales (sin Street View, imagen satelital ni IA), para que corran todos los análisis sin costo
 const _mlEscC = new Map();
+// copia de la escena de un punto bajo su id numérico: así tráfico, fachadas, cobertura y demás análisis de la maqueta la encuentran (no se lista como maqueta aparte)
+async function _mlEscCopia(pid, e) { try { const k = `mercado/maqueta/${pid}.json`; const { data } = await _bnReadGcs(k); if (data && data.roads) return; await _bnWriteGcs(k, Object.assign({}, e, { id: pid }), null); } catch (_) { } }
 async function _mlEscena(mid, i) {
   const ck = `modelab/${mid}/escena/${i}.json`; try { const { data } = await _bnReadGcs(ck); if (data && data.roads) return data; } catch (_) { }
   const pts = ((await _bnReadGcs(`modelab/${mid}/puntos.json`)).data || {}).puntos || [], q = pts[i]; if (!q) throw new Error("Punto no encontrado"); const lat = +q.lat, lng = +q.lng, R = 300, nom = q.id != null && q.id !== "" ? String(q.id) : "Punto " + (i + 1);
@@ -14881,11 +14883,14 @@ async function _mlEscena(mid, i) {
 }
 app.get("/geometrika/modelab-escena", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
-  try { const mid = String(req.query.id || ""), i = +req.query.p || 0; if (!/^m[a-z0-9]{6,24}$/.test(mid)) return res.status(400).json({ ok: false, error: "Id no válido" }); const e = await _mlEscena(mid, i), num = await _mlNum(mid); try { const w = await _ghslVentana(+e.lat, +e.lng, +e.radio || 300); if (w) e.gh = w; } catch (_) { } res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: e, pid: num ? _mlPid(num, i) : null }); }
+  try { const mid = String(req.query.id || ""), i = +req.query.p || 0; if (!/^m[a-z0-9]{6,24}$/.test(mid)) return res.status(400).json({ ok: false, error: "Id no válido" }); const e = await _mlEscena(mid, i), num = await _mlNum(mid); if (num) await _mlEscCopia(_mlPid(num, i), e); try { const w = await _ghslVentana(+e.lat, +e.lng, +e.radio || 300); if (w) e.gh = w; } catch (_) { } res.set("Cache-Control", "no-store"); res.json({ ok: true, escena: e, pid: num ? _mlPid(num, i) : null }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Precálculo de los análisis gratuitos de TODOS los puntos de un proyecto de Model Lab (escena de OSM, datos ambientales, fricción/anclas y población alcanzada). Los de pago (Street View, IA, Places, Solar, Routes) nunca se piden.
 let _mlPre = { running: false };
+const _mlOdPausa = async () => { try { return !!((await _bnReadGcs("modelab/od_pausa.json")).data || {}).pausa; } catch (_) { return false; } };   // pausa solo la fase de Origen/Destino del precálculo
+app.post("/geometrika/modelab-od-pausa", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); try { const p = !!(req.body || {}).pausa; await _bnWriteGcs("modelab/od_pausa.json", { pausa: p, at: new Date().toISOString() }, null); res.json({ ok: true, pausa: p }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+app.get("/geometrika/modelab-od-pausa", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); res.json({ ok: true, pausa: await _mlOdPausa() }); });
 async function _mlPrecalcula(mid, odc) {
   odc = odc && typeof odc === "object" ? odc : { on: true, modo: "osm" }; const odOn = odc.on !== false, odGoogle = odc.modo === "google";
   const num = await _mlNum(mid), pts = ((await _bnReadGcs(`modelab/${mid}/puntos.json`)).data || {}).puntos || [], N = pts.length, sk = `modelab/${mid}/precalc.json`;
@@ -14896,10 +14901,10 @@ async function _mlPrecalcula(mid, odc) {
     _amArranca(pids, false, 0); await _amSleep(3000); for (let k = 0; k < 720 && _amJob && _amJob.running; k++) { await _amSleep(5000); _mlPre.upd = new Date().toISOString(); }
     _mlPre.fase = "Escena, red vial y población de cada punto"; await guarda(); let nx = 0;
     await Promise.all([0, 1, 2].map(async () => { while (nx < N) { const i = nx++, pid = pids[i];
-      try { await _mlEscena(mid, i); await _mqFriccion(pid, await _mqVialLee(pid)); await _cmPob(+pts[i].lat, +pts[i].lng); } catch (e) { _mlPre.errores++; _mlPre.ult = String(e.message || e).slice(0, 160); }
+      try { await _mlEscCopia(pid, await _mlEscena(mid, i)); await _mqFriccion(pid, await _mqVialLee(pid)); await _cmPob(+pts[i].lat, +pts[i].lng); } catch (e) { _mlPre.errores++; _mlPre.ult = String(e.message || e).slice(0, 160); }
       _mlPre.hechos++; if (_mlPre.hechos % 25 === 0) await guarda(); } }));
     _mlPre.fase = odGoogle ? "Origen/Destino vehicular (Google Routes)" : "Origen/Destino vehicular (solo OpenStreetMap, sin Google Routes)"; _mlPre.od = 0; await guarda();
-    for (let i = 0; odOn && i < N; i++) { const pid = pids[i]; let hay = false; try { hay = !!(await _bnReadGcs(_odKey(pid))).data; } catch (_) { }
+    for (let i = 0; odOn && i < N; i++) { for (; await _mlOdPausa();) { _mlPre.fase = "Origen/Destino en pausa"; _mlPre.upd = new Date().toISOString(); await _amSleep(15000); } const pid = pids[i]; let hay = false; try { hay = !!(await _bnReadGcs(_odKey(pid))).data; } catch (_) { }
       if (!hay) { for (let k = 0; k < 120 && _odJob.running && Date.now() - Date.parse(_odJob.upd || 0) < 300000; k++) await _amSleep(2000);
         _odJob = { running: true, id: pid, paso: "Iniciando", inicio: new Date().toISOString(), upd: new Date().toISOString() }; try { await _odGenera(pid, null, odGoogle, !odGoogle); } catch (e) { _mlPre.errores++; _mlPre.ult = "OD " + String(e.message || e).slice(0, 140); } _odJob.running = false; _odJob.fin = new Date().toISOString(); }
       _mlPre.od++; if (_mlPre.od % 10 === 0) await guarda(); }
@@ -15146,7 +15151,7 @@ app.get("/mercado/maqueta/lista", async (req, res) => {
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
   try {
     res.set("Cache-Control", "no-store"); if (_mqLista.items && Date.now() - _mqLista.t < 90000 && req.query.fresh !== "1") return res.json({ ok: true, items: _mqLista.items });
-    const names = (await _gcsList("mercado/maqueta/")).filter(n => /^mercado\/maqueta\/\d+\.json$/.test(n)); let idx = {}; try { const { data } = await _bnReadGcs("mercado/maqueta/_indice.json"); if (data && data.d) idx = data.d; } catch (_) {}
+    const names = (await _gcsList("mercado/maqueta/")).filter(n => /^mercado\/maqueta\/\d+\.json$/.test(n) && !/\/8\d{10}\.json$/.test(n)); let idx = {}; try { const { data } = await _bnReadGcs("mercado/maqueta/_indice.json"); if (data && data.d) idx = data.d; } catch (_) {}
     const falta = names.map(n => n.match(/(\d+)\.json$/)[1]).filter(id => !idx[id]); let cambio = false;
     for (let i = 0; i < falta.length; i += 4) await Promise.all(falta.slice(i, i + 4).map(async id => { try { const { data } = await _bnReadGcs(`mercado/maqueta/${id}.json`); idx[id] = data && data.lat != null && data.roads ? { id, titulo: String(data.tit || data.titulo || id).slice(0, 90), lat: +data.lat, lng: +data.lng, radio: +data.radio || null } : { id, skip: 1 }; cambio = true; } catch (_) {} }));
     if (cambio) { try { await _bnWriteGcs("mercado/maqueta/_indice.json", { d: idx, at: new Date().toISOString() }, null); } catch (_) {} }
