@@ -150,12 +150,12 @@ function ids(res) { return res.etapas.map(function (e) { return e.id; }); }
       lista.forEach(function (m) { if (m.recomendado) ok(m.aplica, 'recomendado debe aplicar'); });
     }
     const pr = perfDe(datasetReg(300, 4, 5, true));
-    let l = MLMotor.sugerirMetodos('sup', pr.y, xs(pr, 'y'), 300); chk(l, 12);
+    let l = MLMotor.sugerirMetodos('sup', pr.y, xs(pr, 'y'), 300); chk(l, 18);
     const get = function (l, id) { return l.filter(function (m) { return m.id === id; })[0]; };
     ok(get(l, 'ols').aplica && get(l, 'ols').tipoRespuesta === 'regresion' && get(l, 'ols').recomendado, 'ols recomendado en regresión');
     ok(!get(l, 'logistica').aplica && /predice categor/.test(get(l, 'logistica').razon), 'clasificación no aplica a Y continua');
     const pc = perfDe(datasetClf(300, 4, 6, 2));
-    l = MLMotor.sugerirMetodos('sup', pc.y, xs(pc, 'y'), 300); chk(l, 12);
+    l = MLMotor.sugerirMetodos('sup', pc.y, xs(pc, 'y'), 300); chk(l, 18);
     ok(get(l, 'logistica').aplica && get(l, 'logistica').tipoRespuesta === 'binaria' && get(l, 'logistica').recomendado, 'logística binaria recomendada');
     ok(!get(l, 'ols').aplica && /predice un n/.test(get(l, 'ols').razon), 'regresión no aplica a Y categórica');
     const pm = perfDe(datasetClf(300, 4, 7, 4));
@@ -252,7 +252,7 @@ function ids(res) { return res.etapas.map(function (e) { return e.id; }); }
     cerca(frac, fracTot, 0.02, 'proporción de la clase rara en prueba');
   });
 
-  // ======================= 6. Los 12 métodos supervisados de punta a punta =======================
+  // ======================= 6. Los 18 métodos supervisados de punta a punta =======================
   const dsReg = datasetReg(500, 6, 61, true), dsBin = datasetClf(500, 5, 62, 2), dsMul = datasetClf(600, 4, 63, 3);
   const xReg = ['x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'zona'];
   function chkSup(res, tipo, metodo) {
@@ -271,7 +271,7 @@ function ids(res) { return res.etapas.map(function (e) { return e.id; }); }
     sinNoFinitos(res);
     ok(JSON.stringify(res).indexOf('NaN') < 0 && JSON.stringify(res).indexOf('Infinity') < 0, 'sin NaN/Infinity serializados');
   }
-  const regMetodos = ['ols', 'ridge', 'lasso', 'arbol_reg', 'bosque_reg', 'knn_reg'];
+  const regMetodos = ['ols', 'ridge', 'lasso', 'arbol_reg', 'bosque_reg', 'knn_reg', 'svm_reg', 'mlp_reg', 'gbm_reg'];
   for (const id of regMetodos) {
     await prueba('supervisado · ' + id + ' (regresión) de punta a punta', async function () {
       const evs = [];
@@ -286,13 +286,17 @@ function ids(res) { return res.etapas.map(function (e) { return e.id; }); }
       if (id === 'arbol_reg') ok(res.hiperparametros.elegidos.profundidad && res.hiperparametros.elegidos.hoja_min, 'profundidad y hoja');
       if (id === 'bosque_reg') ok(res.hiperparametros.elegidos.arboles <= 100 && res.hiperparametros.elegidos.mtry >= 1, 'árboles y mtry');
       if (id === 'knn_reg') ok(res.hiperparametros.elegidos.k >= 1, 'k');
+      if (id === 'svm_reg') ok(res.hiperparametros.elegidos.C > 0 && res.hiperparametros.elegidos.epsilon > 0 && res.hiperparametros.rejilla.length >= 5, 'C, ε y gamma calibrados');
+      if (id === 'mlp_reg') ok(res.hiperparametros.rejilla.length === 6 && [8, 16, 32].indexOf(res.hiperparametros.elegidos.h) >= 0, 'rejilla de la red: 3 tamaños × 2 L2');
+      if (id === 'gbm_reg') ok(res.hiperparametros.rejilla.length === 12 && res.hiperparametros.elegidos.profundidad >= 2 && res.hiperparametros.elegidos.profundidad <= 4, 'rejilla de boosting');
+      if (/^(svm|mlp|gbm)_/.test(id)) ok(res.etapas[1].detalle.length > 40 && res.hallazgos.some(function (h) { return /vectores de soporte|red neuronal|árboles pequeños/.test(h); }), 'detalle y hallazgo del método');
       if (id === 'ols') ok(/no tiene hiperpar/.test(res.etapas[2].detalle), 'calibración omitida con detalle claro');
       const idsEv = evs.map(function (e) { return e.id; });
       ETAPAS_SUP.forEach(function (e) { ok(evs.some(function (x) { return x.id === e && x.progreso === 0; }) && evs.some(function (x) { return x.id === e && x.progreso === 1; }), 'onEtapa inicio/fin de ' + e); });
       ok(evs.every(function (e) { return e.progreso >= 0 && e.progreso <= 1 && e.nombre; }), 'progreso entre 0 y 1');
     });
   }
-  const clfMetodos = ['logistica', 'arbol_clf', 'bosque_clf', 'knn_clf', 'naive_bayes', 'lda'];
+  const clfMetodos = ['logistica', 'arbol_clf', 'bosque_clf', 'knn_clf', 'naive_bayes', 'lda', 'svm_clf', 'mlp_clf', 'gbm_clf'];
   for (const id of clfMetodos) {
     await prueba('supervisado · ' + id + ' (binaria) de punta a punta', async function () {
       const res = await MLMotor.correr({ enfoque: 'sup', y: 'y', x: ['x1', 'x2', 'x3', 'x4', 'x5'], metodo: id, semilla: 42, folds: 4 }, dsBin);
@@ -308,6 +312,10 @@ function ids(res) { return res.etapas.map(function (e) { return e.id; }); }
       ok(res.importancias[0].var === 'Variable 1' || res.importancias[0].var === 'Variable 2', 'variables informativas primero: ' + res.importancias[0].var);
       if (id === 'logistica') { ok(res.coeficientes.length === 6 && typeof res.coeficientes[1].oddsRatio === 'number' && res.coeficientes[1].p !== null, 'coeficientes con odds ratio'); ok(/no tiene hiperpar/.test(res.etapas[2].detalle), 'sin hiperparámetros'); }
       if (id === 'bosque_clf') ok(res.hiperparametros.rejilla.length >= 2, 'rejilla de bosque');
+      if (id === 'svm_clf') ok(res.hiperparametros.elegidos.C > 0 && res.hiperparametros.rejilla.length >= 5, 'C y gamma calibrados');
+      if (id === 'mlp_clf') ok(res.hiperparametros.rejilla.length === 6, 'rejilla de la red');
+      if (id === 'gbm_clf') ok(res.hiperparametros.rejilla.length === 12, 'rejilla de boosting');
+      if (/^(svm|mlp|gbm)_/.test(id)) ok(res.hallazgos.some(function (h) { return /vectores de soporte|red neuronal|árboles pequeños/.test(h); }), 'hallazgo del método');
     });
   }
   for (const id of clfMetodos) {
@@ -320,6 +328,115 @@ function ids(res) { return res.etapas.map(function (e) { return e.id; }); }
       if (id === 'logistica') ok(res.coeficientes.length === 2 * 5 && res.coeficientes[0].clase, 'coeficientes multinomiales por clase');
     });
   }
+
+
+  // ======================= 6b. SVM, redes neuronales y boosting =======================
+  function dsCustom(n, seed, fx, extraCols) {
+    const r = rngSeed(seed), rows = [];
+    for (let i = 0; i < n; i++) rows.push(fx(r, i));
+    return { cols: [{ name: 'a', label: 'A' }, { name: 'b', label: 'B' }, { name: 'c', label: 'C' }, { name: 'y', label: 'Resultado' }], rows: rows };
+  }
+  const corre = function (ds, id, y, extra) { return MLMotor.correr(Object.assign({ enfoque: 'sup', y: y || 'y', x: ['a', 'b', 'c'], metodo: id, semilla: 7, folds: 3 }, extra || {}), ds); };
+  const circulos = dsCustom(700, 301, function (r) { const dentro = r() < 0.5, rad = dentro ? 0.9 * Math.sqrt(r()) : 1.6 + 0.7 * r(), ang = 2 * Math.PI * r(); return [rad * Math.cos(ang), rad * Math.sin(ang), r.normal(), dentro ? 'dentro' : 'fuera']; });
+  await prueba('SVM con núcleo RBF separa círculos concéntricos (exactitud > 0.9) donde la logística no', async function () {
+    const s = await corre(circulos, 'svm_clf'), l = await corre(circulos, 'logistica');
+    ok(s.metricas.prueba.exactitud > 0.9, 'SVM exactitud ' + s.metricas.prueba.exactitud);
+    ok(l.metricas.prueba.exactitud < 0.75, 'logística no puede (' + l.metricas.prueba.exactitud + ')');
+    ok(s.hiperparametros.elegidos.kernel === 'rbf' && s.metricas.prueba.auc > 0.95, 'elige RBF y buen AUC: ' + JSON.stringify(s.hiperparametros.elegidos));
+    ok(s.roc.auc > 0.95 && s.calibracion.bins.length >= 2, 'ROC y calibración con las probabilidades de Platt');
+  });
+  await prueba('SVR con RBF capta una curva donde OLS no (R² > 0.85)', async function () {
+    const ds = dsCustom(600, 302, function (r) { const a = 3 * (r() - 0.5) * 2, b = r.normal(); return [a, b, r.normal(), Math.cos(a) * 2 + 0.2 * r.normal()]; });
+    const s = await corre(ds, 'svm_reg'), o = await corre(ds, 'ols');
+    ok(s.metricas.prueba.r2 > 0.85 && o.metricas.prueba.r2 < 0.6, 'SVR ' + s.metricas.prueba.r2 + ' vs OLS ' + o.metricas.prueba.r2);
+  });
+  await prueba('red neuronal aprende XOR (clasificación) y una relación cuadrática (R² > 0.8) donde OLS no', async function () {
+    const dx = dsCustom(600, 303, function (r) { const a = r.normal(), b = r.normal(); return [a, b, r.normal(), (a > 0) !== (b > 0) ? 'si' : 'no']; });
+    const m = await corre(dx, 'mlp_clf'), l = await corre(dx, 'logistica');
+    ok(m.metricas.prueba.exactitud > 0.9 && l.metricas.prueba.exactitud < 0.65, 'XOR: red ' + m.metricas.prueba.exactitud + ' vs logística ' + l.metricas.prueba.exactitud);
+    const dq = dsCustom(600, 304, function (r) { const a = r.normal(), b = r.normal(); return [a, b, r.normal(), a * a + 0.15 * r.normal()]; });
+    const mr = await corre(dq, 'mlp_reg'), o = await corre(dq, 'ols');
+    ok(mr.metricas.prueba.r2 > 0.8 && o.metricas.prueba.r2 < 0.2, 'cuadrática: red ' + mr.metricas.prueba.r2 + ' vs OLS ' + o.metricas.prueba.r2);
+    ok(mr.importancias[0].var === 'A', 'la variable relevante es A');
+  });
+  await prueba('boosting supera a OLS en una relación no lineal (regresión y clasificación)', async function () {
+    const dq = dsCustom(800, 305, function (r) { const a = r.normal(), b = r.normal(), c = r.normal(); return [a, b, c, (a > 0 ? 2 : -2) + b * b + 0.3 * r.normal()]; });
+    const g = await corre(dq, 'gbm_reg'), o = await corre(dq, 'ols');
+    ok(g.metricas.prueba.r2 > o.metricas.prueba.r2 + 0.3 && g.metricas.prueba.r2 > 0.8, 'GBM ' + g.metricas.prueba.r2 + ' vs OLS ' + o.metricas.prueba.r2);
+    const dx = dsCustom(800, 306, function (r) { const a = r.normal(), b = r.normal(); return [a, b, r.normal(), (a > 0) !== (b > 0) ? 'si' : 'no']; });
+    const gc = await corre(dx, 'gbm_clf'), l = await corre(dx, 'logistica');
+    ok(gc.metricas.prueba.exactitud > 0.9 && l.metricas.prueba.exactitud < 0.65, 'XOR: GBM ' + gc.metricas.prueba.exactitud + ' vs logística ' + l.metricas.prueba.exactitud);
+  });
+  await prueba('boosting con atípicos en la respuesta usa pérdida robusta (Huber) y lo avisa', async function () {
+    const ds = dsCustom(500, 307, function (r, i) { const a = r.normal(); return [a, r.normal(), r.normal(), 2 * a + 0.3 * r.normal() + (i % 15 === 0 ? 60 : 0)]; });
+    const g = await corre(ds, 'gbm_reg');
+    ok(g.hallazgos.some(function (h) { return /Huber/.test(h); }), 'avisa de Huber');
+  });
+  await prueba('reproducibilidad: misma semilla → mismos resultados en los 6 métodos nuevos', async function () {
+    const dsR = datasetReg(300, 3, 308, false), dsC = datasetClf(300, 3, 309, 3);
+    for (const id of ['svm_reg', 'mlp_reg', 'gbm_reg']) {
+      const c = { enfoque: 'sup', y: 'y', x: ['x1', 'x2', 'x3'], metodo: id, semilla: 11, folds: 3 };
+      const a = await MLMotor.correr(c, dsR), b = await MLMotor.correr(c, dsR);
+      ok(JSON.stringify(a.predicciones) === JSON.stringify(b.predicciones) && JSON.stringify(a.importancias) === JSON.stringify(b.importancias), 'reproducible ' + id);
+    }
+    for (const id of ['svm_clf', 'mlp_clf', 'gbm_clf']) {
+      const c = { enfoque: 'sup', y: 'y', x: ['x1', 'x2', 'x3'], metodo: id, semilla: 11, folds: 3 };
+      const a = await MLMotor.correr(c, dsC), b = await MLMotor.correr(c, dsC);
+      ok(JSON.stringify(a.predicciones) === JSON.stringify(b.predicciones) && JSON.stringify(a.metricas.cv) === JSON.stringify(b.metricas.cv), 'reproducible ' + id);
+    }
+  });
+  await prueba('sin fuga en los métodos nuevos: alterar la prueba no cambia entrenamiento, validación cruzada ni hiperparámetros', async function () {
+    const ds = datasetReg(350, 3, 310, false);
+    for (const id of ['svm_reg', 'mlp_reg', 'gbm_reg']) {
+      const cfg = { enfoque: 'sup', y: 'y', x: ['x1', 'x2', 'x3'], metodo: id, semilla: 7, prop_prueba: 0.25, folds: 3, prep: { global: { faltantes: 'media', escalado: 'estandar', transformacion: 'ninguna', outliers: 'iqr_recortar', colineales: 'ninguno', duplicados: 'ninguno', constantes: 'eliminar', codificacion: 'onehot', columnaFaltantes: 'conservar' } } };
+      const a = await MLMotor.correr(cfg, ds), test = new Set(a.predicciones.idx);
+      const ds2 = { cols: ds.cols, rows: ds.rows.map(function (f, i) { return test.has(i) ? f.map(function (v, j) { return j < 3 ? v * 40 + 500 : v; }) : f.slice(); }) };
+      const b = await MLMotor.correr(cfg, ds2);
+      cerca(a.metricas.entrenamiento.rmse, b.metricas.entrenamiento.rmse, 1e-9, 'RMSE de entrenamiento ' + id);
+      cerca(a.metricas.cv.media.rmse, b.metricas.cv.media.rmse, 1e-9, 'CV ' + id);
+      ok(JSON.stringify(a.hiperparametros.elegidos) === JSON.stringify(b.hiperparametros.elegidos), 'mismos hiperparámetros ' + id);
+    }
+  });
+  await prueba('SVM con más de 3 000 filas de aprendizaje: submuestreo estratificado avisado en la etapa y en un hallazgo', async function () {
+    const ds = datasetClf(4300, 4, 311, 2);
+    const t0 = Date.now();
+    const res = await MLMotor.correr({ enfoque: 'sup', y: 'y', x: ['x1', 'x2', 'x3', 'x4'], metodo: 'svm_clf', semilla: 3, folds: 3 }, ds);
+    console.log('        (svm_clf con 4 300 filas: ' + (Date.now() - t0) + ' ms)');
+    ok(res.prep.nTrain > 3000 && /muestra estratificada de 3,000/.test(res.etapas[1].detalle), 'detalle de entrenamiento: ' + res.etapas[1].detalle);
+    ok(res.hallazgos.some(function (h) { return /muestra de 3,000/.test(h); }), 'hallazgo del submuestreo');
+    ok(res.metricas.prueba.exactitud > 0.88, 'sigue acertando: ' + res.metricas.prueba.exactitud);
+  });
+  await prueba('red neuronal informa el avance por época y cede al navegador', async function () {
+    const evs = [];
+    await MLMotor.correr({ enfoque: 'sup', y: 'y', x: ['x1', 'x2', 'x3'], metodo: 'mlp_reg', semilla: 2, folds: 3 }, datasetReg(400, 3, 312, false), function (e) { evs.push(e); });
+    ok(evs.some(function (e) { return e.id === 'entrenamiento' && /^época \d+ · pérdida [\d.]+/.test(e.detalle); }), 'detalle «época N · pérdida X»');
+  });
+  await prueba('métodos nuevos: sugerencias, datos mínimos, preprocesamiento y errores claros', async function () {
+    function perfDe(ds) { const p = MLMotor.perfilar(ds), o = {}; p.forEach(function (x) { o[x.name] = x; }); return o; }
+    const pr = perfDe(datasetReg(400, 4, 313, false)), xs = Object.keys(pr).filter(function (k) { return k !== 'y'; }).map(function (k) { return pr[k]; });
+    const get = function (l, id) { return l.filter(function (m) { return m.id === id; })[0]; };
+    let l = MLMotor.sugerirMetodos('sup', pr.y, xs, 400);
+    ['svm_reg', 'mlp_reg', 'gbm_reg'].forEach(function (id) { const m = get(l, id); ok(m.aplica && !m.recomendado && m.razon.length > 20 && m.desc.length > 40 && m.ventajas.length >= 2 && m.limites.length >= 2, id); });
+    ok(['svm_clf', 'mlp_clf', 'gbm_clf'].every(function (id) { return !get(l, id).aplica && /predice categor/.test(get(l, id).razon); }), 'clasificadores no aplican a Y continua');
+    l = MLMotor.sugerirMetodos('sup', pr.y, xs, 80);
+    ok(!get(l, 'svm_reg').aplica && !get(l, 'mlp_reg').aplica && /al menos 100/.test(get(l, 'svm_reg').razon), 'n < 100 no aplica a SVM ni red');
+    l = MLMotor.sugerirMetodos('sup', pr.y, xs, 150);
+    ok(get(l, 'svm_reg').aplica && !get(l, 'gbm_reg').aplica && /al menos 200/.test(get(l, 'gbm_reg').razon), 'n < 200 no aplica a boosting');
+    ok(get(l, 'svm_reg').recursos.etiqueta && get(MLMotor.sugerirMetodos('sup', pr.y, xs, 5000), 'svm_reg').razon.indexOf('3 000') >= 0, 'avisa del límite de 3 000 filas');
+    // preprocesamiento: SVM y redes siempre con escalado estándar; boosting sin escalar
+    const rr = rngSeed(314), rows = []; for (let i = 0; i < 150; i++) rows.push([rr.normal(), rr.normal() + (i === 3 ? 60 : 0), rr.normal() + (i === 9 ? -60 : 0), rr.normal()]);
+    const perf = MLMotor.perfilar({ cols: [{ name: 'a' }, { name: 'b' }, { name: 'c' }, { name: 'y' }], rows: rows });
+    ['svm_clf', 'svm_reg', 'mlp_clf', 'mlp_reg'].forEach(function (id) { ok(MLMotor.sugerirPrep(perf, { enfoque: 'sup', y: 'y', x: ['a', 'b', 'c'], n: 150, metodo: id }).global.escalado.id === 'estandar', 'escalado estándar para ' + id); });
+    ok(MLMotor.sugerirPrep(perf, { enfoque: 'sup', y: 'y', x: ['a', 'b', 'c'], n: 150, metodo: 'gbm_reg' }).global.escalado.id === 'ninguno', 'boosting no escala');
+    // errores en español
+    const dc = datasetClf(300, 3, 315, 2), dr = datasetReg(300, 3, 316, false), pequeno = datasetReg(60, 3, 317, false);
+    const falla = async function (cfg, ds, rx) { let msg = null; try { await MLMotor.correr(Object.assign({ enfoque: 'sup', semilla: 1 }, cfg), ds); } catch (e) { msg = e.message; } ok(msg && rx.test(msg), 'error esperado ' + rx + ' y fue: ' + msg); };
+    await falla({ y: 'y', x: ['x1', 'x2'], metodo: 'svm_clf' }, dr, /predice categor/);
+    await falla({ y: 'y', x: ['x1', 'x2'], metodo: 'mlp_reg' }, dc, /predice números/);
+    await falla({ y: 'y', x: ['x1', 'x2', 'x3'], metodo: 'mlp_reg' }, pequeno, /al menos 100 filas/);
+    await falla({ y: 'y', x: ['x1', 'x2', 'x3'], metodo: 'gbm_reg' }, datasetReg(150, 3, 318, false), /al menos 200 filas/);
+    await falla({ y: 'y', x: ['y'], metodo: 'gbm_clf' }, dc, /al menos una variable/);
+  });
 
   // ======================= 7. No supervisados =======================
   const cl = datasetClusters(120, 71);

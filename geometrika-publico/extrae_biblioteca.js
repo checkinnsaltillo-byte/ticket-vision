@@ -18,4 +18,5 @@ for (const [k, d] of Object.entries(ctx.out)) {
 }
 lista.sort((x, y) => x.c.localeCompare(y.c) || x.e.localeCompare(y.e) || x.k.localeCompare(y.k));
 fs.writeFileSync(path.join(dir, "modelab-biblioteca.js"), "/* Biblioteca de indicadores de Model Lab (generada por extrae_biblioteca.js; no editar a mano). */\nwindow.MO_BIBLIO = " + JSON.stringify(lista) + ";\n");
+fs.writeFileSync(path.join(dir, "..", "files", "biblioteca.json"), JSON.stringify(lista));
 console.log("modelab-biblioteca: " + lista.length + " indicadores consultables por coordenada");

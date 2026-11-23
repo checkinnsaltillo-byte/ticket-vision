@@ -13874,13 +13874,26 @@ app.get("/geometrika/proyectos", async (req, res) => {
       if (ml && ml.items && ml.items.length) { const [ab, mlD, fb] = await Promise.all([_bnReadGcs(_MA.OBJ).then(r => (r.data && r.data.items) || {}).catch(() => ({})), _mlDoc().then(d => d.items || {}).catch(() => ({})), _fbDoc().then(d => d.items || {}).catch(() => ({}))]), vistos = new Set(lista.map(p => p.id)), oculto = new Set(oc);
         ml.items.forEach(m => { const id = String(m.id), base = /^9\d{14}$/.test(id) ? id.slice(0, 14) : id; if (vistos.has(base) || vistos.has(id) || oculto.has(id)) return; if (/^9\d{13,14}$/.test(id)) return;   // los de GeoMetrika ya salen de su proyecto (o están eliminados)
           lista.push({ id, creado: null, perfil: m.titulo || id, objetivo: "", direccion: "", lat: m.lat, lng: m.lng, puntos: 1, radio: m.radio, estado: "listo", error: "", origen: ab[id] ? "airbnb" : mlD[id] ? "mercadolibre" : fb[id] ? "facebook" : "otro" }); }); } } catch (e) { console.warn("[geometrika] lista de maquetas:", e.message); }
+    try { const mi = (await _bnReadGcs("modelab/proyectos.json")).data;   // proyectos de Model Lab: también aparecen como tarjetas de Geo Lab
+      for (const p of (mi && mi.proyectos) || []) lista.push({ id: p.id, creado: p.actualizado || p.creado, nombre: p.nombre || "", perfil: "Modelado", objetivo: String(p.objetivo || "").slice(0, 80), direccion: p.zona || "", lat: p.lat, lng: p.lng, puntos: p.nPuntos || 0, radio: null, estado: p.estado === "modelado" ? "listo" : "registrado", estadoTxt: { nuevo: "sin configurar", configurado: "configurado", modelado: "modelado" }[p.estado] || p.estado, error: "", origen: "modelab" }); } catch (_) { }
     lista.forEach(p => { p.foto = `/geometrika/miniatura?id=${encodeURIComponent(p.id)}&sig=${_gmMiniSig(p.id)}`; });
     lista.sort((a, b) => String(b.creado || "").localeCompare(String(a.creado || ""))); res.set("Cache-Control", "no-store"); res.json({ ok: true, proyectos: lista });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // ── Miniatura de cada proyecto (tarjetas de «Mis proyectos»): foto de Google Street View frente a la coordenada. Si la maqueta ya tiene fotos de calle se usa el panorama más cercano mirando hacia el punto; si no, la imagen más cercana al punto. Se guarda 7 días en Cloud Storage (geometrika/miniaturas/<id>.jpg) y la URL va firmada porque la etiqueta <img> no puede enviar el token
 const _gmMiniSig = id => crypto.createHmac("sha256", process.env.SYNC_SECRET || "entorno").update("mini|" + id).digest("hex").slice(0, 16), _gmMiniMem = new Map(), _GM_MINI_DIAS = 7;
+/* miniatura de un proyecto de Model Lab: Street View si hay panorama cerca de alguno de sus puntos; si no, imagen aérea de la zona (ciudad o estado, según la extensión de los puntos) */
+async function _gmMiniModelab(id) {
+  const ix = (await _bnReadGcs("modelab/proyectos.json")).data, p = ix && (ix.proyectos || []).find(x => x.id === id); if (!p || p.lat == null) return null; const key = process.env.GOOGLE_MAPS_KEY;
+  if (key) { const pts = ((await _bnReadGcs(`modelab/${id}/puntos.json`)).data || {}).puntos || [], cand = [[p.lat, p.lng]].concat(pts.slice(0, 5).map(q => [q.lat, q.lng]));
+    for (const [la, lo] of cand) { const m = await fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${la},${lo}&radius=80&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(15000) }).then(r => r.json()).catch(() => ({}));
+      if (m.status === "OK" && m.pano_id) { let rumbo = 0; if (m.location) rumbo = (Math.atan2((lo - m.location.lng) * Math.cos(la * Math.PI / 180), la - m.location.lat) * 180 / Math.PI + 360) % 360; const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x320&pano=${m.pano_id}&heading=${Math.round(rumbo)}&fov=95&pitch=6&source=outdoor&key=${key}`, { signal: AbortSignal.timeout(30000) }); if (r.ok) return Buffer.from(await r.arrayBuffer()); } } }
+  const RT = 6378137, mx = l => l * Math.PI / 180 * RT, my = l => Math.log(Math.tan(Math.PI / 4 + l * Math.PI / 360)) * RT, bb = p.bbox || [p.lng - .02, p.lat - .02, p.lng + .02, p.lat + .02];
+  const cx = (mx(bb[0]) + mx(bb[2])) / 2, cy = (my(bb[1]) + my(bb[3])) / 2; let hw = Math.max((mx(bb[2]) - mx(bb[0])) / 2 * 1.35, 4000), hh = Math.max((my(bb[3]) - my(bb[1])) / 2 * 1.35, 2000); if (hh * 2 > hw) hw = hh * 2; else hh = hw / 2;
+  const r = await fetch(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${cx - hw},${cy - hh},${cx + hw},${cy + hh}&bboxSR=3857&imageSR=3857&size=640,320&format=jpg&f=image`, { signal: AbortSignal.timeout(30000) }); if (!r.ok) return null; return Buffer.from(await r.arrayBuffer());
+}
 async function _gmMiniGenera(id) {
+  if (/^m[a-z0-9]{6,24}$/.test(id)) return _gmMiniModelab(id);
   const key = process.env.GOOGLE_MAPS_KEY; if (!key) throw new Error("Falta la clave de Google Maps");
   let esc = null, lat = null, lng = null; try { esc = (await _bnReadGcs(`mercado/maqueta/${id}.json`)).data; } catch (_) { }
   if (esc && esc.lat != null) { lat = +esc.lat; lng = +esc.lng; } else { try { const P = (await _bnReadGcs(`geometrika/proyectos/${id}.json`)).data; if (P && P.lat != null) { lat = +P.lat; lng = +P.lng; } else if (P && P.puntos && P.puntos[0]) { lat = +P.puntos[0].lat; lng = +P.puntos[0].lng; } } catch (_) { } }
@@ -13892,7 +13905,7 @@ async function _gmMiniGenera(id) {
 }
 app.get("/geometrika/miniatura", async (req, res) => {
   try {
-    const id = String(req.query.id || "").replace(/\D/g, ""); if (!id || String(req.query.sig || "") !== _gmMiniSig(id)) return res.status(403).end();
+    const raw = String(req.query.id || ""), id = /^m[a-z0-9]{6,24}$/.test(raw) ? raw : raw.replace(/\D/g, ""); if (!id || String(req.query.sig || "") !== _gmMiniSig(id)) return res.status(403).end();
     let m = _gmMiniMem.get(id); if (m && Date.now() - m.t < 6 * 3600e3) { res.set({ "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" }); return res.send(m.b); }
     const tok = await _vGcsToken(), nombre = `geometrika/miniaturas/${id}.jpg`, base = `https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent(nombre)}`; let buf = null;
     const meta = await fetch(base, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.ok ? r.json() : null).catch(() => null);
@@ -14450,7 +14463,9 @@ app.post("/geometrika/gasto/visita", async (req, res) => {   // la maqueta avisa
 });
 app.get("/geometrika/ficha", async (req, res) => {   // ficha de descripción + desglose del gasto de un proyecto o maqueta
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
-  try { const id = String(req.query.id || "").replace(/\D/g, ""); if (id.length < 6) return res.status(400).json({ ok: false, error: "Id no válido" }); res.set("Cache-Control", "no-store");
+  try { const raw = String(req.query.id || ""), id = /^m[a-z0-9]{6,24}$/.test(raw) ? raw : raw.replace(/\D/g, ""); if (id.length < 6) return res.status(400).json({ ok: false, error: "Id no válido" }); res.set("Cache-Control", "no-store");
+    if (/^m[a-z0-9]/.test(id)) { const ix = (await _bnReadGcs("modelab/proyectos.json")).data, M = ix && (ix.proyectos || []).find(x => x.id === id); if (!M) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" }); const fe2 = x => x ? new Date(x).toLocaleString("es-MX", { timeZone: "America/Monterrey", dateStyle: "medium", timeStyle: "short" }) : "—";
+      return res.json({ ok: true, id, origen: "modelab", maqueta: false, titulo: "Model Lab · " + (M.nombre || "Proyecto"), filas: [["Nombre del proyecto", M.nombre || "—"], ["Objetivo del proyecto", M.objetivo || "—"], ["Creado", fe2(M.creado)], ["Última actualización", fe2(M.actualizado)], ["Zona", M.zona || "—"], ["Puntos de interés", `${M.nPuntos || 0} · ${{ mapa: "elegidos en el mapa", archivo: "cargados desde un archivo", denue: "unidades del DENUE", geolab: "importados de Geo Lab" }[M.fuente] || ""}`], ["Variables del proyecto", String(M.vars || 0)], ["Enfoque del análisis", M.enfoque ? (M.enfoque === "sup" ? "supervisado" : "no supervisado") : "sin definir"], ["Método", M.metodo || "—"], ["Estado", { nuevo: "sin configurar", configurado: "configurado", modelado: "modelado" }[M.estado] || M.estado || "—"]], gasto: { lineas: [], total: 0 } }); }
     let P = null; if (/^9\d{13}$/.test(id)) { try { P = (await _bnReadGcs(`geometrika/proyectos/${id}.json`)).data; } catch (_) {} }
     let D = null; try { D = (await _bnReadGcs(`mercado/maqueta/${id}.json`)).data; } catch (_) {}
     if (!P && !D) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
@@ -14470,7 +14485,29 @@ app.get("/geometrika/ficha", async (req, res) => {   // ficha de descripción + 
       F.push(["Maqueta generada", fe(D.at)], ["Ubicación", `${(+D.lat).toFixed(5)}, ${(+D.lng).toFixed(5)} · radio ${D.radio} m`], ["Fotos de calle leídas", String(D.fotos || 0)],
         ["Contenido de la maqueta", `${(D.roads || []).length} vialidades · ${(D.builds || []).length + (D.mb || []).length} edificios · ${(D.trees || []).length} árboles · ${(D.pois || []).length} lugares · ${(D.riesgos || []).length} riesgos`],
         ["Superficies detectadas", Object.keys(ct).map(k => ct[k] + " " + k + (ct[k] > 1 ? "s" : "")).join(" · ") || "ninguna"]); }
-    res.json({ ok: true, id, origen, titulo, filas: F, gasto: await _gastoResumen(id) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+    res.json({ ok: true, id, origen, titulo, filas: F, maqueta: !!D, gasto: await _gastoResumen(id) }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// ── Indicadores que aplican a un proyecto (aunque no tenga maqueta): los de la malla nacional en la ubicación de sus puntos de interés
+let _bibJ = null; const _bib = () => _bibJ || (_bibJ = (() => { try { return require("./biblioteca.json"); } catch (_) { return []; } })());
+async function _proyPuntos(id) {
+  if (/^m[a-z0-9]{6,24}$/.test(id)) { const { data } = await _bnReadGcs(`modelab/${id}/puntos.json`); return ((data && data.puntos) || []).map(q => [+q.lat, +q.lng]); }
+  if (/^9\d{13}$/.test(id)) { const P = (await _bnReadGcs(`geometrika/proyectos/${id}.json`)).data || {}, pts = P.puntos && P.puntos.length ? P.puntos : (P.lat != null ? [{ lat: P.lat, lng: P.lng }] : []); return pts.map(q => [+q.lat, +q.lng]); }
+  const D = (await _bnReadGcs(`mercado/maqueta/${id}.json`)).data; return D && D.lat != null ? [[+D.lat, +D.lng]] : [];
+}
+app.get("/geometrika/indicadores", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try {
+    const raw = String(req.query.id || ""), id = /^m[a-z0-9]{6,24}$/.test(raw) ? raw : raw.replace(/\D/g, ""); if (id.length < 6) return res.status(400).json({ ok: false, error: "Id no válido" });
+    const pts = (await _proyPuntos(id)).filter(q => isFinite(q[0]) && isFinite(q[1])).slice(0, 3000); if (!pts.length) return res.json({ ok: true, puntos: 0, conAgeb: 0, items: [] });
+    const M = await _mallaAgeb(), tipos = (M.mmeta && M.mmeta.tipos) || [], cer = [];
+    for (const [lat, lng] of pts) { const kx = 111320 * Math.cos(lat * Math.PI / 180), ci = Math.floor(lat / .05), cj = Math.floor(lng / .05); let best = null, bd = 3000 * 3000;
+      for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) for (const k of (M.grid.get(i + "_" + j) || [])) { const v = M.A[k][1], dx = (v[1] - lng) * kx, dy = (v[0] - lat) * 111320, d2 = dx * dx + dy * dy; if (d2 < bd) { bd = d2; best = k; } } cer.push(best); }
+    const con = cer.filter(k => k != null).length, items = [];
+    for (const b of _bib()) { const vals = []; cer.forEach(k => { if (k == null) return; const [, v, r, am, su] = M.A[k], x = _mVal(r, b.s, M.ref, am, su, v); if (x != null) vals.push(b.s === "tipo" ? (tipos[x] || null) : x); }); const ok = vals.filter(v => v != null); if (!ok.length) continue;
+      if (b.cat) { const c = {}; ok.forEach(v => { c[v] = (c[v] || 0) + 1; }); const top = Object.entries(c).sort((a, z) => z[1] - a[1]); items.push({ k: b.k, n: b.n, u: b.u, c: b.c, e: b.e, cat: 1, v: top[0][0], nv: ok.length, rep: top.slice(0, 3).map(t => t[0] + " (" + t[1] + ")") }); }
+      else { const s2 = ok.slice().sort((a, z) => a - z), med = s2[Math.floor(s2.length / 2)]; items.push({ k: b.k, n: b.n, u: b.u, c: b.c, e: b.e, v: ok.length === 1 ? ok[0] : undefined, med, min: s2[0], max: s2[s2.length - 1], nv: ok.length }); } }
+    res.set("Cache-Control", "private, max-age=300"); res.json({ ok: true, puntos: pts.length, conAgeb: con, total: _bib().length, items });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/geometrika/vial/estado", async (req, res) => { if (!_vOriginOk(req)) return res.status(403).json({ ok: false }); const lat = +req.query.lat, lng = +req.query.lng, R = +req.query.R || 400, V = await _vialCarga(_regDe(lat, lng) || _REGIONES[0]); res.set("Cache-Control", "no-store"); let prueba = null; if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) { const v = await _vialWays(lat, lng, R, () => true), e = await _entElems(lat, lng, R); const c = {}; (e || []).forEach(x => { const k = x.type === "way" ? (x.tags.building ? "edificios" : x.tags.power ? "alta_tension" : x.tags.railway ? "ferrocarril" : "cauces") : (x.tags.natural || x.tags.highway || x.tags.public_transport || x.tags.power); c[k] = (c[k] || 0) + 1; }); const pl = await _entPois(lat, lng, R), pc = {}; (pl || []).forEach(x => { const k = x.tags.amenity || x.tags.shop || x.tags.leisure || x.tags.tourism || x.tags.place; pc[k] = (pc[k] || 0) + 1; }); prueba = { vias: v ? v.length : null, entorno: e ? c : null, lugares: pl ? pc : null, huellas: await _huellasLocal(lat, lng, Math.min(R, 600)).then(h => h ? h.length : null) }; }
   res.json({ ok: true, cargada: !!V, vias: V ? V.n : 0, at: V ? V.at : null, bbox: V ? V.bbox : null, prueba }); });
