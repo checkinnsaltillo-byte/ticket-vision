@@ -614,7 +614,7 @@ function ids(res) { return res.etapas.map(function (e) { return e.id; }); }
       const t0 = Date.now();
       const res = await MLMotor.correr({ enfoque: 'sup', y: esR ? 'yr' : 'yb', x: xT, metodo: id, semilla: 1 }, dsT);
       tiempos[id] = Date.now() - t0; sinNoFinitos(res);
-      ok(tiempos[id] < 60000, 'demasiado lento: ' + tiempos[id] + ' ms');
+      ok(tiempos[id] < (/^(svm|mlp|gbm)_/.test(id) ? 20000 : 60000), 'demasiado lento: ' + tiempos[id] + ' ms');
       if (esR) ok(res.metricas.prueba.r2 > 0.4, 'R² ' + res.metricas.prueba.r2); else ok(res.metricas.prueba.exactitud > 0.7, 'exactitud ' + res.metricas.prueba.exactitud);
     });
   }
