@@ -106,4 +106,19 @@ module.exports = function (app, D) {
     const { data } = await D.readGcs(OB(id, "escenarios")), items = (data && data.items) || []; if (items.length >= 300) throw err("Máximo 300 escenarios guardados."); const it = { id: "e" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex"), nombre: String(e.nombre || "Escenario").slice(0, 80), creado: ahora(), ver: String(e.ver || "").slice(0, 40), verNombre: String(e.verNombre || "").slice(0, 80), valores: e.valores && typeof e.valores === "object" ? e.valores : {}, resultado: e.resultado && typeof e.resultado === "object" ? e.resultado : {}, nota: String(e.nota || "").slice(0, 300) };
     items.unshift(it); await D.writeGcs(OB(id, "escenarios"), { items, at: ahora() }, null); res.json({ ok: true, escenario: it }); }));
   app.delete(R + "/proyectos/:id/sim-escenarios/:eid", wrap(async (req, res) => { const id = req.params.id; await simPadre(id); const { data } = await D.readGcs(OB(id, "escenarios")), items = ((data && data.items) || []).filter(x => x.id !== req.params.eid); await D.writeGcs(OB(id, "escenarios"), { items, at: ahora() }, null); res.json({ ok: true }); }));
+
+  /* ───────── enlaces de Google Maps → coordenadas (largos o cortos; solo se siguen redirecciones dentro de Google) ───────── */
+  const coordDeUrl = href => { let t = String(href); for (let i = 0; i < 2; i++) { try { t = decodeURIComponent(t); } catch (_) { break; } }
+    const ok = (la, lo) => isFinite(la) && isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180 && !(la === 0 && lo === 0);
+    let m = t.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/) || t.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/) || t.match(/[?&](?:q|ll|query|center|destination|daddr)=(-?\d+(?:\.\d+)?)[,+ ]\s*(-?\d+(?:\.\d+)?)/);
+    if (m && ok(+m[1], +m[2])) { const n = t.match(/\/place\/([^/@?]+)/); return { lat: +(+m[1]).toFixed(6), lng: +(+m[2]).toFixed(6), nombre: n ? n[1].replace(/\+/g, " ").slice(0, 80) : "" }; } return null; };
+  app.get(R + "/gmaps", wrap(async (req, res) => {
+    let u = String(req.query.url || "").trim().slice(0, 2000); if (!u) throw err("Pega un enlace de Google Maps."); if (!/^https?:\/\//i.test(u)) u = "https://" + u; let cur; try { cur = new URL(u); } catch (_) { throw err("El enlace no es válido."); }
+    const okHost = h => /(^|\.)google\.[a-z.]+$/i.test(h) || /^(maps\.app\.goo\.gl|goo\.gl|g\.co)$/i.test(h);
+    for (let i = 0; i < 6; i++) { if (!okHost(cur.hostname)) throw err("Solo se aceptan enlaces de Google Maps."); const c = coordDeUrl(cur.href); if (c) return res.json(Object.assign({ ok: true }, c));
+      const r = await fetch(cur.href, { redirect: "manual", headers: { "accept-language": "es-MX,es;q=0.9" } }), loc = r.headers.get("location");
+      if (r.status >= 300 && r.status < 400 && loc) { cur = new URL(loc, cur); continue; }
+      const t = (await r.text()).slice(0, 400000), m = t.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || t.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/); if (m) { const c2 = coordDeUrl("@" + m[1] + "," + m[2]); if (c2) return res.json(Object.assign({ ok: true }, c2)); } break; }
+    throw err("No se encontraron coordenadas en ese enlace. Abre el lugar en Google Maps y copia el enlace desde «Compartir», o usa la coordenada manual.");
+  }));
 };
