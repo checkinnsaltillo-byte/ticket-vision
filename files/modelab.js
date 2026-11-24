@@ -45,6 +45,19 @@ module.exports = function (app, D) {
     }
     const d = { cols, rows, total: Object.keys(items).length, at: ahora() }; INM.c.set(f, { t: Date.now(), d }); return d;
   }
+  /* fotos, publicante y desarrollo de las publicaciones (para las tarjetas de la valuación); se piden por id, aparte de la tabla para no contaminar el modelo */
+  const FOT = { t: 0, m: null };
+  async function leeFotos() {
+    if (FOT.m && Date.now() - FOT.t < 300000) return FOT.m; const m = {};
+    for (const f of Object.keys(FUENTES)) { try { const { data } = await D.readGcs(FUENTES[f].obj), items = (data && data.items) || {}, lista = new Map(((data && data.lista) || []).map(l => [String(l.id), l]));
+      Object.values(items).forEach(it => { const id = String(it.id); let foto = "", host = "", sub = "";
+        if (f === "airbnb") { foto = it.foto || ""; host = it.anfitrion || ""; sub = it.tipo || ""; }
+        else if (f === "facebook") { const fo = Array.isArray(it.fotos) ? it.fotos[0] : null; foto = (fo && (fo.url || fo)) || ""; host = it.contacto_nombre || ""; sub = it.colonia || ""; }
+        else { const l = lista.get(id) || {}; foto = (it.fotos || []).filter(Boolean)[0] || l.thumb || ""; host = it.vendedor || ""; sub = it.colonia || ""; }
+        m[id] = { f: typeof foto === "string" ? foto : "", h: String(host || ""), s: String(sub || "") }; }); } catch (_) { } }
+    FOT.m = m; FOT.t = Date.now(); return m;
+  }
+  app.post(R + "/inmuebles/fotos", wrap(async (req, res) => { const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.slice(0, 5000) : [], m = await leeFotos(), out = {}; ids.forEach(i => { const k = String(i); if (m[k]) out[k] = m[k]; }); res.set("Cache-Control", "no-store"); res.json({ ok: true, items: out }); }));
   app.get(R + "/inmuebles", wrap(async (req, res) => {
     const out = []; for (const f of Object.keys(FUENTES)) { try { const d = await leeInm(f), F = FUENTES[f]; out.push({ id: F.id, nombre: F.nombre, desc: F.desc, unidad: F.unidad, n: d.rows.length, total: d.total, conPrecio: d.rows.filter(r => r[4] != null).length }); } catch (_) { out.push({ id: f, nombre: FUENTES[f].nombre, desc: FUENTES[f].desc, n: 0, total: 0, conPrecio: 0 }); } }
     res.set("Cache-Control", "no-store"); res.json({ ok: true, fuentes: out });
