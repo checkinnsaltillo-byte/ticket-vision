@@ -77,6 +77,11 @@ module.exports = function (app, D) {
       out.lat = it.lat; out.lng = it.lng; break; }
     if (!out) throw err("No se encontró la publicación", 404); res.set("Cache-Control", "no-store"); res.json({ ok: true, ficha: out }); }));
   app.post(R + "/inmuebles/fotos", wrap(async (req, res) => { const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.slice(0, 5000) : [], m = await leeFotos(), out = {}; ids.forEach(i => { const k = String(i); if (m[k]) out[k] = m[k]; }); res.set("Cache-Control", "no-store"); res.json({ ok: true, items: out }); }));
+  /* proxy de fotos de las publicaciones (solo hosts de portales conocidos): algunos navegadores o bloqueadores no dejan cargar las imágenes de terceros directamente */
+  app.get(R + "/inmuebles/img", async (req, res) => {
+    try { const u = new URL(String(req.query.u || "")); if (u.protocol !== "https:" || !/(^|\.)(mlstatic\.com|fbcdn\.net|muscache\.com)$/i.test(u.hostname)) return res.status(400).end();
+      const r = await fetch(u.href, { headers: { accept: "image/*" } }); if (!r.ok) return res.status(404).end(); const ct = r.headers.get("content-type") || ""; if (!/^image\//i.test(ct)) return res.status(415).end();
+      const b = Buffer.from(await r.arrayBuffer()); if (b.length > 6e6) return res.status(413).end(); res.set({ "Content-Type": ct, "Cache-Control": "public, max-age=86400", "Cross-Origin-Resource-Policy": "cross-origin" }); res.end(b); } catch (_) { res.status(502).end(); } });
   app.get(R + "/inmuebles", wrap(async (req, res) => {
     const out = []; for (const f of Object.keys(FUENTES)) { try { const d = await leeInm(f), F = FUENTES[f]; out.push({ id: F.id, nombre: F.nombre, desc: F.desc, unidad: F.unidad, n: d.rows.length, total: d.total, conPrecio: d.rows.filter(r => r[4] != null).length }); } catch (_) { out.push({ id: f, nombre: FUENTES[f].nombre, desc: FUENTES[f].desc, n: 0, total: 0, conPrecio: 0 }); } }
     res.set("Cache-Control", "no-store"); res.json({ ok: true, fuentes: out });
