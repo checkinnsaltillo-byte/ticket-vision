@@ -139,7 +139,7 @@ module.exports = function (app, D) {
     for (const q of pts) { const lat = +q[0], lng = +q[1], kx = 111320 * Math.cos(lat * Math.PI / 180), ci = Math.floor(lat / .05), cj = Math.floor(lng / .05); let best = null, bd = 3000 * 3000;
       for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) for (const k of (M.grid.get(i + "_" + j) || [])) { const v = M.A[k][1], dx = (v[1] - lng) * kx, dy = (v[0] - lat) * 111320, d2 = dx * dx + dy * dy; if (d2 < bd) { bd = d2; best = k; } }
       if (best == null) { sin++; rows.push(specs.map(() => null)); ag.push(null); continue; }
-      const [clave, v, r, am, su] = M.A[best]; ag.push(clave); rows.push(specs.map(s => { const x = D.mVal(r, s, M.ref, am, su, v); return s === "tipo" ? (x == null ? null : tipos[x] || null) : (typeof x === "number" && isFinite(x) ? x : null); })); }
+      const [clave, v, r, am, su, ig] = M.A[best]; ag.push(clave); rows.push(specs.map(s => { const x = D.mVal(r, s, M.ref, am, su, v, ig); return s === "tipo" ? (x == null ? null : tipos[x] || null) : (typeof x === "number" && isFinite(x) ? x : null); })); }
     res.json({ ok: true, specs, rows, ageb: ag, sinAgeb: sin });
   }));
 

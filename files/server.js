@@ -14603,7 +14603,7 @@ app.get("/geometrika/indicadores", async (req, res) => {
     for (const [lat, lng] of pts) { const kx = 111320 * Math.cos(lat * Math.PI / 180), ci = Math.floor(lat / .05), cj = Math.floor(lng / .05); let best = null, bd = 3000 * 3000;
       for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) for (const k of (M.grid.get(i + "_" + j) || [])) { const v = M.A[k][1], dx = (v[1] - lng) * kx, dy = (v[0] - lat) * 111320, d2 = dx * dx + dy * dy; if (d2 < bd) { bd = d2; best = k; } } cer.push(best); }
     const con = cer.filter(k => k != null).length, items = [];
-    for (const b of _bib()) { const vals = []; cer.forEach(k => { if (k == null) return; const [, v, r, am, su] = M.A[k], x = _mVal(r, b.s, M.ref, am, su, v); if (x != null) vals.push(b.s === "tipo" ? (tipos[x] || null) : x); }); const ok = vals.filter(v => v != null); if (!ok.length) continue;
+    for (const b of _bib()) { const vals = []; cer.forEach(k => { if (k == null) return; const [, v, r, am, su, ig] = M.A[k], x = _mVal(r, b.s, M.ref, am, su, v, ig); if (x != null) vals.push(b.s === "tipo" ? (tipos[x] || null) : x); }); const ok = vals.filter(v => v != null); if (!ok.length) continue;
       if (b.cat) { const c = {}; ok.forEach(v => { c[v] = (c[v] || 0) + 1; }); const top = Object.entries(c).sort((a, z) => z[1] - a[1]); items.push({ k: b.k, n: b.n, u: b.u, c: b.c, e: b.e, cat: 1, v: top[0][0], nv: ok.length, rep: top.slice(0, 3).map(t => t[0] + " (" + t[1] + ")") }); }
       else { const s2 = ok.slice().sort((a, z) => a - z), med = s2[Math.floor(s2.length / 2)]; items.push({ k: b.k, n: b.n, u: b.u, c: b.c, e: b.e, v: ok.length === 1 ? ok[0] : undefined, med, min: s2[0], max: s2[s2.length - 1], nv: ok.length }); } }
     res.set("Cache-Control", "private, max-age=300"); res.json({ ok: true, puntos: pts.length, conAgeb: con, total: _bib().length, items });
@@ -16109,7 +16109,7 @@ async function _mallaAgeb() {
   if (_mallaAg && Date.now() - _mallaAg.at < 6 * 3600e3) return _mallaAg; if (_mallaAgP) return _mallaAgP;
   _mallaAgP = (async () => {
     const A = [], grid = new Map(), ents = Array.from({ length: 32 }, (_, i) => String(i + 1).padStart(2, "0")); let campos = null, mmeta = null;
-    await Promise.all(ents.map(async e => { try { const { data: d } = await _bnReadGcs(`ageb/${e}.json`); if (!d || !d.ageb) return; campos = campos || d.campos; let R2 = {}, R3 = {}, R4 = {}; try { const { data: mm } = await _bnReadGcs(`malla/${e}.json`); if (mm && mm.ageb) { R2 = mm.ageb; mmeta = mmeta || mm.meta; } } catch (_) { } try { const { data: am } = await _bnReadGcs(`ambiente/${e}.json`); if (am && am.ageb) R3 = am.ageb; } catch (_) { } try { const { data: su } = await _bnReadGcs(`suelo/${e}.json`); if (su && su.ageb) R4 = su.ageb; } catch (_) { } for (const k in d.ageb) { const v = d.ageb[k]; if (v[0] != null && v[1] != null) A.push([k, v, R2[k] || null, R3[k] || null, R4[k] || null]); } } catch (_) { } }));
+    await Promise.all(ents.map(async e => { try { const { data: d } = await _bnReadGcs(`ageb/${e}.json`); if (!d || !d.ageb) return; campos = campos || d.campos; let R2 = {}, R3 = {}, R4 = {}, R5 = {}; try { const { data: ig } = await _bnReadGcs(`ingreso/ageb/${e}.json`); if (ig && ig.ageb) R5 = ig.ageb; } catch (_) { } try { const { data: mm } = await _bnReadGcs(`malla/${e}.json`); if (mm && mm.ageb) { R2 = mm.ageb; mmeta = mmeta || mm.meta; } } catch (_) { } try { const { data: am } = await _bnReadGcs(`ambiente/${e}.json`); if (am && am.ageb) R3 = am.ageb; } catch (_) { } try { const { data: su } = await _bnReadGcs(`suelo/${e}.json`); if (su && su.ageb) R4 = su.ageb; } catch (_) { } for (const k in d.ageb) { const v = d.ageb[k]; if (v[0] != null && v[1] != null) A.push([k, v, R2[k] || null, R3[k] || null, R4[k] || null, R5[k] || null]); } } catch (_) { } }));
     A.forEach(([, v], i) => { const g = Math.floor(v[0] / .05) + "_" + Math.floor(v[1] / .05); (grid.get(g) || grid.set(g, []).get(g)).push(i); });
     let ref = { apea: 1 }; try { const { data: rf } = await _bnReadGcs("malla/ref.json"); if (rf && rf.p98) ref = rf.p98; } catch (_) { }
     return (_mallaAg = { at: Date.now(), A, grid, campos, mmeta, ref });
@@ -16119,8 +16119,9 @@ async function _mallaAgeb() {
 // valor de un indicador de la malla a partir de la fila de malla/<ent>.json de una AGEB: g<k> negocios del giro k · p<k> gravedad económica · q<k> polaridad · d<k> distancia al polo (k = 0 total, 1-10 sectores; g: 0-9)
 // alt/pend/desn relieve · tem/llu/vie/rad clima (de ambiente/<ent>.json)
 // apt<k> aptitud comercial (0-5 categorías, 6 promedio) · apea afluencia peatonal diaria · aidx su índice 0-100 · aanc anclas · acc accesibilidad vial 0-100 · veh afluencia vehicular estimada · tipo asentamiento · nv/nw/nt entorno natural
-function _mVal(r, s, ref, am, su, v0) {
-  if (v0) { const BS = { pob: v0[4] != null ? v0[4] : v0[3], den: v0[7], ocu: v0[6], nse: v0[10], est: v0[11], div: v0[12] }; if (s in BS) return BS[s] != null ? BS[s] : null; }   // columnas de ageb/<ent>.json
+function _mVal(r, s, ref, am, su, v0, ig) {
+  if (s === "ing" || s === "ingn") { const x = ig ? ig[s === "ing" ? 0 : 1] : null; return x != null ? x : null; }   // ingreso mensual típico del hogar (mediana) y su nivel 1-5: ingreso/ageb/<ent>.json
+  if (v0) { const BS = { pob: v0[4] != null ? v0[4] : v0[3], den: v0[7], ocu: v0[6], nsei: v0[9], nse: v0[10], est: v0[11], div: v0[12] }; if (s in BS) return BS[s] != null ? BS[s] : null; }   // columnas de ageb/<ent>.json
   const SU = { sa: 0, sm: 1, sp: 2, sc: 3, sk: 4, sd: 5, sg: 6, sh: 7 };   // cobertura del suelo (WorldCover) de suelo/<ent>.json: % del área de la AGEB
   if (s in SU) return su && su[SU[s]] != null ? su[SU[s]] : null; if (s === "sv") return su ? su[0] + su[1] + su[2] : null;
   const AM = { alt: 0, pend: 1, desn: 2, tem: 3, llu: 4, vie: 5, rad: 6, hum: 7 }; if (s in AM) return am && am[AM[s]] != null ? am[AM[s]] : null;   // relieve y clima: ambiente/<ent>.json
