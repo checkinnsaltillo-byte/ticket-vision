@@ -29,8 +29,8 @@ MLV=$(cat "$DL/medialab.js" "$DL/medialab.css" "$TV/medialab-logo.png" | shasum 
 node --check "$DL/medialab.js"; cp "$DL/medialab.js" "$DL/medialab.css" "$OUT/"; cp "$TV/medialab-logo.png" "$OUT/medialab-logo.png"
 # Model Lab: modelado estadístico por proyecto (biblioteca de indicadores generada desde Data Lab; motor estadístico propio)
 node "$DL/extrae_biblioteca.js" || echo "modelab-biblioteca: se conserva la anterior"
-MOV=$(cat "$DL/modelab.js" "$DL/modelab.css" "$DL/modelab-motor.js" "$DL/modelab-biblioteca.js" "$TV/modelab-logo.png" "$TV/modelab-logo-claro.png" | shasum -a 256 | cut -c1-8)
-node --check "$DL/modelab.js"; node --check "$DL/modelab-motor.js"; cp "$DL/modelab.js" "$DL/modelab.css" "$DL/modelab-motor.js" "$DL/modelab-biblioteca.js" "$OUT/"; cp "$TV/modelab-logo.png" "$TV/modelab-logo-claro.png" "$OUT/"
+MOV=$(cat "$DL/modelab.js" "$DL/modelab.css" "$DL/modelab-motor.js" "$DL/modelab-biblioteca.js" "$DL/modelab-valuacion.js" "$TV/modelab-logo.png" "$TV/modelab-logo-claro.png" | shasum -a 256 | cut -c1-8)
+node --check "$DL/modelab.js"; node --check "$DL/modelab-motor.js"; node --check "$DL/modelab-valuacion.js"; cp "$DL/modelab.js" "$DL/modelab.css" "$DL/modelab-motor.js" "$DL/modelab-biblioteca.js" "$DL/modelab-valuacion.js" "$OUT/"; cp "$TV/modelab-logo.png" "$TV/modelab-logo-claro.png" "$OUT/"
 # EcoLab: tablero económico (datos descargados con ecolab-descarga.js)
 ECV=$(cat "$DL/ecolab.js" "$DL/ecolab.css" | shasum -a 256 | cut -c1-8)
 node --check "$DL/ecolab.js"; node --check "$DL/ecolab-datos.js"

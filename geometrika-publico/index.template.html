@@ -487,7 +487,7 @@ function gpAbre(sys) {
   if (sys === "modelo") {
     document.getElementById("modelab-host").style.display = "";
     const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "modelab.css?v=__MO__"; document.head.appendChild(l);
-    gpCarga("modelab-biblioteca.js?v=__MO__", () => gpCarga("modelab-motor.js?v=__MO__", () => gpCarga("modelab.js?v=__MO__", () => window.modelabInit && window.modelabInit())));
+    gpCarga("modelab-biblioteca.js?v=__MO__", () => gpCarga("modelab-motor.js?v=__MO__", () => gpCarga("modelab-valuacion.js?v=__MO__", () => gpCarga("modelab.js?v=__MO__", () => window.modelabInit && window.modelabInit()))));
   } else if (sys === "media") {
     document.getElementById("medialab-host").style.display = "";
     const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "medialab.css?v=__ML__"; document.head.appendChild(l);
