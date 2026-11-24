@@ -18,6 +18,8 @@ for (const [k, d] of Object.entries(ctx.out)) {
 }
 /* indicadores socioeconómicos por AGEB que no vienen de las definiciones de Data Lab: índice NSE, ingreso del hogar (ENIGH) y su nivel */
 [{ k: "dem:nsei", n: "Índice de nivel socioeconómico (NSE)", u: "índice", s: "nsei" }, { k: "dem:ingn", n: "Nivel de ingreso del hogar (1 a 5)", u: "nivel", s: "ingn" }, { k: "dem:ing", n: "Ingreso mensual típico del hogar", u: "MXN/mes", s: "ing" }].forEach(x => { if (!lista.some(y => y.k === x.k)) lista.push(Object.assign({ e: "Demografía", c: "Entorno socioeconómico", cat: false }, x)); });
+/* NSE del entorno urbano (manzana de cada punto; INEGI · Censo 2020 e Inventario Nacional de Viviendas) */
+[{ k: "eu:eunse", n: "NSE del entorno urbano (nivel 1 a 4, manzana)", u: "nivel", s: "eunse" }, { k: "eu:eunsz", n: "Puntaje socioeconómico de la manzana (vivienda y escolaridad)", u: "puntaje", s: "eunsz" }].forEach(x => { if (!lista.some(y => y.k === x.k)) lista.push(Object.assign({ e: "Entorno urbano (INEGI)", c: "Entorno socioeconómico", cat: false }, x)); });
 lista.sort((x, y) => x.c.localeCompare(y.c) || x.e.localeCompare(y.e) || x.k.localeCompare(y.k));
 fs.writeFileSync(path.join(dir, "modelab-biblioteca.js"), "/* Biblioteca de indicadores de Model Lab (generada por extrae_biblioteca.js; no editar a mano). */\nwindow.MO_BIBLIO = " + JSON.stringify(lista) + ";\n");
 fs.writeFileSync(path.join(dir, "..", "files", "biblioteca.json"), JSON.stringify(lista));

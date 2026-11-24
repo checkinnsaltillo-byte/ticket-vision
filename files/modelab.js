@@ -132,14 +132,34 @@ module.exports = function (app, D) {
   app.get(R + "/proyectos/:id/resultados", wrap(async (req, res) => { const id = req.params.id; if (!idOk(id)) throw err("id"); const { data } = await D.readGcs(AK(id, aidDe(req), "resultados")); res.set("Cache-Control", "no-store"); res.json({ ok: true, res: data && data.res || null, at: data && data.at || null }); }));
 
   /* ───────── tabla de variables por punto: cada coordenada se ubica en su AGEB y se leen los indicadores precalculados de la malla nacional ───────── */
+  /* NSE del entorno urbano (INEGI · Censo 2020 + Inventario Nacional de Viviendas): nivel 1-4 y puntaje de la manzana donde cae cada punto */
+  const EUC = new Map();
+  function euMun(c) {
+    let p = EUC.get(c); if (p) return p; const ent = c.slice(0, 2);
+    p = Promise.all([D.readGcs(`inv/mza/${ent}/${c}.json`).then(r => r.data).catch(() => null), D.readGcs(`censo/mun/${ent}/${c}.json`).then(r => r.data).catch(() => null)]).then(([M, C]) => {
+      if (!M || !M.m || !C || !C.mz) return null; const mp = new Map(); M.m.forEach(z => mp.set(z[0], z)); const grid = new Map();
+      C.mz.forEach(cm => { const z = mp.get(cm[0]); if (!z) return; const o = { lat: cm[1], lng: cm[2], p: cm[3], n: z[15], z: z[16] }, k = Math.floor(cm[1] / .005) + "_" + Math.floor(cm[2] / .005); (grid.get(k) || grid.set(k, []).get(k)).push(o); }); return { grid };
+    }).catch(() => null); EUC.set(c, p); while (EUC.size > 6) EUC.delete(EUC.keys().next().value); return p;
+  }
+  async function euPuntos(pts) {
+    const muns = await D.nacMuns(), out = new Array(pts.length).fill(null), por = new Map();
+    pts.forEach((q, i) => { const lat = +q[0], lng = +q[1], m = muns.find(x => x.bbox && lat >= x.bbox[0] && lat <= x.bbox[2] && lng >= x.bbox[1] && lng <= x.bbox[3]); if (m) (por.get(m.c) || por.set(m.c, []).get(m.c)).push(i); });
+    for (const [c, ids] of por) { const E = await euMun(c); if (!E) continue;
+      for (const i of ids) { const lat = +pts[i][0], lng = +pts[i][1], kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320, ci = Math.floor(lat / .005), cj = Math.floor(lng / .005); let dentro = null, cerca = null, bd = 220;
+        for (let a = ci - 1; a <= ci + 1; a++) for (let b = cj - 1; b <= cj + 1; b++) for (const o of (E.grid.get(a + "_" + b) || [])) { const dx = (lng - o.lng) * kx, dy = (lat - o.lat) * ky, d = Math.hypot(dx, dy); if (d < bd) { bd = d; cerca = o; }
+          if (!dentro && d < 400) { let w = false; const P = o.p; for (let u = 0, k = P.length - 2; u + 1 < P.length; k = u, u += 2) { const xi = P[u] / 10, yi = P[u + 1] / 10, xk = P[k] / 10, yk = P[k + 1] / 10; if ((yi > dy) !== (yk > dy) && dx < (xk - xi) * (dy - yi) / (yk - yi) + xi) w = !w; } if (w) dentro = o; } }
+        const m = dentro || cerca; if (m && m.n) out[i] = [m.n, m.z != null ? m.z : null]; } }
+    return out;
+  }
   app.post(R + "/tabla", wrap(async (req, res) => {
     const b = req.body || {}, pts = Array.isArray(b.puntos) ? b.puntos : [], specs = (Array.isArray(b.specs) ? b.specs : []).filter(s => /^[a-z]+\d*$/.test(s)).slice(0, 120);
     if (!pts.length || pts.length > 20000) throw err("Entre 1 y 20 000 puntos."); if (!specs.length) throw err("Elige al menos un indicador.");
     const M = await D.malla(), tipos = (M.mmeta && M.mmeta.tipos) || [], rows = [], ag = []; let sin = 0;
-    for (const q of pts) { const lat = +q[0], lng = +q[1], kx = 111320 * Math.cos(lat * Math.PI / 180), ci = Math.floor(lat / .05), cj = Math.floor(lng / .05); let best = null, bd = 3000 * 3000;
+    const EU = specs.some(s => s === "eunse" || s === "eunsz") ? await euPuntos(pts) : null, euv = (s, i) => (s === "eunse" || s === "eunsz") && EU && EU[i] ? (s === "eunse" ? EU[i][0] : EU[i][1]) : null;
+    for (const [qi, q] of pts.entries()) { const lat = +q[0], lng = +q[1], kx = 111320 * Math.cos(lat * Math.PI / 180), ci = Math.floor(lat / .05), cj = Math.floor(lng / .05); let best = null, bd = 3000 * 3000;
       for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) for (const k of (M.grid.get(i + "_" + j) || [])) { const v = M.A[k][1], dx = (v[1] - lng) * kx, dy = (v[0] - lat) * 111320, d2 = dx * dx + dy * dy; if (d2 < bd) { bd = d2; best = k; } }
-      if (best == null) { sin++; rows.push(specs.map(() => null)); ag.push(null); continue; }
-      const [clave, v, r, am, su, ig] = M.A[best]; ag.push(clave); rows.push(specs.map(s => { const x = D.mVal(r, s, M.ref, am, su, v, ig); return s === "tipo" ? (x == null ? null : tipos[x] || null) : (typeof x === "number" && isFinite(x) ? x : null); })); }
+      if (best == null) { sin++; rows.push(specs.map(s => euv(s, qi))); ag.push(null); continue; }
+      const [clave, v, r, am, su, ig] = M.A[best]; ag.push(clave); rows.push(specs.map(s => { if (s === "eunse" || s === "eunsz") return euv(s, qi); const x = D.mVal(r, s, M.ref, am, su, v, ig); return s === "tipo" ? (x == null ? null : tipos[x] || null) : (typeof x === "number" && isFinite(x) ? x : null); })); }
     res.json({ ok: true, specs, rows, ageb: ag, sinAgeb: sin });
   }));
 
