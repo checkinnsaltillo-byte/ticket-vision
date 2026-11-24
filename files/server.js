@@ -13457,7 +13457,7 @@ app.post("/geometrika/proyecto", async (req, res) => {
       const { data: O } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!O) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
       if (_gmJob.running && Date.now() - Date.parse(_gmJob.upd || 0) < 300000) return res.status(409).json({ ok: false, error: "Hay un análisis en curso; espera a que termine para aplicar los cambios" });
       const inv = (Array.isArray(b.invalidar) ? b.invalidar : []).map(String).filter(x => /^\d{1,2}:(fotos|maq|vial|traf)$/.test(x)), nP = doc.puntos.length, hecho = ((O.analisis && O.analisis.hecho) || []).filter(x => !inv.includes(x) && +x.split(":")[0] < nP), recalc = b.recalcular !== false && inv.length > 0;
-      Object.assign(doc, { creado: O.creado, estado: O.estado, oculto: O.oculto, analisis: O.analisis, ediciones: (O.ediciones || []).concat([{ at: new Date().toISOString(), invalidar: inv, recalcular: recalc, usd: Number.isFinite(+b.costoEstimadoUSD) ? +b.costoEstimadoUSD : null }]).slice(-40) });
+      Object.assign(doc, { creado: O.creado, estado: O.estado, oculto: O.oculto, analisis: O.analisis, critBsc: O.critBsc, ediciones: (O.ediciones || []).concat([{ at: new Date().toISOString(), invalidar: inv, recalcular: recalc, usd: Number.isFinite(+b.costoEstimadoUSD) ? +b.costoEstimadoUSD : null }]).slice(-40) });
       await _bnWriteGcs(`geometrika/proyectos/${id}.json`, doc, null); res.set("Cache-Control", "no-store");
       if (recalc) { _gmArranca(doc, hecho); return res.json({ ok: true, proyecto: doc, reanaliza: true }); }
       return res.json({ ok: true, proyecto: doc, reanaliza: false });
@@ -13483,6 +13483,23 @@ app.post("/geometrika/proyecto/ponderadores", async (req, res) => {
     Object.keys(b.s && typeof b.s === "object" ? b.s : {}).slice(0, 800).forEach(k => { if (ok(k) && +b.s[k] === -1) s[k] = -1; });
     const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
     P.pond = { w, s, at: new Date().toISOString() }; await _bnWriteGcs(`geometrika/proyectos/${id}.json`, P, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, pond: P.pond });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
+// ── Balanced Scorecard por mapa conceptual: criterios del proyecto para puntuar indicadores informativos (por nodo del mapa) ──
+// regla por categorías {t:"cat", m:{"Alto":100,"Medio alto":100,"Medio bajo":50,"Bajo":0}} o por umbrales {t:"num", dir:"mayor"|"menor", ok, warn}
+const _critSan = c => {
+  const S = (v, n) => String(v == null ? "" : v).replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().slice(0, n), out = {};
+  Object.keys(c && typeof c === "object" ? c : {}).slice(0, 300).forEach(k => {
+    if (!/^[\w-]{1,14}\|i:[\w:.\-]{1,90}$/.test(k)) return; const r = c[k]; if (!r || typeof r !== "object") return;
+    if (r.t === "cat") { const m = {}; Object.keys(r.m && typeof r.m === "object" ? r.m : {}).slice(0, 12).forEach(l => { const lab = S(l, 60), v = +r.m[l]; if (lab && (v === 0 || v === 50 || v === 100)) m[lab] = v; }); if (Object.keys(m).length) out[k] = { t: "cat", m, n: S(r.n, 240), ia: !!r.ia }; }
+    else if (r.t === "num") { const ok = +r.ok, w = +r.warn; if (Number.isFinite(ok) && Number.isFinite(w) && (r.dir === "mayor" || r.dir === "menor")) out[k] = { t: "num", dir: r.dir, ok, warn: w, n: S(r.n, 240), ia: !!r.ia }; }
+  });
+  return out;
+};
+app.post("/geometrika/proyecto/criterios", async (req, res) => {
+  if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
+  try { const b = req.body || {}, id = String(b.id || "").replace(/\D/g, ""); if (!/^9\d{13}$/.test(id)) return res.status(400).json({ ok: false, error: "Id de proyecto no válido" });
+    const { data: P } = await _bnReadGcs(`geometrika/proyectos/${id}.json`); if (!P) return res.status(404).json({ ok: false, error: "Proyecto no encontrado" });
+    P.critBsc = { c: _critSan(b.c), at: new Date().toISOString() }; await _bnWriteGcs(`geometrika/proyectos/${id}.json`, P, null); res.set("Cache-Control", "no-store"); res.json({ ok: true, crit: P.critBsc });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); } });
 app.get("/geometrika/proyecto", async (req, res) => {   // proyecto completo (para editarlo)
   if (!_vOriginOk(req)) return res.status(403).json({ ok: false });
@@ -13514,6 +13531,21 @@ app.post("/geometrika/evaluacion-ia", async (req, res) => {
   try {
     const b = req.body || {}, S = (v, n) => String(v == null ? "" : v).replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().slice(0, n), N = v => (Number.isFinite(+v) ? Math.round(+v * 10) / 10 : null);
     const nom = S(b.nombre, 120), obj = S(b.objetivo, 200), per = (Array.isArray(b.perspectivas) ? b.perspectivas : []).slice(0, 8);
+    if (b.modo === "criterios") {   // criterios para puntuar los indicadores informativos de un nodo del mapa, según el objetivo del proyecto
+      const nk = String(b.nodo && b.nodo.k || "").replace(/[^\w-]/g, "").slice(0, 14), inds = (Array.isArray(b.indicadores) ? b.indicadores : []).slice(0, 12).filter(i => /^i:[\w:.\-]{1,90}$/.test(String(i && i.k || "")));
+      if (!nk || !inds.length) return res.status(400).json({ ok: false, error: "Sin indicadores informativos" });
+      const system = "Eres analista senior de geointeligencia y planeación estratégica. Defines criterios de evaluación claros y sobrios, en español de México. Solo usas la información que se te entrega. Respondes únicamente con un objeto JSON válido, sin texto antes ni después.";
+      const lista = inds.map(i => `- [${i.k}] ${S(i.n, 90)} · tipo: ${S(i.tipo, 30)} · descripción: ${S(i.d, 260)} · unidades o escala: ${S(i.u, 160)} · valor actual: ${S(i.v, 60)}`).join("\n");
+      const user = `PROYECTO: ${nom}\nOBJETIVO DEL PROYECTO: ${obj || "no indicado"}\nDESCRIPCIÓN DEL MAPA CONCEPTUAL: ${S(b.txt, 900) || "no indicada"}\nNODO DEL MAPA: ${S(b.nodo && b.nodo.n, 140)}${b.nodo && b.nodo.d ? " — " + S(b.nodo.d, 300) : ""}\n\nIndicadores informativos de este nodo, que hoy no tienen semáforo y por eso no puntúan:\n${lista}\n\nPara cada uno define cómo se puntúa SEGÚN EL OBJETIVO del proyecto (lo que es favorable para un objetivo puede no serlo para otro). Devuelve un JSON exacto:\n{"criterios":[{"k":"clave entre corchetes","t":"cat","m":[{"v":"etiqueta posible","p":100}],"n":"por qué"} , {"k":"clave","t":"num","dir":"mayor","ok":70,"warn":40,"n":"por qué"}]}\n- Usa t="cat" cuando el indicador toma etiquetas o niveles (por ejemplo Bajo, Medio bajo, Medio alto, Alto): enumera TODAS las etiquetas posibles según la escala indicada, cada una con p = 100 (favorable), 50 (atención) o 0 (alerta).\n- Usa t="num" cuando es un número: dir="mayor" si más alto es mejor o "menor" si más bajo es mejor; ok es el umbral a partir del cual es favorable y warn el umbral a partir del cual es de atención (con dir="menor", ok y warn son topes máximos). Usa unidades coherentes con el valor actual.\n- n: una frase breve que justifique el criterio frente al objetivo.\n- No inventes etiquetas ajenas a la escala indicada.`;
+      const call = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: _CL_MODELO, max_tokens: 3000, thinking: { type: "disabled" }, system, messages: [{ role: "user", content: user }] }), signal: AbortSignal.timeout(120000) });
+      const j = await call.json(); if (!call.ok) throw new Error(`Claude ${call.status}: ${(j.error && j.error.message) || ""}`);
+      const txt = (j.content || []).filter(p => p.type === "text").map(p => p.text).join("").trim(), m = txt.match(/\{[\s\S]*\}/); let o = null; try { o = JSON.parse(m ? m[0] : txt); } catch (_) { }
+      if (!o) throw new Error("La respuesta no vino en el formato esperado; inténtalo de nuevo");
+      const raw = {}; (Array.isArray(o.criterios) ? o.criterios : []).forEach(r => { const k = String(r && r.k || ""); if (!inds.some(i => i.k === k)) return; const key = nk + "|" + k;
+        if (r.t === "cat") { const mm = {}; (Array.isArray(r.m) ? r.m : []).forEach(x => { if (x && x.v != null) mm[String(x.v)] = +x.p; }); raw[key] = { t: "cat", m: mm, n: r.n, ia: true }; }
+        else if (r.t === "num") raw[key] = { t: "num", dir: r.dir, ok: r.ok, warn: r.warn, n: r.n, ia: true }; });
+      res.set("Cache-Control", "no-store"); return res.json({ ok: true, criterios: _critSan(raw) });
+    }
     if (b.modo === "mapa") {   // tablero sobre el mapa conceptual del proyecto: nodos en cascada que se alimentan entre sí
       const nodos = (Array.isArray(b.nodos) ? b.nodos : []).slice(0, 40); if (!nodos.length) return res.status(400).json({ ok: false, error: "Sin datos de evaluación" });
       const K = v => (/^[\w:.\-]{1,90}$/.test(String(v || "")) ? String(v) : ""), nm = new Map(nodos.map(n => [K(n.k), S(n.n, 90)]));
