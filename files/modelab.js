@@ -57,6 +57,25 @@ module.exports = function (app, D) {
         m[id] = { f: typeof foto === "string" ? foto : "", h: String(host || ""), s: String(sub || "") }; }); } catch (_) { } }
     FOT.m = m; FOT.t = Date.now(); return m;
   }
+  /* ficha completa de una publicación (fotos, descripción, atributos, vendedor) para abrirla dentro de la valuación */
+  const RAW = { c: new Map() };
+  async function leeRaw(f) { const c = RAW.c.get(f); if (c && Date.now() - c.t < 300000) return c.d; const { data } = await D.readGcs(FUENTES[f].obj), d = { items: (data && data.items) || {}, lista: new Map(((data && data.lista) || []).map(l => [String(l.id), l])) }; RAW.c.set(f, { t: Date.now(), d }); return d; }
+  const fx = v => (v == null || v === "" || (Array.isArray(v) && !v.length)) ? null : v;
+  app.post(R + "/inmuebles/ficha", wrap(async (req, res) => {
+    const id = String((req.body || {}).id || ""); if (!id) throw err("Falta el id", 400); let out = null;
+    for (const f of Object.keys(FUENTES)) { const R2 = await leeRaw(f), it = R2.items[id] || Object.values(R2.items).find(x => String(x.id) === id); if (!it) continue;
+      const pares = [], P = (k, v, u) => { v = fx(v); if (v != null) pares.push([k, u ? v + " " + u : v]); };
+      if (f === "mercadolibre") { const l = R2.lista.get(id) || {}, at = it.atributos || {}; const fotos = (it.fotos || []).filter(Boolean); if (!fotos.length && l.thumb) fotos.push(l.thumb);
+        P("Operación", it.op); P("Recámaras", it.recamaras != null ? it.recamaras : at["Recámaras"]); P("Baños", it.banos != null ? it.banos : at["Baños"]); P("Estacionamientos", it.estacionamientos); P("Superficie total", it.m2_total, "m²"); P("Superficie construida", it.m2_construccion, "m²"); Object.keys(at).forEach(k => P(k, at[k]));
+        out = { fuente: "Mercado Libre", titulo: it.titulo, url: it.url, descripcion: it.descripcion || "", fotos, pares, vendedor: it.vendedor || "", ubicacion: it.direccion || [it.colonia, it.ciudad, it.estado].filter(Boolean).join(", "), publicado: it.publicado || it.extraido || "", amenidades: [] }; }
+      else if (f === "facebook") { const fotos = (Array.isArray(it.fotos) ? it.fotos : []).map(x => x && (x.url || x)).filter(x => typeof x === "string");
+        P("Tipo", it.tipo); P("Operación", it.operacion); P("Periodo", it.periodo); P("Recámaras", it.recamaras); P("Baños", it.banos); P("Medios baños", it.medios_banos); P("Estacionamientos", it.estacionamientos); P("Construcción", it.m2_construccion, "m²"); P("Terreno", it.m2_terreno, "m²"); P("Amueblado", it.amueblado === true ? "Sí" : it.amueblado === false ? "No" : null); P("Detalles", it.detalles_unidad); P("Vendedor en Facebook desde", it.vendedor_desde);
+        out = { fuente: "Facebook Marketplace", titulo: it.titulo, url: it.url_origen || it.url, descripcion: it.descripcion || "", fotos, pares, vendedor: it.contacto_nombre || "", ubicacion: [it.direccion, it.colonia, it.ciudad, it.estado].filter(Boolean).join(", "), publicado: it.publicado_texto || it.fecha_publicacion || "", amenidades: Array.isArray(it.amenidades) ? it.amenidades : [] }; }
+      else { const fotos = it.foto ? [it.foto] : [], l = R2.lista.get(id) || {};
+        P("Tipo", it.tipo); P("Huéspedes", it.huespedes); P("Habitaciones", it.habitaciones); P("Camas", it.camas); P("Baños", it.banos); P("Calificación", it.calificacion); P("Evaluaciones", it.evaluaciones); P("Superanfitrión", it.superanfitrion ? "Sí" : "No"); P("Años del anfitrión", it.hostAnios); P("Noches mínimas", it.minNoches); P("Ocupación a 90 días", it.ocup90 != null ? it.ocup90 + " %" : null); P("Precio por noche", l.precioNoche ? "$" + Math.round(l.precioNoche).toLocaleString("es-MX") : null);
+        out = { fuente: "Airbnb", titulo: it.titulo, url: it.url, descripcion: it.descripcion || it.ubicacionTxt || "", fotos, pares, vendedor: it.anfitrion || "", ubicacion: it.ubicacion || [it.ciudad, it.estado].filter(Boolean).join(", "), publicado: "", amenidades: Array.isArray(it.amenidades) ? it.amenidades.slice(0, 40) : [] }; }
+      out.lat = it.lat; out.lng = it.lng; break; }
+    if (!out) throw err("No se encontró la publicación", 404); res.set("Cache-Control", "no-store"); res.json({ ok: true, ficha: out }); }));
   app.post(R + "/inmuebles/fotos", wrap(async (req, res) => { const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.slice(0, 5000) : [], m = await leeFotos(), out = {}; ids.forEach(i => { const k = String(i); if (m[k]) out[k] = m[k]; }); res.set("Cache-Control", "no-store"); res.json({ ok: true, items: out }); }));
   app.get(R + "/inmuebles", wrap(async (req, res) => {
     const out = []; for (const f of Object.keys(FUENTES)) { try { const d = await leeInm(f), F = FUENTES[f]; out.push({ id: F.id, nombre: F.nombre, desc: F.desc, unidad: F.unidad, n: d.rows.length, total: d.total, conPrecio: d.rows.filter(r => r[4] != null).length }); } catch (_) { out.push({ id: f, nombre: FUENTES[f].nombre, desc: FUENTES[f].desc, n: 0, total: 0, conPrecio: 0 }); } }
