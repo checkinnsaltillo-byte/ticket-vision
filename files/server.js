@@ -7730,7 +7730,7 @@ app.post("/facturapi/emit-auto", async (req, res) => {
       const suma = [...taxes.filter(t => t.factor === 'Tasa'), ...locales].reduce((acc, t) => acc + (t.withholding ? -1 : 1) * t.rate, 0);
       const neto = Math.round((monto / (1 + suma)) * 1e6) / 1e6;
       itemProduct = {
-        description: description.slice(0, 250),
+        description: String(prodFx.description || description).slice(0, 250), // el concepto es SIEMPRE el nombre del producto de Facturapi (SAT); la reserva no va en el concepto
         product_key: prodFx.product_key,
         price: neto,
         tax_included: false,
