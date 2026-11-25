@@ -14345,6 +14345,20 @@ app.get("/mercado/facebook/pendientes", async (req, res) => {
     res.set("Cache-Control", "no-store"); res.json({ ok: true, lista: L, sinSel: cand.filter(x => !x.sel).length, cfg: { pausaMin: (d.config || {}).pausaMin || 3, pausaMax: (d.config || {}).pausaMax || 7, lote: lim, vendedor: (d.config || {}).vendedor === true } }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// Copia propia de las fotos: los enlaces de fbcdn son firmados y caducan en días; al extraer se descargan y se guardan en Cloud Storage.
+async function _fbGuardaFotos(id, pub) {
+  const fo = Array.isArray(pub.fotos) ? pub.fotos : [], tok = await _vGcsToken(); let n = 0;
+  for (let i = 0; i < fo.length && i < 12; i++) { const u = String((fo[i] && fo[i].url) || ""); if (!/^https:\/\/[a-z0-9.-]*(fbcdn\.net|facebook\.com)\//i.test(u)) continue;
+    try { const r = await fetch(u, { signal: AbortSignal.timeout(15000), headers: { "User-Agent": "Mozilla/5.0" } }); if (!r.ok) continue; const buf = Buffer.from(await r.arrayBuffer()); if (buf.length < 1500 || buf.length > 8e6) continue;
+      const ct = (r.headers.get("content-type") || "image/jpeg").split(";")[0], g = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${_PZ_BUCKET}/o?uploadType=media&name=${encodeURIComponent("mercado/fbfotos/" + id + "/" + i)}`, { method: "POST", headers: { Authorization: "Bearer " + tok, "Content-Type": ct }, body: buf });
+      if (!g.ok) continue; fo[i] = { url: "https://api.check-inn.mx/mercado/facebook/foto/" + id + "/" + i, alt: fo[i].alt || "", orig: u }; n++; } catch (_) {} }
+  return n;
+}
+app.get("/mercado/facebook/foto/:id/:i", async (req, res) => {
+  try { const id = String(req.params.id).replace(/[^0-9a-z_-]/gi, ""), i = parseInt(req.params.i, 10); if (!id || !(i >= 0 && i < 40)) return res.status(400).end(); const tok = await _vGcsToken();
+    const r = await fetch(`https://storage.googleapis.com/storage/v1/b/${_PZ_BUCKET}/o/${encodeURIComponent("mercado/fbfotos/" + id + "/" + i)}?alt=media`, { headers: { Authorization: "Bearer " + tok } }); if (!r.ok) return res.status(404).end();
+    res.set("Content-Type", r.headers.get("content-type") || "image/jpeg"); res.set("Cache-Control", "public, max-age=2592000"); res.send(Buffer.from(await r.arrayBuffer())); } catch (e) { res.status(500).end(); }
+});
 app.post("/mercado/facebook/captura", async (req, res) => {
   const o = String(req.headers.origin || ""); if (o !== "https://api.check-inn.mx" && !_vOriginOk(req)) return res.status(403).json({ ok: false, error: "Origen no permitido" });
   try { const b = req.body || {}, hoy = new Date().toISOString();
@@ -14353,7 +14367,7 @@ app.post("/mercado/facebook/captura", async (req, res) => {
       for (const it of items) { const id = _fbId(it.id || it.url); if (!id) continue;
         if (it.estado && it.estado !== "ok") { out.push({ id, estado: it.estado, motivo: _fbTxt(it.motivo, 160) }); continue; }
         let pub = null, metodo = ""; try { const r = await _fbEstructura(Object.assign({}, it, { id, url: "https://www.facebook.com/marketplace/item/" + id + "/" }), ia++ < 12); pub = r.pub; metodo = r.metodo; } catch (e) { out.push({ id, estado: "error", motivo: "No se pudo estructurar: " + String(e.message || e).slice(0, 120) }); continue; }
-        out.push({ id, estado: "ok", pub, metodo }); }
+        try { await _fbGuardaFotos(id, pub); } catch (_) {} out.push({ id, estado: "ok", pub, metodo }); }
       await _fbMutar(d => { out.forEach(r => { const x = d.lista.find(y => y.id === r.id) || (_fbAgrega(d, [{ id: r.id }], "marcador"), d.lista.find(y => y.id === r.id)); x.intentos = (x.intentos || 0) + 1; x.visto = hoy;
           if (r.estado === "ok") { x.estado = "ok"; x.sel = false; x.intentos = 0; x.n_extr = (x.n_extr || (d.items[r.id] ? 1 : 0)) + 1; x.ult_extr = hoy; x.error = ""; x.titulo = r.pub.titulo || x.titulo; if (r.pub.precio) x.precio = "$" + Number(r.pub.precio).toLocaleString("es-MX"); d.items[r.id] = Object.assign({}, r.pub, { id: r.id, extraido: hoy, metodo: r.metodo }); }
           else { x.estado = r.estado === "no_disponible" ? "no_disponible" : "error"; x.error = r.motivo || ""; if (x.estado === "no_disponible" || (x.intentos || 0) >= 3) x.sel = false; } });
