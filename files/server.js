@@ -7722,14 +7722,21 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     const prodFx = await _emitAutoProducto_(auth, esMoral ? '1' : '2');
     let itemProduct;
     if (prodFx) {
+      // Solo se copian los campos de cada impuesto (tipo, tasa, factor, retención); el precio se calcula aquí SIN impuestos incluidos
+      // porque con tax_included Facturapi calculaba la base mal (impuestos de centavos sobre cualquier monto).
+      const limpia = t => ({ type: t.type, rate: Number(t.rate), factor: t.factor || 'Tasa', withholding: !!t.withholding });
+      const taxes = (Array.isArray(prodFx.taxes) ? prodFx.taxes : []).filter(t => t && t.type && isFinite(Number(t.rate))).map(limpia);
+      const locales = (Array.isArray(prodFx.local_taxes) ? prodFx.local_taxes : []).filter(t => t && t.type && isFinite(Number(t.rate))).map(t => ({ type: t.type, rate: Number(t.rate), withholding: !!t.withholding }));
+      const suma = [...taxes.filter(t => t.factor === 'Tasa'), ...locales].reduce((acc, t) => acc + (t.withholding ? -1 : 1) * t.rate, 0);
+      const neto = Math.round((monto / (1 + suma)) * 1e6) / 1e6;
       itemProduct = {
         description: description.slice(0, 250),
         product_key: prodFx.product_key,
-        price: Number(monto.toFixed(2)),
-        tax_included: true,
+        price: neto,
+        tax_included: false,
         taxability: prodFx.taxability,
-        taxes: Array.isArray(prodFx.taxes) ? prodFx.taxes : [],
-        local_taxes: Array.isArray(prodFx.local_taxes) ? prodFx.local_taxes : [],
+        taxes,
+        local_taxes: locales,
         unit_key: prodFx.unit_key,
         unit_name: prodFx.unit_name,
         sku: prodFx.sku,
