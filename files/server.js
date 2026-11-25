@@ -7745,7 +7745,7 @@ app.post("/facturapi/emit-auto", async (req, res) => {
       throw new Error('No se encontró en Facturapi el producto «1. Arrendamiento…» para Persona Moral; no se emite el ticket sin sus retenciones.');
     } else {
       console.error('[emit-auto] producto «2.» no encontrado en Facturapi; se usa IVA 16% por omisión');
-      itemProduct = { description: description.slice(0, 250), product_key: '90121500', price: Number(monto.toFixed(2)), tax_included: true, taxes: [{ type: 'IVA', rate: 0.16 }] };
+      itemProduct = { description: description.slice(0, 250), product_key: '90121500', price: Math.round((monto / 1.16) * 1e6) / 1e6, tax_included: false, taxes: [{ type: 'IVA', rate: 0.16, factor: 'Tasa', withholding: false }] };
     }
     const receiptBody = {
       items: [{
