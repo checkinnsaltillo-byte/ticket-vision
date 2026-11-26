@@ -38,7 +38,7 @@ cp "$DL/ecolab.js" "$DL/ecolab.css" "$OUT/"
 # los datos los actualiza solos el servidor cada mes (commit en Check in): no pisar una versión publicada más reciente
 if node -e 'const f=p=>{try{const w={};new Function("window",require("fs").readFileSync(p,"utf8"))(w);return w.ECO_DATA.generado||""}catch(_){return ""}};process.exit(f(process.argv[1])>f(process.argv[2])?0:1)' "$DL/ecolab-datos.js" "$OUT/ecolab-datos.js"; then cp "$DL/ecolab-datos.js" "$OUT/ecolab-datos.js"; else echo "ecolab-datos.js: se conserva la versión publicada (más reciente)"; fi
 # TerraLab: bases de datos inmobiliarias (hereda ecolab.css)
-TLV=$(cat "$DL/terralab.js" "$DL/terralab-extraccion.js" "$DL/terralab-fbmarc.js" "$DL/terralab.css" "$TV/terralab-logo.png" | shasum -a 256 | cut -c1-8)
-node --check "$DL/terralab.js"; node --check "$DL/terralab-extraccion.js"; cp "$DL/terralab-extraccion.js" "$DL/terralab-fbmarc.js" "$DL/terralab.js" "$DL/terralab.css" "$TV/terralab-logo.png" "$OUT/"
+TLV=$(cat "$DL/terralab.js" "$DL/terralab-extraccion.js" "$DL/terralab-fbmarc.js" "$DL/terralab-apis.js" "$DL/terralab.css" "$TV/terralab-logo.png" | shasum -a 256 | cut -c1-8)
+node --check "$DL/terralab.js"; node --check "$DL/terralab-extraccion.js"; cp "$DL/terralab-extraccion.js" "$DL/terralab-fbmarc.js" "$DL/terralab-apis.js" "$DL/terralab.js" "$DL/terralab.css" "$TV/terralab-logo.png" "$OUT/"
 sed "s/__V__/$V/g; s/__TL__/$TLV/g; s/__EC__/$ECV/g; s/__ML__/$MLV/g; s/__MO__/$MOV/g; s/__DL__/$DLV/g; s/__HASH2__/$HASH2/g; s/__HASH__/$HASH/g" "$TV/geometrika-publico/index.template.html" > "$OUT/index.html"
 echo "generado en $OUT (v=$V, datalab=$DLV)"
