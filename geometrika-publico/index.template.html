@@ -506,7 +506,7 @@ function gpAbre(sys) {
   if (sys === "terra") {
     document.getElementById("terralab-host").style.display = "";
     for (const h of ["ecolab.css?v=__EC__", "terralab.css?v=__TL__"]) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = h; document.head.appendChild(l); }
-    gpCarga("terralab.js?v=__TL__", () => window.terralabInit && window.terralabInit());
+    gpCarga("terralab-fbmarc.js?v=__TL__", () => gpCarga("terralab-extraccion.js?v=__TL__", () => gpCarga("terralab.js?v=__TL__", () => window.terralabInit && window.terralabInit())));
   } else if (sys === "modelo" || s === "terra") {
     document.getElementById("modelab-host").style.display = "";
     const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "modelab.css?v=__MO__"; document.head.appendChild(l);
