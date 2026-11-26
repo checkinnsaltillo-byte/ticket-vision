@@ -7580,12 +7580,14 @@ app.post("/facturapi/send-email", async (req, res) => {
   try {
     const { folio, email, org, kind } = req.body || {};
     if (!folio) throw new Error('folio requerido');
-    const orgN = String(org || '2');
-    const key = orgN === '1'
+    // ACR (org 1) por omisión; la indicada va primero y la otra org queda de respaldo
+    const orgN = String(org || '1');
+    const _kOrg = n => n === '1'
       ? (process.env.FACTURAPI_SECRET_KEY_ORG1 || process.env.FACTURAPI_SECRET_KEY)
       : (process.env.FACTURAPI_SECRET_KEY_ORG2 || process.env.FACTURAPI_SECRET_KEY);
+    let key = _kOrg(orgN);
     if (!key) throw new Error('FACTURAPI_SECRET_KEY no configurada en Cloud Run (org ' + orgN + ')');
-    const auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
+    let auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
     // Puede ser una FACTURA (invoice) o un RECIBO (receipt). Los recibos son
     // los "tickets" que se generan para inquilinos — viven en un endpoint
     // distinto. Estrategia: si viene kind='receipt' probamos receipts primero;
@@ -7610,6 +7612,15 @@ app.post("/facturapi/send-email", async (req, res) => {
       const other = await searchAt(fallback);
       hit = other.hit;
       if (hit) collection = fallback;
+    }
+    if (!hit) {
+      const otraOrg = orgN === '1' ? '2' : '1', k2 = _kOrg(otraOrg);
+      if (k2 && k2 !== key) {
+        key = k2; auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
+        hit = (await searchAt(primary)).hit;
+        collection = primary;
+        if (!hit) { hit = (await searchAt(fallback)).hit; if (hit) collection = fallback; }
+      }
     }
     if (!hit) throw new Error(`No se encontró invoice ni receipt con folio ${folio} en Facturapi`);
     // La API acepta { email: [string] } para sobrescribir; sin body usa el
@@ -7640,14 +7651,22 @@ app.post("/facturapi/send-email", async (req, res) => {
 app.get("/facturapi/ticket-url", async (req, res) => {
   try {
     const folio = String(req.query.folio || '').trim();
-    const orgN = String(req.query.org || '2');
     if (!folio) throw new Error('folio requerido');
-    const key = orgN === '1'
+    const _keyOrg = n => n === '1'
       ? (process.env.FACTURAPI_SECRET_KEY_ORG1 || process.env.FACTURAPI_SECRET_KEY)
       : (process.env.FACTURAPI_SECRET_KEY_ORG2 || process.env.FACTURAPI_SECRET_KEY);
-    if (!key) throw new Error('FACTURAPI_SECRET_KEY no configurada');
-    const auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
-    // Busca primero en receipts, luego en invoices como fallback
+    // ACR (org 1) por omisión; si no se indicó org y no aparece ahí, prueba ACL (tickets viejos)
+    const _orgs = req.query.org ? [String(req.query.org)] : ['1', '2'];
+    let hit = null, kind = 'receipt', auth = '';
+    for (const orgN of _orgs) {
+      const key = _keyOrg(orgN);
+      if (!key) continue;
+      auth = 'Basic ' + Buffer.from(key + ':').toString('base64');
+      hit = await searchAt('receipts'); kind = 'receipt';
+      if (!hit) { hit = await searchAt('invoices'); kind = 'invoice'; }
+      if (hit) break;
+    }
+    if (!auth) throw new Error('FACTURAPI_SECRET_KEY no configurada');
     async function searchAt(collection) {
       const r = await fetch(`https://www.facturapi.io/v2/${collection}?folio_number=${encodeURIComponent(folio)}&limit=1`, {
         headers: { 'Authorization': auth }
@@ -7656,9 +7675,6 @@ app.get("/facturapi/ticket-url", async (req, res) => {
       const j = await r.json();
       return (j?.data || [])[0] || null;
     }
-    let hit = await searchAt('receipts');
-    let kind = 'receipt';
-    if (!hit) { hit = await searchAt('invoices'); kind = 'invoice'; }
     if (!hit) return res.status(404).json({ ok:false, error:`Folio ${folio} no encontrado` });
     const url = String(hit.self_invoice_url || hit.verification_url || hit.url || '');
     res.json({ ok:true, folio, id: hit.id, kind, url });
@@ -7707,7 +7723,7 @@ app.post("/facturapi/emit-auto", async (req, res) => {
     if (!reservaId) throw new Error('reservaId requerido');
     if (!monto || monto <= 0) throw new Error('monto inválido');
     if (!correo) throw new Error('correo requerido');
-    const orgN = String(b.org || '2');
+    const orgN = String(b.org || '1'); // ACR (Andrés Carreón Rodríguez) por omisión
     const key = orgN === '1'
       ? (process.env.FACTURAPI_SECRET_KEY_ORG1 || process.env.FACTURAPI_SECRET_KEY)
       : (process.env.FACTURAPI_SECRET_KEY_ORG2 || process.env.FACTURAPI_SECRET_KEY);
